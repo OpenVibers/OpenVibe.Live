@@ -70,7 +70,10 @@ function buildConfig(registryValues) {
         return entry && typeof entry === 'object' ? entry : { value: null, source: 'default' };
     };
 
-    const baseEntry = getRegistryEntry('BASE_URL');
+    // Registry renamed this key from BASE_URL to OV_LIVE_URL; accept both plus the env var.
+    let baseEntry = getRegistryEntry('OV_LIVE_URL');
+    if (baseEntry.source === 'default') baseEntry = getRegistryEntry('BASE_URL');
+    if (baseEntry.source === 'default' && process.env.BASE_URL) baseEntry = { value: process.env.BASE_URL, source: 'env' };
     const whipEntry = getRegistryEntry('WHIP_PUBLIC_URL');
     const webRtcEntry = getRegistryEntry('WEBRTC_PUBLIC_URL');
     const jsmpegEntry = getRegistryEntry('JSMPEG_PUBLIC_URL');
