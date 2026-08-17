@@ -77,7 +77,7 @@ function channelPath(username, managedStreamIdOrSlug = null) {
 function _avatarInner(url, name) {
     const letter = ((String(name || '?'))[0] || '?').toUpperCase();
     return url
-        ? `<img src="${esc(url)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block" onerror="this.remove();this.parentNode.textContent='${letter}'">`
+        ? `<img src="${esc(url)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block" onerror="var p=this.parentNode;this.remove();if(p)p.textContent='${letter}'">`
         : letter;
 }
 
@@ -87,7 +87,7 @@ function _avatarSpan(url, name, color, extraCls) {
     const cls = extraCls ? ` ${extraCls}` : '';
     const bg = color ? ` style="background:${esc(color)}"` : '';
     return url
-        ? `<span class="stream-card-avatar${cls}"${bg}><img src="${esc(url)}" alt="" onerror="this.remove();this.parentNode.textContent='${letter}'"></span>`
+        ? `<span class="stream-card-avatar${cls}"${bg}><img src="${esc(url)}" alt="" onerror="var p=this.parentNode;this.remove();if(p)p.textContent='${letter}'"></span>`
         : `<span class="stream-card-avatar${cls}"${bg}>${letter}</span>`;
 }
 
