@@ -3129,7 +3129,6 @@ function interactWithNPC(npc) {
     }
     panelAnimProgress = 0;
     panelAnimDir = 1;
-    }
     loadNPCData(npc.id);
 }
 

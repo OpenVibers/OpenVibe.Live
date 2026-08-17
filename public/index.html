@@ -89,7 +89,7 @@
         <i class="fa-solid fa-circle-nodes"></i>
         <span class="brand-text-wrap">
             <span class="alpha-badge">ALPHA</span>
-            <span class="brand-text"><span class="brand-openvibe">OpenVibe</span><strong class="brand-streamer">Streamer</strong></span>
+            <span class="brand-text"><span class="brand-openvibe">OpenVibe</span><strong class="brand-streamer">.Live</strong></span>
         </span>
     </a>
     <div class="nav-links-wrap">
@@ -121,7 +121,7 @@
                 <a href="/dashboard" id="nav-golive-dash" onclick="return dashNav(event)"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
             </div>
         </div>
-        <a href="https://openvibe.tools/admin" class="nav-link" data-page="admin" id="nav-admin" style="display:none" data-tooltip="Admin" rel="noopener noreferrer">
+        <a href="https://openvibe.network/admin" class="nav-link" data-page="admin" id="nav-admin" style="display:none" data-tooltip="Admin" rel="noopener noreferrer">
             <i class="fa-solid fa-shield-halved"></i> <span>Admin</span>
         </a>
         </div>
@@ -149,7 +149,7 @@
             <div class="user-dropdown" id="user-dropdown">
                 <a href="/dashboard" onclick="return handleLinkClick(event, '/dashboard')"><i class="fa-solid fa-gauge-high"></i> My Dashboard</a>
                 <a href="#" onclick="return handleLinkClick(event, channelPath(currentUser?.username))"><i class="fa-solid fa-user"></i> My Channel</a>
-                <a href="https://openvibe.tools/admin" target="_blank" rel="noopener" id="user-dropdown-admin" style="display:none"><i class="fa-solid fa-shield-halved"></i> Admin Panel</a>
+                <a href="https://openvibe.network/admin" target="_blank" rel="noopener" id="user-dropdown-admin" style="display:none"><i class="fa-solid fa-shield-halved"></i> Admin Panel</a>
                 <hr>
                 <a href="https://openvibe.network" target="_blank"><i class="fa-solid fa-network-wired"></i> OpenVibe</a>
                 <a href="#" onclick="event.preventDefault();showModal('buy-funds')"><i class="fa-solid fa-coins"></i> Support Us</a>
@@ -1811,7 +1811,7 @@
                     </div>
                     <div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap">
                         <button class="btn btn-primary btn-small" onclick="saveSettingsProfile()"><i class="fa-solid fa-floppy-disk"></i> Save Profile</button>
-                        <a href="https://openvibe.network" target="_blank" rel="noopener" class="btn btn-outline btn-small" style="text-decoration:none"><i class="fa-solid fa-arrow-up-right-from-square"></i> Manage account on openvibe.tools</a>
+                        <a href="https://openvibe.network" target="_blank" rel="noopener" class="btn btn-outline btn-small" style="text-decoration:none"><i class="fa-solid fa-arrow-up-right-from-square"></i> Manage account on openvibe.network</a>
                     </div>
                 </div>
 
@@ -3493,7 +3493,7 @@ WantedBy=multi-user.target</code>
 <tr><td>RTMP</td><td>Node-Media-Server</td><td>OBS classic ingest</td></tr>
 <tr><td>Chat/Control</td><td>WebSocket (ws)</td><td>Real-time messaging</td></tr>
 <tr><td>Frontend</td><td>Vanilla JS SPA</td><td>No framework</td></tr>
-<tr><td>Auth</td><td>RS256 JWT via openvibe.tools SSO</td><td>Shared across OpenVibe</td></tr>
+<tr><td>Auth</td><td>RS256 JWT via openvibe.network SSO</td><td>Shared across OpenVibe</td></tr>
 </tbody>
 </table>
 
@@ -3519,7 +3519,7 @@ WantedBy=multi-user.target</code>
 <thead><tr><th>Service</th><th>URL</th><th>Owns</th></tr></thead>
 <tbody>
 <tr><td>OpenVibe.Live</td><td>openvibe.live</td><td>Streaming, chat, TTS, controls, VODs, soundboard</td></tr>
-<tr><td>openvibe.tools</td><td>openvibe.tools / openvibe.network</td><td>SSO, accounts, notifications, push, Discord bot, admin</td></tr>
+<tr><td>openvibe.network</td><td>openvibe.network</td><td>SSO, accounts, notifications, push, Discord bot, admin</td></tr>
 <tr><td>openvibe.games</td><td>openvibe.games</td><td>Games (RPG, canvas)</td></tr>
 </tbody>
 </table>
@@ -3538,7 +3538,7 @@ WantedBy=multi-user.target</code>
 
 <h3>Service Map</h3>
 <pre><code>┌──────────────────────────────────────────────────────┐
-│  openvibe.tools (port 3100) — Central Hub                │
+│  openvibe.network (port 3100) — Central Hub                │
 │  ├─ /api/auth      — SSO (RS256 JWT)                 │
 │  ├─ /api/notifications — Notification CRUD           │
 │  ├─ /api/push      — Web Push (VAPID)                │
@@ -3562,13 +3562,13 @@ WantedBy=multi-user.target</code>
 <h3>Event Flow: Stream Goes Live</h3>
 <pre><code>1. Streamer calls POST /api/streams (OpenVibe.Live)
 2. OpenVibe.Live creates stream record, starts media endpoint
-3. OpenVibe.Live calls POST /internal/events/stream-live (openvibe.tools)
-4. openvibe.tools Discord bot sends embed to #alerts channel (with dedupe)
-5. openvibe.tools creates STREAM_LIVE notifications for:
+3. OpenVibe.Live calls POST /internal/events/stream-live (openvibe.network)
+4. openvibe.network Discord bot sends embed to #alerts channel (with dedupe)
+5. openvibe.network creates STREAM_LIVE notifications for:
    - All followers of the streamer
    - Users opted into "all live" alerts
 6. Push notifications fire via Web Push (VAPID)
-7. Fallback: OpenVibe.Live sends direct webhook if openvibe.tools unreachable</code></pre>
+7. Fallback: OpenVibe.Live sends direct webhook if openvibe.network unreachable</code></pre>
 
 <h3>WebSocket Services</h3>
 <table class="doc-table">
@@ -3582,10 +3582,10 @@ WantedBy=multi-user.target</code>
 </table>
 
 <h3>Admin Proxy Architecture</h3>
-<p>openvibe.tools admin panel proxies requests to OpenVibe.Live:</p>
-<pre><code>openvibe.tools /api/admin/streamer/*  →  OpenVibe.Live /api/admin/*
-openvibe.tools /api/admin/streamer-tts/*  →  OpenVibe.Live /api/tts/*
-openvibe.tools /api/admin/streamer-mod/*  →  OpenVibe.Live /api/mod/*</code></pre>
+<p>openvibe.network admin panel proxies requests to OpenVibe.Live:</p>
+<pre><code>openvibe.network /api/admin/streamer/*  →  OpenVibe.Live /api/admin/*
+openvibe.network /api/admin/streamer-tts/*  →  OpenVibe.Live /api/tts/*
+openvibe.network /api/admin/streamer-mod/*  →  OpenVibe.Live /api/mod/*</code></pre>
 <p>Protected by X-Internal-Key header for server-to-server calls.</p>
 </div>
 
@@ -3595,13 +3595,13 @@ openvibe.tools /api/admin/streamer-mod/*  →  OpenVibe.Live /api/mod/*</code></
 <div class="doc-tab-content" data-doc-tab="auth" style="display:none">
 <h2>1. AUTHENTICATION</h2>
 
-<p><strong>All identity is OpenVibe.Tools SSO.</strong> There is no local password login on OpenVibe.Live &mdash; <code>POST /api/auth/register</code> and <code>POST /api/auth/login</code> are permanently disabled (return <code>410</code>). Humans sign in through openvibe.tools OAuth2; OpenVibe.Live receives an <strong>RS256 JWT</strong> signed by openvibe.tools and verifies it locally. For bots and scripts, use a long-lived <strong><code>hbt_</code> API token</strong> (below) &mdash; no browser login needed.</p>
+<p><strong>All identity is OpenVibe SSO.</strong> There is no local password login on OpenVibe.Live &mdash; <code>POST /api/auth/register</code> and <code>POST /api/auth/login</code> are permanently disabled (return <code>410</code>). Humans sign in through openvibe.network OAuth2; OpenVibe.Live receives an <strong>RS256 JWT</strong> signed by openvibe.network and verifies it locally. For bots and scripts, use a long-lived <strong><code>hbt_</code> API token</strong> (below) &mdash; no browser login needed.</p>
 
 <h3>How auth is sent</h3>
 <p>Every authenticated request carries a token as <code>Authorization: Bearer &lt;token&gt;</code> (also read from the <code>ov_token</code> cookie, or a <code>?token=</code> query param on WebSocket URLs). <code>requireAuth</code> accepts either:</p>
 <ul>
 <li><strong>API token</strong> &mdash; a string starting with <code>hbt_</code>. Best for bots/integrations. Cannot itself create/list/revoke tokens.</li>
-<li><strong>openvibe.tools JWT (RS256)</strong> &mdash; from the SSO login flow; auto-links/creates a local account. Roles come from the token.</li>
+<li><strong>openvibe.network JWT (RS256)</strong> &mdash; from the SSO login flow; auto-links/creates a local account. Roles come from the token.</li>
 </ul>
 <p><strong>Roles:</strong> <code>admin</code> &gt; <code>global_mod</code> &gt; <code>streamer</code> &gt; <code>user</code> (+ anonymous). Banned accounts get <code>403</code>.</p>
 
@@ -3609,7 +3609,7 @@ openvibe.tools /api/admin/streamer-mod/*  →  OpenVibe.Live /api/mod/*</code></
 <table class="doc-table">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
-<tr><td>GET</td><td>/api/auth/sso/login</td><td>No</td><td>302 &rarr; openvibe.tools OAuth authorize</td></tr>
+<tr><td>GET</td><td>/api/auth/sso/login</td><td>No</td><td>302 &rarr; openvibe.network OAuth authorize</td></tr>
 <tr><td>GET</td><td>/api/auth/callback?code&amp;state</td><td>No</td><td>OAuth code&rarr;token exchange; sets cookies</td></tr>
 <tr><td>POST</td><td>/api/auth/refresh</td><td>Cookie</td><td>Refresh access token via httpOnly <code>ov_refresh</code> cookie</td></tr>
 <tr><td>POST</td><td>/api/auth/logout</td><td>No</td><td>Clear auth cookies</td></tr>
@@ -4445,8 +4445,8 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 <div class="doc-tab-content" data-doc-tab="integrations" style="display:none">
 <h2>INTEGRATIONS — DISCORD, PUSH, WEBHOOKS</h2>
 
-<h3>Discord Bot (via openvibe.tools)</h3>
-<p>The Discord bot runs on openvibe.tools (not OpenVibe.Live). When a stream goes live, OpenVibe.Live fires an internal event, and the bot posts an embed in the configured alerts channel.</p>
+<h3>Discord Bot (via openvibe.network)</h3>
+<p>The Discord bot runs on openvibe.network (not OpenVibe.Live). When a stream goes live, OpenVibe.Live fires an internal event, and the bot posts an embed in the configured alerts channel.</p>
 <table class="doc-table">
 <thead><tr><th>Feature</th><th>Description</th></tr></thead>
 <tbody>
@@ -4457,7 +4457,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 </tbody>
 </table>
 
-<h3>Discord Admin API (openvibe.tools)</h3>
+<h3>Discord Admin API (openvibe.network)</h3>
 <table class="doc-table">
 <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
 <tbody>
@@ -4503,7 +4503,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 </table>
 
 <h3>Internal Events API (server-to-server)</h3>
-<p>OpenVibe.Live emits events to openvibe.tools via internal API. Protected by X-Internal-Key header.</p>
+<p>OpenVibe.Live emits events to openvibe.network via internal API. Protected by X-Internal-Key header.</p>
 <table class="doc-table">
 <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
 <tbody>
@@ -4514,7 +4514,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 </table>
 
 <h3>Fallback Webhook (OpenVibe.Live direct)</h3>
-<p>If openvibe.tools is unreachable, OpenVibe.Live falls back to its built-in Discord webhook sender. Configure the webhook URL in OpenVibe.Live site settings (<code>discord_webhook_url</code>).</p>
+<p>If openvibe.network is unreachable, OpenVibe.Live falls back to its built-in Discord webhook sender. Configure the webhook URL in OpenVibe.Live site settings (<code>discord_webhook_url</code>).</p>
 
 <h3>Multistream / Restream — <code>/api/restream</code></h3>
 <p>Relay a live stream out to YouTube / Twitch / Kick / custom RTMP. Manage destinations per slot (max 10); stream keys are masked on read. All <code>requireAuth</code>.</p>
@@ -4682,7 +4682,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 <tr><td>GET / PUT</td><td>/api/news/my-settings</td><td>Yes</td><td>Per-channel news on/off (admin manages sources at <code>/api/news/sources</code>)</td></tr>
 <tr><td>GET</td><td>/api/home/hero</td><td>No</td><td>Landing hero: <code>{ stats, media[], slogans }</code></td></tr>
 <tr><td>GET</td><td>/api/thumbnails/:filename</td><td>No</td><td>Serve a thumbnail (<code>POST /live/:streamId</code> uploads a live thumb)</td></tr>
-<tr><td>GET</td><td>/api/themes &middot; /themes/me</td><td>No/Yes</td><td>List community themes / my active theme (themes tie into openvibe.tools SSO)</td></tr>
+<tr><td>GET</td><td>/api/themes &middot; /themes/me</td><td>No/Yes</td><td>List community themes / my active theme (themes tie into openvibe.network SSO)</td></tr>
 <tr><td>GET</td><td>/api/meta/link-preview?url=</td><td>No</td><td>Link preview / OEmbed data</td></tr>
 <tr><td>GET</td><td>/api/health &middot; /updates</td><td>No</td><td>Health check / recent changelog (git commits)</td></tr>
 </tbody>
@@ -4904,18 +4904,18 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 <!-- Scripts -->
 <script src="/js/theme-engine.js?v=4"></script>
 <script src="/live-notify.js?v=2" defer></script>
-<script src="/js/app.js?v=117" defer></script>
+<script src="/js/app.js?v=118" defer></script>
 <script src="/js/stream-player.js?v=17" defer></script>
 <script src="/js/chat-shared.js?v=3" defer></script>
 <script src="/js/emotes.js?v=8" defer></script>
 <script src="/js/gif-picker.js?v=1" defer></script>
-<script src="/js/chat.js?v=69" defer></script>
+<script src="/js/chat.js?v=70" defer></script>
 <script src="/js/chat-autocomplete.js?v=1" defer></script>
 <script src="/js/channel-uploads.js?v=12" defer></script>
 <script src="/js/controls.js?v=8" defer></script>
 <script src="/js/onvif-dashboard.js?v=5" defer></script>
-<script src="/js/dashboard.js?v=15" defer></script>
-<script src="/js/admin.js?v=6" defer></script>
+<script src="/js/dashboard.js?v=16" defer></script>
+<script src="/js/admin.js?v=7" defer></script>
 <!-- ── Floating Global Chat Widget (visible on non-chat pages) ── -->
 <div id="floating-chat-widget" class="floating-chat-widget" style="display:none">
     <div class="fcw-header" onmousedown="fcwStartDrag(event)">
@@ -4959,8 +4959,8 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
     </div>
 </div>
 
-<script src="/js/openvibe-bucks.js?v=7" defer></script>
-<script src="/js/openvibe-coins.js?v=5" defer></script>
+<script src="/js/vibes.js?v=8" defer></script>
+<script src="/js/opencoins.js?v=6" defer></script>
 <script src="/js/cosmetics-ui.js?v=2" defer></script>
 <!-- Broadcast modules — load order matters: state → devices → vods → workspace → core -->
 <script src="/js/broadcast-state.js?v=1" defer></script>
@@ -4970,7 +4970,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 <script src="/js/broadcast.js?v=25" defer></script>
 <script src="/js/call.js?v=3" defer></script>
 <script src="/js/voice-channels.js?v=2" defer></script>
-<script src="/js/settings.js?v=9" defer></script>
+<script src="/js/settings.js?v=10" defer></script>
 <script src="/js/staff-console.js?v=1" defer></script>
 <script src="/js/dashboard-moderation.js?v=5" defer></script>
 <script src="/js/ai-viewers.js?v=1" defer></script>
@@ -4987,11 +4987,11 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 // Initialize OpenVibe notifications and theme sync (navbar is handled natively by openvibelive).
 // Runs on DOMContentLoaded so the now-deferred shared libs (OpenVibeThemeLoader / OpenVibeNotifications)
 // have executed first.
-document.addEventListener('DOMContentLoaded', function initNet.OpenVibework() {
+document.addEventListener('DOMContentLoaded', function initOpenVibeNetwork() {
     const token = localStorage.getItem('token') || (document.cookie.match(/(?:^|; )ov_token=([^;]*)/) || [])[1] || null;
 
     if (window.OpenVibeThemeLoader && typeof OpenVibeThemeLoader.init === 'function') {
-        // Themes are owned centrally by openvibe.tools and synced everywhere — pull the
+        // Themes are owned centrally by openvibe.network and synced everywhere — pull the
         // user's active theme from there (configured at openvibe.network/themes).
         OpenVibeThemeLoader.init({ apiBase: 'https://openvibe.network' });
     }
@@ -4999,7 +4999,7 @@ document.addEventListener('DOMContentLoaded', function initNet.OpenVibework() {
     // Notifications bell
     const mount = document.getElementById('openvibe-bell-mount');
     if (mount && window.OpenVibeNotifications && token) {
-        const openvibeToolsBase = (window.Net.OpenVibeworkUrls && window.Net.OpenVibeworkUrls.tools)
+        const openvibeToolsBase = (window.OpenVibeNetworkUrls && window.OpenVibeNetworkUrls.tools)
             || (['localhost', '127.0.0.1'].includes(window.location.hostname)
                 ? 'http://localhost:3100'
                 : (['topenvibe.tools', 'topenvibelive.com', 'topenvibe.quest'].includes(window.location.hostname)

@@ -81,9 +81,9 @@ const { notifyDiscordGoLive } = require('../integrations/discord-webhook');
 const INTERNAL_API_KEY = config.internalApiKey || process.env.INTERNAL_API_KEY || process.env.OV_INTERNAL_KEY || '';
 
 /**
- * Push "X went live" notification via openvibe.tools unified event endpoint.
- * This lets openvibe.tools handle Discord bot alerts + push notifications centrally.
- * Falls back to direct webhook + bulk push if openvibe.tools is unreachable.
+ * Push "X went live" notification via openvibe.network unified event endpoint.
+ * This lets openvibe.network handle Discord bot alerts + push notifications centrally.
+ * Falls back to direct webhook + bulk push if openvibe.network is unreachable.
  */
 function notifyFollowersGoLive(streamer, stream) {
     // Try unified event endpoint first (handles Discord bot + push)
@@ -119,7 +119,7 @@ function notifyFollowersGoLive(streamer, stream) {
     });
 }
 
-/** Fallback: direct Discord webhook + bulk push (if openvibe.tools is down) */
+/** Fallback: direct Discord webhook + bulk push (if openvibe.network is down) */
 function _fallbackNotify(streamer, stream) {
     notifyDiscordGoLive(streamer, stream);
 

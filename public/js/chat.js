@@ -3288,7 +3288,7 @@ function addDonationGoalMessage(msg) {
     const g = msg.goal || {};
     const by = esc(msg.by || 'the community');
     const title = esc(g.title || 'Goal');
-    const target = (g.target_amount != null && g.target_amount !== '') ? `${Number(g.target_amount).toLocaleString()} HB` : '';
+    const target = (g.target_amount != null && g.target_amount !== '') ? `${Number(g.target_amount).toLocaleString()} Vibes` : '';
     const media = g.image_url
         ? (g.media_type === 'video'
             ? `<video class="cgr-media" src="${esc(g.image_url)}" muted loop autoplay playsinline></video>`

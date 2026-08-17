@@ -1,9 +1,9 @@
 /**
  * OpenVibe.Live — Auth Routes
  * All authentication is via OpenVibe.Tools OAuth2 SSO.
- * No local login/register — users sign in at openvibe.tools.
+ * No local login/register — users sign in at openvibe.network.
  *
- * GET  /api/auth/sso/login    — Redirect to openvibe.tools OAuth
+ * GET  /api/auth/sso/login    — Redirect to openvibe.network OAuth
  * GET  /api/auth/callback     — OAuth callback
  * GET  /api/auth/me           — Current user
  * PUT  /api/auth/profile      — Update profile
@@ -87,12 +87,12 @@ const avatarUpload = multer({
     },
 });
 
-// ── Register (disabled — use openvibe.tools) ─────────────────────
+// ── Register (disabled — use openvibe.network) ─────────────────────
 router.post('/register', (_req, res) => {
     res.status(410).json({ error: 'Local registration is no longer available. Please sign in with OpenVibe.' });
 });
 
-// ── Login (disabled — use openvibe.tools) ────────────────────────
+// ── Login (disabled — use openvibe.network) ────────────────────────
 router.post('/login', (_req, res) => {
     res.status(410).json({ error: 'Local login is no longer available. Please sign in with OpenVibe.' });
 });
@@ -161,9 +161,9 @@ router.put('/profile', requireAuth, (req, res) => {
     }
 });
 
-// ── Change Password (disabled — managed on openvibe.tools) ──────
+// ── Change Password (disabled — managed on openvibe.network) ──────
 router.post('/change-password', (_req, res) => {
-    res.status(410).json({ error: 'Password management has moved to openvibe.tools.' });
+    res.status(410).json({ error: 'Password management has moved to openvibe.network.' });
 });
 
 // ── Get Stream Key ───────────────────────────────────────────
@@ -287,7 +287,7 @@ function getNetworkRedirectUri() {
     return `${config.baseUrl.toLowerCase()}/api/auth/callback`;
 }
 
-// ── Initiate OAuth Login (redirect to openvibe.tools) ───────────
+// ── Initiate OAuth Login (redirect to openvibe.network) ───────────
 router.get('/sso/login', (req, res) => {
     const state = require('crypto').randomBytes(16).toString('hex');
     // Store state in a short-lived cookie for CSRF protection
@@ -363,7 +363,7 @@ router.get('/callback', async (req, res) => {
             return res.status(400).send('No user data in token response');
         }
 
-        // Find or create local user linked to this openvibe.tools account
+        // Find or create local user linked to this openvibe.network account
         const openvibeToolsId = String(ssoUser.id);
 
         // Check linked_accounts first
@@ -399,7 +399,7 @@ router.get('/callback', async (req, res) => {
             });
             localUser = db.getUserById(result.lastInsertRowid);
 
-            // Sync optional fields from openvibe.tools
+            // Sync optional fields from openvibe.network
             if (ssoUser.avatar_url) db.updateUserAvatar(localUser.id, ssoUser.avatar_url);
             if (ssoUser.bio) db.getDb().prepare('UPDATE users SET bio = ? WHERE id = ?').run(ssoUser.bio, localUser.id);
             if (ssoUser.role && ['user', 'streamer', 'global_mod', 'admin'].includes(ssoUser.role)) {
@@ -407,19 +407,19 @@ router.get('/callback', async (req, res) => {
             }
             if (ssoUser.profile_color) db.getDb().prepare('UPDATE users SET profile_color = ? WHERE id = ?').run(ssoUser.profile_color, localUser.id);
 
-            // Link to openvibe.tools
+            // Link to openvibe.network
             db.getDb().prepare(
                 "INSERT OR IGNORE INTO linked_accounts (user_id, service, service_user_id, service_username) VALUES (?, 'network', ?, ?)"
             ).run(localUser.id, openvibeToolsId, ssoUser.username);
 
             localUser = db.getUserById(localUser.id); // re-fetch
-            console.log(`[Auth/SSO] New local account created for openvibe.tools user ${ssoUser.username} (openvibe-tools id:${openvibeToolsId}, local id:${localUser.id})`);
+            console.log(`[Auth/SSO] New local account created for openvibe.network user ${ssoUser.username} (openvibe-tools id:${openvibeToolsId}, local id:${localUser.id})`);
         }
 
-        // Register this account under the user's openvibe.tools Linked Services.
+        // Register this account under the user's openvibe.network Linked Services.
         try { require('../utils/notify').reportLinkedAccount(localUser); } catch { /* */ }
 
-        // Use the openvibe.tools token directly (no more local tokens)
+        // Use the openvibe.network token directly (no more local tokens)
         const openvibeToolsToken = tokenData.access_token;
         const openvibeRefreshToken = tokenData.refresh_token;
         if (!openvibeToolsToken) {
@@ -531,7 +531,7 @@ router.post('/logout', (req, res) => {
 router.get('/sso/status', (req, res) => {
     res.json({
         enabled: !!OV_CLIENT_SECRET,
-        provider: 'openvibe.tools',
+        provider: 'openvibe.network',
         loginUrl: `${getNetworkBase()}/oauth/authorize`,
     });
 });

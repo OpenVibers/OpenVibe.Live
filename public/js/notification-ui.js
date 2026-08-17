@@ -14,7 +14,7 @@
     const MAX_TOASTS = 3;
     const SOUNDS = { normal: 'notification.mp3', high: 'notification-high.mp3', critical: 'notification-alarm.mp3' };
 
-    function getDefaultOpenVibe.ToolsUrl() {
+    function getDefaultOpenVibeToolsUrl() {
         const host = window.location.hostname;
         const isLocalHost = ['localhost', '127.0.0.1'].includes(host);
         const isTopenvibeAlias = ['topenvibe.tools', 'topenvibelive.com', 'topenvibe.quest'].includes(host);
@@ -23,7 +23,7 @@
 
     let _config = {
         token: null,
-        apiBase: (window.Net.OpenVibeworkUrls && window.Net.OpenVibeworkUrls.tools) || getDefaultOpenVibe.ToolsUrl(),
+        apiBase: (window.OpenVibeNetworkUrls && window.OpenVibeNetworkUrls.tools) || getDefaultOpenVibeToolsUrl(),
         soundBase: '/assets/sounds',
         onAction: null,
     };
@@ -568,7 +568,7 @@
             if (!('serviceWorker' in navigator) || !('PushManager' in window)) return { error: 'Push not supported' };
             try {
                 const reg = await navigator.serviceWorker.register('/service-worker.js');
-                // Fetch VAPID public key from openvibe.tools
+                // Fetch VAPID public key from openvibe.network
                 const keyRes = await apiFetch('/api/push/vapid-key');
                 if (!keyRes?.publicKey) return { error: 'Push not configured on server' };
 

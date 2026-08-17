@@ -449,7 +449,7 @@ router.get('/settings', (req, res) => {
     }
 });
 
-// AI usage + estimated cost breakdown (for the openvibe.tools admin AI tab).
+// AI usage + estimated cost breakdown (for the openvibe.network admin AI tab).
 router.get('/ai/usage', (req, res) => {
     try {
         const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30));
@@ -961,22 +961,16 @@ router.delete('/storage/clips/bulk', async (req, res) => {
     }
 });
 
-// ── Storage tiering + media tools → moved to OpenVibe.Media ──
-const MOVED_NOTE = {
-    moved: true,
-    service: 'OpenVibe.Media',
-    note: 'Storage tiering (local/B2/R2) and media tools are managed by the OpenVibe.Media service now.',
-};
-for (const route of ['/storage/tiers', '/storage/buckets']) {
-    router.get(route, (req, res) => res.status(200).json({ ...MOVED_NOTE }));
-}
-for (const [method, route] of [
-    ['put', '/storage/tiers/settings'],
-    ['post', '/storage/tiers/sweep'],
-    ['post', '/storage/tiers/move'],
-    ['post', '/storage/tiers/bulk-move'],
+// ── Storage tiering → proxied to OpenVibe.Media (app-key auth) ──
+for (const [method, route, upstream] of [
+    ['get',  '/storage/tiers',           '/admin/storage/tiers'],
+    ['get',  '/storage/buckets',         '/admin/storage/buckets'],
+    ['put',  '/storage/tiers/settings',  '/admin/storage/tiers/settings'],
+    ['post', '/storage/tiers/sweep',     '/admin/storage/tiers/sweep'],
+    ['post', '/storage/tiers/move',      '/admin/storage/tiers/move'],
+    ['post', '/storage/tiers/bulk-move', '/admin/storage/tiers/bulk-move'],
 ]) {
-    router[method](route, (req, res) => res.status(501).json({ ...MOVED_NOTE, error: 'Moved to OpenVibe.Media' }));
+    router[method](route, (req, res) => mediaClient.proxy(req, res, upstream, { method: method.toUpperCase() }));
 }
 
 // ═══════════════════════════════════════════════════════════════

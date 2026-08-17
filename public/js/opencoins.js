@@ -232,7 +232,7 @@ function handleCoinEarned(msg) {
 function renderRedemption(msg, container) {
     const el = document.createElement('div');
     el.className = 'chat-msg redemption';
-    el.innerHTML = `<i class="fa-solid fa-gem" style="color:${esc(msg.reward_color || 'var(--accent)')}"></i> <strong>${esc(msg.username || 'Someone')}</strong> redeemed <strong>${esc(msg.reward_title || 'a reward')}</strong>${msg.user_input ? `: ${esc(msg.user_input)}` : ''} <span class="muted">(${(msg.cost || 0).toLocaleString()} nickels)</span>`;
+    el.innerHTML = `<i class="fa-solid fa-gem" style="color:${esc(msg.reward_color || 'var(--accent)')}"></i> <strong>${esc(msg.username || 'Someone')}</strong> redeemed <strong>${esc(msg.reward_title || 'a reward')}</strong>${msg.user_input ? `: ${esc(msg.user_input)}` : ''} <span class="muted">(${(msg.cost || 0).toLocaleString()} ${esc(channelPointsName())})</span>`;
     container.appendChild(el);
     container.scrollTop = container.scrollHeight;
 }
