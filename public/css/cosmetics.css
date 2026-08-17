@@ -1,0 +1,491 @@
+/**
+ * OpenVibe.Live — Cosmetics CSS
+ * Name effects, particles, hats in chat, and inventory UI
+ */
+
+/* ══════════════════════════════════════════════════════════════
+   NAME EFFECTS — CSS classes applied to chat username spans
+   ══════════════════════════════════════════════════════════════ */
+
+/* Rainbow — cycling hue */
+.name-fx-rainbow {
+    background: linear-gradient(90deg, #ff0000, #ff8800, #ffff00, #00ff00, #0088ff, #8800ff, #ff0088);
+    background-size: 400% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: nameFxRainbow 3s linear infinite;
+}
+@keyframes nameFxRainbow {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 400% 50%; }
+}
+
+/* Fire — warm pulse with glow */
+.name-fx-fire {
+    color: #ff6600 !important;
+    text-shadow: 0 0 6px #ff4400, 0 0 12px #ff220088, 0 0 20px #cc110044;
+    animation: nameFxFire 1.5s ease-in-out infinite alternate;
+}
+@keyframes nameFxFire {
+    0% { text-shadow: 0 0 6px #ff4400, 0 0 12px #ff220088; color: #ff6600; }
+    100% { text-shadow: 0 0 10px #ff8800, 0 0 20px #ff440088, 0 0 30px #cc220044; color: #ffaa00; }
+}
+
+/* Ice — cool blue shimmer */
+.name-fx-ice {
+    color: #88ddff !important;
+    text-shadow: 0 0 6px #44bbff88, 0 0 12px #2288cc44;
+    animation: nameFxIce 2s ease-in-out infinite alternate;
+}
+@keyframes nameFxIce {
+    0% { text-shadow: 0 0 4px #44bbff88; color: #88ddff; }
+    100% { text-shadow: 0 0 10px #66eeff, 0 0 20px #44bbff88; color: #bbffff; }
+}
+
+/* Golden — shimmering gold */
+.name-fx-golden {
+    background: linear-gradient(90deg, #ffd700, #ffec80, #ffd700, #ffb800);
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: nameFxGolden 2s ease-in-out infinite;
+    filter: drop-shadow(0 0 4px #ffd70066);
+}
+@keyframes nameFxGolden {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+}
+
+/* Neon — glowing pulse */
+.name-fx-neon {
+    color: #00ff88 !important;
+    text-shadow: 0 0 8px #00ff88, 0 0 16px #00ff8888, 0 0 24px #00cc6644;
+    animation: nameFxNeon 1.2s ease-in-out infinite alternate;
+}
+@keyframes nameFxNeon {
+    0% { text-shadow: 0 0 4px #00ff88, 0 0 8px #00ff8866; }
+    100% { text-shadow: 0 0 12px #00ff88, 0 0 24px #00ff88aa, 0 0 36px #00cc6666; }
+}
+
+/* Galaxy — cosmic swirl */
+.name-fx-galaxy {
+    background: linear-gradient(90deg, #8b5cf6, #ec4899, #3b82f6, #8b5cf6);
+    background-size: 400% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: nameFxGalaxy 4s linear infinite;
+    filter: drop-shadow(0 0 6px #8b5cf644);
+}
+@keyframes nameFxGalaxy {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 400% 50%; }
+}
+
+/* Void — dark matter warp */
+.name-fx-void {
+    color: #9900ff !important;
+    text-shadow: 0 0 8px #6600cc, 0 0 16px #33006688, 0 0 24px #11003344;
+    animation: nameFxVoid 2s ease-in-out infinite;
+}
+@keyframes nameFxVoid {
+    0%, 100% { text-shadow: 0 0 8px #6600cc, 0 0 16px #33006688; transform: scale(1); }
+    50% { text-shadow: 0 0 12px #9900ff, 0 0 24px #6600ccaa, 0 0 36px #33006666; transform: scale(1.03); }
+}
+
+/* Toxic — green pulse */
+.name-fx-toxic {
+    background: linear-gradient(90deg, #00ff44, #88ff00, #ccff00, #00ff88);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: nameFxToxic 1.8s ease-in-out infinite alternate;
+}
+@keyframes nameFxToxic {
+    0% { background-position: 0% 50%; filter: brightness(1); }
+    100% { background-position: 200% 50%; filter: brightness(1.3); }
+}
+
+/* Blood — crimson drip */
+.name-fx-blood {
+    background: linear-gradient(180deg, #ff0000, #880000, #ff2222);
+    background-size: 100% 200%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: nameFxBlood 2s ease-in-out infinite;
+}
+@keyframes nameFxBlood {
+    0%, 100% { background-position: 50% 0%; }
+    50% { background-position: 50% 200%; }
+}
+
+/* Shadow — dark mist */
+.name-fx-shadow {
+    color: #aa88cc !important;
+    animation: nameFxShadow 2s ease-in-out infinite;
+}
+@keyframes nameFxShadow {
+    0%, 100% { text-shadow: 0 0 6px rgba(0,0,0,0.8), 0 0 12px rgba(80,0,120,0.6), 2px 2px 4px rgba(0,0,0,0.9); }
+    50% { text-shadow: 0 0 12px rgba(0,0,0,0.9), 0 0 24px rgba(80,0,120,0.8), 4px 4px 8px rgba(0,0,0,1); }
+}
+
+/* Glitch — jittery digital */
+.name-fx-glitch {
+    color: #00ff88 !important;
+    animation: nameFxGlitch 0.15s infinite;
+    text-shadow: 2px 0 #ff0044, -2px 0 #00ccff;
+}
+@keyframes nameFxGlitch {
+    0% { transform: translate(0); }
+    20% { transform: translate(-1px, 1px); }
+    40% { transform: translate(1px, -1px); }
+    60% { transform: translate(-1px, 0); }
+    80% { transform: translate(1px, 1px); }
+    100% { transform: translate(0); }
+}
+
+/* Hologram — flickering translucent */
+.name-fx-hologram {
+    background: linear-gradient(90deg, #00ffcc, #00ccff, #8888ff, #00ffaa);
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: nameFxHoloFlicker 0.12s infinite, nameFxHoloShift 3s linear infinite;
+}
+@keyframes nameFxHoloFlicker { 0%,45%,55%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+@keyframes nameFxHoloShift { 0% { background-position: 0% 50%; } 100% { background-position: 300% 50%; } }
+
+/* Divine — holy radiance */
+.name-fx-divine {
+    background: linear-gradient(90deg, #ffffff, #ffe066, #ffffff, #ffcc00, #ffffff);
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: nameFxDivine 2s ease-in-out infinite;
+    filter: drop-shadow(0 0 8px #ffe06688);
+}
+@keyframes nameFxDivine {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 300% 50%; }
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   PARTICLE EFFECTS — spawned around chat usernames
+   ══════════════════════════════════════════════════════════════ */
+
+.chat-particle-wrap {
+    position: relative;
+    display: inline-block;
+}
+
+.chat-particle {
+    position: absolute;
+    pointer-events: none;
+    font-size: 10px;
+    opacity: 0;
+    animation: chatParticleFloat 1.8s ease-out forwards;
+}
+
+@keyframes chatParticleFloat {
+    0% { opacity: 1; transform: translate(0, 0) scale(1); }
+    100% { opacity: 0; transform: translate(var(--px-dx, 10px), var(--px-dy, -20px)) scale(0.4); }
+}
+
+/* Particle color themes */
+.px-sparkle .chat-particle { color: #ffd700; }
+.px-hearts .chat-particle { color: #ff6b9d; }
+.px-flames .chat-particle { color: #ff6600; }
+.px-stars .chat-particle { color: #fbbf24; }
+.px-void .chat-particle { color: #9900ff; }
+
+
+/* ══════════════════════════════════════════════════════════════
+   HAT EFFECTS — shown before username in chat
+   ══════════════════════════════════════════════════════════════ */
+
+.chat-hat {
+    display: inline-block;
+    margin-right: 2px;
+    font-size: 0.85em;
+    vertical-align: middle;
+}
+.chat-hat.hat-float {
+    animation: chatHatFloat 2s ease-in-out infinite;
+}
+.chat-hat.hat-pulse {
+    animation: chatHatPulse 1.5s ease-in-out infinite;
+}
+.chat-hat.hat-warp {
+    animation: chatHatWarp 2s ease-in-out infinite;
+}
+@keyframes chatHatFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+}
+@keyframes chatHatPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+}
+@keyframes chatHatWarp {
+    0%, 100% { transform: scale(1) rotate(0deg); filter: hue-rotate(0deg); }
+    50% { transform: scale(1.1) rotate(5deg); filter: hue-rotate(180deg); }
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   COSMETIC INVENTORY MODAL — Gold-themed
+   ══════════════════════════════════════════════════════════════ */
+
+.cosmetics-modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 10000;
+    justify-content: center; align-items: center;
+}
+.cosmetics-modal-overlay.active {
+    display: flex;
+    padding: 20px;
+}
+
+.cosmetics-modal {
+    background: linear-gradient(160deg, #1a1508 0%, #0d0b04 50%, #1a1508 100%);
+    border: 2px solid #c8962e;
+    border-radius: 16px;
+    width: 90%; max-width: 560px; max-height: 80vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 0 40px #c8962e33, inset 0 0 60px #0005;
+    overflow: hidden;
+}
+
+.cosmetics-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px;
+    background: linear-gradient(135deg, #2a200e, #1a1508);
+    border-bottom: 1px solid #c8962e66;
+    flex-shrink: 0;
+}
+.cosmetics-header h2 {
+    color: #ffd700;
+    font-size: 1.1rem;
+    margin: 0;
+    text-shadow: 0 0 10px #ffd70044;
+}
+.cosmetics-close {
+    background: none; border: none;
+    color: #c8962e; font-size: 1.3rem;
+    cursor: pointer; padding: 4px 8px;
+    border-radius: 6px;
+    transition: color 0.15s, background 0.15s;
+}
+.cosmetics-close:hover {
+    color: #ffd700; background: #c8962e22;
+}
+
+/* Tabs */
+.cosmetics-tabs {
+    display: flex; gap: 0;
+    background: #0d0b04;
+    border-bottom: 1px solid #c8962e44;
+    overflow-x: auto;
+    flex-shrink: 0;
+}
+.cosmetics-tab {
+    flex: 1; padding: 10px 12px;
+    background: none; border: none; border-bottom: 2px solid transparent;
+    color: #c8962e88; font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; text-align: center;
+    transition: color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+.cosmetics-tab:hover { color: #ffd700; }
+.cosmetics-tab.active {
+    color: #ffd700;
+    border-bottom-color: #ffd700;
+}
+
+/* Items grid */
+.cosmetics-body {
+    flex: 1; overflow-y: auto;
+    padding: 16px;
+}
+
+.cosmetics-category {
+    display: none;
+}
+.cosmetics-category.active {
+    display: block;
+}
+
+.cosmetics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 140px), 1fr));
+    gap: 10px;
+}
+
+.cosmetic-card {
+    background: linear-gradient(135deg, #1e1a0e, #141008);
+    border: 1px solid #c8962e44;
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+}
+.cosmetic-card:hover {
+    border-color: #ffd700;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px #ffd70022;
+}
+.cosmetic-card.equipped {
+    border-color: #ffd700;
+    background: linear-gradient(135deg, #2a2210, #1a160a);
+    box-shadow: 0 0 12px #ffd70033;
+}
+.cosmetic-card.locked {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.cosmetic-emoji {
+    font-size: 1.8rem;
+    margin-bottom: 4px;
+    display: block;
+}
+.cosmetic-name {
+    font-size: 0.78rem;
+    color: #e8d8b0;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+.cosmetic-desc {
+    font-size: 0.7rem;
+    color: #c8962e88;
+}
+.cosmetic-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    margin-top: 4px;
+}
+.cosmetic-badge.equipped-badge {
+    background: #ffd70033;
+    color: #ffd700;
+}
+.cosmetic-badge.tier-badge {
+    background: #c8962e22;
+    color: #c8962e;
+}
+
+/* Action buttons in the card */
+.cosmetic-actions {
+    margin-top: 8px;
+    display: flex; gap: 4px; justify-content: center;
+}
+.cosmetic-btn {
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    border: 1px solid;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.cosmetic-btn-equip {
+    background: #ffd70022;
+    border-color: #ffd700;
+    color: #ffd700;
+}
+.cosmetic-btn-equip:hover {
+    background: #ffd700;
+    color: #000;
+}
+.cosmetic-btn-unequip {
+    background: #ff444422;
+    border-color: #ff4444;
+    color: #ff4444;
+}
+.cosmetic-btn-unequip:hover {
+    background: #ff4444;
+    color: #fff;
+}
+.cosmetic-btn-convert {
+    background: #44aaff22;
+    border-color: #44aaff;
+    color: #44aaff;
+}
+.cosmetic-btn-convert:hover {
+    background: #44aaff;
+    color: #000;
+}
+
+/* Empty state */
+.cosmetics-empty {
+    text-align: center;
+    padding: 32px 16px;
+    color: #c8962e66;
+    font-size: 0.9rem;
+}
+.cosmetics-empty i {
+    font-size: 2rem;
+    margin-bottom: 8px;
+    display: block;
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   GOLD BADGE OVERRIDES — OpenCoins gold theme
+   ══════════════════════════════════════════════════════════════ */
+
+.nav-coins {
+    background: linear-gradient(135deg, #2a200e, #1a1508) !important;
+    border: 1px solid #c8962e !important;
+    color: #ffd700 !important;
+}
+.nav-coins:hover {
+    border-color: #ffd700 !important;
+    box-shadow: 0 0 8px #ffd70033;
+}
+.nav-coins i {
+    color: #ffd700 !important;
+}
+
+/* Vibes wallet badge */
+.nav-balance {
+    background: linear-gradient(135deg, #1a200e, #0f1508) !important;
+    border: 1px solid #4a8f3e !important;
+    color: #7dcc6f !important;
+}
+.nav-balance i {
+    color: #7dcc6f !important;
+}
+
+/* Mini channel-points button in chat blends with the other themed chat buttons
+   (bucks/subscribe) — styling handled by the unified .chat-tools-row rules. */
+
+/* Coin redeem panel — gold theme */
+.coins-panel-header {
+    background: linear-gradient(135deg, #2a200e, #1a1508) !important;
+    border-bottom-color: #c8962e66 !important;
+}
+.coins-panel-header h3 { color: #ffd700 !important; }
+
+.coins-color { color: #ffd700 !important; }
+
+
+/* ══════════════════════════════════════════════════════════════
+   SCROLLBAR for cosmetics modal
+   ══════════════════════════════════════════════════════════════ */
+.cosmetics-body::-webkit-scrollbar { width: 6px; }
+.cosmetics-body::-webkit-scrollbar-track { background: transparent; }
+.cosmetics-body::-webkit-scrollbar-thumb { background: #c8962e44; border-radius: 3px; }
+.cosmetics-body::-webkit-scrollbar-thumb:hover { background: #c8962e88; }

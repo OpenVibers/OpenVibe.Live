@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terms of Service — OpenVibe</title>
+    <meta name="description" content="Terms of Service for the OpenVibe — OpenVibe.Live, openvibe.tools, openvibe.games. Minimal rules, maximum freedom.">
+    <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg:      #0d0d0f;
+            --surface: #1a1a20;
+            --border:  #2a2a32;
+            --accent:  #8b5cf6;
+            --accent-l:#a78bfa;
+            --text:    #e8e6e3;
+            --muted:   #9a9a9a;
+            --dim:     #666;
+            --danger:  #e74c3c;
+        }
+
+        html { scroll-behavior: smooth; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            font-size: 16px;
+            line-height: 1.7;
+            min-height: 100vh;
+        }
+
+        /* ── Top bar ── */
+        .topbar {
+            background: #111118;
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            height: 52px;
+        }
+        .topbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--text);
+        }
+        .topbar-brand i { color: var(--accent); }
+        .topbar-brand .openvibe { color: var(--accent); }
+        .topbar-sep { color: var(--border); margin: 0 4px; }
+        .topbar-page { color: var(--muted); font-size: 0.9rem; }
+
+        /* ── Layout ── */
+        .wrap {
+            max-width: 780px;
+            margin: 0 auto;
+            padding: 48px 24px 80px;
+        }
+
+        /* ── Page header ── */
+        .page-header {
+            margin-bottom: 40px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid var(--border);
+        }
+        .page-header h1 {
+            font-size: 2rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            margin-bottom: 8px;
+        }
+        .page-header h1 i { color: var(--accent); margin-right: 10px; }
+        .page-header .updated {
+            font-size: 0.82rem;
+            color: var(--dim);
+        }
+        .page-header .philosophy {
+            margin-top: 16px;
+            padding: 14px 18px;
+            background: rgba(139,92,246,0.07);
+            border: 1px solid rgba(139,92,246,0.18);
+            border-radius: 8px;
+            font-size: 0.95rem;
+            color: var(--muted);
+        }
+        .page-header .philosophy strong { color: var(--accent-l); }
+
+        /* ── Sections ── */
+        .section { margin-bottom: 40px; }
+        .section h2 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--accent-l);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section h2 i { font-size: 0.95rem; }
+        .section p { color: var(--muted); margin-bottom: 10px; }
+        .section p:last-child { margin-bottom: 0; }
+        .section strong { color: var(--text); }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { color: var(--accent-l); }
+
+        /* ── Rules list ── */
+        .rule-list {
+            list-style: none;
+            padding: 0;
+            margin: 12px 0;
+        }
+        .rule-list li {
+            display: flex;
+            gap: 12px;
+            padding: 12px 16px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            color: var(--muted);
+            font-size: 0.95rem;
+        }
+        .rule-list li .rule-icon {
+            font-size: 1rem;
+            flex-shrink: 0;
+            line-height: 1.7;
+        }
+        .rule-list li.no .rule-icon { color: var(--danger); }
+        .rule-list li.yes .rule-icon { color: #2ecc71; }
+        .rule-list li strong { color: var(--text); }
+
+        /* ── Divider ── */
+        .divider {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 32px 0;
+        }
+
+        /* ── Info box ── */
+        .info {
+            background: rgba(139,92,246,0.08);
+            border: 1px solid rgba(139,92,246,0.2);
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin: 16px 0;
+            font-size: 0.9rem;
+            color: var(--muted);
+        }
+        .info strong { color: var(--accent-l); }
+
+        /* ── Warn box ── */
+        .warn {
+            background: rgba(231,76,60,0.08);
+            border: 1px solid rgba(231,76,60,0.25);
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin: 16px 0;
+            font-size: 0.9rem;
+            color: #e88;
+        }
+        .warn i { margin-right: 6px; }
+        .warn strong { color: #f99; }
+
+        ol {
+            padding-left: 1.4em;
+            color: var(--muted);
+            margin-bottom: 10px;
+        }
+        ol li { margin-bottom: 6px; }
+
+        /* ── Footer ── */
+        .page-footer {
+            border-top: 1px solid var(--border);
+            padding: 20px 24px;
+            text-align: center;
+            font-size: 0.82rem;
+            color: var(--dim);
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 6px 12px;
+        }
+        .page-footer a { color: var(--accent); text-decoration: none; }
+        .page-footer a:hover { color: var(--accent-l); }
+        .page-footer .sep { color: var(--border); }
+    </style>
+</head>
+<body>
+
+<header class="topbar">
+    <a class="topbar-brand" href="https://openvibe.live">
+        <i class="fa-solid fa-circle-nodes"></i>
+        <span><span class="openvibe">OpenVibe</span>Streamer</span>
+    </a>
+    <span class="topbar-sep">/</span>
+    <span class="topbar-page">Terms of Service</span>
+</header>
+
+<main class="wrap">
+    <div class="page-header">
+        <h1><i class="fa-solid fa-scroll"></i> Terms of Service</h1>
+        <p class="updated">Applies to the OpenVibe network — openvibe.live, openvibe.network, openvibe.tools, openvibe.media, openvibe.games &nbsp;·&nbsp; Last updated: April 2026</p>
+        <div class="philosophy">
+            <strong>The short version:</strong> This is a low-rules, community-first corner of the internet for creators, hobbyists, underdogs, and the kind of weird internet people who do not fit neatly on polished corporate platforms. The hard lines are simple: nothing illegal, nothing exploitative, nothing that harms real people, and no deliberate copyright abuse. If you're acting in good faith and not being a creep, you're probably fine.
+        </div>
+    </div>
+
+    <!-- What you agree to -->
+    <div class="section">
+        <h2><i class="fa-solid fa-handshake"></i> Using the OpenVibe</h2>
+        <p>By using any OpenVibe service — OpenVibe.Live, openvibe.tools, openvibe.games, or any subdomain — you agree to these terms. If you don't agree, don't use the services. Simple.</p>
+        <p>You must be at least 13 years old to create an account. If you're under 18, make sure you're allowed to use internet services in your jurisdiction.</p>
+    </div>
+
+    <!-- Hard rules (the actual "no" list) -->
+    <div class="section">
+        <h2><i class="fa-solid fa-xmark-circle"></i> The Actual Rules (It's a Short List)</h2>
+        <p>We have three hard rules. That's it.</p>
+
+        <ul class="rule-list">
+            <li class="no">
+                <span class="rule-icon"><i class="fa-solid fa-ban"></i></span>
+                <span><strong>No CSAM. Ever.</strong> Child sexual abuse material is illegal everywhere and will result in immediate permanent termination and reporting to the National Center for Missing &amp; Exploited Children (NCMEC) and law enforcement. There is no exception, no warning, no appeal. This is a zero-tolerance hard line.</span>
+            </li>
+            <li class="no">
+                <span class="rule-icon"><i class="fa-solid fa-ban"></i></span>
+                <span><strong>No targeted harassment of real people.</strong> Don't run coordinated campaigns to threaten, intimidate, or harm specific real individuals. Opinions, criticism, roasting, debates, and being an asshole on the internet are fine. Targeted stalking, threats of violence, and doxxing are not.</span>
+            </li>
+            <li class="no">
+                <span class="rule-icon"><i class="fa-solid fa-ban"></i></span>
+                <span><strong>No deliberate copyright abuse.</strong> We respond to valid DMCA takedown notices. Repeatedly and knowingly streaming or uploading content you don't own will get your account terminated. See our <a href="/dmca">DMCA policy</a> for details.</span>
+            </li>
+        </ul>
+
+        <p>That's the whole list. Everything else is generally fine.</p>
+    </div>
+
+    <!-- What's generally fine -->
+    <div class="section">
+        <h2><i class="fa-solid fa-check-circle"></i> What's Generally Fine</h2>
+        <ul class="rule-list">
+            <li class="yes">
+                <span class="rule-icon"><i class="fa-solid fa-check"></i></span>
+                <span>Adult content between consenting adults (keep it legal)</span>
+            </li>
+            <li class="yes">
+                <span class="rule-icon"><i class="fa-solid fa-check"></i></span>
+                <span>Profanity, crude humor, offensive jokes, and generally unfiltered internet culture</span>
+            </li>
+            <li class="yes">
+                <span class="rule-icon"><i class="fa-solid fa-check"></i></span>
+                <span>Political speech, satire, criticism, parody</span>
+            </li>
+            <li class="yes">
+                <span class="rule-icon"><i class="fa-solid fa-check"></i></span>
+                <span>Weird streams, niche content, unconventional creators</span>
+            </li>
+            <li class="yes">
+                <span class="rule-icon"><i class="fa-solid fa-check"></i></span>
+                <span>Being controversial, having opinions people disagree with, making things that mainstream platforms won't host</span>
+            </li>
+        </ul>
+        <div class="info">
+            <strong>Note:</strong> "Generally fine" doesn't mean we won't act if something crosses into illegal territory—it means we're not going to ban you for saying something edgy or hosting content that corporate platforms won't touch. We're not Twitch. We don't operate on arbitrary corporate rules.
+        </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Your content -->
+    <div class="section">
+        <h2><i class="fa-solid fa-upload"></i> Your Content</h2>
+        <p>You own what you create and upload. We don't claim ownership of your streams, VODs, clips, or other content.</p>
+        <p>By uploading or streaming, you grant the OpenVibe a license to host, display, and make it accessible per the normal operation of the platform (e.g., serving your VOD to viewers). That's it — we don't sell your content, license it to third parties, or use it for anything weird.</p>
+        <p>You're responsible for your content. Don't upload stuff you don't have the right to upload.</p>
+    </div>
+
+    <!-- Account termination -->
+    <div class="section">
+        <h2><i class="fa-solid fa-circle-xmark"></i> Account Termination</h2>
+        <p>We can terminate or suspend accounts that violate these terms. Given how short the list is, this should basically never happen unless you're actively doing something illegal or being a genuine creep toward real people.</p>
+        <p>Termination is most likely to happen for:</p>
+        <ol>
+            <li>CSAM (immediate, permanent, law enforcement notified)</li>
+            <li>Repeat DMCA violations (see the <a href="/dmca">DMCA policy</a>)</li>
+            <li>Targeted harassment campaigns against specific individuals</li>
+        </ol>
+    </div>
+
+    <!-- No warranty -->
+    <div class="section">
+        <h2><i class="fa-solid fa-triangle-exclamation"></i> No Warranty / Availability</h2>
+        <p>The OpenVibe Network is a <strong>community-driven project operated with no profit motive</strong> run on a shoestring. Services are provided as-is with no guarantees of uptime, reliability, or data preservation.</p>
+        <p>We are not currently a formally registered nonprofit organization. We operate this way by choice and intend to pursue formal 501(c)(3) status in the future — but right now we have no investors, no profit distributions, and everything collected goes toward keeping the servers on.</p>
+        <p>We're in active development. Things break. Data might get wiped during alpha/beta phases (we'll warn you when we can). Don't bet your business on our uptime.</p>
+        <p>We reserve the right to modify, suspend, or shut down any part of the platform at any time. If the whole thing goes down permanently, everything goes with it — we don't owe you data exports or compensation.</p>
+    </div>
+
+    <!-- Not-for-profit path -->
+    <div class="section">
+        <h2><i class="fa-solid fa-seedling"></i> Not-for-Profit Path</h2>
+        <p>The long-term goal is to turn the OpenVibe into a real not-for-profit / public-benefit project. The short-term reality is that servers, storage, domains, and bandwidth all cost money right now.</p>
+        <p>In plain English: support exists to keep the network online, improve the platform, and eventually fund the legal setup needed to formalize it properly.</p>
+        <p>No investors. No profit distributions. No bait-and-switch into a soulless ad machine. Just trying to build something useful and keep it alive long enough to make it official.</p>
+    </div>
+
+    <!-- DMCA -->
+    <div class="section">
+        <h2><i class="fa-solid fa-scale-balanced"></i> Copyright / DMCA</h2>
+        <p>We respond to valid DMCA takedown notices. For the full process, requirements, and counter-notice info, see our <a href="/dmca">DMCA &amp; Copyright Policy</a>.</p>
+        <p>Abusing the DMCA process to take down content you don't own is a violation of federal law (17 U.S.C. § 512(f)) and we reserve the right to ignore or push back on clearly bogus notices.</p>
+    </div>
+
+    <!-- Law -->
+    <div class="section">
+        <h2><i class="fa-solid fa-gavel"></i> Governing Law</h2>
+        <p>These terms are governed by the laws of the United States and the State of Washington, without regard to conflicts of law. Disputes would be handled in the federal or state courts located in Washington State.</p>
+        <p>If any part of these terms is unenforceable, the rest still applies.</p>
+    </div>
+
+    <!-- Changes -->
+    <div class="section">
+        <h2><i class="fa-solid fa-pen-to-square"></i> Changes to These Terms</h2>
+        <p>We may update these terms occasionally. If we make material changes, we'll announce it in Discord and/or post a notice on the site. Continued use of the platform after changes means you accept the updated terms.</p>
+        <p>We're not a corporation — we're not going to quietly slip in bullshit. If something changes, we'll say so.</p>
+    </div>
+
+    <!-- Contact -->
+    <div class="section">
+        <h2><i class="fa-solid fa-envelope"></i> Contact</h2>
+        <p>Questions about these terms or anything else legal: <a href="mailto:dmca@openvibe.live">dmca@openvibe.live</a></p>
+        <p>General questions: <a href="https://discord.gg/M6MuRUaeJj" target="_blank" rel="noopener">Discord</a></p>
+    </div>
+
+    <div class="warn" style="margin-top:32px">
+        <strong><i class="fa-solid fa-triangle-exclamation"></i> Not legal advice.</strong> This is our terms of service, not a legal opinion. If you're a lawyer reading this and think we need to change something, reach out.
+    </div>
+
+</main>
+
+<footer class="page-footer">
+    <span>&copy; 2026 OpenVibe &mdash; Community Project, No Profit</span>
+    <span class="sep">&middot;</span>
+    <a href="https://openvibe.live">OpenVibe.Live</a>
+    <span class="sep">&middot;</span>
+    <a href="https://openvibe.live/tos">Terms of Service</a>
+    <span class="sep">&middot;</span>
+    <a href="https://openvibe.live/dmca">DMCA Policy</a>
+    <span class="sep">&middot;</span>
+    <a href="https://github.com/OpenVibe.Live" target="_blank" rel="noopener"><i class="fa-brands fa-github"></i> Open Source</a>
+    <span class="sep">&middot;</span>
+    <a href="https://discord.gg/M6MuRUaeJj" target="_blank" rel="noopener"><i class="fa-brands fa-discord"></i> Discord</a>
+</footer>
+
+</body>
+</html>

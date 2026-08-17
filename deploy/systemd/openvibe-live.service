@@ -1,0 +1,29 @@
+[Unit]
+Description=OpenVibe.Live — Free & Open Live Streaming
+# Media (openvibe-media) and Network (openvibe-network) should be up first, but
+# Live degrades gracefully if they aren't (proxies 502, wallet reads fall back).
+After=network.target
+Wants=openvibe-media.service openvibe-network.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/openvibe.live
+EnvironmentFile=/etc/openvibe/live.env
+Environment=NODE_ENV=production
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env node /opt/openvibe.live/server/index.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+# NOTE: keep ProtectHome=read-only (NOT true) — the local whisper.cpp install used
+# for free VOD/clip transcription lives under the service user's home directory and
+# must stay readable, or transcription silently disables itself.
+ProtectHome=read-only
+ReadWritePaths=/opt/openvibe.live/data
+
+[Install]
+WantedBy=multi-user.target

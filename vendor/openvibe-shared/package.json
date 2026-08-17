@@ -1,0 +1,20 @@
+{
+  "name": "openvibe-shared",
+  "version": "1.0.0",
+  "description": "Shared auth, theme, and brand utilities for the OpenVibe",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./analytics": "./analytics.js",
+    "./auth-client": "./auth-client.js",
+    "./theme-sync": "./theme-sync.js",
+    "./brand": "./brand.js",
+    "./middleware": "./middleware.js",
+    "./notifications": "./notifications.js",
+    "./url-resolver": "./url-resolver.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "jsonwebtoken": "^9.0.0"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "OpenVibe Kiosk Companion",
+  "version": "1.1.0",
+  "description": "Lets the OpenVibe.Live /kiosk address bar autocomplete from your Firefox history, and (optionally) sets the kiosk as your new-tab page.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "kiosk-companion@openvibe.live",
+      "strict_min_version": "115.0"
+    }
+  },
+  "permissions": ["history"],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://openvibe.live/kiosk*", "*://www.openvibe.live/kiosk*"],
+      "js": ["history-bridge.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  }
+}

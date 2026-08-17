@@ -1,0 +1,710 @@
+/* ═══════════════════════════════════════════════════════════════
+   OpenVibeGame — Open-World Survival Game Styles
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Fullscreen Game Page ─────────────────────────────────────── */
+#page-game.active {
+    position: fixed;
+    top: var(--navbar-h, 56px);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    background: #000;
+    padding-top: 0;
+    min-height: 0;
+}
+
+/* Hide footer (not navbar) when game page is active */
+#page-game.active ~ .footer,
+body:has(#page-game.active) .footer {
+    display: none !important;
+}
+
+/* ── Game Wrapper ─────────────────────────────────────────────── */
+.game-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+}
+
+/* ── Canvas Container ─────────────────────────────────────────── */
+.game-canvas-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: #111;
+    overflow: hidden;
+}
+
+#game-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    image-rendering: pixelated;
+    cursor: crosshair;
+}
+
+/* ── HUD Overlay ──────────────────────────────────────────────── */
+.game-hud-top {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 10px 14px;
+    pointer-events: none;
+    z-index: 5;
+}
+
+.game-hud-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    pointer-events: auto;
+}
+
+/* Hide zone and player count badges — canvas HUD shows this info */
+.game-zone-badge,
+.game-players-badge {
+    display: none !important;
+}
+
+/* Connection badge: hidden by default, shown only for disconnected/error */
+.game-connection-badge {
+    display: none !important;
+}
+.game-connection-badge.disconnected,
+.game-connection-badge.connecting {
+    display: inline-flex !important;
+}
+
+.game-hud-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    pointer-events: auto;
+    margin-top: 132px; /* below minimap (120px + 10px top + 2px border) */
+}
+
+.game-hud-btn {
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    color: var(--text-primary, #eee);
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    backdrop-filter: blur(4px);
+}
+
+.game-hud-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: var(--accent, #fbbf24);
+    color: var(--accent, #fbbf24);
+}
+
+/* ── Login Overlay ────────────────────────────────────────────── */
+.game-login-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    backdrop-filter: blur(4px);
+}
+
+/* ── Loading Overlay ─────────────────────────────────────────── */
+.game-loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(10, 10, 20, 0.95), rgba(15, 25, 40, 0.95));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9;
+    backdrop-filter: blur(6px);
+    animation: loadFadeIn 0.3s ease-out;
+}
+
+@keyframes loadFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.game-loading-content {
+    text-align: center;
+    padding: 40px;
+    max-width: 360px;
+}
+
+.game-loading-content h3 {
+    margin: 18px 0 6px;
+    font-size: 1.4rem;
+    color: var(--accent, #fbbf24);
+    animation: loadPulse 2s ease-in-out infinite;
+}
+
+@keyframes loadPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.game-loading-content p {
+    color: var(--text-secondary, #aaa);
+    font-size: 0.9rem;
+    margin: 4px 0;
+}
+
+/* Spinner */
+.game-loading-spinner {
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 8px;
+    border: 4px solid rgba(255,255,255,0.1);
+    border-top-color: var(--accent, #fbbf24);
+    border-radius: 50%;
+    animation: loadSpin 0.8s linear infinite;
+}
+
+@keyframes loadSpin {
+    to { transform: rotate(360deg); }
+}
+
+/* Progress bar */
+.game-loading-bar-track {
+    width: 100%;
+    height: 6px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    margin: 16px 0;
+    overflow: hidden;
+}
+
+.game-loading-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent, #fbbf24), #f59e0b);
+    border-radius: 3px;
+    transition: width 0.4s ease-out;
+}
+
+/* Tips */
+.game-loading-tips {
+    margin-top: 18px;
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 6px;
+    border-left: 3px solid var(--accent, #fbbf24);
+}
+
+.game-loading-tips p {
+    font-size: 0.82rem;
+    color: var(--text-muted, #888);
+    margin: 0;
+    line-height: 1.4;
+}
+
+/* ── HUD Badges ───────────────────────────────────────────────── */
+.game-zone-badge {
+    background: rgba(0, 0, 0, 0.55);
+    color: var(--accent, #fbbf24);
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(4px);
+}
+
+.game-players-badge {
+    background: rgba(0, 0, 0, 0.55);
+    color: var(--text-secondary, #aaa);
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(4px);
+}
+.game-connection-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.game-connection-badge.connecting {
+    background: rgba(251, 191, 36, 0.25);
+    color: #fbbf24;
+}
+
+.game-connection-badge.connected {
+    background: rgba(74, 222, 128, 0.25);
+    color: #4ade80;
+}
+
+.game-connection-badge.disconnected {
+    background: rgba(239, 68, 68, 0.25);
+    color: #ef4444;
+}
+
+.game-connection-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.game-connection-badge.connecting .game-connection-dot {
+    animation: connBlink 1s ease-in-out infinite;
+}
+
+@keyframes connBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+/* ── Gather Effect Flash ─────────────────────────────────────── */
+.game-canvas-container.gathering {
+    animation: gatherFlash 0.15s ease-out;
+}
+
+@keyframes gatherFlash {
+    0% { filter: brightness(1.3); }
+    100% { filter: brightness(1); }
+}
+.gather-flash {
+    animation: gatherFlash 0.3s ease-out;
+}
+
+.game-login-content {
+    text-align: center;
+    padding: 40px;
+}
+
+.game-login-content h3 {
+    margin: 15px 0 8px;
+    font-size: 1.8rem;
+    color: var(--accent);
+}
+
+.game-login-content p {
+    color: var(--text-secondary);
+    margin: 4px 0;
+    font-size: 0.95rem;
+}
+
+.game-login-content p.muted {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-top: 10px;
+}
+
+.game-login-content .btn {
+    margin-top: 18px;
+}
+
+/* ── Controls hint (hidden in fullscreen, kept for reference) ── */
+.game-controls-hint {
+    display: none;
+}
+
+/* ── Responsive ───────────────────────────────────────────────── */
+@media (max-width: 700px) {
+    .game-hud-top {
+        padding: 6px 8px;
+    }
+    .game-hud-btn {
+        width: 32px;
+        height: 32px;
+        font-size: 0.85rem;
+    }
+    .game-zone-badge,
+    .game-players-badge,
+    .game-connection-badge {
+        font-size: 0.7rem;
+        padding: 3px 8px;
+    }
+}
+
+/* ── Game Promo (registration overlay) ────────────────────────── */
+.game-promo {
+    max-width: 440px;
+}
+
+.game-promo-icon {
+    font-size: 2.4rem;
+    letter-spacing: 6px;
+    margin-bottom: 2px;
+}
+
+.game-promo-tagline {
+    font-size: 1.02rem;
+    color: var(--text-secondary);
+    margin-bottom: 14px !important;
+}
+
+.game-promo-features {
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 10px 0 4px;
+}
+
+.game-promo-feat {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 6px;
+    border-left: 3px solid var(--accent);
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    transition: background 0.15s;
+}
+
+.game-promo-feat:hover {
+    background: rgba(255,255,255,0.08);
+}
+
+.gpf-icon {
+    font-size: 1.25rem;
+    min-width: 26px;
+    text-align: center;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Collaborative Canvas — Standalone Page
+   ═══════════════════════════════════════════════════════════════ */
+#page-canvas.active {
+    position: fixed;
+    top: var(--navbar-h, 56px);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100;
+    display: flex;
+    background: radial-gradient(circle at top right, rgba(126, 203, 255, 0.08), transparent 28%),
+                radial-gradient(circle at top left, rgba(139,92,246, 0.16), transparent 34%),
+                #06080b;
+    padding-top: 0;
+    min-height: 0;
+}
+
+#page-canvas.active ~ .footer,
+body:has(#page-canvas.active) .footer {
+    display: none !important;
+}
+
+.canvas-layout {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr) 280px;
+    gap: 16px;
+    padding: 16px;
+    background:
+        radial-gradient(circle at top right, rgba(126, 203, 255, 0.08), transparent 28%),
+        radial-gradient(circle at top left, rgba(139,92,246, 0.16), transparent 34%),
+        #06080b;
+}
+
+.canvas-sidebar {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.canvas-card {
+    background: rgba(18, 18, 26, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    box-shadow: 0 18px 32px rgba(0, 0, 0, 0.28);
+    padding: 14px;
+}
+
+.canvas-card h3 {
+    margin-bottom: 10px;
+}
+
+.canvas-status,
+.canvas-cooldown,
+.canvas-coords {
+    color: var(--text-secondary, #9a9a9a);
+    font-size: 0.9rem;
+    margin-top: 8px;
+}
+
+/* Canvas Cooldown Visual Timer */
+.canvas-cooldown {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.canvas-cd-bar-track {
+    width: 100%;
+    height: 8px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.canvas-cd-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent, #8b5cf6), #e8b468);
+    border-radius: 6px;
+    transition: width 0.4s linear;
+}
+.canvas-cd-text {
+    font-size: 0.82rem;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.canvas-cd-text i {
+    font-size: 0.75rem;
+}
+.canvas-cd-ready {
+    color: #68d391;
+}
+.canvas-cd-ready i {
+    color: #68d391;
+}
+
+.canvas-hover {
+    min-height: 90px;
+    color: var(--text-secondary, #9a9a9a);
+    font-size: 0.88rem;
+    line-height: 1.55;
+}
+
+.canvas-help {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 0.86rem;
+    color: var(--text-secondary, #9a9a9a);
+}
+
+.canvas-palette {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.canvas-swatch {
+    aspect-ratio: 1;
+    border-radius: 10px;
+    border: 2px solid rgba(255, 255, 255, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32);
+    cursor: pointer;
+}
+
+.canvas-swatch.active {
+    border-color: #ffffff;
+    transform: translateY(-1px);
+    box-shadow: 0 0 8px rgba(255,255,255,0.3), inset 0 0 0 1px rgba(0,0,0,0.32);
+}
+
+.canvas-swatch:hover {
+    border-color: rgba(255,255,255,0.5);
+    transform: scale(1.12);
+    z-index: 1;
+}
+
+/* ── Color Preview (selected color indicator) ─────────────────── */
+.canvas-color-preview {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    margin-bottom: 10px;
+    font-size: 0.88rem;
+    color: var(--text-primary, #e8e6e3);
+    background: rgba(255,255,255,0.04);
+    border-radius: 8px;
+    border-left: 3px solid var(--accent, #fbbf24);
+    min-height: 28px;
+}
+
+.canvas-preview-dot {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.2);
+    flex-shrink: 0;
+}
+
+/* ── Placement Flash Animation ────────────────────────────────── */
+.canvas-stage.canvas-place-flash {
+    animation: canvasPlaceFlash 0.35s ease-out;
+}
+
+@keyframes canvasPlaceFlash {
+    0% { box-shadow: inset 0 0 30px rgba(251, 191, 36, 0.35), 0 24px 44px rgba(0, 0, 0, 0.35); }
+    100% { box-shadow: 0 24px 44px rgba(0, 0, 0, 0.35); }
+}
+
+/* ── Grid Toggle Active State ─────────────────────────────────── */
+.canvas-toolbar .btn.active {
+    background: rgba(251, 191, 36, 0.15);
+    border-color: var(--accent, #fbbf24);
+    color: var(--accent, #fbbf24);
+}
+
+/* ── Placement Counter Badge ──────────────────────────────────── */
+.canvas-place-count {
+    font-size: 0.82rem;
+    color: var(--accent, #fbbf24);
+    font-weight: 600;
+    opacity: 0.85;
+}
+
+.canvas-stage-wrap {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.canvas-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: rgba(10, 10, 14, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.canvas-toolbar-left,
+.canvas-toolbar-right {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.canvas-stage {
+    position: relative;
+    flex: 1;
+    min-height: 480px;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.03), transparent 50%),
+        linear-gradient(180deg, #121924, #090c11);
+    box-shadow: 0 24px 44px rgba(0, 0, 0, 0.35);
+}
+
+#canvas-board {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+    background: #0f1318;
+}
+
+.canvas-login-prompt {
+    position: absolute;
+    left: 50%;
+    bottom: 14px;
+    transform: translateX(-50%);
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: rgba(9, 12, 17, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-primary, #e8e6e3);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.canvas-activity,
+.canvas-presence {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.canvas-activity-row,
+.canvas-presence-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary, #9a9a9a);
+    font-size: 0.84rem;
+}
+
+.canvas-activity-row strong,
+.canvas-presence-row strong {
+    color: var(--text-primary, #e8e6e3);
+}
+
+.canvas-online {
+    color: var(--text-secondary, #9a9a9a);
+    font-size: 0.88rem;
+}
+
+@media (max-width: 1200px) {
+    .canvas-layout {
+        grid-template-columns: 1fr;
+    }
+    .canvas-sidebar-right {
+        order: 3;
+    }
+}
+
+@media (max-width: 768px) {
+    .game-mode-bar {
+        padding: 10px;
+    }
+    .canvas-layout {
+        padding: 10px;
+        gap: 10px;
+    }
+    .canvas-stage {
+        min-height: 360px;
+    }
+    .canvas-toolbar {
+        padding: 10px;
+    }
+    .canvas-palette {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+}

@@ -1,0 +1,14 @@
+# OpenVibe.Live Unsafe Words List
+# Lines starting with # are comments
+# One word/phrase per line (case-insensitive)
+# These are filtered in standard mode chat
+# OpSec-focused: protect stealth campers' locations
+
+# Location disclosure
+exact location
+gps coordinates
+street address
+what address
+where are you camping
+camp location
+your coordinates

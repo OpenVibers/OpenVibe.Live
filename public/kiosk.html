@@ -1,0 +1,1264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex">
+<title>OpenVibe // New Tab</title>
+<link rel="icon" href="/favicon.ico">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="stylesheet" href="/css/chat-shared.css?v=1">
+<style>
+:root{
+  --bg:#08090c;
+  --panel:#0e1117;
+  --panel2:#121720;
+  --line:#2d3540;
+  --text:#f6f2e9;
+  --muted:#a6b0bc;
+  --gold:#a78bfa;
+  --green:#72f1b8;
+  --purple:#b38cff;
+  --pink:#ff5da2;
+  --red:#ff4d5f;
+  /* Aliases so the shared chat menu / link-trust styles (chat-shared.css) render on the kiosk */
+  --accent:#a78bfa;--accent-hover:#e8c48f;--accent-light:#e8c48f;
+  --bg-primary:#0b0e13;--bg-secondary:#141a23;--bg-tertiary:#0e1117;--bg-hover:#1c232d;
+  --surface:#0e1117;--border:#2d3540;
+  --text-primary:#f6f2e9;--text-secondary:#a6b0bc;--text-muted:#7e8997;
+  --danger:#ff4d5f;--warning:#e0a800;
+}
+*{box-sizing:border-box}
+html,body{
+  margin:0;width:100%;height:100%;overflow:hidden;
+  background:var(--bg);color:var(--text);
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif
+}
+body{
+  background:
+    radial-gradient(circle at 10% 10%,rgba(167,139,250,.14),transparent 30%),
+    radial-gradient(circle at 88% 14%,rgba(105,183,255,.09),transparent 28%),
+    linear-gradient(145deg,#08090c,#0b0f14 52%,#08090c);
+}
+body:before{
+  content:"";position:fixed;inset:0;pointer-events:none;opacity:.16;
+  background-image:
+    linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+  background-size:54px 54px;
+}
+a{color:inherit;text-decoration:none}
+button{font:inherit}
+
+.page{
+  width:100vw;height:100vh;
+  padding:1.1vh 1.1vw;
+  display:grid;
+  grid-template-rows:6.4vh 16.5vh 8.2vh 11.5vh 1fr;
+  gap:1vh;
+}
+
+/* HEADER */
+.topbar{
+  display:flex;align-items:center;
+  border:1px solid var(--line);border-radius:16px;
+  background:rgba(11,14,19,.94);
+  padding:0 1.1vw;
+  box-shadow:0 16px 44px rgba(0,0,0,.26)
+}
+.brand{
+  display:flex;align-items:center;gap:.8vw;
+  font-size:1.15vw;font-weight:950;letter-spacing:.08em;
+  white-space:nowrap
+}
+.logo{
+  width:2.55vw;height:2.55vw;
+  min-width:38px;min-height:38px;
+  border:2px solid var(--gold);border-radius:10px;
+  color:var(--gold);display:grid;place-items:center;
+  font-weight:950;transform:rotate(45deg)
+}
+.logo i{transform:rotate(-45deg);font-size:1.15vw}
+.network-line{
+  flex:1;text-align:center;
+  font-size:.95vw;font-weight:900;letter-spacing:.1em;
+  color:#d0d7df;white-space:nowrap
+}
+.network-line b{color:var(--gold)}
+.clock{
+  text-align:right;font-variant-numeric:tabular-nums;
+  font-size:1vw;font-weight:950;line-height:1.05
+}
+.clock small{
+  display:block;font-size:.64vw;color:var(--muted);
+  letter-spacing:.1em;margin-top:.4vh
+}
+
+/* HERO */
+.hero{
+  position:relative;overflow:hidden;
+  display:flex;align-items:center;justify-content:space-between;
+  border:1px solid var(--line);border-radius:20px;
+  background:linear-gradient(120deg,rgba(18,22,29,.97),rgba(10,12,17,.92));
+  padding:2.2vh 2vw;
+}
+.hero:after{
+  content:"OPENVIBE NETWORK";position:absolute;right:-1vw;bottom:-3.9vh;
+  font-size:8.5vw;letter-spacing:-.07em;font-weight:950;
+  color:rgba(255,255,255,.028);white-space:nowrap
+}
+.hero-copy{position:relative;z-index:1;max-width:66%}
+.kicker{
+  font-size:.92vw;color:var(--gold);font-weight:950;
+  letter-spacing:.14em;text-transform:uppercase
+}
+.hero h1{
+  margin:.6vh 0 .55vh;
+  font-size:3.7vw;line-height:.9;letter-spacing:-.055em
+}
+.hero h1 span{color:var(--gold)}
+.hero p{
+  margin:0;font-size:1.08vw;line-height:1.35;
+  font-weight:650;color:#bcc5cf;
+  min-height:1.5em;transition:opacity .5s
+}
+.hero-side{
+  position:relative;z-index:1;text-align:right;
+  padding-left:2vw
+}
+.hero-side strong{
+  display:block;font-size:1.55vw;line-height:1.05;
+  letter-spacing:-.025em
+}
+.hero-side .live-pill{
+  display:inline-flex;align-items:center;gap:.5vw;
+  margin-top:1vh;padding:.7vh 1vw;border-radius:999px;
+  border:1px solid rgba(255,77,95,.4);
+  background:rgba(255,77,95,.1);
+  font-size:.92vw;font-weight:950;letter-spacing:.06em
+}
+.hero-side .live-pill.dark{
+  border-color:#333c48;background:rgba(255,255,255,.03);
+  color:var(--muted)
+}
+.hero-side .live-pill .pulse{
+  width:9px;height:9px;border-radius:50%;background:var(--red);
+  box-shadow:0 0 12px var(--red);animation:pulse 1.6s infinite
+}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.hero-side span.tag{
+  display:block;margin-top:.8vh;
+  font-size:.78vw;color:var(--muted);font-weight:850;
+  letter-spacing:.08em
+}
+
+/* VITALS */
+.vitals{
+  display:grid;grid-template-columns:repeat(9,1fr);
+  gap:.7vw
+}
+.vital{
+  position:relative;overflow:hidden;
+  border:1px solid var(--line);border-radius:14px;
+  background:linear-gradient(160deg,rgba(18,22,29,.96),rgba(10,12,17,.95));
+  padding:1.1vh 1vw;
+  display:flex;flex-direction:column;justify-content:center;
+  box-shadow:0 10px 26px rgba(0,0,0,.2)
+}
+.vital .vlabel{
+  font-size:.66vw;font-weight:950;letter-spacing:.12em;
+  text-transform:uppercase;color:#8b96a3;white-space:nowrap
+}
+.vital .vnum{
+  font-size:1.9vw;line-height:1;font-weight:950;
+  letter-spacing:-.03em;margin:.5vh 0 .35vh;
+  font-variant-numeric:tabular-nums
+}
+.vital .vdelta{
+  font-size:.66vw;font-weight:900;color:var(--green);white-space:nowrap
+}
+.vital .vdelta.zero{color:#6f7b89}
+.vital.hot .vnum{color:var(--gold)}
+.vital.hot{border-color:color-mix(in srgb,var(--gold) 45%,var(--line))}
+.vital.livecount .vnum{color:var(--red)}
+.vital.livecount{border-color:color-mix(in srgb,var(--red) 40%,var(--line))}
+
+/* DOMAINS */
+.domains{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  gap:.85vw
+}
+.domain{
+  position:relative;overflow:hidden;
+  border:1px solid var(--line);border-radius:16px;
+  padding:0 1.3vw;
+  background:linear-gradient(145deg,rgba(18,22,29,.97),rgba(10,12,17,.96));
+  display:flex;flex-direction:column;justify-content:center;
+  box-shadow:0 14px 36px rgba(0,0,0,.22);
+  transition:transform .12s,border-color .12s
+}
+.domain:hover{transform:translateY(-3px);border-color:var(--c)}
+.domain:after{
+  content:"";position:absolute;right:-3vw;bottom:-5vw;
+  width:11vw;height:11vw;border-radius:50%;
+  background:var(--c);opacity:.085;filter:blur(10px)
+}
+.domain .kind{
+  color:var(--c);font-size:.82vw;font-weight:950;
+  letter-spacing:.13em;text-transform:uppercase
+}
+.domain .url{
+  font-size:1.85vw;line-height:1;
+  font-weight:950;letter-spacing:-.045em;
+  margin:.35vh 0 .45vh;white-space:nowrap;
+  display:flex;align-items:center;gap:.5vw
+}
+.domain .desc{
+  font-size:.92vw;line-height:1.25;
+  color:#b5bec9;font-weight:650;max-width:88%
+}
+.domain .arrow{
+  position:absolute;right:1vw;bottom:.9vh;
+  color:var(--c);font-size:1.5vw;font-weight:900
+}
+.domain .kind{display:flex;align-items:center;gap:.45vw}
+.hs{--c:var(--gold)}
+.tools{--c:var(--green)}
+.quest{--c:var(--purple)}
+.power{--c:var(--pink)}
+
+/* LOWER */
+.lower{
+  display:grid;
+  grid-template-columns:1.65fr .72fr;
+  gap:.85vw;min-height:0
+}
+.content-panel,.chat{
+  min-height:0;overflow:hidden;
+  border:1px solid var(--line);border-radius:18px;
+  background:rgba(12,15,20,.95)
+}
+.content-panel{
+  display:grid;grid-template-rows:1fr 1fr
+}
+.section{
+  min-height:0;display:flex;flex-direction:column
+}
+.section + .section{border-top:1px solid #28303a}
+.head{
+  min-height:4.6vh;display:flex;align-items:center;gap:.7vw;
+  padding:0 .9vw;border-bottom:1px solid #262e38
+}
+.head h2{
+  margin:0;font-size:.92vw;font-weight:950;
+  letter-spacing:.11em;text-transform:uppercase
+}
+.dot{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--red);box-shadow:0 0 12px var(--red);
+  animation:pulse 1.6s infinite
+}
+.spacer{flex:1}
+.badge{
+  font-size:.69vw;font-weight:900;color:#9ba6b2;
+  border:1px solid #333c48;border-radius:999px;
+  padding:.42vh .55vw
+}
+.tabs{display:flex;gap:.3vw}
+.tab{
+  border:0;background:transparent;color:#8b96a3;
+  font-size:.72vw;font-weight:950;letter-spacing:.09em;
+  text-transform:uppercase;padding:.45vh .55vw;border-radius:7px;
+  cursor:pointer
+}
+.tab.active{background:#1c232d;color:#fff}
+
+.cards{
+  flex:1;min-height:0;
+  display:grid;grid-template-columns:repeat(3,1fr);
+  gap:.65vw;padding:.7vh .7vw
+}
+.card{
+  min-width:0;overflow:hidden;
+  display:grid;grid-template-rows:1fr auto;
+  border:1px solid #29313b;border-radius:12px;
+  background:#0b0e13;transition:border-color .12s
+}
+.card:hover{border-color:#3c4652}
+.thumb{
+  min-height:0;position:relative;overflow:hidden;
+  display:grid;place-items:center;
+  background:linear-gradient(145deg,#151b24,#0b0f15)
+}
+.thumb img{width:100%;height:100%;object-fit:cover}
+.placeholder{
+  font-size:.85vw;font-weight:950;letter-spacing:.14em;
+  color:#6f7b89
+}
+.live{
+  position:absolute;left:.55vw;top:.55vh;
+  background:var(--red);border-radius:5px;
+  padding:.28vh .4vw;font-size:.6vw;font-weight:950;
+  letter-spacing:.08em
+}
+.count{
+  position:absolute;right:.55vw;top:.55vh;
+  background:#080a0edf;border-radius:5px;
+  padding:.28vh .4vw;font-size:.6vw;font-weight:900
+}
+.info{padding:.7vh .65vw}
+.title{
+  font-size:.9vw;font-weight:900;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+.meta{
+  margin-top:.25vh;font-size:.69vw;color:#8a95a3;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+.empty{
+  grid-column:1/-1;display:grid;place-items:center;
+  text-align:center;font-size:.95vw;color:#8793a0
+}
+.empty b{color:var(--gold)}
+
+/* CHAT */
+.chat{
+  display:grid;grid-template-rows:5.7vh 1fr 4vh
+}
+.chat-head{
+  display:flex;align-items:center;gap:.65vw;
+  padding:0 .9vw;border-bottom:1px solid #28303a
+}
+.chat-title{
+  font-size:1vw;font-weight:950;letter-spacing:.1em
+}
+.chat-url{
+  margin-top:.15vh;font-size:.7vw;color:var(--gold);
+  font-weight:900;letter-spacing:.05em
+}
+.status{
+  margin-left:auto;display:flex;align-items:center;gap:.35vw;
+  font-size:.68vw;font-weight:950;color:#74808d
+}
+.status i{
+  width:7px;height:7px;border-radius:50%;background:#59616c
+}
+.status.online{color:var(--green)}
+.status.online i{
+  background:var(--green);box-shadow:0 0 11px var(--green)
+}
+.messages{
+  min-height:0;overflow-y:auto;overflow-x:hidden;
+  display:flex;flex-direction:column;justify-content:flex-start;
+  gap:.25vh;padding:.7vh .7vw;
+  scrollbar-width:thin;scrollbar-color:#39424e transparent
+}
+.messages::-webkit-scrollbar{width:8px}
+.messages::-webkit-scrollbar-thumb{background:#39424e;border-radius:8px}
+.messages::-webkit-scrollbar-track{background:transparent}
+.msg{
+  font-size:.86vw;line-height:1.3;
+  padding:.46vh .45vw;border-radius:6px;
+  word-break:break-word
+}
+.msg:nth-child(odd){background:rgba(255,255,255,.02)}
+.msg .name{
+  font-weight:950;color:var(--gold);margin-right:.38vw;cursor:pointer
+}
+.msg .name:hover{text-decoration:underline}
+.msg .platform{
+  font-size:.53vw;color:#a7b0ba;background:#252d37;
+  border-radius:4px;padding:.16vh .24vw;margin-right:.28vw;
+  text-transform:uppercase
+}
+/* Which stream (or global) a message came from — clickable */
+.msg .chat-src{
+  font-size:.55vw;font-weight:900;letter-spacing:.03em;
+  color:#8fb3e6;background:rgba(105,183,255,.12);
+  border:1px solid rgba(105,183,255,.25);
+  border-radius:4px;padding:.14vh .3vw;margin-right:.3vw;
+  text-transform:uppercase;cursor:pointer;white-space:nowrap
+}
+.msg .chat-src:hover{background:rgba(105,183,255,.22)}
+.msg .chat-src.global{color:#9aa4af;background:rgba(255,255,255,.05);border-color:#333c48;cursor:default}
+.msg .chat-src i{font-size:.9em;margin-right:.15vw}
+.msg.system{color:#7c8795;font-style:italic}
+/* Relay platform badge (kick/twitch/youtube/rs) */
+.msg .chat-relay-badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:.6vw;border-radius:4px;padding:.14vh .3vw;margin-right:.3vw;
+  border:1px solid #333c48;vertical-align:middle
+}
+.msg .chat-relay-badge .relay-ico-txt{font-weight:950;font-size:.9em;line-height:1}
+.msg .chat-relay-badge.relay-twitch{color:#a970ff;background:rgba(169,112,255,.15);border-color:rgba(169,112,255,.4)}
+.msg .chat-relay-badge.relay-kick{color:#53fc18;background:rgba(83,252,24,.14);border-color:rgba(83,252,24,.4)}
+.msg .chat-relay-badge.relay-youtube{color:#ff5b5b;background:rgba(255,91,91,.14);border-color:rgba(255,91,91,.4)}
+.msg .chat-relay-badge.relay-rs{color:#7dd3fc;background:rgba(125,211,252,.14);border-color:rgba(125,211,252,.4)}
+/* chat-link inherits shared styles from chat-shared.css; size it for the kiosk */
+.messages .chat-link{font-size:inherit}
+.chat-foot{
+  display:flex;align-items:center;
+  padding:0 .75vw;border-top:1px solid #28303a;
+  font-size:.62vw;color:#7e8997;font-weight:800
+}
+.chat-foot b{margin-left:auto;color:#b4bdc8}
+
+@media (max-width:1400px){
+  .domain .url{font-size:1.8vw}
+  .domain .desc{font-size:.9vw}
+  .hero h1{font-size:3.4vw}
+  .vital .vnum{font-size:1.7vw}
+}
+
+/* ── OMNIBAR (address-bar replacement) ── */
+.omni{
+  position:fixed;inset:0;z-index:9000;
+  display:flex;align-items:flex-start;justify-content:center;
+  padding-top:3.5vh;
+  pointer-events:none;                 /* the dashboard behind stays fully visible + clickable */
+  opacity:0;visibility:hidden;transition:opacity .3s ease,visibility .3s;
+}
+.omni.show{opacity:1;visibility:visible}
+.omni-box{
+  width:min(720px,92vw);pointer-events:auto;   /* only the bar itself is interactive */
+  transform:translateY(-10px);opacity:0;
+  transition:transform .34s cubic-bezier(.2,.9,.3,1.2),opacity .3s ease;
+}
+.omni.show .omni-box{transform:translateY(0);opacity:1}
+.omni-inputwrap{
+  display:flex;align-items:center;gap:6px;
+  background:linear-gradient(180deg,rgba(20,26,35,.98),rgba(12,16,22,.98));
+  border:1.5px solid var(--line);border-radius:16px;
+  padding:8px 10px;
+  box-shadow:0 24px 70px rgba(0,0,0,.55),0 0 0 1px rgba(167,139,250,.05);
+  transition:background .25s,border-color .25s,box-shadow .25s;
+}
+/* Active (user is typing): prominent, gold-glow. */
+.omni.active .omni-box{opacity:1}
+.omni.active .omni-inputwrap{border-color:color-mix(in srgb,var(--gold) 40%,var(--line));box-shadow:0 24px 70px rgba(0,0,0,.55),0 0 0 3px rgba(167,139,250,.12)}
+/* Resting (nothing typed yet): almost see-through + pinned to the very top so the dashboard shows. */
+.omni:not(.active) .omni-box{opacity:.32;transform:translateY(-2px)}
+.omni:not(.active) .omni-inputwrap{
+  background:rgba(14,18,24,.28);border-color:rgba(255,255,255,.10);
+  box-shadow:none;backdrop-filter:blur(3px);
+}
+.omni:not(.active) .omni-provider,.omni:not(.active) .omni-go{opacity:.55}
+.omni:not(.active) .omni-suggest{display:none!important}
+.omni:not(.active) .omni-hint{opacity:.3}
+/* Reveal on hover (not focus — the input is always focused for the typing feature) so it stays
+   ghosted at rest, and go fully solid whenever the search-engine dropdown is open. */
+.omni:not(.active) .omni-box:hover{opacity:.85;transition:opacity .18s}
+.omni.provopen .omni-box{opacity:1!important}
+.omni-input{
+  flex:1;min-width:0;background:none;border:none;outline:none;
+  color:var(--text);font-size:1.5rem;font-weight:600;letter-spacing:-.01em;
+  padding:8px 6px;
+}
+.omni-input::placeholder{color:#6f7b89;font-weight:500}
+.omni-provider{
+  display:flex;align-items:center;gap:7px;flex-shrink:0;
+  background:rgba(255,255,255,.04);border:1px solid var(--line);
+  color:var(--muted);border-radius:11px;padding:9px 12px;cursor:pointer;
+  font-size:.82rem;font-weight:800;letter-spacing:.02em;transition:background .15s,color .15s;
+}
+.omni-provider:hover{background:rgba(255,255,255,.08);color:var(--text)}
+.omni-provider i:first-child{color:var(--gold)}
+.omni-caret{font-size:.62rem;opacity:.6}
+.omni-go{
+  flex-shrink:0;background:var(--gold);color:#161009;border:none;
+  width:44px;height:44px;border-radius:11px;cursor:pointer;font-size:1.05rem;
+  display:grid;place-items:center;transition:transform .12s,filter .15s;
+}
+.omni-go:hover{filter:brightness(1.08)}
+.omni-go:active{transform:scale(.94)}
+.omni-provider-menu{
+  margin-top:8px;background:rgba(14,18,24,.99);border:1px solid var(--line);
+  border-radius:12px;padding:5px;box-shadow:0 16px 44px rgba(0,0,0,.5);
+  display:grid;grid-template-columns:1fr 1fr;gap:3px;
+}
+.omni-provider-menu[hidden]{display:none}
+.omni-prov-opt{
+  display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:8px;
+  cursor:pointer;color:var(--text-secondary);font-size:.9rem;font-weight:600;background:none;border:none;text-align:left;
+}
+.omni-prov-opt:hover{background:rgba(255,255,255,.06);color:var(--text)}
+.omni-prov-opt.active{color:var(--gold)}
+.omni-prov-opt i{width:18px;text-align:center}
+.omni-suggest{margin-top:8px;display:flex;flex-direction:column;gap:2px}
+.omni-sug{
+  display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:11px;
+  cursor:pointer;background:rgba(16,20,27,.7);border:1px solid transparent;
+  transition:background .12s,border-color .12s,transform .12s;
+  animation:omniSugIn .22s ease both;
+}
+.omni-sug:hover,.omni-sug.sel{background:rgba(26,32,42,.95);border-color:var(--line)}
+.omni-sug.sel{transform:translateX(2px)}
+@keyframes omniSugIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.omni-sug-ico{
+  width:26px;height:26px;flex-shrink:0;border-radius:6px;
+  display:grid;place-items:center;background:rgba(255,255,255,.05);
+  color:var(--muted);font-size:.9rem;overflow:hidden
+}
+.omni-sug-ico img{width:18px;height:18px;object-fit:contain}
+.omni-sug-main{flex:1;min-width:0}
+.omni-sug-title{font-size:.98rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.omni-sug-sub{font-size:.76rem;color:#7e8997;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.omni-sug-kind{font-size:.64rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#6f7b89;flex-shrink:0}
+.omni-sug-del{flex-shrink:0;background:none;border:none;color:#5a6570;cursor:pointer;padding:4px 6px;border-radius:6px;font-size:.8rem;opacity:0;transition:opacity .12s,color .12s}
+.omni-sug:hover .omni-sug-del{opacity:1}
+.omni-sug-del:hover{color:var(--red)}
+.omni-hint{
+  display:flex;gap:18px;justify-content:center;margin-top:12px;
+  font-size:.72rem;color:#6b7683;font-weight:600
+}
+.omni-hint b{color:#97a2ad;font-weight:800}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="topbar">
+    <a class="brand" href="https://openvibe.live">
+      <span class="logo"><i class="fa-solid fa-circle-nodes"></i></span>
+      <span>OPENVIBE NETWORK</span>
+    </a>
+    <div class="network-line">
+      <b><i class="fa-solid fa-video"></i> OPENVIBELIVE.COM</b> &nbsp;•&nbsp;
+      <b><i class="fa-solid fa-screwdriver-wrench"></i> OPENVIBE.TOOLS</b> &nbsp;•&nbsp;
+      <b><i class="fa-solid fa-gamepad"></i> SCRAPLANDIA</b> &nbsp;•&nbsp;
+      <b><i class="fa-solid fa-bolt"></i> POWERCHAT.LIVE</b>
+    </div>
+    <div class="clock"><span><i class="fa-regular fa-clock"></i> <span id="clock">--:--</span></span><small id="date">LOADING</small></div>
+  </header>
+
+  <section class="hero">
+    <div class="hero-copy">
+      <div class="kicker"><i class="fa-solid fa-earth-americas"></i> OPEN • COMMUNITY-BUILT • WEIRD INTERNET</div>
+      <h1>STREAM. BUILD. PLAY.<br><span>KEEP IT YOURS.</span></h1>
+      <p id="hero-slogan">Live streaming, useful tools, games, and community infrastructure.</p>
+    </div>
+    <div class="hero-side">
+      <strong>THE OPENVIBE NETWORK</strong>
+      <div class="live-pill dark" id="hero-live"><span class="pulse" style="display:none"></span><span id="hero-live-text">CHECKING NETWORK…</span></div>
+      <span class="tag"><i class="fa-solid fa-heart"></i> FREE TO USE • BUILT IN PUBLIC</span>
+    </div>
+  </section>
+
+  <section class="vitals" id="vitals">
+    <div class="vital livecount"><div class="vlabel"><i class="fa-solid fa-tower-broadcast"></i> Live now</div><div class="vnum" id="v-live">–</div><div class="vdelta" id="v-viewers">watching</div></div>
+    <div class="vital hot"><div class="vlabel"><i class="fa-solid fa-user-astronaut"></i> Streamers</div><div class="vnum" id="v-streamers">–</div><div class="vdelta zero" id="v-streamers-d">all time</div></div>
+    <div class="vital"><div class="vlabel"><i class="fa-solid fa-film"></i> VODs</div><div class="vnum" id="v-vods">–</div><div class="vdelta zero" id="v-vods-d">&nbsp;</div></div>
+    <div class="vital"><div class="vlabel"><i class="fa-solid fa-scissors"></i> Clips</div><div class="vnum" id="v-clips">–</div><div class="vdelta zero" id="v-clips-d">&nbsp;</div></div>
+    <div class="vital"><div class="vlabel"><i class="fa-solid fa-paste"></i> Pastes</div><div class="vnum" id="v-pastes">–</div><div class="vdelta zero" id="v-pastes-d">&nbsp;</div></div>
+    <div class="vital"><div class="vlabel"><i class="fa-solid fa-hourglass-half"></i> Stream hrs</div><div class="vnum" id="v-hours">–</div><div class="vdelta zero" id="v-hours-d">&nbsp;</div></div>
+    <div class="vital"><div class="vlabel"><i class="fa-solid fa-wand-magic-sparkles"></i> AI moments</div><div class="vnum" id="v-ai">–</div><div class="vdelta zero" id="v-ai-d">&nbsp;</div></div>
+    <div class="vital"><div class="vlabel"><i class="fa-solid fa-message"></i> Messages</div><div class="vnum" id="v-msgs">–</div><div class="vdelta zero" id="v-msgs-d">&nbsp;</div></div>
+    <div class="vital"><div class="vlabel"><i class="fa-solid fa-users"></i> OpenVibes</div><div class="vnum" id="v-users">–</div><div class="vdelta zero" id="v-users-d">&nbsp;</div></div>
+  </section>
+
+  <section class="domains">
+    <a class="domain hs" href="https://openvibe.live">
+      <div class="kind"><i class="fa-solid fa-tower-broadcast"></i> Live Streaming</div>
+      <div class="url"><i class="fa-solid fa-video"></i> OPENVIBELIVE.COM</div>
+      <div class="desc">Streams, chat, VODs, clips and restreaming.</div>
+      <div class="arrow"><i class="fa-solid fa-arrow-up-right-from-square"></i></div>
+    </a>
+
+    <a class="domain tools" href="https://openvibe.network">
+      <div class="kind"><i class="fa-solid fa-toolbox"></i> Free Internet Tools</div>
+      <div class="url"><i class="fa-solid fa-screwdriver-wrench"></i> OPENVIBE.TOOLS</div>
+      <div class="desc">200+ media, dev, text and utility tools.</div>
+      <div class="arrow"><i class="fa-solid fa-arrow-up-right-from-square"></i></div>
+    </a>
+
+    <a class="domain quest" href="https://openvibe.games">
+      <div class="kind"><i class="fa-solid fa-cubes"></i> Multiplayer Sandbox</div>
+      <div class="url"><i class="fa-solid fa-gamepad"></i> SCRAPLANDIA</div>
+      <div class="desc">Physics, building, crafting and chaos.</div>
+      <div class="arrow"><i class="fa-solid fa-arrow-up-right-from-square"></i></div>
+    </a>
+
+    <a class="domain power" href="https://powerchat.live">
+      <div class="kind"><i class="fa-solid fa-hand-holding-dollar"></i> Monetization Partner</div>
+      <div class="url"><i class="fa-solid fa-bolt"></i> POWERCHAT.LIVE</div>
+      <div class="desc">Paid chat, TTS, media and stream alerts.</div>
+      <div class="arrow"><i class="fa-solid fa-arrow-up-right-from-square"></i></div>
+    </a>
+  </section>
+
+  <section class="lower">
+    <div class="content-panel">
+      <div class="section">
+        <div class="head">
+          <span class="dot"></span>
+          <h2><i class="fa-solid fa-satellite-dish"></i> Live on OpenVibe.Live</h2>
+          <span class="spacer"></span>
+          <span class="badge" id="live-count">CHECKING…</span>
+        </div>
+        <div class="cards" id="streams">
+          <div class="empty">Checking <b>OPENVIBELIVE.COM</b> for live streams…</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="head">
+          <h2><i class="fa-solid fa-layer-group"></i> Latest from the network</h2>
+          <span class="spacer"></span>
+          <div class="tabs">
+            <button class="tab active" data-tab="vods"><i class="fa-solid fa-film"></i> VODs</button>
+            <button class="tab" data-tab="clips"><i class="fa-solid fa-scissors"></i> Clips</button>
+            <button class="tab" data-tab="pastes"><i class="fa-solid fa-paste"></i> Pastes</button>
+          </div>
+        </div>
+        <div class="cards" id="latest">
+          <div class="empty">Loading recent stuff…</div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="chat">
+      <div class="chat-head">
+        <div>
+          <div class="chat-title"><i class="fa-solid fa-comments"></i> GLOBAL CHAT</div>
+          <div class="chat-url">OPENVIBELIVE.COM/CHAT</div>
+        </div>
+        <div class="status" id="chat-status"><i></i><span>CONNECTING</span></div>
+      </div>
+      <div class="messages" id="messages">
+        <div class="msg system">Connecting to OpenVibe.Live global chat…</div>
+      </div>
+      <div class="chat-foot">
+        <span id="chat-users">GLOBAL ROOM</span>
+        <b>LIVE RELAY</b>
+      </div>
+    </aside>
+  </section>
+</div>
+
+<!-- Address-bar replacement (shown on /kiosk#input, or when you start typing) -->
+<div id="omni" class="omni" aria-hidden="true">
+  <div class="omni-box">
+    <div class="omni-inputwrap">
+      <button class="omni-provider" id="omni-provider-btn" title="Change search engine"><i class="fa-solid fa-magnifying-glass"></i><span id="omni-provider-name">Google</span><i class="fa-solid fa-chevron-down omni-caret"></i></button>
+      <input id="omni-input" class="omni-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search the web or type a URL…">
+      <button class="omni-go" id="omni-go" title="Go"><i class="fa-solid fa-arrow-right"></i></button>
+    </div>
+    <div class="omni-provider-menu" id="omni-provider-menu" hidden></div>
+    <div class="omni-suggest" id="omni-suggest"></div>
+    <div class="omni-hint"><span><b>Enter</b> to go</span><span><b>Esc</b> to dismiss</span><span>just start typing to bring it back</span></div>
+  </div>
+</div>
+
+<script src="/js/chat-shared.js?v=3"></script>
+<script>
+(() => {
+  "use strict";
+  // Served from openvibe.live/kiosk → everything is same-origin (no CORS, no cross-host WS).
+  const API="/api";
+  const WS_URL=(location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws/chat";
+  const $=s=>document.querySelector(s);
+  const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const abs=u=>{try{return u?new URL(u,location.origin).href:""}catch{return""}};
+  const fmt=n=>{n=Number(n)||0;return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(1)+"K":String(n)};
+  const state={tab:"vods",vods:[],clips:[],pastes:[]};
+  // Navigate the TOP tab so links work whether standalone or inside the companion new-tab iframe.
+  const kioskNav=u=>{ try{ (window.top||window).location.href=u; }catch{ location.href=u; } };
+  window.kioskNav=kioskNav;
+
+  function tick(){
+    const d=new Date();
+    $("#clock").textContent=d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+    $("#date").textContent=d.toLocaleDateString([],{weekday:"short",month:"short",day:"numeric"}).toUpperCase();
+  }
+  tick();setInterval(tick,1000);
+
+  async function get(path){
+    const r=await fetch(API+path,{headers:{Accept:"application/json"}});
+    if(!r.ok)throw new Error(r.status);
+    return r.json();
+  }
+
+  /* ── Network vitals + hero slogans (from /api/home/hero) ── */
+  function setDelta(id,val){
+    const el=$(id);if(!el)return;
+    const n=Number(val)||0;
+    el.textContent=n>0?("+"+fmt(n)+" today"):"—";
+    el.classList.toggle("zero",n<=0);
+  }
+  function setNum(id,val){const el=$(id);if(el)el.textContent=fmt(val);}
+  let slogans=[],sloganIdx=0;
+  function rotateSlogan(){
+    if(!slogans.length)return;
+    const el=$("#hero-slogan");
+    el.style.opacity="0";
+    setTimeout(()=>{
+      el.textContent=slogans[sloganIdx%slogans.length];
+      sloganIdx++;el.style.opacity="1";
+    },500);
+  }
+  async function loadVitals(){
+    try{
+      const d=await get("/home/hero");
+      const s=d.stats||{},r=s.recent||{};
+      setNum("#v-streamers",s.streamers);
+      setNum("#v-vods",s.vods); setDelta("#v-vods-d",r.vods&&r.vods.d);
+      setNum("#v-clips",s.clips); setDelta("#v-clips-d",r.clips&&r.clips.d);
+      setNum("#v-pastes",s.pastes);
+      setNum("#v-hours",s.streamHours); setDelta("#v-hours-d",r.hours&&r.hours.d);
+      setNum("#v-ai",s.aiMemories); setDelta("#v-ai-d",r.aiMoments&&r.aiMoments.d);
+      setNum("#v-msgs",s.chatMessages); setDelta("#v-msgs-d",r.messages&&r.messages.d);
+      setNum("#v-users",s.users); setDelta("#v-users-d",r.users&&r.users.d);
+      // AI-generated network quips (same source the homepage hero rotates through)
+      const quips=(d.slogans&&Array.isArray(d.slogans.quips))?d.slogans.quips.filter(x=>typeof x==="string"&&x.trim()):[];
+      if(quips.length){
+        slogans=quips;
+        $("#hero-slogan").textContent=slogans[0];sloganIdx=1;
+      }
+    }catch{}
+  }
+
+  function streamHref(s){
+    const user=String(s.username||"").replace(/^@/,"");
+    const ref=s.managed_stream_slug||s.managed_stream_id;
+    return user?`/@${encodeURIComponent(user)}${ref?"/"+encodeURIComponent(ref):""}`:"/";
+  }
+  function streamCard(s){
+    const thumb=abs(s.thumbnail_url), viewers=s.total_viewer_count??s.viewer_count??0;
+    return `<a class="card" href="${esc(streamHref(s))}">
+      <div class="thumb">${thumb?`<img src="${esc(thumb)}" alt="">`:`<span class="placeholder">OPENVIBE // LIVE</span>`}
+        <span class="live">● LIVE</span>
+        <span class="count">${fmt(viewers)} watching</span>
+      </div>
+      <div class="info">
+        <div class="title">${esc(s.title||"Untitled stream")}</div>
+        <div class="meta">${esc(s.display_name||s.username||"OpenVibe.Live")}</div>
+      </div>
+    </a>`;
+  }
+
+  function setHeroLive(liveN,viewers){
+    const pill=$("#hero-live"),txt=$("#hero-live-text"),pulse=pill.querySelector(".pulse");
+    if(liveN>0){
+      pill.classList.remove("dark");pulse.style.display="";
+      txt.textContent=`${liveN} LIVE NOW • ${fmt(viewers)} WATCHING`;
+    }else{
+      pill.classList.add("dark");pulse.style.display="none";
+      txt.textContent="NETWORK IDLE • GO LIVE";
+    }
+  }
+
+  async function loadStreams(){
+    try{
+      const d=await get("/streams");
+      const all=d.streams||[];
+      const totalViewers=all.reduce((a,s)=>a+(s.total_viewer_count??s.viewer_count??0),0);
+      const list=[...all]
+        .sort((a,b)=>(b.total_viewer_count??b.viewer_count??0)-(a.total_viewer_count??a.viewer_count??0))
+        .slice(0,3);
+      $("#live-count").textContent=all.length+" LIVE";
+      $("#v-live").textContent=all.length;
+      $("#v-viewers").textContent=fmt(totalViewers)+" watching";
+      $("#v-viewers").classList.toggle("zero",totalViewers<=0);
+      setHeroLive(all.length,totalViewers);
+      $("#streams").innerHTML=list.length
+        ?list.map(streamCard).join("")
+        :`<div class="empty">Nobody live right now — <b>OPENVIBELIVE.COM</b></div>`;
+    }catch{
+      $("#live-count").textContent="OPENVIBELIVE.COM";
+      $("#streams").innerHTML=`
+        <a class="card" href="/">
+          <div class="thumb"><span class="placeholder">LIVE STREAMING</span></div>
+          <div class="info"><div class="title">OPENVIBELIVE.COM</div><div class="meta">Browser • OBS • RTMP • WHIP</div></div>
+        </a>
+        <a class="card" href="/vods">
+          <div class="thumb"><span class="placeholder">VODS + CLIPS</span></div>
+          <div class="info"><div class="title">Keep your broadcasts</div><div class="meta">Recordings • clips • replay</div></div>
+        </a>
+        <a class="card" href="/chat">
+          <div class="thumb"><span class="placeholder">GLOBAL CHAT</span></div>
+          <div class="info"><div class="title">OPENVIBELIVE.COM/CHAT</div><div class="meta">One shared community room</div></div>
+        </a>`;
+    }
+  }
+
+  function age(raw){
+    if(!raw)return"";
+    const d=new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(raw)?raw:String(raw).replace(" ","T")+"Z");
+    const s=Math.max(0,(Date.now()-d)/1000);
+    return s<3600?Math.floor(s/60)+"m ago":s<86400?Math.floor(s/3600)+"h ago":Math.floor(s/86400)+"d ago";
+  }
+  function mediaCard(kind,x){
+    let href="/",title="",sub="",thumb="";
+    if(kind==="vods"){
+      href=`/vod/${x.id}`;
+      title=x.title||"VOD";
+      sub=`${fmt(x.view_count||0)} views • ${age(x.created_at||x.ended_at)}`;
+      thumb=abs(x.thumbnail_url);
+    }
+    if(kind==="clips"){
+      href=`/clip/${x.id}`;
+      title=x.title||"Clip";
+      sub=`${fmt(x.view_count||0)} views • ${age(x.created_at)}`;
+      thumb=abs(x.thumbnail_url);
+    }
+    if(kind==="pastes"){
+      href=`/p/${encodeURIComponent(x.slug||"")}`;
+      title=x.title||"Paste";
+      sub=`${x.language||x.type||"text"} • ${fmt(x.views||0)} views`;
+      thumb=abs(x.screenshot_url);
+    }
+    return `<a class="card" href="${esc(href)}">
+      <div class="thumb">${thumb?`<img src="${esc(thumb)}" alt="">`:`<span class="placeholder">${kind==="pastes"?"PASTE":"MEDIA"}</span>`}</div>
+      <div class="info"><div class="title">${esc(title)}</div><div class="meta">${esc(sub)}</div></div>
+    </a>`;
+  }
+  function renderLatest(){
+    const arr=state[state.tab]||[];
+    $("#latest").innerHTML=arr.length
+      ?arr.slice(0,3).map(x=>mediaCard(state.tab,x)).join("")
+      :`<div class="empty">Nothing recent to show.</div>`;
+  }
+  async function loadLatest(){
+    try{
+      const [v,c,p]=await Promise.all([
+        get("/streams/recent-vods?limit=3&offset=0"),
+        get("/clips?limit=3&offset=0"),
+        get("/pastes?limit=3&offset=0")
+      ]);
+      state.vods=v.vods||[];
+      state.clips=c.clips||[];
+      state.pastes=p.pastes||[];
+    }catch{}
+    renderLatest();
+  }
+
+  const TAB_ORDER=["vods","clips","pastes"];
+  let _tabPausedUntil=0;
+  function selectLatestTab(tab){
+    state.tab=tab;
+    document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x.dataset.tab===tab));
+    renderLatest();
+  }
+  document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{
+    _tabPausedUntil=Date.now()+45000; // pause auto-cycle briefly after a manual click
+    selectLatestTab(b.dataset.tab);
+  });
+  // Auto-cycle the Latest tabs so an idle kiosk keeps showing fresh content.
+  function cycleLatestTab(){
+    if(Date.now()<_tabPausedUntil)return;
+    const i=TAB_ORDER.indexOf(state.tab);
+    selectLatestTab(TAB_ORDER[(i+1)%TAB_ORDER.length]);
+  }
+  setInterval(cycleLatestTab,9000);
+
+  const messages=$("#messages"),status=$("#chat-status");
+  // Track unique participants seen in the loaded chat log (users + anons + relay identities).
+  const chatters=new Set();
+  function trackChatter(m){
+    if(m.type==="system") return;
+    let key=null;
+    if(m.source_platform) key="r:"+String(m.source_platform).toLowerCase()+":"+String(m.core_username||m.username||m.display_name||"").toLowerCase();
+    else if(m.user_id) key="u:"+m.user_id;
+    else if(m.anon_id||m.username) key="a:"+String(m.anon_id||m.username).toLowerCase();
+    if(key) chatters.add(key);
+    $("#chat-users").textContent=chatters.size+" chatter"+(chatters.size===1?"":"s");
+  }
+  let ws,retry=1500,timer;
+  const colors={
+    twitch:"#a970ff",kick:"#7cff4e",youtube:"#ff5b5b",yt:"#ff5b5b",
+    rs:"#7dd3fc",robotstreamer:"#7dd3fc"
+  };
+
+  // Where did this message come from? A live stream's chat is forwarded to the global feed
+  // tagged with stream_channel/source_channel (+ slug). Pure global-room messages have neither.
+  function srcBadge(m){
+    const ch=m.stream_channel||m.source_channel;
+    if(ch){
+      const user=String(ch).replace(/^@/,"");
+      const ref=m.source_slug||m.source_managed_id;
+      const href=`/@${encodeURIComponent(user)}${ref?"/"+encodeURIComponent(ref):""}`;
+      return `<span class="chat-src" title="From ${esc(user)}'s stream — open channel" onclick="kioskNav('${esc(href)}')"><i class="fa-solid fa-satellite-dish"></i>${esc(user)}</span>`;
+    }
+    return `<span class="chat-src global" title="Global chat"><i class="fa-solid fa-globe"></i>global</span>`;
+  }
+  function addMsg(m){
+    trackChatter(m);
+    // Auto-scroll only if the viewer is already near the bottom (don't yank them up mid-read).
+    const nearBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 60;
+    const el=document.createElement("div");
+    if(m.type==="system"){
+      el.className="msg system";
+      el.textContent=m.message||"System";
+    }else{
+      el.className="msg";
+      const plat=String(m.source_platform||"").toLowerCase();
+      const isRelay=!!m.source_platform;
+      const isAnon=!!m.anon_id && !m.user_id;
+      const kind=isRelay?"relay":(isAnon?"anon":"user");
+      const uname=String(m.core_username||m.username||"").replace(/^@/,"");
+      // Strip any "[Platform]" prefix from relay display names — the FA badge shows the platform.
+      const ext=isRelay?OpenVibeChat.parseRelayUsername(m.display_name||m.username||"").externalUsername:"";
+      const label=isRelay?(ext||m.display_name||m.username||"user"):(m.display_name||m.username||m.anon_id||"anon");
+      const nameColor=colors[plat]||"#a78bfa";
+      let html = srcBadge(m);
+      if(isRelay) html += OpenVibeChat.relayPlatformBadge(plat);
+      // data-* carry what the right-click context menu needs; the menu markup is shared (OpenVibeChat).
+      const da=[`data-kind="${kind}"`,`data-username="${esc(uname||label)}"`,`data-label="${esc(label)}"`,
+        `data-uid="${esc(String(m.user_id||""))}"`,`data-platform="${esc(plat)}"`,`data-ext="${esc(ext)}"`,
+        `data-color="${esc(nameColor)}"`].join(" ");
+      html += `<span class="name" ${da} style="color:${esc(nameColor)}" title="Right-click for options">${esc(label)}</span> `;
+      html += `<span class="msg-text">${OpenVibeChat.linkify(m.message||"")}</span>`;
+      el.innerHTML = html;
+    }
+    messages.appendChild(el);
+    while(messages.children.length>200)messages.removeChild(messages.firstChild);
+    if(nearBottom) messages.scrollTop = messages.scrollHeight;
+  }
+
+  // ── Right-click user context menu — markup is shared with the main site via
+  //    OpenVibeChat.buildUserMenu (chat-shared.js). Anonymous kiosk viewers get the
+  //    universal actions (Channel / AI Insight), wired here to navigation. ──
+  let _kioskMenu=null;
+  function _dismissKioskMenu(){ if(_kioskMenu){_kioskMenu.remove();_kioskMenu=null;} }
+  const _chan=(u)=>{ _dismissKioskMenu(); if(u) kioskNav("/@"+encodeURIComponent(String(u).replace(/^@/,""))); };
+  window.dismissContextMenu=_dismissKioskMenu;
+  window.ctxViewChannel=_chan;
+  window.ctxWhisper=_chan;
+  window.ctxReply=_dismissKioskMenu;
+  window.openUserChatInsight=(uid,u)=>{ _dismissKioskMenu(); if(u) kioskNav("/@"+encodeURIComponent(String(u).replace(/^@/,""))+"#ai-timeline"); };
+  window.openAnonChatInsight=()=>{ _dismissKioskMenu(); kioskNav("/chat"); };
+  window.openRelayUserChatInsight=()=>{ _dismissKioskMenu(); kioskNav("/chat"); };
+  function _posMenu(menu,x,y){
+    menu.style.left=x+"px"; menu.style.top=y+"px";
+    requestAnimationFrame(()=>{
+      const r=menu.getBoundingClientRect();
+      if(x+r.width>innerWidth-8) menu.style.left=Math.max(8,x-r.width)+"px";
+      if(y+r.height>innerHeight-8) menu.style.top=Math.max(8,y-r.height)+"px";
+    });
+  }
+  async function showKioskUserMenu(el,x,y){
+    _dismissKioskMenu();
+    const kind=el.dataset.kind, username=el.dataset.username, label=el.dataset.label;
+    const menu=document.createElement("div");
+    menu.className="chat-context-menu";
+    menu.innerHTML=`<div class="ctx-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>`;
+    document.body.appendChild(menu); _kioskMenu=menu;
+    _posMenu(menu,x,y);
+    menu.addEventListener("click",e=>e.stopPropagation());
+    setTimeout(()=>document.addEventListener("click",_dismissKioskMenu,{once:true}),10);
+    try{
+      if(kind==="relay"){
+        menu.innerHTML=OpenVibeChat.buildUserMenu({kind:"relay",username:label,platform:el.dataset.platform,externalUsername:el.dataset.ext,ctx:{currentUser:null}});
+      }else if(kind==="anon"){
+        menu.innerHTML=OpenVibeChat.buildUserMenu({kind:"anon",username:label,ctx:{currentUser:null}});
+      }else{
+        let profile={id:el.dataset.uid?Number(el.dataset.uid):null,display_name:label};
+        try{ const d=await get(`/chat/user/${encodeURIComponent(username)}/profile`); if(d&&(d.id||d.username||d.display_name)) profile=d; }catch{}
+        if(_kioskMenu!==menu) return; // dismissed while loading
+        menu.innerHTML=OpenVibeChat.buildUserMenu({kind:"user",username,profile,ctx:{currentUser:null}});
+      }
+      _posMenu(menu,x,y);
+    }catch{ _dismissKioskMenu(); }
+  }
+  messages.addEventListener("contextmenu",e=>{
+    const el=e.target.closest(".name[data-kind]");
+    if(!el) return;
+    e.preventDefault();
+    showKioskUserMenu(el,e.clientX,e.clientY);
+  });
+  messages.addEventListener("click",e=>{
+    const el=e.target.closest(".name[data-kind]");
+    if(el && el.dataset.kind==="user" && el.dataset.username) kioskNav("/@"+encodeURIComponent(el.dataset.username));
+  });
+
+  async function history(){
+    try{
+      const d=await get("/chat/global/history?limit=50");
+      messages.innerHTML="";
+      (d.messages||[]).forEach(m=>addMsg({...m,type:"chat"}));
+      messages.scrollTop=messages.scrollHeight;
+    }catch{}
+  }
+
+  function connect(){
+    clearTimeout(timer);
+    try{ws=new WebSocket(WS_URL)}catch{return schedule()}
+    ws.onopen=()=>{
+      retry=1500;
+      status.className="status online";
+      status.querySelector("span").textContent="LIVE";
+      // No join needed: connecting with no ?stream= param and no auth makes us a "pure global"
+      // client, so the server's forwardToGlobal mirrors the whole network's chat to us.
+    };
+    ws.onmessage=e=>{
+      try{
+        const m=JSON.parse(e.data);
+        if(m.type==="chat")addMsg(m);
+        // (footer now shows unique chatters from the log, updated in trackChatter)
+      }catch{}
+    };
+    ws.onclose=()=>{
+      status.className="status";
+      status.querySelector("span").textContent="RECONNECTING";
+      schedule();
+    };
+    ws.onerror=()=>{};
+  }
+
+  function schedule(){
+    timer=setTimeout(connect,retry);
+    retry=Math.min(retry*1.7,15000);
+  }
+
+  loadVitals();
+  loadStreams();
+  loadLatest();
+  history();
+  connect();
+
+  setInterval(loadStreams,30000);
+  setInterval(loadLatest,90000);
+  setInterval(loadVitals,60000);
+  setInterval(rotateSlogan,12000);
+})();
+</script>
+
+<!-- ── OMNIBAR: address-bar replacement for /kiosk#input ── -->
+<script>
+(() => {
+  "use strict";
+  const $=s=>document.querySelector(s);
+  const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const omni=$("#omni"), input=$("#omni-input"), suggest=$("#omni-suggest"),
+        provBtn=$("#omni-provider-btn"), provName=$("#omni-provider-name"),
+        provMenu=$("#omni-provider-menu"), goBtn=$("#omni-go");
+  if(!omni) return;
+
+  const PROVIDERS={
+    google:{name:"Google",url:"https://www.google.com/search?q=%s",icon:"fa-brands fa-google"},
+    ddg:{name:"DuckDuckGo",url:"https://duckduckgo.com/?q=%s",icon:"fa-solid fa-shield-halved"},
+    bing:{name:"Bing",url:"https://www.bing.com/search?q=%s",icon:"fa-brands fa-microsoft"},
+    brave:{name:"Brave",url:"https://search.brave.com/search?q=%s",icon:"fa-brands fa-brave"},
+    startpage:{name:"Startpage",url:"https://www.startpage.com/sp/search?query=%s",icon:"fa-solid fa-user-secret"},
+    ecosia:{name:"Ecosia",url:"https://www.ecosia.org/search?q=%s",icon:"fa-solid fa-leaf"}
+  };
+  const LS_PROV="openvibe_kiosk_search", LS_HIST="openvibe_kiosk_history";
+  let provider=localStorage.getItem(LS_PROV); if(!PROVIDERS[provider]) provider="google";
+  let hist=[]; try{ hist=JSON.parse(localStorage.getItem(LS_HIST)||"[]"); if(!Array.isArray(hist)) hist=[]; }catch{}
+  const resolved=new Map();      // domain(lowercased) → {reachable,url,host,title}
+  const resolving=new Set();
+  let curItems=[], selIdx=-1, isOpen=false, resolveTimer=null;
+
+  // Navigate the TOP tab (so it works whether the kiosk is standalone or embedded in the
+  // companion new-tab iframe). Setting top.location.href cross-origin is allowed on a user gesture.
+  const nav=u=>{ try{ (window.top||window).location.href=u; }catch{ location.href=u; } };
+  const framed = window.top !== window.self;
+
+  // ── Firefox companion extension (optional): history autocomplete ──
+  let extReady=false; const bhCache=new Map(), bhInFlight=new Set(); let bhSeq=0;
+  window.addEventListener("message",ev=>{
+    if(ev.source!==window) return;
+    const d=ev.data; if(!d||d.source!=="openvibe-kiosk-ext") return;
+    if(d.type==="ready"){ if(!extReady){ extReady=true; if(isOpen) renderSuggest(); } }
+    else if(d.type==="history-result"){
+      const k=String(d.q||"").toLowerCase();
+      bhInFlight.delete(k); bhCache.set(k, Array.isArray(d.items)?d.items:[]);
+      if(isOpen && input.value.trim().toLowerCase()===k) renderSuggest();
+    }
+  });
+  try{ window.postMessage({source:"openvibe-kiosk",type:"ping"},location.origin); }catch{} // is the companion here?
+  function requestBH(q){
+    q=(q||"").trim(); if(!extReady||q.length<2) return;
+    const k=q.toLowerCase(); if(bhCache.has(k)||bhInFlight.has(k)) return;
+    bhInFlight.add(k);
+    try{ window.postMessage({source:"openvibe-kiosk",type:"history-query",id:++bhSeq,q},location.origin); }catch{ bhInFlight.delete(k); }
+  }
+
+  const saveHist=()=>{ try{ localStorage.setItem(LS_HIST, JSON.stringify(hist.slice(0,120))); }catch{} };
+  const searchUrl=q=>PROVIDERS[provider].url.replace("%s",encodeURIComponent(q));
+  const faviconUrl=host=>`/api/kiosk/favicon?domain=${encodeURIComponent(host)}`;
+  const fullUrl=s=>/^https?:\/\//i.test(s)?s:"https://"+s;
+  const hostOf=s=>{ try{ return new URL(fullUrl(s)).hostname; }catch{ return ""; } };
+  function looksLikeDomain(s){
+    s=s.trim(); if(!s||/\s/.test(s)) return false;
+    if(/^https?:\/\//i.test(s)) return true;
+    if(/^localhost(:\d+)?(\/|$)/i.test(s)) return true;
+    if(/^\d{1,3}(\.\d{1,3}){3}(:\d+)?(\/.*)?$/.test(s)) return true; // bare IPv4
+    return /^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?(\/.*)?$/i.test(s) && /\.[a-z]{2,}/i.test(s.split("/")[0]);
+  }
+
+  function setProvider(p){ provider=p; provName.textContent=PROVIDERS[p].name; try{localStorage.setItem(LS_PROV,p);}catch{}; renderSuggest(); }
+  provName.textContent=PROVIDERS[provider].name;
+
+  // ── open / close ──
+  function open(seed){
+    isOpen=true; selIdx=-1;
+    omni.classList.add("show"); omni.setAttribute("aria-hidden","false");
+    if(seed!=null) input.value=seed;
+    renderSuggest(); requestBH(input.value);
+    const doFocus=()=>{ try{ window.focus(); }catch{} input.focus(); if(seed==null){ input.select(); } else { input.setSelectionRange(input.value.length,input.value.length); } };
+    setTimeout(doFocus,30);
+    // In the companion new-tab iframe, retry so the caret wins over the browser URL bar.
+    if(framed) [120,280,550,900].forEach(t=>setTimeout(()=>{ if(isOpen) doFocus(); },t));
+  }
+  function close(){
+    isOpen=false; omni.classList.remove("show"); omni.setAttribute("aria-hidden","true");
+    provMenu.hidden=true; input.blur();
+    if(location.hash==="#input"){ try{ history.replaceState(null,"",location.pathname+location.search); }catch{} }
+  }
+
+  // ── history helpers ──
+  function historyMatches(q){
+    q=q.toLowerCase().trim();
+    const list = q ? hist.filter(h=>(h.q&&h.q.toLowerCase().includes(q))||(h.host&&h.host.toLowerCase().includes(q))||(h.title&&h.title.toLowerCase().includes(q))) : hist;
+    return list.slice(0,6);
+  }
+  function pushHistory(it,q){
+    let entry;
+    if(it.type==="search") entry={q, key:"s:"+q.toLowerCase(), t:Date.now()};
+    else entry={q, url:it.url, host:it.host||hostOf(it.url), title:(it.title&&it.title!==q)?it.title:"", key:it.url, t:Date.now()};
+    hist=hist.filter(h=>h.key!==entry.key);
+    hist.unshift(entry); if(hist.length>120) hist.length=120; saveHist();
+  }
+
+  // ── suggestions ──
+  function buildItems(q){
+    const items=[], seen=new Set(); q=q.trim();
+    const add=it=>{ const k=it.url||("s:"+(it.title||"")); if(seen.has(k)) return; seen.add(k); items.push(it); };
+    if(q){
+      if(looksLikeDomain(q)){
+        const key=q.toLowerCase(), c=resolved.get(key);
+        if(c && !c.reachable){
+          // resolved as unreachable → offer search only
+        } else if(c && c.reachable){
+          add({type:"domain",title:c.title||q,sub:c.host+(c.title?" · "+c.title:""),host:c.host,url:c.url});
+        } else {
+          add({type:"domain",title:q,sub:"Open site — checking…",host:hostOf(q),url:fullUrl(q),pending:true,key});
+        }
+      }
+      add({type:"search",title:q,sub:`Search ${PROVIDERS[provider].name}`,url:searchUrl(q),icon:PROVIDERS[provider].icon});
+    }
+    // Firefox history (via the companion extension, if installed)
+    if(extReady){
+      const bh=bhCache.get(q.toLowerCase());
+      if(bh) for(const h of bh){ if(items.length>=8) break; add({type:"history",title:h.title||h.host||h.url,sub:h.url,url:h.url,host:hostOf(h.url),ff:true}); }
+    }
+    // Kiosk's own on-page history (localStorage)
+    for(const h of historyMatches(q)){
+      if(items.length>=8) break;
+      if(q && looksLikeDomain(q) && h.url===fullUrl(q)) continue;
+      add({type:"history",title:h.title||h.host||h.q,sub:h.url||("Search: "+h.q),url:h.url||searchUrl(h.q),host:h.host,histKey:h.key});
+    }
+    return items;
+  }
+  function iconFor(it){
+    if(it.host) return `<img src="${esc(faviconUrl(it.host))}" alt="" onerror="this.style.display='none';this.parentElement.innerHTML='<i class=\\'fa-solid fa-globe\\'></i>'">`;
+    if(it.type==="search") return `<i class="${esc(it.icon||'fa-solid fa-magnifying-glass')}"></i>`;
+    if(it.type==="history") return `<i class="fa-solid fa-clock-rotate-left"></i>`;
+    return `<i class="fa-solid fa-globe"></i>`;
+  }
+  function renderSuggest(){
+    const q=input.value;
+    // Ghosted/resting until there's actually text typed, then it materializes into the full bar.
+    omni.classList.toggle("active", !!q.trim());
+    curItems=buildItems(q);
+    if(selIdx>=curItems.length) selIdx=curItems.length-1;
+    suggest.innerHTML=curItems.map((it,i)=>`
+      <div class="omni-sug${i===selIdx?' sel':''}" data-i="${i}">
+        <span class="omni-sug-ico">${iconFor(it)}</span>
+        <span class="omni-sug-main">
+          <span class="omni-sug-title">${esc(it.title)}</span>
+          <span class="omni-sug-sub">${esc(it.sub)}</span>
+        </span>
+        <span class="omni-sug-kind">${it.type==="search"?"Search":it.type==="history"?"History":"Go"}</span>
+        ${(it.type==="history"&&it.histKey)?`<button class="omni-sug-del" data-del="${esc(it.histKey)}" title="Remove from history"><i class="fa-solid fa-xmark"></i></button>`:""}
+      </div>`).join("");
+  }
+  function scheduleResolve(){
+    clearTimeout(resolveTimer);
+    const q=input.value.trim();
+    if(!q||!looksLikeDomain(q)) return;
+    const key=q.toLowerCase();
+    if(resolved.has(key)||resolving.has(key)) return;
+    resolveTimer=setTimeout(()=>resolveDomain(key,q),260);
+  }
+  async function resolveDomain(key,q){
+    if(resolved.has(key)||resolving.has(key)) return;
+    resolving.add(key);
+    try{
+      const r=await fetch(`/api/kiosk/site?url=${encodeURIComponent(q)}`,{headers:{Accept:"application/json"}});
+      const d=await r.json();
+      resolved.set(key, d.reachable?{reachable:true,url:d.url,host:d.host,title:d.title}:{reachable:false});
+    }catch{ resolved.set(key,{reachable:true,url:fullUrl(q),host:hostOf(q)}); } // our resolver failing shouldn't block nav
+    resolving.delete(key);
+    if(isOpen && input.value.trim().toLowerCase()===key) renderSuggest();
+  }
+
+  function highlight(){ suggest.querySelectorAll(".omni-sug").forEach((el,i)=>el.classList.toggle("sel",i===selIdx)); }
+
+  // ── activation ──
+  function activate(it){ if(!it) return; const q=input.value.trim(); pushHistory(it,q); nav(it.url); }
+  async function activateDefault(){
+    const q=input.value.trim(); if(!q) return;
+    if(looksLikeDomain(q)){
+      const key=q.toLowerCase(); let res=resolved.get(key);
+      if(!res){
+        goBtn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i>';
+        try{ const r=await fetch(`/api/kiosk/site?url=${encodeURIComponent(q)}`); const d=await r.json(); res=d.reachable?{reachable:true,url:d.url,host:d.host,title:d.title}:{reachable:false}; resolved.set(key,res); }
+        catch{ res={reachable:true,url:fullUrl(q),host:hostOf(q)}; }
+        goBtn.innerHTML='<i class="fa-solid fa-arrow-right"></i>';
+      }
+      if(res.reachable){ pushHistory({type:"domain",url:res.url||fullUrl(q),host:res.host,title:res.title},q); nav(res.url||fullUrl(q)); return; }
+    }
+    pushHistory({type:"search"},q); nav(searchUrl(q));
+  }
+  function submit(){
+    if(selIdx>=0 && curItems[selIdx] && !curItems[selIdx].pending) activate(curItems[selIdx]);
+    else activateDefault();
+  }
+
+  // ── events ──
+  input.addEventListener("input",()=>{ selIdx=-1; renderSuggest(); scheduleResolve(); requestBH(input.value); });
+  input.addEventListener("keydown",e=>{
+    if(e.key==="ArrowDown"){ e.preventDefault(); if(curItems.length){ selIdx=(selIdx+1)%curItems.length; highlight(); } }
+    else if(e.key==="ArrowUp"){ e.preventDefault(); if(curItems.length){ selIdx=(selIdx<=0?curItems.length:selIdx)-1; highlight(); } }
+    else if(e.key==="Enter"){ e.preventDefault(); submit(); }
+    else if(e.key==="Escape"){ e.preventDefault(); if(input.value){ input.value=""; selIdx=-1; renderSuggest(); } else { close(); } }
+  });
+  goBtn.addEventListener("click",submit);
+  suggest.addEventListener("click",e=>{
+    const del=e.target.closest(".omni-sug-del");
+    if(del){ e.stopPropagation(); const k=del.dataset.del; hist=hist.filter(h=>h.key!==k); saveHist(); renderSuggest(); return; }
+    const row=e.target.closest(".omni-sug"); if(!row) return;
+    activate(curItems[Number(row.dataset.i)]);
+  });
+  function setProvMenu(open){ provMenu.hidden=!open; omni.classList.toggle("provopen",open); if(open) renderProvMenu(); }
+  provBtn.addEventListener("click",e=>{ e.stopPropagation(); setProvMenu(provMenu.hidden); });
+  function renderProvMenu(){
+    provMenu.innerHTML=Object.entries(PROVIDERS).map(([k,p])=>`
+      <button class="omni-prov-opt${k===provider?' active':''}" data-prov="${k}"><i class="${p.icon}"></i> ${esc(p.name)}${k===provider?' <i class="fa-solid fa-check" style="margin-left:auto"></i>':''}</button>`).join("");
+  }
+  provMenu.addEventListener("click",e=>{ const b=e.target.closest(".omni-prov-opt"); if(!b) return; setProvider(b.dataset.prov); setProvMenu(false); input.focus(); });
+  // Close the dropdown when clicking anywhere else, or on Escape.
+  document.addEventListener("click",e=>{ if(!provMenu.hidden && !provMenu.contains(e.target) && e.target!==provBtn && !provBtn.contains(e.target)) setProvMenu(false); });
+  document.addEventListener("keydown",e=>{ if(e.key==="Escape" && !provMenu.hidden){ e.stopPropagation(); setProvMenu(false); } },true);
+
+  // Global: start typing anywhere → focus the (possibly ghosted or hidden) bar and seed it.
+  document.addEventListener("keydown",e=>{
+    if(document.activeElement===input) return;   // already typing in the bar — let it be
+    if(e.key==="Escape") return;
+    const t=e.target;
+    if(t && (t.tagName==="INPUT"||t.tagName==="TEXTAREA"||t.isContentEditable)) return;
+    if(e.ctrlKey||e.metaKey||e.altKey) return;
+    if(e.key==="/"){ e.preventDefault(); open(""); return; }
+    if(e.key.length===1){ e.preventDefault(); open((input.value||"")+e.key); }
+  });
+
+  // Open automatically when the tab is launched at /kiosk#input.
+  function maybeAutoOpen(){ if(location.hash==="#input") open(""); }
+  maybeAutoOpen();
+  window.addEventListener("hashchange",maybeAutoOpen);
+})();
+</script>
+</body>
+</html>
