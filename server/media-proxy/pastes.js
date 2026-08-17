@@ -15,7 +15,20 @@ const express = require('express');
 const multer = require('multer');
 const db = require('../db/database');
 const media = require('../media-client');
-const { requireAuth, optionalAuth } = require('../auth/auth');
+const { requireAuth, optionalAuth, requireAdmin } = require('../auth/auth');
+
+// Admin/moderation endpoints on Media are app-key-only: authorize the caller
+// as a Live admin here, then forward WITHOUT the user token so the app key applies.
+function forwardAsApp(subPath) {
+    return (req, res) => {
+        const p = typeof subPath === 'function' ? subPath(req) : subPath;
+        media.proxy(req, res, `/pastes${p}`)
+            .catch((err) => {
+                console.warn('[Pastes proxy]', err.message);
+                if (!res.headersSent) res.status(502).json({ error: 'Media service unavailable' });
+            });
+    };
+}
 
 const router = express.Router();
 const shotUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -83,9 +96,9 @@ router.post('/:slug/set-avatar', requireAuth, async (req, res) => {
 router.get('/', forward(''));
 router.post('/', forward(''));
 router.get('/config', forward('/config'));
-router.get('/admin/stats', requireAuth, forward('/admin/stats'));
-router.delete('/admin/forks', requireAuth, forward('/admin/forks'));
-router.post('/bulk', requireAuth, forward('/bulk'));
+router.get('/admin/stats', requireAdmin, forwardAsApp('/admin/stats'));
+router.delete('/admin/forks', requireAdmin, forwardAsApp('/admin/forks'));
+router.post('/bulk', requireAdmin, forwardAsApp('/bulk'));
 // Media doesn't know usernames — resolve locally, then list by user id.
 // Browser-JWT-created pastes carry the NETWORK id while migrated/app-key rows
 // carry the LOCAL id, so query both id spaces and merge.
@@ -122,7 +135,7 @@ router.put('/:slug', requireAuth, forward(slugPath()));
 router.delete('/:slug', requireAuth, forward(slugPath()));
 // TODO(contract): paste admin tools (censor, admin/stats, admin/forks, bulk)
 // have no Media API v1 endpoints yet — they 404 until Media grows them.
-router.post('/:slug/censor', requireAuth, forward(slugPath('/censor')));
+router.post('/:slug/censor', requireAdmin, shotUpload.single('screenshot'), forwardAsApp(slugPath('/censor')));
 router.post('/:slug/fork', forward(slugPath('/fork')));
 // Raw content is public on Media (/p/:slug/raw) — bounce the API-shaped URL there.
 router.get('/:slug/raw', (req, res) => res.redirect(302, media.pasteRawUrl(req.params.slug)));
