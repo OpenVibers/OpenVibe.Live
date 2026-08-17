@@ -324,7 +324,7 @@ function userTokenFrom(req) {
 module.exports = {
     MEDIA_URL, MEDIA_PUBLIC_URL, MEDIA_APP_ID,
     MediaApiError,
-    request, proxy, userTokenFrom,
+    request, proxy, userTokenFrom, _formData,
     // vods
     createVod, ingestRtmp, ingestRtpStart, ingestRtpStop,
     uploadVodChunk, completeVodChunks, finalizeVod,
