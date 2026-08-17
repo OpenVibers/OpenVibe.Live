@@ -1,0 +1,4 @@
+OpenVibe.Live ownership proof
+Domain: https://openvibe.live
+Statement: This public file was added by the site owner from the project source workspace as a simple ownership verification marker for AI-assisted work.
+Timestamp: 2026-03-18

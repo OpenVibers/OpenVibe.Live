@@ -1,0 +1,1406 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenVibe.Live Setup Guide</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css" id="hljs-theme">
+<style>
+:root{--bg:#0d1117;--bg2:#161b22;--bg3:#1c2128;--text:#e6edf3;--text2:#8b949e;--accent:#58a6ff;--accent2:#3fb950;--border:#30363d;--code-bg:#0d1117;--card-bg:#161b22;--shadow:0 2px 8px rgba(0,0,0,.3);--hover:#1f6feb;--warn:#d29922;--err:#f85149;--tag-bg:#1f6feb22;--tag-text:#58a6ff;--sidebar-w:280px;--search-bg:#0d1117;--font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;--mono:'SF Mono','Cascadia Code','Fira Code',Consolas,monospace}
+[data-theme="light"]{--bg:#fff;--bg2:#f6f8fa;--bg3:#eaeef2;--text:#1f2328;--text2:#656d76;--accent:#0969da;--accent2:#1a7f37;--border:#d0d7de;--code-bg:#f6f8fa;--card-bg:#fff;--shadow:0 2px 8px rgba(0,0,0,.08);--hover:#0550ae;--warn:#9a6700;--err:#cf222e;--tag-bg:#ddf4ff;--tag-text:#0969da;--search-bg:#f6f8fa}
+*{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:80px}body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:1.7;transition:background .3s,color .3s}
+/* Sidebar */
+.sidebar{position:fixed;top:0;left:0;width:var(--sidebar-w);height:100vh;background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;z-index:100;transition:transform .3s}
+.sidebar-header{padding:20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.sidebar-header h2{font-size:1rem;color:var(--accent)}
+.sidebar-header i{color:var(--accent);font-size:1.2rem}
+.nav-group{padding:8px 0}
+.nav-group-title{padding:6px 20px;font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text2);font-weight:600}
+.nav-link{display:block;padding:5px 20px 5px 28px;font-size:.82rem;color:var(--text2);text-decoration:none;transition:all .15s;border-left:2px solid transparent}
+.nav-link:hover,.nav-link.active{color:var(--accent);background:var(--tag-bg);border-left-color:var(--accent)}
+.nav-link i{width:18px;text-align:center;margin-right:6px;font-size:.75rem}
+/* Main */
+.main{margin-left:var(--sidebar-w);padding:0}
+/* Top bar */
+.topbar{position:sticky;top:0;z-index:90;background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 32px;display:flex;align-items:center;gap:16px;backdrop-filter:blur(10px)}
+.search-box{flex:1;max-width:500px;position:relative}
+.search-box input{width:100%;padding:8px 14px 8px 36px;background:var(--search-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.9rem;outline:none;transition:border .2s}
+.search-box input:focus{border-color:var(--accent)}
+.search-box i{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text2);font-size:.85rem}
+.search-count{font-size:.75rem;color:var(--text2);margin-left:8px}
+.topbar-right{display:flex;gap:10px;align-items:center;margin-left:auto}
+.theme-btn,.menu-btn{background:none;border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);cursor:pointer;font-size:.9rem;transition:all .2s}
+.theme-btn:hover,.menu-btn:hover{border-color:var(--accent);color:var(--accent)}
+.menu-btn{display:none}
+/* Content */
+.content{max-width:900px;margin:0 auto;padding:32px}
+.hero{text-align:center;padding:48px 0 32px;border-bottom:1px solid var(--border);margin-bottom:40px}
+.hero h1{font-size:2.2rem;margin-bottom:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{color:var(--text2);font-size:1.05rem;max-width:600px;margin:0 auto}
+.hero-tags{margin-top:16px;display:flex;justify-content:center;flex-wrap:wrap;gap:8px}
+.hero-tag{background:var(--tag-bg);color:var(--tag-text);padding:4px 12px;border-radius:20px;font-size:.8rem}
+/* Sections */
+section{margin-bottom:48px;scroll-margin-top:80px}
+section h2{font-size:1.5rem;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid var(--border);display:flex;align-items:center;gap:10px}
+section h2 i{color:var(--accent);font-size:1.1rem}
+section h3{font-size:1.15rem;margin:20px 0 10px;color:var(--accent)}
+section h4{font-size:1rem;margin:16px 0 8px;color:var(--text)}
+p,li{color:var(--text);margin-bottom:8px}
+ul,ol{padding-left:24px;margin-bottom:16px}
+li{margin-bottom:4px}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+strong{color:var(--text)}
+/* Code blocks */
+.code-wrapper{position:relative;margin:16px 0;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--code-bg)}
+.code-header{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:var(--bg3);border-bottom:1px solid var(--border);font-size:.75rem;color:var(--text2)}
+.code-lang{display:flex;align-items:center;gap:6px}
+.code-actions{display:flex;gap:6px}
+.code-btn{background:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;color:var(--text2);cursor:pointer;font-size:.72rem;transition:.15s;display:flex;align-items:center;gap:4px}
+.code-btn:hover{border-color:var(--accent);color:var(--accent)}
+.code-btn.copied{border-color:var(--accent2);color:var(--accent2)}
+.code-wrapper pre{margin:0;padding:16px;overflow-x:auto;font-family:var(--mono);font-size:.87rem;line-height:1.6}
+.code-wrapper pre code{font-family:inherit;background:none;padding:0}
+.code-wrapper[contenteditable="true"] pre{outline:none}
+.code-wrapper.editing{border-color:var(--warn)}
+.code-wrapper.editing .code-header{background:color-mix(in srgb,var(--warn) 15%,var(--bg3))}
+/* Tables */
+table{width:100%;border-collapse:collapse;margin:16px 0;font-size:.88rem}
+th,td{padding:10px 14px;text-align:left;border:1px solid var(--border)}
+th{background:var(--bg3);font-weight:600;color:var(--text);font-size:.82rem;text-transform:uppercase;letter-spacing:.03em}
+td{background:var(--bg2)}
+tr:hover td{background:var(--bg3)}
+/* Cards */
+.card{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:20px;margin:16px 0;box-shadow:var(--shadow)}
+.card.tip{border-left:4px solid var(--accent2)}.card.tip::before{content:'\f0eb';font-family:'Font Awesome 6 Free';font-weight:900;color:var(--accent2);margin-right:8px}
+.card.warn{border-left:4px solid var(--warn)}.card.warn::before{content:'\f071';font-family:'Font Awesome 6 Free';font-weight:900;color:var(--warn);margin-right:8px}
+.card.danger{border-left:4px solid var(--err)}.card.danger::before{content:'\f06a';font-family:'Font Awesome 6 Free';font-weight:900;color:var(--err);margin-right:8px}
+/* Highlight for search */
+mark{background:var(--warn);color:#000;border-radius:2px;padding:0 2px}
+/* Scrollbar */
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--text2)}
+/* Responsive */
+@media(max-width:900px){.sidebar{transform:translateX(-100%)}.sidebar.open{transform:translateX(0)}.main{margin-left:0}.menu-btn{display:block}.content{padding:20px}}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99}
+.overlay.open{display:block}
+/* TOC progress */
+.progress-bar{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--accent2));z-index:200;transition:width .15s}
+/* Fade in */
+section{opacity:0;transform:translateY(12px);transition:opacity .4s,transform .4s}
+section.visible{opacity:1;transform:none}
+</style>
+</head>
+<body>
+<div class="progress-bar" id="progress" style="width:0%"></div>
+
+<!-- Overlay for mobile sidebar -->
+<div class="overlay" id="overlay" onclick="toggleSidebar()"></div>
+
+<!-- Sidebar -->
+<nav class="sidebar" id="sidebar">
+<div class="sidebar-header">
+<i class="fa-solid fa-tower-broadcast"></i>
+<h2>OpenVibe.Live</h2>
+</div>
+
+<div class="nav-group">
+<div class="nav-group-title">Setup Guide</div>
+<a class="nav-link" href="#overview"><i class="fa-solid fa-house"></i>Overview</a>
+<a class="nav-link" href="#ports"><i class="fa-solid fa-plug"></i>Ports & Services</a>
+<a class="nav-link" href="#ovh-instance"><i class="fa-solid fa-server"></i>OVH Instance</a>
+<a class="nav-link" href="#ssh-keys"><i class="fa-solid fa-key"></i>SSH Keys</a>
+<a class="nav-link" href="#import-key"><i class="fa-solid fa-upload"></i>Import Key to OVH</a>
+<a class="nav-link" href="#connect"><i class="fa-solid fa-terminal"></i>First Connection</a>
+<a class="nav-link" href="#hardening"><i class="fa-solid fa-shield-halved"></i>System Hardening</a>
+<a class="nav-link" href="#nodejs"><i class="fa-brands fa-node-js"></i>Node.js via nvm</a>
+<a class="nav-link" href="#clone"><i class="fa-brands fa-github"></i>Clone & Install</a>
+<a class="nav-link" href="#env"><i class="fa-solid fa-gear"></i>Configure .env</a>
+<a class="nav-link" href="#dirs"><i class="fa-solid fa-folder-tree"></i>Runtime Dirs</a>
+<a class="nav-link" href="#bootstrap"><i class="fa-solid fa-rocket"></i>Bootstrap App</a>
+<a class="nav-link" href="#cloudflare-dns"><i class="fa-solid fa-cloud"></i>Cloudflare DNS</a>
+<a class="nav-link" href="#letsencrypt"><i class="fa-solid fa-lock"></i>Let's Encrypt</a>
+<a class="nav-link" href="#cf-strict"><i class="fa-solid fa-shield"></i>Full (strict) SSL</a>
+<a class="nav-link" href="#real-ip"><i class="fa-solid fa-eye"></i>Restore Visitor IP</a>
+<a class="nav-link" href="#nginx-final"><i class="fa-solid fa-server"></i>Final Nginx Config</a>
+<a class="nav-link" href="#firewall"><i class="fa-solid fa-fire"></i>Firewall (UFW)</a>
+<a class="nav-link" href="#ovh-secgroup"><i class="fa-solid fa-network-wired"></i>OVH Security Groups</a>
+<a class="nav-link" href="#systemd"><i class="fa-solid fa-play"></i>systemd Service</a>
+<a class="nav-link" href="#close-reg"><i class="fa-solid fa-user-lock"></i>Close Registration</a>
+<a class="nav-link" href="#fail2ban"><i class="fa-solid fa-ban"></i>fail2ban</a>
+<a class="nav-link" href="#protocols"><i class="fa-solid fa-broadcast-tower"></i>Protocol Ports</a>
+<a class="nav-link" href="#checks"><i class="fa-solid fa-clipboard-check"></i>Operational Checks</a>
+<a class="nav-link" href="#summary-steps"><i class="fa-solid fa-list-ol"></i>Quick Summary</a>
+<a class="nav-link" href="#security"><i class="fa-solid fa-lock"></i>Security Reminders</a>
+</div>
+
+<div class="nav-group">
+<div class="nav-group-title">OVH Plan Guide</div>
+<a class="nav-link" href="#ovh-exec"><i class="fa-solid fa-star"></i>Executive Summary</a>
+<a class="nav-link" href="#ovh-limits"><i class="fa-solid fa-gauge"></i>Bottlenecks</a>
+<a class="nav-link" href="#ovh-bandwidth"><i class="fa-solid fa-wifi"></i>Bandwidth Math</a>
+<a class="nav-link" href="#ovh-storage"><i class="fa-solid fa-hard-drive"></i>Storage Math</a>
+<a class="nav-link" href="#ovh-families"><i class="fa-solid fa-layer-group"></i>Plan Families</a>
+<a class="nav-link" href="#ovh-methods"><i class="fa-solid fa-video"></i>By Streaming Method</a>
+<a class="nav-link" href="#ovh-credit"><i class="fa-solid fa-dollar-sign"></i>$200 Credit Analysis</a>
+<a class="nav-link" href="#ovh-scenarios"><i class="fa-solid fa-diagram-project"></i>Scenarios</a>
+<a class="nav-link" href="#ovh-final"><i class="fa-solid fa-bullseye"></i>Final Recommendation</a>
+</div>
+</nav>
+
+<!-- Main -->
+<div class="main" id="main">
+<div class="topbar">
+<button class="menu-btn" onclick="toggleSidebar()" aria-label="Menu"><i class="fa-solid fa-bars"></i></button>
+<div class="search-box">
+<i class="fa-solid fa-magnifying-glass"></i>
+<input type="text" id="searchInput" placeholder="Search guide... (Ctrl+K)" autocomplete="off">
+<span class="search-count" id="searchCount"></span>
+</div>
+<div class="topbar-right">
+<button class="theme-btn" onclick="toggleTheme()" id="themeBtn" aria-label="Toggle theme"><i class="fa-solid fa-moon"></i></button>
+</div>
+</div>
+
+<div class="content" id="content">
+<div class="hero">
+<h1><i class="fa-solid fa-tower-broadcast"></i> OpenVibe.Live Setup Guide</h1>
+<p>Complete deployment guide: OVH Public Cloud + Ubuntu 25.04 + Cloudflare + Let's Encrypt + Nginx — plus OVH plan sizing analysis</p>
+<div class="hero-tags">
+<span class="hero-tag"><i class="fa-solid fa-server"></i> OVH</span>
+<span class="hero-tag"><i class="fa-brands fa-ubuntu"></i> Ubuntu 25.04</span>
+<span class="hero-tag"><i class="fa-solid fa-cloud"></i> Cloudflare</span>
+<span class="hero-tag"><i class="fa-solid fa-lock"></i> Let's Encrypt</span>
+<span class="hero-tag"><i class="fa-solid fa-server"></i> Nginx</span>
+<span class="hero-tag"><i class="fa-brands fa-node-js"></i> Node 20</span>
+</div>
+</div>
+
+<!-- S1: Overview -->
+<section id="overview">
+<h2><i class="fa-solid fa-house"></i> 1. Recommended Production Model</h2>
+<p>For a small or medium public deployment, the safest baseline is:</p>
+<ul>
+<li>OVH Public Cloud instance in the nearest region to your users</li>
+<li>Ubuntu 25.04</li>
+<li>Cloudflare proxy for the main website</li>
+<li>Nginx on the origin server</li>
+<li>Let's Encrypt certificate on the origin</li>
+<li>Cloudflare SSL/TLS mode set to <strong>Full (strict)</strong></li>
+<li>Node 20 LTS via <strong>nvm</strong> (Node Version Manager)</li>
+<li><code>systemd</code> for process supervision</li>
+<li><code>ufw</code> on the box</li>
+<li>Only open the extra streaming ports you actively use</li>
+</ul>
+<div class="card tip">For most operators, expose only <strong>80</strong> and <strong>443</strong> first. Add RTMP, JSMPEG, or WebRTC ports later only if you really need them.</div>
+</section>
+
+<!-- S2: Ports -->
+<section id="ports">
+<h2><i class="fa-solid fa-plug"></i> 2. What OpenVibe.Live Exposes</h2>
+<p>The current server in <code>server/index.js</code> provides:</p>
+<ul>
+<li>HTTP on <code>PORT</code>, default <code>3000</code></li>
+<li>WebSocket upgrades on <code>/ws/chat</code>, <code>/ws/broadcast</code>, <code>/ws/control</code>, <code>/ws/call</code>, and <code>/ws/game</code></li>
+<li>Optional RTMP ingest</li>
+<li>Optional JSMPEG relay</li>
+<li>Optional WebRTC / <code>mediasoup</code></li>
+<li>Persistent data under <code>data/</code></li>
+</ul>
+<h3>Typical ports</h3>
+<table>
+<thead><tr><th>Port</th><th>Protocol</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td>3000</td><td>TCP</td><td>Internal Node app (behind Nginx)</td></tr>
+<tr><td>80</td><td>TCP</td><td>HTTP redirect &amp; Let's Encrypt validation</td></tr>
+<tr><td>443</td><td>TCP</td><td>HTTPS to Nginx</td></tr>
+<tr><td>1935</td><td>TCP</td><td>RTMP ingest</td></tr>
+<tr><td>9710</td><td>TCP</td><td>JSMPEG video relay</td></tr>
+<tr><td>9711</td><td>TCP</td><td>JSMPEG audio relay</td></tr>
+<tr><td>4443</td><td>TCP/UDP</td><td>WebRTC entry point</td></tr>
+<tr><td>10000-10100</td><td>UDP</td><td>mediasoup RTP range</td></tr>
+<tr><td>9935</td><td>TCP</td><td>HTTP-FLV playback (if enabled)</td></tr>
+</tbody>
+</table>
+<div class="card warn">Do not expose all of them by default. Only open ports for protocols you actively use.</div>
+</section>
+
+<!-- S3: OVH Instance -->
+<section id="ovh-instance">
+<h2><i class="fa-solid fa-server"></i> 3. OVH Instance Creation</h2>
+<p>From the OVH "Create an instance" flow:</p>
+<ul>
+<li><strong>Template:</strong> your chosen instance flavor, e.g. <code>B3-16</code></li>
+<li><strong>Region:</strong> nearest to your users, e.g. Seattle / <code>US-WEST-LZ-SEA-A</code></li>
+<li><strong>Image:</strong> <code>Ubuntu 25.04</code></li>
+<li><strong>SSH key:</strong> required</li>
+</ul>
+<div class="card danger">OVH only accepts <strong>RSA</strong> and <strong>ECDSA</strong> SSH keys. <strong>ED25519 keys are not accepted</strong> in this flow.</div>
+<p>So for this deployment, generate either:</p>
+<ul>
+<li><strong>ECDSA P-384</strong> — recommended if OVH accepts it in your project flow</li>
+<li><strong>RSA 4096</strong> — safest fallback for maximum compatibility</li>
+</ul>
+</section>
+
+<!-- S4: SSH Keys -->
+<section id="ssh-keys">
+<h2><i class="fa-solid fa-key"></i> 4. Generate an SSH Key for OVH</h2>
+<p>Run these commands on your <strong>local machine</strong>, not on the server.</p>
+
+<h3>Option A: ECDSA P-384 key</h3>
+<pre><code class="language-bash">mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+ssh-keygen -t ecdsa -b 384 -f ~/.ssh/ovh_openvibelive_ecdsa -C "ovh-openvibelive"</code></pre>
+
+<h3>Option B: RSA 4096 key</h3>
+<pre><code class="language-bash">mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+ssh-keygen -t rsa -b 4096 -o -a 100 -f ~/.ssh/ovh_openvibelive_rsa -C "ovh-openvibelive"</code></pre>
+
+<h3>Lock down the private key</h3>
+<pre><code class="language-bash"># ECDSA
+chmod 600 ~/.ssh/ovh_openvibelive_ecdsa
+chmod 644 ~/.ssh/ovh_openvibelive_ecdsa.pub
+
+# RSA
+chmod 600 ~/.ssh/ovh_openvibelive_rsa
+chmod 644 ~/.ssh/ovh_openvibelive_rsa.pub</code></pre>
+
+<h3>Print the public key to paste into OVH</h3>
+<pre><code class="language-bash"># ECDSA
+cat ~/.ssh/ovh_openvibelive_ecdsa.pub
+
+# RSA
+cat ~/.ssh/ovh_openvibelive_rsa.pub</code></pre>
+<p>Copy the entire single-line public key into the OVH SSH key field.</p>
+
+<h3>Test the key fingerprint locally</h3>
+<pre><code class="language-bash"># ECDSA
+ssh-keygen -lf ~/.ssh/ovh_openvibelive_ecdsa.pub
+
+# RSA
+ssh-keygen -lf ~/.ssh/ovh_openvibelive_rsa.pub</code></pre>
+</section>
+
+<!-- S5: Import Key -->
+<section id="import-key">
+<h2><i class="fa-solid fa-upload"></i> 5. Import the SSH Key into OVH</h2>
+<ol>
+<li>Go to your Public Cloud project</li>
+<li>Open the SSH keys area, or paste the key directly during instance creation</li>
+<li>Give the key a clear name, e.g. <code>openvibelive-seattle-prod</code></li>
+<li>Paste the public key line from the <code>.pub</code> file</li>
+<li>Create the instance with that key attached</li>
+</ol>
+<div class="card tip">OVH lets you store SSH keys in the control panel and reuse them across regions.</div>
+</section>
+
+<!-- S6: Connect -->
+<section id="connect">
+<h2><i class="fa-solid fa-terminal"></i> 6. Connect to the New Instance</h2>
+<p>After the instance is created and shows as ready, connect over SSH. Most OVH Ubuntu images use the <code>ubuntu</code> user.</p>
+
+<h3>ECDSA example</h3>
+<pre><code class="language-bash">ssh -i ~/.ssh/ovh_openvibelive_ecdsa ubuntu@YOUR_SERVER_IP</code></pre>
+
+<h3>RSA example</h3>
+<pre><code class="language-bash">ssh -i ~/.ssh/ovh_openvibelive_rsa ubuntu@YOUR_SERVER_IP</code></pre>
+
+<h3>Optional: SSH config alias</h3>
+<pre><code class="language-properties">Host openvibe.tools
+    HostName YOUR_SERVER_IP
+    User ubuntu
+    IdentityFile ~/.ssh/ovh_openvibelive_ecdsa
+    IdentitiesOnly yes</code></pre>
+<p>Then connect with:</p>
+<pre><code class="language-bash">ssh openvibe.tools</code></pre>
+</section>
+
+<!-- S7: Hardening -->
+<section id="hardening">
+<h2><i class="fa-solid fa-shield-halved"></i> 7. First-Login Hardening</h2>
+<p>Run these commands on the server.</p>
+
+<h3>Update the box</h3>
+<pre><code class="language-bash">sudo apt update
+sudo apt full-upgrade -y
+sudo apt autoremove -y</code></pre>
+
+<h3>Install baseline packages</h3>
+<pre><code class="language-bash">sudo apt install -y \
+  git curl wget unzip ca-certificates gnupg \
+  nginx ffmpeg ufw fail2ban sqlite3 \
+  build-essential python3 python3-pip jq</code></pre>
+
+<h3>Optional: create a dedicated app user</h3>
+<pre><code class="language-bash">sudo adduser --disabled-password --gecos "" openvibelive
+sudo usermod -aG sudo openvibelive</code></pre>
+<p>Then add your public key for that user:</p>
+<pre><code class="language-bash">sudo mkdir -p /home/openvibelive/.ssh
+sudo nano /home/openvibelive/.ssh/authorized_keys
+sudo chown -R openvibelive:openvibelive /home/openvibelive/.ssh
+sudo chmod 700 /home/openvibelive/.ssh
+sudo chmod 600 /home/openvibelive/.ssh/authorized_keys</code></pre>
+
+<h3>Harden SSH</h3>
+<pre><code class="language-bash">sudo nano /etc/ssh/sshd_config</code></pre>
+<p>Recommended settings:</p>
+<pre><code class="language-properties">PermitRootLogin no
+PasswordAuthentication no
+PubkeyAuthentication yes
+ChallengeResponseAuthentication no
+UsePAM yes
+X11Forwarding no</code></pre>
+<p>Reload SSH:</p>
+<pre><code class="language-bash">sudo systemctl reload ssh</code></pre>
+<div class="card warn">Do not disable password auth until you have confirmed key login works.</div>
+</section>
+
+<!-- S8: Node.js via nvm -->
+<section id="nodejs">
+<h2><i class="fa-brands fa-node-js"></i> 8. Install Node.js via nvm</h2>
+<p>We use <a href="https://github.com/nvm-sh/nvm" target="_blank">nvm</a> (Node Version Manager) instead of system packages. This avoids the recurring <code>/usr/bin/env: 'node': No such file or directory</code> problem where NodeSource installs <code>node</code> somewhere systemd can't find it.</p>
+
+<h3>Install nvm</h3>
+<pre><code class="language-bash">curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash</code></pre>
+<p>Close and reopen your terminal (or source your profile) so nvm is available:</p>
+<pre><code class="language-bash">source ~/.bashrc
+command -v nvm          # should print "nvm"</code></pre>
+
+<h3>Install Node 20 LTS</h3>
+<pre><code class="language-bash">nvm install 20
+nvm alias default 20    # make it the default for new shells
+node -v
+npm -v</code></pre>
+
+<h3>Verify</h3>
+<pre><code class="language-bash">which node   # e.g. /home/ubuntu/.nvm/versions/node/v20.x.x/bin/node
+which npm    # same nvm-managed path</code></pre>
+<div class="card warn"><i class="fa-solid fa-triangle-exclamation"></i> nvm installs node per-user under <code>~/.nvm/</code>. It is a shell function, not a binary — systemd can't see it directly. The systemd section below uses a wrapper script that sources nvm before launching the app.</div>
+</section>
+
+<!-- S9: Clone -->
+<section id="clone">
+<h2><i class="fa-brands fa-github"></i> 9. Clone OpenVibe.Live</h2>
+<pre><code class="language-bash">cd /opt
+sudo git clone https://github.com/OpenVibe.Live/OpenVibe.Live.com.git openvibelive
+sudo chown -R $USER:$USER /opt/openvibelive
+cd /opt/openvibelive
+npm install</code></pre>
+<p>If native modules later need rebuilding:</p>
+<pre><code class="language-bash">npm rebuild</code></pre>
+<div class="card tip">If <code>mediasoup</code> fails to compile, browser-native WebRTC broadcasting won't be ready until that's fixed.</div>
+</section>
+
+<!-- S10: .env -->
+<section id="env">
+<h2><i class="fa-solid fa-gear"></i> 10. Configure .env</h2>
+<pre><code class="language-bash">cd /opt/openvibelive
+cp .env.example .env
+nano .env</code></pre>
+
+<h3>Recommended starting .env</h3>
+<pre><code class="language-properties">ADMIN_USERNAME=admin
+ADMIN_PASSWORD=change-this-now
+
+NODE_ENV=production
+HOST=0.0.0.0
+PORT=3000
+BASE_URL=https://your-domain.example
+JWT_SECRET=replace-with-a-long-random-secret
+
+DB_PATH=./data/live.db
+
+RTMP_PORT=1935
+JSMPEG_VIDEO_PORT=9710
+JSMPEG_AUDIO_PORT=9711
+WEBRTC_PORT=4443
+MEDIASOUP_LISTEN_IP=0.0.0.0
+MEDIASOUP_ANNOUNCED_IP=YOUR_PUBLIC_IP
+MEDIASOUP_MIN_PORT=10000
+MEDIASOUP_MAX_PORT=10100
+
+VOD_PATH=./data/vods
+CLIPS_PATH=./data/clips
+THUMBNAILS_PATH=./data/thumbnails
+EMOTES_PATH=./data/emotes
+
+MAX_VOD_SIZE_MB=128
+MAX_EMOTE_SIZE_KB=128
+MAX_EMOTES_PER_USER=10
+
+MIN_CASHOUT=5
+ESCROW_HOLD_DAYS=14</code></pre>
+
+<h3>Generate a strong JWT secret</h3>
+<pre><code class="language-bash">openssl rand -hex 32</code></pre>
+
+<div class="card warn">
+<strong>Notes:</strong>
+<ul style="margin-top:8px">
+<li>Set <code>BASE_URL</code> to your final public HTTPS hostname</li>
+<li>Set <code>MEDIASOUP_ANNOUNCED_IP</code> to the real public OVH IP if you use WebRTC</li>
+<li>Keep upload and media limits low on small servers</li>
+<li>Do not expose unused protocols</li>
+</ul>
+</div>
+</section>
+
+<!-- S11: Dirs -->
+<section id="dirs">
+<h2><i class="fa-solid fa-folder-tree"></i> 11. Create Runtime Directories</h2>
+<p>The app creates them on boot, but you can pre-create them:</p>
+<pre><code class="language-bash">cd /opt/openvibelive
+mkdir -p data/vods data/clips data/media data/thumbnails data/emotes data/avatars</code></pre>
+</section>
+
+<!-- S12: Bootstrap -->
+<section id="bootstrap">
+<h2><i class="fa-solid fa-rocket"></i> 12. Bootstrap the App</h2>
+<p>Initialize the database if needed:</p>
+<pre><code class="language-bash">cd /opt/openvibelive
+npm run init-db</code></pre>
+<p>Or just start it once manually:</p>
+<pre><code class="language-bash">npm start</code></pre>
+<p>Then stop it and move on to <code>systemd</code> setup.</p>
+</section>
+
+<!-- S13: Cloudflare DNS -->
+<section id="cloudflare-dns">
+<h2><i class="fa-solid fa-cloud"></i> 13. Cloudflare DNS Setup</h2>
+
+<h3>Main website</h3>
+<p>Create these records in Cloudflare DNS:</p>
+<ul>
+<li><code>A</code> record for <code>@</code> → <code>YOUR_OVH_PUBLIC_IP</code></li>
+<li><code>CNAME</code> for <code>www</code> → your apex hostname</li>
+</ul>
+<p>Set both to <strong>Proxied</strong> (orange cloud) after the origin is working.</p>
+
+<h3>Optional: direct hostnames for non-HTTP protocols</h3>
+<p>Only create these if you really need them:</p>
+<table>
+<thead><tr><th>Record</th><th>Type</th><th>Value</th><th>Proxy</th></tr></thead>
+<tbody>
+<tr><td><code>rtmp</code></td><td>A</td><td><code>YOUR_OVH_PUBLIC_IP</code></td><td>DNS only</td></tr>
+<tr><td><code>webrtc</code></td><td>A</td><td><code>YOUR_OVH_PUBLIC_IP</code></td><td>DNS only</td></tr>
+<tr><td><code>jsmpeg</code></td><td>A</td><td><code>YOUR_OVH_PUBLIC_IP</code></td><td>DNS only</td></tr>
+</tbody>
+</table>
+<div class="card tip">These are usually <strong>DNS only</strong> (grey cloud) because they are not standard proxied website traffic.</div>
+</section>
+
+<!-- S14: Let's Encrypt -->
+<section id="letsencrypt">
+<h2><i class="fa-solid fa-lock"></i> 14. Let's Encrypt on Ubuntu 25.04</h2>
+<p>For end-to-end encryption with Cloudflare, the origin must present a valid certificate. Cloudflare's <strong>Full (strict)</strong> mode requires the origin cert to be unexpired, valid for the hostname, and issued by a publicly trusted CA.</p>
+
+<h3>Install Certbot</h3>
+<pre><code class="language-bash">sudo apt install -y snapd
+sudo snap install core
+sudo snap refresh core
+sudo snap install --classic certbot
+sudo ln -sf /snap/bin/certbot /usr/local/bin/certbot
+certbot --version</code></pre>
+
+<h3>Temporary Nginx HTTP site</h3>
+<p>Before requesting the cert, create a plain HTTP Nginx site so your domain answers on port 80.</p>
+<pre><code class="language-bash">sudo nano /etc/nginx/sites-available/openvibelive</code></pre>
+<pre><code class="language-nginx">server {
+    listen 80;
+    listen [::]:80;
+    server_name your-domain.example www.your-domain.example;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /ws/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600;
+    }
+}</code></pre>
+<p>Enable it:</p>
+<pre><code class="language-bash">sudo ln -sf /etc/nginx/sites-available/openvibelive /etc/nginx/sites-enabled/openvibelive
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t
+sudo systemctl reload nginx</code></pre>
+
+<h3>Request the certificate</h3>
+<div class="card tip">If Cloudflare proxying causes validation issues, temporarily set DNS records to <strong>DNS only</strong> until issuance succeeds, then proxy them again.</div>
+<pre><code class="language-bash">sudo certbot --nginx -d your-domain.example -d www.your-domain.example</code></pre>
+
+<h3>Verify auto-renewal</h3>
+<pre><code class="language-bash">sudo systemctl list-timers | grep certbot || true
+sudo certbot renew --dry-run</code></pre>
+</section>
+
+<!-- S15: Full (strict) -->
+<section id="cf-strict">
+<h2><i class="fa-solid fa-shield"></i> 15. Cloudflare End-to-End Encryption</h2>
+<p>Once the origin has a valid Let's Encrypt cert:</p>
+<ol>
+<li>Open the Cloudflare dashboard</li>
+<li>Go to <strong>SSL/TLS</strong></li>
+<li>Set encryption mode to <strong>Full (strict)</strong></li>
+</ol>
+<p>This gives you encrypted browser-to-Cloudflare <em>and</em> encrypted Cloudflare-to-origin traffic, with origin certificate validation.</p>
+
+<h3>Recommended Cloudflare settings</h3>
+<ul>
+<li><strong>Always Use HTTPS</strong> — enabled</li>
+<li><strong>Automatic HTTPS Rewrites</strong> — enabled</li>
+<li>WAF / bot protections (if available on your plan)</li>
+<li>Rate limiting for sensitive paths (if available)</li>
+</ul>
+
+<div class="card tip">For extra origin protection, add Cloudflare IP allowlists at the firewall or Nginx layer, or configure Authenticated Origin Pulls.</div>
+</section>
+
+<!-- S16: Restore Visitor IP -->
+<section id="real-ip">
+<h2><i class="fa-solid fa-eye"></i> 16. Restore the Real Visitor IP</h2>
+<p>By default, your origin sees Cloudflare edge IPs. Cloudflare provides the original visitor IP in the <code>CF-Connecting-IP</code> header.</p>
+
+<h3>Nginx real IP config</h3>
+<pre><code class="language-bash">sudo nano /etc/nginx/conf.d/cloudflare-realip.conf</code></pre>
+<pre><code class="language-nginx">real_ip_header CF-Connecting-IP;
+
+set_real_ip_from 173.245.48.0/20;
+set_real_ip_from 103.21.244.0/22;
+set_real_ip_from 103.22.200.0/22;
+set_real_ip_from 103.31.4.0/22;
+set_real_ip_from 141.101.64.0/18;
+set_real_ip_from 108.162.192.0/18;
+set_real_ip_from 190.93.240.0/20;
+set_real_ip_from 188.114.96.0/20;
+set_real_ip_from 197.234.240.0/22;
+set_real_ip_from 198.41.128.0/17;
+set_real_ip_from 162.158.0.0/15;
+set_real_ip_from 104.16.0.0/13;
+set_real_ip_from 104.24.0.0/14;
+set_real_ip_from 172.64.0.0/13;
+set_real_ip_from 131.0.72.0/22;
+set_real_ip_from 2400:cb00::/32;
+set_real_ip_from 2606:4700::/32;
+set_real_ip_from 2803:f800::/32;
+set_real_ip_from 2405:b500::/32;
+set_real_ip_from 2405:8100::/32;
+set_real_ip_from 2a06:98c0::/29;
+set_real_ip_from 2c0f:f248::/32;
+real_ip_recursive on;</code></pre>
+<pre><code class="language-bash">sudo nginx -t
+sudo systemctl reload nginx</code></pre>
+
+<h3>Optional: custom log format with Cloudflare info</h3>
+<pre><code class="language-bash">sudo nano /etc/nginx/conf.d/log_format_cloudflare.conf</code></pre>
+<pre><code class="language-nginx">log_format cloudflare_combined '$remote_addr - $remote_user [$time_local] '
+                                '"$request" $status $body_bytes_sent '
+                                '"$http_referer" "$http_user_agent" '
+                                'cf_ray=$http_cf_ray cf_ip=$http_cf_connecting_ip';</code></pre>
+<p>Apply it in your site config with:</p>
+<pre><code class="language-nginx">access_log /var/log/nginx/openvibelive.access.log cloudflare_combined;</code></pre>
+
+<div class="card tip"><strong>Why this matters:</strong> OpenVibe.Live uses Express with <code>trust proxy</code> enabled. Correct Nginx real-IP handling ensures logs, moderation, rate limiting, and security signals use the real visitor IP instead of a Cloudflare edge IP.</div>
+</section>
+
+<!-- S17: Final Nginx -->
+<section id="nginx-final">
+<h2><i class="fa-solid fa-server"></i> 17. Final Nginx HTTPS Config</h2>
+<p>After Certbot runs, tighten the site config:</p>
+<pre><code class="language-nginx">server {
+    listen 80;
+    listen [::]:80;
+    server_name your-domain.example www.your-domain.example;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name your-domain.example www.your-domain.example;
+
+    ssl_certificate /etc/letsencrypt/live/your-domain.example/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.example/privkey.pem;
+
+    access_log /var/log/nginx/openvibelive.access.log cloudflare_combined;
+    error_log /var/log/nginx/openvibelive.error.log;
+
+    client_max_body_size 128M;
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /ws/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600;
+    }
+}</code></pre>
+<pre><code class="language-bash">sudo nginx -t
+sudo systemctl reload nginx</code></pre>
+</section>
+
+<!-- S18: Firewall -->
+<section id="firewall">
+<h2><i class="fa-solid fa-fire"></i> 18. Firewall (UFW)</h2>
+
+<h3>Minimal website-only deployment</h3>
+<pre><code class="language-bash">sudo ufw allow OpenSSH
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw enable
+sudo ufw status verbose</code></pre>
+
+<h3>If you need RTMP ingest</h3>
+<pre><code class="language-bash">sudo ufw allow 1935/tcp</code></pre>
+
+<h3>If you need JSMPEG</h3>
+<pre><code class="language-bash">sudo ufw allow 9710/tcp
+sudo ufw allow 9711/tcp</code></pre>
+
+<h3>If you need WebRTC / mediasoup</h3>
+<pre><code class="language-bash">sudo ufw allow 4443/tcp
+sudo ufw allow 4443/udp
+sudo ufw allow 10000:10100/udp</code></pre>
+<div class="card warn">Only open what you actively use.</div>
+</section>
+
+<!-- S19: OVH Security Groups -->
+<section id="ovh-secgroup">
+<h2><i class="fa-solid fa-network-wired"></i> 19. OVH Security Groups</h2>
+<p>OVH's OpenStack-based Public Cloud default security groups can allow broad traffic by default. <strong>Do not rely on OVH defaults alone.</strong></p>
+<p>Use at least one of these:</p>
+<ul>
+<li><code>ufw</code> on the instance</li>
+<li>OVH/OpenStack security groups (if you manage networking that way)</li>
+<li>Nginx allowlists for sensitive origin paths</li>
+</ul>
+<div class="card tip">If you build custom OVH security groups, follow the same principle: start from least privilege and only open the exact ports you need.</div>
+</section>
+
+<!-- ═══════════════ 20. systemd service ═══════════════ -->
+<section id="systemd" class="fade-in">
+<h2><i class="fa-solid fa-gear"></i> 20. systemd service</h2>
+<p>systemd doesn't run interactive shells, so it can't see the nvm shell function or the node/npm binaries it manages. We use a tiny wrapper script that sources nvm before launching the app.</p>
+
+<h3>Create the wrapper script</h3>
+<pre><code class="language-bash">sudo nano /opt/openvibelive/start.sh</code></pre>
+<p>Paste:</p>
+<pre><code class="language-bash">#!/usr/bin/env bash
+set -euo pipefail
+
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] &amp;&amp; \. "$NVM_DIR/nvm.sh"
+
+cd /opt/openvibelive
+exec npm start</code></pre>
+<p>Make it executable:</p>
+<pre><code class="language-bash">sudo chmod +x /opt/openvibelive/start.sh</code></pre>
+
+<h3>Create the service unit</h3>
+<pre><code class="language-bash">sudo nano /etc/systemd/system/openvibelive.service</code></pre>
+<p>Paste the following unit file:</p>
+<pre><code class="language-ini">[Unit]
+Description=OpenVibe.Live
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/openvibelive
+Environment=NODE_ENV=production
+ExecStart=/opt/openvibelive/start.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+<div class="card warn"><i class="fa-solid fa-triangle-exclamation"></i> The <code>User=</code> must match whoever installed nvm. If you installed nvm as <code>ubuntu</code>, use <code>User=ubuntu</code>. The script reads <code>$HOME/.nvm</code> from that user's home directory.</div>
+<div class="card tip">If you created a dedicated <code>openvibelive</code> user, install nvm under that user, change <code>User=ubuntu</code> to <code>User=openvibelive</code>, and ensure ownership of <code>/opt/openvibelive</code> matches.</div>
+<p>Enable and start:</p>
+<pre><code class="language-bash">sudo systemctl daemon-reload
+sudo systemctl enable openvibelive
+sudo systemctl start openvibelive
+sudo systemctl status openvibelive</code></pre>
+<p>View logs:</p>
+<pre><code class="language-bash">journalctl -u openvibelive -f</code></pre>
+</section>
+
+<!-- ═══════════════ 21. Close registration ═══════════════ -->
+<section id="close-reg" class="fade-in">
+<h2><i class="fa-solid fa-user-lock"></i> 21. Close registration after bootstrap</h2>
+<p>After you create your initial admin and trusted test accounts, close public registration. This is one of the cheapest and strongest anti-abuse controls in the project.</p>
+<pre><code class="language-bash">cd /opt/openvibelive
+sqlite3 data/live.db "UPDATE site_settings SET value='false' WHERE key='registration_open';"
+sqlite3 data/live.db "SELECT key, value FROM site_settings WHERE key='registration_open';"</code></pre>
+</section>
+
+<!-- ═══════════════ 22. fail2ban ═══════════════ -->
+<section id="fail2ban" class="fade-in">
+<h2><i class="fa-solid fa-ban"></i> 22. Optional fail2ban baseline</h2>
+<p>Install:</p>
+<pre><code class="language-bash">sudo apt install -y fail2ban</code></pre>
+<p>Create a basic jail file:</p>
+<pre><code class="language-bash">sudo nano /etc/fail2ban/jail.local</code></pre>
+<p>Example:</p>
+<pre><code class="language-ini">[sshd]
+enabled = true
+maxretry = 5
+findtime = 10m
+bantime = 1h</code></pre>
+<p>Then:</p>
+<pre><code class="language-bash">sudo systemctl enable fail2ban
+sudo systemctl restart fail2ban
+sudo fail2ban-client status</code></pre>
+<div class="card warning"><i class="fa-solid fa-triangle-exclamation"></i> If most web traffic is behind Cloudflare, make sure your Nginx real-IP config is correct before relying on log-based web jails.</div>
+</section>
+
+<!-- ═══════════════ 23. Protocol exposure ═══════════════ -->
+<section id="protocols" class="fade-in">
+<h2><i class="fa-solid fa-plug"></i> 23. Protocol-specific exposure guidance</h2>
+<h3>RTMP</h3>
+<p>Expose <code>1935/tcp</code> only if you need OBS or FFmpeg ingest.</p>
+<h3>JSMPEG</h3>
+<p>Expose <code>9710/tcp</code> and <code>9711/tcp</code> only if you use the relay.</p>
+<h3>WebRTC</h3>
+<p>Expose only the exact WebRTC TCP/UDP and RTP ports you need. Make sure:</p>
+<ul>
+<li><code>MEDIASOUP_ANNOUNCED_IP</code> matches your public OVH IP</li>
+<li>Your firewall allows the RTP range</li>
+<li>Your Cloudflare setup is <strong>not</strong> expected to proxy raw media ports</li>
+</ul>
+</section>
+
+<!-- ═══════════════ 24. Operational checks ═══════════════ -->
+<section id="checks" class="fade-in">
+<h2><i class="fa-solid fa-clipboard-check"></i> 24. Operational checks</h2>
+<h3>App health</h3>
+<p>Verify:</p>
+<ul>
+<li><code>http://127.0.0.1:3000/api/health</code> on the server</li>
+<li><code>https://your-domain.example/api/health</code> through Nginx and Cloudflare</li>
+</ul>
+<h3>TLS</h3>
+<ul>
+<li>Browser sees a valid certificate</li>
+<li>Cloudflare SSL/TLS mode is <strong>Full (strict)</strong></li>
+<li>No redirect loops</li>
+<li>No mixed-content warnings</li>
+</ul>
+<h3>Visitor IP restoration</h3>
+<p>Check Nginx logs and confirm the client IP is not just a Cloudflare edge IP.</p>
+<h3>Port audit</h3>
+<p>Check that only intended ports are reachable from the internet:</p>
+<pre><code class="language-bash">sudo ss -tulpn
+sudo ufw status verbose</code></pre>
+</section>
+
+<!-- ═══════════════ 25. Command summary ═══════════════ -->
+<section id="summary" class="fade-in">
+<h2><i class="fa-solid fa-list-ol"></i> 25. Full command summary</h2>
+<p>If you want the short version, the high-level order is:</p>
+<ol>
+<li>Generate an OVH-compatible SSH key locally</li>
+<li>Create the OVH Ubuntu 25.04 instance with that public key</li>
+<li>SSH into the new instance</li>
+<li>Update packages and install Nginx, FFmpeg, <code>ufw</code>, and <code>fail2ban</code></li>
+<li>Install nvm and Node 20 LTS</li>
+<li>Clone OpenVibe.Live into <code>/opt/openvibelive</code></li>
+<li>Configure <code>.env</code></li>
+<li>Start the app once and verify <code>/api/health</code></li>
+<li>Set Cloudflare DNS to the OVH IP</li>
+<li>Configure Nginx</li>
+<li>Issue a Let's Encrypt certificate with Certbot</li>
+<li>Enable Cloudflare <strong>Full (strict)</strong></li>
+<li>Add Cloudflare real-IP config in Nginx</li>
+<li>Enable <code>systemd</code> for OpenVibe.Live</li>
+<li>Close public registration after bootstrap</li>
+<li>Open only the extra media ports you actually need</li>
+</ol>
+</section>
+
+<!-- ═══════════════ 26. Security reminders ═══════════════ -->
+<section id="security" class="fade-in">
+<h2><i class="fa-solid fa-shield-halved"></i> 26. Security reminders</h2>
+<ul>
+<li>Never use ED25519 if the OVH flow in your account rejects it</li>
+<li>Keep your private SSH key only on trusted admin machines</li>
+<li>Disable password SSH once key auth is confirmed</li>
+<li>Keep <code>JWT_SECRET</code> long and random</li>
+<li>Keep the website behind Cloudflare</li>
+<li>Do not expose raw media ports unnecessarily</li>
+<li>Keep upload limits low on small servers</li>
+<li>Close registration when not actively onboarding users</li>
+<li>Monitor <code>data/</code> growth for VODs, clips, thumbnails, avatars, and emotes</li>
+</ul>
+</section>
+
+<!-- ═══════════════ 27. References ═══════════════ -->
+<section id="references" class="fade-in">
+<h2><i class="fa-solid fa-book"></i> 27. References</h2>
+<p>This guide was aligned with current public guidance from:</p>
+<ul>
+<li>OVH Public Cloud instance creation and SSH-key setup guidance</li>
+<li>Cloudflare documentation for <code>CF-Connecting-IP</code> and restoring original visitor IPs</li>
+<li>Cloudflare documentation for <strong>Full (strict)</strong> mode</li>
+<li>Current Certbot installation and Nginx integration guidance</li>
+</ul>
+</section>
+
+<!-- ═══════════════ 28. Setup summary ═══════════════ -->
+<section id="setup-summary" class="fade-in">
+<h2><i class="fa-solid fa-flag-checkered"></i> 28. Setup summary</h2>
+<p>For OVH + Ubuntu 25.04, the best OpenVibe.Live deployment pattern is:</p>
+<ul>
+<li>RSA or ECDSA SSH key uploaded to OVH</li>
+<li>Ubuntu 25.04 on OVH Public Cloud</li>
+<li>Node 20 LTS via nvm</li>
+<li>Nginx reverse proxy on the box</li>
+<li>Let's Encrypt certificate on the origin</li>
+<li>Cloudflare proxy with <strong>Full (strict)</strong></li>
+<li>Cloudflare real-IP restoration in Nginx</li>
+<li><code>systemd</code>, <code>ufw</code>, <code>fail2ban</code></li>
+<li>Only one streaming protocol exposed at a time unless you have a real need for more</li>
+</ul>
+<p>See also <a href="README.md">README.md</a> and <a href="deploy/">deploy/</a>.</p>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!--              OVH PLAN COMPARISON GUIDE                  -->
+<!-- ════════════════════════════════════════════════════════ -->
+
+<h1 id="ovh-guide" class="fade-in" style="margin-top:3rem;padding-top:2rem;border-top:2px solid var(--border);">
+<i class="fa-solid fa-server"></i> OVH Public Cloud Sizing Guide
+</h1>
+
+<!-- ═══════════════ OVH Exec Summary ═══════════════ -->
+<section id="ovh-exec" class="fade-in">
+<h2><i class="fa-solid fa-bullseye"></i> Executive summary</h2>
+
+<h3>Best overall pick — B3-32</h3>
+<ul>
+<li>32 GB RAM — enough for Node, SQLite, WebSockets, chat, thumbnails, clips, and moderate media workload</li>
+<li>8 vCores — sane floor for a mixed single-box deployment</li>
+<li>200 GB NVMe — much more realistic than 50–100 GB once VODs and clips start accumulating</li>
+<li>2 Gbit/s — leaves real headroom for 200 viewers at practical streaming bitrates</li>
+</ul>
+
+<h3>Best budget / staging pick</h3>
+<ul>
+<li><strong>B3-8</strong> — cheapest decent general-purpose box</li>
+<li><strong>C3-8</strong> — cheaper CPU-heavier test box (only 100 GB storage)</li>
+</ul>
+
+<h3>Best safer production pick — B3-64</h3>
+<ul>
+<li>16 vCores is much healthier for 200 viewers with WebRTC, call features, game traffic, clip creation</li>
+<li>4 Gbit/s helps if bitrate climbs or you add more streams / cameras / rooms later</li>
+</ul>
+
+<div class="card warning"><i class="fa-solid fa-triangle-exclamation"></i> The older <strong>B2</strong> and <strong>C2</strong> families mostly lose on price/performance against the new <strong>B3</strong> and <strong>C3</strong> families. <strong>C2</strong> is the least attractive family for this workload.</div>
+</section>
+
+<!-- ═══════════════ OVH Limits ═══════════════ -->
+<section id="ovh-limits" class="fade-in">
+<h2><i class="fa-solid fa-gauge-high"></i> What limits OpenVibe.Live on a single OVH instance</h2>
+<p>The bottleneck is not just RAM. The main constraints are:</p>
+<ol>
+<li><strong>Outbound bandwidth</strong> — the first hard wall</li>
+<li><strong>CPU</strong> — especially for WebRTC</li>
+<li><strong>Disk space</strong> — once VODs are enabled</li>
+<li><strong>Disk I/O</strong></li>
+<li><strong>Operational headroom</strong> for Node, FFmpeg, thumbnails, clips, chat, and WebSockets</li>
+</ol>
+
+<h3>Bandwidth is the first hard wall</h3>
+<p>For all three playback methods, the origin server pays outbound bandwidth per viewer:</p>
+<ul>
+<li><strong>JSMPEG</strong>: server relays the live stream to every viewer</li>
+<li><strong>RTMP / HTTP-FLV</strong>: server still pays outbound per viewer</li>
+<li><strong>WebRTC SFU</strong>: server forwards media to each viewer; outbound scales with audience</li>
+</ul>
+<div class="card tip">Cloudflare protects the website and proxied HTTP traffic, but <strong>raw media ports and direct real-time traffic are not magically offloaded</strong> just because the website uses Cloudflare.</div>
+
+<h3>CPU becomes more important for WebRTC</h3>
+<ul>
+<li><strong>JSMPEG</strong>: usually more bandwidth-bound than CPU-bound</li>
+<li><strong>RTMP ingest + direct playback</strong>: also heavily bandwidth-bound</li>
+<li><strong>WebRTC / mediasoup</strong>: usually more CPU-sensitive (SFU packet forwarding, transport handling, encryption overhead, more real-time state)</li>
+</ul>
+
+<h3>Storage dominates once VODs are enabled</h3>
+<p>The codebase stores locally: SQLite database, VODs, clips, thumbnails, emotes, avatars, and media assets. The OS and app don't need much space — <strong>recorded video does.</strong></p>
+</section>
+
+<!-- ═══════════════ OVH Bandwidth ═══════════════ -->
+<section id="ovh-bandwidth" class="fade-in">
+<h2><i class="fa-solid fa-wave-square"></i> Bandwidth math for 200 viewers</h2>
+<p>A useful first-order formula:</p>
+<div class="card" style="text-align:center;font-size:1.1rem;">required egress Mbps ≈ viewer count × average delivered Mbps per viewer</div>
+<p>For <strong>200 viewers</strong>:</p>
+<ul>
+<li>At <strong>1.5 Mbps</strong> per viewer: ~<strong>300 Mbps</strong> raw egress</li>
+<li>At <strong>2.5 Mbps</strong> per viewer: ~<strong>500 Mbps</strong> raw egress</li>
+<li>At <strong>4.0 Mbps</strong> per viewer: ~<strong>800 Mbps</strong> raw egress</li>
+</ul>
+<p>Real deployments need headroom for TLS/protocol overhead, chat/API/thumbnails, bitrate spikes, reconnections, and background jobs. Target around <strong>70% of the listed port speed</strong> as usable sustained capacity.</p>
+
+<h3>Safe viewer counts at 70% utilization</h3>
+<div style="overflow-x:auto;">
+<table>
+<thead><tr><th>NIC cap</th><th>Safe usable Mbps</th><th>~1.5 Mbps/viewer</th><th>~2.5 Mbps/viewer</th><th>~4.0 Mbps/viewer</th></tr></thead>
+<tbody>
+<tr><td>250 Mbit/s</td><td>175</td><td>116</td><td>70</td><td>43</td></tr>
+<tr><td>500 Mbit/s</td><td>350</td><td>233</td><td>140</td><td>87</td></tr>
+<tr><td>1,000 Mbit/s</td><td>700</td><td>466</td><td>280</td><td>175</td></tr>
+<tr><td>2,000 Mbit/s</td><td>1,400</td><td>933</td><td>560</td><td>350</td></tr>
+<tr><td>4,000 Mbit/s</td><td>2,800</td><td>1,866</td><td>1,120</td><td>700</td></tr>
+<tr><td>8,000 Mbit/s</td><td>5,600</td><td>3,733</td><td>2,240</td><td>1,400</td></tr>
+<tr><td>10,000 Mbit/s</td><td>7,000</td><td>4,666</td><td>2,800</td><td>1,750</td></tr>
+<tr><td>16,000 Mbit/s</td><td>11,200</td><td>7,466</td><td>4,480</td><td>2,800</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>What that means for 200 viewers</h3>
+<ul>
+<li><strong>250 Mbit/s plans</strong> — not enough except for very low bitrates</li>
+<li><strong>500 Mbit/s plans</strong> — can work for low-mid bitrate, but not comfortable</li>
+<li><strong>1 Gbit/s plans</strong> — viable if you keep average delivered bitrate moderate</li>
+<li><strong>2 Gbit/s plans</strong> — where the setup gets comfortable</li>
+<li><strong>4 Gbit/s plans</strong> — stop thinking about bandwidth, start thinking about CPU and storage</li>
+</ul>
+</section>
+
+<!-- ═══════════════ OVH Storage ═══════════════ -->
+<section id="ovh-storage" class="fade-in">
+<h2><i class="fa-solid fa-hard-drive"></i> Storage math for VODs and clips</h2>
+<p>Rule of thumb: <strong>1 Mbps ≈ 0.44 GB/hour</strong></p>
+<ul>
+<li><strong>1.5 Mbps</strong> ≈ 0.66 GB/hour</li>
+<li><strong>2.5 Mbps</strong> ≈ 1.10 GB/hour</li>
+<li><strong>4.0 Mbps</strong> ≈ 1.76 GB/hour</li>
+<li><strong>6.0 Mbps</strong> ≈ 2.64 GB/hour</li>
+</ul>
+
+<h3>Usable media space after OS/app reserve (~15–25 GB)</h3>
+<div style="overflow-x:auto;">
+<table>
+<thead><tr><th>Raw disk</th><th>Usable media space</th></tr></thead>
+<tbody>
+<tr><td>50 GB</td><td>25–35 GB</td></tr>
+<tr><td>100 GB</td><td>75–85 GB</td></tr>
+<tr><td>200 GB</td><td>175–185 GB</td></tr>
+<tr><td>400 GB</td><td>375–385 GB</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>Approximate retained recording hours (at 2.5 Mbps)</h3>
+<ul>
+<li>30 GB usable → ~27 hours</li>
+<li>80 GB usable → ~73 hours</li>
+<li>180 GB usable → ~164 hours</li>
+<li>380 GB usable → ~345 hours</li>
+</ul>
+
+<h3>At 4.0 Mbps</h3>
+<ul>
+<li>30 GB usable → ~17 hours</li>
+<li>80 GB usable → ~45 hours</li>
+<li>180 GB usable → ~102 hours</li>
+<li>380 GB usable → ~216 hours</li>
+</ul>
+
+<div class="card tip"><strong>Storage takeaway:</strong> 50 GB is test-only. 100 GB is okay for dev/alpha. <strong>200 GB</strong> is the first production-usable size. 400 GB is much better but still not archival. Long-term, push older VODs to object storage.</div>
+</section>
+
+<!-- ═══════════════ OVH Families ═══════════════ -->
+<section id="ovh-families" class="fade-in">
+<h2><i class="fa-solid fa-layer-group"></i> Family-by-family analysis</h2>
+
+<h3><i class="fa-solid fa-star"></i> B3 family — best overall fit</h3>
+<p>The new B3 family is the strongest match for OpenVibe.Live because it balances decent vCPU counts, generous RAM, NVMe storage, strong network steps, and good pricing.</p>
+<div style="overflow-x:auto;">
+<table>
+<thead><tr><th>Plan</th><th>RAM</th><th>vCPU</th><th>Disk</th><th>NIC</th><th>Price/hour</th></tr></thead>
+<tbody>
+<tr><td>B3-8</td><td>8 GB</td><td>2</td><td>50 GB NVMe</td><td>500 Mbit/s</td><td>$0.0508</td></tr>
+<tr><td>B3-16</td><td>16 GB</td><td>4</td><td>100 GB NVMe</td><td>1,000 Mbit/s</td><td>$0.1016</td></tr>
+<tr><td>B3-32</td><td>32 GB</td><td>8</td><td>200 GB NVMe</td><td>2,000 Mbit/s</td><td>$0.2033</td></tr>
+<tr><td>B3-64</td><td>64 GB</td><td>16</td><td>400 GB NVMe</td><td>4,000 Mbit/s</td><td>$0.4065</td></tr>
+<tr><td>B3-128</td><td>128 GB</td><td>32</td><td>400 GB NVMe</td><td>8,000 Mbit/s</td><td>$0.8131</td></tr>
+<tr><td>B3-256</td><td>256 GB</td><td>64</td><td>400 GB NVMe</td><td>16,000 Mbit/s</td><td>$1.6262</td></tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li><strong>B3-8</strong>: good dev box, too small for serious 200-viewer ambitions</li>
+<li><strong>B3-16</strong>: good small production / alpha / staging box</li>
+<li><strong>B3-32</strong>: <strong>best overall single-box production choice</strong></li>
+<li><strong>B3-64</strong>: <strong>best safer serious production choice</strong> for 200 viewers with headroom</li>
+<li><strong>B3-128 / B3-256</strong>: overkill for early OpenVibe.Live</li>
+</ul>
+
+<h3>B2 family — older, mostly outclassed</h3>
+<div style="overflow-x:auto;">
+<table>
+<thead><tr><th>Plan</th><th>RAM</th><th>vCPU</th><th>Disk</th><th>NIC</th><th>Price</th></tr></thead>
+<tbody>
+<tr><td>B2-7</td><td>7 GB</td><td>2</td><td>50 GB SSD</td><td>250 Mbit/s</td><td>$29.04/mo</td></tr>
+<tr><td>B2-15</td><td>15 GB</td><td>4</td><td>100 GB SSD</td><td>250 Mbit/s</td><td>$55.44/mo</td></tr>
+<tr><td>B2-30</td><td>30 GB</td><td>8</td><td>200 GB SSD</td><td>500 Mbit/s</td><td>$112.20/mo</td></tr>
+<tr><td>B2-60</td><td>60 GB</td><td>16</td><td>400 GB SSD</td><td>1,000 Mbit/s</td><td>$217.80/mo</td></tr>
+<tr><td>B2-120</td><td>120 GB</td><td>32</td><td>400 GB SSD</td><td>10,000 Mbit/s</td><td>$429.00/mo</td></tr>
+</tbody>
+</table>
+</div>
+<div class="card warning"><i class="fa-solid fa-triangle-exclamation"></i> Compared with B3, B2 gives worse price/performance, older SSD instead of NVMe, and weaker bandwidth. Only choose B2 if B3 is unavailable in your zone.</div>
+
+<h3>C3 family — CPU-heavy, not best value here</h3>
+<div style="overflow-x:auto;">
+<table>
+<thead><tr><th>Plan</th><th>RAM</th><th>vCPU</th><th>Disk</th><th>NIC</th><th>Price/hour</th></tr></thead>
+<tbody>
+<tr><td>C3-4</td><td>4 GB</td><td>2</td><td>50 GB NVMe</td><td>250 Mbit/s</td><td>$0.0453</td></tr>
+<tr><td>C3-8</td><td>8 GB</td><td>4</td><td>100 GB NVMe</td><td>500 Mbit/s</td><td>$0.0907</td></tr>
+<tr><td>C3-16</td><td>16 GB</td><td>8</td><td>200 GB NVMe</td><td>1,000 Mbit/s</td><td>$0.1813</td></tr>
+<tr><td>C3-32</td><td>32 GB</td><td>16</td><td>400 GB NVMe</td><td>2,000 Mbit/s</td><td>$0.3627</td></tr>
+<tr><td>C3-64</td><td>64 GB</td><td>32</td><td>400 GB NVMe</td><td>4,000 Mbit/s</td><td>$0.7254</td></tr>
+<tr><td>C3-128</td><td>128 GB</td><td>64</td><td>400 GB NVMe</td><td>8,000 Mbit/s</td><td>$1.4508</td></tr>
+</tbody>
+</table>
+</div>
+<p>C3 gets interesting if your deployment is heavily WebRTC-centric and CPU-bound. But for OpenVibe.Live, B3 usually wins because the app wants more RAM, more bandwidth, more storage, and better economics per box.</p>
+<div class="card tip"><strong>Example:</strong> B3-32 (32 GB / 8 vCPU / 200 GB / 2 Gbit/s for $0.2033/h) vs C3-16 (16 GB / 8 vCPU / 200 GB / 1 Gbit/s for $0.1813/h) — for only a little more, B3-32 gives double the RAM and double the network.</div>
+
+<h3>C2 family — least attractive</h3>
+<div style="overflow-x:auto;">
+<table>
+<thead><tr><th>Plan</th><th>RAM</th><th>vCPU</th><th>Disk</th><th>NIC</th><th>Price</th></tr></thead>
+<tbody>
+<tr><td>C2-7</td><td>7 GB</td><td>2</td><td>50 GB SSD</td><td>250 Mbit/s</td><td>$42.24/mo</td></tr>
+<tr><td>C2-15</td><td>15 GB</td><td>4</td><td>100 GB SSD</td><td>250 Mbit/s</td><td>$81.83/mo</td></tr>
+<tr><td>C2-30</td><td>30 GB</td><td>8</td><td>200 GB SSD</td><td>500 Mbit/s</td><td>$165.00/mo</td></tr>
+<tr><td>C2-60</td><td>60 GB</td><td>16</td><td>400 GB SSD</td><td>1,000 Mbit/s</td><td>$323.40/mo</td></tr>
+<tr><td>C2-120</td><td>120 GB</td><td>32</td><td>400 GB SSD</td><td>10,000 Mbit/s</td><td>$640.20/mo</td></tr>
+</tbody>
+</table>
+</div>
+<p>C2 is expensive, older, and has weaker bandwidth than the B3 alternative. Not recommended for OpenVibe.Live.</p>
+</section>
+
+<!-- ═══════════════ OVH Methods ═══════════════ -->
+<section id="ovh-methods" class="fade-in">
+<h2><i class="fa-solid fa-satellite-dish"></i> Streaming method plan fit</h2>
+
+<h3>WebRTC / mediasoup</h3>
+<p>The method most likely to become <strong>CPU-sensitive</strong> first.</p>
+<ul>
+<li><strong>B3-32</strong> for moderate production</li>
+<li><strong>B3-64</strong> for safer 200-viewer production</li>
+<li><strong>C3-32</strong> only if you are convinced CPU will matter more than RAM/bandwidth economics</li>
+</ul>
+<p>If your expected audience is up to 200 and WebRTC is a real primary path, start at <strong>B3-64</strong> — the full balance of 16 vCores + 4 Gbit/s + 400 GB NVMe is much healthier.</p>
+
+<h3>JSMPEG</h3>
+<p>More straightforward on the server side — becomes <strong>bandwidth-bound</strong> quickly.</p>
+<ul>
+<li><strong>B3-16</strong> for smaller audiences and testing</li>
+<li><strong>B3-32</strong> for up to 200 viewers at moderate bitrates</li>
+<li><strong>B3-64</strong> if you want bitrate headroom or larger audience spikes</li>
+</ul>
+<p>For a JSMPEG-heavy public deployment, <strong>B3-32</strong> is the sweet spot.</p>
+
+<h3>RTMP ingest + direct playback</h3>
+<p>RTMP ingest itself is light. Viewer delivery is what costs you — again outbound bandwidth and storage.</p>
+<ul>
+<li><strong>B3-16</strong> for low-mid audience counts</li>
+<li><strong>B3-32</strong> for a real public rollout</li>
+<li><strong>B3-64</strong> if you expect higher bitrate, spikes, or multiple simultaneous live loads</li>
+</ul>
+</section>
+
+<!-- ═══════════════ OVH Credit ═══════════════ -->
+<section id="ovh-credit" class="fade-in">
+<h2><i class="fa-solid fa-piggy-bank"></i> $200 OVH credit analysis</h2>
+<p>OVH gives <strong>$200 in public cloud credit that expires after 90 days</strong>. Two key questions: how long the credit lasts running continuously, and whether the plan can run the full 90 days within the credit window.</p>
+
+<h3>How long $200 lasts on each plan</h3>
+<div style="overflow-x:auto;">
+<table>
+<thead><tr><th>Plan</th><th>Price/hour</th><th>$200 lasts</th><th>Hours</th></tr></thead>
+<tbody>
+<tr><td>B3-8</td><td>$0.0508</td><td>164 days</td><td>3,937 h</td></tr>
+<tr><td>B3-16</td><td>$0.1016</td><td>82 days</td><td>1,969 h</td></tr>
+<tr><td>B3-32</td><td>$0.2033</td><td>41 days</td><td>984 h</td></tr>
+<tr><td>B3-64</td><td>$0.4065</td><td>20.5 days</td><td>492 h</td></tr>
+<tr><td>B3-128</td><td>$0.8131</td><td>10.3 days</td><td>246 h</td></tr>
+<tr><td>B3-256</td><td>$1.6262</td><td>5.1 days</td><td>123 h</td></tr>
+<tr style="background:var(--hover);"><td colspan="4"><strong>B2 family</strong></td></tr>
+<tr><td>B2-7</td><td>$0.0813</td><td>102.5 days</td><td>2,460 h</td></tr>
+<tr><td>B2-15</td><td>$0.1539</td><td>54 days</td><td>1,300 h</td></tr>
+<tr><td>B2-30</td><td>$0.3123</td><td>26.7 days</td><td>640 h</td></tr>
+<tr><td>B2-60</td><td>$0.6060</td><td>13.8 days</td><td>330 h</td></tr>
+<tr><td>B2-120</td><td>$1.1923</td><td>7 days</td><td>168 h</td></tr>
+<tr style="background:var(--hover);"><td colspan="4"><strong>C3 family</strong></td></tr>
+<tr><td>C3-4</td><td>$0.0453</td><td>184 days</td><td>4,415 h</td></tr>
+<tr><td>C3-8</td><td>$0.0907</td><td>92 days</td><td>2,205 h</td></tr>
+<tr><td>C3-16</td><td>$0.1813</td><td>46 days</td><td>1,103 h</td></tr>
+<tr><td>C3-32</td><td>$0.3627</td><td>23 days</td><td>551 h</td></tr>
+<tr><td>C3-64</td><td>$0.7254</td><td>11.5 days</td><td>276 h</td></tr>
+<tr style="background:var(--hover);"><td colspan="4"><strong>C2 family</strong></td></tr>
+<tr><td>C2-7</td><td>$0.1176</td><td>70.9 days</td><td>1,701 h</td></tr>
+<tr><td>C2-15</td><td>$0.2276</td><td>36.6 days</td><td>879 h</td></tr>
+<tr><td>C2-30</td><td>$0.4586</td><td>18.2 days</td><td>436 h</td></tr>
+<tr><td>C2-60</td><td>$0.8986</td><td>9.3 days</td><td>223 h</td></tr>
+<tr><td>C2-120</td><td>$1.7786</td><td>4.7 days</td><td>112 h</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>90-day continuous run cost (hourly plans)</h3>
+<div style="overflow-x:auto;">
+<table>
+<thead><tr><th>Plan</th><th>30-day cost</th><th>90-day cost</th></tr></thead>
+<tbody>
+<tr><td>B3-8</td><td>$36.58</td><td>$109.73</td></tr>
+<tr><td>B3-16</td><td>$73.15</td><td>$219.46</td></tr>
+<tr><td>B3-32</td><td>$146.38</td><td>$439.13</td></tr>
+<tr><td>B3-64</td><td>$292.68</td><td>$878.04</td></tr>
+<tr><td>C3-4</td><td>$32.62</td><td>$97.85</td></tr>
+<tr><td>C3-8</td><td>$65.30</td><td>$195.91</td></tr>
+<tr><td>C3-16</td><td>$130.54</td><td>$391.61</td></tr>
+<tr><td>C3-32</td><td>$261.14</td><td>$783.43</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>Best credit strategies</h3>
+<div class="card tip">
+<strong>Strategy A — longest useful beta:</strong> Run <strong>B3-8</strong> or <strong>C3-8</strong> during buildout, staging, and feature validation. Upgrade to <strong>B3-32</strong> only when audience and VOD usage justify it.
+</div>
+<div class="card tip">
+<strong>Strategy B — realistic public beta:</strong> Start on <strong>B3-16</strong>. Accept that $200 covers only ~82 days. Resize to <strong>B3-32</strong> when you need the larger envelope.
+</div>
+<div class="card tip">
+<strong>Strategy C — short burst launch:</strong> Use <strong>B3-32</strong> for launch testing. Know that $200 gives ~41 days continuously.
+</div>
+</section>
+
+<!-- ═══════════════ OVH Scenarios ═══════════════ -->
+<section id="ovh-scenarios" class="fade-in">
+<h2><i class="fa-solid fa-route"></i> Recommended picks by scenario</h2>
+
+<h3>Scenario A — dev, staging, private alpha</h3>
+<p><strong>Pick: B3-8</strong> — cheapest balanced plan. Enough for app setup, testing, internal streams, chat, docs, and smoke validation. Credit lasts the full 90 days easily.</p>
+
+<h3>Scenario B — public beta, one main stream, realistic growth</h3>
+<p><strong>Pick: B3-16</strong> (budget) or <strong>B3-32</strong> (best value). Compared with B3-16, B3-32 gives 2× RAM, 2× vCPU, 2× disk, 2× network for exactly 2× price — the operational breathing room is much better.</p>
+
+<h3>Scenario C — target up to 200 concurrent viewers on one box</h3>
+<p><strong>Pick: B3-32</strong> (minimum serious) or <strong>B3-64</strong> (safer). For 200 viewers, the question becomes: what is your average delivered bitrate? How WebRTC-heavy is the workload? How much VOD retention locally? <strong>B3-32</strong> is the first deliberate production choice; <strong>B3-64</strong> is less stressful.</p>
+
+<h3>Scenario D — WebRTC-first, higher CPU pressure, future growth</h3>
+<p><strong>Pick: B3-64</strong> — only slightly more expensive than C3-32 while giving more RAM, more network, equivalent vCPU count, and better overall OpenVibe.Live balance.</p>
+</section>
+
+<!-- ═══════════════ OVH Final ═══════════════ -->
+<section id="ovh-final" class="fade-in">
+<h2><i class="fa-solid fa-trophy"></i> Final recommendation</h2>
+<p>If you want the single OVH plan that makes the most sense for OpenVibe.Live, including storage, mixed real-time features, and streaming toward <strong>200 viewers</strong>:</p>
+
+<div class="card" style="text-align:center;font-size:1.4rem;padding:1.5rem;">
+<i class="fa-solid fa-crown" style="color:#f59e0b;"></i> <strong>B3-32</strong> — Best overall compromise
+</div>
+<p style="text-align:center;">Price · RAM · vCPU · NVMe storage · Outbound bandwidth · Realism for local VOD/clip retention</p>
+
+<div class="card" style="text-align:center;font-size:1.2rem;padding:1.2rem;margin-top:1rem;">
+<i class="fa-solid fa-shield-halved" style="color:#3b82f6;"></i> <strong>B3-64</strong> — Best safer no-regrets version for heavier WebRTC / more headroom
+</div>
+
+<div class="card" style="text-align:center;font-size:1.2rem;padding:1.2rem;margin-top:1rem;">
+<i class="fa-solid fa-coins" style="color:#10b981;"></i> <strong>B3-8</strong> — Best cheap build/test box while burning the free credit
+</div>
+
+<h3>Bottom line in one sentence</h3>
+<div style="overflow-x:auto;">
+<table>
+<thead><tr><th>Plan</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td><strong>B3-8</strong></td><td>Best cheap build/test box</td></tr>
+<tr><td><strong>B3-16</strong></td><td>Okay starter production box</td></tr>
+<tr><td><strong>B3-32</strong></td><td><strong>Best overall OpenVibe.Live plan</strong></td></tr>
+<tr><td><strong>B3-64</strong></td><td>Best safer 200-viewer / WebRTC-heavy plan</td></tr>
+<tr><td>B2 / C2</td><td>Mostly not worth it here</td></tr>
+<tr><td>C3</td><td>Only if unusually CPU-biased and accept weaker overall value</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+</div><!-- /content -->
+</div><!-- /main -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/nginx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/ini.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/properties.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mark.js/8.11.1/mark.min.js"></script>
+<script>
+/* ---- Theme ---- */
+function getTheme(){return document.documentElement.getAttribute('data-theme')}
+function setTheme(t){
+  document.documentElement.setAttribute('data-theme',t);
+  localStorage.setItem('theme',t);
+  document.getElementById('themeBtn').innerHTML=t==='dark'?'<i class="fa-solid fa-moon"></i>':'<i class="fa-solid fa-sun"></i>';
+  document.getElementById('hljs-theme').href=t==='dark'
+    ?'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css'
+    :'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css';
+}
+function toggleTheme(){setTheme(getTheme()==='dark'?'light':'dark')}
+const saved=localStorage.getItem('theme');if(saved)setTheme(saved);
+
+/* ---- Sidebar ---- */
+function toggleSidebar(){
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('overlay').classList.toggle('open');
+}
+document.querySelectorAll('.nav-link').forEach(l=>l.addEventListener('click',()=>{
+  if(window.innerWidth<=900){toggleSidebar()}
+}));
+
+/* ---- Active nav on scroll ---- */
+const sections=document.querySelectorAll('section[id]');
+const navLinks=document.querySelectorAll('.nav-link');
+const obs=new IntersectionObserver(entries=>{
+  entries.forEach(e=>{
+    if(e.isIntersecting){
+      navLinks.forEach(l=>l.classList.remove('active'));
+      const a=document.querySelector(`.nav-link[href="#${e.target.id}"]`);
+      if(a)a.classList.add('active');
+    }
+  });
+},{rootMargin:'-80px 0px -70% 0px'});
+sections.forEach(s=>obs.observe(s));
+
+/* ---- Progress bar ---- */
+window.addEventListener('scroll',()=>{
+  const h=document.documentElement.scrollHeight-window.innerHeight;
+  document.getElementById('progress').style.width=(window.scrollY/h*100)+'%';
+});
+
+/* ---- Fade in sections ---- */
+const fadeObs=new IntersectionObserver(entries=>{
+  entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('visible');fadeObs.unobserve(e.target)}});
+},{threshold:.05});
+sections.forEach(s=>fadeObs.observe(s));
+
+/* ---- Code block enhancement ---- */
+function enhanceCodeBlocks(){
+  document.querySelectorAll('pre code').forEach(block=>{
+    if(block.closest('.code-wrapper'))return;
+    hljs.highlightElement(block);
+    const pre=block.parentElement;
+    const wrapper=document.createElement('div');
+    wrapper.className='code-wrapper';
+    const cls=Array.from(block.classList).find(c=>c.startsWith('language-'));
+    const lang=cls?cls.replace('language-',''):'text';
+    const header=document.createElement('div');
+    header.className='code-header';
+    header.innerHTML=`<span class="code-lang"><i class="fa-solid fa-code"></i> ${lang}</span>
+      <span class="code-actions">
+        <button class="code-btn edit-btn" onclick="toggleEdit(this)" title="Edit before copying"><i class="fa-solid fa-pen"></i> Edit</button>
+        <button class="code-btn copy-btn" onclick="copyCode(this)" title="Copy to clipboard"><i class="fa-regular fa-copy"></i> Copy</button>
+      </span>`;
+    pre.parentNode.insertBefore(wrapper,pre);
+    wrapper.appendChild(header);
+    wrapper.appendChild(pre);
+  });
+}
+
+function copyCode(btn){
+  const wrapper=btn.closest('.code-wrapper');
+  const code=wrapper.querySelector('code');
+  const text=code.textContent;
+  navigator.clipboard.writeText(text).then(()=>{
+    btn.classList.add('copied');
+    btn.innerHTML='<i class="fa-solid fa-check"></i> Copied!';
+    setTimeout(()=>{btn.classList.remove('copied');btn.innerHTML='<i class="fa-regular fa-copy"></i> Copy';},2000);
+  });
+}
+
+function toggleEdit(btn){
+  const wrapper=btn.closest('.code-wrapper');
+  const pre=wrapper.querySelector('pre');
+  const isEditing=wrapper.classList.toggle('editing');
+  pre.contentEditable=isEditing;
+  if(isEditing){pre.focus();btn.innerHTML='<i class="fa-solid fa-lock"></i> Lock';}
+  else{btn.innerHTML='<i class="fa-solid fa-pen"></i> Edit';}
+}
+
+/* ---- Search ---- */
+let markInstance;
+function initSearch(){
+  markInstance=new Mark(document.getElementById('content'));
+  const input=document.getElementById('searchInput');
+  let debounce;
+  input.addEventListener('input',()=>{
+    clearTimeout(debounce);
+    debounce=setTimeout(()=>{
+      const q=input.value.trim();
+      markInstance.unmark();
+      if(!q){document.getElementById('searchCount').textContent='';return;}
+      markInstance.mark(q,{
+        separateWordSearch:false,
+        done(count){document.getElementById('searchCount').textContent=count?`${count} match${count>1?'es':''}`:'';}
+      });
+    },250);
+  });
+  document.addEventListener('keydown',e=>{
+    if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();input.focus();input.select();}
+  });
+}
+
+/* ---- Init ---- */
+document.addEventListener('DOMContentLoaded',()=>{
+  enhanceCodeBlocks();
+  initSearch();
+  sections.forEach(s=>fadeObs.observe(s));
+});
+</script>
+</body>
+</html>

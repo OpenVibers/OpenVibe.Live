@@ -1,0 +1,273 @@
+:root {
+    color-scheme: dark;
+    --mp-bg: #0f1115;
+    --mp-bg-elev: #171b22;
+    --mp-bg-elev-2: #1f2630;
+    --mp-border: rgba(255, 255, 255, 0.08);
+    --mp-text: #f7f3ea;
+    --mp-muted: #a7adbb;
+    --mp-accent: #8b5cf6;
+    --mp-danger: #e05a5a;
+    --mp-success: #68c08f;
+    --mp-shadow: 0 20px 45px rgba(0, 0, 0, 0.35);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: radial-gradient(circle at top, #1c2430 0%, var(--mp-bg) 45%); color: var(--mp-text); font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+body { padding: 24px; }
+a { color: inherit; }
+code { background: rgba(255,255,255,.08); padding: 2px 6px; border-radius: 6px; }
+
+.mp-shell { max-width: 1440px; margin: 0 auto; }
+.mp-header { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 24px; }
+.mp-eyebrow { text-transform: uppercase; letter-spacing: .16em; color: var(--mp-accent); font-size: 12px; margin: 0 0 8px; }
+.mp-header h1 { margin: 0; font-size: clamp(2rem, 4vw, 3rem); }
+.mp-subtitle { margin: 8px 0 0; color: var(--mp-muted); }
+.mp-header-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+
+.mp-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(340px, 1fr); gap: 24px; align-items: start; }
+.mp-sidebar { display: grid; gap: 24px; }
+.mp-card { background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015)); border: 1px solid var(--mp-border); border-radius: 20px; box-shadow: var(--mp-shadow); padding: 20px; backdrop-filter: blur(14px); }
+.mp-card-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 16px; }
+.mp-card h2 { margin: 0; font-size: 1.1rem; }
+.mp-muted { color: var(--mp-muted); margin: 4px 0 0; }
+.mp-badge { background: rgba(139,92,246,.14); color: #f6d8ad; border: 1px solid rgba(139,92,246,.24); border-radius: 999px; padding: 7px 12px; font-size: 12px; }
+
+.mp-btn { border: 0; border-radius: 12px; background: linear-gradient(135deg, var(--mp-accent), #9b7240); color: #141414; padding: 11px 14px; font-weight: 700; cursor: pointer; box-shadow: 0 10px 20px rgba(139,92,246,.18); }
+.mp-btn:hover { transform: translateY(-1px); }
+.mp-btn-outline { background: transparent; color: var(--mp-text); border: 1px solid var(--mp-border); box-shadow: none; }
+.mp-btn-danger { background: linear-gradient(135deg, #f07777, var(--mp-danger)); color: #fff; }
+.mp-owner-controls { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* ── Player container ────────────────────────────────────── */
+.mp-player-wrap {
+    position: relative;
+    min-height: 420px;
+    border-radius: 18px;
+    background: #090b0f;
+    border: 1px solid var(--mp-border);
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+}
+
+.mp-player-host { width: 100%; height: 100%; position: relative; }
+.mp-player-host video, .mp-player-host audio { width: 100%; height: 100%; display: block; background: #000; }
+.mp-player-host audio { min-height: 84px; }
+.mp-player-host iframe { width: 100%; height: 100%; display: block; border: none; }
+
+.mp-player-empty { text-align: center; color: var(--mp-muted); display: grid; gap: 10px; }
+.mp-player-empty i { font-size: 48px; color: var(--mp-accent); }
+
+/* ── Loading & error overlays ────────────────────────────── */
+.mp-loading-overlay, .mp-error-overlay {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    place-content: center;
+    gap: 12px;
+    background: rgba(9, 11, 15, 0.92);
+    z-index: 10;
+    text-align: center;
+    color: var(--mp-muted);
+}
+
+.mp-error-overlay i { font-size: 48px; color: var(--mp-danger); }
+
+.mp-spinner {
+    width: 40px; height: 40px;
+    border: 3px solid rgba(139,92,246, 0.2);
+    border-top-color: var(--mp-accent);
+    border-radius: 50%;
+    animation: mp-spin 0.8s linear infinite;
+}
+@keyframes mp-spin { to { transform: rotate(360deg); } }
+
+/* ── Custom player controls ──────────────────────────────── */
+.mp-controls {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.85));
+    z-index: 20;
+    transition: opacity 0.3s;
+}
+
+.mp-player-wrap:not(:hover) .mp-controls:not(.mp-controls-locked) {
+    opacity: 0;
+}
+
+.mp-ctrl-btn {
+    background: none;
+    border: none;
+    color: var(--mp-text);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 6px 8px;
+    border-radius: 8px;
+    line-height: 1;
+    transition: background 150ms;
+}
+.mp-ctrl-btn:hover { background: rgba(255,255,255,0.1); }
+
+.mp-seek-group {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.mp-time {
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--mp-muted);
+    white-space: nowrap;
+    min-width: 36px;
+    text-align: center;
+}
+
+.mp-seek-bar {
+    position: relative;
+    flex: 1;
+    height: 6px;
+    background: rgba(255,255,255,0.12);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.mp-seek-buffered {
+    position: absolute;
+    top: 0; left: 0; height: 100%;
+    background: rgba(255,255,255,0.18);
+    border-radius: 3px;
+    pointer-events: none;
+    transition: width 0.3s;
+}
+
+.mp-seek-progress {
+    position: absolute;
+    top: 0; left: 0; height: 100%;
+    background: var(--mp-accent);
+    border-radius: 3px;
+    pointer-events: none;
+    transition: width 0.1s linear;
+}
+
+.mp-seek-input {
+    position: absolute;
+    top: -6px; left: 0; width: 100%; height: 18px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: none;
+    cursor: pointer;
+    margin: 0;
+}
+.mp-seek-input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--mp-accent);
+    border: 2px solid #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    cursor: pointer;
+}
+.mp-seek-input::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--mp-accent);
+    border: 2px solid #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    cursor: pointer;
+}
+.mp-seek-input::-webkit-slider-runnable-track { height: 0; }
+.mp-seek-input::-moz-range-track { height: 0; background: transparent; }
+
+.mp-vol-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mp-vol-slider {
+    width: 80px;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255,255,255,0.2);
+    border-radius: 2px;
+    cursor: pointer;
+}
+.mp-vol-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--mp-text);
+    cursor: pointer;
+}
+.mp-vol-slider::-moz-range-thumb {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--mp-text);
+    border: none;
+    cursor: pointer;
+}
+
+/* ── Now playing info card ───────────────────────────────── */
+.mp-now-card { margin-top: 16px; display: grid; gap: 8px; }
+.mp-now-title { font-size: 1.2rem; font-weight: 700; }
+.mp-now-meta-row { display: flex; flex-wrap: wrap; gap: 10px; color: var(--mp-muted); font-size: .95rem; }
+
+/* ── Queue & history lists ───────────────────────────────── */
+.mp-queue-list, .mp-history-list { display: grid; gap: 12px; }
+.mp-item { border: 1px solid var(--mp-border); border-radius: 16px; background: var(--mp-bg-elev); padding: 14px; display: grid; gap: 10px; }
+.mp-item-top { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; }
+.mp-item-title { font-weight: 700; }
+.mp-item-meta { color: var(--mp-muted); font-size: .92rem; }
+.mp-item-thumb { width: 84px; height: 48px; border-radius: 10px; object-fit: cover; background: var(--mp-bg-elev-2); }
+.mp-item-main { display: flex; gap: 12px; min-width: 0; }
+.mp-item-body { min-width: 0; display: grid; gap: 4px; }
+.mp-item-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.mp-icon-btn { background: transparent; color: var(--mp-text); border: 1px solid var(--mp-border); border-radius: 10px; padding: 8px 10px; cursor: pointer; transition: background 0.15s; }
+.mp-icon-btn:hover { background: rgba(255,255,255,0.06); }
+.mp-icon-btn.mp-icon-danger { color: var(--mp-danger); border-color: rgba(224, 90, 90, 0.2); }
+.mp-icon-btn.mp-icon-danger:hover { background: rgba(224, 90, 90, 0.1); }
+.mp-empty { color: var(--mp-muted); padding: 8px 0; }
+.mp-item-status { font-size: 0.8rem; padding: 2px 8px; border-radius: 8px; }
+.mp-status-extracting { background: rgba(139,92,246,0.15); color: var(--mp-accent); }
+.mp-status-ready { background: rgba(104,192,143,0.15); color: var(--mp-success); }
+.mp-status-failed { background: rgba(224,90,90,0.15); color: var(--mp-danger); }
+
+/* ── Settings form ───────────────────────────────────────── */
+.mp-settings-form { display: grid; gap: 12px; }
+.mp-settings-form label { display: flex; justify-content: space-between; gap: 12px; align-items: center; color: var(--mp-text); }
+.mp-settings-form input[type="number"] { width: 110px; background: var(--mp-bg-elev); color: var(--mp-text); border: 1px solid var(--mp-border); border-radius: 10px; padding: 9px 10px; }
+.mp-settings-form input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--mp-accent); }
+.mp-select { background: var(--mp-bg-elev); color: var(--mp-text); border: 1px solid var(--mp-border); border-radius: 10px; padding: 9px 10px; }
+.mp-fieldset { border: 1px solid var(--mp-border); border-radius: 14px; padding: 14px; display: grid; gap: 10px; margin: 0; }
+.mp-fieldset legend { color: var(--mp-muted); font-size: 0.85rem; padding: 0 6px; }
+.mp-help-list { margin: 0; padding-left: 18px; color: var(--mp-muted); display: grid; gap: 10px; }
+
+/* ── Duration tag ────────────────────────────────────────── */
+.mp-duration { font-size: .85rem; color: var(--mp-muted); font-variant-numeric: tabular-nums; }
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 1100px) {
+    .mp-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+    body { padding: 16px; }
+    .mp-header { flex-direction: column; align-items: flex-start; }
+    .mp-card { padding: 16px; }
+    .mp-player-wrap { min-height: 240px; }
+    .mp-item-top { flex-direction: column; }
+    .mp-item-main { flex-direction: column; }
+    .mp-item-thumb { width: 100%; height: 160px; }
+    .mp-vol-group { display: none; }
+    .mp-controls { padding: 8px 10px; }
+}

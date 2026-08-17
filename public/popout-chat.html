@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat — OpenVibe.Live</title>
+    <link rel="stylesheet" href="/css/style.css?v=61">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        html, body { height: 100%; margin: 0; overflow: hidden; }
+        body { display: flex; flex-direction: column; background: var(--bg-primary, #0d0d1a); }
+
+        /* ── Header ── */
+        .pc-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 6px 10px; background: var(--bg-secondary, #1a1a2e);
+            border-bottom: 1px solid var(--border, #2a2a3e);
+            font-size: 0.82rem; font-weight: 600; flex-shrink: 0;
+        }
+        .pc-header-left { display: flex; align-items: center; gap: 6px; }
+        .pc-header-btns { display: flex; gap: 4px; }
+        .pc-hbtn {
+            background: none; border: none; color: var(--text-secondary, #aaa);
+            cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 0.8rem;
+            line-height: 1;
+        }
+        .pc-hbtn:hover, .pc-hbtn.active { background: var(--bg-tertiary, #252540); color: var(--text-primary, #e0e0e0); }
+        .pc-hbtn.active { color: var(--accent, #8b5cf6); }
+
+        /* ── Main layout ── */
+        .pc-body {
+            flex: 1; display: flex; overflow: hidden;
+        }
+        .pc-chat-col {
+            flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0;
+        }
+
+        /* ── Side panels ── */
+        .pc-panel {
+            width: 200px; flex-shrink: 0; border-left: 1px solid var(--border, #2a2a3e);
+            background: var(--bg-secondary, #1a1a2e); display: none; flex-direction: column;
+            font-size: 0.78rem;
+        }
+        .pc-panel.visible { display: flex; }
+        .pc-panel-hd {
+            padding: 8px 10px 6px; font-size: 0.75rem; font-weight: 700;
+            color: var(--text-muted, #888); text-transform: uppercase; letter-spacing: 0.06em;
+            border-bottom: 1px solid var(--border, #2a2a3e);
+        }
+        .pc-panel-body { flex: 1; overflow-y: auto; padding: 6px 8px; }
+
+        /* Users panel */
+        .pc-user-item {
+            display: flex; align-items: center; gap: 6px; padding: 3px 0;
+            color: var(--text-secondary, #ccc);
+        }
+        .pc-user-avatar {
+            width: 20px; height: 20px; border-radius: 50%; object-fit: cover;
+            background: var(--bg-tertiary, #252540); font-size: 0.7rem; display: flex;
+            align-items: center; justify-content: center; flex-shrink: 0;
+            color: var(--text-muted, #888);
+        }
+        .pc-user-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pc-user-role { font-size: 0.65rem; color: var(--accent, #8b5cf6); flex-shrink: 0; }
+        .pc-user-anon { color: var(--text-muted, #888); font-style: italic; padding: 3px 0; }
+
+        /* Settings panel */
+        .pc-setting-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 5px 0; border-bottom: 1px solid var(--border, #2a2a3e);
+        }
+        .pc-setting-row:last-child { border-bottom: none; }
+        .pc-setting-label { color: var(--text-secondary, #ccc); font-size: 0.78rem; }
+        .pc-toggle-wrap { display: flex; align-items: center; }
+        .pc-toggle { width: 30px; height: 17px; background: var(--border, #444); border-radius: 9px; position: relative; cursor: pointer; transition: background 0.2s; }
+        .pc-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; background: #fff; border-radius: 50%; transition: transform 0.2s; }
+        .pc-toggle.on { background: var(--accent, #8b5cf6); }
+        .pc-toggle.on::after { transform: translateX(13px); }
+
+        /* ── Messages ── */
+        .pc-messages {
+            flex: 1; overflow-y: auto; padding: 6px 8px;
+            font-size: 0.83rem; line-height: 1.4;
+        }
+        .pc-msg { padding: 2px 0; word-break: break-word; }
+        .pc-msg.system { color: var(--text-muted, #888); font-style: italic; font-size: 0.75rem; }
+        .pc-msg.deleted { opacity: 0.4; text-decoration: line-through; font-size: 0.75rem; }
+        .pc-msg.error { color: var(--danger, #e05555); font-size: 0.75rem; }
+        .pc-user-name-tag { font-weight: 600; cursor: default; }
+        .pc-time { font-size: 0.68rem; color: var(--text-muted, #888); margin-right: 3px; }
+        .pc-stream-badge {
+            font-size: 0.62rem; background: rgba(139,92,246,0.2); color: var(--accent, #8b5cf6);
+            padding: 1px 4px; border-radius: 3px; margin-right: 4px;
+        }
+        .pc-badge-admin { font-size: 0.6rem; color: var(--accent, #8b5cf6); margin-right: 2px; }
+        .pc-badge-mod { font-size: 0.6rem; color: var(--success, #55e090); margin-right: 2px; }
+        .pc-emote { height: 1.2em; vertical-align: middle; }
+
+        /* ── Input ── */
+        .pc-input-area {
+            padding: 7px 8px;
+            border-top: 1px solid var(--border, #2a2a3e);
+            background: var(--bg-secondary, #1a1a2e); flex-shrink: 0;
+            position: relative; /* anchor for the emote / GIF pickers */
+        }
+        .pc-input-row { display: flex; gap: 5px; align-items: center; }
+        .pc-tools-row {
+            display: flex; gap: 4px; align-items: center; flex-wrap: wrap;
+            padding-top: 5px;
+        }
+        .pc-input-area #pc-input {
+            flex: 1; background: var(--bg-primary, #0d0d1a);
+            border: 1px solid var(--border, #2a2a3e);
+            border-radius: 4px; color: var(--text-primary, #e0e0e0);
+            padding: 5px 9px; font-size: 0.82rem; outline: none; min-width: 0;
+        }
+        .pc-input-area #pc-input:focus { border-color: var(--accent, #8b5cf6); }
+        .pc-input-area #pc-send {
+            background: var(--accent, #8b5cf6); color: #fff; border: none;
+            border-radius: 4px; padding: 5px 11px; cursor: pointer; font-size: 0.82rem;
+            flex-shrink: 0; white-space: nowrap;
+        }
+        .pc-input-area #pc-send:hover { opacity: 0.85; }
+        /* TTS toggle mirrors the streamer-page chat button */
+        .pc-input-area .chat-tts-toggle {
+            background: var(--bg-tertiary, #252540); color: var(--text-muted, #888);
+            padding: 5px 9px; border: none; border-radius: 4px; cursor: pointer;
+            flex-shrink: 0;
+        }
+        .pc-input-area .chat-tts-toggle.tts-active { background: var(--accent, #8b5cf6); color: #fff; }
+
+        /* The popout is already popped out — never offer to pop out again. */
+        [onclick*="popout"], [onclick*="Popout"], [onclick*="popOut"] { display: none !important; }
+
+        /* Connection badge */
+        .pc-conn-dot {
+            width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted, #888); flex-shrink: 0;
+        }
+        .pc-conn-dot.connected { background: var(--success, #55e090); }
+        .pc-conn-dot.error { background: var(--danger, #e05555); }
+    </style>
+</head>
+<body>
+    <div class="pc-header">
+        <div class="pc-header-left">
+            <div class="pc-conn-dot" id="pc-conn-dot"></div>
+            <i class="fa-solid fa-comments"></i>
+            <span id="pc-title">Chat</span>
+        </div>
+        <div class="pc-header-btns">
+            <button class="pc-hbtn" id="pc-btn-users" title="Viewer list" onclick="togglePanel('users')">
+                <i class="fa-solid fa-users"></i>
+            </button>
+            <button class="pc-hbtn" id="pc-btn-settings" title="Settings" onclick="togglePanel('settings')">
+                <i class="fa-solid fa-gear"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="pc-body">
+        <div class="pc-chat-col">
+            <div class="pc-messages" id="pc-msgs"></div>
+            <div class="pc-input-area chat-input-area">
+                <!-- Emote / GIF Picker (unprefixed ids → wired to pc-input via getPickerEls) -->
+                <div id="emote-picker" class="emote-picker" style="display:none">
+                    <div class="emote-picker-header">
+                        <input type="text" id="emote-search" class="emote-search" placeholder="Search emotes..." oninput="onEmoteSearch(this.value)">
+                    </div>
+                    <div class="emote-picker-tabs"></div>
+                    <div class="emote-picker-grid" id="emote-picker-grid"></div>
+                </div>
+                <div class="pc-input-row">
+                    <button class="chat-tts-toggle tts-active pc-tts-btn" id="pc-tts-btn" onclick="toggleChatTTS(this)" title="TTS On (click to mute)">
+                        <i class="fa-solid fa-volume-high"></i>
+                    </button>
+                    <input type="text" id="pc-input" placeholder="Send a message…" maxlength="500" autocomplete="off">
+                    <button id="pc-send">Send</button>
+                </div>
+                <div class="pc-tools-row">
+                    <button class="emote-picker-btn" onclick="toggleEmotePicker('pc-input')" title="Emotes">
+                        <i class="fa-solid fa-face-smile"></i>
+                    </button>
+                    <button class="emote-picker-btn gif-btn" onclick="toggleGifPicker('pc-input')" title="GIFs">
+                        <span class="gif-btn-text">GIF</span>
+                    </button>
+                    <button class="emote-picker-btn" onclick="if(typeof openChannelUploadModal==='function')openChannelUploadModal()" title="Add channel emote / sound">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                    <button class="btn btn-openvibe-coins-mini" onclick="if(typeof toggleRewardsPanel==='function')toggleRewardsPanel()" title="Redeem OpenCoins">
+                        <i class="fa-solid fa-coins"></i>
+                    </button>
+                    <button class="btn btn-openvibe-bucks-mini" onclick="if(typeof showModal==='function')showModal('donate')" title="Send Vibes">
+                        <i class="fa-solid fa-dollar-sign"></i>
+                    </button>
+                </div>
+                <!-- Rewards Panel (OpenCoins) -->
+                <div class="rewards-panel" id="ch-rewards-panel" style="display:none">
+                    <div class="rewards-panel-header">
+                        <span><i class="fa-solid fa-coins"></i> OpenCoins Rewards</span>
+                        <span class="rewards-coin-bal"><i class="fa-solid fa-coins"></i> <span class="rewards-coin-balance">0</span></span>
+                    </div>
+                    <div class="rewards-grid ch-rewards-grid">
+                        <p class="muted">No rewards configured for this channel</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Users panel -->
+        <div class="pc-panel" id="pc-panel-users">
+            <div class="pc-panel-hd">
+                <i class="fa-solid fa-users"></i> Viewers
+            </div>
+            <div class="pc-panel-body" id="pc-users-body">
+                <div class="pc-user-anon muted">Loading…</div>
+            </div>
+        </div>
+
+        <!-- Settings panel -->
+        <div class="pc-panel" id="pc-panel-settings">
+            <div class="pc-panel-hd">
+                <i class="fa-solid fa-gear"></i> Settings
+            </div>
+            <div class="pc-panel-body">
+                <div class="pc-setting-row">
+                    <span class="pc-setting-label">Timestamps</span>
+                    <div class="pc-toggle-wrap">
+                        <div class="pc-toggle on" id="pc-toggle-ts" onclick="toggleSetting('timestamps')"></div>
+                    </div>
+                </div>
+                <div class="pc-setting-row">
+                    <span class="pc-setting-label">Sound alerts</span>
+                    <div class="pc-toggle-wrap">
+                        <div class="pc-toggle" id="pc-toggle-sound" onclick="toggleSetting('sound')"></div>
+                    </div>
+                </div>
+                <div class="pc-setting-row">
+                    <span class="pc-setting-label">Compact mode</span>
+                    <div class="pc-toggle-wrap">
+                        <div class="pc-toggle" id="pc-toggle-compact" onclick="toggleSetting('compact')"></div>
+                    </div>
+                </div>
+                <div class="pc-setting-row">
+                    <span class="pc-setting-label">Read chat aloud (TTS)</span>
+                    <div class="pc-toggle-wrap">
+                        <div class="pc-toggle" id="pc-toggle-tts" onclick="toggleSetting('ttsEnabled')"></div>
+                    </div>
+                </div>
+                <div class="pc-setting-row">
+                    <span class="pc-setting-label">Chat sounds (soundboard &amp; !commands)</span>
+                    <div class="pc-toggle-wrap">
+                        <div class="pc-toggle" id="pc-toggle-sounds" onclick="toggleSetting('soundsEnabled')"></div>
+                    </div>
+                </div>
+                <div class="pc-setting-row" style="flex-direction:column;align-items:stretch;gap:4px">
+                    <span class="pc-setting-label">TTS volume</span>
+                    <input type="range" id="pc-tts-volume" min="0" max="100" step="5" style="width:100%">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat feature scripts — mirror index.html so the popout has full parity.
+         Order: dependencies (app/emotes/gif/uploads/coins/bucks/cosmetics) before chat.js. -->
+    <script src="/js/app.js?v=51"></script>
+    <script src="/js/emotes.js?v=8"></script>
+    <script src="/js/gif-picker.js?v=1"></script>
+    <script src="/js/channel-uploads.js?v=6"></script>
+    <script src="/js/openvibe-bucks.js?v=3"></script>
+    <script src="/js/openvibe-coins.js?v=4"></script>
+    <script src="/js/cosmetics-ui.js?v=2"></script>
+    <script src="/js/chat.js?v=40"></script>
+    <script src="/js/chat-autocomplete.js?v=1"></script>
+    <script>
+    'use strict';
+
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode') || 'global';
+    const streamId = params.get('stream') || null;
+    const streamTitle = params.get('title') || streamId || '';
+    const chatLabel = mode === 'stream'
+        ? ('Chat' + (streamTitle ? ' — ' + streamTitle : ''))
+        : 'Global Chat';
+
+    document.title = chatLabel + ' — OpenVibe.Live';
+    document.getElementById('pc-title').textContent = chatLabel;
+
+    // ── Settings panel: delegate entirely to the shared chat.js settings system ──
+    // chat.js already called loadChatSettings() on boot (persisted to openvibe_chat_settings),
+    // so chatSettings is populated before this code runs.
+
+    function syncPopoutSettingsUI() {
+        // Map popout toggle IDs → shared chatSettings keys
+        const mapping = [
+            { toggleId: 'pc-toggle-ts',      key: 'showTimestamps' },
+            { toggleId: 'pc-toggle-sound',   key: 'soundOnMention' },
+            { toggleId: 'pc-toggle-compact', key: 'compactMode' },
+            { toggleId: 'pc-toggle-tts',     key: 'ttsEnabled' },
+            { toggleId: 'pc-toggle-sounds',  key: 'soundsEnabled' },
+        ];
+        for (const { toggleId, key } of mapping) {
+            const el = document.getElementById(toggleId);
+            if (el) el.classList.toggle('on', !!chatSettings[key]);
+        }
+        const vol = document.getElementById('pc-tts-volume');
+        if (vol) vol.value = chatSettings.ttsVolume ?? 80;
+        // Keep the input-area TTS button in sync (shared styling helper)
+        if (typeof syncTTSToggleButtons === 'function') syncTTSToggleButtons();
+    }
+
+    // Popout toggle handler: changes the shared chatSettings and saves/applies them.
+    window.toggleSetting = function(key) {
+        // Map legacy popout key names to shared settings keys
+        const keyMap = { timestamps: 'showTimestamps', sound: 'soundOnMention', compact: 'compactMode' };
+        const settingKey = keyMap[key] || key;
+        chatSettings[settingKey] = !chatSettings[settingKey];
+        syncPopoutSettingsUI();
+        if (typeof applyChatSettings === 'function') applyChatSettings();
+        if (typeof saveChatSettings === 'function') saveChatSettings();
+    };
+
+    // Request the viewer list over the shared chat WebSocket. The reply is
+    // handled by chat.js → renderChatUsersList(), which now also fills #pc-users-body.
+    window.requestUserList = function() {
+        try {
+            if (typeof chatWs !== 'undefined' && chatWs && chatWs.readyState === WebSocket.OPEN) {
+                chatWs.send(JSON.stringify({ type: 'get-users' }));
+            }
+        } catch {}
+    };
+
+    window.togglePanel = function(name) {
+        const panelEl = document.getElementById('pc-panel-' + name);
+        const btnEl = document.getElementById('pc-btn-' + name);
+        if (!panelEl) return;
+        const opening = !panelEl.classList.contains('visible');
+        document.querySelectorAll('.pc-panel').forEach(p => p.classList.remove('visible'));
+        document.querySelectorAll('.pc-hbtn').forEach(b => b.classList.remove('active'));
+        if (opening) {
+            panelEl.classList.add('visible');
+            if (btnEl) btnEl.classList.add('active');
+            if (name === 'users' && typeof requestUserList === 'function') requestUserList();
+        }
+    };
+
+    // Re-show the on-page chat immediately when this popout is closed
+    // (the opener's setInterval poll is the fallback for this).
+    window.addEventListener('beforeunload', function() {
+        if (!window.opener) return;
+        try {
+            window.opener.document.querySelectorAll('.chat-popped-out')
+                .forEach(function(el) { el.classList.remove('chat-popped-out'); });
+        } catch {}
+    });
+
+    function initPopoutChat() {
+        // Sync the popout toggle UI from the shared settings (already loaded by chat.js)
+        syncPopoutSettingsUI();
+
+        // TTS volume slider → shared chatSettings.ttsVolume
+        const vol = document.getElementById('pc-tts-volume');
+        if (vol) {
+            vol.addEventListener('input', () => {
+                chatSettings.ttsVolume = parseInt(vol.value, 10) || 0;
+                if (typeof saveChatSettings === 'function') saveChatSettings();
+            });
+        }
+
+        if (typeof initChat === 'function') {
+            initChat(mode === 'stream' && streamId ? streamId : null);
+        }
+        const input = document.getElementById('pc-input');
+        const sendBtn = document.getElementById('pc-send');
+        if (input) {
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (typeof sendChat === 'function') sendChat();
+                }
+            });
+            input.focus();
+        }
+        if (sendBtn) {
+            sendBtn.addEventListener('click', () => {
+                if (typeof sendChat === 'function') sendChat();
+            });
+        }
+    }
+
+    function inheritTheme() {
+        if (!window.opener) return;
+        try {
+            const openerStyle = window.opener.document.documentElement.style;
+            const cssVars = ['--bg-primary', '--bg-secondary', '--bg-tertiary', '--border',
+                '--text-primary', '--text-secondary', '--text-muted', '--accent',
+                '--danger', '--success'];
+            cssVars.forEach((v) => {
+                const val = openerStyle.getPropertyValue(v);
+                if (val) document.documentElement.style.setProperty(v, val);
+            });
+        } catch {}
+    }
+
+    function startPopoutChat() {
+        inheritTheme();
+        initPopoutChat();
+    }
+
+    startPopoutChat();
+    </script>
+</body>
+</html>

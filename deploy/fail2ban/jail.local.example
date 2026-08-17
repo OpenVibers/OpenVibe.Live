@@ -1,0 +1,26 @@
+[DEFAULT]
+bantime = 1h
+findtime = 10m
+maxretry = 5
+backend = systemd
+banaction = ufw
+ignoreip = 127.0.0.1/8 ::1
+
+[sshd]
+enabled = true
+port = ssh
+logpath = %(sshd_log)s
+
+[nginx-http-auth]
+enabled = true
+port = http,https
+logpath = /var/log/nginx/error.log
+maxretry = 6
+
+[nginx-limit-req]
+enabled = true
+port = http,https
+logpath = /var/log/nginx/error.log
+maxretry = 15
+findtime = 5m
+bantime = 30m

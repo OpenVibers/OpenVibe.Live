@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenVibe.Live Media Queue</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous">
+    <link rel="stylesheet" href="/css/media-player.css">
+</head>
+<body>
+    <div class="mp-shell">
+        <header class="mp-header">
+            <div>
+                <p class="mp-eyebrow">OpenVibe.Live Media Requests</p>
+                <h1 id="mp-title">Media Queue</h1>
+                <p id="mp-subtitle" class="mp-subtitle">Loading channel…</p>
+            </div>
+            <div class="mp-header-actions">
+                <a id="mp-channel-link" class="mp-btn mp-btn-outline" href="/" target="_blank" rel="noopener">
+                    <i class="fa-solid fa-up-right-from-square"></i> Channel
+                </a>
+                <button id="mp-copy-link" class="mp-btn mp-btn-outline" type="button">
+                    <i class="fa-solid fa-link"></i> Copy URL
+                </button>
+            </div>
+        </header>
+
+        <main class="mp-grid">
+            <section class="mp-card mp-player-card">
+                <div class="mp-card-head">
+                    <div>
+                        <h2><i class="fa-solid fa-radio"></i> Now Playing</h2>
+                        <p id="mp-now-meta" class="mp-muted">Nothing is playing right now.</p>
+                    </div>
+                    <div id="mp-owner-controls" class="mp-owner-controls" hidden>
+                        <button id="mp-start-next" class="mp-btn" type="button"><i class="fa-solid fa-play"></i> Start Next</button>
+                        <button id="mp-mark-played" class="mp-btn mp-btn-outline" type="button"><i class="fa-solid fa-forward-step"></i> Done</button>
+                        <button id="mp-skip-current" class="mp-btn mp-btn-danger" type="button"><i class="fa-solid fa-forward"></i> Skip</button>
+                    </div>
+                </div>
+
+                <!-- Player container with custom controls -->
+                <div class="mp-player-wrap" id="mp-player-wrap">
+                    <div id="mp-player-empty" class="mp-player-empty">
+                        <i class="fa-solid fa-headphones"></i>
+                        <p>Queue something with <strong>!sr</strong>, <strong>!yt</strong>, <strong>!youtube</strong>, <strong>!req</strong>, or <strong>!request</strong> in chat.</p>
+                    </div>
+                    <div id="mp-player-host" class="mp-player-host" hidden>
+                        <div id="mp-loading-overlay" class="mp-loading-overlay" hidden>
+                            <div class="mp-spinner"></div>
+                            <p id="mp-loading-text">Loading media…</p>
+                        </div>
+                        <div id="mp-error-overlay" class="mp-error-overlay" hidden>
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                            <p id="mp-error-text">Playback failed</p>
+                            <button id="mp-retry-btn" class="mp-btn" type="button"><i class="fa-solid fa-rotate-right"></i> Retry</button>
+                        </div>
+                    </div>
+
+                    <!-- Custom controls bar -->
+                    <div id="mp-controls" class="mp-controls" hidden>
+                        <button id="mp-ctrl-play" class="mp-ctrl-btn" type="button" title="Play/Pause">
+                            <i class="fa-solid fa-play"></i>
+                        </button>
+                        <div class="mp-seek-group">
+                            <span id="mp-time-current" class="mp-time">0:00</span>
+                            <div id="mp-seek-bar" class="mp-seek-bar">
+                                <div id="mp-seek-buffered" class="mp-seek-buffered"></div>
+                                <div id="mp-seek-progress" class="mp-seek-progress"></div>
+                                <input id="mp-seek-input" class="mp-seek-input" type="range" min="0" max="1000" value="0" step="1">
+                            </div>
+                            <span id="mp-time-total" class="mp-time">0:00</span>
+                        </div>
+                        <div class="mp-vol-group">
+                            <button id="mp-ctrl-mute" class="mp-ctrl-btn" type="button" title="Mute">
+                                <i class="fa-solid fa-volume-high"></i>
+                            </button>
+                            <input id="mp-vol-slider" class="mp-vol-slider" type="range" min="0" max="100" value="100" step="1">
+                        </div>
+                        <button id="mp-ctrl-fullscreen" class="mp-ctrl-btn" type="button" title="Fullscreen">
+                            <i class="fa-solid fa-expand"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="mp-now-card" class="mp-now-card" hidden></div>
+            </section>
+
+            <aside class="mp-sidebar">
+                <section class="mp-card">
+                    <div class="mp-card-head">
+                        <div>
+                            <h2><i class="fa-solid fa-list"></i> Queue</h2>
+                            <p class="mp-muted">Requests from viewers using OpenCoins.</p>
+                        </div>
+                        <span id="mp-queue-count" class="mp-badge">0 queued</span>
+                    </div>
+                    <div id="mp-queue-list" class="mp-queue-list"></div>
+                </section>
+
+                <section id="mp-settings-card" class="mp-card" hidden>
+                    <div class="mp-card-head">
+                        <div>
+                            <h2><i class="fa-solid fa-sliders"></i> Request Settings</h2>
+                            <p class="mp-muted">These apply to this streamer's queue.</p>
+                        </div>
+                    </div>
+                    <form id="mp-settings-form" class="mp-settings-form">
+                        <label><span>Enabled</span><input type="checkbox" name="enabled"></label>
+                        <fieldset class="mp-fieldset">
+                            <legend>Pricing</legend>
+                            <label><span>Mode</span>
+                                <select name="cost_mode" class="mp-select">
+                                    <option value="flat">Flat rate</option>
+                                    <option value="per_minute">Per minute</option>
+                                </select>
+                            </label>
+                            <label><span>Flat cost</span><input type="number" name="request_cost" min="1" max="100000"></label>
+                            <label><span>Cost per minute</span><input type="number" name="cost_per_minute" min="1" max="10000"></label>
+                        </fieldset>
+                        <label><span>Max per viewer</span><input type="number" name="max_per_user" min="1" max="25"></label>
+                        <label><span>Max duration (sec)</span><input type="number" name="max_duration_seconds" min="30" max="7200"></label>
+                        <label><span>YouTube</span><input type="checkbox" name="allow_youtube"></label>
+                        <label><span>Vimeo</span><input type="checkbox" name="allow_vimeo"></label>
+                        <label><span>Direct media</span><input type="checkbox" name="allow_direct_media"></label>
+                        <label><span>Allow live streams</span><input type="checkbox" name="allow_live"></label>
+                        <label><span>Auto advance</span><input type="checkbox" name="auto_advance"></label>
+                        <button class="mp-btn" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save Settings</button>
+                    </form>
+                </section>
+
+                <section class="mp-card">
+                    <div class="mp-card-head">
+                        <div>
+                            <h2><i class="fa-solid fa-clock-rotate-left"></i> History</h2>
+                            <p class="mp-muted">Recently played, skipped, or removed.</p>
+                        </div>
+                    </div>
+                    <div id="mp-history-list" class="mp-history-list"></div>
+                </section>
+
+                <section class="mp-card">
+                    <div class="mp-card-head">
+                        <div>
+                            <h2><i class="fa-solid fa-circle-info"></i> How viewers use it</h2>
+                        </div>
+                    </div>
+                    <ul class="mp-help-list">
+                        <li><code>!sr https://youtube.com/watch?v=...</code> adds media to the queue.</li>
+                        <li><code>!yt</code>, <code>!youtube</code>, <code>!req</code>, and <code>!request</code> work as aliases.</li>
+                        <li><code>!queue</code> shows the next few requests.</li>
+                        <li><code>!nowplaying</code> tells chat what is live.</li>
+                        <li>Videos are streamed server-side — no embed restrictions or ads.</li>
+                        <li>Coins are automatically refunded if playback fails.</li>
+                    </ul>
+                </section>
+            </aside>
+        </main>
+    </div>
+
+    <script src="/js/media-player.js"></script>
+</body>
+</html>

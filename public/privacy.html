@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy — OpenVibe</title>
+    <meta name="description" content="Privacy Policy for the OpenVibe — OpenVibe.Live, openvibe.tools, openvibe.games. We collect the least we can, we don't sell it, and transcription runs locally.">
+    <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg:      #0d0d0f;
+            --surface: #1a1a20;
+            --border:  #2a2a32;
+            --accent:  #8b5cf6;
+            --accent-l:#a78bfa;
+            --text:    #e8e6e3;
+            --muted:   #9a9a9a;
+            --dim:     #666;
+            --danger:  #e74c3c;
+        }
+
+        html { scroll-behavior: smooth; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            font-size: 16px;
+            line-height: 1.7;
+            min-height: 100vh;
+        }
+
+        /* ── Top bar ── */
+        .topbar {
+            background: #111118;
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            height: 52px;
+        }
+        .topbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--text);
+        }
+        .topbar-brand i { color: var(--accent); }
+        .topbar-brand .openvibe { color: var(--accent); }
+        .topbar-sep { color: var(--border); margin: 0 4px; }
+        .topbar-page { color: var(--muted); font-size: 0.9rem; }
+
+        /* ── Layout ── */
+        .wrap {
+            max-width: 780px;
+            margin: 0 auto;
+            padding: 48px 24px 80px;
+        }
+
+        /* ── Page header ── */
+        .page-header {
+            margin-bottom: 40px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid var(--border);
+        }
+        .page-header h1 {
+            font-size: 2rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            margin-bottom: 8px;
+        }
+        .page-header h1 i { color: var(--accent); margin-right: 10px; }
+        .page-header .updated {
+            font-size: 0.82rem;
+            color: var(--dim);
+        }
+        .page-header .philosophy {
+            margin-top: 16px;
+            padding: 14px 18px;
+            background: rgba(139,92,246,0.07);
+            border: 1px solid rgba(139,92,246,0.18);
+            border-radius: 8px;
+            font-size: 0.95rem;
+            color: var(--muted);
+        }
+        .page-header .philosophy strong { color: var(--accent-l); }
+
+        /* ── Sections ── */
+        .section { margin-bottom: 40px; }
+        .section h2 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--accent-l);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section h2 i { font-size: 0.95rem; }
+        .section p { color: var(--muted); margin-bottom: 10px; }
+        .section p:last-child { margin-bottom: 0; }
+        .section strong { color: var(--text); }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { color: var(--accent-l); }
+
+        /* ── Rules list ── */
+        .rule-list {
+            list-style: none;
+            padding: 0;
+            margin: 12px 0;
+        }
+        .rule-list li {
+            display: flex;
+            gap: 12px;
+            padding: 12px 16px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            color: var(--muted);
+            font-size: 0.95rem;
+        }
+        .rule-list li .rule-icon {
+            font-size: 1rem;
+            flex-shrink: 0;
+            line-height: 1.7;
+        }
+        .rule-list li.no .rule-icon { color: var(--danger); }
+        .rule-list li.yes .rule-icon { color: #2ecc71; }
+        .rule-list li strong { color: var(--text); }
+
+        /* ── Divider ── */
+        .divider {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 32px 0;
+        }
+
+        /* ── Info box ── */
+        .info {
+            background: rgba(139,92,246,0.08);
+            border: 1px solid rgba(139,92,246,0.2);
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin: 16px 0;
+            font-size: 0.9rem;
+            color: var(--muted);
+        }
+        .info strong { color: var(--accent-l); }
+
+        /* ── Warn box ── */
+        .warn {
+            background: rgba(231,76,60,0.08);
+            border: 1px solid rgba(231,76,60,0.25);
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin: 16px 0;
+            font-size: 0.9rem;
+            color: #e88;
+        }
+        .warn i { margin-right: 6px; }
+        .warn strong { color: #f99; }
+
+        ol {
+            padding-left: 1.4em;
+            color: var(--muted);
+            margin-bottom: 10px;
+        }
+        ol li { margin-bottom: 6px; }
+
+        /* ── Footer ── */
+        .page-footer {
+            border-top: 1px solid var(--border);
+            padding: 20px 24px;
+            text-align: center;
+            font-size: 0.82rem;
+            color: var(--dim);
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 6px 12px;
+        }
+        .page-footer a { color: var(--accent); text-decoration: none; }
+        .page-footer a:hover { color: var(--accent-l); }
+        .page-footer .sep { color: var(--border); }
+    </style>
+</head>
+<body>
+
+<header class="topbar">
+    <a class="topbar-brand" href="https://openvibe.live">
+        <i class="fa-solid fa-circle-nodes"></i>
+        <span><span class="openvibe">OpenVibe</span>Streamer</span>
+    </a>
+    <span class="topbar-sep">/</span>
+    <span class="topbar-page">Privacy Policy</span>
+</header>
+
+<main class="wrap">
+    <div class="page-header">
+        <h1><i class="fa-solid fa-user-shield"></i> Privacy Policy</h1>
+        <p class="updated">Applies to the OpenVibe network — openvibe.live, openvibe.network, openvibe.tools, openvibe.media, openvibe.games &nbsp;·&nbsp; Last updated: April 2026</p>
+        <div class="philosophy">
+            <strong>The short version:</strong> We collect the least we can get away with, we don't sell it, and we don't run creepy ad-tech on you. We're a community project with no investors to please. Your data exists to run the service — stream your stuff, keep you logged in, and power the optional AI features — not to be packaged up and auctioned off.
+        </div>
+    </div>
+
+    <!-- What we collect -->
+    <div class="section">
+        <h2><i class="fa-solid fa-box-archive"></i> What We Collect</h2>
+        <p>Only what's needed to run a streaming platform:</p>
+        <ul class="rule-list">
+            <li class="yes"><span class="rule-icon"><i class="fa-solid fa-user"></i></span><span><strong>Account info.</strong> Your username, email, and profile details — handled through the OpenVibe single sign-on (openvibe.tools). We use it to identify you and keep you logged in.</span></li>
+            <li class="yes"><span class="rule-icon"><i class="fa-solid fa-video"></i></span><span><strong>Content you create.</strong> Streams, VODs, clips, pastes, chat messages, themes, and anything else you post. You choose whether each is public, unlisted, or private.</span></li>
+            <li class="yes"><span class="rule-icon"><i class="fa-solid fa-server"></i></span><span><strong>Technical basics.</strong> IP address, browser/user-agent, and timestamps — used for security, abuse prevention, rate limiting, and rough view counts. We don't build advertising profiles.</span></li>
+            <li class="yes"><span class="rule-icon"><i class="fa-solid fa-coins"></i></span><span><strong>Payments.</strong> If you buy Vibes or tip, payment processors handle the card details — we never see or store your full card number.</span></li>
+        </ul>
+    </div>
+
+    <!-- What we don't do -->
+    <div class="section">
+        <h2><i class="fa-solid fa-ban"></i> What We Don't Do</h2>
+        <ul class="rule-list">
+            <li class="no"><span class="rule-icon"><i class="fa-solid fa-xmark"></i></span><span>We <strong>don't sell or rent</strong> your personal data to anyone.</span></li>
+            <li class="no"><span class="rule-icon"><i class="fa-solid fa-xmark"></i></span><span>We <strong>don't run third-party ad networks</strong> or cross-site behavioral tracking.</span></li>
+            <li class="no"><span class="rule-icon"><i class="fa-solid fa-xmark"></i></span><span>We <strong>don't share</strong> your info except where it's genuinely required to run the service (below), or where the law compels us.</span></li>
+        </ul>
+    </div>
+
+    <!-- AI & transcription -->
+    <div class="section">
+        <h2><i class="fa-solid fa-wand-magic-sparkles"></i> AI &amp; Transcription</h2>
+        <p>OpenVibe.Live has optional AI features that generate overviews, memories, and summaries of streams, VODs, clips, and pastes to make them easier to browse.</p>
+        <p><strong>Audio transcription runs locally on our own server</strong> (whisper.cpp) — your stream audio is <strong>not</strong> sent to a third-party transcription API. Frame analysis for stream memories may use an AI provider, gated by a strict daily budget and only on content you've made available on the platform.</p>
+        <p>Generated transcripts, timestamps, and overviews are stored alongside the content they describe and follow the same visibility you chose for that content. If you delete a VOD, clip, or paste, its AI-generated data goes with it.</p>
+        <div class="info"><strong>Your call:</strong> AI features are there to help discovery. If you set your content to private, its AI overview and transcript are private too.</div>
+    </div>
+
+    <!-- Cookies & storage -->
+    <div class="section">
+        <h2><i class="fa-solid fa-cookie-bite"></i> Cookies &amp; Local Storage</h2>
+        <p>We use a small number of cookies and browser local-storage entries to keep you signed in, remember your theme and volume preferences, and keep the site working. No advertising or third-party tracking cookies.</p>
+    </div>
+
+    <!-- Third parties -->
+    <div class="section">
+        <h2><i class="fa-solid fa-handshake-angle"></i> Who We Share With (Only When Needed)</h2>
+        <p>To actually run a streaming site, a few services are involved. Each only gets what it needs:</p>
+        <ol>
+            <li><strong>Infrastructure &amp; CDN</strong> — for delivering the site and video, and for basic DDoS/abuse protection.</li>
+            <li><strong>Object storage</strong> — VOD and clip files are stored on cloud object storage so they don't fill our servers.</li>
+            <li><strong>Payment processors</strong> — to handle purchases and tips securely.</li>
+            <li><strong>Restreaming platforms you connect</strong> — if you link Twitch, YouTube, or Kick to multistream, we send your stream to those platforms using the credentials you authorize. Their privacy policies apply to what happens on their side.</li>
+        </ol>
+        <p>We may also disclose information if we're legally required to, or to protect people from imminent harm.</p>
+    </div>
+
+    <!-- Your content visibility -->
+    <div class="section">
+        <h2><i class="fa-solid fa-eye"></i> You Control What's Public</h2>
+        <p>Anything you post can be set to <strong>public</strong> (listed and visible), <strong>unlisted</strong> (only reachable with the direct link), or <strong>private</strong> (just you and staff). Live streams are public while you're live. Think before you broadcast — a live stream is, by nature, public.</p>
+    </div>
+
+    <!-- Retention & deletion -->
+    <div class="section">
+        <h2><i class="fa-solid fa-clock-rotate-left"></i> Retention &amp; Deletion</h2>
+        <p>We keep your content and account data while your account is active. You can delete your own VODs, clips, and pastes at any time from your dashboard or channel page. Deleting content removes it from storage (including backups on object storage) and takes its AI-generated data with it.</p>
+        <p>Want your whole account gone? Reach out and we'll remove your account and associated personal data, except anything we're legally required to retain (e.g., records tied to a CSAM report).</p>
+    </div>
+
+    <!-- Your rights -->
+    <div class="section">
+        <h2><i class="fa-solid fa-scale-balanced"></i> Your Rights</h2>
+        <p>Depending on where you live, you may have the right to access, correct, export, or delete your personal data. We're a small community project, but we'll honor reasonable requests — just contact us.</p>
+    </div>
+
+    <!-- Children -->
+    <div class="section">
+        <h2><i class="fa-solid fa-child"></i> Children</h2>
+        <p>You must be at least 13 to have an account. We don't knowingly collect personal data from children under 13. If you believe a child under 13 has an account, contact us and we'll remove it.</p>
+    </div>
+
+    <!-- Changes -->
+    <div class="section">
+        <h2><i class="fa-solid fa-pen-to-square"></i> Changes to This Policy</h2>
+        <p>We may update this policy occasionally. If we make material changes, we'll announce it in Discord and/or post a notice on the site. We're not a corporation — we're not going to quietly slip in bullshit. If something changes, we'll say so.</p>
+    </div>
+
+    <!-- Contact -->
+    <div class="section">
+        <h2><i class="fa-solid fa-envelope"></i> Contact</h2>
+        <p>Privacy questions or data requests: <a href="mailto:dmca@openvibe.live">dmca@openvibe.live</a></p>
+        <p>General questions: <a href="https://discord.gg/M6MuRUaeJj" target="_blank" rel="noopener">Discord</a></p>
+    </div>
+
+    <div class="warn" style="margin-top:32px">
+        <strong><i class="fa-solid fa-triangle-exclamation"></i> Not legal advice.</strong> This is our privacy policy, written in plain English — not a lawyer's opinion. If you spot something we should tighten up, reach out.
+    </div>
+
+</main>
+
+<footer class="page-footer">
+    <span>&copy; 2026 OpenVibe &mdash; Community Project, No Profit</span>
+    <span class="sep">&middot;</span>
+    <a href="https://openvibe.live">OpenVibe.Live</a>
+    <span class="sep">&middot;</span>
+    <a href="https://openvibe.live/tos">Terms of Service</a>
+    <span class="sep">&middot;</span>
+    <a href="https://openvibe.live/privacy">Privacy Policy</a>
+    <span class="sep">&middot;</span>
+    <a href="https://openvibe.live/dmca">DMCA Policy</a>
+    <span class="sep">&middot;</span>
+    <a href="https://github.com/OpenVibe.Live" target="_blank" rel="noopener"><i class="fa-brands fa-github"></i> Open Source</a>
+    <span class="sep">&middot;</span>
+    <a href="https://discord.gg/M6MuRUaeJj" target="_blank" rel="noopener"><i class="fa-brands fa-discord"></i> Discord</a>
+</footer>
+
+</body>
+</html>

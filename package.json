@@ -1,0 +1,49 @@
+{
+  "name": "live",
+  "version": "1.0.0",
+  "description": "OpenVibe.Live \u2014 free & open live streaming. Part of the OpenVibe network (media by OpenVibe.Media, identity by OpenVibe.Network).",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "NODE_ENV=development node server/index.js",
+    "init-db": "node server/db/init.js",
+    "seed": "node server/db/seed.js"
+  },
+  "keywords": [
+    "streaming",
+    "live",
+    "webrtc",
+    "jsmpeg",
+    "rtmp",
+    "mediasoup",
+    "openvibe"
+  ],
+  "author": "OpenVibe.Live Community",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "geoip-lite": "^2.0.0",
+    "helmet": "^7.1.0",
+    "openvibe-shared": "file:./vendor/openvibe-shared",
+    "@roamhq/wrtc": "^0.8.0",
+    "jsonwebtoken": "^9.0.2",
+    "mediasoup": "^3.14.14",
+    "mediasoup-client": "^3.15.7",
+    "multer": "^1.4.5-lts.1",
+    "node-media-server": "^2.7.1",
+    "sharp": "^0.33.0",
+    "sdp-transform": "^3.0.0",
+    "uuid": "^10.0.0",
+    "werift": "^0.24.4",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
