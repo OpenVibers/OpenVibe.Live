@@ -126,7 +126,7 @@ function _renderSettingsAvatar(u) {
     const letter = (u.username || '?')[0].toUpperCase();
     const chip = '<span class="settings-avatar-edit"><i class="fa-solid fa-camera"></i></span>';
     el.innerHTML = (u.avatar_url
-        ? `<img src="${u.avatar_url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block" onerror="this.remove();this.parentNode.insertAdjacentText('afterbegin','${letter}')">`
+        ? `<img src="${u.avatar_url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block" onerror="var p=this.parentNode;this.remove();if(p)p.insertAdjacentText('afterbegin','${letter}')">`
         : letter) + chip;
 }
 
