@@ -269,11 +269,12 @@ function initDb() {
     // table from its CURRENT definition (columns have grown over time).
     try {
         const tbl = database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='chat_messages'").get();
-        if (tbl && /message_type IN \([^)]*\)/.test(tbl.sql) && !tbl.sql.includes("'channel-sound'")) {
+        const REQUIRED_TYPES = ['channel-sound', 'soundboard', 'clip'];
+        if (tbl && /message_type IN \([^)]*\)/.test(tbl.sql) && REQUIRED_TYPES.some(t => !tbl.sql.includes(`'${t}'`))) {
             const newSql = tbl.sql
                 .replace(/CREATE TABLE ["']?chat_messages["']?/, 'CREATE TABLE chat_messages_new')
                 .replace(/message_type IN \([^)]*\)/,
-                    "message_type IN ('chat', 'system', 'donation', 'command', 'tts', 'channel-sound', 'soundboard')");
+                    "message_type IN ('chat', 'system', 'donation', 'command', 'tts', 'channel-sound', 'soundboard', 'clip')");
             const cols = database.prepare("PRAGMA table_info('chat_messages')").all().map(c => `"${c.name}"`).join(', ');
             const indexes = database.prepare(
                 "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='chat_messages' AND sql IS NOT NULL"
