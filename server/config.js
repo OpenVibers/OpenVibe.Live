@@ -1,7 +1,7 @@
 /**
  * OpenVibe.Live — Config
  *
- * Loads defaults from env, then resolves registry overrides from openvibe.tools
+ * Loads defaults from env, then resolves registry overrides from openvibe.network
  * when available. Registry overrides take precedence over env values.
  */
 require('dotenv').config();
@@ -146,7 +146,7 @@ function buildConfig(registryValues) {
 
     if (process.env.NODE_ENV === 'production' && baseUrl.includes('localhost')) {
         console.error('[Config] CRITICAL: BASE_URL is localhost in production! CORS will reject all browser requests.');
-        console.error('[Config] CRITICAL: Set BASE_URL env var or configure it in the openvibe.tools admin registry.');
+        console.error('[Config] CRITICAL: Set BASE_URL env var or configure it in the openvibe.network admin registry.');
     }
 
     return {
@@ -240,7 +240,7 @@ function buildConfig(registryValues) {
         openvibeBucks: {
             // Bit-style currency: integer bucks, 100 bucks = $1.00 streamer cashout
             // (so 1 buck = $0.01 = one USD cent). Viewers buy at a premium with volume
-            // discounts (see openvibe-bucks.js pricing tiers) — the spread is the platform margin.
+            // discounts (see public/js/vibes.js pricing tiers) — the spread is the platform margin.
             cashoutBucksPerUsd: 100,
             minCashoutBucks: parseInt(process.env.MIN_CASHOUT_BUCKS || '500', 10), // $5.00
             escrowDays: parseInt(process.env.ESCROW_HOLD_DAYS || '14', 10),
@@ -300,12 +300,12 @@ async function refreshRegistry() {
             },
         });
         if (!res.ok) {
-            console.warn('[Config] Failed to refresh URL registry from openvibe.tools:', res.status);
+            console.warn('[Config] Failed to refresh URL registry from openvibe.network:', res.status);
             return config;
         }
         const body = await res.json();
         if (!body.registry || typeof body.registry !== 'object') {
-            console.warn('[Config] Invalid registry response from openvibe.tools:', JSON.stringify(body).slice(0, 200));
+            console.warn('[Config] Invalid registry response from openvibe.network:', JSON.stringify(body).slice(0, 200));
             return config;
         }
 
@@ -319,9 +319,9 @@ async function refreshRegistry() {
         );
         const updated = buildConfig(registry);
         Object.assign(config, updated);
-        console.log('[Config] URL registry loaded from openvibe.tools resolved registry');
+        console.log('[Config] URL registry loaded from openvibe.network resolved registry');
     } catch (err) {
-        console.warn('[Config] Unable to load URL registry from openvibe.tools:', err.message);
+        console.warn('[Config] Unable to load URL registry from openvibe.network:', err.message);
     }
     return config;
 }

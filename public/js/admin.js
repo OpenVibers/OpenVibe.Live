@@ -770,7 +770,7 @@ async function loadAdminCashouts() {
                 <tbody>${cashouts.map(co => `
                     <tr>
                         <td>${esc(co.username || '-')}</td>
-                        <td>${Number(co.amount).toLocaleString()} HB</td>
+                        <td>${Number(co.amount).toLocaleString()} Vibes</td>
                         <td>$${(co.amount * 0.01).toFixed(2)}</td>
                         <td>${esc(co.paypal_email || '-')}</td>
                         <td>${new Date(co.created_at).toLocaleString()}</td>

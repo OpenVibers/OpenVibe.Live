@@ -4,7 +4,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 // Client mirror of the server volume-discount tiers (server is the source of truth;
-// this is just for the live custom-amount price preview). Keep in sync with openvibe-bucks.js.
+// this is just for the live custom-amount price preview). Keep in sync with vibes.js.
 const _BUCKS_TIERS = [[25000, 0.0110], [10000, 0.0115], [5000, 0.0120], [2500, 0.0124], [1000, 0.0130], [500, 0.0140], [0, 0.0150]];
 function _priceForBucks(b) {
     b = Math.max(0, Math.round(Number(b) || 0));
@@ -56,7 +56,7 @@ async function _initBuyBucks() {
     const packages = (cfg.packages && cfg.packages.length) ? cfg.packages : [100, 500, 1000, 2500, 5000, 10000].map(bucks => ({ bucks, usd: _priceForBucks(bucks) }));
     const pkgBox = document.getElementById('buy-packages');
     if (pkgBox) pkgBox.innerHTML = packages.map(p =>
-        `<button class="btn btn-outline" onclick="setBuyAmount(${p.bucks})">${p.bucks.toLocaleString()} HB<br><small>$${Number(p.usd).toFixed(2)}</small></button>`
+        `<button class="btn btn-outline" onclick="setBuyAmount(${p.bucks})">${p.bucks.toLocaleString()} Vibes<br><small>$${Number(p.usd).toFixed(2)}</small></button>`
     ).join('');
 
     const min = cfg.minPurchaseBucks || 100;
@@ -160,12 +160,12 @@ function openvibeBucksDonateModal() {
         <p class="muted" style="margin-bottom:16px">Support this streamer!</p>
 
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
-            <button class="btn btn-outline" onclick="setDonateAmount(100)">100 HB</button>
-            <button class="btn btn-outline" onclick="setDonateAmount(250)">250 HB</button>
-            <button class="btn btn-outline" onclick="setDonateAmount(500)">500 HB</button>
-            <button class="btn btn-outline" onclick="setDonateAmount(1000)">1,000 HB</button>
-            <button class="btn btn-outline" onclick="setDonateAmount(2500)">2,500 HB</button>
-            <button class="btn btn-outline" onclick="setDonateAmount(5000)">5,000 HB</button>
+            <button class="btn btn-outline" onclick="setDonateAmount(100)">100 Vibes</button>
+            <button class="btn btn-outline" onclick="setDonateAmount(250)">250 Vibes</button>
+            <button class="btn btn-outline" onclick="setDonateAmount(500)">500 Vibes</button>
+            <button class="btn btn-outline" onclick="setDonateAmount(1000)">1,000 Vibes</button>
+            <button class="btn btn-outline" onclick="setDonateAmount(2500)">2,500 Vibes</button>
+            <button class="btn btn-outline" onclick="setDonateAmount(5000)">5,000 Vibes</button>
         </div>
 
         <div class="form-group">
@@ -206,7 +206,7 @@ async function _loadDonateGoals() {
         const goals = (data.goals || []).filter(g => g.is_active);
         if (!goals.length) { wrap.style.display = 'none'; return; }
         sel.innerHTML = `<option value="">General support (no specific goal)</option>` +
-            goals.map(g => `<option value="${g.id}">${escHb(g.title)} — ${Number(g.current_amount).toLocaleString()}/${Number(g.target_amount).toLocaleString()} HB</option>`).join('');
+            goals.map(g => `<option value="${g.id}">${escHb(g.title)} — ${Number(g.current_amount).toLocaleString()}/${Number(g.target_amount).toLocaleString()} Vibes</option>`).join('');
         wrap.style.display = '';
         // Pre-select a goal if the donate modal was opened from a goal popover.
         if (window._pendingDonateGoalId) {
@@ -251,7 +251,7 @@ async function doDonate() {
 function openvibeBucksCashoutModal() {
     return `
         <h3><i class="fa-solid fa-money-bill-transfer"></i> Cash Out</h3>
-        <p class="muted" style="margin-bottom:16px">Draws from your <strong>cashout balance</strong> (Vibes sent to you). 100 Bucks = $1.00. Minimum 500 HB ($5.00). Held in escrow until admin approves.</p>
+        <p class="muted" style="margin-bottom:16px">Draws from your <strong>cashout balance</strong> (Vibes sent to you). 100 Vibes = $1.00. Minimum 500 Vibes ($5.00). Held in escrow until admin approves.</p>
 
         <div class="form-group">
             <label>Amount (Vibes)</label>

@@ -207,7 +207,7 @@ function initDb() {
         database.exec(`CREATE INDEX IF NOT EXISTS idx_vkeys_status ON verification_keys(status)`);
     } catch (e) { console.warn('[DB] verification_keys migration:', e.message); }
 
-    // Migrate: create linked_accounts table for openvibe.tools SSO
+    // Migrate: create linked_accounts table for openvibe.network SSO
     try {
         database.exec(`CREATE TABLE IF NOT EXISTS linked_accounts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -812,7 +812,7 @@ function initDb() {
         const seedGoogle = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
         for (const [k, v, d, t] of googleSeeds) seedGoogle.run(k, v, d, t);
 
-        // Seed payment-provider + monetization settings (configured in openvibe.tools/admin → Payments).
+        // Seed payment-provider + monetization settings (configured in openvibe.network/admin → Payments).
         // Master switch is OFF by default so nothing goes live until an admin enables it.
         const paymentSeeds = [
             ['payments_enabled', 'false', 'Master switch: enable real-money purchases & subscriptions', 'boolean'],
@@ -870,7 +870,7 @@ function initDb() {
             }
         } catch (e) { console.warn('[DB] Vibes bit migration:', e.message); }
 
-        // AI analysis subsystem (configured in openvibe.tools/admin → AI). Master switch
+        // AI analysis subsystem (configured in openvibe.network/admin → AI). Master switch
         // OFF by default so no API calls (or cost) happen until an admin enables it.
         const aiSeeds = [
             ['ai_enabled', 'false', 'Master switch: enable AI analysis (pastes + stream memories)', 'boolean'],

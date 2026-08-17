@@ -144,7 +144,7 @@ class HardwareController:
 
     # TTS
     def cmd_tts(self, data=None):
-        text = (data or {}).get("text", "hello from openvibe streamer")
+        text = (data or {}).get("text", "hello from OpenVibe.Live")
         try:
             subprocess.Popen(["espeak", "-s", "150", text],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

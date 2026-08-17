@@ -4,7 +4,7 @@
  * Vision + text analysis used for: paste description/tags, paste text overviews,
  * and periodic live-stream "memories". Provider (Anthropic Claude by default, or
  * any OpenAI-compatible endpoint) + key + model are configured in
- * openvibe.tools/admin → AI. Everything is gated by the `ai_enabled` master switch and
+ * openvibe.network/admin → AI. Everything is gated by the `ai_enabled` master switch and
  * an optional daily USD budget cap. Token usage + estimated cost are recorded to
  * `ai_usage` for the admin cost breakdown.
  */

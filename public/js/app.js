@@ -12,7 +12,7 @@ let _streamSwitchToken = 0; // increments each stream switch; guards against fas
 let openvibeAppMetaData = null;
 let openvibeAppMetaPromise = null;
 
-function getDefaultNet.OpenVibeworkUrls() {
+function getDefaultOpenVibeNetworkUrls() {
     const host = window.location.hostname;
     const isLocalHost = ['localhost', '127.0.0.1'].includes(host);
     const isTopenvibeAlias = ['topenvibe.tools', 'topenvibelive.com', 'topenvibe.quest'].includes(host);
@@ -22,17 +22,17 @@ function getDefaultNet.OpenVibeworkUrls() {
     };
 }
 
-function getNet.OpenVibeworkUrl(service) {
-    const urls = window.Net.OpenVibeworkUrls || getDefaultNet.OpenVibeworkUrls();
-    return (urls && urls[service]) ? urls[service] : getDefaultNet.OpenVibeworkUrls()[service];
+function getOpenVibeNetworkUrl(service) {
+    const urls = window.OpenVibeNetworkUrls || getDefaultOpenVibeNetworkUrls();
+    return (urls && urls[service]) ? urls[service] : getDefaultOpenVibeNetworkUrls()[service];
 }
 
-function getOpenVibe.ToolsUrl() {
-    return getNet.OpenVibeworkUrl('tools');
+function getOpenVibeToolsUrl() {
+    return getOpenVibeNetworkUrl('tools');
 }
 
 function getScraplandiaUrl() {
-    return getNet.OpenVibeworkUrl('quest');
+    return getOpenVibeNetworkUrl('quest');
 }
 /** Cached external viewer count (Kick/Twitch/RS) — updated by cumulative viewer poll */
 let _cachedExternalViewerCount = 0;
@@ -636,7 +636,7 @@ function showModal(id) {
             <a href="/api/auth/sso/login" class="btn btn-lg" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff;text-decoration:none;border:none;cursor:pointer">
                 <i class="fa-solid fa-network-wired"></i> Sign in with OpenVibe
             </a>
-            <p style="text-align:center;margin-top:12px;font-size:12px;color:var(--text-muted)">Registration is handled on openvibe.tools</p>`,
+            <p style="text-align:center;margin-top:12px;font-size:12px;color:var(--text-muted)">Registration is handled on openvibe.network</p>`,
         donate: openvibeBucksDonateModal(),
         'buy-funds': openvibeBucksBuyModal(),
         cashout: openvibeBucksCashoutModal(),
@@ -939,10 +939,10 @@ function routeFromURL() {
         showPage('broadcast');
         loadBroadcastPage();
     } else if (segments[0] === 'admin') {
-        window.location.href = `${getOpenVibe.ToolsUrl()}/admin`;
+        window.location.href = `${getOpenVibeToolsUrl()}/admin`;
         return;
     } else if (segments[0] === 'themes') {
-        // Theme management moved to the central openvibe.tools account app.
+        // Theme management moved to the central openvibe.network account app.
         window.location.href = 'https://openvibe.network/themes';
         return;
     } else if (segments[0] === 'chat') {
@@ -4892,7 +4892,7 @@ function _goalWidgetItemHTML(g) {
             <div class="cgw-body">
                 <div class="cgw-top">
                     <span class="cgw-title">${reached ? '🎉 ' : ''}${esc(g.title)}</span>
-                    <span class="cgw-amt">${Number(g.current_amount).toLocaleString()} / ${Number(g.target_amount).toLocaleString()} HB</span>
+                    <span class="cgw-amt">${Number(g.current_amount).toLocaleString()} / ${Number(g.target_amount).toLocaleString()} Vibes</span>
                     <span class="cgw-pct">${reached ? '✓' : pct + '%'}</span>
                 </div>
             </div>
@@ -8013,8 +8013,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Start proactive token refresh timer
     startTokenRefreshTimer();
 
-    // Theme is owned centrally by openvibe.tools and applied by the shared OpenVibeThemeLoader
-    // (which syncs from openvibe.tools after paint). We no longer read OpenVibe.Live's local
+    // Theme is owned centrally by openvibe.network and applied by the shared OpenVibeThemeLoader
+    // (which syncs from openvibe.network after paint). We no longer read OpenVibe.Live's local
     // theme store, so the theme chosen at openvibe.network/themes is authoritative here.
 
     // Route from current URL instead of always going home — but not in the popout

@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════
    OpenVibe.Live — Vibes (Virtual Currency UI)
-   1 OpenVibe Buck = $1.00 USD
+   1 Vibe = $1.00 USD
    ═══════════════════════════════════════════════════════════════ */
 
 /**
@@ -9,17 +9,17 @@
 function openvibeBucksBuyModal() {
     return `
         <h3><i class="fa-solid fa-coins"></i> Buy Vibes</h3>
-        <p class="muted" style="margin-bottom:16px">1 OpenVibe Buck = $1.00</p>
+        <p class="muted" style="margin-bottom:16px">1 Vibe = $1.00</p>
 
         <div class="form-group">
             <label>Amount</label>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
-                <button class="btn btn-outline" onclick="setBuyAmount(5)">5 HB<br><small>$5</small></button>
-                <button class="btn btn-outline" onclick="setBuyAmount(10)">10 HB<br><small>$10</small></button>
-                <button class="btn btn-outline" onclick="setBuyAmount(25)">25 HB<br><small>$25</small></button>
-                <button class="btn btn-outline" onclick="setBuyAmount(50)">50 HB<br><small>$50</small></button>
-                <button class="btn btn-outline" onclick="setBuyAmount(100)">100 HB<br><small>$100</small></button>
-                <button class="btn btn-outline" onclick="setBuyAmount(250)">250 HB<br><small>$250</small></button>
+                <button class="btn btn-outline" onclick="setBuyAmount(5)">5 Vibes<br><small>$5</small></button>
+                <button class="btn btn-outline" onclick="setBuyAmount(10)">10 Vibes<br><small>$10</small></button>
+                <button class="btn btn-outline" onclick="setBuyAmount(25)">25 Vibes<br><small>$25</small></button>
+                <button class="btn btn-outline" onclick="setBuyAmount(50)">50 Vibes<br><small>$50</small></button>
+                <button class="btn btn-outline" onclick="setBuyAmount(100)">100 Vibes<br><small>$100</small></button>
+                <button class="btn btn-outline" onclick="setBuyAmount(250)">250 Vibes<br><small>$250</small></button>
             </div>
         </div>
 
@@ -81,12 +81,12 @@ function openvibeBucksDonateModal() {
         <p class="muted" style="margin-bottom:16px">Support this streamer!</p>
 
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
-            <button class="btn btn-outline" onclick="setDonateAmount(1)">1 HB</button>
-            <button class="btn btn-outline" onclick="setDonateAmount(2)">2 HB</button>
-            <button class="btn btn-outline" onclick="setDonateAmount(5)">5 HB</button>
-            <button class="btn btn-outline" onclick="setDonateAmount(10)">10 HB</button>
-            <button class="btn btn-outline" onclick="setDonateAmount(25)">25 HB</button>
-            <button class="btn btn-outline" onclick="setDonateAmount(50)">50 HB</button>
+            <button class="btn btn-outline" onclick="setDonateAmount(1)">1 Vibes</button>
+            <button class="btn btn-outline" onclick="setDonateAmount(2)">2 Vibes</button>
+            <button class="btn btn-outline" onclick="setDonateAmount(5)">5 Vibes</button>
+            <button class="btn btn-outline" onclick="setDonateAmount(10)">10 Vibes</button>
+            <button class="btn btn-outline" onclick="setDonateAmount(25)">25 Vibes</button>
+            <button class="btn btn-outline" onclick="setDonateAmount(50)">50 Vibes</button>
         </div>
 
         <div class="form-group">

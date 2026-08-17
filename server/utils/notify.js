@@ -30,7 +30,7 @@ function pushNotification(payload) {
     });
 }
 
-// Register this user as having a linked OpenVibe.Live account on openvibe.tools so it
+// Register this user as having a linked OpenVibe.Live account on openvibe.network so it
 // appears under their Linked Services. Fire-and-forget + deduped per process.
 const _linkedReported = new Set();
 function reportLinkedAccount(user) {

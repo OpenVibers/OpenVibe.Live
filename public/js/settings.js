@@ -198,7 +198,7 @@ async function saveSettingsProfile() {
         email: document.getElementById('set-email').value.trim() || null,
         bio: document.getElementById('set-bio').value.trim(),
     };
-    // Profile color is managed centrally at openvibe.tools now (its SSO sync overrides any
+    // Profile color is managed centrally at openvibe.network now (its SSO sync overrides any
     // local value on every login) — only send it if the field is still present.
     const _pc = document.getElementById('set-profile-color');
     if (_pc) data.profile_color = _pc.value;
@@ -215,20 +215,20 @@ async function saveSettingsProfile() {
     }
 }
 
-function getDefaultOpenVibe.ToolsUrl() {
+function getDefaultOpenVibeToolsUrl() {
     const host = window.location.hostname;
     const isLocalHost = ['localhost', '127.0.0.1'].includes(host);
     const isTopenvibeAlias = ['topenvibe.tools', 'topenvibelive.com', 'topenvibe.quest'].includes(host);
     return isLocalHost ? 'http://localhost:3100' : (isTopenvibeAlias ? 'https://topenvibe.tools' : 'https://openvibe.network');
 }
 
-function getOpenVibe.ToolsUrl() {
-    const urls = window.Net.OpenVibeworkUrls || { tools: getDefaultOpenVibe.ToolsUrl() };
-    return urls.tools || getDefaultOpenVibe.ToolsUrl();
+function getOpenVibeToolsUrl() {
+    const urls = window.OpenVibeNetworkUrls || { tools: getDefaultOpenVibeToolsUrl() };
+    return urls.tools || getDefaultOpenVibeToolsUrl();
 }
 
-function getOpenVibe.ToolsAdminUrl() {
-    const url = getOpenVibe.ToolsUrl();
+function getOpenVibeToolsAdminUrl() {
+    const url = getOpenVibeToolsUrl();
     try {
         const u = new URL(url);
         u.hostname = u.hostname.replace(/^www\./, 'my.');
@@ -238,9 +238,9 @@ function getOpenVibe.ToolsAdminUrl() {
     }
 }
 
-// Password management handled on openvibe.tools
+// Password management handled on openvibe.network
 function changePassword() {
-    window.open(getOpenVibe.ToolsAdminUrl(), '_blank');
+    window.open(getOpenVibeToolsAdminUrl(), '_blank');
 }
 
 /* ── Broadcaster Tab ──────────────────────────────────────────── */

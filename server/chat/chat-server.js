@@ -55,7 +55,7 @@ class ChatServer {
         this.wss = null;
         /** @type {Map<WebSocket, { user: object|null, anonId: string, streamId: number|null, ip: string }>} */
         this.clients = new Map();
-        /** @type {Map<string, number>} IP → unified anon number (warm cache, backed by openvibe.tools) */
+        /** @type {Map<string, number>} IP → unified anon number (warm cache, backed by openvibe.network) */
         this.anonMap = new Map();
         this.nextAnonId = 1;
         this._anonDbLoaded = false;
@@ -75,7 +75,7 @@ class ChatServer {
         this.soundboardStreamLimits = new Map();
         this._autoDeleteSweepInterval = null;
 
-        // ── Unified anon resolution via openvibe.tools internal API ──
+        // ── Unified anon resolution via openvibe.network internal API ──
         this._openvibeToolsUrl = process.env.OV_NETWORK_INTERNAL_URL || 'http://127.0.0.1:3100';
         this._internalKey = process.env.INTERNAL_API_KEY || process.env.OV_INTERNAL_KEY || '';
         /** @type {Map<string, Promise<number>>} IP → pending resolve promise (dedup concurrent) */
@@ -126,7 +126,7 @@ class ChatServer {
     }
 
     /**
-     * Resolve anon number from openvibe.tools unified API.
+     * Resolve anon number from openvibe.network unified API.
      * Returns a Promise<number>. Caches in memory and falls back to local DB.
      */
     async _resolveUnifiedAnonNum(ip) {

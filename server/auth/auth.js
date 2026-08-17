@@ -1,7 +1,7 @@
 /**
  * OpenVibe.Live — JWT Auth Middleware
  * All authentication is handled via OpenVibe.Tools RS256 tokens.
- * Users sign in on openvibe.tools and are redirected back via OAuth2.
+ * Users sign in on openvibe.network and are redirected back via OAuth2.
  * Local user records are resolved via linked_accounts.
  */
 const jwt = require('jsonwebtoken');
@@ -13,7 +13,7 @@ const db = require('../db/database');
 // ── OpenVibe.Tools Public Key (RS256 verification) ──────────────
 let openvibeToolsPublicKey = null;
 
-// The issuer is the public-facing URL of openvibe.tools (the SSO provider).
+// The issuer is the public-facing URL of openvibe.network (the SSO provider).
 // It's initialized from env or registry after config loads; we read it lazily
 // at verify-time so config.refreshRegistry() updates are picked up automatically.
 const config = require('../config');
@@ -32,17 +32,17 @@ function loadNetworkPublicKey() {
         try {
             if (fs.existsSync(p)) {
                 openvibeToolsPublicKey = fs.readFileSync(p, 'utf8');
-                console.log(`[Auth] Loaded openvibe.tools public key from ${p}`);
+                console.log(`[Auth] Loaded openvibe.network public key from ${p}`);
                 return;
             }
         } catch { /* try next */ }
     }
-    console.error('[Auth] ❌ openvibe.tools public key not found — authentication will NOT work!');
+    console.error('[Auth] ❌ openvibe.network public key not found — authentication will NOT work!');
 }
 loadNetworkPublicKey();
 
 /**
- * Verify a openvibe.tools RS256 JWT token.
+ * Verify a openvibe.network RS256 JWT token.
  * Returns decoded payload or null.
  */
 function verifyToken(token) {
@@ -75,13 +75,13 @@ function verifyTokenWithReason(token) {
 }
 
 /**
- * Resolve a openvibe.tools user to a local OpenVibe.Live user.
+ * Resolve a openvibe.network user to a local OpenVibe.Live user.
  * Checks linked_accounts first, falls back to username match,
  * auto-creates a local account if none found.
  */
-// Keep the local user's role + profile fields in sync with the openvibe.tools SSO token
+// Keep the local user's role + profile fields in sync with the openvibe.network SSO token
 // on EVERY auth — not just at account creation — so role changes (e.g. an admin grant
-// in openvibe.tools/admin) propagate. Only writes when a value actually changed. The local
+// in openvibe.network/admin) propagate. Only writes when a value actually changed. The local
 // `is_owner` flag is NOT in the token and is never touched here.
 const _ROLE_RANK = { user: 0, streamer: 1, global_mod: 2, admin: 3 };
 
@@ -95,7 +95,7 @@ function _syncSsoUserFields(user, decoded) {
     // live 24h, so a just-promoted admin's older token still carries role:'user'
     // and would otherwise strip their role (and Staff badge) on every connect.
     // Upgrades apply immediately; downgrades are pushed authoritatively from
-    // openvibe.tools via POST /internal/user-role instead of trusting a stale token.
+    // openvibe.network via POST /internal/user-role instead of trusting a stale token.
     if (decoded.role && _ROLE_RANK[decoded.role] !== undefined && decoded.role !== user.role
         && _ROLE_RANK[decoded.role] > (_ROLE_RANK[user.role] ?? 0)) {
         updates.push('role = ?'); params.push(decoded.role);
@@ -123,17 +123,17 @@ function resolveNetworkUser(decoded) {
     // Try matching by username (case-insensitive)
     let user = db.getUserByUsername(decoded.username);
     if (user) {
-        // Auto-link this user to the openvibe.tools account
+        // Auto-link this user to the openvibe.network account
         try {
             db.getDb().prepare(
                 "INSERT OR IGNORE INTO linked_accounts (service, service_user_id, service_username, user_id) VALUES ('network', ?, ?, ?)"
             ).run(openvibeToolsId, decoded.username, user.id);
-            console.log(`[Auth] Auto-linked ${decoded.username} to openvibe.tools id ${openvibeToolsId}`);
+            console.log(`[Auth] Auto-linked ${decoded.username} to openvibe.network id ${openvibeToolsId}`);
         } catch { /* already linked */ }
         return _syncSsoUserFields(user, decoded);
     }
 
-    // Auto-create a local user for this openvibe.tools account
+    // Auto-create a local user for this openvibe.network account
     try {
         const stream_key = uuidv4().replace(/-/g, '');
         const result = db.createUser({
@@ -164,7 +164,7 @@ function resolveNetworkUser(decoded) {
             "INSERT OR IGNORE INTO linked_accounts (user_id, service, service_user_id, service_username) VALUES (?, 'network', ?, ?)"
         ).run(user.id, openvibeToolsId, decoded.username);
 
-        console.log(`[Auth] Auto-created local account for openvibe.tools user ${decoded.username} (local id: ${user.id})`);
+        console.log(`[Auth] Auto-created local account for openvibe.network user ${decoded.username} (local id: ${user.id})`);
         return user;
     } catch (err) {
         console.error(`[Auth] Failed to auto-create user for ${decoded.username}:`, err.message);
@@ -184,7 +184,7 @@ function authenticateApiToken(rawToken) {
 }
 
 /**
- * Express middleware — requires valid openvibe.tools JWT or API token
+ * Express middleware — requires valid openvibe.network JWT or API token
  * Resolves to local user via linked_accounts (auto-creates if needed).
  */
 function requireAuth(req, res, next) {
@@ -205,7 +205,7 @@ function requireAuth(req, res, next) {
         return next();
     }
 
-    // Fall back to openvibe.tools JWT
+    // Fall back to openvibe.network JWT
     const decoded = verifyToken(token);
     if (!decoded) {
         return res.status(401).json({ error: 'Invalid or expired token' });
@@ -344,7 +344,7 @@ function extractWsToken(req) {
 
 /**
  * Authenticate a WebSocket connection (returns user or null)
- * Supports both openvibe.tools JWT and API tokens (hbt_xxx)
+ * Supports both openvibe.network JWT and API tokens (hbt_xxx)
  */
 function authenticateWs(token) {
     if (!token) return null;
@@ -368,7 +368,7 @@ function authenticateWs(token) {
 }
 
 /**
- * Reload the openvibe.tools public key (e.g., after key rotation)
+ * Reload the openvibe.network public key (e.g., after key rotation)
  */
 function reloadNetworkKey() {
     loadNetworkPublicKey();

@@ -978,7 +978,7 @@ async function loadDashFunds() {
         const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
         // Integer Vibes; USD shown is the cashout value (100 bucks = $1).
         set('dash-funds-amount', bal.toLocaleString());
-        set('dash-funds-usd', `(${bal.toLocaleString()} HB)`);
+        set('dash-funds-usd', `(${bal.toLocaleString()} Vibes)`);
         set('dash-cashout-amount', cash.toLocaleString());
         set('dash-cashout-usd', `($${(cash / 100).toFixed(2)})`);
     } catch { /* silent */ }
@@ -1001,7 +1001,7 @@ function _bucksTxRow(t) {
     return `<div class="bucks-log-row">
         <div class="bucks-log-icon"><i class="fa-solid ${icon}"></i></div>
         <div class="bucks-log-main"><div class="bucks-log-label">${label}</div><div class="bucks-log-when">${esc(when)}</div>${note}</div>
-        <div class="bucks-log-amt ${cls}">${sign}${amt.toLocaleString()} HB</div>
+        <div class="bucks-log-amt ${cls}">${sign}${amt.toLocaleString()} Vibes</div>
     </div>`;
 }
 

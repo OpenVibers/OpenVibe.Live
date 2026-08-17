@@ -112,7 +112,7 @@ router.post('/donate', requireAuth, (req, res) => {
                 db.saveChatMessage({
                     stream_id: stream_id || null, channel_user_id: streamer_id, user_id: null,
                     username: 'Donation Goal',
-                    message: `🎉 Goal reached: ${g.title} (${(g.target_amount || 0).toLocaleString()} HB)`,
+                    message: `🎉 Goal reached: ${g.title} (${(g.target_amount || 0).toLocaleString()} Vibes)`,
                     message_type: 'donation',
                     metadata: { kind: 'goal-reached', goal_id: g.id, title: g.title, target: g.target_amount, image: g.image_url || null, media_type: g.media_type || null, by: donor },
                 });

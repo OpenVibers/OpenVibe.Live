@@ -26,10 +26,10 @@ router.post('/url-registry/refresh', async (req, res) => {
     }
 });
 
-// Authoritative role push from openvibe.tools (the SSO/role authority). Used so a
+// Authoritative role push from openvibe.network (the SSO/role authority). Used so a
 // role change propagates to the local user record immediately — instead of
 // waiting on the user's next token (up to 24h) and without letting a stale token
-// downgrade them. Matches by openvibe.tools account link first, then username.
+// downgrade them. Matches by openvibe.network account link first, then username.
 router.post('/user-role', (req, res) => {
     try {
         const { username, openvibenetwork_id, role } = req.body || {};

@@ -126,16 +126,16 @@ function getAllowedOrigins() {
         // Warn loudly when BASE_URL wasn't set and we're in production
         if (process.env.NODE_ENV === 'production' && baseOrigin.includes('localhost')) {
             console.error('[CORS] CRITICAL: config.baseUrl is localhost in production — CORS will reject all browser requests!');
-            console.error('[CORS] CRITICAL: Set BASE_URL in .env or configure it via the openvibe.tools admin URL registry.');
+            console.error('[CORS] CRITICAL: Set BASE_URL in .env or configure it via the openvibe.network admin URL registry.');
         }
     }
 
-    // Add the SSO provider origin (openvibe.tools) for OAuth callbacks and cross-domain API calls
+    // Add the SSO provider origin (openvibe.network) for OAuth callbacks and cross-domain API calls
     const openvibeToolsOrigin = normalizeOrigin(config.openvibeToolsUrl || process.env.OV_NETWORK_URL);
     if (openvibeToolsOrigin) {
         allowed.add(openvibeToolsOrigin);
     } else {
-        // OpenVibe default — allows openvibe.tools and admin panel to call this service
+        // OpenVibe default — allows openvibe.network and admin panel to call this service
         allowed.add('https://openvibe.network');
     }
 
@@ -212,7 +212,7 @@ app.use(helmet({
     crossOriginEmbedderPolicy: false,
 }));
 // The cross-site go-live widget + its SSE feed must be loadable from other OpenVibe
-// origins (openvibe.tools / openvibe.games), so relax CORP for just those two paths.
+// origins (openvibe.network / openvibe.games), so relax CORP for just those two paths.
 app.use((req, res, next) => {
     if (req.path === '/live-notify.js' || req.path === '/api/live-events') {
         res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
@@ -923,7 +923,7 @@ async function start() {
         console.log('[Server] Ready. Good vibes only. ▶');
         console.log('');
 
-        // AI stream-memory job (no-op until enabled in openvibe.tools/admin → AI).
+        // AI stream-memory job (no-op until enabled in openvibe.network/admin → AI).
         try { require('./ai/stream-memory-job').start(); } catch (e) { console.warn('[AI] memory job not started:', e.message); }
         try { require('./ai/backfill-job').start(); } catch (e) { console.warn('[AI] backfill job not started:', e.message); }
         try { require('./ai/streamer-overview-job').start(); } catch (e) { console.warn('[AI] streamer-overview job not started:', e.message); }
@@ -1152,8 +1152,8 @@ async function start() {
     }, 60000);
     if (typeof maintenanceInterval.unref === 'function') maintenanceInterval.unref();
 
-    // 9. Periodic registry refresh — re-syncs config with openvibe.tools every 5 minutes.
-    // This is a safety net: if the startup refresh failed (openvibe.tools was temporarily
+    // 9. Periodic registry refresh — re-syncs config with openvibe.network every 5 minutes.
+    // This is a safety net: if the startup refresh failed (openvibe.network was temporarily
     // unreachable), subsequent refreshes will fix CORS, issuer, and other URL config.
     const registryRefreshInterval = setInterval(async () => {
         try {

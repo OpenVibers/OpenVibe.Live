@@ -3,7 +3,7 @@
  *
  * Real-money purchase of Vibes + channel subscriptions across PayPal,
  * Stripe, CCBill and crypto (NOWPayments). All provider credentials live in
- * site_settings (configured in openvibe.tools/admin → Payments). The master switch
+ * site_settings (configured in openvibe.network/admin → Payments). The master switch
  * `payments_enabled` gates everything (default OFF) so nothing is live until an
  * admin turns it on.
  *
@@ -27,7 +27,7 @@ function isEnabled() { return b('payments_enabled'); }
 
 /** USD (dollars) → whole Vibes at the VALUE rate (100 bucks = $1). Used for
  *  converting real income (sub share, external tips) into bucks — NOT for purchase
- *  pricing (buying adds a margin; see openvibe-bucks.priceUsdForBucks). */
+ *  pricing (buying adds a margin; see vibes.js priceUsdForBucks). */
 function bucksForUsd(usd) {
     const rate = n('bucks_per_usd', 100);
     return Math.max(0, Math.round(usd * rate));
