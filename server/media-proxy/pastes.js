@@ -135,7 +135,24 @@ router.put('/:slug', requireAuth, forward(slugPath()));
 router.delete('/:slug', requireAuth, forward(slugPath()));
 // TODO(contract): paste admin tools (censor, admin/stats, admin/forks, bulk)
 // have no Media API v1 endpoints yet — they 404 until Media grows them.
-router.post('/:slug/censor', requireAdmin, shotUpload.single('screenshot'), forwardAsApp(slugPath('/censor')));
+// Censor replaces the screenshot: multer consumed the multipart body, so re-wrap
+// it as a fresh multipart upstream request (app-key auth — Media censor is admin-only).
+router.post('/:slug/censor', requireAdmin, shotUpload.single('screenshot'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: 'No replacement screenshot uploaded' });
+        const fd = media._formData({}, {
+            buffer: req.file.buffer,
+            filename: req.file.originalname || 'censored.png',
+            contentType: req.file.mimetype || 'image/png',
+        }, 'screenshot');
+        const out = await media.request('POST', `/pastes/${encodeURIComponent(req.params.slug)}/censor`, { body: fd, timeoutMs: 60000 });
+        res.json(out);
+    } catch (err) {
+        if (err && err.name === 'MediaApiError' && err.status) return res.status(err.status).json(err.body || { error: err.message });
+        console.warn('[Pastes proxy] censor:', err.message);
+        res.status(502).json({ error: 'Media service unavailable' });
+    }
+});
 router.post('/:slug/fork', forward(slugPath('/fork')));
 // Raw content is public on Media (/p/:slug/raw) — bounce the API-shaped URL there.
 router.get('/:slug/raw', (req, res) => res.redirect(302, media.pasteRawUrl(req.params.slug)));
