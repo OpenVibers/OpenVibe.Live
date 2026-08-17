@@ -6760,6 +6760,27 @@ async function loadClipPlayer(clipId) {
         }
 
         const video = document.getElementById('clp-video');
+        clearTimeout(window._clpProcessingPoll);
+        { const _n = document.getElementById('clp-processing-note'); if (_n) _n.remove(); }
+        if (!cl.file_path && (cl.status || 'processing') !== 'ready') {
+            // Server is still cutting this clip — show progress instead of a black
+            // player, and poll until it's ready.
+            video.style.display = 'none';
+            const container = document.getElementById('clp-container');
+            if (container) {
+                const note = document.createElement('div');
+                note.id = 'clp-processing-note';
+                note.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;gap:12px;color:var(--text-muted,#999)';
+                note.innerHTML = `
+                    <i class="fa-solid fa-scissors fa-bounce" style="font-size:2.5rem;color:var(--accent)"></i>
+                    <p style="font-size:1.05rem;font-weight:600">Clip is processing…</p>
+                    <p class="muted" style="font-size:0.85rem">The server is cutting your clip — this page will update automatically.</p>`;
+                container.appendChild(note);
+            }
+            window._clpProcessingPoll = setTimeout(() => {
+                if (window._clpClipId === cl.id) loadClipPlayer(cl.id);
+            }, 3000);
+        }
         if (cl.file_path) {
             const filename = cl.file_path.split('/').pop();
             // Handle video load errors (corrupt files, codec issues)

@@ -86,12 +86,20 @@ async function _sendOne(clipId) {
 }
 
 let _sweepTimer = null;
+// Clips whose announce is currently being sent. A slow Media getClip() once let
+// six 15s sweep ticks stack up on the same clip and announce it six times when
+// Media finally answered — a clip stays claimed here until its send resolves.
+const _inFlight = new Set();
 function startClipNotifySweeper() {
     if (_sweepTimer) return;
     _sweepTimer = setInterval(() => {
         try {
             const due = db.getDueClipNotifies(20) || [];
-            for (const row of due) _sendOne(row.clip_id).catch(() => {});
+            for (const row of due) {
+                if (_inFlight.has(row.clip_id)) continue;
+                _inFlight.add(row.clip_id);
+                _sendOne(row.clip_id).catch(() => {}).finally(() => _inFlight.delete(row.clip_id));
+            }
         } catch (e) { console.warn('[ClipNotify] sweep error:', e.message); }
     }, SWEEP_INTERVAL_MS);
     if (_sweepTimer.unref) _sweepTimer.unref();
