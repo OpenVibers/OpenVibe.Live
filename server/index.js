@@ -1051,6 +1051,7 @@ async function start() {
 
     // 8. Start stale stream heartbeat cleanup (every 60 seconds)
     let heartbeatCleanupRunning = false;
+    const liveVodThumbGeneratedAt = new Map();   // streamId → last Media frame-grab time
     const maintenanceInterval = setInterval(() => {
         if (heartbeatCleanupRunning) return;
         heartbeatCleanupRunning = true;
@@ -1141,9 +1142,32 @@ async function start() {
                 }
             }
 
-            // WebRTC/WHIP/browser live thumbnails come from the broadcaster client's periodic
-            // canvas-capture POST (see /api/thumbnails/live/:streamId). The old server-side
-            // PlainRTP frame grab was retired with the in-process recorder.
+            // WebRTC/WHIP/browser live thumbnails: the broadcaster client's periodic
+            // canvas-capture POST covers browser publishers with a visible tab, but WHIP
+            // publishers (OBS) and hidden tabs send nothing. Fallback: have Media extract
+            // a frame from the in-progress recording (fragmented mp4 — readable while
+            // growing) and use that as both the live card and RECORDING-card thumbnail.
+            const webrtcStreams = db.all(
+                `SELECT id FROM streams WHERE is_live = 1 AND protocol NOT IN ('rtmp', 'jsmpeg')`
+            );
+            for (const wsStream of webrtcStreams) {
+                if (liveThumbs.shouldRefreshLiveThumbnail(wsStream.id, 120000)) {
+                    const lastGen = liveVodThumbGeneratedAt.get(wsStream.id) || 0;
+                    if (Date.now() - lastGen < 120000) continue;
+                    const rec = recorder.activeRecordings.get(wsStream.id);
+                    if (!rec || !rec.vodId) continue;
+                    liveVodThumbGeneratedAt.set(wsStream.id, Date.now());
+                    mediaClient.generateThumbnail('vod', rec.vodId)
+                        .then((out) => {
+                            const url = mediaClient.publicUrl(out?.url);
+                            if (url) db.run('UPDATE streams SET thumbnail_url = ? WHERE id = ?', [url, wsStream.id]);
+                        })
+                        .catch(() => {});
+                }
+            }
+            for (const [sid] of liveVodThumbGeneratedAt) {
+                if (!webrtcStreams.some(s => s.id === sid)) liveVodThumbGeneratedAt.delete(sid);
+            }
         } catch (err) {
             console.error('[Heartbeat] Cleanup error:', err.message);
         } finally {

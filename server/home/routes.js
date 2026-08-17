@@ -155,10 +155,40 @@ function heroSlogans() {
     };
 }
 
+// ── Media-side counters (VODs/clips/pastes live in OpenVibe.Media now — the
+// local tables are empty post-split, so hero counts come from Media, cached).
+let _mediaStats = { at: 0, data: null };
+const MEDIA_STATS_TTL_MS = 5 * 60_000;
+async function _mediaStatsCached() {
+    if (Date.now() - _mediaStats.at < MEDIA_STATS_TTL_MS) return _mediaStats.data;
+    try {
+        _mediaStats = { at: Date.now(), data: await media.request('GET', '/stats') };
+    } catch (err) {
+        console.warn('[Home] Media stats unavailable:', err.message);
+        _mediaStats.at = Date.now() - MEDIA_STATS_TTL_MS + 30_000;   // retry in 30s
+    }
+    return _mediaStats.data;
+}
+
+async function heroStats() {
+    const stats = { ...db.getHomeStats() };
+    const m = await _mediaStatsCached();
+    if (m) {
+        stats.vods = m.vods;
+        stats.clips = m.clips;
+        stats.pastes = m.pastes;
+        stats.pasteImages = m.pasteImages;
+        stats.pasteText = m.pasteText;
+        stats.streamHours = Math.round((m.durationSeconds || 0) / 3600);
+        stats.recent = { ...stats.recent, vods: m.recent?.vods, clips: m.recent?.clips, hours: m.recent?.hours };
+    }
+    return stats;
+}
+
 router.get('/hero', async (req, res) => {
     try {
         res.set('Cache-Control', 'public, max-age=20');
-        res.json({ stats: db.getHomeStats(), media: await heroMedia(), moments: heroMoments(), slogans: heroSlogans() });
+        res.json({ stats: await heroStats(), media: await heroMedia(), moments: heroMoments(), slogans: heroSlogans() });
     } catch (err) {
         console.error('[Home] hero error:', err.message);
         res.status(500).json({ error: 'Failed to load hero' });

@@ -1107,7 +1107,7 @@ router.get('/recent', (req, res) => {
 });
 
 // ── Recently Online (grouped by user) ────────────────────────
-router.get('/recently-online', (req, res) => {
+router.get('/recently-online', async (req, res) => {
     try {
         const limit = Math.min(Math.max(parseInt(req.query.limit || '20', 10), 1), 100);
         const offset = Math.max(parseInt(req.query.offset || '0', 10), 0);
@@ -1126,6 +1126,24 @@ router.get('/recently-online', (req, res) => {
                 });
             } catch { s.managed_streams = []; }
             delete s.managed_streams_json;
+        }
+        // VOD rows (and their thumbnails) live in OpenVibe.Media — the local SQL
+        // can't join them, so batch-resolve the latest thumb per managed stream.
+        try {
+            const media = require('../media-client');
+            const msIds = streamers.flatMap(s => (s.managed_streams || []).map(ms => ms.managed_stream_id)).filter(Boolean);
+            if (msIds.length) {
+                const out = await media.request('GET', '/vods/latest-thumbs', { query: { managed_stream_ids: msIds.join(',') }, timeoutMs: 5000 });
+                const thumbs = out?.thumbs || {};
+                for (const s of streamers) {
+                    for (const ms of (s.managed_streams || [])) {
+                        const t = thumbs[ms.managed_stream_id];
+                        if (t && !ms.vod_thumbnail) ms.vod_thumbnail = media.publicUrl(t.thumbnail_url);
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('[Streaming] recently-online thumb enrichment failed:', err.message);
         }
         res.json({ streamers, total, limit, offset, hasMore: offset + streamers.length < total });
     } catch (err) {
