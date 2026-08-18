@@ -127,15 +127,27 @@ async function tick() {
             _known.add(stream.id);
         }
 
-        // Stop + tidy streams that ended. Their remaining segments are drained first so
-        // the tail of the stream is not lost, then the spool is removed.
-        for (const id of [..._known]) {
+        // Stop + tidy streams that ended. Scan the SPOOL DIRECTORY rather than the in-memory
+        // _known set: _known is empty after a restart, so any stream that ended while the
+        // service was down would leave its directory behind forever. Six such orphans were
+        // found on disk from earlier restarts.
+        //
+        // includeLast matters here too. While capture is running the newest file is still
+        // being written, so it is skipped — but once ffmpeg is gone that file is complete,
+        // and skipping it would silently drop the last seconds of every stream.
+        for (const id of audio.spooledStreamIds()) {
             if (liveIds.has(id)) continue;
             audio.stopContinuousCapture(id);
-            const leftovers = audio.pendingSegments(id);
+            const leftovers = audio.pendingSegments(id, { includeLast: true });
             if (!leftovers.length) {
                 audio.purgeSpool(id);
                 _known.delete(id);
+                continue;
+            }
+            // Drain the tail a few segments per tick, same as for a live stream.
+            const stream = { id, user_id: null };
+            for (const seg of leftovers.slice(0, MAX_SEGMENTS_PER_TICK)) {
+                await _processSegment(stream, seg).catch(() => {});
             }
         }
 
