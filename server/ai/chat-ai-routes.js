@@ -216,6 +216,60 @@ router.get('/timeline/:username', (req, res) => {
 });
 
 // Full audio transcript for a stream (AI Timeline transcript viewer), with a VOD id for links.
+/**
+ * Batch VOD transcripts, by Media vod id: /api/chat-ai/vod-transcripts?ids=1,2,3
+ *
+ * Live owns transcripts — they were moved here at the cutover into
+ * vod_ai_state.ai_transcript_json (and now stream_timeline_events). Media still has its
+ * own vods.ai_transcript column, but nothing writes it any more, which is why
+ * openvibe.media/live/:sel/transcript.json served null for every post-cutover VOD.
+ * This is the endpoint Media reads instead of its own dead column.
+ */
+router.get('/vod-transcripts', (req, res) => {
+    try {
+        const ids = String(req.query.ids || '')
+            .split(',').map(x => parseInt(x, 10)).filter(Number.isFinite).slice(0, 50);
+        if (!ids.length) return res.json({ transcripts: {} });
+
+        const out = {};
+        for (const vodId of ids) {
+            let segments = [];
+            let events = [];
+            // Prefer the timeline: it covers the whole stream and carries sound events.
+            try {
+                const rows = db.getTimelineByVod(vodId);
+                for (const r of rows) {
+                    if (r.kind === 'speech') segments.push({ start: r.start_sec, end: r.end_sec, text: r.text });
+                    else events.push({ start: r.start_sec, end: r.end_sec, label: r.label, confidence: r.confidence });
+                }
+            } catch { /* */ }
+            // Fall back to the batch-transcribed blob for VODs with no live timeline.
+            if (!segments.length) {
+                try {
+                    const st = db.getVodAiState(vodId);
+                    if (st && st.ai_transcript_json) {
+                        const parsed = JSON.parse(st.ai_transcript_json);
+                        if (Array.isArray(parsed)) segments = parsed;
+                    }
+                } catch { /* */ }
+            }
+            let overviewShort = null;
+            try { overviewShort = (db.getVodAiState(vodId) || {}).ai_overview_short || null; } catch { /* */ }
+            const text = segments.map(s => String(s.text || '').trim()).filter(Boolean).join(' ');
+            out[vodId] = {
+                transcript: text || null,
+                segments,
+                events,
+                ai_overview_short: overviewShort,
+            };
+        }
+        res.set('Cache-Control', 'public, max-age=15');
+        res.json({ transcripts: out });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to load transcripts' });
+    }
+});
+
 router.get('/transcript/:streamId', async (req, res) => {
     try {
         const sid = parseInt(req.params.streamId, 10);
