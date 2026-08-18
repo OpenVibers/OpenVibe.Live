@@ -523,7 +523,7 @@ button{font:inherit}
       <span>OPENVIBE NETWORK</span>
     </a>
     <div class="network-line">
-      <b><i class="fa-solid fa-video"></i> OPENVIBELIVE.COM</b> &nbsp;•&nbsp;
+      <b><i class="fa-solid fa-video"></i> OpenVibe.Live</b> &nbsp;•&nbsp;
       <b><i class="fa-solid fa-screwdriver-wrench"></i> OPENVIBE.TOOLS</b> &nbsp;•&nbsp;
       <b><i class="fa-solid fa-gamepad"></i> SCRAPLANDIA</b> &nbsp;•&nbsp;
       <b><i class="fa-solid fa-bolt"></i> POWERCHAT.LIVE</b>
@@ -533,7 +533,6 @@ button{font:inherit}
 
   <section class="hero">
     <div class="hero-copy">
-      <div class="kicker"><i class="fa-solid fa-earth-americas"></i> OPEN • COMMUNITY-BUILT • WEIRD INTERNET</div>
       <h1>STREAM. BUILD. PLAY.<br><span>KEEP IT YOURS.</span></h1>
       <p id="hero-slogan">Live streaming, useful tools, games, and community infrastructure.</p>
     </div>
@@ -559,7 +558,7 @@ button{font:inherit}
   <section class="domains">
     <a class="domain hs" href="https://openvibe.live">
       <div class="kind"><i class="fa-solid fa-tower-broadcast"></i> Live Streaming</div>
-      <div class="url"><i class="fa-solid fa-video"></i> OPENVIBELIVE.COM</div>
+      <div class="url"><i class="fa-solid fa-video"></i> OpenVibe.Live</div>
       <div class="desc">Streams, chat, VODs, clips and restreaming.</div>
       <div class="arrow"><i class="fa-solid fa-arrow-up-right-from-square"></i></div>
     </a>
@@ -596,7 +595,7 @@ button{font:inherit}
           <span class="badge" id="live-count">CHECKING…</span>
         </div>
         <div class="cards" id="streams">
-          <div class="empty">Checking <b>OPENVIBELIVE.COM</b> for live streams…</div>
+          <div class="empty">Checking <b>OpenVibe.Live</b> for live streams…</div>
         </div>
       </div>
 
@@ -620,7 +619,7 @@ button{font:inherit}
       <div class="chat-head">
         <div>
           <div class="chat-title"><i class="fa-solid fa-comments"></i> GLOBAL CHAT</div>
-          <div class="chat-url">OPENVIBELIVE.COM/CHAT</div>
+          <div class="chat-url">OpenVibe.Live/CHAT</div>
         </div>
         <div class="status" id="chat-status"><i></i><span>CONNECTING</span></div>
       </div>
@@ -762,13 +761,13 @@ button{font:inherit}
       setHeroLive(all.length,totalViewers);
       $("#streams").innerHTML=list.length
         ?list.map(streamCard).join("")
-        :`<div class="empty">Nobody live right now — <b>OPENVIBELIVE.COM</b></div>`;
+        :`<div class="empty">Nobody live right now — <b>OpenVibe.Live</b></div>`;
     }catch{
-      $("#live-count").textContent="OPENVIBELIVE.COM";
+      $("#live-count").textContent="OpenVibe.Live";
       $("#streams").innerHTML=`
         <a class="card" href="/">
           <div class="thumb"><span class="placeholder">LIVE STREAMING</span></div>
-          <div class="info"><div class="title">OPENVIBELIVE.COM</div><div class="meta">Browser • OBS • RTMP • WHIP</div></div>
+          <div class="info"><div class="title">OpenVibe.Live</div><div class="meta">Browser • OBS • RTMP • WHIP</div></div>
         </a>
         <a class="card" href="/vods">
           <div class="thumb"><span class="placeholder">VODS + CLIPS</span></div>
@@ -776,7 +775,7 @@ button{font:inherit}
         </a>
         <a class="card" href="/chat">
           <div class="thumb"><span class="placeholder">GLOBAL CHAT</span></div>
-          <div class="info"><div class="title">OPENVIBELIVE.COM/CHAT</div><div class="meta">One shared community room</div></div>
+          <div class="info"><div class="title">OpenVibe.Live/CHAT</div><div class="meta">One shared community room</div></div>
         </a>`;
     }
   }
