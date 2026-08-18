@@ -2020,14 +2020,30 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
                 rtpParameters: consumerParams.rtpParameters,
             });
 
-            // Minimize glass-to-glass latency: ask the browser for the smallest playout /
-            // jitter buffer it will honor. This is a hint — the receiver still grows the
-            // buffer adaptively under real packet loss, so it's low-latency without freezing.
+            // Playout buffering. This used to force BOTH receivers to 0, which removed the
+            // very slack playback depends on:
+            //
+            //  • A/V sync. The browser aligns audio to video from RTCP sender reports, and
+            //    that means holding audio back until the matching video frame has decoded.
+            //    A 0 target on the AUDIO receiver leaves nowhere to hold it, so audio renders
+            //    the instant it arrives and runs ahead of video — the "audio plays early"
+            //    desync, which is why it showed up on openvibe.live and not just on restreams.
+            //  • Freezes. A 0 target on video leaves no buffer to absorb ordinary network
+            //    jitter, so a slightly late frame is simply late — visible as a frozen frame.
+            //
+            // The old comment claimed the receiver still grows the buffer adaptively; a hard 0
+            // target fights that adaptation rather than cooperating with it.
+            //
+            // So: leave AUDIO on the browser's adaptive buffer — that is the thing doing the
+            // syncing — and give VIDEO a small but non-zero target. Still low latency, with
+            // enough headroom to stay smooth and aligned. Raise this if streams still stutter.
+            const VIDEO_JITTER_TARGET_MS = 120;
             try {
                 const receiver = consumer.rtpReceiver;
-                if (receiver) {
-                    if ('jitterBufferTarget' in receiver) receiver.jitterBufferTarget = 0;
-                    if ('playoutDelayHint' in receiver) receiver.playoutDelayHint = 0;
+                if (receiver && consumer.kind === 'video') {
+                    // jitterBufferTarget is in milliseconds; playoutDelayHint is in seconds.
+                    if ('jitterBufferTarget' in receiver) receiver.jitterBufferTarget = VIDEO_JITTER_TARGET_MS;
+                    if ('playoutDelayHint' in receiver) receiver.playoutDelayHint = VIDEO_JITTER_TARGET_MS / 1000;
                 }
             } catch { /* non-fatal — playback still works at default latency */ }
 
