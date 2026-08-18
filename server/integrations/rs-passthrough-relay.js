@@ -345,7 +345,6 @@ class RsPassthroughRelay {
 
     _teardown(session) {
         if (session.statsTimer) { clearInterval(session.statsTimer); session.statsTimer = null; }
-        if (session.reorderTimer) { clearInterval(session.reorderTimer); session.reorderTimer = null; }
         const sfu = require('../streaming/webrtc-sfu');
         for (const ing of session.ingests) {
             try { ing.socket.removeAllListeners('message'); ing.socket.close(); } catch {}
@@ -462,7 +461,7 @@ class RsPassthroughRelay {
 
         // 9) Forward encoded RTP straight through (strip our-router ext ids, match declared PT).
         //    Each UDP datagram from the PlainTransport consumer is one RTP packet.
-        const stats = { v: 0, a: 0, pli: 0, lostIn: 0, kf: 0, maxKfGap: 0, inj: 0, rtxDeep: 0, rtxMiss: 0, gopDamaged: 0, lateFill: 0, reorderSkip: 0, tooLate: 0 };
+        const stats = { v: 0, a: 0, pli: 0, lostIn: 0, kf: 0, maxKfGap: 0, inj: 0, rtxDeep: 0, rtxMiss: 0, gopDamaged: 0, lateFill: 0 };
         const vPt = +vMedia.pts[0];
 
         // ── Deep retransmit cache ────────────────────────────────────────────────────────
@@ -643,72 +642,9 @@ class RsPassthroughRelay {
             // forwarded for KF_STALE_MS, pull one so a freeze can never outlast ~2s.
             const kfStale = (now - _lastKfAt) > KF_STALE_MS;
             if (timeGap || burst || kfStale) pullKeyframe(now);
-            enqueue(p);
+            emitVideo(p);
         });
 
-        // ── Reorder buffer ──────────────────────────────────────────────────────────────
-        // THE bug behind "video freezes, audio fine". Measured on the live stream: lateFill
-        // equals lossIN exactly, every interval — nothing is actually lost on the way in. Every
-        // "missing" packet does arrive, just out of order, because mediasoup NACK-recovers it
-        // from OBS and hands us the repair a few ms late. We were forwarding in ARRIVAL order,
-        // so RS received a shuffled stream.
-        //
-        // Audio shrugs that off (one self-contained Opus packet per 20ms frame). Video cannot:
-        // an H264 frame is split across many packets and its FU-A fragments must be reassembled
-        // in order, so one late packet corrupts the whole frame and the picture stays broken
-        // until the next keyframe. It also made RS NACK packets that were merely still in
-        // flight to us — which is why rtxMiss climbed while deepRtx stayed at zero.
-        //
-        // So: hold packets briefly and release them strictly in sequence. A hole waits up to
-        // REORDER_MS for its straggler before we give up and skip past it, which bounds the
-        // added latency. This is what a relay is supposed to do and nothing downstream can
-        // substitute for it.
-        const REORDER_MS = 80;
-        const _pending = new Map();      // seq -> { pkt, at }
-        let _emitNext = -1;
-
-        function drain() {
-            while (_emitNext >= 0) {
-                const hit = _pending.get(_emitNext);
-                if (!hit) break;
-                _pending.delete(_emitNext);
-                emitVideo(hit.pkt);
-                _emitNext = (_emitNext + 1) & 0xffff;
-            }
-        }
-
-        // Give up on a hole once its successor has waited long enough, then jump the cursor to
-        // the oldest packet we are still holding and continue in order from there.
-        function flushStale(nowMs) {
-            if (!_pending.size) return;
-            let lowest = null, bestDist = Infinity;
-            for (const sq of _pending.keys()) {
-                const d = (sq - _emitNext) & 0xffff;
-                if (d < bestDist) { bestDist = d; lowest = sq; }
-            }
-            if (lowest === null) return;
-            const held = _pending.get(lowest);
-            if (held && (nowMs - held.at) >= REORDER_MS) {
-                stats.reorderSkip += bestDist;
-                _emitNext = lowest;
-                drain();
-            }
-        }
-
-        function enqueue(p) {
-            const seq = p.header.sequenceNumber;
-            if (_emitNext < 0) _emitNext = seq;           // first packet sets the cursor
-            const dist = (seq - _emitNext) & 0xffff;
-            if (dist >= 30000) { stats.tooLate++; return; }  // already emitted past this one
-            _pending.set(seq, { pkt: p, at: Date.now() });
-            if (_pending.size > 2048) { _emitNext = seq; _pending.clear(); _pending.set(seq, { pkt: p, at: Date.now() }); }
-            drain();
-        }
-
-        session.reorderTimer = setInterval(() => flushStale(Date.now()), 20);
-        session.reorderTimer.unref?.();
-
-        // Emit one packet downstream, in sequence order.
         function emitVideo(p) {
             p.header.payloadType = vPt; p.header.extensions = [];
             // For H264 shift the sequence by the running injection offset so the injected
@@ -737,7 +673,7 @@ class RsPassthroughRelay {
             const rsLostPct = typeof s.remoteFractionLost === 'number' ? ((s.remoteFractionLost / 256) * 100).toFixed(1) : '?';
             log(sid, `flow: v ${Math.round((stats.v - lastV) / 10)}/s a ${Math.round((stats.a - lastA) / 10)}/s ` +
                 `| kf ${stats.kf - lastKf}/10s maxKfGap ${stats.maxKfGap}ms injSPS/PPS=${stats.inj}${INJECT_PARAMS ? '' : '(off)'} gopDmg=${stats.gopDamaged} ` +
-                `| lossIN ${stats.lostIn - lastLostIn} (goosely→relay) lateFill ${stats.lateFill - lastLateFill} reorderSkip=${stats.reorderSkip} tooLate=${stats.tooLate} ` +
+                `| lossIN ${stats.lostIn - lastLostIn} (goosely→relay) lateFill ${stats.lateFill - lastLateFill} ` +
                 `| RS lost=${rsLostPct}% pktsLost=${s.remotePacketsLost ?? '?'} pliRx=${s.pliCount ?? '?'} firRx=${s.firCount ?? '?'} nackRx=${s.nackCount ?? '?'} retx=${s.retransmittedPacketsSent ?? '?'} deepRtx=${stats.rtxDeep} rtxMiss=${stats.rtxMiss} rtt=${Math.round((s.rtt || 0) * 1000)}ms ` +
                 `| keyReq=${stats.pli} werift=${pc.connectionState}`);
             lastV = stats.v; lastA = stats.a; lastLostIn = stats.lostIn; lastKf = stats.kf; lastLateFill = stats.lateFill; stats.maxKfGap = 0;

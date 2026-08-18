@@ -2034,18 +2034,10 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
             // The old comment claimed the receiver still grows the buffer adaptively; a hard 0
             // target fights that adaptation rather than cooperating with it.
             //
-            // So: leave AUDIO on the browser's adaptive buffer — that is the thing doing the
-            // syncing — and give VIDEO a small but non-zero target. Still low latency, with
-            // enough headroom to stay smooth and aligned. Raise this if streams still stutter.
-            const VIDEO_JITTER_TARGET_MS = 120;
-            try {
-                const receiver = consumer.rtpReceiver;
-                if (receiver && consumer.kind === 'video') {
-                    // jitterBufferTarget is in milliseconds; playoutDelayHint is in seconds.
-                    if ('jitterBufferTarget' in receiver) receiver.jitterBufferTarget = VIDEO_JITTER_TARGET_MS;
-                    if ('playoutDelayHint' in receiver) receiver.playoutDelayHint = VIDEO_JITTER_TARGET_MS / 1000;
-                }
-            } catch { /* non-fatal — playback still works at default latency */ }
+            // So we now set NEITHER and let the browser manage both buffers. Its adaptive
+            // jitter buffer already targets the minimum delay the network allows and grows
+            // only when it has to — that is strictly better than any constant we could pick
+            // here, and unlike a hardcoded target it costs no latency on a clean connection.
 
             // Keep a handle on the VIDEO receiver so the freeze watchdog can read framesDecoded
             // when requestVideoFrameCallback isn't available.
