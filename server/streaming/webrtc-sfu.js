@@ -295,11 +295,26 @@ class WebRTCSFU extends EventEmitter {
         const room = this.rooms.get(roomId);
         if (!room) throw new Error(`Room ${roomId} not found`);
 
-        const transport = await room.router.createPlainTransport({
-            listenIp: { ip: '127.0.0.1' },
-            rtcpMux: false,
-            comedia: false,
-        });
+        // Every rtcpMux:false plain transport burns TWO ports out of the worker's
+        // rtcMinPort..rtcMaxPort range, which the .env.example sizes at just 101 ports
+        // (10000-10100) and which WebRtcTransports draw from as well. Exhaustion shows up
+        // here as an opaque mediasoup error, and for the RS passthrough relay that means
+        // _run() throws -> _scheduleRestart() -> a brand new producer (new SSRC) on
+        // RobotStreamer. Name the failure so it is diagnosable instead of looking like a
+        // random relay restart.
+        let transport;
+        try {
+            transport = await room.router.createPlainTransport({
+                listenIp: { ip: '127.0.0.1' },
+                rtcpMux: false,
+                comedia: false,
+            });
+        } catch (err) {
+            console.error(`[WebRTC] createPlainTransport failed in room ${roomId} ` +
+                `(RTC port range ${config.mediasoup.minPort}-${config.mediasoup.maxPort}, ` +
+                `${room.transports.size} transports open in this room): ${err.message}`);
+            throw err;
+        }
 
         await transport.connect({
             ip: remoteIp,
@@ -400,6 +415,10 @@ class WebRTCSFU extends EventEmitter {
             }
             room.plainRecordingTimers.delete(consumerId);
             room.plainRecordingTransportConsumers.delete(transportId);
+            // Drop the consumer entry here rather than waiting on the 'transportclose'
+            // event, so a concurrent requestConsumerKeyFrame() can never reach a consumer
+            // whose transport is already gone.
+            if (consumerId) room.consumers.delete(consumerId);
             try { transport.close(); } catch {}
             room.transports.delete(key);
         }
@@ -458,6 +477,33 @@ class WebRTCSFU extends EventEmitter {
             try { transport.close(); } catch {}
             room.transports.delete(transportKey);
         }
+    }
+
+    /**
+     * Snapshot a plain consumer's liveness. When a downstream forwarder (the RS passthrough
+     * relay) stops seeing RTP, this says whether the fault is here — consumer closed by some
+     * other subsystem, paused, producer gone, or score collapsed — or further downstream.
+     * Never throws; returns a flat object safe to drop straight into a log line.
+     * @param {string} roomId
+     * @param {string} consumerId
+     */
+    plainConsumerState(roomId, consumerId) {
+        const room = this.rooms.get(roomId);
+        if (!room) return { found: false, reason: 'room-gone' };
+        const entry = room.consumers.get(consumerId);
+        if (!entry?.consumer) return { found: false, reason: 'consumer-gone' };
+        const c = entry.consumer;
+        let producerAlive = false;
+        try { producerAlive = !!room.producers.get(c.producerId) || !c.producerPaused; } catch { /* */ }
+        return {
+            found: true,
+            closed: !!c.closed,
+            paused: !!c.paused,
+            producerPaused: !!c.producerPaused,
+            producerAlive,
+            score: c.score?.score ?? null,
+            producerScore: c.score?.producerScore ?? null,
+        };
     }
 
     /** Ask a consumer's source to emit a keyframe (relays a downstream PLI to the encoder). */

@@ -296,7 +296,7 @@ class RsPassthroughRelay {
         this._run(session).catch(err => {
             log(stream.id, 'run error:', err.message);
             this._teardown(session);
-            this._scheduleRestart(session, stream, integration);
+            this._scheduleRestart(session, stream, integration, `_run threw: ${err.message}`);
         });
         return true;
     }
@@ -332,8 +332,19 @@ class RsPassthroughRelay {
         return ids.length;
     }
 
-    _scheduleRestart(session, stream, integration) {
+    /**
+     * Every restart re-produces to RS with a FRESH SSRC, which RobotStreamer surfaces to viewers
+     * as a new consumer on a new mid — and RS's viewer client reacts to the matching
+     * consumerClosed by blanking the whole MediaStream (srcObject = new MediaStream()), so a
+     * restart is directly visible as the stream cutting out. `reason` is therefore not a nicety:
+     * it is the difference between "RS dropped our websocket", "ICE/DTLS failed" and "_run threw"
+     * (e.g. mediasoup out of RTC ports), which are three unrelated bugs with one symptom.
+     */
+    _scheduleRestart(session, stream, integration, reason = 'unspecified') {
         if (session.stopped || session.restartTimer) return;
+        this.restartCount = (this.restartCount || 0) + 1;
+        log(session.streamId, `⚠️ passthrough restart #${this.restartCount} scheduled — reason: ${reason} ` +
+            `(RS viewers see this as the video cutting out: new SSRC → new consumer → client blanks the MediaStream)`);
         session.restartTimer = setTimeout(() => {
             session.restartTimer = null;
             if (session.stopped) return;
@@ -345,6 +356,7 @@ class RsPassthroughRelay {
 
     _teardown(session) {
         if (session.statsTimer) { clearInterval(session.statsTimer); session.statsTimer = null; }
+        if (session.ingestWatchdog) { clearInterval(session.ingestWatchdog); session.ingestWatchdog = null; }
         const sfu = require('../streaming/webrtc-sfu');
         for (const ing of session.ingests) {
             try { ing.socket.removeAllListeners('message'); ing.socket.close(); } catch {}
@@ -380,9 +392,8 @@ class RsPassthroughRelay {
         const wsUrl = `wss://${page.rtc_sfu.host}:${page.rtc_sfu.port}/?roomId=${encodeURIComponent(session.robotId)}&peerId=${encodeURIComponent(peerId)}`;
         const peer = new ProtooPeer(wsUrl, session.robotId, (code) => {
             if (session.stopped) return;
-            log(sid, `RS ws closed (${code}) — will restart`);
             const st = { id: sid }; const integ = { robot_id: session.robotId, token: session.token };
-            this._teardown(session); this._scheduleRestart(session, st, integ);
+            this._teardown(session); this._scheduleRestart(session, st, integ, `RS protoo websocket closed (code ${code})`);
         });
         session.peer = peer;
         await peer.connect();
@@ -426,7 +437,7 @@ class RsPassthroughRelay {
             log(sid, 'werift conn', pc.connectionState);
             if ((pc.connectionState === 'failed' || pc.connectionState === 'disconnected') && !session.stopped) {
                 const st = { id: sid }; const integ = { robot_id: session.robotId, token: session.token };
-                this._teardown(session); this._scheduleRestart(session, st, integ);
+                this._teardown(session); this._scheduleRestart(session, st, integ, `werift connectionState=${pc.connectionState} (ICE/DTLS to RS lost)`);
             }
         });
 
@@ -461,7 +472,19 @@ class RsPassthroughRelay {
 
         // 9) Forward encoded RTP straight through (strip our-router ext ids, match declared PT).
         //    Each UDP datagram from the PlainTransport consumer is one RTP packet.
-        const stats = { v: 0, a: 0, pli: 0, lostIn: 0, kf: 0, maxKfGap: 0, inj: 0, rtxDeep: 0, rtxMiss: 0, gopDamaged: 0, lateFill: 0 };
+        // Counters are split INGEST (our SFU's plain consumer -> this relay's UDP socket) vs
+        // EGRESS (this relay -> werift -> RS). RobotStreamer viewers show the video RTP simply
+        // CEASING for tens of seconds at a time (webrtc-internals: bytesReceived/s 0, framesDropped
+        // 0, packetsLost ~0.1%, pliCount low — nothing arrives rather than arriving broken), so the
+        // single question that matters is which of those two legs went quiet. A combined counter
+        // cannot answer it; these can.
+        const stats = {
+            vIn: 0, vOut: 0, vErr: 0,          // video: received / forwarded / writeRtp threw
+            aIn: 0, aOut: 0, aErr: 0,          // audio: same
+            pli: 0, lostIn: 0, kf: 0, maxKfGap: 0, inj: 0,
+            rtxDeep: 0, rtxMiss: 0, rtxTooOld: 0, gopDamaged: 0, lateFill: 0,
+            ingestStalls: 0, ingestStallMs: 0,
+        };
         const vPt = +vMedia.pts[0];
 
         // ── Deep retransmit cache ────────────────────────────────────────────────────────
@@ -517,10 +540,65 @@ class RsPassthroughRelay {
         const SEQ_BURST = 12;        // >~ one frame of packets missing AT ONCE = real loss worth a keyframe
         const KF_STALE_MS = 2000;    // if RS hasn't been sent a keyframe in this long, pull one (recovery ceiling)
         let _lastVideoAt = Date.now();
+        let _lastAudioAt = Date.now();
         let _lastKeyReqAt = 0;
         let _maxSeq = -1, _vSsrc = -1;
         let _lastKfAt = Date.now();
         let _lastKfTs = -1;    // dedupe: H264 keyframe = SPS+PPS+IDR sharing one RTP timestamp
+
+        // ── Ingest stall watchdog ────────────────────────────────────────────────────────
+        // RS viewers lose video for TENS OF SECONDS at a stretch (webrtc-internals reports
+        // pauseCount>0 with 170s of totalPausesDuration in a 394s session) while audio keeps
+        // playing, and the picture is perfect whenever it does flow. That is not loss or
+        // congestion — the video RTP is simply absent. This watchdog says out loud, with a
+        // timestamp and a duration, whether the silence starts UPSTREAM of the relay (our
+        // mediasoup plain consumer stopped feeding this socket) and reports the consumer's
+        // liveness at that instant, so the next occurrence names its own cause instead of
+        // requiring another round of guessing. Audio is watched too: if BOTH legs go quiet
+        // it is the process/event loop, not the video path.
+        const INGEST_STALL_MS = 1000;   // 1s of no video RTP at ~530 pkt/s is already ~500 missing packets
+        let _videoStalledSince = 0;
+        let _audioStalledSince = 0;
+        const vSenderState = () => {
+            try { return `${videoTx.sender?.dtlsTransport?.state || '?'}/${pc.iceConnectionState || '?'}`; }
+            catch { return '?'; }
+        };
+        const noteIngest = (kind, now) => {
+            if (kind === 'video') {
+                if (_videoStalledSince) {
+                    const ms = now - _videoStalledSince;
+                    stats.ingestStalls++; stats.ingestStallMs += ms;
+                    const peer = sfu.plainConsumerState(session.roomId, videoIn.consumerId);
+                    log(sid, `⚠️ VIDEO INGEST RESUMED after ${ms}ms — plain consumer ${JSON.stringify(peer)} ` +
+                        `audioAlsoStalled=${!!_audioStalledSince} werift=${pc.connectionState}`);
+                    _videoStalledSince = 0;
+                }
+                _lastVideoAt = now;
+            } else {
+                if (_audioStalledSince) {
+                    log(sid, `⚠️ AUDIO INGEST RESUMED after ${now - _audioStalledSince}ms`);
+                    _audioStalledSince = 0;
+                }
+                _lastAudioAt = now;
+            }
+        };
+        const ingestWatchdog = setInterval(() => {
+            const now = Date.now();
+            if (!_videoStalledSince && now - _lastVideoAt > INGEST_STALL_MS) {
+                _videoStalledSince = _lastVideoAt;
+                const peer = sfu.plainConsumerState(session.roomId, videoIn.consumerId);
+                log(sid, `⚠️ VIDEO INGEST STALL (no RTP from our SFU for ${now - _lastVideoAt}ms) — ` +
+                    `plain consumer ${JSON.stringify(peer)} | audioFlowing=${now - _lastAudioAt < INGEST_STALL_MS} ` +
+                    `| werift=${pc.connectionState} dtls=${vSenderState()}`);
+            }
+            if (audioIn && !_audioStalledSince && now - _lastAudioAt > INGEST_STALL_MS * 3) {
+                _audioStalledSince = _lastAudioAt;
+                log(sid, `⚠️ AUDIO INGEST STALL (${now - _lastAudioAt}ms) — both legs quiet means the ` +
+                    `event loop or the process stalled, not the video path`);
+            }
+        }, 500);
+        ingestWatchdog.unref?.();
+        session.ingestWatchdog = ingestWatchdog;
 
         // ── H264 SPS/PPS caching + re-injection ──────────────────────────────────────────────
         // OBS/WHIP sends H264 parameter sets (SPS/PPS) in-band; mediasoup replays them to its own
@@ -571,7 +649,7 @@ class RsPassthroughRelay {
                 const pkt = new RtpPacket(h, Buffer.from(payload));
                 videoTrack.writeRtp(pkt);           // werift finalises `pkt` in place …
                 rtxRemember(pkt);                   // … so cache it after the write, not before
-                stats.v++; stats.inj++;
+                stats.vOut++; stats.inj++;
             } catch { /* */ }
         };
         // Slot the cached parameter sets into the sequence space immediately BEFORE the keyframe
@@ -593,7 +671,8 @@ class RsPassthroughRelay {
         videoIn.socket.on('message', (buf) => {
             const now = Date.now();
             const timeGap = (now - _lastVideoAt) > VIDEO_GAP_MS;
-            _lastVideoAt = now;
+            stats.vIn++;
+            noteIngest('video', now);
             let p;
             try { p = RtpPacket.deSerialize(buf); } catch { return; /* drop malformed */ }
             // Reorder-tolerant loss detection on the MAIN video stream only (ignore RTX/other SSRCs
@@ -651,12 +730,24 @@ class RsPassthroughRelay {
             // param-set packets slot in cleanly (werift preserves the sequence number) WITHOUT
             // closing real loss gaps. VP8 injects nothing, so it keeps the source sequence as-is.
             if (isH264) p.header.sequenceNumber = (p.header.sequenceNumber + _seqOffset) & 0xffff;
-            try { videoTrack.writeRtp(p); rtxRemember(p); stats.v++; } catch { /* */ }
+            // writeRtp only throws for SYNCHRONOUS faults. The async half of werift's send path
+            // (RTCRtpSender.sendRtp) is dispatched by Event.execute() as an un-awaited async
+            // subscriber, so its rejections escape this catch entirely — they land on the
+            // process-level unhandledRejection handler in server/index.js, which is what keeps
+            // a DTLS hiccup from taking the whole server (and every RS/OpenVibe viewer) down.
+            try { videoTrack.writeRtp(p); rtxRemember(p); stats.vOut++; }
+            catch (e) { if (stats.vErr++ === 0) log(sid, 'video writeRtp failed (first of run):', e.message); }
         }
         if (audioIn && aMedia) {
             const aPt = +aMedia.pts[0];
             audioIn.socket.on('message', (buf) => {
-                try { const p = RtpPacket.deSerialize(buf); p.header.payloadType = aPt; p.header.extensions = []; audioTrack.writeRtp(p); stats.a++; } catch { /* */ }
+                stats.aIn++;
+                noteIngest('audio', Date.now());
+                try {
+                    const p = RtpPacket.deSerialize(buf);
+                    p.header.payloadType = aPt; p.header.extensions = [];
+                    audioTrack.writeRtp(p); stats.aOut++;
+                } catch (e) { if (stats.aErr++ === 0) log(sid, 'audio writeRtp failed (first of run):', e.message); }
             });
         }
 
@@ -667,16 +758,28 @@ class RsPassthroughRelay {
         // Throughput heartbeat + loss diagnostics. Splits loss into the two legs so we can see
         // where video freezes originate: IN = streamer→relay (our seq-gap detection), RS = relay→RS
         // (werift's RTCP receiver reports from RobotStreamer). pliRx/firRx = keyframes RS asked for.
-        let lastV = 0, lastA = 0, lastLostIn = 0, lastKf = 0, lastLateFill = 0;
+        let lastVIn = 0, lastVOut = 0, lastAIn = 0, lastAOut = 0, lastLostIn = 0, lastKf = 0, lastLateFill = 0;
         session.statsTimer = setInterval(() => {
             const s = vSender || {};
             const rsLostPct = typeof s.remoteFractionLost === 'number' ? ((s.remoteFractionLost / 256) * 100).toFixed(1) : '?';
-            log(sid, `flow: v ${Math.round((stats.v - lastV) / 10)}/s a ${Math.round((stats.a - lastA) / 10)}/s ` +
+            const kbps = (n) => Math.round(n);
+            // rsRemb / bwe are what RobotStreamer's transport is ASKING us to send. Nothing in
+            // werift or in this relay acts on either (a raw passthrough has no bitrate knob to
+            // turn), so they are logged purely to show whether RS is starving us on purpose or
+            // whether the freezes are unrelated to bitrate — the viewer stats say unrelated, and
+            // this is the server-side half of that proof.
+            const remb = typeof s.receiverEstimatedMaxBitrate === 'number' ? kbps(s.receiverEstimatedMaxBitrate / 1000) + 'k' : '?';
+            const bwe = typeof s.senderBWE?.availableBitrate === 'number' ? kbps(s.senderBWE.availableBitrate / 1000) + 'k' : '?';
+            const stalled = _videoStalledSince ? ` STALLED-${Date.now() - _videoStalledSince}ms` : '';
+            log(sid, `flow: vIn ${Math.round((stats.vIn - lastVIn) / 10)}/s vOut ${Math.round((stats.vOut - lastVOut) / 10)}/s ` +
+                `aIn ${Math.round((stats.aIn - lastAIn) / 10)}/s aOut ${Math.round((stats.aOut - lastAOut) / 10)}/s${stalled} ` +
+                `| writeErr v=${stats.vErr} a=${stats.aErr} | stalls=${stats.ingestStalls} (${Math.round(stats.ingestStallMs / 1000)}s total) ` +
                 `| kf ${stats.kf - lastKf}/10s maxKfGap ${stats.maxKfGap}ms injSPS/PPS=${stats.inj}${INJECT_PARAMS ? '' : '(off)'} gopDmg=${stats.gopDamaged} ` +
                 `| lossIN ${stats.lostIn - lastLostIn} (goosely→relay) lateFill ${stats.lateFill - lastLateFill} ` +
-                `| RS lost=${rsLostPct}% pktsLost=${s.remotePacketsLost ?? '?'} pliRx=${s.pliCount ?? '?'} firRx=${s.firCount ?? '?'} nackRx=${s.nackCount ?? '?'} retx=${s.retransmittedPacketsSent ?? '?'} deepRtx=${stats.rtxDeep} rtxMiss=${stats.rtxMiss} rtt=${Math.round((s.rtt || 0) * 1000)}ms ` +
-                `| keyReq=${stats.pli} werift=${pc.connectionState}`);
-            lastV = stats.v; lastA = stats.a; lastLostIn = stats.lostIn; lastKf = stats.kf; lastLateFill = stats.lateFill; stats.maxKfGap = 0;
+                `| RS lost=${rsLostPct}% pktsLost=${s.remotePacketsLost ?? '?'} pliRx=${s.pliCount ?? '?'} firRx=${s.firCount ?? '?'} nackRx=${s.nackCount ?? '?'} retx=${s.retransmittedPacketsSent ?? '?'} deepRtx=${stats.rtxDeep} rtxMiss=${stats.rtxMiss} rtxTooOld=${stats.rtxTooOld} rtt=${Math.round((s.rtt || 0) * 1000)}ms ` +
+                `| rsRemb=${remb} bwe=${bwe} | keyReq=${stats.pli} werift=${pc.connectionState} dtls/ice=${vSenderState()}`);
+            lastVIn = stats.vIn; lastVOut = stats.vOut; lastAIn = stats.aIn; lastAOut = stats.aOut;
+            lastLostIn = stats.lostIn; lastKf = stats.kf; lastLateFill = stats.lateFill; stats.maxKfGap = 0;
         }, 10000);
         session.statsTimer.unref?.();
         // Answer the NACKs werift could not. It fires this AFTER trying its own 128-packet
@@ -687,18 +790,38 @@ class RsPassthroughRelay {
             if (!lost.length) return;
             const werHist = (vSender.rtpCache && vSender.rtpCache.length) || 128;
             const off = vSender.seqOffset || 0;
+            // How far back a repair is still WORTH sending. RobotStreamer's SFU is mediasoup, and
+            // mediasoup's RtpStream::UpdateSeq only accepts a late packet within MaxMisorder (100)
+            // of the highest sequence it has seen. Anything older lands in its "sequence number
+            // made a very large jump" branch, which does two things: it DISCARDS the packet, and
+            // it arms badSeq = seq+1 — so if the very next arrival is that successor (exactly what
+            // happens when we repair a RUN of lost packets, which is the normal shape of a NACK
+            // list) mediasoup calls InitSeq() and yanks the producer's sequence base backwards to
+            // our old packet. Every genuinely-live packet after that looks like a huge forward
+            // jump, its NackGenerator blows past MaxNackPackets and demands a keyframe, and its
+            // consumers resync. That is a self-inflicted video-only stall — audio has no NACK path
+            // here at all, which matches the symptom exactly. So the 7.7s ring is for OUR
+            // bookkeeping; only the newest ~90 sequence numbers are safe to actually put on the
+            // wire. RTT to RS is 70-110ms and we send ~530 pkt/s, so a timely NACK is well inside
+            // that window — the ones we now skip are the ones mediasoup would have thrown away.
+            const RTX_SAFE_WINDOW = 90;
+            const curSeq = typeof vSender.sequenceNumber === 'number' ? vSender.sequenceNumber : null;
             for (const seqNum of lost) {
                 // Skip the ones werift just handled from its own window.
                 const near = vSender.rtpCache && vSender.rtpCache[seqNum % werHist];
                 if (near && near.header.sequenceNumber === seqNum) continue;
+                if (curSeq !== null && ((curSeq - seqNum) & 0xffff) > RTX_SAFE_WINDOW) { stats.rtxTooOld++; continue; }
                 // Our ring is keyed by the sequence number we wrote; werift adds a constant
                 // seqOffset on top (0 here, but derive it rather than assume).
                 const pkt = _rtxRing[((seqNum - off) & 0xffff) % RTX_RING];
                 if (!pkt || pkt.header.sequenceNumber !== seqNum) { stats.rtxMiss++; continue; }
                 try {
                     // Same call werift uses — bypasses sendRtp so packet/octet counters stay
-                    // truthful and RS's loss maths is not skewed by our repairs.
-                    vSender.dtlsTransport.sendRtp(pkt.payload, pkt.header);
+                    // truthful and RS's loss maths is not skewed by our repairs. It returns a
+                    // PROMISE: the try/catch around it only ever caught synchronous faults, so a
+                    // rejection here used to escape as an unhandled rejection (fatal on Node >=15).
+                    Promise.resolve(vSender.dtlsTransport.sendRtp(pkt.payload, pkt.header))
+                        .catch(() => { /* transport closing */ });
                     stats.rtxDeep++;
                 } catch { /* transport closing */ }
             }
