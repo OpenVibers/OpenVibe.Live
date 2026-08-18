@@ -93,6 +93,27 @@ function killActive() {
     _active.clear();
     return n;
 }
+// ── Hard concurrency gate ─────────────────────────────────────────────────
+// ai-analysis serialises VOD work through _txChain, but that only covers callers that
+// go through it — the timeline job, clip transcripts and the on-finalize webhook all
+// reach transcribeWavDetailed by other routes. Three large-v3-turbo processes were
+// observed running at once (896MB + 636MB + 636MB RSS, load average 20.9 on 4 cores),
+// which starved the live encoders and the clip cutter alike.
+//
+// Put the limit HERE, where every caller must pass, so no future path can bypass it.
+const MAX_CONCURRENT = Math.max(1, parseInt(process.env.WHISPER_MAX_CONCURRENT, 10) || 1);
+let _running = 0;
+const _waiters = [];
+function _acquire() {
+    if (_running < MAX_CONCURRENT) { _running++; return Promise.resolve(); }
+    return new Promise(resolve => _waiters.push(resolve));
+}
+function _release() {
+    const next = _waiters.shift();
+    if (next) next();              // hand the slot straight over
+    else _running = Math.max(0, _running - 1);
+}
+
 // While a stream is live we lower the whisper thread count so VOD transcription can
 // still make progress without starving the live encoders.
 let _lowPower = false;
@@ -160,7 +181,9 @@ function _joinSegments(segments) {
  * @returns {Promise<{text:string, segments:Array<{start:number,end:number,text:string}>}>}
  *          start/end in seconds (shifted by opts.offsetSec).
  */
-function transcribeWavDetailed(wavPath, { timeoutMs = 180000, offsetSec = 0, live = false } = {}) {
+// Inner implementation. Wrapped by transcribeWavDetailed, which holds the concurrency
+// slot for the whole run so only MAX_CONCURRENT decoders exist at any moment.
+function _transcribeWavInner(wavPath, { timeoutMs = 180000, offsetSec = 0, live = false } = {}) {
     return new Promise((resolve) => {
         const bin = whisperBin();
         // ok=false only for genuine FAILURES (missing binary, spawn/exec error, timeout,
@@ -248,6 +271,16 @@ function transcribeMediaDetailed(mediaPath, { seconds = 0, offsetSec = 0, timeou
 async function transcribeMedia(mediaPath, opts = {}) {
     const r = await transcribeMediaDetailed(mediaPath, opts);
     return r.text;
+}
+
+/**
+ * Detailed transcription of a 16kHz mono WAV, serialised against every other caller.
+ * The slot is held for the whole decode and always released, including on throw.
+ */
+async function transcribeWavDetailed(wavPath, opts = {}) {
+    await _acquire();
+    try { return await _transcribeWavInner(wavPath, opts); }
+    finally { _release(); }
 }
 
 module.exports = { available, transcribeWav, transcribeWavDetailed, transcribeMedia, transcribeMediaDetailed, killActive, setLowPower };
