@@ -38,19 +38,28 @@ function broadcast(event, data) {
     }
 }
 
-// Announce a go-live to every subscribed page (once per slot per hour).
+// Announce a go-live to every subscribed page.
+//
+// The once-per-slot-per-hour rate limit exists so a flappy stream can't spam the
+// on-screen toast. It must NOT suppress the event itself: viewers already sitting
+// on the channel page rely on this to swap a dead player back to the live feed the
+// instant the streamer returns, and a streamer bouncing offline→online is by
+// definition inside the hour window. So we always broadcast, and mark repeats with
+// `repeat: true` — the client shows a toast only for non-repeats but always acts on
+// the event.
 function announceGoLive(stream, streamer) {
     if (!stream) return;
     const slotKey = String(stream.managed_stream_id || `s${stream.id}`);
     const now = Date.now();
-    if (now - (lastAnnounced.get(slotKey) || 0) < ONE_HOUR_MS) return;
-    lastAnnounced.set(slotKey, now);
+    const repeat = now - (lastAnnounced.get(slotKey) || 0) < ONE_HOUR_MS;
+    if (!repeat) lastAnnounced.set(slotKey, now);
     // occasional cleanup so the Map can't grow unbounded
     if (lastAnnounced.size > 500) {
         for (const [k, t] of lastAnnounced) if (now - t > ONE_HOUR_MS) lastAnnounced.delete(k);
     }
     try {
         broadcast('stream-live', {
+            repeat,
             username: (streamer && streamer.username) || stream.username || null,
             display_name: (streamer && streamer.display_name) || stream.display_name || null,
             avatar_url: (streamer && streamer.avatar_url) || stream.avatar_url || null,

@@ -3755,6 +3755,14 @@ function showStreamEnded() {
     });
     document.getElementById('video-canvas').style.display = 'none';
     document.getElementById('video-element').style.display = 'none';
+    // Tell the channel page immediately. It owns the live/offline swap and the
+    // go-live polling, and would otherwise only notice on its next 15s tick —
+    // leaving viewers staring at this card long after a quick restart.
+    try {
+        window.dispatchEvent(new CustomEvent('openvibe:stream-ended', {
+            detail: { streamId: streamRef?.id || null },
+        }));
+    } catch { /* non-critical accelerator */ }
 }
 
 function showStreamError(msg) {

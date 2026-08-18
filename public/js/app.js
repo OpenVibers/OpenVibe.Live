@@ -3972,7 +3972,7 @@ function updateCumulativeViewers(liveStreams, rsRestream = {}, restreamLinks = n
     // OpenVibe.Live-native viewer badge — styled like the platform restream badges, in brand
     // green, so it reads as "this is the count HERE" alongside the RS/Twitch/etc badges.
     if (liveStreams.length > 0) {
-        html += `<span class="ch-restream-badge" style="color:var(--accent)" title="Watching live on OpenVibe.Live${streamCount > 1 ? ` (across ${streamCount} streams)` : ''}"><i class="fa-solid fa-circle-nodes"></i> OpenVibe <i class="fa-solid fa-eye" style="font-size:0.75em"></i> ${hsTotal}</span>`;
+        html += `<span class="ch-restream-badge" style="color:var(--accent)" title="Watching live on OpenVibe.Live${streamCount > 1 ? ` (across ${streamCount} streams)` : ''}"><i class="fa-solid fa-circle-nodes"></i> OV <i class="fa-solid fa-eye" style="font-size:0.75em"></i> ${hsTotal}</span>`;
     }
 
     // RS restream badge — reflect the WATCHED slot's robot only (not the first slot's).
@@ -4196,10 +4196,48 @@ function activateChannelStream(stream) {
 /* ── Stream Status Polling — auto-detect online/offline ──────── */
 let _streamPollTimer = null;
 const STREAM_POLL_INTERVAL = 15000; // 15 seconds
+// After the player reports the stream ended (or we otherwise know the channel just
+// flipped state), poll far more aggressively for a short window. A streamer who
+// bounces offline→online in a couple of seconds would otherwise leave viewers
+// parked on the "Stream has ended" card for up to 2 × STREAM_POLL_INTERVAL: one
+// interval for the live poll to notice the stream died, another for the offline
+// poll to notice it came back.
+const STREAM_POLL_FAST_INTERVAL = 2000;  // 2 seconds
+const STREAM_POLL_FAST_WINDOW = 90000;   // burst for 90s, then fall back
+let _streamPollFastUntil = 0;
+// Whether the currently-scheduled interval was armed at the fast cadence, so we
+// only tear the timer down and rebuild it when the cadence actually needs to change.
+let _streamPollFast = false;
 
 function stopStreamStatusPoll() {
     if (_streamPollTimer) { clearInterval(_streamPollTimer); _streamPollTimer = null; }
+    _streamPollFast = false;
 }
+
+/**
+ * Currently-desired poll cadence — fast while inside the burst window. The fast
+ * cadence carries per-client jitter so that when a popular channel drops, its
+ * waiting viewers don't all hit the endpoint on the same 2s beat.
+ */
+function _streamPollInterval() {
+    if (Date.now() >= _streamPollFastUntil) return STREAM_POLL_INTERVAL;
+    return STREAM_POLL_FAST_INTERVAL + Math.floor(Math.random() * 1500);
+}
+
+/**
+ * Open (or extend) the fast-poll burst window and re-arm the running poll at the
+ * fast cadence right away, so the next check lands in ~2s instead of ~15s.
+ */
+function _accelerateStreamStatusPoll() {
+    _streamPollFastUntil = Date.now() + STREAM_POLL_FAST_WINDOW;
+    if (_streamPollTimer && !_streamPollFast && _streamPollRearm) {
+        _streamPollRearm();
+    }
+}
+
+// Set by whichever poll (live/offline) is currently armed; lets
+// _accelerateStreamStatusPoll() rebuild the interval at the new cadence.
+let _streamPollRearm = null;
 
 // Render/update the live stream's AI overview under the stream info. Only re-renders
 // when the text actually changes, so it never clobbers a viewer's expanded state.
@@ -5397,10 +5435,17 @@ function startStreamStatusPoll(stream) {
     stopStreamStatusPoll();
     if (!currentChannelUsername) return;
     const username = currentChannelUsername;
+    // We're on a healthy live player, so the viewer isn't stranded any more — close
+    // any open burst window. Keeping it open would have every viewer of a busy
+    // channel hitting the poll endpoint every 2s for no benefit; the WS
+    // 'stream-ended' push already tells us the moment this stream dies.
+    _streamPollFastUntil = 0;
 
-    _streamPollTimer = setInterval(async () => {
+    const tick = async () => {
         // Stop polling if user navigated away from the channel page
         if (currentChannelUsername !== username) { stopStreamStatusPoll(); return; }
+        // Drop back to the lazy cadence once the burst window has expired.
+        if (_streamPollFast && Date.now() >= _streamPollFastUntil) arm();
         try {
             // pollOnly=1 skips the heavy VOD/clip listing queries — the poll only needs
             // live status + viewer counts + restream info.
@@ -5458,7 +5503,15 @@ function startStreamStatusPoll(stream) {
             // Update cumulative viewers
             updateCumulativeViewers(liveStreams, rsRestream, restreamLinks, extViewers);
         } catch { /* silent — network error, retry next interval */ }
-    }, STREAM_POLL_INTERVAL);
+    };
+
+    const arm = () => {
+        if (_streamPollTimer) clearInterval(_streamPollTimer);
+        _streamPollFast = Date.now() < _streamPollFastUntil;
+        _streamPollTimer = setInterval(tick, _streamPollInterval());
+    };
+    _streamPollRearm = arm;
+    arm();
 }
 
 // Start offline poll — detects when a channel comes online
@@ -5477,9 +5530,15 @@ window.addEventListener('openvibe:stream-live', (e) => {
         // navigating away, so the page check is essential.
         const page = document.getElementById('page-channel');
         if (!page || !page.classList.contains('active')) return;
-        // Already showing the live area? nothing to do.
+        // Already showing the live area with a healthy player? nothing to do.
+        // The player phase check matters: when a streamer bounces offline→online the
+        // live area is still on screen (the poll hasn't swapped in the offline card
+        // yet) but the player is parked on "Stream has ended". Bailing out here on
+        // visibility alone is exactly what used to strand viewers on that card.
         const liveArea = document.getElementById('ch-live-area');
-        if (liveArea && liveArea.style.display !== 'none') return;
+        const playerDead = typeof playerLoadState !== 'undefined'
+            && (playerLoadState?.phase === 'ended' || playerLoadState?.severity === 'error');
+        if (liveArea && liveArea.style.display !== 'none' && !playerDead) return;
         // Debounce against duplicate SSE + the poll firing together.
         const now = Date.now();
         if (now - _lastFastLiveLoad < 4000) return;
@@ -5490,10 +5549,41 @@ window.addEventListener('openvibe:stream-live', (e) => {
     } catch { /* non-critical accelerator */ }
 });
 
+// The player tells us the moment the stream dies (server 'stream-ended', or a
+// broadcaster that never came back). Without this the page only learns the stream
+// dropped on the next 15s poll tick, and only learns it returned on the tick after
+// that — so a 1-second offline blip could strand a viewer for ~30s. React now:
+// swap to the offline card immediately and burst-poll for the comeback.
+let _lastEndedReload = 0;
+window.addEventListener('openvibe:stream-ended', (e) => {
+    try {
+        const page = document.getElementById('page-channel');
+        if (!page || !page.classList.contains('active') || !currentChannelUsername) return;
+        // Only react to the stream the viewer is actually watching. Player teardown
+        // during navigation can surface an "ended" signal for a stream we already
+        // moved off of; reloading the channel then would be a spurious jump.
+        const endedId = e && e.detail && e.detail.streamId;
+        if (endedId && currentStreamId && endedId !== currentStreamId) return;
+        // One drop can surface as several "ended" signals (server push + a protocol
+        // teardown); collapse them so we reload the channel once.
+        const now = Date.now();
+        if (now - _lastEndedReload < 4000) return;
+        _lastEndedReload = now;
+        _accelerateStreamStatusPoll();
+        // Re-resolve channel state right away instead of waiting for a tick. If the
+        // streamer is already back this lands on the live player; if not, it renders
+        // the offline card, which then burst-polls via startOfflineStatusPoll().
+        loadChannelPage(currentChannelUsername);
+    } catch { /* non-critical accelerator */ }
+});
+
 function startOfflineStatusPoll(username) {
     stopStreamStatusPoll();
-    _streamPollTimer = setInterval(async () => {
+
+    const tick = async () => {
         if (currentChannelUsername !== username) { stopStreamStatusPoll(); return; }
+        // Drop back to the lazy cadence once the burst window has expired.
+        if (_streamPollFast && Date.now() >= _streamPollFastUntil) arm();
         try {
             // Lightweight live-only endpoint — offline viewers only need to detect go-live,
             // not refetch VODs/clips/counts every 15s (the heavy channel endpoint).
@@ -5505,7 +5595,19 @@ function startOfflineStatusPoll(username) {
                 toast(`${username} is now live!`, 'success');
             }
         } catch { /* silent */ }
-    }, STREAM_POLL_INTERVAL);
+    };
+
+    const arm = () => {
+        if (_streamPollTimer) clearInterval(_streamPollTimer);
+        _streamPollFast = Date.now() < _streamPollFastUntil;
+        _streamPollTimer = setInterval(tick, _streamPollInterval());
+    };
+    _streamPollRearm = arm;
+    arm();
+    // A viewer landing on the offline card right after the stream dropped is the
+    // most likely person to be waiting on a quick restart — check once immediately
+    // rather than burning the first full interval.
+    if (Date.now() < _streamPollFastUntil) tick();
 }
 
 async function toggleChannelFollow(username) {
