@@ -317,4 +317,22 @@ router.delete('/:id', requireAuth, async (req, res) => {
     }
 });
 
+/**
+ * Retry a failed clip cut. Same permission rule as deleting one: whoever may remove a
+ * clip may also ask for it to be re-rendered. Nothing here is destructive — the row and
+ * its timestamps are untouched, only the media is rebuilt.
+ */
+router.post('/:id/recut', requireAuth, async (req, res) => {
+    try {
+        let clip;
+        try { clip = await media.getClip(req.params.id); } catch (err) { return mediaErr(res, err, 'Clip not found'); }
+        if (!clip) return res.status(404).json({ error: 'Clip not found' });
+        if (!(await canActorDeleteClip(req.user, clip))) return res.status(403).json({ error: 'Not authorized to re-cut this clip' });
+        const out = await media.recutClip(clip.id);
+        res.json({ message: 'Re-cutting clip', status: out?.status || 'processing' });
+    } catch (err) {
+        mediaErr(res, err, 'Failed to re-cut clip');
+    }
+});
+
 module.exports = router;
