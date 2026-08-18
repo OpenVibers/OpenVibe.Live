@@ -27,10 +27,12 @@ const db = require('../db/database');
 const ai = require('./ai-analysis');
 const audio = require('./stream-audio');
 
-const POLL_MS = 10000;
+// Poll fast: with 10s segments a 10s poll interval would add as much lag again as the
+// segment itself. The tick is cheap when there is nothing to do (a readdir).
+const POLL_MS = 2000;
 // Process at most this many segments per tick per stream. Keeps a backlog from monopolising
 // the CPU on a 4-core box that is also running live x264 encoding.
-const MAX_SEGMENTS_PER_TICK = 2;
+const MAX_SEGMENTS_PER_TICK = 6;
 
 let _busy = false;
 const _known = new Set();   // stream ids we have started capture for
@@ -98,7 +100,10 @@ async function _processSegment(stream, seg) {
     const heard = events.filter(e => e.kind === 'sound').length;
     if (spoken || heard) {
         const preview = events.find(e => e.kind === 'speech');
-        console.log(`[AI-Timeline] stream ${stream.id} +${seg.offsetSec}s: ${spoken} speech, ${heard} sound` +
+        // How far behind live this transcript landed, measured from the END of the audio
+        // it covers. This is the number to watch when tuning AI_HEAR_SEGMENT_SEC / POLL_MS.
+        const lag = seg.endedAtMs ? `${Math.round((Date.now() - seg.endedAtMs) / 1000)}s behind live` : 'lag unknown';
+        console.log(`[AI-Timeline] stream ${stream.id} +${seg.offsetSec}s (${lag}): ${spoken} speech, ${heard} sound` +
             (preview ? ` — ${JSON.stringify(String(preview.text).slice(0, 80))}` : ''));
     }
     return events.length;

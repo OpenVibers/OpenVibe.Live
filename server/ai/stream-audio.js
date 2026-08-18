@@ -216,7 +216,13 @@ async function captureAudioChunk(stream, seconds = 12) {
 // Instead run ONE long-lived ffmpeg per stream that writes rolling WAV segments. Latency
 // is explicitly not a concern here, so segments are consumed behind live at low priority.
 // Cost is bounded by VAD: only the ~13% of audio containing a voice reaches the decoder.
-const SEGMENT_SEC = Math.max(10, Math.min(120, parseInt(process.env.AI_HEAR_SEGMENT_SEC, 10) || 30));
+// Segment length is the dominant term in transcription lag: audio at the START of a
+// segment cannot be decoded until the whole segment has been written, so a 30s segment
+// meant ~30s of latency before whisper even saw it. Shorter segments trade a little
+// accuracy — a phrase spanning a boundary gets split in two — for much lower lag.
+// 10s is the balance point; most boundaries land in silence anyway, since only ~13% of
+// this audio is speech. Tune with AI_HEAR_SEGMENT_SEC.
+const SEGMENT_SEC = Math.max(5, Math.min(120, parseInt(process.env.AI_HEAR_SEGMENT_SEC, 10) || 10));
 const SPOOL_ROOT = path.join(__dirname, '../../data/asr');
 // Hard cap on spooled audio per stream. The box has ~34GB free on a filesystem that
 // openvibe.media is actively growing into, so an unbounded spool is not an option.
@@ -315,12 +321,19 @@ function pendingSegments(streamId) {
     for (let i = 0; i < overflow; i++) {
         try { fs.unlinkSync(path.join(dir, ready[i])); } catch { /* */ }
     }
-    return ready.slice(overflow).map(name => ({
-        name,
-        path: path.join(dir, name),
-        index: parseInt(name.slice(4, 10), 10),
-        offsetSec: parseInt(name.slice(4, 10), 10) * SEGMENT_SEC,
-    }));
+    const startedAt = (_capturing.get(streamId) || {}).startedAt || null;
+    return ready.slice(overflow).map(name => {
+        const index = parseInt(name.slice(4, 10), 10);
+        return {
+            name,
+            path: path.join(dir, name),
+            index,
+            offsetSec: index * SEGMENT_SEC,
+            // Wall-clock instant this segment's audio ENDED, so the job can report how far
+            // behind live the transcript actually is.
+            endedAtMs: startedAt ? startedAt + (index + 1) * SEGMENT_SEC * 1000 : null,
+        };
+    });
 }
 
 function discardSegment(streamId, name) {
