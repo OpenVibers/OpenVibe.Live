@@ -98,10 +98,12 @@ function _handleDonation(userId, data) {
     try { goalResult = openvibeBucks.applyDonationToGoal(userId, amount, goalId); } catch { /* */ }
 
     // 1) Donation chat event — live + persisted to channel history.
-    chatServer.broadcastToChannelRoom(userId, streamId, {
+    const donationEvent = {
         type: 'donation', username: donor, user_id: null, avatar_url: null,
         amount, message, source: 'powerchat', timestamp: ts,
-    });
+    };
+    chatServer.broadcastToChannelRoom(userId, streamId, donationEvent);
+    try { chatServer.broadcastGlobal({ ...donationEvent, global: true, channel_user_id: userId }); } catch { /* */ }
     try {
         db.saveChatMessage({
             stream_id: streamId, channel_user_id: userId, user_id: null, username: donor,
@@ -212,10 +214,23 @@ function simulateDonation(userId, { amountUsd = 5, donor = 'Test Tipper', messag
     let streamId = null;
     try { const live = db.getLiveStreamsByUserId(userId) || []; if (live.length) streamId = live[0].id; } catch { /* */ }
 
-    chatServer.broadcastToChannelRoom(userId, streamId, {
+    const testEvent = {
         type: 'donation', username: donor, user_id: null, avatar_url: null,
         amount, message, source: 'powerchat-test', timestamp: ts,
-    });
+    };
+    chatServer.broadcastToChannelRoom(userId, streamId, testEvent);
+    try { chatServer.broadcastGlobal({ ...testEvent, global: true, channel_user_id: userId }); } catch { /* */ }
+    // Persist it, exactly like a real tip. A test that vanishes on reload does not
+    // actually test what the streamer is checking — that the alert lands in chat AND
+    // survives a refresh. This was the only donation path that broadcast without saving.
+    try {
+        db.saveChatMessage({
+            stream_id: streamId, channel_user_id: userId, user_id: null, username: donor,
+            message: `${donor} donated ${amount.toLocaleString()} Vibes${message ? ': ' + message : ''}`,
+            message_type: 'donation',
+            metadata: { kind: 'donation', amount, message, username: donor, source: 'powerchat-test' },
+        });
+    } catch (e) { console.warn('[PowerChat] test tip not saved to history:', e.message); }
     try { alerts.playAlertSound(chatServer, userId, streamId, 'donation'); } catch { /* */ }
 
     // Transient goal-progress preview (does NOT persist — reload restores the real number).

@@ -469,7 +469,7 @@ router.get('/global/history', optionalAuth, (req, res) => {
                    LEFT JOIN users su ON s.user_id = su.id
                    LEFT JOIN users cu ON cm.channel_user_id = cu.id
                    LEFT JOIN managed_streams ms ON s.managed_stream_id = ms.id
-                   WHERE cm.is_deleted = 0 AND cm.message_type IN ('chat', 'system', 'channel-sound', 'soundboard')
+                   WHERE cm.is_deleted = 0 AND cm.message_type IN ('chat', 'system', 'channel-sound', 'soundboard', 'donation')
                      AND (cm.auto_delete_at IS NULL OR datetime(cm.auto_delete_at) > CURRENT_TIMESTAMP)`;
         const params = [];
 

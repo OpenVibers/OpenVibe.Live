@@ -79,11 +79,15 @@ router.post('/donate', requireAuth, (req, res) => {
 
         // 1) Donation chat message — broadcast live AND persist to channel history so
         //    late-joiners see it. Channel-room broadcast reaches all slots + offline.
-        chatServer.broadcastToChannelRoom(streamer_id, stream_id || null, {
+        const donationEvent = {
             type: 'donation', username: donor, user_id: req.user.id,
             avatar_url: donorUser?.avatar_url || null,
             amount: result.amount, message: message || '', timestamp: ts,
-        });
+        };
+        chatServer.broadcastToChannelRoom(streamer_id, stream_id || null, donationEvent);
+        // Tips are a site-wide event worth celebrating, so mirror them into global chat
+        // instead of confining them to the channel that received them.
+        try { chatServer.broadcastGlobal({ ...donationEvent, global: true, channel_user_id: streamer_id }); } catch { /* */ }
         try {
             db.saveChatMessage({
                 stream_id: stream_id || null, channel_user_id: streamer_id, user_id: req.user.id,

@@ -3982,6 +3982,19 @@ async function loadGlobalChatHistory() {
             if (m.message_type === 'system') {
                 // Render system messages (update announcements, etc.) with system styling
                 addRichSystemMessage(esc(m.message), 'update');
+            } else if (m.message_type === 'donation') {
+                // Donations carry their payload in metadata — render the rich card here
+                // too, not a plain text line. Global history renders through addChatMessage
+                // directly rather than _renderHistoryMainMsg, so it needs its own hook.
+                let meta = null;
+                try { meta = typeof m.metadata === 'string' ? JSON.parse(m.metadata) : m.metadata; } catch { meta = null; }
+                if (meta && meta.kind === 'goal-reached') {
+                    addDonationGoalMessage({ goal: { title: meta.title, target_amount: meta.target, image_url: meta.image, media_type: meta.media_type }, by: meta.by });
+                } else if (meta && meta.kind === 'donation') {
+                    addDonationMessage({ username: meta.username, amount: meta.amount, message: meta.message, avatar_url: meta.avatar_url, user_id: meta.user_id });
+                } else {
+                    addRichSystemMessage(esc(m.message), 'update');
+                }
             } else {
                 addChatMessage({
                     id: m.id,
