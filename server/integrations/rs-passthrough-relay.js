@@ -470,13 +470,20 @@ class RsPassthroughRelay {
         // link with keyframes (~4/s measured!) → congestion → loss → more PLIs → more keyframes: a
         // vicious cycle that was itself the freeze cause. Cap it to one real keyframe pull per 2s.
         let _lastActualKeyReq = 0;
-        const reqKey = () => {
+        // minGap defaults to the 2s anti-flood floor. The retry backstop passes a shorter gap so
+        // it can actually get through — with the flat 2s floor the `setTimeout(reqKey, 300)`
+        // retry below was always swallowed by the request that scheduled it, making the
+        // "in case it's lost too" backstop dead code and stretching recovery to the full 2s.
+        const reqKeyNow = (minGap) => {
             const now = Date.now();
-            if (now - _lastActualKeyReq < 2000) return;
+            if (now - _lastActualKeyReq < (typeof minGap === 'number' ? minGap : 2000)) return;
             _lastActualKeyReq = now;
             stats.pli++;
             sfu.requestConsumerKeyFrame(session.roomId, videoIn.consumerId).catch?.(() => {});
         };
+        // Arg-safe wrapper: this is handed to PLI subscribers, which invoke it with an event
+        // object — that must never be mistaken for a minGap override.
+        const reqKey = () => reqKeyNow(2000);
 
         // Video-loss recovery. A hole in the streamer→relay video (a stutter/drop that PAUSES the
         // RTP, OR partial packet loss that leaves holes while packets keep flowing) makes the
@@ -501,8 +508,15 @@ class RsPassthroughRelay {
         // the params happened to arrive intact again. We cache the latest params and re-inject them
         // ahead of every keyframe so each keyframe RS receives is self-contained. Requires taking
         // control of the outgoing sequence numbers (contiguous) so injected packets slot in cleanly.
+        // Sequence handling: we must renumber (injected param-set packets need slots), but we
+        // renumber by a running OFFSET rather than a counter. A counter renumbers packets
+        // contiguously in ARRIVAL order, which silently erases holes — RS then sees a perfect
+        // sequence with missing payload, so it never NACKs and never PLIs, and just feeds the
+        // corrupt frame to its decoder (video glitches, audio fine). With an offset, incoming
+        // loss stays visible to RS (it NACKs, werift retransmits from its buffer) and reordered
+        // packets keep their true relative order.
         let _sps = null, _pps = null, _stapParams = null;
-        let _outSeq = -1;
+        let _seqOffset = 0;   // outSeq = (inSeq + _seqOffset) & 0xffff
         const cacheParamSets = (payload) => {
             if (!payload || payload.length < 1) return;
             const nal = payload[0] & 0x1f;
@@ -514,21 +528,26 @@ class RsPassthroughRelay {
                 if (hasParam) _stapParams = Buffer.from(payload);
             }
         };
-        const injectPkt = (payload, ts) => {
+        const injectPkt = (payload, ts, outSeq) => {
             const h = new RtpHeader();
-            h.payloadType = vPt; h.sequenceNumber = _outSeq; h.timestamp = ts; h.marker = false;
-            _outSeq = (_outSeq + 1) & 0xffff;
+            h.payloadType = vPt; h.sequenceNumber = outSeq; h.timestamp = ts; h.marker = false;
             try { videoTrack.writeRtp(new RtpPacket(h, Buffer.from(payload))); stats.v++; stats.inj++; } catch { /* */ }
         };
-        const injectParamSets = (ts) => {
-            if (_stapParams) injectPkt(_stapParams, ts);
-            else { if (_sps) injectPkt(_sps, ts); if (_pps) injectPkt(_pps, ts); }
+        // Slot the cached parameter sets into the sequence space immediately BEFORE the keyframe
+        // packet (incoming seq `inSeq`), then advance the offset so the keyframe lands right after
+        // them. Everything downstream shifts by the same amount, so real gaps still read as gaps.
+        const injectParamSets = (ts, inSeq) => {
+            const pkts = _stapParams ? [_stapParams] : [_sps, _pps].filter(Boolean);
+            for (const payload of pkts) {
+                injectPkt(payload, ts, (inSeq + _seqOffset) & 0xffff);
+                _seqOffset = (_seqOffset + 1) & 0xffff;
+            }
         };
         const pullKeyframe = (now) => {
             if (now - _lastKeyReqAt < 600) return;   // debounce so sustained loss can't spam keyframes
             _lastKeyReqAt = now;
             reqKey();                                 // pull a keyframe now …
-            setTimeout(reqKey, 300);                  // … and a backstop in case it's lost too
+            setTimeout(() => reqKeyNow(250), 300);    // … and a backstop in case it's lost too
         };
         videoIn.socket.on('message', (buf) => {
             const now = Date.now();
@@ -551,7 +570,6 @@ class RsPassthroughRelay {
                     // adv >= 30000 → reordered packet arriving late; not a loss.
                 } else _maxSeq = p.header.sequenceNumber;
             }
-            if (_outSeq < 0) _outSeq = p.header.sequenceNumber;
             if (isH264) cacheParamSets(p.payload);
             // Track keyframes actually reaching RS + how long since the last one (one count per
             // frame — H264's SPS/PPS/IDR share an RTP timestamp, so dedupe on it). On a new keyframe
@@ -561,16 +579,17 @@ class RsPassthroughRelay {
                 _lastKfTs = p.header.timestamp;
                 const gap = now - _lastKfAt; if (gap > stats.maxKfGap) stats.maxKfGap = gap;
                 _lastKfAt = now; stats.kf++;
-                if (isH264) injectParamSets(p.header.timestamp);
+                if (isH264) injectParamSets(p.header.timestamp, p.header.sequenceNumber);
             }
             // Safety-net: a decoder that lost sync can only recover on a keyframe. If none has been
             // forwarded for KF_STALE_MS, pull one so a freeze can never outlast ~2s.
             const kfStale = (now - _lastKfAt) > KF_STALE_MS;
             if (timeGap || burst || kfStale) pullKeyframe(now);
             p.header.payloadType = vPt; p.header.extensions = [];
-            // For H264 rewrite to a contiguous output sequence so the injected param-set packets
-            // slot in cleanly (werift preserves the sequence number). VP8 keeps the source sequence.
-            if (isH264) { p.header.sequenceNumber = _outSeq; _outSeq = (_outSeq + 1) & 0xffff; }
+            // For H264 shift the sequence by the running injection offset so the injected
+            // param-set packets slot in cleanly (werift preserves the sequence number) WITHOUT
+            // closing real loss gaps. VP8 injects nothing, so it keeps the source sequence as-is.
+            if (isH264) p.header.sequenceNumber = (p.header.sequenceNumber + _seqOffset) & 0xffff;
             try { videoTrack.writeRtp(p); stats.v++; } catch { /* */ }
         });
         if (audioIn && aMedia) {
@@ -593,7 +612,7 @@ class RsPassthroughRelay {
             const rsLostPct = typeof s.remoteFractionLost === 'number' ? ((s.remoteFractionLost / 256) * 100).toFixed(1) : '?';
             log(sid, `flow: v ${Math.round((stats.v - lastV) / 10)}/s a ${Math.round((stats.a - lastA) / 10)}/s ` +
                 `| kf ${stats.kf - lastKf}/10s maxKfGap ${stats.maxKfGap}ms injSPS/PPS=${stats.inj} ` +
-                `| lossIN ${stats.lostIn - lastLostIn} (goosely→relay) ` +
+                `| lossIN ${stats.lostIn - lastLostIn} (goosely→relay, now VISIBLE to RS) seqOff=${_seqOffset} ` +
                 `| RS lost=${rsLostPct}% pktsLost=${s.remotePacketsLost ?? '?'} pliRx=${s.pliCount ?? '?'} firRx=${s.firCount ?? '?'} nackRx=${s.nackCount ?? '?'} retx=${s.retransmittedPacketsSent ?? '?'} rtt=${Math.round((s.rtt || 0) * 1000)}ms ` +
                 `| keyReq=${stats.pli} werift=${pc.connectionState}`);
             lastV = stats.v; lastA = stats.a; lastLostIn = stats.lostIn; lastKf = stats.kf; stats.maxKfGap = 0;

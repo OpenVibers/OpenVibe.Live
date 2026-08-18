@@ -117,7 +117,9 @@
                 const saved = JSON.parse(raw);
                 if (saved && saved.variables && typeof saved.variables === 'object') {
                     applyVars(saved.variables);
-                    return saved.id || saved.slug || 'vibe';
+                    const cachedId = saved.id || saved.slug || 'vibe';
+                    try { document.documentElement.setAttribute('data-theme', cachedId); } catch { /* no DOM */ }
+                    return cachedId;
                 }
                 if (saved && (saved.id || saved.slug)) {
                     const id = saved.id || saved.slug;
@@ -129,10 +131,8 @@
         // 2. Try cross-domain cookie
         const cookieId = getCookie(COOKIE_NAME);
         if (cookieId && applyById(cookieId)) {
-            // Cache in localStorage for faster next load
-            try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify({ id: cookieId, variables: THEMES[cookieId] }));
-            } catch { /* quota */ }
+            // Cache the full variable set so the next load paints from localStorage instantly.
+            cacheLocally(cookieId, THEMES[cookieId]);
             return cookieId;
         }
 
@@ -141,17 +141,47 @@
         return 'vibe';
     }
 
+    function authToken() {
+        return getCookie('ov_token') ||
+            (typeof localStorage !== 'undefined' && (localStorage.getItem('ov_token') || localStorage.getItem('token'))) ||
+            null;
+    }
+
     /**
-     * Save theme choice both locally and cross-domain.
-     * Call this when the user picks a theme.
+     * Write the resolved theme to every local cache. Always stores the FULL variable set —
+     * including for community/custom themes that aren't in the built-in map — so the next
+     * page load can paint the right colours synchronously with no network call and no flash.
      */
-    function save(themeId, variables) {
-        const vars = variables || THEMES[themeId];
-        if (!vars) return;
+    function cacheLocally(themeId, vars) {
         try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify({ id: themeId, slug: themeId, variables: vars }));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                id: themeId, slug: themeId, variables: vars, at: Date.now(),
+            }));
         } catch { /* quota */ }
         setCookie(COOKIE_NAME, themeId, 365);
+        try { document.documentElement.setAttribute('data-theme', themeId); } catch { /* no DOM */ }
+    }
+
+    /**
+     * Save theme choice locally AND to the user's openvibe.network account, so the choice
+     * follows them to every OpenVibe site. Pass opts.custom for per-user variable overrides;
+     * opts.sync === false keeps it device-local.
+     */
+    function save(themeId, variables, opts) {
+        const custom = (opts && opts.custom) || null;
+        const base = variables || THEMES[themeId] || {};
+        const vars = custom ? Object.assign({}, base, custom) : base;
+        if (!vars || !Object.keys(vars).length) return;
+        cacheLocally(themeId, vars);
+        if (opts && opts.sync === false) return;
+        if (typeof fetch === 'undefined') return;
+        const token = authToken();
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = 'Bearer ' + token;
+        fetch(_config.apiBase + '/api/themes/me', {
+            method: 'PUT', headers: headers, credentials: 'include',
+            body: JSON.stringify({ theme_id: themeId, custom_variables: custom }),
+        }).catch(function () { /* offline / signed out — local cache still holds */ });
     }
 
     /**
@@ -171,34 +201,47 @@
     // ── Auto-apply on load (synchronous, prevents FOUC) ─────
     const activeId = resolveAndApply();
 
-    // ── If user is logged in, try to sync from server ────────
-    // This runs async after page paint to pick up server-side changes
-    if (typeof fetch !== 'undefined') {
-        setTimeout(function () {
-            const token = getCookie('ov_token') ||
-                (typeof localStorage !== 'undefined' && (localStorage.getItem('ov_token') || localStorage.getItem('token')));
-            if (!token) return;
-            fetch(_config.apiBase + '/api/themes/me/active', {
-                headers: { 'Authorization': 'Bearer ' + token },
-                credentials: 'include',
-            }).then(function (r) { return r.ok ? r.json() : null; })
-              .then(function (data) {
+    // Look up a theme we don't ship in the built-in map (community/custom themes) from the
+    // central catalog. Without this, any non-built-in id fell through to the default 'vibe'
+    // — which is why a custom theme could "disappear" and flash purple on every load.
+    function fetchThemeVars(themeId) {
+        return fetch(_config.apiBase + '/api/themes/' + encodeURIComponent(themeId))
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) { return (d && d.theme && d.theme.variables) || null; })
+            .catch(function () { return null; });
+    }
+
+    // ── Pull the account's theme from openvibe.network ───────
+    // Runs IMMEDIATELY, not on a 500ms timer: the cached theme is already painted, so this is
+    // a silent correction — delaying it only widened the window where a cold or stale cache
+    // showed the wrong theme. There is also no token gate any more; the ov_token cookie rides
+    // along via credentials:'include' (openvibe.network allows credentialed CORS per origin),
+    // so this now works on sites where the cookie isn't readable from JS — previously the sync
+    // silently never ran there and the user's theme appeared to be "lost".
+    function syncFromServer() {
+        if (typeof fetch === 'undefined') return;
+        const token = authToken();
+        const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+        fetch(_config.apiBase + '/api/themes/me/active', { headers: headers, credentials: 'include' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
                 if (!data || !data.theme_id) return;
                 const serverId = data.theme_id;
-                const custom = data.custom_variables;
-                if (custom && typeof custom === 'object' && Object.keys(custom).length) {
-                    // Custom theme: apply the built-in base (if any) then the user's overrides.
-                    const base = THEMES[serverId] || {};
-                    applyVars(base);
-                    applyVars(custom);
-                    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ id: serverId, variables: Object.assign({}, base, custom) })); } catch { /* quota */ }
-                    setCookie(COOKIE_NAME, serverId, 365);
-                } else if (serverId !== getCurrent()) {
-                    if (applyById(serverId)) save(serverId, THEMES[serverId]);
-                }
-            }).catch(function () { /* offline / CORS */ });
-        }, 500);
+                const custom = (data.custom_variables && typeof data.custom_variables === 'object'
+                    && Object.keys(data.custom_variables).length) ? data.custom_variables : null;
+                const builtin = THEMES[serverId];
+                const settle = function (base) {
+                    const vars = custom ? Object.assign({}, base || {}, custom) : (base || null);
+                    if (!vars || !Object.keys(vars).length) return;
+                    applyVars(vars);
+                    cacheLocally(serverId, vars);   // cacheLocally, not save() — no write-back loop
+                };
+                if (builtin) return settle(builtin);
+                fetchThemeVars(serverId).then(settle);
+            })
+            .catch(function () { /* offline / signed out — keep the cached theme */ });
     }
+    syncFromServer();
 
     // ── Public API ───────────────────────────────────────────
     const OpenVibeThemeLoader = {

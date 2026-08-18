@@ -37,6 +37,26 @@
     <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 
+    <!-- Critical theme bootstrap (ov-theme-boot) — MUST stay inline and stay ABOVE the stylesheets.
+         Paints the user's cached theme synchronously, before the browser has any chance to
+         render the default palette. theme-loader.js used to be the first thing to touch the
+         theme, but it is fetched over the network and loaded with defer, so it ran after the
+         page had already painted — that gap is the purple flash. This reads localStorage
+         only: no network, no parse blocking, works offline and on the very first paint. -->
+    <script>
+    (function () {
+        try {
+            var raw = localStorage.getItem('ov_theme');
+            if (!raw) return;
+            var t = JSON.parse(raw), v = t && t.variables;
+            if (!v) return;
+            var el = document.documentElement;
+            for (var k in v) if (k.charAt(0) === '-') el.style.setProperty(k, v[k]);
+            if (t.id) el.setAttribute('data-theme', t.id);
+        } catch (_) { /* cold cache or private mode — theme-loader.js resolves it shortly */ }
+    })();
+    </script>
+
     <!-- Stylesheets -->
     <link rel="stylesheet" href="/css/style.css?v=134">
     <link rel="stylesheet" href="/css/chat-shared.css?v=1">
@@ -5048,7 +5068,7 @@ document.addEventListener('DOMContentLoaded', function initOpenVibeNetwork() {
         const openvibeToolsBase = (window.OpenVibeNetworkUrls && window.OpenVibeNetworkUrls.tools)
             || (['localhost', '127.0.0.1'].includes(window.location.hostname)
                 ? 'http://localhost:3100'
-                : (['topenvibe.tools', 'topenvibelive.com', 'topenvibe.quest'].includes(window.location.hostname)
+                : (['topenvibe.tools', 'topenvibe.live', 'topenvibe.quest'].includes(window.location.hostname)
                     ? 'https://topenvibe.tools'
                     : 'https://openvibe.network'));
         OpenVibeNotifications.init({
