@@ -319,6 +319,17 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             vods = _rows(vr, 'vods'); vodTotal = vr?.total ?? vods.length;
             clips = _rows(cr, 'clips'); clipTotal = cr?.total ?? clips.length;
             clipsOfStreams = _rows(cor, 'clips'); clipsOfTotal = cor?.total ?? clipsOfStreams.length;
+            // Media only stores our numeric user ids — resolve clip creator names
+            // locally so cards don't render "by Unknown".
+            const nameClip = (c) => {
+                if (c && c.user_id != null) {
+                    const u = db.getUserById(c.user_id);
+                    if (u) { c.clip_creator_username = u.username; c.clip_creator_display_name = u.display_name; }
+                }
+                return c;
+            };
+            clips.forEach(nameClip);
+            clipsOfStreams.forEach(nameClip);
         }
         const followerCount = db.getFollowerCount(channel.user_id);
         const isFollowing = req.user ? db.isFollowing(req.user.id, channel.user_id) : false;
