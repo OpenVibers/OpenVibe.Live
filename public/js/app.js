@@ -987,6 +987,7 @@ function routeFromURL() {
         loadPasteViewer(segments[1]);
     } else if (segments[0] === 'documentation') {
         showPage('documentation');
+        initDocsTabScroller();
     } else if (segments[0] === 'stream' && segments[1]) {
         // Legacy stream URL: /stream/:id
         showPage('stream');
@@ -8169,7 +8170,40 @@ function showDocTab(tabName, btn) {
     document.querySelectorAll('.docs-tab').forEach(el => el.classList.remove('active'));
     const target = document.querySelector(`.doc-tab-content[data-doc-tab="${tabName}"]`);
     if (target) target.style.display = '';
-    if (btn) btn.classList.add('active');
+    if (btn) {
+        btn.classList.add('active');
+        // Keep the selected tab fully visible in the scrollable bar.
+        try { btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' }); } catch { /* */ }
+    }
+}
+
+// Tab-bar overflow affordance: arrow buttons + edge fades when tabs overflow,
+// plain mouse wheel scrolls the bar horizontally (no shift needed).
+function initDocsTabScroller() {
+    const wrap = document.getElementById('docs-tab-wrap');
+    const bar = document.getElementById('docs-tab-bar');
+    if (!wrap || !bar) return;
+    const update = () => {
+        wrap.classList.toggle('can-scroll-left', bar.scrollLeft > 4);
+        wrap.classList.toggle('can-scroll-right', bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 4);
+    };
+    if (!wrap._scrollerInit) {
+        wrap._scrollerInit = true;
+        bar.addEventListener('scroll', update, { passive: true });
+        window.addEventListener('resize', update);
+        const L = document.getElementById('docs-tab-arrow-left');
+        const R = document.getElementById('docs-tab-arrow-right');
+        if (L) L.onclick = () => bar.scrollBy({ left: -Math.max(200, bar.clientWidth * 0.6), behavior: 'smooth' });
+        if (R) R.onclick = () => bar.scrollBy({ left: Math.max(200, bar.clientWidth * 0.6), behavior: 'smooth' });
+        bar.addEventListener('wheel', (e) => {
+            if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && bar.scrollWidth > bar.clientWidth) {
+                bar.scrollLeft += e.deltaY;
+                e.preventDefault();
+            }
+        }, { passive: false });
+    }
+    // Widths are 0 until the page is actually displayed — measure on next frame.
+    requestAnimationFrame(update);
 }
 
 function copyDocSection() {
