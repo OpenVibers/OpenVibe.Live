@@ -272,7 +272,7 @@ async function openPlainIngest(sfu, roomId, producerId) {
     const info = await sfu.createPlainConsumer(roomId, producerId, '127.0.0.1', port, port + 1);
     return {
         socket, port, transportId: info.transportId, consumerId: info.consumerId,
-        payloadType: info.payloadType, kind: info.kind,
+        payloadType: info.payloadType, kind: info.kind, ssrc: info.ssrc,
         mimeType: info.mimeType, clockRate: info.clockRate, channels: info.channels,
         codecParameters: info.codecParameters || {},
     };
@@ -483,7 +483,7 @@ class RsPassthroughRelay {
             aIn: 0, aOut: 0, aErr: 0,          // audio: same
             pli: 0, lostIn: 0, kf: 0, maxKfGap: 0, inj: 0,
             rtxDeep: 0, rtxMiss: 0, rtxTooOld: 0, gopDamaged: 0, lateFill: 0,
-            ingestStalls: 0, ingestStallMs: 0,
+            ingestStalls: 0, ingestStallMs: 0, vAlien: 0, aAlien: 0,
         };
         const vPt = +vMedia.pts[0];
 
@@ -668,13 +668,41 @@ class RsPassthroughRelay {
             reqKey();                                 // pull a keyframe now …
             setTimeout(() => reqKeyNow(250), 300);    // … and a backstop in case it's lost too
         };
+        // ── Only the media SSRC may be forwarded ────────────────────────────────────────
+        // mediasoup's own RTP probation generator emits bandwidth-probing padding on a FIXED
+        // ssrc=1234 / payloadType=127, and those packets land on this same plain-transport
+        // socket (measured: ~1.6/s alongside the real H264 ssrc). emitVideo() used to forward
+        // them like any other packet — rewriting PT 127 to 103 so they looked like video, while
+        // werift rewrote the ssrc to the sender's. What it could NOT rewrite is the sequence
+        // number, so RobotStreamer saw ONE video stream whose sequence jumped ~18000 between
+        // the media range and the probation range, several times a second.
+        //
+        // For RS's (pre-3.12) mediasoup that is fatal. RtpStreamRecv::UpdateSeq treats a jump
+        // past MaxDropout(3000) as "sequence made a very large jump": it discards the packet and
+        // arms badSeq, and its `expected` count is computed off a max_seq that keeps getting
+        // yanked into the probation range. The result is enormous PHANTOM loss — RS reported
+        // 462203 packets lost, ~72% — which collapses the producer's score to 0. At score 0 its
+        // consumers go INACTIVE: video stops reaching viewers and, because inactive consumers do
+        // not request keyframes, RS goes quiet rather than PLI-storming (exactly the flat pliRx
+        // observed across a measured 37.6s blackout). Audio rides a separate ssrc with no
+        // probation traffic on it, so it plays throughout — the reported symptom precisely.
+        // Its NackGenerator also NACKs the phantom gaps, which is what fed the retransmit storm.
+        //
+        // Forwarding a foreign SSRC was never correct: probation padding is not media, and the
+        // consumer's own ssrc is authoritative. Prefer it over first-seen so a probation packet
+        // arriving first can never define the stream.
+        const vSsrcExpect = videoIn.ssrc;
         videoIn.socket.on('message', (buf) => {
             const now = Date.now();
             const timeGap = (now - _lastVideoAt) > VIDEO_GAP_MS;
-            stats.vIn++;
-            noteIngest('video', now);
             let p;
             try { p = RtpPacket.deSerialize(buf); } catch { return; /* drop malformed */ }
+            if (vSsrcExpect != null && p.header.ssrc !== vSsrcExpect) {
+                if (stats.vAlien++ === 0) log(sid, `dropping non-media RTP on video ingest: ssrc=${p.header.ssrc} pt=${p.header.payloadType} (mediasoup probation/rtx; forwarding it corrupts RS's sequence accounting)`);
+                return;
+            }
+            stats.vIn++;
+            noteIngest('video', now);
             // Reorder-tolerant loss detection on the MAIN video stream only (ignore RTX/other SSRCs
             // and out-of-order arrivals — those were inflating the count and spamming keyframes).
             let burst = false;
@@ -740,11 +768,16 @@ class RsPassthroughRelay {
         }
         if (audioIn && aMedia) {
             const aPt = +aMedia.pts[0];
+            const aSsrcExpect = audioIn.ssrc;
             audioIn.socket.on('message', (buf) => {
-                stats.aIn++;
-                noteIngest('audio', Date.now());
                 try {
                     const p = RtpPacket.deSerialize(buf);
+                    if (aSsrcExpect != null && p.header.ssrc !== aSsrcExpect) {
+                        if (stats.aAlien++ === 0) log(sid, `dropping non-media RTP on audio ingest: ssrc=${p.header.ssrc} pt=${p.header.payloadType}`);
+                        return;
+                    }
+                    stats.aIn++;
+                    noteIngest('audio', Date.now());
                     p.header.payloadType = aPt; p.header.extensions = [];
                     audioTrack.writeRtp(p); stats.aOut++;
                 } catch (e) { if (stats.aErr++ === 0) log(sid, 'audio writeRtp failed (first of run):', e.message); }
@@ -773,7 +806,7 @@ class RsPassthroughRelay {
             const stalled = _videoStalledSince ? ` STALLED-${Date.now() - _videoStalledSince}ms` : '';
             log(sid, `flow: vIn ${Math.round((stats.vIn - lastVIn) / 10)}/s vOut ${Math.round((stats.vOut - lastVOut) / 10)}/s ` +
                 `aIn ${Math.round((stats.aIn - lastAIn) / 10)}/s aOut ${Math.round((stats.aOut - lastAOut) / 10)}/s${stalled} ` +
-                `| writeErr v=${stats.vErr} a=${stats.aErr} | stalls=${stats.ingestStalls} (${Math.round(stats.ingestStallMs / 1000)}s total) ` +
+                `| writeErr v=${stats.vErr} a=${stats.aErr} alienSsrc v=${stats.vAlien} a=${stats.aAlien} | stalls=${stats.ingestStalls} (${Math.round(stats.ingestStallMs / 1000)}s total) ` +
                 `| kf ${stats.kf - lastKf}/10s maxKfGap ${stats.maxKfGap}ms injSPS/PPS=${stats.inj}${INJECT_PARAMS ? '' : '(off)'} gopDmg=${stats.gopDamaged} ` +
                 `| lossIN ${stats.lostIn - lastLostIn} (goosely→relay) lateFill ${stats.lateFill - lastLateFill} ` +
                 `| RS lost=${rsLostPct}% pktsLost=${s.remotePacketsLost ?? '?'} pliRx=${s.pliCount ?? '?'} firRx=${s.firCount ?? '?'} nackRx=${s.nackCount ?? '?'} retx=${s.retransmittedPacketsSent ?? '?'} deepRtx=${stats.rtxDeep} rtxMiss=${stats.rtxMiss} rtxTooOld=${stats.rtxTooOld} rtt=${Math.round((s.rtt || 0) * 1000)}ms ` +
