@@ -45,7 +45,16 @@ async function tick() {
         // the live encoders.
         let anyLive = false;
         try { anyLive = ((db.getLiveStreams && db.getLiveStreams()) || []).length > 0; } catch { /* */ }
-        if (ai.transcriptionEnabled && ai.transcriptionEnabled()) {
+        // When the continuous timeline is running it is already decoding live audio
+        // constantly, and VOD backfill does NOT share its serialisation — so both would
+        // run whisper at once, on top of the live encoder. Measured effect on this 4-core
+        // box: load average 5.44. VOD transcripts have no deadline whatsoever, so simply
+        // stand them down until the stream ends; they catch up at full speed afterwards.
+        let timelineBusy = false;
+        try { timelineBusy = anyLive && require('./timeline-job').timelineEnabled(); } catch { /* */ }
+        if (timelineBusy) {
+            try { require('./transcribe').setLowPower(true); } catch { /* */ }
+        } else if (ai.transcriptionEnabled && ai.transcriptionEnabled()) {
             try { require('./transcribe').setLowPower(anyLive); } catch { /* */ }
             const batch = anyLive ? 1 : 2;   // throttle while live, catch up faster when idle
             try {
