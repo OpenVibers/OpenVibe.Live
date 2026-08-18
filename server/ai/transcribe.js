@@ -125,6 +125,14 @@ function _isNoise(t) {
     if (/^♪/.test(s) || /♪$/.test(s)) return true;
     const norm = s.toLowerCase().replace(/[.!?,…]+$/g, '').trim();
     if (HALLUCINATIONS.has(norm)) return true;
+    // Whisper's training data was full of subtitle boilerplate, and it emits those exact
+    // phrases over noise even when VAD says a voice is present — a real live segment came
+    // back as "For more information, visit www.fema.org." These are recognisable by shape:
+    // a short line that is mostly a URL or a subtitle credit, which real stream speech
+    // essentially never is.
+    if (/\b(?:www\.|https?:\/\/)\S+/i.test(norm) && norm.split(/\s+/).length <= 12) return true;
+    if (/subtitle[sd]?\s+(?:by|from)|amara\.org|subscribe to|closed caption/i.test(norm)) return true;
+    if (/^(?:for more info(?:rmation)?|visit our website|see you (?:next time|in the next video))/i.test(norm)) return true;
     if (!vadModel() && FILLER_WORDS.has(norm)) return true;
     return false;
 }
