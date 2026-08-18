@@ -404,7 +404,9 @@ async function tick(opts = {}) {
                 });
                 if (paste) {
                     pasteSlug = paste.slug || slug;
-                    img = media.publicUrl(paste.screenshot_url) || media.pasteRawUrl(pasteSlug);
+                    // Screenshot pastes must use the image endpoint — /raw serves the
+                    // (empty) text content and broke the hero background rotation.
+                    img = media.publicUrl(paste.screenshot_url) || `${media.pasteUrl(pasteSlug)}/screenshot`;
                 }
             } catch (e) { console.warn(`[AI-Moments] paste post failed for VOD ${v.vod_id}:`, e.message); }
             try { fs.unlinkSync(screenshotPath); } catch { /* tmp frame */ }
