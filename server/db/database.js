@@ -2793,6 +2793,14 @@ function getTimelineCoverage(streamId) {
     return Math.round(covered);
 }
 
+/** Timeline rows for a finished VOD (set by linkTimelineToVod when the recording lands). */
+function getTimelineByVod(vodId) {
+    try {
+        return all(`SELECT kind, start_sec, end_sec, text, label, confidence
+                    FROM stream_timeline_events WHERE vod_id = ? ORDER BY start_sec ASC LIMIT 20000`, [vodId]);
+    } catch { return []; }
+}
+
 /** Attach a vod_id to a finished stream's rows so VOD views can reuse the timeline. */
 function linkTimelineToVod(streamId, vodId) {
     try { return run('UPDATE stream_timeline_events SET vod_id = ? WHERE stream_id = ? AND vod_id IS NULL', [vodId, streamId]); }
@@ -7271,7 +7279,7 @@ module.exports = {
     setVodTranscriptStatus, setClipTranscriptStatus, bumpVodTranscriptAttempt, bumpClipTranscriptAttempt,
     updatePasteAi, cleanupMalformedAiText,  recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
     getStreamMemoriesByUser, countStreamMemoriesByUser, getAiMomentCandidates, getStreamTranscriptSegments, getUserPastesForAi,
-    addTimelineEvents, getTimeline, getTimelineText, getTimelineCoverage, linkTimelineToVod,
+    addTimelineEvents, getTimeline, getTimelineText, getTimelineCoverage, linkTimelineToVod, getTimelineByVod,
     getVodsForMomentRanking, getClipStartTimesForStream, getChatSpikeOffsets,
      getLiveChatBuckets, getRecentChatText, getVodsWithoutAutoClip, 
     upsertStreamerOverview, getStreamerOverview, getAllStreamerOverviews, getStreamersNeedingOverview,
