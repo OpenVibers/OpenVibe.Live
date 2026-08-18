@@ -227,12 +227,39 @@ async function analyzeStreamFrame(image) {
 }
 
 /** Condense a stream's memories into a one-line "AI Overview" for the home card. */
-async function summarizeStreamMemories(memories) {
+async function summarizeStreamMemories(memories, streamId = null) {
     // Use observations from across the whole session (capped for token budget) so the
     // overview reflects the entire stream since it started, not just the latest frame.
     const lines = (memories || []).slice(-80).map(m => `- ${m.description}`).join('\n');
     if (!lines) return null;
-    const prompt = `These are timestamped observations from a live stream, in order since it started. Give a thorough overview (2-6 sentences) of what this stream has been about overall — the main activities, topics, and vibe across the whole session (not just the latest moment):\n${lines}`;
+
+    // Fold in the audio timeline when one exists. Previously the transcript reached this
+    // prompt only as a 500-char slice embedded inside a memory's description string, with
+    // its timestamps stripped — so the model saw fragments of speech with no idea when
+    // they happened or what they lined up with. Sending the timeline directly gives it
+    // what was SAID and what was HEARD, both anchored in time.
+    let audioBlock = '';
+    if (streamId) {
+        try {
+            const _mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+            const speech = db.getTimeline(streamId, { kind: 'speech', limit: 400 }) || [];
+            const sounds = db.getTimeline(streamId, { kind: 'sound', limit: 120 }) || [];
+            if (speech.length) {
+                const spoken = speech.slice(-200)
+                    .map(r => `[${_mmss(r.start_sec)}] ${String(r.text || '').replace(/\s+/g, ' ').trim().slice(0, 200)}`)
+                    .filter(l => l.length > 8).join('\n');
+                if (spoken) audioBlock += `\n\nWHAT THE STREAMER SAID (timestamped):\n${spoken}`;
+            }
+            if (sounds.length) {
+                const heard = sounds.slice(-60)
+                    .map(r => `[${_mmss(r.start_sec)}] ${r.label} (${Number(r.confidence || 0).toFixed(2)})`)
+                    .join('\n');
+                if (heard) audioBlock += `\n\nNOTABLE SOUNDS HEARD:\n${heard}`;
+            }
+        } catch { /* timeline optional */ }
+    }
+
+    const prompt = `These are timestamped observations from a live stream, in order since it started. Give a thorough overview (2-6 sentences) of what this stream has been about overall — the main activities, topics, and vibe across the whole session (not just the latest moment):\n${lines}${audioBlock}`;
     const text = await _complete({ prompt, maxTokens: 500, kind: 'stream_memory' });
     return text ? text.slice(0, 2000) : null;
 }
@@ -329,7 +356,7 @@ async function _generateVodOverviewInner(vod) {
 
     const existing = vod.stream_id ? (db.getStreamMemories(vod.stream_id) || []) : [];
     if (existing.length >= 2) {
-        const overview = await summarizeStreamMemories(existing);
+        const overview = await summarizeStreamMemories(existing, stream && stream.id);
         if (overview) { try { db.setVodAiOverview(vod.id, overview); } catch { /* */ } }
         return overview;
     }

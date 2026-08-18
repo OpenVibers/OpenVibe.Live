@@ -200,15 +200,33 @@ async function _transcribeSpan(src, duration) {
     if (duration > 0 && duration <= 200) {
         return await transcribe.transcribeMediaDetailed(src, { seconds: 0, timeoutMs: 300000 });
     }
+    // FULL coverage, not a sample. This used to take three 60-second windows at 10%/45%/80%
+    // of the recording, so a 4-hour VOD produced 3 minutes of transcript and the rest was
+    // simply never heard. Walk the whole thing in windows instead.
+    //
+    // Affordable because the decoder is VAD-gated: measured on this stream only ~13% of
+    // audio contains a voice, and VAD cut a 60s decode from 51.0s to 24.0s while also
+    // removing a trailing hallucination. Windows are processed one at a time and the whole
+    // pass runs from the backfill queue, which already drops to low power while live.
+    const WINDOW_SEC = 300;
     const parts = [];
     const segments = [];
     let anyOk = false, lastErr = null;
-    for (const frac of [0.1, 0.45, 0.8]) {
-        const start = Math.floor((duration || 0) * frac);
+    const total = Math.max(0, Math.floor(duration || 0));
+    const windows = [];
+    for (let start = 0; start < total; start += WINDOW_SEC) windows.push(start);
+    // Safety valve for absurdly long recordings so one VOD cannot occupy the queue forever.
+    const MAX_WINDOWS = Math.max(1, parseInt(process.env.AI_VOD_MAX_WINDOWS, 10) || 96); // 8h
+    if (windows.length > MAX_WINDOWS) {
+        console.warn(`[AI] VOD is ${Math.round(total / 60)}min — transcribing the first ${MAX_WINDOWS * WINDOW_SEC / 60}min only`);
+        windows.length = MAX_WINDOWS;
+    }
+    for (const start of windows) {
         const wav = _tmp('wav');
-        const ffOk = await _runFf('ffmpeg', ['-y', '-ss', String(start), '-i', src, '-t', '60', '-vn', '-ac', '1', '-ar', '16000', '-f', 'wav', wav], 120000);
+        const len = Math.min(WINDOW_SEC, total - start);
+        const ffOk = await _runFf('ffmpeg', ['-y', '-ss', String(start), '-i', src, '-t', String(len), '-vn', '-ac', '1', '-ar', '16000', '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-f', 'wav', wav], 180000);
         if (ffOk) {
-            const r = await transcribe.transcribeWavDetailed(wav, { timeoutMs: 150000, offsetSec: start });
+            const r = await transcribe.transcribeWavDetailed(wav, { timeoutMs: 600000, offsetSec: start });
             if (r.ok) anyOk = true; else lastErr = r.error || lastErr;
             if (r.text) parts.push(r.text);
             if (r.segments && r.segments.length) segments.push(...r.segments);
@@ -218,7 +236,9 @@ async function _transcribeSpan(src, duration) {
     // ok=true only if at least one window ran the full ffmpeg+whisper pipeline cleanly.
     // If every window failed (unreadable source, etc.) we return ok=false so the caller
     // retries instead of marking the VOD permanently silent.
-    return { text: parts.join(' … '), segments, ok: anyOk, error: anyOk ? null : lastErr };
+    // Windows are contiguous now, so the transcript reads as continuous prose rather than
+    // three disconnected excerpts joined by an ellipsis.
+    return { text: parts.join(' ').replace(/\s+/g, ' ').trim(), segments, ok: anyOk, error: anyOk ? null : lastErr };
 }
 
 /**

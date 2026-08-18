@@ -89,7 +89,7 @@ async function _analyzeOne(stream) {
             const grew = (memories.length - last.count) >= SUMMARY_MIN_NEW;
             const stale = (now - last.at) >= SUMMARY_MAX_AGE_MS;
             if (memories.length > 1 && (!last.at || grew || stale)) {
-                const summary = await ai.summarizeStreamMemories(memories);
+                const summary = await ai.summarizeStreamMemories(memories, stream.id);
                 if (summary) {
                     db.updateStreamAiOverview(stream.id, summary);
                     _lastSummary.set(stream.id, { count: memories.length, at: now });

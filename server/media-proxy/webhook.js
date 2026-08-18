@@ -46,6 +46,13 @@ function handler(req, res) {
                     // Seed the Live-owned AI state row (queues transcript/overview work)
                     // and kick the on-finalize AI pass right away (both budget-gated).
                     try { db.setVodTranscriptStatus(vodId, 'pending'); } catch { /* */ }
+                    // Point the live timeline rows at the VOD so the recording inherits the
+                    // transcript that was already built while the stream was running — no
+                    // need to transcribe the same audio a second time.
+                    try {
+                        const sid = data?.stream_id || data?.streamId;
+                        if (sid) db.linkTimelineToVod(sid, vodId);
+                    } catch { /* */ }
                     try {
                         const ai = require('../ai/ai-analysis');
                         const vodMeta = { id: vodId, ...data };

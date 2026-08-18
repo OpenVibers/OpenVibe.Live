@@ -932,6 +932,9 @@ async function start() {
         try { require('./ai/ai-moments-job').start(); } catch (e) { console.warn('[AI] moments job not started:', e.message); }
         try { require('./ai/auto-clip-job').start(); } catch (e) { console.warn('[AI] auto-clip job not started:', e.message); }
         try { require('./ai/easter-egg-job').start(); } catch (e) { console.warn('[AI] easter-egg job not started:', e.message); }
+        // Continuous audio → stream_timeline_events. Gated behind ai_timeline_enabled
+        // (default off), so starting it is a no-op until switched on in admin.
+        try { require('./ai/timeline-job').start(); } catch (e) { console.warn('[AI] timeline job not started:', e.message); }
         // Heal server-side recordings for live streams (resume after restart / Media restart)
         // so clipping always has a source. First pass delayed to let broadcasters reconnect.
         // VOD health scanning, disk guardianship and storage tiering moved to OpenVibe.Media.
@@ -1212,6 +1215,7 @@ function shutdown() {
     // (and so their temp files get cleaned by the close handlers). The interrupted VOD
     // is left in 'processing' → re-queued to 'pending' on next boot (crash recovery).
     try { const n = require('./ai/transcribe').killActive(); if (n) console.log(`[Server] Killed ${n} transcription child(ren)`); } catch { /* */ }
+    try { const n = require('./ai/timeline-job').stopAll(); if (n) console.log(`[Server] Stopped ${n} continuous audio capture(s)`); } catch { /* */ }
     try { require('./ai/media-analysis').killActive(); } catch { /* */ }
 
     // Cleanly END RobotStreamer passthrough streams FIRST (before the exit races the reconnect).

@@ -4478,11 +4478,25 @@ async function _aiTlToggleTranscript(btn) {
             const data = await api(`/chat-ai/transcript/${session.dataset.sid}`);
             const segs = data.segments || [];
             const vod = data.vodId;
-            if (!segs.length) { box.innerHTML = '<p class="muted" style="padding:6px">No transcript available.</p>'; return; }
-            box.innerHTML = segs.map(sg => {
-                const stamp = _aiTimeFmt(sg.start || 0);
-                const jump = vod ? `<a class="ai-tl-ts" href="/vod/${vod}?t=${Math.floor(sg.start || 0)}" onclick="return handleLinkClick(event, '/vod/${vod}?t=${Math.floor(sg.start || 0)}')">${stamp}</a>` : `<span class="ai-tl-ts">${stamp}</span>`;
-                return `<div class="ai-tl-tr-line">${jump}<span class="ai-tl-tr-text">${esc(sg.text || '')}</span></div>`;
+            // Interleave spoken lines with detected non-speech sounds so the timeline reads
+            // as everything that happened audibly, in order — not just the words.
+            const rows = [
+                ...segs.map(sg => ({ t: sg.start || 0, kind: 'speech', text: sg.text || '' })),
+                ...(data.events || []).map(e => ({
+                    t: e.start_sec || 0, kind: 'sound',
+                    text: e.label + (e.confidence != null ? ` (${Number(e.confidence).toFixed(2)})` : ''),
+                })),
+            ].sort((a, b) => a.t - b.t);
+            if (!rows.length) { box.innerHTML = '<p class="muted" style="padding:6px">No transcript available.</p>'; return; }
+            const cov = data.coverageSec
+                ? `<div class="muted" style="padding:4px 6px;font-size:.8rem">${_aiTimeFmt(data.coverageSec)} of speech transcribed</div>` : '';
+            box.innerHTML = cov + rows.map(r => {
+                const stamp = _aiTimeFmt(r.t);
+                const jump = vod ? `<a class="ai-tl-ts" href="/vod/${vod}?t=${Math.floor(r.t)}" onclick="return handleLinkClick(event, '/vod/${vod}?t=${Math.floor(r.t)}')">${stamp}</a>` : `<span class="ai-tl-ts">${stamp}</span>`;
+                const body = r.kind === 'sound'
+                    ? `<span class="ai-tl-tr-text muted"><i class="fa-solid fa-volume-high"></i> ${esc(r.text)}</span>`
+                    : `<span class="ai-tl-tr-text">${esc(r.text)}</span>`;
+                return `<div class="ai-tl-tr-line">${jump}${body}</div>`;
             }).join('');
         } catch { box.innerHTML = '<p class="muted" style="padding:6px">Couldn\'t load transcript.</p>'; box.dataset.built = ''; }
     }
