@@ -97,13 +97,23 @@
         es.addEventListener('stream-live', function (e) {
             var d; try { d = JSON.parse(e.data); } catch (_) { return; }
             if (!d || !d.username) return;
-            var key = String(d.managed_id || d.stream_id);
+            // Dedupe on the session, not the slot: a managed slot keeps the same
+            // managed_id across restarts, so keying on it made every re-go-live
+            // within the hour look like a duplicate.
+            var key = String(d.stream_id || d.managed_id);
             var now = Date.now();
-            if (seen[key] && now - seen[key] < DEDUPE_MS) return;
-            seen[key] = now;
-            show(d);
+            // d.repeat is the server's "already announced this slot recently" flag —
+            // it suppresses the toast only. The local `seen` map is a backstop for
+            // duplicate delivery (e.g. SSE reconnect replay).
+            var dupe = d.repeat || (seen[key] && now - seen[key] < DEDUPE_MS);
+            if (!dupe) {
+                seen[key] = now;
+                show(d);
+            }
             // Let the app (if loaded) fast-load the stream when the viewer is already
             // on this streamer's channel page — instead of waiting for the 15s poll.
+            // Dispatched even when the toast is deduped: suppressing a repeat toast is
+            // cosmetic, but suppressing this leaves the viewer on a dead player.
             try { window.dispatchEvent(new CustomEvent('openvibe:stream-live', { detail: d })); } catch (_) {}
         });
         // EventSource auto-reconnects on error; nothing to do.
