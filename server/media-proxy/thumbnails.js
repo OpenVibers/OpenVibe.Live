@@ -65,9 +65,19 @@ async function generateFor(kind, id, req, res) {
 }
 router.post('/generate/vod/:id', optionalAuth, (req, res) => generateFor('vod', req.params.id, req, res));
 router.post('/generate/clip/:id', optionalAuth, (req, res) => generateFor('clip', req.params.id, req, res));
-// GET variants: some legacy <img> fallbacks point here — bounce to Media's public thumb.
-router.get('/generate/vod/:id', (req, res) => res.redirect(302, media.thumbUrl(`vod-${req.params.id}`)));
-router.get('/generate/clip/:id', (req, res) => res.redirect(302, media.thumbUrl(`clip-${req.params.id}`)));
+// GET variants: <img> onerror fallbacks point here. Media's legacy
+// /api/thumbnails/<kind>-<id>-<ts>.jpg route resolves the CURRENT thumbnail for
+// that id (names drift on regeneration), so bounce through it with a fake ts.
+function _generateRedirect(kind) {
+    return (req, res) => {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isFinite(id)) return res.status(400).json({ error: 'Bad id' });
+        res.set('Cache-Control', 'public, max-age=300');
+        res.redirect(302, media.publicUrl(`/api/thumbnails/${kind}-${id}-0.jpg`));
+    };
+}
+router.get('/generate/vod/:id', _generateRedirect('vod'));
+router.get('/generate/clip/:id', _generateRedirect('clip'));
 
 // ── Serve a thumbnail ────────────────────────────────────────
 // Live thumbnails come from local disk; everything else 302s to openvibe.media.
