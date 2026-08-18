@@ -891,22 +891,29 @@ class ChatServer {
                 });
             } catch { /* non-critical */ }
 
-            // Merge real chat into the streamer's PowerChat unified overlay (chat:write).
-            try {
-                if (client.channelUserId) {
-                    require('../integrations/powerchat-platform').forwardChat(client.channelUserId, {
-                        chatterName: username,
-                        externalChatterId: client.user?.id ? ('u' + client.user.id) : ('a' + (client.anonId || 'anon')),
-                        message: text,
-                        avatarUrl: client.user?.avatar_url || undefined,
-                    });
-                }
-            } catch { /* non-critical */ }
         } else if (!client.channelUserId) {
             // Pure global chat (homepage) — offline channel messages were already
             // delivered to the channel room above.
             this.broadcastGlobal(chatMsg);
         }
+
+        // Merge real chat into the streamer's PowerChat unified overlay (chat:write).
+        // Scoped to the CHANNEL, not the live session. This used to sit inside the
+        // `if (client.streamId)` block above, so it only fired while the streamer was
+        // live — yet viewers can chat in a channel whenever they like, and those
+        // messages are already persisted and broadcast channel-wide. The overlay simply
+        // never saw them. Chat is a property of the channel; only TTS, soundboards and
+        // AI viewers genuinely need a live stream.
+        try {
+            if (client.channelUserId) {
+                require('../integrations/powerchat-platform').forwardChat(client.channelUserId, {
+                    chatterName: username,
+                    externalChatterId: client.user?.id ? ('u' + client.user.id) : ('a' + (client.anonId || 'anon')),
+                    message: text,
+                    avatarUrl: client.user?.avatar_url || undefined,
+                });
+            }
+        } catch { /* non-critical */ }
     }
 
     handleBangCommand(ws, client, text) {
