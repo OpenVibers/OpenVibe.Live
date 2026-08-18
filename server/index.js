@@ -943,6 +943,7 @@ async function start() {
         // Announce newly-created clips in the source channel's chat. Scheduling comes
         // from the OpenVibe.Media clip.ready webhook; the sweeper fires the message.
         try { require('./media-proxy/clip-notify').startClipNotifySweeper(); } catch (e) { console.warn('[ClipNotify] not started:', e.message); }
+        try { require('./media-proxy/asset-sync').start(); } catch (e) { console.warn('[AssetSync] not started:', e.message); }
         // Feed connected streamers' viewer counts into PowerChat overlays (platform mode).
         try { require('./integrations/powerchat-platform').startViewerCountSweeper(); } catch (e) { console.warn('[PowerChat] viewer sweeper not started:', e.message); }
         // PowerChat: prune the webhook-dedupe log daily so it can't grow unbounded.

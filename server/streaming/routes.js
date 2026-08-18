@@ -330,6 +330,19 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             };
             clips.forEach(nameClip);
             clipsOfStreams.forEach(nameClip);
+            // Short AI overviews are Live-owned (vod_ai_state / clip_ai_state).
+            const aiShort = (rows, table, col) => {
+                for (const r of rows) {
+                    if (!r || r.id == null || r.ai_overview_short) continue;
+                    try {
+                        const s = db.get(`SELECT ai_overview_short FROM ${table} WHERE ${col} = ?`, [r.id]);
+                        if (s && s.ai_overview_short) r.ai_overview_short = s.ai_overview_short;
+                    } catch { /* best-effort */ }
+                }
+            };
+            aiShort(vods, 'vod_ai_state', 'vod_id');
+            aiShort(clips, 'clip_ai_state', 'clip_id');
+            aiShort(clipsOfStreams, 'clip_ai_state', 'clip_id');
         }
         const followerCount = db.getFollowerCount(channel.user_id);
         const isFollowing = req.user ? db.isFollowing(req.user.id, channel.user_id) : false;
@@ -1171,6 +1184,18 @@ router.get('/recent-vods', async (req, res) => {
         const media = require('../media-client');
         const r = await media.listVods({ limit, offset }).catch(() => null);
         const vods = r?.vods || (Array.isArray(r) ? r : []);
+        for (const v of vods) {
+            if (v && v.user_id != null && !v.username) {
+                const u = db.getUserById(v.user_id);
+                if (u) { v.username = u.username; v.display_name = u.display_name; v.avatar_url = u.avatar_url; }
+            }
+            if (v && v.id != null && !v.ai_overview_short) {
+                try {
+                    const s = db.get('SELECT ai_overview_short FROM vod_ai_state WHERE vod_id = ?', [v.id]);
+                    if (s && s.ai_overview_short) v.ai_overview_short = s.ai_overview_short;
+                } catch { /* */ }
+            }
+        }
         const total = r?.total ?? vods.length;
         res.json({ vods, total, limit, offset, hasMore: offset + vods.length < total });
     } catch (err) {

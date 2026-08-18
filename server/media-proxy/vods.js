@@ -97,6 +97,13 @@ function withUserFields(row) {
     // so the SPA doesn't resolve them against Live's origin.
     row.playback_url = media.publicUrl(row.playback_url) || media.vodPlaybackUrl(row.id);
     if (row.thumbnail_url) row.thumbnail_url = media.publicUrl(row.thumbnail_url);
+    // Short AI overview is Live-owned (vod_ai_state) — overlay for the cards.
+    if (row.id != null && !row.ai_overview_short) {
+        try {
+            const s = db.get('SELECT ai_overview_short FROM vod_ai_state WHERE vod_id = ?', [row.id]);
+            if (s && s.ai_overview_short) row.ai_overview_short = s.ai_overview_short;
+        } catch { /* best-effort */ }
+    }
     return row;
 }
 

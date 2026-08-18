@@ -93,7 +93,39 @@ router.post('/:slug/set-avatar', requireAuth, async (req, res) => {
 });
 
 // ── Everything else: transparent passthrough ─────────────────
-router.get('/', forward(''));
+// Media only stores our numeric user ids — resolve author names locally so
+// cards don't all read "Anonymous", and translate ?username= into user_id.
+function _nameUsers(rows) {
+    for (const p of rows || []) {
+        if (p && p.user_id != null && !p.username) {
+            const u = db.getUserById(p.user_id);
+            if (u) { p.username = u.username; p.display_name = u.display_name; p.profile_color = u.profile_color; p.avatar_url = u.avatar_url; }
+        }
+    }
+    return rows;
+}
+function forwardEnriched(subPath, pick) {
+    return async (req, res) => {
+        try {
+            const query = { ...req.query };
+            if (query.username && query.username !== 'all') {
+                const u = db.getUserByUsername(query.username);
+                delete query.username;
+                if (!u) return res.json({ pastes: [], total: 0, limit: 0, offset: 0, hasMore: false });
+                query.user_id = u.id;
+            }
+            const p = typeof subPath === 'function' ? subPath(req) : subPath;
+            const out = await media.request('GET', `/pastes${p}`, { query, userToken: media.userTokenFrom(req) });
+            _nameUsers(pick(out));
+            res.json(out);
+        } catch (err) {
+            if (err && err.name === 'MediaApiError' && err.status) return res.status(err.status).json(err.body || { error: err.message });
+            console.warn('[Pastes proxy]', err.message);
+            res.status(502).json({ error: 'Media service unavailable' });
+        }
+    };
+}
+router.get('/', forwardEnriched('', (o) => o?.pastes));
 router.post('/', forward(''));
 router.get('/config', forward('/config'));
 router.get('/admin/stats', requireAdmin, forwardAsApp('/admin/stats'));
@@ -124,13 +156,13 @@ router.get('/by-user/:username', async (req, res) => {
             .filter(p => !seen.has(p.slug) && seen.add(p.slug))
             .sort((a, b) => (sort === 'oldest' ? 1 : -1) * (new Date(a.created_at) - new Date(b.created_at)))
             .slice(0, limit);
-        res.json({ pastes, total: pastes.length, username: user.username });
+        res.json({ pastes: _nameUsers(pastes), total: pastes.length, username: user.username });
     } catch (err) {
         console.warn('[Pastes proxy] by-user:', err.message);
         res.status(502).json({ error: 'Media service unavailable' });
     }
 });
-router.get('/:slug', forward(slugPath()));
+router.get('/:slug', forwardEnriched(slugPath(), (o) => (o?.paste ? [o.paste] : [o])));
 router.put('/:slug', requireAuth, forward(slugPath()));
 router.delete('/:slug', requireAuth, forward(slugPath()));
 // TODO(contract): paste admin tools (censor, admin/stats, admin/forks, bulk)
@@ -158,7 +190,7 @@ router.post('/:slug/fork', forward(slugPath('/fork')));
 router.get('/:slug/raw', (req, res) => res.redirect(302, media.pasteRawUrl(req.params.slug)));
 router.post('/:slug/like', requireAuth, forward(slugPath('/like')));
 router.post('/:slug/copy', forward(slugPath('/copy')));
-router.get('/:slug/comments', forward(slugPath('/comments')));
+router.get('/:slug/comments', forwardEnriched(slugPath('/comments'), (o) => o?.comments));
 router.post('/:slug/comments', forward(slugPath('/comments')));
 router.delete('/:slug/comments/:commentId', forward((req) => `/${encodeURIComponent(req.params.slug)}/comments/${encodeURIComponent(req.params.commentId)}`));
 

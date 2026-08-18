@@ -247,6 +247,7 @@ router.post('/', requireAuth, soundUpload.single('sound'), async (req, res) => {
         });
         // If an emote was (re)specified, apply it to every sound under this command.
         if (req.body.emote_code !== undefined) { try { db.setChannelSoundEmote(channelOwnerId, command, emoteCode); } catch { /* */ } }
+        try { require('../media-proxy/asset-sync').syncSoon(); } catch { /* mirror is best-effort */ }
 
         // Tell everyone watching this channel to refresh their sound list live.
         try { require('./chat-server').broadcastToOwnerStreams(channelOwnerId, { type: 'sounds-updated' }); } catch { /* */ }
@@ -296,6 +297,7 @@ router.delete('/:id', requireAuth, (req, res) => {
 
         if (sound.url && fs.existsSync(sound.url)) { try { fs.unlinkSync(sound.url); } catch {} }
         db.deleteChannelSound(sound.id);
+        try { require('../media-proxy/asset-sync').removeAsset(sound.media_asset_id); } catch { /* */ }
         try { require('./chat-server').broadcastToOwnerStreams(sound.channel_owner_id, { type: 'sounds-updated' }); } catch { /* */ }
         res.json({ message: 'Sound deleted' });
     } catch (err) {
