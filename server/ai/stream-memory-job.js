@@ -45,7 +45,23 @@ async function _analyzeOne(stream) {
     let heard = '';
     let heardSegments = null;
     try {
-        if (ai.transcriptionEnabled && ai.transcriptionEnabled()) {
+        // When the continuous timeline is running it already transcribes ALL of the audio,
+        // so grabbing another 12s chunk here would duplicate the work and — worse — open a
+        // second PlainRTP consumer on the same producer, which is what made this path start
+        // capturing digital silence (-91dB) once continuous capture was switched on.
+        // Read the timeline instead: strictly more speech, and free.
+        const _timeline = (() => { try { return require('./timeline-job').timelineEnabled(); } catch { return false; } })();
+        if (_timeline) {
+            try {
+                const from = Math.max(0, offset - ai.captureIntervalSec());
+                const rows = db.getTimeline(stream.id, { kind: 'speech', from, to: offset, limit: 200 }) || [];
+                heard = rows.map(r => String(r.text || '').trim()).filter(Boolean).join(' ');
+                heardSegments = rows.length
+                    ? rows.map(r => ({ start: r.start_sec, end: r.end_sec, text: r.text }))
+                    : null;
+            } catch { /* fall through to empty */ }
+            console.log(`[AI-Hear] stream ${stream.id}: from timeline transcript=${JSON.stringify((heard || '').slice(0, 100))}`);
+        } else if (ai.transcriptionEnabled && ai.transcriptionEnabled()) {
             const audio = require('./stream-audio').captureAudioChunk ? await require('./stream-audio').captureAudioChunk(stream, CHUNK_SEC) : null;
             if (audio) {
                 const tx = await require('./transcribe').transcribeWavDetailed(audio, { offsetSec: Math.max(0, offset - CHUNK_SEC) });
