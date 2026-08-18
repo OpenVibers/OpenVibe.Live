@@ -13,6 +13,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const config = require('../config');
+const { allocateRtpPair } = require('../streaming/rtp-ports');
 const db = require('../db/database');
 
 const FLV_PORT = (config.rtmp?.port || 1935) + 8000;
@@ -78,10 +79,13 @@ async function _prepareWebrtcSource(stream) {
     catch { console.warn(`[AI-Hear] stream ${stream.id}: no audio producer (waitForProducer timeout)`); return null; }
     if (!audioProducer) { console.warn(`[AI-Hear] stream ${stream.id}: no audio producer`); return null; }
 
-    // RTP port range distinct from recorder (25100) and thumbnail (26100). Jitter
-    // by a few ports so overlapping captures don't collide on the same UDP port.
-    const rtpPort = 26300 + ((stream.id * 2 + Math.floor(Math.random() * 20) * 2) % 300);
-    const rtcpPort = rtpPort + 1;
+    // RTP port range distinct from recorder (25100) and thumbnail (26100). Probe for a
+    // genuinely free pair rather than deriving one from stream.id — the old arithmetic
+    // jittered across only 20 slots and never checked, so overlapping captures could aim
+    // mediasoup at a socket another capture already owned.
+    let rtpPort, rtcpPort;
+    try { ({ rtpPort, rtcpPort } = await allocateRtpPair(26300)); }
+    catch (e) { console.warn(`[AI-Hear] stream ${stream.id}: ${e.message}`); return null; }
 
     let consumer;
     try {

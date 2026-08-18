@@ -10,6 +10,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const config = require('../config');
+const { allocateRtpPair } = require('../streaming/rtp-ports');
 const db = require('../db/database');
 
 const FLV_PORT = (config.rtmp?.port || 1935) + 8000;
@@ -78,8 +79,10 @@ async function captureWebrtc(stream) {
     catch { console.warn(`[AI-See] stream ${stream.id}: no video producer`); return null; }
     if (!videoProducer) return null;
 
-    const rtpPort = 26700 + ((stream.id * 2 + Math.floor(Math.random() * 20) * 2) % 300);
-    const rtcpPort = rtpPort + 1;
+    // Probe for a free pair instead of deriving one from stream.id (see rtp-ports.js).
+    let rtpPort, rtcpPort;
+    try { ({ rtpPort, rtcpPort } = await allocateRtpPair(26700)); }
+    catch (e) { console.warn(`[AI-See] stream ${stream.id}: ${e.message}`); return null; }
 
     let consumer;
     try {

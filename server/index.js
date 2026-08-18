@@ -23,6 +23,21 @@ process.on('uncaughtException', (err) => {
     }
 });
 
+// Node >=15 defaults to --unhandled-rejections=throw, i.e. ONE stray rejected promise
+// anywhere kills the whole server. That is not a theoretical risk here: werift dispatches
+// RTP to its sender through Event.execute(), which invokes an `async` subscriber WITHOUT
+// awaiting or catching it (werift/lib/common/src/event.js). So every rs-passthrough-relay
+// videoTrack.writeRtp() spawns a floating promise, and any DTLS/SRTP hiccup inside
+// RTCRtpSender.sendRtp() surfaces here — taking down streaming, chat and the API with it,
+// and skipping rsPassthroughRelay.stopAll() so RobotStreamer is left holding stale
+// producers (black video, audio still playing) until its own ICE timeout reaps them.
+// A rejected promise is a bug to fix, never a reason to drop every live viewer: log it
+// loudly with the stack and keep serving.
+process.on('unhandledRejection', (reason) => {
+    const err = reason instanceof Error ? reason : new Error(`Non-error rejection: ${String(reason)}`);
+    console.error('[Server] Unhandled promise rejection (kept alive):', err.stack || err.message);
+});
+
 const path = require('path');
 const fs = require('fs');
 
