@@ -461,7 +461,7 @@ class RsPassthroughRelay {
 
         // 9) Forward encoded RTP straight through (strip our-router ext ids, match declared PT).
         //    Each UDP datagram from the PlainTransport consumer is one RTP packet.
-        const stats = { v: 0, a: 0, pli: 0, lostIn: 0, kf: 0, maxKfGap: 0, inj: 0, rtxDeep: 0, rtxMiss: 0 };
+        const stats = { v: 0, a: 0, pli: 0, lostIn: 0, kf: 0, maxKfGap: 0, inj: 0, rtxDeep: 0, rtxMiss: 0, gopDamaged: 0 };
         const vPt = +vMedia.pts[0];
 
         // ── Deep retransmit cache ────────────────────────────────────────────────────────
@@ -536,8 +536,22 @@ class RsPassthroughRelay {
         // corrupt frame to its decoder (video glitches, audio fine). With an offset, incoming
         // loss stays visible to RS (it NACKs, werift retransmits from its buffer) and reordered
         // packets keep their true relative order.
+        //
+        // NOTE (2026-08-18): that rationale assumed RS was LOSING param-set packets. Live
+        // telemetry says otherwise — RS reports lost=0.0%, nackRx=0, retx=0 for whole sessions
+        // while still sending a PLI every ~5s, i.e. its decoders keep failing on keyframes that
+        // arrived intact. The injected packets are the only bytes in this stream we synthesise
+        // rather than pass through, so they are now OFF by default and gated behind
+        // RS_PASSTHROUGH_INJECT_PARAMS=1. With injection off _seqOffset stays 0 and the relay is
+        // a true bit-exact passthrough — original sequence numbers, gaps and all.
+        const INJECT_PARAMS = process.env.RS_PASSTHROUGH_INJECT_PARAMS === '1';
         let _sps = null, _pps = null, _stapParams = null;
         let _seqOffset = 0;   // outSeq = (inSeq + _seqOffset) & 0xffff
+        // Did anything go missing since the last keyframe? An ingest-side loss anywhere in a GOP
+        // makes every frame after it undecodable until the next keyframe, so this counts how
+        // often the picture SHOULD freeze from upstream loss alone — the damage neither our
+        // retransmit cache nor RS's NACKs can undo, because those packets never reached us.
+        let _gopHadGap = false;
         const cacheParamSets = (payload) => {
             if (!payload || payload.length < 1) return;
             const nal = payload[0] & 0x1f;
@@ -589,7 +603,7 @@ class RsPassthroughRelay {
                 if (_maxSeq >= 0) {
                     const adv = (p.header.sequenceNumber - _maxSeq) & 0xffff; // forward distance
                     if (adv >= 1 && adv < 30000) {          // genuine forward progress (not a reorder/wrap)
-                        if (adv > 1) stats.lostIn += (adv - 1);
+                        if (adv > 1) { stats.lostIn += (adv - 1); _gopHadGap = true; }
                         if (adv > SEQ_BURST) burst = true;   // a whole frame+ missing at once → real hole
                         _maxSeq = p.header.sequenceNumber;
                     }
@@ -605,7 +619,8 @@ class RsPassthroughRelay {
                 _lastKfTs = p.header.timestamp;
                 const gap = now - _lastKfAt; if (gap > stats.maxKfGap) stats.maxKfGap = gap;
                 _lastKfAt = now; stats.kf++;
-                if (isH264) injectParamSets(p.header.timestamp, p.header.sequenceNumber);
+                if (_gopHadGap) { stats.gopDamaged++; _gopHadGap = false; }
+                if (isH264 && INJECT_PARAMS) injectParamSets(p.header.timestamp, p.header.sequenceNumber);
             }
             // Safety-net: a decoder that lost sync can only recover on a keyframe. If none has been
             // forwarded for KF_STALE_MS, pull one so a freeze can never outlast ~2s.
@@ -637,7 +652,7 @@ class RsPassthroughRelay {
             const s = vSender || {};
             const rsLostPct = typeof s.remoteFractionLost === 'number' ? ((s.remoteFractionLost / 256) * 100).toFixed(1) : '?';
             log(sid, `flow: v ${Math.round((stats.v - lastV) / 10)}/s a ${Math.round((stats.a - lastA) / 10)}/s ` +
-                `| kf ${stats.kf - lastKf}/10s maxKfGap ${stats.maxKfGap}ms injSPS/PPS=${stats.inj} ` +
+                `| kf ${stats.kf - lastKf}/10s maxKfGap ${stats.maxKfGap}ms injSPS/PPS=${stats.inj}${INJECT_PARAMS ? '' : '(off)'} gopDmg=${stats.gopDamaged} ` +
                 `| lossIN ${stats.lostIn - lastLostIn} (goosely→relay, now VISIBLE to RS) seqOff=${_seqOffset} ` +
                 `| RS lost=${rsLostPct}% pktsLost=${s.remotePacketsLost ?? '?'} pliRx=${s.pliCount ?? '?'} firRx=${s.firCount ?? '?'} nackRx=${s.nackCount ?? '?'} retx=${s.retransmittedPacketsSent ?? '?'} deepRtx=${stats.rtxDeep} rtxMiss=${stats.rtxMiss} rtt=${Math.round((s.rtt || 0) * 1000)}ms ` +
                 `| keyReq=${stats.pli} werift=${pc.connectionState}`);
