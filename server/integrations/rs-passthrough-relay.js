@@ -461,7 +461,7 @@ class RsPassthroughRelay {
 
         // 9) Forward encoded RTP straight through (strip our-router ext ids, match declared PT).
         //    Each UDP datagram from the PlainTransport consumer is one RTP packet.
-        const stats = { v: 0, a: 0, pli: 0, lostIn: 0, kf: 0, maxKfGap: 0, inj: 0, rtxDeep: 0, rtxMiss: 0, gopDamaged: 0 };
+        const stats = { v: 0, a: 0, pli: 0, lostIn: 0, kf: 0, maxKfGap: 0, inj: 0, rtxDeep: 0, rtxMiss: 0, gopDamaged: 0, lateFill: 0 };
         const vPt = +vMedia.pts[0];
 
         // ── Deep retransmit cache ────────────────────────────────────────────────────────
@@ -552,6 +552,7 @@ class RsPassthroughRelay {
         // often the picture SHOULD freeze from upstream loss alone — the damage neither our
         // retransmit cache nor RS's NACKs can undo, because those packets never reached us.
         let _gopHadGap = false;
+        const _holes = new Map();   // seq -> first-missed timestamp
         const cacheParamSets = (payload) => {
             if (!payload || payload.length < 1) return;
             const nal = payload[0] & 0x1f;
@@ -599,11 +600,26 @@ class RsPassthroughRelay {
             // and out-of-order arrivals — those were inflating the count and spamming keyframes).
             let burst = false;
             if (_vSsrc < 0) _vSsrc = p.header.ssrc;
+            if (_holes.size && _holes.delete(p.header.sequenceNumber)) stats.lateFill++;
+            if (_holes.size > 512) {   // expire holes older than 2s — those are real losses
+                for (const [sq, t] of _holes) { if (now - t > 2000) _holes.delete(sq); }
+            }
             if (p.header.ssrc === _vSsrc) {
                 if (_maxSeq >= 0) {
                     const adv = (p.header.sequenceNumber - _maxSeq) & 0xffff; // forward distance
                     if (adv >= 1 && adv < 30000) {          // genuine forward progress (not a reorder/wrap)
-                        if (adv > 1) { stats.lostIn += (adv - 1); _gopHadGap = true; }
+                        if (adv > 1) {
+                            stats.lostIn += (adv - 1); _gopHadGap = true;
+                            // Remember the specific holes so we can tell REAL loss from a packet
+                            // that merely arrived late. mediasoup NACK-recovers from OBS, and a
+                            // recovered packet reaches us out of order — our forward-progress
+                            // check books that as loss even though the bytes do turn up. If these
+                            // holes get filled, the stream is intact and the freezes are NOT
+                            // upstream loss; if they never fill, the loss is real.
+                            for (let g = 1; g < adv && g < 64; g++) {
+                                _holes.set((_maxSeq + g) & 0xffff, now);
+                            }
+                        }
                         if (adv > SEQ_BURST) burst = true;   // a whole frame+ missing at once → real hole
                         _maxSeq = p.header.sequenceNumber;
                     }
@@ -647,16 +663,16 @@ class RsPassthroughRelay {
         // Throughput heartbeat + loss diagnostics. Splits loss into the two legs so we can see
         // where video freezes originate: IN = streamer→relay (our seq-gap detection), RS = relay→RS
         // (werift's RTCP receiver reports from RobotStreamer). pliRx/firRx = keyframes RS asked for.
-        let lastV = 0, lastA = 0, lastLostIn = 0, lastKf = 0;
+        let lastV = 0, lastA = 0, lastLostIn = 0, lastKf = 0, lastLateFill = 0;
         session.statsTimer = setInterval(() => {
             const s = vSender || {};
             const rsLostPct = typeof s.remoteFractionLost === 'number' ? ((s.remoteFractionLost / 256) * 100).toFixed(1) : '?';
             log(sid, `flow: v ${Math.round((stats.v - lastV) / 10)}/s a ${Math.round((stats.a - lastA) / 10)}/s ` +
                 `| kf ${stats.kf - lastKf}/10s maxKfGap ${stats.maxKfGap}ms injSPS/PPS=${stats.inj}${INJECT_PARAMS ? '' : '(off)'} gopDmg=${stats.gopDamaged} ` +
-                `| lossIN ${stats.lostIn - lastLostIn} (goosely→relay, now VISIBLE to RS) seqOff=${_seqOffset} ` +
+                `| lossIN ${stats.lostIn - lastLostIn} (goosely→relay) lateFill ${stats.lateFill - lastLateFill} seqOff=${_seqOffset} ` +
                 `| RS lost=${rsLostPct}% pktsLost=${s.remotePacketsLost ?? '?'} pliRx=${s.pliCount ?? '?'} firRx=${s.firCount ?? '?'} nackRx=${s.nackCount ?? '?'} retx=${s.retransmittedPacketsSent ?? '?'} deepRtx=${stats.rtxDeep} rtxMiss=${stats.rtxMiss} rtt=${Math.round((s.rtt || 0) * 1000)}ms ` +
                 `| keyReq=${stats.pli} werift=${pc.connectionState}`);
-            lastV = stats.v; lastA = stats.a; lastLostIn = stats.lostIn; lastKf = stats.kf; stats.maxKfGap = 0;
+            lastV = stats.v; lastA = stats.a; lastLostIn = stats.lostIn; lastKf = stats.kf; lastLateFill = stats.lateFill; stats.maxKfGap = 0;
         }, 10000);
         session.statsTimer.unref?.();
         // Answer the NACKs werift could not. It fires this AFTER trying its own 128-packet
