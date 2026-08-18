@@ -17,7 +17,7 @@
     function getDefaultOpenVibeToolsUrl() {
         const host = window.location.hostname;
         const isLocalHost = ['localhost', '127.0.0.1'].includes(host);
-        const isTopenvibeAlias = ['topenvibe.tools', 'topenvibelive.com', 'topenvibe.quest'].includes(host);
+        const isTopenvibeAlias = ['topenvibe.tools', 'topenvibe.live', 'topenvibe.quest'].includes(host);
         return isLocalHost ? 'http://localhost:3100' : (isTopenvibeAlias ? 'https://topenvibe.tools' : 'https://openvibe.network');
     }
 
