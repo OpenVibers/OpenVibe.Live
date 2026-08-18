@@ -142,6 +142,18 @@ async function captureWebrtc(stream, seconds) {
     cleanup();
     const size = (ok && fs.existsSync(out)) ? fs.statSync(out).size : 0;
     if (size > 8000) { // >~0.25s of 16k mono; smaller = effectively empty
+        // Size proves nothing: WAV is uncompressed, so 12s of pure SILENCE is the same
+        // 384KB as 12s of speech. Measure the actual level — an empty transcript on a
+        // silent capture is an audio-path bug, on a loud capture it is a model problem,
+        // and until now we could not tell the two apart.
+        try {
+            const { execFileSync } = require('child_process');
+            const err = execFileSync('ffmpeg', ['-hide_banner', '-i', out, '-af', 'volumedetect', '-f', 'null', '-'],
+                { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'], timeout: 15000 });
+            const mean = /mean_volume:\s*(-?[\d.]+) dB/.exec(err);
+            const max = /max_volume:\s*(-?[\d.]+) dB/.exec(err);
+            console.log(`[AI-Hear] stream ${stream.id}: capture level mean=${mean ? mean[1] : '?'}dB max=${max ? max[1] : '?'}dB (${size} bytes)`);
+        } catch (e) { console.log(`[AI-Hear] stream ${stream.id}: volumedetect failed: ${e.message}`); }
         return out;
     }
     console.warn(`[AI-Hear] stream ${stream.id}: capture produced ${size} bytes (ffmpeg ok=${ok}) — treating as empty`);
