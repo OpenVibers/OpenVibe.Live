@@ -309,13 +309,16 @@ function stopAllCaptures() {
  * Each entry carries the absolute offset (seconds into the stream) its audio starts at,
  * derived from the segment index, so timeline timestamps stay correct.
  */
-function pendingSegments(streamId) {
+function pendingSegments(streamId, { includeLast = false } = {}) {
     const dir = spoolDir(streamId);
     let names;
     try { names = fs.readdirSync(dir).filter(n => /^seg-\d{6}\.wav$/.test(n)).sort(); }
     catch { return []; }
-    if (names.length <= 1) return [];      // newest is still being written
-    const ready = names.slice(0, -1);
+    // Normally the newest file is still being written by ffmpeg, so it is not eligible.
+    // Once capture has STOPPED there is no writer, so the final segment is complete and
+    // must be included — otherwise the last seconds of every stream are silently dropped.
+    if (!includeLast && names.length <= 1) return [];
+    const ready = includeLast ? names : names.slice(0, -1);
     // Drop the oldest if the spool has run away (slow transcriber / very long stream).
     const overflow = Math.max(0, ready.length - MAX_SPOOL_FILES);
     for (let i = 0; i < overflow; i++) {
@@ -340,6 +343,15 @@ function discardSegment(streamId, name) {
     try { fs.unlinkSync(path.join(spoolDir(streamId), name)); return true; } catch { return false; }
 }
 
+/** Stream ids that currently have a spool directory on disk, live or not. */
+function spooledStreamIds() {
+    try {
+        return fs.readdirSync(SPOOL_ROOT, { withFileTypes: true })
+            .filter(d => d.isDirectory() && /^\d+$/.test(d.name))
+            .map(d => parseInt(d.name, 10));
+    } catch { return []; }
+}
+
 /** Remove a stream's whole spool directory (call when the stream ends). */
 function purgeSpool(streamId) {
     try { fs.rmSync(spoolDir(streamId), { recursive: true, force: true }); return true; }
@@ -349,6 +361,6 @@ function purgeSpool(streamId) {
 module.exports = {
     captureAudioChunk,
     startContinuousCapture, stopContinuousCapture, stopAllCaptures, isCapturing,
-    pendingSegments, discardSegment, purgeSpool, spoolDir,
+    pendingSegments, discardSegment, purgeSpool, spoolDir, spooledStreamIds,
     SEGMENT_SEC,
 };
