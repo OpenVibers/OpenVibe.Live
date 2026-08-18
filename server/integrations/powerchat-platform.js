@@ -80,7 +80,33 @@ async function forwardChat(streamerUserId, { chatterName, externalChatterId, mes
                 ...(isModerator ? { isModerator: true } : {}),
             },
         });
-    } catch { /* scope/sandbox/rate — silent */ }
+        _relayOk(streamerUserId);
+    } catch (e) {
+        // This used to be silently swallowed, which meant a broken overlay relay looked
+        // exactly like a working one. Log the first failure and then at most one per
+        // minute per streamer, so a persistent problem is visible without flooding a
+        // busy chat with one line per message.
+        _relayFail(streamerUserId, e && e.message);
+    }
+}
+
+// Relay health: quiet on success, but surface failures at a sane rate.
+const _relayState = new Map();  // userId → { failAt, okAfterFail }
+function _relayOk(userId) {
+    const st = _relayState.get(userId);
+    if (st && st.failAt) {
+        console.log(`[PowerChat] chat relay recovered for user ${userId}`);
+        _relayState.delete(userId);
+    }
+}
+function _relayFail(userId, reason) {
+    const now = Date.now();
+    const st = _relayState.get(userId) || { failAt: 0 };
+    if (now - st.failAt > 60000) {
+        console.warn(`[PowerChat] chat relay failed for user ${userId}: ${reason || 'unknown'}`);
+        st.failAt = now;
+        _relayState.set(userId, st);
+    }
 }
 
 // ── follows:write ────────────────────────────────────────────
