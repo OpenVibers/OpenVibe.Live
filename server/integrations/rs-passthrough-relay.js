@@ -461,8 +461,29 @@ class RsPassthroughRelay {
 
         // 9) Forward encoded RTP straight through (strip our-router ext ids, match declared PT).
         //    Each UDP datagram from the PlainTransport consumer is one RTP packet.
-        const stats = { v: 0, a: 0, pli: 0, lostIn: 0, kf: 0, maxKfGap: 0, inj: 0 };
+        const stats = { v: 0, a: 0, pli: 0, lostIn: 0, kf: 0, maxKfGap: 0, inj: 0, rtxDeep: 0, rtxMiss: 0 };
         const vPt = +vMedia.pts[0];
+
+        // ── Deep retransmit cache ────────────────────────────────────────────────────────
+        // werift answers NACKs from rtpCache[seq % RTP_HISTORY_SIZE] with RTP_HISTORY_SIZE = 128
+        // — roughly 240ms at this stream's ~530 pkt/s — and on eviction the entry belongs to a
+        // different sequence number, so it sends NOTHING. RS sits 70-110ms away (spiking past
+        // 170ms), so a large share of its NACKs arrive after eviction and the loss is simply
+        // never repaired: the picture stays broken until the next keyframe. That is also why a
+        // LONGER keyframe interval made the stutters worse instead of better — keyframes were
+        // doing the repair that retransmission was failing to do.
+        //
+        // So we keep our own much deeper ring. werift mutates the RtpPacket we hand it in place
+        // into its final on-wire form (ssrc/pt/timestamp/sequence offsets + header extensions)
+        // and caches that same object reference, so once writeRtp() has returned our entries
+        // hold exactly what went out. Misses are re-sent through the same dtlsTransport.sendRtp
+        // call werift itself uses, which keeps the sender's packet/octet counters untouched —
+        // inflating those would corrupt the loss statistics RS derives from our RTCP reports.
+        const RTX_RING = 4096;                       // ~7.7s of history at 530 pkt/s
+        const _rtxRing = new Array(RTX_RING);
+        const rtxRemember = (pkt) => {
+            try { _rtxRing[pkt.header.sequenceNumber % RTX_RING] = pkt; } catch { /* */ }
+        };
 
         // Pull a fresh keyframe from the SOURCE encoder (goosely's browser) via our plain consumer.
         // HARD rate-limit: every trigger (RS PLI, our loss detectors, startup) funnels through here,
@@ -531,7 +552,12 @@ class RsPassthroughRelay {
         const injectPkt = (payload, ts, outSeq) => {
             const h = new RtpHeader();
             h.payloadType = vPt; h.sequenceNumber = outSeq; h.timestamp = ts; h.marker = false;
-            try { videoTrack.writeRtp(new RtpPacket(h, Buffer.from(payload))); stats.v++; stats.inj++; } catch { /* */ }
+            try {
+                const pkt = new RtpPacket(h, Buffer.from(payload));
+                videoTrack.writeRtp(pkt);           // werift finalises `pkt` in place …
+                rtxRemember(pkt);                   // … so cache it after the write, not before
+                stats.v++; stats.inj++;
+            } catch { /* */ }
         };
         // Slot the cached parameter sets into the sequence space immediately BEFORE the keyframe
         // packet (incoming seq `inSeq`), then advance the offset so the keyframe lands right after
@@ -590,7 +616,7 @@ class RsPassthroughRelay {
             // param-set packets slot in cleanly (werift preserves the sequence number) WITHOUT
             // closing real loss gaps. VP8 injects nothing, so it keeps the source sequence as-is.
             if (isH264) p.header.sequenceNumber = (p.header.sequenceNumber + _seqOffset) & 0xffff;
-            try { videoTrack.writeRtp(p); stats.v++; } catch { /* */ }
+            try { videoTrack.writeRtp(p); rtxRemember(p); stats.v++; } catch { /* */ }
         });
         if (audioIn && aMedia) {
             const aPt = +aMedia.pts[0];
@@ -613,12 +639,35 @@ class RsPassthroughRelay {
             log(sid, `flow: v ${Math.round((stats.v - lastV) / 10)}/s a ${Math.round((stats.a - lastA) / 10)}/s ` +
                 `| kf ${stats.kf - lastKf}/10s maxKfGap ${stats.maxKfGap}ms injSPS/PPS=${stats.inj} ` +
                 `| lossIN ${stats.lostIn - lastLostIn} (goosely→relay, now VISIBLE to RS) seqOff=${_seqOffset} ` +
-                `| RS lost=${rsLostPct}% pktsLost=${s.remotePacketsLost ?? '?'} pliRx=${s.pliCount ?? '?'} firRx=${s.firCount ?? '?'} nackRx=${s.nackCount ?? '?'} retx=${s.retransmittedPacketsSent ?? '?'} rtt=${Math.round((s.rtt || 0) * 1000)}ms ` +
+                `| RS lost=${rsLostPct}% pktsLost=${s.remotePacketsLost ?? '?'} pliRx=${s.pliCount ?? '?'} firRx=${s.firCount ?? '?'} nackRx=${s.nackCount ?? '?'} retx=${s.retransmittedPacketsSent ?? '?'} deepRtx=${stats.rtxDeep} rtxMiss=${stats.rtxMiss} rtt=${Math.round((s.rtt || 0) * 1000)}ms ` +
                 `| keyReq=${stats.pli} werift=${pc.connectionState}`);
             lastV = stats.v; lastA = stats.a; lastLostIn = stats.lostIn; lastKf = stats.kf; stats.maxKfGap = 0;
         }, 10000);
         session.statsTimer.unref?.();
-        vSender.onGenericNack?.subscribe(() => { /* werift retransmits from its own buffer; keyframe as backstop for heavy loss */ });
+        // Answer the NACKs werift could not. It fires this AFTER trying its own 128-packet
+        // cache, so anything still missing here is a packet it evicted — exactly the repairs
+        // that were silently being dropped on the floor. Serve those from the deep ring.
+        vSender.onGenericNack?.subscribe((feedback) => {
+            const lost = (feedback && feedback.lost) || [];
+            if (!lost.length) return;
+            const werHist = (vSender.rtpCache && vSender.rtpCache.length) || 128;
+            const off = vSender.seqOffset || 0;
+            for (const seqNum of lost) {
+                // Skip the ones werift just handled from its own window.
+                const near = vSender.rtpCache && vSender.rtpCache[seqNum % werHist];
+                if (near && near.header.sequenceNumber === seqNum) continue;
+                // Our ring is keyed by the sequence number we wrote; werift adds a constant
+                // seqOffset on top (0 here, but derive it rather than assume).
+                const pkt = _rtxRing[((seqNum - off) & 0xffff) % RTX_RING];
+                if (!pkt || pkt.header.sequenceNumber !== seqNum) { stats.rtxMiss++; continue; }
+                try {
+                    // Same call werift uses — bypasses sendRtp so packet/octet counters stay
+                    // truthful and RS's loss maths is not skewed by our repairs.
+                    vSender.dtlsTransport.sendRtp(pkt.payload, pkt.header);
+                    stats.rtxDeep++;
+                } catch { /* transport closing */ }
+            }
+        });
         // One early keyframe is enough for RS to start decoding. The old flood (plus the plain
         // consumer's own 4 scheduled keyframes) spiked the bitrate on the fresh, fragile werift→RS
         // link and caused a loss burst → the freeze seen right after every (re)connect.
