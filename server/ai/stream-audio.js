@@ -147,9 +147,11 @@ async function captureWebrtc(stream, seconds) {
         // silent capture is an audio-path bug, on a loud capture it is a model problem,
         // and until now we could not tell the two apart.
         try {
-            const { execFileSync } = require('child_process');
-            const err = execFileSync('ffmpeg', ['-hide_banner', '-i', out, '-af', 'volumedetect', '-f', 'null', '-'],
-                { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'], timeout: 15000 });
+            // volumedetect reports on STDERR, so spawnSync (execFileSync returns stdout).
+            const { spawnSync } = require('child_process');
+            const r = spawnSync('ffmpeg', ['-hide_banner', '-i', out, '-af', 'volumedetect', '-f', 'null', '-'],
+                { encoding: 'utf8', timeout: 15000 });
+            const err = (r && r.stderr) || '';
             const mean = /mean_volume:\s*(-?[\d.]+) dB/.exec(err);
             const max = /max_volume:\s*(-?[\d.]+) dB/.exec(err);
             console.log(`[AI-Hear] stream ${stream.id}: capture level mean=${mean ? mean[1] : '?'}dB max=${max ? max[1] : '?'}dB (${size} bytes)`);
