@@ -38,7 +38,7 @@
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="/css/style.css?v=133">
+    <link rel="stylesheet" href="/css/style.css?v=134">
     <link rel="stylesheet" href="/css/chat-shared.css?v=1">
     <link rel="stylesheet" href="/css/broadcast.css?v=9">
     <link rel="stylesheet" href="/css/cosmetics.css?v=2">
@@ -3455,7 +3455,9 @@ WantedBy=multi-user.target</code>
             </div>
 
             <!-- Docs tab navigation -->
-            <div class="docs-tab-bar" style="display:flex;gap:0;overflow-x:auto;border-bottom:2px solid var(--border);margin-bottom:1.5rem;padding-bottom:0">
+            <div class="docs-tab-wrap" id="docs-tab-wrap">
+            <button class="docs-tab-arrow" id="docs-tab-arrow-left" title="Scroll tabs left" aria-label="Scroll tabs left"><i class="fa-solid fa-chevron-left"></i></button>
+            <div class="docs-tab-bar" id="docs-tab-bar" style="display:flex;gap:0;overflow-x:auto;padding-bottom:0">
                 <button class="docs-tab active" onclick="showDocTab('start',this)">Getting Started</button>
                 <button class="docs-tab" onclick="showDocTab('arch',this)">Architecture</button>
                 <button class="docs-tab" onclick="showDocTab('auth',this)">Auth</button>
@@ -3470,6 +3472,8 @@ WantedBy=multi-user.target</code>
                 <button class="docs-tab" onclick="showDocTab('integrations',this)">Integrations</button>
                 <button class="docs-tab" onclick="showDocTab('vods',this)">VODs</button>
                 <button class="docs-tab" onclick="showDocTab('misc',this)">API Ref</button>
+            </div>
+            <button class="docs-tab-arrow" id="docs-tab-arrow-right" title="Scroll tabs right" aria-label="Scroll tabs right"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
 
             <div id="docs-ai-content">
@@ -4610,6 +4614,23 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 <tr><td>PUT / DELETE</td><td>/api/pastes/:slug</td><td>Owner/staff</td><td>Edit / delete a paste</td></tr>
 </tbody>
 </table>
+
+<h3>Live Frame API — <code>openvibe.media/live/:selector/frame.jpg</code></h3>
+<p>Grab a <strong>near-realtime JPEG frame</strong> of any actively-live stream slot — built for external APIs, bots, dashboards, and dev tooling. No auth, CORS-open (<code>Access-Control-Allow-Origin: *</code>), so you can hotlink it in an <code>&lt;img&gt;</code>, poll it from a script, or draw it onto a canvas.</p>
+<table class="doc-table">
+<thead><tr><th>Selector</th><th>Example</th><th>Resolves to</th></tr></thead>
+<tbody>
+<tr><td>Slot id</td><td><code>/live/1/frame.jpg</code></td><td>That managed-stream slot (id from your Stream Manager)</td></tr>
+<tr><td>Slot slug</td><td><code>/live/whip/frame.jpg</code></td><td>The currently-live slot with that slug</td></tr>
+<tr><td>@username</td><td><code>/live/@Goosely/frame.jpg</code></td><td>That streamer's <strong>top-viewed</strong> currently-live slot</td></tr>
+</tbody>
+</table>
+<p><code>?w=64..1920</code> scales the width (aspect kept) &middot; responses are cached <strong>5s per slot</strong> &mdash; that cache is the rate limit, so poll as fast as you like &middot; frames are cut ~2s behind the live edge. <strong>Offline?</strong> You get a styled "OFFLINE" card image with a <code>404</code> status &mdash; embeds keep looking good, scripts key off the status code (or add <code>?format=json</code> for JSON errors). <code>503</code> = live but no frame could be cut (retry next window).</p>
+<pre><code># Is Goosely live? Grab a frame if so
+curl -f -o now.jpg https://openvibe.media/live/@Goosely/frame.jpg &amp;&amp; echo LIVE || echo OFFLINE
+
+# 320px-wide preview for a status page — shows the OFFLINE card automatically when not live
+&lt;img src="https://openvibe.media/live/whip/frame.jpg?w=320"&gt;</code></pre>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════ -->
@@ -4904,7 +4925,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 <!-- Scripts -->
 <script src="/js/theme-engine.js?v=4"></script>
 <script src="/live-notify.js?v=2" defer></script>
-<script src="/js/app.js?v=120" defer></script>
+<script src="/js/app.js?v=121" defer></script>
 <script src="/js/stream-player.js?v=17" defer></script>
 <script src="/js/chat-shared.js?v=3" defer></script>
 <script src="/js/emotes.js?v=8" defer></script>

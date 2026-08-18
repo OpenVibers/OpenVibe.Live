@@ -9190,8 +9190,19 @@ body.theme-light .user-dropdown {
 .doc-vibe-hero h2 { margin-top: 0 !important; border: none !important; padding: 0 !important; }
 
 /* Doc tab navigation */
-.docs-tab-bar { -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.docs-tab-wrap { display: flex; align-items: stretch; position: relative; border-bottom: 2px solid var(--border); margin-bottom: 1.5rem; }
+.docs-tab-bar { flex: 1 1 auto; min-width: 0; -webkit-overflow-scrolling: touch; scrollbar-width: none; scroll-behavior: smooth; }
 .docs-tab-bar::-webkit-scrollbar { display: none; }
+.docs-tab-arrow { flex: 0 0 auto; display: none; align-items: center; justify-content: center; width: 30px; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.8rem; transition: color 0.15s; }
+.docs-tab-arrow:hover { color: var(--accent); }
+.docs-tab-wrap.can-scroll-left #docs-tab-arrow-left { display: flex; }
+.docs-tab-wrap.can-scroll-right #docs-tab-arrow-right { display: flex; }
+/* Edge fades hint at more tabs beyond the fold */
+.docs-tab-wrap::before, .docs-tab-wrap::after { content: ''; position: absolute; top: 0; bottom: 0; width: 28px; pointer-events: none; opacity: 0; transition: opacity 0.15s; z-index: 1; }
+.docs-tab-wrap::before { left: 30px; background: linear-gradient(to right, var(--bg-primary, #0f1420), transparent); }
+.docs-tab-wrap::after { right: 30px; background: linear-gradient(to left, var(--bg-primary, #0f1420), transparent); }
+.docs-tab-wrap.can-scroll-left::before { opacity: 1; }
+.docs-tab-wrap.can-scroll-right::after { opacity: 1; }
 .docs-tab { background: none; border: none; color: var(--text-muted); padding: 0.6rem 1rem; font-size: 0.85rem; font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; white-space: nowrap; transition: color 0.15s, border-color 0.15s; }
 .docs-tab:hover { color: var(--text); }
 .docs-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
