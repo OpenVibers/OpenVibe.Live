@@ -25,6 +25,17 @@ const CANDIDATE_BINS = [
     path.join(HOME, 'whisper.cpp/main'),
 ].filter(Boolean);
 const MODEL = process.env.WHISPER_MODEL || path.join(HOME, 'whisper.cpp/models/ggml-base.en.bin');
+// Live transcription has a hard throughput constraint that batch work does not: segments
+// arrive continuously, so if a decode takes longer than the segment it covers, the backlog
+// grows without bound and audio is eventually evicted unheard. Measured on this box,
+// large-v3-turbo-q5 took 72s for a 30s segment (2.4x realtime) — accurate but unusable for
+// live. VOD/clip backfill has no such constraint and should use the most accurate model
+// available. So allow the live path to pick a faster one; falls back to MODEL when unset.
+const MODEL_LIVE = process.env.WHISPER_MODEL_LIVE || MODEL;
+function _modelFor(opts) {
+    const m = (opts && opts.live) ? MODEL_LIVE : MODEL;
+    try { return fs.existsSync(m) ? m : MODEL; } catch { return MODEL; }
+}
 const THREADS = Math.max(2, Math.min(8, parseInt(process.env.WHISPER_THREADS, 10) || 4));
 
 // ── Voice Activity Detection ──────────────────────────────────────────────
@@ -141,7 +152,7 @@ function _joinSegments(segments) {
  * @returns {Promise<{text:string, segments:Array<{start:number,end:number,text:string}>}>}
  *          start/end in seconds (shifted by opts.offsetSec).
  */
-function transcribeWavDetailed(wavPath, { timeoutMs = 180000, offsetSec = 0 } = {}) {
+function transcribeWavDetailed(wavPath, { timeoutMs = 180000, offsetSec = 0, live = false } = {}) {
     return new Promise((resolve) => {
         const bin = whisperBin();
         // ok=false only for genuine FAILURES (missing binary, spawn/exec error, timeout,
@@ -152,14 +163,18 @@ function transcribeWavDetailed(wavPath, { timeoutMs = 180000, offsetSec = 0 } = 
         }
         const outBase = `${wavPath}.out`;
         const jsonPath = `${outBase}.json`;
-        const args = ['-m', MODEL, '-f', wavPath, '-oj', '-of', outBase, '-t', String(_threads()), '-l', 'en'];
+        const args = ['-m', _modelFor({ live }), '-f', wavPath, '-oj', '-of', outBase, '-t', String(_threads()), '-l', 'en'];
         if (BEAM > 1) args.push('-bs', String(BEAM));
         // Decode only the regions Silero says contain a voice. Segment timestamps stay in
         // absolute file time, so the {start,end} contract is unchanged for every caller.
         const vm = vadModel();
         if (vm) args.push('--vad', '-vm', vm);
         let ff;
-        try { ff = _track(spawn(bin, args, { stdio: 'ignore' })); }
+        // Run at low CPU priority. Transcription is never latency-critical, but it shares
+        // 4 cores with live x264 encoding on a box with no swap — so it must always be the
+        // thing that yields. `nice` is used rather than a hard cgroup cap because a cap that
+        // is hit kills the process, whereas a niced process simply runs slower.
+        try { ff = _track(spawn('nice', ['-n', '15', bin, ...args], { stdio: 'ignore' })); }
         catch (e) { return resolve({ text: '', segments: [], ok: false, error: e.message }); }
         let done = false;
         const finish = (result) => {

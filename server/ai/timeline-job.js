@@ -56,6 +56,7 @@ async function _processSegment(stream, seg) {
         tx = await transcribe.transcribeWavDetailed(seg.path, {
             offsetSec: seg.offsetSec,
             timeoutMs: 180000,
+            live: true,     // must keep up with the segment rate; see MODEL_LIVE
         });
     } catch (e) {
         console.warn(`[AI-Timeline] stream ${stream.id} seg ${seg.name}: transcribe error`, e.message);
