@@ -217,7 +217,7 @@ router.get('/global', (req, res) => {
         const emotes = db.getGlobalEmotes().map(e => ({
             id: `custom-${e.id}`,
             code: e.code,
-            url: `/api/emotes/file/${path.basename(e.url)}`,
+            url: e.media_url || `/api/emotes/file/${path.basename(e.url)}`,
             animated: !!e.animated,
             width: e.width,
             height: e.height,
@@ -238,7 +238,7 @@ router.get('/channel/:userId', (req, res) => {
             id: `custom-${e.id}`,
             emote_id: e.id,
             code: e.code,
-            url: `/api/emotes/file/${path.basename(e.url)}`,
+            url: e.media_url || `/api/emotes/file/${path.basename(e.url)}`,
             animated: !!e.animated,
             width: e.width,
             height: e.height,
@@ -259,7 +259,7 @@ router.get('/mine', requireAuth, (req, res) => {
         const emotes = db.getEmotesByUser(req.user.id).map(e => ({
             id: e.id,
             code: e.code,
-            url: `/api/emotes/file/${path.basename(e.url)}`,
+            url: e.media_url || `/api/emotes/file/${path.basename(e.url)}`,
             animated: !!e.animated,
             width: e.width,
             height: e.height,
@@ -378,6 +378,7 @@ router.post('/', requireAuth, emoteUpload.single('image'), (req, res) => {
             try { require('../chat/chat-server').broadcastToOwnerStreams(channelOwnerId, { type: 'emotes-updated' }); } catch { /* */ }
         }
 
+        try { require('../media-proxy/asset-sync').syncSoon(); } catch { /* mirror is best-effort */ }
         res.json({
             emote: {
                 id: result.lastInsertRowid,
@@ -490,6 +491,7 @@ router.delete('/:id', requireAuth, (req, res) => {
         }
 
         db.deleteEmote(req.params.id);
+        try { require('../media-proxy/asset-sync').removeAsset(emote.media_asset_id); } catch { /* */ }
         if (emote.channel_owner_id) {
             try { require('../chat/chat-server').broadcastToOwnerStreams(emote.channel_owner_id, { type: 'emotes-updated' }); } catch { /* */ }
         }
@@ -686,7 +688,7 @@ router.get('/all/:streamId', optionalAuth, async (req, res) => {
             globalCustom = db.getGlobalEmotes().map(e => ({
                 id: `custom-${e.id}`,
                 code: e.code,
-                url: `/api/emotes/file/${path.basename(e.url)}`,
+                url: e.media_url || `/api/emotes/file/${path.basename(e.url)}`,
                 animated: !!e.animated,
                 width: e.width,
                 height: e.height,
@@ -700,7 +702,7 @@ router.get('/all/:streamId', optionalAuth, async (req, res) => {
                     id: `custom-${e.id}`,
                     emote_id: e.id,
                     code: e.code,
-                    url: `/api/emotes/file/${path.basename(e.url)}`,
+                    url: e.media_url || `/api/emotes/file/${path.basename(e.url)}`,
                     animated: !!e.animated,
                     width: e.width,
                     height: e.height,

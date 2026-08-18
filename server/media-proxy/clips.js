@@ -48,6 +48,13 @@ function withUserFields(clip) {
     // Absolutize Media-relative URLs so the SPA doesn't resolve them against Live.
     clip.playback_url = media.publicUrl(clip.playback_url) || media.clipUrl(clip.id);
     if (clip.thumbnail_url) clip.thumbnail_url = media.publicUrl(clip.thumbnail_url);
+    // Short AI overview is Live-owned (clip_ai_state) — overlay for the cards.
+    if (clip.id != null && !clip.ai_overview_short) {
+        try {
+            const s = db.get('SELECT ai_overview_short FROM clip_ai_state WHERE clip_id = ?', [clip.id]);
+            if (s && s.ai_overview_short) clip.ai_overview_short = s.ai_overview_short;
+        } catch { /* best-effort */ }
+    }
     return clip;
 }
 

@@ -3,12 +3,17 @@
 // Consistent top bar across all services with logo, navigation,
 // notification bell, account switcher, and theme-aware styling.
 // Usage: OpenVibeNavbar.init({ service, token, user, apiBase })
+//   Optional: loginUrl (override the Sign In href), sessionUrl (same-origin
+//   endpoint returning { user } — used only when no ov_token exists),
+//   onLogin/onLogout callbacks. When no `user` is passed the navbar resolves
+//   it itself: ov_token cookie → localStorage → token opt → sessionUrl, then
+//   GET {apiBase}/api/auth/me with `Authorization: Bearer <token>`.
 // ═══════════════════════════════════════════════════════════════
 
 (function (root) {
     'use strict';
 
-    let _config = { service: 'network', token: null, user: null, apiBase: 'https://openvibe.network', onLogin: null, onLogout: null };
+    let _config = { service: 'network', token: null, user: null, apiBase: 'https://openvibe.network', onLogin: null, onLogout: null, loginUrl: null, sessionUrl: null };
     let _navEl = null;
 
     function injectStyles() {
@@ -362,6 +367,9 @@
         ],
         media: [
             { label: 'Home', href: '/' },
+            { label: 'Network', href: 'https://openvibe.network' },
+            { label: 'Live', href: 'https://openvibe.live' },
+            { label: 'Tools', href: 'https://openvibe.tools' },
         ],
         network: [
             { label: 'Home', href: '/' },
@@ -427,6 +435,200 @@
 
     function getAccounts() {
         try { return JSON.parse(localStorage.getItem('openvibe_accounts') || '[]'); } catch { return []; }
+    }
+
+    // ─── SSO auth resolution ───────────────────────────────────
+    // Cookie policy (CONTRACTS.md): ov_token is host-only on openvibe.network,
+    // and Domain=.openvibe.tools on the tools apex + every tool subdomain.
+    // The tools gateway (apex) owns the OAuth client: /auth/login, /auth/logout,
+    // /auth/me, POST /auth/refresh. Satellite subdomains (maps., audio., text.,
+    // img., yt., docs., food., …) do NOT mount /auth/* — they only read the
+    // shared cookie — so sign-in/out always goes through the gateway apex.
+    // Detection order: ov_token cookie → localStorage → page-provided token →
+    // app-specific session endpoint (opt-in via config.sessionUrl).
+    const TOOLS_APEX = 'openvibe.tools';
+    const TOKEN_KEY = 'ov_token';
+
+    function currentHost() {
+        return (typeof location !== 'undefined' && location.hostname) || '';
+    }
+
+    function onToolsDomain(host) {
+        const h = host !== undefined ? host : currentHost();
+        return h === TOOLS_APEX || h.endsWith('.' + TOOLS_APEX);
+    }
+
+    function onNetworkDomain(host) {
+        const h = host !== undefined ? host : currentHost();
+        try { return h !== '' && h === new URL(_config.apiBase).hostname; } catch { return false; }
+    }
+
+    function parseCookieToken(cookieStr) {
+        const m = String(cookieStr || '').match(/(?:^|;\s*)ov_token=([^;]*)/);
+        if (!m || !m[1]) return null;
+        try { return decodeURIComponent(m[1]); } catch { return m[1]; }
+    }
+
+    function getCookieToken() {
+        if (typeof document === 'undefined') return null;
+        return parseCookieToken(document.cookie);
+    }
+
+    function getStoredToken() {
+        try { return localStorage.getItem(TOKEN_KEY) || null; } catch { return null; }
+    }
+
+    function resolveToken() {
+        return getCookieToken() || getStoredToken() || _config.token || null;
+    }
+
+    /** Where "Sign In" goes on this host. */
+    function resolveLoginHref(host, returnUrl) {
+        if (_config.loginUrl) return _config.loginUrl;
+        if (onToolsDomain(host)) {
+            // Every *.openvibe.tools host signs in through the gateway apex: it
+            // holds the OAuth state cookie + redirect_uri (both apex-host-only)
+            // and sets ov_token with Domain=.openvibe.tools, so the session
+            // reaches all satellites. A host-local /auth/login would 404 on
+            // satellites and break the OAuth state check on gateway subdomains.
+            return `https://${TOOLS_APEX}/auth/login?next=${encodeURIComponent(returnUrl)}`;
+        }
+        if (onNetworkDomain(host)) return `/login?return=${encodeURIComponent(returnUrl)}`;
+        return `${_config.apiBase}/login?return=${encodeURIComponent(returnUrl)}`;
+    }
+
+    function setAuthCookie(token) {
+        if (typeof document === 'undefined') return;
+        const maxAge = 24 * 60 * 60; // matches the 24h access JWT
+        if (onToolsDomain()) {
+            document.cookie = `ov_token=${token};path=/;max-age=${maxAge};domain=.${TOOLS_APEX};SameSite=Lax;Secure`;
+        } else {
+            const secure = (typeof location !== 'undefined' && location.protocol === 'https:') ? ';Secure' : '';
+            document.cookie = `ov_token=${token};path=/;max-age=${maxAge};SameSite=Lax${secure}`;
+        }
+    }
+
+    function clearAuthState() {
+        if (typeof document !== 'undefined') {
+            document.cookie = 'ov_token=;path=/;max-age=0;SameSite=Lax';
+            if (onToolsDomain()) {
+                document.cookie = `ov_token=;path=/;max-age=0;domain=.${TOOLS_APEX};SameSite=Lax`;
+            }
+        }
+        try {
+            localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem('openvibe_anon_token');
+            localStorage.removeItem('openvibe_active_account');
+        } catch { /* storage unavailable */ }
+    }
+
+    function persistToken(token) {
+        try { localStorage.setItem(TOKEN_KEY, token); } catch { /* storage unavailable */ }
+        setAuthCookie(token);
+    }
+
+    /** GET {apiBase}/api/auth/me with the Bearer token. */
+    async function fetchMe(token) {
+        try {
+            const res = await fetch(`${_config.apiBase}/api/auth/me`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                return { ok: true, user: (data && (data.user || data)) || null };
+            }
+            return { ok: false, unauthorized: res.status === 401 || res.status === 403 };
+        } catch {
+            return { ok: false, unauthorized: false };
+        }
+    }
+
+    /** Same-origin session refresh — mounted by the tools gateway (POST /auth/refresh). */
+    async function gatewayRefresh() {
+        try {
+            const res = await fetch('/auth/refresh', { method: 'POST', credentials: 'same-origin' });
+            if (!res.ok) return null;
+            const data = await res.json();
+            return data && data.token ? data : null;
+        } catch { return null; }
+    }
+
+    /** Network-side refresh — accepts tokens expired up to 7 days ago (grace). */
+    async function networkRefresh(token) {
+        try {
+            const res = await fetch(`${_config.apiBase}/api/auth/refresh`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) return null;
+            const data = await res.json();
+            return data && data.token ? data : null;
+        } catch { return null; }
+    }
+
+    /**
+     * Resolve the signed-in user from the shared SSO state.
+     * With a token: validate it against the Network. If it is rejected, make
+     * ONE refresh attempt (same-origin gateway refresh first on tools hosts,
+     * then the Network's grace refresh) before giving up — never leave a
+     * stale "Sign In" when a recoverable session exists.
+     */
+    async function resolveSessionUser() {
+        const token = resolveToken();
+        if (token) {
+            const me = await fetchMe(token);
+            if (me.ok && me.user) return { user: me.user, token };
+            if (me.unauthorized) {
+                if (onToolsDomain()) {
+                    const r = await gatewayRefresh();
+                    if (r) {
+                        const user = r.user || (await fetchMe(r.token)).user;
+                        if (user) { persistToken(r.token); return { user, token: r.token }; }
+                    }
+                }
+                const n = await networkRefresh(token);
+                if (n) {
+                    const user = n.user || (await fetchMe(n.token)).user;
+                    if (user) { persistToken(n.token); return { user, token: n.token }; }
+                }
+            }
+            return null;
+        }
+        // No token anywhere — ask the page's own session endpoint if it has one
+        if (_config.sessionUrl) {
+            try {
+                const res = await fetch(_config.sessionUrl, { credentials: 'include' });
+                if (res.ok) {
+                    const data = await res.json();
+                    const user = (data && (data.user || data)) || null;
+                    if (user && (user.username || user.id)) return { user, token: null };
+                }
+            } catch { /* signed out */ }
+        }
+        return null;
+    }
+
+    let _authInFlight = null;
+
+    function refreshAuthState() {
+        if (_authInFlight) return _authInFlight;
+        _authInFlight = resolveSessionUser()
+            .then((session) => {
+                _authInFlight = null;
+                if (session && session.user) {
+                    _config.user = session.user;
+                    if (session.token) _config.token = session.token;
+                    render();
+                }
+                try {
+                    document.dispatchEvent(new CustomEvent('openvibe-navbar-auth', {
+                        detail: { user: session ? session.user : null, token: session ? session.token : null },
+                    }));
+                } catch { /* non-DOM environment */ }
+                return session ? session.user : null;
+            })
+            .catch(() => { _authInFlight = null; return null; });
+        return _authInFlight;
     }
 
     function escapeAttr(value) {
@@ -497,8 +699,8 @@
         const u = _config.user;
         const accounts = getAccounts();
         const isAnon = u && u.is_anon;
-        const loginHref = `https://openvibe.network/login?return=${encodeURIComponent(window.location.href)}`;
-        const addAccountHref = `https://openvibe.network/login?add_account=1&return=${encodeURIComponent(window.location.href)}`;
+        const loginHref = resolveLoginHref(currentHost(), window.location.href);
+        const addAccountHref = `${_config.apiBase}/login?add_account=1&return=${encodeURIComponent(window.location.href)}`;
 
         nav.innerHTML = `
             <a class="openvibe-navbar-brand" href="${brandHref}">
@@ -588,12 +790,16 @@
                 dropdown.classList.remove('open');
                 if (_config.onLogout) _config.onLogout();
                 else {
-                    document.cookie = 'ov_token=;path=/;max-age=0';
-                    document.cookie = 'ov_token=;path=/;max-age=0;domain=.openvibe.tools';
-                    localStorage.removeItem('ov_token');
-                    localStorage.removeItem('openvibe_anon_token');
-                    localStorage.removeItem('openvibe_active_account');
-                    window.location.reload();
+                    clearAuthState();
+                    _config.user = null;
+                    _config.token = null;
+                    if (onToolsDomain()) {
+                        // The gateway also clears the Domain=.openvibe.tools cookie
+                        // and the httpOnly refresh cookie, then sends us back here.
+                        window.location.href = `https://${TOOLS_APEX}/auth/logout?next=${encodeURIComponent(window.location.href)}`;
+                    } else {
+                        window.location.reload();
+                    }
                 }
             });
         } else {
@@ -621,8 +827,18 @@
         init(opts = {}) {
             Object.assign(_config, opts);
             injectStyles();
-            return render();
+            const el = render();
+            // Pages that hand us a resolved user (openvibe.network, the tools
+            // gateway hub) keep full control. Everyone else — pages that pass
+            // only a token, or nothing at all — gets the user resolved from
+            // the shared SSO state (ov_token cookie / localStorage / optional
+            // sessionUrl) and the navbar re-renders when it arrives.
+            if (!_config.user) refreshAuthState();
+            return el;
         },
+
+        /** Re-resolve the signed-in user from the shared SSO state. */
+        refreshAuth() { return refreshAuthState(); },
 
         /** Update user (after account switch). */
         setUser(user) {
@@ -642,6 +858,18 @@
         destroy() {
             _navEl?.remove();
             _navEl = null;
+        },
+
+        /** Internal auth helpers — exposed for tests, not a public API. */
+        _auth: {
+            parseCookieToken,
+            onToolsDomain,
+            onNetworkDomain,
+            resolveLoginHref,
+            resolveToken,
+            resolveSessionUser,
+            clearAuthState,
+            persistToken,
         },
     };
 
