@@ -191,6 +191,11 @@ function deleteClip(clipId, opts = {}) {
     return request('DELETE', `/clips/${clipId}`, opts);
 }
 
+/** Ask Media to re-cut a clip whose cut failed. */
+function recutClip(clipId, opts = {}) {
+    return request('POST', `/clips/${clipId}/recut`, opts);
+}
+
 // ── Pastes ───────────────────────────────────────────────────────────────────
 
 /**
@@ -330,7 +335,7 @@ module.exports = {
     uploadVodChunk, completeVodChunks, finalizeVod,
     getVod, listVods, updateVod, deleteVod,
     // clips
-    createClip, getClip, listClips, updateClip, deleteClip,
+    createClip, getClip, listClips, updateClip, deleteClip, recutClip,
     // pastes
     createPaste, getPaste, listPastes, deletePaste,
     // files + thumbnails

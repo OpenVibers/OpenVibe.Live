@@ -6788,6 +6788,20 @@ function _startClipCooldownUI(btn) {
 }
 
 /* ── Clip Player ──────────────────────────────────────────────── */
+/** Ask the server to re-render a clip whose cut failed, then resume polling. */
+async function recutClip(clipId) {
+    const note = document.getElementById('clp-processing-note');
+    if (note) note.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="font-size:2rem;color:var(--accent)"></i><p class="muted">Re-cutting…</p>';
+    try {
+        await api(`/clips/${clipId}/recut`, { method: 'POST' });
+        toast('Re-cutting the clip — this page will update when it is ready', 'info');
+        setTimeout(() => { if (window._clpClipId === clipId) loadClipPlayer(clipId); }, 3000);
+    } catch (e) {
+        toast(e.message, 'error');
+        if (window._clpClipId === clipId) loadClipPlayer(clipId);
+    }
+}
+
 async function loadClipPlayer(clipId) {
     try {
         // Clean up chat replay
@@ -6880,23 +6894,34 @@ async function loadClipPlayer(clipId) {
         clearTimeout(window._clpProcessingPoll);
         { const _n = document.getElementById('clp-processing-note'); if (_n) _n.remove(); }
         if (!cl.file_path && (cl.status || 'processing') !== 'ready') {
-            // Server is still cutting this clip — show progress instead of a black
-            // player, and poll until it's ready.
+            // A clip with no file is either still being cut or the cut FAILED. These used
+            // to render identically — a failed clip showed "the server is cutting your
+            // clip" and polled forever, which is why hours-old broken clips still claimed
+            // to be in progress. Tell the truth, and offer a retry.
+            const failed = String(cl.status || '') === 'failed';
             video.style.display = 'none';
             const container = document.getElementById('clp-container');
             if (container) {
                 const note = document.createElement('div');
                 note.id = 'clp-processing-note';
                 note.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;gap:12px;color:var(--text-muted,#999)';
-                note.innerHTML = `
+                note.innerHTML = failed ? `
+                    <i class="fa-solid fa-triangle-exclamation" style="font-size:2.5rem;color:var(--danger,#e74c3c)"></i>
+                    <p style="font-size:1.05rem;font-weight:600">This clip failed to render</p>
+                    <p class="muted" style="font-size:0.85rem">The server couldn't cut it from the recording.</p>
+                    <button class="btn btn-sm btn-outline" onclick="recutClip(${cl.id})"><i class="fa-solid fa-rotate-right"></i> Try again</button>` : `
                     <i class="fa-solid fa-scissors fa-bounce" style="font-size:2.5rem;color:var(--accent)"></i>
                     <p style="font-size:1.05rem;font-weight:600">Clip is processing…</p>
                     <p class="muted" style="font-size:0.85rem">The server is cutting your clip — this page will update automatically.</p>`;
                 container.appendChild(note);
             }
-            window._clpProcessingPoll = setTimeout(() => {
-                if (window._clpClipId === cl.id) loadClipPlayer(cl.id);
-            }, 3000);
+            // Only poll while it is genuinely in progress; polling a failed clip forever
+            // was pure noise.
+            if (!failed) {
+                window._clpProcessingPoll = setTimeout(() => {
+                    if (window._clpClipId === cl.id) loadClipPlayer(cl.id);
+                }, 3000);
+            }
         }
         if (cl.file_path) {
             const filename = cl.file_path.split('/').pop();
