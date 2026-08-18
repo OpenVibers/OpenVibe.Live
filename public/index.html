@@ -4631,6 +4631,31 @@ curl -f -o now.jpg https://openvibe.media/live/@Goosely/frame.jpg &amp;&amp; ech
 
 # 320px-wide preview for a status page — shows the OFFLINE card automatically when not live
 &lt;img src="https://openvibe.media/live/whip/frame.jpg?w=320"&gt;</code></pre>
+
+<h3>Transcript &amp; AI Timeline API — <code>openvibe.media/live/:selector/transcript.json</code></h3>
+<p>The full <strong>audio transcription log</strong> and <strong>AI overview timeline</strong> for a stream slot or streamer — same selector grammar as the frame API, JSON out, no auth, CORS-open, cached <strong>30s</strong> (that cache is the rate limit).</p>
+<table class="doc-table">
+<thead><tr><th>Selector</th><th>Example</th><th>Scope</th></tr></thead>
+<tbody>
+<tr><td>Slot id / slug</td><td><code>/live/whip/transcript.json</code></td><td>That slot's sessions (slugs resolve while live; ids always work)</td></tr>
+<tr><td>@username</td><td><code>/live/@Goosely/transcript.json</code></td><td>All that streamer's sessions across slots — <strong>works while offline too</strong></td></tr>
+</tbody>
+</table>
+<p>Response: <code>{ live, current, sessions[], streamer, user }</code> &mdash; <code>current</code> is the in-progress recording when live; each session carries <code>ai_overview</code>, <code>transcript</code> (plain-text audio transcription), <code>duration_seconds</code>, <code>created_at</code>; <code>streamer</code> holds the AI streamer overview plus recent stream-memory moments (the AI timeline). <code>?limit=1..50</code> sessions (default 10).</p>
+
+<h3>VOD Transcript API — <code>openvibe.media/v/:vodId/transcript.json</code></h3>
+<p>The same transcription + AI overview data for one <strong>existing VOD id</strong>: <code>{ vod_id, title, duration_seconds, ai_overview, transcript, ai_analyzed_at }</code>. Private VODs return <code>404</code>. Cached 30s, CORS-open.</p>
+
+<h3>Chat Insight API — <code>openvibe.media/live/:user/chat-insight.json</code></h3>
+<p>A user's <strong>chat-related AI insight and timeline</strong> to feed bots/dashboards: <code>:user</code> is <code>@username</code> or a numeric user id. Returns <code>{ user, chat_insight, streamer }</code> &mdash; <code>chat_insight</code> has today-vs-all-time chat overviews, condensed memory, and an event timeline; <code>streamer</code> adds the streamer overview + stream memories when they also stream. Cached 30s, CORS-open.</p>
+<pre><code># What has Goosely's stream been about? (overviews + transcripts)
+curl -s https://openvibe.media/live/@Goosely/transcript.json | jq ".sessions[0].ai_overview"
+
+# Transcript of one specific VOD
+curl -s https://openvibe.media/v/2028/transcript.json | jq ".transcript"
+
+# Feed a chatter's AI insight into your bot
+curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insight"</code></pre>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════ -->
