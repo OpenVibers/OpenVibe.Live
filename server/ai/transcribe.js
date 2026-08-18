@@ -26,6 +26,22 @@ const CANDIDATE_BINS = [
 ].filter(Boolean);
 const MODEL = process.env.WHISPER_MODEL || path.join(HOME, 'whisper.cpp/models/ggml-base.en.bin');
 const THREADS = Math.max(2, Math.min(8, parseInt(process.env.WHISPER_THREADS, 10) || 4));
+
+// ── Voice Activity Detection ──────────────────────────────────────────────
+// Measured on 60s of real stream audio: VAD cut large-v3-turbo from 51.0s to 24.0s
+// AND removed a trailing "Thank you." hallucination. Both effects matter, and the
+// second one matters more than the speedup.
+//
+// This stream is only ~13% speech (VAD found 7.9s of speech in 60s). Without VAD the
+// decoder is handed 87% silence and invents text over it — "you", "Thank you.",
+// "[BLANK_AUDIO]", "Bye!" — which is exactly what the HALLUCINATIONS blocklist below
+// exists to delete. VAD removes the cause rather than filtering the symptom, so the
+// decoder only ever sees regions that actually contain a voice.
+const VAD_MODEL = process.env.WHISPER_VAD_MODEL || path.join(HOME, 'whisper.cpp/models/ggml-silero-v5.1.2.bin');
+function vadModel() {
+    if (process.env.WHISPER_VAD === '0') return null;      // explicit opt-out
+    try { return fs.existsSync(VAD_MODEL) ? VAD_MODEL : null; } catch { return null; }
+}
 // Default to greedy decoding (whisper.cpp default) — proven to transcribe speech
 // reliably here. Beam search (WHISPER_BEAM>1) sometimes collapses real speech into a
 // non-speech tag like "[Crowd noise]", so it's opt-in only.
@@ -73,12 +89,21 @@ function setLowPower(v) { _lowPower = !!v; }
 function _threads() { return _lowPower ? Math.max(1, Math.min(2, THREADS)) : THREADS; }
 
 // Phrases whisper commonly hallucinates over silence / music / non-speech.
+// Always-drop: whisper's stock inventions over non-speech. These are never worth keeping
+// even when VAD says a voice is present, because they are the model's filler, not words.
 const HALLUCINATIONS = new Set([
-    'you', 'thank you', 'thank you.', 'thanks for watching', 'thanks for watching!',
+    'thank you', 'thank you.', 'thanks for watching', 'thanks for watching!',
     'thanks for watching.', 'please subscribe', 'subscribe', 'like and subscribe',
-    'bye', 'bye.', 'bye bye', 'okay', 'ok', 'oh', 'uh', 'um', 'hmm', 'mm', 'mhm',
-    'the', 'so', 'yeah', '.', '...', 'thank you for watching', 'thank you very much',
-    'thank you so much', 'i\'m sorry', 'silence', 'music', 'applause',
+    'thank you for watching', 'thank you very much',
+    'thank you so much', 'silence', 'music', 'applause',
+]);
+// Drop-only-without-VAD: these ARE real words a streamer says constantly. They were on the
+// blocklist because, with the decoder run over 87% silence, they were overwhelmingly
+// hallucinations — six of ten sampled 12s slices produced a bare "you". Once Silero gates
+// the decoder to actual speech regions, deleting them throws away genuine transcript.
+const FILLER_WORDS = new Set([
+    'you', 'bye', 'bye.', 'bye bye', 'okay', 'ok', 'oh', 'uh', 'um', 'hmm', 'mm', 'mhm',
+    'the', 'so', 'yeah', 'i\'m sorry',
 ]);
 function _isNoise(t) {
     const s = (t || '').replace(/\s+/g, ' ').trim();
@@ -88,7 +113,9 @@ function _isNoise(t) {
     if (/^[\[(♪].*[\])♪]?$/.test(s)) return true;
     if (/^♪/.test(s) || /♪$/.test(s)) return true;
     const norm = s.toLowerCase().replace(/[.!?,…]+$/g, '').trim();
-    return HALLUCINATIONS.has(norm);
+    if (HALLUCINATIONS.has(norm)) return true;
+    if (!vadModel() && FILLER_WORDS.has(norm)) return true;
+    return false;
 }
 
 // Clean a raw segment list: drop noise + collapse immediate repeats.
@@ -127,6 +154,10 @@ function transcribeWavDetailed(wavPath, { timeoutMs = 180000, offsetSec = 0 } = 
         const jsonPath = `${outBase}.json`;
         const args = ['-m', MODEL, '-f', wavPath, '-oj', '-of', outBase, '-t', String(_threads()), '-l', 'en'];
         if (BEAM > 1) args.push('-bs', String(BEAM));
+        // Decode only the regions Silero says contain a voice. Segment timestamps stay in
+        // absolute file time, so the {start,end} contract is unchanged for every caller.
+        const vm = vadModel();
+        if (vm) args.push('--vad', '-vm', vm);
         let ff;
         try { ff = _track(spawn(bin, args, { stdio: 'ignore' })); }
         catch (e) { return resolve({ text: '', segments: [], ok: false, error: e.message }); }

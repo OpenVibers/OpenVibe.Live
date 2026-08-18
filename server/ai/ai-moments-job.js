@@ -120,7 +120,14 @@ function _momentContext(streamId, vodId) {
     const transcript = _sample(db.getStreamTranscriptSegments(streamId) || [], 60);
     const clipTimes = db.getClipStartTimesForStream(streamId, vodId) || [];
     const spikes = db.getChatSpikeOffsets(streamId, 30, 8) || [];
-    return { memories, transcript, clipTimes, spikes };
+    // Non-speech sounds are strong moment candidates — an explosion or a burst of
+    // laughter marks a highlight as reliably as anything said out loud.
+    let sounds = [];
+    try {
+        sounds = _sample((db.getTimeline(streamId, { kind: 'sound', limit: 400 }) || [])
+            .filter(e => Number(e.confidence || 0) >= 0.45), 30);
+    } catch { /* timeline optional */ }
+    return { memories, transcript, clipTimes, spikes, sounds };
 }
 function _nearestMemory(memories, offset) {
     let best = null, bestD = Infinity;
@@ -136,6 +143,7 @@ async function _findBestMoment(vod) {
     if (_aiOn()) {
         const timeline = ctx.memories.map(m => `[${_mmss(m.offset_seconds)}] ${_cleanText(_deJson(m.description), 180)}`).join('\n');
         const script = ctx.transcript.map(s => `[${_mmss(s.start)}] ${_cleanText(s.text, 160)}`).join('\n');
+        const soundLine = (ctx.sounds || []).map(e => `[${_mmss(e.start_sec || 0)}] ${e.label}`).join('\n');
         const clipHint = ctx.clipTimes.length ? ctx.clipTimes.slice(0, 12).map(_mmss).join(', ') : 'none';
         const spikeHint = ctx.spikes.length ? ctx.spikes.slice(0, 6).map(s => _mmss(s.offset)).join(', ') : 'none';
         const prompt = `Below is a single livestream VOD titled "${_cleanText(vod.title, 80)}", described by its on-screen TIMELINE (visual scene notes) and its AUDIO TRANSCRIPT, each line timestamped [m:ss].
@@ -145,6 +153,9 @@ ${timeline || '(none)'}
 
 TRANSCRIPT:
 ${script || '(none)'}
+
+SOUNDS HEARD (non-speech audio events):
+${soundLine || '(none)'}
 
 Viewers CLIPPED these timestamps (very strong "this was a highlight" signal): ${clipHint}
 Chat activity SPIKED around: ${spikeHint}

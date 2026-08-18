@@ -235,7 +235,14 @@ router.get('/transcript/:streamId', async (req, res) => {
                 vodId = v ? v.id : null; // legacy pre-migration rows
             } catch { /* */ }
         }
-        res.json({ streamId: sid, vodId, segments });
+        // Sound events ride alongside the speech segments so the transcript view can show
+        // "what was heard" as well as "what was said". Empty for streams captured before
+        // the timeline existed, which the frontend treats as speech-only.
+        let events = [];
+        try { events = db.getTimeline(sid, { kind: 'sound', limit: 2000 }) || []; } catch { /* */ }
+        let coverageSec = 0;
+        try { coverageSec = db.getTimelineCoverage(sid) || 0; } catch { /* */ }
+        res.json({ streamId: sid, vodId, segments, events, coverageSec });
     } catch (err) {
         res.status(500).json({ error: 'Failed to load transcript' });
     }

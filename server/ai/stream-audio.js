@@ -64,7 +64,11 @@ function formatFmtp(params) {
         .join(';');
 }
 
-async function captureWebrtc(stream, seconds) {
+// Open a long-lived mediasoup PlainRTP consumer on the stream's audio producer and write
+// the SDP ffmpeg needs to decode it. Shared by the one-shot chunk grab and the continuous
+// capture, so there is exactly one copy of the SDP construction.
+// Returns { sdpPath, cleanup } or null.
+async function _prepareWebrtcSource(stream) {
     let webrtcSFU;
     try { webrtcSFU = require('../streaming/webrtc-sfu'); } catch { return null; }
     const roomId = `stream-${stream.id}`;
@@ -115,7 +119,6 @@ async function captureWebrtc(stream, seconds) {
     sdpLines.push('');
     const sdpContent = sdpLines.join('\r\n');
     const sdpPath = path.join(os.tmpdir(), `openvibe-aihear-${stream.id}-${Date.now()}.sdp`);
-    const out = tmpWav(stream.id);
 
     const cleanup = () => {
         try { webrtcSFU.closePlainConsumer(roomId, consumer.transportId); } catch {}
@@ -124,18 +127,36 @@ async function captureWebrtc(stream, seconds) {
 
     try { fs.writeFileSync(sdpPath, sdpContent, 'utf8'); }
     catch { cleanup(); return null; }
+    return { sdpPath, cleanup };
+}
+
+// Common ffmpeg input flags for reading an RTP/SDP source. Tolerant of the packet loss and
+// timestamp weirdness that shows up on a live ingest.
+const SDP_INPUT_ARGS = [
+    '-protocol_whitelist', 'file,rtp,udp',
+    '-thread_queue_size', '2048',
+    '-analyzeduration', '5000000', '-probesize', '5000000',
+    '-use_wallclock_as_timestamps', '1',
+    '-fflags', '+genpts+discardcorrupt+igndts',
+    '-err_detect', 'ignore_err',
+];
+
+// Loudness normalisation. Measured capture level on this stream was mean -32.8dB /
+// max -4.4dB — plenty of headroom but a low average, which is exactly the signal a
+// recogniser struggles with. loudnorm brought a real 60s clip from -31.1dB to -26.2dB.
+const LOUDNORM = 'loudnorm=I=-16:TP=-1.5:LRA=11';
+
+async function captureWebrtc(stream, seconds) {
+    const src = await _prepareWebrtcSource(stream);
+    if (!src) return null;
+    const { sdpPath, cleanup } = src;
+    const out = tmpWav(stream.id);
 
     const ok = await runFfmpeg([
-        '-y',
-        '-protocol_whitelist', 'file,rtp,udp',
-        '-thread_queue_size', '2048',
-        '-analyzeduration', '5000000', '-probesize', '5000000',
-        '-use_wallclock_as_timestamps', '1',
-        '-fflags', '+genpts+discardcorrupt+igndts',
-        '-err_detect', 'ignore_err',
+        '-y', ...SDP_INPUT_ARGS,
         '-i', sdpPath,
         '-t', String(seconds),
-        '-vn', '-ac', '1', '-ar', '16000',
+        '-vn', '-ac', '1', '-ar', '16000', '-af', LOUDNORM,
         '-f', 'wav', out,
     ], (seconds + 12) * 1000);
 
@@ -186,4 +207,135 @@ async function captureAudioChunk(stream, seconds = 12) {
     }
 }
 
-module.exports = { captureAudioChunk };
+// ── Continuous capture ────────────────────────────────────────────────────────────────
+// The old model grabbed a 12s chunk every 120s. Measured against real stream audio that
+// captures almost nothing: the stream is only ~13% speech, so sampling 10% of wall-clock
+// caught roughly 1% of what was actually said — six of ten sampled slices contained no
+// speech at all and produced only a bare "you", which the noise filter then deleted.
+//
+// Instead run ONE long-lived ffmpeg per stream that writes rolling WAV segments. Latency
+// is explicitly not a concern here, so segments are consumed behind live at low priority.
+// Cost is bounded by VAD: only the ~13% of audio containing a voice reaches the decoder.
+const SEGMENT_SEC = Math.max(10, Math.min(120, parseInt(process.env.AI_HEAR_SEGMENT_SEC, 10) || 30));
+const SPOOL_ROOT = path.join(__dirname, '../../data/asr');
+// Hard cap on spooled audio per stream. The box has ~34GB free on a filesystem that
+// openvibe.media is actively growing into, so an unbounded spool is not an option.
+const MAX_SPOOL_FILES = Math.max(4, parseInt(process.env.AI_HEAR_MAX_SPOOL, 10) || 40);
+
+const _capturing = new Map();   // streamId -> { ff, dir, cleanup, seq }
+
+function spoolDir(streamId) { return path.join(SPOOL_ROOT, String(streamId)); }
+
+function isCapturing(streamId) { return _capturing.has(streamId); }
+
+/**
+ * Start continuous audio capture for a live stream. Idempotent.
+ * Segments land in data/asr/<streamId>/seg-NNNNNN.wav, each SEGMENT_SEC long, already
+ * 16kHz mono and loudness-normalised — i.e. exactly what the recogniser wants.
+ * @returns {Promise<boolean>} true if capture is running
+ */
+async function startContinuousCapture(stream) {
+    if (!stream || !stream.id) return false;
+    if (_capturing.has(stream.id)) return true;
+
+    const dir = spoolDir(stream.id);
+    try { fs.mkdirSync(dir, { recursive: true }); } catch { return false; }
+
+    // Resolve an input the same way the one-shot grab does: WHIP/WebRTC via a plain RTP
+    // consumer, RTMP via the local HTTP-FLV output.
+    let inputArgs = null;
+    let cleanup = () => {};
+    const src = await _prepareWebrtcSource(stream).catch(() => null);
+    if (src) {
+        inputArgs = [...SDP_INPUT_ARGS, '-i', src.sdpPath];
+        cleanup = src.cleanup;
+    } else {
+        const streamKey = resolveStreamKey(stream);
+        if (!streamKey) return false;
+        inputArgs = ['-thread_queue_size', '2048', '-i', `http://127.0.0.1:${FLV_PORT}/live/${streamKey}.flv`];
+    }
+
+    const args = [
+        '-y', ...inputArgs,
+        '-vn', '-ac', '1', '-ar', '16000', '-af', LOUDNORM,
+        '-f', 'segment', '-segment_time', String(SEGMENT_SEC),
+        '-reset_timestamps', '0',          // keep timestamps continuous across segments
+        '-segment_format', 'wav',
+        '-strftime', '0',
+        path.join(dir, 'seg-%06d.wav'),
+    ];
+
+    let ff;
+    try { ff = spawn('ffmpeg', args, { stdio: 'ignore' }); }
+    catch { cleanup(); return false; }
+
+    const entry = { ff, dir, cleanup, startedAt: Date.now() };
+    _capturing.set(stream.id, entry);
+    const onExit = () => {
+        if (_capturing.get(stream.id) === entry) _capturing.delete(stream.id);
+        try { cleanup(); } catch { /* */ }
+    };
+    ff.on('close', onExit);
+    ff.on('error', onExit);
+    console.log(`[AI-Hear] stream ${stream.id}: continuous capture started (${SEGMENT_SEC}s segments → ${dir})`);
+    return true;
+}
+
+function stopContinuousCapture(streamId) {
+    const entry = _capturing.get(streamId);
+    if (!entry) return false;
+    _capturing.delete(streamId);
+    try { entry.ff.kill('SIGKILL'); } catch { /* */ }
+    try { entry.cleanup(); } catch { /* */ }
+    console.log(`[AI-Hear] stream ${streamId}: continuous capture stopped`);
+    return true;
+}
+
+function stopAllCaptures() {
+    let n = 0;
+    for (const id of [..._capturing.keys()]) { if (stopContinuousCapture(id)) n++; }
+    return n;
+}
+
+/**
+ * List finished segments awaiting transcription, oldest first.
+ * The most recent file is skipped — ffmpeg is still writing to it.
+ * Each entry carries the absolute offset (seconds into the stream) its audio starts at,
+ * derived from the segment index, so timeline timestamps stay correct.
+ */
+function pendingSegments(streamId) {
+    const dir = spoolDir(streamId);
+    let names;
+    try { names = fs.readdirSync(dir).filter(n => /^seg-\d{6}\.wav$/.test(n)).sort(); }
+    catch { return []; }
+    if (names.length <= 1) return [];      // newest is still being written
+    const ready = names.slice(0, -1);
+    // Drop the oldest if the spool has run away (slow transcriber / very long stream).
+    const overflow = Math.max(0, ready.length - MAX_SPOOL_FILES);
+    for (let i = 0; i < overflow; i++) {
+        try { fs.unlinkSync(path.join(dir, ready[i])); } catch { /* */ }
+    }
+    return ready.slice(overflow).map(name => ({
+        name,
+        path: path.join(dir, name),
+        index: parseInt(name.slice(4, 10), 10),
+        offsetSec: parseInt(name.slice(4, 10), 10) * SEGMENT_SEC,
+    }));
+}
+
+function discardSegment(streamId, name) {
+    try { fs.unlinkSync(path.join(spoolDir(streamId), name)); return true; } catch { return false; }
+}
+
+/** Remove a stream's whole spool directory (call when the stream ends). */
+function purgeSpool(streamId) {
+    try { fs.rmSync(spoolDir(streamId), { recursive: true, force: true }); return true; }
+    catch { return false; }
+}
+
+module.exports = {
+    captureAudioChunk,
+    startContinuousCapture, stopContinuousCapture, stopAllCaptures, isCapturing,
+    pendingSegments, discardSegment, purgeSpool, spoolDir,
+    SEGMENT_SEC,
+};

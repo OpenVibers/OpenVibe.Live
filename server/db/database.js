@@ -883,6 +883,7 @@ function initDb() {
             ['ai_stream_memory_enabled', 'false', 'Periodically analyze live-stream thumbnails into timestamped memories', 'boolean'],
             ['ai_stream_capture_interval_sec', '120', 'Seconds between live-stream AI memory captures', 'number'],
             ['ai_transcription_enabled', 'true', 'Transcribe live-stream/clip/VOD audio into memories — FREE, runs locally via whisper.cpp (no API/cost). Requires whisper.cpp installed on the server', 'boolean'],
+            ['ai_timeline_enabled', 'false', 'CONTINUOUS audio timeline — transcribes the WHOLE live stream (not a 12s sample every 2min) and detects non-speech sounds, into a searchable timestamped timeline. FREE/local, but uses noticeably more CPU than sampling', 'boolean'],
             ['ai_max_cost_usd_per_day', '0', 'Daily AI spend cap in USD (0 = no cap)', 'number'],
             ['ai_input_cost_per_mtok', '3.0', 'Estimated input cost per million tokens (for cost breakdown)', 'number'],
             ['ai_output_cost_per_mtok', '15.0', 'Estimated output cost per million tokens (for cost breakdown)', 'number'],
@@ -922,6 +923,31 @@ function initDb() {
             FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE CASCADE
         )`);
         database.exec('CREATE INDEX IF NOT EXISTS idx_stream_memories_stream ON stream_memories(stream_id, offset_seconds)');
+
+        // ── Unified audio timeline ───────────────────────────────────────────────
+        // One time-indexed row per thing heard on a stream: a phrase that was spoken
+        // ('speech') or a non-speech sound that was recognised ('sound'). Replaces the
+        // old arrangement where transcript segments were buried inside a per-memory JSON
+        // blob, which meant timestamps were unusable for anything but display — of ~10
+        // consumers only ai-moments-job actually read them, and getStreamTranscriptSegments
+        // discarded `end` entirely.
+        database.exec(`CREATE TABLE IF NOT EXISTS stream_timeline_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            stream_id INTEGER NOT NULL,
+            user_id INTEGER,
+            vod_id INTEGER,                         -- set once the session becomes a VOD
+            kind TEXT NOT NULL,                     -- 'speech' | 'sound'
+            start_sec REAL NOT NULL,                -- absolute seconds into the stream
+            end_sec REAL,
+            text TEXT,                              -- speech content
+            label TEXT,                             -- sound event label
+            confidence REAL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE CASCADE
+        )`);
+        database.exec('CREATE INDEX IF NOT EXISTS idx_timeline_stream ON stream_timeline_events(stream_id, start_sec)');
+        database.exec('CREATE INDEX IF NOT EXISTS idx_timeline_kind ON stream_timeline_events(stream_id, kind, start_sec)');
+        database.exec('CREATE INDEX IF NOT EXISTS idx_timeline_vod ON stream_timeline_events(vod_id, start_sec)');
 
         database.exec(`CREATE TABLE IF NOT EXISTS ai_usage (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2712,7 +2738,80 @@ function countStreamMemoriesByUser(userId) {
 
 // Flattened audio-transcript segments for a whole stream (from its memories), ordered by time.
 // Used by the AI Timeline transcript viewer; each segment deep-links to the VOD at its start.
+// ── Timeline accessors ────────────────────────────────────────────────────────
+/**
+ * Bulk-insert timeline rows.
+ * @param {Array<{stream_id,user_id?,vod_id?,kind,start_sec,end_sec?,text?,label?,confidence?}>} rows
+ */
+function addTimelineEvents(rows) {
+    if (!Array.isArray(rows) || !rows.length) return 0;
+    const stmt = db.prepare(`INSERT INTO stream_timeline_events
+        (stream_id, user_id, vod_id, kind, start_sec, end_sec, text, label, confidence)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const tx = db.transaction((list) => {
+        for (const r of list) {
+            if (!r || !r.stream_id || !r.kind || r.start_sec == null) continue;
+            stmt.run(r.stream_id, r.user_id || null, r.vod_id || null, r.kind,
+                Number(r.start_sec) || 0, r.end_sec == null ? null : Number(r.end_sec),
+                r.text || null, r.label || null, r.confidence == null ? null : Number(r.confidence));
+        }
+    });
+    try { tx(rows); return rows.length; } catch { return 0; }
+}
+
+/** Read a stream's timeline, optionally filtered by kind and time window. */
+function getTimeline(streamId, { kind = null, from = null, to = null, limit = 5000 } = {}) {
+    let sql = 'SELECT kind, start_sec, end_sec, text, label, confidence FROM stream_timeline_events WHERE stream_id = ?';
+    const params = [streamId];
+    if (kind) { sql += ' AND kind = ?'; params.push(kind); }
+    if (from != null) { sql += ' AND start_sec >= ?'; params.push(Number(from)); }
+    if (to != null) { sql += ' AND start_sec <= ?'; params.push(Number(to)); }
+    sql += ' ORDER BY start_sec ASC LIMIT ?';
+    params.push(Math.max(1, Math.min(20000, limit)));
+    try { return all(sql, params); } catch { return []; }
+}
+
+/** Flat transcript text for a stream, speech rows only, in time order. */
+function getTimelineText(streamId) {
+    try {
+        return getTimeline(streamId, { kind: 'speech' })
+            .map(r => String(r.text || '').trim()).filter(Boolean).join(' ');
+    } catch { return ''; }
+}
+
+/** How many seconds of a stream the timeline actually covers (union of speech spans). */
+function getTimelineCoverage(streamId) {
+    const rows = getTimeline(streamId, { kind: 'speech' });
+    let covered = 0, lastEnd = -1;
+    for (const r of rows) {
+        const st = Number(r.start_sec) || 0;
+        const en = r.end_sec == null ? st : Number(r.end_sec);
+        if (en <= lastEnd) continue;
+        covered += en - Math.max(st, lastEnd);
+        lastEnd = en;
+    }
+    return Math.round(covered);
+}
+
+/** Attach a vod_id to a finished stream's rows so VOD views can reuse the timeline. */
+function linkTimelineToVod(streamId, vodId) {
+    try { return run('UPDATE stream_timeline_events SET vod_id = ? WHERE stream_id = ? AND vod_id IS NULL', [vodId, streamId]); }
+    catch { return null; }
+}
+
 function getStreamTranscriptSegments(streamId) {
+    // Prefer the timeline when it has rows — it keeps `end` and covers the whole stream.
+    // Fall back to the legacy per-memory blobs so old streams keep rendering; no migration.
+    try {
+        const tl = getTimeline(streamId, { kind: 'speech' });
+        if (tl.length) {
+            return tl.map(r => ({
+                start: Math.floor(Number(r.start_sec) || 0),
+                end: r.end_sec == null ? null : Math.round(Number(r.end_sec) * 100) / 100,
+                text: String(r.text || '').trim(),
+            })).filter(s => s.text);
+        }
+    } catch { /* fall through to legacy */ }
     const out = [];
     try {
         const rows = all('SELECT offset_seconds, transcript_json FROM stream_memories WHERE stream_id = ? AND transcript_json IS NOT NULL ORDER BY offset_seconds ASC', [streamId]);
@@ -7172,6 +7271,7 @@ module.exports = {
     setVodTranscriptStatus, setClipTranscriptStatus, bumpVodTranscriptAttempt, bumpClipTranscriptAttempt,
     updatePasteAi, cleanupMalformedAiText,  recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
     getStreamMemoriesByUser, countStreamMemoriesByUser, getAiMomentCandidates, getStreamTranscriptSegments, getUserPastesForAi,
+    addTimelineEvents, getTimeline, getTimelineText, getTimelineCoverage, linkTimelineToVod,
     getVodsForMomentRanking, getClipStartTimesForStream, getChatSpikeOffsets,
      getLiveChatBuckets, getRecentChatText, getVodsWithoutAutoClip, 
     upsertStreamerOverview, getStreamerOverview, getAllStreamerOverviews, getStreamersNeedingOverview,
