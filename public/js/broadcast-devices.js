@@ -83,17 +83,26 @@ async function populateDeviceLists() {
         const preDevices = await navigator.mediaDevices.enumerateDevices();
         const alreadyHaveLabels = preDevices.some(d => d.label);
         if (!alreadyHaveLabels) {
-            try {
-                tempStream = await _getUserMediaWithTimeout({ audio: true, video: true }, 8000);
-            } catch {
-                // Separate fallback for Android
+            // Ask for camera and mic SEPARATELY, each behind its own explainer, instead of
+            // firing one combined {audio,video} prompt with no warning. A combined request
+            // is also all-or-nothing: denying the camera used to cost the microphone too,
+            // which left the streamer with no audio and no clue why.
+            if (window.bcMediaSetup) {
+                await window.bcMediaSetup.request('mic').catch(() => null);
+                await window.bcMediaSetup.request('camera').catch(() => null);
+            } else {
                 try {
-                    tempStream = new MediaStream();
-                    const vs = await _getUserMediaWithTimeout({ video: true }, 6000).catch(() => null);
-                    const as = await _getUserMediaWithTimeout({ audio: true }, 6000).catch(() => null);
-                    if (vs) vs.getTracks().forEach(t => tempStream.addTrack(t));
-                    if (as) as.getTracks().forEach(t => tempStream.addTrack(t));
-                } catch {}
+                    tempStream = await _getUserMediaWithTimeout({ audio: true, video: true }, 8000);
+                } catch {
+                    // Separate fallback for Android
+                    try {
+                        tempStream = new MediaStream();
+                        const vs = await _getUserMediaWithTimeout({ video: true }, 6000).catch(() => null);
+                        const as = await _getUserMediaWithTimeout({ audio: true }, 6000).catch(() => null);
+                        if (vs) vs.getTracks().forEach(t => tempStream.addTrack(t));
+                        if (as) as.getTracks().forEach(t => tempStream.addTrack(t));
+                    } catch {}
+                }
             }
         }
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -105,7 +114,10 @@ async function populateDeviceLists() {
         devices.forEach(d => {
             const opt = document.createElement('option');
             opt.value = d.deviceId;
-            opt.textContent = d.label || `Device ${d.deviceId.slice(0, 8)}`;
+            // An empty label means we hold no permission for that KIND yet — the entry is
+            // a placeholder whose deviceId is blank, so selecting it captures the OS
+            // default. Re-run this after a grant rather than trying to relabel in place.
+            opt.textContent = d.label || `Device ${(d.deviceId || '').slice(0, 8) || 'unavailable'}`;
             if (d.kind === 'videoinput') camSelect.appendChild(opt);
             if (d.kind === 'audioinput') audioSelect.appendChild(opt.cloneNode(true));
         });
