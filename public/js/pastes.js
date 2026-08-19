@@ -213,6 +213,139 @@ function pastesSort(sort) {
     fetchPastes();
 }
 
+
+// ── Markdown rendering ──────────────────────────────────────────────────────────
+// A small self-contained renderer. Paste content is arbitrary user input, so the
+// order here is not negotiable: escape EVERYTHING first, then add markup. That way
+// no amount of HTML in the source can survive into the output, and the only tags in
+// the result are ones this function put there itself.
+function _mdEsc(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Only allow links we are happy to emit. Anything else (javascript:, data:, vbscript:)
+// renders as plain text instead of a link.
+function _mdSafeUrl(url) {
+    const u = String(url || '').trim();
+    if (/^(https?:\/\/|mailto:|\/|#)/i.test(u) && !/^javascript:/i.test(u)) return u;
+    return null;
+}
+
+function renderMarkdown(src) {
+    const text = String(src == null ? '' : src).replace(/\r\n?/g, '\n');
+
+    // Pull fenced code out first so its contents are never treated as markdown.
+    const fences = [];
+    let work = text.replace(/```([a-zA-Z0-9_+-]*)\n([\s\S]*?)```/g, (_m, lang, code) => {
+        fences.push('<pre class="md-pre"><code>' + _mdEsc(code.replace(/\n$/, '')) + '</code></pre>');
+        return ' FENCE' + (fences.length - 1) + ' ';
+    });
+
+    work = _mdEsc(work);   // everything below operates on escaped text
+
+    const inline = (s) => s
+        .replace(/`([^`\n]+)`/g, (_m, c) => '<code class="md-code">' + c + '</code>')
+        .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, url) => {
+            const safe = _mdSafeUrl(url.replace(/&amp;/g, '&'));
+            return safe ? '<img class="md-img" src="' + safe + '" alt="' + alt + '">' : m;
+        })
+        .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, label, url) => {
+            const safe = _mdSafeUrl(url.replace(/&amp;/g, '&'));
+            return safe ? '<a href="' + safe + '" target="_blank" rel="noopener noreferrer">' + label + '</a>' : m;
+        })
+        .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+        .replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+
+    const out = [];
+    let list = null;          // 'ul' | 'ol'
+    let para = [];
+    const closeList = () => { if (list) { out.push('</' + list + '>'); list = null; } };
+    const flushPara = () => {
+        if (para.length) { out.push('<p>' + inline(para.join(' ')) + '</p>'); para = []; }
+    };
+
+    const lines = work.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i];
+        const line = raw.trimEnd();
+        if (/^FENCE\d+$/.test(line.trim())) { flushPara(); closeList(); out.push(' ' + line.trim() + ' '); continue; }
+        if (!line.trim()) { flushPara(); closeList(); continue; }
+
+        // Tables: a header row followed by a |---|---| separator. Needs lookahead, which
+        // is why this loop is indexed rather than a for..of.
+        if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length &&
+            /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+            flushPara(); closeList();
+            const cells = (r) => r.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+            const aligns = cells(lines[i + 1]).map(c =>
+                /^:-+:$/.test(c) ? 'center' : /-+:$/.test(c) ? 'right' : 'left');
+            const head = cells(line);
+            const body = [];
+            let j = i + 2;
+            while (j < lines.length && /^\s*\|.*\|\s*$/.test(lines[j])) { body.push(cells(lines[j])); j++; }
+            const th = head.map((c, k) => '<th style="text-align:' + (aligns[k] || 'left') + '">' + inline(c) + '</th>').join('');
+            const rows = body.map(r =>
+                '<tr>' + r.map((c, k) => '<td style="text-align:' + (aligns[k] || 'left') + '">' + inline(c) + '</td>').join('') + '</tr>'
+            ).join('');
+            out.push('<table class="md-table"><thead><tr>' + th + '</tr></thead><tbody>' + rows + '</tbody></table>');
+            i = j - 1;
+            continue;
+        }
+
+        let m;
+        if ((m = line.match(/^(#{1,6})\s+(.*)$/))) {
+            flushPara(); closeList();
+            const lvl = m[1].length;
+            out.push('<h' + lvl + ' class="md-h">' + inline(m[2]) + '</h' + lvl + '>');
+        } else if (/^(---+|\*\*\*+|___+)$/.test(line.trim())) {
+            flushPara(); closeList(); out.push('<hr class="md-hr">');
+        } else if ((m = line.match(/^\s*&gt;\s?(.*)$/))) {
+            flushPara(); closeList(); out.push('<blockquote class="md-quote">' + inline(m[1]) + '</blockquote>');
+        } else if ((m = line.match(/^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/))) {
+            flushPara();
+            if (list !== 'ul') { closeList(); out.push('<ul class="md-list md-tasks">'); list = 'ul'; }
+            const done = m[1].toLowerCase() === 'x';
+            out.push('<li class="md-task"><input type="checkbox" disabled' + (done ? ' checked' : '') + '> ' + inline(m[2]) + '</li>');
+        } else if ((m = line.match(/^\s*[-*+]\s+(.*)$/))) {
+            flushPara();
+            if (list !== 'ul') { closeList(); out.push('<ul class="md-list">'); list = 'ul'; }
+            out.push('<li>' + inline(m[1]) + '</li>');
+        } else if ((m = line.match(/^\s*\d+\.\s+(.*)$/))) {
+            flushPara();
+            if (list !== 'ol') { closeList(); out.push('<ol class="md-list">'); list = 'ol'; }
+            out.push('<li>' + inline(m[1]) + '</li>');
+        } else {
+            closeList();
+            para.push(line.trim());
+        }
+    }
+    flushPara(); closeList();
+
+    // Restore the code fences last, so nothing above could have altered them.
+    return out.join('\n').replace(/ FENCE(\d+) /g, (_m, i) => fences[Number(i)] || '');
+}
+
+/** Flip a markdown paste between the rendered view and the raw source. */
+function togglePasteMarkdown() {
+    const rendered = document.getElementById('paste-md-rendered');
+    const raw = document.getElementById('paste-md-raw');
+    const btn = document.getElementById('paste-md-toggle');
+    if (!rendered || !raw) return;
+    const showRaw = rendered.style.display !== 'none';
+    rendered.style.display = showRaw ? 'none' : '';
+    raw.style.display = showRaw ? '' : 'none';
+    if (btn) {
+        btn.innerHTML = showRaw
+            ? '<i class="fa-solid fa-eye"></i> Rendered'
+            : '<i class="fa-solid fa-code"></i> Raw';
+        btn.title = showRaw ? 'Show formatted markdown' : 'Show raw markdown source';
+    }
+    try { localStorage.setItem('paste-md-raw', showRaw ? '1' : '0'); } catch { /* */ }
+}
+
 // ── View single paste ───────────────────────────────────────
 async function loadPasteViewer(slug) {
     const container = document.getElementById('paste-viewer-content');
@@ -297,18 +430,32 @@ async function loadPasteViewer(slug) {
             const lines = (p.content || '').split('\n');
             const lineNums = lines.map((_, i) => `<span>${i + 1}</span>`).join('\n');
             const highlighted = highlightSyntax(p.content || '', p.language || 'text');
+            // Markdown reads as a document, not as source, so render it by default and
+            // offer the raw text behind a toggle. The choice is remembered, because someone
+            // reading markdown as source usually wants that for the next one too.
+            const isMarkdown = String(p.language || '').toLowerCase() === 'markdown';
+            let mdRawPref = false;
+            try { mdRawPref = localStorage.getItem('paste-md-raw') === '1'; } catch { /* */ }
+            const mdToggle = isMarkdown ? `
+                        <button class="btn btn-outline btn-sm" id="paste-md-toggle" onclick="togglePasteMarkdown()"
+                                title="${mdRawPref ? 'Show formatted markdown' : 'Show raw markdown source'}">
+                            <i class="fa-solid ${mdRawPref ? 'fa-eye' : 'fa-code'}"></i> ${mdRawPref ? 'Rendered' : 'Raw'}
+                        </button>` : '';
             contentHtml = `
                 <div class="paste-code-view">
                     <div class="paste-code-header">
                         <span class="paste-code-lang"><i class="fa-solid fa-code"></i> ${escapeHtml(p.language || 'text')}</span>
                         <span class="paste-code-lines">${lines.length} line${lines.length !== 1 ? 's' : ''}</span>
                         <div class="paste-code-actions">
+                            ${mdToggle}
                             <button class="btn btn-outline btn-sm" onclick="copyPasteContent()" title="Copy"><i class="fa-solid fa-copy"></i> Copy</button>
                             <a class="btn btn-outline btn-sm" href="/api/pastes/${p.slug}/raw" target="_blank" title="Raw"><i class="fa-solid fa-file-lines"></i> Raw</a>
                             <button class="btn btn-outline btn-sm" onclick="forkPaste('${p.slug}')" title="Fork"><i class="fa-solid fa-code-fork"></i> Fork</button>
                         </div>
                     </div>
-                    <div class="paste-code-body">
+                    ${isMarkdown ? `
+                    <div class="paste-md-body" id="paste-md-rendered" style="${mdRawPref ? 'display:none' : ''}">${renderMarkdown(p.content || '')}</div>` : ''}
+                    <div class="paste-code-body" ${isMarkdown ? `id="paste-md-raw" style="${mdRawPref ? '' : 'display:none'}"` : ''}>
                         <div class="paste-line-numbers">${lineNums}</div>
                         <pre class="paste-code-pre"><code id="paste-code-content">${highlighted}</code></pre>
                     </div>
