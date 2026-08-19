@@ -37,12 +37,28 @@ function estimateCost(inTok, outTok) {
     return (inTok / 1e6) * num('ai_input_cost_per_mtok', 3) + (outTok / 1e6) * num('ai_output_cost_per_mtok', 15);
 }
 
-// Normalize an image input (data URL, raw base64, or file path) → {base64, mediaType}.
-function _normImage(image) {
+// Normalize an image input (data URL, raw base64, http(s) URL, or file path)
+// → {base64, mediaType}.
+//
+// URL support matters: paste screenshots live in Media, not on this disk, and their
+// image is only reachable over HTTP. Without this branch a URL fell through to the
+// file-path case, readFileSync threw, and the caller silently got null — which is why
+// every screenshot paste went un-analysed while text pastes worked.
+async function _normImage(image) {
     if (!image) return null;
     if (typeof image === 'string' && image.startsWith('data:')) {
         const m = image.match(/^data:([^;]+);base64,(.*)$/);
         if (m) return { base64: m[2], mediaType: m[1] };
+    }
+    if (typeof image === 'string' && /^https?:\/\//i.test(image)) {
+        try {
+            const res = await fetch(image, { signal: AbortSignal.timeout(20000) });
+            if (!res.ok) { console.warn(`[AI] image fetch ${res.status} for ${image}`); return null; }
+            const buf = Buffer.from(await res.arrayBuffer());
+            if (!buf.length) return null;
+            const ct = String(res.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
+            return { base64: buf.toString('base64'), mediaType: /^image\//.test(ct) ? ct : 'image/jpeg' };
+        } catch (e) { console.warn('[AI] image fetch failed:', e.message); return null; }
     }
     if (typeof image === 'string' && /^[A-Za-z0-9+/=]+$/.test(image.slice(0, 40))) {
         return { base64: image, mediaType: 'image/jpeg' };
@@ -105,7 +121,7 @@ async function _openai(prompt, img, maxTokens, temperature) {
 /** Core call: dispatches by provider, records usage/cost. Returns text or null. */
 async function _complete({ prompt, image = null, maxTokens = 400, kind, temperature = null, ownerUserId = null, source = null }) {
     if (!isEnabled() || !withinBudget()) return null;
-    const img = image ? _normImage(image) : null;
+    const img = image ? await _normImage(image) : null;
     if (image && !img) return null;
     const provider = s('ai_provider') === 'openai' ? _openai : _anthropic;
     let r;
