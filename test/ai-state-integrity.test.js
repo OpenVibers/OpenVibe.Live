@@ -149,6 +149,24 @@ db.linkTimelineToVod(902, 501);
 assert.strictEqual(db.getTimelineByVod(501).length, 1, 'linkTimelineToVod must adopt orphaned rows');
 console.log('OK 7: live timeline rows reachable by vod_id; orphans still adoptable');
 
+// ── 7: rows written AFTER the one-shot vod.ready link get adopted on restart ────────
+// This is the real-world shape: the webhook links what exists, then transcription of
+// spooled audio keeps appending rows that nobody ever comes back for.
+db.addTimelineEvents([
+    { stream_id: 902, kind: 'speech', start_sec: 90, text: 'transcribed after vod.ready' },
+    { stream_id: 902, kind: 'speech', start_sec: 120, text: 'and later still' },
+]);
+assert.strictEqual(db.getTimelineByVod(501).length, 1, 'late rows start orphaned (the bug)');
+db.initDb();                                    // startup repair
+assert.strictEqual(db.getTimelineByVod(501).length, 3,
+    'orphaned rows must be adopted onto the VOD their siblings already point at');
+// A stream that never had a VOD must stay untouched — nothing to infer from.
+db.addTimelineEvents([{ stream_id: 900, kind: 'speech', start_sec: 5, text: 'never recorded' }]);
+db.initDb();
+const orphanCount = raw.prepare('SELECT COUNT(*) n FROM stream_timeline_events WHERE stream_id = 900 AND vod_id IS NULL').get().n;
+assert.strictEqual(orphanCount, 1, 'a stream with no VOD at all must not be given one');
+console.log('OK 8: late rows adopted onto their VOD; VOD-less streams left alone');
+
 raw.close();
 try { fs.unlinkSync(tmp); } catch { /* */ }
 for (const ext of ['-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }

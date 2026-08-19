@@ -211,6 +211,33 @@ function _dedupeStreamMemories(database) {
     }
 }
 
+/**
+ * Adopt timeline rows left behind by the one-shot vod.ready link.
+ *
+ * linkTimelineToVod() is a single UPDATE fired when Media says the recording is ready,
+ * but transcription of spooled audio keeps running for a while afterwards. Those later
+ * rows were written with vod_id NULL and nothing ever came back for them, so the VOD's
+ * transcript silently stopped at whatever had been transcribed by the webhook — stream
+ * 2128 ended up with 11 orphaned speech rows against 2 linked ones.
+ *
+ * If any row for a stream already points at a VOD, the stream's remaining rows belong to
+ * that same VOD by construction: one recording per stream. New writes stamp themselves
+ * (see timeline-job), so this only has to clean up the existing backlog.
+ */
+function _adoptOrphanedTimelineRows(database) {
+    try {
+        const res = database.prepare(`UPDATE stream_timeline_events AS t
+            SET vod_id = (SELECT s.vod_id FROM stream_timeline_events s
+                          WHERE s.stream_id = t.stream_id AND s.vod_id IS NOT NULL LIMIT 1)
+            WHERE t.vod_id IS NULL
+              AND EXISTS (SELECT 1 FROM stream_timeline_events s
+                          WHERE s.stream_id = t.stream_id AND s.vod_id IS NOT NULL)`).run();
+        if (res.changes) console.log(`[DB] stream_timeline_events: adopted ${res.changes} orphaned row(s) onto their VOD`);
+    } catch (e) {
+        console.warn('[DB] timeline orphan adoption skipped:', e.message);
+    }
+}
+
 function initDb() {
     const database = getDb();
     const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
@@ -1047,6 +1074,7 @@ function initDb() {
         _dedupeKeyedTable(database, 'vod_ai_state', 'vod_id');
         _dedupeKeyedTable(database, 'clip_ai_state', 'clip_id');
         _dedupeStreamMemories(database);
+        _adoptOrphanedTimelineRows(database);
 
         // ── Unified audio timeline ───────────────────────────────────────────────
         // One time-indexed row per thing heard on a stream: a phrase that was spoken
