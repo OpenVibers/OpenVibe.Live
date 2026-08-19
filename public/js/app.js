@@ -5014,6 +5014,9 @@ function goalReachedInWidget(goal) {
 
 // ── Media Request tab ────────────────────────────────────────
 let _mediaState = null;
+let _mediaCanManage = false;
+let _mediaPricing = null;
+let _mediaQuote = null;        // the price the viewer has been shown and not yet confirmed
 // Reveal the Media Request tab if the streamer has it enabled.
 async function _initMediaRequestTab(username) {
     const btn = document.getElementById('ch-tab-btn-media');
@@ -5024,28 +5027,44 @@ async function _initMediaRequestTab(username) {
         if (btn) btn.style.display = enabled ? '' : 'none';
     } catch { if (btn) btn.style.display = 'none'; }
 }
+// How a price reads to a viewer, e.g. "5 Vibes/min" or "free".
+function _mediaPriceLabel(p) {
+    if (!p || p.currency === 'free') return 'Free requests.';
+    if (p.cost_mode === 'per_minute') return `${p.cost_per_minute} ${p.currency_label} per minute of video.`;
+    return `${p.request_cost} ${p.currency_label} per request.`;
+}
+function _mediaCurrencyIcon(currency) {
+    if (currency === 'vibes') return 'fa-solid fa-bolt';
+    if (currency === 'points') return 'fa-solid fa-star';
+    if (currency === 'free') return 'fa-solid fa-gift';
+    return 'fa-solid fa-coins';
+}
 async function loadChannelMedia(username = currentChannelUsername) {
     const host = document.getElementById('ch-media-content');
     if (!host || !username) return;
     try {
         const data = await api(`/media/channel/${encodeURIComponent(username)}`);
         _mediaState = data.state || {};
+        _mediaCanManage = !!data.can_manage;
+        _mediaPricing = data.pricing || null;
         const s = _mediaState.settings || {};
         if (!s.enabled) { host.innerHTML = '<div class="ch-about-empty">Media requests are off for this channel.</div>'; return; }
-        const cost = Number(s.request_cost || 0);
         const maxMin = Math.floor((Number(s.max_duration_seconds) || 0) / 60);
         const np = _mediaState.now_playing;
         const queue = _mediaState.queue || [];
         const loggedIn = !!currentUser;
         const sources = [s.allow_youtube && 'YouTube', s.allow_vimeo && 'Vimeo', s.allow_direct_media && 'direct media', s.allow_live && 'live'].filter(Boolean).join(', ');
+        const p = _mediaPricing;
         host.innerHTML = `
           <div class="ch-media">
             <form class="ch-media-req" onsubmit="return submitMediaRequest(event)">
-              <input id="ch-media-input" type="text" placeholder="Paste a ${esc(sources || 'media')} URL to request…" ${loggedIn ? '' : 'disabled'}>
-              <button class="btn btn-primary" ${loggedIn ? '' : 'disabled'}><i class="fa-solid fa-plus"></i> Request</button>
+              <input id="ch-media-input" type="text" placeholder="Paste a ${esc(sources || 'media')} URL to request…" ${loggedIn ? '' : 'disabled'} oninput="_clearMediaQuote()">
+              <button class="btn btn-primary" ${loggedIn ? '' : 'disabled'}><i class="fa-solid fa-magnifying-glass"></i> Check price</button>
             </form>
-            <div class="ch-media-hint muted">${loggedIn ? '' : '<i class="fa-solid fa-lock"></i> Log in to request. '}${cost > 0 ? `<i class="fa-solid fa-coins"></i> ${cost} coins per request. ` : 'Free requests. '}${maxMin ? `Max ${maxMin} min.` : ''}</div>
+            <div class="ch-media-hint muted">${loggedIn ? '' : '<i class="fa-solid fa-lock"></i> Log in to request. '}<i class="${_mediaCurrencyIcon(p && p.currency)}"></i> ${esc(_mediaPriceLabel(p))}${maxMin ? ` Max ${maxMin} min.` : ''}</div>
+            <div id="ch-media-quote"></div>
             <div id="ch-media-status" class="ch-media-status"></div>
+            ${_mediaCanManage ? `<div class="ch-media-mod-bar"><span class="muted"><i class="fa-solid fa-shield-halved"></i> You can manage this queue</span><button class="btn btn-sm btn-outline" onclick="_mediaAdvance('played')"><i class="fa-solid fa-forward-step"></i> Next</button><button class="btn btn-sm btn-outline" onclick="_mediaAdvance('skipped')"><i class="fa-solid fa-ban"></i> Skip &amp; refund</button></div>` : ''}
             ${np ? `<div class="ch-media-now"><div class="ch-media-section-label"><i class="fa-solid fa-play"></i> Now Playing</div>${_mediaItemHTML(np)}</div>` : ''}
             <div class="ch-media-section-label"><i class="fa-solid fa-list-ol"></i> Up Next (${queue.length})</div>
             <div class="ch-media-queue">${queue.length ? queue.map((q, i) => _mediaItemHTML(q, i + 1)).join('') : '<div class="muted" style="padding:12px">Queue is empty — be the first to request something!</div>'}</div>
@@ -5055,22 +5074,117 @@ async function loadChannelMedia(username = currentChannelUsername) {
 function _mediaItemHTML(m, pos) {
     const dur = m.duration_seconds ? formatDuration(m.duration_seconds) : '';
     const thumb = m.thumbnail_url ? `<img src="${esc(m.thumbnail_url)}" alt="" loading="lazy">` : '<div class="ch-media-thumb-ph"><i class="fa-solid fa-music"></i></div>';
-    return `<div class="ch-media-item">${pos ? `<span class="ch-media-pos">${pos}</span>` : ''}<div class="ch-media-thumb">${thumb}</div><div class="ch-media-meta"><div class="ch-media-title">${esc(m.title || m.input || 'Media')}</div><div class="ch-media-sub muted">${dur ? dur + ' · ' : ''}requested by ${esc(m.username || 'someone')}</div></div></div>`;
+    const cost = Number(m.cost || 0) > 0
+        ? `<span class="ch-media-cost"><i class="${_mediaCurrencyIcon(m.currency)}"></i> ${m.cost}</span>` : '';
+    // Mods get the same controls as the streamer; the server re-checks permission on each.
+    const controls = _mediaCanManage && pos ? `
+        <div class="ch-media-actions">
+            <button class="btn btn-xs btn-outline" title="Play now" onclick="_mediaQueueAction(${m.id}, 'play')"><i class="fa-solid fa-play"></i></button>
+            <button class="btn btn-xs btn-outline" title="Move up" onclick="_mediaQueueAction(${m.id}, 'up')"><i class="fa-solid fa-arrow-up"></i></button>
+            <button class="btn btn-xs btn-outline" title="Move down" onclick="_mediaQueueAction(${m.id}, 'down')"><i class="fa-solid fa-arrow-down"></i></button>
+            <button class="btn btn-xs btn-outline danger" title="Remove &amp; refund" onclick="_mediaQueueAction(${m.id}, 'remove')"><i class="fa-solid fa-trash"></i></button>
+        </div>` : '';
+    return `<div class="ch-media-item">${pos ? `<span class="ch-media-pos">${pos}</span>` : ''}<div class="ch-media-thumb">${thumb}</div><div class="ch-media-meta"><div class="ch-media-title">${esc(m.title || m.input || 'Media')}</div><div class="ch-media-sub muted">${dur ? dur + ' · ' : ''}requested by ${esc(m.username || 'someone')} ${cost}</div></div>${controls}</div>`;
+}
+
+// ── Queue management (streamer + channel mods) ───────────────
+async function _mediaQueueAction(id, action) {
+    const body = { channelUsername: currentChannelUsername };
+    const status = document.getElementById('ch-media-status');
+    try {
+        if (action === 'play')        await api(`/media/queue/${id}/play`, { method: 'POST', body });
+        else if (action === 'remove') await api(`/media/queue/${id}`, { method: 'DELETE', body });
+        else                          await api(`/media/queue/${id}/move`, { method: 'POST', body: { ...body, direction: action } });
+        loadChannelMedia(currentChannelUsername);
+    } catch (err) { if (status) { status.className = 'ch-media-status err'; status.textContent = err.message || 'Action failed'; } }
+}
+async function _mediaAdvance(status_) {
+    const status = document.getElementById('ch-media-status');
+    try {
+        await api('/media/advance', { method: 'POST', body: { channelUsername: currentChannelUsername, status: status_ } });
+        loadChannelMedia(currentChannelUsername);
+    } catch (err) { if (status) { status.className = 'ch-media-status err'; status.textContent = err.message || 'Failed to advance'; } }
+}
+
+// ── Quote → confirm → charge ─────────────────────────────────
+// The viewer is shown the real title, real length and exact price for THIS link before
+// anything is taken, then confirms. What they agreed to is what gets charged.
+function _clearMediaQuote() {
+    _mediaQuote = null;
+    const q = document.getElementById('ch-media-quote');
+    if (q) q.innerHTML = '';
 }
 async function submitMediaRequest(e) {
     if (e) e.preventDefault();
     const input = document.getElementById('ch-media-input');
     const status = document.getElementById('ch-media-status');
+    const quoteEl = document.getElementById('ch-media-quote');
     const val = input && input.value.trim();
     if (!val) return false;
+    if (status) { status.className = 'ch-media-status'; status.textContent = ''; }
+    if (quoteEl) quoteEl.innerHTML = '<div class="ch-media-quote loading muted"><i class="fa-solid fa-spinner fa-spin"></i> Checking that link…</div>';
+    try {
+        const q = await api('/media/quote', { method: 'POST', body: { username: currentChannelUsername, input: val } });
+        _mediaQuote = { ...q, input: val };
+        _renderMediaQuote(_mediaQuote);
+    } catch (err) {
+        _mediaQuote = null;
+        if (quoteEl) quoteEl.innerHTML = '';
+        if (status) { status.className = 'ch-media-status err'; status.textContent = err.message || 'Could not read that link'; }
+    }
+    return false;
+}
+function _renderMediaQuote(q) {
+    const el = document.getElementById('ch-media-quote');
+    if (!el) return;
+    const dur = q.duration_seconds ? formatDuration(q.duration_seconds) : 'unknown length';
+    const thumb = q.thumbnail_url ? `<img src="${esc(q.thumbnail_url)}" alt="">` : '<div class="ch-media-thumb-ph"><i class="fa-solid fa-music"></i></div>';
+
+    let priceLine, action;
+    if (!q.allowed) {
+        priceLine = `<div class="ch-media-quote-price err">${esc(q.reason || 'This request is not allowed.')}</div>`;
+        action = '';
+    } else if (q.cost <= 0) {
+        priceLine = '<div class="ch-media-quote-price ok"><i class="fa-solid fa-gift"></i> Free</div>';
+        action = `<button class="btn btn-primary" onclick="confirmMediaRequest()"><i class="fa-solid fa-plus"></i> Add to queue</button>`;
+    } else {
+        const per = q.cost_mode === 'per_minute'
+            ? ` <span class="muted">(${q.cost_per_minute}/min × ${Math.ceil((q.duration_seconds || 0) / 60)} min)</span>` : '';
+        const bal = q.balance == null ? ''
+            : ` <span class="muted">· you have ${q.balance}</span>`;
+        priceLine = `<div class="ch-media-quote-price"><i class="${_mediaCurrencyIcon(q.currency)}"></i> ${q.cost} ${esc(q.currency_label)}${per}${bal}</div>`;
+        action = q.affordable === false
+            ? `<div class="ch-media-status err">Not enough ${esc(q.currency_label)}.</div>`
+            : `<button class="btn btn-primary" onclick="confirmMediaRequest()"><i class="fa-solid fa-check"></i> Confirm &amp; pay ${q.cost}</button>`;
+    }
+
+    el.innerHTML = `
+      <div class="ch-media-quote">
+        <div class="ch-media-thumb">${thumb}</div>
+        <div class="ch-media-quote-meta">
+          <div class="ch-media-title">${esc(q.title || 'Media')}</div>
+          <div class="ch-media-sub muted">${esc(dur)}${q.provider ? ' · ' + esc(q.provider) : ''}</div>
+          ${priceLine}
+        </div>
+        <div class="ch-media-quote-actions">
+          ${action}
+          <button class="btn btn-sm btn-outline" onclick="_clearMediaQuote()">Cancel</button>
+        </div>
+      </div>`;
+}
+async function confirmMediaRequest() {
+    const q = _mediaQuote;
+    const status = document.getElementById('ch-media-status');
+    if (!q) return;
     if (status) { status.className = 'ch-media-status'; status.textContent = 'Adding…'; }
     try {
-        await api('/media/request', { method: 'POST', body: { username: currentChannelUsername, streamId: currentStreamId || undefined, input: val } });
+        await api('/media/request', { method: 'POST', body: { username: currentChannelUsername, streamId: currentStreamId || undefined, input: q.input } });
+        const input = document.getElementById('ch-media-input');
         if (input) input.value = '';
+        _clearMediaQuote();
         if (status) { status.className = 'ch-media-status ok'; status.textContent = '✓ Added to the queue!'; setTimeout(() => { status.textContent = ''; }, 2500); }
         loadChannelMedia(currentChannelUsername);
     } catch (err) { if (status) { status.className = 'ch-media-status err'; status.textContent = err.message || 'Request failed'; } }
-    return false;
 }
 
 // ── Edit mode ────────────────────────────────────────────────

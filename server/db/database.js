@@ -835,12 +835,18 @@ function initDb() {
         if (!mrCols.includes('file_path'))              database.exec('ALTER TABLE media_requests ADD COLUMN file_path TEXT');
         if (!mrCols.includes('playback_position'))      database.exec('ALTER TABLE media_requests ADD COLUMN playback_position REAL DEFAULT 0');
         if (!mrCols.includes('refunded'))               database.exec('ALTER TABLE media_requests ADD COLUMN refunded INTEGER DEFAULT 0');
+        // The currency this request was actually charged in, captured at request time. A
+        // refund has to give back what was taken, so it cannot read the channel's current
+        // setting — a streamer switching from Vibes to points would otherwise refund the
+        // wrong currency to everyone still queued.
+        if (!mrCols.includes('currency'))               database.exec("ALTER TABLE media_requests ADD COLUMN currency TEXT DEFAULT 'opencoins'");
 
         const msCols = database.pragma('table_info(media_request_settings)').map(c => c.name);
         if (!msCols.includes('cost_mode'))              database.exec("ALTER TABLE media_request_settings ADD COLUMN cost_mode TEXT DEFAULT 'flat' CHECK(cost_mode IN ('flat','per_minute'))");
         if (!msCols.includes('cost_per_minute'))        database.exec('ALTER TABLE media_request_settings ADD COLUMN cost_per_minute INTEGER DEFAULT 5');
         if (!msCols.includes('allow_live'))             database.exec('ALTER TABLE media_request_settings ADD COLUMN allow_live INTEGER DEFAULT 0');
         if (!msCols.includes('download_mode'))          database.exec("ALTER TABLE media_request_settings ADD COLUMN download_mode TEXT DEFAULT 'stream' CHECK(download_mode IN ('stream','download'))");
+        if (!msCols.includes('currency'))               database.exec("ALTER TABLE media_request_settings ADD COLUMN currency TEXT DEFAULT 'opencoins' CHECK(currency IN ('free','vibes','opencoins','points'))");
     } catch (e) { console.warn('[DB] media columns migration:', e.message); }
 
     // Migrate: create anon IP mapping table for persistent anon numbering
@@ -5919,8 +5925,8 @@ function upsertMediaRequestSettings(userId, fields = {}) {
         run(`INSERT INTO media_request_settings (
             user_id, enabled, request_cost, max_per_user, max_duration_seconds,
             allow_youtube, allow_vimeo, allow_direct_media, auto_advance,
-            cost_mode, cost_per_minute, allow_live, download_mode
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+            cost_mode, cost_per_minute, allow_live, download_mode, currency
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
             userId,
             fields.enabled ?? 1,
             fields.request_cost ?? 25,
@@ -5934,6 +5940,7 @@ function upsertMediaRequestSettings(userId, fields = {}) {
             fields.cost_per_minute ?? 5,
             fields.allow_live ?? 0,
             fields.download_mode ?? 'stream',
+            fields.currency ?? 'opencoins',
         ]);
     } else if (Object.keys(fields).length) {
         const sets = [];
@@ -5949,12 +5956,12 @@ function upsertMediaRequestSettings(userId, fields = {}) {
     return getMediaRequestSettingsByUserId(userId);
 }
 
-function createMediaRequest({ streamer_id, stream_id, user_id, username, input, canonical_url, embed_url, provider, title, thumbnail_url, duration_seconds, cost, queue_position }) {
+function createMediaRequest({ streamer_id, stream_id, user_id, username, input, canonical_url, embed_url, provider, title, thumbnail_url, duration_seconds, cost, queue_position, currency }) {
     return run(
         `INSERT INTO media_requests (
             streamer_id, stream_id, user_id, username, input, canonical_url, embed_url,
-            provider, title, thumbnail_url, duration_seconds, cost, queue_position
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            provider, title, thumbnail_url, duration_seconds, cost, queue_position, currency
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             streamer_id,
             stream_id || null,
@@ -5969,6 +5976,7 @@ function createMediaRequest({ streamer_id, stream_id, user_id, username, input, 
             duration_seconds ?? null,
             cost,
             queue_position ?? 0,
+            currency || 'opencoins',
         ]
     );
 }
