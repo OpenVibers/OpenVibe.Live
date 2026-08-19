@@ -162,6 +162,46 @@ class RestreamManager extends EventEmitter {
             if (kind !== 'video') return; // Only restart on video producer loss
             this._handleProducerRemoved(roomId, producerId);
         });
+        // An AUDIO producer appearing after we started matters just as much as one
+        // going away. FFmpeg's argument list is built once, and `hasAudio` is decided
+        // from whether an audio producer existed at that moment — so a broadcaster who
+        // goes live video-only and then switches the microphone on (screen-share mic
+        // toggle, or a mic granted after the fact) would keep pushing SILENT video to
+        // Twitch/Kick for the rest of the session, with nothing in the logs to say why.
+        // Restart the session so the SDP and the -map arguments are rebuilt with audio.
+        webrtcSFU.on('producer-added', ({ roomId, kind }) => {
+            if (kind !== 'audio') return;
+            this._handleAudioProducerAdded(roomId);
+        });
+    }
+
+    /**
+     * An audio producer appeared. Restart any running WebRTC restream for that stream
+     * that was started without audio; leave the ones that already have it alone, since
+     * restarting a healthy session would drop frames on the destination for no reason.
+     */
+    _handleAudioProducerAdded(roomId) {
+        const m = String(roomId).match(/^stream-(\d+)$/);
+        if (!m) return;
+        const streamId = parseInt(m[1], 10);
+        let restarted = 0;
+        for (const [key, session] of this.sessions) {
+            if (session.streamId !== streamId) continue;
+            if (session.streamInfo?.protocol !== 'webrtc') continue;
+            if (session.status === 'stopped') continue;
+            if (session.webrtcState?.hasAudio) continue;     // already carrying audio
+            console.log(`[Restream] Audio producer appeared in ${roomId} — restarting ${key} to include it`);
+            this._killProcess(session);
+            session.status = 'error';
+            session.lastError = 'Audio source added';
+            session.restartAttempts = 0;
+            session.restartDelay = RESTART_BASE_DELAY;
+            this._scheduleRestart(session);
+            restarted++;
+        }
+        if (restarted > 0) {
+            console.log(`[Restream] Restarting ${restarted} restream(s) for stream ${streamId} to pick up audio`);
+        }
     }
 
     /**
@@ -506,6 +546,9 @@ class RestreamManager extends EventEmitter {
             sdpPath,
             videoTransportId: videoConsumer.transportId,
             audioTransportId: audioConsumer?.transportId || null,
+            // Whether THIS ffmpeg invocation was built with an audio mapping. Read by
+            // _handleAudioProducerAdded to avoid restarting sessions that already have it.
+            hasAudio: !!audioConsumer,
         };
 
         // Step 5: Spawn FFmpeg with SDP input → RTMP output

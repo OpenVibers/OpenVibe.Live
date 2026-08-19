@@ -357,6 +357,7 @@ class RsPassthroughRelay {
     _teardown(session) {
         if (session.statsTimer) { clearInterval(session.statsTimer); session.statsTimer = null; }
         if (session.ingestWatchdog) { clearInterval(session.ingestWatchdog); session.ingestWatchdog = null; }
+        if (session._audioWatch) { try { session._audioWatch(); } catch { /* */ } session._audioWatch = null; }
         const sfu = require('../streaming/webrtc-sfu');
         for (const ing of session.ingests) {
             try { ing.socket.removeAllListeners('message'); ing.socket.close(); } catch {}
@@ -375,9 +376,34 @@ class RsPassthroughRelay {
         const sid = session.streamId;
 
         // 1) Source producers on our SFU (wait for video; audio optional).
+        //
+        // Audio is sampled ONCE here, and the werift peer is built around whatever
+        // exists at this instant. A broadcaster who goes live video-only and switches
+        // the microphone on afterwards would otherwise stay silent on RobotStreamer for
+        // the whole session, because nothing revisits this decision. Give audio a short
+        // grace period so a mic that is a moment behind the video producer still makes
+        // it into the session, and watch for a later one so we can rebuild.
         const videoProd = await sfu.waitForProducer(session.roomId, 'video', 30000);
-        const audioProd = sfu.findProducerByKind(session.roomId, 'audio');
+        let audioProd = sfu.findProducerByKind(session.roomId, 'audio');
+        if (!audioProd) {
+            try { audioProd = await sfu.waitForProducer(session.roomId, 'audio', 4000); }
+            catch { audioProd = null; }        // genuinely a video-only stream
+        }
         log(sid, `source producers: video=${videoProd.id}${audioProd ? ` audio=${audioProd.id}` : ' (no audio)'}`);
+
+        // If we ended up without audio, restart the passthrough the moment one appears.
+        if (!audioProd) {
+            const onAudio = ({ roomId, kind }) => {
+                if (session.stopped || kind !== 'audio' || roomId !== session.roomId) return;
+                sfu.removeListener?.('producer-added', onAudio);
+                log(sid, 'audio producer appeared after start — restarting passthrough to include it');
+                const st = { id: sid }; const integ = { robot_id: session.robotId, token: session.token };
+                this._teardown(session);
+                this._scheduleRestart(session, st, integ, 'audio producer added after a video-only start');
+            };
+            sfu.on?.('producer-added', onAudio);
+            session._audioWatch = () => sfu.removeListener?.('producer-added', onAudio);
+        }
 
         // 2) Encoded-RTP ingest (PlainTransport → localhost UDP socket).
         const videoIn = await openPlainIngest(sfu, session.roomId, videoProd.id);
