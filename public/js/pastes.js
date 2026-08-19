@@ -265,8 +265,13 @@ async function loadPasteViewer(slug) {
         const userLiked = !!p.liked;
         const paste_id_for_js = p.id;
 
-        let meta;
-        try { meta = JSON.parse(p.metadata); } catch { meta = {}; }
+        // JSON.parse(null) returns null instead of throwing, so the catch never fired and
+        // `meta` came back null for every paste with no metadata — i.e. every newly created
+        // one. The next line then read meta.ai_moment and the whole render died, which the
+        // outer catch reported as "Paste not found". Guard the value, not just the parse.
+        let meta = {};
+        try { if (p.metadata) meta = JSON.parse(p.metadata); } catch { meta = {}; }
+        if (!meta || typeof meta !== 'object') meta = {};
 
         // AI "crazy moment" pastes carry a link back to the exact VOD timestamp they were
         // grabbed from — surface it as a real button (and drop the raw "▶ Watch…" line the
