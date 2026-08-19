@@ -483,10 +483,14 @@ function _wsRenderPanel() {
                                 </label>
                                 <div id="bc-ws-screen-mic-device" class="bc-ws-screen-device-inline" style="display:none">
                                     <div style="display:flex;gap:4px;align-items:center">
-                                        <select id="bc-ws-screen-mic-select" class="form-input form-input-sm" style="max-width:240px;flex:1">
+                                        <select id="bc-ws-screen-mic-select" class="form-input form-input-sm" style="max-width:240px;flex:1" onchange="_wsOnMicDeviceChange()">
                                             <option value="default">Default Microphone</option>
                                         </select>
                                         <button type="button" class="btn btn-small btn-ghost" title="Refresh device list" onclick="refreshDeviceLists()" style="flex-shrink:0;padding:4px 7px"><i class="fa-solid fa-rotate"></i></button>
+                                    </div>
+                                    <div id="bc-ws-mic-meter-wrap" class="bc-mic-meter-wrap" style="display:none">
+                                        <canvas id="bc-ws-mic-meter" class="bc-mic-meter" width="360" height="22"></canvas>
+                                        <span id="bc-ws-mic-meter-status" class="bc-mic-meter-status">Listening…</span>
                                     </div>
                                 </div>
                                 <div id="bc-ws-screen-mic-perm" class="bc-ws-screen-perm-inline" style="display:none">
@@ -497,7 +501,7 @@ function _wsRenderPanel() {
                             </div>
                             <div class="bc-ws-screen-perm-item" style="margin-top:6px">
                                 <label class="bc-toggle-label">
-                                    <input type="checkbox" id="bc-ws-screen-sysaudio" ${(p.screenSysAudio !== false) ? 'checked' : ''} onchange="_wsMarkDirty()">
+                                    <input type="checkbox" id="bc-ws-screen-sysaudio" ${(p.screenSysAudio !== false) ? 'checked' : ''} onchange="_wsMarkDirty();_wsUpdateCaptureSummary()">
                                     <i class="fa-solid fa-volume-high"></i> System / Tab Audio
                                 </label>
                                 <p class="muted" style="font-size:0.75rem;margin:2px 0 0 26px">Included in screen capture prompt. Chrome/Edge only.</p>
@@ -520,7 +524,7 @@ function _wsRenderPanel() {
                                     <div class="form-group" style="margin:0">
                                         <label style="font-size:0.78rem">Camera</label>
                                         <div style="display:flex;gap:4px;align-items:center">
-                                            <select id="bc-ws-screen-cam-select" class="form-input form-input-sm" style="max-width:240px;flex:1">
+                                            <select id="bc-ws-screen-cam-select" class="form-input form-input-sm" style="max-width:240px;flex:1" onchange="_wsOnCamDeviceChange()">
                                                 <option value="default">Default Camera</option>
                                             </select>
                                             <button type="button" class="btn btn-small btn-ghost" title="Refresh device list" onclick="refreshDeviceLists()" style="flex-shrink:0;padding:4px 7px"><i class="fa-solid fa-rotate"></i></button>
@@ -549,6 +553,11 @@ function _wsRenderPanel() {
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
+                        <div class="bc-ws-screen-section">
+                            <label class="bc-ws-screen-section-label">What gets captured</label>
+                            <div id="bc-ws-capture-summary"></div>
                         </div>
 
                         <details class="bc-ws-quality bc-ws-screen-quality">
@@ -2029,11 +2038,20 @@ function _wsScreenCamToggle(checked) {
     if (opts) opts.style.display = checked ? '' : 'none';
     _wsMarkDirty();
     if (checked) _wsRequestCamPermission();
+    else _wsUpdateCaptureSummary();
 }
 
 function _wsScreenMicToggle(checked) {
     _wsMarkDirty();
-    if (checked) _wsRequestMicPermission();
+    if (checked) {
+        _wsRequestMicPermission();
+    } else {
+        // Release the preview device as soon as the mic is switched off — holding an
+        // open input just to draw a meter would keep the OS "in use" indicator lit.
+        window.bcMediaSetup?.stopMeter('bc-ws-mic-meter');
+        _wsShowEl('bc-ws-mic-meter-wrap', false);
+        _wsUpdateCaptureSummary();
+    }
 }
 
 /** Check if mic/cam permissions are already granted and show inline device selects */
@@ -2048,6 +2066,8 @@ async function _wsCheckScreenInlinePermissions() {
             _wsPopulateInlineDevices('bc-ws-screen-mic-select', mics);
             _wsShowEl('bc-ws-screen-mic-device', true);
             _wsShowEl('bc-ws-screen-mic-perm', false);
+            // Grant already held (labels are populated), so preview straight away.
+            if (document.getElementById('bc-ws-screen-mic')?.checked) _wsStartMicMeter();
         } else if (document.getElementById('bc-ws-screen-mic')?.checked) {
             _wsShowEl('bc-ws-screen-mic-perm', true);
         }
@@ -2062,43 +2082,83 @@ async function _wsCheckScreenInlinePermissions() {
     } catch (err) {
         console.warn('[Workspace] Inline permission check failed:', err.message);
     }
+    _wsUpdateCaptureSummary();
 }
 
 async function _wsRequestMicPermission() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach(t => t.stop());
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const mics = devices.filter(d => d.kind === 'audioinput' && d.label);
-        _wsPopulateInlineDevices('bc-ws-screen-mic-select', mics);
-        _wsShowEl('bc-ws-screen-mic-device', true);
-        _wsShowEl('bc-ws-screen-mic-perm', false);
-        // (There is no hidden bc-screen-audio mirror any more: createNewStream() reads
-        // bc-ws-screen-mic-select directly. Writing into a non-existent element was what
-        // hid the id mismatch that discarded the streamer's microphone choice.)
-    } catch (err) {
-        console.warn('[Workspace] Mic permission denied:', err.message);
+    // Explain first, then prompt, then REBUILD the list from a fresh enumerate —
+    // labels and deviceIds are both empty until the grant exists, so a list built
+    // beforehand can only show "Default" and can only ever select the OS default.
+    // (There is no hidden bc-screen-audio mirror any more: createNewStream() reads
+    // bc-ws-screen-mic-select directly.)
+    const r = await window.bcMediaSetup.request('mic');
+    if (!r.granted) {
+        if (r.error && r.error !== 'cancelled') console.warn('[Workspace] Mic permission:', r.error);
         _wsShowEl('bc-ws-screen-mic-perm', true);
         _wsShowEl('bc-ws-screen-mic-device', false);
+        _wsUpdateCaptureSummary();
+        return;
     }
+    _wsPopulateInlineDevices('bc-ws-screen-mic-select', r.devices);
+    _wsShowEl('bc-ws-screen-mic-device', true);
+    _wsShowEl('bc-ws-screen-mic-perm', false);
+    _wsStartMicMeter();
+    _wsUpdateCaptureSummary();
+}
+
+/** Preview the SELECTED mic so "can I be heard" is answerable before going live. */
+function _wsStartMicMeter() {
+    const sel = document.getElementById('bc-ws-screen-mic-select');
+    const on = document.getElementById('bc-ws-screen-mic')?.checked;
+    if (!on || !sel) { window.bcMediaSetup?.stopMeter('bc-ws-mic-meter'); return; }
+    _wsShowEl('bc-ws-mic-meter-wrap', true);
+    window.bcMediaSetup.startMeter('bc-ws-mic-meter', sel.value, 'bc-ws-mic-meter-status');
+}
+
+/** Called when the streamer picks a different microphone. */
+function _wsOnMicDeviceChange() {
+    _wsMarkDirty();
+    _wsStartMicMeter();
+    _wsUpdateCaptureSummary();
+}
+
+function _wsOnCamDeviceChange() {
+    _wsMarkDirty();
+    _wsUpdateCaptureSummary();
+}
+
+/** Keep the "what will be captured" panel honest as toggles change. */
+function _wsUpdateCaptureSummary() {
+    const el = document.getElementById('bc-ws-capture-summary');
+    if (!el || !window.bcMediaSetup) return;
+    const micOn = !!document.getElementById('bc-ws-screen-mic')?.checked;
+    const camOn = !!document.getElementById('bc-ws-screen-cam')?.checked;
+    const micSel = document.getElementById('bc-ws-screen-mic-select');
+    const camSel = document.getElementById('bc-ws-screen-cam-select');
+    const sysEl = document.getElementById('bc-ws-screen-sysaudio');   // checkbox, not a select
+    const labelOf = (sel) => (sel && sel.selectedIndex >= 0 && sel.value !== 'default')
+        ? sel.options[sel.selectedIndex].textContent : '';
+    window.bcMediaSetup.renderSummary(el, {
+        mic: micOn, micLabel: labelOf(micSel),
+        camera: camOn, cameraLabel: labelOf(camSel),
+        systemAudio: sysEl ? !!sysEl.checked : true,
+    });
 }
 
 async function _wsRequestCamPermission() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        stream.getTracks().forEach(t => t.stop());
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const cams = devices.filter(d => d.kind === 'videoinput' && d.label);
-        _wsPopulateInlineDevices('bc-ws-screen-cam-select', cams);
-        _wsShowEl('bc-ws-screen-cam-device', true);
-        _wsShowEl('bc-ws-screen-cam-perm', false);
-        // See the note in _wsRequestMicPermission: createNewStream() reads
-        // bc-ws-screen-cam-select directly, so there is nothing to mirror into.
-    } catch (err) {
-        console.warn('[Workspace] Camera permission denied:', err.message);
+    // Same explain -> prompt -> re-enumerate flow as the microphone; see there.
+    const r = await window.bcMediaSetup.request('camera');
+    if (!r.granted) {
+        if (r.error && r.error !== 'cancelled') console.warn('[Workspace] Camera permission:', r.error);
         _wsShowEl('bc-ws-screen-cam-perm', true);
         _wsShowEl('bc-ws-screen-cam-device', false);
+        _wsUpdateCaptureSummary();
+        return;
     }
+    _wsPopulateInlineDevices('bc-ws-screen-cam-select', r.devices);
+    _wsShowEl('bc-ws-screen-cam-device', true);
+    _wsShowEl('bc-ws-screen-cam-perm', false);
+    _wsUpdateCaptureSummary();
 }
 
 function _wsPopulateInlineDevices(selectId, devices) {
