@@ -134,7 +134,7 @@ router.post('/bulk', requireAdmin, forwardAsApp('/bulk'));
 // Media doesn't know usernames — resolve locally, then list by user id.
 // Browser-JWT-created pastes carry the NETWORK id while migrated/app-key rows
 // carry the LOCAL id, so query both id spaces and merge.
-router.get('/by-user/:username', async (req, res) => {
+router.get('/by-user/:username', optionalAuth, async (req, res) => {
     try {
         const user = db.getUserByUsername(req.params.username);
         if (!user) return res.status(404).json({ error: 'User not found' });
@@ -145,10 +145,19 @@ router.get('/by-user/:username', async (req, res) => {
         } catch { /* */ }
         const limit = Math.min(Math.max(parseInt(req.query.limit || '30', 10), 1), 100);
         const sort = req.query.sort === 'oldest' ? 'oldest' : 'newest';
+        // Viewing your OWN paste list includes your unlisted/private ones — otherwise an
+        // unlisted paste is invisible everywhere and looks like it was never created.
+        // Anyone else viewing this user's page still sees public pastes only. Media
+        // re-checks this, so the flag alone cannot leak another user's pastes.
+        const viewingSelf = !!(req.user && (
+            String(req.user.id) === String(user.id) ||
+            (networkId != null && String(req.user.id) === String(networkId))
+        ));
+        const mine = viewingSelf ? { include_unlisted: 1 } : {};
         const lists = await Promise.all([
-            media.listPastes({ user_id: user.id, limit, sort }).catch(() => null),
+            media.listPastes({ user_id: user.id, limit, sort, ...mine }).catch(() => null),
             networkId != null && String(networkId) !== String(user.id)
-                ? media.listPastes({ user_id: networkId, limit, sort }).catch(() => null)
+                ? media.listPastes({ user_id: networkId, limit, sort, ...mine }).catch(() => null)
                 : null,
         ]);
         const seen = new Set();
