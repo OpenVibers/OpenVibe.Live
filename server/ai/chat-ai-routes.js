@@ -50,7 +50,11 @@ router.get('/user/:id', (req, res) => {
         try {
             const ov = db.getStreamerOverview(uid);
             if (ov && (ov.overview || ov.overview_short)) {
-                const mems = (db.getStreamMemoriesByUser(uid, 8) || []).map(m => ({
+                // 8 was hardcoded, and duplicates meant a viewer saw ~4 distinct moments —
+                // the "memories don't include everything" complaint. Allow a caller to ask
+                // for more, and default high enough to read as a real timeline.
+                const memLimit = Math.min(200, Math.max(1, parseInt(req.query.memories, 10) || 40));
+                const mems = (db.getStreamMemoriesByUser(uid, memLimit) || []).map(m => ({
                     description: m.description || '',
                     created_at: m.created_at,
                     stream_id: m.stream_id,
@@ -243,18 +247,28 @@ router.get('/vod-transcripts', (req, res) => {
                     else events.push({ start: r.start_sec, end: r.end_sec, label: r.label, confidence: r.confidence });
                 }
             } catch { /* */ }
-            // Fall back to the batch-transcribed blob for VODs with no live timeline.
-            if (!segments.length) {
-                try {
-                    const st = db.getVodAiState(vodId);
-                    if (st && st.ai_transcript_json) {
-                        const parsed = JSON.parse(st.ai_transcript_json);
-                        if (Array.isArray(parsed)) segments = parsed;
-                    }
-                } catch { /* */ }
-            }
+            // The timeline and the batch-transcribed blob are two views of the same audio
+            // and either can be the more complete one, so take whichever actually carries
+            // more speech instead of only falling back when the timeline is empty. A
+            // partially-linked timeline used to win by default and truncate the result:
+            // vod 2163 served 426 characters from 7 linked rows while its blob held the
+            // full 3548. Sound events only exist on the timeline, so they are kept either way.
+            let blob = [];
+            try {
+                const st = db.getVodAiState(vodId);
+                if (st && st.ai_transcript_json) {
+                    const parsed = JSON.parse(st.ai_transcript_json);
+                    if (Array.isArray(parsed)) blob = parsed;
+                }
+            } catch { /* */ }
+            const spoken = (arr) => arr.reduce((n, x) => n + String(x.text || '').trim().length, 0);
+            if (spoken(blob) > spoken(segments)) segments = blob;
+            segments.sort((a, b) => (Number(a.start) || 0) - (Number(b.start) || 0));
             let overviewShort = null;
             try { overviewShort = (db.getVodAiState(vodId) || {}).ai_overview_short || null; } catch { /* */ }
+            // `segments` may be [] for a VOD whose audio had no speech; that is a real
+            // answer, not a missing one, so transcript stays null and segments stays [].
+
             const text = segments.map(s => String(s.text || '').trim()).filter(Boolean).join(' ');
             out[vodId] = {
                 transcript: text || null,

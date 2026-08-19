@@ -111,6 +111,106 @@ function getDb() {
     return db;
 }
 
+/**
+ * Collapse duplicate rows in an AI-state table down to one row per id and put a UNIQUE
+ * index on the key so `INSERT OR IGNORE` behaves as its callers assume.
+ *
+ * Values are merged per column rather than by keeping a single "best" row: duplicates
+ * were created at different times, so the transcript may sit on one row and the overview
+ * on another. Longest wins for text we accumulate; for transcript_status the most
+ * settled state wins, so a stray 'pending' duplicate cannot resurrect finished work.
+ */
+function _dedupeKeyedTable(database, table, key) {
+    try {
+        const idx = `idx_${table}_${key}_unique`;
+        const has = database.prepare(
+            "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?").get(idx);
+        if (has) return;                                  // already repaired
+        // Column-driven, never a hardcoded list: clip_ai_state carries clip_notified /
+        // clip_notify_at that vod_ai_state does not, and a fixed column list would drop
+        // them on the floor during the rebuild.
+        const cols = database.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
+        if (!cols.includes(key)) return;
+        const others = cols.filter(c => c !== key);
+        const dupes = database.prepare(
+            `SELECT COUNT(*) - COUNT(DISTINCT ${key}) AS extra FROM ${table}`).get();
+        if (dupes && dupes.extra > 0) {
+            // Merge per column, preferring the richest value: duplicates were written at
+            // different times, so a transcript can sit on one row and an overview on
+            // another — keeping a single "best" row wholesale would discard the other.
+            const pick = (c) => {
+                if (c === 'transcript_status') {
+                    // Most-settled state wins, so a stray 'pending' duplicate cannot
+                    // resurrect work that already finished.
+                    return `(SELECT x.${c} FROM ${table} x WHERE x.${key} = k.${key} AND x.${c} IS NOT NULL
+                             ORDER BY CASE x.${c} WHEN 'done' THEN 0 WHEN 'empty' THEN 1 WHEN 'failed' THEN 2
+                                                  WHEN 'processing' THEN 3 WHEN 'retry' THEN 4 ELSE 5 END LIMIT 1)`;
+                }
+                if (c === 'transcript_next_at') {
+                    return `(SELECT MIN(x.${c}) FROM ${table} x WHERE x.${key} = k.${key} AND x.${c} IS NOT NULL)`;
+                }
+                if (c === 'transcript_attempts') {
+                    return `(SELECT MAX(COALESCE(x.${c},0)) FROM ${table} x WHERE x.${key} = k.${key})`;
+                }
+                // Everything else: any non-null value, longest first. For accumulated text
+                // (transcripts, overviews) longest is the most complete; for flags and
+                // timestamps it just means "a real value beats NULL".
+                return `(SELECT x.${c} FROM ${table} x WHERE x.${key} = k.${key} AND x.${c} IS NOT NULL
+                         ORDER BY LENGTH(CAST(x.${c} AS TEXT)) DESC LIMIT 1)`;
+            };
+            const selects = [`k.${key} AS ${key}`, ...others.map(c => `${pick(c)} AS ${c}`)].join(',\n                      ');
+            database.exec('BEGIN');
+            try {
+                database.exec(`CREATE TEMP TABLE _merge_${table} AS
+                    SELECT ${selects}
+                    FROM (SELECT DISTINCT ${key} FROM ${table}) k`);
+                database.exec(`DELETE FROM ${table}`);
+                database.exec(`INSERT INTO ${table} (${cols.join(', ')})
+                               SELECT ${cols.join(', ')} FROM _merge_${table}`);
+                database.exec(`DROP TABLE _merge_${table}`);
+                database.exec('COMMIT');
+                console.log(`[DB] ${table}: merged ${dupes.extra} duplicate row(s) down to one per ${key}`);
+            } catch (e) {
+                try { database.exec('ROLLBACK'); } catch { /* */ }
+                console.warn(`[DB] ${table} dedupe failed, leaving as-is:`, e.message);
+                return;                                    // never index over dirty data
+            }
+        }
+        database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ${idx} ON ${table}(${key})`);
+    } catch (e) {
+        console.warn(`[DB] ${table} integrity repair skipped:`, e.message);
+    }
+}
+
+/**
+ * One memory per (stream, offset). Re-analysing a stream used to append a second
+ * description of the very same moment, so a viewer's memory list read as near-duplicate
+ * pairs a minute apart. Keep the longest description (the richest capture, e.g. the one
+ * that also carries the "heard:" transcript clause) and let the UNIQUE index make
+ * addStreamMemory's INSERT OR IGNORE actually ignore.
+ */
+function _dedupeStreamMemories(database) {
+    try {
+        const idx = 'idx_stream_memories_moment_unique';
+        if (database.prepare("SELECT 1 FROM sqlite_master WHERE type='index' AND name=?").get(idx)) return;
+        const extra = database.prepare(`SELECT COUNT(*) - COUNT(DISTINCT stream_id || ':' || offset_seconds) AS extra
+                                        FROM stream_memories`).get();
+        if (extra && extra.extra > 0) {
+            const res = database.prepare(`DELETE FROM stream_memories WHERE id NOT IN (
+                SELECT id FROM (
+                    SELECT id, ROW_NUMBER() OVER (
+                        PARTITION BY stream_id, offset_seconds
+                        ORDER BY LENGTH(COALESCE(description,'')) DESC,
+                                 (transcript_json IS NOT NULL) DESC, id DESC) AS rn
+                    FROM stream_memories) WHERE rn = 1)`).run();
+            console.log(`[DB] stream_memories: removed ${res.changes} duplicate moment(s)`);
+        }
+        database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ${idx} ON stream_memories(stream_id, offset_seconds)`);
+    } catch (e) {
+        console.warn('[DB] stream_memories dedupe skipped:', e.message);
+    }
+}
+
 function initDb() {
     const database = getDb();
     const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
@@ -923,6 +1023,30 @@ function initDb() {
             FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE CASCADE
         )`);
         database.exec('CREATE INDEX IF NOT EXISTS idx_stream_memories_stream ON stream_memories(stream_id, offset_seconds)');
+
+        // ── Integrity repair: one row per key ────────────────────────────────────
+        // These three tables are all written through "insert once, update in place"
+        // helpers whose no-op-on-duplicate behaviour depends on a uniqueness
+        // constraint. Production drifted: vod_ai_state was created as `vod_id INT`
+        // with NO primary key (database.js declares INTEGER PRIMARY KEY, but
+        // CREATE TABLE IF NOT EXISTS never repairs an existing table). With nothing to
+        // conflict against, `INSERT OR IGNORE INTO vod_ai_state (vod_id)` appended a
+        // fresh row on EVERY call — 2818 rows for 487 VODs, one VOD holding 341.
+        //
+        // That is not just untidy, it silently broke the AI backfill: the work queues
+        // are `SELECT ... WHERE ai_overview_short IS NULL ORDER BY vod_id DESC LIMIT 4`,
+        // so a VOD with four empty duplicate rows fills the entire batch with itself and
+        // no other VOD is ever processed. Every recent VOD had ai_overview null as a
+        // result. stream_memories had the same shape of problem for a different reason:
+        // no constraint at all, so re-analysing a stream stored the same moment again
+        // (the /live/:sel/transcript.json memories list was ~50% duplicates).
+        //
+        // Merge duplicates field-by-field, preferring the richest value rather than an
+        // arbitrary row — a transcript and an overview can live on different duplicates,
+        // and picking one row wholesale would throw the other away.
+        _dedupeKeyedTable(database, 'vod_ai_state', 'vod_id');
+        _dedupeKeyedTable(database, 'clip_ai_state', 'clip_id');
+        _dedupeStreamMemories(database);
 
         // ── Unified audio timeline ───────────────────────────────────────────────
         // One time-indexed row per thing heard on a stream: a phrase that was spoken
@@ -2469,7 +2593,9 @@ function endOtherLiveStreamsForSlot(managedStreamId, keepStreamId) {
 
 // ── AI analysis helpers ──────────────────────────────────────
 function addStreamMemory({ stream_id, user_id = null, offset_seconds = 0, description, tags = null, thumbnail_url = null, transcript_json = null }) {
-    return run(`INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description, tags, thumbnail_url, transcript_json)
+    // OR IGNORE against idx_stream_memories_moment_unique: re-analysing a stream must not
+    // store a second description of a moment already captured.
+    return run(`INSERT OR IGNORE INTO stream_memories (stream_id, user_id, offset_seconds, description, tags, thumbnail_url, transcript_json)
                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [stream_id, user_id, Math.max(0, Math.round(offset_seconds || 0)), description || '',
          tags ? (typeof tags === 'string' ? tags : JSON.stringify(tags)) : null, thumbnail_url,
@@ -2799,6 +2925,22 @@ function getTimelineByVod(vodId) {
         return all(`SELECT kind, start_sec, end_sec, text, label, confidence
                     FROM stream_timeline_events WHERE vod_id = ? ORDER BY start_sec ASC LIMIT 20000`, [vodId]);
     } catch { return []; }
+}
+
+/**
+ * The vod_id already stamped on this stream's timeline, if any.
+ *
+ * Transcription of spooled audio keeps running for a while after the vod.ready webhook
+ * fires, and linkTimelineToVod() is a one-shot UPDATE — so those late rows used to stay
+ * vod_id NULL forever and never appear in the VOD's transcript. (Stream 2128: 11 speech
+ * rows orphaned against 2 linked; vod 2163 served 426 characters when the full
+ * transcript was 3548.) Late writers call this to stamp themselves correctly.
+ */
+function getTimelineVodId(streamId) {
+    try {
+        const r = get('SELECT vod_id FROM stream_timeline_events WHERE stream_id = ? AND vod_id IS NOT NULL LIMIT 1', [streamId]);
+        return r ? r.vod_id : null;
+    } catch { return null; }
 }
 
 /** Attach a vod_id to a finished stream's rows so VOD views can reuse the timeline. */
@@ -7279,7 +7421,7 @@ module.exports = {
     setVodTranscriptStatus, setClipTranscriptStatus, bumpVodTranscriptAttempt, bumpClipTranscriptAttempt,
     updatePasteAi, cleanupMalformedAiText,  recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
     getStreamMemoriesByUser, countStreamMemoriesByUser, getAiMomentCandidates, getStreamTranscriptSegments, getUserPastesForAi,
-    addTimelineEvents, getTimeline, getTimelineText, getTimelineCoverage, linkTimelineToVod, getTimelineByVod,
+    addTimelineEvents, getTimeline, getTimelineText, getTimelineCoverage, linkTimelineToVod, getTimelineByVod, getTimelineVodId,
     getVodsForMomentRanking, getClipStartTimesForStream, getChatSpikeOffsets,
      getLiveChatBuckets, getRecentChatText, getVodsWithoutAutoClip, 
     upsertStreamerOverview, getStreamerOverview, getAllStreamerOverviews, getStreamersNeedingOverview,
