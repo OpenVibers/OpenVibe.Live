@@ -2073,8 +2073,9 @@ async function _wsRequestMicPermission() {
         _wsPopulateInlineDevices('bc-ws-screen-mic-select', mics);
         _wsShowEl('bc-ws-screen-mic-device', true);
         _wsShowEl('bc-ws-screen-mic-perm', false);
-        // Also sync to the hidden form selects used by createNewStream
-        _wsPopulateInlineDevices('bc-screen-audio', mics);
+        // (There is no hidden bc-screen-audio mirror any more: createNewStream() reads
+        // bc-ws-screen-mic-select directly. Writing into a non-existent element was what
+        // hid the id mismatch that discarded the streamer's microphone choice.)
     } catch (err) {
         console.warn('[Workspace] Mic permission denied:', err.message);
         _wsShowEl('bc-ws-screen-mic-perm', true);
@@ -2091,8 +2092,8 @@ async function _wsRequestCamPermission() {
         _wsPopulateInlineDevices('bc-ws-screen-cam-select', cams);
         _wsShowEl('bc-ws-screen-cam-device', true);
         _wsShowEl('bc-ws-screen-cam-perm', false);
-        // Also sync to the hidden form selects used by createNewStream
-        _wsPopulateInlineDevices('bc-screen-camera', cams);
+        // See the note in _wsRequestMicPermission: createNewStream() reads
+        // bc-ws-screen-cam-select directly, so there is nothing to mirror into.
     } catch (err) {
         console.warn('[Workspace] Camera permission denied:', err.message);
         _wsShowEl('bc-ws-screen-cam-perm', true);
