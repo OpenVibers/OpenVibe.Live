@@ -1019,18 +1019,86 @@ router.get('/media-tools/status', async (req, res) => {
 });
 
 // PUT  /api/admin/media-tools/cookies — Upload/paste cookies.txt content
-router.put('/media-tools/cookies', (req, res) => {
+//
+// Validates and then actually USES the cookies before reporting success. This used to
+// accept any string over 10 characters and reply "Cookies saved", so a jar that could
+// never work — e.g. one holding only third-party __Secure-3P* cookies — looked exactly
+// like a good one while every request kept failing YouTube's bot check.
+router.put('/media-tools/cookies', async (req, res) => {
     try {
-        const { cookies } = req.body;
+        const { cookies, force } = req.body;
         if (!cookies || typeof cookies !== 'string' || cookies.trim().length < 10) {
             return res.status(400).json({ error: 'Cookies content is required (Netscape cookies.txt format)' });
         }
+
+        const { inspectCookies } = require('../media/cookie-inspector');
+        const check = inspectCookies(cookies);
+
+        // Refuse a jar we can already tell is unusable, unless explicitly forced.
+        if (!check.ok && !force) {
+            return res.status(422).json({
+                error: check.errors[0] || 'These cookies will not work',
+                check,
+                hint: 'Export cookies.txt from a browser tab where you are SIGNED IN to YouTube (not incognito). Send force:true to save anyway.',
+            });
+        }
+
         const cookiesPath = downloader.getCookiesPath();
         const dir = path.dirname(cookiesPath);
         try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+        // Keep the old jar so a failed live test can be rolled back rather than leaving
+        // the service worse off than before the save.
+        let previous = null;
+        try { previous = fs.readFileSync(cookiesPath, 'utf8'); } catch { /* none yet */ }
         fs.writeFileSync(cookiesPath, cookies.trim() + '\n', 'utf8');
-        console.log(`[Admin] yt-dlp cookies updated by ${req.user.username} (${cookies.length} bytes)`);
-        res.json({ message: 'Cookies saved', size: cookies.length });
+
+        // Prove they work against a real video rather than trusting the shape.
+        let test = { ran: false };
+        try {
+            const url = String(req.body.test_url || '').trim() || 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+            const info = await downloader.getInfo(url);
+            test = { ran: true, ok: true, title: info?.title || null, duration: info?.duration || null, url };
+        } catch (e) {
+            test = { ran: true, ok: false, error: String(e.message || e).slice(0, 400) };
+        }
+
+        if (test.ran && !test.ok && !force) {
+            // Put the previous jar back — a save that breaks extraction is worse than no save.
+            try {
+                if (previous != null) fs.writeFileSync(cookiesPath, previous, 'utf8');
+                else fs.unlinkSync(cookiesPath);
+            } catch { /* */ }
+            return res.status(422).json({
+                error: 'Cookies saved cleanly but a live extraction still failed — they are not being accepted by YouTube.',
+                check, test, restored: previous != null,
+                hint: 'Re-export while signed in. Send force:true to keep them anyway.',
+            });
+        }
+
+        console.log(`[Admin] yt-dlp cookies updated by ${req.user.username} (${cookies.length} bytes, live test ${test.ok ? 'PASSED' : 'failed'})`);
+        res.json({ message: 'Cookies saved', size: cookies.length, check, test });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/admin/media-tools/cookies/check — validate + live-test the CURRENT jar
+router.post('/media-tools/cookies/check', async (req, res) => {
+    try {
+        const { inspectCookies } = require('../media/cookie-inspector');
+        const cookiesPath = downloader.getCookiesPath();
+        let content = '';
+        try { content = fs.readFileSync(cookiesPath, 'utf8'); } catch { /* none */ }
+        const check = content ? inspectCookies(content) : { ok: false, errors: ['No cookies file saved'], warnings: [], cookieCount: 0 };
+        let test = { ran: false };
+        try {
+            const url = String(req.body?.test_url || '').trim() || 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+            const info = await downloader.getInfo(url);
+            test = { ran: true, ok: true, title: info?.title || null, duration: info?.duration || null, url };
+        } catch (e) {
+            test = { ran: true, ok: false, error: String(e.message || e).slice(0, 400) };
+        }
+        res.json({ check, test });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
