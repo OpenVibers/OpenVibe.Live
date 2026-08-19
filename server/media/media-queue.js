@@ -76,6 +76,20 @@ class MediaQueue {
         return Math.max(1, Number(settings.request_cost) || DEFAULTS.request_cost);
     }
 
+    /**
+     * Why this request cannot be priced, or null if it can.
+     *
+     * Per-minute pricing needs a duration, and yt-dlp returns none when YouTube blocks the
+     * server. Falling back to the flat rate there would charge a number the viewer was
+     * never shown, so an unpriceable request is refused outright instead.
+     */
+    unpriceableReason(settings, durationSeconds) {
+        if (this.currencyOf(settings) === 'free') return null;
+        if (settings.cost_mode !== 'per_minute') return null;
+        if (Number.isFinite(durationSeconds) && durationSeconds > 0) return null;
+        return 'This channel charges per minute, and the length of that link could not be read.';
+    }
+
     /** Normalised currency for a channel; defaults to OpenCoins as before. */
     currencyOf(settings) {
         const c = String((settings && settings.currency) || DEFAULTS.currency).toLowerCase();
@@ -171,6 +185,8 @@ class MediaQueue {
 
         // Price it, then charge in whichever currency this channel is configured for.
         const currency = this.currencyOf(settings);
+        const unpriceable = this.unpriceableReason(settings, normalized.duration_seconds);
+        if (unpriceable) throw new Error(unpriceable);
         // A free channel stores cost 0, so the queue does not display a price nobody paid.
         const cost = currency === 'free' ? 0 : this.calculateCost(settings, normalized.duration_seconds);
         if (cost > 0) {
@@ -220,6 +236,58 @@ class MediaQueue {
     }
 
     /**
+     * Is this extraction error permanent, or worth retrying later?
+     *
+     * A viewer who pays for a video that can never play should get their money back in
+     * seconds, not have it sit `pending` at the top of the queue until the streamer
+     * happens to open the player and try it. But a transient network blip must NOT burn
+     * the request, so only unambiguously permanent failures refund here.
+     */
+    _isTerminalExtractionError(message) {
+        const m = String(message || '').toLowerCase();
+        return [
+            "sign in to confirm you're not a bot",
+            'sign in to confirm you’re not a bot',
+            'video unavailable',
+            'private video',
+            'members-only',
+            'age-restricted',
+            'confirm your age',
+            'removed by the uploader',
+            'account associated with this video has been terminated',
+            'this video is not available',
+            'yt-dlp is not available',
+            'unsupported url',
+        ].some((needle) => m.includes(needle));
+    }
+
+    /**
+     * Mark a request dead and refund it when the failure is permanent. Returns true if
+     * the request was failed.
+     */
+    _failIfTerminal(requestId, message) {
+        if (!this._isTerminalExtractionError(message)) return false;
+        const request = db.getMediaRequestById(requestId);
+        // Only refund something still queued — a played item keeps its charge.
+        if (!request || (request.status !== 'pending' && request.status !== 'playing')) return false;
+        console.warn(`[MediaQueue] Request ${requestId} cannot play, refunding: ${message}`);
+        this.failRequest(requestId, this._viewerFacingError(message));
+        return true;
+    }
+
+    /** Turn a yt-dlp wall of text into one line a viewer can act on. */
+    _viewerFacingError(message) {
+        const m = String(message || '').toLowerCase();
+        if (m.includes('bot')) return 'YouTube blocked this video on the server (sign-in check). Refunded.';
+        if (m.includes('private')) return 'That video is private. Refunded.';
+        if (m.includes('members-only')) return 'That video is members-only. Refunded.';
+        if (m.includes('age')) return 'That video is age-restricted. Refunded.';
+        if (m.includes('unavailable') || m.includes('not available')) return 'That video is unavailable. Refunded.';
+        if (m.includes('yt-dlp is not available')) return 'The server cannot play media right now. Refunded.';
+        return 'That media could not be played. Refunded.';
+    }
+
+    /**
      * Extract a direct stream URL for a pending/playing request (background).
      * Updates the DB row when done.
      */
@@ -243,6 +311,7 @@ class MediaQueue {
                 download_status: 'failed',
                 last_error: 'yt-dlp is not available on the server',
             });
+            this._failIfTerminal(requestId, 'yt-dlp is not available on the server');
             return db.getMediaRequestById(requestId);
         }
 
@@ -271,13 +340,16 @@ class MediaQueue {
             try {
                 return await this.downloadFileForRequest(requestId);
             } catch (downloadErr) {
+                const combined = `Extraction failed: ${err.message}. Download fallback failed: ${downloadErr.message}`;
                 db.updateMediaRequest(requestId, {
                     stream_url: null,
                     embed_url: null,
                     download_status: 'failed',
-                    last_error: `Extraction failed: ${err.message}. Download fallback failed: ${downloadErr.message}`,
+                    last_error: combined,
                 });
-                this.broadcastQueueUpdate(request.streamer_id);
+                // Refunds immediately when the video can never play, rather than leaving a
+                // paid-for item stuck at the top of the queue.
+                if (!this._failIfTerminal(requestId, combined)) this.broadcastQueueUpdate(request.streamer_id);
                 return db.getMediaRequestById(requestId);
             }
         }

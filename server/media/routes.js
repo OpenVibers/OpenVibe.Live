@@ -179,6 +179,7 @@ router.post('/quote', optionalAuth, async (req, res) => {
         const cost = currency === 'free' ? 0 : mediaQueue.calculateCost(settings, duration);
 
         const tooLong = duration > 0 && duration > maxDuration;
+        const unpriceable = mediaQueue.unpriceableReason(settings, duration);
 
         // What the viewer can actually pay right now, so the UI can say "you have X".
         let balance = null;
@@ -199,10 +200,10 @@ router.post('/quote', optionalAuth, async (req, res) => {
             cost,
             balance,
             affordable: balance == null ? null : balance >= cost,
-            allowed: !tooLong,
+            allowed: !tooLong && !unpriceable,
             reason: tooLong
                 ? `That video is ${Math.floor(duration / 60)}m${duration % 60}s — this channel allows up to ${Math.floor(maxDuration / 60)}m.`
-                : null,
+                : (unpriceable || null),
         });
     } catch (err) {
         res.status(400).json({ error: err.message || 'Could not price that link' });

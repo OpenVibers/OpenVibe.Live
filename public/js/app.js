@@ -5071,9 +5071,18 @@ async function loadChannelMedia(username = currentChannelUsername) {
           </div>`;
     } catch { host.innerHTML = '<div class="ch-about-empty">Failed to load the media queue.</div>'; }
 }
+// Thumbnails come from third-party CDNs and 404 often enough (maxresdefault does not
+// exist for every video) that an unhandled failure leaves a broken-image glyph. The
+// placeholder always sits underneath, and a failed image simply removes itself to reveal
+// it — no HTML-in-an-attribute quoting to get wrong.
+function _mediaThumbHTML(url) {
+    const ph = '<div class="ch-media-thumb-ph"><i class="fa-solid fa-music"></i></div>';
+    if (!url) return ph;
+    return `${ph}<img src="${esc(url)}" alt="" loading="lazy" onerror="this.remove()">`;
+}
 function _mediaItemHTML(m, pos) {
     const dur = m.duration_seconds ? formatDuration(m.duration_seconds) : '';
-    const thumb = m.thumbnail_url ? `<img src="${esc(m.thumbnail_url)}" alt="" loading="lazy">` : '<div class="ch-media-thumb-ph"><i class="fa-solid fa-music"></i></div>';
+    const thumb = _mediaThumbHTML(m.thumbnail_url);
     const cost = Number(m.cost || 0) > 0
         ? `<span class="ch-media-cost"><i class="${_mediaCurrencyIcon(m.currency)}"></i> ${m.cost}</span>` : '';
     // Mods get the same controls as the streamer; the server re-checks permission on each.
@@ -5084,7 +5093,21 @@ function _mediaItemHTML(m, pos) {
             <button class="btn btn-xs btn-outline" title="Move down" onclick="_mediaQueueAction(${m.id}, 'down')"><i class="fa-solid fa-arrow-down"></i></button>
             <button class="btn btn-xs btn-outline danger" title="Remove &amp; refund" onclick="_mediaQueueAction(${m.id}, 'remove')"><i class="fa-solid fa-trash"></i></button>
         </div>` : '';
-    return `<div class="ch-media-item">${pos ? `<span class="ch-media-pos">${pos}</span>` : ''}<div class="ch-media-thumb">${thumb}</div><div class="ch-media-meta"><div class="ch-media-title">${esc(m.title || m.input || 'Media')}</div><div class="ch-media-sub muted">${dur ? dur + ' · ' : ''}requested by ${esc(m.username || 'someone')} ${cost}</div></div>${controls}</div>`;
+    // A request that cannot play should say so where it sits, not look like a normal item.
+    const problem = (m.download_status === 'failed' || m.status === 'failed')
+        ? `<div class="ch-media-problem"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(_mediaShortError(m.last_error))}</div>` : '';
+    return `<div class="ch-media-item">${pos ? `<span class="ch-media-pos">${pos}</span>` : ''}<div class="ch-media-thumb">${thumb}</div><div class="ch-media-meta"><div class="ch-media-title">${esc(m.title || m.input || 'Media')}</div><div class="ch-media-sub muted">${dur ? dur + ' · ' : ''}requested by ${esc(m.username || 'someone')} ${cost}</div>${problem}</div>${controls}</div>`;
+}
+// yt-dlp errors are paragraphs; the queue only has room for the part that matters.
+function _mediaShortError(err) {
+    const m = String(err || '').toLowerCase();
+    if (m.includes('bot')) return 'YouTube blocked this on the server (sign-in check).';
+    if (m.includes('private')) return 'This video is private.';
+    if (m.includes('members-only')) return 'This video is members-only.';
+    if (m.includes('age')) return 'This video is age-restricted.';
+    if (m.includes('unavailable') || m.includes('not available')) return 'This video is unavailable.';
+    if (m.includes('yt-dlp is not available')) return 'The server cannot play media right now.';
+    return 'This media could not be prepared.';
 }
 
 // ── Queue management (streamer + channel mods) ───────────────
@@ -5138,7 +5161,7 @@ function _renderMediaQuote(q) {
     const el = document.getElementById('ch-media-quote');
     if (!el) return;
     const dur = q.duration_seconds ? formatDuration(q.duration_seconds) : 'unknown length';
-    const thumb = q.thumbnail_url ? `<img src="${esc(q.thumbnail_url)}" alt="">` : '<div class="ch-media-thumb-ph"><i class="fa-solid fa-music"></i></div>';
+    const thumb = _mediaThumbHTML(q.thumbnail_url);
 
     let priceLine, action;
     if (!q.allowed) {
