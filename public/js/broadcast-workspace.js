@@ -946,6 +946,23 @@ function _wsRenderPanel() {
                         </div>
                         <div class="bc-ws-row">
                             <div class="form-group" style="flex:1">
+                                <label>Picture-in-picture camera</label>
+                                <select id="bc-ws-pip-source" class="form-input" onchange="_wsSlotSettingChanged()">
+                                    <option value="">None</option>
+                                    ${(_wsState.managedStreams || []).filter(o => o.id !== ms.id).map(o =>
+                                        `<option value="${o.id}"${String(ms.pip_source_msid || '') === String(o.id) ? ' selected' : ''}>${esc(o.title || ('Slot ' + o.id))}</option>`
+                                    ).join('')}
+                                </select>
+                                <p class="bc-ws-hint">
+                                    Viewers of this stream see the chosen slot's live stream as a movable,
+                                    resizable overlay. It stays a stream in its own right — its own VOD,
+                                    clips and restreams — so it can be your webcam, a second angle, or
+                                    someone else's slot entirely.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="bc-ws-row">
+                            <div class="form-group" style="flex:1">
                                 <label>Default VOD Visibility</label>
                                 <select id="bc-ws-vod-visibility" class="form-input" onchange="_wsSlotSettingChanged()">
                                     <option value="public" ${(ms.default_vod_visibility || 'public') === 'public' ? 'selected' : ''}>Public</option>
@@ -1869,6 +1886,8 @@ async function _wsSaveAll() {
             weather_zip: ms.weather_zip || null,
             weather_detail: ms.weather_detail || 'basic',
             weather_show_location: ms.weather_show_location || 0,
+            // '' clears the overlay; the server validates ownership and rejects self-reference.
+            pip_source_msid: document.getElementById('bc-ws-pip-source')?.value || null,
         };
 
         const profileBlob = {

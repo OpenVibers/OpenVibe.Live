@@ -1571,6 +1571,35 @@ router.put('/managed/:id', requireAuth, (req, res) => {
         if (hasOwn(req.body, 'control_config_id')) {
             fields.control_config_id = req.body.control_config_id === null ? null : parseInt(req.body.control_config_id);
         }
+        if (hasOwn(req.body, 'pip_source_msid')) {
+            // null / '' clears the overlay. Anything else must be one of this user's own
+            // slots and must not be this slot, which would ask the player to render a
+            // stream inside itself.
+            const raw = req.body.pip_source_msid;
+            if (raw === null || raw === '' || raw === undefined) {
+                fields.pip_source_msid = null;
+            } else {
+                const srcId = parseInt(raw, 10);
+                if (!Number.isFinite(srcId)) return res.status(400).json({ error: 'Invalid pip_source_msid' });
+                if (srcId === msId) return res.status(400).json({ error: 'A slot cannot be its own picture-in-picture camera' });
+                const src = db.getManagedStreamById(srcId);
+                if (!src) return res.status(404).json({ error: 'Picture-in-picture slot not found' });
+                if (src.user_id !== ms.user_id) return res.status(403).json({ error: 'That slot belongs to someone else' });
+                fields.pip_source_msid = srcId;
+            }
+        }
+        if (hasOwn(req.body, 'pip_defaults')) {
+            const d = req.body.pip_defaults || {};
+            const num = (v, lo, hi, dflt) => {
+                const n = Number(v);
+                return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
+            };
+            // Fractions of the player box, so the overlay lands in the same relative
+            // place regardless of the viewer's window size.
+            fields.pip_defaults = JSON.stringify({
+                x: num(d.x, 0, 1, 0.72), y: num(d.y, 0, 1, 0.70), w: num(d.w, 0.08, 0.6, 0.25),
+            });
+        }
         if (hasOwn(req.body, 'sort_order')) {
             fields.sort_order = parseInt(req.body.sort_order) || 0;
         }
@@ -1727,6 +1756,16 @@ router.get('/:id', optionalAuth, (req, res) => {
         stream.cameras = db.all('SELECT * FROM cameras WHERE stream_id = ?', [stream.id]);
         stream.controls = db.getStreamControls(stream.id);
         stream.channel = db.getChannelByUserId(stream.user_id) || null;
+
+        // Picture-in-picture camera overlay: another SLOT of this owner's whose live
+        // stream should be drawn on top of this one. It is a normal stream in its own
+        // right (own VOD, clips, transcript, restreams) — the player only needs to know
+        // which live stream to put in the overlay and where to start it. Null whenever
+        // nothing is configured or the camera slot is not currently live, so the player
+        // simply renders no overlay.
+        stream.pip_overlay = stream.managed_stream_id
+            ? db.getPipOverlayForManagedStream(stream.managed_stream_id)
+            : null;
 
         if (req.user) stream.isFollowing = db.isFollowing(req.user.id, stream.user_id);
         stream.follower_count = db.getFollowerCount(stream.user_id);

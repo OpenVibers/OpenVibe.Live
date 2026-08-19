@@ -900,6 +900,10 @@ function _applyLoaderThumb(stream) {
 
 function initPlayer(stream) {
     destroyPlayer();
+    // Camera overlay is a separate viewer session against another slot's live stream;
+    // attach it alongside whichever protocol the main stream uses, and let it fail
+    // quietly — a camera that is offline must never stop the screen share playing.
+    try { window.streamPip?.attach(stream); } catch (e) { console.warn('[PiP] attach failed:', e.message); }
     setViewerPausedIntent(false); // fresh stream — always start playing
     streamRef = stream; // Store for clip recording across all protocols
     _resetPlayerRevealState();
@@ -3687,6 +3691,9 @@ function getSavedPlayerAudioState() {
 /* ── Cleanup ──────────────────────────────────────────────────── */
 function destroyPlayer() {
     _playerGen++; // invalidate any in-flight WebRTC reconnect/rewatch closures from the old session
+    // The overlay owns a websocket and a mediasoup transport of its own, so it has to be
+    // torn down explicitly — leaving it running would keep consuming a second stream.
+    try { window.streamPip?.detach(); } catch { /* */ }
     stopClipRecording();
     destroyDVR();
     _hideReconnectingIndicator();

@@ -13564,3 +13564,87 @@ body.controls-docked .messenger-toggle { z-index: 1100; }
     .paste-md-body h1.md-h { font-size: 1.5rem; }
     .paste-md-body h2.md-h { font-size: 1.25rem; }
 }
+
+/* ── Picture-in-picture camera overlay (stream-pip.js) ──────────────
+   Positioned in FRACTIONS of .video-container so the overlay keeps its relative
+   place at any window size and inside fullscreen, where the container is the
+   fullscreen element and these percentages still resolve against it. */
+
+.ov-pip {
+    position: absolute;
+    z-index: 25;                      /* above the video, below the NSFW gate (30) */
+    aspect-ratio: 16 / 9;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #000;
+    border: 1px solid rgba(255, 255, 255, .22);
+    box-shadow: 0 6px 22px rgba(0, 0, 0, .55);
+    cursor: grab;
+    touch-action: none;               /* pointer events drive drag/resize ourselves */
+    transition: box-shadow .15s ease, border-color .15s ease;
+}
+.ov-pip:hover { border-color: rgba(255, 255, 255, .38); }
+.ov-pip.is-dragging { cursor: grabbing; box-shadow: 0 10px 30px rgba(0, 0, 0, .7); }
+.ov-pip.is-dragging, .ov-pip.is-resizing { user-select: none; }
+.ov-pip.is-hidden { display: none; }
+
+.ov-pip-video { width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }
+
+.ov-pip-bar {
+    position: absolute; inset: 0 0 auto 0;
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    padding: 5px 7px;
+    background: linear-gradient(180deg, rgba(0,0,0,.72), rgba(0,0,0,0));
+    opacity: 0; transition: opacity .15s ease;
+    pointer-events: none;
+}
+.ov-pip:hover .ov-pip-bar, .ov-pip.is-dragging .ov-pip-bar { opacity: 1; pointer-events: auto; }
+.ov-pip-title {
+    font-size: .72rem; color: #fff; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    text-shadow: 0 1px 3px rgba(0,0,0,.8);
+}
+.ov-pip-title i { opacity: .85; margin-right: 4px; }
+.ov-pip-actions { display: flex; gap: 3px; flex-shrink: 0; }
+.ov-pip-actions button {
+    background: rgba(0,0,0,.45); border: none; color: #fff;
+    width: 22px; height: 22px; border-radius: 5px; cursor: pointer;
+    font-size: .68rem; display: grid; place-items: center;
+    transition: background .12s ease;
+}
+.ov-pip-actions button:hover { background: rgba(255,255,255,.24); }
+
+.ov-pip-resize {
+    position: absolute; right: 0; bottom: 0;
+    width: 18px; height: 18px; cursor: nwse-resize;
+    background:
+        linear-gradient(135deg, transparent 50%, rgba(255,255,255,.55) 50%, rgba(255,255,255,.55) 62%,
+                        transparent 62%, transparent 74%, rgba(255,255,255,.55) 74%, rgba(255,255,255,.55) 86%, transparent 86%);
+    opacity: 0; transition: opacity .15s ease;
+}
+.ov-pip:hover .ov-pip-resize { opacity: 1; }
+
+.ov-pip-offline {
+    position: absolute; inset: 0;
+    display: none; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    background: rgba(10,12,20,.9); color: var(--text-muted, #9aa3b2); font-size: .72rem;
+}
+.ov-pip.is-offline .ov-pip-offline { display: flex; }
+.ov-pip-offline i { font-size: 1.1rem; opacity: .7; }
+
+/* Shown in place of the overlay once the viewer hides it, so it is recoverable. */
+.ov-pip-restore {
+    position: absolute; right: 12px; bottom: 12px; z-index: 25;
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 11px; border-radius: 999px; cursor: pointer;
+    background: rgba(0,0,0,.62); border: 1px solid rgba(255,255,255,.18);
+    color: #fff; font-size: .74rem;
+    backdrop-filter: blur(3px);
+}
+.ov-pip-restore:hover { background: rgba(0,0,0,.8); }
+
+@media (max-width: 640px) {
+    /* Fingers need a bigger target than a hover-revealed 18px corner. */
+    .ov-pip-resize { width: 26px; height: 26px; opacity: .8; }
+    .ov-pip-bar { opacity: 1; pointer-events: auto; }
+}

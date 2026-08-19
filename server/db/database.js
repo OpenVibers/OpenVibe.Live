@@ -2294,6 +2294,24 @@ function initDb() {
             database.exec("ALTER TABLE managed_streams ADD COLUMN browser_mode TEXT DEFAULT 'camera'");
             console.log('[DB] Added browser_mode column to managed_streams');
         }
+        if (!msCols2.includes('pip_source_msid')) {
+            // The slot whose live stream should appear as a picture-in-picture overlay on
+            // THIS slot. Modelling the camera as an ordinary slot rather than a second
+            // track inside one stream is what lets it inherit everything the platform
+            // already does per stream — its own VOD, clips, transcript, restreams — and
+            // lets viewers move and resize it independently of the screen share. It is
+            // deliberately a plain slot reference, not "the owner's webcam", so a
+            // streamer can point at a co-host's or moderator's slot too.
+            database.exec('ALTER TABLE managed_streams ADD COLUMN pip_source_msid INTEGER');
+            console.log('[DB] Added pip_source_msid column to managed_streams');
+        }
+        if (!msCols2.includes('pip_defaults')) {
+            // Broadcaster-chosen STARTING geometry for the overlay, as JSON
+            // {x,y,w} in fractions of the player. Viewers can move/resize from there and
+            // their own choice is remembered locally; this is only the default they land on.
+            database.exec("ALTER TABLE managed_streams ADD COLUMN pip_defaults TEXT DEFAULT '{}'");
+            console.log('[DB] Added pip_defaults column to managed_streams');
+        }
         if (!msCols2.includes('default_vod_visibility')) {
             database.exec("ALTER TABLE managed_streams ADD COLUMN default_vod_visibility TEXT DEFAULT 'public'");
             console.log('[DB] Added default_vod_visibility column to managed_streams');
@@ -3366,19 +3384,65 @@ function updateManagedStream(managedStreamId, userId, fields) {
         'default_vod_visibility', 'default_clip_visibility', 'slot_vod_recording_enabled', 'slot_clip_recording_enabled',
         'slot_clip_notify_enabled',
         'weather_zip', 'weather_detail', 'weather_show_location', 'mic_only_image',
+        'pip_source_msid', 'pip_defaults',
     ]);
     const updates = [];
     const params = [];
     for (const [key, val] of Object.entries(fields)) {
         if (val !== undefined && allowed.has(key)) {
             updates.push(`${key} = ?`);
-            params.push(['tags'].includes(key) ? (typeof val === 'string' ? val : JSON.stringify(val)) : val);
+            params.push(['tags', 'pip_defaults'].includes(key)
+                ? (typeof val === 'string' ? val : JSON.stringify(val))
+                : val);
         }
     }
     if (updates.length === 0) return;
     updates.push('updated_at = CURRENT_TIMESTAMP');
     params.push(managedStreamId, userId);
     return run(`UPDATE managed_streams SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, params);
+}
+
+/**
+ * Resolve the picture-in-picture camera overlay for a slot.
+ *
+ * Returns the CURRENTLY LIVE session of the slot this one points at, or null. The
+ * camera is an ordinary slot publishing an ordinary stream, so it already has its own
+ * VOD, clips, transcript and restreams; all the viewer needs is which live stream to
+ * play in the overlay and where to put it by default.
+ *
+ * Self-reference is rejected: a slot pointing at itself would ask the player to render
+ * a stream inside itself.
+ */
+function getPipOverlayForManagedStream(managedStreamId) {
+    try {
+        const ms = get('SELECT id, pip_source_msid, pip_defaults FROM managed_streams WHERE id = ?', [managedStreamId]);
+        if (!ms || !ms.pip_source_msid || ms.pip_source_msid === ms.id) return null;
+        const src = get(`SELECT m.id AS msid, m.title, m.slug, m.user_id,
+                                s.id AS stream_id, s.is_live
+                         FROM managed_streams m
+                         LEFT JOIN streams s ON s.managed_stream_id = m.id AND s.is_live = 1
+                         WHERE m.id = ?`, [ms.pip_source_msid]);
+        if (!src) return null;
+        let defaults = {};
+        try { defaults = ms.pip_defaults ? JSON.parse(ms.pip_defaults) : {}; } catch { defaults = {}; }
+        return {
+            source_msid: src.msid,
+            title: src.title || 'Camera',
+            slug: src.slug || null,
+            stream_id: src.stream_id || null,
+            live: !!src.stream_id,
+            defaults,
+        };
+    } catch { return null; }
+}
+
+/** Slots that could serve as a PiP source for this user (everything except `excludeId`). */
+function getPipCandidateSlots(userId, excludeId = null) {
+    try {
+        return all(`SELECT id, title, slug FROM managed_streams
+                    WHERE user_id = ? AND (? IS NULL OR id != ?)
+                    ORDER BY sort_order ASC, id ASC`, [userId, excludeId, excludeId]);
+    } catch { return []; }
 }
 
 function deleteManagedStream(managedStreamId, userId) {
@@ -7445,6 +7509,7 @@ module.exports = {
     getManagedStreamBySlug, getManagedStreamByStreamKey, getManagedStreamByIdOrSlug,
     updateManagedStream, deleteManagedStream,
     getManagedStreamBroadcastSettings, updateManagedStreamBroadcastSettings,
+    getPipOverlayForManagedStream, getPipCandidateSlots,
     countManagedStreamsByUser, getManagedStreamLimit,
     isValidManagedStreamSlug, isManagedStreamSlugTaken,
     ensureStreamerRoleOnFeed,
