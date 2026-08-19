@@ -6888,15 +6888,21 @@ textarea.form-input { resize: vertical; min-height: 60px; }
 .ch-media-section-label i { color: var(--accent); }
 .ch-media-now .ch-media-item { border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .ch-media-queue { display: flex; flex-direction: column; gap: 8px; }
-.ch-media-item { display: flex; align-items: center; gap: 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; }
+.ch-media-item { display: flex; align-items: center; gap: 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; flex-wrap: wrap; }
 .ch-media-pos { width: 22px; text-align: center; font-weight: 700; color: var(--text-muted); flex-shrink: 0; }
-.ch-media-thumb { width: 72px; height: 48px; border-radius: 6px; overflow: hidden; flex-shrink: 0; background: var(--bg-primary); }
-.ch-media-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.ch-media-thumb { width: 72px; height: 48px; border-radius: 6px; overflow: hidden; flex: 0 0 auto; background: var(--bg-primary); position: relative; }
+.ch-media-thumb img { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
 .ch-media-thumb-ph { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
 .ch-media-meta { min-width: 0; flex: 1; }
-.ch-media-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ch-media-title {
+    font-weight: 600;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; overflow-wrap: anywhere;
+}
+.ch-media-meta { flex: 1 1 180px; }
 .ch-media-sub { font-size: 0.82rem; }
 .ch-media-cost { margin-left: 6px; white-space: nowrap; }
+.ch-media-problem { margin-top: 3px; font-size: 0.8rem; color: var(--live-red, #e05a5a); overflow-wrap: anywhere; }
 .ch-media-cost i { color: var(--accent); }
 
 /* Queue controls — shown to the streamer and to their channel mods. */
@@ -6908,7 +6914,8 @@ textarea.form-input { resize: vertical; min-height: 60px; }
     font-size: 0.85rem;
 }
 .ch-media-mod-bar > span:first-child { flex: 1; }
-.ch-media-actions { display: flex; gap: 5px; flex-shrink: 0; }
+/* The controls drop to their own full-width row rather than squeezing the title out. */
+.ch-media-actions { display: flex; gap: 5px; flex: 0 0 auto; margin-left: auto; }
 .ch-media-actions .btn { padding: 5px 8px; font-size: 0.78rem; line-height: 1; }
 .ch-media-actions .btn.danger:hover { border-color: var(--live-red, #e05a5a); color: var(--live-red, #e05a5a); }
 
@@ -6926,10 +6933,15 @@ textarea.form-input { resize: vertical; min-height: 60px; }
 .ch-media-quote-price.ok { color: var(--success, #4fd48a); }
 .ch-media-quote-price.err { color: var(--live-red, #e05a5a); font-weight: 600; }
 .ch-media-quote-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-@media (max-width: 640px) {
+/* Container-relative, not viewport-relative: the channel tab is a narrow column even on
+   a wide screen, which is why viewport breakpoints alone left the controls clipped. */
+.ch-media-item > .ch-media-actions { min-width: 0; }
+@media (max-width: 900px) {
+    .ch-media-actions { width: 100%; justify-content: flex-end; margin-left: 0; }
     .ch-media-quote-actions { width: 100%; }
-    .ch-media-quote-actions .btn { flex: 1; }
-    .ch-media-actions { width: 100%; justify-content: flex-end; }
+    .ch-media-quote-actions .btn { flex: 1 1 auto; }
+    .ch-media-quote-meta { flex: 1 1 100%; }
+    .ch-media-mod-bar > span:first-child { flex: 1 1 100%; }
 }
 @media (max-width: 640px) { .ch-tab { padding: 9px 11px; font-size: 0.84rem; } }
 

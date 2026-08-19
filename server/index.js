@@ -220,7 +220,10 @@ app.use(helmet({
             // esm.sh: mediasoup-client dynamic import for WebRTC SFU restreaming + RS restream
             styleSrc: ["'self'", "'unsafe-inline'", "cdnjs.cloudflare.com", "fonts.googleapis.com"],
             fontSrc: ["'self'", "fonts.gstatic.com", "cdnjs.cloudflare.com"],
-            imgSrc: ["'self'", "data:", "blob:", "image.tmdb.org", "https://openvibe.network", "https://openvibe.media", "cdn.frankerfacez.com", "cdn.betterttv.net", "cdn.7tv.app", "https://files.kick.com"],
+            // i.ytimg.com / i.vimeocdn.com carry media-request thumbnails. Without them
+            // every queued item renders as a broken image, which is what the media
+            // request tab was doing for every YouTube link.
+            imgSrc: ["'self'", "data:", "blob:", "image.tmdb.org", "https://openvibe.network", "https://openvibe.media", "cdn.frankerfacez.com", "cdn.betterttv.net", "cdn.7tv.app", "https://files.kick.com", "https://i.ytimg.com", "https://img.youtube.com", "https://i.vimeocdn.com"],
             connectSrc: ["'self'", "wss:", "https://openvibe.network", "https://openvibe.media", "https://openvibe.games", "https://cdn.jsdelivr.net", "https://esm.sh", "https://static.cloudflareinsights.com"],
             // VODs/clips play from openvibe.media (the /api proxies 302 there), which may
             // itself redirect to presigned B2/R2 object-store URLs — all must be allowed
