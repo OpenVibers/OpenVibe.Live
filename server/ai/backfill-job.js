@@ -84,8 +84,10 @@ async function tick() {
                     if (!p || !p.slug) continue;
                     let r = null;
                     if (p.type === 'screenshot') {
-                        // Vision needs the actual image; skip when there is no URL to read.
-                        const img = p.screenshot_url || null;
+                        // screenshot_url is RELATIVE ("/p/<slug>/screenshot") and the file
+                        // lives on Media's disk, not ours — so it has to be fetched over
+                        // HTTP from Media's public base, not opened as a path.
+                        const img = p.slug ? media.pasteScreenshotUrl(p.slug) : null;
                         if (img) r = await ai.analyzeImagePaste(img, p.title).catch(() => null);
                     } else {
                         r = await ai.analyzeTextPaste(p.content || '', p.title).catch(() => null);
