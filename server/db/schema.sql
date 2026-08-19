@@ -729,6 +729,7 @@ CREATE TABLE IF NOT EXISTS media_request_settings (
     allow_vimeo INTEGER DEFAULT 1,
     allow_direct_media INTEGER DEFAULT 1,
     auto_advance INTEGER DEFAULT 1,
+    currency TEXT DEFAULT 'opencoins' CHECK(currency IN ('free','vibes','opencoins','points')),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -749,6 +750,7 @@ CREATE TABLE IF NOT EXISTS media_requests (
     thumbnail_url TEXT,
     duration_seconds INTEGER,
     cost INTEGER NOT NULL DEFAULT 25,
+    currency TEXT DEFAULT 'opencoins',
     queue_position INTEGER DEFAULT 0,
     status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'playing', 'played', 'skipped', 'removed', 'failed')),
     requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,

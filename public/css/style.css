@@ -6896,6 +6896,41 @@ textarea.form-input { resize: vertical; min-height: 60px; }
 .ch-media-meta { min-width: 0; flex: 1; }
 .ch-media-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ch-media-sub { font-size: 0.82rem; }
+.ch-media-cost { margin-left: 6px; white-space: nowrap; }
+.ch-media-cost i { color: var(--accent); }
+
+/* Queue controls — shown to the streamer and to their channel mods. */
+.ch-media-mod-bar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 8px 10px; border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+    font-size: 0.85rem;
+}
+.ch-media-mod-bar > span:first-child { flex: 1; }
+.ch-media-actions { display: flex; gap: 5px; flex-shrink: 0; }
+.ch-media-actions .btn { padding: 5px 8px; font-size: 0.78rem; line-height: 1; }
+.ch-media-actions .btn.danger:hover { border-color: var(--live-red, #e05a5a); color: var(--live-red, #e05a5a); }
+
+/* Quote card: the exact price for this link, shown before anything is charged. */
+.ch-media-quote {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 10px; border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.ch-media-quote.loading { justify-content: center; padding: 14px; }
+.ch-media-quote-meta { min-width: 0; flex: 1; }
+.ch-media-quote-price { margin-top: 4px; font-weight: 700; }
+.ch-media-quote-price i { color: var(--accent); }
+.ch-media-quote-price.ok { color: var(--success, #4fd48a); }
+.ch-media-quote-price.err { color: var(--live-red, #e05a5a); font-weight: 600; }
+.ch-media-quote-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+@media (max-width: 640px) {
+    .ch-media-quote-actions { width: 100%; }
+    .ch-media-quote-actions .btn { flex: 1; }
+    .ch-media-actions { width: 100%; justify-content: flex-end; }
+}
 @media (max-width: 640px) { .ch-tab { padding: 9px 11px; font-size: 0.84rem; } }
 
 /* ── Customizable offline screen ─────────────────────────────── */

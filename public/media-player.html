@@ -109,17 +109,26 @@
                         <label><span>Enabled</span><input type="checkbox" name="enabled"></label>
                         <fieldset class="mp-fieldset">
                             <legend>Pricing</legend>
+                            <label><span>Charge in</span>
+                                <select name="currency" class="mp-select" onchange="onCurrencyChange(this.value)">
+                                    <option value="free">Free — no charge</option>
+                                    <option value="opencoins">OpenCoins</option>
+                                    <option value="vibes">Vibes (paid to you)</option>
+                                    <option value="points">Your channel points</option>
+                                </select>
+                            </label>
                             <label><span>Mode</span>
-                                <select name="cost_mode" class="mp-select">
+                                <select name="cost_mode" class="mp-select" onchange="refreshPricingNote()">
                                     <option value="flat">Flat rate</option>
                                     <option value="per_minute">Per minute</option>
                                 </select>
                             </label>
-                            <label><span>Flat cost</span><input type="number" name="request_cost" min="1" max="100000"></label>
-                            <label><span>Cost per minute</span><input type="number" name="cost_per_minute" min="1" max="10000"></label>
+                            <label><span>Flat cost</span><input type="number" name="request_cost" min="1" max="100000" oninput="refreshPricingNote()"></label>
+                            <label><span>Cost per minute</span><input type="number" name="cost_per_minute" min="1" max="10000" oninput="refreshPricingNote()"></label>
+                            <p class="mp-muted mp-pricing-note" id="mp-pricing-note"></p>
                         </fieldset>
                         <label><span>Max per viewer</span><input type="number" name="max_per_user" min="1" max="25"></label>
-                        <label><span>Max duration (sec)</span><input type="number" name="max_duration_seconds" min="30" max="7200"></label>
+                        <label><span>Max length (minutes)</span><input type="number" name="max_duration_minutes" min="1" max="120" step="1"></label>
                         <label><span>YouTube</span><input type="checkbox" name="allow_youtube"></label>
                         <label><span>Vimeo</span><input type="checkbox" name="allow_vimeo"></label>
                         <label><span>Direct media</span><input type="checkbox" name="allow_direct_media"></label>

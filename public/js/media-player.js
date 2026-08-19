@@ -708,13 +708,43 @@ function renderSettings() {
     form.request_cost.value = s.request_cost ?? 25;
     form.cost_per_minute.value = s.cost_per_minute ?? 5;
     form.cost_mode.value = s.cost_mode || 'flat';
+    form.currency.value = s.currency || 'opencoins';
     form.max_per_user.value = s.max_per_user ?? 3;
-    form.max_duration_seconds.value = s.max_duration_seconds ?? 600;
+    // Stored in seconds, entered in minutes — nobody thinks about a max length in seconds.
+    form.max_duration_minutes.value = Math.max(1, Math.round((s.max_duration_seconds ?? 600) / 60));
     form.allow_youtube.checked = !!s.allow_youtube;
     form.allow_vimeo.checked = !!s.allow_vimeo;
     form.allow_direct_media.checked = !!s.allow_direct_media;
     form.allow_live.checked = !!s.allow_live;
     form.auto_advance.checked = !!s.auto_advance;
+    onCurrencyChange(form.currency.value);
+}
+
+/**
+ * Grey out the price fields when requests are free, and spell out in words what the
+ * current combination actually costs a viewer — the two dropdowns plus two numbers are
+ * easy to misread on their own.
+ */
+function refreshPricingNote() {
+    const form = document.getElementById('mp-settings-form');
+    if (form) onCurrencyChange(form.currency.value);
+}
+
+function onCurrencyChange(currency) {
+    const form = document.getElementById('mp-settings-form');
+    if (!form) return;
+    const free = currency === 'free';
+    form.cost_mode.disabled = free;
+    form.request_cost.disabled = free;
+    form.cost_per_minute.disabled = free;
+
+    const note = document.getElementById('mp-pricing-note');
+    if (!note) return;
+    if (free) { note.textContent = 'Viewers request for free.'; return; }
+    const label = { vibes: 'Vibes', points: 'channel points', opencoins: 'OpenCoins' }[currency] || 'OpenCoins';
+    note.textContent = form.cost_mode.value === 'per_minute'
+        ? `A 4-minute video costs ${(Number(form.cost_per_minute.value) || 0) * 4} ${label} (rounded up to whole minutes).`
+        : `Every request costs ${Number(form.request_cost.value) || 0} ${label}, whatever its length.`;
 }
 
 async function saveSettings(event) {
@@ -725,8 +755,9 @@ async function saveSettings(event) {
         request_cost: Number(form.request_cost.value || 25),
         cost_per_minute: Number(form.cost_per_minute.value || 5),
         cost_mode: form.cost_mode.value,
+        currency: form.currency.value,
         max_per_user: Number(form.max_per_user.value || 3),
-        max_duration_seconds: Number(form.max_duration_seconds.value || 600),
+        max_duration_seconds: Math.max(30, Number(form.max_duration_minutes.value || 10) * 60),
         allow_youtube: form.allow_youtube.checked,
         allow_vimeo: form.allow_vimeo.checked,
         allow_direct_media: form.allow_direct_media.checked,

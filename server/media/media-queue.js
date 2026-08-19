@@ -14,6 +14,14 @@ const DEFAULTS = {
     auto_advance: 1,
     cost_mode: 'flat',
     cost_per_minute: 5,
+    // What a request costs, and in what. Flat vs per-minute already existed, but the
+    // charge was hardwired to OpenCoins, so a streamer had no way to run requests free
+    // or price them in anything else.
+    //   free      — no charge
+    //   opencoins — network-wide wallet (default; previous behaviour)
+    //   vibes     — paid currency, credited to the streamer as a donation
+    //   points    — this channel's own points
+    currency: 'opencoins',
     allow_live: 0,
     download_mode: 'stream',  // 'stream' = extract URL, 'download' = download file to disk
 };
@@ -68,6 +76,61 @@ class MediaQueue {
         return Math.max(1, Number(settings.request_cost) || DEFAULTS.request_cost);
     }
 
+    /** Normalised currency for a channel; defaults to OpenCoins as before. */
+    currencyOf(settings) {
+        const c = String((settings && settings.currency) || DEFAULTS.currency).toLowerCase();
+        return ['free', 'vibes', 'opencoins', 'points'].includes(c) ? c : 'opencoins';
+    }
+
+    /** Human label for a currency, used in quotes and error messages. */
+    currencyLabel(currency) {
+        switch (currency) {
+            case 'free': return 'free';
+            case 'vibes': return 'Vibes';
+            case 'points': return 'channel points';
+            default: return 'OpenCoins';
+        }
+    }
+
+    /**
+     * Take `cost` from the viewer in the channel's currency. Throws a message intended to
+     * be shown to the viewer verbatim. The viewer was quoted this exact figure by /quote
+     * before submitting, so what they agreed to is what gets taken.
+     */
+    async charge({ currency, cost, userId, streamerId, streamId, label }) {
+        if (currency === 'points') {
+            if (!db.deductChannelPoints(userId, streamerId, cost)) {
+                const have = db.getChannelPoints(userId, streamerId);
+                throw new Error(`Not enough channel points — this costs ${cost}, you have ${have}.`);
+            }
+            return;
+        }
+        if (currency === 'vibes') {
+            // Vibes have no generic spend: paying a streamer for a request IS a donation
+            // to them, so it goes through the same path and shows up in their totals.
+            try {
+                require('../monetization/vibes').donate(userId, streamerId, streamId || null, cost, label);
+            } catch (e) {
+                throw new Error(/insufficient/i.test(e?.message || '')
+                    ? `Not enough Vibes — this costs ${cost}.`
+                    : (e?.message || `Could not charge ${cost} Vibes.`));
+            }
+            return;
+        }
+        // opencoins — network wallet
+        try {
+            const wallet = require('../monetization/wallet-client');
+            const debited = await wallet.debit(
+                userId, cost, label,
+                `live:media_req:${streamerId}:${userId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+            );
+            if (!debited) throw new Error('OpenCoins wallet unavailable — link your OpenVibe.Network account first.');
+        } catch (e) {
+            if (e && e.status === 409) throw new Error(`Not enough OpenCoins — this costs ${cost}.`);
+            throw e;
+        }
+    }
+
     /**
      * Add a media request to the queue.
      * Uses yt-dlp for metadata (title, duration, thumbnail) when available.
@@ -106,24 +169,15 @@ class MediaQueue {
         const duplicate = db.findActiveMediaRequestByCanonicalUrl(streamerId, normalized.canonical_url);
         if (duplicate) throw new Error('That media is already in the queue');
 
-        // Calculate cost (flat or per-minute). Spends OpenCoins from the network
-        // wallet (openvibe.network) — the legacy local balance column is frozen.
-        const cost = this.calculateCost(settings, normalized.duration_seconds);
+        // Price it, then charge in whichever currency this channel is configured for.
+        const currency = this.currencyOf(settings);
+        // A free channel stores cost 0, so the queue does not display a price nobody paid.
+        const cost = currency === 'free' ? 0 : this.calculateCost(settings, normalized.duration_seconds);
         if (cost > 0) {
-            const costDesc = settings.cost_mode === 'per_minute'
-                ? `${settings.cost_per_minute} coins/min`
-                : `${cost} coins`;
-            try {
-                const wallet = require('../monetization/wallet-client');
-                const debited = await wallet.debit(
-                    userId, cost, `Media request: ${normalized.title || trimmed}`,
-                    `live:media_req:${streamerId}:${userId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
-                );
-                if (!debited) throw new Error('OpenCoins wallet unavailable — link your OpenVibe.Network account first.');
-            } catch (e) {
-                if (e && e.status === 409) throw new Error(`Not enough OpenCoins. This channel charges ${costDesc} per request.`);
-                throw e;
-            }
+            await this.charge({
+                currency, cost, userId, streamerId, streamId,
+                label: `Media request: ${normalized.title || trimmed}`,
+            });
         }
 
         const queuePosition = db.getMediaRequestMaxQueuePosition(streamerId) + 1;
@@ -140,16 +194,21 @@ class MediaQueue {
             thumbnail_url: normalized.thumbnail_url,
             duration_seconds: normalized.duration_seconds,
             cost,
+            currency,
             queue_position: queuePosition,
         });
 
-        db.createCoinTransaction({
-            user_id: userId,
-            stream_id: streamId,
-            amount: -cost,
-            type: 'redeem',
-            message: `Media request: ${normalized.title}`,
-        });
+        // The coin ledger tracks OpenCoins only — booking a Vibes or channel-points charge
+        // here would show up as a phantom coin spend in the viewer's history.
+        if (cost > 0 && currency === 'opencoins') {
+            db.createCoinTransaction({
+                user_id: userId,
+                stream_id: streamId,
+                amount: -cost,
+                type: 'redeem',
+                message: `Media request: ${normalized.title}`,
+            });
+        }
 
         const request = db.getMediaRequestById(result.lastInsertRowid);
         this.broadcastQueueUpdate(streamerId);
@@ -334,12 +393,29 @@ class MediaQueue {
         if (request.refunded) return 0;
 
         const amount = request.cost || 0;
-        if (amount <= 0) return 0;
+        const currency = this.currencyOf({ currency: request.currency });
+        if (amount <= 0 || request.currency === 'free') return 0;
 
-        // Refund to the network OpenCoins wallet (idempotent per request id).
-        require('../monetization/wallet-client')
-            .credit(request.user_id, amount, `Refund: ${request.title || 'media request'}`, `live:media_refund:${request.id}`)
-            .catch((e) => console.warn('[MediaQueue] wallet refund failed:', e.message));
+        // Give back what was actually taken. `currency` is the one recorded on the request
+        // at charge time, not the channel's current setting.
+        const label = `Refund: ${request.title || 'media request'}`;
+        try {
+            if (currency === 'points') {
+                db.addChannelPoints(request.user_id, request.streamer_id, amount);
+            } else if (currency === 'vibes') {
+                // The charge was booked as a donation to the streamer, so unwind both sides.
+                db.deductVibesCashout(request.streamer_id, amount);
+                db.addVibes(request.user_id, amount);
+            } else {
+                // Idempotent per request id, so a double-refund is a no-op server-side.
+                require('../monetization/wallet-client')
+                    .credit(request.user_id, amount, label, `live:media_refund:${request.id}`)
+                    .catch((e) => console.warn('[MediaQueue] wallet refund failed:', e.message));
+            }
+        } catch (e) {
+            console.warn('[MediaQueue] refund failed:', e.message);
+            return 0;
+        }
         db.updateMediaRequest(requestId, { refunded: 1 });
 
         return amount;
