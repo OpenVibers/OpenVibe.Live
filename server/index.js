@@ -157,6 +157,13 @@ function getAllowedOrigins() {
     // openvibe.games game client calls cosmetics API cross-origin
     allowed.add('https://openvibe.games');
 
+    // openvibe.tools + its satellites (pastes., dev., net., img., text., …) call this
+    // API from the browser — pastes.openvibe.tools hosts the paste UI and was being
+    // CORS-rejected outright, so every paste action from there failed. Subdomains are
+    // matched by suffix in isAllowedOrigin() rather than enumerated, since satellites
+    // are added over time; the apex is listed here for the exact-match fast path.
+    allowed.add('https://openvibe.tools');
+
     if (config.nodeEnv !== 'production') {
         [
             'http://localhost:3000',
@@ -235,11 +242,26 @@ app.use((req, res, next) => {
     }
     next();
 });
+/**
+ * Origin check. Exact allowlist first, then a strict suffix rule for the openvibe.tools
+ * satellites. Parsed with URL() and matched on hostname + https so a lookalike such as
+ * https://evil-openvibe.tools or http://x.openvibe.tools cannot slip through a naive
+ * endsWith on the raw origin string.
+ */
+function isAllowedOrigin(origin) {
+    if (allowedOrigins.has(origin)) return true;
+    try {
+        const u = new URL(origin);
+        if (u.protocol !== 'https:') return false;
+        return u.hostname === 'openvibe.tools' || u.hostname.endsWith('.openvibe.tools');
+    } catch { return false; }
+}
+
 app.use(cors({
     origin(origin, callback) {
         if (!origin) return callback(null, true);
-        if (allowedOrigins.has(origin)) return callback(null, true);
-        console.warn(`[CORS] Rejected origin: "${origin}" | allowed: ${[...allowedOrigins].join(', ')}`);
+        if (isAllowedOrigin(origin)) return callback(null, true);
+        console.warn(`[CORS] Rejected origin: "${origin}" | allowed: ${[...allowedOrigins].join(', ')} (+ *.openvibe.tools)`);
         return callback(new Error('Origin not allowed by CORS'));
     },
     credentials: true,
