@@ -385,11 +385,20 @@ async function loadPasteViewer(slug) {
         // Load comments
         loadPasteComments(p.slug, paste_id_for_js, p.user_id);
     } catch (err) {
+        // This catch wraps BOTH the fetch and the entire render, so any rendering bug —
+        // a missing helper, a bad field — was reported as "Paste not found" even when the
+        // API had returned the paste perfectly. That mislabelling sent this bug hunt after
+        // the server for hours while the fetch was returning 200 the whole time.
+        // Distinguish the two, and surface the real error instead of inventing one.
+        console.error('[Pastes] Failed to display paste', slug, err);
+        const isMissing = /not found/i.test(err && err.message || '');
         container.innerHTML = `
             <div class="empty-state" style="text-align:center; padding:48px;">
                 <i class="fa-solid fa-circle-exclamation" style="font-size:2rem; color:var(--danger); margin-bottom:12px;"></i>
-                <h3>Paste not found</h3>
-                <p>It may have been deleted or the link is invalid.</p>
+                <h3>${isMissing ? 'Paste not found' : 'Couldn\u2019t display this paste'}</h3>
+                <p>${isMissing
+                    ? 'It may have been deleted or the link is invalid.'
+                    : `The paste loaded but failed to render: ${escapeHtml(String(err && err.message || err))}`}</p>
                 <button class="btn btn-primary" onclick="navigate('/pastes')" style="margin-top:16px;">Browse Pastes</button>
             </div>`;
     }
