@@ -356,7 +356,12 @@ async function _generateVodOverviewInner(vod) {
 
     const existing = vod.stream_id ? (db.getStreamMemories(vod.stream_id) || []) : [];
     if (existing.length >= 2) {
-        const overview = await summarizeStreamMemories(existing, stream && stream.id);
+        // `stream` never existed in this scope — the parameter is `vod` — so this threw
+        // ReferenceError for every stream-backed VOD with >=2 memories, i.e. the common
+        // case. generateVodOverview() rejected, the VOD was never marked done, and the
+        // backfill logged "[AI backfill] vod: stream is not defined" once a minute
+        // forever. That is why ai_overview was null on every recent VOD.
+        const overview = await summarizeStreamMemories(existing, vod.stream_id || null);
         if (overview) { try { db.setVodAiOverview(vod.id, overview); } catch { /* */ } }
         return overview;
     }
