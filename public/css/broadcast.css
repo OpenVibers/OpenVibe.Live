@@ -4152,3 +4152,11 @@
     color: #f59e0b; display: flex; gap: 7px; align-items: flex-start;
 }
 .bc-cap-warn i { margin-top: 2px; flex-shrink: 0; }
+
+/* Explanatory hint under a slot setting (e.g. the picture-in-picture camera picker). */
+.bc-ws-hint {
+    margin: 5px 0 0;
+    font-size: .76rem;
+    line-height: 1.45;
+    color: var(--text-muted, #9aa3b2);
+}
