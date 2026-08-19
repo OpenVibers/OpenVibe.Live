@@ -2220,6 +2220,7 @@ function cleanupStream(streamId) {
     _cleanupComposite(ss);
     if (ss._screenStream) { ss._screenStream.getTracks().forEach(t => t.stop()); ss._screenStream = null; }
     if (ss.localStream) { ss.localStream.getTracks().forEach(t => t.stop()); ss.localStream = null; }
+    _teardownAudioMixer(ss);
     stopRobotStreamerRestream(streamId, { quiet: true }).catch(() => {});
     _cleanupSfuProduce(streamId);
 
@@ -2823,30 +2824,15 @@ async function startMediaCapture(streamId, opts = {}) {
         }
         ss._micEnabled = forceAudio !== null;
 
-        // Mix desktop audio + mic audio if both are available
+        // Always publish the mixer's output, even when only one source exists right now:
+        // the mic can be toggled at any point during the stream, and a stable output track
+        // is what makes that invisible to the VOD recorder, the SFU producer, the
+        // RobotStreamer producer and every viewer connection.
         const screenAudioTracks = screenStream.getAudioTracks();
-        let finalAudioTrack = null;
-        if (micStream && screenAudioTracks.length > 0) {
-            // Mix both via AudioContext
-            try {
-                const mixCtx = new AudioContext();
-                const dest = mixCtx.createMediaStreamDestination();
-                const desktopSource = mixCtx.createMediaStreamSource(new MediaStream(screenAudioTracks));
-                desktopSource.connect(dest);
-                const micSource = mixCtx.createMediaStreamSource(micStream);
-                micSource.connect(dest);
-                finalAudioTrack = dest.stream.getAudioTracks()[0];
-                ss._mixAudioContext = mixCtx;
-                ss._micStream = micStream;
-            } catch {
-                finalAudioTrack = micStream.getAudioTracks()[0] || screenAudioTracks[0];
-            }
-        } else if (micStream) {
-            finalAudioTrack = micStream.getAudioTracks()[0];
-            ss._micStream = micStream;
-        } else if (screenAudioTracks.length > 0) {
-            finalAudioTrack = screenAudioTracks[0];
-        }
+        _ensureAudioMixer(ss);
+        if (screenAudioTracks.length > 0) _mixSetSource(ss, 'desktop', new MediaStream(screenAudioTracks));
+        if (micStream) { _mixSetSource(ss, 'mic', micStream); ss._micStream = micStream; }
+        const finalAudioTrack = _mixOutputTrack(ss);
 
         // If camera overlay is enabled, capture camera too and composite onto canvas
         if (ss._cameraOverlayEnabled) {
@@ -4270,11 +4256,7 @@ async function _rebuildScreenShareAudio(audioId, streamId) {
         ss._micStream.getTracks().forEach(t => t.stop());
         ss._micStream = null;
     }
-    // Close existing AudioContext mix
-    if (ss._mixAudioContext) {
-        try { ss._mixAudioContext.close(); } catch {}
-        ss._mixAudioContext = null;
-    }
+    // The mixer keeps its output track across a device swap — see _ensureAudioMixer.
 
     // Acquire the new mic (if audioId is not null and mic is enabled)
     let newMicStream = null;
@@ -4297,40 +4279,28 @@ async function _rebuildScreenShareAudio(audioId, streamId) {
         }
     }
 
-    // Rebuild mix
-    let finalAudioTrack = null;
-    if (newMicStream && screenAudioTracks.length > 0) {
-        try {
-            const mixCtx = new AudioContext();
-            const dest = mixCtx.createMediaStreamDestination();
-            mixCtx.createMediaStreamSource(new MediaStream(screenAudioTracks)).connect(dest);
-            mixCtx.createMediaStreamSource(newMicStream).connect(dest);
-            finalAudioTrack = dest.stream.getAudioTracks()[0];
-            ss._mixAudioContext = mixCtx;
-            ss._micStream = newMicStream;
-        } catch {
-            finalAudioTrack = newMicStream.getAudioTracks()[0] || screenAudioTracks[0];
-        }
-    } else if (newMicStream) {
-        finalAudioTrack = newMicStream.getAudioTracks()[0];
-        ss._micStream = newMicStream;
-    } else if (screenAudioTracks.length > 0) {
-        finalAudioTrack = screenAudioTracks[0];
-    }
+    // Point the mixer at the new device. Its OUTPUT track is unchanged, so viewers, the
+    // VOD recorder and every restream carry on with the track they already hold — a mic
+    // swap mid-stream is now inaudible as a glitch rather than a silent failure.
+    _ensureAudioMixer(ss);
+    if (screenAudioTracks.length > 0) _mixSetSource(ss, 'desktop', new MediaStream(screenAudioTracks));
+    _mixSetSource(ss, 'mic', newMicStream);
+    ss._micStream = newMicStream;
 
+    const finalAudioTrack = _mixOutputTrack(ss);
     if (!finalAudioTrack) {
         if (!newMicStream) toast('Could not acquire microphone for screen share', 'error');
         return;
     }
 
-    // Swap audio track in localStream
-    const oldAudio = ss.localStream.getAudioTracks()[0];
-    if (oldAudio) { oldAudio.stop(); ss.localStream.removeTrack(oldAudio); }
-    ss.localStream.addTrack(finalAudioTrack);
-
-    // Propagate to all outputs: viewer PCs, RobotStreamer, SFU
-    _replaceAllViewerTracks(streamId);
-    toast('Microphone updated (screen share mode)', 'success');
+    // Only touches anything on the one-off migration from a pre-mixer session.
+    const published = ss.localStream?.getAudioTracks()[0] || null;
+    if (published !== finalAudioTrack && ss.localStream) {
+        if (published) ss.localStream.removeTrack(published);
+        ss.localStream.addTrack(finalAudioTrack);
+        _republishAudioTrack(streamId, finalAudioTrack);
+    }
+    toast(newMicStream ? 'Microphone updated (screen share mode)' : 'Microphone off (screen share mode)', 'success');
 }
 
 async function handleSignalingMessage(streamId, msg) {
@@ -4954,6 +4924,74 @@ function _replaceAllViewerTracks(streamId) {
  * Start the PiP composite — draws screen + camera overlay onto a canvas.
  * Camera position is controlled by ss._pipX / _pipY / _pipW (fractions of canvas).
  */
+
+/* ── Stable audio mixer ───────────────────────────────────────────────────────
+   Every consumer of the broadcast audio binds to a track ONCE and keeps it:
+   MediaRecorder snapshots its tracks at construction and never notices later
+   ones, mediasoup Producers wrap a specific track, and viewer RTCPeerConnection
+   senders hold their own reference. So the old approach — removeTrack/addTrack
+   on ss.localStream whenever the mic toggled — changed nothing for anybody
+   downstream: viewers kept hearing the previous track and the VOD kept
+   recording it, silently, for the rest of the session.
+
+   Instead, route all audio through one MediaStreamAudioDestinationNode. Its
+   output track is created once and stays valid for the life of the context, so
+   toggling the microphone is just connecting or disconnecting a source node and
+   nothing downstream has to be told anything at all.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+function _ensureAudioMixer(ss) {
+    if (ss._audioMix) return ss._audioMix;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const dest = ctx.createMediaStreamDestination();
+    // A zero-offset constant source keeps the graph running when nothing else is
+    // connected, so the output track stays live (and silent) rather than ending
+    // when the last real input goes away.
+    const silence = ctx.createConstantSource();
+    silence.offset.value = 0;
+    silence.connect(dest);
+    try { silence.start(); } catch { /* already started */ }
+    ss._audioMix = { ctx, dest, silence, mic: null, desktop: null };
+    return ss._audioMix;
+}
+
+/** Connect or disconnect one named input ('mic' | 'desktop'). Output track is untouched. */
+function _mixSetSource(ss, key, stream) {
+    const mix = _ensureAudioMixer(ss);
+    if (mix[key]) {
+        try { mix[key].node.disconnect(); } catch { /* */ }
+        mix[key] = null;
+    }
+    if (stream && stream.getAudioTracks && stream.getAudioTracks().length) {
+        try {
+            const node = mix.ctx.createMediaStreamSource(stream);
+            node.connect(mix.dest);
+            mix[key] = { node, stream };
+        } catch (err) {
+            console.warn('[Broadcast] Could not add', key, 'to the audio mix:', err.message);
+        }
+    }
+    return _mixOutputTrack(ss);
+}
+
+/** The one audio track the whole broadcast should ever publish. */
+function _mixOutputTrack(ss) {
+    try { return ss._audioMix?.dest.stream.getAudioTracks()[0] || null; } catch { return null; }
+}
+
+function _teardownAudioMixer(ss) {
+    if (!ss?._audioMix) return;
+    const mix = ss._audioMix;
+    for (const key of ['mic', 'desktop']) {
+        if (mix[key]) { try { mix[key].node.disconnect(); } catch { /* */ } }
+    }
+    try { mix.silence.stop(); } catch { /* */ }
+    try { mix.ctx.close(); } catch { /* */ }
+    ss._audioMix = null;
+}
+
 function _startPipComposite(ss, screenStream, screenTrack, camStream, finalAudioTrack, res) {
     const canvas = document.createElement('canvas');
     canvas.width = res.w; canvas.height = res.h;
@@ -5055,83 +5093,40 @@ function _syncScreenShareLiveControls(ss) {
 /** Toggle mic on/off during screen share */
 async function toggleScreenShareMic() {
     const ss = getActiveStreamState();
-    const streamId = broadcastState.activeStreamId;
     if (!ss || !broadcastState.settings.screenShare) return;
 
     if (ss._micEnabled) {
-        // Turn mic OFF — disconnect mic from audio mix
+        // Disconnect the mic from the mix and release the device. The published track is
+        // the mixer's output, which does not change — so viewers, the VOD recorder and
+        // every restream keep the exact same track and simply stop hearing the mic.
+        _mixSetSource(ss, 'mic', null);
         if (ss._micStream) {
             ss._micStream.getTracks().forEach(t => t.stop());
             ss._micStream = null;
         }
-        // Rebuild audio without mic — just desktop audio
-        if (ss._mixAudioContext) {
-            try { ss._mixAudioContext.close(); } catch {}
-            ss._mixAudioContext = null;
-        }
-        // Replace audio track with desktop-only audio
-        if (ss._screenStream) {
-            const desktopAudioTracks = ss._screenStream.getAudioTracks();
-            if (desktopAudioTracks.length > 0 && ss.localStream) {
-                const oldAudio = ss.localStream.getAudioTracks()[0];
-                if (oldAudio) ss.localStream.removeTrack(oldAudio);
-                ss.localStream.addTrack(desktopAudioTracks[0]);
-                _replaceAllViewerTracks(streamId);
-            }
-        }
         ss._micEnabled = false;
         toast('Mic muted', 'info');
     } else {
-        // Turn mic ON — get mic stream and mix with desktop audio
         const s = broadcastState.settings;
-        const audioConstraints = buildAudioConstraints(s, s.forceAudio);
         let micStream;
         try {
-            micStream = await _getUserMediaWithTimeout({ audio: audioConstraints, video: false });
+            micStream = await _getUserMediaWithTimeout({ audio: buildAudioConstraints(s, s.forceAudio), video: false });
         } catch (err) {
             toast('Could not access microphone: ' + err.message, 'error');
             return;
         }
         ss._micStream = micStream;
+        _mixSetSource(ss, 'mic', micStream);
 
-        // Mix desktop + mic via AudioContext
-        const desktopAudioTracks = ss._screenStream ? ss._screenStream.getAudioTracks() : [];
-        if (desktopAudioTracks.length > 0) {
-            try {
-                const mixCtx = new AudioContext();
-                const dest = mixCtx.createMediaStreamDestination();
-                mixCtx.createMediaStreamSource(new MediaStream(desktopAudioTracks)).connect(dest);
-                mixCtx.createMediaStreamSource(micStream).connect(dest);
-                const mixedTrack = dest.stream.getAudioTracks()[0];
-                ss._mixAudioContext = mixCtx;
-
-                if (ss.localStream) {
-                    const oldAudio = ss.localStream.getAudioTracks()[0];
-                    if (oldAudio) ss.localStream.removeTrack(oldAudio);
-                    ss.localStream.addTrack(mixedTrack);
-                    _replaceAllViewerTracks(streamId);
-                }
-            } catch {
-                // Fallback: just use mic track
-                if (ss.localStream) {
-                    const oldAudio = ss.localStream.getAudioTracks()[0];
-                    if (oldAudio) ss.localStream.removeTrack(oldAudio);
-                    const micTrack = micStream.getAudioTracks()[0];
-                    if (micTrack) ss.localStream.addTrack(micTrack);
-                    _replaceAllViewerTracks(streamId);
-                }
-            }
-        } else {
-            // No desktop audio — just add mic
-            if (ss.localStream) {
-                const micTrack = micStream.getAudioTracks()[0];
-                if (micTrack) {
-                    const oldAudio = ss.localStream.getAudioTracks()[0];
-                    if (oldAudio) ss.localStream.removeTrack(oldAudio);
-                    ss.localStream.addTrack(micTrack);
-                    _replaceAllViewerTracks(streamId);
-                }
-            }
+        // If capture began before a mixer existed (older session, or a path that published
+        // a raw track), the published track is NOT the mixer output — swap it in once, and
+        // tell the consumers that hold their own reference.
+        const mixed = _mixOutputTrack(ss);
+        const published = ss.localStream?.getAudioTracks()[0] || null;
+        if (mixed && published !== mixed && ss.localStream) {
+            if (published) ss.localStream.removeTrack(published);
+            ss.localStream.addTrack(mixed);
+            _republishAudioTrack(broadcastState.activeStreamId, mixed);
         }
         ss._micEnabled = true;
         toast('Mic unmuted', 'info');
@@ -5139,11 +5134,57 @@ async function toggleScreenShareMic() {
     _syncScreenShareLiveControls(ss);
 }
 
+/**
+ * Push a new audio track to everything that captured its own reference.
+ *
+ * Only needed when the published track genuinely changes identity — with the mixer in
+ * place that is a one-off migration, not the normal path. MediaRecorder cannot swap
+ * tracks at all, so the VOD segment is rolled instead; the chunked uploader already
+ * treats segments as independent, so this costs a segment boundary and nothing else.
+ */
+function _republishAudioTrack(streamId, track) {
+    const ss = getStreamState(streamId);
+    if (!ss || !track) return;
+
+    // Local SFU producer
+    try {
+        const st = _sfuProduceStates.get(streamId);
+        st?.audioProducer?.replaceTrack({ track }).catch((e) => console.warn('[Broadcast] SFU audio replaceTrack failed:', e.message));
+    } catch { /* */ }
+
+    // RobotStreamer producer
+    try {
+        ss.robotStreamer?.audioProducer?.replaceTrack({ track }).catch((e) => console.warn('[RS Restream] audio replaceTrack failed:', e.message));
+    } catch { /* */ }
+
+    // Direct viewer peer connections
+    try {
+        ss.viewerConnections?.forEach((pc) => {
+            const sender = pc.getSenders?.().find(x => x.track && x.track.kind === 'audio');
+            sender?.replaceTrack(track).catch(() => {});
+        });
+    } catch { /* */ }
+
+    // VOD: MediaRecorder is bound to the tracks it was constructed with, so roll the
+    // segment. uploadVodRecording({finalizeStream:false}) flushes what has been captured
+    // so far without ending the recording server-side; startVodRecording() then opens a
+    // fresh segment around the new track. The chunk uploader already treats segments as
+    // independent units, so the cost is one segment boundary.
+    (async () => {
+        try {
+            if (!ss.vodRecorder || ss.vodRecorder.state === 'inactive') return;
+            console.log('[VOD] Rolling segment to pick up the new audio track');
+            await uploadVodRecording(streamId, { finalizeStream: false });
+            startVodRecording(streamId);
+        } catch (e) { console.warn('[VOD] Could not roll segment for audio change:', e.message); }
+    })();
+}
+
 /** Cleanup composite canvas + camera overlay resources */
 function _cleanupComposite(ss) {
     if (ss._compositeAnimFrame) { cancelAnimationFrame(ss._compositeAnimFrame); ss._compositeAnimFrame = null; }
     if (ss._cameraOverlayStream) { ss._cameraOverlayStream.getTracks().forEach(t => t.stop()); ss._cameraOverlayStream = null; }
-    if (ss._mixAudioContext) { try { ss._mixAudioContext.close(); } catch {} ss._mixAudioContext = null; }
+    _teardownAudioMixer(ss);
     if (ss._micStream) { ss._micStream.getTracks().forEach(t => t.stop()); ss._micStream = null; }
     ss._compositeCanvas = null;
     ss._compositeCtx = null;
