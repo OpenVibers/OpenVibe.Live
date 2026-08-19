@@ -5101,12 +5101,12 @@ function _mediaItemHTML(m, pos) {
 // yt-dlp errors are paragraphs; the queue only has room for the part that matters.
 function _mediaShortError(err) {
     const m = String(err || '').toLowerCase();
+    if (m.includes('yt-dlp is not available')) return 'The server cannot play media right now.';
     if (m.includes('bot')) return 'YouTube blocked this on the server (sign-in check).';
     if (m.includes('private')) return 'This video is private.';
     if (m.includes('members-only')) return 'This video is members-only.';
     if (m.includes('age')) return 'This video is age-restricted.';
     if (m.includes('unavailable') || m.includes('not available')) return 'This video is unavailable.';
-    if (m.includes('yt-dlp is not available')) return 'The server cannot play media right now.';
     return 'This media could not be prepared.';
 }
 

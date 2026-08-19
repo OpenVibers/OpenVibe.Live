@@ -278,12 +278,12 @@ class MediaQueue {
     /** Turn a yt-dlp wall of text into one line a viewer can act on. */
     _viewerFacingError(message) {
         const m = String(message || '').toLowerCase();
+        if (m.includes('yt-dlp is not available')) return 'The server cannot play media right now. Refunded.';
         if (m.includes('bot')) return 'YouTube blocked this video on the server (sign-in check). Refunded.';
         if (m.includes('private')) return 'That video is private. Refunded.';
         if (m.includes('members-only')) return 'That video is members-only. Refunded.';
         if (m.includes('age')) return 'That video is age-restricted. Refunded.';
         if (m.includes('unavailable') || m.includes('not available')) return 'That video is unavailable. Refunded.';
-        if (m.includes('yt-dlp is not available')) return 'The server cannot play media right now. Refunded.';
         return 'That media could not be played. Refunded.';
     }
 
