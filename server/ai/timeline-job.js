@@ -93,6 +93,20 @@ async function _processSegment(stream, seg) {
         }
     } catch { /* classifier optional */ }
 
+    // Stamp the Media vod id NOW rather than waiting for the vod.ready webhook to
+    // backfill it. getTimelineByVod() matches on vod_id, so while a stream is still
+    // recording every row it writes is invisible to
+    // openvibe.media/live/:sel/transcript.json — which is why `current` came back with
+    // transcript: null, segments: [] after twenty minutes of live speech while the
+    // finished sessions below it had transcripts. The recorder holds the vod id in
+    // memory for the whole recording; after it stops, reuse whatever vod_id the webhook
+    // already stamped on this stream so late-transcribed spool segments land on the VOD
+    // too instead of being orphaned.
+    let vodId = null;
+    try { vodId = require('../streaming/recorder').getActiveRecording(stream.id)?.vodId || null; } catch { /* */ }
+    if (!vodId) { try { vodId = db.getTimelineVodId(stream.id); } catch { /* */ } }
+    if (vodId) for (const e of events) e.vod_id = vodId;
+
     if (events.length) db.addTimelineEvents(events);
     audio.discardSegment(stream.id, seg.name);
 
