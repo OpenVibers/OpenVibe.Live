@@ -73,6 +73,33 @@ async function tick() {
 
         if (!ai.isEnabled()) return;
 
+        // Paste summaries. Pastes moved to Media at the migration, but the analysis job
+        // kept querying this service's OWN pastes table — which no longer receives rows —
+        // so every paste created since had no AI at all. Media has no LLM, so it hands us
+        // a work queue and we post results back.
+        if (ai.pasteAnalysisEnabled && ai.pasteAnalysisEnabled()) {
+            try {
+                const out = await media.listPastesNeedingAi(anyLive ? 1 : 3).catch(() => null);
+                for (const p of (out?.pastes || [])) {
+                    if (!p || !p.slug) continue;
+                    let r = null;
+                    if (p.type === 'screenshot') {
+                        // Vision needs the actual image; skip when there is no URL to read.
+                        const img = p.screenshot_url || null;
+                        if (img) r = await ai.analyzeImagePaste(img, p.title).catch(() => null);
+                    } else {
+                        r = await ai.analyzeTextPaste(p.content || '', p.title).catch(() => null);
+                    }
+                    if (!r || !r.description) continue;
+                    await media.setPasteAi(p.slug, {
+                        ai_summary: r.description,
+                        ai_tags: JSON.stringify(r.tags || []),
+                    }).catch((e) => console.warn('[AI backfill] paste ai write:', e.message));
+                    console.log(`[AI backfill] paste ${p.slug} summarized`);
+                }
+            } catch (e) { console.warn('[AI backfill] paste:', e.message); }
+        }
+
         // VOD overviews (frames + audio pulled from the Media playback URL; self-marks).
         try {
             for (const row of db.getVodsNeedingOverview(1)) {

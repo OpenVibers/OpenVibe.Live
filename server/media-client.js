@@ -219,6 +219,16 @@ function listPastes(query = {}, opts = {}) {
     return request('GET', '/pastes', { query, ...opts });
 }
 
+/** Pastes awaiting AI analysis (app-key only on Media). */
+function listPastesNeedingAi(limit = 5, opts = {}) {
+    return request('GET', '/pastes', { query: { needs_ai: 1, limit }, ...opts });
+}
+
+/** Write AI results back to a paste. */
+function setPasteAi(slug, { ai_summary, ai_tags } = {}, opts = {}) {
+    return request('POST', `/pastes/${encodeURIComponent(slug)}/ai`, { body: { ai_summary, ai_tags }, ...opts });
+}
+
 function deletePaste(slug, opts = {}) {
     return request('DELETE', `/pastes/${encodeURIComponent(slug)}`, opts);
 }
@@ -337,7 +347,7 @@ module.exports = {
     // clips
     createClip, getClip, listClips, updateClip, deleteClip, recutClip,
     // pastes
-    createPaste, getPaste, listPastes, deletePaste,
+    createPaste, getPaste, listPastes, listPastesNeedingAi, setPasteAi, deletePaste,
     // files + thumbnails
     uploadFile, getFileMeta, deleteFile,
     uploadThumbnail, generateThumbnail,
