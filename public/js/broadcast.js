@@ -1474,11 +1474,31 @@ async function createNewStream() {
     _syncCameraSelectionUI(createCamera);
     _syncAudioSelectionUI(createAudio);
 
-    // Read screen share device selections
-    const screenMicEnabled = document.getElementById('bc-screen-mic-enabled')?.checked ?? true;
-    const screenCamEnabled = document.getElementById('bc-screen-cam-enabled')?.checked ?? false;
-    const screenAudio = document.getElementById('bc-screen-audio')?.value || 'default';
-    const screenCamera = document.getElementById('bc-screen-camera')?.value || 'default';
+    // Read screen share device selections.
+    //
+    // These four IDs never existed. The screen-share panel is rendered by
+    // broadcast-workspace.js as bc-ws-screen-mic / -mic-select / -cam / -cam-select, and the
+    // old bc-screen-* names were left behind here when that panel was rewritten. Every lookup
+    // therefore returned null, and the `?? true` / `|| 'default'` defaults quietly papered
+    // over it:
+    //   - the chosen microphone was discarded and capture always fell back to the system
+    //     default device, which is why viewers heard nothing whenever the OS default was not
+    //     the mic the streamer picked, and why the UI kept reporting "Default";
+    //   - screenCamEnabled defaulted to FALSE, so the camera overlay never ran at all.
+    // The workspace's own sync helpers wrote into the same dead ids (_wsPopulateInlineDevices
+    // ('bc-screen-audio', ...)), so nothing surfaced the breakage.
+    //
+    // Read the real controls, keeping the legacy ids as a fallback so any other host page
+    // that still renders them keeps working.
+    const _el = (...ids) => ids.map(id => document.getElementById(id)).find(Boolean) || null;
+    const micToggleEl = _el('bc-ws-screen-mic', 'bc-screen-mic-enabled');
+    const camToggleEl = _el('bc-ws-screen-cam', 'bc-screen-cam-enabled');
+    const screenMicEnabled = micToggleEl ? !!micToggleEl.checked : true;
+    const screenCamEnabled = camToggleEl ? !!camToggleEl.checked : false;
+    const screenAudio = _el('bc-ws-screen-mic-select', 'bc-screen-audio')?.value || 'default';
+    const screenCamera = _el('bc-ws-screen-cam-select', 'bc-screen-camera')?.value || 'default';
+    console.log('[Broadcast] Screen-share devices — mic:', screenMicEnabled ? screenAudio : 'off',
+                '| camera:', screenCamEnabled ? screenCamera : 'off');
 
     let _diagStreamId = null; // captured in catch for diagnostic logging
     try {
