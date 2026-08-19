@@ -25,8 +25,16 @@ function getDb() {
 const YTDLP_PATH = process.env.YTDLP_PATH || '/usr/local/bin/yt-dlp';
 const CACHE_DIR = path.resolve('./data/media/cache');
 const COOKIES_PATH = path.resolve('./data/media/cookies.txt');
+// yt-dlp needs a JavaScript runtime for YouTube extraction; without one it falls back to
+// a deprecated path that drops formats and warns on every call. This list was all
+// hardcoded install locations and missed /usr/bin/node — the only node on this host — so
+// the flag was silently never passed. process.execPath is the node already running this
+// server, which is by definition present and executable, so try that first and keep the
+// fixed paths as fallbacks.
 const NODE_CANDIDATES = [
     process.env.YTDLP_NODE_PATH,
+    process.execPath,
+    '/usr/bin/node',
     '/usr/local/bin/node',
     '/opt/nvm/versions/node/v20.20.1/bin/node',
     '/home/ubuntu/.nvm/versions/node/v20.20.1/bin/node',
