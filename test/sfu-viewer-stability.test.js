@@ -12,7 +12,7 @@
  *   F. WHIP ICE disconnect: grace timer + explicit producer-removed emit in cleanupSession
  *   G. Broadcast-server: ICE-state filter + stale-source path + watch-queued message
  *   H. Client: sfu-source-unavailable and watch-queued handled without P2P offer timeout
- *   I. Client: frozen-video detector starts after play, stops on transport change
+ *   I. Client: frozen-video detector starts after play, escalates keyframe -> rebuild
  *   J. Broadcaster auto-publishes into SFU and legacy P2P is explicitly gated
  *   K. Server startup logs TURN / announced-IP diagnostics for SFU viewers
  */
@@ -53,9 +53,12 @@ assert.ok(
     sfuSrc.includes("consumer.kind === 'video'") && sfuSrc.includes('requestKeyFrame'),
     'webrtc-sfu.js must guard requestKeyFrame() behind kind === video'
 );
+// Anchored on the shape of the line, not its exact wording: the retry that now sends a
+// second keyframe request numbers each attempt, and pinning the old sentence made this
+// fail on a change that strengthened the very behaviour it is here to protect.
 assert.ok(
-    sfuSrc.includes('Keyframe requested for video consumer'),
-    'webrtc-sfu.js must log keyframe request for diagnostics'
+    /Keyframe request[^\n]*sent for video consumer/.test(sfuSrc),
+    'webrtc-sfu.js must log the keyframe request for diagnostics'
 );
 console.log('OK B: webrtc-sfu.js consume() calls requestKeyFrame() for video consumers');
 
@@ -200,12 +203,24 @@ console.log('OK H: sfu-source-unavailable and watch-queued handled without P2P o
 
 // ── I: frozen-video detector in SFU path ───────────────────────
 assert.ok(
-    playerSrc.includes('_sfuFrozenInterval') && playerSrc.includes('_frozenTicks'),
+    playerSrc.includes('_sfuFrozenInterval'),
     'stream-player.js must have a frozen-video detector (_sfuFrozenInterval)'
 );
+// The detector used to tick to 30s and log. It now escalates in two stages, because a
+// frozen picture with audio still playing is usually one missing keyframe: ask for one
+// first, and only rebuild the transport if that does not unstick it. Assert the two
+// stages rather than the old tick counter and its wording.
 assert.ok(
-    playerSrc.includes('video frozen for ~30s'),
-    'stream-player.js frozen detector must log after 30s of frozen video'
+    /STALL_TRIGGER_MS\s*=\s*\d+/.test(playerSrc) && /STALL_ESCALATE_MS\s*=\s*\d+/.test(playerSrc),
+    'frozen detector must have a trigger threshold and a later escalation threshold'
+);
+assert.ok(
+    /requesting keyframe via re-watch/.test(playerSrc),
+    'stage 1 must ask for a keyframe before anything more disruptive'
+);
+assert.ok(
+    /still frozen after keyframe nudge — rebuilding receive transport/.test(playerSrc),
+    'stage 2 must rebuild the receive transport when the keyframe did not help'
 );
 assert.ok(
     playerSrc.includes('player._sfuFrozenInterval = null') &&
@@ -217,7 +232,7 @@ assert.ok(
     playerSrc.includes('Intentionally NOT calling _startWatchOfferTimeout()'),
     'stream-player.js frozen-video re-watch must NOT call _startWatchOfferTimeout()'
 );
-console.log('OK I: frozen-video detector (30s post-play check) present in stream-player.js');
+console.log('OK I: frozen-video detector nudges with a keyframe, then rebuilds the transport');
 
 // ── J: broadcaster auto-publishes into SFU, P2P rollback gated ──
 assert.ok(
