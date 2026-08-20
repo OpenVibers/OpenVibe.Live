@@ -3,13 +3,16 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-// cleanupSession looks the stream up to decide what to tear down, so requiring the WHIP
-// handler pulls in the database. Point it at a throwaway file with a real schema BEFORE
-// that require: the test used to open whatever data/live.db happened to be in the working
-// tree, which passed on a developed checkout and threw "no such table: streams" on a
-// fresh one — a property of the machine, not of the code under test.
+// After tearing the session down, cleanupSession asks whether the stream is still live —
+// the one thing here that touches the database. It used to reach whatever data/live.db
+// sat in the working tree, which passed on a developed checkout and threw "no such table:
+// streams" on a fresh one: a property of the machine, not of the code under test.
+//
+// Stub that single lookup instead of building a schema. Answering "no such stream" ends
+// endActiveWhipStream on its first line, which is the path this test wants anyway — what
+// it asserts is that the producer, transport and session are released.
 process.env.DB_PATH = path.join(os.tmpdir(), `ov-whip-cleanup-${process.pid}.db`);
-require('../server/db/database').initDb();
+require('../server/db/database').getStreamById = () => null;
 
 const webrtcSFU = require('../server/streaming/webrtc-sfu');
 const whipHandler = require('../server/streaming/whip-handler');
@@ -48,7 +51,6 @@ assert.strictEqual(room.transports.has('whip-test-transport-1'), false, 'transpo
 assert.strictEqual(producerClosed.value, true, 'producer should be closed');
 assert.strictEqual(transportClosed.value, true, 'transport should be closed');
 
-try { fs.unlinkSync(process.env.DB_PATH); } catch { /* */ }
-for (const ext of ['-wal', '-shm']) { try { fs.unlinkSync(process.env.DB_PATH + ext); } catch { /* */ } }
+for (const ext of ['', '-wal', '-shm']) { try { fs.unlinkSync(process.env.DB_PATH + ext); } catch { /* */ } }
 
 console.log('✅ WHIP cleanup session regression test passed');
