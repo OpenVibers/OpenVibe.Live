@@ -33,6 +33,8 @@ const RS_REFRESH_CACHE_MS = 5 * 60 * 1000;
 class RobotStreamerService {
     constructor() {
         this.chatBridges = new Map();
+        /** streamId -> in-flight startForStream promise (see startForStream). */
+        this._startingStreams = new Map();
         /** @type {Map<number, { ws: WebSocket, upstream: WebSocket|null, connectedAt: number }>} streamId → active publish session */
         this._activePublish = new Map();
         /** @type {Map<string, { count: number, fetchedAt: number }>} `userId:slotId` → cached RS viewer count */
@@ -541,7 +543,31 @@ class RobotStreamerService {
         }
     }
 
+    /**
+     * Idempotent per stream, including while a previous call is still in flight.
+     *
+     * Four different lifecycle hooks call this — stream creation, the WHIP ingest going
+     * live, the boot-time restore sweep, and the integrations route — and several of them
+     * fire within milliseconds of each other for the same stream. startForStream is async
+     * and awaits refreshIntegration() between checking chatBridges and populating it, so
+     * every concurrent caller used to sail past the "already have a bridge" guard, open
+     * its own websocket to RobotStreamer, and then have chatBridges.set() overwrite the
+     * previous entry. Only the last bridge was tracked; the earlier ones stayed connected
+     * and kept mirroring, so viewers saw each RS chat message repeated once per racing
+     * caller. Sharing one in-flight promise makes the guard actually hold.
+     */
     async startForStream(stream, opts = {}) {
+        if (!stream?.id || !stream?.user_id) return;
+        const inflight = this._startingStreams.get(stream.id);
+        if (inflight) return inflight;
+        const p = this._startForStream(stream, opts).finally(() => {
+            if (this._startingStreams.get(stream.id) === p) this._startingStreams.delete(stream.id);
+        });
+        this._startingStreams.set(stream.id, p);
+        return p;
+    }
+
+    async _startForStream(stream, opts = {}) {
         if (!stream?.id || !stream?.user_id) return;
 
         let integration = this.getIntegrationForStream(stream);
@@ -743,6 +769,16 @@ class RobotStreamerService {
                 bridge.ws = null;
             }
         };
+
+        // Last-resort guard: if anything still managed to build a second bridge for this
+        // stream, close THIS one rather than overwriting the tracked entry and leaking a
+        // websocket that keeps mirroring into the same chat.
+        const raced = this.chatBridges.get(stream.id);
+        if (raced) {
+            console.warn(`[RS] Chat bridge for stream ${stream.id} already exists — discarding the duplicate`);
+            try { bridge.disconnect(); } catch { /* never connected */ }
+            return raced;
+        }
 
         this.chatBridges.set(stream.id, bridge);
         connect();
