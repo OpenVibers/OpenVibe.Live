@@ -3,8 +3,12 @@
  *
  * The paste system (incl. like/comment/fork endpoints, preserved from the
  * inherited code) lives in OpenVibe.Media under /api/v1/live/pastes/... .
- * This router forwards the SPA's existing /api/pastes/* calls 1:1, passing the
- * caller's Network JWT through when present so Media applies user-level ACLs.
+ * This router forwards the SPA's existing /api/pastes/* calls 1:1. Identity is resolved
+ * HERE — every forwarding route runs optionalAuth/requireAuth first, and media-client
+ * sends the resulting Live-local user id to Media. Forwarding the caller's Network JWT
+ * and letting Media read the identity out of it (what this used to do) filed writes
+ * under the Network's id for the account, which is a different number from the local
+ * one and belongs to an unrelated local user.
  *
  * Live-local exceptions:
  *   - POST /:slug/set-avatar  → updates users.avatar_url in live.db
@@ -36,7 +40,7 @@ const shotUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize:
 function forward(subPath) {
     return (req, res) => {
         const p = typeof subPath === 'function' ? subPath(req) : subPath;
-        media.proxy(req, res, `/pastes${p}`, { userToken: media.userTokenFrom(req) })
+        media.proxy(req, res, `/pastes${p}`, { actingUser: media.actingUserFrom(req) })
             .catch((err) => {
                 console.warn('[Pastes proxy]', err.message);
                 if (!res.headersSent) res.status(502).json({ error: 'Media service unavailable' });
@@ -63,7 +67,7 @@ router.post('/screenshot', optionalAuth, shotUpload.single('screenshot'), async 
                 filename: req.file.originalname || 'screenshot.png',
                 contentType: req.file.mimetype || 'image/png',
             },
-        }, { userToken: media.userTokenFrom(req) });
+        }, { actingUser: media.actingUserFrom(req) });
         const paste = out?.paste || out;   // Media returns { id, slug, url, paste }
         res.status(201).json({ paste, url: out?.url || (paste?.slug ? `/p/${paste.slug}` : null) });
     } catch (err) {
@@ -115,7 +119,7 @@ function forwardEnriched(subPath, pick) {
                 query.user_id = u.id;
             }
             const p = typeof subPath === 'function' ? subPath(req) : subPath;
-            const out = await media.request('GET', `/pastes${p}`, { query, userToken: media.userTokenFrom(req) });
+            const out = await media.request('GET', `/pastes${p}`, { query, actingUser: media.actingUserFrom(req) });
             _nameUsers(pick(out));
             res.json(out);
         } catch (err) {
@@ -125,15 +129,16 @@ function forwardEnriched(subPath, pick) {
         }
     };
 }
-router.get('/', forwardEnriched('', (o) => o?.pastes));
-router.post('/', forward(''));
+router.get('/', optionalAuth, forwardEnriched('', (o) => o?.pastes));
+router.post('/', optionalAuth, forward(''));
 router.get('/config', forward('/config'));
 router.get('/admin/stats', requireAdmin, forwardAsApp('/admin/stats'));
 router.delete('/admin/forks', requireAdmin, forwardAsApp('/admin/forks'));
 router.post('/bulk', requireAdmin, forwardAsApp('/bulk'));
 // Media doesn't know usernames — resolve locally, then list by user id.
-// Browser-JWT-created pastes carry the NETWORK id while migrated/app-key rows
-// carry the LOCAL id, so query both id spaces and merge.
+// Rows written before the id-space fix (when the SPA's Network JWT was forwarded to
+// Media, which then filed the write under the NETWORK id) still carry that id, so keep
+// asking for both and merge. New rows are always written with the local id.
 router.get('/by-user/:username', optionalAuth, async (req, res) => {
     try {
         const user = db.getUserByUsername(req.params.username);
@@ -147,12 +152,13 @@ router.get('/by-user/:username', optionalAuth, async (req, res) => {
         const sort = req.query.sort === 'oldest' ? 'oldest' : 'newest';
         // Viewing your OWN paste list includes your unlisted/private ones — otherwise an
         // unlisted paste is invisible everywhere and looks like it was never created.
-        // Anyone else viewing this user's page still sees public pastes only. Media
-        // re-checks this, so the flag alone cannot leak another user's pastes.
-        const viewingSelf = !!(req.user && (
-            String(req.user.id) === String(user.id) ||
-            (networkId != null && String(req.user.id) === String(networkId))
-        ));
+        // Anyone else viewing this user's page still sees public pastes only.
+        //
+        // Local ids only. req.user.id has always been the local one, so also accepting a
+        // match against the VIEWED user's network id just meant that whoever happened to
+        // hold that number as their local id — an unrelated person — was treated as the
+        // owner here, and Media trusts this gate rather than re-checking it.
+        const viewingSelf = !!(req.user && String(req.user.id) === String(user.id));
         const mine = viewingSelf ? { include_unlisted: 1 } : {};
         const lists = await Promise.all([
             media.listPastes({ user_id: user.id, limit, sort, ...mine }).catch(() => null),
@@ -171,7 +177,7 @@ router.get('/by-user/:username', optionalAuth, async (req, res) => {
         res.status(502).json({ error: 'Media service unavailable' });
     }
 });
-router.get('/:slug', forwardEnriched(slugPath(), (o) => (o?.paste ? [o.paste] : [o])));
+router.get('/:slug', optionalAuth, forwardEnriched(slugPath(), (o) => (o?.paste ? [o.paste] : [o])));
 router.put('/:slug', requireAuth, forward(slugPath()));
 router.delete('/:slug', requireAuth, forward(slugPath()));
 // TODO(contract): paste admin tools (censor, admin/stats, admin/forks, bulk)
@@ -194,13 +200,15 @@ router.post('/:slug/censor', requireAdmin, shotUpload.single('screenshot'), asyn
         res.status(502).json({ error: 'Media service unavailable' });
     }
 });
-router.post('/:slug/fork', forward(slugPath('/fork')));
+router.post('/:slug/fork', optionalAuth, forward(slugPath('/fork')));
 // Raw content is public on Media (/p/:slug/raw) — bounce the API-shaped URL there.
 router.get('/:slug/raw', (req, res) => res.redirect(302, media.pasteRawUrl(req.params.slug)));
 router.post('/:slug/like', requireAuth, forward(slugPath('/like')));
-router.post('/:slug/copy', forward(slugPath('/copy')));
-router.get('/:slug/comments', forwardEnriched(slugPath('/comments'), (o) => o?.comments));
-router.post('/:slug/comments', forward(slugPath('/comments')));
-router.delete('/:slug/comments/:commentId', forward((req) => `/${encodeURIComponent(req.params.slug)}/comments/${encodeURIComponent(req.params.commentId)}`));
+router.post('/:slug/copy', optionalAuth, forward(slugPath('/copy')));
+router.get('/:slug/comments', optionalAuth, forwardEnriched(slugPath('/comments'), (o) => o?.comments));
+// optionalAuth, not requireAuth: anonymous comments are allowed, and Media decides
+// whether they are enabled. What matters is that a signed-in commenter is named.
+router.post('/:slug/comments', optionalAuth, forward(slugPath('/comments')));
+router.delete('/:slug/comments/:commentId', optionalAuth, forward((req) => `/${encodeURIComponent(req.params.slug)}/comments/${encodeURIComponent(req.params.commentId)}`));
 
 module.exports = router;
