@@ -94,7 +94,10 @@ function _wavToFloat32(wavPath) {
         off += 8 + size + (size % 2);
     }
     if (dataOff < 0) { dataOff = 44; dataLen = buf.length - 44; }
-    const n = Math.floor(Math.min(dataLen, buf.length - dataOff) / 2);
+    // A truncated or header-only file — ffmpeg writes one when a segment has no decodable
+    // audio — leaves nothing after the header, and the sample count below goes negative.
+    const n = Math.max(0, Math.floor(Math.min(dataLen, buf.length - dataOff) / 2));
+    if (n === 0) return new Float32Array(0);
     const out = new Float32Array(n);
     for (let i = 0; i < n; i++) out[i] = buf.readInt16LE(dataOff + i * 2) / 32768;
     return out;
@@ -109,22 +112,33 @@ function _wavToFloat32(wavPath) {
  */
 async function detect(wavPath, { offsetSec = 0, minConfidence = MIN_CONFIDENCE } = {}) {
     if (!available()) return [];
-    let scores, frames, classes, labels;
+
+    // Loading the model is the only failure worth disabling the feature for. Anything to
+    // do with ONE segment must not: a single unreadable WAV used to set _loadFailed and
+    // take audio events down for the rest of the process, with a message blaming the
+    // model — which was fine all along.
+    let ort, session, labels;
     try {
-        const ort = require('onnxruntime-node');
+        ort = require('onnxruntime-node');
+        session = await _session_();
+        labels = _loadLabels();
+    } catch (e) {
+        _loadFailed = true;
+        console.warn('[AI-Timeline] audio-events disabled — model failed to load:', e.message);
+        return [];
+    }
+
+    let scores, frames, classes;
+    try {
         const wave = _wavToFloat32(wavPath);
         if (!wave.length) return [];
-        const session = await _session_();
-        labels = _loadLabels();
         const res = await session.run({ waveform: new ort.Tensor('float32', wave, [wave.length]) });
         const out = res.output_0 || res[session.outputNames[0]];
         if (!out) return [];
         [frames, classes] = out.dims;
         scores = out.data;
     } catch (e) {
-        // A broken model file should disable the feature, not retry forever on every segment.
-        _loadFailed = true;
-        console.warn('[AI-Timeline] audio-events disabled:', e.message);
+        console.warn(`[AI-Timeline] audio-events skipped ${path.basename(wavPath)}:`, e.message);
         return [];
     }
 
@@ -166,4 +180,6 @@ async function detect(wavPath, { offsetSec = 0, minConfidence = MIN_CONFIDENCE }
         .sort((a, b) => a.start - b.start);
 }
 
-module.exports = { available, detect, MODEL_PATH, CLASSMAP_PATH };
+// _wavToFloat32 is exported for tests: it is the part that has to survive whatever
+// ffmpeg leaves on disk, and it cannot be reached through detect() without the model.
+module.exports = { available, detect, MODEL_PATH, CLASSMAP_PATH, _wavToFloat32 };
