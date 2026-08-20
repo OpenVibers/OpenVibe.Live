@@ -5,9 +5,10 @@
  * "Media API v1"). All VOD / clip / paste / file / thumbnail storage and processing
  * lives in Media now; Live talks to it via this module.
  *
- * Auth: `Authorization: Bearer <MEDIA_API_KEY>` (per-app server key) by default.
- * When a request is made on behalf of a browser user, pass `userToken` (their
- * Network JWT) instead — Media verifies it offline and applies user-level ACLs.
+ * Auth: `Authorization: Bearer <MEDIA_API_KEY>` (per-app server key). For a request
+ * made on behalf of a browser user, add `actingUser` (their LIVE-LOCAL user id) — Media
+ * then applies that user's ACLs and stores their id. See _authHeader for why the id is
+ * sent explicitly rather than left for Media to read out of the caller's Network JWT.
  *
  * Env:
  *   MEDIA_URL         internal base URL     (default http://127.0.0.1:4100)
@@ -33,9 +34,21 @@ class MediaApiError extends Error {
     }
 }
 
+/**
+ * Authenticate to Media as this app, optionally acting as one of our users.
+ *
+ * We used to forward the caller's Network JWT instead, and let Media read the identity
+ * out of it. That was wrong: the JWT's `sub` is the NETWORK's id for the account, while
+ * every user_id Media stores for us is a LIVE-LOCAL id. The two spaces overlap by
+ * coincidence, so a comment posted by Maticus (local 80, network 57) was filed under
+ * user 57 and rendered as fakefitz — and the same mismatch decided who could open a
+ * private paste or VOD. Sending the local id explicitly keeps one id space end to end.
+ */
 function _authHeader(opts = {}) {
-    const token = opts.userToken || MEDIA_API_KEY;
-    return token ? { Authorization: `Bearer ${token}` } : {};
+    if (!MEDIA_API_KEY) return {};
+    const h = { Authorization: `Bearer ${MEDIA_API_KEY}` };
+    if (opts.actingUser != null) h['X-OV-User-Id'] = String(opts.actingUser);
+    return h;
 }
 
 function _qs(query) {
@@ -53,11 +66,11 @@ function _qs(query) {
  * Core request helper. `body` may be a plain object (JSON) or FormData (multipart).
  * Returns parsed JSON (or null for empty responses). Throws MediaApiError on !ok.
  */
-async function request(method, apiPath, { body, query, userToken, headers = {}, timeoutMs = 30000 } = {}) {
+async function request(method, apiPath, { body, query, actingUser, headers = {}, timeoutMs = 30000 } = {}) {
     const url = `${API_BASE}${apiPath}${_qs(query)}`;
     const opts = {
         method,
-        headers: { Accept: 'application/json', ..._authHeader({ userToken }), ...headers },
+        headers: { Accept: 'application/json', ..._authHeader({ actingUser }), ...headers },
     };
     if (body !== undefined && body !== null) {
         if (typeof FormData !== 'undefined' && body instanceof FormData) {
@@ -287,13 +300,18 @@ function publicUrl(u) {
 /**
  * Stream a request through to Media and pipe the response back. Preserves method,
  * query string, JSON body and content-type. Used by the thin /api/* proxy routers.
- * `userToken` (Network JWT) is forwarded when present so Media applies user ACLs;
- * otherwise the app key is used.
+ * Pass `actingUser` (a Live-local user id) to have Media apply that user's ACLs;
+ * omit it for an anonymous call.
  */
-async function proxy(req, res, apiPath, { userToken, method, query, body } = {}) {
+async function proxy(req, res, apiPath, { actingUser, method, query, body } = {}) {
     const m = method || req.method;
     const url = `${API_BASE}${apiPath}${_qs({ ...(req.query || {}), ...(query || {}) })}`;
-    const headers = { Accept: 'application/json', ..._authHeader({ userToken }) };
+    const headers = { Accept: 'application/json', ..._authHeader({ actingUser }) };
+    // Media applies per-IP comment cooldowns and stores the address for moderation, and
+    // it trusts X-Forwarded-For. Without this every browser request arrived as 127.0.0.1
+    // — one shared cooldown bucket for the whole site, and an address column that
+    // recorded this proxy instead of the commenter.
+    if (req.ip) headers['X-Forwarded-For'] = req.ip;
     const opts = { method: m, headers };
     if (!['GET', 'HEAD'].includes(m)) {
         const ct = req.headers['content-type'] || '';
@@ -326,21 +344,22 @@ async function proxy(req, res, apiPath, { userToken, method, query, body } = {})
     Readable.fromWeb(upstream.body).pipe(res);
 }
 
-/** Extract the caller's Network JWT (for user-context forwarding to Media). */
-function userTokenFrom(req) {
-    try {
-        const { extractToken } = require('./auth/auth');
-        const tok = extractToken(req);
-        // Only forward real JWTs — hbt_ API tokens are Live-local.
-        if (tok && !tok.startsWith('hbt_')) return tok;
-    } catch { /* */ }
-    return null;
+/**
+ * The Live-local user id to act as for this request, or null for an anonymous call.
+ *
+ * Requires the route to have run requireAuth/optionalAuth first — that is what turns a
+ * Network JWT or an hbt_ API token into a local account. Both kinds of caller land in
+ * the same id space here, which the raw-token forwarding this replaced could not do.
+ */
+function actingUserFrom(req) {
+    const id = req?.user?.id;
+    return Number.isInteger(id) && id > 0 ? id : null;
 }
 
 module.exports = {
     MEDIA_URL, MEDIA_PUBLIC_URL, MEDIA_APP_ID,
     MediaApiError,
-    request, proxy, userTokenFrom, _formData,
+    request, proxy, actingUserFrom, _formData,
     // vods
     createVod, ingestRtmp, ingestRtpStart, ingestRtpStop,
     uploadVodChunk, completeVodChunks, finalizeVod,

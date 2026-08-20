@@ -338,7 +338,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
     try {
         if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'VOD not found' });
         let vod;
-        try { vod = await media.getVod(req.params.id, { userToken: media.userTokenFrom(req) }); }
+        try { vod = await media.getVod(req.params.id, { actingUser: media.actingUserFrom(req) }); }
         catch (err) { return mediaErr(res, err, 'Failed to get VOD'); }
         if (!vod) return res.status(404).json({ error: 'VOD not found' });
         withUserFields(vod);

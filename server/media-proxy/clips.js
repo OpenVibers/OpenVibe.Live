@@ -175,7 +175,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
     try {
         if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'Clip not found' });
         let clip;
-        try { clip = await media.getClip(req.params.id, { userToken: media.userTokenFrom(req) }); }
+        try { clip = await media.getClip(req.params.id, { actingUser: media.actingUserFrom(req) }); }
         catch (err) { return mediaErr(res, err, 'Failed to get clip'); }
         if (!clip) return res.status(404).json({ error: 'Clip not found' });
         withUserFields(clip);
