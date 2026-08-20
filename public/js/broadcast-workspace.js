@@ -617,14 +617,8 @@ function _wsRenderPanel() {
                 </details>
                 </div>
 
-                <!-- Control profile (Class A structured) -->
-                <div class="form-group">
-                    <label><i class="fa-solid fa-gamepad"></i> Control Profile</label>
-                    <select id="bc-control-config" class="form-input form-input-sm"
-                        onchange="_wsMarkDirty()">
-                        <option value="">None (no controls)</option>
-                    </select>
-                </div>
+                <!-- Control profile lives under Settings; createNewStream() and the save
+                     payload both read #bc-control-config, which is rendered there. -->
 
                 <!-- Hidden element required by createNewStream() -->
                 <select id="bc-managed-stream" style="display:none">
@@ -722,6 +716,65 @@ function _wsRenderPanel() {
         <!-- ═══ TAB: Settings ═══ -->
         <div class="bc-ws-tab-panel" data-wstabpanel="settings">
             <div class="bc-ws-profile-section">
+
+                <!-- Control Profile -->
+                <details class="bc-ws-slot-settings">
+                    <summary><i class="fa-solid fa-gamepad"></i> Control Profile</summary>
+                    <div class="bc-ws-slot-settings-inner">
+                        <p class="muted" style="font-size:0.82rem;margin-bottom:10px">
+                            Lets viewers send commands to hardware attached to this slot. Leave as None
+                            for an ordinary stream.
+                        </p>
+                        <div class="form-group">
+                            <select id="bc-control-config" class="form-input form-input-sm" onchange="_wsMarkDirty()">
+                                <option value="">None (no controls)</option>
+                            </select>
+                        </div>
+                    </div>
+                </details>
+
+                <!-- Picture-in-picture camera -->
+                <details class="bc-ws-slot-settings">
+                    <summary><i class="fa-solid fa-video"></i> Picture-in-picture Camera</summary>
+                    <div class="bc-ws-slot-settings-inner">
+                        <p class="muted" style="font-size:0.82rem;margin-bottom:10px">
+                            Overlay another of your slots on top of this stream. The camera stays a stream
+                            in its own right — its own VOD, clips and restreams — so it can be your webcam,
+                            a second angle, or a co-host's slot. Viewers can move, resize, mute or hide it
+                            themselves; the values below are only where it starts.
+                        </p>
+                        <div class="form-group">
+                            <label>Camera slot</label>
+                            <select id="bc-ws-pip-source" class="form-input" onchange="_wsSlotSettingChanged();_wsPipDefaultsToggle()">
+                                <option value="">None</option>
+                                ${(_wsState.managedStreams || []).filter(o => o.id !== ms.id).map(o =>
+                                    `<option value="${o.id}"${String(ms.pip_source_msid || '') === String(o.id) ? ' selected' : ''}>${esc(o.title || ('Slot ' + o.id))}</option>`
+                                ).join('')}
+                            </select>
+                        </div>
+                        <div id="bc-ws-pip-defaults" style="display:${ms.pip_source_msid ? '' : 'none'}">
+                            <div class="bc-ws-row">
+                                <div class="form-group" style="flex:1">
+                                    <label>Starting corner</label>
+                                    <select id="bc-ws-pip-corner" class="form-input form-input-sm" onchange="_wsSlotSettingChanged()">
+                                        <option value="br">Bottom Right</option>
+                                        <option value="bl">Bottom Left</option>
+                                        <option value="tr">Top Right</option>
+                                        <option value="tl">Top Left</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="flex:1">
+                                    <label>Starting size</label>
+                                    <select id="bc-ws-pip-size" class="form-input form-input-sm" onchange="_wsSlotSettingChanged()">
+                                        <option value="0.18">Small</option>
+                                        <option value="0.25">Medium</option>
+                                        <option value="0.35">Large</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </details>
 
                 <!-- Restream Destinations -->
                 <details class="bc-ws-slot-settings" open>
@@ -946,23 +999,6 @@ function _wsRenderPanel() {
                         </div>
                         <div class="bc-ws-row">
                             <div class="form-group" style="flex:1">
-                                <label>Picture-in-picture camera</label>
-                                <select id="bc-ws-pip-source" class="form-input" onchange="_wsSlotSettingChanged()">
-                                    <option value="">None</option>
-                                    ${(_wsState.managedStreams || []).filter(o => o.id !== ms.id).map(o =>
-                                        `<option value="${o.id}"${String(ms.pip_source_msid || '') === String(o.id) ? ' selected' : ''}>${esc(o.title || ('Slot ' + o.id))}</option>`
-                                    ).join('')}
-                                </select>
-                                <p class="bc-ws-hint">
-                                    Viewers of this stream see the chosen slot's live stream as a movable,
-                                    resizable overlay. It stays a stream in its own right — its own VOD,
-                                    clips and restreams — so it can be your webcam, a second angle, or
-                                    someone else's slot entirely.
-                                </p>
-                            </div>
-                        </div>
-                        <div class="bc-ws-row">
-                            <div class="form-group" style="flex:1">
                                 <label>Default VOD Visibility</label>
                                 <select id="bc-ws-vod-visibility" class="form-input" onchange="_wsSlotSettingChanged()">
                                     <option value="public" ${(ms.default_vod_visibility || 'public') === 'public' ? 'selected' : ''}>Public</option>
@@ -1065,6 +1101,8 @@ function _wsRenderPanel() {
 
     // Async post-render: populate control configs and check device permissions
     _wsPopulateControlConfigs(ms.control_config_id);
+    // Corner/size selects are derived from the stored {x,y,w} fractions.
+    _wsPipDefaultsRestore(ms);
     if (method === 'browser') {
         _wsInitDevicePicker(method, browserMode);
         _wsSyncScreenShareHiddenDefaults(browserMode);
@@ -1888,6 +1926,11 @@ async function _wsSaveAll() {
             weather_show_location: ms.weather_show_location || 0,
             // '' clears the overlay; the server validates ownership and rejects self-reference.
             pip_source_msid: document.getElementById('bc-ws-pip-source')?.value || null,
+            pip_defaults: (() => {
+                const w = Number(document.getElementById('bc-ws-pip-size')?.value) || 0.25;
+                const corner = document.getElementById('bc-ws-pip-corner')?.value || 'br';
+                return { ...(_wsPipCornerToXY(corner, w)), w };
+            })(),
         };
 
         const profileBlob = {
@@ -2178,6 +2221,61 @@ async function _wsRequestCamPermission() {
     _wsShowEl('bc-ws-screen-cam-device', true);
     _wsShowEl('bc-ws-screen-cam-perm', false);
     _wsUpdateCaptureSummary();
+}
+
+
+/* ── Picture-in-picture defaults ──────────────────────────────────────────────
+   The API stores the starting geometry as FRACTIONS of the player box ({x,y,w}),
+   so the overlay lands in the same relative place at any window size. Streamers
+   should not have to think in fractions, so the UI offers a corner and a size and
+   converts. 0.02 is the margin from each edge. */
+
+const _PIP_MARGIN = 0.02;
+
+function _wsPipCornerToXY(corner, w) {
+    const h = w * 9 / 16;                       // the overlay is 16:9
+    const right = 1 - w - _PIP_MARGIN;
+    const bottom = 1 - h - _PIP_MARGIN;
+    switch (corner) {
+        case 'bl': return { x: _PIP_MARGIN, y: bottom };
+        case 'tr': return { x: right, y: _PIP_MARGIN };
+        case 'tl': return { x: _PIP_MARGIN, y: _PIP_MARGIN };
+        default:   return { x: right, y: bottom };   // 'br'
+    }
+}
+
+function _wsPipXYToCorner(x, y) {
+    return (y < 0.5 ? 't' : 'b') + (x < 0.5 ? 'l' : 'r');
+}
+
+/** Show the geometry controls only when a camera slot is actually selected. */
+function _wsPipDefaultsToggle() {
+    const on = !!document.getElementById('bc-ws-pip-source')?.value;
+    _wsShowEl('bc-ws-pip-defaults', on);
+}
+
+/** Restore corner/size from the stored fractions when the panel renders. */
+function _wsPipDefaultsRestore(ms) {
+    let d = {};
+    try { d = typeof ms.pip_defaults === 'string' ? JSON.parse(ms.pip_defaults || '{}') : (ms.pip_defaults || {}); }
+    catch { d = {}; }
+    const sizeEl = document.getElementById('bc-ws-pip-size');
+    const cornerEl = document.getElementById('bc-ws-pip-corner');
+    if (sizeEl) {
+        const w = Number(d.w);
+        // Snap to the nearest offered size rather than showing an option that is not there.
+        const opts = [0.18, 0.25, 0.35];
+        const nearest = Number.isFinite(w)
+            ? opts.reduce((a, b) => (Math.abs(b - w) < Math.abs(a - w) ? b : a))
+            : 0.25;
+        sizeEl.value = String(nearest);
+    }
+    if (cornerEl) {
+        cornerEl.value = (Number.isFinite(Number(d.x)) && Number.isFinite(Number(d.y)))
+            ? _wsPipXYToCorner(Number(d.x), Number(d.y))
+            : 'br';
+    }
+    _wsPipDefaultsToggle();
 }
 
 function _wsPopulateInlineDevices(selectId, devices) {

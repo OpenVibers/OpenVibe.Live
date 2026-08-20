@@ -109,6 +109,65 @@ assert.ok(/raw\.muted !== false/.test(pip),
 assert.ok(/is-offline/.test(pip), 'a camera going offline must degrade to a badge, not a broken overlay');
 console.log('OK I: geometry persists, hide is recoverable, audio defaults to muted, offline degrades gracefully');
 
+// ── J: workspace placement — Settings owns the control profile and the PiP section ───
+{
+    const ws = read('public/js/broadcast-workspace.js');
+    const at = (name) => ws.indexOf(`data-wstabpanel="${name}"`);
+    const [prof, settings, endpoint] = [at('profile'), at('settings'), at('endpoint')];
+    assert.ok(prof > 0 && settings > prof && endpoint > settings, 'expected profile/settings/endpoint panels in order');
+    const streamPanel = ws.slice(prof, settings);
+    const settingsPanel = ws.slice(settings, endpoint);
+
+    assert.ok(!streamPanel.includes('id="bc-control-config"'),
+        'the control profile select must no longer render in the Stream tab');
+    assert.ok(settingsPanel.includes('id="bc-control-config"'),
+        'the control profile select must render in the Settings tab');
+    assert.ok(settingsPanel.includes('id="bc-ws-pip-source"'),
+        'the PiP camera picker must render in the Settings tab');
+
+    // Both must be their own collapsible sections, matching the other Settings groups.
+    for (const label of ['Control Profile', 'Picture-in-picture Camera']) {
+        // Anchor on the SUMMARY text: an HTML comment carries the same label just above
+        // the <details>, and matching that would look in the wrong place entirely.
+        const idx = settingsPanel.indexOf(`${label}</summary>`);
+        assert.ok(idx > 0, `Settings must have a "${label}" collapsible section`);
+        const before = settingsPanel.slice(Math.max(0, idx - 400), idx);
+        assert.ok(before.includes('<details class="bc-ws-slot-settings">'),
+            `"${label}" must be a collapsible <details> section like the rest of Settings`);
+    }
+    console.log('OK J: control profile and PiP camera are collapsible sections under Settings');
+}
+
+// ── K: PiP starting geometry round-trips through corner/size ─────────────────────────
+{
+    const ws = read('public/js/broadcast-workspace.js');
+    assert.ok(/function _wsPipCornerToXY/.test(ws) && /function _wsPipXYToCorner/.test(ws),
+        'corner <-> fraction conversion must exist in both directions');
+    assert.ok(/pip_defaults: \(\(\) => \{/.test(ws), 'the save payload must include pip_defaults');
+    assert.ok(/_wsPipDefaultsRestore\(ms\)/.test(ws), 'stored fractions must be restored into the selects');
+
+    // Exercise the conversion the way the UI does: every corner must land in its own
+    // quadrant and stay fully inside the player box.
+    const MARGIN = 0.02;
+    const cornerToXY = (corner, w) => {
+        const h = w * 9 / 16, right = 1 - w - MARGIN, bottom = 1 - h - MARGIN;
+        return corner === 'bl' ? { x: MARGIN, y: bottom }
+             : corner === 'tr' ? { x: right, y: MARGIN }
+             : corner === 'tl' ? { x: MARGIN, y: MARGIN }
+             : { x: right, y: bottom };
+    };
+    const xyToCorner = (x, y) => (y < 0.5 ? 't' : 'b') + (x < 0.5 ? 'l' : 'r');
+    for (const w of [0.18, 0.25, 0.35]) {
+        for (const corner of ['br', 'bl', 'tr', 'tl']) {
+            const { x, y } = cornerToXY(corner, w);
+            assert.strictEqual(xyToCorner(x, y), corner, `${corner} @ w=${w} must round-trip`);
+            assert.ok(x >= 0 && y >= 0 && x + w <= 1 && y + (w * 9 / 16) <= 1,
+                `${corner} @ w=${w} must sit fully inside the player`);
+        }
+    }
+    console.log('OK K: every corner/size default round-trips and stays inside the player box');
+}
+
 try { fs.unlinkSync(tmp); } catch { /* */ }
 for (const ext of ['-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
 console.log('✅ PiP camera slot test passed');
