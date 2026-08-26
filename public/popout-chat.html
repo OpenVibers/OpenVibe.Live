@@ -171,11 +171,14 @@
                     <button class="chat-tts-toggle tts-active" id="pc-tts-btn" onclick="toggleChatTTS(this)" title="TTS On (click to mute)">
                         <i class="fa-solid fa-volume-high"></i>
                     </button>
-                    <button class="btn btn-openvibe-coins-mini" onclick="if(typeof toggleRewardsPanel==='function')toggleRewardsPanel()" title="Redeem OpenCoins">
-                        <i class="fa-solid fa-coins"></i>
+                    <button class="btn btn-openvibe-coins-mini chat-nickels-float" onclick="if(typeof toggleRewardsPanel==='function')toggleRewardsPanel()" title="Channel points (click for rewards)">
+                        <i class="fa-solid fa-coins"></i> <span class="rewards-coin-balance">0</span>
                     </button>
                     <button class="btn btn-openvibe-bucks-mini" onclick="if(typeof showModal==='function')showModal('donate')" title="Send Vibes">
                         <i class="fa-solid fa-dollar-sign"></i>
+                    </button>
+                    <button class="btn btn-openvibe-bucks-mini" onclick="if(typeof openSubscribeForCurrentStream==='function')openSubscribeForCurrentStream()" title="Subscribe to this channel">
+                        <i class="fa-solid fa-star"></i>
                     </button>
                 </div>
                 <!-- Rewards Panel (OpenCoins) -->

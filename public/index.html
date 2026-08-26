@@ -977,6 +977,28 @@
                         <button class="emote-picker-btn" onclick="openChannelUploadModal()" title="Add channel emote / sound">
                             <i class="fa-solid fa-plus"></i>
                         </button>
+                        <button class="chat-tts-toggle tts-active" onclick="toggleChatTTS(this)" title="TTS On (click to mute)">
+                            <i class="fa-solid fa-volume-high"></i>
+                        </button>
+                        <button class="btn btn-openvibe-coins-mini chat-nickels-float" onclick="toggleRewardsPanel()" title="OpenCoins — this channel's points (click for rewards)">
+                            <i class="fa-solid fa-coins"></i> <span class="rewards-coin-balance">0</span>
+                        </button>
+                        <button class="btn btn-openvibe-bucks-mini" onclick="showModal('donate')" title="Send Vibes">
+                            <i class="fa-solid fa-dollar-sign"></i>
+                        </button>
+                        <button class="btn btn-openvibe-bucks-mini" onclick="openSubscribeForCurrentStream()" title="Subscribe to this channel">
+                            <i class="fa-solid fa-star"></i>
+                        </button>
+                    </div>
+                    <!-- Rewards Panel (channel points) — offline chat's own instance -->
+                    <div class="rewards-panel" style="display:none">
+                        <div class="rewards-panel-header">
+                            <span><i class="fa-solid fa-coins rewards-cp-icon"></i> <span class="rewards-cp-label">Channel Points</span> Rewards</span>
+                            <span class="rewards-coin-bal"><i class="fa-solid fa-coins"></i> <span class="rewards-coin-balance">0</span></span>
+                        </div>
+                        <div class="rewards-grid ch-rewards-grid">
+                            <p class="muted">No rewards configured for this channel</p>
+                        </div>
                     </div>
                 </div>
             </div>

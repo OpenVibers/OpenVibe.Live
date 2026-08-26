@@ -115,9 +115,13 @@ function toggleRewardsPanel() {
 }
 
 async function loadRewardsPanel() {
-    if (!currentStreamData) {
+    // Channel points are per-CHANNEL, not per live session — resolve the owner from
+    // the live stream OR the channel context (offline channel page / popout chat).
+    const ownerId = (typeof currentStreamData !== 'undefined' && currentStreamData && currentStreamData.user_id)
+        || (typeof _activeChannelUserId !== 'undefined' && _activeChannelUserId) || null;
+    if (!ownerId) {
         document.querySelectorAll('.rewards-grid').forEach(g => {
-            g.innerHTML = '<p class="muted" style="padding:8px">Join a stream to see rewards</p>';
+            g.innerHTML = '<p class="muted" style="padding:8px">Join a channel to see rewards</p>';
         });
         return;
     }
@@ -125,7 +129,7 @@ async function loadRewardsPanel() {
     if (!grids.length) return;
 
     try {
-        const data = await api(`/coins/rewards/${currentStreamData.user_id}`);
+        const data = await api(`/coins/rewards/${ownerId}`);
         const rewards = data.rewards || [];
         _applyChannelPointsBranding(data.config);
 
@@ -152,7 +156,7 @@ async function loadRewardsPanel() {
 
     // Update this channel's points balance in all reward panels
     try {
-        const coinData = await api(`/coins/channel-balance?streamerId=${currentStreamData.user_id}`);
+        const coinData = await api(`/coins/channel-balance?streamerId=${ownerId}`);
         document.querySelectorAll('.rewards-coin-balance').forEach(el => {
             el.textContent = (coinData.balance || 0).toLocaleString();
         });
