@@ -536,15 +536,46 @@ router.put('/settings', (req, res) => {
             return res.status(400).json({ error: 'Invalid settings payload' });
         }
         const owner = permissions.isOwner(req.user);
-        let blocked = 0;
-        for (const [key, value] of Object.entries(settings)) {
+        const existing = new Map(db.getAllSettings().map(s => [s.key, s]));
+        const looksJson = (v) => typeof v === 'string' && /^\s*[\[{]/.test(v);
+        const parsesJson = (v) => { try { const o = JSON.parse(v); return o !== null && typeof o === 'object'; } catch { return false; } };
+        // Validate EVERYTHING before touching the DB: a single bad field (e.g. a JSON blob that
+        // got truncated to '{' by a form) must not clobber the stored value, and no partial writes.
+        const rejected = {};
+        const writes = [];
+        let blocked = 0, unchanged = 0;
+        for (const [key, rawValue] of Object.entries(settings)) {
             if (typeof key !== 'string' || key.length > 100) continue;
-            // Only the owner may change API keys / secrets / money settings.
             if (!owner && permissions.isSensitiveSettingKey(key)) { blocked++; continue; }
-            db.setSetting(key, value);
+            const value = (rawValue !== null && typeof rawValue === 'object') ? JSON.stringify(rawValue) : String(rawValue ?? '');
+            const cur = existing.get(key);
+            if (cur && cur.value === value) { unchanged++; continue; }
+            // Untouched redaction mask from a non-owner UI — never persist it.
+            if (/^•{4,}/.test(value)) { unchanged++; continue; }
+            if (cur && (cur.type === 'json' || (looksJson(cur.value) && parsesJson(cur.value)))) {
+                if (value !== '' && !parsesJson(value)) { rejected[key] = 'Invalid JSON (stored value is a JSON document; refusing to overwrite it with something that does not parse)'; continue; }
+            } else if (cur && cur.type === 'number') {
+                if (value.trim() === '' || !Number.isFinite(Number(value))) { rejected[key] = 'Must be a number'; continue; }
+            } else if (cur && cur.type === 'boolean') {
+                if (value !== 'true' && value !== 'false') { rejected[key] = 'Must be true or false'; continue; }
+            } else if (looksJson(value) && !parsesJson(value)) {
+                rejected[key] = 'Looks like JSON but does not parse';
+                continue;
+            }
+            writes.push([key, value]);
         }
+        if (Object.keys(rejected).length) {
+            return res.status(400).json({ error: `Rejected ${Object.keys(rejected).length} invalid setting(s): ${Object.keys(rejected).join(', ')}`, rejected, saved: [] });
+        }
+        db.getDb().transaction(() => { for (const [k, v] of writes) db.setSetting(k, v); })();
+        if (writes.length) console.log(`[Admin] Settings updated by ${req.user?.username || req.user?.id}: ${writes.map(w => w[0]).join(', ')}`);
+        const parts = [`${writes.length} updated`];
+        if (unchanged) parts.push(`${unchanged} unchanged`);
+        if (blocked) parts.push(`${blocked} owner-only setting${blocked === 1 ? '' : 's'} skipped`);
         res.json({
-            message: blocked ? `Settings updated (${blocked} owner-only setting${blocked === 1 ? '' : 's'} skipped)` : 'Settings updated',
+            message: `Settings updated (${parts.join(', ')})`,
+            saved: writes.map(w => w[0]),
+            rejected,
             settings: permissions.redactSettingsForUser(db.getAllSettings(), req.user),
         });
     } catch (err) {
