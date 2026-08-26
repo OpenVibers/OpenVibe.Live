@@ -28,12 +28,24 @@ const db = require('../db/database');
 const oauth = require('./powerchat-oauth');
 
 // ── Site account resolution ──────────────────────────────────
-function siteAccountUserId() {
-    const v = parseInt(String(db.getSetting('powerchat_site_user_id') || ''), 10);
-    return Number.isFinite(v) && v > 0 ? v : null;
+// The site tips account is just a TYPED PowerChat username (admin setting) — a
+// dedicated account made for receiving site money. Checkout links are canonical
+// URLs built from the username + our client id; confirmation arrives via the
+// signed webhook, so no tokens are needed on our side. The only external
+// requirement: that PowerChat account must have the app connected on PowerChat
+// (Connect card / OAuth consent) so webhooks fire and refs echo back for it.
+function getSiteAccount() {
+    try {
+        const c = oauth.getConfig();
+        if (!c.enabled || !c.clientId) return null;
+        const username = String(db.getSetting('powerchat_site_tip_username') || '').trim();
+        return username ? { username } : null;
+    } catch { return null; }
 }
-// A usable checkout host = connected via app OAuth AND granted checkout:attribute
-// (attribution refs only echo back for grants that carry the scope).
+function isAvailable() { return !!getSiteAccount(); }
+
+// A streamer-direct checkout host = connected via app OAuth AND granted
+// checkout:attribute (attribution refs only echo back for grants carrying the scope).
 function _checkoutConn(userId) {
     if (!userId) return null;
     try {
@@ -44,12 +56,6 @@ function _checkoutConn(userId) {
         return conn;
     } catch { return null; }
 }
-function getSiteAccount() {
-    const userId = siteAccountUserId();
-    const conn = _checkoutConn(userId);
-    return conn ? { userId, username: conn.powerchat_username } : null;
-}
-function isAvailable() { return !!getSiteAccount(); }
 
 // Canonical attribution link (documented stable URL shape — no API round-trip needed).
 function tipLinkFor(pcUsername, ref) {
