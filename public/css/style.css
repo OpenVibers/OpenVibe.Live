@@ -5392,6 +5392,9 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     border-radius: 10px; padding: 6px; box-shadow: 0 10px 30px rgba(0,0,0,0.45);
     display: flex; flex-direction: column; gap: 2px; animation: pcFadeIn .16s ease-out;
 }
+/* `display: flex` above beats the [hidden] attribute's UA display:none — restore it,
+   or the menu renders open on load and the JS toggle can't close it. */
+.pc-test-menu[hidden] { display: none; }
 .pc-test-menu-head {
     font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em;
     color: var(--text-muted, #888); padding: 5px 9px 6px;
