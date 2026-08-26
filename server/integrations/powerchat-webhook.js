@@ -169,8 +169,23 @@ function _handleNotice(userId, message, kind) {
 function processEvent(envelope) {
     if (!envelope || !envelope.type) return;
     const userId = _resolveStreamerUserId(envelope.streamer);
-    if (!userId) { console.warn(`[PowerChat] webhook ${envelope.type} for unknown streamer`, envelope.streamer); return; }
     const data = envelope.data || {};
+    if (!userId) {
+        // The site tips account is a bare PowerChat username (no OpenVibe connection
+        // row) — its checkout-attributed donations must still be fulfilled. Anything
+        // else arriving for it (e.g. someone tipping that account directly, outside a
+        // checkout link) has no on-site home and is deliberately ignored.
+        const siteName = String(db.getSetting('powerchat_site_tip_username') || '').trim().toLowerCase();
+        const from = String((envelope.streamer && envelope.streamer.username) || '').toLowerCase();
+        if (siteName && from === siteName) {
+            if (envelope.type === 'donation.completed' && data.appExternalRef && !data.isTest && data.source !== 'developer_app') {
+                try { require('./powerchat-checkout').handleAttributedDonation(null, data); } catch (e) { console.warn('[PowerChat] site-account fulfillment:', e.message); }
+            }
+            return;
+        }
+        console.warn(`[PowerChat] webhook ${envelope.type} for unknown streamer`, envelope.streamer);
+        return;
+    }
     // Dashboard "Send test webhook" deliveries carry data.isTest — they exist to verify
     // the receiver (signature/dedupe/wiring), and must NEVER credit goals or fire the
     // real celebration pipeline.

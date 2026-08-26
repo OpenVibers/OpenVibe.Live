@@ -1057,11 +1057,12 @@ function initDb() {
             // registration has the scopes.
             ['powerchat_scopes', 'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write tips:write', 'OAuth scopes requested from each streamer (space-delimited)', 'string'],
             ['powerchat_sandbox_username', 'alex', 'Sandbox streamer username the app can act on until approved (the app owner’s PowerChat username)', 'string'],
-            // Site-wide fallback PowerChat account: the OpenVibe user id whose connected
-            // PowerChat receives tips when a streamer has no PowerChat of their own, and
-            // hosts all Vibes purchases. That user connects PowerChat from their normal
-            // dashboard card; this setting just points at them (default: the owner).
-            ['powerchat_site_user_id', '1', 'OpenVibe user id whose PowerChat connection is the site-wide tip/purchase account (fallback when a streamer has no PowerChat)', 'number'],
+            // Site-wide tips account: the PowerChat USERNAME whose tip page hosts all
+            // Vibes purchases and the donation fallback for streamers without their own
+            // PowerChat. Just a typed username (the checkout link is a canonical URL) —
+            // the app credentials above handle attribution, and that PowerChat account
+            // must have the app connected on PowerChat's side so webhooks fire for it.
+            ['powerchat_site_tip_username', '', 'PowerChat username whose tip page receives site purchases + fallback donations (that account must have the app connected on PowerChat)', 'string'],
         ];
         const seedPc = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
         for (const [k, v, d, t] of powerchatSeeds) seedPc.run(k, v, d, t);
@@ -1074,6 +1075,21 @@ function initDb() {
                 'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger',
                 'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write');
         database.prepare(`UPDATE site_settings SET value = 'alex' WHERE key = 'powerchat_sandbox_username' AND value = 'n8admin'`).run();
+        // powerchat_site_user_id (pointed at an OpenVibe user's connection) is replaced
+        // by powerchat_site_tip_username (a directly-typed PowerChat username). Carry
+        // the old pointer's resolved PowerChat username over once, then drop it.
+        const oldSite = database.prepare(`SELECT value FROM site_settings WHERE key = 'powerchat_site_user_id'`).get();
+        if (oldSite) {
+            try {
+                const uid = parseInt(oldSite.value, 10);
+                const conn = uid ? database.prepare('SELECT powerchat_username FROM powerchat_connections WHERE user_id = ?').get(uid) : null;
+                if (conn && conn.powerchat_username) {
+                    database.prepare(`UPDATE site_settings SET value = ? WHERE key = 'powerchat_site_tip_username' AND (value IS NULL OR value = '')`)
+                        .run(conn.powerchat_username);
+                }
+            } catch { /* best-effort carry-over */ }
+            database.prepare(`DELETE FROM site_settings WHERE key = 'powerchat_site_user_id'`).run();
+        }
     } catch (e) { console.warn('[DB] Settings seed:', e.message); }
 
     // Internal job/cache state (JSON blobs the AI jobs persist across restarts).
