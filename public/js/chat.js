@@ -5293,17 +5293,27 @@ function _handleGlobalFeedMessage(msg) {
     }
 
     // Don't duplicate messages from the channel we're currently viewing (its own
-    // messages already render in the main timeline). Works live AND offline.
-    if (hasStreamChannel) {
+    // messages already render in the main timeline). Works live AND offline. The
+    // local copy always takes precedence over the cross-feed one.
+    // Fallback chain matters: in a popout pinned to an expired stream id,
+    // currentStreamData is empty — chatChannel (set by the history load) and the
+    // joined channel user id still identify the channel, so compare those too or
+    // every own message renders twice (local + cross-feed copy).
+    if (hasStreamChannel || msg.channel_user_id) {
         const currentStreamChannel = (currentStreamData && currentStreamData.username)
             || (typeof currentChannelUsername !== 'undefined' && currentChannelUsername)
+            || (typeof chatChannel !== 'undefined' && chatChannel)
             || null;
-        if (currentStreamChannel) {
+        if (hasStreamChannel && currentStreamChannel) {
             const currentChannelNorm = String(currentStreamChannel).trim().toLowerCase();
             const sourceChannelNorm = String(msg.stream_channel).trim().toLowerCase();
             if (currentChannelNorm && currentChannelNorm === sourceChannelNorm) {
                 return;
             }
+        }
+        if (msg.channel_user_id && typeof chatChannelUserId !== 'undefined' && chatChannelUserId
+            && Number(msg.channel_user_id) === Number(chatChannelUserId)) {
+            return;
         }
     }
 
