@@ -433,6 +433,22 @@ class ChatRelayService {
             chatServer.synthesizeAndBroadcastTTS(bridge.streamId, prefixedUsername, chatMsg.message, null, bridge.platform, `${bridge.platform}:${prefixedUsername}`);
         } catch { /* non-critical */ }
 
+        // Merge relayed chat into the streamer's PowerChat unified overlay too. Only
+        // native OpenVibe messages were forwarded before, so a streamer whose audience
+        // mostly chats on Twitch/Kick saw an empty overlay.
+        try {
+            const stream = db.getStreamById(bridge.streamId);
+            if (stream?.user_id) {
+                require('./powerchat-platform').forwardChat(stream.user_id, {
+                    chatterName: prefixedUsername,
+                    externalChatterId: `${bridge.platform}:${username}`,
+                    message: chatMsg.message,
+                    messageId: chatMsg.id ? `ov-${chatMsg.id}` : undefined,
+                    avatarUrl: extras.avatar_url || undefined,
+                });
+            }
+        } catch { /* non-critical */ }
+
         // Welcome first-time external chatters in this streamer's channel
         try {
             const stream = db.getStreamById(bridge.streamId);
