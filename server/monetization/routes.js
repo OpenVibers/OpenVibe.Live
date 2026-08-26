@@ -101,6 +101,19 @@ router.post('/donate', requireAuth, (req, res) => {
         // 2) Donation sound (streamer-configured).
         alerts.playAlertSound(chatServer, streamer_id, stream_id, 'donation');
 
+        // Mirror the donation onto the streamer's PowerChat overlay as a monetary tip
+        // (tips:write). Vibes ARE the declared currency units (100 = $1); PowerChat
+        // converts server-side. externalId is the ledger id, so a retry can't double-alert.
+        // The webhook echo of this event (source=developer_app) is deliberately ignored.
+        try {
+            require('../integrations/powerchat-platform').forwardTip(streamer_id, {
+                amount: result.amount,
+                tipperName: donor,
+                message: message || '',
+                externalId: result.transactionId ? `donation:${result.transactionId}` : undefined,
+            });
+        } catch { /* non-critical */ }
+
         // 3) Live goal progress → widget.
         if (result.goal) {
             chatServer.broadcastToChannelRoom(streamer_id, stream_id || null, { type: 'goal-update', goal: publicGoal(result.goal) });

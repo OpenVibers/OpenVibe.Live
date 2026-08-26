@@ -171,6 +171,17 @@ function processEvent(envelope) {
     const userId = _resolveStreamerUserId(envelope.streamer);
     if (!userId) { console.warn(`[PowerChat] webhook ${envelope.type} for unknown streamer`, envelope.streamer); return; }
     const data = envelope.data || {};
+    // Dashboard "Send test webhook" deliveries carry data.isTest — they exist to verify
+    // the receiver (signature/dedupe/wiring), and must NEVER credit goals or fire the
+    // real celebration pipeline.
+    if (data.isTest) { console.log(`[PowerChat] test webhook ${envelope.type} verified OK (not credited)`); return; }
+    // App-sourced events are OUR OWN pushes (tips/subs/follows/redemptions we forwarded
+    // via the platform scopes) echoing back through the webhook — they already happened
+    // locally, so replaying them would double-count/duplicate every one.
+    if (data.source === 'developer_app') {
+        console.log(`[PowerChat] skipping app-sourced ${envelope.type} echo (${data.eventId || 'no id'})`);
+        return;
+    }
     try {
         switch (envelope.type) {
             case 'donation.completed':

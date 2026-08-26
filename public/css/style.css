@@ -5382,6 +5382,30 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .pc-btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .pc-btn-row .btn { flex: 0 1 auto; }
 
+/* "Test on PowerChat" dropdown menu */
+.pc-test-menu-wrap { position: relative; display: inline-block; }
+.pc-test-caret { font-size: 0.7em; margin-left: 2px; transition: transform .18s ease; }
+.pc-test-menu-wrap.open .pc-test-caret { transform: rotate(180deg); }
+.pc-test-menu {
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; min-width: 230px;
+    background: var(--bg-secondary, #17171d); border: 1px solid var(--border-color, #2a2a33);
+    border-radius: 10px; padding: 6px; box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+    display: flex; flex-direction: column; gap: 2px; animation: pcFadeIn .16s ease-out;
+}
+.pc-test-menu-head {
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-muted, #888); padding: 5px 9px 6px;
+    border-bottom: 1px solid var(--border-color, #2a2a33); margin-bottom: 3px;
+}
+.pc-test-menu button {
+    display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+    background: none; border: none; color: var(--text, #ddd); font-size: 0.85rem;
+    padding: 7px 9px; border-radius: 7px; cursor: pointer;
+}
+.pc-test-menu button:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.pc-test-menu button:disabled { opacity: .55; cursor: default; }
+.pc-test-menu button i { width: 16px; text-align: center; color: var(--accent, #d8b98a); font-size: 0.8rem; }
+
 /* Connecting box — centered, roomy, branded */
 .pc-status.pc-status-block { display: block; }
 .pc-connecting-box {

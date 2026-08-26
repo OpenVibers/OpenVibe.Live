@@ -3,20 +3,31 @@
  *
  * When a streamer has connected PowerChat with the relevant scopes, OpenVibe.Live acts
  * like a streaming platform feeding PowerChat's unified overlays:
- *   - chat:write       → real OpenVibe.Live chat merges into the unified chat overlay
- *   - viewcount:write  → OpenVibe.Live's viewer count shows as its own branded chip
- *   - currency:write   → channel-point redemptions fire PowerChat alerts + leaderboards
+ *   - chat:write          → real OpenVibe.Live chat merges into the unified chat overlay
+ *   - viewcount:write     → OpenVibe.Live's viewer count shows as its own branded chip
+ *   - follows:write       → new follows fire PowerChat follow alerts + follow goals
+ *   - subscriptions:write → paid channel subs fire sub alerts + credit goals/subathon
+ *   - currency:write      → channel-point redemptions fire PowerChat alerts + leaderboards
+ *   - tips:write          → on-site Vibes donations fire PowerChat tip alerts + credit
+ *                           tip goals/totals (Vibes are bit-style: 100 = $1, so the
+ *                           declared currency carries unitsPerUsd=100)
  *
  * Everything is best-effort and scope-gated: a missing scope / sandbox restriction just
- * makes the call a no-op (PowerChat also checks scopes live and 403s, which we swallow).
+ * makes the call a no-op (PowerChat also checks scopes live and 403s, which we surface
+ * on the connection's last_error so the dashboard can prompt a reconnect).
  */
 'use strict';
+const crypto = require('crypto');
 const db = require('../db/database');
 const oauth = require('./powerchat-oauth');
 const config = require('../config');
 
-// The virtual-currency key the app declares in the PowerChat dashboard for channel points.
+// Virtual-currency keys the app declares in the PowerChat dashboard.
+// - openvibe_points: points-only (no USD rate) — channel-point redemptions.
+// - openvibe_vibes:  monetary — MUST be declared with unitsPerUsd=100 (Vibes are
+//   bit-style, 100 Vibes = $1) or POST /tips 400s with "no USD rate".
 const CURRENCY_KEY = 'openvibe_points';
+const TIP_CURRENCY_KEY = 'openvibe_vibes';
 
 // PowerChat's /chat avatarUrl only renders when it's a full absolute http(s) URL — relative
 // paths, data:/blob:, or bare values are silently treated as "no avatar" (an initial-letter
@@ -50,14 +61,38 @@ function _connFor(userId, scopeNeeded) {
         if (!oauth.getConfig().enabled) return null;
         const conn = db.getPowerchatConnection(userId);
         if (!conn || !conn.access_token || !conn.refresh_token) return null;
-        if (scopeNeeded && conn.scope && !String(conn.scope).split(/\s+/).includes(scopeNeeded)) return null;
+        if (scopeNeeded && conn.scope && !String(conn.scope).split(/\s+/).includes(scopeNeeded)) {
+            // The grant was minted without this scope (classic "registered but not
+            // requested"). Surface it once so the dashboard can prompt a reconnect —
+            // silently skipping here is exactly how "0 viewers on the overlay" happens.
+            _noteScopeGap(userId, scopeNeeded);
+            return null;
+        }
         return conn;
     } catch { return null; }
 }
 
+// Record a missing-scope condition on the connection at most once per hour per scope,
+// so /status can say "reconnect to grant X" instead of the relay failing invisibly.
+const _scopeGapNoted = new Map(); // `${userId}:${scope}` → notedAt
+function _noteScopeGap(userId, scope) {
+    const key = `${userId}:${scope}`;
+    const now = Date.now();
+    if ((_scopeGapNoted.get(key) || 0) > now - 3600000) return;
+    _scopeGapNoted.set(key, now);
+    console.warn(`[PowerChat] user ${userId}'s grant is missing scope ${scope} — reconnect (re-consent) required for that feature`);
+    try { db.setPowerchatConnectionError(userId, `Reconnect needed: your PowerChat grant is missing the "${scope}" permission`); } catch { /* */ }
+}
+
+// A 403 from PowerChat means the scope was granted but later disabled/shrunk by the
+// streamer (or sandbox restriction). Same remedy: surface it, rate-limited.
+function _noteApiError(userId, scope, err) {
+    if (err && err.status === 403) _noteScopeGap(userId, `${scope} (disabled on PowerChat)`);
+}
+
 // ── chat:write ───────────────────────────────────────────────
 const _chatBuckets = new Map(); // userId → { count, resetAt }  (~120/min limit; we cap at 100)
-async function forwardChat(streamerUserId, { chatterName, externalChatterId, message, avatarUrl, isModerator } = {}) {
+async function forwardChat(streamerUserId, { chatterName, externalChatterId, message, messageId, avatarUrl, isModerator, isSubscriber } = {}) {
     if (!message || !chatterName) return;
     const conn = _connFor(streamerUserId, 'chat:write');
     if (!conn) return;
@@ -72,16 +107,22 @@ async function forwardChat(streamerUserId, { chatterName, externalChatterId, mes
             method: 'POST', path: '/chat',
             // Field caps match the PowerChat schema (chatterName 1-48, externalChatterId
             // 1-128, message 1-500) — over-long values 400 with VALIDATION_ERROR.
+            // messageId is REQUIRED (idempotency key): a body without it is a 400, so
+            // every relay silently failed before this was sent. OpenVibe chat has no
+            // retry path, so a generated UUID is a valid one-shot key.
             body: {
                 chatterName: String(chatterName).slice(0, 48),
                 externalChatterId: String(externalChatterId || chatterName).slice(0, 128),
                 message: String(message).slice(0, 500),
+                messageId: String(messageId || crypto.randomUUID()).slice(0, 128),
                 ...(absAvatar ? { avatarUrl: absAvatar } : {}),
                 ...(isModerator ? { isModerator: true } : {}),
+                ...(isSubscriber ? { isSubscriber: true } : {}),
             },
         });
         _relayOk(streamerUserId);
     } catch (e) {
+        _noteApiError(streamerUserId, 'chat:write', e);
         // This used to be silently swallowed, which meant a broken overlay relay looked
         // exactly like a working one. Log the first failure and then at most one per
         // minute per streamer, so a persistent problem is visible without flooding a
@@ -117,12 +158,38 @@ async function forwardFollow(streamerUserId, { followerName, externalId } = {}) 
     try {
         await oauth.apiRequest(streamerUserId, {
             method: 'POST', path: '/follows',
+            // externalId is REQUIRED (idempotency) — a follow/unfollow/follow cycle
+            // reuses the same id, so PowerChat dedupes instead of re-alerting.
             body: {
                 followerName: String(followerName).slice(0, 48),
-                ...(externalId ? { externalId: String(externalId).slice(0, 128) } : {}),
+                externalId: String(externalId || crypto.randomUUID()).slice(0, 128),
+                occurredAt: new Date().toISOString(),
             },
         });
-    } catch { /* silent */ }
+    } catch (e) { _noteApiError(streamerUserId, 'follows:write', e); }
+}
+
+// ── subscriptions:write ──────────────────────────────────────
+// A paid OpenVibe channel subscription → PowerChat sub alert + goal/subathon credit.
+async function forwardSubscription(streamerUserId, { subscriberName, externalId, tier, isResub, isGift, giftCount } = {}) {
+    if (!subscriberName) return;
+    const conn = _connFor(streamerUserId, 'subscriptions:write');
+    if (!conn) return;
+    try {
+        await oauth.apiRequest(streamerUserId, {
+            method: 'POST', path: '/subscriptions',
+            // Schema: subscriberName 1-48, externalId 1-128 (REQUIRED), tier ≤32,
+            // isResub/isGift bool, giftCount 1-1000.
+            body: {
+                subscriberName: String(subscriberName).slice(0, 48),
+                externalId: String(externalId || crypto.randomUUID()).slice(0, 128),
+                ...(tier ? { tier: String(tier).slice(0, 32) } : {}),
+                ...(isResub ? { isResub: true } : {}),
+                ...(isGift ? { isGift: true, ...(giftCount >= 1 ? { giftCount: Math.min(1000, Math.round(giftCount)) } : {}) } : {}),
+                occurredAt: new Date().toISOString(),
+            },
+        });
+    } catch (e) { _noteApiError(streamerUserId, 'subscriptions:write', e); }
 }
 
 // ── viewcount:write ──────────────────────────────────────────
@@ -134,6 +201,8 @@ const _lastViewCount = new Map(); // userId → { count, sentAt }
 async function sendViewCount(streamerUserId, count) {
     const conn = _connFor(streamerUserId, 'viewcount:write');
     if (!conn) return;
+    // Schema: count is int ≥0, or null = stream ended (clears our chip).
+    count = count == null ? null : Math.max(0, Math.round(Number(count) || 0));
     const prev = _lastViewCount.get(streamerUserId);
     const now = Date.now();
     // Push on change, or when the last push is going stale (heartbeat).
@@ -141,7 +210,10 @@ async function sendViewCount(streamerUserId, count) {
     _lastViewCount.set(streamerUserId, { count, sentAt: now });
     try {
         await oauth.apiRequest(streamerUserId, { method: 'POST', path: '/view-count', body: { count } });
-    } catch { _lastViewCount.delete(streamerUserId); /* let the next tick retry */ }
+    } catch (e) {
+        _lastViewCount.delete(streamerUserId); // let the next tick retry
+        _noteApiError(streamerUserId, 'viewcount:write', e);
+    }
 }
 
 // Periodic sweeper: push each connected live streamer's viewer count; push null once
@@ -193,10 +265,49 @@ async function sendCurrencyRedemption(streamerUserId, { amount, redeemerName, re
                 redeemerName: String(redeemerName || 'viewer').slice(0, 48),
                 ...(rewardName ? { rewardName: String(rewardName).slice(0, 64) } : {}),
                 ...(message ? { message: String(message).slice(0, 250) } : {}),
-                ...(externalId ? { externalId: String(externalId).slice(0, 128) } : {}),
+                // externalId is REQUIRED (idempotency) — always send one.
+                externalId: String(externalId || crypto.randomUUID()).slice(0, 128),
+                occurredAt: new Date().toISOString(),
             },
         });
-    } catch { /* silent */ }
+    } catch (e) {
+        _noteApiError(streamerUserId, 'currency:write', e);
+        // "Unknown currency" means the key isn't DECLARED on the app in the PowerChat
+        // dashboard — that's app config, not auth; surface it distinctly.
+        if (e && e.status === 400 && /unknown currency/i.test(e.message || '')) {
+            console.warn(`[PowerChat] currency "${CURRENCY_KEY}" is not declared on the app — declare it in the PowerChat Developer dashboard`);
+        }
+    }
+}
+
+// ── tips:write ───────────────────────────────────────────────
+// Forward an on-site Vibes donation as a MONETARY tip. amount is in Vibes UNITS;
+// PowerChat converts server-side via the declared unitsPerUsd (100 Vibes = $1) and the
+// tip then fires PowerChat tip alerts and credits tip goals/subathon/totals.
+// externalId MUST be the donation's stable id (retries dedupe; never double-alert).
+async function forwardTip(streamerUserId, { amount, tipperName, message, externalId } = {}) {
+    const conn = _connFor(streamerUserId, 'tips:write');
+    if (!conn) return;
+    const amt = Math.round(Number(amount) || 0);
+    if (amt < 1) return; // schema: int ≥1
+    try {
+        await oauth.apiRequest(streamerUserId, {
+            method: 'POST', path: '/tips',
+            body: {
+                currency: TIP_CURRENCY_KEY,
+                amount: amt,
+                tipperName: String(tipperName || 'Someone').slice(0, 48),
+                ...(message ? { message: String(message).slice(0, 250) } : {}),
+                externalId: String(externalId || crypto.randomUUID()).slice(0, 128),
+                occurredAt: new Date().toISOString(),
+            },
+        });
+    } catch (e) {
+        _noteApiError(streamerUserId, 'tips:write', e);
+        if (e && e.status === 400 && /unknown currency|no usd rate/i.test(e.message || '')) {
+            console.warn(`[PowerChat] tip currency "${TIP_CURRENCY_KEY}" must be declared on the app WITH unitsPerUsd=100 in the PowerChat Developer dashboard`);
+        }
+    }
 }
 
 // Fire a display-only custom alert on PowerChat (used by "Send test tip" so the
@@ -219,7 +330,8 @@ async function sendCustomAlert(streamerUserId, { actorName, message, amountCents
 }
 
 module.exports = {
-    CURRENCY_KEY,
-    forwardChat, forwardFollow, sendViewCount, startViewerCountSweeper,
+    CURRENCY_KEY, TIP_CURRENCY_KEY,
+    forwardChat, forwardFollow, forwardSubscription, forwardTip,
+    sendViewCount, startViewerCountSweeper,
     sendCurrencyRedemption, sendCustomAlert,
 };

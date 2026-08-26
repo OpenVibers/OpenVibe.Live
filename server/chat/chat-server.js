@@ -906,11 +906,16 @@ class ChatServer {
         // AI viewers genuinely need a live stream.
         try {
             if (client.channelUserId) {
+                let isMod = false, isSub = false;
+                try { isMod = !!(client.user && permissions.canModerateChannel(client.user, client.channelUserId)); } catch { /* */ }
+                try { isSub = !!(client.user && db.isActiveSubscriber(client.user.id, client.channelUserId)); } catch { /* */ }
                 require('../integrations/powerchat-platform').forwardChat(client.channelUserId, {
                     chatterName: username,
                     externalChatterId: client.user?.id ? ('u' + client.user.id) : ('a' + (client.anonId || 'anon')),
                     message: text,
                     avatarUrl: client.user?.avatar_url || undefined,
+                    isModerator: isMod,
+                    isSubscriber: isSub,
                 });
             }
         } catch { /* non-critical */ }

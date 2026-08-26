@@ -249,6 +249,10 @@ function fulfillBucksOrder(order) {
 function fulfillSubscriptionOrder(order, { providerRef = null, periodEnd = null } = {}) {
     if (!order || !order.streamer_id) return null;
     const end = periodEnd || new Date(Date.now() + 31 * 24 * 3600 * 1000).toISOString();
+    // Note BEFORE the upsert whether this subscriber already had a sub row — that makes
+    // a renewal a resub for the PowerChat alert below.
+    let isResub = false;
+    try { isResub = !!db.getActiveSubscription(order.user_id, order.streamer_id); } catch { /* */ }
     const sub = db.upsertSubscription({
         subscriber_id: order.user_id, streamer_id: order.streamer_id, tier: 1,
         provider: order.provider, provider_ref: providerRef || order.provider_ref,
@@ -262,6 +266,18 @@ function fulfillSubscriptionOrder(order, { providerRef = null, periodEnd = null 
         const streamerBucks = bucksForUsd((order.amount_cents / 100) * (sharePct / 100));
         if (streamerBucks > 0) db.addVibesCashout(order.streamer_id, streamerBucks);
         db.updatePaymentOrder(order.id, { status: 'credited' });
+        // Fire the sub on the streamer's PowerChat overlay (subscriptions:write) —
+        // alerts + sub-goal/subathon credit. Keyed by the order id so a replayed
+        // fulfillment can't double-alert. Only on first credit, never on re-runs.
+        try {
+            const subscriber = db.getUserById(order.user_id);
+            require('../integrations/powerchat-platform').forwardSubscription(order.streamer_id, {
+                subscriberName: subscriber?.display_name || subscriber?.username || 'Someone',
+                externalId: `sub-order:${order.id}`,
+                tier: '1',
+                isResub,
+            });
+        } catch { /* non-critical */ }
     }
     return sub;
 }

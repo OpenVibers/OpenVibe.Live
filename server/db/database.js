@@ -1034,11 +1034,25 @@ function initDb() {
             ['powerchat_client_id', '', 'PowerChat OAuth client_id (pca_…) from the PowerChat Developer dashboard', 'string'],
             ['powerchat_client_secret', '', 'PowerChat OAuth client_secret (pcs_…) — shown once; owner-only', 'string'],
             ['powerchat_webhook_secret', '', 'PowerChat webhook signing secret (pcw_…) — shown once; owner-only', 'string'],
-            ['powerchat_scopes', 'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger', 'OAuth scopes requested from each streamer (space-delimited)', 'string'],
-            ['powerchat_sandbox_username', 'n8admin', 'Sandbox streamer username the app can act on until approved (the app owner’s PowerChat username)', 'string'],
+            // The scope list MUST include the platform scopes (chat:write, viewcount:write,
+            // subscriptions:write, follows:write, currency:write, tips:write) — PowerChat
+            // grants exactly what /oauth/authorize REQUESTS, so a narrow list here means
+            // every platform push (viewer count, chat, …) 403s even though the app
+            // registration has the scopes.
+            ['powerchat_scopes', 'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write tips:write', 'OAuth scopes requested from each streamer (space-delimited)', 'string'],
+            ['powerchat_sandbox_username', 'alex', 'Sandbox streamer username the app can act on until approved (the app owner’s PowerChat username)', 'string'],
         ];
         const seedPc = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
         for (const [k, v, d, t] of powerchatSeeds) seedPc.run(k, v, d, t);
+        // Upgrade rows still sitting on an OLD seeded default (admin never customized them).
+        // The original seed lacked every platform scope, which is why platform pushes 403'd;
+        // a later interim default lacked tips:write. Custom values are left untouched.
+        const fullScopes = powerchatSeeds.find(r => r[0] === 'powerchat_scopes')[1];
+        database.prepare(`UPDATE site_settings SET value = ? WHERE key = 'powerchat_scopes' AND value IN (?, ?)`)
+            .run(fullScopes,
+                'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger',
+                'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write');
+        database.prepare(`UPDATE site_settings SET value = 'alex' WHERE key = 'powerchat_sandbox_username' AND value = 'n8admin'`).run();
     } catch (e) { console.warn('[DB] Settings seed:', e.message); }
 
     // AI subsystem tables + columns.
