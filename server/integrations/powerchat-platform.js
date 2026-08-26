@@ -106,6 +106,24 @@ function slotRelayEnabled(streamId) {
         return !ms || ms.slot_powerchat_relay !== 0;
     } catch { return true; }
 }
+// Channel-scoped relay check for chat: PowerChat's unified chat is per STREAMER, not
+// per stream slot, and viewers can be pinned to a long-expired stream id (a popout
+// opened during an earlier session keeps chatting in the same channel). A stale id
+// must not decide the relay — when the referenced stream isn't the live one, fall
+// back to the channel's CURRENT live stream's slot setting (or allow when offline).
+function channelRelayEnabled(channelUserId, streamId) {
+    try {
+        let s = streamId ? db.getStreamById(streamId) : null;
+        if (!s || !s.is_live) {
+            const live = channelUserId ? (db.getLiveStreamsByUserId(channelUserId) || []) : [];
+            s = live[0] || null;
+        }
+        if (!s || !s.managed_stream_id) return true;
+        const ms = db.get('SELECT slot_powerchat_relay FROM managed_streams WHERE id = ?', [s.managed_stream_id]);
+        return !ms || ms.slot_powerchat_relay !== 0;
+    } catch { return true; }
+}
+
 // Destination switch: the Twitch/Kick/YouTube relay bridge for one restream destination.
 function destRelayEnabled(destId) {
     if (!destId) return true;
@@ -440,7 +458,7 @@ async function sendCustomAlert(streamerUserId, { actorName, message, amountCents
 }
 
 module.exports = {
-    slotRelayEnabled, destRelayEnabled, totalViewersForStream,
+    slotRelayEnabled, channelRelayEnabled, destRelayEnabled, totalViewersForStream,
     CURRENCY_KEY, TIP_CURRENCY_KEY,
     forwardChat, forwardFollow, forwardSubscription, forwardTip,
     sendViewCount, startViewerCountSweeper,

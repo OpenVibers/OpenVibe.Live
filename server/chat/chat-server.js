@@ -906,7 +906,10 @@ class ChatServer {
         // AI viewers genuinely need a live stream.
         try {
             const pc = require('../integrations/powerchat-platform');
-            if (client.channelUserId && pc.slotRelayEnabled(client.streamId)) {
+            // Relay is per CHANNEL, not per slot: a popout pinned to an expired stream
+            // id keeps chatting in the same channel, so the slot check follows the
+            // channel's current live stream rather than the stale id.
+            if (client.channelUserId && pc.channelRelayEnabled(client.channelUserId, client.streamId)) {
                 let isMod = false, isSub = false;
                 try { isMod = !!(client.user && permissions.canModerateChannel(client.user, client.channelUserId)); } catch { /* */ }
                 try { isSub = !!(client.user && db.isActiveSubscriber(client.user.id, client.channelUserId)); } catch { /* */ }
