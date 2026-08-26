@@ -7826,6 +7826,12 @@ function addGoalModal() {
             <label>Target (Vibes)</label>
             <input type="number" id="modal-goal-target" class="form-input" placeholder="500" min="1" value="${g ? g.target_amount : ''}">
         </div>
+        ${g ? `
+        <div class="form-group">
+            <label>Current amount (Vibes)</label>
+            <input type="number" id="modal-goal-current" class="form-input" min="0" value="${Number(g.current_amount) || 0}">
+            <div class="muted" style="font-size:0.78rem;margin-top:4px">Manual correction — e.g. someone sent money outside the site. Setting it to the target completes the goal (without the celebration).</div>
+        </div>` : ''}
         <div class="form-group">
             <label>Image / Video (optional)</label>
             <div id="goal-media-preview">${_goalMediaPreviewHTML()}</div>
@@ -7871,6 +7877,16 @@ async function saveGoal() {
     const target = parseInt(document.getElementById('modal-goal-target').value, 10);
     if (!title || !target) return toast('Fill in title and target', 'error');
     const body = { title, target_amount: target, image_url: _goalMediaUrl || null, media_type: _goalMediaType || null };
+    // Edit mode only: send the manual progress correction when the streamer changed it.
+    if (window._editingGoal) {
+        const curEl = document.getElementById('modal-goal-current');
+        if (curEl && curEl.value !== '') {
+            const cur = parseInt(curEl.value, 10);
+            if (Number.isFinite(cur) && cur >= 0 && cur !== Number(window._editingGoal.current_amount)) {
+                body.current_amount = cur;
+            }
+        }
+    }
     const btn = document.getElementById('goal-save-btn'); if (btn) btn.disabled = true;
     try {
         if (window._editingGoal) await api(`/funds/goals/${window._editingGoal.id}`, { method: 'PUT', body });

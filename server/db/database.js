@@ -7561,7 +7561,7 @@ function createDonationGoal(userId, { title, target_amount, image_url = null, me
         [userId, title, target_amount, image_url, media_type, r ? r.n : 0]);
 }
 function updateDonationGoal(id, userId, fields) {
-    const allow = ['title', 'target_amount', 'image_url', 'media_type', 'is_active', 'sort_order', 'current_amount'];
+    const allow = ['title', 'target_amount', 'image_url', 'media_type', 'is_active', 'sort_order', 'current_amount', 'reached_at'];
     const sets = [], params = [];
     for (const k of allow) if (fields[k] !== undefined) { sets.push(`${k} = ?`); params.push(fields[k]); }
     if (!sets.length) return null;

@@ -315,10 +315,29 @@ class Vibes {
         if (patch.media_type !== undefined) fields.media_type = ['image', 'video'].includes(patch.media_type) ? patch.media_type : null;
         if (patch.is_active !== undefined) {
             fields.is_active = patch.is_active ? 1 : 0;
-            // Re-activating a goal clears its reached_at so it isn't stuck in the celebration window.
-            if (patch.is_active) fields.current_amount = Math.min(g.current_amount, g.target_amount - 1 < 0 ? 0 : g.target_amount);
+            // Re-activating a goal clears its reached_at so it isn't stuck in the
+            // celebration window (the column only became updatable with the manual
+            // current-amount editing — before that this intent silently did nothing).
+            if (patch.is_active) {
+                fields.reached_at = null;
+                fields.current_amount = Math.min(g.current_amount, g.target_amount - 1 < 0 ? 0 : g.target_amount);
+            }
         }
         if (patch.sort_order !== undefined) fields.sort_order = parseInt(patch.sort_order, 10) || 0;
+        // Manual progress correction — for money that arrived outside the site (cash,
+        // an external tip, a miscount). Clamped to [0, target]; filling the goal by
+        // hand completes it exactly like a donation would, but QUIETLY (no goal-reached
+        // celebration — this is bookkeeping, not a live donation moment).
+        if (patch.current_amount !== undefined) {
+            const target = fields.target_amount !== undefined ? fields.target_amount : g.target_amount;
+            const cur = Math.min(Math.max(0, Math.round(Number(patch.current_amount) || 0)), target);
+            fields.current_amount = cur;
+            const activeAfter = fields.is_active !== undefined ? !!fields.is_active : !!g.is_active;
+            if (cur >= target && target > 0 && activeAfter) {
+                fields.is_active = 0;
+                fields.reached_at = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            }
+        }
         db.updateDonationGoal(id, userId, fields);
         return db.getDonationGoalById(id);
     }
