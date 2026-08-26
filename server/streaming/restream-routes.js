@@ -39,6 +39,7 @@ function sanitizeDest(d) {
         quality_preset: d.quality_preset || 'auto',
         channel_url: d.channel_url || '',
         chat_relay: !!d.chat_relay,
+        powerchat_relay: d.powerchat_relay !== 0,
         // Circuit-breaker status — non-zero when the destination is paused after repeated failures.
         cooldown_ms: (() => { try { return db.restreamDestinationCooldownMs(d); } catch { return 0; } })(),
         cooldown_until: d.cooldown_until || null,
@@ -183,6 +184,7 @@ router.post('/destinations', requireAuth, (req, res) => {
             quality_preset: quality_preset || 'auto',
             channel_url: req.body.channel_url?.trim() || null,
             chat_relay: req.body.chat_relay ? 1 : 0,
+            powerchat_relay: (req.body.powerchat_relay === undefined || req.body.powerchat_relay) ? 1 : 0,
             ...parseCustomOverrides(req.body),
         });
 
@@ -228,6 +230,7 @@ router.put('/destinations/:id', requireAuth, (req, res) => {
         // Channel URL + chat relay
         if (req.body.channel_url !== undefined) updates.channel_url = req.body.channel_url?.trim() || null;
         if (req.body.chat_relay !== undefined) updates.chat_relay = req.body.chat_relay ? 1 : 0;
+        if (req.body.powerchat_relay !== undefined) updates.powerchat_relay = req.body.powerchat_relay ? 1 : 0;
 
         // Managed stream ID (slot assignment)
         if (req.body.managed_stream_id !== undefined) {

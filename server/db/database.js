@@ -757,6 +757,9 @@ function initDb() {
         const newCols = [
             { name: 'channel_url', def: 'TEXT DEFAULT NULL' },
             { name: 'chat_relay', def: 'INTEGER DEFAULT 0' },
+            // Per-destination: forward this platform's relayed chat to the streamer's
+            // PowerChat overlay (default on; only meaningful with chat_relay).
+            { name: 'powerchat_relay', def: 'INTEGER DEFAULT 1' },
             // Circuit breaker: persist repeated go-live failures so a broken destination
             // (e.g. a YouTube strike) isn't hammered every time the streamer goes live.
             { name: 'consecutive_failures', def: 'INTEGER DEFAULT 0' },
@@ -1293,6 +1296,11 @@ function initDb() {
         // Per-slot toggle: announce newly-created clips in the channel's chat (default on).
         if (!msCols.includes('slot_clip_notify_enabled')) {
             database.exec('ALTER TABLE managed_streams ADD COLUMN slot_clip_notify_enabled INTEGER DEFAULT 1');
+        }
+        // Per-slot master switch: relay this slot's chat (native, RobotStreamer mirror and
+        // restream-destination relays) to the streamer's PowerChat overlay (default on).
+        if (!msCols.includes('slot_powerchat_relay')) {
+            database.exec('ALTER TABLE managed_streams ADD COLUMN slot_powerchat_relay INTEGER DEFAULT 1');
         }
     } catch (e) { console.warn('[DB] visibility migration:', e.message); }
 
@@ -3436,7 +3444,7 @@ function updateManagedStream(managedStreamId, userId, fields) {
         'is_nsfw', 'control_config_id', 'sort_order',
         'streaming_method', 'browser_mode',
         'default_vod_visibility', 'default_clip_visibility', 'slot_vod_recording_enabled', 'slot_clip_recording_enabled',
-        'slot_clip_notify_enabled',
+        'slot_clip_notify_enabled', 'slot_powerchat_relay',
         'weather_zip', 'weather_detail', 'weather_show_location', 'mic_only_image',
         'pip_source_msid', 'pip_defaults',
     ]);
@@ -4104,14 +4112,14 @@ function getRestreamDestinationById(id) {
 function createRestreamDestination(userId, fields) {
     const result = run(
         `INSERT INTO restream_destinations (user_id, managed_stream_id, platform, name, server_url, stream_key, enabled, auto_start, quality_preset,
-         custom_video_bitrate, custom_audio_bitrate, custom_fps, custom_encoder_preset, channel_url, chat_relay)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         custom_video_bitrate, custom_audio_bitrate, custom_fps, custom_encoder_preset, channel_url, chat_relay, powerchat_relay)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [userId, fields.managed_stream_id || null, fields.platform, fields.name || null, fields.server_url || null,
          fields.stream_key || null, fields.enabled ?? 1, fields.auto_start ?? 0,
          fields.quality_preset || 'auto',
          fields.custom_video_bitrate ?? null, fields.custom_audio_bitrate ?? null,
          fields.custom_fps ?? null, fields.custom_encoder_preset || null,
-         fields.channel_url || null, fields.chat_relay ? 1 : 0]
+         fields.channel_url || null, fields.chat_relay ? 1 : 0, fields.powerchat_relay === 0 ? 0 : 1]
     );
     return get('SELECT * FROM restream_destinations WHERE id = ?', [result.lastInsertRowid]);
 }
@@ -4119,7 +4127,7 @@ function createRestreamDestination(userId, fields) {
 function updateRestreamDestination(id, fields) {
     const allowed = new Set(['name', 'server_url', 'stream_key', 'enabled', 'auto_start', 'quality_preset',
         'custom_video_bitrate', 'custom_audio_bitrate', 'custom_fps', 'custom_encoder_preset',
-        'channel_url', 'chat_relay', 'managed_stream_id', 'connection_id']);
+        'channel_url', 'chat_relay', 'powerchat_relay', 'managed_stream_id', 'connection_id']);
     const filtered = Object.entries(fields || {}).filter(([key]) => allowed.has(key));
     if (!filtered.length) return getRestreamDestinationById(id);
 

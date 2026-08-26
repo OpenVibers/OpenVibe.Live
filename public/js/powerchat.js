@@ -85,7 +85,9 @@
                     </div>`);
                 if (hintEl) hintEl.innerHTML = `<span class="pc-warn">Your connection is missing: ${esc(missing.join(', '))}. Reconnect (one click, same account) to enable viewer count, chat, and alerts on your PowerChat overlay.</span>`;
             } else if (hintEl) {
-                hintEl.textContent = st.last_error ? ('Note: ' + st.last_error) : 'Tips confirmed on PowerChat now flow into your goals, alerts, and chat automatically.';
+                const base = st.last_error ? ('Note: ' + st.last_error) : 'Tips confirmed on PowerChat now flow into your goals, alerts, and chat automatically.';
+                // Relay routing lives on the Broadcast page — streamers rarely find it unprompted.
+                hintEl.innerHTML = `${esc(base)}<br><span class="pc-tip"><i class="fa-solid fa-lightbulb"></i> Tip: chat from every stream slot and restream (Twitch, Kick, YouTube, RobotStreamer) is merged into your PowerChat overlay by default. To turn that off for a specific slot or platform, open <a href="/broadcast" onclick="event.preventDefault();navigate('/broadcast')">Broadcast</a> → a slot's <strong>PowerChat Overlay</strong> settings, or the <strong>→ PowerChat</strong> switch in each restream destination.</span>`;
             }
         } else {
             _swap(statusEl, '<span class="pc-dot pc-dot-off"></span> Not connected.');

@@ -104,9 +104,13 @@ async function tick() {
 
         // VOD overviews (frames + audio pulled from the Media playback URL; self-marks).
         try {
-            for (const row of db.getVodsNeedingOverview(1)) {
+            // Take a few candidates and process the first usable one: the newest row is
+            // often a VOD still recording (skipped), and with LIMIT 1 it blocked the queue.
+            for (const row of db.getVodsNeedingOverview(6)) {
                 const vod = await _vodMeta(row);
-                if (vod) await ai.generateVodOverview(vod);
+                if (!vod) continue;
+                await ai.generateVodOverview(vod);
+                break;
             }
         } catch (e) { console.warn('[AI backfill] vod:', e.message); }
 
@@ -120,9 +124,11 @@ async function tick() {
 
         // Clip overviews + local transcripts (frames + audio; self-marks).
         try {
-            for (const row of db.getClipsNeedingOverview(1)) {
+            for (const row of db.getClipsNeedingOverview(6)) {
                 const clip = await _clipMeta(row);
-                if (clip) await ai.generateClipOverview(clip);
+                if (!clip) continue;
+                await ai.generateClipOverview(clip);
+                break;
             }
         } catch (e) { console.warn('[AI backfill] clip:', e.message); }
     } finally {
