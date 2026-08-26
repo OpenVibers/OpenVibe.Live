@@ -249,11 +249,12 @@ function startViewerCountSweeper() {
 }
 
 // ── currency:write ───────────────────────────────────────────
+// Returns true when PowerChat accepted the event (the earn flusher re-buffers on false).
 async function sendCurrencyRedemption(streamerUserId, { amount, redeemerName, rewardName, message, externalId } = {}) {
     const conn = _connFor(streamerUserId, 'currency:write');
-    if (!conn) return;
+    if (!conn) return false;
     const amt = Math.round(Number(amount) || 0);
-    if (amt < 1) return; // schema requires amount 1-1000000000
+    if (amt < 1) return false; // schema requires amount 1-1000000000
     try {
         await oauth.apiRequest(streamerUserId, {
             method: 'POST', path: '/currency-events',
@@ -270,6 +271,7 @@ async function sendCurrencyRedemption(streamerUserId, { amount, redeemerName, re
                 occurredAt: new Date().toISOString(),
             },
         });
+        return true;
     } catch (e) {
         _noteApiError(streamerUserId, 'currency:write', e);
         // "Unknown currency" means the key isn't DECLARED on the app in the PowerChat
@@ -277,7 +279,60 @@ async function sendCurrencyRedemption(streamerUserId, { amount, redeemerName, re
         if (e && e.status === 400 && /unknown currency/i.test(e.message || '')) {
             console.warn(`[PowerChat] currency "${CURRENCY_KEY}" is not declared on the app — declare it in the PowerChat Developer dashboard`);
         }
+        return false;
     }
+}
+
+// ── Channel-point EARNS → PowerChat leaderboard feed ─────────
+// Redemptions alone can't populate a leaderboard (they're rare); the board lives on
+// the steady drip of watch/chat/follow point earning. Every award is buffered per
+// (streamer, viewer) and flushed as ONE summed currency event per viewer every few
+// minutes — that keeps a busy channel inside the ~60/min currency rate limit and
+// avoids machine-gunning the overlay with micro-events.
+const EARN_FLUSH_MS = 5 * 60 * 1000;
+const EARN_MAX_PER_FLUSH = 40;      // stay well under the rate limit per flush pass
+const EARN_MAX_VIEWERS = 500;      // per-streamer buffer cap (drop past this, don't grow)
+const _earnBuf = new Map();         // streamerId → Map(viewerId → summed amount)
+function queueCurrencyEarn(streamerUserId, viewerUserId, amount) {
+    const amt = Math.round(Number(amount) || 0);
+    if (amt < 1 || !streamerUserId || !viewerUserId) return;
+    // Only buffer for streamers with a live currency:write connection — otherwise the
+    // buffer would grow forever for channels that never flush.
+    if (!_connFor(streamerUserId, 'currency:write')) return;
+    let m = _earnBuf.get(streamerUserId);
+    if (!m) { m = new Map(); _earnBuf.set(streamerUserId, m); }
+    if (!m.has(viewerUserId) && m.size >= EARN_MAX_VIEWERS) return;
+    m.set(viewerUserId, (m.get(viewerUserId) || 0) + amt);
+}
+async function _flushCurrencyEarns() {
+    let sent = 0;
+    for (const [streamerId, m] of _earnBuf) {
+        if (!m.size) { _earnBuf.delete(streamerId); continue; }
+        for (const [viewerId, amount] of m) {
+            if (sent >= EARN_MAX_PER_FLUSH) return; // leave the rest buffered for next pass
+            m.delete(viewerId);
+            sent++;
+            let name = null;
+            try { const u = db.getUserById(viewerId); name = u ? (u.display_name || u.username) : null; } catch { /* */ }
+            const ok = await sendCurrencyRedemption(streamerId, {
+                amount,
+                redeemerName: name || `viewer ${viewerId}`,
+                rewardName: 'Points earned',
+                externalId: `earn:${streamerId}:${viewerId}:${Date.now()}`,
+            });
+            // Transient failure → put the amount back so the points aren't lost.
+            if (!ok && _connFor(streamerId, 'currency:write')) {
+                m.set(viewerId, (m.get(viewerId) || 0) + amount);
+            }
+        }
+    }
+}
+let _earnTimer = null;
+function startCurrencyEarnFlusher() {
+    if (_earnTimer) return;
+    _earnTimer = setInterval(() => { _flushCurrencyEarns().catch(() => { }); }, EARN_FLUSH_MS);
+    if (_earnTimer.unref) _earnTimer.unref();
+    console.log('[PowerChat] channel-point earn flusher started (leaderboard feed)');
 }
 
 // ── tips:write ───────────────────────────────────────────────
@@ -333,5 +388,5 @@ module.exports = {
     CURRENCY_KEY, TIP_CURRENCY_KEY,
     forwardChat, forwardFollow, forwardSubscription, forwardTip,
     sendViewCount, startViewerCountSweeper,
-    sendCurrencyRedemption, sendCustomAlert,
+    sendCurrencyRedemption, queueCurrencyEarn, startCurrencyEarnFlusher, sendCustomAlert,
 };
