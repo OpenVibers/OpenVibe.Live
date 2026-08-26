@@ -6590,10 +6590,12 @@ function _getChatPopoutContainers(mode) {
     if (mode === 'global') {
         return [document.querySelector('.global-chat-main')].filter(Boolean);
     }
-    // Stream mode — hide whichever on-page stream chat sidebar is present.
+    // Stream mode — hide whichever on-page stream chat sidebar is present
+    // (live sidebar, broadcast sidebar, or the offline channel chat).
     return [
         document.getElementById('chat-sidebar'),
         document.getElementById('bc-chat-sidebar'),
+        document.getElementById('offline-global-chat'),
     ].filter(Boolean);
 }
 
@@ -6650,17 +6652,18 @@ function popoutChat(mode = 'global', streamId = null, username = null) {
 /** Convenience: popout global chat */
 function popoutGlobalChat() { popoutChat('global'); }
 
-/** Convenience: popout the current stream's chat */
+/** Convenience: popout the current channel's chat (live stream OR offline channel). */
 function popoutStreamChat() {
-    if (!chatStreamId) {
-        toast('Not in a stream chat', 'error');
+    // Channel identity — enough on its own for an offline channel popout, and it also
+    // gives the popout its pretty /popout/<user>[/<id>] live-following URL.
+    const username = (typeof currentStreamData !== 'undefined' && currentStreamData && currentStreamData.username)
+        || (typeof currentChannelUsername !== 'undefined' && currentChannelUsername)
+        || (typeof chatChannel !== 'undefined' && chatChannel) || null;
+    if (!chatStreamId && !username) {
+        toast('Not in a channel chat', 'error');
         return;
     }
-    // Pass the channel identity so the popout gets a pretty /chat/<user>/<id> URL and
-    // can follow the channel's live state when this stream ends.
-    const username = (typeof currentStreamData !== 'undefined' && currentStreamData && currentStreamData.username)
-        || (typeof chatChannel !== 'undefined' && chatChannel) || null;
-    popoutChat('stream', chatStreamId, username);
+    popoutChat('stream', chatStreamId || null, username);
 }
 
 /* ── Chat Users List ──────────────────────────────────────────── */
