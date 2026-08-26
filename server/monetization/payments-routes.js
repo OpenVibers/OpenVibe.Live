@@ -58,14 +58,14 @@ router.post('/bucks/checkout', requireAuth, async (req, res) => {
             return res.json({ url: r.url });
         }
         if (provider === 'powerchat') {
-            // Tip the site's PowerChat account; the donation.completed webhook credits
-            // the buyer with Vibes for the amount ACTUALLY tipped (the tip page can't
-            // enforce an amount, so we tell the buyer what to tip and settle on actuals).
+            // Tip the site's PowerChat account; the checkout is PINNED to the package
+            // price (app_amount_cents locks the tip page's amount picker) and the
+            // donation.completed webhook credits the buyer once it confirms.
             const link = require('../integrations/powerchat-checkout').buildPurchaseLink(order);
             if (!link) { db.updatePaymentOrder(order.id, { status: 'failed' }); return res.status(400).json({ error: 'PowerChat purchases are not available right now' }); }
             return res.json({
                 url: link.url, powerchat: true, amountUsd,
-                note: `Tip $${amountUsd.toFixed(2)} on PowerChat — your Vibes are credited automatically once the tip confirms (any amount you tip converts to Vibes).`,
+                note: `Complete the $${amountUsd.toFixed(2)} tip on PowerChat — your Vibes are credited automatically once it confirms.`,
             });
         }
         return res.status(400).json({ error: 'Unknown payment provider' });

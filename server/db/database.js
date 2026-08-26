@@ -1063,6 +1063,10 @@ function initDb() {
             // the app credentials above handle attribution, and that PowerChat account
             // must have the app connected on PowerChat's side so webhooks fire for it.
             ['powerchat_site_tip_username', '', 'PowerChat username whose tip page receives site purchases + fallback donations (that account must have the app connected on PowerChat)', 'string'],
+            // isTest deliveries = NO money moved. OFF in production; ON only for
+            // dev/sandbox where PowerChat has no payout provider and every checkout
+            // delivers as a test — otherwise test tips would mint real Vibes/subs.
+            ['powerchat_allow_test_fulfillment', 'false', 'Fulfill PowerChat checkouts from isTest webhook deliveries (dev/sandbox only — test tips move no money)', 'boolean'],
         ];
         const seedPc = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
         for (const [k, v, d, t] of powerchatSeeds) seedPc.run(k, v, d, t);

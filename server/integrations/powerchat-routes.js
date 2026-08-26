@@ -111,6 +111,22 @@ router.get('/oauth/callback', async (req, res) => {
     const send = (p) => res.set('Content-Type', 'text/html').send(resultPage(p));
     try {
         const { code, state, error, error_description } = req.query;
+
+        // Checkout RETURN redirect (app_redirect_uri points at this registered URI):
+        // PowerChat sends the viewer back here after a tip with powerchat_status +
+        // powerchat_event_id + our app_ref. This is UX + correlation ONLY — the signed
+        // webhook is the sole authoritative confirmation, so this page never credits
+        // anything; it just tells the viewer and nudges open tabs to refresh balances.
+        if (req.query.powerchat_status) {
+            const ok = String(req.query.powerchat_status) === 'completed';
+            const html = `<!doctype html><html><head><meta charset="utf-8"><title>${ok ? 'Payment received' : 'Checkout'}</title>
+<style>:root{color-scheme:dark}body{font-family:system-ui,sans-serif;background:#0c0c11;color:#eee;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center}
+h2{color:${ok ? '#53fc18' : '#f0a742'};margin-bottom:6px}p{color:#aaa;max-width:360px;line-height:1.5}</style></head>
+<body><div><h2>${ok ? '✓ Tip received!' : 'Checkout not completed'}</h2>
+<p>${ok ? 'Thanks! Your purchase is confirmed automatically within a few seconds — you can close this window.' : 'The tip wasn\'t completed. You can close this window and try again.'}</p></div>
+<script>try{var bc=new BroadcastChannel('powerchat-checkout');bc.postMessage({status:${JSON.stringify(String(req.query.powerchat_status))},ref:${JSON.stringify(String(req.query.app_ref || ''))}});setTimeout(function(){bc.close();window.close();},1800);}catch(e){}</script></body></html>`;
+            return res.set('Content-Type', 'text/html').send(html);
+        }
         // Surface PowerChat's full RFC-6749 error: error_description carries the actionable
         // diagnosis (e.g. "Not registered for this app: follows:write … add them to the app
         // registration first"), which the bare error code alone hides.
@@ -210,9 +226,16 @@ router.get('/donate-link', optionalAuth, (req, res) => {
             ? db.getUserById(parseInt(req.query.streamer_id, 10))
             : db.getUserByUsername(String(req.query.streamer || ''));
         if (!streamer) return res.status(404).json({ error: 'Streamer not found' });
-        const link = require('./powerchat-checkout').buildDonateLink(streamer.id, req.user ? req.user.id : null);
+        // Optional goal pick — rides in app_purpose ("goal:<id>") so the webhook
+        // credits that exact goal. Only the streamer's own ACTIVE goals qualify.
+        let goalId = null;
+        if (req.query.goal_id) {
+            const g = db.getDonationGoalById(parseInt(req.query.goal_id, 10));
+            if (g && Number(g.user_id) === Number(streamer.id) && g.is_active) goalId = g.id;
+        }
+        const link = require('./powerchat-checkout').buildDonateLink(streamer.id, req.user ? req.user.id : null, { goalId });
         if (!link) return res.status(404).json({ error: 'PowerChat tips are not available for this channel' });
-        res.json({ url: link.url, mode: link.mode });
+        res.json({ url: link.url, mode: link.mode, goal_id: goalId });
     } catch (err) {
         res.status(500).json({ error: 'Failed to build tip link' });
     }
