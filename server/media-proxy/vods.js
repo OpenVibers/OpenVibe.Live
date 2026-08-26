@@ -97,11 +97,13 @@ function withUserFields(row) {
     // so the SPA doesn't resolve them against Live's origin.
     row.playback_url = media.publicUrl(row.playback_url) || media.vodPlaybackUrl(row.id);
     if (row.thumbnail_url) row.thumbnail_url = media.publicUrl(row.thumbnail_url);
-    // Short AI overview is Live-owned (vod_ai_state) — overlay for the cards.
-    if (row.id != null && !row.ai_overview_short) {
+    // AI overview is Live-owned (vod_ai_state) — overlay short + full for the cards
+    // (the expander swaps the short teaser for the full text).
+    if (row.id != null && (!row.ai_overview_short || !row.ai_overview)) {
         try {
-            const s = db.get('SELECT ai_overview_short FROM vod_ai_state WHERE vod_id = ?', [row.id]);
-            if (s && s.ai_overview_short) row.ai_overview_short = s.ai_overview_short;
+            const s = db.get('SELECT ai_overview_short, ai_overview FROM vod_ai_state WHERE vod_id = ?', [row.id]);
+            if (s && s.ai_overview_short && !row.ai_overview_short) row.ai_overview_short = s.ai_overview_short;
+            if (s && s.ai_overview && !row.ai_overview) row.ai_overview = s.ai_overview;
         } catch { /* best-effort */ }
     }
     return row;
@@ -360,7 +362,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
         try {
             const st = db.getVodAiState(vod.id);
             if (st) {
-                if (st.ai_overview_short) { vod.ai_overview_short = st.ai_overview_short; vod.ai_overview = vod.ai_overview || st.ai_overview_short; }
+                if (st.ai_overview_short) { vod.ai_overview_short = st.ai_overview_short; vod.ai_overview = st.ai_overview || vod.ai_overview || st.ai_overview_short; }
                 if (st.ai_transcript_json) {
                     vod.ai_transcript_json = st.ai_transcript_json;
                     try { vod.ai_transcript = JSON.parse(st.ai_transcript_json).map(s => s.text).join(' ').trim() || vod.ai_transcript; } catch { /* */ }

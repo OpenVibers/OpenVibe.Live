@@ -267,6 +267,16 @@ function initDb() {
         clip_notified INTEGER DEFAULT 0,
         clip_notify_at DATETIME
     )`);
+    // Full AI overview text. Originally only the ~150-char short was stored, which made
+    // the card expander a no-op on VODs/clips: expanding revealed the same truncated
+    // "…" string because the full version had been thrown away at write time. Shorts
+    // are a derivation, not the source of truth — keep both.
+    try {
+        for (const t of ['vod_ai_state', 'clip_ai_state']) {
+            const cols = database.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
+            if (!cols.includes('ai_overview')) database.exec(`ALTER TABLE ${t} ADD COLUMN ai_overview TEXT`);
+        }
+    } catch (e) { console.warn('[DB] ai-overview column migration:', e.message); }
 
     // ── Migrations ────────────────────────────────────────────
     try {
@@ -2678,7 +2688,11 @@ function getLatestStreamMemory(streamId) {
 // can be cached at write time and shown on listing cards.
 function _shortOverview(text) {
     const t = (text || '').replace(/\s+/g, ' ').trim();
-    if (!t || t === ' ') return null;
+    // ' ' is the "tried, nothing to say" sentinel the AI jobs store to mark a row done.
+    // It must round-trip as a non-empty value — the backfill queues treat NULL/'' as
+    // still-pending, so collapsing the sentinel to null meant unprocessable VODs were
+    // retried forever. The frontend trims before rendering, so ' ' never displays.
+    if (!t) return String(text || '').length ? ' ' : null;
     if (t.length <= 150) return t;
     const m = t.match(/^.*?[.!?](\s|$)/);
     let s = m ? m[0].trim() : '';
@@ -2733,13 +2747,17 @@ function getClipAiState(clipId) {
 }
 function setVodAiOverview(vodId, text) {
     _ensureVodAiState(vodId);
-    return run('UPDATE vod_ai_state SET ai_overview_short = ? WHERE vod_id = ?', [_shortOverview(text), vodId]);
+    // Store the FULL overview alongside the derived short — the card expander swaps
+    // the short teaser for this full text, so losing it makes expansion pointless.
+    const full = (text || '').trim() || null;
+    return run('UPDATE vod_ai_state SET ai_overview = ?, ai_overview_short = ? WHERE vod_id = ?', [full, _shortOverview(text), vodId]);
 }
 function setClipAiOverview(clipId, { overview = null, transcript = null, segments = null }) {
     void transcript; // full transcript text lives in the segments JSON now
     _ensureClipAiState(clipId);
-    return run('UPDATE clip_ai_state SET ai_overview_short = ?, ai_transcript_json = COALESCE(?, ai_transcript_json) WHERE clip_id = ?',
-        [_shortOverview(overview), _segJson(segments), clipId]);
+    const full = (overview || '').trim() || null;
+    return run('UPDATE clip_ai_state SET ai_overview = ?, ai_overview_short = ?, ai_transcript_json = COALESCE(?, ai_transcript_json) WHERE clip_id = ?',
+        [full, _shortOverview(overview), _segJson(segments), clipId]);
 }
 function _segJson(segments) {
     if (!Array.isArray(segments)) return null;   // null = never attempted
