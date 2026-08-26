@@ -2808,8 +2808,12 @@ function getStreamMemoriesInRange(streamId, startSec, endSec) {
 }
 // Backfill queues (items still lacking AI output).
 function getVodsNeedingOverview(limit = 4) {
+    // Also re-queue rows whose short was truncated ('…') but whose full text was never
+    // stored (older builds threw it away) — once regenerated, ai_overview is set and the
+    // row drops out of the queue.
     return all(`SELECT vod_id AS id, s.* FROM vod_ai_state s
-        WHERE ai_overview_short IS NULL OR ai_overview_short = ''
+        WHERE (ai_overview IS NULL OR ai_overview = '')
+          AND (ai_overview_short IS NULL OR ai_overview_short = '' OR ai_overview_short LIKE '%…')
         ORDER BY vod_id DESC LIMIT ?`, [limit]);
 }
 // Finished VODs whose AI timeline has fewer than 2 points — used to backfill the
@@ -2824,7 +2828,8 @@ function getVodsNeedingTimeline(limit = 1) {
 }
 function getClipsNeedingOverview(limit = 4) {
     return all(`SELECT clip_id AS id, s.* FROM clip_ai_state s
-        WHERE ai_overview_short IS NULL OR ai_overview_short = ''
+        WHERE (ai_overview IS NULL OR ai_overview = '')
+          AND (ai_overview_short IS NULL OR ai_overview_short = '' OR ai_overview_short LIKE '%…')
         ORDER BY clip_id DESC LIMIT ?`, [limit]);
 }
 // Transcript backfill queues — driven by transcript_status (see the migration above).

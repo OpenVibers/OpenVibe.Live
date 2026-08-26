@@ -742,6 +742,19 @@ class RobotStreamerService {
                 try {
                     chatServer.synthesizeAndBroadcastTTS(stream.id, username, mirrored.message, null, 'rs', `rs:${username}`);
                 } catch { /* non-critical */ }
+
+                // ...and into the streamer's PowerChat overlay (relayed chat was never forwarded).
+                try {
+                    if (stream.user_id) {
+                        require('./powerchat-platform').forwardChat(stream.user_id, {
+                            chatterName: username,
+                            externalChatterId: `rs:${username}`,
+                            message: mirrored.message,
+                            messageId: mirrored.id ? `ov-${mirrored.id}` : undefined,
+                            avatarUrl: data.avatar || undefined,
+                        });
+                    }
+                } catch { /* non-critical */ }
             });
 
             bridge.ws.on('close', () => {
