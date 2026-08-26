@@ -995,6 +995,18 @@ function _wsRenderPanel() {
                                 </p>
                             </div>
                         </div>
+                        <div class="bc-ws-row">
+                            <div class="form-group" style="flex:1">
+                                <label class="bc-toggle-label">
+                                    <input type="checkbox" id="bc-ws-powerchat-rs-views" ${ms.slot_powerchat_count_rs_views !== 0 ? 'checked' : ''}
+                                        onchange="_wsSlotSettingChanged()">
+                                    Count RobotStreamer viewers in my PowerChat viewer total
+                                </label>
+                                <p class="muted" style="font-size:0.78rem;margin:4px 0 0">
+                                    The viewer count sent to PowerChat is your <strong>total</strong> audience: OpenVibe viewers plus every restream platform's viewers. Untick <strong>count viewers</strong> on a restream destination below to leave that platform out.
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </details>
 
@@ -1952,6 +1964,7 @@ async function _wsSaveAll() {
             slot_clip_recording_enabled: ms.slot_clip_recording_enabled !== undefined ? ms.slot_clip_recording_enabled : 1,
             slot_clip_notify_enabled: ms.slot_clip_notify_enabled !== undefined ? ms.slot_clip_notify_enabled : 1,
             slot_powerchat_relay: ms.slot_powerchat_relay !== undefined ? ms.slot_powerchat_relay : 1,
+            slot_powerchat_count_rs_views: ms.slot_powerchat_count_rs_views !== undefined ? ms.slot_powerchat_count_rs_views : 1,
             weather_zip: ms.weather_zip || null,
             weather_detail: ms.weather_detail || 'basic',
             weather_show_location: ms.weather_show_location || 0,
@@ -2101,6 +2114,7 @@ function _wsSlotSettingChanged() {
     ms.slot_clip_recording_enabled = document.getElementById('bc-ws-clip-recording')?.checked ? 1 : 0;
     ms.slot_clip_notify_enabled = document.getElementById('bc-ws-clip-notify')?.checked ? 1 : 0;
     { const pc = document.getElementById('bc-ws-powerchat-relay'); if (pc) ms.slot_powerchat_relay = pc.checked ? 1 : 0; }
+    { const pv = document.getElementById('bc-ws-powerchat-rs-views'); if (pv) ms.slot_powerchat_count_rs_views = pv.checked ? 1 : 0; }
     ms.weather_zip = document.getElementById('bc-ws-weather-zip')?.value.trim() || null;
     ms.weather_detail = document.getElementById('bc-ws-weather-detail')?.value || 'basic';
     ms.weather_show_location = document.getElementById('bc-ws-weather-location')?.checked ? 1 : 0;
@@ -2629,7 +2643,8 @@ function _wsRenderRestreamList(container) {
                 </span>
                 <span class="bc-ws-restream-badges">
                     ${d.chat_relay ? '<span class="bc-ws-restream-badge" title="Chat relay enabled"><i class="fa-solid fa-comments"></i></span>' : ''}
-                    ${d.chat_relay && d.powerchat_relay === false ? '<span class="bc-ws-restream-badge muted bc-ws-pc-only" title="Not relayed to your PowerChat overlay"><i class="fa-solid fa-bolt"></i><i class="fa-solid fa-slash" style="margin-left:-9px;font-size:0.7em"></i></span>' : ''}
+                    ${d.chat_relay && d.powerchat_relay === false ? '<span class="bc-ws-restream-badge muted bc-ws-pc-only" title="Chat not relayed to your PowerChat overlay"><i class="fa-solid fa-bolt"></i><i class="fa-solid fa-slash" style="margin-left:-9px;font-size:0.7em"></i></span>' : ''}
+                    ${d.powerchat_count_views === false ? '<span class="bc-ws-restream-badge muted bc-ws-pc-only" title="Viewers not counted toward your PowerChat viewer total"><i class="fa-solid fa-eye-slash"></i></span>' : ''}
                     ${d.auto_start ? '<span class="bc-ws-restream-badge" title="Auto-start"><i class="fa-solid fa-bolt"></i></span>' : ''}
                     ${!d.enabled ? '<span class="bc-ws-restream-badge muted" title="Disabled"><i class="fa-solid fa-pause"></i></span>' : ''}
                 </span>
@@ -2914,7 +2929,11 @@ function _wsShowRestreamForm(existing) {
                 </label>
                 <label class="bc-toggle-label bc-ws-pc-only" style="flex:1" title="Forward this platform's relayed chat to your PowerChat overlay (needs Chat Relay)">
                     <input type="checkbox" id="ws-rs-powerchat-relay" ${(!existing || existing.powerchat_relay !== false) ? 'checked' : ''}>
-                    <i class="fa-solid fa-bolt"></i> → PowerChat
+                    <i class="fa-solid fa-bolt"></i> → PowerChat chat
+                </label>
+                <label class="bc-toggle-label bc-ws-pc-only" style="flex:1" title="Include this platform's viewers in the total viewer count sent to PowerChat">
+                    <input type="checkbox" id="ws-rs-powerchat-views" ${(!existing || existing.powerchat_count_views !== false) ? 'checked' : ''}>
+                    <i class="fa-solid fa-eye"></i> → PowerChat viewers
                 </label>
             </div>
             <details style="margin-top:8px">
@@ -2995,6 +3014,7 @@ function _wsShowRestreamForm(existing) {
             auto_start: document.getElementById('ws-rs-auto-start').checked,
             chat_relay: document.getElementById('ws-rs-chat-relay').checked,
             powerchat_relay: document.getElementById('ws-rs-powerchat-relay')?.checked !== false,
+            powerchat_count_views: document.getElementById('ws-rs-powerchat-views')?.checked !== false,
             custom_video_bitrate: parseInt(document.getElementById('ws-rs-video-bitrate').value) || null,
             custom_audio_bitrate: parseInt(document.getElementById('ws-rs-audio-bitrate').value) || null,
             custom_fps: parseInt(document.getElementById('ws-rs-fps').value) || null,

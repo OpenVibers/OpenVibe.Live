@@ -87,7 +87,7 @@
             } else if (hintEl) {
                 const base = st.last_error ? ('Note: ' + st.last_error) : 'Tips confirmed on PowerChat now flow into your goals, alerts, and chat automatically.';
                 // Relay routing lives on the Broadcast page — streamers rarely find it unprompted.
-                hintEl.innerHTML = `${esc(base)}<br><span class="pc-tip"><i class="fa-solid fa-lightbulb"></i> Tip: chat from every stream slot and restream (Twitch, Kick, YouTube, RobotStreamer) is merged into your PowerChat overlay by default. To turn that off for a specific slot or platform, open <a href="/broadcast" onclick="event.preventDefault();navigate('/broadcast')">Broadcast</a> → a slot's <strong>PowerChat Overlay</strong> settings, or the <strong>→ PowerChat</strong> switch in each restream destination.</span>`;
+                hintEl.innerHTML = `${esc(base)}<br><span class="pc-tip"><i class="fa-solid fa-lightbulb"></i> Tip: chat from every stream slot and restream (Twitch, Kick, YouTube, RobotStreamer) is merged into your PowerChat overlay by default. To turn that off for a specific slot or platform, open <a href="/broadcast" onclick="event.preventDefault();navigate('/broadcast')">Broadcast</a> → a slot's <strong>PowerChat Overlay</strong> settings, or the <strong>→ PowerChat</strong> switches in each restream destination. The viewer count on your overlay is your total audience (OpenVibe + restream platforms + RobotStreamer) — the same switches let you leave a platform's viewers out.</span>`;
             }
         } else {
             _swap(statusEl, '<span class="pc-dot pc-dot-off"></span> Not connected.');
