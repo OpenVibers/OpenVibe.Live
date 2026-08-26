@@ -2914,27 +2914,35 @@ function _wsShowRestreamForm(existing) {
                 <label>Quality Preset</label>
                 <select id="ws-rs-quality" class="form-input">${qualityOpts}</select>
             </div>
-            <div class="bc-ws-row" style="gap:16px">
-                <label class="bc-toggle-label" style="flex:1">
-                    <input type="checkbox" id="ws-rs-enabled" ${existing ? (existing.enabled ? 'checked' : '') : 'checked'}>
-                    Enabled
-                </label>
-                <label class="bc-toggle-label" style="flex:1">
-                    <input type="checkbox" id="ws-rs-auto-start" ${existing?.auto_start ? 'checked' : ''}>
-                    Auto-start
-                </label>
-                <label class="bc-toggle-label" style="flex:1">
-                    <input type="checkbox" id="ws-rs-chat-relay" ${existing?.chat_relay ? 'checked' : ''}>
-                    <i class="fa-solid fa-comments"></i> Chat Relay
-                </label>
-                <label class="bc-toggle-label bc-ws-pc-only" style="flex:1" title="Forward this platform's relayed chat to your PowerChat overlay (needs Chat Relay)">
-                    <input type="checkbox" id="ws-rs-powerchat-relay" ${(!existing || existing.powerchat_relay !== false) ? 'checked' : ''}>
-                    <i class="fa-solid fa-bolt"></i> → PowerChat chat
-                </label>
-                <label class="bc-toggle-label bc-ws-pc-only" style="flex:1" title="Include this platform's viewers in the total viewer count sent to PowerChat">
-                    <input type="checkbox" id="ws-rs-powerchat-views" ${(!existing || existing.powerchat_count_views !== false) ? 'checked' : ''}>
-                    <i class="fa-solid fa-eye"></i> → PowerChat viewers
-                </label>
+            <div class="bc-ws-toggle-group">
+                <div class="bc-ws-toggle-group-title"><i class="fa-solid fa-tower-broadcast"></i> Restream</div>
+                <div class="bc-ws-toggle-grid">
+                    <label class="bc-toggle-label bc-ws-toggle-chip">
+                        <input type="checkbox" id="ws-rs-enabled" ${existing ? (existing.enabled ? 'checked' : '') : 'checked'}>
+                        <span>Enabled</span>
+                    </label>
+                    <label class="bc-toggle-label bc-ws-toggle-chip">
+                        <input type="checkbox" id="ws-rs-auto-start" ${existing?.auto_start ? 'checked' : ''}>
+                        <i class="fa-solid fa-bolt"></i><span>Auto-start</span>
+                    </label>
+                    <label class="bc-toggle-label bc-ws-toggle-chip" title="Mirror this platform's chat into your OpenVibe chat">
+                        <input type="checkbox" id="ws-rs-chat-relay" ${existing?.chat_relay ? 'checked' : ''}>
+                        <i class="fa-solid fa-comments"></i><span>Chat relay</span>
+                    </label>
+                </div>
+            </div>
+            <div class="bc-ws-toggle-group bc-ws-pc-only">
+                <div class="bc-ws-toggle-group-title"><i class="fa-solid fa-wand-magic-sparkles"></i> PowerChat overlay</div>
+                <div class="bc-ws-toggle-grid">
+                    <label class="bc-toggle-label bc-ws-toggle-chip" title="Forward this platform's relayed chat to your PowerChat overlay (needs Chat relay)">
+                        <input type="checkbox" id="ws-rs-powerchat-relay" ${(!existing || existing.powerchat_relay !== false) ? 'checked' : ''}>
+                        <i class="fa-solid fa-comment-dots"></i><span>Send chat</span>
+                    </label>
+                    <label class="bc-toggle-label bc-ws-toggle-chip" title="Include this platform's viewers in the total viewer count sent to PowerChat">
+                        <input type="checkbox" id="ws-rs-powerchat-views" ${(!existing || existing.powerchat_count_views !== false) ? 'checked' : ''}>
+                        <i class="fa-solid fa-eye"></i><span>Count viewers</span>
+                    </label>
+                </div>
             </div>
             <details style="margin-top:8px">
                 <summary style="font-size:0.82rem;color:var(--text-secondary);cursor:pointer"><i class="fa-solid fa-sliders"></i> Custom Encoding Overrides</summary>

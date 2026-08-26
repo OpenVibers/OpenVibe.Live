@@ -4164,3 +4164,26 @@
 /* PowerChat relay controls: hidden unless the streamer has a connected PowerChat account
    (broadcast-workspace.js toggles body.ws-has-powerchat from /powerchat/status). */
 body:not(.ws-has-powerchat) .bc-ws-pc-only { display: none !important; }
+
+/* Restream destination editor: toggles as non-wrapping chips in titled groups
+   (they used to be five flex:1 labels in one row, wrapping mid-word). */
+.bc-ws-toggle-group { margin-top: 10px; }
+.bc-ws-toggle-group-title {
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--text-secondary); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+}
+.bc-ws-toggle-group-title i { color: var(--accent); }
+.bc-ws-toggle-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.bc-ws-toggle-chip {
+    flex: 0 0 auto; white-space: nowrap; gap: 7px;
+    padding: 6px 12px 6px 9px; border-radius: 999px;
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+    font-size: 0.84rem; line-height: 1; transition: border-color .15s ease, background .15s ease;
+}
+.bc-ws-toggle-chip:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.bc-ws-toggle-chip:has(input:checked) {
+    background: color-mix(in srgb, var(--accent) 12%, var(--bg-tertiary));
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.bc-ws-toggle-chip i { width: auto; font-size: 0.8rem; }
+.bc-ws-toggle-chip input[type="checkbox"] { margin: 0; }
