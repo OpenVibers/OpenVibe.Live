@@ -4160,3 +4160,7 @@
     line-height: 1.45;
     color: var(--text-muted, #9aa3b2);
 }
+
+/* PowerChat relay controls: hidden unless the streamer has a connected PowerChat account
+   (broadcast-workspace.js toggles body.ws-has-powerchat from /powerchat/status). */
+body:not(.ws-has-powerchat) .bc-ws-pc-only { display: none !important; }

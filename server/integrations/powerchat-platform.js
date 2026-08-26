@@ -90,6 +90,31 @@ function _noteApiError(userId, scope, err) {
     if (err && err.status === 403) _noteScopeGap(userId, `${scope} (disabled on PowerChat)`);
 }
 
+// ── Relay routing preferences ────────────────────────────────
+// Streamers choose, per stream slot and per restream destination, which chat is
+// merged into their PowerChat overlay (Broadcast page → slot settings / destination
+// editor). Everything defaults to ON; a missing row/column means "relay".
+// Slot switch: covers the slot's native chat, its RobotStreamer mirror and every
+// restream-destination relay attached to it. `streamId` may be null (offline channel
+// chat) → allowed.
+function slotRelayEnabled(streamId) {
+    if (!streamId) return true;
+    try {
+        const stream = db.getStreamById(streamId);
+        if (!stream || !stream.managed_stream_id) return true;
+        const ms = db.get('SELECT slot_powerchat_relay FROM managed_streams WHERE id = ?', [stream.managed_stream_id]);
+        return !ms || ms.slot_powerchat_relay !== 0;
+    } catch { return true; }
+}
+// Destination switch: the Twitch/Kick/YouTube relay bridge for one restream destination.
+function destRelayEnabled(destId) {
+    if (!destId) return true;
+    try {
+        const d = db.get('SELECT powerchat_relay FROM restream_destinations WHERE id = ?', [destId]);
+        return !d || d.powerchat_relay !== 0;
+    } catch { return true; }
+}
+
 // ── chat:write ───────────────────────────────────────────────
 const _chatBuckets = new Map(); // userId → { count, resetAt }  (~120/min limit; we cap at 100)
 async function forwardChat(streamerUserId, { chatterName, externalChatterId, message, messageId, avatarUrl, isModerator, isSubscriber } = {}) {
@@ -385,6 +410,7 @@ async function sendCustomAlert(streamerUserId, { actorName, message, amountCents
 }
 
 module.exports = {
+    slotRelayEnabled, destRelayEnabled,
     CURRENCY_KEY, TIP_CURRENCY_KEY,
     forwardChat, forwardFollow, forwardSubscription, forwardTip,
     sendViewCount, startViewerCountSweeper,

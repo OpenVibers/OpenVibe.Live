@@ -745,8 +745,9 @@ class RobotStreamerService {
 
                 // ...and into the streamer's PowerChat overlay (relayed chat was never forwarded).
                 try {
-                    if (stream.user_id) {
-                        require('./powerchat-platform').forwardChat(stream.user_id, {
+                    const pc = require('./powerchat-platform');
+                    if (stream.user_id && pc.slotRelayEnabled(stream.id)) {
+                        pc.forwardChat(stream.user_id, {
                             chatterName: username,
                             externalChatterId: `rs:${username}`,
                             message: mirrored.message,

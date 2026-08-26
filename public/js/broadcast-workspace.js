@@ -131,7 +131,17 @@ function _wsCollectVibeSettingsFromDom() {
 
 /* ── Init ────────────────────────────────────────────────────── */
 
+// PowerChat relay controls only make sense for streamers with a connected PowerChat
+// account — everything with .bc-ws-pc-only stays hidden until /powerchat/status says so.
+async function _wsLoadPowerchatStatus() {
+    let connected = false;
+    try { const st = await api('/powerchat/status'); connected = !!(st && st.enabled && st.configured && st.connected); } catch { /* */ }
+    _wsState.powerchatConnected = connected;
+    document.body.classList.toggle('ws-has-powerchat', connected);
+}
+
 async function initBroadcastWorkspace() {
+    _wsLoadPowerchatStatus();
     await _wsLoadManagedStreams();
     _wsRenderSidebar();
     if (_wsState.managedStreams.length > 0) {
@@ -965,6 +975,26 @@ function _wsRenderPanel() {
                         <p class="muted" style="font-size:0.78rem;margin:8px 0 0">
                             This slot listens on <code>${esc(vibeSlotRef)}</code>. The same publish/feed endpoints also work for other coding publishers, not just the Copilot reference extension.
                         </p>
+                    </div>
+                </details>
+
+                <!-- PowerChat overlay relay (shown only when PowerChat is connected) -->
+                <details class="bc-ws-slot-settings bc-ws-pc-only">
+                    <summary><i class="fa-solid fa-bolt"></i> PowerChat Overlay</summary>
+                    <div class="bc-ws-slot-settings-inner">
+                        <div class="bc-ws-row">
+                            <div class="form-group" style="flex:1">
+                                <label class="bc-toggle-label">
+                                    <input type="checkbox" id="bc-ws-powerchat-relay" ${ms.slot_powerchat_relay !== 0 ? 'checked' : ''}
+                                        onchange="_wsSlotSettingChanged()">
+                                    Relay this slot's chat to my PowerChat overlay
+                                </label>
+                                <p class="muted" style="font-size:0.78rem;margin:4px 0 0">
+                                    Covers OpenVibe chat, RobotStreamer chat and every restream chat relay on this slot.
+                                    Each restream destination below also has its own <strong>→ PowerChat</strong> switch, so you can keep e.g. Twitch chat on the overlay but leave Kick off.
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </details>
 
@@ -1921,6 +1951,7 @@ async function _wsSaveAll() {
             slot_vod_recording_enabled: ms.slot_vod_recording_enabled !== undefined ? ms.slot_vod_recording_enabled : 1,
             slot_clip_recording_enabled: ms.slot_clip_recording_enabled !== undefined ? ms.slot_clip_recording_enabled : 1,
             slot_clip_notify_enabled: ms.slot_clip_notify_enabled !== undefined ? ms.slot_clip_notify_enabled : 1,
+            slot_powerchat_relay: ms.slot_powerchat_relay !== undefined ? ms.slot_powerchat_relay : 1,
             weather_zip: ms.weather_zip || null,
             weather_detail: ms.weather_detail || 'basic',
             weather_show_location: ms.weather_show_location || 0,
@@ -2069,6 +2100,7 @@ function _wsSlotSettingChanged() {
     ms.slot_vod_recording_enabled = document.getElementById('bc-ws-vod-recording')?.checked ? 1 : 0;
     ms.slot_clip_recording_enabled = document.getElementById('bc-ws-clip-recording')?.checked ? 1 : 0;
     ms.slot_clip_notify_enabled = document.getElementById('bc-ws-clip-notify')?.checked ? 1 : 0;
+    { const pc = document.getElementById('bc-ws-powerchat-relay'); if (pc) ms.slot_powerchat_relay = pc.checked ? 1 : 0; }
     ms.weather_zip = document.getElementById('bc-ws-weather-zip')?.value.trim() || null;
     ms.weather_detail = document.getElementById('bc-ws-weather-detail')?.value || 'basic';
     ms.weather_show_location = document.getElementById('bc-ws-weather-location')?.checked ? 1 : 0;
@@ -2597,6 +2629,7 @@ function _wsRenderRestreamList(container) {
                 </span>
                 <span class="bc-ws-restream-badges">
                     ${d.chat_relay ? '<span class="bc-ws-restream-badge" title="Chat relay enabled"><i class="fa-solid fa-comments"></i></span>' : ''}
+                    ${d.chat_relay && d.powerchat_relay === false ? '<span class="bc-ws-restream-badge muted bc-ws-pc-only" title="Not relayed to your PowerChat overlay"><i class="fa-solid fa-bolt"></i><i class="fa-solid fa-slash" style="margin-left:-9px;font-size:0.7em"></i></span>' : ''}
                     ${d.auto_start ? '<span class="bc-ws-restream-badge" title="Auto-start"><i class="fa-solid fa-bolt"></i></span>' : ''}
                     ${!d.enabled ? '<span class="bc-ws-restream-badge muted" title="Disabled"><i class="fa-solid fa-pause"></i></span>' : ''}
                 </span>
@@ -2879,6 +2912,10 @@ function _wsShowRestreamForm(existing) {
                     <input type="checkbox" id="ws-rs-chat-relay" ${existing?.chat_relay ? 'checked' : ''}>
                     <i class="fa-solid fa-comments"></i> Chat Relay
                 </label>
+                <label class="bc-toggle-label bc-ws-pc-only" style="flex:1" title="Forward this platform's relayed chat to your PowerChat overlay (needs Chat Relay)">
+                    <input type="checkbox" id="ws-rs-powerchat-relay" ${(!existing || existing.powerchat_relay !== false) ? 'checked' : ''}>
+                    <i class="fa-solid fa-bolt"></i> → PowerChat
+                </label>
             </div>
             <details style="margin-top:8px">
                 <summary style="font-size:0.82rem;color:var(--text-secondary);cursor:pointer"><i class="fa-solid fa-sliders"></i> Custom Encoding Overrides</summary>
@@ -2957,6 +2994,7 @@ function _wsShowRestreamForm(existing) {
             enabled: document.getElementById('ws-rs-enabled').checked,
             auto_start: document.getElementById('ws-rs-auto-start').checked,
             chat_relay: document.getElementById('ws-rs-chat-relay').checked,
+            powerchat_relay: document.getElementById('ws-rs-powerchat-relay')?.checked !== false,
             custom_video_bitrate: parseInt(document.getElementById('ws-rs-video-bitrate').value) || null,
             custom_audio_bitrate: parseInt(document.getElementById('ws-rs-audio-bitrate').value) || null,
             custom_fps: parseInt(document.getElementById('ws-rs-fps').value) || null,
