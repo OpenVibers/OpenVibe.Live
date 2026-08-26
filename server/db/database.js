@@ -1065,6 +1065,23 @@ function initDb() {
         database.prepare(`UPDATE site_settings SET value = 'alex' WHERE key = 'powerchat_sandbox_username' AND value = 'n8admin'`).run();
     } catch (e) { console.warn('[DB] Settings seed:', e.message); }
 
+    // Internal job/cache state (JSON blobs the AI jobs persist across restarts).
+    // These used to be stashed in site_settings, which made every one of them show up
+    // as an editable "setting" in the admin panel — they're machine state, not config.
+    // app_state is the same KV shape but never surfaced to (or editable by) admins.
+    try {
+        database.exec(`CREATE TABLE IF NOT EXISTS app_state (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
+        // One-time move of the known state keys out of site_settings (idempotent).
+        const stateCond = `key IN ('auto_clip_backfill','auto_clip_log','daily_easter_egg','home_hero_moments','home_hero_slogans') OR key LIKE 'ai_whole_overview_%'`;
+        database.exec(`INSERT OR IGNORE INTO app_state (key, value, updated_at)
+            SELECT key, value, COALESCE(updated_at, CURRENT_TIMESTAMP) FROM site_settings WHERE ${stateCond}`);
+        database.exec(`DELETE FROM site_settings WHERE ${stateCond}`);
+    } catch (e) { console.warn('[DB] app_state migration:', e.message); }
+
     // AI subsystem tables + columns.
     try {
         database.exec(`CREATE TABLE IF NOT EXISTS stream_memories (
@@ -5527,6 +5544,23 @@ function deleteSetting(key) {
     return run('DELETE FROM site_settings WHERE key = ?', [key]);
 }
 
+// ── Internal job/cache state (app_state) ─────────────────────
+// Same KV shape as site_settings but for machine state (JSON blobs the AI jobs
+// persist across restarts). Never listed in the admin panel — admin-editable
+// config belongs in site_settings, job state belongs here.
+function getState(key) {
+    const row = get('SELECT value FROM app_state WHERE key = ?', [key]);
+    return row ? row.value : null;
+}
+function setState(key, value) {
+    const strVal = typeof value === 'object' ? JSON.stringify(value) : String(value);
+    return run(`INSERT INTO app_state (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, [key, strVal]);
+}
+function deleteState(key) {
+    return run('DELETE FROM app_state WHERE key = ?', [key]);
+}
+
 // ── Verification Key helpers ─────────────────────────────────
 
 function createVerificationKey({ key, target_username, note, created_by }) {
@@ -7651,6 +7685,7 @@ module.exports = {
     updateChannelAiBot, touchChannelAiBot, deleteChannelAiBot,
     // Site Settings
     getSetting, getSettingRow, getAllSettings, setSetting, deleteSetting,
+    getState, setState, deleteState,
     // Verification Keys
     createVerificationKey, getVerificationKeyByKey, getVerificationKeyByUsername,
     getAllVerificationKeys, redeemVerificationKey, revokeVerificationKey, isUsernameReserved,

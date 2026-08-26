@@ -41,14 +41,14 @@ function _clean(t, n) { return String(t || '').replace(/\s+/g, ' ').trim().slice
 
 // ── Auto-clip log (replaces the old clips-table queries) ────
 function _clipLog() {
-    try { const l = JSON.parse(db.getSetting(CLIP_LOG_SETTING) || '[]'); return Array.isArray(l) ? l : []; }
+    try { const l = JSON.parse(db.getState(CLIP_LOG_SETTING) || '[]'); return Array.isArray(l) ? l : []; }
     catch { return []; }
 }
 function _logClip(entry) {
     try {
         const log = _clipLog();
         log.unshift({ ...entry, ts: Date.now() });
-        db.setSetting(CLIP_LOG_SETTING, JSON.stringify(log.slice(0, 300)));
+        db.setState(CLIP_LOG_SETTING, JSON.stringify(log.slice(0, 300)));
     } catch { /* */ }
 }
 function _countClipsSince(streamId, minutes) {
@@ -176,7 +176,7 @@ const BACKFILL_PER_RUN = 3;                       // a few historical clips…
 const BACKFILL_INTERVAL_MS = 6 * 60 * 60 * 1000;  // …every 6h (guarantees ≥1 clip / 6h)
 
 function _backfillDue() {
-    try { const p = JSON.parse(db.getSetting(BACKFILL_SETTING) || '{}'); return !p.updated_at || (Date.now() - p.updated_at) >= BACKFILL_INTERVAL_MS; }
+    try { const p = JSON.parse(db.getState(BACKFILL_SETTING) || '{}'); return !p.updated_at || (Date.now() - p.updated_at) >= BACKFILL_INTERVAL_MS; }
     catch { return true; }
 }
 // Historical-backfill candidate pool: most-viewed public VODs from OpenVibe.Media
@@ -229,7 +229,7 @@ async function _resolveVodSource(vodId) {
 async function backfillVodClips({ limit = BACKFILL_PER_RUN, force = false } = {}) {
     if (!force && !_backfillDue()) return 0;
     let prev = {};
-    try { prev = JSON.parse(db.getSetting(BACKFILL_SETTING) || '{}') || {}; } catch { /* */ }
+    try { prev = JSON.parse(db.getState(BACKFILL_SETTING) || '{}') || {}; } catch { /* */ }
     const skip = new Set(prev.skip || []);
     const moments = require('./ai-moments-job');
     // Over-fetch so skipped/dead VODs don't starve a batch.
@@ -259,7 +259,7 @@ async function backfillVodClips({ limit = BACKFILL_PER_RUN, force = false } = {}
         } catch (e) { newSkip.push(v.vod_id); console.warn(`[AutoClip] backfill VOD ${v.vod_id} failed:`, e.message); }
     }
     const mergedSkip = [...new Set([...(prev.skip || []), ...newSkip])].slice(-2000);
-    try { db.setSetting(BACKFILL_SETTING, JSON.stringify({ updated_at: Date.now(), lastMade: made, skip: mergedSkip })); } catch { /* */ }
+    try { db.setState(BACKFILL_SETTING, JSON.stringify({ updated_at: Date.now(), lastMade: made, skip: mergedSkip })); } catch { /* */ }
     if (made || newSkip.length) console.log(`[AutoClip] Historical backfill: ${made} clip(s) added, ${newSkip.length} VOD(s) skipped (unclippable)`);
     return made;
 }

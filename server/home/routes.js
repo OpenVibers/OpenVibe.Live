@@ -97,7 +97,7 @@ async function heroMedia() {
     // AI "crazy moments" — daily-rotated standout frames from the AI memory data, deep-linking
     // to the exact VOD timestamp (populated by ai-moments-job).
     try {
-        const hm = JSON.parse(db.getSetting('home_hero_moments') || '{}');
+        const hm = JSON.parse(db.getState('home_hero_moments') || '{}');
         for (const m of (hm.moments || [])) {
             if (!m || !m.vodId) continue;
             items.push({
@@ -114,7 +114,7 @@ async function heroMedia() {
 // for the full-bleed hero BACKGROUND that cross-fades through them.
 function heroMoments() {
     try {
-        const hm = JSON.parse(db.getSetting('home_hero_moments') || '{}');
+        const hm = JSON.parse(db.getState('home_hero_moments') || '{}');
         return (hm.moments || [])
             .filter(m => m && m.vodId && m.thumbnail)
             .map(m => ({ title: m.title || 'AI Moment', thumbnail: m.thumbnail, href: `/vod/${m.vodId}?t=${m.offset || 0}`, username: m.username }));
@@ -136,7 +136,7 @@ function _cleanAudience(raw) {
 function heroSlogans() {
     let s = null;
     try {
-        s = db.getSetting('home_hero_slogans');
+        s = db.getState('home_hero_slogans');
         if (typeof s === 'string') s = JSON.parse(s);
     } catch { s = null; }
     const aiAud = (s && Array.isArray(s.audiences)) ? s.audiences.map(_cleanAudience).filter(a => a && a.length <= 60) : [];
