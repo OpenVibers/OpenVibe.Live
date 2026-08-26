@@ -19,7 +19,7 @@ let _busy = false;
 
 // Local date key (server-local) — one egg per calendar day.
 function _today() { return new Date().toISOString().slice(0, 10); }
-function _load() { try { return JSON.parse(db.getSetting(SETTING) || '{}') || {}; } catch { return {}; } }
+function _load() { try { return JSON.parse(db.getState(SETTING) || '{}') || {}; } catch { return {}; } }
 function _due() { const p = _load(); return !p.date || p.date !== _today() || !Array.isArray(p.code) || !p.code.length; }
 
 // Deterministic daily fallback (no AI): a seeded 7-token sequence + generic hints.
@@ -98,7 +98,7 @@ async function tick(opts = {}) {
     _busy = true;
     try {
         const egg = await _generate();
-        db.setSetting(SETTING, JSON.stringify({ date: _today(), ...egg, updated_at: Date.now() }));
+        db.setState(SETTING, JSON.stringify({ date: _today(), ...egg, updated_at: Date.now() }));
         console.log(`[EasterEgg] New daily egg "${egg.title}" (${egg.code.length} keys, ${egg.ai ? 'AI' : 'fallback'})`);
     } catch (e) {
         console.warn('[EasterEgg] tick error:', e.message);

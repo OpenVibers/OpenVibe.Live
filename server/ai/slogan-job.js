@@ -52,7 +52,7 @@ function _topUp(fresh, old, cap) {
 }
 const SLOGAN_FORMAT = 2; // bump to force a one-time regen after a prompt/format change
 function _loadPool() {
-    try { const cur = db.getSetting('home_hero_slogans'); const o = typeof cur === 'string' ? JSON.parse(cur) : cur; if (o) return { audiences: o.audiences || [], quips: o.quips || [], updated_at: o.updated_at || 0, v: o.v || 1 }; } catch { /* */ }
+    try { const cur = db.getState('home_hero_slogans'); const o = typeof cur === 'string' ? JSON.parse(cur) : cur; if (o) return { audiences: o.audiences || [], quips: o.quips || [], updated_at: o.updated_at || 0, v: o.v || 1 }; } catch { /* */ }
     return { audiences: [], quips: [], updated_at: 0, v: 0 };
 }
 
@@ -152,7 +152,7 @@ Return ONLY the JSON object.`;
         const old = _loadPool();
         audiences = _topUp(audiences, old.audiences.map(_stripAudiencePrefix), TARGET);
         quips = _topUp(quips, old.quips, TARGET);
-        db.setSetting('home_hero_slogans', JSON.stringify({ v: SLOGAN_FORMAT, audiences, quips, updated_at: Date.now() }));
+        db.setState('home_hero_slogans', JSON.stringify({ v: SLOGAN_FORMAT, audiences, quips, updated_at: Date.now() }));
         console.log(`[Slogans] Fresh daily batch: ${audiences.length} words, ${quips.length} slogans (from full AI context)`);
     } catch (e) {
         console.warn('[Slogans] generation failed:', e.message);

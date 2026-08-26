@@ -28,7 +28,7 @@ const TARGET = 4;
 const SETTING = 'home_hero_moments';
 let _busy = false;
 
-function _load() { try { return JSON.parse(db.getSetting(SETTING) || '{}') || {}; } catch { return {}; } }
+function _load() { try { return JSON.parse(db.getState(SETTING) || '{}') || {}; } catch { return {}; } }
 function _due() { const p = _load(); return !p.updated_at || (Date.now() - p.updated_at) >= INTERVAL_MS; }
 
 const _ADJ = ['wild', 'epic', 'cursed', 'feral', 'unhinged', 'chaotic', 'legendary', 'peak', 'rogue', 'hazy', 'unreal', 'prime'];
@@ -435,7 +435,7 @@ async function tick(opts = {}) {
 
         const usedLog = [...newUsedVods, ...(prev.usedVods || [])].slice(0, 300);
         const sigLog = [...thisSigs, ...(prev.usedSigs || [])].slice(0, 120);
-        db.setSetting(SETTING, JSON.stringify({ moments, usedVods: usedLog, usedSigs: sigLog, updated_at: Date.now() }));
+        db.setState(SETTING, JSON.stringify({ moments, usedVods: usedLog, usedSigs: sigLog, updated_at: Date.now() }));
         console.log(`[AI-Moments] ${moments.length} moment(s) from ${chosen.length}/${totalEligible} ranked VODs + pastes created`);
     } catch (e) {
         console.warn('[AI-Moments] tick error:', e.message);

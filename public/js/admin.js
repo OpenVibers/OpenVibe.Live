@@ -523,9 +523,19 @@ async function loadAdminSettings() {
         const data = await api('/admin/settings');
         const settings = data.settings || [];
 
-        c.innerHTML = `
-            <form id="admin-settings-form" onsubmit="saveAdminSettings(event)" style="display:grid;gap:12px;max-width:700px">
-                ${settings.map(s => {
+        // Integrations get their own boxed section instead of interleaving
+        // alphabetically with everything else.
+        const SECTIONS = [
+            { title: 'PowerChat', icon: 'fa-bolt', match: (k) => k.startsWith('powerchat_') },
+        ];
+        const sectioned = new Map(SECTIONS.map(sec => [sec, []]));
+        const general = [];
+        for (const s of settings) {
+            const sec = SECTIONS.find(x => x.match(s.key));
+            if (sec) sectioned.get(sec).push(s); else general.push(s);
+        }
+
+        const renderRow = (s) => {
                     const id = `setting-${s.key}`;
                     if (s.type === 'boolean') {
                         return `
@@ -576,6 +586,21 @@ async function loadAdminSettings() {
                                     value="${esc(s.value)}"
                                     style="margin-top:4px;width:100%;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);padding:6px 10px;border-radius:6px">
                             `}
+                        </div>`;
+        };
+
+        c.innerHTML = `
+            <form id="admin-settings-form" onsubmit="saveAdminSettings(event)" style="display:grid;gap:12px;max-width:700px">
+                ${general.map(renderRow).join('')}
+                ${SECTIONS.map(sec => {
+                    const rows = sectioned.get(sec);
+                    if (!rows.length) return '';
+                    return `
+                        <div class="bc-settings-group" style="padding:12px;border:1px solid var(--border);border-radius:8px;margin-top:8px">
+                            <h4 style="margin:0 0 4px;display:flex;align-items:center;gap:8px">
+                                <i class="fa-solid ${sec.icon}" style="color:var(--accent)"></i> ${esc(sec.title)}
+                            </h4>
+                            ${rows.map(renderRow).join('')}
                         </div>`;
                 }).join('')}
                 <button type="submit" class="btn btn-primary" style="justify-self:start;margin-top:8px">

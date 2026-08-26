@@ -122,7 +122,7 @@ function _combinedOverview(userId, streamerOv, chatIns) {
     const srcLen = sOv.length + '|' + cOv.length; // cheap change-detector
     let cachedText = null, fresh = false;
     try {
-        const raw = db.getSetting(key);
+        const raw = db.getState(key);
         if (raw) { const j = JSON.parse(raw); cachedText = j.text ? String(j.text).replace(/^\s*(combined\s+overview|overview)\s*[:\-–]\s*/i, '').trim() : null; fresh = j.src === srcLen && (Date.now() - (j.generated_at || 0) < 24 * 60 * 60 * 1000); }
     } catch { /* rebuild */ }
     if (cachedText && fresh) return cachedText;
@@ -133,7 +133,7 @@ function _combinedOverview(userId, streamerOv, chatIns) {
         _combinedBusy.add(userId);
         const prompt = `You are describing a person on a streaming site by fusing two AI summaries about them into ONE cohesive 2-4 sentence overview of who they are overall — both as a STREAMER and as a CHATTER. Be natural, specific, and not repetitive. Output ONLY the overview prose with no label or prefix.\n\nAS A STREAMER:\n${sOv}\n\nAS A CHATTER:\n${cOv}`;
         Promise.resolve(ai.summarizeText(prompt, 320, 'combined_overview'))
-            .then(text => { if (text) { const clean = String(text).replace(/^\s*(combined\s+overview|overview)\s*[:\-–]\s*/i, '').trim(); try { db.setSetting(key, JSON.stringify({ text: clean, generated_at: Date.now(), src: srcLen })); } catch { /* */ } } })
+            .then(text => { if (text) { const clean = String(text).replace(/^\s*(combined\s+overview|overview)\s*[:\-–]\s*/i, '').trim(); try { db.setState(key, JSON.stringify({ text: clean, generated_at: Date.now(), src: srcLen })); } catch { /* */ } } })
             .catch(() => { })
             .finally(() => _combinedBusy.delete(userId));
     }
