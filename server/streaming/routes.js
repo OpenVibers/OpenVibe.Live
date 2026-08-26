@@ -330,13 +330,15 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             };
             clips.forEach(nameClip);
             clipsOfStreams.forEach(nameClip);
-            // Short AI overviews are Live-owned (vod_ai_state / clip_ai_state).
+            // AI overviews are Live-owned (vod_ai_state / clip_ai_state). Attach the
+            // full text too — the card expander swaps the short teaser for it.
             const aiShort = (rows, table, col) => {
                 for (const r of rows) {
-                    if (!r || r.id == null || r.ai_overview_short) continue;
+                    if (!r || r.id == null || (r.ai_overview_short && r.ai_overview)) continue;
                     try {
-                        const s = db.get(`SELECT ai_overview_short FROM ${table} WHERE ${col} = ?`, [r.id]);
-                        if (s && s.ai_overview_short) r.ai_overview_short = s.ai_overview_short;
+                        const s = db.get(`SELECT ai_overview_short, ai_overview FROM ${table} WHERE ${col} = ?`, [r.id]);
+                        if (s && s.ai_overview_short && !r.ai_overview_short) r.ai_overview_short = s.ai_overview_short;
+                        if (s && s.ai_overview && !r.ai_overview) r.ai_overview = s.ai_overview;
                     } catch { /* best-effort */ }
                 }
             };
@@ -1189,10 +1191,11 @@ router.get('/recent-vods', async (req, res) => {
                 const u = db.getUserById(v.user_id);
                 if (u) { v.username = u.username; v.display_name = u.display_name; v.avatar_url = u.avatar_url; }
             }
-            if (v && v.id != null && !v.ai_overview_short) {
+            if (v && v.id != null && (!v.ai_overview_short || !v.ai_overview)) {
                 try {
-                    const s = db.get('SELECT ai_overview_short FROM vod_ai_state WHERE vod_id = ?', [v.id]);
-                    if (s && s.ai_overview_short) v.ai_overview_short = s.ai_overview_short;
+                    const s = db.get('SELECT ai_overview_short, ai_overview FROM vod_ai_state WHERE vod_id = ?', [v.id]);
+                    if (s && s.ai_overview_short && !v.ai_overview_short) v.ai_overview_short = s.ai_overview_short;
+                    if (s && s.ai_overview && !v.ai_overview) v.ai_overview = s.ai_overview;
                 } catch { /* */ }
             }
         }

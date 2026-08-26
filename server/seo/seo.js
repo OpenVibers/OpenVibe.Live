@@ -43,7 +43,7 @@ function _overlayAiState(row, kind) {
         if (!st) return;
         if (st.ai_overview_short) {
             row.ai_overview_short = row.ai_overview_short || st.ai_overview_short;
-            row.ai_overview = row.ai_overview || st.ai_overview_short;
+            row.ai_overview = row.ai_overview || st.ai_overview || st.ai_overview_short;
         }
         if (st.ai_transcript_json && !row.ai_transcript) {
             try { row.ai_transcript = JSON.parse(st.ai_transcript_json).map(s => s.text).join(' ').trim(); } catch { /* */ }

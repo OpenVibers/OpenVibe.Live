@@ -48,11 +48,13 @@ function withUserFields(clip) {
     // Absolutize Media-relative URLs so the SPA doesn't resolve them against Live.
     clip.playback_url = media.publicUrl(clip.playback_url) || media.clipUrl(clip.id);
     if (clip.thumbnail_url) clip.thumbnail_url = media.publicUrl(clip.thumbnail_url);
-    // Short AI overview is Live-owned (clip_ai_state) — overlay for the cards.
-    if (clip.id != null && !clip.ai_overview_short) {
+    // AI overview is Live-owned (clip_ai_state) — overlay short + full for the cards
+    // (the expander swaps the short teaser for the full text).
+    if (clip.id != null && (!clip.ai_overview_short || !clip.ai_overview)) {
         try {
-            const s = db.get('SELECT ai_overview_short FROM clip_ai_state WHERE clip_id = ?', [clip.id]);
-            if (s && s.ai_overview_short) clip.ai_overview_short = s.ai_overview_short;
+            const s = db.get('SELECT ai_overview_short, ai_overview FROM clip_ai_state WHERE clip_id = ?', [clip.id]);
+            if (s && s.ai_overview_short && !clip.ai_overview_short) clip.ai_overview_short = s.ai_overview_short;
+            if (s && s.ai_overview && !clip.ai_overview) clip.ai_overview = s.ai_overview;
         } catch { /* best-effort */ }
     }
     return clip;
@@ -215,7 +217,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
         try {
             const st = db.getClipAiState(clip.id);
             if (st) {
-                if (st.ai_overview_short) { clip.ai_overview_short = st.ai_overview_short; clip.ai_overview = clip.ai_overview || st.ai_overview_short; }
+                if (st.ai_overview_short) { clip.ai_overview_short = st.ai_overview_short; clip.ai_overview = st.ai_overview || clip.ai_overview || st.ai_overview_short; }
                 if (st.ai_transcript_json) {
                     clip.ai_transcript_json = st.ai_transcript_json;
                     try { clip.ai_transcript = JSON.parse(st.ai_transcript_json).map(s => s.text).join(' ').trim() || clip.ai_transcript; } catch { /* */ }
