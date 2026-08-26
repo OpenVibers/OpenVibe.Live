@@ -72,6 +72,7 @@ async function _initBuyBucks() {
         btn('paypal', 'PayPal', 'fa-brands fa-paypal', '#003087'),
         btn('ccbill', 'Card (CCBill)', 'fa-solid fa-credit-card', '#2a6'),
         btn('crypto', 'Crypto', 'fa-brands fa-bitcoin', '#f7931a'),
+        btn('powerchat', 'PowerChat tip', 'fa-solid fa-bolt', '#8b5cf6'),
     ].filter(Boolean).join('');
     box.innerHTML = buttons || '<p class="muted" style="font-size:0.85rem;text-align:center">No payment methods are enabled.</p>';
 }
@@ -94,6 +95,14 @@ async function doPurchase(provider) {
     if (!bucks || bucks < 100) return toast('Enter at least 100 Vibes', 'error');
     try {
         const data = await api('/payments/bucks/checkout', { method: 'POST', body: { provider, bucks } });
+        if (data.powerchat && data.url) {
+            // PowerChat: the tip page opens in a new tab; Vibes are credited by webhook
+            // once the tip confirms, so the site stays open underneath.
+            window.open(data.url, '_blank', 'noopener');
+            toast(data.note || 'Complete your tip on PowerChat — Vibes are credited automatically once it confirms.', 'success');
+            closeModal();
+            return;
+        }
         if (data.url) { window.location.href = data.url; return; }
         toast('Could not start checkout', 'error');
     } catch (e) { toast(e.message || 'Purchase failed', 'error'); }
@@ -124,14 +133,30 @@ async function _initSubscribe() {
     if (cfg.providers && cfg.providers.stripe) {
         html += `<button class="btn btn-lg btn-primary" style="width:100%;margin-top:8px;justify-content:center" onclick="doSubscribe('${username}','stripe')"><i class="fa-solid fa-credit-card"></i> Subscribe with Card (auto-renews)</button>`;
     }
-    html += `<button class="btn btn-lg" style="width:100%;margin-top:8px;justify-content:center;background:var(--accent);color:#111;border:none" onclick="doSubscribe('${username}','bucks')"><i class="fa-solid fa-coins"></i> Subscribe with Vibes (30 days)</button>`;
+    html += `<button class="btn btn-lg" style="width:100%;margin-top:8px;justify-content:center;background:var(--accent);color:#111;border:none" onclick="doSubscribe('${username}','bucks')"><i class="fa-solid fa-coins"></i> Subscribe with Vibes</button>`;
+    if (cfg.providers && cfg.providers.powerchat) {
+        html += `<button class="btn btn-lg" style="width:100%;margin-top:8px;justify-content:center;background:#8b5cf6;color:#fff;border:none" onclick="doSubscribe('${username}','powerchat')"><i class="fa-solid fa-bolt"></i> Subscribe with PowerChat tip</button>`;
+    }
+    // Non-card methods can't be re-charged by the processor, so renewal draws from the
+    // Vibes balance — this toggle covers the Vibes and PowerChat buttons.
+    html += `<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:0.85rem;cursor:pointer">
+        <input type="checkbox" id="sub-auto-renew" checked style="width:16px;height:16px;cursor:pointer">
+        Auto-renew monthly from my Vibes balance (Vibes/PowerChat)
+    </label>`;
     box.innerHTML = html;
 }
 
 async function doSubscribe(username, provider) {
     if (!currentUser) return showModal('login');
+    const autoRenew = !!document.getElementById('sub-auto-renew')?.checked;
     try {
-        const data = await api('/payments/subscribe', { method: 'POST', body: { provider, streamer: username } });
+        const data = await api('/payments/subscribe', { method: 'POST', body: { provider, streamer: username, auto_renew: autoRenew } });
+        if (data.powerchat && data.url) {
+            window.open(data.url, '_blank', 'noopener');
+            toast(data.note || 'Complete your tip on PowerChat — your subscription activates automatically once it confirms.', 'success');
+            closeModal();
+            return;
+        }
         if (data.url) { window.location.href = data.url; return; }
         if (data.ok) { toast('Subscribed! 🎉', 'success'); if (typeof loadBalance === 'function') loadBalance(); closeModal(); }
     } catch (e) { toast(e.message || 'Subscription failed', 'error'); }
@@ -184,7 +209,25 @@ function openvibeBucksDonateModal() {
 
         <button class="btn btn-primary btn-lg" onclick="doDonate()" style="width:100%;margin-top:8px">
             <i class="fa-solid fa-coins"></i> Donate
+        </button>
+        <button class="btn btn-lg" onclick="doPowerchatTip()" style="width:100%;margin-top:8px;background:#8b5cf6;color:#fff;border:none">
+            <i class="fa-solid fa-bolt"></i> Tip real money via PowerChat
         </button>`;
+}
+
+// Real-money tip through PowerChat: the streamer's own tip page when they have
+// PowerChat connected, otherwise the site's PowerChat account (the streamer is then
+// credited the full amount as cashout-able Vibes once the tip confirms).
+async function doPowerchatTip() {
+    const streamerId = _donateStreamerId();
+    if (!streamerId) return toast('No streamer selected', 'error');
+    try {
+        const data = await api(`/powerchat/donate-link?streamer_id=${streamerId}`);
+        if (!data.url) throw new Error('unavailable');
+        window.open(data.url, '_blank', 'noopener');
+        toast('Complete your tip on PowerChat — it lands in this channel automatically once confirmed. ⚡', 'success');
+        closeModal();
+    } catch (e) { toast('PowerChat tips aren’t available for this channel.', 'error'); }
 }
 
 // Resolve the streamer being viewed (live stream data, else the channel page owner).
