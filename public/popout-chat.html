@@ -97,37 +97,16 @@
         .pc-emote { height: 1.2em; vertical-align: middle; }
 
         /* ── Input ── */
+        /* The input itself uses the SHARED chat-input classes from style.css
+           (chat-input-row / chat-textarea / chat-send-btn / chat-tools-row), so it
+           looks and behaves exactly like the streamer-page chat. Only the wrapper
+           is styled here. */
         .pc-input-area {
             padding: 7px 8px;
             border-top: 1px solid var(--border, #2a2a3e);
             background: var(--bg-secondary, #1a1a2e); flex-shrink: 0;
             position: relative; /* anchor for the emote / GIF pickers */
         }
-        .pc-input-row { display: flex; gap: 5px; align-items: center; }
-        .pc-tools-row {
-            display: flex; gap: 4px; align-items: center; flex-wrap: wrap;
-            padding-top: 5px;
-        }
-        .pc-input-area #pc-input {
-            flex: 1; background: var(--bg-primary, #0d0d1a);
-            border: 1px solid var(--border, #2a2a3e);
-            border-radius: 4px; color: var(--text-primary, #e0e0e0);
-            padding: 5px 9px; font-size: 0.82rem; outline: none; min-width: 0;
-        }
-        .pc-input-area #pc-input:focus { border-color: var(--accent, #8b5cf6); }
-        .pc-input-area #pc-send {
-            background: var(--accent, #8b5cf6); color: #fff; border: none;
-            border-radius: 4px; padding: 5px 11px; cursor: pointer; font-size: 0.82rem;
-            flex-shrink: 0; white-space: nowrap;
-        }
-        .pc-input-area #pc-send:hover { opacity: 0.85; }
-        /* TTS toggle mirrors the streamer-page chat button */
-        .pc-input-area .chat-tts-toggle {
-            background: var(--bg-tertiary, #252540); color: var(--text-muted, #888);
-            padding: 5px 9px; border: none; border-radius: 4px; cursor: pointer;
-            flex-shrink: 0;
-        }
-        .pc-input-area .chat-tts-toggle.tts-active { background: var(--accent, #8b5cf6); color: #fff; }
 
         /* The popout is already popped out — never offer to pop out again. */
         [onclick*="popout"], [onclick*="Popout"], [onclick*="popOut"] { display: none !important; }
@@ -169,14 +148,17 @@
                     <div class="emote-picker-tabs"></div>
                     <div class="emote-picker-grid" id="emote-picker-grid"></div>
                 </div>
-                <div class="pc-input-row">
-                    <button class="chat-tts-toggle tts-active pc-tts-btn" id="pc-tts-btn" onclick="toggleChatTTS(this)" title="TTS On (click to mute)">
-                        <i class="fa-solid fa-volume-high"></i>
+                <!-- Shared chat input — the SAME markup/classes as the streamer page,
+                     so chat.js's delegated behaviors (auto-resize, Enter-to-send,
+                     autocomplete) and future input upgrades apply here automatically. -->
+                <div class="chat-input-row">
+                    <textarea id="pc-input" class="chat-textarea" placeholder="Send a message..." maxlength="500"
+                              rows="1" autocomplete="off" spellcheck="true" enterkeyhint="send"></textarea>
+                    <button class="chat-send-btn" onclick="sendChat()">
+                        <i class="fa-solid fa-paper-plane"></i>
                     </button>
-                    <input type="text" id="pc-input" placeholder="Send a message…" maxlength="500" autocomplete="off">
-                    <button id="pc-send">Send</button>
                 </div>
-                <div class="pc-tools-row">
+                <div class="chat-tools-row">
                     <button class="emote-picker-btn" onclick="toggleEmotePicker('pc-input')" title="Emotes">
                         <i class="fa-solid fa-face-smile"></i>
                     </button>
@@ -185,6 +167,9 @@
                     </button>
                     <button class="emote-picker-btn" onclick="if(typeof openChannelUploadModal==='function')openChannelUploadModal()" title="Add channel emote / sound">
                         <i class="fa-solid fa-plus"></i>
+                    </button>
+                    <button class="chat-tts-toggle tts-active" id="pc-tts-btn" onclick="toggleChatTTS(this)" title="TTS On (click to mute)">
+                        <i class="fa-solid fa-volume-high"></i>
                     </button>
                     <button class="btn btn-openvibe-coins-mini" onclick="if(typeof toggleRewardsPanel==='function')toggleRewardsPanel()" title="Redeem OpenCoins">
                         <i class="fa-solid fa-coins"></i>
@@ -259,6 +244,16 @@
             </div>
         </div>
     </div>
+
+    <!-- Shared modal + toast containers — showModal('donate'), the [+] channel-upload
+         modal, buy-Vibes, etc. all render into these exactly like on the main site. -->
+    <div class="modal-overlay" id="modal-overlay" onclick="closeModal()">
+        <div class="modal" onclick="event.stopPropagation()">
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <div id="modal-content"></div>
+        </div>
+    </div>
+    <div class="toast-container" id="toast-container"></div>
 
     <!-- Chat feature scripts — mirror index.html so the popout has full parity.
          Order: dependencies (app/emotes/gif/uploads/coins/bucks/cosmetics) before chat.js. -->
@@ -402,22 +397,10 @@
         }
 
         joinTarget();
+        // Enter-to-send, Shift+Enter newline, and auto-resize all come from chat.js's
+        // delegated .chat-textarea handlers — no popout-specific wiring needed.
         const input = document.getElementById('pc-input');
-        const sendBtn = document.getElementById('pc-send');
-        if (input) {
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    if (typeof sendChat === 'function') sendChat();
-                }
-            });
-            input.focus();
-        }
-        if (sendBtn) {
-            sendBtn.addEventListener('click', () => {
-                if (typeof sendChat === 'function') sendChat();
-            });
-        }
+        if (input) input.focus();
     }
 
     function inheritTheme() {
@@ -434,8 +417,18 @@
         } catch {}
     }
 
+    // Publish the channel context into the shared globals app.js/channel-uploads.js/
+    // vibes.js read — the [+] upload modal and the donate modal resolve their channel
+    // from these, exactly like on a channel page.
+    function syncContext() {
+        try { if (typeof _activeChannelUserId !== 'undefined') _activeChannelUserId = channelUserId || null; } catch { /* */ }
+        try { if (typeof currentStreamId !== 'undefined') currentStreamId = activeStreamId || null; } catch { /* */ }
+        try { if (typeof currentChannelUsername !== 'undefined') currentChannelUsername = channelName || null; } catch { /* */ }
+    }
+
     // ── Channel-follow: join the right room and keep following the live state ──
     function joinTarget() {
+        syncContext();
         if (typeof initChat !== 'function') return;
         if (mode === 'channel') initChat(activeStreamId, channelUserId);
         else initChat(null);
