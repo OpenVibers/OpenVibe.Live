@@ -31,6 +31,12 @@ const COINS = {
     STREAK_THRESHOLD_MIN: 60,    // minutes before streak kicks in
 };
 
+// Mirror every channel-point award into the streamer's PowerChat leaderboard feed
+// (batched there; a no-op unless the streamer connected PowerChat with currency:write).
+function _feedPowerchat(streamerId, userId, coins) {
+    try { require('../integrations/powerchat-platform').queueCurrencyEarn(streamerId, userId, coins); } catch { /* non-critical */ }
+}
+
 // In-memory cooldown tracker (userId → lastChatCoinTime)
 const chatCooldowns = new Map();
 // Bonus-game claim throttle ("userId:streamerId" → last claim ms)
@@ -69,6 +75,7 @@ class OpenCoins {
         }
 
         const total = db.addChannelPoints(userId, streamerId, coins);
+        _feedPowerchat(streamerId, userId, coins);
         db.createCoinTransaction({
             user_id: userId,
             stream_id: streamId,
@@ -104,6 +111,7 @@ class OpenCoins {
         chatCooldowns.set(userId, now);
 
         const total = db.addChannelPoints(userId, streamerId, COINS.CHAT_BONUS);
+        _feedPowerchat(streamerId, userId, COINS.CHAT_BONUS);
         db.createCoinTransaction({
             user_id: userId,
             stream_id: streamId,
@@ -132,6 +140,7 @@ class OpenCoins {
         if (!streamerId || streamerId === userId) return null;
 
         const total = db.addChannelPoints(userId, streamerId, COINS.FOLLOW_BONUS);
+        _feedPowerchat(streamerId, userId, COINS.FOLLOW_BONUS);
         db.createCoinTransaction({
             user_id: userId,
             stream_id: null,
@@ -248,6 +257,7 @@ class OpenCoins {
         bonusClaims.set(key, now);
         const amount = Math.max(1, (cfg.watch_amount || 10) * 3);
         const total = db.addChannelPoints(userId, streamerId, amount);
+        _feedPowerchat(streamerId, userId, amount);
         db.createCoinTransaction({ user_id: userId, stream_id: streamId, amount, type: 'watch', message: 'Bonus game' });
         return { coins: amount, total, streamerId };
     }
