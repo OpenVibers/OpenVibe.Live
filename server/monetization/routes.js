@@ -218,7 +218,14 @@ router.post('/goals', requireAuth, (req, res) => {
 // ── Update a Donation Goal ───────────────────────────────────
 router.put('/goals/:id', requireAuth, (req, res) => {
     try {
-        openvibeBucks.updateGoal(parseInt(req.params.id, 10), req.user.id, req.body);
+        const g = openvibeBucks.updateGoal(parseInt(req.params.id, 10), req.user.id, req.body);
+        // A manual progress correction should show up on open goal widgets right away,
+        // same as a donation does (a plain goal-update — no celebration).
+        if (req.body.current_amount !== undefined && g) {
+            try {
+                require('../chat/chat-server').broadcastToChannelRoom(req.user.id, null, { type: 'goal-update', goal: publicGoal(g) });
+            } catch { /* live update is best-effort */ }
+        }
         res.json({ goals: openvibeBucks.getManageGoals(req.user.id).map(publicGoal) });
     } catch (err) {
         res.status(400).json({ error: err.message });
