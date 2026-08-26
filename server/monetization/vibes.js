@@ -117,7 +117,7 @@ class Vibes {
         db.addVibesCashout(toUserId, amount);
 
         // Record transaction
-        db.createTransaction({
+        const txn = db.createTransaction({
             from_user_id: fromUserId,
             to_user_id: toUserId,
             stream_id: streamId,
@@ -133,6 +133,7 @@ class Vibes {
         return {
             success: true,
             amount,
+            transactionId: txn && txn.lastInsertRowid ? Number(txn.lastInsertRowid) : null,
             goal: goalResult ? goalResult.goal : null,      // the goal that advanced (for the widget)
             goalReached: goalResult && goalResult.reached ? goalResult.goal : null,
         };

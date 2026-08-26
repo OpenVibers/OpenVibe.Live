@@ -37,11 +37,14 @@ function getConfig() {
         clientSecret: s('powerchat_client_secret'),
         webhookSecret: s('powerchat_webhook_secret'),
         // Request the integration scopes AND the platform scopes we actually use
-        // (chat:write / viewcount:write / subscriptions:write / currency:write), so the
-        // grant carries them — otherwise every platform intake call 403s. Widening the
-        // default requires the streamer to reconnect (re-consent) to re-mint tokens.
-        scopes: s('powerchat_scopes') || 'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write',
-        sandboxUsername: s('powerchat_sandbox_username') || 'n8admin',
+        // (chat:write / viewcount:write / subscriptions:write / follows:write /
+        // currency:write / tips:write), so the grant carries them — otherwise every
+        // platform intake call 403s. NOTE: the DB seeds this setting, so the seeded
+        // value in database.js is what actually applies — keep the two lists in sync.
+        // Widening the list requires the streamer to reconnect (re-consent) to re-mint
+        // tokens with the wider set.
+        scopes: s('powerchat_scopes') || 'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write tips:write',
+        sandboxUsername: s('powerchat_sandbox_username') || 'alex',
         authorizeUrl: `${baseUrl}/oauth/authorize`,
         tokenUrl: `${baseUrl}/oauth/token`,
         revokeUrl: `${baseUrl}/oauth/revoke`,
@@ -234,7 +237,10 @@ async function getValidAccessToken(userId, { force = false } = {}) {
         }
         throw err;
     }
-    // Persist the NEW pair atomically before using it.
+    // Persist the NEW pair atomically before using it. PowerChat rotates the refresh
+    // token on every use, but defend against a response that omits it — writing null
+    // would strand the connection with no way to refresh.
+    if (!t.refresh_token) t.refresh_token = conn.refresh_token;
     db.updatePowerchatTokens(userId, t);
     return t.access_token;
 }

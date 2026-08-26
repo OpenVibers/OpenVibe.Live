@@ -12,6 +12,7 @@
 'use strict';
 
 const express = require('express');
+const crypto = require('crypto');
 const router = express.Router();
 const db = require('../db/database');
 const config = require('../config');
@@ -65,6 +66,11 @@ router.get('/status', requireAuth, (req, res) => {
         // sandbox self-connect (no tokens) so the card can say which it is.
         const connection_kind = connected ? (conn.refresh_token ? 'app' : 'testing') : null;
         const scopes = conn && conn.scope ? String(conn.scope).split(/\s+/).filter(Boolean) : [];
+        // Scopes the app now requests that this grant was minted WITHOUT (added since
+        // the streamer connected). Grants never gain scopes retroactively — the fix is
+        // a reconnect (re-consent), so the UI can prompt for exactly that.
+        const wanted = String(cfg.scopes).split(/\s+/).filter(Boolean);
+        const missing_scopes = (connected && conn.scope) ? wanted.filter(sc => !scopes.includes(sc)) : [];
         res.json({
             enabled: cfg.enabled,
             configured: oauth.isConfigured(),
@@ -74,6 +80,7 @@ router.get('/status', requireAuth, (req, res) => {
             tip_page_url: conn ? conn.tip_page_url : null,
             scope: conn ? conn.scope : null,
             scopes,
+            missing_scopes,
             last_error: conn ? conn.last_error : null,
             sandbox_username: cfg.sandboxUsername,
         });
@@ -209,23 +216,73 @@ router.post('/test-tip', requireAuth, async (req, res) => {
     }
 });
 
-// ── POST /test-alert — fire PowerChat's own overlay test-alert (needs alerts:trigger) ─
-// /test-alerts requires a `kind` discriminator (tip|subscribe|follow|host|emote-wall|
-// view-count|channel_points) + kind-specific fields; an empty body 400s.
+// ── POST /test-alert — fire a fake event of any kind on the PowerChat overlay ─────────
+// body: { kind } — so the streamer can verify each part of the integration end to end.
+//
+// Two transports, chosen per kind:
+//  - tip/subscribe/follow/channel_points/host → PowerChat's /test-alerts endpoint
+//    (alerts:trigger). Purpose-built for this: display-only, attributed to the app,
+//    never credits goals/subathon/leaderboards. Body is a discriminated union — `kind`
+//    at the top level, kind-specific fields nested under `payload` (strict validation
+//    rejects loose top-level fields). App calls may not use the view-count/emote-wall
+//    kinds (rejected), which is why those go through the real intake below.
+//  - chat → the REAL POST /chat intake (chat:write): a test line through the actual
+//    moderation pipeline into the unified chat overlay — harmless, and the truest test.
+//  - view-count → the REAL POST /view-count intake (viewcount:write): the branded chip
+//    appears with the streamer's live count (or 42 when offline); PowerChat's ~90s
+//    freshness sweep clears a test push on its own.
+const TEST_KINDS = {
+    tip:            { scope: 'alerts:trigger',  note: 'A tip alert should appear on your PowerChat overlay now.' },
+    subscribe:      { scope: 'alerts:trigger',  note: 'A subscription alert should appear on your PowerChat overlay now.' },
+    follow:         { scope: 'alerts:trigger',  note: 'A follow alert should appear on your PowerChat overlay now.' },
+    channel_points: { scope: 'alerts:trigger',  note: 'A channel-points redeem alert should appear on your PowerChat overlay now.' },
+    host:           { scope: 'alerts:trigger',  note: 'A host alert should appear on your PowerChat overlay now.' },
+    chat:           { scope: 'chat:write',      note: 'A test message should appear in your PowerChat unified chat overlay now.' },
+    'view-count':   { scope: 'viewcount:write', note: 'The OpenVibe.Live viewer chip should appear on PowerChat now (a test push clears itself within ~90s).' },
+};
 router.post('/test-alert', requireAuth, async (req, res) => {
+    const kind = String((req.body && req.body.kind) || 'tip');
+    const spec = TEST_KINDS[kind];
+    if (!spec) return res.status(400).json({ error: `Unknown test kind "${kind}"` });
+    const actorName = String(req.user.display_name || req.user.username || 'Test').slice(0, 48);
     try {
-        const actorName = req.user.display_name || req.user.username || 'Test';
-        await oauth.apiRequest(req.user.id, {
-            method: 'POST', path: '/test-alerts',
-            body: { kind: 'tip', actorName, amountCents: 500, message: 'Test overlay alert from OpenVibe.Live ✨' },
-        });
-        res.json({ ok: true });
+        if (kind === 'chat') {
+            await oauth.apiRequest(req.user.id, {
+                method: 'POST', path: '/chat',
+                body: {
+                    chatterName: actorName,
+                    externalChatterId: `test-u${req.user.id}`,
+                    message: 'Test message from OpenVibe.Live — your chat relay works ✨',
+                    messageId: `test-${crypto.randomUUID()}`,
+                },
+            });
+        } else if (kind === 'view-count') {
+            // Push the real live count when there is one, so the chip shows the truth;
+            // 42 is the recognizable stand-in when testing while offline.
+            let live = [];
+            try { live = db.getLiveStreamsByUserId(req.user.id) || []; } catch { /* */ }
+            const count = live.length ? live.reduce((a, s) => a + (s.viewer_count || 0), 0) : 42;
+            await oauth.apiRequest(req.user.id, { method: 'POST', path: '/view-count', body: { count } });
+        } else {
+            const payloads = {
+                tip: { amountCents: 500, currency: 'usd', tipperName: actorName, message: 'Test tip alert from OpenVibe.Live ✨' },
+                subscribe: { subscriberName: actorName, tier: '1' },
+                follow: { followerName: actorName },
+                channel_points: { redeemerName: actorName, rewardName: 'Test Reward', rewardCost: 500, userInput: 'Test redeem from OpenVibe.Live ✨' },
+                host: { fromChannel: actorName, viewers: 42 },
+            };
+            await oauth.apiRequest(req.user.id, {
+                method: 'POST', path: '/test-alerts',
+                body: { kind, payload: payloads[kind] },
+            });
+        }
+        res.json({ ok: true, kind, note: spec.note });
     } catch (err) {
         // Missing scope → tell the user to reconnect to grant it (friendly, actionable).
-        if (err.status === 403 && /alerts:trigger/i.test(err.message || '')) {
-            return res.status(403).json({ error: 'reconnect_required', message: 'Reconnect your PowerChat account to enable overlay test alerts (the "trigger alerts" permission was added).' });
+        if (err.status === 403) {
+            return res.status(403).json({ error: 'reconnect_required', message: `Reconnect your PowerChat account to enable this test (it needs the "${spec.scope}" permission).` });
         }
-        res.status(err.status === 403 ? 403 : 502).json({ error: err.message });
+        res.status(502).json({ error: err.message });
     }
 });
 

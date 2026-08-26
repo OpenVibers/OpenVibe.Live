@@ -49,7 +49,19 @@
                     <span class="pc-action-label"><i class="fa-solid fa-flask"></i> Test your setup</span>
                     <div class="pc-btn-row">
                         <button class="btn btn-primary btn-small" onclick="powerchatTestTip(this)"><i class="fa-solid fa-gift"></i> Send test tip</button>
-                        <button class="btn btn-outline btn-small" onclick="powerchatTestAlert(this)"><i class="fa-solid fa-bell"></i> Test overlay alert</button>
+                        <div class="pc-test-menu-wrap">
+                            <button class="btn btn-outline btn-small" onclick="powerchatToggleTestMenu(event)"><i class="fa-solid fa-bell"></i> Test on PowerChat <i class="fa-solid fa-caret-down pc-test-caret"></i></button>
+                            <div class="pc-test-menu" hidden>
+                                <div class="pc-test-menu-head">Fires a fake event on your PowerChat overlay</div>
+                                <button onclick="powerchatTestKind('tip', this)"><i class="fa-solid fa-hand-holding-dollar"></i> Tip alert</button>
+                                <button onclick="powerchatTestKind('subscribe', this)"><i class="fa-solid fa-star"></i> Subscription alert</button>
+                                <button onclick="powerchatTestKind('follow', this)"><i class="fa-solid fa-user-plus"></i> Follow alert</button>
+                                <button onclick="powerchatTestKind('channel_points', this)"><i class="fa-solid fa-coins"></i> Channel-points redeem</button>
+                                <button onclick="powerchatTestKind('host', this)"><i class="fa-solid fa-tower-broadcast"></i> Host alert</button>
+                                <button onclick="powerchatTestKind('chat', this)"><i class="fa-solid fa-comment"></i> Chat message</button>
+                                <button onclick="powerchatTestKind('view-count', this)"><i class="fa-solid fa-eye"></i> Viewer-count chip</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="pc-action-group">
@@ -59,7 +71,22 @@
                         <button class="btn btn-outline btn-small pc-disconnect-btn" onclick="powerchatDisconnect(this)"><i class="fa-solid fa-link-slash"></i> Disconnect</button>
                     </div>
                 </div>`;
-            if (hintEl) hintEl.textContent = st.last_error ? ('Note: ' + st.last_error) : 'Tips confirmed on PowerChat now flow into your goals, alerts, and chat automatically.';
+            // A grant never gains scopes retroactively — if the app now asks for more than
+            // this connection was minted with (e.g. viewer count / chat / tips were added
+            // later), the streamer must re-consent. Without this, those features silently 403.
+            const missing = Array.isArray(st.missing_scopes) ? st.missing_scopes : [];
+            if (missing.length) {
+                if (actionsEl) actionsEl.insertAdjacentHTML('afterbegin', `
+                    <div class="pc-action-group">
+                        <span class="pc-action-label pc-warn"><i class="fa-solid fa-triangle-exclamation"></i> New permissions available</span>
+                        <div class="pc-btn-row">
+                            <button class="btn btn-primary btn-small" onclick="powerchatConnect()"><i class="fa-solid fa-rotate"></i> Reconnect to enable</button>
+                        </div>
+                    </div>`);
+                if (hintEl) hintEl.innerHTML = `<span class="pc-warn">Your connection is missing: ${esc(missing.join(', '))}. Reconnect (one click, same account) to enable viewer count, chat, and alerts on your PowerChat overlay.</span>`;
+            } else if (hintEl) {
+                hintEl.textContent = st.last_error ? ('Note: ' + st.last_error) : 'Tips confirmed on PowerChat now flow into your goals, alerts, and chat automatically.';
+            }
         } else {
             _swap(statusEl, '<span class="pc-dot pc-dot-off"></span> Not connected.');
             if (actionsEl) actionsEl.innerHTML = `<button class="btn btn-primary btn-small pc-connect-btn" onclick="powerchatConnect()"><i class="fa-solid fa-plug"></i> Connect PowerChat</button>`;
@@ -215,16 +242,47 @@
         finally { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-gift"></i> Send test tip'; } }
     };
 
-    // PowerChat's own overlay test alert (requires the alerts:trigger scope).
-    window.powerchatTestAlert = async function powerchatTestAlert(btn) {
-        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending…'; }
-        try { await api('/powerchat/test-alert', { method: 'POST' }); toast('Overlay test alert sent to PowerChat ✓', 'success'); }
-        catch (e) {
-            const m = (e && e.message) || '';
-            if (/reconnect/i.test(m) || /alerts:trigger/i.test(m)) toast('Reconnect PowerChat to enable overlay test alerts (a new permission was added).', 'warning');
-            else toast('Overlay alert failed: ' + (m || 'error'), 'error');
+    // ── "Test on PowerChat" dropdown — fire a fake event of any kind ──────────
+    function _closeTestMenus() {
+        document.querySelectorAll('.pc-test-menu').forEach(m => { m.hidden = true; });
+        document.querySelectorAll('.pc-test-menu-wrap.open').forEach(w => w.classList.remove('open'));
+    }
+    window.powerchatToggleTestMenu = function powerchatToggleTestMenu(ev) {
+        if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+        const wrap = ev && ev.currentTarget ? ev.currentTarget.closest('.pc-test-menu-wrap') : null;
+        const menu = wrap && wrap.querySelector('.pc-test-menu');
+        if (!menu) return;
+        const wasHidden = menu.hidden;
+        _closeTestMenus();
+        if (wasHidden) { menu.hidden = false; wrap.classList.add('open'); }
+    };
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest || !e.target.closest('.pc-test-menu-wrap')) _closeTestMenus();
+    });
+
+    // Fire one fake event on the PowerChat overlay. Alert kinds are display-only test
+    // alerts (never credit anything); chat/view-count go through the real intake so the
+    // streamer sees exactly what the live relay produces.
+    window.powerchatTestKind = async function powerchatTestKind(kind, btn) {
+        const menu = btn && btn.closest('.pc-test-menu');
+        const buttons = menu ? Array.from(menu.querySelectorAll('button')) : (btn ? [btn] : []);
+        buttons.forEach(b => { b.disabled = true; });
+        const orig = btn ? btn.innerHTML : '';
+        if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending…';
+        try {
+            const r = await api('/powerchat/test-alert', { method: 'POST', body: { kind } });
+            toast((r && r.note) || 'Test sent to PowerChat ✓', 'success');
+            _closeTestMenus();
+        } catch (e) {
+            // api() throws { message: <error code>, data: <body> } — the human-readable
+            // text for scope failures is in data.message.
+            const m = (e && e.data && e.data.message) || (e && e.message) || '';
+            if (/reconnect/i.test(m)) toast(m, 'warning');
+            else toast('Test failed: ' + (m || 'error'), 'error');
+        } finally {
+            if (btn) btn.innerHTML = orig;
+            buttons.forEach(b => { b.disabled = false; });
         }
-        finally { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-bell"></i> Test overlay alert'; } }
     };
 
     // Chain into the dashboard load.
