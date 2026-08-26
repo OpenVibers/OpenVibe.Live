@@ -171,7 +171,10 @@ function showSubscribeModal(username) {
 
 function openSubscribeForCurrentStream() {
     const d = (typeof currentStreamData !== 'undefined' && currentStreamData) || {};
-    const username = d.username || d.user_username || d.streamer_username || d.channel_username || d.owner_username;
+    const username = d.username || d.user_username || d.streamer_username || d.channel_username || d.owner_username
+        // Offline channel page / popout chat — the channel identity lives here instead.
+        || (typeof currentChannelUsername !== 'undefined' && currentChannelUsername)
+        || (typeof chatChannel !== 'undefined' && chatChannel) || null;
     if (!username) return toast('No channel selected', 'error');
     showSubscribeModal(username);
 }
