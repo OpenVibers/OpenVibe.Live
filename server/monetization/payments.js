@@ -48,6 +48,10 @@ function publicConfig() {
             stripe: isEnabled() && b('stripe_enabled') && !!s('stripe_secret_key'),
             ccbill: isEnabled() && b('ccbill_enabled') && !!s('ccbill_flexform_id'),
             crypto: isEnabled() && b('crypto_enabled') && !!s('crypto_api_key'),
+            // PowerChat tips as a money entry point — available once the site-wide
+            // PowerChat account (powerchat_site_user_id) is connected with checkout
+            // attribution. Lazy require: the checkout module requires this one back.
+            powerchat: isEnabled() && (() => { try { return require('../integrations/powerchat-checkout').isAvailable(); } catch { return false; } })(),
         },
         stripePublishableKey: s('stripe_publishable_key'),
     };
@@ -245,8 +249,11 @@ function fulfillBucksOrder(order) {
     return true;
 }
 
-/** Activate/extend a subscription from a paid order (idempotent-ish). */
-function fulfillSubscriptionOrder(order, { providerRef = null, periodEnd = null } = {}) {
+/** Activate/extend a subscription from a paid order (idempotent-ish).
+ *  creditShare=false: the streamer already received the money directly (e.g. a
+ *  PowerChat tip on their own page) — activate the sub without minting their
+ *  cashout-Vibes share on top. autoRenew: null leaves the sub's flag untouched. */
+function fulfillSubscriptionOrder(order, { providerRef = null, periodEnd = null, creditShare = true, autoRenew = null } = {}) {
     if (!order || !order.streamer_id) return null;
     const end = periodEnd || new Date(Date.now() + 31 * 24 * 3600 * 1000).toISOString();
     // Note BEFORE the upsert whether this subscriber already had a sub row — that makes
@@ -257,13 +264,13 @@ function fulfillSubscriptionOrder(order, { providerRef = null, periodEnd = null 
         subscriber_id: order.user_id, streamer_id: order.streamer_id, tier: 1,
         provider: order.provider, provider_ref: providerRef || order.provider_ref,
         price_cents: order.amount_cents, currency: order.currency || 'usd',
-        status: 'active', current_period_end: end,
+        status: 'active', current_period_end: end, auto_renew: autoRenew,
     });
     if (order.status !== 'credited') {
         // Pay the streamer their share as Vibes — this is income they received, so
         // it lands in their cashout balance (the only cashout-able balance).
         const sharePct = n('sub_streamer_share_pct', 70);
-        const streamerBucks = bucksForUsd((order.amount_cents / 100) * (sharePct / 100));
+        const streamerBucks = creditShare ? bucksForUsd((order.amount_cents / 100) * (sharePct / 100)) : 0;
         if (streamerBucks > 0) db.addVibesCashout(order.streamer_id, streamerBucks);
         db.updatePaymentOrder(order.id, { status: 'credited' });
         // Fire the sub on the streamer's PowerChat overlay (subscriptions:write) —
@@ -282,8 +289,69 @@ function fulfillSubscriptionOrder(order, { providerRef = null, periodEnd = null 
     return sub;
 }
 
+// ── Subscription renewal sweeper ─────────────────────────────
+// Auto-renew for every method that CAN renew:
+//   - Stripe subs renew natively (invoice.paid extends the period). The sweeper only
+//     expires them after a 3-day grace window with no renewal — Stripe stopped billing.
+//   - Everything else (vibes/paypal/ccbill/crypto/powerchat) is a one-time charge the
+//     processor can't repeat, so auto_renew=1 renews from the subscriber's VIBES
+//     balance — the universal wallet every method can top up. Insufficient balance
+//     (or auto_renew off / cancel-at-period-end) → the sub expires with a notification.
+const STRIPE_GRACE_MS = 3 * 24 * 3600 * 1000;
+function _sweepRenewals() {
+    const due = db.getSubscriptionsDueRenewal(50) || [];
+    for (const sub of due) {
+        try {
+            const endMs = Date.parse(sub.current_period_end) || 0;
+            if (sub.provider === 'stripe') {
+                if (Date.now() - endMs < STRIPE_GRACE_MS) continue; // let Stripe's invoice.paid land
+                db.setSubscriptionStatus(sub.id, 'expired');
+                _renewNotify(sub, 'Your card subscription was not renewed by Stripe and has ended.');
+                continue;
+            }
+            if (sub.cancel_at_period_end || !sub.auto_renew) {
+                db.setSubscriptionStatus(sub.id, sub.cancel_at_period_end ? 'canceled' : 'expired');
+                if (!sub.cancel_at_period_end) _renewNotify(sub, 'Your channel subscription has ended. Resubscribe any time!');
+                continue;
+            }
+            const priceCents = sub.price_cents || Math.round(n('sub_price_usd', 4.99) * 100);
+            const cost = bucksForUsd(priceCents / 100);
+            if (!db.deductVibes(sub.subscriber_id, cost)) {
+                db.setSubscriptionStatus(sub.id, 'expired');
+                _renewNotify(sub, `Your subscription could not auto-renew (${cost.toLocaleString()} Vibes needed). Top up and resubscribe!`);
+                continue;
+            }
+            const order = db.createPaymentOrder({
+                user_id: sub.subscriber_id, provider: 'bucks', kind: 'subscription',
+                amount_cents: priceCents, streamer_id: sub.streamer_id, status: 'paid',
+            });
+            fulfillSubscriptionOrder(order, { autoRenew: 1 });
+            console.log(`[Payments] auto-renewed sub ${sub.id} (user ${sub.subscriber_id} → streamer ${sub.streamer_id}) from Vibes balance`);
+        } catch (e) { console.warn(`[Payments] renewal sweep sub ${sub.id}:`, e.message); }
+    }
+}
+function _renewNotify(sub, message) {
+    try {
+        const { pushNotification } = require('../utils/notify');
+        const streamer = db.getUserById(sub.streamer_id);
+        pushNotification({
+            user_id: sub.subscriber_id, type: 'PAYMENT', title: 'Subscription update',
+            message: `${streamer ? (streamer.display_name || streamer.username) + ': ' : ''}${message}`,
+            url: streamer ? `/${streamer.username}` : '/',
+        });
+    } catch { /* optional */ }
+}
+let _renewTimer = null;
+function startRenewalSweeper() {
+    if (_renewTimer) return;
+    _sweepRenewals(); // catch up immediately on boot
+    _renewTimer = setInterval(_sweepRenewals, 60 * 60 * 1000);
+    if (_renewTimer.unref) _renewTimer.unref();
+    console.log('[Payments] subscription renewal sweeper started (hourly)');
+}
+
 module.exports = {
-    isEnabled, publicConfig, bucksForUsd,
+    isEnabled, publicConfig, bucksForUsd, startRenewalSweeper,
     // stripe
     stripeCheckout, stripeVerify,
     // paypal

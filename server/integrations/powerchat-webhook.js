@@ -187,6 +187,13 @@ function processEvent(envelope) {
             case 'donation.completed':
                 // The authoritative money event. paid_message.created is a subset of this
                 // (a tip that carried a message) — we DON'T credit on it to avoid double-count.
+                // Checkout-attributed tips (Vibes purchases, PowerChat-paid subs, and
+                // site-routed donations for PowerChat-less streamers) are fulfilled by the
+                // checkout module; when it consumes the event, the receiving account's
+                // normal donation pipeline must NOT also run.
+                if (data.appExternalRef && /^(pcorder|pcsub|pcdon):/.test(String(data.appExternalRef))) {
+                    if (require('./powerchat-checkout').handleAttributedDonation(userId, data)) break;
+                }
                 _handleDonation(userId, data);
                 break;
             case 'subscription.created':
@@ -256,4 +263,9 @@ function simulateDonation(userId, { amountUsd = 5, donor = 'Test Tipper', messag
     return { amount, live: !!streamId };
 }
 
-module.exports = { verifySignature, processEvent, publicGoal, simulateDonation };
+module.exports = {
+    verifySignature, processEvent, publicGoal, simulateDonation,
+    // The full on-site donation celebration (chat event, alert sound, goal credit) for
+    // a given streamer — reused by the checkout module for site-routed donations.
+    creditDonationPipeline: _handleDonation,
+};

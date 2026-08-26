@@ -57,6 +57,17 @@ router.post('/bucks/checkout', requireAuth, async (req, res) => {
             const r = await pay.cryptoCreateInvoice({ order, amountUsd, description: name });
             return res.json({ url: r.url });
         }
+        if (provider === 'powerchat') {
+            // Tip the site's PowerChat account; the donation.completed webhook credits
+            // the buyer with Vibes for the amount ACTUALLY tipped (the tip page can't
+            // enforce an amount, so we tell the buyer what to tip and settle on actuals).
+            const link = require('../integrations/powerchat-checkout').buildPurchaseLink(order);
+            if (!link) { db.updatePaymentOrder(order.id, { status: 'failed' }); return res.status(400).json({ error: 'PowerChat purchases are not available right now' }); }
+            return res.json({
+                url: link.url, powerchat: true, amountUsd,
+                note: `Tip $${amountUsd.toFixed(2)} on PowerChat — your Vibes are credited automatically once the tip confirms (any amount you tip converts to Vibes).`,
+            });
+        }
         return res.status(400).json({ error: 'Unknown payment provider' });
     } catch (err) {
         console.error('[Payments] checkout error:', err.message);
@@ -96,16 +107,37 @@ router.post('/subscribe', requireAuth, async (req, res) => {
     const priceUsd = pay._num('sub_price_usd', 4.99);
     const amountCents = Math.round(priceUsd * 100);
 
-    // Pay with Vibes — instant 30-day sub, no auto-renew.
+    // Pay with Vibes — instant 30-day sub; auto-renews from the Vibes balance unless
+    // the subscriber opted out.
     if (provider === 'bucks') {
+        const autoRenew = req.body.auto_renew === undefined ? 1 : (req.body.auto_renew ? 1 : 0);
         const cost = pay.bucksForUsd(priceUsd);
         if (!db.deductVibes(req.user.id, cost)) return res.status(402).json({ error: `Not enough Vibes (need ${cost})` });
         const order = db.createPaymentOrder({
             user_id: req.user.id, provider: 'bucks', kind: 'subscription',
             amount_cents: amountCents, streamer_id: streamer.id, status: 'paid',
         });
-        const sub = pay.fulfillSubscriptionOrder(order);
-        return res.json({ ok: true, subscription: { streamer: streamer.username, current_period_end: sub.current_period_end } });
+        const sub = pay.fulfillSubscriptionOrder(order, { autoRenew });
+        return res.json({ ok: true, subscription: { streamer: streamer.username, current_period_end: sub.current_period_end, auto_renew: !!autoRenew } });
+    }
+
+    // Pay with a PowerChat tip — streamer's own tip page when they have PowerChat
+    // (they keep the money directly), else the site-wide PowerChat account (the site
+    // holds the money and the streamer gets their normal cashout-Vibes share). The
+    // donation.completed webhook confirms and activates the sub. Renewals come from
+    // the Vibes balance when auto_renew is on (a tip can't be auto-charged).
+    if (provider === 'powerchat') {
+        const autoRenew = req.body.auto_renew ? 1 : 0;
+        const order = db.createPaymentOrder({
+            user_id: req.user.id, provider: 'powerchat', kind: 'subscription',
+            amount_cents: amountCents, streamer_id: streamer.id,
+        });
+        const link = require('../integrations/powerchat-checkout').buildSubscribeLink(order, streamer.id, { autoRenew });
+        if (!link) { db.updatePaymentOrder(order.id, { status: 'failed' }); return res.status(400).json({ error: 'PowerChat payments are not available right now' }); }
+        return res.json({
+            url: link.url, powerchat: true, amountUsd: priceUsd,
+            note: `Tip $${priceUsd.toFixed(2)} on PowerChat — your subscription activates automatically once the tip confirms.`,
+        });
     }
 
     // Stripe recurring subscription (auto-renew monthly).

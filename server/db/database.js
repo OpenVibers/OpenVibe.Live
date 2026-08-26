@@ -1057,6 +1057,11 @@ function initDb() {
             // registration has the scopes.
             ['powerchat_scopes', 'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write tips:write', 'OAuth scopes requested from each streamer (space-delimited)', 'string'],
             ['powerchat_sandbox_username', 'alex', 'Sandbox streamer username the app can act on until approved (the app owner’s PowerChat username)', 'string'],
+            // Site-wide fallback PowerChat account: the OpenVibe user id whose connected
+            // PowerChat receives tips when a streamer has no PowerChat of their own, and
+            // hosts all Vibes purchases. That user connects PowerChat from their normal
+            // dashboard card; this setting just points at them (default: the owner).
+            ['powerchat_site_user_id', '1', 'OpenVibe user id whose PowerChat connection is the site-wide tip/purchase account (fallback when a streamer has no PowerChat)', 'number'],
         ];
         const seedPc = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
         for (const [k, v, d, t] of powerchatSeeds) seedPc.run(k, v, d, t);
@@ -1439,6 +1444,7 @@ function initDb() {
             { name: 'currency', def: "TEXT DEFAULT 'usd'" },
             { name: 'status', def: "TEXT DEFAULT 'active'" },          // active|canceled|past_due|expired
             { name: 'cancel_at_period_end', def: "INTEGER DEFAULT 0" },
+            { name: 'auto_renew', def: "INTEGER DEFAULT 0" },          // renew from Vibes balance at period end (non-Stripe)
             { name: 'current_period_end', def: "DATETIME DEFAULT NULL" },
             { name: 'created_at', def: "DATETIME DEFAULT CURRENT_TIMESTAMP" },
             { name: 'updated_at', def: "DATETIME DEFAULT CURRENT_TIMESTAMP" },
@@ -4838,19 +4844,30 @@ function updatePaymentOrder(id, fields) {
 
 // ── Subscription helpers ─────────────────────────────────────
 
-function upsertSubscription({ subscriber_id, streamer_id, tier = 1, provider = null, provider_ref = null, price_cents = 0, currency = 'usd', status = 'active', current_period_end = null }) {
+function upsertSubscription({ subscriber_id, streamer_id, tier = 1, provider = null, provider_ref = null, price_cents = 0, currency = 'usd', status = 'active', current_period_end = null, auto_renew = null }) {
     // Reuse an existing (subscriber,streamer) row if present, else insert.
+    // auto_renew: null = leave as-is on update (0 on insert); 0/1 = set explicitly.
     const existing = get('SELECT * FROM subscriptions WHERE subscriber_id = ? AND streamer_id = ?', [subscriber_id, streamer_id]);
     if (existing) {
         run(`UPDATE subscriptions SET tier=?, provider=?, provider_ref=COALESCE(?, provider_ref), price_cents=?, currency=?,
-                status=?, is_active=?, current_period_end=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-            [tier, provider, provider_ref, price_cents, currency, status, status === 'active' ? 1 : 0, current_period_end, existing.id]);
+                status=?, is_active=?, current_period_end=?, auto_renew=COALESCE(?, auto_renew),
+                cancel_at_period_end=0, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+            [tier, provider, provider_ref, price_cents, currency, status, status === 'active' ? 1 : 0, current_period_end,
+                auto_renew === null ? null : (auto_renew ? 1 : 0), existing.id]);
         return get('SELECT * FROM subscriptions WHERE id = ?', [existing.id]);
     }
-    const res = run(`INSERT INTO subscriptions (subscriber_id, streamer_id, tier, provider, provider_ref, price_cents, currency, status, is_active, current_period_end)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [subscriber_id, streamer_id, tier, provider, provider_ref, price_cents, currency, status, status === 'active' ? 1 : 0, current_period_end]);
+    const res = run(`INSERT INTO subscriptions (subscriber_id, streamer_id, tier, provider, provider_ref, price_cents, currency, status, is_active, current_period_end, auto_renew)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [subscriber_id, streamer_id, tier, provider, provider_ref, price_cents, currency, status, status === 'active' ? 1 : 0, current_period_end, auto_renew ? 1 : 0]);
     return get('SELECT * FROM subscriptions WHERE id = ?', [res.lastInsertRowid]);
+}
+
+// Active subs whose paid period has lapsed — the renewal sweeper's work list.
+function getSubscriptionsDueRenewal(limit = 50) {
+    return all(`SELECT * FROM subscriptions
+        WHERE status = 'active' AND current_period_end IS NOT NULL
+          AND datetime(current_period_end) <= CURRENT_TIMESTAMP
+        ORDER BY datetime(current_period_end) ASC LIMIT ?`, [limit]);
 }
 
 function getSubscriptionByProviderRef(provider, ref) {
@@ -7641,6 +7658,7 @@ module.exports = {
     createPaymentOrder, getPaymentOrderById, getPaymentOrderByRef, updatePaymentOrder,
     upsertSubscription, getSubscriptionByProviderRef, getActiveSubscription, isActiveSubscriber,
     getSubscriptionsByStreamer, getSubscriptionsBySubscriber, getActiveSubscriberCount, setSubscriptionStatus,
+    getSubscriptionsDueRenewal,
     getRestreamDestinationsByManagedStream,
     // Chat
     saveChatMessage, searchChatMessages, getUserChatHistory,

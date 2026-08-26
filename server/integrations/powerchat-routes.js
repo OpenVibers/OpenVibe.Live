@@ -16,7 +16,7 @@ const crypto = require('crypto');
 const router = express.Router();
 const db = require('../db/database');
 const config = require('../config');
-const { requireAuth } = require('../auth/auth');
+const { requireAuth, optionalAuth } = require('../auth/auth');
 const oauth = require('./powerchat-oauth');
 const webhook = require('./powerchat-webhook');
 
@@ -194,6 +194,25 @@ router.get('/tip-link', requireAuth, (req, res) => {
         if (ref) params.set('app_ref', ref);
         const url = `${cfg.baseUrl}/${encodeURIComponent(conn.powerchat_username)}/tip?${params.toString()}`;
         res.json({ url, tip_page_url: conn.tip_page_url || `${cfg.baseUrl}/${conn.powerchat_username}/tip` });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to build tip link' });
+    }
+});
+
+// ── GET /donate-link — PowerChat tip link for ANY streamer (viewer-facing) ────
+// ?streamer=<username>. Streamers with PowerChat get their own tip page (they keep
+// the money; the webhook fires their celebration). Streamers without PowerChat get
+// the site-wide account's page with a routing ref — the webhook then credits them
+// the full amount as cashout-able Vibes and fires the same celebration.
+router.get('/donate-link', optionalAuth, (req, res) => {
+    try {
+        const streamer = req.query.streamer_id
+            ? db.getUserById(parseInt(req.query.streamer_id, 10))
+            : db.getUserByUsername(String(req.query.streamer || ''));
+        if (!streamer) return res.status(404).json({ error: 'Streamer not found' });
+        const link = require('./powerchat-checkout').buildDonateLink(streamer.id, req.user ? req.user.id : null);
+        if (!link) return res.status(404).json({ error: 'PowerChat tips are not available for this channel' });
+        res.json({ url: link.url, mode: link.mode });
     } catch (err) {
         res.status(500).json({ error: 'Failed to build tip link' });
     }
