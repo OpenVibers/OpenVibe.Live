@@ -274,16 +274,50 @@
     <script>
     'use strict';
 
+    // ── URL parsing ──────────────────────────────────────────────────────────
+    // Pretty form:  /chat/global · /chat/<username> · /chat/<username>/<streamId>
+    // Legacy form:  /popout-chat.html?popout=1&mode=stream&stream=<id> (self-upgrades)
     const params = new URLSearchParams(window.location.search);
-    const mode = params.get('mode') || 'global';
-    const streamId = params.get('stream') || null;
-    const streamTitle = params.get('title') || streamId || '';
-    const chatLabel = mode === 'stream'
-        ? ('Chat' + (streamTitle ? ' — ' + streamTitle : ''))
-        : 'Global Chat';
+    let mode = 'global';          // 'global' | 'channel' (username-scoped, live-following)
+    let channelName = null;       // streamer username
+    let channelUserId = null;     // resolved streamer user id
+    let pinnedStreamId = null;    // requested stream id (only honored while it's live)
+    let activeStreamId = null;    // stream id the chat is currently joined to (null = channel chat)
 
-    document.title = chatLabel + ' — OpenVibe.Live';
-    document.getElementById('pc-title').textContent = chatLabel;
+    (function parseUrl() {
+        const seg = window.location.pathname.split('/').filter(Boolean); // ['chat', user?, id?]
+        if (seg[0] === 'chat') {
+            if (!seg[1] || seg[1].toLowerCase() === 'global') { mode = 'global'; return; }
+            mode = 'channel';
+            channelName = decodeURIComponent(seg[1]);
+            pinnedStreamId = seg[2] ? parseInt(seg[2], 10) || null : null;
+            return;
+        }
+        // Legacy query params
+        const qMode = params.get('mode') || 'global';
+        if (qMode === 'stream' && params.get('stream')) {
+            mode = 'channel';
+            pinnedStreamId = parseInt(params.get('stream'), 10) || null; // username resolved at boot
+        }
+    })();
+
+    function prettyPath() {
+        if (mode !== 'channel' || !channelName) return '/chat/global';
+        return '/chat/' + encodeURIComponent(channelName) + (activeStreamId ? '/' + activeStreamId : '');
+    }
+    // Keep the address bar honest without polluting history — swaps replace, they
+    // don't stack, so Back still leaves the popout instead of replaying old streams.
+    function syncUrl() {
+        try { history.replaceState({ mode, channelName, streamId: activeStreamId }, '', prettyPath()); } catch { /* */ }
+    }
+    function syncTitle(liveLabel) {
+        const label = mode === 'channel'
+            ? ((channelName || 'Chat') + (activeStreamId ? (liveLabel ? ' — ' + liveLabel : ' — live') : ' — channel chat'))
+            : 'Global Chat';
+        document.title = label + ' — OpenVibe.Live';
+        document.getElementById('pc-title').textContent = label;
+    }
+    syncTitle();
 
     // ── Settings panel: delegate entirely to the shared chat.js settings system ──
     // chat.js already called loadChatSettings() on boot (persisted to openvibe_chat_settings),
@@ -366,9 +400,7 @@
             });
         }
 
-        if (typeof initChat === 'function') {
-            initChat(mode === 'stream' && streamId ? streamId : null);
-        }
+        joinTarget();
         const input = document.getElementById('pc-input');
         const sendBtn = document.getElementById('pc-send');
         if (input) {
@@ -401,9 +433,95 @@
         } catch {}
     }
 
+    // ── Channel-follow: join the right room and keep following the live state ──
+    function joinTarget() {
+        if (typeof initChat !== 'function') return;
+        if (mode === 'channel') initChat(activeStreamId, channelUserId);
+        else initChat(null);
+    }
+
+    // A locally-rendered notice (never sent to the server). initChat's history
+    // hydrate clears the container shortly after a swap, so post it after settle.
+    function localNotice(text) {
+        setTimeout(() => { try { if (typeof addSystemMessage === 'function') addSystemMessage(text); } catch { /* */ } }, 1600);
+    }
+
+    async function fetchLiveState() {
+        const r = await fetch(`/api/streams/channel/${encodeURIComponent(channelName)}/live`);
+        if (!r.ok) throw new Error('channel lookup failed');
+        const data = await r.json();
+        if (data.channel) {
+            channelUserId = data.channel.user_id || channelUserId;
+            channelName = data.channel.username || channelName;
+        }
+        return data.streams || [];
+    }
+
+    // Decide which stream the popout SHOULD be in right now:
+    // pinned stream while it's live → the stream we're already in while it's live
+    // (concurrent slots can reorder by viewer count — never flap between them) →
+    // any other live stream → channel chat (null).
+    function desiredTarget(liveStreams) {
+        const liveIds = liveStreams.map(s => Number(s.id));
+        if (pinnedStreamId && liveIds.includes(Number(pinnedStreamId))) return Number(pinnedStreamId);
+        if (activeStreamId != null && liveIds.includes(Number(activeStreamId))) return activeStreamId;
+        return liveIds.length ? liveIds[0] : null;
+    }
+
+    let _watchTimer = null;
+    async function watchLiveState() {
+        if (mode !== 'channel') return;
+        try {
+            const live = await fetchLiveState();
+            const want = desiredTarget(live);
+            if (want !== activeStreamId) {
+                const wasStream = activeStreamId != null;
+                activeStreamId = want;
+                if (want == null) pinnedStreamId = null; // the pin died with its stream
+                joinTarget();
+                syncUrl();
+                syncTitle(live.find(s => Number(s.id) === want)?.title);
+                if (want == null) {
+                    localNotice(`🔀 The stream ended — you're now in ${channelName}'s channel chat. You'll hop back in automatically when they go live.`);
+                } else if (wasStream) {
+                    localNotice(`🔀 That stream ended — switched you to ${channelName}'s current live stream.`);
+                } else {
+                    localNotice(`🔴 ${channelName} just went live — switched you to the live stream chat.`);
+                }
+            }
+        } catch { /* transient — retry next tick */ }
+        _watchTimer = setTimeout(watchLiveState, 20000);
+    }
+
+    async function resolveAndBoot() {
+        if (mode === 'channel') {
+            try {
+                // Legacy ?stream=<id> URLs carry no username — resolve it from the stream.
+                if (!channelName && pinnedStreamId) {
+                    const r = await fetch(`/api/streams/${pinnedStreamId}`);
+                    if (r.ok) {
+                        const s = await r.json();
+                        channelName = s.username || (s.stream && s.stream.username) || null;
+                        channelUserId = s.user_id || (s.stream && s.stream.user_id) || null;
+                    }
+                }
+                if (!channelName) { mode = 'global'; syncTitle(); }
+                else {
+                    const live = await fetchLiveState();
+                    activeStreamId = desiredTarget(live);
+                    if (activeStreamId == null) pinnedStreamId = null;
+                    syncUrl();   // upgrades legacy URLs to /chat/<user>[/<id>] too
+                    syncTitle(live.find(s => Number(s.id) === activeStreamId)?.title);
+                }
+            } catch { /* boot with whatever we parsed */ }
+        }
+        initPopoutChat();
+        if (mode === 'channel') _watchTimer = setTimeout(watchLiveState, 20000);
+    }
+
     function startPopoutChat() {
         inheritTheme();
-        initPopoutChat();
+        resolveAndBoot();
     }
 
     startPopoutChat();

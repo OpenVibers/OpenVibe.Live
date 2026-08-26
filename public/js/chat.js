@@ -6597,8 +6597,10 @@ function _getChatPopoutContainers(mode) {
     ].filter(Boolean);
 }
 
-function popoutChat(mode = 'global', streamId = null) {
-    const key = mode === 'stream' ? `stream-${streamId}` : 'global';
+function popoutChat(mode = 'global', streamId = null, username = null) {
+    // Key by channel, not stream id: the popout follows the channel's live state, so
+    // re-clicking the button after a stream swap should focus the same window.
+    const key = mode === 'stream' ? `chan-${(username || streamId)}` : 'global';
 
     // If already open and alive, focus it
     const existing = _popoutChatWindows.get(key);
@@ -6607,18 +6609,22 @@ function popoutChat(mode = 'global', streamId = null) {
         return;
     }
 
-    const title = mode === 'stream' ? `Stream Chat — ${streamId}` : 'Global Chat';
     const w = 400, h = 600;
     const left = window.screenX + window.outerWidth - w - 20;
     const top = window.screenY + 80;
 
-    // Build popout URL — loads main page with #chat-popout route
-    const params = new URLSearchParams();
-    params.set('popout', '1');
-    params.set('mode', mode);
-    if (streamId) params.set('stream', streamId);
+    // Pretty URL: /chat/<username>[/<streamId>] (the popout auto-follows the channel's
+    // live state from there). Legacy query form only when no username is known.
+    let url;
+    if (mode === 'stream' && username) {
+        url = `/chat/${encodeURIComponent(username)}${streamId ? '/' + streamId : ''}`;
+    } else if (mode === 'stream' && streamId) {
+        url = `/popout-chat.html?popout=1&mode=stream&stream=${encodeURIComponent(streamId)}`; // popout resolves + upgrades
+    } else {
+        url = '/chat/global';
+    }
 
-    const popup = window.open(`/popout-chat.html?${params.toString()}`, `openvibe_chat_${key}`,
+    const popup = window.open(url, `openvibe_chat_${key}`,
         `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=no`);
     if (!popup) {
         toast('Popup blocked — please allow popups for this site', 'error');
@@ -6649,7 +6655,11 @@ function popoutStreamChat() {
         toast('Not in a stream chat', 'error');
         return;
     }
-    popoutChat('stream', chatStreamId);
+    // Pass the channel identity so the popout gets a pretty /chat/<user>/<id> URL and
+    // can follow the channel's live state when this stream ends.
+    const username = (typeof currentStreamData !== 'undefined' && currentStreamData && currentStreamData.username)
+        || (typeof chatChannel !== 'undefined' && chatChannel) || null;
+    popoutChat('stream', chatStreamId, username);
 }
 
 /* ── Chat Users List ──────────────────────────────────────────── */

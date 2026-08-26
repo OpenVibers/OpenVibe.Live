@@ -663,6 +663,15 @@ app.get(['/kiosk', '/kiosk.html'], (req, res) => {
     res.sendFile(path.join(__dirname, '../public/kiosk.html'));
 });
 
+// Popout chat pretty URLs: /chat/global, /chat/:username (channel chat) and
+// /chat/:username/:streamId (pinned stream, auto-follows the channel's live state).
+// The legacy /popout-chat.html?mode=…&stream=… form keeps working (static file) and
+// self-upgrades to the pretty URL client-side.
+app.get(['/chat', '/chat/*'], (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.sendFile(path.join(__dirname, '../public/popout-chat.html'));
+});
+
 // ── SPA Fallback ─────────────────────────────────────────────
 app.get('*', (req, res) => {
     // Don't serve HTML for API routes

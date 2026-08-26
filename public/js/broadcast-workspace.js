@@ -1331,7 +1331,7 @@ function _wsOpenPopoutChat() {
     // Use the managed stream's live session ID if live, otherwise open global chat for the channel
     const liveSessionId = _wsGetLiveSessionId(ms.id);
     if (liveSessionId && typeof popoutChat === 'function') {
-        popoutChat('stream', liveSessionId);
+        popoutChat('stream', liveSessionId, (typeof currentUser !== 'undefined' && currentUser && currentUser.username) || null);
     } else {
         // Even when not live, open a popout chat scoped to the channel
         if (typeof popoutChat === 'function') {
