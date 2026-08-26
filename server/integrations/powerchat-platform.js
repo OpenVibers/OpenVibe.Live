@@ -241,6 +241,36 @@ async function sendViewCount(streamerUserId, count) {
     }
 }
 
+// The count pushed to PowerChat is the TOTAL audience of a live stream: OpenVibe
+// viewers + each restream platform's viewers (Twitch/Kick/YouTube, from the restream
+// manager's cache) + RobotStreamer viewers. Streamers can exclude any restream
+// destination (powerchat_count_views) or the slot's RS viewers
+// (slot_powerchat_count_rs_views) in the Broadcast page — those still show on
+// OpenVibe, they just don't count toward the PowerChat chip.
+function totalViewersForStream(s) {
+    let total = s.viewer_count || 0;
+    const slotId = s.managed_stream_id || null;
+    try {
+        const restreamManager = require('../streaming/restream-manager');
+        const ext = restreamManager.getExternalViewerCountsForUser(s.user_id, slotId);
+        for (const b of ext.breakdown || []) {
+            if (!b.count) continue;
+            const d = b.destId ? db.get('SELECT powerchat_count_views FROM restream_destinations WHERE id = ?', [b.destId]) : null;
+            if (d && d.powerchat_count_views === 0) continue;
+            total += b.count;
+        }
+    } catch { /* restream manager unavailable — OpenVibe count only */ }
+    try {
+        const ms = slotId ? db.get('SELECT slot_powerchat_count_rs_views FROM managed_streams WHERE id = ?', [slotId]) : null;
+        if (!ms || ms.slot_powerchat_count_rs_views !== 0) {
+            const rs = require('./robotstreamer-service');
+            const rsActive = rs.chatBridges?.has(s.id) || rs._activePublish?.has(s.id);
+            if (rsActive) total += rs.getRsViewerCount(s.user_id, slotId) || 0;
+        }
+    } catch { /* */ }
+    return total;
+}
+
 // Periodic sweeper: push each connected live streamer's viewer count; push null once
 // when they go offline so PowerChat drops the chip.
 let _vcTimer = null;
@@ -254,7 +284,7 @@ function startViewerCountSweeper() {
             const liveOwners = new Map(); // userId → summed viewer count
             for (const s of live) {
                 if (!s.user_id) continue;
-                liveOwners.set(s.user_id, (liveOwners.get(s.user_id) || 0) + (s.viewer_count || 0));
+                liveOwners.set(s.user_id, (liveOwners.get(s.user_id) || 0) + totalViewersForStream(s));
             }
             for (const [userId, count] of liveOwners) { seenLive.add(userId); sendViewCount(userId, count); }
             // Owners that were live last tick but aren't now → send null (stream ended).
@@ -410,7 +440,7 @@ async function sendCustomAlert(streamerUserId, { actorName, message, amountCents
 }
 
 module.exports = {
-    slotRelayEnabled, destRelayEnabled,
+    slotRelayEnabled, destRelayEnabled, totalViewersForStream,
     CURRENCY_KEY, TIP_CURRENCY_KEY,
     forwardChat, forwardFollow, forwardSubscription, forwardTip,
     sendViewCount, startViewerCountSweeper,
