@@ -58,19 +58,38 @@ function _checkoutConn(userId) {
 }
 
 // Canonical attribution link (documented stable URL shape — no API round-trip needed).
-function tipLinkFor(pcUsername, ref) {
+//  ref         → app_ref: per-TRANSACTION correlation id (which order to mark paid)
+//  purpose     → app_purpose: CATEGORY slug, stable across purchases of the same thing
+//                ("vibes", "subscription", "goal:<id>"); echoed back as appPurpose
+//  amountCents → app_amount_cents: pins the checkout to exactly this USD amount — the
+//                tip page locks the picker and the server rejects mismatched submits.
+//                Valid range 50–1000000; below the floor we leave the amount free.
+//  returnTo    → app_redirect_uri: send the viewer back to our REGISTERED redirect URI
+//                after checkout (UX + correlation only — the webhook stays the ONLY
+//                authoritative confirmation).
+function tipLinkFor(pcUsername, ref, { purpose = null, amountCents = null, returnTo = false } = {}) {
     const c = oauth.getConfig();
     const params = new URLSearchParams({ app_client_id: c.clientId });
     if (ref) params.set('app_ref', ref);
+    if (purpose) params.set('app_purpose', String(purpose).slice(0, 64));
+    const cents = Math.round(Number(amountCents) || 0);
+    if (cents >= 50 && cents <= 1000000) params.set('app_amount_cents', String(cents));
+    if (returnTo) params.set('app_redirect_uri', oauth.redirectUri());
     return `${c.baseUrl}/${encodeURIComponent(pcUsername)}/tip?${params.toString()}`;
 }
 
 // ── Link builders ────────────────────────────────────────────
-// Buy Vibes: always the site account (the site must receive the money it mints against).
+// Buy Vibes: always the site account (the site must receive the money it mints
+// against). The checkout is PINNED to the package price and categorized "vibes".
 function buildPurchaseLink(order) {
     const site = getSiteAccount();
     if (!site) return null;
-    return { url: tipLinkFor(site.username, `pcorder:${order.id}`), mode: 'site' };
+    return {
+        url: tipLinkFor(site.username, `pcorder:${order.id}`, {
+            purpose: 'vibes', amountCents: order.amount_cents, returnTo: true,
+        }),
+        mode: 'site',
+    };
 }
 
 // Subscription: streamer-direct when possible, site fallback otherwise.
@@ -79,26 +98,32 @@ function buildPurchaseLink(order) {
 // decide the streamer share and the sub's auto_renew flag.
 function buildSubscribeLink(order, streamerUserId, { autoRenew = 0 } = {}) {
     const suffix = autoRenew ? ':renew' : '';
+    // Sub checkouts are PINNED to the sub price (no more underpaid tips to
+    // gracefully degrade) and categorized "subscription".
+    const opts = { purpose: 'subscription', amountCents: order.amount_cents, returnTo: true };
     const direct = _checkoutConn(streamerUserId);
     if (direct) {
         db.updatePaymentOrder(order.id, { provider_ref: `direct${suffix}` });
-        return { url: tipLinkFor(direct.powerchat_username, `pcsub:${order.id}`), mode: 'direct' };
+        return { url: tipLinkFor(direct.powerchat_username, `pcsub:${order.id}`, opts), mode: 'direct' };
     }
     const site = getSiteAccount();
     if (!site) return null;
     db.updatePaymentOrder(order.id, { provider_ref: `site${suffix}` });
-    return { url: tipLinkFor(site.username, `pcsub:${order.id}`), mode: 'site' };
+    return { url: tipLinkFor(site.username, `pcsub:${order.id}`, opts), mode: 'site' };
 }
 
-// Donation: streamer's own page when they have PowerChat (plain link — the normal
-// donation.completed flow handles it, optionally with a goal: ref added by the caller),
-// else the site account with a routing ref.
-function buildDonateLink(streamerUserId, donorUserId) {
+// Donation: streamer's own page when they have PowerChat (the normal
+// donation.completed flow handles it), else the site account with a routing ref.
+// When the viewer picked a donation goal before heading over, the goal rides in
+// app_purpose ("goal:<id>") and the webhook credits that exact goal. Amount stays
+// the viewer's free choice — donations are never pinned.
+function buildDonateLink(streamerUserId, donorUserId, { goalId = null } = {}) {
+    const purpose = goalId ? `goal:${goalId}` : 'donation';
     const direct = _checkoutConn(streamerUserId);
-    if (direct) return { url: tipLinkFor(direct.powerchat_username, ''), mode: 'direct' };
+    if (direct) return { url: tipLinkFor(direct.powerchat_username, '', { purpose }), mode: 'direct' };
     const site = getSiteAccount();
     if (!site) return null;
-    return { url: tipLinkFor(site.username, `pcdon:${streamerUserId}:${donorUserId || 0}`), mode: 'site' };
+    return { url: tipLinkFor(site.username, `pcdon:${streamerUserId}:${donorUserId || 0}`, { purpose }), mode: 'site' };
 }
 
 // ── Webhook fulfillment ──────────────────────────────────────

@@ -67,11 +67,26 @@ function _resolveStreamerUserId(streamer) {
     return conn ? conn.user_id : null;
 }
 
-// app_ref may encode a target goal, e.g. "goal:12" (see the checkout-attribution link).
-function _goalIdFromRef(ref) {
-    if (!ref || typeof ref !== 'string') return null;
-    const m = ref.match(/(?:^|[:_-])goal[:_-]?(\d+)/i);
-    return m ? Number(m[1]) : null;
+// The viewer's chosen donation goal rides in app_purpose ("goal:12" — the purpose
+// key is the category vocabulary; see the checkout-attribution docs). Older links
+// encoded it in app_ref, so that stays as a fallback.
+function _goalIdFromDonation(data) {
+    for (const v of [data && data.appPurpose, data && data.appExternalRef]) {
+        if (!v || typeof v !== 'string') continue;
+        const m = v.match(/(?:^|[:_-])goal[:_-]?(\d+)/i);
+        if (m) return Number(m[1]);
+    }
+    return null;
+}
+
+// data.isTest = NO money moved (free test method, no payout provider connected,
+// dashboard test fires). Honoring those in production would grant Vibes/subs for
+// tips that charged nothing — so they're dropped unless the owner explicitly flips
+// powerchat_allow_test_fulfillment on (for dev/sandbox, where a PowerChat with no
+// payout provider delivers EVERYTHING as isTest).
+function _testFulfillmentAllowed() {
+    try { const v = db.getSetting('powerchat_allow_test_fulfillment'); return v === true || v === 'true' || v === 1 || v === '1'; }
+    catch { return false; }
 }
 
 // ── Donation handling — mirrors POST /api/funds/donate ───────────────────────
@@ -86,7 +101,7 @@ function _handleDonation(userId, data) {
     const amount = Math.max(0, Math.round(cents)); // Vibes (= USD cents)
     const donor = String(data.donorName || 'Someone').slice(0, 80);
     const message = String(data.message || '').slice(0, 500);
-    const goalId = _goalIdFromRef(data.appExternalRef);
+    const goalId = _goalIdFromDonation(data);
     const ts = new Date().toISOString();
 
     // If the streamer is live, attach to the live session so it lands in that slot too.
@@ -178,7 +193,9 @@ function processEvent(envelope) {
         const siteName = String(db.getSetting('powerchat_site_tip_username') || '').trim().toLowerCase();
         const from = String((envelope.streamer && envelope.streamer.username) || '').toLowerCase();
         if (siteName && from === siteName) {
-            if (envelope.type === 'donation.completed' && data.appExternalRef && !data.isTest && data.source !== 'developer_app') {
+            if (envelope.type === 'donation.completed' && data.appExternalRef
+                && (!data.isTest || _testFulfillmentAllowed()) && data.source !== 'developer_app') {
+                if (data.isTest) console.warn(`[PowerChat] fulfilling TEST checkout ${data.appExternalRef} (powerchat_allow_test_fulfillment is ON — no money moved)`);
                 try { require('./powerchat-checkout').handleAttributedDonation(null, data); } catch (e) { console.warn('[PowerChat] site-account fulfillment:', e.message); }
             }
             return;
@@ -186,10 +203,11 @@ function processEvent(envelope) {
         console.warn(`[PowerChat] webhook ${envelope.type} for unknown streamer`, envelope.streamer);
         return;
     }
-    // Dashboard "Send test webhook" deliveries carry data.isTest — they exist to verify
-    // the receiver (signature/dedupe/wiring), and must NEVER credit goals or fire the
-    // real celebration pipeline.
-    if (data.isTest) { console.log(`[PowerChat] test webhook ${envelope.type} verified OK (not credited)`); return; }
+    // data.isTest = no money moved (dashboard test fires, free test method, no payout
+    // provider). Never credit those — unless the owner explicitly enabled test
+    // fulfillment for dev/sandbox, where every delivery is isTest.
+    if (data.isTest && !_testFulfillmentAllowed()) { console.log(`[PowerChat] test webhook ${envelope.type} verified OK (not credited)`); return; }
+    if (data.isTest) console.warn(`[PowerChat] processing TEST ${envelope.type} (powerchat_allow_test_fulfillment is ON — no money moved)`);
     // App-sourced events are OUR OWN pushes (tips/subs/follows/redemptions we forwarded
     // via the platform scopes) echoing back through the webhook — they already happened
     // locally, so replaying them would double-count/duplicate every one.

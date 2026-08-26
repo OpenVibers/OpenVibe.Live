@@ -225,13 +225,30 @@ async function doPowerchatTip() {
     const streamerId = _donateStreamerId();
     if (!streamerId) return toast('No streamer selected', 'error');
     try {
-        const data = await api(`/powerchat/donate-link?streamer_id=${streamerId}`);
+        // Carry the donor's goal pick over — it rides in app_purpose and the webhook
+        // credits that exact goal when the tip confirms.
+        const goalSel = document.getElementById('modal-donate-goal');
+        const goalId = goalSel && goalSel.value ? parseInt(goalSel.value, 10) : null;
+        const data = await api(`/powerchat/donate-link?streamer_id=${streamerId}${goalId ? `&goal_id=${goalId}` : ''}`);
         if (!data.url) throw new Error('unavailable');
         window.open(data.url, '_blank', 'noopener');
         toast('Complete your tip on PowerChat — it lands in this channel automatically once confirmed. ⚡', 'success');
         closeModal();
     } catch (e) { toast('PowerChat tips aren’t available for this channel.', 'error'); }
 }
+
+// The checkout return page broadcasts completion — refresh balances so purchased
+// Vibes/subs appear without a manual reload. (Webhook-confirmed server-side; this
+// only refreshes the UI.)
+try {
+    const _pcCheckoutBc = new BroadcastChannel('powerchat-checkout');
+    _pcCheckoutBc.onmessage = (e) => {
+        if (!e.data || e.data.status !== 'completed') return;
+        toast('PowerChat payment received — updating your balance… ⚡', 'success');
+        // The webhook usually lands within a couple of seconds of the redirect.
+        setTimeout(() => { if (typeof loadBalance === 'function') loadBalance(); }, 2500);
+    };
+} catch { /* BroadcastChannel unsupported — balance updates on next reload */ }
 
 // Resolve the streamer being viewed (live stream data, else the channel page owner).
 function _donateStreamerId() {
