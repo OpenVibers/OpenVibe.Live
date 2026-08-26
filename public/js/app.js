@@ -8335,13 +8335,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Route from current URL instead of always going home — but not in the popout
     // chat window, which drives its own chat UI and has no SPA pages to route to.
-    if (!location.pathname.startsWith('/popout-chat')) {
+    // Covers /popout-chat.html AND the pretty /popout/<user>[/<id>] URLs.
+    if (!location.pathname.startsWith('/popout')) {
         routeFromURL();
     }
 });
 
 // Handle browser back/forward — wait for auth to be resolved first
 window.addEventListener('popstate', () => {
+    if (location.pathname.startsWith('/popout')) return; // popout window: no SPA routing
     if (_userLoaded) {
         routeFromURL();
     }

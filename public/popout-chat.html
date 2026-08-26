@@ -285,8 +285,9 @@
     let activeStreamId = null;    // stream id the chat is currently joined to (null = channel chat)
 
     (function parseUrl() {
-        const seg = window.location.pathname.split('/').filter(Boolean); // ['chat', user?, id?]
-        if (seg[0] === 'chat') {
+        const seg = window.location.pathname.split('/').filter(Boolean); // ['popout'|'popout-chat', user?, id?]
+        if (seg[0] === 'popout' || seg[0] === 'popout-chat') {
+            // No username (or explicit "global") → global chat.
             if (!seg[1] || seg[1].toLowerCase() === 'global') { mode = 'global'; return; }
             mode = 'channel';
             channelName = decodeURIComponent(seg[1]);
@@ -302,8 +303,8 @@
     })();
 
     function prettyPath() {
-        if (mode !== 'channel' || !channelName) return '/chat/global';
-        return '/chat/' + encodeURIComponent(channelName) + (activeStreamId ? '/' + activeStreamId : '');
+        if (mode !== 'channel' || !channelName) return '/popout/global';
+        return '/popout/' + encodeURIComponent(channelName) + (activeStreamId ? '/' + activeStreamId : '');
     }
     // Keep the address bar honest without polluting history — swaps replace, they
     // don't stack, so Back still leaves the popout instead of replaying old streams.
