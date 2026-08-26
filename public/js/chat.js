@@ -6613,15 +6613,16 @@ function popoutChat(mode = 'global', streamId = null, username = null) {
     const left = window.screenX + window.outerWidth - w - 20;
     const top = window.screenY + 80;
 
-    // Pretty URL: /chat/<username>[/<streamId>] (the popout auto-follows the channel's
-    // live state from there). Legacy query form only when no username is known.
+    // Pretty URL: /popout/<username>[/<streamId>] (the popout auto-follows the
+    // channel's live state from there). NOT /chat/… — that's the SPA's global chat
+    // page. Legacy query form only when no username is known.
     let url;
     if (mode === 'stream' && username) {
-        url = `/chat/${encodeURIComponent(username)}${streamId ? '/' + streamId : ''}`;
+        url = `/popout/${encodeURIComponent(username)}${streamId ? '/' + streamId : ''}`;
     } else if (mode === 'stream' && streamId) {
         url = `/popout-chat.html?popout=1&mode=stream&stream=${encodeURIComponent(streamId)}`; // popout resolves + upgrades
     } else {
-        url = '/chat/global';
+        url = '/popout/global';
     }
 
     const popup = window.open(url, `openvibe_chat_${key}`,
