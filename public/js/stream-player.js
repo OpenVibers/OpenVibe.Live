@@ -2121,6 +2121,14 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
             let _recoverStage = 0;           // 0 = healthy, 1 = keyframe requested
             let _recoverAt = 0;
             let _usingRVFC = false;
+            const _startedAt = _nowMs();
+            // Hidden tabs never PAINT frames, so rVFC goes silent even though the decoder keeps
+            // running. Treating that silence as "frozen" produced an endless nudge → rebuild →
+            // reconnect loop (every ~12s, all night, per background tab) that also hammered the
+            // broadcaster with keyframe requests. When the tab becomes visible again, restart
+            // the clock instead of judging the time it spent hidden.
+            const _onVisibility = () => { if (!document.hidden) _lastFrameAt = _nowMs(); };
+            document.addEventListener('visibilitychange', _onVisibility);
 
             // Primary signal: rVFC fires only when a NEW frame is actually presented.
             if (typeof video.requestVideoFrameCallback === 'function') {
@@ -2136,11 +2144,12 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
 
             const _frozenInterval = setInterval(async () => {
                 if (!player || player._sfuRecvTransport !== recvTransport) { clearInterval(_frozenInterval); return; }
-                if (video.paused || !(video.srcObject?.active)) { clearInterval(_frozenInterval); return; }
+                if (video.paused || !(video.srcObject?.active)) { clearInterval(_frozenInterval); document.removeEventListener('visibilitychange', _onVisibility); return; }
 
-                // Fallback progress signal when rVFC is unavailable (e.g. older Firefox): decoded
-                // video frame count from getStats. A rising count == video is still rendering.
-                if (!_usingRVFC && player._sfuVideoReceiver?.getStats) {
+                // Decoded-frame count from getStats is the PRIMARY progress signal: it keeps
+                // rising in background tabs, where rVFC (a paint signal) never fires. rVFC is
+                // kept as an extra, faster signal when it is available.
+                if (player._sfuVideoReceiver?.getStats) {
                     try {
                         const stats = await player._sfuVideoReceiver.getStats();
                         let fd = null;
@@ -2154,8 +2163,14 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
                 if (stalledFor <= STALL_TRIGGER_MS) {
                     // Video is progressing — healthy (or recovered after a nudge).
                     if (_recoverStage !== 0) { console.log('[Player] SFU video recovered'); _recoverStage = 0; }
+                    // Frames have flowed for a while on this transport → forget rebuild backoff.
+                    if (player._sfuRebuilds && _nowMs() - _startedAt > 15000) player._sfuRebuilds = 0;
                     return;
                 }
+
+                // Never escalate while the page is hidden: nothing is painted, nobody is watching,
+                // and a rebuild just churns the SFU. The visibility handler restarts the clock.
+                if (document.hidden) return;
 
                 if (_recoverStage === 0) {
                     // Stage 1: cheap keyframe request (server calls consumer.requestKeyFrame() on re-watch).
@@ -2173,7 +2188,13 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
                     _hasVideoFrames = false;
                     if (player._sfuRecvTransport === recvTransport) player._sfuRecvTransport = null;
                     try { recvTransport.close(); } catch { /* */ }
-                    scheduleRewatch(1000);
+                    document.removeEventListener('visibilitychange', _onVisibility);
+                    // Exponential backoff between rebuilds (1s, 2s, 4s … 60s) so a transport
+                    // that genuinely never delivers frames can't loop at full speed.
+                    const rebuilds = player._sfuRebuilds = (player._sfuRebuilds || 0) + 1;
+                    const delay = Math.min(60000, 1000 * Math.pow(2, rebuilds - 1));
+                    console.warn(`[Player] SFU rebuild #${rebuilds} in ${delay}ms`);
+                    scheduleRewatch(delay);
                 }
             }, STALL_CHECK_MS);
             player._sfuFrozenInterval = _frozenInterval;
