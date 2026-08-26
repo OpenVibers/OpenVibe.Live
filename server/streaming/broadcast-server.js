@@ -785,7 +785,15 @@ class BroadcastServer extends EventEmitter {
                     if (activeConsumerIds.length > 0) {
                         // Consumers are alive — nudge with keyframe and ack the client so
                         // startWatchOfferTimeout doesn't fire and loop.
-                        console.log(`[Broadcast] Viewer ${client.peerId} re-watch with connected SFU transport ${client._sfuViewerTransportId} (${activeConsumerIds.length} consumers) — requesting keyframe`);
+                        // Throttle: a looping client (or many viewers re-watching at once) must
+                        // not turn into a keyframe storm on the broadcaster's encoder — every
+                        // PLI forces a large I-frame and tanks quality for EVERY viewer.
+                        const nowMs = Date.now();
+                        const throttled = client._lastKeyframeNudgeAt && (nowMs - client._lastKeyframeNudgeAt) < 2000;
+                        client._rewatchNudges = (client._rewatchNudges || 0) + 1;
+                        console.log(`[Broadcast] Viewer ${client.peerId} re-watch with connected SFU transport ${client._sfuViewerTransportId} (${activeConsumerIds.length} consumers) — ${throttled ? 'keyframe nudge throttled' : 'requesting keyframe'}${client._rewatchNudges > 10 ? ` (${client._rewatchNudges} re-watches this session — client likely looping)` : ''}`);
+                        if (throttled) { this.safeSend(ws, { type: 'sfu-keyframe-requested' }); return true; }
+                        client._lastKeyframeNudgeAt = nowMs;
                         for (const cid of activeConsumerIds) {
                             const entry = existingRoom.consumers.get(cid);
                             if (entry?.consumer && entry.consumer.kind === 'video') {
