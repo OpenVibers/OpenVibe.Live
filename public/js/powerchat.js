@@ -86,10 +86,13 @@
                     </div>`);
                 if (hintEl) hintEl.innerHTML = `<span class="pc-warn">Your connection is missing: ${esc(missing.join(', '))}. Reconnect (one click, same account) to enable viewer count, chat, and alerts on your PowerChat overlay.</span>`;
             } else if (hintEl) {
-                const okDiag = Array.isArray(st.diagnosis) ? st.diagnosis.find(d => d.code === 'scopes_ok') : null;
-                const meFail = Array.isArray(st.diagnosis) ? st.diagnosis.find(d => d.code === 'me_failed' || d.code === 'identity_mismatch') : null;
+                const diag = Array.isArray(st.diagnosis) ? st.diagnosis : [];
+                const okDiag = diag.find(d => d.code === 'scopes_ok');
+                // Everything that isn't "all good" (and isn't the missing-scopes prompt above)
+                // is worth a line: token rejected, identity mismatch, dropped relays, last_error.
+                const notes = diag.filter(d => d.level !== 'ok' && d.code !== 'missing_scopes' && d.code !== 'last_error');
                 const base = st.last_error ? ('Note: ' + st.last_error)
-                    : (meFail ? meFail.message
+                    : (notes.length ? notes.map(d => d.message).join(' ')
                         : (okDiag ? okDiag.message : 'Tips confirmed on PowerChat now flow into your goals, alerts, and chat automatically.'));
                 // Relay routing lives on the Broadcast page — streamers rarely find it unprompted.
                 hintEl.innerHTML = `${esc(base)}<br><span class="pc-tip"><i class="fa-solid fa-lightbulb"></i> Tip: chat from every stream slot and restream (Twitch, Kick, YouTube, RobotStreamer) is merged into your PowerChat overlay by default. To turn that off for a specific slot or platform, open <a href="/broadcast" onclick="event.preventDefault();navigate('/broadcast')">Broadcast</a> → a slot's <strong>PowerChat Overlay</strong> settings, or the <strong>→ PowerChat</strong> switches in each restream destination. The viewer count on your overlay is your total audience (OpenVibe + restream platforms + RobotStreamer) — the same switches let you leave a platform's viewers out.</span>`;
