@@ -446,6 +446,9 @@ class ChatRelayService {
                     message: chatMsg.message,
                     messageId: chatMsg.id ? `ov-${chatMsg.id}` : undefined,
                     avatarUrl: extras.avatar_url || undefined,
+                    // Placeholder letter from the REAL name — "[Twitch] name" would
+                    // otherwise render "[" for every relayed chatter.
+                    avatarFallback: [...String(username || '')][0] || undefined,
                 });
             }
         } catch { /* non-critical */ }

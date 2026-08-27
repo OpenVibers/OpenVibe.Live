@@ -145,7 +145,7 @@ function destRelayEnabled(destId) {
 
 // ── chat:write ───────────────────────────────────────────────
 const _chatBuckets = new Map(); // userId → { count, resetAt }  (~120/min limit; we cap at 100)
-async function forwardChat(streamerUserId, { chatterName, externalChatterId, message, messageId, avatarUrl, isModerator, isSubscriber } = {}) {
+async function forwardChat(streamerUserId, { chatterName, externalChatterId, message, messageId, avatarUrl, avatarFallback, isModerator, isSubscriber } = {}) {
     if (!message || !chatterName) return;
     const conn = _connFor(streamerUserId, 'chat:write');
     if (!conn) return;
@@ -169,6 +169,9 @@ async function forwardChat(streamerUserId, { chatterName, externalChatterId, mes
                 message: String(message).slice(0, 500),
                 messageId: String(messageId || crypto.randomUUID()).slice(0, 128),
                 ...(absAvatar ? { avatarUrl: absAvatar } : {}),
+                // Placeholder grapheme when no avatar URL resolves (e.g. 🤖 for AI
+                // viewers, or a clean letter for "[RS] name"-style prefixed sources).
+                ...(avatarFallback ? { avatarFallback: String(avatarFallback).slice(0, 8) } : {}),
                 ...(isModerator ? { isModerator: true } : {}),
                 ...(isSubscriber ? { isSubscriber: true } : {}),
             },
