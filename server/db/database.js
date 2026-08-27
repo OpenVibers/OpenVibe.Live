@@ -1079,7 +1079,6 @@ function initDb() {
             ['ai_model_summary', '', 'Model for summaries/overviews/memory folds. Blank = ai_model', 'string'],
             ['ai_pricing_json', '{"gpt-5-nano":{"in":0.05,"out":0.4,"cached":0.005},"gpt-5-mini":{"in":0.25,"out":2,"cached":0.025},"gpt-5":{"in":1.25,"out":10,"cached":0.125},"gpt-4o-mini":{"in":0.15,"out":0.6,"cached":0.075},"gpt-4.1-mini":{"in":0.4,"out":1.6,"cached":0.1},"claude-haiku":{"in":0.8,"out":4,"cached":0.08},"claude-sonnet":{"in":3,"out":15,"cached":0.3}}', 'USD per 1M tokens by model-id prefix: {"<model>":{"in","out","cached"}}. Longest prefix wins; missing → ai_input/output_cost_per_mtok', 'json'],
             ['ai_viewers_enabled', 'true', 'Kill switch for the AI chat viewers feature (all channels)', 'boolean'],
-            ['ai_viewers_engine', 'v2', 'AI viewers engine: v2 (legacy per-line) | v3 (director, unified context)', 'string'],
             ['ai_viewers_max_roster', '12', 'Max AI viewers per channel', 'number'],
             ['ai_viewers_max_lines_per_min', '12', 'Hard ceiling on bot lines per minute per channel', 'number'],
             ['ai_viewers_global_cap_usd_per_day', '0', 'Daily USD cap for ALL AI-viewer spend on the shared key (0 = none)', 'number'],
@@ -1087,6 +1086,7 @@ function initDb() {
         ];
         const seedAi = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
         for (const [k, v, d, t] of aiSeeds) seedAi.run(k, v, d, t);
+        try { database.exec("DELETE FROM site_settings WHERE key = 'ai_viewers_engine'"); } catch { /* */ }
 
         // PowerChat monetization (donations/tips). App-level OAuth client + webhook secret
         // are configured here by the owner; each streamer then connects their own PowerChat

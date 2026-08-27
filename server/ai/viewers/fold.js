@@ -4,8 +4,8 @@
  * "running bits" note. Replaces the per-bot fold of v2 (N calls → 1).
  */
 'use strict';
-const db = require('../../../db/database');
-const llm = require('../../llm');
+const db = require('../../db/database');
+const llm = require('../llm');
 
 function clip(str, n) { return (str || '').toString().replace(/\s+/g, ' ').trim().slice(0, n); }
 
@@ -70,4 +70,13 @@ async function foldAll(worker, { provider = null } = {}) {
     return { updated, cost: r.cost || 0, usage: r.usage, model: r.model };
 }
 
-module.exports = { foldAll };
+/** Clear a bot's rolling memory (keeps its identity/persona). */
+function clearBrain(botId) {
+    const bot = db.getChannelAiBot(botId);
+    if (!bot) return false;
+    let persona = {}; try { persona = JSON.parse(bot.persona_json || '{}'); } catch { /* */ }
+    db.updateChannelAiBot(botId, { brain_json: { memory: '', timeline: [], identity: persona.identity || '' } });
+    return true;
+}
+
+module.exports = { foldAll, clearBrain };

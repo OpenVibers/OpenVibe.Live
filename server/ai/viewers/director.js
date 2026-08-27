@@ -8,7 +8,7 @@
  * token saving over the old one-call-per-line engine; the cached prefix is the second.
  */
 'use strict';
-const llm = require('../../llm');
+const llm = require('../llm');
 
 const PLAN_SCHEMA = {
     type: 'object',
