@@ -85,66 +85,9 @@ const INTERNAL_API_KEY = config.internalApiKey || process.env.INTERNAL_API_KEY |
  * This lets openvibe.network handle Discord bot alerts + push notifications centrally.
  * Falls back to direct webhook + bulk push if openvibe.network is unreachable.
  */
-function notifyFollowersGoLive(streamer, stream) {
-    // Try unified event endpoint first (handles Discord bot + push)
-    fetch(`${config.openvibeToolsInternalUrl}/internal/events/stream-live`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Internal-Key': INTERNAL_API_KEY,
-        },
-        body: JSON.stringify({
-            streamer: {
-                id: streamer.id,
-                username: streamer.username,
-                display_name: streamer.display_name || null,
-                avatar_url: streamer.avatar_url || null,
-            },
-            stream: {
-                id: stream.id,
-                title: stream.title || null,
-                protocol: stream.protocol || null,
-            },
-        }),
-    }).then(r => {
-        if (r.ok) {
-            console.log(`[GoLive] Unified event sent for ${streamer.username}`);
-        } else {
-            console.warn(`[GoLive] Unified event failed (${r.status}), using fallback`);
-            _fallbackNotify(streamer, stream);
-        }
-    }).catch(err => {
-        console.warn('[GoLive] Unified event error, using fallback:', err.message);
-        _fallbackNotify(streamer, stream);
-    });
-}
-
-/** Fallback: direct Discord webhook + bulk push (if openvibe.network is down) */
-function _fallbackNotify(streamer, stream) {
-    notifyDiscordGoLive(streamer, stream);
-
-    const followerIds = db.getFollowerIds(streamer.id);
-    if (!followerIds.length) return;
-
-    pushBulkNotification(followerIds, {
-        type: 'STREAM_LIVE',
-        title: `${streamer.display_name || streamer.username} is live!`,
-        message: stream.title || 'Started streaming',
-        icon: '🔴',
-        sender_id: streamer.id,
-        sender_name: streamer.display_name || streamer.username,
-        sender_avatar: streamer.avatar_url || null,
-        url: `${config.baseUrl}/${streamer.username}`,
-        rich_content: {
-            thumbnail: streamer.avatar_url || null,
-            context: {
-                stream_id: stream.id,
-                username: streamer.username,
-                title: stream.title || 'Started streaming',
-            },
-        },
-    });
-}
+// Go-live fan-out lives in ./golive-notify (shared with the RTMP and WHIP ingest paths,
+// which never notified anyone before), with follower-id translation + 60-min dedupe.
+const { notifyFollowersGoLive } = require('./golive-notify');
 
 function hasOwn(obj, key) {
     return Object.prototype.hasOwnProperty.call(obj || {}, key);

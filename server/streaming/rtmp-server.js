@@ -179,7 +179,10 @@ class RTMPServer extends EventEmitter {
 
             // Discord webhook notification (fire-and-forget)
             const stream = db.getStreamById ? db.getStreamById(streamId) : { id: streamId, title: `${resolvedUser.display_name}'s Stream` };
-            notifyDiscordGoLive(resolvedUser, stream || { id: streamId });
+            // Unified go-live event (inbox + push + email to followers, Discord via network;
+            // falls back to the webhook). Deduped per slot/hour inside.
+            try { require('./golive-notify').notifyFollowersGoLive(resolvedUser, stream || { id: streamId }); }
+            catch (e) { console.warn('[RTMP] go-live notify failed:', e.message); notifyDiscordGoLive(resolvedUser, stream || { id: streamId }); }
             try { require('./live-events').announceGoLive(stream || { id: streamId }, resolvedUser); } catch { /* */ }
 
             // Start server-side VOD recording via FFmpeg
