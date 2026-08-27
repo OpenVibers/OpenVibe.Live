@@ -206,7 +206,14 @@ function processEvent(envelope) {
     // data.isTest = no money moved (dashboard test fires, free test method, no payout
     // provider). Never credit those — unless the owner explicitly enabled test
     // fulfillment for dev/sandbox, where every delivery is isTest.
-    if (data.isTest && !_testFulfillmentAllowed()) { console.log(`[PowerChat] test webhook ${envelope.type} verified OK (not credited)`); return; }
+    if (data.isTest && !_testFulfillmentAllowed()) {
+        // Make the skip self-explanatory when it's an attributed checkout — this is the
+        // #1 "my tip went through but nothing credited" question: the PowerChat side
+        // confirmed a TEST checkout (no payout provider / free test method).
+        const ref = data.appExternalRef ? ` (checkout ref ${data.appExternalRef} — no money moved; enable powerchat_allow_test_fulfillment in admin to credit test checkouts in dev)` : '';
+        console.log(`[PowerChat] test webhook ${envelope.type} verified OK (not credited)${ref}`);
+        return;
+    }
     if (data.isTest) console.warn(`[PowerChat] processing TEST ${envelope.type} (powerchat_allow_test_fulfillment is ON — no money moved)`);
     // App-sourced events are OUR OWN pushes (tips/subs/follows/redemptions we forwarded
     // via the platform scopes) echoing back through the webhook — they already happened
