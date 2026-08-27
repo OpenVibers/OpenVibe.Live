@@ -1070,6 +1070,20 @@ function initDb() {
             ['ai_max_cost_usd_per_day', '0', 'Daily AI spend cap in USD (0 = no cap)', 'number'],
             ['ai_input_cost_per_mtok', '3.0', 'Estimated input cost per million tokens (for cost breakdown)', 'number'],
             ['ai_output_cost_per_mtok', '15.0', 'Estimated output cost per million tokens (for cost breakdown)', 'number'],
+            // Per-role model routing (blank = use ai_model). chat = short bot lines, vision = frame/image
+            // analysis (must be vision-capable), director = the AI-viewers planner (structured JSON),
+            // summary = memories/overviews/insight folds.
+            ['ai_model_chat', '', 'Model for short chat-style generations (AI viewers lines). Blank = ai_model', 'string'],
+            ['ai_model_vision', '', 'Model for image/frame analysis (must support vision). Blank = ai_model', 'string'],
+            ['ai_model_director', '', 'Model for the AI-viewers director (plans several lines per call, JSON output). Blank = ai_model', 'string'],
+            ['ai_model_summary', '', 'Model for summaries/overviews/memory folds. Blank = ai_model', 'string'],
+            ['ai_pricing_json', '{"gpt-5-nano":{"in":0.05,"out":0.4,"cached":0.005},"gpt-5-mini":{"in":0.25,"out":2,"cached":0.025},"gpt-5":{"in":1.25,"out":10,"cached":0.125},"gpt-4o-mini":{"in":0.15,"out":0.6,"cached":0.075},"gpt-4.1-mini":{"in":0.4,"out":1.6,"cached":0.1},"claude-haiku":{"in":0.8,"out":4,"cached":0.08},"claude-sonnet":{"in":3,"out":15,"cached":0.3}}', 'USD per 1M tokens by model-id prefix: {"<model>":{"in","out","cached"}}. Longest prefix wins; missing → ai_input/output_cost_per_mtok', 'json'],
+            ['ai_viewers_enabled', 'true', 'Kill switch for the AI chat viewers feature (all channels)', 'boolean'],
+            ['ai_viewers_engine', 'v2', 'AI viewers engine: v2 (legacy per-line) | v3 (director, unified context)', 'string'],
+            ['ai_viewers_max_roster', '12', 'Max AI viewers per channel', 'number'],
+            ['ai_viewers_max_lines_per_min', '12', 'Hard ceiling on bot lines per minute per channel', 'number'],
+            ['ai_viewers_global_cap_usd_per_day', '0', 'Daily USD cap for ALL AI-viewer spend on the shared key (0 = none)', 'number'],
+            ['ai_viewers_default_settings_json', '{}', 'Admin defaults for per-channel AI viewer settings (overrides built-in defaults)', 'json'],
         ];
         const seedAi = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
         for (const [k, v, d, t] of aiSeeds) seedAi.run(k, v, d, t);
@@ -1241,6 +1255,16 @@ function initDb() {
             generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )`);
+    // Per-call metering detail for the llm.js layer: cached prompt tokens (prompt caching),
+    // role (chat/vision/director/summary), provider (shared|byo), latency.
+    try {
+        const cols = database.prepare('PRAGMA table_info(ai_usage)').all().map(c => c.name);
+        if (!cols.includes('cached_tokens')) database.exec('ALTER TABLE ai_usage ADD COLUMN cached_tokens INTEGER DEFAULT 0');
+        if (!cols.includes('role')) database.exec('ALTER TABLE ai_usage ADD COLUMN role TEXT');
+        if (!cols.includes('provider')) database.exec('ALTER TABLE ai_usage ADD COLUMN provider TEXT');
+        if (!cols.includes('latency_ms')) database.exec('ALTER TABLE ai_usage ADD COLUMN latency_ms INTEGER');
+        database.exec('CREATE INDEX IF NOT EXISTS idx_ai_usage_source_day ON ai_usage(source, created_at)');
+    } catch (e) { console.warn('[DB] ai_usage metering columns:', e.message); }
 
         // Assembled AI Timeline payload per streamer (streamer overview + every session's
         // AI overview + memory moments), cached JSON so the channel tab is cheap to serve and
@@ -3016,9 +3040,9 @@ function cleanupMalformedAiText() {
     if (fixed) console.log(`[AI] Cleaned ${fixed} malformed JSON AI text value(s)`);
     return fixed;
 }
-function recordAiUsage({ kind, model, input_tokens = 0, output_tokens = 0, cost_usd = 0, owner_user_id = null, source = null }) {
-    return run('INSERT INTO ai_usage (kind, model, input_tokens, output_tokens, cost_usd, owner_user_id, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [kind || null, model || null, input_tokens || 0, output_tokens || 0, cost_usd || 0, owner_user_id || null, source || null]);
+function recordAiUsage({ kind, model, input_tokens = 0, output_tokens = 0, cached_tokens = 0, cost_usd = 0, owner_user_id = null, source = null, role = null, provider = null, latency_ms = null }) {
+    return run('INSERT INTO ai_usage (kind, model, input_tokens, output_tokens, cached_tokens, cost_usd, owner_user_id, source, role, provider, latency_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [kind || null, model || null, input_tokens || 0, output_tokens || 0, cached_tokens || 0, cost_usd || 0, owner_user_id || null, source || null, role || null, provider || null, latency_ms == null ? null : Math.round(latency_ms)]);
 }
 function getAiCostToday() {
     const r = get("SELECT COALESCE(SUM(cost_usd),0) AS c FROM ai_usage WHERE created_at >= date('now')");
@@ -3040,9 +3064,25 @@ function getAiUsageSummary(days = 30) {
     const byKind = all(`SELECT kind, COUNT(*) AS calls, SUM(cost_usd) AS cost_usd
                         FROM ai_usage WHERE created_at >= date('now', ?) GROUP BY kind ORDER BY cost_usd DESC`, [`-${days} days`]);
     const totals = get(`SELECT COUNT(*) AS calls, COALESCE(SUM(input_tokens),0) AS input_tokens,
-                        COALESCE(SUM(output_tokens),0) AS output_tokens, COALESCE(SUM(cost_usd),0) AS cost_usd
+                        COALESCE(SUM(output_tokens),0) AS output_tokens, COALESCE(SUM(cached_tokens),0) AS cached_tokens,
+                        COALESCE(SUM(cost_usd),0) AS cost_usd
                         FROM ai_usage WHERE created_at >= date('now', ?)`, [`-${days} days`]);
-    return { byDay, byKind, totals, today: getAiCostToday() };
+    const byRole = all(`SELECT COALESCE(role,'legacy') AS role, COUNT(*) AS calls, SUM(input_tokens) AS input_tokens, SUM(cached_tokens) AS cached_tokens,
+                        SUM(output_tokens) AS output_tokens, SUM(cost_usd) AS cost_usd, AVG(latency_ms) AS avg_latency_ms
+                        FROM ai_usage WHERE created_at >= date('now', ?) GROUP BY role ORDER BY cost_usd DESC`, [`-${days} days`]);
+    const bySource = all(`SELECT COALESCE(source,'platform') AS source, COALESCE(provider,'shared') AS provider, COUNT(*) AS calls, SUM(cost_usd) AS cost_usd, SUM(input_tokens) AS input_tokens, SUM(cached_tokens) AS cached_tokens
+                          FROM ai_usage WHERE created_at >= date('now', ?) GROUP BY source, provider ORDER BY cost_usd DESC`, [`-${days} days`]);
+    const byOwner = all(`SELECT a.owner_user_id AS user_id, u.username, COUNT(*) AS calls, SUM(a.cost_usd) AS cost_usd,
+                         SUM(a.input_tokens) AS input_tokens, SUM(a.cached_tokens) AS cached_tokens, SUM(a.output_tokens) AS output_tokens,
+                         SUM(CASE WHEN a.created_at >= date('now') THEN a.cost_usd ELSE 0 END) AS cost_today,
+                         SUM(CASE WHEN a.provider = 'byo' THEN a.cost_usd ELSE 0 END) AS cost_byo
+                         FROM ai_usage a LEFT JOIN users u ON u.id = a.owner_user_id
+                         WHERE a.created_at >= date('now', ?) AND a.owner_user_id IS NOT NULL
+                         GROUP BY a.owner_user_id ORDER BY cost_usd DESC LIMIT 100`, [`-${days} days`]);
+    const byModel = all(`SELECT model, COUNT(*) AS calls, SUM(cost_usd) AS cost_usd, SUM(input_tokens) AS input_tokens, SUM(cached_tokens) AS cached_tokens, SUM(output_tokens) AS output_tokens
+                         FROM ai_usage WHERE created_at >= date('now', ?) GROUP BY model ORDER BY cost_usd DESC`, [`-${days} days`]);
+    const cachedShare = totals.input_tokens ? totals.cached_tokens / totals.input_tokens : 0;
+    return { byDay, byKind, byRole, bySource, byOwner, byModel, totals, cachedShare, today: getAiCostToday() };
 }
 
 // Memories across ALL of a streamer's streams (for the per-streamer AI overview + explorer).

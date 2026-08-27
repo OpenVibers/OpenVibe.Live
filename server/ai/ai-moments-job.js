@@ -360,7 +360,7 @@ async function tick(opts = {}) {
                         // tags, and it confirms we didn't grab a black/loading screen.
                         if (_aiOn() && ai.analyzeImagePaste) {
                             try {
-                                const vis = await ai.analyzeImagePaste(outPath, title);
+                                const vis = await ai.analyzeImagePaste(outPath, title, 'moment_frame');
                                 if (vis && vis.description && vis.description.length > 25) {
                                     desc = _cleanText(vis.description, 500);
                                     if (Array.isArray(vis.tags) && vis.tags.length) tags = vis.tags.slice(0, 8);

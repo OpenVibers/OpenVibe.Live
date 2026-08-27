@@ -64,37 +64,32 @@ async function generate(userId, { system = '', user = '', image = null, maxToken
         return ai.viewerComplete({ system, user, image, maxTokens, temperature, ownerUserId: userId });
     }
 
-    // BYO key (OpenAI-compatible) — unmetered by the provider; record an estimate.
-    const cfg = st.cfg;
-    const messages = [];
-    if (system) messages.push({ role: 'system', content: system });
-    const userContent = image
-        ? [{ type: 'text', text: user }, { type: 'image_url', image_url: { url: image } }]
-        : user;
-    messages.push({ role: 'user', content: userContent });
-    let text;
-    try {
-        text = await aiProvider.chatCompletion({
-            baseUrl: cfg.byo_base_url || aiProvider.DEFAULT_BASE_URL,
-            apiKey: cfg.byo_key,
-            model: cfg.byo_model || 'gpt-4o-mini',
-            messages, temperature, maxTokens,
-        });
-    } catch (e) {
-        console.warn('[AI-Viewers] BYO completion failed:', e.message);
-        return null;
-    }
-    try {
-        const inTok = approxTokens(system) + approxTokens(user) + (image ? 800 : 0);
-        const outTok = approxTokens(text);
-        db.recordAiUsage({
-            kind: 'ai_viewers', model: cfg.byo_model || 'byo',
-            input_tokens: inTok, output_tokens: outTok,
-            cost_usd: ai.estimateCost(inTok, outTok),
-            owner_user_id: userId, source: SOURCE,
-        });
-    } catch { /* metering is best-effort */ }
-    return (text || '').trim() || null;
+    // BYO key — same llm.js path as the shared key (real system role, caching, timeouts),
+    // metered from the provider's usage report (estimated only when the server omits it).
+    const r = await ai.llm.complete({
+        role: 'chat', system, user, image, imageMaxWidth: 768, maxTokens, temperature,
+        kind: 'ai_viewers', source: SOURCE, ownerUserId: userId,
+        provider: byoProvider(st.cfg),
+    });
+    return r && r.text ? r.text.trim() || null : null;
 }
 
-module.exports = { generate, budgetStatus, byoUsable, SOURCE };
+/** llm.js provider override for a streamer's BYO settings (column fields + settings_json.byo). */
+function byoProvider(cfg) {
+    let extra = {};
+    try { extra = (JSON.parse(cfg.settings_json || '{}') || {}).byo || {}; } catch { extra = {}; }
+    const models = {};
+    for (const role of ['chat', 'vision', 'director', 'summary']) {
+        const m = extra[`model_${role}`] || (extra.models && extra.models[role]);
+        if (m) models[role] = String(m);
+    }
+    return {
+        baseUrl: cfg.byo_base_url || extra.base_url || aiProvider.DEFAULT_BASE_URL,
+        apiKey: cfg.byo_key || '',
+        model: cfg.byo_model || extra.model || 'gpt-4o-mini',
+        models,
+        kind: extra.provider === 'anthropic' ? 'anthropic' : undefined,
+    };
+}
+
+module.exports = { generate, budgetStatus, byoUsable, byoProvider, SOURCE };
