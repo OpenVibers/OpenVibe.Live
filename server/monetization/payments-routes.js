@@ -66,7 +66,7 @@ router.post('/bucks/checkout', requireAuth, async (req, res) => {
             const link = await require('../integrations/powerchat-checkout').buildPurchaseLink(order);
             if (!link) { db.updatePaymentOrder(order.id, { status: 'failed' }); return res.status(400).json({ error: 'PowerChat purchases are not available right now' }); }
             return res.json({
-                url: link.url, powerchat: true, amountUsd,
+                url: link.url, powerchat: true, amountUsd, pinned: !!link.minted, expires_at: link.expiresAt || null,
                 note: `Complete the $${amountUsd.toFixed(2)} tip on PowerChat — your Vibes are credited automatically once it confirms.`,
             });
         }
@@ -153,6 +153,7 @@ router.post('/subscribe', requireAuth, async (req, res) => {
         const totalUsd = totalCents / 100;
         return res.json({
             url: link.url, powerchat: true, route: link.mode, amountUsd: totalUsd, feeUsd: feeCents / 100,
+            pinned: !!link.minted, expires_at: link.expiresAt || null,
             note: link.mode === 'direct'
                 ? `Tip $${totalUsd.toFixed(2)} on ${streamer.display_name || streamer.username}'s PowerChat — your subscription activates automatically once the tip confirms.`
                 : `Tip $${totalUsd.toFixed(2)} on OpenVibe's PowerChat (includes a $${(feeCents / 100).toFixed(2)} platform fee) — your subscription activates automatically once the tip confirms.`,
