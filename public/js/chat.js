@@ -682,6 +682,11 @@ function bindContainedChatScroll() {
             const currentY = event.touches[0].clientY;
             const deltaY = lastTouchY - currentY;
             lastTouchY = currentY;
+            // Same bail-out the wheel handler has: touches inside a nested scrollable
+            // (settings panel, users panel, …) scroll THAT element — without this the
+            // sidebar's containScroll preventDefault()s every finger-scroll on mobile.
+            const nestedScrollable = findNestedScrollable(event.target);
+            if (nestedScrollable && nestedScrollable !== el) return;
             containScroll(deltaY, event);
         }, { passive: false });
         el.addEventListener('touchend', () => { lastTouchY = null; }, { passive: true });
@@ -765,6 +770,49 @@ function syncSettingsPanelUI() {
 function isBroadcastingLiveForTTS() {
     return typeof isStreaming === 'function' && isStreaming();
 }
+
+// ── Own-channel TTS: one speaking tab per device ─────────────────────────────
+// "TTS On My Channel When Live" must play in exactly ONE tab per browser no matter
+// how many chats/popouts the streamer has open — otherwise every tab speaks every
+// message on top of each other. The first tab takes a Web Lock and becomes the
+// speaker; the rest stand by and take over automatically when it closes. Browsers
+// without the Web Locks API keep the old every-tab behavior.
+let _ownTtsLeader = !(typeof navigator !== 'undefined' && 'locks' in navigator);
+(function _startOwnTtsLeadership() {
+    if (_ownTtsLeader) return;
+    let retry = null;
+    const attempt = () => {
+        navigator.locks.request('openvibe-own-channel-tts', { ifAvailable: true }, (lock) => {
+            if (!lock) { _ownTtsLeader = false; return null; }
+            _ownTtsLeader = true;
+            if (retry) { clearInterval(retry); retry = null; }
+            return new Promise(() => { }); // hold the lock until this tab closes
+        }).catch(() => { });
+    };
+    attempt();
+    retry = setInterval(() => { if (_ownTtsLeader) { clearInterval(retry); retry = null; } else attempt(); }, 4000);
+})();
+function isOwnChannelTtsSpeaker() { return _ownTtsLeader; }
+
+// ── Cross-tab settings sync ──────────────────────────────────────────────────
+// chatSettings persist in localStorage; the storage event fires in every OTHER
+// tab on save, so a toggle flipped anywhere applies everywhere immediately —
+// turning TTS off in one tab silences all of them instead of looking broken.
+window.addEventListener('storage', (e) => {
+    if (e.key !== CHAT_SETTINGS_KEY || !e.newValue) return;
+    try {
+        const next = JSON.parse(e.newValue);
+        if (!next || typeof next !== 'object') return;
+        const ttsWasOn = !!chatSettings.ttsEnabled;
+        const streamTtsWasOn = !!chatSettings.streamingTtsEnabled;
+        chatSettings = { ...CHAT_SETTINGS_DEFAULTS, ...next };
+        chatSettings.autoDeleteMinutes = normalizeChatAutoDeleteMinutes(chatSettings.autoDeleteMinutes);
+        applyChatSettings();
+        syncTTSToggleButtons();
+        // TTS switched off elsewhere → stop anything already queued/speaking here too.
+        if ((ttsWasOn && !chatSettings.ttsEnabled) || (streamTtsWasOn && !chatSettings.streamingTtsEnabled)) cancelAllTTS();
+    } catch { /* ignore malformed writes */ }
+});
 
 /** True when the main chat WS is connected to the user's own broadcast stream */
 function _isViewingOwnBroadcastChat() {
@@ -2482,8 +2530,14 @@ function destroyChat(forceClose = false) {
  * so they continue playing while the broadcaster navigates other pages.
  */
 function _handleBgBroadcastMessage(msg) {
+    // Own-channel audio while browsing elsewhere. This socket is joined to the
+    // streamer's OWN stream, so everything here is their channel's chat — but it must
+    // still honor the "TTS On My Channel When Live" toggle (it used to play
+    // unconditionally, so turning the setting off "didn't work"), the per-source
+    // filters, and the one-speaking-tab-per-device rule.
     switch (msg.type) {
         case 'tts':
+            if (!isOwnChannelTtsSpeaker() || !isChatTTSEnabled({ streaming: true }) || !_isTTSEnabledForSource(msg.source_platform)) return;
             if (typeof broadcastState !== 'undefined' && broadcastState.settings?.ttsMode === 'self') {
                 if (typeof speakBroadcastTTS === 'function') {
                     speakBroadcastTTS(msg.message || msg.text, msg.username);
@@ -2491,11 +2545,13 @@ function _handleBgBroadcastMessage(msg) {
             }
             break;
         case 'tts-audio':
+            if (!isOwnChannelTtsSpeaker() || !isChatTTSEnabled({ streaming: true }) || !_isTTSEnabledForSource(msg.source_platform)) return;
             if (typeof playBroadcastTTSAudio === 'function' && typeof broadcastState !== 'undefined') {
                 playBroadcastTTSAudio(msg);
             }
             break;
         case 'soundboard-audio':
+            if (!isOwnChannelTtsSpeaker() || !isChatSoundsEnabled()) return;
             if (typeof playBroadcastTTSAudio === 'function' && typeof broadcastState !== 'undefined') {
                 playBroadcastTTSAudio(msg);
             }
@@ -2680,7 +2736,8 @@ function handleChatMessage(msg) {
             // Legacy browser-side TTS (Self TTS mode)
             // Only use broadcast TTS path when viewing own channel chat
             if (_isViewingOwnBroadcastChat() && broadcastState?.settings?.ttsMode === 'self') {
-                if (isChatTTSEnabled({ streaming: true }) && typeof speakBroadcastTTS === 'function' && _isTTSEnabledForSource(msg.source_platform)) {
+                // Own channel while live: one speaking tab per device.
+                if (isOwnChannelTtsSpeaker() && isChatTTSEnabled({ streaming: true }) && typeof speakBroadcastTTS === 'function' && _isTTSEnabledForSource(msg.source_platform)) {
                     speakBroadcastTTS(msg.message || msg.text, msg.username);
                 }
             } else if (isChatTTSEnabled() && _isTTSEnabledForSource(msg.source_platform)) {
@@ -2691,7 +2748,7 @@ function handleChatMessage(msg) {
             // Server-synthesized TTS audio (Site-Wide TTS mode)
             // Only route through broadcast audio when on own channel
             if (_isViewingOwnBroadcastChat() && typeof playBroadcastTTSAudio === 'function') {
-                if (isChatTTSEnabled({ streaming: true }) && _isTTSEnabledForSource(msg.source_platform)) playBroadcastTTSAudio(msg);
+                if (isOwnChannelTtsSpeaker() && isChatTTSEnabled({ streaming: true }) && _isTTSEnabledForSource(msg.source_platform)) playBroadcastTTSAudio(msg);
             } else if (isChatTTSEnabled() && _isTTSEnabledForSource(msg.source_platform)) {
                 playTTSAudio(msg);
             }
@@ -2699,8 +2756,9 @@ function handleChatMessage(msg) {
         case 'soundboard-audio':
             // Chat sound clips (101soundboards + channel !sound commands) — play through the
             // audio queue with pitch/speed modifiers. Gated on the sounds toggle, NOT TTS.
+            // Own-channel-while-live clips follow the one-speaking-tab rule like TTS.
             if (_isViewingOwnBroadcastChat() && typeof playBroadcastTTSAudio === 'function') {
-                if (isChatSoundsEnabled()) playBroadcastTTSAudio(msg);
+                if (isOwnChannelTtsSpeaker() && isChatSoundsEnabled()) playBroadcastTTSAudio(msg);
             } else if (isChatSoundsEnabled()) {
                 playTTSAudio(msg);
             }
@@ -5934,11 +5992,9 @@ function buildSettingsPanelHTML() {
         </div>
         <div class="csp-section">
             <div class="csp-title"><i class="fa-solid fa-volume-high"></i> Text-to-Speech</div>
-            <label class="csp-row">
-                <span>Enable TTS</span>
-                <input type="checkbox" data-setting="ttsEnabled" onchange="onChatSettingChange(this)">
-            </label>
-            <label class="csp-row" title="Controls TTS in your own channel chat while you are live. TTS on other channels always uses the regular Enable TTS toggle.">
+            <!-- No "Enable TTS" row here — the speaker button under the chat input IS
+                 that toggle; a second switch for the same thing just confused people. -->
+            <label class="csp-row" title="Controls TTS in your own channel chat while you are live (plays in one tab only, synced across your tabs). TTS on other channels uses the speaker button under the chat input.">
                 <span>TTS On My Channel When Live</span>
                 <input type="checkbox" data-setting="streamingTtsEnabled" onchange="onChatSettingChange(this)">
             </label>
