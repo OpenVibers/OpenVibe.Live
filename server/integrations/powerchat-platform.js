@@ -458,7 +458,8 @@ async function sendCustomAlert(streamerUserId, { actorName, message, amountCents
     if (!conn) return false;
     try {
         await oauth.apiRequest(streamerUserId, {
-            method: 'POST', path: '/alerts/custom',
+            // No idempotency key on custom alerts → a replayed 5xx could double-alert.
+            method: 'POST', path: '/alerts/custom', idempotent: false,
             // Schema: actorName 1-32, message ≤250, amountCents 0-100000000.
             body: {
                 actorName: String(actorName || 'Test').slice(0, 32),

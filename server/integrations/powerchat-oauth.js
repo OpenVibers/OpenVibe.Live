@@ -246,14 +246,26 @@ async function getValidAccessToken(userId, { force = false } = {}) {
 }
 
 // ── Authenticated REST client ────────────────────────────────────────────────
-// path is relative to /streamers/:username, e.g. '/profile'. `username` defaults to the
-// streamer's stored PowerChat username (sandbox: the app owner's).
-async function apiRequest(userId, { method = 'GET', path, username, body, query } = {}) {
+// path is relative to /streamers/:username, e.g. '/profile' (or absolute under the
+// API root when `root: true`, e.g. '/me'). `username` defaults to the streamer's
+// stored PowerChat username (sandbox: the app owner's).
+//
+// Failure policy (see powerchat-retry.js): one authenticated attempt; a 401 forces a
+// token refresh and replays exactly once; 429 honours Retry-After / backs off with
+// jitter; 5xx is replayed only for idempotent calls (`idempotent: false` for
+// display-only alert triggers, which carry no idempotency key); every other 4xx is
+// terminal. `retry: false` disables the 429/5xx loop for callers that must not block.
+const retryPolicy = require('./powerchat-retry');
+const _rateWarned = new Map(); // `${userId}:${path}` → last warn (1/min so a burst logs once)
+async function apiRequest(userId, { method = 'GET', path, username, body, query, root = false, idempotent = true, retry = true } = {}) {
     const c = getConfig();
     const conn = db.getPowerchatConnection(userId);
     const uname = username || (conn && conn.powerchat_username) || c.sandboxUsername;
-    let url = `${c.apiBase}/streamers/${encodeURIComponent(uname)}${path}`;
-    if (query) { const qs = new URLSearchParams(query).toString(); if (qs) url += `?${qs}`; }
+    let url = root ? `${c.apiBase}${path}` : `${c.apiBase}/streamers/${encodeURIComponent(uname)}${path}`;
+    if (query) {
+        const qs = new URLSearchParams(Object.entries(query).filter(([, v]) => v !== undefined && v !== null)).toString();
+        if (qs) url += `?${qs}`;
+    }
 
     // One authenticated attempt; on a 401 (expired / rotated / "older credential
     // generation") force a token refresh and retry exactly once.
@@ -272,19 +284,34 @@ async function apiRequest(userId, { method = 'GET', path, username, body, query 
         return { res, json };
     };
 
-    let { res, json } = await attempt(false);
-    if (res.status === 401) {
-        // Refresh-and-retry. If the refresh itself is rejected, getValidAccessToken
-        // clears the tokens (reconnect needed) and throws.
-        ({ res, json } = await attempt(true));
-    }
-    if (!res.ok) {
-        const e = new Error((json.error && json.error.message) || `PowerChat API ${res.status}`);
-        e.status = res.status;
-        e.code = json.error && json.error.code;
-        throw e;
-    }
-    return json;
+    const once = async () => {
+        let { res, json } = await attempt(false);
+        if (res.status === 401) {
+            // Refresh-and-retry. If the refresh itself is rejected, getValidAccessToken
+            // clears the tokens (reconnect needed) and throws.
+            ({ res, json } = await attempt(true));
+        }
+        if (!res.ok) {
+            const e = new Error((json.error && json.error.message) || `PowerChat API ${res.status}`);
+            e.status = res.status;
+            e.code = json.error && json.error.code;
+            if (res.status === 429) e.retryAfterMs = retryPolicy.parseRetryAfter(res.headers && res.headers.get && res.headers.get('retry-after'));
+            throw e;
+        }
+        return json;
+    };
+
+    return retryPolicy.withRetry(once, {
+        attempts: retry ? retryPolicy.DEFAULTS.attempts : 1,
+        idempotent,
+        onRetry: ({ attempt: n, status, delay }) => {
+            const key = `${userId}:${method} ${path}`;
+            const now = Date.now();
+            if ((_rateWarned.get(key) || 0) > now - 60000) return;
+            _rateWarned.set(key, now);
+            console.warn(`[PowerChat] ${status === 429 ? 'rate limited' : `HTTP ${status}`} on ${method} ${path} (user ${userId}) — retry ${n} in ${delay}ms`);
+        },
+    });
 }
 
 // Public profile + live status + tipPageUrl (scope profile:read).
