@@ -1264,8 +1264,7 @@ function renderHeroStats(stats) {
             { icon: 'fa-cart-shopping', num: stats.vibesBought, label: 'Vibes Bought', title: 'Vibes purchased with real money (PowerChat, card, PayPal, crypto)', recent: R.vibesBought },
             { icon: 'fa-star', num: stats.activeSubs, label: 'Subs', title: 'Active channel subscriptions', recent: R.subs },
             { icon: 'fa-coins', num: stats.pointsEarned, label: 'Points Earned', title: 'Channel points earned by viewers (watching, chatting, following)', recent: R.points },
-            { icon: 'fa-gift', num: stats.pointsSpent, label: 'Points Spent', title: 'Channel points spent on rewards', recent: R.pointsSpent },
-            { icon: 'fa-ticket', num: stats.redemptions, label: 'Rewards', title: 'Channel reward redemptions', recent: R.redemptions },
+            { icon: 'fa-gift', num: stats.pointsSpent, label: 'Points Spent', title: `Channel points spent on rewards · ${_fmtCount(stats.redemptions || 0)} rewards redeemed`, recent: R.pointsSpent, sub: stats.redemptions ? `${_fmtCount(stats.redemptions)} rewards` : '' },
             { icon: 'fa-bullseye', num: stats.goalsActive, label: 'Goals', title: `Donation goals running now · ${stats.goalsReached || 0} reached so far`, sub: stats.goalsReached ? `${_fmtCount(stats.goalsReached)} reached` : '' },
         ],
     });
