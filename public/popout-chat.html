@@ -228,12 +228,7 @@
                         <div class="pc-toggle" id="pc-toggle-compact" onclick="toggleSetting('compact')"></div>
                     </div>
                 </div>
-                <div class="pc-setting-row">
-                    <span class="pc-setting-label">Read chat aloud (TTS)</span>
-                    <div class="pc-toggle-wrap">
-                        <div class="pc-toggle" id="pc-toggle-tts" onclick="toggleSetting('ttsEnabled')"></div>
-                    </div>
-                </div>
+                <!-- TTS on/off lives on the speaker button under the chat input. -->
                 <div class="pc-setting-row">
                     <span class="pc-setting-label">Chat sounds (soundboard &amp; !commands)</span>
                     <div class="pc-toggle-wrap">
@@ -328,7 +323,6 @@
             { toggleId: 'pc-toggle-ts',      key: 'showTimestamps' },
             { toggleId: 'pc-toggle-sound',   key: 'soundOnMention' },
             { toggleId: 'pc-toggle-compact', key: 'compactMode' },
-            { toggleId: 'pc-toggle-tts',     key: 'ttsEnabled' },
             { toggleId: 'pc-toggle-sounds',  key: 'soundsEnabled' },
         ];
         for (const { toggleId, key } of mapping) {
