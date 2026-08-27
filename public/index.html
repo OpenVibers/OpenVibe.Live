@@ -33,6 +33,10 @@
     <!-- Icons & Preconnect -->
     <link rel="canonical" href="https://openvibe.live/">
     <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="apple-touch-icon" href="/assets/logo-192.png">
     <link rel="apple-touch-icon" href="/assets/logo.svg">
     <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
@@ -5074,7 +5078,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 
 <!-- ── OpenVibe shared libs (notifications, account sync, themes) ── -->
 <script src="/shared/theme-loader.js" defer></script>
-<script src="/shared/notification-ui.js" defer></script>
+<script src="/shared/notification-ui.js?v=2" defer></script>
 <script src="/shared/account-switcher.js" defer></script>
 <script>
 // Initialize OpenVibe notifications and theme sync (navbar is handled natively by openvibelive).
