@@ -354,6 +354,10 @@ let sharedServePath = null;
 
 (function resolveSharedAssets() {
     const candidates = [
+        // The vendored copy is the source of truth (synced from OpenVibe.Network). On the
+        // server node_modules/openvibe-shared is a stale COPY, not a symlink, so it must
+        // never win over vendor/.
+        () => path.resolve(__dirname, '../vendor/openvibe-shared'),
         () => path.dirname(require.resolve('openvibe-shared/package.json')),
         () => path.resolve(__dirname, '../node_modules/openvibe-shared'),
         () => path.resolve(__dirname, '..', '..', 'OpenVibeApp', 'packages', 'openvibe-shared'),

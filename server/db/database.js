@@ -378,6 +378,17 @@ function initDb() {
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             UNIQUE(service, service_user_id)
         )`);
+    // Rename migration: the SSO provider was hobo.tools ('hobotools'); it is openvibe.network
+    // ('network') now. Rows keep the same service_user_id (the network user id), so the
+    // service label is the only thing that changed — but every lookup here filters on
+    // service='network', so un-renamed rows made those users look "never linked".
+    try {
+        const moved = database.prepare(`UPDATE linked_accounts SET service = 'network'
+            WHERE service = 'hobotools' AND user_id NOT IN (SELECT user_id FROM linked_accounts WHERE service = 'network')`).run().changes;
+        const dropped = database.prepare("DELETE FROM linked_accounts WHERE service = 'hobotools'").run().changes;
+        if (moved || dropped) console.log(`[DB] linked_accounts: ${moved} hobotools→network row(s) renamed, ${dropped} duplicate(s) dropped`);
+    } catch (e) { console.warn('[DB] linked_accounts rename:', e.message); }
+
         database.exec(`CREATE INDEX IF NOT EXISTS idx_linked_service ON linked_accounts(service, service_user_id)`);
         database.exec(`CREATE INDEX IF NOT EXISTS idx_linked_user ON linked_accounts(user_id)`);
     } catch (e) { console.warn('[DB] linked_accounts migration:', e.message); }
