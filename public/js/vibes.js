@@ -230,31 +230,31 @@ function openvibeBucksDonateModal() {
         </div>`;
 }
 
-// Donate modal boot: balance-first. No Vibes → send the viewer straight to Buy Vibes
-// (works on every channel; includes the PowerChat purchase rail); with a balance,
-// show it. Separately, streamers with their OWN PowerChat get the direct-tip option.
+// Donate modal boot: balance-first, but NEVER at the cost of the direct route.
+//  - Balance ≥ 1: normal Vibes donate form (+ the direct-PowerChat option when the
+//    streamer has their own PowerChat).
+//  - Balance 0 + streamer HAS PowerChat: stay here and offer BOTH — tip them
+//    directly (no Vibes needed) or go buy Vibes first.
+//  - Balance 0 + no direct route: straight to Buy Vibes (any channel, all rails).
 async function _initDonateModal() {
-    try {
-        const data = await api('/funds/balance');
-        const bal = Math.round(data.balance || 0);
-        const line = document.getElementById('donate-balance-line');
-        if (line) line.innerHTML = `Your balance: <strong>${bal.toLocaleString()}</strong> Vibes`;
-        if (bal < 1) {
-            toast('You don’t have any Vibes yet — grab some first, then come back to donate! 🛒', 'info');
-            showModal('buy-funds');
-            return;
-        }
-    } catch { /* not logged in / balance unavailable — leave the form as-is */ }
-    _initDonatePowerchat();
-}
-async function _initDonatePowerchat() {
-    const box = document.getElementById('donate-powerchat-direct');
     const streamerId = _donateStreamerId();
-    if (!box || !streamerId) return;
-    try {
-        const d = await api(`/powerchat/donate-link?streamer_id=${streamerId}`);
-        if (d && d.mode === 'direct') box.style.display = '';
-    } catch { /* streamer has no PowerChat — keep hidden */ }
+    const [bal, directAvailable] = await Promise.all([
+        api('/funds/balance').then(d => Math.round(d.balance || 0)).catch(() => null),
+        streamerId
+            ? api(`/powerchat/donate-link?streamer_id=${streamerId}`).then(d => !!(d && d.mode === 'direct')).catch(() => false)
+            : Promise.resolve(false),
+    ]);
+    const box = document.getElementById('donate-powerchat-direct');
+    if (box && directAvailable) box.style.display = '';
+    const line = document.getElementById('donate-balance-line');
+    if (bal === null) return; // not logged in / balance unavailable — leave the form as-is
+    if (line) line.innerHTML = `Your balance: <strong>${bal.toLocaleString()}</strong> Vibes${bal < 1 ? ' — <a href="#" onclick="showModal(\'buy-funds\');return false">buy some</a> to donate Vibes' : ''}`;
+    if (bal < 1 && !directAvailable) {
+        toast('You don’t have any Vibes yet — grab some first, then come back to donate! 🛒', 'info');
+        showModal('buy-funds');
+    } else if (bal < 1 && directAvailable) {
+        toast('No Vibes yet — tip this channel directly via PowerChat below, or buy Vibes first. ⚡', 'info');
+    }
 }
 
 // DIRECT real-money tip — only offered when the streamer has their own PowerChat.
