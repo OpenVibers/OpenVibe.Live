@@ -5824,18 +5824,22 @@ function _createJunglePitchShifter(context) {
     };
 }
 
-// Last line of defense against double TTS: whatever the cause (two sockets in one
-// tab, a duplicated relay bridge, a re-broadcast), the same speaker saying the same
-// thing twice within a few seconds plays ONCE.
+// Last line of defense against double TTS: the SAME utterance delivered twice (two
+// sockets in one tab, a re-broadcast) plays once. Keyed by the server's per-message
+// ttsKey — so a user legitimately typing the same text again IS read again. The
+// content fallback for keyless payloads uses a 2s window: wide enough for a racing
+// double delivery, far too narrow to eat a real repeat.
 const _recentTtsPlays = new Map();
 function _ttsRecentlyPlayed(msg) {
-    const key = `${msg.username || ''}|${String(msg.message || msg.text || '').slice(0, 200)}`;
+    const keyed = !!msg.ttsKey;
+    const key = keyed ? `k:${msg.ttsKey}` : `${msg.username || ''}|${String(msg.message || msg.text || '').slice(0, 200)}`;
+    const windowMs = keyed ? 30000 : 2000;
     const now = Date.now();
     const last = _recentTtsPlays.get(key);
-    if (last && now - last < 8000) return true;
+    if (last && now - last < windowMs) return true;
     _recentTtsPlays.set(key, now);
     if (_recentTtsPlays.size > 200) {
-        for (const [k, t] of _recentTtsPlays) if (now - t > 30000) _recentTtsPlays.delete(k);
+        for (const [k, t] of _recentTtsPlays) if (now - t > 60000) _recentTtsPlays.delete(k);
     }
     return false;
 }

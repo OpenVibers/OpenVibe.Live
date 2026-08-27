@@ -430,7 +430,7 @@ class ChatRelayService {
 
         // Feed relayed platform chat (Kick/Twitch/YouTube) into server-side TTS
         try {
-            chatServer.synthesizeAndBroadcastTTS(bridge.streamId, prefixedUsername, chatMsg.message, null, bridge.platform, `${bridge.platform}:${prefixedUsername}`);
+            chatServer.synthesizeAndBroadcastTTS(bridge.streamId, prefixedUsername, chatMsg.message, null, bridge.platform, `${bridge.platform}:${prefixedUsername}`, null, chatMsg.id ? `m${chatMsg.id}` : null);
         } catch { /* non-critical */ }
 
         // Merge relayed chat into the streamer's PowerChat unified overlay too. Only

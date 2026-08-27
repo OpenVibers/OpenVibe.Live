@@ -740,7 +740,7 @@ class RobotStreamerService {
 
                 // Feed relayed RS chat into server-side TTS (same path as native chat)
                 try {
-                    chatServer.synthesizeAndBroadcastTTS(stream.id, username, mirrored.message, null, 'rs', `rs:${username}`);
+                    chatServer.synthesizeAndBroadcastTTS(stream.id, username, mirrored.message, null, 'rs', `rs:${username}`, null, mirrored.id ? `m${mirrored.id}` : null);
                 } catch { /* non-critical */ }
 
                 // ...and into the streamer's PowerChat overlay (relayed chat was never forwarded).
