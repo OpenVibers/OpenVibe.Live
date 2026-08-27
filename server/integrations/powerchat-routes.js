@@ -215,27 +215,30 @@ router.get('/tip-link', requireAuth, (req, res) => {
     }
 });
 
-// ── GET /donate-link — PowerChat tip link for ANY streamer (viewer-facing) ────
-// ?streamer=<username>. Streamers with PowerChat get their own tip page (they keep
-// the money; the webhook fires their celebration). Streamers without PowerChat get
-// the site-wide account's page with a routing ref — the webhook then credits them
-// the full amount as cashout-able Vibes and fires the same celebration.
+// ── GET /donate-link — DIRECT PowerChat tip link (viewer-facing) ──────────────
+// ?streamer=<username> or ?streamer_id=<id>, optional &goal_id. Only streamers with
+// their OWN PowerChat connected get a link — money goes to them directly, their
+// webhook fires the celebration, the site never mints anything. Streamers without
+// PowerChat 404 here: viewers buy Vibes instead (Buy Vibes modal, any channel) and
+// donate from their balance.
 router.get('/donate-link', optionalAuth, (req, res) => {
     try {
         const streamer = req.query.streamer_id
             ? db.getUserById(parseInt(req.query.streamer_id, 10))
             : db.getUserByUsername(String(req.query.streamer || ''));
         if (!streamer) return res.status(404).json({ error: 'Streamer not found' });
-        // Optional goal pick — rides in app_purpose ("goal:<id>") so the webhook
-        // credits that exact goal. Only the streamer's own ACTIVE goals qualify.
+
+        // Optional goal pick — rides in app_purpose ("goal:<id>") so the streamer's
+        // webhook credits that exact goal.
         let goalId = null;
         if (req.query.goal_id) {
             const g = db.getDonationGoalById(parseInt(req.query.goal_id, 10));
             if (g && Number(g.user_id) === Number(streamer.id) && g.is_active) goalId = g.id;
         }
-        const link = require('./powerchat-checkout').buildDonateLink(streamer.id, req.user ? req.user.id : null, { goalId });
-        if (!link) return res.status(404).json({ error: 'PowerChat tips are not available for this channel' });
-        res.json({ url: link.url, mode: link.mode, goal_id: goalId });
+
+        const direct = require('./powerchat-checkout').buildDonateLink(streamer.id, req.user ? req.user.id : null, { goalId });
+        if (!direct) return res.status(404).json({ error: 'This channel does not take PowerChat tips directly', direct: false });
+        res.json({ url: direct.url, mode: 'direct', goal_id: goalId });
     } catch (err) {
         res.status(500).json({ error: 'Failed to build tip link' });
     }

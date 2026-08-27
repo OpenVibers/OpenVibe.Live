@@ -22,8 +22,10 @@ router.get('/config', (req, res) => {
 
 // ── Buy Vibes ───────────────────────────────────────────
 router.post('/bucks/checkout', requireAuth, async (req, res) => {
-    if (!pay.isEnabled()) return res.status(403).json({ error: 'Payments are not enabled' });
     const provider = String(req.body.provider || '').toLowerCase();
+    // PowerChat purchases run on their own enablement (powerchat_enabled + site tips
+    // account) — the master payments switch only gates the card/PayPal/crypto rails.
+    if (!pay.isEnabled() && provider !== 'powerchat') return res.status(403).json({ error: 'Payments are not enabled' });
     // The client picks a Vibes amount (bit-style); the USD price is derived from the
     // volume-discount tiers so bigger buys are cheaper per buck and the platform keeps the spread.
     let bucks;

@@ -654,6 +654,8 @@ function showModal(id) {
     overlay.classList.add('show');
     if (id === 'buy-funds' && typeof _initBuyBucks === 'function') _initBuyBucks();
     if (id === 'donate' && typeof _loadDonateGoals === 'function') _loadDonateGoals();
+    // Balance-first donate flow + the streamer's direct-PowerChat option.
+    if (id === 'donate' && typeof _initDonateModal === 'function') _initDonateModal();
 }
 
 function closeModal() {
