@@ -794,6 +794,27 @@ let _ownTtsLeader = !(typeof navigator !== 'undefined' && 'locks' in navigator);
 })();
 function isOwnChannelTtsSpeaker() { return _ownTtsLeader; }
 
+// Who this tab is chatting as — set by the server's 'auth' confirmation.
+let _myChatIdentity = null;
+
+// A user must NEVER hear their own message's TTS locally. The speaker button under
+// the input is a SENDER-side control (does your message get read out on the
+// streamer's end), not a local monitor — playing it locally meant senders heard
+// every message twice: once in their tab, once through the stream audio. The one
+// exception is the streamer listening to their OWN channel while live (they ARE the
+// audience there) — those paths deliberately don't call this filter.
+function _isOwnTtsMessage(msg) {
+    try {
+        if (msg.sender_key && _myChatIdentity && _myChatIdentity.key) {
+            return msg.sender_key === _myChatIdentity.key;
+        }
+        // Legacy payloads without sender_key: match by name.
+        const name = String(msg.core_username || msg.username || '');
+        if (!name || !_myChatIdentity) return false;
+        return name === _myChatIdentity.name || (!!_myChatIdentity.core && name === _myChatIdentity.core);
+    } catch { return false; }
+}
+
 // ── Cross-tab settings sync ──────────────────────────────────────────────────
 // chatSettings persist in localStorage; the storage event fires in every OTHER
 // tab on save, so a toggle flipped anywhere applies everywhere immediately —
@@ -2612,6 +2633,13 @@ function handleChatMessage(msg) {
             renderChatUsersList(msg.users);
             break;
         case 'auth':
+            // Remember who WE are in this chat (stable key + display name) so TTS of
+            // our own messages can be skipped locally (see _isOwnTtsMessage).
+            _myChatIdentity = {
+                key: msg.core_username ? `user:${msg.core_username}` : `anon:${msg.username}`,
+                name: String(msg.username || ''),
+                core: msg.core_username || null,
+            };
             if (msg.authenticated) {
                 addRichSystemMessage(`<i class="fa-solid fa-user-check" style="margin-right:5px;opacity:0.8"></i> Chatting as ${esc(msg.username)}`);
             } else {
@@ -2740,7 +2768,7 @@ function handleChatMessage(msg) {
                 if (isOwnChannelTtsSpeaker() && isChatTTSEnabled({ streaming: true }) && typeof speakBroadcastTTS === 'function' && _isTTSEnabledForSource(msg.source_platform)) {
                     speakBroadcastTTS(msg.message || msg.text, msg.username);
                 }
-            } else if (isChatTTSEnabled() && _isTTSEnabledForSource(msg.source_platform)) {
+            } else if (isChatTTSEnabled() && !_isOwnTtsMessage(msg) && _isTTSEnabledForSource(msg.source_platform)) {
                 speakTTS(msg.message || msg.text, msg.voiceFX, msg.username);
             }
             break;
@@ -2749,7 +2777,7 @@ function handleChatMessage(msg) {
             // Only route through broadcast audio when on own channel
             if (_isViewingOwnBroadcastChat() && typeof playBroadcastTTSAudio === 'function') {
                 if (isOwnChannelTtsSpeaker() && isChatTTSEnabled({ streaming: true }) && _isTTSEnabledForSource(msg.source_platform)) playBroadcastTTSAudio(msg);
-            } else if (isChatTTSEnabled() && _isTTSEnabledForSource(msg.source_platform)) {
+            } else if (isChatTTSEnabled() && !_isOwnTtsMessage(msg) && _isTTSEnabledForSource(msg.source_platform)) {
                 playTTSAudio(msg);
             }
             break;
@@ -5797,7 +5825,10 @@ function syncTTSToggleButtons() {
 /* ── Chat settings panel ──────────────────────────────────────── */
 function toggleChatSettings(btn) {
     // Find the closest chat container (sidebar, global, offline, broadcast)
-    const container = btn ? btn.closest('.chat-sidebar, .offline-global-chat, .global-chat-main') : null;
+    let container = btn ? btn.closest('.chat-sidebar, .offline-global-chat, .global-chat-main') : null;
+    // Popout window: the gear sits in the page header OUTSIDE the chat column — use
+    // the column, so the popout gets the exact same settings panel as everywhere else.
+    if (!container && document.getElementById('pc-msgs')) container = document.querySelector('.pc-chat-col');
     if (!container) return;
     let panel = container.querySelector('.chat-settings-panel');
     if (panel) {

@@ -1647,6 +1647,10 @@ class ChatServer {
             this.broadcastToStream(streamId, {
                 type: 'tts-audio',
                 username,
+                // Stable sender identity ("user:<login>" / "anon:<id>") so clients can
+                // skip their OWN message's TTS locally — senders were hearing their
+                // message twice (their tab + the stream audio).
+                sender_key: identityKey || undefined,
                 message: text,
                 audio: result.audio,
                 mimeType: result.mimeType,
