@@ -781,17 +781,15 @@ function isBroadcastingLiveForTTS() {
 let _ownTtsLeader = !(typeof navigator !== 'undefined' && 'locks' in navigator);
 (function _startOwnTtsLeadership() {
     if (_ownTtsLeader) return;
-    let retry = null;
-    const attempt = () => {
-        navigator.locks.request('openvibe-own-channel-tts', { ifAvailable: true }, (lock) => {
-            if (!lock) { _ownTtsLeader = false; return null; }
+    try {
+        // Queued (not ifAvailable) request = proper leader election: every tab waits
+        // in line, and the INSTANT the speaking tab closes, the browser grants the
+        // lock to the next one — TTS recovers by itself with no polling gap.
+        navigator.locks.request('openvibe-own-channel-tts', () => {
             _ownTtsLeader = true;
-            if (retry) { clearInterval(retry); retry = null; }
-            return new Promise(() => { }); // hold the lock until this tab closes
-        }).catch(() => { });
-    };
-    attempt();
-    retry = setInterval(() => { if (_ownTtsLeader) { clearInterval(retry); retry = null; } else attempt(); }, 4000);
+            return new Promise(() => { }); // hold until this tab closes
+        }).catch(() => { _ownTtsLeader = true; }); // lock machinery failed → don't go silent
+    } catch { _ownTtsLeader = true; }
 })();
 function isOwnChannelTtsSpeaker() { return _ownTtsLeader; }
 
@@ -5832,6 +5830,28 @@ function playTTSAudio(msg) {
     _processTTSAudioQueue();
 }
 
+// Autoplay-policy recovery: a tab promoted to TTS speaker that never saw a user
+// gesture gets its audio.play() rejected (NotAllowedError) — without this the queue
+// would silently drop messages. Requeue and drain on the first interaction.
+let _ttsUnlockArmed = false;
+function _handleTtsPlayBlocked(msg, cleanupUrl) {
+    try { if (cleanupUrl) URL.revokeObjectURL(cleanupUrl); } catch { /* */ }
+    _ttsAudioQueue.unshift(msg);
+    _ttsAudioPlaying = false;
+    if (_ttsUnlockArmed) return;
+    _ttsUnlockArmed = true;
+    const resume = () => {
+        _ttsUnlockArmed = false;
+        document.removeEventListener('pointerdown', resume, true);
+        document.removeEventListener('keydown', resume, true);
+        _processTTSAudioQueue();
+    };
+    document.addEventListener('pointerdown', resume, true);
+    document.addEventListener('keydown', resume, true);
+    // Cap the backlog so a long-unattended tab doesn't burst-read 50 messages later.
+    if (_ttsAudioQueue.length > 5) _ttsAudioQueue = _ttsAudioQueue.slice(-5);
+}
+
 function _processTTSAudioQueue() {
     if (_ttsAudioPlaying || _ttsAudioQueue.length === 0) return;
     _ttsAudioPlaying = true;
@@ -5870,13 +5890,19 @@ function _processTTSAudioQueue() {
             const cleanup = () => { URL.revokeObjectURL(url); try { ctx.close(); } catch { } _ttsAudioPlaying = false; _processTTSAudioQueue(); };
             audio.onended = cleanup;
             audio.onerror = cleanup;
-            audio.play().catch(cleanup);
+            audio.play().catch((err) => {
+                if (err && err.name === 'NotAllowedError') { try { ctx.close(); } catch { } _handleTtsPlayBlocked(msg, url); return; }
+                cleanup();
+            });
         } catch {
             // Fallback to Audio.volume if Web Audio API unavailable
             audio.volume = volume;
             audio.onended = () => { URL.revokeObjectURL(url); _ttsAudioPlaying = false; _processTTSAudioQueue(); };
             audio.onerror = () => { URL.revokeObjectURL(url); _ttsAudioPlaying = false; _processTTSAudioQueue(); };
-            audio.play().catch(() => { URL.revokeObjectURL(url); _ttsAudioPlaying = false; _processTTSAudioQueue(); });
+            audio.play().catch((err) => {
+                if (err && err.name === 'NotAllowedError') { _handleTtsPlayBlocked(msg, url); return; }
+                URL.revokeObjectURL(url); _ttsAudioPlaying = false; _processTTSAudioQueue();
+            });
         }
     } catch {
         _ttsAudioPlaying = false;
