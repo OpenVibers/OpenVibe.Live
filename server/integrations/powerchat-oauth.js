@@ -41,9 +41,11 @@ function getConfig() {
         // currency:write / tips:write), so the grant carries them — otherwise every
         // platform intake call 403s. NOTE: the DB seeds this setting, so the seeded
         // value in database.js is what actually applies — keep the two lists in sync.
+        // chat:read is diagnostic only: it lets the relay read /chat/history back to
+        // confirm a 202-accepted message was actually displayed.
         // Widening the list requires the streamer to reconnect (re-consent) to re-mint
         // tokens with the wider set.
-        scopes: s('powerchat_scopes') || 'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write tips:write',
+        scopes: s('powerchat_scopes') || 'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write tips:write chat:read',
         sandboxUsername: s('powerchat_sandbox_username') || 'alex',
         authorizeUrl: `${baseUrl}/oauth/authorize`,
         tokenUrl: `${baseUrl}/oauth/token`,

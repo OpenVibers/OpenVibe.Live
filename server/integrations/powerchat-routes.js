@@ -119,6 +119,13 @@ router.get('/status', requireAuth, async (req, res) => {
             const intents = require('./powerchat-checkout').checkoutIntentSupport();
             if (intents.state === 'unsupported') diagnosis.push({ level: 'info', code: 'intents_unsupported', message: 'Fixed-price checkout intents are not deployed on this PowerChat yet — subscriptions and Vibes packs use canonical pinned links (amount still enforced by our webhook checks).' });
         } catch { /* optional */ }
+        // Chat relay: accepted (202) vs actually displayed, from the /chat/history read-back.
+        let chat_relay = null;
+        try {
+            chat_relay = require('./powerchat-platform').chatRelayStats(req.user.id);
+            if (chat_relay.dropped > 0) diagnosis.push({ level: 'warn', code: 'chat_dropped', message: `${chat_relay.dropped} relayed chat message(s) were accepted by PowerChat but never displayed (moderation block, AI/profanity drop, or duplicate id) — check your PowerChat moderation settings. Last: ${chat_relay.lastDroppedAt || 'n/a'}.` });
+            else if (connected && !chat_relay.verifiable && chat_relay.accepted > 0) diagnosis.push({ level: 'info', code: 'chat_unverified', message: 'Relayed chat is accepted by PowerChat but cannot be verified as displayed until you reconnect with the chat:read permission.' });
+        } catch { /* optional */ }
         if (conn && conn.last_error) diagnosis.push({ level: 'warn', code: 'last_error', message: conn.last_error });
 
         res.json({
@@ -136,6 +143,7 @@ router.get('/status', requireAuth, async (req, res) => {
             live: live ? { username: live.username, id: live.id, app_id: live.appId, verified_at: new Date().toISOString() } : null,
             live_error,
             diagnosis,
+            chat_relay,
             last_error: conn ? conn.last_error : null,
             sandbox_username: cfg.sandboxUsername,
         });

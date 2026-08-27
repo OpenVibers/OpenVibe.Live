@@ -155,6 +155,7 @@ async function forwardChat(streamerUserId, { chatterName, externalChatterId, mes
     if (b.count >= 100) return;
     b.count++;
     const absAvatar = _absoluteAvatarUrl(avatarUrl);
+    const sentId = String(messageId || crypto.randomUUID()).slice(0, 128);
     try {
         await oauth.apiRequest(streamerUserId, {
             method: 'POST', path: '/chat',
@@ -167,7 +168,7 @@ async function forwardChat(streamerUserId, { chatterName, externalChatterId, mes
                 chatterName: String(chatterName).slice(0, 48),
                 externalChatterId: String(externalChatterId || chatterName).slice(0, 128),
                 message: String(message).slice(0, 500),
-                messageId: String(messageId || crypto.randomUUID()).slice(0, 128),
+                messageId: sentId,
                 ...(absAvatar ? { avatarUrl: absAvatar } : {}),
                 // Placeholder grapheme when no avatar URL resolves (e.g. 🤖 for AI
                 // viewers, or a clean letter for "[RS] name"-style prefixed sources).
@@ -177,6 +178,9 @@ async function forwardChat(streamerUserId, { chatterName, externalChatterId, mes
             },
         });
         _relayOk(streamerUserId);
+        // 202 = ACCEPTED FOR MODERATION, not displayed. Queue the id for read-back.
+        _trackAccepted(streamerUserId, sentId);
+        return 'accepted';
     } catch (e) {
         _noteApiError(streamerUserId, 'chat:write', e);
         // This used to be silently swallowed, which meant a broken overlay relay looked
@@ -184,7 +188,122 @@ async function forwardChat(streamerUserId, { chatterName, externalChatterId, mes
         // minute per streamer, so a persistent problem is visible without flooding a
         // busy chat with one line per message.
         _relayFail(streamerUserId, e && e.message);
+        return false;
     }
+}
+
+// ── Display verification: the 202 trap ───────────────────────
+// POST /chat answers 202 { accepted: true } — accepted for MODERATION. The message can
+// still be dropped by a moderation block, AI moderation, a profanity drop_message
+// rule, or duplicate-messageId suppression, with no callback. GET /chat/history
+// (scope chat:read) is the only way to know, so accepted ids are queued and read
+// back in one history call per streamer per tick — never one read per message.
+// Verification is observability, not delivery: a dropped message is counted and
+// surfaced on /status (and logged, rate-limited), never re-sent (a resend with a
+// new id would bypass the streamer's moderation on purpose).
+const VERIFY_DELAY_MS = 2500;      // let moderation + the history ring settle
+const VERIFY_TICK_MS = 5000;       // ≤12 history reads / min / streamer, only while pending
+const VERIFY_MAX_AGE_MS = 45000;   // not in history by then → dropped
+const VERIFY_MAX_PENDING = 200;    // per streamer; beyond that, oldest are marked unverified
+const HISTORY_LIMIT = 100;
+let _now = () => Date.now();
+const _verify = new Map(); // userId → { pending: Map(messageId → sentAt), lastCheckAt, stats }
+function _verifyState(userId) {
+    let v = _verify.get(userId);
+    if (!v) { v = { pending: new Map(), lastCheckAt: 0, stats: { accepted: 0, displayed: 0, dropped: 0, unverified: 0, lastDroppedAt: null, lastDroppedId: null, lastCheckAt: null } }; _verify.set(userId, v); }
+    return v;
+}
+function _trackAccepted(userId, messageId) {
+    const v = _verifyState(userId);
+    v.stats.accepted++;
+    if (v.pending.size >= VERIFY_MAX_PENDING) {
+        const oldest = v.pending.keys().next().value;
+        v.pending.delete(oldest); v.stats.unverified++;
+    }
+    v.pending.set(messageId, _now());
+}
+// Scope check WITHOUT noting a gap: chat:read is a diagnostic scope — a grant minted
+// before it was requested must not flash "Reconnect needed" on every relay; /status's
+// missing_scopes diff already prompts the reconnect once.
+function _quietConn(userId, scope) {
+    try {
+        if (!oauth.getConfig().enabled) return null;
+        const conn = db.getPowerchatConnection(userId);
+        if (!conn || !conn.access_token || !conn.refresh_token) return null;
+        if (conn.scope && !String(conn.scope).split(/\s+/).includes(scope)) return null;
+        return conn;
+    } catch { return null; }
+}
+const _dropWarned = new Map();
+function _historyIds(json) {
+    const d = json && json.data !== undefined ? json.data : json;
+    const rows = Array.isArray(d) ? d : (d && (d.rows || d.messages || d.items)) || [];
+    const ids = new Set();
+    for (const r of rows) {
+        if (!r || typeof r !== 'object') continue;
+        for (const k of ['messageId', 'id', 'externalId']) if (r[k] != null) ids.add(String(r[k]));
+    }
+    return ids;
+}
+function _historyHas(ids, messageId) {
+    if (ids.has(messageId)) return true;
+    // PowerChat namespaces app ids server-side: "app:<appId>:<ourId>".
+    const suffix = `:${messageId}`;
+    for (const id of ids) if (id.endsWith(suffix)) return true;
+    return false;
+}
+async function _verifyTick() {
+    const now = _now();
+    for (const [userId, v] of _verify) {
+        if (!v.pending.size) continue;
+        if (now - v.lastCheckAt < VERIFY_TICK_MS) continue;
+        let due = false;
+        for (const sentAt of v.pending.values()) if (now - sentAt >= VERIFY_DELAY_MS) { due = true; break; }
+        if (!due) continue;
+        const conn = _quietConn(userId, 'chat:read');
+        if (!conn) {
+            // Can't verify without chat:read — count as unverified, don't pretend.
+            v.stats.unverified += v.pending.size; v.pending.clear();
+            continue;
+        }
+        v.lastCheckAt = now;
+        let ids;
+        try {
+            const json = await oauth.apiRequest(userId, { method: 'GET', path: '/chat/history', query: { limit: HISTORY_LIMIT } });
+            ids = _historyIds(json);
+            v.stats.lastCheckAt = new Date(now).toISOString();
+        } catch (e) {
+            _noteApiError(userId, 'chat:read', e);
+            continue; // transient — entries stay pending until max age
+        }
+        for (const [id, sentAt] of v.pending) {
+            if (now - sentAt < VERIFY_DELAY_MS) continue;
+            if (_historyHas(ids, id)) { v.pending.delete(id); v.stats.displayed++; continue; }
+            if (now - sentAt >= VERIFY_MAX_AGE_MS) {
+                v.pending.delete(id); v.stats.dropped++;
+                v.stats.lastDroppedAt = new Date(now).toISOString(); v.stats.lastDroppedId = id;
+                if ((_dropWarned.get(userId) || 0) < now - 60000) {
+                    _dropWarned.set(userId, now);
+                    console.warn(`[PowerChat] chat relay for user ${userId}: message ${id} was accepted (202) but never displayed — dropped by moderation/dedupe on PowerChat (${v.stats.dropped} total)`);
+                }
+            }
+        }
+    }
+}
+let _verifyTimer = null;
+function startChatVerifier() {
+    if (_verifyTimer) return;
+    _verifyTimer = setInterval(() => { _verifyTick().catch(() => { }); }, 1000);
+    if (_verifyTimer.unref) _verifyTimer.unref();
+    console.log('[PowerChat] chat display verifier started (reads /chat/history back for accepted relays)');
+}
+/** Relay health for /status: what was accepted vs actually shown on the overlay. */
+function chatRelayStats(userId) {
+    const v = _verify.get(userId);
+    const st = v ? { ...v.stats } : { accepted: 0, displayed: 0, dropped: 0, unverified: 0, lastDroppedAt: null, lastDroppedId: null, lastCheckAt: null };
+    st.pending = v ? v.pending.size : 0;
+    st.verifiable = !!_quietConn(userId, 'chat:read');
+    return st;
 }
 
 // Relay health: quiet on success, but surface failures at a sane rate.
@@ -477,4 +596,6 @@ module.exports = {
     forwardChat, forwardFollow, forwardSubscription, forwardTip,
     sendViewCount, startViewerCountSweeper,
     sendCurrencyRedemption, queueCurrencyEarn, startCurrencyEarnFlusher, sendCustomAlert,
+    startChatVerifier, chatRelayStats,
+    _test: { verifyTick: _verifyTick, setNow: (fn) => { _now = fn || (() => Date.now()); }, reset: () => _verify.clear() },
 };

@@ -1103,7 +1103,7 @@ function initDb() {
             // grants exactly what /oauth/authorize REQUESTS, so a narrow list here means
             // every platform push (viewer count, chat, …) 403s even though the app
             // registration has the scopes.
-            ['powerchat_scopes', 'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write tips:write', 'OAuth scopes requested from each streamer (space-delimited)', 'string'],
+            ['powerchat_scopes', 'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write tips:write chat:read', 'OAuth scopes requested from each streamer (space-delimited)', 'string'],
             ['powerchat_sandbox_username', 'alex', 'Sandbox streamer username the app can act on until approved (the app owner’s PowerChat username)', 'string'],
             // Site-wide tips account: the PowerChat USERNAME whose tip page hosts all
             // Vibes purchases and the donation fallback for streamers without their own
@@ -1122,10 +1122,11 @@ function initDb() {
         // The original seed lacked every platform scope, which is why platform pushes 403'd;
         // a later interim default lacked tips:write. Custom values are left untouched.
         const fullScopes = powerchatSeeds.find(r => r[0] === 'powerchat_scopes')[1];
-        database.prepare(`UPDATE site_settings SET value = ? WHERE key = 'powerchat_scopes' AND value IN (?, ?)`)
+        database.prepare(`UPDATE site_settings SET value = ? WHERE key = 'powerchat_scopes' AND value IN (?, ?, ?)`)
             .run(fullScopes,
                 'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger',
-                'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write');
+                'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write',
+                'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write tips:write');
         database.prepare(`UPDATE site_settings SET value = 'alex' WHERE key = 'powerchat_sandbox_username' AND value = 'n8admin'`).run();
         // powerchat_site_user_id (pointed at an OpenVibe user's connection) is replaced
         // by powerchat_site_tip_username (a directly-typed PowerChat username). Carry
