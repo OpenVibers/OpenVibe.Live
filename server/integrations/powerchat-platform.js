@@ -90,6 +90,16 @@ function _noteApiError(userId, scope, err) {
     if (err && err.status === 403) _noteScopeGap(userId, `${scope} (disabled on PowerChat)`);
 }
 
+// Undeclared-currency warnings, once per 10 min per key — the earn flusher would
+// otherwise print one line per buffered viewer per flush.
+const _undeclaredWarned = new Map();
+function _warnUndeclared(key, message) {
+    const now = Date.now();
+    if ((_undeclaredWarned.get(key) || 0) > now - 600000) return;
+    _undeclaredWarned.set(key, now);
+    console.warn(`[PowerChat] ${message}`);
+}
+
 // ── Relay routing preferences ────────────────────────────────
 // Streamers choose, per stream slot and per restream destination, which chat is
 // merged into their PowerChat overlay (Broadcast page → slot settings / destination
@@ -350,7 +360,7 @@ async function sendCurrencyRedemption(streamerUserId, { amount, redeemerName, re
         // "Unknown currency" means the key isn't DECLARED on the app in the PowerChat
         // dashboard — that's app config, not auth; surface it distinctly.
         if (e && e.status === 400 && /unknown currency/i.test(e.message || '')) {
-            console.warn(`[PowerChat] currency "${CURRENCY_KEY}" is not declared on the app — declare it in the PowerChat Developer dashboard`);
+            _warnUndeclared(CURRENCY_KEY, `currency "${CURRENCY_KEY}" is not declared on the app — declare it in the PowerChat Developer dashboard`);
         }
         return false;
     }
@@ -433,7 +443,7 @@ async function forwardTip(streamerUserId, { amount, tipperName, message, externa
     } catch (e) {
         _noteApiError(streamerUserId, 'tips:write', e);
         if (e && e.status === 400 && /unknown currency|no usd rate/i.test(e.message || '')) {
-            console.warn(`[PowerChat] tip currency "${TIP_CURRENCY_KEY}" must be declared on the app WITH unitsPerUsd=100 in the PowerChat Developer dashboard`);
+            _warnUndeclared(TIP_CURRENCY_KEY, `tip currency "${TIP_CURRENCY_KEY}" must be declared on the app WITH unitsPerUsd=100 in the PowerChat Developer dashboard`);
         }
     }
 }
