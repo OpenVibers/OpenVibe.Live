@@ -125,7 +125,15 @@ async function mintCheckoutLink(pcUsername, ref, { purpose = null, amountCents =
         const json = await oauth.apiRequest(conn.user_id, { method: 'GET', path: '/tip-checkout-link', username: pcUsername, query });
         const url = (json && json.data && json.data.url) || (json && json.url) || null;
         if (!url || !/^https?:\/\//i.test(String(url))) throw new Error('response carried no url');
-        return String(url);
+        // PowerChat builds the link on ITS configured public host. When we talk to it
+        // through a different hostname (dev instance behind a tunnel), viewers can only
+        // reach the one we're configured with — the intent token is what matters, so
+        // re-home the link onto our baseUrl and keep path + query intact.
+        try {
+            const u = new URL(String(url)), b = new URL(oauth.getConfig().baseUrl);
+            if (u.host !== b.host) { u.protocol = b.protocol; u.host = b.host; }
+            return u.toString();
+        } catch { return String(url); }
     };
     try {
         return { url: await attempt(true), minted: true };
