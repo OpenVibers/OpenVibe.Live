@@ -2640,6 +2640,7 @@ function _handleBgBroadcastMessage(msg) {
             break;
         case 'tts-audio':
             if (!isOwnChannelTtsSpeaker() || !isChatTTSEnabled({ streaming: true }) || !_isTTSEnabledForSource(msg.source_platform)) return;
+            if (_ttsRecentlyPlayed(msg)) return; // bg socket + main socket can both deliver
             if (typeof playBroadcastTTSAudio === 'function' && typeof broadcastState !== 'undefined') {
                 playBroadcastTTSAudio(msg);
             }
@@ -2861,7 +2862,8 @@ function handleChatMessage(msg) {
             // Server-synthesized TTS audio (Site-Wide TTS mode)
             // Only route through broadcast audio when on own channel
             if (_isViewingOwnBroadcastChat() && typeof playBroadcastTTSAudio === 'function') {
-                if (isOwnChannelTtsSpeaker() && isChatTTSEnabled({ streaming: true }) && _isTTSEnabledForSource(msg.source_platform)) playBroadcastTTSAudio(msg);
+                if (isOwnChannelTtsSpeaker() && isChatTTSEnabled({ streaming: true }) && _isTTSEnabledForSource(msg.source_platform)
+                    && !_ttsRecentlyPlayed(msg)) playBroadcastTTSAudio(msg);
             } else if (_isOwnChannelChat()) {
                 if (isOwnChannelTtsSpeaker() && _ownChannelTtsWanted() && _isTTSEnabledForSource(msg.source_platform)) playTTSAudio(msg);
             } else if (isChatTTSEnabled() && !_isOwnTtsMessage(msg) && _isTTSEnabledForSource(msg.source_platform)) {
@@ -5822,10 +5824,27 @@ function _createJunglePitchShifter(context) {
     };
 }
 
+// Last line of defense against double TTS: whatever the cause (two sockets in one
+// tab, a duplicated relay bridge, a re-broadcast), the same speaker saying the same
+// thing twice within a few seconds plays ONCE.
+const _recentTtsPlays = new Map();
+function _ttsRecentlyPlayed(msg) {
+    const key = `${msg.username || ''}|${String(msg.message || msg.text || '').slice(0, 200)}`;
+    const now = Date.now();
+    const last = _recentTtsPlays.get(key);
+    if (last && now - last < 8000) return true;
+    _recentTtsPlays.set(key, now);
+    if (_recentTtsPlays.size > 200) {
+        for (const [k, t] of _recentTtsPlays) if (now - t > 30000) _recentTtsPlays.delete(k);
+    }
+    return false;
+}
+
 function playTTSAudio(msg) {
     if (!msg.audio || !msg.mimeType) return;
     // "." prefix = TTS explicitly skipped.
     if (String(msg.message || msg.text || '').trimStart().startsWith('.')) return;
+    if (msg.type === 'tts-audio' && _ttsRecentlyPlayed(msg)) return;
     _ttsAudioQueue.push(msg);
     _processTTSAudioQueue();
 }
