@@ -46,11 +46,14 @@ function pick(arr, salt) {
     return arr[_seedCounter % arr.length];
 }
 
+// Stable per-bot hash so each name part is chosen independently (the LCG pick() above
+// walks a shared sequence, which gave siblings near-identical names like sleepyotter42/69/99).
+function _h(str) { let h = 2166136261; for (const ch of String(str)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
 function makeUsername(existing, salt) {
     for (let i = 0; i < 40; i++) {
-        const adj = pick(NAME_ADJ, salt + i);
-        const noun = pick(NAME_NOUN, salt + i * 7 + 3);
-        const suf = pick(NAME_SUF, salt + i * 13 + 5);
+        const adj = NAME_ADJ[_h(`a:${salt}:${i}`) % NAME_ADJ.length];
+        const noun = NAME_NOUN[_h(`n:${salt}:${i}:${adj}`) % NAME_NOUN.length];
+        const suf = NAME_SUF[_h(`s:${salt}:${i}:${noun}`) % NAME_SUF.length];
         const name = `${adj}${noun}${suf}`.slice(0, 22);
         if (!existing.has(name.toLowerCase())) { existing.add(name.toLowerCase()); return name; }
     }
