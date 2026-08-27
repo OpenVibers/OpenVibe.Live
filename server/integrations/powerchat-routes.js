@@ -16,7 +16,7 @@ const crypto = require('crypto');
 const router = express.Router();
 const db = require('../db/database');
 const config = require('../config');
-const { requireAuth, optionalAuth } = require('../auth/auth');
+const { requireAuth, optionalAuth, requireAdmin } = require('../auth/auth');
 const oauth = require('./powerchat-oauth');
 const webhook = require('./powerchat-webhook');
 
@@ -304,6 +304,18 @@ router.get('/donate-link', optionalAuth, (req, res) => {
         res.json({ url: direct.url, mode: 'direct', goal_id: goalId });
     } catch (err) {
         res.status(500).json({ error: 'Failed to build tip link' });
+    }
+});
+
+// ── POST /reconcile — admin: backfill missed checkout webhooks from /paid-messages ─
+// The 15-minute sweeper runs this on its own; the route exists so an operator can
+// run it on demand after an outage (or to see the summary) without waiting.
+router.post('/reconcile', requireAdmin, async (req, res) => {
+    try {
+        const summary = await require('./powerchat-reconcile').reconcileOnce();
+        res.json({ ok: true, ...summary });
+    } catch (err) {
+        res.status(500).json({ error: 'Reconcile failed' });
     }
 });
 
