@@ -119,11 +119,15 @@ function buildSubscribeLink(order, streamerUserId, { autoRenew = 0 } = {}) {
 // the viewer's free choice — donations are never pinned.
 function buildDonateLink(streamerUserId, donorUserId, { goalId = null } = {}) {
     const purpose = goalId ? `goal:${goalId}` : 'donation';
+    // returnTo: donors get auto-redirected back to our confirmation page after the
+    // checkout too — without app_redirect_uri PowerChat only offers a plain
+    // "Return to app" link and viewers just sat on the tip page.
+    const opts = { purpose, returnTo: true };
     const direct = _checkoutConn(streamerUserId);
-    if (direct) return { url: tipLinkFor(direct.powerchat_username, '', { purpose }), mode: 'direct' };
+    if (direct) return { url: tipLinkFor(direct.powerchat_username, '', opts), mode: 'direct' };
     const site = getSiteAccount();
     if (!site) return null;
-    return { url: tipLinkFor(site.username, `pcdon:${streamerUserId}:${donorUserId || 0}`, { purpose }), mode: 'site' };
+    return { url: tipLinkFor(site.username, `pcdon:${streamerUserId}:${donorUserId || 0}`, opts), mode: 'site' };
 }
 
 // ── Webhook fulfillment ──────────────────────────────────────
