@@ -182,6 +182,7 @@ const CHAT_SETTINGS_DEFAULTS = {
                                   // OFF prepends "." to your messages so TTS skips them (and mutes local playback).
                                   // Defaults ON so messages aren't dot-prefixed/muted-styled by default.
     streamingTtsEnabled: true,    // Separate TTS toggle while broadcasting live
+    channelTtsAlways: false,      // Hear your own channel's chat TTS even while NOT live
     ttsVolume: 80,                // TTS message volume (0–100)
     soundVolume: 80,              // Chat !sound / soundboard clip volume (0–100), independent of TTS
     // Chat sounds (soundboard + channel !sound commands) — independent of TTS
@@ -794,6 +795,20 @@ let _ownTtsLeader = !(typeof navigator !== 'undefined' && 'locks' in navigator);
 })();
 function isOwnChannelTtsSpeaker() { return _ownTtsLeader; }
 
+// Is the ACTIVE chat surface the logged-in user's OWN channel? Works on every
+// surface — channel page, offline chat, popout — unlike isStreaming(), which only
+// exists on the broadcast page (that gap is why own-channel TTS died in popouts
+// after a live-stream swap).
+function _isOwnChannelChat() {
+    return !!(typeof currentUser !== 'undefined' && currentUser && chatChannelUserId
+        && Number(chatChannelUserId) === Number(currentUser.id));
+}
+// Own-channel TTS gating: live context (a stream id is joined) follows "TTS On My
+// Channel When Live"; offline channel chat follows "TTS On My Channel When Offline".
+function _ownChannelTtsWanted() {
+    return chatStreamId ? !!chatSettings.streamingTtsEnabled : !!chatSettings.channelTtsAlways;
+}
+
 // Who this tab is chatting as — set by the server's 'auth' confirmation.
 let _myChatIdentity = null;
 // Set before a same-socket surface rejoin (live↔offline swap) so the re-issued auth
@@ -829,12 +844,14 @@ window.addEventListener('storage', (e) => {
         if (!next || typeof next !== 'object') return;
         const ttsWasOn = !!chatSettings.ttsEnabled;
         const streamTtsWasOn = !!chatSettings.streamingTtsEnabled;
+        const alwaysWasOn = !!chatSettings.channelTtsAlways;
         chatSettings = { ...CHAT_SETTINGS_DEFAULTS, ...next };
         chatSettings.autoDeleteMinutes = normalizeChatAutoDeleteMinutes(chatSettings.autoDeleteMinutes);
         applyChatSettings();
         syncTTSToggleButtons();
         // TTS switched off elsewhere → stop anything already queued/speaking here too.
-        if ((ttsWasOn && !chatSettings.ttsEnabled) || (streamTtsWasOn && !chatSettings.streamingTtsEnabled)) cancelAllTTS();
+        if ((ttsWasOn && !chatSettings.ttsEnabled) || (streamTtsWasOn && !chatSettings.streamingTtsEnabled)
+            || (alwaysWasOn && !chatSettings.channelTtsAlways)) cancelAllTTS();
     } catch { /* ignore malformed writes */ }
 });
 
@@ -2831,6 +2848,13 @@ function handleChatMessage(msg) {
                 if (isOwnChannelTtsSpeaker() && isChatTTSEnabled({ streaming: true }) && typeof speakBroadcastTTS === 'function' && _isTTSEnabledForSource(msg.source_platform)) {
                     speakBroadcastTTS(msg.message || msg.text, msg.username);
                 }
+            } else if (_isOwnChannelChat()) {
+                // Own channel on any surface (popout / channel page): the streamer IS
+                // the audience — no self-filter, one speaking tab per device, gated by
+                // the live/offline own-channel TTS options.
+                if (isOwnChannelTtsSpeaker() && _ownChannelTtsWanted() && _isTTSEnabledForSource(msg.source_platform)) {
+                    speakTTS(msg.message || msg.text, msg.voiceFX, msg.username);
+                }
             } else if (isChatTTSEnabled() && !_isOwnTtsMessage(msg) && _isTTSEnabledForSource(msg.source_platform)) {
                 speakTTS(msg.message || msg.text, msg.voiceFX, msg.username);
             }
@@ -2840,6 +2864,8 @@ function handleChatMessage(msg) {
             // Only route through broadcast audio when on own channel
             if (_isViewingOwnBroadcastChat() && typeof playBroadcastTTSAudio === 'function') {
                 if (isOwnChannelTtsSpeaker() && isChatTTSEnabled({ streaming: true }) && _isTTSEnabledForSource(msg.source_platform)) playBroadcastTTSAudio(msg);
+            } else if (_isOwnChannelChat()) {
+                if (isOwnChannelTtsSpeaker() && _ownChannelTtsWanted() && _isTTSEnabledForSource(msg.source_platform)) playTTSAudio(msg);
             } else if (isChatTTSEnabled() && !_isOwnTtsMessage(msg) && _isTTSEnabledForSource(msg.source_platform)) {
                 playTTSAudio(msg);
             }
@@ -2847,9 +2873,11 @@ function handleChatMessage(msg) {
         case 'soundboard-audio':
             // Chat sound clips (101soundboards + channel !sound commands) — play through the
             // audio queue with pitch/speed modifiers. Gated on the sounds toggle, NOT TTS.
-            // Own-channel-while-live clips follow the one-speaking-tab rule like TTS.
+            // Own-channel clips follow the one-speaking-tab rule like TTS, on every surface.
             if (_isViewingOwnBroadcastChat() && typeof playBroadcastTTSAudio === 'function') {
                 if (isOwnChannelTtsSpeaker() && isChatSoundsEnabled()) playBroadcastTTSAudio(msg);
+            } else if (_isOwnChannelChat()) {
+                if (isOwnChannelTtsSpeaker() && isChatSoundsEnabled()) playTTSAudio(msg);
             } else if (isChatSoundsEnabled()) {
                 playTTSAudio(msg);
             }
@@ -6091,6 +6119,10 @@ function buildSettingsPanelHTML() {
             <label class="csp-row" title="Controls TTS in your own channel chat while you are live (plays in one tab only, synced across your tabs). TTS on other channels uses the speaker button under the chat input.">
                 <span>TTS On My Channel When Live</span>
                 <input type="checkbox" data-setting="streamingTtsEnabled" onchange="onChatSettingChange(this)">
+            </label>
+            <label class="csp-row" title="Also read your channel's chat aloud while you are OFFLINE (same one-tab-per-device + cross-tab sync as the live option).">
+                <span>TTS On My Channel When Offline</span>
+                <input type="checkbox" data-setting="channelTtsAlways" onchange="onChatSettingChange(this)">
             </label>
             <label class="csp-row">
                 <span>TTS Volume</span>

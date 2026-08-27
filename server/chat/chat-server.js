@@ -895,6 +895,20 @@ class ChatServer {
             // Pure global chat (homepage) — offline channel messages were already
             // delivered to the channel room above.
             this.broadcastGlobal(chatMsg);
+        } else if (this._channelOwnerInRoom(client.channelUserId)) {
+            // OFFLINE channel chat with the channel OWNER present in their own room:
+            // synthesize TTS so their "TTS on my channel even when offline" option has
+            // audio to play (client-side settings + the one-speaking-tab lock decide
+            // whether it's actually audible). Owner absent = skip the synth cost.
+            this.synthesizeAndBroadcastTTS(
+                null,
+                username,
+                text,
+                chatMsg.voiceFX,
+                null,
+                client.user ? `user:${client.user.username}` : `anon:${client.anonId}`,
+                client.channelUserId
+            );
         }
 
         // Merge real chat into the streamer's PowerChat unified overlay (chat:write).
@@ -1600,7 +1614,30 @@ class ChatServer {
      * Synthesize TTS audio for a chat message and broadcast to stream.
      * Runs asynchronously — does not block message delivery.
      */
-    async synthesizeAndBroadcastTTS(streamId, username, text, voiceFX, sourcePlatform = null, identityKey = null) {
+    // Is the channel owner connected to their OWN channel room right now? Gates
+    // offline-channel TTS synthesis so we never pay for audio nobody will hear.
+    _channelOwnerInRoom(channelUserId) {
+        if (!channelUserId) return false;
+        for (const [ws, client] of this.clients) {
+            if (ws.readyState !== WebSocket.OPEN) continue;
+            if (client.user && Number(client.user.id) === Number(channelUserId)
+                && Number(client.channelUserId) === Number(channelUserId)) return true;
+        }
+        return false;
+    }
+
+    // TTS audio delivery: to the stream room while live, to the CHANNEL room for
+    // offline channel chat (streamId null).
+    _broadcastTtsPayload(streamId, channelUserId, payload) {
+        if (streamId) this.broadcastToStream(streamId, payload);
+        else if (channelUserId) this.broadcastToChannelRoom(channelUserId, null, payload);
+    }
+
+    // streamId may be null for OFFLINE channel chat — pass channelUserId instead and
+    // the audio is delivered to the channel room rather than a stream room.
+    async synthesizeAndBroadcastTTS(streamId, username, text, voiceFX, sourcePlatform = null, identityKey = null, channelUserId = null) {
+        // Queue accounting key: per-stream when live, per-channel when offline.
+        const queueKey = streamId || (channelUserId ? `ch:${channelUserId}` : null);
         try {
             // "." prefix = user opted this message out of TTS — never synthesize or broadcast it.
             if (String(text || '').trimStart().startsWith('.')) return;
@@ -1610,7 +1647,7 @@ class ChatServer {
 
             // Queue limit checks
             const limits = ttsEngine.getQueueLimits();
-            const globalCount = this.ttsQueueSize.get(streamId) || 0;
+            const globalCount = this.ttsQueueSize.get(queueKey) || 0;
             if (globalCount >= limits.maxGlobal) return;
 
             // Determine voice ID from equipped cosmetic
@@ -1620,7 +1657,7 @@ class ChatServer {
             }
 
             // Increment queue counter
-            this.ttsQueueSize.set(streamId, globalCount + 1);
+            this.ttsQueueSize.set(queueKey, globalCount + 1);
 
             // Honor the channel's configured TTS length (streamers can raise it up to 1200);
             // falls back to the site default when unset. Without this the server synth always
@@ -1638,13 +1675,13 @@ class ChatServer {
             }
 
             // Decrement queue counter
-            const current = this.ttsQueueSize.get(streamId) || 1;
-            this.ttsQueueSize.set(streamId, Math.max(0, current - 1));
+            const current = this.ttsQueueSize.get(queueKey) || 1;
+            this.ttsQueueSize.set(queueKey, Math.max(0, current - 1));
 
             if (!result) return;
 
             // Broadcast TTS audio to all clients in the stream
-            this.broadcastToStream(streamId, {
+            this._broadcastTtsPayload(streamId, channelUserId, {
                 type: 'tts-audio',
                 username,
                 // Stable sender identity ("user:<login>" / "anon:<id>") so clients can
@@ -1663,8 +1700,8 @@ class ChatServer {
             });
         } catch (err) {
             // Ensure queue counter is decremented on error
-            const current = this.ttsQueueSize.get(streamId) || 1;
-            this.ttsQueueSize.set(streamId, Math.max(0, current - 1));
+            const current = this.ttsQueueSize.get(queueKey) || 1;
+            this.ttsQueueSize.set(queueKey, Math.max(0, current - 1));
             console.error('[TTS] Synthesis broadcast error:', err.message);
         }
     }
