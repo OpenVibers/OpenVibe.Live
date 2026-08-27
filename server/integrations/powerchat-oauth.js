@@ -319,9 +319,45 @@ async function fetchProfile(userId, username) {
     return apiRequest(userId, { method: 'GET', path: '/profile', username });
 }
 
+// ── Self-diagnosis: GET /me ──────────────────────────────────────────────────
+// Needs no scope. Returns the streamer the token belongs to and the scopes ACTUALLY
+// granted — the grant is the truth; the dashboard's registered-scope list is only the
+// ceiling. The #1 integration failure ("registered a scope but never REQUESTED it in
+// /oauth/authorize", or a streamer switching a capability off later) shows up only
+// here — every intake call just 403s.
+async function fetchMe(userId) {
+    const json = await apiRequest(userId, { method: 'GET', path: '/me', root: true });
+    const d = (json && json.data && typeof json.data === 'object') ? json.data : json;
+    if (!d || typeof d !== 'object') return null;
+    return {
+        id: d.id != null ? String(d.id) : null,
+        username: d.username || null,
+        displayName: d.displayName || null,
+        tipPageUrl: d.tipPageUrl || null,
+        appId: d.appId || null,
+        scopes: _scopeList(d.scopes),
+    };
+}
+// Normalize a scope set from a space/comma-delimited string or an array.
+function _scopeList(v) {
+    if (Array.isArray(v)) return [...new Set(v.map((x) => String(x).trim()).filter(Boolean))];
+    return [...new Set(String(v || '').split(/[\s,]+/).map((x) => x.trim()).filter(Boolean))];
+}
+// Pure diff of what a grant carries vs what the app needs (both accept string|array):
+//   missing → registered/wanted but NOT on the grant (fix: widen scope= and re-consent)
+//   extra   → on the grant but no longer wanted (harmless; informational)
+function scopeDiff(granted, wanted) {
+    const g = _scopeList(granted), w = _scopeList(wanted);
+    return {
+        granted: g, wanted: w,
+        missing: w.filter((x) => !g.includes(x)),
+        extra: g.filter((x) => !w.includes(x)),
+    };
+}
+
 module.exports = {
     getConfig, isConfigured, redirectUri,
     buildAuthorize, verifyState, exchangeCode, refreshToken, revokeToken,
-    getValidAccessToken, apiRequest, fetchProfile, normalizeToken,
+    getValidAccessToken, apiRequest, fetchProfile, fetchMe, scopeDiff, normalizeToken,
     decodeJwtPayload, identityFromToken,
 };
