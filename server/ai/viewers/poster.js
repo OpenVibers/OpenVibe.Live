@@ -4,7 +4,7 @@
  * TTS toggle, PowerChat forward toggle, and a log row for the control panel.
  */
 'use strict';
-const db = require('../../../db/database');
+const db = require('../../db/database');
 
 function botColor(bot) {
     try { return (JSON.parse(bot.persona_json || '{}').color) || bot.avatar_color || '#8a8aff'; } catch { return bot.avatar_color || '#8a8aff'; }
@@ -27,7 +27,7 @@ function clean(text, maxWords = 18) {
 /** Word-filter gate — returns { ok, text, reason }. */
 function moderate(text) {
     try {
-        const wf = require('../../../chat/word-filter');
+        const wf = require('../../chat/word-filter');
         const r = wf.check(text);
         if (!r.safe) return { ok: false, text, reason: `word filter: ${r.matches.slice(0, 3).join(', ')}` };
         if (typeof wf.isSpam === 'function' && wf.isSpam(text)) return { ok: false, text, reason: 'spam pattern' };
@@ -71,7 +71,7 @@ function post(worker, bot, message, { threadId = null, replyToId = null } = {}) 
         filtered: false, timestamp: new Date().toISOString(),
     };
     try {
-        const chatServer = require('../../../chat/chat-server');
+        const chatServer = require('../../chat/chat-server');
         chatServer.broadcastToStream(streamId, chatMsg);
         chatServer.forwardToGlobal(streamId, chatMsg);
         const ttsOn = worker.settings.tts_enabled !== false && persona.tts !== false;
@@ -80,7 +80,7 @@ function post(worker, bot, message, { threadId = null, replyToId = null } = {}) 
 
     if (worker.settings.powerchat_forward !== false) {
         try {
-            const pc = require('../../../integrations/powerchat-platform');
+            const pc = require('../../integrations/powerchat-platform');
             if (worker.userId && pc.channelRelayEnabled(worker.userId, streamId)) {
                 pc.forwardChat(worker.userId, {
                     chatterName: bot.username,

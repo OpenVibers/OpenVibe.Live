@@ -50,7 +50,7 @@ class Scheduler {
     linesLastMinute() { const cut = Date.now() - 60000; return this.recent.filter(r => r.at > cut).length; }
 
     _slowModeMs() {
-        try { const cs = require('../../../chat/chat-server'); return cs.slowModeByStream ? (cs.slowModeByStream.get(this.worker.streamId) || 0) : 0; } catch { return 0; }
+        try { const cs = require('../../chat/chat-server'); return cs.slowModeByStream ? (cs.slowModeByStream.get(this.worker.streamId) || 0) : 0; } catch { return 0; }
     }
 
     _arm(delay = null) {

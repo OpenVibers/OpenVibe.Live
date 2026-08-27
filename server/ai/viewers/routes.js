@@ -17,7 +17,7 @@ const { requireAuth } = require('../../auth/auth');
 const chatAi = require('../chat-ai');
 const budget = require('./budget');
 const roster = require('./roster');
-const brain = require('./brain');
+const { clearBrain } = require('./fold');
 const engine = require('./index');
 const settingsMod = require('./settings');
 const ai = require('../ai-analysis');
@@ -209,7 +209,7 @@ router.post('/bots/:id/clear-memory', requireAuth, (req, res) => {
     try {
         const bot = ownBotOr404(req, res);
         if (!bot) return;
-        brain.clearBrain(bot.id);
+        clearBrain(bot.id);
         res.json({ ok: true, bot: botSummary(db.getChannelAiBot(bot.id)) });
     } catch (e) {
         res.status(500).json({ error: 'Failed to clear memory' });
@@ -271,33 +271,9 @@ router.post('/clone', requireAuth, async (req, res) => {
 // ── Preview one line (no posting) ─────────────────────────────
 router.post('/preview', requireAuth, async (req, res) => {
     try {
-        if (engine.engineForUser(req.user.id).version === 'v3') {
-            const out = await engine.preview(req.user.id);
-            if (out && out.error) return res.status(400).json({ error: out.error });
-            return res.json(out);
-        }
-        const st = budget.budgetStatus(req.user.id);
-        if (!st.active) {
-            const why = st.reason === 'shared_ai_disabled' ? 'Shared AI is currently disabled by the admin.'
-                : st.reason === 'over_daily_cap' ? "You've hit today's budget cap."
-                : st.reason === 'no_byo_key' ? 'Add your API key (or a public self-hosted URL) first.'
-                : 'AI viewers are not active.';
-            return res.status(400).json({ error: why });
-        }
-        const cfg = db.getChannelAiConfig(req.user.id);
-        const persona = roster.makeAmbientPersona((req.user.id * 7 + 3) & 0x7fffffff);
-        const system = [
-            `You are a viewer in a live stream's chat. You are ${persona.character.blurb}.`,
-            cfg.persona ? `Channel vibe: ${cfg.persona}` : '',
-            `Typing style: ${persona.style.rules}.`,
-            `Reply with ONE short chat message only. Never say you are an AI or a bot. Just the message.`,
-        ].filter(Boolean).join('\n');
-        const text = await budget.generate(req.user.id, {
-            system, user: 'Chat is a bit quiet. Say something to get things going.',
-            maxTokens: 50, temperature: 1.05,
-        });
-        if (!text) return res.status(502).json({ error: 'No response from the AI provider.' });
-        res.json({ line: text });
+        const out = await engine.preview(req.user.id);
+        if (out && out.error) return res.status(400).json({ error: out.error });
+        res.json(out);
     } catch (e) {
         res.status(500).json({ error: 'Preview failed' });
     }

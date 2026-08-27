@@ -12,7 +12,6 @@ const db = require('../../db/database');
 
 // key → { def, type, min, max, values, max_len, help }
 const SCHEMA = {
-    engine:                { def: '',        type: 'enum',   values: ['', 'v2', 'v3'], help: 'Engine override (blank = site default)' },
     // Roster
     roster_size:           { def: 3,         type: 'int',    min: 0, max: 12, help: 'How many ambient AI viewers hang out in chat' },
     // Activity
