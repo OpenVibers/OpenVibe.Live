@@ -874,7 +874,9 @@ class ChatServer {
                 text,
                 chatMsg.voiceFX,
                 null,
-                client.user ? `user:${client.user.username}` : `anon:${client.anonId}`
+                client.user ? `user:${client.user.username}` : `anon:${client.anonId}`,
+                null,
+                chatMsg.id ? `m${chatMsg.id}` : null
             );
 
             // Check for 101soundboards links in the message (async, non-blocking)
@@ -907,7 +909,8 @@ class ChatServer {
                 chatMsg.voiceFX,
                 null,
                 client.user ? `user:${client.user.username}` : `anon:${client.anonId}`,
-                client.channelUserId
+                client.channelUserId,
+                chatMsg.id ? `m${chatMsg.id}` : null
             );
         }
 
@@ -1635,21 +1638,24 @@ class ChatServer {
 
     // streamId may be null for OFFLINE channel chat — pass channelUserId instead and
     // the audio is delivered to the channel room rather than a stream room.
-    async synthesizeAndBroadcastTTS(streamId, username, text, voiceFX, sourcePlatform = null, identityKey = null, channelUserId = null) {
+    async synthesizeAndBroadcastTTS(streamId, username, text, voiceFX, sourcePlatform = null, identityKey = null, channelUserId = null, ttsKey = null) {
         // Queue accounting key: per-stream when live, per-channel when offline.
         const queueKey = streamId || (channelUserId ? `ch:${channelUserId}` : null);
-        // Same utterance, same room, twice within a few seconds = a duplicated bridge
-        // or double-fired relay (RS restart races have produced exactly this) — one
-        // synthesis, one broadcast. Keyed per room so multi-slot mirrors still get
-        // their own copy for their own viewers.
+        // Duplicate suppression by MESSAGE IDENTITY, not content: the same chat
+        // message synthesized twice (duplicated bridge, double-fired relay) is a dupe;
+        // a user legitimately typing the same text again is NOT and must be read
+        // again. Callers pass ttsKey (the persisted message id). The content fallback
+        // for id-less paths uses a 2s window — wide enough for a racing double
+        // delivery, far too narrow to eat a real repeat.
         if (!this._recentTtsDedupe) this._recentTtsDedupe = new Map();
-        const dedupeKey = `${queueKey}|${identityKey || username}|${String(text).slice(0, 200)}`;
+        const dedupeKey = ttsKey ? `k:${queueKey}|${ttsKey}` : `${queueKey}|${identityKey || username}|${String(text).slice(0, 200)}`;
+        const windowMs = ttsKey ? 30000 : 2000;
         const nowMs = Date.now();
         const lastMs = this._recentTtsDedupe.get(dedupeKey);
-        if (lastMs && nowMs - lastMs < 8000) { console.log(`[TTS] deduped duplicate synth for ${username} in ${queueKey}`); return; }
+        if (lastMs && nowMs - lastMs < windowMs) { console.log(`[TTS] deduped duplicate synth for ${username} in ${queueKey} (${ttsKey ? 'same message id' : 'same content <2s'})`); return; }
         this._recentTtsDedupe.set(dedupeKey, nowMs);
         if (this._recentTtsDedupe.size > 500) {
-            for (const [k, t] of this._recentTtsDedupe) if (nowMs - t > 30000) this._recentTtsDedupe.delete(k);
+            for (const [k, t] of this._recentTtsDedupe) if (nowMs - t > 60000) this._recentTtsDedupe.delete(k);
         }
         try {
             // "." prefix = user opted this message out of TTS — never synthesize or broadcast it.
@@ -1701,6 +1707,9 @@ class ChatServer {
                 // skip their OWN message's TTS locally — senders were hearing their
                 // message twice (their tab + the stream audio).
                 sender_key: identityKey || undefined,
+                // Unique per utterance — clients dedupe playback on this, so identical
+                // TEXT from separate messages still reads every time.
+                ttsKey: ttsKey || undefined,
                 message: text,
                 audio: result.audio,
                 mimeType: result.mimeType,
