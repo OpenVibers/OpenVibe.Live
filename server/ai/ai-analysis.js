@@ -15,7 +15,8 @@ function s(k) { return (db.getSetting(k) || '').toString().trim(); }
 function b(k) { const v = db.getSetting(k); return v === true || v === 'true' || v === 1 || v === '1'; }
 function num(k, d) { const v = parseFloat(db.getSetting(k)); return Number.isFinite(v) ? v : d; }
 
-function isEnabled() { return b('ai_enabled') && !!s('ai_api_key'); }
+const llm = require('./llm');
+function isEnabled() { return llm.isEnabled(); }
 function pasteAnalysisEnabled() { return isEnabled() && b('ai_paste_analysis_enabled'); }
 function streamMemoryEnabled() { return isEnabled() && b('ai_stream_memory_enabled'); }
 // Local whisper.cpp transcription (default on when installed). Independent of the
@@ -26,109 +27,21 @@ function transcriptionEnabled() {
     try { return on && require('./transcribe').available(); } catch { return false; }
 }
 function captureIntervalSec() { return Math.max(30, num('ai_stream_capture_interval_sec', 120)); }
-function model() { return s('ai_model') || (s('ai_provider') === 'openai' ? 'gpt-4o-mini' : 'claude-sonnet-5'); }
-
-function withinBudget() {
-    const cap = num('ai_max_cost_usd_per_day', 0);
-    if (!cap || cap <= 0) return true;
-    try { return db.getAiCostToday() < cap; } catch { return true; }
-}
-function estimateCost(inTok, outTok) {
-    return (inTok / 1e6) * num('ai_input_cost_per_mtok', 3) + (outTok / 1e6) * num('ai_output_cost_per_mtok', 15);
+function model() { return llm.defaultModel(); }
+function withinBudget() { return llm.withinBudget(); }
+// Kept for callers that estimate before/without a real usage object (BYO fallbacks).
+function estimateCost(inTok, outTok, cachedTok = 0, modelId = null) {
+    return llm.estimateCost(modelId || model(), { input: inTok, output: outTok, cached: cachedTok });
 }
 
-// Normalize an image input (data URL, raw base64, http(s) URL, or file path)
-// → {base64, mediaType}.
-//
-// URL support matters: paste screenshots live in Media, not on this disk, and their
-// image is only reachable over HTTP. Without this branch a URL fell through to the
-// file-path case, readFileSync threw, and the caller silently got null — which is why
-// every screenshot paste went un-analysed while text pastes worked.
-async function _normImage(image) {
-    if (!image) return null;
-    if (typeof image === 'string' && image.startsWith('data:')) {
-        const m = image.match(/^data:([^;]+);base64,(.*)$/);
-        if (m) return { base64: m[2], mediaType: m[1] };
-    }
-    if (typeof image === 'string' && /^https?:\/\//i.test(image)) {
-        try {
-            const res = await fetch(image, { signal: AbortSignal.timeout(20000) });
-            if (!res.ok) { console.warn(`[AI] image fetch ${res.status} for ${image}`); return null; }
-            const buf = Buffer.from(await res.arrayBuffer());
-            if (!buf.length) return null;
-            const ct = String(res.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
-            return { base64: buf.toString('base64'), mediaType: /^image\//.test(ct) ? ct : 'image/jpeg' };
-        } catch (e) { console.warn('[AI] image fetch failed:', e.message); return null; }
-    }
-    if (typeof image === 'string' && /^[A-Za-z0-9+/=]+$/.test(image.slice(0, 40))) {
-        return { base64: image, mediaType: 'image/jpeg' };
-    }
-    // treat as a file path
-    try {
-        const buf = fs.readFileSync(image);
-        const ext = String(image).toLowerCase();
-        const mediaType = ext.endsWith('.png') ? 'image/png' : ext.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
-        return { base64: buf.toString('base64'), mediaType };
-    } catch { return null; }
-}
+// Provider transport now lives in ./llm (real system/user roles, prompt caching, per-role
+// models, structured JSON, timeouts + retry, uniform metering). These wrappers keep the
+// existing call shapes for the analysis features below.
 
-// ── Provider calls (return { text, input_tokens, output_tokens }) ──
-async function _anthropic(prompt, img, maxTokens, temperature) {
-    const content = [{ type: 'text', text: prompt }];
-    if (img) content.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } });
-    const body = { model: model(), max_tokens: maxTokens, messages: [{ role: 'user', content }] };
-    if (temperature != null) body.temperature = temperature;
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'x-api-key': s('ai_api_key'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-    });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error((j.error && j.error.message) || `anthropic ${res.status}`);
-    const text = (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
-    const u = j.usage || {};
-    return { text, input_tokens: u.input_tokens || 0, output_tokens: u.output_tokens || 0 };
-}
-async function _openai(prompt, img, maxTokens, temperature) {
-    const base = (s('ai_base_url') || 'https://api.openai.com/v1').replace(/\/+$/, '');
-    const m = model();
-    const content = [{ type: 'text', text: prompt }];
-    if (img) content.push({ type: 'image_url', image_url: { url: `data:${img.mediaType};base64,${img.base64}` } });
-    const body = { model: m, messages: [{ role: 'user', content }] };
-    if (temperature != null && !/^(gpt-5|o\d)/i.test(m)) body.temperature = temperature;
-    // GPT-5 / o-series are reasoning models: they reject `max_tokens` (need
-    // `max_completion_tokens`) and spend hidden reasoning tokens, so give the
-    // output headroom and keep reasoning effort low for these short tasks —
-    // otherwise the whole budget is consumed by reasoning and content is empty.
-    if (/^(gpt-5|o\d)/i.test(m)) {
-        body.max_completion_tokens = Math.max(maxTokens, 256) + 512;
-        body.reasoning_effort = /^gpt-5/i.test(m) ? 'minimal' : 'low';
-    } else {
-        body.max_tokens = maxTokens;
-    }
-    const res = await fetch(`${base}/chat/completions`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${s('ai_api_key')}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error((j.error && j.error.message) || `openai ${res.status}`);
-    const text = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content || '').trim();
-    const u = j.usage || {};
-    return { text, input_tokens: u.prompt_tokens || 0, output_tokens: u.completion_tokens || 0 };
-}
-
-/** Core call: dispatches by provider, records usage/cost. Returns text or null. */
-async function _complete({ prompt, image = null, maxTokens = 400, kind, temperature = null, ownerUserId = null, source = null }) {
-    if (!isEnabled() || !withinBudget()) return null;
-    const img = image ? await _normImage(image) : null;
-    if (image && !img) return null;
-    const provider = s('ai_provider') === 'openai' ? _openai : _anthropic;
-    let r;
-    try { r = await provider(prompt, img, maxTokens, temperature); }
-    catch (e) { console.warn('[AI] analysis failed:', e.message); return null; }
-    try { db.recordAiUsage({ kind, model: model(), input_tokens: r.input_tokens, output_tokens: r.output_tokens, cost_usd: estimateCost(r.input_tokens, r.output_tokens), owner_user_id: ownerUserId, source }); } catch { /* */ }
-    return r.text || null;
+/** Core call: legacy single-prompt shape. Returns text or null. */
+async function _complete({ prompt, image = null, maxTokens = 400, kind, temperature = null, ownerUserId = null, source = null, role = 'legacy', imageMaxWidth = 1280 }) {
+    const r = await llm.complete({ role, user: prompt, image, imageMaxWidth, maxTokens, temperature, kind, ownerUserId, source });
+    return r && r.text ? r.text : null;
 }
 
 /** Generic text completion (used by media analysis to synthesize overviews). */
@@ -143,8 +56,8 @@ async function summarizeText(prompt, maxTokens = 350, kind = 'media_overview') {
  * disabled / over the global budget. Supports an optional image (vision) input.
  */
 async function viewerComplete({ system = '', user = '', image = null, maxTokens = 80, temperature = 1.0, ownerUserId = null }) {
-    const prompt = system ? `${system}\n\n${user}` : user;
-    return _complete({ prompt, image, maxTokens, temperature, kind: 'ai_viewers', source: 'ai_viewers', ownerUserId });
+    const r = await llm.complete({ role: 'chat', system, user, image, imageMaxWidth: 768, maxTokens, temperature, kind: 'ai_viewers', source: 'ai_viewers', ownerUserId });
+    return r && r.text ? r.text : null;
 }
 
 /** Is the shared admin AI key usable right now (enabled + within global budget)? */
@@ -202,24 +115,15 @@ function _extractTags(text, maxTags) {
 
 /** Re-encode any image (path/data) to a vision-friendly JPEG data URL. Handles
  *  avif/gif/webp/huge images that the vision API otherwise rejects. */
-async function _toVisionJpeg(image) {
-    try {
-        const sharp = require('sharp');
-        const buf = await sharp(image, { failOn: 'none', animated: false })
-            .rotate()
-            .resize({ width: 1280, height: 1280, fit: 'inside', withoutEnlargement: true })
-            .jpeg({ quality: 82 })
-            .toBuffer();
-        return `data:image/jpeg;base64,${buf.toString('base64')}`;
-    } catch { return image; }
+async function _toVisionJpeg(image, opts = {}) {
+    return (await llm.toVisionJpeg(image, { maxWidth: 1280, quality: 82, ...opts })) || image;
 }
 
 /** Describe an image paste → { description, tags }. */
-async function analyzeImagePaste(image, title) {
+async function analyzeImagePaste(image, title, kind = 'paste_image') {
     const prompt = `You are describing an uploaded image/screenshot for a paste titled "${(title || '').slice(0, 120)}".
 Reply ONLY with compact JSON: {"description":"1-2 sentence description of what the image shows","tags":["3-6","short","lowercase","tags"]}.`;
-    const img = await _toVisionJpeg(image);
-    const text = await _complete({ prompt, image: img, maxTokens: 300, kind: 'paste_image' });
+    const text = await _complete({ prompt, image, maxTokens: 300, kind, role: 'vision', imageMaxWidth: 1280 });
     if (!text) return null;
     const description = _extractDescription(text, 600);
     return description ? { description, tags: _extractTags(text, 8) } : null;
@@ -236,7 +140,7 @@ async function analyzeTextPaste(content, title) {
 /** Analyze a live-stream frame → { description, tags }. */
 async function analyzeStreamFrame(image) {
     const prompt = `This is a frame from a live stream. Reply ONLY with compact JSON: {"description":"one concise sentence describing what is happening on screen right now","tags":["2-5","short","tags"]}.`;
-    const text = await _complete({ prompt, image, maxTokens: 200, kind: 'stream_memory' });
+    const text = await _complete({ prompt, image, maxTokens: 200, kind: 'stream_memory', role: 'vision', imageMaxWidth: 768 });
     if (!text) return null;
     const description = _extractDescription(text, 400);
     return description ? { description, tags: _extractTags(text, 6) } : null;
@@ -567,4 +471,5 @@ module.exports = {
     generateStreamerOverview, generateVodOverview, generateClipOverview, ensureVodTimeline,
     generateVodTranscript, generateClipTranscript, summarizeText, testStatus,
     viewerComplete, sharedKeyReady, estimateCost,
+    complete: llm.complete, llm,
 };
