@@ -486,7 +486,7 @@ async function loadPasteViewer(slug) {
                 <div class="paste-view-meta">
                     <span><i class="fa-solid fa-user"></i> ${escapeHtml(author)}</span>
                     <span><i class="fa-solid fa-clock"></i> ${formatTimeAgo(p.created_at)}</span>
-                    <span><i class="fa-solid fa-eye"></i> ${p.views} view${p.views !== 1 ? 's' : ''}</span>
+                    <span title="Views count once per visitor per 6 hours; unique = distinct visitors"><i class="fa-solid fa-eye"></i> ${p.views} view${p.views !== 1 ? 's' : ''}${p.unique_views != null ? ` · ${p.unique_views} unique` : ''}</span>
                     <span><i class="fa-solid fa-copy"></i> ${p.copies || 0} cop${(p.copies || 0) !== 1 ? 'ies' : 'y'}</span>
                     <button class="paste-like-btn ${userLiked ? 'liked' : ''}" id="paste-like-btn"
                         onclick="togglePasteLike('${p.slug}')" title="${isLoggedIn ? (userLiked ? 'Unlike' : 'Like') : 'Log in to like'}">
