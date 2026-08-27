@@ -5885,7 +5885,9 @@ textarea.form-input { resize: vertical; min-height: 60px; }
     background: var(--bg-tertiary); border: 1px solid var(--border);
     border-radius: 20px; padding: 24px;
     max-width: 440px; width: 90%;
-    max-height: 80vh; overflow-y: auto;
+    /* Use the whole viewport before scrolling — an 80vh cap forced a scrollbar on
+       taller modals (donate) while plenty of page height sat unused. */
+    max-height: calc(100vh - 40px); overflow-y: auto;
     position: relative;
     box-shadow: var(--shadow-lg);
     background-image: linear-gradient(180deg, rgba(255,255,255,0.03), transparent 55%);
