@@ -18,7 +18,9 @@ const chatAi = require('../chat-ai');
 const budget = require('./budget');
 const roster = require('./roster');
 const brain = require('./brain');
-const engine = require('./engine');
+const engine = require('./index');
+const settingsMod = require('./settings');
+const ai = require('../ai-analysis');
 
 const router = express.Router();
 const KEY_SENTINEL = '••••••••••••••••';
