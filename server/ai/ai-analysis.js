@@ -464,13 +464,22 @@ async function generateVodTranscript(vod) {
         }
         db.setVodTranscriptStatus(vod.id, 'processing');
         let r = { text: '', segments: [], ok: false, error: 'unknown' };
-        try { r = await require('./media-analysis').transcribeOnly(src); } catch (e) { r = { text: '', segments: [], ok: false, error: e.message }; }
+        try {
+            // Continue from the last finished 5-minute window (persisted per window), so
+            // the frequent deploy restarts no longer discard an hour of decoding.
+            const prog = db.getVodTranscriptProgress ? db.getVodTranscriptProgress(vod.id) : { progressSec: 0, segments: [] };
+            r = await require('./media-analysis').transcribeOnly(src, {
+                resumeFromSec: prog.progressSec,
+                priorSegments: prog.segments,
+                onWindow: (sec, segs) => db.saveVodTranscriptProgress(vod.id, sec, segs),
+            });
+        } catch (e) { r = { text: '', segments: [], ok: false, error: e.message }; }
         if (r.text) {                                            // got speech → store it (+segments)
             try { db.setVodTranscript(vod.id, r.text, r.segments || []); } catch { /* */ }
             db.setVodTranscriptStatus(vod.id, 'done');
         } else if (r.ok) {                                       // ran clean, genuinely no speech → terminal
             try { db.setVodTranscript(vod.id, ' ', []); } catch { /* */ }
-            db.setVodTranscriptStatus(vod.id, 'empty');
+            db.setVodTranscriptStatus(vod.id, 'empty', r.noAudio ? 'no audio stream' : null);
         } else {                                                 // failure → retry (bounded + backoff), never poison
             const n = db.bumpVodTranscriptAttempt(vod.id);
             db.setVodTranscriptStatus(vod.id, n >= MAX_TX_ATTEMPTS ? 'failed' : 'retry', r.error || 'transcription failed', _txBackoffMin(n));
@@ -498,7 +507,7 @@ async function generateClipTranscript(clip) {
             db.setClipTranscriptStatus(clip.id, 'done');
         } else if (r.ok) {
             try { db.setClipTranscript(clip.id, ' ', []); } catch { /* */ }
-            db.setClipTranscriptStatus(clip.id, 'empty');
+            db.setClipTranscriptStatus(clip.id, 'empty', r.noAudio ? 'no audio stream' : null);
         } else {
             const n = db.bumpClipTranscriptAttempt(clip.id);
             db.setClipTranscriptStatus(clip.id, n >= MAX_TX_ATTEMPTS ? 'failed' : 'retry', r.error || 'transcription failed', _txBackoffMin(n));

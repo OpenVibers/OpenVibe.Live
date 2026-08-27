@@ -278,6 +278,28 @@ function initDb() {
         }
     } catch (e) { console.warn('[DB] ai-overview column migration:', e.message); }
 
+    // Transcript job-state recovery — on the tables that actually hold it. The older
+    // recovery loop above targets the legacy local `vods`/`clips` tables, which moved to
+    // OpenVibe.Media; it throws on the first PRAGMA and silently does nothing, which is
+    // why rows killed mid-flight by a deploy stayed 'processing' forever and 'failed' was
+    // permanent. Also adds resumable-progress columns (finished windows survive restarts).
+    try {
+        for (const t of ['vod_ai_state', 'clip_ai_state']) {
+            const cols = database.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
+            if (!cols.includes('transcript_partial_json')) database.exec(`ALTER TABLE ${t} ADD COLUMN transcript_partial_json TEXT`);
+            if (!cols.includes('transcript_progress_sec')) database.exec(`ALTER TABLE ${t} ADD COLUMN transcript_progress_sec INTEGER DEFAULT 0`);
+            // Mid-flight at shutdown → back to the queue (progress is kept, attempts untouched).
+            const p = database.prepare(`UPDATE ${t} SET transcript_status='retry', transcript_next_at=NULL WHERE transcript_status='processing'`).run();
+            // Exhausted retries get a fresh ladder after a deploy — except sources that can
+            // never work (Media reported the recording itself failed / no audio stream).
+            const f = database.prepare(`UPDATE ${t} SET transcript_status='retry', transcript_attempts=0, transcript_next_at=NULL
+                WHERE transcript_status='failed'
+                  AND COALESCE(transcript_error,'') NOT LIKE 'media reported%'
+                  AND COALESCE(transcript_error,'') NOT LIKE 'no audio stream%'`).run();
+            if (p.changes || f.changes) console.log(`[DB] ${t}: re-queued ${p.changes} interrupted + ${f.changes} previously-failed transcript job(s)`);
+        }
+    } catch (e) { console.warn('[DB] transcript recovery:', e.message); }
+
     // ── Migrations ────────────────────────────────────────────
     try {
         const cols = database.prepare("PRAGMA table_info('channels')").all().map(c => c.name);
@@ -1417,7 +1439,7 @@ function initDb() {
                 WHERE transcript_status IS NULL AND ai_transcript = ' ' AND created_at >= datetime('now','-60 days')`);
             // Older poisoned items: assume genuinely silent (terminal) so we don't churn the whole archive.
             database.exec(`UPDATE ${t} SET transcript_status='empty' WHERE transcript_status IS NULL AND ai_transcript = ' '`);
-            // Crash/deploy recovery: anything left mid-flight is re-queued on every boot.
+            // (Legacy local tables — see the vod_ai_state/clip_ai_state recovery below.)
             database.exec(`UPDATE ${t} SET transcript_status=NULL, transcript_next_at=NULL WHERE transcript_status='processing'`);
             // Give previously-'failed' rows a fresh chance after a deploy — transient issues
             // (whisper temporarily missing, storage hiccup, a bad build) shouldn't be permanent.
@@ -2823,7 +2845,19 @@ function _segJson(segments) {
 }
 function setVodTranscript(vodId, transcript, segments) {
     _ensureVodAiState(vodId);
-    return run('UPDATE vod_ai_state SET ai_transcript_json = ? WHERE vod_id = ?', [_segJson(segments) ?? (transcript ? JSON.stringify([]) : null), vodId]);
+    return run('UPDATE vod_ai_state SET ai_transcript_json = ?, transcript_partial_json = NULL, transcript_progress_sec = 0 WHERE vod_id = ?', [_segJson(segments) ?? (transcript ? JSON.stringify([]) : null), vodId]);
+}
+// Resumable VOD transcription: persist finished windows so a restart continues from here.
+function saveVodTranscriptProgress(vodId, progressSec, segments) {
+    _ensureVodAiState(vodId);
+    return run('UPDATE vod_ai_state SET transcript_partial_json = ?, transcript_progress_sec = ? WHERE vod_id = ?', [_segJson(segments), Math.max(0, Math.floor(progressSec || 0)), vodId]);
+}
+function getVodTranscriptProgress(vodId) {
+    const row = get('SELECT transcript_partial_json, transcript_progress_sec FROM vod_ai_state WHERE vod_id = ?', [vodId]);
+    if (!row) return { progressSec: 0, segments: [] };
+    let segments = [];
+    try { segments = row.transcript_partial_json ? JSON.parse(row.transcript_partial_json) : []; } catch { segments = []; }
+    return { progressSec: row.transcript_progress_sec || 0, segments: Array.isArray(segments) ? segments : [] };
 }
 function setClipTranscript(clipId, transcript, segments) {
     _ensureClipAiState(clipId);
@@ -7743,6 +7777,7 @@ module.exports = {
     updateChannelAiBot, touchChannelAiBot, deleteChannelAiBot,
     // Site Settings
     getSetting, getSettingRow, getAllSettings, setSetting, deleteSetting,
+    saveVodTranscriptProgress, getVodTranscriptProgress,
     getState, setState, deleteState,
     // Verification Keys
     createVerificationKey, getVerificationKeyByKey, getVerificationKeyByUsername,

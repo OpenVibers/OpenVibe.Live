@@ -102,23 +102,40 @@ function killActive() {
 //
 // Put the limit HERE, where every caller must pass, so no future path can bypass it.
 const MAX_CONCURRENT = Math.max(1, parseInt(process.env.WHISPER_MAX_CONCURRENT, 10) || 1);
-let _running = 0;
-const _waiters = [];
-function _acquire() {
-    if (_running < MAX_CONCURRENT) { _running++; return Promise.resolve(); }
-    return new Promise(resolve => _waiters.push(resolve));
+// Two INDEPENDENT lanes. The live timeline decodes 10s segments with the small model and
+// must keep up with real time; VOD/clip backfill decodes hour-long recordings with the
+// large model. When they shared one slot, a single VOD job (minutes to hours, and killed
+// + restarted from scratch on every deploy) held the slot and the live transcript simply
+// stopped — segments piled up in the spool and were discarded. Live never waits on batch.
+const _lanes = {
+    live:  { max: 1, running: 0, waiters: [] },
+    batch: { max: MAX_CONCURRENT, running: 0, waiters: [] },
+};
+function _acquire(lane = 'batch') {
+    const L = _lanes[lane] || _lanes.batch;
+    if (L.running < L.max) { L.running++; return Promise.resolve(); }
+    return new Promise(resolve => L.waiters.push(resolve));
 }
-function _release() {
-    const next = _waiters.shift();
+function _release(lane = 'batch') {
+    const L = _lanes[lane] || _lanes.batch;
+    const next = L.waiters.shift();
     if (next) next();              // hand the slot straight over
-    else _running = Math.max(0, _running - 1);
+    else L.running = Math.max(0, L.running - 1);
+}
+function laneStatus() {
+    return Object.fromEntries(Object.entries(_lanes).map(([k, L]) => [k, { running: L.running, queued: L.waiters.length }]));
 }
 
 // While a stream is live we lower the whisper thread count so VOD transcription can
 // still make progress without starving the live encoders.
 let _lowPower = false;
 function setLowPower(v) { _lowPower = !!v; }
-function _threads() { return _lowPower ? Math.max(1, Math.min(2, THREADS)) : THREADS; }
+function _threads(live = false) {
+    // Live segments are short and use the small model: 2 threads keeps them well ahead of
+    // real time while leaving cores for the encoders and the (niced) batch lane.
+    if (live) return Math.max(1, Math.min(2, THREADS));
+    return _lowPower ? Math.max(1, Math.min(2, THREADS)) : THREADS;
+}
 
 // Phrases whisper commonly hallucinates over silence / music / non-speech.
 // Always-drop: whisper's stock inventions over non-speech. These are never worth keeping
@@ -194,7 +211,7 @@ function _transcribeWavInner(wavPath, { timeoutMs = 180000, offsetSec = 0, live 
         }
         const outBase = `${wavPath}.out`;
         const jsonPath = `${outBase}.json`;
-        const args = ['-m', _modelFor({ live }), '-f', wavPath, '-oj', '-of', outBase, '-t', String(_threads()), '-l', 'en'];
+        const args = ['-m', _modelFor({ live }), '-f', wavPath, '-oj', '-of', outBase, '-t', String(_threads(live)), '-l', 'en'];
         if (BEAM > 1) args.push('-bs', String(BEAM));
         // Decode only the regions Silero says contain a voice. Segment timestamps stay in
         // absolute file time, so the {start,end} contract is unchanged for every caller.
@@ -278,9 +295,23 @@ async function transcribeMedia(mediaPath, opts = {}) {
  * The slot is held for the whole decode and always released, including on throw.
  */
 async function transcribeWavDetailed(wavPath, opts = {}) {
-    await _acquire();
+    const lane = opts && opts.live ? 'live' : 'batch';
+    await _acquire(lane);
     try { return await _transcribeWavInner(wavPath, opts); }
-    finally { _release(); }
+    finally { _release(lane); }
 }
 
-module.exports = { available, transcribeWav, transcribeWavDetailed, transcribeMedia, transcribeMediaDetailed, killActive, setLowPower };
+/** Human-readable availability report (logged at boot so a broken install is visible). */
+function describe() {
+    const bin = whisperBin();
+    return {
+        available: available(),
+        bin: bin || null,
+        model: MODEL, modelExists: fs.existsSync(MODEL),
+        modelLive: MODEL_LIVE, modelLiveExists: fs.existsSync(MODEL_LIVE),
+        vadModel: vadModel() || null,
+        threads: THREADS, beam: BEAM, maxConcurrent: MAX_CONCURRENT,
+    };
+}
+
+module.exports = { available, describe, laneStatus, transcribeWav, transcribeWavDetailed, transcribeMedia, transcribeMediaDetailed, killActive, setLowPower };

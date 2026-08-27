@@ -201,7 +201,20 @@ function _renderMediaTranscript(descElId, kind, item) {
     let segments = null;
     try { segments = (item && item.ai_transcript_json) ? JSON.parse(item.ai_transcript_json) : null; } catch { segments = null; }
     const hasSegs = Array.isArray(segments) && segments.length > 0;
-    if (!t && !hasSegs) return;
+    if (!t && !hasSegs) {
+        // No transcript (yet): say why, instead of silently showing nothing. 'empty' and
+        // unknown states stay quiet — there is nothing useful to tell the viewer.
+        const st = item && item.transcript_status;
+        const msg = (st === 'pending' || st === 'retry' || st === 'processing' || st === null || st === undefined) && item && item.id
+            ? (st === 'processing' ? 'Transcript in progress…' : (st ? 'Transcript queued — check back soon' : null))
+            : (st === 'failed' ? 'Transcript unavailable for this recording' : null);
+        if (!msg) return;
+        const note = document.createElement('div');
+        note.className = 'media-transcript media-transcript-pending';
+        note.innerHTML = `<div class="media-transcript-head"><span class="media-transcript-toggle" style="cursor:default;opacity:.7"><i class="fa-solid ${st === 'failed' ? 'fa-file-circle-xmark' : 'fa-file-lines'}"></i> <span>${esc(msg)}</span></span></div>`;
+        desc.parentNode.insertBefore(note, desc.nextSibling);
+        return;
+    }
     const videoId = kind === 'vod' ? 'vp-video' : 'clp-video';
     const words = (t || segments.map(s => s.text).join(' ')).split(/\s+/).filter(Boolean).length;
 
