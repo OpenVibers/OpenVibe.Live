@@ -317,7 +317,7 @@ router.post('/test-alert', requireAuth, async (req, res) => {
                 host: { fromChannel: actorName, viewers: 42 },
             };
             await oauth.apiRequest(req.user.id, {
-                method: 'POST', path: '/test-alerts',
+                method: 'POST', path: '/test-alerts', idempotent: false,
                 body: { kind, payload: payloads[kind] },
             });
         }
