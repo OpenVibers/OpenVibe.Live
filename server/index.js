@@ -989,6 +989,8 @@ async function start() {
         try { require('./ai/stream-memory-job').start(); } catch (e) { console.warn('[AI] memory job not started:', e.message); }
         try { (() => { try { const d = require('./ai/transcribe').describe(); console.log(`[AI] whisper ${d.available ? 'available' : 'UNAVAILABLE'} — bin=${d.bin} model=${d.model}${d.modelExists ? '' : ' (MISSING)'} live=${d.modelLive}${d.modelLiveExists ? '' : ' (MISSING)'} vad=${d.vadModel || 'off'} threads=${d.threads}`); } catch (e) { console.warn('[AI] whisper probe failed:', e.message); } })();
     require('./ai/backfill-job').start(); } catch (e) { console.warn('[AI] backfill job not started:', e.message); }
+    // AI viewers activity log: keep a week.
+    setInterval(() => { try { const n = db.pruneAiViewerLog(7); if (n) console.log(`[AI-Viewers] pruned ${n} log row(s)`); } catch { /* */ } }, 6 * 3600 * 1000);
         try { require('./ai/streamer-overview-job').start(); } catch (e) { console.warn('[AI] streamer-overview job not started:', e.message); }
         try { require('./ai/chat-ai').start(); } catch (e) { console.warn('[AI] chat-ai job not started:', e.message); }
         try { require('./ai/slogan-job').start(); } catch (e) { console.warn('[AI] slogan job not started:', e.message); }

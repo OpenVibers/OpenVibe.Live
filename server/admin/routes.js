@@ -459,6 +459,45 @@ router.get('/ai/usage', (req, res) => {
     }
 });
 
+// AI viewers fleet (admin): running workers + per-channel spend/status, kill controls.
+router.get('/ai/viewers/status', (req, res) => {
+    try {
+        const viewers = require('../ai/viewers');
+        const v3 = viewers.v3(); const v2 = viewers.v2();
+        const running = [];
+        for (const w of v3.workers.values()) {
+            const u = db.getUserById(w.userId);
+            running.push({ engine: 'v3', user_id: w.userId, username: u && u.username, stream_id: w.streamId, bots: w.bots.length, mode: w.mode, paused: w.paused, stats: w.stats, started_at: w.startedAt });
+        }
+        for (const w of v2.workers.values()) {
+            const u = db.getUserById(w.userId);
+            running.push({ engine: 'v2', user_id: w.userId, username: u && u.username, stream_id: w.streamId, bots: w.bots.length });
+        }
+        const channels = db.all(`SELECT c.user_id, u.username, c.enabled, c.use_shared_key, c.daily_budget_cents, c.settings_json,
+            (SELECT COUNT(*) FROM channel_ai_bots b WHERE b.channel_user_id = c.user_id AND b.is_active = 1) AS bots
+            FROM channel_ai_config c JOIN users u ON u.id = c.user_id ORDER BY c.enabled DESC, u.username`).map(r => {
+            let sj = {}; try { sj = JSON.parse(r.settings_json || '{}') || {}; } catch { /* */ }
+            let spent = 0; try { spent = db.getAiCostTodayForUser(r.user_id, 'ai_viewers'); } catch { /* */ }
+            return { user_id: r.user_id, username: r.username, enabled: !!r.enabled, shared_key: !!r.use_shared_key, cap_usd: (r.daily_budget_cents || 0) / 100, spent_today_usd: spent, bots: r.bots, engine: sj.engine || null, activity: sj.activity || null };
+        });
+        res.json({ engine_default: viewers.version, kill_switch: db.getSetting('ai_viewers_enabled') === false, global_spend_today_usd: require('../ai/viewers/budget').globalViewerSpendToday(), running, channels });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.post('/ai/viewers/:userId/:action', (req, res) => {
+    try {
+        const viewers = require('../ai/viewers');
+        const userId = parseInt(req.params.userId, 10);
+        const action = String(req.params.action || '');
+        if (action === 'stop') { viewers.stopForUser(userId); db.upsertChannelAiConfig(userId, { enabled: 0 }); return res.json({ ok: true, message: 'Stopped and disabled' }); }
+        if (['pause', 'resume', 'nudge'].includes(action)) return res.json({ ok: true, message: viewers.onModCommand(userId, null, [action], { by: `admin:${req.user.username}` }) });
+        res.status(400).json({ error: 'Unknown action' });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.get('/ai/viewers/:userId/log', (req, res) => {
+    try { res.json({ rows: db.getAiViewerLog(parseInt(req.params.userId, 10), { afterId: parseInt(req.query.after, 10) || 0, limit: parseInt(req.query.limit, 10) || 80 }) }); }
+    catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── AI Explorer + status tools (admin AI tab) ────────────────
 const aiAnalysis = require('../ai/ai-analysis');
 

@@ -18,9 +18,28 @@ const _lastSummary = new Map(); // streamId -> { count, at } — throttles the s
 const SUMMARY_MIN_NEW = 3;              // re-summarize once this many new memories exist
 const SUMMARY_MAX_AGE_MS = 5 * 60 * 1000; // ...or at least this long since the last rollup
 
-async function _analyzeOne(stream) {
+// In-flight capture per stream: the periodic job and on-demand callers (AI viewers asking
+// for a fresh look) share ONE ffmpeg + ONE vision call instead of racing.
+const _inflight = new Map(); // streamId → Promise
+/**
+ * Analyze the current frame NOW through the normal pipeline (frame → vision → memory row →
+ * overview rollup). Used by the AI viewers so a "look at the screen" is never a private,
+ * throwaway vision call — the result is cached for every consumer.
+ */
+function captureMemoryNow(stream, { allowFfmpeg = true, reason = 'manual' } = {}) {
+    if (!stream || !stream.id) return Promise.resolve(false);
+    if (!ai.streamMemoryEnabled()) return Promise.resolve(false);
+    const existing = _inflight.get(stream.id);
+    if (existing) return existing;
+    const p = _analyzeOne(stream, { allowFfmpeg, reason }).then(() => true).catch(() => false).finally(() => _inflight.delete(stream.id));
+    _inflight.set(stream.id, p);
+    _last.set(stream.id, Date.now());
+    return p;
+}
+
+async function _analyzeOne(stream, { allowFfmpeg = true, reason = 'periodic' } = {}) {
     let image = null;
-    try { if (vision && vision.captureFrame) image = await vision.captureFrame(stream); } catch { /* */ }
+    if (allowFfmpeg) { try { if (vision && vision.captureFrame) image = await vision.captureFrame(stream); } catch { /* */ } }
     if (!image) {
         // Fall back to the freshest thumbnail file on disk.
         try {
@@ -127,7 +146,8 @@ async function tick() {
     for (const stream of streams) {
         if (now - (_last.get(stream.id) || 0) < intervalMs) continue;
         _last.set(stream.id, now); // set before the async work so we don't double-capture
-        _analyzeOne(stream).catch(() => {});
+        if (_inflight.has(stream.id)) continue;
+        captureMemoryNow(stream, { allowFfmpeg: true, reason: 'periodic' }).catch(() => {});
     }
     // GC entries for streams no longer live.
     if (_last.size > 300 || _lastSummary.size > 300) {
@@ -142,4 +162,4 @@ function start() {
     console.log('[AI] Stream memory job started (30s poll; captures at the configured interval when enabled)');
 }
 
-module.exports = { start, tick };
+module.exports = { start, tick, captureMemoryNow };

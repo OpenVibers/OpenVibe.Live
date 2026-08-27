@@ -886,10 +886,17 @@ class ChatServer {
             // Bots inject via broadcastToStream directly, so this path only sees
             // genuine human messages.
             try {
+                let isMod = false;
+                try { isMod = !!(client.user && permissions.canModerateChannel(client.user, client.channelUserId)); } catch { /* */ }
                 require('../integrations/ai-chatbot-service').onRealChatMessage(client.streamId, {
                     username,
                     message: text,
                     userId: client.user?.id || null,
+                    anonId: client.user ? null : (client.anonId || null),
+                    isStreamer: !!(client.user && client.user.id === client.channelUserId),
+                    isMod,
+                    msgId: chatMsg && chatMsg.id ? chatMsg.id : null,
+                    channelUserId: client.channelUserId || null,
                 });
             } catch { /* non-critical */ }
 
@@ -1324,6 +1331,16 @@ class ChatServer {
         const argParts = parts.slice(1);
 
         switch (cmd) {
+            case 'ai': {
+                // /ai pause|resume|mute <bot>|unmute <bot>|status — channel mods + owner only.
+                if (!this.canModerate(client)) { this.sendTo(ws, { type: 'system', message: 'Only moderators can control the AI viewers.' }); return; }
+                try {
+                    const engine = require('../integrations/ai-chatbot-service');
+                    const reply = engine.onModCommand ? engine.onModCommand(client.channelUserId, client.streamId, parts.slice(1), { by: client.user?.username }) : 'AI viewers: command not supported by this engine.';
+                    this.sendTo(ws, { type: 'system', message: reply || 'ok' });
+                } catch (e) { this.sendTo(ws, { type: 'system', message: `AI viewers: ${e.message}` }); }
+                return;
+            }
             case 'help':
                 this.sendTo(ws, {
                     type: 'system',

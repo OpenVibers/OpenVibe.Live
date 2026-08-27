@@ -1010,6 +1010,12 @@ function _wsRenderPanel() {
                     </div>
                 </details>
 
+                <!-- AI Chat Viewers (v3) — compact per-slot controls; full panel lives on the dashboard -->
+                <details class="bc-ws-slot-settings" id="bc-ws-aiv-details">
+                    <summary><i class="fa-solid fa-robot"></i> AI Chat Viewers</summary>
+                    <div class="bc-ws-slot-settings-inner"><div id="bc-ws-aiv" data-ms="${ms.id}"><span class="muted">Loading…</span></div></div>
+                </details>
+
                 <!-- VOD / Clips Settings -->
                 <details class="bc-ws-slot-settings">
                     <summary><i class="fa-solid fa-film"></i> VOD &amp; Clips Settings</summary>
@@ -1158,6 +1164,9 @@ function _wsRenderPanel() {
 
     // Load restream destinations for this slot
     _wsLoadRestreamDests(ms.id);
+
+    // AI viewers per-slot section (async; the panel HTML above only holds the placeholder).
+    try { const aiv = document.getElementById('bc-ws-aiv'); if (aiv && window.aivRenderSlotSection) window.aivRenderSlotSection(aiv, aiv.dataset.ms); } catch { /* */ }
 }
 
 /* ── Tab switching ───────────────────────────────────────────── */

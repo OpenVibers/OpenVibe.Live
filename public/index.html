@@ -62,7 +62,7 @@
     </script>
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="/css/style.css?v=136">
+    <link rel="stylesheet" href="/css/style.css?v=137">
     <link rel="stylesheet" href="/css/chat-shared.css?v=1">
     <link rel="stylesheet" href="/css/broadcast.css?v=11">
     <link rel="stylesheet" href="/css/cosmetics.css?v=2">
@@ -1612,37 +1612,25 @@
                     <div class="ai-viewers-tabs ch-tabs" id="aiv-subtabs" role="tablist">
                         <button class="ch-tab active" data-avtab="config" onclick="switchAivTab('config', this)"><i class="fa-solid fa-sliders"></i> Settings</button>
                         <button class="ch-tab" data-avtab="roster" onclick="switchAivTab('roster', this)"><i class="fa-solid fa-users"></i> Roster <span class="aiv-count" id="aiv-roster-count"></span></button>
+                        <button class="ch-tab" data-avtab="activity" onclick="switchAivTab('activity', this)"><i class="fa-solid fa-list-ul"></i> Activity</button>
                         <button class="ch-tab" data-avtab="budget" onclick="switchAivTab('budget', this)"><i class="fa-solid fa-gauge"></i> Key &amp; Budget</button>
                     </div>
 
-                    <!-- Settings -->
+                    <!-- Settings (rendered from the server's settings schema) -->
                     <div class="aiv-panel active" id="aiv-panel-config">
-                        <div class="ai-bot-grid">
-                            <label class="staff-inline-toggle"><input type="checkbox" id="aiv-enabled"> <b>Enable AI chat viewers</b></label>
-                            <div class="ai-bot-row">
-                                <label>
-                                    <span>Ambient viewers</span>
-                                    <input type="number" id="aiv-num" class="form-input" min="0" max="12" value="3" style="max-width:110px;">
-                                    <span class="ai-bot-hint">Always-on background chatters (0 = clones only).</span>
-                                </label>
-                                <label>
-                                    <span>Speak every ~N seconds</span>
-                                    <input type="number" id="aiv-pacing" class="form-input" min="10" max="600" value="45" style="max-width:120px;">
-                                    <span class="ai-bot-hint">Across all bots (lower = chattier).</span>
-                                </label>
-                            </div>
-                            <label>
-                                <span>Channel personality (optional seed)</span>
-                                <textarea id="aiv-persona" class="form-input" rows="2" placeholder="e.g. Gremlin energy, backseat gamers, wholesome chaos. Keep it funny, never mean."></textarea>
-                            </label>
-                            <label class="staff-inline-toggle"><input type="checkbox" id="aiv-transcribe"> <span>Let them <b>hear</b> the stream (free local transcription) so they react to what you say <i class="fa-solid fa-microphone"></i></span></label>
-                            <label class="staff-inline-toggle"><input type="checkbox" id="aiv-vision"> <span>Let them <b>see</b> the stream (periodic frames) so they react to what's on screen <i class="fa-solid fa-eye" title="Uses vision tokens — counts against your budget."></i></span></label>
-                            <div class="ai-bot-actions">
-                                <button class="btn btn-outline btn-small" onclick="previewAiViewers(this)"><i class="fa-solid fa-wand-magic-sparkles"></i> Preview a line</button>
-                                <button class="btn btn-primary btn-small" onclick="saveAiViewers(this)"><i class="fa-solid fa-floppy-disk"></i> Save settings</button>
-                            </div>
-                            <div id="aiv-preview" class="ai-bot-preview" style="display:none;"></div>
+                        <div id="aiv-settings-root"><p class="muted">Loading…</p></div>
+                    </div>
+
+                    <!-- Activity: live feed of what the director decided and why -->
+                    <div class="aiv-panel" id="aiv-panel-activity">
+                        <div class="aiv-senses" id="aiv-senses-activity"></div>
+                        <div class="ai-bot-actions" style="margin:6px 0 8px">
+                            <button class="btn btn-small btn-outline" onclick="aivCommand('pause', this)"><i class="fa-solid fa-pause"></i> Pause</button>
+                            <button class="btn btn-small btn-outline" onclick="aivCommand('resume', this)"><i class="fa-solid fa-play"></i> Resume</button>
+                            <button class="btn btn-small btn-outline" onclick="aivCommand('nudge', this)"><i class="fa-solid fa-hand-point-right"></i> Nudge the director</button>
+                            <span class="muted" id="aiv-hour-stats" style="font-size:0.8rem"></span>
                         </div>
+                        <div class="aiv-log" id="aiv-log"><p class="muted">Loading…</p></div>
                     </div>
 
                     <!-- Roster -->
@@ -1679,9 +1667,21 @@
                                     <span class="ai-bot-hint" id="aiv-byo-key-status"></span>
                                 </label>
                                 <label>
-                                    <span>Chat model</span>
-                                    <input type="text" id="aiv-byo-model" class="form-input" placeholder="gpt-4o-mini" autocomplete="off" style="max-width:220px;">
+                                    <span>Provider shape</span>
+                                    <select id="aiv-byo-provider" class="form-input" style="max-width:220px"><option value="openai">OpenAI-compatible</option><option value="anthropic">Anthropic</option></select>
                                 </label>
+                                <label>
+                                    <span>Default model</span>
+                                    <input type="text" id="aiv-byo-model" class="form-input" placeholder="gpt-4o-mini" autocomplete="off" style="max-width:220px;">
+                                    <span class="ai-bot-hint">Used for every role unless overridden below.</span>
+                                </label>
+                                <div class="ai-bot-row">
+                                    <label><span>Chat lines model</span><input type="text" id="aiv-byo-model-chat" class="form-input" placeholder="(default)" style="max-width:200px"></label>
+                                    <label><span>Director model</span><input type="text" id="aiv-byo-model-director" class="form-input" placeholder="(default)" style="max-width:200px"><span class="ai-bot-hint">Plans several lines per call; needs JSON output.</span></label>
+                                    <label><span>Vision model</span><input type="text" id="aiv-byo-model-vision" class="form-input" placeholder="(default)" style="max-width:200px"><span class="ai-bot-hint">Only used when the shared site vision is off.</span></label>
+                                    <label><span>Summary model</span><input type="text" id="aiv-byo-model-summary" class="form-input" placeholder="(default)" style="max-width:200px"></label>
+                                </div>
+                                <div class="ai-bot-actions"><button class="btn btn-small btn-outline" onclick="testAivByo(this)"><i class="fa-solid fa-plug-circle-check"></i> Test connection</button><span id="aiv-byo-test-out" class="muted" style="font-size:0.8rem"></span></div>
                             </div>
                             <div class="ai-bot-actions">
                                 <button class="btn btn-primary btn-small" onclick="saveAiViewers(this)"><i class="fa-solid fa-floppy-disk"></i> Save</button>
@@ -5070,7 +5070,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/settings.js?v=12" defer></script>
 <script src="/js/staff-console.js?v=1" defer></script>
 <script src="/js/dashboard-moderation.js?v=5" defer></script>
-<script src="/js/ai-viewers.js?v=1" defer></script>
+<script src="/js/ai-viewers.js?v=2" defer></script>
 <script src="/js/powerchat.js?v=8" defer></script>
 <script src="/js/pastes.js?v=14" defer></script>
 <script src="/js/draggable-fab.js?v=2" defer></script>
