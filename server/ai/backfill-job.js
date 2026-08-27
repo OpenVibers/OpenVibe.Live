@@ -16,6 +16,7 @@ const media = require('../media-client');
 
 let _timer = null;
 let _busy = false;
+let _loadWarnedAt = 0;
 
 // Resolve Media metadata for a state row ({id} = Media id). Returns a vod/clip-shaped
 // object the ai-analysis functions understand, or null (→ retry later).
@@ -50,23 +51,39 @@ async function tick() {
         // run whisper at once, on top of the live encoder. Measured effect on this 4-core
         // box: load average 5.44. VOD transcripts have no deadline whatsoever, so simply
         // stand them down until the stream ends; they catch up at full speed afterwards.
-        let timelineBusy = false;
-        try { timelineBusy = anyLive && require('./timeline-job').timelineEnabled(); } catch { /* */ }
-        if (timelineBusy) {
-            try { require('./transcribe').setLowPower(true); } catch { /* */ }
+        // The live timeline has its OWN whisper lane now (transcribe.js), so VOD/clip work
+        // no longer has to stand down for the whole stream — it runs niced, low-power, and
+        // only when the box has headroom. (The old stand-down meant nothing was ever
+        // transcribed while the owner streamed, which on this site is most of the day.)
+        const cores = require('os').cpus().length || 4;
+        const load1 = (require('os').loadavg()[0]) || 0;
+        const headroom = load1 < cores * 1.25;
+        if (!headroom) {
+            if (!_loadWarnedAt || Date.now() - _loadWarnedAt > 600000) { _loadWarnedAt = Date.now(); console.log(`[AI backfill] load ${load1.toFixed(1)} on ${cores} cores — deferring batch transcription`); }
         } else if (ai.transcriptionEnabled && ai.transcriptionEnabled()) {
             try { require('./transcribe').setLowPower(anyLive); } catch { /* */ }
             const batch = anyLive ? 1 : 2;   // throttle while live, catch up faster when idle
+            // Take several candidates and process the first `batch` that resolve: a row whose
+            // Media metadata won't resolve (still recording, Media down) used to occupy the
+            // whole LIMIT every minute and block every row behind it.
             try {
-                for (const row of db.getVodsNeedingTranscript(batch)) {
+                let done = 0;
+                for (const row of db.getVodsNeedingTranscript(batch + 6)) {
+                    if (done >= batch) break;
                     const vod = await _vodMeta(row);
-                    if (vod) await ai.generateVodTranscript(vod);
+                    if (!vod) continue;
+                    await ai.generateVodTranscript(vod);
+                    done++;
                 }
             } catch (e) { console.warn('[AI backfill] vod transcript:', e.message); }
             try {
-                for (const row of db.getClipsNeedingTranscript(batch)) {
+                let done = 0;
+                for (const row of db.getClipsNeedingTranscript(batch + 6)) {
+                    if (done >= batch) break;
                     const clip = await _clipMeta(row);
-                    if (clip) await ai.generateClipTranscript(clip);
+                    if (!clip) continue;
+                    await ai.generateClipTranscript(clip);
+                    done++;
                 }
             } catch (e) { console.warn('[AI backfill] clip transcript:', e.message); }
         }

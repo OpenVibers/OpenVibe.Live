@@ -250,6 +250,15 @@ async function startContinuousCapture(stream) {
 
     const dir = spoolDir(stream.id);
     try { fs.mkdirSync(dir, { recursive: true }); } catch { return false; }
+    // A previous process (deploy restart) may have left segments here. Their indexes
+    // restart at 0 for the new ffmpeg, so old files would be mis-ordered against new ones
+    // — the "newest file is still being written" rule then skipped a stale file and fed a
+    // half-written one to whisper. Drop them; the VOD transcript covers that audio.
+    try {
+        const stale = fs.readdirSync(dir).filter(n => /^seg-\d{6}\.wav$/.test(n));
+        for (const n of stale) { try { fs.unlinkSync(path.join(dir, n)); } catch { /* */ } }
+        if (stale.length) console.log(`[AI-Hear] stream ${stream.id}: dropped ${stale.length} stale spool segment(s) from a previous run`);
+    } catch { /* */ }
 
     // Resolve an input the same way the one-shot grab does: WHIP/WebRTC via a plain RTP
     // consumer, RTMP via the local HTTP-FLV output.
@@ -328,6 +337,7 @@ function pendingSegments(streamId, { includeLast = false } = {}) {
     for (let i = 0; i < overflow; i++) {
         try { fs.unlinkSync(path.join(dir, ready[i])); } catch { /* */ }
     }
+    if (overflow) console.warn(`[AI-Hear] stream ${streamId}: transcriber ${overflow * SEGMENT_SEC}s behind — dropped ${overflow} oldest segment(s)`);
     const startedAt = (_capturing.get(streamId) || {}).startedAt || null;
     return ready.slice(overflow).map(name => {
         const index = parseInt(name.slice(4, 10), 10);

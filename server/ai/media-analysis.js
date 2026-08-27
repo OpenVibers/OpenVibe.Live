@@ -194,7 +194,24 @@ async function pickFrameTimes(src, duration, { existingOffsets = [], maxFrames =
 
 // Transcribe the audio: full for short media, else 3 spread 60s windows. Returns
 // { text, segments:[{start,end,text}] } with segment times relative to the recording.
-async function _transcribeSpan(src, duration) {
+// Does the source carry an audio stream at all? Video-only recordings (screen shares with
+// no mic, some RS robots) used to fail ffmpeg's wav extraction, burn 8 retries and end up
+// 'failed' — they are simply silent and should be terminal 'empty' on the first pass.
+function _ffprobeHasAudio(src) {
+    return new Promise((resolve) => {
+        let out = '';
+        let p;
+        try {
+            p = _track(spawn('ffprobe', ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', src], { stdio: ['ignore', 'pipe', 'ignore'] }));
+        } catch { return resolve(null); }
+        const t = setTimeout(() => { try { p.kill('SIGKILL'); } catch { /* */ } resolve(null); }, 30000);
+        p.stdout.on('data', (d) => { out += d; });
+        p.on('close', (c) => { clearTimeout(t); resolve(c === 0 ? /audio/.test(out) : null); });
+        p.on('error', () => { clearTimeout(t); resolve(null); });
+    });
+}
+
+async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments = null, onWindow = null } = {}) {
     const transcribe = require('./transcribe');
     if (!transcribe.available()) return { text: '', segments: [], ok: false, error: 'whisper unavailable' };
     if (duration > 0 && duration <= 200) {
@@ -210,11 +227,16 @@ async function _transcribeSpan(src, duration) {
     // pass runs from the backfill queue, which already drops to low power while live.
     const WINDOW_SEC = 300;
     const parts = [];
-    const segments = [];
-    let anyOk = false, lastErr = null;
+    // Resume support: a deploy/restart used to throw away every finished window of an
+    // hour-long VOD. Callers persist progress after each window (onWindow) and hand the
+    // finished segments back (priorSegments/resumeFromSec) so we continue, not restart.
+    const segments = Array.isArray(priorSegments) ? [...priorSegments] : [];
+    let anyOk = segments.length > 0, lastErr = null;
     const total = Math.max(0, Math.floor(duration || 0));
     const windows = [];
-    for (let start = 0; start < total; start += WINDOW_SEC) windows.push(start);
+    const firstStart = Math.max(0, Math.floor((resumeFromSec || 0) / WINDOW_SEC) * WINDOW_SEC);
+    for (let start = firstStart; start < total; start += WINDOW_SEC) windows.push(start);
+    if (firstStart > 0) console.log(`[AI] transcript resuming at ${Math.round(firstStart / 60)}min of ${Math.round(total / 60)}min (${segments.length} segments kept)`);
     // Safety valve for absurdly long recordings so one VOD cannot occupy the queue forever.
     const MAX_WINDOWS = Math.max(1, parseInt(process.env.AI_VOD_MAX_WINDOWS, 10) || 96); // 8h
     if (windows.length > MAX_WINDOWS) {
@@ -228,11 +250,16 @@ async function _transcribeSpan(src, duration) {
         if (ffOk) {
             const r = await transcribe.transcribeWavDetailed(wav, { timeoutMs: 600000, offsetSec: start });
             if (r.ok) anyOk = true; else lastErr = r.error || lastErr;
-            if (r.text) parts.push(r.text);
             if (r.segments && r.segments.length) segments.push(...r.segments);
+            if (r.ok && typeof onWindow === 'function') {
+                try { await onWindow(Math.min(total, start + len), segments); } catch { /* progress is best-effort */ }
+            }
         } else { lastErr = 'ffmpeg window extract failed'; }
         try { fs.existsSync(wav) && fs.unlinkSync(wav); } catch { /* */ }
     }
+    segments.sort((a, b) => (a.start || 0) - (b.start || 0));
+    parts.length = 0;
+    for (const s of segments) if (s.text) parts.push(s.text);
     // ok=true only if at least one window ran the full ffmpeg+whisper pipeline cleanly.
     // If every window failed (unreadable source, etc.) we return ok=false so the caller
     // retries instead of marking the VOD permanently silent.
@@ -280,10 +307,12 @@ async function analyzeMedia(src, { streamId = null, userId = null, numFrames = n
  * Transcript-only: probe duration then whisper-transcribe (FREE local, no vision).
  * @returns {Promise<{text:string, segments:Array}>}
  */
-async function transcribeOnly(src) {
+async function transcribeOnly(src, opts = {}) {
     if (!src) return { text: '', segments: [], ok: false, error: 'no source' };
+    const hasAudio = await _ffprobeHasAudio(src);
+    if (hasAudio === false) return { text: '', segments: [], ok: true, noAudio: true, error: null };
     const duration = await _ffprobeDuration(src);
-    try { return await _transcribeSpan(src, duration); } catch (e) { return { text: '', segments: [], ok: false, error: e.message }; }
+    try { return await _transcribeSpan(src, duration, opts); } catch (e) { return { text: '', segments: [], ok: false, error: e.message }; }
 }
 
 module.exports = {
