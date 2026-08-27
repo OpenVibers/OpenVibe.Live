@@ -1818,6 +1818,35 @@ function initDb() {
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )`);
+    // AI viewers v3: per-channel settings blob, persisted conversations, activity log.
+    try {
+        const cols = database.prepare('PRAGMA table_info(channel_ai_config)').all().map(c => c.name);
+        if (!cols.includes('settings_json')) database.exec("ALTER TABLE channel_ai_config ADD COLUMN settings_json TEXT DEFAULT '{}'");
+        database.exec(`CREATE TABLE IF NOT EXISTS ai_viewer_threads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_user_id INTEGER NOT NULL,
+            stream_id INTEGER,
+            kind TEXT NOT NULL,                 -- bot_bot | bot_viewer | bot_streamer
+            participants_json TEXT NOT NULL,    -- ["botname","viewer"...]
+            topic TEXT,
+            state TEXT DEFAULT 'open',          -- open | closed
+            awaiting TEXT,                      -- bot username expected to speak next (or null)
+            turns INTEGER DEFAULT 0,
+            last_line TEXT, last_line_by TEXT, last_line_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
+        database.exec('CREATE INDEX IF NOT EXISTS idx_aiv_threads_open ON ai_viewer_threads(channel_user_id, state, updated_at)');
+        database.exec(`CREATE TABLE IF NOT EXISTS ai_viewer_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_user_id INTEGER NOT NULL, stream_id INTEGER,
+            event TEXT NOT NULL,                -- tick | line | skip | mention | fold | vision | degrade | pause | error | info
+            bot_username TEXT, target TEXT, thread_id INTEGER, chat_message_id INTEGER,
+            text TEXT, reason TEXT,
+            tokens_in INTEGER, tokens_cached INTEGER, tokens_out INTEGER, cost_usd REAL, model TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
+        database.exec('CREATE INDEX IF NOT EXISTS idx_aiv_log_channel ON ai_viewer_log(channel_user_id, id)');
+    } catch (e) { console.warn('[DB] ai viewers v3 tables:', e.message); }
         // One-time migration of existing ai_chatbot_configs rows into the new table.
         const migrated = database.prepare('SELECT COUNT(*) AS c FROM channel_ai_config').get().c;
         if (!migrated) {
@@ -5957,6 +5986,7 @@ const CHANNEL_AI_CONFIG_DEFAULTS = {
     enabled: 0, num_ambient_bots: 3, pacing_seconds: 45, persona: '',
     transcribe_enabled: 0, vision_enabled: 0, use_shared_key: 1,
     daily_budget_cents: 20, byo_key: '', byo_base_url: '', byo_model: 'gpt-4o-mini',
+    settings_json: '{}',
 };
 
 function getChannelAiConfig(userId) {
@@ -5977,6 +6007,8 @@ function upsertChannelAiConfig(userId, fields) {
         byo_key: (v) => String(v || '').trim().slice(0, 400),
         byo_base_url: (v) => String(v || '').trim().slice(0, 500),
         byo_model: (v) => String(v || '').trim().slice(0, 120) || 'gpt-4o-mini',
+        // Validated/clamped by ai/viewers/settings.js before it gets here; just bound the size.
+        settings_json: (v) => { const t = typeof v === 'string' ? v : JSON.stringify(v || {}); return t.length > 40000 ? '{}' : t; },
     };
     const existing = get('SELECT 1 FROM channel_ai_config WHERE user_id = ?', [userId]);
     if (existing) {
@@ -6025,6 +6057,63 @@ function createChannelAiBot({ channel_user_id, username, display_name, avatar_co
 
 function getChannelAiBot(id) {
     return get('SELECT * FROM channel_ai_bots WHERE id = ?', [id]);
+}
+
+// ── AI viewers v3: threads + activity log ───────────────────
+function createAiViewerThread({ channel_user_id, stream_id = null, kind, participants, topic = null, awaiting = null }) {
+    const r = run('INSERT INTO ai_viewer_threads (channel_user_id, stream_id, kind, participants_json, topic, awaiting) VALUES (?, ?, ?, ?, ?, ?)',
+        [channel_user_id, stream_id, kind, JSON.stringify(participants || []), topic, awaiting]);
+    return get('SELECT * FROM ai_viewer_threads WHERE id = ?', [r.lastInsertRowid]);
+}
+function getOpenAiViewerThreads(channelUserId, limit = 6) {
+    return all("SELECT * FROM ai_viewer_threads WHERE channel_user_id = ? AND state = 'open' ORDER BY updated_at DESC LIMIT ?", [channelUserId, limit]);
+}
+function getRecentClosedAiViewerThreads(channelUserId, limit = 3) {
+    return all("SELECT * FROM ai_viewer_threads WHERE channel_user_id = ? AND state = 'closed' AND topic IS NOT NULL ORDER BY updated_at DESC LIMIT ?", [channelUserId, limit]);
+}
+function touchAiViewerThread(id, { line, by, awaiting = null, topic = undefined }) {
+    const sets = ['turns = turns + 1', 'last_line = ?', 'last_line_by = ?', 'last_line_at = CURRENT_TIMESTAMP', 'awaiting = ?', 'updated_at = CURRENT_TIMESTAMP'];
+    const params = [String(line || '').slice(0, 300), by || null, awaiting];
+    if (topic !== undefined) { sets.push('topic = ?'); params.push(topic); }
+    params.push(id);
+    return run(`UPDATE ai_viewer_threads SET ${sets.join(', ')} WHERE id = ?`, params);
+}
+function closeAiViewerThread(id) { return run("UPDATE ai_viewer_threads SET state = 'closed', awaiting = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [id]); }
+function closeStaleAiViewerThreads(channelUserId, idleSec, maxTurns) {
+    return run(`UPDATE ai_viewer_threads SET state = 'closed', awaiting = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE channel_user_id = ? AND state = 'open' AND (updated_at < datetime('now', ?) OR turns >= ?)`, [channelUserId, `-${Math.max(30, idleSec)} seconds`, maxTurns]).changes;
+}
+function closeAllAiViewerThreads(channelUserId) { return run("UPDATE ai_viewer_threads SET state = 'closed', awaiting = NULL, updated_at = CURRENT_TIMESTAMP WHERE channel_user_id = ? AND state = 'open'", [channelUserId]).changes; }
+function addAiViewerLog(row) {
+    return run(`INSERT INTO ai_viewer_log (channel_user_id, stream_id, event, bot_username, target, thread_id, chat_message_id, text, reason, tokens_in, tokens_cached, tokens_out, cost_usd, model)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [row.channel_user_id, row.stream_id || null, row.event, row.bot_username || null, row.target || null, row.thread_id || null, row.chat_message_id || null,
+         row.text == null ? null : String(row.text).slice(0, 600), row.reason == null ? null : String(row.reason).slice(0, 300),
+         row.tokens_in || null, row.tokens_cached || null, row.tokens_out || null, row.cost_usd || null, row.model || null]);
+}
+function getAiViewerLog(channelUserId, { afterId = 0, limit = 50, streamId = null } = {}) {
+    let sql = 'SELECT * FROM ai_viewer_log WHERE channel_user_id = ?';
+    const params = [channelUserId];
+    if (afterId) { sql += ' AND id > ?'; params.push(afterId); }
+    if (streamId) { sql += ' AND stream_id = ?'; params.push(streamId); }
+    sql += ' ORDER BY id DESC LIMIT ?'; params.push(Math.max(1, Math.min(200, limit)));
+    return all(sql, params).reverse();
+}
+function pruneAiViewerLog(days = 7) { return run("DELETE FROM ai_viewer_log WHERE created_at < datetime('now', ?)", [`-${days} days`]).changes; }
+function getAiViewerLogStats(channelUserId, sinceMin = 60) {
+    return get(`SELECT SUM(CASE WHEN event = 'line' THEN 1 ELSE 0 END) AS lines, SUM(CASE WHEN event = 'tick' THEN 1 ELSE 0 END) AS ticks,
+        SUM(CASE WHEN event = 'skip' THEN 1 ELSE 0 END) AS skips, COALESCE(SUM(cost_usd),0) AS cost_usd, COALESCE(SUM(tokens_in),0) AS tokens_in, COALESCE(SUM(tokens_cached),0) AS tokens_cached
+        FROM ai_viewer_log WHERE channel_user_id = ? AND created_at > datetime('now', ?)`, [channelUserId, `-${sinceMin} minutes`]);
+}
+// Channel chat (all surfaces: native, relayed, bot lines) newer than an id — what the bots "see".
+function getChannelChatSince(channelUserId, afterId = 0, limit = 60) {
+    return all(`SELECT id, user_id, anon_id, username, message, message_type, source_platform, reply_to_id, timestamp
+        FROM chat_messages WHERE channel_user_id = ? AND id > ? AND is_deleted = 0 AND message_type IN ('chat','donation')
+          AND (auto_delete_at IS NULL OR auto_delete_at > CURRENT_TIMESTAMP)
+        ORDER BY id DESC LIMIT ?`, [channelUserId, afterId, Math.max(1, Math.min(200, limit))]).reverse();
+}
+function getMaxChatMessageIdForChannel(channelUserId) {
+    return get('SELECT COALESCE(MAX(id),0) AS m FROM chat_messages WHERE channel_user_id = ?', [channelUserId])?.m || 0;
 }
 
 function getChannelAiBots(channelUserId, { activeOnly = false } = {}) {
@@ -7830,6 +7919,8 @@ module.exports = {
     // Site Settings
     getSetting, getSettingRow, getAllSettings, setSetting, deleteSetting,
     saveVodTranscriptProgress, getVodTranscriptProgress,
+    createAiViewerThread, getOpenAiViewerThreads, getRecentClosedAiViewerThreads, touchAiViewerThread, closeAiViewerThread, closeStaleAiViewerThreads, closeAllAiViewerThreads,
+    addAiViewerLog, getAiViewerLog, pruneAiViewerLog, getAiViewerLogStats, getChannelChatSince, getMaxChatMessageIdForChannel,
     getState, setState, deleteState,
     // Verification Keys
     createVerificationKey, getVerificationKeyByKey, getVerificationKeyByUsername,

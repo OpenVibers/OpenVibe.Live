@@ -74,15 +74,58 @@ function botSummary(b) {
 }
 
 // ── Config ────────────────────────────────────────────────────
+function statusSafe(userId) { try { return engine.status(userId); } catch (e) { return { error: e.message }; } }
+
 router.get('/config', requireAuth, (req, res) => {
     try {
+        const cfg = db.getChannelAiConfig(req.user.id);
         res.json({
-            config: sanitizeConfig(db.getChannelAiConfig(req.user.id)),
+            config: sanitizeConfig(cfg),
+            settings: settingsMod.getSettings(req.user.id, cfg),
+            schema: settingsMod.describe(),
             budget: budgetSummary(req.user.id),
+            status: statusSafe(req.user.id),
+            engine: engine.version,
         });
     } catch (e) {
         res.status(500).json({ error: 'Failed to load AI viewer config' });
     }
+});
+
+// ── v3 control surface ────────────────────────────────────────
+router.get('/status', requireAuth, (req, res) => {
+    try {
+        const st = statusSafe(req.user.id);
+        let stats = null; try { stats = db.getAiViewerLogStats(req.user.id, 60); } catch { /* */ }
+        res.json({ status: st, last_hour: stats, budget: budgetSummary(req.user.id) });
+    } catch (e) { res.status(500).json({ error: 'Failed to load status' }); }
+});
+router.get('/log', requireAuth, (req, res) => {
+    try {
+        const rows = db.getAiViewerLog(req.user.id, { afterId: parseInt(req.query.after, 10) || 0, limit: parseInt(req.query.limit, 10) || 50, streamId: parseInt(req.query.stream_id, 10) || null });
+        res.json({ rows });
+    } catch (e) { res.status(500).json({ error: 'Failed to load log' }); }
+});
+router.get('/threads', requireAuth, (req, res) => {
+    try { res.json({ open: db.getOpenAiViewerThreads(req.user.id, 10), recent: db.getRecentClosedAiViewerThreads(req.user.id, 10) }); }
+    catch (e) { res.status(500).json({ error: 'Failed to load threads' }); }
+});
+for (const cmd of ['pause', 'resume', 'nudge']) {
+    router.post(`/${cmd}`, requireAuth, (req, res) => {
+        try { res.json({ ok: true, message: engine.onModCommand(req.user.id, null, [cmd], { by: req.user.username }), status: statusSafe(req.user.id) }); }
+        catch (e) { res.status(500).json({ error: e.message }); }
+    });
+}
+router.post('/bots/:id/mute', requireAuth, (req, res) => { const bot = ownBotOr404(req, res); if (!bot) return; res.json({ ok: true, message: engine.onModCommand(req.user.id, null, ['mute', bot.username], { by: req.user.username }) }); });
+router.post('/bots/:id/unmute', requireAuth, (req, res) => { const bot = ownBotOr404(req, res); if (!bot) return; res.json({ ok: true, message: engine.onModCommand(req.user.id, null, ['unmute', bot.username], { by: req.user.username }) }); });
+router.post('/byo/test', requireAuth, async (req, res) => {
+    try {
+        const cfg = db.getChannelAiConfig(req.user.id);
+        const body = req.body || {};
+        const override = budget.byoProvider({ ...cfg, byo_key: (body.byo_key && body.byo_key !== KEY_SENTINEL) ? body.byo_key : cfg.byo_key, byo_base_url: body.byo_base_url ?? cfg.byo_base_url, byo_model: body.byo_model ?? cfg.byo_model });
+        const r = await ai.llm.testProvider(override);
+        res.json(r);
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 router.put('/config', requireAuth, (req, res) => {
@@ -102,10 +145,15 @@ router.put('/config', requireAuth, (req, res) => {
             fields.byo_key = body.byo_key;
         }
         db.upsertChannelAiConfig(req.user.id, fields);
+        // v3 settings blob (partial merge, validated + clamped in settings.js).
+        if (body.settings && typeof body.settings === 'object') settingsMod.updateSettings(req.user.id, body.settings);
         try { engine.applyConfigForUser(req.user.id); } catch { /* */ }
+        const cfg = db.getChannelAiConfig(req.user.id);
         res.json({
-            config: sanitizeConfig(db.getChannelAiConfig(req.user.id)),
+            config: sanitizeConfig(cfg),
+            settings: settingsMod.getSettings(req.user.id, cfg),
             budget: budgetSummary(req.user.id),
+            status: statusSafe(req.user.id),
         });
     } catch (e) {
         res.status(500).json({ error: 'Failed to save AI viewer config' });
@@ -135,18 +183,21 @@ router.patch('/bots/:id', requireAuth, (req, res) => {
     try {
         const bot = ownBotOr404(req, res);
         if (!bot) return;
+        const body = req.body || {};
         const fields = {};
-        if (req.body.display_name !== undefined) fields.display_name = req.body.display_name;
-        if (req.body.is_active !== undefined) fields.is_active = req.body.is_active ? 1 : 0;
-        if (req.body.identity !== undefined) {
-            let persona = {};
-            try { persona = JSON.parse(bot.persona_json || '{}'); } catch { /* */ }
-            persona.identity = String(req.body.identity || '').slice(0, 1200);
-            fields.persona_json = persona;
-        }
-        const updated = db.updateChannelAiBot(bot.id, fields);
+        if (body.display_name !== undefined) fields.display_name = String(body.display_name || '').slice(0, 40) || bot.username;
+        if (body.is_active !== undefined) fields.is_active = body.is_active ? 1 : 0;
+        let persona = {}; try { persona = JSON.parse(bot.persona_json || '{}') || {}; } catch { /* */ }
+        let touched = false;
+        if (body.identity !== undefined) { persona.identity = String(body.identity || '').slice(0, 1200); touched = true; }
+        if (body.blurb !== undefined) { persona.character = { ...(persona.character || {}), blurb: String(body.blurb || '').slice(0, 300) }; touched = true; }
+        if (body.style !== undefined) { persona.style = { ...(persona.style || {}), rules: String(body.style || '').slice(0, 300) }; touched = true; }
+        if (body.tts !== undefined) { persona.tts = !!body.tts; touched = true; }
+        if (body.color !== undefined && /^#[0-9a-f]{3,8}$/i.test(String(body.color))) { persona.color = String(body.color); fields.avatar_color = persona.color; touched = true; }
+        if (touched) fields.persona_json = persona;
+        if (Object.keys(fields).length) db.updateChannelAiBot(bot.id, fields);
         try { engine.applyConfigForUser(req.user.id); } catch { /* */ }
-        res.json({ bot: botSummary(updated) });
+        res.json({ bot: botSummary(db.getChannelAiBot(bot.id)) });
     } catch (e) {
         res.status(500).json({ error: 'Failed to update bot' });
     }
@@ -218,6 +269,11 @@ router.post('/clone', requireAuth, async (req, res) => {
 // ── Preview one line (no posting) ─────────────────────────────
 router.post('/preview', requireAuth, async (req, res) => {
     try {
+        if (engine.engineForUser(req.user.id).version === 'v3') {
+            const out = await engine.preview(req.user.id);
+            if (out && out.error) return res.status(400).json({ error: out.error });
+            return res.json(out);
+        }
         const st = budget.budgetStatus(req.user.id);
         if (!st.active) {
             const why = st.reason === 'shared_ai_disabled' ? 'Shared AI is currently disabled by the admin.'

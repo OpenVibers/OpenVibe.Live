@@ -423,6 +423,13 @@ class ChatRelayService {
         } catch {}
 
         chatServer.broadcastToStream(bridge.streamId, chatMsg);
+        // AI viewers see relayed chat too (they used to only see native chat).
+        try {
+            require('./ai-chatbot-service').onRealChatMessage(bridge.streamId, {
+                username: prefixedUsername, message: chatMsg.message, userId: null, anonId: null,
+                platform: bridge.platform, relayUsername: username, isStreamer: false, isMod: false, msgId: chatMsg.id || null,
+            });
+        } catch { /* non-critical */ }
         // Also surface on the global / username-only overlay (tags stream_channel)
         try { chatServer.forwardToGlobal(bridge.streamId, chatMsg); } catch { /* non-critical */ }
         // And to viewers of the streamer's other live slots (cross-slot chat)

@@ -733,6 +733,12 @@ class RobotStreamerService {
                 } catch {}
 
                 chatServer.broadcastToStream(stream.id, mirrored);
+                try {
+                    require('./ai-chatbot-service').onRealChatMessage(stream.id, {
+                        username, message: mirrored.message, userId: null, anonId: null,
+                        platform: 'rs', relayUsername: username, isStreamer: false, isMod: false, msgId: mirrored.id || null,
+                    });
+                } catch { /* non-critical */ }
                 // Also surface on the global / username-only overlay (tags stream_channel)
                 try { chatServer.forwardToGlobal(stream.id, mirrored); } catch { /* non-critical */ }
                 // And to viewers of the streamer's other live slots (cross-slot chat)

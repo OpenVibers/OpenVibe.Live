@@ -92,4 +92,36 @@ function byoProvider(cfg) {
     };
 }
 
-module.exports = { generate, budgetStatus, byoUsable, byoProvider, SOURCE };
+/** Today's shared-key spend on AI viewers across ALL channels (global viewers cap). */
+function globalViewerSpendToday() {
+    try { return db.get("SELECT COALESCE(SUM(cost_usd),0) AS c FROM ai_usage WHERE source = ? AND COALESCE(provider,'shared') = 'shared' AND created_at >= date('now')", [SOURCE])?.c || 0; } catch { return 0; }
+}
+
+/**
+ * v3 status with the degradation ladder. mode ∈ normal | economy | replies_only | streamer_only | silent.
+ *   normal        < 60% of the daily cap spent
+ *   economy       60–80%   (longer cadence, one fewer line per pass)
+ *   replies_only  80–95%   (only replies to real viewers / the streamer)
+ *   streamer_only 95–100%  (only the streamer fast path)
+ *   silent        cap reached, AI disabled, kill switch, or global viewers cap reached
+ */
+function status(userId) {
+    const st = budgetStatus(userId);
+    const kill = (() => { const v = db.getSetting('ai_viewers_enabled'); return v === false || v === 'false' || v === 0 || v === '0'; })();
+    let mode = 'normal';
+    let reason = st.reason;
+    if (kill) { mode = 'silent'; reason = 'kill_switch'; }
+    else if (!st.active) mode = 'silent';
+    else if (st.useShared) {
+        const gcap = parseFloat(db.getSetting('ai_viewers_global_cap_usd_per_day')) || 0;
+        if (gcap > 0 && globalViewerSpendToday() >= gcap) { mode = 'silent'; reason = 'global_viewers_cap'; }
+        else if (st.capUsd > 0) {
+            const ratio = st.spentToday / st.capUsd;
+            mode = ratio >= 1 ? 'silent' : ratio >= 0.95 ? 'streamer_only' : ratio >= 0.8 ? 'replies_only' : ratio >= 0.6 ? 'economy' : 'normal';
+            if (mode === 'silent') reason = 'over_daily_cap';
+        }
+    }
+    return { ...st, mode, reason, active: st.active && mode !== 'silent' };
+}
+
+module.exports = { generate, budgetStatus, status, byoUsable, byoProvider, globalViewerSpendToday, SOURCE };
