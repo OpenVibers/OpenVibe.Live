@@ -1638,6 +1638,19 @@ class ChatServer {
     async synthesizeAndBroadcastTTS(streamId, username, text, voiceFX, sourcePlatform = null, identityKey = null, channelUserId = null) {
         // Queue accounting key: per-stream when live, per-channel when offline.
         const queueKey = streamId || (channelUserId ? `ch:${channelUserId}` : null);
+        // Same utterance, same room, twice within a few seconds = a duplicated bridge
+        // or double-fired relay (RS restart races have produced exactly this) — one
+        // synthesis, one broadcast. Keyed per room so multi-slot mirrors still get
+        // their own copy for their own viewers.
+        if (!this._recentTtsDedupe) this._recentTtsDedupe = new Map();
+        const dedupeKey = `${queueKey}|${identityKey || username}|${String(text).slice(0, 200)}`;
+        const nowMs = Date.now();
+        const lastMs = this._recentTtsDedupe.get(dedupeKey);
+        if (lastMs && nowMs - lastMs < 8000) { console.log(`[TTS] deduped duplicate synth for ${username} in ${queueKey}`); return; }
+        this._recentTtsDedupe.set(dedupeKey, nowMs);
+        if (this._recentTtsDedupe.size > 500) {
+            for (const [k, t] of this._recentTtsDedupe) if (nowMs - t > 30000) this._recentTtsDedupe.delete(k);
+        }
         try {
             // "." prefix = user opted this message out of TTS — never synthesize or broadcast it.
             if (String(text || '').trimStart().startsWith('.')) return;
