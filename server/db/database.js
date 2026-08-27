@@ -5080,6 +5080,16 @@ function getPaymentOrderByRef(provider, ref) {
     return get('SELECT * FROM payment_orders WHERE provider = ? AND provider_ref = ? ORDER BY id DESC LIMIT 1', [provider, ref]);
 }
 
+// PowerChat checkouts still waiting for their donation.completed webhook — the
+// reconciliation sweep's work list (recent only: an intent lives an hour, and an
+// order nobody paid within days is an abandoned cart, not a missed webhook).
+function getPendingPowerchatOrders(days = 3) {
+    return all(`SELECT * FROM payment_orders
+                WHERE provider = 'powerchat' AND status = 'pending'
+                  AND created_at >= datetime('now', ?)
+                ORDER BY id ASC`, [`-${Math.max(1, Math.round(days))} days`]);
+}
+
 function updatePaymentOrder(id, fields) {
     const allowed = new Set(['provider_ref', 'status', 'amount_cents', 'bucks', 'currency', 'streamer_id']);
     const entries = Object.entries(fields || {}).filter(([k]) => allowed.has(k));
@@ -7964,7 +7974,7 @@ module.exports = {
     getPowerchatConnection, getPowerchatConnectionByUsername, getPowerchatConnectionByPcUserId,
     upsertPowerchatConnection, updatePowerchatTokens, setPowerchatConnectionError,
     deletePowerchatConnection, powerchatDeliveryIsNew, cleanupPowerchatDeliveries,
-    createPaymentOrder, getPaymentOrderById, getPaymentOrderByRef, updatePaymentOrder,
+    createPaymentOrder, getPaymentOrderById, getPaymentOrderByRef, updatePaymentOrder, getPendingPowerchatOrders,
     upsertSubscription, getSubscriptionByProviderRef, getActiveSubscription, isActiveSubscriber,
     getSubscriptionsByStreamer, getSubscriptionsBySubscriber, getActiveSubscriberCount, setSubscriptionStatus,
     getSubscriptionsDueRenewal,
