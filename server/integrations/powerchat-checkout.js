@@ -123,11 +123,21 @@ function buildDonateLink(streamerUserId, donorUserId, { goalId = null } = {}) {
     // checkout too — without app_redirect_uri PowerChat only offers a plain
     // "Return to app" link and viewers just sat on the tip page.
     const opts = { purpose, returnTo: true };
+    // Direct ONLY: money through PowerChat goes to a streamer exclusively via THEIR
+    // OWN connected account. Streamers without PowerChat don't get site-routed tips
+    // any more — the viewer buys Vibes through the site account instead (pcorder;
+    // see /donate-link) and donates Vibes from their balance. The pcdon webhook
+    // handler stays only to honor links already in flight.
+    // ALWAYS send an app_ref: attribution fields (appPurpose included — that's how
+    // the goal pick travels) only echo back for tips through our checkout link, and a
+    // ref-less link may not count as one. "dontip:" refs fall through to the normal
+    // donation pipeline on the webhook side.
     const direct = _checkoutConn(streamerUserId);
-    if (direct) return { url: tipLinkFor(direct.powerchat_username, '', opts), mode: 'direct' };
-    const site = getSiteAccount();
-    if (!site) return null;
-    return { url: tipLinkFor(site.username, `pcdon:${streamerUserId}:${donorUserId || 0}`, opts), mode: 'site' };
+    if (direct) {
+        const ref = `dontip:${streamerUserId}:${donorUserId || 0}`;
+        return { url: tipLinkFor(direct.powerchat_username, ref, opts), mode: 'direct' };
+    }
+    return null;
 }
 
 // ── Webhook fulfillment ──────────────────────────────────────

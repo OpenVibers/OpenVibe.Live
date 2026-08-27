@@ -47,7 +47,9 @@ async function _initBuyBucks() {
     if (!box) return;
     let cfg;
     try { cfg = await api('/payments/config'); } catch { cfg = null; }
-    if (!cfg || !cfg.enabled) {
+    // PowerChat purchases have their own enablement — the buy modal stays usable on
+    // every channel even while the card/PayPal rails (payments master switch) are off.
+    if (!cfg || (!cfg.enabled && !(cfg.providers && cfg.providers.powerchat))) {
         box.innerHTML = '<p class="muted" style="font-size:0.85rem;text-align:center">Purchases aren’t available right now.</p>';
         const pkgBox = document.getElementById('buy-packages'); if (pkgBox) pkgBox.innerHTML = '';
         return;
@@ -208,19 +210,54 @@ function openvibeBucksDonateModal() {
         <div class="form-group" id="donate-goal-wrap" style="display:none">
             <label>Put it toward a goal</label>
             <select id="modal-donate-goal" class="form-input"></select>
+            <div class="muted" style="font-size:0.75rem;margin-top:3px">Applies to Vibes donations AND PowerChat tips.</div>
         </div>
 
-        <button class="btn btn-primary btn-lg" onclick="doDonate()" style="width:100%;margin-top:8px">
-            <i class="fa-solid fa-coins"></i> Donate
+        <div class="muted" id="donate-balance-line" style="font-size:0.82rem;margin:2px 0 6px"></div>
+        <button class="btn btn-primary btn-lg" onclick="doDonate()" style="width:100%;margin-top:4px">
+            <i class="fa-solid fa-coins"></i> Donate Vibes
         </button>
-        <button class="btn btn-lg" onclick="doPowerchatTip()" style="width:100%;margin-top:8px;background:#8b5cf6;color:#fff;border:none">
-            <i class="fa-solid fa-bolt"></i> Tip real money via PowerChat
-        </button>`;
+        <button class="btn btn-outline" onclick="showModal('buy-funds')" style="width:100%;margin-top:8px">
+            <i class="fa-solid fa-cart-plus"></i> Buy Vibes
+        </button>
+        <!-- Only shown when THIS streamer has their own PowerChat (money goes to them
+             directly, no Vibes involved). Populated by _initDonatePowerchat. -->
+        <div id="donate-powerchat-direct" style="display:none">
+            <div class="muted" style="text-align:center;font-size:0.75rem;margin:10px 0 4px">— or skip Vibes entirely —</div>
+            <button class="btn btn-lg" onclick="doPowerchatTip()" style="width:100%;background:#8b5cf6;color:#fff;border:none">
+                <i class="fa-solid fa-bolt"></i> Tip real money via PowerChat
+            </button>
+        </div>`;
 }
 
-// Real-money tip through PowerChat: the streamer's own tip page when they have
-// PowerChat connected, otherwise the site's PowerChat account (the streamer is then
-// credited the full amount as cashout-able Vibes once the tip confirms).
+// Donate modal boot: balance-first. No Vibes → send the viewer straight to Buy Vibes
+// (works on every channel; includes the PowerChat purchase rail); with a balance,
+// show it. Separately, streamers with their OWN PowerChat get the direct-tip option.
+async function _initDonateModal() {
+    try {
+        const data = await api('/funds/balance');
+        const bal = Math.round(data.balance || 0);
+        const line = document.getElementById('donate-balance-line');
+        if (line) line.innerHTML = `Your balance: <strong>${bal.toLocaleString()}</strong> Vibes`;
+        if (bal < 1) {
+            toast('You don’t have any Vibes yet — grab some first, then come back to donate! 🛒', 'info');
+            showModal('buy-funds');
+            return;
+        }
+    } catch { /* not logged in / balance unavailable — leave the form as-is */ }
+    _initDonatePowerchat();
+}
+async function _initDonatePowerchat() {
+    const box = document.getElementById('donate-powerchat-direct');
+    const streamerId = _donateStreamerId();
+    if (!box || !streamerId) return;
+    try {
+        const d = await api(`/powerchat/donate-link?streamer_id=${streamerId}`);
+        if (d && d.mode === 'direct') box.style.display = '';
+    } catch { /* streamer has no PowerChat — keep hidden */ }
+}
+
+// DIRECT real-money tip — only offered when the streamer has their own PowerChat.
 async function doPowerchatTip() {
     const streamerId = _donateStreamerId();
     if (!streamerId) return toast('No streamer selected', 'error');

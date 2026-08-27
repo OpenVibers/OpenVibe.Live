@@ -48,10 +48,11 @@ function publicConfig() {
             stripe: isEnabled() && b('stripe_enabled') && !!s('stripe_secret_key'),
             ccbill: isEnabled() && b('ccbill_enabled') && !!s('ccbill_flexform_id'),
             crypto: isEnabled() && b('crypto_enabled') && !!s('crypto_api_key'),
-            // PowerChat tips as a money entry point — available once the site-wide
-            // PowerChat account (powerchat_site_user_id) is connected with checkout
-            // attribution. Lazy require: the checkout module requires this one back.
-            powerchat: isEnabled() && (() => { try { return require('../integrations/powerchat-checkout').isAvailable(); } catch { return false; } })(),
+            // PowerChat tips as a money entry point. Deliberately INDEPENDENT of the
+            // payments master switch — it has its own enablement (powerchat_enabled +
+            // the site tips account), so Vibes can be bought via PowerChat even while
+            // the card/PayPal rails are off. Lazy require: circular with this module.
+            powerchat: (() => { try { return require('../integrations/powerchat-checkout').isAvailable(); } catch { return false; } })(),
         },
         stripePublishableKey: s('stripe_publishable_key'),
     };
