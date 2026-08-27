@@ -21,7 +21,10 @@ function _channelUrl(streamer) { return `${(config.baseUrl || 'https://openvibe.
 function notifyFollowersGoLive(streamer, stream, { force = false } = {}) {
     if (!streamer || !streamer.id) return;
     const slot = (stream && (stream.managed_stream_id || stream.slot_slug)) || 'default';
-    const key = `${streamer.id}:${slot}`;
+    // Keyed by STREAMER (not slot): a person flapping between slots is still one person
+    // going live. This in-memory guard is only a fast path — openvibe.network enforces the
+    // persisted per-streamer cooldown + daily cap and reports `skipped` back.
+    const key = String(streamer.id);
     const now = Date.now();
     if (!force && _recent.get(key) && now - _recent.get(key) < DEDUPE_MS) {
         console.log(`[GoLive] ${streamer.username}: followers already notified for slot ${slot} in the last hour — skipped`);
@@ -61,6 +64,7 @@ function notifyFollowersGoLive(streamer, stream, { force = false } = {}) {
     }).then(async (r) => {
         if (r.ok) {
             let d = null; try { d = await r.json(); } catch { /* */ }
+            if (d && d.skipped) { console.log(`[GoLive] ${streamer.username}: network skipped announcement (${d.reason}${d.next_allowed_at ? `, next ${d.next_allowed_at}` : ''})`); return; }
             console.log(`[GoLive] Unified event sent for ${streamer.username}: notifications ${d?.notifications?.sent ?? '?'}/${d?.notifications?.total ?? '?'}, discord ${d?.discord?.sent ? 'sent' : 'no'}`);
         } else {
             console.warn(`[GoLive] Unified event failed (${r.status}), using fallback`);
