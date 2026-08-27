@@ -2182,8 +2182,22 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .hero-content { min-width: 0; max-width: min(860px, 92vw); margin: 0 auto; }
 .hero-philosophy-links { margin-top: 24px; }
 
-/* Stats bar */
-.hero-stats { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 4px 0 26px; }
+/* Stats bar — themed clusters (Right now / Community / Economy / Archive) instead of
+   one undifferentiated chip wall. Each group is a bordered island with a kicker. */
+.hero-stats { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; align-items: stretch; margin: 4px 0 26px; }
+.hero-stat-group {
+    display: flex; flex-direction: column; gap: 7px; align-items: center;
+    padding: 10px 12px 12px; border-radius: 16px;
+    background: color-mix(in srgb, var(--bg-primary) 34%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 14%, transparent);
+    backdrop-filter: blur(4px);
+}
+.hero-stat-kicker {
+    font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.14em;
+    color: color-mix(in srgb, var(--accent) 70%, var(--text-muted));
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+}
+.hero-stat-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .hero-stat {
     display: flex; align-items: center; gap: 9px; padding: 9px 15px; border-radius: 14px;
     background: color-mix(in srgb, var(--bg-secondary) 78%, transparent);

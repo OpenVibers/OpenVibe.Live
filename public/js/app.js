@@ -1216,32 +1216,64 @@ function renderHeroStats(stats) {
     const wrap = document.getElementById('hero-stats');
     if (!wrap || !stats) return;
     // Short, uniform labels (full meaning in the title tooltip) so a long label never dwarfs
-    // its number — the awkward "ACTIVE THIS WEEK" case.
+    // its number. Stats are clustered into themed groups instead of one undifferentiated
+    // 15-chip wall: what's happening NOW, the people, the economy, and the archive.
     const R = stats.recent || {};
-    const rows = [];
-    if (stats.liveNow > 0) rows.push({ cls: 'hero-stat--live', icon: 'fa-circle', num: stats.liveNow, label: 'Live', title: 'Streams live right now' });
-    rows.push({ icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', title: 'People who have gone live' });
-    rows.push({ icon: 'fa-users', num: stats.users, label: 'Users', title: 'Registered users', recent: R.users });
-    rows.push({ icon: 'fa-fire', num: stats.weeklyActive, label: 'Active', title: 'Active this week — chatters incl. anons & relays' + (stats.weeklyVisitors ? `, plus ${stats.weeklyVisitors} new visitors` : ''), sub: stats.weeklyVisitors ? `+${_fmtCount(stats.weeklyVisitors)} new` : '' });
-    rows.push({ icon: 'fa-user-secret', num: stats.anons, label: 'Anons', title: 'Anonymous chatters ever seen', recent: R.anons });
-    rows.push({ icon: 'fa-tower-broadcast', num: stats.liveSessions, label: 'Sessions', title: 'Total stream sessions', recent: R.sessions });
-    rows.push({ icon: 'fa-film', num: stats.vods, label: 'VODs', title: 'Recorded videos', recent: R.vods });
-    rows.push({ icon: 'fa-scissors', num: stats.clips, label: 'Clips', title: 'Clips created', recent: R.clips });
-    if (stats.streamHours > 0) rows.push({ icon: 'fa-clock', num: stats.streamHours, label: 'Hours', title: 'Hours of video archived', recent: R.hours, unit: 'h' });
-    rows.push({ icon: 'fa-brain', num: stats.aiMemories, label: 'AI Moments', title: 'Moments the AI remembers across every stream', recent: R.aiMoments });
-    rows.push({ icon: 'fa-face-grin-squint', num: stats.emotes, label: 'Emotes', title: 'Custom channel emotes uploaded' });
-    rows.push({ icon: 'fa-heart', num: stats.follows, label: 'Follows', title: 'Channel follows' });
-    rows.push({ icon: 'fa-paste', num: stats.pastes, label: 'Pastes', title: `${stats.pasteText || 0} text · ${stats.pasteImages || 0} image pastes`, sub: (stats.pasteText != null && stats.pasteImages != null) ? `${_fmtCount(stats.pasteText)} txt · ${_fmtCount(stats.pasteImages)} img` : '' });
-    rows.push({ icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', title: 'Chat messages sent', recent: R.messages });
+    const groups = [];
+
+    // ── Right now ────────────────────────────────────────────────
+    const now = [];
+    if (stats.liveNow > 0) now.push({ cls: 'hero-stat--live', icon: 'fa-circle', num: stats.liveNow, label: 'Live', title: 'Streams live right now' });
+    if (stats.viewersNow > 0) now.push({ cls: 'hero-stat--live', icon: 'fa-eye', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' });
+    now.push({ icon: 'fa-fire', num: stats.weeklyActive, label: 'Active', title: 'Active this week — chatters incl. anons & relays' + (stats.weeklyVisitors ? `, plus ${stats.weeklyVisitors} new visitors` : ''), sub: stats.weeklyVisitors ? `+${_fmtCount(stats.weeklyVisitors)} new` : '' });
+    groups.push({ kicker: 'Right now', rows: now });
+
+    // ── Community ────────────────────────────────────────────────
+    groups.push({
+        kicker: 'Community', rows: [
+            { icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', title: 'People who have gone live' },
+            { icon: 'fa-users', num: stats.users, label: 'Users', title: 'Registered users', recent: R.users },
+            { icon: 'fa-user-secret', num: stats.anons, label: 'Anons', title: 'Anonymous chatters ever seen', recent: R.anons },
+            { icon: 'fa-heart', num: stats.follows, label: 'Follows', title: 'Channel follows', recent: R.follows },
+            { icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', title: 'Chat messages sent', recent: R.messages },
+            ...(stats.hoursWatched > 0 ? [{ icon: 'fa-couch', num: stats.hoursWatched, label: 'Hrs Watched', title: 'Hours the community has spent watching streams', unit: 'h' }] : []),
+        ],
+    });
+
+    // ── Economy ──────────────────────────────────────────────────
+    const econ = [];
+    if (stats.vibesTipped > 0) econ.push({ icon: 'fa-hand-holding-dollar', num: stats.vibesTipped, label: 'Vibes Tipped', title: 'Vibes donated between people (100 Vibes = $1)', recent: R.vibes });
+    if (stats.activeSubs > 0) econ.push({ icon: 'fa-star', num: stats.activeSubs, label: 'Subs', title: 'Active channel subscriptions' });
+    if (stats.pointsEarned > 0) econ.push({ icon: 'fa-coins', num: stats.pointsEarned, label: 'Points Earned', title: 'Channel points earned by viewers (watching, chatting, following)', recent: R.points });
+    if (econ.length) groups.push({ kicker: 'Economy', rows: econ });
+
+    // ── Archive ──────────────────────────────────────────────────
+    groups.push({
+        kicker: 'Archive', rows: [
+            { icon: 'fa-tower-broadcast', num: stats.liveSessions, label: 'Sessions', title: 'Total stream sessions', recent: R.sessions },
+            { icon: 'fa-film', num: stats.vods, label: 'VODs', title: 'Recorded videos', recent: R.vods },
+            { icon: 'fa-scissors', num: stats.clips, label: 'Clips', title: 'Clips created', recent: R.clips },
+            ...(stats.streamHours > 0 ? [{ icon: 'fa-clock', num: stats.streamHours, label: 'Hours', title: 'Hours of video archived', recent: R.hours, unit: 'h' }] : []),
+            { icon: 'fa-brain', num: stats.aiMemories, label: 'AI Moments', title: 'Moments the AI remembers across every stream', recent: R.aiMoments },
+            { icon: 'fa-face-grin-squint', num: stats.emotes, label: 'Emotes', title: 'Custom channel emotes uploaded' },
+            { icon: 'fa-paste', num: stats.pastes, label: 'Pastes', title: `${stats.pasteText || 0} text · ${stats.pasteImages || 0} image pastes`, sub: (stats.pasteText != null && stats.pasteImages != null) ? `${_fmtCount(stats.pasteText)} txt · ${_fmtCount(stats.pasteImages)} img` : '' },
+        ],
+    });
+
     // For stats with rolling data: append "+d today · +w this week · +m this month" to the
     // hover tooltip and show the weekly delta as the small sub-line.
     const recTitle = (rec, u = '') => rec ? ` — +${_fmtCount(rec.d)}${u} today · +${_fmtCount(rec.w)}${u} this week · +${_fmtCount(rec.m)}${u} this month` : '';
     const recSub = (rec, u = '') => rec ? `+${_fmtCount(rec.w)}${u} wk` : '';
-    wrap.innerHTML = rows.map(r => {
+    const chip = (r) => {
         const title = (r.title || '') + recTitle(r.recent, r.unit || '');
         const sub = r.sub || recSub(r.recent, r.unit || '');
         return `<div class="hero-stat ${r.cls || ''}" title="${esc(title)}"><i class="fa-solid ${r.icon}"></i><div class="hero-stat-meta"><span class="hero-stat-num" data-n="${r.num || 0}">0</span><span class="hero-stat-label">${r.label}</span>${sub ? `<span class="hero-stat-sub">${sub}</span>` : ''}</div></div>`;
-    }).join('');
+    };
+    wrap.innerHTML = groups.filter(g => g.rows.length).map(g => `
+        <div class="hero-stat-group">
+            <span class="hero-stat-kicker">${g.kicker}</span>
+            <div class="hero-stat-row">${g.rows.map(chip).join('')}</div>
+        </div>`).join('');
     wrap.querySelectorAll('.hero-stat-num').forEach(el => _heroCountUp(el, parseInt(el.dataset.n, 10) || 0));
 }
 

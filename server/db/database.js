@@ -3805,7 +3805,23 @@ function _computeHomeStats() {
         return { d: q('-1 day'), w: q('-7 days'), m: q('-30 days') };
     };
     const hoursSince = (w) => Math.round(c(`SELECT COALESCE(SUM(duration_seconds), 0) AS count FROM vods WHERE COALESCE(is_recording, 0) = 0 AND created_at >= datetime('now', ?)`, [w]) / 3600);
+    // Rolling day/week/month SUMS (for value metrics like Vibes tipped).
+    const winSum = (table, col, tsCol, extra = '') => {
+        const q = (w) => c(`SELECT COALESCE(SUM(${col}), 0) AS count FROM ${table} WHERE ${tsCol} >= datetime('now', ?)${extra ? ' AND ' + extra : ''}`, [w]);
+        return { d: q('-1 day'), w: q('-7 days'), m: q('-30 days') };
+    };
     return {
+        // ── Right-now + community-economy metrics ────────────────
+        // Native viewers across everything currently live.
+        viewersNow: c(`SELECT COALESCE(SUM(viewer_count), 0) AS count FROM streams WHERE is_live = 1`),
+        // Community time actually spent watching (watch-time heartbeats → hours).
+        hoursWatched: Math.round(c(`SELECT COALESCE(SUM(minutes_watched), 0) AS count FROM watch_time`) / 60),
+        // Vibes tipped between people (donation ledger; bit-style, 100 = $1).
+        vibesTipped: c(`SELECT COALESCE(SUM(amount), 0) AS count FROM transactions WHERE type = 'donation'`),
+        // Live channel subscriptions.
+        activeSubs: c(`SELECT COUNT(*) AS count FROM subscriptions WHERE status = 'active' AND (current_period_end IS NULL OR datetime(current_period_end) > CURRENT_TIMESTAMP)`),
+        // Channel points earned by viewers across every channel (watch/chat/follow bonuses).
+        pointsEarned: c(`SELECT COALESCE(SUM(amount), 0) AS count FROM coin_transactions WHERE amount > 0`),
         vods: c(`SELECT COUNT(*) AS count FROM vods WHERE is_public = 1 AND COALESCE(is_recording, 0) = 0`),
         clips: c(`SELECT COUNT(*) AS count FROM clips WHERE COALESCE(is_public, 1) = 1`),
         liveSessions: c(`SELECT COUNT(*) AS count FROM streams`),
@@ -3846,6 +3862,9 @@ function _computeHomeStats() {
             aiMoments: winCount('stream_memories', 'created_at'),
             messages: winCount('chat_messages', 'timestamp', 'COALESCE(is_deleted, 0) = 0'),
             hours: { d: hoursSince('-1 day'), w: hoursSince('-7 days'), m: hoursSince('-30 days') },
+            vibes: winSum('transactions', 'amount', 'created_at', "type = 'donation'"),
+            points: winSum('coin_transactions', 'amount', 'created_at', 'amount > 0'),
+            follows: winCount('follows', 'created_at'),
         },
     };
 }
