@@ -133,14 +133,19 @@ async function reconcileOnce() {
                 const order = orders.get(ref);
                 if (!order) continue;                     // already credited, or not on this sweep's list
                 if (row.source === 'developer_app') continue; // our own forwarded tip echo, never money in
-                if (row.isTest && !allowTest) { summary.skippedTest++; continue; }
+                // /paid-messages rows carry NO isTest field, yet include source='manual_test'
+                // rows (the no-payment-provider test tip path). PowerChat's own webhook
+                // rule is isTest = event.isTest || source === 'manual_test' — mirror it, or
+                // a test tip would be reconciled as real money on a production PowerChat.
+                const isTest = !!row.isTest || row.source === 'manual_test';
+                if (isTest && !allowTest) { summary.skippedTest++; continue; }
                 // Same shape the webhook hands to the checkout module (money in integer cents).
                 const data = {
                     eventId: row.eventId, occurredAt: row.occurredAt, source: row.source,
                     donorName: row.donorName, isAnonymous: !!row.isAnonymous, message: row.message,
                     amountCents: row.amountCents, currency: row.currency,
                     amountUsdCents: row.amountUsdCents != null ? row.amountUsdCents : row.amountCents,
-                    appExternalRef: ref, isTest: !!row.isTest, reconciled: true,
+                    appExternalRef: ref, isTest, reconciled: true,
                 };
                 let consumed = false;
                 try { consumed = checkout.handleAttributedDonation(host.receivingUserId, data); }

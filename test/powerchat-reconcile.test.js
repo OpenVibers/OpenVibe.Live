@@ -62,6 +62,8 @@ const reconcile = require('../server/integrations/powerchat-reconcile');
         { eventId: 'e-other', occurredAt: '2026-08-27T09:30:00Z', source: 'powerchat', amountCents: 300, amountUsdCents: 300, appExternalRef: null },
         { eventId: 'e-echo', occurredAt: '2026-08-27T09:20:00Z', source: 'developer_app', amountCents: 500, amountUsdCents: 500, appExternalRef: 'pcorder:41' },
         { eventId: 'e-test', occurredAt: '2026-08-27T09:19:00Z', source: 'powerchat', isTest: true, amountCents: 500, amountUsdCents: 500, appExternalRef: 'pcorder:41' },
+        // Real feed rows have NO isTest field; manual_test is PowerChat's no-provider test tip → must be treated as test.
+        { eventId: 'e-manual', occurredAt: '2026-08-27T09:18:00Z', source: 'manual_test', amountCents: 500, amountUsdCents: 500, appExternalRef: 'pcorder:41' },
         { eventId: 'e-41', occurredAt: '2026-08-27T09:10:00Z', source: 'powerchat', donorName: 'Pat', amountCents: 500, currency: 'USD', amountUsdCents: 500, appExternalRef: 'pcorder:41' },
     ] }, nextCursor: 'cur-2' });
     api.pages.push({ data: { rows: [
@@ -72,7 +74,7 @@ const reconcile = require('../server/integrations/powerchat-reconcile');
     assert.strictEqual(sum.hosts, 1, 'alex hosts both 41 (site) and 42 (direct, streamer 1 = alex)');
     assert.strictEqual(sum.skippedHosts, 1, "'other' has no paid_messages:read → skipped, no call");
     assert.strictEqual(sum.pages, 2, 'stopped after page 2: no orders left for that host despite a cursor');
-    assert.strictEqual(sum.skippedTest, 1);
+    assert.strictEqual(sum.skippedTest, 2, 'explicit isTest AND source=manual_test are both skipped');
     assert.deepStrictEqual(sum.credited.map((c) => c.ref).sort(), ['pcorder:41', 'pcsub:42']);
     assert.deepStrictEqual(sum.underpaid, []);
     assert.strictEqual(orders.get(41).status, 'credited');
