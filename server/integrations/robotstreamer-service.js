@@ -753,6 +753,9 @@ class RobotStreamerService {
                             message: mirrored.message,
                             messageId: mirrored.id ? `ov-${mirrored.id}` : undefined,
                             avatarUrl: data.avatar || undefined,
+                            // Placeholder letter from the REAL name — "[RS] name"
+                            // would otherwise render "[" for every RS chatter.
+                            avatarFallback: [...String(rawUsername || '')][0] || undefined,
                         });
                     }
                 } catch { /* non-critical */ }

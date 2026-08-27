@@ -266,8 +266,24 @@ class AiViewersEngine {
             const chatServer = require('../../chat/chat-server');
             chatServer.broadcastToStream(streamId, chatMsg);
             chatServer.forwardToGlobal(streamId, chatMsg);
-            chatServer.synthesizeAndBroadcastTTS(streamId, bot.username, message, null, null, `aibot:${bot.username.toLowerCase()}`);
+            chatServer.synthesizeAndBroadcastTTS(streamId, bot.username, message, null, null, `aibot:${bot.username.toLowerCase()}`, null, id ? `m${id}` : null);
         } catch (e) { console.warn('[AI-Viewers] broadcast failed:', e.message); }
+
+        // ...and into the streamer's PowerChat unified overlay. AI viewers inject here
+        // directly (never through handleChatMessage where the normal relay lives), so
+        // they were invisible on PowerChat while every human chatter showed up.
+        try {
+            const pc = require('../../integrations/powerchat-platform');
+            if (worker.userId && pc.channelRelayEnabled(worker.userId, streamId)) {
+                pc.forwardChat(worker.userId, {
+                    chatterName: bot.username,
+                    externalChatterId: `ai:${bot.username.toLowerCase()}`,
+                    message,
+                    messageId: id ? `ov-${id}` : undefined,
+                    avatarFallback: '🤖',
+                });
+            }
+        } catch { /* non-critical */ }
 
         worker.lastPostAt = Date.now();
         worker.lastPoster = bot.id;
