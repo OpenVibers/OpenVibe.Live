@@ -6291,7 +6291,7 @@ async function loadVodPlayer(vodId, seekTo) {
         { const _a = document.getElementById('vp-avatar'); if (_a) _a.innerHTML = _avatarInner(v.avatar_url, v.username); }
         document.getElementById('vp-date').textContent = formatDateTime(v.created_at);
         document.getElementById('vp-duration').textContent = formatDuration(v.duration_seconds || v.duration);
-        document.getElementById('vp-views').textContent = `${v.view_count || 0} views`;
+        document.getElementById('vp-views').textContent = `${v.view_count || 0} views${v.unique_views != null ? ` · ${v.unique_views} unique` : ''}`;
         document.getElementById('vp-description').textContent = v.description || '';
         _renderMediaAiOverview('vp-description', v.ai_overview);
         _renderMediaTranscript('vp-description', 'vod', v);
@@ -6990,7 +6990,7 @@ async function loadClipPlayer(clipId) {
 
         // View count
         const clpViews = document.getElementById('clp-views');
-        if (clpViews) clpViews.textContent = `${cl.view_count || 0} views`;
+        if (clpViews) clpViews.textContent = `${cl.view_count || 0} views${cl.unique_views != null ? ` · ${cl.unique_views} unique` : ''}`;
 
         // Protocol badge
         const clpProto = document.getElementById('clp-protocol');
