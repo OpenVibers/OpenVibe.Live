@@ -1114,6 +1114,14 @@ router.get('/recently-online', async (req, res) => {
         } catch (err) {
             console.warn('[Streaming] recently-online thumb enrichment failed:', err.message);
         }
+        // Each streamer's nearest active donation goal → progress bar on the card.
+        try {
+            const goals = db.getActiveGoalsForUsers(streamers.map(s => s.user_id).filter(Boolean));
+            for (const s of streamers) {
+                const g = goals[s.user_id];
+                if (g) s.top_goal = { title: g.title, current: g.current_amount, target: g.target_amount };
+            }
+        } catch { /* best-effort */ }
         res.json({ streamers, total, limit, offset, hasMore: offset + streamers.length < total });
     } catch (err) {
         console.error('[Streaming]', err.message);

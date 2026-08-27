@@ -62,7 +62,7 @@
     </script>
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="/css/style.css?v=137">
+    <link rel="stylesheet" href="/css/style.css?v=138">
     <link rel="stylesheet" href="/css/chat-shared.css?v=1">
     <link rel="stylesheet" href="/css/broadcast.css?v=11">
     <link rel="stylesheet" href="/css/cosmetics.css?v=2">
@@ -243,6 +243,8 @@
                         <i class="fa-solid fa-wand-magic-sparkles"></i> Vibe Coders
                     </a>
                 </div>
+                <!-- Newest shipped commit — built in the open, receipts included. -->
+                <a class="hero-latest" id="hero-latest" href="/updates" onclick="return handleLinkClick(event, '/updates')" style="display:none"></a>
                 <div class="hero-philosophy-links">
                     <a href="#home-cta-banner" class="hero-philosophy-btn" onclick="event.preventDefault();openHomeAbout();">
                         <i class="fa-solid fa-book-open"></i> What Is This? (Philosophy)
@@ -257,6 +259,9 @@
         </div>
 
         <div class="container">
+            <!-- "While you were away" — returning users' followed-channel digest -->
+            <div class="home-digest" id="home-digest" style="display:none"></div>
+
             <!-- Live Streams -->
             <div class="section-header">
                 <h2><i class="fa-solid fa-circle live-dot"></i> Live Now</h2>
@@ -268,6 +273,23 @@
                     <p>No one is streaming right now</p>
                     <p class="muted">Be the first to go live!</p>
                 </div>
+            </div>
+
+            <!-- Community pulse: goals near completion, latest activity, weekly leaders -->
+            <div id="home-pulse-section" style="display:none">
+                <div class="section-header">
+                    <h2><i class="fa-solid fa-bolt"></i> Happening Now</h2>
+                </div>
+                <div class="pulse-grid" id="pulse-grid"></div>
+            </div>
+
+            <!-- AI Moments showcase -->
+            <div id="home-moments-section" style="display:none">
+                <div class="section-header">
+                    <h2><i class="fa-solid fa-brain"></i> AI Moments</h2>
+                    <span class="muted" style="font-size:0.8rem">wild seconds the AI clipped from recent streams</span>
+                </div>
+                <div class="moments-row" id="home-moments-row"></div>
             </div>
 
             <!-- Streaming CTA -->
@@ -4999,7 +5021,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <!-- Scripts -->
 <script src="/js/theme-engine.js?v=4"></script>
 <script src="/live-notify.js?v=3" defer></script>
-<script src="/js/app.js?v=129" defer></script>
+<script src="/js/app.js?v=130" defer></script>
 <script src="/js/stream-player.js?v=21" defer></script>
 <script src="/js/stream-pip.js?v=1" defer></script>
 <script src="/js/chat-shared.js?v=3" defer></script>

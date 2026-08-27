@@ -1018,6 +1018,8 @@ async function start() {
         try { require('./integrations/powerchat-platform').startCurrencyEarnFlusher(); } catch (e) { console.warn('[PowerChat] earn flusher not started:', e.message); }
         // Auto-renew lapsed channel subs (Vibes-balance renewal; Stripe renews natively).
         try { require('./monetization/payments').startRenewalSweeper(); } catch (e) { console.warn('[Payments] renewal sweeper not started:', e.message); }
+        // 5-minute live-viewer samples → the home hero's 24h sparkline.
+        try { require('./home/routes').startViewerSampler(); } catch (e) { console.warn('[Home] viewer sampler not started:', e.message); }
         // PowerChat: prune the webhook-dedupe log daily so it can't grow unbounded.
         try {
             const _pcClean = () => { try { db.cleanupPowerchatDeliveries(3); } catch { /* */ } };

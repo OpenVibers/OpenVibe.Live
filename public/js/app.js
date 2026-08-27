@@ -1226,6 +1226,19 @@ function renderHeroStats(stats) {
     if (stats.liveNow > 0) now.push({ cls: 'hero-stat--live', icon: 'fa-circle', num: stats.liveNow, label: 'Live', title: 'Streams live right now' });
     if (stats.viewersNow > 0) now.push({ cls: 'hero-stat--live', icon: 'fa-eye', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' });
     now.push({ icon: 'fa-fire', num: stats.weeklyActive, label: 'Active', title: 'Active this week — chatters incl. anons & relays' + (stats.weeklyVisitors ? `, plus ${stats.weeklyVisitors} new visitors` : ''), sub: stats.weeklyVisitors ? `+${_fmtCount(stats.weeklyVisitors)} new` : '' });
+    // 24h viewer sparkline (5-minute samples) — trends read better than a snapshot.
+    const trend = Array.isArray(stats.viewerTrend) ? stats.viewerTrend : [];
+    if (trend.length >= 2 && trend.some(t => (t.viewers || 0) > 0)) {
+        const max = Math.max(...trend.map(t => t.viewers || 0), 1);
+        const W = 110, H = 26;
+        const pts = trend.map((t, i) => `${(i / (trend.length - 1) * W).toFixed(1)},${(H - 2 - ((t.viewers || 0) / max) * (H - 4)).toFixed(1)}`).join(' ');
+        now.push({
+            html: `<div class="hero-stat hero-stat--spark" title="Viewers over the last 24h (peak ${max})">
+                <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" preserveAspectRatio="none" aria-hidden="true">
+                    <polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                </svg><span class="hero-stat-label">24h viewers</span></div>`,
+        });
+    }
     groups.push({ kicker: 'Right now', rows: now });
 
     // ── Community ────────────────────────────────────────────────
@@ -1265,6 +1278,7 @@ function renderHeroStats(stats) {
     const recTitle = (rec, u = '') => rec ? ` — +${_fmtCount(rec.d)}${u} today · +${_fmtCount(rec.w)}${u} this week · +${_fmtCount(rec.m)}${u} this month` : '';
     const recSub = (rec, u = '') => rec ? `+${_fmtCount(rec.w)}${u} wk` : '';
     const chip = (r) => {
+        if (r.html) return r.html; // pre-rendered chips (sparkline)
         const title = (r.title || '') + recTitle(r.recent, r.unit || '');
         const sub = r.sub || recSub(r.recent, r.unit || '');
         return `<div class="hero-stat ${r.cls || ''}" title="${esc(title)}"><i class="fa-solid ${r.icon}"></i><div class="hero-stat-meta"><span class="hero-stat-num" data-n="${r.num || 0}">0</span><span class="hero-stat-label">${r.label}</span>${sub ? `<span class="hero-stat-sub">${sub}</span>` : ''}</div></div>`;
@@ -1643,6 +1657,8 @@ async function loadHome() {
     } catch (e) { console.error('Failed to load live streams', e); }
 
     loadHomeRecentOnline();
+    void loadHomePulse();     // happening-now rail + weekly leaders + AI moments + latest update
+    void loadHomeDigest();    // "while you were away" for returning logged-in users
 
     // Load recent VODs
     loadHomeRecentVods();
@@ -1656,6 +1672,100 @@ async function loadHome() {
     loadHomeCanvas();
 
     startHomeRefresh(); // live grid + sections auto-update in real time
+}
+
+/* ── Community pulse: happening-now rail, weekly leaders, AI moments, latest ship ── */
+async function loadHomePulse() {
+    let p;
+    try { p = await api('/home/pulse'); } catch { return; }
+    if (!p) return;
+
+    // Hero one-liner: the newest shipped commit.
+    const latest = document.getElementById('hero-latest');
+    if (latest && p.latestUpdate && p.latestUpdate.subject) {
+        latest.innerHTML = `<i class="fa-solid fa-rocket"></i> shipped ${esc(timeAgo(p.latestUpdate.date))}: <b>${esc(p.latestUpdate.subject)}</b>`;
+        latest.style.display = '';
+    }
+
+    const grid = document.getElementById('pulse-grid');
+    const section = document.getElementById('home-pulse-section');
+    if (!grid || !section) return;
+    const cards = [];
+
+    // Goal cards — nearest to completion, with progress bars.
+    for (const g of (p.goals || [])) {
+        const pct = Math.min(100, Math.round((g.current_amount / g.target_amount) * 100));
+        const href = `/@${g.username}`;
+        cards.push(`
+            <a class="pulse-card pulse-goal" href="${href}" onclick="return handleLinkClick(event, '${href}')">
+                <div class="pulse-kicker"><i class="fa-solid fa-bullseye"></i> Goal · ${esc(g.display_name || g.username)}</div>
+                <div class="pulse-title">${esc(g.title)}</div>
+                <div class="goal-bar"><div class="goal-fill" style="width:${pct}%"></div></div>
+                <div class="pulse-sub">${Number(g.current_amount).toLocaleString()} / ${Number(g.target_amount).toLocaleString()} Vibes · <b>${pct}%</b></div>
+            </a>`);
+    }
+
+    // Latest activity card (tip + follow together).
+    const act = [];
+    if (p.latestTip) act.push(`<div class="pulse-act"><i class="fa-solid fa-hand-holding-dollar"></i> <b>${esc(p.latestTip.from_display || p.latestTip.from_username || 'Someone')}</b> tipped <b>${Number(p.latestTip.amount).toLocaleString()}</b> Vibes to <b>${esc(p.latestTip.to_display || p.latestTip.to_username)}</b> <span class="muted">${esc(timeAgo(p.latestTip.created_at))}</span></div>`);
+    if (p.newestFollow) act.push(`<div class="pulse-act"><i class="fa-solid fa-heart"></i> <b>${esc(p.newestFollow.follower_display || p.newestFollow.follower_username)}</b> followed <b>${esc(p.newestFollow.streamer_display || p.newestFollow.streamer_username)}</b> <span class="muted">${esc(timeAgo(p.newestFollow.created_at))}</span></div>`);
+    if (act.length) cards.push(`<div class="pulse-card"><div class="pulse-kicker"><i class="fa-solid fa-wave-square"></i> Latest activity</div>${act.join('')}</div>`);
+
+    // Weekly leader teasers.
+    const board = (title, icon, rows, unit) => rows && rows.length ? `
+        <div class="pulse-card">
+            <div class="pulse-kicker"><i class="fa-solid ${icon}"></i> ${title}</div>
+            ${rows.map((r, i) => `<div class="pulse-rank"><span class="pulse-medal">${['🥇', '🥈', '🥉'][i] || (i + 1)}</span> <a href="/@${esc(r.username)}" onclick="return handleLinkClick(event, '/@${esc(r.username)}')">${esc(r.display_name || r.username)}</a> <b>${Number(r.total).toLocaleString()}</b> <span class="muted">${unit}</span></div>`).join('')}
+        </div>` : '';
+    const supporters = board('Top supporters this week', 'fa-trophy', p.topSupporters, 'Vibes');
+    const earners = board('Top point earners this week', 'fa-coins', p.topEarners, 'pts');
+    if (supporters) cards.push(supporters);
+    if (earners) cards.push(earners);
+
+    section.style.display = cards.length ? '' : 'none';
+    grid.innerHTML = cards.join('');
+
+    // AI Moments showcase row.
+    const momentsRow = document.getElementById('home-moments-row');
+    const momentsSection = document.getElementById('home-moments-section');
+    if (momentsRow && momentsSection) {
+        const ms = (p.moments || []).filter(m => m.thumbnail);
+        momentsSection.style.display = ms.length ? '' : 'none';
+        momentsRow.innerHTML = ms.map(m => `
+            <a class="moment-card" href="${esc(m.href)}" onclick="return handleLinkClick(event, '${esc(m.href)}')">
+                <img src="${esc(m.thumbnail)}" alt="" loading="lazy">
+                <div class="moment-overlay">
+                    <div class="moment-title">${esc(m.title)}</div>
+                    ${m.username ? `<div class="moment-user">@${esc(m.username)}</div>` : ''}
+                </div>
+            </a>`).join('');
+    }
+}
+
+/* ── "While you were away" digest (logged-in returning users) ── */
+async function loadHomeDigest() {
+    const box = document.getElementById('home-digest');
+    if (!box || !currentUser) return;
+    const KEY = 'openvibe_last_visit';
+    let since = null;
+    try { since = localStorage.getItem(KEY); } catch { /* */ }
+    try { localStorage.setItem(KEY, new Date().toISOString()); } catch { /* */ }
+    // First visit (nothing to compare against) → no banner, just start the clock.
+    if (!since) return;
+    let d;
+    try { d = await api(`/home/digest?since=${encodeURIComponent(since)}`); } catch { return; }
+    if (!d || (!d.liveNow?.length && !d.missed?.length)) return;
+    const chip = (u, extra, live) => `
+        <a class="digest-chip ${live ? 'digest-chip--live' : ''}" href="/@${esc(u.username)}" onclick="return handleLinkClick(event, '/@${esc(u.username)}')">
+            ${_avatarSpan(u.avatar_url, u.username, u.profile_color)}
+            <span class="digest-name">${esc(u.display_name || u.username)}</span>
+            <span class="digest-extra">${extra}</span>
+        </a>`;
+    const parts = [];
+    for (const u of (d.liveNow || [])) parts.push(chip(u, '<i class="fa-solid fa-circle live-dot"></i> LIVE now', true));
+    for (const u of (d.missed || [])) parts.push(chip(u, `streamed ${u.sessions > 1 ? u.sessions + '× ' : ''}${esc(timeAgo(u.last_at))}`, false));
+    box.innerHTML = `<div class="digest-head"><i class="fa-solid fa-clock-rotate-left"></i> While you were away</div><div class="digest-row">${parts.join('')}</div>`;
+    box.style.display = '';
 }
 
 async function loadHomeRecentOnline(page) {
@@ -1705,6 +1815,14 @@ function renderRecentlyOnline(containerId, streamers) {
                     </a>
                 </div>
                 ${_cardAiHTML(s.ai_overview_short, s.ai_overview)}
+                ${s.top_goal ? (() => {
+                    const pct = Math.min(100, Math.round((s.top_goal.current / s.top_goal.target) * 100));
+                    return `<div class="streamer-group-goal" title="${esc(s.top_goal.title)}: ${Number(s.top_goal.current).toLocaleString()} / ${Number(s.top_goal.target).toLocaleString()} Vibes">
+                        <span class="sgg-title"><i class="fa-solid fa-bullseye"></i> ${esc(s.top_goal.title)}</span>
+                        <div class="goal-bar"><div class="goal-fill" style="width:${pct}%"></div></div>
+                        <span class="sgg-pct">${pct}%</span>
+                    </div>`;
+                })() : ''}
                 <div class="streamer-group-streams">${streamsHtml}</div>
             </div>
         `;

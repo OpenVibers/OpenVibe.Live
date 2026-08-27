@@ -188,13 +188,87 @@ async function heroStats() {
 router.get('/hero', async (req, res) => {
     try {
         res.set('Cache-Control', 'public, max-age=20');
-        res.json({ stats: await heroStats(), media: await heroMedia(), moments: heroMoments(), slogans: heroSlogans() });
+        const stats = await heroStats();
+        // 24h viewer trend for the hero sparkline (sampled every 5 min by the sampler).
+        try { stats.viewerTrend = db.getViewerTrend(24, 48); } catch { stats.viewerTrend = []; }
+        res.json({ stats, media: await heroMedia(), moments: heroMoments(), slogans: heroSlogans() });
     } catch (err) {
         console.error('[Home] hero error:', err.message);
         res.status(500).json({ error: 'Failed to load hero' });
     }
 });
 
+// ── Community pulse: goals near completion, latest activity, weekly leaders,
+// AI moment showcase, and the newest shipped update. Cached ~30s server-side.
+let _pulseCache = { at: 0, data: null };
+router.get('/pulse', async (req, res) => {
+    try {
+        res.set('Cache-Control', 'public, max-age=30');
+        if (Date.now() - _pulseCache.at < 30_000 && _pulseCache.data) return res.json(_pulseCache.data);
+        const pulse = db.getHomePulse();
+        pulse.moments = heroMoments().slice(0, 10);
+        pulse.latestUpdate = _latestUpdate();
+        _pulseCache = { at: Date.now(), data: pulse };
+        res.json(pulse);
+    } catch (err) {
+        console.error('[Home] pulse error:', err.message);
+        res.status(500).json({ error: 'Failed to load pulse' });
+    }
+});
+
+// Newest git commit = the latest shipped update (built-in-the-open hero one-liner).
+let _updateCache = { at: 0, data: null };
+function _latestUpdate() {
+    if (Date.now() - _updateCache.at < 5 * 60_000) return _updateCache.data;
+    try {
+        const { execSync } = require('child_process');
+        const raw = execSync(`git --no-pager log --pretty=format:'%h||%s||%aI' -1`,
+            { cwd: require('path').join(__dirname, '../..'), encoding: 'utf8', timeout: 4000 });
+        const [short, subject, date] = String(raw).trim().split('||');
+        _updateCache = { at: Date.now(), data: subject ? { short, subject, date } : null };
+    } catch { _updateCache = { at: Date.now(), data: null }; }
+    return _updateCache.data;
+}
+
+// ── "While you were away" digest for returning users ─────────────────────────
+// ?since=<ISO> (the client remembers its own last visit). Followed channels that
+// are live right now + those that streamed since the last visit.
+const { requireAuth } = require('../auth/auth');
+router.get('/digest', requireAuth, (req, res) => {
+    try {
+        const since = req.query.since && !Number.isNaN(Date.parse(req.query.since))
+            ? new Date(req.query.since).toISOString()
+            : new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString();
+        const liveNow = db.all(`SELECT DISTINCT u.username, u.display_name, u.avatar_url
+            FROM follows f JOIN users u ON u.id = f.streamer_id
+            JOIN streams s ON s.user_id = f.streamer_id AND s.is_live = 1
+            WHERE f.follower_id = ?`, [req.user.id]) || [];
+        const missed = db.all(`SELECT u.username, u.display_name, u.avatar_url,
+                COUNT(s.id) AS sessions, MAX(s.started_at) AS last_at, MAX(s.title) AS last_title
+            FROM follows f JOIN users u ON u.id = f.streamer_id
+            JOIN streams s ON s.user_id = f.streamer_id AND s.started_at >= ? AND s.is_live = 0
+            WHERE f.follower_id = ?
+            GROUP BY f.streamer_id ORDER BY last_at DESC LIMIT 6`, [since, req.user.id]) || [];
+        // Don't list a channel as "missed" when it's live right now — it's in liveNow.
+        const liveSet = new Set(liveNow.map(x => x.username));
+        res.json({ since, liveNow, missed: missed.filter(m => !liveSet.has(m.username)) });
+    } catch (err) {
+        console.error('[Home] digest error:', err.message);
+        res.status(500).json({ error: 'Failed to load digest' });
+    }
+});
+
+// Sample the live viewer total every 5 minutes for the hero sparkline.
+let _samplerTimer = null;
+function startViewerSampler() {
+    if (_samplerTimer) return;
+    try { db.recordViewerSample(); } catch { /* */ }
+    _samplerTimer = setInterval(() => { try { db.recordViewerSample(); } catch { /* */ } }, 5 * 60 * 1000);
+    if (_samplerTimer.unref) _samplerTimer.unref();
+    console.log('[Home] viewer sampler started (5m)');
+}
+
 module.exports = router;
+module.exports.startViewerSampler = startViewerSampler;
 module.exports.FALLBACK_AUDIENCES = FALLBACK_AUDIENCES;
 module.exports.FALLBACK_QUIPS = FALLBACK_QUIPS;

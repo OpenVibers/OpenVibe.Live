@@ -3788,6 +3788,84 @@ let _homeStatsCache = null;
 let _homeStatsCacheAt = 0;
 const _HOME_STATS_TTL = 30 * 1000; // 30s memo so the windowed COUNTs don't hammer SQLite
 
+// ── Viewer trend sampling (home hero sparkline) ──────────────
+// One row every ~5 minutes: total native viewers + live stream count.
+function _ensureViewerSamples() {
+    try {
+        getDb().exec(`CREATE TABLE IF NOT EXISTS viewer_samples (
+            sampled_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            viewers INTEGER NOT NULL DEFAULT 0,
+            live_streams INTEGER NOT NULL DEFAULT 0
+        )`);
+        getDb().exec('CREATE INDEX IF NOT EXISTS idx_viewer_samples_at ON viewer_samples(sampled_at)');
+    } catch { /* */ }
+}
+function recordViewerSample() {
+    _ensureViewerSamples();
+    const r = get(`SELECT COALESCE(SUM(viewer_count),0) AS v, COUNT(*) AS n FROM streams WHERE is_live = 1`) || { v: 0, n: 0 };
+    run('INSERT INTO viewer_samples (viewers, live_streams) VALUES (?, ?)', [r.v || 0, r.n || 0]);
+    run(`DELETE FROM viewer_samples WHERE sampled_at < datetime('now', '-7 days')`);
+    return r;
+}
+function getViewerTrend(hours = 24, maxPoints = 48) {
+    _ensureViewerSamples();
+    const rows = all(`SELECT strftime('%s', sampled_at) AS t, viewers, live_streams FROM viewer_samples
+        WHERE sampled_at >= datetime('now', ?) ORDER BY sampled_at ASC`, [`-${Math.max(1, hours)} hours`]) || [];
+    if (rows.length <= maxPoints) return rows;
+    const step = rows.length / maxPoints;
+    const out = [];
+    for (let i = 0; i < maxPoints; i++) out.push(rows[Math.floor(i * step)]);
+    return out;
+}
+
+// ── Home "pulse": goals near completion, latest activity, weekly leaders ──────
+function getHomePulse() {
+    const safe = (fn, dflt) => { try { return fn() ?? dflt; } catch { return dflt; } };
+    return {
+        // Active goals closest to completion, site-wide.
+        goals: safe(() => all(`SELECT g.id, g.title, g.current_amount, g.target_amount, g.image_url,
+                u.username, u.display_name
+            FROM donation_goals g JOIN users u ON u.id = g.user_id
+            WHERE g.is_active = 1 AND g.target_amount > 0
+            ORDER BY (CAST(g.current_amount AS REAL) / g.target_amount) DESC, g.current_amount DESC LIMIT 3`), []),
+        latestTip: safe(() => get(`SELECT t.amount, t.created_at,
+                fu.username AS from_username, fu.display_name AS from_display,
+                tu.username AS to_username, tu.display_name AS to_display
+            FROM transactions t
+            LEFT JOIN users fu ON fu.id = t.from_user_id
+            JOIN users tu ON tu.id = t.to_user_id
+            WHERE t.type = 'donation' ORDER BY t.id DESC LIMIT 1`), null),
+        newestFollow: safe(() => get(`SELECT f.created_at,
+                fu.username AS follower_username, fu.display_name AS follower_display,
+                su.username AS streamer_username, su.display_name AS streamer_display
+            FROM follows f
+            JOIN users fu ON fu.id = f.follower_id
+            JOIN users su ON su.id = f.streamer_id
+            ORDER BY f.id DESC LIMIT 1`), null),
+        // This week's leaders.
+        topSupporters: safe(() => all(`SELECT u.username, u.display_name, u.avatar_url, SUM(t.amount) AS total
+            FROM transactions t JOIN users u ON u.id = t.from_user_id
+            WHERE t.type = 'donation' AND t.created_at >= datetime('now', '-7 days')
+            GROUP BY t.from_user_id ORDER BY total DESC LIMIT 3`), []),
+        topEarners: safe(() => all(`SELECT u.username, u.display_name, u.avatar_url, SUM(c.amount) AS total
+            FROM coin_transactions c JOIN users u ON u.id = c.user_id
+            WHERE c.amount > 0 AND c.created_at >= datetime('now', '-7 days')
+            GROUP BY c.user_id ORDER BY total DESC LIMIT 3`), []),
+    };
+}
+
+// Nearest active goal per streamer (for Recently Online cards) — one query.
+function getActiveGoalsForUsers(userIds) {
+    if (!userIds || !userIds.length) return {};
+    const ph = userIds.map(() => '?').join(',');
+    const rows = all(`SELECT user_id, title, current_amount, target_amount FROM donation_goals
+        WHERE is_active = 1 AND target_amount > 0 AND user_id IN (${ph})
+        ORDER BY (CAST(current_amount AS REAL) / target_amount) DESC`, userIds) || [];
+    const out = {};
+    for (const r of rows) if (!out[r.user_id]) out[r.user_id] = r;
+    return out;
+}
+
 function getHomeStats() {
     const now = Date.now();
     if (_homeStatsCache && (now - _homeStatsCacheAt) < _HOME_STATS_TTL) return _homeStatsCache;
@@ -7817,6 +7895,7 @@ module.exports = {
     scheduleClipNotifyState, bumpClipNotifyNowState, markClipNotifiedState, getDueClipNotifies,
     getDb, initDb, run, get, all, close,
     getDonationGoalsForWidget, getAllDonationGoals, getActiveDonationGoals, getDonationGoalById,
+    recordViewerSample, getViewerTrend, getHomePulse, getActiveGoalsForUsers,
     createDonationGoal, updateDonationGoal, deleteDonationGoal, addToDonationGoal,
     setChannelAlertSound, getChannelAlertSoundsByUser,
     // Users
