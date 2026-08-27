@@ -130,7 +130,8 @@
             <button class="pc-hbtn" id="pc-btn-users" title="Viewer list" onclick="togglePanel('users')">
                 <i class="fa-solid fa-users"></i>
             </button>
-            <button class="pc-hbtn" id="pc-btn-settings" title="Settings" onclick="togglePanel('settings')">
+            <!-- Opens the SHARED chat settings panel (same one as the streamer page) -->
+            <button class="pc-hbtn" id="pc-btn-settings" title="Chat Settings" onclick="toggleChatSettings(this)">
                 <i class="fa-solid fa-gear"></i>
             </button>
         </div>
@@ -204,43 +205,8 @@
             </div>
         </div>
 
-        <!-- Settings panel -->
-        <div class="pc-panel" id="pc-panel-settings">
-            <div class="pc-panel-hd">
-                <i class="fa-solid fa-gear"></i> Settings
-            </div>
-            <div class="pc-panel-body">
-                <div class="pc-setting-row">
-                    <span class="pc-setting-label">Timestamps</span>
-                    <div class="pc-toggle-wrap">
-                        <div class="pc-toggle on" id="pc-toggle-ts" onclick="toggleSetting('timestamps')"></div>
-                    </div>
-                </div>
-                <div class="pc-setting-row">
-                    <span class="pc-setting-label">Sound alerts</span>
-                    <div class="pc-toggle-wrap">
-                        <div class="pc-toggle" id="pc-toggle-sound" onclick="toggleSetting('sound')"></div>
-                    </div>
-                </div>
-                <div class="pc-setting-row">
-                    <span class="pc-setting-label">Compact mode</span>
-                    <div class="pc-toggle-wrap">
-                        <div class="pc-toggle" id="pc-toggle-compact" onclick="toggleSetting('compact')"></div>
-                    </div>
-                </div>
-                <!-- TTS on/off lives on the speaker button under the chat input. -->
-                <div class="pc-setting-row">
-                    <span class="pc-setting-label">Chat sounds (soundboard &amp; !commands)</span>
-                    <div class="pc-toggle-wrap">
-                        <div class="pc-toggle" id="pc-toggle-sounds" onclick="toggleSetting('soundsEnabled')"></div>
-                    </div>
-                </div>
-                <div class="pc-setting-row" style="flex-direction:column;align-items:stretch;gap:4px">
-                    <span class="pc-setting-label">TTS volume</span>
-                    <input type="range" id="pc-tts-volume" min="0" max="100" step="5" style="width:100%">
-                </div>
-            </div>
-        </div>
+        <!-- Settings render via the SHARED chat settings panel (toggleChatSettings)
+             inside the chat column — full parity with the streamer page. -->
     </div>
 
     <!-- Shared modal + toast containers — showModal('donate'), the [+] channel-upload
@@ -262,7 +228,7 @@
     <script src="/js/vibes.js?v=8"></script>
     <script src="/js/opencoins.js?v=6"></script>
     <script src="/js/cosmetics-ui.js?v=2"></script>
-    <script src="/js/chat.js?v=41"></script>
+    <script src="/js/chat.js?v=42"></script>
     <script src="/js/chat-autocomplete.js?v=1"></script>
     <script>
     'use strict';
@@ -313,38 +279,10 @@
     }
     syncTitle();
 
-    // ── Settings panel: delegate entirely to the shared chat.js settings system ──
-    // chat.js already called loadChatSettings() on boot (persisted to openvibe_chat_settings),
-    // so chatSettings is populated before this code runs.
-
-    function syncPopoutSettingsUI() {
-        // Map popout toggle IDs → shared chatSettings keys
-        const mapping = [
-            { toggleId: 'pc-toggle-ts',      key: 'showTimestamps' },
-            { toggleId: 'pc-toggle-sound',   key: 'soundOnMention' },
-            { toggleId: 'pc-toggle-compact', key: 'compactMode' },
-            { toggleId: 'pc-toggle-sounds',  key: 'soundsEnabled' },
-        ];
-        for (const { toggleId, key } of mapping) {
-            const el = document.getElementById(toggleId);
-            if (el) el.classList.toggle('on', !!chatSettings[key]);
-        }
-        const vol = document.getElementById('pc-tts-volume');
-        if (vol) vol.value = chatSettings.ttsVolume ?? 80;
-        // Keep the input-area TTS button in sync (shared styling helper)
-        if (typeof syncTTSToggleButtons === 'function') syncTTSToggleButtons();
-    }
-
-    // Popout toggle handler: changes the shared chatSettings and saves/applies them.
-    window.toggleSetting = function(key) {
-        // Map legacy popout key names to shared settings keys
-        const keyMap = { timestamps: 'showTimestamps', sound: 'soundOnMention', compact: 'compactMode' };
-        const settingKey = keyMap[key] || key;
-        chatSettings[settingKey] = !chatSettings[settingKey];
-        syncPopoutSettingsUI();
-        if (typeof applyChatSettings === 'function') applyChatSettings();
-        if (typeof saveChatSettings === 'function') saveChatSettings();
-    };
+    // ── Settings: entirely the shared chat.js settings panel (toggleChatSettings) ──
+    // chat.js already called loadChatSettings() on boot, and the panel renders with
+    // buildSettingsPanelHTML — every setting the streamer page has, kept in sync
+    // across tabs by the shared storage listener.
 
     // Request the viewer list over the shared chat WebSocket. The reply is
     // handled by chat.js → renderChatUsersList(), which now also fills #pc-users-body.
@@ -381,17 +319,8 @@
     });
 
     function initPopoutChat() {
-        // Sync the popout toggle UI from the shared settings (already loaded by chat.js)
-        syncPopoutSettingsUI();
-
-        // TTS volume slider → shared chatSettings.ttsVolume
-        const vol = document.getElementById('pc-tts-volume');
-        if (vol) {
-            vol.addEventListener('input', () => {
-                chatSettings.ttsVolume = parseInt(vol.value, 10) || 0;
-                if (typeof saveChatSettings === 'function') saveChatSettings();
-            });
-        }
+        // Keep the input-area TTS button state in sync with the shared settings.
+        try { if (typeof syncTTSToggleButtons === 'function') syncTTSToggleButtons(); } catch { /* */ }
 
         joinTarget();
         // Enter-to-send, Shift+Enter newline, and auto-resize all come from chat.js's
