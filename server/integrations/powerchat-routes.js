@@ -57,20 +57,70 @@ p{color:#aaa;margin:0;max-width:340px;line-height:1.5}
 }
 
 // ── GET /status ──────────────────────────────────────────────────────────────
-router.get('/status', requireAuth, (req, res) => {
+router.get('/status', requireAuth, async (req, res) => {
     try {
         const cfg = oauth.getConfig();
-        const conn = db.getPowerchatConnection(req.user.id);
+        let conn = db.getPowerchatConnection(req.user.id);
         const connected = !!(conn && conn.access_token);
         // Distinguish a real OAuth app connection (mints refresh tokens) from a
         // sandbox self-connect (no tokens) so the card can say which it is.
         const connection_kind = connected ? (conn.refresh_token ? 'app' : 'testing') : null;
-        const scopes = conn && conn.scope ? String(conn.scope).split(/\s+/).filter(Boolean) : [];
-        // Scopes the app now requests that this grant was minted WITHOUT (added since
-        // the streamer connected). Grants never gain scopes retroactively — the fix is
-        // a reconnect (re-consent), so the UI can prompt for exactly that.
         const wanted = String(cfg.scopes).split(/\s+/).filter(Boolean);
-        const missing_scopes = (connected && conn.scope) ? wanted.filter(sc => !scopes.includes(sc)) : [];
+        const diagnosis = [];
+
+        // ?live=1 → ask PowerChat itself (GET /me, no scope needed) which streamer this
+        // token belongs to and which scopes the grant REALLY carries. The stored scope
+        // column is what the token response said at connect time; the live grant is the
+        // truth (streamers can switch capabilities off later, and a scope registered
+        // in the dashboard but never requested never lands on the grant at all).
+        let live = null, live_error = null;
+        if (connected && conn.refresh_token && String(req.query.live || '') === '1') {
+            try {
+                live = await oauth.fetchMe(req.user.id);
+                if (live) {
+                    const patch = {};
+                    const liveScope = live.scopes.join(' ');
+                    if (liveScope && liveScope !== String(conn.scope || '')) patch.scope = liveScope;
+                    if (live.id && String(live.id) !== String(conn.powerchat_user_id || '')) patch.powerchat_user_id = live.id;
+                    if (live.tipPageUrl && live.tipPageUrl !== conn.tip_page_url) patch.tip_page_url = live.tipPageUrl;
+                    if (live.username && conn.powerchat_username && live.username.toLowerCase() !== String(conn.powerchat_username).toLowerCase()) {
+                        diagnosis.push({ level: 'warn', code: 'identity_mismatch', message: `This token belongs to PowerChat user "${live.username}", but the connection was saved as "${conn.powerchat_username}". Reconnect to fix.` });
+                    }
+                    if (Object.keys(patch).length) conn = db.upsertPowerchatConnection(req.user.id, patch) || conn;
+                }
+            } catch (e) {
+                live_error = { status: e.status || null, message: e.message };
+                diagnosis.push({
+                    level: e.status === 401 ? 'error' : 'warn', code: 'me_failed',
+                    message: e.status === 401
+                        ? 'PowerChat no longer accepts this connection\'s token — reconnect.'
+                        : `Couldn't verify the grant with PowerChat right now (${e.status || e.message}).`,
+                });
+            }
+        }
+
+        const scopes = live ? live.scopes : (conn && conn.scope ? String(conn.scope).split(/\s+/).filter(Boolean) : []);
+        // Scopes the app now requests that this grant was minted WITHOUT. Grants never
+        // gain scopes retroactively — the fix is a reconnect (re-consent).
+        const diff = oauth.scopeDiff(scopes, wanted);
+        const missing_scopes = (connected && scopes.length) ? diff.missing : [];
+        if (missing_scopes.length) {
+            diagnosis.push({
+                level: 'warn', code: 'missing_scopes',
+                message: `${live ? 'PowerChat reports' : 'This connection was saved with'} a grant missing: ${missing_scopes.join(', ')}. ` +
+                    'Those features fail with 403 until you reconnect (one click, same account) so the grant is re-minted with them.',
+                scopes: missing_scopes,
+            });
+        } else if (live) {
+            diagnosis.push({ level: 'ok', code: 'scopes_ok', message: `Verified live with PowerChat: all ${wanted.length} permissions are granted to @${live.username}.` });
+        }
+        // Fixed-price checkouts: are intents available on this PowerChat deployment?
+        try {
+            const intents = require('./powerchat-checkout').checkoutIntentSupport();
+            if (intents.state === 'unsupported') diagnosis.push({ level: 'info', code: 'intents_unsupported', message: 'Fixed-price checkout intents are not deployed on this PowerChat yet — subscriptions and Vibes packs use canonical pinned links (amount still enforced by our webhook checks).' });
+        } catch { /* optional */ }
+        if (conn && conn.last_error) diagnosis.push({ level: 'warn', code: 'last_error', message: conn.last_error });
+
         res.json({
             enabled: cfg.enabled,
             configured: oauth.isConfigured(),
@@ -80,7 +130,12 @@ router.get('/status', requireAuth, (req, res) => {
             tip_page_url: conn ? conn.tip_page_url : null,
             scope: conn ? conn.scope : null,
             scopes,
+            wanted_scopes: wanted,
             missing_scopes,
+            extra_scopes: connected ? diff.extra : [],
+            live: live ? { username: live.username, id: live.id, app_id: live.appId, verified_at: new Date().toISOString() } : null,
+            live_error,
+            diagnosis,
             last_error: conn ? conn.last_error : null,
             sandbox_username: cfg.sandboxUsername,
         });
