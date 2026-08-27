@@ -796,6 +796,9 @@ function isOwnChannelTtsSpeaker() { return _ownTtsLeader; }
 
 // Who this tab is chatting as — set by the server's 'auth' confirmation.
 let _myChatIdentity = null;
+// Set before a same-socket surface rejoin (live↔offline swap) so the re-issued auth
+// confirmation doesn't post a second "Chatting as …" notice.
+let _suppressNextAuthNotice = false;
 
 // A user must NEVER hear their own message's TTS locally. The speaker button under
 // the input is a SENDER-side control (does your message get read out on the
@@ -2257,9 +2260,64 @@ async function hydrateActiveChatHistory(streamId, { clear = false } = {}) {
  * Initialize chat for a stream.
  * Idempotent — if already connected to the same stream, skip reconnection.
  */
+// The chat input that belongs to each render surface (for carrying a typed draft
+// across a live↔offline swap).
+function _chatInputIdForTarget(targetId) {
+    return {
+        'chat-messages': 'chat-input',
+        'offline-chat-messages': 'offline-chat-input',
+        'global-chat-messages': 'global-chat-input',
+        'bc-chat-messages': 'bc-chat-input',
+        'pc-msgs': 'pc-input',
+    }[targetId] || null;
+}
+
 function initChat(streamId, channelUserId = null) {
+    const prevChannelUserId = chatChannelUserId;
     chatChannelUserId = channelUserId || null;
     const nextTargetId = getChatRenderTargetId();
+
+    // Same CHANNEL, different surface — a live stream ended (stream id → null) or the
+    // channel just went live (null → new id). The chat room is keyed by the STREAMER,
+    // not the session, so a full teardown is pointless churn that wiped the scrollback,
+    // dropped the socket, and ate whatever the viewer was typing. Instead: rejoin on
+    // the SAME socket, move the rendered history and the input draft to the new
+    // surface, and the viewer keeps chatting the moment the swap happens.
+    if (chatWs && chatWs.readyState === WebSocket.OPEN && _chatActive
+        && channelUserId && prevChannelUserId === channelUserId && chatStreamId !== streamId) {
+        const prevTargetId = chatRenderTargetId;
+        const prevMsgs = prevTargetId ? document.getElementById(prevTargetId) : null;
+        const prevInputId = _chatInputIdForTarget(prevTargetId);
+        const prevInput = prevInputId ? document.getElementById(prevInputId) : null;
+        chatStreamId = streamId;
+        chatRenderTargetId = nextTargetId;
+        _suppressNextAuthNotice = true;
+        try {
+            const token = localStorage.getItem('token');
+            chatWs.send(JSON.stringify({ type: 'join', streamId, channelUserId, token: token || undefined }));
+        } catch { /* send failed → the onclose reconnect path takes over */ }
+        // History continuity: transplant the already-rendered messages into the new
+        // container instead of clearing + refetching (no skeleton, no jump).
+        const nextMsgs = nextTargetId ? document.getElementById(nextTargetId) : null;
+        if (nextMsgs && prevMsgs && nextMsgs !== prevMsgs && prevMsgs.children.length) {
+            nextMsgs.innerHTML = '';
+            while (prevMsgs.firstChild) nextMsgs.appendChild(prevMsgs.firstChild);
+        } else if (nextMsgs && !nextMsgs.children.length) {
+            hydrateActiveChatHistory(streamId, { clear: true }).catch(() => { });
+        }
+        // Draft continuity: carry the half-typed message to the new surface's input.
+        const nextInputId = _chatInputIdForTarget(nextTargetId);
+        const nextInput = nextInputId ? document.getElementById(nextInputId) : null;
+        if (prevInput && nextInput && prevInput !== nextInput && prevInput.value && !nextInput.value) {
+            nextInput.value = prevInput.value;
+            prevInput.value = '';
+            try { _autoResizeTextarea(nextInput); } catch { /* */ }
+        }
+        refreshVibeWidgetFeed().catch(() => { });
+        applyChatSettings();
+        scrollChatToBottom();
+        return;
+    }
 
     // Already connected or actively connecting to this stream — nothing to do
     if (chatWs && chatStreamId === streamId) {
@@ -2640,15 +2698,20 @@ function handleChatMessage(msg) {
                 name: String(msg.username || ''),
                 core: msg.core_username || null,
             };
+            // A surface rejoin (live↔offline swap on the same socket) re-issues this
+            // confirmation — skip the duplicate "Chatting as" notice, but still run
+            // the rest of the sync below (slow mode, gifs, emote scale, …).
+            const _quietAuth = _suppressNextAuthNotice;
+            _suppressNextAuthNotice = false;
             if (msg.authenticated) {
-                addRichSystemMessage(`<i class="fa-solid fa-user-check" style="margin-right:5px;opacity:0.8"></i> Chatting as ${esc(msg.username)}`);
+                if (!_quietAuth) addRichSystemMessage(`<i class="fa-solid fa-user-check" style="margin-right:5px;opacity:0.8"></i> Chatting as ${esc(msg.username)}`);
             } else {
                 // Server didn't authenticate us — show as anon
                 const hasToken = !!localStorage.getItem('token');
                 if (hasToken) {
                     // We think we're logged in but the server rejected the token —
                     // token may be expired/invalid. Reconnect chat after loadUser refreshes auth.
-                    addRichSystemMessage(`<i class="fa-solid fa-user" style="margin-right:5px;opacity:0.8"></i> Chatting as ${esc(msg.username)} (not logged in)`);
+                    if (!_quietAuth) addRichSystemMessage(`<i class="fa-solid fa-user" style="margin-right:5px;opacity:0.8"></i> Chatting as ${esc(msg.username)} (not logged in)`);
                     console.warn('[Chat] Token rejected by server — will attempt re-auth');
                     // Re-validate token; if still valid, reconnect chat with fresh state
                     if (typeof loadUser === 'function') {
@@ -2667,7 +2730,7 @@ function handleChatMessage(msg) {
                         }).catch(() => { });
                     }
                 } else {
-                    addRichSystemMessage(`<i class="fa-solid fa-user-check" style="margin-right:5px;opacity:0.8"></i> Chatting as ${esc(msg.username)}`);
+                    if (!_quietAuth) addRichSystemMessage(`<i class="fa-solid fa-user-check" style="margin-right:5px;opacity:0.8"></i> Chatting as ${esc(msg.username)}`);
                 }
             }
             // Sync slow mode state from server on join
