@@ -54,6 +54,11 @@ const TYPES = Object.freeze({
     STREAM_LIVE:         { category: 'stream',      priority: 'high',     icon: '🔴',  title: 'Stream Live' },
     RAID:                { category: 'stream',      priority: 'high',     icon: '🚀',  title: 'Incoming Raid' },
     CLIP_CREATED:        { category: 'stream',      priority: 'normal',   icon: '🎬',  title: 'Clip Created' },
+    VC_CALL_INVITE:      { category: 'chat',        priority: 'high',     icon: '📞',  title: 'Call Invite' },
+    CONTENT_COMMENT:     { category: 'social',      priority: 'normal',   icon: '💬',  title: 'New Comment' },
+    CONTENT_REPLY:       { category: 'social',      priority: 'normal',   icon: '↩️',  title: 'New Reply' },
+    TIP_RECEIVED:        { category: 'economy',     priority: 'normal',   icon: '💜',  title: 'Tip Received' },
+    SUBSCRIPTION:        { category: 'economy',     priority: 'normal',   icon: '⭐',  title: 'New Subscriber' },
 
     // Economy
     COINS_RECEIVED:      { category: 'economy',     priority: 'normal',   icon: '🪙',  title: 'Coins Received' },
@@ -91,6 +96,11 @@ const SOUNDS = Object.freeze({
 const EMAIL_ELIGIBLE_CATEGORIES = new Set([
     'system', 'moderation', 'admin',
 ]);
+
+// Types that email BY DEFAULT (no explicit per-category opt-in needed) — as long as the
+// account's address is verified and not bouncing. Go-live alerts are the headline case:
+// followers expect them in their inbox unless they turn the 'stream' category's email off.
+const EMAIL_DEFAULT_TYPES = new Set(['STREAM_LIVE']);
 
 function isEmailEligible(notification) {
     return notification.priority === PRIORITY.CRITICAL
@@ -172,6 +182,7 @@ const DEFAULT_NOTIFICATION_PREFS = Object.freeze({
 });
 
 module.exports = {
+    EMAIL_DEFAULT_TYPES,
     PRIORITY,
     CATEGORY,
     TYPES,

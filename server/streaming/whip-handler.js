@@ -538,7 +538,8 @@ function autoCreateWhipSession(managedStream, user) {
         console.log(`[WHIP] Auto-created live session ${streamId} for WHIP slot ${managedStream.id} (user: ${user.username})`);
 
         // Fire-and-forget side effects
-        notifyDiscordGoLive(user, stream || { id: streamId });
+        try { require('./golive-notify').notifyFollowersGoLive(user, stream || { id: streamId }); }
+        catch (e) { console.warn('[WHIP] go-live notify failed:', e.message); notifyDiscordGoLive(user, stream || { id: streamId }); }
         try { require('./live-events').announceGoLive(stream || { id: streamId }, user); } catch { /* */ }
         if (chatRelayService) {
             chatRelayService.startForStream(stream).catch(() => {});

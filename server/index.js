@@ -349,7 +349,7 @@ app.use((req, res, next) => {
 // Serve openvibe-shared browser assets at /shared/ — serve directly from the
 // resolved source directory to avoid write operations (the public/ directory
 // is read-only under systemd ProtectSystem=strict on production).
-const SHARED_BROWSER_FILES = ['theme-loader.js', 'notification-ui.js', 'account-switcher.js'];
+const SHARED_BROWSER_FILES = ['theme-loader.js', 'notification-ui.js', 'account-switcher.js', 'openvibe-sw.js'];
 let sharedServePath = null;
 
 (function resolveSharedAssets() {
@@ -379,6 +379,13 @@ let sharedServePath = null;
 })();
 
 if (sharedServePath) {
+    // Web-push service worker must be same-origin with scope "/" → expose it at the root.
+    app.get('/openvibe-sw.js', (req, res) => {
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.setHeader('Service-Worker-Allowed', '/');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.sendFile(path.join(sharedServePath, 'openvibe-sw.js'));
+    });
     // Serve only the whitelisted browser files — don't expose the entire package
     const sharedFileSet = new Set(SHARED_BROWSER_FILES);
     app.use('/shared', (req, res, next) => {
