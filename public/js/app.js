@@ -1215,58 +1215,68 @@ function _heroCountUp(el, target) {
 function renderHeroStats(stats) {
     const wrap = document.getElementById('hero-stats');
     if (!wrap || !stats) return;
-    // Short, uniform labels (full meaning in the title tooltip) so a long label never dwarfs
-    // its number. Stats are clustered into themed groups instead of one undifferentiated
-    // 15-chip wall: what's happening NOW, the people, the economy, and the archive.
+    // One stat BOARD: every themed group is a full-width row (kicker on the left, chips
+    // on a shared column grid), so rows line up edge to edge instead of floating as
+    // differently-sized islands. Chips keep short uniform labels (full meaning in the
+    // title tooltip) so a long label never dwarfs its number.
     const R = stats.recent || {};
     const groups = [];
 
     // ── Right now ────────────────────────────────────────────────
-    const now = [];
-    if (stats.liveNow > 0) now.push({ cls: 'hero-stat--live', icon: 'fa-circle', num: stats.liveNow, label: 'Live', title: 'Streams live right now' });
-    if (stats.viewersNow > 0) now.push({ cls: 'hero-stat--live', icon: 'fa-eye', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' });
-    now.push({ icon: 'fa-fire', num: stats.weeklyActive, label: 'Active', title: 'Active this week — chatters incl. anons & relays' + (stats.weeklyVisitors ? `, plus ${stats.weeklyVisitors} new visitors` : ''), sub: stats.weeklyVisitors ? `+${_fmtCount(stats.weeklyVisitors)} new` : '' });
+    const now = [
+        { cls: stats.liveNow > 0 ? 'hero-stat--live' : '', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', num: stats.liveNow, label: 'Live', title: stats.liveNow > 0 ? 'Streams live right now' : 'Nobody is live right now — check Recently Online below' },
+        { cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', icon: 'fa-eye', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
+        { icon: 'fa-fire', num: stats.weeklyActive, label: 'Active', title: 'Active this week — chatters incl. anons & relays' },
+        { icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'New Visitors', title: 'New unique visitors this week' },
+    ];
     // 24h viewer sparkline (5-minute samples) — trends read better than a snapshot.
     const trend = Array.isArray(stats.viewerTrend) ? stats.viewerTrend : [];
     if (trend.length >= 2 && trend.some(t => (t.viewers || 0) > 0)) {
         const max = Math.max(...trend.map(t => t.viewers || 0), 1);
-        const W = 110, H = 26;
+        const W = 220, H = 30;
         const pts = trend.map((t, i) => `${(i / (trend.length - 1) * W).toFixed(1)},${(H - 2 - ((t.viewers || 0) / max) * (H - 4)).toFixed(1)}`).join(' ');
         now.push({
             html: `<div class="hero-stat hero-stat--spark" title="Viewers over the last 24h (peak ${max})">
-                <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" preserveAspectRatio="none" aria-hidden="true">
+                <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
                     <polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-                </svg><span class="hero-stat-label">24h viewers</span></div>`,
+                </svg><span class="hero-stat-label">24h viewers · peak ${max}</span></div>`,
         });
     }
-    groups.push({ kicker: 'Right now', rows: now });
+    groups.push({ kicker: 'Right now', icon: 'fa-bolt', rows: now });
 
     // ── Community ────────────────────────────────────────────────
     groups.push({
-        kicker: 'Community', rows: [
+        kicker: 'Community', icon: 'fa-people-group', rows: [
             { icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', title: 'People who have gone live' },
             { icon: 'fa-users', num: stats.users, label: 'Users', title: 'Registered users', recent: R.users },
             { icon: 'fa-user-secret', num: stats.anons, label: 'Anons', title: 'Anonymous chatters ever seen', recent: R.anons },
             { icon: 'fa-heart', num: stats.follows, label: 'Follows', title: 'Channel follows', recent: R.follows },
             { icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', title: 'Chat messages sent', recent: R.messages },
-            ...(stats.hoursWatched > 0 ? [{ icon: 'fa-couch', num: stats.hoursWatched, label: 'Hrs Watched', title: 'Hours the community has spent watching streams', unit: 'h' }] : []),
+            { icon: 'fa-couch', num: stats.hoursWatched, label: 'Hrs Watched', title: 'Hours the community has spent watching streams', unit: 'h' },
         ],
     });
 
     // ── Economy ──────────────────────────────────────────────────
-    const econ = [];
-    if (stats.vibesTipped > 0) econ.push({ icon: 'fa-hand-holding-dollar', num: stats.vibesTipped, label: 'Vibes Tipped', title: 'Vibes donated between people (100 Vibes = $1)', recent: R.vibes });
-    if (stats.activeSubs > 0) econ.push({ icon: 'fa-star', num: stats.activeSubs, label: 'Subs', title: 'Active channel subscriptions' });
-    if (stats.pointsEarned > 0) econ.push({ icon: 'fa-coins', num: stats.pointsEarned, label: 'Points Earned', title: 'Channel points earned by viewers (watching, chatting, following)', recent: R.points });
-    if (econ.length) groups.push({ kicker: 'Economy', rows: econ });
+    groups.push({
+        kicker: 'Economy', icon: 'fa-coins', rows: [
+            { icon: 'fa-hand-holding-dollar', num: stats.vibesTipped, label: 'Vibes Tipped', title: 'Vibes donated between people (100 Vibes = $1)', recent: R.vibes },
+            { icon: 'fa-hand-holding-heart', num: stats.supporters, label: 'Supporters', title: 'People who have tipped Vibes to a streamer' },
+            { icon: 'fa-cart-shopping', num: stats.vibesBought, label: 'Vibes Bought', title: 'Vibes purchased with real money (PowerChat, card, PayPal, crypto)', recent: R.vibesBought },
+            { icon: 'fa-star', num: stats.activeSubs, label: 'Subs', title: 'Active channel subscriptions', recent: R.subs },
+            { icon: 'fa-coins', num: stats.pointsEarned, label: 'Points Earned', title: 'Channel points earned by viewers (watching, chatting, following)', recent: R.points },
+            { icon: 'fa-gift', num: stats.pointsSpent, label: 'Points Spent', title: 'Channel points spent on rewards', recent: R.pointsSpent },
+            { icon: 'fa-ticket', num: stats.redemptions, label: 'Rewards', title: 'Channel reward redemptions', recent: R.redemptions },
+            { icon: 'fa-bullseye', num: stats.goalsActive, label: 'Goals', title: `Donation goals running now · ${stats.goalsReached || 0} reached so far`, sub: stats.goalsReached ? `${_fmtCount(stats.goalsReached)} reached` : '' },
+        ],
+    });
 
     // ── Archive ──────────────────────────────────────────────────
     groups.push({
-        kicker: 'Archive', rows: [
+        kicker: 'Archive', icon: 'fa-box-archive', rows: [
             { icon: 'fa-tower-broadcast', num: stats.liveSessions, label: 'Sessions', title: 'Total stream sessions', recent: R.sessions },
             { icon: 'fa-film', num: stats.vods, label: 'VODs', title: 'Recorded videos', recent: R.vods },
             { icon: 'fa-scissors', num: stats.clips, label: 'Clips', title: 'Clips created', recent: R.clips },
-            ...(stats.streamHours > 0 ? [{ icon: 'fa-clock', num: stats.streamHours, label: 'Hours', title: 'Hours of video archived', recent: R.hours, unit: 'h' }] : []),
+            { icon: 'fa-clock', num: stats.streamHours, label: 'Hours', title: 'Hours of video archived', recent: R.hours, unit: 'h' },
             { icon: 'fa-brain', num: stats.aiMemories, label: 'AI Moments', title: 'Moments the AI remembers across every stream', recent: R.aiMoments },
             { icon: 'fa-face-grin-squint', num: stats.emotes, label: 'Emotes', title: 'Custom channel emotes uploaded' },
             { icon: 'fa-paste', num: stats.pastes, label: 'Pastes', title: `${stats.pasteText || 0} text · ${stats.pasteImages || 0} image pastes`, sub: (stats.pasteText != null && stats.pasteImages != null) ? `${_fmtCount(stats.pasteText)} txt · ${_fmtCount(stats.pasteImages)} img` : '' },
@@ -1276,7 +1286,7 @@ function renderHeroStats(stats) {
     // For stats with rolling data: append "+d today · +w this week · +m this month" to the
     // hover tooltip and show the weekly delta as the small sub-line.
     const recTitle = (rec, u = '') => rec ? ` — +${_fmtCount(rec.d)}${u} today · +${_fmtCount(rec.w)}${u} this week · +${_fmtCount(rec.m)}${u} this month` : '';
-    const recSub = (rec, u = '') => rec ? `+${_fmtCount(rec.w)}${u} wk` : '';
+    const recSub = (rec, u = '') => (rec && rec.w > 0) ? `+${_fmtCount(rec.w)}${u} wk` : '';
     const chip = (r) => {
         if (r.html) return r.html; // pre-rendered chips (sparkline)
         const title = (r.title || '') + recTitle(r.recent, r.unit || '');
@@ -1285,7 +1295,7 @@ function renderHeroStats(stats) {
     };
     wrap.innerHTML = groups.filter(g => g.rows.length).map(g => `
         <div class="hero-stat-group">
-            <span class="hero-stat-kicker">${g.kicker}</span>
+            <span class="hero-stat-kicker"><i class="fa-solid ${g.icon}"></i>${g.kicker}</span>
             <div class="hero-stat-row">${g.rows.map(chip).join('')}</div>
         </div>`).join('');
     wrap.querySelectorAll('.hero-stat-num').forEach(el => _heroCountUp(el, parseInt(el.dataset.n, 10) || 0));

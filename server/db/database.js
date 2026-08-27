@@ -3900,6 +3900,17 @@ function _computeHomeStats() {
         activeSubs: c(`SELECT COUNT(*) AS count FROM subscriptions WHERE status = 'active' AND (current_period_end IS NULL OR datetime(current_period_end) > CURRENT_TIMESTAMP)`),
         // Channel points earned by viewers across every channel (watch/chat/follow bonuses).
         pointsEarned: c(`SELECT COALESCE(SUM(amount), 0) AS count FROM coin_transactions WHERE amount > 0`),
+        // …and spent back on channel rewards.
+        pointsSpent: c(`SELECT COALESCE(-SUM(amount), 0) AS count FROM coin_transactions WHERE amount < 0`),
+        // Reward redemptions that stuck (not rejected / refunded).
+        redemptions: c(`SELECT COUNT(*) AS count FROM coin_redemptions WHERE status NOT IN ('rejected', 'refunded')`),
+        // Distinct people who have tipped Vibes to someone.
+        supporters: c(`SELECT COUNT(DISTINCT from_user_id) AS count FROM transactions WHERE type = 'donation' AND from_user_id IS NOT NULL`),
+        // Vibes bought with real money (credited purchase orders, any provider).
+        vibesBought: c(`SELECT COALESCE(SUM(bucks), 0) AS count FROM payment_orders WHERE kind = 'bucks' AND status = 'credited'`),
+        // Donation goals: currently running + ever reached.
+        goalsActive: c(`SELECT COUNT(*) AS count FROM donation_goals WHERE is_active = 1`),
+        goalsReached: c(`SELECT COUNT(*) AS count FROM donation_goals WHERE reached_at IS NOT NULL OR current_amount >= target_amount`),
         vods: c(`SELECT COUNT(*) AS count FROM vods WHERE is_public = 1 AND COALESCE(is_recording, 0) = 0`),
         clips: c(`SELECT COUNT(*) AS count FROM clips WHERE COALESCE(is_public, 1) = 1`),
         liveSessions: c(`SELECT COUNT(*) AS count FROM streams`),
@@ -3942,6 +3953,10 @@ function _computeHomeStats() {
             hours: { d: hoursSince('-1 day'), w: hoursSince('-7 days'), m: hoursSince('-30 days') },
             vibes: winSum('transactions', 'amount', 'created_at', "type = 'donation'"),
             points: winSum('coin_transactions', 'amount', 'created_at', 'amount > 0'),
+            pointsSpent: winSum('coin_transactions', '-amount', 'created_at', 'amount < 0'),
+            redemptions: winCount('coin_redemptions', 'created_at', "status NOT IN ('rejected', 'refunded')"),
+            vibesBought: winSum('payment_orders', 'bucks', 'updated_at', "kind = 'bucks' AND status = 'credited'"),
+            subs: winCount('subscriptions', 'created_at'),
             follows: winCount('follows', 'created_at'),
         },
     };

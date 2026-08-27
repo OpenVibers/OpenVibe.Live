@@ -78,18 +78,78 @@ function tipLinkFor(pcUsername, ref, { purpose = null, amountCents = null, retur
     return `${c.baseUrl}/${encodeURIComponent(pcUsername)}/tip?${params.toString()}`;
 }
 
+// ── Server-minted checkout intents ───────────────────────────
+// PowerChat's fixed-price checkout is an INTENT, not a query string: the app calls
+//   GET /streamers/:username/tip-checkout-link?amount_cents&purpose&ref&redirect_uri
+// (streamer token, scope checkout:attribute) and gets back a single-use, ~1h URL that
+// carries only app_intent=<token>. Amount/purpose/ref live server-side on the intent,
+// so the viewer can neither edit the price nor strip the correlation ref, and the
+// tip page renders the amount locked. That is the mechanism the plain
+// app_amount_cents query param only approximates — so every PINNED checkout (Vibes
+// packs, subscriptions) is minted here first and the canonical URL is the fallback
+// (PowerChat versions without intents, token trouble, transient API errors).
+//
+// Minting needs a token for the HOST account. Streamer-direct hosts have one (their
+// own connection); the site tips account has one only when its PowerChat username is
+// also connected on this site (the owner's dashboard card) — otherwise it stays on
+// the canonical link. `item_name` is the viewer-facing label PowerChat is adding to
+// intents ("1,000 Vibes", "goosely — 1 month sub"); if the running PowerChat rejects
+// the unknown param we retry without it so the fixed amount still lands.
+function _mintHostConn(pcUsername) {
+    try {
+        const conn = db.getPowerchatConnectionByUsername(pcUsername);
+        if (!conn || !conn.access_token || !conn.refresh_token) return null;
+        if (conn.scope && !String(conn.scope).split(/\s+/).includes('checkout:attribute')) return null;
+        return conn;
+    } catch { return null; }
+}
+const _mintWarned = new Map();
+function _mintWarn(key, msg) {
+    const now = Date.now();
+    if ((now - (_mintWarned.get(key) || 0)) < 10 * 60 * 1000) return;
+    _mintWarned.set(key, now);
+    console.warn(`[PowerChat] checkout intent for @${key} not minted — using canonical link: ${msg}`);
+}
+async function mintCheckoutLink(pcUsername, ref, { purpose = null, amountCents = null, itemName = null, returnTo = true } = {}) {
+    const fallback = () => ({ url: tipLinkFor(pcUsername, ref, { purpose, amountCents, returnTo }), minted: false });
+    const conn = _mintHostConn(pcUsername);
+    if (!conn) { _mintWarn(pcUsername, 'no connected account with checkout:attribute for that username'); return fallback(); }
+    const cents = Math.round(Number(amountCents) || 0);
+    const base = { ref: String(ref) };
+    if (returnTo) base.redirect_uri = oauth.redirectUri();
+    if (purpose) base.purpose = String(purpose).slice(0, 64);
+    if (cents >= 50 && cents <= 1000000) base.amount_cents = String(cents);
+    const label = itemName ? String(itemName).replace(/\s+/g, ' ').trim().slice(0, 64) : '';
+    const attempt = async (withLabel) => {
+        const query = withLabel && label ? { ...base, item_name: label } : base;
+        const json = await oauth.apiRequest(conn.user_id, { method: 'GET', path: '/tip-checkout-link', username: pcUsername, query });
+        const url = (json && json.data && json.data.url) || (json && json.url) || null;
+        if (!url || !/^https?:\/\//i.test(String(url))) throw new Error('response carried no url');
+        return String(url);
+    };
+    try {
+        return { url: await attempt(true), minted: true };
+    } catch (e1) {
+        if (label && e1.status === 400) {
+            try { return { url: await attempt(false), minted: true }; } catch (e2) { e1 = e2; }
+        }
+        _mintWarn(pcUsername, `${e1.status || ''} ${e1.message}`.trim());
+        return fallback();
+    }
+}
+
 // ── Link builders ────────────────────────────────────────────
 // Buy Vibes: always the site account (the site must receive the money it mints
 // against). The checkout is PINNED to the package price and categorized "vibes".
-function buildPurchaseLink(order) {
+async function buildPurchaseLink(order) {
     const site = getSiteAccount();
     if (!site) return null;
-    return {
-        url: tipLinkFor(site.username, `pcorder:${order.id}`, {
-            purpose: 'vibes', amountCents: order.amount_cents, returnTo: true,
-        }),
-        mode: 'site',
-    };
+    const bucks = Number(order.bucks) || 0;
+    const link = await mintCheckoutLink(site.username, `pcorder:${order.id}`, {
+        purpose: 'vibes', amountCents: order.amount_cents, returnTo: true,
+        itemName: bucks ? `${bucks.toLocaleString()} Vibes` : 'Vibes',
+    });
+    return { url: link.url, mode: 'site', minted: link.minted };
 }
 
 // Subscription: streamer-direct when possible, site fallback otherwise.
@@ -101,20 +161,27 @@ function buildPurchaseLink(order) {
 // and the streamer receives their normal share of the BASE price). 'auto' = direct when
 // the streamer has PowerChat connected, else site.
 // provider_ref persists the decision: "direct[:renew]" | "site[:fee=<cents>][:renew]".
-function buildSubscribeLink(order, streamerUserId, { autoRenew = 0, route = 'auto', feeCents = 0 } = {}) {
+async function buildSubscribeLink(order, streamerUserId, { autoRenew = 0, route = 'auto', feeCents = 0 } = {}) {
     const suffix = autoRenew ? ':renew' : '';
-    const opts = { purpose: 'subscription', amountCents: order.amount_cents, returnTo: true };
+    const streamer = db.getUserById(streamerUserId);
+    const who = streamer ? (streamer.display_name || streamer.username) : 'channel';
+    const opts = {
+        purpose: 'subscription', amountCents: order.amount_cents, returnTo: true,
+        itemName: `${who} — 1 month subscription${autoRenew ? ' (auto-renew)' : ''}`,
+    };
     const direct = route !== 'site' ? _checkoutConn(streamerUserId) : null;
     if (direct) {
         db.updatePaymentOrder(order.id, { provider_ref: `direct${suffix}` });
-        return { url: tipLinkFor(direct.powerchat_username, `pcsub:${order.id}`, opts), mode: 'direct' };
+        const link = await mintCheckoutLink(direct.powerchat_username, `pcsub:${order.id}`, opts);
+        return { url: link.url, mode: 'direct', minted: link.minted };
     }
     if (route === 'direct') return null;   // caller asked for the streamer's page and they have none
     const site = getSiteAccount();
     if (!site) return null;
     const fee = Math.max(0, Math.round(Number(feeCents) || 0));
     db.updatePaymentOrder(order.id, { provider_ref: `site${fee ? `:fee=${fee}` : ''}${suffix}` });
-    return { url: tipLinkFor(site.username, `pcsub:${order.id}`, opts), mode: 'site', feeCents: fee };
+    const link = await mintCheckoutLink(site.username, `pcsub:${order.id}`, opts);
+    return { url: link.url, mode: 'site', feeCents: fee, minted: link.minted };
 }
 
 /** Which PowerChat subscription routes a streamer currently supports (for the UI). */
@@ -166,7 +233,8 @@ function handleAttributedDonation(receivingUserId, data) {
             if (!order || order.kind !== 'bucks') return true; // ours but unusable — never double-handle
             if (order.status === 'credited') return true;      // at-least-once redelivery
             if (usdCents < 1) return true;
-            // The tip page can't enforce an amount — credit what was ACTUALLY paid.
+            // Credit what was ACTUALLY paid (intents pin the amount; the canonical
+            // fallback link can't) — never the package price on faith.
             const pay = require('../monetization/payments');
             const bucks = pay.bucksForUsd(usdCents / 100);
             db.updatePaymentOrder(order.id, { amount_cents: usdCents, bucks, status: 'paid' });
@@ -181,7 +249,8 @@ function handleAttributedDonation(receivingUserId, data) {
             const order = db.getPaymentOrderById(Number(m[1]));
             if (!order || order.kind !== 'subscription' || !order.streamer_id) return true;
             if (order.status === 'credited') return true;
-            // Underpaid (tip page can't enforce amounts): treat the tip as a plain
+            // Underpaid (canonical-link fallback can't enforce amounts; minted intents
+            // can): treat the tip as a plain
             // donation to the order's streamer rather than silently activating a
             // discounted sub. Direct mode = the receiving account IS the streamer, so
             // falling through does the right thing; site mode routes explicitly.
@@ -244,7 +313,7 @@ function _notify(userId, title, message) {
 }
 
 module.exports = {
-    isAvailable, getSiteAccount, tipLinkFor, subscribeRoutes,
+    isAvailable, getSiteAccount, tipLinkFor, mintCheckoutLink, subscribeRoutes,
     buildPurchaseLink, buildSubscribeLink, buildDonateLink,
     handleAttributedDonation,
 };

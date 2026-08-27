@@ -61,9 +61,9 @@ router.post('/bucks/checkout', requireAuth, async (req, res) => {
         }
         if (provider === 'powerchat') {
             // Tip the site's PowerChat account; the checkout is PINNED to the package
-            // price (app_amount_cents locks the tip page's amount picker) and the
+            // price (a server-minted intent locks the tip page's amount) and the
             // donation.completed webhook credits the buyer once it confirms.
-            const link = require('../integrations/powerchat-checkout').buildPurchaseLink(order);
+            const link = await require('../integrations/powerchat-checkout').buildPurchaseLink(order);
             if (!link) { db.updatePaymentOrder(order.id, { status: 'failed' }); return res.status(400).json({ error: 'PowerChat purchases are not available right now' }); }
             return res.json({
                 url: link.url, powerchat: true, amountUsd,
@@ -148,7 +148,7 @@ router.post('/subscribe', requireAuth, async (req, res) => {
             user_id: req.user.id, provider: 'powerchat', kind: 'subscription',
             amount_cents: totalCents, streamer_id: streamer.id,
         });
-        const link = checkout.buildSubscribeLink(order, streamer.id, { autoRenew, route: wantSite ? 'site' : 'direct', feeCents });
+        const link = await checkout.buildSubscribeLink(order, streamer.id, { autoRenew, route: wantSite ? 'site' : 'direct', feeCents });
         if (!link) { db.updatePaymentOrder(order.id, { status: 'failed' }); return res.status(400).json({ error: 'PowerChat payments are not available right now' }); }
         const totalUsd = totalCents / 100;
         return res.json({
