@@ -36,8 +36,14 @@ function bucksForUsd(usd) {
 /** Public provider availability + pricing for the client. */
 function publicConfig() {
     const hb = require('./vibes');
+    const powerchatAvailable = (() => { try { return require('../integrations/powerchat-checkout').isAvailable(); } catch { return false; } })();
     return {
-        enabled: isEnabled(),
+        // "Something can be bought here": the card/PayPal master switch OR PowerChat.
+        // (The old flag hid the subscribe modal entirely whenever the master switch was
+        // off — even for streamers with PowerChat fully set up.)
+        enabled: isEnabled() || powerchatAvailable,
+        paymentsMaster: isEnabled(),
+        subSiteRouteFeePct: n('sub_site_route_fee_pct', 10),
         // Bit-style: 100 bucks = $1 cashout. Buy packages carry a per-buck premium.
         cashoutBucksPerUsd: hb.CASHOUT_BUCKS_PER_USD,
         packages: hb.BUCKS_PACKAGES,
@@ -52,7 +58,7 @@ function publicConfig() {
             // payments master switch — it has its own enablement (powerchat_enabled +
             // the site tips account), so Vibes can be bought via PowerChat even while
             // the card/PayPal rails are off. Lazy require: circular with this module.
-            powerchat: (() => { try { return require('../integrations/powerchat-checkout').isAvailable(); } catch { return false; } })(),
+            powerchat: powerchatAvailable,
         },
         stripePublishableKey: s('stripe_publishable_key'),
     };
@@ -254,7 +260,7 @@ function fulfillBucksOrder(order) {
  *  creditShare=false: the streamer already received the money directly (e.g. a
  *  PowerChat tip on their own page) — activate the sub without minting their
  *  cashout-Vibes share on top. autoRenew: null leaves the sub's flag untouched. */
-function fulfillSubscriptionOrder(order, { providerRef = null, periodEnd = null, creditShare = true, autoRenew = null } = {}) {
+function fulfillSubscriptionOrder(order, { providerRef = null, periodEnd = null, creditShare = true, autoRenew = null, shareBaseCents = null } = {}) {
     if (!order || !order.streamer_id) return null;
     const end = periodEnd || new Date(Date.now() + 31 * 24 * 3600 * 1000).toISOString();
     // Note BEFORE the upsert whether this subscriber already had a sub row — that makes
@@ -271,7 +277,10 @@ function fulfillSubscriptionOrder(order, { providerRef = null, periodEnd = null,
         // Pay the streamer their share as Vibes — this is income they received, so
         // it lands in their cashout balance (the only cashout-able balance).
         const sharePct = n('sub_streamer_share_pct', 70);
-        const streamerBucks = creditShare ? bucksForUsd((order.amount_cents / 100) * (sharePct / 100)) : 0;
+        // shareBaseCents: the sub price EXCLUDING any platform routing fee the subscriber
+        // paid on top (site-routed PowerChat subs) — the fee is the site's, not shareable.
+        const baseCents = shareBaseCents != null ? shareBaseCents : order.amount_cents;
+        const streamerBucks = creditShare ? bucksForUsd((baseCents / 100) * (sharePct / 100)) : 0;
         if (streamerBucks > 0) db.addVibesCashout(order.streamer_id, streamerBucks);
         db.updatePaymentOrder(order.id, { status: 'credited' });
         // Fire the sub on the streamer's PowerChat overlay (subscriptions:write) —
