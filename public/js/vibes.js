@@ -130,15 +130,27 @@ async function _initSubscribe() {
     const priceLine = document.getElementById('sub-price-line');
     if (priceLine) priceLine.textContent = `$${(info.priceUsd || cfg.subPriceUsd || 4.99).toFixed(2)}/month · ${info.subscriberCount || 0} subscriber${info.subscriberCount === 1 ? '' : 's'}`;
     if (info.subscribed) { box.innerHTML = '<p style="text-align:center;color:#53fc18"><i class="fa-solid fa-circle-check"></i> You’re subscribed!</p>'; return; }
-    if (!cfg.enabled) { box.innerHTML = '<p class="muted" style="text-align:center">Subscriptions aren’t available right now.</p>'; return; }
+    const pc = info.powerchat || {};
+    const price = Number(info.priceUsd || cfg.subPriceUsd || 4.99);
+    const anyPowerchat = !!(pc.direct || pc.site);
+    if (!cfg.enabled && !anyPowerchat) { box.innerHTML = '<p class="muted" style="text-align:center">Subscriptions aren’t available right now.</p>'; return; }
     let html = '';
-    if (cfg.providers && cfg.providers.stripe) {
-        html += `<button class="btn btn-lg btn-primary" style="width:100%;margin-top:8px;justify-content:center" onclick="doSubscribe('${username}','stripe')"><i class="fa-solid fa-credit-card"></i> Subscribe with Card (auto-renews)</button>`;
+    const name = (typeof esc === 'function' ? esc(username) : String(username || ''));
+    if (cfg.paymentsMaster && cfg.providers && cfg.providers.stripe) {
+        html += `<button class="btn btn-lg btn-primary" style="width:100%;margin-top:8px;justify-content:center" onclick="doSubscribe('${username}','stripe')"><i class="fa-solid fa-credit-card"></i> Subscribe with Card — $${price.toFixed(2)}/mo (auto-renews)</button>`;
+    }
+    // PowerChat — the streamer's own page first (100% to them, no fee); OpenVibe's
+    // account as the fallback/alternative with a small platform fee on top.
+    if (pc.direct) {
+        html += `<button class="btn btn-lg" style="width:100%;margin-top:8px;justify-content:center;background:#8b5cf6;color:#fff;border:none" onclick="doSubscribe('${username}','powerchat')"><i class="fa-solid fa-bolt"></i> Subscribe via ${name}’s PowerChat — $${price.toFixed(2)}</button>
+            <div class="muted" style="font-size:0.78rem;text-align:center;margin-top:4px"><i class="fa-solid fa-star" style="color:#f59e0b"></i> Recommended — no fee, the money goes straight to ${name}.</div>`;
+    }
+    if (pc.site) {
+        const total = Number(pc.siteTotalUsd || price);
+        html += `<button class="btn btn-lg" style="width:100%;margin-top:8px;justify-content:center;background:${pc.direct ? 'var(--bg-tertiary)' : '#8b5cf6'};color:${pc.direct ? 'var(--text-primary)' : '#fff'};border:1px solid var(--border)" onclick="doSubscribe('${username}','powerchat_site')"><i class="fa-solid fa-bolt"></i> Subscribe via OpenVibe’s PowerChat — $${total.toFixed(2)}</button>
+            <div class="muted" style="font-size:0.78rem;text-align:center;margin-top:4px">Includes a ${Number(pc.feePct || 0)}% platform fee${pc.direct ? ` — subscribe through ${name}’s own PowerChat above to avoid it` : ''}.</div>`;
     }
     html += `<button class="btn btn-lg" style="width:100%;margin-top:8px;justify-content:center;background:var(--accent);color:#111;border:none" onclick="doSubscribe('${username}','bucks')"><i class="fa-solid fa-coins"></i> Subscribe with Vibes</button>`;
-    if (cfg.providers && cfg.providers.powerchat) {
-        html += `<button class="btn btn-lg" style="width:100%;margin-top:8px;justify-content:center;background:#8b5cf6;color:#fff;border:none" onclick="doSubscribe('${username}','powerchat')"><i class="fa-solid fa-bolt"></i> Subscribe with PowerChat tip</button>`;
-    }
     // Non-card methods can't be re-charged by the processor, so renewal draws from the
     // Vibes balance — this toggle covers the Vibes and PowerChat buttons.
     html += `<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:0.85rem;cursor:pointer">

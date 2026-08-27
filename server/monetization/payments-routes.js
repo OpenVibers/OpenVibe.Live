@@ -99,8 +99,11 @@ router.get('/paypal/return', async (req, res) => {
 
 // ── Subscriptions ────────────────────────────────────────────
 router.post('/subscribe', requireAuth, async (req, res) => {
-    if (!pay.isEnabled()) return res.status(403).json({ error: 'Payments are not enabled' });
     const provider = String(req.body.provider || '').toLowerCase();
+    // PowerChat subs run on PowerChat's own enablement; the payments master switch only
+    // gates the card/PayPal/Vibes-purchase rails.
+    const viaPowerchat = provider === 'powerchat' || provider === 'powerchat_site';
+    if (!pay.isEnabled() && !viaPowerchat && provider !== 'bucks') return res.status(403).json({ error: 'Payments are not enabled' });
     const streamer = db.getUserByUsername(String(req.body.streamer || ''));
     if (!streamer) return res.status(404).json({ error: 'Streamer not found' });
     if (streamer.id === req.user.id) return res.status(400).json({ error: 'You cannot subscribe to yourself' });
@@ -128,17 +131,31 @@ router.post('/subscribe', requireAuth, async (req, res) => {
     // holds the money and the streamer gets their normal cashout-Vibes share). The
     // donation.completed webhook confirms and activates the sub. Renewals come from
     // the Vibes balance when auto_renew is on (a tip can't be auto-charged).
-    if (provider === 'powerchat') {
+    if (viaPowerchat) {
         const autoRenew = req.body.auto_renew ? 1 : 0;
+        const checkout = require('../integrations/powerchat-checkout');
+        const routes = checkout.subscribeRoutes(streamer.id);
+        // 'powerchat' = the streamer's own PowerChat (no fee). 'powerchat_site' = OpenVibe's
+        // PowerChat account with the platform routing fee on top. A plain 'powerchat'
+        // request for a streamer without PowerChat falls back to the site route (+fee) so
+        // older clients keep working — the new UI always asks explicitly.
+        const wantSite = provider === 'powerchat_site' || !routes.direct;
+        if (wantSite && !routes.site) return res.status(400).json({ error: 'PowerChat payments are not available right now' });
+        const feePct = wantSite ? pay._num('sub_site_route_fee_pct', 10) : 0;
+        const feeCents = wantSite ? Math.round(amountCents * feePct / 100) : 0;
+        const totalCents = amountCents + feeCents;
         const order = db.createPaymentOrder({
             user_id: req.user.id, provider: 'powerchat', kind: 'subscription',
-            amount_cents: amountCents, streamer_id: streamer.id,
+            amount_cents: totalCents, streamer_id: streamer.id,
         });
-        const link = require('../integrations/powerchat-checkout').buildSubscribeLink(order, streamer.id, { autoRenew });
+        const link = checkout.buildSubscribeLink(order, streamer.id, { autoRenew, route: wantSite ? 'site' : 'direct', feeCents });
         if (!link) { db.updatePaymentOrder(order.id, { status: 'failed' }); return res.status(400).json({ error: 'PowerChat payments are not available right now' }); }
+        const totalUsd = totalCents / 100;
         return res.json({
-            url: link.url, powerchat: true, amountUsd: priceUsd,
-            note: `Tip $${priceUsd.toFixed(2)} on PowerChat — your subscription activates automatically once the tip confirms.`,
+            url: link.url, powerchat: true, route: link.mode, amountUsd: totalUsd, feeUsd: feeCents / 100,
+            note: link.mode === 'direct'
+                ? `Tip $${totalUsd.toFixed(2)} on ${streamer.display_name || streamer.username}'s PowerChat — your subscription activates automatically once the tip confirms.`
+                : `Tip $${totalUsd.toFixed(2)} on OpenVibe's PowerChat (includes a $${(feeCents / 100).toFixed(2)} platform fee) — your subscription activates automatically once the tip confirms.`,
         });
     }
 
@@ -174,7 +191,15 @@ router.get('/channel/:username', optionalAuth, (req, res) => {
     const streamer = db.getUserByUsername(req.params.username);
     if (!streamer) return res.status(404).json({ error: 'Not found' });
     const subscribed = req.user ? db.isActiveSubscriber(req.user.id, streamer.id) : false;
-    res.json({ subscribed, subscriberCount: db.getActiveSubscriberCount(streamer.id), priceUsd: pay._num('sub_price_usd', 4.99) });
+    const priceUsd = pay._num('sub_price_usd', 4.99);
+    let powerchat = { direct: false, site: false };
+    try { powerchat = require('../integrations/powerchat-checkout').subscribeRoutes(streamer.id); } catch { /* */ }
+    const feePct = pay._num('sub_site_route_fee_pct', 10);
+    const siteFeeUsd = Math.round(priceUsd * 100 * feePct / 100) / 100;
+    res.json({
+        subscribed, subscriberCount: db.getActiveSubscriberCount(streamer.id), priceUsd,
+        powerchat: { ...powerchat, feePct, siteFeeUsd, siteTotalUsd: Math.round((priceUsd + siteFeeUsd) * 100) / 100 },
+    });
 });
 
 // Cancel a subscription (Stripe: at period end; bucks: immediate)

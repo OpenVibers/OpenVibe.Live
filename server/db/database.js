@@ -1003,6 +1003,7 @@ function initDb() {
             ['bucks_min_purchase_bucks', '100', 'Minimum Vibes purchase (bucks)', 'number'],
             ['sub_price_usd', '4.99', 'Monthly channel subscription price in USD', 'number'],
             ['sub_streamer_share_pct', '70', 'Percent of a subscription that goes to the streamer (as Vibes)', 'number'],
+            ['sub_site_route_fee_pct', '10', 'Platform fee (%) added when someone subscribes through OpenVibe\'s PowerChat account instead of the streamer\'s own', 'number'],
             // PayPal (REST)
             ['paypal_enabled', 'false', 'Enable PayPal', 'boolean'],
             ['paypal_mode', 'sandbox', 'PayPal mode: sandbox | live', 'string'],

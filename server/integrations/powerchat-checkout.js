@@ -96,20 +96,30 @@ function buildPurchaseLink(order) {
 // The chosen mode (and the subscriber's auto-renew wish) is persisted on the order's
 // provider_ref ("direct" | "site", ":renew" suffix) — webhook fulfillment reads it to
 // decide the streamer share and the sub's auto_renew flag.
-function buildSubscribeLink(order, streamerUserId, { autoRenew = 0 } = {}) {
+// route: 'direct' (the streamer's own PowerChat — they keep 100%, no fee) or 'site'
+// (OpenVibe's PowerChat account — a small platform fee is added on top of the sub price
+// and the streamer receives their normal share of the BASE price). 'auto' = direct when
+// the streamer has PowerChat connected, else site.
+// provider_ref persists the decision: "direct[:renew]" | "site[:fee=<cents>][:renew]".
+function buildSubscribeLink(order, streamerUserId, { autoRenew = 0, route = 'auto', feeCents = 0 } = {}) {
     const suffix = autoRenew ? ':renew' : '';
-    // Sub checkouts are PINNED to the sub price (no more underpaid tips to
-    // gracefully degrade) and categorized "subscription".
     const opts = { purpose: 'subscription', amountCents: order.amount_cents, returnTo: true };
-    const direct = _checkoutConn(streamerUserId);
+    const direct = route !== 'site' ? _checkoutConn(streamerUserId) : null;
     if (direct) {
         db.updatePaymentOrder(order.id, { provider_ref: `direct${suffix}` });
         return { url: tipLinkFor(direct.powerchat_username, `pcsub:${order.id}`, opts), mode: 'direct' };
     }
+    if (route === 'direct') return null;   // caller asked for the streamer's page and they have none
     const site = getSiteAccount();
     if (!site) return null;
-    db.updatePaymentOrder(order.id, { provider_ref: `site${suffix}` });
-    return { url: tipLinkFor(site.username, `pcsub:${order.id}`, opts), mode: 'site' };
+    const fee = Math.max(0, Math.round(Number(feeCents) || 0));
+    db.updatePaymentOrder(order.id, { provider_ref: `site${fee ? `:fee=${fee}` : ''}${suffix}` });
+    return { url: tipLinkFor(site.username, `pcsub:${order.id}`, opts), mode: 'site', feeCents: fee };
+}
+
+/** Which PowerChat subscription routes a streamer currently supports (for the UI). */
+function subscribeRoutes(streamerUserId) {
+    return { direct: !!_checkoutConn(streamerUserId), site: !!getSiteAccount() };
 }
 
 // Donation: streamer's own page when they have PowerChat (the normal
@@ -177,6 +187,7 @@ function handleAttributedDonation(receivingUserId, data) {
             // falling through does the right thing; site mode routes explicitly.
             const mode = String(order.provider_ref || 'site').split(':')[0];
             const autoRenew = /:renew$/.test(String(order.provider_ref || '')) ? 1 : 0;
+            const feeCents = Number((String(order.provider_ref || '').match(/:fee=(\d+)/) || [])[1] || 0);
             if (usdCents + 1 < (order.amount_cents || 0)) {
                 console.warn(`[PowerChat] sub order ${order.id} underpaid (${_usd(usdCents)} < ${_usd(order.amount_cents)}) — treating as a donation`);
                 if (mode === 'site') { _creditSiteRoutedDonation(order.streamer_id, order.user_id, data); return true; }
@@ -185,7 +196,8 @@ function handleAttributedDonation(receivingUserId, data) {
             const pay = require('../monetization/payments');
             db.updatePaymentOrder(order.id, { status: 'paid' });
             // Streamer-direct: they already hold the cash — no cashout-Vibes share.
-            pay.fulfillSubscriptionOrder(db.getPaymentOrderById(order.id), { creditShare: mode !== 'direct', autoRenew });
+            // Site route: the streamer's share is computed on the sub price, not on the fee.
+            pay.fulfillSubscriptionOrder(db.getPaymentOrderById(order.id), { creditShare: mode !== 'direct', autoRenew, shareBaseCents: Math.max(0, (order.amount_cents || 0) - feeCents) });
             _notify(order.user_id, 'Subscribed! ⭐', 'Your PowerChat tip was confirmed — your channel subscription is active.');
             console.log(`[PowerChat] sub order ${order.id} activated via PowerChat (${order.provider_ref}) for user ${order.user_id}`);
             return true;
@@ -232,7 +244,7 @@ function _notify(userId, title, message) {
 }
 
 module.exports = {
-    isAvailable, getSiteAccount, tipLinkFor,
+    isAvailable, getSiteAccount, tipLinkFor, subscribeRoutes,
     buildPurchaseLink, buildSubscribeLink, buildDonateLink,
     handleAttributedDonation,
 };
