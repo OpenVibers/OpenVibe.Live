@@ -65,6 +65,7 @@ Standalone Node scripts in `test/` using `assert`. They create temp SQLite datab
 
 - [docs/architecture.md](docs/architecture.md) — System design, data flows, module map
 - [docs/broadcasting.md](docs/broadcasting.md) — Streaming protocols (WebRTC/RTMP/JSMPEG/WHIP)
+- [docs/whip.md](docs/whip.md) — WHIP ingest API reference (auth forms, CORS, browser-only publishing, error codes)
 - [docs/chat-system.md](docs/chat-system.md) — Chat features and moderation
 - [docs/api-tokens.md](docs/api-tokens.md) — Bot/integration token system
 - [docs/vods-and-clips.md](docs/vods-and-clips.md) — VOD/clip pipeline (pre-split; storage/cutting now in OpenVibe.Media)

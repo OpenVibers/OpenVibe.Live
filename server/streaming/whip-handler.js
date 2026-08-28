@@ -54,10 +54,53 @@ function buildWhipResourceUrl(req, streamId, resourceId) {
     }
 }
 
+// ── CORS ─────────────────────────────────────────────────────
+// WHIP is authenticated by the stream key (path / Bearer / ?key=) and never by a
+// cookie or browser session, so the endpoint can safely be opened to *every* origin.
+// That is what lets a purely static site (GitHub Pages, a local index.html, a
+// Cloudflare Pages app…) publish straight from `RTCPeerConnection` + `fetch()` with
+// no backend of its own — see docs/whip.md. The global CORS middleware in
+// server/index.js is credentialed and allowlisted (it protects the cookie-authenticated
+// /api routes), so /whip/* is exempted from it and handled here instead.
+//
+// `Location` must be exposed or a browser cannot read the resource URL it needs for
+// PATCH/DELETE; `X-WHIP-ERROR` is exposed so a client can show the machine-readable
+// error code instead of a bare status.
+const WHIP_CORS_HEADERS = Object.freeze({
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, PATCH, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, If-Match',
+    'Access-Control-Expose-Headers': 'Location, X-WHIP-ERROR',
+    'Access-Control-Max-Age': '86400',
+    // Helmet defaults CORP to same-origin; a CORS-mode fetch is not subject to it,
+    // but be explicit so nothing upstream can turn the response opaque.
+    'Cross-Origin-Resource-Policy': 'cross-origin',
+});
+
+function applyWhipCorsHeaders(res) {
+    for (const [name, value] of Object.entries(WHIP_CORS_HEADERS)) {
+        res.set(name, value);
+    }
+    return res;
+}
+
+/**
+ * Express middleware for everything under /whip. Stamps the open CORS headers on the
+ * response up-front (so error responses from the handlers carry them too) and answers
+ * preflights directly.
+ */
+function whipCors(req, res, next) {
+    applyWhipCorsHeaders(res);
+    if (req.method === 'OPTIONS') {
+        return res.status(204).end();
+    }
+    next();
+}
+
 function buildWhipResponseHeaders(req, streamId, resourceId) {
     return {
         Location: buildWhipResourceUrl(req, streamId, resourceId),
-        'Access-Control-Expose-Headers': 'Location',
+        'Access-Control-Expose-Headers': WHIP_CORS_HEADERS['Access-Control-Expose-Headers'],
     };
 }
 
@@ -403,7 +446,11 @@ function buildSdpAnswer(transport, offerSdp, producersByKind) {
     const { iceParameters, iceCandidates, dtlsParameters } = transport;
     const fingerprint = selectDtlsFingerprint(dtlsParameters.fingerprints);
     const setup = getDtlsSetupAttribute(offerSdp) === 'passive' ? 'active' : 'passive';
-    const mids = [];
+    // Only *accepted* m-sections go in the BUNDLE group. RFC 8843 §7.3.3 forbids listing a
+    // rejected (port 0) section there, and browsers enforce it — Chrome/Firefox refuse the
+    // whole answer, which is fatal for a browser publisher whose extra m-section (e.g. a
+    // data channel, or a codec the router lacks) we cannot accept. OBS never checked.
+    const bundledMids = [];
 
     const serverAddress = iceCandidates?.[0]?.ip || config.mediasoup.announcedIp || '127.0.0.1';
     const sdpObj = {
@@ -417,9 +464,8 @@ function buildSdpAnswer(transport, offerSdp, producersByKind) {
         media: [],
     };
 
-    for (const offerMedia of offerSdp.media || []) {
-        const mid = offerMedia.mid != null ? String(offerMedia.mid) : String(mids.length);
-        mids.push(mid);
+    for (const [mediaIndex, offerMedia] of (offerSdp.media || []).entries()) {
+        const mid = offerMedia.mid != null ? String(offerMedia.mid) : String(mediaIndex);
 
         const producer = producersByKind[offerMedia.type];
         if (!producer) {
@@ -427,12 +473,16 @@ function buildSdpAnswer(transport, offerSdp, producersByKind) {
                 type: offerMedia.type,
                 port: 0,
                 protocol: offerMedia.protocol || 'UDP/TLS/RTP/SAVPF',
-                payloads: '0',
+                // Echo the offered format list: a rejected section must still be
+                // syntactically complete, and for m=application the "payload" is the
+                // literal `webrtc-datachannel` token, not a number.
+                payloads: String(offerMedia.payloads || '0'),
                 mid,
                 direction: 'inactive',
             });
             continue;
         }
+        bundledMids.push(mid);
 
         const answerMedia = {
             type: offerMedia.type,
@@ -498,8 +548,8 @@ function buildSdpAnswer(transport, offerSdp, producersByKind) {
         sdpObj.media.push(answerMedia);
     }
 
-    if (mids.length > 0) {
-        sdpObj.groups.push({ type: 'BUNDLE', mids: mids.join(' ') });
+    if (bundledMids.length > 0) {
+        sdpObj.groups.push({ type: 'BUNDLE', mids: bundledMids.join(' ') });
     }
 
     return sdpTransform.write(sdpObj);
@@ -1030,11 +1080,7 @@ function handleWhipDelete(req, res) {
  * OPTIONS /whip/* — CORS/discovery
  */
 function handleWhipOptions(req, res) {
-    res.status(204)
-        .set('Access-Control-Allow-Methods', 'POST, PATCH, DELETE, OPTIONS')
-        .set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-        .set('Access-Control-Expose-Headers', 'Location')
-        .end();
+    applyWhipCorsHeaders(res.status(204)).end();
 }
 
 /**
@@ -1101,6 +1147,9 @@ module.exports = {
     handleWhipPatch,
     handleWhipDelete,
     handleWhipOptions,
+    whipCors,
+    applyWhipCorsHeaders,
+    WHIP_CORS_HEADERS,
     buildWhipResourceUrl,
     buildWhipResponseHeaders,
     hasSfuProducers,

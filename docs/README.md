@@ -2,7 +2,8 @@
 
 ## Getting Started
 - [Onboarding Guide](onboarding.md) — New user walkthrough
-- [Broadcasting Guide](broadcasting.md) — Stream setup for WebRTC, RTMP, and JSMPEG
+- [Broadcasting Guide](broadcasting.md) — Stream setup for WebRTC, RTMP, WHIP, and JSMPEG
+- [WHIP Ingest API](whip.md) — WHIP endpoint reference, CORS, error codes · [Publishing from a browser](whip.md#publishing-from-a-browser) (static site, no backend)
 
 ## Features
 - [Chat System](chat-system.md) — Chat features, moderation, popout chat, TTS

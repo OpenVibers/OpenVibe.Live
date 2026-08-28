@@ -1,6 +1,6 @@
 # Broadcasting Guide
 
-OpenVibe.Live supports three live broadcast protocols, each suited to different use cases.
+OpenVibe.Live supports four live broadcast methods, each suited to different use cases.
 
 ## Broadcast Methods
 
@@ -15,6 +15,12 @@ OpenVibe.Live supports three live broadcast protocols, each suited to different 
 - **Latency**: 2-5 seconds
 - **Setup**: Copy Server URL and Stream Key into OBS
 - **Features**: Full OBS feature set, live thumbnail preview on broadcast page
+
+### WHIP (OBS, FFmpeg, GStreamer — or any web page)
+- **Best for**: WebRTC-native encoders and custom publishers, including browser-only sites
+- **Latency**: Sub-second
+- **Setup**: Choose *Streaming method: WHIP*, copy the WHIP URL into OBS (Service: WHIP) or `ffmpeg -f whip`
+- **Features**: VP8/H.264 + Opus, auto-creates the live session on first POST, open CORS so a static page can publish with `RTCPeerConnection` + `fetch()` — see the [WHIP Ingest API](whip.md) / [Publishing from a browser](whip.md#publishing-from-a-browser) and the hosted [browser publisher](https://openvibe.live/whip-publisher.html)
 
 ### JSMPEG (FFmpeg)
 - **Best for**: Headless/embedded streaming (Raspberry Pi, IP cameras, 3D printers)
