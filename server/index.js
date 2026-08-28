@@ -215,7 +215,10 @@ app.set('trust proxy', 2); // Two hops: Cloudflare → nginx → Node
 // The hosted browser WHIP publisher (/whip-publisher.html) POSTs its SDP offer to the
 // dedicated WHIP host when one is configured (whip.openvibe.live), which is a different
 // origin from the page itself and would otherwise be blocked by connect-src 'self'.
-const whipConnectOrigin = (config.whip?.enabled && normalizeOrigin(config.whip?.publicUrl)) || null;
+// Resolved per request, not at boot: config.whip is (re)filled by the URL-registry refresh
+// in start(), which runs after this middleware is built — a value captured here would be
+// the env default, not the registry's. A duplicate 'self' is a valid no-op when unset.
+const whipConnectSrc = () => (config.whip?.enabled && normalizeOrigin(config.whip?.publicUrl)) || "'self'";
 
 app.use(helmet({
     contentSecurityPolicy: {
@@ -229,7 +232,7 @@ app.use(helmet({
             // every queued item renders as a broken image, which is what the media
             // request tab was doing for every YouTube link.
             imgSrc: ["'self'", "data:", "blob:", "image.tmdb.org", "https://openvibe.network", "https://openvibe.media", "cdn.frankerfacez.com", "cdn.betterttv.net", "cdn.7tv.app", "https://files.kick.com", "https://i.ytimg.com", "https://img.youtube.com", "https://i.vimeocdn.com"],
-            connectSrc: ["'self'", "wss:", "https://openvibe.network", "https://openvibe.media", "https://openvibe.games", "https://cdn.jsdelivr.net", "https://esm.sh", "https://static.cloudflareinsights.com", ...(whipConnectOrigin ? [whipConnectOrigin] : [])],
+            connectSrc: ["'self'", "wss:", "https://openvibe.network", "https://openvibe.media", "https://openvibe.games", "https://cdn.jsdelivr.net", "https://esm.sh", "https://static.cloudflareinsights.com", whipConnectSrc],
             // VODs/clips play from openvibe.media (the /api proxies 302 there), which may
             // itself redirect to presigned B2/R2 object-store URLs — all must be allowed
             // or the browser blocks the media element.
