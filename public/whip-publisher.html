@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser WHIP Publisher — OpenVibe.Live</title>
+    <!--
+        OpenVibe.Live — browser-only WHIP publisher.
+
+        This page has NO backend and NO dependencies. It is one self-contained HTML file
+        that publishes your camera + mic (or your screen) to an OpenVibe.Live WHIP endpoint
+        using nothing but RTCPeerConnection and fetch(). Save it, host it anywhere
+        (GitHub Pages, Cloudflare Pages, Netlify, a local file://), or lift the script
+        into your own site.
+
+        Protocol walkthrough + API reference:
+        https://github.com/OpenVibers/OpenVibe.Live/blob/main/docs/whip.md
+
+        Programmatic use: window.OpenVibeWhip.start({ url, token, source, maxBitrate })
+                          window.OpenVibeWhip.stop()
+                          window.OpenVibeWhip.state   → { phase, connectionState, resourceUrl, error }
+    -->
+    <style>
+        :root {
+            --bg: #0d0d0f; --bg-2: #16161a; --bg-3: #1e1e24; --bg-input: #12121a;
+            --text: #e8e6e3; --text-2: #9a9a9a; --muted: #666;
+            --accent: #8b5cf6; --accent-light: #a78bfa; --accent-dark: #6d28d9;
+            --ok: #2ecc71; --warn: #f1c40f; --bad: #e74c3c; --border: #2a2a32;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+        a { color: var(--accent-light); }
+        main { max-width: 900px; margin: 0 auto; padding: 24px 16px 48px; }
+        h1 { font-size: 1.35rem; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
+        h1 .logo { width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), var(--accent-dark)); display: inline-block; }
+        .sub { color: var(--text-2); margin: 0 0 20px; font-size: 0.92rem; }
+        .card { background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+        label { display: block; font-size: 0.8rem; color: var(--text-2); margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+        input, select { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); font: inherit; }
+        input:focus, select:focus { outline: none; border-color: var(--accent); }
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        @media (max-width: 600px) { .row { grid-template-columns: 1fr; } }
+        .actions { display: flex; gap: 10px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+        button { padding: 10px 18px; border-radius: 8px; border: 1px solid transparent; font: inherit; font-weight: 600; cursor: pointer; }
+        button:disabled { opacity: 0.45; cursor: not-allowed; }
+        .btn-go { background: var(--accent); color: #fff; }
+        .btn-go:not(:disabled):hover { background: var(--accent-dark); }
+        .btn-stop { background: transparent; color: var(--bad); border-color: var(--bad); }
+        .btn-stop:not(:disabled):hover { background: rgba(231, 76, 60, 0.12); }
+        .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: var(--bg-3); font-size: 0.85rem; color: var(--text-2); }
+        .pill::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+        .pill[data-phase="connecting"]::before, .pill[data-phase="starting"]::before { background: var(--warn); }
+        .pill[data-phase="live"]::before { background: var(--ok); box-shadow: 0 0 0 4px rgba(46, 204, 113, 0.18); }
+        .pill[data-phase="error"]::before { background: var(--bad); }
+        video { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 10px; display: block; }
+        .stats { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; font-size: 0.85rem; color: var(--text-2); font-variant-numeric: tabular-nums; }
+        .stats b { color: var(--text); font-weight: 600; }
+        pre.log { margin: 0; max-height: 220px; overflow: auto; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text-2); white-space: pre-wrap; word-break: break-word; }
+        pre.log .err { color: var(--bad); } pre.log .ok { color: var(--ok); }
+        .hint { font-size: 0.82rem; color: var(--muted); margin-top: 6px; }
+        .hint code { background: var(--bg-3); padding: 1px 5px; border-radius: 4px; color: var(--text-2); }
+    </style>
+</head>
+<body>
+<main>
+    <h1><span class="logo"></span> Browser WHIP Publisher</h1>
+    <p class="sub">Go live on OpenVibe.Live from any web page — no OBS, no backend, no libraries. Just this file.</p>
+
+    <div class="card">
+        <label for="whip-url">WHIP URL</label>
+        <input id="whip-url" type="url" placeholder="https://whip.openvibe.live/whip/&lt;your-stream-key&gt;" autocomplete="off" spellcheck="false">
+        <p class="hint">Copy it from <strong>Broadcast → your stream → Streaming method: WHIP</strong>. The key inside the URL is your credential — treat the URL like a password. It is remembered in this browser only.</p>
+
+        <label for="whip-token">Bearer token <span style="text-transform:none;letter-spacing:0">(optional — only needed if your URL uses the numeric slot form <code>/whip/42</code>)</span></label>
+        <input id="whip-token" type="password" placeholder="stream key" autocomplete="off">
+
+        <div class="row">
+            <div>
+                <label for="whip-source">Source</label>
+                <select id="whip-source">
+                    <option value="camera">Camera + microphone</option>
+                    <option value="screen">Screen / window (+ system audio if offered)</option>
+                </select>
+            </div>
+            <div>
+                <label for="whip-quality">Quality</label>
+                <select id="whip-quality">
+                    <option value="1280x720@2500">720p · 2.5 Mbps</option>
+                    <option value="1920x1080@4500">1080p · 4.5 Mbps</option>
+                    <option value="854x480@1200">480p · 1.2 Mbps</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button id="whip-start" class="btn-go">Go live</button>
+            <button id="whip-stop" class="btn-stop" disabled>Stop</button>
+            <span id="whip-status" class="pill" data-phase="idle">Idle</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <video id="whip-preview" autoplay muted playsinline></video>
+        <div class="stats">
+            <span>Bitrate <b id="st-bitrate">–</b></span>
+            <span>FPS <b id="st-fps">–</b></span>
+            <span>Resolution <b id="st-res">–</b></span>
+            <span>Codec <b id="st-codec">–</b></span>
+            <span>Uptime <b id="st-uptime">–</b></span>
+        </div>
+    </div>
+
+    <div class="card">
+        <pre id="whip-log" class="log">Ready.</pre>
+    </div>
+
+    <p class="hint">How it works: the page calls <code>getUserMedia</code>, builds a WebRTC offer, <code>POST</code>s it as <code>application/sdp</code> to the WHIP URL, applies the SDP answer, and <code>DELETE</code>s the returned resource when you stop. Full protocol notes in <a href="https://github.com/OpenVibers/OpenVibe.Live/blob/main/docs/whip.md">docs/whip.md</a>. View-source this page to copy it.</p>
+</main>
+
+<script>
+(() => {
+    'use strict';
+
+    const $ = (id) => document.getElementById(id);
+    const els = {
+        url: $('whip-url'), token: $('whip-token'), source: $('whip-source'), quality: $('whip-quality'),
+        start: $('whip-start'), stop: $('whip-stop'), status: $('whip-status'), preview: $('whip-preview'), log: $('whip-log'),
+        bitrate: $('st-bitrate'), fps: $('st-fps'), res: $('st-res'), codec: $('st-codec'), uptime: $('st-uptime'),
+    };
+    const STORAGE_KEY = 'openvibe-whip-url';
+
+    const state = {
+        phase: 'idle',          // idle | starting | connecting | live | error
+        connectionState: null,
+        resourceUrl: null,      // WHIP resource (Location header) — DELETE it to end the session
+        error: null,
+        pc: null,
+        stream: null,
+        startedAt: null,
+        statsTimer: null,
+        lastStats: null,
+    };
+
+    // ── UI helpers ─────────────────────────────────────────────
+    function log(message, cls) {
+        const line = document.createElement('div');
+        if (cls) line.className = cls;
+        line.textContent = `${new Date().toLocaleTimeString()}  ${message}`;
+        els.log.appendChild(line);
+        els.log.scrollTop = els.log.scrollHeight;
+    }
+
+    function setPhase(phase, label) {
+        state.phase = phase;
+        els.status.dataset.phase = phase;
+        els.status.textContent = label || phase[0].toUpperCase() + phase.slice(1);
+        const busy = phase === 'starting' || phase === 'connecting' || phase === 'live';
+        els.start.disabled = busy;
+        els.stop.disabled = !busy;
+        for (const el of [els.url, els.token, els.source, els.quality]) el.disabled = busy;
+    }
+
+    function resetStats() {
+        for (const el of [els.bitrate, els.fps, els.res, els.codec, els.uptime]) el.textContent = '–';
+    }
+
+    // ── Media ──────────────────────────────────────────────────
+    async function getSource(kind, width, height) {
+        if (kind === 'screen') {
+            return navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true });
+        }
+        return navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: 30 } },
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        });
+    }
+
+    // The server negotiates the FIRST offered codec it supports (VP8, H.264 or Opus), so
+    // put the ones it can take at the front. Browsers already default to VP8/H.264 first,
+    // this just makes it explicit and future-proof against AV1/VP9-first defaults.
+    function preferCodecs(transceiver, kind) {
+        try {
+            if (!transceiver.setCodecPreferences || !RTCRtpSender.getCapabilities) return;
+            const caps = RTCRtpSender.getCapabilities(kind);
+            if (!caps) return;
+            const wanted = kind === 'video' ? ['video/vp8', 'video/h264'] : ['audio/opus'];
+            const rank = (c) => { const i = wanted.indexOf(c.mimeType.toLowerCase()); return i === -1 ? wanted.length : i; };
+            transceiver.setCodecPreferences([...caps.codecs].sort((a, b) => rank(a) - rank(b)));
+        } catch { /* optional optimisation */ }
+    }
+
+    // ── WHIP ───────────────────────────────────────────────────
+    async function start(opts = {}) {
+        if (state.phase !== 'idle' && state.phase !== 'error') throw new Error('Already publishing');
+
+        const url = String(opts.url ?? els.url.value).trim();
+        const token = String(opts.token ?? els.token.value).trim();
+        const source = opts.source || els.source.value;
+        const [dims, kbps] = (opts.quality || els.quality.value).split('@');
+        const [width, height] = dims.split('x').map(Number);
+        const maxBitrate = Number(opts.maxBitrate) || Number(kbps) * 1000;
+
+        if (!/^https?:\/\/[^/]+\/whip\/[^/?#]+\/?$/.test(url)) {
+            throw new Error('WHIP URL should look like https://whip.openvibe.live/whip/<stream-key>');
+        }
+        try { localStorage.setItem(STORAGE_KEY, url); } catch { /* private mode */ }
+
+        state.error = null;
+        state.resourceUrl = null;
+        resetStats();
+        setPhase('starting', 'Requesting media…');
+
+        try {
+            const stream = await getSource(source, width, height);
+            state.stream = stream;
+            els.preview.srcObject = stream;
+            for (const track of stream.getTracks()) {
+                log(`${track.kind} track: ${track.label || 'unnamed'}`);
+                // "Stop sharing" in the browser's screen-share bar ends the track → end the session.
+                track.addEventListener('ended', () => { if (state.phase === 'live' || state.phase === 'connecting') stop('source ended'); });
+            }
+
+            // OpenVibe's SFU is an ICE-lite server on a public address, so no STUN/TURN is
+            // needed: the browser connects straight to the candidates in the SDP answer.
+            const pc = new RTCPeerConnection({ iceServers: opts.iceServers || [] });
+            state.pc = pc;
+
+            for (const track of stream.getTracks()) {
+                const init = { direction: 'sendonly', streams: [stream] };
+                if (track.kind === 'video') init.sendEncodings = [{ maxBitrate }]; // one encoding — no simulcast
+                const transceiver = pc.addTransceiver(track, init);
+                preferCodecs(transceiver, track.kind);
+            }
+
+            pc.addEventListener('connectionstatechange', () => {
+                state.connectionState = pc.connectionState;
+                log(`connection: ${pc.connectionState}`);
+                if (pc.connectionState === 'connected') {
+                    if (!state.startedAt) state.startedAt = Date.now();
+                    setPhase('live', 'Live');
+                    log('Media is flowing — you are live.', 'ok');
+                } else if (pc.connectionState === 'failed') {
+                    stop('connection failed');
+                    fail(new Error('WebRTC connection failed (ICE/DTLS). Check that UDP is not blocked by a firewall.'));
+                } else if (pc.connectionState === 'disconnected' && state.phase === 'live') {
+                    setPhase('connecting', 'Reconnecting…');
+                }
+            });
+
+            setPhase('connecting', 'Negotiating…');
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            const headers = { 'Content-Type': 'application/sdp' };
+            if (token) headers.Authorization = `Bearer ${token}`;
+            log(`POST ${url}`);
+            const resp = await fetch(url, { method: 'POST', headers, body: pc.localDescription.sdp });
+
+            if (resp.status !== 201) {
+                const code = resp.headers.get('X-WHIP-ERROR');
+                let detail = '';
+                try { detail = (await resp.json()).error || ''; } catch { /* non-JSON */ }
+                throw new Error(`WHIP endpoint answered HTTP ${resp.status}${code ? ` (${code})` : ''}${detail ? `: ${detail}` : ''}`);
+            }
+
+            // Location is the session resource. It may be absolute or relative — resolve it
+            // against the endpoint URL so DELETE always hits the right host.
+            const location = resp.headers.get('Location');
+            state.resourceUrl = location ? new URL(location, url).toString() : null;
+            log(`session created${state.resourceUrl ? `: ${state.resourceUrl}` : ''}`);
+
+            const answer = await resp.text();
+            await pc.setRemoteDescription({ type: 'answer', sdp: answer });
+            log('answer applied, waiting for ICE/DTLS…');
+            startStats();
+        } catch (err) {
+            await stop('start failed', { silent: true });
+            fail(err);
+            throw err;
+        }
+    }
+
+    async function stop(reason = 'user', { silent = false } = {}) {
+        const { pc, stream, resourceUrl } = state;
+        stopStats();
+        state.pc = null; state.stream = null; state.resourceUrl = null; state.startedAt = null;
+
+        if (resourceUrl) {
+            // keepalive lets the DELETE complete even if the tab is closing.
+            try { await fetch(resourceUrl, { method: 'DELETE', keepalive: true }); log('session deleted'); }
+            catch (err) { log(`DELETE failed: ${err.message}`, 'err'); }
+        }
+        if (pc) { try { pc.close(); } catch { /* */ } }
+        if (stream) for (const t of stream.getTracks()) t.stop();
+        els.preview.srcObject = null;
+        state.connectionState = null;
+
+        if (!silent) {
+            setPhase('idle', 'Idle');
+            log(`stopped (${reason})`);
+        }
+    }
+
+    function fail(err) {
+        state.error = err?.message || String(err);
+        setPhase('error', 'Error');
+        log(state.error, 'err');
+        if (/Permission|NotAllowed/i.test(state.error)) log('Camera/mic access was denied — check the browser permission prompt.', 'err');
+        if (!window.isSecureContext) log('getUserMedia needs a secure context: serve this page over https:// (or open it as a local file / localhost).', 'err');
+    }
+
+    // ── Stats ──────────────────────────────────────────────────
+    function startStats() {
+        stopStats();
+        state.statsTimer = setInterval(async () => {
+            const pc = state.pc;
+            if (!pc) return;
+            let report;
+            try { report = await pc.getStats(); } catch { return; }
+            const now = Date.now();
+            let video = null, codecName = null;
+            const codecs = new Map();
+            for (const s of report.values()) {
+                if (s.type === 'codec') codecs.set(s.id, s.mimeType);
+                if (s.type === 'outbound-rtp' && s.kind === 'video') video = s;
+            }
+            if (video) {
+                if (state.lastStats && video.bytesSent != null) {
+                    const kbps = ((video.bytesSent - state.lastStats.bytesSent) * 8) / ((now - state.lastStats.at) / 1000) / 1000;
+                    els.bitrate.textContent = `${Math.round(kbps)} kbps`;
+                }
+                state.lastStats = { bytesSent: video.bytesSent, at: now };
+                if (video.framesPerSecond != null) els.fps.textContent = String(Math.round(video.framesPerSecond));
+                if (video.frameWidth) els.res.textContent = `${video.frameWidth}×${video.frameHeight}`;
+                codecName = codecs.get(video.codecId);
+                if (codecName) els.codec.textContent = codecName.replace('video/', '');
+            }
+            if (state.startedAt) {
+                const s = Math.floor((now - state.startedAt) / 1000);
+                els.uptime.textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+            }
+        }, 2000);
+    }
+    function stopStats() {
+        if (state.statsTimer) clearInterval(state.statsTimer);
+        state.statsTimer = null;
+        state.lastStats = null;
+    }
+
+    // ── Wiring ─────────────────────────────────────────────────
+    els.start.addEventListener('click', () => start().catch(() => { /* already surfaced via fail() */ }));
+    els.stop.addEventListener('click', () => stop('user'));
+    window.addEventListener('pagehide', () => {
+        if (state.resourceUrl) fetch(state.resourceUrl, { method: 'DELETE', keepalive: true }).catch(() => {});
+    });
+
+    // Prefill: ?url=… wins, then the last URL used in this browser.
+    const params = new URLSearchParams(location.search);
+    let saved = null;
+    try { saved = localStorage.getItem(STORAGE_KEY); } catch { /* */ }
+    els.url.value = params.get('url') || saved || '';
+    if (params.get('token')) els.token.value = params.get('token');
+
+    if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
+        fail(new Error('This browser does not support WebRTC publishing.'));
+    }
+
+    window.OpenVibeWhip = {
+        start,
+        stop,
+        get state() {
+            return { phase: state.phase, connectionState: state.connectionState, resourceUrl: state.resourceUrl, error: state.error };
+        },
+    };
+})();
+</script>
+</body>
+</html>
