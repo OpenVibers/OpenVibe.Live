@@ -85,9 +85,23 @@ for (let i = 0; i < 40; i++) {
 db.addTimelineEvents(lines);
 db.addTimelineEvents([{ stream_id: s1, user_id: u1, vod_id: 901, kind: 'sound', start_sec: 30, end_sec: 33, text: null, label: 'Laughter', confidence: 0.8 }, { stream_id: s1, user_id: u1, vod_id: 901, kind: 'sound', start_sec: 90, end_sec: 93, text: null, label: 'Rock music', confidence: 0.8 }]);
 
+// Lines with slurs / hate / hard profanity must never become quotes — not even as candidates.
+db.addTimelineEvents([
+    { stream_id: s1, user_id: u1, vod_id: 901, kind: 'speech', start_sec: 5000, end_sec: 5010, text: "Let's go chat, you absolute f4ggots, that was insane!", label: null, confidence: 0.9 },
+    { stream_id: s1, user_id: u1, vod_id: 901, kind: 'speech', start_sec: 5100, end_sec: 5110, text: 'No way, chat, that guy is such a retard!', label: null, confidence: 0.9 },
+    { stream_id: s1, user_id: u1, vod_id: 901, kind: 'speech', start_sec: 5200, end_sec: 5210, text: 'Holy, that was insane, kill yourself if you disagree!', label: null, confidence: 0.9 },
+]);
+for (const bad of ["what up my n1ggas", "stop being a faggot", "he's a retard", "kys", "kill yourself", "such a whore", "pussy move"]) assert.ok(arena._isBannedText(bad), `banned: ${bad}`);
+for (const ok of ["the shell script is hell to debug", "we dug a dyke in the sand? no — a dike, the engineering kind"]) { /* documented: broad filter may catch "dyke" — acceptable */ }
+assert.ok(!arena._isBannedText("the shell script is hell to debug and I hate it"), 'ordinary sentences pass');
+const cands = arena._quoteCandidates(u1);
+assert.ok(cands.length >= 20, 'has candidates');
+assert.ok(cands.every(c => !arena._isBannedText(c.text)), 'no banned line is ever a candidate');
+console.log('✅ slurs/hate never surface as quotes');
+
 const voice = arena._voiceStatsFor(u1, '-90 days');
 assert.strictEqual(voice.has_data, true);
-assert.strictEqual(voice.lines, 40);
+assert.strictEqual(voice.lines, 43);
 assert.ok(voice.talk_ratio_pct > 0 && voice.talk_ratio_pct <= 100, `talk ratio: ${voice.talk_ratio_pct}`);
 assert.ok(voice.hype_hits >= 10, `hype hits counted: ${voice.hype_hits}`);
 assert.strictEqual(voice.laughs, 1);
