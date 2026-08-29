@@ -462,6 +462,12 @@ app.use(express.static(path.join(__dirname, '../public'), { setHeaders: (res, fi
 // Serve locally-cached song-request media files (media player page)
 app.use('/media', express.static(path.resolve('./data/media')));
 
+// Arena portraits (AI-generated fighting-game character art, see server/arena)
+app.use('/data/arena', express.static(path.resolve(process.env.ARENA_IMAGE_PATH || './data/arena'), {
+    maxAge: '7d', immutable: true, index: false, dotfiles: 'deny',
+    setHeaders: (res) => res.setHeader('Content-Type', 'image/png'),
+}));
+
 // OpenVibe.Media → Live webhook (vod.ready / clip.ready …). Mounted BEFORE the
 // /internal router because it authenticates with an HMAC signature, not X-Internal-Key.
 app.post('/internal/media-webhook', require('./media-proxy/webhook'));
@@ -527,6 +533,7 @@ app.use('/api/vods', vodRoutes);
 app.use('/api/clips', clipRoutes);
 app.use('/api/chat-ai', require('./ai/chat-ai-routes'));
 app.use('/api/easter-egg', require('./ai/easter-egg-routes'));
+app.use('/api/arena', require('./arena/routes'));            // streamer vs streamer (docs/arena.md)
 app.use('/api/comments', commentRoutes);
 app.use('/api/controls', controlRoutes);
 app.use('/api/onvif', onvifRoutes);
@@ -1020,6 +1027,7 @@ async function start() {
         try { require('./ai/ai-moments-job').start(); } catch (e) { console.warn('[AI] moments job not started:', e.message); }
         try { require('./ai/auto-clip-job').start(); } catch (e) { console.warn('[AI] auto-clip job not started:', e.message); }
         try { require('./ai/easter-egg-job').start(); } catch (e) { console.warn('[AI] easter-egg job not started:', e.message); }
+        try { require('./arena/arena-job').start(); } catch (e) { console.warn('[Arena] job not started:', e.message); }
         // Continuous audio → stream_timeline_events. Gated behind ai_timeline_enabled
         // (default off), so starting it is a no-op until switched on in admin.
         try { require('./ai/timeline-job').start(); } catch (e) { console.warn('[AI] timeline job not started:', e.message); }

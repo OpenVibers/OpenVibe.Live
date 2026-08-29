@@ -62,7 +62,7 @@
     </script>
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="/css/style.css?v=140">
+    <link rel="stylesheet" href="/css/style.css?v=141">
     <link rel="stylesheet" href="/css/chat-shared.css?v=1">
     <link rel="stylesheet" href="/css/broadcast.css?v=11">
     <link rel="stylesheet" href="/css/cosmetics.css?v=2">
@@ -130,6 +130,9 @@
         </a>
         <a href="/pastes" onclick="return handleLinkClick(event, '/pastes')" class="nav-link" data-page="pastes" data-tooltip="Pastes">
             <i class="fa-solid fa-paste"></i> <span>Pastes</span>
+        </a>
+        <a href="/arena" onclick="return handleLinkClick(event, '/arena')" class="nav-link" data-page="arena" data-tooltip="Arena">
+            <i class="fa-solid fa-hand-fist"></i> <span>Arena</span>
         </a>
         <a href="/chat" onclick="return handleLinkClick(event, '/chat')" class="nav-link" data-page="chat" data-tooltip="Chat">
             <i class="fa-solid fa-comments"></i> <span>Chat</span>
@@ -3503,6 +3506,17 @@ WantedBy=multi-user.target</code>
     </section>
 
     <!-- Documentation Page -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  ARENA — streamer vs streamer (public/js/arena.js)          -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <section id="page-arena" class="page">
+        <div class="content-container arena-container">
+            <div id="arena-root">
+                <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
+            </div>
+        </div>
+    </section>
+
     <section id="page-documentation" class="page">
         <div class="content-container" style="max-width:960px">
 
@@ -5093,6 +5107,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/staff-console.js?v=1" defer></script>
 <script src="/js/dashboard-moderation.js?v=5" defer></script>
 <script src="/js/ai-viewers.js?v=2" defer></script>
+<script src="/js/arena.js?v=1" defer></script>
 <script src="/js/powerchat.js?v=10" defer></script>
 <script src="/js/pastes.js?v=15" defer></script>
 <script src="/js/draggable-fab.js?v=2" defer></script>
