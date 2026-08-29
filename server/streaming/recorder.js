@@ -36,6 +36,10 @@ class StreamRecorder {
         this.activeRecordings = new Map();
         this._finalizing = new Set();
         this._healAttempts = new Map();
+        // streamId → timer for a recording start that Media refused for lack of disk;
+        // retried while the stream stays live so the drain freeing space still yields
+        // a (partial) recording instead of none at all.
+        this._diskRetryTimers = new Map();
     }
 
     _title(stream, opts = {}) {
@@ -95,7 +99,41 @@ class StreamRecorder {
             // ghost with no file that shows up as a 0:00 VOD and — worse — clogs Media's
             // offload sweep, which is exactly what needs to run when the disk is full.
             this._abort(streamId, rec).catch(() => {});
+            this._maybeRetryAfterDiskRefusal(streamId, protocol, endpoint, opts, err);
         });
+    }
+
+    static get DISK_RETRY_DELAY_MS() { return 5 * 60 * 1000; }
+    static get DISK_RETRY_MAX() { return 12; } // ≈ 1 h of a still-live stream
+
+    /**
+     * Media refuses to start a recording while its VOD volume is critically low. Its
+     * offload sweep frees space within minutes, so keep trying while the stream is live
+     * — a recording that starts 10 minutes in beats no recording at all.
+     */
+    _maybeRetryAfterDiskRefusal(streamId, protocol, endpoint, opts, err) {
+        if (!/disk/i.test(String(err?.message || ''))) return;
+        const attempt = (opts._diskRetries || 0) + 1;
+        if (attempt > StreamRecorder.DISK_RETRY_MAX) {
+            console.error(`[VOD] Giving up on recording stream ${streamId} — Media still refusing for disk space after ${attempt - 1} retries`);
+            return;
+        }
+        this._clearDiskRetry(streamId);
+        const timer = setTimeout(() => {
+            this._diskRetryTimers.delete(streamId);
+            const live = db.getStreamById(streamId);
+            if (!live || !live.is_live) return;
+            console.log(`[VOD] Retrying recording start for stream ${streamId} (disk-space retry ${attempt}/${StreamRecorder.DISK_RETRY_MAX})`);
+            this.startRecording(streamId, protocol, endpoint, { ...opts, _diskRetries: attempt });
+        }, StreamRecorder.DISK_RETRY_DELAY_MS);
+        if (timer.unref) timer.unref();
+        this._diskRetryTimers.set(streamId, timer);
+        console.warn(`[VOD] Will retry recording for stream ${streamId} in ${StreamRecorder.DISK_RETRY_DELAY_MS / 60000} min (disk-space refusal, attempt ${attempt}/${StreamRecorder.DISK_RETRY_MAX})`);
+    }
+
+    _clearDiskRetry(streamId) {
+        const timer = this._diskRetryTimers.get(streamId);
+        if (timer) { clearTimeout(timer); this._diskRetryTimers.delete(streamId); }
     }
 
     async _createVod(streamId, stream, rec, opts) {
@@ -249,6 +287,7 @@ class StreamRecorder {
      * Stop (and finalize) the recording for a stream. Safe to call repeatedly.
      */
     stopRecording(streamId) {
+        this._clearDiskRetry(streamId); // stream ending cancels any pending disk-space retry
         const rec = this.activeRecordings.get(streamId);
         if (!rec) return;
         rec._cancel = true;

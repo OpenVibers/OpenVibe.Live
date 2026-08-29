@@ -32,6 +32,40 @@ function verifySignature(req) {
     }
 }
 
+/**
+ * Storage alerts from Media (`storage.alert` / `storage.recovered`). Always logged at
+ * error/warn level; additionally posted to an ops webhook when one is configured —
+ * OPS_ALERT_WEBHOOK_URL in the environment, or the `ops_alert_webhook_url` admin
+ * setting (a Discord-compatible webhook: it receives `{ content }`). This is
+ * deliberately separate from the public go-live Discord webhook.
+ */
+function relayStorageEvent(event, data = {}) {
+    const recovered = event === 'storage.recovered';
+    const line = `[MediaWebhook] ${recovered ? 'STORAGE RECOVERED' : 'STORAGE ALERT'} (${data.kind || 'unknown'}): `
+        + `disk ${data.disk_pct ?? '?'}%, ${data.free_gb ?? '?'} GB free`
+        + (data.hint ? ` — ${data.hint}` : '');
+    (recovered ? console.warn : console.error)(line);
+    if (!recovered && Array.isArray(data.errors) && data.errors.length) {
+        console.error('[MediaWebhook]   first errors:', JSON.stringify(data.errors));
+    }
+
+    let url = process.env.OPS_ALERT_WEBHOOK_URL || '';
+    if (!url) { try { url = db.getSetting('ops_alert_webhook_url') || ''; } catch { url = ''; } }
+    if (!/^https:\/\/[^\s]+$/i.test(url)) return;
+
+    const content = (recovered ? '✅ **OpenVibe.Media storage recovered**' : '🚨 **OpenVibe.Media storage alert**')
+        + `\n${data.kind || 'unknown'} — disk ${data.disk_pct ?? '?'}%, ${data.free_gb ?? '?'} GB free`
+        + (data.stalled_passes ? `, ${data.stalled_passes} stalled sweep pass(es)` : '')
+        + (data.hint ? `\n${data.hint}` : '')
+        + (Array.isArray(data.errors) && data.errors.length ? `\n\`${JSON.stringify(data.errors).slice(0, 300)}\`` : '');
+    fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+        signal: AbortSignal.timeout(10000),
+    }).catch(err => console.warn('[MediaWebhook] ops alert webhook failed:', err.message));
+}
+
 function handler(req, res) {
     if (!verifySignature(req)) return res.status(401).json({ error: 'Invalid signature' });
     const { event, data } = req.body || {};
@@ -90,6 +124,13 @@ function handler(req, res) {
             case 'clip.failed':
                 if (data?.id) { try { db.setClipTranscriptStatus(data.id, 'failed', data?.error || 'media reported failure'); } catch { /* */ } }
                 console.warn(`[MediaWebhook] Clip ${data?.id} failed:`, data?.error || '(no detail)');
+                break;
+            case 'storage.alert':
+            case 'storage.recovered':
+                // Media's VOD volume needs a human (drain stalled / disk critical) or is
+                // fine again. Recordings are silently refused while this is unresolved,
+                // which is why it is loud here and forwarded to the ops channel.
+                relayStorageEvent(event, data);
                 break;
             default:
                 console.log(`[MediaWebhook] Ignoring event: ${event}`);
