@@ -14183,3 +14183,74 @@ label.staff-inline-toggle.aiv-field { flex-direction:row; align-items:center; }
     .hero-bg-layer.active { animation: none !important; }
 }
 @media (prefers-reduced-motion: reduce) { .hero-chart-svg .bar { animation: none; } .hero-chart, .hero-chart-overlay { animation: none; } }
+
+/* ── Arena: Trash Talk ── */
+.arena-talk-card { margin: 4px 0 24px; padding: 16px 18px; border-radius: 16px; border: 1px solid var(--border); background: linear-gradient(120deg, color-mix(in srgb, #f97316 14%, var(--bg-card)), var(--bg-card) 65%); }
+.arena-talk-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.arena-talk-card-head h2 { margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 8px; }
+.arena-talk-card-head h2 i { color: #f97316; }
+.arena-talk-card-head h2 small { color: var(--text-muted); font-weight: 400; font-size: 0.8rem; }
+.arena-talk-topic { font-size: 1.15rem; font-weight: 600; margin: 10px 0 8px; line-height: 1.35; }
+.arena-talk-card-foot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 0.85rem; color: var(--text-secondary); }
+.arena-talk-card-foot code, .arena-talk-how code, .arena-talk-gate code, .arena-talk-hype code { background: var(--bg-tertiary); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
+.arena-stamp { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 900; letter-spacing: 0.08em; border: 1.5px solid currentColor; transform: rotate(-3deg); }
+.arena-stamp--cooked { color: #f97316; } .arena-stamp--solid { color: #22c55e; } .arena-stamp--mid { color: #eab308; } .arena-stamp--flop { color: #94a3b8; }
+.arena-stamp--big { font-size: 1.3rem; padding: 6px 14px; animation: arena-stamp-in 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both; animation-delay: 1.3s; }
+@keyframes arena-stamp-in { from { transform: scale(2.2) rotate(-12deg); opacity: 0; } to { transform: scale(1) rotate(-3deg); opacity: 1; } }
+.arena-talk-hero { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; margin-bottom: 20px; }
+.arena-talk-hero-main { padding: 22px; border-radius: 18px; border: 1px solid var(--border); background: radial-gradient(80% 60% at 0% 0%, color-mix(in srgb, #f97316 20%, transparent), transparent), var(--bg-card); }
+.arena-talk-kicker { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: #f97316; font-weight: 700; margin-bottom: 8px; }
+.arena-talk-kicker span { color: var(--text-muted); text-transform: none; letter-spacing: 0; }
+.arena-talk-topic-big { margin: 0; font-size: clamp(1.4rem, 3vw, 2rem); line-height: 1.25; }
+.arena-talk-hint { color: var(--text-secondary); margin: 12px 0 0; }
+.arena-talk-hint i { color: #eab308; }
+.arena-talk-how { padding: 16px 18px; border-radius: 18px; border: 1px solid var(--border); background: var(--bg-card); font-size: 0.88rem; }
+.arena-talk-how h3 { margin: 0 0 8px; font-size: 1rem; }
+.arena-talk-how ol { margin: 0 0 8px; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: var(--text-secondary); }
+.arena-talk-how b { color: var(--text-primary); }
+.arena-talk-panel { margin-bottom: 24px; padding: 18px; border-radius: 18px; border: 2px solid color-mix(in srgb, #f97316 45%, var(--border)); background: var(--bg-card); }
+.arena-talk-panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; }
+.arena-talk-panel-head h2 { margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 8px; } .arena-talk-panel-head h2 i { color: #f97316; }
+.arena-talk-modes { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.arena-talk-mode { padding: 8px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-secondary); cursor: pointer; font-weight: 600; }
+.arena-talk-mode.active { border-color: #f97316; color: var(--text-primary); background: color-mix(in srgb, #f97316 14%, var(--bg-tertiary)); }
+.arena-talk-mode:disabled { opacity: 0.5; cursor: not-allowed; }
+.arena-talk-mode small { font-weight: 400; color: var(--text-muted); }
+.arena-talk-panel textarea { width: 100%; min-height: 90px; padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font: inherit; resize: vertical; }
+.arena-talk-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.arena-mic-status { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--text-secondary); }
+.arena-mic-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-muted); }
+.arena-mic-status.is-live { color: #ef4444; } .arena-mic-status.is-live .arena-mic-dot { background: #ef4444; box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.25); animation: arena-pulse 1.2s infinite; }
+.arena-mic-feed { margin-top: 10px; min-height: 90px; max-height: 220px; overflow-y: auto; padding: 10px 12px; border-radius: 12px; background: var(--bg-secondary); border: 1px dashed var(--border); font-size: 0.9rem; }
+.arena-mic-line { display: flex; gap: 10px; padding: 3px 0; animation: arena-in 0.3s; } .arena-mic-line span { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 0.78rem; min-width: 38px; }
+.arena-talk-gate { padding: 14px 16px; border-radius: 12px; background: var(--bg-tertiary); border: 1px solid var(--border); margin-bottom: 20px; color: var(--text-secondary); }
+.arena-talk-gate.is-done { border-color: #22c55e; } .arena-talk-gate.is-error { border-color: var(--danger); color: var(--danger); }
+.arena-talk-list { display: flex; flex-direction: column; gap: 10px; }
+.arena-talk-entry { padding: 14px 16px; border-radius: 14px; background: var(--bg-card); border: 1px solid var(--border); transition: transform 0.1s; }
+.arena-talk-entry.is-mine { border-color: color-mix(in srgb, #f97316 50%, var(--border)); }
+.arena-talk-entry.is-flagged { opacity: 0.7; }
+.arena-talk-entry.is-hit { animation: arena-hit 0.5s; }
+.arena-talk-entry-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.arena-talk-who { display: flex; align-items: center; gap: 10px; color: var(--text-primary); text-decoration: none; min-width: 0; }
+.arena-talk-who span { display: flex; flex-direction: column; min-width: 0; } .arena-talk-who small { color: var(--text-muted); font-size: 0.75rem; } .arena-talk-who em { font-style: italic; }
+.arena-talk-total { display: flex; align-items: center; gap: 8px; } .arena-talk-total b { font-size: 1.5rem; color: var(--accent-light); } .arena-talk-total small { color: var(--text-muted); }
+.arena-talk-text { margin: 10px 0; padding: 10px 14px; border-left: 3px solid #f97316; background: var(--bg-tertiary); border-radius: 0 10px 10px 0; font-size: 1rem; line-height: 1.5; }
+.arena-talk-hear { margin-left: 8px; font-size: 0.8rem; color: var(--accent-light); text-decoration: none; }
+.arena-talk-void { color: var(--text-muted); font-style: italic; }
+.arena-talk-verdict { margin: 6px 0; font-weight: 600; } .arena-talk-verdict i { color: var(--accent); margin-right: 6px; }
+.arena-talk-note { margin: 4px 0; font-size: 0.85rem; color: var(--text-secondary); font-style: italic; }
+.arena-talk-scores { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 6px 16px; margin: 8px 0; }
+.arena-talk-score { display: grid; grid-template-columns: 86px 1fr 24px; align-items: center; gap: 8px; font-size: 0.8rem; }
+.arena-talk-score-label { color: var(--text-secondary); } .arena-talk-score-label i { width: 14px; color: #f97316; }
+.arena-talk-score-track { height: 8px; border-radius: 4px; background: var(--bg-tertiary); overflow: hidden; }
+.arena-talk-score-fill { display: block; height: 100%; background: linear-gradient(90deg, #f97316, #fbbf24); transform-origin: left; }
+.arena-talk-scores.is-animated .arena-talk-score-fill { animation: arena-fill 0.7s cubic-bezier(0.2, 0.8, 0.3, 1) both; animation-delay: calc(0.15s + var(--i, 0) * 0.22s); }
+@keyframes arena-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.arena-talk-score b { text-align: right; font-variant-numeric: tabular-nums; }
+.arena-talk-hype { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; font-size: 0.82rem; color: var(--text-secondary); }
+.arena-talk-reveal { padding: 16px; border-radius: 14px; border: 1px solid #f97316; background: radial-gradient(70% 50% at 50% 0%, color-mix(in srgb, #f97316 18%, transparent), transparent), var(--bg-card); animation: arena-in 0.3s; }
+.arena-talk-reveal.is-flagged { border-color: var(--danger); }
+.arena-talk-reveal-head { display: flex; align-items: center; justify-content: center; gap: 18px; margin-bottom: 8px; }
+.arena-talk-reveal-total b { font-size: 3rem; font-weight: 900; color: var(--accent-light); font-variant-numeric: tabular-nums; } .arena-talk-reveal-total small { color: var(--text-muted); font-size: 1rem; }
+.arena-talk-bonus { font-size: 0.85rem; font-weight: 700; color: #f97316; }
+@media (max-width: 900px) { .arena-talk-hero { grid-template-columns: 1fr; } .arena-talk-score { grid-template-columns: 74px 1fr 22px; } }

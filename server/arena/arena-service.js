@@ -330,10 +330,18 @@ function loadRoster(force = false) {
     const rawById = {};
     for (const id of ids) rawById[id] = rawStatsFor(id);
     const ratings = computeRatings(rawById);
+    // Trash Talk bonus (server/arena/trash-talk.js): recent judged entries add up to
+    // TALK_BONUS_MAX POWER, decaying over a week — the one lever streamers pull themselves.
+    let bonuses = {};
+    try { bonuses = require('./trash-talk').talkBonuses(); } catch { bonuses = {}; }
     const byId = {};
     for (const id of ids) {
         const user = db.getUserById(id);
         if (!user) continue;
+        const talkBonus = bonuses[id] || 0;
+        ratings[id].base_power = ratings[id].power;
+        ratings[id].talk_bonus = talkBonus;
+        ratings[id].power = Math.min(99 + require('./trash-talk').TALK_BONUS_MAX, ratings[id].power + talkBonus);
         byId[id] = { user: publicUser(user), raw: rawById[id], ratings: ratings[id] };
         try { db.run('INSERT INTO arena_profiles (user_id, stats_json, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET stats_json = excluded.stats_json, updated_at = CURRENT_TIMESTAMP', [id, JSON.stringify({ raw: rawById[id], ratings: ratings[id] })]); } catch { /* */ }
     }
@@ -818,6 +826,7 @@ async function getFighter(usernameOrId, { generate = true } = {}) {
     card.image_generation = imageGenAvailable() ? 'ai' : 'off';
     card.recent_battles = recentBattles(user.id, roster);
     card.rivalry = rivalryFor(user.id, roster);
+    try { card.trash_talk = require('./trash-talk').entriesFor(user.id, 5); } catch { card.trash_talk = []; }
     return card;
 }
 

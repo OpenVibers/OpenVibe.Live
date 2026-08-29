@@ -953,6 +953,9 @@ class ChatServer {
         const parts = text.trim().split(/\s+/);
         const cmd = parts[0].toLowerCase();
 
+        // Arena: !hype / !talk / !arena / !vote / !fight (server/arena/arena-chat.js)
+        try { if (require('../arena/arena-chat').handle(this, ws, client, cmd, parts)) return; } catch (e) { console.warn('[Arena] chat command:', e.message); }
+
         if (cmd === '!gotti') {
             const username = client.user ? client.user.display_name : client.anonId;
             const coreUsername = client.user ? client.user.username : null;

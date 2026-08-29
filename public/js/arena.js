@@ -31,6 +31,7 @@ function _aStopTimers() {
     for (const t of _arenaBattleTimers) clearTimeout(t);
     _arenaBattleTimers = [];
     _aStopSpeaking();
+    if (typeof _aTalkStop === 'function') _aTalkStop();
 }
 
 // ── Speech: hear the taunt / quotes read out (browser TTS, no server cost) ──
@@ -130,6 +131,7 @@ async function loadArenaPage(segments = []) {
     const [, first, second, third] = segments;
     try {
         if (first === 'battle' && second && third) return await _aRenderBattle(root, second, third);
+        if (first === 'talk') return await _aRenderTalk(root);
         if (first && first !== 'battle') return await _aRenderFighter(root, first);
         return await _aRenderHome(root);
     } catch (err) {
@@ -162,6 +164,7 @@ async function _aRenderHome(root) {
             </div>
         </div>
         <section id="arena-main-event" class="arena-main-event" style="display:none"></section>
+        <section id="arena-talk-card" class="arena-talk-card" style="display:none"></section>
         <section id="arena-live" class="arena-live"></section>
         <section class="arena-board">
             <div class="arena-board-head">
@@ -173,6 +176,7 @@ async function _aRenderHome(root) {
     _aRenderLive(live);
     _aRenderList(fighters);
     api('/arena/main-event').then(me => _aRenderMainEvent(me)).catch(() => {});
+    api('/arena/talk?generate=0').then(t => _aRenderTalkCard(t)).catch(() => {});
     document.getElementById('arena-search').addEventListener('input', (e) => {
         const q = e.target.value.trim().toLowerCase();
         _aRenderList(q ? fighters.filter(f => [f.user.username, f.user.display_name, f.persona.fighter_name, f.persona.class, f.persona.element].some(s => String(s || '').toLowerCase().includes(q))) : fighters);
@@ -355,6 +359,7 @@ async function _aRenderFighter(root, username) {
                 </div>
                 <div class="arena-profile-power">
                     <div class="arena-power arena-power-lg"><b>${f.ratings.power}</b><small>POWER</small></div>
+                    ${f.ratings.talk_bonus ? `<div class="arena-talk-bonus" title="Trash Talk bonus — earned on /arena/talk, decays over a week"><i class="fa-solid fa-microphone-lines"></i> +${f.ratings.talk_bonus} trash talk</div>` : ''}
                     <div class="arena-record arena-record-lg">${f.record.wins}W – ${f.record.losses}L</div>
                 </div>
                 <div class="arena-profile-stats">
@@ -383,6 +388,7 @@ async function _aRenderFighter(root, username) {
                 </div>
             </div>
         </div>
+        ${(f.trash_talk || []).length ? `<section class="arena-challenge"><h2><i class="fa-solid fa-microphone-lines"></i> Trash talk record</h2><div class="arena-talk-list">${f.trash_talk.map(e => _aTalkEntry(e, { compact: true })).join('')}</div></section>` : ''}
         ${recent.length ? `<section class="arena-challenge"><h2>Recent fights</h2><div class="arena-opponents">${recent.map(b => _aA(_aBattleLink(f.user, b.opponent), `${_aPortrait({ user: b.opponent }, 'xs')}<span><strong>${b.result === 'win' ? '<span style="color:var(--success)">W</span>' : b.result === 'loss' ? '<span style="color:var(--danger)">L</span>' : 'D'} vs ${_aEsc(b.opponent_fighter_name)}</strong><small>${_aEsc(b.day)} · rounds ${b.rounds_won}/${b.rounds_total}</small></span>`, 'arena-opponent')).join('')}</div></section>` : ''}
         <section class="arena-challenge">
             <h2>Pick an opponent</h2>
@@ -620,6 +626,201 @@ function _aRenderVote(battle) {
         }));
     };
     render(battle.votes, battle.outcome, battle.your_vote || null);
+}
+
+// ── Trash Talk ───────────────────────────────────────────────
+
+const ARENA_TALK_SCORES = [['spice', 'Spice', 'fa-pepper-hot'], ['wit', 'Wit', 'fa-brain'], ['on_topic', 'On topic', 'fa-bullseye'], ['delivery', 'Delivery', 'fa-microphone'], ['crowd', 'Crowd', 'fa-people-group']];
+let _arenaTalkTimers = [];
+function _aTalkStop() { for (const t of _arenaTalkTimers) clearInterval(t); _arenaTalkTimers = []; }
+
+function _aStampClass(stamp) { return `arena-stamp arena-stamp--${String(stamp || '').toLowerCase()}`; }
+function _aCountdown(iso) {
+    const ms = Date.parse(iso) - Date.now();
+    if (ms <= 0) return 'new topic any moment';
+    const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
+    return h ? `${h}h ${m}m left` : `${m}m left`;
+}
+
+/** Topic card on the Arena home. */
+function _aRenderTalkCard(t) {
+    const el = document.getElementById('arena-talk-card');
+    if (!el || !t || !t.topic) return;
+    const top = t.entries && t.entries[0];
+    el.style.display = '';
+    el.innerHTML = `
+        <div class="arena-talk-card-head"><h2><i class="fa-solid fa-microphone-lines"></i> Trash Talk <small>${_aEsc(_aCountdown(t.topic.ends_at))}</small></h2>${_aA('/arena/talk', `<i class="fa-solid fa-fire"></i> ${t.can_enter ? 'Enter now' : 'Open'}`, 'btn btn-primary')}</div>
+        <p class="arena-talk-topic">“${_aEsc(t.topic.topic)}”</p>
+        <div class="arena-talk-card-foot">
+            <span>${t.entries?.length ? `${t.entries.length} entr${t.entries.length === 1 ? 'y' : 'ies'}` : 'No entries yet — be first'}${top ? ` · leading: <b>${_aEsc(top.fighter_name)}</b> ${top.total}/50 <span class="${_aStampClass(top.stamp)}">${_aEsc(top.stamp)}</span>` : ''}</span>
+            <span class="arena-note">Streamers talk on the mic or type it · the AI judges · chat types <code>!hype</code> · up to +${t.rules?.bonus_max || 12} POWER</span>
+        </div>`;
+}
+
+function _aScoreBars(scores, { animate = false } = {}) {
+    if (!scores) return '';
+    return `<div class="arena-talk-scores ${animate ? 'is-animated' : ''}">${ARENA_TALK_SCORES.map(([k, label, icon], i) => `
+        <div class="arena-talk-score" style="--i:${i}">
+            <span class="arena-talk-score-label"><i class="fa-solid ${icon}"></i> ${_aEsc(label)}</span>
+            <span class="arena-talk-score-track"><span class="arena-talk-score-fill" style="width:${Math.min(100, (Number(scores[k]) || 0) * 10)}%"></span></span>
+            <b>${Number(scores[k]) || 0}</b>
+        </div>`).join('')}</div>`;
+}
+
+function _aTalkEntry(e, { compact = false, mine = false, hypeable = true } = {}) {
+    const flagged = e.flagged;
+    const jump = e.vod_id && e.start_sec != null ? `<a class="arena-talk-hear" href="/vod/${e.vod_id}?t=${e.start_sec}" onclick="return handleLinkClick(event, '/vod/${e.vod_id}?t=${e.start_sec}')" title="Hear them say it"><i class="fa-solid fa-play"></i> hear it</a>` : '';
+    return `<div class="arena-talk-entry ${flagged ? 'is-flagged' : ''} ${mine ? 'is-mine' : ''}" data-id="${e.id}">
+        <div class="arena-talk-entry-head">
+            ${e.user ? _aA(_aFighterLink(e.user), `${_aPortrait({ user: e.user, image_url: e.image_url }, 'xs')}<span><strong>${_aEsc(e.fighter_name)}</strong><small>${_aEsc(e.user.display_name)}${e.rank ? ` · #${e.rank}` : ''} · ${e.source === 'mic' ? '<i class="fa-solid fa-microphone"></i> live mic' : '<i class="fa-solid fa-keyboard"></i> typed'}${e.topic ? ` · <em>${_aEsc(e.topic)}</em>` : ''}</small></span>`, 'arena-talk-who') : ''}
+            <div class="arena-talk-total"><b>${e.total}</b><small>/50</small> <span class="${_aStampClass(e.stamp)}">${_aEsc(e.stamp || '')}</span></div>
+        </div>
+        ${e.text ? `<blockquote class="arena-talk-text">${_aEsc(e.text)} ${_aSpeakBtn(e.text)} ${jump}</blockquote>` : '<p class="arena-talk-void"><i class="fa-solid fa-ban"></i> Voided by the judge — crossed the line.</p>'}
+        ${e.verdict ? `<p class="arena-talk-verdict"><i class="fa-solid fa-gavel"></i> ${_aEsc(e.verdict)}</p>` : ''}
+        ${!compact ? _aScoreBars(e.scores) : ''}
+        ${!compact && e.note && (mine || !flagged) ? `<p class="arena-talk-note">Judge's note: ${_aEsc(e.note)}</p>` : ''}
+        ${!compact && !flagged ? `<div class="arena-talk-hype"><button class="btn btn-ghost btn-sm arena-hype-btn" data-id="${e.id}" ${!hypeable || !e.hype_open ? 'disabled' : ''}><i class="fa-solid fa-fire"></i> Hype</button><span class="arena-talk-hype-count">${e.crowd_uniques} hyped · Crowd ${e.scores?.crowd ?? 0}/10</span><span class="arena-note">or type <code>!hype</code> in their chat</span></div>` : ''}
+    </div>`;
+}
+
+async function _aRenderTalk(root) {
+    _aTalkStop();
+    root.innerHTML = _aSpinner('Setting up the ring…');
+    const t = await api('/arena/talk');
+    const topic = t.topic;
+    const me = (typeof currentUser !== 'undefined' && currentUser) ? currentUser : null;
+    const rules = t.rules || {};
+    root.innerHTML = `
+        <div class="arena-back">${_aA('/arena', '<i class="fa-solid fa-arrow-left"></i> Arena')}</div>
+        <div class="arena-talk-hero">
+            <div class="arena-talk-hero-main">
+                <div class="arena-talk-kicker"><i class="fa-solid fa-microphone-lines"></i> Trash Talk · topic changes every ${rules.topic_slot_hours || 6} h · <span id="arena-talk-countdown">${_aEsc(_aCountdown(topic.ends_at))}</span></div>
+                <h1 class="arena-talk-topic-big">“${_aEsc(topic.topic)}”</h1>
+                ${topic.hint ? `<p class="arena-talk-hint"><i class="fa-solid fa-lightbulb"></i> ${_aEsc(topic.hint)}</p>` : ''}
+            </div>
+            <div class="arena-talk-how">
+                <h3>How it works</h3>
+                <ol>
+                    <li><b>Streamers</b> on the roster answer the topic — on the <b>live mic</b> (we transcribe what you say on stream) or by <b>typing</b> it.</li>
+                    <li>The <b>AI judge</b> scores Spice, Wit, On-topic and Delivery (0–10 each). Slurs or cruelty void the entry.</li>
+                    <li><b>Viewers</b> add the fifth score: type <code>!hype</code> in that streamer's chat (or tap Hype here). 3 people = 1 point, up to 10.</li>
+                    <li>Your total (/50) becomes a <b>Trash Talk bonus</b> on POWER — up to +${rules.bonus_max || 12}, fading over ${rules.bonus_days || 7} days.</li>
+                </ol>
+                <p class="arena-note">Chat commands: <code>!talk</code> topic · <code>!hype</code> · <code>!arena</code> card · <code>!vote a|b</code> main event · <code>!fight &lt;user&gt;</code></p>
+            </div>
+        </div>
+        <section class="arena-talk-enter" id="arena-talk-enter"></section>
+        <section class="arena-board">
+            <div class="arena-board-head"><h2>This topic's entries <small class="arena-note">${t.entries.length} so far</small></h2>${t.ai ? '' : '<span class="arena-note">AI judge is off — heuristic scoring</span>'}</div>
+            <div class="arena-talk-list" id="arena-talk-entries">${t.entries.length ? t.entries.map(e => _aTalkEntry(e, { mine: me && e.user.id === me.id })).join('') : '<div class="arena-empty"><i class="fa-solid fa-microphone-slash"></i><p>Nobody has talked yet. The mic is right there.</p></div>'}</div>
+        </section>
+        ${t.hall_of_trash?.length ? `<section class="arena-board"><div class="arena-board-head"><h2><i class="fa-solid fa-trophy"></i> Hall of Trash <small class="arena-note">best lines, last 30 days</small></h2></div><div class="arena-talk-list">${t.hall_of_trash.map(e => _aTalkEntry(e, { compact: true })).join('')}</div></section>` : ''}`;
+    _aBindSpeak(root);
+    _aBindHype(root);
+    _aRenderTalkEnter(t, me);
+    _arenaTalkTimers.push(setInterval(() => { const el = document.getElementById('arena-talk-countdown'); if (el) el.textContent = _aCountdown(topic.ends_at); }, 30000));
+}
+
+function _aBindHype(root) {
+    root.querySelectorAll('.arena-hype-btn').forEach(btn => btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+            const r = await api(`/arena/talk/${btn.dataset.id}/hype`, { method: 'POST' });
+            const entry = btn.closest('.arena-talk-entry');
+            entry.querySelector('.arena-talk-hype-count').textContent = `${r.crowd_uniques} hyped · Crowd ${r.crowd}/10`;
+            entry.querySelector('.arena-talk-total').innerHTML = `<b>${r.total}</b><small>/50</small> <span class="${_aStampClass(r.stamp)}">${_aEsc(r.stamp)}</span>`;
+            const crowdFill = entry.querySelectorAll('.arena-talk-score-fill')[4]; if (crowdFill) crowdFill.style.width = `${Math.min(100, r.crowd * 10)}%`;
+            const crowdNum = entry.querySelectorAll('.arena-talk-score b')[4]; if (crowdNum) crowdNum.textContent = r.crowd;
+            btn.innerHTML = r.added ? '<i class="fa-solid fa-fire"></i> Hyped!' : '<i class="fa-solid fa-check"></i> Already hyped';
+            entry.classList.add('is-hit'); setTimeout(() => entry.classList.remove('is-hit'), 600);
+        } catch (err) { btn.disabled = false; if (typeof showToast === 'function') showToast(err?.message || 'Hype failed', 'error'); }
+    }));
+}
+
+/** The entry panel: live mic (countdown + hot-mic feed) or typed, then the score reveal. */
+function _aRenderTalkEnter(t, me) {
+    const el = document.getElementById('arena-talk-enter');
+    if (!el) return;
+    if (!me) { el.innerHTML = `<div class="arena-talk-gate"><i class="fa-solid fa-right-to-bracket"></i> <b>Streamers:</b> sign in to enter. <b>Viewers:</b> hype an entry below, or type <code>!hype</code> in the streamer's chat.</div>`; return; }
+    if (!t.on_roster) { el.innerHTML = `<div class="arena-talk-gate"><i class="fa-solid fa-hand-fist"></i> You're not on the roster yet — stream once and you're in. Until then: hype away.</div>`; return; }
+    if (t.my_entry) { el.innerHTML = `<div class="arena-talk-gate is-done"><i class="fa-solid fa-circle-check"></i> You're in this round — <b>${t.my_entry.total}/50 · ${_aEsc(t.my_entry.stamp)}</b>. Next topic in ${_aEsc(_aCountdown(t.topic.ends_at))}. Tell chat to <code>!hype</code>.</div>`; return; }
+    const mic = t.mic || {};
+    el.innerHTML = `
+        <div class="arena-talk-panel">
+            <div class="arena-talk-panel-head"><h2><i class="fa-solid fa-fire"></i> Your turn</h2><span class="arena-note">one entry per topic</span></div>
+            <div class="arena-talk-modes">
+                <button class="arena-talk-mode ${mic.available ? 'active' : ''}" data-mode="mic" ${mic.available ? '' : 'disabled'} title="${mic.available ? 'Say it on stream — we transcribe it' : mic.reason === 'not_live' ? 'Go live to use the live mic' : 'Live, but no transcription yet — talk for a few seconds and reload, or type it'}"><i class="fa-solid fa-microphone"></i> Live mic${mic.available ? '' : mic.reason === 'not_live' ? ' <small>(go live)</small>' : ' <small>(no transcript yet)</small>'}</button>
+                <button class="arena-talk-mode ${mic.available ? '' : 'active'}" data-mode="text"><i class="fa-solid fa-keyboard"></i> Type it</button>
+            </div>
+            <div class="arena-talk-mode-body" id="arena-talk-mode-body"></div>
+            <div class="arena-talk-result" id="arena-talk-result"></div>
+        </div>`;
+    const body = document.getElementById('arena-talk-mode-body');
+    const renderMode = (mode) => {
+        el.querySelectorAll('.arena-talk-mode').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+        if (mode === 'text') {
+            body.innerHTML = `<textarea id="arena-talk-text" maxlength="${t.rules.text_max}" rows="3" placeholder="Talk your talk… (${t.rules.text_max} characters, PG-13, petty not cruel)"></textarea>
+                <div class="arena-talk-actions"><span class="arena-note" id="arena-talk-count">0 / ${t.rules.text_max}</span><button class="btn btn-primary" id="arena-talk-submit"><i class="fa-solid fa-gavel"></i> Send it to the judge</button></div>`;
+            const ta = document.getElementById('arena-talk-text');
+            ta.addEventListener('input', () => { document.getElementById('arena-talk-count').textContent = `${ta.value.length} / ${t.rules.text_max}`; });
+            document.getElementById('arena-talk-submit').addEventListener('click', () => submit('text', ta.value));
+        } else {
+            body.innerHTML = `<div class="arena-mic">
+                <div class="arena-mic-status" id="arena-mic-status"><span class="arena-mic-dot"></span> Ready. Press start, then say it on stream — you have ${t.rules.mic_window_sec}s.</div>
+                <div class="arena-mic-feed" id="arena-mic-feed"><span class="arena-note">Hot mic — what the transcription hears shows up here (a few seconds behind).</span></div>
+                <div class="arena-talk-actions"><button class="btn btn-primary" id="arena-mic-start"><i class="fa-solid fa-microphone"></i> I'm about to cook</button><button class="btn btn-ghost" id="arena-mic-drop" disabled><i class="fa-solid fa-hand-point-down"></i> Drop the mic</button></div>
+            </div>`;
+            let poll = null;
+            document.getElementById('arena-mic-start').addEventListener('click', async () => {
+                try {
+                    await api('/arena/talk/mic/start', { method: 'POST' });
+                    document.getElementById('arena-mic-start').disabled = true; document.getElementById('arena-mic-drop').disabled = false;
+                    const status = document.getElementById('arena-mic-status'), feed = document.getElementById('arena-mic-feed');
+                    status.classList.add('is-live');
+                    poll = setInterval(async () => {
+                        try {
+                            const f = await api('/arena/talk/mic/feed');
+                            if (!f.active) return;
+                            status.innerHTML = `<span class="arena-mic-dot"></span> LIVE MIC · ${f.remaining_sec}s left · ${f.lines.length} line${f.lines.length === 1 ? '' : 's'} heard`;
+                            if (f.lines.length) feed.innerHTML = f.lines.map(l => `<div class="arena-mic-line"><span>${_aStamp(l.at)}</span>${_aEsc(l.text)}</div>`).join('');
+                            if (f.remaining_sec <= 0) { clearInterval(poll); poll = null; submit('mic'); }
+                        } catch { /* */ }
+                    }, 2500);
+                    _arenaTalkTimers.push(poll);
+                } catch (err) { if (typeof showToast === 'function') showToast(err?.message || 'Could not start', 'error'); }
+            });
+            document.getElementById('arena-mic-drop').addEventListener('click', () => { if (poll) { clearInterval(poll); poll = null; } submit('mic'); });
+        }
+    };
+    const submit = async (mode, text) => {
+        const res = document.getElementById('arena-talk-result');
+        el.querySelectorAll('button').forEach(b => b.disabled = true);
+        res.innerHTML = `<div class="arena-loading"><i class="fa-solid fa-gavel fa-shake"></i><span>The judge is reading…</span></div>`;
+        try {
+            const r = await api('/arena/talk/submit', { method: 'POST', body: { mode, text } });
+            const e = r.entry;
+            body.innerHTML = '';
+            res.innerHTML = `<div class="arena-talk-reveal ${e.flagged ? 'is-flagged' : ''}">
+                <div class="arena-talk-reveal-head"><span class="arena-talk-reveal-total"><b id="arena-reveal-total">0</b><small>/50</small></span><span class="${_aStampClass(e.stamp)} arena-stamp--big" id="arena-reveal-stamp">${_aEsc(e.stamp)}</span></div>
+                <blockquote class="arena-talk-text">${_aEsc(e.text || '')}</blockquote>
+                ${_aScoreBars(e.scores || { spice: 0, wit: 0, on_topic: 0, delivery: 0, crowd: 0 }, { animate: true })}
+                <p class="arena-talk-verdict"><i class="fa-solid fa-gavel"></i> ${_aEsc(e.verdict || '')}</p>
+                ${e.note ? `<p class="arena-talk-note">Judge's note: ${_aEsc(e.note)}</p>` : ''}
+                <p class="arena-note">${e.flagged ? 'This entry was voided and is hidden from others.' : `Now tell chat to type <code>!hype</code> — every 3 people add a Crowd point. Bonus lands on your POWER within a minute.`}</p>
+            </div>`;
+            const totalEl = document.getElementById('arena-reveal-total');
+            const start = performance.now(), dur = 1400;
+            const tick = (now) => { const p = Math.min(1, (now - start) / dur); totalEl.textContent = (e.total * (1 - Math.pow(1 - p, 3))).toFixed(p < 1 ? 1 : 0); if (p < 1) requestAnimationFrame(tick); else totalEl.textContent = e.total; };
+            requestAnimationFrame(tick);
+            const list = document.getElementById('arena-talk-entries');
+            if (list) { const empty = list.querySelector('.arena-empty'); if (empty) empty.remove(); list.insertAdjacentHTML('afterbegin', _aTalkEntry(e, { mine: true, hypeable: false })); _aBindSpeak(list); _aBindHype(list); }
+        } catch (err) {
+            res.innerHTML = `<div class="arena-talk-gate is-error"><i class="fa-solid fa-triangle-exclamation"></i> ${_aEsc(err?.message || 'The judge walked out.')}</div>`;
+            el.querySelectorAll('button').forEach(b => b.disabled = false);
+        }
+    };
+    el.querySelectorAll('.arena-talk-mode').forEach(b => b.addEventListener('click', () => renderMode(b.dataset.mode)));
+    renderMode(mic.available ? 'mic' : 'text');
 }
 
 window.loadArenaPage = loadArenaPage;
