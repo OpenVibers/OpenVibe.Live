@@ -63,6 +63,8 @@ Standalone Node scripts in `test/` using `assert`. They create temp SQLite datab
 
 ## Documentation
 
+Every file below is also served on the site at `/docs/<name>` (rendered by `server/docs/routes.js`, GitHub-compatible heading anchors) — link to `https://openvibe.live/docs/whip#…` rather than to GitHub when pointing users at a doc.
+
 - [docs/architecture.md](docs/architecture.md) — System design, data flows, module map
 - [docs/broadcasting.md](docs/broadcasting.md) — Streaming protocols (WebRTC/RTMP/JSMPEG/WHIP)
 - [docs/whip.md](docs/whip.md) — WHIP ingest API reference (auth forms, CORS, browser-only publishing, error codes)

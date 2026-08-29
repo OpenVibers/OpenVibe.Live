@@ -7,7 +7,7 @@ OpenVibe.Live accepts live video over **WHIP** (WebRTC-HTTP Ingestion Protocol, 
 ## Endpoint
 
 ```
-POST https://whip.openvibe.live/whip/{streamKey}
+POST https://ingest.openvibe.live/whip/{streamKey}
 Content-Type: application/sdp
 ```
 
@@ -76,7 +76,7 @@ Access-Control-Expose-Headers: Location, X-WHIP-ERROR
 There are no cookies involved, so `credentials` is never needed — call `fetch()` normally. You can verify from a shell:
 
 ```bash
-curl -si -X OPTIONS https://whip.openvibe.live/whip/x \
+curl -si -X OPTIONS https://ingest.openvibe.live/whip/x \
   -H 'Origin: https://my-static-site.example' \
   -H 'Access-Control-Request-Method: POST' \
   -H 'Access-Control-Request-Headers: content-type'
@@ -85,14 +85,14 @@ curl -si -X OPTIONS https://whip.openvibe.live/whip/x \
 
 ## Publishing from a browser
 
-> **Direct link to this section:** <https://github.com/OpenVibers/OpenVibe.Live/blob/main/docs/whip.md#publishing-from-a-browser>
+> **Direct link to this section:** <https://openvibe.live/docs/whip#publishing-from-a-browser> (also on [GitHub](https://github.com/OpenVibers/OpenVibe.Live/blob/main/docs/whip.md#publishing-from-a-browser))
 > Everything needed to build a browser-only publisher is in this section — copy it whole into your AI assistant or your notes.
 
 **Spec in five lines (paste-ready):**
 
 ```text
 OpenVibe.Live WHIP ingest — browser publisher requirements
-1. POST the SDP offer to https://whip.openvibe.live/whip/<streamKey> with Content-Type: application/sdp. No cookies, no other auth; CORS is open (*).
+1. POST the SDP offer to https://ingest.openvibe.live/whip/<streamKey> with Content-Type: application/sdp. No cookies, no other auth; CORS is open (*).
 2. Expect 201; body = SDP answer (application/sdp); Location header = session resource URL (read it — it is exposed via CORS).
 3. Offer: one audio + one video m-section, a=setup:actpass, BUNDLE + rtcp-mux, single encoding (no simulcast). Codecs: VP8 or H.264 (42e01f, packetization-mode=1) + Opus 48k. AV1/VP9/HEVC are ignored.
 4. No STUN/TURN needed (server is ICE-lite); do not wait for ICE gathering; PATCH/trickle is optional.
@@ -105,7 +105,7 @@ A complete publisher is about forty lines. This is the core of [`whip-publisher.
 <video id="preview" autoplay muted playsinline></video>
 <button id="go">Go live</button>
 <script>
-const WHIP_URL = 'https://whip.openvibe.live/whip/<your-stream-key>';
+const WHIP_URL = 'https://ingest.openvibe.live/whip/<your-stream-key>';
 let pc, resourceUrl;
 
 async function goLive() {
@@ -161,7 +161,7 @@ Things worth knowing:
 ## Other clients
 
 - **OBS Studio (30+):** *Settings → Stream → Service: WHIP*, Server = the WHIP URL, Bearer Token = your stream key.
-- **FFmpeg (7.0+):** `ffmpeg -re -i input.mp4 -c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p -c:a libopus -f whip "https://whip.openvibe.live/whip/<streamKey>"`
-- **GStreamer:** `... ! whipsink whip-endpoint="https://whip.openvibe.live/whip/<streamKey>"` (needs `gst-plugins-rs`).
+- **FFmpeg (7.0+):** `ffmpeg -re -i input.mp4 -c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p -c:a libopus -f whip "https://ingest.openvibe.live/whip/<streamKey>"`
+- **GStreamer:** `... ! whipsink whip-endpoint="https://ingest.openvibe.live/whip/<streamKey>"` (needs `gst-plugins-rs`).
 
 The Broadcast page shows ready-to-paste commands for each with your key filled in. See [Broadcasting Guide](broadcasting.md) for the other ingest methods.

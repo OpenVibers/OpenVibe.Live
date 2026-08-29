@@ -14,7 +14,7 @@
         into your own site.
 
         Protocol walkthrough + API reference:
-        https://github.com/OpenVibers/OpenVibe.Live/blob/main/docs/whip.md
+        https://openvibe.live/docs/whip#publishing-from-a-browser
 
         Programmatic use: window.OpenVibeWhip.start({ url, token, source, maxBitrate })
                           window.OpenVibeWhip.stop()
@@ -68,7 +68,7 @@
 
     <div class="card">
         <label for="whip-url">WHIP URL</label>
-        <input id="whip-url" type="url" placeholder="https://whip.openvibe.live/whip/&lt;your-stream-key&gt;" autocomplete="off" spellcheck="false">
+        <input id="whip-url" type="url" placeholder="https://ingest.openvibe.live/whip/&lt;your-stream-key&gt;" autocomplete="off" spellcheck="false">
         <p class="hint">Copy it from <strong>Broadcast → your stream → Streaming method: WHIP</strong>. The key inside the URL is your credential — treat the URL like a password. It is remembered in this browser only.</p>
 
         <label for="whip-token">Bearer token <span style="text-transform:none;letter-spacing:0">(optional — only needed if your URL uses the numeric slot form <code>/whip/42</code>)</span></label>
@@ -114,7 +114,7 @@
         <pre id="whip-log" class="log">Ready.</pre>
     </div>
 
-    <p class="hint">How it works: the page calls <code>getUserMedia</code>, builds a WebRTC offer, <code>POST</code>s it as <code>application/sdp</code> to the WHIP URL, applies the SDP answer, and <code>DELETE</code>s the returned resource when you stop. Full protocol notes in <a href="https://github.com/OpenVibers/OpenVibe.Live/blob/main/docs/whip.md">docs/whip.md</a>. View-source this page to copy it.</p>
+    <p class="hint">How it works: the page calls <code>getUserMedia</code>, builds a WebRTC offer, <code>POST</code>s it as <code>application/sdp</code> to the WHIP URL, applies the SDP answer, and <code>DELETE</code>s the returned resource when you stop. Full protocol notes in <a href="https://openvibe.live/docs/whip#publishing-from-a-browser">openvibe.live/docs/whip</a>. View-source this page to copy it.</p>
 </main>
 
 <script>
@@ -201,7 +201,7 @@
         const maxBitrate = Number(opts.maxBitrate) || Number(kbps) * 1000;
 
         if (!/^https?:\/\/[^/]+\/whip\/[^/?#]+\/?$/.test(url)) {
-            throw new Error('WHIP URL should look like https://whip.openvibe.live/whip/<stream-key>');
+            throw new Error('WHIP URL should look like https://ingest.openvibe.live/whip/<stream-key>');
         }
         try { localStorage.setItem(STORAGE_KEY, url); } catch { /* private mode */ }
 
