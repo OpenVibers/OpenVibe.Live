@@ -37,6 +37,36 @@ function captureMemoryNow(stream, { allowFfmpeg = true, reason = 'manual' } = {}
     return p;
 }
 
+// ── Moment frames ────────────────────────────────────────────
+// The live thumbnail a moment used to point at rotates every few seconds and is deleted
+// within the hour, so every moment in the timeline ended up showing the placeholder
+// pixel (a white box). Keep a small JPEG of the analysed frame per moment instead,
+// under data/ai-moments/<streamId>/<offset>.jpg (served at /data/ai-moments/…, ~15 KB).
+const MOMENTS_DIR = require('path').resolve(process.env.AI_MOMENTS_PATH || './data/ai-moments');
+async function _persistMomentFrame(image, streamId, offset) {
+    if (!image) return null;
+    try {
+        const fs = require('fs'), path = require('path');
+        const sharp = require('sharp');
+        const dir = path.join(MOMENTS_DIR, String(streamId));
+        fs.mkdirSync(dir, { recursive: true });
+        const file = `${Math.max(0, Math.round(offset))}.jpg`;
+        const input = Buffer.isBuffer(image) ? image : fs.readFileSync(image);
+        await sharp(input).resize({ width: 320, withoutEnlargement: true }).jpeg({ quality: 72 }).toFile(path.join(dir, file));
+        return `/data/ai-moments/${streamId}/${file}`;
+    } catch (e) {
+        console.warn('[AI-See] moment frame not saved:', e.message);
+        return null;
+    }
+}
+// A live thumbnail URL (/api/thumbnails/stream-…) is never worth storing — it will be gone
+// by the time anyone looks; Media-hosted VOD thumbnails are stable and fine.
+function _stableThumb(url) {
+    const u = String(url || '');
+    if (!u || /\/api\/thumbnails\/stream-/.test(u)) return null;
+    return u;
+}
+
 async function _analyzeOne(stream, { allowFfmpeg = true, reason = 'periodic' } = {}) {
     let image = null;
     if (allowFfmpeg) { try { if (vision && vision.captureFrame) image = await vision.captureFrame(stream); } catch { /* */ } }
@@ -109,7 +139,7 @@ async function _analyzeOne(stream, { allowFfmpeg = true, reason = 'periodic' } =
     try {
         db.addStreamMemory({
             stream_id: stream.id, user_id: stream.user_id, offset_seconds: offset,
-            description: memDesc, tags: r.tags, thumbnail_url: stream.thumbnail_url || null,
+            description: memDesc, tags: r.tags, thumbnail_url: await _persistMomentFrame(image, stream.id, offset) || _stableThumb(stream.thumbnail_url),
             transcript_json: heardSegments,
         });
         // Roll this stream's memories into an overview — but only RE-summarize when

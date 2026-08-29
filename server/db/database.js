@@ -3867,6 +3867,65 @@ function getActiveGoalsForUsers(userIds) {
     return out;
 }
 
+/** ISO cutoff for Vibes stats (setting `stats_vibes_reset_at`), or the epoch when unset. */
+function vibesStatsSince() {
+    try {
+        const v = String(getSetting('stats_vibes_reset_at') || '').trim();
+        if (v && !isNaN(Date.parse(v))) return new Date(v).toISOString().replace('T', ' ').slice(0, 19);
+    } catch { /* */ }
+    return '1970-01-01 00:00:00';
+}
+
+// ── Home stat series (click a hero stat → "over time" chart) ────────────────
+// One registry entry per metric: the table, its timestamp column, what to aggregate and
+// an optional WHERE. `days` buckets are computed in SQL by date(); missing days are
+// filled with 0 so charts never skip a day.
+const HOME_SERIES = {
+    users:       { table: 'users',             ts: 'created_at',  agg: 'COUNT(*)',              where: 'COALESCE(is_banned, 0) = 0' },
+    anons:       { table: 'anon_ip_mappings',  ts: 'created_at',  agg: 'COUNT(*)' },
+    visitors:    { table: 'anon_ip_mappings',  ts: 'created_at',  agg: 'COUNT(*)' },
+    follows:     { table: 'follows',           ts: 'created_at',  agg: 'COUNT(*)' },
+    messages:    { table: 'chat_messages',     ts: 'timestamp',   agg: 'COUNT(*)',              where: 'COALESCE(is_deleted, 0) = 0' },
+    active:      { table: 'chat_messages',     ts: 'timestamp',   agg: "COUNT(DISTINCT COALESCE('u' || user_id, 'a' || anon_id, 'r' || source_platform || '|' || username))", where: 'COALESCE(is_deleted, 0) = 0' },
+    sessions:    { table: 'streams',           ts: 'created_at',  agg: 'COUNT(*)' },
+    streamers:   { table: 'streams',           ts: 'created_at',  agg: 'COUNT(DISTINCT user_id)' },
+    vods:        { table: 'vods',              ts: 'created_at',  agg: 'COUNT(*)',              where: 'is_public = 1 AND COALESCE(is_recording, 0) = 0' },
+    clips:       { table: 'clips',             ts: 'created_at',  agg: 'COUNT(*)',              where: 'COALESCE(is_public, 1) = 1' },
+    hours:       { table: 'vods',              ts: 'created_at',  agg: 'COALESCE(SUM(duration_seconds), 0) / 3600.0', where: 'COALESCE(is_recording, 0) = 0' },
+    hoursWatched:{ table: 'watch_time',        ts: 'created_at',  agg: 'COALESCE(SUM(minutes_watched), 0) / 60.0' },
+    aiMoments:   { table: 'stream_memories',   ts: 'created_at',  agg: 'COUNT(*)' },
+    vibes:       { table: 'transactions',      ts: 'created_at',  agg: 'COALESCE(SUM(amount), 0)', where: "type = 'donation'", vibesReset: true },
+    supporters:  { table: 'transactions',      ts: 'created_at',  agg: 'COUNT(DISTINCT from_user_id)', where: "type = 'donation' AND from_user_id IS NOT NULL", vibesReset: true },
+    vibesBought: { table: 'payment_orders',    ts: 'updated_at',  agg: 'COALESCE(SUM(bucks), 0)', where: "kind = 'bucks' AND status = 'credited'" },
+    subs:        { table: 'subscriptions',     ts: 'created_at',  agg: 'COUNT(*)' },
+    points:      { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(SUM(amount), 0)', where: 'amount > 0' },
+    pointsSpent: { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(-SUM(amount), 0)', where: 'amount < 0' },
+    redemptions: { table: 'coin_redemptions',  ts: 'created_at',  agg: 'COUNT(*)',              where: "status NOT IN ('rejected', 'refunded')" },
+    emotes:      { table: 'emotes',            ts: 'created_at',  agg: 'COUNT(*)' },
+};
+const HOME_SERIES_KEYS = Object.keys(HOME_SERIES);
+
+function getHomeStatSeries(metric, days = 30) {
+    const def = HOME_SERIES[metric];
+    if (!def) return null;
+    days = Math.max(1, Math.min(365, parseInt(days, 10) || 30));
+    const where = [`${def.ts} >= datetime('now', ?)`];
+    if (def.where) where.push(def.where);
+    if (def.vibesReset) where.push(`${def.ts} >= '${vibesStatsSince()}'`);
+    let rows = [];
+    try {
+        rows = all(`SELECT date(${def.ts}) AS day, ${def.agg} AS value FROM ${def.table} WHERE ${where.join(' AND ')} GROUP BY day ORDER BY day ASC`, [`-${days - 1} days`]);
+    } catch { rows = []; }
+    const byDay = new Map(rows.map(r => [r.day, Number(r.value) || 0]));
+    const points = [];
+    for (let i = days - 1; i >= 0; i--) {
+        const day = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+        points.push({ day, value: Number((byDay.get(day) || 0).toFixed(2)) });
+    }
+    const total = Number(points.reduce((a, p) => a + p.value, 0).toFixed(2));
+    return { metric, days, points, total, peak: Math.max(0, ...points.map(p => p.value)) };
+}
+
 function getHomeStats() {
     const now = Date.now();
     if (_homeStatsCache && (now - _homeStatsCacheAt) < _HOME_STATS_TTL) return _homeStatsCache;
@@ -3878,6 +3937,9 @@ function getHomeStats() {
 function _computeHomeStats() {
     // Each stat is isolated so a missing table / column can never blank the whole hero.
     const c = (sql, p = []) => { try { return get(sql, p)?.count || 0; } catch { return 0; } };
+    // Vibes tipped before this instant were test money (site setting `stats_vibes_reset_at`,
+    // ISO timestamp). Everything Vibes-related on the hero starts counting from it.
+    const vibesSince = vibesStatsSince();
     // Rolling day/week/month counts for a table by its timestamp column.
     const winCount = (table, col, extra = '') => {
         const q = (w) => c(`SELECT COUNT(*) AS count FROM ${table} WHERE ${col} >= datetime('now', ?)${extra ? ' AND ' + extra : ''}`, [w]);
@@ -3896,7 +3958,7 @@ function _computeHomeStats() {
         // Community time actually spent watching (watch-time heartbeats → hours).
         hoursWatched: Math.round(c(`SELECT COALESCE(SUM(minutes_watched), 0) AS count FROM watch_time`) / 60),
         // Vibes tipped between people (donation ledger; bit-style, 100 = $1).
-        vibesTipped: c(`SELECT COALESCE(SUM(amount), 0) AS count FROM transactions WHERE type = 'donation'`),
+        vibesTipped: c(`SELECT COALESCE(SUM(amount), 0) AS count FROM transactions WHERE type = 'donation' AND created_at >= ?`, [vibesSince]),
         // Live channel subscriptions.
         activeSubs: c(`SELECT COUNT(*) AS count FROM subscriptions WHERE status = 'active' AND (current_period_end IS NULL OR datetime(current_period_end) > CURRENT_TIMESTAMP)`),
         // Channel points earned by viewers across every channel (watch/chat/follow bonuses).
@@ -3906,7 +3968,7 @@ function _computeHomeStats() {
         // Reward redemptions that stuck (not rejected / refunded).
         redemptions: c(`SELECT COUNT(*) AS count FROM coin_redemptions WHERE status NOT IN ('rejected', 'refunded')`),
         // Distinct people who have tipped Vibes to someone.
-        supporters: c(`SELECT COUNT(DISTINCT from_user_id) AS count FROM transactions WHERE type = 'donation' AND from_user_id IS NOT NULL`),
+        supporters: c(`SELECT COUNT(DISTINCT from_user_id) AS count FROM transactions WHERE type = 'donation' AND from_user_id IS NOT NULL AND created_at >= ?`, [vibesSince]),
         // Vibes bought with real money (credited purchase orders, any provider).
         vibesBought: c(`SELECT COALESCE(SUM(bucks), 0) AS count FROM payment_orders WHERE kind = 'bucks' AND status = 'credited'`),
         // Donation goals: currently running + ever reached.
@@ -3952,7 +4014,7 @@ function _computeHomeStats() {
             aiMoments: winCount('stream_memories', 'created_at'),
             messages: winCount('chat_messages', 'timestamp', 'COALESCE(is_deleted, 0) = 0'),
             hours: { d: hoursSince('-1 day'), w: hoursSince('-7 days'), m: hoursSince('-30 days') },
-            vibes: winSum('transactions', 'amount', 'created_at', "type = 'donation'"),
+            vibes: winSum('transactions', 'amount', 'created_at', `type = 'donation' AND created_at >= '${vibesSince}'`),
             points: winSum('coin_transactions', 'amount', 'created_at', 'amount > 0'),
             pointsSpent: winSum('coin_transactions', '-amount', 'created_at', 'amount < 0'),
             redemptions: winCount('coin_redemptions', 'created_at', "status NOT IN ('rejected', 'refunded')"),
@@ -7917,6 +7979,7 @@ function addToDonationGoal(id, amount) {
 }
 
 module.exports = {
+    getHomeStatSeries, HOME_SERIES_KEYS, vibesStatsSince, _computeHomeStats,
     getVodAiState, getClipAiState,
     scheduleClipNotifyState, bumpClipNotifyNowState, markClipNotifiedState, getDueClipNotifies,
     getDb, initDb, run, get, all, close,

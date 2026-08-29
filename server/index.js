@@ -462,6 +462,11 @@ app.use(express.static(path.join(__dirname, '../public'), { setHeaders: (res, fi
 // Serve locally-cached song-request media files (media player page)
 app.use('/media', express.static(path.resolve('./data/media')));
 
+// AI moment frames (one small JPEG per stream memory, see server/ai/stream-memory-job.js)
+app.use('/data/ai-moments', express.static(path.resolve(process.env.AI_MOMENTS_PATH || './data/ai-moments'), {
+    maxAge: '30d', immutable: true, index: false, dotfiles: 'deny',
+}));
+
 // Arena portraits (AI-generated fighting-game character art, see server/arena)
 app.use('/data/arena', express.static(path.resolve(process.env.ARENA_IMAGE_PATH || './data/arena'), {
     maxAge: '7d', immutable: true, index: false, dotfiles: 'deny',
