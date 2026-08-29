@@ -46,7 +46,16 @@ function normalizeOrigin(value) {
 }
 
 function buildWhipResourceUrl(req, streamId, resourceId) {
-    const baseUrl = normalizeOrigin(config.whip?.publicUrl || config.webrtc?.publicUrl || config.baseUrl) || `${req.protocol}://${req.get('host')}`;
+    // The session resource lives on the host the client just reached us on. Encoders keep
+    // the WHIP URL they were configured with (openvibe.live, whip.openvibe.live, …) long
+    // after the advertised host changes, and a Location on a different host would send
+    // their PATCH/DELETE somewhere they may not resolve or allowlist. Only fall back to
+    // the configured public origin when the request carries no usable Host.
+    const requestOrigin = (typeof req?.get === 'function' && req.get('host'))
+        ? normalizeOrigin(`${req.protocol || 'https'}://${req.get('host')}`)
+        : null;
+    const baseUrl = requestOrigin
+        || normalizeOrigin(config.whip?.publicUrl || config.webrtc?.publicUrl || config.baseUrl);
     try {
         return new URL(`/whip/${streamId}/${resourceId}`, baseUrl).toString();
     } catch {
