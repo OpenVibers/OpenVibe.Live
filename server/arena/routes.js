@@ -49,6 +49,39 @@ router.get('/live', (req, res) => {
     }
 });
 
+router.get('/main-event', optionalAuth, async (req, res) => {
+    try {
+        const battle = await arena.getMainEvent({ generate: req.query.generate !== '0' });
+        if (!battle) return res.status(404).json({ error: 'No main event yet — need at least two fighters' });
+        let yourVote = null;
+        try {
+            const row = require('../db/database').get('SELECT side FROM arena_votes WHERE battle_id = ? AND voter_key = ?', [battle.id, arena.voterKeyFor(req)]);
+            yourVote = row ? row.side : null;
+        } catch { /* */ }
+        res.set('Cache-Control', 'no-store');
+        res.json({ ...battle, your_vote: yourVote });
+    } catch (err) {
+        console.error('[Arena] main event:', err.message);
+        res.status(500).json({ error: 'Failed to load the main event' });
+    }
+});
+
+router.get('/fighters/:user/stat/:stat', (req, res) => {
+    try {
+        const card = arena.loadRoster();
+        const db = require('../db/database');
+        const user = /^\d+$/.test(req.params.user) ? db.getUserById(Number(req.params.user)) : db.getUserByUsername(req.params.user);
+        if (!user || !card.byId[user.id]) return res.status(404).json({ error: 'No such fighter on the roster' });
+        const detail = arena.getStatDetail(user.id, String(req.params.stat));
+        if (!detail) return res.status(404).json({ error: 'Unknown stat' });
+        res.set('Cache-Control', 'public, max-age=120');
+        res.json(detail);
+    } catch (err) {
+        console.error('[Arena] stat detail:', err.message);
+        res.status(500).json({ error: 'Failed to load stat detail' });
+    }
+});
+
 router.get('/fighters/:user', async (req, res) => {
     try {
         const generate = req.query.generate !== '0';

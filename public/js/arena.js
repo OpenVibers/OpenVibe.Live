@@ -2,31 +2,60 @@
  * OpenVibe.Live — Arena tab (streamer vs streamer)
  *
  * Routes (handled from app.js):
- *   /arena                         leaderboard + live matchups
- *   /arena/<username>              fighter profile
- *   /arena/battle/<a>/<b>          head-to-head battle
+ *   /arena                         main event + live matchups + leaderboard (rows expand)
+ *   /arena/<username>              fighter profile (stats drill down, voice + quotes, portrait lightbox)
+ *   /arena/battle/<a>/<b>          head-to-head battle (rounds, tale of the tape, walkouts, crowd vote)
  *
- * Talks to /api/arena/* (server/arena). Everything renders with DOM building or
- * escaped template strings — persona text is AI-written and must never be trusted as HTML.
+ * Talks to /api/arena/* (server/arena). Everything renders with escaped template strings —
+ * persona/quote text is AI-written or transcribed and must never be trusted as HTML.
  */
 'use strict';
 
-const ARENA_STATS = ['hype', 'grind', 'chat', 'loyalty', 'clutch', 'vibe'];
-const ARENA_STAT_LABEL = { hype: 'Hype', grind: 'Grind', chat: 'Chat', loyalty: 'Loyalty', clutch: 'Clutch', vibe: 'Vibe' };
+const ARENA_STATS = ['hype', 'grind', 'chat', 'loyalty', 'clutch', 'vibe', 'mic'];
+const ARENA_STAT_LABEL = { hype: 'Hype', grind: 'Grind', chat: 'Chat', loyalty: 'Loyalty', clutch: 'Clutch', vibe: 'Vibe', mic: 'Mic' };
 let _arenaRoster = null;       // cached leaderboard payload
 let _arenaLiveTimer = null;
 let _arenaImagePoll = null;
 let _arenaBattleTimers = [];
+let _arenaUtterance = null;
 
 function _aEsc(s) { return typeof esc === 'function' ? esc(String(s ?? '')) : String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-function _aNum(n) { n = Number(n) || 0; return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n); }
+function _aNum(n) { n = Number(n) || 0; return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(Number.isInteger(n) ? n : n.toFixed(1)); }
 function _aInitial(u) { return (u.display_name || u.username || '?').trim().charAt(0).toUpperCase(); }
+function _aStamp(sec) { sec = Math.max(0, Math.floor(sec || 0)); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60; return (h ? `${h}:` : '') + `${h ? String(m).padStart(2, '0') : m}:${String(s).padStart(2, '0')}`; }
+function _aDate(d) { try { return new Date(String(d).replace(' ', 'T') + (String(d).endsWith('Z') ? '' : 'Z')).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch { return String(d || ''); } }
 
 function _aStopTimers() {
     if (_arenaLiveTimer) { clearInterval(_arenaLiveTimer); _arenaLiveTimer = null; }
     if (_arenaImagePoll) { clearInterval(_arenaImagePoll); _arenaImagePoll = null; }
     for (const t of _arenaBattleTimers) clearTimeout(t);
     _arenaBattleTimers = [];
+    _aStopSpeaking();
+}
+
+// ── Speech: hear the taunt / quotes read out (browser TTS, no server cost) ──
+function _aStopSpeaking() {
+    try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch { /* */ }
+    document.querySelectorAll('.is-speaking').forEach(el => el.classList.remove('is-speaking'));
+    _arenaUtterance = null;
+}
+function _aSpeak(text, btn) {
+    if (!window.speechSynthesis || !text) return;
+    if (btn && btn.classList.contains('is-speaking')) { _aStopSpeaking(); return; }
+    _aStopSpeaking();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 0.9;
+    const voices = speechSynthesis.getVoices();
+    const pick = voices.find(v => /en/i.test(v.lang) && /Google|Daniel|Samantha|Alex/i.test(v.name)) || voices.find(v => /en/i.test(v.lang));
+    if (pick) u.voice = pick;
+    u.onend = u.onerror = () => { if (btn) btn.classList.remove('is-speaking'); _arenaUtterance = null; };
+    _arenaUtterance = u;
+    if (btn) btn.classList.add('is-speaking');
+    speechSynthesis.speak(u);
+}
+function _aSpeakBtn(text, cls = 'arena-speak') { return `<button type="button" class="${cls}" data-speak="${_aEsc(text)}" title="Hear it (browser voice)"><i class="fa-solid fa-volume-high"></i></button>`; }
+function _aBindSpeak(root) {
+    root.querySelectorAll('[data-speak]').forEach(btn => btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); _aSpeak(btn.dataset.speak, btn); }));
 }
 
 /** Portrait: AI image when present, otherwise the avatar (or an initial) styled as a card. */
@@ -42,22 +71,22 @@ function _aPortrait(f, size = 'md') {
     return `<div class="arena-portrait arena-portrait-${size} arena-portrait-initial" style="--fc:${_aEsc(color)}"><span>${_aEsc(_aInitial(u))}</span></div>`;
 }
 
-function _aRatingBars(r) {
+function _aRatingBars(r, { clickable = false } = {}) {
     return `<div class="arena-bars">${ARENA_STATS.map(k => `
-        <div class="arena-bar" title="${_aEsc(ARENA_STAT_LABEL[k])}">
+        <div class="arena-bar ${clickable ? 'is-clickable' : ''}" data-stat="${k}" title="${_aEsc(ARENA_STAT_LABEL[k])}">
             <span class="arena-bar-label">${_aEsc(ARENA_STAT_LABEL[k])}</span>
-            <span class="arena-bar-track"><span class="arena-bar-fill" style="width:${Math.max(0, Math.min(100, r[k]))}%"></span></span>
-            <span class="arena-bar-val">${r[k]}</span>
+            <span class="arena-bar-track"><span class="arena-bar-fill" style="width:${Math.max(0, Math.min(100, r[k] || 0))}%"></span></span>
+            <span class="arena-bar-val">${r[k] ?? '–'}</span>
         </div>`).join('')}</div>`;
 }
 
-/** Hexagon radar chart as inline SVG (no library). */
-function _aRadar(r, color, size = 180) {
-    const c = size / 2, R = size / 2 - 28; // leave room for the labels outside the outer ring
+/** Heptagon radar chart as inline SVG (no library). */
+function _aRadar(r, color, size = 200) {
+    const c = size / 2, R = size / 2 - 28;
     const angle = (i) => -Math.PI / 2 + (i * 2 * Math.PI) / ARENA_STATS.length;
     const pt = (i, v) => { const rr = R * (v / 99); return [c + rr * Math.cos(angle(i)), c + rr * Math.sin(angle(i))]; };
     const ring = (v) => ARENA_STATS.map((_, i) => pt(i, v).map(x => x.toFixed(1)).join(',')).join(' ');
-    const poly = ARENA_STATS.map((k, i) => pt(i, r[k]).map(x => x.toFixed(1)).join(',')).join(' ');
+    const poly = ARENA_STATS.map((k, i) => pt(i, r[k] || 0).map(x => x.toFixed(1)).join(',')).join(' ');
     const labels = ARENA_STATS.map((k, i) => {
         const rr = R + 16, x = c + rr * Math.cos(angle(i)), y = c + rr * Math.sin(angle(i));
         return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="middle">${_aEsc(ARENA_STAT_LABEL[k])}</text>`;
@@ -69,7 +98,28 @@ function _aRadar(r, color, size = 180) {
     </svg>`;
 }
 
+/** Sparkline of a per-stream series. */
+function _aSpark(series, color) {
+    const w = 320, h = 70, pad = 6;
+    const vals = series.map(p => Number(p.value) || 0);
+    if (!vals.length) return '<p class="arena-voice-empty">No stream history in the window.</p>';
+    const max = Math.max(...vals, 1), min = 0;
+    const x = (i) => vals.length === 1 ? w / 2 : pad + (i * (w - pad * 2)) / (vals.length - 1);
+    const y = (v) => h - pad - ((v - min) / (max - min || 1)) * (h - pad * 2);
+    const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    const area = `${x(0).toFixed(1)},${h - pad} ${pts} ${x(vals.length - 1).toFixed(1)},${h - pad}`;
+    return `<svg class="arena-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="--fc:${_aEsc(color)}">
+        <polygon class="arena-spark-area" points="${area}"></polygon>
+        <polyline points="${pts}"></polyline>
+        ${vals.map((v, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.5"><title>${_aEsc(series[i].title || '')} · ${_aEsc(_aDate(series[i].date))}: ${_aEsc(_aNum(v))}</title></circle>`).join('')}
+    </svg>
+    <div class="arena-spark-caption"><span>${_aEsc(_aDate(series[0].date))}</span><span>peak ${_aEsc(_aNum(max))}</span><span>${_aEsc(_aDate(series[series.length - 1].date))}</span></div>`;
+}
+
 function _aChannelLink(u) { return `/${encodeURIComponent(u.username)}`; }
+function _aFighterLink(u) { return `/arena/${encodeURIComponent(u.username)}`; }
+function _aBattleLink(a, b) { return `/arena/battle/${encodeURIComponent(a.username)}/${encodeURIComponent(b.username)}`; }
+function _aA(href, inner, cls = '') { return `<a class="${cls}" href="${_aEsc(href)}" onclick="return handleLinkClick(event, '${_aEsc(href)}')">${inner}</a>`; }
 
 // ── Page entry ───────────────────────────────────────────────
 
@@ -89,7 +139,7 @@ async function loadArenaPage(segments = []) {
 
 function _aSpinner(text) { return `<div class="arena-loading"><i class="fa-solid fa-circle-notch fa-spin"></i><span>${_aEsc(text)}</span></div>`; }
 
-// ── Home: live matchups + leaderboard ────────────────────────
+// ── Home: main event + live matchups + leaderboard ───────────
 
 async function _aRenderHome(root) {
     root.innerHTML = _aSpinner('Loading the roster…');
@@ -104,13 +154,14 @@ async function _aRenderHome(root) {
         <div class="arena-hero">
             <div>
                 <h1><i class="fa-solid fa-hand-fist"></i> The Arena</h1>
-                <p class="page-subtitle">Every streamer, ranked by the numbers and roasted by the AI. Pick two, watch them fight, and let chat decide the last round.</p>
+                <p class="page-subtitle">Every streamer, ranked by the numbers and roasted by the AI. Tap a fighter to expand, pick two to fight, and let chat decide the last round.</p>
             </div>
             <div class="arena-hero-actions">
                 <button class="btn btn-primary" id="arena-random"><i class="fa-solid fa-dice"></i> Random battle</button>
                 ${data.ai ? '' : '<span class="arena-note" title="AI is off — stats and templated commentary only">AI commentary off</span>'}
             </div>
         </div>
+        <section id="arena-main-event" class="arena-main-event" style="display:none"></section>
         <section id="arena-live" class="arena-live"></section>
         <section class="arena-board">
             <div class="arena-board-head">
@@ -121,15 +172,16 @@ async function _aRenderHome(root) {
         </section>`;
     _aRenderLive(live);
     _aRenderList(fighters);
+    api('/arena/main-event').then(me => _aRenderMainEvent(me)).catch(() => {});
     document.getElementById('arena-search').addEventListener('input', (e) => {
         const q = e.target.value.trim().toLowerCase();
-        _aRenderList(q ? fighters.filter(f => [f.user.username, f.user.display_name, f.persona.fighter_name, f.persona.class].some(s => String(s || '').toLowerCase().includes(q))) : fighters);
+        _aRenderList(q ? fighters.filter(f => [f.user.username, f.user.display_name, f.persona.fighter_name, f.persona.class, f.persona.element].some(s => String(s || '').toLowerCase().includes(q))) : fighters);
     });
     document.getElementById('arena-random').addEventListener('click', () => {
         if (fighters.length < 2) return;
         const a = fighters[Math.floor(Math.random() * fighters.length)];
         let b = a; while (b === a) b = fighters[Math.floor(Math.random() * fighters.length)];
-        navigate(`/arena/battle/${encodeURIComponent(a.user.username)}/${encodeURIComponent(b.user.username)}`);
+        navigate(_aBattleLink(a.user, b.user));
     });
     _arenaLiveTimer = setInterval(async () => {
         if (currentPage !== 'arena' || !document.getElementById('arena-live')) return _aStopTimers();
@@ -137,16 +189,50 @@ async function _aRenderHome(root) {
     }, 30000);
 }
 
+function _aRenderMainEvent(me) {
+    const el = document.getElementById('arena-main-event');
+    if (!el || !me || !me.a) return;
+    const side = (f, s) => _aA(_aBattleLink(me.a.user, me.b.user), `${_aPortrait(f, 'sm')}<div><strong>${_aEsc(f.persona.fighter_name)}</strong><span>${_aEsc(f.user.display_name)} · #${f.rank} · PWR ${f.ratings.power}</span></div>`, `arena-me-side is-${s}`);
+    const render = (votes, outcome, yourVote) => {
+        el.style.display = '';
+        el.innerHTML = `
+            <div class="arena-main-event-head">
+                <h2><i class="fa-solid fa-star"></i> Main event · ${_aEsc(me.day)}</h2>
+                ${_aA(_aBattleLink(me.a.user, me.b.user), '<i class="fa-solid fa-play"></i> Watch the fight', 'btn btn-ghost')}
+            </div>
+            <div class="arena-main-event-body">
+                ${side(me.a, 'a')}
+                <div class="arena-me-center">
+                    <div class="arena-me-score">${outcome.a} – ${outcome.b}</div>
+                    <div class="arena-me-vote">
+                        <button data-side="a" class="${yourVote === 'a' ? 'is-picked' : ''}">Back ${_aEsc(me.a.persona.fighter_name.split(' ')[0])}</button>
+                        <button data-side="b" class="${yourVote === 'b' ? 'is-picked' : ''}">Back ${_aEsc(me.b.persona.fighter_name.split(' ')[0])}</button>
+                    </div>
+                    <div class="arena-me-tally">${votes.a + votes.b} vote${votes.a + votes.b === 1 ? '' : 's'} · ${outcome.winner ? `${_aEsc((outcome.winner === 'a' ? me.a : me.b).persona.fighter_name)} leads` : 'dead even'}</div>
+                </div>
+                ${side(me.b, 'b')}
+            </div>
+            <p class="arena-me-intro"><i class="fa-solid fa-microphone-lines"></i> ${_aEsc(me.commentary?.intro || '')}</p>`;
+        el.querySelectorAll('.arena-me-vote button').forEach(btn => btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            try { const r = await api(`/arena/battle/${encodeURIComponent(me.a.user.username)}/${encodeURIComponent(me.b.user.username)}/vote`, { method: 'POST', body: { side: btn.dataset.side } }); render(r.votes, r.outcome, r.your_side); }
+            catch (err) { btn.disabled = false; if (typeof showToast === 'function') showToast(err?.message || 'Vote failed', 'error'); }
+        }));
+    };
+    render(me.votes, me.outcome, me.your_vote || null);
+}
+
 function _aRenderLive(live) {
     const el = document.getElementById('arena-live');
     if (!el) return;
     if (!live || !live.live_count) { el.innerHTML = ''; return; }
     const card = (f, side) => `
-        <a class="arena-live-fighter arena-live-${side}" href="${_aChannelLink(f.user)}" onclick="return handleLinkClick(event, '${_aEsc(_aChannelLink(f.user))}')">
+        <a class="arena-live-fighter arena-live-${side}" href="${_aEsc(_aChannelLink(f.user))}" onclick="return handleLinkClick(event, '${_aEsc(_aChannelLink(f.user))}')">
             ${f.thumbnail_url ? `<img class="arena-live-thumb" src="${_aEsc(f.thumbnail_url)}?t=${Date.now()}" alt="">` : _aPortrait(f, 'sm')}
             <div class="arena-live-meta">
                 <strong>${_aEsc(f.persona.fighter_name)}</strong>
                 <span>${_aEsc(f.user.display_name)} · <i class="fa-solid fa-eye"></i> ${_aNum(f.stream.viewer_count)} · PWR ${f.ratings.power}</span>
+                ${f.hot_mic ? `<span title="Hot mic — last thing the transcript heard"><i class="fa-solid fa-microphone"></i> “${_aEsc(f.hot_mic.text.length > 70 ? f.hot_mic.text.slice(0, 70) + '…' : f.hot_mic.text)}”</span>` : ''}
             </div>
         </a>`;
     el.innerHTML = `
@@ -155,7 +241,7 @@ function _aRenderLive(live) {
             ${live.matchups.map(m => `
                 <div class="arena-live-match">
                     ${card(m.a, 'a')}
-                    <a class="arena-live-vs" href="/arena/battle/${encodeURIComponent(m.a.user.username)}/${encodeURIComponent(m.b.user.username)}" onclick="return handleLinkClick(event, '/arena/battle/${_aEsc(encodeURIComponent(m.a.user.username))}/${_aEsc(encodeURIComponent(m.b.user.username))}')">VS<small>fight</small></a>
+                    ${_aA(_aBattleLink(m.a.user, m.b.user), 'VS<small>fight</small>', 'arena-live-vs')}
                     ${card(m.b, 'b')}
                 </div>`).join('')}
             ${live.waiting ? `<div class="arena-live-match arena-live-waiting">${card(live.waiting, 'a')}<div class="arena-live-vs arena-live-vs-idle">?<small>waiting for a challenger</small></div></div>` : ''}
@@ -167,44 +253,105 @@ function _aRenderList(fighters) {
     if (!el) return;
     if (!fighters.length) { el.innerHTML = '<div class="arena-empty"><p>No fighter matches that.</p></div>'; return; }
     el.innerHTML = fighters.map(f => `
-        <a class="arena-row ${f.live ? 'is-live' : ''}" href="/arena/${encodeURIComponent(f.user.username)}" onclick="return handleLinkClick(event, '/arena/${_aEsc(encodeURIComponent(f.user.username))}')">
+        <div class="arena-row ${f.live ? 'is-live' : ''}" data-user="${_aEsc(f.user.username)}" style="--fc:${_aEsc(f.user.profile_color || '#8b5cf6')}">
             <span class="arena-rank ${f.rank <= 3 ? `arena-rank-${f.rank}` : ''}">${f.rank}</span>
             ${_aPortrait(f, 'sm')}
             <span class="arena-row-main">
-                <strong>${_aEsc(f.persona.fighter_name)} ${f.live ? '<span class="arena-live-pill">LIVE</span>' : ''}</strong>
-                <span class="arena-row-sub">${_aEsc(f.user.display_name)} · ${_aEsc(f.persona.class)} · ${_aEsc(f.persona.element)}</span>
+                <strong>${_aEsc(f.persona.fighter_name)} ${f.live ? '<span class="arena-live-pill">LIVE</span>' : ''}<i class="fa-solid fa-chevron-right arena-chevron"></i></strong>
+                <span class="arena-row-sub">${_aEsc(f.user.display_name)} · ${_aEsc(f.persona.class)} · ${_aEsc(f.persona.element)}${f.voice?.has_data ? ` · <i class="fa-solid fa-microphone" title="has transcript data"></i> Mic ${f.ratings.mic}` : ''}</span>
                 <em class="arena-row-taunt">“${_aEsc(f.persona.taunt)}”</em>
             </span>
             <span class="arena-row-stats">
                 <span class="arena-power"><b>${f.ratings.power}</b><small>PWR</small></span>
                 <span class="arena-record">${f.record.wins}W–${f.record.losses}L</span>
             </span>
-        </a>`).join('');
+            <div class="arena-row-expand">
+                <div>${_aRadar(f.ratings, f.user.profile_color || '#8b5cf6', 180)}<div class="arena-mini-record">${f.category ? _aEsc(f.category) + ' · ' : ''}last live ${_aEsc(f.last_live_at ? _aDate(f.last_live_at) : '—')}</div></div>
+                <div>
+                    <p class="arena-row-lore">${_aEsc(f.persona.lore)}</p>
+                    <div class="arena-quips">${ARENA_STATS.map(k => `<div class="arena-quip"><b>${_aEsc(ARENA_STAT_LABEL[k])} ${f.ratings[k]}</b><span>${_aEsc((f.persona.stat_quips || {})[k] || '')}</span></div>`).join('')}</div>
+                    ${f.persona.signature_move ? `<div class="arena-mini-record"><b>Signature:</b> ${_aEsc(f.persona.signature_move.name)} — ${_aEsc(f.persona.signature_move.description)}</div>` : ''}
+                </div>
+                <div class="arena-row-expand-actions">
+                    ${_aA(_aFighterLink(f.user), '<i class="fa-solid fa-id-card"></i> Full profile', 'btn btn-primary')}
+                    <button class="btn btn-ghost arena-row-fight" data-user="${_aEsc(f.user.username)}"><i class="fa-solid fa-hand-fist"></i> Fight someone</button>
+                    ${_aSpeakBtn(f.persona.taunt, 'btn btn-ghost')}
+                </div>
+            </div>
+        </div>`).join('');
+    el.querySelectorAll('.arena-row').forEach(row => row.addEventListener('click', (e) => {
+        if (e.target.closest('a, button')) return;
+        row.classList.toggle('is-open');
+    }));
+    el.querySelectorAll('.arena-row-fight').forEach(btn => btn.addEventListener('click', () => {
+        const me = fighters.find(f => f.user.username === btn.dataset.user);
+        const pool = fighters.filter(f => f !== me);
+        if (!me || !pool.length) return;
+        navigate(_aBattleLink(me.user, pool[Math.floor(Math.random() * pool.length)].user));
+    }));
+    _aBindSpeak(el);
 }
 
 // ── Fighter profile ──────────────────────────────────────────
+
+function _aVoiceCard(f) {
+    const v = f.voice || {};
+    const q = f.quotes;
+    const color = f.user.profile_color || '#8b5cf6';
+    if (!v.has_data) {
+        return `<div class="arena-voice" style="--fc:${_aEsc(color)}"><div class="arena-voice-head"><h3><i class="fa-solid fa-microphone-slash"></i> On the mic</h3></div><p class="arena-voice-empty">No transcript data yet — the audio transcription picks this up on their next streams. Until then, MIC is rated at the floor.</p></div>`;
+    }
+    const quotes = (q && q.picks && q.picks.length) ? q.picks : [];
+    return `<div class="arena-voice" style="--fc:${_aEsc(color)}">
+        <div class="arena-voice-head">
+            <h3><i class="fa-solid fa-microphone"></i> On the mic <span class="arena-power" style="margin-left:6px"><b style="font-size:1.1rem">${f.ratings.mic}</b><small>MIC</small></span></h3>
+            ${q?.mic_style ? `<span class="arena-voice-style">${_aEsc(q.mic_style)}</span>` : ''}
+        </div>
+        ${q?.voice_verdict ? `<p class="arena-voice-verdict">${_aEsc(q.voice_verdict)}</p>` : ''}
+        <div class="arena-voice-meters">
+            <div class="arena-voice-meter"><b>${_aEsc(v.talk_ratio_pct)}%</b><span>of stream time talking</span></div>
+            <div class="arena-voice-meter"><b>${_aEsc(_aNum(v.speech_minutes))} min</b><span>of speech heard (90d)</span></div>
+            <div class="arena-voice-meter"><b>${_aEsc(v.wpm)}</b><span>words per minute</span></div>
+            <div class="arena-voice-meter"><b>${_aEsc(v.hype_per_hour)}</b><span>hype words / hour</span></div>
+            <div class="arena-voice-meter"><b>${_aEsc(v.laughs_per_hour)}</b><span>laughs / hour</span></div>
+            <div class="arena-voice-meter"><b>${_aEsc(v.streams_heard)}</b><span>streams transcribed</span></div>
+        </div>
+        ${v.top_sounds && v.top_sounds.length ? `<div class="arena-sounds"><span title="what the stream sounds like, from the audio-event detector"><i class="fa-solid fa-wave-square"></i> soundscape</span>${v.top_sounds.map(s => `<span>${_aEsc(s.label)} ×${s.n}</span>`).join('')}</div>` : ''}
+        ${quotes.length ? `<div class="arena-quotes">${quotes.map(p => `
+            <div class="arena-quote">
+                <div><q>${_aEsc(p.text)}</q><small>${_aEsc(p.why || '')}${p.vod_id ? ` · at ${_aStamp(p.start_sec)}` : ''}</small></div>
+                <div class="arena-quote-actions">
+                    ${p.vod_id ? `<a href="/vod/${p.vod_id}?t=${p.start_sec}" onclick="return handleLinkClick(event, '/vod/${p.vod_id}?t=${p.start_sec}')" title="Hear them say it (jumps to the VOD)"><i class="fa-solid fa-play"></i></a>` : ''}
+                    ${_aSpeakBtn(p.text, '')}
+                </div>
+            </div>`).join('')}</div>` : '<p class="arena-voice-empty">Quotes appear once enough lines have been transcribed.</p>'}
+        ${q?._fallback ? '<p class="arena-note">Quotes picked by heuristic — the AI curates these once enabled.</p>' : ''}
+    </div>`;
+}
 
 async function _aRenderFighter(root, username) {
     root.innerHTML = _aSpinner('Pulling the fighter file…');
     const f = await api(`/arena/fighters/${encodeURIComponent(username)}`);
     if (f.not_on_roster) {
-        root.innerHTML = `<div class="arena-empty"><i class="fa-solid fa-user-slash"></i><p><strong>${_aEsc(f.user.display_name)}</strong> is not on the roster yet — ${_aEsc(f.reason)}.</p><a class="btn" href="/arena" onclick="return handleLinkClick(event, '/arena')">Back to the Arena</a></div>`;
+        root.innerHTML = `<div class="arena-empty"><i class="fa-solid fa-user-slash"></i><p><strong>${_aEsc(f.user.display_name)}</strong> is not on the roster yet — ${_aEsc(f.reason)}.</p>${_aA('/arena', 'Back to the Arena', 'btn')}</div>`;
         return;
     }
     const p = f.persona, color = f.user.profile_color || '#8b5cf6';
+    const recent = f.recent_battles || [];
     root.innerHTML = `
-        <div class="arena-back"><a href="/arena" onclick="return handleLinkClick(event, '/arena')"><i class="fa-solid fa-arrow-left"></i> Arena</a></div>
+        <div class="arena-back">${_aA('/arena', '<i class="fa-solid fa-arrow-left"></i> Arena')}</div>
         <div class="arena-profile" style="--fc:${_aEsc(color)}">
             <div class="arena-profile-portrait" id="arena-profile-portrait">
                 ${_aPortrait(f, 'lg')}
                 ${f.image_pending ? '<div class="arena-portrait-pending"><i class="fa-solid fa-wand-magic-sparkles fa-fade"></i> painting portrait…</div>' : ''}
                 <div class="arena-profile-rank">#${f.rank} <small>of ${f.roster_size}</small></div>
+                ${f.rivalry ? `<div class="arena-mini-record"><i class="fa-solid fa-fire"></i> Rivalry: ${_aA(_aBattleLink(f.user, f.rivalry.opponent), _aEsc(f.rivalry.fighter_name))} (${f.rivalry.wins}–${f.rivalry.losses} in ${f.rivalry.fights} fights)</div>` : ''}
             </div>
             <div class="arena-profile-main">
                 <div class="arena-profile-name">
                     <h1>${_aEsc(p.fighter_name)} ${f.live ? '<span class="arena-live-pill">LIVE</span>' : ''}</h1>
                     <p class="arena-title">${_aEsc(p.title)}</p>
-                    <p class="arena-handle"><a href="${_aChannelLink(f.user)}" onclick="return handleLinkClick(event, '${_aEsc(_aChannelLink(f.user))}')">${_aEsc(f.user.display_name)} · @${_aEsc(f.user.username)}</a> · ${_aEsc(p.class)} · ${_aEsc(p.element)}</p>
+                    <p class="arena-handle">${_aA(_aChannelLink(f.user), `${_aEsc(f.user.display_name)} · @${_aEsc(f.user.username)}`)} · ${_aEsc(p.class)} · ${_aEsc(p.element)}</p>
                 </div>
                 <div class="arena-profile-power">
                     <div class="arena-power arena-power-lg"><b>${f.ratings.power}</b><small>POWER</small></div>
@@ -212,7 +359,8 @@ async function _aRenderFighter(root, username) {
                 </div>
                 <div class="arena-profile-stats">
                     ${_aRadar(f.ratings, color)}
-                    <div class="arena-quips">${ARENA_STATS.map(k => `<div class="arena-quip"><b>${_aEsc(ARENA_STAT_LABEL[k])} ${f.ratings[k]}</b><span>${_aEsc((p.stat_quips || {})[k] || '')}</span></div>`).join('')}</div>
+                    <div class="arena-quips">${ARENA_STATS.map(k => `<div class="arena-quip is-clickable" data-stat="${k}" title="Tap for the breakdown"><b>${_aEsc(ARENA_STAT_LABEL[k])} ${f.ratings[k]} <i class="fa-solid fa-magnifying-glass-chart" style="font-size:0.7em;opacity:0.6"></i></b><span>${_aEsc((p.stat_quips || {})[k] || '')}</span></div>`).join('')}</div>
+                    <div id="arena-stat-detail"></div>
                 </div>
                 <div class="arena-lore">
                     <p class="arena-lore-text">${_aEsc(p.lore)}</p>
@@ -222,34 +370,62 @@ async function _aRenderFighter(root, username) {
                         <div class="arena-move arena-move-weak"><span class="arena-move-kind">Weakness</span><b>${_aEsc(p.weakness)}</b></div>
                     </div>
                     <div class="arena-flavor">
-                        <span><i class="fa-solid fa-comment"></i> “${_aEsc(p.taunt)}”</span>
+                        <span><i class="fa-solid fa-comment"></i> “${_aEsc(p.taunt)}” ${_aSpeakBtn(p.taunt)}</span>
                         <span><i class="fa-solid fa-music"></i> ${_aEsc(p.entrance_music)}</span>
                         <span><i class="fa-solid fa-quote-left"></i> ${_aEsc(p.catchphrase)}</span>
                     </div>
                     ${f.persona_is_fallback ? '<p class="arena-note">Stats-only profile — AI lore appears once the AI is enabled.</p>' : ''}
                 </div>
+                ${_aVoiceCard(f)}
                 <div class="arena-numbers">
                     ${[['Hours live (90d)', f.raw.hours], ['Peak viewers', f.raw.peak_viewers], ['Avg viewers', f.raw.avg_viewers], ['Chat msgs / hr', f.raw.messages_per_hour], ['Followers', f.raw.followers], ['Clips', f.raw.clips], ['All-time hours', f.raw.all_time_hours], ['All-time peak', f.raw.all_time_peak]]
                         .map(([l, v]) => `<div class="arena-number"><b>${_aEsc(_aNum(v))}</b><span>${_aEsc(l)}</span></div>`).join('')}
                 </div>
             </div>
         </div>
+        ${recent.length ? `<section class="arena-challenge"><h2>Recent fights</h2><div class="arena-opponents">${recent.map(b => _aA(_aBattleLink(f.user, b.opponent), `${_aPortrait({ user: b.opponent }, 'xs')}<span><strong>${b.result === 'win' ? '<span style="color:var(--success)">W</span>' : b.result === 'loss' ? '<span style="color:var(--danger)">L</span>' : 'D'} vs ${_aEsc(b.opponent_fighter_name)}</strong><small>${_aEsc(b.day)} · rounds ${b.rounds_won}/${b.rounds_total}</small></span>`, 'arena-opponent')).join('')}</div></section>` : ''}
         <section class="arena-challenge">
             <h2>Pick an opponent</h2>
             <div class="arena-opponents" id="arena-opponents">${_aSpinner('Scouting…')}</div>
         </section>`;
+    _aBindSpeak(root);
+
+    // Stat drill-down
+    root.querySelectorAll('.arena-quip.is-clickable').forEach(el => el.addEventListener('click', async () => {
+        const stat = el.dataset.stat;
+        const box = document.getElementById('arena-stat-detail');
+        if (box.dataset.stat === stat) { box.innerHTML = ''; box.dataset.stat = ''; return; }
+        box.dataset.stat = stat;
+        box.innerHTML = `<div class="arena-stat-detail">${_aSpinner('Crunching…')}</div>`;
+        try {
+            const d = await api(`/arena/fighters/${encodeURIComponent(username)}/stat/${stat}`);
+            if (box.dataset.stat !== stat) return;
+            box.innerHTML = `<div class="arena-stat-detail" style="--fc:${_aEsc(color)}">
+                <div class="arena-stat-detail-head">
+                    <h3>${_aEsc(d.label)} ${d.rating} <small>· #${d.position} of ${d.roster_size} · ${_aEsc(_aNum(d.value))} ${_aEsc(d.unit)}</small></h3>
+                    <button class="arena-stat-detail-close" title="Close">&times;</button>
+                </div>
+                <p class="arena-weight">${_aEsc(d.desc)} · ${Math.round(d.weight * 100)}% of POWER · rating = your percentile across the roster</p>
+                ${_aSpark(d.series, color)}
+                ${d.top.length ? `<div class="arena-stat-top"><span class="arena-weight">Top of the ladder:</span>${d.top.map((t, i) => _aA(_aFighterLink(t.user), `#${i + 1} ${_aEsc(t.fighter_name)} <b>${_aEsc(_aNum(t.value))}</b>`)).join('')}</div>` : ''}
+            </div>`;
+            box.querySelector('.arena-stat-detail-close').addEventListener('click', () => { box.innerHTML = ''; box.dataset.stat = ''; });
+        } catch (err) { box.innerHTML = `<div class="arena-stat-detail">${_aEsc(err?.message || 'Failed')}</div>`; }
+    }));
+
+    // Portrait lightbox ("how this was painted")
+    const portrait = root.querySelector('.arena-portrait-lg');
+    if (portrait && f.image_url) portrait.addEventListener('click', () => _aLightbox(f));
+
     // Opponent picker
     try {
         const data = _arenaRoster || await api('/arena/fighters');
         _arenaRoster = data;
         const others = (data.fighters || []).filter(o => o.user.id !== f.user.id);
         const el = document.getElementById('arena-opponents');
-        el.innerHTML = others.map(o => `
-            <a class="arena-opponent" href="/arena/battle/${encodeURIComponent(f.user.username)}/${encodeURIComponent(o.user.username)}" onclick="return handleLinkClick(event, '/arena/battle/${_aEsc(encodeURIComponent(f.user.username))}/${_aEsc(encodeURIComponent(o.user.username))}')">
-                ${_aPortrait(o, 'xs')}
-                <span><strong>${_aEsc(o.persona.fighter_name)}</strong><small>#${o.rank} · PWR ${o.ratings.power}${o.live ? ' · LIVE' : ''}</small></span>
-            </a>`).join('') || '<p class="arena-note">Nobody else on the roster yet.</p>';
+        el.innerHTML = others.map(o => _aA(_aBattleLink(f.user, o.user), `${_aPortrait(o, 'xs')}<span><strong>${_aEsc(o.persona.fighter_name)}</strong><small>#${o.rank} · PWR ${o.ratings.power}${o.live ? ' · LIVE' : ''}</small></span>`, 'arena-opponent')).join('') || '<p class="arena-note">Nobody else on the roster yet.</p>';
     } catch { /* */ }
+
     // Poll for the AI portrait while it is being painted.
     if (f.image_pending || (!f.image_url && f.image_generation === 'ai')) {
         let tries = 0;
@@ -259,7 +435,11 @@ async function _aRenderFighter(root, username) {
                 const fresh = await api(`/arena/fighters/${encodeURIComponent(username)}?generate=0`);
                 if (fresh.image_url) {
                     const holder = document.getElementById('arena-profile-portrait');
-                    if (holder) holder.innerHTML = `${_aPortrait(fresh, 'lg')}<div class="arena-profile-rank">#${fresh.rank} <small>of ${fresh.roster_size}</small></div>`;
+                    if (holder) {
+                        holder.querySelector('.arena-portrait')?.outerHTML && (holder.querySelector('.arena-portrait').outerHTML = _aPortrait(fresh, 'lg'));
+                        holder.querySelector('.arena-portrait-pending')?.remove();
+                        holder.querySelector('.arena-portrait-lg')?.addEventListener('click', () => _aLightbox(fresh));
+                    }
                     clearInterval(_arenaImagePoll); _arenaImagePoll = null;
                 }
             } catch { /* */ }
@@ -267,51 +447,99 @@ async function _aRenderFighter(root, username) {
     }
 }
 
+function _aLightbox(f) {
+    const box = document.createElement('div');
+    box.className = 'arena-lightbox';
+    box.innerHTML = `
+        <button class="arena-lightbox-close" aria-label="Close">&times;</button>
+        <div class="arena-lightbox-inner">
+            <img src="${_aEsc(f.image_url)}" alt="">
+            <div class="arena-lightbox-text">
+                <h3>${_aEsc(f.persona.fighter_name)}</h3>
+                <p>${_aEsc(f.persona.title)}</p>
+                <p>How this was painted: the AI wrote the persona from the stream's own data, described the <em>scene</em> of the latest thumbnail (never the person), and an image model drew a fictional character from that.${f.image_model ? ` Model: <code>${_aEsc(f.image_model)}</code>.` : ''}</p>
+                ${f.image_prompt ? `<div class="arena-lightbox-prompt">${_aEsc(f.image_prompt)}</div>` : ''}
+            </div>
+        </div>`;
+    const close = () => box.remove();
+    box.addEventListener('click', (e) => { if (e.target === box || e.target.closest('.arena-lightbox-close')) close(); });
+    document.addEventListener('keydown', function onKey(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } });
+    document.body.appendChild(box);
+}
+
 // ── Battle ───────────────────────────────────────────────────
+
+function _aTape(A, B) {
+    const rows = [
+        ['Rank', `#${A.rank}`, `#${B.rank}`, A.rank < B.rank ? 'a' : B.rank < A.rank ? 'b' : null],
+        ['Power', A.ratings.power, B.ratings.power],
+        ['Hours live (90d)', A.raw.hours, B.raw.hours],
+        ['Peak viewers', A.raw.peak_viewers, B.raw.peak_viewers],
+        ['Avg viewers', A.raw.avg_viewers, B.raw.avg_viewers],
+        ['Chat msgs / hr', A.raw.messages_per_hour, B.raw.messages_per_hour],
+        ['Followers', A.raw.followers, B.raw.followers],
+        ['Clips', A.raw.clips, B.raw.clips],
+        ['Talk time %', A.raw.voice?.talk_ratio_pct ?? 0, B.raw.voice?.talk_ratio_pct ?? 0],
+        ['Hype words / hr', A.raw.voice?.hype_per_hour ?? 0, B.raw.voice?.hype_per_hour ?? 0],
+        ['Record', `${A.record.wins}–${A.record.losses}`, `${B.record.wins}–${B.record.losses}`, A.record.wins > B.record.wins ? 'a' : B.record.wins > A.record.wins ? 'b' : null],
+    ];
+    return `<details class="arena-tape"><summary><i class="fa-solid fa-scale-balanced"></i> Tale of the tape</summary><table>
+        <thead><tr><th>${_aEsc(A.persona.fighter_name)}</th><th></th><th>${_aEsc(B.persona.fighter_name)}</th></tr></thead>
+        <tbody>${rows.map(([label, a, b, better]) => {
+            const win = better !== undefined ? better : (Number(a) > Number(b) ? 'a' : Number(b) > Number(a) ? 'b' : null);
+            return `<tr><td class="${win === 'a' ? 'is-better' : ''}">${_aEsc(_aNum(a) === 'NaN' ? a : (typeof a === 'number' ? _aNum(a) : a))}</td><td class="arena-tape-label">${_aEsc(label)}</td><td class="${win === 'b' ? 'is-better' : ''}">${_aEsc(typeof b === 'number' ? _aNum(b) : b)}</td></tr>`;
+        }).join('')}</tbody></table></details>`;
+}
 
 async function _aRenderBattle(root, a, b) {
     root.innerHTML = `<div class="arena-loading arena-loading-battle"><i class="fa-solid fa-bolt fa-beat"></i><span>Fighters are entering the arena…</span><small>the announcer is warming up</small></div>`;
     const battle = await api(`/arena/battle/${encodeURIComponent(a)}/${encodeURIComponent(b)}`);
-    const A = battle.a, B = battle.b, c = battle.commentary;
+    const A = battle.a, B = battle.b;
     const side = (f, s) => `
         <div class="arena-side arena-side-${s} ${battle.outcome.winner === s ? 'is-winner' : ''}" style="--fc:${_aEsc(f.user.profile_color || (s === 'a' ? '#8b5cf6' : '#ec4899'))}">
-            <a href="/arena/${encodeURIComponent(f.user.username)}" onclick="return handleLinkClick(event, '/arena/${_aEsc(encodeURIComponent(f.user.username))}')">${_aPortrait(f, 'md')}</a>
+            ${_aA(_aFighterLink(f.user), _aPortrait(f, 'md'))}
             <h2>${_aEsc(f.persona.fighter_name)}</h2>
             <p class="arena-title">${_aEsc(f.persona.title)}</p>
             <p class="arena-handle">${_aEsc(f.user.display_name)} · ${_aEsc(f.persona.class)} · #${f.rank}</p>
             <div class="arena-power"><b>${f.ratings.power}</b><small>PWR</small></div>
             ${_aRatingBars(f.ratings)}
-            <p class="arena-side-taunt">“${_aEsc(f.persona.taunt)}”</p>
+            <p class="arena-side-taunt">“${_aEsc(f.persona.taunt)}” ${_aSpeakBtn(f.persona.taunt)}</p>
+            ${f.walkout ? `<p class="arena-walkout"><i class="fa-solid fa-microphone"></i> Walkout line: <q>${_aEsc(f.walkout.text)}</q> ${f.walkout.vod_id ? `<a href="/vod/${f.walkout.vod_id}?t=${f.walkout.start_sec}" onclick="return handleLinkClick(event, '/vod/${f.walkout.vod_id}?t=${f.walkout.start_sec}')" title="Hear them say it"><i class="fa-solid fa-play"></i> hear it</a>` : ''}</p>` : ''}
         </div>`;
+    const h = battle.history || { fights: 0 };
     root.innerHTML = `
-        <div class="arena-back"><a href="/arena" onclick="return handleLinkClick(event, '/arena')"><i class="fa-solid fa-arrow-left"></i> Arena</a> <span class="arena-note">Battle of ${_aEsc(battle.day)} — same matchup, same result all day; the crowd vote is the last round.</span></div>
+        <div class="arena-back">${_aA('/arena', '<i class="fa-solid fa-arrow-left"></i> Arena')} <span class="arena-note">Battle of ${_aEsc(battle.day)} — same matchup, same rounds all day; the crowd vote is the last round.</span></div>
         <div class="arena-battle">
             ${side(A, 'a')}
             <div class="arena-center">
                 <div class="arena-vs">VS</div>
                 <div class="arena-scoreboard" id="arena-scoreboard"><span id="arena-score-a">0</span><span class="arena-score-sep">–</span><span id="arena-score-b">0</span></div>
+                <div class="arena-history">${h.fights ? `All-time: ${_aEsc(A.persona.fighter_name)} ${h.a_wins} – ${h.b_wins} ${_aEsc(B.persona.fighter_name)} (${h.fights} fight${h.fights === 1 ? '' : 's'})` : 'First meeting'}</div>
                 <div class="arena-commentary" id="arena-commentary"></div>
                 <div class="arena-vote" id="arena-vote"></div>
+                ${_aTape(A, B)}
                 <div class="arena-battle-actions">
                     <button class="btn btn-ghost" id="arena-share"><i class="fa-solid fa-link"></i> Share</button>
-                    <a class="btn btn-ghost" href="/arena/battle/${encodeURIComponent(b)}/${encodeURIComponent(a)}" onclick="return handleLinkClick(event, '/arena/battle/${_aEsc(encodeURIComponent(b))}/${_aEsc(encodeURIComponent(a))}')"><i class="fa-solid fa-right-left"></i> Swap corners</a>
+                    ${_aA(_aBattleLink(B.user, A.user), '<i class="fa-solid fa-right-left"></i> Swap corners', 'btn btn-ghost')}
                     <button class="btn btn-ghost" id="arena-rematch"><i class="fa-solid fa-dice"></i> Random rematch</button>
+                    <button class="btn btn-ghost" id="arena-replay"><i class="fa-solid fa-rotate-left"></i> Replay</button>
                 </div>
             </div>
             ${side(B, 'b')}
         </div>`;
+    _aBindSpeak(root);
     _aPlayBattle(battle);
     document.getElementById('arena-share').addEventListener('click', async () => {
-        const url = `${location.origin}/arena/battle/${encodeURIComponent(A.user.username)}/${encodeURIComponent(B.user.username)}`;
+        const url = `${location.origin}${_aBattleLink(A.user, B.user)}`;
         try { await navigator.clipboard.writeText(url); document.getElementById('arena-share').innerHTML = '<i class="fa-solid fa-check"></i> Copied'; } catch { prompt('Battle link', url); }
     });
+    document.getElementById('arena-replay').addEventListener('click', () => { for (const t of _arenaBattleTimers) clearTimeout(t); _arenaBattleTimers = []; _aPlayBattle(battle); });
     document.getElementById('arena-rematch').addEventListener('click', async () => {
         const data = _arenaRoster || await api('/arena/fighters');
         _arenaRoster = data;
         const pool = (data.fighters || []).filter(f => f.user.id !== A.user.id);
         if (!pool.length) return;
-        const o = pool[Math.floor(Math.random() * pool.length)];
-        navigate(`/arena/battle/${encodeURIComponent(A.user.username)}/${encodeURIComponent(o.user.username)}`);
+        navigate(_aBattleLink(A.user, pool[Math.floor(Math.random() * pool.length)].user));
     });
 }
 
@@ -320,8 +548,16 @@ function _aPlayBattle(battle) {
     const A = battle.a, B = battle.b, c = battle.commentary;
     const box = document.getElementById('arena-commentary');
     const sa = document.getElementById('arena-score-a'), sb = document.getElementById('arena-score-b');
+    box.innerHTML = ''; sa.textContent = '0'; sb.textContent = '0';
+    document.getElementById('arena-vote').innerHTML = '';
     let a = 0, b = 0;
-    const line = (html, cls = '') => { const d = document.createElement('div'); d.className = `arena-line ${cls}`; d.innerHTML = html; box.appendChild(d); box.scrollTop = box.scrollHeight; };
+    const line = (html, cls = '', detail = null) => {
+        const d = document.createElement('div');
+        d.className = `arena-line ${cls}${detail ? ' is-expandable' : ''}`;
+        d.innerHTML = html + (detail ? `<div class="arena-line-detail">${detail}</div>` : '');
+        if (detail) d.addEventListener('click', () => d.classList.toggle('is-open'));
+        box.appendChild(d); box.scrollTop = box.scrollHeight;
+    };
     const at = (ms, fn) => _arenaBattleTimers.push(setTimeout(fn, ms));
     let t = 0;
     line(`<i class="fa-solid fa-microphone-lines"></i> ${_aEsc(c.intro)}`, 'arena-line-intro');
@@ -331,7 +567,9 @@ function _aPlayBattle(battle) {
             const winner = r.winner === 'a' ? A : B;
             if (r.winner === 'a') a++; else b++;
             sa.textContent = a; sb.textContent = b;
-            line(`<span class="arena-round-tag">R${i + 1} · ${_aEsc(r.label)}</span> ${_aEsc(c.rounds[i] || `${winner.persona.fighter_name} takes it.`)} <span class="arena-round-score">${r.a}–${r.b}${r.upset ? ' · UPSET' : ''}</span>`, `arena-line-${r.winner}${r.upset ? ' arena-line-upset' : ''}`);
+            const meta = battle.stat_meta?.[r.stat];
+            const detail = `${_aEsc(ARENA_STAT_LABEL[r.stat])} rating ${A.ratings[r.stat]} vs ${B.ratings[r.stat]} (${_aEsc(meta?.desc || '')}) · roll ${r.a} vs ${r.b}, margin ${r.margin}${r.upset ? ' · the lower rating won this one' : ''} · tap to collapse`;
+            line(`<span class="arena-round-tag">R${i + 1} · ${_aEsc(r.label)}</span> ${_aEsc(c.rounds[i] || `${winner.persona.fighter_name} takes it.`)} <span class="arena-round-score">${r.a}–${r.b}${r.upset ? ' · UPSET' : ''}</span>`, `arena-line-${r.winner}${r.upset ? ' arena-line-upset' : ''}`, detail);
             document.querySelector(`.arena-side-${r.winner}`)?.classList.add('is-hit');
             setTimeout(() => document.querySelector(`.arena-side-${r.winner}`)?.classList.remove('is-hit'), 600);
         });
@@ -340,7 +578,8 @@ function _aPlayBattle(battle) {
     at(t, () => line(`<i class="fa-solid fa-burst"></i> ${_aEsc(c.finisher)}`, 'arena-line-finisher'));
     t += 1200;
     at(t, () => {
-        line(`<i class="fa-solid fa-gavel"></i> ${_aEsc(c.verdict)}`, 'arena-line-verdict');
+        line(`<i class="fa-solid fa-gavel"></i> ${_aEsc(c.verdict)} ${_aSpeakBtn(`${c.intro} ${c.rounds.join(' ')} ${c.finisher} ${c.verdict}`)}`, 'arena-line-verdict');
+        _aBindSpeak(box);
         _aRenderVote(battle);
     });
 }
