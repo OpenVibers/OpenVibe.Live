@@ -1067,7 +1067,10 @@ function updateNavHeroTransparency() {
     const atTop = (window.scrollY || window.pageYOffset || 0) < 28;
     nav.classList.toggle('nav-hero-top', !!homeActive && atTop);
 }
-window.addEventListener('scroll', updateNavHeroTransparency, { passive: true });
+// One class toggle per animation frame at most — the handler fired on every scroll event,
+// which on phones (with a blurred nav over an animated hero) showed up as scroll jank.
+let _navScrollRaf = 0;
+window.addEventListener('scroll', () => { if (_navScrollRaf) return; _navScrollRaf = requestAnimationFrame(() => { _navScrollRaf = 0; updateNavHeroTransparency(); }); }, { passive: true });
 window.addEventListener('resize', updateNavHeroTransparency, { passive: true });
 
 /* ── Nav Dropdown Helpers ──────────────────────────────────────── */
@@ -1229,8 +1232,8 @@ function renderHeroStats(stats) {
     const now = [
         { cls: stats.liveNow > 0 ? 'hero-stat--live' : '', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', num: stats.liveNow, label: 'Live', title: stats.liveNow > 0 ? 'Streams live right now' : 'Nobody is live right now — check Recently Online below' },
         { cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', icon: 'fa-eye', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
-        { icon: 'fa-fire', num: stats.weeklyActive, label: 'Active', title: 'Active this week — chatters incl. anons & relays' },
-        { icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'New Visitors', title: 'New unique visitors this week' },
+        { icon: 'fa-fire', num: stats.weeklyActive, label: 'Active · 7d', title: 'People who chatted in the last 7 days', desc: 'Distinct chatters in the last 7 days — signed-in users, anonymous chatters and relayed (Twitch/Kick/YouTube) chatters, each counted once.', metric: 'active' },
+        { icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors · 7d', title: 'First-time visitors in the last 7 days', desc: 'Browsers seen on the site for the first time in the last 7 days (a privacy-safe fingerprint, no account needed). A proxy for new people showing up, not just chatting.', metric: 'visitors' },
     ];
     // 24h viewer sparkline (5-minute samples) — trends read better than a snapshot.
     const trend = Array.isArray(stats.viewerTrend) ? stats.viewerTrend : [];
@@ -1250,24 +1253,24 @@ function renderHeroStats(stats) {
     // ── Community ────────────────────────────────────────────────
     groups.push({
         kicker: 'Community', icon: 'fa-people-group', rows: [
-            { icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', title: 'People who have gone live' },
-            { icon: 'fa-users', num: stats.users, label: 'Users', title: 'Registered users', recent: R.users },
-            { icon: 'fa-user-secret', num: stats.anons, label: 'Anons', title: 'Anonymous chatters ever seen', recent: R.anons },
-            { icon: 'fa-heart', num: stats.follows, label: 'Follows', title: 'Channel follows', recent: R.follows },
-            { icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', title: 'Chat messages sent', recent: R.messages },
-            { icon: 'fa-couch', num: stats.hoursWatched, label: 'Hrs Watched', title: 'Hours the community has spent watching streams', unit: 'h' },
+            { icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', metric: 'streamers', title: 'People who have gone live' },
+            { icon: 'fa-users', num: stats.users, label: 'Users', metric: 'users', title: 'Registered users', recent: R.users },
+            { icon: 'fa-user-secret', num: stats.anons, label: 'Anons', metric: 'anons', title: 'Anonymous chatters ever seen', recent: R.anons },
+            { icon: 'fa-heart', num: stats.follows, label: 'Follows', metric: 'follows', title: 'Channel follows', recent: R.follows },
+            { icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', metric: 'messages', title: 'Chat messages sent', recent: R.messages },
+            { icon: 'fa-couch', num: stats.hoursWatched, label: 'Hrs Watched', metric: 'hoursWatched', title: 'Hours the community has spent watching streams', unit: 'h' },
         ],
     });
 
     // ── Economy ──────────────────────────────────────────────────
     groups.push({
         kicker: 'Economy', icon: 'fa-coins', rows: [
-            { icon: 'fa-hand-holding-dollar', num: stats.vibesTipped, label: 'Vibes Tipped', title: 'Vibes donated between people (100 Vibes = $1)', recent: R.vibes },
-            { icon: 'fa-hand-holding-heart', num: stats.supporters, label: 'Supporters', title: 'People who have tipped Vibes to a streamer' },
-            { icon: 'fa-cart-shopping', num: stats.vibesBought, label: 'Vibes Bought', title: 'Vibes purchased with real money (PowerChat, card, PayPal, crypto)', recent: R.vibesBought },
-            { icon: 'fa-star', num: stats.activeSubs, label: 'Subs', title: 'Active channel subscriptions', recent: R.subs },
-            { icon: 'fa-coins', num: stats.pointsEarned, label: 'Points Earned', title: 'Channel points earned by viewers (watching, chatting, following)', recent: R.points },
-            { icon: 'fa-gift', num: stats.pointsSpent, label: 'Points Spent', title: `Channel points spent on rewards · ${_fmtCount(stats.redemptions || 0)} rewards redeemed`, recent: R.pointsSpent, sub: stats.redemptions ? `${_fmtCount(stats.redemptions)} rewards` : '' },
+            { icon: 'fa-hand-holding-dollar', num: stats.vibesTipped, label: 'Vibes Tipped', metric: 'vibes', title: 'Vibes donated between people (100 Vibes = $1)', recent: R.vibes },
+            { icon: 'fa-hand-holding-heart', num: stats.supporters, label: 'Supporters', metric: 'supporters', title: 'People who have tipped Vibes to a streamer' },
+            { icon: 'fa-cart-shopping', num: stats.vibesBought, label: 'Vibes Bought', metric: 'vibesBought', title: 'Vibes purchased with real money (PowerChat, card, PayPal, crypto)', recent: R.vibesBought },
+            { icon: 'fa-star', num: stats.activeSubs, label: 'Subs', metric: 'subs', title: 'Active channel subscriptions', recent: R.subs },
+            { icon: 'fa-coins', num: stats.pointsEarned, label: 'Points Earned', metric: 'points', title: 'Channel points earned by viewers (watching, chatting, following)', recent: R.points },
+            { icon: 'fa-gift', num: stats.pointsSpent, label: 'Points Spent', metric: 'pointsSpent', title: `Channel points spent on rewards · ${_fmtCount(stats.redemptions || 0)} rewards redeemed`, recent: R.pointsSpent, sub: stats.redemptions ? `${_fmtCount(stats.redemptions)} rewards` : '' },
             { icon: 'fa-bullseye', num: stats.goalsActive, label: 'Goals', title: `Donation goals running now · ${stats.goalsReached || 0} reached so far`, sub: stats.goalsReached ? `${_fmtCount(stats.goalsReached)} reached` : '' },
         ],
     });
@@ -1275,25 +1278,30 @@ function renderHeroStats(stats) {
     // ── Archive ──────────────────────────────────────────────────
     groups.push({
         kicker: 'Archive', icon: 'fa-box-archive', rows: [
-            { icon: 'fa-tower-broadcast', num: stats.liveSessions, label: 'Sessions', title: 'Total stream sessions', recent: R.sessions },
-            { icon: 'fa-film', num: stats.vods, label: 'VODs', title: 'Recorded videos', recent: R.vods },
-            { icon: 'fa-scissors', num: stats.clips, label: 'Clips', title: 'Clips created', recent: R.clips },
-            { icon: 'fa-clock', num: stats.streamHours, label: 'Hours', title: 'Hours of video archived', recent: R.hours, unit: 'h' },
-            { icon: 'fa-brain', num: stats.aiMemories, label: 'AI Moments', title: 'Moments the AI remembers across every stream', recent: R.aiMoments },
-            { icon: 'fa-face-grin-squint', num: stats.emotes, label: 'Emotes', title: 'Custom channel emotes uploaded' },
+            { icon: 'fa-tower-broadcast', num: stats.liveSessions, label: 'Sessions', metric: 'sessions', title: 'Total stream sessions', recent: R.sessions },
+            { icon: 'fa-film', num: stats.vods, label: 'VODs', metric: 'vods', title: 'Recorded videos', recent: R.vods },
+            { icon: 'fa-scissors', num: stats.clips, label: 'Clips', metric: 'clips', title: 'Clips created', recent: R.clips },
+            { icon: 'fa-clock', num: stats.streamHours, label: 'Hours', metric: 'hours', title: 'Hours of video archived', recent: R.hours, unit: 'h' },
+            { icon: 'fa-brain', num: stats.aiMemories, label: 'AI Moments', metric: 'aiMoments', title: 'Moments the AI remembers across every stream', recent: R.aiMoments },
+            { icon: 'fa-face-grin-squint', num: stats.emotes, label: 'Emotes', metric: 'emotes', title: 'Custom channel emotes uploaded' },
             { icon: 'fa-paste', num: stats.pastes, label: 'Pastes', title: `${stats.pasteText || 0} text · ${stats.pasteImages || 0} image pastes`, sub: (stats.pasteText != null && stats.pasteImages != null) ? `${_fmtCount(stats.pasteText)} txt · ${_fmtCount(stats.pasteImages)} img` : '' },
         ],
     });
 
-    // For stats with rolling data: append "+d today · +w this week · +m this month" to the
-    // hover tooltip and show the weekly delta as the small sub-line.
-    const recTitle = (rec, u = '') => rec ? ` — +${_fmtCount(rec.d)}${u} today · +${_fmtCount(rec.w)}${u} this week · +${_fmtCount(rec.m)}${u} this month` : '';
-    const recSub = (rec, u = '') => (rec && rec.w > 0) ? `+${_fmtCount(rec.w)}${u} wk` : '';
+    // Rolling-window deltas: the small sub-line is "+N in 7d" (was the cryptic "+N wk"); the
+    // custom tooltip (data-tip, see _heroTooltip) spells out 24h / 7d / 30d and what the
+    // number means. Every chip with a series behind it is clickable → over-time chart.
+    const recSub = (rec, u = '') => (rec && rec.w > 0) ? `+${_fmtCount(rec.w)}${u} in 7d` : '';
     const chip = (r) => {
         if (r.html) return r.html; // pre-rendered chips (sparkline)
-        const title = (r.title || '') + recTitle(r.recent, r.unit || '');
         const sub = r.sub || recSub(r.recent, r.unit || '');
-        return `<div class="hero-stat ${r.cls || ''}" title="${esc(title)}"><i class="fa-solid ${r.icon}"></i><div class="hero-stat-meta"><span class="hero-stat-num" data-n="${r.num || 0}">0</span><span class="hero-stat-label">${r.label}</span>${sub ? `<span class="hero-stat-sub">${sub}</span>` : ''}</div></div>`;
+        const tip = {
+            label: r.label, title: r.title || '', desc: r.desc || '',
+            recent: r.recent ? { d: r.recent.d, w: r.recent.w, m: r.recent.m, unit: r.unit || '' } : null,
+            metric: r.metric || null,
+        };
+        const clickable = !!r.metric;
+        return `<div class="hero-stat ${r.cls || ''} ${clickable ? 'hero-stat--clickable' : ''}" data-tip="${esc(JSON.stringify(tip))}" ${clickable ? `data-metric="${r.metric}" role="button" tabindex="0" aria-label="${esc(r.label)} — show over time"` : ''}><i class="fa-solid ${r.icon}"></i><div class="hero-stat-meta"><span class="hero-stat-num" data-n="${r.num || 0}">0</span><span class="hero-stat-label">${r.label}${clickable ? ' <i class="fa-solid fa-chart-line hero-stat-chart-hint"></i>' : ''}</span>${sub ? `<span class="hero-stat-sub">${sub}</span>` : ''}</div></div>`;
     };
     wrap.innerHTML = groups.filter(g => g.rows.length).map(g => `
         <div class="hero-stat-group">
@@ -1301,6 +1309,101 @@ function renderHeroStats(stats) {
             <div class="hero-stat-row">${g.rows.map(chip).join('')}</div>
         </div>`).join('');
     wrap.querySelectorAll('.hero-stat-num').forEach(el => _heroCountUp(el, parseInt(el.dataset.n, 10) || 0));
+    _heroBindInteractions(wrap);
+}
+
+// ── Hero stat tooltips + click-through charts ───────────────────
+let _heroTipEl = null;
+function _heroTipShow(chip) {
+    let tip; try { tip = JSON.parse(chip.dataset.tip || 'null'); } catch { tip = null; }
+    if (!tip) return;
+    if (!_heroTipEl) { _heroTipEl = document.createElement('div'); _heroTipEl.className = 'hero-tip'; document.body.appendChild(_heroTipEl); }
+    const u = tip.recent?.unit || '';
+    _heroTipEl.innerHTML = `<div class="hero-tip-title">${esc(tip.label)}</div>
+        <div class="hero-tip-desc">${esc(tip.desc || tip.title)}</div>
+        ${tip.recent ? `<div class="hero-tip-recent">
+            <div><b>+${_fmtCount(tip.recent.d)}${u}</b><span>24 h</span></div>
+            <div><b>+${_fmtCount(tip.recent.w)}${u}</b><span>7 days</span></div>
+            <div><b>+${_fmtCount(tip.recent.m)}${u}</b><span>30 days</span></div>
+        </div>` : ''}
+        ${tip.metric ? '<div class="hero-tip-cta"><i class="fa-solid fa-chart-line"></i> Tap for the last 30 / 90 days</div>' : ''}`;
+    const r = chip.getBoundingClientRect();
+    _heroTipEl.style.left = '0px'; _heroTipEl.style.top = '0px';
+    _heroTipEl.classList.add('is-visible');
+    const w = _heroTipEl.offsetWidth, h = _heroTipEl.offsetHeight;
+    let left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+    let top = r.top - h - 10;
+    if (top < 8) top = r.bottom + 10;
+    _heroTipEl.style.left = `${left}px`; _heroTipEl.style.top = `${top}px`;
+}
+function _heroTipHide() { if (_heroTipEl) _heroTipEl.classList.remove('is-visible'); }
+function _heroBindInteractions(wrap) {
+    const fine = window.matchMedia && window.matchMedia('(hover: hover)').matches;
+    wrap.querySelectorAll('.hero-stat[data-tip]').forEach(chip => {
+        if (fine) {
+            chip.addEventListener('mouseenter', () => _heroTipShow(chip));
+            chip.addEventListener('mouseleave', _heroTipHide);
+        }
+        chip.addEventListener('focus', () => _heroTipShow(chip));
+        chip.addEventListener('blur', _heroTipHide);
+        if (chip.dataset.metric) {
+            const open = () => { _heroTipHide(); _heroStatModal(chip); };
+            chip.addEventListener('click', open);
+            chip.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+        }
+    });
+    window.addEventListener('scroll', _heroTipHide, { passive: true });
+}
+const _HERO_METRIC_ICON = { users: 'fa-users', anons: 'fa-user-secret', visitors: 'fa-user-plus', active: 'fa-fire', follows: 'fa-heart', messages: 'fa-comments', sessions: 'fa-tower-broadcast', streamers: 'fa-satellite-dish', vods: 'fa-film', clips: 'fa-scissors', hours: 'fa-clock', hoursWatched: 'fa-couch', aiMoments: 'fa-brain', vibes: 'fa-hand-holding-dollar', supporters: 'fa-hand-holding-heart', vibesBought: 'fa-cart-shopping', subs: 'fa-star', points: 'fa-coins', pointsSpent: 'fa-gift', redemptions: 'fa-gift', emotes: 'fa-face-grin-squint' };
+async function _heroStatModal(chip) {
+    let tip; try { tip = JSON.parse(chip.dataset.tip || '{}'); } catch { tip = {}; }
+    const metric = chip.dataset.metric;
+    document.querySelector('.hero-chart-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'hero-chart-overlay';
+    overlay.innerHTML = `<div class="hero-chart" role="dialog" aria-modal="true" aria-label="${esc(tip.label || metric)} over time">
+        <div class="hero-chart-head"><h3><i class="fa-solid ${_HERO_METRIC_ICON[metric] || 'fa-chart-line'}"></i> ${esc(tip.label || metric)}</h3><button class="hero-chart-close" aria-label="Close">&times;</button></div>
+        <p class="hero-chart-desc">${esc(tip.desc || tip.title || '')}</p>
+        <div class="hero-chart-ranges"><button data-days="7">7 days</button><button data-days="30" class="active">30 days</button><button data-days="90">90 days</button></div>
+        <div class="hero-chart-body"><div class="hero-chart-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div></div>
+        <div class="hero-chart-foot"></div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target.closest('.hero-chart-close')) close(); });
+    const unit = tip.recent?.unit || '';
+    const load = async (days) => {
+        const body = overlay.querySelector('.hero-chart-body'), foot = overlay.querySelector('.hero-chart-foot');
+        body.innerHTML = '<div class="hero-chart-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+        try {
+            const d = await api(`/home/stats/series/${encodeURIComponent(metric)}?days=${days}`);
+            body.innerHTML = _heroChartSvg(d.points, unit);
+            const best = d.points.reduce((a, p) => (p.value > a.value ? p : a), { value: -1 });
+            foot.innerHTML = `<span><b>${_fmtCount(d.total)}${unit}</b> in the last ${d.days} days</span><span>avg <b>${_fmtCount(d.total / d.days)}${unit}</b> / day</span>${best.value > 0 ? `<span>best day <b>${_fmtCount(best.value)}${unit}</b> · ${esc(_heroDay(best.day))}</span>` : ''}`;
+        } catch { body.innerHTML = '<div class="hero-chart-loading">No data for this metric yet.</div>'; foot.innerHTML = ''; }
+    };
+    overlay.querySelectorAll('.hero-chart-ranges button').forEach(b => b.addEventListener('click', () => {
+        overlay.querySelectorAll('.hero-chart-ranges button').forEach(x => x.classList.toggle('active', x === b));
+        load(Number(b.dataset.days));
+    }));
+    load(30);
+}
+function _heroDay(iso) { try { return new Date(iso + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }); } catch { return iso; } }
+function _heroChartSvg(points, unit = '') {
+    const W = 720, H = 220, padL = 40, padR = 10, padT = 12, padB = 26;
+    const n = points.length;
+    const max = Math.max(1, ...points.map(p => p.value));
+    const x = (i) => padL + (i + 0.5) * ((W - padL - padR) / n);
+    const y = (v) => padT + (H - padT - padB) * (1 - v / max);
+    const bw = Math.max(2, ((W - padL - padR) / n) * (n > 40 ? 0.8 : 0.62));
+    const bars = points.map((p, i) => `<rect class="bar" x="${(x(i) - bw / 2).toFixed(1)}" y="${y(p.value).toFixed(1)}" width="${bw.toFixed(1)}" height="${(H - padB - y(p.value)).toFixed(1)}" rx="2" style="animation-delay:${(i * (0.35 / n)).toFixed(3)}s"><title>${esc(_heroDay(p.day))}: ${_fmtCount(p.value)}${unit}</title></rect>`).join('');
+    const line = points.map((p, i) => `${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+    const grid = [0, 0.5, 1].map(f => { const yy = y(max * f); return `<line class="grid" x1="${padL}" x2="${W - padR}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}"></line><text x="${padL - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${_fmtCount(max * f)}</text>`; }).join('');
+    const labelEvery = n > 40 ? Math.ceil(n / 8) : n > 10 ? Math.ceil(n / 6) : 1;
+    const labels = points.map((p, i) => (i % labelEvery === 0 || i === n - 1) ? `<text x="${x(i).toFixed(1)}" y="${H - 8}" text-anchor="middle">${esc(_heroDay(p.day))}</text>` : '').join('');
+    return `<svg class="hero-chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${grid}${bars}${n > 1 ? `<polyline class="line" points="${line}"></polyline>` : ''}${labels}</svg>`;
 }
 
 // ── Hero floating thumbnail collage ─────────────────────────────
@@ -4551,8 +4654,12 @@ function _aiTimelineMomentHTML(mom, vodId) {
     try { tags = typeof mom.tags === 'string' ? JSON.parse(mom.tags) : (mom.tags || []); } catch { tags = []; }
     const tagHTML = (Array.isArray(tags) ? tags : []).slice(0, 4)
         .map(t => `<span class="ai-tl-tag">${esc(String(t))}</span>`).join('');
-    const thumb = mom.thumbnail_url
-        ? `<img class="ai-tl-moment-thumb" src="${esc(mom.thumbnail_url)}" alt="" loading="lazy" onerror="this.remove()">`
+    // Older moments point at the rotating live thumbnail, which is gone (the server answers
+    // those with a placeholder pixel, so onerror never fires and a white box appears).
+    // Newer moments carry their own persisted frame under /data/ai-moments/.
+    const thumbUrl = (mom.thumbnail_url && !/\/api\/thumbnails\/stream-/.test(mom.thumbnail_url)) ? mom.thumbnail_url : '';
+    const thumb = thumbUrl
+        ? `<img class="ai-tl-moment-thumb" src="${esc(thumbUrl)}" alt="" loading="lazy" onerror="this.remove()">`
         : '';
     const jump = vodId
         ? `<a class="ai-tl-stamp" href="/vod/${vodId}?t=${off}" onclick="return handleLinkClick(event, '/vod/${vodId}?t=${off}')" title="Watch this moment"><i class="fa-solid fa-play"></i> ${stamp}</a>`
@@ -4623,6 +4730,32 @@ function _aiTimelineSessionHTML(s) {
         <div class="ai-tl-transcript" hidden></div>
     </div>`;
 }
+// Map the audio model's many labels onto a few readable families with an icon. Returns
+// null for labels that are speech-like or pure noise — those are not "sounds" worth a chip.
+const _AI_SOUND_FAMILIES = [
+    { key: 'rain',      icon: 'fa-cloud-rain',      label: 'Rain',        re: /rain|drizzle|water|drip|splash|stream|river/i },
+    { key: 'thunder',   icon: 'fa-bolt',            label: 'Thunder',     re: /thunder/i },
+    { key: 'wind',      icon: 'fa-wind',            label: 'Wind',        re: /wind|breeze|rustl/i },
+    { key: 'music',     icon: 'fa-music',           label: 'Music',       re: /music|song|guitar|piano|drum|synth|beat|melody|singing|choir|hip hop|rock|jazz|techno|electronic/i },
+    { key: 'laugh',     icon: 'fa-face-laugh',      label: 'Laughter',    re: /laugh|giggle|chuckle|snicker/i },
+    { key: 'explosion', icon: 'fa-burst',           label: 'Explosion',   re: /explos|gunshot|gunfire|blast|boom|artillery|fireworks/i },
+    { key: 'vehicle',   icon: 'fa-car',             label: 'Vehicle',     re: /vehicle|car\b|engine|motor|truck|bus|traffic|boat|train|aircraft|helicopter|siren/i },
+    { key: 'animal',    icon: 'fa-paw',             label: 'Animal',      re: /dog|cat|bird|animal|bark|meow|chirp|insect|cricket|goose|duck|cow|horse/i },
+    { key: 'keys',      icon: 'fa-keyboard',        label: 'Clicks & keys', re: /typing|keyboard|click|mouse|keys|jangl|tick|tap/i },
+    { key: 'alarm',     icon: 'fa-bell',            label: 'Alarm / ding', re: /alarm|beep|ding|bell|ring|notification|chime/i },
+    { key: 'crowd',     icon: 'fa-people-group',    label: 'Crowd',       re: /crowd|applause|cheer|chatter|hubbub/i },
+    { key: 'kitchen',   icon: 'fa-utensils',        label: 'Kitchen',     re: /siz{1,2}l|fry|boil|cutlery|dish|kitchen|microwave|blender|chop/i },
+    { key: 'tools',     icon: 'fa-screwdriver-wrench', label: 'Tools',    re: /drill|hammer|saw|tool|grind|sand|screw|crackl|rattle|clank|clink|chink|metal/i },
+    { key: 'breath',    icon: 'fa-lungs',           label: 'Breath / sigh', re: /sigh|breath|gasp|yawn|cough|sneeze|snif/i },
+    { key: 'door',      icon: 'fa-door-open',       label: 'Doors & steps', re: /door|footstep|walk|knock|creak/i },
+    { key: 'game',      icon: 'fa-gamepad',         label: 'Game audio',  re: /video game|game|sound effect|whoosh|swoosh|zap|arcade/i },
+];
+function _aiSoundFamily(label) {
+    const l = String(label || '').trim();
+    if (!l || /^(speech|conversation|narration|monologue|male speech|female speech|child speech|silence|noise|white noise|static|hum|inside|outside|room)/i.test(l)) return null;
+    for (const f of _AI_SOUND_FAMILIES) if (f.re.test(l)) return { key: f.key, icon: f.icon, label: f.label };
+    return { key: 'other', icon: 'fa-volume-high', label: l.length > 28 ? l.slice(0, 26) + '…' : l };
+}
 function _fmtCount(n) { n = Number(n) || 0; return n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'k' : String(n); }
 
 // Expand/collapse a session's moments, building the moment DOM only on first expand.
@@ -4655,26 +4788,48 @@ async function _aiTlToggleTranscript(btn) {
             const data = await api(`/chat-ai/transcript/${session.dataset.sid}`);
             const segs = data.segments || [];
             const vod = data.vodId;
-            // Interleave spoken lines with detected non-speech sounds so the timeline reads
-            // as everything that happened audibly, in order — not just the words.
+            // Speech and detected sounds are different things: speech reads as lines, sounds
+            // as a quiet strip of chips between them (grouped, deduplicated, family-merged —
+            // "Rain / Raindrop / Rain on surface / Water" is one "Rain" chip, not four rows).
             const rows = [
-                ...segs.map(sg => ({ t: sg.start || 0, kind: 'speech', text: sg.text || '' })),
-                ...(data.events || []).map(e => ({
-                    t: e.start_sec || 0, kind: 'sound',
-                    text: e.label + (e.confidence != null ? ` (${Number(e.confidence).toFixed(2)})` : ''),
-                })),
+                ...segs.map(sg => ({ t: sg.start || 0, kind: 'speech', text: String(sg.text || '').replace(/^\s*(?:>>|--?|•)\s*/, '').trim() })).filter(r => r.text),
+                ...(data.events || []).map(e => ({ t: e.start_sec || 0, kind: 'sound', label: String(e.label || ''), conf: Number(e.confidence) || 0 })),
             ].sort((a, b) => a.t - b.t);
             if (!rows.length) { box.innerHTML = '<p class="muted" style="padding:6px">No transcript available.</p>'; return; }
-            const cov = data.coverageSec
-                ? `<div class="muted" style="padding:4px 6px;font-size:.8rem">${_aiTimeFmt(data.coverageSec)} of speech transcribed</div>` : '';
-            box.innerHTML = cov + rows.map(r => {
-                const stamp = _aiTimeFmt(r.t);
-                const jump = vod ? `<a class="ai-tl-ts" href="/vod/${vod}?t=${Math.floor(r.t)}" onclick="return handleLinkClick(event, '/vod/${vod}?t=${Math.floor(r.t)}')">${stamp}</a>` : `<span class="ai-tl-ts">${stamp}</span>`;
-                const body = r.kind === 'sound'
-                    ? `<span class="ai-tl-tr-text muted"><i class="fa-solid fa-volume-high"></i> ${esc(r.text)}</span>`
-                    : `<span class="ai-tl-tr-text">${esc(r.text)}</span>`;
-                return `<div class="ai-tl-tr-line">${jump}${body}</div>`;
+            const blocks = [];
+            for (const r of rows) {
+                if (r.kind === 'speech') { blocks.push(r); continue; }
+                const fam = _aiSoundFamily(r.label);
+                if (!fam) continue;                          // speech-like / noise labels are not "sounds"
+                if (r.conf && r.conf < 0.3) continue;        // too unsure to show
+                const last = blocks[blocks.length - 1];
+                if (last && last.kind === 'sounds') {
+                    const hit = last.items.find(i => i.key === fam.key);
+                    if (hit) { hit.n++; hit.conf = Math.max(hit.conf, r.conf); } else last.items.push({ ...fam, n: 1, conf: r.conf, t: r.t });
+                    last.tEnd = r.t;
+                } else blocks.push({ kind: 'sounds', t: r.t, tEnd: r.t, items: [{ ...fam, n: 1, conf: r.conf, t: r.t }] });
+            }
+            const nSpeech = blocks.filter(b => b.kind === 'speech').length, nSound = blocks.filter(b => b.kind === 'sounds').length;
+            const cov = data.coverageSec ? `${_aiTimeFmt(data.coverageSec)} of speech transcribed` : '';
+            const jumpFor = (t, cls = 'ai-tl-ts') => vod ? `<a class="${cls}" href="/vod/${vod}?t=${Math.floor(t)}" onclick="return handleLinkClick(event, '/vod/${vod}?t=${Math.floor(t)}')" title="Watch from here">${_aiTimeFmt(t)}</a>` : `<span class="${cls}">${_aiTimeFmt(t)}</span>`;
+            const toolbar = `<div class="ai-tl-tr-bar">
+                <div class="ai-tl-tr-filter" role="tablist">
+                    <button type="button" class="active" data-f="all">All</button>
+                    <button type="button" data-f="speech"><i class="fa-solid fa-comment"></i> Speech <span>${nSpeech}</span></button>
+                    <button type="button" data-f="sounds"><i class="fa-solid fa-wave-square"></i> Sounds <span>${nSound}</span></button>
+                </div>
+                <span class="ai-tl-tr-hint">${cov ? cov + ' · ' : ''}sounds are detected by the audio model — hover a chip for its confidence</span>
+            </div>`;
+            box.innerHTML = toolbar + blocks.map(b => {
+                if (b.kind === 'speech') return `<div class="ai-tl-tr-line ai-tl-tr-speech">${jumpFor(b.t)}<span class="ai-tl-tr-text">${esc(b.text)}</span></div>`;
+                const span = b.tEnd > b.t + 2 ? `${_aiTimeFmt(b.t)}–${_aiTimeFmt(b.tEnd)}` : _aiTimeFmt(b.t);
+                const chips = b.items.sort((x, y) => y.n - x.n).map(i => `<span class="ai-tl-sound ai-tl-sound--${i.key}" title="${esc(i.label)} · confidence ${(i.conf * 100).toFixed(0)}%"><i class="fa-solid ${i.icon}"></i>${esc(i.label)}${i.n > 1 ? `<b>×${i.n}</b>` : ''}</span>`).join('');
+                return `<div class="ai-tl-tr-line ai-tl-tr-sounds">${jumpFor(b.t, 'ai-tl-ts ai-tl-ts--sound')}<div class="ai-tl-sound-strip" title="${esc(span)}">${chips}</div></div>`;
             }).join('');
+            box.querySelectorAll('.ai-tl-tr-filter button').forEach(btn => btn.addEventListener('click', () => {
+                box.querySelectorAll('.ai-tl-tr-filter button').forEach(b => b.classList.toggle('active', b === btn));
+                box.dataset.filter = btn.dataset.f;
+            }));
         } catch { box.innerHTML = '<p class="muted" style="padding:6px">Couldn\'t load transcript.</p>'; box.dataset.built = ''; }
     }
 }

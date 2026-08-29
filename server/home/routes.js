@@ -170,6 +170,14 @@ async function _mediaStatsCached() {
     return _mediaStats.data;
 }
 
+// GET /api/home/stats/series/:metric?days=30 — daily values behind a hero stat.
+router.get('/stats/series/:metric', (req, res) => {
+    const series = db.getHomeStatSeries(String(req.params.metric), req.query.days);
+    if (!series) return res.status(404).json({ error: 'Unknown metric', metrics: db.HOME_SERIES_KEYS });
+    res.set('Cache-Control', 'public, max-age=120');
+    res.json(series);
+});
+
 async function heroStats() {
     const stats = { ...db.getHomeStats() };
     const m = await _mediaStatsCached();
