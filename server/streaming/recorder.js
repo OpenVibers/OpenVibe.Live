@@ -90,7 +90,11 @@ class StreamRecorder {
 
         run.catch((err) => {
             console.error(`[VOD] Recording start failed for stream ${streamId} (${protocol}):`, err.message);
-            this.activeRecordings.delete(streamId);
+            // _createVod may already have made the VOD row in Media before ingest failed
+            // (e.g. "Disk critically low — recording refused"). Leaving it behind creates a
+            // ghost with no file that shows up as a 0:00 VOD and — worse — clogs Media's
+            // offload sweep, which is exactly what needs to run when the disk is full.
+            this._abort(streamId, rec).catch(() => {});
         });
     }
 
