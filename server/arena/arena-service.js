@@ -63,6 +63,40 @@ const ROUNDS = [
 // Words that count as "hyped" when they show up in the transcript.
 const HYPE_PATTERNS = ["let's go", 'lets go', 'no way', 'oh my god', 'insane', 'clutch', 'holy', 'gg', 'unreal', 'what the', 'bro', 'chat,', 'chat ', 'yo ', 'welcome', 'lfg', 'poggers', 'pog'];
 
+// Transcript text that must never be surfaced on the site, no matter what a model
+// "picks": slurs, hate terms, threats and hard sexual profanity. Applied to quote
+// candidates BEFORE the AI sees them, to the persona prompt's "things they said", and to
+// the live hot-mic line. Deliberately broad — a false positive costs one quote, a false
+// negative puts a slur on a public page. (Spelling variants: repeated letters, common
+// leetspeak, and word-boundary aware so "hell" does not catch "shell".)
+const BANNED_PATTERNS = [
+    /n+[i1!]+g+(?:a+|e+r+|u+h+|r+)s?\b/i,
+    /\bf+[a@]+g+(?:o+t+|s|z)?\b/i,
+    /\br+[e3]+t+[a@]+r+d+(?:ed|s)?\b/i,
+    /\bt+r+[a@]+n+n+(?:y|ie|ies)\b/i,
+    /\bk+[i1]+k+e+s?\b/i,
+    /\bs+p+[i1]+c+k?s?\b/i,
+    /\bc+h+[i1]+n+k+s?\b/i,
+    /\bg+[o0]+[o0]+k+s?\b/i,
+    /\bw+e+t+b+a+c+k+s?\b/i,
+    /\bd+[y1]+k+e+s?\b/i,
+    /\bc+u+n+t+s?\b/i,
+    /\bw+h+[o0]+r+e+s?\b/i,
+    /\bs+l+u+t+s?\b/i,
+    /\bp+u+s+s+(?:y|ies)\b/i,
+    /\b(?:d+[i1]+c+k|c+[o0]+c+k)s?\b/i,
+    /\br+a+p+(?:e|ed|ing|ist)\b/i,
+    /\bk+y+s+\b/i,
+    /\bkill\s+(?:yourself|urself|himself|herself|themselves)\b/i,
+    /\b(?:hitler|nazi|nazis)\b/i,
+    /\bmolest/i,
+    /\bpedo/i,
+];
+function isBannedText(text) {
+    const t = String(text || '');
+    return BANNED_PATTERNS.some(re => re.test(t));
+}
+
 // ── Tables ───────────────────────────────────────────────────
 
 let _tablesReady = false;
@@ -419,7 +453,7 @@ function gatherContext(userId) {
     try { ctx.titles = db.all('SELECT DISTINCT title FROM streams WHERE user_id = ? AND duration_seconds > 0 ORDER BY started_at DESC LIMIT 8', [userId]).map(r => r.title).filter(Boolean); } catch { ctx.titles = []; }
     try {
         // A taste of how they actually talk — short, recent, non-empty lines.
-        ctx.said = db.all(`SELECT text FROM stream_timeline_events WHERE user_id = ? AND kind = 'speech' AND LENGTH(text) BETWEEN 30 AND 140 ORDER BY created_at DESC LIMIT 12`, [userId]).map(r => r.text);
+        ctx.said = db.all(`SELECT text FROM stream_timeline_events WHERE user_id = ? AND kind = 'speech' AND LENGTH(text) BETWEEN 30 AND 140 ORDER BY created_at DESC LIMIT 24`, [userId]).map(r => r.text).filter(t => !isBannedText(t)).slice(0, 12);
     } catch { ctx.said = []; }
     return ctx;
 }
@@ -544,8 +578,10 @@ function quoteCandidates(userId, limit = 90) {
         if (/\b(um+|uh+|like like)\b/.test(s)) n -= 1;
         return n;
     };
-    // Keep the spiciest, then fill with a spread across time so one stream cannot dominate.
-    const scored = rows.map(r => ({ ...r, score: score(r.text) })).sort((x, y) => y.score - x.score);
+    // Hard filter first — nothing on the banned list is ever a candidate, so the model
+    // cannot pick it. Then keep the spiciest, and fill with a spread across time so one
+    // stream cannot dominate.
+    const scored = rows.filter(r => !isBannedText(r.text)).map(r => ({ ...r, score: score(r.text) })).sort((x, y) => y.score - x.score);
     const picked = scored.slice(0, Math.ceil(limit / 2));
     const rest = scored.slice(Math.ceil(limit / 2));
     const step = Math.max(1, Math.floor(rest.length / Math.max(1, limit - picked.length)));
@@ -575,7 +611,8 @@ function fallbackQuotes(candidates) {
 }
 
 function materializeQuotes(candidates, sel) {
-    const pick = (i, why) => { const c = candidates[i]; return c ? { text: c.text, stream_id: c.stream_id, vod_id: c.vod_id, start_sec: Math.max(0, Math.floor(Number(c.start_sec) || 0) - 2), why } : null; };
+    // Belt and braces: candidates are pre-filtered, but never trust an index blindly.
+    const pick = (i, why) => { const c = candidates[i]; return c && !isBannedText(c.text) ? { text: c.text, stream_id: c.stream_id, vod_id: c.vod_id, start_sec: Math.max(0, Math.floor(Number(c.start_sec) || 0) - 2), why } : null; };
     const picks = (sel.picks || []).map(p => pick(p.index, p.why)).filter(Boolean);
     const walkout = pick(sel.walkout, 'walkout line') || picks[0] || null;
     return { picks, walkout, voice_verdict: sel.voice_verdict || null, mic_style: sel.mic_style || null };
@@ -1028,7 +1065,8 @@ function getLiveMatchups() {
         // What they said most recently on this live stream — the arena "hot mic".
         let lastLine = null;
         try {
-            const r = db.get(`SELECT text, start_sec FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND LENGTH(text) > 15 ORDER BY start_sec DESC LIMIT 1`, [s.id]);
+            const r = db.all(`SELECT text, start_sec FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND LENGTH(text) > 15 ORDER BY start_sec DESC LIMIT 5`, [s.id])
+                .find(row => !isBannedText(row.text));
             if (r) lastLine = { text: r.text, start_sec: Math.floor(r.start_sec) };
         } catch { /* */ }
         return {
@@ -1100,4 +1138,5 @@ module.exports = {
     _fallbackPersona: fallbackPersona,
     _voiceStatsFor: voiceStatsFor,
     _quoteCandidates: quoteCandidates,
+    _isBannedText: isBannedText,
 };
