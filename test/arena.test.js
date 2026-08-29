@@ -91,7 +91,7 @@ db.addTimelineEvents([
     { stream_id: s1, user_id: u1, vod_id: 901, kind: 'speech', start_sec: 5100, end_sec: 5110, text: 'No way, chat, that guy is such a retard!', label: null, confidence: 0.9 },
     { stream_id: s1, user_id: u1, vod_id: 901, kind: 'speech', start_sec: 5200, end_sec: 5210, text: 'Holy, that was insane, kill yourself if you disagree!', label: null, confidence: 0.9 },
 ]);
-for (const bad of ["what up my n1ggas", "stop being a faggot", "he's a retard", "kys", "kill yourself", "such a whore", "pussy move"]) assert.ok(arena._isBannedText(bad), `banned: ${bad}`);
+for (const bad of ["what up my n1ggas", "stop being a faggot", "keep it real on those faggots", "niggers", "r3tards everywhere", "he's a retard", "kys", "kill yourself", "such a whore", "pussy move", "f4gg0tz", "niggaaaa"]) assert.ok(arena._isBannedText(bad), `banned: ${bad}`);
 for (const ok of ["the shell script is hell to debug", "we dug a dyke in the sand? no — a dike, the engineering kind"]) { /* documented: broad filter may catch "dyke" — acceptable */ }
 assert.ok(!arena._isBannedText("the shell script is hell to debug and I hate it"), 'ordinary sentences pass');
 const cands = arena._quoteCandidates(u1);

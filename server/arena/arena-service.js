@@ -69,32 +69,33 @@ const HYPE_PATTERNS = ["let's go", 'lets go', 'no way', 'oh my god', 'insane', '
 // the live hot-mic line. Deliberately broad — a false positive costs one quote, a false
 // negative puts a slur on a public page. (Spelling variants: repeated letters, common
 // leetspeak, and word-boundary aware so "hell" does not catch "shell".)
-const BANNED_PATTERNS = [
-    /n+[i1!]+g+(?:a+|e+r+|u+h+|r+)s?\b/i,
-    /\bf+[a@]+g+(?:o+t+|s|z)?\b/i,
-    /\br+[e3]+t+[a@]+r+d+(?:ed|s)?\b/i,
-    /\bt+r+[a@]+n+n+(?:y|ie|ies)\b/i,
-    /\bk+[i1]+k+e+s?\b/i,
-    /\bs+p+[i1]+c+k?s?\b/i,
-    /\bc+h+[i1]+n+k+s?\b/i,
-    /\bg+[o0]+[o0]+k+s?\b/i,
-    /\bw+e+t+b+a+c+k+s?\b/i,
-    /\bd+[y1]+k+e+s?\b/i,
-    /\bc+u+n+t+s?\b/i,
-    /\bw+h+[o0]+r+e+s?\b/i,
-    /\bs+l+u+t+s?\b/i,
-    /\bp+u+s+s+(?:y|ies)\b/i,
-    /\b(?:d+[i1]+c+k|c+[o0]+c+k)s?\b/i,
-    /\br+a+p+(?:e|ed|ing|ist)\b/i,
-    /\bk+y+s+\b/i,
-    /\bkill\s+(?:yourself|urself|himself|herself|themselves)\b/i,
-    /\b(?:hitler|nazi|nazis)\b/i,
-    /\bmolest/i,
-    /\bpedo/i,
+// Stems are matched on a NORMALISED copy of the text: lower-cased, leetspeak folded
+// (1→i 3→e 4→a 0→o @→a $→s !→i), runs of 3+ identical letters collapsed to 2, and
+// punctuation stripped — so "f4gg0tz", "niggaaa", "r3tards" all reduce to the stems
+// below. Each stem may carry a plural/verb suffix.
+const BANNED_STEMS = [
+    'nigga', 'nigger', 'niggu', 'fag', 'faggot', 'fagot', 'retard', 'tranny', 'trannie', 'kike', 'spic', 'spick', 'chink', 'gook',
+    'wetback', 'dyke', 'cunt', 'whore', 'slut', 'pussy', 'pussies', 'dick', 'cock', 'rape', 'rapist', 'kys', 'hitler', 'nazi',
+    'molest', 'molester', 'pedo', 'pedophile', 'paedo', 'coon', 'raghead', 'towelhead', 'beaner',
 ];
+const SUFFIX = '(?:s|es|z|ed|ing|er|ers)?';
+const BANNED_STEM_RE = new RegExp(`\\b(?:${BANNED_STEMS.join('|')})${SUFFIX}\\b`, 'i');
+// Fully collapsed variants ("niggaaaa" → "niga", "faggot" → "fagot") catch stretched spellings.
+const collapseRepeats = (t) => t.replace(/([a-z])\1+/g, '$1');
+const BANNED_STEM_COLLAPSED_RE = new RegExp(`\\b(?:${[...new Set(BANNED_STEMS.map(collapseRepeats))].join('|')})${SUFFIX}\\b`, 'i');
+const BANNED_PHRASES = [/\bkill\s+(?:your|ur|him|her|them)\s*sel(?:f|ves)\b/i, /\bgo\s+die\b/i];
+
+function normalizeForFilter(text) {
+    return String(text || '')
+        .toLowerCase()
+        .replace(/[1!]/g, 'i').replace(/3/g, 'e').replace(/[4@]/g, 'a').replace(/0/g, 'o').replace(/\$/g, 's')
+        .replace(/[^a-z\s]/g, ' ');
+}
 function isBannedText(text) {
-    const t = String(text || '');
-    return BANNED_PATTERNS.some(re => re.test(t));
+    const raw = String(text || '');
+    if (BANNED_PHRASES.some(re => re.test(raw))) return true;
+    const norm = normalizeForFilter(raw);
+    return BANNED_STEM_RE.test(norm) || BANNED_STEM_COLLAPSED_RE.test(collapseRepeats(norm));
 }
 
 // ── Tables ───────────────────────────────────────────────────
