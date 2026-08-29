@@ -449,6 +449,13 @@ async function buildSitemap() {
     const urls = [];
     const seenChannels = new Set();
     const statics = [['/', 'daily', '1.0'], ['/vods', 'hourly', '0.8'], ['/clips', 'hourly', '0.8'], ['/pastes', 'hourly', '0.7'], ['/chat', 'daily', '0.5']];
+    // Rendered docs (server/docs/routes.js): /docs is the index (README.md), the rest by file name.
+    try {
+        for (const f of require('fs').readdirSync(require('path').join(__dirname, '../../docs'))) {
+            if (!f.endsWith('.md')) continue;
+            statics.push([f === 'README.md' ? '/docs' : `/docs/${f.slice(0, -3)}`, 'weekly', '0.5']);
+        }
+    } catch { /* docs folder absent in some deploys */ }
     for (const [u, cf, pr] of statics) urls.push(_urlTag(u, null, cf, pr));
     const page = async (fetch, per, cap, emit) => {
         let off = 0;

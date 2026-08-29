@@ -213,7 +213,7 @@ app.set('trust proxy', 2); // Two hops: Cloudflare → nginx → Node
 // RTMP FLV is now proxied same-origin via /api/streams/rtmp-proxy/:id.flv — no external CSP entry needed
 
 // The hosted browser WHIP publisher (/whip-publisher.html) POSTs its SDP offer to the
-// dedicated WHIP host when one is configured (whip.openvibe.live), which is a different
+// dedicated WHIP host when one is configured (ingest.openvibe.live), which is a different
 // origin from the page itself and would otherwise be blocked by connect-src 'self'.
 // Resolved per request, not at boot: config.whip is (re)filled by the URL-registry refresh
 // in start(), which runs after this middleware is built — a value captured here would be
@@ -639,6 +639,12 @@ app.post('/api/admin/broadcast', requireAuth, permissions.requireAdmin, (req, re
         res.status(500).json({ error: err.message });
     }
 });
+
+// ── Docs ─────────────────────────────────────────────────────
+// docs/*.md rendered as HTML at /docs/<name> (+ /docs/<name>.md) with GitHub-compatible
+// heading anchors, so https://openvibe.live/docs/whip#publishing-from-a-browser is a
+// link people can be sent to without leaving the site.
+app.use('/docs', require('./docs/routes'));
 
 // ── OBS Overlay Widgets ──────────────────────────────────────
 // Modular system: /obs/<widget>/<username>

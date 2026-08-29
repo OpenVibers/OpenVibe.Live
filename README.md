@@ -35,7 +35,7 @@ This repository contains the OpenVibe.Live server, browser assets, and runtime c
 - RTMP ingest using `node-media-server` (ports 1935 / 9935, public host `ingest.openvibe.live`).
 - optional WebRTC SFU via `mediasoup` (ports 11000-11300 in production).
 - JSMPEG relay (TLS relay ports 9710-9789 via nginx stream).
-- WHIP/HTTP ingestion support (`whip.openvibe.live`) — open CORS, so even a backend-less web page can publish; see [docs/whip.md → Publishing from a browser](docs/whip.md#publishing-from-a-browser) and the hosted [browser publisher](https://openvibe.live/whip-publisher.html).
+- WHIP/HTTP ingestion support (`ingest.openvibe.live`) — open CORS, so even a backend-less web page can publish; see [docs/whip.md → Publishing from a browser](docs/whip.md#publishing-from-a-browser) and the hosted [browser publisher](https://openvibe.live/whip-publisher.html).
 - real-time broadcast and control channels.
 
 ### Media (VODs / clips / pastes / thumbnails)
@@ -118,7 +118,7 @@ Minimum `.env`: `BASE_URL`, `JWT_SECRET`, `OV_NETWORK_URL`, `OV_NETWORK_INTERNAL
 ## Deployment
 
 - Production path `/opt/openvibe.live`, env file `/etc/openvibe/live.env` (0600), unit `openvibe-live.service` (see `deploy/systemd/`).
-- nginx reference config at `deploy/nginx/openvibe.live.conf` (`openvibe.live`, `www.openvibe.live`, `whip.openvibe.live`; certs `/etc/letsencrypt/live/openvibe.live/`).
+- nginx reference config at `deploy/nginx/openvibe.live.conf` (`openvibe.live`, `www.openvibe.live`, `ingest.openvibe.live`; certs `/etc/letsencrypt/live/openvibe.live/`).
 
 ---
 
