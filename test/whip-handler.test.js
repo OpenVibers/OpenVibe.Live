@@ -49,7 +49,15 @@ const req = {
 };
 
 const headers = buildWhipResponseHeaders(req, '123', 'resource-abc');
-assert.strictEqual(headers.Location, 'http://localhost:3000/whip/123/resource-abc');
+// The session resource must live on the host the encoder reached us on, so configs that
+// still point at an older hostname (openvibe.live, whip.openvibe.live) keep working after
+// the advertised WHIP host moves.
+assert.strictEqual(headers.Location, 'https://whip.example.com/whip/123/resource-abc');
+// Without a usable Host header, fall back to the configured public origin.
+assert.strictEqual(
+    buildWhipResponseHeaders({ protocol: 'https', get: () => undefined }, '123', 'resource-abc').Location,
+    'http://localhost:3000/whip/123/resource-abc'
+);
 // A browser can only read the resource URL (and our error code) if both are exposed.
 assert.strictEqual(headers['Access-Control-Expose-Headers'], 'Location, X-WHIP-ERROR');
 assert.ok(!Object.prototype.hasOwnProperty.call(headers, 'Link'));
