@@ -81,6 +81,44 @@ router.post('/talk/submit', requireAuth, async (req, res) => {
     }
 });
 
+// ── Live trash-talk sessions (server/arena/talk-session.js) ──
+const sessions = require('./talk-session');
+
+router.get('/talk/sessions', (req, res) => {
+    try { res.set('Cache-Control', 'no-store'); res.json({ sessions: sessions.liveSessionSummaries() }); }
+    catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.get('/talk/session/:user', (req, res) => {
+    try {
+        const v = sessions.viewFor(req.params.user);
+        if (!v) return res.status(404).json({ error: 'No such user' });
+        res.set('Cache-Control', 'no-store');
+        res.json(v);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.post('/talk/session/start', requireAuth, async (req, res) => {
+    try { const s = await sessions.startSession(req.user.id); res.json({ ok: true, session: sessions.sessionView(s) }); }
+    catch (err) { res.status(400).json({ error: err.message }); }
+});
+router.post('/talk/session/stop', requireAuth, (req, res) => {
+    try { const s = sessions.stopSession(req.user.id); res.json({ ok: true, session: sessions.sessionView(s) }); }
+    catch (err) { res.status(400).json({ error: err.message }); }
+});
+router.post('/talk/session/skip', requireAuth, async (req, res) => {
+    try { const t = await sessions.skipTopic(req.user.id); res.json({ ok: true, topic: t ? { topic: t.topic, hint: t.hint, idx: t.idx } : null }); }
+    catch (err) { res.status(400).json({ error: err.message }); }
+});
+router.post('/talk/session/:user/hype', optionalAuth, (req, res) => {
+    try {
+        const db = require('../db/database');
+        const user = /^\d+$/.test(req.params.user) ? db.getUserById(Number(req.params.user)) : db.getUserByUsername(req.params.user);
+        if (!user) return res.status(404).json({ error: 'No such user' });
+        const r = sessions.hypeSession(user.id, arena.voterKeyFor(req));
+        if (!r) return res.status(404).json({ error: 'No live session' });
+        res.json(r);
+    } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 router.post('/talk/:id/hype', optionalAuth, (req, res) => {
     try { res.json(talk.hype(Number(req.params.id), arena.voterKeyFor(req))); }
     catch (err) { res.status(400).json({ error: err.message }); }

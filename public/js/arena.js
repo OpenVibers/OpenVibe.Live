@@ -131,7 +131,7 @@ async function loadArenaPage(segments = []) {
     const [, first, second, third] = segments;
     try {
         if (first === 'battle' && second && third) return await _aRenderBattle(root, second, third);
-        if (first === 'talk') return await _aRenderTalk(root);
+        if (first === 'talk') return second ? await _aRenderSession(root, second) : await _aRenderTalk(root);
         if (first && first !== 'battle') return await _aRenderFighter(root, first);
         return await _aRenderHome(root);
     } catch (err) {
@@ -709,6 +709,8 @@ async function _aRenderTalk(root) {
                 <p class="arena-note">Chat commands: <code>!talk</code> topic · <code>!hype</code> · <code>!arena</code> card · <code>!vote a|b</code> main event · <code>!fight &lt;user&gt;</code></p>
             </div>
         </div>
+        <section class="arena-sessions-live" id="arena-live-sessions" style="display:none"></section>
+        <section id="arena-session-card"></section>
         <section class="arena-talk-enter" id="arena-talk-enter"></section>
         <section class="arena-board">
             <div class="arena-board-head"><h2>This topic's entries <small class="arena-note">${t.entries.length} so far</small></h2>${t.ai ? '' : '<span class="arena-note">AI judge is off — heuristic scoring</span>'}</div>
@@ -718,6 +720,8 @@ async function _aRenderTalk(root) {
     _aBindSpeak(root);
     _aBindHype(root);
     _aRenderTalkEnter(t, me);
+    _aRenderSessionCard(t, me);
+    api('/arena/talk/sessions').then(r => _aRenderLiveSessions(r.sessions || [])).catch(() => {});
     _arenaTalkTimers.push(setInterval(() => { const el = document.getElementById('arena-talk-countdown'); if (el) el.textContent = _aCountdown(topic.ends_at); }, 30000));
 }
 
@@ -821,6 +825,121 @@ function _aRenderTalkEnter(t, me) {
     };
     el.querySelectorAll('.arena-talk-mode').forEach(b => b.addEventListener('click', () => renderMode(b.dataset.mode)));
     renderMode(mic.available ? 'mic' : 'text');
+}
+
+// ── Live trash-talk sessions ─────────────────────────────────
+
+function _aSessionLink(u) { return `/arena/talk/${encodeURIComponent(u.username)}`; }
+
+function _aRenderLiveSessions(list) {
+    const el = document.getElementById('arena-live-sessions');
+    if (!el) return;
+    if (!list.length) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.innerHTML = `<h2><span class="arena-live-dot"></span> Talking trash right now</h2><div class="arena-session-strip">${list.map(s => _aA(_aSessionLink(s.user), `<span class="arena-live-dot"></span><span><strong>${_aEsc(s.fighter_name)}</strong><small>${_aEsc(s.topic || '…')} · ${s.progress}%</small></span><span class="arena-session-lvl">LVL ${s.level}</span>`, 'arena-session-chip')).join('')}</div>`;
+}
+
+/** Streamer-side card on /arena/talk: start a live session, or jump to the running one. */
+async function _aRenderSessionCard(t, me) {
+    const el = document.getElementById('arena-session-card');
+    if (!el || !me || !t.on_roster) return;
+    let view = null;
+    try { view = await api(`/arena/talk/session/${encodeURIComponent(me.username)}`); } catch { view = null; }
+    const live = view?.session && view.session.status === 'live';
+    const mic = t.mic || {};
+    el.innerHTML = `<div class="arena-talk-panel">
+        <div class="arena-talk-panel-head"><h2><i class="fa-solid fa-tower-broadcast"></i> Live session <span class="arena-note" style="font-weight:400">power-level by talking trash on stream</span></h2>${live ? '<span class="arena-session-status"><span class="arena-live-dot"></span> live now</span>' : ''}</div>
+        <p class="arena-note" style="margin:0 0 10px">Start a session while you're live and the transcription does the rest: talk trash on the current topic, the judge scores it every ~30 s, the bar fills, the topic changes when you've cleared it, and every cleared topic counts for your POWER. Viewers push it with <code>!hype</code>.</p>
+        <div class="arena-session-controls">
+            ${live ? _aA(_aSessionLink(me), '<i class="fa-solid fa-satellite-dish"></i> Open your live console', 'btn btn-primary')
+                : `<button class="btn btn-primary" id="arena-session-start" ${mic.available ? '' : 'disabled'} title="${mic.available ? '' : mic.reason === 'not_live' ? 'Go live first' : 'Live, but no transcription yet — talk for a few seconds and reload'}"><i class="fa-solid fa-play"></i> Start live session${mic.available ? '' : mic.reason === 'not_live' ? ' <small>(go live first)</small>' : ' <small>(waiting for transcription)</small>'}</button>`}
+            ${view?.session && !live ? `<span class="arena-note">Last session: level ${view.session.level}, ${view.session.topics_cleared} topic${view.session.topics_cleared === 1 ? '' : 's'} cleared${view.session.end_reason ? ` (${_aEsc(String(view.session.end_reason).replace('_', ' '))})` : ''}</span>` : ''}
+        </div>
+    </div>`;
+    el.querySelector('#arena-session-start')?.addEventListener('click', async (e) => {
+        e.target.disabled = true;
+        try { await api('/arena/talk/session/start', { method: 'POST' }); navigate(_aSessionLink(me)); }
+        catch (err) { e.target.disabled = false; if (typeof showToast === 'function') showToast(err?.message || 'Could not start', 'error'); }
+    });
+}
+
+async function _aRenderSession(root, username) {
+    _aTalkStop();
+    root.innerHTML = _aSpinner('Tuning in…');
+    let v;
+    try { v = await api(`/arena/talk/session/${encodeURIComponent(username)}`); }
+    catch (err) { root.innerHTML = `<div class="arena-empty"><i class="fa-solid fa-user-slash"></i><p>${_aEsc(err?.message || 'No such fighter')}</p></div>`; return; }
+    const me = (typeof currentUser !== 'undefined' && currentUser) ? currentUser : null;
+    const mine = !!(me && me.id === v.user.id);
+    if (!v.session) {
+        root.innerHTML = `<div class="arena-back">${_aA('/arena/talk', '<i class="fa-solid fa-arrow-left"></i> Trash Talk')}</div><div class="arena-empty"><i class="fa-solid fa-microphone-slash"></i><p><strong>${_aEsc(v.fighter_name)}</strong> hasn't run a live trash-talk session yet.${mine ? ' Start one from the Trash Talk page while you are live.' : ''}</p>${_aA('/arena/talk', 'Back', 'btn')}</div>`;
+        return;
+    }
+    let last = null;
+    const render = (s) => {
+        const t = s.active_topic;
+        const live = s.status === 'live';
+        const xpInLevel = s.xp - (s.level - 1) * s.xp_per_level;
+        const prev = last; last = s;
+        if (prev && s.level > prev.level) _aLevelUp(s.level);
+        const clearedFlash = prev && s.topics_cleared > prev.topics_cleared;
+        const lines = s.recent_lines || [];
+        const newestAt = prev ? Math.max(0, ...(prev.recent_lines || []).map(l => l.at)) : -1;
+        root.innerHTML = `
+            <div class="arena-back">${_aA('/arena/talk', '<i class="fa-solid fa-arrow-left"></i> Trash Talk')} ${_aA(_aFighterLink(v.user), `<i class="fa-solid fa-id-card"></i> ${_aEsc(v.fighter_name)}`)}</div>
+            <div class="arena-session">
+                <div class="arena-session-main">
+                    <div class="arena-session-head">
+                        <div class="arena-session-who">${_aPortrait({ user: v.user, image_url: v.image_url }, 'sm')}<div><strong>${_aEsc(v.fighter_name)}</strong><div class="arena-session-status ${live ? '' : 'is-ended'}">${live ? '<span class="arena-live-dot"></span> talking trash live' : `session ended${s.end_reason ? ' · ' + _aEsc(String(s.end_reason).replace('_', ' ')) : ''}`}</div></div></div>
+                        <div class="arena-session-level"><div><b>LVL ${s.level}</b><small>TRASH LEVEL</small></div><div class="arena-xp"><div class="arena-xp-track"><span class="arena-xp-fill" style="width:${Math.min(100, (xpInLevel / s.xp_per_level) * 100)}%"></span></div><div class="arena-xp-label">${s.xp} XP · ${s.next_level_xp - s.xp} to next</div></div></div>
+                    </div>
+                    ${t ? `<div class="arena-session-topic ${clearedFlash ? 'is-cleared-flash' : ''}">
+                        <div class="arena-session-topic-kicker">Topic ${t.idx + 1} · ${_aEsc(t.tone || '')} <span>${live ? 'talk about this — the judge listens every ~30 s' : 'session over'}</span></div>
+                        <h2>“${_aEsc(t.topic)}”</h2>
+                        ${t.hint ? `<p class="arena-session-hint"><i class="fa-solid fa-lightbulb"></i> ${_aEsc(t.hint)}</p>` : ''}
+                        <div class="arena-progress"><span class="arena-progress-fill" style="width:${t.progress}%"></span></div>
+                        <div class="arena-progress-label"><span>${t.progress}% cleared · ${t.hits} hit${t.hits === 1 ? '' : 's'} · ${t.hypers} hyping</span><span>${t.progress >= 100 ? 'CLEARED' : `${100 - t.progress}% to the next topic`}</span></div>
+                        ${t.last_judgement ? `<div class="arena-session-verdict"><span class="${t.last_judgement.is_trash_talk ? 'is-hit' : 'is-miss'}">${t.last_judgement.is_trash_talk ? '<i class="fa-solid fa-fire"></i> that was trash talk' : '<i class="fa-solid fa-ellipsis"></i> not trash talk (yet)'}</span> · quality ${t.last_judgement.quality}/10 · “${_aEsc(t.last_judgement.about || '')}”${t.last_judgement.fallback ? ' · heuristic judge' : ''}</div>` : (live ? '<div class="arena-session-verdict"><span class="is-miss"><i class="fa-solid fa-ear-listen"></i> listening…</span> say something spicy</div>' : '')}
+                        ${t.best_line ? `<p class="arena-talk-note">Best line so far: “${_aEsc(t.best_line)}” ${t.best_vod_id ? `<a class="arena-talk-hear" href="/vod/${t.best_vod_id}?t=${t.best_line_sec}" onclick="return handleLinkClick(event, '/vod/${t.best_vod_id}?t=${t.best_line_sec}')"><i class="fa-solid fa-play"></i> hear it</a>` : ''}</p>` : ''}
+                        <div class="arena-session-controls">
+                            ${mine && live ? `<button class="btn btn-ghost" id="arena-session-skip"><i class="fa-solid fa-forward"></i> Skip topic</button><button class="btn btn-ghost" id="arena-session-stop"><i class="fa-solid fa-stop"></i> End session</button>` : ''}
+                            ${!mine && live ? `<button class="btn btn-primary" id="arena-session-hype"><i class="fa-solid fa-fire"></i> Hype</button><span class="arena-note">or type <code>!hype</code> in their chat</span>` : ''}
+                            ${_aA(_aChannelLink(v.user), '<i class="fa-solid fa-tv"></i> Watch the stream', 'btn btn-ghost')}
+                        </div>
+                    </div>` : ''}
+                    <div class="arena-session-feed">
+                        <div class="arena-session-feed-head"><span><i class="fa-solid fa-microphone"></i> Hot mic</span><span>${s.lines_seen} lines · ${_aNum(s.words_seen)} words this session</span></div>
+                        ${lines.length ? lines.map(l => `<div class="arena-session-line ${l.at > newestAt ? 'is-new' : ''}"><span>${_aStamp(l.at)}</span><span>${_aEsc(l.text)}</span>${l.vod_id ? `<a href="/vod/${l.vod_id}?t=${Math.max(0, l.sec - 2)}" onclick="return handleLinkClick(event, '/vod/${l.vod_id}?t=${Math.max(0, l.sec - 2)}')" title="Hear it"><i class="fa-solid fa-play"></i></a>` : '<span></span>'}</div>`).join('') : '<p class="arena-voice-empty">Nothing heard yet — the transcription runs a few seconds behind.</p>'}
+                    </div>
+                </div>
+                <div class="arena-session-side">
+                    <div class="arena-session-stats"><div class="arena-session-stat"><b>${s.topics_cleared}</b><span>topics cleared</span></div><div class="arena-session-stat"><b>${s.xp}</b><span>xp</span></div><div class="arena-session-stat"><b>${v.talk_bonus || 0}</b><span>power bonus</span></div></div>
+                    <div class="arena-session-card"><h3><i class="fa-solid fa-tags"></i> What they talked about</h3>${s.talked_about.length ? `<div class="arena-about">${s.talked_about.map(a => `<span class="${a.hit ? 'is-hit' : ''}" title="topic ${a.topic_idx + 1}">${_aEsc(a.text)}</span>`).join('')}</div>` : '<p class="arena-voice-empty">Tags appear after the first judged chunk.</p>'}</div>
+                    <div class="arena-session-card"><h3><i class="fa-solid fa-list-check"></i> Topics this session</h3>${s.cleared_topics.length ? `<div class="arena-cleared-list">${s.cleared_topics.slice().reverse().map(c => `<div class="arena-cleared ${c.status === 'skipped' ? 'is-skipped' : ''}"><b>${c.status === 'cleared' ? '<i class="fa-solid fa-check"></i>' : '<i class="fa-solid fa-forward"></i>'} ${_aEsc(c.topic)}</b>${c.best_line ? `<q>${_aEsc(c.best_line)}</q> ${c.best_vod_id ? `<a class="arena-talk-hear" href="/vod/${c.best_vod_id}?t=${c.best_line_sec}" onclick="return handleLinkClick(event, '/vod/${c.best_vod_id}?t=${c.best_line_sec}')"><i class="fa-solid fa-play"></i></a>` : ''}` : ''}<small>${c.status === 'cleared' ? `cleared · score ${c.score} · ${c.hits} hit${c.hits === 1 ? '' : 's'}` : 'skipped'}</small></div>`).join('')}</div>` : '<p class="arena-voice-empty">No topics cleared yet.</p>'}</div>
+                </div>
+            </div>`;
+        root.querySelector('#arena-session-skip')?.addEventListener('click', async () => { try { await api('/arena/talk/session/skip', { method: 'POST' }); refresh(); } catch (err) { if (typeof showToast === 'function') showToast(err?.message, 'error'); } });
+        root.querySelector('#arena-session-stop')?.addEventListener('click', async () => { if (!confirm('End your trash-talk session?')) return; try { await api('/arena/talk/session/stop', { method: 'POST' }); refresh(); } catch (err) { if (typeof showToast === 'function') showToast(err?.message, 'error'); } });
+        root.querySelector('#arena-session-hype')?.addEventListener('click', async (e) => {
+            e.target.disabled = true;
+            try { const r = await api(`/arena/talk/session/${encodeURIComponent(v.user.username)}/hype`, { method: 'POST' }); e.target.innerHTML = r.added ? '<i class="fa-solid fa-fire"></i> Hyped!' : '<i class="fa-solid fa-check"></i> Already hyped'; refresh(); }
+            catch (err) { e.target.disabled = false; if (typeof showToast === 'function') showToast(err?.message || 'Hype failed', 'error'); }
+        });
+    };
+    const refresh = async () => {
+        if (currentPage !== 'arena') return _aTalkStop();
+        try { const nv = await api(`/arena/talk/session/${encodeURIComponent(username)}`); if (nv.session) { v = nv; render(nv.session); } } catch { /* keep */ }
+    };
+    render(v.session);
+    if (v.session.status === 'live') _arenaTalkTimers.push(setInterval(refresh, 4000));
+}
+
+function _aLevelUp(level) {
+    const el = document.createElement('div');
+    el.className = 'arena-levelup';
+    el.innerHTML = `<i class="fa-solid fa-arrow-up"></i> TRASH LEVEL ${level}`;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2300);
 }
 
 window.loadArenaPage = loadArenaPage;

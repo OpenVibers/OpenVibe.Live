@@ -67,6 +67,19 @@ The part streamers and viewers play themselves.
 - **Power** — total (/50) × 12 → a Trash Talk bonus on POWER (max +12), decaying linearly over 7 days; shown on the profile and included in the leaderboard order.
 - **Hall of Trash** — the ten best lines of the last 30 days.
 
+
+### Live sessions (`/arena/talk/<username>`)
+
+The continuous version: a streamer who is live with the timeline transcription running presses **Start live session** on `/arena/talk`. From then on (`server/arena/talk-session.js`, ticker every 15 s):
+
+- New transcript lines are buffered against the **current topic**; once ≥ 25 new words have arrived and ≥ 30 s passed since the last call, the judge scores the chunk: *is this trash talk on the topic?*, Spice/Wit/On-topic/Delivery, a `progress_gain` (0–60 — how much of the topic that chunk covered), the best verbatim line, and a ≤ 10-word "what they talked about" tag.
+- **Progress** fills the topic bar; at 100 the topic is **cleared** → it becomes a regular Trash Talk entry (POWER bonus, Hall of Trash) and the **next topic is generated**, shaped by what was already cleared. Talk enough → the topic changes. Streamers can skip a topic or end the session.
+- **XP / Trash Level**: each judged chunk adds XP = quality × (trash talk ? 1 : 0.15); a level every 40 XP. Viewers add +2 XP and +4 % progress with `!hype` (one per person per topic).
+- The public console shows the live topic + bar, the latest judgement ("that was trash talk" / "not trash talk yet"), the best line so far (▶ VOD), the **hot mic** feed, "what they talked about" tags, topics cleared/skipped, and a level-up flash. Live sessions are listed on `/arena/talk` under "Talking trash right now".
+- Guard rails: one live session per streamer; ends when the stream ends, after 20 idle minutes, at 3 h, or at 300 judge calls; the slur filter voids chunks before the model sees them; lines shown on the console are filtered too.
+
+API: `GET /api/arena/talk/sessions` · `GET /api/arena/talk/session/:user` · `POST /api/arena/talk/session/start|stop|skip` (auth) · `POST /api/arena/talk/session/:user/hype`.
+
 Chat commands (`server/arena/arena-chat.js`, hooked into `ChatServer.handleBangCommand`): `!hype`, `!talk`, `!arena [user]`, `!vote a|b` (main event, signed-in), `!fight <user>`. Rate-limited to one per person every 4 s; replies are private system lines, hype milestones and call-outs are announced to the room.
 
 API: `GET /api/arena/talk` (board: topic, entries, hall, my entry, mic availability) · `POST /api/arena/talk/mic/start` · `GET /api/arena/talk/mic/feed` · `POST /api/arena/talk/submit {mode:'mic'|'text', text?}` · `POST /api/arena/talk/:id/hype`.
