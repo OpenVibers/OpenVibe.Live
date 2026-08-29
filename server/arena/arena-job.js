@@ -49,7 +49,9 @@ function start() {
     _timer = setInterval(() => tick().catch(e => console.warn('[Arena] job:', e.message)), INTERVAL_MS);
     if (_timer.unref) _timer.unref();
     setTimeout(() => tick().catch(() => {}), 90_000).unref?.();
-    console.log('[Arena] job started (every 20 min)');
+    // Live trash-talk sessions read the transcript every 15 s (no-op when none are live).
+    try { require('./talk-session').start(); } catch (e) { console.warn('[Arena] session ticker not started:', e.message); }
+    console.log('[Arena] job started (every 20 min; session ticker every 15 s)');
 }
 
 function stop() { if (_timer) { clearInterval(_timer); _timer = null; } }

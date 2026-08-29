@@ -49,6 +49,16 @@ function handle(chat, ws, client, cmd, parts) {
         try {
             if (cmd === '!hype') {
                 if (!streamer) return reply('!hype works inside a streamer\'s chat.');
+                // A live session (they are talking trash on stream right now) takes priority.
+                try {
+                    const s = require('./talk-session').hypeSession(streamer.id, key);
+                    if (s) {
+                        if (!s.added) return reply(`You already hyped this topic. ${s.hypers} hyping · level ${s.level} · ${s.progress}% to the next topic.`);
+                        reply(`🔥 Hyped the live session! ${s.hypers} hyping · level ${s.level} (${s.xp} XP) · topic ${s.progress}% cleared → ${base()}/arena/talk/${encodeURIComponent(streamer.username)}`);
+                        if (s.hypers === 1 || s.hypers % 5 === 0) chat.broadcastToStream(client.streamId, { type: 'system', message: `🎤 ${streamer.display_name || streamer.username} is talking trash live — ${s.hypers} hyping. Type !hype to push the topic. ${base()}/arena/talk/${encodeURIComponent(streamer.username)}` });
+                        return;
+                    }
+                } catch (e) { return reply(`Arena: ${e.message}`); }
                 const entry = talk.latestEntryFor(streamer.id);
                 if (!entry) return reply(`${streamer.display_name || streamer.username} hasn't entered the current Trash Talk topic yet — ${base()}/arena/talk`);
                 const r = talk.hype(entry.id, key);

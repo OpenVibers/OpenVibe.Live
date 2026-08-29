@@ -393,6 +393,6 @@ function entriesFor(userId, limit = 6) {
 
 module.exports = {
     ensureTables, getTopic, currentSlot, startMic, micFeed, micAvailable, submit, hype, latestEntryFor, board, entriesFor, talkBonuses,
-    TALK_BONUS_MAX, TALK_BONUS_DAYS, TEXT_MAX, MIC_WINDOW_SEC,
+    TALK_BONUS_MAX, TALK_BONUS_DAYS, TEXT_MAX, MIC_WINDOW_SEC, FALLBACK_TOPICS,
     _judge: judge, _heuristicJudge: heuristicJudge, _totalFor: totalFor, _crowdScore: crowdScore, _stampFor: stampFor, _sessions: sessions,
 };

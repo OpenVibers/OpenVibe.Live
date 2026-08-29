@@ -1140,6 +1140,7 @@ module.exports = {
     STAT_WEIGHTS,
     ROUNDS,
     ARENA_DIR,
+    getFighterImageUrl: (userId) => imageUrlFor(profileRow(userId)),
     // pure helpers (tests)
     _computeRatings: computeRatings,
     _simulateRounds: simulateRounds,
