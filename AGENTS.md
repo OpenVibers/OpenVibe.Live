@@ -68,6 +68,7 @@ Every file below is also served on the site at `/docs/<name>` (rendered by `serv
 - [docs/architecture.md](docs/architecture.md) — System design, data flows, module map
 - [docs/broadcasting.md](docs/broadcasting.md) — Streaming protocols (WebRTC/RTMP/JSMPEG/WHIP)
 - [docs/whip.md](docs/whip.md) — WHIP ingest API reference (auth forms, CORS, browser-only publishing, error codes)
+- [docs/arena.md](docs/arena.md) — Arena tab (streamer vs streamer): ratings, AI personas, gated portrait generation, battles, votes
 - [docs/chat-system.md](docs/chat-system.md) — Chat features and moderation
 - [docs/api-tokens.md](docs/api-tokens.md) — Bot/integration token system
 - [docs/vods-and-clips.md](docs/vods-and-clips.md) — VOD/clip pipeline (pre-split; storage/cutting now in OpenVibe.Media)

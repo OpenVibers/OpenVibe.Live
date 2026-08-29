@@ -448,7 +448,7 @@ function _urlTag(loc, lastmod, changefreq, priority) {
 async function buildSitemap() {
     const urls = [];
     const seenChannels = new Set();
-    const statics = [['/', 'daily', '1.0'], ['/vods', 'hourly', '0.8'], ['/clips', 'hourly', '0.8'], ['/pastes', 'hourly', '0.7'], ['/chat', 'daily', '0.5']];
+    const statics = [['/', 'daily', '1.0'], ['/vods', 'hourly', '0.8'], ['/clips', 'hourly', '0.8'], ['/pastes', 'hourly', '0.7'], ['/chat', 'daily', '0.5'], ['/arena', 'hourly', '0.6']];
     // Rendered docs (server/docs/routes.js): /docs is the index (README.md), the rest by file name.
     try {
         for (const f of require('fs').readdirSync(require('path').join(__dirname, '../../docs'))) {

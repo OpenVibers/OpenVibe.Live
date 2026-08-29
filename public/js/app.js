@@ -58,7 +58,7 @@ function isStaffUser(user = currentUser) {
 }
 
 // Reserved paths (not usernames)
-const RESERVED = new Set(['vods', 'clips', 'vod', 'clip', 'dashboard', 'settings', 'broadcast', 'admin', 'themes', 'game', 'canvas', 'chat', 'api', 'ws', 'media', 'pastes', 'p', 'updates', 'dmca', 'tos', 'terms']);
+const RESERVED = new Set(['vods', 'clips', 'vod', 'clip', 'dashboard', 'settings', 'broadcast', 'admin', 'themes', 'game', 'canvas', 'chat', 'api', 'ws', 'media', 'pastes', 'p', 'updates', 'dmca', 'tos', 'terms', 'arena']);
 const CHANNEL_USERNAME_RE = /^[a-zA-Z0-9_]{3,24}$/;
 
 function normalizeChannelUsername(username) {
@@ -985,6 +985,9 @@ function routeFromURL() {
                 });
             }).catch(() => {});
         }
+    } else if (segments[0] === 'arena') {
+        showPage('arena');
+        if (typeof loadArenaPage === 'function') loadArenaPage(segments);
     } else if (segments[0] === 'updates') {
         showPage('updates');
         loadUpdatesPage();
@@ -1045,7 +1048,7 @@ function showPage(page) {
     }
 
     // Highlight nav link
-    const pageToNav = { home: 'home', vods: 'vods', clips: 'clips', broadcast: 'broadcast', dashboard: 'dashboard', admin: 'admin', chat: 'chat', game: 'game', canvas: 'game', pastes: 'pastes', 'paste-viewer': 'pastes' };
+    const pageToNav = { home: 'home', vods: 'vods', clips: 'clips', broadcast: 'broadcast', dashboard: 'dashboard', admin: 'admin', chat: 'chat', game: 'game', canvas: 'game', pastes: 'pastes', 'paste-viewer': 'pastes', arena: 'arena' };
     const navPage = pageToNav[page];
     if (navPage) {
         const link = document.querySelector(`.nav-link[data-page="${navPage}"]`);

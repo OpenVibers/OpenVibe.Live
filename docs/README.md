@@ -10,6 +10,7 @@
 - [Vibe Coding](vibe-coding.md) — Copilot companion publisher protocol, slot settings, and viewer feed
 - [VOD & Clips](vods-and-clips.md) — Recordings, DVR seeking, clip creation
 - [API Tokens](api-tokens.md) — Bot/integration authentication
+- [Arena](arena.md) — Streamer-vs-streamer tab: ratings from analytics, AI personas/portraits, daily battles, crowd votes
 
 ## Streamer Tools
 - [Dashboard](dashboard.md) — Streamer dashboard features: emotes, rewards, chat logs, media management
