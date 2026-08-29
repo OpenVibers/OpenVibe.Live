@@ -49,6 +49,43 @@ router.get('/live', (req, res) => {
     }
 });
 
+// ── Trash Talk (server/arena/trash-talk.js) ──
+const talk = require('./trash-talk');
+
+router.get('/talk', optionalAuth, async (req, res) => {
+    try {
+        res.set('Cache-Control', 'no-store');
+        res.json(await talk.board({ userId: req.user?.id || null, generate: req.query.generate !== '0' }));
+    } catch (err) {
+        console.error('[Arena] talk board:', err.message);
+        res.status(500).json({ error: 'Failed to load Trash Talk' });
+    }
+});
+
+router.post('/talk/mic/start', requireAuth, (req, res) => {
+    try { res.json(talk.startMic(req.user.id)); }
+    catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+router.get('/talk/mic/feed', requireAuth, (req, res) => {
+    try { res.set('Cache-Control', 'no-store'); res.json(talk.micFeed(req.user.id)); }
+    catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+router.post('/talk/submit', requireAuth, async (req, res) => {
+    try {
+        const mode = req.body?.mode === 'mic' ? 'mic' : 'text';
+        res.json({ ok: true, entry: await talk.submit(req.user.id, { mode, text: req.body?.text }) });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+router.post('/talk/:id/hype', optionalAuth, (req, res) => {
+    try { res.json(talk.hype(Number(req.params.id), arena.voterKeyFor(req))); }
+    catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 router.get('/main-event', optionalAuth, async (req, res) => {
     try {
         const battle = await arena.getMainEvent({ generate: req.query.generate !== '0' });

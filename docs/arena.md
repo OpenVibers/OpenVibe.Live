@@ -55,6 +55,22 @@ Portraits are written to `data/arena/` (override with `ARENA_IMAGE_PATH`) and se
 - 🔊 buttons read taunts, quotes and the announcer's call aloud with the browser's own speech synthesis (no server cost); ▶ on a quote jumps to the VOD at that moment so you hear the real thing.
 - Live matchups show the **hot mic** — the last line the transcription heard on each live stream.
 
+
+## Trash Talk (`/arena/talk`)
+
+The part streamers and viewers play themselves.
+
+- **Topic** — every 6 h the Arena posts a topic (AI-written from the main event / top of the ladder; templated when AI is off), e.g. *"Explain why your chat is the smartest chat on this site."*
+- **Entering** — a streamer on the roster enters once per topic, either from the **live mic** (press *I'm about to cook*, say it on stream, *Drop the mic* — the entry is what the transcription heard in that window, linked to the VOD second) or by **typing** (≤ 280 chars). Live mic needs the stream to be live with the timeline transcription running.
+- **Judge** — the AI scores **Spice, Wit, On-topic, Delivery** (0–10 each) with a verdict, a judge's note and a stamp (COOKED ≥ 42 · SOLID ≥ 30 · MID ≥ 18 · FLOP). Slurs/hate/threats are caught by the hard filter before the model, and the model can flag cruelty: a flagged entry scores 0 and its text is hidden from everyone but the author. Heuristic scoring when AI is off.
+- **Crowd** — viewers add the fifth score: `!hype` in the streamer's chat or the Hype button, one per person, `Crowd = min(10, hypers / 3)`, open for 24 h.
+- **Power** — total (/50) × 12 → a Trash Talk bonus on POWER (max +12), decaying linearly over 7 days; shown on the profile and included in the leaderboard order.
+- **Hall of Trash** — the ten best lines of the last 30 days.
+
+Chat commands (`server/arena/arena-chat.js`, hooked into `ChatServer.handleBangCommand`): `!hype`, `!talk`, `!arena [user]`, `!vote a|b` (main event, signed-in), `!fight <user>`. Rate-limited to one per person every 4 s; replies are private system lines, hype milestones and call-outs are announced to the room.
+
+API: `GET /api/arena/talk` (board: topic, entries, hall, my entry, mic availability) · `POST /api/arena/talk/mic/start` · `GET /api/arena/talk/mic/feed` · `POST /api/arena/talk/submit {mode:'mic'|'text', text?}` · `POST /api/arena/talk/:id/hype`.
+
 ## Guard rails
 
 - Persona and commentary prompts forbid mocking appearance, body, voice, disability, age, ethnicity, gender, religion, health or money; everything is framed as Arena lore, PG-13.
