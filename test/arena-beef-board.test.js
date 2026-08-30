@@ -111,7 +111,7 @@ board.ensureTables(); beef.ensureTables();
     assert.strictEqual(view.cooldown_hours, 24);
     const yap = board.yappersLeaderboard();
     assert.deepStrictEqual(yap.map(y => y.name).sort(), ['anon_guy', 'grizzly_bear', 'viewer'], 'everyone who typed about a subject is a yapper');
-    assert.ok(yap.every(y => y.moments === 1 && y.topics === 1));
+    assert.ok(yap.every(y => y.moments === 1 && y.subjects === 1 && y.level >= 1 && y.title), 'yapper profiles carry level + title');
     console.log('✅ lore, hype, heat ordering, yappers');
 
     // Discovery without AI: a word ≥ 3 people keep saying becomes a subject, seeded with what was said.

@@ -96,3 +96,22 @@ Tests: `node test/arena.test.js` (roster, ratings, filter, quotes) · `node test
 
 - **Hear it in their voice** — every 🔊 in the Arena calls `GET /api/arena/voice/<username>?t=<line>` (`server/arena/voice.js`): the line is synthesized in the streamer's **equipped cosmetic chat voice** (else the same per-identity auto voice chat gives `user:<username>`), written once to `data/tts-cache/<sha(voice+text)>.<mp3|wav>` and served with `Cache-Control: max-age=604800` — a repeat click never re-synthesizes (server cache + browser cache). `announcer` reads headlines/lore in `arena_announcer_voice` (default `tts_default_voice`). Cloud engines are metered into `ai_usage` (kind `tts`); `arena_voice_daily_max` (2000) caps fresh syntheses per day and per-IP limits are 8/min anonymous, 30/min signed in. Browser speech is only the fallback when the engine is down.
 - **Portraits from their own frames** — `generateImage` now feeds up to 3 real frames (live thumbnail, AI-moment frames the vision job persisted, VOD thumbnails — frames whose description mentions a person first) to `images/edits`, asking for a character-select caricature that keeps their setup, gear, lighting, silhouette and the vibe of their scene; text-only generation is only the fallback for streamers with no frames yet. Custom stats and the persona shape the costume/props.
+
+## Yappers — profiles for everyone who chats (`server/arena/chatters.js`)
+
+One polymorphic key per chatter — `user:<id>`, `anon:<N>` (the site's IP-derived `anon<N>` identity) or `relay:<platform>:<name>` (chat relayed from Twitch/Kick/YouTube/RobotStreamer) — so anonymous viewers and relayed chatters get profiles too. No extra AI calls for XP: it falls out of the board pipeline.
+
+| XP | for |
+|---|---|
+| +3 / +6 | a chat line that lands as a moment on a subject (double when the subject is HOT) |
+| +4 | the first time you touch a subject |
+| +15 | starting a subject (`!topic` / the page) |
+| +10 | being quoted in a subject's lore (name appears in the rewritten lore) |
+| +1 | hyping a fighter on a subject |
+| +5 × streak (≤ 7) | the first moment of each day; streak = consecutive days |
+
+Level = `1 + floor(√(XP / 25))` (the game's curve). Titles: Lurker → Chatter (2) → Yapper (3) → Instigator (5) → Ragebaiter (7) → Menace (9) → Main Character (12) → Community Consciousness (15) → Final Boss (20). **OpenVibe accounts bank `level × 10` OpenCoins on every level-up** through the network wallet (idempotent key `live:arena_yap_level:<user>:<level>`; unlinked accounts are simply skipped); anons/relay chatters keep the level and the title. Level-ups are announced in the room the moment happened in.
+
+**Yap card** — at level ≥ 3, at most once a day and only when ≥ 25 XP changed, the AI writes a card (title, blurb, catchphrase in their typing style, "known for", archetype) from the chat AI's existing profile of them (`chat_ai_summaries` user/anon/relay) + their best lines and subjects; ≤ 4 cards per housekeeping minute.
+
+Where it shows: the Yappers block on `/arena` (podium with level rings, streak flames, cards; weekly movers), `/arena/chatter/<key>` (card, XP bar, titles ladder, moments, subjects, what the chat AI has on them), and the chat context menu (click a name → yap level + title + bar, linking to the page). API: `GET /api/arena/yappers`, `GET /api/arena/chatter/:key`, `GET /api/arena/chatter/by-user/:username`, admin `POST /api/arena/chatter/:key/card`.

@@ -438,6 +438,9 @@ function referenceImagesFor(userId) {
             if (out.length >= REF_MAX) break;
         }
     } catch { /* */ }
+    // Media-hosted thumbnails of their streams (what prod actually has: https://openvibe.media/t/vod-….jpg).
+    try { for (const r of db.all(`SELECT thumbnail_url FROM streams WHERE user_id = ? AND thumbnail_url LIKE 'http%' ORDER BY started_at DESC LIMIT 3`, [userId])) push(r.thumbnail_url); } catch { /* */ }
+    try { for (const r of db.all(`SELECT m.thumbnail_url FROM stream_memories m WHERE m.user_id = ? AND m.thumbnail_url LIKE 'http%' AND (LOWER(m.description) LIKE '%person%' OR LOWER(m.description) LIKE '%face%' OR LOWER(m.description) LIKE '%wearing%' OR LOWER(m.description) LIKE '%headphones%') ORDER BY m.id DESC LIMIT 3`, [userId])) push(r.thumbnail_url); } catch { /* */ }
     try { for (const v of db.all('SELECT thumbnail_url FROM vods WHERE user_id = ? AND thumbnail_url IS NOT NULL AND is_public = 1 ORDER BY created_at DESC LIMIT 3', [userId])) { if (/^https?:\/\//i.test(v.thumbnail_url)) push(v.thumbnail_url); else { const local = path.resolve('.' + v.thumbnail_url); if (fs.existsSync(local)) push(local); } } } catch { /* */ }
     return out;
 }
