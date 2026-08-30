@@ -133,7 +133,7 @@ function ensureTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
     for (const col of ["kind TEXT NOT NULL DEFAULT 'topic'", 'target_user_id INTEGER', 'headline TEXT', 'heat REAL DEFAULT 0', 'source_note TEXT', 'expires_at DATETIME', 'resolved_json TEXT',
-        'keywords_json TEXT', 'lore TEXT', 'tagline TEXT', 'lore_updated_at DATETIME', 'lore_moment_count INTEGER DEFAULT 0', 'chat_mentions INTEGER DEFAULT 0', 'mic_mentions INTEGER DEFAULT 0', 'last_mention_at DATETIME', 'origin_json TEXT', 'creator_ip_hash TEXT', 'submitted_text TEXT']) {
+        'keywords_json TEXT', 'lore TEXT', 'tagline TEXT', 'lore_updated_at DATETIME', 'lore_moment_count INTEGER DEFAULT 0', 'chat_mentions INTEGER DEFAULT 0', 'mic_mentions INTEGER DEFAULT 0', 'last_mention_at DATETIME', 'origin_json TEXT', 'creator_ip_hash TEXT', 'submitted_text TEXT', 'peak_heat REAL DEFAULT 0']) {
         try { db.run(`ALTER TABLE arena_topics ADD COLUMN ${col}`); } catch { /* exists */ }
     }
     for (const col of ['topic_moments INTEGER DEFAULT 0', 'topics_joined INTEGER DEFAULT 0']) { try { db.run(`ALTER TABLE arena_trash_levels ADD COLUMN ${col}`); } catch { /* exists */ } }
@@ -173,8 +173,9 @@ function addXp(userId, amount, reason, refId = null, extra = {}) {
         db.run('UPDATE arena_trash_levels SET best_line = ?, best_line_vod_id = ?, best_line_sec = ?, best_line_score = ? WHERE user_id = ?', [String(extra.line).slice(0, 220), extra.lineVodId || null, extra.lineSec ?? null, extra.lineScore, userId]);
     }
     const after = levelRow(userId);
-    if (after.level > before.level) console.log(`[Arena] user ${userId} → Trash Level ${after.level}`);
+    if (after.level > before.level) { console.log(`[Arena] user ${userId} → Trash Level ${after.level}`); try { require('./progress').event(`user:${userId}`, 'level', `Trash Level ${after.level}`, { detail: `${after.xp} XP` }); } catch { /* */ } }
     try { arena().loadRoster(true); } catch { /* */ }
+    if (!reason.startsWith('ach_')) { try { require('./progress').check(`user:${userId}`); } catch (e) { console.warn('[Arena] progress:', e.message); } }
     return { ...after, leveled_up: after.level > before.level, gained: amount };
 }
 
@@ -306,7 +307,7 @@ async function submitTopic({ text, userId, ip, creatorName, onRoster = false }) 
     }
     const t = createTopic({ text: refined?.subject || raw, hint: refined?.hint || null, createdBy: onRoster ? 'streamer' : 'viewer', creatorUserId: userId, creatorName, creatorIp: ip, headline: refined?.headline || null, tagline: refined?.tagline || `Put up by ${creatorName}`, sourceNote: creatorName, keywords: refined?.keywords || null, threads: refined?.threads || null, submittedText: raw });
     backfillMoments([t]);
-    try { require('./chatters').onSubjectStarted(`user:${userId}`, t.id, { display: creatorName }); } catch { /* */ }
+    try { require('./chatters').onSubjectStarted(`user:${userId}`, t.id, { display: creatorName }); require('./progress').event(`user:${userId}`, 'subject', `Started “${t.headline || t.text}”`, { url: `/arena/topic/${t.id}` }); } catch { /* */ }
     return t;
 }
 
@@ -415,7 +416,7 @@ function computeHeat(topicId) {
     const talking = db.get(`SELECT COUNT(*) AS n FROM arena_topic_members WHERE topic_id = ? AND active = 1`, [topicId])?.n || 0;
     const heat = (m.mic || 0) * 3 + (m.chat || 0) + hype + talking * 4;
     const prev = db.get('SELECT heat, creator_user_id, headline, text FROM arena_topics WHERE id = ?', [topicId]);
-    db.run('UPDATE arena_topics SET heat = ? WHERE id = ?', [heat, topicId]);
+    db.run('UPDATE arena_topics SET heat = ?, peak_heat = MAX(COALESCE(peak_heat, 0), ?) WHERE id = ?', [heat, heat, topicId]);
     if (prev && (prev.heat || 0) < HOT_THRESHOLD && heat >= HOT_THRESHOLD) {
         try { const n = require('./notify'); const who = new Set([prev.creator_user_id, ...db.all('SELECT user_id FROM arena_topic_members WHERE topic_id = ?', [topicId]).map(r => r.user_id), ...db.all(`SELECT user_id FROM arena_topic_moments WHERE topic_id = ? AND user_id IS NOT NULL GROUP BY user_id`, [topicId]).map(r => r.user_id)].filter(Boolean)); for (const uid of who) n.arenaNotify(uid, { type: 'hot', title: `“${String(prev.headline || prev.text).slice(0, 60)}” is HOT`, message: `Your subject is the loudest thing on the board right now (${heat} heat).`, icon: '🔥', url: `/arena/topic/${topicId}`, key: `hot:${topicId}` }); } catch { /* */ }
     }

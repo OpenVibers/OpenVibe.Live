@@ -570,7 +570,7 @@ function listFighters() {
     return roster.order.map(id => {
         const c = cardFor(id, roster, { includeRaw: false });
         return {
-            user: c.user, rank: c.rank, ratings: c.ratings, record: c.record, live: c.live, image_url: c.image_url, level: { level: c.level.level, xp: c.level.xp },
+            user: c.user, rank: c.rank, ratings: c.ratings, record: c.record, live: c.live, image_url: c.image_url, level: { level: c.level.level, xp: c.level.xp }, tier: (() => { try { return require('./progress').tierFor(c.level.xp); } catch { return null; } })(),
             persona: { fighter_name: c.persona.fighter_name, title: c.persona.title, class: c.persona.class, element: c.persona.element, taunt: c.persona.taunt, taunts: c.persona.taunts || [], typing_style: c.persona.typing_style || null, lore: c.persona.lore, signature_move: c.persona.signature_move, stat_quips: c.persona.stat_quips, custom_stats: Array.isArray(c.persona.custom_stats) ? c.persona.custom_stats : [] },
             persona_is_fallback: c.persona_is_fallback, category: roster.byId[id].raw.category, last_live_at: roster.byId[id].raw.last_live_at,
             voice: { has_data: c.voice.has_data, talk_ratio_pct: c.voice.talk_ratio_pct, speech_minutes: c.voice.speech_minutes },
