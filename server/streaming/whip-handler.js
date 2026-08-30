@@ -578,7 +578,7 @@ function autoCreateWhipSession(managedStream, user) {
             managed_stream_id: managedStream.id,
             title: managedStream.title || `${user.display_name || user.username}'s Stream`,
             description: managedStream.description || '',
-            category: managedStream.category || 'irl',
+            category: managedStream.category || null,   // null → the AI classifies the stream from what it shows
             protocol: 'webrtc',
             is_nsfw: managedStream.is_nsfw || 0,
         });

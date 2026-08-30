@@ -82,7 +82,7 @@ async function _processSegment(stream, seg) {
     try {
         const sounds = require('./audio-events');
         if (sounds.available()) {
-            const cat = stream.category || null;
+            const cat = stream.ai_category || stream.category || null;
             const detected = await sounds.detect(seg.path, { offsetSec: seg.offsetSec, category: cat });
             for (const d of (detected || [])) {
                 events.push({

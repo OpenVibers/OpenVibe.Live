@@ -19,6 +19,7 @@ const db = require('../db/database');
 const ai = require('./ai-analysis');
 const media = require('../media-client');
 const recorder = require('../streaming/recorder');
+const registry = require('./moment-registry');
 
 // ── Tunables ────────────────────────────────────────────────
 const CHECK_INTERVAL_MS = 90 * 1000;
@@ -49,6 +50,8 @@ function _logClip(entry) {
         const log = _clipLog();
         log.unshift({ ...entry, ts: Date.now() });
         db.setState(CLIP_LOG_SETTING, JSON.stringify(log.slice(0, 300)));
+        // Shared with the paste job, so a paste never lands on a clipped second (and vice versa).
+        registry.record({ kind: 'clip', vod_id: entry.vod_id || null, stream_id: entry.stream_id || null, offset: (entry.start_time || 0) + CLIP_PRE, sig: entry.sig || null, title: entry.title || null });
     } catch { /* */ }
 }
 function _countClipsSince(streamId, minutes) {
@@ -241,7 +244,8 @@ async function backfillVodClips({ limit = BACKFILL_PER_RUN, force = false } = {}
         try {
             const source = await _resolveVodSource(v.vod_id);
             if (!source) { newSkip.push(v.vod_id); continue; } // media gone / unreadable
-            const moment = await moments.findBestMoment(v);
+            // Clip flavor (a beat, not a frame) and never within 2 min of a moment a paste already used.
+            const moment = await moments.findBestMoment(v, { flavor: 'clip', avoid: registry.usedOffsets(v.vod_id, v.stream_id) });
             if (!moment) { newSkip.push(v.vod_id); continue; }
             // Pixel backstop: don't clip a black/empty frame.
             try {
@@ -276,14 +280,8 @@ function _sceneSig(text) {
 function _isDuplicateAutoClip(vod, offset, desc, title) {
     try {
         const vId = vod.vod_id || vod.id;
-        const sig = _sceneSig(desc || title);
-        const start = Math.max(0, Math.floor(offset) - CLIP_PRE);
-        const cutoff = Date.now() - 48 * 3600_000;
-        for (const c of _clipLog()) {
-            if (c.ts < cutoff) continue;
-            if ((c.vod_id === vId || c.stream_id === vod.stream_id) && Math.abs((c.start_time || 0) - start) < 45) return true;
-            if (sig && c.sig === sig) return true;
-        }
+        const why = registry.usedReason({ vod_id: vId, stream_id: vod.stream_id, offset: Math.floor(offset), sig: _sceneSig(desc || title) });
+        if (why) { console.log(`[AutoClip] VOD ${vId}: ${why}`); return true; }
     } catch { /* */ }
     return false;
 }

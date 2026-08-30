@@ -3467,7 +3467,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             _activeChannelIsOwnerRank = !!ch.is_owner;
             const _chUser = document.getElementById('ch-username');
             if (_chUser) _chUser.style.display = 'none';
-            document.getElementById('ch-category-badge').textContent = _capTag((liveStreams[0] && liveStreams[0].category) || ch.category || 'irl');
+            document.getElementById('ch-category-badge').textContent = _capTag((liveStreams[0] && liveStreams[0].category) || ch.ai_category || ch.category || 'Live');
             document.getElementById('ch-follower-count').textContent = `${ch.follower_count || 0} followers`;
             setupFollowBtn(document.getElementById('ch-btn-follow'));
             setupBanBtn(document.getElementById('ch-btn-ban'));
@@ -3528,7 +3528,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             document.getElementById('ch-username-offline').textContent = '@' + ch.username;
             document.getElementById('ch-description-offline').textContent = ch.description || '';
             document.getElementById('ch-follower-count-offline').textContent = `${ch.follower_count || 0} followers`;
-            document.getElementById('ch-category-badge-offline').textContent = _capTag(ch.category || 'irl');
+            document.getElementById('ch-category-badge-offline').textContent = _capTag(ch.ai_category || ch.category || 'Offline');
             setupFollowBtn(document.getElementById('ch-btn-follow-offline'));
             setupBanBtn(document.getElementById('ch-btn-ban-offline'));
 
@@ -7936,7 +7936,8 @@ function createManagedStreamModal() {
         <div class="form-group">
             <label>Category</label>
             <select id="cms-category" class="form-input">
-                <option value="irl" selected>IRL</option>
+                <option value="" selected>Auto — the AI decides from the stream</option>
+                <option value="irl">IRL</option>
                 <option value="outdoors">Outdoors</option>
                 <option value="travel">Travel</option>
                 <option value="building">Building/Craft</option>
@@ -7984,7 +7985,7 @@ async function _cmsCreate() {
     const btn = document.getElementById('cms-create-btn');
     const errEl = document.getElementById('cms-error');
     const title = (document.getElementById('cms-title')?.value || '').trim() || 'Untitled Stream';
-    const category = document.getElementById('cms-category')?.value || 'irl';
+    const category = document.getElementById('cms-category')?.value || '';
     const protocol = document.getElementById('cms-protocol')?.value || 'webrtc';
     const streamingMethod = document.getElementById('cms-method')?.value || 'browser';
     const slug = (document.getElementById('cms-slug')?.value || '').trim().toLowerCase() || undefined;

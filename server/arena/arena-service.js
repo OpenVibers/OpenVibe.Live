@@ -175,7 +175,7 @@ function rawStatsFor(userId) {
     const allTime = db.get(`SELECT COUNT(*) AS streams, COALESCE(SUM(duration_seconds), 0) / 3600.0 AS hours, COALESCE(MAX(peak_viewers), 0) AS peak_viewers FROM streams WHERE user_id = ? AND duration_seconds > 0`, [userId]) || {};
     const followers = db.get('SELECT COUNT(*) AS n FROM follows WHERE streamer_id = ?', [userId])?.n || 0;
     const tips = db.get(`SELECT COALESCE(SUM(amount), 0) AS n FROM transactions WHERE to_user_id = ? AND type = 'donation' AND created_at >= datetime('now', ?)`, [userId, win])?.n || 0;
-    const category = db.get(`SELECT category, COUNT(*) AS n FROM streams WHERE user_id = ? AND duration_seconds > 0 AND category IS NOT NULL AND category != '' GROUP BY category ORDER BY n DESC LIMIT 1`, [userId])?.category || null;
+    const category = db.get(`SELECT COALESCE(NULLIF(ai_category, ''), category) AS category, COUNT(*) AS n FROM streams WHERE user_id = ? AND duration_seconds > 0 AND COALESCE(NULLIF(ai_category, ''), category) IS NOT NULL AND COALESCE(NULLIF(ai_category, ''), category) != '' GROUP BY 1 ORDER BY n DESC LIMIT 1`, [userId])?.category || null;
     const hours = Math.max(Number(agg.hours) || 0, 0.1);
     return {
         window_days: STATS_WINDOW_DAYS, streams: agg.streams || 0, hours: Number((agg.hours || 0).toFixed(1)), peak_viewers: agg.peak_viewers || 0,

@@ -1446,7 +1446,7 @@ router.post('/managed', requireAuth, (req, res) => {
 
         const title = cleanText(req.body.title, { maxLength: MAX_TITLE_LENGTH }) || 'Untitled Stream';
         const description = cleanText(req.body.description, { maxLength: MAX_DESCRIPTION_LENGTH, allowEmpty: true }) || '';
-        const category = cleanText(req.body.category, { maxLength: MAX_CATEGORY_LENGTH }) || 'irl';
+        const category = cleanText(req.body.category, { maxLength: MAX_CATEGORY_LENGTH }) || null;   // empty = let the AI infer it from the stream
         const protocol = cleanProtocol(req.body.protocol) || 'webrtc';
         const is_nsfw = cleanBooleanFlag(req.body.is_nsfw);
         let slug = req.body.slug ? req.body.slug.trim().toLowerCase() : null;
@@ -1783,7 +1783,7 @@ router.post('/', requireAuth, (req, res) => {
 
         // Use managed stream's settings as defaults, allow per-session overrides
         const streamProtocol = protocol || cleanProtocol(managedStream.protocol) || cleanProtocol(channel.protocol) || 'webrtc';
-        const streamCategory = category || cleanText(managedStream.category, { maxLength: MAX_CATEGORY_LENGTH }) || cleanText(channel.category, { maxLength: MAX_CATEGORY_LENGTH }) || 'irl';
+        const streamCategory = category || cleanText(managedStream.category, { maxLength: MAX_CATEGORY_LENGTH }) || cleanText(channel.category, { maxLength: MAX_CATEGORY_LENGTH }) || null;   // null → the AI classifies the stream from what it shows
         const requestedControlConfigId = req.body.control_config_id !== undefined ? (req.body.control_config_id === null ? null : parseInt(req.body.control_config_id)) : undefined;
 
         if (requestedControlConfigId !== undefined && requestedControlConfigId !== null) {

@@ -65,7 +65,8 @@ function sessionBlock(stream) {
     if (!stream) return '';
     const parts = [];
     const title = stream.ai_title || stream.title;
-    if (title) parts.push(`Stream title: "${clip(title, 140)}"${stream.category ? ` (${clip(stream.category, 40)})` : ''}`);
+    const cat = stream.ai_category || stream.category;
+    if (title) parts.push(`Stream title: "${clip(title, 140)}"${cat ? ` (category: ${clip(cat, 40)}${stream.ai_category ? ', judged from the stream itself' : ', self-selected'})` : ''}`);
     if (stream.ai_overview) parts.push(`What this session has been about so far: ${clip(stream.ai_overview, 500)}`);
     return parts.join('\n');
 }
