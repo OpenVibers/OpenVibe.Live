@@ -10,6 +10,7 @@
  *   POST /board/bounty {username}                     put a bounty on a fighter
  *   GET  /beefs · /beefs/:id · POST /beefs/:id/hype {side}
  *   GET  /levels · /yappers                           Trash Level ladder · viewers who keep subjects alive from chat
+ *   GET  /voice/:user?t=<text>                        the line read in that user's chat TTS voice (cached on disk + a week in the browser)
  */
 'use strict';
 
@@ -153,6 +154,24 @@ router.get('/beefs/:id', (req, res) => {
 router.post('/beefs/:id/hype', optionalAuth, (req, res) => {
     try { res.json(beef.hype(Number(req.params.id), String(req.body?.side || ''), arena.voterKeyFor(req))); } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// ── Hear it in their voice ──
+// GET /voice/:user?t=<text>  (:user = username, or "announcer"). Synthesized once per (voice, text),
+// cached on disk and by the browser (a week); the file streams back as audio.
+router.get('/voice/:user', optionalAuth, async (req, res) => {
+    try {
+        const voice = require('./voice');
+        if (!voice.allow(req.ip, !!req.user)) return res.status(429).json({ error: 'Slow down — too many voice requests' });
+        const text = voice.cleanText(req.query.t || req.query.text || '');
+        if (text.length < 2) return res.status(400).json({ error: 'Nothing to say' });
+        const who = String(req.params.user || '').toLowerCase();
+        const user = who === 'announcer' ? null : userFrom(who);
+        if (who !== 'announcer' && !user) return res.status(404).json({ error: 'No such user' });
+        const out = await voice.speak({ user, text });
+        res.set({ 'Content-Type': out.mimeType, 'Cache-Control': 'public, max-age=604800, immutable', 'X-Arena-Voice': out.voice, 'X-Cache': out.cached ? 'HIT' : 'MISS' });
+        require('fs').createReadStream(out.path).pipe(res);
+    } catch (err) { res.status(err.message && /budget|hoarse/.test(err.message) ? 429 : 500).json({ error: err.message || 'Voice failed' }); }
+});
+
 router.get('/levels', (req, res) => { try { res.json({ levels: board.levelsLeaderboard(20) }); } catch (err) { fail(res, err, 'Failed'); } });
 router.get('/yappers', (req, res) => { try { res.json({ yappers: board.yappersLeaderboard(20) }); } catch (err) { fail(res, err, 'Failed'); } });
 

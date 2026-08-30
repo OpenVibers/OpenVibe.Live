@@ -407,17 +407,45 @@ function imageUrlFor(row) {
     const base = path.basename(row.image_path);
     return fs.existsSync(path.join(ARENA_DIR, base)) ? `/data/arena/${base}` : null;
 }
-function latestThumbnailFor(userId) {
+function latestThumbnailFor(userId) { const r = referenceImagesFor(userId); return r.length ? r[0] : null; }
+/**
+ * Up to REF_MAX real frames of THIS streamer's streams, newest first: the live thumbnail, AI-moment
+ * frames the vision job persisted (data/ai-moments/<streamId>/<offset>.jpg), VOD thumbnails. Local
+ * paths or URLs. These are what the portrait is drawn FROM, so every fighter looks like their own
+ * stream — their setup, their lighting, their gear, their face — not a generic hero.
+ */
+const REF_MAX = 3;
+function referenceImagesFor(userId) {
+    const out = [];
+    const push = (p) => { if (p && !out.includes(p) && out.length < REF_MAX) out.push(p); };
     try {
         const live = db.get('SELECT id FROM streams WHERE user_id = ? AND is_live = 1 ORDER BY started_at DESC LIMIT 1', [userId]);
         if (live) {
             const thumbs = require('../media-proxy/live-thumbs');
             const url = thumbs.getCurrentLiveThumbnailUrl(live.id);
-            if (url) { const local = path.resolve('./data/live-thumbs', path.basename(url)); if (fs.existsSync(local)) return local; return url.startsWith('http') ? url : null; }
+            if (url) { const local = path.resolve('./data/live-thumbs', path.basename(url)); if (fs.existsSync(local)) push(local); else if (url.startsWith('http')) push(url); }
         }
     } catch { /* */ }
-    try { const v = db.get('SELECT thumbnail_url FROM vods WHERE user_id = ? AND thumbnail_url IS NOT NULL AND is_public = 1 ORDER BY created_at DESC LIMIT 1', [userId]); if (v && /^https?:\/\//i.test(v.thumbnail_url)) return v.thumbnail_url; } catch { /* */ }
-    return null;
+    try {
+        const momentsDir = path.resolve(process.env.AI_MOMENTS_PATH || './data/ai-moments');
+        const streams = db.all(`SELECT id FROM streams WHERE user_id = ? AND duration_seconds > 0 ORDER BY started_at DESC LIMIT 6`, [userId]);
+        for (const s of streams) {
+            const dir = path.join(momentsDir, String(s.id));
+            if (!fs.existsSync(dir)) continue;
+            // Prefer frames the vision model described as showing a person/face/reaction (they make better portraits).
+            const memRows = db.all(`SELECT offset_seconds, description, thumbnail_url FROM stream_memories WHERE stream_id = ? ORDER BY CASE WHEN LOWER(description) LIKE '%person%' OR LOWER(description) LIKE '%man %' OR LOWER(description) LIKE '%woman%' OR LOWER(description) LIKE '%face%' OR LOWER(description) LIKE '%wearing%' OR LOWER(description) LIKE '%headphones%' THEN 0 ELSE 1 END, id DESC LIMIT 4`, [s.id]);
+            for (const m of memRows) { const f = m.thumbnail_url && m.thumbnail_url.includes('/data/ai-moments/') ? path.join(momentsDir, ...m.thumbnail_url.split('/data/ai-moments/')[1].split('/')) : path.join(dir, `${m.offset_seconds}.jpg`); if (fs.existsSync(f)) push(f); }
+            if (out.length >= REF_MAX) break;
+        }
+    } catch { /* */ }
+    try { for (const v of db.all('SELECT thumbnail_url FROM vods WHERE user_id = ? AND thumbnail_url IS NOT NULL AND is_public = 1 ORDER BY created_at DESC LIMIT 3', [userId])) { if (/^https?:\/\//i.test(v.thumbnail_url)) push(v.thumbnail_url); else { const local = path.resolve('.' + v.thumbnail_url); if (fs.existsSync(local)) push(local); } } } catch { /* */ }
+    return out;
+}
+async function loadImageBuffer(src) {
+    try {
+        if (/^https?:\/\//i.test(src)) { const r = await fetch(src, { signal: AbortSignal.timeout(15000) }); if (!r.ok) return null; return Buffer.from(await r.arrayBuffer()); }
+        return fs.readFileSync(src);
+    } catch { return null; }
 }
 const SCENE_SYSTEM = 'Describe this stream thumbnail as a SCENE for an illustrator in ≤ 60 words: setting, objects, lighting, colours, mood, what activity is happening. Do NOT describe any person\'s face, body, skin, hair, age, gender or identity — refer to a person only as "the host" if at all. Plain text only.';
 const _imageInFlight = new Map();
@@ -432,25 +460,40 @@ async function generateImage(userId, { force = false } = {}) {
         const persona = parseJson(row?.persona_json) || (entry ? fallbackPersona(entry) : null);
         if (!persona) return null;
         let scene = '';
-        const thumb = latestThumbnailFor(userId);
+        const thumb = referenceImagesFor(userId).length ? null : latestThumbnailFor(userId);   // scene text only for the no-frames fallback
         if (thumb) { try { const d = await llm.complete({ role: 'vision', kind: 'arena_scene', source: 'arena', ownerUserId: userId, system: SCENE_SYSTEM, user: 'Describe the scene.', image: thumb, maxTokens: 120, temperature: 0.4, timeoutMs: 30000 }); scene = (d && d.text || '').trim(); } catch { scene = ''; } }
         const color = entry?.user?.profile_color || '#8b5cf6';
+        const cs = Array.isArray(persona.custom_stats) ? persona.custom_stats.slice(0, 4).map(x => `${x.name} ${x.value}`).join(', ') : '';
+        // Reference frames: the portrait is drawn FROM the streamer's own stream (image edit) whenever we
+        // have frames; the text-only generation is the fallback for streamers with no frames yet.
+        const refs = [];
+        for (const src of referenceImagesFor(userId)) { const buf = await loadImageBuffer(src); if (buf && buf.length > 4000) refs.push({ src, buf }); }
         const prompt = [
-            `Fighting-game character-select portrait of an original stylised hero called "${persona.fighter_name}" — ${persona.title}.`,
-            `Class: ${persona.class}. Element: ${persona.element}. Signature move: ${persona.signature_move?.name} (${persona.signature_move?.description}).`,
+            refs.length ? `Turn the attached frames from this streamer's live stream into ONE fighting-game character-select portrait of them as "${persona.fighter_name}" — ${persona.title}. Keep what makes their stream recognisable: their setup, room, gear, lighting, clothing, silhouette, hair, headphones, camera angle, the vibe of the scene — exaggerated into a stylised caricature-hero (like a Street Fighter select screen), never a photo.` : `Fighting-game character-select portrait of an original stylised hero called "${persona.fighter_name}" — ${persona.title}.`,
+            `Class: ${persona.class}. Element: ${persona.element}. Signature move: ${persona.signature_move?.name} (${persona.signature_move?.description}).${cs ? ` Their stats: ${cs}.` : ''}`,
             entry?.raw?.category ? `Costume and props inspired by ${String(entry.raw.category).replace(/[-_]/g, ' ')} streaming.` : '',
-            scene ? `Background inspired by this scene: ${scene}` : 'Background: dark neon arena.',
+            !refs.length && scene ? `Background inspired by this scene: ${scene}` : (refs.length ? 'Background: their actual streaming environment from the frames, pushed into a dramatic arena lighting.' : 'Background: dark neon arena.'),
             `Colour palette led by ${color}. Bold comic-book line art, dramatic rim light, dynamic pose, three-quarter view, waist up.`,
-            'Fictional character, not a real person. No text, no letters, no logos, no watermark.',
+            'No text, no letters, no logos, no watermark, no UI overlays.',
         ].filter(Boolean).join(' ');
         const p = llm.resolveProvider('vision');
         const model = String(setting('ai_image_model', 'gpt-image-1'));
-        const body = { model, prompt, n: 1, size: '1024x1024' };
-        if (/^dall-e/i.test(model)) body.response_format = 'b64_json'; else body.quality = String(setting('ai_image_quality', 'low'));
+        const quality = String(setting('ai_image_quality', 'low'));
         const started = Date.now();
         let b64 = null;
         try {
-            const res = await fetch(`${p.baseUrl}/images/generations`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(p.apiKey ? { Authorization: `Bearer ${p.apiKey}` } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(120000) });
+            let res;
+            if (refs.length && !/^dall-e/i.test(model)) {
+                // images/edits: the model sees the real frames and restyles them.
+                const fd = new FormData();
+                fd.append('model', model); fd.append('prompt', prompt); fd.append('n', '1'); fd.append('size', '1024x1024'); fd.append('quality', quality);
+                for (const r of refs) fd.append('image[]', new Blob([r.buf], { type: 'image/jpeg' }), path.basename(String(r.src)).replace(/[^a-z0-9._-]/gi, '_') || 'frame.jpg');
+                res = await fetch(`${p.baseUrl}/images/edits`, { method: 'POST', headers: { ...(p.apiKey ? { Authorization: `Bearer ${p.apiKey}` } : {}) }, body: fd, signal: AbortSignal.timeout(180000) });
+            } else {
+                const body = { model, prompt, n: 1, size: '1024x1024' };
+                if (/^dall-e/i.test(model)) body.response_format = 'b64_json'; else body.quality = quality;
+                res = await fetch(`${p.baseUrl}/images/generations`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(p.apiKey ? { Authorization: `Bearer ${p.apiKey}` } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(120000) });
+            }
             const j = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error((j.error && (j.error.message || j.error)) || `HTTP ${res.status}`);
             const item = j.data && j.data[0];
@@ -468,7 +511,7 @@ async function generateImage(userId, { force = false } = {}) {
         db.run(`INSERT INTO arena_profiles (user_id, image_path, image_prompt, image_model, image_generated_at, image_error, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP)
                 ON CONFLICT(user_id) DO UPDATE SET image_path = excluded.image_path, image_prompt = excluded.image_prompt, image_model = excluded.image_model, image_generated_at = CURRENT_TIMESTAMP, image_error = NULL, updated_at = CURRENT_TIMESTAMP`, [userId, file, prompt, model]);
         try { db.recordAiUsage({ kind: 'arena_image', model, cost_usd: Number(setting('ai_image_cost_usd', 0.011)) || 0, owner_user_id: userId, source: 'arena', role: 'image', provider: 'shared', latency_ms: Date.now() - started }); } catch { /* */ }
-        console.log(`[Arena] portrait generated for user ${userId} (${model}, ${Date.now() - started} ms)`);
+        console.log(`[Arena] portrait generated for user ${userId} (${model}, ${refs.length ? `from ${refs.length} of their own frames` : 'text only'}, ${Date.now() - started} ms)`);
         return `/data/arena/${file}`;
     })().finally(() => _imageInFlight.delete(userId));
     _imageInFlight.set(userId, task);
