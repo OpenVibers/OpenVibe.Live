@@ -98,7 +98,7 @@ function handle(chat, ws, client, cmd, parts) {
                     return;
                 }
                 const t = board.activeTopicFor(streamer.id);
-                if (!t) return reply(`${streamer.display_name || streamer.username} has no beef open and isn't on a board topic. Start one: !topic <text> · ${base()}/arena`);
+                if (!t) return reply(`${streamer.display_name || streamer.username} has no beef open and hasn't been heard on a board subject yet — the ears auto-detect it when they say one. ${base()}/arena`);
                 const r = board.hypeTopic(t.id, streamer.id, key);
                 if (!r.added) return reply(`You already hyped them on “${t.text}”. ${r.hypers} hyping.`);
                 reply(`🔥 Hyped ${streamer.display_name || streamer.username} on “${t.text}” — ${r.hypers} hyping → ${base()}/arena/topic/${t.id}`);

@@ -96,7 +96,19 @@ function ensureTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
     db.run('CREATE INDEX IF NOT EXISTS idx_arena_moments_topic ON arena_topic_moments (topic_id, created_at)');
-    for (const col of ['chatter_key TEXT', 'source_platform TEXT', 'anon_id TEXT']) { try { db.run(`ALTER TABLE arena_topic_moments ADD COLUMN ${col}`); } catch { /* exists */ } }
+    for (const col of ['chatter_key TEXT', 'source_platform TEXT', 'anon_id TEXT', 'thread_id INTEGER']) { try { db.run(`ALTER TABLE arena_topic_moments ADD COLUMN ${col}`); } catch { /* exists */ } }
+    // Threads: the sub-angles INSIDE an umbrella subject ("Cat enema drama" → "the vet bill", "the bot roasts", "global vs local").
+    db.run(`CREATE TABLE IF NOT EXISTS arena_topic_threads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        topic_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        hint TEXT,
+        keywords_json TEXT,
+        moments INTEGER DEFAULT 0,
+        last_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+    db.run('CREATE INDEX IF NOT EXISTS idx_arena_threads_topic ON arena_topic_threads (topic_id)');
     db.run('CREATE INDEX IF NOT EXISTS idx_arena_moments_chatter ON arena_topic_moments (chatter_key, id)');
     db.run(`CREATE TABLE IF NOT EXISTS arena_trash_levels (
         user_id INTEGER PRIMARY KEY,
@@ -224,7 +236,7 @@ function matchTopics(text) {
 
 // ── Topics ───────────────────────────────────────────────────
 
-function createTopic({ text, hint = null, createdBy, creatorUserId = null, creatorName = null, creatorIp = null, kind = 'topic', targetUserId = null, headline = null, sourceNote = null, keywords = null, tagline = null, origin = null, submittedText = null }) {
+function createTopic({ text, hint = null, createdBy, creatorUserId = null, creatorName = null, creatorIp = null, kind = 'topic', targetUserId = null, headline = null, sourceNote = null, keywords = null, tagline = null, origin = null, submittedText = null, threads = null }) {
     ensureTables();
     const clean = cleanTopicText(text);
     kind = ['topic', 'bounty'].includes(kind) ? kind : 'topic';
@@ -232,7 +244,9 @@ function createTopic({ text, hint = null, createdBy, creatorUserId = null, creat
     if (kind === 'bounty' && db.get(`SELECT id FROM arena_topics WHERE status = 'open' AND kind = 'bounty' AND target_user_id = ?`, [targetUserId])) throw new Error('There is already a bounty on them');
     const dup = db.get(`SELECT id FROM arena_topics WHERE status = 'open' AND LOWER(text) = LOWER(?)`, [clean]);
     if (dup) throw new Error('That topic is already on the board');
-    let kws = normalizeKeywords(keywords);
+    const threadList = (Array.isArray(threads) ? threads : []).map(t => ({ name: clip(t?.name, 40), hint: t?.hint ? clip(t.hint, 90) : null, keywords: normalizeKeywords(t?.keywords || []) })).filter(t => t.name).slice(0, 6);
+    for (const t of threadList) if (!t.keywords.length) t.keywords = keywordsFromText(t.name);
+    let kws = normalizeKeywords([...(Array.isArray(keywords) ? keywords : []), ...threadList.flatMap(t => t.keywords)]);
     if (!kws.length) kws = keywordsFromText(clean);
     if (kind === 'bounty' && targetUserId) { const u = db.getUserById(targetUserId); if (u) { const nm = require('./names'); kws = normalizeKeywords([...kws, u.username, u.display_name, ...nm.variants(u.username), ...nm.variants(u.display_name)]); } }
     if (kind === 'topic' && kws.length >= 2) {
@@ -245,8 +259,9 @@ function createTopic({ text, hint = null, createdBy, creatorUserId = null, creat
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
         [clean, hint ? clip(hint, 120) : null, createdBy, creatorUserId, creatorName ? clip(creatorName, 40) : null, ipHash(creatorIp), kind, targetUserId, headline ? clip(headline, 160) : null, sourceNote ? clip(sourceNote, 80) : null, expires, JSON.stringify(kws), tagline ? clip(tagline, 120) : null, origin ? JSON.stringify(origin) : null, submittedText ? clip(submittedText, 200) : null]);
     const row = db.get('SELECT * FROM arena_topics ORDER BY id DESC LIMIT 1');
+    for (const t of threadList) db.run('INSERT INTO arena_topic_threads (topic_id, name, hint, keywords_json) VALUES (?, ?, ?, ?)', [row.id, t.name, t.hint, JSON.stringify(t.keywords)]);
     invalidateMatchers();
-    console.log(`[Arena] ${kind} #${row.id} by ${createdBy}${creatorName ? ' ' + creatorName : ''}: "${clean}" [${kws.join(', ')}]`);
+    console.log(`[Arena] ${kind} #${row.id} by ${createdBy}${creatorName ? ' ' + creatorName : ''}: "${clean}" [${kws.join(', ')}]${threadList.length ? ` threads: ${threadList.map(t => t.name).join(' | ')}` : ''}`);
     return row;
 }
 
@@ -265,14 +280,15 @@ function assertCanSubmit(userId, ip) {
 }
 
 const REFINE_SCHEMA = { name: 'arena_refine_topic', schema: { type: 'object', additionalProperties: false, required: ['subject', 'headline', 'tagline', 'hint', 'keywords', 'reject'], properties: {
-    subject: { type: 'string', description: 'the subject as a short noun phrase ≤ 70 chars, punchy, dumb-funny' },
+    subject: { type: 'string', description: 'the umbrella subject, 1–4 words, punchy, dumb-funny' },
     headline: { type: 'string', description: 'tabloid headline ≤ 90 chars, inflammatory and stupid in a good way' },
     tagline: { type: 'string', description: '≤ 100 chars, who submitted it and why everyone should care' },
     hint: { type: 'string', description: '≤ 90 chars: how to pile on / bait for streamers' },
     keywords: { type: 'array', minItems: 2, maxItems: 8, items: { type: 'string' }, description: 'lowercase words/slang people would actually type or say about it' },
+    threads: { type: 'array', minItems: 2, maxItems: 4, items: { type: 'object', additionalProperties: false, required: ['name', 'keywords', 'hint'], properties: { name: { type: 'string', description: '2–5 words, a sub-angle inside the subject' }, keywords: { type: 'array', minItems: 1, maxItems: 4, items: { type: 'string' } }, hint: { type: 'string', description: '≤ 70 chars' } } } },
     reject: { type: 'boolean', description: 'true ONLY if it is a direct threat of violence, sexual content about a minor, or doxxing' },
 } } };
-const REFINE_SYSTEM = `A user typed a topic for the shit-talking board of a live-streaming site. Rewrite it into a proper board SUBJECT that looks good and baits people: a short noun-phrase subject, a tabloid headline, a tagline crediting the submitter, a hint on how to pile on, and the keywords people would actually type or say about it (slang, variants, misspellings). Make it dumber, funnier and more provocative than what they typed; keep their actual meaning. Slurs, profanity and taboo topics are allowed and never a reason to reject — this platform does not censor language. Reject ONLY direct threats of violence, sexual content about minors, or doxxing. Output only the JSON.`;
+const REFINE_SYSTEM = `A user typed a topic for the shit-talking board of a live-streaming site. Rewrite it into a proper board SUBJECT that looks good and baits people: a short, VAGUE umbrella subject (1–4 words), a tabloid headline, a tagline crediting the submitter, a hint on how to pile on, the keywords people would actually type or say about it (slang, variants, misspellings), and 2–4 THREADS — the specific angles inside it people will argue. Make it dumber, funnier and more provocative than what they typed; keep their actual meaning. Slurs, profanity and taboo topics are allowed and never a reason to reject — this platform does not censor language. Reject ONLY direct threats of violence, sexual content about minors, or doxxing. Output only the JSON.`;
 
 /** A user-submitted topic → the AI makes it look good (one call). Falls back to the raw text. */
 async function submitTopic({ text, userId, ip, creatorName, onRoster = false }) {
@@ -286,7 +302,7 @@ async function submitTopic({ text, userId, ip, creatorName, onRoster = false }) 
             if (r && r.json) { if (r.json.reject) throw new Error('That crosses the line (threats, minors, doxxing)'); refined = r.json; }
         } catch (e) { if (/crosses the line/.test(e.message)) throw e; console.warn('[Arena] refine topic:', e.message); }
     }
-    const t = createTopic({ text: refined?.subject || raw, hint: refined?.hint || null, createdBy: onRoster ? 'streamer' : 'viewer', creatorUserId: userId, creatorName, creatorIp: ip, headline: refined?.headline || null, tagline: refined?.tagline || `Put up by ${creatorName}`, sourceNote: creatorName, keywords: refined?.keywords || null, submittedText: raw });
+    const t = createTopic({ text: refined?.subject || raw, hint: refined?.hint || null, createdBy: onRoster ? 'streamer' : 'viewer', creatorUserId: userId, creatorName, creatorIp: ip, headline: refined?.headline || null, tagline: refined?.tagline || `Put up by ${creatorName}`, sourceNote: creatorName, keywords: refined?.keywords || null, threads: refined?.threads || null, submittedText: raw });
     backfillMoments([t]);
     try { require('./chatters').onSubjectStarted(`user:${userId}`, t.id, { display: creatorName }); } catch { /* */ }
     return t;
@@ -301,8 +317,10 @@ function addMoment(topicId, { kind, source, userId = null, username = null, stre
     if (!body || arena()._isBannedText(body)) return null;
     const chatters = require('./chatters');
     const chatterKey = chatters.keyFor({ user_id: userId, username, anon_id: anonId, source_platform: platform });
-    db.run(`INSERT INTO arena_topic_moments (topic_id, kind, source, user_id, username, stream_id, vod_id, sec, text, quality, about, chatter_key, source_platform, anon_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [topicId, kind, source, userId, username ? clip(username, 60) : null, streamId, vodId, sec, body, quality, about ? clip(about, 80) : null, chatterKey, platform, anonId]);
+    const threadId = threadFor(topicId, body);
+    db.run(`INSERT INTO arena_topic_moments (topic_id, kind, source, user_id, username, stream_id, vod_id, sec, text, quality, about, chatter_key, source_platform, anon_id, thread_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [topicId, kind, source, userId, username ? clip(username, 60) : null, streamId, vodId, sec, body, quality, about ? clip(about, 80) : null, chatterKey, platform, anonId, threadId]);
+    if (threadId) db.run('UPDATE arena_topic_threads SET moments = moments + 1, last_at = CURRENT_TIMESTAMP WHERE id = ?', [threadId]);
     db.run(`UPDATE arena_topics SET hits = hits + 1, ${kind === 'chat' ? 'chat_mentions = chat_mentions + 1' : 'mic_mentions = mic_mentions + 1'}, last_mention_at = CURRENT_TIMESTAMP, last_activity_at = CURRENT_TIMESTAMP WHERE id = ?`, [topicId]);
     if (kind === 'speech' && userId && arena().loadRoster().byId[userId]) {
         const m = db.get('SELECT 1 FROM arena_topic_members WHERE topic_id = ? AND user_id = ?', [topicId, userId]);
@@ -312,6 +330,31 @@ function addMoment(topicId, { kind, source, userId = null, username = null, stre
     // Yapper XP for chat lines (seeded backfills count too — they are real lines people typed).
     if (kind === 'chat' && chatterKey) { try { chatters.onMoment(m, t, { hot: (t.heat || 0) >= HOT_THRESHOLD }); } catch (e) { console.warn('[Arena] yapper xp:', e.message); } }
     return m;
+}
+
+/** Which thread of a subject a line belongs to (first thread whose keywords match), or null. */
+let _threadCache = { at: 0, byTopic: new Map() };
+function threadsOf(topicId) {
+    if (Date.now() - _threadCache.at > 20 * 1000) { _threadCache = { at: Date.now(), byTopic: new Map() }; }
+    if (!_threadCache.byTopic.has(topicId)) _threadCache.byTopic.set(topicId, db.all('SELECT * FROM arena_topic_threads WHERE topic_id = ? ORDER BY id ASC', [topicId]).map(t => ({ ...t, res: normalizeKeywords(parseJson(t.keywords_json, [])).map(keywordRegex) })));
+    return _threadCache.byTopic.get(topicId);
+}
+function threadFor(topicId, text) { for (const t of threadsOf(topicId)) if (t.res.some(re => re.test(text))) return t.id; return null; }
+function upsertThreads(topicId, threads) {
+    const existing = db.all('SELECT id, name, keywords_json FROM arena_topic_threads WHERE topic_id = ?', [topicId]);
+    let added = 0;
+    for (const t of (Array.isArray(threads) ? threads : []).slice(0, 8)) {
+        const name = clip(t?.name, 40); if (!name) continue;
+        const kws = normalizeKeywords(t?.keywords || []); if (!kws.length) kws.push(...keywordsFromText(name));
+        const same = existing.find(e => e.name.toLowerCase() === name.toLowerCase() || normalizeKeywords(parseJson(e.keywords_json, [])).some(k => kws.includes(k)));
+        if (same) { const merged = normalizeKeywords([...(parseJson(same.keywords_json, []) || []), ...kws]); db.run('UPDATE arena_topic_threads SET keywords_json = ?, hint = COALESCE(?, hint) WHERE id = ?', [JSON.stringify(merged), t?.hint ? clip(t.hint, 90) : null, same.id]); continue; }
+        if (existing.length + added >= 6) continue;
+        db.run('INSERT INTO arena_topic_threads (topic_id, name, hint, keywords_json) VALUES (?, ?, ?, ?)', [topicId, name, t?.hint ? clip(t.hint, 90) : null, JSON.stringify(kws)]); added++;
+    }
+    if (added) { _threadCache.at = 0; }
+    // Re-file moments that have no thread yet.
+    for (const m of db.all('SELECT id, text FROM arena_topic_moments WHERE topic_id = ? AND thread_id IS NULL ORDER BY id DESC LIMIT 200', [topicId])) { const tid = threadFor(topicId, m.text); if (tid) { db.run('UPDATE arena_topic_moments SET thread_id = ? WHERE id = ?', [tid, m.id]); db.run('UPDATE arena_topic_threads SET moments = moments + 1 WHERE id = ?', [tid]); } }
+    return added;
 }
 
 /** Raw on-mic mention (no judge): one per stream per topic per cooldown. */
@@ -436,16 +479,17 @@ function scanChat() {
 const DISCOVER_SCHEMA = { name: 'arena_discover', schema: { type: 'object', additionalProperties: false, required: ['pulse', 'topics', 'bounties'], properties: {
     pulse: { type: 'string', description: 'One sentence ≤ 140 chars: what the community is on about right now, dumb hype-caster voice, name names, funny' },
     topics: { type: 'array', minItems: 0, maxItems: 4, items: { type: 'object', additionalProperties: false, required: ['subject', 'headline', 'tagline', 'keywords', 'source', 'hint'], properties: {
-        subject: { type: 'string', description: 'The SUBJECT people are talking about, as a short noun phrase ≤ 70 chars — e.g. "Pakistanis", "the cat enema joke", "Maticus\'s vet bill", "Meshtastic tent streams". Not a question, not a prompt.' },
-        headline: { type: 'string', description: 'Tabloid headline ≤ 90 chars, inflammatory, stupid-funny' },
-        tagline: { type: 'string', description: '≤ 100 chars: current state of it — who started it, who is on which end' },
-        keywords: { type: 'array', minItems: 2, maxItems: 8, items: { type: 'string' }, description: 'lowercase words/short phrases people actually use for this subject (incl. slang and misspellings) — used to match future chat and speech' },
+        subject: { type: 'string', description: 'The UMBRELLA subject, 1–4 words, a noun: the thing, person, group, joke or drama — e.g. "Cat enema drama", "Pakistanis", "Goosely", "Tent streams". Vague on purpose; the detail lives in threads.' },
+        headline: { type: 'string', description: 'Tabloid headline ≤ 70 chars, inflammatory, stupid-funny' },
+        tagline: { type: 'string', description: '≤ 80 chars: where it stands — who started it, who is on which end' },
+        keywords: { type: 'array', minItems: 2, maxItems: 6, items: { type: 'string' }, description: 'lowercase words/short phrases people use for the umbrella subject (slang, misspellings)' },
+        threads: { type: 'array', minItems: 2, maxItems: 4, items: { type: 'object', additionalProperties: false, required: ['name', 'keywords', 'hint'], properties: { name: { type: 'string', description: 'a sub-angle inside the subject, 2–5 words ("the vet bill", "the bot roasts", "global vs local")' }, keywords: { type: 'array', minItems: 1, maxItems: 4, items: { type: 'string' } }, hint: { type: 'string', description: '≤ 70 chars, how to pile on this thread' } } }, description: 'the 2–4 threads people are actually arguing inside the subject' },
         source: { type: 'string', description: '≤ 6 words: where it came from ("global chat", "Goosely\'s stream")' },
-        hint: { type: 'string', description: '≤ 90 chars, how to pile on' },
+        hint: { type: 'string', description: '≤ 70 chars, how to pile on' },
     } } },
     bounties: { type: 'array', minItems: 0, maxItems: 1, items: { type: 'object', additionalProperties: false, required: ['target_username', 'headline', 'why'], properties: { target_username: { type: 'string', description: 'exact username from the snapshot the community keeps naming/dunking on' }, headline: { type: 'string' }, why: { type: 'string', description: '≤ 90 chars' } } } },
 } } };
-const DISCOVER_SYSTEM = `You are the community consciousness of a live-streaming site's Arena — part tabloid editor, part fight promoter, part 4chan ragebaiter with a head injury. You get what people ACTUALLY said in the last while: global + stream chat lines and what streamers said on mic, plus the subjects already on the board. Find the SUBJECTS the community is really on about — a group of people, a person, a running joke, an argument, a product, a drama, a meme — the more provocative, taboo, petty or stupid the better; nothing generic, nothing wholesome. Ignore small talk. Do not repeat subjects already on the board (match by meaning). For each: a noun-phrase subject, a tabloid headline, a tagline (who started it, who is where on it), the keywords/slang people use for it, the source, and a hint on how to pile on. If the community keeps naming one specific streamer (dunking, defending, calling out), add ONE bounty on that exact username. Profanity, disrespect, slurs and trolling are welcome and are never a reason to skip a subject — this platform does not censor language. Hard line: no direct threats of violence, nothing sexual about minors, no doxxing. Return empty arrays if nothing real is going on. Output only the JSON.`;
+const DISCOVER_SYSTEM = `You are the community consciousness of a live-streaming site's Arena — a regular who has been in this chat for years, not a copywriter. VOICE RULES: write the way the people in the sample lines type — same slang, same casing (if chat is lowercase, you are lowercase), short, blunt, funny. No tabloid adjective soup, no invented compound words (no "roastmare", no "chaos escalates"), no exclamation marks for hype, no "epic"/"wild"/"erupts"/"explodes". A headline should read like something a chatter would actually type as a title ("goosely is losing the cat enema war", "nobody asked about the vet bill"), ≤ 60 chars. Use people's names exactly as they appear. You get what people ACTUALLY said in the last while: global + stream chat lines and what streamers said on mic, plus the subjects already on the board. Find the UMBRELLA SUBJECTS the community is really on about — a group of people, a person, a running joke, an argument, a product, a drama, a meme — the more provocative, taboo, petty or stupid the better; nothing generic, nothing wholesome. Keep subjects VAGUE and short (1–4 words) and put the detail into 2–4 THREADS inside each (the specific angles people are arguing). Ignore small talk. Do not repeat subjects already on the board (match by meaning — if it fits an existing subject, skip it, the lore rewrite adds threads there). For each: the subject, a tabloid headline, a tagline (who started it, who is where on it), the keywords/slang people use for it, the threads, the source, and a hint on how to pile on. If the community keeps naming one specific streamer (dunking, defending, calling out), add ONE bounty on that exact username. Profanity, disrespect, slurs and trolling are welcome and are never a reason to skip a subject — this platform does not censor language. Hard line: no direct threats of violence, nothing sexual about minors, no doxxing. Return empty arrays if nothing real is going on. Output only the JSON.`;
 
 function discoverInput() {
     const out = { at: new Date().toISOString() };
@@ -469,7 +513,7 @@ function heuristicDiscover(input) {
     }
     const existing = new Set(openTopicMatchers().flatMap(m => m.keywords));
     return [...counts.entries()].filter(([w, c]) => c.n >= 4 && c.people.size >= 3 && !existing.has(w)).sort((a, b) => b[1].n - a[1].n).slice(0, 2)
-        .map(([w, c]) => ({ subject: w.charAt(0).toUpperCase() + w.slice(1), headline: `Everyone is suddenly on about "${w}"`, tagline: `${c.people.size} people, ${c.n} mentions in ${SCAN_WINDOW_MIN} minutes`, keywords: [w], source: 'chat burst', hint: 'Say it on mic. Make it worse.' }));
+        .map(([w, c]) => ({ subject: w.charAt(0).toUpperCase() + w.slice(1), headline: `Everyone is suddenly on about "${w}"`, tagline: `${c.people.size} people, ${c.n} mentions in ${SCAN_WINDOW_MIN} minutes`, keywords: [w], threads: [{ name: `why ${w}`, keywords: [w], hint: 'Say it on mic. Make it worse.' }], source: 'chat burst', hint: 'Say it on mic. Make it worse.' }));
 }
 
 let _pulse = { text: null, at: null, sources: [] };
@@ -497,7 +541,7 @@ async function discoverTopics({ force = false } = {}) {
     let made = 0;
     const created = [];
     for (const t of topics.slice(0, 4)) {
-        try { created.push(createTopic({ text: t.subject, hint: t.hint, createdBy: 'community', creatorName: clip(t.source || 'the community', 40), headline: t.headline, tagline: t.tagline, sourceNote: t.source, keywords: t.keywords })); made++; } catch { /* dup */ }
+        try { created.push(createTopic({ text: t.subject, hint: t.hint, createdBy: 'community', creatorName: clip(t.source || 'the community', 40), headline: t.headline, tagline: t.tagline, sourceNote: t.source, keywords: t.keywords, threads: t.threads })); made++; } catch { /* dup */ }
     }
     for (const b of bounties.slice(0, 1)) {
         try {
@@ -528,12 +572,32 @@ function pulse() { const p = loadPulse(); return { text: p.text, at: p.at ? new 
 // ── Lore ─────────────────────────────────────────────────────
 
 const LORE_SCHEMA = { name: 'arena_lore', schema: { type: 'object', additionalProperties: false, required: ['lore', 'headline', 'tagline', 'keywords'], properties: {
-    lore: { type: 'string', description: '3–6 sentences. The evolving story of this subject on the site: who brought it up and where, who said what (quote the best lines verbatim, name usernames), who is on which end of it, how it escalated, current state. Tabloid / fight-promoter voice, dumb, petty, funny.' },
-    headline: { type: 'string', description: 'Updated tabloid headline ≤ 90 chars' },
-    tagline: { type: 'string', description: '≤ 100 chars: where it stands right now' },
+    lore: { type: 'string', description: 'SHORT: 2–4 punchy sentences, ≤ 450 characters total. The story so far: who brought it up, the wildest line (quote it verbatim with the username), who is on which end, the latest twist. Tabloid / fight-promoter voice, dumb, petty, funny. No filler, no recap of every line.' },
+    headline: { type: 'string', description: 'Updated tabloid headline ≤ 70 chars' },
+    tagline: { type: 'string', description: '≤ 80 chars: where it stands right now' },
     keywords: { type: 'array', minItems: 2, maxItems: 10, items: { type: 'string' }, description: 'updated lowercase keywords/slang people use for it (keep the good existing ones)' },
+    threads: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', additionalProperties: false, required: ['name', 'keywords', 'hint'], properties: { name: { type: 'string', description: '2–5 words' }, keywords: { type: 'array', minItems: 1, maxItems: 4, items: { type: 'string' } }, hint: { type: 'string', description: '≤ 70 chars' } } }, description: 'the threads (sub-angles) inside this subject — keep the existing ones by name, add new angles that emerged in the new moments' },
 } } };
-const LORE_SYSTEM = `You write and update the LORE of a subject the community of a live-streaming site is talking about. You get the subject, the previous lore (if any), and the newest moments: chat lines and on-mic lines with usernames. Rewrite the lore so it tells the whole story so far and the new developments — who started it, who said the wildest things (quote them verbatim with their username), who is defending, who is dunking, streamers vs chat, escalations, plot twists. Keep what still matters from the previous lore, drop filler. Voice: tabloid meets fight promoter meets the dumbest guy in the group chat; provocative and funny; take the piss out of everyone. This platform does not censor language: slurs, profanity and taboo talk are allowed and should be quoted as said. Hard line: no direct threats of violence, nothing sexual about minors, no doxxing. Output only the JSON.`;
+const LORE_SYSTEM = `You write and update the LORE of a subject the community of a live-streaming site is talking about — as a regular of this chat, not a copywriter. VOICE RULES: match the way the moments are typed (slang, casing, rhythm; lowercase if chat is lowercase), blunt, dry, funny; quote real lines instead of describing them; use the site's own words; no tabloid adjective soup, no invented compound words, no "erupts"/"explodes"/"chaos"/"saga"/"epic", no exclamation marks. Use what the chat AI knows about the people involved (their known bits, grudges, history) to make it specific to THEM. You get the subject, the previous lore (if any), and the newest moments: chat lines and on-mic lines with usernames. Rewrite the lore SHORT (2–4 sentences, under 450 characters): who started it, the wildest line (verbatim, with username), who is on which end, the latest twist. Drop everything else. Also return the THREADS inside the subject: keep the existing thread names, add a new one only when a genuinely new angle shows up in the new moments. Voice: tabloid meets fight promoter meets the dumbest guy in the group chat; provocative and funny; take the piss out of everyone. This platform does not censor language: slurs, profanity and taboo talk are allowed and should be quoted as said. Hard line: no direct threats of violence, nothing sexual about minors, no doxxing. Output only the JSON.`;
+
+/** What the site already knows: how the community types, the global chat AI overview, and the chat AI's profile of the people in these moments. Cheap (all cached rows), no calls. */
+function communityContext(moments) {
+    const out = {};
+    try { out.how_this_chat_types = db.all(`SELECT message FROM chat_messages WHERE COALESCE(is_deleted, 0) = 0 AND COALESCE(source_platform, '') != 'ai' AND COALESCE(message_type, 'chat') = 'chat' AND LENGTH(message) BETWEEN 8 AND 140 AND message NOT LIKE '!%' ORDER BY id DESC LIMIT 25`).map(r => r.message); } catch { out.how_this_chat_types = []; }
+    try { const g = db.getChatAiSummary('global', 0, 'rolling'); if (g) { const ov = parseJson(g.overview, null); out.global_chat_overview = clip(ov ? (ov.today || ov.alltime) : g.overview, 500); out.global_chat_memory = clip(g.memory_json, 400); } } catch { /* */ }
+    try {
+        const chatters = require('./chatters');
+        const seen = new Set(); const people = [];
+        for (const m of moments || []) {
+            const key = m.chatter_key || chatters.keyFor(m); if (!key || seen.has(key) || people.length >= 5) continue; seen.add(key);
+            const p = chatters.parseKey(key); let ai = null;
+            try { if (p.kind === 'user') ai = db.getChatAiSummary('user', p.user_id, 'rolling'); else if (p.kind === 'anon') ai = db.getChatAiSummary('anon', p.anon_num, 'rolling'); else if (p.kind === 'relay' && db.getRelayUser) { const ru = db.getRelayUser(p.platform, p.username); if (ru) ai = db.getChatAiSummary('relay', ru.id, 'rolling'); } } catch { /* */ }
+            if (ai) { const ov = parseJson(ai.overview, null); people.push({ name: m.username, known_for: clip(ov ? (ov.alltime || ov.today) : ai.overview, 260), memory: clip(ai.memory_json, 200) }); }
+        }
+        if (people.length) out.what_the_chat_ai_knows_about_these_people = people;
+    } catch { /* */ }
+    return out;
+}
 
 function templateLore(topic, moments, members) {
     const first = moments[moments.length - 1];
@@ -564,7 +628,7 @@ async function buildLore(topicId, { force = false } = {}) {
     if (aiOn() && moments.length) {
         try {
             const r = await llm.complete({ role: 'summary', kind: 'arena_lore', source: 'arena', system: LORE_SYSTEM, json: LORE_SCHEMA, maxTokens: 600, temperature: 0.85, timeoutMs: 30000,
-                user: JSON.stringify({ subject: topic.text, kind: topic.kind, bounty_target: topic.target_user_id ? nameOf(topic.target_user_id) : null, started_by: topic.creator_name || topic.created_by, source: topic.source_note, previous_lore: topic.lore, previous_headline: topic.headline, keywords: parseJson(topic.keywords_json, []),
+                user: JSON.stringify({ subject: topic.text, kind: topic.kind, bounty_target: topic.target_user_id ? nameOf(topic.target_user_id) : null, started_by: topic.creator_name || topic.created_by, source: topic.source_note, previous_lore: topic.lore, previous_headline: topic.headline, keywords: parseJson(topic.keywords_json, []), existing_threads: threadsOf(topic.id).map(t => t.name), ...communityContext(moments),
                     fighters_on_it: members.map(m => m.fighter_name), moments: moments.slice().reverse().map(m => ({ who: m.username || 'anon', where: m.kind === 'chat' ? 'chat' : 'on mic', text: m.text, quality: m.quality })) }) });
             if (r && r.json && r.json.lore) out = r.json;
         } catch (e) { console.warn('[Arena] lore:', e.message); }
@@ -572,7 +636,8 @@ async function buildLore(topicId, { force = false } = {}) {
     if (!out) out = { lore: templateLore(topic, moments, members), headline: topic.headline, tagline: topic.tagline, keywords: parseJson(topic.keywords_json, []) };
     const kws = normalizeKeywords([...(parseJson(topic.keywords_json, []) || []), ...(out.keywords || [])]);
     db.run('UPDATE arena_topics SET lore = ?, headline = COALESCE(?, headline), tagline = COALESCE(?, tagline), keywords_json = ?, lore_updated_at = CURRENT_TIMESTAMP, lore_moment_count = ? WHERE id = ?',
-        [clip(out.lore, 1400), out.headline ? clip(out.headline, 160) : null, out.tagline ? clip(out.tagline, 120) : null, JSON.stringify(kws), total, topicId]);
+        [clip(out.lore, 600), out.headline ? clip(out.headline, 120) : null, out.tagline ? clip(out.tagline, 100) : null, JSON.stringify(kws), total, topicId]);
+    try { if (Array.isArray(out.threads) && out.threads.length) { upsertThreads(topicId, out.threads); const merged = normalizeKeywords([...kws, ...threadsOf(topicId).flatMap(t => parseJson(t.keywords_json, []) || [])]); db.run('UPDATE arena_topics SET keywords_json = ? WHERE id = ?', [JSON.stringify(merged), topicId]); } } catch (e) { console.warn('[Arena] threads:', e.message); }
     invalidateMatchers();
     try { require('./chatters').onLore(topic, out.lore, moments); } catch (e) { console.warn('[Arena] lore quotes xp:', e.message); }
     return { lore: out.lore, headline: out.headline, tagline: out.tagline };
@@ -602,7 +667,7 @@ function fighterBrief(userId, roster) {
         level: levelFor(levelRow(userId).xp || 0),
     };
 }
-function momentView(m) { return { id: m.id, kind: m.kind, source: m.source, user_id: m.user_id, username: m.username, chatter_key: m.chatter_key || null, platform: m.source_platform || null, stream_id: m.stream_id, vod_id: m.vod_id, sec: m.sec, text: m.text, quality: m.quality, about: m.about, at: m.created_at }; }
+function momentView(m) { return { id: m.id, kind: m.kind, source: m.source, user_id: m.user_id, username: m.username, chatter_key: m.chatter_key || null, platform: m.source_platform || null, thread_id: m.thread_id || null, stream_id: m.stream_id, vod_id: m.vod_id, sec: m.sec, text: m.text, quality: m.quality, about: m.about, at: m.created_at }; }
 
 function topicView(topic, roster, { detail = false } = {}) {
     const members = db.all(`SELECT m.*, (SELECT COUNT(*) FROM arena_topic_moments x WHERE x.topic_id = m.topic_id AND x.user_id = m.user_id AND x.kind = 'speech') AS moments, (SELECT COALESCE(SUM(quality), 0) FROM arena_topic_moments x WHERE x.topic_id = m.topic_id AND x.user_id = m.user_id) AS score FROM arena_topic_members m WHERE m.topic_id = ? ORDER BY score DESC, moments DESC`, [topic.id]);
@@ -617,6 +682,7 @@ function topicView(topic, roster, { detail = false } = {}) {
         expires_at: topic.expires_at && topic.kind === 'bounty' ? new Date(topic.expires_at + 'Z').toISOString() : null, resolved: parseJson(topic.resolved_json),
         mentions: { chat: topic.chat_mentions || 0, mic: topic.mic_mentions || 0, total: (topic.chat_mentions || 0) + (topic.mic_mentions || 0) },
         chatters: db.get(`SELECT COUNT(DISTINCT COALESCE(username, user_id)) AS n FROM arena_topic_moments WHERE topic_id = ? AND kind = 'chat'`, [topic.id])?.n || 0,
+        threads: db.all('SELECT * FROM arena_topic_threads WHERE topic_id = ? ORDER BY moments DESC, id ASC', [topic.id]).map(t => ({ id: t.id, name: t.name, hint: t.hint, moments: t.moments || 0, last_at: t.last_at, keywords: parseJson(t.keywords_json, []) || [] })),
         talking_now: members.filter(m => m.active).map(m => fighterBrief(m.user_id, roster)),
         fighters: members.slice(0, 12).map(m => ({ ...fighterBrief(m.user_id, roster), active: !!m.active, moments: m.moments, score: Number((m.score || 0).toFixed(1)) })),
         last_moment: last ? momentView(last) : null, best_moment: best ? momentView(best) : null,
@@ -662,7 +728,7 @@ function levelsLeaderboard(limit = 10) {
 function yappersLeaderboard(limit = 10) { return require('./chatters').leaderboard(limit); }
 
 module.exports = {
-    ensureTables, createTopic, submitTopic, assertCanSubmit, joinTopic, leaveTopic, activeTopicFor, applyTopicJudgement, hypeTopic, addMoment, noteMicMention, matchTopics, keywordsFromText,
+    ensureTables, createTopic, submitTopic, assertCanSubmit, joinTopic, leaveTopic, activeTopicFor, threadsOf, threadFor, upsertThreads, applyTopicJudgement, hypeTopic, addMoment, noteMicMention, matchTopics, keywordsFromText,
     addXp, levelRow, levelView, levelFor, recentXp, boardView, topicDetail, levelsLeaderboard, yappersLeaderboard, fighterBrief, archiveStale,
     scanChat, discoverTopics, discoverInput, heuristicDiscover, backfillMoments, buildLore, loreSweep, templateLore, pulse, nameOf,
     computeHeat, resolveExpired, openBountyOn, recordBountyHit, HOT_THRESHOLD, KIND_TTL_HOURS, XP_PER_LEVEL, XP_JOIN, XP_HYPE, TOPIC_TTL_HOURS, SCAN_WINDOW_MIN, USER_TOPIC_COOLDOWN_HOURS,
