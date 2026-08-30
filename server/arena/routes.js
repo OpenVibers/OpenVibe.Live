@@ -6,7 +6,7 @@
  *   GET  /console/:user                               what the listener hears for a live fighter
  *   GET  /board                                       pulse + open events (topics/debates/phrases/bounties) + leaderboards
  *   POST /board/topics {text}                         signed in, 1 per person + per IP per 24 h; AI rewrites it
- *   GET  /board/topics/:id · POST …/join · …/leave · …/hype {user_id}
+ *   GET  /board/topics/:id · POST …/hype {user_id}       (no joining — the ears auto-detect who talks on what)
  *   POST /board/bounty {username}                     put a bounty on a fighter
  *   GET  /beefs · /beefs/:id · POST /beefs/:id/hype {side}
  *   GET  /levels · /yappers                           Trash Level ladder · viewers who keep subjects alive from chat
@@ -129,11 +129,6 @@ router.get('/board/topics/:id', (req, res) => {
         res.json(t);
     } catch (err) { fail(res, err, 'Failed to load topic'); }
 });
-router.post('/board/topics/:id/join', requireAuth, async (req, res) => {
-    try { const r = await board.joinTopic(Number(req.params.id), req.user.id); res.json({ ok: true, topic: board.topicDetail(r.topic.id) }); }
-    catch (err) { res.status(400).json({ error: err.message }); }
-});
-router.post('/board/topics/:id/leave', requireAuth, (req, res) => { try { board.leaveTopic(req.user.id); res.json({ ok: true }); } catch (err) { res.status(400).json({ error: err.message }); } });
 router.post('/board/topics/:id/hype', optionalAuth, (req, res) => {
     try { res.json(board.hypeTopic(Number(req.params.id), Number(req.body?.user_id), arena.voterKeyFor(req))); }
     catch (err) { res.status(400).json({ error: err.message }); }

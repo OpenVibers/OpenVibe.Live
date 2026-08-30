@@ -14510,3 +14510,49 @@ a.arena-tag:hover { color: var(--accent-light); }
 .ctx-yap-bar { display: block; height: 4px; border-radius: 2px; background: var(--bg-tertiary); overflow: hidden; }
 .ctx-yap-bar span { display: block; height: 100%; background: linear-gradient(90deg, #f97316, #fbbf24); }
 .ctx-yap small { color: var(--text-muted); }
+
+/* ── Arena board v3: subject cards + threads ── */
+.arena-subject-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.arena-subject { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 16px; background: var(--bg-card); border: 1px solid var(--border); min-width: 0; }
+.arena-subject.is-hot { border-color: rgba(249, 115, 22, 0.5); }
+.arena-subject.is-featured { grid-column: 1 / -1; background: linear-gradient(135deg, rgba(249, 115, 22, 0.1), var(--bg-card) 50%); }
+.arena-subject.arena-topic-bounty { border-left: 4px solid #f5c542; }
+.arena-subject-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.74rem; color: var(--text-muted); }
+.arena-subject-headline { margin: 0; font-size: 1.15rem; line-height: 1.25; font-weight: 900; color: var(--text-primary); }
+.arena-subject.is-featured .arena-subject-headline { font-size: 1.45rem; }
+.arena-topic-link:hover .arena-subject-headline { color: #fb923c; }
+.arena-subject-sub { font-size: 0.86rem; color: var(--text-secondary); }
+.arena-subject-sub b { color: var(--text-primary); }
+.arena-threads { display: flex; gap: 6px; flex-wrap: wrap; }
+.arena-thread { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; background: var(--bg-tertiary); color: var(--text-secondary); font-size: 0.76rem; font-weight: 600; }
+.arena-thread i { font-size: 0.65rem; color: #fb923c; }
+.arena-thread b { color: var(--text-primary); }
+.arena-thread.is-more { opacity: 0.6; }
+a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srgb, var(--bg-tertiary) 70%, #fb923c 30%); }
+.arena-subject-last { display: block; font-size: 0.84rem; color: var(--text-secondary); quotes: "" ""; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arena-subject-last i { font-size: 0.7rem; margin-right: 3px; color: var(--text-muted); }
+.arena-subject-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: auto; }
+.arena-subject-open { margin-left: auto; font-size: 0.8rem; color: var(--accent-light); text-decoration: none; font-weight: 700; }
+.arena-strip { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 0; }
+.arena-strip-people { display: inline-flex; align-items: center; gap: 8px; }
+.arena-strip-people small { color: var(--text-muted); }
+.arena-story { padding: 12px 14px; border-radius: 14px; background: var(--bg-tertiary); border-left: 3px solid #fb923c; }
+.arena-story h3 { margin: 0 0 6px; font-size: 0.9rem; display: flex; gap: 8px; align-items: center; }
+.arena-story h3 small { color: var(--text-muted); font-weight: 400; font-size: 0.74rem; }
+.arena-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.arena-tab { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-secondary); font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+.arena-tab b { color: var(--text-primary); margin-left: 2px; }
+.arena-tab.is-on { border-color: #fb923c; color: var(--text-primary); background: rgba(249, 115, 22, 0.12); }
+.arena-tab-hint { margin: 0; }
+.arena-row-lore.is-clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.arena-row-taunts em { display: flex; align-items: center; gap: 6px; }
+@media (max-width: 900px) { .arena-subject-grid { grid-template-columns: 1fr; } }
+@media (max-width: 600px) {
+    .arena-subject { padding: 12px; } .arena-subject.is-featured .arena-subject-headline { font-size: 1.2rem; }
+    .arena-row-expand { grid-template-columns: 1fr; }
+    .arena-row-expand .arena-radar { max-width: 170px; margin: 0 auto; }
+    .arena-quips-custom, .arena-quips { grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+    .arena-quip { font-size: 0.78rem; }
+    .arena-row-expand-actions .btn { padding: 6px 10px; font-size: 0.82rem; }
+    .arena-topic-headline-big { font-size: 1.2rem; }
+}
