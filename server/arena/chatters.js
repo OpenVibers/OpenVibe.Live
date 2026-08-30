@@ -161,13 +161,7 @@ function onLevelUp(key, from, to, { streamId = null } = {}) {
             const paidTo = r?.coins_paid_level || 0;
             let total = 0;
             for (let l = Math.max(paidTo + 1, from + 1); l <= to; l++) total += l * COINS_PER_LEVEL;
-            if (total > 0) {
-                const opencoins = require('../monetization/opencoins');
-                Promise.resolve(opencoins.credit(p.user_id, total, 'arena_yap_level', `live:arena_yap_level:${p.user_id}:${to}`, { level: to })).then(res => {
-                    if (res) console.log(`[Arena] ${name}: +${total} OpenCoins for reaching yap level ${to}`);
-                }).catch(e => console.warn('[Arena] yap coins:', e.message));
-                db.run('UPDATE chatter_profiles SET coins_paid_level = ? WHERE key = ?', [to, key]);
-            }
+            if (total > 0) payCoins(key, p.user_id, name, total, to);
         } catch (e) { console.warn('[Arena] yap coins:', e.message); }
     }
     // Tell the room.
@@ -179,6 +173,27 @@ function onLevelUp(key, from, to, { streamId = null } = {}) {
 }
 
 /** A chat line landed as a moment on a subject. */
+/** Credit level-up coins; only marked paid once the wallet confirms (idempotent per level, so retries are safe). */
+function payCoins(key, userId, name, total, level) {
+    try {
+        const opencoins = require('../monetization/opencoins');
+        return Promise.resolve(opencoins.credit(userId, total, 'arena_yap_level', `live:arena_yap_level:${userId}:${level}`, { level })).then(res => {
+            if (res) { db.run('UPDATE chatter_profiles SET coins_paid_level = ? WHERE key = ?', [level, key]); console.log(`[Arena] ${name}: +${total} OpenCoins for reaching yap level ${level}`); }
+            return !!res;
+        }).catch(e => { console.warn('[Arena] yap coins:', e.message); return false; });
+    } catch (e) { console.warn('[Arena] yap coins:', e.message); return Promise.resolve(false); }
+}
+/** Housekeeping: retry unpaid level-ups (wallet down, account linked later). A few per call. */
+async function settleCoins(max = 5) {
+    ensureTables();
+    let n = 0;
+    for (const r of db.all(`SELECT key, user_id, display_name, level, coins_paid_level FROM chatter_profiles WHERE kind = 'user' AND user_id IS NOT NULL AND level > coins_paid_level ORDER BY last_seen DESC LIMIT ?`, [max])) {
+        let total = 0; for (let l = (r.coins_paid_level || 0) + 1; l <= r.level; l++) total += l * COINS_PER_LEVEL;
+        if (total > 0 && await payCoins(r.key, r.user_id, r.display_name || r.key, total, r.level)) n++;
+    }
+    return n;
+}
+
 function onMoment(moment, topic, { hot = false } = {}) {
     if (!moment || moment.kind !== 'chat') return null;
     const key = moment.chatter_key || keyFor(moment);
@@ -327,4 +342,4 @@ function leaderboard(limit = 10, { days = null } = {}) {
 }
 function count() { ensureTables(); return db.get('SELECT COUNT(*) AS n FROM chatter_profiles WHERE xp > 0')?.n || 0; }
 
-module.exports = { ensureTables, keyFor, parseKey, displayFor, levelFor, xpForLevel, titleFor, addXp, onMoment, onSubjectStarted, onHype, onLore, buildCard, cardSweep, profile, leaderboard, count, view, row, TITLES, XP_MOMENT, XP_MOMENT_HOT, XP_FIRST_ON_SUBJECT, XP_SUBJECT_STARTED, XP_QUOTED_IN_LORE, COINS_PER_LEVEL, CARD_MIN_LEVEL };
+module.exports = { ensureTables, settleCoins, payCoins, keyFor, parseKey, displayFor, levelFor, xpForLevel, titleFor, addXp, onMoment, onSubjectStarted, onHype, onLore, buildCard, cardSweep, profile, leaderboard, count, view, row, TITLES, XP_MOMENT, XP_MOMENT_HOT, XP_FIRST_ON_SUBJECT, XP_SUBJECT_STARTED, XP_QUOTED_IN_LORE, COINS_PER_LEVEL, CARD_MIN_LEVEL };
