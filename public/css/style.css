@@ -14442,3 +14442,18 @@ a.arena-tag:hover { color: var(--accent-light); }
     .arena-topic-row-side { flex-direction: row; align-items: center; flex-wrap: wrap; }
     .arena-topic-headline-big { font-size: 1.3rem; }
 }
+
+/* ── Arena: per-fighter custom stats + taunts ── */
+.arena-radar-custom text { font-size: 9px; }
+.arena-quips-custom .arena-quip b { color: var(--accent-light); }
+.arena-row-taunts { display: flex; flex-direction: column; gap: 3px; margin: 0 0 10px; }
+.arena-row-taunts em { font-size: 0.85rem; color: var(--text-secondary); }
+.arena-row-taunts small { color: var(--text-muted); font-size: 0.72rem; }
+.arena-profile-custom { display: grid; grid-template-columns: 220px 1fr; gap: 18px; align-items: center; padding: 12px 14px; border-radius: 14px; background: var(--bg-tertiary); }
+@media (max-width: 600px) { .arena-profile-custom { grid-template-columns: 1fr; } }
+
+.arena-focus { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.35); font-size: 0.88rem; }
+.arena-focus i { color: #f87171; }
+.arena-focus small { color: var(--text-secondary); margin-left: 6px; }
+.arena-focus-ctx { margin-top: 6px; font-size: 0.8rem; color: var(--text-muted); }
+.arena-focus .arena-note { margin: 6px 0 0; }

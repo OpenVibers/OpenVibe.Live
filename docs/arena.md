@@ -44,9 +44,10 @@ No voting anywhere. The board is a list of **subjects** the community is actuall
 Every 15 s, for every roster stream that is live **and** has a transcript line in the last 30 min:
 
 1. New `stream_timeline_events` speech lines are read.
-2. A fighter's name (username, display name, fighter name; `@name`; underscores/dots spoken as spaces; longest match first, never yourself) opens a **mention buffer**; lines in the following 45 s join it. At ≥ 20 words the **beef judge** runs (`aimed_at_target`, `quality`, `best_line` verbatim, `about`, `announcer`, `flagged`) → `beef.recordHit`.
-3. Lines matching a board subject's keywords become on-mic moments (and auto-join the fighter). Other lines pool for the **subject judge** against the streamer's active subject — or the one they just brought up (≥ 20 words, ≥ 30 s between calls): `on_topic`, `quality`, `best_line`, `about`.
-4. One judge call per stream per tick; keyword heuristics when AI is off.
+2. **Name detection** (`server/arena/names.js`) — every roster name (username, display name, fighter name, plus the persona's AI-written `spoken_as` nicknames/mishearings) is expanded into the forms a transcriber produces: camelCase/snake/kebab split (`JapaneseOldGuy` → "japanese old guy"), digits and `_tv`/`xX_` decorations dropped (`lofi_dan99` → "lofi dan"), leet undone, glued forms. Lines are matched exact → **fuzzy** (edit distance scaled by length, same word count only: "Matticus", "japanese old gai") → **phonetic** (compact metaphone key: "goose lee", "Goosley", "mattie cuss", "pixel queen"). Single common words can never be aliases, prefixes don't count, the speaker never matches themselves.
+3. **Focus lock** — a name-drop locks the ears on that fighter for 2 min; everything said afterwards goes to the beef judge together with what was already said about them, and the judge decides `about_target` (still on them via "he", "her chat", "that guy", the same story) and `aimed_at_target`. Every hit extends the lock 3 min (hard cap 20 min without a fresh name-drop); neutral talk keeps it a bit; two chunks about something else drop it. A different name-drop switches targets (the pending chunk is judged first). The console (`/arena/live/<user>`) shows the lock, its context and whether the last hit was a continuation.
+4. Lines matching a board subject's keywords become on-mic moments (and auto-join the fighter). Other lines pool for the **subject judge** against the streamer's active subject — or the one they just brought up (≥ 20 words, ≥ 30 s between calls): `on_topic`, `quality`, `best_line`, `about`.
+5. One judge call per stream per tick; keyword heuristics when AI is off (pronouns + spice count as a continuation).
 
 `/arena/live/<username>` shows exactly what the ears hear for a fighter: hot mic lines, the last judgements, active topic progress, open beefs and any bounty on them (auto-refreshes; a level-up flashes).
 
@@ -87,6 +88,6 @@ Every 15 s, for every roster stream that is live **and** has a transcript line i
 
 Background job (`server/arena/arena-job.js`): personas/portraits every 20 min (bounded, budget-aware) · listener every 15 s · clocks + bounty expiries + chat scan every 60 s · discovery ≤ 1 AI call / 5 min and only with new material · lore rewrites only for subjects with ≥ 3 new moments (≤ 3 per minute).
 
-Personas: the taunts are **ragebait in the person's own voice** — the prompt gets their own chat lines (`things_they_typed_in_chat`), what they said on stream, the chat-AI notes, the streamer overview, the rooms they lurk in and the roster rivals; output includes `taunt`, three more `taunts` and a `typing_style`.
+Personas: the voice comes from their **chat history first** — their own chat lines with the room they typed in, the chat AI's profile of them as a chatter (overview, long-term memory, timeline), then the streaming profile as flavor. Output: `taunt` + three more `taunts` (ragebait in that exact typing style), `typing_style`, `spoken_as` (how people say/mishear the name — fed to name detection) and `custom_stats` (six stats unique to them, e.g. "Alt Accounts 91", drawn as their own radar on the ladder row and profile).
 
 Tests: `node test/arena.test.js` (roster, ratings, filter, quotes) · `node test/arena-beef-board.test.js` (beefs, board, listener tick, chat commands, API) — both on a temp DB, no AI needed.

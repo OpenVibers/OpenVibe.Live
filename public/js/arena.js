@@ -101,6 +101,29 @@ function _aRadar(r, color, size = 200) {
     </svg>`;
 }
 
+/** A fighter's OWN radar: six AI-named stats from their profile (falls back to the objective seven). */
+function _aCustomRadar(f, color, size = 200) {
+    const cs = (f.persona && Array.isArray(f.persona.custom_stats) ? f.persona.custom_stats : []).filter(x => x && x.name && Number.isFinite(Number(x.value))).slice(0, 8);
+    if (cs.length < 3) return _aRadar(f.ratings, color, size);
+    const c = size / 2, R = size / 2 - 30;
+    const N = cs.length;
+    const angle = (i) => -Math.PI / 2 + (i * 2 * Math.PI) / N;
+    const pt = (i, v) => { const rr = R * (Math.max(0, Math.min(99, v)) / 99); return [c + rr * Math.cos(angle(i)), c + rr * Math.sin(angle(i))]; };
+    const ring = (v) => cs.map((_, i) => pt(i, v).map(x => x.toFixed(1)).join(',')).join(' ');
+    const poly = cs.map((x, i) => pt(i, Number(x.value)).map(y => y.toFixed(1)).join(',')).join(' ');
+    const labels = cs.map((x, i) => { const rr = R + 18, lx = c + rr * Math.cos(angle(i)), ly = c + rr * Math.sin(angle(i)); return `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="middle"><title>${_aEsc(x.quip || '')}</title>${_aEsc(String(x.name).slice(0, 14))} ${Number(x.value)}</text>`; }).join('');
+    return `<svg class="arena-radar arena-radar-custom" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" aria-hidden="true">
+        ${[33, 66, 99].map(v => `<polygon points="${ring(v)}" class="arena-radar-ring"></polygon>`).join('')}
+        <polygon points="${poly}" class="arena-radar-fill" style="fill:${_aEsc(color)}33;stroke:${_aEsc(color)}"></polygon>
+        ${labels}
+    </svg>`;
+}
+function _aCustomQuips(f) {
+    const cs = (f.persona && Array.isArray(f.persona.custom_stats) ? f.persona.custom_stats : []);
+    if (!cs.length) return '';
+    return `<div class="arena-quips arena-quips-custom">${cs.map(x => `<div class="arena-quip"><b>${_aEsc(x.name)} ${Number(x.value)}</b><span>${_aEsc(x.quip || '')}</span></div>`).join('')}</div>`;
+}
+
 /** Sparkline of a per-stream series. */
 function _aSpark(series, color) {
     const w = 320, h = 70, pad = 6;
@@ -501,10 +524,11 @@ function _aRenderList(fighters) {
                 <span class="arena-record" title="beef record">${f.record.wins}W–${f.record.losses}L</span>
             </span>
             <div class="arena-row-expand">
-                <div>${_aRadar(f.ratings, f.user.profile_color || '#8b5cf6', 180)}<div class="arena-mini-record">${f.category ? _aEsc(f.category) + ' · ' : ''}last live ${_aEsc(f.last_live_at ? _aDate(f.last_live_at) : '—')}</div></div>
+                <div>${_aCustomRadar(f, f.user.profile_color || '#8b5cf6', 200)}<div class="arena-mini-record">${(f.persona.custom_stats || []).length ? 'their own stats, from their profile · ' : ''}${f.category ? _aEsc(f.category) + ' · ' : ''}last live ${_aEsc(f.last_live_at ? _aDate(f.last_live_at) : '—')}</div></div>
                 <div>
                     <p class="arena-row-lore">${_aEsc(f.persona.lore)}</p>
-                    <div class="arena-quips">${ARENA_STATS.map(k => `<div class="arena-quip"><b>${_aEsc(ARENA_STAT_LABEL[k])} ${f.ratings[k]}</b><span>${_aEsc((f.persona.stat_quips || {})[k] || '')}</span></div>`).join('')}</div>
+                    ${(f.persona.taunts || []).length ? `<div class="arena-row-taunts">${f.persona.taunts.map(t => `<em>“${_aEsc(t)}”</em>`).join('')}${f.persona.typing_style ? `<small><i class="fa-solid fa-keyboard"></i> ${_aEsc(f.persona.typing_style)}</small>` : ''}</div>` : ''}
+                    ${(f.persona.custom_stats || []).length ? _aCustomQuips(f) : `<div class="arena-quips">${ARENA_STATS.map(k => `<div class="arena-quip"><b>${_aEsc(ARENA_STAT_LABEL[k])} ${f.ratings[k]}</b><span>${_aEsc((f.persona.stat_quips || {})[k] || '')}</span></div>`).join('')}</div>`}
                     ${f.persona.signature_move ? `<div class="arena-mini-record"><b>Signature:</b> ${_aEsc(f.persona.signature_move.name)} — ${_aEsc(f.persona.signature_move.description)}</div>` : ''}
                 </div>
                 <div class="arena-row-expand-actions">
@@ -685,8 +709,9 @@ async function _aRenderConsole(root, username) {
             <div class="arena-console-cols">
                 <section class="arena-console-main">
                     <h3><i class="fa-solid fa-microphone"></i> Hot mic <small>last lines the ears heard</small></h3>
+                    ${L.focus ? `<div class="arena-focus"><i class="fa-solid fa-crosshairs fa-beat"></i> <b>Locked on ${_aEsc(L.focus.target || 'a fighter')}</b> <small>${_aEsc(L.focus.how)} name-drop · ${L.focus.hits} hit${L.focus.hits === 1 ? '' : 's'} · ${L.focus.pending_words} words waiting for the judge · lock <span class="arena-clock" data-until="${new Date(Date.now() + L.focus.lock_seconds_left * 1000).toISOString()}" data-who="the lock"><b>${_aClock(L.focus.lock_seconds_left)}</b></span></small>${L.focus.context ? `<div class="arena-focus-ctx">so far: ${_aEsc(L.focus.context)}</div>` : ''}<p class="arena-note">Everything said now goes to the beef judge as a continuation — no need to say the name again. Two chunks about something else and the ears let go.</p></div>` : ''}
                     <div class="arena-mic-feed">${c.hot_mic?.length ? c.hot_mic.map(l => `<div class="arena-mic-line-row"><span class="arena-mic-time">${_aStamp(l.sec)}</span><span>${_aEsc(l.text)}</span>${_aPlay(l.vod_id, l.sec)}</div>`).join('') : '<p class="arena-note">Nothing heard yet.</p>'}</div>
-                    ${L.last_beef_judgement ? `<div class="arena-judgement ${L.last_beef_judgement.aimed_at_target ? 'is-hit' : ''}"><b><i class="fa-solid fa-gavel"></i> Beef judge (${_aEsc(_aAgo(L.last_beef_judgement.at))}):</b> ${L.last_beef_judgement.aimed_at_target ? `HIT · ${L.last_beef_judgement.quality}/10 · ${_aEsc(L.last_beef_judgement.about || '')}${L.last_beef_judgement.opened ? ' · <b>beef opened</b>' : ''}${L.last_beef_judgement.bounty ? ' · <b>bounty collected</b>' : ''}` : `no beef — ${_aEsc(L.last_beef_judgement.about || 'name dropped but not aimed at them')}`}${L.last_beef_judgement.flagged ? ' · <span class="arena-tag arena-tag-dim">line not counted (threat/minor/dox)</span>' : ''}</div>` : ''}
+                    ${L.last_beef_judgement ? `<div class="arena-judgement ${L.last_beef_judgement.aimed_at_target ? 'is-hit' : ''}"><b><i class="fa-solid fa-gavel"></i> Beef judge (${_aEsc(_aAgo(L.last_beef_judgement.at))}):</b> ${L.last_beef_judgement.aimed_at_target ? `HIT${L.last_beef_judgement.named === false ? ' (continuation, name not said)' : ''} · ${L.last_beef_judgement.quality}/10 · ${_aEsc(L.last_beef_judgement.about || '')}${L.last_beef_judgement.opened ? ' · <b>beef opened</b>' : ''}${L.last_beef_judgement.bounty ? ' · <b>bounty collected</b>' : ''}` : L.last_beef_judgement.about_target ? `still about them, not shit talk — ${_aEsc(L.last_beef_judgement.about || '')}` : `moved on — ${_aEsc(L.last_beef_judgement.about || 'not about them')}`}${L.last_beef_judgement.flagged ? ' · <span class="arena-tag arena-tag-dim">line not counted (threat/minor/dox)</span>' : ''}</div>` : ''}
                     ${L.last_topic_judgement ? `<div class="arena-judgement ${L.last_topic_judgement.applied ? 'is-hit' : ''}"><b><i class="fa-solid fa-gavel"></i> Subject judge (${_aEsc(_aAgo(L.last_topic_judgement.at))}) · ${_aEsc(L.last_topic_judgement.topic || '')}:</b> ${L.last_topic_judgement.applied ? `MOMENT · ${L.last_topic_judgement.quality}/10 · +${L.last_topic_judgement.xp} XP · ${_aEsc(L.last_topic_judgement.about || '')}` : `not about it — ${_aEsc(L.last_topic_judgement.about || 'say the subject')}`}</div>` : ''}
                 </section>
                 <aside class="arena-console-aside">
@@ -702,7 +727,7 @@ async function _aRenderConsole(root, username) {
                         ${c.open_beefs?.length ? c.open_beefs.map(b => `<div class="arena-console-beef">${_aA(_aBeefLink(b), `<b>${_aEsc(b.headline || `${b.a.fighter_name} vs ${b.b.fighter_name}`)}</b>`)}${_aTug(b)}${_aClockTag(b)}</div>`).join('') : `<p class="arena-note">None. ${mine ? 'Say another fighter\'s name while talking shit and one opens.' : ''}</p>`}
                     </section>
                     ${c.bounty_on_me ? `<section><h3><i class="fa-solid fa-sack-dollar"></i> Bounty on ${_aEsc(f.fighter_name)}</h3>${_aA(_aTopicLink(c.bounty_on_me), _aEsc(c.bounty_on_me.headline || c.bounty_on_me.text))}<p class="arena-note">Everyone gets double XP for talking shit about ${mine ? 'you' : 'them'} until it expires. ${mine ? 'Answer on mic.' : ''}</p></section>` : ''}
-                    <section><h3><i class="fa-solid fa-circle-info"></i> How it's judged</h3><ul class="arena-rules-list"><li>Every 15 s the ears read new transcript lines.</li><li>A fighter's name in a line opens a 45 s window; ≥20 words go to the beef judge.</li><li>Saying a board subject's keywords adds a moment on it and auto-joins you; ≥20 words about it go to the subject judge (≥30 s apart).</li><li>Offensive language is fine. Threats, minors, doxxing → line ignored.</li></ul></section>
+                    <section><h3><i class="fa-solid fa-circle-info"></i> How it's judged</h3><ul class="arena-rules-list"><li>Every 15 s the ears read new transcript lines.</li><li>A fighter's name (however the transcriber spells it — split, glued, misheard) locks the ears on them; ≥20 words go to the beef judge, and everything after counts as a continuation until they move on.</li><li>Saying a board subject's keywords adds a moment on it and auto-joins you; ≥20 words about it go to the subject judge (≥30 s apart).</li><li>Offensive language is fine. Threats, minors, doxxing → line ignored.</li></ul></section>
                 </aside>
             </div>
         </div>`;
@@ -787,6 +812,7 @@ async function _aRenderFighter(root, username) {
                     <div class="arena-record arena-record-lg" title="beef record">${f.record.wins}W – ${f.record.losses}L</div>
                 </div>
                 ${_aLevelCard(f)}
+                ${(p.custom_stats || []).length ? `<div class="arena-profile-custom"><div>${_aCustomRadar(f, color, 220)}<div class="arena-mini-record">their own stats — AI-read from their chat history and streams</div></div>${_aCustomQuips(f)}</div>` : ''}
                 <div class="arena-profile-stats">
                     ${_aRadar(f.ratings, color)}
                     <div class="arena-quips">${ARENA_STATS.map(k => `<div class="arena-quip is-clickable" data-stat="${k}" title="Tap for the breakdown"><b>${_aEsc(ARENA_STAT_LABEL[k])} ${f.ratings[k]} <i class="fa-solid fa-magnifying-glass-chart" style="font-size:0.7em;opacity:0.6"></i></b><span>${_aEsc((p.stat_quips || {})[k] || '')}</span></div>`).join('')}</div>

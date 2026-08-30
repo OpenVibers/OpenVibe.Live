@@ -215,6 +215,30 @@ board.ensureTables(); beef.ensureTables();
     assert.deepStrictEqual(listener._mentionsIn('shoutout @pixelqueen for the raid', u1, fresh2), [u3]);
     assert.deepStrictEqual(listener._mentionsIn('nova is the best, nova nova', u1, fresh2), [], 'a speaker never mentions themselves');
     assert.deepStrictEqual(listener._mentionsIn('the supernova exploded', u2, fresh2), [], 'no match inside other words');
+    assert.deepStrictEqual(listener._mentionsIn('grizzlybear is a fraud', u1, fresh2), [u2], 'glued form of a split name');
+    assert.deepStrictEqual(listener._mentionsIn('grizly bear ducked me', u1, fresh2), [u2], 'typo-level fuzzy match');
+    assert.deepStrictEqual(listener._mentionsIn('pixel queen is scared', u1, fresh2), [u3], 'a one-word handle the transcriber split in two');
+    assert.strictEqual(listener._mentionsDetailed('pixel queen is scared', u1, fresh2)[0].how, 'phonetic');
+    // names.js on the handles that break naive matching
+    const names = require('../server/arena/names');
+    assert.deepStrictEqual(names.variants('JapaneseOldGuy'), ['japanese old guy', 'japaneseoldguy']);
+    assert.deepStrictEqual(names.variants('lofi_dan99'), ['lofi dan 99', 'lofi dan', 'lofidan']);
+    assert.ok(names.variants('x_Goosely_TV').includes('goosely tv') && names.variants('M4ticus').includes('maticus'));
+    assert.deepStrictEqual(names.variants('Guy'), [], 'a common word alone can never be an alias');
+    const E = [...names.aliasEntries(1, ['JapaneseOldGuy']), ...names.aliasEntries(2, ['Maticus']), ...names.aliasEntries(3, ['Goosely'])];
+    const hit = (t) => names.findMentions(t, E).map(m => `${m.userId}:${m.how}`);
+    assert.deepStrictEqual(hit('Japanese old guy is washed'), ['1:exact']);
+    assert.deepStrictEqual(hit('japanese-old-guy again'), ['1:exact']);
+    assert.deepStrictEqual(hit("JapaneseOldGuy's chat is dead"), ['1:exact']);
+    assert.deepStrictEqual(hit('japanese old gai lol'), ['1:fuzzy']);
+    assert.deepStrictEqual(hit('a japanese guy walked in'), [], 'a different phrase is not a fuzzy hit');
+    assert.deepStrictEqual(hit('the old guy said nothing'), []);
+    assert.deepStrictEqual(hit('Matticus is a fraud'), ['2:fuzzy']);
+    assert.deepStrictEqual(hit('mattie cuss is scared'), ['2:phonetic']);
+    assert.deepStrictEqual(hit('goose lee ducked'), ['3:phonetic']);
+    assert.deepStrictEqual(hit('Goosley never answered'), ['3:phonetic']);
+    assert.deepStrictEqual(hit('that goose flew'), [], 'a prefix alone is not the name');
+    console.log('✅ name matching: camelCase/snake/digits/leet/suffixes, fuzzy + phonetic, guarded');
     const hb1 = listener._heuristicBeef('Grizzly is trash and washed, he could never beat me!', ['grizzly']);
     assert.strictEqual(hb1.aimed_at_target, true); assert.ok(hb1.quality >= 6);
     assert.strictEqual(listener._heuristicBeef('thanks grizzly for the raid, love you', ['grizzly']).aimed_at_target, false);
@@ -240,7 +264,31 @@ board.ensureTables(); beef.ensureTables();
     assert.strictEqual(opened.length, 1); assert.strictEqual(opened[0].b_user_id, u3);
     assert.strictEqual(opened[0].on_clock, 'b');
     assert.strictEqual(arena.liveFighters()[0].open_beefs, 1);
-    console.log('✅ listener: name-drop on a live stream opens the beef');
+    const cs = listener.consoleState(u1);
+    assert.ok(cs.focus && cs.focus.target_id === u3 && cs.focus.hits === 1 && cs.focus.lock_seconds_left > 60, `locked on the target after the hit: ${JSON.stringify(cs.focus)}`);
+    console.log('✅ listener: name-drop on a live stream opens the beef and locks on');
+
+    // Locked on: the next lines never say the name, but "she", "her chat" keep the rant going → another hit.
+    const hitsBefore = beef.get(opened[0].id).a.hits;
+    db.run(`UPDATE streams SET started_at = datetime('now', '-700 seconds') WHERE id = ?`, [liveId]);
+    db.addTimelineEvents([
+        { stream_id: liveId, user_id: u1, vod_id: null, kind: 'speech', start_sec: 686, end_sec: 692, text: 'And her chat? Her chat is twelve alts and a bot, she is cooked, she could never run it back with me.', label: null, confidence: 0.9 },
+        { stream_id: liveId, user_id: u1, vod_id: null, kind: 'speech', start_sec: 693, end_sec: 698, text: 'She is trash at this and everyone knows it, bet, she is scared to even answer.', label: null, confidence: 0.9 },
+    ]);
+    listener._state.get(liveId).lastJudgeAt = 0;   // skip the 30 s judge spacing for the test
+    const ev2 = await listener.tick();
+    assert.ok(ev2.some(e => e.kind === 'beef_hit' && e.targetId === u3 && e.continued), `continuation counted without the name: ${JSON.stringify(ev2)}`);
+    assert.strictEqual(beef.get(opened[0].id).a.hits, hitsBefore + 1);
+    assert.ok(listener.consoleState(u1).focus.hits === 2 && listener.consoleState(u1).focus.context.includes('|'), 'lock extended with context');
+    // Then they move on to gameplay: two off-target chunks drop the lock.
+    for (let k = 0; k < 2; k++) {
+        db.run(`UPDATE streams SET started_at = datetime('now', ?) WHERE id = ?`, [`-${800 + k * 100} seconds`, liveId]);
+        db.addTimelineEvents([{ stream_id: liveId, user_id: u1, vod_id: null, kind: 'speech', start_sec: 786 + k * 100, end_sec: 792 + k * 100, text: 'Okay chat back to the game, we need to farm this boss and then do the quest line for the sword upgrade, let me check the map real quick.', label: null, confidence: 0.9 }]);
+        listener._state.get(liveId).lastJudgeAt = 0;
+        await listener.tick();
+    }
+    assert.strictEqual(listener.consoleState(u1).focus, null, 'moved on → lock dropped');
+    console.log('✅ listener: stays locked on the target, counts continuations, lets go when they move on');
 
     // ── Chat commands ──
     const sent = [], room = [];
@@ -279,7 +327,7 @@ board.ensureTables(); beef.ensureTables();
     assert.strictEqual(bd.status, 200); assert.ok(Array.isArray(bd.body.open) && bd.body.levels.length >= 1 && bd.body.yappers.length >= 1 && bd.body.archive.length >= 1);
     const bf = await get('/beefs'); assert.strictEqual(bf.body.open.length, 2, 'nova→pixelqueen (listener) + grizzly→pixelqueen (bounty)'); assert.strictEqual(bf.body.resolved.length, 3);
     const one = await get(`/beefs/${opened[0].id}`); assert.strictEqual(one.body.a.user.username, 'nova'); assert.ok(one.body.rules.response_live_min === 15);
-    const con = await get('/console/nova'); assert.strictEqual(con.body.listener.listening, true); assert.strictEqual(con.body.open_beefs.length, 1); assert.ok(con.body.hot_mic.length === 2);
+    const con = await get('/console/nova'); assert.strictEqual(con.body.listener.listening, true); assert.strictEqual(con.body.open_beefs.length, 1); assert.ok(con.body.hot_mic.length >= 2 && con.body.listener.focus === null);
     const lv2 = await get('/live'); assert.strictEqual(lv2.body.live[0].open_beefs, 1);
     const tp = await get(`/board/topics/${t1.id}`); assert.ok(tp.body.lore && tp.body.moments.length >= 5 && tp.body.keywords.includes('baby voice'));
     assert.strictEqual((await get('/beefs/999')).status, 404);
