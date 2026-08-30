@@ -124,7 +124,7 @@ function _aRadar(r, color, size = 200) {
 function _aCustomRadar(f, color, size = 240) {
     const cs = (f.persona && Array.isArray(f.persona.custom_stats) ? f.persona.custom_stats : []).filter(x => x && x.name && Number.isFinite(Number(x.value))).slice(0, 8);
     const axes = cs.length >= 3 ? cs.map(x => ({ name: String(x.name).slice(0, 16), value: Math.max(0, Math.min(99, Number(x.value))), quip: x.quip || '' })) : ARENA_STATS.map(k => ({ name: ARENA_STAT_LABEL[k], value: Math.max(0, Math.min(99, Number(f.ratings?.[k]) || 0)), quip: (f.persona?.stat_quips || {})[k] || '' }));
-    const N = axes.length, c = size / 2, R = size / 2 - 44;
+    const N = axes.length, c = size / 2, R = size / 2 - 62;
     const ang = (i) => -Math.PI / 2 + (i * 2 * Math.PI) / N;
     const pt = (i, v) => [c + (R * v / 99) * Math.cos(ang(i)), c + (R * v / 99) * Math.sin(ang(i))];
     const poly = (v) => axes.map((_, i) => pt(i, v).map(n => n.toFixed(1)).join(',')).join(' ');
@@ -136,7 +136,7 @@ function _aCustomRadar(f, color, size = 240) {
         ${axes.map((_, i) => { const [x, y] = pt(i, 99); return `<line x1="${c}" y1="${c}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" class="arena-radar-axis"></line>`; }).join('')}
         <polygon points="${shape}" class="arena-radar-fill" style="fill:url(#${id});stroke:${_aEsc(color)}"></polygon>
         ${axes.map((a, i) => { const [x, y] = pt(i, a.value); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" class="arena-radar-dot" style="fill:${_aEsc(color)}"><title>${_aEsc(a.name)} ${a.value}${a.quip ? ` — ${_aEsc(a.quip)}` : ''}</title></circle>`; }).join('')}
-        ${axes.map((a, i) => { const [x, y] = pt(i, 99); const lx = c + (R + 26) * Math.cos(ang(i)), ly = c + (R + 26) * Math.sin(ang(i)); const anchor = Math.abs(Math.cos(ang(i))) < 0.2 ? 'middle' : (Math.cos(ang(i)) > 0 ? 'start' : 'end'); return `<g class="arena-radar-label"><text x="${lx.toFixed(1)}" y="${(ly - 4).toFixed(1)}" text-anchor="${anchor}">${_aEsc(a.name)}</text><text x="${lx.toFixed(1)}" y="${(ly + 9).toFixed(1)}" text-anchor="${anchor}" class="arena-radar-val" style="fill:${_aEsc(color)}">${a.value}</text><title>${_aEsc(a.quip)}</title></g>`; }).join('')}
+        ${axes.map((a, i) => { const cos = Math.cos(ang(i)), sin = Math.sin(ang(i)); const lx = c + (R + 22) * cos, ly = c + (R + 22) * sin; const anchor = Math.abs(cos) < 0.25 ? 'middle' : (cos > 0 ? 'start' : 'end'); const name = a.name.length > 13 ? a.name.slice(0, 12) + '…' : a.name; return `<g class="arena-radar-label"><text x="${lx.toFixed(1)}" y="${(ly + (sin < -0.3 ? -6 : sin > 0.3 ? 2 : -4)).toFixed(1)}" text-anchor="${anchor}">${_aEsc(name)}</text><text x="${lx.toFixed(1)}" y="${(ly + (sin < -0.3 ? 7 : sin > 0.3 ? 15 : 9)).toFixed(1)}" text-anchor="${anchor}" class="arena-radar-val" style="fill:${_aEsc(color)}">${a.value}</text><title>${_aEsc(a.name)} ${a.value}${a.quip ? ` — ${_aEsc(a.quip)}` : ''}</title></g>`; }).join('')}
     </svg>`;
 }
 function _aCustomQuips(f) {
@@ -221,6 +221,7 @@ async function _aRenderHome(root) {
             <div class="arena-ladder">
                 <h2><i class="fa-solid fa-fire"></i> Trash Level ladder <small>XP from beef hits, judged moments on subjects, chat hype</small></h2>
                 ${_aLevelsList(boardData.levels || [])}
+                ${(boardData.fighters_week || []).length ? `<div class="arena-yap-week"><span class="arena-note"><i class="fa-solid fa-crown" style="color:#f5c542"></i> this week:</span> ${boardData.fighters_week.map((f, i) => _aA(_aFighterLink(f.user), `${i === 0 ? '👑 ' : ''}${_aEsc(f.fighter_name)} <b>+${f.gained}</b>`, 'arena-tag')).join(' ')}</div>` : ''}
             </div>
             <div class="arena-ladder arena-ladder-yap" id="arena-yappers">
                 ${_aYappersSection(boardData)}
@@ -274,14 +275,15 @@ async function _aRenderMe() {
     if (!me.checked_in) { try { const r = await api('/arena/checkin', { method: 'POST' }); if (!r.already) { _aToast(`+${r.gained} XP — daily check-in${r.streak >= 2 ? ` · ${r.streak}-day streak` : ''}${r.leveled_up ? ` · LEVEL ${r.level}!` : ''}`, 'success'); if (r.leveled_up) _aLevelUp(r.level); me = await api('/arena/me'); } } catch { /* */ } }
     const c = me.chatter, pct = c.xp_for_next ? Math.round((c.xp_into_level / c.xp_for_next) * 100) : 100;
     el.innerHTML = `<div class="arena-me-inner">
-        <div class="arena-me-left">${_aYapRing(c, 56)}<div><div class="arena-me-name"><b>${_aEsc(c.name)}</b> <span class="arena-lvl">YAP ${c.level} · ${_aEsc((c.card && c.card.title) || c.title)}</span>${c.streak >= 2 ? `<span class="arena-tag arena-tag-hot arena-streak"><i class="fa-solid fa-fire"></i> ${c.streak}-day streak</span>` : ''}</div>
+        <div class="arena-me-left">${_aYapRing(c, 56)}<div><div class="arena-me-name"><b>${_aEsc(c.name)}</b> ${me.progress ? _aTierBadge(me.progress.tier) : ''} <span class="arena-lvl">YAP ${c.level} · ${_aEsc((c.card && c.card.title) || c.title)}</span>${c.streak >= 2 ? `<span class="arena-tag arena-tag-hot arena-streak"><i class="fa-solid fa-fire"></i> ${c.streak}-day streak</span>` : ''}</div>
             <span class="arena-xp-track"><span class="arena-xp-fill" style="width:${pct}%"></span></span>
-            <small class="arena-note">${c.xp_into_level}/${c.xp_for_next} to level ${c.level + 1} · <b>+${me.xp_today} XP today</b> · ${me.coins_from_arena} OpenCoins banked from levels</small></div></div>
+            <small class="arena-note">${c.xp_into_level}/${c.xp_for_next} to level ${c.level + 1} · <b>+${me.xp_today} XP today</b>${me.progress?.tier?.next ? ` · ${me.progress.tier.next.xp - me.progress.xp} to ${_aEsc(me.progress.tier.next.name)}` : ''} · ${me.progress ? `${me.progress.earned}/${me.progress.total} achievements` : ''} · ${me.coins_from_arena} OpenCoins from levels</small></div></div>
         <div class="arena-me-right">
             ${me.on_clock.length ? me.on_clock.map(b => `<div class="arena-me-alert">${_aA(_aBeefLink(b), `<i class="fa-solid fa-stopwatch"></i> <b>${_aEsc((b.a.user.id === c.user?.id ? b.b : b.a).fighter_name)}</b> has words for you — answer on stream`)} ${_aClockTag(b)}</div>`).join('') : ''}
             ${me.fighter ? `<div class="arena-me-row"><i class="fa-solid fa-hand-fist"></i> Fighter #${me.fighter.rank} · PWR ${me.fighter.power} · TL ${me.fighter.level.level} · ${me.fighter.record.wins}W–${me.fighter.record.losses}L ${me.fighter.live ? _aA(_aConsoleLink(me.fighter.user), '<i class="fa-solid fa-ear-listen"></i> your ears', 'arena-tag arena-tag-hot') : ''}</div>` : ''}
             ${me.subjects.length ? `<div class="arena-me-row"><i class="fa-solid fa-comments"></i> You're in: ${me.subjects.map(s => _aA(`/arena/topic/${s.id}`, `${_aEsc(s.headline || s.text)} <b>${s.moments}</b>`, 'arena-thread')).join(' ')}</div>` : `<div class="arena-me-row arena-note"><i class="fa-solid fa-keyboard"></i> Type about ${me.hot_now.length ? me.hot_now.map(h => _aA(`/arena/topic/${h.id}`, _aEsc(h.headline), 'arena-thread')).join(' ') : 'any subject on the board'} in chat — every line that lands is XP.</div>`}
-            ${_aA(_aChatterLink(c.key), 'your yap page <i class="fa-solid fa-arrow-right"></i>', 'arena-subject-open')}
+            ${me.progress ? `<div class="arena-me-row arena-me-ach">${me.progress.achievements.filter(a => !a.earned_at).slice(0, 3).map(a => `<span class="arena-ach is-locked is-mini" title="${_aEsc(a.desc)}"><span class="arena-ach-icon">${a.icon}</span><span class="arena-ach-name">${_aEsc(a.name)}</span><span class="arena-ach-hint">${_aEsc(a.desc)} · +${a.xp} XP${a.coins ? ` · +${a.coins} coins` : ''}</span></span>`).join('')}</div>` : ''}
+            ${_aA(_aChatterLink(c.key), 'your page <i class="fa-solid fa-arrow-right"></i>', 'arena-subject-open')}
         </div>
     </div>`;
     _aEvery(1000, () => _aTickClocks(el));
@@ -566,6 +568,7 @@ async function _aRenderChatter(root, key) {
                 <div class="arena-yap-stats"><span><b>${y.moments}</b> moments</span><span><b>${y.subjects}</b> subjects</span><span><b>${y.subjects_started}</b> started</span><span><b>${y.quoted}</b> quoted in lore</span><span><b>${y.hypes}</b> hypes</span><span><b>${y.streak}</b> day streak <small>(best ${y.best_streak})</small></span></div>
             </div>
         </div>
+        ${_aProgressPanel(y.progress)}
         ${card.blurb ? `<section class="arena-yap-cardbox"><h3><i class="fa-solid fa-id-badge"></i> Yap card <small>AI-written from their chat history${y.card_at ? ` · ${_aEsc(_aAgo(y.card_at))}` : ''}</small></h3><p>${_aEsc(card.blurb)}</p>${card.catchphrase ? `<q class="arena-yap-line">${_aEsc(card.catchphrase)}</q>` : ''}${card.known_for?.length ? `<div class="arena-keywords"><span class="arena-note">known for:</span>${card.known_for.map(k => `<span>${_aEsc(k)}</span>`).join('')}</div>` : ''}</section>` : `<p class="arena-note">The AI writes a yap card at level ${3}+ from their chat history — keep yapping.</p>`}
         ${y.chat_ai?.overview ? `<section class="arena-yap-cardbox"><h3><i class="fa-solid fa-brain"></i> What the chat AI has on them</h3><p>${_aEsc(y.chat_ai.overview)}</p></section>` : ''}
         <div class="arena-topic-cols">
@@ -588,7 +591,7 @@ function _aRenderList(fighters) {
             <span class="arena-rank ${f.rank <= 3 ? `arena-rank-${f.rank}` : ''}">${f.rank}</span>
             ${_aPortrait(f, 'sm')}
             <span class="arena-row-main">
-                <strong>${_aEsc(f.persona.fighter_name)} ${f.live ? '<span class="arena-live-pill">LIVE</span>' : ''} ${_aLevelPill(f.level?.level)}<i class="fa-solid fa-chevron-right arena-chevron"></i></strong>
+                <strong>${_aEsc(f.persona.fighter_name)} ${f.live ? '<span class="arena-live-pill">LIVE</span>' : ''} ${_aTierBadge(f.tier)} ${_aLevelPill(f.level?.level)}<i class="fa-solid fa-chevron-right arena-chevron"></i></strong>
                 <span class="arena-row-sub">${_aEsc(f.user.display_name)} · ${_aEsc(f.persona.class)} · ${_aEsc(f.persona.element)}${f.voice?.has_data ? ` · <i class="fa-solid fa-microphone" title="has transcript data"></i> Mic ${f.ratings.mic}` : ''}</span>
                 <em class="arena-row-taunt">“${_aEsc(f.persona.taunt)}”</em>
             </span>
@@ -833,6 +836,22 @@ function _aVoiceCard(f) {
     </div>`;
 }
 
+function _aTierBadge(t, cls = '') { return t ? `<span class="arena-tier ${cls}" style="--tc:${_aEsc(t.color)}" title="${_aEsc(t.name)} tier${t.next ? ` · ${t.progress}% to ${_aEsc(t.next.name)}` : ''}"><i class="fa-solid fa-shield-halved"></i> ${_aEsc(t.name)}</span>` : ''; }
+function _aProgressPanel(pr, { compact = false } = {}) {
+    if (!pr) return '';
+    const t = pr.tier;
+    const earned = pr.achievements.filter(a => a.earned_at), locked = pr.achievements.filter(a => !a.earned_at);
+    return `<section class="arena-progress-panel">
+        <div class="arena-progress-head">
+            ${_aTierBadge(t, 'arena-tier-big')}
+            <div class="arena-progress-bar"><div class="arena-tier-track">${pr.tiers.map((x, i) => `<span class="arena-tier-step ${i <= t.index ? 'is-done' : ''} ${i === t.index ? 'is-now' : ''}" style="--tc:${_aEsc(x.color)}" title="${_aEsc(x.name)} · ${x.min} XP"></span>`).join('')}</div>
+                <small class="arena-note"><b>${pr.xp} XP</b> all-time · ${t.next ? `${t.next.xp - pr.xp} more to <b style="color:${_aEsc(t.next.color)}">${_aEsc(t.next.name)}</b>` : 'top tier'} · <b>+${pr.week_xp}</b> this week · ${pr.earned}/${pr.total} unlocked</small></div>
+        </div>
+        <div class="arena-ach-grid">${[...earned, ...locked].slice(0, compact ? 8 : 40).map(a => `<div class="arena-ach ${a.earned_at ? 'is-earned' : 'is-locked'}" title="${_aEsc(a.desc)} · +${a.xp} XP${a.coins ? ` · +${a.coins} OpenCoins` : ''}${a.earned_at ? ` · ${_aEsc(_aAgo(a.earned_at))}` : ''}"><span class="arena-ach-icon">${a.icon}</span><span class="arena-ach-name">${_aEsc(a.name)}</span>${a.earned_at ? '' : `<span class="arena-ach-hint">${_aEsc(a.desc)}</span>`}</div>`).join('')}</div>
+        ${pr.history.length ? `<details class="arena-done arena-history" ${compact ? '' : 'open'}><summary><i class="fa-solid fa-scroll"></i> History <small>${pr.history.length}</small></summary><div class="arena-history-list">${pr.history.slice(0, compact ? 6 : 30).map(e => `<div class="arena-history-row"><span class="arena-history-kind ${_aEsc(e.kind)}"><i class="fa-solid ${({ beef: 'fa-fire-flame-curved', beef_over: 'fa-flag-checkered', level: 'fa-arrow-up', tier: 'fa-shield-halved', achievement: 'fa-medal', subject: 'fa-comment-dots', quoted: 'fa-quote-left' })[e.kind] || 'fa-circle'}"></i></span><span class="arena-history-body">${e.url ? _aA(e.url, `<b>${_aEsc(e.title)}</b>`) : `<b>${_aEsc(e.title)}</b>`}${e.detail ? `<small>${_aEsc(e.detail)}</small>` : ''}</span><span class="arena-history-when">${_aEsc(_aAgo(e.created_at))}</span></div>`).join('')}</div></details>` : ''}
+    </section>`;
+}
+
 function _aLevelCard(f) {
     const l = f.level || {};
     const pct = l.xp_per_level ? Math.round((l.xp_into_level / l.xp_per_level) * 100) : 0;
@@ -870,38 +889,41 @@ async function _aRenderFighter(root, username) {
                 </div>
                 <div class="arena-profile-power">
                     <div class="arena-power arena-power-lg"><b>${f.ratings.power}</b><small>POWER</small></div>
+                    ${f.progress ? _aTierBadge(f.progress.tier, 'arena-tier-big') : ''}
                     ${f.ratings.talk_bonus ? `<div class="arena-talk-bonus" title="Mouth bonus — recent Trash Level XP and beef wins, decays over a week"><i class="fa-solid fa-microphone-lines"></i> +${f.ratings.talk_bonus} mouth</div>` : ''}
                     <div class="arena-record arena-record-lg" title="beef record">${f.record.wins}W – ${f.record.losses}L</div>
                 </div>
+                ${_aProgressPanel(f.progress)}
                 ${_aLevelCard(f)}
                 <div class="arena-profile-custom">
-                    <div>${_aCustomRadar(f, color, 260)}<div class="arena-mini-record">${(p.custom_stats || []).length ? 'their characteristics — AI-read from their chat history + channel' : 'objective stats (the AI characteristics appear once the persona is generated)'}</div></div>
+                    <div>${_aCustomRadar(f, color, 280)}<div class="arena-mini-record">${(p.custom_stats || []).length ? 'their characteristics — AI-read from their chat history + channel' : 'objective stats (the AI characteristics appear once the persona is generated)'}</div></div>
                     ${(p.custom_stats || []).length ? _aCustomQuips(f) : ''}
                 </div>
+                <section class="arena-sheet">
+                    <h3><i class="fa-solid fa-file-invoice"></i> Rap sheet</h3>
+                    <p class="arena-sheet-lore">${_aEsc(p.lore)}</p>
+                    <div class="arena-sheet-rows">
+                        <div class="arena-sheet-row"><span class="arena-sheet-k">Signature</span><span><b>${_aEsc(p.signature_move?.name)}</b> — ${_aEsc(p.signature_move?.description)}</span></div>
+                        <div class="arena-sheet-row"><span class="arena-sheet-k">Special</span><span><b>${_aEsc(p.special?.name)}</b> — ${_aEsc(p.special?.description)}</span></div>
+                        <div class="arena-sheet-row is-weak"><span class="arena-sheet-k">Weakness</span><span>${_aEsc(p.weakness)}</span></div>
+                        <div class="arena-sheet-row"><span class="arena-sheet-k">Walk-out</span><span><i class="fa-solid fa-music"></i> ${_aEsc(p.entrance_music)}</span></div>
+                        <div class="arena-sheet-row"><span class="arena-sheet-k">Catchphrase</span><span>“${_aEsc(p.catchphrase)}”</span></div>
+                        ${p.typing_style ? `<div class="arena-sheet-row"><span class="arena-sheet-k">Types like</span><span>${_aEsc(p.typing_style)}</span></div>` : ''}
+                    </div>
+                    ${f.persona_is_fallback ? '<p class="arena-note">Stats-only profile — the AI writes the rest once it has data.</p>' : ''}
+                </section>
+                <section class="arena-taunts">
+                    <h3><i class="fa-solid fa-comment-dots"></i> Ragebait <small>in their own typing voice · 🔊 reads it in their chat voice</small></h3>
+                    <div class="arena-bubbles">${[p.taunt, ...(p.taunts || [])].filter(Boolean).map(x => `<div class="arena-bubble"><span class="arena-bubble-who">${_aEsc(f.user.display_name || f.user.username)}</span><span class="arena-bubble-text">${_aEsc(x)}</span>${_aSpeakBtn(x, 'arena-bubble-speak', f.user.username)}</div>`).join('')}</div>
+                </section>
+                ${_aVoiceCard(f)}
                 <div class="arena-profile-stats is-bars">
-                    <div class="arena-bars-head"><b>The numbers</b> <small>percentile across the roster · these make POWER · tap one for the breakdown</small></div>
-                    <div class="arena-bars">${ARENA_STATS.map(k => `<div class="arena-bar is-clickable" data-stat="${k}" title="${_aEsc((p.stat_quips || {})[k] || ARENA_STAT_LABEL[k])}"><span class="arena-bar-label">${_aEsc(ARENA_STAT_LABEL[k])}</span><span class="arena-bar-track"><span class="arena-bar-fill" style="width:${Math.max(0, Math.min(100, f.ratings[k] || 0))}%;background:${_aEsc(color)}"></span></span><span class="arena-bar-val">${f.ratings[k] ?? '–'}</span></div>`).join('')}</div>
+                    <div class="arena-bars-head"><b>The numbers</b> <small>percentile across the roster · these make POWER · tap one</small></div>
+                    <div class="arena-numgrid">${ARENA_STATS.map(k => `<div class="arena-num is-clickable" data-stat="${k}" title="${_aEsc((p.stat_quips || {})[k] || ARENA_STAT_LABEL[k])}"><span class="arena-num-label">${_aEsc(ARENA_STAT_LABEL[k])}</span><span class="arena-num-track"><span class="arena-num-fill" style="width:${Math.max(0, Math.min(100, f.ratings[k] || 0))}%;background:${_aEsc(color)}"></span></span><span class="arena-num-val">${f.ratings[k] ?? '–'}</span></div>`).join('')}</div>
                     <div id="arena-stat-detail"></div>
                 </div>
-                <div class="arena-lore">
-                    <p class="arena-lore-text">${_aEsc(p.lore)}</p>
-                    <div class="arena-moves">
-                        <div class="arena-move"><span class="arena-move-kind">Signature</span><b>${_aEsc(p.signature_move?.name)}</b><span>${_aEsc(p.signature_move?.description)}</span></div>
-                        <div class="arena-move"><span class="arena-move-kind">Special</span><b>${_aEsc(p.special?.name)}</b><span>${_aEsc(p.special?.description)}</span></div>
-                        <div class="arena-move arena-move-weak"><span class="arena-move-kind">Weakness</span><b>${_aEsc(p.weakness)}</b></div>
-                    </div>
-                    <div class="arena-flavor">
-                        <span><i class="fa-solid fa-comment"></i> “${_aEsc(p.taunt)}” ${_aSpeakBtn(p.taunt, 'arena-speak', f.user.username)}</span>
-                        ${(p.taunts || []).map(x => `<span><i class="fa-solid fa-fire"></i> “${_aEsc(x)}” ${_aSpeakBtn(x, 'arena-speak', f.user.username)}</span>`).join('')}
-                        ${p.typing_style ? `<span class="arena-note"><i class="fa-solid fa-keyboard"></i> ${_aEsc(p.typing_style)}</span>` : ''}
-                        <span><i class="fa-solid fa-music"></i> ${_aEsc(p.entrance_music)}</span>
-                        <span><i class="fa-solid fa-quote-left"></i> ${_aEsc(p.catchphrase)}</span>
-                    </div>
-                    ${f.persona_is_fallback ? '<p class="arena-note">Stats-only profile — AI lore appears once the AI is enabled.</p>' : ''}
-                </div>
-                ${_aVoiceCard(f)}
-                <div class="arena-numbers">
-                    ${[['Hours live (90d)', f.raw.hours], ['Peak viewers', f.raw.peak_viewers], ['Avg viewers', f.raw.avg_viewers], ['Chat msgs / hr', f.raw.messages_per_hour], ['Followers', f.raw.followers], ['Clips', f.raw.clips], ['All-time hours', f.raw.all_time_hours], ['All-time peak', f.raw.all_time_peak]]
+                <div class="arena-numbers arena-numbers-compact">
+                    ${[['Hours (90d)', f.raw.hours], ['Peak', f.raw.peak_viewers], ['Avg', f.raw.avg_viewers], ['Msgs/hr', f.raw.messages_per_hour], ['Followers', f.raw.followers], ['Clips', f.raw.clips]]
                         .map(([l, v]) => `<div class="arena-number"><b>${_aEsc(_aNum(v))}</b><span>${_aEsc(l)}</span></div>`).join('')}
                 </div>
             </div>
@@ -912,7 +934,7 @@ async function _aRenderFighter(root, username) {
     _aBindHome(root);
     _aEvery(1000, () => _aTickClocks(root));
 
-    root.querySelectorAll('.arena-bar.is-clickable, .arena-quip.is-clickable').forEach(el => el.addEventListener('click', async () => {
+    root.querySelectorAll('.arena-num.is-clickable, .arena-quip.is-clickable').forEach(el => el.addEventListener('click', async () => {
         const stat = el.dataset.stat;
         const box = document.getElementById('arena-stat-detail');
         if (box.dataset.stat === stat) { box.innerHTML = ''; box.dataset.stat = ''; return; }

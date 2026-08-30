@@ -147,6 +147,7 @@ function addXp(key, amount, reason, refId = null, { display = null, streamId = n
     db.run('INSERT INTO chatter_xp_log (key, amount, reason, ref_id) VALUES (?, ?, ?, ?)', [key, amount, reason, refId]);
     const leveled = level > (before.level || 1);
     if (leveled) onLevelUp(key, before.level || 1, level, { streamId });
+    if (!String(reason).startsWith('ach_')) { try { require('./progress').check(key, { streamId }); } catch (e) { console.warn('[Arena] progress:', e.message); } }
     return { leveled_up: leveled, level, xp, gained: amount, title: titleFor(level) };
 }
 
@@ -154,6 +155,7 @@ function onLevelUp(key, from, to, { streamId = null } = {}) {
     const p = parseKey(key);
     const name = displayFor(key);
     console.log(`[Arena] yapper ${name} (${key}) → level ${to} ${titleFor(to)}`);
+    try { require('./progress').event(key, 'level', `Yap level ${to} — ${titleFor(to)}`); } catch { /* */ }
     // Site-wide OpenCoins for OpenVibe accounts — one payout per level, idempotent in the wallet.
     if (p && p.kind === 'user') {
         try {
@@ -208,7 +210,7 @@ function onMoment(moment, topic, { hot = false } = {}) {
     xp += streakBonus(key);
     db.run(`UPDATE chatter_profiles SET moments = moments + 1, subjects = (SELECT COUNT(*) FROM chatter_subjects s WHERE s.key = chatter_profiles.key), best_line = CASE WHEN best_line IS NULL OR LENGTH(?) > LENGTH(best_line) THEN ? ELSE best_line END, best_line_topic_id = CASE WHEN best_line IS NULL OR LENGTH(?) > LENGTH(best_line) THEN ? ELSE best_line_topic_id END WHERE key = ?`,
         [moment.text, clip(moment.text, 200), moment.text, topic.id, key]);
-    return addXp(key, xp, first ? 'moment_first' : 'moment', topic.id, { display: moment.username, streamId: moment.stream_id || null });
+    return addXp(key, xp, hot ? 'moment_hot' : (first ? 'moment_first' : 'moment'), topic.id, { display: moment.username, streamId: moment.stream_id || null });
 }
 
 /** Daily streak: the first moment of a day extends the streak (or restarts it) and pays a bonus. */
@@ -245,7 +247,7 @@ function onLore(topic, loreText, moments) {
         const key = m.chatter_key || keyFor(m);
         if (!key || seen.has(key)) continue;
         const name = String(m.username || '').replace(/^\[[^\]]+\]\s+/, '').toLowerCase();
-        if (name.length >= 3 && text.includes(name)) { seen.add(key); db.run('UPDATE chatter_profiles SET quoted = quoted + 1 WHERE key = ?', [key]); addXp(key, XP_QUOTED_IN_LORE, 'quoted_in_lore', topic.id, { display: m.username }); n++; const p = parseKey(key); if (p?.kind === 'user') { try { require('./notify').arenaNotify(p.user_id, { type: 'quoted', title: `You made the lore of “${String(topic.headline || topic.text).slice(0, 60)}”`, message: `+${XP_QUOTED_IN_LORE} XP for getting quoted.`, icon: '📜', url: `/arena/topic/${topic.id}`, key: `quoted:${topic.id}` }); } catch { /* */ } } }
+        if (name.length >= 3 && text.includes(name)) { seen.add(key); db.run('UPDATE chatter_profiles SET quoted = quoted + 1 WHERE key = ?', [key]); addXp(key, XP_QUOTED_IN_LORE, 'quoted_in_lore', topic.id, { display: m.username }); n++; try { require('./progress').event(key, 'quoted', `Quoted in “${topic.headline || topic.text}”`, { url: `/arena/topic/${topic.id}` }); } catch { /* */ } const p = parseKey(key); if (p?.kind === 'user') { try { require('./notify').arenaNotify(p.user_id, { type: 'quoted', title: `You made the lore of “${String(topic.headline || topic.text).slice(0, 60)}”`, message: `+${XP_QUOTED_IN_LORE} XP for getting quoted.`, icon: '📜', url: `/arena/topic/${topic.id}`, key: `quoted:${topic.id}` }); } catch { /* */ } } }
     }
     return n;
 }

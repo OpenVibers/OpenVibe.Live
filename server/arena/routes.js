@@ -51,7 +51,7 @@ router.get('/fighters/:user', async (req, res) => {
     try {
         const card = await arena.getFighter(req.params.user, { generate: req.query.generate !== '0' });
         if (!card) return res.status(404).json({ error: 'No such fighter' });
-        if (!card.not_on_roster) { try { card.rivalries = beef.rivalriesFor(card.user.id); } catch { card.rivalries = []; } }
+        if (!card.not_on_roster) { try { card.rivalries = beef.rivalriesFor(card.user.id); } catch { card.rivalries = []; } try { card.progress = require('./progress').view(`user:${card.user.id}`); } catch { card.progress = null; } }
         res.set('Cache-Control', 'no-store');
         res.json(card);
     } catch (err) { fail(res, err, 'Failed to load fighter'); }
@@ -99,7 +99,7 @@ router.get('/board', (req, res) => {
     try {
         const v = board.boardView();
         res.set('Cache-Control', 'no-store');
-        const ch = require('./chatters'); res.json({ ...v, levels: board.levelsLeaderboard(8), yappers: ch.leaderboard(8), yappers_week: ch.leaderboard(5, { days: 7 }), yappers_total: ch.count(), ai: arena.aiOn() });
+        const ch = require('./chatters'); let fightersWeek = []; try { fightersWeek = require('./progress').weeklyFighters(5); } catch { /* */ } res.json({ ...v, levels: board.levelsLeaderboard(8), fighters_week: fightersWeek, yappers: ch.leaderboard(8), yappers_week: ch.leaderboard(5, { days: 7 }), yappers_total: ch.count(), ai: arena.aiOn() });
     } catch (err) { fail(res, err, 'Failed to load the board'); }
 });
 router.post('/board/topics', requireAuth, async (req, res) => {
@@ -183,18 +183,20 @@ router.get('/me', requireAuth, (req, res) => {
         const subjects = db.all(`SELECT t.id, t.headline, t.text, t.heat, s.moments FROM chatter_subjects s JOIN arena_topics t ON t.id = s.topic_id WHERE s.key = ? AND t.status = 'open' ORDER BY t.heat DESC LIMIT 5`, [key]);
         const onClock = beefs.filter(b => (b.on_clock === 'a' ? b.a.user.id : b.b.user.id) === req.user.id);
         res.set('Cache-Control', 'no-store');
-        res.json({ chatter, xp_today: xpToday, checked_in: checkedIn, coins_from_arena: coins, fighter, beefs, on_clock: onClock, subjects, hot_now: board.boardView().open.filter(t => t.hot).slice(0, 3).map(t => ({ id: t.id, headline: t.headline || t.text })) });
+        let progress = null; try { progress = require('./progress').view(key); } catch { /* */ }
+        res.json({ chatter, progress, xp_today: xpToday, checked_in: checkedIn, coins_from_arena: coins, fighter, beefs, on_clock: onClock, subjects, hot_now: board.boardView().open.filter(t => t.hot).slice(0, 3).map(t => ({ id: t.id, headline: t.headline || t.text })) });
     } catch (err) { fail(res, err, 'Failed to load your arena'); }
 });
 router.post('/checkin', requireAuth, (req, res) => {
     try { res.json(require('./chatters').checkin(req.user.id, { display: req.user.display_name || req.user.username })); } catch (err) { fail(res, err, 'Check-in failed'); }
 });
 
+router.get('/progress/:key', (req, res) => { try { res.set('Cache-Control', 'no-store'); res.json(require('./progress').view(String(req.params.key || ''))); } catch (err) { fail(res, err, 'Failed'); } });
 router.get('/levels', (req, res) => { try { res.json({ levels: board.levelsLeaderboard(20) }); } catch (err) { fail(res, err, 'Failed'); } });
 router.get('/yappers', (req, res) => { try { const ch = require('./chatters'); res.json({ yappers: ch.leaderboard(20), week: ch.leaderboard(10, { days: 7 }), total: ch.count() }); } catch (err) { fail(res, err, 'Failed'); } });
 // Chatter (yapper) profile by key: user:<id> · anon:<n> · relay:<platform>:<name> — anyone who chats has one.
 router.get('/chatter/:key', (req, res) => {
-    try { const p = require('./chatters').profile(String(req.params.key || '')); if (!p) return res.status(404).json({ error: 'No such chatter yet — say something about a subject first' }); res.set('Cache-Control', 'no-store'); res.json(p); }
+    try { const p = require('./chatters').profile(String(req.params.key || '')); if (!p) return res.status(404).json({ error: 'No such chatter yet — say something about a subject first' }); try { p.progress = require('./progress').view(p.key); } catch { p.progress = null; } res.set('Cache-Control', 'no-store'); res.json(p); }
     catch (err) { fail(res, err, 'Failed to load chatter'); }
 });
 router.get('/chatter/by-user/:username', (req, res) => {
