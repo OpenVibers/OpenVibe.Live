@@ -180,6 +180,7 @@ async function loadArenaPage(segments = []) {
         if (first === 'beef' && second) return await _aRenderBeef(root, Number(second));
         if (first === 'topic' && second) return await _aRenderTopic(root, Number(second));
         if (first === 'live' && second) return await _aRenderConsole(root, second);
+        if (first === 'chatter' && second) return await _aRenderChatter(root, decodeURIComponent(second));
         if (first) return await _aRenderFighter(root, first);
         return await _aRenderHome(root);
     } catch (err) {
@@ -213,9 +214,8 @@ async function _aRenderHome(root) {
                 <h2><i class="fa-solid fa-fire"></i> Trash Level ladder <small>XP from beef hits, judged moments on subjects, chat hype</small></h2>
                 ${_aLevelsList(boardData.levels || [])}
             </div>
-            <div class="arena-ladder">
-                <h2><i class="fa-solid fa-keyboard"></i> Yappers <small>chatters who keep the subjects alive (7 days)</small></h2>
-                ${_aYappersList(boardData.yappers || [])}
+            <div class="arena-ladder arena-ladder-yap" id="arena-yappers">
+                ${_aYappersSection(boardData)}
             </div>
         </section>
         <section class="arena-leaderboard">
@@ -245,7 +245,8 @@ async function _aRenderHome(root) {
     _aEvery(20000, async () => {
         try {
             const [b, l, bd] = await Promise.all([api('/arena/beefs'), api('/arena/live'), api('/arena/board')]);
-            const beefsEl = document.getElementById('arena-beefs'), liveEl = document.getElementById('arena-live'), boardEl = document.getElementById('arena-board'), pulseEl = document.getElementById('arena-pulse');
+            const beefsEl = document.getElementById('arena-beefs'), liveEl = document.getElementById('arena-live'), boardEl = document.getElementById('arena-board'), pulseEl = document.getElementById('arena-pulse'), yapEl = document.getElementById('arena-yappers');
+            if (yapEl) { const prevTop = yapEl.dataset.top; yapEl.innerHTML = _aYappersSection(bd); if (prevTop && bd.yappers?.[0] && prevTop !== bd.yappers[0].key) _aFlash(yapEl, 'new #1 yapper'); yapEl.dataset.top = bd.yappers?.[0]?.key || ''; }
             if (beefsEl) beefsEl.innerHTML = _aRenderBeefs(b);
             if (liveEl) liveEl.innerHTML = _aRenderLive(l.live || []);
             if (boardEl) boardEl.innerHTML = _aRenderBoard(bd);
@@ -511,13 +512,74 @@ function _aLevelsList(rows) {
         <span class="arena-lvl arena-lvl-big">LVL ${r.level}</span>
     </div>`).join('')}</div>`;
 }
-function _aYappersList(rows) {
-    if (!rows.length) return '<p class="arena-note">Type about a subject on the board in any chat — your lines become moments and you show up here.</p>';
-    return `<div class="arena-mini-list">${rows.map((r, i) => `<div class="arena-mini-row">
-        <span class="arena-rank ${i < 3 ? `arena-rank-${i + 1}` : ''}">${i + 1}</span>
-        <span class="arena-chip"><span><strong>${r.username ? _aA(_aChannelLink(r), _aEsc(r.name)) : _aEsc(r.name)}</strong><small>${r.moments} moment${r.moments === 1 ? '' : 's'} on ${r.topics} subject${r.topics === 1 ? '' : 's'}${r.last ? ` · “${_aEsc(String(r.last).slice(0, 60))}”` : ''}</small></span></span>
-        <span class="arena-lvl">${r.moments}</span>
-    </div>`).join('')}</div>`;
+function _aChatterLink(key) { return `/arena/chatter/${encodeURIComponent(key)}`; }
+function _aYapRing(y, size = 44) {
+    const pct = y.xp_for_next ? Math.max(0.04, Math.min(1, y.xp_into_level / y.xp_for_next)) : 1;
+    const r = (size / 2) - 3, c = 2 * Math.PI * r;
+    const color = y.user?.profile_color || (y.kind === 'relay' ? '#60a5fa' : y.kind === 'anon' ? '#9ca3af' : '#f97316');
+    return `<span class="arena-yap-ring" style="--yc:${_aEsc(color)};width:${size}px;height:${size}px"><svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${r}" class="arena-yap-ring-bg"></circle><circle cx="${size / 2}" cy="${size / 2}" r="${r}" class="arena-yap-ring-fg" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - pct)).toFixed(1)}"></circle></svg><b>${y.level}</b></span>`;
+}
+function _aYapKind(y) { return y.kind === 'relay' ? `<span class="arena-tag arena-tag-dim" title="relayed from ${_aEsc(y.platform || 'another platform')}"><i class="fa-solid fa-satellite-dish"></i> ${_aEsc(y.platform || 'relay')}</span>` : y.kind === 'anon' ? '<span class="arena-tag arena-tag-dim" title="anonymous viewer"><i class="fa-solid fa-user-secret"></i> anon</span>' : ''; }
+function _aYapCard(y, i) {
+    const card = y.card || {};
+    return `<div class="arena-yap-card ${i === 0 ? 'is-top' : ''}" style="--yc:${_aEsc(y.user?.profile_color || '#f97316')}">
+        <div class="arena-yap-rank">${i + 1}</div>
+        ${_aYapRing(y, i === 0 ? 64 : 52)}
+        <div class="arena-yap-main">
+            <div class="arena-yap-name">${_aA(_aChatterLink(y.key), `<strong>${_aEsc(y.name)}</strong>`)} ${_aYapKind(y)} ${y.streak >= 2 ? `<span class="arena-tag arena-tag-hot arena-streak" title="days in a row"><i class="fa-solid fa-fire"></i> ${y.streak}</span>` : ''}</div>
+            <div class="arena-yap-title">${_aEsc(card.title || y.title)} <small>· ${_aEsc(y.title)} · ${y.xp} XP</small></div>
+            ${card.blurb ? `<p class="arena-yap-blurb">${_aEsc(card.blurb)}</p>` : (y.best_line ? `<q class="arena-yap-line">${_aEsc(y.best_line.text)}</q>` : '')}
+            <div class="arena-yap-stats"><span><b>${y.moments}</b> moments</span><span><b>${y.subjects}</b> subjects</span>${y.quoted ? `<span><b>${y.quoted}</b> quoted in lore</span>` : ''}${y.gained != null ? `<span><b>+${y.gained}</b> this week</span>` : ''}</div>
+        </div>
+    </div>`;
+}
+function _aYappersSection(bd) {
+    const rows = bd.yappers || [], week = bd.yappers_week || [];
+    return `<h2><i class="fa-solid fa-keyboard"></i> Yappers <small>${bd.yappers_total || rows.length} chatters with a yap level · accounts, anons and relayed chatters alike</small></h2>
+        ${rows.length ? `<div class="arena-yap-podium">${rows.slice(0, 3).map(_aYapCard).join('')}</div>
+        ${rows.length > 3 ? `<div class="arena-mini-list">${rows.slice(3).map((y, i) => `<div class="arena-mini-row arena-yap-row">
+            <span class="arena-rank">${i + 4}</span>
+            ${_aYapRing(y, 34)}
+            <span class="arena-chip"><span><strong>${_aA(_aChatterLink(y.key), _aEsc(y.name))} ${_aYapKind(y)}</strong><small>${_aEsc((y.card && y.card.title) || y.title)} · ${y.moments} moments on ${y.subjects} subject${y.subjects === 1 ? '' : 's'}${y.streak >= 2 ? ` · 🔥 ${y.streak}` : ''}</small></span></span>
+            <span class="arena-lvl">${y.xp} XP</span>
+        </div>`).join('')}</div>` : ''}
+        ${week.length ? `<div class="arena-yap-week"><span class="arena-note"><i class="fa-solid fa-bolt"></i> hottest this week:</span> ${week.slice(0, 5).map(y => _aA(_aChatterLink(y.key), `${_aEsc(y.name)} <b>+${y.gained}</b>`, 'arena-tag')).join(' ')}</div>` : ''}` : '<p class="arena-note">Type about a subject on the board in any chat — your lines become moments, you get XP, a yap level and a card. Anons and relayed chatters too; OpenVibe accounts also get OpenCoins on every level-up.</p>'}`;
+}
+function _aFlash(el, text) {
+    const f = document.createElement('div'); f.className = 'arena-flash'; f.textContent = text; el.prepend(f); setTimeout(() => f.remove(), 2200);
+}
+
+// ── Chatter (yapper) page ────────────────────────────────────
+async function _aRenderChatter(root, key) {
+    root.innerHTML = _aSpinner('Pulling the yap sheet…');
+    let y;
+    try { y = await api(`/arena/chatter/${encodeURIComponent(key)}`); } catch (err) { root.innerHTML = `<div class="arena-empty"><i class="fa-solid fa-user-secret"></i><p>${_aEsc(err?.message || 'No yap profile yet')}</p>${_aA('/arena', 'Back to the Arena', 'btn')}</div>`; return; }
+    const card = y.card || {};
+    const next = y.titles.find(t => t.level > y.level);
+    root.innerHTML = `
+    <div class="arena-back">${_aA('/arena', '<i class="fa-solid fa-arrow-left"></i> Arena')} ${y.user ? _aA(_aChannelLink(y.user), `<i class="fa-solid fa-user"></i> @${_aEsc(y.user.username)}`) : ''}</div>
+    <div class="arena-yap-page" style="--yc:${_aEsc(y.user?.profile_color || '#f97316')}">
+        <div class="arena-yap-hero">
+            ${_aYapRing(y, 96)}
+            <div class="arena-yap-hero-main">
+                <h1>${_aEsc(y.name)} ${_aYapKind(y)}</h1>
+                <div class="arena-yap-hero-title"><span class="arena-lvl arena-lvl-big">YAP LVL ${y.level} · ${_aEsc(y.title)}</span>${card.title ? `<span class="arena-yap-card-title">“${_aEsc(card.title)}”</span>` : ''}${card.archetype ? `<span class="arena-tag">${_aEsc(card.archetype)}</span>` : ''}</div>
+                <span class="arena-xp-track"><span class="arena-xp-fill" style="width:${y.xp_for_next ? Math.round((y.xp_into_level / y.xp_for_next) * 100) : 100}%"></span></span>
+                <small class="arena-note">${y.xp} XP · ${y.xp_into_level}/${y.xp_for_next} to level ${y.level + 1}${next ? ` · next title <b>${_aEsc(next.title)}</b> at level ${next.level}` : ''} · rank #${y.rank}${y.coins ? ' · OpenCoins on every level-up' : ' · sign in to bank OpenCoins for your levels'}</small>
+                <div class="arena-yap-stats"><span><b>${y.moments}</b> moments</span><span><b>${y.subjects}</b> subjects</span><span><b>${y.subjects_started}</b> started</span><span><b>${y.quoted}</b> quoted in lore</span><span><b>${y.hypes}</b> hypes</span><span><b>${y.streak}</b> day streak <small>(best ${y.best_streak})</small></span></div>
+            </div>
+        </div>
+        ${card.blurb ? `<section class="arena-yap-cardbox"><h3><i class="fa-solid fa-id-badge"></i> Yap card <small>AI-written from their chat history${y.card_at ? ` · ${_aEsc(_aAgo(y.card_at))}` : ''}</small></h3><p>${_aEsc(card.blurb)}</p>${card.catchphrase ? `<q class="arena-yap-line">${_aEsc(card.catchphrase)}</q>` : ''}${card.known_for?.length ? `<div class="arena-keywords"><span class="arena-note">known for:</span>${card.known_for.map(k => `<span>${_aEsc(k)}</span>`).join('')}</div>` : ''}</section>` : `<p class="arena-note">The AI writes a yap card at level ${3}+ from their chat history — keep yapping.</p>`}
+        ${y.chat_ai?.overview ? `<section class="arena-yap-cardbox"><h3><i class="fa-solid fa-brain"></i> What the chat AI has on them</h3><p>${_aEsc(y.chat_ai.overview)}</p></section>` : ''}
+        <div class="arena-topic-cols">
+            <section class="arena-moments"><h3><i class="fa-solid fa-stream"></i> Their moments <small>${y.recent_moments.length}</small></h3>${y.recent_moments.length ? `<div class="arena-moment-list">${y.recent_moments.map(m => `<div class="arena-moment is-chat"><i class="fa-solid fa-keyboard"></i><div class="arena-moment-body"><q>${_aEsc(m.text)}</q><small>on ${_aA(`/arena/topic/${m.topic_id}`, _aEsc(m.subject_headline || m.subject))} · ${_aEsc(_aAgo(m.at))}</small></div></div>`).join('')}</div>` : '<p class="arena-note">Nothing yet.</p>'}</section>
+            <aside class="arena-topic-aside">
+                <section><h3><i class="fa-solid fa-comments"></i> Subjects they pile on</h3>${y.top_subjects.length ? `<div class="arena-mini-list">${y.top_subjects.map((t, i) => `<div class="arena-mini-row"><span class="arena-rank">${i + 1}</span><span class="arena-chip"><span><strong>${_aA(`/arena/topic/${t.id}`, _aEsc(t.headline || t.text))}</strong><small>${_aEsc(t.status)}</small></span></span><span class="arena-lvl">${t.moments}</span></div>`).join('')}</div>` : '<p class="arena-note">None yet.</p>'}</section>
+                <section><h3><i class="fa-solid fa-ranking-star"></i> Titles</h3><div class="arena-mini-list">${y.titles.map(t => `<div class="arena-mini-row ${t.level <= y.level ? 'is-earned' : ''}"><span class="arena-rank">${t.level}</span><span class="arena-chip"><span><strong>${_aEsc(t.title)}</strong><small>${t.xp} XP</small></span></span><span>${t.level <= y.level ? '<i class="fa-solid fa-check" style="color:#4ade80"></i>' : ''}</span></div>`).join('')}</div></section>
+                <section><h3><i class="fa-solid fa-coins"></i> How XP works</h3><ul class="arena-rules-list"><li>A chat line that lands on a subject: +3 (+6 when it's HOT), +4 the first time you touch a subject.</li><li>Starting a subject: +15. Getting quoted in a subject's lore: +10. Hyping: +1.</li><li>Show up daily: +5 × streak (up to 7).</li><li>Level = 1 + √(XP ÷ 25). OpenVibe accounts bank <b>level × 10 OpenCoins</b> on every level-up; anons and relayed chatters keep the level and the title.</li></ul></section>
+            </aside>
+        </div>
+    </div>`;
 }
 
 function _aRenderList(fighters) {

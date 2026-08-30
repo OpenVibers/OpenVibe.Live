@@ -69,6 +69,7 @@ async function housekeeping() {
     try { const r = board.scanChat(); if (r.moments) console.log(`[Arena] chat scan: ${r.moments} moment(s) from ${r.scanned} message(s)`); } catch (e) { console.warn('[Arena] chat scan:', e.message); }
     try { await board.discoverTopics(); } catch (e) { console.warn('[Arena] discover:', e.message); }   // every 5 min, only with new material
     try { await board.loreSweep(3); } catch (e) { console.warn('[Arena] lore:', e.message); }           // only topics with ≥ 3 new moments
+    try { await require('./chatters').cardSweep(); } catch (e) { console.warn('[Arena] yap cards:', e.message); } // ≤ 4 chatters per minute, level ≥ 3, once a day each
 }
 
 function stop() {

@@ -99,7 +99,7 @@ router.get('/board', (req, res) => {
     try {
         const v = board.boardView();
         res.set('Cache-Control', 'no-store');
-        res.json({ ...v, levels: board.levelsLeaderboard(8), yappers: board.yappersLeaderboard(8), ai: arena.aiOn() });
+        const ch = require('./chatters'); res.json({ ...v, levels: board.levelsLeaderboard(8), yappers: ch.leaderboard(8), yappers_week: ch.leaderboard(5, { days: 7 }), yappers_total: ch.count(), ai: arena.aiOn() });
     } catch (err) { fail(res, err, 'Failed to load the board'); }
 });
 router.post('/board/topics', requireAuth, async (req, res) => {
@@ -173,6 +173,16 @@ router.get('/voice/:user', optionalAuth, async (req, res) => {
 });
 
 router.get('/levels', (req, res) => { try { res.json({ levels: board.levelsLeaderboard(20) }); } catch (err) { fail(res, err, 'Failed'); } });
-router.get('/yappers', (req, res) => { try { res.json({ yappers: board.yappersLeaderboard(20) }); } catch (err) { fail(res, err, 'Failed'); } });
+router.get('/yappers', (req, res) => { try { const ch = require('./chatters'); res.json({ yappers: ch.leaderboard(20), week: ch.leaderboard(10, { days: 7 }), total: ch.count() }); } catch (err) { fail(res, err, 'Failed'); } });
+// Chatter (yapper) profile by key: user:<id> · anon:<n> · relay:<platform>:<name> — anyone who chats has one.
+router.get('/chatter/:key', (req, res) => {
+    try { const p = require('./chatters').profile(String(req.params.key || '')); if (!p) return res.status(404).json({ error: 'No such chatter yet — say something about a subject first' }); res.set('Cache-Control', 'no-store'); res.json(p); }
+    catch (err) { fail(res, err, 'Failed to load chatter'); }
+});
+router.get('/chatter/by-user/:username', (req, res) => {
+    try { const u = userFrom(req.params.username); if (!u) return res.status(404).json({ error: 'No such user' }); const p = require('./chatters').profile(`user:${u.id}`); if (!p) return res.status(404).json({ error: 'No yap profile yet' }); res.json(p); }
+    catch (err) { fail(res, err, 'Failed'); }
+});
+router.post('/chatter/:key/card', requireAuth, permissions.requireAdmin, async (req, res) => { try { res.json(await require('./chatters').buildCard(String(req.params.key), { force: true })); } catch (err) { fail(res, err, 'Card failed'); } });
 
 module.exports = router;

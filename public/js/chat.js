@@ -4297,6 +4297,14 @@ function showChatContextMenu(event) {
     } else {
         loadContextMenuProfile(menu, coreUsername, userId, isAnon);
     }
+    // Arena yap level (accounts, anons and relayed chatters all have one once they've hit a subject).
+    try {
+        let yapKey = null;
+        if (isRelay) { const m = String(username || '').match(/^\[([A-Za-z]+)\]\s+(.+)$/); const plat = String(sourcePlatform || (m && m[1]) || '').toLowerCase().replace(/^yt$/, 'youtube').replace(/^robotstreamer$/, 'rs'); if (m && plat) yapKey = `relay:${plat}:${m[2].trim().toLowerCase()}`; }
+        else if (isAnon) { const m = String(coreUsername || username || '').match(/^anon(\d+)$/i); if (m) yapKey = `anon:${m[1]}`; }
+        else if (userId) yapKey = `user:${userId}`;
+        if (yapKey) _injectYapBlock(menu, yapKey);
+    } catch { /* optional */ }
 
     // Clicks inside the menu shouldn't dismiss it (needed for rename submenu toggle etc.)
     menu.addEventListener('click', (e) => e.stopPropagation());
@@ -4367,6 +4375,20 @@ function positionContextMenu(menu, x, y) {
     };
     window.addEventListener('resize', onResize);
     menu._resizeHandler = onResize;
+}
+
+async function _injectYapBlock(menu, key) {
+    try {
+        const y = await api(`/arena/chatter/${encodeURIComponent(key)}`);
+        if (!y || !menu.isConnected) return;
+        const pct = y.xp_for_next ? Math.round((y.xp_into_level / y.xp_for_next) * 100) : 100;
+        const card = y.card || {};
+        const el = document.createElement('div');
+        el.className = 'ctx-yap';
+        el.innerHTML = `<a href="/arena/chatter/${encodeURIComponent(key)}" onclick="return handleLinkClick(event, '/arena/chatter/${encodeURIComponent(key)}')" class="ctx-yap-link"><span class="ctx-yap-lvl">YAP ${y.level}</span><span class="ctx-yap-title">${esc(card.title || y.title)}</span>${y.streak >= 2 ? `<span class="ctx-yap-streak">🔥 ${y.streak}</span>` : ''}</a><span class="ctx-yap-bar"><span style="width:${pct}%"></span></span><small>${y.xp} XP · ${y.moments} moments on ${y.subjects} subject${y.subjects === 1 ? '' : 's'}${card.catchphrase ? ` · “${esc(String(card.catchphrase).slice(0, 60))}”` : ''}</small>`;
+        const actions = menu.querySelector('.ctx-actions');
+        if (actions) actions.parentNode.insertBefore(el, actions); else menu.appendChild(el);
+    } catch { /* no profile yet */ }
 }
 
 function dismissContextMenu() {
