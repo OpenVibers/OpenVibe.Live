@@ -208,8 +208,13 @@ function keywordsFromText(text) {
     const words = String(text || '').toLowerCase().replace(/[^a-z0-9@_\s'-]/g, ' ').split(/\s+/).map(w => w.replace(/^@/, '').replace(/'s$/, '')).filter(w => w.length >= 4 && !STOPWORDS.has(w));
     return [...new Set(words)].slice(0, 8);
 }
+// Words that appear on every stream on this site — worthless as subject keywords.
+const GENERIC_KW = new Set('mic mics chat chats chatter chatters quote quotes banter chaos drama dramas bill bills ban bans banned timeout timeouts mods mod moderation stream streams streamer streamers streaming live clip clips vod vods game games gaming joke jokes roast roasts roasting beef beefs arena hype crowd viewers viewer subs vibes vibe energy moment moments clash community site global room rooms talk talking said saying mention mentions callout callouts feud feuds war wars saga controversy controversies takes take rant rants'.split(' '));
 function normalizeKeywords(list) {
-    return [...new Set((Array.isArray(list) ? list : []).map(k => String(k || '').toLowerCase().replace(/^@/, '').trim()).filter(k => k.length >= 3 && !STOPWORDS.has(k)))].slice(0, 10);
+    // Single plain English words ("mic", "banter", "chaos", "bill") match every stream on the site and manufacture
+    // phantom moments — only distinctive single words survive; phrases are always fine.
+    let COMMON = null; try { COMMON = require('./names').COMMON; } catch { COMMON = new Set(); }
+    return [...new Set((Array.isArray(list) ? list : []).map(k => String(k || '').toLowerCase().replace(/^@/, '').replace(/\s+/g, ' ').trim()).filter(k => k.length >= 3 && !STOPWORDS.has(k) && (k.includes(' ') || (!COMMON.has(k) && !GENERIC_KW.has(k)))))].slice(0, 10);
 }
 function keywordRegex(k) {
     // Loose stem: "pakistanis" matches "pakistani", "tents" matches "tent", "yapping" still needs its own keyword.
