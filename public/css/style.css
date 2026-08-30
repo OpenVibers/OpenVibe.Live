@@ -14556,3 +14556,17 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
     .arena-row-expand-actions .btn { padding: 6px 10px; font-size: 0.82rem; }
     .arena-topic-headline-big { font-size: 1.2rem; }
 }
+
+/* ── Arena radar v2 ── */
+.arena-radar-v2 { width: 100%; height: auto; max-width: 300px; }
+.arena-radar-v2 .arena-radar-ring { fill: rgba(255, 255, 255, 0.02); stroke: var(--border-light); stroke-width: 1; }
+.arena-radar-axis { stroke: var(--border); stroke-width: 1; }
+.arena-radar-v2 .arena-radar-fill { stroke-width: 2.2; stroke-linejoin: round; }
+.arena-radar-dot { stroke: var(--bg-card); stroke-width: 1.5; }
+.arena-radar-label text { fill: var(--text-secondary); font-size: 10.5px; font-weight: 700; }
+.arena-radar-label .arena-radar-val { font-size: 11px; font-weight: 900; }
+.arena-profile-custom { grid-template-columns: 300px 1fr; }
+.arena-profile-stats.is-bars { grid-template-columns: 1fr; gap: 8px; }
+.arena-bars-head { font-size: 0.85rem; } .arena-bars-head small { color: var(--text-muted); }
+.arena-bar.is-clickable { cursor: pointer; }
+@media (max-width: 600px) { .arena-profile-custom { grid-template-columns: 1fr; } .arena-radar-v2 { max-width: 260px; margin: 0 auto; } }

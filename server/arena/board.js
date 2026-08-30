@@ -551,22 +551,26 @@ async function discoverTopics({ force = false } = {}) {
             created.push(createTopic({ text: `Bounty: ${nameOf(u.id)}`, hint: clip(b.why, 90), createdBy: 'community', creatorName: 'the community', kind: 'bounty', targetUserId: u.id, headline: b.headline, tagline: b.why, sourceNote: 'community' })); made++;
         } catch { /* dup */ }
     }
-    if (created.length) backfillMoments(created);
+    if (created.length) backfillMoments(created, { windowMin: scanWindowMin() * 4 });
     if (made) console.log(`[Arena] discovered ${made} subject(s) from the last ${scanWindowMin()} min`);
     return { made, pulse: _pulse.text };
 }
 
 /** Seed a fresh topic with the lines from the window that match it, so it never starts empty. */
-function backfillMoments(topics) {
-    const chat = db.all(`SELECT id, stream_id, user_id, username, message, source_platform, anon_id FROM chat_messages WHERE COALESCE(is_deleted, 0) = 0 AND COALESCE(message_type, 'chat') = 'chat' AND COALESCE(source_platform, '') != 'ai' AND timestamp >= datetime('now', ?) AND LENGTH(message) BETWEEN 6 AND 300 ORDER BY id ASC LIMIT 400`, [`-${scanWindowMin() * 4} minutes`]);
-    const speech = db.all(`SELECT e.stream_id, e.user_id, e.vod_id, e.start_sec, e.text, u.username FROM stream_timeline_events e LEFT JOIN users u ON u.id = e.user_id WHERE e.kind = 'speech' AND e.created_at >= datetime('now', ?) ORDER BY e.id ASC LIMIT 300`, [`-${scanWindowMin() * 4} minutes`]);
+function backfillMoments(topics, { windowMin = null } = {}) {
+    const win = Math.max(30, Number(windowMin) || scanWindowMin() * 4);
+    const chat = db.all(`SELECT id, stream_id, user_id, username, message, source_platform, anon_id FROM chat_messages WHERE COALESCE(is_deleted, 0) = 0 AND COALESCE(message_type, 'chat') = 'chat' AND COALESCE(source_platform, '') != 'ai' AND timestamp >= datetime('now', ?) AND LENGTH(message) BETWEEN 6 AND 300 ORDER BY id DESC LIMIT 600`, [`-${win} minutes`]).reverse();
+    const speech = db.all(`SELECT e.stream_id, e.user_id, e.vod_id, e.start_sec, e.text, u.username FROM stream_timeline_events e LEFT JOIN users u ON u.id = e.user_id WHERE e.kind = 'speech' AND e.created_at >= datetime('now', ?) ORDER BY e.id DESC LIMIT 400`, [`-${win} minutes`]).reverse();
+    let seeded = 0;
     for (const t of topics) {
         const kws = normalizeKeywords(parseJson(t.keywords_json, [])).map(keywordRegex);
         let n = 0;
         for (const c of chat) if (!/^!/.test(c.message) && kws.some(re => re.test(c.message))) { if (addMoment(t.id, { kind: 'chat', source: 'seed', userId: c.user_id, username: c.username, streamId: c.stream_id, text: c.message, platform: c.source_platform || null, anonId: c.anon_id || null })) n++; }
         for (const s of speech) if (kws.some(re => re.test(s.text || ''))) { if (addMoment(t.id, { kind: 'speech', source: 'seed', userId: s.user_id, username: s.username, streamId: s.stream_id, vodId: s.vod_id, sec: Math.max(0, Math.floor(s.start_sec) - 2), text: s.text })) n++; }
-        if (n) console.log(`[Arena] topic #${t.id} seeded with ${n} moment(s)`);
+        if (n) console.log(`[Arena] topic #${t.id} seeded with ${n} moment(s) from the last ${win} min`);
+        seeded += n;
     }
+    return seeded;
 }
 function pulse() { const p = loadPulse(); return { text: p.text, at: p.at ? new Date(p.at).toISOString() : null, sources: p.sources || [] }; }
 

@@ -115,21 +115,28 @@ function _aRadar(r, color, size = 200) {
     </svg>`;
 }
 
-/** A fighter's OWN radar: six AI-named stats from their profile (falls back to the objective seven). */
-function _aCustomRadar(f, color, size = 200) {
+/**
+ * A fighter's radar — their AI characteristics (six stats named after their own bits, read from
+ * their chat history + channel), drawn correctly: value v ∈ [0, 99] sits at radius R·v/99 on its
+ * axis, rings at 33/66/99, axis lines, a value pill at each vertex. Falls back to the objective
+ * seven only when the persona has no custom stats yet.
+ */
+function _aCustomRadar(f, color, size = 240) {
     const cs = (f.persona && Array.isArray(f.persona.custom_stats) ? f.persona.custom_stats : []).filter(x => x && x.name && Number.isFinite(Number(x.value))).slice(0, 8);
-    if (cs.length < 3) return _aRadar(f.ratings, color, size);
-    const c = size / 2, R = size / 2 - 30;
-    const N = cs.length;
-    const angle = (i) => -Math.PI / 2 + (i * 2 * Math.PI) / N;
-    const pt = (i, v) => { const rr = R * (Math.max(0, Math.min(99, v)) / 99); return [c + rr * Math.cos(angle(i)), c + rr * Math.sin(angle(i))]; };
-    const ring = (v) => cs.map((_, i) => pt(i, v).map(x => x.toFixed(1)).join(',')).join(' ');
-    const poly = cs.map((x, i) => pt(i, Number(x.value)).map(y => y.toFixed(1)).join(',')).join(' ');
-    const labels = cs.map((x, i) => { const rr = R + 18, lx = c + rr * Math.cos(angle(i)), ly = c + rr * Math.sin(angle(i)); return `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="middle"><title>${_aEsc(x.quip || '')}</title>${_aEsc(String(x.name).slice(0, 14))} ${Number(x.value)}</text>`; }).join('');
-    return `<svg class="arena-radar arena-radar-custom" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" aria-hidden="true">
-        ${[33, 66, 99].map(v => `<polygon points="${ring(v)}" class="arena-radar-ring"></polygon>`).join('')}
-        <polygon points="${poly}" class="arena-radar-fill" style="fill:${_aEsc(color)}33;stroke:${_aEsc(color)}"></polygon>
-        ${labels}
+    const axes = cs.length >= 3 ? cs.map(x => ({ name: String(x.name).slice(0, 16), value: Math.max(0, Math.min(99, Number(x.value))), quip: x.quip || '' })) : ARENA_STATS.map(k => ({ name: ARENA_STAT_LABEL[k], value: Math.max(0, Math.min(99, Number(f.ratings?.[k]) || 0)), quip: (f.persona?.stat_quips || {})[k] || '' }));
+    const N = axes.length, c = size / 2, R = size / 2 - 44;
+    const ang = (i) => -Math.PI / 2 + (i * 2 * Math.PI) / N;
+    const pt = (i, v) => [c + (R * v / 99) * Math.cos(ang(i)), c + (R * v / 99) * Math.sin(ang(i))];
+    const poly = (v) => axes.map((_, i) => pt(i, v).map(n => n.toFixed(1)).join(',')).join(' ');
+    const shape = axes.map((a, i) => pt(i, a.value).map(n => n.toFixed(1)).join(',')).join(' ');
+    const id = `rg${Math.floor(Math.random() * 1e6)}`;
+    return `<svg class="arena-radar arena-radar-v2" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="stats radar">
+        <defs><radialGradient id="${id}" cx="50%" cy="50%" r="60%"><stop offset="0%" stop-color="${_aEsc(color)}" stop-opacity="0.55"/><stop offset="100%" stop-color="${_aEsc(color)}" stop-opacity="0.12"/></radialGradient></defs>
+        ${[33, 66, 99].map(v => `<polygon points="${poly(v)}" class="arena-radar-ring"></polygon>`).join('')}
+        ${axes.map((_, i) => { const [x, y] = pt(i, 99); return `<line x1="${c}" y1="${c}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" class="arena-radar-axis"></line>`; }).join('')}
+        <polygon points="${shape}" class="arena-radar-fill" style="fill:url(#${id});stroke:${_aEsc(color)}"></polygon>
+        ${axes.map((a, i) => { const [x, y] = pt(i, a.value); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" class="arena-radar-dot" style="fill:${_aEsc(color)}"><title>${_aEsc(a.name)} ${a.value}${a.quip ? ` — ${_aEsc(a.quip)}` : ''}</title></circle>`; }).join('')}
+        ${axes.map((a, i) => { const [x, y] = pt(i, 99); const lx = c + (R + 26) * Math.cos(ang(i)), ly = c + (R + 26) * Math.sin(ang(i)); const anchor = Math.abs(Math.cos(ang(i))) < 0.2 ? 'middle' : (Math.cos(ang(i)) > 0 ? 'start' : 'end'); return `<g class="arena-radar-label"><text x="${lx.toFixed(1)}" y="${(ly - 4).toFixed(1)}" text-anchor="${anchor}">${_aEsc(a.name)}</text><text x="${lx.toFixed(1)}" y="${(ly + 9).toFixed(1)}" text-anchor="${anchor}" class="arena-radar-val" style="fill:${_aEsc(color)}">${a.value}</text><title>${_aEsc(a.quip)}</title></g>`; }).join('')}
     </svg>`;
 }
 function _aCustomQuips(f) {
@@ -567,7 +574,7 @@ function _aRenderList(fighters) {
                 <span class="arena-record" title="beef record">${f.record.wins}W–${f.record.losses}L</span>
             </span>
             <div class="arena-row-expand">
-                <div>${_aCustomRadar(f, f.user.profile_color || '#8b5cf6', 200)}<div class="arena-mini-record">${(f.persona.custom_stats || []).length ? 'their own stats, from their profile · ' : ''}${f.category ? _aEsc(f.category) + ' · ' : ''}last live ${_aEsc(f.last_live_at ? _aDate(f.last_live_at) : '—')}</div></div>
+                <div>${_aCustomRadar(f, f.user.profile_color || '#8b5cf6', 220)}<div class="arena-mini-record">${(f.persona.custom_stats || []).length ? 'AI characteristics · ' : ''}${f.category ? _aEsc(f.category) + ' · ' : ''}last live ${_aEsc(f.last_live_at ? _aDate(f.last_live_at) : '—')}</div></div>
                 <div>
                     <p class="arena-row-lore is-clamp">${_aEsc(f.persona.lore)}</p>
                     ${(f.persona.taunts || []).length ? `<div class="arena-row-taunts">${f.persona.taunts.slice(0, 2).map(t => `<em>“${_aEsc(t)}” ${_aSpeakBtn(t, '', f.user.username)}</em>`).join('')}${f.persona.typing_style ? `<small><i class="fa-solid fa-keyboard"></i> ${_aEsc(f.persona.typing_style)}</small>` : ''}</div>` : ''}
@@ -844,10 +851,13 @@ async function _aRenderFighter(root, username) {
                     <div class="arena-record arena-record-lg" title="beef record">${f.record.wins}W – ${f.record.losses}L</div>
                 </div>
                 ${_aLevelCard(f)}
-                ${(p.custom_stats || []).length ? `<div class="arena-profile-custom"><div>${_aCustomRadar(f, color, 220)}<div class="arena-mini-record">their own stats — AI-read from their chat history and streams</div></div>${_aCustomQuips(f)}</div>` : ''}
-                <div class="arena-profile-stats">
-                    ${_aRadar(f.ratings, color)}
-                    <div class="arena-quips">${ARENA_STATS.map(k => `<div class="arena-quip is-clickable" data-stat="${k}" title="Tap for the breakdown"><b>${_aEsc(ARENA_STAT_LABEL[k])} ${f.ratings[k]} <i class="fa-solid fa-magnifying-glass-chart" style="font-size:0.7em;opacity:0.6"></i></b><span>${_aEsc((p.stat_quips || {})[k] || '')}</span></div>`).join('')}</div>
+                <div class="arena-profile-custom">
+                    <div>${_aCustomRadar(f, color, 260)}<div class="arena-mini-record">${(p.custom_stats || []).length ? 'their characteristics — AI-read from their chat history + channel' : 'objective stats (the AI characteristics appear once the persona is generated)'}</div></div>
+                    ${(p.custom_stats || []).length ? _aCustomQuips(f) : ''}
+                </div>
+                <div class="arena-profile-stats is-bars">
+                    <div class="arena-bars-head"><b>The numbers</b> <small>percentile across the roster · these make POWER · tap one for the breakdown</small></div>
+                    <div class="arena-bars">${ARENA_STATS.map(k => `<div class="arena-bar is-clickable arena-quip" data-stat="${k}" title="${_aEsc((p.stat_quips || {})[k] || ARENA_STAT_LABEL[k])}"><span class="arena-bar-label">${_aEsc(ARENA_STAT_LABEL[k])}</span><span class="arena-bar-track"><span class="arena-bar-fill" style="width:${Math.max(0, Math.min(100, f.ratings[k] || 0))}%;background:${_aEsc(color)}"></span></span><span class="arena-bar-val">${f.ratings[k] ?? '–'}</span></div>`).join('')}</div>
                     <div id="arena-stat-detail"></div>
                 </div>
                 <div class="arena-lore">
