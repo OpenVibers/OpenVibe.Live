@@ -389,9 +389,11 @@ function activeTopicFor(userId) {
 }
 
 /** A judged on-mic chunk about a topic: { on_topic, quality, best_line, about, flagged } → judged moment + XP. */
+const MIN_JUDGED_QUALITY = 4;
 function applyTopicJudgement(userId, topic, judgement, lineRef) {
     if (judgement.flagged || !judgement.on_topic) return { applied: false };
     const quality = Math.max(0, Math.min(10, Number(judgement.quality) || 0));
+    if (quality < MIN_JUDGED_QUALITY) return { applied: false, reason: 'too weak' };
     const user = db.getUserById(userId);
     const m = addMoment(topic.id, { kind: 'speech', source: 'judge', userId, username: user?.username || null, streamId: lineRef?.stream_id || null, vodId: lineRef?.vod_id || null, sec: lineRef?.sec ?? null, text: judgement.best_line || judgement.about || 'talked on it', quality, about: judgement.about || null });
     if (!m) return { applied: false };
@@ -729,7 +731,7 @@ function topicView(topic, roster, { detail = false } = {}) {
     };
     if (detail) {
         out.submitted_text = topic.submitted_text || null;
-        out.moments = db.all('SELECT * FROM arena_topic_moments WHERE topic_id = ? ORDER BY COALESCE(said_at, created_at) DESC, id DESC LIMIT 80', [topic.id]).map(momentView);
+        out.moments = db.all(`SELECT * FROM arena_topic_moments WHERE topic_id = ? AND (quality IS NULL OR quality >= ${MIN_JUDGED_QUALITY}) ORDER BY COALESCE(said_at, created_at) DESC, id DESC LIMIT 80`, [topic.id]).map(momentView);
         out.top_chatters = db.all(`SELECT username, chatter_key, COUNT(*) AS n FROM arena_topic_moments WHERE topic_id = ? AND kind = 'chat' AND username IS NOT NULL GROUP BY COALESCE(chatter_key, username) ORDER BY n DESC LIMIT 6`, [topic.id]).map(c => { let lvl = null; try { const r = require('./chatters').row(c.chatter_key); if (r) lvl = { level: r.level, title: require('./chatters').titleFor(r.level) }; } catch { /* */ } return { ...c, ...(lvl || {}) }; });
         out.best_lines = db.all(`SELECT * FROM arena_topic_moments WHERE topic_id = ? AND quality IS NOT NULL ORDER BY quality DESC, id DESC LIMIT 6`, [topic.id]).map(momentView);
         for (const f of out.fighters) { const bm = db.get(`SELECT * FROM arena_topic_moments WHERE topic_id = ? AND user_id = ? AND kind = 'speech' ORDER BY COALESCE(quality, -1) DESC, id DESC LIMIT 1`, [topic.id, f.user.id]); f.best = bm ? momentView(bm) : null; }

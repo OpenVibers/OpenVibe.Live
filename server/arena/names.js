@@ -16,7 +16,8 @@
  */
 'use strict';
 
-const COMMON = new Set(('about after again also always another anyone anything around because before being between both bring build built came cant cannot chat check come could does doing done down each else even ever every first from game games getting give going gone good great group guy guys have having here home into just keep kind know last later least life like little live look made make many maybe mean might more most much must name need never next nice night nobody nothing okay only other over people place play player point pretty probably really right same says school seen shit should show since some something sorry stay still stop stream streamer stuff sure take talk tell than thank that their them then there these they thing think this those three time today told took trying under until very want watch week well went were what when where which while whole will with without work would year years young your live love hate lord king queen dude bro bruh fam yeah yes okay old new big small guy girl boy man men women woman baby dan dave mike john tom jack ben sam max alex chris'
+const COMMON = new Set(('about after again also always another anyone anything around because before being between both bring build built came cant cannot chat check come could does doing done down each else even ever every first from game games getting give going gone good great group guy guys have having here home into just keep kind know last later least life like little live look made make many maybe mean might more most much must name need never next nice night nobody nothing okay only other over people place play player point pretty probably really right same says school seen shit should show since some something sorry stay still stop stream streamer stuff sure take talk tell than thank that their them then there these they thing think this those three time today told took trying under until very want watch week well went were what when where which while whole will with without work would year years young your live love hate lord king queen dude bro bruh fam yeah yes okay old new big small guy girl boy man men women woman baby dan dave mike john tom jack ben sam max alex chris '
+    + 'matter meter motor water later letter little level lever mother master mister monster minute minutes money moment mountain market maybe major magic medic metal middle mirror mission model modern moving music mute native nature never number often order other paper party power pretty price quick quiet radio ready river robot round sauce scary second server seven shadow silver simple sister sixty slower smaller smoke solid sound south space speak speed spend spirit sport square start state steam story street strong stuff sugar summer super sweet table taken teach teeth thank thick thing third thought throw tiger timer title toast total touch tower track trade train travel treat truck truly trust truth turned twenty under upper usual value video village voice waste water wheel where white whole winter wonder world worry worse worth would write wrong yellow young about above across actor adult again agent ahead alarm album alien alive allow alone along alter among angle animal answer anyway apple armor arrow attack aware awful bacon badge basic battle beach beast begin being below bench birth black blade blame blank blast blind block blood board boost boots bottle bottom bounce bounty brain brand brave bread break brick bridge bright broken brush bucket buddy budget bullet button cable camera candy cannon cargo carry castle catch cause chain chair chance change charge chase cheap cheese chest chief child choice church claim class clean clear click climb clock close cloud coach coast coffee color combo comic coming crazy crash cream credit crime cross crowd crown cycle daily damage dance dark death decent delay demon depth desert device diamond dinner direct dirty double dozen dragon drama dream dress drink drive dungeon early earth eight empty enemy energy engine enter entire equal error event exact extra faith false fancy farm fast fatal fault favor feast fence field fight figure final finish fire flame flash flesh floor flower focus force forest forge frame fresh front frozen fruit funny giant glass glory gold grand grass green guard guess guide happy heart heavy hello hidden honor horse hotel house human hunt image inside iron island jacket joint judge juice jungle knife knight label ladder large laser latest laugh layer leader legend lemon light limit liquid local lucky lunch magic manual march match medal melee metal minor mobile moon mouse mouth movie nasty needle noise north notice number nurse ocean offer olive onion orange order outer oven owner paint panel panic paper patch peace pearl pedal pencil phone photo piano piece pilot pizza plain plane plant plate plush pocket poison police potato pound press prime print prize proof pulse punch puzzle queen quest rabbit radar raid rain range ratio razor reach recent relax reload rescue retro rifle rival rocket rough route royal rubber ruler rusty sadly safety salad sample sandwich scale scene score scout screen script scroll search secret select shape share sharp shelf shield shirt shock shoot shore short shoulder shovel signal silent skill skull slate sleep slice slide slime smart smell smile snake sneak snipe snow sock solar solo sorry sound spare spark spawn spear spell spice spider spike spoon spray staff stage stair stamp stand star steel step stick stone store storm story stove strange strike stupid sudden sunny sword tackle talent tank taste tavern temple tennis thief thirty ticket tired toilet token tomato tooth torch tough toxic trail trap trash treasure trick troll trophy trouble tunnel turtle twist uncle unique unit upset urban valley vault vendor virus vision vocal volume wagon waiting wallet weapon weird whale wheat window wire wizard wolf worker yard zombie zone'
 ).split(/\s+/));
 
 const SUFFIXES = /(?:_|-)?(?:tv|ttv|live|official|yt|twitch|gaming|stream|streams|vods|irl|hd|4k)$/i;
@@ -38,7 +39,7 @@ function splitHandle(name) {
     return s.toLowerCase().split(/\s+/).filter(Boolean);
 }
 
-function deleet(w) { return String(w).replace(/[0134578@$!|]/g, c => LEET[c] || c); }
+function deleet(w) { w = String(w); if (/^\d+$/.test(w)) return w; /* 151 stays a number, never 'isi' */ return /[a-z]/i.test(w) ? w.replace(/[0134578@$!|]/g, c => LEET[c] || c) : w; }
 
 /**
  * All predicted spoken forms of one name (lowercase word arrays, deduped, most specific first).
@@ -55,6 +56,8 @@ function variants(name) {
     const base = splitHandle(raw);
     add(base);
     add(base.map(deleet));
+    // Leet inside a token (M4ticus, l33t_dan) → un-leet the whole handle first, then split.
+    if (/[a-z][0134578@$!|]+[a-z]/i.test(raw)) { const b0 = splitHandle(raw.replace(/[0134578@$!|]/g, c => LEET[c] || c)); add(b0); add(b0.filter(w => !/^\d+$/.test(w))); }
     add(base.filter(w => !/^\d+$/.test(w)));                                  // drop pure numbers: "lofi dan 99" → "lofi dan"
     add(base.map(deleet).filter(w => !/^\d+$/.test(w)));
     const noSuffix = raw.replace(SUFFIXES, '');
@@ -138,7 +141,8 @@ function findMentions(text, entries, { excludeUserId = null, fuzzy = true } = {}
         if (found.has(e.userId) && found.get(e.userId).rank === 3) continue;
         const n = e.words.length;
         const target = e.letters;
-        if (target.length < 5) continue;                       // too short to fuzzy-match safely
+        if (target.length < 6) continue;                       // "mater" ≈ matter/meter/water — too short to fuzzy-match safely
+        if (n === 1 && COMMON.has(e.name)) continue;
         const maxD = ratioThreshold(target.length);
         // n-grams of n words, and of n±1 words (a name can be split or glued by the transcriber)
         for (const span of [n, n + 1, n - 1].filter(x => x >= 1 && x <= 4)) {
@@ -148,9 +152,10 @@ function findMentions(text, entries, { excludeUserId = null, fuzzy = true } = {}
                 if (Math.abs(glued.length - target.length) > maxD + 4) continue;
                 // Fuzzy (typo-level) only on the same number of words: "matticus" ~ "maticus", "japanese old gai" ~
                 // "japanese old guy" — but never "japanese guy" ~ "japanese old guy" (a different phrase).
+                if (gram.filter(w => COMMON.has(w)).length * 2 > gram.length) continue;   // plain English words are never a mangled name ("water is" ≠ mater)
                 if (span === n && maxD > 0 && Math.abs(glued.length - target.length) <= maxD + 1 && levenshtein(glued, target) <= maxD) { consider(e, 'fuzzy', gram.join(' ')); break; }
                 // "mattie cuss" → mtks == maticus → mtks; "goose lee" → gsl == goosely → gsl
-                if (glued.length >= 5 && !gram.every(w => COMMON.has(w)) && phonetic(gram.join(' ')).replace(/ /g, '') === e.key.replace(/ /g, '')) { consider(e, 'phonetic', gram.join(' ')); break; }
+                if (glued.length >= 6 && phonetic(gram.join(' ')).replace(/ /g, '') === e.key.replace(/ /g, '')) { consider(e, 'phonetic', gram.join(' ')); break; }
             }
         }
     }
