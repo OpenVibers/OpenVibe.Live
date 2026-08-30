@@ -5,11 +5,11 @@
  *   POST /fighters/:user/refresh                      admin: regenerate persona (+ portrait)
  *   GET  /console/:user                               what the listener hears for a live fighter
  *   GET  /board                                       pulse + open events (topics/debates/phrases/bounties) + leaderboards
- *   POST /board/topics {text}                         anyone signed in starts a topic
- *   GET  /board/topics/:id · POST …/join · …/leave · …/side {side} · …/hype {user_id}
+ *   POST /board/topics {text}                         signed in, 1 per person + per IP per 24 h; AI rewrites it
+ *   GET  /board/topics/:id · POST …/join · …/leave · …/hype {user_id}
  *   POST /board/bounty {username}                     put a bounty on a fighter
- *   GET  /beefs · /beefs/:id · POST /beefs/:id/hype {side} · POST /beefs/:id/side {side}
- *   GET  /levels · /clout                             Trash Level ladder · viewers with the best picks
+ *   GET  /beefs · /beefs/:id · POST /beefs/:id/hype {side}
+ *   GET  /levels · /yappers                           Trash Level ladder · viewers who keep subjects alive from chat
  */
 'use strict';
 
@@ -85,7 +85,7 @@ router.get('/console/:user', (req, res) => {
             transcribed: liveStream ? !!db.get(`SELECT 1 FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND created_at >= datetime('now', '-30 minutes') LIMIT 1`, [liveStream.id]) : false,
             listener: listener.consoleState(user.id),
             level: board.levelView(user.id),
-            active_topic: active ? { ...board.topicDetail(active.id), my_progress: board.progressFor(active.id, user.id) } : null,
+            active_topic: active ? board.topicDetail(active.id) : null,
             open_beefs: beef.openBeefsFor(user.id).map(b => beef.beefView(b, roster)),
             hot_mic: lines,
             bounty_on_me: board.openBountyOn(user.id) ? board.topicDetail(board.openBountyOn(user.id).id) : null,
@@ -98,14 +98,14 @@ router.get('/board', (req, res) => {
     try {
         const v = board.boardView();
         res.set('Cache-Control', 'no-store');
-        res.json({ ...v, levels: board.levelsLeaderboard(8), clout: board.cloutLeaderboard(8), ai: arena.aiOn() });
+        res.json({ ...v, levels: board.levelsLeaderboard(8), yappers: board.yappersLeaderboard(8), ai: arena.aiOn() });
     } catch (err) { fail(res, err, 'Failed to load the board'); }
 });
 router.post('/board/topics', requireAuth, async (req, res) => {
     try {
         const onRoster = !!arena.loadRoster().byId[req.user.id];
-        const t = board.createTopic({ text: req.body?.text, hint: req.body?.hint || null, createdBy: onRoster ? 'streamer' : 'viewer', creatorUserId: req.user.id, creatorName: req.user.display_name || req.user.username });
-        board.ensureAngles(t).catch(() => {});
+        const t = await board.submitTopic({ text: req.body?.text, userId: req.user.id, ip: req.ip, creatorName: req.user.display_name || req.user.username, onRoster });
+        board.buildLore(t.id, { force: true }).catch(() => {});
         res.json({ ok: true, topic: board.topicDetail(t.id) });
     } catch (err) { res.status(400).json({ error: err.message }); }
 });
@@ -115,7 +115,8 @@ router.post('/board/bounty', requireAuth, (req, res) => {
         if (!target || !arena.loadRoster().byId[target.id]) return res.status(404).json({ error: 'No such fighter on the roster' });
         if (target.id === req.user.id) return res.status(400).json({ error: "You can't put a bounty on yourself" });
         const name = board.fighterBrief(target.id, arena.loadRoster()).fighter_name;
-        const t = board.createTopic({ text: `Bounty: ${name}. Anyone who talks shit about them on stream gets double XP.`, hint: `Put up by ${req.user.display_name || req.user.username}. Say the name, collect the bag.`, createdBy: 'viewer', creatorUserId: req.user.id, creatorName: req.user.display_name || req.user.username, kind: 'bounty', targetUserId: target.id, headline: `WANTED: ${name} — chat wants smoke` });
+        board.assertCanSubmit(req.user.id, req.ip);
+        const t = board.createTopic({ text: `Bounty: ${name}`, hint: `Put up by ${req.user.display_name || req.user.username}. Say the name, collect the bag.`, createdBy: 'viewer', creatorUserId: req.user.id, creatorName: req.user.display_name || req.user.username, creatorIp: req.ip, kind: 'bounty', targetUserId: target.id, headline: `WANTED: ${name} — chat wants smoke`, tagline: `Double XP for anyone who talks shit about ${name} on stream` });
         res.json({ ok: true, topic: board.topicDetail(t.id) });
     } catch (err) { res.status(400).json({ error: err.message }); }
 });
@@ -132,16 +133,15 @@ router.post('/board/topics/:id/join', requireAuth, async (req, res) => {
     catch (err) { res.status(400).json({ error: err.message }); }
 });
 router.post('/board/topics/:id/leave', requireAuth, (req, res) => { try { board.leaveTopic(req.user.id); res.json({ ok: true }); } catch (err) { res.status(400).json({ error: err.message }); } });
-router.post('/board/topics/:id/side', optionalAuth, (req, res) => {
-    try { res.json(board.pickSide(Number(req.params.id), arena.voterKeyFor(req), String(req.body?.side || ''), req.user?.id || null)); }
-    catch (err) { res.status(400).json({ error: err.message }); }
-});
 router.post('/board/topics/:id/hype', optionalAuth, (req, res) => {
     try { res.json(board.hypeTopic(Number(req.params.id), Number(req.body?.user_id), arena.voterKeyFor(req))); }
     catch (err) { res.status(400).json({ error: err.message }); }
 });
 router.post('/pulse/refresh', requireAuth, permissions.requireAdmin, async (req, res) => {
-    try { res.json(await board.refreshPulse({ force: true })); } catch (err) { fail(res, err, 'Pulse refresh failed'); }
+    try { const d = await board.discoverTopics({ force: true }); const lore = await board.loreSweep(5); res.json({ ...d, lore_rewritten: lore }); } catch (err) { fail(res, err, 'Pulse refresh failed'); }
+});
+router.post('/board/topics/:id/lore', requireAuth, permissions.requireAdmin, async (req, res) => {
+    try { res.json(await board.buildLore(Number(req.params.id), { force: true })); } catch (err) { fail(res, err, 'Lore rebuild failed'); }
 });
 
 // ── Beefs ──
@@ -153,11 +153,7 @@ router.get('/beefs/:id', (req, res) => {
 router.post('/beefs/:id/hype', optionalAuth, (req, res) => {
     try { res.json(beef.hype(Number(req.params.id), String(req.body?.side || ''), arena.voterKeyFor(req))); } catch (err) { res.status(400).json({ error: err.message }); }
 });
-router.post('/beefs/:id/side', optionalAuth, (req, res) => {
-    try { res.json(beef.pickSide(Number(req.params.id), arena.voterKeyFor(req), String(req.body?.side || ''), req.user?.id || null)); } catch (err) { res.status(400).json({ error: err.message }); }
-});
-
 router.get('/levels', (req, res) => { try { res.json({ levels: board.levelsLeaderboard(20) }); } catch (err) { fail(res, err, 'Failed'); } });
-router.get('/clout', (req, res) => { try { res.json({ clout: board.cloutLeaderboard(20) }); } catch (err) { fail(res, err, 'Failed'); } });
+router.get('/yappers', (req, res) => { try { res.json({ yappers: board.yappersLeaderboard(20) }); } catch (err) { fail(res, err, 'Failed'); } });
 
 module.exports = router;

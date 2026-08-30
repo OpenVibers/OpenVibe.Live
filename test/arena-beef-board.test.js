@@ -36,88 +36,101 @@ assert.deepStrictEqual(roster.order, [u1, u2, u3], 'roster by power');
 board.ensureTables(); beef.ensureTables();
 
 (async () => {
-    // ── Board: topics from chat, fallback angles, one active topic per streamer ──
-    const t1 = board.createTopic({ text: 'Streamers who read donations in a baby voice', createdBy: 'chat', creatorUserId: viewer, creatorName: 'Viewer' });
-    assert.strictEqual(t1.kind, 'topic');
-    assert.throws(() => board.createTopic({ text: 'streamers who read donations in a baby voice', createdBy: 'chat' }), /already on the board/);
-    assert.throws(() => board.createTopic({ text: 'ok', createdBy: 'chat' }), /short|characters|topic/i);
-    const angles = await board.ensureAngles(t1);
-    assert.strictEqual(angles.length, 3, 'fallback angles without AI');
-    await assert.rejects(board.joinTopic(t1.id, viewer), /roster/, 'viewers cannot talk on a topic');
-    const j = await board.joinTopic(t1.id, u1);
-    assert.strictEqual(j.topic.id, t1.id);
-    assert.strictEqual(board.activeTopicFor(u1).id, t1.id);
-    const t2 = board.createTopic({ text: 'Whose chat is the dumbest chat on the site', createdBy: 'streamer', creatorUserId: u2, creatorName: 'Grizzly' });
-    await board.joinTopic(t2.id, u1);
-    assert.strictEqual(board.activeTopicFor(u1).id, t2.id, 'joining another topic switches the active one');
-    await board.joinTopic(t1.id, u1);
+    // ── Board: subjects with keywords, moments from chat + mic, lore, Trash Level ──
+    board._resetScan();
+    const t1 = board.createTopic({ text: 'People who read donations in a baby voice', createdBy: 'community', creatorName: 'global chat', headline: 'BABY VOICE GATE', keywords: ['baby voice', 'dono voice'] });
+    assert.deepStrictEqual(JSON.parse(t1.keywords_json), ['baby voice', 'dono voice']);
+    assert.throws(() => board.createTopic({ text: 'people who read donations in a baby voice', createdBy: 'chat' }), /already on the board/);
+    assert.throws(() => board.createTopic({ text: 'ok', createdBy: 'chat' }), /short/i);
+    const auto = board.createTopic({ text: 'Pakistanis in the global chat again', createdBy: 'chat', creatorUserId: viewer, creatorName: 'Viewer', creatorIp: '9.9.9.9' });
+    assert.deepStrictEqual(JSON.parse(auto.keywords_json), ['pakistanis', 'global'], 'keywords fall out of the subject text (stopwords dropped)');
+    assert.deepStrictEqual(board.matchTopics('lol the pakistani guy is back').map(t => t.id), [auto.id], 'keyword match forgives plural/singular');
+    assert.deepStrictEqual(board.matchTopics('I do the BABY VOICE for every dono').map(t => t.id), [t1.id], 'phrase keywords match case-insensitively');
+    assert.deepStrictEqual(board.matchTopics('nothing to see here'), []);
 
-    // Judged chunks: progress → angle cleared (+25) → all angles → conquered (+60).
-    const fresh = () => db.get('SELECT * FROM arena_topics WHERE id = ?', [t1.id]);
-    let r = board.applyTopicJudgement(u1, fresh(), { angle_idx: 0, quality: 6, progress_gain: 60, best_line: 'Your baby voice sounds like a fax machine', about: 'baby voice' }, { vod_id: null, sec: 10 });
-    assert.deepStrictEqual([r.applied, r.progress, r.cleared_angle], [true, 60, false]);
-    assert.strictEqual(board.applyTopicJudgement(u1, fresh(), { angle_idx: -1, quality: 0, progress_gain: 0 }).applied, false, 'off-topic chunk does nothing');
-    assert.strictEqual(board.applyTopicJudgement(u1, fresh(), { angle_idx: 0, quality: 9, progress_gain: 50, flagged: true }).applied, false, 'flagged chunk (threat/minor/dox) is ignored');
-    r = board.applyTopicJudgement(u1, fresh(), { angle_idx: 0, quality: 8, progress_gain: 50, best_line: 'Read my dono in your real voice, coward', about: 'dono voice' }, { vod_id: null, sec: 40 });
-    assert.ok(r.cleared_angle && r.progress === 100 && !r.conquered);
-    assert.ok(r.xp >= board.XP_ANGLE_CLEARED, `angle clear pays: ${r.xp}`);
-    for (const idx of [1, 2]) r = board.applyTopicJudgement(u1, fresh(), { angle_idx: idx, quality: 7, progress_gain: 60, best_line: `line ${idx}`, about: 'x' }, {});
-    for (const idx of [1, 2]) r = board.applyTopicJudgement(u1, fresh(), { angle_idx: idx, quality: 7, progress_gain: 60, best_line: `line ${idx}b`, about: 'x' }, {});
-    assert.strictEqual(r.conquered, true, 'all angles cleared → topic conquered');
-    assert.strictEqual(board.activeTopicFor(u1), null, 'conquering ends the active topic');
+    // One per person + per IP per 24 h.
+    assert.throws(() => board.assertCanSubmit(viewer, '1.2.3.4'), /per person/);
+    assert.throws(() => board.assertCanSubmit(u3, '9.9.9.9'), /connection/);
+    board.assertCanSubmit(u3, '5.5.5.5');
+    await assert.rejects(board.submitTopic({ text: 'Another one', userId: viewer, ip: '5.5.5.5', creatorName: 'Viewer' }), /per person/);
+    const sub = await board.submitTopic({ text: 'Streamers who blame lag for everything', userId: u3, ip: '5.5.5.5', creatorName: 'Pixelqueen', onRoster: true });
+    assert.strictEqual(sub.created_by, 'streamer'); assert.strictEqual(sub.submitted_text, 'Streamers who blame lag for everything');
+    await assert.rejects(board.submitTopic({ text: 'cp links in bio', userId: u2, ip: '6.6.6.6', creatorName: 'x' }), /crosses the line/);
+
+    // Chat lines that mention a subject become moments (scan picks up only new messages).
+    const say = (uid, uname, msg, streamId = null) => db.run('INSERT INTO chat_messages (stream_id, user_id, username, message) VALUES (?, ?, ?, ?)', [streamId, uid, uname, msg]);
+    say(viewer, 'viewer', 'this was before the scan started and must be ignored, baby voice');
+    board.scanChat(); // primes the cursor
+    say(viewer, 'viewer', 'nova does the baby voice for a $2 dono no shame');
+    say(u2, 'grizzly_bear', 'BABY VOICE gang rise up');
+    say(viewer, 'viewer', '!topic should be ignored baby voice');
+    say(null, 'anon_guy', 'pakistanis run this chat lol');
+    const scan = board.scanChat();
+    assert.strictEqual(scan.moments, 3, `three moments from four new messages (commands skipped): ${JSON.stringify(scan)}`);
+    let d1 = board.topicDetail(t1.id);
+    assert.strictEqual(d1.mentions.chat, 2); assert.strictEqual(d1.chatters, 2);
+    assert.strictEqual(d1.last_moment.username, 'grizzly_bear');
+    assert.strictEqual(board.topicDetail(auto.id).mentions.chat, 1);
+    assert.ok(!board.addMoment(t1.id, { kind: 'chat', source: 'chat', username: 'x', text: 'kys baby voice people' }), 'threat lines never become moments');
+
+    // A streamer saying it on mic auto-joins them; the judge adds scored moments + XP.
+    const mm = board.noteMicMention(t1.id, { userId: u1, username: 'nova', streamId: 77, vodId: 501, sec: 100, text: 'chat the baby voice thing is a bit' });
+    assert.ok(mm && mm.kind === 'speech');
+    assert.strictEqual(board.noteMicMention(t1.id, { userId: u1, username: 'nova', streamId: 77, vodId: 501, sec: 105, text: 'baby voice again' }), null, 'one raw mention per stream per cooldown');
+    assert.strictEqual(board.activeTopicFor(u1).id, t1.id, 'saying it on mic puts you on the subject');
+    assert.ok(board.levelView(u1).xp >= board.XP_JOIN, 'joining pays XP');
+    const T = () => db.get('SELECT * FROM arena_topics WHERE id = ?', [t1.id]);
+    assert.strictEqual(board.applyTopicJudgement(u1, T(), { on_topic: false, quality: 0 }).applied, false, 'off-subject chunk does nothing');
+    assert.strictEqual(board.applyTopicJudgement(u1, T(), { on_topic: true, quality: 9, flagged: true }).applied, false, 'flagged chunk (threat/minor/dox) is ignored');
+    let r = board.applyTopicJudgement(u1, T(), { on_topic: true, quality: 8, best_line: 'Read my dono in your real voice, coward', about: 'dono voice' }, { vod_id: 501, sec: 40, stream_id: 77 });
+    assert.deepStrictEqual([r.applied, r.quality, r.xp], [true, 8, 6]);
+    r = board.applyTopicJudgement(u1, T(), { on_topic: true, quality: 6, best_line: 'fax machine voice', about: 'x' }, {});
     const lv = board.levelView(u1);
-    assert.ok(lv.xp >= board.XP_ANGLE_CLEARED * 3 + board.XP_TOPIC_CONQUERED, `xp accrued: ${lv.xp}`);
-    assert.strictEqual(lv.level, board.levelFor(lv.xp));
-    assert.ok(lv.level >= 3, `Trash Level climbed: ${lv.level}`);
-    assert.strictEqual(lv.angles_cleared, 3); assert.strictEqual(lv.topics_conquered, 1);
+    assert.strictEqual(lv.topic_moments, 2); assert.strictEqual(lv.topics_joined, 1);
     assert.strictEqual(lv.best_line.text, 'Read my dono in your real voice, coward', 'best line is the highest-quality one');
-    const detail = board.topicDetail(t1.id);
-    assert.strictEqual(detail.conquered, 1); assert.strictEqual(detail.members[0].cleared, 3);
-    assert.ok(detail.best_lines.length >= 1 && detail.progress[u1].every(p => p.cleared));
-    console.log('✅ board topics: angles, progress, clears, conquest, Trash Level');
+    d1 = board.topicDetail(t1.id);
+    assert.strictEqual(d1.mentions.mic, 3); assert.strictEqual(d1.fighters[0].user.id, u1); assert.strictEqual(d1.fighters[0].moments, 3);
+    assert.strictEqual(d1.best_moment.quality, 8); assert.strictEqual(d1.best_lines.length, 2);
+    assert.ok(d1.moments.length === 5 && d1.moments[0].source === 'judge');
+    await board.joinTopic(auto.id, u1);
+    assert.strictEqual(board.activeTopicFor(u1).id, auto.id, 'joining another subject switches the active one');
+    await assert.rejects(board.joinTopic(t1.id, viewer), /roster/, 'viewers cannot talk on a subject');
+    console.log('✅ board: keywords, chat scan → moments, mic auto-join, judged moments, Trash Level');
 
-    // Hype + heat.
-    assert.throws(() => board.hypeTopic(t2.id, u2, `user:${u2}`), /yourself/);
-    await board.joinTopic(t2.id, u2);
-    assert.deepStrictEqual(board.hypeTopic(t2.id, u2, 'anon:abc'), { added: true, hypers: 1 });
-    assert.deepStrictEqual(board.hypeTopic(t2.id, u2, 'anon:abc'), { added: false, hypers: 1 }, 'one hype per person');
-    assert.ok(board.computeHeat(t2.id) >= 5, 'talking + hype makes heat');
+    // Lore (template without AI), hype, heat and the featured order.
+    const lore = await board.buildLore(t1.id, { force: true });
+    assert.ok(/It started in chat when viewer said/.test(lore.lore) && /took it on stream/.test(lore.lore) && /Best line so far, nova/.test(lore.lore), lore.lore);
+    assert.deepStrictEqual(await board.buildLore(t1.id), { skipped: true }, 'no rewrite without new moments');
+    assert.throws(() => board.hypeTopic(t1.id, u1, `user:${u1}`), /yourself/);
+    assert.deepStrictEqual(board.hypeTopic(t1.id, u1, 'anon:abc'), { added: true, hypers: 1 });
+    assert.deepStrictEqual(board.hypeTopic(t1.id, u1, 'anon:abc'), { added: false, hypers: 1 }, 'one hype per person');
     const view = board.boardView();
-    assert.strictEqual(view.open[0].id, t1.id, 'hottest topic first (7 judged hits in the last hour beat 1 talker + 1 hype)');
+    assert.strictEqual(view.open[0].id, t1.id, 'most talked-about subject first');
     assert.ok(view.open[0].heat > view.open[1].heat && view.open[0].hot, `heat sorted: ${view.open.map(t => t.heat)}`);
-    assert.ok(view.open.find(t => t.id === t2.id).talking_now.some(f => f.user.id === u2));
-    console.log('✅ hype + heat ordering');
+    assert.strictEqual(view.open[0].lore, lore.lore);
+    assert.strictEqual(view.cooldown_hours, 24);
+    const yap = board.yappersLeaderboard();
+    assert.deepStrictEqual(yap.map(y => y.name).sort(), ['anon_guy', 'grizzly_bear', 'viewer'], 'everyone who typed about a subject is a yapper');
+    assert.ok(yap.every(y => y.moments === 1 && y.topics === 1));
+    console.log('✅ lore, hype, heat ordering, yappers');
 
-    // Debate: sides from chat + talk, resolves at expiry, clout for right picks.
-    const d = board.createTopic({ text: 'Face cam or no face cam', createdBy: 'ai', kind: 'debate', sideA: 'Face cam', sideB: 'No cam', headline: 'THE CAM WAR' });
-    assert.strictEqual(JSON.parse(d.angles_json).length, 3, 'debate carries its sides as angles');
-    assert.deepStrictEqual(board.pickSide(d.id, 'anon:v1', 'a', null), { a: 1, b: 0, share_a: 100 });
-    board.pickSide(d.id, 'anon:v2', 'b'); board.pickSide(d.id, 'anon:v1', 'b');
-    assert.deepStrictEqual(board.sideTally(d.id), { a: 0, b: 2, share_a: 0 }, 'changing sides never double-counts');
-    await board.joinTopic(d.id, u3);
-    board.applyTopicJudgement(u3, db.get('SELECT * FROM arena_topics WHERE id = ?', [d.id]), { angle_idx: 0, quality: 9, progress_gain: 30, best_line: 'cams are for cowards', about: 'x' }, {});
-    db.run(`UPDATE arena_topics SET expires_at = datetime('now', '-1 minute') WHERE id = ?`, [d.id]);
-    const res = board.resolveExpired();
-    assert.strictEqual(res.length, 1);
-    assert.strictEqual(res[0].winner, 'a', 'talk (9×2=18) beats chat (2 for b)');
-    assert.strictEqual(res[0].mvp_user_id, u3);
-    assert.strictEqual(board.topicDetail(d.id).status, 'resolved');
-    // second debate so the voter has ≥ 2 picks and shows on the clout board
-    const d2 = board.createTopic({ text: 'Keyboard sounds on stream', createdBy: 'ai', kind: 'debate', sideA: 'ASMR', sideB: 'Mute it' });
-    board.pickSide(d2.id, 'anon:v1', 'a'); board.pickSide(d2.id, 'anon:v2', 'a');
-    db.run(`UPDATE arena_topics SET expires_at = datetime('now', '-1 minute') WHERE id = ?`, [d2.id]);
-    board.resolveExpired();
-    const clout = board.cloutLeaderboard();
-    assert.ok(clout.length >= 1 && clout[0].picks === 2, `clout board: ${JSON.stringify(clout)}`);
-    console.log('✅ debates: sides, resolution, clout');
+    // Discovery without AI: a word ≥ 3 people keep saying becomes a subject, seeded with what was said.
+    for (const [who, uid] of [['a1', null], ['a2', null], ['a3', null], ['a1', null]]) say(uid, who, `the curry smell in goosely tent is unreal ${who}`);
+    say(null, 'a2', 'curry again bro');
+    const found = board.heuristicDiscover(board.discoverInput());
+    assert.ok(found.some(f => f.keywords[0] === 'curry'), `burst detected: ${JSON.stringify(found)}`);
+    const disc = await board.discoverTopics({ force: true });
+    assert.ok(disc.made >= 1, `discovered: ${JSON.stringify(disc)}`);
+    const curry = db.get(`SELECT * FROM arena_topics WHERE keywords_json LIKE '%curry%'`);
+    assert.ok(curry && curry.created_by === 'community');
+    assert.ok(board.topicDetail(curry.id).mentions.chat >= 4, 'backfilled with the lines that started it');
+    console.log('✅ discovery from chat bursts + backfill');
 
-    // Phrase challenge: no model needed.
-    const ph = board.createTopic({ text: 'Say "certified yapper" on stream', createdBy: 'ai', kind: 'phrase', phrase: 'certified yapper' });
-    assert.deepStrictEqual(board.checkPhrases(u2, 'we are just a certified yapper household', { vod_id: null, sec: 1 }).map(h => h.xp), [15]);
-    assert.deepStrictEqual(board.checkPhrases(u2, 'CERTIFIED YAPPER again', {}).map(h => h.xp), [5], 'repeats pay less');
-    assert.deepStrictEqual(board.checkPhrases(u2, 'nothing here', {}), []);
-    assert.strictEqual(board.topicDetail(ph.id).hits, 2);
-    console.log('✅ phrase challenges');
+    // Bounty: a subject with a target; expires into the archive with a result.
+    const bty = board.createTopic({ text: 'Bounty: Pixelqueen', createdBy: 'chat', creatorUserId: viewer, creatorName: 'Viewer', kind: 'bounty', targetUserId: u3, headline: 'WANTED' });
+    assert.strictEqual(board.openBountyOn(u3).id, bty.id);
+    assert.throws(() => board.createTopic({ text: 'Bounty again', createdBy: 'chat', kind: 'bounty', targetUserId: u3 }), /already a bounty/);
+    assert.ok(JSON.parse(bty.keywords_json).includes('pixelqueen'), 'bounty keywords include the target name');
 
     // ── Beefs: a name on mic opens it, the target goes on the clock, silence forfeits ──
     const h1 = beef.recordHit(u1, u2, { quality: 7, best_line: 'Grizzly streams to 12 people and 9 are his alts', about: 'his viewers are alts', announcer: 'Nova swings first!' });
@@ -139,7 +152,7 @@ board.ensureTables(); beef.ensureTables();
     assert.throws(() => beef.hype(v.id, 'a', `user:${u1}`), /yourself/);
     assert.deepStrictEqual(beef.hype(v.id, 'a', 'anon:x'), { added: true, hypers: 1, crowd: 1 });
     assert.deepStrictEqual(beef.hype(v.id, 'a', 'anon:x').added, false);
-    assert.deepStrictEqual(beef.pickSide(v.id, 'anon:x', 'b'), { a: 0, b: 1, share_a: 0 });
+    assert.ok(!beef.pickSide && !beef.sidesTally && !('sides' in v), 'no voting anywhere');
     assert.throws(() => beef.hype(999, 'a', 'anon:x'), /No open beef/);
     beef.tick();
     assert.strictEqual(beef.get(v.id).status, 'open', 'clock still running → stays open');
@@ -183,16 +196,17 @@ board.ensureTables(); beef.ensureTables();
     assert.strictEqual(L.open.length, 0); assert.strictEqual(L.resolved.length, 3);
     console.log('✅ rematches, hard end on points, rivalry receipts');
 
-    // Bounty doubles beef XP for whoever collects.
-    const bty = board.createTopic({ text: 'Bounty: Pixelqueen', createdBy: 'chat', creatorUserId: viewer, kind: 'bounty', targetUserId: u3 });
-    assert.strictEqual(board.openBountyOn(u3).id, bty.id);
-    assert.throws(() => board.createTopic({ text: 'Bounty again', createdBy: 'chat', kind: 'bounty', targetUserId: u3 }), /already a bounty/);
+    // Bounty doubles beef XP for whoever collects, and the hit lands as a moment on the bounty.
     const before = board.levelView(u2).xp;
     const hb = beef.recordHit(u2, u3, { quality: 8, best_line: 'Pixelqueen plays on a calculator', about: 'setup' });
     assert.strictEqual(hb.bounty, true);
     const gained = board.levelView(u2).xp - before;
     assert.ok(gained >= 8 * 2 + beef.XP_BEEF_OPEN, `bounty doubles the hit XP (+open bonus): ${gained}`);
-    assert.strictEqual(board.topicDetail(bty.id).hits, 1);
+    assert.ok(board.topicDetail(bty.id).moments.some(m => m.text.includes('calculator')));
+    db.run(`UPDATE arena_topics SET expires_at = datetime('now', '-1 minute') WHERE id = ?`, [bty.id]);
+    const res = board.resolveExpired();
+    assert.strictEqual(res.length, 1); assert.strictEqual(res[0].claimed_by, u2);
+    assert.strictEqual(board.topicDetail(bty.id).status, 'resolved');
     console.log('✅ bounties');
 
     // ── Listener: aliases + heuristics + a real tick over a live transcribed stream ──
@@ -204,21 +218,24 @@ board.ensureTables(); beef.ensureTables();
     const hb1 = listener._heuristicBeef('Grizzly is trash and washed, he could never beat me!', ['grizzly']);
     assert.strictEqual(hb1.aimed_at_target, true); assert.ok(hb1.quality >= 6);
     assert.strictEqual(listener._heuristicBeef('thanks grizzly for the raid, love you', ['grizzly']).aimed_at_target, false);
-    const ht = listener._heuristicTopic('the roast angle: worst at this is grizzly because reasons', [{ text: 'Brag: why you win' }, { text: 'Roast: who is worst at this and why' }, { text: 'Bit: unhinged take' }]);
-    assert.strictEqual(ht.angle_idx, 1);
+    const ht = listener._heuristicTopic('honestly the baby voice thing is the worst, nobody wants it', { keywords_json: JSON.stringify(['baby voice']) });
+    assert.strictEqual(ht.on_topic, true); assert.ok(ht.quality >= 5);
+    assert.strictEqual(listener._heuristicTopic('unrelated gameplay talk', { keywords_json: JSON.stringify(['baby voice']) }).on_topic, false);
 
     // Nova goes live with transcription; says pixelqueen's name while talking shit → beef opens without anyone clicking.
     const liveId = Number(db.createStream({ user_id: u1, title: 'live', category: 'irl', protocol: 'rtmp' }).lastInsertRowid);
     db.run(`UPDATE streams SET is_live = 1, started_at = datetime('now', '-600 seconds') WHERE id = ?`, [liveId]);
     db.addTimelineEvents([
         { stream_id: liveId, user_id: u1, vod_id: null, kind: 'speech', start_sec: 586, end_sec: 590, text: 'Chat, pixelqueen is trash, she is washed and could never beat me in anything, she is scared of the smoke.', label: null, confidence: 0.9 },
-        { stream_id: liveId, user_id: u1, vod_id: null, kind: 'speech', start_sec: 591, end_sec: 596, text: 'Nobody watches that stream, it is mid, it is garbage, I would cook her in a second, bet!', label: null, confidence: 0.9 },
+        { stream_id: liveId, user_id: u1, vod_id: null, kind: 'speech', start_sec: 591, end_sec: 596, text: 'Nobody watches that stream, it is mid, it is garbage, I would cook her in a second, bet! Also the curry thing is real.', label: null, confidence: 0.9 },
     ]);
     assert.strictEqual(arena.liveFighters()[0].user.id, u1);
     const ev = await listener.tick();
     assert.ok(ev.some(e => e.kind === 'beef_hit' && e.targetId === u3 && e.opened), `listener opened the beef: ${JSON.stringify(ev)}`);
     assert.strictEqual(listener.consoleState(u1).listening, true);
     assert.ok(listener.consoleState(u1).last_beef_judgement.aimed_at_target);
+    assert.ok(ev.some(e => e.kind === 'topic_mention' && e.topicId === curry.id), 'saying a subject on mic adds a moment on it');
+    assert.ok(board.topicDetail(curry.id).fighters.some(f => f.user.id === u1), 'and auto-joins the fighter');
     const opened = beef.openBeefsFor(u1);
     assert.strictEqual(opened.length, 1); assert.strictEqual(opened[0].b_user_id, u3);
     assert.strictEqual(opened[0].on_clock, 'b');
@@ -232,25 +249,26 @@ board.ensureTables(); beef.ensureTables();
     const vc = { user: { id: viewer, username: 'viewer', display_name: 'Viewer' }, streamId: liveId, ip: '1.1.1.1' };
     assert.strictEqual(await run(vc, '!nope'), false);
     assert.strictEqual(await run(vc, '!topic Streamers who blame lag for everything'), true);
+    assert.ok(/per person/.test(sent.pop()), 'viewer already used their topic for the day');
+    const vc2 = { user: { id: u2, username: 'grizzly_bear', display_name: 'Grizzly' }, streamId: liveId, ip: '7.7.7.7' };
+    await run(vc2, '!topic Goosely tent smell');
     assert.ok(sent.pop().includes('/arena/topic/'), 'topic posted with a link');
-    assert.ok(room.pop().includes('put a topic on the Arena board'));
-    assert.ok(db.get(`SELECT id FROM arena_topics WHERE text LIKE 'Streamers who blame lag%' AND created_by = 'chat'`));
+    assert.ok(room.pop().includes('put a subject on the Arena board'));
+    assert.ok(db.get(`SELECT id FROM arena_topics WHERE text LIKE 'Goosely tent smell%' AND created_by = 'streamer'`));
     await new Promise(r => setTimeout(r, 4100)); // per-person command rate limit
     await run(vc, '!hype');
     assert.ok(sent.pop().includes('Hyped Nova in their beef'), 'hype goes to the streamer\'s open beef');
     assert.strictEqual(beef.get(opened[0].id).a.crowd, 1);
     await new Promise(r => setTimeout(r, 4100));
-    await run(vc, '!side pixelqueen');
-    assert.ok(sent.pop().includes("You're with"));
-    assert.deepStrictEqual(beef.sidesTally(opened[0].id), { a: 0, b: 1, share_a: 0 });
-    await new Promise(r => setTimeout(r, 4100));
     await run({ anonId: 'zz', streamId: liveId }, '!beef');
     assert.ok(sent.pop().includes('on the clock'), 'beef summary shows the clock');
     await run({ anonId: 'zz2', streamId: liveId }, '!board');
     assert.ok(sent.pop().includes('Hottest'), 'board summary');
+    await run({ anonId: 'zz4', streamId: liveId }, '!side nova');
+    assert.strictEqual(sent.length, 0, 'no voting commands exist');
     await run({ anonId: 'zz3', streamId: liveId }, '!topic no sign in');
     assert.ok(sent.pop().includes('Sign in'));
-    console.log('✅ chat: !topic !hype !side !beef !board');
+    console.log('✅ chat: !topic (24 h limit) !hype !beef !board');
 
     // ── Public API smoke ──
     const express = require('express');
@@ -258,12 +276,12 @@ board.ensureTables(); beef.ensureTables();
     const srv = await new Promise(r => { const s = app.listen(0, () => r(s)); });
     const get = async (p) => { const res = await fetch(`http://127.0.0.1:${srv.address().port}/api/arena${p}`); return { status: res.status, body: await res.json() }; };
     const bd = await get('/board');
-    assert.strictEqual(bd.status, 200); assert.ok(Array.isArray(bd.body.open) && bd.body.levels.length >= 1 && bd.body.clout.length >= 1);
+    assert.strictEqual(bd.status, 200); assert.ok(Array.isArray(bd.body.open) && bd.body.levels.length >= 1 && bd.body.yappers.length >= 1 && bd.body.archive.length >= 1);
     const bf = await get('/beefs'); assert.strictEqual(bf.body.open.length, 2, 'nova→pixelqueen (listener) + grizzly→pixelqueen (bounty)'); assert.strictEqual(bf.body.resolved.length, 3);
     const one = await get(`/beefs/${opened[0].id}`); assert.strictEqual(one.body.a.user.username, 'nova'); assert.ok(one.body.rules.response_live_min === 15);
     const con = await get('/console/nova'); assert.strictEqual(con.body.listener.listening, true); assert.strictEqual(con.body.open_beefs.length, 1); assert.ok(con.body.hot_mic.length === 2);
     const lv2 = await get('/live'); assert.strictEqual(lv2.body.live[0].open_beefs, 1);
-    const tp = await get(`/board/topics/${t1.id}`); assert.strictEqual(tp.body.conquered, 1);
+    const tp = await get(`/board/topics/${t1.id}`); assert.ok(tp.body.lore && tp.body.moments.length >= 5 && tp.body.keywords.includes('baby voice'));
     assert.strictEqual((await get('/beefs/999')).status, 404);
     assert.strictEqual((await get('/console/nobody')).status, 404);
     srv.close();

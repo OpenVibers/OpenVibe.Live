@@ -97,18 +97,17 @@ const TOPIC_SCHEMA = {
     name: 'arena_topic_judgement',
     schema: {
         type: 'object', additionalProperties: false,
-        required: ['angle_idx', 'quality', 'progress_gain', 'best_line', 'about', 'flagged'],
+        required: ['on_topic', 'quality', 'best_line', 'about', 'flagged'],
         properties: {
-            angle_idx: { type: 'integer', minimum: -1, maximum: 5, description: 'which angle (0-based) this chunk addressed, -1 if none / not trash talk' },
-            quality: { type: 'integer', minimum: 0, maximum: 10 },
-            progress_gain: { type: 'integer', minimum: 0, maximum: 60, description: 'how much of that angle this chunk covered' },
-            best_line: { type: 'string' },
-            about: { type: 'string', description: '≤ 10 words: what they talked about' },
-            flagged: { type: 'boolean' },
+            on_topic: { type: 'boolean', description: 'true if the speech is actually about the SUBJECT (talking shit, taking a side, riffing, ranting, a bit) — not just a passing word' },
+            quality: { type: 'integer', minimum: 0, maximum: 10, description: 'how good it is: savage, specific, funny, quotable = high; generic = low' },
+            best_line: { type: 'string', description: 'the single best line, VERBATIM from the speech (empty if none)' },
+            about: { type: 'string', description: '≤ 10 words: what they said about it' },
+            flagged: { type: 'boolean', description: 'ONLY for direct threats of violence, sexual content about minors, or doxxing — never for offensive language' },
         },
     },
 };
-const TOPIC_SYSTEM = `You judge a live streamer talking shit on a BOARD TOPIC that has several angles. You get the topic, its angles (0-based) and the last ~60 seconds of speech-to-text. Say which angle (if any) the speech addressed with actual shit talk / bragging / roasting / trolling / a committed bit, score its quality (savage, profane, petty, specific and quotable = high; generic = low), how much of that angle it covered, the best verbatim line, and a ≤ 10-word summary. Ordinary gameplay chatter or off-topic talk → angle_idx -1, progress 0. Forgive transcription noise. Offensive, provocative and taboo language — slurs included — is allowed on this platform and is NOT a reason to flag or to score low; judge the craft. Flag ONLY behavior: direct threats of violence, sexual content about minors, doxxing (addresses, phone numbers, private info). Output only the JSON.`;
+const TOPIC_SYSTEM = `You judge a live streamer talking about a SUBJECT the community is on about (a person, a group, a joke, a drama…). You get the subject, its current lore, the keywords people use for it, and the last ~60 seconds of the streamer's speech-to-text. Decide whether the speech is really about the subject (shit talk, a take, a rant, a bit, dunking, defending — all count), score its quality (savage, specific, petty, funny, quotable = high; generic = low), pick the best verbatim line and summarise in ≤ 10 words. Ordinary gameplay chatter or unrelated talk → on_topic false. Forgive transcription noise. Offensive, provocative and taboo language — slurs included — is allowed on this platform and is NOT a reason to flag or to score low; judge the craft. Flag ONLY behavior: direct threats of violence, sexual content about minors, doxxing. Output only the JSON.`;
 
 function heuristicBeef(text, targetNames) {
     const t = text.toLowerCase();
@@ -120,13 +119,16 @@ function heuristicBeef(text, targetNames) {
     const pick = (named.length ? named : sentences).sort((a, b) => b.length - a.length)[0] || text;
     return { aimed_at_target: spicy, quality, best_line: pick.trim().slice(0, 200), about: text.split(/\s+/).slice(0, 8).join(' '), flagged: false, _fallback: true };
 }
-function heuristicTopic(text, angles) {
+function heuristicTopic(text, topic) {
+    const kws = (parseJson(topic.keywords_json, []) || []).map(k => String(k).toLowerCase());
     const t = text.toLowerCase();
-    let best = -1, bestHits = 0;
-    angles.forEach((a, i) => { const stems = (String(a.text).toLowerCase().match(/[a-z]{4,}/g) || []).map(w => w.slice(0, 5)); const hits = stems.filter(s => t.includes(s)).length; if (hits > bestHits) { bestHits = hits; best = i; } });
+    const hits = kws.filter(k => t.includes(k)).length;
+    const spicy = /\b(clown|weak|scared|trash|garbage|mid|washed|bum|ratio|cook|cooked|never|nobody|fraud|ass|bet|shut up|cope|seethe|cry|worst|best|hate|love)\b/.test(t);
     const excl = (text.match(/!/g) || []).length;
-    const quality = Math.min(10, 3 + excl + Math.min(3, bestHits));
-    return { angle_idx: bestHits ? best : -1, quality, progress_gain: bestHits ? Math.min(60, 12 + bestHits * 10) : 0, best_line: (text.split(/(?<=[.!?])\s+/).sort((a, b) => b.length - a.length)[0] || '').slice(0, 200), about: text.split(/\s+/).slice(0, 8).join(' '), flagged: false, _fallback: true };
+    const quality = Math.min(10, 2 + (spicy ? 3 : 0) + excl + Math.min(3, hits));
+    const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+    const named = sentences.filter(l => kws.some(k => l.toLowerCase().includes(k)));
+    return { on_topic: hits > 0, quality, best_line: ((named.length ? named : sentences).sort((a, b) => b.length - a.length)[0] || text).trim().slice(0, 200), about: text.split(/\s+/).slice(0, 8).join(' '), flagged: false, _fallback: true };
 }
 
 async function judgeBeef(speakerId, targetId, text, roster) {
@@ -145,18 +147,16 @@ async function judgeBeef(speakerId, targetId, text, roster) {
 }
 
 async function judgeTopic(speakerId, topic, text) {
-    if (arena()._isBannedText(text)) return { angle_idx: -1, quality: 0, progress_gain: 0, best_line: '', about: 'voided', flagged: true };
-    const angles = parseJson(topic.angles_json, []);
+    if (arena()._isBannedText(text)) return { on_topic: false, quality: 0, best_line: '', about: 'voided', flagged: true };
     let j = null;
     if (aiOn()) {
         try {
-            const r = await llm.complete({ role: 'chat', kind: 'arena_topic_judge', source: 'arena', ownerUserId: speakerId, system: TOPIC_SYSTEM, user: JSON.stringify({ topic: topic.text, hint: topic.hint, angles: angles.map((a, i) => `${i}: ${a.text}`), speech: text }), json: TOPIC_SCHEMA, maxTokens: 220, temperature: 0.4, timeoutMs: 25000 });
+            const r = await llm.complete({ role: 'chat', kind: 'arena_topic_judge', source: 'arena', ownerUserId: speakerId, system: TOPIC_SYSTEM, user: JSON.stringify({ subject: topic.text, headline: topic.headline, lore: topic.lore ? String(topic.lore).slice(0, 500) : null, keywords: parseJson(topic.keywords_json, []), speech: text }), json: TOPIC_SCHEMA, maxTokens: 200, temperature: 0.4, timeoutMs: 25000 });
             if (r && r.json && typeof r.json.quality === 'number') j = r.json;
         } catch (e) { console.warn('[Arena] topic judge:', e.message); }
     }
-    if (!j) j = heuristicTopic(text, angles);
-    const idx = Number.isInteger(j.angle_idx) && j.angle_idx >= 0 && j.angle_idx < angles.length ? j.angle_idx : -1;
-    return { angle_idx: j.flagged ? -1 : idx, quality: Math.max(0, Math.min(10, Math.round(Number(j.quality) || 0))), progress_gain: Math.max(0, Math.min(60, Math.round(Number(j.progress_gain) || 0))), best_line: String(j.best_line || '').slice(0, 220), about: String(j.about || '').slice(0, 80), flagged: !!j.flagged, fallback: !!j._fallback };
+    if (!j) j = heuristicTopic(text, topic);
+    return { on_topic: !!j.on_topic && !j.flagged, quality: Math.max(0, Math.min(10, Math.round(Number(j.quality) || 0))), best_line: String(j.best_line || '').slice(0, 220), about: String(j.about || '').slice(0, 80), flagged: !!j.flagged, fallback: !!j._fallback };
 }
 
 // ── Tick ─────────────────────────────────────────────────────
@@ -186,7 +186,14 @@ async function tickStream(stream, roster, events) {
     const now = Date.now();
     for (const r of rows) {
         const line = { t: String(r.text || ''), s: Math.floor(r.start_sec), v: r.vod_id || null };
-        try { const ph = board().checkPhrases(stream.user_id, line.t, { vod_id: line.v, sec: Math.max(0, line.s - 2) }); if (ph.length) events.push({ kind: 'phrase_hit', streamId: stream.id, speakerId: stream.user_id, hits: ph }); } catch { /* */ }
+        // Board subjects said on mic → a moment on the topic (raw mention; the judge scores the chunk later).
+        try {
+            for (const t of board().matchTopics(line.t)) {
+                const m = board().noteMicMention(t.id, { userId: stream.user_id, username: roster.byId[stream.user_id]?.user?.username || null, streamId: stream.id, vodId: line.v, sec: Math.max(0, line.s - 2), text: line.t });
+                if (m) events.push({ kind: 'topic_mention', streamId: stream.id, speakerId: stream.user_id, topicId: t.id });
+                st.lastTopic = { id: t.id, at: now };
+            }
+        } catch (e) { console.warn('[Arena] topic match:', e.message); }
         const targets = mentionsIn(line.t, stream.user_id, roster);
         if (targets.length) {
             for (const tid of targets) { const m = st.mention[tid] || (st.mention[tid] = { lines: [], lastAt: 0, lastSec: 0 }); m.lines.push(line); m.lastAt = now; m.lastSec = line.s; }
@@ -222,18 +229,17 @@ async function tickStream(stream, roster, events) {
         return; // one judge call per stream per tick
     }
 
-    // 2) Active board topic.
-    const topic = board().activeTopicFor(stream.user_id);
+    // 2) Board subject: the one they chose, else the one they just brought up on mic.
+    let topic = board().activeTopicFor(stream.user_id);
+    if (!topic && st.lastTopic && now - st.lastTopic.at < 3 * 60 * 1000) topic = db.get(`SELECT * FROM arena_topics WHERE id = ? AND status = 'open'`, [st.lastTopic.id]);
     if (topic && st.topic.lines.reduce((n, l) => n + words(l.t), 0) >= JUDGE_MIN_WORDS) {
         const lines = st.topic.lines; st.topic.lines = [];
         const text = bufferText(lines);
         st.lastJudgeAt = Date.now();
-        if (!parseJson(topic.angles_json, null)) await board().ensureAngles(topic);
-        const fresh = db.get('SELECT * FROM arena_topics WHERE id = ?', [topic.id]);
-        const j = await judgeTopic(stream.user_id, fresh, text);
-        const ref = lineRefFor(lines, j.best_line);
-        const res = board().applyTopicJudgement(stream.user_id, fresh, j, ref);
-        st.lastTopicJudgement = { at: new Date().toISOString(), ...j, applied: res.applied, angle_idx: res.applied ? res.angle_idx : -1, progress: res.progress, cleared_angle: res.cleared_angle, conquered: res.conquered };
+        const j = await judgeTopic(stream.user_id, topic, text);
+        const ref = { ...lineRefFor(lines, j.best_line), stream_id: stream.id };
+        const res = board().applyTopicJudgement(stream.user_id, topic, j, ref);
+        st.lastTopicJudgement = { at: new Date().toISOString(), topic_id: topic.id, topic: topic.text, ...j, applied: res.applied, xp: res.xp || 0 };
         events.push({ kind: res.applied ? 'topic_hit' : 'topic_miss', streamId: stream.id, speakerId: stream.user_id, topicId: topic.id, ...res });
     } else if (!topic && st.topic.lines.length > 80) {
         st.topic.lines = st.topic.lines.slice(-40);

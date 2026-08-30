@@ -1,10 +1,9 @@
 /**
  * OpenVibe.Live — Arena chat commands (viewers play along from any stream chat)
  *
- *   !topic <text>     start a board topic from chat (one per person per 10 min)
+ *   !topic <text>     start a board subject from chat (signed in; one per person + per IP per 24 h; the AI rewrites it)
  *   !bounty <user>    put a bounty on a fighter: double XP for anyone who talks shit about them (1/hour)
  *   !hype             hype the streamer: their newest open beef, else their active board topic
- *   !side <name|a|b>  pick a side in the streamer's newest open beef (clout if your pick wins)
  *   !beef             what beefs this streamer has open + clocks
  *   !board            the pulse + hottest events on the board
  *   !arena [user]     fighter card summary + link
@@ -16,12 +15,10 @@
 
 const db = require('../db/database');
 
-const COMMANDS = ['!topic', '!bounty', '!hype', '!side', '!beef', '!board', '!arena'];
+const COMMANDS = ['!topic', '!bounty', '!hype', '!beef', '!board', '!arena'];
 const RATE_MS = 4000;
-const TOPIC_RATE_MS = 10 * 60 * 1000;
 const BOUNTY_RATE_MS = 60 * 60 * 1000;
 const _last = new Map();       // voterKey → ms
-const _lastTopic = new Map();  // voterKey → ms
 const _lastBounty = new Map();
 
 function voterKey(client) {
@@ -63,12 +60,11 @@ function handle(chat, ws, client, cmd, parts) {
                 if (!client.user?.id) return reply('Sign in to start a topic.');
                 const text = parts.slice(1).join(' ').trim();
                 if (!text) return reply('Usage: !topic <something the streamers should talk shit about>');
-                if (limited(_lastTopic, key, TOPIC_RATE_MS)) return reply('One topic per 10 minutes — let the last one cook.');
                 const onRoster = !!arena.loadRoster().byId[client.user.id];
-                const t = board.createTopic({ text, createdBy: onRoster ? 'streamer' : 'chat', creatorUserId: client.user.id, creatorName: who });
-                board.ensureAngles(t).catch(() => {});
-                reply(`📌 Topic is on the board: “${t.text}” → ${base()}/arena/topic/${t.id}`);
-                room(`📌 ${who} put a topic on the Arena board: “${t.text}” — streamers, click it and start talking. ${base()}/arena/topic/${t.id}`);
+                const t = await board.submitTopic({ text, userId: client.user.id, ip: client.ip, creatorName: who, onRoster });
+                board.buildLore(t.id, { force: true }).catch(() => {});
+                reply(`📌 On the board as “${t.text}”${t.headline ? ` — ${t.headline}` : ''} → ${base()}/arena/topic/${t.id}`);
+                room(`📌 ${who} put a subject on the Arena board: “${t.text}” — say it on mic or keep it going in chat. ${base()}/arena/topic/${t.id}`);
                 return;
             }
             if (cmd === '!bounty') {
@@ -80,8 +76,9 @@ function handle(chat, ws, client, cmd, parts) {
                 if (target.id === client.user.id) return reply("You can't put a bounty on yourself. Nice try.");
                 if (board.openBountyOn(target.id)) return reply(`There's already a bounty on ${target.display_name || target.username}. Go collect it.`);
                 if (limited(_lastBounty, key, BOUNTY_RATE_MS)) return reply('One bounty per hour per person.');
+                board.assertCanSubmit(client.user.id, client.ip);
                 const name = board.fighterBrief(target.id, roster).fighter_name;
-                const t = board.createTopic({ text: `Bounty: ${name}. Anyone who talks shit about them on stream gets double XP.`, hint: `Put up by ${who}. Say the name, collect the bag.`, createdBy: 'chat', creatorUserId: client.user.id, creatorName: who, kind: 'bounty', targetUserId: target.id, headline: `WANTED: ${name} — chat wants smoke` });
+                const t = board.createTopic({ text: `Bounty: ${name}`, hint: `Put up by ${who}. Say the name, collect the bag.`, createdBy: 'chat', creatorUserId: client.user.id, creatorName: who, creatorIp: client.ip, kind: 'bounty', targetUserId: target.id, headline: `WANTED: ${name} — chat wants smoke`, tagline: `Double XP for anyone who talks shit about ${name} on stream` });
                 reply(`💰 Bounty posted on ${name} → ${base()}/arena/topic/${t.id}`);
                 room(`💰 ${who} put a bounty on ${name}. Any streamer who talks shit about them on mic gets double XP for the next ${board.KIND_TTL_HOURS.bounty} hours.`);
                 return;
@@ -108,18 +105,6 @@ function handle(chat, ws, client, cmd, parts) {
                 if (r.hypers === 1 || r.hypers % 5 === 0) room(`🎤 ${streamer.display_name || streamer.username} is talking shit on “${t.text}” — ${r.hypers} hyping. Type !hype. ${base()}/arena/topic/${t.id}`);
                 return;
             }
-            if (cmd === '!side') {
-                if (!streamer) return reply("!side works inside a streamer's chat.");
-                const open = beef.openBeefsFor(streamer.id);
-                if (!open.length) return reply(`${streamer.display_name || streamer.username} has no open beef to pick a side in.`);
-                const b = beef.get(open[0].id);
-                const arg = String(parts[1] || '').toLowerCase().replace(/^@/, '');
-                const matches = (side) => [side.user.username, side.user.display_name, side.fighter_name].filter(Boolean).some(n => String(n).toLowerCase() === arg);
-                const pick = arg === 'a' || matches(b.a) ? 'a' : arg === 'b' || matches(b.b) ? 'b' : !arg ? (b.a.user.id === streamer.id ? 'a' : 'b') : null;
-                if (!pick) return reply(`Usage: !side <name> — (a) ${b.a.fighter_name} vs (b) ${b.b.fighter_name}`);
-                const r = beef.pickSide(b.id, key, pick, client.user?.id || null);
-                return reply(`🗳️ You're with ${(pick === 'a' ? b.a : b.b).fighter_name}. Crowd: ${r.a}–${r.b}. Pick right and you earn clout. ${base()}/arena/beef/${b.id}`);
-            }
             if (cmd === '!beef') {
                 if (!streamer) return reply(`Open beefs → ${base()}/arena`);
                 const open = beef.openBeefsFor(streamer.id).map(b => beef.get(b.id));
@@ -131,7 +116,7 @@ function handle(chat, ws, client, cmd, parts) {
             }
             if (cmd === '!board') {
                 const v = board.boardView();
-                const top = v.open.slice(0, 3).map(t => `${t.hot ? '🔥 ' : ''}${t.kind === 'debate' ? `${t.side_a} vs ${t.side_b}` : t.kind === 'bounty' ? `Bounty: ${t.target?.fighter_name}` : t.kind === 'phrase' ? `Say “${t.phrase}”` : t.text} (${t.heat} heat)`).join(' · ');
+                const top = v.open.slice(0, 3).map(t => `${t.hot ? '🔥 ' : ''}${t.kind === 'bounty' ? `Bounty: ${t.target?.fighter_name}` : t.text}${t.tagline ? ` — ${t.tagline}` : ''} (${t.mentions.total} mentions)`).join(' · ');
                 return reply(`📰 ${v.pulse?.text || 'The board is quiet.'} ${top ? `Hottest: ${top}` : ''} → ${base()}/arena  ·  !topic <text> to add one`);
             }
             if (cmd === '!arena') {
