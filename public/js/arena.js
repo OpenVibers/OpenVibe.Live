@@ -142,7 +142,7 @@ function _aCustomRadar(f, color, size = 240) {
 function _aCustomQuips(f) {
     const cs = (f.persona && Array.isArray(f.persona.custom_stats) ? f.persona.custom_stats : []);
     if (!cs.length) return '';
-    return `<div class="arena-quips arena-quips-custom">${cs.map(x => `<div class="arena-quip"><b>${_aEsc(x.name)} ${Number(x.value)}</b><span>${_aEsc(x.quip || '')}</span></div>`).join('')}</div>`;
+    return `<div class="arena-quips arena-quips-custom">${cs.map(x => `<div class="arena-quip"><b><span class="arena-quip-val">${Number(x.value)}</span> ${_aEsc(x.name)}</b><span>${_aEsc(x.quip || '')}</span></div>`).join('')}</div>`;
 }
 
 /** Sparkline of a per-stream series. */
@@ -603,7 +603,7 @@ function _aRenderList(fighters) {
                 <div>${_aCustomRadar(f, f.user.profile_color || '#8b5cf6', 220)}<div class="arena-mini-record">${(f.persona.custom_stats || []).length ? 'AI characteristics · ' : ''}${f.category ? _aEsc(f.category) + ' · ' : ''}last live ${_aEsc(f.last_live_at ? _aDate(f.last_live_at) : '—')}</div></div>
                 <div>
                     <p class="arena-row-lore is-clamp">${_aEsc(f.persona.lore)}</p>
-                    ${(f.persona.taunts || []).length ? `<div class="arena-row-taunts">${f.persona.taunts.slice(0, 2).map(t => `<em>“${_aEsc(t)}” ${_aSpeakBtn(t, '', f.user.username)}</em>`).join('')}${f.persona.typing_style ? `<small><i class="fa-solid fa-keyboard"></i> ${_aEsc(f.persona.typing_style)}</small>` : ''}</div>` : ''}
+                    ${(f.persona.taunts || []).length ? `<div class="arena-bubbles arena-row-bubbles">${f.persona.taunts.slice(0, 2).map(t => `<div class="arena-bubble"><span class="arena-bubble-who">${_aEsc(f.user.display_name || f.user.username)}</span><span class="arena-bubble-text">${_aEsc(t)}</span>${_aSpeakBtn(t, 'arena-bubble-speak', f.user.username)}</div>`).join('')}${f.persona.typing_style ? `<small class="arena-note"><i class="fa-solid fa-keyboard"></i> ${_aEsc(f.persona.typing_style)}</small>` : ''}</div>` : ''}
                     ${(f.persona.custom_stats || []).length ? _aCustomQuips(f) : `<div class="arena-quips">${ARENA_STATS.map(k => `<div class="arena-quip"><b>${_aEsc(ARENA_STAT_LABEL[k])} ${f.ratings[k]}</b><span>${_aEsc((f.persona.stat_quips || {})[k] || '')}</span></div>`).join('')}</div>`}
                     ${f.persona.signature_move ? `<div class="arena-mini-record"><b>Signature:</b> ${_aEsc(f.persona.signature_move.name)} — ${_aEsc(f.persona.signature_move.description)}</div>` : ''}
                 </div>
