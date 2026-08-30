@@ -89,7 +89,7 @@ const BEEF_SCHEMA = {
         },
     },
 };
-const BEEF_SYSTEM = `You judge live streamer-vs-streamer shit talk. You get a target fighter's name(s), what the speaker ALREADY said about them a moment ago (context), and the newest ~60 seconds of the speaker's speech-to-text. The target may not be named again in the new speech — decide from context whether they are STILL talking about that person ("he", "his chat", "that guy", "the beef", the same story) or have moved on to something else. Then decide if the speech is talking shit AT or ABOUT the target (roast, callout, disrespect, bragging over them, trolling them) versus neutral mention (shout-out, thanks, gameplay chatter). Savage, profane, petty and personal is GOOD and scores high — creativity, specificity and quotability score highest; lazy generic insults score low. Pick the best verbatim line, summarise what was said about the target in ≤ 10 words. Forgive transcription noise and misheard names. Offensive, provocative and taboo language — slurs included — is allowed on this platform and is NOT a reason to flag or to score low; judge the craft. Flag ONLY behavior: direct threats of violence, sexual content about minors, doxxing (addresses, phone numbers, private info). Output only the JSON.`;
+const BEEF_SYSTEM = `You judge live streamer-vs-streamer shit talk. You get a target fighter's name(s), what the speaker ALREADY said about them a moment ago (context), and the newest ~60 seconds of the speaker's speech-to-text. The target may not be named again in the new speech — decide from context whether they are STILL talking about that person ("he", "his chat", "that guy", "the beef", the same story) or have moved on to something else. DEFAULT TO about_target=false: gameplay chatter, mumbling and generic sentences are NOT about them even if their name was said a minute ago; if how_the_name_was_matched is not "exact" (a sound-alike), be extra strict. Then decide if the speech is talking shit AT or ABOUT the target (roast, callout, disrespect, bragging over them, trolling them) versus neutral mention (shout-out, thanks, gameplay chatter). Savage, profane, petty and personal is GOOD and scores high — creativity, specificity and quotability score highest; lazy generic insults score low. Pick the best verbatim line, summarise what was said about the target in ≤ 10 words. Forgive transcription noise and misheard names. Offensive, provocative and taboo language — slurs included — is allowed on this platform and is NOT a reason to flag or to score low; judge the craft. Flag ONLY behavior: direct threats of violence, sexual content about minors, doxxing (addresses, phone numbers, private info). Output only the JSON.`;
 
 const TOPIC_SCHEMA = {
     name: 'arena_topic_judgement',
@@ -105,7 +105,7 @@ const TOPIC_SCHEMA = {
         },
     },
 };
-const TOPIC_SYSTEM = `You judge a live streamer talking about a SUBJECT the community is on about (a person, a group, a joke, a drama…). You get the subject, its current lore, the keywords people use for it, and the last ~60 seconds of the streamer's speech-to-text. Decide whether the speech is really about the subject (shit talk, a take, a rant, a bit, dunking, defending — all count), score its quality (savage, specific, petty, funny, quotable = high; generic = low), pick the best verbatim line and summarise in ≤ 10 words. Ordinary gameplay chatter or unrelated talk → on_topic false. Forgive transcription noise. Offensive, provocative and taboo language — slurs included — is allowed on this platform and is NOT a reason to flag or to score low; judge the craft. Flag ONLY behavior: direct threats of violence, sexual content about minors, doxxing. Output only the JSON.`;
+const TOPIC_SYSTEM = `You judge a live streamer talking about a SUBJECT the community is on about (a person, a group, a joke, a drama…). You get the subject, its current lore, the keywords people use for it, and the last ~60 seconds of the streamer's speech-to-text. DEFAULT TO on_topic=false. Say true ONLY if a stranger reading the speech alone would say "they are clearly talking about that subject" — it names the subject, a keyword, or unmistakably continues it. Gameplay chatter, mumbling, "I'm not sure", "I'm going to the store", reading chat, generic talk → false, quality 0. When true, score the quality (savage, specific, petty, funny, quotable = high; generic = low), pick the best verbatim line and summarise in ≤ 10 words. Forgive transcription noise but never invent a connection. Offensive, provocative and taboo language — slurs included — is allowed on this platform and is NOT a reason to flag or to score low; judge the craft. Flag ONLY behavior: direct threats of violence, sexual content about minors, doxxing. Output only the JSON.`;
 
 function heuristicBeef(text, targetNames, { named = true } = {}) {
     const t = text.toLowerCase();
@@ -132,7 +132,7 @@ function heuristicTopic(text, topic) {
     return { on_topic: hits > 0, quality, best_line: ((named.length ? named : sentences).sort((a, b) => b.length - a.length)[0] || text).trim().slice(0, 200), about: text.split(/\s+/).slice(0, 8).join(' '), flagged: false, _fallback: true };
 }
 
-async function judgeBeef(speakerId, targetId, text, roster, { context = null, named = true } = {}) {
+async function judgeBeef(speakerId, targetId, text, roster, { context = null, named = true, how = 'exact' } = {}) {
     if (arena()._isBannedText(text)) return { about_target: false, aimed_at_target: false, quality: 0, best_line: '', about: 'voided', flagged: true };
     const tf = roster.byId[targetId];
     const targetNames = [tf.user.username, tf.user.display_name, (parseJson(db.get('SELECT persona_json FROM arena_profiles WHERE user_id = ?', [targetId])?.persona_json) || {}).fighter_name].filter(Boolean);
@@ -141,7 +141,7 @@ async function judgeBeef(speakerId, targetId, text, roster, { context = null, na
     if (aiOn()) {
         try {
             const r = await llm.complete({ role: 'chat', kind: 'arena_beef_judge', source: 'arena', ownerUserId: speakerId, system: BEEF_SYSTEM,
-                user: JSON.stringify({ target_names: targetNames, target_as_transcribed: spokenForms, target_named_in_new_speech: named, what_speaker_already_said_about_target: context || null, new_speech: text }),
+                user: JSON.stringify({ target_names: targetNames, target_as_transcribed: spokenForms, target_named_in_new_speech: named, how_the_name_was_matched: how, what_speaker_already_said_about_target: context || null, new_speech: text }),
                 json: BEEF_SCHEMA, maxTokens: 240, temperature: 0.4, timeoutMs: 25000 });
             if (r && r.json && typeof r.json.quality === 'number') j = r.json;
         } catch (e) { console.warn('[Arena] beef judge:', e.message); }
@@ -195,6 +195,7 @@ const FOCUS_TAIL_MS = 2 * 60 * 1000;      // how long a bare name-drop keeps the
 const FOCUS_EXTEND_MS = 3 * 60 * 1000;    // every hit while locked extends the lock by this
 const FOCUS_MAX_MS = 20 * 60 * 1000;      // hard cap without a fresh name-drop
 const FOCUS_MISSES_TO_DROP = 2;
+const SUBJECT_TAIL_MS = 2 * 60 * 1000;    // a subject keyword said on mic keeps the subject judge on it this long (hits extend)
 
 function newFocus(targetId, now, how) { return { targetId, since: now, namedAt: now, lockUntil: now + FOCUS_TAIL_MS, lines: [], misses: 0, hits: 0, context: null, how }; }
 
@@ -205,9 +206,11 @@ async function judgeFocus(stream, roster, st, events, { reason }) {
     const lines = f.lines; f.lines = [];
     const named = lines.some(l => l.named);
     st.lastJudgeAt = Date.now();
-    const j = await judgeBeef(stream.user_id, f.targetId, text, roster, { context: f.context, named });
+    const j = await judgeBeef(stream.user_id, f.targetId, text, roster, { context: f.context, named, how: f.how });
     const now = Date.now();
-    if (j.aimed_at_target) {
+    // A hit must actually be a hit: exact name-drops need quality ≥ 3, sound-alike matches ≥ 5 before anything opens.
+    const minQ = f.hits > 0 ? 3 : (f.how === 'exact' ? 3 : 5);
+    if (j.aimed_at_target && j.quality >= minQ) {
         const ref = lineRefFor(lines, j.best_line);
         const res = beef().recordHit(stream.user_id, f.targetId, { quality: j.quality, best_line: j.best_line, about: j.about, announcer: j.announcer, vod_id: ref.vod_id, sec: ref.sec });
         f.hits++; f.misses = 0; f.lockUntil = Math.min(now + FOCUS_EXTEND_MS, f.namedAt + FOCUS_MAX_MS);
@@ -249,7 +252,7 @@ async function tickStream(stream, roster, events) {
             for (const t of board().matchTopics(line.t)) {
                 const m = board().noteMicMention(t.id, { userId: stream.user_id, username: roster.byId[stream.user_id]?.user?.username || null, streamId: stream.id, vodId: line.v, sec: Math.max(0, line.s - 2), text: line.t });
                 if (m) events.push({ kind: 'topic_mention', streamId: stream.id, speakerId: stream.user_id, topicId: t.id });
-                st.lastTopic = { id: t.id, at: now };
+                st.lastTopic = { id: t.id, at: now, lockUntil: now + SUBJECT_TAIL_MS, misses: 0 };
             }
         } catch (e) { console.warn('[Arena] topic match:', e.message); }
         const mentions = mentionsDetailed(line.t, stream.user_id, roster);
@@ -281,9 +284,10 @@ async function tickStream(stream, roster, events) {
         return; // one judge call per stream per tick
     }
 
-    // 2) Board subject: the one they chose, else the one they just brought up on mic.
-    let topic = board().activeTopicFor(stream.user_id);
-    if (!topic && st.lastTopic && now - st.lastTopic.at < 3 * 60 * 1000) topic = db.get(`SELECT * FROM arena_topics WHERE id = ? AND status = 'open'`, [st.lastTopic.id]);
+    // 2) Board subject: only while a subject keyword was actually said recently (the lock) — never "whatever they touched once".
+    let topic = null;
+    if (st.lastTopic && now < (st.lastTopic.lockUntil || 0)) topic = db.get(`SELECT * FROM arena_topics WHERE id = ? AND status = 'open'`, [st.lastTopic.id]);
+    if (!topic && st.topic.lines.length > 40) st.topic.lines = st.topic.lines.slice(-20);
     if (topic && st.topic.lines.reduce((n, l) => n + words(l.t), 0) >= JUDGE_MIN_WORDS) {
         const lines = st.topic.lines; st.topic.lines = [];
         const text = bufferText(lines);
@@ -291,10 +295,10 @@ async function tickStream(stream, roster, events) {
         const j = await judgeTopic(stream.user_id, topic, text);
         const ref = { ...lineRefFor(lines, j.best_line), stream_id: stream.id };
         const res = board().applyTopicJudgement(stream.user_id, topic, j, ref);
+        if (res.applied) { st.lastTopic.lockUntil = Math.max(st.lastTopic.lockUntil || 0, Date.now() + SUBJECT_TAIL_MS); st.lastTopic.misses = 0; }
+        else if (++st.lastTopic.misses >= 2) st.lastTopic.lockUntil = 0;   // moved on
         st.lastTopicJudgement = { at: new Date().toISOString(), topic_id: topic.id, topic: topic.text, ...j, applied: res.applied, xp: res.xp || 0 };
         events.push({ kind: res.applied ? 'topic_hit' : 'topic_miss', streamId: stream.id, speakerId: stream.user_id, topicId: topic.id, ...res });
-    } else if (!topic && st.topic.lines.length > 80) {
-        st.topic.lines = st.topic.lines.slice(-40);
     }
 }
 
