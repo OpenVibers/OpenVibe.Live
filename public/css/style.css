@@ -14570,3 +14570,21 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 .arena-bars-head { font-size: 0.85rem; } .arena-bars-head small { color: var(--text-muted); }
 .arena-bar.is-clickable { cursor: pointer; }
 @media (max-width: 600px) { .arena-profile-custom { grid-template-columns: 1fr; } .arena-radar-v2 { max-width: 260px; margin: 0 auto; } }
+
+/* ── Arena: your arena strip + bars fix ── */
+.arena-me { margin: 0 0 20px; }
+.arena-me-inner { display: grid; grid-template-columns: minmax(260px, 1fr) 1.4fr; gap: 14px; padding: 12px 16px; border-radius: 16px; background: var(--bg-card); border: 1px solid color-mix(in srgb, #f97316 40%, var(--border)); }
+.arena-me-left { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.arena-me-left > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; flex: 1; }
+.arena-me-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.arena-me-right { display: flex; flex-direction: column; gap: 6px; font-size: 0.86rem; min-width: 0; justify-content: center; }
+.arena-me-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.arena-me-alert { padding: 6px 10px; border-radius: 10px; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.arena-me-alert a { color: var(--text-primary); text-decoration: none; }
+.arena-me-guest { padding: 12px 16px; border-radius: 16px; background: var(--bg-card); border: 1px dashed var(--border); color: var(--text-secondary); font-size: 0.9rem; }
+.arena-profile-stats.is-bars .arena-bars { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 18px; }
+.arena-profile-stats.is-bars .arena-bar { display: grid; grid-template-columns: 62px 1fr 34px; align-items: center; gap: 8px; }
+.arena-profile-stats.is-bars .arena-bar-track { display: block; height: 8px; border-radius: 4px; background: var(--bg-tertiary); overflow: hidden; }
+.arena-profile-stats.is-bars .arena-bar-fill { display: block; height: 100%; border-radius: 4px; }
+.arena-profile-stats.is-bars .arena-bar-val { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+@media (max-width: 700px) { .arena-me-inner { grid-template-columns: 1fr; } .arena-profile-stats.is-bars .arena-bars { grid-template-columns: 1fr; } }

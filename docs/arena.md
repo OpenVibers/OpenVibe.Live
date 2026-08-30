@@ -116,3 +116,11 @@ Level = `1 + floor(√(XP / 25))` (the game's curve). Titles: Lurker → Chatter
 **Yap card** — at level ≥ 3, at most once a day and only when ≥ 25 XP changed, the AI writes a card (title, blurb, catchphrase in their typing style, "known for", archetype) from the chat AI's existing profile of them (`chat_ai_summaries` user/anon/relay) + their best lines and subjects; ≤ 4 cards per housekeeping minute.
 
 Where it shows: the Yappers block on `/arena` (podium with level rings, streak flames, cards; weekly movers), `/arena/chatter/<key>` (card, XP bar, titles ladder, moments, subjects, what the chat AI has on them), and the chat context menu (click a name → yap level + title + bar, linking to the page). API: `GET /api/arena/yappers`, `GET /api/arena/chatter/:key`, `GET /api/arena/chatter/by-user/:username`, admin `POST /api/arena/chatter/:key/card`.
+
+## Coming back: your arena, check-ins, notifications
+
+- `GET /api/arena/me` (signed in) → your yap profile, XP today, coins banked from levels, fighter card if on the roster, open beefs where **you** are on the clock, subjects you're in, what's HOT. Rendered as the "Your Arena" strip at the top of `/arena`.
+- `POST /api/arena/checkin` → +5 XP once a day (+ the streak bonus) — the page calls it on the first visit of the day.
+- Arena events go to the site notification bell (`server/arena/notify.js` → `utils/notify.pushNotification`, deduped 10 min per user/type/key; users without a linked network account are skipped like everywhere else): a beef opened on you (with the clock), answers/hits while a beef is open, beef over (win/loss/draw), yap level-ups (+coins), getting quoted in lore, a bounty on you, your subject going HOT, your yap card being written.
+- Bots are never chatters: AI viewers (`source_platform='ai'`), channel AI bots (`channel_ai_bots`) and the admin list `arena_bot_usernames` (comma-separated) are excluded from moments, discovery input, voice samples and yapper XP.
+- Moments store `said_at` (the chat timestamp / stream start + offset) and every view uses it — never the time the line was filed.

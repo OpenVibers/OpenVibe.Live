@@ -96,7 +96,8 @@ function ensureTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
     db.run('CREATE INDEX IF NOT EXISTS idx_arena_moments_topic ON arena_topic_moments (topic_id, created_at)');
-    for (const col of ['chatter_key TEXT', 'source_platform TEXT', 'anon_id TEXT', 'thread_id INTEGER']) { try { db.run(`ALTER TABLE arena_topic_moments ADD COLUMN ${col}`); } catch { /* exists */ } }
+    for (const col of ['chatter_key TEXT', 'source_platform TEXT', 'anon_id TEXT', 'thread_id INTEGER', 'said_at DATETIME']) { try { db.run(`ALTER TABLE arena_topic_moments ADD COLUMN ${col}`); } catch { /* exists */ } }
+    db.run('UPDATE arena_topic_moments SET said_at = created_at WHERE said_at IS NULL');
     // Threads: the sub-angles INSIDE an umbrella subject ("Cat enema drama" → "the vet bill", "the bot roasts", "global vs local").
     db.run(`CREATE TABLE IF NOT EXISTS arena_topic_threads (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -259,6 +260,7 @@ function createTopic({ text, hint = null, createdBy, creatorUserId = null, creat
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
         [clean, hint ? clip(hint, 120) : null, createdBy, creatorUserId, creatorName ? clip(creatorName, 40) : null, ipHash(creatorIp), kind, targetUserId, headline ? clip(headline, 160) : null, sourceNote ? clip(sourceNote, 80) : null, expires, JSON.stringify(kws), tagline ? clip(tagline, 120) : null, origin ? JSON.stringify(origin) : null, submittedText ? clip(submittedText, 200) : null]);
     const row = db.get('SELECT * FROM arena_topics ORDER BY id DESC LIMIT 1');
+    if (kind === 'bounty' && targetUserId) { try { require('./notify').arenaNotify(targetUserId, { type: 'bounty', title: `Chat put a bounty on you`, message: `${creatorName || 'The community'}: double XP for anyone who talks shit about you on stream for the next ${KIND_TTL_HOURS.bounty} h. Answer on mic.`, icon: '💰', url: `/arena/topic/${row.id}`, key: `bounty:${row.id}` }); } catch { /* */ } }
     for (const t of threadList) db.run('INSERT INTO arena_topic_threads (topic_id, name, hint, keywords_json) VALUES (?, ?, ?, ?)', [row.id, t.name, t.hint, JSON.stringify(t.keywords)]);
     invalidateMatchers();
     console.log(`[Arena] ${kind} #${row.id} by ${createdBy}${creatorName ? ' ' + creatorName : ''}: "${clean}" [${kws.join(', ')}]${threadList.length ? ` threads: ${threadList.map(t => t.name).join(' | ')}` : ''}`);
@@ -309,7 +311,7 @@ async function submitTopic({ text, userId, ip, creatorName, onRoster = false }) 
 }
 
 /** A moment: something someone said (chat or on mic) about the topic. */
-function addMoment(topicId, { kind, source, userId = null, username = null, streamId = null, vodId = null, sec = null, text, quality = null, about = null, platform = null, anonId = null }) {
+function addMoment(topicId, { kind, source, userId = null, username = null, streamId = null, vodId = null, sec = null, text, quality = null, about = null, platform = null, anonId = null, saidAt = null }) {
     ensureTables();
     const t = db.get(`SELECT id, kind, status, heat FROM arena_topics WHERE id = ?`, [topicId]);
     if (!t || t.status !== 'open') return null;
@@ -318,10 +320,13 @@ function addMoment(topicId, { kind, source, userId = null, username = null, stre
     const chatters = require('./chatters');
     const chatterKey = chatters.keyFor({ user_id: userId, username, anon_id: anonId, source_platform: platform });
     const threadId = threadFor(topicId, body);
-    db.run(`INSERT INTO arena_topic_moments (topic_id, kind, source, user_id, username, stream_id, vod_id, sec, text, quality, about, chatter_key, source_platform, anon_id, thread_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [topicId, kind, source, userId, username ? clip(username, 60) : null, streamId, vodId, sec, body, quality, about ? clip(about, 80) : null, chatterKey, platform, anonId, threadId]);
+    // When the line was actually SAID (chat timestamp / stream start + offset) — not when we filed it.
+    let said = saidAt ? String(saidAt).replace('T', ' ').replace(/\.\d+Z?$/, '').replace('Z', '') : null;
+    if (!said && kind === 'speech' && streamId && sec != null) { const st = db.get('SELECT started_at FROM streams WHERE id = ?', [streamId]); if (st?.started_at) { const ms = Date.parse(String(st.started_at).replace(' ', 'T') + 'Z'); if (!isNaN(ms)) said = new Date(ms + sec * 1000).toISOString().replace('T', ' ').slice(0, 19); } }
+    db.run(`INSERT INTO arena_topic_moments (topic_id, kind, source, user_id, username, stream_id, vod_id, sec, text, quality, about, chatter_key, source_platform, anon_id, thread_id, said_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`,
+        [topicId, kind, source, userId, username ? clip(username, 60) : null, streamId, vodId, sec, body, quality, about ? clip(about, 80) : null, chatterKey, platform, anonId, threadId, said]);
     if (threadId) db.run('UPDATE arena_topic_threads SET moments = moments + 1, last_at = CURRENT_TIMESTAMP WHERE id = ?', [threadId]);
-    db.run(`UPDATE arena_topics SET hits = hits + 1, ${kind === 'chat' ? 'chat_mentions = chat_mentions + 1' : 'mic_mentions = mic_mentions + 1'}, last_mention_at = CURRENT_TIMESTAMP, last_activity_at = CURRENT_TIMESTAMP WHERE id = ?`, [topicId]);
+    db.run(`UPDATE arena_topics SET hits = hits + 1, ${kind === 'chat' ? 'chat_mentions = chat_mentions + 1' : 'mic_mentions = mic_mentions + 1'}, last_mention_at = MAX(COALESCE(last_mention_at, ''), COALESCE(?, CURRENT_TIMESTAMP)), last_activity_at = CURRENT_TIMESTAMP WHERE id = ?`, [said, topicId]);
     if (kind === 'speech' && userId && arena().loadRoster().byId[userId]) {
         const m = db.get('SELECT 1 FROM arena_topic_members WHERE topic_id = ? AND user_id = ?', [topicId, userId]);
         if (!m) { db.run('INSERT INTO arena_topic_members (topic_id, user_id, active) VALUES (?, ?, 1)', [topicId, userId]); db.run('UPDATE arena_topics SET joins = joins + 1 WHERE id = ?', [topicId]); addXp(userId, XP_JOIN, 'topic_joined', topicId, { joined: true }); }
@@ -409,7 +414,11 @@ function computeHeat(topicId) {
     const hype = db.get(`SELECT COUNT(*) AS n FROM arena_topic_hype WHERE topic_id = ? AND created_at >= datetime('now', '-60 minutes')`, [topicId])?.n || 0;
     const talking = db.get(`SELECT COUNT(*) AS n FROM arena_topic_members WHERE topic_id = ? AND active = 1`, [topicId])?.n || 0;
     const heat = (m.mic || 0) * 3 + (m.chat || 0) + hype + talking * 4;
+    const prev = db.get('SELECT heat, creator_user_id, headline, text FROM arena_topics WHERE id = ?', [topicId]);
     db.run('UPDATE arena_topics SET heat = ? WHERE id = ?', [heat, topicId]);
+    if (prev && (prev.heat || 0) < HOT_THRESHOLD && heat >= HOT_THRESHOLD) {
+        try { const n = require('./notify'); const who = new Set([prev.creator_user_id, ...db.all('SELECT user_id FROM arena_topic_members WHERE topic_id = ?', [topicId]).map(r => r.user_id), ...db.all(`SELECT user_id FROM arena_topic_moments WHERE topic_id = ? AND user_id IS NOT NULL GROUP BY user_id`, [topicId]).map(r => r.user_id)].filter(Boolean)); for (const uid of who) n.arenaNotify(uid, { type: 'hot', title: `“${String(prev.headline || prev.text).slice(0, 60)}” is HOT`, message: `Your subject is the loudest thing on the board right now (${heat} heat).`, icon: '🔥', url: `/arena/topic/${topicId}`, key: `hot:${topicId}` }); } catch { /* */ }
+    }
     return heat;
 }
 
@@ -457,6 +466,29 @@ function nameOf(userId) {
     try { return fighterBrief(userId, arena().loadRoster()).fighter_name; } catch { const u = db.getUserById(userId); return u ? (u.display_name || u.username) : `user${userId}`; }
 }
 
+// ── Bots are not chatters ────────────────────────────────────
+// AI viewers mark their rows with source_platform 'ai'; channel AI bots post as real accounts, so
+// their usernames come from channel_ai_bots / ai_chatbot_configs (cached a minute).
+let _bots = { at: 0, names: new Set(), ids: new Set() };
+function botSet() {
+    if (Date.now() - _bots.at < 60 * 1000) return _bots;
+    const names = new Set(), ids = new Set();
+    for (const t of ['channel_ai_bots', 'ai_chatbot_configs']) {
+        try { for (const r of db.all(`SELECT * FROM ${t}`)) { for (const k of ['username', 'bot_username', 'name', 'bot_name', 'display_name']) if (r[k]) names.add(String(r[k]).toLowerCase()); for (const k of ['bot_user_id', 'user_id']) if (r[k] && k === 'bot_user_id') ids.add(Number(r[k])); } } catch { /* table shape varies */ }
+    }
+    // Admin list for bots that post from real accounts (site setting, comma-separated usernames).
+    try { for (const n of String(db.getSetting('arena_bot_usernames') || '').split(/[,\s]+/)) if (n) names.add(n.toLowerCase()); } catch { /* */ }
+    _bots = { at: Date.now(), names, ids };
+    return _bots;
+}
+function isBotChatter(row) {
+    if (!row) return false;
+    if (String(row.source_platform || '') === 'ai') return true;
+    const b = botSet();
+    if (row.user_id && b.ids.has(Number(row.user_id))) return true;
+    return !!row.username && b.names.has(String(row.username).toLowerCase());
+}
+
 // ── Discovery: what is the community actually talking about? ─
 
 let _scan = { lastChatId: null, lastDiscoverAt: 0, lastDiscoverSeen: 0 };
@@ -465,13 +497,14 @@ let _scan = { lastChatId: null, lastDiscoverAt: 0, lastDiscoverSeen: 0 };
 function scanChat() {
     ensureTables();
     if (_scan.lastChatId == null) { _scan.lastChatId = db.get('SELECT COALESCE(MAX(id), 0) AS id FROM chat_messages')?.id || 0; return { scanned: 0, moments: 0 }; }
-    const rows = db.all(`SELECT id, stream_id, user_id, username, message, source_platform, anon_id FROM chat_messages WHERE id > ? AND COALESCE(is_deleted, 0) = 0 AND message IS NOT NULL AND COALESCE(message_type, 'chat') = 'chat' AND COALESCE(source_platform, '') != 'ai' AND LENGTH(message) BETWEEN 6 AND 300 ORDER BY id ASC LIMIT 400`, [_scan.lastChatId]);
+    const rows = db.all(`SELECT id, stream_id, user_id, username, message, source_platform, anon_id, timestamp FROM chat_messages WHERE id > ? AND COALESCE(is_deleted, 0) = 0 AND message IS NOT NULL AND COALESCE(message_type, 'chat') = 'chat' AND COALESCE(source_platform, '') != 'ai' AND LENGTH(message) BETWEEN 6 AND 300 ORDER BY id ASC LIMIT 400`, [_scan.lastChatId]);
     if (!rows.length) return { scanned: 0, moments: 0 };
     _scan.lastChatId = rows[rows.length - 1].id;
     let moments = 0;
     for (const r of rows) {
         if (/^!/.test(r.message)) continue;
-        for (const t of matchTopics(r.message)) { if (addMoment(t.id, { kind: 'chat', source: 'chat', userId: r.user_id, username: r.username, streamId: r.stream_id, text: r.message, platform: r.source_platform || null, anonId: r.anon_id || null })) moments++; }
+        if (isBotChatter(r)) continue;
+        for (const t of matchTopics(r.message)) { if (addMoment(t.id, { kind: 'chat', source: 'chat', userId: r.user_id, username: r.username, streamId: r.stream_id, text: r.message, platform: r.source_platform || null, anonId: r.anon_id || null, saidAt: r.timestamp })) moments++; }
     }
     return { scanned: rows.length, moments };
 }
@@ -493,7 +526,7 @@ const DISCOVER_SYSTEM = `You are the community consciousness of a live-streaming
 
 function discoverInput() {
     const out = { at: new Date().toISOString() };
-    try { out.chat = db.all(`SELECT c.username, c.message, c.stream_id FROM chat_messages c WHERE COALESCE(c.is_deleted, 0) = 0 AND COALESCE(c.source_platform, '') != 'ai' AND COALESCE(c.message_type, 'chat') = 'chat' AND c.timestamp >= datetime('now', ?) AND LENGTH(c.message) BETWEEN 8 AND 200 AND c.message NOT LIKE '!%' ORDER BY c.id DESC LIMIT 80`, [`-${scanWindowMin()} minutes`]).reverse().filter(r => !arena()._isBannedText(r.message)).map(r => clip(`[${r.stream_id ? 'stream' : 'global'}] ${r.username}: ${r.message}`, 180)); } catch { out.chat = []; }
+    try { out.chat = db.all(`SELECT c.username, c.message, c.stream_id, c.user_id, c.source_platform FROM chat_messages c WHERE COALESCE(c.is_deleted, 0) = 0 AND COALESCE(c.source_platform, '') != 'ai' AND COALESCE(c.message_type, 'chat') = 'chat' AND c.timestamp >= datetime('now', ?) AND LENGTH(c.message) BETWEEN 8 AND 200 AND c.message NOT LIKE '!%' ORDER BY c.id DESC LIMIT 80`, [`-${scanWindowMin()} minutes`]).reverse().filter(r => !isBotChatter(r) && !arena()._isBannedText(r.message)).map(r => clip(`[${r.stream_id ? 'stream' : 'global'}] ${r.username}: ${r.message}`, 180)); } catch { out.chat = []; }
     try { out.on_mic = db.all(`SELECT u.username, e.text FROM stream_timeline_events e JOIN users u ON u.id = e.user_id WHERE e.kind = 'speech' AND e.created_at >= datetime('now', ?) AND LENGTH(e.text) BETWEEN 25 AND 220 ORDER BY e.id DESC LIMIT 60`, [`-${scanWindowMin()} minutes`]).reverse().filter(r => !arena()._isBannedText(r.text)).map(r => clip(`${r.username}: ${r.text}`, 200)); } catch { out.on_mic = []; }
     try { out.chat_timeline = db.all(`SELECT label, detail FROM chat_timeline_events WHERE created_at >= datetime('now', '-6 hours') ORDER BY id DESC LIMIT 8`).map(r => clip(`${r.label}: ${r.detail || ''}`, 140)); } catch { out.chat_timeline = []; }
     try { const g = db.getChatAiSummary('global', 0, 'rolling'); if (g) { const ov = parseJson(g.overview, null); out.global_chat_overview = clip(ov ? (ov.today || ov.alltime) : g.overview, 500); } } catch { /* */ }
@@ -559,14 +592,14 @@ async function discoverTopics({ force = false } = {}) {
 /** Seed a fresh topic with the lines from the window that match it, so it never starts empty. */
 function backfillMoments(topics, { windowMin = null } = {}) {
     const win = Math.max(30, Number(windowMin) || scanWindowMin() * 4);
-    const chat = db.all(`SELECT id, stream_id, user_id, username, message, source_platform, anon_id FROM chat_messages WHERE COALESCE(is_deleted, 0) = 0 AND COALESCE(message_type, 'chat') = 'chat' AND COALESCE(source_platform, '') != 'ai' AND timestamp >= datetime('now', ?) AND LENGTH(message) BETWEEN 6 AND 300 ORDER BY id DESC LIMIT 600`, [`-${win} minutes`]).reverse();
-    const speech = db.all(`SELECT e.stream_id, e.user_id, e.vod_id, e.start_sec, e.text, u.username FROM stream_timeline_events e LEFT JOIN users u ON u.id = e.user_id WHERE e.kind = 'speech' AND e.created_at >= datetime('now', ?) ORDER BY e.id DESC LIMIT 400`, [`-${win} minutes`]).reverse();
+    const chat = db.all(`SELECT id, stream_id, user_id, username, message, source_platform, anon_id, timestamp FROM chat_messages WHERE COALESCE(is_deleted, 0) = 0 AND COALESCE(message_type, 'chat') = 'chat' AND COALESCE(source_platform, '') != 'ai' AND timestamp >= datetime('now', ?) AND LENGTH(message) BETWEEN 6 AND 300 ORDER BY id DESC LIMIT 600`, [`-${win} minutes`]).reverse();
+    const speech = db.all(`SELECT e.stream_id, e.user_id, e.vod_id, e.start_sec, e.text, e.created_at, u.username FROM stream_timeline_events e LEFT JOIN users u ON u.id = e.user_id WHERE e.kind = 'speech' AND e.created_at >= datetime('now', ?) ORDER BY e.id DESC LIMIT 400`, [`-${win} minutes`]).reverse();
     let seeded = 0;
     for (const t of topics) {
         const kws = normalizeKeywords(parseJson(t.keywords_json, [])).map(keywordRegex);
         let n = 0;
-        for (const c of chat) if (!/^!/.test(c.message) && kws.some(re => re.test(c.message))) { if (addMoment(t.id, { kind: 'chat', source: 'seed', userId: c.user_id, username: c.username, streamId: c.stream_id, text: c.message, platform: c.source_platform || null, anonId: c.anon_id || null })) n++; }
-        for (const s of speech) if (kws.some(re => re.test(s.text || ''))) { if (addMoment(t.id, { kind: 'speech', source: 'seed', userId: s.user_id, username: s.username, streamId: s.stream_id, vodId: s.vod_id, sec: Math.max(0, Math.floor(s.start_sec) - 2), text: s.text })) n++; }
+        for (const c of chat) if (!isBotChatter(c) && !/^!/.test(c.message) && kws.some(re => re.test(c.message))) { if (addMoment(t.id, { kind: 'chat', source: 'seed', userId: c.user_id, username: c.username, streamId: c.stream_id, text: c.message, platform: c.source_platform || null, anonId: c.anon_id || null, saidAt: c.timestamp })) n++; }
+        for (const s of speech) if (kws.some(re => re.test(s.text || ''))) { if (addMoment(t.id, { kind: 'speech', source: 'seed', userId: s.user_id, username: s.username, streamId: s.stream_id, vodId: s.vod_id, sec: Math.max(0, Math.floor(s.start_sec) - 2), text: s.text, saidAt: s.created_at })) n++; }
         if (n) console.log(`[Arena] topic #${t.id} seeded with ${n} moment(s) from the last ${win} min`);
         seeded += n;
     }
@@ -588,7 +621,7 @@ const LORE_SYSTEM = `You write and update the LORE of a subject the community of
 /** What the site already knows: how the community types, the global chat AI overview, and the chat AI's profile of the people in these moments. Cheap (all cached rows), no calls. */
 function communityContext(moments) {
     const out = {};
-    try { out.how_this_chat_types = db.all(`SELECT message FROM chat_messages WHERE COALESCE(is_deleted, 0) = 0 AND COALESCE(source_platform, '') != 'ai' AND COALESCE(message_type, 'chat') = 'chat' AND LENGTH(message) BETWEEN 8 AND 140 AND message NOT LIKE '!%' ORDER BY id DESC LIMIT 25`).map(r => r.message); } catch { out.how_this_chat_types = []; }
+    try { out.how_this_chat_types = db.all(`SELECT message, username, user_id, source_platform FROM chat_messages WHERE COALESCE(is_deleted, 0) = 0 AND COALESCE(source_platform, '') != 'ai' AND COALESCE(message_type, 'chat') = 'chat' AND LENGTH(message) BETWEEN 8 AND 140 AND message NOT LIKE '!%' ORDER BY id DESC LIMIT 40`).filter(r => !isBotChatter(r)).slice(0, 25).map(r => r.message); } catch { out.how_this_chat_types = []; }
     try { const g = db.getChatAiSummary('global', 0, 'rolling'); if (g) { const ov = parseJson(g.overview, null); out.global_chat_overview = clip(ov ? (ov.today || ov.alltime) : g.overview, 500); out.global_chat_memory = clip(g.memory_json, 400); } } catch { /* */ }
     try {
         const chatters = require('./chatters');
@@ -672,12 +705,12 @@ function fighterBrief(userId, roster) {
         level: levelFor(levelRow(userId).xp || 0),
     };
 }
-function momentView(m) { return { id: m.id, kind: m.kind, source: m.source, user_id: m.user_id, username: m.username, chatter_key: m.chatter_key || null, platform: m.source_platform || null, thread_id: m.thread_id || null, stream_id: m.stream_id, vod_id: m.vod_id, sec: m.sec, text: m.text, quality: m.quality, about: m.about, at: m.created_at }; }
+function momentView(m) { return { id: m.id, kind: m.kind, source: m.source, user_id: m.user_id, username: m.username, chatter_key: m.chatter_key || null, platform: m.source_platform || null, thread_id: m.thread_id || null, stream_id: m.stream_id, vod_id: m.vod_id, sec: m.sec, text: m.text, quality: m.quality, about: m.about, at: m.said_at || m.created_at, filed_at: m.created_at }; }
 
 function topicView(topic, roster, { detail = false } = {}) {
     const members = db.all(`SELECT m.*, (SELECT COUNT(*) FROM arena_topic_moments x WHERE x.topic_id = m.topic_id AND x.user_id = m.user_id AND x.kind = 'speech') AS moments, (SELECT COALESCE(SUM(quality), 0) FROM arena_topic_moments x WHERE x.topic_id = m.topic_id AND x.user_id = m.user_id) AS score FROM arena_topic_members m WHERE m.topic_id = ? ORDER BY score DESC, moments DESC`, [topic.id]);
     const heat = topic.heat || 0;
-    const last = db.get('SELECT * FROM arena_topic_moments WHERE topic_id = ? ORDER BY id DESC LIMIT 1', [topic.id]);
+    const last = db.get('SELECT * FROM arena_topic_moments WHERE topic_id = ? ORDER BY COALESCE(said_at, created_at) DESC, id DESC LIMIT 1', [topic.id]);
     const best = db.get('SELECT * FROM arena_topic_moments WHERE topic_id = ? AND quality IS NOT NULL ORDER BY quality DESC, id DESC LIMIT 1', [topic.id]);
     const out = {
         id: topic.id, text: topic.text, hint: topic.hint, created_by: topic.created_by, creator_name: topic.creator_name, status: topic.status,
@@ -695,7 +728,7 @@ function topicView(topic, roster, { detail = false } = {}) {
     };
     if (detail) {
         out.submitted_text = topic.submitted_text || null;
-        out.moments = db.all('SELECT * FROM arena_topic_moments WHERE topic_id = ? ORDER BY id DESC LIMIT 80', [topic.id]).map(momentView);
+        out.moments = db.all('SELECT * FROM arena_topic_moments WHERE topic_id = ? ORDER BY COALESCE(said_at, created_at) DESC, id DESC LIMIT 80', [topic.id]).map(momentView);
         out.top_chatters = db.all(`SELECT username, chatter_key, COUNT(*) AS n FROM arena_topic_moments WHERE topic_id = ? AND kind = 'chat' AND username IS NOT NULL GROUP BY COALESCE(chatter_key, username) ORDER BY n DESC LIMIT 6`, [topic.id]).map(c => { let lvl = null; try { const r = require('./chatters').row(c.chatter_key); if (r) lvl = { level: r.level, title: require('./chatters').titleFor(r.level) }; } catch { /* */ } return { ...c, ...(lvl || {}) }; });
         out.best_lines = db.all(`SELECT * FROM arena_topic_moments WHERE topic_id = ? AND quality IS NOT NULL ORDER BY quality DESC, id DESC LIMIT 6`, [topic.id]).map(momentView);
         for (const f of out.fighters) { const bm = db.get(`SELECT * FROM arena_topic_moments WHERE topic_id = ? AND user_id = ? AND kind = 'speech' ORDER BY COALESCE(quality, -1) DESC, id DESC LIMIT 1`, [topic.id, f.user.id]); f.best = bm ? momentView(bm) : null; }
@@ -733,7 +766,7 @@ function levelsLeaderboard(limit = 10) {
 function yappersLeaderboard(limit = 10) { return require('./chatters').leaderboard(limit); }
 
 module.exports = {
-    ensureTables, createTopic, submitTopic, assertCanSubmit, joinTopic, leaveTopic, activeTopicFor, threadsOf, threadFor, upsertThreads, applyTopicJudgement, hypeTopic, addMoment, noteMicMention, matchTopics, keywordsFromText,
+    ensureTables, createTopic, submitTopic, assertCanSubmit, joinTopic, leaveTopic, activeTopicFor, threadsOf, threadFor, upsertThreads, isBotChatter, applyTopicJudgement, hypeTopic, addMoment, noteMicMention, matchTopics, keywordsFromText,
     addXp, levelRow, levelView, levelFor, recentXp, boardView, topicDetail, levelsLeaderboard, yappersLeaderboard, fighterBrief, archiveStale,
     scanChat, discoverTopics, discoverInput, heuristicDiscover, backfillMoments, buildLore, loreSweep, templateLore, pulse, nameOf,
     computeHeat, resolveExpired, openBountyOn, recordBountyHit, HOT_THRESHOLD, KIND_TTL_HOURS, XP_PER_LEVEL, XP_JOIN, XP_HYPE, TOPIC_TTL_HOURS, SCAN_WINDOW_MIN, USER_TOPIC_COOLDOWN_HOURS,
