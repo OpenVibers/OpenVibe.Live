@@ -28,9 +28,7 @@ const llm = require('../ai/llm');
 const TICK_MS = 15 * 1000;
 const JUDGE_MIN_WORDS = 20;
 const JUDGE_MIN_INTERVAL_MS = 30 * 1000;
-const MENTION_TAIL_SEC = 45;         // lines within this many seconds after a name-drop stay in the buffer
 const BUFFER_MAX_CHARS = 1400;
-const STALE_BUFFER_MS = 3 * 60 * 1000;
 
 const state = new Map();   // streamId → { userId, lastOffset, lastJudgeAt, mention: { [targetId]: { lines, lastAt } }, topic: { lines } }
 
@@ -42,7 +40,12 @@ function parseJson(t, f = null) { try { return t ? JSON.parse(t) : f; } catch { 
 function words(t) { return String(t || '').split(/\s+/).filter(Boolean).length; }
 
 // ── Aliases: who can be called out, by which names ───────────
+// Every predicted spoken form of every roster name (see names.js): camelCase and snake_case
+// split the way a transcriber hears them, digits and decorations dropped, leet undone, plus the
+// persona's AI-written "spoken_as" list (nicknames, misspellings). Matching is exact → fuzzy →
+// phonetic, so "Matticus", "japanese-old-guy" and "goose lee" all resolve.
 
+const names = require('./names');
 let _aliasCache = { at: 0, list: [] };
 function aliases(roster) {
     if (Date.now() - _aliasCache.at < 60 * 1000) return _aliasCache.list;
@@ -50,14 +53,8 @@ function aliases(roster) {
     for (const id of roster.order) {
         const f = roster.byId[id];
         const persona = parseJson(db.get('SELECT persona_json FROM arena_profiles WHERE user_id = ?', [id])?.persona_json);
-        const names = new Set([f.user.username, f.user.display_name, persona?.fighter_name].filter(Boolean).map(s => String(s).toLowerCase().trim()));
-        for (const n of names) {
-            if (n.length < 3) continue;
-            // "@name", "name", and names with underscores/dots spoken as spaces.
-            const spoken = n.replace(/[_.-]+/g, ' ');
-            const variants = new Set([n, spoken]);
-            for (const v of variants) list.push({ userId: id, name: v, re: new RegExp(`(?:^|[^a-z0-9])@?${v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![a-z0-9])`, 'i') });
-        }
+        const spoken = Array.isArray(persona?.spoken_as) ? persona.spoken_as : [];
+        list.push(...names.aliasEntries(id, [f.user.username, f.user.display_name, persona?.fighter_name, ...spoken]));
     }
     // Longer names first so "goosely" beats "goose" style prefixes.
     list.sort((a, b) => b.name.length - a.name.length);
@@ -65,13 +62,13 @@ function aliases(roster) {
     return list;
 }
 
+/** User ids mentioned in a line (never the speaker). */
 function mentionsIn(text, speakerId, roster) {
-    const found = new Set();
-    for (const a of aliases(roster)) {
-        if (a.userId === speakerId || found.has(a.userId)) continue;
-        if (a.re.test(text)) found.add(a.userId);
-    }
-    return [...found];
+    return names.findMentions(text, aliases(roster), { excludeUserId: speakerId }).map(m => m.userId);
+}
+/** Same, with how each was matched — for the console. */
+function mentionsDetailed(text, speakerId, roster) {
+    return names.findMentions(text, aliases(roster), { excludeUserId: speakerId });
 }
 
 // ── Judges ───────────────────────────────────────────────────
@@ -80,9 +77,10 @@ const BEEF_SCHEMA = {
     name: 'arena_beef_judgement',
     schema: {
         type: 'object', additionalProperties: false,
-        required: ['aimed_at_target', 'quality', 'best_line', 'about', 'announcer', 'flagged'],
+        required: ['about_target', 'aimed_at_target', 'quality', 'best_line', 'about', 'announcer', 'flagged'],
         properties: {
-            aimed_at_target: { type: 'boolean', description: 'true if the speaker is trash-talking, roasting, calling out or bragging AT/ABOUT the named target (in good fun)' },
+            about_target: { type: 'boolean', description: 'true if this speech is (still) about the target — by name OR by reference ("he", "his stream", "that guy", "the beef", continuing the same rant)' },
+            aimed_at_target: { type: 'boolean', description: 'true if the speaker is trash-talking, roasting, calling out, dunking on or bragging over the target (in good fun) — requires about_target' },
             announcer: { type: 'string', description: 'one-line ring-announcer call of this moment, ≤ 110 chars, hype and funny (empty if not aimed at the target)' },
             quality: { type: 'integer', minimum: 0, maximum: 10, description: 'how good the trash talk is: spice, wit, specificity, quotability' },
             best_line: { type: 'string', description: 'the single best line, VERBATIM from the speech (empty if none)' },
@@ -91,7 +89,7 @@ const BEEF_SCHEMA = {
         },
     },
 };
-const BEEF_SYSTEM = `You judge live streamer-vs-streamer shit talk. You get a target fighter's name(s) and the last ~60 seconds of a streamer's speech-to-text in which the target was named. Decide if the speaker is talking shit AT or ABOUT the target (roast, callout, disrespect, bragging over them, trolling them) versus just mentioning them neutrally (shout-out, thanks, gameplay chatter). Savage, profane, petty and personal is GOOD and scores high — creativity, specificity and quotability score highest; lazy generic insults score low. Pick the best verbatim line, summarise what was said about the target in ≤ 10 words. Forgive transcription noise. Offensive, provocative and taboo language — slurs included — is allowed on this platform and is NOT a reason to flag or to score low; judge the craft. Flag ONLY behavior: direct threats of violence, sexual content about minors, doxxing (addresses, phone numbers, private info). Output only the JSON.`;
+const BEEF_SYSTEM = `You judge live streamer-vs-streamer shit talk. You get a target fighter's name(s), what the speaker ALREADY said about them a moment ago (context), and the newest ~60 seconds of the speaker's speech-to-text. The target may not be named again in the new speech — decide from context whether they are STILL talking about that person ("he", "his chat", "that guy", "the beef", the same story) or have moved on to something else. Then decide if the speech is talking shit AT or ABOUT the target (roast, callout, disrespect, bragging over them, trolling them) versus neutral mention (shout-out, thanks, gameplay chatter). Savage, profane, petty and personal is GOOD and scores high — creativity, specificity and quotability score highest; lazy generic insults score low. Pick the best verbatim line, summarise what was said about the target in ≤ 10 words. Forgive transcription noise and misheard names. Offensive, provocative and taboo language — slurs included — is allowed on this platform and is NOT a reason to flag or to score low; judge the craft. Flag ONLY behavior: direct threats of violence, sexual content about minors, doxxing (addresses, phone numbers, private info). Output only the JSON.`;
 
 const TOPIC_SCHEMA = {
     name: 'arena_topic_judgement',
@@ -109,16 +107,19 @@ const TOPIC_SCHEMA = {
 };
 const TOPIC_SYSTEM = `You judge a live streamer talking about a SUBJECT the community is on about (a person, a group, a joke, a drama…). You get the subject, its current lore, the keywords people use for it, and the last ~60 seconds of the streamer's speech-to-text. Decide whether the speech is really about the subject (shit talk, a take, a rant, a bit, dunking, defending — all count), score its quality (savage, specific, petty, funny, quotable = high; generic = low), pick the best verbatim line and summarise in ≤ 10 words. Ordinary gameplay chatter or unrelated talk → on_topic false. Forgive transcription noise. Offensive, provocative and taboo language — slurs included — is allowed on this platform and is NOT a reason to flag or to score low; judge the craft. Flag ONLY behavior: direct threats of violence, sexual content about minors, doxxing. Output only the JSON.`;
 
-function heuristicBeef(text, targetNames) {
+function heuristicBeef(text, targetNames, { named = true } = {}) {
     const t = text.toLowerCase();
-    const spicy = /\b(clown|weak|scared|duck|ducking|trash|garbage|mid|washed|bum|ratio|cook|cooked|better than|can't|cannot|never|nobody|beat|fraud|ass|bet|catch (these|this)|come see|fight me|square up|run it|talk (that|your))\b/.test(t);
+    const spicy = /\b(clown|weak|scared|duck|ducking|trash|garbage|mid|washed|bum|ratio|cook|cooked|better than|can't|cannot|never|nobody|beat|fraud|ass|bet|catch (these|this)|come see|fight me|square up|run it|talk (that|your)|cope|seethe|cry|loser|bozo|goofy|clown)\b/.test(t);
+    const pronouns = /\b(he|him|his|she|her|they|them|their|that (guy|dude|man|girl|streamer)|this (guy|dude|man|girl|streamer)|the (guy|dude|beef)|bro's|bros)\b/.test(t);
+    const aboutTarget = named || pronouns;
     const excl = (text.match(/!/g) || []).length;
     const quality = Math.min(10, (spicy ? 5 : 1) + excl + (words(text) > 30 ? 1 : 0));
     const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
-    const named = sentences.filter(l => targetNames.some(n => l.toLowerCase().includes(n)));
-    const pick = (named.length ? named : sentences).sort((a, b) => b.length - a.length)[0] || text;
-    return { aimed_at_target: spicy, quality, best_line: pick.trim().slice(0, 200), about: text.split(/\s+/).slice(0, 8).join(' '), flagged: false, _fallback: true };
+    const namedLines = sentences.filter(l => targetNames.some(n => l.toLowerCase().includes(n)));
+    const pick = (namedLines.length ? namedLines : sentences).sort((a, b) => b.length - a.length)[0] || text;
+    return { about_target: aboutTarget, aimed_at_target: aboutTarget && spicy, quality, best_line: pick.trim().slice(0, 200), about: text.split(/\s+/).slice(0, 8).join(' '), flagged: false, _fallback: true };
 }
+
 function heuristicTopic(text, topic) {
     const kws = (parseJson(topic.keywords_json, []) || []).map(k => String(k).toLowerCase());
     const t = text.toLowerCase();
@@ -131,19 +132,23 @@ function heuristicTopic(text, topic) {
     return { on_topic: hits > 0, quality, best_line: ((named.length ? named : sentences).sort((a, b) => b.length - a.length)[0] || text).trim().slice(0, 200), about: text.split(/\s+/).slice(0, 8).join(' '), flagged: false, _fallback: true };
 }
 
-async function judgeBeef(speakerId, targetId, text, roster) {
-    if (arena()._isBannedText(text)) return { aimed_at_target: false, quality: 0, best_line: '', about: 'voided', flagged: true };
+async function judgeBeef(speakerId, targetId, text, roster, { context = null, named = true } = {}) {
+    if (arena()._isBannedText(text)) return { about_target: false, aimed_at_target: false, quality: 0, best_line: '', about: 'voided', flagged: true };
     const tf = roster.byId[targetId];
     const targetNames = [tf.user.username, tf.user.display_name, (parseJson(db.get('SELECT persona_json FROM arena_profiles WHERE user_id = ?', [targetId])?.persona_json) || {}).fighter_name].filter(Boolean);
+    const spokenForms = [...new Set(targetNames.flatMap(n => names.variants(n)))].slice(0, 8);
     let j = null;
     if (aiOn()) {
         try {
-            const r = await llm.complete({ role: 'chat', kind: 'arena_beef_judge', source: 'arena', ownerUserId: speakerId, system: BEEF_SYSTEM, user: JSON.stringify({ target_names: targetNames, speech: text }), json: BEEF_SCHEMA, maxTokens: 220, temperature: 0.4, timeoutMs: 25000 });
+            const r = await llm.complete({ role: 'chat', kind: 'arena_beef_judge', source: 'arena', ownerUserId: speakerId, system: BEEF_SYSTEM,
+                user: JSON.stringify({ target_names: targetNames, target_as_transcribed: spokenForms, target_named_in_new_speech: named, what_speaker_already_said_about_target: context || null, new_speech: text }),
+                json: BEEF_SCHEMA, maxTokens: 240, temperature: 0.4, timeoutMs: 25000 });
             if (r && r.json && typeof r.json.quality === 'number') j = r.json;
         } catch (e) { console.warn('[Arena] beef judge:', e.message); }
     }
-    if (!j) j = heuristicBeef(text, targetNames.map(n => n.toLowerCase()));
-    return { aimed_at_target: !!j.aimed_at_target && !j.flagged, quality: Math.max(0, Math.min(10, Math.round(Number(j.quality) || 0))), best_line: String(j.best_line || '').slice(0, 220), about: String(j.about || '').slice(0, 80), announcer: String(j.announcer || '').slice(0, 140), flagged: !!j.flagged, fallback: !!j._fallback };
+    if (!j) j = heuristicBeef(text, spokenForms.length ? spokenForms : targetNames.map(n => n.toLowerCase()), { named });
+    const about = (j.about_target !== false) && !j.flagged;
+    return { about_target: about, aimed_at_target: about && !!j.aimed_at_target, quality: Math.max(0, Math.min(10, Math.round(Number(j.quality) || 0))), best_line: String(j.best_line || '').slice(0, 220), about: String(j.about || '').slice(0, 80), announcer: String(j.announcer || '').slice(0, 140), flagged: !!j.flagged, fallback: !!j._fallback };
 }
 
 async function judgeTopic(speakerId, topic, text) {
@@ -178,14 +183,67 @@ function lineRefFor(lines, bestLine) {
     return hit ? { vod_id: hit.v || null, sec: Math.max(0, hit.s - 2) } : { vod_id: null, sec: null };
 }
 
+/**
+ * Per-stream focus: after a fighter's name is said, the listener LOCKS ON to that fighter. Every
+ * following line goes to the beef judge with the earlier context, so "…and his chat is 12 alts,
+ * he's scared of the smoke" still counts without the name being repeated. Each judged hit
+ * extends the lock (FOCUS_EXTEND_MS); two chunks in a row that are not about the target, or
+ * FOCUS_MAX_MS since the last time they were actually named, drop it. A different name-drop
+ * switches focus (the pending chunk is judged first if it is big enough).
+ */
+const FOCUS_TAIL_MS = 2 * 60 * 1000;      // how long a bare name-drop keeps the ears on the target
+const FOCUS_EXTEND_MS = 3 * 60 * 1000;    // every hit while locked extends the lock by this
+const FOCUS_MAX_MS = 20 * 60 * 1000;      // hard cap without a fresh name-drop
+const FOCUS_MISSES_TO_DROP = 2;
+
+function newFocus(targetId, now, how) { return { targetId, since: now, namedAt: now, lockUntil: now + FOCUS_TAIL_MS, lines: [], misses: 0, hits: 0, context: null, how }; }
+
+async function judgeFocus(stream, roster, st, events, { reason }) {
+    const f = st.focus;
+    if (!f || !f.lines.length) return false;
+    const text = bufferText(f.lines);
+    const lines = f.lines; f.lines = [];
+    const named = lines.some(l => l.named);
+    st.lastJudgeAt = Date.now();
+    const j = await judgeBeef(stream.user_id, f.targetId, text, roster, { context: f.context, named });
+    const now = Date.now();
+    if (j.aimed_at_target) {
+        const ref = lineRefFor(lines, j.best_line);
+        const res = beef().recordHit(stream.user_id, f.targetId, { quality: j.quality, best_line: j.best_line, about: j.about, announcer: j.announcer, vod_id: ref.vod_id, sec: ref.sec });
+        f.hits++; f.misses = 0; f.lockUntil = Math.min(now + FOCUS_EXTEND_MS, f.namedAt + FOCUS_MAX_MS);
+        f.context = `${f.context ? f.context + ' | ' : ''}${j.about}${j.best_line ? ` ("${j.best_line.slice(0, 120)}")` : ''}`.slice(-600);
+        st.lastBeefJudgement = { at: new Date().toISOString(), target_id: f.targetId, ...j, opened: res?.opened, bounty: res?.bounty, named, reason };
+        events.push({ kind: 'beef_hit', streamId: stream.id, speakerId: stream.user_id, targetId: f.targetId, opened: res?.opened, quality: j.quality, line: j.best_line, named, continued: !named });
+        return true;
+    }
+    if (j.about_target) {
+        // Still on the subject but not shit talk (a story, a shout-out) — keep listening a little.
+        f.misses = 0; f.lockUntil = Math.min(Math.max(f.lockUntil, now + FOCUS_TAIL_MS / 2), f.namedAt + FOCUS_MAX_MS);
+        f.context = `${f.context ? f.context + ' | ' : ''}(neutral) ${j.about}`.slice(-600);
+        st.lastBeefJudgement = { at: new Date().toISOString(), target_id: f.targetId, ...j, named, reason };
+        events.push({ kind: 'beef_neutral', streamId: stream.id, speakerId: stream.user_id, targetId: f.targetId, about: j.about, named });
+        return true;
+    }
+    f.misses++;
+    st.lastBeefJudgement = { at: new Date().toISOString(), target_id: f.targetId, ...j, named, reason };
+    events.push({ kind: 'beef_miss', streamId: stream.id, speakerId: stream.user_id, targetId: f.targetId, about: j.about, named });
+    if (f.misses >= FOCUS_MISSES_TO_DROP) { events.push({ kind: 'focus_dropped', streamId: stream.id, targetId: f.targetId, hits: f.hits }); st.focus = null; }
+    return true;
+}
+
 async function tickStream(stream, roster, events) {
     let st = state.get(stream.id);
-    if (!st) { st = { userId: stream.user_id, lastOffset: streamOffsetNow(stream) - 20, lastJudgeAt: 0, mention: {}, topic: { lines: [] } }; state.set(stream.id, st); }
+    if (!st) { st = { userId: stream.user_id, lastOffset: streamOffsetNow(stream) - 20, lastJudgeAt: 0, focus: null, topic: { lines: [] } }; state.set(stream.id, st); }
     const rows = db.all(`SELECT text, start_sec, vod_id FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND start_sec > ? ORDER BY start_sec ASC LIMIT 100`, [stream.id, st.lastOffset]);
     if (rows.length) st.lastOffset = rows[rows.length - 1].start_sec;
     const now = Date.now();
+    if (st.focus && now > st.focus.lockUntil) {
+        // Lock expired: judge whatever is pending if it is worth a call, then let go.
+        if (st.focus.lines.length && st.focus.lines.reduce((n, l) => n + words(l.t), 0) >= JUDGE_MIN_WORDS && now - st.lastJudgeAt >= JUDGE_MIN_INTERVAL_MS) await judgeFocus(stream, roster, st, events, { reason: 'lock expired' });
+        if (st.focus) { events.push({ kind: 'focus_dropped', streamId: stream.id, targetId: st.focus.targetId, hits: st.focus.hits, why: 'timeout' }); st.focus = null; }
+    }
     for (const r of rows) {
-        const line = { t: String(r.text || ''), s: Math.floor(r.start_sec), v: r.vod_id || null };
+        const line = { t: String(r.text || ''), s: Math.floor(r.start_sec), v: r.vod_id || null, named: false };
         // Board subjects said on mic → a moment on the topic (raw mention; the judge scores the chunk later).
         try {
             for (const t of board().matchTopics(line.t)) {
@@ -194,38 +252,32 @@ async function tickStream(stream, roster, events) {
                 st.lastTopic = { id: t.id, at: now };
             }
         } catch (e) { console.warn('[Arena] topic match:', e.message); }
-        const targets = mentionsIn(line.t, stream.user_id, roster);
-        if (targets.length) {
-            for (const tid of targets) { const m = st.mention[tid] || (st.mention[tid] = { lines: [], lastAt: 0, lastSec: 0 }); m.lines.push(line); m.lastAt = now; m.lastSec = line.s; }
+        const mentions = mentionsDetailed(line.t, stream.user_id, roster);
+        if (mentions.length) {
+            const m = mentions[0];                                   // best match (exact > fuzzy > phonetic)
+            line.named = true;
+            if (st.focus && st.focus.targetId !== m.userId) {
+                // Switching targets: judge the pending chunk on the old target first if it is big enough.
+                if (st.focus.lines.reduce((n, l) => n + words(l.t), 0) >= JUDGE_MIN_WORDS) await judgeFocus(stream, roster, st, events, { reason: 'target switch' });
+                st.focus = null;
+            }
+            if (!st.focus) { st.focus = newFocus(m.userId, now, m.how); events.push({ kind: 'focus', streamId: stream.id, speakerId: stream.user_id, targetId: m.userId, how: m.how, hit: m.hit }); }
+            else { st.focus.namedAt = now; st.focus.lockUntil = Math.max(st.focus.lockUntil, now + FOCUS_TAIL_MS); st.focus.misses = 0; }
+            st.focus.lines.push(line);
+        } else if (st.focus) {
+            st.focus.lines.push(line);                               // locked on: everything they say goes to the target's judge
         } else {
-            // Tail: keep feeding the most recent mention buffer for a bit after the name drop.
-            const recent = Object.entries(st.mention).filter(([, m]) => line.s - m.lastSec <= MENTION_TAIL_SEC && now - m.lastAt < STALE_BUFFER_MS).sort((x, y) => y[1].lastSec - x[1].lastSec)[0];
-            if (recent) recent[1].lines.push(line);
-            else st.topic.lines.push(line);
+            st.topic.lines.push(line);
         }
     }
-    // Drop stale mention buffers that never reached the judge.
-    for (const [tid, m] of Object.entries(st.mention)) if (now - m.lastAt > STALE_BUFFER_MS) delete st.mention[tid];
+    if (st.focus && st.focus.lines.length > 80) st.focus.lines = st.focus.lines.slice(-80);
     if (st.topic.lines.length > 60) st.topic.lines = st.topic.lines.slice(-60);
 
     if (now - st.lastJudgeAt < JUDGE_MIN_INTERVAL_MS) return;
 
-    // 1) Mention buffers first (a callout is the interesting thing).
-    for (const [tidStr, m] of Object.entries(st.mention)) {
-        const tid = Number(tidStr);
-        if (m.lines.reduce((n, l) => n + words(l.t), 0) < JUDGE_MIN_WORDS) continue;
-        const text = bufferText(m.lines);
-        const lines = m.lines; delete st.mention[tidStr];
-        st.lastJudgeAt = Date.now();
-        const j = await judgeBeef(stream.user_id, tid, text, roster);
-        if (j.aimed_at_target) {
-            const ref = lineRefFor(lines, j.best_line);
-            const res = beef().recordHit(stream.user_id, tid, { quality: j.quality, best_line: j.best_line, about: j.about, announcer: j.announcer, vod_id: ref.vod_id, sec: ref.sec });
-            st.lastBeefJudgement = { at: new Date().toISOString(), target_id: tid, ...j, opened: res?.opened, bounty: res?.bounty };
-            events.push({ kind: 'beef_hit', streamId: stream.id, speakerId: stream.user_id, targetId: tid, opened: res?.opened, quality: j.quality, line: j.best_line });
-        } else {
-            events.push({ kind: 'beef_miss', streamId: stream.id, speakerId: stream.user_id, targetId: tid, about: j.about });
-        }
+    // 1) Focused target first (a callout is the interesting thing).
+    if (st.focus && st.focus.lines.reduce((n, l) => n + words(l.t), 0) >= JUDGE_MIN_WORDS) {
+        await judgeFocus(stream, roster, st, events, { reason: st.focus.lines.some(l => l.named) ? 'name-drop' : 'continuation' });
         return; // one judge call per stream per tick
     }
 
@@ -263,7 +315,13 @@ async function tick() {
 
 function consoleState(userId) {
     for (const [streamId, st] of state) if (st.userId === userId) {
-        return { stream_id: streamId, listening: true, mention_buffers: Object.keys(st.mention).length, pending_topic_words: st.topic.lines.reduce((n, l) => n + words(l.t), 0), last_topic_judgement: st.lastTopicJudgement || null, last_beef_judgement: st.lastBeefJudgement || null, last_judge_at: st.lastJudgeAt ? new Date(st.lastJudgeAt).toISOString() : null };
+        const f = st.focus;
+        return {
+            stream_id: streamId, listening: true,
+            focus: f ? { target_id: f.targetId, target: (() => { try { return board().nameOf(f.targetId); } catch { return null; } })(), how: f.how, since: new Date(f.since).toISOString(), lock_seconds_left: Math.max(0, Math.round((f.lockUntil - Date.now()) / 1000)), hits: f.hits, misses: f.misses, pending_words: f.lines.reduce((n, l) => n + words(l.t), 0), context: f.context } : null,
+            pending_topic_words: st.topic.lines.reduce((n, l) => n + words(l.t), 0),
+            last_topic_judgement: st.lastTopicJudgement || null, last_beef_judgement: st.lastBeefJudgement || null, last_judge_at: st.lastJudgeAt ? new Date(st.lastJudgeAt).toISOString() : null,
+        };
     }
     return { listening: false };
 }
@@ -276,4 +334,4 @@ function start() {
 }
 function stop() { if (_timer) { clearInterval(_timer); _timer = null; } }
 
-module.exports = { start, stop, tick, consoleState, TICK_MS, JUDGE_MIN_WORDS, JUDGE_MIN_INTERVAL_MS, _mentionsIn: mentionsIn, _aliases: aliases, _heuristicBeef: heuristicBeef, _heuristicTopic: heuristicTopic, _state: state };
+module.exports = { start, stop, tick, consoleState, TICK_MS, JUDGE_MIN_WORDS, JUDGE_MIN_INTERVAL_MS, FOCUS_TAIL_MS, FOCUS_EXTEND_MS, FOCUS_MAX_MS, _mentionsIn: mentionsIn, _mentionsDetailed: mentionsDetailed, _aliases: aliases, _heuristicBeef: heuristicBeef, _heuristicTopic: heuristicTopic, _state: state };

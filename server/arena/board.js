@@ -231,7 +231,7 @@ function createTopic({ text, hint = null, createdBy, creatorUserId = null, creat
     if (dup) throw new Error('That topic is already on the board');
     let kws = normalizeKeywords(keywords);
     if (!kws.length) kws = keywordsFromText(clean);
-    if (kind === 'bounty' && targetUserId) { const u = db.getUserById(targetUserId); if (u) kws = normalizeKeywords([...kws, u.username, u.display_name, u.username.replace(/[_.-]+/g, ' ')]); }
+    if (kind === 'bounty' && targetUserId) { const u = db.getUserById(targetUserId); if (u) { const nm = require('./names'); kws = normalizeKeywords([...kws, u.username, u.display_name, ...nm.variants(u.username), ...nm.variants(u.display_name)]); } }
     if (kind === 'topic' && kws.length >= 2) {
         for (const m of openTopicMatchers()) { if (m.kind === 'topic' && m.keywords.filter(k => kws.includes(k)).length >= 2) throw new Error('That subject is already on the board'); }
     }

@@ -264,16 +264,26 @@ function gatherContext(userId) {
     const ctx = {};
     try { ctx.overview = db.getStreamerOverview(userId)?.overview || null; } catch { /* */ }
     try { ctx.memories = db.all('SELECT description FROM stream_memories WHERE user_id = ? ORDER BY captured_at DESC LIMIT 4', [userId]).map(m => m.description).filter(Boolean); } catch { ctx.memories = []; }
+    // Who they are AS A CHATTER — the chat AI's profile of them (overview + long-term memory +
+    // timeline of notable moments). This is the primary source for their voice and personality.
     try {
         const chatAi = db.getChatAiSummary('user', userId, 'rolling');
-        if (chatAi) { const ov = parseJson(chatAi.overview, null); ctx.chat_notes = ov ? [ov.alltime, ov.today].filter(Boolean).join(' ') : String(chatAi.overview || ''); }
+        if (chatAi) {
+            const ov = parseJson(chatAi.overview, null);
+            ctx.chat_notes = ov ? [ov.alltime, ov.today].filter(Boolean).join(' ') : String(chatAi.overview || '');
+            const mem = parseJson(chatAi.memory_json, null);
+            ctx.chatter_memory = typeof mem === 'string' ? mem.slice(0, 900) : (mem ? JSON.stringify(mem).slice(0, 900) : (chatAi.memory_json ? String(chatAi.memory_json).slice(0, 900) : null));
+            const tl = parseJson(chatAi.timeline_json, []);
+            ctx.chatter_timeline = Array.isArray(tl) ? tl.slice(-10).map(e => (typeof e === 'string' ? e : `${e.label || e.title || ''}${e.detail ? `: ${e.detail}` : ''}`).slice(0, 160)).filter(Boolean) : [];
+        }
     } catch { /* */ }
+    try { ctx.chatter_timeline = [...(ctx.chatter_timeline || []), ...db.all(`SELECT label, detail FROM chat_timeline_events WHERE scope = 'user' AND subject_id = ? ORDER BY id DESC LIMIT 8`, [userId]).map(r => `${r.label}${r.detail ? `: ${r.detail}` : ''}`.slice(0, 160))].slice(0, 14); } catch { /* */ }
     try { ctx.vods = db.all(`SELECT v.title, va.ai_overview_short AS overview FROM vods v LEFT JOIN vod_ai_state va ON va.vod_id = v.id WHERE v.user_id = ? AND v.is_public = 1 ORDER BY v.created_at DESC LIMIT 5`, [userId]).map(v => ({ title: v.title, overview: v.overview || null })); }
     catch { try { ctx.vods = db.all('SELECT title FROM vods WHERE user_id = ? ORDER BY created_at DESC LIMIT 5', [userId]).map(v => ({ title: v.title })); } catch { ctx.vods = []; } }
     try { ctx.titles = db.all('SELECT DISTINCT title FROM streams WHERE user_id = ? AND duration_seconds > 0 ORDER BY started_at DESC LIMIT 8', [userId]).map(r => r.title).filter(Boolean); } catch { ctx.titles = []; }
     try { ctx.said = db.all(`SELECT text FROM stream_timeline_events WHERE user_id = ? AND kind = 'speech' AND LENGTH(text) BETWEEN 30 AND 140 ORDER BY created_at DESC LIMIT 24`, [userId]).map(r => r.text).filter(t => !isBannedText(t)).slice(0, 12); } catch { ctx.said = []; }
     // How they type when they are a chatter themselves (their own chat lines, newest first) — the taunts copy this voice.
-    try { ctx.typed = db.all(`SELECT message FROM chat_messages WHERE user_id = ? AND COALESCE(is_deleted, 0) = 0 AND message NOT LIKE '!%' AND LENGTH(message) BETWEEN 6 AND 200 ORDER BY id DESC LIMIT 40`, [userId]).map(r => r.message).filter(t => !isBannedText(t)).slice(0, 20); } catch { ctx.typed = []; }
+    try { ctx.typed = db.all(`SELECT c.message, s.user_id AS room_owner FROM chat_messages c LEFT JOIN streams s ON s.id = c.stream_id WHERE c.user_id = ? AND COALESCE(c.is_deleted, 0) = 0 AND c.message NOT LIKE '!%' AND LENGTH(c.message) BETWEEN 4 AND 240 ORDER BY c.id DESC LIMIT 80`, [userId]).filter(r => !isBannedText(r.message)).slice(0, 40).map(r => { const owner = r.room_owner && r.room_owner !== userId ? db.getUserById(r.room_owner)?.username : null; return owner ? `[in ${owner}'s chat] ${r.message}` : (r.room_owner ? `[own chat] ${r.message}` : `[global] ${r.message}`); }); } catch { ctx.typed = []; }
     try { ctx.chat_rooms = db.all(`SELECT u.username, COUNT(*) AS n FROM chat_messages c JOIN streams s ON s.id = c.stream_id JOIN users u ON u.id = s.user_id WHERE c.user_id = ? AND s.user_id != ? GROUP BY u.username ORDER BY n DESC LIMIT 4`, [userId, userId]).map(r => `${r.username} (${r.n} msgs)`); } catch { ctx.chat_rooms = []; }
     return ctx;
 }
@@ -282,7 +292,7 @@ const PERSONA_SCHEMA = {
     name: 'arena_persona',
     schema: {
         type: 'object', additionalProperties: false,
-        required: ['fighter_name', 'title', 'class', 'element', 'signature_move', 'special', 'weakness', 'taunt', 'taunts', 'typing_style', 'lore', 'catchphrase', 'entrance_music', 'stat_quips'],
+        required: ['fighter_name', 'title', 'class', 'element', 'signature_move', 'special', 'weakness', 'taunt', 'taunts', 'typing_style', 'spoken_as', 'custom_stats', 'lore', 'catchphrase', 'entrance_music', 'stat_quips'],
         properties: {
             fighter_name: { type: 'string', description: 'Arena ring name, 2–5 words, based on the streamer' },
             title: { type: 'string', description: 'Epithet like "The Midnight Menace of Cozy Corner"' },
@@ -293,13 +303,16 @@ const PERSONA_SCHEMA = {
             weakness: { type: 'string' }, taunt: { type: 'string', description: 'Their signature ragebait line: one sentence, written EXACTLY the way this person types/talks (their punctuation, caps, slang, emoji habits, typos), aimed at rivals or their chat, designed to make people reply' },
             taunts: { type: 'array', minItems: 3, maxItems: 3, items: { type: 'string' }, description: 'three more ragebait/troll lines in their own voice: one at a specific rival from the roster, one at their own chat, one about a topic they will not shut up about' },
             typing_style: { type: 'string', description: '≤ 12 words describing how they type/talk (e.g. "all lowercase, no punctuation, calls everyone bud")' },
+            custom_stats: { type: 'array', minItems: 6, maxItems: 6, items: { type: 'object', additionalProperties: false, required: ['name', 'value', 'quip'], properties: { name: { type: 'string', description: '≤ 14 chars, a stat that only makes sense for THIS person — named after their actual bits, habits, subjects, gear, rivals, chat culture (e.g. "Alt Accounts", "Tent Smell", "Baby Voice", "Reads Chat", "Cope")' }, value: { type: 'integer', minimum: 1, maximum: 99 }, quip: { type: 'string', description: '≤ 8 words, in their own typing voice' } } }, description: 'six stats unique to this streamer for their own radar chart — funny, specific, ragebait-ish; values spread across the range (at least one under 30, at least one over 85)' },
+            spoken_as: { type: 'array', minItems: 2, maxItems: 6, items: { type: 'string' }, description: 'how OTHER people say or mishear this streamer\'s name out loud, as a speech-to-text engine would write it: nicknames, shortenings, phonetic misspellings, the handle split into words (e.g. "japanese old guy", "matticus", "goose lee", "dan") — lowercase' },
             lore: { type: 'string', description: '2–3 sentence character-select bio' }, catchphrase: { type: 'string' }, entrance_music: { type: 'string' },
             stat_quips: { type: 'object', additionalProperties: false, required: STAT_KEYS, properties: Object.fromEntries(STAT_KEYS.map(k => [k, { type: 'string', description: `≤ 8 words explaining their ${k} rating in character` }])) },
         },
     },
 };
 const PERSONA_SYSTEM = `You write fighting-game "character select" bios for a live-streaming site's Arena, where streamers rank each other and talk shit about each other on stream. This is a banter arena: be savage, profane, petty and funny — roast their habits, their chat, their schedule, their takes, their gimmicks, how they talk (transcript lines are provided). Trolling energy is welcome; make it quotable.
-TAUNTS ARE THE MOST IMPORTANT PART. They must be RAGEBAIT: provocative, trolly, specific, the kind of line that makes a rival or a chat reply instantly — never generic gamer fluff like "try to keep up". Write every taunt in THIS PERSON'S OWN VOICE: study \`things_they_typed_in_chat\` (how they type as a chatter: caps, punctuation, slang, emoji, typos, pet names) and \`things_they_said_on_stream\`, plus \`ai_overview\` and \`chat_ai_notes\` (what they are known for, their opinions, their beefs, what they will not shut up about) and \`rooms_they_lurk_in\` (whose chat they hang in). Reference real recurring subjects, rivals from the roster and their obsessions. If there is no chat/transcript data, infer a voice from the overview and category and say so in typing_style.
+VOICE COMES FIRST, AND IT COMES FROM THEIR CHAT HISTORY. The PRIMARY sources are \`things_they_typed_in_chat\` (verbatim lines they typed, newest first, with the room), \`chat_ai_notes\`, \`chatter_memory\` and \`chatter_timeline\` (the chat AI's profile of them as a chatter: what they are known for, their bits, opinions, grudges, who they mess with). Their streaming profile (\`ai_overview\`, \`things_they_said_on_stream\`, numbers) is SECONDARY flavor to mix in. Copy their actual typing: casing (if they type lowercase, every line is lowercase), punctuation or the lack of it, slang, emoji, typos, pet names, sentence length. A taunt must read like a message THEY would actually send in chat — not a movie trailer, not a wrestling promo, no ALL-CAPS unless they type that way, no invented catchphrases, never repeat a word for effect, no "watch me"/"try to keep up" filler.
+TAUNTS ARE THE MOST IMPORTANT PART. They must be RAGEBAIT in that voice: provocative, trolly, specific, petty — the kind of line that makes a rival or a chat reply instantly. Reference their real recurring subjects, rivals from the roster, rooms they lurk in and their obsessions. stat_quips are ALSO in their voice (≤ 8 words each, how THEY would describe that stat). If there is no chat data at all, build the voice from the transcript lines; if neither exists, infer it from the overview and say so in typing_style.
 This platform does not censor language — offensive and taboo words are allowed. The only hard line: no direct threats of violence, nothing sexual about minors, no doxxing. Everything is Arena lore, not real-life claims. Output only the JSON.`;
 
 async function generatePersona(userId, { force = false } = {}) {
@@ -316,7 +329,7 @@ async function generatePersona(userId, { force = false } = {}) {
         numbers: { hours_live_90d: entry.raw.hours, peak_viewers_90d: entry.raw.peak_viewers, avg_viewers: entry.raw.avg_viewers, chat_messages_per_hour: entry.raw.messages_per_hour, followers: entry.raw.followers, clips: entry.raw.clips, all_time_hours: entry.raw.all_time_hours, all_time_peak: entry.raw.all_time_peak,
             on_mic: entry.raw.voice.has_data ? { talk_share_pct: entry.raw.voice.talk_ratio_pct, words_per_minute: entry.raw.voice.wpm, hype_words_per_hour: entry.raw.voice.hype_per_hour, laughs_per_hour: entry.raw.voice.laughs_per_hour, stream_sounds: entry.raw.voice.top_sounds.map(s => s.label) } : 'no transcript data yet' },
         ai_overview: ctx.overview, recent_stream_titles: ctx.titles, what_the_camera_saw_recently: ctx.memories, chat_ai_notes: ctx.chat_notes, recent_vods: ctx.vods, things_they_said_on_stream: ctx.said,
-        things_they_typed_in_chat: ctx.typed, rooms_they_lurk_in: ctx.chat_rooms,
+        things_they_typed_in_chat: ctx.typed, chatter_memory: ctx.chatter_memory || null, chatter_timeline: ctx.chatter_timeline || [], rooms_they_lurk_in: ctx.chat_rooms,
         roster_rivals: (() => { try { return loadRoster().order.filter(id => id !== userId).slice(0, 8).map(id => { const p = parseJson(profileRow(id)?.persona_json); return `${loadRoster().byId[id].user.username}${p?.fighter_name ? ` (${p.fighter_name})` : ''}`; }); } catch { return []; } })(),
     };
     const r = await llm.complete({ role: 'summary', kind: 'arena_persona', source: 'arena', ownerUserId: userId, system: PERSONA_SYSTEM, user: `Write the Arena persona for this fighter. Facts (JSON):\n${JSON.stringify(facts)}`, json: PERSONA_SCHEMA, maxTokens: 1200, temperature: 0.95, timeoutMs: 30000 });
@@ -338,7 +351,7 @@ function fallbackPersona(entry) {
         signature_move: { name: `${STAT_META[best].label} Surge`, description: `Turns ${STAT_META[best].desc} into raw damage.` },
         special: { name: 'Go Live', description: 'Hits the button. The arena fills up.' }, weakness: 'Sleep schedules.', taunt: 'Chat, are you seeing this?',
         lore: `${entry.user.display_name} shows up, streams, and leaves the leaderboard slightly different than they found it.`,
-        catchphrase: 'Let him cook.', entrance_music: 'Untitled Loop (feat. Notification Sound)', taunts: [], typing_style: null,
+        catchphrase: 'Let him cook.', entrance_music: 'Untitled Loop (feat. Notification Sound)', taunts: [], typing_style: null, spoken_as: [], custom_stats: [],
         stat_quips: Object.fromEntries(STAT_KEYS.map(k => [k, STAT_META[k].desc])), _fallback: true,
     };
 }
@@ -512,7 +525,7 @@ function listFighters() {
         const c = cardFor(id, roster, { includeRaw: false });
         return {
             user: c.user, rank: c.rank, ratings: c.ratings, record: c.record, live: c.live, image_url: c.image_url, level: { level: c.level.level, xp: c.level.xp },
-            persona: { fighter_name: c.persona.fighter_name, title: c.persona.title, class: c.persona.class, element: c.persona.element, taunt: c.persona.taunt, lore: c.persona.lore, signature_move: c.persona.signature_move, stat_quips: c.persona.stat_quips },
+            persona: { fighter_name: c.persona.fighter_name, title: c.persona.title, class: c.persona.class, element: c.persona.element, taunt: c.persona.taunt, taunts: c.persona.taunts || [], typing_style: c.persona.typing_style || null, lore: c.persona.lore, signature_move: c.persona.signature_move, stat_quips: c.persona.stat_quips, custom_stats: Array.isArray(c.persona.custom_stats) ? c.persona.custom_stats : [] },
             persona_is_fallback: c.persona_is_fallback, category: roster.byId[id].raw.category, last_live_at: roster.byId[id].raw.last_live_at,
             voice: { has_data: c.voice.has_data, talk_ratio_pct: c.voice.talk_ratio_pct, speech_minutes: c.voice.speech_minutes },
         };
