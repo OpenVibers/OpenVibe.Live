@@ -473,6 +473,8 @@ function heuristicDiscover(input) {
 }
 
 let _pulse = { text: null, at: null, sources: [] };
+function loadPulse() { if (_pulse.at) return _pulse; try { const p = JSON.parse(db.getState('arena_pulse') || 'null'); if (p && p.text) _pulse = p; } catch { /* */ } return _pulse; }
+function savePulse() { try { db.setState('arena_pulse', JSON.stringify(_pulse)); } catch { /* */ } }
 /** Every few minutes, only when there is new material: turn what was said into new subjects. */
 async function discoverTopics({ force = false } = {}) {
     ensureTables();
@@ -487,7 +489,7 @@ async function discoverTopics({ force = false } = {}) {
     if (aiOn()) {
         try {
             const r = await llm.complete({ role: 'summary', kind: 'arena_discover', source: 'arena', system: DISCOVER_SYSTEM, user: JSON.stringify(input), json: DISCOVER_SCHEMA, maxTokens: 700, temperature: 0.9, timeoutMs: 30000 });
-            if (r && r.json) { topics = r.json.topics || []; bounties = r.json.bounties || []; if (r.json.pulse) _pulse = { text: clip(r.json.pulse, 200), at: Date.now(), sources: ['chat', 'on_mic'].filter(k => input[k].length) }; }
+            if (r && r.json) { topics = r.json.topics || []; bounties = r.json.bounties || []; if (r.json.pulse) { _pulse = { text: clip(r.json.pulse, 200), at: Date.now(), sources: ['chat', 'on_mic'].filter(k => input[k].length) }; savePulse(); } }
         } catch (e) { console.warn('[Arena] discover:', e.message); }
     } else {
         topics = heuristicDiscover(input);
@@ -521,7 +523,7 @@ function backfillMoments(topics) {
         if (n) console.log(`[Arena] topic #${t.id} seeded with ${n} moment(s)`);
     }
 }
-function pulse() { return { text: _pulse.text, at: _pulse.at ? new Date(_pulse.at).toISOString() : null, sources: _pulse.sources }; }
+function pulse() { const p = loadPulse(); return { text: p.text, at: p.at ? new Date(p.at).toISOString() : null, sources: p.sources || [] }; }
 
 // ── Lore ─────────────────────────────────────────────────────
 
