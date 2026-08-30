@@ -139,12 +139,20 @@ async function analyzeTextPaste(content, title) {
 
 /** Analyze a live-stream frame → { description, tags }. */
 async function analyzeStreamFrame(image) {
-    const prompt = `This is a frame from a live stream. Reply ONLY with compact JSON: {"description":"one concise sentence describing what is happening on screen right now","tags":["2-5","short","tags"]}.`;
-    const text = await _complete({ prompt, image, maxTokens: 200, kind: 'stream_memory', role: 'vision', imageMaxWidth: 768 });
+    // One vision call does three jobs: the memory description, the tags, and a screenshot-worthiness
+    // verdict + caption (so live pastes need no extra call).
+    const prompt = `This is a frame from a live stream. Reply ONLY with compact JSON: {"description":"one concise sentence describing what is happening on screen right now","tags":["2-5","short","tags"],"worthy":<true only if this exact frame is genuinely screenshot-worthy on its own: a face/reaction, a visual gag, something unusual or funny on screen — false for ordinary gameplay/desktop/chat/talking-head frames>,"title":"<if worthy: a punchy, funny 3-7 word caption for it, else empty>"}.`;
+    const text = await _complete({ prompt, image, maxTokens: 240, kind: 'stream_memory', role: 'vision', imageMaxWidth: 768 });
     if (!text) return null;
     const description = _extractDescription(text, 400);
-    return description ? { description, tags: _extractTags(text, 6) } : null;
+    if (!description) return null;
+    const j = _parseJson(text) || {};
+    return { description, tags: _extractTags(text, 6), worthy: j.worthy === true, title: j.worthy === true ? String(j.title || '').replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 80) : '' };
 }
+
+/** Fixed category taxonomy the AI picks from (matches the go-live selector). */
+const CATEGORIES = ['outdoors', 'travel', 'building', 'music', 'gaming', 'robot', 'desktop', 'irl', 'other'];
+function normalizeCategory(c) { const t = String(c || '').toLowerCase().trim(); if (!t) return null; if (CATEGORIES.includes(t)) return t; const map = { 'just chatting': 'irl', chatting: 'irl', talk: 'irl', coding: 'desktop', programming: 'desktop', software: 'desktop', tech: 'desktop', art: 'building', craft: 'building', diy: 'building', cooking: 'irl', hiking: 'outdoors', driving: 'travel', 'road trip': 'travel', robotics: 'robot', game: 'gaming', games: 'gaming', dj: 'music' }; return map[t] || null; }
 
 /** Condense a stream's memories into a one-line "AI Overview" for the home card. */
 async function summarizeStreamMemories(memories, streamId = null) {
@@ -179,9 +187,15 @@ async function summarizeStreamMemories(memories, streamId = null) {
         } catch { /* timeline optional */ }
     }
 
-    const prompt = `These are timestamped observations from a live stream, in order since it started. Give a thorough overview (2-6 sentences) of what this stream has been about overall — the main activities, topics, and vibe across the whole session (not just the latest moment):\n${lines}${audioBlock}`;
-    const text = await _complete({ prompt, maxTokens: 500, kind: 'stream_memory' });
-    return text ? text.slice(0, 2000) : null;
+    // The same call also classifies the stream — category is inferred from what is actually on
+    // screen / said, never from the streamer's go-live selector (which used to default to "irl"
+    // and taught every downstream AI that everyone is an IRL streamer).
+    const prompt = `These are timestamped observations from a live stream, in order since it started. Reply ONLY with compact JSON: {"overview":"a thorough overview (2-6 sentences) of what this stream has been about overall — the main activities, topics, and vibe across the whole session (not just the latest moment)","category":"<exactly one of: ${CATEGORIES.join(', ')} — what this stream mostly IS, judged from the observations; desktop = screen/software/coding, gaming = playing games, irl = camera on a person talking/doing things indoors, outdoors/travel = out in the world>","tags":["3-6","short","lowercase","tags"]}\n${lines}${audioBlock}`;
+    const text = await _complete({ prompt, maxTokens: 560, kind: 'stream_memory' });
+    if (!text) return null;
+    const j = _parseJson(text);
+    const overview = j && j.overview ? String(j.overview).slice(0, 2000) : (_extractDescription(text, 2000) || text.slice(0, 2000));
+    return { overview, category: normalizeCategory(j && j.category), tags: j && Array.isArray(j.tags) ? j.tags.map(String).slice(0, 6) : [] };
 }
 
 /**
@@ -198,7 +212,7 @@ async function generateStreamerOverview(userId) {
     const memLines = memories.slice(0, 40).map(m => `- ${m.description}`).filter(l => l.length > 2);
 
     const vods = (db.getVodsByUser ? db.getVodsByUser(userId, false, 20, 0) : []) || [];
-    const vodLines = vods.map(v => `- ${v.title || 'Untitled VOD'}${v.category ? ` [${v.category}]` : ''}`);
+    const vodLines = vods.map(v => `- ${v.title || 'Untitled VOD'}${(v.ai_category || v.category) ? ` [${v.ai_category || v.category}]` : ''}`);
 
     const pastes = (db.getUserPastesForAi ? db.getUserPastesForAi(userId, 25) : []) || [];
     const pasteLines = pastes.filter(p => p.ai_summary).map(p => `- "${p.title || 'paste'}": ${p.ai_summary}`);
@@ -208,7 +222,7 @@ async function generateStreamerOverview(userId) {
     const ctx = [
         `Streamer: ${user.display_name || user.username} (@${user.username})`,
         (channel?.bio || user.bio) ? `Bio: ${(channel?.bio || user.bio).slice(0, 400)}` : '',
-        channel?.category ? `Usual category: ${channel.category}` : '',
+        (channel?.ai_category || channel?.category) ? `Usual category (${channel?.ai_category ? 'inferred by AI from their streams' : 'self-selected'}): ${channel.ai_category || channel.category}` : '',
         memLines.length ? `\nLive-stream observations (across sessions):\n${memLines.join('\n')}` : '',
         vodLines.length ? `\nRecent VODs:\n${vodLines.join('\n')}` : '',
         pasteLines.length ? `\nPaste summaries:\n${pasteLines.join('\n')}` : '',
@@ -466,6 +480,7 @@ async function testStatus({ probe = true } = {}) {
 }
 
 module.exports = {
+    CATEGORIES, normalizeCategory,
     isEnabled, withinBudget, pasteAnalysisEnabled, streamMemoryEnabled, transcriptionEnabled, captureIntervalSec,
     analyzeImagePaste, analyzeTextPaste, analyzeStreamFrame, summarizeStreamMemories,
     generateStreamerOverview, generateVodOverview, generateClipOverview, ensureVodTimeline,

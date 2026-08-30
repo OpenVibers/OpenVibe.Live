@@ -18,6 +18,7 @@ const fs = require('node:fs');
 const db = require('../db/database');
 const ai = require('./ai-analysis');
 const media = require('../media-client');
+const registry = require('./moment-registry');
 let cfg = null; try { cfg = require('../config'); } catch { /* */ }
 let thumb = null; try { thumb = require('../media-proxy/live-thumbs'); } catch { /* optional */ }
 const FRAMES_TMP_DIR = path.join(os.tmpdir(), 'openvibe-live-moments');
@@ -86,7 +87,27 @@ Return STRICT JSON only, nothing else: [{"index": <n>, "score": <1-100>, "why": 
 }
 // Rank the whole VOD set (batched tournament so "every VOD ever" scales). Falls back to the
 // objective prior order (already applied by the DB) when AI is unavailable.
+// Ranking cache: a VOD's showcase score barely changes, so score each VOD ONCE (7 days) and only
+// spend calls on VODs that have never been scored. Persisted in the job state as `rankCache`.
+const RANK_TTL_MS = 7 * 24 * 3600_000;
+let _rankCacheOut = {};
 async function _rankVods(vods, want) {
+    if (!_aiOn() || vods.length <= 1) return vods.map(v => ({ vod: v }));
+    const CH = 25;
+    const cache = _load().rankCache || {};
+    const now = Date.now();
+    const fresh = [], stale = [];
+    for (const v of vods) { const c = cache[v.vod_id]; if (c && now - (c.at || 0) < RANK_TTL_MS) fresh.push({ vod: v, score: c.score, why: c.why }); else stale.push(v); }
+    let scored = [];
+    for (let i = 0; i < stale.length; i += CH) scored.push(...(await _scoreVodChunk(stale.slice(i, i + CH), Math.max(want, 6))));
+    for (const s of scored) cache[s.vod.vod_id] = { score: s.score, why: s.why, at: now };
+    for (const v of stale) if (!cache[v.vod_id]) cache[v.vod_id] = { score: 0, why: 'unscored', at: now };   // never re-spend on a VOD the model left out
+    _rankCacheOut = Object.fromEntries(Object.entries(cache).filter(([, c]) => now - (c.at || 0) < RANK_TTL_MS).slice(-600));
+    const all = [...fresh, ...scored].sort((a, b) => b.score - a.score);
+    if (all.length) { console.log(`[AI-Moments] ranked ${vods.length} VOD(s): ${fresh.length} from cache, ${stale.length} scored now`); return all; }
+    return vods.map(v => ({ vod: v }));
+}
+async function _rankVodsUncached(vods, want) {
     if (!_aiOn() || vods.length <= 1) return vods.map(v => ({ vod: v }));
     const CH = 25;
     if (vods.length <= CH) {
@@ -134,9 +155,17 @@ function _nearestMemory(memories, offset) {
     for (const m of memories) { const d = Math.abs((m.offset_seconds || 0) - offset); if (d < bestD) { bestD = d; best = m; } }
     return best;
 }
-async function _findBestMoment(vod) {
+// flavor: 'paste' → a frame that is striking on its own; 'clip' → a beat that plays out over ~25 s.
+// avoid: offsets (seconds) already turned into something — the picker must stay ≥ 2 min away.
+const FLAVOR_HINT = {
+    paste: 'This moment becomes a SCREENSHOT paste: pick something visually striking in a single frame — a face or reaction, a visual gag, something odd on screen, a scene change. What was said matters less than what is SEEN.',
+    clip: 'This moment becomes a 25-SECOND VIDEO CLIP: pick a beat that plays out over time — a line that lands, a reaction, a sound, chat exploding, something HAPPENING — not a static pretty frame.',
+};
+async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
     const dur = Math.floor(vod.duration || 0);
     const ctx = _momentContext(vod.stream_id, vod.vod_id);
+    const avoidList = [...new Set([...(avoid || []), ...registry.usedOffsets(vod.vod_id, vod.stream_id)])].sort((a, b) => a - b);
+    const farFromUsed = (t) => avoidList.every(a => Math.abs(a - t) >= registry.GAP_SEC);
     if (!ctx.memories.length && !ctx.transcript.length) return null;
     const clamp = (t) => Math.max(1, Math.min(Math.floor(t || 0), dur > 3 ? dur - 2 : (t || 0)));
 
@@ -160,7 +189,10 @@ ${soundLine || '(none)'}
 Viewers CLIPPED these timestamps (very strong "this was a highlight" signal): ${clipHint}
 Chat activity SPIKED around: ${spikeHint}
 
-Find the SINGLE most interesting/funny/dramatic/surprising/striking moment in this VOD with something clearly VISIBLE happening. Prefer moments backed by the clip/chat signals when they line up with something notable. NEVER pick a black/dark/loading/blank screen, an intro/BRB card, or a moment with no visible content or activity. Return STRICT JSON only, nothing else: {"t": <seconds into the vod>, "title": "<specific punchy 3-8 word title, not the stream name>", "desc": "<one vivid sentence describing the moment>"}`;
+${FLAVOR_HINT[flavor] || FLAVOR_HINT.paste}
+${avoidList.length ? `ALREADY USED (a paste or clip exists there) — do NOT pick these or anything within 2 minutes of them: ${avoidList.map(_mmss).join(', ')}. Find a DIFFERENT moment.` : ''}
+
+Find the SINGLE most interesting/funny/dramatic/surprising/striking moment in this VOD with something clearly VISIBLE happening. Prefer moments backed by the clip/chat signals when they line up with something notable. NEVER pick a black/dark/loading/blank screen, an intro/BRB card, or a moment with no visible content or activity. Return STRICT JSON only, nothing else: {"t": <seconds into the vod>, "title": "<specific punchy 3-8 word title, not the stream name, funny, never generic>", "desc": "<one vivid sentence describing the moment>"}`;
         try {
             const text = await ai.summarizeText(prompt, 300, 'moment_pick');
             const m = text && text.match(/\{[\s\S]*\}/);
@@ -169,6 +201,7 @@ Find the SINGLE most interesting/funny/dramatic/surprising/striking moment in th
                 let t = Number(j.t);
                 if (!isNaN(t)) {
                     t = clamp(t);
+                    if (!farFromUsed(t)) { console.log(`[AI-Moments] VOD ${vod.vod_id}: pick at ${_mmss(t)} is next to a used moment — trying the objective signals instead`); throw new Error('near used'); }
                     const near = _nearestMemory(ctx.memories, t);
                     const result = { offset: t, title: _cleanTitle(j.title) || _titleFromDesc(j.desc), desc: _cleanText(_deJson(j.desc), 400) || (near && _deJson(near.description)) || '', tags: _memTags(near) };
                     return _isEmptyScene(result.desc) ? null : result;
@@ -177,15 +210,15 @@ Find the SINGLE most interesting/funny/dramatic/surprising/striking moment in th
         } catch { /* fall through to signal-based pick */ }
     }
 
-    // No-AI fallback: pick from the strongest objective signal.
-    let offset = null;
-    if (ctx.clipTimes.length) offset = ctx.clipTimes[Math.floor(ctx.clipTimes.length / 2)]; // where viewers clipped
-    else if (ctx.spikes.length) offset = ctx.spikes[0].offset;                              // busiest chat moment
-    else { // richest scene note
-        const rich = ctx.memories.slice().sort((a, b) => String(b.description).length - String(a.description).length)[0];
-        offset = rich ? (rich.offset_seconds || 0) : 0;
-    }
-    offset = clamp(offset);
+    // No-AI fallback (also used when the AI pick collided with a used moment): the strongest
+    // objective signal that is not next to something already made.
+    const candidates = [
+        ...ctx.clipTimes.map(t => ({ t, w: 3 })),                                   // where viewers clipped
+        ...ctx.spikes.map(s => ({ t: s.offset, w: 2 })),                            // busiest chat moments
+        ...ctx.memories.slice().sort((a, b) => String(b.description).length - String(a.description).length).slice(0, 8).map(m => ({ t: m.offset_seconds || 0, w: 1 })), // richest scene notes
+    ].filter(c => farFromUsed(clamp(c.t))).sort((a, b) => b.w - a.w);
+    if (!candidates.length) return null;
+    let offset = clamp(candidates[0].t);
     const near = _nearestMemory(ctx.memories, offset);
     const desc = near ? _deJson(near.description) : '';
     return _isEmptyScene(desc) ? null : { offset, title: _titleFromDesc(desc), desc, tags: _memTags(near) };
@@ -274,8 +307,7 @@ async function tick(opts = {}) {
         // Content-signature dedup: even different VODs from the same streamer (same setup) yield
         // near-identical scenes → we skip a moment whose description signature was used recently,
         // so the hero/pastes never show visual duplicates. Respected even on --fresh.
-        const usedSigs = new Set(prev.usedSigs || []);
-        const thisSigs = new Set();
+        const thisSigs = new Set();   // scenes picked in THIS run (cross-run dedupe lives in moment-registry)
 
         // Stage 1: consider every eligible VOD, ranked by its AI overview + popularity prior.
         // The VOD pool comes from OpenVibe.Media (most-viewed public VODs), overlaid with
@@ -316,10 +348,11 @@ async function tick(opts = {}) {
             // Stage 2: find the best moment within this VOD.
             const moment = await _findBestMoment(v);
             if (!moment) continue;
-            // Skip near-duplicate scenes (same signature as a recent or already-picked moment).
+            // Skip near-duplicate scenes / spots — the registry is shared with the clip job.
             const sig = _sig(moment.desc || v.ai_overview_short || v.title);
-            if (sig && (usedSigs.has(sig) || thisSigs.has(sig))) {
-                console.log(`[AI-Moments] Skipped VOD ${v.vod_id} — duplicate scene ("${sig}")`);
+            const why0 = registry.usedReason({ vod_id: v.vod_id, stream_id: v.stream_id, offset: moment.offset, sig });
+            if (why0 || (sig && thisSigs.has(sig))) {
+                console.log(`[AI-Moments] Skipped VOD ${v.vod_id} — ${why0 || `duplicate scene ("${sig}")`}`);
                 continue;
             }
             if (sig) thisSigs.add(sig);
@@ -390,7 +423,7 @@ async function tick(opts = {}) {
             // Re-check the signature against the FINAL (vision-verified) description — this is
             // what actually catches same-scene duplicates (e.g. a split-image close-up re-picked).
             const finalSig = _sig(desc);
-            if (finalSig && finalSig !== sig && (usedSigs.has(finalSig) || thisSigs.has(finalSig))) {
+            if (finalSig && finalSig !== sig && (registry.isUsed({ sig: finalSig }) || thisSigs.has(finalSig))) {
                 console.log(`[AI-Moments] Skipped VOD ${v.vod_id} — duplicate scene after vision ("${finalSig}")`);
                 continue;
             }
@@ -423,19 +456,23 @@ async function tick(opts = {}) {
             try { fs.unlinkSync(screenshotPath); } catch { /* tmp frame */ }
 
             moments.push({ vodId: v.vod_id, offset, title: title.slice(0, 80), thumbnail: img, username: v.username, pasteSlug });
+            registry.record({ kind: 'paste', vod_id: v.vod_id, stream_id: v.stream_id, offset, sig: finalSig || sig, title });
 
-            // Also cut a real VOD clip around this same moment (AI auto-clip), unless disabled.
+            // Also cut a VOD clip from the SAME VOD — but a DIFFERENT beat (clip flavor, ≥ 2 min away),
+            // so the clip and the paste never show the identical second with the identical title.
             if (opts.clip !== false && momentSource) {
                 try {
-                    const clip = await require('./auto-clip-job').clipVodMoment({ vod: v, offset, title, desc, source: momentSource });
-                    if (clip) console.log(`[AI-Moments] Auto-clip cut for VOD ${v.vod_id} ("${title.slice(0, 60)}")`);
+                    const second = await _findBestMoment(v, { flavor: 'clip', avoid: [offset] });
+                    if (second && !registry.isUsed({ vod_id: v.vod_id, stream_id: v.stream_id, offset: second.offset, desc: second.desc, title: second.title })) {
+                        const clip = await require('./auto-clip-job').clipVodMoment({ vod: v, offset: second.offset, title: second.title, desc: second.desc, source: momentSource });
+                        if (clip) console.log(`[AI-Moments] Auto-clip cut for VOD ${v.vod_id} at ${_mmss(second.offset)} ("${String(second.title || '').slice(0, 60)}") — paste was at ${_mmss(offset)}`);
+                    } else console.log(`[AI-Moments] VOD ${v.vod_id}: no second, distinct beat for a clip — skipped`);
                 } catch { /* clipping is best-effort */ }
             }
         }
 
         const usedLog = [...newUsedVods, ...(prev.usedVods || [])].slice(0, 300);
-        const sigLog = [...thisSigs, ...(prev.usedSigs || [])].slice(0, 120);
-        db.setState(SETTING, JSON.stringify({ moments, usedVods: usedLog, usedSigs: sigLog, updated_at: Date.now() }));
+        db.setState(SETTING, JSON.stringify({ moments, usedVods: usedLog, rankCache: _rankCacheOut, updated_at: Date.now() }));
         console.log(`[AI-Moments] ${moments.length} moment(s) from ${chosen.length}/${totalEligible} ranked VODs + pastes created`);
     } catch (e) {
         console.warn('[AI-Moments] tick error:', e.message);
@@ -456,7 +493,7 @@ function start() {
     setInterval(() => { tick().catch(() => {}); }, 5 * 60 * 1000);
 }
 
-module.exports = { start, tick, findBestMoment: _findBestMoment, frameTooDark: _frameTooDark };
+module.exports = { start, tick, findBestMoment: _findBestMoment, frameTooDark: _frameTooDark, makeSlug: _slug };
 
 // CLI: force a one-off regeneration, e.g. a whole-dataset "best of all-time" test run:
 //   node server/ai/ai-moments-job.js --fresh --target=6 --perUser=2

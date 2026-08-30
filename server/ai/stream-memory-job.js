@@ -155,8 +155,9 @@ async function _analyzeOne(stream, { allowFfmpeg = true, reason = 'periodic' } =
             const stale = (now - last.at) >= SUMMARY_MAX_AGE_MS;
             if (memories.length > 1 && (!last.at || grew || stale)) {
                 const summary = await ai.summarizeStreamMemories(memories, stream.id);
-                if (summary) {
-                    db.updateStreamAiOverview(stream.id, summary);
+                if (summary && summary.overview) {
+                    db.updateStreamAiOverview(stream.id, summary.overview);
+                    if (summary.category) db.setStreamAiCategory(stream.id, summary.category, summary.tags);
                     _lastSummary.set(stream.id, { count: memories.length, at: now });
                 }
             } else if (!stream.ai_overview) {
@@ -165,6 +166,41 @@ async function _analyzeOne(stream, { allowFfmpeg = true, reason = 'periodic' } =
             }
         } catch { /* keep existing overview */ }
     } catch (e) { console.warn('[AI] memory store failed:', e.message); }
+
+    // Live paste: when the vision model flags THIS frame as screenshot-worthy, post it as an image
+    // paste right now (no extra AI call — the caption came with the memory). Rate-limited per stream
+    // and deduped through the shared moment registry so the paste job / clip job never re-use it.
+    try { await _maybeLivePaste(stream, image, r, offset); } catch (e) { console.warn('[AI] live paste:', e.message); }
+}
+
+const LIVE_PASTE_MIN_GAP_MS = 90 * 60 * 1000;
+async function _maybeLivePaste(stream, image, r, offset) {
+    if (!r || !r.worthy || !r.title || !image) return;
+    try { if (String(db.getSetting('ai_live_pastes_enabled') ?? 'true') === 'false') return; } catch { /* default on */ }
+    const registry = require('./moment-registry');
+    const last = registry.lastOfKind('paste', { stream_id: stream.id });
+    if (last && Date.now() - (last.ts || 0) < LIVE_PASTE_MIN_GAP_MS) return;
+    const why = registry.usedReason({ stream_id: stream.id, offset, desc: r.description, title: r.title });
+    if (why) return;
+    const moments = require('./ai-moments-job');
+    if (typeof image === 'string' && !image.startsWith('data:') && moments.frameTooDark && await moments.frameTooDark(image)) return;
+    let buffer = null;
+    try { buffer = Buffer.isBuffer(image) ? image : (typeof image === 'string' && image.startsWith('data:') ? Buffer.from(image.split(',')[1] || '', 'base64') : require('fs').readFileSync(image)); } catch { return; }
+    if (!buffer || buffer.length < 2000) return;
+    const username = stream.username || (db.getUserById(stream.user_id) || {}).username || 'someone';
+    let base = 'https://openvibe.live'; try { const c = require('../config'); base = String(c.baseUrl || c.publicUrl || base).replace(/\/$/, ''); } catch { /* */ }
+    const media = require('../media-client');
+    const paste = await media.createPaste({
+        slug: moments.makeSlug ? moments.makeSlug() : undefined, user_id: stream.user_id,
+        title: r.title.slice(0, 80), content: `${r.description}\n\n🔴 Caught live on @${username}'s stream — ${base}/${username}`, language: 'text', visibility: 'public',
+        stream_id: stream.id, metadata: JSON.stringify({ ai_moment: true, live: true, stream_id: stream.id, offset, username, vod_link: null }),
+        ai_summary: r.description, ai_tags: JSON.stringify(Array.isArray(r.tags) ? r.tags.slice(0, 8) : []),
+        screenshot: { buffer, filename: `live-${stream.id}-${offset}.jpg`, contentType: 'image/jpeg' },
+    });
+    if (paste) {
+        registry.record({ kind: 'paste', stream_id: stream.id, offset, desc: r.description, title: r.title });
+        console.log(`[AI-Moments] live paste for stream ${stream.id} at ${offset}s: "${r.title}"`);
+    }
 }
 
 async function tick() {

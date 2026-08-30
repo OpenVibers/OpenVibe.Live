@@ -421,7 +421,7 @@ function _wsRenderPanel() {
                     <div class="form-group" style="flex:2">
                         <label>Category</label>
                         <select id="bc-category" class="form-input" onchange="_wsMarkDirty()">
-                            ${_wsRenderCategoryOptions(ms.category || 'irl')}
+                            ${_wsRenderCategoryOptions(ms.category || '')}
                         </select>
                     </div>
                     <div class="form-group" style="flex:1">
@@ -1391,6 +1391,7 @@ function _wsRenderBrowserModeCards(selected) {
 
 function _wsRenderCategoryOptions(selected) {
     const cats = [
+        ['', 'Auto — the AI decides from the stream'],
         ['outdoors', 'Outdoors'], ['travel', 'Travel'], ['building', 'Building/Craft'],
         ['music', 'Music'], ['gaming', 'Gaming'], ['robot', 'Robot'],
         ['desktop', 'Desktop'], ['irl', 'IRL'], ['other', 'Other'],
@@ -1959,7 +1960,7 @@ async function _wsSaveAll() {
         const streamFields = {
             title: document.getElementById('bc-title')?.value.trim() || ms.title,
             description: document.getElementById('bc-description')?.value.trim() || '',
-            category: document.getElementById('bc-category')?.value || 'irl',
+            category: document.getElementById('bc-category')?.value || '',
             is_nsfw: document.getElementById('bc-nsfw')?.checked ? 1 : 0,
             protocol: ms.protocol,
             streaming_method: ms.streaming_method || 'browser',

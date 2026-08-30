@@ -351,7 +351,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
             if (stream) {
                 vod.stream_started_at = stream.started_at;
                 vod.stream_ended_at = stream.ended_at;
-                vod.stream_category = stream.category;
+                vod.stream_category = stream.ai_category || stream.category;
                 vod.stream_peak_viewers = stream.peak_viewers;
             }
         }

@@ -1440,7 +1440,7 @@ async function loadBroadcastControlConfigs() {
 async function createNewStream() {
     const title = document.getElementById('bc-title')?.value.trim();
     const description = document.getElementById('bc-description')?.value.trim() || '';
-    const category = document.getElementById('bc-category')?.value || 'irl';
+    const category = document.getElementById('bc-category')?.value || '';
     const method = broadcastState.selectedMethod;
     if (!title) return toast('Stream title is required', 'error');
 

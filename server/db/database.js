@@ -1345,6 +1345,12 @@ function initDb() {
         if (!scols.includes('ai_overview')) database.exec('ALTER TABLE streams ADD COLUMN ai_overview TEXT');
         // Short AI-generated session title for the AI Timeline (streamers reuse literal titles).
         if (!scols.includes('ai_title')) database.exec('ALTER TABLE streams ADD COLUMN ai_title TEXT');
+        // Category/tags inferred by the AI from what the stream actually shows (the go-live selector
+        // used to default to 'irl', which made every AI think everyone is an IRL streamer).
+        if (!scols.includes('ai_category')) database.exec('ALTER TABLE streams ADD COLUMN ai_category TEXT');
+        if (!scols.includes('ai_tags')) database.exec('ALTER TABLE streams ADD COLUMN ai_tags TEXT');
+        const chcols = database.prepare('PRAGMA table_info(channels)').all().map(c => c.name);
+        if (!chcols.includes('ai_category')) database.exec('ALTER TABLE channels ADD COLUMN ai_category TEXT');
 
         // AI overview + transcript on VODs and clips.
         const vcols = database.prepare('PRAGMA table_info(vods)').all().map(c => c.name);
@@ -1394,6 +1400,16 @@ function initDb() {
             database.exec('ALTER TABLE managed_streams ADD COLUMN slot_powerchat_count_rs_views INTEGER DEFAULT 1');
         }
     } catch (e) { console.warn('[DB] visibility migration:', e.message); }
+
+    // AI-inferred category/tags. The go-live selector used to default to 'irl', which taught
+    // every downstream AI (viewers, overviews, arena) that everyone is an IRL streamer; the
+    // stream-memory rollup now classifies each stream from what it actually shows.
+    try {
+        const sc = database.prepare('PRAGMA table_info(streams)').all().map(c => c.name);
+        for (const col of ['ai_overview TEXT', 'ai_title TEXT', 'ai_category TEXT', 'ai_tags TEXT']) { if (!sc.includes(col.split(' ')[0])) database.exec(`ALTER TABLE streams ADD COLUMN ${col}`); }
+        const cc = database.prepare('PRAGMA table_info(channels)').all().map(c => c.name);
+        if (!cc.includes('ai_category')) database.exec('ALTER TABLE channels ADD COLUMN ai_category TEXT');
+    } catch (e) { console.warn('[DB] ai-category migration:', e.message); }
 
     // Cached SHORT overview (a concise, locally-derived version of the long AI
     // overview) shown on listing cards — computed once at write time, no extra API.
@@ -2676,7 +2692,7 @@ function getOrCreateAnonGameUser(anonId) {
 
 function getLiveStreams() {
     return all(`
-        SELECT s.*, u.username, u.display_name, u.avatar_url, u.profile_color,
+        SELECT s.*, COALESCE(NULLIF(s.ai_category, ''), s.category) AS category, s.category AS chosen_category, u.username, u.display_name, u.avatar_url, u.profile_color,
                ms.slug AS managed_stream_slug, ms.id AS managed_stream_id,
                ms.stream_key AS managed_stream_key,
                ms.browser_mode, ms.streaming_method
@@ -2690,7 +2706,7 @@ function getLiveStreams() {
 
 function getRecentStreams(limit = 20) {
     return all(`
-        SELECT s.*, u.username, u.display_name, u.avatar_url, u.profile_color,
+        SELECT s.*, COALESCE(NULLIF(s.ai_category, ''), s.category) AS category, s.category AS chosen_category, u.username, u.display_name, u.avatar_url, u.profile_color,
                v.id AS vod_id, v.is_public AS vod_is_public, v.thumbnail_url AS vod_thumbnail_url,
                v.duration_seconds AS vod_duration
         FROM streams s
@@ -2710,7 +2726,7 @@ function getRecentStreams(limit = 20) {
 
 function getStreamById(id) {
     return get(`
-        SELECT s.*, u.username, u.display_name, u.avatar_url, u.profile_color,
+        SELECT s.*, COALESCE(NULLIF(s.ai_category, ''), s.category) AS category, s.category AS chosen_category, u.username, u.display_name, u.avatar_url, u.profile_color,
                ms.slug AS managed_stream_slug, ms.stream_key AS managed_stream_key,
                ms.title AS managed_stream_title, ms.protocol AS managed_stream_protocol
         FROM streams s
@@ -2729,7 +2745,7 @@ function getStreamByUserId(userId) {
 
 function getLiveStreamsByUserId(userId) {
     return all(`
-        SELECT s.*, u.username, u.display_name, u.avatar_url, u.profile_color,
+        SELECT s.*, COALESCE(NULLIF(s.ai_category, ''), s.category) AS category, s.category AS chosen_category, u.username, u.display_name, u.avatar_url, u.profile_color,
                ms.slug AS managed_stream_slug, ms.stream_key AS managed_stream_key,
                ms.title AS managed_stream_title
         FROM streams s
@@ -2742,7 +2758,7 @@ function getLiveStreamsByUserId(userId) {
 
 function getLiveStreamsByControlConfigId(controlConfigId) {
     return all(`
-        SELECT s.*, u.username, u.display_name, u.avatar_url, u.profile_color,
+        SELECT s.*, COALESCE(NULLIF(s.ai_category, ''), s.category) AS category, s.category AS chosen_category, u.username, u.display_name, u.avatar_url, u.profile_color,
                ms.slug AS managed_stream_slug, ms.stream_key AS managed_stream_key,
                ms.title AS managed_stream_title
         FROM streams s
@@ -2755,7 +2771,7 @@ function getLiveStreamsByControlConfigId(controlConfigId) {
 
 function getStreamsByUserId(userId, limit = 50) {
     return all(`
-        SELECT s.*, u.username, u.display_name, u.avatar_url, u.profile_color,
+        SELECT s.*, COALESCE(NULLIF(s.ai_category, ''), s.category) AS category, s.category AS chosen_category, u.username, u.display_name, u.avatar_url, u.profile_color,
                ms.slug AS managed_stream_slug, ms.stream_key AS managed_stream_key,
                ms.title AS managed_stream_title, ms.id AS managed_stream_ref_id
         FROM streams s
@@ -2785,7 +2801,7 @@ function createStream({ user_id, channel_id, managed_stream_id, control_config_i
     return run(
         `INSERT INTO streams (user_id, channel_id, managed_stream_id, control_config_id, title, description, category, protocol, is_nsfw, thumbnail_url, is_live, started_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)`,
-        [user_id, channel_id || null, managed_stream_id || null, control_config_id || null, title || 'Untitled Stream', description || '', category || 'irl', protocol || 'webrtc', is_nsfw ? 1 : 0, thumbnail_url || null]
+        [user_id, channel_id || null, managed_stream_id || null, control_config_id || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', is_nsfw ? 1 : 0, thumbnail_url || null]
     );
 }
 
@@ -2856,6 +2872,15 @@ function _shortOverview(text) {
 function updateStreamAiOverview(streamId, text) {
     return run('UPDATE streams SET ai_overview = ?, ai_overview_short = ? WHERE id = ?', [text || null, _shortOverview(text), streamId]);
 }
+/** AI-inferred category/tags for a stream; the channel inherits the latest inferred category. */
+function setStreamAiCategory(streamId, category, tags) {
+    const cat = category ? String(category).toLowerCase().slice(0, 40) : null;
+    const r = run('UPDATE streams SET ai_category = ?, ai_tags = ? WHERE id = ?', [cat, Array.isArray(tags) && tags.length ? JSON.stringify(tags.slice(0, 8)) : null, streamId]);
+    if (cat) { const s = get('SELECT user_id FROM streams WHERE id = ?', [streamId]); if (s) run('UPDATE channels SET ai_category = ? WHERE user_id = ?', [cat, s.user_id]); }
+    return r;
+}
+/** What to call a stream's category: the AI's read of the stream beats the self-selected default. */
+function effectiveCategory(row) { if (!row) return null; return row.ai_category || row.category || null; }
 // AI overview/transcript state lives in vod_ai_state / clip_ai_state (Live-owned,
 // keyed by the Media vod/clip id) — the moved vods/clips tables are never written.
 function _ensureVodAiState(vodId) {
@@ -3528,7 +3553,7 @@ function createManagedStream({ user_id, channel_id, slug, title, description, ca
     return run(
         `INSERT INTO managed_streams (user_id, channel_id, slug, title, description, category, protocol, streaming_method, stream_key, is_nsfw, control_config_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [user_id, channel_id || null, slug || null, title || 'Untitled Stream', description || '', category || 'irl', protocol || 'webrtc', streaming_method || null, stream_key, is_nsfw ? 1 : 0, control_config_id || null]
+        [user_id, channel_id || null, slug || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', streaming_method || null, stream_key, is_nsfw ? 1 : 0, control_config_id || null]
     );
 }
 
@@ -4224,7 +4249,7 @@ function createChannel({ user_id, title, description, category, protocol }) {
     return run(
         `INSERT OR IGNORE INTO channels (user_id, title, description, category, protocol)
          VALUES (?, ?, ?, ?, ?)`,
-        [user_id, title || 'Untitled Channel', description || '', category || 'irl', protocol || 'webrtc']
+        [user_id, title || 'Untitled Channel', description || '', category || null, protocol || 'webrtc']
     );
 }
 
@@ -7999,7 +8024,7 @@ module.exports = {
     isValidManagedStreamSlug, isManagedStreamSlugTaken,
     ensureStreamerRoleOnFeed,
     // Streams (sessions)
-    getLiveStreams, getRecentStreams, getStreamById, getStreamByUserId, getLiveStreamsByUserId, getLiveStreamsByControlConfigId, getStreamsByUserId, getStreamHistoryByManagedStream,
+    getLiveStreams, getRecentStreams, getStreamById, setStreamAiCategory, effectiveCategory, getStreamByUserId, getLiveStreamsByUserId, getLiveStreamsByControlConfigId, getStreamsByUserId, getStreamHistoryByManagedStream,
     createStream, endStream, endOtherLiveStreamsForSlot, updateViewerCount,
     addStreamMemory, getStreamMemories, getLatestStreamMemory, updateStreamAiOverview,
     setVodAiOverview, setClipAiOverview, setVodTranscript, setClipTranscript, getStreamMemoriesInRange,
