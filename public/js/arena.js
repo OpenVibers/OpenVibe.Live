@@ -1,22 +1,30 @@
 /**
- * OpenVibe.Live — Arena tab (streamer vs streamer)
+ * OpenVibe.Live — Arena tab (speech-driven beefs + the community shit-talking board)
  *
  * Routes (handled from app.js):
- *   /arena                         main event + live matchups + leaderboard (rows expand)
- *   /arena/<username>              fighter profile (stats drill down, voice + quotes, portrait lightbox)
- *   /arena/battle/<a>/<b>          head-to-head battle (rounds, tale of the tape, walkouts, crowd vote)
+ *   /arena                     pulse · on the mic now · open beefs · the board · ladders
+ *   /arena/beef/<id>           one beef: tug-of-war, clock, announcer feed, receipts, sides
+ *   /arena/topic/<id>          one board event: angles, progress, best lines, sides/bounty/phrase
+ *   /arena/live/<username>     the ears: what the listener hears from a live fighter (auto-refresh)
+ *   /arena/<username>          fighter profile (stats drill down, voice + quotes, level, beefs, rivalries)
  *
- * Talks to /api/arena/* (server/arena). Everything renders with escaped template strings —
- * persona/quote text is AI-written or transcribed and must never be trusted as HTML.
+ * Nothing here starts a fight. Beefs open when a streamer says another fighter's name on mic
+ * while talking shit (server/arena/listener.js). Everything renders with escaped template
+ * strings — persona/quote/headline text is AI-written or transcribed and is never trusted as HTML.
  */
 'use strict';
 
 const ARENA_STATS = ['hype', 'grind', 'chat', 'loyalty', 'clutch', 'vibe', 'mic'];
 const ARENA_STAT_LABEL = { hype: 'Hype', grind: 'Grind', chat: 'Chat', loyalty: 'Loyalty', clutch: 'Clutch', vibe: 'Vibe', mic: 'Mic' };
-let _arenaRoster = null;       // cached leaderboard payload
-let _arenaLiveTimer = null;
+const ARENA_KIND = {
+    topic: { label: 'Topic', icon: 'fa-comment-dots' },
+    debate: { label: 'Debate', icon: 'fa-scale-unbalanced' },
+    phrase: { label: 'Say it', icon: 'fa-quote-left' },
+    bounty: { label: 'Bounty', icon: 'fa-sack-dollar' },
+};
+let _arenaRoster = null;
+let _arenaTimers = [];
 let _arenaImagePoll = null;
-let _arenaBattleTimers = [];
 let _arenaUtterance = null;
 
 function _aEsc(s) { return typeof esc === 'function' ? esc(String(s ?? '')) : String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -24,15 +32,24 @@ function _aNum(n) { n = Number(n) || 0; return n >= 1000 ? `${(n / 1000).toFixed
 function _aInitial(u) { return (u.display_name || u.username || '?').trim().charAt(0).toUpperCase(); }
 function _aStamp(sec) { sec = Math.max(0, Math.floor(sec || 0)); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60; return (h ? `${h}:` : '') + `${h ? String(m).padStart(2, '0') : m}:${String(s).padStart(2, '0')}`; }
 function _aDate(d) { try { return new Date(String(d).replace(' ', 'T') + (String(d).endsWith('Z') ? '' : 'Z')).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch { return String(d || ''); } }
+function _aAgo(d) {
+    if (!d) return '';
+    const ms = Date.now() - new Date(String(d).includes('T') ? d : String(d).replace(' ', 'T') + 'Z').getTime();
+    const m = Math.round(ms / 60000);
+    if (m < 1) return 'just now'; if (m < 60) return `${m}m ago`; const h = Math.round(m / 60); if (h < 48) return `${h}h ago`; return `${Math.round(h / 24)}d ago`;
+}
+function _aClock(sec) { sec = Math.max(0, Math.floor(sec || 0)); if (sec >= 3600) return `${Math.floor(sec / 3600)}h ${String(Math.floor((sec % 3600) / 60)).padStart(2, '0')}m`; return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; }
+function _aToast(msg, type = 'info') { if (typeof toast === 'function') toast(msg, type); else console.log('[Arena]', msg); }
+function _aMe() { return (typeof currentUser !== 'undefined' && currentUser) ? currentUser : null; }
+function _aSpinner(text) { return `<div class="arena-loading"><i class="fa-solid fa-circle-notch fa-spin"></i><span>${_aEsc(text)}</span></div>`; }
 
 function _aStopTimers() {
-    if (_arenaLiveTimer) { clearInterval(_arenaLiveTimer); _arenaLiveTimer = null; }
+    for (const t of _arenaTimers) { clearInterval(t); clearTimeout(t); }
+    _arenaTimers = [];
     if (_arenaImagePoll) { clearInterval(_arenaImagePoll); _arenaImagePoll = null; }
-    for (const t of _arenaBattleTimers) clearTimeout(t);
-    _arenaBattleTimers = [];
     _aStopSpeaking();
-    if (typeof _aTalkStop === 'function') _aTalkStop();
 }
+function _aEvery(ms, fn) { const t = setInterval(() => { if (typeof currentPage !== 'undefined' && currentPage !== 'arena') return _aStopTimers(); fn(); }, ms); _arenaTimers.push(t); return t; }
 
 // ── Speech: hear the taunt / quotes read out (browser TTS, no server cost) ──
 function _aStopSpeaking() {
@@ -61,24 +78,11 @@ function _aBindSpeak(root) {
 
 /** Portrait: AI image when present, otherwise the avatar (or an initial) styled as a card. */
 function _aPortrait(f, size = 'md') {
-    const u = f.user;
+    const u = f.user || f;
     const color = u.profile_color || '#8b5cf6';
-    if (f.image_url) {
-        return `<div class="arena-portrait arena-portrait-${size}" style="--fc:${_aEsc(color)}"><img src="${_aEsc(f.image_url)}" alt="" loading="lazy"></div>`;
-    }
-    if (u.avatar_url) {
-        return `<div class="arena-portrait arena-portrait-${size} arena-portrait-avatar" style="--fc:${_aEsc(color)}"><img src="${_aEsc(u.avatar_url)}" alt="" loading="lazy"><span class="arena-portrait-glow"></span></div>`;
-    }
+    if (f.image_url) return `<div class="arena-portrait arena-portrait-${size}" style="--fc:${_aEsc(color)}"><img src="${_aEsc(f.image_url)}" alt="" loading="lazy"></div>`;
+    if (u.avatar_url) return `<div class="arena-portrait arena-portrait-${size} arena-portrait-avatar" style="--fc:${_aEsc(color)}"><img src="${_aEsc(u.avatar_url)}" alt="" loading="lazy"><span class="arena-portrait-glow"></span></div>`;
     return `<div class="arena-portrait arena-portrait-${size} arena-portrait-initial" style="--fc:${_aEsc(color)}"><span>${_aEsc(_aInitial(u))}</span></div>`;
-}
-
-function _aRatingBars(r, { clickable = false } = {}) {
-    return `<div class="arena-bars">${ARENA_STATS.map(k => `
-        <div class="arena-bar ${clickable ? 'is-clickable' : ''}" data-stat="${k}" title="${_aEsc(ARENA_STAT_LABEL[k])}">
-            <span class="arena-bar-label">${_aEsc(ARENA_STAT_LABEL[k])}</span>
-            <span class="arena-bar-track"><span class="arena-bar-fill" style="width:${Math.max(0, Math.min(100, r[k] || 0))}%"></span></span>
-            <span class="arena-bar-val">${r[k] ?? '–'}</span>
-        </div>`).join('')}</div>`;
 }
 
 /** Heptagon radar chart as inline SVG (no library). */
@@ -119,8 +123,16 @@ function _aSpark(series, color) {
 
 function _aChannelLink(u) { return `/${encodeURIComponent(u.username)}`; }
 function _aFighterLink(u) { return `/arena/${encodeURIComponent(u.username)}`; }
-function _aBattleLink(a, b) { return `/arena/battle/${encodeURIComponent(a.username)}/${encodeURIComponent(b.username)}`; }
-function _aA(href, inner, cls = '') { return `<a class="${cls}" href="${_aEsc(href)}" onclick="return handleLinkClick(event, '${_aEsc(href)}')">${inner}</a>`; }
+function _aConsoleLink(u) { return `/arena/live/${encodeURIComponent(u.username)}`; }
+function _aBeefLink(b) { return `/arena/beef/${b.id}`; }
+function _aTopicLink(t) { return `/arena/topic/${t.id}`; }
+function _aVodLink(vodId, sec) { return vodId ? `/vod/${vodId}?t=${Math.max(0, Math.floor(sec || 0))}` : null; }
+function _aA(href, inner, cls = '', title = '') { return `<a class="${cls}" href="${_aEsc(href)}" ${title ? `title="${_aEsc(title)}"` : ''} onclick="return handleLinkClick(event, '${_aEsc(href)}')">${inner}</a>`; }
+function _aPlay(vodId, sec, label = '') { const h = _aVodLink(vodId, sec); return h ? _aA(h, `<i class="fa-solid fa-play"></i>${label ? ` ${_aEsc(label)}` : ''}`, 'arena-play', 'Hear them say it (jumps to the VOD)') : ''; }
+function _aLevelPill(level) { return `<span class="arena-lvl" title="Trash Level — earned by talking shit on the board and in beefs">TL ${_aEsc(level ?? 1)}</span>`; }
+function _aBriefChip(f, extra = '') {
+    return _aA(_aFighterLink(f.user), `${_aPortrait(f, 'xs')}<span><strong>${_aEsc(f.fighter_name)}${f.live ? ' <span class="arena-live-pill">LIVE</span>' : ''}</strong><small>${f.rank ? `#${f.rank} · ` : ''}${_aLevelPill(f.level)}${extra}</small></span>`, 'arena-chip');
+}
 
 // ── Page entry ───────────────────────────────────────────────
 
@@ -128,128 +140,302 @@ async function loadArenaPage(segments = []) {
     _aStopTimers();
     const root = document.getElementById('arena-root');
     if (!root) return;
-    const [, first, second, third] = segments;
+    const [, first, second] = segments;
     try {
-        if (first === 'battle' && second && third) return await _aRenderBattle(root, second, third);
-        if (first === 'talk') return second ? await _aRenderSession(root, second) : await _aRenderTalk(root);
-        if (first && first !== 'battle') return await _aRenderFighter(root, first);
+        if (first === 'beef' && second) return await _aRenderBeef(root, Number(second));
+        if (first === 'topic' && second) return await _aRenderTopic(root, Number(second));
+        if (first === 'live' && second) return await _aRenderConsole(root, second);
+        if (first) return await _aRenderFighter(root, first);
         return await _aRenderHome(root);
     } catch (err) {
         root.innerHTML = `<div class="arena-empty"><i class="fa-solid fa-plug-circle-xmark"></i><p>${_aEsc(err?.message || 'The arena lights went out.')}</p></div>`;
     }
 }
 
-function _aSpinner(text) { return `<div class="arena-loading"><i class="fa-solid fa-circle-notch fa-spin"></i><span>${_aEsc(text)}</span></div>`; }
-
-// ── Home: main event + live matchups + leaderboard ───────────
+// ── Home ─────────────────────────────────────────────────────
 
 async function _aRenderHome(root) {
-    root.innerHTML = _aSpinner('Loading the roster…');
-    const [data, live] = await Promise.all([api('/arena/fighters'), api('/arena/live').catch(() => null)]);
-    _arenaRoster = data;
-    const fighters = data.fighters || [];
-    if (!fighters.length) {
-        root.innerHTML = `<div class="arena-empty"><i class="fa-solid fa-hand-fist"></i><p>No fighters yet — the roster fills with everyone who has streamed in the last 45 days.</p></div>`;
-        return;
-    }
+    root.innerHTML = _aSpinner('Reading the room…');
+    const [boardData, beefs, live, roster] = await Promise.all([api('/arena/board'), api('/arena/beefs'), api('/arena/live').catch(() => ({ live: [] })), api('/arena/fighters')]);
+    _arenaRoster = roster;
     root.innerHTML = `
         <div class="arena-hero">
             <div>
-                <h1><i class="fa-solid fa-hand-fist"></i> The Arena</h1>
-                <p class="page-subtitle">Every streamer, ranked by the numbers and roasted by the AI. Tap a fighter to expand, pick two to fight, and let chat decide the last round.</p>
+                <h1><i class="fa-solid fa-hand-fist"></i> Arena</h1>
+                <p class="arena-lede">Nobody clicks "fight" here. Say a fighter's name on mic while you're talking shit and the beef opens itself. Talk on a board topic and your Trash Level climbs. Chat picks sides, hypes, starts topics and posts bounties.</p>
             </div>
             <div class="arena-hero-actions">
-                <button class="btn btn-primary" id="arena-random"><i class="fa-solid fa-dice"></i> Random battle</button>
-                ${data.ai ? '' : '<span class="arena-note" title="AI is off — stats and templated commentary only">AI commentary off</span>'}
+                ${_aMe() ? `<button class="btn btn-primary" id="arena-new-topic-btn"><i class="fa-solid fa-plus"></i> Start a topic</button>` : ''}
+                <span class="arena-note">${roster.ai ? '<i class="fa-solid fa-ear-listen"></i> AI ears on' : '<i class="fa-solid fa-ear-deaf"></i> AI off — keyword judging'}</span>
             </div>
         </div>
-        <section id="arena-main-event" class="arena-main-event" style="display:none"></section>
-        <section id="arena-talk-card" class="arena-talk-card" style="display:none"></section>
-        <section id="arena-live" class="arena-live"></section>
-        <section class="arena-board">
+        <section class="arena-pulse" id="arena-pulse">${_aPulse(boardData.pulse)}</section>
+        <section class="arena-live" id="arena-live">${_aRenderLive(live.live || [])}</section>
+        <section class="arena-beefs" id="arena-beefs">${_aRenderBeefs(beefs)}</section>
+        <section class="arena-board" id="arena-board">${_aRenderBoard(boardData)}</section>
+        <section class="arena-ladders">
+            <div class="arena-ladder">
+                <h2><i class="fa-solid fa-fire"></i> Trash Level ladder <small>XP from beef hits, cleared angles, conquered topics, chat hype</small></h2>
+                ${_aLevelsList(boardData.levels || [])}
+            </div>
+            <div class="arena-ladder">
+                <h2><i class="fa-solid fa-crown"></i> Chat clout <small>viewers who pick the winning side</small></h2>
+                ${_aCloutList(boardData.clout || [])}
+            </div>
+        </section>
+        <section class="arena-leaderboard">
             <div class="arena-board-head">
-                <h2>Leaderboard</h2>
-                <input id="arena-search" type="search" placeholder="Find a fighter…" autocomplete="off">
+                <h2><i class="fa-solid fa-ranking-star"></i> Power ladder <small>${roster.fighters.length} fighters · stats from real streams</small></h2>
+                <input type="search" id="arena-search" placeholder="Find a fighter…" autocomplete="off">
             </div>
             <div class="arena-list" id="arena-list"></div>
+        </section>
+        <section class="arena-rules">
+            <h3>How the Arena works</h3>
+            <ul>
+                <li><b>Beefs.</b> Say another fighter's name on stream while talking shit → a beef opens and they go on the clock (15 min if they're live, 24 h if not; the clock resets every time a side answers). Silence is a forfeit. Best mouth after 24 h wins. Beat someone ranked 4+ spots above you and it's an <b>upset</b>.</li>
+                <li><b>The board.</b> Topics, debates, phrase challenges and bounties come from chat (<code>!topic</code>, <code>!bounty</code>) and from the community pulse — the AI reads global chat, transcripts and the AI timeline every 30 min. Click a topic, talk on it, clear its angles → XP → Trash Level.</li>
+                <li><b>Chat.</b> <code>!hype</code> boosts your streamer · <code>!side &lt;name&gt;</code> picks a side (clout if you're right) · <code>!topic &lt;text&gt;</code> · <code>!bounty &lt;user&gt;</code> · <code>!beef</code> · <code>!board</code> · <code>!arena</code>.</li>
+                <li><b>Language.</b> Nothing gets censored for being offensive. The only lines that don't count: real threats, anything sexual about minors, and doxxing.</li>
+            </ul>
         </section>`;
-    _aRenderLive(live);
-    _aRenderList(fighters);
-    api('/arena/main-event').then(me => _aRenderMainEvent(me)).catch(() => {});
-    api('/arena/talk?generate=0').then(t => _aRenderTalkCard(t)).catch(() => {});
-    document.getElementById('arena-search').addEventListener('input', (e) => {
+    _aRenderList(roster.fighters);
+    _aBindHome(root);
+    document.getElementById('arena-search')?.addEventListener('input', (e) => {
         const q = e.target.value.trim().toLowerCase();
-        _aRenderList(q ? fighters.filter(f => [f.user.username, f.user.display_name, f.persona.fighter_name, f.persona.class, f.persona.element].some(s => String(s || '').toLowerCase().includes(q))) : fighters);
+        _aRenderList(!q ? roster.fighters : roster.fighters.filter(f => [f.persona.fighter_name, f.user.display_name, f.user.username, f.persona.class, f.persona.element].filter(Boolean).some(s => s.toLowerCase().includes(q))));
     });
-    document.getElementById('arena-random').addEventListener('click', () => {
-        if (fighters.length < 2) return;
-        const a = fighters[Math.floor(Math.random() * fighters.length)];
-        let b = a; while (b === a) b = fighters[Math.floor(Math.random() * fighters.length)];
-        navigate(_aBattleLink(a.user, b.user));
+    document.getElementById('arena-new-topic-btn')?.addEventListener('click', () => _aTopicComposer());
+    _aEvery(20000, async () => {
+        try {
+            const [b, l, bd] = await Promise.all([api('/arena/beefs'), api('/arena/live'), api('/arena/board')]);
+            const beefsEl = document.getElementById('arena-beefs'), liveEl = document.getElementById('arena-live'), boardEl = document.getElementById('arena-board'), pulseEl = document.getElementById('arena-pulse');
+            if (beefsEl) beefsEl.innerHTML = _aRenderBeefs(b);
+            if (liveEl) liveEl.innerHTML = _aRenderLive(l.live || []);
+            if (boardEl) boardEl.innerHTML = _aRenderBoard(bd);
+            if (pulseEl) pulseEl.innerHTML = _aPulse(bd.pulse);
+            _aBindHome(root);
+        } catch { /* keep the last render */ }
     });
-    _arenaLiveTimer = setInterval(async () => {
-        if (currentPage !== 'arena' || !document.getElementById('arena-live')) return _aStopTimers();
-        try { _aRenderLive(await api('/arena/live')); } catch { /* keep last */ }
-    }, 30000);
+    _aEvery(1000, () => _aTickClocks(root));
 }
 
-function _aRenderMainEvent(me) {
-    const el = document.getElementById('arena-main-event');
-    if (!el || !me || !me.a) return;
-    const side = (f, s) => _aA(_aBattleLink(me.a.user, me.b.user), `${_aPortrait(f, 'sm')}<div><strong>${_aEsc(f.persona.fighter_name)}</strong><span>${_aEsc(f.user.display_name)} · #${f.rank} · PWR ${f.ratings.power}</span></div>`, `arena-me-side is-${s}`);
-    const render = (votes, outcome, yourVote) => {
-        el.style.display = '';
-        el.innerHTML = `
-            <div class="arena-main-event-head">
-                <h2><i class="fa-solid fa-star"></i> Main event · ${_aEsc(me.day)}</h2>
-                ${_aA(_aBattleLink(me.a.user, me.b.user), '<i class="fa-solid fa-play"></i> Watch the fight', 'btn btn-ghost')}
-            </div>
-            <div class="arena-main-event-body">
-                ${side(me.a, 'a')}
-                <div class="arena-me-center">
-                    <div class="arena-me-score">${outcome.a} – ${outcome.b}</div>
-                    <div class="arena-me-vote">
-                        <button data-side="a" class="${yourVote === 'a' ? 'is-picked' : ''}">Back ${_aEsc(me.a.persona.fighter_name.split(' ')[0])}</button>
-                        <button data-side="b" class="${yourVote === 'b' ? 'is-picked' : ''}">Back ${_aEsc(me.b.persona.fighter_name.split(' ')[0])}</button>
-                    </div>
-                    <div class="arena-me-tally">${votes.a + votes.b} vote${votes.a + votes.b === 1 ? '' : 's'} · ${outcome.winner ? `${_aEsc((outcome.winner === 'a' ? me.a : me.b).persona.fighter_name)} leads` : 'dead even'}</div>
-                </div>
-                ${side(me.b, 'b')}
-            </div>
-            <p class="arena-me-intro"><i class="fa-solid fa-microphone-lines"></i> ${_aEsc(me.commentary?.intro || '')}</p>`;
-        el.querySelectorAll('.arena-me-vote button').forEach(btn => btn.addEventListener('click', async () => {
-            btn.disabled = true;
-            try { const r = await api(`/arena/battle/${encodeURIComponent(me.a.user.username)}/${encodeURIComponent(me.b.user.username)}/vote`, { method: 'POST', body: { side: btn.dataset.side } }); render(r.votes, r.outcome, r.your_side); }
-            catch (err) { btn.disabled = false; if (typeof showToast === 'function') showToast(err?.message || 'Vote failed', 'error'); }
-        }));
-    };
-    render(me.votes, me.outcome, me.your_vote || null);
+function _aPulse(p) {
+    if (!p || !p.text) return `<div class="arena-pulse-inner"><span class="arena-pulse-kicker"><i class="fa-solid fa-heart-pulse"></i> Pulse</span><span class="arena-pulse-text">The community is quiet. Start something.</span></div>`;
+    return `<div class="arena-pulse-inner">
+        <span class="arena-pulse-kicker"><i class="fa-solid fa-heart-pulse fa-beat"></i> Pulse</span>
+        <span class="arena-pulse-text">${_aEsc(p.text)}</span>
+        <span class="arena-pulse-meta">${p.sources ? _aEsc(p.sources) + ' · ' : ''}read ${_aEsc(_aAgo(p.at))}</span>
+    </div>`;
 }
 
 function _aRenderLive(live) {
-    const el = document.getElementById('arena-live');
-    if (!el) return;
-    if (!live || !live.live_count) { el.innerHTML = ''; return; }
-    const card = (f, side) => `
-        <a class="arena-live-fighter arena-live-${side}" href="${_aEsc(_aChannelLink(f.user))}" onclick="return handleLinkClick(event, '${_aEsc(_aChannelLink(f.user))}')">
-            ${f.thumbnail_url ? `<img class="arena-live-thumb" src="${_aEsc(f.thumbnail_url)}?t=${Date.now()}" alt="">` : _aPortrait(f, 'sm')}
-            <div class="arena-live-meta">
-                <strong>${_aEsc(f.persona.fighter_name)}</strong>
-                <span>${_aEsc(f.user.display_name)} · <i class="fa-solid fa-eye"></i> ${_aNum(f.stream.viewer_count)} · PWR ${f.ratings.power}</span>
-                ${f.hot_mic ? `<span title="Hot mic — last thing the transcript heard"><i class="fa-solid fa-microphone"></i> “${_aEsc(f.hot_mic.text.length > 70 ? f.hot_mic.text.slice(0, 70) + '…' : f.hot_mic.text)}”</span>` : ''}
+    if (!live.length) return `<h2><span class="arena-live-dot"></span> On the mic now <small>nobody from the roster is live</small></h2><p class="arena-note">When a fighter goes live with transcription on, the Arena listens for name-drops and board topics.</p>`;
+    return `<h2><span class="arena-live-dot"></span> On the mic now <small>${live.length} live · the Arena is listening</small></h2>
+    <div class="arena-mic-grid">${live.map(f => `
+        <div class="arena-mic-card ${f.transcribed ? '' : 'is-quiet'}" style="--fc:${_aEsc(f.user.profile_color || '#8b5cf6')}">
+            ${_aA(_aChannelLink(f.user), f.thumbnail_url ? `<img class="arena-live-thumb" src="${_aEsc(f.thumbnail_url)}" alt="">` : _aPortrait(f, 'sm'), 'arena-mic-thumb')}
+            <div class="arena-mic-body">
+                <div class="arena-mic-head">
+                    ${_aA(_aFighterLink(f.user), `<strong>${_aEsc(f.persona.fighter_name)}</strong>`)}
+                    <span class="arena-mic-meta">#${f.rank} · PWR ${f.ratings.power} · ${_aLevelPill(f.level)} · <i class="fa-solid fa-eye"></i> ${_aNum(f.stream.viewer_count)}</span>
+                </div>
+                ${f.hot_mic ? `<q class="arena-mic-line">${_aEsc(f.hot_mic.text)}</q>` : `<span class="arena-mic-line arena-mic-line-empty">${f.transcribed ? 'listening…' : 'no transcript yet — mic stats need transcription on'}</span>`}
+                <div class="arena-mic-tags">
+                    ${f.active_topic ? _aA(_aTopicLink(f.active_topic), `<i class="fa-solid fa-comment-dots"></i> on: ${_aEsc(f.active_topic.text)}`, 'arena-tag') : '<span class="arena-tag arena-tag-dim">no board topic</span>'}
+                    ${f.open_beefs ? `<span class="arena-tag arena-tag-hot"><i class="fa-solid fa-fire"></i> ${f.open_beefs} beef${f.open_beefs > 1 ? 's' : ''} open</span>` : ''}
+                    ${_aA(_aConsoleLink(f.user), '<i class="fa-solid fa-ear-listen"></i> ears', 'arena-tag')}
+                </div>
             </div>
-        </a>`;
-    el.innerHTML = `
-        <h2><span class="arena-live-dot"></span> Live battles <small>${live.live_count} fighter${live.live_count === 1 ? '' : 's'} live now</small></h2>
-        <div class="arena-live-grid">
-            ${live.matchups.map(m => `
-                <div class="arena-live-match">
-                    ${card(m.a, 'a')}
-                    ${_aA(_aBattleLink(m.a.user, m.b.user), 'VS<small>fight</small>', 'arena-live-vs')}
-                    ${card(m.b, 'b')}
-                </div>`).join('')}
-            ${live.waiting ? `<div class="arena-live-match arena-live-waiting">${card(live.waiting, 'a')}<div class="arena-live-vs arena-live-vs-idle">?<small>waiting for a challenger</small></div></div>` : ''}
+        </div>`).join('')}</div>`;
+}
+
+// ── Beefs ────────────────────────────────────────────────────
+
+function _aTug(b, { big = false } = {}) {
+    const ca = b.a.user.profile_color || '#8b5cf6', cb = b.b.user.profile_color || '#e74c3c';
+    return `<div class="arena-tug ${big ? 'arena-tug-big' : ''}" title="${_aEsc(`${b.a.fighter_name} ${b.a.total} — ${b.b.total} ${b.b.fighter_name}`)}">
+        <span class="arena-tug-a" style="width:${b.share_a}%;--fc:${_aEsc(ca)}"><b>${b.share_a >= 12 ? `${b.share_a}%` : ''}</b></span>
+        <span class="arena-tug-b" style="width:${100 - b.share_a}%;--fc:${_aEsc(cb)}"><b>${100 - b.share_a >= 12 ? `${100 - b.share_a}%` : ''}</b></span>
+    </div>`;
+}
+function _aClockTag(b) {
+    if (b.status !== 'open' || !b.on_clock) return '';
+    const who = b.on_clock === 'a' ? b.a : b.b;
+    return `<span class="arena-clock ${b.clock_seconds_left < 120 ? 'is-urgent' : ''}" data-until="${_aEsc(b.clock_until)}" data-who="${_aEsc(who.fighter_name)}"><i class="fa-solid fa-stopwatch"></i> ${_aEsc(who.fighter_name)} has <b>${_aClock(b.clock_seconds_left)}</b> to answer${b.clock_is_live_window ? '' : ' (offline clock)'}</span>`;
+}
+function _aTickClocks(root) {
+    root.querySelectorAll('.arena-clock[data-until]').forEach(el => {
+        const left = Math.max(0, Math.round((Date.parse(el.dataset.until) - Date.now()) / 1000));
+        const b = el.querySelector('b'); if (b) b.textContent = _aClock(left);
+        el.classList.toggle('is-urgent', left < 120);
+        if (left === 0) el.innerHTML = `<i class="fa-solid fa-hourglass-end"></i> ${_aEsc(el.dataset.who)} ran out of time…`;
+    });
+}
+function _aBeefTags(b) {
+    const tags = [];
+    if (b.rematch) tags.push('<span class="arena-tag arena-tag-hot"><i class="fa-solid fa-rotate-left"></i> REMATCH</span>');
+    if (b.bounty) tags.push('<span class="arena-tag arena-tag-gold"><i class="fa-solid fa-sack-dollar"></i> BOUNTY</span>');
+    if (b.upset) tags.push('<span class="arena-tag arena-tag-hot"><i class="fa-solid fa-bolt"></i> UPSET</span>');
+    if (b.streaks?.a >= 2) tags.push(`<span class="arena-tag">${_aEsc(b.a.fighter_name)} on a ${b.streaks.a}-beef streak</span>`);
+    if (b.streaks?.b >= 2) tags.push(`<span class="arena-tag">${_aEsc(b.b.fighter_name)} on a ${b.streaks.b}-beef streak</span>`);
+    if (b.history?.fights) tags.push(`<span class="arena-tag arena-tag-dim">history ${b.history.wins_1}–${b.history.wins_2} in ${b.history.fights}</span>`);
+    return tags.join('');
+}
+function _aBeefCard(b) {
+    const open = b.status === 'open';
+    const winner = !open && b.winner_user_id ? (b.winner_user_id === b.a.user.id ? b.a : b.b) : null;
+    return `<div class="arena-beef ${open ? 'is-open' : 'is-done'}" data-beef="${b.id}">
+        <div class="arena-beef-head">
+            ${_aA(_aBeefLink(b), `<span class="arena-beef-headline">${_aEsc((open ? b.headline : b.result_headline || b.headline) || `${b.a.fighter_name} vs ${b.b.fighter_name}`)}</span>`)}
+            <span class="arena-beef-tags">${_aBeefTags(b)}${!open ? `<span class="arena-tag ${winner ? 'arena-tag-gold' : 'arena-tag-dim'}">${winner ? `${_aEsc(winner.fighter_name)} won${b.resolution === 'forfeit' ? ' by forfeit' : ''}` : 'draw'}</span>` : ''}</span>
+        </div>
+        <div class="arena-beef-sides">
+            ${_aA(_aFighterLink(b.a.user), `${_aPortrait(b.a, 'sm')}<span><strong>${_aEsc(b.a.fighter_name)}${b.a.live ? ' <span class="arena-live-pill">LIVE</span>' : ''}</strong><small>#${b.a.rank || '–'} · ${b.a.hits} hits · crowd ${b.a.crowd}/${b.rules.crowd_max}</small></span>`, 'arena-beef-side arena-beef-side-a')}
+            <span class="arena-beef-vs">${open ? 'VS' : 'FINAL'}</span>
+            ${_aA(_aFighterLink(b.b.user), `${_aPortrait(b.b, 'sm')}<span><strong>${_aEsc(b.b.fighter_name)}${b.b.live ? ' <span class="arena-live-pill">LIVE</span>' : ''}</strong><small>#${b.b.rank || '–'} · ${b.b.hits} hits · crowd ${b.b.crowd}/${b.rules.crowd_max}</small></span>`, 'arena-beef-side arena-beef-side-b')}
+        </div>
+        ${_aTug(b)}
+        <div class="arena-beef-foot">
+            ${open ? _aClockTag(b) : `<span class="arena-note">ended ${_aEsc(_aAgo(b.resolved_at))}</span>`}
+            ${open ? `<span class="arena-beef-actions">
+                <button class="btn btn-ghost btn-sm arena-hype-btn" data-beef="${b.id}" data-side="a" title="Hype ${_aEsc(b.a.fighter_name)}"><i class="fa-solid fa-fire"></i> ${_aEsc(b.a.fighter_name)}</button>
+                <button class="btn btn-ghost btn-sm arena-hype-btn" data-beef="${b.id}" data-side="b" title="Hype ${_aEsc(b.b.fighter_name)}"><i class="fa-solid fa-fire"></i> ${_aEsc(b.b.fighter_name)}</button>
+                <span class="arena-sides-tally" title="who chat thinks wins"><i class="fa-solid fa-people-group"></i> ${b.sides.a}–${b.sides.b}</span>
+            </span>` : ''}
+        </div>
+        ${b.feed?.length ? `<q class="arena-beef-last">${_aEsc(b.feed[b.feed.length - 1].announcer || b.feed[b.feed.length - 1].text || '')}</q>` : ''}
+    </div>`;
+}
+function _aRenderBeefs(beefs) {
+    const open = beefs.open || [], done = beefs.resolved || [];
+    return `<h2><i class="fa-solid fa-fire-flame-curved"></i> Beefs <small>${open.length ? `${open.length} open` : 'none open — say a name on mic'}</small></h2>
+        ${open.length ? `<div class="arena-beef-grid">${open.map(_aBeefCard).join('')}</div>` : `<div class="arena-beef-empty"><i class="fa-solid fa-microphone-lines"></i><p>No beef right now. A streamer only has to say another fighter's name while talking shit — the ears do the rest.</p></div>`}
+        ${done.length ? `<details class="arena-done"><summary>Settled beefs <small>${done.length}</small></summary><div class="arena-beef-grid">${done.slice(0, 6).map(_aBeefCard).join('')}</div></details>` : ''}`;
+}
+
+async function _aHype(beefId, side, btn) {
+    try {
+        const r = await api(`/arena/beefs/${beefId}/hype`, { method: 'POST', body: { side } });
+        _aToast(r.added ? `🔥 Hyped! crowd ${r.crowd}/10 (${r.hypers} hyping)` : `You already hyped this side (${r.hypers} hyping)`, r.added ? 'success' : 'info');
+        if (btn) btn.classList.add('is-hyped');
+    } catch (err) { _aToast(err?.message || 'Hype failed', 'error'); }
+}
+async function _aSide(beefId, side) {
+    try { const r = await api(`/arena/beefs/${beefId}/side`, { method: 'POST', body: { side } }); _aToast(`🗳️ Side picked. Crowd: ${r.a}–${r.b}. Pick right → clout.`, 'success'); return r; }
+    catch (err) { _aToast(err?.message || 'Failed', 'error'); }
+}
+function _aBindHome(root) {
+    root.querySelectorAll('.arena-hype-btn').forEach(btn => btn.onclick = (e) => { e.preventDefault(); _aHype(btn.dataset.beef, btn.dataset.side, btn); });
+    root.querySelectorAll('.arena-topic-hype').forEach(btn => btn.onclick = async (e) => {
+        e.preventDefault();
+        try { const r = await api(`/arena/board/topics/${btn.dataset.topic}/hype`, { method: 'POST', body: { user_id: Number(btn.dataset.user) } }); _aToast(r.added ? `🔥 Hyped (${r.hypers} hyping)` : 'Already hyped', r.added ? 'success' : 'info'); btn.classList.add('is-hyped'); }
+        catch (err) { _aToast(err?.message || 'Failed', 'error'); }
+    });
+    root.querySelectorAll('.arena-debate-side').forEach(btn => btn.onclick = async (e) => {
+        e.preventDefault();
+        try { const r = await api(`/arena/board/topics/${btn.dataset.topic}/side`, { method: 'POST', body: { side: btn.dataset.side } }); _aToast(`🗳️ You're with ${btn.dataset.label}. ${r.a}–${r.b}`, 'success'); const t = btn.closest('.arena-topic'); if (t) { const tally = t.querySelector('.arena-debate-tally'); if (tally) tally.innerHTML = _aDebateTally(r); } }
+        catch (err) { _aToast(err?.message || 'Failed', 'error'); }
+    });
+    root.querySelectorAll('.arena-topic-join').forEach(btn => btn.onclick = async (e) => {
+        e.preventDefault();
+        try { await api(`/arena/board/topics/${btn.dataset.topic}/join`, { method: 'POST' }); _aToast('🎤 You\'re on it. Start talking on stream — the ears are listening.', 'success'); navigate(`/arena/topic/${btn.dataset.topic}`); }
+        catch (err) { _aToast(err?.message || 'Failed', 'error'); }
+    });
+    _aBindSpeak(root);
+}
+
+// ── Board ────────────────────────────────────────────────────
+
+function _aDebateTally(s) { return `<span class="arena-debate-bar"><span style="width:${s.share_a}%"></span></span><span class="arena-debate-nums">${s.a} · ${s.b}</span>`; }
+function _aHeat(t, hotThreshold) {
+    const pct = Math.min(100, Math.round((t.heat / Math.max(hotThreshold * 2, 1)) * 100));
+    return `<span class="arena-heat ${t.hot ? 'is-hot' : ''}" title="heat: talk + hype + joins in the last hours"><i class="fa-solid fa-fire"></i> ${t.hot ? 'HOT' : ''} ${t.heat}<span class="arena-heat-bar"><span style="width:${pct}%"></span></span></span>`;
+}
+function _aTopicTitle(t) {
+    if (t.kind === 'debate') return `<span class="arena-debate-title"><b>${_aEsc(t.side_a)}</b> <em>vs</em> <b>${_aEsc(t.side_b)}</b></span>`;
+    if (t.kind === 'phrase') return `Work “<b>${_aEsc(t.phrase)}</b>” into your stream`;
+    if (t.kind === 'bounty') return `Bounty on <b>${_aEsc(t.target?.fighter_name || '?')}</b> — double XP for talking shit about them`;
+    return _aEsc(t.text);
+}
+function _aTopicCard(t, hot, { me } = {}) {
+    const k = ARENA_KIND[t.kind] || ARENA_KIND.topic;
+    const onIt = me && t.talking_now.some(f => f.user.id === me.id);
+    const onRoster = me && _arenaRoster?.fighters?.some(f => f.user.id === me.id);
+    return `<div class="arena-topic arena-topic-${t.kind} ${t.hot ? 'is-hot' : ''}" data-topic="${t.id}">
+        <div class="arena-topic-head">
+            <span class="arena-kind"><i class="fa-solid ${k.icon}"></i> ${k.label}</span>
+            ${_aHeat(t, hot)}
+            <span class="arena-topic-by">${t.created_by === 'ai' ? '<i class="fa-solid fa-heart-pulse"></i> pulse' : `<i class="fa-solid fa-user"></i> ${_aEsc(t.creator_name || t.created_by)}`}${t.expires_at ? ` · <span class="arena-expires" data-until="${_aEsc(t.expires_at)}">${_aEsc(_aClock((Date.parse(t.expires_at) - Date.now()) / 1000))} left</span>` : ''}</span>
+        </div>
+        ${t.headline ? `<div class="arena-topic-headline">${_aEsc(t.headline)}</div>` : ''}
+        ${_aA(_aTopicLink(t), `<div class="arena-topic-text">${_aTopicTitle(t)}</div>`, 'arena-topic-link')}
+        ${t.hint ? `<p class="arena-topic-hint">${_aEsc(t.hint)}</p>` : ''}
+        ${t.kind === 'debate' ? `<div class="arena-debate">
+            <button class="btn btn-ghost btn-sm arena-debate-side" data-topic="${t.id}" data-side="a" data-label="${_aEsc(t.side_a)}">${_aEsc(t.side_a)}</button>
+            <span class="arena-debate-tally">${_aDebateTally(t.sides || { a: 0, b: 0, share_a: 50 })}</span>
+            <button class="btn btn-ghost btn-sm arena-debate-side" data-topic="${t.id}" data-side="b" data-label="${_aEsc(t.side_b)}">${_aEsc(t.side_b)}</button>
+        </div>` : ''}
+        <div class="arena-topic-foot">
+            <span class="arena-topic-who">${t.talking_now.length ? `<span class="arena-live-dot arena-live-dot-sm"></span> ${t.talking_now.map(f => _aA(_aFighterLink(f.user), _aPortrait(f, 'xs'), '', `${f.fighter_name} is on this`)).join('')}` : ''}${t.members.filter(m => !m.active).slice(0, 6).map(m => _aA(_aFighterLink(m.user), _aPortrait(m, 'xs'), 'is-dim', `${m.fighter_name} · ${m.cleared}/${t.angles.length || 3} angles`)).join('')}</span>
+            <span class="arena-topic-stats">${t.hits} hits · ${t.conquered} conquered${t.angles?.length ? ` · ${t.angles.length} angles` : ''}</span>
+            <span class="arena-topic-actions">
+                ${t.talking_now.length && me && !onIt ? t.talking_now.slice(0, 2).map(f => `<button class="btn btn-ghost btn-sm arena-topic-hype" data-topic="${t.id}" data-user="${f.user.id}"><i class="fa-solid fa-fire"></i> ${_aEsc(f.fighter_name)}</button>`).join('') : ''}
+                ${onRoster && t.kind !== 'bounty' ? (onIt ? '<span class="arena-tag arena-tag-hot"><i class="fa-solid fa-microphone"></i> you\'re on it</span>' : `<button class="btn btn-primary btn-sm arena-topic-join" data-topic="${t.id}"><i class="fa-solid fa-microphone"></i> Talk on this</button>`) : ''}
+            </span>
+        </div>
+    </div>`;
+}
+function _aRenderBoard(bd) {
+    const me = _aMe();
+    const open = bd.open || [], resolved = bd.resolved || [];
+    return `<div class="arena-board-head">
+            <h2><i class="fa-solid fa-comments"></i> The board <small>${open.length} open · sorted by heat</small></h2>
+            ${me ? `<button class="btn btn-ghost btn-sm" id="arena-board-new"><i class="fa-solid fa-plus"></i> Topic</button>` : '<span class="arena-note">sign in (or type <code>!topic</code> in any chat) to add one</span>'}
+        </div>
+        ${open.length ? `<div class="arena-topic-grid">${open.map(t => _aTopicCard(t, bd.hot_threshold || 12, { me })).join('')}</div>` : '<p class="arena-note">The board is empty — the pulse fills it in a moment, or start a topic.</p>'}
+        ${resolved.length ? `<details class="arena-done"><summary>Recently settled <small>${resolved.length}</small></summary><div class="arena-resolved">${resolved.map(t => `<div class="arena-resolved-row">${_aA(_aTopicLink(t), `<span class="arena-kind">${_aEsc((ARENA_KIND[t.kind] || ARENA_KIND.topic).label)}</span> ${_aTopicTitle(t)}`)}<span class="arena-note">${t.resolved?.headline ? _aEsc(t.resolved.headline) : t.winner_side ? `${_aEsc(t.winner_side === 'a' ? t.side_a : t.side_b)} won` : 'closed'}</span></div>`).join('')}</div></details>` : ''}`;
+}
+function _aTopicComposer() {
+    const box = document.createElement('div');
+    box.className = 'arena-lightbox';
+    box.innerHTML = `<button class="arena-lightbox-close" aria-label="Close">&times;</button>
+        <div class="arena-lightbox-inner arena-composer">
+            <h3><i class="fa-solid fa-comment-dots"></i> Put a topic on the board</h3>
+            <p class="arena-note">Something the streamers should talk shit about. The AI cuts it into 3 angles; anyone who clears them levels up. One line, up to 140 characters.</p>
+            <textarea id="arena-composer-text" maxlength="140" rows="3" placeholder="e.g. Streamers who read donations in a baby voice"></textarea>
+            <div class="arena-composer-actions"><button class="btn btn-primary" id="arena-composer-go">Post it</button></div>
         </div>`;
+    const close = () => box.remove();
+    box.addEventListener('click', (e) => { if (e.target === box || e.target.closest('.arena-lightbox-close')) close(); });
+    box.querySelector('#arena-composer-go').addEventListener('click', async () => {
+        const text = box.querySelector('#arena-composer-text').value.trim();
+        if (!text) return;
+        try { const r = await api('/arena/board/topics', { method: 'POST', body: { text } }); close(); _aToast('📌 On the board.', 'success'); navigate(`/arena/topic/${r.topic.id}`); }
+        catch (err) { _aToast(err?.message || 'Failed', 'error'); }
+    });
+    document.body.appendChild(box);
+    box.querySelector('textarea').focus();
+}
+document.addEventListener('click', (e) => { if (e.target.closest('#arena-board-new')) { e.preventDefault(); _aTopicComposer(); } });
+
+// ── Ladders ──────────────────────────────────────────────────
+
+function _aLevelsList(rows) {
+    if (!rows.length) return '<p class="arena-note">Nobody has XP yet. Talk on a topic or start a beef.</p>';
+    return `<div class="arena-mini-list">${rows.map((r, i) => `<div class="arena-mini-row">
+        <span class="arena-rank ${i < 3 ? `arena-rank-${i + 1}` : ''}">${i + 1}</span>
+        ${_aA(_aFighterLink(r.user), `${_aPortrait(r, 'xs')}<span><strong>${_aEsc(r.fighter_name)}</strong><small>${r.xp} XP · ${r.beef_hits} beef hits · ${r.angles_cleared} angles · ${r.topics_conquered} conquered</small></span>`, 'arena-chip')}
+        <span class="arena-lvl arena-lvl-big">LVL ${r.level}</span>
+    </div>`).join('')}</div>`;
+}
+function _aCloutList(rows) {
+    if (!rows.length) return '<p class="arena-note">Pick sides in beefs and debates (<code>!side</code>) — call it right and you show up here.</p>';
+    return `<div class="arena-mini-list">${rows.map((r, i) => `<div class="arena-mini-row">
+        <span class="arena-rank ${i < 3 ? `arena-rank-${i + 1}` : ''}">${i + 1}</span>
+        <span class="arena-chip"><span><strong>${r.username ? _aA(_aChannelLink(r), _aEsc(r.name)) : _aEsc(r.name)}</strong><small>${r.wins}/${r.picks} right · ${r.accuracy}%${r.streak >= 2 ? ` · ${r.streak} streak` : ''}</small></span></span>
+        <span class="arena-lvl">${r.wins} W</span>
+    </div>`).join('')}</div>`;
 }
 
 function _aRenderList(fighters) {
@@ -261,13 +447,13 @@ function _aRenderList(fighters) {
             <span class="arena-rank ${f.rank <= 3 ? `arena-rank-${f.rank}` : ''}">${f.rank}</span>
             ${_aPortrait(f, 'sm')}
             <span class="arena-row-main">
-                <strong>${_aEsc(f.persona.fighter_name)} ${f.live ? '<span class="arena-live-pill">LIVE</span>' : ''}<i class="fa-solid fa-chevron-right arena-chevron"></i></strong>
+                <strong>${_aEsc(f.persona.fighter_name)} ${f.live ? '<span class="arena-live-pill">LIVE</span>' : ''} ${_aLevelPill(f.level?.level)}<i class="fa-solid fa-chevron-right arena-chevron"></i></strong>
                 <span class="arena-row-sub">${_aEsc(f.user.display_name)} · ${_aEsc(f.persona.class)} · ${_aEsc(f.persona.element)}${f.voice?.has_data ? ` · <i class="fa-solid fa-microphone" title="has transcript data"></i> Mic ${f.ratings.mic}` : ''}</span>
                 <em class="arena-row-taunt">“${_aEsc(f.persona.taunt)}”</em>
             </span>
             <span class="arena-row-stats">
                 <span class="arena-power"><b>${f.ratings.power}</b><small>PWR</small></span>
-                <span class="arena-record">${f.record.wins}W–${f.record.losses}L</span>
+                <span class="arena-record" title="beef record">${f.record.wins}W–${f.record.losses}L</span>
             </span>
             <div class="arena-row-expand">
                 <div>${_aRadar(f.ratings, f.user.profile_color || '#8b5cf6', 180)}<div class="arena-mini-record">${f.category ? _aEsc(f.category) + ' · ' : ''}last live ${_aEsc(f.last_live_at ? _aDate(f.last_live_at) : '—')}</div></div>
@@ -278,7 +464,7 @@ function _aRenderList(fighters) {
                 </div>
                 <div class="arena-row-expand-actions">
                     ${_aA(_aFighterLink(f.user), '<i class="fa-solid fa-id-card"></i> Full profile', 'btn btn-primary')}
-                    <button class="btn btn-ghost arena-row-fight" data-user="${_aEsc(f.user.username)}"><i class="fa-solid fa-hand-fist"></i> Fight someone</button>
+                    ${f.live ? _aA(_aConsoleLink(f.user), '<i class="fa-solid fa-ear-listen"></i> Listen in', 'btn btn-ghost') : ''}
                     ${_aSpeakBtn(f.persona.taunt, 'btn btn-ghost')}
                 </div>
             </div>
@@ -287,13 +473,186 @@ function _aRenderList(fighters) {
         if (e.target.closest('a, button')) return;
         row.classList.toggle('is-open');
     }));
-    el.querySelectorAll('.arena-row-fight').forEach(btn => btn.addEventListener('click', () => {
-        const me = fighters.find(f => f.user.username === btn.dataset.user);
-        const pool = fighters.filter(f => f !== me);
-        if (!me || !pool.length) return;
-        navigate(_aBattleLink(me.user, pool[Math.floor(Math.random() * pool.length)].user));
-    }));
     _aBindSpeak(el);
+}
+
+// ── Beef detail ──────────────────────────────────────────────
+
+function _aFeedLine(e, b) {
+    const side = e.side === 'a' ? b.a : b.b;
+    const sys = e.kind && e.kind !== 'hit';
+    return `<div class="arena-feed-line ${sys ? 'is-system' : `is-${e.side}`}">
+        ${sys ? '' : _aA(_aFighterLink(side.user), _aPortrait(side, 'xs'))}
+        <div class="arena-feed-body">
+            ${e.announcer ? `<div class="arena-feed-announcer"><i class="fa-solid fa-bullhorn"></i> ${_aEsc(e.announcer)}</div>` : ''}
+            ${e.text ? `<q>${_aEsc(e.text)}</q>` : ''}
+            <small>${sys ? _aEsc(e.kind) : `${_aEsc(side.fighter_name)}${e.quality != null ? ` · ${e.quality}/10` : ''}${e.about ? ` · ${_aEsc(e.about)}` : ''}${e.bonus ? ` · ${_aEsc(e.bonus)}` : ''}`} · ${_aEsc(_aAgo(e.at))} ${_aPlay(e.vod_id, e.sec)} ${e.text ? _aSpeakBtn(e.text, '') : ''}</small>
+        </div>
+    </div>`;
+}
+async function _aRenderBeef(root, id) {
+    root.innerHTML = _aSpinner('Pulling the receipts…');
+    const b = await api(`/arena/beefs/${id}`);
+    const open = b.status === 'open';
+    const winner = !open && b.winner_user_id ? (b.winner_user_id === b.a.user.id ? b.a : b.b) : null;
+    const draw = () => {
+        root.innerHTML = `
+        <div class="arena-back">${_aA('/arena', '<i class="fa-solid fa-arrow-left"></i> Arena')} ${_aA(_aFighterLink(b.a.user), _aEsc(b.a.fighter_name))} · ${_aA(_aFighterLink(b.b.user), _aEsc(b.b.fighter_name))}</div>
+        <div class="arena-beef-page">
+            <div class="arena-beef-hero">
+                <div class="arena-beef-tags">${_aBeefTags(b)}${!open ? `<span class="arena-tag ${winner ? 'arena-tag-gold' : 'arena-tag-dim'}">${winner ? `${_aEsc(winner.fighter_name)} won${b.resolution === 'forfeit' ? ' by forfeit' : b.resolution === 'score' ? ' on points' : ''}` : 'draw'}</span>` : '<span class="arena-tag arena-tag-hot"><i class="fa-solid fa-fire"></i> OPEN</span>'}</div>
+                <h1>${_aEsc((open ? b.headline : b.result_headline || b.headline) || `${b.a.fighter_name} vs ${b.b.fighter_name}`)} ${_aSpeakBtn((open ? b.headline : b.result_headline || b.headline) || '')}</h1>
+                ${b.opener_line ? `<p class="arena-beef-opener">It started with: <q>${_aEsc(b.opener_line)}</q></p>` : ''}
+            </div>
+            <div class="arena-beef-tape">
+                ${['a', 'b'].map(s => { const f = b[s]; return `<div class="arena-beef-tape-side arena-beef-tape-${s}" style="--fc:${_aEsc(f.user.profile_color || (s === 'a' ? '#8b5cf6' : '#e74c3c'))}">
+                    ${_aA(_aFighterLink(f.user), _aPortrait(f, 'md'))}
+                    <h2>${_aEsc(f.fighter_name)}${f.live ? ' <span class="arena-live-pill">LIVE</span>' : ''}</h2>
+                    <div class="arena-beef-tape-meta">#${f.rank || '–'} · ${_aLevelPill(f.level)}${b.streaks?.[s] >= 2 ? ` · ${b.streaks[s]}-beef streak` : ''}</div>
+                    <div class="arena-beef-tape-nums"><span><b>${f.hits}</b><small>hits</small></span><span><b>${f.score}</b><small>quality</small></span><span><b>${f.crowd}</b><small>crowd /${b.rules.crowd_max}</small></span><span><b>${f.total}</b><small>total</small></span></div>
+                    ${open ? `<div class="arena-beef-tape-actions"><button class="btn btn-primary btn-sm arena-hype-btn" data-beef="${b.id}" data-side="${s}"><i class="fa-solid fa-fire"></i> Hype</button><button class="btn btn-ghost btn-sm arena-side-btn" data-beef="${b.id}" data-side="${s}"><i class="fa-solid fa-flag"></i> I'm with ${_aEsc(f.fighter_name.split(' ')[0])}</button></div>` : ''}
+                    ${f.live ? _aA(_aConsoleLink(f.user), '<i class="fa-solid fa-ear-listen"></i> listen in', 'arena-tag') : ''}
+                </div>`; }).join('')}
+            </div>
+            ${_aTug(b, { big: true })}
+            <div class="arena-beef-status">
+                ${open ? _aClockTag(b) : ''}
+                <span class="arena-sides-tally" id="arena-sides-tally"><i class="fa-solid fa-people-group"></i> chat says ${b.sides.a}–${b.sides.b} (${b.sides.share_a}% ${_aEsc(b.a.fighter_name)})</span>
+                ${b.ends_at && open ? `<span class="arena-note"><i class="fa-solid fa-hourglass-half"></i> hard end in ${_aEsc(_aClock((Date.parse(b.ends_at) - Date.now()) / 1000))}</span>` : ''}
+            </div>
+            <div class="arena-beef-cols">
+                <section class="arena-feed">
+                    <h3><i class="fa-solid fa-bullhorn"></i> Ringside <small>every judged hit, newest last</small></h3>
+                    ${b.feed.length ? b.feed.map(e => _aFeedLine(e, b)).join('') : '<p class="arena-note">Nothing judged yet.</p>'}
+                </section>
+                <aside class="arena-beef-aside">
+                    ${b.history?.fights ? `<section><h3><i class="fa-solid fa-receipt"></i> Receipts <small>${b.history.wins_1}–${b.history.wins_2} in ${b.history.fights} earlier beef${b.history.fights > 1 ? 's' : ''}</small></h3>
+                        ${b.history.receipts.map(r => { const f = r.side_user_id === b.a.user.id ? b.a : b.b; return `<div class="arena-receipt"><q>${_aEsc(r.text)}</q><small>${_aEsc(f.fighter_name)} · ${r.quality}/10 · ${_aA(_aBeefLink({ id: r.beef_id }), `beef #${r.beef_id}`)} ${_aPlay(r.vod_id, r.sec)}</small></div>`; }).join('') || '<p class="arena-note">No quotable receipts.</p>'}</section>` : '<section><h3><i class="fa-solid fa-receipt"></i> Receipts</h3><p class="arena-note">First time these two have beef.</p></section>'}
+                    <section><h3><i class="fa-solid fa-gavel"></i> Rules</h3><ul class="arena-rules-list">
+                        <li>Answer on your own stream within <b>${b.rules.response_live_min} min</b> if you're live, <b>${b.rules.response_offline_hours} h</b> if not — or forfeit.</li>
+                        <li>Every judged answer resets the other side's clock. Beef hard-ends after ${b.rules.max_hours} h; higher total wins.</li>
+                        <li>Total = hit quality (AI-judged 1–10) + crowd hype (max ${b.rules.crowd_max}). Chat's side pick is clout, not score.</li>
+                        <li>Beat someone ranked 4+ spots above you → <b>upset</b>. Same two again → <b>rematch</b> (+ rivalry receipts).</li>
+                    </ul></section>
+                </aside>
+            </div>
+        </div>`;
+        root.querySelectorAll('.arena-hype-btn').forEach(btn => btn.onclick = () => _aHype(b.id, btn.dataset.side, btn));
+        root.querySelectorAll('.arena-side-btn').forEach(btn => btn.onclick = async () => { const r = await _aSide(b.id, btn.dataset.side); if (r) { const t = document.getElementById('arena-sides-tally'); if (t) t.innerHTML = `<i class="fa-solid fa-people-group"></i> chat says ${r.a}–${r.b} (${r.share_a}% ${_aEsc(b.a.fighter_name)})`; } });
+        _aBindSpeak(root);
+    };
+    draw();
+    _aEvery(1000, () => _aTickClocks(root));
+    if (open) _aEvery(12000, async () => { try { const fresh = await api(`/arena/beefs/${id}`); if (JSON.stringify(fresh.feed) !== JSON.stringify(b.feed) || fresh.status !== b.status || fresh.share_a !== b.share_a) { Object.assign(b, fresh); draw(); } } catch { /* */ } });
+}
+
+// ── Topic detail ─────────────────────────────────────────────
+
+async function _aRenderTopic(root, id) {
+    root.innerHTML = _aSpinner('Opening the topic…');
+    let t = await api(`/arena/board/topics/${id}`);
+    const me = _aMe();
+    const draw = () => {
+        const k = ARENA_KIND[t.kind] || ARENA_KIND.topic;
+        const onIt = me && t.talking_now.some(f => f.user.id === me.id);
+        const onRoster = me && (_arenaRoster?.fighters?.some(f => f.user.id === me.id) ?? true);
+        const members = t.members || [];
+        root.innerHTML = `
+        <div class="arena-back">${_aA('/arena', '<i class="fa-solid fa-arrow-left"></i> Arena')}</div>
+        <div class="arena-topic-page arena-topic-${t.kind} ${t.hot ? 'is-hot' : ''}">
+            <div class="arena-topic-head">
+                <span class="arena-kind"><i class="fa-solid ${k.icon}"></i> ${k.label}</span>
+                ${_aHeat(t, 12)}
+                <span class="arena-topic-by">${t.created_by === 'ai' ? '<i class="fa-solid fa-heart-pulse"></i> from the pulse' : `started by ${_aEsc(t.creator_name || t.created_by)}`} · ${_aEsc(_aAgo(t.created_at))}${t.expires_at && t.status === 'open' ? ` · <span class="arena-expires" data-until="${_aEsc(t.expires_at)}">${_aEsc(_aClock((Date.parse(t.expires_at) - Date.now()) / 1000))} left</span>` : ''}${t.status !== 'open' ? ` · <b>${_aEsc(t.status)}</b>` : ''}</span>
+            </div>
+            ${t.headline ? `<div class="arena-topic-headline">${_aEsc(t.headline)} ${_aSpeakBtn(t.headline, '')}</div>` : ''}
+            <h1 class="arena-topic-text">${_aTopicTitle(t)}</h1>
+            ${t.hint ? `<p class="arena-topic-hint">${_aEsc(t.hint)}</p>` : ''}
+            ${t.source_note ? `<p class="arena-note"><i class="fa-solid fa-satellite-dish"></i> ${_aEsc(t.source_note)}</p>` : ''}
+            ${t.resolved?.headline ? `<div class="arena-topic-result"><i class="fa-solid fa-flag-checkered"></i> ${_aEsc(t.resolved.headline)}</div>` : ''}
+            ${t.kind === 'debate' ? `<div class="arena-debate arena-debate-big">
+                <button class="btn btn-ghost arena-debate-side" data-topic="${t.id}" data-side="a" data-label="${_aEsc(t.side_a)}" ${t.status !== 'open' ? 'disabled' : ''}>${_aEsc(t.side_a)}</button>
+                <span class="arena-debate-tally">${_aDebateTally(t.sides || { a: 0, b: 0, share_a: 50 })}</span>
+                <button class="btn btn-ghost arena-debate-side" data-topic="${t.id}" data-side="b" data-label="${_aEsc(t.side_b)}" ${t.status !== 'open' ? 'disabled' : ''}>${_aEsc(t.side_b)}</button>
+                <p class="arena-note">Streamers: say which side you're on and argue it on mic. Chat: pick a side — the side with more talk + more chat wins when the clock runs out, and right picks earn clout.</p>
+            </div>` : ''}
+            ${t.kind === 'bounty' && t.target ? `<div class="arena-bounty-target">${_aBriefChip(t.target, ' · the mark')}<span class="arena-note">Any fighter who lands judged shit talk on ${_aEsc(t.target.fighter_name)} while this is open gets <b>double XP</b>. The mark can answer back on their own stream.</span></div>` : ''}
+            <div class="arena-topic-cta">
+                ${onRoster && t.status === 'open' && t.kind !== 'bounty' ? (onIt ? `<span class="arena-tag arena-tag-hot"><i class="fa-solid fa-microphone"></i> You're on this — talk on stream, the ears are listening</span> <button class="btn btn-ghost btn-sm" id="arena-topic-leave">Leave topic</button> ${_aA(_aConsoleLink(me), '<i class="fa-solid fa-ear-listen"></i> my ears', 'btn btn-ghost btn-sm')}` : `<button class="btn btn-primary" id="arena-topic-join"><i class="fa-solid fa-microphone"></i> Talk on this</button><span class="arena-note">Sets it as your active topic. Go live with transcription on and just talk — every 30 s the judge scores what you said.</span>`) : ''}
+                ${!me ? '<span class="arena-note">Sign in to talk on this (streamers) or hype whoever\'s on it.</span>' : ''}
+            </div>
+            ${t.angles?.length ? `<section class="arena-angles"><h3><i class="fa-solid fa-diagram-project"></i> Angles <small>clear all ${t.angles.length} to conquer the topic (+60 XP)</small></h3>
+                <div class="arena-angle-grid">${t.angles.map(a => `<div class="arena-angle"><b>${a.idx + 1}. ${_aEsc(a.text)}</b><span>${_aEsc(a.hint || '')}</span></div>`).join('')}</div></section>` : (t.kind === 'topic' ? '<p class="arena-note">Angles get cut the moment someone joins.</p>' : '')}
+            ${members.length ? `<section class="arena-members"><h3><i class="fa-solid fa-microphone-lines"></i> Who's talking <small>${t.talking_now.length} live on it</small></h3>
+                ${members.map(m => { const prog = (t.progress || {})[m.user.id] || []; return `<div class="arena-member ${m.active ? 'is-active' : ''}">
+                    ${_aBriefChip(m, ` · ${m.cleared}/${t.angles.length || '?'} angles · ${m.score} pts${m.conquered_at ? ' · <b>conquered</b>' : ''}`)}
+                    <div class="arena-member-progress">${(t.angles || []).map(a => { const p = prog.find(x => x.angle_idx === a.idx) || { progress: 0 }; return `<span class="arena-progress ${p.cleared ? 'is-cleared' : ''}" title="${_aEsc(a.text)}: ${p.progress}%"><span class="arena-progress-fill" style="width:${p.progress}%"></span></span>`; }).join('')}</div>
+                    ${me && m.user.id !== me.id && t.status === 'open' ? `<button class="btn btn-ghost btn-sm arena-topic-hype" data-topic="${t.id}" data-user="${m.user.id}"><i class="fa-solid fa-fire"></i> Hype</button>` : ''}
+                </div>`; }).join('')}</section>` : ''}
+            ${t.best_lines?.length ? `<section class="arena-best-lines"><h3><i class="fa-solid fa-quote-left"></i> Best lines <small>as heard on stream</small></h3>
+                ${t.best_lines.map(l => `<div class="arena-quote"><div><q>${_aEsc(l.text)}</q><small>${_aA(_aFighterLink(l.user), _aEsc(l.fighter_name))}${l.angle_idx >= 0 && t.angles[l.angle_idx] ? ` · angle ${l.angle_idx + 1}` : ''}</small></div><div class="arena-quote-actions">${_aPlay(l.vod_id, l.sec)} ${_aSpeakBtn(l.text, '')}</div></div>`).join('')}</section>` : ''}
+        </div>`;
+        document.getElementById('arena-topic-join')?.addEventListener('click', async () => { try { const r = await api(`/arena/board/topics/${t.id}/join`, { method: 'POST' }); t = r.topic; _aToast('🎤 You\'re on it. Go talk.', 'success'); draw(); } catch (err) { _aToast(err?.message || 'Failed', 'error'); } });
+        document.getElementById('arena-topic-leave')?.addEventListener('click', async () => { try { await api(`/arena/board/topics/${t.id}/leave`, { method: 'POST' }); t = await api(`/arena/board/topics/${id}`); draw(); } catch (err) { _aToast(err?.message || 'Failed', 'error'); } });
+        _aBindHome(root);
+    };
+    draw();
+    _aEvery(15000, async () => { try { const fresh = await api(`/arena/board/topics/${id}`); if (JSON.stringify(fresh) !== JSON.stringify(t)) { t = fresh; draw(); } } catch { /* */ } });
+}
+
+// ── Live console ("the ears") ────────────────────────────────
+
+async function _aRenderConsole(root, username) {
+    root.innerHTML = _aSpinner('Putting the ears on…');
+    let c = await api(`/arena/console/${encodeURIComponent(username)}`);
+    const draw = () => {
+        const f = c.fighter, L = c.listener || {}, lvl = c.level || {};
+        const me = _aMe(), mine = me && me.id === f.user.id;
+        const xpPct = lvl.xp_per_level ? Math.round((lvl.xp_into_level / lvl.xp_per_level) * 100) : 0;
+        root.innerHTML = `
+        <div class="arena-back">${_aA('/arena', '<i class="fa-solid fa-arrow-left"></i> Arena')} ${_aA(_aFighterLink(f.user), _aEsc(f.fighter_name))} ${c.live ? _aA(_aChannelLink(f.user), '<i class="fa-solid fa-tv"></i> watch', '') : ''}</div>
+        <div class="arena-console" style="--fc:${_aEsc(f.user.profile_color || '#8b5cf6')}">
+            <div class="arena-console-head">
+                ${_aPortrait(f, 'sm')}
+                <div>
+                    <h1>${_aEsc(f.fighter_name)} ${c.live ? '<span class="arena-live-pill">LIVE</span>' : '<span class="arena-tag arena-tag-dim">offline</span>'}</h1>
+                    <div class="arena-console-status ${L.listening ? 'is-on' : ''}">
+                        <i class="fa-solid ${L.listening ? 'fa-ear-listen' : 'fa-ear-deaf'}"></i>
+                        ${!c.live ? 'Not live — the ears only work on a live, transcribed stream.' : !c.transcribed ? 'Live, but no transcript in the last 30 min. Turn on audio transcription in the dashboard and the Arena hears you.' : L.listening ? `Listening. ${L.pending_topic_words || 0} words buffered for the topic judge · ${L.mention_buffers || 0} name-drop buffer${L.mention_buffers === 1 ? '' : 's'} open${L.last_judge_at ? ` · last judged ${_aEsc(_aAgo(L.last_judge_at))}` : ''}` : 'Live and transcribed — the listener picks this stream up on its next 15 s tick.'}
+                    </div>
+                </div>
+                <div class="arena-console-level">
+                    <span class="arena-lvl arena-lvl-big">TRASH LVL ${lvl.level || 1}</span>
+                    <span class="arena-xp-track"><span class="arena-xp-fill" style="width:${xpPct}%"></span></span>
+                    <small>${lvl.xp_into_level || 0}/${lvl.xp_per_level || 50} XP to level ${(lvl.level || 1) + 1} · ${lvl.recent_xp || 0} this week</small>
+                </div>
+            </div>
+            <div class="arena-console-cols">
+                <section class="arena-console-main">
+                    <h3><i class="fa-solid fa-microphone"></i> Hot mic <small>last lines the ears heard</small></h3>
+                    <div class="arena-mic-feed">${c.hot_mic?.length ? c.hot_mic.map(l => `<div class="arena-mic-line-row"><span class="arena-mic-time">${_aStamp(l.sec)}</span><span>${_aEsc(l.text)}</span>${_aPlay(l.vod_id, l.sec)}</div>`).join('') : '<p class="arena-note">Nothing heard yet.</p>'}</div>
+                    ${L.last_beef_judgement ? `<div class="arena-judgement ${L.last_beef_judgement.aimed_at_target ? 'is-hit' : ''}"><b><i class="fa-solid fa-gavel"></i> Beef judge (${_aEsc(_aAgo(L.last_beef_judgement.at))}):</b> ${L.last_beef_judgement.aimed_at_target ? `HIT · ${L.last_beef_judgement.quality}/10 · ${_aEsc(L.last_beef_judgement.about || '')}${L.last_beef_judgement.opened ? ' · <b>beef opened</b>' : ''}${L.last_beef_judgement.bounty ? ' · <b>bounty collected</b>' : ''}` : `no beef — ${_aEsc(L.last_beef_judgement.about || 'name dropped but not aimed at them')}`}${L.last_beef_judgement.flagged ? ' · <span class="arena-tag arena-tag-dim">line not counted (threat/minor/dox)</span>' : ''}</div>` : ''}
+                    ${L.last_topic_judgement ? `<div class="arena-judgement ${L.last_topic_judgement.applied ? 'is-hit' : ''}"><b><i class="fa-solid fa-gavel"></i> Topic judge (${_aEsc(_aAgo(L.last_topic_judgement.at))}):</b> ${L.last_topic_judgement.applied ? `angle ${L.last_topic_judgement.angle_idx + 1} · ${L.last_topic_judgement.quality}/10 · +${L.last_topic_judgement.progress_gain || 0}% → ${L.last_topic_judgement.progress}%${L.last_topic_judgement.cleared_angle ? ' · <b>angle cleared</b>' : ''}${L.last_topic_judgement.conquered ? ' · <b>TOPIC CONQUERED</b>' : ''}` : `off topic — ${_aEsc(L.last_topic_judgement.about || 'keep it on the angles')}`}</div>` : ''}
+                </section>
+                <aside class="arena-console-aside">
+                    <section>
+                        <h3><i class="fa-solid fa-comment-dots"></i> Active topic</h3>
+                        ${c.active_topic ? `${_aA(_aTopicLink(c.active_topic), `<b>${_aTopicTitle(c.active_topic)}</b>`)}
+                            <div class="arena-angle-list">${(c.active_topic.angles || []).map(a => { const p = (c.active_topic.my_progress || []).find(x => x.angle_idx === a.idx) || { progress: 0 }; return `<div class="arena-angle-row ${p.cleared_at ? 'is-cleared' : ''}"><span class="arena-progress"><span class="arena-progress-fill" style="width:${Math.round(p.progress || 0)}%"></span></span><span><b>${a.idx + 1}.</b> ${_aEsc(a.text)} <small>${Math.round(p.progress || 0)}%${p.cleared_at ? ' ✓' : ''}</small></span></div>`; }).join('')}</div>` : `<p class="arena-note">${mine ? 'No active topic. Pick one on the board and talk on it.' : 'Not on a board topic.'}</p>${mine ? _aA('/arena', 'Open the board', 'btn btn-ghost btn-sm') : ''}`}
+                    </section>
+                    <section>
+                        <h3><i class="fa-solid fa-fire-flame-curved"></i> Open beefs</h3>
+                        ${c.open_beefs?.length ? c.open_beefs.map(b => `<div class="arena-console-beef">${_aA(_aBeefLink(b), `<b>${_aEsc(b.headline || `${b.a.fighter_name} vs ${b.b.fighter_name}`)}</b>`)}${_aTug(b)}${_aClockTag(b)}</div>`).join('') : `<p class="arena-note">None. ${mine ? 'Say another fighter\'s name while talking shit and one opens.' : ''}</p>`}
+                    </section>
+                    ${c.bounty_on_me ? `<section><h3><i class="fa-solid fa-sack-dollar"></i> Bounty on ${_aEsc(f.fighter_name)}</h3>${_aA(_aTopicLink(c.bounty_on_me), _aEsc(c.bounty_on_me.headline || c.bounty_on_me.text))}<p class="arena-note">Everyone gets double XP for talking shit about ${mine ? 'you' : 'them'} until it expires. ${mine ? 'Answer on mic.' : ''}</p></section>` : ''}
+                    <section><h3><i class="fa-solid fa-circle-info"></i> How it's judged</h3><ul class="arena-rules-list"><li>Every 15 s the ears read new transcript lines.</li><li>A fighter's name in a line opens a 45 s window; ≥20 words go to the beef judge.</li><li>Otherwise lines pool for the topic judge (also ≥20 words, ≥30 s apart).</li><li>Offensive language is fine. Threats, minors, doxxing → line ignored.</li></ul></section>
+                </aside>
+            </div>
+        </div>`;
+    };
+    draw();
+    _aEvery(1000, () => _aTickClocks(root));
+    _aEvery(10000, async () => { try { const fresh = await api(`/arena/console/${encodeURIComponent(username)}`); const lvlUp = (fresh.level?.level || 1) > (c.level?.level || 1); c = fresh; draw(); if (lvlUp) _aLevelUp(c.level.level); } catch { /* */ } });
 }
 
 // ── Fighter profile ──────────────────────────────────────────
@@ -303,7 +662,7 @@ function _aVoiceCard(f) {
     const q = f.quotes;
     const color = f.user.profile_color || '#8b5cf6';
     if (!v.has_data) {
-        return `<div class="arena-voice" style="--fc:${_aEsc(color)}"><div class="arena-voice-head"><h3><i class="fa-solid fa-microphone-slash"></i> On the mic</h3></div><p class="arena-voice-empty">No transcript data yet — the audio transcription picks this up on their next streams. Until then, MIC is rated at the floor.</p></div>`;
+        return `<div class="arena-voice" style="--fc:${_aEsc(color)}"><div class="arena-voice-head"><h3><i class="fa-solid fa-microphone-slash"></i> On the mic</h3></div><p class="arena-voice-empty">No transcript data yet — the audio transcription picks this up on their next streams. Until then, MIC is rated at the floor and the Arena can't hear them.</p></div>`;
     }
     const quotes = (q && q.picks && q.picks.length) ? q.picks : [];
     return `<div class="arena-voice" style="--fc:${_aEsc(color)}">
@@ -324,12 +683,20 @@ function _aVoiceCard(f) {
         ${quotes.length ? `<div class="arena-quotes">${quotes.map(p => `
             <div class="arena-quote">
                 <div><q>${_aEsc(p.text)}</q><small>${_aEsc(p.why || '')}${p.vod_id ? ` · at ${_aStamp(p.start_sec)}` : ''}</small></div>
-                <div class="arena-quote-actions">
-                    ${p.vod_id ? `<a href="/vod/${p.vod_id}?t=${p.start_sec}" onclick="return handleLinkClick(event, '/vod/${p.vod_id}?t=${p.start_sec}')" title="Hear them say it (jumps to the VOD)"><i class="fa-solid fa-play"></i></a>` : ''}
-                    ${_aSpeakBtn(p.text, '')}
-                </div>
+                <div class="arena-quote-actions">${_aPlay(p.vod_id, p.start_sec)} ${_aSpeakBtn(p.text, '')}</div>
             </div>`).join('')}</div>` : '<p class="arena-voice-empty">Quotes appear once enough lines have been transcribed.</p>'}
         ${q?._fallback ? '<p class="arena-note">Quotes picked by heuristic — the AI curates these once enabled.</p>' : ''}
+    </div>`;
+}
+
+function _aLevelCard(f) {
+    const l = f.level || {};
+    const pct = l.xp_per_level ? Math.round((l.xp_into_level / l.xp_per_level) * 100) : 0;
+    return `<div class="arena-level-card">
+        <div class="arena-level-head"><span class="arena-lvl arena-lvl-big">TRASH LVL ${l.level || 1}</span><span class="arena-note">${l.xp || 0} XP · ${l.recent_xp || 0} this week${f.ratings.talk_bonus ? ` · <b>+${f.ratings.talk_bonus} POWER</b> from the mouth` : ''}</span></div>
+        <span class="arena-xp-track"><span class="arena-xp-fill" style="width:${pct}%"></span></span>
+        <div class="arena-level-nums"><span><b>${l.beef_hits || 0}</b><small>beef hits</small></span><span><b>${l.angles_cleared || 0}</b><small>angles cleared</small></span><span><b>${l.topics_conquered || 0}</b><small>topics conquered</small></span><span><b>${f.record.wins}–${f.record.losses}${f.record.draws ? `–${f.record.draws}` : ''}</b><small>beef record</small></span></div>
+        ${l.best_line ? `<div class="arena-quote"><div><q>${_aEsc(l.best_line.text)}</q><small>best line on record · ${l.best_line.score}/10</small></div><div class="arena-quote-actions">${_aPlay(l.best_line.vod_id, l.best_line.sec)} ${_aSpeakBtn(l.best_line.text, '')}</div></div>` : ''}
     </div>`;
 }
 
@@ -341,15 +708,15 @@ async function _aRenderFighter(root, username) {
         return;
     }
     const p = f.persona, color = f.user.profile_color || '#8b5cf6';
-    const recent = f.recent_battles || [];
+    const beefs = f.beefs || [], rivalries = f.rivalries || [];
     root.innerHTML = `
-        <div class="arena-back">${_aA('/arena', '<i class="fa-solid fa-arrow-left"></i> Arena')}</div>
+        <div class="arena-back">${_aA('/arena', '<i class="fa-solid fa-arrow-left"></i> Arena')} ${f.live ? _aA(_aConsoleLink(f.user), '<i class="fa-solid fa-ear-listen"></i> Listen in live', '') : ''}</div>
         <div class="arena-profile" style="--fc:${_aEsc(color)}">
             <div class="arena-profile-portrait" id="arena-profile-portrait">
                 ${_aPortrait(f, 'lg')}
                 ${f.image_pending ? '<div class="arena-portrait-pending"><i class="fa-solid fa-wand-magic-sparkles fa-fade"></i> painting portrait…</div>' : ''}
                 <div class="arena-profile-rank">#${f.rank} <small>of ${f.roster_size}</small></div>
-                ${f.rivalry ? `<div class="arena-mini-record"><i class="fa-solid fa-fire"></i> Rivalry: ${_aA(_aBattleLink(f.user, f.rivalry.opponent), _aEsc(f.rivalry.fighter_name))} (${f.rivalry.wins}–${f.rivalry.losses} in ${f.rivalry.fights} fights)</div>` : ''}
+                ${f.active_topic ? `<div class="arena-mini-record"><i class="fa-solid fa-comment-dots"></i> Talking on: ${_aA(_aTopicLink(f.active_topic), _aEsc(f.active_topic.text))}</div>` : ''}
             </div>
             <div class="arena-profile-main">
                 <div class="arena-profile-name">
@@ -359,9 +726,10 @@ async function _aRenderFighter(root, username) {
                 </div>
                 <div class="arena-profile-power">
                     <div class="arena-power arena-power-lg"><b>${f.ratings.power}</b><small>POWER</small></div>
-                    ${f.ratings.talk_bonus ? `<div class="arena-talk-bonus" title="Trash Talk bonus — earned on /arena/talk, decays over a week"><i class="fa-solid fa-microphone-lines"></i> +${f.ratings.talk_bonus} trash talk</div>` : ''}
-                    <div class="arena-record arena-record-lg">${f.record.wins}W – ${f.record.losses}L</div>
+                    ${f.ratings.talk_bonus ? `<div class="arena-talk-bonus" title="Mouth bonus — recent Trash Level XP and beef wins, decays over a week"><i class="fa-solid fa-microphone-lines"></i> +${f.ratings.talk_bonus} mouth</div>` : ''}
+                    <div class="arena-record arena-record-lg" title="beef record">${f.record.wins}W – ${f.record.losses}L</div>
                 </div>
+                ${_aLevelCard(f)}
                 <div class="arena-profile-stats">
                     ${_aRadar(f.ratings, color)}
                     <div class="arena-quips">${ARENA_STATS.map(k => `<div class="arena-quip is-clickable" data-stat="${k}" title="Tap for the breakdown"><b>${_aEsc(ARENA_STAT_LABEL[k])} ${f.ratings[k]} <i class="fa-solid fa-magnifying-glass-chart" style="font-size:0.7em;opacity:0.6"></i></b><span>${_aEsc((p.stat_quips || {})[k] || '')}</span></div>`).join('')}</div>
@@ -388,15 +756,12 @@ async function _aRenderFighter(root, username) {
                 </div>
             </div>
         </div>
-        ${(f.trash_talk || []).length ? `<section class="arena-challenge"><h2><i class="fa-solid fa-microphone-lines"></i> Trash talk record</h2><div class="arena-talk-list">${f.trash_talk.map(e => _aTalkEntry(e, { compact: true })).join('')}</div></section>` : ''}
-        ${recent.length ? `<section class="arena-challenge"><h2>Recent fights</h2><div class="arena-opponents">${recent.map(b => _aA(_aBattleLink(f.user, b.opponent), `${_aPortrait({ user: b.opponent }, 'xs')}<span><strong>${b.result === 'win' ? '<span style="color:var(--success)">W</span>' : b.result === 'loss' ? '<span style="color:var(--danger)">L</span>' : 'D'} vs ${_aEsc(b.opponent_fighter_name)}</strong><small>${_aEsc(b.day)} · rounds ${b.rounds_won}/${b.rounds_total}</small></span>`, 'arena-opponent')).join('')}</div></section>` : ''}
-        <section class="arena-challenge">
-            <h2>Pick an opponent</h2>
-            <div class="arena-opponents" id="arena-opponents">${_aSpinner('Scouting…')}</div>
-        </section>`;
+        ${rivalries.length ? `<section class="arena-challenge"><h2><i class="fa-solid fa-skull-crossbones"></i> Rivalries</h2><div class="arena-rivalries">${rivalries.map(r => `<div class="arena-rivalry ${r.open ? 'is-open' : ''}">${_aBriefChip(r.opponent, ` · ${r.wins}–${r.losses} in ${r.fights}${r.open ? ' · <b>beef open</b>' : ''}`)}${r.receipts.map(x => `<q class="arena-receipt-mini">${_aEsc(x.text)}</q>`).join('')}</div>`).join('')}</div></section>` : ''}
+        ${beefs.length ? `<section class="arena-challenge"><h2><i class="fa-solid fa-fire-flame-curved"></i> Beefs</h2><div class="arena-beef-grid">${beefs.map(_aBeefCard).join('')}</div></section>` : `<section class="arena-challenge"><h2><i class="fa-solid fa-fire-flame-curved"></i> Beefs</h2><p class="arena-note">No beef on record. Someone only has to say their name…</p></section>`}`;
     _aBindSpeak(root);
+    _aBindHome(root);
+    _aEvery(1000, () => _aTickClocks(root));
 
-    // Stat drill-down
     root.querySelectorAll('.arena-quip.is-clickable').forEach(el => el.addEventListener('click', async () => {
         const stat = el.dataset.stat;
         const box = document.getElementById('arena-stat-detail');
@@ -419,20 +784,9 @@ async function _aRenderFighter(root, username) {
         } catch (err) { box.innerHTML = `<div class="arena-stat-detail">${_aEsc(err?.message || 'Failed')}</div>`; }
     }));
 
-    // Portrait lightbox ("how this was painted")
     const portrait = root.querySelector('.arena-portrait-lg');
     if (portrait && f.image_url) portrait.addEventListener('click', () => _aLightbox(f));
 
-    // Opponent picker
-    try {
-        const data = _arenaRoster || await api('/arena/fighters');
-        _arenaRoster = data;
-        const others = (data.fighters || []).filter(o => o.user.id !== f.user.id);
-        const el = document.getElementById('arena-opponents');
-        el.innerHTML = others.map(o => _aA(_aBattleLink(f.user, o.user), `${_aPortrait(o, 'xs')}<span><strong>${_aEsc(o.persona.fighter_name)}</strong><small>#${o.rank} · PWR ${o.ratings.power}${o.live ? ' · LIVE' : ''}</small></span>`, 'arena-opponent')).join('') || '<p class="arena-note">Nobody else on the roster yet.</p>';
-    } catch { /* */ }
-
-    // Poll for the AI portrait while it is being painted.
     if (f.image_pending || (!f.image_url && f.image_generation === 'ai')) {
         let tries = 0;
         _arenaImagePoll = setInterval(async () => {
@@ -442,7 +796,7 @@ async function _aRenderFighter(root, username) {
                 if (fresh.image_url) {
                     const holder = document.getElementById('arena-profile-portrait');
                     if (holder) {
-                        holder.querySelector('.arena-portrait')?.outerHTML && (holder.querySelector('.arena-portrait').outerHTML = _aPortrait(fresh, 'lg'));
+                        const old = holder.querySelector('.arena-portrait'); if (old) old.outerHTML = _aPortrait(fresh, 'lg');
                         holder.querySelector('.arena-portrait-pending')?.remove();
                         holder.querySelector('.arena-portrait-lg')?.addEventListener('click', () => _aLightbox(fresh));
                     }
@@ -471,467 +825,6 @@ function _aLightbox(f) {
     box.addEventListener('click', (e) => { if (e.target === box || e.target.closest('.arena-lightbox-close')) close(); });
     document.addEventListener('keydown', function onKey(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } });
     document.body.appendChild(box);
-}
-
-// ── Battle ───────────────────────────────────────────────────
-
-function _aTape(A, B) {
-    const rows = [
-        ['Rank', `#${A.rank}`, `#${B.rank}`, A.rank < B.rank ? 'a' : B.rank < A.rank ? 'b' : null],
-        ['Power', A.ratings.power, B.ratings.power],
-        ['Hours live (90d)', A.raw.hours, B.raw.hours],
-        ['Peak viewers', A.raw.peak_viewers, B.raw.peak_viewers],
-        ['Avg viewers', A.raw.avg_viewers, B.raw.avg_viewers],
-        ['Chat msgs / hr', A.raw.messages_per_hour, B.raw.messages_per_hour],
-        ['Followers', A.raw.followers, B.raw.followers],
-        ['Clips', A.raw.clips, B.raw.clips],
-        ['Talk time %', A.raw.voice?.talk_ratio_pct ?? 0, B.raw.voice?.talk_ratio_pct ?? 0],
-        ['Hype words / hr', A.raw.voice?.hype_per_hour ?? 0, B.raw.voice?.hype_per_hour ?? 0],
-        ['Record', `${A.record.wins}–${A.record.losses}`, `${B.record.wins}–${B.record.losses}`, A.record.wins > B.record.wins ? 'a' : B.record.wins > A.record.wins ? 'b' : null],
-    ];
-    return `<details class="arena-tape"><summary><i class="fa-solid fa-scale-balanced"></i> Tale of the tape</summary><table>
-        <thead><tr><th>${_aEsc(A.persona.fighter_name)}</th><th></th><th>${_aEsc(B.persona.fighter_name)}</th></tr></thead>
-        <tbody>${rows.map(([label, a, b, better]) => {
-            const win = better !== undefined ? better : (Number(a) > Number(b) ? 'a' : Number(b) > Number(a) ? 'b' : null);
-            return `<tr><td class="${win === 'a' ? 'is-better' : ''}">${_aEsc(_aNum(a) === 'NaN' ? a : (typeof a === 'number' ? _aNum(a) : a))}</td><td class="arena-tape-label">${_aEsc(label)}</td><td class="${win === 'b' ? 'is-better' : ''}">${_aEsc(typeof b === 'number' ? _aNum(b) : b)}</td></tr>`;
-        }).join('')}</tbody></table></details>`;
-}
-
-async function _aRenderBattle(root, a, b) {
-    root.innerHTML = `<div class="arena-loading arena-loading-battle"><i class="fa-solid fa-bolt fa-beat"></i><span>Fighters are entering the arena…</span><small>the announcer is warming up</small></div>`;
-    const battle = await api(`/arena/battle/${encodeURIComponent(a)}/${encodeURIComponent(b)}`);
-    const A = battle.a, B = battle.b;
-    const side = (f, s) => `
-        <div class="arena-side arena-side-${s} ${battle.outcome.winner === s ? 'is-winner' : ''}" style="--fc:${_aEsc(f.user.profile_color || (s === 'a' ? '#8b5cf6' : '#ec4899'))}">
-            ${_aA(_aFighterLink(f.user), _aPortrait(f, 'md'))}
-            <h2>${_aEsc(f.persona.fighter_name)}</h2>
-            <p class="arena-title">${_aEsc(f.persona.title)}</p>
-            <p class="arena-handle">${_aEsc(f.user.display_name)} · ${_aEsc(f.persona.class)} · #${f.rank}</p>
-            <div class="arena-power"><b>${f.ratings.power}</b><small>PWR</small></div>
-            ${_aRatingBars(f.ratings)}
-            <p class="arena-side-taunt">“${_aEsc(f.persona.taunt)}” ${_aSpeakBtn(f.persona.taunt)}</p>
-            ${f.walkout ? `<p class="arena-walkout"><i class="fa-solid fa-microphone"></i> Walkout line: <q>${_aEsc(f.walkout.text)}</q> ${f.walkout.vod_id ? `<a href="/vod/${f.walkout.vod_id}?t=${f.walkout.start_sec}" onclick="return handleLinkClick(event, '/vod/${f.walkout.vod_id}?t=${f.walkout.start_sec}')" title="Hear them say it"><i class="fa-solid fa-play"></i> hear it</a>` : ''}</p>` : ''}
-        </div>`;
-    const h = battle.history || { fights: 0 };
-    root.innerHTML = `
-        <div class="arena-back">${_aA('/arena', '<i class="fa-solid fa-arrow-left"></i> Arena')} <span class="arena-note">Battle of ${_aEsc(battle.day)} — same matchup, same rounds all day; the crowd vote is the last round.</span></div>
-        <div class="arena-battle">
-            ${side(A, 'a')}
-            <div class="arena-center">
-                <div class="arena-vs">VS</div>
-                <div class="arena-scoreboard" id="arena-scoreboard"><span id="arena-score-a">0</span><span class="arena-score-sep">–</span><span id="arena-score-b">0</span></div>
-                <div class="arena-history">${h.fights ? `All-time: ${_aEsc(A.persona.fighter_name)} ${h.a_wins} – ${h.b_wins} ${_aEsc(B.persona.fighter_name)} (${h.fights} fight${h.fights === 1 ? '' : 's'})` : 'First meeting'}</div>
-                <div class="arena-commentary" id="arena-commentary"></div>
-                <div class="arena-vote" id="arena-vote"></div>
-                ${_aTape(A, B)}
-                <div class="arena-battle-actions">
-                    <button class="btn btn-ghost" id="arena-share"><i class="fa-solid fa-link"></i> Share</button>
-                    ${_aA(_aBattleLink(B.user, A.user), '<i class="fa-solid fa-right-left"></i> Swap corners', 'btn btn-ghost')}
-                    <button class="btn btn-ghost" id="arena-rematch"><i class="fa-solid fa-dice"></i> Random rematch</button>
-                    <button class="btn btn-ghost" id="arena-replay"><i class="fa-solid fa-rotate-left"></i> Replay</button>
-                </div>
-            </div>
-            ${side(B, 'b')}
-        </div>`;
-    _aBindSpeak(root);
-    _aPlayBattle(battle);
-    document.getElementById('arena-share').addEventListener('click', async () => {
-        const url = `${location.origin}${_aBattleLink(A.user, B.user)}`;
-        try { await navigator.clipboard.writeText(url); document.getElementById('arena-share').innerHTML = '<i class="fa-solid fa-check"></i> Copied'; } catch { prompt('Battle link', url); }
-    });
-    document.getElementById('arena-replay').addEventListener('click', () => { for (const t of _arenaBattleTimers) clearTimeout(t); _arenaBattleTimers = []; _aPlayBattle(battle); });
-    document.getElementById('arena-rematch').addEventListener('click', async () => {
-        const data = _arenaRoster || await api('/arena/fighters');
-        _arenaRoster = data;
-        const pool = (data.fighters || []).filter(f => f.user.id !== A.user.id);
-        if (!pool.length) return;
-        navigate(_aBattleLink(A.user, pool[Math.floor(Math.random() * pool.length)].user));
-    });
-}
-
-/** Reveal rounds one by one, then the finisher, verdict and the crowd vote. */
-function _aPlayBattle(battle) {
-    const A = battle.a, B = battle.b, c = battle.commentary;
-    const box = document.getElementById('arena-commentary');
-    const sa = document.getElementById('arena-score-a'), sb = document.getElementById('arena-score-b');
-    box.innerHTML = ''; sa.textContent = '0'; sb.textContent = '0';
-    document.getElementById('arena-vote').innerHTML = '';
-    let a = 0, b = 0;
-    const line = (html, cls = '', detail = null) => {
-        const d = document.createElement('div');
-        d.className = `arena-line ${cls}${detail ? ' is-expandable' : ''}`;
-        d.innerHTML = html + (detail ? `<div class="arena-line-detail">${detail}</div>` : '');
-        if (detail) d.addEventListener('click', () => d.classList.toggle('is-open'));
-        box.appendChild(d); box.scrollTop = box.scrollHeight;
-    };
-    const at = (ms, fn) => _arenaBattleTimers.push(setTimeout(fn, ms));
-    let t = 0;
-    line(`<i class="fa-solid fa-microphone-lines"></i> ${_aEsc(c.intro)}`, 'arena-line-intro');
-    battle.rounds.forEach((r, i) => {
-        t += 1400;
-        at(t, () => {
-            const winner = r.winner === 'a' ? A : B;
-            if (r.winner === 'a') a++; else b++;
-            sa.textContent = a; sb.textContent = b;
-            const meta = battle.stat_meta?.[r.stat];
-            const detail = `${_aEsc(ARENA_STAT_LABEL[r.stat])} rating ${A.ratings[r.stat]} vs ${B.ratings[r.stat]} (${_aEsc(meta?.desc || '')}) · roll ${r.a} vs ${r.b}, margin ${r.margin}${r.upset ? ' · the lower rating won this one' : ''} · tap to collapse`;
-            line(`<span class="arena-round-tag">R${i + 1} · ${_aEsc(r.label)}</span> ${_aEsc(c.rounds[i] || `${winner.persona.fighter_name} takes it.`)} <span class="arena-round-score">${r.a}–${r.b}${r.upset ? ' · UPSET' : ''}</span>`, `arena-line-${r.winner}${r.upset ? ' arena-line-upset' : ''}`, detail);
-            document.querySelector(`.arena-side-${r.winner}`)?.classList.add('is-hit');
-            setTimeout(() => document.querySelector(`.arena-side-${r.winner}`)?.classList.remove('is-hit'), 600);
-        });
-    });
-    t += 1400;
-    at(t, () => line(`<i class="fa-solid fa-burst"></i> ${_aEsc(c.finisher)}`, 'arena-line-finisher'));
-    t += 1200;
-    at(t, () => {
-        line(`<i class="fa-solid fa-gavel"></i> ${_aEsc(c.verdict)} ${_aSpeakBtn(`${c.intro} ${c.rounds.join(' ')} ${c.finisher} ${c.verdict}`)}`, 'arena-line-verdict');
-        _aBindSpeak(box);
-        _aRenderVote(battle);
-    });
-}
-
-function _aRenderVote(battle) {
-    const el = document.getElementById('arena-vote');
-    if (!el) return;
-    const A = battle.a, B = battle.b;
-    const render = (votes, outcome, yourVote) => {
-        const total = votes.a + votes.b;
-        const pa = total ? Math.round((votes.a / total) * 100) : 50;
-        const crowdLine = outcome.crowd ? `Crowd round → <b>${_aEsc((outcome.crowd === 'a' ? A : B).persona.fighter_name)}</b>` : 'Crowd round is still open — no votes yet';
-        const finalLine = outcome.winner
-            ? `<b>${_aEsc((outcome.winner === 'a' ? A : B).persona.fighter_name)}</b> wins ${outcome.a}–${outcome.b}${outcome.tiebreak ? ' (tiebreak: Power)' : ''}`
-            : 'Dead even — your vote decides it';
-        el.innerHTML = `
-            <div class="arena-vote-head">Who are you backing?</div>
-            <div class="arena-vote-buttons">
-                <button class="arena-vote-btn arena-vote-a ${yourVote === 'a' ? 'is-picked' : ''}" data-side="a">${_aEsc(A.persona.fighter_name)}</button>
-                <button class="arena-vote-btn arena-vote-b ${yourVote === 'b' ? 'is-picked' : ''}" data-side="b">${_aEsc(B.persona.fighter_name)}</button>
-            </div>
-            <div class="arena-vote-bar"><span style="width:${pa}%"></span></div>
-            <div class="arena-vote-tally"><span>${votes.a} vote${votes.a === 1 ? '' : 's'}</span><span>${votes.b} vote${votes.b === 1 ? '' : 's'}</span></div>
-            <div class="arena-vote-result">${crowdLine}<br>${finalLine}</div>`;
-        document.getElementById('arena-score-a').textContent = outcome.a;
-        document.getElementById('arena-score-b').textContent = outcome.b;
-        document.querySelectorAll('.arena-side').forEach(s => s.classList.remove('is-winner'));
-        if (outcome.winner) document.querySelector(`.arena-side-${outcome.winner}`)?.classList.add('is-winner');
-        el.querySelectorAll('.arena-vote-btn').forEach(btn => btn.addEventListener('click', async () => {
-            btn.disabled = true;
-            try {
-                const r = await api(`/arena/battle/${encodeURIComponent(A.user.username)}/${encodeURIComponent(B.user.username)}/vote`, { method: 'POST', body: { side: btn.dataset.side } });
-                render(r.votes, r.outcome, r.your_side);
-            } catch (err) {
-                btn.disabled = false;
-                if (typeof showToast === 'function') showToast(err?.message || 'Vote failed', 'error');
-            }
-        }));
-    };
-    render(battle.votes, battle.outcome, battle.your_vote || null);
-}
-
-// ── Trash Talk ───────────────────────────────────────────────
-
-const ARENA_TALK_SCORES = [['spice', 'Spice', 'fa-pepper-hot'], ['wit', 'Wit', 'fa-brain'], ['on_topic', 'On topic', 'fa-bullseye'], ['delivery', 'Delivery', 'fa-microphone'], ['crowd', 'Crowd', 'fa-people-group']];
-let _arenaTalkTimers = [];
-function _aTalkStop() { for (const t of _arenaTalkTimers) clearInterval(t); _arenaTalkTimers = []; }
-
-function _aStampClass(stamp) { return `arena-stamp arena-stamp--${String(stamp || '').toLowerCase()}`; }
-function _aCountdown(iso) {
-    const ms = Date.parse(iso) - Date.now();
-    if (ms <= 0) return 'new topic any moment';
-    const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
-    return h ? `${h}h ${m}m left` : `${m}m left`;
-}
-
-/** Topic card on the Arena home. */
-function _aRenderTalkCard(t) {
-    const el = document.getElementById('arena-talk-card');
-    if (!el || !t || !t.topic) return;
-    const top = t.entries && t.entries[0];
-    el.style.display = '';
-    el.innerHTML = `
-        <div class="arena-talk-card-head"><h2><i class="fa-solid fa-microphone-lines"></i> Trash Talk <small>${_aEsc(_aCountdown(t.topic.ends_at))}</small></h2>${_aA('/arena/talk', `<i class="fa-solid fa-fire"></i> ${t.can_enter ? 'Enter now' : 'Open'}`, 'btn btn-primary')}</div>
-        <p class="arena-talk-topic">“${_aEsc(t.topic.topic)}”</p>
-        <div class="arena-talk-card-foot">
-            <span>${t.entries?.length ? `${t.entries.length} entr${t.entries.length === 1 ? 'y' : 'ies'}` : 'No entries yet — be first'}${top ? ` · leading: <b>${_aEsc(top.fighter_name)}</b> ${top.total}/50 <span class="${_aStampClass(top.stamp)}">${_aEsc(top.stamp)}</span>` : ''}</span>
-            <span class="arena-note">Streamers talk on the mic or type it · the AI judges · chat types <code>!hype</code> · up to +${t.rules?.bonus_max || 12} POWER</span>
-        </div>`;
-}
-
-function _aScoreBars(scores, { animate = false } = {}) {
-    if (!scores) return '';
-    return `<div class="arena-talk-scores ${animate ? 'is-animated' : ''}">${ARENA_TALK_SCORES.map(([k, label, icon], i) => `
-        <div class="arena-talk-score" style="--i:${i}">
-            <span class="arena-talk-score-label"><i class="fa-solid ${icon}"></i> ${_aEsc(label)}</span>
-            <span class="arena-talk-score-track"><span class="arena-talk-score-fill" style="width:${Math.min(100, (Number(scores[k]) || 0) * 10)}%"></span></span>
-            <b>${Number(scores[k]) || 0}</b>
-        </div>`).join('')}</div>`;
-}
-
-function _aTalkEntry(e, { compact = false, mine = false, hypeable = true } = {}) {
-    const flagged = e.flagged;
-    const jump = e.vod_id && e.start_sec != null ? `<a class="arena-talk-hear" href="/vod/${e.vod_id}?t=${e.start_sec}" onclick="return handleLinkClick(event, '/vod/${e.vod_id}?t=${e.start_sec}')" title="Hear them say it"><i class="fa-solid fa-play"></i> hear it</a>` : '';
-    return `<div class="arena-talk-entry ${flagged ? 'is-flagged' : ''} ${mine ? 'is-mine' : ''}" data-id="${e.id}">
-        <div class="arena-talk-entry-head">
-            ${e.user ? _aA(_aFighterLink(e.user), `${_aPortrait({ user: e.user, image_url: e.image_url }, 'xs')}<span><strong>${_aEsc(e.fighter_name)}</strong><small>${_aEsc(e.user.display_name)}${e.rank ? ` · #${e.rank}` : ''} · ${e.source === 'mic' ? '<i class="fa-solid fa-microphone"></i> live mic' : '<i class="fa-solid fa-keyboard"></i> typed'}${e.topic ? ` · <em>${_aEsc(e.topic)}</em>` : ''}</small></span>`, 'arena-talk-who') : ''}
-            <div class="arena-talk-total"><b>${e.total}</b><small>/50</small> <span class="${_aStampClass(e.stamp)}">${_aEsc(e.stamp || '')}</span></div>
-        </div>
-        ${e.text ? `<blockquote class="arena-talk-text">${_aEsc(e.text)} ${_aSpeakBtn(e.text)} ${jump}</blockquote>` : '<p class="arena-talk-void"><i class="fa-solid fa-ban"></i> Voided by the judge — crossed the line.</p>'}
-        ${e.verdict ? `<p class="arena-talk-verdict"><i class="fa-solid fa-gavel"></i> ${_aEsc(e.verdict)}</p>` : ''}
-        ${!compact ? _aScoreBars(e.scores) : ''}
-        ${!compact && e.note && (mine || !flagged) ? `<p class="arena-talk-note">Judge's note: ${_aEsc(e.note)}</p>` : ''}
-        ${!compact && !flagged ? `<div class="arena-talk-hype"><button class="btn btn-ghost btn-sm arena-hype-btn" data-id="${e.id}" ${!hypeable || !e.hype_open ? 'disabled' : ''}><i class="fa-solid fa-fire"></i> Hype</button><span class="arena-talk-hype-count">${e.crowd_uniques} hyped · Crowd ${e.scores?.crowd ?? 0}/10</span><span class="arena-note">or type <code>!hype</code> in their chat</span></div>` : ''}
-    </div>`;
-}
-
-async function _aRenderTalk(root) {
-    _aTalkStop();
-    root.innerHTML = _aSpinner('Setting up the ring…');
-    const t = await api('/arena/talk');
-    const topic = t.topic;
-    const me = (typeof currentUser !== 'undefined' && currentUser) ? currentUser : null;
-    const rules = t.rules || {};
-    root.innerHTML = `
-        <div class="arena-back">${_aA('/arena', '<i class="fa-solid fa-arrow-left"></i> Arena')}</div>
-        <div class="arena-talk-hero">
-            <div class="arena-talk-hero-main">
-                <div class="arena-talk-kicker"><i class="fa-solid fa-microphone-lines"></i> Trash Talk · topic changes every ${rules.topic_slot_hours || 6} h · <span id="arena-talk-countdown">${_aEsc(_aCountdown(topic.ends_at))}</span></div>
-                <h1 class="arena-talk-topic-big">“${_aEsc(topic.topic)}”</h1>
-                ${topic.hint ? `<p class="arena-talk-hint"><i class="fa-solid fa-lightbulb"></i> ${_aEsc(topic.hint)}</p>` : ''}
-            </div>
-            <div class="arena-talk-how">
-                <h3>How it works</h3>
-                <ol>
-                    <li><b>Streamers</b> on the roster answer the topic — on the <b>live mic</b> (we transcribe what you say on stream) or by <b>typing</b> it.</li>
-                    <li>The <b>AI judge</b> scores Spice, Wit, On-topic and Delivery (0–10 each). Slurs or cruelty void the entry.</li>
-                    <li><b>Viewers</b> add the fifth score: type <code>!hype</code> in that streamer's chat (or tap Hype here). 3 people = 1 point, up to 10.</li>
-                    <li>Your total (/50) becomes a <b>Trash Talk bonus</b> on POWER — up to +${rules.bonus_max || 12}, fading over ${rules.bonus_days || 7} days.</li>
-                </ol>
-                <p class="arena-note">Chat commands: <code>!talk</code> topic · <code>!hype</code> · <code>!arena</code> card · <code>!vote a|b</code> main event · <code>!fight &lt;user&gt;</code></p>
-            </div>
-        </div>
-        <section class="arena-sessions-live" id="arena-live-sessions" style="display:none"></section>
-        <section id="arena-session-card"></section>
-        <section class="arena-talk-enter" id="arena-talk-enter"></section>
-        <section class="arena-board">
-            <div class="arena-board-head"><h2>This topic's entries <small class="arena-note">${t.entries.length} so far</small></h2>${t.ai ? '' : '<span class="arena-note">AI judge is off — heuristic scoring</span>'}</div>
-            <div class="arena-talk-list" id="arena-talk-entries">${t.entries.length ? t.entries.map(e => _aTalkEntry(e, { mine: me && e.user.id === me.id })).join('') : '<div class="arena-empty"><i class="fa-solid fa-microphone-slash"></i><p>Nobody has talked yet. The mic is right there.</p></div>'}</div>
-        </section>
-        ${t.hall_of_trash?.length ? `<section class="arena-board"><div class="arena-board-head"><h2><i class="fa-solid fa-trophy"></i> Hall of Trash <small class="arena-note">best lines, last 30 days</small></h2></div><div class="arena-talk-list">${t.hall_of_trash.map(e => _aTalkEntry(e, { compact: true })).join('')}</div></section>` : ''}`;
-    _aBindSpeak(root);
-    _aBindHype(root);
-    _aRenderTalkEnter(t, me);
-    _aRenderSessionCard(t, me);
-    api('/arena/talk/sessions').then(r => _aRenderLiveSessions(r.sessions || [])).catch(() => {});
-    _arenaTalkTimers.push(setInterval(() => { const el = document.getElementById('arena-talk-countdown'); if (el) el.textContent = _aCountdown(topic.ends_at); }, 30000));
-}
-
-function _aBindHype(root) {
-    root.querySelectorAll('.arena-hype-btn').forEach(btn => btn.addEventListener('click', async () => {
-        btn.disabled = true;
-        try {
-            const r = await api(`/arena/talk/${btn.dataset.id}/hype`, { method: 'POST' });
-            const entry = btn.closest('.arena-talk-entry');
-            entry.querySelector('.arena-talk-hype-count').textContent = `${r.crowd_uniques} hyped · Crowd ${r.crowd}/10`;
-            entry.querySelector('.arena-talk-total').innerHTML = `<b>${r.total}</b><small>/50</small> <span class="${_aStampClass(r.stamp)}">${_aEsc(r.stamp)}</span>`;
-            const crowdFill = entry.querySelectorAll('.arena-talk-score-fill')[4]; if (crowdFill) crowdFill.style.width = `${Math.min(100, r.crowd * 10)}%`;
-            const crowdNum = entry.querySelectorAll('.arena-talk-score b')[4]; if (crowdNum) crowdNum.textContent = r.crowd;
-            btn.innerHTML = r.added ? '<i class="fa-solid fa-fire"></i> Hyped!' : '<i class="fa-solid fa-check"></i> Already hyped';
-            entry.classList.add('is-hit'); setTimeout(() => entry.classList.remove('is-hit'), 600);
-        } catch (err) { btn.disabled = false; if (typeof showToast === 'function') showToast(err?.message || 'Hype failed', 'error'); }
-    }));
-}
-
-/** The entry panel: live mic (countdown + hot-mic feed) or typed, then the score reveal. */
-function _aRenderTalkEnter(t, me) {
-    const el = document.getElementById('arena-talk-enter');
-    if (!el) return;
-    if (!me) { el.innerHTML = `<div class="arena-talk-gate"><i class="fa-solid fa-right-to-bracket"></i> <b>Streamers:</b> sign in to enter. <b>Viewers:</b> hype an entry below, or type <code>!hype</code> in the streamer's chat.</div>`; return; }
-    if (!t.on_roster) { el.innerHTML = `<div class="arena-talk-gate"><i class="fa-solid fa-hand-fist"></i> You're not on the roster yet — stream once and you're in. Until then: hype away.</div>`; return; }
-    if (t.my_entry) { el.innerHTML = `<div class="arena-talk-gate is-done"><i class="fa-solid fa-circle-check"></i> You're in this round — <b>${t.my_entry.total}/50 · ${_aEsc(t.my_entry.stamp)}</b>. Next topic in ${_aEsc(_aCountdown(t.topic.ends_at))}. Tell chat to <code>!hype</code>.</div>`; return; }
-    const mic = t.mic || {};
-    el.innerHTML = `
-        <div class="arena-talk-panel">
-            <div class="arena-talk-panel-head"><h2><i class="fa-solid fa-fire"></i> Your turn</h2><span class="arena-note">one entry per topic</span></div>
-            <div class="arena-talk-modes">
-                <button class="arena-talk-mode ${mic.available ? 'active' : ''}" data-mode="mic" ${mic.available ? '' : 'disabled'} title="${mic.available ? 'Say it on stream — we transcribe it' : mic.reason === 'not_live' ? 'Go live to use the live mic' : 'Live, but no transcription yet — talk for a few seconds and reload, or type it'}"><i class="fa-solid fa-microphone"></i> Live mic${mic.available ? '' : mic.reason === 'not_live' ? ' <small>(go live)</small>' : ' <small>(no transcript yet)</small>'}</button>
-                <button class="arena-talk-mode ${mic.available ? '' : 'active'}" data-mode="text"><i class="fa-solid fa-keyboard"></i> Type it</button>
-            </div>
-            <div class="arena-talk-mode-body" id="arena-talk-mode-body"></div>
-            <div class="arena-talk-result" id="arena-talk-result"></div>
-        </div>`;
-    const body = document.getElementById('arena-talk-mode-body');
-    const renderMode = (mode) => {
-        el.querySelectorAll('.arena-talk-mode').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
-        if (mode === 'text') {
-            body.innerHTML = `<textarea id="arena-talk-text" maxlength="${t.rules.text_max}" rows="3" placeholder="Talk your talk… (${t.rules.text_max} characters, PG-13, petty not cruel)"></textarea>
-                <div class="arena-talk-actions"><span class="arena-note" id="arena-talk-count">0 / ${t.rules.text_max}</span><button class="btn btn-primary" id="arena-talk-submit"><i class="fa-solid fa-gavel"></i> Send it to the judge</button></div>`;
-            const ta = document.getElementById('arena-talk-text');
-            ta.addEventListener('input', () => { document.getElementById('arena-talk-count').textContent = `${ta.value.length} / ${t.rules.text_max}`; });
-            document.getElementById('arena-talk-submit').addEventListener('click', () => submit('text', ta.value));
-        } else {
-            body.innerHTML = `<div class="arena-mic">
-                <div class="arena-mic-status" id="arena-mic-status"><span class="arena-mic-dot"></span> Ready. Press start, then say it on stream — you have ${t.rules.mic_window_sec}s.</div>
-                <div class="arena-mic-feed" id="arena-mic-feed"><span class="arena-note">Hot mic — what the transcription hears shows up here (a few seconds behind).</span></div>
-                <div class="arena-talk-actions"><button class="btn btn-primary" id="arena-mic-start"><i class="fa-solid fa-microphone"></i> I'm about to cook</button><button class="btn btn-ghost" id="arena-mic-drop" disabled><i class="fa-solid fa-hand-point-down"></i> Drop the mic</button></div>
-            </div>`;
-            let poll = null;
-            document.getElementById('arena-mic-start').addEventListener('click', async () => {
-                try {
-                    await api('/arena/talk/mic/start', { method: 'POST' });
-                    document.getElementById('arena-mic-start').disabled = true; document.getElementById('arena-mic-drop').disabled = false;
-                    const status = document.getElementById('arena-mic-status'), feed = document.getElementById('arena-mic-feed');
-                    status.classList.add('is-live');
-                    poll = setInterval(async () => {
-                        try {
-                            const f = await api('/arena/talk/mic/feed');
-                            if (!f.active) return;
-                            status.innerHTML = `<span class="arena-mic-dot"></span> LIVE MIC · ${f.remaining_sec}s left · ${f.lines.length} line${f.lines.length === 1 ? '' : 's'} heard`;
-                            if (f.lines.length) feed.innerHTML = f.lines.map(l => `<div class="arena-mic-line"><span>${_aStamp(l.at)}</span>${_aEsc(l.text)}</div>`).join('');
-                            if (f.remaining_sec <= 0) { clearInterval(poll); poll = null; submit('mic'); }
-                        } catch { /* */ }
-                    }, 2500);
-                    _arenaTalkTimers.push(poll);
-                } catch (err) { if (typeof showToast === 'function') showToast(err?.message || 'Could not start', 'error'); }
-            });
-            document.getElementById('arena-mic-drop').addEventListener('click', () => { if (poll) { clearInterval(poll); poll = null; } submit('mic'); });
-        }
-    };
-    const submit = async (mode, text) => {
-        const res = document.getElementById('arena-talk-result');
-        el.querySelectorAll('button').forEach(b => b.disabled = true);
-        res.innerHTML = `<div class="arena-loading"><i class="fa-solid fa-gavel fa-shake"></i><span>The judge is reading…</span></div>`;
-        try {
-            const r = await api('/arena/talk/submit', { method: 'POST', body: { mode, text } });
-            const e = r.entry;
-            body.innerHTML = '';
-            res.innerHTML = `<div class="arena-talk-reveal ${e.flagged ? 'is-flagged' : ''}">
-                <div class="arena-talk-reveal-head"><span class="arena-talk-reveal-total"><b id="arena-reveal-total">0</b><small>/50</small></span><span class="${_aStampClass(e.stamp)} arena-stamp--big" id="arena-reveal-stamp">${_aEsc(e.stamp)}</span></div>
-                <blockquote class="arena-talk-text">${_aEsc(e.text || '')}</blockquote>
-                ${_aScoreBars(e.scores || { spice: 0, wit: 0, on_topic: 0, delivery: 0, crowd: 0 }, { animate: true })}
-                <p class="arena-talk-verdict"><i class="fa-solid fa-gavel"></i> ${_aEsc(e.verdict || '')}</p>
-                ${e.note ? `<p class="arena-talk-note">Judge's note: ${_aEsc(e.note)}</p>` : ''}
-                <p class="arena-note">${e.flagged ? 'This entry was voided and is hidden from others.' : `Now tell chat to type <code>!hype</code> — every 3 people add a Crowd point. Bonus lands on your POWER within a minute.`}</p>
-            </div>`;
-            const totalEl = document.getElementById('arena-reveal-total');
-            const start = performance.now(), dur = 1400;
-            const tick = (now) => { const p = Math.min(1, (now - start) / dur); totalEl.textContent = (e.total * (1 - Math.pow(1 - p, 3))).toFixed(p < 1 ? 1 : 0); if (p < 1) requestAnimationFrame(tick); else totalEl.textContent = e.total; };
-            requestAnimationFrame(tick);
-            const list = document.getElementById('arena-talk-entries');
-            if (list) { const empty = list.querySelector('.arena-empty'); if (empty) empty.remove(); list.insertAdjacentHTML('afterbegin', _aTalkEntry(e, { mine: true, hypeable: false })); _aBindSpeak(list); _aBindHype(list); }
-        } catch (err) {
-            res.innerHTML = `<div class="arena-talk-gate is-error"><i class="fa-solid fa-triangle-exclamation"></i> ${_aEsc(err?.message || 'The judge walked out.')}</div>`;
-            el.querySelectorAll('button').forEach(b => b.disabled = false);
-        }
-    };
-    el.querySelectorAll('.arena-talk-mode').forEach(b => b.addEventListener('click', () => renderMode(b.dataset.mode)));
-    renderMode(mic.available ? 'mic' : 'text');
-}
-
-// ── Live trash-talk sessions ─────────────────────────────────
-
-function _aSessionLink(u) { return `/arena/talk/${encodeURIComponent(u.username)}`; }
-
-function _aRenderLiveSessions(list) {
-    const el = document.getElementById('arena-live-sessions');
-    if (!el) return;
-    if (!list.length) { el.style.display = 'none'; return; }
-    el.style.display = '';
-    el.innerHTML = `<h2><span class="arena-live-dot"></span> Talking trash right now</h2><div class="arena-session-strip">${list.map(s => _aA(_aSessionLink(s.user), `<span class="arena-live-dot"></span><span><strong>${_aEsc(s.fighter_name)}</strong><small>${_aEsc(s.topic || '…')} · ${s.progress}%</small></span><span class="arena-session-lvl">LVL ${s.level}</span>`, 'arena-session-chip')).join('')}</div>`;
-}
-
-/** Streamer-side card on /arena/talk: start a live session, or jump to the running one. */
-async function _aRenderSessionCard(t, me) {
-    const el = document.getElementById('arena-session-card');
-    if (!el || !me || !t.on_roster) return;
-    let view = null;
-    try { view = await api(`/arena/talk/session/${encodeURIComponent(me.username)}`); } catch { view = null; }
-    const live = view?.session && view.session.status === 'live';
-    const mic = t.mic || {};
-    el.innerHTML = `<div class="arena-talk-panel">
-        <div class="arena-talk-panel-head"><h2><i class="fa-solid fa-tower-broadcast"></i> Live session <span class="arena-note" style="font-weight:400">power-level by talking trash on stream</span></h2>${live ? '<span class="arena-session-status"><span class="arena-live-dot"></span> live now</span>' : ''}</div>
-        <p class="arena-note" style="margin:0 0 10px">Start a session while you're live and the transcription does the rest: talk trash on the current topic, the judge scores it every ~30 s, the bar fills, the topic changes when you've cleared it, and every cleared topic counts for your POWER. Viewers push it with <code>!hype</code>.</p>
-        <div class="arena-session-controls">
-            ${live ? _aA(_aSessionLink(me), '<i class="fa-solid fa-satellite-dish"></i> Open your live console', 'btn btn-primary')
-                : `<button class="btn btn-primary" id="arena-session-start" ${mic.available ? '' : 'disabled'} title="${mic.available ? '' : mic.reason === 'not_live' ? 'Go live first' : 'Live, but no transcription yet — talk for a few seconds and reload'}"><i class="fa-solid fa-play"></i> Start live session${mic.available ? '' : mic.reason === 'not_live' ? ' <small>(go live first)</small>' : ' <small>(waiting for transcription)</small>'}</button>`}
-            ${view?.session && !live ? `<span class="arena-note">Last session: level ${view.session.level}, ${view.session.topics_cleared} topic${view.session.topics_cleared === 1 ? '' : 's'} cleared${view.session.end_reason ? ` (${_aEsc(String(view.session.end_reason).replace('_', ' '))})` : ''}</span>` : ''}
-        </div>
-    </div>`;
-    el.querySelector('#arena-session-start')?.addEventListener('click', async (e) => {
-        e.target.disabled = true;
-        try { await api('/arena/talk/session/start', { method: 'POST' }); navigate(_aSessionLink(me)); }
-        catch (err) { e.target.disabled = false; if (typeof showToast === 'function') showToast(err?.message || 'Could not start', 'error'); }
-    });
-}
-
-async function _aRenderSession(root, username) {
-    _aTalkStop();
-    root.innerHTML = _aSpinner('Tuning in…');
-    let v;
-    try { v = await api(`/arena/talk/session/${encodeURIComponent(username)}`); }
-    catch (err) { root.innerHTML = `<div class="arena-empty"><i class="fa-solid fa-user-slash"></i><p>${_aEsc(err?.message || 'No such fighter')}</p></div>`; return; }
-    const me = (typeof currentUser !== 'undefined' && currentUser) ? currentUser : null;
-    const mine = !!(me && me.id === v.user.id);
-    if (!v.session) {
-        root.innerHTML = `<div class="arena-back">${_aA('/arena/talk', '<i class="fa-solid fa-arrow-left"></i> Trash Talk')}</div><div class="arena-empty"><i class="fa-solid fa-microphone-slash"></i><p><strong>${_aEsc(v.fighter_name)}</strong> hasn't run a live trash-talk session yet.${mine ? ' Start one from the Trash Talk page while you are live.' : ''}</p>${_aA('/arena/talk', 'Back', 'btn')}</div>`;
-        return;
-    }
-    let last = null;
-    const render = (s) => {
-        const t = s.active_topic;
-        const live = s.status === 'live';
-        const xpInLevel = s.xp - (s.level - 1) * s.xp_per_level;
-        const prev = last; last = s;
-        if (prev && s.level > prev.level) _aLevelUp(s.level);
-        const clearedFlash = prev && s.topics_cleared > prev.topics_cleared;
-        const lines = s.recent_lines || [];
-        const newestAt = prev ? Math.max(0, ...(prev.recent_lines || []).map(l => l.at)) : -1;
-        root.innerHTML = `
-            <div class="arena-back">${_aA('/arena/talk', '<i class="fa-solid fa-arrow-left"></i> Trash Talk')} ${_aA(_aFighterLink(v.user), `<i class="fa-solid fa-id-card"></i> ${_aEsc(v.fighter_name)}`)}</div>
-            <div class="arena-session">
-                <div class="arena-session-main">
-                    <div class="arena-session-head">
-                        <div class="arena-session-who">${_aPortrait({ user: v.user, image_url: v.image_url }, 'sm')}<div><strong>${_aEsc(v.fighter_name)}</strong><div class="arena-session-status ${live ? '' : 'is-ended'}">${live ? '<span class="arena-live-dot"></span> talking trash live' : `session ended${s.end_reason ? ' · ' + _aEsc(String(s.end_reason).replace('_', ' ')) : ''}`}</div></div></div>
-                        <div class="arena-session-level"><div><b>LVL ${s.level}</b><small>TRASH LEVEL</small></div><div class="arena-xp"><div class="arena-xp-track"><span class="arena-xp-fill" style="width:${Math.min(100, (xpInLevel / s.xp_per_level) * 100)}%"></span></div><div class="arena-xp-label">${s.xp} XP · ${s.next_level_xp - s.xp} to next</div></div></div>
-                    </div>
-                    ${t ? `<div class="arena-session-topic ${clearedFlash ? 'is-cleared-flash' : ''}">
-                        <div class="arena-session-topic-kicker">Topic ${t.idx + 1} · ${_aEsc(t.tone || '')} <span>${live ? 'talk about this — the judge listens every ~30 s' : 'session over'}</span></div>
-                        <h2>“${_aEsc(t.topic)}”</h2>
-                        ${t.hint ? `<p class="arena-session-hint"><i class="fa-solid fa-lightbulb"></i> ${_aEsc(t.hint)}</p>` : ''}
-                        <div class="arena-progress"><span class="arena-progress-fill" style="width:${t.progress}%"></span></div>
-                        <div class="arena-progress-label"><span>${t.progress}% cleared · ${t.hits} hit${t.hits === 1 ? '' : 's'} · ${t.hypers} hyping</span><span>${t.progress >= 100 ? 'CLEARED' : `${100 - t.progress}% to the next topic`}</span></div>
-                        ${t.last_judgement ? `<div class="arena-session-verdict"><span class="${t.last_judgement.is_trash_talk ? 'is-hit' : 'is-miss'}">${t.last_judgement.is_trash_talk ? '<i class="fa-solid fa-fire"></i> that was trash talk' : '<i class="fa-solid fa-ellipsis"></i> not trash talk (yet)'}</span> · quality ${t.last_judgement.quality}/10 · “${_aEsc(t.last_judgement.about || '')}”${t.last_judgement.fallback ? ' · heuristic judge' : ''}</div>` : (live ? '<div class="arena-session-verdict"><span class="is-miss"><i class="fa-solid fa-ear-listen"></i> listening…</span> say something spicy</div>' : '')}
-                        ${t.best_line ? `<p class="arena-talk-note">Best line so far: “${_aEsc(t.best_line)}” ${t.best_vod_id ? `<a class="arena-talk-hear" href="/vod/${t.best_vod_id}?t=${t.best_line_sec}" onclick="return handleLinkClick(event, '/vod/${t.best_vod_id}?t=${t.best_line_sec}')"><i class="fa-solid fa-play"></i> hear it</a>` : ''}</p>` : ''}
-                        <div class="arena-session-controls">
-                            ${mine && live ? `<button class="btn btn-ghost" id="arena-session-skip"><i class="fa-solid fa-forward"></i> Skip topic</button><button class="btn btn-ghost" id="arena-session-stop"><i class="fa-solid fa-stop"></i> End session</button>` : ''}
-                            ${!mine && live ? `<button class="btn btn-primary" id="arena-session-hype"><i class="fa-solid fa-fire"></i> Hype</button><span class="arena-note">or type <code>!hype</code> in their chat</span>` : ''}
-                            ${_aA(_aChannelLink(v.user), '<i class="fa-solid fa-tv"></i> Watch the stream', 'btn btn-ghost')}
-                        </div>
-                    </div>` : ''}
-                    <div class="arena-session-feed">
-                        <div class="arena-session-feed-head"><span><i class="fa-solid fa-microphone"></i> Hot mic</span><span>${s.lines_seen} lines · ${_aNum(s.words_seen)} words this session</span></div>
-                        ${lines.length ? lines.map(l => `<div class="arena-session-line ${l.at > newestAt ? 'is-new' : ''}"><span>${_aStamp(l.at)}</span><span>${_aEsc(l.text)}</span>${l.vod_id ? `<a href="/vod/${l.vod_id}?t=${Math.max(0, l.sec - 2)}" onclick="return handleLinkClick(event, '/vod/${l.vod_id}?t=${Math.max(0, l.sec - 2)}')" title="Hear it"><i class="fa-solid fa-play"></i></a>` : '<span></span>'}</div>`).join('') : '<p class="arena-voice-empty">Nothing heard yet — the transcription runs a few seconds behind.</p>'}
-                    </div>
-                </div>
-                <div class="arena-session-side">
-                    <div class="arena-session-stats"><div class="arena-session-stat"><b>${s.topics_cleared}</b><span>topics cleared</span></div><div class="arena-session-stat"><b>${s.xp}</b><span>xp</span></div><div class="arena-session-stat"><b>${v.talk_bonus || 0}</b><span>power bonus</span></div></div>
-                    <div class="arena-session-card"><h3><i class="fa-solid fa-tags"></i> What they talked about</h3>${s.talked_about.length ? `<div class="arena-about">${s.talked_about.map(a => `<span class="${a.hit ? 'is-hit' : ''}" title="topic ${a.topic_idx + 1}">${_aEsc(a.text)}</span>`).join('')}</div>` : '<p class="arena-voice-empty">Tags appear after the first judged chunk.</p>'}</div>
-                    <div class="arena-session-card"><h3><i class="fa-solid fa-list-check"></i> Topics this session</h3>${s.cleared_topics.length ? `<div class="arena-cleared-list">${s.cleared_topics.slice().reverse().map(c => `<div class="arena-cleared ${c.status === 'skipped' ? 'is-skipped' : ''}"><b>${c.status === 'cleared' ? '<i class="fa-solid fa-check"></i>' : '<i class="fa-solid fa-forward"></i>'} ${_aEsc(c.topic)}</b>${c.best_line ? `<q>${_aEsc(c.best_line)}</q> ${c.best_vod_id ? `<a class="arena-talk-hear" href="/vod/${c.best_vod_id}?t=${c.best_line_sec}" onclick="return handleLinkClick(event, '/vod/${c.best_vod_id}?t=${c.best_line_sec}')"><i class="fa-solid fa-play"></i></a>` : ''}` : ''}<small>${c.status === 'cleared' ? `cleared · score ${c.score} · ${c.hits} hit${c.hits === 1 ? '' : 's'}` : 'skipped'}</small></div>`).join('')}</div>` : '<p class="arena-voice-empty">No topics cleared yet.</p>'}</div>
-                </div>
-            </div>`;
-        root.querySelector('#arena-session-skip')?.addEventListener('click', async () => { try { await api('/arena/talk/session/skip', { method: 'POST' }); refresh(); } catch (err) { if (typeof showToast === 'function') showToast(err?.message, 'error'); } });
-        root.querySelector('#arena-session-stop')?.addEventListener('click', async () => { if (!confirm('End your trash-talk session?')) return; try { await api('/arena/talk/session/stop', { method: 'POST' }); refresh(); } catch (err) { if (typeof showToast === 'function') showToast(err?.message, 'error'); } });
-        root.querySelector('#arena-session-hype')?.addEventListener('click', async (e) => {
-            e.target.disabled = true;
-            try { const r = await api(`/arena/talk/session/${encodeURIComponent(v.user.username)}/hype`, { method: 'POST' }); e.target.innerHTML = r.added ? '<i class="fa-solid fa-fire"></i> Hyped!' : '<i class="fa-solid fa-check"></i> Already hyped'; refresh(); }
-            catch (err) { e.target.disabled = false; if (typeof showToast === 'function') showToast(err?.message || 'Hype failed', 'error'); }
-        });
-    };
-    const refresh = async () => {
-        if (currentPage !== 'arena') return _aTalkStop();
-        try { const nv = await api(`/arena/talk/session/${encodeURIComponent(username)}`); if (nv.session) { v = nv; render(nv.session); } } catch { /* keep */ }
-    };
-    render(v.session);
-    if (v.session.status === 'live') _arenaTalkTimers.push(setInterval(refresh, 4000));
 }
 
 function _aLevelUp(level) {
