@@ -14674,3 +14674,9 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
     .arena-profile-custom .arena-quip { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: baseline; }
     .arena-profile-custom .arena-quip b { white-space: nowrap; }
 }
+
+/* bubble: name on its own line, text + speaker side by side */
+.arena-bubble { grid-template-columns: 1fr auto; grid-template-areas: "who who" "text speak"; }
+.arena-bubble-who { grid-area: who; }
+.arena-bubble-text { grid-area: text; }
+.arena-bubble-speak { grid-area: speak; align-self: center; }
