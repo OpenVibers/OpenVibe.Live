@@ -279,7 +279,7 @@ function assertCanSubmit(userId, ip) {
     }
 }
 
-const REFINE_SCHEMA = { name: 'arena_refine_topic', schema: { type: 'object', additionalProperties: false, required: ['subject', 'headline', 'tagline', 'hint', 'keywords', 'reject'], properties: {
+const REFINE_SCHEMA = { name: 'arena_refine_topic', schema: { type: 'object', additionalProperties: false, required: ['subject', 'headline', 'tagline', 'hint', 'keywords', 'threads', 'reject'], properties: {
     subject: { type: 'string', description: 'the umbrella subject, 1–4 words, punchy, dumb-funny' },
     headline: { type: 'string', description: 'tabloid headline ≤ 90 chars, inflammatory and stupid in a good way' },
     tagline: { type: 'string', description: '≤ 100 chars, who submitted it and why everyone should care' },
@@ -478,7 +478,7 @@ function scanChat() {
 
 const DISCOVER_SCHEMA = { name: 'arena_discover', schema: { type: 'object', additionalProperties: false, required: ['pulse', 'topics', 'bounties'], properties: {
     pulse: { type: 'string', description: 'One sentence ≤ 140 chars: what the community is on about right now, dumb hype-caster voice, name names, funny' },
-    topics: { type: 'array', minItems: 0, maxItems: 4, items: { type: 'object', additionalProperties: false, required: ['subject', 'headline', 'tagline', 'keywords', 'source', 'hint'], properties: {
+    topics: { type: 'array', minItems: 0, maxItems: 4, items: { type: 'object', additionalProperties: false, required: ['subject', 'headline', 'tagline', 'keywords', 'threads', 'source', 'hint'], properties: {
         subject: { type: 'string', description: 'The UMBRELLA subject, 1–4 words, a noun: the thing, person, group, joke or drama — e.g. "Cat enema drama", "Pakistanis", "Goosely", "Tent streams". Vague on purpose; the detail lives in threads.' },
         headline: { type: 'string', description: 'Tabloid headline ≤ 70 chars, inflammatory, stupid-funny' },
         tagline: { type: 'string', description: '≤ 80 chars: where it stands — who started it, who is on which end' },
@@ -533,6 +533,7 @@ async function discoverTopics({ force = false } = {}) {
     if (aiOn()) {
         try {
             const r = await llm.complete({ role: 'summary', kind: 'arena_discover', source: 'arena', system: DISCOVER_SYSTEM, user: JSON.stringify(input), json: DISCOVER_SCHEMA, maxTokens: 700, temperature: 0.9, timeoutMs: 30000 });
+            if (!r || !r.json) console.warn('[Arena] discover: model returned no usable JSON', r && r.text ? String(r.text).slice(0, 200) : '');
             if (r && r.json) { topics = r.json.topics || []; bounties = r.json.bounties || []; if (r.json.pulse) { _pulse = { text: clip(r.json.pulse, 200), at: Date.now(), sources: ['chat', 'on_mic'].filter(k => input[k].length) }; savePulse(); } }
         } catch (e) { console.warn('[Arena] discover:', e.message); }
     } else {
@@ -571,7 +572,7 @@ function pulse() { const p = loadPulse(); return { text: p.text, at: p.at ? new 
 
 // ── Lore ─────────────────────────────────────────────────────
 
-const LORE_SCHEMA = { name: 'arena_lore', schema: { type: 'object', additionalProperties: false, required: ['lore', 'headline', 'tagline', 'keywords'], properties: {
+const LORE_SCHEMA = { name: 'arena_lore', schema: { type: 'object', additionalProperties: false, required: ['lore', 'headline', 'tagline', 'keywords', 'threads'], properties: {
     lore: { type: 'string', description: 'SHORT: 2–4 punchy sentences, ≤ 450 characters total. The story so far: who brought it up, the wildest line (quote it verbatim with the username), who is on which end, the latest twist. Tabloid / fight-promoter voice, dumb, petty, funny. No filler, no recap of every line.' },
     headline: { type: 'string', description: 'Updated tabloid headline ≤ 70 chars' },
     tagline: { type: 'string', description: '≤ 80 chars: where it stands right now' },
