@@ -70,6 +70,7 @@ async function housekeeping() {
     try { await board.discoverTopics(); } catch (e) { console.warn('[Arena] discover:', e.message); }   // every 5 min, only with new material
     try { await board.loreSweep(3); } catch (e) { console.warn('[Arena] lore:', e.message); }           // only topics with ≥ 3 new moments
     try { await require('./chatters').cardSweep(); } catch (e) { console.warn('[Arena] yap cards:', e.message); } // ≤ 4 chatters per minute, level ≥ 3, once a day each
+    try { await require('./chatters').settleCoins(); } catch (e) { console.warn('[Arena] yap coins:', e.message); }   // retry level-up coins the wallet hasn't confirmed
 }
 
 function stop() {

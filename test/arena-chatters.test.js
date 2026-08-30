@@ -52,7 +52,9 @@ console.log('✅ moments → XP for accounts, anon and relay chatters');
     // Level up: force XP over the level-3 line; coins are attempted once per level (wallet is unlinked here → no-op, but marked paid).
     const r = ch.addXp(`user:${uid}`, 200, 'test');
     assert.ok(r.leveled_up && r.level >= 3, JSON.stringify(r));
-    assert.strictEqual(ch.row(`user:${uid}`).coins_paid_level, r.level, 'coins paid up to the new level (idempotent)');
+    await new Promise(res => setTimeout(res, 20));
+    assert.strictEqual(ch.row(`user:${uid}`).coins_paid_level, 0, 'wallet unlinked here → not marked paid (housekeeping retries)');
+    assert.strictEqual(await ch.settleCoins(), 0, 'retry is safe when the wallet cannot credit');
     const r2 = ch.addXp(`user:${uid}`, 1, 'test'); assert.strictEqual(r2.leveled_up, false);
     const lb = ch.leaderboard(5);
     assert.strictEqual(lb[0].key, `user:${uid}`); assert.ok(lb.length === 3 && lb[0].title === ch.titleFor(lb[0].level));
