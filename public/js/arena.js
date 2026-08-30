@@ -493,7 +493,7 @@ function _aTopicComposer() {
         const text = box.querySelector('#arena-composer-text').value.trim();
         if (!text) return;
         const btn = box.querySelector('#arena-composer-go'); btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Cooking…';
-        try { const r = await api('/arena/board/topics', { method: 'POST', body: { text } }); close(); _aToast(`📌 On the board: ${r.topic.headline || r.topic.text}`, 'success'); navigate(`/arena/topic/${r.topic.id}`); }
+        try { const r = await api('/arena/board/topics', { method: 'POST', body: { text } }); close(); _aToast(r.folded ? `📌 Already a thing — folded into “${r.topic.headline || r.topic.text}” as a thread` : `📌 On the board: ${r.topic.headline || r.topic.text}`, 'success'); navigate(`/arena/topic/${r.topic.id}`); }
         catch (err) { _aToast(err?.message || 'Failed', 'error'); btn.disabled = false; btn.textContent = 'Put it up'; }
     });
     document.body.appendChild(box);

@@ -142,7 +142,23 @@ board.ensureTables(); beef.ensureTables();
     const curry = db.get(`SELECT * FROM arena_topics WHERE keywords_json LIKE '%curry%'`);
     assert.ok(curry && curry.created_by === 'community');
     assert.ok(board.topicDetail(curry.id).mentions.chat >= 4, 'backfilled with the lines that started it');
-    console.log('✅ discovery from chat bursts + backfill');
+    // Same story = same subject: overlapping discoveries and submissions fold in as threads.
+    const mc = board.mergeCandidate('goosely drama', ['goosely', 'mic on']);
+    assert.strictEqual(mc, null, 'nothing about goosely yet → new subject is fine');
+    const gz = board.createTopic({ text: 'Grizzly bear drama', createdBy: 'community', creatorName: 'chat', keywords: ['grizzly bear', 'alts'], threads: [{ name: 'the alt accounts', keywords: ['alts'] }] });
+    assert.ok(board.mergeCandidate('grizzly vs everyone', ['grizzly bear', 'salty']), 'shares a roster name → same subject');
+    assert.ok(board.mergeCandidate('The alt account thing', ['alts', 'bots']) === null, 'one plain shared keyword is not enough');
+    assert.ok(board.mergeCandidate('Grizzly bear alt accounts', ['grizzly', 'alts', 'accounts']), 'two shared keywords → same subject');
+    const fold = board.foldInto(gz.id, { subject: 'grizzly vs everyone', keywords: ['salty'], hint: 'he is', threads: [{ name: 'the salty era', keywords: ['salty'] }, { name: 'the baby voice', keywords: ['baby voice'] }] });
+    assert.strictEqual(fold.id, gz.id);
+    const names2 = board.threadsOf(gz.id).map(x => x.name);
+    assert.ok(names2.includes('grizzly vs everyone') && names2.includes('the salty era'), `folded subject + its threads: ${names2}`);
+    assert.ok(!names2.includes('the baby voice'), 'a thread that is really another open subject is not added');
+    assert.ok(JSON.parse(db.get('SELECT keywords_json FROM arena_topics WHERE id = ?', [gz.id]).keywords_json).includes('salty'), 'keywords widen');
+    const sub2 = await board.submitTopic({ text: 'grizzly is salty again', userId: u2, ip: '8.8.8.8', creatorName: 'Grizzly', onRoster: true });
+    assert.strictEqual(sub2.folded, true); assert.strictEqual(sub2.id, gz.id, 'a user submission about an existing story folds in');
+    db.run(`UPDATE arena_topics SET status = 'archived' WHERE id = ?`, [gz.id]);
+    console.log('✅ discovery from chat bursts + backfill, duplicates fold into threads');
 
     // Bounty: a subject with a target; expires into the archive with a result.
     const bty = board.createTopic({ text: 'Bounty: Pixelqueen', createdBy: 'chat', creatorUserId: viewer, creatorName: 'Viewer', kind: 'bounty', targetUserId: u3, headline: 'WANTED' });

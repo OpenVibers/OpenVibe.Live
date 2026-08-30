@@ -49,15 +49,7 @@ const names = require('./names');
 let _aliasCache = { at: 0, list: [] };
 function aliases(roster) {
     if (Date.now() - _aliasCache.at < 60 * 1000) return _aliasCache.list;
-    const list = [];
-    for (const id of roster.order) {
-        const f = roster.byId[id];
-        const persona = parseJson(db.get('SELECT persona_json FROM arena_profiles WHERE user_id = ?', [id])?.persona_json);
-        const spoken = Array.isArray(persona?.spoken_as) ? persona.spoken_as : [];
-        list.push(...names.aliasEntries(id, [f.user.username, f.user.display_name, persona?.fighter_name, ...spoken]));
-    }
-    // Longer names first so "goosely" beats "goose" style prefixes.
-    list.sort((a, b) => b.name.length - a.name.length);
+    const list = names.rosterEntries(roster, (id) => { const persona = parseJson(db.get('SELECT persona_json FROM arena_profiles WHERE user_id = ?', [id])?.persona_json); return [persona?.fighter_name, ...(Array.isArray(persona?.spoken_as) ? persona.spoken_as : [])]; });
     _aliasCache = { at: Date.now(), list };
     return list;
 }
