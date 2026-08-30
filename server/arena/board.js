@@ -41,6 +41,7 @@ const LORE_MIN_INTERVAL_MS = 8 * 60 * 1000;
 const DISCOVER_INTERVAL_MS = 5 * 60 * 1000;
 const DISCOVER_MIN_NEW_LINES = 8;    // don't spend a call on a dead room
 const SCAN_WINDOW_MIN = 30;
+function scanWindowMin() { try { const v = Number(db.getSetting('arena_discover_window_min')); return v > 0 ? Math.min(v, 24 * 60) : SCAN_WINDOW_MIN; } catch { return SCAN_WINDOW_MIN; } }
 const USER_TOPIC_COOLDOWN_HOURS = 24;
 
 const STOPWORDS = new Set(('the a an and or but if then than that this these those there here what when where which who whom why how all any both each few more most other some such no nor not only own same so too very can will just should now is are was were be been being have has had having do does did doing would could might must shall may of at by for with about against between into through during before after above below to from up down in out on off over under again further once i me my myself we our ours you your yours he him his she her hers it its they them their what its lol lmao omg yeah yes okay ok like get got gets going go went thing things stuff really actually literally bro bruh dude guys chat stream streaming streamer live today tonight right know think mean want make made say said says people time way good bad new old big long still even also back much many'
@@ -448,8 +449,8 @@ const DISCOVER_SYSTEM = `You are the community consciousness of a live-streaming
 
 function discoverInput() {
     const out = { at: new Date().toISOString() };
-    try { out.chat = db.all(`SELECT c.username, c.message, c.stream_id FROM chat_messages c WHERE COALESCE(c.is_deleted, 0) = 0 AND COALESCE(c.source_platform, '') != 'ai' AND COALESCE(c.message_type, 'chat') = 'chat' AND c.timestamp >= datetime('now', ?) AND LENGTH(c.message) BETWEEN 8 AND 200 AND c.message NOT LIKE '!%' ORDER BY c.id DESC LIMIT 80`, [`-${SCAN_WINDOW_MIN} minutes`]).reverse().filter(r => !arena()._isBannedText(r.message)).map(r => clip(`[${r.stream_id ? 'stream' : 'global'}] ${r.username}: ${r.message}`, 180)); } catch { out.chat = []; }
-    try { out.on_mic = db.all(`SELECT u.username, e.text FROM stream_timeline_events e JOIN users u ON u.id = e.user_id WHERE e.kind = 'speech' AND e.created_at >= datetime('now', ?) AND LENGTH(e.text) BETWEEN 25 AND 220 ORDER BY e.id DESC LIMIT 60`, [`-${SCAN_WINDOW_MIN} minutes`]).reverse().filter(r => !arena()._isBannedText(r.text)).map(r => clip(`${r.username}: ${r.text}`, 200)); } catch { out.on_mic = []; }
+    try { out.chat = db.all(`SELECT c.username, c.message, c.stream_id FROM chat_messages c WHERE COALESCE(c.is_deleted, 0) = 0 AND COALESCE(c.source_platform, '') != 'ai' AND COALESCE(c.message_type, 'chat') = 'chat' AND c.timestamp >= datetime('now', ?) AND LENGTH(c.message) BETWEEN 8 AND 200 AND c.message NOT LIKE '!%' ORDER BY c.id DESC LIMIT 80`, [`-${scanWindowMin()} minutes`]).reverse().filter(r => !arena()._isBannedText(r.message)).map(r => clip(`[${r.stream_id ? 'stream' : 'global'}] ${r.username}: ${r.message}`, 180)); } catch { out.chat = []; }
+    try { out.on_mic = db.all(`SELECT u.username, e.text FROM stream_timeline_events e JOIN users u ON u.id = e.user_id WHERE e.kind = 'speech' AND e.created_at >= datetime('now', ?) AND LENGTH(e.text) BETWEEN 25 AND 220 ORDER BY e.id DESC LIMIT 60`, [`-${scanWindowMin()} minutes`]).reverse().filter(r => !arena()._isBannedText(r.text)).map(r => clip(`${r.username}: ${r.text}`, 200)); } catch { out.on_mic = []; }
     try { out.chat_timeline = db.all(`SELECT label, detail FROM chat_timeline_events WHERE created_at >= datetime('now', '-6 hours') ORDER BY id DESC LIMIT 8`).map(r => clip(`${r.label}: ${r.detail || ''}`, 140)); } catch { out.chat_timeline = []; }
     try { const g = db.getChatAiSummary('global', 0, 'rolling'); if (g) { const ov = parseJson(g.overview, null); out.global_chat_overview = clip(ov ? (ov.today || ov.alltime) : g.overview, 500); } } catch { /* */ }
     try { const roster = arena().loadRoster(); out.roster_usernames = roster.order.map(id => roster.byId[id].user.username); } catch { out.roster_usernames = []; }
@@ -504,14 +505,14 @@ async function discoverTopics({ force = false } = {}) {
         } catch { /* dup */ }
     }
     if (created.length) backfillMoments(created);
-    if (made) console.log(`[Arena] discovered ${made} subject(s) from the last ${SCAN_WINDOW_MIN} min`);
+    if (made) console.log(`[Arena] discovered ${made} subject(s) from the last ${scanWindowMin()} min`);
     return { made, pulse: _pulse.text };
 }
 
 /** Seed a fresh topic with the lines from the window that match it, so it never starts empty. */
 function backfillMoments(topics) {
-    const chat = db.all(`SELECT id, stream_id, user_id, username, message, source_platform, anon_id FROM chat_messages WHERE COALESCE(is_deleted, 0) = 0 AND COALESCE(message_type, 'chat') = 'chat' AND COALESCE(source_platform, '') != 'ai' AND timestamp >= datetime('now', ?) AND LENGTH(message) BETWEEN 6 AND 300 ORDER BY id ASC LIMIT 400`, [`-${SCAN_WINDOW_MIN * 4} minutes`]);
-    const speech = db.all(`SELECT e.stream_id, e.user_id, e.vod_id, e.start_sec, e.text, u.username FROM stream_timeline_events e LEFT JOIN users u ON u.id = e.user_id WHERE e.kind = 'speech' AND e.created_at >= datetime('now', ?) ORDER BY e.id ASC LIMIT 300`, [`-${SCAN_WINDOW_MIN * 4} minutes`]);
+    const chat = db.all(`SELECT id, stream_id, user_id, username, message, source_platform, anon_id FROM chat_messages WHERE COALESCE(is_deleted, 0) = 0 AND COALESCE(message_type, 'chat') = 'chat' AND COALESCE(source_platform, '') != 'ai' AND timestamp >= datetime('now', ?) AND LENGTH(message) BETWEEN 6 AND 300 ORDER BY id ASC LIMIT 400`, [`-${scanWindowMin() * 4} minutes`]);
+    const speech = db.all(`SELECT e.stream_id, e.user_id, e.vod_id, e.start_sec, e.text, u.username FROM stream_timeline_events e LEFT JOIN users u ON u.id = e.user_id WHERE e.kind = 'speech' AND e.created_at >= datetime('now', ?) ORDER BY e.id ASC LIMIT 300`, [`-${scanWindowMin() * 4} minutes`]);
     for (const t of topics) {
         const kws = normalizeKeywords(parseJson(t.keywords_json, [])).map(keywordRegex);
         let n = 0;
