@@ -14650,3 +14650,27 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
     .arena-numbers-compact { grid-template-columns: repeat(3, 1fr); }
     .arena-profile-custom { grid-template-columns: 1fr; }
 }
+
+/* ── Arena: phone layout for expanded ladder rows + quips (specificity matches the open rule) ── */
+.arena-quip-val { display: inline-block; min-width: 2.1em; text-align: right; color: var(--accent-light); font-variant-numeric: tabular-nums; margin-right: 4px; }
+.arena-row-bubbles { margin: 0 0 10px; }
+.arena-row-bubbles .arena-bubble { padding: 8px 10px; }
+.arena-row-bubbles .arena-bubble-text { font-size: 0.88rem; }
+@media (max-width: 700px) {
+    .arena-row.is-open .arena-row-expand { grid-template-columns: 1fr; gap: 12px; padding: 12px 0 4px; }
+    .arena-row-expand > div:first-child { display: flex; flex-direction: column; align-items: center; }
+    .arena-row-expand .arena-radar { max-width: 230px; width: 100%; margin: 0 auto; }
+    .arena-row-expand .arena-mini-record { text-align: center; }
+    .arena-row-lore.is-clamp { -webkit-line-clamp: 4; font-size: 0.9rem; }
+    .arena-row-expand .arena-quips, .arena-row-expand .arena-quips-custom { display: flex; flex-direction: column; gap: 6px; }
+    .arena-row-expand .arena-quip { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: baseline; font-size: 0.86rem; }
+    .arena-row-expand .arena-quip b { white-space: nowrap; }
+    .arena-row-expand .arena-quip span { color: var(--text-secondary); }
+    .arena-row-expand-actions { flex-direction: row; flex-wrap: wrap; }
+    .arena-row-expand-actions .btn { flex: 1 1 auto; justify-content: center; }
+    .arena-row-taunt { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .arena-row-main strong { white-space: normal; }
+    .arena-profile-custom .arena-quips-custom { display: flex; flex-direction: column; gap: 6px; }
+    .arena-profile-custom .arena-quip { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: baseline; }
+    .arena-profile-custom .arena-quip b { white-space: nowrap; }
+}
