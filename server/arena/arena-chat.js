@@ -62,6 +62,7 @@ function handle(chat, ws, client, cmd, parts) {
                 if (!text) return reply('Usage: !topic <something the streamers should talk shit about>');
                 const onRoster = !!arena.loadRoster().byId[client.user.id];
                 const t = await board.submitTopic({ text, userId: client.user.id, ip: client.ip, creatorName: who, onRoster });
+                if (t.folded) { reply(`📌 That's already on the board — folded into “${t.text}” as a new thread → ${base()}/arena/topic/${t.id}`); return; }
                 board.buildLore(t.id, { force: true }).catch(() => {});
                 reply(`📌 On the board as “${t.text}”${t.headline ? ` — ${t.headline}` : ''} → ${base()}/arena/topic/${t.id}`);
                 room(`📌 ${who} put a subject on the Arena board: “${t.text}” — say it on mic or keep it going in chat. ${base()}/arena/topic/${t.id}`);

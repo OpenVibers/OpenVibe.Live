@@ -162,4 +162,24 @@ function findMentions(text, entries, { excludeUserId = null, fuzzy = true } = {}
     return [...found.values()].sort((a, b) => b.rank - a.rank).map(({ rank, ...r }) => r);
 }
 
-module.exports = { variants, splitHandle, deleet, phonetic, levenshtein, aliasEntries, findMentions, variantRegex, COMMON };
+/**
+ * Alias entries for a whole roster, roster-aware: besides every spoken form of each name, a handle's
+ * FIRST token ("grizzly" for grizzly_bear, "japanese" is NOT for JapaneseOldGuy — common word) becomes
+ * an alias when it is ≥ 5 letters, not a common word, and no other fighter starts with it.
+ * `extra(id)` may add persona names / spoken_as forms per fighter.
+ */
+function rosterEntries(roster, extra = null) {
+    const firsts = new Map();
+    for (const id of roster.order) { const f = splitHandle(roster.byId[id].user.username)[0]; if (f && f.length >= 5 && !COMMON.has(f) && !/^\d+$/.test(f)) firsts.set(f, (firsts.get(f) || 0) + 1); }
+    const list = [];
+    for (const id of roster.order) {
+        const u = roster.byId[id].user;
+        const names = [u.username, u.display_name, ...(extra ? (extra(id) || []) : [])];
+        const first = splitHandle(u.username)[0];
+        if (first && firsts.get(first) === 1 && !variants(u.username).includes(first)) names.push(first);
+        list.push(...aliasEntries(id, names));
+    }
+    return list.sort((a, b) => b.name.length - a.name.length);
+}
+
+module.exports = { variants, splitHandle, deleet, phonetic, levenshtein, aliasEntries, rosterEntries, findMentions, variantRegex, COMMON };

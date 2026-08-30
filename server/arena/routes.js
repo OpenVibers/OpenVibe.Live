@@ -106,8 +106,8 @@ router.post('/board/topics', requireAuth, async (req, res) => {
     try {
         const onRoster = !!arena.loadRoster().byId[req.user.id];
         const t = await board.submitTopic({ text: req.body?.text, userId: req.user.id, ip: req.ip, creatorName: req.user.display_name || req.user.username, onRoster });
-        board.buildLore(t.id, { force: true }).catch(() => {});
-        res.json({ ok: true, topic: board.topicDetail(t.id) });
+        if (!t.folded) board.buildLore(t.id, { force: true }).catch(() => {});
+        res.json({ ok: true, folded: !!t.folded, topic: board.topicDetail(t.id) });
     } catch (err) { res.status(400).json({ error: err.message }); }
 });
 router.post('/board/bounty', requireAuth, (req, res) => {
