@@ -49,29 +49,43 @@ function _aStopTimers() {
 }
 function _aEvery(ms, fn) { const t = setInterval(() => { if (typeof currentPage !== 'undefined' && currentPage !== 'arena') return _aStopTimers(); fn(); }, ms); _arenaTimers.push(t); return t; }
 
-// ── Speech: hear the taunt / quotes read out (browser TTS, no server cost) ──
+// ── Speech: hear a line in that person's OpenVibe chat voice ──
+// /api/arena/voice/<user>?t=… returns the audio synthesized once in their equipped cosmetic voice (or
+// their per-identity chat voice); the server caches the file and the browser caches the URL for a
+// week, so a repeat click never re-synthesizes. Browser speech is only the offline fallback.
+let _arenaAudio = null;
 function _aStopSpeaking() {
+    try { if (_arenaAudio) { _arenaAudio.pause(); _arenaAudio.src = ''; } } catch { /* */ }
+    _arenaAudio = null;
     try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch { /* */ }
     document.querySelectorAll('.is-speaking').forEach(el => el.classList.remove('is-speaking'));
-    _arenaUtterance = null;
 }
-function _aSpeak(text, btn) {
-    if (!window.speechSynthesis || !text) return;
+function _aVoiceUrl(who, text) { return `/api/arena/voice/${encodeURIComponent(who || 'announcer')}?t=${encodeURIComponent(String(text).slice(0, 240))}`; }
+function _aSpeak(text, btn, who) {
+    if (!text) return;
     if (btn && btn.classList.contains('is-speaking')) { _aStopSpeaking(); return; }
     _aStopSpeaking();
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = 1.05; u.pitch = 0.9;
-    const voices = speechSynthesis.getVoices();
-    const pick = voices.find(v => /en/i.test(v.lang) && /Google|Daniel|Samantha|Alex/i.test(v.name)) || voices.find(v => /en/i.test(v.lang));
-    if (pick) u.voice = pick;
-    u.onend = u.onerror = () => { if (btn) btn.classList.remove('is-speaking'); _arenaUtterance = null; };
-    _arenaUtterance = u;
     if (btn) btn.classList.add('is-speaking');
-    speechSynthesis.speak(u);
+    const done = () => { if (btn) btn.classList.remove('is-speaking'); if (_arenaAudio === a) _arenaAudio = null; };
+    const a = new Audio(_aVoiceUrl(who, text));
+    _arenaAudio = a;
+    a.onended = done;
+    a.onerror = () => {
+        // Engine down / budget hit → browser voice so the button still does something.
+        if (_arenaAudio !== a) return;
+        _arenaAudio = null;
+        try {
+            if (!window.speechSynthesis) return done();
+            const u = new SpeechSynthesisUtterance(text); u.rate = 1.05; u.pitch = 0.9;
+            u.onend = u.onerror = done;
+            speechSynthesis.speak(u);
+        } catch { done(); }
+    };
+    a.play().catch(() => a.onerror && a.onerror());
 }
-function _aSpeakBtn(text, cls = 'arena-speak') { return `<button type="button" class="${cls}" data-speak="${_aEsc(text)}" title="Hear it (browser voice)"><i class="fa-solid fa-volume-high"></i></button>`; }
+function _aSpeakBtn(text, cls = 'arena-speak', who = null) { return `<button type="button" class="${cls}" data-speak="${_aEsc(text)}" data-voice="${_aEsc(who || '')}" title="${who ? `Hear it in ${_aEsc(who)}'s chat voice` : 'Hear the announcer'}"><i class="fa-solid fa-volume-high"></i></button>`; }
 function _aBindSpeak(root) {
-    root.querySelectorAll('[data-speak]').forEach(btn => btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); _aSpeak(btn.dataset.speak, btn); }));
+    root.querySelectorAll('[data-speak]').forEach(btn => btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); _aSpeak(btn.dataset.speak, btn, btn.dataset.voice || null); }));
 }
 
 /** Portrait: AI image when present, otherwise the avatar (or an initial) styled as a card. */
@@ -534,7 +548,7 @@ function _aRenderList(fighters) {
                 <div class="arena-row-expand-actions">
                     ${_aA(_aFighterLink(f.user), '<i class="fa-solid fa-id-card"></i> Full profile', 'btn btn-primary')}
                     ${f.live ? _aA(_aConsoleLink(f.user), '<i class="fa-solid fa-ear-listen"></i> Listen in', 'btn btn-ghost') : ''}
-                    ${_aSpeakBtn(f.persona.taunt, 'btn btn-ghost')}
+                    ${_aSpeakBtn(f.persona.taunt, 'btn btn-ghost', f.user.username)}
                 </div>
             </div>
         </div>`).join('');
@@ -555,7 +569,7 @@ function _aFeedLine(e, b) {
         <div class="arena-feed-body">
             ${e.announcer ? `<div class="arena-feed-announcer"><i class="fa-solid fa-bullhorn"></i> ${_aEsc(e.announcer)}</div>` : ''}
             ${e.text ? `<q>${_aEsc(e.text)}</q>` : ''}
-            <small>${sys ? _aEsc(e.kind) : `${_aEsc(side.fighter_name)}${e.quality != null ? ` · ${e.quality}/10` : ''}${e.about ? ` · ${_aEsc(e.about)}` : ''}${e.bonus ? ` · ${_aEsc(e.bonus)}` : ''}`} · ${_aEsc(_aAgo(e.at))} ${_aPlay(e.vod_id, e.sec)} ${e.text ? _aSpeakBtn(e.text, '') : ''}</small>
+            <small>${sys ? _aEsc(e.kind) : `${_aEsc(side.fighter_name)}${e.quality != null ? ` · ${e.quality}/10` : ''}${e.about ? ` · ${_aEsc(e.about)}` : ''}${e.bonus ? ` · ${_aEsc(e.bonus)}` : ''}`} · ${_aEsc(_aAgo(e.at))} ${_aPlay(e.vod_id, e.sec)} ${e.text ? _aSpeakBtn(e.text, '', side.user.username) : ''}</small>
         </div>
     </div>`;
 }
@@ -666,7 +680,7 @@ async function _aRenderTopic(root, id) {
                         <h3><i class="fa-solid fa-keyboard"></i> Loudest in chat</h3>
                         ${t.top_chatters?.length ? `<div class="arena-mini-list">${t.top_chatters.map((c, i) => `<div class="arena-mini-row"><span class="arena-rank">${i + 1}</span><span class="arena-chip"><span><strong>${_aEsc(c.username)}</strong></span></span><span class="arena-lvl">${c.n}</span></div>`).join('')}</div>` : '<p class="arena-note">Nobody yet. Type about it in any chat.</p>'}
                     </section>
-                    ${t.best_lines?.length ? `<section><h3><i class="fa-solid fa-quote-left"></i> Best lines</h3>${t.best_lines.map(l => `<div class="arena-quote"><div><q>${_aEsc(l.text)}</q><small>${_aEsc(l.username || 'anon')} · ${l.quality}/10</small></div><div class="arena-quote-actions">${_aPlay(l.vod_id, l.sec)} ${_aSpeakBtn(l.text, '')}</div></div>`).join('')}</section>` : ''}
+                    ${t.best_lines?.length ? `<section><h3><i class="fa-solid fa-quote-left"></i> Best lines</h3>${t.best_lines.map(l => `<div class="arena-quote"><div><q>${_aEsc(l.text)}</q><small>${_aEsc(l.username || 'anon')} · ${l.quality}/10</small></div><div class="arena-quote-actions">${_aPlay(l.vod_id, l.sec)} ${_aSpeakBtn(l.text, '', l.username)}</div></div>`).join('')}</section>` : ''}
                 </aside>
             </div>
         </div>`;
@@ -765,7 +779,7 @@ function _aVoiceCard(f) {
         ${quotes.length ? `<div class="arena-quotes">${quotes.map(p => `
             <div class="arena-quote">
                 <div><q>${_aEsc(p.text)}</q><small>${_aEsc(p.why || '')}${p.vod_id ? ` · at ${_aStamp(p.start_sec)}` : ''}</small></div>
-                <div class="arena-quote-actions">${_aPlay(p.vod_id, p.start_sec)} ${_aSpeakBtn(p.text, '')}</div>
+                <div class="arena-quote-actions">${_aPlay(p.vod_id, p.start_sec)} ${_aSpeakBtn(p.text, '', f.user.username)}</div>
             </div>`).join('')}</div>` : '<p class="arena-voice-empty">Quotes appear once enough lines have been transcribed.</p>'}
         ${q?._fallback ? '<p class="arena-note">Quotes picked by heuristic — the AI curates these once enabled.</p>' : ''}
     </div>`;
@@ -778,7 +792,7 @@ function _aLevelCard(f) {
         <div class="arena-level-head"><span class="arena-lvl arena-lvl-big">TRASH LVL ${l.level || 1}</span><span class="arena-note">${l.xp || 0} XP · ${l.recent_xp || 0} this week${f.ratings.talk_bonus ? ` · <b>+${f.ratings.talk_bonus} POWER</b> from the mouth` : ''}</span></div>
         <span class="arena-xp-track"><span class="arena-xp-fill" style="width:${pct}%"></span></span>
         <div class="arena-level-nums"><span><b>${l.beef_hits || 0}</b><small>beef hits</small></span><span><b>${l.topic_moments || 0}</b><small>moments</small></span><span><b>${l.topics_joined || 0}</b><small>subjects</small></span><span><b>${f.record.wins}–${f.record.losses}${f.record.draws ? `–${f.record.draws}` : ''}</b><small>beef record</small></span></div>
-        ${l.best_line ? `<div class="arena-quote"><div><q>${_aEsc(l.best_line.text)}</q><small>best line on record · ${l.best_line.score}/10</small></div><div class="arena-quote-actions">${_aPlay(l.best_line.vod_id, l.best_line.sec)} ${_aSpeakBtn(l.best_line.text, '')}</div></div>` : ''}
+        ${l.best_line ? `<div class="arena-quote"><div><q>${_aEsc(l.best_line.text)}</q><small>best line on record · ${l.best_line.score}/10</small></div><div class="arena-quote-actions">${_aPlay(l.best_line.vod_id, l.best_line.sec)} ${_aSpeakBtn(l.best_line.text, '', f.user.username)}</div></div>` : ''}
     </div>`;
 }
 
@@ -826,8 +840,8 @@ async function _aRenderFighter(root, username) {
                         <div class="arena-move arena-move-weak"><span class="arena-move-kind">Weakness</span><b>${_aEsc(p.weakness)}</b></div>
                     </div>
                     <div class="arena-flavor">
-                        <span><i class="fa-solid fa-comment"></i> “${_aEsc(p.taunt)}” ${_aSpeakBtn(p.taunt)}</span>
-                        ${(p.taunts || []).map(x => `<span><i class="fa-solid fa-fire"></i> “${_aEsc(x)}” ${_aSpeakBtn(x)}</span>`).join('')}
+                        <span><i class="fa-solid fa-comment"></i> “${_aEsc(p.taunt)}” ${_aSpeakBtn(p.taunt, 'arena-speak', f.user.username)}</span>
+                        ${(p.taunts || []).map(x => `<span><i class="fa-solid fa-fire"></i> “${_aEsc(x)}” ${_aSpeakBtn(x, 'arena-speak', f.user.username)}</span>`).join('')}
                         ${p.typing_style ? `<span class="arena-note"><i class="fa-solid fa-keyboard"></i> ${_aEsc(p.typing_style)}</span>` : ''}
                         <span><i class="fa-solid fa-music"></i> ${_aEsc(p.entrance_music)}</span>
                         <span><i class="fa-solid fa-quote-left"></i> ${_aEsc(p.catchphrase)}</span>
@@ -902,7 +916,7 @@ function _aLightbox(f) {
             <div class="arena-lightbox-text">
                 <h3>${_aEsc(f.persona.fighter_name)}</h3>
                 <p>${_aEsc(f.persona.title)}</p>
-                <p>How this was painted: the AI wrote the persona from the stream's own data, described the <em>scene</em> of the latest thumbnail (never the person), and an image model drew a fictional character from that.${f.image_model ? ` Model: <code>${_aEsc(f.image_model)}</code>.` : ''}</p>
+                <p>How this was painted: the AI wrote the persona from the stream's own data, then an image model restyled real frames from their streams — their setup, gear, lighting, silhouette — into a character-select caricature.${f.image_model ? ` Model: <code>${_aEsc(f.image_model)}</code>.` : ''}</p>
                 ${f.image_prompt ? `<div class="arena-lightbox-prompt">${_aEsc(f.image_prompt)}</div>` : ''}
             </div>
         </div>`;
