@@ -156,7 +156,7 @@ function recordHit(speakerId, targetId, hit) {
     // Bounty: anyone with a bounty on their head pays double to whoever collects.
     const bounty = board().openBountyOn(targetId);
     board().addXp(speakerId, quality * XP_BEEF_HIT * (bounty ? 2 : 1), 'beef_hit', beef.id, { beefHit: true, line: hit.best_line, lineScore: quality, lineVodId: hit.vod_id, lineSec: hit.sec });
-    if (bounty) board().recordBountyHit(speakerId, bounty, quality);
+    if (bounty) board().recordBountyHit(speakerId, bounty, quality, hit.best_line || null);
     return { beef: db.get('SELECT * FROM arena_beefs WHERE id = ?', [beef.id]), opened, side, first_response: firstResponse, bounty: !!bounty };
 }
 
@@ -187,29 +187,10 @@ function resolve(beef, resolution, winnerId) {
     const feed = pushFeed(beef, { kind: resolution === 'forfeit' ? 'forfeit' : 'end', side: winnerId == null ? null : (winnerId === beef.a_user_id ? 'a' : 'b'), text: null, upset: !!upset });
     db.run(`UPDATE arena_beefs SET status = 'resolved', resolution = ?, winner_user_id = ?, resolved_at = CURRENT_TIMESTAMP, on_clock = NULL, clock_until = NULL, feed_json = ?, upset = ?, result_headline = ? WHERE id = ? AND status = 'open'`, [resolution, winnerId, feed, upset, templateHeadline(resolution === 'forfeit' ? 'forfeit' : 'score', ctx), beef.id]);
     if (winnerId) board().addXp(winnerId, XP_BEEF_WIN + (upset ? 20 : 0), upset ? 'beef_upset_win' : 'beef_win', beef.id);
-    // Viewers who picked a side: settle their clout.
-    const voters = db.all('SELECT voter_key, side FROM arena_beef_sides WHERE beef_id = ?', [beef.id]);
-    const winSide = winnerId == null ? null : (winnerId === beef.a_user_id ? 'a' : 'b');
-    try { board().settleClout && board().settleClout(voters.map(v => v.voter_key), new Set(voters.filter(v => v.side === winSide).map(v => v.voter_key))); } catch { /* */ }
     console.log(`[Arena] beef #${beef.id} resolved: ${resolution}${winnerId ? ` winner user ${winnerId}` : ' draw'}${upset ? ' UPSET' : ''}`);
     const id = beef.id;
     headlineFor(resolution, ctx).then(h => { if (h) db.run('UPDATE arena_beefs SET result_headline = ? WHERE id = ?', [h, id]); }).catch(() => {});
     try { arena().loadRoster(true); } catch { /* */ }
-}
-
-/** Sides: viewers back a fighter in an open beef (`!side <name>` in chat or the button). */
-function pickSide(beefId, voterKey, side, userId = null) {
-    ensureTables();
-    const beef = db.get('SELECT * FROM arena_beefs WHERE id = ? AND status = ?', [beefId, 'open']);
-    if (!beef) throw new Error('No open beef with that id');
-    if (!['a', 'b'].includes(side)) throw new Error('side must be a or b');
-    db.run('INSERT INTO arena_beef_sides (beef_id, voter_key, side, user_id) VALUES (?, ?, ?, ?) ON CONFLICT(beef_id, voter_key) DO UPDATE SET side = excluded.side, created_at = CURRENT_TIMESTAMP', [beefId, voterKey, side, userId]);
-    return sidesTally(beefId);
-}
-function sidesTally(beefId) {
-    const r = db.get(`SELECT SUM(side = 'a') AS a, SUM(side = 'b') AS b FROM arena_beef_sides WHERE beef_id = ?`, [beefId]) || {};
-    const a = r.a || 0, b = r.b || 0;
-    return { a, b, share_a: a + b ? Math.round((a / (a + b)) * 100) : 50 };
 }
 
 /** Current win streak (consecutive resolved beefs won). */
@@ -293,7 +274,6 @@ function beefView(beef, roster) {
         responded: !!beef.responded,
         opener_line: beef.opener_line, headline: beef.headline, result_headline: beef.result_headline,
         rematch: !!beef.rematch, upset: !!beef.upset, bounty: !!beef.bounty_topic_id,
-        sides: sidesTally(beef.id),
         history: rivalry(beef.a_user_id, beef.b_user_id),
         streaks: { a: streakFor(beef.a_user_id), b: streakFor(beef.b_user_id) },
         feed: parseJson(beef.feed_json, []).slice(-14),
@@ -325,6 +305,6 @@ function forUser(userId, limit = 8) {
 
 module.exports = {
     ensureTables, recordHit, hype, tick, recordFor, recentWins, list, get, forUser, openBeefBetween, openBeefsFor, beefView, totals,
-    pickSide, sidesTally, streakFor, rivalry, rivalriesFor, nameOf,
+    streakFor, rivalry, rivalriesFor, nameOf,
     RESPONSE_LIVE_MIN, RESPONSE_OFFLINE_HOURS, MAX_BEEF_HOURS, CROWD_MAX, XP_BEEF_WIN, XP_BEEF_OPEN, XP_BEEF_HIT,
 };

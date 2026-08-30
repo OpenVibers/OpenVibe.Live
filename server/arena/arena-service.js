@@ -272,6 +272,9 @@ function gatherContext(userId) {
     catch { try { ctx.vods = db.all('SELECT title FROM vods WHERE user_id = ? ORDER BY created_at DESC LIMIT 5', [userId]).map(v => ({ title: v.title })); } catch { ctx.vods = []; } }
     try { ctx.titles = db.all('SELECT DISTINCT title FROM streams WHERE user_id = ? AND duration_seconds > 0 ORDER BY started_at DESC LIMIT 8', [userId]).map(r => r.title).filter(Boolean); } catch { ctx.titles = []; }
     try { ctx.said = db.all(`SELECT text FROM stream_timeline_events WHERE user_id = ? AND kind = 'speech' AND LENGTH(text) BETWEEN 30 AND 140 ORDER BY created_at DESC LIMIT 24`, [userId]).map(r => r.text).filter(t => !isBannedText(t)).slice(0, 12); } catch { ctx.said = []; }
+    // How they type when they are a chatter themselves (their own chat lines, newest first) — the taunts copy this voice.
+    try { ctx.typed = db.all(`SELECT message FROM chat_messages WHERE user_id = ? AND COALESCE(is_deleted, 0) = 0 AND message NOT LIKE '!%' AND LENGTH(message) BETWEEN 6 AND 200 ORDER BY id DESC LIMIT 40`, [userId]).map(r => r.message).filter(t => !isBannedText(t)).slice(0, 20); } catch { ctx.typed = []; }
+    try { ctx.chat_rooms = db.all(`SELECT u.username, COUNT(*) AS n FROM chat_messages c JOIN streams s ON s.id = c.stream_id JOIN users u ON u.id = s.user_id WHERE c.user_id = ? AND s.user_id != ? GROUP BY u.username ORDER BY n DESC LIMIT 4`, [userId, userId]).map(r => `${r.username} (${r.n} msgs)`); } catch { ctx.chat_rooms = []; }
     return ctx;
 }
 
@@ -279,7 +282,7 @@ const PERSONA_SCHEMA = {
     name: 'arena_persona',
     schema: {
         type: 'object', additionalProperties: false,
-        required: ['fighter_name', 'title', 'class', 'element', 'signature_move', 'special', 'weakness', 'taunt', 'lore', 'catchphrase', 'entrance_music', 'stat_quips'],
+        required: ['fighter_name', 'title', 'class', 'element', 'signature_move', 'special', 'weakness', 'taunt', 'taunts', 'typing_style', 'lore', 'catchphrase', 'entrance_music', 'stat_quips'],
         properties: {
             fighter_name: { type: 'string', description: 'Arena ring name, 2–5 words, based on the streamer' },
             title: { type: 'string', description: 'Epithet like "The Midnight Menace of Cozy Corner"' },
@@ -287,13 +290,16 @@ const PERSONA_SCHEMA = {
             element: { type: 'string', description: 'Single word element/vibe' },
             signature_move: { type: 'object', additionalProperties: false, required: ['name', 'description'], properties: { name: { type: 'string' }, description: { type: 'string' } } },
             special: { type: 'object', additionalProperties: false, required: ['name', 'description'], properties: { name: { type: 'string' }, description: { type: 'string' } } },
-            weakness: { type: 'string' }, taunt: { type: 'string', description: 'One-line trash talk they would say to an opponent' },
+            weakness: { type: 'string' }, taunt: { type: 'string', description: 'Their signature ragebait line: one sentence, written EXACTLY the way this person types/talks (their punctuation, caps, slang, emoji habits, typos), aimed at rivals or their chat, designed to make people reply' },
+            taunts: { type: 'array', minItems: 3, maxItems: 3, items: { type: 'string' }, description: 'three more ragebait/troll lines in their own voice: one at a specific rival from the roster, one at their own chat, one about a topic they will not shut up about' },
+            typing_style: { type: 'string', description: '≤ 12 words describing how they type/talk (e.g. "all lowercase, no punctuation, calls everyone bud")' },
             lore: { type: 'string', description: '2–3 sentence character-select bio' }, catchphrase: { type: 'string' }, entrance_music: { type: 'string' },
             stat_quips: { type: 'object', additionalProperties: false, required: STAT_KEYS, properties: Object.fromEntries(STAT_KEYS.map(k => [k, { type: 'string', description: `≤ 8 words explaining their ${k} rating in character` }])) },
         },
     },
 };
 const PERSONA_SYSTEM = `You write fighting-game "character select" bios for a live-streaming site's Arena, where streamers rank each other and talk shit about each other on stream. This is a banter arena: be savage, profane, petty and funny — roast their habits, their chat, their schedule, their takes, their gimmicks, how they talk (transcript lines are provided). Trolling energy is welcome; make it quotable.
+TAUNTS ARE THE MOST IMPORTANT PART. They must be RAGEBAIT: provocative, trolly, specific, the kind of line that makes a rival or a chat reply instantly — never generic gamer fluff like "try to keep up". Write every taunt in THIS PERSON'S OWN VOICE: study \`things_they_typed_in_chat\` (how they type as a chatter: caps, punctuation, slang, emoji, typos, pet names) and \`things_they_said_on_stream\`, plus \`ai_overview\` and \`chat_ai_notes\` (what they are known for, their opinions, their beefs, what they will not shut up about) and \`rooms_they_lurk_in\` (whose chat they hang in). Reference real recurring subjects, rivals from the roster and their obsessions. If there is no chat/transcript data, infer a voice from the overview and category and say so in typing_style.
 This platform does not censor language — offensive and taboo words are allowed. The only hard line: no direct threats of violence, nothing sexual about minors, no doxxing. Everything is Arena lore, not real-life claims. Output only the JSON.`;
 
 async function generatePersona(userId, { force = false } = {}) {
@@ -310,8 +316,10 @@ async function generatePersona(userId, { force = false } = {}) {
         numbers: { hours_live_90d: entry.raw.hours, peak_viewers_90d: entry.raw.peak_viewers, avg_viewers: entry.raw.avg_viewers, chat_messages_per_hour: entry.raw.messages_per_hour, followers: entry.raw.followers, clips: entry.raw.clips, all_time_hours: entry.raw.all_time_hours, all_time_peak: entry.raw.all_time_peak,
             on_mic: entry.raw.voice.has_data ? { talk_share_pct: entry.raw.voice.talk_ratio_pct, words_per_minute: entry.raw.voice.wpm, hype_words_per_hour: entry.raw.voice.hype_per_hour, laughs_per_hour: entry.raw.voice.laughs_per_hour, stream_sounds: entry.raw.voice.top_sounds.map(s => s.label) } : 'no transcript data yet' },
         ai_overview: ctx.overview, recent_stream_titles: ctx.titles, what_the_camera_saw_recently: ctx.memories, chat_ai_notes: ctx.chat_notes, recent_vods: ctx.vods, things_they_said_on_stream: ctx.said,
+        things_they_typed_in_chat: ctx.typed, rooms_they_lurk_in: ctx.chat_rooms,
+        roster_rivals: (() => { try { return loadRoster().order.filter(id => id !== userId).slice(0, 8).map(id => { const p = parseJson(profileRow(id)?.persona_json); return `${loadRoster().byId[id].user.username}${p?.fighter_name ? ` (${p.fighter_name})` : ''}`; }); } catch { return []; } })(),
     };
-    const r = await llm.complete({ role: 'summary', kind: 'arena_persona', source: 'arena', ownerUserId: userId, system: PERSONA_SYSTEM, user: `Write the Arena persona for this fighter. Facts (JSON):\n${JSON.stringify(facts)}`, json: PERSONA_SCHEMA, maxTokens: 950, temperature: 0.95, timeoutMs: 30000 });
+    const r = await llm.complete({ role: 'summary', kind: 'arena_persona', source: 'arena', ownerUserId: userId, system: PERSONA_SYSTEM, user: `Write the Arena persona for this fighter. Facts (JSON):\n${JSON.stringify(facts)}`, json: PERSONA_SCHEMA, maxTokens: 1200, temperature: 0.95, timeoutMs: 30000 });
     const persona = r && r.json && r.json.fighter_name ? r.json : null;
     if (!persona) { console.warn(`[Arena] persona generation failed for user ${userId}`); return row ? parseJson(row.persona_json) : null; }
     db.run(`INSERT INTO arena_profiles (user_id, persona_json, persona_model, persona_generated_at, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -330,7 +338,7 @@ function fallbackPersona(entry) {
         signature_move: { name: `${STAT_META[best].label} Surge`, description: `Turns ${STAT_META[best].desc} into raw damage.` },
         special: { name: 'Go Live', description: 'Hits the button. The arena fills up.' }, weakness: 'Sleep schedules.', taunt: 'Chat, are you seeing this?',
         lore: `${entry.user.display_name} shows up, streams, and leaves the leaderboard slightly different than they found it.`,
-        catchphrase: 'Let him cook.', entrance_music: 'Untitled Loop (feat. Notification Sound)',
+        catchphrase: 'Let him cook.', entrance_music: 'Untitled Loop (feat. Notification Sound)', taunts: [], typing_style: null,
         stat_quips: Object.fromEntries(STAT_KEYS.map(k => [k, STAT_META[k].desc])), _fallback: true,
     };
 }

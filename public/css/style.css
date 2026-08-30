@@ -14360,3 +14360,85 @@ a.arena-tag:hover { color: var(--accent-light); }
 
 .arena-leaderboard { margin: 0 0 28px; }
 .arena-lore { display: flex; flex-direction: column; gap: 10px; }
+
+/* ── Arena v2.1: lore board (pulse, featured subject, feed rows, moments) ── */
+.arena-pulse-inner { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center; padding: 14px 18px; border-radius: 16px; border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border)); background: linear-gradient(100deg, color-mix(in srgb, var(--accent) 22%, var(--bg-card)) 0%, var(--bg-card) 60%); }
+.arena-pulse-icon { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 16px; background: color-mix(in srgb, var(--accent) 28%, transparent); color: var(--accent-light); font-weight: 900; font-size: 0.6rem; letter-spacing: 0.14em; }
+.arena-pulse-icon i { font-size: 1.5rem; margin-bottom: 4px; }
+.arena-pulse-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.arena-pulse-text { font-size: 1.12rem; font-weight: 700; line-height: 1.35; }
+.arena-pulse-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 0.75rem; color: var(--text-muted); }
+.arena-pulse-stat { display: inline-flex; gap: 5px; align-items: center; padding: 3px 9px; border-radius: 999px; background: var(--bg-tertiary); color: var(--text-secondary); }
+.arena-pulse-stat b { color: var(--text-primary); }
+.arena-pulse-stat.is-hot { background: rgba(249, 115, 22, 0.16); color: #fb923c; } .arena-pulse-stat.is-hot b { color: #fb923c; }
+.arena-pulse-when { margin-left: auto; }
+
+.arena-featured { display: grid; grid-template-columns: 1.6fr 1fr; gap: 0; border-radius: 18px; border: 1px solid rgba(249, 115, 22, 0.45); background: linear-gradient(135deg, rgba(249, 115, 22, 0.08), var(--bg-card) 45%); overflow: hidden; margin-bottom: 12px; }
+.arena-featured-main { display: flex; flex-direction: column; gap: 10px; padding: 18px 20px; min-width: 0; }
+.arena-featured-side { display: flex; flex-direction: column; gap: 8px; padding: 18px; border-left: 1px solid var(--border); background: color-mix(in srgb, var(--bg-tertiary) 60%, transparent); min-width: 0; }
+.arena-featured-side h4 { margin: 0 0 2px; font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); display: flex; gap: 6px; align-items: center; }
+.arena-featured-headline { margin: 0; font-size: 1.55rem; line-height: 1.2; font-weight: 900; color: var(--text-primary); }
+.arena-topic-link:hover .arena-featured-headline { color: #fb923c; }
+.arena-featured-subject { font-size: 0.95rem; color: var(--text-secondary); }
+.arena-featured-subject b { color: var(--text-primary); font-weight: 800; }
+.arena-tagline { color: var(--text-muted); }
+.arena-lore-p { margin: 0; font-size: 0.95rem; line-height: 1.55; color: var(--text-primary); }
+.arena-lore-p.is-clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--text-secondary); font-size: 0.86rem; }
+.arena-lore-big { font-size: 1.05rem; line-height: 1.6; }
+.arena-keywords { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+.arena-keywords span { font-size: 0.7rem; padding: 2px 7px; border-radius: 6px; background: var(--bg-tertiary); color: var(--text-muted); font-family: ui-monospace, monospace; }
+.arena-keywords .arena-note { padding: 0; background: none; font-family: inherit; }
+.arena-chips { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.arena-chip-stat { display: inline-flex; align-items: center; gap: 5px; font-size: 0.74rem; padding: 3px 8px; border-radius: 999px; background: var(--bg-tertiary); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.arena-chip-stat.is-live { color: #f87171; background: rgba(239, 68, 68, 0.12); }
+.arena-stack { display: inline-flex; align-items: center; }
+.arena-stack a { display: inline-flex; margin-left: -8px; border-radius: 10px; box-shadow: 0 0 0 2px var(--bg-card); }
+.arena-stack a:first-child { margin-left: 0; }
+.arena-stack-more { margin-left: 6px; font-size: 0.72rem; color: var(--text-muted); }
+.arena-moment { display: grid; grid-template-columns: 18px 1fr; gap: 8px; padding: 7px 0; border-top: 1px solid var(--border); align-items: start; }
+.arena-moment:first-child { border-top: 0; }
+.arena-moment > i { margin-top: 3px; font-size: 0.78rem; color: var(--text-muted); }
+.arena-moment.is-mic > i { color: #f87171; }
+.arena-moment.is-judged > i { color: #fb923c; }
+.arena-moment-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.arena-moment-body q { font-size: 0.9rem; quotes: "“" "”"; line-height: 1.4; }
+.arena-moment-body small { color: var(--text-muted); font-size: 0.72rem; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.arena-moment-body small b { color: var(--text-secondary); }
+.arena-featured-side .arena-moment { border-top: 0; padding: 6px 8px; border-radius: 10px; background: var(--bg-card); }
+
+.arena-topic-feed { display: flex; flex-direction: column; gap: 8px; }
+.arena-topic-row { display: grid; grid-template-columns: 96px 1fr auto; gap: 14px; align-items: center; padding: 12px 14px; border-radius: 14px; background: var(--bg-card); border: 1px solid var(--border); }
+.arena-topic-row.is-hot { border-color: rgba(249, 115, 22, 0.45); }
+.arena-topic-row.arena-topic-bounty { border-left: 4px solid #f5c542; }
+.arena-topic-row.is-archived { grid-template-columns: 1fr; opacity: 0.8; }
+.arena-topic-row-heat { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.arena-topic-row-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.arena-topic-row-main strong { font-size: 1.02rem; line-height: 1.3; }
+.arena-topic-row-sub { font-size: 0.8rem; color: var(--text-secondary); }
+.arena-topic-row-sub .arena-kind { text-transform: none; letter-spacing: 0; font-size: 0.8rem; color: var(--text-primary); font-weight: 700; }
+.arena-topic-row-last { display: block; font-size: 0.82rem; color: var(--text-muted); quotes: "" ""; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arena-topic-row-last i { font-size: 0.7rem; margin-right: 4px; }
+.arena-topic-row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.arena-topic-headline-big { margin: 0; font-size: 1.7rem; line-height: 1.2; font-weight: 900; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.arena-topic-cols { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; margin-top: 6px; }
+.arena-topic-main, .arena-topic-aside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.arena-lore-box, .arena-moments, .arena-topic-aside section { padding: 14px; border-radius: 14px; background: var(--bg-tertiary); }
+.arena-lore-box h3, .arena-moments h3, .arena-topic-aside h3 { margin: 0 0 8px; font-size: 0.95rem; display: flex; gap: 8px; align-items: center; }
+.arena-lore-box h3 small, .arena-moments h3 small, .arena-topic-aside h3 small { color: var(--text-muted); font-weight: 400; font-size: 0.76rem; }
+.arena-moment-list { max-height: 560px; overflow-y: auto; padding-right: 4px; }
+.arena-topic-page.is-archived { opacity: 0.92; }
+.arena-member { grid-template-columns: 1fr; gap: 4px; }
+.arena-member .btn { justify-self: start; }
+
+@media (max-width: 900px) {
+    .arena-featured, .arena-topic-cols { grid-template-columns: 1fr; }
+    .arena-featured-side { border-left: 0; border-top: 1px solid var(--border); }
+}
+@media (max-width: 600px) {
+    .arena-pulse-inner { grid-template-columns: 1fr; gap: 10px; } .arena-pulse-icon { flex-direction: row; width: auto; height: auto; padding: 6px 10px; gap: 8px; } .arena-pulse-icon i { margin: 0; font-size: 1.1rem; }
+    .arena-pulse-when { margin-left: 0; flex-basis: 100%; }
+    .arena-featured-headline { font-size: 1.25rem; }
+    .arena-topic-row { grid-template-columns: 1fr; gap: 8px; }
+    .arena-topic-row-side { flex-direction: row; align-items: center; flex-wrap: wrap; }
+    .arena-topic-headline-big { font-size: 1.3rem; }
+}
