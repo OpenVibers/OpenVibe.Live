@@ -14,7 +14,9 @@ const arena = require('./arena-service');
 const INTERVAL_MS = 20 * 60 * 1000;
 const BATCH = 6;
 const IMAGE_BATCH = 2;
+const CLOCK_MS = 60 * 1000;
 let _timer = null;
+let _clock = null;
 let _busy = false;
 
 async function tick() {
@@ -49,11 +51,28 @@ function start() {
     _timer = setInterval(() => tick().catch(e => console.warn('[Arena] job:', e.message)), INTERVAL_MS);
     if (_timer.unref) _timer.unref();
     setTimeout(() => tick().catch(() => {}), 90_000).unref?.();
-    // Live trash-talk sessions read the transcript every 15 s (no-op when none are live).
-    try { require('./talk-session').start(); } catch (e) { console.warn('[Arena] session ticker not started:', e.message); }
-    console.log('[Arena] job started (every 20 min; session ticker every 15 s)');
+    // The ears: every 15 s the listener reads live transcripts for name-drops (beefs) and topic talk.
+    try { require('./listener').start(); } catch (e) { console.warn('[Arena] listener not started:', e.message); }
+    // Clocks + pulse: forfeit beefs whose clock ran out, settle debates/bounties/phrases, and
+    // re-read the community every 30 min so the board follows what people are actually saying.
+    _clock = setInterval(() => housekeeping().catch(e => console.warn('[Arena] housekeeping:', e.message)), CLOCK_MS);
+    if (_clock.unref) _clock.unref();
+    setTimeout(() => housekeeping().catch(() => {}), 20_000).unref?.();
+    console.log('[Arena] job started (personas every 20 min; listener every 15 s; clocks every 60 s; pulse every 30 min)');
 }
 
-function stop() { if (_timer) { clearInterval(_timer); _timer = null; } }
+async function housekeeping() {
+    if (!arena.arenaEnabled()) return;
+    const beef = require('./beef'), board = require('./board');
+    try { beef.tick(); } catch (e) { console.warn('[Arena] beef tick:', e.message); }
+    try { board.resolveExpired(); } catch (e) { console.warn('[Arena] resolve:', e.message); }
+    try { await board.refreshPulse(); } catch (e) { console.warn('[Arena] pulse:', e.message); }
+}
 
-module.exports = { start, stop, tick };
+function stop() {
+    if (_timer) { clearInterval(_timer); _timer = null; }
+    if (_clock) { clearInterval(_clock); _clock = null; }
+    try { require('./listener').stop(); } catch { /* */ }
+}
+
+module.exports = { start, stop, tick, housekeeping };

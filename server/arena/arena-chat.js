@@ -1,77 +1,138 @@
 /**
- * OpenVibe.Live — Arena chat commands (viewers play along from chat)
+ * OpenVibe.Live — Arena chat commands (viewers play along from any stream chat)
  *
- *   !hype             hype the streamer's latest trash-talk entry (one per person; Crowd score)
- *   !talk             show the current trash-talk topic + how to enter
- *   !arena [user]     fighter card summary + link (defaults to the streamer whose chat this is)
- *   !vote a|b         vote in today's Main Event (signed-in only)
- *   !fight <user>     post a battle link: this streamer vs <user>
+ *   !topic <text>     start a board topic from chat (one per person per 10 min)
+ *   !bounty <user>    put a bounty on a fighter: double XP for anyone who talks shit about them (1/hour)
+ *   !hype             hype the streamer: their newest open beef, else their active board topic
+ *   !side <name|a|b>  pick a side in the streamer's newest open beef (clout if your pick wins)
+ *   !beef             what beefs this streamer has open + clocks
+ *   !board            the pulse + hottest events on the board
+ *   !arena [user]     fighter card summary + link
  *
  * Called from ChatServer.handleBangCommand; returns true when the command was handled.
- * Replies go to the sender as a system line; hype milestones are announced to the room.
+ * Replies go to the sender as a system line; milestones are announced to the room.
  */
 'use strict';
 
 const db = require('../db/database');
 
+const COMMANDS = ['!topic', '!bounty', '!hype', '!side', '!beef', '!board', '!arena'];
 const RATE_MS = 4000;
-const _last = new Map(); // voterKey → ms
+const TOPIC_RATE_MS = 10 * 60 * 1000;
+const BOUNTY_RATE_MS = 60 * 60 * 1000;
+const _last = new Map();       // voterKey → ms
+const _lastTopic = new Map();  // voterKey → ms
+const _lastBounty = new Map();
 
 function voterKey(client) {
     if (client.user?.id) return `user:${client.user.id}`;
     if (client.anonId) return `anon:${client.anonId}`;
     return `ip:${String(client.ip || '')}`;
 }
-
-function rateLimited(key) {
+function limited(map, key, ms) {
     const now = Date.now();
-    if (now - (_last.get(key) || 0) < RATE_MS) return true;
-    _last.set(key, now);
+    if (now - (map.get(key) || 0) < ms) return true;
+    map.set(key, now);
     return false;
 }
-
-function base() {
-    try { const c = require('../config'); return String(c.baseUrl || '').replace(/\/$/, ''); } catch { return ''; }
+function base() { try { const c = require('../config'); return String(c.baseUrl || '').replace(/\/$/, ''); } catch { return ''; } }
+function clock(b) {
+    if (!b.on_clock || b.clock_seconds_left == null) return '';
+    const s = b.clock_seconds_left, who = (b.on_clock === 'a' ? b.a : b.b).fighter_name;
+    const t = s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : `${Math.floor(s / 60)}m ${s % 60}s`;
+    return ` · ${who} on the clock (${t} to answer)`;
 }
+function beefLine(b) { return `${b.a.fighter_name} ${b.share_a}% — ${100 - b.share_a}% ${b.b.fighter_name}${clock(b)} → ${base()}/arena/beef/${b.id}`; }
 
 function handle(chat, ws, client, cmd, parts) {
-    if (!['!hype', '!talk', '!arena', '!vote', '!fight'].includes(cmd)) return false;
+    if (!COMMANDS.includes(cmd)) return false;
     const reply = (message) => chat.sendTo(ws, { type: 'system', message });
-    let arena, talk;
-    try { arena = require('./arena-service'); talk = require('./trash-talk'); } catch { reply('The Arena is closed right now.'); return true; }
+    const room = (message) => client.streamId && chat.broadcastToStream(client.streamId, { type: 'system', message });
+    let arena, board, beef;
+    try { arena = require('./arena-service'); board = require('./board'); beef = require('./beef'); } catch { reply('The Arena is closed right now.'); return true; }
     if (!arena.arenaEnabled()) { reply('The Arena is closed right now.'); return true; }
     const key = voterKey(client);
-    if (rateLimited(key)) { reply('Easy — one Arena command every few seconds.'); return true; }
+    if (limited(_last, key, RATE_MS)) { reply('Easy — one Arena command every few seconds.'); return true; }
     const stream = client.streamId ? db.getStreamById(client.streamId) : null;
     const streamer = stream ? db.getUserById(stream.user_id) : null;
+    const who = client.user?.display_name || client.user?.username || 'Chat';
 
     (async () => {
         try {
-            if (cmd === '!hype') {
-                if (!streamer) return reply('!hype works inside a streamer\'s chat.');
-                // A live session (they are talking trash on stream right now) takes priority.
-                try {
-                    const s = require('./talk-session').hypeSession(streamer.id, key);
-                    if (s) {
-                        if (!s.added) return reply(`You already hyped this topic. ${s.hypers} hyping · level ${s.level} · ${s.progress}% to the next topic.`);
-                        reply(`🔥 Hyped the live session! ${s.hypers} hyping · level ${s.level} (${s.xp} XP) · topic ${s.progress}% cleared → ${base()}/arena/talk/${encodeURIComponent(streamer.username)}`);
-                        if (s.hypers === 1 || s.hypers % 5 === 0) chat.broadcastToStream(client.streamId, { type: 'system', message: `🎤 ${streamer.display_name || streamer.username} is talking trash live — ${s.hypers} hyping. Type !hype to push the topic. ${base()}/arena/talk/${encodeURIComponent(streamer.username)}` });
-                        return;
-                    }
-                } catch (e) { return reply(`Arena: ${e.message}`); }
-                const entry = talk.latestEntryFor(streamer.id);
-                if (!entry) return reply(`${streamer.display_name || streamer.username} hasn't entered the current Trash Talk topic yet — ${base()}/arena/talk`);
-                const r = talk.hype(entry.id, key);
-                if (!r.added) return reply(`You already hyped this one. Crowd score ${r.crowd}/10 (${r.crowd_uniques} hyped).`);
-                reply(`🔥 Hyped! Crowd score ${r.crowd}/10 (${r.crowd_uniques} hyped) · total ${r.total}/50 · ${r.stamp}`);
-                if (r.crowd_uniques === 1 || r.crowd_uniques % 5 === 0) {
-                    chat.broadcastToStream(client.streamId, { type: 'system', message: `🎤 Chat is hyping ${streamer.display_name || streamer.username}'s trash talk — ${r.crowd_uniques} so far. Type !hype to add yours.` });
-                }
+            if (cmd === '!topic') {
+                if (!client.user?.id) return reply('Sign in to start a topic.');
+                const text = parts.slice(1).join(' ').trim();
+                if (!text) return reply('Usage: !topic <something the streamers should talk shit about>');
+                if (limited(_lastTopic, key, TOPIC_RATE_MS)) return reply('One topic per 10 minutes — let the last one cook.');
+                const onRoster = !!arena.loadRoster().byId[client.user.id];
+                const t = board.createTopic({ text, createdBy: onRoster ? 'streamer' : 'chat', creatorUserId: client.user.id, creatorName: who });
+                board.ensureAngles(t).catch(() => {});
+                reply(`📌 Topic is on the board: “${t.text}” → ${base()}/arena/topic/${t.id}`);
+                room(`📌 ${who} put a topic on the Arena board: “${t.text}” — streamers, click it and start talking. ${base()}/arena/topic/${t.id}`);
                 return;
             }
-            if (cmd === '!talk') {
-                const t = await talk.getTopic({ generate: false });
-                return reply(`🎤 Trash Talk topic: "${t.topic}" — ${t.hint || ''} Streamers enter at ${base()}/arena/talk; viewers type !hype in their chat to boost the Crowd score.`);
+            if (cmd === '!bounty') {
+                if (!client.user?.id) return reply('Sign in to put up a bounty.');
+                const target = parts[1] ? db.getUserByUsername(String(parts[1]).replace(/^@/, '')) : null;
+                if (!target) return reply('Usage: !bounty <username> — double XP for anyone who talks shit about them on stream.');
+                const roster = arena.loadRoster();
+                if (!roster.byId[target.id]) return reply(`${target.display_name || target.username} isn't on the Arena roster.`);
+                if (target.id === client.user.id) return reply("You can't put a bounty on yourself. Nice try.");
+                if (board.openBountyOn(target.id)) return reply(`There's already a bounty on ${target.display_name || target.username}. Go collect it.`);
+                if (limited(_lastBounty, key, BOUNTY_RATE_MS)) return reply('One bounty per hour per person.');
+                const name = board.fighterBrief(target.id, roster).fighter_name;
+                const t = board.createTopic({ text: `Bounty: ${name}. Anyone who talks shit about them on stream gets double XP.`, hint: `Put up by ${who}. Say the name, collect the bag.`, createdBy: 'chat', creatorUserId: client.user.id, creatorName: who, kind: 'bounty', targetUserId: target.id, headline: `WANTED: ${name} — chat wants smoke` });
+                reply(`💰 Bounty posted on ${name} → ${base()}/arena/topic/${t.id}`);
+                room(`💰 ${who} put a bounty on ${name}. Any streamer who talks shit about them on mic gets double XP for the next ${board.KIND_TTL_HOURS.bounty} hours.`);
+                return;
+            }
+            if (cmd === '!hype') {
+                if (!streamer) return reply("!hype works inside a streamer's chat.");
+                const open = beef.openBeefsFor(streamer.id);
+                if (open.length) {
+                    const b = open[0];
+                    const side = b.a_user_id === streamer.id ? 'a' : 'b';
+                    const r = beef.hype(b.id, side, key);
+                    const v = beef.get(b.id);
+                    if (!r.added) return reply(`You already hyped this beef. ${beefLine(v)}`);
+                    reply(`🔥 Hyped ${streamer.display_name || streamer.username} in their beef. ${beefLine(v)}`);
+                    const n = side === 'a' ? v.a.crowd : v.b.crowd;
+                    if (n === 1 || n % 5 === 0) room(`🔥 Chat is hyping ${streamer.display_name || streamer.username}'s beef with ${(side === 'a' ? v.b : v.a).fighter_name} — ${n} so far. Type !hype to add yours. ${base()}/arena/beef/${v.id}`);
+                    return;
+                }
+                const t = board.activeTopicFor(streamer.id);
+                if (!t) return reply(`${streamer.display_name || streamer.username} has no beef open and isn't on a board topic. Start one: !topic <text> · ${base()}/arena`);
+                const r = board.hypeTopic(t.id, streamer.id, key);
+                if (!r.added) return reply(`You already hyped them on “${t.text}”. ${r.hypers} hyping.`);
+                reply(`🔥 Hyped ${streamer.display_name || streamer.username} on “${t.text}” — ${r.hypers} hyping → ${base()}/arena/topic/${t.id}`);
+                if (r.hypers === 1 || r.hypers % 5 === 0) room(`🎤 ${streamer.display_name || streamer.username} is talking shit on “${t.text}” — ${r.hypers} hyping. Type !hype. ${base()}/arena/topic/${t.id}`);
+                return;
+            }
+            if (cmd === '!side') {
+                if (!streamer) return reply("!side works inside a streamer's chat.");
+                const open = beef.openBeefsFor(streamer.id);
+                if (!open.length) return reply(`${streamer.display_name || streamer.username} has no open beef to pick a side in.`);
+                const b = beef.get(open[0].id);
+                const arg = String(parts[1] || '').toLowerCase().replace(/^@/, '');
+                const matches = (side) => [side.user.username, side.user.display_name, side.fighter_name].filter(Boolean).some(n => String(n).toLowerCase() === arg);
+                const pick = arg === 'a' || matches(b.a) ? 'a' : arg === 'b' || matches(b.b) ? 'b' : !arg ? (b.a.user.id === streamer.id ? 'a' : 'b') : null;
+                if (!pick) return reply(`Usage: !side <name> — (a) ${b.a.fighter_name} vs (b) ${b.b.fighter_name}`);
+                const r = beef.pickSide(b.id, key, pick, client.user?.id || null);
+                return reply(`🗳️ You're with ${(pick === 'a' ? b.a : b.b).fighter_name}. Crowd: ${r.a}–${r.b}. Pick right and you earn clout. ${base()}/arena/beef/${b.id}`);
+            }
+            if (cmd === '!beef') {
+                if (!streamer) return reply(`Open beefs → ${base()}/arena`);
+                const open = beef.openBeefsFor(streamer.id).map(b => beef.get(b.id));
+                if (!open.length) {
+                    const lvl = board.levelView(streamer.id);
+                    return reply(`${streamer.display_name || streamer.username} has no beef open right now (Trash Level ${lvl.level}). Another streamer only has to say their name on mic… ${base()}/arena`);
+                }
+                return reply(open.map(b => `🥊 ${b.headline || `${b.a.fighter_name} vs ${b.b.fighter_name}`}: ${beefLine(b)}`).join('  ·  '));
+            }
+            if (cmd === '!board') {
+                const v = board.boardView();
+                const top = v.open.slice(0, 3).map(t => `${t.hot ? '🔥 ' : ''}${t.kind === 'debate' ? `${t.side_a} vs ${t.side_b}` : t.kind === 'bounty' ? `Bounty: ${t.target?.fighter_name}` : t.kind === 'phrase' ? `Say “${t.phrase}”` : t.text} (${t.heat} heat)`).join(' · ');
+                return reply(`📰 ${v.pulse?.text || 'The board is quiet.'} ${top ? `Hottest: ${top}` : ''} → ${base()}/arena  ·  !topic <text> to add one`);
             }
             if (cmd === '!arena') {
                 const target = parts[1] ? db.getUserByUsername(String(parts[1]).replace(/^@/, '')) : streamer;
@@ -79,26 +140,7 @@ function handle(chat, ws, client, cmd, parts) {
                 const card = await arena.getFighter(target.id, { generate: false });
                 if (!card || card.not_on_roster) return reply(`${target.display_name || target.username} isn't on the Arena roster yet.`);
                 const r = card.ratings;
-                return reply(`🥊 ${card.persona.fighter_name} — ${card.persona.title} · #${card.rank} of ${card.roster_size} · PWR ${r.power}${r.talk_bonus ? ` (+${r.talk_bonus} trash talk)` : ''} · ${card.record.wins}W–${card.record.losses}L · "${card.persona.taunt}" → ${base()}/arena/${encodeURIComponent(target.username)}`);
-            }
-            if (cmd === '!vote') {
-                if (!client.user?.id) return reply('Sign in to vote in the Main Event.');
-                const side = String(parts[1] || '').toLowerCase();
-                const me = await arena.getMainEvent({ generate: false });
-                if (!me) return reply('No Main Event today.');
-                const pick = side === 'a' || side === me.a.user.username.toLowerCase() ? 'a' : side === 'b' || side === me.b.user.username.toLowerCase() ? 'b' : null;
-                if (!pick) return reply(`Usage: !vote a|b — today: (a) ${me.a.persona.fighter_name} vs (b) ${me.b.persona.fighter_name}`);
-                const r = arena.castVote(me.id, `user:${client.user.id}`, pick);
-                return reply(`🗳️ Voted ${(pick === 'a' ? me.a : me.b).persona.fighter_name}. Crowd: ${r.votes.a}–${r.votes.b} · score ${r.outcome.a}–${r.outcome.b}${r.outcome.winner ? ` · ${(r.outcome.winner === 'a' ? me.a : me.b).persona.fighter_name} leads` : ''} → ${base()}/arena/battle/${encodeURIComponent(me.a.user.username)}/${encodeURIComponent(me.b.user.username)}`);
-            }
-            if (cmd === '!fight') {
-                if (!streamer) return reply('!fight works inside a streamer\'s chat: !fight <username>');
-                const opp = parts[1] ? db.getUserByUsername(String(parts[1]).replace(/^@/, '')) : null;
-                if (!opp) return reply('Usage: !fight <username>');
-                if (opp.id === streamer.id) return reply('They can\'t fight themselves. Yet.');
-                const url = `${base()}/arena/battle/${encodeURIComponent(streamer.username)}/${encodeURIComponent(opp.username)}`;
-                chat.broadcastToStream(client.streamId, { type: 'system', message: `🥊 ${client.user?.display_name || client.user?.username || 'Chat'} called out ${opp.display_name || opp.username}: ${streamer.display_name || streamer.username} vs ${opp.display_name || opp.username} → ${url}` });
-                return;
+                return reply(`🥊 ${card.persona.fighter_name} — ${card.persona.title} · #${card.rank} of ${card.roster_size} · PWR ${r.power}${r.talk_bonus ? ` (+${r.talk_bonus} mouth)` : ''} · Trash Level ${card.level.level} · beefs ${card.record.wins}W–${card.record.losses}L · “${card.persona.taunt}” → ${base()}/arena/${encodeURIComponent(target.username)}`);
             }
         } catch (err) {
             reply(`Arena: ${err.message}`);
@@ -107,4 +149,4 @@ function handle(chat, ws, client, cmd, parts) {
     return true;
 }
 
-module.exports = { handle, _voterKey: voterKey };
+module.exports = { handle, COMMANDS, _voterKey: voterKey };
