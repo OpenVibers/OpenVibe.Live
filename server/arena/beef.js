@@ -141,6 +141,7 @@ function recordHit(speakerId, targetId, hit) {
         opened = true;
         board().addXp(speakerId, XP_BEEF_OPEN, 'beef_open', beef.id);
         console.log(`[Arena] beef #${beef.id} opened: user ${speakerId} → user ${targetId}${history.fights ? ' (rematch)' : ''}${bounty ? ' (bounty!)' : ''}`);
+        try { require('./notify').arenaNotify(targetId, { type: 'beef_open', title: `${nameOf(speakerId)} has words for you${history.fights ? ' — rematch' : ''}`, message: `${hit.best_line ? `“${String(hit.best_line).slice(0, 120)}” — ` : ''}answer on your own stream within ${isLive(targetId) ? `${RESPONSE_LIVE_MIN} min` : `${RESPONSE_OFFLINE_HOURS} h`} or forfeit.`, icon: '🥊', url: `/arena/beef/${beef.id}`, key: `open:${beef.id}`, senderId: speakerId, senderName: nameOf(speakerId) }); } catch { /* */ }
         const id = beef.id;
         headlineFor('open', { a: nameOf(speakerId), b: nameOf(targetId), opening_line: hit.best_line, about: hit.about, rematch: history.fights > 0, record_between: history, bounty: !!bounty }).then(h => { if (h) db.run('UPDATE arena_beefs SET headline = ? WHERE id = ?', [h, id]); }).catch(() => {});
     }
@@ -156,6 +157,7 @@ function recordHit(speakerId, targetId, hit) {
     // Bounty: anyone with a bounty on their head pays double to whoever collects.
     const bounty = board().openBountyOn(targetId);
     board().addXp(speakerId, quality * XP_BEEF_HIT * (bounty ? 2 : 1), 'beef_hit', beef.id, { beefHit: true, line: hit.best_line, lineScore: quality, lineVodId: hit.vod_id, lineSec: hit.sec });
+    if (!opened) { try { require('./notify').arenaNotify(otherId, { type: firstResponse ? 'beef_answered' : 'beef_hit', title: `${nameOf(speakerId)} ${firstResponse ? 'answered' : 'hit back'} (${quality}/10)`, message: `${hit.best_line ? `“${String(hit.best_line).slice(0, 120)}” — ` : ''}you're on the clock now.`, icon: '🔥', url: `/arena/beef/${beef.id}`, key: `hit:${beef.id}:${beef.hits_a + beef.hits_b}`, senderId: speakerId, senderName: nameOf(speakerId) }); } catch { /* */ } }
     if (bounty) board().recordBountyHit(speakerId, bounty, quality, hit.best_line || null);
     return { beef: db.get('SELECT * FROM arena_beefs WHERE id = ?', [beef.id]), opened, side, first_response: firstResponse, bounty: !!bounty };
 }
@@ -188,6 +190,7 @@ function resolve(beef, resolution, winnerId) {
     db.run(`UPDATE arena_beefs SET status = 'resolved', resolution = ?, winner_user_id = ?, resolved_at = CURRENT_TIMESTAMP, on_clock = NULL, clock_until = NULL, feed_json = ?, upset = ?, result_headline = ? WHERE id = ? AND status = 'open'`, [resolution, winnerId, feed, upset, templateHeadline(resolution === 'forfeit' ? 'forfeit' : 'score', ctx), beef.id]);
     if (winnerId) board().addXp(winnerId, XP_BEEF_WIN + (upset ? 20 : 0), upset ? 'beef_upset_win' : 'beef_win', beef.id);
     console.log(`[Arena] beef #${beef.id} resolved: ${resolution}${winnerId ? ` winner user ${winnerId}` : ' draw'}${upset ? ' UPSET' : ''}`);
+    try { const n = require('./notify'); for (const uid of [beef.a_user_id, beef.b_user_id]) { const won = winnerId === uid, draw = winnerId == null; n.arenaNotify(uid, { type: 'beef_over', title: draw ? `Draw with ${nameOf(uid === beef.a_user_id ? beef.b_user_id : beef.a_user_id)}` : won ? `You won the beef with ${nameOf(loserId)}${upset ? ' — UPSET' : ''}` : `${nameOf(winnerId)} won the beef${resolution === 'forfeit' ? ' — you ran out the clock' : ' on points'}`, message: won ? `+${XP_BEEF_WIN + (upset ? 20 : 0)} XP. ${t.a}–${t.b}.` : `${t.a}–${t.b}. Say their name on mic for a rematch.`, icon: won ? '🏆' : draw ? '🤝' : '💀', url: `/arena/beef/${beef.id}`, key: `over:${beef.id}` }); } } catch { /* */ }
     const id = beef.id;
     headlineFor(resolution, ctx).then(h => { if (h) db.run('UPDATE arena_beefs SET result_headline = ? WHERE id = ?', [h, id]); }).catch(() => {});
     try { arena().loadRoster(true); } catch { /* */ }

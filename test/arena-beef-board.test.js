@@ -69,11 +69,21 @@ board.ensureTables(); beef.ensureTables();
     say(u2, 'grizzly_bear', 'BABY VOICE gang rise up');
     say(viewer, 'viewer', '!topic should be ignored baby voice');
     say(null, 'anon_guy', 'pakistanis run this chat lol');
+    db.run('INSERT INTO chat_messages (stream_id, user_id, username, message, source_platform) VALUES (NULL, NULL, ?, ?, ?)', ['sleepyotter_ttv', 'baby voice is peak content honestly', 'ai']);
+    db.setSetting('arena_bot_usernames', 'ChuckBot');
+    db.run('INSERT INTO chat_messages (stream_id, user_id, username, message) VALUES (NULL, NULL, ?, ?)', ['ChuckBot', 'baby voice detected, deploying roast']);
     const scan = board.scanChat();
-    assert.strictEqual(scan.moments, 3, `three moments from four new messages (commands skipped): ${JSON.stringify(scan)}`);
+    assert.strictEqual(scan.moments, 3, `three moments from six new messages (commands + bots skipped): ${JSON.stringify(scan)}`);
+    assert.ok(board.isBotChatter({ username: 'chuckbot' }) && board.isBotChatter({ source_platform: 'ai' }) && !board.isBotChatter({ username: 'viewer' }));
     let d1 = board.topicDetail(t1.id);
     assert.strictEqual(d1.mentions.chat, 2); assert.strictEqual(d1.chatters, 2);
     assert.strictEqual(d1.last_moment.username, 'grizzly_bear');
+    db.run(`UPDATE chat_messages SET timestamp = datetime('now', '-3 hours') WHERE message LIKE 'nova does the baby voice%'`);
+    const old = board.createTopic({ text: 'Nova dono voice', createdBy: 'chat', creatorName: 'x', keywords: ['nova does'] });
+    board.backfillMoments([old], { windowMin: 600 });
+    const om = board.topicDetail(old.id).moments[0];
+    assert.ok(om && Date.now() - Date.parse(om.at.replace(' ', 'T') + 'Z') > 2.5 * 3600_000, `moment time is when it was said, not when it was filed: ${om && om.at} vs ${om && om.filed_at}`);
+    db.run(`UPDATE arena_topics SET status = 'archived' WHERE id = ?`, [old.id]);
     assert.strictEqual(board.topicDetail(auto.id).mentions.chat, 1);
     assert.ok(!board.addMoment(t1.id, { kind: 'chat', source: 'chat', username: 'x', text: 'kys baby voice people' }), 'threat lines never become moments');
 
@@ -119,7 +129,7 @@ board.ensureTables(); beef.ensureTables();
     assert.strictEqual(view.cooldown_hours, 24);
     const yap = board.yappersLeaderboard();
     assert.deepStrictEqual(yap.map(y => y.name).sort(), ['anon_guy', 'grizzly_bear', 'viewer'], 'everyone who typed about a subject is a yapper');
-    assert.ok(yap.every(y => y.moments === 1 && y.subjects === 1 && y.level >= 1 && y.title), 'yapper profiles carry level + title');
+    assert.ok(yap.every(y => y.moments >= 1 && y.subjects >= 1 && y.level >= 1 && y.title), 'yapper profiles carry level + title');
     console.log('✅ lore, hype, heat ordering, yappers');
 
     // Discovery without AI: a word ≥ 3 people keep saying becomes a subject, seeded with what was said.

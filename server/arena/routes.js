@@ -167,6 +167,29 @@ router.get('/voice/:user', optionalAuth, async (req, res) => {
     } catch (err) { res.status(err.message && /budget|hoarse/.test(err.message) ? 429 : 500).json({ error: err.message || 'Voice failed' }); }
 });
 
+// ── Your Arena: the signed-in user's own state (yap level, streak, XP today, coins, beefs on them) ──
+router.get('/me', requireAuth, (req, res) => {
+    try {
+        const ch = require('./chatters');
+        const roster = arena.loadRoster();
+        const key = `user:${req.user.id}`;
+        const chatter = ch.profile(key) || { ...ch.view({ key, kind: 'user', user_id: req.user.id, display_name: req.user.display_name || req.user.username, xp: 0, level: 1 }), recent_moments: [], top_subjects: [], xp_log: [] };
+        const xpToday = db.get(`SELECT COALESCE(SUM(amount), 0) AS n FROM chatter_xp_log WHERE key = ? AND created_at >= date('now')`, [key])?.n || 0;
+        const checkedIn = !!db.get(`SELECT 1 FROM chatter_xp_log WHERE key = ? AND reason = 'checkin' AND created_at >= date('now')`, [key]);
+        const paid = ch.row(key)?.coins_paid_level || 0; let coins = 0; for (let l = 2; l <= paid; l++) coins += l * ch.COINS_PER_LEVEL;
+        const onRoster = !!roster.byId[req.user.id];
+        const fighter = onRoster ? { ...board.fighterBrief(req.user.id, roster), level: board.levelView(req.user.id), record: beef.recordFor(req.user.id), power: roster.byId[req.user.id].ratings.power } : null;
+        const beefs = onRoster ? beef.openBeefsFor(req.user.id).map(b => beef.beefView(b, roster)) : [];
+        const subjects = db.all(`SELECT t.id, t.headline, t.text, t.heat, s.moments FROM chatter_subjects s JOIN arena_topics t ON t.id = s.topic_id WHERE s.key = ? AND t.status = 'open' ORDER BY t.heat DESC LIMIT 5`, [key]);
+        const onClock = beefs.filter(b => (b.on_clock === 'a' ? b.a.user.id : b.b.user.id) === req.user.id);
+        res.set('Cache-Control', 'no-store');
+        res.json({ chatter, xp_today: xpToday, checked_in: checkedIn, coins_from_arena: coins, fighter, beefs, on_clock: onClock, subjects, hot_now: board.boardView().open.filter(t => t.hot).slice(0, 3).map(t => ({ id: t.id, headline: t.headline || t.text })) });
+    } catch (err) { fail(res, err, 'Failed to load your arena'); }
+});
+router.post('/checkin', requireAuth, (req, res) => {
+    try { res.json(require('./chatters').checkin(req.user.id, { display: req.user.display_name || req.user.username })); } catch (err) { fail(res, err, 'Check-in failed'); }
+});
+
 router.get('/levels', (req, res) => { try { res.json({ levels: board.levelsLeaderboard(20) }); } catch (err) { fail(res, err, 'Failed'); } });
 router.get('/yappers', (req, res) => { try { const ch = require('./chatters'); res.json({ yappers: ch.leaderboard(20), week: ch.leaderboard(10, { days: 7 }), total: ch.count() }); } catch (err) { fail(res, err, 'Failed'); } });
 // Chatter (yapper) profile by key: user:<id> · anon:<n> · relay:<platform>:<name> — anyone who chats has one.

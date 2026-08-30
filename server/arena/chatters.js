@@ -164,6 +164,7 @@ function onLevelUp(key, from, to, { streamId = null } = {}) {
             if (total > 0) payCoins(key, p.user_id, name, total, to);
         } catch (e) { console.warn('[Arena] yap coins:', e.message); }
     }
+    if (p && p.kind === 'user') { try { require('./notify').arenaNotify(p.user_id, { type: 'yap_level', title: `Yap level ${to} — ${titleFor(to)}`, message: `${to * COINS_PER_LEVEL} OpenCoins banked for the level. Keep typing about the board's subjects.`, icon: '⬆️', url: `/arena/chatter/${encodeURIComponent(key)}`, key: `lvl:${to}` }); } catch { /* */ } }
     // Tell the room.
     try {
         const chat = require('../chat/chat-server');
@@ -196,6 +197,7 @@ async function settleCoins(max = 5) {
 
 function onMoment(moment, topic, { hot = false } = {}) {
     if (!moment || moment.kind !== 'chat') return null;
+    try { if (require('./board').isBotChatter(moment)) return null; } catch { /* */ }
     const key = moment.chatter_key || keyFor(moment);
     if (!key) return null;
     ensureRow(key, { display: moment.username });
@@ -243,7 +245,7 @@ function onLore(topic, loreText, moments) {
         const key = m.chatter_key || keyFor(m);
         if (!key || seen.has(key)) continue;
         const name = String(m.username || '').replace(/^\[[^\]]+\]\s+/, '').toLowerCase();
-        if (name.length >= 3 && text.includes(name)) { seen.add(key); db.run('UPDATE chatter_profiles SET quoted = quoted + 1 WHERE key = ?', [key]); addXp(key, XP_QUOTED_IN_LORE, 'quoted_in_lore', topic.id, { display: m.username }); n++; }
+        if (name.length >= 3 && text.includes(name)) { seen.add(key); db.run('UPDATE chatter_profiles SET quoted = quoted + 1 WHERE key = ?', [key]); addXp(key, XP_QUOTED_IN_LORE, 'quoted_in_lore', topic.id, { display: m.username }); n++; const p = parseKey(key); if (p?.kind === 'user') { try { require('./notify').arenaNotify(p.user_id, { type: 'quoted', title: `You made the lore of “${String(topic.headline || topic.text).slice(0, 60)}”`, message: `+${XP_QUOTED_IN_LORE} XP for getting quoted.`, icon: '📜', url: `/arena/topic/${topic.id}`, key: `quoted:${topic.id}` }); } catch { /* */ } } }
     }
     return n;
 }
@@ -291,6 +293,7 @@ async function buildCard(key, { force = false } = {}) {
     if (!out) return { skipped: 'failed' };
     db.run('UPDATE chatter_profiles SET card_json = ?, card_at = CURRENT_TIMESTAMP, card_xp = xp WHERE key = ?', [JSON.stringify(out), key]);
     console.log(`[Arena] yap card for ${r.display_name}: "${out.title}"`);
+    if (r.kind === 'user' && r.user_id) { try { require('./notify').arenaNotify(r.user_id, { type: 'yap_card', title: `Your yap card: “${String(out.title).slice(0, 60)}”`, message: String(out.blurb || '').slice(0, 160), icon: '🃏', url: `/arena/chatter/${encodeURIComponent(key)}`, key: `card:${new Date().toISOString().slice(0, 10)}` }); } catch { /* */ } }
     return out;
 }
 
@@ -342,4 +345,16 @@ function leaderboard(limit = 10, { days = null } = {}) {
 }
 function count() { ensureTables(); return db.get('SELECT COUNT(*) AS n FROM chatter_profiles WHERE xp > 0')?.n || 0; }
 
-module.exports = { ensureTables, settleCoins, payCoins, keyFor, parseKey, displayFor, levelFor, xpForLevel, titleFor, addXp, onMoment, onSubjectStarted, onHype, onLore, buildCard, cardSweep, profile, leaderboard, count, view, row, TITLES, XP_MOMENT, XP_MOMENT_HOT, XP_FIRST_ON_SUBJECT, XP_SUBJECT_STARTED, XP_QUOTED_IN_LORE, COINS_PER_LEVEL, CARD_MIN_LEVEL };
+const XP_CHECKIN = 5;
+/** Daily Arena check-in for signed-in users: +5 XP once a day (+ streak bonus via the normal path). */
+function checkin(userId, { display = null } = {}) {
+    ensureTables();
+    const key = `user:${userId}`;
+    ensureRow(key, { display });
+    const d = today();
+    if (db.get(`SELECT 1 FROM chatter_xp_log WHERE key = ? AND reason = 'checkin' AND created_at >= ?`, [key, `${d} 00:00:00`])) return { already: true, ...view(row(key)) };
+    const bonus = streakBonus(key);
+    const r = addXp(key, XP_CHECKIN + bonus, 'checkin', null, { display });
+    return { already: false, gained: XP_CHECKIN + bonus, ...r, ...view(row(key)) };
+}
+module.exports = { ensureTables, checkin, settleCoins, payCoins, keyFor, parseKey, displayFor, levelFor, xpForLevel, titleFor, addXp, onMoment, onSubjectStarted, onHype, onLore, buildCard, cardSweep, profile, leaderboard, count, view, row, TITLES, XP_MOMENT, XP_MOMENT_HOT, XP_FIRST_ON_SUBJECT, XP_SUBJECT_STARTED, XP_QUOTED_IN_LORE, COINS_PER_LEVEL, CARD_MIN_LEVEL };

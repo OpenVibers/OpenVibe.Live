@@ -213,6 +213,7 @@ async function _aRenderHome(root) {
             </div>
         </div>
         <section class="arena-pulse" id="arena-pulse">${_aPulse(boardData.pulse, boardData)}</section>
+        <section class="arena-me" id="arena-me">${_aMe() ? _aSpinner('Loading your arena…') : `<div class="arena-me-guest"><i class="fa-solid fa-user-plus"></i> <b>Sign in</b> and every line you type about a subject on the board is XP, a yap level, a card — and OpenCoins on each level-up.</div>`}</section>
         <section class="arena-live" id="arena-live">${_aRenderLive(live.live || [])}</section>
         <section class="arena-beefs" id="arena-beefs">${_aRenderBeefs(beefs)}</section>
         <section class="arena-board" id="arena-board">${_aRenderBoard(boardData)}</section>
@@ -244,6 +245,7 @@ async function _aRenderHome(root) {
         </section>`;
     _aRenderList(roster.fighters);
     _aBindHome(root);
+    if (_aMe()) _aRenderMe().catch(() => { const el = document.getElementById('arena-me'); if (el) el.innerHTML = ''; });
     document.getElementById('arena-search')?.addEventListener('input', (e) => {
         const q = e.target.value.trim().toLowerCase();
         _aRenderList(!q ? roster.fighters : roster.fighters.filter(f => [f.persona.fighter_name, f.user.display_name, f.user.username, f.persona.class, f.persona.element].filter(Boolean).some(s => s.toLowerCase().includes(q))));
@@ -262,6 +264,27 @@ async function _aRenderHome(root) {
         } catch { /* keep the last render */ }
     });
     _aEvery(1000, () => _aTickClocks(root));
+}
+
+async function _aRenderMe() {
+    const el = document.getElementById('arena-me');
+    if (!el) return;
+    let me = await api('/arena/me');
+    // Daily check-in: first visit of the day pays XP (+ streak). One call, idempotent.
+    if (!me.checked_in) { try { const r = await api('/arena/checkin', { method: 'POST' }); if (!r.already) { _aToast(`+${r.gained} XP — daily check-in${r.streak >= 2 ? ` · ${r.streak}-day streak` : ''}${r.leveled_up ? ` · LEVEL ${r.level}!` : ''}`, 'success'); if (r.leveled_up) _aLevelUp(r.level); me = await api('/arena/me'); } } catch { /* */ } }
+    const c = me.chatter, pct = c.xp_for_next ? Math.round((c.xp_into_level / c.xp_for_next) * 100) : 100;
+    el.innerHTML = `<div class="arena-me-inner">
+        <div class="arena-me-left">${_aYapRing(c, 56)}<div><div class="arena-me-name"><b>${_aEsc(c.name)}</b> <span class="arena-lvl">YAP ${c.level} · ${_aEsc((c.card && c.card.title) || c.title)}</span>${c.streak >= 2 ? `<span class="arena-tag arena-tag-hot arena-streak"><i class="fa-solid fa-fire"></i> ${c.streak}-day streak</span>` : ''}</div>
+            <span class="arena-xp-track"><span class="arena-xp-fill" style="width:${pct}%"></span></span>
+            <small class="arena-note">${c.xp_into_level}/${c.xp_for_next} to level ${c.level + 1} · <b>+${me.xp_today} XP today</b> · ${me.coins_from_arena} OpenCoins banked from levels</small></div></div>
+        <div class="arena-me-right">
+            ${me.on_clock.length ? me.on_clock.map(b => `<div class="arena-me-alert">${_aA(_aBeefLink(b), `<i class="fa-solid fa-stopwatch"></i> <b>${_aEsc((b.a.user.id === c.user?.id ? b.b : b.a).fighter_name)}</b> has words for you — answer on stream`)} ${_aClockTag(b)}</div>`).join('') : ''}
+            ${me.fighter ? `<div class="arena-me-row"><i class="fa-solid fa-hand-fist"></i> Fighter #${me.fighter.rank} · PWR ${me.fighter.power} · TL ${me.fighter.level.level} · ${me.fighter.record.wins}W–${me.fighter.record.losses}L ${me.fighter.live ? _aA(_aConsoleLink(me.fighter.user), '<i class="fa-solid fa-ear-listen"></i> your ears', 'arena-tag arena-tag-hot') : ''}</div>` : ''}
+            ${me.subjects.length ? `<div class="arena-me-row"><i class="fa-solid fa-comments"></i> You're in: ${me.subjects.map(s => _aA(`/arena/topic/${s.id}`, `${_aEsc(s.headline || s.text)} <b>${s.moments}</b>`, 'arena-thread')).join(' ')}</div>` : `<div class="arena-me-row arena-note"><i class="fa-solid fa-keyboard"></i> Type about ${me.hot_now.length ? me.hot_now.map(h => _aA(`/arena/topic/${h.id}`, _aEsc(h.headline), 'arena-thread')).join(' ') : 'any subject on the board'} in chat — every line that lands is XP.</div>`}
+            ${_aA(_aChatterLink(c.key), 'your yap page <i class="fa-solid fa-arrow-right"></i>', 'arena-subject-open')}
+        </div>
+    </div>`;
+    _aEvery(1000, () => _aTickClocks(el));
 }
 
 function _aPulse(p, boardData) {
@@ -501,7 +524,7 @@ function _aYapCard(y, i) {
         ${_aYapRing(y, i === 0 ? 64 : 52)}
         <div class="arena-yap-main">
             <div class="arena-yap-name">${_aA(_aChatterLink(y.key), `<strong>${_aEsc(y.name)}</strong>`)} ${_aYapKind(y)} ${y.streak >= 2 ? `<span class="arena-tag arena-tag-hot arena-streak" title="days in a row"><i class="fa-solid fa-fire"></i> ${y.streak}</span>` : ''}</div>
-            <div class="arena-yap-title">${_aEsc(card.title || y.title)} <small>· ${_aEsc(y.title)} · ${y.xp} XP</small></div>
+            <div class="arena-yap-title">${_aEsc(card.title || y.title)} <small>· ${card.title ? `${_aEsc(y.title)} · ` : ''}${y.xp} XP</small></div>
             ${card.blurb ? `<p class="arena-yap-blurb">${_aEsc(card.blurb)}</p>` : (y.best_line ? `<q class="arena-yap-line">${_aEsc(y.best_line.text)}</q>` : '')}
             <div class="arena-yap-stats"><span><b>${y.moments}</b> moments</span><span><b>${y.subjects}</b> subjects</span>${y.quoted ? `<span><b>${y.quoted}</b> quoted in lore</span>` : ''}${y.gained != null ? `<span><b>+${y.gained}</b> this week</span>` : ''}</div>
         </div>
@@ -514,7 +537,7 @@ function _aYappersSection(bd) {
         ${rows.length > 3 ? `<div class="arena-mini-list">${rows.slice(3).map((y, i) => `<div class="arena-mini-row arena-yap-row">
             <span class="arena-rank">${i + 4}</span>
             ${_aYapRing(y, 34)}
-            <span class="arena-chip"><span><strong>${_aA(_aChatterLink(y.key), _aEsc(y.name))} ${_aYapKind(y)}</strong><small>${_aEsc((y.card && y.card.title) || y.title)} · ${y.moments} moments on ${y.subjects} subject${y.subjects === 1 ? '' : 's'}${y.streak >= 2 ? ` · 🔥 ${y.streak}` : ''}</small></span></span>
+            <span class="arena-chip"><span><strong>${_aA(_aChatterLink(y.key), _aEsc(y.name))} ${_aYapKind(y)}</strong><small>${_aEsc((y.card && y.card.title) || y.title)} · lvl ${y.level} · ${y.moments} moment${y.moments === 1 ? '' : 's'} on ${y.subjects} subject${y.subjects === 1 ? '' : 's'}${y.streak >= 2 ? ` · 🔥 ${y.streak}` : ''}</small></span></span>
             <span class="arena-lvl">${y.xp} XP</span>
         </div>`).join('')}</div>` : ''}
         ${week.length ? `<div class="arena-yap-week"><span class="arena-note"><i class="fa-solid fa-bolt"></i> hottest this week:</span> ${week.slice(0, 5).map(y => _aA(_aChatterLink(y.key), `${_aEsc(y.name)} <b>+${y.gained}</b>`, 'arena-tag')).join(' ')}</div>` : ''}` : '<p class="arena-note">Type about a subject on the board in any chat — your lines become moments, you get XP, a yap level and a card. Anons and relayed chatters too; OpenVibe accounts also get OpenCoins on every level-up.</p>'}`;
@@ -703,7 +726,7 @@ async function _aRenderTopic(root, id) {
                     ${moments.length ? `<div class="arena-moment-list">${moments.map(m => _aMomentLine(m)).join('')}</div>` : '<p class="arena-note">Nothing on this thread yet.</p>'}
                 </section>
                 <aside class="arena-topic-aside">
-                    ${t.fighters.length ? `<section><h3><i class="fa-solid fa-microphone-lines"></i> Heard on mic</h3>${t.fighters.map(f => `<div class="arena-member ${f.active ? 'is-active' : ''}">${_aBriefChip(f, ` · ${f.moments} on-mic · ${f.score} pts`)}${f.best ? `<q class="arena-receipt-mini">${_aEsc(f.best.text)}</q>` : ''}${me && f.user.id !== me.id && t.status === 'open' ? `<button class="btn btn-ghost btn-sm arena-topic-hype" data-topic="${t.id}" data-user="${f.user.id}"><i class="fa-solid fa-fire"></i> Hype</button>` : ''}</div>`).join('')}</section>` : ''}
+                    ${t.fighters.length ? `<section><h3><i class="fa-solid fa-microphone-lines"></i> Heard on mic</h3>${t.fighters.map(f => `<div class="arena-member ${f.active ? 'is-active' : ''}">${_aBriefChip(f, ` · ${f.moments} on-mic${f.score ? ` · ${f.score} pts` : ''}`)}${f.best ? `<q class="arena-receipt-mini">${_aEsc(f.best.text)}</q>` : ''}${me && f.user.id !== me.id && t.status === 'open' ? `<button class="btn btn-ghost btn-sm arena-topic-hype" data-topic="${t.id}" data-user="${f.user.id}"><i class="fa-solid fa-fire"></i> Hype</button>` : ''}</div>`).join('')}</section>` : ''}
                     <section><h3><i class="fa-solid fa-keyboard"></i> Loudest in chat</h3>${t.top_chatters?.length ? `<div class="arena-mini-list">${t.top_chatters.map((c, i) => `<div class="arena-mini-row"><span class="arena-rank">${i + 1}</span><span class="arena-chip"><span><strong>${c.chatter_key ? _aA(_aChatterLink(c.chatter_key), _aEsc(c.username)) : _aEsc(c.username)}</strong>${c.level ? `<small>yap ${c.level} · ${_aEsc(c.title)}</small>` : ''}</span></span><span class="arena-lvl">${c.n}</span></div>`).join('')}</div>` : '<p class="arena-note">Nobody yet. Type about it in any chat.</p>'}</section>
                     ${t.best_lines?.length ? `<section><h3><i class="fa-solid fa-quote-left"></i> Best on mic</h3>${t.best_lines.map(l => `<div class="arena-quote"><div><q>${_aEsc(l.text)}</q><small>${_aEsc(l.username || 'anon')} · ${l.quality}/10</small></div><div class="arena-quote-actions">${_aPlay(l.vod_id, l.sec)} ${_aSpeakBtn(l.text, '', l.username)}</div></div>`).join('')}</section>` : ''}
                     <section><h3><i class="fa-solid fa-circle-info"></i> How it works</h3><ul class="arena-rules-list"><li>Say it on mic or type it in chat — it lands here on its own. No joining.</li><li>Threads are the angles inside the subject; new ones appear as the argument moves.</li><li>Chat lines = yap XP · on-mic lines are judged for streamer XP.</li></ul></section>
@@ -857,7 +880,7 @@ async function _aRenderFighter(root, username) {
                 </div>
                 <div class="arena-profile-stats is-bars">
                     <div class="arena-bars-head"><b>The numbers</b> <small>percentile across the roster · these make POWER · tap one for the breakdown</small></div>
-                    <div class="arena-bars">${ARENA_STATS.map(k => `<div class="arena-bar is-clickable arena-quip" data-stat="${k}" title="${_aEsc((p.stat_quips || {})[k] || ARENA_STAT_LABEL[k])}"><span class="arena-bar-label">${_aEsc(ARENA_STAT_LABEL[k])}</span><span class="arena-bar-track"><span class="arena-bar-fill" style="width:${Math.max(0, Math.min(100, f.ratings[k] || 0))}%;background:${_aEsc(color)}"></span></span><span class="arena-bar-val">${f.ratings[k] ?? '–'}</span></div>`).join('')}</div>
+                    <div class="arena-bars">${ARENA_STATS.map(k => `<div class="arena-bar is-clickable" data-stat="${k}" title="${_aEsc((p.stat_quips || {})[k] || ARENA_STAT_LABEL[k])}"><span class="arena-bar-label">${_aEsc(ARENA_STAT_LABEL[k])}</span><span class="arena-bar-track"><span class="arena-bar-fill" style="width:${Math.max(0, Math.min(100, f.ratings[k] || 0))}%;background:${_aEsc(color)}"></span></span><span class="arena-bar-val">${f.ratings[k] ?? '–'}</span></div>`).join('')}</div>
                     <div id="arena-stat-detail"></div>
                 </div>
                 <div class="arena-lore">
@@ -889,7 +912,7 @@ async function _aRenderFighter(root, username) {
     _aBindHome(root);
     _aEvery(1000, () => _aTickClocks(root));
 
-    root.querySelectorAll('.arena-quip.is-clickable').forEach(el => el.addEventListener('click', async () => {
+    root.querySelectorAll('.arena-bar.is-clickable, .arena-quip.is-clickable').forEach(el => el.addEventListener('click', async () => {
         const stat = el.dataset.stat;
         const box = document.getElementById('arena-stat-detail');
         if (box.dataset.stat === stat) { box.innerHTML = ''; box.dataset.stat = ''; return; }
