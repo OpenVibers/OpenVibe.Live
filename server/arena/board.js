@@ -250,7 +250,8 @@ function createTopic({ text, hint = null, createdBy, creatorUserId = null, creat
     for (const t of threadList) if (!t.keywords.length) t.keywords = keywordsFromText(t.name);
     let kws = normalizeKeywords([...(Array.isArray(keywords) ? keywords : []), ...threadList.flatMap(t => t.keywords)]);
     if (!kws.length) kws = keywordsFromText(clean);
-    if (kind === 'bounty' && targetUserId) { const u = db.getUserById(targetUserId); if (u) { const nm = require('./names'); kws = normalizeKeywords([...kws, u.username, u.display_name, ...nm.variants(u.username), ...nm.variants(u.display_name)]); } }
+    // A bounty matches ONLY the target's name (never generic words like "bounty" — that's a quest in half the games people stream).
+    if (kind === 'bounty' && targetUserId) { const u = db.getUserById(targetUserId); if (u) { const nm = require('./names'); kws = normalizeKeywords([u.username, u.display_name, ...nm.variants(u.username), ...nm.variants(u.display_name)]); } }
     if (kind === 'topic' && kws.length >= 2) {
         for (const m of openTopicMatchers()) { if (m.kind === 'topic' && m.keywords.filter(k => kws.includes(k)).length >= 2) throw new Error('That subject is already on the board'); }
     }
