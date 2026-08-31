@@ -1122,16 +1122,22 @@ async function testAdminTTSVoice() {
             method: 'POST',
             body: { voiceId, text: 'Hello, this is a TTS voice test from OpenVibe.Live.' },
         });
-        if (result.audio && result.mimeType) {
-            const binaryStr = atob(result.audio);
-            const bytes = new Uint8Array(binaryStr.length);
-            for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-            const blob = new Blob([bytes], { type: result.mimeType });
-            const url = URL.createObjectURL(blob);
+        if (result.url || (result.audio && result.mimeType)) {
+            // Prefer the same-origin clip URL — it plays under media-src 'self' everywhere;
+            // blob: is only the fallback for old responses.
+            let url = result.url, revoke = null;
+            if (!url) {
+                const binaryStr = atob(result.audio);
+                const bytes = new Uint8Array(binaryStr.length);
+                for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+                url = URL.createObjectURL(new Blob([bytes], { type: result.mimeType }));
+                revoke = url;
+            }
             const audio = new Audio(url);
             audio.volume = 0.8;
-            audio.onended = () => URL.revokeObjectURL(url);
-            audio.play();
+            audio.onended = () => { if (revoke) URL.revokeObjectURL(revoke); };
+            audio.onerror = () => toast('Audio came back but the browser refused to play it — check extensions/shields', 'warning');
+            audio.play().catch(() => toast('Click anywhere on the page first, then test again (autoplay)', 'info'));
             toast(`Testing: ${result.voiceName || voiceId} (${result.engine})`, 'info');
         } else {
             toast('No audio returned — check provider config', 'warning');

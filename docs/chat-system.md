@@ -88,3 +88,7 @@ wss://openvibe.live/ws/chat?token=JWT_OR_API_TOKEN&streamId=123
 | `tts` | `text`, `voice` | Server-generated TTS event |
 | `tts-audio` | `url` | TTS audio file URL |
 | `user_count` | `count` | User presence update |
+
+### TTS playback hardening (2026-08-31)
+
+`media-src` now includes `data:` (the mod voice preview plays a `data:audio/…` URL; without it the element dies with "no supported source"). The admin **Test Voice** (`POST /api/tts/admin/test`) and mod preview (`POST /api/mod/tts-voice/preview`) additionally return a same-origin `url` — the clip is parked in the shared TTS cache (`data/tts-cache`) and streamed from `GET /api/tts/audio/<hash>.<wav|mp3>` (strict filename, no traversal) — so playback works even where a browser or shield refuses `blob:`/`data:` audio. Chat/broadcast TTS players retry once with a `data:` URL when the element rejects the blob URL. Note: `tts-audio` WS payloads carry base64 (`audio` + `mimeType`), not a `url`.

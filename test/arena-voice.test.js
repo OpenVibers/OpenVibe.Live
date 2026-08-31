@@ -50,6 +50,26 @@ voice._setSynth(async (v, text, username) => { calls.push({ sig: v.sig, text, us
     assert.strictEqual((await fetch(`http://127.0.0.1:${srv.address().port}/api/arena/voice/goosely?t=`)).status, 400);
     srv.close();
     console.log('✅ voice: HTTP streaming + caching headers');
+
+    // One-off clips (admin Test Voice / mod preview) get a same-origin URL from the same cache —
+    // no blob:/data: needed in the browser, and the filename is traversal-proof.
+    const st = voice.stash(Buffer.from('RIFFfakewav').toString('base64'), 'audio/wav');
+    assert.ok(/^[a-f0-9]{32}\.wav$/.test(st.file) && fs.existsSync(path.join(voice.CACHE_DIR, st.file)));
+    assert.strictEqual(voice.stash(Buffer.from('RIFFfakewav').toString('base64'), 'audio/wav').file, st.file, 'same clip → same file');
+    assert.strictEqual(voice.stash('', 'audio/wav'), null);
+    assert.strictEqual(voice.cachedByName('../../etc/passwd'), null, 'no traversal');
+    assert.strictEqual(voice.cachedByName('zz.wav'), null);
+    assert.ok(voice.cachedByName(st.file).mimeType === 'audio/wav');
+    const app2 = require('express')(); app2.use('/api/tts', require('../server/chat/tts-routes'));
+    const srv2 = await new Promise(r => { const x = app2.listen(0, () => r(x)); });
+    const clip = await fetch(`http://127.0.0.1:${srv2.address().port}/api/tts/audio/${st.file}`);
+    assert.strictEqual(clip.status, 200); assert.strictEqual(clip.headers.get('content-type'), 'audio/wav'); assert.strictEqual(await clip.text(), 'RIFFfakewav');
+    assert.strictEqual((await fetch(`http://127.0.0.1:${srv2.address().port}/api/tts/audio/nope.wav`)).status, 404);
+    // an arena voice line is reachable through the same clip route by its cache filename
+    const line = await voice.speak({ user, text: 'you think your chat is loud?' });
+    assert.strictEqual((await fetch(`http://127.0.0.1:${srv2.address().port}/api/tts/audio/${path.basename(line.path)}`)).status, 200);
+    srv2.close();
+    console.log('✅ one-off clip stash + same-origin /api/tts/audio route');
     console.log('\n✅ All Arena voice tests passed');
     process.exit(0);
 })().catch(err => { console.error(err); process.exit(1); });

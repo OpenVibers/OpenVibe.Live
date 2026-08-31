@@ -236,7 +236,9 @@ app.use(helmet({
             // VODs/clips play from openvibe.media (the /api proxies 302 there), which may
             // itself redirect to presigned B2/R2 object-store URLs — all must be allowed
             // or the browser blocks the media element.
-            mediaSrc: ["'self'", "blob:", "https://openvibe.media", "https://s3.us-west-004.backblazeb2.com", "https://*.backblazeb2.com", "https://*.r2.cloudflarestorage.com"],
+            // data: — the mod TTS voice preview plays a data:audio/… URL; without it the browser
+            // rejects the element ("no supported source") even though the backend returned audio.
+            mediaSrc: ["'self'", "blob:", "data:", "https://openvibe.media", "https://s3.us-west-004.backblazeb2.com", "https://*.backblazeb2.com", "https://*.r2.cloudflarestorage.com"],
             frameSrc: ["'self'", "https://www.youtube.com", "https://www.youtube-nocookie.com", "https://player.vimeo.com"],
             workerSrc: ["'self'", "blob:"],
             scriptSrcAttr: ["'unsafe-inline'"],
