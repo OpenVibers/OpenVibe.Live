@@ -115,4 +115,22 @@ function allow(ip, signedIn) {
     return true;
 }
 
-module.exports = { speak, voiceFor, cacheKey, cleanText, allow, purge, CACHE_DIR, MAX_TEXT, _setSynth: (fn) => { _synthOverride = fn; } };
+/** Park a one-off synthesized clip (admin test / mod preview) in the cache → safe same-origin filename. */
+function stash(audioBase64, mimeType) {
+    ensureDir();
+    const buf = Buffer.from(String(audioBase64 || ''), 'base64');
+    if (!buf.length) return null;
+    const ext = /wav/i.test(mimeType || '') ? 'wav' : 'mp3';
+    const file = `${crypto.createHash('sha256').update(buf).digest('hex').slice(0, 32)}.${ext}`;
+    const full = path.join(CACHE_DIR, file);
+    if (!fs.existsSync(full)) { fs.writeFileSync(`${full}.tmp`, buf); fs.renameSync(`${full}.tmp`, full); purge(); }
+    return { file, mimeType: ext === 'wav' ? 'audio/wav' : 'audio/mpeg' };
+}
+/** Resolve a cache filename (strict shape, no traversal) → { path, mimeType } or null. */
+function cachedByName(file) {
+    if (!/^[a-f0-9]{32}\.(mp3|wav)$/.test(String(file || ''))) return null;
+    const full = path.join(CACHE_DIR, file);
+    return fs.existsSync(full) ? { path: full, mimeType: file.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg' } : null;
+}
+
+module.exports = { speak, voiceFor, cacheKey, cleanText, allow, purge, stash, cachedByName, CACHE_DIR, MAX_TEXT, _setSynth: (fn) => { _synthOverride = fn; } };

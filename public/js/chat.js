@@ -5112,7 +5112,7 @@ function renderAdminTtsVoice(bodyEl, kind, id, d) {
         const btn = $('#atv-preview'); btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Playing…';
         try {
             const r = await api('/mod/tts-voice/preview', { method: 'POST', body: getParams() });
-            if (r.audio) { const a = new Audio(`data:${r.mimeType};base64,${r.audio}`); await a.play().catch(() => {}); }
+            if (r.url || r.audio) { const a = new Audio(r.url || `data:${r.mimeType};base64,${r.audio}`); await a.play().catch(() => {}); }
         } catch (e) { toast(e.message || 'Preview failed', 'error'); }
         btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-play"></i> Preview';
     });
@@ -5906,8 +5906,17 @@ function _processTTSAudioQueue() {
         const bytes = new Uint8Array(binaryStr.length);
         for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
         const blob = new Blob([bytes], { type: msg.mimeType });
-        const url = URL.createObjectURL(blob);
+        // A retry after the element rejected the blob URL plays from a data: URL instead
+        // (some browsers/shields block blob audio; CSP allows both).
+        const url = msg._forceDataUrl ? `data:${msg.mimeType};base64,${msg.audio}` : URL.createObjectURL(blob);
+        const _revoke = () => { if (!msg._forceDataUrl) URL.revokeObjectURL(url); };
         const audio = new Audio(url);
+        audio.onerror = () => {
+            _revoke();
+            _ttsAudioPlaying = false;
+            if (!msg._forceDataUrl) { msg._forceDataUrl = true; _ttsAudioQueue.unshift(msg); }
+            _processTTSAudioQueue();
+        };
         // Sound clips (!sound / soundboard) use the independent sound volume; TTS uses TTS volume.
         const _isSoundClip = msg.type === 'soundboard-audio' || msg.message_type === 'channel-sound' || msg.message_type === 'soundboard';
         const _volPref = _isSoundClip ? chatSettings.soundVolume : chatSettings.ttsVolume;
@@ -5932,9 +5941,8 @@ function _processTTSAudioQueue() {
             } else {
                 source.connect(gain).connect(ctx.destination);
             }
-            const cleanup = () => { URL.revokeObjectURL(url); try { ctx.close(); } catch { } _ttsAudioPlaying = false; _processTTSAudioQueue(); };
+            const cleanup = () => { _revoke(); try { ctx.close(); } catch { } _ttsAudioPlaying = false; _processTTSAudioQueue(); };
             audio.onended = cleanup;
-            audio.onerror = cleanup;
             audio.play().catch((err) => {
                 if (err && err.name === 'NotAllowedError') { try { ctx.close(); } catch { } _handleTtsPlayBlocked(msg, url); return; }
                 cleanup();
@@ -5942,11 +5950,10 @@ function _processTTSAudioQueue() {
         } catch {
             // Fallback to Audio.volume if Web Audio API unavailable
             audio.volume = volume;
-            audio.onended = () => { URL.revokeObjectURL(url); _ttsAudioPlaying = false; _processTTSAudioQueue(); };
-            audio.onerror = () => { URL.revokeObjectURL(url); _ttsAudioPlaying = false; _processTTSAudioQueue(); };
+            audio.onended = () => { _revoke(); _ttsAudioPlaying = false; _processTTSAudioQueue(); };
             audio.play().catch((err) => {
                 if (err && err.name === 'NotAllowedError') { _handleTtsPlayBlocked(msg, url); return; }
-                URL.revokeObjectURL(url); _ttsAudioPlaying = false; _processTTSAudioQueue();
+                _revoke(); _ttsAudioPlaying = false; _processTTSAudioQueue();
             });
         }
     } catch {

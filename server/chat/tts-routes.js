@@ -112,10 +112,23 @@ router.post('/admin/test', requireAuth, requireAdmin, async (req, res) => {
         const { voiceId, text } = req.body;
         const result = await ttsEngine.synthesize(text || 'This is a TTS test from OpenVibe.Live', voiceId);
         if (!result) return res.status(400).json({ error: 'Voice unavailable or TTS disabled' });
+        // Same-origin URL alongside the base64: plays under media-src 'self' even where the
+        // browser (or an overzealous shield) refuses blob:/data: audio.
+        try { const stashed = require('../arena/voice').stash(result.audio, result.mimeType); if (stashed) result.url = `/api/tts/audio/${stashed.file}`; } catch { /* base64 still works */ }
         res.json(result);
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
+});
+
+// Cached one-off clips (admin tests, previews) — streamed same-origin so no blob:/data: is needed.
+router.get('/audio/:file', (req, res) => {
+    try {
+        const hit = require('../arena/voice').cachedByName(req.params.file);
+        if (!hit) return res.status(404).json({ error: 'No such clip' });
+        res.set({ 'Content-Type': hit.mimeType, 'Cache-Control': 'private, max-age=86400' });
+        require('fs').createReadStream(hit.path).pipe(res);
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;

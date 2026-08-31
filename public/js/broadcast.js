@@ -5377,8 +5377,11 @@ function _processBcTtsAudioQueue() {
         const bytes = new Uint8Array(binaryStr.length);
         for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
         const blob = new Blob([bytes], { type: msg.mimeType });
-        const url = URL.createObjectURL(blob);
+        const url = msg._forceDataUrl ? `data:${msg.mimeType};base64,${msg.audio}` : URL.createObjectURL(blob);
         const audio = new Audio(url);
+        audio.onerror = () => {
+            if (!msg._forceDataUrl) { try { URL.revokeObjectURL(url); } catch { } msg._forceDataUrl = true; _bcTtsAudioPlaying = false; _bcTtsAudioQueue.unshift(msg); _processBcTtsAudioQueue(); }
+        };
         const s = broadcastState.settings;
         const volume = (s.ttsVolume || 800) / 1000;
         // Speed = tempo (pitch preserved); pitch = independent shift (units, 100=+1oct).
