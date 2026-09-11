@@ -217,25 +217,6 @@ function buildConfig(registryValues) {
         },
         adminUsername: process.env.ADMIN_USERNAME || 'admin',
         adminPassword: process.env.ADMIN_PASSWORD || 'changeme123',
-        // RobotStreamer switch bonus — the site-wide "$100 for converting" promo (public/js/rs-promo.js).
-        // RS_PROMO_ENABLED=false turns every promo surface off without a deploy of the frontend.
-        // Home-page "Star of OpenVibe" spotlight (username). The site setting `star_streamer`
-        // (admin settings API) overrides this env default.
-        starStreamer: process.env.STAR_STREAMER || '',
-        rsPromo: {
-            enabled: process.env.RS_PROMO_ENABLED !== 'false',
-            amount: parseInt(process.env.RS_PROMO_AMOUNT, 10) || 50,          // top of the range
-            amountMin: parseInt(process.env.RS_PROMO_AMOUNT_MIN, 10) || 25,   // bottom of the range
-            // Referral: an existing OpenVibe user who brings a RobotStreamer streamer over gets paid too.
-            referral: parseInt(process.env.RS_PROMO_REFERRAL, 10) || 10,
-            // VIP recruiter: one user with a higher per-conversion rate, spotlighted on the home page.
-            vipUser: process.env.RS_PROMO_VIP_USER || 'patrick',
-            vipReferral: parseInt(process.env.RS_PROMO_REFERRAL_VIP, 10) || 20,
-            github: process.env.RS_PROMO_GITHUB || 'https://github.com/OpenVibers/OpenVibe.Live',
-            // Who the claimant DMs in-site; defaults to the admin account.
-            owner: process.env.RS_PROMO_OWNER || process.env.ADMIN_USERNAME || 'admin',
-            discord: process.env.RS_PROMO_DISCORD || 'https://discord.gg/M6MuRUaeJj',
-        },
         jwt: {
             secret: process.env.JWT_SECRET || 'openvibelive-dev-secret-change-me',
             expiresIn: '7d',
