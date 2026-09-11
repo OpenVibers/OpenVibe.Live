@@ -787,7 +787,7 @@ function _wsRenderPanel() {
                 </details>
 
                 <!-- Restream Destinations -->
-                <details class="bc-ws-slot-settings" open>
+                <details class="bc-ws-slot-settings" id="bc-ws-restream-details" open>
                     <summary><i class="fa-solid fa-tower-broadcast"></i> Restream Destinations</summary>
                     <div class="bc-ws-slot-settings-inner">
                         <p class="muted" style="font-size:0.82rem;margin-bottom:10px">

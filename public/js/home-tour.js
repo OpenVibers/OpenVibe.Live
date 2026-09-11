@@ -46,7 +46,7 @@
                 </div>
                 <div class="tour-actions">
                     <a class="btn btn-primary btn-lg" ${go('/broadcast')}><i class="fa-solid fa-tower-broadcast"></i> Go live</a>
-                    <a class="btn btn-outline btn-lg" ${go('/docs/broadcasting')}><i class="fa-solid fa-book"></i> Restream setup</a>
+                    <a class="btn btn-outline btn-lg" href="/broadcast?setup=restream" onclick="event.preventDefault(); startRestreamGuide();"><i class="fa-solid fa-satellite-dish"></i> Set up restreams (guided)</a>
                 </div>
             </div>`;
     }

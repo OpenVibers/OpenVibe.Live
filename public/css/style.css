@@ -14722,3 +14722,7 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
     .arena-cam-thumb { aspect-ratio: 16/9; }
 }
 @media (prefers-reduced-motion: reduce) { .arena-mic-moment { animation: none; } }
+
+/* Arena "your arena" strip: the portrait is a div, so the generic `> div` flex rule was stretching it */
+.arena-me-left > .arena-portrait { flex: 0 0 64px !important; width: 64px !important; height: 64px !important; display: block; }
+.arena-me-left > .arena-portrait-initial { display: flex; }

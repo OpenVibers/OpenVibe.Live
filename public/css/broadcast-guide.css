@@ -1,0 +1,21 @@
+/* ── Guided setup overlay on the Go Live page (public/js/broadcast-guide.js) ── */
+.bg-guide { position: fixed; inset: 0; z-index: 20500; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
+.bg-guide.is-on { opacity: 1; }
+.bg-guide-hole {
+    position: fixed; border-radius: 14px; pointer-events: none;
+    box-shadow: 0 0 0 9999px rgba(3, 3, 8, 0.68), 0 0 0 3px var(--accent), 0 0 30px color-mix(in srgb, var(--accent) 60%, transparent);
+    transition: left 0.25s ease, top 0.25s ease, width 0.25s ease, height 0.25s ease, opacity 0.25s;
+}
+.bg-guide-card {
+    position: fixed; pointer-events: auto; width: 380px; max-width: calc(100vw - 24px);
+    padding: 16px 18px; border-radius: 16px; color: #fff;
+    background: linear-gradient(160deg, #17132b, #0c0c12 60%); border: 1px solid rgba(255,255,255,0.14);
+    box-shadow: 0 30px 70px rgba(0,0,0,0.6), 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+    transition: top 0.25s ease, left 0.25s ease;
+}
+.bg-guide-step { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-light); margin-bottom: 4px; }
+.bg-guide-title { margin: 0 0 6px; font-size: 1.05rem; font-weight: 900; }
+.bg-guide-text { margin: 0 0 12px; font-size: 0.86rem; line-height: 1.5; color: #e2e8f0; }
+.bg-guide-text b { color: #fff; }
+.bg-guide-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (prefers-reduced-motion: reduce) { .bg-guide, .bg-guide-hole, .bg-guide-card { transition: none; } }
