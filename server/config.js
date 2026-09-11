@@ -217,6 +217,9 @@ function buildConfig(registryValues) {
         },
         adminUsername: process.env.ADMIN_USERNAME || 'admin',
         adminPassword: process.env.ADMIN_PASSWORD || 'changeme123',
+        // Home-page "Star of OpenVibe" spotlight (username). The site setting `star_streamer`
+        // (admin settings API) overrides this env default.
+        starStreamer: process.env.STAR_STREAMER || '',
         jwt: {
             secret: process.env.JWT_SECRET || 'openvibelive-dev-secret-change-me',
             expiresIn: '7d',
