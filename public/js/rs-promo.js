@@ -21,11 +21,24 @@
 (function () {
     'use strict';
 
-    const PROMO_VERSION = 'rs-desperate-v7';       // bump to re-show the takeover to everyone
+    const PROMO_VERSION = 'rs-desperate-v8';       // bump to re-show the takeover to everyone
     const SEEN_KEY = 'ov_rs_promo_seen';
     const TICKER_KEY = 'ov_rs_ticker_hidden';       // sessionStorage — comes back next visit
     const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const COARSE = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    // Lite mode: phones and weak devices get the copy and the cheap transform animations, but no
+    // canvases, shaders, blur filters, blend modes or animated shadows (they flicker and stutter on
+    // low-end Android GPUs). Also honours Data Saver.
+    const LITE = (() => {
+        try {
+            const narrow = window.innerWidth <= 820;
+            const weak = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) || (navigator.deviceMemory && navigator.deviceMemory <= 4);
+            const saver = navigator.connection && navigator.connection.saveData;
+            const ua = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+            return !!(saver || (COARSE && (narrow || ua)) || (narrow && weak) || (ua && weak));
+        } catch { return COARSE; }
+    })();
+    if (LITE) document.documentElement.classList.add('rs-lite');
 
     const cfg = { enabled: true, amount: 50, amountMin: 25, referral: 10, vip: null, totals: null, github: 'https://github.com/OpenVibers/OpenVibe.Live', owner: 'admin', discord: 'https://discord.gg/M6MuRUaeJj' };
     const STREAM_ALERT_KEY = 'ov_rs_stream_alert_min'; // sessionStorage — collapsed (never hidden) state
@@ -205,11 +218,15 @@
         document.body.style.overflow = 'hidden';
         store.set(SEEN_KEY, PROMO_VERSION);
         if (!REDUCED) {
-            rainStop = startMoneyRain(takeoverEl.querySelector('.rs-tk-canvas'));
-            glStop = startShader(takeoverEl.querySelector('.rs-tk-gl'));
-            attachParallax(takeoverEl);
+            if (!LITE) {
+                rainStop = startMoneyRain(takeoverEl.querySelector('.rs-tk-canvas'));
+                glStop = startShader(takeoverEl.querySelector('.rs-tk-gl'));
+                attachParallax(takeoverEl);
+            } else {
+                takeoverEl.querySelectorAll('.rs-tk-canvas, .rs-tk-gl, .rs-tk-burst, .rs-tk-scan').forEach(c => c.remove());
+            }
             typewriter(takeoverEl.querySelector('.rs-tk-type-text'), PLEAS);
-            countUp(takeoverEl.querySelector('[data-countup]'), cfg.amount, 1500, 500, () => { shake(takeoverEl); coinBurst(takeoverEl.querySelector('.rs-tk-burst')); });
+            countUp(takeoverEl.querySelector('[data-countup]'), cfg.amount, 1500, 500, () => { if (!LITE) { shake(takeoverEl); coinBurst(takeoverEl.querySelector('.rs-tk-burst')); } });
             takeoverEl.querySelectorAll('[data-odo]').forEach(el => odometer(el, 900));
         } else {
             takeoverEl.querySelector('[data-countup]').textContent = money();
@@ -639,7 +656,7 @@
         document.body.appendChild(modalEl);
         if (loggedIn) loadCashout().catch(() => { const c = document.getElementById('rs-cashout'); if (c) c.innerHTML = '<p class="rs-modal-fine">Could not load your payouts right now.</p>'; });
         document.body.style.overflow = 'hidden';
-        if (!REDUCED) confettiBurst();
+        if (!REDUCED && !LITE) confettiBurst();
         setTimeout(() => modalEl?.querySelector('.rs-modal-actions .rs-btn')?.focus({ preventScroll: true }), 400);
     }
     const _spinner = (t) => `<div class="rs-cashout-loading"><i class="fa-solid fa-circle-notch fa-spin"></i> ${esc(t)}</div>`;
@@ -675,7 +692,7 @@
             const body = Object.fromEntries(new FormData(f).entries());
             body.method = modalEl?.querySelector('.rs-toggle')?.dataset.method || 'zelle';
             btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Filing…';
-            try { const r = await api('/promo/claims', { method: 'POST', body }); say(`Claim #${r.claim.id} filed — you'll get a notification when it's approved`, 'success'); if (!REDUCED) confettiBurst(); await loadCashout(); }
+            try { const r = await api('/promo/claims', { method: 'POST', body }); say(`Claim #${r.claim.id} filed — you'll get a notification when it's approved`, 'success'); if (!REDUCED && !LITE) confettiBurst(); await loadCashout(); }
             catch (err) { say(err?.message || 'Could not file the claim', 'error'); btn.disabled = false; btn.innerHTML = `<i class="fa-solid fa-sack-dollar"></i> File claim for ${money()}`; }
         });
         box.querySelectorAll('.rs-payout-form').forEach(f => f.addEventListener('submit', async (e) => {

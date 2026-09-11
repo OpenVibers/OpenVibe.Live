@@ -37,3 +37,7 @@
     .hfx-shimmer, .hfx-glow, #page-home .hero-cta .btn-primary, #page-home .section-header h2 .live-dot { animation: none !important; }
     .hfx-reveal { opacity: 1; transform: none; transition: none; }
 }
+
+.rs-lite .hfx-sparks, .rs-lite .hfx-spot { display: none; }
+.rs-lite .hfx-shimmer, .rs-lite .hfx-glow, .rs-lite #page-home .hero-cta .btn-primary, .rs-lite #page-home .section-header h2 .live-dot { animation: none !important; text-shadow: none; }
+.rs-lite #page-home .stream-card { transition: none; }
