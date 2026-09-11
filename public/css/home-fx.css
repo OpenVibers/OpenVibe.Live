@@ -14,15 +14,9 @@
 #page-home .hero-cta .btn-primary { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); animation: hfxPulse 2.6s ease-out infinite; }
 @keyframes hfxPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 70% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--accent) 0%, transparent); } 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); } }
 
-/* Headline: slow sheen sweeping across the gradient text */
-.hfx-shimmer { position: relative; }
-.hfx-shimmer::after {
-    content: ''; position: absolute; inset: -6px -20px; pointer-events: none;
-    background: linear-gradient(115deg, transparent 40%, rgba(255,255,255,0.22) 50%, transparent 60%);
-    background-size: 260% 100%; animation: hfxSheen 5s ease-in-out infinite;
-    mix-blend-mode: screen; -webkit-mask: linear-gradient(#000, #000); mask: linear-gradient(#000, #000);
-}
-@keyframes hfxSheen { 0% { background-position: 130% 0; } 60%, 100% { background-position: -130% 0; } }
+/* Headline: subtle breathing glow (the sweeping sheen rendered as a block over gradient text, so it is gone) */
+.hfx-shimmer { animation: hfxBreathe 4s ease-in-out infinite; }
+@keyframes hfxBreathe { 0%,100% { filter: drop-shadow(0 0 0 rgba(139,92,246,0)); } 50% { filter: drop-shadow(0 0 18px rgba(139,92,246,0.45)); } }
 .hfx-glow { text-shadow: 0 0 22px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 44px color-mix(in srgb, var(--accent) 25%, transparent); animation: hfxGlow 3s ease-in-out infinite; }
 @keyframes hfxGlow { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.18); } }
 
@@ -40,6 +34,6 @@
 
 @media (prefers-reduced-motion: reduce) {
     .hfx-sparks, .hfx-spot { display: none; }
-    .hfx-shimmer::after, .hfx-glow, #page-home .hero-cta .btn-primary, #page-home .section-header h2 .live-dot { animation: none !important; }
+    .hfx-shimmer, .hfx-glow, #page-home .hero-cta .btn-primary, #page-home .section-header h2 .live-dot { animation: none !important; }
     .hfx-reveal { opacity: 1; transform: none; transition: none; }
 }
