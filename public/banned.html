@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Banned — OpenVibe.Live</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+    <style>
+        :root { color-scheme: dark; }
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #e8e6e3;
+            background: radial-gradient(120% 90% at 50% 110%, #3b0a0a 0%, #0d0d0f 60%); }
+        .card { max-width: 640px; width: 100%; text-align: center; padding: 36px 28px; border-radius: 20px; background: rgba(20,12,14,0.85); border: 1px solid rgba(231,76,60,0.45);
+            box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(231,76,60,0.2), 0 0 60px rgba(231,76,60,0.15); }
+        .stamp { display: inline-block; padding: 8px 22px; border: 4px solid #e74c3c; color: #e74c3c; border-radius: 10px; font-weight: 900; font-size: clamp(2rem, 8vw, 3.4rem); letter-spacing: 0.18em;
+            transform: rotate(-4deg); text-shadow: 0 0 20px rgba(231,76,60,0.5); }
+        h1 { margin: 22px 0 8px; font-size: clamp(1.3rem, 3.6vw, 1.9rem); }
+        p { margin: 0 0 12px; font-size: 1.02rem; line-height: 1.55; color: #cfc9c4; }
+        p b { color: #fff; }
+        .reason { margin: 18px 0; padding: 12px 14px; border-radius: 12px; background: rgba(231,76,60,0.1); border-left: 3px solid #e74c3c; text-align: left; color: #f5d5d0; }
+        .reason small { display: block; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: #e74c3c; margin-bottom: 4px; }
+        .fine { font-size: 0.82rem; color: #8a8480; margin-top: 18px; }
+        .logo { color: #a78bfa; font-weight: 800; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="stamp">BANNED</div>
+        <h1>{{HEADLINE}}</h1>
+        <p>{{BODY}}</p>
+        <div class="reason"><small>Reason on record</small>{{REASON}}</div>
+        <p><b>This ban is permanent.</b> Don't put any effort into coming back — there is nothing here for you, and this decision won't change.</p>
+        <p class="fine"><span class="logo">OpenVibe.Live</span> · this page is shown to you every time you open the site.</p>
+    </div>
+</body>
+</html>
