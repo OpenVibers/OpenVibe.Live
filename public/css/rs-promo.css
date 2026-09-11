@@ -110,6 +110,34 @@ body.rs-ticker-on .rs-modal, body.rs-ticker-on .rs-takeover { --rs-ticker-h: 0px
 @keyframes rsFadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes rsTakeoverOut { to { opacity: 0; transform: scale(1.06); filter: blur(10px); } }
 
+/* WebGL aurora + scanlines + shake */
+.rs-tk-gl { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; filter: saturate(1.2); }
+.rs-tk-burst { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
+.rs-tk-scan { position: absolute; inset: 0; pointer-events: none; z-index: 1; background: repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 4px); mix-blend-mode: overlay; animation: rsScan 8s linear infinite; }
+@keyframes rsScan { to { background-position: 0 200px; } }
+.rs-takeover.rs-shake { animation: rsShakeIt 0.55s cubic-bezier(.36,.07,.19,.97) both; }
+@keyframes rsShakeIt { 10%,90% { transform: translate(-2px, 1px); } 20%,80% { transform: translate(4px, -2px); } 30%,50%,70% { transform: translate(-8px, 3px); } 40%,60% { transform: translate(8px, -3px); } }
+.rs-tk-content { transition: transform 0.12s ease-out; }
+.rs-tk-amount { transform-style: preserve-3d; }
+.rs-tk-amount .rs-money { display: inline-block; transform: var(--tilt, none); transition: transform 0.12s ease-out; }
+/* Glitch-in title */
+.rs-glitch { position: relative; }
+.rs-glitch::before, .rs-glitch::after { content: attr(data-text); position: absolute; left: 0; top: 0; width: 100%; color: #fff; opacity: 0; pointer-events: none; clip-path: inset(0 0 0 0); }
+.rs-glitch::before { text-shadow: -2px 0 #22d3ee; animation: rsGlitchA 3.2s steps(1) 0.6s 2; }
+.rs-glitch::after { text-shadow: 2px 0 #f472b6; animation: rsGlitchB 3.2s steps(1) 0.6s 2; }
+@keyframes rsGlitchA { 0%,100% { opacity: 0; } 6% { opacity: 1; clip-path: inset(10% 0 60% 0); transform: translate(-4px, 0); } 10% { opacity: 1; clip-path: inset(50% 0 20% 0); transform: translate(4px, 0); } 14% { opacity: 0; } 42% { opacity: 1; clip-path: inset(30% 0 40% 0); transform: translate(-3px, 0); } 46% { opacity: 0; } }
+@keyframes rsGlitchB { 0%,100% { opacity: 0; } 8% { opacity: 1; clip-path: inset(60% 0 5% 0); transform: translate(5px, 0); } 12% { opacity: 1; clip-path: inset(0 0 75% 0); transform: translate(-5px, 0); } 16% { opacity: 0; } 44% { opacity: 1; clip-path: inset(20% 0 55% 0); transform: translate(3px, 0); } 48% { opacity: 0; } }
+/* Typewriter plea */
+.rs-tk-type { min-height: 1.6em; margin: 4px 0 2px; font-size: clamp(1rem, 2.4vw, 1.35rem); font-weight: 800; color: #fde68a; font-family: var(--font-mono); letter-spacing: 0.02em; }
+.rs-tk-caret { animation: rsCaret 0.9s steps(1) infinite; color: #fbbf24; }
+@keyframes rsCaret { 50% { opacity: 0; } }
+/* Odometers */
+.rs-odos { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 0 0 20px; }
+.rs-odo { display: grid; justify-items: center; min-width: 120px; padding: 8px 14px; border-radius: 12px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.16); }
+.rs-odo b { font-size: 1.6rem; font-weight: 900; color: #fde68a; font-variant-numeric: tabular-nums; text-shadow: 0 0 16px rgba(251,191,36,0.5); transition: transform 0.2s; }
+.rs-odo b.is-done { animation: rsAmountPop 0.5s cubic-bezier(.2,1.6,.3,1); }
+.rs-odo small { font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; color: #cbd5e1; }
+
 /* Aurora blobs drifting behind everything */
 .rs-tk-aurora { position: absolute; inset: -20%; pointer-events: none; filter: blur(60px) saturate(1.3); opacity: 0.85; }
 .rs-tk-aurora span {
@@ -379,6 +407,42 @@ body.rs-ticker-on .rs-modal, body.rs-ticker-on .rs-takeover { --rs-ticker-h: 0px
 .rs-card-action .rs-btn { padding: 12px 20px; font-size: 0.95rem; white-space: nowrap; }
 .rs-card-replay { background: none; border: none; color: #94a3b8; font-size: 0.72rem; cursor: pointer; text-decoration: underline dotted; }
 .rs-card-replay:hover { color: #fff; }
+
+/* ═══════════════════════════════════════════════════════════════
+   SCOREBOARD + RECEIPTS — home page, under the VIP card
+   ═══════════════════════════════════════════════════════════════ */
+.rs-board { position: relative; z-index: 1; margin-top: 14px; padding: 16px 18px 14px; border-radius: 20px; text-align: left; color: #fff;
+    background: linear-gradient(160deg, rgba(20,16,40,0.96), rgba(10,10,16,0.98)); border: 1px solid rgba(255,255,255,0.14); box-shadow: 0 20px 50px rgba(0,0,0,0.45); overflow: hidden; }
+.rs-board::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 3px; background: linear-gradient(90deg, var(--rs-gold), var(--accent), var(--rs-blue), var(--rs-gold)); background-size: 300% 100%; animation: rsTickerBg 6s linear infinite; }
+.rs-board-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-weight: 900; font-size: 1.05rem; margin-bottom: 10px; }
+.rs-board-head i { color: #fde68a; } .rs-board-head small { color: #94a3b8; font-weight: 500; font-size: 0.78rem; }
+.rs-board-cols, .rs-board-row { display: grid; grid-template-columns: 1fr 150px 150px; gap: 8px; align-items: center; }
+.rs-board-cols { padding: 4px 0 8px; border-bottom: 1px solid rgba(255,255,255,0.12); margin-bottom: 4px; }
+.rs-board-col { font-weight: 900; font-size: 0.82rem; letter-spacing: 0.06em; text-transform: uppercase; text-align: center; }
+.rs-board-us { color: #c4b5fd; } .rs-board-them { color: #94a3b8; }
+.rs-board-row { padding: 7px 0; border-bottom: 1px dashed rgba(255,255,255,0.07); opacity: 0; transform: translateX(-16px); transition: opacity 0.5s ease calc(var(--i, 0) * 90ms), transform 0.6s cubic-bezier(.2,1.3,.3,1) calc(var(--i, 0) * 90ms); }
+.rs-board.is-in .rs-board-row { opacity: 1; transform: none; }
+.rs-board-feat { font-size: 0.88rem; color: #e2e8f0; }
+.rs-yes, .rs-no, .rs-meh { display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin: 0 auto; min-width: 34px; height: 30px; padding: 0 10px; border-radius: 999px; font-weight: 800; font-size: 0.8rem; }
+.rs-yes { color: #052e16; background: linear-gradient(135deg, #86efac, #22c55e); box-shadow: 0 0 14px rgba(34,197,94,0.45); transform: scale(0.6); }
+.rs-board.is-in .rs-yes { animation: rsYesPop 0.5s cubic-bezier(.2,1.7,.3,1) calc(var(--i, 0) * 90ms + 200ms) forwards; }
+@keyframes rsYesPop { to { transform: scale(1); } }
+.rs-yes-text { font-size: 0.72rem; white-space: nowrap; }
+.rs-no { color: #fecaca; background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.6); }
+.rs-board.is-in .rs-no { animation: rsNoShake 0.5s ease calc(var(--i, 0) * 90ms + 300ms); }
+@keyframes rsNoShake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-4px) rotate(-6deg); } 75% { transform: translateX(4px) rotate(6deg); } }
+.rs-meh { color: #94a3b8; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); cursor: help; }
+.rs-odos-home { margin: 14px 0 6px; }
+.rs-receipts-head { font-weight: 800; font-size: 0.9rem; margin: 8px 0 6px; } .rs-receipts-head i { color: #fde68a; } .rs-receipts-head small { color: #94a3b8; font-weight: 500; font-size: 0.74rem; margin-left: 6px; }
+.rs-receipts-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.rs-receipt-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 5px; border-radius: 999px; font-size: 0.78rem; background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.45); animation: rsFeatPop 0.5s cubic-bezier(.2,1.5,.3,1) both; animation-delay: calc(var(--i, 0) * 60ms); }
+.rs-receipt-chip img { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; }
+.rs-receipt-chip .rs-money { font-size: 0.86rem; } .rs-receipt-chip small { color: #94a3b8; }
+@media (max-width: 720px) { .rs-board-cols, .rs-board-row { grid-template-columns: 1fr 74px 74px; } .rs-yes-text { font-size: 0.62rem; white-space: normal; text-align: center; } .rs-board-col { font-size: 0.66rem; } }
+
+/* Holographic foil on the bounty card (moves with the pointer via --rs-mx/--rs-my) */
+.rs-card-foil { position: absolute; inset: 0; pointer-events: none; z-index: 0; opacity: var(--rs-glare, 0); transition: opacity 0.3s; mix-blend-mode: color-dodge;
+    background: conic-gradient(from calc(var(--rs-mx, 50%) * 3.6deg) at var(--rs-mx, 50%) var(--rs-my, 50%), rgba(255,0,128,0.35), rgba(255,215,0,0.35), rgba(0,255,200,0.35), rgba(80,120,255,0.35), rgba(255,0,128,0.35)); filter: blur(18px) saturate(1.4); }
 
 /* ═══════════════════════════════════════════════════════════════
    VIP RECRUITER — the starfish bounty board under the hero card
@@ -718,7 +782,8 @@ body.rs-ticker-on .rs-modal, body.rs-ticker-on .rs-takeover { --rs-ticker-h: 0px
     .rs-modal, .rs-modal-card, .rs-modal-card::before, .rs-step, .rs-modal-fine i, .rs-wiggle,
     .rs-stream-alert, .rs-sa-stripe, .rs-sa-siren, .rs-sa-mini i.fa-robot,
     .rs-flow2-node, .rs-flow2-hub, .rs-flow2-fan::before, .rs-packet, .rs-feat,
-    .rs-vip, .rs-vip-bubbles span, .rs-vip-star, .rs-vip-pupil, .rs-vip-sparkle {
+    .rs-vip, .rs-vip-bubbles span, .rs-vip-star, .rs-vip-pupil, .rs-vip-sparkle,
+    .rs-tk-scan, .rs-glitch::before, .rs-glitch::after, .rs-tk-caret, .rs-odo b, .rs-board-row, .rs-yes, .rs-no, .rs-receipt-chip, .rs-board::before {
         animation: none !important;
     }
     .rs-tk-title .rs-w, .rs-tk-content, .rs-card-border, .rs-step, .rs-chip { opacity: 1; transform: none; }
@@ -726,6 +791,7 @@ body.rs-ticker-on .rs-modal, body.rs-ticker-on .rs-takeover { --rs-ticker-h: 0px
     .rs-ticker-track .rs-ticker-copy:nth-child(2) { display: none; }
     .rs-hero-card { transform: none !important; }
     .rs-card-glare { display: none; }
-    .rs-tk-canvas, .rs-confetti { display: none; }
+    .rs-tk-canvas, .rs-confetti, .rs-tk-gl, .rs-tk-burst, .rs-tk-scan { display: none; }
+    .rs-board-row { opacity: 1; transform: none; } .rs-yes { transform: none; }
     .rs-money { background: none; -webkit-text-fill-color: var(--rs-gold); color: var(--rs-gold); }
 }

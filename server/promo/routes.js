@@ -28,6 +28,15 @@ router.get('/robotstreamer', (req, res) => {
     res.json({ enabled: p.enabled !== false, amount: p.amount || 50, amount_min: p.amountMin || 25, referral: p.referral || 10, vip, github: p.github || null, owner: p.owner || 'admin', discord: p.discord || null, totals, cashout: true });
 });
 
+// Public social proof: who got paid (username + amount + when). Only PAID rows, no payout details.
+router.get('/receipts', (req, res) => {
+    try {
+        res.set('Cache-Control', 'public, max-age=60');
+        const rows = claims.listAll({ status: 'paid', limit: 30 }).claims.map(c => ({ username: c.user.username, display_name: c.user.display_name, avatar_url: c.user.avatar_url, amount: c.amount, kind: c.kind, paid_at: c.paid_at }));
+        res.json({ receipts: rows, totals: claims.stats() });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/claims/mine', requireAuth, (req, res) => {
     try { res.set('Cache-Control', 'no-store'); res.json(claims.mine(req.user.id)); } catch (err) { res.status(500).json({ error: err.message }); }
 });
