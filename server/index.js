@@ -361,6 +361,12 @@ app.use((req, res, next) => {
             return res.status(404).send('<!DOCTYPE html><html><head><title>404</title></head><body><h1>404 Not Found</h1></body></html>');
         }
     } catch (e) { /* DB error — let request through rather than block everyone */ }
+    // A browser that has been shown the ban screen keeps seeing it (cookie set by GET /banned),
+    // signed in or not. Assets still load so the page itself can render.
+    if (req.cookies && req.cookies.ov_banned === '1' && !req.path.startsWith('/banned') && !req.path.startsWith('/assets/') && req.path !== '/api/health') {
+        if (req.path.startsWith('/api/') || req.path.startsWith('/ws/')) return res.status(403).json({ error: 'Account is banned' });
+        return res.redirect(302, '/banned');
+    }
     next();
 });
 
@@ -735,14 +741,20 @@ app.get('/banned', (req, res) => {
         const token = extractToken(req);
         if (token) { user = authenticateApiToken(token) || (() => { const d = verifyToken(token); return d ? resolveNetworkUser(d) : null; })(); }
     } catch { user = null; }
-    if (user && !user.is_banned) return res.redirect('/');
-    const name = user ? (user.display_name || user.username) : null;
-    const reason = (user && user.ban_reason) || 'Banned by the site owner.';
+    if (user && !user.is_banned) { res.clearCookie('ov_banned'); res.clearCookie('ov_banned_name'); return res.redirect('/'); }
+    // Make the ban stick to this browser: from now on every visit — signed in or not — lands here.
+    const isSecure = String(config.baseUrl || '').startsWith('https');
+    const tenYears = 10 * 365 * 24 * 3600 * 1000;
+    if (user && user.is_banned) {
+        res.cookie('ov_banned', '1', { httpOnly: true, maxAge: tenYears, sameSite: 'Lax', secure: isSecure });
+        res.cookie('ov_banned_name', String(user.display_name || user.username).slice(0, 60), { httpOnly: true, maxAge: tenYears, sameSite: 'Lax', secure: isSecure });
+    }
+    const name = user ? (user.display_name || user.username) : (req.cookies && req.cookies.ov_banned_name ? String(req.cookies.ov_banned_name) : null);
+    const reason = (user && user.ban_reason) || 'Repeated disrespect toward the owner of this site. Permanent.';
     let html = '';
     try { html = require('fs').readFileSync(path.join(__dirname, '../public/banned.html'), 'utf8'); } catch { html = '<h1>Banned</h1>'; }
     html = html
-        .replace('{{HEADLINE}}', name ? `${escHtml(name)}, you are banned from OpenVibe.Live.` : 'This account is banned from OpenVibe.Live.')
-        .replace('{{BODY}}', name ? `You were disrespectful to the person who built and runs this site, and you hurt him. That's the whole story, and it's enough.` : 'The account you signed in with has been banned by the site owner.')
+        .replace('{{HEADLINE}}', name ? `${escHtml(name)}, you are banned from OpenVibe.Live.` : 'You are banned from OpenVibe.Live.')
         .replace('{{REASON}}', escHtml(reason));
     res.status(403).set('Cache-Control', 'no-store').type('html').send(html);
 });
