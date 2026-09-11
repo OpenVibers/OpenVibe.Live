@@ -1,18 +1,21 @@
 /**
- * OpenVibe.Live — Arena (roster, ratings, personas, portraits, quotes)
+ * OpenVibe.Live — Arena (roster, ratings, personas, portraits, quotes) — Battle Cam mode
  *
- * The Arena turns the analytics + AI data the site already collects about each streamer
- * into a fighting-game roster. Everything competitive is driven by what streamers SAY on
- * stream and what chat does — see listener.js (the ears), beef.js (streamer vs streamer)
- * and board.js (topics, angles, Trash Levels). This module owns the roster:
+ * The Arena is PURE MIC. Viewer counts, chat volume, followers, clips and tips do not exist
+ * here; the only input is what a streamer says into the microphone (the continuous audio
+ * transcription in stream_timeline_events), judged by listener.js and stored by mic.js.
+ * This module owns the roster:
  *
- *   stats      → seven 40–99 ratings (HYPE, GRIND, CHAT, LOYALTY, CLUTCH, VIBE, MIC)
- *                computed as percentiles across the active roster, plus an overall POWER
- *                that also carries the Trash Talk bonus (recent XP + beef wins).
- *   persona    → AI "character select" bio, cached 24 h.
+ *   roster     → every streamer with transcribed speech in the last ACTIVE_DAYS days.
+ *   stats      → seven 40–99 ratings, all from the mic ledger, as percentiles across the
+ *                roster: HEAT (how good the shit talk is), AIM (callouts + beef hits per
+ *                hour on mic), KILLS (beef wins), MOUTH (share of stream time talking),
+ *                CLAPBACK (answering when called out), STAMINA (minutes of speech), PACE
+ *                (words per minute) — plus an overall POWER carrying the mouth bonus
+ *                (recent XP + beef wins).
+ *   persona    → AI "character select" bio written from their TRANSCRIPTS, cached 24 h.
  *   quotes     → AI-picked "things they actually said" from the transcripts, VOD-linked.
- *   image      → optional AI character portrait (never a likeness — persona + an
- *                identity-free scene description of the latest thumbnail).
+ *   image      → optional AI character portrait drawn from their own stream frames.
  *
  * Nothing here touches the AI unless AI is enabled and within budget (server/ai/llm.js).
  */
@@ -33,17 +36,18 @@ const IMAGE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const RATING_MIN = 40;
 const MIN_QUOTE_LINES = 20;
 const TALK_BONUS_MAX = 12;
-const STAT_KEYS = ['hype', 'grind', 'chat', 'loyalty', 'clutch', 'vibe', 'mic'];
+const MIC_WINDOW_DAYS = 30;
+const STAT_KEYS = ['heat', 'aim', 'kills', 'mouth', 'clapback', 'stamina', 'pace'];
 const STAT_META = {
-    hype:    { label: 'Hype',    desc: 'peak concurrent viewers' },
-    grind:   { label: 'Grind',   desc: 'hours live' },
-    chat:    { label: 'Chat',    desc: 'chat messages per hour live' },
-    loyalty: { label: 'Loyalty', desc: 'followers + returning chatters' },
-    clutch:  { label: 'Clutch',  desc: 'clips + tips per hour' },
-    vibe:    { label: 'Vibe',    desc: 'average viewers' },
-    mic:     { label: 'Mic',     desc: 'how much (and how loud) they talk — from the transcripts' },
+    heat:     { label: 'Heat',     desc: 'how good the shit talk is — average judge score of their mic moments (30d)' },
+    aim:      { label: 'Aim',      desc: 'callouts + beef hits per hour on mic (30d)' },
+    kills:    { label: 'Kills',    desc: 'beefs won' },
+    mouth:    { label: 'Mouth',    desc: 'share of stream time spent talking' },
+    clapback: { label: 'Clapback', desc: 'answering when called out — beefs answered on the clock' },
+    stamina:  { label: 'Stamina',  desc: 'minutes of speech heard (90d)' },
+    pace:     { label: 'Pace',     desc: 'words per minute on mic' },
 };
-const STAT_WEIGHTS = { hype: 0.22, vibe: 0.18, chat: 0.14, loyalty: 0.13, grind: 0.13, clutch: 0.1, mic: 0.1 };
+const STAT_WEIGHTS = { heat: 0.22, aim: 0.18, kills: 0.16, mouth: 0.14, clapback: 0.12, stamina: 0.10, pace: 0.08 };
 const HYPE_PATTERNS = ["let's go", 'lets go', 'no way', 'oh my god', 'insane', 'clutch', 'holy', 'gg', 'unreal', 'what the', 'bro', 'chat,', 'chat ', 'yo ', 'welcome', 'lfg', 'poggers', 'pog'];
 
 // ── Behavior line (NOT a vocabulary filter) ────────────────
@@ -92,7 +96,7 @@ function ensureTables() {
         try { db.run(`ALTER TABLE arena_profiles ADD COLUMN ${col}`); } catch { /* exists */ }
     }
     try { fs.mkdirSync(ARENA_DIR, { recursive: true }); } catch { /* */ }
-    try { require('./board').ensureTables(); require('./beef').ensureTables(); } catch { /* */ }
+    try { require('./mic').ensureTables(); require('./beef').ensureTables(); } catch { /* */ }
     _tablesReady = true;
 }
 
@@ -115,10 +119,11 @@ function imageGenAvailable() {
 
 // ── Raw stats ────────────────────────────────────────────────
 
+/** The roster is whoever has been HEARD: transcribed speech in the last ACTIVE_DAYS days. */
 function activeStreamerIds() {
     return db.all(`
-        SELECT DISTINCT s.user_id FROM streams s JOIN users u ON u.id = s.user_id
-        WHERE s.duration_seconds > 0 AND s.started_at >= datetime('now', ?) AND COALESCE(u.is_banned, 0) = 0
+        SELECT DISTINCT e.user_id FROM stream_timeline_events e JOIN users u ON u.id = e.user_id
+        WHERE e.kind = 'speech' AND e.user_id IS NOT NULL AND e.created_at >= datetime('now', ?) AND COALESCE(u.is_banned, 0) = 0
     `, [`-${ACTIVE_DAYS} days`]).map(r => r.user_id);
 }
 
@@ -163,33 +168,27 @@ function voiceStatsFor(userId, win) {
     };
 }
 
+/** Everything the ratings are built from: the transcripts (voice) + the mic ledger (mic). No audience numbers. */
 function rawStatsFor(userId) {
     const win = `-${STATS_WINDOW_DAYS} days`;
-    const agg = db.get(`
-        SELECT COUNT(*) AS streams, COALESCE(SUM(s.duration_seconds), 0) / 3600.0 AS hours, COALESCE(MAX(s.peak_viewers), 0) AS peak_viewers,
-               COALESCE(AVG(sa.avg_viewers), 0) AS avg_viewers, COALESCE(SUM(sa.total_messages), 0) AS messages, COALESCE(SUM(sa.unique_chatters), 0) AS unique_chatters,
-               COALESCE(SUM(sa.total_watch_minutes), 0) AS watch_minutes, COALESCE(SUM(sa.clips_created), 0) AS clips, MAX(s.ended_at) AS last_live_at
-        FROM streams s LEFT JOIN stream_analytics sa ON sa.stream_id = s.id
-        WHERE s.user_id = ? AND s.duration_seconds > 0 AND s.started_at >= datetime('now', ?)
-    `, [userId, win]) || {};
-    const allTime = db.get(`SELECT COUNT(*) AS streams, COALESCE(SUM(duration_seconds), 0) / 3600.0 AS hours, COALESCE(MAX(peak_viewers), 0) AS peak_viewers FROM streams WHERE user_id = ? AND duration_seconds > 0`, [userId]) || {};
-    const followers = db.get('SELECT COUNT(*) AS n FROM follows WHERE streamer_id = ?', [userId])?.n || 0;
-    const tips = db.get(`SELECT COALESCE(SUM(amount), 0) AS n FROM transactions WHERE to_user_id = ? AND type = 'donation' AND created_at >= datetime('now', ?)`, [userId, win])?.n || 0;
+    const agg = db.get(`SELECT COUNT(*) AS streams, COALESCE(SUM(duration_seconds), 0) / 3600.0 AS hours, MAX(ended_at) AS last_live_at FROM streams WHERE user_id = ? AND duration_seconds > 0 AND started_at >= datetime('now', ?)`, [userId, win]) || {};
     const category = db.get(`SELECT COALESCE(NULLIF(ai_category, ''), category) AS category, COUNT(*) AS n FROM streams WHERE user_id = ? AND duration_seconds > 0 AND COALESCE(NULLIF(ai_category, ''), category) IS NOT NULL AND COALESCE(NULLIF(ai_category, ''), category) != '' GROUP BY 1 ORDER BY n DESC LIMIT 1`, [userId])?.category || null;
-    const hours = Math.max(Number(agg.hours) || 0, 0.1);
+    let micStats = {};
+    try { micStats = require('./mic').micStats(userId, MIC_WINDOW_DAYS); } catch { micStats = {}; }
     return {
-        window_days: STATS_WINDOW_DAYS, streams: agg.streams || 0, hours: Number((agg.hours || 0).toFixed(1)), peak_viewers: agg.peak_viewers || 0,
-        avg_viewers: Number((agg.avg_viewers || 0).toFixed(1)), messages: agg.messages || 0, messages_per_hour: Number((agg.messages / hours).toFixed(1)),
-        unique_chatters: agg.unique_chatters || 0, watch_hours: Number(((agg.watch_minutes || 0) / 60).toFixed(1)), clips: agg.clips || 0, tips,
-        clutch_per_hour: Number((((agg.clips || 0) * 3 + tips / 100) / hours).toFixed(2)), followers, loyalty_score: followers + (agg.unique_chatters || 0) / 4,
-        all_time_hours: Number((allTime.hours || 0).toFixed(1)), all_time_peak: allTime.peak_viewers || 0, all_time_streams: allTime.streams || 0,
-        last_live_at: agg.last_live_at || null, category, voice: voiceStatsFor(userId, win),
+        window_days: STATS_WINDOW_DAYS, mic_window_days: MIC_WINDOW_DAYS, streams: agg.streams || 0, hours: Number((agg.hours || 0).toFixed(1)),
+        last_live_at: agg.last_live_at || null, category, voice: voiceStatsFor(userId, win), mic: micStats,
     };
 }
 
 const METRIC_FOR_STAT = {
-    hype: (r) => r.peak_viewers, grind: (r) => r.hours, chat: (r) => r.messages_per_hour, loyalty: (r) => r.loyalty_score,
-    clutch: (r) => r.clutch_per_hour, vibe: (r) => r.avg_viewers, mic: (r) => (r.voice ? r.voice.voice_score : 0),
+    heat: (r) => (r.mic ? r.mic.avg_quality : 0),
+    aim: (r) => (r.mic ? r.mic.hits_per_mic_hour : 0),
+    kills: (r) => (r.mic ? r.mic.wins : 0),
+    mouth: (r) => (r.voice ? r.voice.talk_ratio_pct : 0),
+    clapback: (r) => (r.mic ? r.mic.clapback_rate : 0),
+    stamina: (r) => (r.voice ? r.voice.speech_minutes : 0),
+    pace: (r) => (r.voice ? r.voice.wpm : 0),
 };
 
 /** Percentile ratings across a roster: rating = 40 + 59 × percentile; a roster of one is a flat 70. */
@@ -215,8 +214,8 @@ function computeRatings(rosterRaw) {
 /** Trash Talk bonus on POWER: recent XP (7 days) + beef wins, capped. */
 function talkBonus(userId) {
     try {
-        const board = require('./board'), beef = require('./beef');
-        return Math.min(TALK_BONUS_MAX, Math.round(board.recentXp(userId) / 25) + beef.recentWins(userId) * 3);
+        const mic = require('./mic'), beef = require('./beef');
+        return Math.min(TALK_BONUS_MAX, Math.round(mic.recentXp(userId) / 25) + beef.recentWins(userId) * 3);
     } catch { return 0; }
 }
 
@@ -262,29 +261,20 @@ function quotesAreFresh(row) { return !!(row && row.quotes_json) && freshWithin(
 
 function gatherContext(userId) {
     const ctx = {};
+    // Pure mic: the voice comes from what they SAY. Their most recent lines, their spiciest judged
+    // lines, who they have called out, their beef record and what the camera saw are the facts.
     try { ctx.overview = db.getStreamerOverview(userId)?.overview || null; } catch { /* */ }
     try { ctx.memories = db.all('SELECT description FROM stream_memories WHERE user_id = ? ORDER BY captured_at DESC LIMIT 4', [userId]).map(m => m.description).filter(Boolean); } catch { ctx.memories = []; }
-    // Who they are AS A CHATTER — the chat AI's profile of them (overview + long-term memory +
-    // timeline of notable moments). This is the primary source for their voice and personality.
-    try {
-        const chatAi = db.getChatAiSummary('user', userId, 'rolling');
-        if (chatAi) {
-            const ov = parseJson(chatAi.overview, null);
-            ctx.chat_notes = ov ? [ov.alltime, ov.today].filter(Boolean).join(' ') : String(chatAi.overview || '');
-            const mem = parseJson(chatAi.memory_json, null);
-            ctx.chatter_memory = typeof mem === 'string' ? mem.slice(0, 900) : (mem ? JSON.stringify(mem).slice(0, 900) : (chatAi.memory_json ? String(chatAi.memory_json).slice(0, 900) : null));
-            const tl = parseJson(chatAi.timeline_json, []);
-            ctx.chatter_timeline = Array.isArray(tl) ? tl.slice(-10).map(e => (typeof e === 'string' ? e : `${e.label || e.title || ''}${e.detail ? `: ${e.detail}` : ''}`).slice(0, 160)).filter(Boolean) : [];
-        }
-    } catch { /* */ }
-    try { ctx.chatter_timeline = [...(ctx.chatter_timeline || []), ...db.all(`SELECT label, detail FROM chat_timeline_events WHERE scope = 'user' AND subject_id = ? ORDER BY id DESC LIMIT 8`, [userId]).map(r => `${r.label}${r.detail ? `: ${r.detail}` : ''}`.slice(0, 160))].slice(0, 14); } catch { /* */ }
-    try { ctx.vods = db.all(`SELECT v.title, va.ai_overview_short AS overview FROM vods v LEFT JOIN vod_ai_state va ON va.vod_id = v.id WHERE v.user_id = ? AND v.is_public = 1 ORDER BY v.created_at DESC LIMIT 5`, [userId]).map(v => ({ title: v.title, overview: v.overview || null })); }
-    catch { try { ctx.vods = db.all('SELECT title FROM vods WHERE user_id = ? ORDER BY created_at DESC LIMIT 5', [userId]).map(v => ({ title: v.title })); } catch { ctx.vods = []; } }
     try { ctx.titles = db.all('SELECT DISTINCT title FROM streams WHERE user_id = ? AND duration_seconds > 0 ORDER BY started_at DESC LIMIT 8', [userId]).map(r => r.title).filter(Boolean); } catch { ctx.titles = []; }
-    try { ctx.said = db.all(`SELECT text FROM stream_timeline_events WHERE user_id = ? AND kind = 'speech' AND LENGTH(text) BETWEEN 30 AND 140 ORDER BY created_at DESC LIMIT 24`, [userId]).map(r => r.text).filter(t => !isBannedText(t)).slice(0, 12); } catch { ctx.said = []; }
-    // How they type when they are a chatter themselves (their own chat lines, newest first) — the taunts copy this voice.
-    try { ctx.typed = db.all(`SELECT c.message, s.user_id AS room_owner FROM chat_messages c LEFT JOIN streams s ON s.id = c.stream_id WHERE c.user_id = ? AND COALESCE(c.is_deleted, 0) = 0 AND c.message NOT LIKE '!%' AND LENGTH(c.message) BETWEEN 4 AND 240 ORDER BY c.id DESC LIMIT 80`, [userId]).filter(r => !isBannedText(r.message)).slice(0, 40).map(r => { const owner = r.room_owner && r.room_owner !== userId ? db.getUserById(r.room_owner)?.username : null; return owner ? `[in ${owner}'s chat] ${r.message}` : (r.room_owner ? `[own chat] ${r.message}` : `[global] ${r.message}`); }); } catch { ctx.typed = []; }
-    try { ctx.chat_rooms = db.all(`SELECT u.username, COUNT(*) AS n FROM chat_messages c JOIN streams s ON s.id = c.stream_id JOIN users u ON u.id = s.user_id WHERE c.user_id = ? AND s.user_id != ? GROUP BY u.username ORDER BY n DESC LIMIT 4`, [userId, userId]).map(r => `${r.username} (${r.n} msgs)`); } catch { ctx.chat_rooms = []; }
+    try { ctx.said = db.all(`SELECT text FROM stream_timeline_events WHERE user_id = ? AND kind = 'speech' AND LENGTH(text) BETWEEN 30 AND 160 ORDER BY created_at DESC LIMIT 60`, [userId]).map(r => r.text).filter(t => !isBannedText(t)).slice(0, 30); } catch { ctx.said = []; }
+    try {
+        const mic = require('./mic');
+        ctx.shit_talk = mic.bestLines(userId, 8).map(m => `${m.text}${m.aimed_at ? ` [at ${m.aimed_at}]` : ''} (${m.quality}/10)`);
+        ctx.called_out = db.all(`SELECT target_user_id, COUNT(*) AS n FROM arena_mic_moments WHERE user_id = ? AND target_user_id IS NOT NULL GROUP BY target_user_id ORDER BY n DESC LIMIT 5`, [userId]).map(r => `${mic.nameOf(r.target_user_id)} (${r.n}×)`);
+        ctx.called_out_by = db.all(`SELECT user_id, COUNT(*) AS n FROM arena_mic_moments WHERE target_user_id = ? GROUP BY user_id ORDER BY n DESC LIMIT 5`, [userId]).map(r => `${mic.nameOf(r.user_id)} (${r.n}×)`);
+        ctx.aimed_at = db.all(`SELECT aimed_at, COUNT(*) AS n FROM arena_mic_moments WHERE user_id = ? AND aimed_at IS NOT NULL AND target_user_id IS NULL GROUP BY aimed_at ORDER BY n DESC LIMIT 6`, [userId]).map(r => `${r.aimed_at} (${r.n}×)`);
+    } catch { ctx.shit_talk = []; ctx.called_out = []; ctx.called_out_by = []; ctx.aimed_at = []; }
+    try { const q = parseJson(profileRow(userId)?.quotes_json); ctx.quotes = q && Array.isArray(q.picks) ? q.picks.map(p => p.text).slice(0, 6) : []; ctx.mic_style = q?.mic_style || null; } catch { ctx.quotes = []; }
     return ctx;
 }
 
@@ -302,17 +292,17 @@ const PERSONA_SCHEMA = {
             special: { type: 'object', additionalProperties: false, required: ['name', 'description'], properties: { name: { type: 'string' }, description: { type: 'string' } } },
             weakness: { type: 'string' }, taunt: { type: 'string', description: 'Their signature ragebait line: one sentence, written EXACTLY the way this person types/talks (their punctuation, caps, slang, emoji habits, typos), aimed at rivals or their chat, designed to make people reply' },
             taunts: { type: 'array', minItems: 3, maxItems: 3, items: { type: 'string' }, description: 'three more ragebait/troll lines in their own voice: one at a specific rival from the roster, one at their own chat, one about a topic they will not shut up about' },
-            typing_style: { type: 'string', description: '≤ 12 words describing how they type/talk (e.g. "all lowercase, no punctuation, calls everyone bud")' },
-            custom_stats: { type: 'array', minItems: 6, maxItems: 6, items: { type: 'object', additionalProperties: false, required: ['name', 'value', 'quip'], properties: { name: { type: 'string', description: '≤ 14 chars, a stat that only makes sense for THIS person — named after their actual bits, habits, subjects, gear, rivals, chat culture (e.g. "Alt Accounts", "Tent Smell", "Baby Voice", "Reads Chat", "Cope")' }, value: { type: 'integer', minimum: 1, maximum: 99 }, quip: { type: 'string', description: '≤ 8 words, in their own typing voice' } } }, description: 'six CHARACTERISTICS unique to this streamer for their radar — read from their chat history (things_they_typed_in_chat, chat_ai_notes, chatter_memory, chatter_timeline) and their channel (ai_overview, what they said on stream, what the camera saw): the bits they run, what they will not shut up about, how they treat chat, their rivals, their gear obsession, their schedule. Names must be specific to THEM (never generic like "Hype" or "Skill"), funny, ragebait-ish; values honestly spread (at least one under 30, at least one over 85) and the quip explains the number in their voice.' },
+            typing_style: { type: 'string', description: '≤ 12 words describing how they TALK on mic (e.g. "mumbles, calls everyone bud, yells at chat every 30 seconds")' },
+            custom_stats: { type: 'array', minItems: 6, maxItems: 6, items: { type: 'object', additionalProperties: false, required: ['name', 'value', 'quip'], properties: { name: { type: 'string', description: '≤ 14 chars, a stat that only makes sense for THIS person — named after their actual bits, habits, subjects, gear, rivals, the way they talk (e.g. "Alt Accounts", "Tent Smell", "Baby Voice", "Reads Chat", "Cope")' }, value: { type: 'integer', minimum: 1, maximum: 99 }, quip: { type: 'string', description: '≤ 8 words, in their own speaking voice' } } }, description: 'six CHARACTERISTICS unique to this streamer for their radar — read from what they SAY ON MIC (things_they_said_on_stream, their_best_shit_talk, who_they_call_out, what_they_rant_at) and their channel (ai_overview, what the camera saw): the bits they run, what they will not shut up about, how they treat chat, their rivals, their gear obsession, their schedule. Names must be specific to THEM (never generic like "Hype" or "Skill"), funny, ragebait-ish; values honestly spread (at least one under 30, at least one over 85) and the quip explains the number in their voice.' },
             spoken_as: { type: 'array', minItems: 2, maxItems: 6, items: { type: 'string' }, description: 'how OTHER people say or mishear this streamer\'s name out loud, as a speech-to-text engine would write it: nicknames, shortenings, phonetic misspellings, the handle split into words (e.g. "japanese old guy", "matticus", "goose lee", "dan") — lowercase' },
             lore: { type: 'string', description: '2–3 sentence character-select bio' }, catchphrase: { type: 'string' }, entrance_music: { type: 'string' },
             stat_quips: { type: 'object', additionalProperties: false, required: STAT_KEYS, properties: Object.fromEntries(STAT_KEYS.map(k => [k, { type: 'string', description: `≤ 8 words explaining their ${k} rating in character` }])) },
         },
     },
 };
-const PERSONA_SYSTEM = `You write fighting-game "character select" bios for a live-streaming site's Arena, where streamers rank each other and talk shit about each other on stream. This is a banter arena: be savage, profane, petty and funny — roast their habits, their chat, their schedule, their takes, their gimmicks, how they talk (transcript lines are provided). Trolling energy is welcome; make it quotable.
-VOICE COMES FIRST, AND IT COMES FROM THEIR CHAT HISTORY. The PRIMARY sources are \`things_they_typed_in_chat\` (verbatim lines they typed, newest first, with the room), \`chat_ai_notes\`, \`chatter_memory\` and \`chatter_timeline\` (the chat AI's profile of them as a chatter: what they are known for, their bits, opinions, grudges, who they mess with). Their streaming profile (\`ai_overview\`, \`things_they_said_on_stream\`, numbers) is SECONDARY flavor to mix in. Copy their actual typing: casing (if they type lowercase, every line is lowercase), punctuation or the lack of it, slang, emoji, typos, pet names, sentence length. A taunt must read like a message THEY would actually send in chat — not a movie trailer, not a wrestling promo, no ALL-CAPS unless they type that way, no invented catchphrases, never repeat a word for effect, no "watch me"/"try to keep up" filler.
-TAUNTS ARE THE MOST IMPORTANT PART. They must be RAGEBAIT in that voice: provocative, trolly, specific, petty — the kind of line that makes a rival or a chat reply instantly. Reference their real recurring subjects, rivals from the roster, rooms they lurk in and their obsessions. stat_quips are ALSO in their voice (≤ 8 words each, how THEY would describe that stat). If there is no chat data at all, build the voice from the transcript lines; if neither exists, infer it from the overview and say so in typing_style.
+const PERSONA_SYSTEM = `You write fighting-game "character select" bios for a live-streaming site's Arena — a battle-cam where streamers talk shit about each other ON MIC and the mic is the only thing that counts. Be savage, profane, petty and funny — roast their habits, their chat, their schedule, their takes, their gimmicks, the way they talk. Trolling energy is welcome; make it quotable.
+VOICE COMES FIRST, AND IT COMES FROM WHAT THEY SAY. The PRIMARY sources are \`things_they_said_on_stream\` (verbatim speech-to-text, newest first — expect noise), \`their_best_shit_talk\` (their judged spiciest lines, with who they were aimed at), \`who_they_call_out\`, \`who_calls_them_out\`, \`what_they_rant_at\` and \`quotes\`. Their streaming profile (\`ai_overview\`, titles, what the camera saw) is SECONDARY flavor. Copy how they actually talk: their rhythm, pet phrases, how they address chat, how they curse, whether they mumble or yell, sentence length. A taunt must read like something THEY would actually say into the mic — not a movie trailer, not a wrestling promo, no invented catchphrases, never repeat a word for effect, no "watch me"/"try to keep up" filler.
+TAUNTS ARE THE MOST IMPORTANT PART. They must be RAGEBAIT in that voice: provocative, trolly, specific, petty — the kind of line that makes a rival pull up on stream or a chat reply instantly. Reference their real recurring subjects, rivals from the roster, the people they keep calling out and their obsessions. stat_quips are ALSO in their voice (≤ 8 words each, how THEY would describe that stat). If there is almost no transcript data, infer the voice from the overview and say so in typing_style.
 This platform does not censor language — offensive and taboo words are allowed. The only hard line: no direct threats of violence, nothing sexual about minors, no doxxing. Everything is Arena lore, not real-life claims. Output only the JSON.`;
 
 async function generatePersona(userId, { force = false } = {}) {
@@ -324,12 +314,14 @@ async function generatePersona(userId, { force = false } = {}) {
     const entry = roster.byId[userId] || { user: publicUser(db.getUserById(userId) || { id: userId, username: `user${userId}` }), raw: rawStatsFor(userId), ratings: null };
     const ctx = gatherContext(userId);
     const stats = entry.ratings || Object.fromEntries(STAT_KEYS.map(k => [k, 70]).concat([['power', 70]]));
+    const m = entry.raw.mic || {};
     const facts = {
         name: entry.user.display_name, handle: entry.user.username, category: entry.raw.category, ratings: stats,
-        numbers: { hours_live_90d: entry.raw.hours, peak_viewers_90d: entry.raw.peak_viewers, avg_viewers: entry.raw.avg_viewers, chat_messages_per_hour: entry.raw.messages_per_hour, followers: entry.raw.followers, clips: entry.raw.clips, all_time_hours: entry.raw.all_time_hours, all_time_peak: entry.raw.all_time_peak,
-            on_mic: entry.raw.voice.has_data ? { talk_share_pct: entry.raw.voice.talk_ratio_pct, words_per_minute: entry.raw.voice.wpm, hype_words_per_hour: entry.raw.voice.hype_per_hour, laughs_per_hour: entry.raw.voice.laughs_per_hour, stream_sounds: entry.raw.voice.top_sounds.map(s => s.label) } : 'no transcript data yet' },
-        ai_overview: ctx.overview, recent_stream_titles: ctx.titles, what_the_camera_saw_recently: ctx.memories, chat_ai_notes: ctx.chat_notes, recent_vods: ctx.vods, things_they_said_on_stream: ctx.said,
-        things_they_typed_in_chat: ctx.typed, chatter_memory: ctx.chatter_memory || null, chatter_timeline: ctx.chatter_timeline || [], rooms_they_lurk_in: ctx.chat_rooms,
+        numbers: { hours_live_90d: entry.raw.hours,
+            on_mic: entry.raw.voice.has_data ? { talk_share_pct: entry.raw.voice.talk_ratio_pct, words_per_minute: entry.raw.voice.wpm, speech_minutes: entry.raw.voice.speech_minutes, hype_words_per_hour: entry.raw.voice.hype_per_hour, laughs_per_hour: entry.raw.voice.laughs_per_hour, stream_sounds: entry.raw.voice.top_sounds.map(s => s.label) } : 'no transcript data yet',
+            shit_talk_30d: { judged_moments: m.moments || 0, average_quality: m.avg_quality || 0, bangers_7_plus: m.bangers || 0, beef_hits: m.beef_hits || 0, beefs_won: m.wins || 0, beefs_lost: m.losses || 0, times_called_out: m.targeted || 0, times_answered: m.answered || 0 } },
+        ai_overview: ctx.overview, recent_stream_titles: ctx.titles, what_the_camera_saw_recently: ctx.memories, things_they_said_on_stream: ctx.said,
+        their_best_shit_talk: ctx.shit_talk || [], who_they_call_out: ctx.called_out || [], who_calls_them_out: ctx.called_out_by || [], what_they_rant_at: ctx.aimed_at || [], quotes: ctx.quotes || [], mic_style: ctx.mic_style || null,
         roster_rivals: (() => { try { return loadRoster().order.filter(id => id !== userId).slice(0, 8).map(id => { const p = parseJson(profileRow(id)?.persona_json); return `${loadRoster().byId[id].user.username}${p?.fighter_name ? ` (${p.fighter_name})` : ''}`; }); } catch { return []; } })(),
     };
     const r = await llm.complete({ role: 'summary', kind: 'arena_persona', source: 'arena', ownerUserId: userId, system: PERSONA_SYSTEM, user: `Write the Arena persona for this fighter. Facts (JSON):\n${JSON.stringify(facts)}`, json: PERSONA_SCHEMA, maxTokens: 1200, temperature: 0.95, timeoutMs: 30000 });
@@ -344,13 +336,13 @@ async function generatePersona(userId, { force = false } = {}) {
 function fallbackPersona(entry) {
     const r = entry.ratings || {};
     const best = STAT_KEYS.reduce((a, b) => ((r[b] || 0) > (r[a] || 0) ? b : a), STAT_KEYS[0]);
-    const cls = { hype: 'Rushdown', grind: 'Tank', chat: 'Bard', loyalty: 'Summoner', clutch: 'Assassin', vibe: 'Zoner', mic: 'Caster' }[best];
+    const cls = { heat: 'Rushdown', aim: 'Sniper', kills: 'Assassin', mouth: 'Caster', clapback: 'Counter', stamina: 'Tank', pace: 'Zoner' }[best];
     return {
         fighter_name: entry.user.display_name, title: `The ${STAT_META[best].label} Specialist`, class: cls,
         element: entry.raw.category ? entry.raw.category.replace(/[-_]/g, ' ') : 'Static',
         signature_move: { name: `${STAT_META[best].label} Surge`, description: `Turns ${STAT_META[best].desc} into raw damage.` },
-        special: { name: 'Go Live', description: 'Hits the button. The arena fills up.' }, weakness: 'Sleep schedules.', taunt: 'Chat, are you seeing this?',
-        lore: `${entry.user.display_name} shows up, streams, and leaves the leaderboard slightly different than they found it.`,
+        special: { name: 'Hot Mic', description: 'Forgets the mic is on. That is the move.' }, weakness: 'Dead air.', taunt: 'Say my name on stream and see what happens.',
+        lore: `${entry.user.display_name} shows up, talks, and leaves the ladder slightly different than they found it.`,
         catchphrase: 'Let him cook.', entrance_music: 'Untitled Loop (feat. Notification Sound)', taunts: [], typing_style: null, spoken_as: [], custom_stats: [],
         stat_quips: Object.fromEntries(STAT_KEYS.map(k => [k, STAT_META[k].desc])), _fallback: true,
     };
@@ -534,13 +526,13 @@ function cardFor(userId, roster, { includeRaw = true, includeQuotes = false } = 
     if (!entry) return null;
     const row = profileRow(userId);
     const persona = parseJson(row?.persona_json) || fallbackPersona(entry);
-    const board = require('./board'), beef = require('./beef');
+    const mic = require('./mic'), beef = require('./beef');
     const card = {
         user: entry.user, rank: roster.order.indexOf(userId) + 1, roster_size: roster.order.length,
-        ratings: entry.ratings, stat_meta: STAT_META, raw: includeRaw ? entry.raw : undefined, voice: entry.raw.voice,
+        ratings: entry.ratings, stat_meta: STAT_META, raw: includeRaw ? entry.raw : undefined, voice: entry.raw.voice, mic: entry.raw.mic || null,
         persona, persona_is_fallback: !!persona._fallback, persona_generated_at: row?.persona_generated_at || null,
         image_url: imageUrlFor(row), image_prompt: row?.image_prompt || null, image_model: row?.image_model || null, image_pending: false,
-        record: beef.recordFor(userId), level: board.levelView(userId), live: isLive(userId),
+        record: beef.recordFor(userId), level: mic.levelView(userId), live: isLive(userId),
     };
     if (includeQuotes) card.quotes = parseJson(row?.quotes_json) || null;
     return card;
@@ -550,7 +542,7 @@ async function getFighter(usernameOrId, { generate = true } = {}) {
     const user = resolveUser(usernameOrId);
     if (!user) return null;
     const roster = loadRoster();
-    if (!roster.byId[user.id]) return { user: publicUser(user), not_on_roster: true, reason: `No streams in the last ${ACTIVE_DAYS} days` };
+    if (!roster.byId[user.id]) return { user: publicUser(user), not_on_roster: true, reason: `nothing heard on mic in the last ${ACTIVE_DAYS} days — the Arena only knows what the transcription hears` };
     if (generate) {
         const row = profileRow(user.id);
         if (aiOn() && !personaIsFresh(row)) { try { await generatePersona(user.id); } catch (e) { console.warn('[Arena] persona:', e.message); } }
@@ -561,7 +553,6 @@ async function getFighter(usernameOrId, { generate = true } = {}) {
     card.image_pending = !card.image_url && _imageInFlight.has(user.id);
     card.image_generation = imageGenAvailable() ? 'ai' : 'off';
     try { card.beefs = require('./beef').forUser(user.id, 8); } catch { card.beefs = []; }
-    try { const t = require('./board').activeTopicFor(user.id); card.active_topic = t ? { id: t.id, text: t.text } : null; } catch { card.active_topic = null; }
     return card;
 }
 
@@ -570,10 +561,11 @@ function listFighters() {
     return roster.order.map(id => {
         const c = cardFor(id, roster, { includeRaw: false });
         return {
-            user: c.user, rank: c.rank, ratings: c.ratings, record: c.record, live: c.live, image_url: c.image_url, level: { level: c.level.level, xp: c.level.xp }, tier: (() => { try { return require('./progress').tierFor(c.level.xp); } catch { return null; } })(),
+            user: c.user, rank: c.rank, ratings: c.ratings, record: c.record, live: c.live, image_url: c.image_url, level: { level: c.level.level, xp: c.level.xp }, mic: c.mic,
             persona: { fighter_name: c.persona.fighter_name, title: c.persona.title, class: c.persona.class, element: c.persona.element, taunt: c.persona.taunt, taunts: c.persona.taunts || [], typing_style: c.persona.typing_style || null, lore: c.persona.lore, signature_move: c.persona.signature_move, stat_quips: c.persona.stat_quips, custom_stats: Array.isArray(c.persona.custom_stats) ? c.persona.custom_stats : [] },
             persona_is_fallback: c.persona_is_fallback, category: roster.byId[id].raw.category, last_live_at: roster.byId[id].raw.last_live_at,
-            voice: { has_data: c.voice.has_data, talk_ratio_pct: c.voice.talk_ratio_pct, speech_minutes: c.voice.speech_minutes },
+            voice: { has_data: c.voice.has_data, talk_ratio_pct: c.voice.talk_ratio_pct, speech_minutes: c.voice.speech_minutes, wpm: c.voice.wpm },
+            last_line: (() => { try { const m = require('./mic').latestFor(id); return m ? { text: m.text, quality: m.quality, aimed_at: m.aimed_at, target: m.target, at: m.at, vod_id: m.vod_id, sec: m.sec } : null; } catch { return null; } })(),
         };
     });
 }
@@ -586,25 +578,34 @@ function getStatDetail(userId, stat) {
     const win = `-${STATS_WINDOW_DAYS} days`;
     let series = [];
     try {
+        // One point per stream in the window — every value comes from the transcript / mic ledger of that stream.
         const rows = db.all(`
-            SELECT s.id, s.title, s.started_at, s.duration_seconds, s.peak_viewers, sa.avg_viewers, sa.total_messages, sa.unique_chatters, sa.new_followers, sa.clips_created,
-                   (SELECT COALESCE(SUM(COALESCE(e.end_sec, e.start_sec + 3) - e.start_sec), 0) FROM stream_timeline_events e WHERE e.stream_id = s.id AND e.kind = 'speech') AS speech_sec
-            FROM streams s LEFT JOIN stream_analytics sa ON sa.stream_id = s.id
+            SELECT s.id, s.title, s.started_at, s.duration_seconds,
+                   (SELECT COALESCE(SUM(COALESCE(e.end_sec, e.start_sec + 3) - e.start_sec), 0) FROM stream_timeline_events e WHERE e.stream_id = s.id AND e.kind = 'speech') AS speech_sec,
+                   (SELECT COALESCE(SUM(LENGTH(e.text) - LENGTH(REPLACE(e.text, ' ', '')) + 1), 0) FROM stream_timeline_events e WHERE e.stream_id = s.id AND e.kind = 'speech') AS words,
+                   (SELECT COUNT(*) FROM arena_mic_moments m WHERE m.stream_id = s.id) AS moments,
+                   (SELECT COALESCE(AVG(m.quality), 0) FROM arena_mic_moments m WHERE m.stream_id = s.id) AS avg_q,
+                   (SELECT COUNT(*) FROM arena_mic_moments m WHERE m.stream_id = s.id AND m.kind = 'beef_hit') AS hits,
+                   (SELECT COUNT(*) FROM arena_beefs b WHERE b.winner_user_id = s.user_id AND b.resolved_at BETWEEN s.started_at AND COALESCE(s.ended_at, s.started_at)) AS wins
+            FROM streams s
             WHERE s.user_id = ? AND s.duration_seconds > 0 AND s.started_at >= datetime('now', ?) ORDER BY s.started_at DESC LIMIT 14`, [userId, win]).reverse();
         const per = {
-            hype: r => r.peak_viewers || 0, grind: r => Number(((r.duration_seconds || 0) / 3600).toFixed(2)),
-            chat: r => Number(((r.total_messages || 0) / Math.max((r.duration_seconds || 0) / 3600, 0.1)).toFixed(1)), loyalty: r => (r.new_followers || 0) + (r.unique_chatters || 0) / 4,
-            clutch: r => Number((((r.clips_created || 0) * 3) / Math.max((r.duration_seconds || 0) / 3600, 0.1)).toFixed(2)), vibe: r => Number((r.avg_viewers || 0).toFixed(1)),
-            mic: r => (r.duration_seconds ? Number(((r.speech_sec || 0) / r.duration_seconds * 100).toFixed(1)) : 0),
+            heat: r => Number((r.avg_q || 0).toFixed(1)),
+            aim: r => Number(((r.moments || 0) / Math.max((r.speech_sec || 0) / 3600, 0.05)).toFixed(2)),
+            kills: r => r.wins || 0,
+            mouth: r => (r.duration_seconds ? Number(((r.speech_sec || 0) / r.duration_seconds * 100).toFixed(1)) : 0),
+            clapback: r => r.hits || 0,
+            stamina: r => Number(((r.speech_sec || 0) / 60).toFixed(1)),
+            pace: r => Number(((r.words || 0) / Math.max((r.speech_sec || 0) / 60, 0.1)).toFixed(0)),
         };
         series = rows.map(r => ({ stream_id: r.id, title: r.title, date: r.started_at, value: per[stat](r) }));
     } catch { series = []; }
-    const unit = { hype: 'peak viewers', grind: 'hours', chat: 'msgs / hour', loyalty: 'loyalty points', clutch: 'clutch / hour', vibe: 'avg viewers', mic: '% of stream talking' }[stat];
-    const shown = (raw) => (stat === 'mic' ? (raw.voice?.talk_ratio_pct || 0) : (METRIC_FOR_STAT[stat](raw) || 0));
+    const unit = { heat: 'avg judge score', aim: 'hits / mic hour', kills: 'beefs won', mouth: '% of stream talking', clapback: 'answer rate', stamina: 'minutes of speech', pace: 'words / minute' }[stat];
+    const shown = (raw) => (METRIC_FOR_STAT[stat](raw) || 0);
     const ranked = roster.order.map(id => ({ id, value: METRIC_FOR_STAT[stat](roster.byId[id].raw) || 0, shown: shown(roster.byId[id].raw), rating: roster.byId[id].ratings[stat] })).sort((x, y) => y.value - x.value);
     const position = ranked.findIndex(r => r.id === userId) + 1;
     const top = ranked.slice(0, 3).map(r => ({ user: roster.byId[r.id].user, fighter_name: (parseJson(profileRow(r.id)?.persona_json) || fallbackPersona(roster.byId[r.id])).fighter_name, value: Number(Number(r.shown).toFixed(1)), rating: r.rating }));
-    return { stat, label: STAT_META[stat].label, desc: STAT_META[stat].desc, unit, rating: entry.ratings[stat], value: Number(Number(shown(entry.raw)).toFixed(1)), position, roster_size: roster.order.length, weight: STAT_WEIGHTS[stat], series, top, voice: stat === 'mic' ? entry.raw.voice : undefined };
+    return { stat, label: STAT_META[stat].label, desc: STAT_META[stat].desc, unit, rating: entry.ratings[stat], value: Number(Number(shown(entry.raw)).toFixed(2)), position, roster_size: roster.order.length, weight: STAT_WEIGHTS[stat], series, top, voice: ['mouth', 'stamina', 'pace'].includes(stat) ? entry.raw.voice : undefined, mic: entry.raw.mic };
 }
 
 /** Live fighters with what the transcript last heard — the "on the mic now" strip. */
@@ -615,19 +616,21 @@ function liveFighters() {
     const byUser = new Map();
     for (const s of live) { if (!roster.byId[s.user_id]) continue; const cur = byUser.get(s.user_id); if (!cur || (s.viewer_count || 0) > (cur.viewer_count || 0)) byUser.set(s.user_id, s); }
     let thumbs = null; try { thumbs = require('../media-proxy/live-thumbs'); } catch { /* */ }
-    const board = require('./board'), beef = require('./beef');
+    const mic = require('./mic'), beef = require('./beef');
+    let listener = null; try { listener = require('./listener'); } catch { /* */ }
     return [...byUser.values()].map(s => {
         const c = cardFor(s.user_id, roster, { includeRaw: false });
         let hotMic = null;
-        try { const r = db.all(`SELECT text, start_sec FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND LENGTH(text) > 15 ORDER BY start_sec DESC LIMIT 5`, [s.id]).find(row => !isBannedText(row.text)); if (r) hotMic = { text: r.text, start_sec: Math.floor(r.start_sec) }; } catch { /* */ }
+        try { const r = db.all(`SELECT text, start_sec, vod_id FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND LENGTH(text) > 15 ORDER BY start_sec DESC LIMIT 5`, [s.id]).find(row => !isBannedText(row.text)); if (r) hotMic = { text: r.text, start_sec: Math.floor(r.start_sec), vod_id: r.vod_id || null }; } catch { /* */ }
         const transcribed = !!db.get(`SELECT 1 FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND created_at >= datetime('now', '-30 minutes') LIMIT 1`, [s.id]);
-        const t = board.activeTopicFor(s.user_id);
+        let ears = null; try { const cs = listener ? listener.consoleState(s.user_id) : null; if (cs && cs.listening) ears = { focus: cs.focus ? { target_id: cs.focus.target_id, target: cs.focus.target, hits: cs.focus.hits, lock_seconds_left: cs.focus.lock_seconds_left } : null, pending_words: cs.pending_mic_words + (cs.focus ? cs.focus.pending_words : 0) }; } catch { ears = null; }
+        let lastMoment = null; try { lastMoment = mic.latestFor(s.user_id); } catch { lastMoment = null; }
         return {
             user: c.user, rank: c.rank, ratings: c.ratings, record: c.record, image_url: c.image_url, level: c.level.level,
             persona: { fighter_name: c.persona.fighter_name, title: c.persona.title, class: c.persona.class, taunt: c.persona.taunt },
-            stream: { id: s.id, title: s.title, category: s.category, viewer_count: s.viewer_count || 0, started_at: s.started_at },
+            stream: { id: s.id, title: s.title, category: s.category, viewer_count: s.viewer_count || 0, started_at: s.started_at, slug: s.managed_stream_slug || null, managed_stream_id: s.managed_stream_id || null },
             thumbnail_url: thumbs ? (thumbs.getCurrentLiveThumbnailUrl(s.id) || null) : null,
-            hot_mic: hotMic, transcribed, active_topic: t ? { id: t.id, text: t.text } : null, open_beefs: beef.openBeefsFor(s.user_id).length,
+            hot_mic: hotMic, transcribed, ears, last_moment: lastMoment, open_beefs: beef.openBeefsFor(s.user_id).length,
         };
     }).sort((x, y) => y.ratings.power - x.ratings.power);
 }
@@ -643,13 +646,13 @@ function status() {
     ensureTables();
     const roster = loadRoster();
     const counts = db.get(`SELECT SUM(persona_json IS NOT NULL) AS personas, SUM(image_path IS NOT NULL) AS images, SUM(quotes_json IS NOT NULL) AS quotes FROM arena_profiles`) || {};
-    let beefs = {}, topics = 0;
-    try { beefs = db.get(`SELECT SUM(status = 'open') AS open, SUM(status = 'resolved') AS resolved FROM arena_beefs`) || {}; topics = db.get(`SELECT COUNT(*) AS n FROM arena_topics WHERE status = 'open'`)?.n || 0; } catch { /* */ }
+    let beefs = {}, moments = 0;
+    try { beefs = db.get(`SELECT SUM(status = 'open') AS open, SUM(status = 'resolved') AS resolved FROM arena_beefs`) || {}; moments = db.get(`SELECT COUNT(*) AS n FROM arena_mic_moments WHERE created_at >= datetime('now', '-1 day')`)?.n || 0; } catch { /* */ }
     return {
-        enabled: arenaEnabled(), ai: aiOn(), image_generation: imageGenAvailable(), image_model: imageGenAvailable() ? String(setting('ai_image_model', 'gpt-image-1')) : null,
+        mode: 'battle-cam', enabled: arenaEnabled(), ai: aiOn(), image_generation: imageGenAvailable(), image_model: imageGenAvailable() ? String(setting('ai_image_model', 'gpt-image-1')) : null,
         roster: roster.order.length, with_voice_data: roster.order.filter(id => roster.byId[id].raw.voice.has_data).length,
         personas: counts.personas || 0, quotes: counts.quotes || 0, images: counts.images || 0,
-        beefs_open: beefs.open || 0, beefs_resolved: beefs.resolved || 0, topics_open: topics, live_fighters: liveFighters().length,
+        beefs_open: beefs.open || 0, beefs_resolved: beefs.resolved || 0, mic_moments_24h: moments, live_fighters: liveFighters().length,
         listener: (() => { try { return require('./listener').TICK_MS; } catch { return null; } })(), active_days: ACTIVE_DAYS,
     };
 }
@@ -658,6 +661,6 @@ module.exports = {
     ensureTables, arenaEnabled, aiOn, imageGenAvailable, loadRoster, listFighters, getFighter, getStatDetail, liveFighters,
     generatePersona, generateQuotes, generateImage, voterKeyFor, status, publicUser,
     getFighterImageUrl: (userId) => imageUrlFor(profileRow(userId)),
-    STAT_KEYS, STAT_META, STAT_WEIGHTS, ARENA_DIR, TALK_BONUS_MAX,
+    STAT_KEYS, STAT_META, STAT_WEIGHTS, ARENA_DIR, TALK_BONUS_MAX, ACTIVE_DAYS, MIC_WINDOW_DAYS,
     _computeRatings: computeRatings, _fallbackPersona: fallbackPersona, _voiceStatsFor: voiceStatsFor, _quoteCandidates: quoteCandidates, _isBannedText: isBannedText, _talkBonus: talkBonus,
 };

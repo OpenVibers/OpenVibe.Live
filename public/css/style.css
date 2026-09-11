@@ -14680,3 +14680,45 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 .arena-bubble-who { grid-area: who; }
 .arena-bubble-text { grid-area: text; }
 .arena-bubble-speak { grid-area: speak; align-self: center; }
+
+/* ── Arena: Battle Cam mode (pure mic) — live cams, the feed, callouts ── */
+.arena-hero-cam h1 i { color: var(--live-red); }
+.arena-cam-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.arena-cam { position: relative; display: grid; grid-template-columns: 132px 1fr; gap: 12px; padding: 10px; border-radius: 14px; background: var(--bg-card); border: 1px solid var(--border); overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s; }
+.arena-cam.is-locked { border-color: color-mix(in srgb, var(--live-red) 60%, var(--border)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--live-red) 40%, transparent), 0 0 24px color-mix(in srgb, var(--live-red) 25%, transparent); }
+.arena-cam.is-quiet { opacity: 0.75; }
+.arena-cam-thumb { position: relative; display: block; border-radius: 10px; overflow: hidden; aspect-ratio: 16/10; background: var(--bg-tertiary); }
+.arena-cam-thumb img.arena-live-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+.arena-cam-thumb .arena-portrait { width: 100%; height: 100%; }
+.arena-cam-rec { position: absolute; left: 6px; top: 6px; display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border-radius: 999px; background: rgba(0,0,0,0.65); color: #fff; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.06em; }
+.arena-cam-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.arena-cam-lock { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; font-size: 0.74rem; font-weight: 700; color: #fecaca; background: color-mix(in srgb, var(--live-red) 18%, transparent); border: 1px solid color-mix(in srgb, var(--live-red) 45%, transparent); width: fit-content; }
+.arena-cam-lock i { color: var(--live-red); }
+.arena-cam-last q { display: block; font-size: 0.9rem; color: var(--text-primary); line-height: 1.35; quotes: '“' '”'; }
+.arena-cam-last small { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 0.74rem; margin-top: 3px; }
+.arena-q { display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 999px; font-size: 0.7rem; font-weight: 800; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border); }
+.arena-q.is-hot { color: #fde68a; border-color: rgba(251,191,36,0.5); background: rgba(251,191,36,0.12); }
+.arena-q.is-fire { color: #fff; border-color: var(--live-red); background: color-mix(in srgb, var(--live-red) 55%, transparent); }
+.arena-aim { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); background: var(--bg-tertiary); border: 1px solid var(--border); text-decoration: none; }
+.arena-aim.is-fighter { color: #fecaca; border-color: color-mix(in srgb, var(--live-red) 50%, transparent); background: color-mix(in srgb, var(--live-red) 15%, transparent); }
+.arena-aim.is-fighter:hover { background: color-mix(in srgb, var(--live-red) 30%, transparent); }
+.arena-feed-section h2 small .arena-fresh { color: var(--success); }
+.arena-mic-feed-list { display: grid; gap: 8px; }
+.arena-mic-feed-list.is-compact .arena-mic-moment { padding: 8px; }
+.arena-mic-moment { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--fc, var(--accent)); animation: arenaMomentIn 0.4s ease both; }
+.arena-mic-moment.is-beef { border-left-color: var(--live-red); background: linear-gradient(90deg, color-mix(in srgb, var(--live-red) 8%, var(--bg-card)), var(--bg-card)); }
+.arena-mic-moment.is-fire { box-shadow: 0 0 18px color-mix(in srgb, var(--live-red) 22%, transparent); }
+@keyframes arenaMomentIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.arena-mic-moment-body { min-width: 0; }
+.arena-mic-moment-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.82rem; margin-bottom: 3px; }
+.arena-mic-moment-head a { color: var(--text-primary); text-decoration: none; }
+.arena-mic-moment-head small { color: var(--text-muted); margin-left: auto; }
+.arena-mic-moment q { display: block; font-size: 0.98rem; line-height: 1.4; color: var(--text-primary); quotes: '“' '”'; }
+.arena-mic-moment-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 0.74rem; margin-top: 4px; }
+.arena-receipts-section { margin: 14px 0; }
+.arena-receipts-section h3 { margin: 0 0 8px; }
+@media (max-width: 720px) {
+    .arena-cam { grid-template-columns: 1fr; }
+    .arena-cam-thumb { aspect-ratio: 16/9; }
+}
+@media (prefers-reduced-motion: reduce) { .arena-mic-moment { animation: none; } }

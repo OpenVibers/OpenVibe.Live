@@ -1774,6 +1774,7 @@ async function loadHome() {
     loadHomeRecentOnline();
     void loadHomePulse();     // happening-now rail + weekly leaders + AI moments + latest update
     void loadHomeDigest();    // "while you were away" for returning logged-in users
+    void loadHomeStar();      // "Star of OpenVibe" spotlight (star_streamer setting)
 
     // Load recent VODs
     loadHomeRecentVods();
@@ -3409,6 +3410,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
         // Reset the channel tabs + render the About tab (About is default/first when set).
         // Weather is rendered on demand inside weather panels (see _fillWeatherPanels).
         _renderChannelAbout(ch);
+        _applyChannelLanguage(data.language, ch, liveStreams.length > 0);
         _resetChannelTabs(ch);
         _applyChannelTabMeta(data);
         _applyChannelHashTab(); // deep-link: #ai-timeline / #about / #videos … opens that tab
@@ -5123,11 +5125,94 @@ function _renderAboutView() {
         return;
     }
     html += aiHtml; // AI overview card leads the About tab
-    if (_aboutBio) html += `<div class="ch-about-bio">${_linkify(esc(_aboutBio))}</div>`;
+    if (_aboutBio) html += `<div class="ch-about-bio">${_linkify(esc(_aboutBio))}</div><div class="ch-about-bio-en" id="ch-about-bio-en"></div>`;
     html += '<div class="ch-about-panels">' + _aboutPanels.map((p, i) => _aboutPanelViewHTML(p, i)).join('') + '</div>';
     host.innerHTML = html;
     _fillWeatherPanels();
+    void _fillBioTranslation();
 }
+
+// Non-English bio → an auto-translated English copy right under it (cached server-side).
+const _NON_LATIN_RE = /[\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af\u0400-\u04ff\u0600-\u06ff\u0e00-\u0e7f\u0590-\u05ff\u0370-\u03ff\u0900-\u097f]/;
+async function _fillBioTranslation() {
+    const host = document.getElementById('ch-about-bio-en');
+    if (!host || !_aboutBio || !_NON_LATIN_RE.test(_aboutBio)) return;
+    const uname = currentChannelUsername;
+    let d = null;
+    try { d = await api(`/streams/channel/${encodeURIComponent(uname)}/bio-en`); } catch { d = null; }
+    if (!d || !d.text || uname !== currentChannelUsername) return;
+    const still = document.getElementById('ch-about-bio-en');
+    if (!still) return;
+    still.innerHTML = `<div class="ch-about-bio-translated"><div class="ch-about-bio-translated-label"><i class="fa-solid fa-language"></i> English · auto-translated from ${esc(d.from_name || d.from || '')}</div>${_linkify(esc(d.text))}</div>`;
+}
+
+/* ── Channel language: info-bar chip + live captions panel ───────────────────────────
+   `language` comes from /api/streams/channel/:username ({ code, name, flag, translate }).
+   Non-English channels get a chip ("🇯🇵 Japanese stream · chat auto-translated") and,
+   while live, a captions panel under the player fed by /api/chat-ai/live-captions. */
+let _chLang = null, _captionsTimer = null, _captionsAfter = 0;
+function _applyChannelLanguage(language, ch, isLive) {
+    _chLang = language || null;
+    // One chip in the live info bar, one in the offline header — whichever is showing.
+    const targets = [
+        ['ch-lang-chip', document.querySelector('#ch-info-bar .ch-info-bar-top')],
+        ['ch-lang-chip-offline', document.querySelector('#ch-offline-header .ch-meta')],
+    ];
+    const off = !_chLang || !_chLang.code || _chLang.code === 'en';
+    for (const [id, host] of targets) {
+        let chip = document.getElementById(id);
+        if (off) { if (chip) chip.remove(); continue; }
+        if (!chip && host) { chip = document.createElement('span'); chip.id = id; chip.className = 'ch-lang-chip'; host.appendChild(chip); }
+        if (!chip) continue;
+        chip.innerHTML = `${esc(_chLang.flag || '🌐')} ${esc(_chLang.name || _chLang.code)} stream${_chLang.translate ? ' · <i class="fa-solid fa-language"></i> chat auto-translated' : ''}`;
+        chip.title = `${_chLang.name}-speaking streamer. Chat is translated both ways automatically — type in your own language.`;
+    }
+    if (off) { _stopCaptions(); const p = document.getElementById('ch-captions'); if (p) p.style.display = 'none'; return; }
+    _startCaptions(ch.username, ch.display_name || ch.username, isLive);
+}
+function _startCaptions(username, displayName, isLive) {
+    _stopCaptions();
+    const panel = document.getElementById('ch-captions');
+    if (!panel) return;
+    if (!isLive) { panel.style.display = 'none'; return; }
+    _captionsAfter = 0;
+    panel.classList.remove('collapsed');
+    panel.innerHTML = `<div class="ch-captions-head">
+            <span class="ch-captions-title"><span class="ch-captions-dot"></span> <i class="fa-solid fa-closed-captioning"></i> Live translation</span>
+            <span class="ch-captions-sub">${esc(_chLang.flag || '')} ${esc(_chLang.name || '')} → 🇺🇸 English · what ${esc(displayName)} is saying</span>
+            <button class="ch-captions-toggle" type="button" onclick="toggleCaptionsPanel()" title="Collapse / expand"><i class="fa-solid fa-chevron-up"></i></button>
+        </div>
+        <div class="ch-captions-lines" id="ch-captions-lines"><div class="ch-captions-wait">Listening… lines land a few seconds behind live.</div></div>`;
+    panel.style.display = 'none'; // revealed once the server says captions are available
+    const tick = async () => {
+        const onPage = document.getElementById('page-channel')?.classList.contains('active');
+        if (!onPage || currentChannelUsername !== username) { _stopCaptions(); return; }
+        let d = null;
+        try { d = await api(`/chat-ai/live-captions/${encodeURIComponent(username)}?after=${_captionsAfter}`); } catch { return; }
+        if (!d || !d.available || !d.live) { panel.style.display = 'none'; return; }
+        panel.style.display = '';
+        const lines = d.lines || [];
+        if (!lines.length) return;
+        const box = document.getElementById('ch-captions-lines');
+        if (!box) return;
+        box.querySelector('.ch-captions-wait')?.remove();
+        for (const l of lines) {
+            _captionsAfter = Math.max(_captionsAfter, Number(l.id) || 0);
+            const row = document.createElement('div');
+            row.className = 'ch-caption';
+            row.innerHTML = l.text_en
+                ? `<div class="ch-caption-en">${esc(l.text_en)}</div><div class="ch-caption-src">${esc(l.text)}</div>`
+                : `<div class="ch-caption-en">${esc(l.text)}</div>`;
+            box.appendChild(row);
+        }
+        while (box.children.length > 14) box.removeChild(box.firstChild);
+        box.scrollTop = box.scrollHeight;
+    };
+    void tick();
+    _captionsTimer = setInterval(tick, 6000);
+}
+function _stopCaptions() { if (_captionsTimer) { clearInterval(_captionsTimer); _captionsTimer = null; } }
+function toggleCaptionsPanel() { document.getElementById('ch-captions')?.classList.toggle('collapsed'); }
 
 function _aboutPanelViewHTML(p, i) {
     const w = ABOUT_WIDTHS.includes(p.width) ? p.width : 'md';
@@ -8839,4 +8924,75 @@ function copyDocSection() {
     const active = document.querySelector('.doc-tab-content[style=""], .doc-tab-content:not([style*="display: none"]):not([style*="display:none"])');
     if (!active) return;
     _docsCopy(_docsToMarkdown(active), 'docs-copy-section-btn', 'Copied!');
+}
+
+
+/* ── Star of OpenVibe — home spotlight for the featured streamer ─────────────────────
+   GET /api/home/star → { star: { username, display_name, avatar_url, bio, bio_en, language,
+   live, ai_overview, follower_count, last_live_at } } (null when no star is configured). */
+async function loadHomeStar() {
+    const sec = document.getElementById('home-star-section');
+    if (!sec) return;
+    let data = null;
+    try { data = await api('/home/star'); } catch { data = null; }
+    const s = data && data.star;
+    if (!s) { sec.style.display = 'none'; sec.innerHTML = ''; return; }
+    const lang = s.language || { code: 'en', name: 'English', flag: '' };
+    const foreign = lang.code && lang.code !== 'en';
+    const name = esc(s.display_name || s.username);
+    const path = channelPath(s.username);
+    const initial = esc(String(s.display_name || s.username || '?').charAt(0).toUpperCase());
+    const avatar = s.avatar_url
+        ? `<img src="${esc(s.avatar_url)}" alt="${name}" loading="lazy">`
+        : initial;
+    const bioSrc = (s.bio || '').trim();
+    const bioEn = (s.bio_en || '').trim();
+    let bioHtml = '';
+    if (foreign && bioEn) {
+        bioHtml = `<div class="star-bio-label"><i class="fa-solid fa-language"></i> English · auto-translated</div><p class="star-bio">${_linkify(esc(bioEn))}</p>
+                   <div class="star-bio-label">${esc(lang.flag)} ${esc(lang.name)} · original</div><p class="star-bio-src">${_linkify(esc(bioSrc))}</p>`;
+    } else if (bioSrc) {
+        bioHtml = `<p class="star-bio">${_linkify(esc(bioSrc))}</p>`;
+    }
+    const overview = s.ai_overview ? `<p class="star-overview"><i class="fa-solid fa-wand-magic-sparkles"></i> ${esc(String(s.ai_overview).slice(0, 260))}${String(s.ai_overview).length > 260 ? '…' : ''}</p>` : '';
+    const chips = [
+        foreign ? `<span class="star-chip pink">${esc(lang.flag)} Streams in ${esc(lang.name)}</span>` : '',
+        foreign ? `<span class="star-chip"><i class="fa-solid fa-language"></i> Chat auto-translated both ways</span>` : '',
+        s.category ? `<span class="star-chip">${esc(_capTag(s.category))}</span>` : '',
+        (s.follower_count > 0) ? `<span class="star-chip gold"><i class="fa-solid fa-heart"></i> ${esc(String(s.follower_count))} follower${s.follower_count === 1 ? '' : 's'}</span>` : '',
+    ].filter(Boolean).join('');
+    const isLive = !!s.live;
+    const offline = !isLive && s.last_live_at ? `<div class="star-offline"><i class="fa-regular fa-clock"></i> Last live ${esc(timeAgo(s.last_live_at))} — follow to get pinged next time.</div>` : '';
+    const liveCard = isLive ? `<div class="star-live-card">${streamCardHTML(s.live, true)}</div>` : '';
+    sec.innerHTML = `
+        <div class="section-header">
+            <h2><i class="fa-solid fa-star" style="color:#fbbf24"></i> Star of OpenVibe</h2>
+            <span class="muted" style="font-size:0.8rem">the streamer we're rolling out the red carpet for</span>
+        </div>
+        <div class="star-card-border">
+            <div class="star-card${isLive ? ' is-live' : ''}">
+                <div class="star-petals" aria-hidden="true"><span>🌸</span><span>🌸</span><span>✨</span><span>🌸</span><span>✨</span><span>🌸</span></div>
+                <div class="star-avatar-wrap">
+                    <div class="star-avatar-glow" aria-hidden="true"></div>
+                    <div class="star-avatar-ring" aria-hidden="true"></div>
+                    <a class="star-avatar" href="${esc(path)}" onclick="return handleLinkClick(event, '${esc(path)}')" style="${s.profile_color ? `background:${esc(s.profile_color)}` : ''}">${avatar}</a>
+                    ${isLive ? '<span class="star-live-pill">LIVE</span>' : ''}
+                    <span class="star-badge">⭐ Star</span>
+                </div>
+                <div class="star-body">
+                    <div class="star-kicker"><i class="fa-solid fa-star"></i> Featured streamer</div>
+                    <h3 class="star-name"><a href="${esc(path)}" onclick="return handleLinkClick(event, '${esc(path)}')">${name}</a>${foreign && lang.code === 'ja' ? '<span class="star-jp">OpenVibeの看板配信者 — ようこそ！</span>' : ''}</h3>
+                    <div class="star-chips">${chips}</div>
+                    ${bioHtml}
+                    ${overview}
+                    ${offline}
+                    <div class="star-actions">
+                        <a class="btn btn-lg star-btn-watch" href="${esc(path)}" onclick="return handleLinkClick(event, '${esc(path)}')"><i class="fa-solid ${isLive ? 'fa-play' : 'fa-user'}"></i> ${isLive ? 'Watch now' : 'Visit channel'}</a>
+                        <a class="btn btn-outline btn-lg" href="${esc(path)}#about" onclick="return handleLinkClick(event, '${esc(path)}#about')"><i class="fa-solid fa-comments"></i> Say hi${foreign ? ' — any language works' : ''}</a>
+                    </div>
+                </div>
+                ${liveCard}
+            </div>
+        </div>`;
+    sec.style.display = '';
 }

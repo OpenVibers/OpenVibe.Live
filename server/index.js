@@ -562,6 +562,7 @@ app.use('/api/game', (req, res) => res.status(410).json({ error: 'Game has moved
 app.use('/api/meta', metaRoutes);
 app.use('/api/pastes', pasteRoutes);
 app.use('/api/home', require('./home/routes'));
+app.use('/api/i18n', require('./i18n/routes'));                 // on-demand translation for viewers (any line → your language)
 app.use('/api/kiosk', require('./kiosk/routes'));
 // Song-request queue (watch-party) — stays Live-local (OpenVibe.Media does not
 // carry the downloader/queue subsystem). Spends OpenCoins via the Network wallet.
@@ -605,6 +606,15 @@ app.get('/api/health', (req, res) => {
         uptime: process.uptime(),
         chat_connections: chatServer.getTotalConnections(),
     });
+});
+
+// ── RobotStreamer switch-bonus promo (public) ────────────────
+// Read by public/js/rs-promo.js on every page load so the promo can be paused or retuned
+// from the env (RS_PROMO_*) without touching the frontend.
+app.get('/api/promo/robotstreamer', (req, res) => {
+    const p = config.rsPromo || {};
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json({ enabled: p.enabled !== false, amount: p.amount || 50, amount_min: p.amountMin || 25, referral: p.referral || 10, github: p.github || null, owner: p.owner || 'admin', discord: p.discord || null });
 });
 
 // ── Updates / Changelog ──────────────────────────────────────

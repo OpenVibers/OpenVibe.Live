@@ -2665,11 +2665,76 @@ function destroyBgBroadcastChat() {
     }
 }
 
+/* ── Chat auto-translation (non-English streamers) ─────────────
+   The server translates foreign chat → English for everyone, and English → the channel's
+   language when the streamer doesn't read English (JapaneseOldGuy's chat was the reason).
+   Translations arrive a beat after the message as { type:'chat_translation', id, from, to, text }
+   and are persisted in chat_messages.metadata.translation for history. */
+const _LANG_LABEL = { en: 'English', ja: 'Japanese', ko: 'Korean', zh: 'Chinese', ru: 'Russian', uk: 'Ukrainian', ar: 'Arabic', th: 'Thai', he: 'Hebrew', el: 'Greek', hi: 'Hindi', es: 'Spanish', pt: 'Portuguese', fr: 'French', de: 'German', it: 'Italian', tr: 'Turkish', vi: 'Vietnamese', id: 'Indonesian', pl: 'Polish', nl: 'Dutch' };
+let _chatChannelLang = 'en';
+function _msgTranslation(msg) {
+    if (!msg) return null;
+    if (msg.translation && msg.translation.text) return msg.translation;
+    if (msg.metadata) {
+        try {
+            const m = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : msg.metadata;
+            if (m && m.translation && m.translation.text) return m.translation;
+        } catch { /* not JSON */ }
+    }
+    return null;
+}
+function _translationEl(tr) {
+    const d = document.createElement('div');
+    d.className = 'chat-translation';
+    d.title = `Auto-translated from ${_LANG_LABEL[tr.from] || tr.from || '?'} to ${_LANG_LABEL[tr.to] || tr.to || '?'}`;
+    d.innerHTML = `<i class="fa-solid fa-language"></i> <span class="chat-translation-text">${esc(tr.text)}</span>`;
+    return d;
+}
+function _applyChatTranslation(evt) {
+    if (!evt || evt.id == null || !evt.text) return;
+    document.querySelectorAll(`.chat-msg[data-msg-id="${CSS.escape(String(evt.id))}"]`).forEach((el) => {
+        if (el.querySelector('.chat-translation')) return;
+        el.appendChild(_translationEl(evt));
+    });
+}
+// The viewer's own language (browser setting, 2-letter), used by the on-demand translate button.
+function _viewerLang() { try { return String(navigator.language || 'en').slice(0, 2).toLowerCase() || 'en'; } catch { return 'en'; } }
+async function _translateForMe(el, text, btn) {
+    const to = _viewerLang();
+    const existing = el.querySelector(`.chat-translation[data-to="${CSS.escape(to)}"]`);
+    if (existing) { existing.hidden = !existing.hidden; return; }
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>'; }
+    try {
+        const d = await api('/i18n/translate', { method: 'POST', body: { text, to } });
+        if (d && d.same) { toast(`Already in ${_LANG_LABEL[to] || to}`, 'info'); return; }
+        if (!d || !d.text) { toast('Translation unavailable right now', 'error'); return; }
+        const node = _translationEl({ from: d.from, to: d.to, text: d.text });
+        node.dataset.to = to;
+        el.appendChild(node);
+    } catch (err) { toast(err?.message || 'Translation failed', 'error'); }
+    finally { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-language"></i>'; } }
+}
+// "Auto-translated ↔ Japanese" pill in every chat tools row while in a non-English channel.
+function _updateTranslateHint(lang) {
+    _chatChannelLang = lang || 'en';
+    document.querySelectorAll('.chat-tools-row').forEach((row) => {
+        let pill = row.querySelector('.chat-translate-hint');
+        if (_chatChannelLang === 'en') { if (pill) pill.remove(); return; }
+        if (!pill) { pill = document.createElement('span'); pill.className = 'chat-translate-hint'; row.appendChild(pill); }
+        const name = _LANG_LABEL[_chatChannelLang] || _chatChannelLang;
+        pill.title = `This streamer reads ${name}. Type in YOUR language — every message is auto-translated to ${name} for them, and their ${name} is translated to English for you.`;
+        pill.innerHTML = `<i class="fa-solid fa-language"></i> <span>Auto-translated ↔ ${esc(name)}</span>`;
+    });
+}
+
 /* ── Message handling ─────────────────────────────────────────── */
 function handleChatMessage(msg) {
     switch (msg.type) {
         case 'vibe-coding':
             _handleVibeSocketMessage(msg);
+            break;
+        case 'chat_translation':
+            _applyChatTranslation(msg);
             break;
         case 'chat':
             addChatMessage(msg);
@@ -2714,6 +2779,7 @@ function handleChatMessage(msg) {
                 name: String(msg.username || ''),
                 core: msg.core_username || null,
             };
+            _updateTranslateHint(msg.channel_language);
             // A surface rejoin (live↔offline swap on the same socket) re-issues this
             // confirmation — skip the duplicate "Chatting as" notice, but still run
             // the rest of the sync below (slow mode, gifs, emote scale, …).
@@ -3249,6 +3315,11 @@ function addChatMessage(msg) {
     const separator = (ttsOff || msg.message_type === 'soundboard' || msg.message_type === 'channel-sound') ? ' ' : ': ';
     el.innerHTML = `${replyHtml}${timestamp}${streamBadge}${voiceBadge}${gameBadge}<span class="chat-avatar-wrap">${avatarHtml}</span>${badge}${_relayBadge}${_aiBadge}${hatHtml}${particleWrapOpen}<span class="chat-user${nameFXClass}" style="color:${esc(nameColor)}" data-username="${displayName}" data-core-username="${coreUsername}" data-user-id="${userId}" data-anon="${isAnon ? '1' : ''}" oncontextmenu="showChatContextMenu(event)" onclick="showChatContextMenu(event)">${_visibleName}</span>${particleWrapClose}${separator}${text}`;
 
+    // Auto-translation under the message (live 'chat_translation' event, or persisted
+    // metadata.translation on history). See server/i18n/translate.js for the direction rules.
+    const _tr = _msgTranslation(msg);
+    if (_tr) el.appendChild(_translationEl(_tr));
+
     // Reply action button (hover)
     if (msg.id) {
         const replyBtn = document.createElement('button');
@@ -3265,6 +3336,16 @@ function addChatMessage(msg) {
             });
         };
         el.appendChild(replyBtn);
+        // "Translate to my language" — for every viewer, whatever the channel's language is
+        // (the automatic translations only cover English ↔ the streamer's language).
+        if (/\p{L}{2,}/u.test(rawText || '')) {
+            const trBtn = document.createElement('button');
+            trBtn.className = 'chat-translate-btn';
+            trBtn.title = `Translate to ${_LANG_LABEL[_viewerLang()] || 'my language'}`;
+            trBtn.innerHTML = '<i class="fa-solid fa-language"></i>';
+            trBtn.onclick = (e) => { e.stopPropagation(); _translateForMe(el, displayRaw, trBtn); };
+            el.appendChild(trBtn);
+        }
         el.classList.add('chat-msg-hoverable');
     }
 
@@ -4303,7 +4384,6 @@ function showChatContextMenu(event) {
         if (isRelay) { const m = String(username || '').match(/^\[([A-Za-z]+)\]\s+(.+)$/); const plat = String(sourcePlatform || (m && m[1]) || '').toLowerCase().replace(/^yt$/, 'youtube').replace(/^robotstreamer$/, 'rs'); if (m && plat) yapKey = `relay:${plat}:${m[2].trim().toLowerCase()}`; }
         else if (isAnon) { const m = String(coreUsername || username || '').match(/^anon(\d+)$/i); if (m) yapKey = `anon:${m[1]}`; }
         else if (userId) yapKey = `user:${userId}`;
-        if (yapKey) _injectYapBlock(menu, yapKey);
     } catch { /* optional */ }
 
     // Clicks inside the menu shouldn't dismiss it (needed for rename submenu toggle etc.)
@@ -4375,20 +4455,6 @@ function positionContextMenu(menu, x, y) {
     };
     window.addEventListener('resize', onResize);
     menu._resizeHandler = onResize;
-}
-
-async function _injectYapBlock(menu, key) {
-    try {
-        const y = await api(`/arena/chatter/${encodeURIComponent(key)}`);
-        if (!y || !menu.isConnected) return;
-        const pct = y.xp_for_next ? Math.round((y.xp_into_level / y.xp_for_next) * 100) : 100;
-        const card = y.card || {};
-        const el = document.createElement('div');
-        el.className = 'ctx-yap';
-        el.innerHTML = `<a href="/arena/chatter/${encodeURIComponent(key)}" onclick="return handleLinkClick(event, '/arena/chatter/${encodeURIComponent(key)}')" class="ctx-yap-link"><span class="ctx-yap-lvl">YAP ${y.level}</span><span class="ctx-yap-title">${esc(card.title || y.title)}</span>${y.streak >= 2 ? `<span class="ctx-yap-streak">🔥 ${y.streak}</span>` : ''}</a><span class="ctx-yap-bar"><span style="width:${pct}%"></span></span><small>${y.xp} XP · ${y.moments} moments on ${y.subjects} subject${y.subjects === 1 ? '' : 's'}${card.catchphrase ? ` · “${esc(String(card.catchphrase).slice(0, 60))}”` : ''}</small>`;
-        const actions = menu.querySelector('.ctx-actions');
-        if (actions) actions.parentNode.insertBefore(el, actions); else menu.appendChild(el);
-    } catch { /* no profile yet */ }
 }
 
 function dismissContextMenu() {

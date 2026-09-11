@@ -206,6 +206,54 @@ router.get('/hero', async (req, res) => {
     }
 });
 
+// ── Star of OpenVibe: one featured streamer, spotlighted on the home page ──────────
+// Picked by the `star_streamer` site setting (falls back to STAR_STREAMER in the env).
+// Ships the bio in its own language AND in English for non-English streamers, plus the
+// live stream (stream-card shape) when they're on. Cached ~20s.
+let _starCache = { at: 0, key: '', data: null };
+router.get('/star', async (req, res) => {
+    try {
+        res.set('Cache-Control', 'public, max-age=20');
+        const config = require('../config');
+        let uname = '';
+        try { uname = String(db.getSetting('star_streamer') || '').trim(); } catch { uname = ''; }
+        if (!uname) uname = String(config.starStreamer || '').trim();
+        if (!uname) return res.json({ star: null });
+        if (Date.now() - _starCache.at < 20_000 && _starCache.key === uname.toLowerCase() && _starCache.data) return res.json(_starCache.data);
+
+        const user = db.getUserByUsername(uname);
+        if (!user) return res.json({ star: null });
+        const i18n = require('../i18n/translate');
+        const channel = db.getChannelByUserId(user.id) || {};
+        const code = i18n.channelLanguage(user.id);
+        const live = (db.getLiveStreams() || []).find(s => s.user_id === user.id) || null;
+        let liveSafe = null;
+        if (live) { const { managed_stream_key, stream_key, ...safe } = live; liveSafe = safe; }
+        const bio = String(user.bio || '').trim();
+        let bio_en = null;
+        if (bio && code !== 'en') { try { bio_en = await i18n.translate(bio, { from: code, to: 'en', context: 'bio' }); } catch { bio_en = null; } }
+        let follower_count = null;
+        try { follower_count = typeof db.getFollowerCount === 'function' ? db.getFollowerCount(user.id) : null; } catch { follower_count = null; }
+        let last_stream = null;
+        try { last_stream = (db.getRecentStreams(60) || []).find(s => s.user_id === user.id) || null; } catch { last_stream = null; }
+        const data = {
+            star: {
+                username: user.username, display_name: user.display_name || user.username,
+                avatar_url: user.avatar_url || null, profile_color: user.profile_color || null,
+                bio, bio_en, language: { code, name: i18n.langName(code), flag: i18n.langFlag(code) },
+                ai_overview: channel.ai_overview || null, category: channel.ai_category || channel.category || null,
+                follower_count, live: liveSafe,
+                last_live_at: live ? null : (last_stream && (last_stream.ended_at || last_stream.started_at)) || null,
+            },
+        };
+        _starCache = { at: Date.now(), key: uname.toLowerCase(), data };
+        res.json(data);
+    } catch (err) {
+        console.error('[Home] star error:', err.message);
+        res.status(500).json({ error: 'Failed to load star streamer' });
+    }
+});
+
 // ── Community pulse: goals near completion, latest activity, weekly leaders,
 // AI moment showcase, and the newest shipped update. Cached ~30s server-side.
 let _pulseCache = { at: 0, data: null };

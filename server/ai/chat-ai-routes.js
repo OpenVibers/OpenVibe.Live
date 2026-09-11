@@ -219,6 +219,41 @@ router.get('/timeline/:username', (req, res) => {
     }
 });
 
+/**
+ * Live captions feed for a channel: the newest speech rows of the current live stream, with
+ * the English rendering for non-English streamers. Poll with ?after=<last id>.
+ *   { language:{code,name,flag}, available, live, stream_id, lines:[{id,t,text,text_en,lang}] }
+ * `available` is false when the AI timeline is off, whisper is missing, or a non-English
+ * channel has no multilingual model — the client hides the panel rather than showing an
+ * empty one.
+ */
+router.get('/live-captions/:username', (req, res) => {
+    try {
+        const user = db.getUserByUsername(String(req.params.username || '').trim());
+        if (!user) return res.status(404).json({ error: 'Channel not found' });
+        const i18n = require('../i18n/translate');
+        const transcribe = require('./transcribe');
+        const code = i18n.channelLanguage(user.id);
+        let timelineOn = false;
+        try { const v = db.getSetting('ai_timeline_enabled'); timelineOn = String(v) === 'true' || String(v) === '1'; } catch { /* */ }
+        let whisperOk = false, multi = false;
+        try { whisperOk = transcribe.available(); multi = !!transcribe.multilingualModel(); } catch { /* */ }
+        const available = timelineOn && whisperOk && (code === 'en' || multi);
+        const live = (db.getLiveStreamsByUserId(user.id) || [])[0] || null;
+        const after = Math.max(0, parseInt(req.query.after, 10) || 0);
+        const lines = (live && available) ? db.getTimelineSpeechSince(live.id, after, 40).map(l => ({
+            id: l.id, t: l.start_sec, text: l.text, text_en: l.text_en || null, lang: l.lang || 'en', at: l.created_at,
+        })) : [];
+        res.set('Cache-Control', 'no-store');
+        res.json({
+            language: { code, name: i18n.langName(code), flag: i18n.langFlag(code) },
+            available, live: !!live, stream_id: live ? live.id : null, lines,
+        });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to load live captions' });
+    }
+});
+
 // Full audio transcript for a stream (AI Timeline transcript viewer), with a VOD id for links.
 /**
  * Batch VOD transcripts, by Media vod id: /api/chat-ai/vod-transcripts?ids=1,2,3

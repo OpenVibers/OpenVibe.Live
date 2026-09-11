@@ -1,137 +1,107 @@
-# Arena — beefs, the board, and the ears
+# Arena — Battle Cam (pure mic)
 
-The **Arena** tab (`/arena`) is where the platform's culture gets weaponised into entertainment. Nobody clicks "fight". Everything runs off what streamers *say* on mic (the continuous audio transcription) and what viewers *do* in chat:
+The **Arena** tab (`/arena`) is streamer-vs-streamer shit talk with exactly one input: **what fighters say into the microphone**. The continuous audio transcription of every live cam (`stream_timeline_events`, see the AI timeline) is read every 15 seconds and judged. Nobody clicks "fight", nobody votes, nothing typed in chat counts. There is no board, no topics, no chat levels, no bounties, no check-ins — those were removed in v3 (2026-09-10) because they were not mic.
 
-- **Beefs** — a streamer says another fighter's name while talking shit → a beef opens by itself, the target goes on the clock, silence is a forfeit.
-- **The board** — living lore profiles of the subjects the site is actually on about, discovered from global chat + live transcripts; every chat line or on-mic line about a subject becomes a moment, the AI rewrites the lore as it escalates. Streamers talk on a subject → judged moments → XP → **Trash Level**. No voting anywhere.
-- **Fighters** — the roster is every streamer active in the last 45 days, rated on 7 stats (HYPE, GRIND, CHAT, LOYALTY, CLUTCH, VIBE, **MIC**) as percentiles across the roster, plus an AI persona and portrait. Recent Trash Level XP and beef wins add a *mouth bonus* (≤ +12) to POWER.
+- **Callouts → beefs** — a fighter says another fighter's name while talking shit → the ears lock on, the judge scores it, the beef opens by itself, the target goes on the clock; silence is a forfeit. The mic judge can also open a beef without the name being in the transcript, when it decides the shit talk is clearly *aimed at* a roster fighter.
+- **The feed** — everything else that is actually shit talk (at chat, the mods, other platforms, the game, the world) is judged, scored 0–10, VOD-linked and lands in the live feed. It pays Trash Level XP. Gameplay narration and small talk score nothing.
+- **The ladder** — every fighter is rated on seven mic-only stats, as percentiles across the roster, plus an AI persona and portrait written from their transcripts.
 
-With AI off everything still works: template headlines, fallback angles, keyword judges.
+With AI off everything still works: keyword judges, template headlines, fallback personas.
 
 ## Speech policy
 
-The platform does not censor language. Offensive, provocative, taboo words — slurs included — are allowed, are never filtered, and are never a reason for the judge to score low. The only lines that don't count (`server/arena/arena-service.js` `isBannedText`, plus the judge's `flagged`) are **behaviour**: direct threats of violence (`kys`, "I'll kill you"), sexual content about minors, and doxxing (addresses, phone numbers). Those lines are dropped from quotes, feeds and scoring; nothing else is.
+The platform does not censor language. Offensive, provocative, taboo words — slurs included — are allowed, are never filtered, and are never a reason for the judge to score low. The only lines that don't count (`server/arena/arena-service.js` `isBannedText`, plus the judge's `flagged`) are **behaviour**: direct threats of violence (`kys`, "I'll kill you"), sexual content about minors, and doxxing (addresses, phone numbers). Those lines are dropped from the feed, quotes and scoring; nothing else is.
 
-## Beefs (`server/arena/beef.js`)
+## The roster + ratings (`server/arena/arena-service.js`)
 
-| Rule | Value |
-|---|---|
-| Opens when | the listener judges ≥ 20 words in the 45 s after a fighter's name was said as *aimed at them* (roast, callout, disrespect, brag over them) |
-| Clock | the other side must answer on their own stream within **15 min if live**, **24 h if offline** (an offline clock is tightened to 15 min the moment they go live) |
-| Answer | any judged hit from the side on the clock; every hit flips the clock to the other side |
-| Forfeit | clock runs out → the silent side loses |
-| Hard end | 24 h after opening → higher **total** wins (`total = Σ hit quality (0–10, judged) + crowd hype (max 10)`), equal = draw |
-| Upset | winner ranked ≥ 4 places below the loser (+20 XP) |
-| Rematch | same pair again → flagged, with the rivalry's record and **receipts** (best lines from earlier beefs) |
-| XP | +5 open · +quality per hit (×2 while a bounty is on the target) · +40 win |
-| Crowd | `!hype` / Hype button: one per person per side (no voting) |
+The roster is **whoever has been heard**: every streamer with transcribed speech in the last 45 days. A streamer with 9,000 viewers and no transcription is not a fighter. Ratings are 40–99 percentiles across the roster (a roster of one is a flat 70):
 
-Headlines (open + result) are AI-written (`chat` role) with templates as fallback; the announcer's one-liner per hit comes from the judge. Streaks, upsets and the head-to-head history are shown on every beef card.
+| Stat | From | Weight |
+|---|---|---|
+| **Heat** | average judge score of their mic moments (30 d) | 0.22 |
+| **Aim** | callouts + beef hits per hour on mic (30 d) | 0.18 |
+| **Kills** | beefs won | 0.16 |
+| **Mouth** | share of stream time spent talking | 0.14 |
+| **Clapback** | beefs answered on the clock ÷ beefs they were called out in | 0.12 |
+| **Stamina** | minutes of speech heard (90 d) | 0.10 |
+| **Pace** | words per minute on mic | 0.08 |
 
-## The board (`server/arena/board.js`) — living lore
+POWER = weighted sum + a **mouth bonus** (≤ +12: recent XP ÷ 25 + 3 per beef win in 7 days). Audience numbers (viewers, chat volume, followers, clips, tips) do not exist anywhere in the Arena.
 
-No voting anywhere. The board is a list of **subjects** the community is actually on about, each a lore profile that writes itself:
+**Persona** (`chat` role, 24 h TTL): fighter name, title, class, element, moves, weakness, `taunt` + three `taunts` (ragebait in *their speaking voice*), `typing_style` (how they talk), `spoken_as` (nicknames/mishearings, fed to name detection), six `custom_stats` unique to them and `stat_quips` — written from their transcript lines, their best judged shit talk, who they call out, who calls them out and what they rant at. **Quotes**: AI-picked lines from the transcripts, VOD-linked. **Portraits** (optional, `ai_image_enabled`): drawn from their own stream frames.
 
-- **Discovery** — every 5 min (only when ≥ 8 new lines exist, so a dead room costs nothing; window `arena_discover_window_min`, default 30) the AI reads global + stream chat and live transcripts and returns the **umbrella subjects** people are really on about (1–4 words: a person, a group, a joke, a drama…) each with 2–4 **threads** — the specific angles being argued (name + keywords + hint) — a short headline and tagline in the community's own voice, the keywords/slang people use, and optionally one **bounty** on a streamer the community keeps naming. Voice rules: write like a regular of this chat (its casing, slang, rhythm), no tabloid adjective soup, no invented words; the prompt gets recent chat lines, the global chat AI overview and the chat AI's profiles of the people involved. Without AI, a word ≥ 3 people said ≥ 4 times becomes a subject. New subjects are **backfilled** with every matching line from the last 2 h so they never start empty.
-- **Moments** — every minute new `chat_messages` are scanned; any line matching a subject's keywords becomes a chat **moment** on it and is filed into the first thread whose keywords match (`thread_id`). The listener does the same for transcript lines (an on-mic moment with a VOD deep link, one per stream per 45 s) and **auto-joins** the fighter to the subject. Judged chunks (≥ 20 words, AI quality 0–10) are moments with a score → XP (quality × 0.8) → Trash Level.
-- **One story = one subject** — discovery hands the model the open subjects (ids, keywords, threads) and it returns `merge_into_id` for anything that is the same drama; on top of that `mergeCandidate` folds a new subject into an existing one when they share a roster name, ≥ 2 keywords / a phrase keyword, or ≥ 50 % of their words. Folding = the would-be subject and its threads become threads of the existing subject (threads that are themselves another open subject are skipped) and its keywords widen the match. User submissions fold the same way (the reply says so). Lore rewrites never add a thread that is another open subject.
-- **Nobody joins anything** — the ears detect who is on what: a fighter saying a subject on mic is auto-filed as a member; there are no join/leave endpoints or buttons.
-- **Lore** — when a subject has ≥ 3 new moments (and ≥ 8 min since the last rewrite) the AI rewrites its short (≤ 450 chars) story so far and returns the updated threads (existing kept, new angles added, ≤ 6 per subject; unfiled moments are re-filed): who started it, who said what (verbatim, with usernames), who is on which end, escalations. Templated when AI is off. Lore stays in the archive after the subject cools off (36 h idle).
-- **User subjects** — signed-in only, **one per person and one per IP per 24 h**. The AI rewrites what was typed into a subject + headline + keywords (`submitTopic`, one small call) and backfills moments. `!topic <text>` in chat does the same.
-- **Heat** = on-mic moments ×3 + chat moments + hype + fighters talking (last hour); ≥ 12 is HOT; the hottest subject is featured at the top.
-- **Ladders** — Trash Level (XP) and **yappers** (chatters with the most moments in 7 days).
+## The mic ledger (`server/arena/mic.js`)
+
+`arena_mic_moments` — one row per judged line: `kind` (`trash` for free-standing shit talk, `beef_hit` when it fed a beef), `target_user_id` + `beef_id` for callouts, `aimed_at` (free text: "chat", "the mods", a name…), `text`, `about`, `quality`, `announcer`, VOD id + second, `said_at`. `feed()` is the live feed; `micStats(userId)` is what the ratings read.
+
+**XP → Trash Level** (`arena_trash_levels`, level = 1 + XP ÷ 50): `trash` moment = quality × 0.8 · beef hit = quality · beef open +5 · beef win +40 (+20 upset) · hype received +1. Nothing else pays XP. The best line on record (highest quality) sticks to the profile.
 
 ## The ears (`server/arena/listener.js`)
 
 Every 15 s, for every roster stream that is live **and** has a transcript line in the last 30 min:
 
-1. New `stream_timeline_events` speech lines are read.
-2. **Name detection** (`server/arena/names.js`) — every roster name (username, display name, fighter name, plus the persona's AI-written `spoken_as` nicknames/mishearings) is expanded into the forms a transcriber produces: camelCase/snake/kebab split (`JapaneseOldGuy` → "japanese old guy"), digits and `_tv`/`xX_` decorations dropped (`lofi_dan99` → "lofi dan"), leet undone, glued forms. Lines are matched exact → **fuzzy** (edit distance scaled by length, same word count only: "Matticus", "japanese old gai") → **phonetic** (compact metaphone key: "goose lee", "Goosley", "mattie cuss", "pixel queen"). Single common words can never be aliases, prefixes don't count, the speaker never matches themselves.
-3. **Focus lock** — a name-drop locks the ears on that fighter for 2 min; everything said afterwards goes to the beef judge together with what was already said about them, and the judge decides `about_target` (still on them via "he", "her chat", "that guy", the same story) and `aimed_at_target`. Every hit extends the lock 3 min (hard cap 20 min without a fresh name-drop); neutral talk keeps it a bit; two chunks about something else drop it. A different name-drop switches targets (the pending chunk is judged first). The console (`/arena/live/<user>`) shows the lock, its context and whether the last hit was a continuation.
-4. Lines matching a board subject's keywords become on-mic moments (and auto-join the fighter). Other lines pool for the **subject judge** against the streamer's active subject — or the one they just brought up (≥ 20 words, ≥ 30 s between calls): `on_topic`, `quality`, `best_line`, `about`.
-5. One judge call per stream per tick; keyword heuristics when AI is off (pronouns + spice count as a continuation).
+1. New speech lines are read.
+2. **Name detection** (`server/arena/names.js`) — every roster name (username, display name, fighter name, the persona's `spoken_as`) in the forms a transcriber produces (camelCase/snake split, digits/decorations dropped, leet undone, glued), matched exact → fuzzy → phonetic. The speaker never matches themselves.
+3. **Focus lock** — a name-drop locks the ears on that fighter for 2 min; everything said afterwards goes to the **beef judge** with the context of what was already said (`about_target`, `aimed_at_target`, quality, best verbatim line, announcer call). A hit → `beef.recordHit()`; every hit extends the lock 3 min (cap 20 min without a fresh name-drop); two off-target chunks drop it; a different name switches targets.
+4. **Free talk** — lines said while not locked pool for the **mic judge** (≥ 20 words, ≥ 30 s between calls per stream): `is_trash_talk`, quality, best line, `aimed_at`, announcer. Quality ≥ 4 → a `trash` moment in the feed. If `aimed_at` resolves to a roster fighter and quality ≥ 5 → it is a **callout** and feeds a beef exactly like a name-drop.
+5. One judge call per stream per tick; keyword heuristics when AI is off.
 
-`/arena/live/<username>` shows exactly what the ears hear for a fighter: hot mic lines, the last judgements, active topic progress, open beefs and any bounty on them (auto-refreshes; a level-up flashes).
+`/arena/live/<username>` shows exactly what the ears hear: hot mic lines, the lock and its context, the last beef and mic judgements, their recent lines in the feed, open beefs.
+
+## Beefs (`server/arena/beef.js`)
+
+| Rule | Value |
+|---|---|
+| Opens when | the beef judge confirms ≥ 20 words aimed at a fighter after a name-drop, or the mic judge's `aimed_at` resolves to a fighter (quality ≥ 5) |
+| Clock | the other side must answer on their own cam within **15 min if live**, **24 h if offline** (an offline clock tightens to 15 min the moment they go live) |
+| Answer | any judged hit from the side on the clock; every hit flips the clock |
+| Forfeit | clock runs out → the silent side loses |
+| Hard end | 24 h after opening → higher **total** wins (`total = Σ hit quality + crowd hype (max 10)`), equal = draw |
+| Upset | winner ranked ≥ 4 places below the loser (+20 XP) |
+| Rematch | same pair again → flagged, with the rivalry's record and **receipts** (best lines from earlier beefs) |
+| Crowd | `!hype` / Hype button: one per person per side — the only thing chat can do |
+
+Every hit is also written to the mic ledger as a `beef_hit` moment. Headlines (open + result) are AI-written with templates as fallback; the announcer's one-liner per hit comes from the judge.
 
 ## Pages
 
-`/arena` — pulse · on the mic now · open + settled beefs · the board (subject cards: headline, subject + tagline, thread chips with counts, latest line, mention counts, fighters; first card featured; cooled-off list) · Trash Level ladder · yappers · power ladder (rows expand; compact on phones) · rules.
-`/arena/beef/<id>` — tale of the tape, tug-of-war, live clock, ringside feed (every judged hit with ▶ to the VOD second and 🔊), receipts from earlier beefs, hype/side buttons.
-`/arena/topic/<id>` — headline, subject + tagline, counts, story so far, **thread tabs** filtering the moment timeline (chat + on-mic with ▶ to the VOD second), fighters heard on it with their best line, loudest chatters with yap levels.
-`/arena/<username>` — stats drill-down, voice + quotes, Trash Level card, rivalries with receipts, beef history.
+`/arena` — Battle Cam: your beefs on the clock · **live cams** (thumbnail, lock indicator, last judged line, open beefs, pending words) · open + settled beefs · **the feed** (every judged line, newest first, aimed-at chips, ▶ to the VOD second, 🔊 in their voice) · the ladder (rows expand: the seven mic stats radar, taunts, quips) · rules.
+`/arena/beef/<id>` — tale of the tape, tug-of-war, live clock, ringside feed, receipts, hype buttons.
+`/arena/live/<username>` — the ears.
+`/arena/<username>` — POWER, Trash Level card (judged lines, avg score, bangers, answered-when-called-out), the seven mic stats with drill-downs, their lines on record, characteristics radar, rap sheet, ragebait bubbles, on the mic (voice meters + quotes), rivalries, beefs.
+
+Old `/arena/topic/*` and `/arena/chatter/*` links show a "this part is gone" note.
 
 ## Chat commands (`server/arena/arena-chat.js`)
 
-`!topic <text>` (signed in; 1 per person + per IP per 24 h; AI rewrites it) · `!bounty <user>` (1 per hour, same 24 h rule) · `!hype` (the streamer's newest open beef, else their active subject) · `!beef` · `!board` · `!arena [user]`. One command per person every 4 s; replies are private system lines, milestones go to the room.
+`!hype` (the streamer's newest open beef) · `!beef` · `!arena [user]`. One command per person every 4 s. `!topic`, `!bounty` and `!board` no longer exist.
 
 ## API (`/api/arena`)
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/status` · `/fighters` · `/fighters/:user` · `/fighters/:user/stat/:stat` · `/live` | roster, card (+ `beefs`, `rivalries`, `level`, `active_topic`), drill-down, live fighters (hot mic, active topic, open beefs) |
+| GET | `/status` · `/fighters` · `/fighters/:user` · `/fighters/:user/stat/:stat` · `/live` | roster (`stats`, `stat_meta`, per-fighter `mic`, `last_line`), card (+ `beefs`, `rivalries`, `moments`, `best_lines`, `mic`), drill-down, live cams (`ears`, `last_moment`, `open_beefs`) |
+| GET | `/feed?limit&since` | the shit-talk feed |
 | POST | `/fighters/:user/refresh` | admin — regenerate persona (+ portrait) |
-| GET | `/console/:user` | the ears: listener state, hot mic, active topic + my progress, open beefs, bounty |
-| GET | `/board` | `open` (by heat, each with lore/keywords/mentions/fighters/last + best moment), `archive`, `pulse`, `levels`, `yappers` |
-| POST | `/board/topics {text}` · `/board/bounty {username}` | auth; 1 per person + per IP per 24 h; the AI rewrites the text |
-| GET | `/board/topics/:id` | detail incl. `moments` (80), `best_lines`, `top_chatters`, fighters with their best moment |
-| POST | `/board/topics/:id/join` · `/leave` (auth, roster) · `/hype {user_id}` | |
-| POST | `/pulse/refresh` · `/board/topics/:id/lore` | admin — force discovery + lore sweep / rebuild one subject's lore |
-| GET | `/beefs` · `/beefs/:id` | |
-| POST | `/beefs/:id/hype {side}` | one per person per side; anonymous by hashed IP |
-| GET | `/levels` · `/yappers` | ladders |
+| GET | `/console/:user` | the ears: listener state, hot mic, level, mic stats, open beefs, recent moments |
+| GET | `/beefs` · `/beefs/:id` · POST `/beefs/:id/hype {side}` | one hype per person per side; anonymous by hashed IP |
+| GET | `/levels` | Trash Level ladder |
+| GET | `/me` | signed in: fighter brief, level, record, mic stats, open beefs, beefs where you are on the clock, recent moments |
+| GET | `/voice/:user?t=<text>` | the line in that user's chat TTS voice (cached on disk + a week in the browser) |
 
 ## Settings
 
 | Key | Default | Effect |
 |---|---|---|
 | `arena_enabled` | `true` | `false` → API 404s |
+| `ai_timeline_enabled` | `false` | the audio transcription the whole Arena runs on — must be on |
 | `ai_image_enabled` / `ai_image_model` / `ai_image_quality` / `ai_image_cost_usd` | `false` / `gpt-image-1` / `low` / `0.011` | portraits |
-| `arena_vote_salt` | `JWT_SECRET` | salt for anonymous voter hashing |
+| `arena_vote_salt` | `JWT_SECRET` | salt for anonymous hype hashing |
 
-Background job (`server/arena/arena-job.js`): personas/portraits every 20 min (bounded, budget-aware) · listener every 15 s · clocks + bounty expiries + chat scan every 60 s · discovery ≤ 1 AI call / 5 min and only with new material · lore rewrites only for subjects with ≥ 3 new moments (≤ 3 per minute).
+Background job (`server/arena/arena-job.js`): personas/portraits every 20 min (bounded, budget-aware) · listener every 15 s · beef clocks every 60 s.
 
-Personas: the voice comes from their **chat history first** — their own chat lines with the room they typed in, the chat AI's profile of them as a chatter (overview, long-term memory, timeline), then the streaming profile as flavor. Output: `taunt` + three more `taunts` (ragebait in that exact typing style), `typing_style`, `spoken_as` (how people say/mishear the name — fed to name detection) and `custom_stats` (six stats unique to them, e.g. "Alt Accounts 91", drawn as their own radar on the ladder row and profile).
+Tests: `node test/arena.test.js` (roster, mic ratings, filter, quotes) · `node test/arena-mic.test.js` (ledger, beefs, listener tick, chat, API) · `node test/arena-voice.test.js` — all on a temp DB, no AI needed.
 
-Tests: `node test/arena.test.js` (roster, ratings, filter, quotes) · `node test/arena-beef-board.test.js` (beefs, board, listener tick, chat commands, API) — both on a temp DB, no AI needed.
+## Voice
 
-## Voice + portraits
-
-- **Hear it in their voice** — every 🔊 in the Arena calls `GET /api/arena/voice/<username>?t=<line>` (`server/arena/voice.js`): the line is synthesized in the streamer's **equipped cosmetic chat voice** (else the same per-identity auto voice chat gives `user:<username>`), written once to `data/tts-cache/<sha(voice+text)>.<mp3|wav>` and served with `Cache-Control: max-age=604800` — a repeat click never re-synthesizes (server cache + browser cache). `announcer` reads headlines/lore in `arena_announcer_voice` (default `tts_default_voice`). Cloud engines are metered into `ai_usage` (kind `tts`); `arena_voice_daily_max` (2000) caps fresh syntheses per day and per-IP limits are 8/min anonymous, 30/min signed in. Browser speech is only the fallback when the engine is down.
-- **Portraits from their own frames** — `generateImage` now feeds up to 3 real frames (live thumbnail, AI-moment frames the vision job persisted, VOD thumbnails — frames whose description mentions a person first) to `images/edits`, asking for a character-select caricature that keeps their setup, gear, lighting, silhouette and the vibe of their scene; text-only generation is only the fallback for streamers with no frames yet. Custom stats and the persona shape the costume/props.
-
-## Yappers — profiles for everyone who chats (`server/arena/chatters.js`)
-
-One polymorphic key per chatter — `user:<id>`, `anon:<N>` (the site's IP-derived `anon<N>` identity) or `relay:<platform>:<name>` (chat relayed from Twitch/Kick/YouTube/RobotStreamer) — so anonymous viewers and relayed chatters get profiles too. No extra AI calls for XP: it falls out of the board pipeline.
-
-| XP | for |
-|---|---|
-| +3 / +6 | a chat line that lands as a moment on a subject (double when the subject is HOT) |
-| +4 | the first time you touch a subject |
-| +15 | starting a subject (`!topic` / the page) |
-| +10 | being quoted in a subject's lore (name appears in the rewritten lore) |
-| +1 | hyping a fighter on a subject |
-| +5 × streak (≤ 7) | the first moment of each day; streak = consecutive days |
-
-Level = `1 + floor(√(XP / 25))` (the game's curve). Titles: Lurker → Chatter (2) → Yapper (3) → Instigator (5) → Ragebaiter (7) → Menace (9) → Main Character (12) → Community Consciousness (15) → Final Boss (20). **OpenVibe accounts bank `level × 10` OpenCoins on every level-up** through the network wallet (idempotent key `live:arena_yap_level:<user>:<level>`; unlinked accounts are simply skipped); anons/relay chatters keep the level and the title. Level-ups are announced in the room the moment happened in.
-
-**Yap card** — at level ≥ 3, at most once a day and only when ≥ 25 XP changed, the AI writes a card (title, blurb, catchphrase in their typing style, "known for", archetype) from the chat AI's existing profile of them (`chat_ai_summaries` user/anon/relay) + their best lines and subjects; ≤ 4 cards per housekeeping minute.
-
-Where it shows: the Yappers block on `/arena` (podium with level rings, streak flames, cards; weekly movers), `/arena/chatter/<key>` (card, XP bar, titles ladder, moments, subjects, what the chat AI has on them), and the chat context menu (click a name → yap level + title + bar, linking to the page). API: `GET /api/arena/yappers`, `GET /api/arena/chatter/:key`, `GET /api/arena/chatter/by-user/:username`, admin `POST /api/arena/chatter/:key/card`.
-
-## Coming back: your arena, check-ins, notifications
-
-- `GET /api/arena/me` (signed in) → your yap profile, XP today, coins banked from levels, fighter card if on the roster, open beefs where **you** are on the clock, subjects you're in, what's HOT. Rendered as the "Your Arena" strip at the top of `/arena`.
-- `POST /api/arena/checkin` → +5 XP once a day (+ the streak bonus) — the page calls it on the first visit of the day.
-- Arena events go to the site notification bell (`server/arena/notify.js` → `utils/notify.pushNotification`, deduped 10 min per user/type/key; users without a linked network account are skipped like everywhere else): a beef opened on you (with the clock), answers/hits while a beef is open, beef over (win/loss/draw), yap level-ups (+coins), getting quoted in lore, a bounty on you, your subject going HOT, your yap card being written.
-- Bots are never chatters: AI viewers (`source_platform='ai'`), channel AI bots (`channel_ai_bots`) and the admin list `arena_bot_usernames` (comma-separated) are excluded from moments, discovery input, voice samples and yapper XP.
-- Moments store `said_at` (the chat timestamp / stream start + offset) and every view uses it — never the time the line was filed.
-
-## Growth: tiers, achievements, history (`server/arena/progress.js`)
-
-- **Tiers** from all-time XP (never go down): Bronze 0 · Silver 150 · Gold 400 · Platinum 900 · Diamond 1800 · Mythic 3500. Fighters use their Trash Level XP, chatters their yap XP (an account's `user:<id>` key is the same for both, so one bar builds). Tier-ups are paid once (`arena_tier_paid`): accounts get `tier × 50` OpenCoins, a history entry and a notification.
-- **Achievements** (`ACHIEVEMENTS`, checked from existing data after every XP change — no AI): fighters — First Blood, Not Ducking, W, Problem (5 wins), Untouchable (3 streak), Giant Killer (upset), Run It Back (rematch win), On The Board, Loudmouth (25 judged moments), Bounty Hunter, Main Character (heard on a subject that went HOT — `arena_topics.peak_heat`), Crowd Favorite (25 hypes); chatters — Said Something, Yapping (10), Cannot Be Stopped (50), Everywhere (3 subjects), Instigator (started one), In The Lore, Historian's Nightmare (quoted 5×), Hot Take, Three Days, Regular (7 days), Instigator Rank (yap 5), Menace Rank (yap 10). Each pays XP; accounts also get OpenCoins (idempotent `live:arena_ach:<user>:<id>`), a bell notification and a history entry.
-- **History** (`arena_events`): beefs started/answered/over, level-ups, tier-ups, achievements, subjects started, being quoted — the timeline on every fighter/chatter page.
-- **Weekly**: XP gained in 7 days per key; `fighters_week` / `yappers_week` crowns on `/arena`.
-- API: `GET /api/arena/progress/:key`; `progress` is embedded in fighter cards, chatter profiles and `/api/arena/me`.
-
-Fighter page order: hero (portrait, POWER, tier, record, taunt) → progress panel (tier bar, achievements grid, history) → Trash Level card → characteristics radar + quips → rap sheet (lore, signature/special/weakness, walk-out, catchphrase, typing style) → ragebait bubbles (🔊 in their chat voice) → on the mic (quotes) → the numbers (bars) → rivalries → beefs.
+Every 🔊 in the Arena calls `GET /api/arena/voice/<username>?t=<line>` (`server/arena/voice.js`): synthesized once in the streamer's equipped cosmetic chat voice (else their per-identity chat voice), cached on disk and for a week in the browser. `announcer` reads headlines in `arena_announcer_voice`. `arena_voice_daily_max` (2000) caps fresh syntheses per day; per-IP limits are 8/min anonymous, 30/min signed in.
