@@ -76,6 +76,11 @@ router.post('/fighters/:user/refresh', requireAuth, permissions.requireAdmin, as
     } catch (err) { fail(res, err, 'Refresh failed'); }
 });
 
+// Admin: judge past speech now (bounded per call; the job also does this every 20 min).
+router.post('/backfill', requireAuth, permissions.requireAdmin, async (req, res) => {
+    try { res.json(await require('./backfill').run({ force: true })); } catch (err) { fail(res, err, 'Backfill failed'); }
+});
+
 // ── Live console: what the ears hear for one fighter ──
 router.get('/console/:user', (req, res) => {
     try {

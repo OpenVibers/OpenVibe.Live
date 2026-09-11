@@ -12,37 +12,19 @@
 const arena = require('./arena-service');
 
 const INTERVAL_MS = 20 * 60 * 1000;
-const BATCH = 6;
-const IMAGE_BATCH = 2;
 const CLOCK_MS = 60 * 1000;
 let _timer = null;
 let _clock = null;
 let _busy = false;
 
+// Personas and portraits are no longer generated: the Arena shows only what was said on mic.
+// The periodic tick now judges past speech (backfill) so the feed reflects the record, and
+// catches up anything the live listener missed.
 async function tick() {
     if (_busy || !arena.arenaEnabled() || !arena.aiOn()) return;
     _busy = true;
-    try {
-        const db = require('../db/database');
-        const roster = arena.loadRoster();
-        let personas = 0, images = 0;
-        for (const userId of roster.order) {
-            if (personas >= BATCH && (images >= IMAGE_BATCH || !arena.imageGenAvailable())) break;
-            const row = db.get('SELECT persona_generated_at, image_generated_at, image_path FROM arena_profiles WHERE user_id = ?', [userId]) || {};
-            const personaStale = !row.persona_generated_at || Date.now() - Date.parse(row.persona_generated_at + 'Z') > 24 * 60 * 60 * 1000;
-            if (personaStale && personas < BATCH) {
-                try { await arena.generatePersona(userId); personas++; } catch (e) { console.warn('[Arena] job persona:', e.message); }
-            }
-            const imageStale = !row.image_path || !row.image_generated_at || Date.now() - Date.parse(row.image_generated_at + 'Z') > 7 * 24 * 60 * 60 * 1000;
-            if (imageStale && images < IMAGE_BATCH && arena.imageGenAvailable()) {
-                try { await arena.generateImage(userId); images++; } catch (e) { console.warn('[Arena] job image:', e.message); }
-            }
-            if (!arena.aiOn()) break; // budget ran out mid-tick
-        }
-        if (personas || images) console.log(`[Arena] job: ${personas} persona(s), ${images} portrait(s) refreshed`);
-    } finally {
-        _busy = false;
-    }
+    try { await require('./backfill').run(); } catch (e) { console.warn('[Arena] backfill:', e.message); }
+    finally { _busy = false; }
 }
 
 function start() {
@@ -57,7 +39,7 @@ function start() {
     _clock = setInterval(() => housekeeping().catch(e => console.warn('[Arena] housekeeping:', e.message)), CLOCK_MS);
     if (_clock.unref) _clock.unref();
     setTimeout(() => housekeeping().catch(() => {}), 20_000).unref?.();
-    console.log('[Arena] job started (personas every 20 min; listener every 15 s; beef clocks every 60 s) — Battle Cam mode: pure mic');
+    console.log('[Arena] job started (backfill of past speech every 20 min; listener every 15 s; beef clocks every 60 s) — Battle Cam mode: pure mic');
 }
 
 async function housekeeping() {

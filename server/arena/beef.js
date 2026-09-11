@@ -82,11 +82,7 @@ function arena() { return require('./arena-service'); }
 function mic() { return require('./mic'); }
 function isLive(userId) { return !!db.get('SELECT 1 FROM streams WHERE user_id = ? AND is_live = 1 LIMIT 1', [userId]); }
 function nowIso() { return new Date().toISOString(); }
-function nameOf(userId) {
-    const p = parseJson(db.get('SELECT persona_json FROM arena_profiles WHERE user_id = ?', [userId])?.persona_json);
-    const u = db.getUserById(userId);
-    return p?.fighter_name || u?.display_name || u?.username || `user${userId}`;
-}
+function nameOf(userId) { return mic().nameOf(userId); }
 const HEADLINE_SCHEMA = { name: 'arena_headline', schema: { type: 'object', additionalProperties: false, required: ['headline'], properties: { headline: { type: 'string', description: '≤ 100 chars, tabloid, inflammatory but funny, names both fighters' } } } };
 async function headlineFor(kind, ctx) {
     try {

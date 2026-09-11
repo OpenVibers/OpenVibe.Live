@@ -120,15 +120,14 @@ console.log('✅ roster from transcripts only; idle and never-transcribed stream
     assert.ok(!('followers' in card.raw) && !('peak_viewers' in card.raw), 'no audience numbers on the card');
     assert.strictEqual(card.image_url, null);
     assert.strictEqual(card.image_generation, 'off', 'no AI → no image generation');
-    assert.ok(card.quotes && card.quotes.picks.length >= 3, 'heuristic quotes without AI');
-    assert.ok(card.quotes.picks[0].vod_id === 901 && typeof card.quotes.picks[0].start_sec === 'number', 'quotes link to the VOD second');
-    assert.strictEqual(card.quotes._fallback, true);
+    assert.strictEqual(card.quotes, null, 'nothing is generated on view any more — no quotes, no persona, no portrait');
+    assert.ok(card.persona_is_fallback, 'persona is the stats-only fallback (never generated)');
     assert.deepStrictEqual(card.beefs, []);
     assert.strictEqual(card.level.level, 1);
     const off = await arena.getFighter('mute');
     assert.strictEqual(off.not_on_roster, true);
     assert.ok(/mic/.test(off.reason));
-    console.log('✅ fighter card + transcript quotes');
+    console.log('✅ fighter card (mic-only, nothing generated on view)');
 
     const detail = arena.getStatDetail(u1, 'mouth');
     assert.strictEqual(detail.position, 1);

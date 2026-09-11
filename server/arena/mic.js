@@ -133,18 +133,17 @@ function levelsLeaderboard(limit = 10) {
 
 // ── Names + briefs ───────────────────────────────────────────
 
+// Real names only — no AI ring names. The fighter IS the streamer.
 function nameOf(userId) {
-    const p = parseJson(db.get('SELECT persona_json FROM arena_profiles WHERE user_id = ?', [userId])?.persona_json);
     const u = db.getUserById(userId);
-    return p?.fighter_name || u?.display_name || u?.username || `user${userId}`;
+    return u?.display_name || u?.username || `user${userId}`;
 }
 
 function fighterBrief(userId, roster) {
     const f = roster && roster.byId ? roster.byId[userId] : null;
-    const persona = parseJson(db.get('SELECT persona_json FROM arena_profiles WHERE user_id = ?', [userId])?.persona_json);
     return {
         user: f ? f.user : (db.getUserById(userId) ? arena().publicUser(db.getUserById(userId)) : { id: userId, username: `user${userId}`, display_name: `user${userId}` }),
-        fighter_name: persona?.fighter_name || f?.user?.display_name || `user${userId}`,
+        fighter_name: nameOf(userId),
         rank: f ? roster.order.indexOf(userId) + 1 : null,
         image_url: (() => { try { return arena().getFighterImageUrl(userId); } catch { return null; } })(),
         live: !!db.get('SELECT 1 FROM streams WHERE user_id = ? AND is_live = 1 LIMIT 1', [userId]),
@@ -169,7 +168,7 @@ function addMoment({ userId, streamId = null, vodId = null, sec = null, kind = '
                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`,
         [userId, streamId, vodId, sec == null ? null : Math.max(0, Math.floor(sec)), kind, targetUserId, beefId, aimedAt ? String(aimedAt).slice(0, 80) : null, t, about ? String(about).slice(0, 80) : null, q, announcer ? String(announcer).slice(0, 140) : null, saidAt]);
     const id = Number(r.lastInsertRowid);
-    if (kind === 'trash') addXp(userId, q * XP_MOMENT, 'mic_trash', id, { moment: true, line: t, lineScore: q, lineVodId: vodId, lineSec: sec });
+    if (kind === 'trash' || kind === 'callout') addXp(userId, q * XP_MOMENT, kind === 'callout' ? 'mic_callout' : 'mic_trash', id, { moment: true, line: t, lineScore: q, lineVodId: vodId, lineSec: sec });
     return db.get('SELECT * FROM arena_mic_moments WHERE id = ?', [id]);
 }
 
@@ -192,7 +191,7 @@ function feed({ limit = 40, since = null, userId = null } = {}) {
     if (userId) { where += ' AND user_id = ?'; params.push(userId); }
     if (since) { where += ' AND id > ?'; params.push(Number(since) || 0); }
     params.push(Math.min(200, Math.max(1, limit)));
-    return db.all(`SELECT * FROM arena_mic_moments WHERE ${where} ORDER BY id DESC LIMIT ?`, params).map(m => momentView(m, roster));
+    return db.all(`SELECT * FROM arena_mic_moments WHERE ${where} ORDER BY COALESCE(said_at, created_at) DESC, id DESC LIMIT ?`, params).map(m => momentView(m, roster));
 }
 function momentsFor(userId, limit = 12) { return feed({ limit, userId }); }
 function bestLines(userId, limit = 5) {
@@ -202,7 +201,7 @@ function bestLines(userId, limit = 5) {
 }
 function latestFor(userId) {
     ensureTables();
-    const m = db.get('SELECT * FROM arena_mic_moments WHERE user_id = ? ORDER BY id DESC LIMIT 1', [userId]);
+    const m = db.get('SELECT * FROM arena_mic_moments WHERE user_id = ? ORDER BY COALESCE(said_at, created_at) DESC, id DESC LIMIT 1', [userId]);
     return m ? momentView(m, arena().loadRoster()) : null;
 }
 
@@ -211,7 +210,7 @@ function micStats(userId, days = 30) {
     ensureTables();
     const win = `-${days} days`;
     const m = db.get(`SELECT COUNT(*) AS n, COALESCE(AVG(quality), 0) AS avg_q, COALESCE(MAX(quality), 0) AS best_q,
-                             COALESCE(SUM(kind = 'beef_hit'), 0) AS beef_hits, COALESCE(SUM(kind = 'trash'), 0) AS trash,
+                             COALESCE(SUM(kind IN ('beef_hit', 'callout')), 0) AS beef_hits, COALESCE(SUM(kind = 'trash'), 0) AS trash,
                              COALESCE(SUM(quality >= 7), 0) AS bangers
                       FROM arena_mic_moments WHERE user_id = ? AND created_at >= datetime('now', ?)`, [userId, win]) || {};
     let b = {};
