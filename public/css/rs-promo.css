@@ -795,3 +795,36 @@ body.rs-ticker-on .rs-modal, body.rs-ticker-on .rs-takeover { --rs-ticker-h: 0px
     .rs-board-row { opacity: 1; transform: none; } .rs-yes { transform: none; }
     .rs-money { background: none; -webkit-text-fill-color: var(--rs-gold); color: var(--rs-gold); }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   LITE MODE — html.rs-lite (phones / weak GPUs / Data Saver) and any screen ≤ 820px.
+   No blur filters, blend modes, backdrop-filter, canvases or animated shadows: those are what
+   make low-end Android Chrome flicker. Transform/opacity animations stay.
+   ═══════════════════════════════════════════════════════════════ */
+.rs-lite .rs-tk-aurora, .rs-lite .rs-tk-scan, .rs-lite .rs-tk-gl, .rs-lite .rs-tk-canvas, .rs-lite .rs-tk-burst, .rs-lite .rs-card-foil, .rs-lite .rs-card-glare, .rs-lite .rs-bills, .rs-lite .rs-vip-bubbles, .rs-lite .rs-ticker::before, .rs-lite .rs-btn-gold::after, .rs-lite .rs-glitch::before, .rs-lite .rs-glitch::after { display: none !important; }
+.rs-lite .rs-takeover { background: radial-gradient(120% 80% at 50% 0%, #2e1065 0%, #1e1b4b 40%, #06060a 80%); }
+.rs-lite .rs-tk-grid { animation: none; transform: perspective(600px) rotateX(64deg); opacity: 0.5; }
+.rs-lite .rs-tk-content, .rs-lite .rs-tk-amount, .rs-lite .rs-tk-amount .rs-money { transform: none !important; animation: none !important; }
+.rs-lite .rs-money { animation: none; filter: none; background: none; -webkit-text-fill-color: var(--rs-gold); color: var(--rs-gold); text-shadow: 0 2px 0 rgba(0,0,0,0.35); }
+.rs-lite .rs-tk-amount .rs-money { filter: none; }
+.rs-lite .rs-ticker { animation: rsTickerDrop 0.5s ease both; background: linear-gradient(90deg, #4c1d95, #1d4ed8, #7c3aed); }
+.rs-lite .rs-ticker-item .rs-ticker-cta, .rs-lite .rs-tk-eyebrow, .rs-lite .rs-flow-node.rs-to, .rs-lite .rs-btn-gold, .rs-lite .rs-stream-alert, .rs-lite .rs-sa-siren, .rs-lite .rs-flow2-hub, .rs-lite .rs-chip, .rs-lite .rs-flow2-node, .rs-lite .rs-odo b, .rs-lite .rs-yes, .rs-lite .rs-star-avatar-glow { animation: none !important; box-shadow: none !important; }
+.rs-lite .rs-chip, .rs-lite .rs-flow-node, .rs-lite .rs-flow2-node, .rs-lite .rs-btn-ghost, .rs-lite .rs-tk-close, .rs-lite .rs-modal, .rs-lite .rs-tk-tour { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+.rs-lite .rs-modal { background: rgba(4,4,10,0.9); }
+.rs-lite .rs-card-border::before { animation: none; background: linear-gradient(135deg, var(--rs-gold), var(--accent), var(--rs-blue)); inset: 0; }
+.rs-lite .rs-hero-card { transform: none !important; transition: none; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+.rs-lite .rs-coin { animation: none; transform: rotateY(0); } .rs-lite .rs-coin-face { box-shadow: inset 0 0 0 5px rgba(180,83,9,0.55); }
+.rs-lite .rs-vip-star { filter: none; } .rs-lite .rs-vip { box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+.rs-lite .rs-vip-sparkle { animation: none; opacity: 0.8; }
+.rs-lite .rs-stream-alert { box-shadow: 0 0 0 2px rgba(251,191,36,0.6); }
+.rs-lite .rs-sa-stripe { animation: none; }
+.rs-lite .rs-packet { box-shadow: none; }
+.rs-lite .rs-board::before { animation: none; }
+.rs-lite .rs-tk-title { text-shadow: none; }
+@media (max-width: 820px) {
+    /* CSS-only safety net for the most expensive effects even before JS decides on lite mode. */
+    .rs-tk-aurora { filter: none; opacity: 0.55; } .rs-tk-aurora span { mix-blend-mode: normal; animation: none; }
+    .rs-tk-scan, .rs-card-foil { display: none; }
+    .rs-tk-amount .rs-money { filter: drop-shadow(0 4px 0 rgba(120,53,15,0.6)); }
+    .rs-stream-alert, .rs-sa-siren, .rs-btn-gold { animation: none; }
+}

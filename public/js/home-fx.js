@@ -16,6 +16,7 @@
     const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const COARSE = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     if (REDUCED) return;
+    if (COARSE || window.innerWidth <= 820 || (navigator.deviceMemory && navigator.deviceMemory <= 4)) { document.documentElement.classList.add('rs-lite'); return; }
 
     const onHome = () => { const p = document.getElementById('page-home'); return !!(p && p.classList.contains('active')); };
 

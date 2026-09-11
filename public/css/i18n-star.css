@@ -210,3 +210,11 @@
 .chat-msg-hoverable:hover .chat-translate-btn { display: inline-flex; }
 .chat-msg-hoverable .chat-translate-btn:hover { color: var(--accent-light); border-color: var(--accent); }
 .chat-translation[hidden] { display: none; }
+
+/* Lite mode (phones / weak GPUs): no blur, no filters, no shadow animations */
+.rs-lite .star-card-border::before { animation: none; background: linear-gradient(135deg, #fbbf24, #f472b6, var(--accent)); inset: 0; }
+.rs-lite .star-avatar-glow, .rs-lite .star-petals { display: none; }
+.rs-lite .star-avatar-ring { animation: none; }
+.rs-lite .star-btn-watch::after, .rs-lite .star-kicker i, .rs-lite .star-live-pill { animation: none; }
+.rs-lite .star-btn-watch { box-shadow: none; }
+.rs-lite .ch-captions-dot, .rs-lite .chat-translate-hint { animation: none; box-shadow: none; }
