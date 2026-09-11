@@ -21,16 +21,17 @@
 (function () {
     'use strict';
 
-    const PROMO_VERSION = 'rs-desperate-v6';       // bump to re-show the takeover to everyone
+    const PROMO_VERSION = 'rs-desperate-v7';       // bump to re-show the takeover to everyone
     const SEEN_KEY = 'ov_rs_promo_seen';
     const TICKER_KEY = 'ov_rs_ticker_hidden';       // sessionStorage — comes back next visit
     const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const COARSE = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
-    const cfg = { enabled: true, amount: 50, amountMin: 25, referral: 10, vip: null, github: 'https://github.com/OpenVibers/OpenVibe.Live', owner: 'admin', discord: 'https://discord.gg/M6MuRUaeJj' };
+    const cfg = { enabled: true, amount: 50, amountMin: 25, referral: 10, vip: null, totals: null, github: 'https://github.com/OpenVibers/OpenVibe.Live', owner: 'admin', discord: 'https://discord.gg/M6MuRUaeJj' };
     const STREAM_ALERT_KEY = 'ov_rs_stream_alert_min'; // sessionStorage — collapsed (never hidden) state
     let modalEl = null, takeoverEl = null, tickerEl = null;
-    let rainStop = null;
+    let rainStop = null, glStop = null;
+    const PLEAS = ['I am begging you.', 'I will do anything. Name it.', 'Out of my own pocket. No investors.', 'Rick will never offer you this.', 'Restream everywhere. From here. Paid.', 'Every line of this site is public code.', 'I genuinely care that you stream here.'];
 
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const money = () => (cfg.amountMin && cfg.amountMin < cfg.amount ? `$${cfg.amountMin}–$${cfg.amount}` : `$${cfg.amount}`);
@@ -157,18 +158,27 @@
         el.setAttribute('aria-modal', 'true');
         el.setAttribute('aria-label', `RobotStreamer switch bonus: ${money()}`);
         el.innerHTML = `
+            <canvas class="rs-tk-gl" aria-hidden="true"></canvas>
             <div class="rs-tk-aurora" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
             <div class="rs-tk-grid" aria-hidden="true"></div>
             <canvas class="rs-tk-canvas" aria-hidden="true"></canvas>
+            <canvas class="rs-tk-burst" aria-hidden="true"></canvas>
+            <div class="rs-tk-scan" aria-hidden="true"></div>
             <button class="rs-tk-close" type="button" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
             <div class="rs-tk-content">
                 <div class="rs-tk-eyebrow"><i class="fa-solid fa-robot"></i> robotstreamer.com users</div>
-                <h1 class="rs-tk-title">${titleWords.map((w, i) => `<span class="rs-w" style="animation-delay:${0.25 + i * 0.09}s">${esc(w)}</span>`).join(' ')}</h1>
+                <h1 class="rs-tk-title rs-glitch" data-text="${esc(titleWords.join(' '))}">${titleWords.map((w, i) => `<span class="rs-w" style="animation-delay:${0.25 + i * 0.09}s">${esc(w)}</span>`).join(' ')}</h1>
+                <div class="rs-tk-type" aria-live="polite"><span class="rs-tk-type-text"></span><span class="rs-tk-caret">▌</span></div>
                 <div class="rs-tk-amount" aria-label="${money()}"><span class="rs-money" data-countup="${cfg.amount}">${cfg.amountMin < cfg.amount ? `$${cfg.amountMin}–$0` : '$0'}</span></div>
                 <p class="rs-tk-sub">I am <b>extremely desperate</b>. I will do <b>anything</b> to get you off RobotStreamer and onto <b>OpenVibe.Live</b>. Never stream there again, stream <b>only</b> here, and I personally send you <b>${money()}</b> — Zelle, PayPal or crypto, your pick. This is <b>out of my own pocket</b>. There are no investors. There is a wallet, and there are feelings.<br>Want a feature? <b>Name it. I build it.</b> Want me to grovel? This is the groveling. I genuinely care about you streaming here — that is the entire business plan. Not a corporation — one unhinged guy who wants you here more than Rick ever will.</p>
                 <div class="rs-tk-tour"><div class="rs-tk-tour-head"><i class="fa-solid fa-satellite-dish"></i> Stream here. Be everywhere. Keep the toys.</div>${restreamHtml(false)}</div>
                 <p class="rs-tk-trust"><i class="fa-brands fa-github"></i> <b>Trust what you can read.</b> Every line of this site is ${ghLink('public on GitHub')}. Theirs is closed source — you'll never see what it does. An open alternative is the only kind worth trusting.<br><i class="fa-solid fa-people-arrows"></i> <b>Already one of us?</b> Bring a RobotStreamer streamer over and you get <b>${referral()}</b> too.</p>
                 <div class="rs-chips">${chipsHtml()}</div>
+                <div class="rs-odos" aria-label="live totals">
+                    <div class="rs-odo"><b data-odo="${Number(cfg.totals?.converted || 0)}">0</b><small>streamers converted</small></div>
+                    <div class="rs-odo"><b data-odo="${Number(cfg.totals?.paid || 0)}" data-prefix="$">$0</b><small>paid out so far</small></div>
+                    <div class="rs-odo"><b data-odo="${Number(cfg.totals?.claims || 0)}">0</b><small>claims filed</small></div>
+                </div>
                 <div class="rs-flow" aria-hidden="true">
                     <span class="rs-flow-node rs-from"><i class="fa-solid fa-robot"></i> RobotStreamer</span>
                     <span class="rs-flow-arrow"><span class="rs-walker">🤖</span></span>
@@ -196,9 +206,15 @@
         store.set(SEEN_KEY, PROMO_VERSION);
         if (!REDUCED) {
             rainStop = startMoneyRain(takeoverEl.querySelector('.rs-tk-canvas'));
-            countUp(takeoverEl.querySelector('[data-countup]'), cfg.amount, 1500, 500);
+            glStop = startShader(takeoverEl.querySelector('.rs-tk-gl'));
+            attachParallax(takeoverEl);
+            typewriter(takeoverEl.querySelector('.rs-tk-type-text'), PLEAS);
+            countUp(takeoverEl.querySelector('[data-countup]'), cfg.amount, 1500, 500, () => { shake(takeoverEl); coinBurst(takeoverEl.querySelector('.rs-tk-burst')); });
+            takeoverEl.querySelectorAll('[data-odo]').forEach(el => odometer(el, 900));
         } else {
             takeoverEl.querySelector('[data-countup]').textContent = money();
+            takeoverEl.querySelectorAll('[data-odo]').forEach(el => { el.textContent = (el.dataset.prefix || '') + el.dataset.odo; });
+            takeoverEl.querySelector('.rs-tk-type-text').textContent = PLEAS[0];
         }
         document.addEventListener('keydown', onTakeoverKey);
         setTimeout(() => takeoverEl?.querySelector('[data-act="claim"]')?.focus({ preventScroll: true }), 900);
@@ -210,11 +226,12 @@
         document.removeEventListener('keydown', onTakeoverKey);
         document.body.style.overflow = '';
         if (rainStop) { rainStop(); rainStop = null; }
+        if (glStop) { glStop(); glStop = null; }
         el.classList.add('leaving');
         setTimeout(() => el.remove(), REDUCED ? 0 : 480);
     }
 
-    function countUp(el, target, duration, delay) {
+    function countUp(el, target, duration, delay, onDone) {
         if (!el) return;
         const t0 = performance.now() + (delay || 0);
         const ease = (t) => 1 - Math.pow(2, -10 * t);   // easeOutExpo
@@ -223,9 +240,102 @@
             const fmt = (n) => (cfg.amountMin < cfg.amount ? `$${cfg.amountMin}–$${n}` : `$${n}`);
             el.textContent = fmt(Math.round(ease(t) * target));
             if (t < 1) requestAnimationFrame(frame);
-            else { el.textContent = fmt(target); el.parentElement?.classList.add('pop'); }
+            else { el.textContent = fmt(target); el.parentElement?.classList.add('pop'); if (onDone) onDone(); }
         }
         requestAnimationFrame(frame);
+    }
+
+    // ── WebGL aurora: a tiny fragment shader (no library). Falls back to the CSS aurora silently. ──
+    function startShader(canvas) {
+        if (!canvas) return () => {};
+        let gl = null;
+        try { gl = canvas.getContext('webgl', { alpha: true, antialias: false, powerPreference: 'low-power' }); } catch { gl = null; }
+        if (!gl) { canvas.remove(); return () => {}; }
+        const vs = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+        const fs = `precision mediump float;uniform vec2 r;uniform float t;uniform vec2 m;
+            float n(vec2 p){return sin(p.x)*cos(p.y);}
+            void main(){vec2 uv=(gl_FragCoord.xy/r.xy);vec2 q=uv*2.-1.;q.x*=r.x/r.y;
+            float a=0.;vec2 mm=(m-.5)*.6;
+            for(int i=1;i<5;i++){float f=float(i);a+=n(q*f*1.3+vec2(t*.13*f+mm.x*f,t*.09*f+mm.y*f))/f;}
+            a=smoothstep(-.6,.9,a);
+            vec3 c1=vec3(.55,.36,.97);vec3 c2=vec3(.06,.65,.91);vec3 c3=vec3(.98,.75,.14);
+            vec3 col=mix(c1,c2,a);col=mix(col,c3,pow(max(0.,a-.55),2.)*1.8);
+            float v=smoothstep(1.35,.25,length(q*vec2(.8,1.)));
+            gl_FragColor=vec4(col*a*v*.85,a*v*.9);}`;
+        const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+        const prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(prog);
+        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { canvas.remove(); return () => {}; }
+        gl.useProgram(prog);
+        const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+        const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        const uR = gl.getUniformLocation(prog, 'r'), uT = gl.getUniformLocation(prog, 't'), uM = gl.getUniformLocation(prog, 'm');
+        gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        let raf = 0, running = true, mx = 0.5, my = 0.5;
+        const resize = () => { const s = Math.min(1, 1200 / Math.max(1, canvas.clientWidth)); canvas.width = Math.max(1, Math.round(canvas.clientWidth * s * 0.6)); canvas.height = Math.max(1, Math.round(canvas.clientHeight * s * 0.6)); gl.viewport(0, 0, canvas.width, canvas.height); };
+        const onMove = (e) => { mx = e.clientX / window.innerWidth; my = 1 - e.clientY / window.innerHeight; };
+        const t0 = performance.now();
+        const frame = (now) => { if (!running) return; gl.uniform2f(uR, canvas.width, canvas.height); gl.uniform1f(uT, (now - t0) / 1000); gl.uniform2f(uM, mx, my); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); raf = requestAnimationFrame(frame); };
+        const onVis = () => { if (document.hidden) { running = false; cancelAnimationFrame(raf); } else if (!running) { running = true; raf = requestAnimationFrame(frame); } };
+        resize(); window.addEventListener('resize', resize); window.addEventListener('pointermove', onMove); document.addEventListener('visibilitychange', onVis);
+        raf = requestAnimationFrame(frame);
+        return () => { running = false; cancelAnimationFrame(raf); window.removeEventListener('resize', resize); window.removeEventListener('pointermove', onMove); document.removeEventListener('visibilitychange', onVis); };
+    }
+    // Mouse parallax: the content and the grid drift against the pointer.
+    function attachParallax(root) {
+        if (COARSE) return;
+        const content = root.querySelector('.rs-tk-content'), grid = root.querySelector('.rs-tk-grid'), amount = root.querySelector('.rs-tk-amount');
+        let raf = 0;
+        root.addEventListener('pointermove', (e) => {
+            const px = e.clientX / window.innerWidth - 0.5, py = e.clientY / window.innerHeight - 0.5;
+            cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(() => {
+                if (content) content.style.transform = `translate(${(-px * 14).toFixed(1)}px, ${(-py * 10).toFixed(1)}px)`;
+                if (grid) grid.style.transform = `perspective(600px) rotateX(64deg) translateX(${(px * 40).toFixed(1)}px)`;
+                if (amount) amount.style.setProperty('--tilt', `rotateY(${(px * 18).toFixed(1)}deg) rotateX(${(-py * 12).toFixed(1)}deg)`);
+            });
+        });
+    }
+    // Typewriter cycling the pleas.
+    function typewriter(el, lines) {
+        if (!el) return;
+        let li = 0, ci = 0, del = false, t = null;
+        const step = () => {
+            if (!el.isConnected) return;
+            const line = lines[li % lines.length];
+            if (!del) { ci++; el.textContent = line.slice(0, ci); if (ci >= line.length) { del = true; t = setTimeout(step, 1400); return; } t = setTimeout(step, 34 + Math.random() * 40); }
+            else { ci--; el.textContent = line.slice(0, ci); if (ci <= 0) { del = false; li++; t = setTimeout(step, 260); return; } t = setTimeout(step, 16); }
+        };
+        t = setTimeout(step, 1200);
+    }
+    // Screen shake on the amount landing.
+    function shake(el) { if (!el) return; el.classList.remove('rs-shake'); void el.offsetWidth; el.classList.add('rs-shake'); setTimeout(() => el.classList.remove('rs-shake'), 600); }
+    // Coin burst from the centre.
+    function coinBurst(canvas) {
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        const w = canvas.clientWidth, h = canvas.clientHeight;
+        canvas.width = w * dpr; canvas.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const parts = [];
+        for (let i = 0; i < 70; i++) { const a = Math.random() * Math.PI * 2, sp = 260 + Math.random() * 520; parts.push({ x: w / 2, y: h * 0.42, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 200, r: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 14, s: 14 + Math.random() * 18, g: ['🪙', '💸', '💵', '💰'][(Math.random() * 4) | 0], t: 0, life: 1.3 + Math.random() * 0.6 }); }
+        let last = 0, raf = 0;
+        const tick = (now) => {
+            const dt = Math.min(0.04, (now - (last || now)) / 1000); last = now;
+            ctx.clearRect(0, 0, w, h); let alive = 0;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            for (const p of parts) { p.t += dt; if (p.t > p.life) continue; alive++; p.vy += 900 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.r += p.vr * dt; ctx.save(); ctx.globalAlpha = Math.max(0, 1 - p.t / p.life); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.font = `${p.s}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`; ctx.fillText(p.g, 0, 0); ctx.restore(); }
+            if (alive) raf = requestAnimationFrame(tick); else ctx.clearRect(0, 0, w, h);
+        };
+        raf = requestAnimationFrame(tick);
+        setTimeout(() => cancelAnimationFrame(raf), 2600);
+    }
+    // Odometer: numbers roll up with easing and a bump.
+    function odometer(el, delay) {
+        const target = Number(el.dataset.odo) || 0, prefix = el.dataset.prefix || '';
+        if (!target) { el.textContent = prefix + '0'; return; }
+        const t0 = performance.now() + (delay || 0), dur = 1400;
+        const ease = (t) => 1 - Math.pow(1 - t, 4);
+        (function frame(now) { const t = Math.min(1, Math.max(0, (now - t0) / dur)); const v = ease(t) * target; el.textContent = prefix + (Number.isInteger(target) ? Math.round(v) : v.toFixed(2)); if (t < 1) requestAnimationFrame(frame); else { el.textContent = prefix + target; el.classList.add('is-done'); } })(t0);
     }
 
     // Emoji particle rain: bills, coins, robots, hearts. Cheap (fillText), DPR-aware, pauses when hidden.
@@ -298,6 +408,7 @@
             <div class="rs-card-border">
                 <div class="rs-hero-card" id="rs-hero-card">
                     <div class="rs-card-glare" aria-hidden="true"></div>
+                    <div class="rs-card-foil" aria-hidden="true"></div>
                     ${coinHtml()}
                     <div class="rs-card-body">
                         <div class="rs-card-kicker"><i class="fa-solid fa-robot"></i> RobotStreamer switch bonus</div>
@@ -345,6 +456,48 @@
                 ${me ? `<div class="rs-share"><i class="fa-solid fa-link"></i> Your link: <code>${esc(refLink(v.username))}</code> <button class="rs-btn rs-btn-gold" type="button" onclick="rsPromoOpenClaim()"><i class="fa-solid fa-wallet"></i> my payouts</button></div>` : ''}
             </div>`;
         mount.appendChild(el);
+    }
+
+    // ── Home: the scoreboard (OpenVibe vs RobotStreamer) + the receipts wall (who got paid) ──
+    async function mountScoreboard() {
+        const mount = document.getElementById('rs-hero-mount');
+        if (!mount || mount.querySelector('.rs-board')) return;
+        const rows = [
+            ['Every line of code public on GitHub', 'yes', 'no'],
+            ['Pays YOU to stream here', `${money()} + referrals`, 'no'],
+            ['Restream to Twitch, YouTube, Kick, RTMP — and RobotStreamer', 'yes, from one stream', 'no'],
+            ['Sub-second WebRTC latency', 'yes', '?'],
+            ['7TV / BTTV / FFZ + custom emotes', 'yes', '?'],
+            ['Sound commands & soundboard', 'yes', '?'],
+            ['Robot & hardware controls', 'yes', 'yes'],
+            ['Features built because you asked', 'yes, by me, this week', '?'],
+            ['Owner personally begging you to stream', 'yes (see above)', 'no'],
+        ];
+        const cell = (v, side) => v === 'yes' ? `<span class="rs-yes"><i class="fa-solid fa-check"></i></span>` : v === 'no' ? `<span class="rs-no"><i class="fa-solid fa-xmark"></i></span>` : v === '?' ? `<span class="rs-meh" title="couldn't tell you — it's closed source">?</span>` : `<span class="rs-yes rs-yes-text"><i class="fa-solid fa-check"></i> ${esc(v)}</span>`;
+        const el = document.createElement('div');
+        el.className = 'rs-board';
+        el.innerHTML = `
+            <div class="rs-board-head"><i class="fa-solid fa-scale-unbalanced"></i> The scoreboard <small>why streamers are leaving Rick's site</small></div>
+            <div class="rs-board-cols"><span></span><span class="rs-board-col rs-board-us"><i class="fa-solid fa-circle-nodes"></i> OpenVibe.Live</span><span class="rs-board-col rs-board-them"><i class="fa-solid fa-robot"></i> RobotStreamer</span></div>
+            ${rows.map((r, i) => `<div class="rs-board-row" style="--i:${i}"><span class="rs-board-feat">${esc(r[0])}</span>${cell(r[1])}${cell(r[2])}</div>`).join('')}
+            <div class="rs-odos rs-odos-home">
+                <div class="rs-odo"><b data-odo="${Number(cfg.totals?.converted || 0)}">0</b><small>converted</small></div>
+                <div class="rs-odo"><b data-odo="${Number(cfg.totals?.paid || 0)}" data-prefix="$">$0</b><small>paid out</small></div>
+                <div class="rs-odo"><b data-odo="${Number(cfg.totals?.claims || 0)}">0</b><small>claims</small></div>
+            </div>
+            <div class="rs-receipts" id="rs-receipts"></div>`;
+        mount.appendChild(el);
+        const startOdo = () => el.querySelectorAll('[data-odo]').forEach(o => { if (REDUCED) o.textContent = (o.dataset.prefix || '') + o.dataset.odo; else odometer(o, 200); });
+        if ('IntersectionObserver' in window) { const io = new IntersectionObserver((en) => { if (en.some(x => x.isIntersecting)) { el.classList.add('is-in'); startOdo(); io.disconnect(); } }, { threshold: 0.2 }); io.observe(el); } else { el.classList.add('is-in'); startOdo(); }
+        try {
+            const r = await fetch('/api/promo/receipts', { credentials: 'same-origin' }); const j = r.ok ? await r.json() : null;
+            const box = el.querySelector('#rs-receipts');
+            if (j && j.receipts && j.receipts.length) {
+                box.innerHTML = `<div class="rs-receipts-head"><i class="fa-solid fa-receipt"></i> Receipts <small>real people, real money, out of my pocket</small></div><div class="rs-receipts-row">${j.receipts.map((x, i) => `<span class="rs-receipt-chip" style="--i:${i}">${x.avatar_url ? `<img src="${esc(x.avatar_url)}" alt="">` : '<i class="fa-solid fa-user"></i>'} <b>${esc(x.display_name || x.username)}</b> <span class="rs-money">$${esc(String(x.amount))}</span> <small>${x.kind === 'referral' ? 'referral' : 'switched'}</small></span>`).join('')}</div>`;
+            } else {
+                box.innerHTML = `<div class="rs-receipts-head"><i class="fa-solid fa-receipt"></i> Receipts <small>nobody has claimed yet — be the first name on this wall</small></div>`;
+            }
+        } catch { /* */ }
     }
 
     function attachTilt(zone, card) {
@@ -647,6 +800,7 @@
             if (Number.isFinite(j.amount_min) && j.amount_min > 0) cfg.amountMin = j.amount_min;
             if (Number.isFinite(j.referral) && j.referral > 0) cfg.referral = j.referral;
             if (j.vip && j.vip.username) cfg.vip = j.vip;
+            if (j.totals) cfg.totals = j.totals;
             if (j.github !== undefined) cfg.github = j.github || '';
             if (j.owner) cfg.owner = String(j.owner);
             if (j.discord !== undefined) cfg.discord = j.discord || '';
@@ -659,6 +813,7 @@
         mountTicker();
         mountHeroCard();
         mountVipCard();
+        mountScoreboard().catch(() => {});
         mountStreamAlert();
         watchChannelPage();
         // Let the page settle (fonts, hero paint) before the splash slams in.
