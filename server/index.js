@@ -723,6 +723,30 @@ app.get(['/popout', '/popout/*', '/popout-chat', '/popout-chat/*'], (req, res) =
     res.sendFile(path.join(__dirname, '../public/popout-chat.html'));
 });
 
+// ── Ban screen ───────────────────────────────────────────────
+// A banned account is sent here by the client the moment /api/auth/me answers 403 (see
+// loadUser in public/js/app.js). The page is rendered with the banned user's name and the
+// reason on record, so they see exactly why every time they open the site.
+app.get('/banned', (req, res) => {
+    const escHtml = (t) => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    let user = null;
+    try {
+        const { extractToken, verifyToken, resolveNetworkUser, authenticateApiToken } = require('./auth/auth');
+        const token = extractToken(req);
+        if (token) { user = authenticateApiToken(token) || (() => { const d = verifyToken(token); return d ? resolveNetworkUser(d) : null; })(); }
+    } catch { user = null; }
+    if (user && !user.is_banned) return res.redirect('/');
+    const name = user ? (user.display_name || user.username) : null;
+    const reason = (user && user.ban_reason) || 'Banned by the site owner.';
+    let html = '';
+    try { html = require('fs').readFileSync(path.join(__dirname, '../public/banned.html'), 'utf8'); } catch { html = '<h1>Banned</h1>'; }
+    html = html
+        .replace('{{HEADLINE}}', name ? `${escHtml(name)}, you are banned from OpenVibe.Live.` : 'This account is banned from OpenVibe.Live.')
+        .replace('{{BODY}}', name ? `You were disrespectful to the person who built and runs this site, and you hurt him. That's the whole story, and it's enough.` : 'The account you signed in with has been banned by the site owner.')
+        .replace('{{REASON}}', escHtml(reason));
+    res.status(403).set('Cache-Control', 'no-store').type('html').send(html);
+});
+
 // ── SPA Fallback ─────────────────────────────────────────────
 app.get('*', (req, res) => {
     // Don't serve HTML for API routes

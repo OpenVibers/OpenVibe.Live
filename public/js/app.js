@@ -718,6 +718,11 @@ async function loadUser() {
         const data = await api('/auth/me');
         currentUser = mergeUserWithCapabilities(data.user || data, data.capabilities);
     } catch (err) {
+        // Banned account: the server refuses with 403 — show the ban screen instead of the site.
+        if (err && err.status === 403 && /banned/i.test(String(err.message || ''))) {
+            if (!location.pathname.startsWith('/banned')) location.replace('/banned');
+            return;
+        }
         // If still 401 after auto-refresh attempt in api(), give up
         localStorage.removeItem('token');
         localStorage.removeItem('ov_token');
