@@ -28,6 +28,7 @@ const { requireAuth, requireStreamer, optionalAuth } = require('../auth/auth');
 const jsmpegRelay = require('./jsmpeg-relay');
 const webrtcSFU = require('./webrtc-sfu');
 const recorder = require('./recorder');
+const i18n = require('../i18n/translate');
 const robotStreamerService = require('../integrations/robotstreamer-service');
 const chatRelayService = require('../integrations/chat-relay-service');
 const chatServer = require('../chat/chat-server');
@@ -466,6 +467,9 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             clipsTakenTotal,
             aiEventTotal,
             channel: publicChannel,
+            // The language this channel lives in (explicit setting or detected from the bio) —
+            // drives the chat auto-translation notice, the live-captions panel and bio translation.
+            language: i18n.channelMeta(channel.user_id),
             stream: liveStreams[0] || null,
             streams: liveStreams,
             managed_streams: managedStreams,
@@ -679,6 +683,11 @@ router.put('/channel', requireAuth, (req, res) => {
             const p = String(req.body.ai_overview_pref || 'auto').trim();
             if (['auto', 'show', 'hide'].includes(p)) fields.ai_overview_pref = p;
         }
+        // Chat/stream language: 'auto' (detect from bio) or an ISO code from i18n.LANG_NAMES.
+        if (hasOwn(req.body, 'chat_language')) {
+            const l = String(req.body.chat_language || 'auto').trim().toLowerCase();
+            if (i18n.isAllowedLang(l)) { fields.chat_language = l; i18n.invalidateChannel(req.user.id); }
+        }
 
         // Offline screen config (asset is uploaded separately at /channel/offline-screen)
         if (hasOwn(req.body, 'offline_screen_type')) {
@@ -698,6 +707,24 @@ router.put('/channel', requireAuth, (req, res) => {
         // (falls through to the shared handler below)
         console.error('[Channel] update error:', err.message);
         return res.status(500).json({ error: 'Failed to update channel' });
+    }
+});
+
+// ── Bio in English (for non-English streamers) ────────────────
+// Cached by content hash in the translations table; null when the bio is already English
+// or AI translation is unavailable.
+router.get('/channel/:username/bio-en', async (req, res) => {
+    try {
+        const user = db.getUserByUsername(req.params.username);
+        if (!user) return res.status(404).json({ error: 'Channel not found' });
+        const bio = String(user.bio || '').trim();
+        const from = i18n.detectForeignInText(bio);   // any non-English line makes the bio worth translating
+        res.set('Cache-Control', 'public, max-age=300');
+        if (!bio || !from) return res.json({ from: null, to: 'en', text: null });
+        const text = await i18n.translate(bio, { from, to: 'en', context: 'bio' });
+        res.json({ from, to: 'en', text: text || null, from_name: i18n.langName(from), flag: i18n.langFlag(from) });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to translate bio' });
     }
 });
 

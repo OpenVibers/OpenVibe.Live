@@ -6,7 +6,8 @@
  *
  *   score     → every judged hit aimed at the other side adds its quality (0–10) to
  *               your side of the tug-of-war. Chat adds crowd points with `!hype` in
- *               your chat (one per person per beef, max CROWD_MAX).
+ *               your chat (one per person per beef, max CROWD_MAX) — that is the ONLY
+ *               thing chat can do; every point of substance comes from the mic.
  *   clock     → after every hit the OTHER side is on the clock: RESPONSE_LIVE_MIN
  *               minutes if they are live, RESPONSE_OFFLINE_HOURS hours if not (the
  *               clock tightens to the live window the moment they go live). Miss the
@@ -78,7 +79,7 @@ function ensureTables() {
 
 function parseJson(t, f = null) { try { return t ? JSON.parse(t) : f; } catch { return f; } }
 function arena() { return require('./arena-service'); }
-function board() { return require('./board'); }
+function mic() { return require('./mic'); }
 function isLive(userId) { return !!db.get('SELECT 1 FROM streams WHERE user_id = ? AND is_live = 1 LIMIT 1', [userId]); }
 function nowIso() { return new Date().toISOString(); }
 function nameOf(userId) {
@@ -134,17 +135,15 @@ function recordHit(speakerId, targetId, hit) {
     if (!beef) {
         const endsAt = sqlDate(Date.now() + MAX_BEEF_HOURS * 3600 * 1000);
         const history = rivalry(speakerId, targetId);
-        const bounty = board().openBountyOn(targetId);
-        db.run(`INSERT INTO arena_beefs (a_user_id, b_user_id, on_clock, clock_until, ends_at, feed_json, opener_line, rematch, bounty_topic_id, headline) VALUES (?, ?, 'b', ?, ?, '[]', ?, ?, ?, ?)`,
-            [speakerId, targetId, clockFor(targetId), endsAt, String(hit.best_line || '').slice(0, 220), history.fights > 0 ? 1 : 0, bounty?.id || null, templateHeadline('open', { a: nameOf(speakerId), b: nameOf(targetId), line: hit.best_line, rematch: history.fights > 0 })]);
+        db.run(`INSERT INTO arena_beefs (a_user_id, b_user_id, on_clock, clock_until, ends_at, feed_json, opener_line, rematch, bounty_topic_id, headline) VALUES (?, ?, 'b', ?, ?, '[]', ?, ?, NULL, ?)`,
+            [speakerId, targetId, clockFor(targetId), endsAt, String(hit.best_line || '').slice(0, 220), history.fights > 0 ? 1 : 0, templateHeadline('open', { a: nameOf(speakerId), b: nameOf(targetId), line: hit.best_line, rematch: history.fights > 0 })]);
         beef = openBeefBetween(speakerId, targetId);
         opened = true;
-        board().addXp(speakerId, XP_BEEF_OPEN, 'beef_open', beef.id);
-        console.log(`[Arena] beef #${beef.id} opened: user ${speakerId} → user ${targetId}${history.fights ? ' (rematch)' : ''}${bounty ? ' (bounty!)' : ''}`);
-        try { const pr = require('./progress'); pr.event(`user:${speakerId}`, 'beef', `Started a beef with ${nameOf(targetId)}${history.fights ? ' (rematch)' : ''}`, { detail: hit.best_line, url: `/arena/beef/${beef.id}` }); pr.event(`user:${targetId}`, 'beef', `${nameOf(speakerId)} came for you${history.fights ? ' again' : ''}`, { detail: hit.best_line, url: `/arena/beef/${beef.id}` }); } catch { /* */ }
+        mic().addXp(speakerId, XP_BEEF_OPEN, 'beef_open', beef.id);
+        console.log(`[Arena] beef #${beef.id} opened: user ${speakerId} → user ${targetId}${history.fights ? ' (rematch)' : ''}`);
         try { require('./notify').arenaNotify(targetId, { type: 'beef_open', title: `${nameOf(speakerId)} has words for you${history.fights ? ' — rematch' : ''}`, message: `${hit.best_line ? `“${String(hit.best_line).slice(0, 120)}” — ` : ''}answer on your own stream within ${isLive(targetId) ? `${RESPONSE_LIVE_MIN} min` : `${RESPONSE_OFFLINE_HOURS} h`} or forfeit.`, icon: '🥊', url: `/arena/beef/${beef.id}`, key: `open:${beef.id}`, senderId: speakerId, senderName: nameOf(speakerId) }); } catch { /* */ }
         const id = beef.id;
-        headlineFor('open', { a: nameOf(speakerId), b: nameOf(targetId), opening_line: hit.best_line, about: hit.about, rematch: history.fights > 0, record_between: history, bounty: !!bounty }).then(h => { if (h) db.run('UPDATE arena_beefs SET headline = ? WHERE id = ?', [h, id]); }).catch(() => {});
+        headlineFor('open', { a: nameOf(speakerId), b: nameOf(targetId), opening_line: hit.best_line, about: hit.about, rematch: history.fights > 0, record_between: history }).then(h => { if (h) db.run('UPDATE arena_beefs SET headline = ? WHERE id = ?', [h, id]); }).catch(() => {});
     }
     const side = beef.a_user_id === speakerId ? 'a' : 'b';
     const other = side === 'a' ? 'b' : 'a';
@@ -155,12 +154,11 @@ function recordHit(speakerId, targetId, hit) {
     db.run(`UPDATE arena_beefs SET score_${side} = score_${side} + ?, hits_${side} = hits_${side} + 1, last_${side}_at = CURRENT_TIMESTAMP, responded = CASE WHEN ? THEN 1 ELSE responded END,
             on_clock = ?, clock_until = ?, feed_json = ? WHERE id = ?`,
         [quality, side === 'b' ? 1 : 0, other, clockFor(otherId), feed, beef.id]);
-    // Bounty: anyone with a bounty on their head pays double to whoever collects.
-    const bounty = board().openBountyOn(targetId);
-    board().addXp(speakerId, quality * XP_BEEF_HIT * (bounty ? 2 : 1), 'beef_hit', beef.id, { beefHit: true, line: hit.best_line, lineScore: quality, lineVodId: hit.vod_id, lineSec: hit.sec });
+    mic().addXp(speakerId, quality * XP_BEEF_HIT, 'beef_hit', beef.id, { beefHit: true, line: hit.best_line, lineScore: quality, lineVodId: hit.vod_id, lineSec: hit.sec });
+    // The hit is also a line in the shit-talk feed (VOD-linked, with who it was aimed at).
+    try { mic().addMoment({ userId: speakerId, streamId: hit.stream_id || null, vodId: hit.vod_id || null, sec: hit.sec ?? null, kind: 'beef_hit', targetUserId: targetId, beefId: beef.id, aimedAt: nameOf(targetId), text: hit.best_line || hit.about || '', about: hit.about || null, quality, announcer: hit.announcer || null }); } catch { /* */ }
     if (!opened) { try { require('./notify').arenaNotify(otherId, { type: firstResponse ? 'beef_answered' : 'beef_hit', title: `${nameOf(speakerId)} ${firstResponse ? 'answered' : 'hit back'} (${quality}/10)`, message: `${hit.best_line ? `“${String(hit.best_line).slice(0, 120)}” — ` : ''}you're on the clock now.`, icon: '🔥', url: `/arena/beef/${beef.id}`, key: `hit:${beef.id}:${beef.hits_a + beef.hits_b}`, senderId: speakerId, senderName: nameOf(speakerId) }); } catch { /* */ } }
-    if (bounty) board().recordBountyHit(speakerId, bounty, quality, hit.best_line || null);
-    return { beef: db.get('SELECT * FROM arena_beefs WHERE id = ?', [beef.id]), opened, side, first_response: firstResponse, bounty: !!bounty };
+    return { beef: db.get('SELECT * FROM arena_beefs WHERE id = ?', [beef.id]), opened, side, first_response: firstResponse };
 }
 
 function hype(beefId, side, voterKey) {
@@ -173,7 +171,7 @@ function hype(beefId, side, voterKey) {
     const ins = db.run('INSERT OR IGNORE INTO arena_beef_hype (beef_id, side, voter_key) VALUES (?, ?, ?)', [beefId, side, voterKey]);
     const n = db.get('SELECT COUNT(*) AS n FROM arena_beef_hype WHERE beef_id = ? AND side = ?', [beefId, side])?.n || 0;
     db.run(`UPDATE arena_beefs SET crowd_${side} = ? WHERE id = ?`, [Math.min(CROWD_MAX, n), beefId]);
-    if (ins.changes) board().addXp(sideUser, board().XP_HYPE, 'hype', beefId);
+    if (ins.changes) mic().addXp(sideUser, mic().XP_HYPE, 'hype', beefId);
     return { added: !!ins.changes, hypers: n, crowd: Math.min(CROWD_MAX, n) };
 }
 
@@ -189,9 +187,8 @@ function resolve(beef, resolution, winnerId) {
     const ctx = { a: nameOf(beef.a_user_id), b: nameOf(beef.b_user_id), winner: winnerId ? nameOf(winnerId) : null, loser: loserId ? nameOf(loserId) : null, score_a: t.a, score_b: t.b, upset: !!upset, streak: winnerId ? streakFor(winnerId) + 1 : 0 };
     const feed = pushFeed(beef, { kind: resolution === 'forfeit' ? 'forfeit' : 'end', side: winnerId == null ? null : (winnerId === beef.a_user_id ? 'a' : 'b'), text: null, upset: !!upset });
     db.run(`UPDATE arena_beefs SET status = 'resolved', resolution = ?, winner_user_id = ?, resolved_at = CURRENT_TIMESTAMP, on_clock = NULL, clock_until = NULL, feed_json = ?, upset = ?, result_headline = ? WHERE id = ? AND status = 'open'`, [resolution, winnerId, feed, upset, templateHeadline(resolution === 'forfeit' ? 'forfeit' : 'score', ctx), beef.id]);
-    if (winnerId) board().addXp(winnerId, XP_BEEF_WIN + (upset ? 20 : 0), upset ? 'beef_upset_win' : 'beef_win', beef.id);
+    if (winnerId) mic().addXp(winnerId, XP_BEEF_WIN + (upset ? 20 : 0), upset ? 'beef_upset_win' : 'beef_win', beef.id);
     console.log(`[Arena] beef #${beef.id} resolved: ${resolution}${winnerId ? ` winner user ${winnerId}` : ' draw'}${upset ? ' UPSET' : ''}`);
-    try { const pr = require('./progress'); for (const uid of [beef.a_user_id, beef.b_user_id]) { const won = winnerId === uid; pr.event(`user:${uid}`, 'beef_over', winnerId == null ? `Draw with ${nameOf(uid === beef.a_user_id ? beef.b_user_id : beef.a_user_id)}` : won ? `Beat ${nameOf(loserId)}${upset ? ' — UPSET' : ''}${resolution === 'forfeit' ? ' (they ducked)' : ''}` : `Lost to ${nameOf(winnerId)}${resolution === 'forfeit' ? ' (ran out the clock)' : ''}`, { detail: `${t.a}–${t.b}`, url: `/arena/beef/${beef.id}` }); pr.check(`user:${uid}`); } } catch { /* */ }
     try { const n = require('./notify'); for (const uid of [beef.a_user_id, beef.b_user_id]) { const won = winnerId === uid, draw = winnerId == null; n.arenaNotify(uid, { type: 'beef_over', title: draw ? `Draw with ${nameOf(uid === beef.a_user_id ? beef.b_user_id : beef.a_user_id)}` : won ? `You won the beef with ${nameOf(loserId)}${upset ? ' — UPSET' : ''}` : `${nameOf(winnerId)} won the beef${resolution === 'forfeit' ? ' — you ran out the clock' : ' on points'}`, message: won ? `+${XP_BEEF_WIN + (upset ? 20 : 0)} XP. ${t.a}–${t.b}.` : `${t.a}–${t.b}. Say their name on mic for a rematch.`, icon: won ? '🏆' : draw ? '🤝' : '💀', url: `/arena/beef/${beef.id}`, key: `over:${beef.id}` }); } } catch { /* */ }
     const id = beef.id;
     headlineFor(resolution, ctx).then(h => { if (h) db.run('UPDATE arena_beefs SET result_headline = ? WHERE id = ?', [h, id]); }).catch(() => {});
@@ -220,7 +217,7 @@ function rivalry(u1, u2) {
 function rivalriesFor(userId, limit = 5) {
     ensureTables();
     const opps = db.all(`SELECT CASE WHEN a_user_id = ? THEN b_user_id ELSE a_user_id END AS opp, COUNT(*) AS n FROM arena_beefs WHERE (a_user_id = ? OR b_user_id = ?) GROUP BY opp HAVING n >= 2 ORDER BY n DESC LIMIT ?`, [userId, userId, userId, limit]);
-    const b = board();
+    const b = mic();
     const roster = arena().loadRoster();
     return opps.map(o => { const r = rivalry(userId, o.opp); return { opponent: b.fighterBrief(o.opp, roster), fights: r.fights + (openBeefBetween(userId, o.opp) ? 1 : 0), wins: r.wins_1, losses: r.wins_2, open: !!openBeefBetween(userId, o.opp), receipts: r.receipts.slice(0, 2) }; });
 }
@@ -267,7 +264,7 @@ function recentWins(userId, days = 7) {
 
 function beefView(beef, roster) {
     const t = totals(beef);
-    const b = board();
+    const b = mic();
     const clockMs = beef.clock_until ? Date.parse(beef.clock_until + 'Z') - Date.now() : null;
     return {
         id: beef.id, status: beef.status, resolution: beef.resolution,
@@ -278,7 +275,7 @@ function beefView(beef, roster) {
         clock_is_live_window: beef.on_clock ? isLive(beef.on_clock === 'a' ? beef.a_user_id : beef.b_user_id) : false,
         responded: !!beef.responded,
         opener_line: beef.opener_line, headline: beef.headline, result_headline: beef.result_headline,
-        rematch: !!beef.rematch, upset: !!beef.upset, bounty: !!beef.bounty_topic_id,
+        rematch: !!beef.rematch, upset: !!beef.upset,
         history: rivalry(beef.a_user_id, beef.b_user_id),
         streaks: { a: streakFor(beef.a_user_id), b: streakFor(beef.b_user_id) },
         feed: parseJson(beef.feed_json, []).slice(-14),

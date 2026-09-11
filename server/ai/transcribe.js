@@ -32,7 +32,19 @@ const MODEL = process.env.WHISPER_MODEL || path.join(HOME, 'whisper.cpp/models/g
 // live. VOD/clip backfill has no such constraint and should use the most accurate model
 // available. So allow the live path to pick a faster one; falls back to MODEL when unset.
 const MODEL_LIVE = process.env.WHISPER_MODEL_LIVE || MODEL;
+// Multilingual ggml for non-English streamers. The default *.en models can only ever emit
+// English — which is how a Japanese streamer's audio became hours of nonsense in the
+// timeline. Install e.g. ggml-base.bin / ggml-small.bin (no ".en") and point
+// WHISPER_MODEL_MULTI at it; until then non-English channels fall back to the English model.
+const MODEL_MULTI = process.env.WHISPER_MODEL_MULTI || path.join(HOME, 'whisper.cpp/models/ggml-base.bin');
+function multilingualModel() { try { return fs.existsSync(MODEL_MULTI) ? MODEL_MULTI : null; } catch { return null; } }
+let _warnedNoMulti = false;
 function _modelFor(opts) {
+    if (opts && opts.language && opts.language !== 'en') {
+        const mm = multilingualModel();
+        if (mm) return mm;
+        if (!_warnedNoMulti) { _warnedNoMulti = true; console.warn(`[Transcribe] language "${opts.language}" requested but no multilingual model at ${MODEL_MULTI} — using the English model (set WHISPER_MODEL_MULTI)`); }
+    }
     const m = (opts && opts.live) ? MODEL_LIVE : MODEL;
     try { return fs.existsSync(m) ? m : MODEL; } catch { return MODEL; }
 }
@@ -200,7 +212,7 @@ function _joinSegments(segments) {
  */
 // Inner implementation. Wrapped by transcribeWavDetailed, which holds the concurrency
 // slot for the whole run so only MAX_CONCURRENT decoders exist at any moment.
-function _transcribeWavInner(wavPath, { timeoutMs = 180000, offsetSec = 0, live = false } = {}) {
+function _transcribeWavInner(wavPath, { timeoutMs = 180000, offsetSec = 0, live = false, language = 'en' } = {}) {
     return new Promise((resolve) => {
         const bin = whisperBin();
         // ok=false only for genuine FAILURES (missing binary, spawn/exec error, timeout,
@@ -211,7 +223,9 @@ function _transcribeWavInner(wavPath, { timeoutMs = 180000, offsetSec = 0, live 
         }
         const outBase = `${wavPath}.out`;
         const jsonPath = `${outBase}.json`;
-        const args = ['-m', _modelFor({ live }), '-f', wavPath, '-oj', '-of', outBase, '-t', String(_threads(live)), '-l', 'en'];
+        // Decode in the channel's language when a multilingual model is installed; else English.
+        const lang = (language && language !== 'en' && multilingualModel()) ? String(language) : 'en';
+        const args = ['-m', _modelFor({ live, language: lang }), '-f', wavPath, '-oj', '-of', outBase, '-t', String(_threads(live)), '-l', lang];
         if (BEAM > 1) args.push('-bs', String(BEAM));
         // Decode only the regions Silero says contain a voice. Segment timestamps stay in
         // absolute file time, so the {start,end} contract is unchanged for every caller.
@@ -308,10 +322,10 @@ function describe() {
         available: available(),
         bin: bin || null,
         model: MODEL, modelExists: fs.existsSync(MODEL),
-        modelLive: MODEL_LIVE, modelLiveExists: fs.existsSync(MODEL_LIVE),
+        modelLive: MODEL_LIVE, modelLiveExists: fs.existsSync(MODEL_LIVE),        modelMulti: MODEL_MULTI, modelMultiExists: !!multilingualModel(),
         vadModel: vadModel() || null,
         threads: THREADS, beam: BEAM, maxConcurrent: MAX_CONCURRENT,
     };
 }
 
-module.exports = { available, describe, laneStatus, transcribeWav, transcribeWavDetailed, transcribeMedia, transcribeMediaDetailed, killActive, setLowPower };
+module.exports = { available, describe, laneStatus, multilingualModel, transcribeWav, transcribeWavDetailed, transcribeMedia, transcribeMediaDetailed, killActive, setLowPower };

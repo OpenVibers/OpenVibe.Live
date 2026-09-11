@@ -51,26 +51,20 @@ function start() {
     _timer = setInterval(() => tick().catch(e => console.warn('[Arena] job:', e.message)), INTERVAL_MS);
     if (_timer.unref) _timer.unref();
     setTimeout(() => tick().catch(() => {}), 90_000).unref?.();
-    // The ears: every 15 s the listener reads live transcripts for name-drops (beefs) and topic talk.
+    // The ears: every 15 s the listener reads live transcripts — name-drops → beef judge, free talk → mic judge.
     try { require('./listener').start(); } catch (e) { console.warn('[Arena] listener not started:', e.message); }
-    // Clocks + the board: forfeit beefs whose clock ran out, settle bounties, scan new chat into
-    // topic moments, discover new subjects from what was said (AI, ≤ 1 call / 5 min), rewrite lore.
+    // Clocks: forfeit beefs whose clock ran out, hard-end the ones past 24 h.
     _clock = setInterval(() => housekeeping().catch(e => console.warn('[Arena] housekeeping:', e.message)), CLOCK_MS);
     if (_clock.unref) _clock.unref();
     setTimeout(() => housekeeping().catch(() => {}), 20_000).unref?.();
-    console.log('[Arena] job started (personas every 20 min; listener every 15 s; clocks + chat scan every 60 s; discovery ≤ every 5 min; lore on new moments)');
+    console.log('[Arena] job started (personas every 20 min; listener every 15 s; beef clocks every 60 s) — Battle Cam mode: pure mic');
 }
 
 async function housekeeping() {
     if (!arena.arenaEnabled()) return;
-    const beef = require('./beef'), board = require('./board');
-    try { beef.tick(); } catch (e) { console.warn('[Arena] beef tick:', e.message); }
-    try { board.resolveExpired(); } catch (e) { console.warn('[Arena] resolve:', e.message); }
-    try { const r = board.scanChat(); if (r.moments) console.log(`[Arena] chat scan: ${r.moments} moment(s) from ${r.scanned} message(s)`); } catch (e) { console.warn('[Arena] chat scan:', e.message); }
-    try { await board.discoverTopics(); } catch (e) { console.warn('[Arena] discover:', e.message); }   // every 5 min, only with new material
-    try { await board.loreSweep(3); } catch (e) { console.warn('[Arena] lore:', e.message); }           // only topics with ≥ 3 new moments
-    try { await require('./chatters').cardSweep(); } catch (e) { console.warn('[Arena] yap cards:', e.message); } // ≤ 4 chatters per minute, level ≥ 3, once a day each
-    try { await require('./chatters').settleCoins(); } catch (e) { console.warn('[Arena] yap coins:', e.message); }   // retry level-up coins the wallet hasn't confirmed
+    // Clocks only: forfeit beefs whose clock ran out, hard-end the ones past 24 h. There is no chat
+    // scan, no discovery and no lore — the Arena is pure mic (listener.js).
+    try { require('./beef').tick(); } catch (e) { console.warn('[Arena] beef tick:', e.message); }
 }
 
 function stop() {

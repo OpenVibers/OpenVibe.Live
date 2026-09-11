@@ -481,6 +481,23 @@ function initDb() {
         }
     } catch (e) { console.warn('[DB] Channel visibility migration:', e.message); }
 
+    // Channel language (chat translation direction + whisper language). 'auto' = detect from
+    // the streamer's bio/name (see server/i18n/translate.js). Speech rows gain the detected
+    // language + an English rendering so non-English streamers are readable site-wide.
+    try {
+        const chanCols = database.prepare("PRAGMA table_info('channels')").all().map(c => c.name);
+        if (!chanCols.includes('chat_language')) {
+            database.exec(`ALTER TABLE channels ADD COLUMN chat_language TEXT DEFAULT 'auto'`);
+            console.log('[DB] Added chat_language column to channels');
+        }
+        database.exec(`CREATE TABLE IF NOT EXISTS translations (
+            key TEXT PRIMARY KEY,
+            src TEXT, dst TEXT,
+            text TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
+    } catch (e) { console.warn('[DB] i18n migration:', e.message); }
+
     // Migrate: add weather_zip / weather_detail to channels
     try {
         const wCols = database.prepare("PRAGMA table_info('channels')").all().map(c => c.name);
@@ -1227,6 +1244,13 @@ function initDb() {
         database.exec('CREATE INDEX IF NOT EXISTS idx_timeline_stream ON stream_timeline_events(stream_id, start_sec)');
         database.exec('CREATE INDEX IF NOT EXISTS idx_timeline_kind ON stream_timeline_events(stream_id, kind, start_sec)');
         database.exec('CREATE INDEX IF NOT EXISTS idx_timeline_vod ON stream_timeline_events(vod_id, start_sec)');
+        // i18n: language of the speech + an English rendering for non-English streamers (see
+        // server/i18n/translate.js). Added here, right after the table exists, so fresh databases
+        // and old ones both end up with the columns.
+        try {
+            const tlCols = database.prepare("PRAGMA table_info('stream_timeline_events')").all().map(c => c.name);
+            if (!tlCols.includes('lang')) { database.exec('ALTER TABLE stream_timeline_events ADD COLUMN lang TEXT'); database.exec('ALTER TABLE stream_timeline_events ADD COLUMN text_en TEXT'); console.log('[DB] Added lang/text_en columns to stream_timeline_events'); }
+        } catch (e) { console.warn('[DB] timeline i18n columns:', e.message); }
 
         database.exec(`CREATE TABLE IF NOT EXISTS ai_usage (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3160,17 +3184,26 @@ function countStreamMemoriesByUser(userId) {
 function addTimelineEvents(rows) {
     if (!Array.isArray(rows) || !rows.length) return 0;
     const stmt = db.prepare(`INSERT INTO stream_timeline_events
-        (stream_id, user_id, vod_id, kind, start_sec, end_sec, text, label, confidence)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+        (stream_id, user_id, vod_id, kind, start_sec, end_sec, text, label, confidence, lang, text_en)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const tx = db.transaction((list) => {
         for (const r of list) {
             if (!r || !r.stream_id || !r.kind || r.start_sec == null) continue;
             stmt.run(r.stream_id, r.user_id || null, r.vod_id || null, r.kind,
                 Number(r.start_sec) || 0, r.end_sec == null ? null : Number(r.end_sec),
-                r.text || null, r.label || null, r.confidence == null ? null : Number(r.confidence));
+                r.text || null, r.label || null, r.confidence == null ? null : Number(r.confidence),
+                r.lang || null, r.text_en || null);
         }
     });
     try { tx(rows); return rows.length; } catch { return 0; }
+}
+
+/** Newest speech rows for a live stream after a given row id (live captions feed). */
+function getTimelineSpeechSince(streamId, afterId = 0, limit = 40) {
+    return all(`SELECT id, start_sec, end_sec, text, lang, text_en, created_at
+                FROM stream_timeline_events
+                WHERE stream_id = ? AND kind = 'speech' AND id > ?
+                ORDER BY id DESC LIMIT ?`, [streamId, afterId || 0, Math.min(200, Math.max(1, limit))]).reverse();
 }
 
 /** Read a stream's timeline, optionally filtered by kind and time window. */
@@ -4257,7 +4290,7 @@ function updateChannel(userId, fields) {
     const updates = [];
     const params = [];
     for (const [key, val] of Object.entries(fields)) {
-        if (val !== undefined && ['title', 'description', 'category', 'tags', 'protocol', 'is_nsfw', 'force_nsfw', 'auto_record', 'vod_recording_enabled', 'force_vod_recording_disabled', 'offline_banner_url', 'panels', 'emote_sources', 'weather_zip', 'weather_detail', 'weather_show_location', 'control_mode', 'anon_controls_enabled', 'control_rate_limit_ms', 'active_control_config_id', 'video_click_enabled', 'offline_screen_type', 'offline_screen_url', 'offline_html', 'offline_css', 'hide_ai_overview', 'ai_overview_pref'].includes(key)) {
+        if (val !== undefined && ['title', 'description', 'category', 'tags', 'protocol', 'is_nsfw', 'force_nsfw', 'auto_record', 'vod_recording_enabled', 'force_vod_recording_disabled', 'offline_banner_url', 'panels', 'emote_sources', 'weather_zip', 'weather_detail', 'weather_show_location', 'control_mode', 'anon_controls_enabled', 'control_rate_limit_ms', 'active_control_config_id', 'video_click_enabled', 'offline_screen_type', 'offline_screen_url', 'offline_html', 'offline_css', 'hide_ai_overview', 'ai_overview_pref', 'chat_language'].includes(key)) {
             updates.push(`${key} = ?`);
             params.push(['tags', 'panels', 'emote_sources'].includes(key) ? (typeof val === 'string' ? val : JSON.stringify(val)) : val);
         }
@@ -7196,6 +7229,17 @@ function getChatMessageById(id) {
     return get('SELECT * FROM chat_messages WHERE id = ?', [id]);
 }
 
+/** Shallow-merge a JSON patch into chat_messages.metadata (e.g. an async translation). */
+function mergeChatMessageMetadata(id, patch) {
+    if (!id || !patch || typeof patch !== 'object') return;
+    const row = get('SELECT metadata FROM chat_messages WHERE id = ?', [id]);
+    if (!row) return;
+    let meta = {};
+    try { meta = row.metadata ? JSON.parse(row.metadata) : {}; } catch { meta = {}; }
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta)) meta = {};
+    return run('UPDATE chat_messages SET metadata = ? WHERE id = ?', [JSON.stringify({ ...meta, ...patch }), id]);
+}
+
 /**
  * Soft-delete a chat message by ID. Sets is_deleted=1 and records who deleted it.
  */
@@ -8008,6 +8052,7 @@ module.exports = {
     getVodAiState, getClipAiState,
     scheduleClipNotifyState, bumpClipNotifyNowState, markClipNotifiedState, getDueClipNotifies,
     getDb, initDb, run, get, all, close,
+    mergeChatMessageMetadata, getTimelineSpeechSince,
     getDonationGoalsForWidget, getAllDonationGoals, getActiveDonationGoals, getDonationGoalById,
     recordViewerSample, getViewerTrend, getHomePulse, getActiveGoalsForUsers,
     createDonationGoal, updateDonationGoal, deleteDonationGoal, addToDonationGoal,

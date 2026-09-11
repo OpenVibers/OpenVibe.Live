@@ -54,11 +54,18 @@ async function _processSegment(stream, seg) {
     // offsetSec shifts whisper's file-relative timestamps into absolute stream time,
     // so a row's start_sec is directly usable as a ?t= deep link.
     let tx = null;
+    // Decode in the language the channel lives in (explicit setting or detected from the
+    // streamer's bio). Only "counts" when a multilingual whisper model is installed; otherwise
+    // the English model runs as before and nothing is translated.
+    let language = 'en';
+    try { language = require('../i18n/translate').channelLanguage(stream.user_id); } catch { language = 'en'; }
+    const effLang = (language !== 'en' && transcribe.multilingualModel && transcribe.multilingualModel()) ? language : 'en';
     try {
         tx = await transcribe.transcribeWavDetailed(seg.path, {
             offsetSec: seg.offsetSec,
             timeoutMs: 180000,
             live: true,     // must keep up with the segment rate; see MODEL_LIVE
+            language: effLang,
         });
     } catch (e) {
         console.warn(`[AI-Timeline] stream ${stream.id} seg ${seg.name}: transcribe error`, e.message);
@@ -72,7 +79,19 @@ async function _processSegment(stream, seg) {
                 start_sec: Number(s.start) || seg.offsetSec,
                 end_sec: s.end == null ? null : Number(s.end),
                 text,
+                lang: effLang !== 'en' ? effLang : null,
             });
+        }
+        // English rendering of non-English speech (one LLM call per segment, cached) — this is
+        // what the live-captions panel and English-speaking viewers read.
+        if (effLang !== 'en') {
+            const speech = events.filter(e => e.kind === 'speech');
+            if (speech.length) {
+                try {
+                    const en = await require('../i18n/translate').translateLines(speech.map(e => e.text), { from: effLang, to: 'en' });
+                    speech.forEach((e, i) => { if (en[i]) e.text_en = en[i]; });
+                } catch { /* captions stay untranslated for this segment */ }
+            }
         }
     }
 

@@ -1,16 +1,14 @@
 /**
- * OpenVibe.Live — Arena API (mounted at /api/arena)
+ * OpenVibe.Live — Arena API (mounted at /api/arena) — Battle Cam mode
  *
  *   GET  /status · /fighters · /fighters/:user · /fighters/:user/stat/:stat · /live
+ *   GET  /feed?limit&since                            the shit-talk feed: newest judged mic lines across every cam
  *   POST /fighters/:user/refresh                      admin: regenerate persona (+ portrait)
- *   GET  /console/:user                               what the listener hears for a live fighter
- *   GET  /board                                       pulse + open events (topics/debates/phrases/bounties) + leaderboards
- *   POST /board/topics {text}                         signed in, 1 per person + per IP per 24 h; AI rewrites it
- *   GET  /board/topics/:id · POST …/hype {user_id}       (no joining — the ears auto-detect who talks on what)
- *   POST /board/bounty {username}                     put a bounty on a fighter
+ *   GET  /console/:user                               what the ears hear for a live fighter (focus lock, judgements)
  *   GET  /beefs · /beefs/:id · POST /beefs/:id/hype {side}
- *   GET  /levels · /yappers                           Trash Level ladder · viewers who keep subjects alive from chat
- *   GET  /voice/:user?t=<text>                        the line read in that user's chat TTS voice (cached on disk + a week in the browser)
+ *   GET  /levels                                      Trash Level ladder (XP from mic only)
+ *   GET  /me                                          the signed-in fighter's own state (beefs on them, level, moments)
+ *   GET  /voice/:user?t=<text>                        the line read in that user's chat TTS voice
  */
 'use strict';
 
@@ -19,7 +17,7 @@ const { requireAuth, optionalAuth } = require('../auth/auth');
 const permissions = require('../auth/permissions');
 const db = require('../db/database');
 const arena = require('./arena-service');
-const board = require('./board');
+const mic = require('./mic');
 const beef = require('./beef');
 const listener = require('./listener');
 
@@ -32,10 +30,18 @@ const userFrom = (param) => (/^\d+$/.test(String(param)) ? db.getUserById(Number
 router.get('/status', (req, res) => { try { res.json(arena.status()); } catch (err) { fail(res, err, 'Arena unavailable'); } });
 
 router.get('/fighters', (req, res) => {
-    try { res.set('Cache-Control', 'public, max-age=30'); res.json({ fighters: arena.listFighters(), ai: arena.aiOn(), image_generation: arena.imageGenAvailable() }); }
+    try { res.set('Cache-Control', 'public, max-age=30'); res.json({ fighters: arena.listFighters(), ai: arena.aiOn(), image_generation: arena.imageGenAvailable(), stats: arena.STAT_KEYS, stat_meta: arena.STAT_META }); }
     catch (err) { fail(res, err, 'Failed to load the roster'); }
 });
 router.get('/live', (req, res) => { try { res.set('Cache-Control', 'no-store'); res.json({ live: arena.liveFighters() }); } catch (err) { fail(res, err, 'Failed to load live fighters'); } });
+router.get('/feed', (req, res) => {
+    try {
+        res.set('Cache-Control', 'no-store');
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 40));
+        const since = req.query.since ? Number(req.query.since) : null;
+        res.json({ feed: mic.feed({ limit, since }), ai: arena.aiOn() });
+    } catch (err) { fail(res, err, 'Failed to load the feed'); }
+});
 
 router.get('/fighters/:user/stat/:stat', (req, res) => {
     try {
@@ -51,7 +57,11 @@ router.get('/fighters/:user', async (req, res) => {
     try {
         const card = await arena.getFighter(req.params.user, { generate: req.query.generate !== '0' });
         if (!card) return res.status(404).json({ error: 'No such fighter' });
-        if (!card.not_on_roster) { try { card.rivalries = beef.rivalriesFor(card.user.id); } catch { card.rivalries = []; } try { card.progress = require('./progress').view(`user:${card.user.id}`); } catch { card.progress = null; } }
+        if (!card.not_on_roster) {
+            try { card.rivalries = beef.rivalriesFor(card.user.id); } catch { card.rivalries = []; }
+            try { card.moments = mic.momentsFor(card.user.id, 14); } catch { card.moments = []; }
+            try { card.best_lines = mic.bestLines(card.user.id, 5); } catch { card.best_lines = []; }
+        }
         res.set('Cache-Control', 'no-store');
         res.json(card);
     } catch (err) { fail(res, err, 'Failed to load fighter'); }
@@ -72,9 +82,8 @@ router.get('/console/:user', (req, res) => {
         const user = userFrom(req.params.user);
         if (!user) return res.status(404).json({ error: 'No such user' });
         const roster = arena.loadRoster();
-        const brief = board.fighterBrief(user.id, roster);
+        const brief = mic.fighterBrief(user.id, roster);
         const liveStream = db.get('SELECT id, title, started_at, viewer_count FROM streams WHERE user_id = ? AND is_live = 1 ORDER BY started_at DESC LIMIT 1', [user.id]);
-        const active = board.activeTopicFor(user.id);
         let lines = [];
         if (liveStream) {
             lines = db.all(`SELECT text, start_sec, vod_id FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' ORDER BY start_sec DESC LIMIT 14`, [liveStream.id]).reverse()
@@ -85,59 +94,13 @@ router.get('/console/:user', (req, res) => {
             fighter: brief, on_roster: !!roster.byId[user.id], live: !!liveStream, stream: liveStream || null,
             transcribed: liveStream ? !!db.get(`SELECT 1 FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND created_at >= datetime('now', '-30 minutes') LIMIT 1`, [liveStream.id]) : false,
             listener: listener.consoleState(user.id),
-            level: board.levelView(user.id),
-            active_topic: active ? board.topicDetail(active.id) : null,
+            level: mic.levelView(user.id),
+            mic: mic.micStats(user.id),
             open_beefs: beef.openBeefsFor(user.id).map(b => beef.beefView(b, roster)),
             hot_mic: lines,
-            bounty_on_me: board.openBountyOn(user.id) ? board.topicDetail(board.openBountyOn(user.id).id) : null,
+            recent_moments: mic.momentsFor(user.id, 8),
         });
     } catch (err) { fail(res, err, 'Failed to load console'); }
-});
-
-// ── Board ──
-router.get('/board', (req, res) => {
-    try {
-        const v = board.boardView();
-        res.set('Cache-Control', 'no-store');
-        const ch = require('./chatters'); let fightersWeek = []; try { fightersWeek = require('./progress').weeklyFighters(5); } catch { /* */ } res.json({ ...v, levels: board.levelsLeaderboard(8), fighters_week: fightersWeek, yappers: ch.leaderboard(8), yappers_week: ch.leaderboard(5, { days: 7 }), yappers_total: ch.count(), ai: arena.aiOn() });
-    } catch (err) { fail(res, err, 'Failed to load the board'); }
-});
-router.post('/board/topics', requireAuth, async (req, res) => {
-    try {
-        const onRoster = !!arena.loadRoster().byId[req.user.id];
-        const t = await board.submitTopic({ text: req.body?.text, userId: req.user.id, ip: req.ip, creatorName: req.user.display_name || req.user.username, onRoster });
-        if (!t.folded) board.buildLore(t.id, { force: true }).catch(() => {});
-        res.json({ ok: true, folded: !!t.folded, topic: board.topicDetail(t.id) });
-    } catch (err) { res.status(400).json({ error: err.message }); }
-});
-router.post('/board/bounty', requireAuth, (req, res) => {
-    try {
-        const target = userFrom(String(req.body?.username || ''));
-        if (!target || !arena.loadRoster().byId[target.id]) return res.status(404).json({ error: 'No such fighter on the roster' });
-        if (target.id === req.user.id) return res.status(400).json({ error: "You can't put a bounty on yourself" });
-        const name = board.fighterBrief(target.id, arena.loadRoster()).fighter_name;
-        board.assertCanSubmit(req.user.id, req.ip);
-        const t = board.createTopic({ text: `Bounty: ${name}`, hint: `Put up by ${req.user.display_name || req.user.username}. Say the name, collect the bag.`, createdBy: 'viewer', creatorUserId: req.user.id, creatorName: req.user.display_name || req.user.username, creatorIp: req.ip, kind: 'bounty', targetUserId: target.id, headline: `WANTED: ${name} — chat wants smoke`, tagline: `Double XP for anyone who talks shit about ${name} on stream` });
-        res.json({ ok: true, topic: board.topicDetail(t.id) });
-    } catch (err) { res.status(400).json({ error: err.message }); }
-});
-router.get('/board/topics/:id', (req, res) => {
-    try {
-        const t = board.topicDetail(Number(req.params.id));
-        if (!t) return res.status(404).json({ error: 'No such topic' });
-        res.set('Cache-Control', 'no-store');
-        res.json(t);
-    } catch (err) { fail(res, err, 'Failed to load topic'); }
-});
-router.post('/board/topics/:id/hype', optionalAuth, (req, res) => {
-    try { res.json(board.hypeTopic(Number(req.params.id), Number(req.body?.user_id), arena.voterKeyFor(req))); }
-    catch (err) { res.status(400).json({ error: err.message }); }
-});
-router.post('/pulse/refresh', requireAuth, permissions.requireAdmin, async (req, res) => {
-    try { const d = await board.discoverTopics({ force: true }); const lore = await board.loreSweep(5); res.json({ ...d, lore_rewritten: lore }); } catch (err) { fail(res, err, 'Pulse refresh failed'); }
-});
-router.post('/board/topics/:id/lore', requireAuth, permissions.requireAdmin, async (req, res) => {
-    try { res.json(await board.buildLore(Number(req.params.id), { force: true })); } catch (err) { fail(res, err, 'Lore rebuild failed'); }
 });
 
 // ── Beefs ──
@@ -149,9 +112,8 @@ router.get('/beefs/:id', (req, res) => {
 router.post('/beefs/:id/hype', optionalAuth, (req, res) => {
     try { res.json(beef.hype(Number(req.params.id), String(req.body?.side || ''), arena.voterKeyFor(req))); } catch (err) { res.status(400).json({ error: err.message }); }
 });
+
 // ── Hear it in their voice ──
-// GET /voice/:user?t=<text>  (:user = username, or "announcer"). Synthesized once per (voice, text),
-// cached on disk and by the browser (a week); the file streams back as audio.
 router.get('/voice/:user', optionalAuth, async (req, res) => {
     try {
         const voice = require('./voice');
@@ -167,42 +129,19 @@ router.get('/voice/:user', optionalAuth, async (req, res) => {
     } catch (err) { res.status(err.message && /budget|hoarse/.test(err.message) ? 429 : 500).json({ error: err.message || 'Voice failed' }); }
 });
 
-// ── Your Arena: the signed-in user's own state (yap level, streak, XP today, coins, beefs on them) ──
+// ── Your Arena: the signed-in fighter's own state ──
 router.get('/me', requireAuth, (req, res) => {
     try {
-        const ch = require('./chatters');
         const roster = arena.loadRoster();
-        const key = `user:${req.user.id}`;
-        const chatter = ch.profile(key) || { ...ch.view({ key, kind: 'user', user_id: req.user.id, display_name: req.user.display_name || req.user.username, xp: 0, level: 1 }), recent_moments: [], top_subjects: [], xp_log: [] };
-        const xpToday = db.get(`SELECT COALESCE(SUM(amount), 0) AS n FROM chatter_xp_log WHERE key = ? AND created_at >= date('now')`, [key])?.n || 0;
-        const checkedIn = !!db.get(`SELECT 1 FROM chatter_xp_log WHERE key = ? AND reason = 'checkin' AND created_at >= date('now')`, [key]);
-        const paid = ch.row(key)?.coins_paid_level || 0; let coins = 0; for (let l = 2; l <= paid; l++) coins += l * ch.COINS_PER_LEVEL;
         const onRoster = !!roster.byId[req.user.id];
-        const fighter = onRoster ? { ...board.fighterBrief(req.user.id, roster), level: board.levelView(req.user.id), record: beef.recordFor(req.user.id), power: roster.byId[req.user.id].ratings.power } : null;
+        const fighter = onRoster ? { ...mic.fighterBrief(req.user.id, roster), level: mic.levelView(req.user.id), record: beef.recordFor(req.user.id), power: roster.byId[req.user.id].ratings.power, mic: mic.micStats(req.user.id) } : null;
         const beefs = onRoster ? beef.openBeefsFor(req.user.id).map(b => beef.beefView(b, roster)) : [];
-        const subjects = db.all(`SELECT t.id, t.headline, t.text, t.heat, s.moments FROM chatter_subjects s JOIN arena_topics t ON t.id = s.topic_id WHERE s.key = ? AND t.status = 'open' ORDER BY t.heat DESC LIMIT 5`, [key]);
         const onClock = beefs.filter(b => (b.on_clock === 'a' ? b.a.user.id : b.b.user.id) === req.user.id);
         res.set('Cache-Control', 'no-store');
-        let progress = null; try { progress = require('./progress').view(key); } catch { /* */ }
-        res.json({ chatter, progress, xp_today: xpToday, checked_in: checkedIn, coins_from_arena: coins, fighter, beefs, on_clock: onClock, subjects, hot_now: board.boardView().open.filter(t => t.hot).slice(0, 3).map(t => ({ id: t.id, headline: t.headline || t.text })) });
+        res.json({ on_roster: onRoster, fighter, beefs, on_clock: onClock, moments: onRoster ? mic.momentsFor(req.user.id, 6) : [], live: onRoster ? !!db.get('SELECT 1 FROM streams WHERE user_id = ? AND is_live = 1 LIMIT 1', [req.user.id]) : false });
     } catch (err) { fail(res, err, 'Failed to load your arena'); }
 });
-router.post('/checkin', requireAuth, (req, res) => {
-    try { res.json(require('./chatters').checkin(req.user.id, { display: req.user.display_name || req.user.username })); } catch (err) { fail(res, err, 'Check-in failed'); }
-});
 
-router.get('/progress/:key', (req, res) => { try { res.set('Cache-Control', 'no-store'); res.json(require('./progress').view(String(req.params.key || ''))); } catch (err) { fail(res, err, 'Failed'); } });
-router.get('/levels', (req, res) => { try { res.json({ levels: board.levelsLeaderboard(20) }); } catch (err) { fail(res, err, 'Failed'); } });
-router.get('/yappers', (req, res) => { try { const ch = require('./chatters'); res.json({ yappers: ch.leaderboard(20), week: ch.leaderboard(10, { days: 7 }), total: ch.count() }); } catch (err) { fail(res, err, 'Failed'); } });
-// Chatter (yapper) profile by key: user:<id> · anon:<n> · relay:<platform>:<name> — anyone who chats has one.
-router.get('/chatter/:key', (req, res) => {
-    try { const p = require('./chatters').profile(String(req.params.key || '')); if (!p) return res.status(404).json({ error: 'No such chatter yet — say something about a subject first' }); try { p.progress = require('./progress').view(p.key); } catch { p.progress = null; } res.set('Cache-Control', 'no-store'); res.json(p); }
-    catch (err) { fail(res, err, 'Failed to load chatter'); }
-});
-router.get('/chatter/by-user/:username', (req, res) => {
-    try { const u = userFrom(req.params.username); if (!u) return res.status(404).json({ error: 'No such user' }); const p = require('./chatters').profile(`user:${u.id}`); if (!p) return res.status(404).json({ error: 'No yap profile yet' }); res.json(p); }
-    catch (err) { fail(res, err, 'Failed'); }
-});
-router.post('/chatter/:key/card', requireAuth, permissions.requireAdmin, async (req, res) => { try { res.json(await require('./chatters').buildCard(String(req.params.key), { force: true })); } catch (err) { fail(res, err, 'Card failed'); } });
+router.get('/levels', (req, res) => { try { res.json({ levels: mic.levelsLeaderboard(20) }); } catch (err) { fail(res, err, 'Failed'); } });
 
 module.exports = router;

@@ -92,3 +92,34 @@ wss://openvibe.live/ws/chat?token=JWT_OR_API_TOKEN&streamId=123
 ### TTS playback hardening (2026-08-31)
 
 `media-src` now includes `data:` (the mod voice preview plays a `data:audio/…` URL; without it the element dies with "no supported source"). The admin **Test Voice** (`POST /api/tts/admin/test`) and mod preview (`POST /api/mod/tts-voice/preview`) additionally return a same-origin `url` — the clip is parked in the shared TTS cache (`data/tts-cache`) and streamed from `GET /api/tts/audio/<hash>.<wav|mp3>` (strict filename, no traversal) — so playback works even where a browser or shield refuses `blob:`/`data:` audio. Chat/broadcast TTS players retry once with a `data:` URL when the element rejects the blob URL. Note: `tts-audio` WS payloads carry base64 (`audio` + `mimeType`), not a `url`.
+
+
+## Auto-translation (non-English streamers)
+
+Every channel has a **language** it lives in: the streamer's explicit `channels.chat_language`
+(`PUT /api/streams/channel` with `chat_language: 'ja'` / `'auto'` …), or, when `auto`, the
+language detected from any non-English line in their bio or name (`server/i18n/translate.js`).
+`GET /api/streams/channel/:username` returns it as `language: { code, name, flag, explicit, translate }`,
+and the chat `auth` frame carries `channel_language` so the composer can show the
+"Auto-translated ↔ Japanese" pill.
+
+When AI is enabled (`ai_enabled` + a key; the `chat_translate_enabled` site setting defaults to on),
+each chat line is translated a beat after it is broadcast and delivered to the same rooms as
+
+```json
+{ "type": "chat_translation", "id": 123, "from": "ja", "to": "en", "text": "…" }
+```
+
+Direction rules: any non-English message → English; an English message in a non-English
+channel → the channel's language (so a Japanese streamer reads his chat without anyone typing
+Japanese). Emote-only / command / link-only lines are skipped. Translations are cached by
+content hash in the `translations` table and persisted into `chat_messages.metadata.translation`,
+so history renders them too. Calls go through `ai/llm.js` (metered, budgeted, max 3 in flight;
+overflow lines simply stay untranslated).
+
+**Any line, your language.** Every chat message also has a hover 🌐 button that asks `POST /api/i18n/translate { text, to }` for the line in the viewer's browser language (rate-limited per IP: 15/min anonymous, 40/min signed in; cached like the automatic translations). This is the third direction — a Korean viewer reading a Japanese streamer, a Japanese viewer on an English stream — so nobody is left out, English users included.
+
+Related surfaces: `GET /api/streams/channel/:username/bio-en` (bio in English),
+`GET /api/chat-ai/live-captions/:username` (English rendering of live speech — needs the AI
+timeline on and a multilingual whisper model, see `WHISPER_MODEL_MULTI`), and the home-page
+"Star of OpenVibe" spotlight (`GET /api/home/star`, `star_streamer` setting / `STAR_STREAMER` env).

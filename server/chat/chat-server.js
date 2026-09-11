@@ -437,6 +437,9 @@ class ChatServer {
                     slur_filter_regexes: this._parseRegexLines(streamSettings.slur_filter_regexes),
                     slur_filter_nudge_message: String(streamSettings.slur_filter_nudge_message || ''),
                     min_auto_delete_minutes: MIN_CHAT_AUTO_DELETE_MINUTES,
+                    // Language the channel lives in — the client shows "auto-translated for the
+                    // streamer" when it isn't English (see server/i18n/translate.js).
+                    channel_language: this._channelLanguage(client.channelUserId),
                 });
                 break;
             }
@@ -862,6 +865,9 @@ class ChatServer {
             // Surface on the homepage global feed (tagged with the channel).
             if (client.streamId) this.forwardToGlobal(client.streamId, chatMsg);
             else this.forwardToGlobalByChannel(client.channelUserId, chatMsg);
+            // Auto-translate (async): foreign → English for everyone, English → the channel's
+            // language for a non-English streamer. Lands as a follow-up 'chat_translation'.
+            this._maybeTranslate(chatMsg, client.channelUserId, client.streamId);
         }
         if (client.streamId) {
 
@@ -953,7 +959,7 @@ class ChatServer {
         const parts = text.trim().split(/\s+/);
         const cmd = parts[0].toLowerCase();
 
-        // Arena: !hype / !talk / !arena / !vote / !fight (server/arena/arena-chat.js)
+        // Arena: !hype / !beef / !arena (server/arena/arena-chat.js) — chat can only hype; the Arena is pure mic
         try { if (require('../arena/arena-chat').handle(this, ws, client, cmd, parts)) return; } catch (e) { console.warn('[Arena] chat command:', e.message); }
 
         if (cmd === '!gotti') {
@@ -1951,6 +1957,38 @@ class ChatServer {
         if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount <= MAX_SEND_BACKPRESSURE) {
             ws.send(JSON.stringify(data));
         }
+    }
+
+    /** Language a channel lives in ('en' when unknown). Cached inside i18n. */
+    _channelLanguage(channelUserId) {
+        if (!channelUserId) return 'en';
+        try { return require('../i18n/translate').channelLanguage(channelUserId); } catch { return 'en'; }
+    }
+
+    /**
+     * Translate a just-broadcast chat line and push the translation to the same rooms as a
+     * 'chat_translation' event (clients attach it under the message by id). Persisted into
+     * chat_messages.metadata so history shows it too. Fire-and-forget; never throws.
+     */
+    _maybeTranslate(chatMsg, channelUserId, streamId) {
+        if (!chatMsg || !chatMsg.message || chatMsg.message_type && chatMsg.message_type !== 'chat') return;
+        let i18n;
+        try { i18n = require('../i18n/translate'); } catch { return; }
+        if (!i18n.available()) return;
+        let chanUid = channelUserId || null;
+        if (!chanUid && streamId) { try { chanUid = db.getStreamById(streamId)?.user_id || null; } catch { /* */ } }
+        const text = String(chatMsg.message).replace(/^\s*\.\s?/, '');   // ".msg" = tts-off marker
+        i18n.translateChatMessage(text, chanUid).then((tr) => {
+            if (!tr || !tr.text) return;
+            const evt = {
+                type: 'chat_translation', id: chatMsg.id || null, from: tr.from, to: tr.to, text: tr.text,
+                stream_id: streamId || null, channel_user_id: chanUid, timestamp: new Date().toISOString(),
+            };
+            this.broadcastToChannelRoom(chanUid, streamId, evt);
+            if (streamId) this.forwardToGlobal(streamId, evt);
+            else this.forwardToGlobalByChannel(chanUid, evt);
+            if (chatMsg.id) { try { db.mergeChatMessageMetadata(chatMsg.id, { translation: tr }); } catch { /* */ } }
+        }).catch(() => { /* best-effort */ });
     }
 
     broadcastToStream(streamId, data) {
