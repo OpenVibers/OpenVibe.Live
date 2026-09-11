@@ -172,6 +172,15 @@ function addMoment({ userId, streamId = null, vodId = null, sec = null, kind = '
     return db.get('SELECT * FROM arena_mic_moments WHERE id = ?', [id]);
 }
 
+/** Same line (or near enough) from the same fighter in the last 6 h → don't file it twice. */
+function isDuplicate(userId, text) {
+    ensureTables();
+    const norm = String(text || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+    if (!norm) return false;
+    const rows = db.all(`SELECT text FROM arena_mic_moments WHERE user_id = ? AND created_at >= datetime('now', '-6 hours') ORDER BY id DESC LIMIT 40`, [userId]);
+    return rows.some(r => { const t = String(r.text || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim(); return t === norm || (t.length > 30 && (t.includes(norm) || norm.includes(t))); });
+}
+
 function momentView(m, roster) {
     const brief = fighterBrief(m.user_id, roster);
     return {
@@ -187,7 +196,8 @@ function feed({ limit = 40, since = null, userId = null } = {}) {
     ensureTables();
     const roster = arena().loadRoster();
     const params = [];
-    let where = '1 = 1';
+    // The feed shows bangers only; weak lines still count for stats/XP but never headline the page.
+    let where = 'quality >= 5';
     if (userId) { where += ' AND user_id = ?'; params.push(userId); }
     if (since) { where += ' AND id > ?'; params.push(Number(since) || 0); }
     params.push(Math.min(200, Math.max(1, limit)));
@@ -229,6 +239,6 @@ function micStats(userId, days = 30) {
 
 module.exports = {
     ensureTables, addXp, recentXp, levelView, levelFor, levelRow, levelsLeaderboard, nameOf, fighterBrief,
-    addMoment, momentView, feed, momentsFor, bestLines, latestFor, micStats,
+    addMoment, momentView, feed, momentsFor, bestLines, latestFor, micStats, isDuplicate,
     XP_PER_LEVEL, XP_MOMENT, XP_HYPE,
 };

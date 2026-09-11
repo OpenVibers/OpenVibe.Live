@@ -27,8 +27,9 @@ const llm = require('../ai/llm');
 const TICK_MS = 15 * 1000;
 const JUDGE_MIN_WORDS = 20;
 const JUDGE_MIN_INTERVAL_MS = 30 * 1000;
-const MIC_MIN_QUALITY = 4;          // free talk must be at least this spicy to land in the feed
-const CALLOUT_MIN_QUALITY = 5;      // …and this spicy for an aimed_at name to open a beef
+const MIC_MIN_QUALITY = 6;          // free talk must be at least this good to land in the feed (bangers only)
+const CALLOUT_MIN_QUALITY = 6;      // …and this good for an aimed_at name to open a beef
+const MIN_LINE_WORDS = 6;           // a quotable line is a complete thought, not a fragment
 const BUFFER_MAX_CHARS = 1400;
 
 const state = new Map();   // streamId → { userId, lastOffset, lastJudgeAt, focus, mic: { lines } }
@@ -39,6 +40,14 @@ function beef() { return require('./beef'); }
 function mic() { return require('./mic'); }
 function parseJson(t, f = null) { try { return t ? JSON.parse(t) : f; } catch { return f; } }
 function words(t) { return String(t || '').split(/\s+/).filter(Boolean).length; }
+/** Tidy a quoted line: collapse whitespace, strip transcript markers, cap length, sentence case + period. */
+function cleanLine(t) {
+    let s = String(t || '').replace(/^\s*(?:>>|--?)\s*/, '').replace(/\s+/g, ' ').trim().slice(0, 220);
+    if (!s) return '';
+    s = s.charAt(0).toUpperCase() + s.slice(1);
+    if (!/[.!?…"”']$/.test(s)) s += '.';
+    return s;
+}
 
 // ── Aliases: who can be called out, by which names ───────────
 const names = require('./names');
@@ -64,7 +73,7 @@ const BEEF_SCHEMA = {
             aimed_at_target: { type: 'boolean', description: 'true if the speaker is trash-talking, roasting, calling out, dunking on or bragging over the target (in good fun) — requires about_target' },
             announcer: { type: 'string', description: 'one-line ring-announcer call of this moment, ≤ 110 chars, hype and funny (empty if not aimed at the target)' },
             quality: { type: 'integer', minimum: 0, maximum: 10, description: 'how good the trash talk is: spice, wit, specificity, quotability' },
-            best_line: { type: 'string', description: 'the single best line, VERBATIM from the speech (empty if none)' },
+            best_line: { type: 'string', description: 'the single best line: a COMPLETE sentence of at least 6 words that reads correctly on its own, words as spoken (fix casing/punctuation, drop stutters and filler, never change or add words). Empty if no clean line exists — a garbled fragment must not be quoted' },
             about: { type: 'string', description: '≤ 10 words: what they said about the target' },
             flagged: { type: 'boolean', description: 'ONLY for direct threats of violence, sexual content about minors, or doxxing — never for offensive language' },
         },
@@ -76,11 +85,12 @@ const MIC_SCHEMA = {
     name: 'arena_mic_judgement',
     schema: {
         type: 'object', additionalProperties: false,
-        required: ['is_trash_talk', 'quality', 'best_line', 'about', 'aimed_at', 'announcer', 'flagged'],
+        required: ['is_trash_talk', 'garbled', 'quality', 'best_line', 'about', 'aimed_at', 'announcer', 'flagged'],
         properties: {
-            is_trash_talk: { type: 'boolean', description: 'true ONLY if the speaker is actually talking shit: roasting, calling someone out, bragging over someone, ranting AT someone (chat, a group, a person), disrespect, trolling, "come see me" energy' },
-            quality: { type: 'integer', minimum: 0, maximum: 10, description: 'how good the shit talk is: savage, specific, funny, quotable = high; lazy generic = low; 0 when not trash talk' },
-            best_line: { type: 'string', description: 'the single best line, VERBATIM from the speech (empty if none)' },
+            is_trash_talk: { type: 'boolean', description: 'true ONLY if the speaker is actually talking shit: roasting, calling someone out, bragging over someone, ranting AT someone (chat, a group, a person), disrespect, trolling, "come see me" energy — AND there is a clean, complete, quotable line for it' },
+            garbled: { type: 'boolean', description: 'true if the transcript is too mangled (misheard words, word salad, fragments) to quote a coherent line — then is_trash_talk must be false' },
+            quality: { type: 'integer', minimum: 0, maximum: 10, description: 'how good the shit talk is: 8–10 = a stranger would laugh or screenshot it; 6–7 = solid, specific, quotable; ≤5 = generic, lazy or half a thought; 0 when not trash talk' },
+            best_line: { type: 'string', description: 'the single best line: a COMPLETE sentence of at least 6 words that reads correctly on its own. Copy the words as spoken — you may fix casing and punctuation and drop stutters / filler (uh, um, repeated words) but never change, add or reorder words. Empty if no clean line exists' },
             about: { type: 'string', description: '≤ 10 words: what the shit talk was about' },
             aimed_at: { type: 'string', description: 'who or what it is aimed at, as said or clearly implied: a streamer name, "chat", "the mods", "twitch streamers", a game, "nobody" — ≤ 6 words, lowercase' },
             announcer: { type: 'string', description: 'one-line ring-announcer call of the moment, ≤ 110 chars, hype and funny (empty if not trash talk)' },
@@ -88,7 +98,7 @@ const MIC_SCHEMA = {
         },
     },
 };
-const MIC_SYSTEM = `You judge a live streamer's raw mic chatter for BATTLE-CAM style shit talk. You get ~60 seconds of speech-to-text (expect noise). DEFAULT TO is_trash_talk=false: gameplay narration, reading chat, small talk, "um", stories, neutral opinions → false, quality 0. Say true only when they are genuinely talking shit — roasting someone, calling someone out, bragging over someone, ranting AT chat or a group, disrespect, trolling, "pull up" energy. When true: score the craft (savage, specific, petty, funny, quotable = high; generic = low), pick the best verbatim line, say who it is aimed at (a name if one is said or clearly meant, else "chat", "the mods", a group, a game, or "nobody"), summarise in ≤ 10 words, and write a one-line ring-announcer call. Offensive, provocative and taboo language — slurs included — is allowed on this platform and is NOT a reason to flag or to score low; judge the craft. Flag ONLY behavior: direct threats of violence, sexual content about minors, doxxing. Output only the JSON.`;
+const MIC_SYSTEM = `You judge a live streamer's raw mic chatter for BATTLE-CAM style shit talk. You get ~60–90 seconds of speech-to-text — it is noisy: names get misheard, words get mangled, sentences get cut. DEFAULT TO is_trash_talk=false: gameplay narration, reading chat, small talk, "um", stories, neutral opinions → false, quality 0. Say true only when they are genuinely talking shit — roasting someone, calling someone out, bragging over someone, ranting AT chat or a group, disrespect, trolling, "pull up" energy — AND you can quote a clean, complete line for it. QUOTABILITY IS THE BAR: best_line must be a full sentence of at least 6 words that a reader understands with no context. If the good part is garbled or only a fragment, set garbled=true and is_trash_talk=false rather than quoting nonsense; a half-line in the feed is worse than nothing. Score the craft honestly: 8–10 only for lines a stranger would laugh at or screenshot; 6–7 solid and specific; 5 or below generic or lazy. Say who it is aimed at (a name if one is said or clearly meant, else "chat", "the mods", a group, a game, or "nobody"), summarise in ≤ 10 words, and write a one-line ring-announcer call. Offensive, provocative and taboo language — slurs included — is allowed on this platform and is NOT a reason to flag or to score low; judge the craft. Flag ONLY behavior: direct threats of violence, sexual content about minors, doxxing. Output only the JSON.`;
 
 const SPICY = /\b(clown|clowns|weak|scared|duck|ducking|ducked|trash|garbage|mid|washed|bum|bums|ratio|cook|cooked|better than|can't|cannot|never|nobody|beat|fraud|frauds|ass|bet|catch (these|this)|come see|pull up|fight me|square up|run it|talk (that|your)|cope|seethe|cry|loser|losers|bozo|bozos|goofy|fake|scam|dogshit|shit at|suck|sucks|pathetic|embarrassing|sit down|shut up|nobody cares|delusional|coward|cowards)\b/;
 function heuristicBeef(text, targetNames, { named = true } = {}) {
@@ -112,7 +122,7 @@ function heuristicMic(text) {
     const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
     const spicyLines = sentences.filter(l => SPICY.test(l.toLowerCase()));
     const pick = (spicyLines.length ? spicyLines : sentences).sort((a, b) => b.length - a.length)[0] || text;
-    return { is_trash_talk: spicy, quality, best_line: pick.trim().slice(0, 200), about: text.split(/\s+/).slice(0, 8).join(' '), aimed_at: aimed, announcer: '', flagged: false, _fallback: true };
+    return { is_trash_talk: spicy && words(pick) >= MIN_LINE_WORDS, garbled: false, quality, best_line: pick.trim().slice(0, 200), about: text.split(/\s+/).slice(0, 8).join(' '), aimed_at: aimed, announcer: '', flagged: false, _fallback: true };
 }
 
 async function judgeBeef(speakerId, targetId, text, roster, { context = null, named = true, how = 'exact' } = {}) {
@@ -131,7 +141,10 @@ async function judgeBeef(speakerId, targetId, text, roster, { context = null, na
     }
     if (!j) j = heuristicBeef(text, spokenForms.length ? spokenForms : targetNames.map(n => n.toLowerCase()), { named });
     const about = (j.about_target !== false) && !j.flagged;
-    return { about_target: about, aimed_at_target: about && !!j.aimed_at_target, quality: Math.max(0, Math.min(10, Math.round(Number(j.quality) || 0))), best_line: String(j.best_line || '').slice(0, 220), about: String(j.about || '').slice(0, 80), announcer: String(j.announcer || '').slice(0, 140), flagged: !!j.flagged, fallback: !!j._fallback };
+    const line = cleanLine(j.best_line);
+    // A hit needs a quotable line; a beef fed by fragments reads like nonsense on the page.
+    const aimed = about && !!j.aimed_at_target && words(line) >= MIN_LINE_WORDS;
+    return { about_target: about, aimed_at_target: aimed, quality: aimed ? Math.max(0, Math.min(10, Math.round(Number(j.quality) || 0))) : 0, best_line: line, about: String(j.about || '').slice(0, 80), announcer: String(j.announcer || '').slice(0, 140), flagged: !!j.flagged, fallback: !!j._fallback };
 }
 
 async function judgeMic(speakerId, text) {
@@ -144,7 +157,9 @@ async function judgeMic(speakerId, text) {
         } catch (e) { console.warn('[Arena] mic judge:', e.message); }
     }
     if (!j) j = heuristicMic(text);
-    return { is_trash_talk: !!j.is_trash_talk && !j.flagged, quality: Math.max(0, Math.min(10, Math.round(Number(j.quality) || 0))), best_line: String(j.best_line || '').slice(0, 220), about: String(j.about || '').slice(0, 80), aimed_at: String(j.aimed_at || '').toLowerCase().slice(0, 60), announcer: String(j.announcer || '').slice(0, 140), flagged: !!j.flagged, fallback: !!j._fallback };
+    const line = cleanLine(j.best_line);
+    const ok = !!j.is_trash_talk && !j.flagged && !j.garbled && words(line) >= MIN_LINE_WORDS;
+    return { is_trash_talk: ok, garbled: !!j.garbled, quality: ok ? Math.max(0, Math.min(10, Math.round(Number(j.quality) || 0))) : 0, best_line: line, about: String(j.about || '').slice(0, 80), aimed_at: String(j.aimed_at || '').toLowerCase().slice(0, 60), announcer: String(j.announcer || '').slice(0, 140), flagged: !!j.flagged, fallback: !!j._fallback };
 }
 
 // ── Tick ─────────────────────────────────────────────────────
@@ -219,6 +234,7 @@ async function judgeFreeTalk(stream, roster, st, events) {
     st.lastMicJudgement = { at: new Date().toISOString(), ...j };
     if (!j.is_trash_talk || j.quality < MIC_MIN_QUALITY) { events.push({ kind: 'mic_miss', streamId: stream.id, speakerId: stream.user_id, about: j.about }); return; }
     const ref = lineRefFor(lines, j.best_line);
+    if (mic().isDuplicate(stream.user_id, j.best_line)) { events.push({ kind: 'mic_dupe', streamId: stream.id, speakerId: stream.user_id }); return; }
     // "aimed_at" that resolves to a roster fighter = a callout → it feeds a beef exactly like a name-drop.
     const target = j.aimed_at ? mentionsDetailed(j.aimed_at, stream.user_id, roster)[0] : null;
     if (target && j.quality >= CALLOUT_MIN_QUALITY) {
@@ -310,4 +326,4 @@ function start() {
 }
 function stop() { if (_timer) { clearInterval(_timer); _timer = null; } }
 
-module.exports = { start, stop, tick, consoleState, TICK_MS, JUDGE_MIN_WORDS, JUDGE_MIN_INTERVAL_MS, MIC_MIN_QUALITY, CALLOUT_MIN_QUALITY, FOCUS_TAIL_MS, FOCUS_EXTEND_MS, FOCUS_MAX_MS, SPICY, _mentionsIn: mentionsIn, _mentionsDetailed: mentionsDetailed, _aliases: aliases, _heuristicBeef: heuristicBeef, _heuristicMic: heuristicMic, _judgeBeef: judgeBeef, _judgeMic: judgeMic, _state: state };
+module.exports = { start, stop, tick, consoleState, TICK_MS, JUDGE_MIN_WORDS, JUDGE_MIN_INTERVAL_MS, MIC_MIN_QUALITY, CALLOUT_MIN_QUALITY, MIN_LINE_WORDS, cleanLine, FOCUS_TAIL_MS, FOCUS_EXTEND_MS, FOCUS_MAX_MS, SPICY, _mentionsIn: mentionsIn, _mentionsDetailed: mentionsDetailed, _aliases: aliases, _heuristicBeef: heuristicBeef, _heuristicMic: heuristicMic, _judgeBeef: judgeBeef, _judgeMic: judgeMic, _state: state };

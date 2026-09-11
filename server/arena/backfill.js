@@ -95,7 +95,7 @@ async function backfillFighter(uid, roster, budget) {
                 if (j.about_target) continue;   // neutral mention — not shit talk, and not free talk either
             }
             const j = await L._judgeMic(uid, text);
-            if (j.is_trash_talk && j.quality >= L.MIC_MIN_QUALITY) {
+            if (j.is_trash_talk && j.quality >= L.MIC_MIN_QUALITY && !mic().isDuplicate(uid, j.best_line)) {
                 const r = ref(j.best_line);
                 const target = j.aimed_at ? L._mentionsDetailed(j.aimed_at, uid, roster)[0] : null;
                 if (mic().addMoment({ userId: uid, streamId: c.stream_id, vodId: r.vod_id, sec: r.sec, kind: target ? 'callout' : 'trash', targetUserId: target ? target.userId : null, aimedAt: target ? mic().nameOf(target.userId) : (j.aimed_at || null), text: j.best_line || text.slice(0, 220), about: j.about, quality: j.quality, announcer: j.announcer, saidAt: saidAtFor(c, r.sec) })) moments++;
