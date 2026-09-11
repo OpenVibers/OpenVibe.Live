@@ -465,7 +465,7 @@
         const rows = [
             ['Every line of code public on GitHub', 'yes', 'no'],
             ['Pays YOU to stream here', `${money()} + referrals`, 'no'],
-            ['Restream to Twitch, YouTube, Kick, RTMP — and RobotStreamer', 'yes, from one stream', 'no'],
+            ['Restream to Twitch, YouTube, Kick, RTMP — and RobotStreamer', 'yes, from one stream', '?'],
             ['Sub-second WebRTC latency', 'yes', '?'],
             ['7TV / BTTV / FFZ + custom emotes', 'yes', '?'],
             ['Sound commands & soundboard', 'yes', '?'],
