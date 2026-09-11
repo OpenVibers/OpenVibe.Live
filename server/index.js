@@ -608,11 +608,6 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// ── RobotStreamer switch-bonus promo: public config + the cashout ledger ─────────
-// (public/js/rs-promo.js reads /api/promo/robotstreamer on every page load; claims, referrals
-// and payouts are rows in promo_claims — see server/promo/claims.js.)
-app.use('/api/promo', require('./promo/routes'));
-
 // ── Updates / Changelog ──────────────────────────────────────
 const { execSync } = require('child_process');
 const REPO_DIR = path.resolve(__dirname, '..');

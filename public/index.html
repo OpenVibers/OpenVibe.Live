@@ -67,7 +67,6 @@
     <link rel="stylesheet" href="/css/broadcast.css?v=11">
     <link rel="stylesheet" href="/css/cosmetics.css?v=2">
     <link rel="stylesheet" href="/css/messenger.css?v=1">
-    <link rel="stylesheet" href="/css/rs-promo.css?v=9">
     <link rel="stylesheet" href="/css/home-fx.css?v=4">
     <link rel="stylesheet" href="/css/i18n-star.css?v=3">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -249,8 +248,6 @@
                         <i class="fa-solid fa-wand-magic-sparkles"></i> Vibe Coders
                     </a>
                 </div>
-                <!-- RobotStreamer switch bonus — bounty card mounted by /js/rs-promo.js (server-driven amount) -->
-                <div class="rs-hero-mount" id="rs-hero-mount"></div>
                 <!-- Newest shipped commit — built in the open, receipts included. -->
                 <a class="hero-latest" id="hero-latest" href="/updates" onclick="return handleLinkClick(event, '/updates')" style="display:none"></a>
                 <div class="hero-philosophy-links">
@@ -803,8 +800,6 @@
                             <div class="controls-grid" id="controls-grid"></div>
                         </div>
                     </div>
-                    <!-- RobotStreamer switch bonus — big alert on every stream page (filled by /js/rs-promo.js) -->
-                    <div class="rs-stream-alert-mount" id="rs-stream-alert"></div>
                     <!-- Live translation captions for non-English streamers (filled by _startCaptions in app.js) -->
                     <div class="ch-captions" id="ch-captions" style="display:none"></div>
                     <!-- Streamer Info Bar (below video, Kick/Twitch style) -->
@@ -938,8 +933,6 @@
           <div class="stream-layout">
             <div class="stream-main">
             <!-- Offline header with streamer info -->
-            <!-- RobotStreamer switch bonus — the same big alert on OFFLINE channel pages (filled by /js/rs-promo.js) -->
-            <div class="rs-stream-alert-mount" id="rs-stream-alert-offline"></div>
             <div class="ch-offline-header" id="ch-offline-header">
                 <div class="ch-avatar ch-avatar-lg" id="ch-avatar-offline">?</div>
                 <div class="ch-offline-header-info">
@@ -5126,7 +5119,6 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/pastes.js?v=15" defer></script>
 <script src="/js/draggable-fab.js?v=2" defer></script>
 <script src="/js/messenger.js?v=2" defer></script>
-<script src="/js/rs-promo.js?v=12" defer></script>
 <script src="/js/home-fx.js?v=2" defer></script>
 
 <!-- ── OpenVibe shared libs (notifications, account sync, themes) ── -->
