@@ -638,6 +638,41 @@ body.rs-ticker-on .rs-modal, body.rs-ticker-on .rs-takeover { --rs-ticker-h: 0px
 .rs-modal-fine i { color: #f472b6; animation: rsHeart 1.4s ease-in-out infinite; }
 @keyframes rsHeart { 0%,100% { transform: scale(1); } 30% { transform: scale(1.3); } }
 
+/* ── Cashout ledger inside the claim modal ── */
+.rs-cashout { margin: 0 0 16px; padding: 12px; border-radius: 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); }
+.rs-cashout-loading { color: #94a3b8; font-size: 0.85rem; }
+.rs-cashout-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-weight: 900; font-size: 0.95rem; margin-bottom: 8px; }
+.rs-cashout-head small { color: #94a3b8; font-weight: 500; font-size: 0.74rem; }
+.rs-cashout-head i { color: #fde68a; }
+.rs-admin-head { margin-top: 14px; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.18); }
+.rs-balance { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+.rs-balance span { display: grid; justify-items: center; padding: 8px 6px; border-radius: 10px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); }
+.rs-balance b { font-size: 1.15rem; color: #fde68a; }
+.rs-balance small { font-size: 0.68rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; }
+.rs-claims { display: grid; gap: 8px; margin-bottom: 10px; }
+.rs-claim { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; padding: 9px 10px; border-radius: 10px; background: rgba(0,0,0,0.22); border: 1px solid rgba(255,255,255,0.1); border-left: 3px solid #94a3b8; }
+.rs-claim.is-approved, .rs-claim.is-cashout_requested { border-left-color: #a78bfa; } .rs-claim.is-paid { border-left-color: #22c55e; } .rs-claim.is-rejected { border-left-color: #ef4444; opacity: 0.7; } .rs-claim.is-pending { border-left-color: #fbbf24; }
+.rs-claim-main b { display: block; font-size: 0.86rem; } .rs-claim-main small { display: block; color: #94a3b8; font-size: 0.72rem; line-height: 1.4; }
+.rs-claim-side { display: grid; justify-items: end; gap: 3px; }
+.rs-claim-side .rs-money { font-size: 1rem; }
+.rs-status { font-size: 0.64rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,0.08); color: #e2e8f0; }
+.rs-status-paid { background: rgba(34,197,94,0.25); color: #bbf7d0; } .rs-status-approved, .rs-status-cashout_requested { background: rgba(139,92,246,0.3); color: #ddd6fe; } .rs-status-pending { background: rgba(251,191,36,0.2); color: #fde68a; } .rs-status-rejected { background: rgba(239,68,68,0.25); color: #fecaca; }
+.rs-payout-form, .rs-admin-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.rs-payout-form select, .rs-payout-form input, .rs-claim-form input, .rs-admin-amount { padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.35); color: #fff; font: inherit; font-size: 0.86rem; }
+.rs-payout-form input { flex: 1; min-width: 160px; }
+.rs-payout-form .rs-btn, .rs-admin-actions .rs-btn { padding: 8px 12px; font-size: 0.82rem; }
+.rs-admin-amount { width: 76px; text-align: right; }
+.rs-claim-form { display: grid; gap: 8px; margin-bottom: 10px; }
+.rs-claim-form-head { font-weight: 800; font-size: 0.9rem; } .rs-claim-form-head small { color: #94a3b8; font-weight: 500; font-size: 0.72rem; margin-left: 6px; } .rs-claim-form-head i { color: #fde68a; }
+.rs-claim-form label { display: grid; gap: 3px; font-size: 0.76rem; color: #cbd5e1; }
+.rs-claim-form label span b { color: #fff; }
+.rs-claim-form .rs-btn { width: 100%; }
+.rs-share { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.78rem; color: #cbd5e1; padding: 8px 10px; border-radius: 10px; background: rgba(139,92,246,0.1); border: 1px dashed rgba(139,92,246,0.4); margin-top: 8px; }
+.rs-share code { color: #fff; background: rgba(0,0,0,0.35); padding: 2px 6px; border-radius: 6px; font-size: 0.74rem; word-break: break-all; }
+.rs-share-copy { position: static; }
+.rs-share .rs-btn { padding: 6px 10px; font-size: 0.78rem; }
+.rs-vip .rs-share { color: #dbeafe; background: rgba(255,255,255,0.08); border-color: rgba(255,179,209,0.5); }
+
 /* Confetti canvas (burst on claim open) */
 .rs-confetti { position: absolute; inset: 0; z-index: 0; pointer-events: none; width: 100%; height: 100%; }
 

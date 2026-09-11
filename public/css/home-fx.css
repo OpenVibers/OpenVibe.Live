@@ -1,0 +1,45 @@
+/* ═══════════════════════════════════════════════════════════════
+   HOME FX — decorative effects layer for the home page (public/js/home-fx.js)
+   Additive only; everything degrades to the plain page without JS or under
+   prefers-reduced-motion.
+   ═══════════════════════════════════════════════════════════════ */
+#page-home .hero { position: relative; }
+.hfx-sparks { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; mix-blend-mode: screen; opacity: 0.9; }
+.hfx-spot {
+    position: absolute; inset: 0; pointer-events: none; z-index: 0; opacity: 0; transition: opacity 0.4s;
+    background: radial-gradient(360px circle at var(--x, 50%) var(--y, 30%), color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%);
+}
+#page-home .hero-content { position: relative; z-index: 2; }
+#page-home .hero-cta .btn { transition: transform 0.18s cubic-bezier(.2,1.4,.3,1), background 0.2s, box-shadow 0.2s; will-change: transform; }
+#page-home .hero-cta .btn-primary { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); animation: hfxPulse 2.6s ease-out infinite; }
+@keyframes hfxPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 70% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--accent) 0%, transparent); } 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); } }
+
+/* Headline: slow sheen sweeping across the gradient text */
+.hfx-shimmer { position: relative; }
+.hfx-shimmer::after {
+    content: ''; position: absolute; inset: -6px -20px; pointer-events: none;
+    background: linear-gradient(115deg, transparent 40%, rgba(255,255,255,0.22) 50%, transparent 60%);
+    background-size: 260% 100%; animation: hfxSheen 5s ease-in-out infinite;
+    mix-blend-mode: screen; -webkit-mask: linear-gradient(#000, #000); mask: linear-gradient(#000, #000);
+}
+@keyframes hfxSheen { 0% { background-position: 130% 0; } 60%, 100% { background-position: -130% 0; } }
+.hfx-glow { text-shadow: 0 0 22px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 44px color-mix(in srgb, var(--accent) 25%, transparent); animation: hfxGlow 3s ease-in-out infinite; }
+@keyframes hfxGlow { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.18); } }
+
+/* Scroll reveal */
+.hfx-reveal { opacity: 0; transform: translateY(18px) scale(0.985); transition: opacity 0.6s ease var(--d, 0ms), transform 0.7s cubic-bezier(.2,1.2,.3,1) var(--d, 0ms); }
+.hfx-reveal.is-in { opacity: 1; transform: none; }
+
+/* Stream card tilt */
+#page-home .stream-card { transition: transform 0.15s ease-out, box-shadow 0.25s; }
+#page-home .stream-card.hfx-tilting { box-shadow: 0 24px 50px rgba(0,0,0,0.45), 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent); z-index: 2; }
+
+/* Live section header dot + Star section shimmer accent */
+#page-home .section-header h2 .live-dot { animation: hfxLive 1.4s ease-in-out infinite; }
+@keyframes hfxLive { 0%,100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(231,76,60,0)); } 50% { transform: scale(1.25); filter: drop-shadow(0 0 8px rgba(231,76,60,0.9)); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .hfx-sparks, .hfx-spot { display: none; }
+    .hfx-shimmer::after, .hfx-glow, #page-home .hero-cta .btn-primary, #page-home .section-header h2 .live-dot { animation: none !important; }
+    .hfx-reveal { opacity: 1; transform: none; transition: none; }
+}
