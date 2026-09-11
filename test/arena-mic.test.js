@@ -162,12 +162,36 @@ console.log('✅ roster + ratings are pure mic');
     assert.ok(sent.pop().includes('on the clock'));
     console.log('✅ chat: !hype / !beef only');
 
+    // ── Backfill: past speech on ended streams gets judged into the feed (heuristic judges, no AI) ──
+    const backfill = require('../server/arena/backfill');
+    const old = Number(db.createStream({ user_id: u2, title: 'yesterday', category: 'irl', protocol: 'rtmp' }).lastInsertRowid);
+    db.run(`UPDATE streams SET is_live = 0, started_at = datetime('now', '-1 day'), ended_at = datetime('now', '-23 hours'), duration_seconds = 3600 WHERE id = ?`, [old]);
+    db.addTimelineEvents([
+        { stream_id: old, user_id: u2, vod_id: 777, kind: 'speech', start_sec: 100, end_sec: 106, text: 'Chat, all of you are clowns, absolute bums, nobody in this chat could beat me at anything, sit down losers, bet!', label: null, confidence: 0.9 },
+        { stream_id: old, user_id: u2, vod_id: 777, kind: 'speech', start_sec: 107, end_sec: 112, text: 'Pathetic, every single one of you is washed and delusional, I am better than this entire chat!', label: null, confidence: 0.9 },
+        { stream_id: old, user_id: u2, vod_id: 777, kind: 'speech', start_sec: 400, end_sec: 406, text: 'Okay so we go to the shop, buy the potions, then head to the cave and farm the boss for the sword, let me check the map for the route.', label: null, confidence: 0.9 },
+        { stream_id: old, user_id: u2, vod_id: 777, kind: 'speech', start_sec: 407, end_sec: 412, text: 'Yeah the cave is north of the village past the bridge, should take about ten minutes if we do not get lost again.', label: null, confidence: 0.9 },
+    ]);
+    const feedBefore = mic.feed({ limit: 100 }).length;
+    const bfr = await backfill.run({ force: true });
+    assert.ok(bfr.moments >= 1, `backfill judged old speech into the feed: ${JSON.stringify(bfr)}`);
+    assert.ok(bfr.skipped >= 1, 'gameplay chunk never cost a judge call');
+    const fromOld = mic.feed({ limit: 100 }).filter(m => m.stream_id === old);
+    assert.ok(fromOld.length >= 1 && fromOld[0].vod_id === 777 && fromOld[0].aimed_at === 'chat', `moment carries VOD + target: ${JSON.stringify(fromOld[0])}`);
+    assert.ok(fromOld[0].at && Date.now() - Date.parse(fromOld[0].at.replace(' ', 'T') + 'Z') > 20 * 3600 * 1000, 'moment is dated when it was SAID, not when it was judged');
+    assert.ok(mic.feed({ limit: 100 }).length >= feedBefore + fromOld.length, 'other fighters\' spicy past lines were judged too');
+    const again = await backfill.run({ force: true });
+    assert.strictEqual(again.judged, 0, 'cursor: nothing re-judged on the second run');
+    assert.deepStrictEqual(await backfill.run({ force: true }), await backfill.run({ force: true }));
+    console.log('✅ backfill: past speech judged once, VOD-linked, dated when said');
+
     // ── Public API smoke ──
     const express = require('express');
     const app = express(); app.use(express.json()); app.use('/api/arena', require('../server/arena/routes'));
     const srv = await new Promise(r => { const s = app.listen(0, () => r(s)); });
     const get = async (p) => { const res = await fetch(`http://127.0.0.1:${srv.address().port}/api/arena${p}`); const txt = await res.text(); let body = null; try { body = JSON.parse(txt); } catch { body = null; } return { status: res.status, body }; };
     const fd = await get('/feed?limit=5'); assert.strictEqual(fd.status, 200); assert.ok(fd.body.feed.length >= 3 && fd.body.feed[0].text);
+    assert.strictEqual((await get('/backfill')).status, 404, 'backfill is POST + admin only');
     const fi = await get('/fighters'); assert.deepStrictEqual(fi.body.stats, arena.STAT_KEYS); assert.ok(fi.body.fighters.every(f => f.mic && typeof f.mic.avg_quality === 'number'));
     const bf = await get('/beefs'); assert.strictEqual(bf.body.open.length, 1); assert.strictEqual(bf.body.resolved.length, 1);
     const con = await get('/console/pixelqueen'); assert.strictEqual(con.body.listener.listening, true); assert.ok(con.body.recent_moments.length >= 1 && con.body.mic);

@@ -21,13 +21,13 @@
 (function () {
     'use strict';
 
-    const PROMO_VERSION = 'rs-exclusive-v3';       // bump to re-show the takeover to everyone
+    const PROMO_VERSION = 'rs-desperate-v5';       // bump to re-show the takeover to everyone
     const SEEN_KEY = 'ov_rs_promo_seen';
     const TICKER_KEY = 'ov_rs_ticker_hidden';       // sessionStorage — comes back next visit
     const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const COARSE = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
-    const cfg = { enabled: true, amount: 50, amountMin: 25, referral: 10, github: 'https://github.com/OpenVibers/OpenVibe.Live', owner: 'admin', discord: 'https://discord.gg/M6MuRUaeJj' };
+    const cfg = { enabled: true, amount: 50, amountMin: 25, referral: 10, vip: null, github: 'https://github.com/OpenVibers/OpenVibe.Live', owner: 'admin', discord: 'https://discord.gg/M6MuRUaeJj' };
     const STREAM_ALERT_KEY = 'ov_rs_stream_alert_min'; // sessionStorage — collapsed (never hidden) state
     let modalEl = null, takeoverEl = null, tickerEl = null;
     let rainStop = null;
@@ -61,9 +61,35 @@
     const chipsHtml = () => `
         <span class="rs-chip rs-chip-zelle"><span class="rs-zelle-mark">Z</span> Zelle</span>
         <span class="rs-chip rs-chip-paypal"><i class="fa-brands fa-paypal"></i> PayPal</span>
+        <span class="rs-chip rs-chip-crypto"><i class="fa-brands fa-bitcoin"></i> Crypto</span>
         <span class="rs-chip rs-chip-cash"><i class="fa-solid fa-money-bill-wave"></i> Real cash, no coins</span>
         <span class="rs-chip rs-chip-build"><i class="fa-solid fa-hammer"></i> Features built on request</span>
         <span class="rs-chip rs-chip-oss" title="Every line of this site is public — trust what you can read"><i class="fa-brands fa-github"></i> 100% open source</span>`;
+
+    // "One stream, everywhere": stream from here, mirror anywhere — with the toys that only exist here.
+    const restreamHtml = (compact = false) => `
+        <div class="rs-flow2${compact ? ' is-compact' : ''}" aria-label="Stream from OpenVibe.Live and restream everywhere">
+            <div class="rs-flow2-src"><span class="rs-flow2-node"><i class="fa-solid fa-video"></i> your cam</span><span class="rs-flow2-node"><i class="fa-solid fa-robot"></i> your robot</span></div>
+            <div class="rs-flow2-wire" aria-hidden="true"><span class="rs-packet"></span><span class="rs-packet"></span></div>
+            <div class="rs-flow2-hub"><b><i class="fa-solid fa-circle-nodes"></i> OpenVibe.Live</b><small>WebRTC &lt;1s latency · emotes · sound commands · robot controls · VODs · clips · AI moments</small></div>
+            <div class="rs-flow2-wire rs-flow2-fan" aria-hidden="true"><span class="rs-packet"></span><span class="rs-packet"></span><span class="rs-packet"></span></div>
+            <div class="rs-flow2-out">
+                <span class="rs-flow2-node rs-twitch"><i class="fa-brands fa-twitch"></i> Twitch</span>
+                <span class="rs-flow2-node rs-yt"><i class="fa-brands fa-youtube"></i> YouTube</span>
+                <span class="rs-flow2-node rs-kick"><i class="fa-solid fa-bolt"></i> Kick</span>
+                <span class="rs-flow2-node rs-rs"><i class="fa-solid fa-robot"></i> RobotStreamer</span>
+                <span class="rs-flow2-node"><i class="fa-solid fa-tower-broadcast"></i> any RTMP</span>
+            </div>
+            ${compact ? '' : `<div class="rs-features">
+                <span class="rs-feat" style="--i:0"><i class="fa-solid fa-gauge-high"></i> Sub-second latency</span>
+                <span class="rs-feat" style="--i:1"><i class="fa-solid fa-face-grin-squint-tears"></i> 7TV / BTTV / FFZ + custom emotes</span>
+                <span class="rs-feat" style="--i:2"><i class="fa-solid fa-volume-high"></i> Sound commands &amp; soundboard</span>
+                <span class="rs-feat" style="--i:3"><i class="fa-solid fa-gamepad"></i> Robot &amp; hardware controls</span>
+                <span class="rs-feat" style="--i:4"><i class="fa-solid fa-satellite-dish"></i> Free restream, all at once</span>
+                <span class="rs-feat" style="--i:5"><i class="fa-solid fa-scissors"></i> VODs, clips, AI moments</span>
+                <span class="rs-feat" style="--i:6"><i class="fa-solid fa-comments"></i> One chat from every platform</span>
+            </div>`}
+        </div>`;
 
     const coinHtml = () => `
         <div class="rs-coin-wrap" aria-hidden="true">
@@ -80,8 +106,10 @@
     function mountTicker() {
         if (tickerEl || store.get(TICKER_KEY, true) === '1') return;
         const copy = `
-            <span class="rs-ticker-item"><i class="fa-solid fa-robot"></i> RobotStreamer streamers: quit RS for good, stream ONLY on OpenVibe.Live, get <span class="rs-money">${money()}</span> <span class="rs-ticker-sep">•</span> Zelle or PayPal <span class="rs-ticker-sep">•</span> <span class="rs-ticker-cta">Claim yours</span></span>
-            <span class="rs-ticker-item"><i class="fa-solid fa-heart" style="color:#f472b6"></i> Converters get catered to — tell me what you want built and I build it <span class="rs-ticker-sep">•</span> paid out of pocket by the one guy who runs this place</span>
+            <span class="rs-ticker-item"><i class="fa-solid fa-robot"></i> RobotStreamer streamers: I AM BEGGING. Leave Rick's trash site for good, stream ONLY here, get <span class="rs-money">${money()}</span> <span class="rs-ticker-sep">•</span> Zelle, PayPal or crypto <span class="rs-ticker-sep">•</span> <span class="rs-ticker-cta">Claim yours</span></span>
+            <span class="rs-ticker-item"><i class="fa-solid fa-heart" style="color:#f472b6"></i> I am extremely desperate and I will do ANYTHING to get you here — name the feature, I build it <span class="rs-ticker-sep">•</span> OUT OF POCKET. No investors. Just a wallet and feelings.</span>
+            <span class="rs-ticker-item"><i class="fa-solid fa-face-sad-cry" style="color:#fde68a"></i> I genuinely care about you streaming on my site. That is the whole business plan. Please. <span class="rs-ticker-sep">•</span> <span class="rs-ticker-cta">Take my money</span></span>
+            <span class="rs-ticker-item"><i class="fa-solid fa-satellite-dish" style="color:#7dd3fc"></i> Stream here, restream to Twitch, YouTube, Kick, RobotStreamer &amp; any RTMP at once <span class="rs-ticker-sep">•</span> emotes, sound commands, robot controls, &lt;1s latency</span>
             <span class="rs-ticker-item"><i class="fa-brands fa-github"></i> Open source beats closed source: every line of this site is on GitHub, theirs isn't <span class="rs-ticker-sep">•</span> trust what you can read</span>
             <span class="rs-ticker-item"><i class="fa-solid fa-people-arrows" style="color:#86efac"></i> Already here? Bring a RobotStreamer streamer over and you get <span class="rs-money">${referral()}</span> too <span class="rs-ticker-sep">•</span> <span class="rs-ticker-cta">How it works</span></span>`;
         tickerEl = document.createElement('div');
@@ -115,7 +143,7 @@
        2. TAKEOVER (money rain canvas + count-up)
        ───────────────────────────────────────────────────────────── */
     function buildTakeover() {
-        const titleWords = ['Leave', 'RobotStreamer', 'for', 'good.', 'Get', 'paid.'];
+        const titleWords = ['I', 'am', 'BEGGING', 'you.', 'Leave', "Rick's", 'trash', 'site.'];
         const el = document.createElement('div');
         el.className = 'rs-takeover';
         el.setAttribute('role', 'dialog');
@@ -130,7 +158,8 @@
                 <div class="rs-tk-eyebrow"><i class="fa-solid fa-robot"></i> robotstreamer.com users</div>
                 <h1 class="rs-tk-title">${titleWords.map((w, i) => `<span class="rs-w" style="animation-delay:${0.25 + i * 0.09}s">${esc(w)}</span>`).join(' ')}</h1>
                 <div class="rs-tk-amount" aria-label="${money()}"><span class="rs-money" data-countup="${cfg.amount}">${cfg.amountMin < cfg.amount ? `$${cfg.amountMin}–$0` : '$0'}</span></div>
-                <p class="rs-tk-sub">Never stream on RobotStreamer again. Stream <b>only</b> on <b>OpenVibe.Live</b>. I send you <b>${money()}</b> — Zelle or PayPal, your pick.<br>And I cater to converters: <b>ask for a feature, I build it.</b> Not a corporation — one guy who wants you here.</p>
+                <p class="rs-tk-sub">I am <b>extremely desperate</b>. I will do <b>anything</b> to get you off RobotStreamer and onto <b>OpenVibe.Live</b>. Never stream there again, stream <b>only</b> here, and I personally send you <b>${money()}</b> — Zelle, PayPal or crypto, your pick. This is <b>out of my own pocket</b>. There are no investors. There is a wallet, and there are feelings.<br>Want a feature? <b>Name it. I build it.</b> Want me to grovel? This is the groveling. I genuinely care about you streaming here — that is the entire business plan. Not a corporation — one unhinged guy who wants you here more than Rick ever will.</p>
+                <div class="rs-tk-tour"><div class="rs-tk-tour-head"><i class="fa-solid fa-satellite-dish"></i> Stream here. Be everywhere. Keep the toys.</div>${restreamHtml(false)}</div>
                 <p class="rs-tk-trust"><i class="fa-brands fa-github"></i> <b>Trust what you can read.</b> Every line of this site is ${ghLink('public on GitHub')}. Theirs is closed source — you'll never see what it does. An open alternative is the only kind worth trusting.<br><i class="fa-solid fa-people-arrows"></i> <b>Already one of us?</b> Bring a RobotStreamer streamer over and you get <b>${referral()}</b> too.</p>
                 <div class="rs-chips">${chipsHtml()}</div>
                 <div class="rs-flow" aria-hidden="true">
@@ -139,8 +168,8 @@
                     <span class="rs-flow-node rs-to"><i class="fa-solid fa-circle-nodes"></i> OpenVibe.Live</span>
                 </div>
                 <div class="rs-tk-actions">
-                    <button class="rs-btn rs-btn-gold" type="button" data-act="claim"><i class="fa-solid fa-sack-dollar"></i> Go exclusive — claim ${money()}</button>
-                    <button class="rs-btn rs-btn-ghost" type="button" data-act="later"><i class="fa-solid fa-compass"></i> Show me around first</button>
+                    <button class="rs-btn rs-btn-gold" type="button" data-act="claim"><i class="fa-solid fa-sack-dollar"></i> Fine, I'll take the ${money()}</button>
+                    <button class="rs-btn rs-btn-ghost" type="button" data-act="later"><i class="fa-solid fa-compass"></i> Let me look around first</button>
                 </div>
                 <p class="rs-tk-foot"><i class="fa-solid fa-star"></i> You'll only see this splash once — the bar at the top brings you back here anytime.</p>
             </div>`;
@@ -265,9 +294,10 @@
                     ${coinHtml()}
                     <div class="rs-card-body">
                         <div class="rs-card-kicker"><i class="fa-solid fa-robot"></i> RobotStreamer switch bonus</div>
-                        <h3 class="rs-card-title">Coming from RobotStreamer? Go exclusive here and get <span class="rs-money">${money()}</span></h3>
-                        <p class="rs-card-sub">Never stream on RobotStreamer again, stream only on OpenVibe.Live. Zelle or PayPal, paid personally by the guy who runs this place — and every converter gets catered to: ask for a feature, I build it. Every line of this site is ${ghLink('open source on GitHub')}; theirs is closed. Already here? Bring a RobotStreamer streamer over and you get <b>${referral()}</b>.</p>
+                        <h3 class="rs-card-title">RobotStreamer people: I am begging. Leave Rick's site, stream only here, get <span class="rs-money">${money()}</span></h3>
+                        <p class="rs-card-sub">Never stream on RobotStreamer again, stream only on OpenVibe.Live. Zelle, PayPal or crypto, out of my own pocket, because I genuinely care about you streaming here (that is the whole business plan). Every converter gets catered to: ask for a feature, I build it. Every line of this site is ${ghLink('open source on GitHub')}; theirs is closed. Already here? Bring a RobotStreamer streamer over and you get <b>${referral()}</b>.</p>
                         <div class="rs-card-chips">${chipsHtml()}</div>
+                        ${restreamHtml(true)}
                     </div>
                     <div class="rs-card-action">
                         <button class="rs-btn rs-btn-gold" type="button" onclick="rsPromoOpenClaim()"><i class="fa-solid fa-sack-dollar"></i> Claim ${money()}</button>
@@ -277,6 +307,37 @@
             </div>`;
         if (!REDUCED && !COARSE) attachTilt(mount.querySelector('.rs-card-border'), mount.querySelector('#rs-hero-card'));
     }
+    // ── VIP recruiter card (home page, under the bounty card): the starfish bounty board ──
+    function mountVipCard() {
+        const mount = document.getElementById('rs-hero-mount');
+        if (!mount || !cfg.vip || mount.querySelector('.rs-vip')) return;
+        const v = cfg.vip;
+        const me = window.currentUser && String(window.currentUser.username || '').toLowerCase() === String(v.username).toLowerCase();
+        const name = esc(v.username);
+        const el = document.createElement('div');
+        el.className = 'rs-vip';
+        el.innerHTML = `
+            <div class="rs-vip-bubbles" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            <div class="rs-vip-star" aria-hidden="true">
+                <svg viewBox="0 0 120 120" width="120" height="120">
+                    <defs><radialGradient id="rsVipG" cx="40%" cy="35%" r="70%"><stop offset="0%" stop-color="#ffb3d1"/><stop offset="100%" stop-color="#ff5fa2"/></radialGradient></defs>
+                    <path class="rs-vip-body" d="M60 6 L74 42 L112 44 L82 68 L93 106 L60 84 L27 106 L38 68 L8 44 L46 42 Z" fill="url(#rsVipG)" stroke="#c2185b" stroke-width="3" stroke-linejoin="round"/>
+                    <circle cx="48" cy="52" r="7" fill="#fff"/><circle cx="72" cy="52" r="7" fill="#fff"/>
+                    <circle class="rs-vip-pupil" cx="50" cy="53" r="3" fill="#222"/><circle class="rs-vip-pupil" cx="74" cy="53" r="3" fill="#222"/>
+                    <path d="M46 68 Q60 82 74 68" stroke="#7a1140" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+                    <circle cx="36" cy="64" r="3" fill="#ff8ac0" opacity="0.8"/><circle cx="84" cy="64" r="3" fill="#ff8ac0" opacity="0.8"/>
+                </svg>
+                <span class="rs-vip-sparkle">✦</span><span class="rs-vip-sparkle">✦</span><span class="rs-vip-sparkle">✦</span>
+            </div>
+            <div class="rs-vip-body-text">
+                <div class="rs-vip-kicker"><i class="fa-solid fa-star"></i> ${name}'s bounty board</div>
+                <h3 class="rs-vip-title">${me ? `That's you, ${name}. Go get 'em.` : `${name} gets <span class="rs-money">$${Number(v.referral)}</span> per RobotStreamer streamer he brings over`}</h3>
+                <p class="rs-vip-sub">${me ? `<span class="rs-money">$${Number(v.referral)}</span> every time a RobotStreamer streamer you brought in claims the switch bonus and names you. Everyone else gets $${cfg.referral}. You're the recruiter. The rock is yours.` : `He's going to be godlike at this, so his rate is double everyone else's ($${cfg.referral} for the rest of us). Converts name him in the claim message, he gets paid. Simple.`}</p>
+                <div class="rs-vip-chips"><span class="rs-chip rs-chip-cash"><i class="fa-solid fa-money-bill-wave"></i> $${Number(v.referral)} per conversion</span><span class="rs-chip rs-chip-build"><i class="fa-solid fa-people-arrows"></i> everyone else: $${cfg.referral}</span>${me ? '<span class="rs-chip rs-chip-oss"><i class="fa-solid fa-crown"></i> VIP recruiter</span>' : ''}</div>
+            </div>`;
+        mount.appendChild(el);
+    }
+
     function attachTilt(zone, card) {
         if (!zone || !card) return;
         let raf = 0;
@@ -330,9 +391,10 @@
                 <div class="rs-sa-body">
                     <div class="rs-sa-siren" aria-hidden="true"><i class="fa-solid fa-robot"></i></div>
                     <div class="rs-sa-text">
-                        <div class="rs-sa-head">🚨 RobotStreamer streamers: get <span class="rs-money">${money()}</span> to switch — for good</div>
-                        <div class="rs-sa-sub">Never stream on RobotStreamer again, stream <b>only</b> on OpenVibe.Live, and I pay you <b>${money()}</b> by Zelle or PayPal. Converters get catered to: <b>ask for a feature and I build it.</b> Every line of this site is ${ghLink('open source')} — theirs is closed. Bring a RobotStreamer streamer over and <b>you</b> get ${referral()} too.</div>
+                        <div class="rs-sa-head">🚨 RobotStreamer streamers: I am DESPERATE. <span class="rs-money">${money()}</span> to leave Rick's trash site for good</div>
+                        <div class="rs-sa-sub">Never stream on RobotStreamer again, stream <b>only</b> on OpenVibe.Live, and I pay you <b>${money()}</b> by Zelle, PayPal or crypto — out of my own pocket, because I actually care about you streaming here. Converters get catered to: <b>ask for a feature and I build it.</b> Every line of this site is ${ghLink('open source')} — theirs is closed. Bring a RobotStreamer streamer over and <b>you</b> get ${referral()} too.</div>
                         <div class="rs-sa-chips">${chipsHtml()}</div>
+                        ${restreamHtml(true)}
                     </div>
                     <div class="rs-sa-actions">
                         <button class="rs-btn rs-btn-gold" type="button" onclick="rsPromoOpenClaim()"><i class="fa-solid fa-sack-dollar"></i> Claim ${money()}</button>
@@ -340,7 +402,7 @@
                     </div>
                 </div>
                 <div class="rs-sa-mini" onclick="rsPromoToggleStreamAlert()">
-                    <i class="fa-solid fa-robot"></i> <span>RobotStreamer streamers: <span class="rs-money">${money()}</span> to switch for good — Zelle / PayPal + features built for you</span>
+                    <i class="fa-solid fa-robot"></i> <span>RobotStreamer streamers: I'm begging — <span class="rs-money">${money()}</span> (Zelle / PayPal / crypto) to leave Rick's site for good · restream everywhere from here</span>
                     <span class="rs-ticker-cta" onclick="event.stopPropagation(); rsPromoOpenClaim()">Claim</span>
                 </div>
                 <button class="rs-sa-toggle" type="button" onclick="rsPromoToggleStreamAlert()" title="Collapse / expand" aria-label="Collapse or expand the offer"><i class="fa-solid fa-chevron-up"></i></button>
@@ -357,9 +419,11 @@
     /* ─────────────────────────────────────────────────────────────
        4. CLAIM MODAL
        ───────────────────────────────────────────────────────────── */
+    const METHOD_NAME = { zelle: 'Zelle', paypal: 'PayPal', crypto: 'Crypto' };
     function claimMessage(method) {
-        const via = method === 'paypal' ? 'PayPal' : 'Zelle';
-        return `Hey! I'm coming over from RobotStreamer (RS username: ______). I'm done streaming on RS for good — OpenVibe.Live only from now on. I'd like to claim the ${money()} switch bonus via ${via}. My ${via} is: ______ · Referred by (OpenVibe user, if any): ______ 🤖💸`;
+        const via = METHOD_NAME[method] || 'Zelle';
+        const detail = method === 'crypto' ? 'My wallet (coin + network + address): ______' : `My ${via} is: ______`;
+        return `Hey! I'm coming over from RobotStreamer (RS username: ______). I'm done streaming on RS for good — OpenVibe.Live only from now on. I'd like to claim the ${money()} switch bonus via ${via}. ${detail} · Referred by (OpenVibe user, if any): ______ 🤖💸`;
     }
     function openClaim() {
         if (modalEl) return;
@@ -378,24 +442,25 @@
                     ${coinHtml()}
                     <div>
                         <h3>Claim your <span class="rs-money">${money()}</span></h3>
-                        <p>The deal: you never stream on RobotStreamer again and stream only here. I pay you personally — and I build what you ask for.</p>
+                        <p>I am desperate and not hiding it. The deal: you never stream on Rick's site again and stream only here. I pay you personally — Zelle, PayPal or crypto, out of my own pocket — I build whatever you ask for, and you keep restreaming everywhere you like, from here. I genuinely care about you streaming on my site. That is the plan. That is the whole plan.</p>
                     </div>
                 </div>
-                <div class="rs-toggle" data-method="zelle" role="group" aria-label="How do you want to get paid?">
+                <div class="rs-toggle rs-toggle-3" data-method="zelle" role="group" aria-label="How do you want to get paid?">
                     <div class="rs-toggle-thumb" aria-hidden="true"></div>
                     <button type="button" data-method="zelle" aria-pressed="true"><span class="rs-zelle-mark">Z</span> Zelle</button>
                     <button type="button" data-method="paypal" aria-pressed="false"><i class="fa-brands fa-paypal"></i> PayPal</button>
+                    <button type="button" data-method="crypto" aria-pressed="false"><i class="fa-brands fa-bitcoin"></i> Crypto</button>
                 </div>
                 <ol class="rs-steps">
                     <li class="rs-step ${loggedIn ? 'done' : ''}"><span class="rs-step-num"></span><div><strong>Sign in — it's free</strong><span>One OpenVibe account works across the whole network. ${loggedIn ? 'You\'re already in. ✔' : 'Takes about ten seconds.'}</span></div></li>
-                    <li class="rs-step"><span class="rs-step-num"></span><div><strong>Go exclusive — retire your RobotStreamer stream</strong><span>Set up here instead: browser (WebRTC), OBS/RTMP, or your robot's existing pipeline — <a href="/broadcast" onclick="return handleLinkClick(event, '/broadcast')">Go Live</a> walks you through it. From now on you stream on OpenVibe.Live only.</span></div></li>
+                    <li class="rs-step"><span class="rs-step-num"></span><div><strong>Go exclusive — your home is here now</strong><span>Set up on <a href="/broadcast" onclick="return handleLinkClick(event, '/broadcast')">Go Live</a>: browser (WebRTC), OBS/RTMP, or your robot's existing pipeline. Then flip on <b>restream</b> and mirror your OpenVibe stream to Twitch, YouTube, Kick, any RTMP — even RobotStreamer — while your chat, emotes, sound commands and robot controls all live here.</span>${restreamHtml(true)}</div></li>
                     <li class="rs-step"><span class="rs-step-num"></span><div><strong>Message me</strong><span>Send your RobotStreamer username plus your <b class="rs-method-word">Zelle</b> info — in-site DM to <b>@${owner}</b> or on Discord. Copy the message below to make it painless.</span></div></li>
                     <li class="rs-step"><span class="rs-step-num"></span><div><strong>Get paid — and get catered to</strong><span>I send the <b>${money()}</b> by hand. Then tell me what your stream needs: converters get features built on request.</span></div></li>
                 </ol>
                 <div class="rs-msg"><span class="rs-msg-text">${esc(claimMessage('zelle'))}</span><button class="rs-msg-copy" type="button" title="Copy message" aria-label="Copy message"><i class="fa-regular fa-copy"></i></button></div>
                 <div class="rs-trust">
                     <div class="rs-trust-row"><i class="fa-brands fa-github"></i><div><b>Why trust this over RobotStreamer?</b> Because you can read it. Every line of OpenVibe.Live is ${ghLink('public on GitHub')} — what it does with your stream, your chat and your data is in the open. RobotStreamer is closed source; you are trusting a black box. An open alternative is the only kind that earns trust.</div></div>
-                    <div class="rs-trust-row"><i class="fa-solid fa-people-arrows"></i><div><b>Already on OpenVibe?</b> Bring a RobotStreamer streamer over — when they claim, name you in the message and <b>you get ${referral()}</b> as well. Yes, I'm paying our own users to phase that site out.</div></div>
+                    <div class="rs-trust-row"><i class="fa-solid fa-people-arrows"></i><div><b>Already on OpenVibe?</b> Bring a RobotStreamer streamer over — when they claim, name you in the message and <b>you get ${referral()}</b> as well${cfg.vip ? ` (${esc(cfg.vip.display_name || cfg.vip.username)} gets $${Number(cfg.vip.referral)} — he's the VIP recruiter)` : ''}. Yes, I'm paying our own users to phase that site out.</div></div>
                 </div>
                 <div class="rs-modal-actions">
                     ${loggedIn
@@ -406,7 +471,7 @@
                         <a class="rs-btn rs-btn-ghost" href="/broadcast" onclick="return handleLinkClick(event, '/broadcast')" data-act="golive"><i class="fa-solid fa-tower-broadcast"></i> Set up my stream</a>
                     </div>
                 </div>
-                <p class="rs-modal-fine">One bonus per RobotStreamer account · Zelle or PayPal only · the deal is exclusivity: no more streaming on RobotStreamer, ever. Built and paid for by one person trying to make this work — thanks for giving it a shot <i class="fa-solid fa-heart"></i></p>
+                <p class="rs-modal-fine">One bonus per RobotStreamer account · Zelle, PayPal or crypto · the deal is exclusivity: no more streaming on RobotStreamer, ever. Built and paid for out of pocket by one person who cares way too much — thanks for giving it a shot <i class="fa-solid fa-heart"></i></p>
             </div>`;
         modalEl.addEventListener('click', onModalClick);
         document.addEventListener('keydown', onModalKey);
@@ -434,7 +499,7 @@
         const tg = modalEl?.querySelector('.rs-toggle'); if (!tg) return;
         tg.dataset.method = method;
         tg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.method === method)));
-        modalEl.querySelector('.rs-method-word').textContent = method === 'paypal' ? 'PayPal' : 'Zelle';
+        modalEl.querySelector('.rs-method-word').textContent = METHOD_NAME[method] || 'Zelle';
         modalEl.querySelector('.rs-msg-text').textContent = claimMessage(method);
         const copyBtn = modalEl.querySelector('.rs-msg-copy'); copyBtn.classList.remove('copied'); copyBtn.innerHTML = '<i class="fa-regular fa-copy"></i>';
     }
@@ -508,6 +573,7 @@
             if (Number.isFinite(j.amount) && j.amount > 0) cfg.amount = j.amount;
             if (Number.isFinite(j.amount_min) && j.amount_min > 0) cfg.amountMin = j.amount_min;
             if (Number.isFinite(j.referral) && j.referral > 0) cfg.referral = j.referral;
+            if (j.vip && j.vip.username) cfg.vip = j.vip;
             if (j.github !== undefined) cfg.github = j.github || '';
             if (j.owner) cfg.owner = String(j.owner);
             if (j.discord !== undefined) cfg.discord = j.discord || '';
@@ -519,6 +585,7 @@
         if (!cfg.enabled) return;
         mountTicker();
         mountHeroCard();
+        mountVipCard();
         mountStreamAlert();
         watchChannelPage();
         // Let the page settle (fonts, hero paint) before the splash slams in.

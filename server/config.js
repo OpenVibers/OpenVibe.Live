@@ -228,6 +228,9 @@ function buildConfig(registryValues) {
             amountMin: parseInt(process.env.RS_PROMO_AMOUNT_MIN, 10) || 25,   // bottom of the range
             // Referral: an existing OpenVibe user who brings a RobotStreamer streamer over gets paid too.
             referral: parseInt(process.env.RS_PROMO_REFERRAL, 10) || 10,
+            // VIP recruiter: one user with a higher per-conversion rate, spotlighted on the home page.
+            vipUser: process.env.RS_PROMO_VIP_USER || 'patrick',
+            vipReferral: parseInt(process.env.RS_PROMO_REFERRAL_VIP, 10) || 20,
             github: process.env.RS_PROMO_GITHUB || 'https://github.com/OpenVibers/OpenVibe.Live',
             // Who the claimant DMs in-site; defaults to the admin account.
             owner: process.env.RS_PROMO_OWNER || process.env.ADMIN_USERNAME || 'admin',

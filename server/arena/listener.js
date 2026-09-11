@@ -310,4 +310,4 @@ function start() {
 }
 function stop() { if (_timer) { clearInterval(_timer); _timer = null; } }
 
-module.exports = { start, stop, tick, consoleState, TICK_MS, JUDGE_MIN_WORDS, JUDGE_MIN_INTERVAL_MS, MIC_MIN_QUALITY, CALLOUT_MIN_QUALITY, FOCUS_TAIL_MS, FOCUS_EXTEND_MS, FOCUS_MAX_MS, _mentionsIn: mentionsIn, _mentionsDetailed: mentionsDetailed, _aliases: aliases, _heuristicBeef: heuristicBeef, _heuristicMic: heuristicMic, _state: state };
+module.exports = { start, stop, tick, consoleState, TICK_MS, JUDGE_MIN_WORDS, JUDGE_MIN_INTERVAL_MS, MIC_MIN_QUALITY, CALLOUT_MIN_QUALITY, FOCUS_TAIL_MS, FOCUS_EXTEND_MS, FOCUS_MAX_MS, SPICY, _mentionsIn: mentionsIn, _mentionsDetailed: mentionsDetailed, _aliases: aliases, _heuristicBeef: heuristicBeef, _heuristicMic: heuristicMic, _judgeBeef: judgeBeef, _judgeMic: judgeMic, _state: state };

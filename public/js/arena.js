@@ -83,15 +83,13 @@ function _aBindSpeak(root) {
 function _aPortrait(f, size = 'md') {
     const u = f.user || f;
     const color = u.profile_color || '#8b5cf6';
-    if (f.image_url) return `<div class="arena-portrait arena-portrait-${size}" style="--fc:${_aEsc(color)}"><img src="${_aEsc(f.image_url)}" alt="" loading="lazy"></div>`;
     if (u.avatar_url) return `<div class="arena-portrait arena-portrait-${size} arena-portrait-avatar" style="--fc:${_aEsc(color)}"><img src="${_aEsc(u.avatar_url)}" alt="" loading="lazy"><span class="arena-portrait-glow"></span></div>`;
     return `<div class="arena-portrait arena-portrait-${size} arena-portrait-initial" style="--fc:${_aEsc(color)}"><span>${_aEsc(_aInitial(u))}</span></div>`;
 }
 
 /** A fighter's radar: the seven mic stats, or their AI characteristics when the persona has them. */
 function _aCustomRadar(f, color, size = 240, { objective = false } = {}) {
-    const cs = (!objective && f.persona && Array.isArray(f.persona.custom_stats) ? f.persona.custom_stats : []).filter(x => x && x.name && Number.isFinite(Number(x.value))).slice(0, 8);
-    const axes = cs.length >= 3 ? cs.map(x => ({ name: String(x.name).slice(0, 16), value: Math.max(0, Math.min(99, Number(x.value))), quip: x.quip || '' })) : ARENA_STATS.map(k => ({ name: ARENA_STAT_LABEL[k], value: Math.max(0, Math.min(99, Number(f.ratings?.[k]) || 0)), quip: (f.persona?.stat_quips || {})[k] || '' }));
+    const axes = ARENA_STATS.map(k => ({ name: ARENA_STAT_LABEL[k], value: Math.max(0, Math.min(99, Number(f.ratings?.[k]) || 0)), quip: _arenaRoster?.stat_meta?.[k]?.desc || '' }));
     const N = axes.length, c = size / 2, R = size / 2 - 62;
     const ang = (i) => -Math.PI / 2 + (i * 2 * Math.PI) / N;
     const pt = (i, v) => [c + (R * v / 99) * Math.cos(ang(i)), c + (R * v / 99) * Math.sin(ang(i))];
@@ -106,11 +104,6 @@ function _aCustomRadar(f, color, size = 240, { objective = false } = {}) {
         ${axes.map((a, i) => { const [x, y] = pt(i, a.value); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" class="arena-radar-dot" style="fill:${_aEsc(color)}"><title>${_aEsc(a.name)} ${a.value}${a.quip ? ` — ${_aEsc(a.quip)}` : ''}</title></circle>`; }).join('')}
         ${axes.map((a, i) => { const cos = Math.cos(ang(i)), sin = Math.sin(ang(i)); const lx = c + (R + 22) * cos, ly = c + (R + 22) * sin; const anchor = Math.abs(cos) < 0.25 ? 'middle' : (cos > 0 ? 'start' : 'end'); const name = a.name.length > 13 ? a.name.slice(0, 12) + '…' : a.name; return `<g class="arena-radar-label"><text x="${lx.toFixed(1)}" y="${(ly + (sin < -0.3 ? -6 : sin > 0.3 ? 2 : -4)).toFixed(1)}" text-anchor="${anchor}">${_aEsc(name)}</text><text x="${lx.toFixed(1)}" y="${(ly + (sin < -0.3 ? 7 : sin > 0.3 ? 15 : 9)).toFixed(1)}" text-anchor="${anchor}" class="arena-radar-val" style="fill:${_aEsc(color)}">${a.value}</text><title>${_aEsc(a.name)} ${a.value}${a.quip ? ` — ${_aEsc(a.quip)}` : ''}</title></g>`; }).join('')}
     </svg>`;
-}
-function _aCustomQuips(f) {
-    const cs = (f.persona && Array.isArray(f.persona.custom_stats) ? f.persona.custom_stats : []);
-    if (!cs.length) return '';
-    return `<div class="arena-quips arena-quips-custom">${cs.map(x => `<div class="arena-quip"><b><span class="arena-quip-val">${Number(x.value)}</span> ${_aEsc(x.name)}</b><span>${_aEsc(x.quip || '')}</span></div>`).join('')}</div>`;
 }
 
 /** Sparkline of a per-stream series. */
@@ -182,7 +175,7 @@ async function _aRenderHome(root) {
         <div class="arena-hero arena-hero-cam">
             <div>
                 <h1><i class="fa-solid fa-microphone-lines"></i> Battle Cam</h1>
-                <p class="arena-lede">Pure mic. Nobody clicks, nobody votes, nothing typed in chat counts. The ears listen to every live cam: call another fighter out on mic and the beef opens itself — they're on the clock, silence is a forfeit. Talk shit at chat, at the mods, at the world, and it lands in the feed and levels you up. Every rating on the ladder comes from what was said into a microphone.</p>
+                <p class="arena-lede">Pure mic. No personas, no AI characters, no chat points, no votes. This page is the shit talk that was actually said on stream — judged, scored, and replayable at the second it happened. Call another streamer out on mic and the beef opens itself; they're on the clock, silence is a forfeit. Talk shit at chat, at the mods, at the world, and it lands in the feed and levels you up.</p>
             </div>
             <div class="arena-hero-actions">
                 <span class="arena-note">${roster.ai ? '<i class="fa-solid fa-ear-listen"></i> AI judge on' : '<i class="fa-solid fa-ear-deaf"></i> AI off — keyword judging'}</span>
@@ -215,7 +208,7 @@ async function _aRenderHome(root) {
     if (_aMe()) _aRenderMe().catch(() => { const el = document.getElementById('arena-me'); if (el) el.innerHTML = ''; });
     document.getElementById('arena-search')?.addEventListener('input', (e) => {
         const q = e.target.value.trim().toLowerCase();
-        _aRenderList(!q ? roster.fighters : roster.fighters.filter(f => [f.persona.fighter_name, f.user.display_name, f.user.username, f.persona.class, f.persona.element].filter(Boolean).some(s => s.toLowerCase().includes(q))));
+        _aRenderList(!q ? roster.fighters : roster.fighters.filter(f => [f.user.display_name, f.user.username].filter(Boolean).some(s => s.toLowerCase().includes(q))));
     });
     _aEvery(12000, async () => {
         try {
@@ -257,7 +250,7 @@ function _aRenderCams(live) {
             ${_aA(_aChannelLink(f.user, f.stream.slug || f.stream.managed_stream_id), `${f.thumbnail_url ? `<img class="arena-live-thumb" src="${_aEsc(f.thumbnail_url)}" alt="">` : _aPortrait(f, 'md')}<span class="arena-cam-rec"><span class="arena-live-dot arena-live-dot-sm"></span> LIVE · <i class="fa-solid fa-eye"></i> ${_aNum(f.stream.viewer_count)}</span>`, 'arena-cam-thumb')}
             <div class="arena-cam-body">
                 <div class="arena-mic-head">
-                    ${_aA(_aFighterLink(f.user), `<strong>${_aEsc(f.persona.fighter_name)}</strong>`)}
+                    ${_aA(_aFighterLink(f.user), `<strong>${_aEsc(f.user.display_name || f.user.username)}</strong>`)}
                     <span class="arena-mic-meta">#${f.rank} · PWR ${f.ratings.power} · ${_aLevelPill(f.level)} · ${f.record.wins}W–${f.record.losses}L</span>
                 </div>
                 ${lock ? `<div class="arena-cam-lock"><i class="fa-solid fa-crosshairs fa-beat"></i> locked on <b>${_aEsc(lock.target || 'a fighter')}</b> · ${lock.hits} hit${lock.hits === 1 ? '' : 's'}</div>` : ''}
@@ -285,7 +278,7 @@ function _aMomentRow(m) {
     </div>`;
 }
 function _aRenderFeed(feed, { fresh = 0 } = {}) {
-    return `<h2><i class="fa-solid fa-satellite-dish"></i> The feed <small>every judged line, newest first · ${feed.length ? `${feed.length} on record` : 'nothing yet'}${fresh ? ` · <b class="arena-fresh">+${fresh} new</b>` : ''}</small></h2>
+    return `<h2><i class="fa-solid fa-satellite-dish"></i> Shit talk on record <small>what was actually said on stream, newest first · ${feed.length ? `${feed.length} lines` : 'nothing yet'}${fresh ? ` · <b class="arena-fresh">+${fresh} new</b>` : ''}</small></h2>
         ${feed.length ? `<div class="arena-mic-feed-list">${feed.map(_aMomentRow).join('')}</div>` : `<div class="arena-beef-empty"><i class="fa-solid fa-microphone-lines"></i><p>Quiet. The moment a fighter on a live cam talks shit — at anyone — it lands here with a score.</p></div>`}`;
 }
 
@@ -376,26 +369,23 @@ function _aRenderList(fighters) {
             <span class="arena-rank ${f.rank <= 3 ? `arena-rank-${f.rank}` : ''}">${f.rank}</span>
             ${_aPortrait(f, 'sm')}
             <span class="arena-row-main">
-                <strong>${_aEsc(f.persona.fighter_name)} ${f.live ? '<span class="arena-live-pill">LIVE</span>' : ''} ${_aLevelPill(f.level?.level)}<i class="fa-solid fa-chevron-right arena-chevron"></i></strong>
-                <span class="arena-row-sub">${_aEsc(f.user.display_name)} · ${_aEsc(f.persona.class)} · ${_aEsc(f.persona.element)}${f.mic ? ` · <i class="fa-solid fa-microphone" title="judged lines, 30 days"></i> ${f.mic.moments} lines · avg ${f.mic.avg_quality}` : ''}</span>
-                ${f.last_line ? `<em class="arena-row-taunt">“${_aEsc(f.last_line.text)}”</em>` : `<em class="arena-row-taunt">“${_aEsc(f.persona.taunt)}”</em>`}
+                <strong>${_aEsc(f.user.display_name || f.user.username)} ${f.live ? '<span class="arena-live-pill">LIVE</span>' : ''} ${_aLevelPill(f.level?.level)}<i class="fa-solid fa-chevron-right arena-chevron"></i></strong>
+                <span class="arena-row-sub">${f.mic ? `<i class="fa-solid fa-microphone" title="judged lines, 30 days"></i> ${f.mic.moments} lines · avg ${f.mic.avg_quality}/10 · ${f.mic.bangers} bangers · ${f.mic.beef_hits} callouts` : ''}${f.voice?.has_data ? ` · ${_aNum(f.voice.speech_minutes)} min on mic` : ''}</span>
+                ${f.last_line ? `<em class="arena-row-taunt">“${_aEsc(f.last_line.text)}”${f.last_line.aimed_at ? ` <small>— at ${_aEsc(f.last_line.aimed_at)}</small>` : ''}</em>` : '<em class="arena-row-taunt arena-note">nothing judged yet</em>'}
             </span>
             <span class="arena-row-stats">
                 <span class="arena-power"><b>${f.ratings.power}</b><small>PWR</small></span>
                 <span class="arena-record" title="beef record">${f.record.wins}W–${f.record.losses}L</span>
             </span>
             <div class="arena-row-expand">
-                <div>${_aCustomRadar(f, f.user.profile_color || '#8b5cf6', 220, { objective: true })}<div class="arena-mini-record">the seven mic stats · ${f.category ? _aEsc(f.category) + ' · ' : ''}last live ${_aEsc(f.last_live_at ? _aDate(f.last_live_at) : '—')}</div></div>
+                <div>${_aCustomRadar(f, f.user.profile_color || '#8b5cf6', 220, { objective: true })}<div class="arena-mini-record">the seven mic stats · last live ${_aEsc(f.last_live_at ? _aDate(f.last_live_at) : '—')}</div></div>
                 <div>
-                    <p class="arena-row-lore is-clamp">${_aEsc(f.persona.lore)}</p>
-                    ${(f.persona.taunts || []).length ? `<div class="arena-bubbles arena-row-bubbles">${f.persona.taunts.slice(0, 2).map(t => `<div class="arena-bubble"><span class="arena-bubble-who">${_aEsc(f.user.display_name || f.user.username)}</span><span class="arena-bubble-text">${_aEsc(t)}</span>${_aSpeakBtn(t, 'arena-bubble-speak', f.user.username)}</div>`).join('')}${f.persona.typing_style ? `<small class="arena-note"><i class="fa-solid fa-microphone"></i> ${_aEsc(f.persona.typing_style)}</small>` : ''}</div>` : ''}
-                    <div class="arena-quips">${ARENA_STATS.map(k => `<div class="arena-quip"><b>${_aEsc(ARENA_STAT_LABEL[k])} ${f.ratings[k]}</b><span>${_aEsc((f.persona.stat_quips || {})[k] || '')}</span></div>`).join('')}</div>
-                    ${(f.persona.custom_stats || []).length ? _aCustomQuips(f) : ''}
+                    <div class="arena-quips">${ARENA_STATS.map(k => `<div class="arena-quip"><b>${_aEsc(ARENA_STAT_LABEL[k])} ${f.ratings[k]}</b><span>${_aEsc(_arenaRoster?.stat_meta?.[k]?.desc || '')}</span></div>`).join('')}</div>
                 </div>
                 <div class="arena-row-expand-actions">
-                    ${_aA(_aFighterLink(f.user), '<i class="fa-solid fa-id-card"></i> Full profile', 'btn btn-primary')}
+                    ${_aA(_aFighterLink(f.user), '<i class="fa-solid fa-satellite-dish"></i> Their lines', 'btn btn-primary')}
                     ${f.live ? _aA(_aConsoleLink(f.user), '<i class="fa-solid fa-ear-listen"></i> Listen in', 'btn btn-ghost') : ''}
-                    ${_aSpeakBtn(f.persona.taunt, 'btn btn-ghost', f.user.username)}
+                    ${f.last_line ? _aSpeakBtn(f.last_line.text, 'btn btn-ghost', f.user.username) : ''}
                 </div>
             </div>
         </div>`).join('');
@@ -534,33 +524,18 @@ async function _aRenderConsole(root, username) {
 
 function _aVoiceCard(f) {
     const v = f.voice || {};
-    const q = f.quotes;
     const color = f.user.profile_color || '#8b5cf6';
     if (!v.has_data) {
         return `<div class="arena-voice" style="--fc:${_aEsc(color)}"><div class="arena-voice-head"><h3><i class="fa-solid fa-microphone-slash"></i> On the mic</h3></div><p class="arena-voice-empty">No transcript data yet — the audio transcription picks this up on their next streams. Until then the Arena can't hear them.</p></div>`;
     }
-    const quotes = (q && q.picks && q.picks.length) ? q.picks : [];
     return `<div class="arena-voice" style="--fc:${_aEsc(color)}">
-        <div class="arena-voice-head">
-            <h3><i class="fa-solid fa-microphone"></i> On the mic <span class="arena-power" style="margin-left:6px"><b style="font-size:1.1rem">${f.ratings.mouth}</b><small>MOUTH</small></span></h3>
-            ${q?.mic_style ? `<span class="arena-voice-style">${_aEsc(q.mic_style)}</span>` : ''}
-        </div>
-        ${q?.voice_verdict ? `<p class="arena-voice-verdict">${_aEsc(q.voice_verdict)}</p>` : ''}
+        <div class="arena-voice-head"><h3><i class="fa-solid fa-microphone"></i> On the mic <span class="arena-power" style="margin-left:6px"><b style="font-size:1.1rem">${f.ratings.mouth}</b><small>MOUTH</small></span></h3></div>
         <div class="arena-voice-meters">
             <div class="arena-voice-meter"><b>${_aEsc(v.talk_ratio_pct)}%</b><span>of stream time talking</span></div>
             <div class="arena-voice-meter"><b>${_aEsc(_aNum(v.speech_minutes))} min</b><span>of speech heard (90d)</span></div>
             <div class="arena-voice-meter"><b>${_aEsc(v.wpm)}</b><span>words per minute</span></div>
-            <div class="arena-voice-meter"><b>${_aEsc(v.hype_per_hour)}</b><span>hype words / hour</span></div>
-            <div class="arena-voice-meter"><b>${_aEsc(v.laughs_per_hour)}</b><span>laughs / hour</span></div>
             <div class="arena-voice-meter"><b>${_aEsc(v.streams_heard)}</b><span>streams transcribed</span></div>
         </div>
-        ${v.top_sounds && v.top_sounds.length ? `<div class="arena-sounds"><span title="what the stream sounds like, from the audio-event detector"><i class="fa-solid fa-wave-square"></i> soundscape</span>${v.top_sounds.map(s => `<span>${_aEsc(s.label)} ×${s.n}</span>`).join('')}</div>` : ''}
-        ${quotes.length ? `<div class="arena-quotes">${quotes.map(p => `
-            <div class="arena-quote">
-                <div><q>${_aEsc(p.text)}</q><small>${_aEsc(p.why || '')}${p.vod_id ? ` · at ${_aStamp(p.start_sec)}` : ''}</small></div>
-                <div class="arena-quote-actions">${_aPlay(p.vod_id, p.start_sec)} ${_aSpeakBtn(p.text, '', f.user.username)}</div>
-            </div>`).join('')}</div>` : '<p class="arena-voice-empty">Quotes appear once enough lines have been transcribed.</p>'}
-        ${q?._fallback ? '<p class="arena-note">Quotes picked by heuristic — the AI curates these once enabled.</p>' : ''}
     </div>`;
 }
 
@@ -576,27 +551,26 @@ function _aLevelCard(f) {
 }
 
 async function _aRenderFighter(root, username) {
-    root.innerHTML = _aSpinner('Pulling the fighter file…');
+    root.innerHTML = _aSpinner('Pulling their lines…');
     const f = await api(`/arena/fighters/${encodeURIComponent(username)}`);
     if (f.not_on_roster) {
         root.innerHTML = `<div class="arena-empty"><i class="fa-solid fa-microphone-slash"></i><p><strong>${_aEsc(f.user.display_name)}</strong> is not on the roster — ${_aEsc(f.reason)}.</p>${_aA('/arena', 'Back to the cams', 'btn')}</div>`;
         return;
     }
-    const p = f.persona, color = f.user.profile_color || '#8b5cf6';
-    const beefs = f.beefs || [], rivalries = f.rivalries || [], moments = f.moments || [];
+    const color = f.user.profile_color || '#8b5cf6';
+    const name = f.user.display_name || f.user.username;
+    const beefs = f.beefs || [], rivalries = f.rivalries || [], moments = f.moments || [], best = f.best_lines || [];
     root.innerHTML = `
         <div class="arena-back">${_aA('/arena', '<i class="fa-solid fa-arrow-left"></i> Battle Cam')} ${f.live ? _aA(_aConsoleLink(f.user), '<i class="fa-solid fa-ear-listen"></i> Listen in live', '') : ''}</div>
         <div class="arena-profile" style="--fc:${_aEsc(color)}">
             <div class="arena-profile-portrait" id="arena-profile-portrait">
                 ${_aPortrait(f, 'lg')}
-                ${f.image_pending ? '<div class="arena-portrait-pending"><i class="fa-solid fa-wand-magic-sparkles fa-fade"></i> painting portrait…</div>' : ''}
                 <div class="arena-profile-rank">#${f.rank} <small>of ${f.roster_size}</small></div>
             </div>
             <div class="arena-profile-main">
                 <div class="arena-profile-name">
-                    <h1>${_aEsc(p.fighter_name)} ${f.live ? '<span class="arena-live-pill">LIVE</span>' : ''}</h1>
-                    <p class="arena-title">${_aEsc(p.title)}</p>
-                    <p class="arena-handle">${_aA(_aChannelLink(f.user), `${_aEsc(f.user.display_name)} · @${_aEsc(f.user.username)}`)} · ${_aEsc(p.class)} · ${_aEsc(p.element)}</p>
+                    <h1>${_aEsc(name)} ${f.live ? '<span class="arena-live-pill">LIVE</span>' : ''}</h1>
+                    <p class="arena-handle">${_aA(_aChannelLink(f.user), `@${_aEsc(f.user.username)}`)} · ${f.record.wins}W–${f.record.losses}L · ${f.mic ? `${f.mic.moments} judged lines in 30 days` : ''}</p>
                 </div>
                 <div class="arena-profile-power">
                     <div class="arena-power arena-power-lg"><b>${f.ratings.power}</b><small>POWER</small></div>
@@ -604,36 +578,19 @@ async function _aRenderFighter(root, username) {
                     <div class="arena-record arena-record-lg" title="beef record">${f.record.wins}W – ${f.record.losses}L</div>
                 </div>
                 ${_aLevelCard(f)}
-                <div class="arena-profile-stats is-bars">
-                    <div class="arena-bars-head"><b>The mic stats</b> <small>percentile across the roster · these make POWER · tap one</small></div>
-                    <div class="arena-numgrid">${ARENA_STATS.map(k => `<div class="arena-num is-clickable" data-stat="${k}" title="${_aEsc((p.stat_quips || {})[k] || ARENA_STAT_LABEL[k])}"><span class="arena-num-label">${_aEsc(ARENA_STAT_LABEL[k])}</span><span class="arena-num-track"><span class="arena-num-fill" style="width:${Math.max(0, Math.min(100, f.ratings[k] || 0))}%;background:${_aEsc(color)}"></span></span><span class="arena-num-val">${f.ratings[k] ?? '–'}</span></div>`).join('')}</div>
-                    <div id="arena-stat-detail"></div>
-                </div>
+                ${best.length ? `<section class="arena-receipts-section"><h3><i class="fa-solid fa-fire"></i> Best shit talk <small>their highest-scored lines</small></h3><div class="arena-mic-feed-list">${best.map(_aMomentRow).join('')}</div></section>` : ''}
                 <section class="arena-receipts-section">
                     <h3><i class="fa-solid fa-satellite-dish"></i> On record <small>their judged lines, newest first</small></h3>
                     ${moments.length ? `<div class="arena-mic-feed-list">${moments.map(_aMomentRow).join('')}</div>` : '<p class="arena-note">Nothing judged yet. The ears are waiting.</p>'}
                 </section>
-                <div class="arena-profile-custom">
-                    <div>${_aCustomRadar(f, color, 280)}<div class="arena-mini-record">${(p.custom_stats || []).length ? 'their characteristics — AI-read from what they say on mic' : 'the seven mic stats (AI characteristics appear once the persona is generated)'}</div></div>
-                    ${(p.custom_stats || []).length ? _aCustomQuips(f) : ''}
+                <div class="arena-profile-stats is-bars">
+                    <div class="arena-bars-head"><b>The mic stats</b> <small>percentile across the roster · these make POWER · tap one</small></div>
+                    <div class="arena-numgrid">${ARENA_STATS.map(k => `<div class="arena-num is-clickable" data-stat="${k}" title="${_aEsc(_arenaRoster?.stat_meta?.[k]?.desc || ARENA_STAT_LABEL[k])}"><span class="arena-num-label">${_aEsc(ARENA_STAT_LABEL[k])}</span><span class="arena-num-track"><span class="arena-num-fill" style="width:${Math.max(0, Math.min(100, f.ratings[k] || 0))}%;background:${_aEsc(color)}"></span></span><span class="arena-num-val">${f.ratings[k] ?? '–'}</span></div>`).join('')}</div>
+                    <div id="arena-stat-detail"></div>
                 </div>
-                <section class="arena-sheet">
-                    <h3><i class="fa-solid fa-file-invoice"></i> Rap sheet</h3>
-                    <p class="arena-sheet-lore">${_aEsc(p.lore)}</p>
-                    <div class="arena-sheet-rows">
-                        <div class="arena-sheet-row"><span class="arena-sheet-k">Signature</span><span><b>${_aEsc(p.signature_move?.name)}</b> — ${_aEsc(p.signature_move?.description)}</span></div>
-                        <div class="arena-sheet-row"><span class="arena-sheet-k">Special</span><span><b>${_aEsc(p.special?.name)}</b> — ${_aEsc(p.special?.description)}</span></div>
-                        <div class="arena-sheet-row is-weak"><span class="arena-sheet-k">Weakness</span><span>${_aEsc(p.weakness)}</span></div>
-                        <div class="arena-sheet-row"><span class="arena-sheet-k">Walk-out</span><span><i class="fa-solid fa-music"></i> ${_aEsc(p.entrance_music)}</span></div>
-                        <div class="arena-sheet-row"><span class="arena-sheet-k">Catchphrase</span><span>“${_aEsc(p.catchphrase)}”</span></div>
-                        ${p.typing_style ? `<div class="arena-sheet-row"><span class="arena-sheet-k">Talks like</span><span>${_aEsc(p.typing_style)}</span></div>` : ''}
-                    </div>
-                    ${f.persona_is_fallback ? '<p class="arena-note">Stats-only profile — the AI writes the rest once it has enough mic time.</p>' : ''}
-                </section>
-                <section class="arena-taunts">
-                    <h3><i class="fa-solid fa-comment-dots"></i> Ragebait <small>in their own voice · 🔊 reads it in their chat voice</small></h3>
-                    <div class="arena-bubbles">${[p.taunt, ...(p.taunts || [])].filter(Boolean).map(x => `<div class="arena-bubble"><span class="arena-bubble-who">${_aEsc(f.user.display_name || f.user.username)}</span><span class="arena-bubble-text">${_aEsc(x)}</span>${_aSpeakBtn(x, 'arena-bubble-speak', f.user.username)}</div>`).join('')}</div>
-                </section>
+                <div class="arena-profile-custom">
+                    <div>${_aCustomRadar(f, color, 280, { objective: true })}<div class="arena-mini-record">the seven mic stats</div></div>
+                </div>
                 ${_aVoiceCard(f)}
             </div>
         </div>
@@ -664,48 +621,6 @@ async function _aRenderFighter(root, username) {
             box.querySelector('.arena-stat-detail-close').addEventListener('click', () => { box.innerHTML = ''; box.dataset.stat = ''; });
         } catch (err) { box.innerHTML = `<div class="arena-stat-detail">${_aEsc(err?.message || 'Failed')}</div>`; }
     }));
-
-    const portrait = root.querySelector('.arena-portrait-lg');
-    if (portrait && f.image_url) portrait.addEventListener('click', () => _aLightbox(f));
-
-    if (f.image_pending || (!f.image_url && f.image_generation === 'ai')) {
-        let tries = 0;
-        _arenaImagePoll = setInterval(async () => {
-            if (++tries > 20 || currentPage !== 'arena') return _aStopTimers();
-            try {
-                const fresh = await api(`/arena/fighters/${encodeURIComponent(username)}?generate=0`);
-                if (fresh.image_url) {
-                    const holder = document.getElementById('arena-profile-portrait');
-                    if (holder) {
-                        const old = holder.querySelector('.arena-portrait'); if (old) old.outerHTML = _aPortrait(fresh, 'lg');
-                        holder.querySelector('.arena-portrait-pending')?.remove();
-                        holder.querySelector('.arena-portrait-lg')?.addEventListener('click', () => _aLightbox(fresh));
-                    }
-                    clearInterval(_arenaImagePoll); _arenaImagePoll = null;
-                }
-            } catch { /* */ }
-        }, 6000);
-    }
-}
-
-function _aLightbox(f) {
-    const box = document.createElement('div');
-    box.className = 'arena-lightbox';
-    box.innerHTML = `
-        <button class="arena-lightbox-close" aria-label="Close">&times;</button>
-        <div class="arena-lightbox-inner">
-            <img src="${_aEsc(f.image_url)}" alt="">
-            <div class="arena-lightbox-text">
-                <h3>${_aEsc(f.persona.fighter_name)}</h3>
-                <p>${_aEsc(f.persona.title)}</p>
-                <p>How this was painted: the AI wrote the persona from what they say on mic, then an image model restyled real frames from their streams — their setup, gear, lighting, silhouette — into a character-select caricature.${f.image_model ? ` Model: <code>${_aEsc(f.image_model)}</code>.` : ''}</p>
-                ${f.image_prompt ? `<div class="arena-lightbox-prompt">${_aEsc(f.image_prompt)}</div>` : ''}
-            </div>
-        </div>`;
-    const close = () => box.remove();
-    box.addEventListener('click', (e) => { if (e.target === box || e.target.closest('.arena-lightbox-close')) close(); });
-    document.addEventListener('keydown', function onKey(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } });
-    document.body.appendChild(box);
 }
 
 function _aLevelUp(level) {

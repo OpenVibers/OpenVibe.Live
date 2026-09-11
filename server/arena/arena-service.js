@@ -543,11 +543,10 @@ async function getFighter(usernameOrId, { generate = true } = {}) {
     if (!user) return null;
     const roster = loadRoster();
     if (!roster.byId[user.id]) return { user: publicUser(user), not_on_roster: true, reason: `nothing heard on mic in the last ${ACTIVE_DAYS} days — the Arena only knows what the transcription hears` };
-    if (generate) {
-        const row = profileRow(user.id);
-        if (aiOn() && !personaIsFresh(row)) { try { await generatePersona(user.id); } catch (e) { console.warn('[Arena] persona:', e.message); } }
-        if (!quotesAreFresh(profileRow(user.id))) { try { await generateQuotes(user.id); } catch (e) { console.warn('[Arena] quotes:', e.message); } }
-        if (aiOn() && !imageIsFresh(profileRow(user.id)) && imageGenAvailable()) generateImage(user.id).catch(() => {});
+    // Battle Cam: no persona / portrait / quote generation on view — the page shows only what
+    // was said on mic (mic.js). `generate` is kept for the admin refresh route.
+    if (generate === 'force') {
+        try { await generatePersona(user.id); } catch (e) { console.warn('[Arena] persona:', e.message); }
     }
     const card = cardFor(user.id, roster, { includeQuotes: true });
     card.image_pending = !card.image_url && _imageInFlight.has(user.id);

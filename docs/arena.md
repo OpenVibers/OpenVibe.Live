@@ -6,7 +6,11 @@ The **Arena** tab (`/arena`) is streamer-vs-streamer shit talk with exactly one 
 - **The feed** — everything else that is actually shit talk (at chat, the mods, other platforms, the game, the world) is judged, scored 0–10, VOD-linked and lands in the live feed. It pays Trash Level XP. Gameplay narration and small talk score nothing.
 - **The ladder** — every fighter is rated on seven mic-only stats, as percentiles across the roster, plus an AI persona and portrait written from their transcripts.
 
-With AI off everything still works: keyword judges, template headlines, fallback personas.
+**No personas, no portraits, no AI ring names** (removed 2026-09-11): fighters are the streamers, under their own names and avatars. The only AI on this page is the judge.
+
+**Backfill** (`server/arena/backfill.js`): the listener only hears live cams, so past speech (last 7 days, ended streams) is judged by the job every 20 min (and 90 s after boot): chunks of ≥ 20 words, only the ones that look spicy or name a fighter go to a model (≤ 160 calls per run), name-drops become `callout` moments with the target attached (no clocks for old speech), the rest `trash` moments — dated when they were *said*, VOD-linked. A per-fighter cursor keeps it incremental. Admin: `POST /api/arena/backfill`.
+
+With AI off everything still works: keyword judges, template headlines.
 
 ## Speech policy
 
