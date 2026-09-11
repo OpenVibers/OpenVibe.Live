@@ -608,16 +608,10 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// ── RobotStreamer switch-bonus promo (public) ────────────────
-// Read by public/js/rs-promo.js on every page load so the promo can be paused or retuned
-// from the env (RS_PROMO_*) without touching the frontend.
-app.get('/api/promo/robotstreamer', (req, res) => {
-    const p = config.rsPromo || {};
-    res.set('Cache-Control', 'public, max-age=300');
-    let vip = null;
-    try { const u = p.vipUser ? db.getUserByUsername(p.vipUser) : null; vip = { username: u ? u.username : p.vipUser, display_name: u ? (u.display_name || u.username) : p.vipUser, avatar_url: u ? u.avatar_url : null, referral: p.vipReferral || 20, exists: !!u }; } catch { vip = { username: p.vipUser, display_name: p.vipUser, referral: p.vipReferral || 20, exists: false }; }
-    res.json({ enabled: p.enabled !== false, amount: p.amount || 50, amount_min: p.amountMin || 25, referral: p.referral || 10, vip, github: p.github || null, owner: p.owner || 'admin', discord: p.discord || null });
-});
+// ── RobotStreamer switch-bonus promo: public config + the cashout ledger ─────────
+// (public/js/rs-promo.js reads /api/promo/robotstreamer on every page load; claims, referrals
+// and payouts are rows in promo_claims — see server/promo/claims.js.)
+app.use('/api/promo', require('./promo/routes'));
 
 // ── Updates / Changelog ──────────────────────────────────────
 const { execSync } = require('child_process');
