@@ -82,6 +82,18 @@ function mediaErr(res, err, fallback) {
 
 // Overlay Live-owned user fields (username/display_name/avatar) onto Media rows —
 // the SPA's cards render them and Media only stores our opaque user_id.
+/**
+ * A VOD shell that was created but never got any media (status still pending, no bytes, no
+ * thumbnail) and is old enough that no ingest is coming — hidden from lists so it can't show
+ * up as a blank 0:00 card. (Media keeps the row; the recorder's _abort deletes its own.)
+ */
+function isGhostVod(v) {
+    if (!v || v.status !== 'pending' || v.is_recording) return false;
+    if ((v.duration || v.duration_seconds || 0) > 0 || (v.file_size || 0) > 0 || v.thumbnail_url) return false;
+    const t = Date.parse(String(v.created_at || '').replace(' ', 'T') + (String(v.created_at || '').includes('Z') ? '' : 'Z'));
+    return Number.isFinite(t) && Date.now() - t > 10 * 60 * 1000;
+}
+
 function withUserFields(row) {
     if (!row) return row;
     if (row.user_id != null) {
@@ -157,7 +169,14 @@ router.post('/stream/:streamId/chunk', requireAuth, memUpload.single('chunk'), a
 
         let rec = recorder.getActiveRecording(streamId);
         let created = false;
-        if (!rec || rec.type !== 'chunks') {
+        if (rec && rec.type !== 'chunks') {
+            // The server is already recording this stream itself (RTP/RTMP ingest into Media).
+            // Browser chunks are only the fallback for when it is not — accepting them here used
+            // to create a fresh VOD shell per chunk (one every 30 s) that never got a file: the
+            // blank 0:00 cards. Drop the chunk and tell the browser to stop sending them.
+            return res.json({ vodId: rec.vodId || null, status: 'server-recording', skipped: true });
+        }
+        if (!rec) {
             const { id } = await media.createVod({
                 title: stream.title || 'Stream Recording',
                 stream_id: streamId,
@@ -248,7 +267,7 @@ router.get('/:id/live-info', optionalAuth, async (req, res) => {
 router.get('/', optionalAuth, async (req, res) => {
     try {
         const out = await media.listVods(usernameToUserId(req.query));
-        const vods = (out?.vods || (Array.isArray(out) ? out : [])).map(withUserFields);
+        const vods = (out?.vods || (Array.isArray(out) ? out : [])).filter(v => !isGhostVod(v)).map(withUserFields);
         res.json({
             vods,
             total: out?.total ?? vods.length,
@@ -268,7 +287,7 @@ router.get('/mine', requireAuth, async (req, res) => {
         // App-key call (not the user's JWT): Live already authenticated the owner,
         // and Media only honors include_private for the owning app.
         const out = await media.listVods({ ...req.query, user_id: req.user.id, include_private: 1 });
-        const vods = (out?.vods || (Array.isArray(out) ? out : [])).map(withUserFields);
+        const vods = (out?.vods || (Array.isArray(out) ? out : [])).filter(v => !isGhostVod(v)).map(withUserFields);
         res.json({ vods, total: out?.total ?? vods.length, limit: out?.limit ?? vods.length, offset: out?.offset ?? 0 });
     } catch (err) {
         mediaErr(res, err, 'Failed to list VODs');
@@ -677,3 +696,4 @@ router.post('/clips/:id/trim', requireAuth, (req, res) => {
 });
 
 module.exports = router;
+module.exports.isGhostVod = isGhostVod;

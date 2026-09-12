@@ -2538,6 +2538,7 @@ function startVodRecording(streamId) {
     const ss = getStreamState(streamId);
     if (!ss || !ss.localStream) return;
     if (ss.vodRecorder && ss.vodRecorder.state !== 'inactive') return;
+    if (ss.vodServerRecording) return;   // server ingest is recording this stream — no browser chunks
     try {
         const mimeType = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m));
         if (!mimeType) { console.warn('[VOD] No supported codec'); return; }
@@ -2592,6 +2593,15 @@ async function uploadVodChunk(streamId) {
         if (resp.ok) {
             const data = await resp.json();
             if (data.vodId) ss.vodId = data.vodId;
+            if (data.status === 'server-recording') {
+                // The server records this stream itself (Media ingest) — browser chunks are not
+                // needed and would only make orphan VOD shells. Stop the local recorder for good.
+                ss.vodServerRecording = true;
+                ss.vodChunks = [];
+                if (ss.vodRecorder && ss.vodRecorder.state !== 'inactive') { try { ss.vodRecorder.stop(); } catch {} }
+                ss.vodRecorder = null;
+                console.log('[VOD] Server-side recording active — browser chunk upload stopped');
+            }
         } else {
             console.warn('[VOD] Chunk upload HTTP error:', resp.status);
         }
