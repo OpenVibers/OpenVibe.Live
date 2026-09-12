@@ -350,20 +350,61 @@ app.use('/api/vods/clips', uploadLimiter);
 // ── IP Ban Enforcement ───────────────────────────────────────
 // Check if the requester's IP is globally banned. If so, return 404 for page requests
 // and 403 for API requests. This makes the site appear to not exist for banned IPs.
+// ── Ban page + owner exemption ───────────────────────────────
+const escBanHtml = (t) => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const DEFAULT_BAN_REASON = 'Repeated disrespect toward the owner of this site. Permanent.';
+/** Resolve the signed-in user for an HTTP request (token cookie / Bearer / API token), cached per request. */
+function banRequestUser(req) {
+    if (req._ovBanUser !== undefined) return req._ovBanUser;
+    let user = null;
+    try {
+        const { extractToken, verifyToken, resolveNetworkUser, authenticateApiToken } = require('./auth/auth');
+        const token = extractToken(req);
+        if (token) user = authenticateApiToken(token) || (() => { const d = verifyToken(token); return d ? resolveNetworkUser(d) : null; })();
+    } catch { user = null; }
+    req._ovBanUser = user || null;
+    return req._ovBanUser;
+}
+/** Admins (the site owner) pass IP / network bans — they may live on the same network as a banned person. */
+function isBanExemptAdmin(req) { const u = banRequestUser(req); return !!(u && !u.is_banned && u.role === 'admin'); }
+function isBanExemptAdminUser(u) { return !!(u && !u.is_banned && u.role === 'admin'); }
+/** Paths a banned network may still reach: health, the ban page's assets, SSO (so an admin can sign in), WHIP (stream-key auth, checks bans itself). */
+function banPassPath(p) {
+    return p === '/api/health' || p.startsWith('/assets/') || p.startsWith('/api/auth/sso') || p === '/api/auth/callback' || p === '/api/auth/logout' || p.startsWith('/whip');
+}
+function banNameFor(ban) {
+    try { if (ban && ban.user_id) { const u = db.getUserById(ban.user_id); if (u) return u.display_name || u.username; } } catch { /* */ }
+    return null;
+}
+function renderBannedPage(req, res, { name, reason } = {}) {
+    let html = '';
+    try { html = require('fs').readFileSync(path.join(__dirname, '../public/banned.html'), 'utf8'); } catch { html = '<h1>Banned</h1>'; }
+    html = html
+        .replace('{{HEADLINE}}', name ? `${escBanHtml(name)}, you are banned from OpenVibe.Live.` : 'You are banned from OpenVibe.Live.')
+        .replace('{{REASON}}', escBanHtml(reason || DEFAULT_BAN_REASON));
+    res.status(403).set('Cache-Control', 'no-store').type('html').send(html);
+}
+
 app.use((req, res, next) => {
     // Skip health check so monitoring still works
     if (req.url === '/api/health') return next();
+    // Banned network (single address or a whole home / carrier block). The site owner and admins
+    // may share an address with a banned person, so a request that authenticates as a non-banned
+    // admin passes; SSO + assets pass so an admin can sign in from a banned network and the ban
+    // page can render. Everyone else on that network gets the ban screen (API: 403).
     try {
-        if (db.isIpBanned(req.ip, null)) {
-            if (req.url.startsWith('/api/') || req.url.startsWith('/ws/')) {
+        const ipBan = db.getIpBan(req.ip, null);
+        if (ipBan && !banPassPath(req.path) && !isBanExemptAdmin(req)) {
+            if (req.path.startsWith('/api/') || req.path.startsWith('/ws/')) {
                 return res.status(403).json({ error: 'Access denied' });
             }
-            return res.status(404).send('<!DOCTYPE html><html><head><title>404</title></head><body><h1>404 Not Found</h1></body></html>');
+            return renderBannedPage(req, res, { name: banNameFor(ipBan), reason: ipBan.reason });
         }
     } catch (e) { /* DB error — let request through rather than block everyone */ }
     // A browser that has been shown the ban screen keeps seeing it (cookie set by GET /banned),
     // signed in or not. Assets still load so the page itself can render.
-    if (req.cookies && req.cookies.ov_banned === '1' && !req.path.startsWith('/banned') && !req.path.startsWith('/assets/') && req.path !== '/api/health') {
+    if (req.cookies && req.cookies.ov_banned === '1' && !req.path.startsWith('/banned') && !banPassPath(req.path)) {
+        if (isBanExemptAdmin(req)) { res.clearCookie('ov_banned'); res.clearCookie('ov_banned_name'); return next(); }
         if (req.path.startsWith('/api/') || req.path.startsWith('/ws/')) return res.status(403).json({ error: 'Account is banned' });
         return res.redirect(302, '/banned');
     }
@@ -734,14 +775,9 @@ app.get(['/popout', '/popout/*', '/popout-chat', '/popout-chat/*'], (req, res) =
 // loadUser in public/js/app.js). The page is rendered with the banned user's name and the
 // reason on record, so they see exactly why every time they open the site.
 app.get('/banned', (req, res) => {
-    const escHtml = (t) => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    let user = null;
-    try {
-        const { extractToken, verifyToken, resolveNetworkUser, authenticateApiToken } = require('./auth/auth');
-        const token = extractToken(req);
-        if (token) { user = authenticateApiToken(token) || (() => { const d = verifyToken(token); return d ? resolveNetworkUser(d) : null; })(); }
-    } catch { user = null; }
-    if (user && !user.is_banned) { res.clearCookie('ov_banned'); res.clearCookie('ov_banned_name'); return res.redirect('/'); }
+    const user = banRequestUser(req);
+    const ipBan = (() => { try { return db.getIpBan(req.ip, null); } catch { return null; } })();
+    if (user && !user.is_banned && (!ipBan || isBanExemptAdminUser(user))) { res.clearCookie('ov_banned'); res.clearCookie('ov_banned_name'); return res.redirect('/'); }
     // Make the ban stick to this browser: from now on every visit — signed in or not — lands here.
     const isSecure = String(config.baseUrl || '').startsWith('https');
     const tenYears = 10 * 365 * 24 * 3600 * 1000;
@@ -749,14 +785,10 @@ app.get('/banned', (req, res) => {
         res.cookie('ov_banned', '1', { httpOnly: true, maxAge: tenYears, sameSite: 'Lax', secure: isSecure });
         res.cookie('ov_banned_name', String(user.display_name || user.username).slice(0, 60), { httpOnly: true, maxAge: tenYears, sameSite: 'Lax', secure: isSecure });
     }
-    const name = user ? (user.display_name || user.username) : (req.cookies && req.cookies.ov_banned_name ? String(req.cookies.ov_banned_name) : null);
-    const reason = (user && user.ban_reason) || 'Repeated disrespect toward the owner of this site. Permanent.';
-    let html = '';
-    try { html = require('fs').readFileSync(path.join(__dirname, '../public/banned.html'), 'utf8'); } catch { html = '<h1>Banned</h1>'; }
-    html = html
-        .replace('{{HEADLINE}}', name ? `${escHtml(name)}, you are banned from OpenVibe.Live.` : 'You are banned from OpenVibe.Live.')
-        .replace('{{REASON}}', escHtml(reason));
-    res.status(403).set('Cache-Control', 'no-store').type('html').send(html);
+    const name = (user && user.is_banned) ? (user.display_name || user.username)
+        : (req.cookies && req.cookies.ov_banned_name ? String(req.cookies.ov_banned_name) : banNameFor(ipBan));
+    const reason = (user && user.is_banned && user.ban_reason) || (ipBan && ipBan.reason) || DEFAULT_BAN_REASON;
+    renderBannedPage(req, res, { name, reason });
 });
 
 // ── SPA Fallback ─────────────────────────────────────────────
@@ -793,8 +825,10 @@ server.on('upgrade', (req, socket, head) => {
     try {
         const wsIp = chatServer.getClientIp(req);
         if (db.isIpBanned(wsIp, null)) {
-            socket.destroy();
-            return;
+            // Admins pass network bans (shared home network) — see isBanExemptAdmin.
+            let exempt = false;
+            try { const { extractWsToken, authenticateWs } = require('./auth/auth'); exempt = isBanExemptAdminUser(authenticateWs(extractWsToken(req))); } catch { exempt = false; }
+            if (!exempt) { socket.destroy(); return; }
         }
     } catch (e) { /* non-critical — allow through on DB error */ }
 
