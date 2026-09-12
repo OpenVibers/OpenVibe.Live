@@ -95,6 +95,9 @@ class ChatServer {
      * Prefers CF-Connecting-IP (set by Cloudflare, unforgeable through proxy),
      * then X-Forwarded-For first entry, then socket remote address.
      */
+    /** Admins (the site owner) pass IP / network bans — they may share a home network with a banned person. */
+    _isBanExemptAdmin(client) { return !!(client && client.user && !client.user.is_banned && client.user.role === 'admin'); }
+
     getClientIp(req) {
         const raw = req.headers?.['cf-connecting-ip']
             || req.headers?.['x-forwarded-for']?.split(',')[0]?.trim()
@@ -587,7 +590,7 @@ class ChatServer {
             this.sendTo(ws, { type: 'system', message: 'You are banned from this chat.' });
             return;
         }
-        if (db.isIpBanned(client.ip, client.streamId)) {
+        if (!this._isBanExemptAdmin(client) && db.isIpBanned(client.ip, client.streamId)) {
             this.sendTo(ws, { type: 'system', message: 'You are banned from this chat.' });
             return;
         }
@@ -1226,7 +1229,7 @@ class ChatServer {
 
             // Banned users can't trigger sounds
             if (client.user && db.isUserBanned(client.user.id, client.streamId)) return;
-            if (client.ip && db.isIpBanned(client.ip, client.streamId)) return;
+            if (client.ip && !this._isBanExemptAdmin(client) && db.isIpBanned(client.ip, client.streamId)) return;
 
             // Rate limits — reuse the soundboard limiter (per-user + per-stream window)
             const now = Date.now();

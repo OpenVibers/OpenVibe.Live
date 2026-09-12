@@ -5905,15 +5905,59 @@ function isUserBanned(userId, streamId) {
     return !!ban;
 }
 
-function isIpBanned(ip, streamId) {
+/**
+ * IP bans: a `bans.ip_address` value is either one address (exact match) or a CIDR block
+ * (`2601:601:9181:bb00::/64`, `203.0.113.0/24`) — a whole home network / carrier prefix.
+ * CIDR rows are compiled into net.BlockList and cached briefly; exact rows stay a lookup.
+ */
+const _net = require('net');
+let _cidrBans = { at: 0, list: [] };
+function _normalizeBanIp(ip) {
+    let s = String(ip || '').trim();
+    if (s.startsWith('::ffff:') && _net.isIP(s.slice(7)) === 4) s = s.slice(7);
+    return s;
+}
+function _cidrBanList() {
+    if (_cidrBans.list && Date.now() - _cidrBans.at < 15000) return _cidrBans.list;
+    const rows = all(`SELECT * FROM bans WHERE ip_address LIKE '%/%' AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)`);
+    const list = [];
+    for (const r of rows) {
+        const [addr, bitsStr] = String(r.ip_address).split('/');
+        const fam = _net.isIP(addr), bits = parseInt(bitsStr, 10);
+        if (!fam || !Number.isFinite(bits)) continue;
+        const bl = new _net.BlockList();
+        try { bl.addSubnet(addr, bits, fam === 6 ? 'ipv6' : 'ipv4'); } catch { continue; }
+        list.push({ bl, fam, row: r });
+    }
+    _cidrBans = { at: Date.now(), list };
+    return list;
+}
+function invalidateIpBanCache() { _cidrBans = { at: 0, list: [] }; }
+
+/** The active site-wide (or this stream's) ban row for an IP, or null. */
+function getIpBan(ip, streamId) {
+    const norm = _normalizeBanIp(ip);
+    if (!norm) return null;
     const ban = get(`
         SELECT * FROM bans
-        WHERE ip_address = ?
+        WHERE ip_address IN (?, ?)
         AND (stream_id = ? OR stream_id IS NULL)
         AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
         LIMIT 1
-    `, [ip, streamId]);
-    return !!ban;
+    `, [String(ip), norm, streamId]);
+    if (ban) return ban;
+    const fam = _net.isIP(norm);
+    if (!fam) return null;
+    for (const e of _cidrBanList()) {
+        if (e.fam !== fam) continue;
+        if (e.row.stream_id !== null && e.row.stream_id !== undefined && e.row.stream_id !== streamId) continue;
+        if (e.bl.check(norm, fam === 6 ? 'ipv6' : 'ipv4')) return e.row;
+    }
+    return null;
+}
+
+function isIpBanned(ip, streamId) {
+    return !!getIpBan(ip, streamId);
 }
 
 // ── Cleanup ──────────────────────────────────────────────────
@@ -7986,7 +8030,7 @@ function revokeApiToken(tokenId, userId) {
 function validateApiToken(rawToken) {
     const hash = _hashToken(rawToken);
     const row = get(
-        `SELECT t.*, u.id as uid, u.username, u.display_name, u.role, u.profile_color, u.avatar_url
+        `SELECT t.*, u.id as uid, u.username, u.display_name, u.role, u.profile_color, u.avatar_url, u.is_banned, u.ban_reason
          FROM api_tokens t JOIN users u ON t.user_id = u.id
          WHERE t.token_hash = ? AND t.is_active = 1`,
         [hash]
@@ -8000,6 +8044,7 @@ function validateApiToken(rawToken) {
     return {
         id: row.uid, username: row.username, display_name: row.display_name,
         role: row.role, profile_color: row.profile_color, avatar_url: row.avatar_url,
+        is_banned: row.is_banned ? 1 : 0, ban_reason: row.ban_reason || null,
         tokenId: row.id, scopes,
     };
 }
@@ -8163,7 +8208,7 @@ module.exports = {
     getControlConfigs, getControlConfig, createControlConfig, updateControlConfig, deleteControlConfig,
     getConfigButtons, createConfigButton, updateConfigButton, deleteConfigButton, applyConfigToStream,
     // Bans
-    isUserBanned, isIpBanned,
+    isUserBanned, isIpBanned, getIpBan, invalidateIpBanCache,
     // Emotes
     createEmote, getEmoteById, getEmotesByUser, getGlobalEmotes, getChannelEmotes, updateEmote,
     deleteEmote, getEmoteByCode, countUserEmotes, countChannelEmotes, getChannelEmoteByCode,

@@ -18,6 +18,9 @@
         h1 { margin: 22px 0 8px; font-size: clamp(1.3rem, 3.6vw, 1.9rem); }
         .plea { margin: 26px 0 10px; font-size: clamp(2.2rem, 8.5vw, 4.6rem); line-height: 1.02; font-weight: 900; letter-spacing: -0.02em; color: #fff; text-shadow: 0 6px 30px rgba(0,0,0,0.6); }
         .plea-body { font-size: clamp(1.25rem, 3.6vw, 1.9rem); line-height: 1.35; color: #fff; font-weight: 600; margin: 0 0 18px; }
+        .hurt { margin: 22px 0 8px; padding: 18px 16px 20px; border-radius: 16px; background: rgba(231,76,60,0.14); border: 2px solid rgba(231,76,60,0.7); box-shadow: 0 0 40px rgba(231,76,60,0.25) inset, 0 0 30px rgba(231,76,60,0.2); }
+        .hurt-head { font-size: clamp(1.9rem, 7vw, 3.6rem); line-height: 1.05; font-weight: 900; letter-spacing: -0.02em; color: #ff8a7a; text-shadow: 0 0 30px rgba(231,76,60,0.55); margin: 0 0 10px; }
+        .hurt-body { font-size: clamp(1.1rem, 3vw, 1.5rem); line-height: 1.4; color: #fff; font-weight: 700; margin: 0; }
         .who { font-size: 1.05rem; color: #cfc9c4; margin: 0 0 6px; }
         p { margin: 0 0 12px; font-size: 1.02rem; line-height: 1.55; color: #cfc9c4; }
         p b { color: #fff; }
@@ -32,10 +35,14 @@
         <div class="stamp">BANNED</div>
         <h1 class="plea">Please leave me alone.</h1>
         <p class="plea-body">I'm trying to move forward with my life, and you have been nothing but disrespectful to me.</p>
+        <div class="hurt" role="alert">
+            <h2 class="hurt-head">You have ruined me.</h2>
+            <p class="hurt-body">What you did is hurtful. You did it, and you kept doing it. Please don't come here again.</p>
+        </div>
         <p class="who">{{HEADLINE}}</p>
         <div class="reason"><small>Reason on record</small>{{REASON}}</div>
         <p><b>This ban is permanent.</b> Don't put any effort into coming back — there is nothing here for you, and this decision won't change.</p>
-        <p class="fine"><span class="logo">OpenVibe.Live</span> · you will see this page every time you open the site.</p>
+        <p class="fine"><span class="logo">OpenVibe.Live</span> · you will see this page every time you open the site, on every device and every network you use.</p>
     </div>
 </body>
 </html>
