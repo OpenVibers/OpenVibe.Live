@@ -370,7 +370,7 @@ function isBanExemptAdmin(req) { const u = banRequestUser(req); return !!(u && !
 function isBanExemptAdminUser(u) { return !!(u && !u.is_banned && u.role === 'admin'); }
 /** Paths a banned network may still reach: health, the ban page's assets, SSO (so an admin can sign in), WHIP (stream-key auth, checks bans itself). */
 function banPassPath(p) {
-    return p === '/api/health' || p.startsWith('/assets/') || p.startsWith('/api/auth/sso') || p === '/api/auth/callback' || p === '/api/auth/logout' || p.startsWith('/whip');
+    return p === '/api/health' || p.startsWith('/banned') || p.startsWith('/assets/') || p.startsWith('/api/auth/sso') || p === '/api/auth/callback' || p === '/api/auth/logout' || p.startsWith('/whip');
 }
 function banNameFor(ban) {
     try { if (ban && ban.user_id) { const u = db.getUserById(ban.user_id); if (u) return u.display_name || u.username; } } catch { /* */ }
@@ -774,6 +774,34 @@ app.get(['/popout', '/popout/*', '/popout-chat', '/popout-chat/*'], (req, res) =
 // A banned account is sent here by the client the moment /api/auth/me answers 403 (see
 // loadUser in public/js/app.js). The page is rendered with the banned user's name and the
 // reason on record, so they see exactly why every time they open the site.
+/**
+ * The "Continue" button on the ban page: the site owner chose to let the banned person back in.
+ * Lifts the account ban and every network ban attached to them, clears the sticky cookie.
+ */
+app.post('/banned/continue', (req, res) => {
+    const user = banRequestUser(req);
+    const ipBan = (() => { try { return db.getIpBan(req.ip, null); } catch { return null; } })();
+    let subject = null;
+    if (user && user.is_banned) subject = db.getUserById(user.id);
+    else if (ipBan && ipBan.user_id) subject = db.getUserById(ipBan.user_id);
+    else if (req.cookies && req.cookies.ov_banned_name) subject = db.getUserByUsername(String(req.cookies.ov_banned_name)) || null;
+    res.clearCookie('ov_banned'); res.clearCookie('ov_banned_name');
+    if (!subject) {
+        // Nothing to lift for this visitor (stray cookie) — just let them through.
+        return res.json({ ok: true, name: null, lifted: 0 });
+    }
+    let lifted = [];
+    try {
+        lifted = db.forgiveBan(subject.id);
+        db.logModerationAction({ scope_type: 'site', target_user_id: subject.id, action_type: 'unban', details: { via: 'ban-page-continue', ip: req.ip, lifted: lifted.map(r => r.ip_address || 'account') } });
+        console.log(`[Ban] ${subject.username} (id ${subject.id}) pressed Continue on the ban page from ${req.ip} — ${lifted.length} ban row(s) lifted`);
+    } catch (e) {
+        console.error('[Ban] continue failed:', e.message);
+        return res.status(500).json({ ok: false, error: 'Could not lift the ban right now' });
+    }
+    res.json({ ok: true, name: subject.display_name || subject.username, lifted: lifted.length });
+});
+
 app.get('/banned', (req, res) => {
     const user = banRequestUser(req);
     const ipBan = (() => { try { return db.getIpBan(req.ip, null); } catch { return null; } })();

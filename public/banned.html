@@ -57,6 +57,37 @@
         .hurt-body { font-size: clamp(1.1rem, 3.1vw, 1.55rem); line-height: 1.4; color: #fff; font-weight: 700; margin: 0; }
         .hurt-body b { color: var(--red-soft); }
 
+        /* Sorry note + Continue */
+        .sorry { margin: 18px auto 6px; max-width: 640px; padding: 20px 18px 22px; border-radius: 18px; background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.35); }
+        .sorry-head { margin: 0 0 6px; font-size: clamp(1.3rem, 4vw, 1.8rem); font-weight: 900; color: #fff; }
+        .sorry-body { margin: 0 0 16px; font-size: clamp(0.98rem, 2.8vw, 1.1rem); line-height: 1.5; color: #d9d4ef; font-weight: 600; }
+        .go { position: relative; display: inline-flex; align-items: center; gap: 10px; padding: 14px 30px; border: 0; border-radius: 999px; cursor: pointer; color: #fff; font: inherit; font-weight: 900; font-size: 1.1rem; letter-spacing: 0.02em;
+            background: linear-gradient(120deg, #7c3aed, #a78bfa 50%, #22d3ee); background-size: 200% 100%; box-shadow: 0 10px 30px rgba(124,58,237,0.45), 0 0 0 0 rgba(167,139,250,0.6); animation: sheen 3s linear infinite, pulse 2.2s ease-out infinite; transition: transform 0.15s; overflow: hidden; }
+        .go:hover { transform: translateY(-2px) scale(1.03); }
+        .go:active { transform: scale(0.97); }
+        .go:disabled { cursor: default; animation: none; opacity: 0.85; }
+        .go .arrow { display: inline-block; transition: transform 0.2s; }
+        .go:hover .arrow { transform: translateX(4px); }
+        .go .rip { position: absolute; border-radius: 50%; background: rgba(255,255,255,0.5); transform: scale(0); animation: rip 0.7s ease-out forwards; pointer-events: none; }
+        @keyframes sheen { to { background-position: -200% 0; } }
+        @keyframes pulse { 0% { box-shadow: 0 10px 30px rgba(124,58,237,0.45), 0 0 0 0 rgba(167,139,250,0.6); } 100% { box-shadow: 0 10px 30px rgba(124,58,237,0.45), 0 0 0 22px rgba(167,139,250,0); } }
+        @keyframes rip { to { transform: scale(30); opacity: 0; } }
+        .go-hint { display: block; margin-top: 10px; font-size: 0.8rem; color: #9b93b8; }
+
+        /* The lift: red drains out, card breathes out, "welcome back" takes over */
+        body.lifted .bg { animation: none; background: radial-gradient(120% 90% at 50% 115%, #2a1656 0%, #0f0a1c 45%, #0b0a0d 75%); transition: background 1.4s ease; }
+        body.lifted .card { border-color: rgba(167,139,250,0.55); box-shadow: 0 30px 80px rgba(0,0,0,0.7), 0 0 90px rgba(167,139,250,0.35); transition: border-color 1.2s, box-shadow 1.2s; }
+        body.lifted .stamp { animation: crack 0.9s ease-in forwards; }
+        @keyframes crack { 0% { transform: rotate(-4deg); } 30% { transform: rotate(-9deg) scale(1.05); } 100% { transform: rotate(18deg) translateY(120px) scale(0.6); opacity: 0; } }
+        body.lifted .plea, body.lifted .plea-body, body.lifted .story, body.lifted .hurt, body.lifted .who, body.lifted .reason, body.lifted .perm, body.lifted .sorry { animation: melt 1s ease-in forwards !important; }
+        @keyframes melt { to { opacity: 0; transform: translateY(30px) scale(0.98); filter: blur(6px); } }
+        .welcome { position: fixed; inset: 0; z-index: 5; display: grid; place-items: center; text-align: center; padding: 24px; opacity: 0; pointer-events: none; }
+        body.lifted .welcome { animation: rise 0.9s ease-out 1s forwards; }
+        .welcome h2 { margin: 0 0 8px; font-size: clamp(2.4rem, 9vw, 5rem); font-weight: 900; letter-spacing: -0.02em; color: #fff; text-shadow: 0 0 40px rgba(167,139,250,0.8); }
+        .welcome p { margin: 0; font-size: clamp(1.1rem, 3.4vw, 1.5rem); color: #d9d4ef; font-weight: 600; }
+        .spark { position: fixed; z-index: 4; width: 6px; height: 6px; border-radius: 50%; background: #c4b5fd; box-shadow: 0 0 12px #a78bfa; pointer-events: none; animation: fly 1.4s ease-out forwards; }
+        @keyframes fly { to { transform: translate(var(--x), var(--y)) scale(0); opacity: 0; } }
+
         .who { font-size: 1.05rem; color: #cfc9c4; margin: 18px 0 6px; }
         p { margin: 0 0 12px; font-size: 1.02rem; line-height: 1.55; color: #cfc9c4; }
         p b { color: #fff; }
@@ -66,7 +97,7 @@
         .logo { color: #a78bfa; font-weight: 800; text-decoration: none; }
 
         @media (prefers-reduced-motion: reduce) {
-            .bg, .bg::after, .stamp, .card.shake, .rv, .msg, .msg.hot::before, .hurt.beat { animation: none !important; }
+            .bg, .bg::after, .stamp, .card.shake, .rv, .msg, .msg.hot::before, .hurt.beat, .go { animation: none !important; }
             .rv, .msg { opacity: 1; transform: none; }
         }
     </style>
@@ -93,18 +124,42 @@
 
         <p class="who rv" style="--d:7.2s">{{HEADLINE}}</p>
         <div class="reason rv" style="--d:7.4s"><small>Reason on record</small>{{REASON}}</div>
-        <p class="rv" style="--d:7.6s"><b>This ban is permanent.</b> Don't put any effort into coming back — there is nothing here for you, and this decision won't change.</p>
-        <p class="fine rv" style="--d:7.8s"><span class="logo">OpenVibe.Live</span> · you will see this page every time you open the site, on every device and every network you use.</p>
+        <p class="perm rv" style="--d:7.6s"><b>This ban is permanent</b> — unless you press the button below.</p>
+
+        <div class="sorry rv" style="--d:8.2s">
+            <h3 class="sorry-head">Sorry I'm being a bitch about this whole thing.</h3>
+            <p class="sorry-body">I don't actually want to lock you out. Press continue and the ban is gone — on every network and every device. Just be decent to me.</p>
+            <button class="go" id="go" type="button">♥ Continue <span class="arrow">→</span></button>
+            <span class="go-hint">One press. That's it.</span>
+        </div>
+        <p class="fine rv" style="--d:8.6s"><span class="logo">OpenVibe.Live</span> · you will see this page every time you open the site, on every device and every network you use — until you press continue.</p>
     </div>
+    <div class="welcome" aria-live="polite"><div><h2>Okay. Come in.</h2><p id="welcome-line">The ban is lifted. Taking you to the site…</p></div></div>
     <script>
-        // If the tab was in the background while the sequence played, replay it when it is looked at.
+        // Continue: lift the ban server-side, then play the lift and go home.
         (function () {
-            if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-            document.addEventListener('visibilitychange', function () {
-                if (document.visibilityState !== 'visible') return;
-                document.querySelectorAll('.rv, .msg, .stamp, .hurt, .card').forEach(function (el) {
-                    el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
-                });
+            var btn = document.getElementById('go');
+            if (!btn) return;
+            btn.addEventListener('click', async function (ev) {
+                if (btn.disabled) return;
+                btn.disabled = true;
+                try { var r = document.createElement('span'); r.className = 'rip'; var b = btn.getBoundingClientRect(); r.style.left = (ev.clientX - b.left - 10) + 'px'; r.style.top = (ev.clientY - b.top - 10) + 'px'; r.style.width = r.style.height = '20px'; btn.appendChild(r); } catch (e) {}
+                btn.innerHTML = 'Lifting the ban…';
+                var ok = false, name = null;
+                try {
+                    var res = await fetch('/banned/continue', { method: 'POST', credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+                    var j = await res.json();
+                    ok = !!(res.ok && j.ok); name = j.name || null;
+                } catch (e) { ok = false; }
+                if (!ok) { btn.disabled = false; btn.innerHTML = 'Try again <span class="arrow">→</span>'; return; }
+                var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+                if (name) document.getElementById('welcome-line').textContent = name + ', the ban is lifted. Taking you to the site…';
+                if (!reduced) {
+                    var cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+                    for (var i = 0; i < 46; i++) { var sp = document.createElement('span'); sp.className = 'spark'; var a = Math.random() * Math.PI * 2, d = 120 + Math.random() * 360; sp.style.left = cx + 'px'; sp.style.top = cy + 'px'; sp.style.setProperty('--x', Math.cos(a) * d + 'px'); sp.style.setProperty('--y', Math.sin(a) * d + 'px'); sp.style.animationDelay = (Math.random() * 0.4) + 's'; document.body.appendChild(sp); }
+                }
+                document.body.classList.add('lifted');
+                setTimeout(function () { location.replace('/'); }, reduced ? 800 : 3200);
             });
         })();
     </script>
