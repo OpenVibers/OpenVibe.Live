@@ -5960,6 +5960,18 @@ function isIpBanned(ip, streamId) {
     return !!getIpBan(ip, streamId);
 }
 
+/**
+ * Lift everything that bans a user: the account flag and every bans row in their name
+ * (account rows and any IP / network rows attached to them). Returns the removed rows.
+ */
+function forgiveBan(userId) {
+    const rows = all('SELECT id, ip_address, stream_id, reason FROM bans WHERE user_id = ?', [userId]);
+    run('UPDATE users SET is_banned = 0, ban_reason = NULL WHERE id = ?', [userId]);
+    run('DELETE FROM bans WHERE user_id = ?', [userId]);
+    invalidateIpBanCache();
+    return rows;
+}
+
 // ── Cleanup ──────────────────────────────────────────────────
 
 function close() {
@@ -8208,7 +8220,7 @@ module.exports = {
     getControlConfigs, getControlConfig, createControlConfig, updateControlConfig, deleteControlConfig,
     getConfigButtons, createConfigButton, updateConfigButton, deleteConfigButton, applyConfigToStream,
     // Bans
-    isUserBanned, isIpBanned, getIpBan, invalidateIpBanCache,
+    isUserBanned, isIpBanned, getIpBan, invalidateIpBanCache, forgiveBan,
     // Emotes
     createEmote, getEmoteById, getEmotesByUser, getGlobalEmotes, getChannelEmotes, updateEmote,
     deleteEmote, getEmoteByCode, countUserEmotes, countChannelEmotes, getChannelEmoteByCode,
