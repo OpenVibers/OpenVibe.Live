@@ -218,3 +218,10 @@
 .rs-lite .star-btn-watch::after, .rs-lite .star-kicker i, .rs-lite .star-live-pill { animation: none; }
 .rs-lite .star-btn-watch { box-shadow: none; }
 .rs-lite .ch-captions-dot, .rs-lite .chat-translate-hint { animation: none; box-shadow: none; }
+
+/* Why they're today's star (AI pick) */
+.star-why { margin: 10px 0 12px; padding: 12px 14px; border-radius: 12px; background: linear-gradient(135deg, rgba(251,191,36,0.12), rgba(244,114,182,0.08)); border: 1px solid rgba(251,191,36,0.35); }
+.star-why-head { font-size: 1.05rem; font-weight: 900; color: #fff; margin-bottom: 4px; }
+.star-why-body { font-size: 0.92rem; line-height: 1.45; color: var(--text-secondary); }
+.star-why-meta { margin-top: 8px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #fbbf24; }
+.star-why-meta i { margin-right: 4px; }

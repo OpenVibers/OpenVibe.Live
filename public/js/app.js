@@ -1778,7 +1778,7 @@ async function loadHome() {
 
     loadHomeRecentOnline();
     void loadHomePulse();     // happening-now rail + weekly leaders + AI moments + latest update
-    void loadHomeDigest();    // "while you were away" for returning logged-in users
+    void loadHomeDigest();    // "while you were away" / "lately on OpenVibe" — everyone
     void loadHomeStar();      // "Star of OpenVibe" spotlight (star_streamer setting)
 
     // Load recent VODs
@@ -1866,26 +1866,45 @@ async function loadHomePulse() {
 /* ── "While you were away" digest (logged-in returning users) ── */
 async function loadHomeDigest() {
     const box = document.getElementById('home-digest');
-    if (!box || !currentUser) return;
+    if (!box) return;
     const KEY = 'openvibe_last_visit';
     let since = null;
     try { since = localStorage.getItem(KEY); } catch { /* */ }
     try { localStorage.setItem(KEY, new Date().toISOString()); } catch { /* */ }
-    // First visit (nothing to compare against) → no banner, just start the clock.
-    if (!since) return;
     let d;
-    try { d = await api(`/home/digest?since=${encodeURIComponent(since)}`); } catch { return; }
-    if (!d || (!d.liveNow?.length && !d.missed?.length)) return;
-    const chip = (u, extra, live) => `
-        <a class="digest-chip ${live ? 'digest-chip--live' : ''}" href="/@${esc(u.username)}" onclick="return handleLinkClick(event, '/@${esc(u.username)}')">
+    try { d = await api(`/home/digest${since ? `?since=${encodeURIComponent(since)}` : ''}`); } catch { return; }
+    if (!d || (!d.liveNow?.length && !d.streamed?.length && !d.hot?.length)) { box.style.display = 'none'; return; }
+    const away = !!(since && currentUser);
+    const n = (v) => Number(v || 0).toLocaleString();
+    const chip = (u, extra, mods) => `
+        <a class="digest-chip ${mods}" href="/@${esc(u.username)}" onclick="return handleLinkClick(event, '/@${esc(u.username)}')" title="${esc(u.last_title || u.title || '')}">
             ${_avatarSpan(u.avatar_url, u.username, u.profile_color)}
             <span class="digest-name">${esc(u.display_name || u.username)}</span>
             <span class="digest-extra">${extra}</span>
+            ${u.followed ? '<span class="digest-follow" title="You follow them"><i class="fa-solid fa-heart"></i></span>' : ''}
         </a>`;
     const parts = [];
-    for (const u of (d.liveNow || [])) parts.push(chip(u, '<i class="fa-solid fa-circle live-dot"></i> LIVE now', true));
-    for (const u of (d.missed || [])) parts.push(chip(u, `streamed ${u.sessions > 1 ? u.sessions + '× ' : ''}${esc(timeAgo(u.last_at))}`, false));
-    box.innerHTML = `<div class="digest-head"><i class="fa-solid fa-clock-rotate-left"></i> While you were away</div><div class="digest-row">${parts.join('')}</div>`;
+    for (const u of (d.liveNow || [])) parts.push(chip(u, `<i class="fa-solid fa-circle live-dot"></i> LIVE${u.viewer_count ? ` · ${n(u.viewer_count)} watching` : ' now'}`, `digest-chip--live${u.followed ? ' digest-chip--followed' : ''}`));
+    for (const u of (d.streamed || [])) parts.push(chip(u, `${u.sessions > 1 ? `${u.sessions}× · ` : ''}${u.hours >= 0.1 ? `${u.hours}h · ` : ''}${esc(timeAgo(u.last_at))}${u.peak_viewers > 1 ? ` · peak ${n(u.peak_viewers)}` : ''}`, u.followed ? 'digest-chip--followed' : ''));
+    const st = d.stats || {};
+    const stats = [
+        st.streams ? `<span class="digest-stat"><i class="fa-solid fa-tower-broadcast"></i> <b>${n(st.streams)}</b> stream${st.streams === 1 ? '' : 's'}</span>` : '',
+        st.hours >= 0.5 ? `<span class="digest-stat"><i class="fa-regular fa-clock"></i> <b>${n(Math.round(st.hours))}</b>h live</span>` : '',
+        st.chat_lines ? `<span class="digest-stat"><i class="fa-solid fa-comments"></i> <b>${n(st.chat_lines)}</b> chat lines</span>` : '',
+        st.new_follows ? `<span class="digest-stat"><i class="fa-solid fa-heart"></i> <b>${n(st.new_follows)}</b> new follow${st.new_follows === 1 ? '' : 's'}</span>` : '',
+        st.new_members ? `<span class="digest-stat"><i class="fa-solid fa-user-plus"></i> <b>${n(st.new_members)}</b> joined</span>` : '',
+        st.mic_moments ? `<span class="digest-stat"><i class="fa-solid fa-microphone-lines"></i> <b>${n(st.mic_moments)}</b> Arena mic moment${st.mic_moments === 1 ? '' : 's'}</span>` : '',
+    ].filter(Boolean).join('');
+    const hot = (d.hot || []).map(h => `<div class="digest-hot-line"><i class="fa-solid fa-microphone-lines"></i> “${esc(String(h.text || '').slice(0, 140))}” <b>— ${esc(h.display_name || h.username)}</b>${h.aimed_at ? ` <span class="muted">at ${esc(h.aimed_at)}</span>` : ''}</div>`).join('');
+    const sinceLabel = d.since ? (away ? `since your last visit · ${esc(timeAgo(d.since))}` : `last ${Math.max(1, Math.round((Date.now() - Date.parse(d.since)) / 3600000))}h`) : '';
+    box.innerHTML = `
+        <div class="digest-head">
+            <span class="digest-title"><i class="fa-solid ${away ? 'fa-clock-rotate-left' : 'fa-bolt'}"></i> ${away ? 'While you were away' : 'Lately on OpenVibe'}</span>
+            <span class="digest-since">${sinceLabel}</span>
+        </div>
+        ${stats ? `<div class="digest-stats">${stats}</div>` : ''}
+        ${parts.length ? `<div class="digest-row">${parts.join('')}</div>` : ''}
+        ${hot ? `<div class="digest-hot">${hot}</div>` : ''}`;
     box.style.display = '';
 }
 
@@ -8935,6 +8954,12 @@ function copyDocSection() {
 /* ── Star of OpenVibe — home spotlight for the featured streamer ─────────────────────
    GET /api/home/star → { star: { username, display_name, avatar_url, bio, bio_en, language,
    live, ai_overview, follower_count, last_live_at } } (null when no star is configured). */
+function _starCountdown(ts) {
+    const ms = Number(ts) - Date.now();
+    if (!(ms > 0)) return 'soon';
+    const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
+    return h >= 1 ? `in ${h}h${m ? ` ${m}m` : ''}` : `in ${Math.max(1, m)}m`;
+}
 async function loadHomeStar() {
     const sec = document.getElementById('home-star-section');
     if (!sec) return;
@@ -8960,6 +8985,10 @@ async function loadHomeStar() {
         bioHtml = `<p class="star-bio">${_linkify(esc(bioSrc))}</p>`;
     }
     const overview = s.ai_overview ? `<p class="star-overview"><i class="fa-solid fa-wand-magic-sparkles"></i> ${esc(String(s.ai_overview).slice(0, 260))}${String(s.ai_overview).length > 260 ? '…' : ''}</p>` : '';
+    const pick = s.pick || null;
+    const why = pick && (pick.headline || pick.reason)
+        ? `<div class="star-why">${pick.headline ? `<div class="star-why-head">${esc(pick.headline)}</div>` : ''}${pick.reason ? `<div class="star-why-body">${esc(pick.reason)}</div>` : ''}<div class="star-why-meta"><i class="fa-solid fa-wand-magic-sparkles"></i> ${pick.by === 'ai' ? 'Picked by OpenVibe\'s AI' : 'Picked on the numbers'}${pick.next_at ? ` · next star ${esc(_starCountdown(pick.next_at))}` : ''}</div></div>`
+        : '';
     const chips = [
         foreign ? `<span class="star-chip pink">${esc(lang.flag)} Streams in ${esc(lang.name)}</span>` : '',
         foreign ? `<span class="star-chip"><i class="fa-solid fa-language"></i> Chat auto-translated both ways</span>` : '',
@@ -8972,7 +9001,7 @@ async function loadHomeStar() {
     sec.innerHTML = `
         <div class="section-header">
             <h2><i class="fa-solid fa-star" style="color:#fbbf24"></i> Star of OpenVibe</h2>
-            <span class="muted" style="font-size:0.8rem">the streamer we're rolling out the red carpet for</span>
+            <span class="muted" style="font-size:0.8rem">${s.rotates ? 'a new star every day — picked by the site\'s AI from who actually showed up' : 'the streamer we\'re rolling out the red carpet for'}</span>
         </div>
         <div class="star-card-border">
             <div class="star-card${isLive ? ' is-live' : ''}">
@@ -8985,9 +9014,10 @@ async function loadHomeStar() {
                     <span class="star-badge">⭐ Star</span>
                 </div>
                 <div class="star-body">
-                    <div class="star-kicker"><i class="fa-solid fa-star"></i> Featured streamer</div>
+                    <div class="star-kicker"><i class="fa-solid fa-star"></i> ${s.rotates ? 'Star of the day' : 'Featured streamer'}</div>
                     <h3 class="star-name"><a href="${esc(path)}" onclick="return handleLinkClick(event, '${esc(path)}')">${name}</a>${foreign && lang.code === 'ja' ? '<span class="star-jp">OpenVibeの看板配信者 — ようこそ！</span>' : ''}</h3>
                     <div class="star-chips">${chips}</div>
+                    ${why}
                     ${bioHtml}
                     ${overview}
                     ${offline}
