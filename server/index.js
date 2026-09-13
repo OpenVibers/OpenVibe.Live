@@ -588,6 +588,7 @@ app.use('/api/clips', clipRoutes);
 app.use('/api/chat-ai', require('./ai/chat-ai-routes'));
 app.use('/api/easter-egg', require('./ai/easter-egg-routes'));
 app.use('/api/arena', require('./arena/routes'));            // streamer vs streamer (docs/arena.md)
+app.use('/api/recap', require('./recap/routes'));            // after-show reports (docs/recap.md)
 app.use('/api/comments', commentRoutes);
 app.use('/api/controls', controlRoutes);
 app.use('/api/onvif', onvifRoutes);
@@ -1134,6 +1135,7 @@ async function start() {
         try { require('./ai/auto-clip-job').start(); } catch (e) { console.warn('[AI] auto-clip job not started:', e.message); }
         try { require('./ai/easter-egg-job').start(); } catch (e) { console.warn('[AI] easter-egg job not started:', e.message); }
         try { require('./arena/arena-job').start(); } catch (e) { console.warn('[Arena] job not started:', e.message); }
+        try { require('./recap/recap').start(); } catch (e) { console.warn('[Recap] job not started:', e.message); }
         // Continuous audio → stream_timeline_events. Gated behind ai_timeline_enabled
         // (default off), so starting it is a no-op until switched on in admin.
         try { require('./ai/timeline-job').start(); } catch (e) { console.warn('[AI] timeline job not started:', e.message); }
