@@ -71,13 +71,14 @@ async function aiPick(cands, exclude, previous) {
         about: String(c.overview || c.bio || '').replace(/\s+/g, ' ').slice(0, 220) || null,
     }));
     if (!list.length) return null;
-    const schema = { type: 'object', properties: { username: { type: 'string' }, headline: { type: 'string' }, reason: { type: 'string' } }, required: ['username', 'headline', 'reason'] };
+    const schema = { name: 'home_star', schema: { type: 'object', additionalProperties: false, required: ['username', 'headline', 'reason'], properties: { username: { type: 'string', description: 'exact username from the candidates' }, headline: { type: 'string', description: '≤ 60 chars' }, reason: { type: 'string', description: '≤ 170 chars, one sentence' } } } };
     const system = `You pick today's "Star of OpenVibe" — the one streamer OpenVibe.Live (a scrappy, open-source, community-run live-streaming site) rolls out the red carpet for on its home page for the next 24 hours.
 Pick from the candidates ONLY (use the exact username). Spread the love: favour people who showed up and put in real hours, grew, got chat talking, or bring something different (a language, a niche, a robot, a vibe) — not just the biggest number. Small streamers who are consistent deserve their day. Never pick anyone in the "recent stars" list.
 Write a "headline" (≤ 60 chars, punchy, warm, no quotes) and a "reason" (≤ 170 chars, one sentence, second person is fine, reference their real numbers or what they do — no emojis, no hashtags, no sarcasm, never mock). Output only JSON.`;
     const user = JSON.stringify({ recent_stars: Array.from(exclude), previous_star: previous || null, candidates: list });
     let r = null;
     try { r = await llm.complete({ role: 'summary', kind: 'home_star', source: 'home', system, user, json: schema, maxTokens: 300, temperature: 0.9, timeoutMs: 30000 }); } catch (e) { console.warn('[Star] model call failed:', e.message); return null; }
+    if (!r) { console.warn('[Star] model returned nothing — falling back to the score pick'); return null; }
     let out = null;
     if (r && typeof r === 'object') out = r.json || r.parsed || (r.text ? llm.parseJsonLoose(r.text) : null) || (r.content ? llm.parseJsonLoose(r.content) : null);
     else if (typeof r === 'string') out = llm.parseJsonLoose(r);
