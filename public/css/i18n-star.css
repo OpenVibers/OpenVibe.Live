@@ -95,7 +95,7 @@
 .star-card {
     position: relative; border-radius: 20px; overflow: hidden;
     display: grid; grid-template-columns: auto 1fr; gap: 22px; align-items: start;
-    padding: 22px 24px;
+    padding: 22px 24px 28px;
     background:
         radial-gradient(60% 80% at 100% 0%, color-mix(in srgb, #f472b6 18%, transparent), transparent 60%),
         radial-gradient(50% 70% at 0% 100%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 60%),
@@ -173,7 +173,7 @@
 .star-bio-src { margin: 0 0 8px; color: var(--text-secondary); font-size: 0.82rem; white-space: pre-wrap; line-height: 1.45; }
 .star-bio-label { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-light); margin: 6px 0 2px; }
 .star-overview { color: var(--text-secondary); font-size: 0.84rem; line-height: 1.45; margin: 8px 0 0; }
-.star-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.star-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; margin-bottom: 6px; }
 .star-actions .btn { font-weight: 700; }
 .star-btn-watch {
     background: linear-gradient(135deg, #fde68a, #fbbf24 50%, #f59e0b); color: #1c1002; border: none;
@@ -186,7 +186,9 @@
 .star-offline { color: var(--text-muted); font-size: 0.8rem; margin-top: 8px; }
 
 @media (max-width: 860px) {
-    .star-card, .star-card.is-live { grid-template-columns: 1fr; text-align: center; gap: 14px; padding: 20px 16px; }
+    .star-card, .star-card.is-live { grid-template-columns: 1fr; text-align: center; gap: 14px; padding: 20px 16px 34px; }
+    .star-actions .btn { flex: 1 1 140px; justify-content: center; }
+    .home-star-section { margin-bottom: 34px; }
     .star-avatar-wrap { margin: 0 auto; }
     .star-chips, .star-actions { justify-content: center; }
     .star-live-card { max-width: 420px; width: 100%; margin: 0 auto; }
