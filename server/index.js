@@ -1161,6 +1161,7 @@ async function start() {
         try { require('./monetization/payments').startRenewalSweeper(); } catch (e) { console.warn('[Payments] renewal sweeper not started:', e.message); }
         // 5-minute live-viewer samples → the home hero's 24h sparkline.
         try { require('./home/routes').startViewerSampler(); } catch (e) { console.warn('[Home] viewer sampler not started:', e.message); }
+        try { require('./home/star-job').start(); } catch (e) { console.warn('[Home] star picker not started:', e.message); }
         // PowerChat: prune the webhook-dedupe log daily so it can't grow unbounded.
         try {
             const _pcClean = () => { try { db.cleanupPowerchatDeliveries(3); } catch { /* */ } };

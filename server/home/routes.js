@@ -244,6 +244,14 @@ router.get('/star', async (req, res) => {
                 ai_overview: channel.ai_overview || null, category: channel.ai_category || channel.category || null,
                 follower_count, live: liveSafe,
                 last_live_at: live ? null : (last_stream && (last_stream.ended_at || last_stream.started_at)) || null,
+                pick: (() => {
+                    try {
+                        const p = require('./star-job').loadPick();
+                        if (p && String(p.username || '').toLowerCase() === user.username.toLowerCase()) return { headline: p.headline || null, reason: p.reason || null, picked_at: p.picked_at || null, next_at: p.next_at || null, by: p.by || null };
+                    } catch { /* */ }
+                    return null;
+                })(),
+                rotates: !String(db.getSetting('star_streamer_pinned') || '').trim(),
             },
         };
         _starCache = { at: Date.now(), key: uname.toLowerCase(), data };
@@ -286,32 +294,64 @@ function _latestUpdate() {
     return _updateCache.data;
 }
 
-// ── "While you were away" digest for returning users ─────────────────────────
-// ?since=<ISO> (the client remembers its own last visit). Followed channels that
-// are live right now + those that streamed since the last visit.
-const { requireAuth } = require('../auth/auth');
-router.get('/digest', requireAuth, (req, res) => {
+// ── "While you were away" / "Lately on OpenVibe" digest — for everyone ────────
+// ?since=<ISO> (the client remembers its own last visit; anonymous / first visit → last 48h).
+// Site-wide activity since then: who's live, who streamed (followed channels first for signed-in
+// users), the numbers, and the hottest Arena mic lines.
+const { requireAuth, optionalAuth } = require('../auth/auth');
+router.get('/digest', optionalAuth, (req, res) => {
     try {
-        const since = req.query.since && !Number.isNaN(Date.parse(req.query.since))
-            ? new Date(req.query.since).toISOString()
-            : new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString();
-        const liveNow = db.all(`SELECT DISTINCT u.username, u.display_name, u.avatar_url
-            FROM follows f JOIN users u ON u.id = f.streamer_id
-            JOIN streams s ON s.user_id = f.streamer_id AND s.is_live = 1
-            WHERE f.follower_id = ?`, [req.user.id]) || [];
-        const missed = db.all(`SELECT u.username, u.display_name, u.avatar_url,
-                COUNT(s.id) AS sessions, MAX(s.started_at) AS last_at, MAX(s.title) AS last_title
-            FROM follows f JOIN users u ON u.id = f.streamer_id
-            JOIN streams s ON s.user_id = f.streamer_id AND s.started_at >= ? AND s.is_live = 0
-            WHERE f.follower_id = ?
-            GROUP BY f.streamer_id ORDER BY last_at DESC LIMIT 6`, [since, req.user.id]) || [];
-        // Don't list a channel as "missed" when it's live right now — it's in liveNow.
-        const liveSet = new Set(liveNow.map(x => x.username));
-        res.json({ since, liveNow, missed: missed.filter(m => !liveSet.has(m.username)) });
+        const now = Date.now();
+        let sinceMs = req.query.since && !Number.isNaN(Date.parse(req.query.since)) ? Date.parse(req.query.since) : now - 48 * 3600 * 1000;
+        sinceMs = Math.max(now - 14 * 24 * 3600 * 1000, Math.min(sinceMs, now - 6 * 3600 * 1000));   // 6h … 14d window
+        const since = new Date(sinceMs).toISOString();
+        const sinceSql = since.replace('T', ' ').slice(0, 19);
+        const uid = req.user ? req.user.id : null;
+        const followed = new Set(uid ? (db.all('SELECT streamer_id FROM follows WHERE follower_id = ?', [uid]) || []).map(r => r.streamer_id) : []);
+        const liveNow = (db.all(`SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.profile_color, s.title, s.viewer_count, s.started_at
+            FROM streams s JOIN users u ON u.id = s.user_id WHERE s.is_live = 1 AND COALESCE(u.is_banned, 0) = 0
+            ORDER BY s.viewer_count DESC, s.started_at DESC LIMIT 10`) || []).map(r => ({ ...r, followed: followed.has(r.user_id) }));
+        const liveIds = new Set(liveNow.map(r => r.user_id));
+        const streamed = (db.all(`SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.profile_color,
+                COUNT(s.id) AS sessions, MAX(s.started_at) AS last_at, MAX(COALESCE(s.peak_viewers, 0)) AS peak_viewers,
+                ROUND(SUM(COALESCE(s.duration_seconds, CASE WHEN s.ended_at IS NOT NULL THEN (julianday(s.ended_at) - julianday(s.started_at)) * 86400 ELSE 0 END)) / 3600.0, 1) AS hours,
+                (SELECT title FROM streams t WHERE t.user_id = u.id AND t.started_at >= ? ORDER BY t.started_at DESC LIMIT 1) AS last_title
+            FROM streams s JOIN users u ON u.id = s.user_id
+            WHERE s.started_at >= ? AND s.is_live = 0 AND COALESCE(u.is_banned, 0) = 0
+            GROUP BY u.id ORDER BY hours DESC, last_at DESC LIMIT 14`, [sinceSql, sinceSql]) || [])
+            .filter(r => !liveIds.has(r.user_id)).map(r => ({ ...r, followed: followed.has(r.user_id) }))
+            .sort((a, b) => (b.followed - a.followed) || (b.hours - a.hours)).slice(0, 8);
+        const one = (sql, params) => { try { return get(sql, params); } catch { return null; } };
+        const get = (sql, params) => db.get(sql, params);
+        const stats = {
+            streams: Number((one('SELECT COUNT(*) AS n FROM streams WHERE started_at >= ?', [sinceSql]) || {}).n || 0),
+            hours: Number((one(`SELECT ROUND(SUM(COALESCE(duration_seconds, CASE WHEN ended_at IS NOT NULL THEN (julianday(ended_at) - julianday(started_at)) * 86400 ELSE (julianday('now') - julianday(started_at)) * 86400 END)) / 3600.0, 1) AS h FROM streams WHERE started_at >= ?`, [sinceSql]) || {}).h || 0),
+            chat_lines: Number((one("SELECT COUNT(*) AS n FROM chat_messages WHERE timestamp >= ? AND COALESCE(is_deleted, 0) = 0", [sinceSql]) || {}).n || 0),
+            new_follows: Number((one('SELECT COUNT(*) AS n FROM follows WHERE created_at >= ?', [sinceSql]) || {}).n || 0),
+            new_members: Number((one('SELECT COUNT(*) AS n FROM users WHERE created_at >= ?', [sinceSql]) || {}).n || 0),
+            mic_moments: Number((one('SELECT COUNT(*) AS n FROM arena_mic_moments WHERE said_at >= ?', [sinceSql]) || {}).n || 0),
+        };
+        let hot = [];
+        try {
+            hot = (db.all(`SELECT m.text, m.quality, m.said_at, m.aimed_at, u.username, u.display_name FROM arena_mic_moments m JOIN users u ON u.id = m.user_id
+                WHERE m.said_at >= ? AND m.quality >= 7 ORDER BY m.quality DESC, m.said_at DESC LIMIT 3`, [sinceSql]) || []);
+        } catch { hot = []; }
+        res.set('Cache-Control', uid ? 'private, max-age=30' : 'public, max-age=60');
+        res.json({ since, signed_in: !!uid, liveNow, streamed, stats, hot });
     } catch (err) {
         console.error('[Home] digest error:', err.message);
         res.status(500).json({ error: 'Failed to load digest' });
     }
+});
+
+// Admin: pick a new Star of OpenVibe right now (the job otherwise rotates daily).
+router.post('/star/rotate', requireAuth, async (req, res) => {
+    if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    try {
+        const out = await require('./star-job').rotate({ force: true });
+        _starCache = { at: 0, key: '', data: null };
+        res.json(out);
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // Sample the live viewer total every 5 minutes for the hero sparkline.
