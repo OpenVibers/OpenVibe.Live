@@ -116,6 +116,7 @@ async function _pageMeta(routePath) {
     if ((m = p.match(/^\/clip\/(\d+)$/))) return _clipMeta(parseInt(m[1], 10));
     if ((m = p.match(/^\/p\/([A-Za-z0-9_-]+)$/))) return _pasteMeta(m[1]);
     if ((m = p.match(/^\/@([A-Za-z0-9_.-]+)$/))) return _channelMeta(m[1]);
+    if ((m = p.match(/^\/recap\/(\d+)$/))) return _recapMeta(parseInt(m[1], 10));
 
     return null;
     void bu;
@@ -153,6 +154,20 @@ function _channelMeta(username) {
         jsonLd: [profile, _breadcrumb([{ name: 'Home', url: '/' }, { name: name, url: canonicalPath }])],
         snapshot,
     };
+}
+
+// After-show report: /recap/:streamId
+function _recapMeta(streamId) {
+    let r; try { r = require('../recap/recap').getRecap(streamId); } catch { r = null; }
+    if (!r) return null;
+    const name = r.streamer.display_name || r.streamer.username;
+    const title = clean(`${r.write.headline || r.stream.title}`, 90);
+    const desc = clean(r.write.summary || `After-show report for ${name}'s stream "${r.stream.title}" on ${SITE_NAME}.`, 200);
+    const image = r.vod && r.vod.thumbnail_url ? media.publicUrl(r.vod.thumbnail_url) : (r.streamer.avatar_url ? abs(r.streamer.avatar_url) : DEFAULT_OG_IMAGE);
+    const canonicalPath = `/recap/${streamId}`;
+    const article = { '@context': 'https://schema.org', '@type': 'Article', headline: title, description: desc, image: [image], datePublished: isoDate(r.stream.ended_at) || undefined, author: _authorLd(name), publisher: { '@type': 'Organization', name: SITE_NAME, url: baseUrl() } };
+    const snapshot = _detailSnapshot({ title: `After-show report: ${r.stream.title}`, byline: `${name} · ${Math.round((r.stream.duration_seconds || 0) / 60)} min · grade ${r.write.grade}`, desc, overview: r.write.summary, transcript: null, canonicalPath, watchLabel: 'Read the report' });
+    return { title: `${title} — ${name}'s stream report | ${SITE_NAME}`, description: desc, canonicalPath, image, ogType: 'article', robots: 'index,follow', jsonLd: [article, _breadcrumb([{ name: 'Home', url: '/' }, { name, url: `/@${r.streamer.username}` }, { name: 'Report', url: canonicalPath }])], snapshot };
 }
 
 // A crawlable <section> listing media items with real detail (title, streamer, meta).
@@ -410,7 +425,7 @@ function _cacheSet(key, html) {
     _cache.set(key, { html, at: Date.now() });
 }
 
-const SEO_ROUTE_RE = /^\/(?:$|vods$|clips$|pastes$|vod\/\d+$|clip\/\d+$|p\/[A-Za-z0-9_-]+$|@[A-Za-z0-9_.-]+$)/;
+const SEO_ROUTE_RE = /^\/(?:$|vods$|clips$|pastes$|vod\/\d+$|clip\/\d+$|recap\/\d+$|p\/[A-Za-z0-9_-]+$|@[A-Za-z0-9_.-]+$)/;
 
 async function middleware(req, res, next) {
     if (req.method !== 'GET') return next();

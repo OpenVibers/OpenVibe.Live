@@ -319,7 +319,7 @@ router.get('/digest', optionalAuth, (req, res) => {
             FROM streams s JOIN users u ON u.id = s.user_id
             WHERE s.started_at >= ? AND s.is_live = 0 AND COALESCE(u.is_banned, 0) = 0
             GROUP BY u.id ORDER BY hours DESC, last_at DESC LIMIT 14`, [sinceSql, sinceSql]) || [])
-            .filter(r => !liveIds.has(r.user_id)).map(r => ({ ...r, followed: followed.has(r.user_id) }))
+            .filter(r => !liveIds.has(r.user_id)).map(r => ({ ...r, followed: followed.has(r.user_id), recap_stream_id: (() => { try { const x = db.get('SELECT r.stream_id FROM stream_recaps r JOIN streams s ON s.id = r.stream_id WHERE r.user_id = ? AND s.started_at >= ? ORDER BY r.created_at DESC LIMIT 1', [r.user_id, sinceSql]); return x ? x.stream_id : null; } catch { return null; } })() }))
             .sort((a, b) => (b.followed - a.followed) || (b.hours - a.hours)).slice(0, 8);
         const one = (sql, params) => { try { return get(sql, params); } catch { return null; } };
         const get = (sql, params) => db.get(sql, params);

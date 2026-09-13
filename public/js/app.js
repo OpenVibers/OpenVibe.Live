@@ -58,7 +58,7 @@ function isStaffUser(user = currentUser) {
 }
 
 // Reserved paths (not usernames)
-const RESERVED = new Set(['vods', 'clips', 'vod', 'clip', 'dashboard', 'settings', 'broadcast', 'admin', 'themes', 'game', 'canvas', 'chat', 'api', 'ws', 'media', 'pastes', 'p', 'updates', 'dmca', 'tos', 'terms', 'arena']);
+const RESERVED = new Set(['vods', 'clips', 'vod', 'clip', 'dashboard', 'settings', 'broadcast', 'admin', 'themes', 'game', 'canvas', 'chat', 'api', 'ws', 'media', 'pastes', 'p', 'updates', 'dmca', 'tos', 'terms', 'arena', 'recap']);
 const CHANNEL_USERNAME_RE = /^[a-zA-Z0-9_]{3,24}$/;
 
 function normalizeChannelUsername(username) {
@@ -990,6 +990,10 @@ function routeFromURL() {
                 });
             }).catch(() => {});
         }
+    } else if (segments[0] === 'recap' && segments[1]) {
+        // After-show report: /recap/:streamId
+        showPage('recap');
+        if (typeof loadRecapPage === 'function') loadRecapPage(segments[1]);
     } else if (segments[0] === 'arena') {
         showPage('arena');
         if (typeof loadArenaPage === 'function') loadArenaPage(segments);
@@ -1882,7 +1886,7 @@ async function loadHomeDigest() {
             <span class="digest-name">${esc(u.display_name || u.username)}</span>
             <span class="digest-extra">${extra}</span>
             ${u.followed ? '<span class="digest-follow" title="You follow them"><i class="fa-solid fa-heart"></i></span>' : ''}
-        </a>`;
+        </a>${u.recap_stream_id ? `<a class="digest-recap" href="/recap/${u.recap_stream_id}" onclick="return handleLinkClick(event, '/recap/${u.recap_stream_id}')" title="After-show report"><i class="fa-solid fa-clipboard-list"></i></a>` : ''}`;
     const parts = [];
     for (const u of (d.liveNow || [])) parts.push(chip(u, `<i class="fa-solid fa-circle live-dot"></i> LIVE${u.viewer_count ? ` · ${n(u.viewer_count)} watching` : ' now'}`, `digest-chip--live${u.followed ? ' digest-chip--followed' : ''}`));
     for (const u of (d.streamed || [])) parts.push(chip(u, `${u.sessions > 1 ? `${u.sessions}× · ` : ''}${u.hours >= 0.1 ? `${u.hours}h · ` : ''}${esc(timeAgo(u.last_at))}${u.peak_viewers > 1 ? ` · peak ${n(u.peak_viewers)}` : ''}`, u.followed ? 'digest-chip--followed' : ''));
