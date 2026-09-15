@@ -101,5 +101,8 @@
 .dsc-person b { font-size: 0.84rem; } .dsc-person small { font-size: 0.68rem; color: var(--text-muted); }
 .dsc-person em { grid-column: 2; font-style: normal; font-size: 0.62rem; color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
 .dsc-live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #e0245e; margin-right: 3px; animation: ccMark 1.4s ease-in-out infinite; }
-@media (max-width: 980px) { .dsc { grid-template-columns: 1fr; grid-template-areas: "head" "live" "clips" "side" "people"; } }
+/* No live streams and no clips to show: let the side column use the full width, two-up. */
+.dsc--noleft { grid-template-columns: 1fr; grid-template-areas: "head" "side" "people"; }
+.dsc--noleft .dsc-sec--side { grid-template-columns: minmax(260px, 1fr) minmax(0, 1.4fr); align-items: start; }
+@media (max-width: 980px) { .dsc { grid-template-columns: 1fr; grid-template-areas: "head" "live" "clips" "side" "people"; } .dsc--noleft { grid-template-areas: "head" "side" "people"; } .dsc--noleft .dsc-sec--side { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .dsc-live { grid-template-columns: 1fr 1fr; } .dsc-clips { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); } }

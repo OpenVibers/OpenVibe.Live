@@ -164,6 +164,7 @@
                 <a class="dsc-person" ${go(`/@${p.username}`)}>${av(p, 44)}<b>${esc(p.display_name || p.username)}</b><small>${p.live ? '<span class="dsc-live-dot"></span> live now' : (p.last_live_at ? `live ${esc(ago(p.last_live_at))}` : '')}${p.followers ? ` · ${n(p.followers)} follower${p.followers === 1 ? '' : 's'}` : ''}</small>${p.same_category && p.category ? `<em>${esc(p.category)}</em>` : ''}</a>`).join('')}</div></section>`);
         }
         if (!sections.length) { host.innerHTML = ''; return; }
-        host.innerHTML = `<div class="dsc"><div class="dsc-head"><span class="dsc-title"><i class="fa-solid fa-compass"></i> While ${esc(name)} is away</span><span class="dsc-sub">the rest of OpenVibe is right here — follow ${esc(name)} to get pinged when they're back</span></div>${sections.join('')}</div>`;
+        const noLeft = !(d.live || []).length && !(d.clips || []).length;
+        host.innerHTML = `<div class="dsc${noLeft ? ' dsc--noleft' : ''}"><div class="dsc-head"><span class="dsc-title"><i class="fa-solid fa-compass"></i> While ${esc(name)} is away</span><span class="dsc-sub">the rest of OpenVibe is right here — follow ${esc(name)} to get pinged when they're back</span></div>${sections.join('')}</div>`;
     };
 })();
