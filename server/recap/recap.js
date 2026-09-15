@@ -184,6 +184,15 @@ function listRecaps(userId, limit = 6) {
     }).filter(Boolean);
 }
 
+/** Latest recaps site-wide (for discovery surfaces). */
+function listRecentRecaps(limit = 6, excludeUserId = null) {
+    ensureTable();
+    const rows = db.all(`SELECT r.stream_id, r.json, r.created_at, u.username, u.display_name, u.avatar_url, u.profile_color
+        FROM stream_recaps r JOIN users u ON u.id = r.user_id WHERE (? IS NULL OR r.user_id != ?) AND COALESCE(u.is_banned, 0) = 0
+        ORDER BY r.created_at DESC LIMIT ?`, [excludeUserId, excludeUserId, limit]) || [];
+    return rows.map(r => { try { const j = JSON.parse(r.json); return { stream_id: r.stream_id, username: r.username, display_name: r.display_name || r.username, avatar_url: r.avatar_url, profile_color: r.profile_color, title: j.stream.title, headline: j.write.headline, grade: j.write.grade, duration_seconds: j.stream.duration_seconds, peak_viewers: j.stream.peak_viewers, chat_messages: j.chat.messages, ended_at: j.stream.ended_at, thumbnail_url: j.vod ? j.vod.thumbnail_url : null }; } catch { return null; } }).filter(Boolean);
+}
+
 /** Streams that ended recently, ran long enough, and have no recap yet. */
 function pending() {
     ensureTable();
@@ -229,4 +238,4 @@ function start() {
     console.log('[Recap] after-show reports started (every 2 min, streams ≥ 8 min)');
 }
 
-module.exports = { buildRecap, getRecap, ensureRecap, listRecaps, pending, announce, start, tick, gather, templateWriteup, MIN_DURATION_SEC, ensureTable };
+module.exports = { buildRecap, getRecap, ensureRecap, listRecaps, listRecentRecaps, pending, announce, start, tick, gather, templateWriteup, MIN_DURATION_SEC, ensureTable };

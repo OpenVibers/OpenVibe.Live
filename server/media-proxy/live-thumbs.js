@@ -112,6 +112,58 @@ function generateLiveStreamThumbnail(streamId, streamKey, opts = {}) {
     });
 }
 
+/**
+ * Grab one frame from a WebRTC / WHIP stream straight out of the SFU: a short-lived
+ * PlainRTP consumer feeds ffmpeg over loopback, ffmpeg writes one JPEG and exits. No
+ * dependency on the broadcaster's browser tab (hidden tabs and OBS/WHIP send nothing) and
+ * none on the recording (which can be refused when the disk is low).
+ */
+let _rtpPort = 31000;
+function _nextRtpPort() { const p = _rtpPort; _rtpPort += 2; if (_rtpPort > 31900) _rtpPort = 31000; return p; }
+function generateWebrtcThumbnail(streamId, opts = {}) {
+    return new Promise(async (resolve) => {
+        const minAgeMs = Number.isFinite(opts.minAgeMs) ? opts.minAgeMs : LIVE_THUMB_MIN_INTERVAL_MS;
+        if (!shouldRefreshLiveThumbnail(streamId, minAgeMs)) return resolve(getCurrentLiveThumbnailUrl(streamId));
+        const jobKey = `webrtc:${streamId}`;
+        if (activeLiveThumbnailJobs.has(jobKey)) return resolve(getCurrentLiveThumbnailUrl(streamId));
+        let sfu; try { sfu = require('../streaming/webrtc-sfu'); } catch { return resolve(null); }
+        const roomId = `stream-${streamId}`;
+        const producer = (() => { try { return sfu.findProducerByKind(roomId, 'video'); } catch { return null; } })();
+        if (!producer) return resolve(null);
+        activeLiveThumbnailJobs.add(jobKey);
+        const port = _nextRtpPort();
+        const filename = `stream-${streamId}-${Date.now()}.jpg`;
+        const outPath = path.join(THUMB_DIR, filename);
+        const sdpPath = path.join(require('os').tmpdir(), `openvibe-thumb-${streamId}-${port}.sdp`);
+        let consumer = null;
+        const finish = (ok) => {
+            activeLiveThumbnailJobs.delete(jobKey);
+            try { if (consumer) sfu.closePlainConsumer(roomId, consumer.transportId); } catch { /* */ }
+            try { fs.unlinkSync(sdpPath); } catch { /* */ }
+            if (ok && fs.existsSync(outPath) && fs.statSync(outPath).size > 2000) return resolve(_replaceThumb(streamId, filename));
+            try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch { /* */ }
+            resolve(null);
+        };
+        try {
+            consumer = await sfu.createPlainConsumer(roomId, producer.id, '127.0.0.1', port, port + 1);
+        } catch (e) { console.warn(`[Thumbnails] webrtc grab: consumer failed for stream ${streamId}:`, e.message); return finish(false); }
+        const pt = consumer.payloadType, codec = (consumer.mimeType || 'video/VP8').split('/')[1];
+        const fmtp = consumer.codecParameters ? Object.entries(consumer.codecParameters).map(([k, v]) => `${k}=${v}`).join(';') : '';
+        const sdp = ['v=0', 'o=- 0 0 IN IP4 127.0.0.1', 's=OpenVibe.Live thumbnail', 'c=IN IP4 127.0.0.1', 't=0 0',
+            `m=video ${port} RTP/AVP ${pt}`, `a=rtpmap:${pt} ${codec}/${consumer.clockRate}`,
+            consumer.ssrc ? `a=ssrc:${consumer.ssrc} cname:thumb` : '', fmtp ? `a=fmtp:${pt} ${fmtp}` : '', 'a=recvonly', ''].filter(l => l !== '').join('\n') + '\n';
+        try { fs.writeFileSync(sdpPath, sdp, 'utf8'); } catch { return finish(false); }
+        const ff = spawn('ffmpeg', [
+            '-hide_banner', '-loglevel', 'error', '-y', '-protocol_whitelist', 'file,rtp,udp',
+            '-analyzeduration', '4000000', '-probesize', '4000000', '-reorder_queue_size', '512',
+            '-i', sdpPath, '-frames:v', '1', '-vf', `scale=${THUMB_WIDTH}:-1`, '-q:v', String(THUMB_QUALITY), outPath,
+        ], { stdio: 'ignore' });
+        const killTimer = setTimeout(() => { try { ff.kill('SIGKILL'); } catch { /* */ } }, 14000);
+        ff.on('close', (code) => { clearTimeout(killTimer); finish(code === 0); });
+        ff.on('error', () => { clearTimeout(killTimer); finish(false); });
+    });
+}
+
 /** Grab one frame from a JSMPEG stream by tapping the relay WebSocket. */
 function generateJSMPEGThumbnail(streamId, videoPort) {
     return new Promise((resolve) => {
@@ -196,6 +248,7 @@ function extractFrameToFile(source, seekSeconds, outAbsPath) {
 }
 
 module.exports = {
+    generateWebrtcThumbnail,
     THUMB_DIR,
     getStreamThumbnailState,
     shouldRefreshLiveThumbnail,

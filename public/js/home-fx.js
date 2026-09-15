@@ -4,8 +4,7 @@
  * Purely decorative and fully additive: nothing here is required for the page to work.
  *   - hero sparks: a lightweight canvas of drifting embers / orbs behind the hero
  *   - cursor spotlight: a soft radial glow that follows the pointer over the hero
- *   - magnetic buttons: the hero CTA buttons lean toward the cursor
- *   - scroll reveal: section headers, cards and grids slide/fade in as they enter the viewport
+  *   - scroll reveal: section headers, cards and grids slide/fade in as they enter the viewport
  *   - count-up: hero stat numbers tick up from 0 when first painted
  *   - card tilt: stream cards tilt slightly toward the pointer
  * Everything is disabled under prefers-reduced-motion, paused when the tab is hidden, and
@@ -77,16 +76,9 @@
             cancelAnimationFrame(raf);
             raf = requestAnimationFrame(() => {
                 spot.style.setProperty('--x', `${x}px`); spot.style.setProperty('--y', `${y}px`); spot.style.opacity = '1';
-                hero.querySelectorAll('.hero-cta .btn').forEach(btn => {
-                    const b = btn.getBoundingClientRect();
-                    const dx = e.clientX - (b.left + b.width / 2), dy = e.clientY - (b.top + b.height / 2);
-                    const dist = Math.hypot(dx, dy);
-                    if (dist < 140) { const k = (1 - dist / 140) * 10; btn.style.transform = `translate(${(dx / dist) * k}px, ${(dy / dist) * k}px)`; }
-                    else btn.style.transform = '';
-                });
             });
         });
-        hero.addEventListener('pointerleave', () => { spot.style.opacity = '0'; hero.querySelectorAll('.hero-cta .btn').forEach(btn => { btn.style.transform = ''; }); });
+        hero.addEventListener('pointerleave', () => { spot.style.opacity = '0'; });
     }
 
     // ── Scroll reveal ──────────────────────────────────────────

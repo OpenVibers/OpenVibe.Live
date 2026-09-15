@@ -355,6 +355,64 @@ router.get('/:id/memories', optionalAuth, async (req, res) => {
     }
 });
 
+/**
+ * GET /api/vods/:id/context — everything around a VOD that isn't the file: the stream it came
+ * from, its activity numbers (chat, viewers, mic moments, follows, clips), the clips cut from
+ * it, and the after-show report. Shared by the VOD page, the clip page ("from this stream")
+ * and cards. Cached 2 min.
+ */
+const _ctxCache = new Map();
+router.get('/:id/context', optionalAuth, async (req, res) => {
+    try {
+        if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'VOD not found' });
+        const id = parseInt(req.params.id, 10);
+        const hit = _ctxCache.get(id);
+        if (hit && Date.now() - hit.at < 120000) { res.set('Cache-Control', 'public, max-age=60'); return res.json(hit.data); }
+        let vod = null;
+        try { vod = await media.getVod(id); } catch { vod = null; }
+        if (!vod) return res.status(404).json({ error: 'VOD not found' });
+        if (vod.visibility === 'private' && !(req.user && (req.user.id === vod.user_id || req.user.role === 'admin'))) return res.status(404).json({ error: 'VOD not found' });
+        const stream = vod.stream_id ? db.getStreamById(vod.stream_id) : null;
+        const streamer = db.getUserById(vod.user_id || (stream && stream.user_id));
+        const safe = (fn, d) => { try { const v = fn(); return v == null ? d : v; } catch { return d; } };
+        let stats = null;
+        if (stream) {
+            const start = String(stream.started_at || ''), end = String(stream.ended_at || new Date().toISOString().replace('T', ' ').slice(0, 19));
+            const chat = safe(() => db.get('SELECT COUNT(*) AS n, COUNT(DISTINCT COALESCE(user_id, anon_id, username)) AS c FROM chat_messages WHERE stream_id = ? AND COALESCE(is_deleted, 0) = 0', [stream.id]), { n: 0, c: 0 });
+            const avg = safe(() => db.get('SELECT ROUND(AVG(viewer_count), 1) AS a, COUNT(*) AS k FROM viewer_snapshots WHERE stream_id = ?', [stream.id]), { a: null, k: 0 });
+            stats = {
+                chat_messages: Number(chat.n) || 0, chatters: Number(chat.c) || 0,
+                peak_viewers: Number(stream.peak_viewers) || 0, avg_viewers: avg.k ? Number(avg.a) : null,
+                sound_commands: safe(() => db.get("SELECT COUNT(*) AS n FROM chat_messages WHERE stream_id = ? AND message_type = 'soundboard'", [stream.id]).n, 0),
+                mic_moments: safe(() => db.get('SELECT COUNT(*) AS n FROM arena_mic_moments WHERE stream_id = ?', [stream.id]).n, 0),
+                follows_gained: safe(() => db.get('SELECT COUNT(*) AS n FROM follows WHERE streamer_id = ? AND created_at BETWEEN ? AND ?', [stream.user_id, start, end]).n, 0),
+                tips: safe(() => db.get("SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS t FROM transactions WHERE type = 'donation' AND (stream_id = ? OR (to_user_id = ? AND created_at BETWEEN ? AND ?))", [stream.id, stream.user_id, start, end]), { n: 0, t: 0 }),
+                top_chatters: safe(() => db.all('SELECT c.username, u.display_name, u.avatar_url, u.profile_color, COUNT(*) AS n FROM chat_messages c LEFT JOIN users u ON u.id = c.user_id WHERE c.stream_id = ? AND COALESCE(c.is_deleted, 0) = 0 AND c.username IS NOT NULL AND (c.user_id IS NULL OR c.user_id != ?) GROUP BY COALESCE(c.user_id, c.username) ORDER BY n DESC LIMIT 3', [stream.id, stream.user_id]), []),
+            };
+        }
+        let clips = [];
+        try {
+            const co = await media.listClips({ vod_id: id, order: 'views', limit: 12 });
+            clips = (co?.clips || (Array.isArray(co) ? co : [])).filter(c => c.status === 'ready' || !c.status).map(c => ({ id: c.id, title: c.title, thumbnail_url: c.thumbnail_url ? media.publicUrl(c.thumbnail_url) : null, duration_seconds: c.duration_seconds || c.duration || 0, start_time: c.start_time, view_count: Number(c.view_count) || 0, by: c.display_name || c.username || null, created_at: c.created_at }));
+        } catch { clips = []; }
+        let recap = null;
+        try { const r = stream ? require('../recap/recap').getRecap(stream.id) : null; if (r) recap = { stream_id: stream.id, grade: r.write.grade, headline: r.write.headline, moment: r.write.moment || null }; } catch { recap = null; }
+        const data = {
+            vod: { id: vod.id, title: vod.title, thumbnail_url: vod.thumbnail_url ? media.publicUrl(vod.thumbnail_url) : null, duration_seconds: vod.duration_seconds || vod.duration || 0, view_count: Number(vod.view_count) || 0, created_at: vod.created_at, visibility: vod.visibility || 'public', is_recording: !!vod.is_recording },
+            stream: stream ? { id: stream.id, title: stream.title, started_at: stream.started_at, ended_at: stream.ended_at, category: stream.ai_category || stream.category || null, protocol: stream.protocol, is_live: !!stream.is_live } : null,
+            streamer: streamer ? { id: streamer.id, username: streamer.username, display_name: streamer.display_name || streamer.username, avatar_url: streamer.avatar_url || null, profile_color: streamer.profile_color || null } : null,
+            stats, clips, recap,
+        };
+        _ctxCache.set(id, { at: Date.now(), data });
+        if (_ctxCache.size > 500) { const k = _ctxCache.keys().next().value; _ctxCache.delete(k); }
+        res.set('Cache-Control', 'public, max-age=60');
+        res.json(data);
+    } catch (err) {
+        console.error('[VODs] context error:', err.message);
+        res.status(500).json({ error: 'Failed to load context' });
+    }
+});
+
 router.get('/:id', optionalAuth, async (req, res) => {
     try {
         if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'VOD not found' });

@@ -5938,6 +5938,14 @@ async function _fillOfflineExplore(username) {
     if (!built.length && (data.vod || data.clip)) {
         built.push({ key: 'all', label: 'Top content', vod: data.vod || null, clip: data.clip || null });
     }
+    // The discover board (live now, hot clips, fresh reports, star of the day, streamers like
+    // this one) fills the rest of the offline screen — with or without this channel's own content.
+    const mountDiscover = () => {
+        if (host.closest('.ch-offline-overlay')) return;          // over a custom image: keep it light
+        let d = document.getElementById('ch-discover');
+        if (!d) { d = document.createElement('div'); d.id = 'ch-discover'; host.insertAdjacentElement('afterend', d); }
+        if (typeof renderOfflineDiscover === 'function') renderOfflineDiscover(username, d);
+    };
     if (!built.length) {
         host.innerHTML = '';
         // Nothing to show → don't leave an empty overlay (just an X) floating over the image.
@@ -5945,8 +5953,10 @@ async function _fillOfflineExplore(username) {
         const re = document.getElementById('ch-offline-reopen');
         if (ov) ov.style.display = 'none';
         if (re) re.classList.remove('show');
+        mountDiscover();
         return;
     }
+    mountDiscover();
 
     _offlineRanges = built;
     _offlineIdx = 0;
@@ -6774,6 +6784,8 @@ async function loadVodPlayer(vodId, seekTo) {
                 } else {
                     vpStream.style.display = 'none';
                 }
+                // Activity strip: chat lines, chatters, viewers, mic moments, follows, report.
+                if (typeof renderVodContextStrip === 'function') renderVodContextStrip(v.id);
             }
 
             const filename = v.file_path.split('/').pop();
@@ -7470,6 +7482,8 @@ async function loadClipPlayer(clipId) {
             } else {
                 clpSource.style.display = 'none';
             }
+            // Upgrade the plain line into the rich "from this stream" card when the VOD context loads.
+            if (cl.vod_id && typeof renderClipSourceCard === 'function') renderClipSourceCard(cl);
         }
 
         const video = document.getElementById('clp-video');
@@ -7489,7 +7503,9 @@ async function loadClipPlayer(clipId) {
                 note.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;gap:12px;color:var(--text-muted,#999)';
                 note.innerHTML = failed ? `
                     <i class="fa-solid fa-triangle-exclamation" style="font-size:2.5rem;color:var(--danger,#e74c3c)"></i>
-                    <p style="font-size:1.05rem;font-weight:600">This clip failed to render</p>
+                    <p style="font-size:1.05rem;font-weight:600">${cl.will_retry ? 'This clip is being re-cut' : 'This clip failed to render'}</p>
+                    ${cl.will_retry ? `<p class="muted" style="font-size:0.82rem;margin:-4px 0 8px"><i class="fa-solid fa-rotate fa-spin"></i> The server retries automatically${cl.cut_next_at ? ' · next try ' + esc(timeAgo(cl.cut_next_at)) : ''}${cl.cut_attempts ? ' · attempt ' + cl.cut_attempts : ''}</p>` : ''}
+                    ${cl.cut_error ? `<p class="muted" style="font-size:0.74rem;max-width:520px;margin:0 auto 8px;opacity:0.75">${esc(String(cl.cut_error).split(' | ')[0].slice(0, 160))}</p>` : ''}
                     <p class="muted" style="font-size:0.85rem">The server couldn't cut it from the recording.</p>
                     <button class="btn btn-sm btn-outline" onclick="recutClip(${cl.id})"><i class="fa-solid fa-rotate-right"></i> Try again</button>` : `
                     <i class="fa-solid fa-scissors fa-bounce" style="font-size:2.5rem;color:var(--accent)"></i>

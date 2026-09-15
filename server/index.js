@@ -1271,7 +1271,7 @@ async function start() {
     // 8. Start stale stream heartbeat cleanup (every 60 seconds)
     let heartbeatCleanupRunning = false;
     const liveVodThumbGeneratedAt = new Map();   // streamId → last Media frame-grab time
-    const maintenanceInterval = setInterval(() => {
+    const maintenanceInterval = setInterval(async () => {
         if (heartbeatCleanupRunning) return;
         heartbeatCleanupRunning = true;
         try {
@@ -1373,9 +1373,13 @@ async function start() {
                 if (liveThumbs.shouldRefreshLiveThumbnail(wsStream.id, 120000)) {
                     const lastGen = liveVodThumbGeneratedAt.get(wsStream.id) || 0;
                     if (Date.now() - lastGen < 120000) continue;
+                    liveVodThumbGeneratedAt.set(wsStream.id, Date.now());
+                    // First choice: a frame straight from the SFU (works for OBS/WHIP and hidden
+                    // tabs, and needs no recording). The Media in-progress-VOD frame is the backup.
+                    const grabbed = await liveThumbs.generateWebrtcThumbnail(wsStream.id, { minAgeMs: 120000 }).catch(() => null);
+                    if (grabbed) continue;
                     const rec = recorder.activeRecordings.get(wsStream.id);
                     if (!rec || !rec.vodId) continue;
-                    liveVodThumbGeneratedAt.set(wsStream.id, Date.now());
                     mediaClient.generateThumbnail('vod', rec.vodId)
                         .then((out) => {
                             const url = mediaClient.publicUrl(out?.url);
