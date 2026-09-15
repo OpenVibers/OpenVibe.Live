@@ -344,6 +344,59 @@ router.get('/digest', optionalAuth, (req, res) => {
     }
 });
 
+// ── Discover: what to watch instead when a channel is offline (or anywhere) ────────────
+// ?channel=<username> excludes that streamer from the picks and finds "streamers like them".
+// Live now, this week's hottest clips (site-wide), the latest after-show reports, the star of
+// the day, and streamers in the same category who were live recently. Cached ~60s per channel.
+const _discoverCache = new Map();
+router.get('/discover', optionalAuth, async (req, res) => {
+    try {
+        const uname = String(req.query.channel || '').trim().toLowerCase();
+        const hit = _discoverCache.get(uname);
+        if (hit && Date.now() - hit.at < 60000) { res.set('Cache-Control', 'public, max-age=30'); return res.json(hit.data); }
+        const me = uname ? db.getUserByUsername(uname) : null;
+        const exclude = me ? me.id : null;
+        const media = require('../media-client');
+        const strip = (s) => { if (!s) return s; const { stream_key, managed_stream_key, ...rest } = s; return rest; };
+        const live = (db.getLiveStreams() || []).filter(s => s.user_id !== exclude).slice(0, 6).map(strip);
+        let clips = [];
+        try {
+            const co = await media.listClips({ order: 'views', limit: 40 });
+            const all = (co?.clips || (Array.isArray(co) ? co : [])).filter(c => (c.status === 'ready' || !c.status) && (c.visibility == null || c.visibility === 'public') && (c.channel_user_id || c.user_id) !== exclude);
+            const weekAgo = Date.now() - 7 * 86400000;
+            const fresh = all.filter(c => Date.parse(String(c.created_at || '').replace(' ', 'T') + 'Z') >= weekAgo);
+            clips = (fresh.length >= 4 ? fresh : all).slice(0, 8).map(c => ({ id: c.id, title: c.title, thumbnail_url: c.thumbnail_url ? media.publicUrl(c.thumbnail_url) : null, duration_seconds: c.duration_seconds || c.duration || 0, view_count: Number(c.view_count) || 0, username: c.streamer_username || c.channel_username || c.username || null, display_name: c.streamer_display_name || c.channel_display_name || c.display_name || null, created_at: c.created_at, fresh: fresh.length >= 4 }));
+        } catch { clips = []; }
+        let recaps = [];
+        try { recaps = require('../recap/recap').listRecentRecaps(6, exclude); } catch { recaps = []; }
+        let star = null;
+        try {
+            const pick = require('./star-job').loadPick();
+            const su = pick && pick.username ? db.getUserByUsername(pick.username) : null;
+            if (su && su.id !== exclude) star = { username: su.username, display_name: su.display_name || su.username, avatar_url: su.avatar_url || null, profile_color: su.profile_color || null, headline: pick.headline || null, reason: pick.reason || null, live: live.some(l => l.user_id === su.id) };
+        } catch { star = null; }
+        let similar = [];
+        try {
+            const cat = me ? (db.getChannelByUserId(me.id) || {}) : {};
+            const category = cat.ai_category || cat.category || null;
+            similar = (db.all(`SELECT u.id, u.username, u.display_name, u.avatar_url, u.profile_color, MAX(s.started_at) AS last_live_at, COUNT(s.id) AS sessions,
+                    (SELECT COUNT(*) FROM follows f WHERE f.streamer_id = u.id) AS followers,
+                    (SELECT COALESCE(ch.ai_category, ch.category) FROM channels ch WHERE ch.user_id = u.id) AS category
+                FROM streams s JOIN users u ON u.id = s.user_id
+                WHERE s.started_at >= datetime('now', '-30 days') AND COALESCE(u.is_banned, 0) = 0 AND u.id != COALESCE(?, -1)
+                GROUP BY u.id ORDER BY (category = ?) DESC, followers DESC, last_live_at DESC LIMIT 8`, [exclude, category]) || [])
+                .map(r => ({ ...r, live: live.some(l => l.user_id === r.id), same_category: !!(category && r.category === category) }));
+        } catch { similar = []; }
+        const data = { channel: me ? { username: me.username, display_name: me.display_name || me.username } : null, live, clips, recaps, star, similar };
+        _discoverCache.set(uname, { at: Date.now(), data });
+        res.set('Cache-Control', 'public, max-age=30');
+        res.json(data);
+    } catch (err) {
+        console.error('[Home] discover error:', err.message);
+        res.status(500).json({ error: 'Failed to load discover' });
+    }
+});
+
 // Admin: pick a new Star of OpenVibe right now (the job otherwise rotates daily).
 router.post('/star/rotate', requireAuth, async (req, res) => {
     if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
