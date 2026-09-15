@@ -137,14 +137,14 @@
         const name = d.channel ? d.channel.display_name : 'this channel';
         const sections = [];
         if ((d.live || []).length) {
-            sections.push(`<section class="dsc-sec"><h4><i class="fa-solid fa-circle live-dot"></i> Live right now</h4><div class="dsc-live">${d.live.map(s => `
+            sections.push(`<section class="dsc-sec dsc-sec--live"><h4><i class="fa-solid fa-circle live-dot"></i> Live right now</h4><div class="dsc-live">${d.live.slice(0, 3).map(s => `
                 <a class="dsc-live-card" ${go(`/@${s.username}`)}>
                     <span class="dsc-live-thumb">${s.thumbnail_url ? `<img src="${esc(s.thumbnail_url)}" alt="" loading="lazy">` : '<span class="cc-clip-ph"><i class="fa-solid fa-tower-broadcast"></i></span>'}<span class="dsc-live-pill">LIVE</span><span class="dsc-live-viewers"><i class="fa-solid fa-eye"></i> ${n(s.viewer_count)}</span></span>
                     <span class="dsc-live-body">${av(s, 26)}<span><b>${esc(s.display_name || s.username)}</b><small>${esc(s.title || '')}</small></span></span>
                 </a>`).join('')}</div></section>`);
         }
         if ((d.clips || []).length) {
-            sections.push(`<section class="dsc-sec"><h4><i class="fa-solid fa-fire"></i> ${d.clips[0].fresh ? 'Hot clips this week' : 'Most-watched clips'} <span class="muted">across OpenVibe</span></h4><div class="cc-clips dsc-clips">${d.clips.map(c => clipTile(c)).join('')}</div></section>`);
+            sections.push(`<section class="dsc-sec dsc-sec--clips"><h4><i class="fa-solid fa-fire"></i> ${d.clips[0].fresh ? 'Hot clips this week' : 'Most-watched clips'} <span class="muted">across OpenVibe</span></h4><div class="cc-clips dsc-clips">${d.clips.slice(0, 6).map(c => clipTile(c)).join('')}</div></section>`);
         }
         if (d.star || (d.recaps || []).length) {
             const star = d.star ? `<a class="dsc-star" ${go(`/@${d.star.username}`)}>
@@ -152,15 +152,15 @@
                 ${av(d.star, 56)}
                 <span class="dsc-star-body"><b>${esc(d.star.display_name)}${d.star.live ? ' <span class="dsc-live-pill">LIVE</span>' : ''}</b>${d.star.headline ? `<span class="dsc-star-head">${esc(d.star.headline)}</span>` : ''}${d.star.reason ? `<small>${esc(d.star.reason)}</small>` : ''}</span>
             </a>` : '';
-            const recaps = (d.recaps || []).length ? `<div class="dsc-recaps"><div class="dsc-recaps-head"><i class="fa-solid fa-clipboard-list"></i> Fresh after-show reports</div>${d.recaps.slice(0, 5).map(r => `
+            const recaps = (d.recaps || []).length ? `<div class="dsc-recaps"><div class="dsc-recaps-head"><i class="fa-solid fa-clipboard-list"></i> Fresh after-show reports</div>${d.recaps.slice(0, 4).map(r => `
                 <a class="dsc-recap" ${go(`/recap/${r.stream_id}`)}>
                     <span class="cc-grade" style="--g:${GRADE[r.grade] || GRADE.B}">${esc(r.grade)}</span>
                     <span class="dsc-recap-body"><b>${esc(r.headline || r.title)}</b><small>${esc(r.display_name)} · ${esc(ago(r.ended_at))} · ${durWords(r.duration_seconds)} · peak ${n(r.peak_viewers)}${r.chat_messages ? ` · ${n(r.chat_messages)} chat lines` : ''}</small></span>
                 </a>`).join('')}</div>` : '';
-            sections.push(`<section class="dsc-sec dsc-two">${star}${recaps}</section>`);
+            sections.push(`<section class="dsc-sec dsc-sec--side">${star}${recaps}</section>`);
         }
         if ((d.similar || []).length) {
-            sections.push(`<section class="dsc-sec"><h4><i class="fa-solid fa-people-group"></i> Streamers to check out</h4><div class="dsc-people">${d.similar.map(p => `
+            sections.push(`<section class="dsc-sec dsc-sec--people"><h4><i class="fa-solid fa-people-group"></i> Streamers to check out</h4><div class="dsc-people">${d.similar.slice(0, 6).map(p => `
                 <a class="dsc-person" ${go(`/@${p.username}`)}>${av(p, 44)}<b>${esc(p.display_name || p.username)}</b><small>${p.live ? '<span class="dsc-live-dot"></span> live now' : (p.last_live_at ? `live ${esc(ago(p.last_live_at))}` : '')}${p.followers ? ` · ${n(p.followers)} follower${p.followers === 1 ? '' : 's'}` : ''}</small>${p.same_category && p.category ? `<em>${esc(p.category)}</em>` : ''}</a>`).join('')}</div></section>`);
         }
         if (!sections.length) { host.innerHTML = ''; return; }

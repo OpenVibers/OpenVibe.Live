@@ -14741,3 +14741,27 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 /* Arena "your arena" strip: the portrait is a div, so the generic `> div` flex rule was stretching it */
 .arena-me-left > .arena-portrait { flex: 0 0 64px !important; width: 64px !important; height: 64px !important; display: block; }
 .arena-me-left > .arena-portrait-initial { display: flex; }
+
+/* ── Animated brand mark (navbar) — three nodes, live edges, packets doing laps ── */
+.brand-mark { display: inline-grid; place-items: center; width: 32px; height: 32px; color: var(--accent); flex: none; }
+.brand-mark svg { overflow: visible; transform-origin: 50% 55%; animation: bmFloat 4.5s ease-in-out infinite; }
+.bm-glow { fill: currentColor; opacity: 0.12; transform-box: fill-box; transform-origin: center; animation: bmGlow 3s ease-in-out infinite; }
+.bm-edges { fill: none; stroke: url(#bm-grad); stroke-width: 2.2; stroke-linejoin: round; stroke-dasharray: 6 4; animation: bmDash 1.6s linear infinite; opacity: 0.9; }
+.bm-node { fill: currentColor; stroke: var(--bg-primary, #0f1117); stroke-width: 1.6; transform-box: fill-box; transform-origin: center; animation: bmPulse 2.6s ease-in-out infinite; }
+.bm-node--2 { animation-delay: 0.87s; } .bm-node--3 { animation-delay: 1.73s; }
+.bm-core { fill: #fff; opacity: 0.85; transform-box: fill-box; transform-origin: center; animation: bmCore 2.6s ease-in-out infinite; }
+.bm-pk { fill: #fff; filter: drop-shadow(0 0 3px currentColor); }
+.bm-pk--2 { opacity: 0.7; }
+.nav-brand:hover .brand-mark svg { animation: bmSpin 0.9s cubic-bezier(.2,1.5,.3,1) 1; }
+.nav-brand:hover .bm-glow { opacity: 0.3; }
+.nav-brand:hover .bm-edges { stroke-dasharray: none; animation: none; }
+@keyframes bmFloat { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-1px) rotate(3deg); } }
+@keyframes bmGlow { 0%, 100% { opacity: 0.1; transform: scale(0.9); } 50% { opacity: 0.22; transform: scale(1.08); } }
+@keyframes bmDash { to { stroke-dashoffset: -20; } }
+@keyframes bmPulse { 0%, 70%, 100% { transform: scale(1); } 15% { transform: scale(1.45); } 30% { transform: scale(1); } }
+@keyframes bmCore { 0%, 100% { transform: scale(1); opacity: 0.85; } 50% { transform: scale(1.4); opacity: 1; } }
+@keyframes bmSpin { from { transform: rotate(0deg) scale(1); } 40% { transform: rotate(200deg) scale(1.2); } to { transform: rotate(360deg) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .brand-mark svg, .bm-glow, .bm-edges, .bm-node, .bm-core { animation: none !important; } .bm-pk { display: none; } }
+.rs-lite .brand-mark svg, .rs-lite .bm-glow, .rs-lite .bm-node, .rs-lite .bm-core { animation: none; }
+.rs-lite .bm-pk { filter: none; }
+@media (max-width: 600px) { .brand-mark { width: 26px; height: 26px; } .brand-mark svg { width: 25px; height: 25px; } }

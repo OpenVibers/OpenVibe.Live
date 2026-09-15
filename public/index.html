@@ -62,17 +62,17 @@
     </script>
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="/css/style.css?v=159">
+    <link rel="stylesheet" href="/css/style.css?v=160">
     <link rel="stylesheet" href="/css/chat-shared.css?v=1">
     <link rel="stylesheet" href="/css/broadcast.css?v=11">
     <link rel="stylesheet" href="/css/cosmetics.css?v=2">
     <link rel="stylesheet" href="/css/messenger.css?v=1">
-    <link rel="stylesheet" href="/css/home-fx.css?v=5">
+    <link rel="stylesheet" href="/css/home-fx.css?v=6">
     <link rel="stylesheet" href="/css/home-tour.css?v=2">
     <link rel="stylesheet" href="/css/broadcast-guide.css?v=1">
     <link rel="stylesheet" href="/css/i18n-star.css?v=5">
     <link rel="stylesheet" href="/css/recap.css?v=1">
-    <link rel="stylesheet" href="/css/context-cards.css?v=1">
+    <link rel="stylesheet" href="/css/context-cards.css?v=2">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
     <!-- JSON-LD Structured Data -->
@@ -116,7 +116,17 @@
 <!-- ═══════════════════════════════════════════════════════════ -->
 <nav class="navbar">
     <a class="nav-brand" href="/" onclick="return handleLinkClick(event, '/')" data-brand-tooltip="This platform is in early alpha — features may be incomplete, buggy, or change without notice. Data will likely be reset multiple times during the alpha phase. Thanks for testing!">
-        <i class="fa-solid fa-circle-nodes"></i>
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40" width="30" height="30">
+            <defs><linearGradient id="bm-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="currentColor"/><stop offset="1" stop-color="currentColor" stop-opacity="0.55"/></linearGradient></defs>
+            <circle class="bm-glow" cx="20" cy="22" r="17"/>
+            <path id="bm-path" class="bm-edges" d="M20,7 L34,31 L6,31 Z"/>
+            <circle class="bm-node bm-node--1" cx="20" cy="7" r="4.2"/>
+            <circle class="bm-node bm-node--2" cx="34" cy="31" r="4.2"/>
+            <circle class="bm-node bm-node--3" cx="6" cy="31" r="4.2"/>
+            <circle class="bm-core" cx="20" cy="23" r="2.6"/>
+            <circle class="bm-pk" r="1.9"><animateMotion dur="2.6s" repeatCount="indefinite" rotate="auto"><mpath href="#bm-path"/></animateMotion></circle>
+            <circle class="bm-pk bm-pk--2" r="1.4"><animateMotion dur="2.6s" begin="1.3s" repeatCount="indefinite"><mpath href="#bm-path"/></animateMotion></circle>
+        </svg></span>
         <span class="brand-text-wrap">
             <span class="alpha-badge">ALPHA</span>
             <span class="brand-text"><span class="brand-openvibe">OpenVibe</span><strong class="brand-streamer">.Live</strong></span>
@@ -5116,7 +5126,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/ai-viewers.js?v=2" defer></script>
 <script src="/js/arena.js?v=18" defer></script>
 <script src="/js/recap.js?v=1" defer></script>
-<script src="/js/context-cards.js?v=1" defer></script>
+<script src="/js/context-cards.js?v=2" defer></script>
 <script src="/js/powerchat.js?v=10" defer></script>
 <script src="/js/pastes.js?v=15" defer></script>
 <script src="/js/draggable-fab.js?v=2" defer></script>

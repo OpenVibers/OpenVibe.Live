@@ -13,14 +13,14 @@
 /* ── Hero buttons: icon tile + label, brand colour per destination, one clean hover ── */
 #page-home .hero-cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 .hb {
-    --c: var(--accent); position: relative; display: inline-flex; align-items: center; gap: 10px; padding: 7px 16px 7px 7px; border-radius: 999px;
+    --c: var(--accent); position: relative; display: inline-flex; align-items: center; gap: 10px; padding: 6px 18px 6px 6px; border-radius: 999px; min-height: 46px; letter-spacing: 0.01em;
     font: inherit; font-weight: 700; font-size: 0.95rem; color: var(--text-primary); text-decoration: none; cursor: pointer; isolation: isolate;
     background: color-mix(in srgb, var(--bg-card) 78%, transparent); border: 1px solid color-mix(in srgb, var(--c) 28%, var(--border));
     box-shadow: 0 6px 18px rgba(0,0,0,0.22); transition: transform 0.22s cubic-bezier(.2,1.3,.3,1), border-color 0.22s, box-shadow 0.22s, color 0.22s;
 }
 .hb::before { content: ''; position: absolute; inset: 0; border-radius: inherit; z-index: -1; background: linear-gradient(120deg, color-mix(in srgb, var(--c) 22%, transparent), transparent 60%); opacity: 0; transition: opacity 0.25s; }
 .hb::after { content: ''; position: absolute; inset: -1px; border-radius: inherit; z-index: -2; padding: 1px; background: conic-gradient(from var(--a, 0deg), transparent 0 70%, var(--c) 85%, transparent 100%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity 0.25s; }
-.hb-ico { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 0.95rem; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); border: 1px solid color-mix(in srgb, var(--c) 35%, transparent); transition: transform 0.35s cubic-bezier(.2,1.6,.3,1), background 0.25s, color 0.25s, box-shadow 0.25s; }
+.hb-ico { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 0.92rem; color: var(--c); background: color-mix(in srgb, var(--c) 12%, var(--bg-tertiary)); border: 1px solid color-mix(in srgb, var(--c) 32%, transparent); box-shadow: 0 2px 6px rgba(0,0,0,0.35) inset; transition: transform 0.35s cubic-bezier(.2,1.6,.3,1), background 0.25s, color 0.25s, box-shadow 0.25s; }
 .hb:hover, .hb:focus-visible { transform: translateY(-2px); border-color: color-mix(in srgb, var(--c) 70%, transparent); box-shadow: 0 12px 30px rgba(0,0,0,0.3), 0 0 24px color-mix(in srgb, var(--c) 30%, transparent); outline: none; }
 .hb:hover::before, .hb:focus-visible::before { opacity: 1; }
 .hb:hover::after { opacity: 1; animation: hbOrbit 1.6s linear infinite; }
@@ -28,10 +28,13 @@
 .hb:active { transform: translateY(0) scale(0.98); }
 @property --a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 @keyframes hbOrbit { to { --a: 360deg; } }
-.hb-stream { --c: var(--accent); color: #fff; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 65%, #22d3ee)); border-color: transparent; box-shadow: 0 10px 28px color-mix(in srgb, var(--accent) 40%, transparent); }
-.hb-stream .hb-ico { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.35); color: #fff; }
-.hb-stream:hover .hb-ico { background: #fff; color: var(--accent); }
-.hb-stream::before { background: linear-gradient(120deg, rgba(255,255,255,0.18), transparent 60%); }
+.hb-stream { --c: var(--accent); color: #fff; border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+    background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 78%, #000) 0%, color-mix(in srgb, var(--accent) 55%, #000) 100%);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.05) inset, 0 0 22px color-mix(in srgb, var(--accent) 22%, transparent); }
+.hb-stream::before { background: linear-gradient(180deg, rgba(255,255,255,0.14), transparent 55%); opacity: 1; }
+.hb-stream .hb-ico { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.28); color: #fff; }
+.hb-stream:hover { box-shadow: 0 14px 32px rgba(0,0,0,0.4), 0 0 30px color-mix(in srgb, var(--accent) 40%, transparent); }
+.hb-stream:hover .hb-ico { background: #fff; color: color-mix(in srgb, var(--accent) 70%, #000); box-shadow: 0 0 16px rgba(255,255,255,0.45); }
 .hb-tools { --c: #2dd4bf; } .hb-game { --c: #4ade80; } .hb-github { --c: #e5e7eb; } .hb-discord { --c: #5865f2; } .hb-vibe { --c: #f472b6; }
 @media (max-width: 560px) { .hb { padding: 6px 13px 6px 6px; font-size: 0.88rem; } .hb-ico { width: 30px; height: 30px; font-size: 0.85rem; } }
 @keyframes hfxPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 70% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--accent) 0%, transparent); } 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); } }
