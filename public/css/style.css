@@ -15069,11 +15069,8 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 .hero-stat-trend.is-new { color: #fbbf24; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.9em; }
 .hero-stat-label { text-transform: uppercase; font-weight: 700; color: var(--text-muted); }
 @media (max-width: 480px) {
-    .hero-stat-delta { font-size: 0.55rem; padding: 1px 5px; }
-    .hero-stat-delta em { display: none; }
-    /* Two figures will not fit in a third of a phone screen; the gain is the one that matters,
-       and the trend is still in the chip's tooltip. */
-    .hero-stat-trend { display: none; }
+    .hero-stat-delta { font-size: 0.54rem; padding: 1px 6px; }
+    .hero-stat-trend { margin-left: 4px; padding-left: 4px; }
 }
 
 
@@ -15087,37 +15084,26 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 }
 
 
-/* ── Stat chip alignment ─────────────────────────────────────────────────────
-   The delta used to sit inline beside the number, so a wide pairing ("70,177" next to "+1.7k 7d")
-   wrapped to a second line, pushed the label down, and left that chip taller than its neighbours
-   — three rows of chips, none of them lining up.
+/* ── Stat chip layout ────────────────────────────────────────────────────────
+   At three chips per row on a phone each one gets about 128px, and "27,751" next to
+   "+168 7d | 147%" does not fit in 128px — the pill rode over the number and every label
+   truncated to "US…".
 
-   Three columns instead: icon, then the number over its label, then the delta pinned to the right
-   edge and vertically centred. Every chip is now the same shape whether it has a delta or not,
-   because an absent delta simply collapses its column to zero. Nothing wraps, so nothing can
-   change a chip's height. */
+   So the delta gets its own row rather than competing for the same line. Every chip is the same
+   three-part shape — icon beside the number and label, delta underneath — and grid-auto-rows on
+   the strip makes all three rows exactly equal height, so a chip without a delta lines up with
+   the ones that have one instead of sitting short. Nothing wraps and nothing overlaps at any
+   width. */
 .hero-stat {
-    display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center; gap: clamp(6px, 1vw, 10px);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-content: center; gap: 3px clamp(6px, 1vw, 9px);
 }
-.hero-stat-meta { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.hero-stat-num { white-space: nowrap; line-height: 1.15; }
+.hero-stat > i { grid-row: 1 / 2; align-self: center; }
+.hero-stat-meta { grid-column: 2; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.hero-stat-num { white-space: nowrap; line-height: 1.12; }
 .hero-stat-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
-.hero-stat-delta { justify-self: end; align-self: center; flex: none; }
-/* The sparkline chip is a single full-width cell, not a three-column one. */
+.hero-stat-delta { grid-column: 1 / -1; justify-self: start; margin-top: 1px; }
+.hero-stat-strip { grid-auto-rows: 1fr; align-items: stretch; }
+/* The sparkline chip is one wide cell, not this shape. */
 .hero-stat--spark { display: flex; }
-
-/* The shipped-commit line now sits under the philosophy row in the hero, so it reads as a
-   footnote to "built in the open" rather than as something bolted to the bottom of the page. */
-#page-home .hero-latest {
-    display: inline-flex; align-items: center; gap: 8px; max-width: min(560px, 92vw);
-    margin: 0 auto 12px; padding: 6px 14px; border-radius: 999px;
-    font-size: 0.76rem; color: var(--text-muted); text-decoration: none;
-    background: color-mix(in srgb, var(--accent) 7%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
-    transition: color 0.2s, border-color 0.2s, background 0.2s;
-}
-#page-home .hero-latest:hover { color: var(--text-primary); border-color: color-mix(in srgb, var(--accent) 42%, transparent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
-#page-home .hero-latest b { font-weight: 700; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-#page-home .hero-latest i { color: var(--accent); flex: none; }
-@media (max-width: 480px) { #page-home .hero-latest { font-size: 0.7rem; padding: 5px 11px; max-width: 94vw; } }
