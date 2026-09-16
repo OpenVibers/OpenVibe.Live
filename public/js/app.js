@@ -1685,29 +1685,85 @@ function openHomeAbout() {
 // ── Daily AI easter egg ─────────────────────────────────────────────────────
 let _egg = null, _eggBuf = [], _eggSolved = false, _eggSubmitTimer = null, _eggKeysWired = false;
 const _EGG_ARROW = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+const _EGG_GLYPH = { up: '↑', down: '↓', left: '←', right: '→' };
+let _eggRevealed = [];          // [{index, token}] revealed for this solver today
+let _eggFails = 0, _eggBusy = false;
 async function loadHeroEgg() {
     const el = document.getElementById('hero-egg');
     if (!el) return;
     let data; try { data = await api('/easter-egg/daily'); } catch { return; }
     const egg = data && data.egg;
     if (!egg) { el.style.display = 'none'; return; }
-    _egg = egg; _eggSolved = !!egg.solved;
+    _egg = egg; _eggSolved = !!egg.solved; _eggBuf = []; _eggRevealed = egg.revealed || []; _eggFails = egg.fails || 0;
     el.style.display = '';
     const set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
     set('hero-egg-title', egg.title || 'The Daily Secret');
-    const hints = document.getElementById('hero-egg-hints');
-    if (hints) hints.innerHTML = (egg.hints || []).length ? egg.hints.map(h => `<li>${esc(h)}</li>`).join('') : '<li>No hints today — go on instinct.</li>';
-    set('hero-egg-count', `${egg.foundCount || 0} cracked it today`);
-    const reset = document.getElementById('hero-egg-reset');
-    if (reset) reset.textContent = egg.nextResetAt ? ` · resets ${_eggResetLabel(egg.nextResetAt)}` : '';
+    // Letter pad (built once)
+    const letters = document.getElementById('hero-egg-letters');
+    if (letters && !letters.childElementCount) letters.innerHTML = 'abcdefghijklmnopqrstuvwxyz'.split('').map(l => `<button type="button" class="egg-key egg-key--letter" data-tok="${l}">${l}</button>`).join('');
+    const pad = document.getElementById('hero-egg-pad');
+    if (pad && !pad.dataset.wired) {
+        pad.dataset.wired = '1';
+        pad.addEventListener('click', (e) => {
+            const b = e.target.closest('button'); if (!b) return;
+            if (b.dataset.act === 'back') { _eggBuf.pop(); _renderEggSlots(); return; }
+            if (b.dataset.act === 'clear') { _eggBuf = []; _renderEggSlots(); return; }
+            if (b.dataset.tok) _eggPush(b.dataset.tok);
+        });
+    }
+    _renderEggClues();
+    _renderEggSlots();
+    _renderEggMeta();
     _renderEggStatus();
     _wireEggKeys();
 }
 function _eggResetLabel(ts) { const h = Math.round((ts - Date.now()) / 3600000); return h <= 1 ? 'soon' : `in ${h}h`; }
 function _renderEggStatus() {
     const s = document.getElementById('hero-egg-status'); if (!s) return;
-    s.textContent = _eggSolved ? '✓ Solved' : `${_egg ? _egg.codeLength : ''} keys`;
+    s.textContent = _eggSolved ? '✓ Cracked' : `${_egg ? _egg.codeLength : ''} keys`;
     s.className = 'hero-egg-status' + (_eggSolved ? ' solved' : '');
+}
+function _renderEggMeta() {
+    if (!_egg) return;
+    const set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
+    set('hero-egg-count', `${_egg.foundCount || 0} cracked it today`);
+    set('hero-egg-first', (_egg.firstSolvers || []).length ? ` · first: ${_egg.firstSolvers.slice(0, 3).join(', ')}` : '');
+    set('hero-egg-reset', _egg.nextResetAt ? ` · new secret ${_eggResetLabel(_egg.nextResetAt)}` : '');
+    const rb = document.getElementById('hero-egg-reveal');
+    if (rb) {
+        const left = Math.max(0, (_egg.revealAfterFails || 2) - _eggFails);
+        const done = _eggRevealed.length >= Math.max(0, _egg.codeLength - 1);
+        rb.style.display = _eggSolved ? 'none' : '';
+        rb.disabled = done || left > 0;
+        rb.innerHTML = done ? '<i class="fa-solid fa-lightbulb"></i> The last key is yours'
+            : left > 0 ? `<i class="fa-regular fa-lightbulb"></i> Stuck? ${left} more wrong tr${left === 1 ? 'y' : 'ies'} unlocks a reveal`
+            : '<i class="fa-solid fa-lightbulb"></i> Stuck? Reveal the next key';
+    }
+}
+function _renderEggClues() {
+    const ol = document.getElementById('hero-egg-clues'); if (!ol || !_egg) return;
+    const clues = _egg.clues || _egg.hints || [];
+    const rev = new Map(_eggRevealed.map(r => [r.index, r.token]));
+    ol.innerHTML = clues.map((c, i) => `<li class="${rev.has(i) ? 'is-revealed' : ''}"><span class="egg-clue-n">${i + 1}</span><span class="egg-clue-text">${esc(c)}</span>${rev.has(i) ? `<span class="egg-clue-key" title="Revealed">${esc(_EGG_GLYPH[rev.get(i)] || rev.get(i).toUpperCase())}</span>` : ''}</li>`).join('')
+        || '<li><span class="egg-clue-text">No clues today — go on instinct.</span></li>';
+}
+function _renderEggSlots(state) {
+    const host = document.getElementById('hero-egg-slots'); if (!host || !_egg) return;
+    const n = _egg.codeLength || 0;
+    let html = '';
+    for (let i = 0; i < n; i++) {
+        const t = _eggBuf[i];
+        html += `<span class="egg-slot ${t ? 'is-filled' : ''} ${i === _eggBuf.length ? 'is-next' : ''}">${t ? esc(_EGG_GLYPH[t] || t.toUpperCase()) : ''}</span>`;
+    }
+    host.innerHTML = html;
+    host.className = 'hero-egg-slots' + (state ? ` is-${state}` : '') + (_eggSolved ? ' is-solved' : '');
+}
+function _eggPush(tok) {
+    if (_eggSolved || !_egg || _eggBusy) return;
+    _eggBuf.push(tok);
+    if (_eggBuf.length > _egg.codeLength) _eggBuf = _eggBuf.slice(-_egg.codeLength);
+    _renderEggSlots();
+    if (_eggBuf.length === _egg.codeLength) { clearTimeout(_eggSubmitTimer); _eggSubmitTimer = setTimeout(_submitEgg, 200); }
 }
 function toggleHeroEgg() { document.getElementById('hero-egg')?.classList.toggle('open'); }
 function _wireEggKeys() {
@@ -1716,23 +1772,39 @@ function _wireEggKeys() {
     document.addEventListener('keydown', (e) => {
         if (_eggSolved || !_egg) return;
         const t = e.target;
-        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        if (e.key === 'Backspace') { _eggBuf.pop(); _renderEggSlots(); return; }
         let tok = _EGG_ARROW[e.key];
         if (!tok && /^[a-zA-Z]$/.test(e.key)) tok = e.key.toLowerCase();
         if (!tok) return;
-        _eggBuf.push(tok);
-        if (_eggBuf.length > _egg.codeLength) _eggBuf = _eggBuf.slice(-_egg.codeLength);
-        if (_eggBuf.length === _egg.codeLength) { clearTimeout(_eggSubmitTimer); _eggSubmitTimer = setTimeout(_submitEgg, 220); }
+        if (_EGG_ARROW[e.key]) e.preventDefault();          // don't scroll the page on arrows
+        _eggPush(tok);
+        // Typing counts as engagement: pop the panel open so people see the keys land.
+        const el = document.getElementById('hero-egg'); if (el && !el.classList.contains('open') && _eggBuf.length === 1) el.classList.add('open');
     });
 }
 async function _submitEgg() {
-    if (_eggSolved || !_egg || _eggBuf.length < _egg.codeLength) return;
-    let res; try { res = await api('/easter-egg/solve', { method: 'POST', body: { sequence: _eggBuf.slice() } }); } catch { return; }
+    if (_eggSolved || !_egg || _eggBuf.length < _egg.codeLength || _eggBusy) return;
+    _eggBusy = true;
+    let res; try { res = await api('/easter-egg/solve', { method: 'POST', body: { sequence: _eggBuf.slice() } }); } catch { _eggBusy = false; return; }
+    _eggBusy = false;
     if (res && res.solved) {
-        _eggSolved = true; _renderEggStatus();
-        const c = document.getElementById('hero-egg-count'); if (c && res.foundCount != null) c.textContent = `${res.foundCount} cracked it today`;
+        _eggSolved = true; _renderEggStatus(); _renderEggSlots('right');
+        if (res.foundCount != null) _egg.foundCount = res.foundCount;
+        _renderEggMeta();
         _celebrateEgg(res.egg || {});
+        return;
     }
+    _eggFails = (res && res.fails) || (_eggFails + 1);
+    _renderEggSlots('wrong');
+    _renderEggMeta();
+    setTimeout(() => { _eggBuf = []; _renderEggSlots(); }, 750);
+}
+async function _eggReveal() {
+    if (_eggSolved || !_egg) return;
+    let out; try { out = await api('/easter-egg/reveal', { method: 'POST', body: {} }); } catch (e) { try { toast((e && e.message) || 'Not yet', 'info'); } catch { /* */ } return; }
+    if (out && out.revealed) { _eggRevealed = out.revealed; _renderEggClues(); _renderEggMeta(); }
 }
 function _celebrateEgg(egg) {
     try { toast(egg.reward || "You cracked today's secret! 🎉", 'success'); } catch { /* */ }
