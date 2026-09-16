@@ -673,30 +673,89 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+/**
+ * GET /api/ready — readiness, which is not the same thing as liveness.
+ *
+ * /api/health answers "is a process listening". That is true from the moment the socket is
+ * accepted, which during a deploy is *before* the database is open and before the request paths
+ * this server actually serves will work. A deploy script that waits on /api/health therefore
+ * declares success while the site is still returning errors.
+ *
+ * This answers "can this process serve a real request": the database responds, the schema is
+ * initialised, and boot has completed. 503 until all of that is true, so a health gate can be a
+ * genuine gate.
+ */
+let _bootComplete = false;
+app.get('/api/ready', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const checks = { boot: _bootComplete, db: false };
+    try {
+        // Cheapest possible proof that the connection is open and the schema exists.
+        db.get('SELECT 1 AS ok');
+        checks.db = true;
+    } catch (err) {
+        checks.dbError = String(err && err.message || err).slice(0, 200);
+    }
+    const ready = checks.boot && checks.db;
+    res.status(ready ? 200 : 503).json({
+        ready,
+        checks,
+        uptime: Math.round(process.uptime()),
+        // Advisory only — a deploy gate should not wait on optional subsystems, which can be
+        // legitimately unavailable (no mediasoup worker on a box that only relays RTMP, say).
+        optional: {
+            sfu: (() => { try { return !!webrtcSFU.isReady?.(); } catch { return null; } })(),
+            media: (() => { try { return require('./media-client').lastOk === true; } catch { return null; } })(),
+        },
+    });
+});
+
 // ── Updates / Changelog ──────────────────────────────────────
-const { execSync } = require('child_process');
+const { execFile } = require('child_process');
 const REPO_DIR = path.resolve(__dirname, '..');
 
 /**
- * GET /api/updates — returns recent git commit history for the updates page.
- * Query params: ?limit=30 (default 30, max 100)
+ * GET /api/updates — recent commit history for the updates page.
+ *
+ * This used to shell out with execSync on the request path. execSync blocks the entire event
+ * loop: for however long git takes — up to its 5s timeout — no other request on the box is
+ * served, no WebSocket frame is read, and no chat message is delivered. The home page fetches
+ * this on every load, so a cold git call after a deploy stalled everyone at once.
+ *
+ * Now: one async read, memoised, shared by concurrent callers. The history only changes when we
+ * deploy, so a minute of staleness is free.
  */
-app.get('/api/updates', (req, res) => {
-    try {
-        const limit = Math.min(Math.max(parseInt(req.query.limit) || 30, 1), 100);
-        const raw = execSync(
-            `git --no-pager log --pretty=format:'%H||%h||%s||%an||%aI' -${limit}`,
-            { cwd: REPO_DIR, encoding: 'utf8', timeout: 5000 }
-        );
-        const commits = raw.trim().split('\n').filter(Boolean).map(line => {
-            const [hash, short, subject, author, date] = line.split('||');
-            return { hash, short, subject, author, date };
-        });
-        res.json({ commits });
-    } catch (err) {
-        console.error('[Updates] git log error:', err.message);
-        res.status(500).json({ error: 'Failed to read update history' });
+const UPDATES_TTL_MS = 60_000;
+let _updatesCache = { at: 0, commits: null, inflight: null };
+function readCommits(limit) {
+    if (_updatesCache.commits && Date.now() - _updatesCache.at < UPDATES_TTL_MS) {
+        return Promise.resolve(_updatesCache.commits);
     }
+    // Coalesce: a burst of first-loads after a deploy must not spawn a git process each.
+    if (_updatesCache.inflight) return _updatesCache.inflight;
+    _updatesCache.inflight = new Promise((resolve) => {
+        execFile('git', ['--no-pager', 'log', '--pretty=format:%H||%h||%s||%an||%aI', `-${limit}`],
+            { cwd: REPO_DIR, encoding: 'utf8', timeout: 5000, maxBuffer: 1024 * 1024 },
+            (err, stdout) => {
+                _updatesCache.inflight = null;
+                if (err) return resolve(_updatesCache.commits || null);
+                const commits = String(stdout).trim().split('\n').filter(Boolean).map(line => {
+                    const [hash, short, subject, author, date] = line.split('||');
+                    return { hash, short, subject, author, date };
+                });
+                _updatesCache = { at: Date.now(), commits, inflight: null };
+                resolve(commits);
+            });
+    });
+    return _updatesCache.inflight;
+}
+app.get('/api/updates', async (req, res) => {
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 30, 1), 100);
+    // Always read the widest window we serve, so one cache entry answers every limit.
+    const commits = await readCommits(100);
+    if (!commits) return res.status(503).json({ error: 'Update history unavailable' });
+    res.set('Cache-Control', 'public, max-age=60');
+    res.json({ commits: commits.slice(0, limit) });
 });
 
 /**
@@ -1145,6 +1204,9 @@ async function start() {
             console.warn('[Server] WARNING: Mediasoup announcedIp is configured as a local address. External WebRTC clients may be unable to connect. Set MEDIASOUP_ANNOUNCED_IP to your public WHIP/WebRTC hostname.');
         }
         console.log('');
+        // Flip readiness only once everything the request paths depend on is up. /api/ready
+        // returns 503 before this line, which is what makes a deploy health gate meaningful.
+        _bootComplete = true;
         console.log('[Server] Ready. Good vibes only. ▶');
         console.log('');
 
@@ -1468,6 +1530,10 @@ function shutdown() {
     // instead of leaving stale producers that black out RS video (audio still playing) on the next
     // go-live until viewers refresh. Done up-front so RS has the whole shutdown window to propagate.
     try { const n = require('./integrations/rs-passthrough-relay').stopAll(); if (n) console.log(`[Server] Closed ${n} RobotStreamer passthrough(s)`); } catch { /* */ }
+
+    // Stop advertising readiness immediately: from here on this process is draining, and anything
+    // gating on /api/ready should see that before the socket actually closes.
+    _bootComplete = false;
 
     // Small delay to let the message reach clients before closing sockets
     setTimeout(() => {

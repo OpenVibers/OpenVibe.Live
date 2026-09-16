@@ -49,15 +49,65 @@
 @keyframes tourDot { 0%, 100% { opacity: 0.5; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1.15); } }
 
 .tour-core-wrap { display: grid; place-items: center; position: relative; z-index: 1; }
-.tour-core { position: relative; display: grid; justify-items: center; gap: 4px; padding: 18px 20px 16px; border-radius: 20px; text-align: center; width: 100%; max-width: 300px;
-    background: radial-gradient(90% 90% at 50% 0%, color-mix(in srgb, var(--accent) 35%, transparent), transparent 70%), color-mix(in srgb, var(--bg-card) 85%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); box-shadow: 0 0 0 1px rgba(255,255,255,0.04), 0 18px 40px rgba(0,0,0,0.35), 0 0 40px color-mix(in srgb, var(--accent) 25%, transparent); }
-.tour-core b { font-size: 1.02rem; font-weight: 900; }
-.tour-core small { font-size: 0.68rem; color: var(--text-secondary); font-weight: 600; line-height: 1.4; }
-.tour-core-logo { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-size: 1.15rem; color: #fff; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #22d3ee)); box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 45%, transparent); margin-bottom: 4px; }
-.tour-core-ring { position: absolute; left: 50%; top: 50%; width: 120%; height: 120%; border-radius: 26px; border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); transform: translate(-50%, -50%); animation: tourRing 3.2s ease-out infinite; pointer-events: none; }
-.tour-core-ring--2 { animation-delay: 1.6s; }
-@keyframes tourRing { 0% { transform: translate(-50%, -50%) scale(0.82); opacity: 0.7; } 100% { transform: translate(-50%, -50%) scale(1.12); opacity: 0; } }
+/* ── The hub ─────────────────────────────────────────────────────────────────
+   This was a bordered card sitting in the middle of the diagram, so the wires ran *into a box*
+   instead of into OpenVibe. The box is gone: the hub is now the glowing mark itself, with the
+   name and the feature line as free-standing text beneath it, and the wires converge on the
+   glow. The pulse rings are circles centred on the mark rather than rounded rectangles around a
+   panel, so they read as signal radiating from the logo. */
+.tour-core {
+    position: relative; display: grid; justify-items: center; gap: 3px;
+    padding: 4px 14px 2px; text-align: center; width: 100%; max-width: 320px;
+    background: none; border: 0; box-shadow: none;
+}
+/* A soft pool of light behind the mark, in place of the old panel. */
+.tour-core::before {
+    content: ''; position: absolute; left: 50%; top: 6px; width: 190px; height: 190px;
+    transform: translate(-50%, -22%); border-radius: 50%; pointer-events: none; z-index: -1;
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent) 30%, transparent) 0%, color-mix(in srgb, var(--accent) 10%, transparent) 38%, transparent 68%);
+    animation: tourCoreBreathe 5.6s ease-in-out infinite;
+}
+@keyframes tourCoreBreathe { 0%, 100% { opacity: 0.75; transform: translate(-50%, -22%) scale(1); } 50% { opacity: 1; transform: translate(-50%, -22%) scale(1.07); } }
+.tour-core b {
+    font-size: 1.06rem; font-weight: 900; letter-spacing: -0.01em; position: relative;
+    /* A slow sheen across the wordmark — the one place on the diagram that should catch the eye. */
+    background: linear-gradient(100deg, var(--text-primary) 0%, var(--text-primary) 38%, #fff 48%, color-mix(in srgb, var(--accent) 45%, #fff) 56%, var(--text-primary) 66%, var(--text-primary) 100%);
+    background-size: 280% 100%;
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    animation: tourCoreSheen 6.5s ease-in-out infinite;
+    text-shadow: 0 0 24px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+@keyframes tourCoreSheen { 0%, 62% { background-position: 130% 50%; } 100% { background-position: -30% 50%; } }
+/* (.tour-core small removed — the chip grid below is the feature list.) */
+/* The mark: a lit disc, not a flat chip. The inner highlight gives it a glass edge. */
+.tour-core-logo {
+    width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center;
+    font-size: 1.25rem; color: #fff; margin-bottom: 5px; position: relative; z-index: 1;
+    background:
+        radial-gradient(70% 70% at 32% 26%, rgba(255,255,255,0.42), transparent 60%),
+        linear-gradient(140deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #22d3ee));
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, #fff 22%, transparent),
+        0 0 26px color-mix(in srgb, var(--accent) 60%, transparent),
+        0 0 60px color-mix(in srgb, var(--accent) 30%, transparent),
+        inset 0 -4px 10px rgba(0,0,0,0.25);
+    animation: tourCoreGlow 3.8s ease-in-out infinite;
+}
+@keyframes tourCoreGlow {
+    0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, #fff 22%, transparent), 0 0 26px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 58px color-mix(in srgb, var(--accent) 26%, transparent), inset 0 -4px 10px rgba(0,0,0,0.25); }
+    50%      { box-shadow: 0 0 0 1px color-mix(in srgb, #fff 34%, transparent), 0 0 34px color-mix(in srgb, var(--accent) 75%, transparent), 0 0 78px color-mix(in srgb, var(--accent) 38%, transparent), inset 0 -4px 10px rgba(0,0,0,0.25); }
+}
+/* Circles radiating from the mark, sized and centred on the logo rather than on the old panel. */
+.tour-core-ring {
+    position: absolute; left: 50%; top: 32px; width: 52px; height: 52px; border-radius: 50%;
+    border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+    transform: translate(-50%, -50%); animation: tourRing 3.4s ease-out infinite; pointer-events: none;
+}
+.tour-core-ring--2 { animation-delay: 1.7s; }
+@keyframes tourRing {
+    0%   { transform: translate(-50%, -50%) scale(0.9); opacity: 0.85; }
+    100% { transform: translate(-50%, -50%) scale(3.4); opacity: 0; }
+}
 
 .tour-features { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 20px 0 0; }
 .tour-feat { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 0.76rem; font-weight: 700; color: var(--text-secondary);
@@ -77,8 +127,11 @@
     .tour-node-text small { display: none; }
     .tour-core { max-width: 340px; }
 }
-@media (prefers-reduced-motion: reduce) { .tour-wire, .tour-node-dot, .tour-core-ring, .tour-feat { animation: none; } .tour-feat { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .tour-wire, .tour-node-dot, .tour-core-ring, .tour-feat, .tour-core::before, .tour-core b, .tour-core-logo { animation: none; } .tour-feat { opacity: 1; transform: none; } }
 .rs-lite .tour::before, .rs-lite .tour-core-ring { display: none; }
+/* Phones keep the glow but not the repainting gradients. */
+.rs-lite .tour-core b { animation: none; -webkit-text-fill-color: var(--text-primary); background: none; }
+.rs-lite .tour-core::before, .rs-lite .tour-core-logo { animation: none; }
 .rs-lite .tour-wire { animation: none; }
 
 /* ═══════════════════════════════════════════════════════════════

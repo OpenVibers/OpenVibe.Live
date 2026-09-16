@@ -37,7 +37,8 @@
         el.innerHTML = `
             <section class="tour" aria-label="Stream from OpenVibe.Live and restream everywhere">
                 <div class="tour-head">
-                    <div class="tour-kicker"><i class="fa-solid fa-satellite-dish"></i> Restream</div>
+                    <!-- The "RESTREAM" eyebrow that used to sit here restated the heading directly
+                         below it and the diagram directly below that. Three statements of one idea. -->
                     <h2>One stream. Everywhere.</h2>
                     <p>Go live here once and mirror it to every platform at the same time — your chat, emotes, sound commands, robot controls, VODs and clips stay in one place.</p>
                 </div>
@@ -52,7 +53,9 @@
                             <span class="tour-core-ring"></span><span class="tour-core-ring tour-core-ring--2"></span>
                             <span class="tour-core-logo"><span class="ov-mark" data-size="30" style="color:#fff"></span></span>
                             <b>OpenVibe.Live</b>
-                            <small>&lt;1s latency · chat · emotes · sounds · controls · VOD · clips</small>
+                            <!-- The old feature line here ("<1s latency · chat · emotes · …") listed the same
+                                 things the chip grid below spells out properly. Two statements of the same
+                                 list, one of them abbreviated, is worse than one. The hub just names itself. -->
                         </div>
                     </div>
                     <div class="tour-col tour-col--dst">
