@@ -63,10 +63,13 @@
                 <div class="tour-features">${FEATURES.map(([i, t], k) => `<span class="tour-feat" style="--i:${k}"><i class="${i.startsWith('fa-brands') ? i : 'fa-solid ' + i}"></i> ${t}</span>`).join('')}</div>
                 <div class="tour-actions">
                     <a class="btn btn-primary btn-lg" ${go('/broadcast')}><i class="fa-solid fa-tower-broadcast"></i> Go live</a>
-                    <a class="btn btn-outline btn-lg" href="/broadcast?setup=restream" onclick="event.preventDefault(); startRestreamGuide();"><i class="fa-solid fa-satellite-dish"></i> Set up restreams (guided)</a>
+                    <a class="btn btn-outline btn-lg tour-next-up" id="tour-next-up" href="/broadcast?guide=golive:restream" onclick="event.preventDefault(); if (typeof startRestreamGuide === 'function') startRestreamGuide();"><i class="fa-solid fa-satellite-dish"></i> Set up restreams (guided)</a>
                 </div>
             </section>`;
         wire();
+        // Signed-in streamers get a context-aware button: the next thing they haven't set up.
+        const nextUp = () => { if (typeof setupNextUp === 'function') setupNextUp(document.getElementById('tour-next-up')); };
+        setTimeout(nextUp, 900); setTimeout(nextUp, 3500);
         let raf = 0;
         const redraw = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(wire); };
         if ('ResizeObserver' in window) new ResizeObserver(redraw).observe(el.querySelector('#tour-stage'));
