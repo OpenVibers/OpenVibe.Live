@@ -1484,6 +1484,15 @@ router.get('/setup-progress', requireAuth, async (req, res) => {
     let panels = 0; try { const p = channel.panels ? JSON.parse(channel.panels) : []; panels = Array.isArray(p) ? p.length : 0; } catch { panels = 0; }
     const offline = !!(channel.offline_screen_type && channel.offline_screen_type !== 'none');
     const methodSet = slots.some(sl => !!sl.streaming_method);
+    // Second wave of tasks. Each one is a real feature with a real table behind it, so nothing on
+    // the list can be permanently unreachable — a task that can never be ticked would park every
+    // streamer below 100% forever.
+    const mods = safe(() => channel.id ? db.get('SELECT COUNT(*) AS n FROM channel_moderators WHERE channel_id = ?', [channel.id]).n : 0, 0);
+    const controls = safe(() => db.get('SELECT COUNT(*) AS n FROM control_configs WHERE user_id = ?', [uid]).n, 0);
+    const aibot = safe(() => db.get('SELECT COUNT(*) AS n FROM channel_ai_bots WHERE channel_user_id = ?', [uid]).n, 0);
+    const pastes = safe(() => db.get('SELECT COUNT(*) AS n FROM pastes WHERE user_id = ?', [uid]).n, 0);
+    const requests = safe(() => !!db.get('SELECT 1 FROM media_request_settings WHERE user_id = ? LIMIT 1', [uid]), false);
+    const modRules = safe(() => channel.id ? !!db.get('SELECT 1 FROM channel_moderation_settings WHERE channel_id = ? LIMIT 1', [channel.id]) : false, false);
     const tasks = [
         { id: 'slot', group: 'Stream', title: 'Create your stream slot', why: 'Your show gets its own key, settings, VODs and restreams.', done: slots.length > 0, count: slots.length },
         { id: 'method', group: 'Stream', title: 'Choose how you stream', why: 'Browser, OBS over RTMP, or OBS over WHIP.', done: methodSet },
@@ -1497,6 +1506,14 @@ router.get('/setup-progress', requireAuth, async (req, res) => {
         { id: 'powerchat', group: 'Community & money', title: 'Connect PowerChat for real tips', why: 'Card and crypto tips with on-stream alerts.', done: powerchat },
         { id: 'panels', group: 'Community & money', title: 'Fill in your About panels', why: 'Links, schedule, rules — the stuff under the player.', done: panels > 0, count: panels },
         { id: 'share', group: 'Grow', title: 'Get your first follower', why: 'Share your channel link; followers get pinged when you go live.', done: followers > 0, count: followers },
+        // `go` is where the task lives when it has no guided journey of its own — the hub and the
+        // home quest fall back to navigating there rather than silently doing nothing on click.
+        { id: 'mods', group: 'Community & money', title: 'Add a moderator', why: 'Someone you trust watching chat while you stream.', done: mods > 0, count: mods, go: '/dashboard' },
+        { id: 'requests', group: 'Community & money', title: 'Open media requests', why: 'Viewers spend OpenCoins to queue clips and tracks on your stream.', done: requests, go: '/dashboard' },
+        { id: 'moderation', group: 'Community & money', title: 'Set your chat rules', why: 'Slow mode, followers-only and emote-only, tuned how you want them.', done: modRules, go: '/dashboard' },
+        { id: 'controls', group: 'Build & mod', title: 'Build viewer controls', why: 'Let chat drive a robot, trigger hardware or press your buttons.', done: controls > 0, count: controls, go: '/dashboard' },
+        { id: 'aibot', group: 'Build & mod', title: 'Add an AI chat regular', why: 'Keeps an empty chat warm and answers the usual questions.', done: aibot > 0, count: aibot, go: '/dashboard' },
+        { id: 'paste', group: 'Build & mod', title: 'Publish a paste', why: 'Share code, configs or notes from your stream — they get their own page.', done: pastes > 0, count: pastes, go: '/pastes' },
     ];
     const done = tasks.filter(t => t.done).length;
     const next = tasks.find(t => !t.done) || null;

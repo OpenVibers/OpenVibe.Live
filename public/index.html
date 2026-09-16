@@ -88,9 +88,9 @@
          overlay) and is fetched without blocking the first paint: media="print" makes the browser
          treat it as non-critical, and the onload flips it back to all once it has arrived. -->
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-    <link rel="stylesheet" href="/css/style.css?v=196">
+    <link rel="stylesheet" href="/css/style.css?v=200">
     <link rel="stylesheet" href="/css/home-fx.css?v=13">
-    <link rel="stylesheet" href="/css/home-tour.css?v=8">
+    <link rel="stylesheet" href="/css/home-tour.css?v=9">
     <link rel="stylesheet" href="/css/i18n-star.css?v=11">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="/css/chat-shared.css?v=1" media="print" onload="this.media='all';this.onload=null">
@@ -99,7 +99,7 @@
     <link rel="stylesheet" href="/css/messenger.css?v=1" media="print" onload="this.media='all';this.onload=null">
     <link rel="stylesheet" href="/css/ov-guide.css?v=1" media="print" onload="this.media='all';this.onload=null">
     <link rel="stylesheet" href="/css/recap.css?v=1" media="print" onload="this.media='all';this.onload=null">
-    <link rel="stylesheet" href="/css/context-cards.css?v=3" media="print" onload="this.media='all';this.onload=null">
+    <link rel="stylesheet" href="/css/context-cards.css?v=4" media="print" onload="this.media='all';this.onload=null">
     <noscript>
         <link rel="stylesheet" href="/css/chat-shared.css?v=1">
         <link rel="stylesheet" href="/css/broadcast.css?v=11">
@@ -107,7 +107,7 @@
         <link rel="stylesheet" href="/css/messenger.css?v=1">
         <link rel="stylesheet" href="/css/ov-guide.css?v=1">
         <link rel="stylesheet" href="/css/recap.css?v=1">
-        <link rel="stylesheet" href="/css/context-cards.css?v=3">
+        <link rel="stylesheet" href="/css/context-cards.css?v=4">
     </noscript>
     
     <!-- JSON-LD Structured Data -->
@@ -329,7 +329,16 @@
                 <div class="empty-state" id="no-live-streams" style="display:none">
                     <i class="fa-solid fa-tower-broadcast fa-3x"></i>
                     <p>No one is streaming right now</p>
-                    <p class="muted">Be the first to go live!</p>
+                    <!-- This was a line of grey text telling people to go live with no way to do it.
+                         It is the same button as the one under the tour, routed through the same
+                         entry point, so signing in lands you back in the go-live journey. -->
+                    <button type="button" class="ovg-firstlive" onclick="if (window.startGoLiveJourney) startGoLiveJourney(); else location.href='/broadcast';">
+                        <span class="ovg-firstlive-ring" aria-hidden="true"></span>
+                        <span class="ovg-firstlive-sheen" aria-hidden="true"></span>
+                        <i class="fa-solid fa-tower-broadcast"></i>
+                        <span>Be the first to go live</span>
+                        <i class="fa-solid fa-arrow-right ovg-firstlive-go"></i>
+                    </button>
                 </div>
             </div>
 
@@ -729,7 +738,7 @@
             </div>
 
             <!-- OpenVibe.Live Changelog -->
-            <div class="section-header" style="--sc:#94a3b8" style="margin-top:32px;">
+            <div class="section-header" style="--sc:#94a3b8;margin-top:32px;">
                 <h2><i class="fa-solid fa-code-commit"></i> Recent Changes<small class="section-kicker">built in the open</small></h2>
                 <div style="display:flex;gap:8px;align-items:center;">
                     <button id="home-changelog-toggle" class="badge" onclick="toggleHomeChangelog()" style="cursor:pointer;border:none;background:var(--surface);padding:4px 10px;border-radius:6px;color:var(--text);font-size:0.78rem;">Show All</button>
@@ -5085,14 +5094,14 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/live-notify.js?v=3" defer></script>
 <script src="/js/ov-skeleton.js?v=1" defer></script>
 <script src="/js/ov-odometer.js?v=3" defer></script>
-<script src="/js/ov-density.js?v=1" defer></script>
-<script src="/js/app.js?v=169" defer></script>
+<script src="/js/ov-density.js?v=3" defer></script>
+<script src="/js/app.js?v=172" defer></script>
 <script src="/js/stream-player.js?v=22" defer></script>
 <script src="/js/stream-pip.js?v=1" defer></script>
 <script src="/js/chat-shared.js?v=3" defer></script>
 <script src="/js/emotes.js?v=8" defer></script>
 <script src="/js/gif-picker.js?v=1" defer></script>
-<script src="/js/chat.js?v=82" defer></script>
+<script src="/js/chat.js?v=83" defer></script>
 <script src="/js/chat-autocomplete.js?v=1" defer></script>
 <script src="/js/channel-uploads.js?v=12" defer></script>
 <script src="/js/controls.js?v=8" defer></script>
@@ -5151,7 +5160,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/broadcast-devices.js?v=2" defer></script>
 <script src="/js/broadcast-vods.js?v=2" defer></script>
 <script src="/js/broadcast-workspace.js?v=16" defer></script>
-<script src="/js/broadcast.js?v=29" defer></script>
+<script src="/js/broadcast.js?v=30" defer></script>
 <script src="/js/call.js?v=3" defer></script>
 <script src="/js/voice-channels.js?v=2" defer></script>
 <script src="/js/settings.js?v=12" defer></script>
@@ -5160,7 +5169,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/ai-viewers.js?v=3" defer></script>
 <script src="/js/arena.js?v=18" defer></script>
 <script src="/js/recap.js?v=1" defer></script>
-<script src="/js/context-cards.js?v=3" defer></script>
+<script src="/js/context-cards.js?v=4" defer></script>
 <script src="/js/powerchat.js?v=10" defer></script>
 <script src="/js/pastes.js?v=15" defer></script>
 <script src="/js/draggable-fab.js?v=2" defer></script>
@@ -5170,9 +5179,9 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/shared/footer.js?v=1" defer></script>
 <script src="/js/footer-live.js?v=1" defer></script>
 <script src="/js/home-fx.js?v=9" defer></script>
-<script src="/js/home-tour.js?v=8" defer></script>
+<script src="/js/home-tour.js?v=9" defer></script>
 <script src="/js/ov-guide.js?v=2" defer></script>
-<script src="/js/guides-live.js?v=6" defer></script>
+<script src="/js/guides-live.js?v=7" defer></script>
 
 <!-- ── OpenVibe shared libs (notifications, account sync, themes) ── -->
 <script src="/shared/theme-loader.js?v=1" defer></script>

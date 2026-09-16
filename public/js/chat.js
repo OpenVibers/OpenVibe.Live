@@ -6489,20 +6489,57 @@ function toggleMobileChat() {
 
     if (_mobileChatOpen) {
         _mobileChatUnread = 0;
-        const badge = document.getElementById('mobile-chat-badge');
-        if (badge) { badge.style.display = 'none'; badge.textContent = '0'; }
+        setUnreadBadge(document.getElementById('mobile-chat-badge'), 0);
         scrollChat();
     }
 }
 
+/**
+ * One place that decides whether an unread badge is on screen.
+ *
+ * Three call sites each set .textContent and .style.display by hand, and a badge reading "0" was
+ * reaching the screen — a count of nothing, drawn in alert red, is worse than no badge at all.
+ * Visibility is now a function of the number, and setUnreadBadge is the only way to change it.
+ * The observer is the backstop: if anything else ever clears the inline display while the count
+ * is zero, it gets hidden again on the next tick.
+ */
+function setUnreadBadge(el, n) {
+    if (!el) return;
+    const count = Math.max(0, Number(n) || 0);
+    el.textContent = count > 99 ? '99+' : String(count);
+    el.style.display = count > 0 ? '' : 'none';
+    el.hidden = count === 0;
+}
+
+(function guardUnreadBadges() {
+    const IDS = ['mobile-chat-badge', 'bc-mobile-chat-badge', 'fcw-unread-badge'];
+    const isZero = (el) => {
+        const t = (el.textContent || '').trim();
+        return t === '' || t === '0';
+    };
+    const sweep = () => {
+        for (const id of IDS) {
+            const el = document.getElementById(id);
+            if (el && isZero(el) && el.style.display !== 'none') { el.style.display = 'none'; el.hidden = true; }
+        }
+    };
+    const start = () => {
+        sweep();
+        for (const id of IDS) {
+            const el = document.getElementById(id);
+            if (!el) continue;
+            try {
+                new MutationObserver(sweep).observe(el, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['style'] });
+            } catch { /* */ }
+        }
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();
+
 function incrementMobileChatUnread() {
     if (!isMobileChatLayout() || _mobileChatOpen) return;
     _mobileChatUnread++;
-    const badge = document.getElementById('mobile-chat-badge');
-    if (badge) {
-        badge.textContent = _mobileChatUnread > 99 ? '99+' : _mobileChatUnread;
-        badge.style.display = '';
-    }
+    setUnreadBadge(document.getElementById('mobile-chat-badge'), _mobileChatUnread);
 }
 
 // Hook into addChatMessage to count unread on mobile
@@ -6667,8 +6704,7 @@ function fcwToggle() {
     if (_fcwOpen) {
         // Clear unread
         _fcwUnread = 0;
-        const badge = document.getElementById('fcw-unread-badge');
-        if (badge) badge.style.display = 'none';
+        setUnreadBadge(document.getElementById('fcw-unread-badge'), 0);
 
         // Ensure chat is connected (global)
         if (!chatWs || chatWs.readyState !== WebSocket.OPEN) {
@@ -6795,11 +6831,7 @@ function _fcwAddMessage(msg) {
         const isOnChatPage = chatPage && chatPage.classList.contains('active');
         if (!isOnChatPage) {
             _fcwUnread++;
-            const badge = document.getElementById('fcw-unread-badge');
-            if (badge) {
-                badge.textContent = _fcwUnread > 99 ? '99+' : String(_fcwUnread);
-                badge.style.display = '';
-            }
+            setUnreadBadge(document.getElementById('fcw-unread-badge'), _fcwUnread);
         }
     }
 }

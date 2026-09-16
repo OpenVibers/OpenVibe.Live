@@ -29,7 +29,6 @@
         ['fa-comments', 'One chat from every platform'], ['fa-language', 'Auto-translated chat'], ['fa-microphone-lines', 'The Arena: mic-judged beefs'],
         ['fa-clipboard-list', 'After-show reports'], ['fa-brands fa-github', '100% open source'],
     ];
-    const go = (href) => `href="${href}" onclick="return handleLinkClick(event, '${href}')"`;
 
     function mount() {
         const el = document.getElementById('home-tour-mount');
@@ -65,9 +64,9 @@
                     </div>
                 </div>
                 <div class="tour-features">${FEATURES.map(([i, t], k) => `<span class="tour-feat" style="--i:${k}"><i class="${i.startsWith('fa-brands') ? i : 'fa-solid ' + i}"></i> ${t}</span>`).join('')}</div>
-                <div class="tour-actions">
-                    <a class="btn btn-primary btn-lg" ${go('/broadcast')}><i class="fa-solid fa-tower-broadcast"></i> Go live</a>
-                </div>
+                <!-- A "Go live" button used to sit here, directly above the quest slot, which is
+                     itself a go-live button that knows where the reader actually is in their setup.
+                     Two buttons, one of them uninformed. The slot below is the only one now. -->
                 <!-- Filled by setupNextUp() in guides-live.js: the progress quest for signed-in
                      streamers, the join panel for everyone else. The link below is the no-JS
                      fallback and what a crawler sees. -->

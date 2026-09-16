@@ -364,3 +364,90 @@
     .ovg-quest-liquid { transition: none; }
     .ovg-join-perks li { animation: none !important; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   The launch button — what the quest slot becomes once the setup list is finished, and what the
+   home page's empty "nobody is live" state offers. Both share one shape and one entry point
+   (startGoLiveJourney), so there is a single answer to "take me to streaming" everywhere.
+
+   The quest sells progress, so it fills with water. This sells the act, so it leans on a slow
+   aura and a sheen that crosses on hover — motion that reads as "ready", not "incomplete".
+   All of it is transform/opacity only and stops dead under reduced motion or rs-lite.
+   ═══════════════════════════════════════════════════════════════ */
+.ovg-launch, .ovg-firstlive {
+    position: relative; overflow: hidden; isolation: isolate; cursor: pointer;
+    font: inherit; color: var(--text-primary); text-align: left;
+    border-radius: 16px;
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, var(--bg-card)), var(--bg-secondary));
+    box-shadow: 0 10px 26px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.06);
+    transition: transform 0.2s, box-shadow 0.25s, border-color 0.25s;
+}
+.ovg-launch {
+    display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px;
+    width: min(560px, 100%); padding: 12px 15px;
+}
+.ovg-launch:hover, .ovg-firstlive:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--accent) 80%, transparent);
+    box-shadow: 0 16px 38px rgba(0,0,0,0.42), 0 0 30px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+.ovg-launch:active, .ovg-firstlive:active { transform: translateY(0) scale(0.99); }
+.ovg-launch:focus-visible, .ovg-firstlive:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* A slow breathing glow behind the icon — the "on air" tell. */
+.ovg-launch-aura, .ovg-firstlive-ring {
+    position: absolute; z-index: 0; pointer-events: none; border-radius: 50%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent) 34%, transparent), transparent 70%);
+}
+.ovg-launch-aura { left: -10px; top: 50%; width: 120px; height: 120px; transform: translateY(-50%); }
+.ovg-firstlive-ring { inset: -40% -10%; border-radius: 999px; }
+.fx-live .ovg-launch-aura, .fx-live .ovg-firstlive-ring { animation: ovgAura 3.6s ease-in-out infinite; }
+@keyframes ovgAura { 0%, 100% { opacity: 0.45; transform: translateY(-50%) scale(1); } 50% { opacity: 0.9; transform: translateY(-50%) scale(1.12); } }
+.ovg-firstlive-ring { transform: none; }
+@keyframes ovgAuraFlat { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.75; } }
+.fx-live .ovg-firstlive-ring { animation: ovgAuraFlat 3.6s ease-in-out infinite; }
+
+/* The sheen crosses once on hover rather than looping — a loop on a primary button is noise. */
+.ovg-launch-sheen, .ovg-firstlive-sheen {
+    position: absolute; inset: 0; z-index: 1; pointer-events: none; opacity: 0;
+    background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,0.16) 50%, transparent 62%);
+    transform: translateX(-60%);
+}
+.ovg-launch:hover .ovg-launch-sheen, .ovg-firstlive:hover .ovg-firstlive-sheen {
+    opacity: 1; animation: ovgSheen 0.85s ease-out;
+}
+@keyframes ovgSheen { from { transform: translateX(-60%); } to { transform: translateX(60%); } }
+
+.ovg-launch-ico {
+    position: relative; z-index: 2; width: 38px; height: 38px; border-radius: 12px;
+    display: grid; place-items: center; font-size: 1rem; color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+}
+.ovg-launch-text { position: relative; z-index: 2; min-width: 0; display: grid; gap: 2px; }
+.ovg-launch-text b { font-size: 0.95rem; font-weight: 800; letter-spacing: -0.01em; }
+.ovg-launch-text small { font-size: 0.74rem; color: var(--text-muted); }
+.ovg-launch-go { position: relative; z-index: 2; color: var(--accent); transition: transform 0.2s; }
+.ovg-launch:hover .ovg-launch-go { transform: translateX(3px); }
+
+/* The home page's empty state is a single centred pill — there is no progress to explain there. */
+.ovg-firstlive {
+    display: inline-flex; align-items: center; gap: 10px;
+    margin-top: 6px; padding: 11px 20px; font-size: 0.92rem; font-weight: 800;
+}
+.ovg-firstlive > i, .ovg-firstlive > span { position: relative; z-index: 2; }
+.ovg-firstlive > i:first-of-type { color: var(--accent); }
+.ovg-firstlive-go { color: var(--accent); transition: transform 0.2s; }
+.ovg-firstlive:hover .ovg-firstlive-go { transform: translateX(3px); }
+
+@media (max-width: 560px) {
+    .ovg-launch { grid-template-columns: auto 1fr auto; gap: 10px; padding: 11px 12px; }
+    .ovg-launch-ico { width: 34px; height: 34px; }
+    .ovg-launch-text small { font-size: 0.7rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ovg-launch-aura, .ovg-firstlive-ring, .ovg-launch-sheen, .ovg-firstlive-sheen { animation: none !important; }
+    .ovg-launch, .ovg-firstlive { transition: none; }
+}
+.rs-lite .ovg-launch-aura, .rs-lite .ovg-firstlive-ring { animation: none !important; }
