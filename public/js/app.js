@@ -2231,24 +2231,25 @@ async function loadHomeDigest() {
     box.style.display = '';
 }
 
-async function loadHomeRecentOnline(page) {
+async function loadHomeRecentOnline(page, append) {
     if (page !== undefined) _homeRecentOnlinePage = page;
     const offset = (_homeRecentOnlinePage - 1) * HOME_RECENT_ONLINE_PAGE_SIZE;
     try {
         const recentData = await api(`/streams/recently-online?limit=${HOME_RECENT_ONLINE_PAGE_SIZE}&offset=${offset}`);
-        renderRecentlyOnline('stream-grid-recent', recentData.streamers || []);
+        renderRecentlyOnline('stream-grid-recent', recentData.streamers || [], append);
         renderHomePagination('stream-grid-recent-pagination', recentData.total || 0, _homeRecentOnlinePage, HOME_RECENT_ONLINE_PAGE_SIZE, 'loadHomeRecentOnline');
     } catch { /* silent */ }
 }
 
-function renderRecentlyOnline(containerId, streamers) {
+function renderRecentlyOnline(containerId, streamers, append) {
     const container = document.getElementById(containerId);
     if (!container) return;
     if (!streamers.length) {
-        container.innerHTML = '<p class="muted">No recent streamers</p>';
+        if (!append) container.innerHTML = '<p class="muted">No recent streamers</p>';
         return;
     }
-    container.innerHTML = streamers.map(s => {
+    const _put = (html) => { if (append) container.insertAdjacentHTML('beforeend', html); else container.innerHTML = html; };
+    _put(streamers.map(s => {
         const msList = (s.managed_streams || []);
         const avatar = _avatarSpan(s.avatar_url, s.username, s.profile_color);
         const channelHref = `/@${s.username}`;
@@ -2289,10 +2290,10 @@ function renderRecentlyOnline(containerId, streamers) {
                 <div class="streamer-group-streams">${streamsHtml}</div>
             </div>
         `;
-    }).join('');
+    }).join(''));
 }
 
-async function loadHomeRecentVods(page) {
+async function loadHomeRecentVods(page, append) {
     if (page !== undefined) _homeRecentVodsPage = page;
     const offset = (_homeRecentVodsPage - 1) * HOME_RECENT_VODS_PAGE_SIZE;
     try {
@@ -2303,7 +2304,8 @@ async function loadHomeRecentVods(page) {
             if (!header || !grid) return;
             if (!vods.length && _homeRecentVodsPage === 1) { header.style.display = 'none'; grid.innerHTML = ''; return; }
             header.style.display = '';
-            grid.innerHTML = vods.map(v => {
+            const _put = (html) => { if (append) grid.insertAdjacentHTML('beforeend', html); else grid.innerHTML = html; };
+            _put(vods.map(v => {
                 const href = `/vod/${v.id}`;
                 return `
                     <a class="stream-card" href="${href}" onclick="return handleLinkClick(event, '${href}')">
@@ -2323,14 +2325,14 @@ async function loadHomeRecentVods(page) {
                         </div>
                     </a>
                 `;
-            }).join('');
+            }).join(''));
             renderHomePagination('home-recent-vods-pagination', data.total || 0, _homeRecentVodsPage, HOME_RECENT_VODS_PAGE_SIZE, 'loadHomeRecentVods');
         };
         await apiSWR(`/streams/recent-vods?limit=${HOME_RECENT_VODS_PAGE_SIZE}&offset=${offset}`, render, { ttl: 180000 });
     } catch { /* silent */ }
 }
 
-async function loadHomeClips(page) {
+async function loadHomeClips(page, append) {
     if (page !== undefined) _homeClipsPage = page;
     const offset = (_homeClipsPage - 1) * HOME_CLIPS_PAGE_SIZE;
     try {
@@ -2340,7 +2342,8 @@ async function loadHomeClips(page) {
             const grid = document.getElementById('home-clips-grid');
             if (!clips.length && _homeClipsPage === 1) { if (header) header.style.display = 'none'; return; }
             if (header) header.style.display = '';
-            grid.innerHTML = clips.map(c => `
+            const _put = (html) => { if (append) grid.insertAdjacentHTML('beforeend', html); else grid.innerHTML = html; };
+            _put(clips.map(c => `
                 <a class="stream-card" href="/clip/${c.id}" onclick="return handleLinkClick(event, '/clip/${c.id}')">
                     <div class="stream-card-thumb">
                         ${thumbImg(c.thumbnail_url, 'fa-scissors', c.title, `/api/thumbnails/generate/clip/${c.id}`)}
@@ -2357,14 +2360,14 @@ async function loadHomeClips(page) {
                         ${_cardAiHTML(c.ai_overview_short, c.ai_overview)}
                     </div>
                 </a>
-            `).join('');
+            `).join(''));
             renderHomePagination('home-clips-pagination', data.total || 0, _homeClipsPage, HOME_CLIPS_PAGE_SIZE, 'loadHomeClips');
         };
         await apiSWR(`/clips?limit=${HOME_CLIPS_PAGE_SIZE}&offset=${offset}`, render, { ttl: 180000 });
     } catch { /* silent */ }
 }
 
-async function loadHomePastes(page) {
+async function loadHomePastes(page, append) {
     if (page !== undefined) _homePastesPage = page;
     const offset = (_homePastesPage - 1) * HOME_PASTES_PAGE_SIZE;
     try {
@@ -2374,7 +2377,8 @@ async function loadHomePastes(page) {
             const list = document.getElementById('home-pastes-list');
             if (!pastes.length && _homePastesPage === 1) { if (header) header.style.display = 'none'; return; }
             if (header) header.style.display = '';
-            list.innerHTML = pastes.map(p => {
+            const _put = (html) => { if (append) list.insertAdjacentHTML('beforeend', html); else list.innerHTML = html; };
+            _put(pastes.map(p => {
                 const icon = p.type === 'screenshot' ? 'fa-image' : (p.language && p.language !== 'plaintext' ? 'fa-code' : 'fa-file-lines');
                 const preview = p.type === 'paste' ? esc((p.content || '').slice(0, 220)).replace(/\n{3,}/g, '\n\n') : '';
                 const media = p.type === 'screenshot' && p.screenshot_url
@@ -2395,7 +2399,7 @@ async function loadHomePastes(page) {
                     </div>
                     </div>
                 </a>`;
-            }).join('');
+            }).join(''));
             renderHomePagination('home-pastes-pagination', data.total || 0, _homePastesPage, HOME_PASTES_PAGE_SIZE, 'loadHomePastes');
         };
         await apiSWR(`/pastes?limit=${HOME_PASTES_PAGE_SIZE}&offset=${offset}`, render, { ttl: 180000 });
@@ -2815,8 +2819,26 @@ function renderVodsPagination(containerId, page, total, pageSize, setterName, it
 }
 
 // Thin wrapper for homepage section pagination — same visual style as renderVodsPagination.
+/**
+ * Home rails get a "Load more" button, not a pager.
+ *
+ * Prev/Next with a page counter belongs on a browse page where someone is hunting for a specific
+ * thing. On a front page rail nobody wants to operate a paginator — they want a bit more of what
+ * they're looking at, or they want the dedicated page. So: one button that appends the next
+ * batch, showing how many are left, and it disappears when there are none.
+ */
 function renderHomePagination(containerId, total, page, pageSize, setterName) {
-    renderVodsPagination(containerId, page, total, pageSize, setterName, 'items');
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const shown = page * pageSize;
+    const left = Math.max(0, (total || 0) - shown);
+    if (left <= 0) { el.innerHTML = ''; return; }
+    const next = Math.min(left, pageSize);
+    el.innerHTML = `<button type="button" class="home-load-more" onclick="${setterName}(${page + 1}, true)">
+        <i class="fa-solid fa-arrow-down"></i>
+        <span>Load ${next} more</span>
+        <small>${left.toLocaleString()} left</small>
+    </button>`;
 }
 
 async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) {
