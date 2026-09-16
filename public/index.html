@@ -62,7 +62,7 @@
     </script>
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="/css/style.css?v=161">
+    <link rel="stylesheet" href="/css/style.css?v=162">
     <link rel="stylesheet" href="/css/chat-shared.css?v=1">
     <link rel="stylesheet" href="/css/broadcast.css?v=11">
     <link rel="stylesheet" href="/css/cosmetics.css?v=2">
@@ -224,7 +224,21 @@
             <div class="hero-collage" id="hero-collage" aria-hidden="true"></div>
             <div class="hero-scrim" aria-hidden="true"></div>
             <div class="hero-content">
-                <h1><i class="fa-solid fa-circle-nodes"></i> OpenVibe.Live</h1>
+                <h1><span class="brand-mark brand-mark--hero" aria-hidden="true"><svg viewBox="0 0 40 40">
+                    <defs><linearGradient id="bmh-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="currentColor"/><stop offset="1" stop-color="currentColor" stop-opacity="0.5"/></linearGradient></defs>
+                    <circle class="bm-glow" cx="20" cy="22" r="18"/>
+                    <circle class="bmh-orbit" cx="20" cy="22" r="17.5"/>
+                    <path id="bmh-path" class="bm-edges" d="M20,7 L34,31 L6,31 Z"/>
+                    <circle class="bm-node bm-node--1" cx="20" cy="7" r="4.2"/>
+                    <circle class="bm-node bm-node--2" cx="34" cy="31" r="4.2"/>
+                    <circle class="bm-node bm-node--3" cx="6" cy="31" r="4.2"/>
+                    <circle class="bm-core" cx="20" cy="23" r="2.8"/>
+                    <circle class="bm-pk" r="2.1"><animateMotion dur="2.6s" repeatCount="indefinite"><mpath href="#bmh-path"/></animateMotion></circle>
+                    <circle class="bm-pk bmh-trail" r="1.6"><animateMotion dur="2.6s" begin="0.12s" repeatCount="indefinite"><mpath href="#bmh-path"/></animateMotion></circle>
+                    <circle class="bm-pk bmh-trail2" r="1.1"><animateMotion dur="2.6s" begin="0.24s" repeatCount="indefinite"><mpath href="#bmh-path"/></animateMotion></circle>
+                    <circle class="bm-pk bm-pk--2" r="1.6"><animateMotion dur="2.6s" begin="1.3s" repeatCount="indefinite"><mpath href="#bmh-path"/></animateMotion></circle>
+                    <circle class="bmh-spark" cx="20" cy="22" r="1.2"/><circle class="bmh-spark bmh-spark--2" cx="20" cy="22" r="1"/><circle class="bmh-spark bmh-spark--3" cx="20" cy="22" r="0.9"/>
+                </svg></span> OpenVibe.Live</h1>
                 <p class="hero-tagline">Live streaming for <span class="hero-rotate-wrap"><span class="hero-rotate" id="hero-rotate"></span></span></p>
                 <p class="hero-quip" id="hero-quip" aria-live="polite"></p>
                 <div class="hero-slogan-timer" id="hero-slogan-timer" hidden></div>

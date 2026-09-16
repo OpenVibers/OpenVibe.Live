@@ -14790,6 +14790,23 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 @keyframes bmCore { 0%, 100% { transform: scale(1); opacity: 0.85; } 50% { transform: scale(1.4); opacity: 1; } }
 @keyframes bmSpin { from { transform: rotate(0deg) scale(1); } 40% { transform: rotate(200deg) scale(1.2); } to { transform: rotate(360deg) scale(1); } }
 @media (prefers-reduced-motion: reduce) { .brand-mark svg, .bm-glow, .bm-edges, .bm-node, .bm-core { animation: none !important; } .bm-pk { display: none; } }
-.rs-lite .brand-mark svg, .rs-lite .bm-glow, .rs-lite .bm-node, .rs-lite .bm-core { animation: none; }
-.rs-lite .bm-pk { filter: none; }
+/* Lite mode keeps the cheap transform/opacity motion; only the drop-shadow filter goes. */
+.rs-lite .bm-pk, .rs-lite .bmh-spark { filter: none; }
+
+/* Hero version: same mark, bigger, with an orbit ring, comet trail and sparks */
+.brand-mark--hero { width: 1.05em; height: 1.05em; vertical-align: -0.16em; color: var(--accent); margin-right: 0.08em; }
+.brand-mark--hero svg { width: 100%; height: 100%; animation: bmFloat 5s ease-in-out infinite; }
+.brand-mark--hero .bm-edges { stroke: url(#bmh-grad); stroke-width: 2.4; }
+.brand-mark--hero .bm-node { stroke-width: 1.4; }
+.bmh-orbit { fill: none; stroke: currentColor; stroke-width: 0.9; stroke-dasharray: 3 5; opacity: 0.55; transform-box: fill-box; transform-origin: center; animation: bmhOrbit 9s linear infinite; }
+.bmh-trail { opacity: 0.55; } .bmh-trail2 { opacity: 0.3; }
+.bmh-spark { fill: #fff; opacity: 0; transform-box: fill-box; transform-origin: center; animation: bmhSpark 3.4s ease-out infinite; }
+.bmh-spark--2 { animation-delay: 1.1s; animation-name: bmhSpark2; } .bmh-spark--3 { animation-delay: 2.3s; animation-name: bmhSpark3; }
+.hero h1:hover .brand-mark--hero svg { animation: bmSpin 1s cubic-bezier(.2,1.5,.3,1) 1; }
+.hero h1:hover .bmh-orbit { animation-duration: 2s; opacity: 0.9; }
+@keyframes bmhOrbit { to { transform: rotate(360deg); } }
+@keyframes bmhSpark { 0% { opacity: 0; transform: translate(0,0) scale(0.6); } 10% { opacity: 1; } 60% { opacity: 0; transform: translate(11px,-14px) scale(1.4); } 100% { opacity: 0; } }
+@keyframes bmhSpark2 { 0% { opacity: 0; transform: translate(0,0) scale(0.6); } 10% { opacity: 1; } 60% { opacity: 0; transform: translate(-13px,-9px) scale(1.3); } 100% { opacity: 0; } }
+@keyframes bmhSpark3 { 0% { opacity: 0; transform: translate(0,0) scale(0.6); } 10% { opacity: 1; } 60% { opacity: 0; transform: translate(4px,15px) scale(1.2); } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .bmh-orbit, .bmh-spark, .brand-mark--hero svg { animation: none !important; } .bmh-spark { display: none; } }
 @media (max-width: 600px) { .brand-mark { width: 26px; height: 26px; } .brand-mark svg { width: 25px; height: 25px; } }
