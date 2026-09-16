@@ -167,4 +167,16 @@ const ok = (name) => { pass++; console.log('  ok -', name); };
     }
 }
 
+// ── A signed OAuth state proves we issued it, not that the slot is yours ─────
+{
+    const src = fs.readFileSync(path.join(ROOT, 'server/streaming/restream-routes.js'), 'utf8');
+    const cb = src.match(/const userId = stateData\.userId;[\s\S]*?destProvisioned = true;/);
+    assert(cb, 'the OAuth callback should still provision a destination');
+    assert(/slot\.user_id !== userId/.test(cb[0]),
+        'the callback must confirm the state\'s managed_stream_id belongs to the authenticating user');
+    assert(cb[0].indexOf('slot.user_id !== userId') < cb[0].indexOf('createRestreamDestination'),
+        'ownership must be checked before a destination is created');
+    ok('restream OAuth callback will not provision onto another account\'s slot');
+}
+
 console.log(`\n${pass} checks passed`);
