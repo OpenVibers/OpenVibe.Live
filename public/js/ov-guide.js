@@ -137,8 +137,18 @@
         show(start, 1);
     }
     function close(finished) {
-        const root = $('#ovg'); if (!root || !S.open) return;
-        S.open = false; root.classList.remove('is-open'); document.body.classList.remove('ovg-lock');
+        const root = $('#ovg');
+        // Always release the scroll lock, even on the early return below: if anything ever leaves
+        // S.open false with the class still on, the page silently stops scrolling.
+        document.body.classList.remove('ovg-lock');
+        if (!root || !S.open) return;
+        S.open = false; root.classList.remove('is-open');
+        // A spotlight can outlive the card that opened it — dashboard() closes the guide and then
+        // spotlights a real control on purpose. open() already clears any stray one; close() did
+        // not, so a spotlight dismissed by navigating away rather than by its own button stayed in
+        // the DOM. .ovg-spot-card is fixed and pointer-events:auto, so a stranded one silently
+        // swallows taps on whatever it happens to cover.
+        closeSpot();
         const j = S.journey;
         if (j) { store(j.id, { ...(store(j.id) || {}), seen: true, finished: !!finished || !!(store(j.id) || {}).finished, dismissed: !finished, when: Date.now() }); try { if (typeof j.onClose === 'function') j.onClose(S.ctx, !!finished); } catch { /* */ } }
         const closedId = j ? j.id : null;
@@ -227,7 +237,16 @@
         return true;
     }
     const _push = history.pushState;
-    history.pushState = function () { const r = _push.apply(this, arguments); setTimeout(() => { if (!S.open) fromUrl(); }, 60); return r; };
+    history.pushState = function () {
+        // A spotlight points at one control on one page. Once the reader has navigated it is
+        // pointing at nothing, and its card keeps taking taps where it sits — so a route change
+        // dismisses it, the same way its own button would.
+        closeSpot();
+        const r = _push.apply(this, arguments);
+        setTimeout(() => { if (!S.open) fromUrl(); }, 60);
+        return r;
+    };
+    window.addEventListener('popstate', () => closeSpot());
     function boot() { if (!fromUrl()) resumePending(); }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(boot, 300)); else setTimeout(boot, 300);
 

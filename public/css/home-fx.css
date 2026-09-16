@@ -174,12 +174,18 @@
    the wand, and a secondary "API docs" label that keeps the destination honest without the
    button reading like documentation. All of it pauses with the rest of the row when off-screen. */
 .hb-label small { font-size: 0.68rem; font-weight: 600; opacity: 0.62; margin-left: 5px; letter-spacing: 0.01em; }
-.hb-vibe {
+/* The wash used to slide background-position, which repaints the button on every frame of an
+   11-second loop for the whole time the row is on screen. The gradient now lives on a pseudo-
+   element twice the width and simply translates, which the compositor handles without a repaint. */
+.hb-vibe { position: relative; overflow: hidden; }
+.hb-vibe::after {
+    content: ''; position: absolute; top: 0; bottom: 0; left: -60%; width: 220%;
+    z-index: 0; pointer-events: none;
     background-image: linear-gradient(115deg, color-mix(in srgb, var(--c) 16%, transparent), transparent 42%, color-mix(in srgb, #a78bfa 14%, transparent));
-    background-size: 220% 100%;
     animation: hbVibeWash 11s ease-in-out infinite;
 }
-@keyframes hbVibeWash { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+.hb-vibe > * { position: relative; z-index: 1; }
+@keyframes hbVibeWash { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(27%); } }
 .hb-vibe .hb-ico { position: relative; overflow: visible; }
 /* A spark that leaves the wand every few seconds. */
 .hb-vibe .hb-ico::after {
@@ -207,14 +213,22 @@
     .hb[data-ovtip]::after {
         content: ''; display: block; position: absolute; top: 9px; right: 11px;
         width: 6px; height: 6px; border-radius: 50%; padding: 0; inset: auto 11px auto auto;
-        background: var(--c); box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 60%, transparent);
+        background: var(--c);
         -webkit-mask: none; mask: none; opacity: 1; z-index: 2; pointer-events: none;
+    }
+    /* The halo was an expanding box-shadow — a repaint every frame, forever, on every hero button
+       on a phone. It is a second dot that scales and fades instead: transform and opacity only. */
+    .hb[data-ovtip]::before {
+        content: ''; display: block; position: absolute; top: 9px; right: 11px;
+        width: 6px; height: 6px; border-radius: 50%;
+        background: color-mix(in srgb, var(--c) 55%, transparent);
+        z-index: 1; pointer-events: none; transform-origin: center;
         animation: hbHintPulse 2.4s ease-out infinite;
     }
     @keyframes hbHintPulse {
-        0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 55%, transparent); }
-        70% { box-shadow: 0 0 0 7px transparent; }
-        100% { box-shadow: 0 0 0 0 transparent; }
+        0%   { transform: scale(1);   opacity: 0.85; }
+        70%  { transform: scale(3.3); opacity: 0; }
+        100% { transform: scale(3.3); opacity: 0; }
     }
 }
 @media (hover: none) and (prefers-reduced-motion: reduce) { .hb[data-ovtip]::after { animation: none; } }
