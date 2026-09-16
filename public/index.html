@@ -61,19 +61,54 @@
     })();
     </script>
 
-    <!-- Stylesheets -->
+    <!-- Placeholder styling, inline on purpose.
+         The skeletons below are in the HTML so the page reserves the space each feed will occupy
+         before a single script runs. That only works if their styling is here too — a stylesheet
+         request would land after the first paint, which is the moment it is needed. ~1KB. -->
+    <style id="ovsk-css">
+    .ovsk{position:relative;overflow:hidden;background:var(--bg-card,#171826);border:1px solid var(--border,rgba(255,255,255,.08));border-radius:14px}
+    .ovsk-bar{position:relative;overflow:hidden;background:color-mix(in srgb,var(--text-muted,#8b93ad) 14%,transparent);border-radius:6px}
+    .ovsk::after,.ovsk-bar::after{content:'';position:absolute;inset:0;background:linear-gradient(100deg,transparent 20%,color-mix(in srgb,var(--text-primary,#f1f4fb) 7%,transparent) 50%,transparent 80%);transform:translateX(-100%);animation:ovskSweep 1.5s ease-in-out infinite}
+    @keyframes ovskSweep{to{transform:translateX(100%)}}
+    .ovsk-card{display:flex;flex-direction:column}
+    .ovsk-thumb{aspect-ratio:16/9;width:100%;background:color-mix(in srgb,var(--text-muted,#8b93ad) 10%,transparent)}
+    .ovsk-meta{display:flex;gap:10px;align-items:center;padding:10px 12px 12px}
+    .ovsk-av{width:32px;height:32px;border-radius:50%;flex:none}
+    .ovsk-lines{flex:1;min-width:0;display:grid;gap:6px}
+    .ovsk-panel{padding:14px;display:grid;gap:10px}
+    .ovsk-fade{animation:ovskFade .25s ease forwards}
+    @keyframes ovskFade{to{opacity:0}}
+    @media (max-width:760px){#stream-grid-live .ovsk-card:nth-of-type(n+3){display:none}}
+    @media (prefers-reduced-motion:reduce){.ovsk::after,.ovsk-bar::after{animation:none}}
+    </style>
+
+    <!-- Stylesheets.
+         Blocking set = what the home page paints with. Everything else belongs to another route
+         (the broadcast desk, the messenger, the cosmetics modal, after-show reports, the guide
+         overlay) and is fetched without blocking the first paint: media="print" makes the browser
+         treat it as non-critical, and the onload flips it back to all once it has arrived. -->
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link rel="stylesheet" href="/css/style.css?v=166">
-    <link rel="stylesheet" href="/css/chat-shared.css?v=1">
-    <link rel="stylesheet" href="/css/broadcast.css?v=11">
-    <link rel="stylesheet" href="/css/cosmetics.css?v=2">
-    <link rel="stylesheet" href="/css/messenger.css?v=1">
-    <link rel="stylesheet" href="/css/home-fx.css?v=9">
+    <link rel="stylesheet" href="/css/home-fx.css?v=10">
     <link rel="stylesheet" href="/css/home-tour.css?v=4">
-    <link rel="stylesheet" href="/css/ov-guide.css?v=1">
     <link rel="stylesheet" href="/css/i18n-star.css?v=5">
-    <link rel="stylesheet" href="/css/recap.css?v=1">
-    <link rel="stylesheet" href="/css/context-cards.css?v=3">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="/css/chat-shared.css?v=1" media="print" onload="this.media='all';this.onload=null">
+    <link rel="stylesheet" href="/css/broadcast.css?v=11" media="print" onload="this.media='all';this.onload=null">
+    <link rel="stylesheet" href="/css/cosmetics.css?v=2" media="print" onload="this.media='all';this.onload=null">
+    <link rel="stylesheet" href="/css/messenger.css?v=1" media="print" onload="this.media='all';this.onload=null">
+    <link rel="stylesheet" href="/css/ov-guide.css?v=1" media="print" onload="this.media='all';this.onload=null">
+    <link rel="stylesheet" href="/css/recap.css?v=1" media="print" onload="this.media='all';this.onload=null">
+    <link rel="stylesheet" href="/css/context-cards.css?v=3" media="print" onload="this.media='all';this.onload=null">
+    <noscript>
+        <link rel="stylesheet" href="/css/chat-shared.css?v=1">
+        <link rel="stylesheet" href="/css/broadcast.css?v=11">
+        <link rel="stylesheet" href="/css/cosmetics.css?v=2">
+        <link rel="stylesheet" href="/css/messenger.css?v=1">
+        <link rel="stylesheet" href="/css/ov-guide.css?v=1">
+        <link rel="stylesheet" href="/css/recap.css?v=1">
+        <link rel="stylesheet" href="/css/context-cards.css?v=3">
+    </noscript>
     
     <!-- JSON-LD Structured Data -->
     <script type="application/ld+json">
@@ -248,7 +283,7 @@
                 <p class="hero-tagline">Live streaming for <span class="hero-rotate-wrap"><span class="hero-rotate" id="hero-rotate"></span></span></p>
                 <p class="hero-quip" id="hero-quip" aria-live="polite"></p>
                 <div class="hero-slogan-timer" id="hero-slogan-timer" hidden></div>
-                <div class="hero-stats" id="hero-stats" aria-label="Site stats"></div>
+                <div class="hero-stats" id="hero-stats" aria-label="Site stats"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div></div></div>
                 <div class="hero-egg" id="hero-egg" style="display:none">
                     <button class="hero-egg-head" type="button" onclick="toggleHeroEgg()">
                         <span class="hero-egg-icon">🥚</span>
@@ -286,12 +321,12 @@
                     <a href="https://github.com/OpenVibers/OpenVibe.Live" target="_blank" style="--i:3" class="hb hb-github" rel="noopener"><span class="hb-ico"><i class="fa-brands fa-github"></i></span><span class="hb-label">GitHub</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
                     <a href="https://discord.gg/M6MuRUaeJj" target="_blank" style="--i:4" class="hb hb-discord" rel="noopener noreferrer"><span class="hb-ico"><i class="fa-brands fa-discord"></i></span><span class="hb-label">Discord</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
                     <a href="/documentation" onclick="return handleLinkClick(event, '/documentation')" style="--i:5" class="hb hb-vibe"
-                       data-ovtip-title="Built for vibe coders"
+                       data-ovtip-title="Mod it, bot it, build on it"
                        data-ovtip-icon="fa-wand-magic-sparkles"
                        data-ovtip-accent="#f472b6"
                        data-ovtip-place="top"
-                       data-ovtip="Every feature here has an <b>open API</b> — chat, streams, clips, overlays, robots, the lot. <em>You don't need to know how to code.</em> Point an AI at these docs, describe the bot or overlay you want, and it writes it for you."
-                       data-ovtip-foot="<i class=&quot;fa-solid fa-heart&quot;></i> Open here, good vibes — come build something"><span class="hb-ico"><i class="fa-solid fa-wand-magic-sparkles"></i></span><span class="hb-label">API Docs</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                       data-ovtip="Chat, streams, clips, overlays, robots, sound commands, whole games &mdash; every feature here has an <b>open API</b>, and the entire site is <b>open source</b>. <em>You do not need to know how to code.</em> Point an AI at these docs, describe the thing you want, and it writes it for you."
+                       data-ovtip-foot="<i class=&quot;fa-solid fa-heart&quot;></i> We love what people build here &mdash; come make something"><span class="hb-ico"><i class="fa-solid fa-wand-magic-sparkles"></i></span><span class="hb-label">Build &amp; Mod <small>API docs</small></span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
                 </div>
                 <!-- One stream, everywhere — restream pipeline + feature tour (public/js/home-tour.js) -->
                 <div class="home-tour-mount home-section-lazy" id="home-tour-mount" data-fx-viewport></div>
@@ -312,10 +347,10 @@
 
         <div class="container">
             <!-- "While you were away" (signed-in, returning) / "Lately on OpenVibe" (everyone) — site activity digest -->
-            <div class="home-digest" id="home-digest" style="display:none"></div>
+            <div class="home-digest" id="home-digest"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div></div></div>
 
             <!-- Star of OpenVibe — featured streamer spotlight (star_streamer setting / STAR_STREAMER env) -->
-            <div class="home-star-section" id="home-star-section" style="display:none"></div>
+            <div class="home-star-section" id="home-star-section"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div><div class="ovsk-bar" style="height:10px;width:80%"></div></div></div>
 
             <!-- Live Streams -->
             <div class="section-header">
@@ -323,7 +358,11 @@
                 <span id="live-count" class="badge">0</span>
             </div>
             <div class="stream-grid" id="stream-grid-live">
-                <div class="empty-state" id="no-live-streams">
+                <div class="ovsk ovsk-card" aria-hidden="true"><div class="ovsk-thumb"></div><div class="ovsk-meta"><div class="ovsk-bar ovsk-av"></div><div class="ovsk-lines"><div class="ovsk-bar" style="height:11px;width:72%"></div><div class="ovsk-bar" style="height:9px;width:45%"></div></div></div></div>
+                <div class="ovsk ovsk-card" aria-hidden="true"><div class="ovsk-thumb"></div><div class="ovsk-meta"><div class="ovsk-bar ovsk-av"></div><div class="ovsk-lines"><div class="ovsk-bar" style="height:11px;width:72%"></div><div class="ovsk-bar" style="height:9px;width:45%"></div></div></div></div>
+                <div class="ovsk ovsk-card" aria-hidden="true"><div class="ovsk-thumb"></div><div class="ovsk-meta"><div class="ovsk-bar ovsk-av"></div><div class="ovsk-lines"><div class="ovsk-bar" style="height:11px;width:72%"></div><div class="ovsk-bar" style="height:9px;width:45%"></div></div></div></div>
+                <div class="ovsk ovsk-card" aria-hidden="true"><div class="ovsk-thumb"></div><div class="ovsk-meta"><div class="ovsk-bar ovsk-av"></div><div class="ovsk-lines"><div class="ovsk-bar" style="height:11px;width:72%"></div><div class="ovsk-bar" style="height:9px;width:45%"></div></div></div></div>
+                <div class="empty-state" id="no-live-streams" style="display:none">
                     <i class="fa-solid fa-tower-broadcast fa-3x"></i>
                     <p>No one is streaming right now</p>
                     <p class="muted">Be the first to go live!</p>
@@ -5084,7 +5123,8 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <!-- Scripts -->
 <script src="/js/theme-engine.js?v=4"></script>
 <script src="/live-notify.js?v=3" defer></script>
-<script src="/js/app.js?v=142" defer></script>
+<script src="/js/ov-skeleton.js?v=1" defer></script>
+<script src="/js/app.js?v=144" defer></script>
 <script src="/js/stream-player.js?v=21" defer></script>
 <script src="/js/stream-pip.js?v=1" defer></script>
 <script src="/js/chat-shared.js?v=3" defer></script>
@@ -5094,7 +5134,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/chat-autocomplete.js?v=1" defer></script>
 <script src="/js/channel-uploads.js?v=12" defer></script>
 <script src="/js/controls.js?v=8" defer></script>
-<script src="/js/onvif-dashboard.js?v=5" defer></script>
+<script src="/js/onvif-dashboard.js?v=6" defer></script>
 <script src="/js/dashboard.js?v=16" defer></script>
 <script src="/js/admin.js?v=8" defer></script>
 <!-- ── Floating Global Chat Widget (visible on non-chat pages) ── -->
@@ -5149,7 +5189,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/broadcast-devices.js?v=2" defer></script>
 <script src="/js/broadcast-vods.js?v=2" defer></script>
 <script src="/js/broadcast-workspace.js?v=16" defer></script>
-<script src="/js/broadcast.js?v=28" defer></script>
+<script src="/js/broadcast.js?v=29" defer></script>
 <script src="/js/call.js?v=3" defer></script>
 <script src="/js/voice-channels.js?v=2" defer></script>
 <script src="/js/settings.js?v=12" defer></script>
@@ -5164,8 +5204,8 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/draggable-fab.js?v=2" defer></script>
 <script src="/js/messenger.js?v=2" defer></script>
 <script src="/js/ov-mark.js?v=1" defer></script>
-<script src="/shared/tooltip.js" defer></script>
-<script src="/shared/footer.js" defer></script>
+<script src="/shared/tooltip.js?v=1" defer></script>
+<script src="/shared/footer.js?v=1" defer></script>
 <script src="/js/footer-live.js?v=1" defer></script>
 <script src="/js/home-fx.js?v=6" defer></script>
 <script src="/js/home-tour.js?v=6" defer></script>
@@ -5173,9 +5213,8 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/guides-live.js?v=4" defer></script>
 
 <!-- ── OpenVibe shared libs (notifications, account sync, themes) ── -->
-<script src="/shared/theme-loader.js" defer></script>
+<script src="/shared/theme-loader.js?v=1" defer></script>
 <script src="/shared/notification-ui.js?v=2" defer></script>
-<script src="/shared/account-switcher.js" defer></script>
 <script>
 // Initialize OpenVibe notifications and theme sync (navbar is handled natively by openvibelive).
 // Runs on DOMContentLoaded so the now-deferred shared libs (OpenVibeThemeLoader / OpenVibeNotifications)

@@ -5753,7 +5753,19 @@ function _initPipDragResize() {
 
 document.addEventListener('DOMContentLoaded', () => {
     initBroadcastSettingsListeners();
-    initBroadcastTabs();
+    // Restoring the saved tab can issue broadcast API calls and force a layout on a hidden page.
+    // Only do it once the broadcast desk is the route the visitor is actually on.
+    const _bcPage = document.getElementById('page-broadcast');
+    const _bcTabsOnce = () => {
+        if (!_bcPage || !_bcPage.classList.contains('active')) return;
+        if (_bcPage.dataset.tabsInit) return;
+        _bcPage.dataset.tabsInit = '1';
+        initBroadcastTabs();
+    };
+    _bcTabsOnce();
+    if (_bcPage && 'MutationObserver' in window) {
+        new MutationObserver(_bcTabsOnce).observe(_bcPage, { attributes: true, attributeFilter: ['class'] });
+    }
 
     // Update mobile chat FAB visibility on resize
     window.addEventListener('resize', () => {

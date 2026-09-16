@@ -352,9 +352,20 @@ async function showEditCameraModal(cameraId) {
     }
 }
 
-// Initialize on page load
+// Every page's markup lives in one document, so #dash-cameras-list exists even on the home page —
+// this used to fire an ONVIF camera query for anyone landing on the front page. Load the cameras
+// when the dashboard is actually on screen, and again whenever it becomes so.
+function _onvifMaybeLoad() {
+    const page = document.getElementById('page-dashboard');
+    if (!page || !page.classList.contains('active')) return;
+    if (page.dataset.onvifLoaded) return;
+    page.dataset.onvifLoaded = '1';
+    if (document.getElementById('dash-cameras-list')) loadDashboardCameras();
+}
 document.addEventListener('DOMContentLoaded', () => {
-    if (document.getElementById('dash-cameras-list')) {
-        loadDashboardCameras();
+    _onvifMaybeLoad();
+    const page = document.getElementById('page-dashboard');
+    if (page && 'MutationObserver' in window) {
+        new MutationObserver(_onvifMaybeLoad).observe(page, { attributes: true, attributeFilter: ['class'] });
     }
 });

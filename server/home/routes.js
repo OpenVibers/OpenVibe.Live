@@ -190,6 +190,18 @@ async function heroStats() {
         stats.streamHours = Math.round((m.durationSeconds || 0) / 3600);
         stats.recent = { ...stats.recent, vods: m.recent?.vods, clips: m.recent?.clips, hours: m.recent?.hours };
     }
+    // Site-wide OpenCoins sit next to channel points on the board: one is the network-wide
+    // currency people earn everywhere, the other is per-channel. The ledger lives on
+    // OpenVibe.Network, so this is a cached internal call that is allowed to come back empty.
+    try {
+        const c = await require('../monetization/wallet-client').networkCoinStats();
+        if (c) {
+            stats.coinsEarned = c.earned;
+            stats.coinsSpent = c.spent;
+            stats.coinsCirculating = c.circulating;
+            stats.coinHolders = c.holders;
+        }
+    } catch { /* the board is better off missing four chips than failing */ }
     return stats;
 }
 
@@ -281,18 +293,35 @@ router.get('/pulse', async (req, res) => {
 });
 
 // Newest git commit = the latest shipped update (built-in-the-open hero one-liner).
-let _updateCache = { at: 0, data: null };
+// The newest shipped commit, shown as a one-liner in the hero.
+//
+// This used to shell out with execSync on the request path. That blocks the entire event loop —
+// every other request on the box waits — for up to the 4s timeout, and because the cache was only
+// written after the call returned, a burst of first-loads after a deploy all queued behind their
+// own separate git process. Now the refresh happens off the request path and readers only ever
+// get whatever was last resolved.
+let _updateCache = { at: 0, data: null, running: false };
+function _refreshLatestUpdate() {
+    if (_updateCache.running) return;
+    _updateCache.running = true;
+    require('child_process').execFile(
+        'git', ['--no-pager', 'log', '--pretty=format:%h||%s||%aI', '-1'],
+        { cwd: require('path').join(__dirname, '../..'), encoding: 'utf8', timeout: 4000 },
+        (err, stdout) => {
+            _updateCache.running = false;
+            _updateCache.at = Date.now();
+            if (err) return;
+            const [short, subject, date] = String(stdout).trim().split('||');
+            _updateCache.data = subject ? { short, subject, date } : null;
+        }
+    );
+}
 function _latestUpdate() {
-    if (Date.now() - _updateCache.at < 5 * 60_000) return _updateCache.data;
-    try {
-        const { execSync } = require('child_process');
-        const raw = execSync(`git --no-pager log --pretty=format:'%h||%s||%aI' -1`,
-            { cwd: require('path').join(__dirname, '../..'), encoding: 'utf8', timeout: 4000 });
-        const [short, subject, date] = String(raw).trim().split('||');
-        _updateCache = { at: Date.now(), data: subject ? { short, subject, date } : null };
-    } catch { _updateCache = { at: Date.now(), data: null }; }
+    if (Date.now() - _updateCache.at >= 5 * 60_000) _refreshLatestUpdate();   // never awaited
     return _updateCache.data;
 }
+// Resolve it once at startup so the very first home load already has it.
+setTimeout(_refreshLatestUpdate, 1500).unref?.();
 
 // ── "While you were away" / "Lately on OpenVibe" digest — for everyone ────────
 // ?since=<ISO> (the client remembers its own last visit; anonymous / first visit → last 48h).

@@ -156,3 +156,34 @@
    Below-the-fold sections are skipped by layout and paint until they approach the viewport.
    contain-intrinsic-size keeps the scrollbar honest so the page doesn't jump as they resolve. */
 #page-home .home-section-lazy { content-visibility: auto; contain-intrinsic-size: auto 480px; }
+
+/* ── "Build & Mod": the one hero button that asks for something back ──
+   Everything else in this row sends you somewhere to watch. This one says the site is yours to
+   extend, so it is allowed to be the loudest: a drifting gradient wash, a sparkle that pops off
+   the wand, and a secondary "API docs" label that keeps the destination honest without the
+   button reading like documentation. All of it pauses with the rest of the row when off-screen. */
+.hb-label small { font-size: 0.68rem; font-weight: 600; opacity: 0.62; margin-left: 5px; letter-spacing: 0.01em; }
+.hb-vibe {
+    background-image: linear-gradient(115deg, color-mix(in srgb, var(--c) 16%, transparent), transparent 42%, color-mix(in srgb, #a78bfa 14%, transparent));
+    background-size: 220% 100%;
+    animation: hbVibeWash 11s ease-in-out infinite;
+}
+@keyframes hbVibeWash { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+.hb-vibe .hb-ico { position: relative; overflow: visible; }
+/* A spark that leaves the wand every few seconds. */
+.hb-vibe .hb-ico::after {
+    content: ''; position: absolute; top: 2px; right: 1px; width: 5px; height: 5px; border-radius: 50%;
+    background: radial-gradient(circle, #fff, var(--c) 60%, transparent 70%);
+    opacity: 0; animation: hbSpark 4.4s ease-out infinite;
+}
+@keyframes hbSpark {
+    0% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+    10% { opacity: 1; transform: translate(2px, -3px) scale(1); }
+    38% { opacity: 0; transform: translate(9px, -12px) scale(0.5); }
+    100% { opacity: 0; transform: translate(9px, -12px) scale(0.5); }
+}
+.hb-vibe:hover { box-shadow: 0 6px 20px color-mix(in srgb, var(--c) 32%, transparent), 0 0 0 1px color-mix(in srgb, var(--c) 55%, transparent); }
+#page-home .hero-cta .hb-vibe, #page-home .hero-cta .hb-vibe .hb-ico::after { animation-play-state: paused; }
+#page-home .hero-cta.fx-live .hb-vibe, #page-home .hero-cta.fx-live .hb-vibe .hb-ico::after { animation-play-state: running; }
+@media (max-width: 520px) { .hb-label small { display: none; } }
+@media (prefers-reduced-motion: reduce) { .hb-vibe, .hb-vibe .hb-ico::after { animation: none !important; } }

@@ -2180,6 +2180,38 @@ function initDb() {
         database.exec('CREATE INDEX IF NOT EXISTS idx_clips_user_created ON clips(user_id, is_public, created_at)');
     } catch (e) { console.warn('[DB] performance index migration:', e.message); }
 
+    // Second pass of hot-path indexes, found by tracing what the home page and the always-on
+    // middleware actually execute. Each one replaces a recurring full table scan. They are created
+    // individually so a table that does not exist in some deployment cannot stop the rest.
+    for (const ix of [
+        // The IP-ban check runs in middleware on EVERY request, including static assets — this was
+        // a full scan of `bans` per request, the most-executed avoidable query in the system.
+        'CREATE INDEX IF NOT EXISTS idx_bans_ip ON bans(ip_address)',
+        // Looked up once per live stream on /api/streams, which every open home tab polls.
+        'CREATE INDEX IF NOT EXISTS idx_restream_dest_user ON restream_destinations(user_id)',
+        // The chat auto-delete sweep runs every 30s and scanned + sorted the largest table.
+        'CREATE INDEX IF NOT EXISTS idx_chat_autodelete ON chat_messages(auto_delete_at)',
+        // Home digest, per signed-in load.
+        'CREATE INDEX IF NOT EXISTS idx_follows_follower ON follows(follower_id)',
+        'CREATE INDEX IF NOT EXISTS idx_stream_recaps_user ON stream_recaps(user_id, created_at)',
+        'CREATE INDEX IF NOT EXISTS idx_streams_started ON streams(started_at)',
+        'CREATE INDEX IF NOT EXISTS idx_streams_live_ended ON streams(is_live, ended_at)',
+        // Hero stat board aggregates.
+        'CREATE INDEX IF NOT EXISTS idx_tx_type_created ON transactions(type, created_at)',
+        'CREATE INDEX IF NOT EXISTS idx_coin_tx_created ON coin_transactions(created_at)',
+        'CREATE INDEX IF NOT EXISTS idx_users_created ON users(created_at)',
+        'CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)',
+        'CREATE INDEX IF NOT EXISTS idx_anon_ip_created ON anon_ip_mappings(created_at)',
+        'CREATE INDEX IF NOT EXISTS idx_goals_active ON donation_goals(is_active)',
+        'CREATE INDEX IF NOT EXISTS idx_arena_moments_said ON arena_mic_moments(said_at)',
+        // Boot-time transcript backfill sweeps.
+        'CREATE INDEX IF NOT EXISTS idx_vods_transcript ON vods(transcript_status)',
+        'CREATE INDEX IF NOT EXISTS idx_clips_transcript ON clips(transcript_status)',
+        'CREATE INDEX IF NOT EXISTS idx_viewer_samples_at ON viewer_samples(sampled_at)',
+    ]) {
+        try { database.exec(ix); } catch { /* table not present in this deployment */ }
+    }
+
     // Migrate: add force_nsfw column to channels (admin-set, overrides user toggle)
     try {
         const cols = database.pragma('table_info(channels)').map(c => c.name);
@@ -2653,17 +2685,45 @@ function initDb() {
 }
 
 // ── Generic helpers ──────────────────────────────────────────
+//
+// Every query in this file (and in every route module) funnels through run/get/all, and each one
+// used to call prepare() again — so SQLite re-parsed and re-planned the same statement on every
+// single call. A cold home page load alone compiled 200+ statements it had already compiled.
+//
+// better-sqlite3 statements are reusable, so we keep them in a Map keyed by SQL text. The only
+// shapes worth excluding are the ones built with a variable-length `IN (?,?,?)` list, which
+// produce a different SQL string every time and would fill the map with single-use entries; the
+// size cap below handles those without needing to detect them.
+const _stmtCache = new Map();
+const _STMT_CACHE_MAX = 600;
+
+function stmt(sql) {
+    let st = _stmtCache.get(sql);
+    if (st) return st;
+    st = getDb().prepare(sql);
+    // Plain FIFO eviction. Hot statements are re-added on their next call, and the cap only
+    // matters for the dynamic IN-list shapes, which are cheap to lose.
+    if (_stmtCache.size >= _STMT_CACHE_MAX) {
+        const oldest = _stmtCache.keys().next().value;
+        if (oldest !== undefined) _stmtCache.delete(oldest);
+    }
+    _stmtCache.set(sql, st);
+    return st;
+}
+
+/** Statements belong to a connection, so a reopened database must start with an empty cache. */
+function clearStatementCache() { _stmtCache.clear(); }
 
 function run(sql, params = []) {
-    return getDb().prepare(sql).run(...(Array.isArray(params) ? params : [params]));
+    return stmt(sql).run(...(Array.isArray(params) ? params : [params]));
 }
 
 function get(sql, params = []) {
-    return getDb().prepare(sql).get(...(Array.isArray(params) ? params : [params]));
+    return stmt(sql).get(...(Array.isArray(params) ? params : [params]));
 }
 
 function all(sql, params = []) {
-    return getDb().prepare(sql).all(...(Array.isArray(params) ? params : [params]));
+    return stmt(sql).all(...(Array.isArray(params) ? params : [params]));
 }
 
 // ── User helpers ─────────────────────────────────────────────
@@ -5976,6 +6036,8 @@ function forgiveBan(userId) {
 
 function close() {
     if (db) {
+        // Cached statements belong to this connection — they must not outlive it.
+        clearStatementCache();
         db.close();
         db = null;
     }
@@ -7370,7 +7432,11 @@ function deleteExpiredChatMessages(limit = 500) {
          FROM chat_messages
          WHERE is_deleted = 0
            AND auto_delete_at IS NOT NULL
-           AND datetime(auto_delete_at) <= CURRENT_TIMESTAMP
+           -- Compared raw, not through datetime(): wrapping the column in a function makes the
+           -- index on auto_delete_at unusable, and this sweep runs every 30 seconds against the
+           -- biggest table on the site. Values are stored in the same 'YYYY-MM-DD HH:MM:SS' shape
+           -- CURRENT_TIMESTAMP produces, so a string comparison sorts identically.
+           AND auto_delete_at <= CURRENT_TIMESTAMP
          ORDER BY auto_delete_at ASC
          LIMIT ?`,
         [Math.max(1, Number(limit) || 500)]
