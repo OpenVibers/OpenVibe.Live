@@ -88,8 +88,8 @@
          overlay) and is fetched without blocking the first paint: media="print" makes the browser
          treat it as non-critical, and the onload flips it back to all once it has arrived. -->
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-    <link rel="stylesheet" href="/css/style.css?v=181">
-    <link rel="stylesheet" href="/css/home-fx.css?v=11">
+    <link rel="stylesheet" href="/css/style.css?v=183">
+    <link rel="stylesheet" href="/css/home-fx.css?v=12">
     <link rel="stylesheet" href="/css/home-tour.css?v=7">
     <link rel="stylesheet" href="/css/i18n-star.css?v=5">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -307,6 +307,9 @@
                 <span aria-hidden="true">&bull;</span>
                 <a href="/dmca" class="hero-philosophy-link" onclick="return handleLinkClick(event, '/dmca')">DMCA</a>
             </div>
+                <!-- Newest shipped commit — built in the open, receipts included. Sits under the
+                     philosophy row so the proof is next to the promise. -->
+                <a class="hero-latest" id="hero-latest" href="/updates" onclick="return handleLinkClick(event, '/updates')" style="display:none"></a>
                 <div class="hero-stats" id="hero-stats" aria-label="Site stats"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div></div></div>
             </div>
         </div>
@@ -740,10 +743,7 @@
                 <div class="home-changelog-fade" id="home-changelog-fade"></div>
             </div>
 
-            <!-- Newest shipped commit — built in the open, receipts included. It belongs under the
-                 content, not in front of every stream on the site. -->
-            <!-- Newest shipped commit — built in the open, receipts included. -->
-            <a class="hero-latest" id="hero-latest" href="/updates" onclick="return handleLinkClick(event, '/updates')" style="display:none"></a>
+
 
 
         </div>
@@ -5130,7 +5130,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/live-notify.js?v=3" defer></script>
 <script src="/js/ov-skeleton.js?v=1" defer></script>
 <script src="/js/ov-odometer.js?v=3" defer></script>
-<script src="/js/app.js?v=158" defer></script>
+<script src="/js/app.js?v=159" defer></script>
 <script src="/js/stream-player.js?v=22" defer></script>
 <script src="/js/stream-pip.js?v=1" defer></script>
 <script src="/js/chat-shared.js?v=3" defer></script>

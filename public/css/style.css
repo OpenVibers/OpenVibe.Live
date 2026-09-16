@@ -15085,3 +15085,39 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
     min-height: 0 !important;
     transition: height 0.42s cubic-bezier(.2, 1, .3, 1);
 }
+
+
+/* ── Stat chip alignment ─────────────────────────────────────────────────────
+   The delta used to sit inline beside the number, so a wide pairing ("70,177" next to "+1.7k 7d")
+   wrapped to a second line, pushed the label down, and left that chip taller than its neighbours
+   — three rows of chips, none of them lining up.
+
+   Three columns instead: icon, then the number over its label, then the delta pinned to the right
+   edge and vertically centred. Every chip is now the same shape whether it has a delta or not,
+   because an absent delta simply collapses its column to zero. Nothing wraps, so nothing can
+   change a chip's height. */
+.hero-stat {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center; gap: clamp(6px, 1vw, 10px);
+}
+.hero-stat-meta { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.hero-stat-num { white-space: nowrap; line-height: 1.15; }
+.hero-stat-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
+.hero-stat-delta { justify-self: end; align-self: center; flex: none; }
+/* The sparkline chip is a single full-width cell, not a three-column one. */
+.hero-stat--spark { display: flex; }
+
+/* The shipped-commit line now sits under the philosophy row in the hero, so it reads as a
+   footnote to "built in the open" rather than as something bolted to the bottom of the page. */
+#page-home .hero-latest {
+    display: inline-flex; align-items: center; gap: 8px; max-width: min(560px, 92vw);
+    margin: 0 auto 12px; padding: 6px 14px; border-radius: 999px;
+    font-size: 0.76rem; color: var(--text-muted); text-decoration: none;
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+    transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+#page-home .hero-latest:hover { color: var(--text-primary); border-color: color-mix(in srgb, var(--accent) 42%, transparent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
+#page-home .hero-latest b { font-weight: 700; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+#page-home .hero-latest i { color: var(--accent); flex: none; }
+@media (max-width: 480px) { #page-home .hero-latest { font-size: 0.7rem; padding: 5px 11px; max-width: 94vw; } }

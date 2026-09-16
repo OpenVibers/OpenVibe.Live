@@ -24,7 +24,7 @@
     padding: clamp(6px, 1.2vw, 8px) clamp(14px, 2.4vw, 20px) clamp(6px, 1.2vw, 8px) 6px;
     border-radius: 999px; min-height: clamp(44px, 7.2vw, 52px); width: 100%;
     font: inherit; font-weight: 700; font-size: clamp(0.88rem, 1.6vw, 0.98rem); letter-spacing: 0.01em;
-    color: var(--text-primary); text-decoration: none; cursor: pointer; isolation: isolate; overflow: hidden;
+    color: var(--text-primary); text-decoration: none; cursor: pointer; overflow: hidden;
     background:
         linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0) 46%),
         color-mix(in srgb, var(--c) 10%, var(--bg-card));
@@ -51,14 +51,18 @@
 }
 /* home-fx.js adds .fx-live when the row scrolls into view and restarts it, so the wave always
    plays when someone arrives at the buttons instead of running unseen on a page-load clock. */
-#page-home .hero-cta.fx-live .hb::before { animation-play-state: running; will-change: transform; }
+#page-home .hero-cta.fx-live .hb::before { animation-play-state: running; }
 #page-home .hero-cta.fx-live .hb-ico { animation-play-state: running; }
 .hb::after {
     content: ''; position: absolute; inset: -1px; border-radius: inherit; z-index: 0; padding: 1px;
     background: conic-gradient(from var(--a, 0deg), transparent 0 70%, var(--c) 85%, transparent 100%);
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity 0.25s;
+    display: none;
 }
+/* Only built when a pointer is actually on the button — there are no hover states on a phone,
+   so this never costs a touch device anything. */
+.hb:hover::after, .hb:focus-visible::after { display: block; }
 .hb-ico {
     width: clamp(30px, 5vw, 34px); height: clamp(30px, 5vw, 34px); border-radius: 50%; flex: none;
     display: grid; place-items: center; font-size: clamp(0.82rem, 1.5vw, 0.92rem); color: var(--c);
