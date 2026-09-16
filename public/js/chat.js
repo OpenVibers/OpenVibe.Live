@@ -7,14 +7,11 @@ let chatStreamId = null;
 let chatChannelUserId = null; // streamer's user id — stable room across slots + offline
 let chatRenderTargetId = null;
 
-function esc(str) {
-    return String(str || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
+/* `esc` used to be redefined here. Both copies were top-level function declarations in classic
+   scripts, so whichever loaded last won — this one did, which is the only reason app.js's weaker
+   version (it did not escape double quotes) never caused a problem. app.js now owns the single
+   correct implementation; relying on load order for an escaping function is not something to
+   keep. */
 
 function toast(message, type = 'info') {
     // Delegate to the app-level toast saved in app.js (loaded before this file).

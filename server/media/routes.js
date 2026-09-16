@@ -66,7 +66,11 @@ router.get('/channel/:username', optionalAuth, (req, res) => {
                 display_name: user.display_name || user.username,
                 avatar_url: user.avatar_url || null,
             },
-            live_stream: streams[0] || null,
+            // This route is optionalAuth — anyone can call it for any username. The row from
+            // getLiveStreamsByUserId carries managed_stream_key, which authenticates RTMP and WHIP
+            // publishing and the control bridge; returning it here was stream takeover for any
+            // currently-live channel. Every sibling endpoint strips it; this one did not.
+            live_stream: db.publicStream(streams[0]) || null,
             state,
             is_owner: !!req.user && req.user.id === user.id,
             // Drives whether the channel's media tab renders queue controls. Mods get the

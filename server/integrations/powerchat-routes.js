@@ -26,8 +26,34 @@ function cookieOpts() {
     return { httpOnly: true, sameSite: 'lax', secure, maxAge: 10 * 60 * 1000, path: '/api/powerchat/oauth' };
 }
 
+
+/**
+ * Escape for HTML text/attribute context.
+ *
+ * These callback pages interpolate provider-supplied values — `error_description` comes straight
+ * off req.query and is read BEFORE the OAuth state is verified, so it is reachable by anyone with
+ * a link. Unescaped it was reflected XSS on our own origin, where the auth token lives in
+ * localStorage.
+ */
+function escHtml(v) {
+    return String(v == null ? '' : v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+/**
+ * Serialise for embedding inside an inline <script>.
+ *
+ * JSON.stringify does not escape "</script>", so a provider string containing it closed the
+ * script element and everything after was parsed as markup. Escaping < and the line separators
+ * makes the payload inert wherever it lands.
+ */
+function jsonForScript(value) {
+    return JSON.stringify(value)
+        .replace(/</g, '\\u003c').replace(/>/g, '\\u003e')
+        .replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+}
 function resultPage(payload) {
-    const data = JSON.stringify(payload);
+    const data = jsonForScript(payload);
     return `<!doctype html><html><head><meta charset="utf-8"><title>Connecting…</title>
 <style>
 :root{color-scheme:dark}
@@ -45,7 +71,7 @@ p{color:#aaa;margin:0;max-width:340px;line-height:1.5}
 </style></head>
 <body><div class="box ${payload.ok ? 'ok' : 'err'}"><div class="icon">${payload.ok ? '✓' : '✕'}</div>
 <h2>${payload.ok ? 'Connected!' : 'Connection failed'}</h2>
-<p>${payload.ok ? 'PowerChat account linked. Returning to OpenVibe.Live…' : (payload.error || 'Something went wrong.')}</p>
+<p>${payload.ok ? 'PowerChat account linked. Returning to OpenVibe.Live…' : escHtml(payload.error || 'Something went wrong.')}</p>
 <div class="close-hint">${payload.ok ? 'This window closes automatically.' : 'You can close this window.'}</div></div>
 <script>(function(){
   var msg = Object.assign({ type: 'powerchat-oauth' }, ${data});

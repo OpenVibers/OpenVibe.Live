@@ -937,6 +937,8 @@ window.switchAdminTab = async function switchAdminTabOverride(tab) {
     }
 };
 
-loadAdmin = window.loadAdmin;
-switchAdminTab = window.switchAdminTab;
-loadAdminStats = loadStaffStats;
+/* These three lines reassigned admin.js's globals to this module's versions. admin.js is gone
+   (the /admin route redirects off-site, so none of it was reachable), and with it the dead
+   console UI these names drove. staffBanUser below is the only export anything still calls — from
+   chat.js and app.js's channel moderation — and it is unaffected. */
+window.loadAdminStats = loadStaffStats;

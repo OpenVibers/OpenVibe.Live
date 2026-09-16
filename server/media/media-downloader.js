@@ -24,7 +24,32 @@ function getDb() {
 // ── Config ──────────────────────────────────────────────────
 const YTDLP_PATH = process.env.YTDLP_PATH || '/usr/local/bin/yt-dlp';
 const CACHE_DIR = path.resolve('./data/media/cache');
-const COOKIES_PATH = path.resolve('./data/media/cookies.txt');
+/**
+ * The yt-dlp cookie jar.
+ *
+ * This lived at ./data/media/cookies.txt, and ./data/media is mounted as static files at /media —
+ * so `GET /media/cookies.txt` handed anyone the admin-uploaded, signed-in Google session. It is
+ * not a dotfile and nothing filtered it.
+ *
+ * It now lives outside anything that is served. The migration below moves an existing jar on
+ * first load so an upgrade does not silently lose a working configuration — and deletes the old
+ * copy, which is the part that actually closes the hole.
+ */
+const COOKIES_PATH = path.resolve('./data/ytdlp/cookies.txt');
+const LEGACY_COOKIES_PATH = path.resolve('./data/media/cookies.txt');
+(function migrateCookieJar() {
+    try {
+        fs.mkdirSync(path.dirname(COOKIES_PATH), { recursive: true });
+        if (fs.existsSync(LEGACY_COOKIES_PATH)) {
+            if (!fs.existsSync(COOKIES_PATH)) fs.copyFileSync(LEGACY_COOKIES_PATH, COOKIES_PATH);
+            fs.unlinkSync(LEGACY_COOKIES_PATH);
+            try { fs.chmodSync(COOKIES_PATH, 0o600); } catch { /* */ }
+            console.warn('[Media] Moved yt-dlp cookie jar out of the publicly served /media directory');
+        }
+    } catch (err) {
+        console.warn('[Media] cookie jar migration:', err.message);
+    }
+})();
 // yt-dlp needs a JavaScript runtime for YouTube extraction; without one it falls back to
 // a deprecated path that drops formats and warns on every call. This list was all
 // hardcoded install locations and missed /usr/bin/node — the only node on this host — so

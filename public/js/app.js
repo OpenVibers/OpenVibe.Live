@@ -772,7 +772,9 @@ function logout() {
     currentUser = null;
     onAuthChange();
     if (typeof destroyCall === 'function') destroyCall();
-    if (typeof destroyCanvasPage === 'function') destroyCanvasPage();
+    /* destroyCanvasPage lived in js/canvas.js, which index.html has not loaded since canvas moved
+       to OpenVibe.Games — so this guard has been permanently false. Removed rather than left as a
+       line that looks like cleanup and never runs. */
     // Clear notification bell
     if (window.OpenVibeNotifications) OpenVibeNotifications.setToken(null);
     const bellMount = document.getElementById('openvibe-bell-mount');
@@ -964,7 +966,9 @@ function dashNav(event) {
 function teardownRoute(nextPath) {
     if (typeof destroyPlayer === 'function') destroyPlayer();
     if (typeof destroyChat === 'function') destroyChat();
-    if (typeof destroyCanvasPage === 'function') destroyCanvasPage();
+    /* destroyCanvasPage lived in js/canvas.js, which index.html has not loaded since canvas moved
+       to OpenVibe.Games — so this guard has been permanently false. Removed rather than left as a
+       line that looks like cleanup and never runs. */
     if (typeof stopCoinHeartbeat === 'function') stopCoinHeartbeat();
     if (typeof updateChannelPointsNav === 'function') updateChannelPointsNav(null);
     if (typeof stopHomeRefresh === 'function') stopHomeRefresh();
@@ -4461,16 +4465,11 @@ function formatDate(dateStr) {
 /**
  * Format uptime from a started_at timestamp to a short human string (e.g. "2h 14m").
  */
-function formatUptime(startedAt) {
-    if (!startedAt) return '';
-    const start = new Date(startedAt.replace ? startedAt.replace(' ', 'T') + 'Z' : startedAt).getTime();
-    if (isNaN(start)) return '';
-    const d = Date.now() - start;
-    if (d < 0) return '';
-    const h = Math.floor(d / 3600000);
-    const m = Math.floor((d % 3600000) / 60000);
-    return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
+/* formatUptime lived here a second time, and because it was declared later it was the one that
+   actually ran. It was the worse of the two: it appended 'Z' unconditionally, so any timestamp
+   that already carried a T or an offset became Invalid Date and rendered as an empty string, and
+   it dropped seconds entirely — a stream ten seconds old showed "0m". The version near the top of
+   this file handles both shapes and keeps seconds; it is now the only one. */
 
 /**
  * Show/hide the stream switch loading overlay on the video container.
@@ -8542,10 +8541,25 @@ function timeAgo(dateStr) {
 }
 
 /* ── Utility ──────────────────────────────────────────────────── */
+/**
+ * Escape a string for interpolation into HTML.
+ *
+ * The previous implementation round-tripped through `div.textContent` → `innerHTML`, which does
+ * NOT escape a double quote — and this function is used inside double-quoted attributes all over
+ * this file (thumbnail `src`, `title`, `alt`). It only ever behaved safely because chat.js
+ * happened to define a stricter `esc` that loaded later and overwrote it. That is not a safety
+ * property, it is a coincidence of script order, and it would have disappeared the moment chat.js
+ * stopped loading on every route.
+ *
+ * `?? ''` rather than `|| ''` so that esc(0) is "0" and not "".
+ */
 function esc(str) {
-    const d = document.createElement('div');
-    d.textContent = str;
-    return d.innerHTML.replace(/'/g, '&#39;');
+    return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 /**

@@ -116,7 +116,10 @@ const _URL_RE = /^(https?:\/\/[^\s<>"'`]+|www\.[^\s<>"'`]+\.[^\s<>"'`]+)$/i;
 
 /* ── Kick inline emote format: [emote:<id>:<name>] → img tag ─────── */
 /* Kick sends the NUMERIC id first, then the name, e.g. [emote:5747992:collectiblespepega]. */
-const _KICK_EMOTE_RE = /\[emote:(\d+):([^\]:]+)\]/g;
+/* The name group used to be [^\]:]+ — anything but ] and :, which includes quotes, < and >.
+   An emote name is a name; restricting it here means a malformed token renders as plain text
+   instead of reaching the markup builder at all. */
+const _KICK_EMOTE_RE = /\[emote:(\d+):([A-Za-z0-9_\-.]{1,64})\]/g;
 
 /** Replace Kick inline [emote:id:name] tokens with <img> tags, return segments */
 function _substituteKickEmotes(text) {
@@ -207,10 +210,30 @@ function _makeChatLink(raw) {
     const escapedHref = _escEmote(href);
     return `<a class="chat-link" href="${escapedHref}" data-url="${escapedHref}" onclick="handleChatLinkClick(event)" oncontextmenu="showLinkContextMenu(event)" title="${escapedHref}">${escaped}</a>${_escEmote(trailing)}`;
 }
+/**
+ * Escape a value for interpolation into an HTML attribute.
+ *
+ * This used a textContent -> innerHTML round-trip, which per the HTML serialisation spec escapes
+ * only & < > and the non-breaking space — NOT quotes. Every caller here interpolates into a
+ * double-quoted attribute (alt, title, href, src), so a quote in the value closed the attribute
+ * and everything after it became markup.
+ *
+ * That was reachable from ordinary chat: the Kick inline-emote token [emote:<id>:<name>] accepts
+ * any character except ] and : in the name, so a message of the form
+ *     [emote:1:x" onerror=... y="]
+ * put a live event handler into the <img> tag rendered in every viewer's browser. The emote id
+ * 404s, so the handler fired immediately. Auth tokens live in localStorage, so that is account
+ * takeover for anyone who reads the channel.
+ *
+ * Nothing upstream escapes it either — the server relays chat text verbatim, by design.
+ */
 function _escEmote(str) {
-    const d = document.createElement('div');
-    d.textContent = str;
-    return d.innerHTML;
+    return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 /* ══════════════════════════════════════════════════════════════

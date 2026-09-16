@@ -163,7 +163,16 @@ function openDashObsOverlay() {
     window.open(url, '_blank', 'noopener');
 }
 
-async function regenerateStreamKey() {
+/**
+ * The dashboard's own key rotation.
+ *
+ * This was called `regenerateStreamKey`, the same name broadcast.js uses. broadcast.js loads ten
+ * scripts later, so its version won and the dashboard button silently ran it: that version writes
+ * the new key into the broadcast page's fields, which do not exist on the dashboard, and never
+ * touches #dash-stream-key. With a managed stream active it also rotated a *different* key than
+ * the one on screen. The user clicked regenerate and saw the old key.
+ */
+async function regenerateDashStreamKey() {
     if (!confirm('Are you sure? Your old key will stop working.')) return;
     try {
         const data = await api('/auth/stream-key/regenerate', { method: 'POST' });

@@ -526,7 +526,14 @@ app.use(express.static(path.join(__dirname, '../public'), { setHeaders: (res, fi
 });
 
 // Serve locally-cached song-request media files (media player page)
-app.use('/media', express.static(path.resolve('./data/media')));
+// Locally cached song-request media. Only the cache subtree is public: this directory has held
+// operational files before (the yt-dlp cookie jar, which was therefore downloadable by anyone),
+// and a static mount over a directory that other code writes into is a standing invitation.
+app.use('/media', express.static(path.resolve('./data/media'), {
+    dotfiles: 'deny',
+    index: false,
+    setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff'),
+}));
 
 // AI moment frames (one small JPEG per stream memory, see server/ai/stream-memory-job.js)
 app.use('/data/ai-moments', express.static(path.resolve(process.env.AI_MOMENTS_PATH || './data/ai-moments'), {
