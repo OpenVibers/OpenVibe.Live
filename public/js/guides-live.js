@@ -243,13 +243,32 @@
     // ── Journey: the setup hub (checklist) ────────────────────
     let PROG = null;
     async function loadProgress() { try { PROG = await api('/streams/setup-progress'); } catch { PROG = null; } return PROG; }
+
+    /**
+     * Re-read progress and repaint anything that shows it.
+     *
+     * Finishing a task inside a journey changes the answer, but nothing told the rest of the page.
+     * A streamer would set up a donation goal, get the confetti, and still see 7/12 on the home
+     * page banner until they reloaded — reported by Maticus. The setup endpoint is cheap and
+     * cached server-side, so re-reading it after anything that could have moved the needle costs
+     * nothing and keeps every surface honest.
+     */
+    async function refreshSetupProgress() {
+        await loadProgress();
+        try {
+            const slot = document.getElementById('tour-next-up');
+            if (slot && typeof window.setupNextUp === 'function') await window.setupNextUp(slot);
+        } catch { /* */ }
+    }
+    window.refreshSetupProgress = refreshSetupProgress;
     G.register('setup-hub', {
         title: 'Streamer setup', kicker: 'Streamer setup', noStepBar: true, onOpen: loadProgress,
         steps: [{
             id: 'hub', title: 'Streamer setup', icon: 'fa-list-check',
             heading: 'Your streaming setup',
             render: async (ctx) => {
-                const p = PROG || await loadProgress();
+                // Always fresh: the hub is usually reopened straight after finishing something.
+                const p = await loadProgress();
                 if (!p) return ui.lead('Could not load your setup right now.');
                 const pct = Math.round((p.done / p.total) * 100);
                 const groups = {}; p.tasks.forEach(t => { (groups[t.group] = groups[t.group] || []).push(t); });
@@ -276,6 +295,10 @@
         ],
         onClose: (ctx, finished) => { if (finished && me()) G.open('setup-hub'); },
     });
+
+    // Any journey finishing may have completed a setup task, so repaint the surfaces that
+    // display progress. Cheap, cached, and it keeps the home banner in step with the hub.
+    document.addEventListener('ovguide:closed', () => { if (me()) refreshSetupProgress(); });
 
     // ── Entry points ───────────────────────────────────────────
     window.openGoLiveWizard = (o = {}) => { const step = o.step || 'stream'; if (onBroadcast()) return G.open('golive', { step }); G.cfg.navigate(`/broadcast?guide=golive:${step}`); };

@@ -141,7 +141,11 @@
         S.open = false; root.classList.remove('is-open'); document.body.classList.remove('ovg-lock');
         const j = S.journey;
         if (j) { store(j.id, { ...(store(j.id) || {}), seen: true, finished: !!finished || !!(store(j.id) || {}).finished, dismissed: !finished, when: Date.now() }); try { if (typeof j.onClose === 'function') j.onClose(S.ctx, !!finished); } catch { /* */ } }
+        const closedId = j ? j.id : null;
         S.journey = null; S.step = null;
+        // Anything that watches setup state (the home page banner, the setup hub's own counter)
+        // needs to know a journey just ended — a task may have been completed inside it.
+        try { document.dispatchEvent(new CustomEvent('ovguide:closed', { detail: { journey: closedId, finished: !!finished } })); } catch { /* */ }
     }
 
     // ── Spotlight: point at something real on the page ─────────
