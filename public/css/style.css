@@ -14115,7 +14115,11 @@ label.staff-inline-toggle.aiv-field { flex-direction:row; align-items:center; }
        fixed nav over an animated hero is the most expensive thing a phone can paint. */
     .hero-stat--clickable:hover { transform: none; box-shadow: none; }
     .navbar { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: var(--bg-secondary) !important; }
-    .hero-stat-group { content-visibility: auto; contain-intrinsic-size: 1px 120px; }
+    /* content-visibility was here to keep the stat board off the phone's paint path. The board is
+       now collapsed by default and removed from layout entirely until someone opens it, which is
+       a stronger saving — and leaving this on made the expand animation impossible to measure:
+       each group reported its 120px placeholder height for two frames, so the container animated
+       to 602px and then snapped to its real 976px. */
     .hero-bg-layer.active { animation: none !important; }
 }
 @media (prefers-reduced-motion: reduce) { .hero-chart-svg .bar { animation: none; } .hero-chart, .hero-chart-overlay { animation: none; } }
