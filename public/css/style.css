@@ -14819,11 +14819,11 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 }
 .hero-stat-strip .hero-stat { min-width: 0; padding: clamp(6px, 1.1vw, 10px) clamp(7px, 1.2vw, 12px); gap: clamp(5px, 0.9vw, 10px); }
 .hero-stat-strip .hero-stat > i { font-size: clamp(0.72rem, 1.6vw, 1.05rem); }
-.hero-stat-strip .hero-stat-num { font-size: clamp(0.82rem, 2.3vw, 1.18rem); }
-.hero-stat-strip .hero-stat-label {
-    font-size: clamp(0.5rem, 1.15vw, 0.62rem); letter-spacing: 0.05em;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
+/* Sized against the chip, not the viewport: at three per row a chip is roughly a third of the
+   width minus gaps, so 3.2vw tracks the space actually available and clamps at both ends. */
+.hero-stat-strip .hero-stat-label { font-size: clamp(0.48rem, 1.5vw, 0.62rem); letter-spacing: 0.04em; }
+.hero-stat-strip .hero-stat-num { font-size: clamp(0.78rem, 3.4vw, 1.18rem); }
+.hero-stat-strip .hero-stat-delta { font-size: clamp(0.5rem, 1.9vw, 0.62rem); }
 /* Below ~360px a label like "Hours watched" cannot fit on one line in a third of the screen.
    Let it wrap rather than truncating it into something unreadable. */
 @media (max-width: 900px) { .hero-stats { min-height: 218px; } }
@@ -15102,8 +15102,45 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 .hero-stat > i { grid-row: 1 / 2; align-self: center; }
 .hero-stat-meta { grid-column: 2; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .hero-stat-num { white-space: nowrap; line-height: 1.12; }
-.hero-stat-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
+/* Never truncate a label — an unreadable "US…" is worse than a second line. Wrapping is the
+   safety net; the labels themselves are short enough that it rarely triggers. */
+.hero-stat-label { white-space: normal; overflow-wrap: anywhere; line-height: 1.15; }
 .hero-stat-delta { grid-column: 1 / -1; justify-self: start; margin-top: 1px; }
 .hero-stat-strip { grid-auto-rows: 1fr; align-items: stretch; }
 /* The sparkline chip is one wide cell, not this shape. */
 .hero-stat--spark { display: flex; }
+
+/* ── Icon tiles ──────────────────────────────────────────────────────────────
+   Centring an icon-font glyph needs more than place-items: the glyph sits inside a line box whose
+   height comes from the inherited line-height, so the tile centred the box and the glyph drifted
+   up inside it. Pinning line-height to 1 and giving the glyph its own grid cell puts it in the
+   middle of the tile at every size. */
+.hero-stat > i, .section-header h2 > i:first-child {
+    line-height: 1; font-style: normal;
+    display: grid; place-items: center; text-align: center;
+}
+.hero-stat > i::before, .section-header h2 > i:first-child::before { display: block; line-height: 1; }
+
+/* ── No sideways scroll on narrow phones ─────────────────────────────────────
+   The home page's decorative layers — the CTA banner's ambient glow and the tour card's core ring
+   — are sized in viewport units and bleed past the edge below about 400px, which turns the whole
+   page into a horizontal scroller. Clip rather than hide: overflow: clip does not create a scroll
+   container, so nothing inside loses its own scrolling. */
+#page-home { overflow-x: clip; }
+.home-cta-banner, .tour { overflow: hidden; }
+
+/* ── Navbar on very narrow phones ────────────────────────────────────────────
+   The navbar is fixed and spans the viewport, but its flex children could not shrink, so on a
+   320-380px screen their combined minimum width pushed past the right edge and turned the entire
+   document into a horizontal scroller — every page, not just this one. Letting the children
+   shrink, tightening the gaps and dropping the brand wordmark (the mark itself stays) keeps it
+   inside the viewport without clipping anything people need to tap. */
+.navbar > * { min-width: 0; }
+.nav-brand { min-width: 0; overflow: hidden; }
+@media (max-width: 420px) {
+    .navbar { padding: 0 9px; gap: 8px; }
+    .nav-brand .brand-text, .nav-brand > span:not(.brand-mark) { display: none; }
+    .nav-right { gap: 6px; min-width: 0; }
+    .nav-coins, .nav-balance { max-width: 88px; overflow: hidden; }
+    .nav-avatar-wrap .nav-username { display: none; }
+}
