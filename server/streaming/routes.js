@@ -572,6 +572,7 @@ router.get('/channel/:username/clips-taken', optionalAuth, async (req, res) => {
 // Returns ONLY the data needed to start the player — no VODs, clips, or heavy queries
 router.get('/channel/:username/live', (req, res) => {
     try {
+        res.set('Cache-Control', 'public, max-age=3');
         const channel = db.getChannelByUsername(req.params.username);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
@@ -1050,6 +1051,10 @@ router.get('/channel/:username/weather', async (req, res) => {
 // ── List Live Streams ────────────────────────────────────────
 router.get('/', optionalAuth, (req, res) => {
     try {
+        // Every open home tab polls this every 12 seconds and the response is the same for
+        // everyone, so let the browser and the edge answer most of those hits. Kept well under
+        // the poll period so a card can never look stale for a whole cycle.
+        res.set('Cache-Control', 'public, max-age=5');
         const restreamManager = require('./restream-manager');
         const streams = db.getLiveStreams();
         const channelMap = db.getChannelsByUserIds(streams.map(s => s.user_id)); // one query, not N
@@ -1196,6 +1201,7 @@ router.get('/recent-vods', async (req, res) => {
 
 router.get('/voice-channels', (req, res) => {
     try {
+        res.set('Cache-Control', 'public, max-age=2');
         res.json({ channels: callServer.listChannels() });
     } catch (err) {
         console.error('[Streaming]', err.message);

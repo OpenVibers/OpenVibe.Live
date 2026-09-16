@@ -3875,6 +3875,14 @@ function showUnmuteOverlay(video) {
    bitrate, resolution, fps and loss — measured live from the video element
    and (for WebRTC/SFU) RTCPeerConnection/Transport getStats(). */
 let _statsPoll = null;
+/**
+ * The stats gauge polls getStats() once a second and rewrites 18 nodes. destroyPlayer() never
+ * cleared it, so opening the gauge once and then navigating away left it running — holding a
+ * dead player closure — for the rest of the session.
+ */
+window.stopPlayerStatsPoll = function stopPlayerStatsPoll() {
+    if (_statsPoll) { clearInterval(_statsPoll); _statsPoll = null; }
+};
 let _statsPrev = null;        // { id, ts, bytes } for the chosen video inbound-rtp
 let _statsPrevFrames = null;  // totalVideoFrames for the HLS/JSMPEG fps fallback
 

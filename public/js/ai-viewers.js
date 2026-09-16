@@ -342,4 +342,7 @@
         } catch (e) { container.innerHTML = `<span class="muted">AI viewers unavailable: ${esc(e.message)}</span>`; }
     };
     window.aivSetSlot = function aivSetSlot(msId, on) { aivSet('slots', { [String(msId)]: !!on }); };
+    // Route teardown needs a way to stop these: the log and status polls (5s and 10s) used to
+    // keep running for the rest of the session once you left the dashboard.
+    window.stopAiViewerActivity = stopActivity;
 })();
