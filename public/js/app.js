@@ -1422,6 +1422,21 @@ function renderHeroStats(stats) {
     // custom tooltip (data-tip, see _heroTooltip) spells out 24h / 7d / 30d and what the
     // number means. Every chip with a series behind it is clickable → over-time chart.
     const recSub = (rec, u = '') => (rec && rec.w > 0) ? `+${_fmtCount(rec.w)}${u} in 7d` : '';
+    /**
+     * The 7-day change, as a direction rather than a sentence.
+     *
+     * "+2 in 7d" in muted grey reads as a footnote; an arrow and a tinted pill reads as movement,
+     * which is the whole reason the number is interesting. Counters here only ever go up, but the
+     * down case is handled so this works anywhere.
+     */
+    const recDelta = (rec, u = '') => {
+        const w = rec && Number(rec.w);
+        if (!Number.isFinite(w) || w === 0) return '';
+        const up = w > 0;
+        return `<span class="hero-stat-delta ${up ? 'is-up' : 'is-down'}" title="Change over the last 7 days">`
+            + `<i class="fa-solid ${up ? 'fa-caret-up' : 'fa-caret-down'}"></i>`
+            + `${up ? '+' : '-'}${_fmtCount(Math.abs(w))}${u}<em>7d</em></span>`;
+    };
     const chip = (r) => {
         if (r.html) return r.html; // pre-rendered chips (sparkline)
         const sub = r.sub || recSub(r.recent, r.unit || '');
@@ -1431,7 +1446,7 @@ function renderHeroStats(stats) {
             metric: r.metric || null,
         };
         const clickable = !!r.metric;
-        return `<div class="hero-stat ${r.cls || ''} ${clickable ? 'hero-stat--clickable' : ''}" ${r.key ? `data-stat="${r.key}"` : ''} data-tip="${esc(JSON.stringify(tip))}" ${clickable ? `data-metric="${r.metric}" role="button" tabindex="0" aria-label="${esc(r.label)} — show over time"` : ''}><i class="fa-solid ${r.icon}"></i><div class="hero-stat-meta"><span class="hero-stat-num" data-n="${r.num || 0}">0</span><span class="hero-stat-label">${r.label}${clickable ? ' <i class="fa-solid fa-chart-line hero-stat-chart-hint"></i>' : ''}</span>${sub ? `<span class="hero-stat-sub">${sub}</span>` : ''}</div></div>`;
+        return `<div class="hero-stat ${r.cls || ''} ${clickable ? 'hero-stat--clickable' : ''}" ${r.key ? `data-stat="${r.key}"` : ''} data-tip="${esc(JSON.stringify(tip))}" ${clickable ? `data-metric="${r.metric}" role="button" tabindex="0" aria-label="${esc(r.label)} — show over time"` : ''}><i class="fa-solid ${r.icon}"></i><div class="hero-stat-meta"><span class="hero-stat-numline"><span class="hero-stat-num" data-n="${r.num || 0}">0</span>${recDelta(r.recent, r.unit || '')}</span><span class="hero-stat-label">${r.label}${clickable ? ' <i class="fa-solid fa-chart-line hero-stat-chart-hint"></i>' : ''}</span>${sub && !r.recent ? `<span class="hero-stat-sub">${sub}</span>` : ''}</div></div>`;
     };
     // The full board is four groups and two dozen chips. Shown by default it pushed every live
     // stream on the site below the fold, and because it only arrives once the stats request lands
@@ -1447,12 +1462,12 @@ function renderHeroStats(stats) {
         { key: 'liveNow', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', cls: stats.liveNow > 0 ? 'hero-stat--live' : '', num: stats.liveNow, label: 'Live', title: 'Streams live right now' },
         { key: 'viewersNow', icon: 'fa-eye', cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
         { key: 'weeklyActive', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active · 7d', title: 'People who chatted in the last 7 days' },
-        { key: 'users', icon: 'fa-user-group', num: stats.users, label: 'Users', title: 'Accounts on OpenVibe.Live' },
+        { key: 'users', icon: 'fa-user-group', num: stats.users, label: 'Users', title: 'Accounts on OpenVibe.Live', recent: R.users },
         { key: 'weeklyVisitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors · 7d', title: 'First-time visitors in the last 7 days' },
-        { key: 'anons', icon: 'fa-user-secret', num: stats.anons, label: 'Anons', title: 'Anonymous chatters who have been given a name' },
-        { key: 'chatMessages', icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', title: 'Chat messages sent, all time' },
+        { key: 'anons', icon: 'fa-user-secret', num: stats.anons, label: 'Anons', title: 'Anonymous chatters who have been given a name', recent: R.anons },
+        { key: 'chatMessages', icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', title: 'Chat messages sent, all time', recent: R.messages },
         { key: 'streamers', icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', title: 'People who have gone live here' },
-        { key: 'hoursWatched', icon: 'fa-couch', num: stats.hoursWatched, label: 'Hours watched', title: 'Hours the community has spent watching' },
+        { key: 'hoursWatched', icon: 'fa-couch', num: stats.hoursWatched, label: 'Hours watched', title: 'Hours the community has spent watching', recent: R.hours },
     ];
     const open = (() => { try { return localStorage.getItem('ov_stats_open') === '1'; } catch { return false; } })();
     wrap.innerHTML = `
@@ -1519,7 +1534,21 @@ function _startHeroStatsLive() {
         try {
             const d = await api('/home/stats-live');
             _heroStatsBackoff = 0;
+            // Deltas move too — refresh them in place rather than rebuilding the chip.
+            const DELTA_FOR = { users: 'users', anons: 'anons', chatMessages: 'messages', hoursWatched: 'hours' };
+            for (const [key, field] of Object.entries(DELTA_FOR)) {
+                const w = d && d.recent && d.recent[field] && Number(d.recent[field].w);
+                wrap.querySelectorAll(`[data-stat="${key}"] .hero-stat-delta`).forEach(el => {
+                    if (!Number.isFinite(w) || w === 0) return;
+                    const txt = `${w > 0 ? '+' : '-'}${_fmtCount(Math.abs(w))}`;
+                    const cur = el.childNodes[1];
+                    if (cur && cur.nodeValue !== txt) cur.nodeValue = txt;
+                    el.classList.toggle('is-up', w > 0);
+                    el.classList.toggle('is-down', w < 0);
+                });
+            }
             for (const [key, value] of Object.entries(d || {})) {
+                if (key === 'recent') continue;
                 wrap.querySelectorAll(`[data-stat="${key}"] .hero-stat-num`).forEach(el => {
                     if (Number(el.dataset.n) === Number(value)) return;
                     if (window.OVNum) OVNum.set(el, value); else el.textContent = _heroStatFmt(value);
