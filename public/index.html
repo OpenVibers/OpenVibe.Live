@@ -67,8 +67,8 @@
     <link rel="stylesheet" href="/css/broadcast.css?v=11">
     <link rel="stylesheet" href="/css/cosmetics.css?v=2">
     <link rel="stylesheet" href="/css/messenger.css?v=1">
-    <link rel="stylesheet" href="/css/home-fx.css?v=8">
-    <link rel="stylesheet" href="/css/home-tour.css?v=2">
+    <link rel="stylesheet" href="/css/home-fx.css?v=9">
+    <link rel="stylesheet" href="/css/home-tour.css?v=4">
     <link rel="stylesheet" href="/css/ov-guide.css?v=1">
     <link rel="stylesheet" href="/css/i18n-star.css?v=5">
     <link rel="stylesheet" href="/css/recap.css?v=1">
@@ -279,16 +279,22 @@
                         </div>
                     </div>
                 </div>
-                <div class="hero-cta">
+                <div class="hero-cta" data-fx-viewport>
                     <button style="--i:0" class="hb hb-stream" onclick="currentUser ? navigate('/broadcast') : showModal('register')"><span class="hb-ico"><i class="fa-solid fa-broadcast-tower"></i></span><span class="hb-label">Stream</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></button>
                     <a href="https://openvibe.network" style="--i:1" class="hb hb-tools"><span class="hb-ico"><i class="fa-solid fa-screwdriver-wrench"></i></span><span class="hb-label">Tools</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
                     <a href="https://openvibe.games/game" style="--i:2" class="hb hb-game"><span class="hb-ico"><i class="fa-solid fa-gamepad"></i></span><span class="hb-label">Game</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
                     <a href="https://github.com/OpenVibers/OpenVibe.Live" target="_blank" style="--i:3" class="hb hb-github" rel="noopener"><span class="hb-ico"><i class="fa-brands fa-github"></i></span><span class="hb-label">GitHub</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
                     <a href="https://discord.gg/M6MuRUaeJj" target="_blank" style="--i:4" class="hb hb-discord" rel="noopener noreferrer"><span class="hb-ico"><i class="fa-brands fa-discord"></i></span><span class="hb-label">Discord</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
-                    <a href="/documentation" onclick="return handleLinkClick(event, '/documentation')" style="--i:5" class="hb hb-vibe"><span class="hb-ico"><i class="fa-solid fa-wand-magic-sparkles"></i></span><span class="hb-label">Vibe Coders</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                    <a href="/documentation" onclick="return handleLinkClick(event, '/documentation')" style="--i:5" class="hb hb-vibe"
+                       data-ovtip-title="Built for vibe coders"
+                       data-ovtip-icon="fa-wand-magic-sparkles"
+                       data-ovtip-accent="#f472b6"
+                       data-ovtip-place="top"
+                       data-ovtip="Every feature here has an <b>open API</b> — chat, streams, clips, overlays, robots, the lot. <em>You don't need to know how to code.</em> Point an AI at these docs, describe the bot or overlay you want, and it writes it for you."
+                       data-ovtip-foot="<i class=&quot;fa-solid fa-heart&quot;></i> Open here, good vibes — come build something"><span class="hb-ico"><i class="fa-solid fa-wand-magic-sparkles"></i></span><span class="hb-label">API Docs</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
                 </div>
                 <!-- One stream, everywhere — restream pipeline + feature tour (public/js/home-tour.js) -->
-                <div class="home-tour-mount" id="home-tour-mount"></div>
+                <div class="home-tour-mount home-section-lazy" id="home-tour-mount" data-fx-viewport></div>
                 <!-- Newest shipped commit — built in the open, receipts included. -->
                 <a class="hero-latest" id="hero-latest" href="/updates" onclick="return handleLinkClick(event, '/updates')" style="display:none"></a>
                 <div class="hero-philosophy-links">
@@ -325,7 +331,7 @@
             </div>
 
             <!-- Community pulse: goals near completion, latest activity, weekly leaders -->
-            <div id="home-pulse-section" style="display:none">
+            <div class="home-section-lazy" id="home-pulse-section" style="display:none">
                 <div class="section-header">
                     <h2><i class="fa-solid fa-bolt"></i> Happening Now</h2>
                 </div>
@@ -333,7 +339,7 @@
             </div>
 
             <!-- AI Moments showcase -->
-            <div id="home-moments-section" style="display:none">
+            <div class="home-section-lazy" id="home-moments-section" style="display:none">
                 <div class="section-header">
                     <h2><i class="fa-solid fa-brain"></i> AI Moments</h2>
                     <span class="muted" style="font-size:0.8rem">wild seconds the AI clipped from recent streams</span>
@@ -5039,60 +5045,9 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <!-- ═══════════════════════════════════════════════════════════ -->
 <!--  FOOTER                                                     -->
 <!-- ═══════════════════════════════════════════════════════════ -->
-<footer class="footer">
-    <div class="footer-inner">
-        <div class="footer-cols">
-            <div class="footer-col footer-col--brand">
-                <a class="footer-brand" href="/" onclick="return handleLinkClick(event, '/')"><span class="ov-mark" data-size="26"></span> <span>OpenVibe<strong>.Live</strong></span></a>
-                <p class="footer-tagline">Free, open-source live streaming. Go live from a browser, OBS or a robot, restream everywhere, and keep your chat, emotes and clips in one place.</p>
-                <div class="footer-social">
-                    <a href="https://github.com/OpenVibers/OpenVibe.Live" target="_blank" rel="noopener" title="OpenVibe.Live on GitHub" aria-label="GitHub"><i class="fa-brands fa-github"></i></a>
-                    <a href="https://discord.gg/M6MuRUaeJj" target="_blank" rel="noopener noreferrer" title="Join the OpenVibe Discord" aria-label="Discord"><i class="fa-brands fa-discord"></i></a>
-                    <a href="/sitemap.xml" title="Sitemap" aria-label="Sitemap"><i class="fa-solid fa-sitemap"></i></a>
-                </div>
-            </div>
-            <nav class="footer-col" aria-label="Watch">
-                <h3>Watch</h3>
-                <a href="/" onclick="return handleLinkClick(event, '/')">Live streams</a>
-                <a href="/vods" onclick="return handleLinkClick(event, '/vods')">Stream VODs</a>
-                <a href="/clips" onclick="return handleLinkClick(event, '/clips')">Clips</a>
-                <a href="/arena" onclick="return handleLinkClick(event, '/arena')">The Arena</a>
-                <a href="/chat" onclick="return handleLinkClick(event, '/chat')">Global chat</a>
-            </nav>
-            <nav class="footer-col" aria-label="Create">
-                <h3>Create</h3>
-                <a href="/broadcast" onclick="return handleLinkClick(event, '/broadcast')">Start streaming</a>
-                <a href="/broadcast?guide=golive:restream" onclick="event.preventDefault(); if (typeof startRestreamGuide === 'function') startRestreamGuide();">Set up restreams</a>
-                <a href="/dashboard" onclick="return handleLinkClick(event, '/dashboard')">Streamer dashboard</a>
-                <a href="/pastes" onclick="return handleLinkClick(event, '/pastes')">Pastes</a>
-                <a href="/documentation" onclick="return handleLinkClick(event, '/documentation')">Documentation</a>
-            </nav>
-            <nav class="footer-col" aria-label="The OpenVibe network">
-                <h3>Network</h3>
-                <a href="https://openvibe.tools" target="_blank" rel="noopener">Free online tools</a>
-                <a href="https://dev.openvibe.tools" target="_blank" rel="noopener">Developer tools</a>
-                <a href="https://net.openvibe.tools" target="_blank" rel="noopener">Network diagnostics</a>
-                <a href="https://img.openvibe.tools" target="_blank" rel="noopener">Image converter</a>
-                <a href="https://openvibe.network" target="_blank" rel="noopener">Account &amp; themes</a>
-            </nav>
-            <nav class="footer-col" aria-label="Legal">
-                <h3>Legal</h3>
-                <a href="/tos" onclick="return handleLinkClick(event, '/tos')">Terms of Service</a>
-                <a href="/privacy" onclick="return handleLinkClick(event, '/privacy')">Privacy Policy</a>
-                <a href="/dmca" onclick="return handleLinkClick(event, '/dmca')">DMCA</a>
-                <a href="/documentation#philosophy" onclick="return handleLinkClick(event, '/documentation')">What is this?</a>
-            </nav>
-        </div>
-        <div class="footer-bar">
-            <span class="footer-copy">Open source &amp; community driven &middot; no ads, no trackers, no investors</span>
-            <span class="footer-legal-inline">
-                <a href="/tos" onclick="return handleLinkClick(event, '/tos')">Terms</a>
-                <a href="/privacy" onclick="return handleLinkClick(event, '/privacy')">Privacy</a>
-                <a href="/dmca" onclick="return handleLinkClick(event, '/dmca')">DMCA</a>
-            </span>
-        </div>
-    </div>
-</footer>
+<!-- Shared cross-site footer (openvibe-shared/footer.js) — links, legal and the signed-in
+     row come from the shared module so every OpenVibe property stays in step. -->
+<footer id="ov-footer" class="ovf"></footer>
 
 <!-- ═══════════════════════════════════════════════════════════ -->
 <!--  COSMETICS INVENTORY MODAL                                  -->
@@ -5209,10 +5164,13 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/draggable-fab.js?v=2" defer></script>
 <script src="/js/messenger.js?v=2" defer></script>
 <script src="/js/ov-mark.js?v=1" defer></script>
-<script src="/js/home-fx.js?v=3" defer></script>
-<script src="/js/home-tour.js?v=5" defer></script>
+<script src="/shared/tooltip.js" defer></script>
+<script src="/shared/footer.js" defer></script>
+<script src="/js/footer-live.js?v=1" defer></script>
+<script src="/js/home-fx.js?v=6" defer></script>
+<script src="/js/home-tour.js?v=6" defer></script>
 <script src="/js/ov-guide.js?v=1" defer></script>
-<script src="/js/guides-live.js?v=1" defer></script>
+<script src="/js/guides-live.js?v=3" defer></script>
 
 <!-- ── OpenVibe shared libs (notifications, account sync, themes) ── -->
 <script src="/shared/theme-loader.js" defer></script>
