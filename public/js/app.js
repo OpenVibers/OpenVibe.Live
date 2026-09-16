@@ -1331,7 +1331,13 @@ function ovWakeBrandMark() {
     if (!marks || !marks.length) return;
     let reduce = false;
     try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { /* */ }
-    if (reduce) return;
+    if (reduce) {
+        // CSS stops the loops under reduced motion but cannot reach SMIL — the gradient sweep on the
+        // V would otherwise run for the whole session. Hold everything still, once.
+        if (!_brandEverWoken) marks.forEach(m => { try { const svg = m.querySelector('svg'); svg && svg.pauseAnimations && svg.pauseAnimations(); } catch { /* */ } });
+        _brandEverWoken = true;
+        return;
+    }
 
     _brandEverWoken = true;
     clearTimeout(_brandIdleTimer); clearTimeout(_brandSettleTimer); clearTimeout(_brandSpinTimer);
@@ -2531,30 +2537,65 @@ function _celebrateEgg(egg) {
  * cleared cache simply means someone sees the pitch again, which is harmless.
  */
 const HOME_INTRO_VIEWS_BEFORE_DEMOTING = 18;
-function _homeIntroViews(bump) {
+const _INTRO_SEEN_KEY = 'ov_home_intro_seen';
+
+/**
+ * How many visits the reader has actually *seen* both introductions on.
+ *
+ * This used to count home page loads, which is not the same thing: someone who opens the home page
+ * and goes straight to a stream never scrolled to either section, yet it still counted against
+ * them. A sighting now needs both sections to have been on screen during the visit. The old
+ * load count seeds the new one once, so people who were already past the threshold stay there.
+ */
+function _homeIntroSeenCount() {
     try {
-        const n = parseInt(localStorage.getItem('ov_home_views') || '0', 10) || 0;
-        if (bump) localStorage.setItem('ov_home_views', String(Math.min(n + 1, 9999)));
-        return n;
+        let raw = localStorage.getItem(_INTRO_SEEN_KEY);
+        if (raw === null) {
+            const legacy = parseInt(localStorage.getItem('ov_home_views') || '0', 10) || 0;
+            raw = String(Math.min(legacy, HOME_INTRO_VIEWS_BEFORE_DEMOTING));
+            localStorage.setItem(_INTRO_SEEN_KEY, raw);
+        }
+        return parseInt(raw, 10) || 0;
     } catch { return 0; }
 }
+let _introSightingArmed = false;
+function _watchIntroSighting() {
+    if (_introSightingArmed || !('IntersectionObserver' in window)) return;
+    const tour = document.getElementById('home-tour-mount');
+    const about = document.getElementById('home-cta-banner');
+    if (!tour || !about) return;
+    _introSightingArmed = true;
+    const seen = new Set();
+    const io = new IntersectionObserver((entries) => {
+        for (const en of entries) if (en.isIntersecting) seen.add(en.target.id);
+        if (seen.size === 2) {
+            io.disconnect();
+            try { localStorage.setItem(_INTRO_SEEN_KEY, String(Math.min(_homeIntroSeenCount() + 1, 9999))); } catch { /* */ }
+        }
+    }, { threshold: 0.25 });
+    io.observe(tour); io.observe(about);
+}
+
+/**
+ * Once both introductions have been seen enough times, they go to the very end of the page.
+ *
+ * They move as a pair, in order, after the changelog. The old version appended to the *first*
+ * .container on the home page — but the changelog lives in a later one, so "moved to the bottom"
+ * actually landed them in the middle of the page, above Recently Online.
+ */
 function demoteHomeIntroSections() {
-    const views = _homeIntroViews(true);
-    if (views < HOME_INTRO_VIEWS_BEFORE_DEMOTING) return;
-    const container = document.querySelector('#page-home .container');
-    if (!container) return;
-    // Land them before the changelog if it is a sibling, otherwise at the end of the container.
-    // Reading the anchor's parent rather than assuming it means a future markup change cannot
-    // silently turn this into a no-op.
+    _watchIntroSighting();
+    if (_homeIntroSeenCount() < HOME_INTRO_VIEWS_BEFORE_DEMOTING) return;
+    const containers = document.querySelectorAll('#page-home > .container, #page-home .container');
     const changelog = document.getElementById('home-changelog-wrapper');
-    const anchorEl = changelog && changelog.parentElement === container ? changelog : null;
+    const last = (changelog && changelog.closest('.container')) || containers[containers.length - 1];
+    if (!last) return;
     for (const id of ['home-tour-mount', 'home-cta-banner']) {
         const el = document.getElementById(id);
-        // Already moved (a re-render, or a second visit in the same session)? Leave it be.
         if (!el || el.dataset.ovDemoted) continue;
         el.dataset.ovDemoted = '1';
         el.classList.add('home-intro-demoted');
-        try { if (anchorEl) container.insertBefore(el, anchorEl); else container.appendChild(el); } catch { /* */ }
+        try { last.appendChild(el); } catch { /* */ }
     }
 }
 
@@ -2975,19 +3016,19 @@ const _XSVC_MISS_KEY = 'ov_xsvc_miss_v1';
 const _XSVC_MISS_MS = 6 * 60 * 60 * 1000;
 function _xsvcMisses() { try { return JSON.parse(localStorage.getItem(_XSVC_MISS_KEY) || '{}'); } catch { return {}; } }
 async function fetchServiceJson(url) {
-    let origin = url;
-    try { origin = new URL(url).origin + new URL(url).pathname.split('/').slice(0, 3).join('/'); } catch { /* */ }
+    // Keyed per URL, not per service prefix: one board that 404s must not switch off every other
+    // endpoint on the same service for six hours.
     const misses = _xsvcMisses();
-    if (misses[origin] && Date.now() - misses[origin] < _XSVC_MISS_MS) return null;
-    try {
-        const r = await fetch(url, { credentials: 'omit' });
-        const type = r.headers.get('content-type') || '';
-        if (!r.ok || !/json/i.test(type)) throw new Error('not json');
-        return await r.json();
-    } catch {
-        try { misses[origin] = Date.now(); localStorage.setItem(_XSVC_MISS_KEY, JSON.stringify(misses)); } catch { /* */ }
-        return null;
-    }
+    if (misses[url] && Date.now() - misses[url] < _XSVC_MISS_MS) return null;
+    const remember = () => { try { misses[url] = Date.now(); localStorage.setItem(_XSVC_MISS_KEY, JSON.stringify(misses)); } catch { /* */ } };
+    let r;
+    try { r = await fetch(url, { credentials: 'omit' }); }
+    catch { remember(); return null; }                 // network / CORS: the service is not answering
+    const type = r.headers.get('content-type') || '';
+    if (!/json/i.test(type)) { remember(); return null; }   // an HTML page where an API should be
+    // A JSON error means the service is there and answered — do not remember it as absent.
+    if (!r.ok) return null;
+    try { return await r.json(); } catch { return null; }
 }
 
 async function loadHomeCanvas() {

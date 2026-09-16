@@ -15436,8 +15436,10 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 /* Once the two explainer sections have been demoted to the bottom of the page they are reference
    material rather than a pitch, so they get a quieter top margin and a rule separating them from
    the content above. */
+/* :first-of-type matched the element type (div) among all siblings, never "the first demoted
+   section", so the separator never appeared. The pair always starts with the tour. */
 .home-intro-demoted { margin-top: 26px; }
-.home-intro-demoted:first-of-type { border-top: 1px solid var(--border); padding-top: 26px; }
+#home-tour-mount.home-intro-demoted { border-top: 1px solid var(--border); padding-top: 30px; margin-top: 34px; }
 
 /* The paste rail was a different grid to the VOD and clip rails (a 260px minimum against their
    300px), so it broke to one column at a different width and felt unrelated to them. It uses the
@@ -15519,10 +15521,15 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
     to   { transform: translateX(100%); }
 }
 
-.page.is-entering { animation: ovPageIn 0.42s cubic-bezier(.22, 1, .36, 1) both; }
+/* Opacity only. A running transform animation makes the element a containing block for its
+   position:fixed descendants, so while a page rose into place its fixed children — the mobile chat
+   sheet on a channel, the broadcast desk's chat button — were positioned against the page box
+   instead of the viewport and visibly jumped (measured: a bottom:0 probe sat 10px below the
+   viewport mid-entry). Opacity does not create a containing block. */
+.page.is-entering { animation: ovPageIn 0.36s cubic-bezier(.22, 1, .36, 1) both; }
 @keyframes ovPageIn {
-    from { opacity: 0; transform: translate3d(0, 10px, 0); }
-    to   { opacity: 1; transform: none; }
+    from { opacity: 0; }
+    to   { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

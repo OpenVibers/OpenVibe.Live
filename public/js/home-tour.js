@@ -30,6 +30,8 @@
         ['fa-clipboard-list', 'After-show reports'], ['fa-brands fa-github', '100% open source'],
     ];
 
+    let _tourVisible = true;
+
     function mount() {
         const el = document.getElementById('home-tour-mount');
         if (!el || el.dataset.mounted) return;
@@ -83,6 +85,18 @@
         if ('ResizeObserver' in window) new ResizeObserver(redraw).observe(el.querySelector('#tour-stage'));
         window.addEventListener('resize', redraw);
         document.fonts && document.fonts.ready && document.fonts.ready.then(redraw);
+        // The packets are SMIL <animateMotion>, which the section's off-screen CSS pause cannot
+        // reach — fourteen of them kept moving for the whole visit, visible or not. Drive the SVG's
+        // own clock from the viewport instead.
+        if ('IntersectionObserver' in window) {
+            new IntersectionObserver((entries) => {
+                for (const en of entries) {
+                    _tourVisible = en.isIntersecting;
+                    const svg = document.getElementById('tour-wires');
+                    try { if (svg) (_tourVisible ? svg.unpauseAnimations() : svg.pauseAnimations()); } catch { /* */ }
+                }
+            }, { rootMargin: '100px 0px' }).observe(el.querySelector('#tour-stage'));
+        }
         el.querySelectorAll('.tour-node--dst').forEach(nd => {
             nd.addEventListener('pointerenter', () => el.querySelector('#tour-wires').classList.add(`hot-${nd.dataset.node}`));
             nd.addEventListener('pointerleave', () => el.querySelector('#tour-wires').classList.remove(`hot-${nd.dataset.node}`));
@@ -94,37 +108,70 @@
         const stage = document.getElementById('tour-stage'), svg = document.getElementById('tour-wires');
         if (!stage || !svg) return;
         const R = stage.getBoundingClientRect();
+        if (!R.width || !R.height) return;
         svg.setAttribute('viewBox', `0 0 ${R.width} ${R.height}`);
         svg.setAttribute('width', R.width); svg.setAttribute('height', R.height);
         const vertical = getComputedStyle(stage).getPropertyValue('--tour-vertical').trim() === '1';
         const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.classList.contains('rs-lite');
-        const core = stage.querySelector('[data-node="core"]');
-        if (!core) return;
-        const c = rel(core.getBoundingClientRect(), R);
+        const logo = stage.querySelector('.tour-core-logo') || stage.querySelector('[data-node="core"]');
+        if (!logo) return;
+
+        // Anchor on the visible mark, not on .tour-core. The core element is a 320px-wide column
+        // holding the mark and the wordmark; wiring to its edges left every line ending ~130px
+        // short of the logo, in empty space. Each wire now lands on a ring just outside the disc,
+        // at the point facing the node it comes from, so the lines visibly plug into OpenVibe.
+        const L = rel(logo.getBoundingClientRect(), R);
+        const hub = { x: L.x + L.w / 2, y: L.y + L.h / 2 };
+        const ringR = L.w / 2 + 7;
+        const onRing = (p, extra = 0) => {
+            const dx = p.x - hub.x, dy = p.y - hub.y, len = Math.hypot(dx, dy) || 1;
+            return { x: hub.x + (dx / len) * (ringR + extra), y: hub.y + (dy / len) * (ringR + extra) };
+        };
         const anchorOf = (node, side) => {
             const b = rel(node.getBoundingClientRect(), R);
             if (vertical) return { x: b.x + b.w / 2, y: side === 'out' ? b.y + b.h : b.y };
             return { x: side === 'out' ? b.x + b.w : b.x, y: b.y + b.h / 2 };
         };
-        const coreIn = vertical ? { x: c.x + c.w / 2, y: c.y } : { x: c.x, y: c.y + c.h / 2 };
-        const coreOut = vertical ? { x: c.x + c.w / 2, y: c.y + c.h } : { x: c.x + c.w, y: c.y + c.h / 2 };
-        const curve = (a, b) => vertical
-            ? `M${a.x},${a.y} C${a.x},${(a.y + b.y) / 2} ${b.x},${(a.y + b.y) / 2} ${b.x},${b.y}`
-            : `M${a.x},${a.y} C${(a.x + b.x) / 2},${a.y} ${(a.x + b.x) / 2},${b.y} ${b.x},${b.y}`;
-        let defs = '', paths = '', packets = '';
+        // The first control point leaves the node straight out of its edge; the second approaches
+        // the hub along the radius, so every wire arrives at the ring head-on instead of sideways.
+        const curve = (from, to) => {
+            const lead = Math.max(40, Math.hypot(to.x - from.x, to.y - from.y) * 0.42);
+            const c1 = vertical ? { x: from.x, y: from.y + Math.sign(to.y - from.y) * lead }
+                                : { x: from.x + Math.sign(to.x - from.x) * lead, y: from.y };
+            const c2 = onRing(from, lead);
+            return `M${from.x.toFixed(1)},${from.y.toFixed(1)} C${c1.x.toFixed(1)},${c1.y.toFixed(1)} ${c2.x.toFixed(1)},${c2.y.toFixed(1)} ${to.x.toFixed(1)},${to.y.toFixed(1)}`;
+        };
+        const curveOut = (to) => {
+            // Mirror of the inbound shape: leave the ring along the radius, arrive at the node's edge.
+            const from = onRing(to);
+            const lead = Math.max(40, Math.hypot(to.x - from.x, to.y - from.y) * 0.42);
+            const c1 = onRing(to, lead);
+            const c2 = vertical ? { x: to.x, y: to.y - Math.sign(to.y - from.y) * lead } : { x: to.x - Math.sign(to.x - from.x) * lead, y: to.y };
+            return { d: `M${from.x.toFixed(1)},${from.y.toFixed(1)} C${c1.x.toFixed(1)},${c1.y.toFixed(1)} ${c2.x.toFixed(1)},${c2.y.toFixed(1)} ${to.x.toFixed(1)},${to.y.toFixed(1)}`, port: from };
+        };
+
+        let paths = '', packets = '', ports = '';
         const srcNodes = [...stage.querySelectorAll('.tour-node--src')], dstNodes = [...stage.querySelectorAll('.tour-node--dst')];
         srcNodes.forEach((nd, i) => {
-            const d = curve(anchorOf(nd, 'out'), coreIn);
-            paths += `<path id="tw-in-${i}" class="tour-wire tour-wire--in" d="${d}"/>`;
-            if (!reduce) packets += `<circle class="tour-pk tour-pk--in" r="3.5"><animateMotion dur="${(1.6 + i * 0.2).toFixed(2)}s" begin="${(i * 0.55).toFixed(2)}s" repeatCount="indefinite"><mpath href="#tw-in-${i}"/></animateMotion></circle>`;
+            const a = anchorOf(nd, 'out');
+            const end = onRing(a);
+            paths += `<path id="tw-in-${i}" class="tour-wire tour-wire--in" d="${curve(a, end)}"/>`;
+            ports += `<circle class="tour-port tour-port--in" cx="${end.x.toFixed(1)}" cy="${end.y.toFixed(1)}" r="2.6"/>`;
+            if (!reduce) packets += `<circle class="tour-pk tour-pk--in" r="3.5"><animateMotion dur="${(1.6 + i * 0.2).toFixed(2)}s" begin="${(i * 0.55).toFixed(2)}s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="spline" keySplines="0.4 0 0.6 1"><mpath href="#tw-in-${i}"/></animateMotion></circle>`;
         });
         dstNodes.forEach((nd, i) => {
-            const d = curve(coreOut, anchorOf(nd, 'in'));
+            const b = anchorOf(nd, 'in');
+            const { d, port } = curveOut(b);
             const col = nd.style.getPropertyValue('--c') || '#fff';
             paths += `<path id="tw-out-${i}" class="tour-wire tour-wire--out tour-wire--${nd.dataset.node}" style="--c:${col}" d="${d}"/>`;
-            if (!reduce) for (let k = 0; k < 2; k++) packets += `<circle class="tour-pk" style="--c:${col}" r="3.5"><animateMotion dur="${(1.7 + i * 0.12).toFixed(2)}s" begin="${(i * 0.3 + k * 0.9).toFixed(2)}s" repeatCount="indefinite"><mpath href="#tw-out-${i}"/></animateMotion></circle>`;
+            ports += `<circle class="tour-port" style="--c:${col}" cx="${port.x.toFixed(1)}" cy="${port.y.toFixed(1)}" r="2.6"/>`;
+            if (!reduce) for (let k = 0; k < 2; k++) packets += `<circle class="tour-pk" style="--c:${col}" r="3.5"><animateMotion dur="${(1.7 + i * 0.12).toFixed(2)}s" begin="${(i * 0.3 + k * 0.9).toFixed(2)}s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="spline" keySplines="0.4 0 0.6 1"><mpath href="#tw-out-${i}"/></animateMotion></circle>`;
         });
-        svg.innerHTML = defs + paths + packets;
+        // The ring the wires plug into, drawn in the same SVG so it can never drift from their ends.
+        const ring = `<circle class="tour-hub-ring" cx="${hub.x.toFixed(1)}" cy="${hub.y.toFixed(1)}" r="${ringR.toFixed(1)}"/>`;
+        svg.innerHTML = paths + ring + ports + packets;
+        // Anything rebuilt while the diagram is off screen starts paused, like the rest of it.
+        if (!_tourVisible) { try { svg.pauseAnimations(); } catch { /* */ } }
     }
     function rel(b, R) { return { x: b.left - R.left, y: b.top - R.top, w: b.width, h: b.height }; }
 
