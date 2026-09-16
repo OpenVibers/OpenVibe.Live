@@ -2305,7 +2305,14 @@ function startSloganCountdown(nextAt) {
             return;
         }
         const s = Math.floor(ms / 1000) % 60, m = Math.floor(ms / 60000) % 60, h = Math.floor(ms / 3600000);
-        el.innerHTML = `<i class="fa-solid fa-fire"></i> next fresh batch of memes in <b>${pad(h)}:${pad(m)}:${pad(s)}</b>`;
+        const clock = `${pad(h)}:${pad(m)}:${pad(s)}`;
+        // Rebuild the line once, then only touch the clock's text. Replacing the whole innerHTML every
+        // second re-created the icon element and was the largest remaining source of idle DOM churn
+        // on the home page (20 of 82 mutations in a 20s idle sample).
+        let b = el.querySelector('b[data-clock]');
+        if (!b) { el.innerHTML = `<i class="fa-solid fa-fire"></i> next fresh batch of memes in <b data-clock></b>`; b = el.querySelector('b[data-clock]'); }
+        if (b.firstChild && b.firstChild.nodeType === 3) { if (b.firstChild.data !== clock) b.firstChild.data = clock; }
+        else b.textContent = clock;
     };
     tick();
     _sloganCountdownTimer = setInterval(tick, 1000);
