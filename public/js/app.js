@@ -1325,6 +1325,37 @@ function startHeroQuips(quips) {
 }
 
 // ── Hero stats bar (animated count-up) ──────────────────────────
+/**
+ * Run a DOM change and animate the container from its old height to its new one.
+ *
+ * Expanding or collapsing a panel by toggling `hidden` makes everything below it jump by however
+ * tall the panel is. Measuring before and after, pinning the old height and transitioning to the
+ * new one turns that into a movement the eye can follow. The height is pinned only for the length
+ * of the animation, so the panel can still grow freely afterwards.
+ *
+ * `entering` is the block being revealed; it fades up while the height changes, so the swap reads
+ * as one movement rather than a resize plus a pop.
+ */
+function animateHeightChange(wrap, mutate, opts = {}) {
+    const { duration = 420, entering = null } = opts;
+    const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!wrap || reduced) { try { mutate(); } catch { /* */ } return; }
+    const h0 = wrap.offsetHeight;
+    try { mutate(); } catch { /* */ }
+    const h1 = wrap.offsetHeight;
+    if (h0 === h1) return;
+    clearTimeout(wrap._ovHeightTimer);
+    wrap.classList.add('is-swapping');
+    wrap.style.height = `${h0}px`;
+    if (entering) { entering.classList.remove('is-entering'); void entering.offsetWidth; entering.classList.add('is-entering'); }
+    requestAnimationFrame(() => { wrap.style.height = `${h1}px`; });
+    wrap._ovHeightTimer = setTimeout(() => {
+        wrap.style.height = '';
+        wrap.classList.remove('is-swapping');
+        if (entering) entering.classList.remove('is-entering');
+    }, duration + 40);
+}
+
 function _baselineDeltaHTML(now, avg, peak, window = '24h') {
     const n = Number(now) || 0;
     const a = Number(avg);
@@ -1369,8 +1400,8 @@ function renderHeroStats(stats) {
 
     // ── Right now ────────────────────────────────────────────────
     const now = [
-        { key: 'liveNow', deltaHTML: baselineDelta(stats.liveNow, CC.liveAvg24h, CC.livePeak24h), cls: stats.liveNow > 0 ? 'hero-stat--live' : '', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', num: stats.liveNow, label: 'Live', title: stats.liveNow > 0 ? 'Streams live right now' : 'Nobody is live right now — check Recently Online below' },
-        { key: 'viewersNow', deltaHTML: baselineDelta(stats.viewersNow, CC.viewersAvg24h, CC.viewersPeak24h), cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', icon: 'fa-eye', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
+        { key: 'liveNow', deltaHTML: _baselineDeltaHTML(stats.liveNow, CC.liveAvg24h, CC.livePeak24h), cls: stats.liveNow > 0 ? 'hero-stat--live' : '', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', num: stats.liveNow, label: 'Live', title: stats.liveNow > 0 ? 'Streams live right now' : 'Nobody is live right now — check Recently Online below' },
+        { key: 'viewersNow', deltaHTML: _baselineDeltaHTML(stats.viewersNow, CC.viewersAvg24h, CC.viewersPeak24h), cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', icon: 'fa-eye', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
         { key: 'weeklyActive', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active', title: 'People who chatted in the last 7 days', desc: 'Distinct chatters in the last 7 days — signed-in users, anonymous chatters and relayed (Twitch/Kick/YouTube) chatters, each counted once.', metric: 'active' },
         { key: 'weeklyVisitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors', title: 'First-time visitors in the last 7 days', desc: 'Browsers seen on the site for the first time in the last 7 days (a privacy-safe fingerprint, no account needed). A proxy for new people showing up, not just chatting.', metric: 'visitors' },
     ];
@@ -1465,7 +1496,6 @@ function renderHeroStats(stats) {
      * five-minute sampler has a week of history to compare against. Averages ignore samples where
      * nothing was happening, so an empty night doesn't make every afternoon look like a record.
      */
-    const baselineDelta = (now, avg, peak, window = '24h') => _baselineDeltaHTML(now, avg, peak, window);
     const recDelta = (rec, u = '') => {
         if (!rec) return '';
         const w = Number(rec.w), pw = Number(rec.pw);
@@ -1502,8 +1532,8 @@ function renderHeroStats(stats) {
     // toggle. Each is keyed so the poller below can roll it to a new value without a re-render.
     const CC = stats.concurrency || {};
     const HEADLINE = [
-        { key: 'liveNow', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', cls: stats.liveNow > 0 ? 'hero-stat--live' : '', num: stats.liveNow, label: 'Live', title: 'Streams live right now', deltaHTML: baselineDelta(stats.liveNow, CC.liveAvg24h, CC.livePeak24h) },
-        { key: 'viewersNow', icon: 'fa-eye', cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now', deltaHTML: baselineDelta(stats.viewersNow, CC.viewersAvg24h, CC.viewersPeak24h) },
+        { key: 'liveNow', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', cls: stats.liveNow > 0 ? 'hero-stat--live' : '', num: stats.liveNow, label: 'Live', title: 'Streams live right now', deltaHTML: _baselineDeltaHTML(stats.liveNow, CC.liveAvg24h, CC.livePeak24h) },
+        { key: 'viewersNow', icon: 'fa-eye', cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now', deltaHTML: _baselineDeltaHTML(stats.viewersNow, CC.viewersAvg24h, CC.viewersPeak24h) },
         { key: 'weeklyActive', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active · 7d', title: 'People who chatted in the last 7 days', recent: { w: stats.weeklyActive, pw: stats.prevWeeklyActive } },
         { key: 'users', icon: 'fa-user-group', num: stats.users, label: 'Users', title: 'Accounts on OpenVibe.Live', recent: R.users },
         { key: 'weeklyVisitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors · 7d', title: 'First-time visitors in the last 7 days', recent: { w: stats.weeklyVisitors, pw: stats.prevWeeklyVisitors } },
@@ -2187,7 +2217,44 @@ function _celebrateEgg(egg) {
     } catch { /* */ }
 }
 
+/**
+ * Demote the two explainer sections once someone has read them enough times.
+ *
+ * "One stream. Everywhere." and the about panel are the pitch: they exist to tell a first-time
+ * visitor what this place is. By the twentieth visit they are furniture between the reader and
+ * the streams, and the reader has long since stopped looking at them — but they still shouldn't
+ * disappear, because someone may want to send the link to a friend or read the money section.
+ *
+ * So after 18 home page views they move to the bottom of the page instead, ahead of the
+ * changelog and the legal row. Same content, out of the way. The count lives per-browser, and a
+ * cleared cache simply means someone sees the pitch again, which is harmless.
+ */
+const HOME_INTRO_VIEWS_BEFORE_DEMOTING = 18;
+function _homeIntroViews(bump) {
+    try {
+        const n = parseInt(localStorage.getItem('ov_home_views') || '0', 10) || 0;
+        if (bump) localStorage.setItem('ov_home_views', String(Math.min(n + 1, 9999)));
+        return n;
+    } catch { return 0; }
+}
+function demoteHomeIntroSections() {
+    const views = _homeIntroViews(true);
+    if (views < HOME_INTRO_VIEWS_BEFORE_DEMOTING) return;
+    const container = document.querySelector('#page-home .container');
+    const anchorEl = document.getElementById('home-changelog-wrapper');
+    if (!container || !anchorEl) return;
+    for (const id of ['home-tour-mount', 'home-cta-banner']) {
+        const el = document.getElementById(id);
+        // Already moved (a re-render, or a second visit in the same session)? Leave it be.
+        if (!el || el.dataset.ovDemoted) continue;
+        el.dataset.ovDemoted = '1';
+        el.classList.add('home-intro-demoted');
+        try { container.insertBefore(el, anchorEl); } catch { /* */ }
+    }
+}
+
 async function loadHome() {
+    demoteHomeIntroSections();
     void loadHomeChangelog();
     _initHomeAbout();
     updateNavHeroTransparency();  // transparent nav over the hero at the top
@@ -9563,17 +9630,43 @@ async function loadHomeStar() {
                     <div class="star-kicker"><i class="fa-solid fa-star"></i> ${s.rotates ? 'Star of the day' : 'Featured streamer'}</div>
                     <h3 class="star-name"><a href="${esc(path)}" onclick="return handleLinkClick(event, '${esc(path)}')">${name}</a>${foreign && lang.code === 'ja' ? '<span class="star-jp">OpenVibeの看板配信者 — ようこそ！</span>' : ''}</h3>
                     <div class="star-chips">${chips}</div>
-                    ${why}
-                    ${bioHtml}
-                    ${overview}
-                    ${offline}
+                    <div class="star-more" id="star-more" hidden>
+                        ${why}
+                        ${bioHtml}
+                        ${overview}
+                        ${offline}
+                    </div>
                     <div class="star-actions">
                         <a class="btn btn-lg star-btn-watch" href="${esc(path)}" onclick="return handleLinkClick(event, '${esc(path)}')"><i class="fa-solid ${isLive ? 'fa-play' : 'fa-user'}"></i> ${isLive ? 'Watch now' : 'Visit channel'}</a>
                         <a class="btn btn-outline btn-lg" href="${esc(path)}#about" onclick="return handleLinkClick(event, '${esc(path)}#about')"><i class="fa-solid fa-comments"></i> Say hi${foreign ? ' — any language works' : ''}</a>
+                        <button type="button" class="star-expand" id="star-expand" aria-expanded="false" aria-controls="star-more">
+                            <i class="fa-solid fa-chevron-down"></i><span>More about ${name}</span>
+                        </button>
                     </div>
                 </div>
-                ${liveCard}
             </div>
         </div>`;
+    // The live stream card is the tallest piece of the section — it goes inside the disclosure.
+    const more = sec.querySelector('#star-more');
+    if (more && liveCard) more.insertAdjacentHTML('beforeend', liveCard);
+
+    const card = sec.querySelector('.star-card');
+    const btn = sec.querySelector('#star-expand');
+    if (card && btn && more) {
+        card.classList.add('is-compact');
+        const label = () => {
+            btn.querySelector('span').textContent = more.hidden ? `More about ${s.display_name || s.username}` : 'Less';
+            btn.classList.toggle('is-open', !more.hidden);
+            btn.setAttribute('aria-expanded', String(!more.hidden));
+        };
+        label();
+        btn.addEventListener('click', () => {
+            animateHeightChange(card, () => {
+                more.hidden = !more.hidden;
+                card.classList.toggle('is-compact', more.hidden);
+                label();
+            }, { entering: more.hidden ? null : more });
+        });
+    }
     sec.style.display = '';
 }

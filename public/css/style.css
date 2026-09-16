@@ -15279,3 +15279,9 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
     .home-cta-features { grid-template-columns: 1fr; gap: 9px; }
     .home-cta-feature { padding: 13px 14px; }
 }
+
+/* Once the two explainer sections have been demoted to the bottom of the page they are reference
+   material rather than a pitch, so they get a quieter top margin and a rule separating them from
+   the content above. */
+.home-intro-demoted { margin-top: 26px; }
+.home-intro-demoted:first-of-type { border-top: 1px solid var(--border); padding-top: 26px; }
