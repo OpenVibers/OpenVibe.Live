@@ -1469,7 +1469,10 @@ function renderHeroStats(stats) {
         { key: 'streamers', icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', title: 'People who have gone live here' },
         { key: 'hoursWatched', icon: 'fa-couch', num: stats.hoursWatched, label: 'Hours watched', title: 'Hours the community has spent watching', recent: R.hours },
     ];
-    const open = (() => { try { return localStorage.getItem('ov_stats_open') === '1'; } catch { return false; } })();
+    // Always starts collapsed. Persisting "expanded" meant every reload rendered and counted up
+    // two dozen extra chips before the page had finished loading, for a view the reader asked for
+    // once, days ago. The toggle still holds for as long as they're on the page.
+    const open = false;
     wrap.innerHTML = `
         <div class="hero-stat-strip">${HEADLINE.map(chip).join('')}</div>
         <button type="button" class="hero-stat-more" id="hero-stat-more" aria-expanded="${open}" aria-controls="hero-stat-full">
@@ -1490,11 +1493,48 @@ function renderHeroStats(stats) {
     const label = () => { btn.querySelector('span').textContent = full.hidden ? `All ${total} numbers` : 'Just the highlights'; };
     const sync = () => { strip.hidden = !full.hidden; btn.classList.toggle('is-open', !full.hidden); label(); };
     sync();
-    btn.addEventListener('click', () => {
-        full.hidden = !full.hidden;
-        btn.setAttribute('aria-expanded', String(!full.hidden));
+
+    /**
+     * Swap between the strip and the full board as one movement.
+     *
+     * Toggling `hidden` on both made them vanish and appear in the same frame, with everything
+     * below snapping up or down by several hundred pixels. Instead: measure the height before and
+     * after, pin the container to the old height, then let it transition to the new one while the
+     * incoming block fades up. The container is only height-constrained during the animation, so
+     * nothing is clipped once it settles and the board can still grow if a number gets longer.
+     */
+    let swapping = 0;
+    const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const swap = () => {
+        const toOpen = full.hidden;
+        if (reduced) {
+            full.hidden = !toOpen; sync();
+            btn.setAttribute('aria-expanded', String(toOpen));
+            return;
+        }
+        const h0 = wrap.offsetHeight;
+        full.hidden = !toOpen;
         sync();
-        try { localStorage.setItem('ov_stats_open', full.hidden ? '0' : '1'); } catch { /* */ }
+        btn.setAttribute('aria-expanded', String(toOpen));
+        const h1 = wrap.offsetHeight;
+
+        clearTimeout(swapping);
+        wrap.classList.add('is-swapping');
+        wrap.style.height = `${h0}px`;
+        const entering = toOpen ? full : strip;
+        entering.classList.remove('is-entering');
+        void entering.offsetWidth;
+        entering.classList.add('is-entering');
+        requestAnimationFrame(() => { wrap.style.height = `${h1}px`; });
+        swapping = setTimeout(() => {
+            wrap.style.height = '';
+            wrap.classList.remove('is-swapping');
+            entering.classList.remove('is-entering');
+        }, 460);
+    };
+
+    btn.addEventListener('click', () => {
+        swap();
         // Count the numbers up the first time they are actually looked at.
         if (!full.hidden) full.querySelectorAll('.hero-stat-num:not([data-counted])').forEach(el => {
             el.setAttribute('data-counted', '1'); _heroCountUp(el, parseInt(el.dataset.n, 10) || 0);
