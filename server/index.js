@@ -466,7 +466,8 @@ if (sharedServePath) {
         const filePath = path.join(sharedServePath, fileName);
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-        res.setHeader('Cache-Control', 'public, max-age=300');
+        // Same deal as /js and /css: a ?v= request is a version-pinned URL and can be cached hard.
+        res.setHeader('Cache-Control', req.query.v ? 'public, max-age=31536000, immutable' : 'public, max-age=300');
         res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
         res.sendFile(filePath, (err) => {
             if (err && !res.headersSent) {
@@ -489,11 +490,27 @@ app.use('/assets/sounds', express.static(soundsPath, {
     },
 }));
 
-// JS/CSS/HTML: no-cache + tell Cloudflare CDN not to cache at edge
-// Browsers revalidate with etag (304 Not Modified), CDN always fetches fresh from origin
+// JS/CSS/HTML caching.
+//
+// Every script and stylesheet in our HTML is referenced with ?v=N, which makes each version a
+// distinct URL — so a versioned request can be cached hard, by the browser and at the Cloudflare
+// edge, and a deploy that bumps ?v= is picked up instantly because it is a different URL. That
+// turns a repeat visit from "revalidate ~50 files" into "read them from disk cache", and it lets
+// the edge serve them without touching this box at all.
+//
+// A request with no ?v= is something we cannot version-track, so it keeps the old behaviour:
+// revalidate every time, never cache at the edge. HTML is always no-cache — it is the document
+// that names the current asset versions.
 const noCacheHeaders = (res) => { res.setHeader('Cache-Control', 'no-cache'); res.setHeader('CDN-Cache-Control', 'no-store'); };
-app.use('/js', express.static(path.join(__dirname, '../public/js'), { maxAge: 0, etag: true, lastModified: true, setHeaders: noCacheHeaders }));
-app.use('/css', express.static(path.join(__dirname, '../public/css'), { maxAge: 0, etag: true, lastModified: true, setHeaders: noCacheHeaders }));
+const IMMUTABLE = 'public, max-age=31536000, immutable';
+const markVersioned = (req, res, next) => { res.locals.ovVersioned = !!req.query.v; next(); };
+const assetHeaders = (res) => {
+    if (res.locals && res.locals.ovVersioned) { res.setHeader('Cache-Control', IMMUTABLE); res.setHeader('CDN-Cache-Control', IMMUTABLE); }
+    else noCacheHeaders(res);
+};
+const assetOpts = { etag: true, lastModified: true, setHeaders: assetHeaders };
+app.use('/js', markVersioned, express.static(path.join(__dirname, '../public/js'), assetOpts));
+app.use('/css', markVersioned, express.static(path.join(__dirname, '../public/css'), assetOpts));
 // SEO: per-route <head> meta/OG/JSON-LD injection + dynamic sitemap. MUST be before the public
 // static below (so it can intercept "/") and before the SPA catch-all. Only touches the SPA
 // HTML routes (home, vods/clips/pastes lists, vod/clip/paste detail); everything else falls through.

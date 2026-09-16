@@ -301,6 +301,10 @@ async function refreshRegistry() {
                 'X-Internal-Key': config.internalApiKey,
                 'Accept': 'application/json',
             },
+            // Without a deadline this call can hang, and it runs during startup — an unreachable
+            // or slow openvibe.network used to stall the whole boot, which during a deploy means
+            // the site stays down until the fetch gives up. Config falls back to env defaults.
+            signal: AbortSignal.timeout ? AbortSignal.timeout(3000) : undefined,
         });
         if (!res.ok) {
             console.warn('[Config] Failed to refresh URL registry from openvibe.network:', res.status);

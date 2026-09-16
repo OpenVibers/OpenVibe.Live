@@ -128,4 +128,29 @@ async function historyForToken(userToken, limit = 50, offset = 0) {
     }
 }
 
-module.exports = { WalletError, networkUserId, credit, debit, transfer, balanceForToken, historyForToken };
+/**
+ * Site-wide OpenCoins totals for the home hero stat board.
+ *
+ * The coin ledger lives on OpenVibe.Network, so this is the only way Live can show what the
+ * network economy looks like. Held for five minutes and never allowed to fail loudly: the hero
+ * simply drops the coin chips if the network is unreachable, rather than losing the whole board.
+ */
+let _statsCache = { at: 0, data: null };
+async function networkCoinStats() {
+    if (_statsCache.data && Date.now() - _statsCache.at < 5 * 60 * 1000) return _statsCache.data;
+    try {
+        const ctl = AbortSignal.timeout ? AbortSignal.timeout(2500) : undefined;
+        const res = await fetch(`${NETWORK_INTERNAL_URL}/internal/coins/stats`, {
+            headers: { 'X-Internal-Key': INTERNAL_API_KEY, Accept: 'application/json' },
+            signal: ctl,
+        });
+        if (!res.ok) return _statsCache.data;
+        const data = await res.json();
+        _statsCache = { at: Date.now(), data };
+        return data;
+    } catch {
+        return _statsCache.data;   // stale is fine; missing is fine
+    }
+}
+
+module.exports = { WalletError, networkUserId, credit, debit, transfer, balanceForToken, historyForToken, networkCoinStats };

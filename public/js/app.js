@@ -1307,7 +1307,15 @@ function renderHeroStats(stats) {
             { icon: 'fa-hand-holding-heart', num: stats.supporters, label: 'Supporters', metric: 'supporters', title: 'People who have tipped Vibes to a streamer' },
             { icon: 'fa-cart-shopping', num: stats.vibesBought, label: 'Vibes Bought', metric: 'vibesBought', title: 'Vibes purchased with real money (PowerChat, card, PayPal, crypto)', recent: R.vibesBought },
             { icon: 'fa-star', num: stats.activeSubs, label: 'Subs', metric: 'subs', title: 'Active channel subscriptions', recent: R.subs },
-            { icon: 'fa-coins', num: stats.pointsEarned, label: 'Points Earned', metric: 'points', title: 'Channel points earned by viewers (watching, chatting, following)', recent: R.points },
+            // OpenCoins are network-wide; channel points below are per channel. Shown only when
+            // the wallet service answered — four zeroed chips would read as "nobody has any".
+            ...(stats.coinsEarned != null ? [
+                { icon: 'fa-circle-dollar-to-slot', num: stats.coinsEarned, label: 'Coins Earned', title: 'OpenCoins earned across the whole network — the site-wide currency you get for watching, chatting and using the tools' },
+                { icon: 'fa-basket-shopping', num: stats.coinsSpent, label: 'Coins Spent', title: 'OpenCoins spent on emotes, themes, cosmetics and sounds' },
+                { icon: 'fa-vault', num: stats.coinsCirculating, label: 'Coins Held', title: 'OpenCoins sitting in wallets right now, across every OpenVibe site' },
+                { icon: 'fa-wallet', num: stats.coinHolders, label: 'Wallets', title: 'People holding OpenCoins' },
+            ] : []),
+            { icon: 'fa-coins', num: stats.pointsEarned, label: 'Points Earned', metric: 'points', title: 'Channel points earned by viewers (watching, chatting, following) — per channel, unlike OpenCoins', recent: R.points },
             { icon: 'fa-gift', num: stats.pointsSpent, label: 'Points Spent', metric: 'pointsSpent', title: `Channel points spent on rewards · ${_fmtCount(stats.redemptions || 0)} rewards redeemed`, recent: R.pointsSpent, sub: stats.redemptions ? `${_fmtCount(stats.redemptions)} rewards` : '' },
             { icon: 'fa-bullseye', num: stats.goalsActive, label: 'Goals', title: `Donation goals running now · ${stats.goalsReached || 0} reached so far`, sub: stats.goalsReached ? `${_fmtCount(stats.goalsReached)} reached` : '' },
         ],
@@ -1866,6 +1874,17 @@ async function loadHome() {
     void loadHeroData();      // stats bar, floating-thumbnail collage, AI slogans
     void loadHeroEgg();       // daily AI easter egg widget
 
+    // Claim the space every feed is about to fill. Without this the page arrives as a short
+    // column that grows in jumps as each request lands, which reads as slow and shoves content
+    // around under the reader's thumb. Placeholders are cleared by whoever renders real content,
+    // with a backstop below so nothing shimmers forever after a failed request.
+    if (window.OVSkeleton) {
+        OVSkeleton.cards('stream-grid-live');
+        OVSkeleton.block('home-digest', { rows: 3 });
+        OVSkeleton.block('home-star-section', { rows: 4, height: 140 });
+        setTimeout(() => OVSkeleton.clearAll(), 9000);
+    }
+
     // Reset homepage pagination on fresh load
     _homeRecentOnlinePage = 1;
     _homeRecentVodsPage = 1;
@@ -1879,7 +1898,13 @@ async function loadHome() {
         const noLiveEl = document.getElementById('no-live-streams');
         if (noLiveEl) noLiveEl.style.display = streams.length ? 'none' : '';
         renderStreamGrid('stream-grid-live', streams, true);
-    } catch (e) { console.error('Failed to load live streams', e); }
+    } catch (e) {
+        console.error('Failed to load live streams', e);
+        // Never leave placeholders shimmering over a failed request.
+        if (window.OVSkeleton) OVSkeleton.clear('stream-grid-live');
+        const noLiveEl = document.getElementById('no-live-streams');
+        if (noLiveEl) noLiveEl.style.display = '';
+    }
 
     loadHomeRecentOnline();
     void loadHomePulse();     // happening-now rail + weekly leaders + AI moments + latest update
@@ -1977,7 +2002,8 @@ async function loadHomeDigest() {
     try { since = localStorage.getItem(KEY); } catch { /* */ }
     try { localStorage.setItem(KEY, new Date().toISOString()); } catch { /* */ }
     let d;
-    try { d = await api(`/home/digest${since ? `?since=${encodeURIComponent(since)}` : ''}`); } catch { return; }
+    try { d = await api(`/home/digest${since ? `?since=${encodeURIComponent(since)}` : ''}`); }
+    catch { box.innerHTML = ''; box.style.display = 'none'; return; }
     if (!d || (!d.liveNow?.length && !d.streamed?.length && !d.hot?.length)) { box.style.display = 'none'; return; }
     const away = !!(since && currentUser);
     const n = (v) => Number(v || 0).toLocaleString();
@@ -2305,11 +2331,20 @@ function streamCardHTML(s, isLive) {
 
 function renderStreamGrid(containerId, streams, isLive) {
     const c = document.getElementById(containerId);
+    if (!c) return;
+    // Placeholders have done their job the moment real data lands. Remove them by class rather
+    // than clearing the container, because the live grid keeps its empty-state child in there.
+    c.querySelectorAll('.ovsk').forEach(n => { try { n.remove(); } catch { /* */ } });
     if (!streams.length) {
         if (!isLive) c.innerHTML = '<div class="empty-state"><p class="muted">No recent streams</p></div>';
         return;
     }
+    // Keep the live grid's empty-state node across a re-render. Replacing innerHTML used to
+    // delete it outright, so once anyone went live the "nobody is streaming" message could never
+    // come back when they all stopped — the grid just sat there blank.
+    const empty = c.querySelector('.empty-state');
     c.innerHTML = streams.map(s => streamCardHTML(s, isLive)).join('');
+    if (empty) { empty.style.display = 'none'; c.appendChild(empty); }
 }
 
 /* ── Real-time home updates ─────────────────────────────────── */
