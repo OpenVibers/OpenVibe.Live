@@ -9,7 +9,12 @@
     background: color-mix(in srgb, var(--bg-card) 62%, transparent);
     border: 1px solid rgba(255,255,255,0.08);
     box-shadow: 0 24px 60px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
-    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    /* No backdrop blur: it made this 1.2MP card its own layer re-blurring the page behind it. The
+       fill is opaque enough on its own. The blur was also the only thing making .tour a stacking
+       context, so isolation takes over that job — without it the hub's z-index:-1 glow escapes to
+       main#app and the whole app gets promoted to a layer to sit above it. */
+    background: color-mix(in srgb, var(--bg-card) 86%, transparent);
+    isolation: isolate;
 }
 .tour::before { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0.35;
     background-image: radial-gradient(rgba(255,255,255,0.10) 0.8px, transparent 0.9px); background-size: 22px 22px;
