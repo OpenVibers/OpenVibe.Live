@@ -471,3 +471,15 @@
     .ovg-launch, .ovg-firstlive { transition: none; }
 }
 .rs-lite .ovg-launch-aura, .rs-lite .ovg-firstlive-ring { animation: none !important; }
+
+/* ── Where the wires meet the hub ────────────────────────────────────────────
+   The ring and the ports are drawn in the wire SVG itself, from the same numbers as the wire ends,
+   so a wire can never stop short of the mark or overshoot it. The ports mark where each line plugs
+   in; they brighten when a packet arrives, which is what makes the hub read as receiving signal. */
+.tour-hub-ring {
+    fill: none; stroke: color-mix(in srgb, var(--accent) 55%, transparent); stroke-width: 1.4;
+    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--accent) 60%, transparent));
+}
+.tour-port { fill: var(--c, #fde68a); opacity: 0.9; filter: drop-shadow(0 0 3px var(--c, #fde68a)); }
+.tour-port--in { --c: #fde68a; }
+.rs-lite .tour-hub-ring, .rs-lite .tour-port { filter: none; }

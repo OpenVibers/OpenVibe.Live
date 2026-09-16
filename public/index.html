@@ -88,9 +88,9 @@
          overlay) and is fetched without blocking the first paint: media="print" makes the browser
          treat it as non-critical, and the onload flips it back to all once it has arrived. -->
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-    <link rel="stylesheet" href="/css/style.css?v=211">
-    <link rel="stylesheet" href="/css/home-fx.css?v=14">
-    <link rel="stylesheet" href="/css/home-tour.css?v=10">
+    <link rel="stylesheet" href="/css/style.css?v=213">
+    <link rel="stylesheet" href="/css/home-fx.css?v=16">
+    <link rel="stylesheet" href="/css/home-tour.css?v=11">
     <link rel="stylesheet" href="/css/i18n-star.css?v=11">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="/css/chat-shared.css?v=1" media="print" onload="this.media='all';this.onload=null">
@@ -370,8 +370,6 @@
             <!-- Star of OpenVibe — featured streamer spotlight (star_streamer setting / STAR_STREAMER env) -->
             <div class="home-star-section" id="home-star-section"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div><div class="ovsk-bar" style="height:10px;width:80%"></div></div></div>
 
-                <!-- One stream, everywhere — restream pipeline + feature tour (public/js/home-tour.js) -->
-                <div class="home-tour-mount home-section-lazy" id="home-tour-mount" data-fx-viewport></div>
                 <div class="hero-egg" id="hero-egg" style="display:none">
                     <button class="hero-egg-head" type="button" onclick="toggleHeroEgg()">
                         <span class="hero-egg-icon">🥚</span>
@@ -420,6 +418,10 @@
                 <div class="moments-row" id="home-moments-row"></div>
             </div>
 
+            <!-- The two introductions travel together: what OpenVibe does (the restream diagram), then
+                 why it exists (the About banner). demoteHomeIntroSections() moves them as a pair. -->
+            <!-- One stream, everywhere — restream pipeline + feature tour (public/js/home-tour.js) -->
+            <div class="home-tour-mount home-section-lazy" id="home-tour-mount" data-fx-viewport></div>
             <!-- Streaming CTA -->
             <div class="home-cta-banner" id="home-cta-banner" data-fx-viewport>
                 <div class="cta-ambient" aria-hidden="true"></div>
@@ -5137,7 +5139,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
     };
 })();
 </script>
-<script src="/js/app.js?v=178" defer></script>
+<script src="/js/app.js?v=180" defer></script>
 <script src="/js/stream-player.js?v=22" defer></script>
 <script src="/js/stream-pip.js?v=1" defer></script>
 <script src="/js/chat-shared.js?v=3" defer></script>
@@ -5218,7 +5220,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/shared/footer.js?v=1" defer></script>
 <script src="/js/footer-live.js?v=1" defer></script>
 <script src="/js/home-fx.js?v=9" defer></script>
-<script src="/js/home-tour.js?v=9" defer></script>
+<script src="/js/home-tour.js?v=10" defer></script>
 <script src="/js/ov-guide.js?v=3" defer></script>
 <script src="/js/guides-live.js?v=8" defer></script>
 

@@ -14,11 +14,23 @@
    These need to read as *pressable* at a glance on a phone, so they carry a raised surface,
    a top highlight, a real shadow and a press state — plus a slow staggered sheen that sweeps
    the row so the eye catches that they are interactive without anything shouting. */
+/* Six buttons may only lay out as 6×1, 3×2 or 2×3 — the divisors of six. auto-fit chose however
+   many max-content columns happened to fit, which is how the row came out as four and then two.
+   The column count is picked explicitly per width, and every column is the same width. */
 #page-home .hero-cta {
-    display: grid; gap: clamp(8px, 1.6vw, 12px); justify-content: center; margin-inline: auto;
-    grid-template-columns: repeat(auto-fit, minmax(clamp(140px, 22vw, 168px), max-content));
-    max-width: min(920px, 96vw);
+    --hb-cols: 3;
+    display: grid; gap: clamp(8px, 1.4vw, 12px); margin-inline: auto;
+    grid-template-columns: repeat(var(--hb-cols), minmax(0, 1fr));
+    width: 100%; max-width: 720px;
 }
+/* Six across only when the hero column is genuinely wide enough for full labels. The hero content
+   is capped well under the viewport, so a viewport breakpoint alone gave 133px buttons at 1280px
+   with every label cut to an ellipsis. */
+@media (min-width: 1500px) {
+    #page-home .hero-cta { --hb-cols: 6; max-width: 1180px; }
+}
+#page-home .hero-cta > .hb { min-width: 0; }
+#page-home .hero-cta .hb-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hb {
     --c: var(--accent); position: relative; display: inline-flex; align-items: center; gap: 10px;
     padding: clamp(6px, 1.2vw, 8px) clamp(14px, 2.4vw, 20px) clamp(6px, 1.2vw, 8px) 6px;
@@ -100,14 +112,16 @@
 .hb-tools { --c: #2dd4bf; } .hb-game { --c: #4ade80; } .hb-github { --c: #e5e7eb; } .hb-discord { --c: #5865f2; } .hb-vibe { --c: #f472b6; }
 /* Narrow phones: two tidy columns instead of a ragged wrap. Landscape keeps a single row. */
 @media (max-width: 560px) {
-    #page-home .hero-cta { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 420px; }
+    #page-home .hero-cta { --hb-cols: 2; max-width: 420px; }
     .hb { font-size: 0.86rem; padding-right: 12px; }
+    /* The "API docs" note is what would push "Build & Mod" to an ellipsis at two columns. */
+    .hb-label small { display: none; }
 }
-@media (max-width: 560px) and (orientation: landscape) {
-    #page-home .hero-cta { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); max-width: 96vw; }
+/* A landscape phone is wide but short: three across keeps it to two rows, never a ragged wrap. */
+@media (max-width: 900px) and (orientation: landscape) and (max-height: 500px) {
+    #page-home .hero-cta { --hb-cols: 3; max-width: 96vw; }
     .hb { min-height: 40px; }
 }
-@media (max-width: 360px) { #page-home .hero-cta { grid-template-columns: 1fr; max-width: 300px; } }
 @keyframes hfxPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 70% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--accent) 0%, transparent); } 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); } }
 
 /* Headline: subtle breathing glow (the sweeping sheen rendered as a block over gradient text, so it is gone) */
