@@ -15149,3 +15149,25 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
     .nav-coins, .nav-balance { max-width: 88px; overflow: hidden; }
     .nav-avatar-wrap .nav-username { display: none; }
 }
+
+/* ── The stat board's backdrop blur ──────────────────────────────────────────
+   .hero-stats sits over the hero's photographic background with backdrop-filter: blur(10px), and
+   the expand/collapse animates its height. A backdrop filter has to re-rasterise everything
+   behind the element on every frame of that animation — on a phone that means the hero image,
+   the title and the philosophy row all go missing for the duration and snap back at the end,
+   which is exactly what it looked like.
+
+   So: no blur while the height is animating, and none at all on a phone. The board already has
+   its own translucent background, so it stays legible either way. This is the same trade the
+   navbar already makes on small screens for scroll performance. */
+.hero-stats.is-swapping { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+/* An opaque-enough panel while animating, so the text never sits on bare background. */
+.hero-stats.is-swapping { background: color-mix(in srgb, var(--bg-primary) 88%, transparent); }
+@media (max-width: 900px) {
+    .hero-stats {
+        backdrop-filter: none; -webkit-backdrop-filter: none;
+        background: color-mix(in srgb, var(--bg-primary) 86%, transparent);
+    }
+}
+/* Nothing inside the hero should be re-rasterised by the board changing size. */
+#page-home .hero-content > h1, #page-home .hero-tagline, #page-home .hero-philosophy-links { will-change: auto; }
