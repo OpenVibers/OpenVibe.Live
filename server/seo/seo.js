@@ -439,17 +439,33 @@ function _headBlock(meta) {
 function render(meta) {
     let html = _base();
     if (!html) return null;
+
+    // Only the <head> is rewritten, so only the <head> is scanned.
+    //
+    // These six patterns used to run over the whole document. index.html is ~378KB and the head
+    // is the first ~8.5KB of it, so five /ig regexes were scanning 370KB of page markup that
+    // cannot contain a <title> or an og: tag — measured at 60ms of blocking CPU per uncached
+    // render, against 0.73ms for the head alone. That cost lands on every cache miss, and the
+    // sitemap advertises far more URLs than the 500-entry cache holds, so a crawler walking it
+    // misses every time.
+    const headEnd = html.search(/<\/head>/i);
+    let head = headEnd === -1 ? html : html.slice(0, headEnd);
+    const rest = headEnd === -1 ? '' : html.slice(headEnd);
+
     // Strip the hardcoded homepage tags we're replacing (title, description, canonical, all
     // og:/twitter:, robots) so there are no duplicates.
-    html = html
+    head = head
         .replace(/\s*<title>[\s\S]*?<\/title>/i, '')
         .replace(/\s*<meta\s+name=["']description["'][^>]*>/ig, '')
         .replace(/\s*<meta\s+name=["']robots["'][^>]*>/ig, '')
         .replace(/\s*<link\s+rel=["']canonical["'][^>]*>/ig, '')
         .replace(/\s*<meta\s+property=["']og:[^"']*["'][^>]*>/ig, '')
         .replace(/\s*<meta\s+name=["']twitter:[^"']*["'][^>]*>/ig, '');
+
     // Insert the fresh head block just before </head>.
-    html = html.replace(/<\/head>/i, _headBlock(meta) + '</head>');
+    html = headEnd === -1
+        ? head.replace(/<\/head>/i, _headBlock(meta) + '</head>')
+        : head + _headBlock(meta) + rest;
     // Server-rendered crawlable content, right after <body>. It's REAL content (so AI text
     // extractors read it — unlike <noscript>, which many strip), but visually-hidden so users
     // never see a flash, and the SPA removes #seo-prerender on boot (see app.js). Not cloaking:

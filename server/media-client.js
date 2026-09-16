@@ -84,15 +84,28 @@ async function request(method, apiPath, { body, query, actingUser, headers = {},
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     opts.signal = ctrl.signal;
     let res;
+    let text = '';
     try {
         res = await fetch(url, opts);
+        // The deadline has to cover reading the body, not just receiving the headers.
+        //
+        // clearTimeout used to sit in a `finally` attached to the fetch() await, so the timer was
+        // cancelled and the abort signal disarmed the moment headers arrived. Reading the body
+        // then had no deadline at all: an upstream that responds and then stalls mid-body pinned
+        // this handler — and whatever request was waiting on it — indefinitely. Consuming the body
+        // inside the same guarded region means one deadline covers the whole exchange.
+        text = await res.text().catch(() => '');
     } catch (err) {
-        throw new MediaApiError(`Media unreachable (${method} ${apiPath}): ${err.message}`, 0, null);
+        const aborted = err && (err.name === 'AbortError' || ctrl.signal.aborted);
+        throw new MediaApiError(
+            aborted
+                ? `Media timed out after ${timeoutMs}ms (${method} ${apiPath})`
+                : `Media unreachable (${method} ${apiPath}): ${err.message}`,
+            0, null);
     } finally {
         clearTimeout(timer);
     }
     let json = null;
-    const text = await res.text().catch(() => '');
     if (text) { try { json = JSON.parse(text); } catch { json = null; } }
     if (!res.ok) {
         const msg = (json && (json.error || json.message)) || `Media API ${res.status} on ${method} ${apiPath}`;
@@ -326,13 +339,35 @@ async function proxy(req, res, apiPath, { actingUser, method, query, body } = {}
             opts.body = req.rawBody;
         }
     }
+    // proxy() had no deadline at all — an unresponsive upstream held the connection, the handler
+    // and its socket open indefinitely. This backs pastes, likes, comments and the admin storage
+    // routes, so a stalled Media could accumulate stuck handlers until the process ran out.
+    // Uploads legitimately take longer than reads, hence the two budgets.
+    const isUpload = !['GET', 'HEAD'].includes(m);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), isUpload ? 120000 : 20000);
+    opts.signal = ctrl.signal;
+    // If the client goes away mid-proxy, stop waiting on the upstream too.
+    const onClientGone = () => { try { ctrl.abort(); } catch { /* */ } };
+    req.on('aborted', onClientGone);
+    res.on('close', onClientGone);
+    const cleanup = () => {
+        clearTimeout(timer);
+        req.off?.('aborted', onClientGone);
+        res.off?.('close', onClientGone);
+    };
+
     let upstream;
     try {
         upstream = await fetch(url, opts);
     } catch (err) {
-        console.warn(`[MediaClient] proxy failed (${m} ${apiPath}):`, err.message);
-        return res.status(502).json({ error: 'Media service unavailable' });
+        cleanup();
+        const aborted = err && (err.name === 'AbortError' || ctrl.signal.aborted);
+        console.warn(`[MediaClient] proxy ${aborted ? 'timed out' : 'failed'} (${m} ${apiPath}):`, err.message);
+        if (res.headersSent) return;
+        return res.status(504).json({ error: aborted ? 'Media service timed out' : 'Media service unavailable' });
     }
+    cleanup();
     res.status(upstream.status);
     const passHeaders = ['content-type', 'cache-control', 'content-disposition', 'etag', 'x-robots-tag'];
     for (const h of passHeaders) {
