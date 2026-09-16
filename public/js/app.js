@@ -1354,8 +1354,8 @@ function renderHeroStats(stats) {
     const now = [
         { key: 'liveNow', cls: stats.liveNow > 0 ? 'hero-stat--live' : '', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', num: stats.liveNow, label: 'Live', title: stats.liveNow > 0 ? 'Streams live right now' : 'Nobody is live right now — check Recently Online below' },
         { key: 'viewersNow', cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', icon: 'fa-eye', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
-        { key: 'weeklyActive', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active · 7d', title: 'People who chatted in the last 7 days', desc: 'Distinct chatters in the last 7 days — signed-in users, anonymous chatters and relayed (Twitch/Kick/YouTube) chatters, each counted once.', metric: 'active' },
-        { key: 'weeklyVisitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors · 7d', title: 'First-time visitors in the last 7 days', desc: 'Browsers seen on the site for the first time in the last 7 days (a privacy-safe fingerprint, no account needed). A proxy for new people showing up, not just chatting.', metric: 'visitors' },
+        { key: 'weeklyActive', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active', title: 'People who chatted in the last 7 days', desc: 'Distinct chatters in the last 7 days — signed-in users, anonymous chatters and relayed (Twitch/Kick/YouTube) chatters, each counted once.', metric: 'active' },
+        { key: 'weeklyVisitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors', title: 'First-time visitors in the last 7 days', desc: 'Browsers seen on the site for the first time in the last 7 days (a privacy-safe fingerprint, no account needed). A proxy for new people showing up, not just chatting.', metric: 'visitors' },
     ];
     // 24h viewer sparkline (5-minute samples) — trends read better than a snapshot.
     const trend = Array.isArray(stats.viewerTrend) ? stats.viewerTrend : [];
@@ -1484,7 +1484,7 @@ function renderHeroStats(stats) {
         { key: 'anons', icon: 'fa-user-secret', num: stats.anons, label: 'Anons', title: 'Anonymous chatters who have been given a name', recent: R.anons },
         { key: 'chatMessages', icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', title: 'Chat messages sent, all time', recent: R.messages },
         { key: 'streamers', icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', title: 'People who have gone live here', recent: R.streamers },
-        { key: 'hoursWatched', icon: 'fa-couch', num: stats.hoursWatched, label: 'Hours watched', title: 'Hours the community has spent watching', recent: R.hours },
+        { key: 'hoursWatched', icon: 'fa-couch', num: stats.hoursWatched, label: 'Hours', title: 'Hours the community has spent watching', recent: R.hours },
     ];
     // Always starts collapsed. Persisting "expanded" meant every reload rendered and counted up
     // two dozen extra chips before the page had finished loading, for a view the reader asked for
