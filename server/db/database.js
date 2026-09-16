@@ -4186,6 +4186,13 @@ function _computeHomeStats() {
             messages: winCount('chat_messages', 'timestamp', 'COALESCE(is_deleted, 0) = 0'),
             hours: { d: hoursSince('-1 day'), w: hoursSince('-7 days'), m: hoursSince('-30 days'), pw: hoursPrevWeek() },
             streamers: streamersWin(),
+            emotes: winCount('emotes', 'created_at'),
+            goals: winCount('donation_goals', 'created_at'),
+            // Distinct people who tipped in each window — a headcount, like streamers.
+            supporters: (() => {
+                const q = (a, b) => c(`SELECT COUNT(DISTINCT from_user_id) AS count FROM transactions WHERE type = 'donation' AND from_user_id IS NOT NULL AND created_at >= datetime('now', ?)${b ? " AND created_at < datetime('now', ?)" : ''}`, b ? [a, b] : [a]);
+                return { d: q('-1 day'), w: q('-7 days'), m: q('-30 days'), pw: q('-14 days', '-7 days') };
+            })(),
             vibes: winSum('transactions', 'amount', 'created_at', `type = 'donation' AND created_at >= '${vibesSince}'`),
             points: winSum('coin_transactions', 'amount', 'created_at', 'amount > 0'),
             pointsSpent: winSum('coin_transactions', '-amount', 'created_at', 'amount < 0'),

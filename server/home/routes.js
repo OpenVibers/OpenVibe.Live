@@ -200,6 +200,12 @@ async function heroStats() {
             stats.coinsSpent = c.spent;
             stats.coinsCirculating = c.circulating;
             stats.coinHolders = c.holders;
+            if (c.recent) {
+                stats.recent = stats.recent || {};
+                stats.recent.coinsEarned = c.recent.earned;
+                stats.recent.coinsSpent = c.recent.spent;
+                stats.recent.coinHolders = c.recent.holders;
+            }
         }
     } catch { /* the board is better off missing four chips than failing */ }
     try { stats.concurrency = db.getConcurrencyBaseline(); } catch { /* */ }
