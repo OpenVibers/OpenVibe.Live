@@ -4153,6 +4153,7 @@ function getLastStream(username) {
 /**
  * Auto-scroll the active tab into view within the tab bar.
  */
+let _lastScrolledTab = '';
 function scrollActiveTabIntoView() {
     const active = document.querySelector('.live-tab.active');
     if (active) active.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
@@ -4226,8 +4227,11 @@ function loadLiveStreamTabs(currentUsername, activeStreamId, channelStreams = []
         <i class="fa-solid fa-eye"></i> <strong>${totalViewers}</strong> total
     </span>`;
 
-    // Auto-scroll active tab into view after render
-    requestAnimationFrame(scrollActiveTabIntoView);
+    // Auto-scroll the active tab into view, but only when it actually changed. This render runs
+    // on the 15-second channel poll (every 2 seconds during a go-live burst), and smooth-scrolling
+    // the strip on every tick moved it under the reader's finger for no reason.
+    const activeNow = document.querySelector('.live-tab.active')?.dataset.username || '';
+    if (activeNow !== _lastScrolledTab) { _lastScrolledTab = activeNow; requestAnimationFrame(scrollActiveTabIntoView); }
 
     // Setup keyboard navigation (arrow keys between tabs)
     setupTabKeyboardNav(tabsScroll, currentUsername);
@@ -5470,6 +5474,8 @@ function _startCaptions(username, displayName, isLive) {
         const box = document.getElementById('ch-captions-lines');
         if (!box) return;
         box.querySelector('.ch-captions-wait')?.remove();
+        // Is the reader following the live edge right now? Decide before we touch the DOM.
+        const wasPinned = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
         for (const l of lines) {
             _captionsAfter = Math.max(_captionsAfter, Number(l.id) || 0);
             const row = document.createElement('div');
@@ -5479,8 +5485,17 @@ function _startCaptions(username, displayName, isLive) {
                 : `<div class="ch-caption-en">${esc(l.text)}</div>`;
             box.appendChild(row);
         }
-        while (box.children.length > 14) box.removeChild(box.firstChild);
-        box.scrollTop = box.scrollHeight;
+        // Measure BEFORE trimming and before deciding to follow: scrollHeight already includes
+        // whatever we just appended, and trimming from the top moves the content up under the
+        // reader. Someone who scrolled back to re-read a caption should stay where they put
+        // themselves instead of being yanked to the bottom every six seconds.
+        const follow = wasPinned;
+        while (box.children.length > 14) {
+            const gone = box.firstChild.getBoundingClientRect().height;
+            box.removeChild(box.firstChild);
+            if (!follow) box.scrollTop = Math.max(0, box.scrollTop - gone);
+        }
+        if (follow) box.scrollTop = box.scrollHeight;
     };
     void tick();
     _captionsTimer = setInterval(tick, 6000);

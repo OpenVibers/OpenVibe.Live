@@ -52,7 +52,13 @@
     function init() {
         if (!document.getElementById('ov-mark-css')) { const st = document.createElement('style'); st.id = 'ov-mark-css'; st.textContent = CSS; document.head.appendChild(st); }
         mount();
-        try { new MutationObserver(() => mount()).observe(document.body, { childList: true, subtree: true }); } catch { /* */ }
+        try {
+            // One pass per frame, not one per mutation. Unthrottled this ran a full-document
+            // querySelectorAll on every chat message and every feed tick.
+            let pending = 0;
+            const queue = () => { if (pending) return; pending = requestAnimationFrame(() => { pending = 0; mount(); }); };
+            new MutationObserver(queue).observe(document.body, { childList: true, subtree: true });
+        } catch { /* */ }
     }
     window.ovMarkMount = mount;
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
