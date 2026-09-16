@@ -258,4 +258,52 @@ const ok = (name) => { pass++; console.log('  ok -', name); };
     ok('private VOD context is authorised before the cache, and never shareable');
 }
 
+// ── Escapers used in attributes must escape quotes ───────────────────────────
+{
+    // A textContent/innerHTML round-trip escapes < > & but leaves " and ' alone. Several helpers were
+    // built that way and interpolated into attribute values: a screenshot paste's page_url (taken
+    // straight from the uploader's request body) in href="…" on a public page, and a group DM name
+    // in value="…". Each helper is evaluated here against a breakout payload.
+    const cases = [
+        ['public/js/pastes.js', /function escapeHtml\(str\) \{[\s\S]*?\n\}/, 'escapeHtml'],
+        ['public/js/messenger.js', /function esc\(s\) \{[\s\S]*?\n    \}/, 'esc'],
+        ['public/js/vibes.js', /function escHb\(s\) \{[^\n]*\}/, 'escHb'],
+        ['public/js/call.js', /function _esc\(str\) \{[\s\S]*?\n\}/, '_esc'],
+    ];
+    const payload = `https://x" onmouseover="alert(1)' x='`;
+    for (const [file, re, name] of cases) {
+        const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        const m = src.match(re);
+        assert(m, `${name} should exist in ${file}`);
+        // A stand-in for the DOM that behaves like a browser's textContent -> innerHTML serialisation
+        // (escapes & < > only), so a helper reverted to that trick fails on the quote assertion
+        // below with a clear message rather than on "document is not defined".
+        const fakeDocument = { createElement: () => { let t = ''; return {
+            set textContent(v) { t = String(v); },
+            get innerHTML() { return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); },
+        }; } };
+        // eslint-disable-next-line no-new-func
+        const fn = new Function('document', `${m[0]}; return ${name};`)(fakeDocument);
+        const out = fn(payload);
+        assert(!out.includes('"') && !out.includes("'"), `${file} ${name}() must escape quotes, got: ${out}`);
+        assert.strictEqual(fn(0), '0', `${file} ${name}(0) should render 0`);
+    }
+    ok('every attribute-context escaper escapes both quote characters');
+
+    // And nobody reintroduces the round-trip escaper somewhere new.
+    const offenders = [];
+    for (const f of fs.readdirSync(path.join(ROOT, 'public/js')).filter(n => n.endsWith('.js'))) {
+        const src = fs.readFileSync(path.join(ROOT, 'public/js', f), 'utf8');
+        const re = /\.textContent\s*=\s*[^;]+;\s*return\s+\w+\.innerHTML/g;
+        if (re.test(src)) offenders.push(f);
+    }
+    assert.deepStrictEqual(offenders, [], 'quote-unsafe textContent/innerHTML escaper found in: ' + offenders.join(', '));
+    ok('no textContent/innerHTML round-trip escapers remain in public/js');
+
+    const pastes = fs.readFileSync(path.join(ROOT, 'public/js/pastes.js'), 'utf8');
+    assert(!/handleLinkClick\(event, '\$\{escapeHtml\(meta\.vod_link\)\}'\)/.test(pastes),
+        'the moment link must not interpolate its URL into an inline JS string');
+    ok('paste moment link reads its URL from the element, not an inline JS string');
+}
+
 console.log(`\n${pass} checks passed`);

@@ -2632,10 +2632,9 @@ async function switchCallCam(deviceId) {
     }
 }
 
+// Quote-safe, like every other escaper on the site: a textContent/innerHTML round-trip leaves " and ' alone.
 function _esc(str) {
-    const d = document.createElement('div');
-    d.textContent = str;
-    return d.innerHTML;
+    return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /** Close call context menus when clicking outside */

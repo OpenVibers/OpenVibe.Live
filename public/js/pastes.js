@@ -410,7 +410,7 @@ async function loadPasteViewer(slug) {
         // grabbed from — surface it as a real button (and drop the raw "▶ Watch…" line the
         // description text used to carry).
         const momentLink = (meta.ai_moment && typeof meta.vod_link === 'string' && /^\/(vod|clip)\//.test(meta.vod_link))
-            ? `<a class="btn btn-primary btn-sm paste-moment-link" href="${escapeHtml(meta.vod_link)}" onclick="return handleLinkClick(event, '${escapeHtml(meta.vod_link)}')"><i class="fa-solid fa-circle-play"></i> Watch this moment on the VOD</a>`
+            ? `<a class="btn btn-primary btn-sm paste-moment-link" href="${escapeHtml(meta.vod_link)}" onclick="return handleLinkClick(event, this.getAttribute('href'))"><i class="fa-solid fa-circle-play"></i> Watch this moment on the VOD</a>`
             : '';
         const displayContent = (p.content || '').replace(/\n*▶[^\n]*$/,'').trim();
 
@@ -1597,8 +1597,9 @@ function formatTimeAgo(dateStr) {
     return date.toLocaleDateString();
 }
 
+// Escapes quotes as well as < > &. The previous version used the textContent/innerHTML trick,
+// which leaves " and ' untouched — safe in text, but these helpers are also interpolated into
+// attribute values, where an unescaped quote ends the attribute and starts a new one.
 function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str || '';
-    return div.innerHTML;
+    return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
