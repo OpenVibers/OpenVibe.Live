@@ -249,7 +249,7 @@ async function _homeMeta() {
         {
             '@context': 'https://schema.org', '@type': 'Organization', '@id': `${baseUrl()}/#org`,
             name: 'OpenVibe', url: baseUrl(), logo: DEFAULT_OG_IMAGE,
-            description: 'A free, open-source network of live streaming, media and developer tools, run by its community with no ads and no investors.',
+            description: 'A free, open-source network of live streaming, media and developer tools, built and run by the people who use it.',
             // sameAs is how a search engine learns these properties are one brand rather than
             // unrelated sites that happen to share a name.
             sameAs: [

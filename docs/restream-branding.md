@@ -67,7 +67,7 @@ This is the most important panel — it should be the first one visitors see.
 👉 Watch the FULL experience at:
    https://openvibe.live/Goosely
 
-✅ No ads, no subs, no paywalls
+✅ Free to stream, free to watch
 ✅ Interactive chat with emotes & cosmetics
 ✅ Clips, VODs & AI highlights
 ✅ Open source — run your own instance
@@ -111,7 +111,7 @@ The platform is 100% free, open source, and community-driven.
 • Custom emotes, hats, name effects & particles
 • Auto VODs, clips & AI highlights
 • Scraplandia — the community browser game
-• No corporate algorithms, no ads
+• No corporate algorithms
 • Built by the community, for the community
 
 → openvibe.live
