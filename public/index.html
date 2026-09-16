@@ -62,7 +62,7 @@
     </script>
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="/css/style.css?v=160">
+    <link rel="stylesheet" href="/css/style.css?v=161">
     <link rel="stylesheet" href="/css/chat-shared.css?v=1">
     <link rel="stylesheet" href="/css/broadcast.css?v=11">
     <link rel="stylesheet" href="/css/cosmetics.css?v=2">
@@ -237,9 +237,26 @@
                         <i class="fa-solid fa-chevron-down hero-egg-chev"></i>
                     </button>
                     <div class="hero-egg-body">
-                        <p class="hero-egg-intro">A fresh AI-made secret drops daily. Decode the hints into a key sequence, then type it anywhere on the site to crack it.</p>
-                        <ul class="hero-egg-hints" id="hero-egg-hints"></ul>
-                        <div class="hero-egg-meta"><span id="hero-egg-count"></span><span id="hero-egg-reset"></span></div>
+                        <div class="hero-egg-inner">
+                            <p class="hero-egg-intro">A new secret every day. Each clue is one key, in order. Type the keys anywhere on the site, or tap them below.</p>
+                            <div class="hero-egg-slots" id="hero-egg-slots" aria-label="Your key sequence"></div>
+                            <ol class="hero-egg-clues" id="hero-egg-clues"></ol>
+                            <div class="hero-egg-pad" id="hero-egg-pad">
+                                <div class="hero-egg-pad-arrows">
+                                    <button type="button" class="egg-key" data-tok="left" aria-label="Left">←</button>
+                                    <button type="button" class="egg-key" data-tok="up" aria-label="Up">↑</button>
+                                    <button type="button" class="egg-key" data-tok="down" aria-label="Down">↓</button>
+                                    <button type="button" class="egg-key" data-tok="right" aria-label="Right">→</button>
+                                    <button type="button" class="egg-key egg-key--ctl" data-act="back" aria-label="Backspace">⌫</button>
+                                    <button type="button" class="egg-key egg-key--ctl" data-act="clear" aria-label="Clear">✕</button>
+                                </div>
+                                <div class="hero-egg-pad-letters" id="hero-egg-letters"></div>
+                            </div>
+                            <div class="hero-egg-foot">
+                                <button type="button" class="hero-egg-reveal" id="hero-egg-reveal" onclick="_eggReveal()"><i class="fa-solid fa-lightbulb"></i> Stuck? Reveal a key</button>
+                                <div class="hero-egg-meta"><span id="hero-egg-count"></span><span id="hero-egg-first"></span><span id="hero-egg-reset"></span></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="hero-cta">
@@ -5052,7 +5069,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <!-- Scripts -->
 <script src="/js/theme-engine.js?v=4"></script>
 <script src="/live-notify.js?v=3" defer></script>
-<script src="/js/app.js?v=138" defer></script>
+<script src="/js/app.js?v=139" defer></script>
 <script src="/js/stream-player.js?v=21" defer></script>
 <script src="/js/stream-pip.js?v=1" defer></script>
 <script src="/js/chat-shared.js?v=3" defer></script>

@@ -17,11 +17,18 @@ router.get('/daily', optionalAuth, (req, res) => {
     try {
         const pub = eggJob.getPublic();
         if (!pub) return res.json({ egg: null });
+        const mine = eggJob.revealedFor(_solverKey(req));
+        let firstSolvers = [];
+        try { firstSolvers = (db.all('SELECT u.username, u.display_name FROM easter_egg_solves s JOIN users u ON u.id = s.user_id WHERE s.egg_date = ? ORDER BY s.rowid ASC LIMIT 3', [pub.date]) || []).map(r => r.display_name || r.username); } catch { firstSolvers = []; }
         res.json({
             egg: {
                 ...pub,
                 foundCount: db.countEasterEggSolves(pub.date),
                 solved: db.hasSolvedEasterEgg(pub.date, _solverKey(req)),
+                firstSolvers,
+                fails: mine.fails,
+                revealed: mine.revealed,
+                revealAfterFails: eggJob.REVEAL_AFTER_FAILS,
             },
         });
     } catch (err) {
@@ -44,7 +51,7 @@ router.post('/solve', optionalAuth, (req, res) => {
         if (!seq) return res.status(400).json({ error: 'sequence required' });
 
         const result = eggJob.checkSolution(seq);
-        if (!result || !result.ok) return res.json({ solved: false });
+        if (!result || !result.ok) { const fails = eggJob.noteFail(_solverKey(req)); return res.json({ solved: false, fails, canReveal: fails >= eggJob.REVEAL_AFTER_FAILS }); }
 
         const firstTime = db.recordEasterEggSolve(result.egg.date, _solverKey(req), (req.user && req.user.id) || null);
         res.json({
@@ -56,6 +63,16 @@ router.post('/solve', optionalAuth, (req, res) => {
     } catch (err) {
         res.status(500).json({ error: 'Failed to check solution' });
     }
+});
+
+// "Stuck?" — reveal one key (after a couple of wrong tries; never the last key).
+router.post('/reveal', optionalAuth, (req, res) => {
+    try {
+        const idx = req.body && Number.isInteger(req.body.index) ? req.body.index : null;
+        const out = eggJob.reveal(_solverKey(req), idx);
+        if (out.error) return res.status(out.needFails ? 425 : 403).json(out);
+        res.json(out);
+    } catch (err) { res.status(500).json({ error: 'Failed to reveal' }); }
 });
 
 module.exports = router;
