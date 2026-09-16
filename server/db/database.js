@@ -226,6 +226,19 @@ function _dedupeStreamMemories(database) {
  */
 function _adoptOrphanedTimelineRows(database) {
     try {
+        // Cheap probe first. The UPDATE below is a full scan of stream_timeline_events — SQLite
+        // will not use a partial index for it — and it ran unconditionally on every boot, before
+        // listen(). Measured against a production-scale table it was 10.6 seconds with a backlog
+        // and still 60-110ms with nothing at all to do, and it was the single largest component
+        // of an 18-second production start. Speech rows are written with vod_id NULL while a
+        // stream is live, so there is a fresh backlog after most restarts.
+        //
+        // The partial index makes "is there anything to adopt?" a 0.1ms question. When the answer
+        // is no — the overwhelmingly common case — boot skips the scan entirely.
+        try { database.exec('CREATE INDEX IF NOT EXISTS idx_timeline_null_vod ON stream_timeline_events(stream_id) WHERE vod_id IS NULL'); } catch { /* */ }
+        const pending = database.prepare('SELECT 1 AS x FROM stream_timeline_events WHERE vod_id IS NULL LIMIT 1').get();
+        if (!pending) return;
+
         const res = database.prepare(`UPDATE stream_timeline_events AS t
             SET vod_id = (SELECT s.vod_id FROM stream_timeline_events s
                           WHERE s.stream_id = t.stream_id AND s.vod_id IS NOT NULL LIMIT 1)
@@ -1218,7 +1231,9 @@ function initDb() {
         _dedupeKeyedTable(database, 'vod_ai_state', 'vod_id');
         _dedupeKeyedTable(database, 'clip_ai_state', 'clip_id');
         _dedupeStreamMemories(database);
-        _adoptOrphanedTimelineRows(database);
+        // Deferred: this repairs a historical backlog and no request depends on it, so it must
+        // not sit between process start and the first served request. Runs shortly after boot.
+        setTimeout(() => { try { _adoptOrphanedTimelineRows(database); } catch { /* */ } }, 4000).unref?.();
 
         // ── Unified audio timeline ───────────────────────────────────────────────
         // One time-indexed row per thing heard on a stream: a phrase that was spoken
@@ -1360,10 +1375,25 @@ function initDb() {
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`);
 
-        const pcols = database.prepare('PRAGMA table_info(pastes)').all().map(c => c.name);
-        if (!pcols.includes('ai_summary')) database.exec('ALTER TABLE pastes ADD COLUMN ai_summary TEXT');
-        if (!pcols.includes('ai_tags')) database.exec('ALTER TABLE pastes ADD COLUMN ai_tags TEXT');
-        if (!pcols.includes('ai_analyzed_at')) database.exec('ALTER TABLE pastes ADD COLUMN ai_analyzed_at DATETIME');
+        // `pastes` is created several hundred lines below this point, so on a brand-new database
+        // this PRAGMA throws — and because it shares a try block with the migrations that follow,
+        // it took them down with it: streams.ai_overview, vods.ai_overview, clips.ai_overview and
+        // channels.ai_category were never added, which in turn aborted the short-overview block
+        // and left streamer_overviews.overview_short missing. getRecentlyOnlineStreamers() selects
+        // that column, so a first boot served 500s on /api/streams/recently-online until the
+        // process was restarted a second time and the table finally existed.
+        //
+        // Isolated in its own try so a missing table on first boot costs nothing but a skip; the
+        // columns are added on the next start, and the paste AI columns are also declared at the
+        // CREATE TABLE below for fresh databases.
+        try {
+            const pcols = database.prepare('PRAGMA table_info(pastes)').all().map(c => c.name);
+            if (pcols.length) {
+                if (!pcols.includes('ai_summary')) database.exec('ALTER TABLE pastes ADD COLUMN ai_summary TEXT');
+                if (!pcols.includes('ai_tags')) database.exec('ALTER TABLE pastes ADD COLUMN ai_tags TEXT');
+                if (!pcols.includes('ai_analyzed_at')) database.exec('ALTER TABLE pastes ADD COLUMN ai_analyzed_at DATETIME');
+            }
+        } catch { /* table not created yet on a first boot — added on the next start */ }
 
         const scols = database.prepare('PRAGMA table_info(streams)').all().map(c => c.name);
         if (!scols.includes('ai_overview')) database.exec('ALTER TABLE streams ADD COLUMN ai_overview TEXT');
@@ -2208,6 +2238,16 @@ function initDb() {
         'CREATE INDEX IF NOT EXISTS idx_vods_transcript ON vods(transcript_status)',
         'CREATE INDEX IF NOT EXISTS idx_clips_transcript ON clips(transcript_status)',
         'CREATE INDEX IF NOT EXISTS idx_viewer_samples_at ON viewer_samples(sampled_at)',
+        // getRecentlyOnlineStreamers() correlates streams by managed_stream_id inside a
+        // json_group_array, and there was no index on that column at all — so the subquery scanned
+        // the whole streams table once per managed stream, per row. Measured on a production-scale
+        // database: 463ms -> 18ms at limit=20, and 1533ms -> 24ms at limit=100.
+        'CREATE INDEX IF NOT EXISTS idx_streams_managed_ended ON streams(managed_stream_id, ended_at)',
+        // The hero stat board's heaviest queries count chat_messages over a time window with
+        // COALESCE(is_deleted,0)=0, which forced a row fetch for every row in the window even
+        // though the timestamp index was being used. These make those counts covering.
+        'CREATE INDEX IF NOT EXISTS idx_chat_ts_deleted ON chat_messages(timestamp, is_deleted)',
+        'CREATE INDEX IF NOT EXISTS idx_ai_viewer_log_created ON ai_viewer_log(created_at)',
     ]) {
         try { database.exec(ix); } catch { /* table not present in this deployment */ }
     }
