@@ -1389,6 +1389,16 @@ function _heroCountUp(el, target) {
     requestAnimationFrame(step);
 }
 function renderHeroStats(stats) {
+    try { _renderHeroStats(stats); }
+    catch (err) {
+        // A throw in here used to leave the hero showing a skeleton forever, with nothing in the
+        // console anyone would notice. Surface it and clear the placeholder instead.
+        console.error('[hero] stat board failed to render', err);
+        const w = document.getElementById('hero-stats');
+        if (w) w.innerHTML = '';
+    }
+}
+function _renderHeroStats(stats) {
     const wrap = document.getElementById('hero-stats');
     if (!wrap || !stats) return;
     // One stat BOARD: every themed group is a full-width row (kicker on the left, chips
@@ -1396,6 +1406,10 @@ function renderHeroStats(stats) {
     // differently-sized islands. Chips keep short uniform labels (full meaning in the
     // title tooltip) so a long label never dwarfs its number.
     const R = stats.recent || {};
+    // Declared here, above every use: both the full board and the headline strip read it, and the
+    // board is built first. A const declared between them is a temporal dead zone, which is how
+    // this function came to render an empty board twice today.
+    const CC = stats.concurrency || {};
     const groups = [];
 
     // ── Right now ────────────────────────────────────────────────
@@ -1530,7 +1544,6 @@ function renderHeroStats(stats) {
     // Seven live numbers, three to a row. These are the ones that move — every other number on
     // the board is an all-time total that changes once an hour at best, so it lives under the
     // toggle. Each is keyed so the poller below can roll it to a new value without a re-render.
-    const CC = stats.concurrency || {};
     const HEADLINE = [
         { key: 'liveNow', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', cls: stats.liveNow > 0 ? 'hero-stat--live' : '', num: stats.liveNow, label: 'Live', title: 'Streams live right now', deltaHTML: _baselineDeltaHTML(stats.liveNow, CC.liveAvg24h, CC.livePeak24h) },
         { key: 'viewersNow', icon: 'fa-eye', cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now', deltaHTML: _baselineDeltaHTML(stats.viewersNow, CC.viewersAvg24h, CC.viewersPeak24h) },
