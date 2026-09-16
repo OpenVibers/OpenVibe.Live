@@ -1075,8 +1075,17 @@ async function start() {
 
     // 6f. VOD storage/offload is owned by OpenVibe.Media now — nothing to start here.
 
-    // 7. Start HTTP server
-    server.listen(config.port, config.host, () => {
+    // 7. Start HTTP server.
+    //
+    // Zero-downtime restarts: when systemd owns the listening socket (a .socket unit with
+    // Accept=no) it hands it to us as file descriptor 3. Connections that arrive while we are
+    // restarting then wait in the kernel's accept queue instead of being refused, so a deploy
+    // costs a handful of slow requests rather than a wall of 502s for everyone mid-page.
+    // Without the socket unit this is a normal listen on the configured port, so the code is
+    // identical to run by hand, in dev, or on a box that has not been switched over.
+    const socketActivated = process.env.LISTEN_FDS === '1' && Number(process.env.LISTEN_PID) === process.pid;
+    if (socketActivated) console.log('[Server] socket-activated: listening on the socket systemd handed us (fd 3)');
+    server.listen(socketActivated ? { fd: 3 } : { port: config.port, host: config.host }, () => {
         console.log('');
         console.log(`[Server] HTTP server:  http://${config.host}:${config.port}`);
         console.log(`[Server] WebSocket:    ws://${config.host}:${config.port}/ws/chat`);
