@@ -325,3 +325,10 @@
 .rs-lite .hero-bg-layer.active { animation: none !important; transform: scale(1.06) !important; will-change: auto !important; }
 .rs-lite .hero-aurora, .rs-lite .hero-aurora::before, .rs-lite .hero-aurora::after { animation: none !important; }
 .rs-lite .hfx-spot, .rs-lite .hfx-sparks { display: none !important; }
+
+/* Phones: no masked decoration on tall sections. The restream card's dot texture (a radial
+   mask-image over a ~1600px-tall box on a phone) and the About banner's lit edge (a mask-composite
+   over a ~2600px-tall box) are each a separate mask layer composited on every frame of a scroll
+   through them. Both are faint texture — the banner keeps its real 1px border. */
+.rs-lite .tour::before { display: none !important; }
+.rs-lite .home-cta-banner::before { display: none !important; }
