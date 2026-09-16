@@ -1268,10 +1268,10 @@ function renderHeroStats(stats) {
 
     // ── Right now ────────────────────────────────────────────────
     const now = [
-        { cls: stats.liveNow > 0 ? 'hero-stat--live' : '', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', num: stats.liveNow, label: 'Live', title: stats.liveNow > 0 ? 'Streams live right now' : 'Nobody is live right now — check Recently Online below' },
-        { cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', icon: 'fa-eye', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
-        { icon: 'fa-fire', num: stats.weeklyActive, label: 'Active · 7d', title: 'People who chatted in the last 7 days', desc: 'Distinct chatters in the last 7 days — signed-in users, anonymous chatters and relayed (Twitch/Kick/YouTube) chatters, each counted once.', metric: 'active' },
-        { icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors · 7d', title: 'First-time visitors in the last 7 days', desc: 'Browsers seen on the site for the first time in the last 7 days (a privacy-safe fingerprint, no account needed). A proxy for new people showing up, not just chatting.', metric: 'visitors' },
+        { key: 'liveNow', cls: stats.liveNow > 0 ? 'hero-stat--live' : '', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', num: stats.liveNow, label: 'Live', title: stats.liveNow > 0 ? 'Streams live right now' : 'Nobody is live right now — check Recently Online below' },
+        { key: 'viewersNow', cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', icon: 'fa-eye', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
+        { key: 'weeklyActive', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active · 7d', title: 'People who chatted in the last 7 days', desc: 'Distinct chatters in the last 7 days — signed-in users, anonymous chatters and relayed (Twitch/Kick/YouTube) chatters, each counted once.', metric: 'active' },
+        { key: 'weeklyVisitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors · 7d', title: 'First-time visitors in the last 7 days', desc: 'Browsers seen on the site for the first time in the last 7 days (a privacy-safe fingerprint, no account needed). A proxy for new people showing up, not just chatting.', metric: 'visitors' },
     ];
     // 24h viewer sparkline (5-minute samples) — trends read better than a snapshot.
     const trend = Array.isArray(stats.viewerTrend) ? stats.viewerTrend : [];
@@ -1292,10 +1292,10 @@ function renderHeroStats(stats) {
     groups.push({
         kicker: 'Community', icon: 'fa-people-group', rows: [
             { icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', metric: 'streamers', title: 'People who have gone live' },
-            { icon: 'fa-users', num: stats.users, label: 'Users', metric: 'users', title: 'Registered users', recent: R.users },
-            { icon: 'fa-user-secret', num: stats.anons, label: 'Anons', metric: 'anons', title: 'Anonymous chatters ever seen', recent: R.anons },
+            { key: 'users', icon: 'fa-users', num: stats.users, label: 'Users', metric: 'users', title: 'Registered users', recent: R.users },
+            { key: 'anons', icon: 'fa-user-secret', num: stats.anons, label: 'Anons', metric: 'anons', title: 'Anonymous chatters ever seen', recent: R.anons },
             { icon: 'fa-heart', num: stats.follows, label: 'Follows', metric: 'follows', title: 'Channel follows', recent: R.follows },
-            { icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', metric: 'messages', title: 'Chat messages sent', recent: R.messages },
+            { key: 'chatMessages', icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', metric: 'messages', title: 'Chat messages sent', recent: R.messages },
             { icon: 'fa-couch', num: stats.hoursWatched, label: 'Hrs Watched', metric: 'hoursWatched', title: 'Hours the community has spent watching streams', unit: 'h' },
         ],
     });
@@ -1347,7 +1347,7 @@ function renderHeroStats(stats) {
             metric: r.metric || null,
         };
         const clickable = !!r.metric;
-        return `<div class="hero-stat ${r.cls || ''} ${clickable ? 'hero-stat--clickable' : ''}" data-tip="${esc(JSON.stringify(tip))}" ${clickable ? `data-metric="${r.metric}" role="button" tabindex="0" aria-label="${esc(r.label)} — show over time"` : ''}><i class="fa-solid ${r.icon}"></i><div class="hero-stat-meta"><span class="hero-stat-num" data-n="${r.num || 0}">0</span><span class="hero-stat-label">${r.label}${clickable ? ' <i class="fa-solid fa-chart-line hero-stat-chart-hint"></i>' : ''}</span>${sub ? `<span class="hero-stat-sub">${sub}</span>` : ''}</div></div>`;
+        return `<div class="hero-stat ${r.cls || ''} ${clickable ? 'hero-stat--clickable' : ''}" ${r.key ? `data-stat="${r.key}"` : ''} data-tip="${esc(JSON.stringify(tip))}" ${clickable ? `data-metric="${r.metric}" role="button" tabindex="0" aria-label="${esc(r.label)} — show over time"` : ''}><i class="fa-solid ${r.icon}"></i><div class="hero-stat-meta"><span class="hero-stat-num" data-n="${r.num || 0}">0</span><span class="hero-stat-label">${r.label}${clickable ? ' <i class="fa-solid fa-chart-line hero-stat-chart-hint"></i>' : ''}</span>${sub ? `<span class="hero-stat-sub">${sub}</span>` : ''}</div></div>`;
     };
     // The full board is four groups and two dozen chips. Shown by default it pushed every live
     // stream on the site below the fold, and because it only arrives once the stats request lands
@@ -1356,12 +1356,17 @@ function renderHeroStats(stats) {
     //
     // So: a fixed-height headline strip by default, the full board one tap away. The strip's
     // height is reserved in CSS, so filling it in moves nothing.
+    // Seven live numbers, three to a row. These are the ones that move — every other number on
+    // the board is an all-time total that changes once an hour at best, so it lives under the
+    // toggle. Each is keyed so the poller below can roll it to a new value without a re-render.
     const HEADLINE = [
-        { icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', cls: stats.liveNow > 0 ? 'hero-stat--live' : '', num: stats.liveNow, label: 'Live', title: 'Streams live right now' },
-        { icon: 'fa-eye', cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
-        { icon: 'fa-fire', num: stats.weeklyActive, label: 'Active · 7d', title: 'People who chatted in the last 7 days' },
-        { icon: 'fa-clock-rotate-left', num: stats.hoursWatched, label: 'Hours watched', title: 'Community watch time, all time' },
-        ...(stats.coinsEarned != null ? [{ icon: 'fa-circle-dollar-to-slot', num: stats.coinsEarned, label: 'Coins earned', title: 'OpenCoins earned across the whole network' }] : []),
+        { key: 'liveNow', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', cls: stats.liveNow > 0 ? 'hero-stat--live' : '', num: stats.liveNow, label: 'Live', title: 'Streams live right now' },
+        { key: 'viewersNow', icon: 'fa-eye', cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
+        { key: 'weeklyActive', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active · 7d', title: 'People who chatted in the last 7 days' },
+        { key: 'users', icon: 'fa-user-group', num: stats.users, label: 'Users', title: 'Accounts on OpenVibe.Live' },
+        { key: 'weeklyVisitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors · 7d', title: 'First-time visitors in the last 7 days' },
+        { key: 'anons', icon: 'fa-user-secret', num: stats.anons, label: 'Anons', title: 'Anonymous chatters who have been given a name' },
+        { key: 'chatMessages', icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', title: 'Chat messages sent, all time' },
     ];
     const open = (() => { try { return localStorage.getItem('ov_stats_open') === '1'; } catch { return false; } })();
     wrap.innerHTML = `
@@ -1379,24 +1384,77 @@ function renderHeroStats(stats) {
 
     const btn = wrap.querySelector('#hero-stat-more');
     const full = wrap.querySelector('#hero-stat-full');
+    const strip = wrap.querySelector('.hero-stat-strip');
     const total = groups.reduce((n, g) => n + g.rows.length, 0);
-    const label = () => { btn.querySelector('span').textContent = full.hidden ? `All ${total} numbers` : 'Hide the numbers'; };
-    label();
-    btn.classList.toggle('is-open', !full.hidden);
+    const label = () => { btn.querySelector('span').textContent = full.hidden ? `All ${total} numbers` : 'Just the highlights'; };
+    const sync = () => { strip.hidden = !full.hidden; btn.classList.toggle('is-open', !full.hidden); label(); };
+    sync();
     btn.addEventListener('click', () => {
         full.hidden = !full.hidden;
         btn.setAttribute('aria-expanded', String(!full.hidden));
-        btn.classList.toggle('is-open', !full.hidden);
-        label();
+        sync();
         try { localStorage.setItem('ov_stats_open', full.hidden ? '0' : '1'); } catch { /* */ }
         // Count the numbers up the first time they are actually looked at.
         if (!full.hidden) full.querySelectorAll('.hero-stat-num:not([data-counted])').forEach(el => {
             el.setAttribute('data-counted', '1'); _heroCountUp(el, parseInt(el.dataset.n, 10) || 0);
         });
     });
-    wrap.querySelectorAll('.hero-stat-strip .hero-stat-num').forEach(el => { el.setAttribute('data-counted', '1'); _heroCountUp(el, parseInt(el.dataset.n, 10) || 0); });
+    wrap.querySelectorAll('.hero-stat-strip .hero-stat-num').forEach(el => {
+        el.setAttribute('data-counted', '1');
+        if (window.OVNum) OVNum.mount(el, parseInt(el.dataset.n, 10) || 0);
+        else _heroCountUp(el, parseInt(el.dataset.n, 10) || 0);
+    });
+    _startHeroStatsLive();
     if (open) full.querySelectorAll('.hero-stat-num').forEach(el => { el.setAttribute('data-counted', '1'); _heroCountUp(el, parseInt(el.dataset.n, 10) || 0); });
     _heroBindInteractions(wrap);
+}
+
+/**
+ * Keep the hero numbers current without re-rendering anything.
+ *
+ * A number that changes by being replaced is a number nobody notices, and re-rendering the board
+ * on a timer would throw away the expand state, the tooltips and any text the reader had
+ * selected. So this touches only the digits: it asks for the seven live values, finds each chip
+ * by its data-stat key and rolls it to the new value. Nothing is destroyed, nothing reflows, and
+ * the element the reader is hovering stays exactly where it was.
+ *
+ * It only runs while the home page is the visible route and the tab is in the foreground, and it
+ * backs off when a request fails so a server having a bad minute does not get hammered.
+ */
+let _heroStatsTimer = null, _heroStatsBackoff = 0;
+function _startHeroStatsLive() {
+    if (_heroStatsTimer) return;
+    const BASE = 10000;
+    const tick = async () => {
+        const wrap = document.getElementById('hero-stats');
+        const home = document.getElementById('page-home');
+        // Nothing to update, or nobody looking at it: skip the request entirely.
+        if (!wrap || !home || !home.classList.contains('active') || document.hidden) return schedule(BASE);
+        try {
+            const d = await api('/home/stats-live');
+            _heroStatsBackoff = 0;
+            for (const [key, value] of Object.entries(d || {})) {
+                wrap.querySelectorAll(`[data-stat="${key}"] .hero-stat-num`).forEach(el => {
+                    if (Number(el.dataset.n) === Number(value)) return;
+                    if (window.OVNum) OVNum.set(el, value); else el.textContent = _heroStatFmt(value);
+                    el.dataset.n = String(value);
+                });
+            }
+            // The "Live" chip glows when anyone is on air.
+            wrap.querySelectorAll('[data-stat="liveNow"], [data-stat="viewersNow"]').forEach(chip => {
+                const n = Number(chip.querySelector('.hero-stat-num')?.dataset.n || 0);
+                chip.classList.toggle('hero-stat--live', n > 0);
+            });
+            schedule(BASE);
+        } catch {
+            _heroStatsBackoff = Math.min(6, _heroStatsBackoff + 1);
+            schedule(BASE * (1 + _heroStatsBackoff));
+        }
+    };
+    const schedule = (ms) => { clearTimeout(_heroStatsTimer); _heroStatsTimer = setTimeout(tick, ms); };
+    schedule(BASE);
+    // Coming back to the tab should show current numbers straight away, not in ten seconds.
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) schedule(400); });
 }
 
 // ── Hero stat tooltips + click-through charts ───────────────────

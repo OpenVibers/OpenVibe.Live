@@ -205,6 +205,28 @@ async function heroStats() {
     return stats;
 }
 
+// ── GET /api/home/stats-live ────────────────────────────────────────
+// Just the numbers the hero strip shows, so the home page can keep them current without
+// re-fetching the whole hero payload (slogans, collage, moments) every few seconds. The
+// underlying stats are memoised for 30s already; this adds a short cache of its own so a
+// roomful of open tabs costs one computation, not one each.
+let _liveStats = { at: 0, data: null };
+router.get('/stats-live', (req, res) => {
+    try {
+        res.set('Cache-Control', 'public, max-age=5');
+        if (_liveStats.data && Date.now() - _liveStats.at < 5000) return res.json(_liveStats.data);
+        const s = db.getHomeStats();
+        const data = {
+            liveNow: s.liveNow, viewersNow: s.viewersNow, weeklyActive: s.weeklyActive,
+            users: s.users, weeklyVisitors: s.weeklyVisitors, anons: s.anons, chatMessages: s.chatMessages,
+        };
+        _liveStats = { at: Date.now(), data };
+        res.json(data);
+    } catch (err) {
+        res.status(500).json({ error: 'stats unavailable' });
+    }
+});
+
 router.get('/hero', async (req, res) => {
     try {
         res.set('Cache-Control', 'public, max-age=20');
