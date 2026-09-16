@@ -328,7 +328,8 @@ async function _loadDonateGoals() {
         }
     } catch { wrap.style.display = 'none'; }
 }
-function escHb(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+// Quote-safe, like every other escaper on the site: a textContent/innerHTML round-trip leaves " and ' alone.
+function escHb(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
 function setDonateAmount(amount) {
     document.getElementById('modal-donate-amount').value = amount;

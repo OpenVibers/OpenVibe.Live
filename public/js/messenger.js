@@ -154,11 +154,11 @@
     let $toggle, $badge, $panel;
 
     // ── Helpers ──────────────────────────────────────────────────
+    // Escapes quotes as well as < > &. The previous version used the textContent/innerHTML trick,
+    // which leaves " and ' untouched — safe in text, but these helpers are also interpolated into
+    // attribute values, where an unescaped quote ends the attribute and starts a new one.
     function esc(s) {
-        if (s == null) return '';
-        const d = document.createElement('div');
-        d.textContent = String(s);
-        return d.innerHTML;
+        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     function timeAgo(dateStr) {
