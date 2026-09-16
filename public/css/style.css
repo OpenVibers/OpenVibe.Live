@@ -14799,11 +14799,14 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
    single biggest source of layout shift on the page. Now a fixed-height strip carries the five
    numbers worth glancing at, the rest is one tap away, and the reserved height means filling the
    strip in moves nothing below it. */
-.hero-stats { min-height: 104px; }
+.hero-stats { min-height: 168px; }
 .hero-stat-strip {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px;
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
     padding: 10px 12px;
 }
+/* Seven chips over three columns leaves one on its own; let it take the whole last row rather
+   than sitting in a third of it looking like a mistake. */
+.hero-stat-strip .hero-stat:nth-child(7):last-child { grid-column: 1 / -1; }
 .hero-stat-strip .hero-stat { background: color-mix(in srgb, var(--accent) 7%, transparent); }
 .hero-stat-more {
     display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
@@ -14821,10 +14824,30 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 @keyframes heroStatsOpen { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 .hero-stat-full .hero-stat-group:first-child { border-top: 0; }
 @media (max-width: 640px) {
-    .hero-stats { min-height: 168px; }
-    .hero-stat-strip { grid-template-columns: repeat(2, 1fr); gap: 6px; padding: 8px; }
+    .hero-stats { min-height: 232px; }
+    .hero-stat-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; padding: 7px; }
+    .hero-stat-strip .hero-stat { padding: 7px 8px; gap: 6px; }
+    .hero-stat-strip .hero-stat > i { font-size: 0.85rem; }
+    .hero-stat-strip .hero-stat-label { font-size: 0.55rem; letter-spacing: 0.06em; }
 }
 @media (prefers-reduced-motion: reduce) {
     .hero-stat-full:not([hidden]) { animation: none; }
     .hero-stat-more i { transition: none; }
 }
+
+
+/* ── Hero polish ─────────────────────────────────────────────────────────────
+   The rotating tagline is a single unbreakable line, so on a narrow screen a long phrase ran off
+   both edges of the page. It wraps now, and the hero's tail padding is tighter so the live grid
+   starts closer to the buttons instead of after a screen of empty space. */
+.hero-rotate-wrap { display: inline; }
+.hero-tagline { text-wrap: balance; overflow-wrap: break-word; }
+@media (max-width: 760px) {
+    .hero-tagline { font-size: clamp(1.15rem, 6vw, 1.7rem); line-height: 1.25; }
+    .hero-rotate { display: inline; white-space: normal; }
+}
+.hero-stats { margin-bottom: 8px; }
+#page-home .hero { padding-bottom: 14px; }
+#page-home .container > .section-header:first-child { margin-top: 18px; }
+/* An empty live grid was a screen and a half of nothing under two short lines of text. */
+#stream-grid-live .empty-state { padding: 26px 16px; }

@@ -125,6 +125,10 @@
 
     // ── Count-up on the hero stats ─────────────────────────────
     function countUp(el) {
+        // Numbers owned by the odometer render as a stack of digit strips; rewriting textContent
+        // here would flatten that into the literal string "0123456789" and break every later
+        // update. The odometer does its own entrance and its own rolling.
+        if (el.classList.contains('ovnum') || el.closest('.ovnum')) return;
         const raw = String(el.textContent || '').trim();
         const m = raw.match(/^([\d,]+)(\.\d+)?([kKmM]?)$/);
         if (!m || el.dataset.hfxCounted) return;
