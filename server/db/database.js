@@ -4059,15 +4059,26 @@ function _computeHomeStats() {
     // ISO timestamp). Everything Vibes-related on the hero starts counting from it.
     const vibesSince = vibesStatsSince();
     // Rolling day/week/month counts for a table by its timestamp column.
+    // Rolling day/week/month counts, plus `pw`: the same seven-day window shifted back a week.
+    // Without a previous period, "+2 in 7d" is a number with nothing to compare it to — you can't
+    // tell whether things are speeding up or slowing down, which is the only interesting part.
     const winCount = (table, col, extra = '') => {
         const q = (w) => c(`SELECT COUNT(*) AS count FROM ${table} WHERE ${col} >= datetime('now', ?)${extra ? ' AND ' + extra : ''}`, [w]);
-        return { d: q('-1 day'), w: q('-7 days'), m: q('-30 days') };
+        const prev = c(`SELECT COUNT(*) AS count FROM ${table} WHERE ${col} >= datetime('now', '-14 days') AND ${col} < datetime('now', '-7 days')${extra ? ' AND ' + extra : ''}`);
+        return { d: q('-1 day'), w: q('-7 days'), m: q('-30 days'), pw: prev };
     };
     const hoursSince = (w) => Math.round(c(`SELECT COALESCE(SUM(duration_seconds), 0) AS count FROM vods WHERE COALESCE(is_recording, 0) = 0 AND created_at >= datetime('now', ?)`, [w]) / 3600);
+    const hoursPrevWeek = () => Math.round(c(`SELECT COALESCE(SUM(duration_seconds), 0) AS count FROM vods WHERE COALESCE(is_recording, 0) = 0 AND created_at >= datetime('now', '-14 days') AND created_at < datetime('now', '-7 days')`) / 3600);
     // Rolling day/week/month SUMS (for value metrics like Vibes tipped).
     const winSum = (table, col, tsCol, extra = '') => {
         const q = (w) => c(`SELECT COALESCE(SUM(${col}), 0) AS count FROM ${table} WHERE ${tsCol} >= datetime('now', ?)${extra ? ' AND ' + extra : ''}`, [w]);
-        return { d: q('-1 day'), w: q('-7 days'), m: q('-30 days') };
+        const prev = c(`SELECT COALESCE(SUM(${col}), 0) AS count FROM ${table} WHERE ${tsCol} >= datetime('now', '-14 days') AND ${tsCol} < datetime('now', '-7 days')${extra ? ' AND ' + extra : ''}`);
+        return { d: q('-1 day'), w: q('-7 days'), m: q('-30 days'), pw: prev };
+    };
+    // Distinct people who went live in a window — "streamers" is a headcount, not a stream count.
+    const streamersWin = () => {
+        const q = (a, b) => c(`SELECT COUNT(DISTINCT user_id) AS count FROM streams WHERE user_id IS NOT NULL AND created_at >= datetime('now', ?)${b ? " AND created_at < datetime('now', ?)" : ''}`, b ? [a, b] : [a]);
+        return { d: q('-1 day'), w: q('-7 days'), m: q('-30 days'), pw: q('-14 days', '-7 days') };
     };
     return {
         // ── Right-now + community-economy metrics ────────────────
@@ -4121,6 +4132,19 @@ function _computeHomeStats() {
         // New unique visitors this week (first-seen anon fingerprints) — a proxy for people who
         // showed up, not just those who chatted.
         weeklyVisitors: c(`SELECT COUNT(*) AS count FROM anon_ip_mappings WHERE created_at >= datetime('now', '-7 days')`),
+        // The same two windows again, shifted back a week, so the hero can say whether this week
+        // beat last week rather than just how big it was.
+        prevWeeklyVisitors: c(`SELECT COUNT(*) AS count FROM anon_ip_mappings WHERE created_at >= datetime('now', '-14 days') AND created_at < datetime('now', '-7 days')`),
+        prevWeeklyActive: c(`SELECT COUNT(*) AS count FROM (
+                            SELECT DISTINCT 'u' || user_id AS id FROM chat_messages
+                              WHERE user_id IS NOT NULL AND COALESCE(is_deleted, 0) = 0 AND timestamp >= datetime('now', '-14 days') AND timestamp < datetime('now', '-7 days')
+                            UNION
+                            SELECT DISTINCT 'a' || anon_id FROM chat_messages
+                              WHERE anon_id IS NOT NULL AND COALESCE(is_deleted, 0) = 0 AND timestamp >= datetime('now', '-14 days') AND timestamp < datetime('now', '-7 days')
+                            UNION
+                            SELECT DISTINCT 'r' || source_platform || '|' || username FROM chat_messages
+                              WHERE source_platform IS NOT NULL AND source_platform <> '' AND COALESCE(is_deleted, 0) = 0 AND timestamp >= datetime('now', '-14 days') AND timestamp < datetime('now', '-7 days')
+                         )`),
         liveNow: c(`SELECT COUNT(*) AS count FROM streams WHERE is_live = 1`),
         // Rolling last-day / week / month deltas ({ d, w, m }) for the hero stat tooltips + subs.
         recent: {
@@ -4131,7 +4155,8 @@ function _computeHomeStats() {
             clips: winCount('clips', 'created_at', 'COALESCE(is_public, 1) = 1'),
             aiMoments: winCount('stream_memories', 'created_at'),
             messages: winCount('chat_messages', 'timestamp', 'COALESCE(is_deleted, 0) = 0'),
-            hours: { d: hoursSince('-1 day'), w: hoursSince('-7 days'), m: hoursSince('-30 days') },
+            hours: { d: hoursSince('-1 day'), w: hoursSince('-7 days'), m: hoursSince('-30 days'), pw: hoursPrevWeek() },
+            streamers: streamersWin(),
             vibes: winSum('transactions', 'amount', 'created_at', `type = 'donation' AND created_at >= '${vibesSince}'`),
             points: winSum('coin_transactions', 'amount', 'created_at', 'amount > 0'),
             pointsSpent: winSum('coin_transactions', '-amount', 'created_at', 'amount < 0'),

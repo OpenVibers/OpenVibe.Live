@@ -15049,14 +15049,31 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
     font-size: 0.6rem; font-weight: 800; letter-spacing: 0.01em; white-space: nowrap;
     align-self: center;
 }
-.hero-stat-delta.is-up { color: #4ade80; background: color-mix(in srgb, #4ade80 14%, transparent); border: 1px solid color-mix(in srgb, #4ade80 26%, transparent); }
-.hero-stat-delta.is-down { color: #f87171; background: color-mix(in srgb, #f87171 14%, transparent); border: 1px solid color-mix(in srgb, #f87171 26%, transparent); }
-.hero-stat-delta i { font-size: 0.62rem; }
-.hero-stat-delta em { font-style: normal; opacity: 0.62; margin-left: 2px; font-size: 0.92em; }
+.hero-stat-delta.is-up { color: #4ade80; background: color-mix(in srgb, #4ade80 13%, transparent); border: 1px solid color-mix(in srgb, #4ade80 24%, transparent); }
+.hero-stat-delta.is-down { color: #f87171; background: color-mix(in srgb, #f87171 13%, transparent); border: 1px solid color-mix(in srgb, #f87171 24%, transparent); }
+.hero-stat-delta.is-flat { color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 10%, transparent); border: 1px solid color-mix(in srgb, var(--text-muted) 20%, transparent); }
+.hero-stat-delta b { font-weight: 850; }
+.hero-stat-delta em { font-style: normal; opacity: 0.6; margin-left: 2px; font-size: 0.92em; }
+/* The change against the previous seven days, so the gain has something to be measured against.
+   The triangle is drawn with borders rather than set as an icon glyph — at 5px an icon font is
+   a blurry smudge, and this needs no font to have loaded. */
+.hero-stat-trend {
+    display: inline-flex; align-items: center; gap: 3px;
+    margin-left: 5px; padding-left: 5px;
+    border-left: 1px solid currentColor; font-weight: 750;
+}
+.hero-stat-trend i { width: 0; height: 0; border-left: 3.5px solid transparent; border-right: 3.5px solid transparent; }
+.hero-stat-trend.is-up { color: #4ade80; } .hero-stat-trend.is-up i { border-bottom: 5px solid currentColor; }
+.hero-stat-trend.is-down { color: #f87171; } .hero-stat-trend.is-down i { border-top: 5px solid currentColor; }
+.hero-stat-trend.is-flat { color: var(--text-muted); } .hero-stat-trend.is-flat i { width: 6px; height: 2px; border: 0; background: currentColor; border-radius: 1px; }
+.hero-stat-trend.is-new { color: #fbbf24; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.9em; }
 .hero-stat-label { text-transform: uppercase; font-weight: 700; color: var(--text-muted); }
-@media (max-width: 420px) {
-    .hero-stat-delta { font-size: 0.55rem; padding: 1px 5px 1px 3px; }
+@media (max-width: 480px) {
+    .hero-stat-delta { font-size: 0.55rem; padding: 1px 5px; }
     .hero-stat-delta em { display: none; }
+    /* Two figures will not fit in a third of a phone screen; the gain is the one that matters,
+       and the trend is still in the chip's tooltip. */
+    .hero-stat-trend { display: none; }
 }
 
 
