@@ -348,6 +348,14 @@ class RestreamManager extends EventEmitter {
      */
     _buildDestUrl(dest) {
         if (!dest.server_url || !dest.stream_key) return null;
+        // The API validates this on the way in; this is the last gate before the value becomes
+        // ffmpeg's output argument, and it also covers rows written before that validation
+        // existed. ffmpeg chooses its output protocol from the URL, so anything that is not a
+        // live-streaming protocol here means writing a file or opening a socket somewhere.
+        if (!/^(rtmps?|srt):\/\/[^\s/]+/i.test(String(dest.server_url).trim())) {
+            console.warn(`[Restream] Refusing destination ${dest.id}: server_url is not an rtmp/rtmps/srt address`);
+            return null;
+        }
         let url = dest.server_url.replace(/\/+$/, '');
 
         // Twitch is much more stable over RTMPS. Normalize old RTMP configs

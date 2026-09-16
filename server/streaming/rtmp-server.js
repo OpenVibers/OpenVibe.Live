@@ -43,7 +43,19 @@ class RTMPServer extends EventEmitter {
             },
             http: {
                 port: config.rtmp.port + 8000, // HTTP-FLV port (9935 by default)
-                allow_origin: '*',  // Public media — CORS open (CSP restricts which pages can load it)
+                // Nothing in a browser talks to this port. The web player pulls FLV from
+                // /api/streams/:id/flv on the main app, which proxies from 127.0.0.1 here after
+                // checking the stream is live and resolving the key; the restreamer's ffmpeg also
+                // reads from 127.0.0.1. Neither sends an Origin header or looks at CORS, so a
+                // wildcard bought nothing and meant any page anywhere could read this directly if
+                // the port were ever reachable.
+                //
+                // node-media-server 2.7.4 calls httpServer.listen(port) with no host, so this
+                // cannot be bound to loopback from config — the port is on every interface by
+                // design of the library. It is not reachable from outside today (the provider
+                // edge drops it), but that is somebody else's firewall, not ours, so the origin
+                // is narrowed here as the part we control.
+                allow_origin: config.baseUrl || 'http://127.0.0.1',
                 mediaroot: './data/media',
             },
             // NOTE: NMS trans server crashes on v2.7.4 with 'version is not defined'
