@@ -153,13 +153,31 @@ function generateWebrtcThumbnail(streamId, opts = {}) {
             `m=video ${port} RTP/AVP ${pt}`, `a=rtpmap:${pt} ${codec}/${consumer.clockRate}`,
             consumer.ssrc ? `a=ssrc:${consumer.ssrc} cname:thumb` : '', fmtp ? `a=fmtp:${pt} ${fmtp}` : '', 'a=recvonly', ''].filter(l => l !== '').join('\n') + '\n';
         try { fs.writeFileSync(sdpPath, sdp, 'utf8'); } catch { return finish(false); }
+        // Only a frame decoded from a KEYFRAME may become the thumbnail: the first packets a fresh
+        // consumer sees are delta frames with no reference, and decoding those gives the smeared,
+        // streaky garbage that showed up on live cards. `-skip_frame nokey` drops everything until
+        // the keyframe the consumer requests on creation arrives (≈0–3 s); corrupt/partial frames
+        // are discarded too. Then take the SECOND keyframe-decoded output when we can (the first
+        // can still be a partial keyframe after packet loss), falling back to the first.
         const ff = spawn('ffmpeg', [
             '-hide_banner', '-loglevel', 'error', '-y', '-protocol_whitelist', 'file,rtp,udp',
             '-analyzeduration', '4000000', '-probesize', '4000000', '-reorder_queue_size', '512',
-            '-i', sdpPath, '-frames:v', '1', '-vf', `scale=${THUMB_WIDTH}:-1`, '-q:v', String(THUMB_QUALITY), outPath,
+            '-fflags', '+discardcorrupt', '-skip_frame', 'nokey', '-err_detect', 'crccheck+bitstream+buffer',
+            '-i', sdpPath, '-vsync', '0', '-frames:v', '2', '-vf', `scale=${THUMB_WIDTH}:-1`, '-q:v', String(THUMB_QUALITY), outPath.replace(/\.jpg$/, '-%d.jpg'),
         ], { stdio: 'ignore' });
-        const killTimer = setTimeout(() => { try { ff.kill('SIGKILL'); } catch { /* */ } }, 14000);
-        ff.on('close', (code) => { clearTimeout(killTimer); finish(code === 0); });
+        const killTimer = setTimeout(() => { try { ff.kill('SIGKILL'); } catch { /* */ } }, 16000);
+        const pick = () => {
+            // Prefer the 2nd keyframe-decoded frame; accept the 1st; nothing → fail.
+            const base = outPath.replace(/\.jpg$/, '');
+            const second = `${base}-2.jpg`, first = `${base}-1.jpg`;
+            try {
+                if (fs.existsSync(second) && fs.statSync(second).size > 2000) { fs.renameSync(second, outPath); try { fs.unlinkSync(first); } catch { /* */ } return true; }
+                if (fs.existsSync(first) && fs.statSync(first).size > 2000) { fs.renameSync(first, outPath); return true; }
+            } catch { /* */ }
+            try { fs.unlinkSync(first); } catch { /* */ } try { fs.unlinkSync(second); } catch { /* */ }
+            return false;
+        };
+        ff.on('close', () => { clearTimeout(killTimer); finish(pick()); });
         ff.on('error', () => { clearTimeout(killTimer); finish(false); });
     });
 }
