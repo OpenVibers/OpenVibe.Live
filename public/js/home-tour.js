@@ -12,6 +12,7 @@
     'use strict';
     const SRC = [
         { id: 'cam', icon: 'fa-solid fa-video', label: 'Your cam', sub: 'browser · phone' },
+        { id: 'screen', icon: 'fa-solid fa-display', label: 'Your screen', sub: 'share from the browser' },
         { id: 'robot', icon: 'fa-solid fa-robot', label: 'Your robot', sub: 'viewer-controlled' },
         { id: 'obs', icon: 'fa-solid fa-desktop', label: 'OBS / RTMP', sub: 'or WHIP' },
     ];

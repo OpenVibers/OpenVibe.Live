@@ -2030,29 +2030,8 @@
     </section>
 
     <!-- ── ADMIN PANEL ───────────────────────────────────── -->
-    <section id="page-admin" class="page">
-        <div class="container">
-            <h2><i class="fa-solid fa-shield-halved"></i> Admin Panel</h2>
-
-            <div class="admin-stats" id="admin-stats"></div>
-
-            <div class="admin-tabs">
-                <button class="tab-btn active" onclick="switchAdminTab('users')">Users</button>
-                <button class="tab-btn" onclick="switchAdminTab('moderators')">Global Mods</button>
-                <button class="tab-btn" onclick="switchAdminTab('chat-logs')">Chat Logs</button>
-                <button class="tab-btn" onclick="switchAdminTab('settings')">Settings</button>
-                <button class="tab-btn" onclick="switchAdminTab('tts')">TTS</button>
-                <button class="tab-btn" onclick="switchAdminTab('verification')">Verification Keys</button>
-                <button class="tab-btn" onclick="switchAdminTab('streams')">Streams</button>
-                <button class="tab-btn" onclick="switchAdminTab('cashouts')">Cashouts</button>
-                <button class="tab-btn" onclick="switchAdminTab('bans')">Bans</button>
-                <button class="tab-btn" onclick="switchAdminTab('vpn')">VPN Queue</button>
-                <button class="tab-btn" onclick="switchAdminTab('pastes')">Pastes</button>
-                <button class="tab-btn" onclick="switchAdminTab('data')"><i class="fa-solid fa-hard-drive"></i> Data</button>
-                <button class="tab-btn" onclick="switchAdminTab('media-tools')"><i class="fa-solid fa-film"></i> Media</button>
-            </div>
-            <div class="admin-content" id="admin-content"></div>
-        </div>
+    <!-- (page-admin removed: /admin redirects to the tools app in routeFromURL, so this section
+         was unreachable markup with thirteen dead inline handlers. admin.js went with it.) -->
     </section>
 
     <!-- ── PROFILE PAGE ──────────────────────────────────── -->
@@ -2177,7 +2156,7 @@
                         <div class="bc-code-copy">
                             <code id="bc-rtmp-key">loading...</code>
                             <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-rtmp-key').textContent)" title="Copy"><i class="fa-solid fa-copy"></i></button>
-                            <button class="btn btn-small btn-outline" onclick="regenerateStreamKey()" title="Generate a new stream key"><i class="fa-solid fa-arrows-rotate"></i></button>
+                            <button class="btn btn-small btn-outline" onclick="regenerateDashStreamKey()" title="Generate a new stream key"><i class="fa-solid fa-arrows-rotate"></i></button>
                         </div>
                     </div>
 
@@ -3508,32 +3487,8 @@ WantedBy=multi-user.target</code>
     </section>
 
     <!-- ── THEME DIRECTORY ───────────────────────────── -->
-    <section id="page-themes" class="page">
-        <div class="container">
-            <div class="page-header">
-                <h2><i class="fa-solid fa-palette"></i> Theme Directory</h2>
-                <p class="muted">Browse and download themes created by the community.</p>
-            </div>
-            <div class="theme-dir-controls">
-                <div class="theme-dir-filters">
-                    <button class="btn btn-small theme-dir-mode active" data-mode="" onclick="filterDirThemes('')">All</button>
-                    <button class="btn btn-small theme-dir-mode" data-mode="dark" onclick="filterDirThemes('dark')"><i class="fa-solid fa-moon"></i> Dark</button>
-                    <button class="btn btn-small theme-dir-mode" data-mode="light" onclick="filterDirThemes('light')"><i class="fa-solid fa-sun"></i> Light</button>
-                </div>
-                <div class="theme-dir-search">
-                    <input type="text" id="theme-dir-search" placeholder="Search themes..." oninput="searchDirThemes()">
-                </div>
-                <div class="theme-dir-sort">
-                    <select id="theme-dir-sort" onchange="sortDirThemes()">
-                        <option value="name">Name</option>
-                        <option value="popular">Most Popular</option>
-                        <option value="newest">Newest</option>
-                    </select>
-                </div>
-            </div>
-            <div id="theme-dir-grid" class="theme-dir-grid">Loading themes...</div>
-        </div>
-    </section>
+    <!-- (page-themes removed: /themes redirects to openvibe.network in routeFromURL, so this
+         section was unreachable markup with five dead inline handlers.) -->
 
 <!-- Game & Canvas migrated to openvibe.games -->
 
@@ -5142,7 +5097,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/controls.js?v=8" defer></script>
 <script src="/js/onvif-dashboard.js?v=6" defer></script>
 <script src="/js/dashboard.js?v=16" defer></script>
-<script src="/js/admin.js?v=8" defer></script>
+<!-- (js/admin.js removed — 130KB of unreachable code; /admin redirects off-site.) -->
 <!-- ── Floating Global Chat Widget (visible on non-chat pages) ── -->
 <div id="floating-chat-widget" class="floating-chat-widget" style="display:none">
     <div class="fcw-header" onmousedown="fcwStartDrag(event)">

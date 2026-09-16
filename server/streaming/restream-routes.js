@@ -451,13 +451,39 @@ function oauthCookieOpts() {
 }
 
 /** Small self-closing page that notifies the opener (popup) then closes. */
+
+/**
+ * Escape for HTML text/attribute context.
+ *
+ * These callback pages interpolate provider-supplied values — `error_description` comes straight
+ * off req.query and is read BEFORE the OAuth state is verified, so it is reachable by anyone with
+ * a link. Unescaped it was reflected XSS on our own origin, where the auth token lives in
+ * localStorage.
+ */
+function escHtml(v) {
+    return String(v == null ? '' : v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+/**
+ * Serialise for embedding inside an inline <script>.
+ *
+ * JSON.stringify does not escape "</script>", so a provider string containing it closed the
+ * script element and everything after was parsed as markup. Escaping < and the line separators
+ * makes the payload inert wherever it lands.
+ */
+function jsonForScript(value) {
+    return JSON.stringify(value)
+        .replace(/</g, '\\u003c').replace(/>/g, '\\u003e')
+        .replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+}
 function oauthResultPage(payload) {
-    const data = JSON.stringify(payload);
+    const data = jsonForScript(payload);
     return `<!doctype html><html><head><meta charset="utf-8"><title>Connecting…</title>
 <style>body{font-family:system-ui,sans-serif;background:#111;color:#eee;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
 .box{text-align:center}.ok{color:#53fc18}.err{color:#ff6b6b}</style></head>
 <body><div class="box"><h2 class="${payload.ok ? 'ok' : 'err'}">${payload.ok ? '✓ Connected' : '✗ Connection failed'}</h2>
-<p>${payload.ok ? (payload.platform + ' account linked. You can close this window.') : (payload.error || 'Something went wrong.')}</p></div>
+<p>${payload.ok ? (escHtml(payload.platform) + ' account linked. You can close this window.') : escHtml(payload.error || 'Something went wrong.')}</p></div>
 <script>
 (function(){
   var msg = Object.assign({ type: 'restream-oauth' }, ${data});

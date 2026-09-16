@@ -19,24 +19,22 @@ const db = require('../db/database');
 const router = express.Router();
 
 // ── Buy Vibes ───────────────────────────────────────────
-router.post('/purchase', requireAuth, (req, res) => {
-    try {
-        const { amount, paypal_transaction_id } = req.body;
-        if (!amount || amount <= 0) {
-            return res.status(400).json({ error: 'Invalid amount' });
-        }
-
-        // In production, validate PayPal transaction here
-        openvibeBucks.purchase(req.user.id, amount, paypal_transaction_id);
-
-        const user = db.getUserById(req.user.id);
-        res.json({
-            message: `Purchased ${amount} Vibes`,
-            balance: user.openvibe_bucks_balance,
-        });
-    } catch (err) {
-        res.status(400).json({ error: err.message });
-    }
+/**
+ * DISABLED — this route credited Vibes with no payment verification whatsoever.
+ *
+ * It took an `amount` and a `paypal_transaction_id` from the request body, never checked the
+ * transaction against PayPal, and called purchase() directly. The comment in its place read
+ * "In production, validate PayPal transaction here". Any signed-in account could mint up to the
+ * balance ceiling for free and then move it somewhere spendable.
+ *
+ * Real purchases are credited by the verified payment webhooks (fulfillBucksOrder), which check a
+ * signature and an order record. Returning 410 rather than deleting the route so an old client
+ * calling it gets a clear answer instead of a 404 that looks like a routing bug.
+ */
+router.post('/purchase', (req, res) => {
+    res.status(410).json({
+        error: 'Direct purchase is disabled. Vibes are credited by the payment provider webhook.',
+    });
 });
 
 // Serialize a goal for the client (no private fields to leak).

@@ -1,0 +1,123 @@
+/**
+ * Regression tests for credential redaction on client-facing stream payloads.
+ *
+ * Two separate endpoints have shipped a live ingest key to anonymous callers, because the shared
+ * query selects `managed_stream_key` for the publish paths and each response had to remember to
+ * remove it. These tests pin the helper's behaviour and assert that the known-leaking call sites
+ * route through it.
+ *
+ *   node test/security-redaction.test.js
+ */
+'use strict';
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+
+const ROOT = path.join(__dirname, '..');
+let pass = 0;
+const ok = (name) => { pass++; console.log('  ok -', name); };
+
+// ── publicStream() strips both credentials and keeps everything else ──────────
+{
+    const src = fs.readFileSync(path.join(ROOT, 'server/db/database.js'), 'utf8');
+    const m = src.match(/function publicStream\(row\) \{[\s\S]*?\n\}/);
+    assert(m, 'publicStream() should exist in server/db/database.js');
+    // eslint-disable-next-line no-new-func
+    const publicStream = new Function(`${m[0]}; return publicStream;`)();
+
+    const row = {
+        id: 7, title: 'a stream', viewer_count: 12, username: 'someone',
+        stream_key: 'SECRET-USER-KEY', managed_stream_key: 'SECRET-SLOT-KEY',
+    };
+    const out = publicStream(row);
+    assert.strictEqual(out.stream_key, undefined, 'stream_key must be removed');
+    assert.strictEqual(out.managed_stream_key, undefined, 'managed_stream_key must be removed');
+    assert.strictEqual(out.id, 7);
+    assert.strictEqual(out.title, 'a stream');
+    assert.strictEqual(out.viewer_count, 12);
+    assert.strictEqual(out.username, 'someone');
+    ok('publicStream removes both keys and preserves every other field');
+
+    assert.strictEqual(publicStream(null), null, 'null passes through');
+    assert.strictEqual(publicStream(undefined), undefined, 'undefined passes through');
+    ok('publicStream tolerates null/undefined');
+
+    // The original must not be mutated — callers may still need the key for the publish path.
+    assert.strictEqual(row.stream_key, 'SECRET-USER-KEY', 'input row must not be mutated');
+    ok('publicStream does not mutate its input');
+}
+
+// ── The two endpoints that leaked must go through a redaction step ────────────
+{
+    const media = fs.readFileSync(path.join(ROOT, 'server/media/routes.js'), 'utf8');
+    assert(/live_stream:\s*db\.publicStream\(/.test(media),
+        'GET /api/media/channel/:username must redact live_stream');
+    ok('media channel endpoint redacts live_stream');
+
+    const streaming = fs.readFileSync(path.join(ROOT, 'server/streaming/routes.js'), 'utf8');
+    assert(/delete out\.managed_stream_key/.test(streaming),
+        'GET /api/streams must delete managed_stream_key');
+    assert(/delete out\.stream_key/.test(streaming),
+        'GET /api/streams must delete stream_key');
+    ok('public stream list redacts both keys');
+}
+
+// ── Escaping helpers used in HTML attribute context must escape quotes ────────
+{
+    const emotes = fs.readFileSync(path.join(ROOT, 'public/js/emotes.js'), 'utf8');
+    const m = emotes.match(/function _escEmote\(str\) \{[\s\S]*?\n\}/);
+    assert(m, '_escEmote should exist');
+    // eslint-disable-next-line no-new-func
+    const escEmote = new Function(`${m[0]}; return _escEmote;`)();
+    assert.strictEqual(escEmote('x"y'), 'x&quot;y', 'double quote must be escaped');
+    assert.strictEqual(escEmote("x'y"), 'x&#39;y', 'single quote must be escaped');
+    assert.strictEqual(escEmote('<b>'), '&lt;b&gt;', 'angle brackets must be escaped');
+    assert.strictEqual(escEmote('a&b'), 'a&amp;b', 'ampersand must be escaped');
+    ok('_escEmote escapes quotes as well as angle brackets');
+
+    // The emote token grammar must not admit a quote in the first place.
+    const re = emotes.match(/const _KICK_EMOTE_RE = (\/.*\/g);/);
+    assert(re, 'kick emote regex should exist');
+    // eslint-disable-next-line no-eval
+    const rx = eval(re[1]);
+    rx.lastIndex = 0;
+    assert.strictEqual(rx.test('[emote:1:x" onerror=alert(1) y="]'), false,
+        'a token containing a quote must not match');
+    rx.lastIndex = 0;
+    assert.strictEqual(rx.test('[emote:5747992:collectiblespepega]'), true,
+        'a legitimate token must still match');
+    ok('kick emote token grammar rejects quotes and keeps valid names');
+}
+
+// ── app.js esc() is used inside double-quoted attributes ──────────────────────
+{
+    const app = fs.readFileSync(path.join(ROOT, 'public/js/app.js'), 'utf8');
+    const m = app.match(/function esc\(str\) \{[\s\S]*?\n\}/);
+    assert(m, 'esc should exist in app.js');
+    // eslint-disable-next-line no-new-func
+    const esc = new Function(`${m[0]}; return esc;`)();
+    assert.strictEqual(esc('x"y'), 'x&quot;y', 'esc must escape double quotes');
+    assert.strictEqual(esc(0), '0', 'esc(0) must be "0", not empty');
+    ok('app.js esc escapes double quotes and preserves 0');
+
+    // There must be exactly one definition of esc across the loaded bundle, or load order
+    // silently decides which escaping rules apply.
+    const chat = fs.readFileSync(path.join(ROOT, 'public/js/chat.js'), 'utf8');
+    assert(!/^function esc\(/m.test(chat), 'chat.js must not redefine esc');
+    ok('esc is defined once, not resolved by script load order');
+}
+
+// ── OAuth callback pages must not reflect provider text into HTML or script ───
+{
+    for (const f of ['server/streaming/restream-routes.js', 'server/integrations/powerchat-routes.js']) {
+        const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
+        assert(/function escHtml\(/.test(src), `${f} should define escHtml`);
+        assert(/function jsonForScript\(/.test(src), `${f} should define jsonForScript`);
+        assert(/jsonForScript\(payload\)/.test(src), `${f} must serialise the payload safely`);
+        assert(!/\$\{payload\.error \|\| 'Something went wrong\.'\}/.test(src),
+            `${f} must not interpolate payload.error unescaped`);
+    }
+    ok('both OAuth callback pages escape provider-supplied text');
+}
+
+console.log(`\n${pass} checks passed`);

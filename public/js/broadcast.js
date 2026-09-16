@@ -1929,12 +1929,12 @@ async function showJSMPEGInstructions(stream) {
     } catch { document.getElementById('bc-jsmpeg-cmd').textContent = 'Error loading command'; }
 }
 
-function getStoredAuthToken() {
-    return localStorage.getItem('token') || localStorage.getItem('ov_token') ||
-        (document.cookie.match(/(?:^|; )ov_token=([^;]+)/) || [])[1] ||
-        (document.cookie.match(/(?:^|; )token=([^;]+)/) || [])[1] ||
-        null;
-}
+/* getStoredAuthToken was redefined here, and because broadcast.js loads after app.js this plain
+   `||` chain was the one that actually ran everywhere. It has no expiry awareness and no
+   write-back, so it would hand back a stale localStorage `token` even when a fresh valid
+   `ov_token` was sitting right next to it — a good candidate for "randomly signed out until I
+   clear storage". app.js's version parses the JWT expiry, discards expired candidates, picks the
+   longest-lived and writes it back; it is now the only one. */
 
 async function showWHIPInstructions(stream) {
     document.getElementById('bc-stream-manager').style.display = 'none';

@@ -2827,6 +2827,24 @@ function getStreamByUserId(userId) {
     `, [userId]);
 }
 
+/**
+ * Strip ingest credentials from a stream row before it goes to a client.
+ *
+ * getLiveStreams() and getLiveStreamsByUserId() both select `ms.stream_key AS managed_stream_key`
+ * because the publish and recording paths genuinely need it. That makes every response built from
+ * those rows one forgotten `delete` away from handing out a credential that authenticates RTMP
+ * publish, WHIP publish and the hardware control bridge — i.e. stream takeover. It has happened
+ * twice: GET /api/streams and GET /api/media/channel/:username.
+ *
+ * Call this on anything derived from those rows that a client will see. It is cheap and it is a
+ * lot easier to review than a `delete` three screens away from the query.
+ */
+function publicStream(row) {
+    if (!row || typeof row !== 'object') return row;
+    const { stream_key, managed_stream_key, ...safe } = row;
+    return safe;
+}
+
 function getLiveStreamsByUserId(userId) {
     return all(`
         SELECT s.*, COALESCE(NULLIF(s.ai_category, ''), s.category) AS category, s.category AS chosen_category, u.username, u.display_name, u.avatar_url, u.profile_color,
@@ -8232,6 +8250,7 @@ function addToDonationGoal(id, amount) {
 }
 
 module.exports = {
+    publicStream,
     getConcurrencyBaseline,
     getHomeStatSeries, HOME_SERIES_KEYS, vibesStatsSince, _computeHomeStats,
     getVodAiState, getClipAiState,
