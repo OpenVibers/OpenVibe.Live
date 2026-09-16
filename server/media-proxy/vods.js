@@ -366,12 +366,22 @@ router.get('/:id/context', optionalAuth, async (req, res) => {
     try {
         if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'VOD not found' });
         const id = parseInt(req.params.id, 10);
-        const hit = _ctxCache.get(id);
-        if (hit && Date.now() - hit.at < 120000) { res.set('Cache-Control', 'public, max-age=60'); return res.json(hit.data); }
+        // Authorise first, then read the cache. The other way round — which is how this read — let
+        // a private VOD's whole context leak: the owner opens their own private VOD, the response
+        // is cached under its id, and for the next two minutes any anonymous request for that id
+        // is served from the cache and never reaches the visibility check below.
         let vod = null;
         try { vod = await media.getVod(id); } catch { vod = null; }
         if (!vod) return res.status(404).json({ error: 'VOD not found' });
-        if (vod.visibility === 'private' && !(req.user && (req.user.id === vod.user_id || req.user.role === 'admin'))) return res.status(404).json({ error: 'VOD not found' });
+        const isPrivate = vod.visibility === 'private';
+        if (isPrivate && !(req.user && (req.user.id === vod.user_id || req.user.role === 'admin'))) {
+            return res.status(404).json({ error: 'VOD not found' });
+        }
+        // A private VOD's context must not sit in a shared cache anywhere on the way back either.
+        const cacheHeader = isPrivate ? 'private, no-store' : 'public, max-age=60';
+
+        const hit = _ctxCache.get(id);
+        if (hit && Date.now() - hit.at < 120000) { res.set('Cache-Control', cacheHeader); return res.json(hit.data); }
         const stream = vod.stream_id ? db.getStreamById(vod.stream_id) : null;
         const streamer = db.getUserById(vod.user_id || (stream && stream.user_id));
         const safe = (fn, d) => { try { const v = fn(); return v == null ? d : v; } catch { return d; } };
@@ -405,7 +415,7 @@ router.get('/:id/context', optionalAuth, async (req, res) => {
         };
         _ctxCache.set(id, { at: Date.now(), data });
         if (_ctxCache.size > 500) { const k = _ctxCache.keys().next().value; _ctxCache.delete(k); }
-        res.set('Cache-Control', 'public, max-age=60');
+        res.set('Cache-Control', cacheHeader);
         res.json(data);
     } catch (err) {
         console.error('[VODs] context error:', err.message);

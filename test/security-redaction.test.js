@@ -179,4 +179,83 @@ const ok = (name) => { pass++; console.log('  ok -', name); };
     ok('restream OAuth callback will not provision onto another account\'s slot');
 }
 
+// ── server_url becomes ffmpeg's output argument, so it must be a streaming URL ─
+{
+    const src = fs.readFileSync(path.join(ROOT, 'server/streaming/restream-routes.js'), 'utf8');
+    const m = src.match(/function validateIngestUrl\(raw\) \{[\s\S]*?\n\}/);
+    assert(m, 'validateIngestUrl should exist');
+    const protoLine = src.match(/const ALLOWED_INGEST_PROTOCOLS = new Set\(\[[^\]]*\]\)/);
+    assert(protoLine, 'the protocol allowlist should exist');
+    // eslint-disable-next-line no-new-func
+    const validate = new Function(`${protoLine[0]}; ${m[0]}; return validateIngestUrl;`)();
+    for (const good of ['rtmp://a.rtmp.youtube.com/live2', 'rtmps://live.twitch.tv/app', 'srt://ingest.example:9000']) {
+        assert.strictEqual(validate(good).ok, true, `${good} should be accepted`);
+    }
+    for (const bad of [
+        '/opt/openvibe.live/public/js/app.js',   // ffmpeg would write an FLV over served script
+        'file:///etc/passwd',
+        'http://169.254.169.254/latest/meta-data/',
+        'pipe:1',
+        'rtmp://',                                // no host
+        'rtmp://host/path\nmore',                // control character
+        '',
+    ]) {
+        assert.strictEqual(validate(bad).ok, false, `${bad} must be rejected`);
+    }
+    ok('restream ingest URLs accept only rtmp/rtmps/srt with a host');
+
+    // And the manager refuses anything that slipped in before the API validated it.
+    const mgr = fs.readFileSync(path.join(ROOT, 'server/streaming/restream-manager.js'), 'utf8');
+    const build = mgr.match(/_buildDestUrl\(dest\) \{[\s\S]*?\n    \}/);
+    assert(build, '_buildDestUrl should exist');
+    assert(/rtmps\?\|srt/.test(build[0]), '_buildDestUrl must re-check the protocol for rows already stored');
+    ok('the restream manager re-checks the protocol before handing it to ffmpeg');
+}
+
+// ── /api/media/quote is unauthenticated, so it must not probe internal hosts ──
+{
+    const src = fs.readFileSync(path.join(ROOT, 'server/media/media-queue.js'), 'utf8');
+    const fn = src.match(/function isInternalAddress\(ip\) \{[\s\S]*?\n\}/);
+    assert(fn, 'isInternalAddress should exist');
+    // eslint-disable-next-line no-new-func
+    const isInternal = new Function('net', `${fn[0]}; return isInternalAddress;`)(require('net'));
+    for (const blocked of ['127.0.0.1', '169.254.169.254', '10.0.0.1', '172.16.5.5', '192.168.1.1', '100.64.0.1', '::1', 'fd00::1', '::ffff:127.0.0.1']) {
+        assert.strictEqual(isInternal(blocked), true, `${blocked} must count as internal`);
+    }
+    for (const allowed of ['8.8.8.8', '1.1.1.1', '172.32.0.1', '2606:4700::1111']) {
+        assert.strictEqual(isInternal(allowed), false, `${allowed} should be reachable`);
+    }
+    assert(/await assertFetchableUrl\(url\)/.test(src), 'the generic yt-dlp branch must check the URL first');
+    assert(/url\.protocol !== 'http:' && url\.protocol !== 'https:'/.test(src), 'non-http schemes must be rejected on entry');
+    ok('media quote refuses internal addresses and non-http schemes');
+}
+
+// ── A ban has to stop commands too, not just plain messages ──────────────────
+{
+    const src = fs.readFileSync(path.join(ROOT, 'server/chat/chat-server.js'), 'utf8');
+    const fnStart = src.indexOf('handleChatMessage(ws, client, msg) {');
+    assert(fnStart > 0, 'handleChatMessage should exist');
+    const body = src.slice(fnStart, fnStart + 3000);
+    const banAt = body.indexOf('db.isUserBanned(client.user.id, client.streamId)');
+    const bangAt = body.indexOf("text.startsWith('!')");
+    const slashAt = body.indexOf("text.startsWith('/')");
+    assert(banAt > 0 && bangAt > 0 && slashAt > 0, 'all three branches should be present');
+    assert(banAt < bangAt && banAt < slashAt,
+        'the ban check must run before the "!" and "/" command dispatch, which both return early');
+    ok('banned users cannot run ! or / chat commands');
+}
+
+// ── A private VOD's context must be authorised before the cache is consulted ──
+{
+    const src = fs.readFileSync(path.join(ROOT, 'server/media-proxy/vods.js'), 'utf8');
+    const h = src.match(/router\.get\('\/:id\/context'[\s\S]*?res\.json\(data\);/);
+    assert(h, 'the VOD context route should exist');
+    const checkAt = h[0].indexOf("vod.visibility === 'private'");
+    const cacheAt = h[0].indexOf('_ctxCache.get(id)');
+    assert(checkAt > 0 && cacheAt > 0, 'both the visibility check and the cache read should be present');
+    assert(checkAt < cacheAt, 'the visibility check must run before the cache is read');
+    assert(/private, no-store/.test(h[0]), 'a private VOD context must not be sent with a shareable Cache-Control');
+    ok('private VOD context is authorised before the cache, and never shareable');
+}
+
 console.log(`\n${pass} checks passed`);

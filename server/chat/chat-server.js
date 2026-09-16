@@ -573,6 +573,21 @@ class ChatServer {
         // swallows long messages the channel actually allows.
         if (!text || text.length > 6000) return;
 
+        // ── Ban check ────────────────────────────────────────
+        // This has to come before the command dispatch below, not after it. Both command paths
+        // return early, so a banned viewer could still run every "!" utility command — queueing
+        // and skipping media on the stream they were banned from — and every "/" command,
+        // including /me, which puts their text back in the chat they are banned from. A ban means
+        // no input of any kind.
+        if (client.user && db.isUserBanned(client.user.id, client.streamId)) {
+            this.sendTo(ws, { type: 'system', message: 'You are banned from this chat.' });
+            return;
+        }
+        if (!this._isBanExemptAdmin(client) && db.isIpBanned(client.ip, client.streamId)) {
+            this.sendTo(ws, { type: 'system', message: 'You are banned from this chat.' });
+            return;
+        }
+
         // ── Stream utility commands (!sr, !queue, !nowplaying, !skip) ──
         if (text.startsWith('!')) {
             this.handleBangCommand(ws, client, text);
@@ -582,16 +597,6 @@ class ChatServer {
         // ── Chat commands ────────────────────────────────────
         if (text.startsWith('/')) {
             this.handleCommand(ws, client, text);
-            return;
-        }
-
-        // ── Ban check ────────────────────────────────────────
-        if (client.user && db.isUserBanned(client.user.id, client.streamId)) {
-            this.sendTo(ws, { type: 'system', message: 'You are banned from this chat.' });
-            return;
-        }
-        if (!this._isBanExemptAdmin(client) && db.isIpBanned(client.ip, client.streamId)) {
-            this.sendTo(ws, { type: 'system', message: 'You are banned from this chat.' });
             return;
         }
 

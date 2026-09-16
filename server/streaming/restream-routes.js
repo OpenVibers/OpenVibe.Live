@@ -19,6 +19,36 @@ const VALID_QUALITY_PRESETS = ['auto', 'low', 'medium', 'high', 'ultra', 'source
 const VALID_ENCODER_PRESETS = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow'];
 const MAX_DESTINATIONS = 10;
 
+/**
+ * Ingest URLs we are willing to hand to ffmpeg.
+ *
+ * server_url arrives from the client and ends up as ffmpeg's *output* argument. ffmpeg picks its
+ * output protocol from that URL, and `-f flv` only fixes the container — so a bare path or a
+ * file: URL makes ffmpeg write an FLV file wherever the service user can write, and an http: URL
+ * makes it talk to whatever host is named. Overwriting something under public/js/ would be enough
+ * to serve arbitrary script to every visitor.
+ *
+ * Nothing but a live-streaming protocol with a real host is accepted. Private and loopback hosts
+ * are deliberately still allowed: restreaming to a box on your own LAN is a legitimate setup, and
+ * the local RTMP server is already reachable to any signed-in user by other means.
+ */
+const ALLOWED_INGEST_PROTOCOLS = new Set(['rtmp:', 'rtmps:', 'srt:']);
+function validateIngestUrl(raw) {
+    const value = String(raw || '').trim();
+    if (!value) return { ok: false, error: 'Server URL is required' };
+    if (value.length > 2048) return { ok: false, error: 'Server URL is too long' };
+    // Control characters and whitespace would let a value split into extra ffmpeg arguments or
+    // smuggle a newline into a log line.
+    if (/[\s\u0000-\u001f\u007f]/.test(value)) return { ok: false, error: 'Server URL contains invalid characters' };
+    let u;
+    try { u = new URL(value); } catch { return { ok: false, error: 'Server URL must be a full rtmp:// or rtmps:// address' }; }
+    if (!ALLOWED_INGEST_PROTOCOLS.has(u.protocol)) {
+        return { ok: false, error: `Server URL must start with rtmp://, rtmps:// or srt:// (got "${u.protocol.replace(':', '')}")` };
+    }
+    if (!u.hostname) return { ok: false, error: 'Server URL needs a hostname' };
+    return { ok: true, value };
+}
+
 /** Platform presets with default RTMP server URLs and UI metadata. */
 const PLATFORM_PRESETS = {
     youtube: { name: 'YouTube', defaultServerUrl: 'rtmp://a.rtmp.youtube.com/live2', icon: 'fa-brands fa-youtube', color: '#ff0000' },
@@ -170,9 +200,9 @@ router.post('/destinations', requireAuth, (req, res) => {
         if (!finalUrl && PLATFORM_PRESETS[platform]?.defaultServerUrl) {
             finalUrl = PLATFORM_PRESETS[platform].defaultServerUrl;
         }
-        if (!finalUrl) {
-            return res.status(400).json({ error: 'Server URL is required' });
-        }
+        const checked = validateIngestUrl(finalUrl);
+        if (!checked.ok) return res.status(400).json({ error: checked.error });
+        finalUrl = checked.value;
 
         const dest = db.createRestreamDestination(req.user.id, {
             platform,
@@ -214,7 +244,16 @@ router.put('/destinations/:id', requireAuth, (req, res) => {
 
         const updates = {};
         if (req.body.name !== undefined) updates.name = req.body.name?.trim() || dest.name;
-        if (req.body.server_url !== undefined) updates.server_url = req.body.server_url?.trim() || dest.server_url;
+        if (req.body.server_url !== undefined) {
+            const raw = req.body.server_url?.trim();
+            if (raw) {
+                const v = validateIngestUrl(raw);
+                if (!v.ok) return res.status(400).json({ error: v.error });
+                updates.server_url = v.value;
+            } else {
+                updates.server_url = dest.server_url;
+            }
+        }
         if (req.body.stream_key !== undefined && req.body.stream_key.trim()) {
             updates.stream_key = req.body.stream_key.trim();
         }
@@ -593,7 +632,11 @@ router.get('/oauth/:platform/callback', async (req, res) => {
                 connection_id: conn.id,
             };
             // Only overwrite ingest fields when the platform actually provides them
-            if (info.server_url) destFields.server_url = info.server_url;
+            if (info.server_url) {
+                const v = validateIngestUrl(info.server_url);
+                if (v.ok) destFields.server_url = v.value;
+                else console.warn(`[Restream OAuth] ${platform} returned an ingest URL we will not use: ${v.error}`);
+            }
             if (info.stream_key) destFields.stream_key = info.stream_key;
 
             if (existing) {

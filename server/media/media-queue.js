@@ -2,6 +2,66 @@ const db = require('../db/database');
 const downloader = require('./media-downloader');
 const https = require('https');
 const http = require('http');
+const dns = require('dns').promises;
+const net = require('net');
+
+/**
+ * Is this address one the server should never be asked to reach on a stranger's behalf?
+ *
+ * Loopback, link-local (169.254.x, which is where every cloud provider's instance-metadata
+ * service lives), the RFC1918 ranges, CGNAT, and the IPv6 equivalents including v4-mapped forms.
+ */
+function isInternalAddress(ip) {
+    if (!ip) return true;
+    const v = net.isIP(ip);
+    if (v === 4) {
+        const p = ip.split('.').map(Number);
+        if (p[0] === 10 || p[0] === 127 || p[0] === 0) return true;
+        if (p[0] === 169 && p[1] === 254) return true;
+        if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true;
+        if (p[0] === 192 && p[1] === 168) return true;
+        if (p[0] === 100 && p[1] >= 64 && p[1] <= 127) return true;   // CGNAT
+        if (p[0] >= 224) return true;                                  // multicast / reserved
+        return false;
+    }
+    if (v === 6) {
+        const l = ip.toLowerCase();
+        if (l === '::' || l === '::1') return true;
+        if (l.startsWith('fe80') || l.startsWith('fc') || l.startsWith('fd')) return true;
+        const mapped = l.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+        if (mapped) return isInternalAddress(mapped[1]);
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Refuse to probe a URL that points back inside the network.
+ *
+ * POST /api/media/quote is optionalAuth — anyone on the internet can reach it — and the generic
+ * branch of normalizeInput hands whatever they send to yt-dlp, which will fetch it. Without this
+ * that is an unauthenticated request generator aimed at localhost and at 169.254.169.254.
+ *
+ * Note this resolves the name and checks the answers; it does not pin the address that the later
+ * fetch will use, so a DNS entry that changes between the two (rebinding) is not covered. Closing
+ * that properly means resolving once and connecting by IP with an explicit Host header, which is
+ * not something yt-dlp exposes.
+ */
+async function assertFetchableUrl(url) {
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        throw new Error('Only http and https links can be looked up');
+    }
+    const host = url.hostname.replace(/^\[|\]$/g, '');
+    if (net.isIP(host)) {
+        if (isInternalAddress(host)) throw new Error('That address is not reachable from here');
+        return;
+    }
+    let addrs = [];
+    try { addrs = await dns.lookup(host, { all: true }); } catch { throw new Error('Could not resolve that host'); }
+    if (!addrs.length || addrs.some(a => isInternalAddress(a.address))) {
+        throw new Error('That address is not reachable from here');
+    }
+}
 
 const DEFAULTS = {
     enabled: 1,
@@ -569,6 +629,11 @@ class MediaQueue {
         } catch {
             throw new Error('Only direct media URLs are supported right now');
         }
+        // new URL() happily parses file:, gopher: and anything else with a scheme. Everything
+        // downstream either fetches this or hands it to a viewer's browser to play.
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            throw new Error('Only http and https links are supported');
+        }
 
         const hostname = url.hostname.replace(/^www\./i, '').toLowerCase();
         const href = url.toString();
@@ -684,7 +749,14 @@ class MediaQueue {
         }
 
         // ── Generic yt-dlp support (SoundCloud, Twitch clips, etc.) ──
+        // This is the only branch that sends a request to a host the caller chose, so it is the
+        // one that has to be checked. YouTube and Vimeo above probe canonical URLs we built.
         if (downloader.isAvailable()) {
+            try {
+                await assertFetchableUrl(url);
+            } catch (err) {
+                throw new Error(err.message || 'That link cannot be looked up');
+            }
             try {
                 const info = await downloader.getInfo(href);
                 return {
