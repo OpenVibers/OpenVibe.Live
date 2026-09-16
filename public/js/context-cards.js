@@ -165,6 +165,72 @@
         }
         if (!sections.length) { host.innerHTML = ''; return; }
         const noLeft = !(d.live || []).length && !(d.clips || []).length;
-        host.innerHTML = `<div class="dsc${noLeft ? ' dsc--noleft' : ''}"><div class="dsc-head"><span class="dsc-title"><i class="fa-solid fa-compass"></i> While ${esc(name)} is away</span><span class="dsc-sub">the rest of OpenVibe is right here — follow ${esc(name)} to get pinged when they're back</span></div>${sections.join('')}</div>`;
+
+        // This board is a whole second page of content sitting under an offline channel. Someone
+        // who came for this streamer should meet a single line about it, not scroll past six
+        // sections of other people's clips to reach the About panels. So it starts closed, and
+        // the toggle carries a count — "17 things happened" is a reason to open it; "Discover" is
+        // not. Opening is remembered per channel, closing forgets it again.
+        const events = (d.live || []).length + (d.clips || []).length + (d.recaps || []).length;
+        const KEY = 'ov_dsc_open_v1';
+        const openSet = (() => { try { return new Set(JSON.parse(localStorage.getItem(KEY) || '[]')); } catch { return new Set(); } })();
+        const startOpen = openSet.has(username || '');
+
+        host.innerHTML = `
+            <div class="dsc-wrap${startOpen ? ' is-open' : ''}">
+                <button type="button" class="dsc-toggle" aria-expanded="${startOpen}" aria-controls="dsc-body">
+                    <span class="dsc-toggle-ico" aria-hidden="true"><i class="fa-solid fa-compass"></i></span>
+                    <span class="dsc-toggle-text">
+                        <b>While ${esc(name)} is away</b>
+                        <small>${events ? `${events} thing${events === 1 ? '' : 's'} happened on OpenVibe this week` : 'the rest of OpenVibe is right here'} · follow ${esc(name)} to get pinged when they're back</small>
+                    </span>
+                    ${events ? `<span class="dsc-toggle-count" aria-hidden="true">${events}</span>` : ''}
+                    <span class="dsc-toggle-chev" aria-hidden="true"><i class="fa-solid fa-chevron-down"></i></span>
+                </button>
+                <div class="dsc-body" id="dsc-body"${startOpen ? '' : ' hidden'}>
+                    <div class="dsc${noLeft ? ' dsc--noleft' : ''}">${sections.join('')}</div>
+                </div>
+            </div>`;
+
+        const wrap = host.querySelector('.dsc-wrap');
+        const btn = host.querySelector('.dsc-toggle');
+        const body = host.querySelector('.dsc-body');
+        let busy = false;
+        btn.addEventListener('click', () => {
+            if (busy) return;
+            const opening = body.hidden;
+            busy = true;
+            btn.setAttribute('aria-expanded', String(opening));
+            wrap.classList.toggle('is-open', opening);
+            try {
+                if (opening) openSet.add(username || ''); else openSet.delete(username || '');
+                localStorage.setItem(KEY, JSON.stringify([...openSet]));
+            } catch { /* */ }
+
+            const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+            if (reduce) { body.hidden = !opening; busy = false; return; }
+
+            // Animate the real height rather than a max-height guess: the board's height varies by
+            // an order of magnitude depending on how much happened, and a fixed max-height either
+            // clips it or spends most of the transition animating empty space.
+            if (opening) {
+                body.hidden = false;
+                const h = body.scrollHeight;
+                body.style.height = '0px'; body.style.overflow = 'hidden';
+                requestAnimationFrame(() => {
+                    body.style.transition = 'height .42s cubic-bezier(.22,1,.36,1), opacity .3s ease';
+                    body.style.opacity = '0';
+                    requestAnimationFrame(() => { body.style.height = h + 'px'; body.style.opacity = '1'; });
+                });
+                setTimeout(() => { body.style.cssText = ''; busy = false; }, 460);
+            } else {
+                body.style.height = body.scrollHeight + 'px'; body.style.overflow = 'hidden';
+                requestAnimationFrame(() => {
+                    body.style.transition = 'height .34s cubic-bezier(.4,0,.2,1), opacity .24s ease';
+                    requestAnimationFrame(() => { body.style.height = '0px'; body.style.opacity = '0'; });
+                });
+                setTimeout(() => { body.hidden = true; body.style.cssText = ''; busy = false; }, 370);
+            }
+        });
     };
 })();

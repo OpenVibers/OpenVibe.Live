@@ -919,6 +919,83 @@ function isModifiedLinkClick(event) {
     return !!(event && (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey));
 }
 
+/**
+ * A username outside chat that behaves like a username inside chat.
+ *
+ * Names on the home page's activity and leaderboard cards were either plain bold text or a bare
+ * link to the channel. In chat the same name opens a menu — message them, view the channel, mod
+ * actions if you have them — and people reasonably expect that everywhere a name appears. This
+ * emits the same data-* contract showChatContextMenu() reads, so one menu serves both.
+ *
+ * `u` may be an object ({username, display_name, user_id}) or a bare username string.
+ */
+function ovUserTag(u, label) {
+    const core = typeof u === 'string' ? u : (u && (u.username || u.core_username)) || '';
+    const name = label || (typeof u === 'string' ? u : (u && (u.display_name || u.username))) || core;
+    if (!core) return esc(name || '');
+    const id = (typeof u === 'object' && u && (u.user_id ?? u.id)) ?? '';
+    return `<span class="ov-user" role="button" tabindex="0" title="${esc(name)} — open menu"`
+        + ` data-username="${esc(name)}" data-core-username="${esc(core)}" data-user-id="${esc(String(id))}"`
+        + ` onclick="ovUserMenu(event)" oncontextmenu="ovUserMenu(event)"`
+        + ` onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();ovUserMenu(event);}">${esc(name)}</span>`;
+}
+
+/** Open the chat user menu; if chat has not loaded, fall back to the channel. */
+function ovUserMenu(event) {
+    if (typeof showChatContextMenu === 'function') return showChatContextMenu(event);
+    const el = event.currentTarget;
+    const core = el && el.dataset && el.dataset.coreUsername;
+    if (!core) return;
+    event.preventDefault();
+    navigate(`/@${core}`);
+}
+
+/**
+ * Insert cards into a rail, and let appended ones arrive rather than appear.
+ *
+ * "Load more" used to splice eight cards into the DOM in one frame: the list jumped and there was
+ * no visual link between pressing the button and the new rows. Only the new children are
+ * staggered — re-animating what was already on screen would read as a full page repaint. The
+ * class is stripped afterwards so it cannot affect a later re-render, and that cleanup runs on a
+ * timer rather than on animationend, so an element whose animation never started (off-screen,
+ * display:none) is still returned to normal.
+ */
+function ovPutCards(container, html, append) {
+    if (!container) return;
+    if (!append) { container.innerHTML = html; return; }
+    const first = container.children.length;
+    container.insertAdjacentHTML('beforeend', html);
+    let reduce = false;
+    try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { /* */ }
+    if (reduce) return;
+    const added = Array.prototype.slice.call(container.children, first);
+    added.forEach((el, i) => {
+        el.classList.add('ov-enter');
+        el.style.setProperty('--ov-enter-i', String(Math.min(i, 11)));
+    });
+    setTimeout(() => added.forEach(el => {
+        el.classList.remove('ov-enter');
+        el.style.removeProperty('--ov-enter-i');
+    }), 1400);
+}
+
+/**
+ * The view count on a thumbnail.
+ *
+ * Was a bare eye glyph and a raw integer on a flat black box. Now a frosted pill with tabular
+ * figures and a compact count, so 12400 reads as 12.4K instead of widening the badge past the
+ * corner of the card.
+ */
+function ovViewsBadge(n) {
+    const v = Math.max(0, Number(n) || 0);
+    // Thresholds are set just below the round number, not at it: 999,999 rounds to 1000 in the
+    // K branch and would render "1000K".
+    const label = v >= 999500 ? (v / 1000000).toFixed(v >= 9999500 ? 0 : 1).replace(/\.0$/, '') + 'M'
+        : v >= 999.5 ? (v / 1000).toFixed(v >= 9999.5 ? 0 : 1).replace(/\.0$/, '') + 'K'
+        : String(v);
+    return `<span class="stream-card-viewers" title="${v.toLocaleString()} view${v === 1 ? '' : 's'}"><i class="fa-solid fa-eye"></i><b>${label}</b></span>`;
+}
+
 function handleLinkClick(event, urlPath, replace = false) {
     if (isModifiedLinkClick(event)) return true;
     event?.preventDefault?.();
@@ -2374,15 +2451,15 @@ async function loadHomePulse() {
 
     // Latest activity card (tip + follow together).
     const act = [];
-    if (p.latestTip) act.push(`<div class="pulse-act"><i class="fa-solid fa-hand-holding-dollar"></i> <b>${esc(p.latestTip.from_display || p.latestTip.from_username || 'Someone')}</b> tipped <b>${Number(p.latestTip.amount).toLocaleString()}</b> Vibes to <b>${esc(p.latestTip.to_display || p.latestTip.to_username)}</b> <span class="muted">${esc(timeAgo(p.latestTip.created_at))}</span></div>`);
-    if (p.newestFollow) act.push(`<div class="pulse-act"><i class="fa-solid fa-heart"></i> <b>${esc(p.newestFollow.follower_display || p.newestFollow.follower_username)}</b> followed <b>${esc(p.newestFollow.streamer_display || p.newestFollow.streamer_username)}</b> <span class="muted">${esc(timeAgo(p.newestFollow.created_at))}</span></div>`);
+    if (p.latestTip) act.push(`<div class="pulse-act"><i class="fa-solid fa-hand-holding-dollar"></i> ${ovUserTag({ username: p.latestTip.from_username, display_name: p.latestTip.from_display }, p.latestTip.from_display || p.latestTip.from_username || 'Someone')} tipped <b>${Number(p.latestTip.amount).toLocaleString()}</b> Vibes to ${ovUserTag({ username: p.latestTip.to_username, display_name: p.latestTip.to_display })} <span class="muted">${esc(timeAgo(p.latestTip.created_at))}</span></div>`);
+    if (p.newestFollow) act.push(`<div class="pulse-act"><i class="fa-solid fa-heart"></i> ${ovUserTag({ username: p.newestFollow.follower_username, display_name: p.newestFollow.follower_display })} followed ${ovUserTag({ username: p.newestFollow.streamer_username, display_name: p.newestFollow.streamer_display })} <span class="muted">${esc(timeAgo(p.newestFollow.created_at))}</span></div>`);
     if (act.length) cards.push(`<div class="pulse-card"><div class="pulse-kicker"><i class="fa-solid fa-wave-square"></i> Latest activity</div>${act.join('')}</div>`);
 
     // Weekly leader teasers.
     const board = (title, icon, rows, unit) => rows && rows.length ? `
         <div class="pulse-card">
             <div class="pulse-kicker"><i class="fa-solid ${icon}"></i> ${title}</div>
-            ${rows.map((r, i) => `<div class="pulse-rank"><span class="pulse-medal">${['🥇', '🥈', '🥉'][i] || (i + 1)}</span> <a href="/@${esc(r.username)}" onclick="return handleLinkClick(event, '/@${esc(r.username)}')">${esc(r.display_name || r.username)}</a> <b>${Number(r.total).toLocaleString()}</b> <span class="muted">${unit}</span></div>`).join('')}
+            ${rows.map((r, i) => `<div class="pulse-rank"><span class="pulse-medal">${['🥇', '🥈', '🥉'][i] || (i + 1)}</span> ${ovUserTag(r)} <b>${Number(r.total).toLocaleString()}</b> <span class="muted">${unit}</span></div>`).join('')}
         </div>` : '';
     const supporters = board('Top supporters this week', 'fa-trophy', p.topSupporters, 'Vibes');
     const earners = board('Top point earners this week', 'fa-coins', p.topEarners, 'pts');
@@ -2462,8 +2539,11 @@ async function loadHomeRecentOnline(page, append) {
         const recentData = await api(`/streams/recently-online?limit=${limit}&offset=${offset}`);
         renderRecentlyOnline('stream-grid-recent', recentData.streamers || [], append);
         if (window.OVDensity) {
+            // Recently-online cards are wider than a thumbnail — avatar, name and last-seen line
+            // all sit on one row — so they need more room before two columns stop being cramped.
+            // 188px puts a small phone on one card per row and a large one on two.
             OVDensity.attach(document.getElementById('stream-grid-recent'),
-                { key: 'recent', header: document.getElementById('stream-grid-recent')?.previousElementSibling });
+                { key: 'recent', minCard: 188, header: document.getElementById('stream-grid-recent')?.previousElementSibling });
         }
         renderHomePagination('stream-grid-recent-pagination', recentData.total || 0, _homeRecentOnlinePage, HOME_RECENT_ONLINE_PAGE_SIZE, 'loadHomeRecentOnline');
     } catch { /* silent */ }
@@ -2476,7 +2556,7 @@ function renderRecentlyOnline(containerId, streamers, append) {
         if (!append) container.innerHTML = '<p class="muted">No recent streamers</p>';
         return;
     }
-    const _put = (html) => { if (append) container.insertAdjacentHTML('beforeend', html); else container.innerHTML = html; };
+    const _put = (html) => ovPutCards(container, html, append);
     _put(streamers.map(s => {
         const msList = (s.managed_streams || []);
         const avatar = _avatarSpan(s.avatar_url, s.username, s.profile_color);
@@ -2532,7 +2612,7 @@ async function loadHomeRecentVods(page, append) {
             if (!header || !grid) return;
             if (!vods.length && _homeRecentVodsPage === 1) { header.style.display = 'none'; grid.innerHTML = ''; return; }
             header.style.display = '';
-            const _put = (html) => { if (append) grid.insertAdjacentHTML('beforeend', html); else grid.innerHTML = html; };
+            const _put = (html) => ovPutCards(grid, html, append);
             _put(vods.map(v => {
                 const href = `/vod/${v.id}`;
                 return `
@@ -2540,7 +2620,7 @@ async function loadHomeRecentVods(page, append) {
                         <div class="stream-card-thumb">
                             ${thumbImg(v.thumbnail_url, 'fa-video', v.title, `/api/thumbnails/generate/vod/${v.id}`)}
                             ${v.duration_seconds ? `<span class="stream-card-duration">${formatDuration(v.duration_seconds)}</span>` : ''}
-                            <span class="stream-card-viewers"><i class="fa-solid fa-eye"></i> ${v.view_count || 0}</span>
+                            ${ovViewsBadge(v.view_count)}
                         </div>
                         <div class="stream-card-info">
                             <div class="stream-card-title">${esc(v.title || 'VOD')}</div>
@@ -2571,12 +2651,12 @@ async function loadHomeClips(page, append) {
             const grid = document.getElementById('home-clips-grid');
             if (!clips.length && _homeClipsPage === 1) { if (header) header.style.display = 'none'; return; }
             if (header) header.style.display = '';
-            const _put = (html) => { if (append) grid.insertAdjacentHTML('beforeend', html); else grid.innerHTML = html; };
+            const _put = (html) => ovPutCards(grid, html, append);
             _put(clips.map(c => `
                 <a class="stream-card" href="/clip/${c.id}" onclick="return handleLinkClick(event, '/clip/${c.id}')">
                     <div class="stream-card-thumb">
                         ${thumbImg(c.thumbnail_url, 'fa-scissors', c.title, `/api/thumbnails/generate/clip/${c.id}`)}
-                        <span class="stream-card-viewers"><i class="fa-solid fa-eye"></i> ${c.view_count || 0}</span>
+                        ${ovViewsBadge(c.view_count)}
                         ${c.duration_seconds ? `<span class="stream-card-duration">${formatDuration(c.duration_seconds)}</span>` : ''}
                     </div>
                     <div class="stream-card-info">
@@ -2607,7 +2687,7 @@ async function loadHomePastes(page, append) {
             const list = document.getElementById('home-pastes-list');
             if (!pastes.length && _homePastesPage === 1) { if (header) header.style.display = 'none'; return; }
             if (header) header.style.display = '';
-            const _put = (html) => { if (append) list.insertAdjacentHTML('beforeend', html); else list.innerHTML = html; };
+            const _put = (html) => ovPutCards(list, html, append);
             _put(pastes.map(p => {
                 const icon = p.type === 'screenshot' ? 'fa-image' : (p.language && p.language !== 'plaintext' ? 'fa-code' : 'fa-file-lines');
                 const preview = p.type === 'paste' ? esc((p.content || '').slice(0, 220)).replace(/\n{3,}/g, '\n\n') : '';
@@ -3317,7 +3397,7 @@ function _renderClipsTakenGrid(username, data) {
                 <div class="stream-card-thumb">
                     ${thumbImg(cl.thumbnail_url, 'fa-scissors', cl.title, `/api/thumbnails/generate/clip/${cl.id}`)}
                     ${_visBadge(cl.visibility, cl.is_public, canManage)}
-                    <span class="stream-card-viewers"><i class="fa-solid fa-eye"></i> ${cl.view_count || 0}</span>
+                    ${ovViewsBadge(cl.view_count)}
                     <span class="stream-card-duration">${formatDuration(cl.duration_seconds)}</span>
                 </div>
                 <div class="stream-card-info">

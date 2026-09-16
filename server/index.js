@@ -1276,18 +1276,23 @@ async function start() {
         const _changelogMaxBroadcasts = 3;
         const _changelogDelays = [5000, 15000, 30000];
 
-        function broadcastChangelog() {
-            try {
-                // Get git describe for a human-readable version tag
-                let versionTag = '';
-                try {
-                    versionTag = execSync('git describe --always --tags', { cwd: REPO_DIR, encoding: 'utf8', timeout: 3000 }).trim();
-                } catch { versionTag = ''; }
+        /** Promise wrapper around execFile — git, argv-style, never through a shell. */
+        function _git(args, timeout) {
+            return new Promise((resolve) => {
+                execFile('git', args, { cwd: REPO_DIR, encoding: 'utf8', timeout, maxBuffer: 1024 * 1024 },
+                    (err, stdout) => resolve(err ? '' : String(stdout || '')));
+            });
+        }
 
-                const raw = execSync(
-                    `git --no-pager log --pretty=format:'%H||%h||%s||%an||%aI' -10`,
-                    { cwd: REPO_DIR, encoding: 'utf8', timeout: 5000 }
-                );
+        // These two git calls used to be execSync. At boot that blocks the event loop while the
+        // server is meant to be accepting its first requests, and the whole reason this runs on a
+        // 5/15/30s delay is to stay out of the way of startup. execFile keeps it off the loop.
+        async function broadcastChangelog() {
+            try {
+                const versionTag = (await _git(['describe', '--always', '--tags'], 3000)).trim();
+
+                const raw = await _git(['--no-pager', 'log', '--pretty=format:%H||%h||%s||%an||%aI', '-10'], 5000);
+                if (!raw.trim()) return;
                 const commits = raw.trim().split('\n').filter(Boolean).map(line => {
                     const [hash, short, subject, author, date] = line.split('||');
                     return { hash, short, subject, author, date };

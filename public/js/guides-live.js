@@ -21,7 +21,7 @@
     const CATS = [['irl', 'IRL', 'fa-person-walking'], ['outdoors', 'Outdoors', 'fa-mountain-sun'], ['travel', 'Travel', 'fa-plane'], ['building', 'Building / Craft', 'fa-hammer'], ['music', 'Music', 'fa-music'], ['gaming', 'Gaming', 'fa-gamepad'], ['robot', 'Robot', 'fa-robot'], ['desktop', 'Desktop', 'fa-desktop'], ['other', 'Other', 'fa-sparkles']];
     const PLAT = { twitch: ['Twitch', 'fa-brands fa-twitch', '#a970ff'], youtube: ['YouTube', 'fa-brands fa-youtube', '#ff4b4b'], kick: ['Kick', 'fa-solid fa-bolt', '#53fc18'], custom: ['Any RTMP', 'fa-solid fa-tower-broadcast', '#e5e7eb'] };
     const TASK_JOURNEY = { slot: ['golive', 'stream'], method: ['golive', 'method'], restream: ['golive', 'restream'], golive: ['golive', 'golive'], profile: ['profile'], offline: ['offline'], emote: ['emote'], sound: ['sound'], goal: ['goal'], powerchat: ['powerchat'], panels: ['panels'], share: ['share'] };
-    const TASK_ICON = { slot: 'fa-tower-broadcast', method: 'fa-sliders', restream: 'fa-satellite-dish', golive: 'fa-play', profile: 'fa-user', offline: 'fa-image', emote: 'fa-face-grin-squint-tears', sound: 'fa-volume-high', goal: 'fa-bullseye', powerchat: 'fa-hand-holding-dollar', panels: 'fa-table-columns', share: 'fa-share-nodes' };
+    const TASK_ICON = { slot: 'fa-tower-broadcast', method: 'fa-sliders', restream: 'fa-satellite-dish', golive: 'fa-play', profile: 'fa-user', offline: 'fa-image', emote: 'fa-face-grin-squint-tears', sound: 'fa-volume-high', goal: 'fa-bullseye', powerchat: 'fa-hand-holding-dollar', panels: 'fa-table-columns', share: 'fa-share-nodes', mods: 'fa-user-shield', requests: 'fa-list-ol', moderation: 'fa-gavel', controls: 'fa-gamepad', aibot: 'fa-robot', paste: 'fa-code' };
 
     // ── Shared stream state (slot / endpoint / restreams) ─────
     const D = { slots: [], slot: null, key: null, rtmpUrl: null, whipBase: null, dests: [], rs: null, method: null, mode: 'camera', poll: null };
@@ -273,10 +273,10 @@
                 const pct = Math.round((p.done / p.total) * 100);
                 const groups = {}; p.tasks.forEach(t => { (groups[t.group] = groups[t.group] || []).push(t); });
                 const next = p.next;
-                return `<div class="ovg-hub-top"><div class="ovg-ring" style="--pct:${pct}"><span>${p.done}<small>/${p.total}</small></span></div><div><div class="ovg-hub-title">${pct === 100 ? 'Everything is set up. Go be great.' : next ? `Next up: ${esc(next.title)}` : 'Nice work'}</div><div class="ovg-hub-sub">${pct === 100 ? 'Come back any time something new ships.' : next ? esc(next.why) : ''}</div>${next ? `<button type="button" class="btn btn-primary" data-task="${esc(next.id)}"><i class="fa-solid ${TASK_ICON[next.id] || 'fa-arrow-right'}"></i> Do it now</button>` : ''}</div></div>
-                ${Object.entries(groups).map(([g, tasks]) => `<div class="ovg-hub-group"><h4>${esc(g)}</h4><ul class="ovg-tasks">${tasks.map(t => `<li class="${t.done ? 'done' : ''} ${ctx.focus === t.id ? 'focus' : ''}"><span class="ovg-task-ico"><i class="fa-solid ${t.done ? 'fa-check' : (TASK_ICON[t.id] || 'fa-circle')}"></i></span><span class="ovg-task-body"><b>${esc(t.title)}${t.done && t.count > 1 ? ` <small>×${t.count}</small>` : ''}</b><small>${esc(t.why)}</small></span><button type="button" class="btn btn-sm ${t.done ? 'btn-outline' : 'btn-primary'}" data-task="${esc(t.id)}">${t.done ? 'Revisit' : 'Set up'}</button></li>`).join('')}</ul></div>`).join('')}`;
+                return `<div class="ovg-hub-top"><div class="ovg-ring" style="--pct:${pct}"><span>${p.done}<small>/${p.total}</small></span></div><div><div class="ovg-hub-title">${pct === 100 ? 'Everything is set up. Go be great.' : next ? `Next up: ${esc(next.title)}` : 'Nice work'}</div><div class="ovg-hub-sub">${pct === 100 ? 'Come back any time something new ships.' : next ? esc(next.why) : ''}</div>${next ? `<button type="button" class="btn btn-primary" data-task="${esc(next.id)}" data-go="${esc(next.go || '')}"><i class="fa-solid ${TASK_ICON[next.id] || 'fa-arrow-right'}"></i> Do it now</button>` : ''}</div></div>
+                ${Object.entries(groups).map(([g, tasks]) => `<div class="ovg-hub-group"><h4>${esc(g)}</h4><ul class="ovg-tasks">${tasks.map(t => `<li class="${t.done ? 'done' : ''} ${ctx.focus === t.id ? 'focus' : ''}"><span class="ovg-task-ico"><i class="fa-solid ${t.done ? 'fa-check' : (TASK_ICON[t.id] || 'fa-circle')}"></i></span><span class="ovg-task-body"><b>${esc(t.title)}${t.done && t.count > 1 ? ` <small>×${t.count}</small>` : ''}</b><small>${esc(t.why)}</small></span><button type="button" class="btn btn-sm ${t.done ? 'btn-outline' : 'btn-primary'}" data-task="${esc(t.id)}" data-go="${esc(t.go || '')}">${t.done ? 'Revisit' : 'Set up'}</button></li>`).join('')}</ul></div>`).join('')}`;
             },
-            mount: (el) => { el.querySelectorAll('[data-task]').forEach(b => b.addEventListener('click', () => { const [j, step] = TASK_JOURNEY[b.dataset.task] || []; if (!j) return; const needsBroadcast = j === 'golive' && !onBroadcast(); if (needsBroadcast) { G.close(false); G.cfg.navigate(`/broadcast?guide=golive${step ? ':' + step : ''}`); } else G.open(j, { step }); })); },
+            mount: (el) => { el.querySelectorAll('[data-task]').forEach(b => b.addEventListener('click', () => { const [j, step] = TASK_JOURNEY[b.dataset.task] || []; if (!j) { const go = b.dataset.go; if (go) { G.close(false); G.cfg.navigate(go); } return; } const needsBroadcast = j === 'golive' && !onBroadcast(); if (needsBroadcast) { G.close(false); G.cfg.navigate(`/broadcast?guide=golive${step ? ':' + step : ''}`); } else G.open(j, { step }); })); },
             footer: () => `<span class="ovg-foot-note">Everything here is optional — do it in any order.</span><button type="button" class="btn btn-outline" data-act="next">Close</button>`,
             next: 'close',
         }],
@@ -343,6 +343,10 @@
         const gained = Number.isFinite(prev) && p.done > prev ? p.done - prev : 0;
         const startPct = gained ? Math.round((prev / p.total) * 100) : pct;
 
+        // Everything ticked? The quest has nothing left to nag about, so it becomes the one thing
+        // they actually came for. Same slot, same width — a different job.
+        if (pct >= 100 && !gained) { renderLaunch(el); return; }
+
         el.innerHTML = `
             <button type="button" class="ovg-quest${pct >= 100 ? ' is-done' : ''}" style="--q:${tone.c};--pct:${startPct}"
                 aria-label="${next ? `Streamer setup, ${p.done} of ${p.total} done. Next up: ${esc(next.title)}` : 'Streamer setup complete'}">
@@ -370,6 +374,42 @@
         }
         try { localStorage.setItem(SEEN_KEY, String(p.done)); } catch { /* */ }
     }
+
+    /**
+     * The single button a set-up streamer sees: start streaming.
+     *
+     * This is also what the home page's empty "nobody is live" state and the offline-channel CTA
+     * point at, so there is one code path for "take me to my stream" rather than three buttons
+     * that each guess at the right destination.
+     */
+    function renderLaunch(el) {
+        el.innerHTML = `
+            <button type="button" class="ovg-launch" aria-label="Start streaming">
+                <span class="ovg-launch-aura" aria-hidden="true"></span>
+                <span class="ovg-launch-sheen" aria-hidden="true"></span>
+                <span class="ovg-launch-ico"><i class="fa-solid fa-tower-broadcast"></i></span>
+                <span class="ovg-launch-text"><b>Start streaming</b><small>Your setup is done — the desk is one tap away</small></span>
+                <span class="ovg-launch-go" aria-hidden="true"><i class="fa-solid fa-arrow-right"></i></span>
+            </button>`;
+        el.firstElementChild.addEventListener('click', () => window.startGoLiveJourney());
+    }
+
+    /**
+     * "Take me to streaming", wherever it is clicked from.
+     *
+     * Signed out, it remembers the intent and sends them to sign-in, so they land back in the
+     * go-live journey instead of on a cold home page. Signed in with nothing set up, it opens the
+     * guided journey. Signed in and set up, it just goes to the desk.
+     */
+    window.startGoLiveJourney = async function () {
+        if (!me()) {
+            try { localStorage.setItem('ovg:pending', JSON.stringify({ id: 'golive', opts: { step: 'stream' }, when: Date.now() })); } catch { /* */ }
+            location.href = G.cfg.loginHref || '/api/auth/sso/login';
+            return;
+        }
+        await loadSlots();
+        G.cfg.navigate(D.slots.length ? '/broadcast' : '/broadcast?guide=golive:stream');
+    };
 
     function renderJoin(el) {
         // Six perks with a sentence each is a tall block to put in the middle of a front page, and

@@ -4544,8 +4544,11 @@ function toggleBroadcastMobileChat() {
     if (_bcMobileChatOpen) {
         const msgs = document.getElementById('bc-chat-messages');
         if (msgs) msgs.scrollTop = msgs.scrollHeight;
+        // setUnreadBadge lives in chat.js and is the single decision point for badge visibility;
+        // fall back to the manual reset if chat has not loaded on this page.
         const badge = document.getElementById('bc-mobile-chat-badge');
-        if (badge) { badge.style.display = 'none'; badge.textContent = '0'; }
+        if (typeof setUnreadBadge === 'function') setUnreadBadge(badge, 0);
+        else if (badge) { badge.style.display = 'none'; badge.textContent = '0'; }
     }
 }
 /** Show/hide the broadcast mobile chat FAB based on screen size and live state */

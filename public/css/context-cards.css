@@ -106,3 +106,66 @@
 .dsc--noleft .dsc-sec--side { grid-template-columns: minmax(260px, 1fr) minmax(0, 1.4fr); align-items: start; }
 @media (max-width: 980px) { .dsc { grid-template-columns: 1fr; grid-template-areas: "head" "live" "clips" "side" "people"; } .dsc--noleft { grid-template-areas: "head" "side" "people"; } .dsc--noleft .dsc-sec--side { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .dsc-live { grid-template-columns: 1fr 1fr; } .dsc-clips { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); } }
+
+/* ═══════════════════════════════════════════════════════════════
+   The "while away" board, collapsed.
+
+   On a phone this board was six sections of other people's content standing between a visitor and
+   the About panels / tabs of the channel they actually opened. It now starts as one row and opens
+   on demand. The count is the hook — it says how much has happened, which is the only reason to
+   look — and the row stays a real, obvious control rather than a heading that happens to be
+   clickable.
+   ═══════════════════════════════════════════════════════════════ */
+.dsc-wrap { width: 100%; margin: 14px 0 0; }
+.dsc-toggle {
+    position: relative; overflow: hidden; isolation: isolate;
+    display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 11px;
+    width: 100%; padding: 10px 13px; cursor: pointer; text-align: left; font: inherit;
+    color: var(--text-primary); border-radius: 14px;
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, var(--bg-card)), var(--bg-secondary));
+    transition: border-color .22s, box-shadow .22s, transform .18s;
+}
+.dsc-toggle:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); box-shadow: 0 8px 22px rgba(0,0,0,0.26); }
+.dsc-toggle:active { transform: scale(0.995); }
+.dsc-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dsc-toggle-ico {
+    width: 32px; height: 32px; flex: none; border-radius: 10px; display: grid; place-items: center;
+    font-size: 0.8rem; color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+}
+.dsc-toggle-text { min-width: 0; display: grid; gap: 1px; }
+.dsc-toggle-text b { font-size: 0.88rem; font-weight: 850; letter-spacing: -0.01em; }
+/* One line, clipped — the sub-line is context, never a reason for the row to grow taller. */
+.dsc-toggle-text small { font-size: 0.72rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsc-toggle-count {
+    flex: none; min-width: 26px; padding: 3px 8px; border-radius: 999px;
+    font-size: 0.76rem; font-weight: 900; text-align: center; color: #fff;
+    background: var(--accent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
+}
+/* A single slow pulse ring on the count, only while the board is closed and only on screens that
+   want motion — once it is open the count has done its job. */
+.dsc-wrap:not(.is-open) .dsc-toggle-count { animation: dscPulse 2.8s ease-out infinite; }
+@keyframes dscPulse {
+    0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+    70%  { box-shadow: 0 0 0 9px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+}
+.dsc-toggle-chev { flex: none; color: var(--text-muted); transition: transform .3s cubic-bezier(.22,1,.36,1), color .2s; }
+.dsc-wrap.is-open .dsc-toggle-chev { transform: rotate(180deg); color: var(--accent); }
+.dsc-toggle:hover .dsc-toggle-chev { color: var(--accent); }
+/* The board no longer carries its own top margin — the wrapper owns the spacing now. */
+.dsc-wrap .dsc { margin-top: 10px; }
+
+@media (max-width: 560px) {
+    .dsc-toggle { gap: 9px; padding: 9px 11px; }
+    .dsc-toggle-ico { width: 29px; height: 29px; font-size: 0.74rem; }
+    .dsc-toggle-text b { font-size: 0.83rem; }
+    .dsc-toggle-text small { font-size: 0.68rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .dsc-toggle-count, .dsc-toggle-chev, .dsc-toggle { animation: none !important; transition: none !important; }
+}
+.rs-lite .dsc-toggle-count { animation: none !important; }
