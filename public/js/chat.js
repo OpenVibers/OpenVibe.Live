@@ -3367,7 +3367,13 @@ function addChatMessage(msg) {
     // message nodes (memory + scroll/layout thrash). Mirrors the caps the cross-feed /
     // widget containers already have. Don't trim mid history-hydration.
     if (!_loadingHistory) {
-        while (container.children.length > MAIN_CHAT_MAX_MESSAGES) container.removeChild(container.firstChild);
+        while (container.children.length > MAIN_CHAT_MAX_MESSAGES) {
+            // Removing from the top shortens everything above the viewport, so a reader who has
+            // scrolled back sees the text jump upward. Give back exactly what we took.
+            const lost = container.firstChild.getBoundingClientRect().height;
+            container.removeChild(container.firstChild);
+            if (!_chatPinned) container.scrollTop = Math.max(0, container.scrollTop - lost);
+        }
     }
     if (chatSettings.autoScroll) {
         if (_loadingHistory) {
@@ -5402,12 +5408,47 @@ let _chatUserScrolledUp = false;
 let _chatUnreadCount = 0;
 let _loadingHistory = false;
 
+/**
+ * Is the reader following the live edge?
+ *
+ * This used to be measured inside scrollChat(), which every caller runs AFTER appending the new
+ * message — so scrollHeight already counted the message being announced, and the distance from
+ * the bottom was inflated by that message's own height. Anything taller than 100px (a wrapped
+ * multi-line message, a reply header, a clip card, a GIF card, a goal-reached card) therefore
+ * classified a reader sitting exactly at the bottom as "scrolled up", and chat silently stopped
+ * following with an unread badge they never asked for. That is the single most-felt bug in a
+ * live-streaming product.
+ *
+ * Appending content does not fire a scroll event, so tracking the state from the scroll listener
+ * instead means the value scrollChat() reads is the one from before the append — the thing it
+ * actually wanted — with no need to pass anything through six call sites.
+ */
+let _chatPinned = true;
+function _watchChatPin(container) {
+    if (!container || container._ovPinWatch) return;
+    container._ovPinWatch = true;
+    const update = () => {
+        _chatPinned = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+        if (_chatPinned) {
+            _chatUserScrolledUp = false;
+            _chatUnreadCount = 0;
+            _hideChatNewMessagesIndicator();
+        } else {
+            _chatUserScrolledUp = true;
+        }
+    };
+    container.addEventListener('scroll', update, { passive: true });
+    update();
+}
+
 function scrollChat() {
     const { messages: container } = getChatEl();
     if (!container) return;
-    // Only auto-scroll if user is near the bottom
-    const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-    if (nearBottom) {
+    // Attach here rather than only on the cold-connect path: initChat() returns early when a
+    // stream goes live or offline, and that swaps the render container — which used to leave the
+    // new one with no listener at all, so scrolling back to the bottom never re-armed following.
+    _watchChatPin(container);
+    if (_chatPinned) {
         container.scrollTop = container.scrollHeight;
         _chatUserScrolledUp = false;
         _chatUnreadCount = 0;
