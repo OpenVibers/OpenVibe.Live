@@ -2546,18 +2546,12 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .home-cta-banner .cta-hero,
 .home-cta-banner .cta-method strong,
 .home-cta-banner .home-cta-feature > strong,
-.home-cta-banner .cta-robot-body strong,
-.home-cta-banner .cta-owner-body strong,
-.home-cta-banner .cta-owner-body b,
 .home-cta-banner .cta-lede strong { color: #f4f2ef; }
 .home-cta-banner .cta-lede,
-.home-cta-banner .cta-section-label,
-.home-cta-banner .cta-robot-body p,
-.home-cta-banner .cta-owner-body p { color: #bcbab6; }
+.home-cta-banner .cta-section-label { color: #bcbab6; }
 .home-cta-banner .cta-method span,
 .home-cta-banner .home-cta-feature > span { color: #918f8b; }
-.home-cta-banner .cta-method span b,
-.home-cta-banner .cta-owner-body b { color: #d6d4d0; }
+.home-cta-banner .cta-method span b { color: #d6d4d0; }
 .home-cta-banner .btn-outline { color: #e8e6e3; border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: rgba(255,255,255,0.03); }
 .home-cta-banner .btn-outline:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: var(--accent); color: #fff; }
 
@@ -2620,22 +2614,6 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .cta-method-tag { margin-top: 10px; display: inline-block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.03em; color: var(--accent-light); background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); border-radius: 999px; padding: 3px 10px; }
 
 /* Robot / low-latency highlight */
-.cta-robot {
-    position: relative; overflow: hidden; text-align: left;
-    display: flex; gap: 18px; align-items: center;
-    margin: 22px 0 6px; padding: 20px 22px; border-radius: 16px;
-    background: linear-gradient(120deg, color-mix(in srgb, var(--accent-dark) 14%, transparent), rgba(52,152,219,0.10) 80%);
-    border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
-}
-.cta-robot-glow { position: absolute; width: 320px; height: 320px; right: -80px; top: -120px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 35%, transparent), transparent 65%); filter: blur(20px); animation: ctaGlowPulse 4.5s ease-in-out infinite; pointer-events: none; }
-@keyframes ctaGlowPulse { 0%,100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 0.9; transform: scale(1.12); } }
-.cta-robot-icon { flex-shrink: 0; width: 60px; height: 60px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 1.7rem; color: #0e0e12; background: linear-gradient(135deg, var(--accent-light), var(--accent-dark)); box-shadow: 0 10px 26px color-mix(in srgb, var(--accent-dark) 40%, transparent); animation: ctaFloat 3.6s ease-in-out infinite; }
-@keyframes ctaFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
-.cta-robot-body { position: relative; z-index: 1; }
-.cta-robot-body strong { display: block; font-size: 1.15rem; color: var(--text-primary); margin-bottom: 4px; }
-.cta-robot-body p { margin: 0; font-size: 0.9rem; color: var(--text-secondary); line-height: 1.6; }
-.cta-robot-body b { color: var(--accent-light); }
-
 /* Feature grid */
 .home-cta-features {
     display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
@@ -2672,29 +2650,19 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .home-cta-feature.feat-star { border-color: color-mix(in srgb, var(--accent) 30%, transparent); background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 8%, transparent), rgba(255,255,255,0.02)); }
 .home-cta-feature.feat-star::before { content: '\f005'; font-family: 'Font Awesome 6 Free'; font-weight: 900; position: absolute; top: 12px; right: 13px; font-size: 0.6rem; color: var(--accent); opacity: 0.8; }
 
-/* Owner / community panel */
-.cta-owner {
-    position: relative; overflow: hidden; text-align: left;
-    display: flex; gap: 18px; align-items: center;
-    margin: 6px 0 26px; padding: 20px 22px; border-radius: 16px;
-    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, transparent), rgba(18,16,14,0.6));
-    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-}
-.cta-owner-shine { position: absolute; inset: 0; background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.08) 50%, transparent 65%); transform: translateX(-120%); animation: ctaSweep 5.5s ease-in-out infinite; pointer-events: none; }
-@keyframes ctaSweep { 0% { transform: translateX(-120%); } 55%,100% { transform: translateX(120%); } }
-.cta-owner-avatar { flex-shrink: 0; width: 58px; height: 58px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: #0e0e12; background: linear-gradient(135deg, var(--accent-light), var(--accent)); box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 40%, transparent); }
-.cta-owner-body { position: relative; z-index: 1; }
-.cta-owner-body strong { display: block; font-size: 1.1rem; color: var(--text-primary); margin-bottom: 4px; }
-.cta-owner-body p { margin: 0; font-size: 0.9rem; color: var(--text-secondary); line-height: 1.65; }
-.cta-owner-body b { color: var(--text-primary); }
-.cta-owner-body em { color: var(--accent-light); font-style: normal; font-weight: 700; }
-.cta-heart { color: #ff5a7a; animation: ctaHeart 1.4s ease-in-out infinite; display: inline-block; }
-@keyframes ctaHeart { 0%,100% { transform: scale(1); } 25% { transform: scale(1.25); } 40% { transform: scale(1); } }
-
 /* Buttons */
 .home-cta-buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-.cta-btn-glow { position: relative; box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); animation: ctaBtnGlow 2.6s ease-in-out infinite; }
-@keyframes ctaBtnGlow { 0%,100% { box-shadow: 0 8px 22px color-mix(in srgb, var(--accent-dark) 35%, transparent), 0 0 0 0 transparent; } 50% { box-shadow: 0 8px 30px color-mix(in srgb, var(--accent-dark) 55%, transparent), 0 0 22px 2px color-mix(in srgb, var(--accent) 25%, transparent); } }
+/* The glow used to animate box-shadow, which repaints the button every frame for as long as it is
+   on screen. The shadow is now static and the pulse is an opacity fade on a pseudo-element halo. */
+.cta-btn-glow { position: relative; isolation: isolate; box-shadow: 0 8px 22px color-mix(in srgb, var(--accent-dark) 35%, transparent); }
+.cta-btn-glow::after {
+    /* No spread and no outset: with either, the halo's edge reads as a hard ring around the button
+       at the top of the pulse instead of a glow. */
+    content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+    box-shadow: 0 10px 34px color-mix(in srgb, var(--accent-dark) 50%, transparent), 0 0 30px color-mix(in srgb, var(--accent) 28%, transparent);
+    opacity: 0; animation: ctaBtnGlow 2.6s ease-in-out infinite;
+}
+@keyframes ctaBtnGlow { 0%,100% { opacity: 0; } 50% { opacity: 1; } }
 
 @media (max-width: 860px) {
     .cta-methods { grid-template-columns: 1fr; }
@@ -2702,14 +2670,12 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 }
 @media (max-width: 560px) {
     .home-cta-features { grid-template-columns: 1fr; }
-    .cta-robot, .cta-owner { flex-direction: column; text-align: center; }
-    .cta-robot-body, .cta-owner-body { text-align: center; }
     .cta-hero { font-size: 1.7rem; }
 }
 /* Respect reduced-motion */
 @media (prefers-reduced-motion: reduce) {
     .home-cta-banner::before, .cta-ambient, .cta-embers span, .cta-live-dot, .cta-hero-grad,
-    .cta-robot-glow, .cta-robot-icon, .cta-owner-shine, .cta-heart, .cta-btn-glow, .home-cta-feature {
+    .cta-btn-glow, .home-cta-feature {
         animation: none !important;
     }
     .cta-hero-grad { -webkit-text-fill-color: var(--accent); color: var(--accent); }
@@ -15716,3 +15682,113 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
     .user-dropdown.show, .user-dropdown.show .ud-group a { animation: none !important; }
     .user-dropdown .ud-group a:hover { transform: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   About section ("Streaming the way it should be") — layout pass.
+
+   Measured before: 1,875px tall on desktop and 4,173px on a phone, roughly five screens. Much of
+   that was repetition — a robot callout restating the starred robots card, an owner callout
+   restating the lede, a tools button restating the tools card — which is gone from the markup.
+   The rest was card shape: on a phone each method card was ~470px, an icon stacked above a title
+   stacked above a paragraph above a tag. Phones now get compact rows with the icon beside the
+   text, which is how a list of short items reads on a narrow screen anyway.
+   ═══════════════════════════════════════════════════════════════ */
+
+.cta-btn-short { display: none; }
+
+/* Method cards: a column, so the tag always lands on the bottom edge. It used to sit inline after
+   the last word of the description in two cards and on its own line in the third. */
+.cta-method { display: flex; flex-direction: column; }
+.cta-method > span { display: block; }
+.cta-method-tag { display: block; width: fit-content; margin-top: auto; padding-top: 3px; }
+.cta-method > span + .cta-method-tag { margin-top: 12px; }
+.cta-method-icon { transition: transform .25s cubic-bezier(.2, 1.3, .3, 1), box-shadow .25s ease; }
+.cta-method:hover .cta-method-icon { transform: rotate(-6deg) scale(1.08); box-shadow: 0 10px 24px color-mix(in srgb, var(--accent-dark) 55%, transparent); }
+.cta-method:hover .cta-method-num { color: color-mix(in srgb, var(--accent) 32%, transparent); }
+.cta-method-num { transition: color .2s ease; }
+
+/* Feature cards: the icon gets the same rounded tile the rest of the site uses for section icons,
+   instead of a bare glyph floating above the title. */
+.home-cta-feature > i:first-child {
+    width: 34px; height: 34px; flex: none; border-radius: 10px;
+    display: grid; place-items: center; font-size: 0.92rem; margin-bottom: 6px;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 13%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+    transition: transform .25s cubic-bezier(.2, 1.3, .3, 1), background .2s ease;
+}
+.home-cta-feature:hover > i:first-child { transform: scale(1.1) rotate(-5deg); background: color-mix(in srgb, var(--accent) 22%, transparent); }
+
+/* A sheen that crosses a card once on hover — transform only, clipped to the card. */
+.cta-method::before, .home-cta-feature::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+    background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.06) 50%, transparent 60%);
+    transform: translateX(-100%); opacity: 0;
+}
+.home-cta-feature { overflow: hidden; }
+.cta-method:hover::before, .home-cta-feature:hover::after { opacity: 1; animation: ctaCardSheen .8s ease-out; }
+@keyframes ctaCardSheen { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* Money section: a sentence and three short points, not another wall of feature cards. The lede
+   was the one centred paragraph in a section that is otherwise left-aligned. */
+.cta-money-lede {
+    max-width: 700px; margin: 0 0 14px !important; text-align: left;
+    padding: 2px 0 2px 14px; border-left: 3px solid color-mix(in srgb, #4ade80 55%, transparent);
+    font-size: 0.95rem; line-height: 1.6;
+}
+.cta-money-grid .home-cta-feature > i:first-child {
+    color: #4ade80; background: color-mix(in srgb, #4ade80 12%, transparent); border-color: color-mix(in srgb, #4ade80 26%, transparent);
+}
+.cta-money-grid { margin-bottom: 4px !important; }
+
+.home-cta-buttons { margin: 22px 0 6px; }
+
+/* Cards arrive when the section is opened. They used to play a rise animation at page load,
+   while the body was collapsed to zero height — an animation nobody could see. */
+.home-cta-feature { animation: none; }
+.home-cta-banner.about-opening .cta-method,
+.home-cta-banner.about-opening .home-cta-feature,
+.home-cta-banner.about-opening .cta-section-label,
+.home-cta-banner.about-opening .home-cta-buttons,
+.home-cta-banner.about-opening .cta-money-lede {
+    animation: ctaRise .5s cubic-bezier(.22, 1, .36, 1) both;
+    animation-delay: calc(var(--about-i, 0) * 38ms);
+}
+
+@media (max-width: 640px) {
+    /* Methods and features become compact rows: icon beside the text. */
+    .cta-methods { gap: 9px; }
+    .cta-method {
+        display: grid; grid-template-columns: auto 1fr; column-gap: 12px; row-gap: 3px;
+        padding: 13px 14px; align-items: start;
+    }
+    .cta-method-icon { grid-row: 1 / span 3; width: 38px; height: 38px; font-size: 1rem; margin: 0; border-radius: 10px; }
+    .cta-method-num { top: 9px; right: 11px; font-size: 1rem; }
+    .cta-method strong { font-size: 0.93rem; margin: 0; padding-right: 26px; }
+    .cta-method > span { font-size: 0.8rem; line-height: 1.45; }
+    .cta-method-tag, .cta-method > span + .cta-method-tag { margin-top: 5px; }
+
+    .home-cta-features { gap: 8px !important; }
+    .home-cta-feature {
+        display: grid; grid-template-columns: auto 1fr; column-gap: 12px; row-gap: 2px;
+        padding: 12px 13px !important; align-items: start;
+    }
+    .home-cta-feature > i:first-child { grid-row: 1 / span 2; margin: 0; width: 34px; height: 34px; }
+    .home-cta-feature > strong { font-size: 0.88rem; padding-right: 14px; }
+    .home-cta-feature > span { font-size: 0.78rem; line-height: 1.45; }
+    .home-cta-feature.feat-star::before { top: 10px; right: 11px; }
+
+    .home-cta-buttons { gap: 8px; }
+    .home-cta-buttons > .btn { flex: 1 1 140px; justify-content: center; padding-left: 12px; padding-right: 12px; white-space: nowrap; }
+    .cta-btn-long { display: none; }
+    .cta-btn-short { display: inline; }
+    .cta-money-lede { font-size: 0.86rem; padding-left: 11px; }
+    .cta-section-label { white-space: nowrap; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cta-method:hover::before, .home-cta-feature:hover::after { animation: none; opacity: 0; }
+    .home-cta-banner.about-opening * { animation: none !important; }
+    .cta-method:hover .cta-method-icon, .home-cta-feature:hover > i:first-child { transform: none; }
+}
+

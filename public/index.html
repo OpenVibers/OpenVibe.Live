@@ -88,7 +88,7 @@
          overlay) and is fetched without blocking the first paint: media="print" makes the browser
          treat it as non-critical, and the onload flips it back to all once it has arrived. -->
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-    <link rel="stylesheet" href="/css/style.css?v=208">
+    <link rel="stylesheet" href="/css/style.css?v=211">
     <link rel="stylesheet" href="/css/home-fx.css?v=14">
     <link rel="stylesheet" href="/css/home-tour.css?v=10">
     <link rel="stylesheet" href="/css/i18n-star.css?v=11">
@@ -444,7 +444,7 @@
 
                     <div class="home-about-body" id="home-about-body">
                     <!-- Three ways to go live -->
-                    <div class="cta-section-label" style="--sc:#60a5fa"><i class="fa-solid fa-tower-broadcast"></i> Three ways to go live — pick your vibe</div>
+                    <div class="cta-section-label" style="--sc:#60a5fa"><i class="fa-solid fa-tower-broadcast"></i> Three ways to go live</div>
                     <div class="cta-methods">
                         <div class="cta-method">
                             <div class="cta-method-num">01</div>
@@ -469,23 +469,13 @@
                         </div>
                     </div>
 
-                    <!-- Killer feature: real-time hardware control -->
-                    <div class="cta-robot">
-                        <div class="cta-robot-glow" aria-hidden="true"></div>
-                        <div class="cta-robot-icon"><i class="fa-solid fa-robot"></i></div>
-                        <div class="cta-robot-body">
-                            <strong>Viewers control real hardware — live.</strong>
-                            <p>That same sub-second WebRTC pipeline isn't just for talking heads. Viewers can <b>drive robots, pan cameras, and operate interactive rigs in real time</b> — latency low enough to actually <em>play</em>. Ultra-low-latency streaming built for robotics, PTZ cameras, and interactive apps. Good luck doing <i>that</i> on Twitch.</p>
-                        </div>
-                    </div>
-
                     <!-- Differentiators -->
-                    <div class="cta-section-label cta-diff-label" style="--sc:#fbbf24"><i class="fa-solid fa-crown"></i> Stuff you won't find on Twitch, Kick or YouTube</div>
+                    <div class="cta-section-label cta-diff-label" style="--sc:#fbbf24"><i class="fa-solid fa-crown"></i> Only on OpenVibe</div>
                     <div class="home-cta-features">
                         <div class="home-cta-feature feat-star">
                             <i class="fa-solid fa-robot"></i>
                             <strong>Viewer-controlled robots</strong>
-                            <span>Hand your chat the controls — real-time WebRTC command of robots, cameras &amp; hardware. Genuinely nobody else does this.</span>
+                            <span>Hand chat the controls: robots, PTZ cameras and interactive rigs over the same sub-second WebRTC pipeline — low enough latency to actually play.</span>
                         </div>
                         <div class="home-cta-feature">
                             <i class="fa-solid fa-tower-broadcast"></i>
@@ -494,8 +484,8 @@
                         </div>
                         <div class="home-cta-feature">
                             <i class="fa-solid fa-gamepad"></i>
-                            <strong>A game built into the site</strong>
-                            <span>Viewers play Scraplandia together, live on-stream, with leaderboards and a shared canvas. Chat that actually does something.</span>
+                            <strong>A game next door</strong>
+                            <span>Scraplandia lives on OpenVibe.Games — same account, leaderboards and a shared canvas, one click from any stream.</span>
                         </div>
                         <div class="home-cta-feature">
                             <i class="fa-solid fa-earth-americas"></i>
@@ -525,36 +515,23 @@
                         <div class="home-cta-feature feat-star">
                             <i class="fa-solid fa-code"></i>
                             <strong>100% open source</strong>
-                            <span>Every line is public on GitHub. No black boxes, no hidden trackers, no selling your data to anyone.</span>
-                        </div>
-                    </div>
-
-                    <!-- Owner / community -->
-                    <div class="cta-owner">
-                        <div class="cta-owner-shine" aria-hidden="true"></div>
-                        <div class="cta-owner-avatar"><i class="fa-solid fa-mug-hot"></i></div>
-                        <div class="cta-owner-body">
-                            <strong>Run by a human, not a boardroom.</strong>
-                            <p>OpenVibe.Live is built &amp; maintained by one hobbyist programmer who's usually <b>right here in chat</b>. Laid-back rules, no corporate nonsense, and a real person who <em>actually wants your feedback</em>. Got an idea? Say it in a stream — features here get shipped because a <b>user asked for them</b>. You help shape OpenVibe.Live and the whole OpenVibe. <span class="cta-heart">♥</span></p>
+                            <span>Every line is public on GitHub. Read it, fork it, or send a pull request — features here get built because someone asked.</span>
                         </div>
                     </div>
 
                     <div class="home-cta-buttons">
-                        <button class="btn btn-primary btn-lg cta-btn-glow" onclick="currentUser ? navigate('/broadcast') : showModal('register')">
-                            <i class="fa-solid fa-broadcast-tower"></i> Launch your stream
+                        <button class="btn btn-primary btn-lg cta-btn-glow" onclick="if (window.startGoLiveJourney) startGoLiveJourney(); else if (currentUser) navigate('/broadcast'); else showModal('register');">
+                            <i class="fa-solid fa-broadcast-tower"></i> <span class="cta-btn-long">Launch your stream</span><span class="cta-btn-short">Go live</span>
                         </button>
                         <a href="/chat" class="btn btn-outline btn-lg" onclick="return handleLinkClick(event, '/chat')">
                             <i class="fa-solid fa-comments"></i> Say hi in chat
-                        </a>
-                        <a href="https://openvibe.network" class="btn btn-outline btn-lg">
-                            <i class="fa-solid fa-screwdriver-wrench"></i> 200+ free tools
                         </a>
                     </div>
 
                     <!-- Where the money goes — part of the same About section -->
                     <div class="cta-section-label cta-diff-label" style="--sc:#4ade80"><i class="fa-solid fa-seedling"></i> Where the money goes</div>
-                    <p class="cta-lede">Open source, run in the open, and built to stay that way. Whatever the network earns goes back into it &mdash; keeping the servers on, paying for the storage and bandwidth that free streaming actually costs, funding new features, and putting money into the creators and events that make this place worth showing up to.</p>
-                    <div class="home-cta-features">
+                    <p class="cta-lede cta-money-lede">Whatever the network earns goes back into it &mdash; the servers, the storage and bandwidth that free streaming really costs, new features, and the creators and events that make this place worth showing up to.</p>
+                    <div class="home-cta-features cta-money-grid">
                         <div class="home-cta-feature">
                             <i class="fa-solid fa-plug-circle-bolt"></i>
                             <strong>Keep it running</strong>
@@ -567,8 +544,8 @@
                         </div>
                         <div class="home-cta-feature">
                             <i class="fa-solid fa-code-branch"></i>
-                            <strong>Stay open, stay decent</strong>
-                            <span>Every line is open source and the analytics are public. No selling the community out, no surprise pivot, no dark patterns &mdash; the code is right there if you want to check.</span>
+                            <strong>No surprise pivot</strong>
+                            <span>Where it goes stays visible. No selling the community out, no bait-and-switch, no dark patterns.</span>
                         </div>
                     </div>
                     </div><!-- /home-about-body -->
@@ -614,14 +591,14 @@
             <div id="home-pastes-pagination" class="pastes-pagination" style="display:none"></div>
 
             <!-- Scraplandia Leaderboards -->
-            <div class="section-header" style="--sc:#fbbf24" id="home-quest-header" style="display:none">
+            <div class="section-header" style="--sc:#fbbf24;display:none" id="home-quest-header">
                 <h2><i class="fa-solid fa-trophy"></i> Scraplandia Leaderboards<small class="section-kicker">the ladder</small></h2>
                 <a href="https://openvibe.games/game" class="badge" style="cursor:pointer;text-decoration:none;background:var(--surface);">Play Game</a>
             </div>
             <div class="home-leaderboards" id="home-leaderboards"></div>
 
             <!-- Canvas Preview -->
-            <div class="section-header" style="--sc:#4ade80" id="home-canvas-header" style="display:none">
+            <div class="section-header" style="--sc:#4ade80;display:none" id="home-canvas-header">
                 <h2><i class="fa-solid fa-palette"></i> Community Canvas<small class="section-kicker">drawn together</small></h2>
                 <a href="https://openvibe.games/canvas" class="badge" style="cursor:pointer;text-decoration:none;background:var(--surface);">Open Canvas</a>
             </div>
@@ -5160,7 +5137,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
     };
 })();
 </script>
-<script src="/js/app.js?v=176" defer></script>
+<script src="/js/app.js?v=178" defer></script>
 <script src="/js/stream-player.js?v=22" defer></script>
 <script src="/js/stream-pip.js?v=1" defer></script>
 <script src="/js/chat-shared.js?v=3" defer></script>

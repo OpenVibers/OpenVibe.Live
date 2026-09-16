@@ -2335,17 +2335,37 @@ function _initHomeAbout() {
         }
     } catch { /* observer optional */ }
 }
+/**
+ * Stagger the About cards in as the section opens.
+ *
+ * Each animated child gets an index so they arrive in reading order; the class comes off on a
+ * timer so a card whose animation never ran is not left holding its from-state.
+ */
+function _aboutPlayOpening(banner) {
+    let reduce = false;
+    try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { /* */ }
+    if (reduce) return;
+    const items = banner.querySelectorAll('.home-about-body .cta-section-label, .home-about-body .cta-method, .home-about-body .home-cta-feature, .home-about-body .home-cta-buttons, .home-about-body .cta-money-lede');
+    items.forEach((el, i) => el.style.setProperty('--about-i', String(Math.min(i, 16))));
+    banner.classList.remove('about-opening'); void banner.offsetWidth;
+    banner.classList.add('about-opening');
+    clearTimeout(banner._aboutTimer);
+    banner._aboutTimer = setTimeout(() => banner.classList.remove('about-opening'), 1400);
+}
 function toggleHomeAbout() {
     const banner = document.getElementById('home-cta-banner');
     if (!banner) return;
     const collapsed = banner.classList.toggle('about-collapsed');
     const toggle = banner.querySelector('.home-about-toggle');
     if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    if (!collapsed) _aboutPlayOpening(banner);
 }
 function openHomeAbout() {
     const banner = document.getElementById('home-cta-banner');
     if (!banner) return;
+    const wasCollapsed = banner.classList.contains('about-collapsed');
     banner.classList.remove('about-collapsed');
+    if (wasCollapsed) _aboutPlayOpening(banner);
     const toggle = banner.querySelector('.home-about-toggle');
     if (toggle) toggle.setAttribute('aria-expanded', 'true');
     banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2908,9 +2928,11 @@ async function loadHomeLeaderboards() {
     try {
         const boards = ['total_level', 'combat', 'mining', 'fishing'];
         const questUrl = getScraplandiaUrl();
-        const results = await Promise.all(boards.map(b =>
-            fetch(`${questUrl}/api/game/leaderboard/${b}`).then(r => r.json()).catch(() => ({ entries: [] }))
-        ));
+        // One probe first: if the service is not answering, the other three would fail the same way.
+        const first = await fetchServiceJson(`${questUrl}/api/game/leaderboard/${boards[0]}`);
+        const rest = first ? await Promise.all(boards.slice(1).map(b => fetchServiceJson(`${questUrl}/api/game/leaderboard/${b}`))) : [];
+        const results = [first, ...rest].map(r => r || { entries: [] });
+        while (results.length < boards.length) results.push({ entries: [] });
         const header = document.getElementById('home-quest-header');
         const container = document.getElementById('home-leaderboards');
         const hasData = results.some(r => r.entries && r.entries.length);
@@ -2939,11 +2961,40 @@ async function loadHomeLeaderboards() {
     } catch { /* silent */ }
 }
 
+/**
+ * Fetch JSON from another OpenVibe service, remembering when it is not there.
+ *
+ * The home page asks OpenVibe.Games for leaderboards and canvas state. Those endpoints currently
+ * answer with the Games SPA's HTML and no CORS headers, so from openvibe.live all five requests
+ * fail — on every single home page view. Failing is fine; failing five times per visit forever is
+ * not. A miss is remembered for a few hours per browser, so the page stops asking a service that
+ * is not answering and starts again on its own once the window lapses. A response that is not
+ * JSON counts as a miss instead of throwing inside .json().
+ */
+const _XSVC_MISS_KEY = 'ov_xsvc_miss_v1';
+const _XSVC_MISS_MS = 6 * 60 * 60 * 1000;
+function _xsvcMisses() { try { return JSON.parse(localStorage.getItem(_XSVC_MISS_KEY) || '{}'); } catch { return {}; } }
+async function fetchServiceJson(url) {
+    let origin = url;
+    try { origin = new URL(url).origin + new URL(url).pathname.split('/').slice(0, 3).join('/'); } catch { /* */ }
+    const misses = _xsvcMisses();
+    if (misses[origin] && Date.now() - misses[origin] < _XSVC_MISS_MS) return null;
+    try {
+        const r = await fetch(url, { credentials: 'omit' });
+        const type = r.headers.get('content-type') || '';
+        if (!r.ok || !/json/i.test(type)) throw new Error('not json');
+        return await r.json();
+    } catch {
+        try { misses[origin] = Date.now(); localStorage.setItem(_XSVC_MISS_KEY, JSON.stringify(misses)); } catch { /* */ }
+        return null;
+    }
+}
+
 async function loadHomeCanvas() {
     try {
-        const data = await fetch(`${getScraplandiaUrl()}/api/game/canvas/state`).then(r => r.json());
         const header = document.getElementById('home-canvas-header');
         const container = document.getElementById('home-canvas-preview');
+        const data = await fetchServiceJson(`${getScraplandiaUrl()}/api/game/canvas/state`);
         if (!data || !data.board) { if (header) header.style.display = 'none'; return; }
         if (header) header.style.display = '';
 
@@ -2983,7 +3034,10 @@ async function loadHomeCanvas() {
                 ctx.fillRect(tile.x * scale, tile.y * scale, scale, scale);
             }
         }
-    } catch { /* silent */ }
+    } catch {
+        const header = document.getElementById('home-canvas-header');
+        if (header) header.style.display = 'none';
+    }
 }
 
 // Markup for a single stream card (live or recent). Extracted so the home page
