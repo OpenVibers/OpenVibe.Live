@@ -570,8 +570,19 @@ router.get('/oauth/:platform/callback', async (req, res) => {
             scope: tokens.scope,
         });
 
-        // Provision / update the restream destination for the target slot
-        const managedStreamId = stateData.managedStreamId || null;
+        // Provision / update the restream destination for the target slot.
+        // managed_stream_id arrives from the query at /start and rides along in the signed state,
+        // so it is authentic but not authorised — the signature proves we issued it, not that the
+        // slot belongs to this account. Without the ownership check a user could start the flow
+        // against someone else's slot id and have a destination provisioned onto their stream.
+        let managedStreamId = stateData.managedStreamId || null;
+        if (managedStreamId) {
+            const slot = db.getManagedStreamById(managedStreamId);
+            if (!slot || slot.user_id !== userId) {
+                console.warn(`[Restream OAuth] ${platform}: user ${userId} tried to provision onto slot ${managedStreamId}`);
+                managedStreamId = null;       // link the account, but touch nobody else's slot
+            }
+        }
         let destProvisioned = false;
         if (managedStreamId) {
             const existing = db.getRestreamDestinationsByManagedStream(managedStreamId)

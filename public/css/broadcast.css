@@ -1737,6 +1737,12 @@
         border-radius: 0;
         border: none;
         overflow-y: auto;
+        /* .broadcast-layout pins its bottom padding to 0, so this scroller ran to the very edge of
+           the viewport and whatever sat last in it — "Add Destination", at the end of the settings
+           panel — ended up inside the home-indicator strip, where the system takes the touch. The
+           inset plus a little room means the end of the list can always be scrolled clear of it. */
+        padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+        scroll-padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
     }
 
     .bc-video-container {

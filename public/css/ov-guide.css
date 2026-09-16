@@ -92,12 +92,21 @@ body.ovg-lock { overflow: hidden; }
 .ovg-confetti span { position: absolute; top: -14px; width: 9px; height: 14px; border-radius: 2px; animation: ovgFall linear forwards; }
 @keyframes ovgFall { to { transform: translateY(105vh) rotate(720deg); opacity: 0.9; } }
 @media (max-width: 640px) {
+    /* As a bottom sheet the card's own bottom edge is the screen's bottom edge, so the footer
+       buttons landed in the phone's home-indicator strip — the system swallows the first touch
+       there, which is why Next could not be tapped. 94vh also measured the *large* viewport, so
+       with the browser toolbar showing the sheet ran below the visible area entirely. dvh tracks
+       the viewport that is actually on screen, and the footer reserves the safe-area inset. */
     .ovg-card { left: 0; right: 0; top: auto; bottom: 0; transform: none; width: 100%; max-height: 94vh; border-radius: 20px 20px 0 0; animation: ovgSheet .35s cubic-bezier(.2,1,.3,1); }
+    @supports (height: 100dvh) {
+        .ovg-card { max-height: min(94dvh, calc(100dvh - 6px)); }
+    }
+    .ovg-foot { padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
     @keyframes ovgSheet { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
     .ovg-grid, .ovg-grid--3 { grid-template-columns: 1fr; }
     .ovg-steps { grid-template-columns: repeat(4, 1fr); } .ovg-step-label { font-size: 0.6rem; }
     .ovg-kv { grid-template-columns: 1fr; } .ovg-kv span { font-size: 0.7rem; }
-    .ovg-foot { padding: 10px 14px 14px; }
+    .ovg-foot { padding: 10px 14px calc(14px + env(safe-area-inset-bottom, 0px)); }
 }
 @media (prefers-reduced-motion: reduce) { .ovg-card, .ovg-panel, .ovg-pick, .ovg-box, .ovg-sum-row, .ovg-big, .ovg-radar i, .ovg-live-badge { animation: none !important; } }
 
@@ -140,3 +149,27 @@ body.ovg-lock { overflow: hidden; }
 .ovg-spot-card h4 { margin: 0 0 6px; font-size: 1.05rem; font-weight: 900; } .ovg-spot-card p { margin: 0 0 12px; font-size: 0.86rem; line-height: 1.5; color: #e2e8f0; }
 .ovg-spot-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 @media (max-width: 640px) { .ovg-hub-top { grid-template-columns: 76px 1fr; } .ovg-ring { width: 76px; height: 76px; } .ovg-ring span { font-size: 1.2rem; } .ovg-profile { grid-template-columns: 1fr; justify-items: center; } .ovg-tasks li { grid-template-columns: 30px 1fr; } .ovg-tasks li .btn { grid-column: 2; justify-self: start; } }
+
+/* ── Restream: the guided way in, and the manual one ──────────────────────────
+   Adding a destination used to mean leaving the page, finding a stream key in someone else's
+   dashboard, and pasting it back. Where we have an OAuth app for the platform, signing in does
+   all of that in one tap. Both paths live in the same box, with the sign-in first because it is
+   the one most people want — but the key field is right there under it, not hidden behind a
+   disclosure, because plenty of people would rather not link an account at all. */
+.ovg-connect { margin: 0 0 4px; }
+.ovg-connect-go { width: 100%; justify-content: center; gap: 10px; }
+.ovg-connect-go i { font-size: 1.05em; }
+.ovg-connect-go[disabled] { opacity: 0.75; cursor: progress; }
+.ovg-connected {
+    display: flex; align-items: center; gap: 8px; margin: 0 0 8px;
+    padding: 8px 10px; border-radius: 10px; font-size: 0.8rem; font-weight: 700;
+    background: color-mix(in srgb, #06d6a0 12%, var(--bg-tertiary));
+    border: 1px solid color-mix(in srgb, #06d6a0 40%, var(--border));
+}
+.ovg-connected i { color: #06d6a0; }
+/* A labelled rule between the two methods — neither is a footnote to the other. */
+.ovg-or { display: flex; align-items: center; gap: 10px; margin: 14px 0 10px; }
+.ovg-or::before, .ovg-or::after { content: ''; height: 1px; flex: 1; background: var(--border); }
+.ovg-or span { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+.ovg-nooauth { display: flex; align-items: flex-start; gap: 7px; margin: 0 0 10px; }
+.ovg-nooauth i { color: var(--accent); margin-top: 2px; }

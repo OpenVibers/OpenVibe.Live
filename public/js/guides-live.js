@@ -24,10 +24,51 @@
     const TASK_ICON = { slot: 'fa-tower-broadcast', method: 'fa-sliders', restream: 'fa-satellite-dish', golive: 'fa-play', profile: 'fa-user', offline: 'fa-image', emote: 'fa-face-grin-squint-tears', sound: 'fa-volume-high', goal: 'fa-bullseye', powerchat: 'fa-hand-holding-dollar', panels: 'fa-table-columns', share: 'fa-share-nodes', mods: 'fa-user-shield', requests: 'fa-list-ol', moderation: 'fa-gavel', controls: 'fa-gamepad', aibot: 'fa-robot', paste: 'fa-code' };
 
     // ── Shared stream state (slot / endpoint / restreams) ─────
-    const D = { slots: [], slot: null, key: null, rtmpUrl: null, whipBase: null, dests: [], rs: null, method: null, mode: 'camera', poll: null };
+    const D = { slots: [], slot: null, key: null, rtmpUrl: null, whipBase: null, dests: [], rs: null, oauth: {}, method: null, mode: 'camera', poll: null };
     async function loadSlots() { try { const d = await api('/streams/managed'); D.slots = d.managed_streams || []; } catch { D.slots = []; } return D.slots; }
     async function loadEndpoint() { if (!D.slot) return; try { const d = await api(`/streams/managed/${D.slot.id}/profile`); D.key = d.stream_key || D.slot.stream_key || null; D.rtmpUrl = d.rtmp_url || 'rtmp://openvibe.live/live'; D.whipBase = (d.whip_url_base || location.origin).replace(/\/$/, ''); } catch { D.key = D.slot.stream_key || null; D.rtmpUrl = 'rtmp://openvibe.live/live'; D.whipBase = location.origin; } }
-    async function loadDests() { if (!D.slot) return; try { const d = await api(`/restream/destinations?managed_stream_id=${D.slot.id}`); D.dests = (d.destinations || []).filter(x => !x.managed_stream_id || x.managed_stream_id === D.slot.id); } catch { D.dests = []; } try { const r = await api(`/robotstreamer/integration?managed_stream_id=${D.slot.id}`); D.rs = r && r.integration && (r.integration.robot_id || r.integration.stream_name) ? r.integration : null; } catch { D.rs = null; } }
+    async function loadDests() { if (!D.slot) return; try { const d = await api(`/restream/destinations?managed_stream_id=${D.slot.id}`); D.dests = (d.destinations || []).filter(x => !x.managed_stream_id || x.managed_stream_id === D.slot.id); } catch { D.dests = []; } try { const r = await api(`/robotstreamer/integration?managed_stream_id=${D.slot.id}`); D.rs = r && r.integration && (r.integration.robot_id || r.integration.stream_name) ? r.integration : null; } catch { D.rs = null; } await loadOAuth(); }
+    /** Which platforms this server can do OAuth for, and which the reader has already linked. */
+    async function loadOAuth() { try { const d = await api('/restream/oauth/status'); D.oauth = {}; for (const p of (d.platforms || [])) D.oauth[p.platform] = p; } catch { D.oauth = {}; } return D.oauth; }
+
+    /**
+     * Open a platform's OAuth popup and wait for it to come back.
+     *
+     * Three channels, because any one of them can be lost: postMessage dies when the browser
+     * severs window.opener across a cross-origin navigation (COOP), BroadcastChannel is
+     * same-origin but not everywhere, and polling the server is slow but always true. Whichever
+     * arrives first wins; the rest are torn down. Same approach the broadcast desk uses — this
+     * copy is free of that page's DOM so the guide can use it anywhere.
+     */
+    function connectPlatform(platform, onDone) {
+        const url = `/api/restream/oauth/${platform}/start${D.slot ? `?managed_stream_id=${D.slot.id}` : ''}`;
+        const popup = window.open(url, 'ov-oauth-' + platform, 'width=620,height=760');
+        if (!popup) { say('Allow pop-ups for openvibe.live to connect this way, or paste a key instead.', 'error'); return; }
+        const before = (D.oauth && D.oauth[platform]) || {};
+        let done = false, polls = 0, timer = null, bc = null;
+        const cleanup = () => { try { window.removeEventListener('message', onMsg); } catch { /* */ } try { if (bc) bc.close(); } catch { /* */ } if (timer) clearInterval(timer); };
+        const finish = async (payload) => {
+            if (done) return; done = true; cleanup();
+            if (payload && payload.ok === false) { say(payload.error || 'Connection failed', 'error'); onDone(false); return; }
+            await loadDests();
+            const st = (D.oauth && D.oauth[platform]) || {};
+            const dest = D.dests.find(x => x.platform === platform);
+            const needsKey = payload ? payload.needsManualKey : !!(dest && !dest.stream_key);
+            say(`Connected ${(PLAT[platform] || PLAT.custom)[0]}${st.username ? ' as ' + st.username : ''}${needsKey ? ' — one key still needed' : ''}`, needsKey ? 'info' : 'success');
+            onDone(true, needsKey);
+        };
+        const onMsg = (e) => { if (e.origin !== location.origin) return; const d = e.data; if (d && d.type === 'restream-oauth' && d.platform === platform) finish(d); };
+        window.addEventListener('message', onMsg);
+        try { bc = new BroadcastChannel('restream-oauth'); bc.onmessage = (e) => { const d = e.data; if (d && d.type === 'restream-oauth' && d.platform === platform) finish(d); }; } catch { bc = null; }
+        timer = setInterval(async () => {
+            polls++;
+            await loadOAuth();
+            const now = (D.oauth && D.oauth[platform]) || {};
+            if (now.connected && (!before.connected || now.username !== before.username)) return finish(null);
+            if (popup.closed && polls >= 2 && !done) { cleanup(); done = true; onDone(false); return; }
+            if (polls >= 120 && !done) { cleanup(); done = true; onDone(false); }
+        }, 2000);
+    }
     async function pickDefaultSlot() { await loadSlots(); const cur = (typeof _wsState !== 'undefined' && _wsState.selectedId) ? D.slots.find(s => s.id === _wsState.selectedId) : null; D.slot = cur || D.slots[0] || null; if (D.slot) { D.method = D.slot.streaming_method || 'browser'; D.mode = D.slot.browser_mode || 'camera'; await loadEndpoint(); await loadDests(); } }
     async function syncWorkspace() { try { if (typeof _wsLoadManagedStreams === 'function') await _wsLoadManagedStreams(); if (typeof _wsRenderSidebar === 'function') _wsRenderSidebar(); if (D.slot && typeof _wsSelectStream === 'function') await _wsSelectStream(D.slot.id); } catch { /* */ } }
     const onBroadcast = () => location.pathname.startsWith('/broadcast');
@@ -144,12 +185,20 @@
         id: 'restream', title: 'Restream', icon: 'fa-satellite-dish', heading: 'Mirror it everywhere (optional)', optional: true, skipLabel: 'Skip for now',
         render: async () => {
             if (!D.slot) await pickDefaultSlot(); if (!D.slot) return ui.lead('Create a stream first.');
+            if (!D.oauth || !Object.keys(D.oauth).length) await loadOAuth();
             const added = [...(D.rs ? [`<li class="on"><i class="fa-solid fa-robot" style="color:#4a9eff"></i> RobotStreamer · ${esc(D.rs.stream_name || ('robot ' + D.rs.robot_id))}<i class="fa-solid fa-check ovg-ok"></i></li>`] : []), ...D.dests.map(d => `<li class="on"><i class="${(PLAT[d.platform] || PLAT.custom)[1]}" style="color:${(PLAT[d.platform] || PLAT.custom)[2]}"></i> ${esc(d.name || (PLAT[d.platform] || PLAT.custom)[0])}<i class="fa-solid fa-check ovg-ok"></i></li>`)];
             return `${ui.lead(`Go live here once and the same stream goes out to every platform you add — while your chat, emotes, sound commands and controls stay on OpenVibe.${added.length ? ` <b>${added.length} already set up for "${esc(D.slot.title)}"</b> — add more, or move on.` : ' Add what you want, or skip.'}`)}
                 ${added.length ? `<ul class="ovg-added">${added.join('')}</ul>` : ''}
                 ${ui.grid([
                     ui.pick({ id: 'robotstreamer', icon: 'fa-solid fa-robot', title: 'RobotStreamer', sub: 'log in once, pick your robot', color: '#4a9eff' }),
-                    ...Object.entries(PLAT).map(([id, [name, icon, color]]) => ui.pick({ id, icon, title: name, sub: id === 'custom' ? 'server URL + key' : 'paste your stream key', color })),
+                    ...Object.entries(PLAT).map(([id, [name, icon, color]]) => {
+                        const o = (D.oauth && D.oauth[id]) || null;
+                        const sub = id === 'custom' ? 'server URL + key'
+                            : (o && o.connected) ? `signed in as ${esc(o.username || name)}`
+                            : (o && o.configured) ? 'sign in — or paste a key'
+                            : 'paste your stream key';
+                        return ui.pick({ id, icon, title: name, sub, color });
+                    }),
                 ], 3)}<div class="ovg-detail" id="ovg-plat-form"></div>`;
         },
         mount: (el) => {
@@ -176,8 +225,39 @@
             return;
         }
         const [name, icon] = PLAT[plat] || PLAT.custom; const needsUrl = plat === 'custom' || plat === 'kick';
-        f.innerHTML = ui.box(name, `<p>${plat === 'twitch' ? 'Twitch → Creator Dashboard → Settings → Stream → copy the <b>Primary Stream key</b>.' : plat === 'youtube' ? 'YouTube Studio → Go live → copy the <b>Stream key</b>.' : plat === 'kick' ? 'Kick → Creator Dashboard → Settings → Stream key: copy the <b>URL</b> and the <b>key</b>.' : 'Paste the RTMP server URL and stream key from the service you want to mirror to.'}</p>${needsUrl ? '<input class="form-input" id="ovg-p-url" placeholder="rtmps://… server URL">' : ''}<input class="form-input" id="ovg-p-key" type="password" placeholder="${name} stream key" autocomplete="off"><label class="ovg-check"><input type="checkbox" id="ovg-p-auto" checked> Start automatically whenever I go live</label><div class="ovg-row"><button type="button" class="btn btn-primary" id="ovg-p-add"><i class="fa-solid fa-plus"></i> Add ${name}</button></div>`, icon.replace('fa-brands ', '').replace('fa-solid ', ''));
+        const oauth = (D.oauth && D.oauth[plat]) || null;
+        const canConnect = !!(oauth && oauth.configured);
+        const manualHelp = plat === 'twitch' ? 'Twitch → Creator Dashboard → Settings → Stream → copy the <b>Primary Stream key</b>.'
+            : plat === 'youtube' ? 'YouTube Studio → Go live → copy the <b>Stream key</b>.'
+            : plat === 'kick' ? 'Kick → Creator Dashboard → Settings → Stream key: copy the <b>URL</b> and the <b>key</b>.'
+            : 'Paste the RTMP server URL and stream key from the service you want to mirror to.';
+
+        // Two ways in, and the reader picks. Signing in is one tap and fills the key in for them;
+        // pasting a key is still here for anyone who would rather not link an account, whose
+        // platform we have no OAuth app for, or who is mirroring to some other RTMP service.
+        const connectBlock = canConnect ? `
+            <div class="ovg-connect">
+                ${oauth.connected ? `<p class="ovg-connected"><i class="fa-solid fa-circle-check"></i> Already signed in as <b>${esc(oauth.username || name)}</b> — reconnect to refresh the key.</p>` : ''}
+                <button type="button" class="btn btn-primary btn-lg ovg-connect-go" id="ovg-oauth-go">
+                    <i class="${icon}"></i> ${oauth.connected ? 'Reconnect' : 'Sign in with'} ${esc(name)}
+                </button>
+                <p class="muted ovg-fine">Opens ${esc(name)} in a window. We read your channel and ${oauth.providesKey ? 'stream key' : 'channel details'} and fill this in — nothing to copy across.</p>
+                <div class="ovg-or"><span>or do it by hand</span></div>
+            </div>` : `<p class="muted ovg-fine ovg-nooauth"><i class="fa-solid fa-circle-info"></i> One-tap sign-in isn't set up for ${esc(name)} on this server yet — paste a key instead.</p>`;
+
+        f.innerHTML = ui.box(name, `${connectBlock}<p>${manualHelp}</p>${needsUrl ? '<input class="form-input" id="ovg-p-url" placeholder="rtmps://… server URL">' : ''}<input class="form-input" id="ovg-p-key" type="password" placeholder="${name} stream key" autocomplete="off"><label class="ovg-check"><input type="checkbox" id="ovg-p-auto" checked> Start automatically whenever I go live</label><div class="ovg-row"><button type="button" class="btn btn-primary" id="ovg-p-add"><i class="fa-solid fa-plus"></i> Add ${name}</button></div>`, icon.replace('fa-brands ', '').replace('fa-solid ', ''));
         f.querySelector('.ovg-box-head i').className = icon;
+        const oauthBtn = f.querySelector('#ovg-oauth-go');
+        if (oauthBtn) oauthBtn.onclick = () => {
+            oauthBtn.disabled = true;
+            oauthBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Waiting for ' + esc(name) + '…';
+            connectPlatform(plat, (ok, needsKey) => {
+                if (ok && !needsKey) return rerender();          // done — back to the list
+                if (ok && needsKey) { rerender(); return; }       // linked, but the key still needs pasting
+                oauthBtn.disabled = false;
+                oauthBtn.innerHTML = `<i class="${icon}"></i> Sign in with ${esc(name)}`;
+            });
+        };
         f.querySelector('#ovg-p-add').onclick = async () => {
             const key = f.querySelector('#ovg-p-key').value.trim(); const url = needsUrl ? f.querySelector('#ovg-p-url').value.trim() : '';
             if (!key) return say('Paste the stream key first', 'error'); if (needsUrl && !url) return say('The server URL is needed too', 'error');
