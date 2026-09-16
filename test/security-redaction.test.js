@@ -120,4 +120,51 @@ const ok = (name) => { pass++; console.log('  ok -', name); };
     ok('both OAuth callback pages escape provider-supplied text');
 }
 
+// ── WHIP: a valid session token is not proof the slot is yours ───────────────
+{
+    const src = fs.readFileSync(path.join(ROOT, 'server/streaming/whip-handler.js'), 'utf8');
+    // The JWT fall-through happens when the supplied key does not match the slot. Before the
+    // ownership check, any signed-in account could open a publish session against any slot id.
+    // Anchor on the call, not the name: the surrounding comment mentions it too.
+    const fall = src.match(/if \(managedStream\.stream_key !== streamKey\) \{[\s\S]*?stream = autoCreateWhipSession\(/);
+    assert(fall, 'the JWT fall-through path should still exist');
+    assert(/managedStream\.user_id !== user\.id/.test(fall[0]),
+        'the JWT fall-through must reject a slot the caller does not own');
+    assert(/not_slot_owner/.test(fall[0]), 'the rejection should be explicit, not a generic 401');
+    assert(fall[0].indexOf('managedStream.user_id !== user.id') < fall[0].indexOf('stream = autoCreateWhipSession('),
+        'ownership must be checked before a session is created');
+    ok('WHIP slot auth rejects a JWT holder who does not own the slot');
+}
+
+// ── Cross-channel chat logs are moderator data ───────────────────────────────
+{
+    const src = fs.readFileSync(path.join(ROOT, 'server/admin/mod-routes.js'), 'utf8');
+    for (const route of ["'/chat/search'", "'/chat/user/:userId'"]) {
+        const m = src.match(new RegExp(`router\\.get\\(${route.replace(/[/:]/g, m2 => '\\' + m2)},([^,]*),`));
+        assert(m, `${route} should still be registered`);
+        assert(/requireGlobalMod/.test(m[1]),
+            `${route} searches every channel and must require a global mod, not just a signed-in user`);
+    }
+    ok('unscoped chat-log endpoints require a global moderator');
+}
+
+// ── A channel moderator must not be handed the streamer's ingest key ─────────
+{
+    const db = fs.readFileSync(path.join(ROOT, 'server/db/database.js'), 'utf8');
+    const q = db.match(/function getChannelByUsername\(username\) \{[\s\S]*?\n\}/);
+    assert(q, 'getChannelByUsername should exist');
+    // If the query ever stops selecting the key this test can relax; while it does, every
+    // mod-reachable response built from it has to redact.
+    if (/u\.stream_key/.test(q[0])) {
+        const routes = fs.readFileSync(path.join(ROOT, 'server/streaming/routes.js'), 'utf8');
+        const about = routes.match(/const updated = db\.getChannelByUsername\(req\.params\.username\);[\s\S]{0,600}?res\.json\(\{ channel: updated/);
+        assert(about, 'the About-update response should still exist');
+        assert(/delete updated\.stream_key/.test(about[0]),
+            'the About-update response is reachable by channel mods and must not include stream_key');
+        ok('the mod-reachable channel response redacts the ingest key');
+    } else {
+        ok('getChannelByUsername no longer selects stream_key');
+    }
+}
+
 console.log(`\n${pass} checks passed`);

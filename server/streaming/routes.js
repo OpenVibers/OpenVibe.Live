@@ -768,6 +768,11 @@ router.put('/channel/:username/about', requireAuth, (req, res) => {
         }
 
         const updated = db.getChannelByUsername(req.params.username);
+        // getChannelByUsername joins users and selects u.stream_key. This endpoint is reachable by
+        // a channel's moderators (that is what edited_by_mod reports), so returning the row as-is
+        // handed every mod the streamer's broadcast key — enough to publish to their channel. The
+        // rest of this file already redacts it the same way before sending a channel or stream.
+        if (updated) { delete updated.stream_key; delete updated.managed_stream_key; }
         res.json({ channel: updated, edited_by_mod: !isOwner });
     } catch (err) {
         console.error('[Channel] about update error:', err.message);

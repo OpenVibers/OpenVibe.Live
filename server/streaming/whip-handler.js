@@ -724,6 +724,16 @@ async function handleWhipPost(req, res) {
                 if (decoded) {
                     const user = resolveNetworkUser(decoded);
                     if (user) {
+                        // A valid session token proves who the caller is, not that the slot is
+                        // theirs. Without this check any signed-in account could POST an offer to
+                        // /whip/<someone else's slot id> and autoCreateWhipSession() would happily
+                        // open a session against that slot — publishing under another streamer's
+                        // slot, with their title, category and NSFW flag. Ownership is the slot's
+                        // user_id; a moderator on the channel is not a publisher.
+                        if (managedStream.user_id !== user.id) {
+                            logWhipStage('auth_slot_fail', pathParam, { reason: 'not_slot_owner', user_id: user.id, slot_id: slotId });
+                            return sendWhipError(res, 403, 'not_slot_owner', 'This stream slot belongs to another account');
+                        }
                         userId = user.id;
                         // Find live session for this slot owned by this user
                         const liveSessions = db.getLiveStreamsByUserId(user.id) || [];
