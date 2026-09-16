@@ -244,7 +244,10 @@
 .star-card.is-compact .star-actions { margin-top: 0; }
 .star-card.is-compact .star-btn-watch { font-size: 0.86rem; padding: 8px 15px; }
 
-/* The disclosure. Fades up as the card grows — see animateHeightChange(). */
+/* The disclosure. Fades up as the card grows — see animateHeightChange().
+   [hidden] is a UA rule, so any author `display` here silently beats it and the panel never
+   actually hides. Stated explicitly, the same trap the hero strip fell into. */
+.star-more[hidden] { display: none !important; }
 .star-more { display: block; }
 .star-more.is-entering { animation: starMoreIn 0.42s cubic-bezier(.2, 1, .3, 1); }
 @keyframes starMoreIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
