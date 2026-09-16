@@ -7906,15 +7906,23 @@ function getIpLog({ userId, anonId, ip, action, limit = 100, offset = 0 } = {}) 
  * Ban all accounts sharing an IP. Returns the list of user IDs banned.
  */
 function banAllAccountsOnIp(ip, { reason, bannedBy, expires }) {
+    // Staff and the moderator issuing the ban are never swept up. Staff browse from the same shared
+    // home and mobile networks as people who get banned, and the IP-ban exemption for admins only
+    // covers sessions that are not themselves banned — so banning an admin account by IP would
+    // lock them out of the site entirely. On production every admin shares some IP with another
+    // account. Returns the banned user ids; `skippedStaff` on the array lists who was left alone.
     const users = all(`
-        SELECT DISTINCT il.user_id
+        SELECT DISTINCT il.user_id, u.role
         FROM ip_log il
+        JOIN users u ON u.id = il.user_id
         WHERE il.ip_address = ? AND il.user_id IS NOT NULL
     `, [ip]);
 
     const bannedIds = [];
+    const skippedStaff = [];
     for (const row of users) {
         if (!row.user_id) continue;
+        if (row.user_id === bannedBy || row.role === 'admin' || row.role === 'global_mod') { skippedStaff.push(row.user_id); continue; }
         // Set is_banned flag
         run('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ? AND is_banned = 0', [reason, row.user_id]);
         // Create global user ban
@@ -7926,6 +7934,7 @@ function banAllAccountsOnIp(ip, { reason, bannedBy, expires }) {
     run(`INSERT INTO bans (ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?)`,
         [ip, reason, bannedBy, expires || null]);
 
+    bannedIds.skippedStaff = skippedStaff;
     return bannedIds;
 }
 
