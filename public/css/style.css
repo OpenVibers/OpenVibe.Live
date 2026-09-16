@@ -9164,13 +9164,14 @@ body.theme-light .user-dropdown {
    padding and the footer's own margin, added up to ~96px of nothing. */
 .home-changelog-wrapper {
     position: relative;
-    margin-bottom: 10px;
+    /* Last block on the page: the gap before the footer is the footer's job, not this card's. */
+    margin-bottom: 0;
     border-radius: 12px;
     overflow: hidden;
     transition: max-height 0.35s ease;
 }
 .home-changelog-wrapper.collapsed {
-    max-height: 360px;
+    max-height: 400px;
 }
 .home-changelog-wrapper.expanded {
     max-height: 2000px;
@@ -9202,7 +9203,7 @@ body.theme-light .user-dropdown {
     overflow: hidden;
 }
 @media (max-width: 560px) {
-    .home-changelog-wrapper.collapsed { max-height: 320px; }
+    .home-changelog-wrapper.collapsed { max-height: 360px; }
     .home-changelog { padding: 12px 13px 8px; }
 }
 
@@ -15475,3 +15476,10 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
     will-change: transform, opacity;
 }
 @media (prefers-reduced-motion: reduce) { .ov-enter { animation: none !important; } }
+
+
+/* The home page ends on the changelog card, and the shared footer already brings 40px of its own
+   margin above itself. Another 32px of page padding on top of that was a band of nothing between
+   the last readable line and the footer rule. Other pages end on content that needs the breathing
+   room, so this is scoped to the home page rather than changed globally. */
+#page-home.page { padding-bottom: 10px; }
