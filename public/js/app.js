@@ -1463,7 +1463,7 @@ function renderHeroStats(stats) {
             metric: r.metric || null,
         };
         const clickable = !!r.metric;
-        return `<div class="hero-stat ${r.cls || ''} ${clickable ? 'hero-stat--clickable' : ''}" ${r.key ? `data-stat="${r.key}"` : ''} data-tip="${esc(JSON.stringify(tip))}" ${clickable ? `data-metric="${r.metric}" role="button" tabindex="0" aria-label="${esc(r.label)} — show over time"` : ''}><i class="fa-solid ${r.icon}"></i><div class="hero-stat-meta"><span class="hero-stat-numline"><span class="hero-stat-num" data-n="${r.num || 0}">0</span>${recDelta(r.recent, r.unit || '')}</span><span class="hero-stat-label">${r.label}${clickable ? ' <i class="fa-solid fa-chart-line hero-stat-chart-hint"></i>' : ''}</span>${sub && !r.recent ? `<span class="hero-stat-sub">${sub}</span>` : ''}</div></div>`;
+        return `<div class="hero-stat ${r.cls || ''} ${clickable ? 'hero-stat--clickable' : ''}" ${r.key ? `data-stat="${r.key}"` : ''} data-tip="${esc(JSON.stringify(tip))}" ${clickable ? `data-metric="${r.metric}" role="button" tabindex="0" aria-label="${esc(r.label)} — show over time"` : ''}><i class="fa-solid ${r.icon}"></i><div class="hero-stat-meta"><span class="hero-stat-num" data-n="${r.num || 0}">0</span><span class="hero-stat-label">${r.label}${clickable ? ' <i class="fa-solid fa-chart-line hero-stat-chart-hint"></i>' : ''}</span>${sub && !r.recent ? `<span class="hero-stat-sub">${sub}</span>` : ''}</div>${recDelta(r.recent, r.unit || '')}</div>`;
     };
     // The full board is four groups and two dozen chips. Shown by default it pushed every live
     // stream on the site below the fold, and because it only arrives once the stats request lands
