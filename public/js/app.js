@@ -1423,19 +1423,36 @@ function renderHeroStats(stats) {
     // number means. Every chip with a series behind it is clickable → over-time chart.
     const recSub = (rec, u = '') => (rec && rec.w > 0) ? `+${_fmtCount(rec.w)}${u} in 7d` : '';
     /**
-     * The 7-day change, as a direction rather than a sentence.
+     * The seven-day picture on a chip: how much it moved, and whether that beat the week before.
      *
-     * "+2 in 7d" in muted grey reads as a footnote; an arrow and a tinted pill reads as movement,
-     * which is the whole reason the number is interesting. Counters here only ever go up, but the
-     * down case is handled so this works anywhere.
+     * One number on its own says nothing — "+2 this week" could be a record or a collapse. So the
+     * pill carries both: the gain over the last seven days, and next to it the change against the
+     * seven days before that, as a percentage. The triangle is drawn in CSS rather than set as an
+     * icon glyph, so it stays crisp and tiny at this size.
+     *
+     * `rec` is { w, pw }: this window and the one before it. Either may be absent, and the pill
+     * degrades to whichever half it has rather than disappearing.
      */
+    const trendBits = (w, pw) => {
+        if (!Number.isFinite(pw)) return '';
+        if (pw === 0) return w > 0 ? '<span class="hero-stat-trend is-new">new</span>' : '';
+        const pct = Math.round(((w - pw) / pw) * 100);
+        if (pct === 0) return '<span class="hero-stat-trend is-flat"><i></i>flat</span>';
+        const up = pct > 0;
+        return `<span class="hero-stat-trend ${up ? 'is-up' : 'is-down'}"><i></i>${Math.abs(pct)}%</span>`;
+    };
     const recDelta = (rec, u = '') => {
-        const w = rec && Number(rec.w);
-        if (!Number.isFinite(w) || w === 0) return '';
+        if (!rec) return '';
+        const w = Number(rec.w), pw = Number(rec.pw);
+        if (!Number.isFinite(w)) return '';
+        if (w === 0 && !Number.isFinite(pw)) return '';
         const up = w > 0;
-        return `<span class="hero-stat-delta ${up ? 'is-up' : 'is-down'}" title="Change over the last 7 days">`
-            + `<i class="fa-solid ${up ? 'fa-caret-up' : 'fa-caret-down'}"></i>`
-            + `${up ? '+' : '-'}${_fmtCount(Math.abs(w))}${u}<em>7d</em></span>`;
+        const prevText = Number.isFinite(pw) ? `, against ${_fmtCount(pw)} the seven days before` : '';
+        const tip = `${_fmtCount(Math.abs(w))} in the last 7 days${prevText}`;
+        return `<span class="hero-stat-delta ${w === 0 ? 'is-flat' : up ? 'is-up' : 'is-down'}" title="${esc(tip)}">`
+            + `<b>${w === 0 ? '0' : (up ? '+' : '-') + _fmtCount(Math.abs(w))}${u}</b><em>7d</em>`
+            + trendBits(w, pw)
+            + '</span>';
     };
     const chip = (r) => {
         if (r.html) return r.html; // pre-rendered chips (sparkline)
@@ -1461,12 +1478,12 @@ function renderHeroStats(stats) {
     const HEADLINE = [
         { key: 'liveNow', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', cls: stats.liveNow > 0 ? 'hero-stat--live' : '', num: stats.liveNow, label: 'Live', title: 'Streams live right now' },
         { key: 'viewersNow', icon: 'fa-eye', cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
-        { key: 'weeklyActive', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active · 7d', title: 'People who chatted in the last 7 days' },
+        { key: 'weeklyActive', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active · 7d', title: 'People who chatted in the last 7 days', recent: { w: stats.weeklyActive, pw: stats.prevWeeklyActive } },
         { key: 'users', icon: 'fa-user-group', num: stats.users, label: 'Users', title: 'Accounts on OpenVibe.Live', recent: R.users },
-        { key: 'weeklyVisitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors · 7d', title: 'First-time visitors in the last 7 days' },
+        { key: 'weeklyVisitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors · 7d', title: 'First-time visitors in the last 7 days', recent: { w: stats.weeklyVisitors, pw: stats.prevWeeklyVisitors } },
         { key: 'anons', icon: 'fa-user-secret', num: stats.anons, label: 'Anons', title: 'Anonymous chatters who have been given a name', recent: R.anons },
         { key: 'chatMessages', icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', title: 'Chat messages sent, all time', recent: R.messages },
-        { key: 'streamers', icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', title: 'People who have gone live here' },
+        { key: 'streamers', icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', title: 'People who have gone live here', recent: R.streamers },
         { key: 'hoursWatched', icon: 'fa-couch', num: stats.hoursWatched, label: 'Hours watched', title: 'Hours the community has spent watching', recent: R.hours },
     ];
     // Always starts collapsed. Persisting "expanded" meant every reload rendered and counted up
@@ -1579,16 +1596,23 @@ function _startHeroStatsLive() {
             const d = await api('/home/stats-live');
             _heroStatsBackoff = 0;
             // Deltas move too — refresh them in place rather than rebuilding the chip.
-            const DELTA_FOR = { users: 'users', anons: 'anons', chatMessages: 'messages', hoursWatched: 'hours' };
-            for (const [key, field] of Object.entries(DELTA_FOR)) {
-                const w = d && d.recent && d.recent[field] && Number(d.recent[field].w);
+            const DELTA_FOR = {
+                users: d.recent?.users, anons: d.recent?.anons,
+                chatMessages: d.recent?.messages, hoursWatched: d.recent?.hours,
+                streamers: d.recent?.streamers,
+                weeklyActive: { w: d.weeklyActive, pw: d.prevWeeklyActive },
+                weeklyVisitors: { w: d.weeklyVisitors, pw: d.prevWeeklyVisitors },
+            };
+            for (const [key, rec] of Object.entries(DELTA_FOR)) {
+                const w = rec && Number(rec.w);
+                if (!Number.isFinite(w)) continue;
                 wrap.querySelectorAll(`[data-stat="${key}"] .hero-stat-delta`).forEach(el => {
-                    if (!Number.isFinite(w) || w === 0) return;
-                    const txt = `${w > 0 ? '+' : '-'}${_fmtCount(Math.abs(w))}`;
-                    const cur = el.childNodes[1];
-                    if (cur && cur.nodeValue !== txt) cur.nodeValue = txt;
+                    const b = el.querySelector('b');
+                    const txt = w === 0 ? '0' : `${w > 0 ? '+' : '-'}${_fmtCount(Math.abs(w))}`;
+                    if (b && b.textContent !== txt) b.textContent = txt;
                     el.classList.toggle('is-up', w > 0);
                     el.classList.toggle('is-down', w < 0);
+                    el.classList.toggle('is-flat', w === 0);
                 });
             }
             for (const [key, value] of Object.entries(d || {})) {

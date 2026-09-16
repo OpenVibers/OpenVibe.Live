@@ -222,9 +222,11 @@ router.get('/stats-live', (req, res) => {
             streamers: s.streamers, hoursWatched: s.hoursWatched,
             // The 7-day deltas the hero chips show under their numbers. Same shape as the full
             // board's `recent`, trimmed to the four that have one.
+            prevWeeklyVisitors: s.prevWeeklyVisitors, prevWeeklyActive: s.prevWeeklyActive,
             recent: {
                 users: s.recent?.users, anons: s.recent?.anons,
                 messages: s.recent?.messages, hours: s.recent?.hours,
+                streamers: s.recent?.streamers,
             },
         };
         _liveStats = { at: Date.now(), data };
