@@ -15,14 +15,19 @@
     const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const COARSE = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     if (REDUCED) return;
-    if (COARSE || window.innerWidth <= 820 || (navigator.deviceMemory && navigator.deviceMemory <= 4)) { document.documentElement.classList.add('rs-lite'); return; }
+    // Phones, coarse pointers and low-memory devices run in "lite" mode: no particle canvas, no
+    // pointer spotlight, no tilt. They still get the cheap IntersectionObserver work, because the
+    // viewport gate below is the only thing that starts the hero button wave — bailing out of the
+    // whole module here is why those buttons sat frozen on a phone.
+    const LITE = COARSE || window.innerWidth <= 820 || (navigator.deviceMemory && navigator.deviceMemory <= 4);
+    if (LITE) document.documentElement.classList.add('rs-lite');
 
     const onHome = () => { const p = document.getElementById('page-home'); return !!(p && p.classList.contains('active')); };
 
     // ── Hero sparks canvas ─────────────────────────────────────
     let sparksStop = null;
     function startSparks() {
-        if (sparksStop || COARSE || window.innerWidth < 720) return;
+        if (sparksStop || LITE || window.innerWidth < 720) return;
         const hero = document.querySelector('#page-home .hero');
         if (!hero) return;
         const canvas = document.createElement('canvas');
@@ -64,6 +69,7 @@
 
     // ── Cursor spotlight + magnetic buttons ─────────────────────
     function attachHeroPointer() {
+        if (LITE) return;
         const hero = document.querySelector('#page-home .hero');
         if (!hero || hero.dataset.hfx) return;
         hero.dataset.hfx = '1';
@@ -82,12 +88,22 @@
     }
 
     // ── Scroll reveal ──────────────────────────────────────────
-    let io = null;
+    let io = null, revealSafety = 0;
     function attachReveal() {
         if (!('IntersectionObserver' in window)) return;
         if (!io) io = new IntersectionObserver((entries) => { for (const en of entries) if (en.isIntersecting) { en.target.classList.add('is-in'); io.unobserve(en.target); } }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
         const sel = '#page-home .section-header, #page-home .stream-card, #page-home .home-cta-banner, #page-home .home-star-section, #page-home .rs-hero-mount, #page-home .pulse-grid > *, #page-home .moments-row > *, #page-home .home-digest';
         document.querySelectorAll(sel).forEach((el, i) => { if (el.classList.contains('hfx-reveal')) return; el.classList.add('hfx-reveal'); el.style.setProperty('--d', `${(i % 6) * 60}ms`); io.observe(el); });
+        // Failsafe. A revealed element starts at opacity 0, so anything the observer never reports
+        // on would stay invisible — a skipped content-visibility subtree or a restored page can do
+        // that. One late pass shows whatever is already on screen regardless.
+        clearTimeout(revealSafety);
+        revealSafety = setTimeout(() => {
+            document.querySelectorAll('.hfx-reveal:not(.is-in)').forEach(el => {
+                const r = el.getBoundingClientRect();
+                if (r.height && r.top < window.innerHeight && r.bottom > 0) el.classList.add('is-in');
+            });
+        }, 2500);
     }
 
     // ── Count-up on the hero stats ─────────────────────────────
@@ -114,7 +130,7 @@
 
     // ── Stream card tilt ───────────────────────────────────────
     function attachTilt() {
-        if (COARSE) return;
+        if (LITE) return;
         document.addEventListener('pointermove', (e) => {
             const card = e.target.closest && e.target.closest('#page-home .stream-card');
             if (!card) return;
@@ -128,14 +144,51 @@
 
     // ── Headline shimmer ───────────────────────────────────────
     function attachHeadline() {
+        if (LITE) return;   // an infinite gradient sweep over text is a real battery cost on a phone
         const h1 = document.querySelector('#page-home .hero h1');
         if (h1) h1.classList.add('hfx-shimmer');
         const rot = document.getElementById('hero-rotate');
         if (rot) rot.classList.add('hfx-glow');
     }
 
+    /**
+     * Run expensive idle animations only while they are actually visible.
+     *
+     * Two problems this solves. First, the hero button wave is on a page-load clock: scroll down
+     * on a phone, come back, and you land in the quiet part of the cycle having seen nothing.
+     * Restarting it on entry means the wave always plays when someone arrives at it. Second,
+     * animating off-screen costs battery and main-thread time for something nobody can see.
+     */
+    function attachViewportAnimations() {
+        if (!('IntersectionObserver' in window)) {
+            document.querySelectorAll('[data-fx-viewport]').forEach(el => el.classList.add('fx-live'));
+            return;
+        }
+        const io = new IntersectionObserver((entries) => {
+            for (const en of entries) {
+                const el = en.target;
+                if (en.isIntersecting) {
+                    // Re-trigger from the top so the effect is seen, not joined mid-cycle.
+                    el.classList.remove('fx-live');
+                    void el.offsetWidth;
+                    el.classList.add('fx-live');
+                } else {
+                    el.classList.remove('fx-live');
+                }
+            }
+        }, { rootMargin: '0px 0px 0px 0px', threshold: 0.2 });
+        const watch = () => document.querySelectorAll('[data-fx-viewport]:not([data-fx-bound])').forEach(el => {
+            el.setAttribute('data-fx-bound', '1');
+            io.observe(el);
+        });
+        watch();
+        // Sections mount asynchronously, so pick up anything that arrives later.
+        try { new MutationObserver(watch).observe(document.body, { childList: true, subtree: true }); } catch { /* */ }
+    }
+
     function boot() {
-        attachHeroPointer(); attachHeadline(); attachCountUp(); attachTilt();
+        attachHeroPointer();
+        attachViewportAnimations(); attachHeadline(); attachCountUp(); attachTilt();
         const apply = () => { if (onHome()) { startSparks(); attachReveal(); } else if (sparksStop) sparksStop(); };
         apply();
         const page = document.getElementById('page-home');

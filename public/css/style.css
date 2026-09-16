@@ -6133,65 +6133,8 @@ textarea.form-input { resize: vertical; min-height: 60px; }
 /* ═══════════════════════════════════════════════════════════════
    FOOTER
    ═══════════════════════════════════════════════════════════════ */
-.footer {
-    background: var(--bg-secondary);
-    border-top: 1px solid var(--border);
-    /* The floating chat/DM buttons sit above the fold on phones — the old 8px footer put the
-       legal links underneath them, which is why Terms/Privacy/DMCA were cut off. */
-    padding: clamp(24px, 4vw, 40px) clamp(14px, 4vw, 32px) calc(clamp(20px, 3vw, 28px) + env(safe-area-inset-bottom, 0px));
-    margin-top: 40px;
-}
-.footer-inner { max-width: 1240px; margin: 0 auto; }
-.footer-cols {
-    display: grid; gap: clamp(20px, 3vw, 36px);
-    grid-template-columns: minmax(230px, 1.6fr) repeat(4, minmax(120px, 1fr));
-    align-items: start;
-}
-.footer-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.footer-col h3 {
-    margin: 0 0 2px; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.1em;
-    text-transform: uppercase; color: var(--text-muted);
-}
-.footer-col a {
-    color: var(--text-secondary); font-size: 0.86rem; text-decoration: none; line-height: 1.4;
-    transition: color 0.15s, transform 0.15s; width: fit-content;
-}
-.footer-col a:hover { color: var(--accent); transform: translateX(2px); }
-.footer-brand {
-    display: inline-flex; align-items: center; gap: 9px; color: var(--text-primary);
-    font-size: 1.05rem; font-weight: 700; text-decoration: none; margin-bottom: 2px;
-}
-.footer-brand strong { color: var(--accent); font-weight: 800; }
-.footer-brand:hover { color: var(--text-primary); }
-.footer-tagline { margin: 0; font-size: 0.82rem; line-height: 1.55; color: var(--text-muted); max-width: 46ch; }
-.footer-social { display: flex; gap: 8px; margin-top: 4px; }
-.footer-social a {
-    width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center;
-    color: var(--text-secondary); background: var(--bg-tertiary); border: 1px solid var(--border);
-    font-size: 0.95rem; transition: color 0.15s, border-color 0.15s, transform 0.15s;
-}
-.footer-social a:hover { color: var(--accent); border-color: var(--accent); transform: translateY(-2px); }
-.footer-bar {
-    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
-    margin-top: clamp(20px, 3vw, 30px); padding-top: 16px; border-top: 1px solid var(--border);
-    /* The floating DM/chat buttons are pinned to the bottom corners. Reserve their width until
-       the viewport is wide enough that the centred footer already clears them. */
-    padding-inline: clamp(0px, calc(84px - (100vw - 1240px) / 2), 84px);
-}
-.footer-copy { color: var(--text-muted); font-size: 0.78rem; }
-.footer-legal-inline { display: flex; gap: 16px; }
-.footer-legal-inline a { color: var(--text-muted); font-size: 0.78rem; text-decoration: none; }
-.footer-legal-inline a:hover { color: var(--accent); }
-@media (max-width: 900px) {
-    .footer-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .footer-col--brand { grid-column: 1 / -1; }
-}
-@media (max-width: 560px) {
-    /* Clear the floating chat buttons so nothing is hidden behind them. */
-    .footer { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
-    .footer-cols { gap: 22px 16px; }
-    .footer-bar { justify-content: center; text-align: center; padding-inline: 0; }
-    .footer-legal-inline { justify-content: center; }
+/* Footer styling now lives in openvibe-shared/footer.js so every site matches. */
+
 }
 
 /* ═══════════════════════════════════════════════════════════════

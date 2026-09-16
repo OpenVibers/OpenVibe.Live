@@ -41,7 +41,12 @@
     background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--c) 34%, transparent) 50%, transparent);
     animation: hbWave var(--hb-wave) linear infinite;
     animation-delay: calc(var(--i, 0) * var(--hb-step));
+    animation-play-state: paused;
 }
+/* home-fx.js adds .fx-live when the row scrolls into view and restarts it, so the wave always
+   plays when someone arrives at the buttons instead of running unseen on a page-load clock. */
+#page-home .hero-cta.fx-live .hb::before { animation-play-state: running; }
+#page-home .hero-cta.fx-live .hb-ico { animation-play-state: running; }
 .hb::after {
     content: ''; position: absolute; inset: -1px; border-radius: inherit; z-index: -2; padding: 1px;
     background: conic-gradient(from var(--a, 0deg), transparent 0 70%, var(--c) 85%, transparent 100%);
@@ -56,6 +61,7 @@
     box-shadow: 0 2px 6px rgba(0,0,0,0.35) inset;
     transition: transform 0.35s cubic-bezier(.2,1.6,.3,1), background 0.25s, color 0.25s, box-shadow 0.25s;
     animation: hbPulse var(--hb-wave) ease-in-out infinite; animation-delay: calc(var(--i, 0) * var(--hb-step));
+    animation-play-state: paused;
 }
 .hb-label { flex: 1; text-align: left; }
 /* Chevron appears on hover/focus: an explicit "this goes somewhere" cue. */
@@ -144,3 +150,9 @@
 .rs-lite .cta-ambient { animation: none !important; filter: none !important; }
 .rs-lite .cta-embers, .rs-lite .cta-robot-glow, .rs-lite .cta-owner-shine, .rs-lite .hero-collage { display: none !important; }
 .rs-lite .hero-aurora, .rs-lite .hero-aurora::before, .rs-lite .hero-aurora::after { filter: none !important; mix-blend-mode: normal !important; animation: none !important; }
+
+
+/* ── Rendering budget ──────────────────────────────────────────
+   Below-the-fold sections are skipped by layout and paint until they approach the viewport.
+   contain-intrinsic-size keeps the scrollbar honest so the page doesn't jump as they resolve. */
+#page-home .home-section-lazy { content-visibility: auto; contain-intrinsic-size: auto 480px; }
