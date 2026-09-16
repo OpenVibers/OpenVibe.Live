@@ -14770,43 +14770,37 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 .arena-me-left > .arena-portrait { flex: 0 0 64px !important; width: 64px !important; height: 64px !important; display: block; }
 .arena-me-left > .arena-portrait-initial { display: flex; }
 
-/* ── Animated brand mark (navbar) — three nodes, live edges, packets doing laps ── */
+/* ── OV brand mark (navbar + hero): the O is a ring with a comet running around it, the V is
+   drawn inside with a light sweep, a dot orbits the ring. Transform/opacity/stroke motion only. ── */
 .brand-mark { display: inline-grid; place-items: center; width: 32px; height: 32px; color: var(--accent); flex: none; }
-.brand-mark svg { overflow: visible; transform-origin: 50% 55%; animation: bmFloat 4.5s ease-in-out infinite; }
-.bm-glow { fill: currentColor; opacity: 0.12; transform-box: fill-box; transform-origin: center; animation: bmGlow 3s ease-in-out infinite; }
-.bm-edges { fill: none; stroke: url(#bm-grad); stroke-width: 2.2; stroke-linejoin: round; stroke-dasharray: 6 4; animation: bmDash 1.6s linear infinite; opacity: 0.9; }
-.bm-node { fill: currentColor; stroke: var(--bg-primary, #0f1117); stroke-width: 1.6; transform-box: fill-box; transform-origin: center; animation: bmPulse 2.6s ease-in-out infinite; }
-.bm-node--2 { animation-delay: 0.87s; } .bm-node--3 { animation-delay: 1.73s; }
-.bm-core { fill: #fff; opacity: 0.85; transform-box: fill-box; transform-origin: center; animation: bmCore 2.6s ease-in-out infinite; }
-.bm-pk { fill: #fff; filter: drop-shadow(0 0 3px currentColor); }
-.bm-pk--2 { opacity: 0.7; }
-.nav-brand:hover .brand-mark svg { animation: bmSpin 0.9s cubic-bezier(.2,1.5,.3,1) 1; }
-.nav-brand:hover .bm-glow { opacity: 0.3; }
-.nav-brand:hover .bm-edges { stroke-dasharray: none; animation: none; }
-@keyframes bmFloat { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-1px) rotate(3deg); } }
-@keyframes bmGlow { 0%, 100% { opacity: 0.1; transform: scale(0.9); } 50% { opacity: 0.22; transform: scale(1.08); } }
-@keyframes bmDash { to { stroke-dashoffset: -20; } }
-@keyframes bmPulse { 0%, 70%, 100% { transform: scale(1); } 15% { transform: scale(1.45); } 30% { transform: scale(1); } }
-@keyframes bmCore { 0%, 100% { transform: scale(1); opacity: 0.85; } 50% { transform: scale(1.4); opacity: 1; } }
-@keyframes bmSpin { from { transform: rotate(0deg) scale(1); } 40% { transform: rotate(200deg) scale(1.2); } to { transform: rotate(360deg) scale(1); } }
-@media (prefers-reduced-motion: reduce) { .brand-mark svg, .bm-glow, .bm-edges, .bm-node, .bm-core { animation: none !important; } .bm-pk { display: none; } }
-/* Lite mode keeps the cheap transform/opacity motion; only the drop-shadow filter goes. */
-.rs-lite .bm-pk, .rs-lite .bmh-spark { filter: none; }
-
-/* Hero version: same mark, bigger, with an orbit ring, comet trail and sparks */
+.brand-mark svg { overflow: visible; transform-origin: 50% 50%; animation: ovFloat 5s ease-in-out infinite; }
+.ov-glow { fill: currentColor; opacity: 0.1; transform-box: fill-box; transform-origin: center; animation: ovGlow 3.4s ease-in-out infinite; }
+.ov-ring { fill: none; stroke: currentColor; stroke-width: 4; opacity: 0.28; }
+.ov-comet { fill: none; stroke-width: 4; stroke-linecap: round; stroke-dasharray: 34 79; transform-box: fill-box; transform-origin: center; animation: ovComet 3.6s linear infinite; }
+.ov-v { fill: none; stroke-width: 4.6; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 46; stroke-dashoffset: 0; animation: ovDraw 1.1s cubic-bezier(.2,.8,.2,1) both; }
+.ov-dot { fill: #fff; transform-box: fill-box; transform-origin: center; animation: ovDot 2.4s ease-in-out infinite; }
+.ov-orbit { fill: #fff; filter: drop-shadow(0 0 3px currentColor); }
+.ov-orbit--tail { opacity: 0.5; }
+.nav-brand:hover .brand-mark svg, .hero h1:hover .brand-mark--hero svg { animation: ovSpin 0.9s cubic-bezier(.2,1.5,.3,1) 1; }
+.nav-brand:hover .ov-comet, .hero h1:hover .ov-comet { animation-duration: 0.9s; }
+.nav-brand:hover .ov-glow, .hero h1:hover .ov-glow { opacity: 0.28; }
+.nav-brand:hover .ov-v, .hero h1:hover .ov-v { animation: ovDraw 0.7s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes ovFloat { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-1px) rotate(2deg); } }
+@keyframes ovGlow { 0%, 100% { opacity: 0.08; transform: scale(0.92); } 50% { opacity: 0.2; transform: scale(1.06); } }
+@keyframes ovComet { to { transform: rotate(360deg); } }
+@keyframes ovDraw { from { stroke-dashoffset: 46; } to { stroke-dashoffset: 0; } }
+@keyframes ovDot { 0%, 100% { transform: scale(1); opacity: 0.85; } 50% { transform: scale(1.5); opacity: 1; } }
+@keyframes ovSpin { from { transform: rotate(0deg) scale(1); } 40% { transform: rotate(200deg) scale(1.18); } to { transform: rotate(360deg) scale(1); } }
+/* Hero: bigger, plus sparks off the V */
 .brand-mark--hero { width: 1.05em; height: 1.05em; vertical-align: -0.16em; color: var(--accent); margin-right: 0.08em; }
-.brand-mark--hero svg { width: 100%; height: 100%; animation: bmFloat 5s ease-in-out infinite; }
-.brand-mark--hero .bm-edges { stroke: url(#bmh-grad); stroke-width: 2.4; }
-.brand-mark--hero .bm-node { stroke-width: 1.4; }
-.bmh-orbit { fill: none; stroke: currentColor; stroke-width: 0.9; stroke-dasharray: 3 5; opacity: 0.55; transform-box: fill-box; transform-origin: center; animation: bmhOrbit 9s linear infinite; }
-.bmh-trail { opacity: 0.55; } .bmh-trail2 { opacity: 0.3; }
-.bmh-spark { fill: #fff; opacity: 0; transform-box: fill-box; transform-origin: center; animation: bmhSpark 3.4s ease-out infinite; }
-.bmh-spark--2 { animation-delay: 1.1s; animation-name: bmhSpark2; } .bmh-spark--3 { animation-delay: 2.3s; animation-name: bmhSpark3; }
-.hero h1:hover .brand-mark--hero svg { animation: bmSpin 1s cubic-bezier(.2,1.5,.3,1) 1; }
-.hero h1:hover .bmh-orbit { animation-duration: 2s; opacity: 0.9; }
-@keyframes bmhOrbit { to { transform: rotate(360deg); } }
-@keyframes bmhSpark { 0% { opacity: 0; transform: translate(0,0) scale(0.6); } 10% { opacity: 1; } 60% { opacity: 0; transform: translate(11px,-14px) scale(1.4); } 100% { opacity: 0; } }
-@keyframes bmhSpark2 { 0% { opacity: 0; transform: translate(0,0) scale(0.6); } 10% { opacity: 1; } 60% { opacity: 0; transform: translate(-13px,-9px) scale(1.3); } 100% { opacity: 0; } }
-@keyframes bmhSpark3 { 0% { opacity: 0; transform: translate(0,0) scale(0.6); } 10% { opacity: 1; } 60% { opacity: 0; transform: translate(4px,15px) scale(1.2); } 100% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .bmh-orbit, .bmh-spark, .brand-mark--hero svg { animation: none !important; } .bmh-spark { display: none; } }
+.brand-mark--hero svg { width: 100%; height: 100%; }
+.brand-mark--hero .ov-ring { stroke-width: 3.6; } .brand-mark--hero .ov-comet { stroke-width: 3.6; } .brand-mark--hero .ov-v { stroke-width: 4.2; }
+.ov-spark { fill: #fff; opacity: 0; transform-box: fill-box; transform-origin: center; animation: ovSpark 3.4s ease-out infinite; }
+.ov-spark--2 { animation-delay: 1.1s; animation-name: ovSpark2; } .ov-spark--3 { animation-delay: 2.3s; animation-name: ovSpark3; }
+@keyframes ovSpark { 0% { opacity: 0; transform: translate(0,10px) scale(0.6); } 10% { opacity: 1; } 60% { opacity: 0; transform: translate(12px,-12px) scale(1.4); } 100% { opacity: 0; } }
+@keyframes ovSpark2 { 0% { opacity: 0; transform: translate(0,10px) scale(0.6); } 10% { opacity: 1; } 60% { opacity: 0; transform: translate(-13px,-8px) scale(1.3); } 100% { opacity: 0; } }
+@keyframes ovSpark3 { 0% { opacity: 0; transform: translate(0,10px) scale(0.6); } 10% { opacity: 1; } 60% { opacity: 0; transform: translate(3px,16px) scale(1.2); } 100% { opacity: 0; } }
+@media (max-width: 600px) { .brand-mark { width: 26px; height: 26px; } .brand-mark svg { width: 25px; height: 25px; } .brand-mark--hero svg { width: 100%; height: 100%; } }
+.rs-lite .ov-orbit, .rs-lite .ov-spark { filter: none; }
+@media (prefers-reduced-motion: reduce) { .brand-mark svg, .ov-glow, .ov-comet, .ov-v, .ov-dot, .ov-spark { animation: none !important; } .ov-orbit, .ov-spark { display: none; } .ov-comet { stroke-dasharray: none; opacity: 0.9; } }
 @media (max-width: 600px) { .brand-mark { width: 26px; height: 26px; } .brand-mark svg { width: 25px; height: 25px; } }
