@@ -205,6 +205,8 @@
                 <a href="#" onclick="event.preventDefault();captureScreenshot()"><i class="fa-solid fa-camera"></i> Screenshot</a>
                 <a href="/documentation" onclick="return handleLinkClick(event, '/documentation')"><i class="fa-solid fa-book"></i> Documentation</a>
                 <hr>
+                <a href="#" onclick="event.preventDefault();switchAccount()"><i class="fa-solid fa-people-arrows"></i> Switch account</a>
+                <a href="#" onclick="event.preventDefault();browseAsGuest()"><i class="fa-solid fa-user-secret"></i> Browse as guest</a>
                 <a href="#" onclick="event.preventDefault();logout()"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
             </div>
         </div>
@@ -5038,7 +5040,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <!-- ═══════════════════════════════════════════════════════════ -->
 <footer class="footer">
     <div class="footer-content">
-        <span class="footer-brand"><i class="fa-solid fa-circle-nodes"></i> OpenVibe.Live</span>
+        <span class="footer-brand"><span class="ov-mark" data-size="22"></span> OpenVibe.Live</span>
         <span class="footer-divider">&middot;</span>
         <a href="https://github.com/OpenVibers/OpenVibe.Live" target="_blank"><i class="fa-brands fa-github"></i></a>
         <a href="https://discord.gg/M6MuRUaeJj" target="_blank"><i class="fa-brands fa-discord"></i></a>
@@ -5086,7 +5088,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <!-- Scripts -->
 <script src="/js/theme-engine.js?v=4"></script>
 <script src="/live-notify.js?v=3" defer></script>
-<script src="/js/app.js?v=139" defer></script>
+<script src="/js/app.js?v=140" defer></script>
 <script src="/js/stream-player.js?v=21" defer></script>
 <script src="/js/stream-pip.js?v=1" defer></script>
 <script src="/js/chat-shared.js?v=3" defer></script>
@@ -5165,8 +5167,9 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/pastes.js?v=15" defer></script>
 <script src="/js/draggable-fab.js?v=2" defer></script>
 <script src="/js/messenger.js?v=2" defer></script>
+<script src="/js/ov-mark.js?v=1" defer></script>
 <script src="/js/home-fx.js?v=3" defer></script>
-<script src="/js/home-tour.js?v=3" defer></script>
+<script src="/js/home-tour.js?v=4" defer></script>
 <script src="/js/broadcast-guide.js?v=1" defer></script>
 
 <!-- ── OpenVibe shared libs (notifications, account sync, themes) ── -->

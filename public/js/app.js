@@ -680,7 +680,31 @@ function closeModal() {
 function doLogin() { window.location.href = '/api/auth/sso/login'; }
 function doRegister() { window.location.href = '/api/auth/sso/login'; }
 
+// Session hint: 'account' after a successful sign-in (silent SSO may re-sign you in when the
+// site token lapses), 'guest' after an explicit logout / "browse as guest" (never re-sign in).
+function _setSsoHint(v) { try { localStorage.setItem('ov_sso_hint', v); } catch { /* */ } }
+function _ssoHint() { try { return localStorage.getItem('ov_sso_hint') || ''; } catch { return ''; } }
+/** Try to sign back in through openvibe.network without a chooser — once per tab session. */
+function _trySilentSso() {
+    if (_ssoHint() !== 'account') return false;
+    try { if (sessionStorage.getItem('ov_silent_sso')) return false; sessionStorage.setItem('ov_silent_sso', '1'); } catch { return false; }
+    if (location.pathname.startsWith('/banned') || location.pathname.startsWith('/api/')) return false;
+    location.href = '/api/auth/sso/login?silent=1';
+    return true;
+}
+/** "Switch account": drop this site's session, keep openvibe.network's, open the account chooser. */
+function switchAccount() {
+    fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {}).finally(() => {
+        localStorage.removeItem('token'); localStorage.removeItem('ov_token');
+        document.cookie = 'token=;Max-Age=0;path=/'; document.cookie = 'ov_token=;Max-Age=0;path=/';
+        _setSsoHint('account');
+        location.href = '/api/auth/sso/login';
+    });
+}
+/** "Browse as guest": signed out here only — openvibe.network still remembers you, so "Sign in" is one tap. */
+function browseAsGuest() { logout(); try { toast('Browsing as a guest — Sign in brings you straight back.', 'info'); } catch { /* */ } }
 function logout() {
+    _setSsoHint('guest');
     // Clear server-side cookies via API
     fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
     // Clear client-side storage (both keys)
@@ -706,7 +730,7 @@ async function loadUser() {
     if (!tok) {
         // No token in localStorage — try refreshing from httpOnly cookie
         const refreshed = await tryRefreshToken();
-        if (!refreshed) return;
+        if (!refreshed) { _trySilentSso(); return; }
         tok = localStorage.getItem('token');
     }
     // If token is already expired, proactively refresh before making the API call
@@ -717,17 +741,22 @@ async function loadUser() {
     try {
         const data = await api('/auth/me');
         currentUser = mergeUserWithCapabilities(data.user || data, data.capabilities);
+        _setSsoHint('account');
     } catch (err) {
         // Banned account: the server refuses with 403 — show the ban screen instead of the site.
         if (err && err.status === 403 && /banned/i.test(String(err.message || ''))) {
             if (!location.pathname.startsWith('/banned')) location.replace('/banned');
             return;
         }
-        // If still 401 after auto-refresh attempt in api(), give up
+        // If still 401 after auto-refresh attempt in api(), give up here — but let the network
+        // sign us back in silently if it still has a session for this browser.
         localStorage.removeItem('token');
         localStorage.removeItem('ov_token');
+        _trySilentSso();
     }
 }
+// Back from a silent sign-in that found no network session: stay a guest, tidy the URL.
+try { if (new URLSearchParams(location.search).get('sso') === 'none') { _setSsoHint('guest'); history.replaceState(null, '', location.pathname); } } catch { /* */ }
 
 function onAuthChange() {
     const anon = document.getElementById('nav-auth-anon');

@@ -50,7 +50,7 @@
                     <div class="tour-core-wrap">
                         <div class="tour-core" data-node="core">
                             <span class="tour-core-ring"></span><span class="tour-core-ring tour-core-ring--2"></span>
-                            <span class="tour-core-logo"><i class="fa-solid fa-circle-nodes"></i></span>
+                            <span class="tour-core-logo"><span class="ov-mark" data-size="30" style="color:#fff"></span></span>
                             <b>OpenVibe.Live</b>
                             <small>&lt;1s latency · chat · emotes · sounds · controls · VOD · clips</small>
                         </div>
