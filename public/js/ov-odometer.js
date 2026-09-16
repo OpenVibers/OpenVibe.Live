@@ -27,7 +27,7 @@
 .ovnum{--ovnum-h:1.25em;display:inline-flex;align-items:center;line-height:var(--ovnum-h);font-variant-numeric:tabular-nums}
 .ovnum-cell{display:inline-block;line-height:var(--ovnum-h)}
 .ovnum-digit{display:inline-block;overflow:hidden;height:var(--ovnum-h);width:1ch;position:relative}
-.ovnum-track{display:block;will-change:transform;transition:transform var(--ovnum-dur,.62s) cubic-bezier(.22,1,.28,1)}
+.ovnum-track{display:block;transition:transform var(--ovnum-dur,.62s) cubic-bezier(.22,1,.28,1)}
 .ovnum-track span{display:block;height:var(--ovnum-h);line-height:var(--ovnum-h);text-align:center}
 .ovnum.is-up .ovnum-digit.changed{animation:ovnumUp .62s ease-out}
 .ovnum.is-down .ovnum-digit.changed{animation:ovnumDown .62s ease-out}

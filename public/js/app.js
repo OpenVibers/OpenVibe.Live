@@ -2147,7 +2147,7 @@ function renderHeroBackground(media, moments) {
     if (!frames.length) { wrap.style.display = 'none'; return; }
     wrap.style.display = '';
     _heroBgActive = 0;
-    layers[0].style.backgroundImage = `url("${frames[0]}")`;
+    layers[0].style.backgroundImage = `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url("${frames[0]}")`;
     layers[1].classList.remove('active');
     // Re-trigger the Ken-Burns animation on first paint.
     layers[0].classList.remove('active'); void layers[0].offsetWidth; layers[0].classList.add('active');
@@ -2160,7 +2160,9 @@ function renderHeroBackground(media, moments) {
         const el = layers[next];
         const pre = new Image();
         pre.onload = () => {
-            el.style.backgroundImage = `url("${frames[idx]}")`;
+            // The darkening is part of the frame's own background rather than a filter or an overlay element:
+            // either of those becomes a second full-hero layer on top of an animating one.
+            el.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url("${frames[idx]}")`;
             el.classList.remove('active'); void el.offsetWidth; el.classList.add('active');
             layers[_heroBgActive].classList.remove('active');
             _heroBgActive = next;

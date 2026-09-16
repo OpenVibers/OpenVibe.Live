@@ -71,14 +71,21 @@ body {
     background-image: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 42%);
     background-attachment: fixed;
 }
+/* Ambient corner glows. These were fixed-position squares with filter: blur(70px). Fixed makes each
+   one a composited layer, and main#app — which paints on top of them — then had to be promoted to
+   its own layer for overlapping them: a single 12.8MP texture of the entire app, re-rasterised as
+   the page changed, plus a 70px blur (among the most expensive filters there is) on top.
+   A radial gradient reaches the same soft edge with no filter, and absolute positioning keeps the
+   glows in the page's own layer, so nothing above them needs promoting. They sit behind the top of
+   the page, which is where they were ever visible past the hero anyway. */
 body::before,
 body::after {
     content: '';
-    position: fixed;
+    position: absolute;
     pointer-events: none;
     z-index: 0;
-    filter: blur(70px);
     opacity: 0.32;
+    border-radius: 50%;
 }
 
 /* ── Vibe coding widget ───────────────────────────────────── */
@@ -833,19 +840,23 @@ body::after {
     display: grid;
     gap: 7px;
 }
+/* Both glows stay inside the page's width — an absolutely positioned box past the right edge
+   widens the document and scrolls it sideways. The gradient centre sits on the corner instead. */
 body::before {
-    top: -80px;
-    left: -30px;
-    width: 280px;
-    height: 280px;
-    background: color-mix(in srgb, var(--accent) 28%, transparent);
+    top: 0;
+    left: 0;
+    width: min(560px, 70vw);
+    height: 560px;
+    border-radius: 0;
+    background: radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--accent) 28%, transparent) 0%, color-mix(in srgb, var(--accent) 12%, transparent) 30%, transparent 62%);
 }
 body::after {
-    right: -40px;
-    top: 25vh;
-    width: 240px;
-    height: 240px;
-    background: rgba(52, 152, 219, 0.15);
+    right: 0;
+    top: calc(25vh - 120px);
+    width: min(480px, 60vw);
+    height: 480px;
+    border-radius: 0;
+    background: radial-gradient(circle at 92% 50%, rgba(52, 152, 219, 0.15) 0%, rgba(52, 152, 219, 0.06) 32%, transparent 62%);
 }
 a { color: var(--accent); text-decoration: none; }
 a:hover { color: var(--accent-light); }
@@ -2498,7 +2509,9 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     background: conic-gradient(from var(--cta-angle, 0deg), transparent 0deg, color-mix(in srgb, var(--accent) 80%, transparent) 60deg, color-mix(in srgb, var(--accent) 15%, transparent) 140deg, transparent 200deg, color-mix(in srgb, var(--accent) 55%, transparent) 300deg, transparent 360deg);
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor; mask-composite: exclude;
-    animation: ctaBorder 6s linear infinite;
+    /* Held still. The sweep animated a registered custom property, which repaints a conic gradient
+       across the whole ~2MP banner every frame; a fixed angle keeps the lit edge without that. */
+    --cta-angle: 210deg;
     opacity: 0.7;
 }
 @property --cta-angle { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
@@ -2511,10 +2524,11 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
         radial-gradient(38% 42% at 18% 22%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%),
         radial-gradient(34% 40% at 82% 30%, color-mix(in srgb, var(--accent-dark) 14%, transparent), transparent 60%),
         radial-gradient(46% 50% at 60% 96%, rgba(52,152,219,0.10), transparent 62%);
-    filter: blur(8px);
-    animation: ctaDrift 18s ease-in-out infinite alternate;
+    /* No blur (the gradients already fade to nothing) and no drift: this layer is 140% the size
+       of the banner — 4MP on desktop — and an animation, even paused off screen, keeps it
+       promoted. A still glow reads the same. */
+    animation: none;
 }
-@keyframes ctaDrift { from { transform: translate3d(-2%, -1%, 0) scale(1); } to { transform: translate3d(3%, 2%, 0) scale(1.08); } }
 
 /* Rising embers */
 .cta-embers { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }

@@ -298,13 +298,10 @@
     100% { transform: translate3d(3px, 9px, 0) rotate(calc(var(--rot, -2deg) * -0.6)) scale(var(--depth-scale, 1)); }
 }
 
-/* Background frames: no filter; the darkening is an overlay painted once. */
+/* Background frames: no filter. The darkening is a gradient layered into each frame's own
+   background-image (app.js), so it costs neither a filter pass nor a second full-hero layer. */
 .hero-bg-layer { filter: none !important; will-change: auto !important; }
 .hero-bg-layer.active { will-change: transform !important; }
-.hero-bg::after {
-    content: ''; position: absolute; inset: 0; pointer-events: none;
-    background: rgba(0, 0, 0, 0.5);
-}
 
 /* Aurora: the gradients are already soft; the blur and blend were redundant and expensive. */
 .hero-aurora, .hero-aurora::before, .hero-aurora::after {
