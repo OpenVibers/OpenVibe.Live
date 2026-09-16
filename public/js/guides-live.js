@@ -269,7 +269,7 @@
         title: 'What OpenVibe can do', kicker: 'Quick tour', requiresUser: false,
         steps: [
             tourStep('stream', 'fa-tower-broadcast', 'One stream, everywhere', `${ui.lead('Go live from your browser, OBS or a robot, and mirror the same stream to Twitch, YouTube, Kick, RobotStreamer or any RTMP server at once. Chat from every platform lands in one place.')}<ul class="ovg-tips"><li>Sub-second WebRTC latency for viewers here.</li><li>Every stream is recorded; clips and AI moments are cut for you.</li></ul>`),
-            tourStep('chat', 'fa-comments', 'Chat is the show', `${ui.lead('7TV, BTTV, FFZ and custom emotes; sound commands like <b>!boom</b> that play on stream; server-rendered TTS with collectible voices; auto-translation both ways for non-English streamers.')}<ul class="ovg-tips"><li>Type <b>.</b> before a message to keep it out of TTS.</li><li>Viewers earn Vibes for watching and chatting.</li></ul>`),
+            tourStep('chat', 'fa-comments', 'Chat is the show', `${ui.lead('7TV, BTTV, FFZ and custom emotes; sound commands like <b>!boom</b> that play on stream; server-rendered TTS with collectible voices; auto-translation both ways for non-English streamers.')}<ul class="ovg-tips"><li>Type <b>.</b> before a message to keep it out of TTS.</li><li>Viewers earn OpenCoins for watching and chatting, plus channel points on each channel.</li></ul>`),
             tourStep('arena', 'fa-microphone-lines', 'The Arena', `${ui.lead('Everything streamers say on mic is judged by AI: the best trash talk lands in the Arena, callouts open beefs, and levels rise with the mouth. Chat can <b>!hype</b> a fight but never write one.')}`),
             tourStep('after', 'fa-clipboard-list', 'After every stream', `${ui.lead('An after-show report with a grade, the viewer curve, the loudest chatters, mic moments and clips — plus a daily AI-picked Star of OpenVibe and a fresh daily secret to crack.')}`),
             tourStep('you', 'fa-user-astronaut', 'Your turn', `${ui.lead(me() ? 'You have an account — the streamer setup walks you through everything in a few minutes.' : 'One free account works across the whole OpenVibe network. Sign in and the setup walks you through your first stream.')}`),
@@ -294,7 +294,7 @@
         ['fa-tower-broadcast', 'Go live for free', 'Browser, OBS or a robot. No approval queue, no invite, no waiting list.'],
         ['fa-satellite-dish', 'Restream everywhere at once', 'Twitch, YouTube, Kick, RobotStreamer and any RTMP server from one stream.'],
         ['fa-comments', 'One chat, every platform', '7TV, BTTV and FFZ emotes, sound commands and TTS, translated both ways.'],
-        ['fa-coins', 'Earn Vibes just for watching', 'Spend them on emotes, themes, cosmetics and sounds that play on stream.'],
+        ['fa-coins', 'Earn OpenCoins just for watching', 'Site-wide coins plus channel points on every channel. Spend them on emotes, themes, cosmetics and sounds that play on stream.'],
         ['fa-scissors', 'Clips and VODs cut for you', 'Every stream is recorded and the good bits are found automatically.'],
         ['fa-circle-nodes', 'One account, whole network', 'The same login works across every OpenVibe site and tool.'],
     ];
