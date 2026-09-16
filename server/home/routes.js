@@ -219,6 +219,7 @@ router.get('/stats-live', (req, res) => {
         const data = {
             liveNow: s.liveNow, viewersNow: s.viewersNow, weeklyActive: s.weeklyActive,
             users: s.users, weeklyVisitors: s.weeklyVisitors, anons: s.anons, chatMessages: s.chatMessages,
+            streamers: s.streamers, hoursWatched: s.hoursWatched,
         };
         _liveStats = { at: Date.now(), data };
         res.json(data);

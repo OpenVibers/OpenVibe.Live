@@ -1291,12 +1291,12 @@ function renderHeroStats(stats) {
     // ── Community ────────────────────────────────────────────────
     groups.push({
         kicker: 'Community', icon: 'fa-people-group', rows: [
-            { icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', metric: 'streamers', title: 'People who have gone live' },
+            { key: 'streamers', icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', metric: 'streamers', title: 'People who have gone live' },
             { key: 'users', icon: 'fa-users', num: stats.users, label: 'Users', metric: 'users', title: 'Registered users', recent: R.users },
             { key: 'anons', icon: 'fa-user-secret', num: stats.anons, label: 'Anons', metric: 'anons', title: 'Anonymous chatters ever seen', recent: R.anons },
             { icon: 'fa-heart', num: stats.follows, label: 'Follows', metric: 'follows', title: 'Channel follows', recent: R.follows },
             { key: 'chatMessages', icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', metric: 'messages', title: 'Chat messages sent', recent: R.messages },
-            { icon: 'fa-couch', num: stats.hoursWatched, label: 'Hrs Watched', metric: 'hoursWatched', title: 'Hours the community has spent watching streams', unit: 'h' },
+            { key: 'hoursWatched', icon: 'fa-couch', num: stats.hoursWatched, label: 'Hrs Watched', metric: 'hoursWatched', title: 'Hours the community has spent watching streams', unit: 'h' },
         ],
     });
 
@@ -1367,6 +1367,8 @@ function renderHeroStats(stats) {
         { key: 'weeklyVisitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors · 7d', title: 'First-time visitors in the last 7 days' },
         { key: 'anons', icon: 'fa-user-secret', num: stats.anons, label: 'Anons', title: 'Anonymous chatters who have been given a name' },
         { key: 'chatMessages', icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', title: 'Chat messages sent, all time' },
+        { key: 'streamers', icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', title: 'People who have gone live here' },
+        { key: 'hoursWatched', icon: 'fa-couch', num: stats.hoursWatched, label: 'Hours watched', title: 'Hours the community has spent watching' },
     ];
     const open = (() => { try { return localStorage.getItem('ov_stats_open') === '1'; } catch { return false; } })();
     wrap.innerHTML = `
