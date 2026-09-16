@@ -1,0 +1,142 @@
+/* ── Go Live setup wizard (public/js/golive-wizard.js) ── */
+.ovg { position: fixed; inset: 0; z-index: 21000; display: none; }
+.ovg.is-open { display: block; }
+body.ovg-lock { overflow: hidden; }
+.ovg-scrim { position: absolute; inset: 0; background: rgba(4,5,10,0.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: ovgFade .25s ease; }
+.ovg-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(720px, calc(100vw - 24px)); max-height: calc(100vh - 32px); display: flex; flex-direction: column;
+    border-radius: 22px; background: var(--bg-card); border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); box-shadow: 0 40px 100px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.04), 0 0 80px color-mix(in srgb, var(--accent) 25%, transparent);
+    animation: ovgPop .4s cubic-bezier(.2,1.3,.3,1); overflow: hidden; }
+@keyframes ovgFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ovgPop { from { opacity: 0; transform: translate(-50%, -46%) scale(0.96); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+.ovg-close { position: absolute; top: 10px; right: 10px; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-secondary); cursor: pointer; z-index: 2; }
+.ovg-close:hover { color: var(--text-primary); border-color: var(--accent); }
+.ovg-head { display: flex; align-items: center; gap: 12px; padding: 18px 56px 8px 20px; }
+.ovg-kicker { font-size: 0.66rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent-light, var(--accent)); }
+.ovg-title { font-size: 1.25rem; font-weight: 900; line-height: 1.15; }
+.ovg-steps { --p: 0%; list-style: none; margin: 8px 20px 0; padding: 0 0 12px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; position: relative; }
+.ovg-steps::before { content: ''; position: absolute; left: 12%; right: 12%; top: 15px; height: 3px; background: var(--bg-tertiary); border-radius: 2px; }
+.ovg-steps::after { content: ''; position: absolute; left: 12%; top: 15px; height: 3px; width: calc(76% * var(--p) / 100%); background: linear-gradient(90deg, var(--accent), #22d3ee); border-radius: 2px; transition: width .5s cubic-bezier(.2,.9,.3,1); }
+.ovg-steps li { position: relative; z-index: 1; display: grid; justify-items: center; gap: 5px; font-size: 0.68rem; font-weight: 700; color: var(--text-muted); text-align: center; }
+.ovg-step-dot { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-tertiary); border: 2px solid var(--border); font-size: 0.8rem; color: var(--text-muted); transition: all .3s; }
+.ovg-steps li.now .ovg-step-dot { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 22%, transparent); transform: scale(1.08); }
+.ovg-steps li.now { color: var(--text-primary); }
+.ovg-steps li.done .ovg-step-dot { background: color-mix(in srgb, #06d6a0 25%, var(--bg-tertiary)); border-color: #06d6a0; color: #06d6a0; }
+.ovg-body { flex: 1; min-height: 0; overflow: auto; padding: 4px 20px 12px; }
+.ovg-panel { animation-duration: .35s; animation-timing-function: cubic-bezier(.2,.9,.3,1); animation-fill-mode: both; }
+.ovg-panel.in-r { animation-name: ovgInR; } .ovg-panel.in-l { animation-name: ovgInL; }
+@keyframes ovgInR { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes ovgInL { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+.ovg-lead { font-size: 0.92rem; color: var(--text-secondary); line-height: 1.55; margin: 6px 0 14px; }
+.ovg-lead b { color: var(--text-primary); }
+.ovg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.ovg-grid--3 { grid-template-columns: repeat(3, 1fr); }
+.ovg-pick { --c: var(--accent); display: flex; align-items: center; gap: 12px; text-align: left; padding: 12px; border-radius: 14px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary); cursor: pointer; font: inherit; transition: transform .15s, border-color .15s, box-shadow .15s; animation: ovgRise .4s both; }
+.ovg-pick:nth-child(2) { animation-delay: .05s; } .ovg-pick:nth-child(3) { animation-delay: .1s; } .ovg-pick:nth-child(4) { animation-delay: .15s; } .ovg-pick:nth-child(5) { animation-delay: .2s; }
+@keyframes ovgRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.ovg-pick:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--c) 60%, var(--border)); }
+.ovg-pick.on { border-color: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 22%, transparent), 0 10px 30px rgba(0,0,0,0.25); background: color-mix(in srgb, var(--c) 8%, var(--bg-secondary)); }
+.ovg-pick--new { border-style: dashed; }
+.ovg-pick-ico { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; flex: none; font-size: 1.05rem; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); }
+.ovg-pick.on .ovg-pick-ico { background: var(--c); color: #fff; }
+.ovg-pick-body { display: grid; gap: 2px; min-width: 0; }
+.ovg-pick-body b { font-size: 0.92rem; } .ovg-pick-body small { font-size: 0.74rem; color: var(--text-muted); line-height: 1.35; }
+.ovg-tag { font-style: normal; font-size: 0.62rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--c); margin-left: 6px; }
+.ovg-form { display: grid; gap: 10px; } .ovg-form.is-hidden { display: none; }
+.ovg-form label { display: grid; gap: 6px; font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); }
+.ovg-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ovg-chip { padding: 6px 11px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); font: inherit; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all .15s; }
+.ovg-chip:hover { border-color: var(--accent); } .ovg-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ovg-detail { margin-top: 4px; }
+.ovg-box { padding: 14px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border); animation: ovgRise .35s both; }
+.ovg-box p { margin: 0 0 10px; font-size: 0.86rem; color: var(--text-secondary); line-height: 1.5; }
+.ovg-box-head { font-weight: 800; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; } .ovg-box-head i { color: var(--accent); }
+.ovg-kv { display: grid; grid-template-columns: 90px 1fr auto auto; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px dashed var(--border); font-size: 0.84rem; }
+.ovg-kv span { color: var(--text-muted); font-weight: 700; }
+.ovg-kv code { padding: 6px 9px; border-radius: 8px; background: var(--bg-tertiary); color: var(--text-primary); font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ovg-copy { padding: 5px 9px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); font: inherit; font-size: 0.74rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.ovg-copy:hover { border-color: var(--accent); }
+.ovg-obs { margin: 10px 0 6px; padding-left: 0; list-style: none; display: grid; gap: 6px; counter-reset: obs; }
+.ovg-obs li { counter-increment: obs; display: flex; gap: 10px; align-items: center; font-size: 0.86rem; }
+.ovg-obs li::before { content: counter(obs); width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 0.7rem; font-weight: 800; color: #fff; background: var(--accent); flex: none; }
+.ovg-tips { margin: 8px 0 0; padding-left: 18px; font-size: 0.8rem; color: var(--text-muted); }
+.ovg-fine { font-size: 0.76rem; }
+.ovg-seg { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--bg-tertiary); border: 1px solid var(--border); margin: 4px 0 8px; }
+.ovg-seg button { border: 0; background: transparent; color: var(--text-secondary); padding: 7px 12px; border-radius: 999px; font: inherit; font-weight: 700; font-size: 0.82rem; cursor: pointer; }
+.ovg-seg button.on { background: var(--accent); color: #fff; }
+.ovg-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.ovg-row .form-input { flex: 1 1 180px; }
+.ovg-check { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; margin: 8px 0; }
+.ovg-added { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.ovg-added li { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; background: color-mix(in srgb, #06d6a0 12%, var(--bg-tertiary)); border: 1px solid color-mix(in srgb, #06d6a0 45%, var(--border)); font-size: 0.8rem; font-weight: 700; }
+.ovg-ok { color: #06d6a0; }
+.ovg-summary { display: grid; gap: 8px; margin-bottom: 14px; }
+.ovg-sum-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--bg-secondary); border: 1px solid var(--border); animation: ovgRise .35s both; }
+.ovg-sum-row:nth-child(2) { animation-delay: .06s; } .ovg-sum-row:nth-child(3) { animation-delay: .12s; }
+.ovg-sum-row > i { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); flex: none; }
+.ovg-sum-row span { display: grid; min-width: 0; } .ovg-sum-row b { font-size: 0.9rem; } .ovg-sum-row small { color: var(--text-muted); font-size: 0.74rem; }
+.ovg-launch { text-align: center; padding: 8px 0 4px; }
+.ovg-big { font-size: 1.1rem; padding: 14px 28px; box-shadow: 0 12px 34px color-mix(in srgb, var(--accent) 45%, transparent); animation: ovgPulse 2.2s ease-out infinite; }
+@keyframes ovgPulse { 0% { box-shadow: 0 12px 34px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); } 100% { box-shadow: 0 12px 34px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 0 20px transparent; } }
+.ovg-wait { display: grid; justify-items: center; gap: 6px; padding: 10px; }
+.ovg-wait b { font-size: 1rem; } .ovg-wait em { color: var(--accent-light, var(--accent)); font-style: normal; } .ovg-wait small { color: var(--text-muted); font-size: 0.8rem; }
+.ovg-radar { position: relative; width: 64px; height: 64px; margin-bottom: 6px; }
+.ovg-radar i { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; animation: ovgRadar 2.4s ease-out infinite; }
+.ovg-radar i:nth-child(2) { animation-delay: .8s; } .ovg-radar i:nth-child(3) { animation-delay: 1.6s; }
+@keyframes ovgRadar { 0% { transform: scale(0.3); opacity: 0.9; } 100% { transform: scale(1.2); opacity: 0; } }
+.ovg-live { text-align: center; padding: 16px 6px; display: grid; justify-items: center; gap: 8px; }
+.ovg-live-badge { font-size: 0.8rem; font-weight: 900; letter-spacing: 0.14em; padding: 4px 12px; border-radius: 6px; background: #e0245e; color: #fff; animation: ovgPulse 1.6s ease-out infinite; }
+.ovg-live h3 { margin: 0; font-size: 1.6rem; font-weight: 900; } .ovg-live p { margin: 0 0 8px; color: var(--text-secondary); }
+.ovg-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 20px 16px; border-top: 1px solid var(--border); background: var(--bg-card); }
+.ovg-foot-note { font-size: 0.74rem; color: var(--text-muted); font-weight: 700; }
+.ovg-confetti { position: fixed; inset: 0; pointer-events: none; z-index: 22000; overflow: hidden; }
+.ovg-confetti span { position: absolute; top: -14px; width: 9px; height: 14px; border-radius: 2px; animation: ovgFall linear forwards; }
+@keyframes ovgFall { to { transform: translateY(105vh) rotate(720deg); opacity: 0.9; } }
+@media (max-width: 640px) {
+    .ovg-card { left: 0; right: 0; top: auto; bottom: 0; transform: none; width: 100%; max-height: 94vh; border-radius: 20px 20px 0 0; animation: ovgSheet .35s cubic-bezier(.2,1,.3,1); }
+    @keyframes ovgSheet { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+    .ovg-grid, .ovg-grid--3 { grid-template-columns: 1fr; }
+    .ovg-steps { grid-template-columns: repeat(4, 1fr); } .ovg-step-label { font-size: 0.6rem; }
+    .ovg-kv { grid-template-columns: 1fr; } .ovg-kv span { font-size: 0.7rem; }
+    .ovg-foot { padding: 10px 14px 14px; }
+}
+@media (prefers-reduced-motion: reduce) { .ovg-card, .ovg-panel, .ovg-pick, .ovg-box, .ovg-sum-row, .ovg-big, .ovg-radar i, .ovg-live-badge { animation: none !important; } }
+
+/* ── Engine extras: clickable steps, hub, rings, spotlight, mini-journey forms ── */
+.ovg-steps { grid-template-columns: repeat(var(--n, 4), 1fr); }
+.ovg-steps li.can { cursor: pointer; } .ovg-steps li.can:hover .ovg-step-dot { transform: scale(1.1); border-color: var(--accent); }
+.ovg-foot-right { display: flex; gap: 8px; align-items: center; }
+.ovg-error { padding: 12px; border-radius: 12px; background: color-mix(in srgb, #ff5a5f 12%, var(--bg-secondary)); border: 1px solid #ff5a5f; }
+.ovg-field { display: grid; gap: 6px; font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); margin-bottom: 10px; }
+.ovg-field-label { font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); margin: 2px 0 6px; }
+.ovg-prefix { display: flex; align-items: center; gap: 0; } .ovg-prefix span { padding: 9px 12px; border: 1px solid var(--border); border-right: 0; border-radius: 10px 0 0 10px; background: var(--bg-tertiary); font-weight: 900; } .ovg-prefix .form-input { border-radius: 0 10px 10px 0; }
+.ovg-drop { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 96px; border: 2px dashed color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 14px; background: var(--bg-secondary); cursor: pointer; color: var(--text-secondary); font-weight: 700; padding: 12px; transition: border-color .15s, background .15s; }
+.ovg-drop:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--bg-secondary)); }
+.ovg-drop img { width: 64px; height: 64px; object-fit: contain; border-radius: 10px; background: var(--bg-tertiary); }
+.ovg-drop i { font-size: 1.4rem; color: var(--accent); }
+.ovg-profile { display: grid; grid-template-columns: 96px 1fr; gap: 16px; align-items: start; }
+.ovg-avatar-pick { position: relative; width: 96px; height: 96px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: var(--accent); color: #fff; font-size: 2.2rem; font-weight: 900; cursor: pointer; }
+.ovg-avatar-pick img { width: 100%; height: 100%; object-fit: cover; } .ovg-avatar-pick i { position: absolute; right: 4px; bottom: 4px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 0.75rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border); }
+.ovg-hub-top { display: grid; grid-template-columns: 96px 1fr; gap: 16px; align-items: center; padding: 14px; border-radius: 16px; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, var(--bg-secondary)), var(--bg-secondary)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); margin-bottom: 14px; }
+.ovg-hub-title { font-size: 1.05rem; font-weight: 900; margin-bottom: 2px; } .ovg-hub-sub { font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 8px; }
+.ovg-ring { --pct: 0; width: 96px; height: 96px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--accent) calc(var(--pct) * 1%), var(--bg-tertiary) 0); position: relative; }
+.ovg-ring::before { content: ''; position: absolute; inset: 9px; border-radius: 50%; background: var(--bg-card); }
+.ovg-ring span { position: relative; font-size: 1.5rem; font-weight: 900; } .ovg-ring small { font-size: 0.75rem; color: var(--text-muted); font-weight: 700; }
+.ovg-hub-group h4 { margin: 12px 0 6px; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+.ovg-tasks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ovg-tasks li { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: var(--bg-secondary); border: 1px solid var(--border); }
+.ovg-tasks li.focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+.ovg-tasks li.done { opacity: 0.8; } .ovg-tasks li.done .ovg-task-ico { background: color-mix(in srgb, #06d6a0 20%, transparent); color: #06d6a0; }
+.ovg-task-ico { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.ovg-task-body { display: grid; min-width: 0; } .ovg-task-body b { font-size: 0.88rem; } .ovg-task-body b small { color: var(--text-muted); font-weight: 700; } .ovg-task-body small { font-size: 0.74rem; color: var(--text-muted); line-height: 1.35; }
+.ovg-mini-ring { --pct: 0; display: inline-block; width: 18px; height: 18px; border-radius: 50%; background: conic-gradient(#fff calc(var(--pct) * 1%), rgba(255,255,255,0.25) 0); vertical-align: -3px; margin-right: 4px; position: relative; }
+.ovg-mini-ring::before { content: ''; position: absolute; inset: 4px; border-radius: 50%; background: var(--accent); }
+.btn.is-ready small { opacity: 0.75; font-weight: 600; margin-left: 4px; }
+/* Spotlight: point at a real element */
+.ovg-spot { position: fixed; inset: 0; z-index: 20500; pointer-events: none; opacity: 0; transition: opacity .3s; }
+.ovg-spot.is-on { opacity: 1; }
+.ovg-spot-hole { position: fixed; border-radius: 14px; pointer-events: none; box-shadow: 0 0 0 9999px rgba(3,3,8,0.68), 0 0 0 3px var(--accent), 0 0 30px color-mix(in srgb, var(--accent) 60%, transparent); transition: left .25s, top .25s, width .25s, height .25s, opacity .25s; }
+.ovg-spot-card { position: fixed; pointer-events: auto; width: 380px; max-width: calc(100vw - 24px); padding: 16px 18px; border-radius: 16px; color: #fff; background: linear-gradient(160deg, #17132b, #0c0c12 60%); border: 1px solid rgba(255,255,255,0.14); box-shadow: 0 30px 70px rgba(0,0,0,0.6); transition: top .25s, left .25s; }
+.ovg-spot-step { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-light, var(--accent)); margin-bottom: 4px; }
+.ovg-spot-card h4 { margin: 0 0 6px; font-size: 1.05rem; font-weight: 900; } .ovg-spot-card p { margin: 0 0 12px; font-size: 0.86rem; line-height: 1.5; color: #e2e8f0; }
+.ovg-spot-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 640px) { .ovg-hub-top { grid-template-columns: 76px 1fr; } .ovg-ring { width: 76px; height: 76px; } .ovg-ring span { font-size: 1.2rem; } .ovg-profile { grid-template-columns: 1fr; justify-items: center; } .ovg-tasks li { grid-template-columns: 30px 1fr; } .ovg-tasks li .btn { grid-column: 2; justify-self: start; } }

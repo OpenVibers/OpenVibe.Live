@@ -1451,6 +1451,46 @@ router.get('/managed/:managedStreamId/profile', requireAuth, (req, res) => {
 });
 
 // List own managed streams
+// ── Setup progress: everything a streamer can set up, and what they have done ─────────────
+// Drives the Go Live setup hub and the home page's "next up" button. Every check is wrapped so
+// a missing table or column just reads as "not done" instead of breaking the hub.
+router.get('/setup-progress', requireAuth, async (req, res) => {
+    const uid = req.user.id;
+    const safe = (fn, d) => { try { const v = fn(); return v == null ? d : v; } catch { return d; } };
+    const slots = safe(() => db.getManagedStreamsByUserId(uid), []);
+    const sessions = safe(() => db.get('SELECT COUNT(*) AS n FROM streams WHERE user_id = ?', [uid]).n, 0);
+    const restreams = safe(() => db.getRestreamDestinationsByUserId(uid).length, 0);
+    const rs = slots.some(sl => safe(() => { const r = db.getRobotStreamerIntegrationBySlot(uid, sl.id); return !!(r && (r.robot_id || r.stream_name)); }, false));
+    const user = safe(() => db.getUserById(uid), {}) || {};
+    const channel = safe(() => db.getChannelByUserId(uid), {}) || {};
+    const emotes = safe(() => db.get('SELECT COUNT(*) AS n FROM emotes WHERE user_id = ?', [uid]).n, 0);
+    const sounds = safe(() => db.get('SELECT COUNT(*) AS n FROM channel_sounds WHERE channel_owner_id = ?', [uid]).n, 0);
+    const goals = safe(() => db.get('SELECT COUNT(*) AS n FROM donation_goals WHERE user_id = ? AND is_active = 1', [uid]).n, 0);
+    const powerchat = safe(() => !!db.get('SELECT 1 FROM powerchat_connections WHERE user_id = ? LIMIT 1', [uid]), false);
+    const followers = safe(() => db.getFollowerCount(uid), 0);
+    let panels = 0; try { const p = channel.panels ? JSON.parse(channel.panels) : []; panels = Array.isArray(p) ? p.length : 0; } catch { panels = 0; }
+    const offline = !!(channel.offline_screen_type && channel.offline_screen_type !== 'none');
+    const methodSet = slots.some(sl => !!sl.streaming_method);
+    const tasks = [
+        { id: 'slot', group: 'Stream', title: 'Create your stream slot', why: 'Your show gets its own key, settings, VODs and restreams.', done: slots.length > 0, count: slots.length },
+        { id: 'method', group: 'Stream', title: 'Choose how you stream', why: 'Browser, OBS over RTMP, or OBS over WHIP.', done: methodSet },
+        { id: 'restream', group: 'Stream', title: 'Mirror to another platform', why: 'Twitch, YouTube, Kick, RobotStreamer or any RTMP — all at once.', done: restreams > 0 || rs, count: restreams + (rs ? 1 : 0) },
+        { id: 'golive', group: 'Stream', title: 'Go live for the first time', why: 'Nothing teaches like the first ten minutes.', done: sessions > 0, count: sessions },
+        { id: 'profile', group: 'Look & feel', title: 'Avatar and bio', why: 'First thing people see on your channel and in chat.', done: !!(user.avatar_url && String(user.bio || '').trim()) },
+        { id: 'offline', group: 'Look & feel', title: 'Offline screen', why: 'What visitors see when you are not live — image, video or your own HTML.', done: offline },
+        { id: 'emote', group: 'Look & feel', title: 'Upload a custom emote', why: 'Your chat, your inside jokes. Animated works too.', done: emotes > 0, count: emotes },
+        { id: 'sound', group: 'Look & feel', title: 'Add a sound command', why: 'Viewers type !boom and your stream plays it.', done: sounds > 0, count: sounds },
+        { id: 'goal', group: 'Community & money', title: 'Set a donation goal', why: 'A visible target turns tips into a team effort.', done: goals > 0, count: goals },
+        { id: 'powerchat', group: 'Community & money', title: 'Connect PowerChat for real tips', why: 'Card and crypto tips with on-stream alerts.', done: powerchat },
+        { id: 'panels', group: 'Community & money', title: 'Fill in your About panels', why: 'Links, schedule, rules — the stuff under the player.', done: panels > 0, count: panels },
+        { id: 'share', group: 'Grow', title: 'Get your first follower', why: 'Share your channel link; followers get pinged when you go live.', done: followers > 0, count: followers },
+    ];
+    const done = tasks.filter(t => t.done).length;
+    const next = tasks.find(t => !t.done) || null;
+    res.set('Cache-Control', 'private, no-store');
+    res.json({ tasks, done, total: tasks.length, next, username: user.username });
+});
+
 router.get('/managed', requireAuth, (req, res) => {
     try {
         const managed = db.getManagedStreamsByUserId(req.user.id);
