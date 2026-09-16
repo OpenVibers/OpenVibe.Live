@@ -14907,7 +14907,29 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 /* ── OV brand mark (navbar + hero): the O is a ring with a comet running around it, the V is
    drawn inside with a light sweep, a dot orbits the ring. Transform/opacity/stroke motion only. ── */
 .brand-mark { display: inline-grid; place-items: center; width: 32px; height: 32px; color: var(--accent); flex: none; }
+/* Idle is the default state. Every loop below is declared as before but held at its 0% frame —
+   each one's 0% is a sensible resting pose — and only runs while .is-awake is on the mark, which
+   app.js adds for five seconds after a route change. Six looping animations on an element that is
+   on screen the entire session is a composited repaint per frame for no reason while someone is
+   reading. */
 .brand-mark svg { overflow: visible; transform-origin: 50% 50%; animation: ovFloat 5s ease-in-out infinite; }
+.brand-mark svg,
+.brand-mark .ov-glow,
+.brand-mark .ov-comet,
+.brand-mark .ov-v,
+.brand-mark .ov-dot,
+.brand-mark .ov-spark { animation-play-state: paused; }
+.brand-mark.is-awake svg,
+.brand-mark.is-awake .ov-glow,
+.brand-mark.is-awake .ov-comet,
+.brand-mark.is-awake .ov-v,
+.brand-mark.is-awake .ov-dot,
+.brand-mark.is-awake .ov-spark { animation-play-state: running; }
+/* Hovering is a reason to come alive too, without waiting for a navigation. */
+.nav-brand:hover .brand-mark svg,
+.nav-brand:hover .brand-mark .ov-glow,
+.nav-brand:hover .brand-mark .ov-comet,
+.nav-brand:hover .brand-mark .ov-dot { animation-play-state: running; }
 .ov-glow { fill: currentColor; opacity: 0.1; transform-box: fill-box; transform-origin: center; animation: ovGlow 3.4s ease-in-out infinite; }
 .ov-ring { fill: none; stroke: currentColor; stroke-width: 4; opacity: 0.28; }
 .ov-comet { fill: none; stroke-width: 4; stroke-linecap: round; stroke-dasharray: 34 79; transform-box: fill-box; transform-origin: center; animation: ovComet 3.6s linear infinite; }
@@ -14925,6 +14947,21 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 @keyframes ovDraw { from { stroke-dashoffset: 46; } to { stroke-dashoffset: 0; } }
 @keyframes ovDot { 0%, 100% { transform: scale(1); opacity: 0.85; } 50% { transform: scale(1.5); opacity: 1; } }
 @keyframes ovSpin { from { transform: rotate(0deg) scale(1); } 40% { transform: rotate(200deg) scale(1.18); } to { transform: rotate(360deg) scale(1); } }
+/* One spin as the route lands, on a spring-ish curve that overshoots past 360 and eases back. */
+.brand-mark.is-spin svg { animation: ovSpinIn 1.05s cubic-bezier(.16, 1.16, .3, 1) 1 both; animation-play-state: running; }
+@keyframes ovSpinIn {
+    0%   { transform: rotate(0deg) scale(0.86); }
+    45%  { transform: rotate(228deg) scale(1.2); }
+    72%  { transform: rotate(348deg) scale(0.97); }
+    100% { transform: rotate(360deg) scale(1); }
+}
+/* And a short overshoot as it comes to rest, so going still reads as deliberate. */
+.brand-mark.is-settling svg { animation: ovSettle 0.68s cubic-bezier(.26, 1.32, .42, 1) 1 both; animation-play-state: running; }
+@keyframes ovSettle {
+    0%   { transform: rotate(5deg) scale(1.07); }
+    55%  { transform: rotate(-2.5deg) scale(0.982); }
+    100% { transform: none; }
+}
 /* Hero: bigger, plus sparks off the V */
 .brand-mark--hero { width: 1.05em; height: 1.05em; vertical-align: -0.16em; color: var(--accent); margin-right: 0.08em; }
 .brand-mark--hero svg { width: 100%; height: 100%; }
@@ -15483,3 +15520,90 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
    the last readable line and the footer rule. Other pages end on content that needs the breathing
    room, so this is scoped to the home page rather than changed globally. */
 #page-home.page { padding-bottom: 10px; }
+
+
+/* ═══════════════════════════════════════════════════════════════
+   Route-change motion (app.js: ovRouteProgress / ovAnimatePageEnter)
+
+   A route swap here is instant in the DOM and slow to fill from the network, so without a signal
+   the page reads as stuck for that gap. The bar is one element with a transform-only sweep; the
+   page rises the last few pixels into place. Neither can shift layout, and both strip themselves
+   on a timer so a swap interrupted mid-flight never leaves content invisible.
+   ═══════════════════════════════════════════════════════════════ */
+#ov-routebar {
+    position: fixed; top: 0; left: 0; right: 0; height: 2px;
+    z-index: 20000; pointer-events: none; opacity: 0;
+    background: linear-gradient(90deg,
+        transparent,
+        color-mix(in srgb, var(--accent) 85%, transparent) 35%,
+        var(--accent-light, var(--accent)) 55%,
+        color-mix(in srgb, var(--accent) 85%, transparent) 75%,
+        transparent);
+    transform: translateX(-100%);
+}
+#ov-routebar.is-run { opacity: 1; animation: ovRouteBar 0.62s cubic-bezier(.3, .8, .2, 1) both; }
+#ov-routebar.is-done { opacity: 0; transform: translateX(0); transition: opacity 0.3s ease; }
+@keyframes ovRouteBar {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(100%); }
+}
+
+.page.is-entering { animation: ovPageIn 0.42s cubic-bezier(.22, 1, .36, 1) both; }
+@keyframes ovPageIn {
+    from { opacity: 0; transform: translate3d(0, 10px, 0); }
+    to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #ov-routebar { display: none; }
+    .page.is-entering { animation: none !important; }
+    .brand-mark.is-spin svg, .brand-mark.is-settling svg { animation: none !important; }
+}
+/* Phones do the page rise but skip the bar — it sits under the browser's own chrome anyway. */
+.rs-lite .page.is-entering { animation-duration: 0.32s; }
+
+
+/* ═══════════════════════════════════════════════════════════════
+   Off-screen sections animate nothing.
+
+   Measured on an idle home page: 63 running animations, 45 of them on elements outside the
+   viewport — the restream diagram's nine flowing wires, the CTA banner's embers, drifts and
+   sweeps, the marks' orbits. Several animate background-position, box-shadow or stroke-dashoffset,
+   which cannot be composited and so cost a style recalc and a paint every frame for something
+   nobody is looking at.
+
+   home-fx.js already toggles .fx-live on [data-fx-viewport] containers as they enter and leave the
+   viewport; only a handful of animations were gated on it by hand, which meant every new effect
+   had to remember to opt in and most did not. This makes it structural: anything inside a section
+   that is not currently live is paused, whatever it is. Paused holds the current frame rather
+   than resetting, so scrolling back does not restart mid-effect.
+   ═══════════════════════════════════════════════════════════════ */
+[data-fx-viewport]:not(.fx-live),
+[data-fx-viewport]:not(.fx-live) *::before,
+[data-fx-viewport]:not(.fx-live) *::after,
+[data-fx-viewport]:not(.fx-live) * {
+    animation-play-state: paused !important;
+}
+
+/* The ALPHA badge is in the navbar, so it is on screen for the whole session — and it animated
+   background-position and box-shadow together, the two most expensive things to animate. The
+   gradient now slides on a transform inside a clipped pseudo-element and the glow is an opacity
+   fade on a second one, so the same effect composites instead of repainting. */
+.alpha-badge { position: relative; isolation: isolate; overflow: hidden; animation: none !important; }
+.alpha-badge > * { position: relative; z-index: 2; }
+.alpha-badge::before {
+    content: ''; position: absolute; top: 0; left: -50%; width: 200%; bottom: 0; z-index: 0;
+    background: linear-gradient(135deg, #ff6b6b, #ee5a24, #ff6b6b, #ee5a24);
+    background-size: 50% 100%;
+    animation: alphaSlide 2.5s ease-in-out infinite;
+}
+.alpha-badge::after {
+    content: ''; position: absolute; inset: -3px; z-index: -1; border-radius: inherit;
+    box-shadow: 0 0 14px rgba(238, 90, 36, 0.7);
+    animation: alphaGlow 2.5s ease-in-out infinite;
+}
+@keyframes alphaSlide { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-25%); } }
+@keyframes alphaGlow  { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+    .alpha-badge::before, .alpha-badge::after { animation: none !important; }
+}

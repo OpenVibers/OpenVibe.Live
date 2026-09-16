@@ -960,6 +960,26 @@ function ovUserMenu(event) {
  * timer rather than on animationend, so an element whose animation never started (off-screen,
  * display:none) is still returned to normal.
  */
+/**
+ * Clear transient overlays that a route change has orphaned.
+ *
+ * Guides, spotlights and confirm sheets are all "this page, right now" UI. Each one is supposed to
+ * clean up after itself, and each one has at least one exit that skips its own teardown — closing
+ * a guide from a link inside it, navigating away from a spotlight, a confirm sheet whose caller
+ * threw. The ones that matter are position:fixed with pointer-events:auto: they keep absorbing
+ * taps over whatever they cover, which reads to the reader as "this button is dead". This is the
+ * backstop, not the fix — the modules still clean up their own.
+ */
+function ovClearStrandedOverlays() {
+    try { if (window.OVGuide && typeof OVGuide.closeSpotlight === 'function') OVGuide.closeSpotlight(); } catch { /* */ }
+    try { if (window.OVGuide && OVGuide.state && OVGuide.state.open) OVGuide.close(false); } catch { /* */ }
+    for (const sel of ['.ovg-spot', '.bc-ws-confirm-overlay', '.bg-guide']) {
+        document.querySelectorAll(sel).forEach(el => { try { el.remove(); } catch { /* */ } });
+    }
+    // The scroll lock outliving its modal is the other way a page goes dead.
+    try { if (!document.querySelector('.ovg.is-open')) document.body.classList.remove('ovg-lock'); } catch { /* */ }
+}
+
 function ovPutCards(container, html, append) {
     if (!container) return;
     if (!append) { container.innerHTML = html; return; }
@@ -1051,6 +1071,7 @@ function dashNav(event) {
  * press added another set. Now both paths go through here.
  */
 function teardownRoute(nextPath) {
+    ovClearStrandedOverlays();
     if (typeof destroyPlayer === 'function') destroyPlayer();
     if (typeof destroyChat === 'function') destroyChat();
     /* destroyCanvasPage lived in js/canvas.js, which index.html has not loaded since canvas moved
@@ -1243,10 +1264,127 @@ function routeFromURL() {
     }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Route-change motion: the brand mark, and the page itself.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** How long the mark stays animated after a route change before settling. */
+const BRAND_AWAKE_MS = 5000;
+let _brandIdleTimer = 0, _brandSettleTimer = 0, _brandSpinTimer = 0, _brandEverWoken = false;
+
+/**
+ * Wake the OV mark for a moment, then let it go still.
+ *
+ * The mark ran six looping animations — a float, a glow pulse, a comet sweep, a dot pulse and two
+ * SMIL orbit motions, plus a sweeping gradient — forever, on every page. That is a composited
+ * repaint every frame for the entire time someone sits reading, which is most of the time they
+ * are here. It now animates when there is a reason to: the route changed, so the mark spins once
+ * and stays lively for five seconds, then settles with an overshoot and holds still until the
+ * next change.
+ *
+ * CSS loops stop via animation-play-state, which freezes them on their 0% keyframe — every one of
+ * those is a sensible rest pose. SMIL cannot be paused from CSS at all, so the SVG element's own
+ * pauseAnimations()/unpauseAnimations() handles the orbit dots and the gradient sweep.
+ */
+function ovWakeBrandMark() {
+    let marks;
+    try { marks = document.querySelectorAll('.brand-mark'); } catch { return; }
+    if (!marks || !marks.length) return;
+    let reduce = false;
+    try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { /* */ }
+    if (reduce) return;
+
+    _brandEverWoken = true;
+    clearTimeout(_brandIdleTimer); clearTimeout(_brandSettleTimer); clearTimeout(_brandSpinTimer);
+    marks.forEach((m) => {
+        m.classList.remove('is-settling', 'is-spin');
+        m.classList.add('is-awake');
+        void m.offsetWidth;                       // restart the spin on a repeat navigation
+        m.classList.add('is-spin');
+        const svg = m.querySelector('svg');
+        try { svg && svg.unpauseAnimations && svg.unpauseAnimations(); } catch { /* no SMIL here */ }
+    });
+
+    // The spin owns the svg's animation slot while it runs, so the ambient float cannot start
+    // until it is off. Hand over as soon as the spin finishes rather than at the end of the window.
+    _brandSpinTimer = setTimeout(() => marks.forEach(m => m.classList.remove('is-spin')), 1080);
+
+    _brandIdleTimer = setTimeout(() => {
+        marks.forEach((m) => {
+            m.classList.remove('is-awake', 'is-spin');
+            m.classList.add('is-settling');
+            const svg = m.querySelector('svg');
+            // Pause in place rather than rewinding: a jump back to t=0 would throw the orbit dot
+            // across the ring at the exact moment the mark is supposed to be coming to rest.
+            try { svg && svg.pauseAnimations && svg.pauseAnimations(); } catch { /* */ }
+        });
+        _brandSettleTimer = setTimeout(() => marks.forEach(m => m.classList.remove('is-settling')), 720);
+    }, BRAND_AWAKE_MS);
+}
+
+/**
+ * A thin bar that runs across the top on a route change.
+ *
+ * Routes here are instant to swap and slow to fill — the shell is already up, the content arrives
+ * over the network. Without a signal the page looks broken for that gap. The bar is one element,
+ * transform-only, and removes itself.
+ */
+let _routeBarTimer = 0;
+function ovRouteProgress() {
+    let reduce = false;
+    try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { /* */ }
+    if (reduce) return;
+    let bar = document.getElementById('ov-routebar');
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'ov-routebar';
+        bar.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(bar);
+    }
+    clearTimeout(_routeBarTimer);
+    bar.classList.remove('is-run', 'is-done');
+    void bar.offsetWidth;
+    bar.classList.add('is-run');
+    _routeBarTimer = setTimeout(() => {
+        bar.classList.remove('is-run');
+        bar.classList.add('is-done');
+        _routeBarTimer = setTimeout(() => bar.classList.remove('is-done'), 320);
+    }, 620);
+}
+
+/**
+ * The incoming page rises into place instead of appearing.
+ *
+ * Transform and opacity only, so it cannot shift layout, and the class is stripped on a timer —
+ * an element whose animation never ran (a route swapped again mid-flight, a hidden ancestor) must
+ * not be left holding opacity 0.
+ */
+let _pageEnterTimer = 0;
+function ovAnimatePageEnter(el) {
+    if (!el) return;
+    let reduce = false;
+    try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { /* */ }
+    if (reduce) return;
+    clearTimeout(_pageEnterTimer);
+    document.querySelectorAll('.page.is-entering').forEach(p => p.classList.remove('is-entering'));
+    el.classList.remove('is-entering');
+    void el.offsetWidth;
+    el.classList.add('is-entering');
+    _pageEnterTimer = setTimeout(() => el.classList.remove('is-entering'), 700);
+}
+
 function showPage(page) {
+    const changed = currentPage !== page;
     currentPage = page;
     const el = document.getElementById(`page-${page}`);
     if (el) el.classList.add('active');
+    // The mark and the page transition are both "you moved" signals, so they fire on a real
+    // change only — re-rendering the page you are already on should not restart either.
+    if (changed) { ovWakeBrandMark(); ovRouteProgress(); ovAnimatePageEnter(el); }
+    // A fresh page load is not a "change" — currentPage is already the page being shown — so the
+    // mark would never take its first sleep and the SMIL orbits would loop for the whole session.
+    // Wake it once on arrival; the same timer puts it to sleep five seconds later.
+    else if (!_brandEverWoken) ovWakeBrandMark();
 
     // Game/Canvas: hide footer only, keep navbar visible; other pages restore both
     const navbar = document.querySelector('.navbar');
