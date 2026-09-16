@@ -1534,11 +1534,15 @@ function renderHeroStats(stats) {
     };
 
     btn.addEventListener('click', () => {
+        // The board's chips start showing "0" and count up, and a chip reading "70,172" is taller
+        // than one reading "0" once its label wraps — so the height measured at click time was
+        // several hundred pixels short of where the board actually settles, and the animation
+        // finished with a jump. Write the final text first, measure, animate, then count up from
+        // zero over the top of it.
+        const pending = full.hidden ? [...full.querySelectorAll('.hero-stat-num:not([data-counted])')] : [];
+        pending.forEach(el => { el.textContent = _heroStatFmt(parseInt(el.dataset.n, 10) || 0); });
         swap();
-        // Count the numbers up the first time they are actually looked at.
-        if (!full.hidden) full.querySelectorAll('.hero-stat-num:not([data-counted])').forEach(el => {
-            el.setAttribute('data-counted', '1'); _heroCountUp(el, parseInt(el.dataset.n, 10) || 0);
-        });
+        pending.forEach(el => { el.setAttribute('data-counted', '1'); _heroCountUp(el, parseInt(el.dataset.n, 10) || 0); });
     });
     wrap.querySelectorAll('.hero-stat-strip .hero-stat-num').forEach(el => {
         el.setAttribute('data-counted', '1');
