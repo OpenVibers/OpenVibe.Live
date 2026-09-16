@@ -265,7 +265,7 @@ const ok = (name) => { pass++; console.log('  ok -', name); };
     // straight from the uploader's request body) in href="…" on a public page, and a group DM name
     // in value="…". Each helper is evaluated here against a breakout payload.
     const cases = [
-        ['public/js/pastes.js', /function escapeHtml\(str\) \{[\s\S]*?\n\}/, 'escapeHtml'],
+        ['public/js/app.js', /function escapeHtml\(str\) \{[\s\S]*?\n\}/, 'escapeHtml'],
         ['public/js/messenger.js', /function esc\(s\) \{[\s\S]*?\n    \}/, 'esc'],
         ['public/js/vibes.js', /function escHb\(s\) \{[^\n]*\}/, 'escHb'],
         ['public/js/call.js', /function _esc\(str\) \{[\s\S]*?\n\}/, '_esc'],

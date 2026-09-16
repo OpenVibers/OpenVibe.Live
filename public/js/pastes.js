@@ -1597,9 +1597,4 @@ function formatTimeAgo(dateStr) {
     return date.toLocaleDateString();
 }
 
-// Escapes quotes as well as < > &. The previous version used the textContent/innerHTML trick,
-// which leaves " and ' untouched — safe in text, but these helpers are also interpolated into
-// attribute values, where an unescaped quote ends the attribute and starts a new one.
-function escapeHtml(str) {
-    return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
+// escapeHtml() lives in app.js: settings.js and others use it on pages that never load this file.
