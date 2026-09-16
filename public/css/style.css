@@ -15010,3 +15010,44 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 .home-load-more:hover i { transform: translateY(2px); }
 .home-load-more small { font-size: 0.72rem; font-weight: 600; color: var(--text-muted); }
 @media (prefers-reduced-motion: reduce) { .home-load-more, .home-load-more i { transition: none; } }
+
+/* ── Hero stat chips ─────────────────────────────────────────────────────────
+   The chips were an icon, a number and a grey label — three flat things in a row with nothing
+   telling you which part mattered. Now the number leads, the 7-day change sits beside it as a
+   tinted pill with a direction arrow (movement reads as movement; "+2 in 7d" in grey read as a
+   footnote), and the label sits underneath in small caps. The icon gets a tile so it reads as a
+   category marker rather than decoration. */
+.hero-stat {
+    position: relative; overflow: hidden;
+    border-radius: 13px;
+    background: linear-gradient(165deg, color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%),
+                color-mix(in srgb, var(--bg-card) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 17%, var(--border));
+    transition: transform 0.18s cubic-bezier(.2, 1, .3, 1), border-color 0.2s, background 0.2s;
+}
+.hero-stat:hover { border-color: color-mix(in srgb, var(--accent) 38%, transparent); }
+.hero-stat--clickable:hover { transform: translateY(-1px); }
+.hero-stat > i {
+    width: clamp(24px, 3.4vw, 30px); height: clamp(24px, 3.4vw, 30px); flex: none;
+    border-radius: 9px; display: grid; place-items: center;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+}
+.hero-stat--live > i { color: var(--live-red); background: color-mix(in srgb, var(--live-red) 15%, transparent); border-color: color-mix(in srgb, var(--live-red) 34%, transparent); }
+.hero-stat-numline { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.hero-stat-num { font-weight: 850; letter-spacing: -0.02em; }
+.hero-stat-delta {
+    display: inline-flex; align-items: center; gap: 2px;
+    padding: 1px 6px 1px 4px; border-radius: 999px;
+    font-size: 0.6rem; font-weight: 800; letter-spacing: 0.01em; white-space: nowrap;
+    align-self: center;
+}
+.hero-stat-delta.is-up { color: #4ade80; background: color-mix(in srgb, #4ade80 14%, transparent); border: 1px solid color-mix(in srgb, #4ade80 26%, transparent); }
+.hero-stat-delta.is-down { color: #f87171; background: color-mix(in srgb, #f87171 14%, transparent); border: 1px solid color-mix(in srgb, #f87171 26%, transparent); }
+.hero-stat-delta i { font-size: 0.62rem; }
+.hero-stat-delta em { font-style: normal; opacity: 0.62; margin-left: 2px; font-size: 0.92em; }
+.hero-stat-label { text-transform: uppercase; font-weight: 700; color: var(--text-muted); }
+@media (max-width: 420px) {
+    .hero-stat-delta { font-size: 0.55rem; padding: 1px 5px 1px 3px; }
+    .hero-stat-delta em { display: none; }
+}
