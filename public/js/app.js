@@ -895,10 +895,17 @@ function dashNav(event) {
 }
 
 /* ── SPA Router (URL-based) ───────────────────────────────────── */
-function navigate(urlPath, replace = false) {
-    closeMobileNav();
-
-    // Clean up existing page state (destroy player, disconnect chat, etc.)
+/**
+ * Everything that must stop when we leave a route.
+ *
+ * This used to live inside navigate(), which meant the browser's Back and Forward buttons —
+ * which go through popstate → routeFromURL() and never touch navigate() — left everything
+ * running: the chat WebSocket still bound to the previous channel, the coin heartbeat still
+ * crediting watch time on a page with nothing playing, the canvas socket and its timer, the
+ * global AI poll, the arena and AI-viewer loops, and the broadcast desk's five polls. Every Back
+ * press added another set. Now both paths go through here.
+ */
+function teardownRoute(nextPath) {
     if (typeof destroyPlayer === 'function') destroyPlayer();
     if (typeof destroyChat === 'function') destroyChat();
     if (typeof destroyCanvasPage === 'function') destroyCanvasPage();
@@ -908,7 +915,6 @@ function navigate(urlPath, replace = false) {
     if (typeof stopStreamStatusPoll === 'function') stopStreamStatusPoll();
     clearInterval(uptimeInterval);
 
-    // Clean up live VOD poll timer
     if (window._liveVodPollTimer) {
         clearInterval(window._liveVodPollTimer);
         window._liveVodPollTimer = null;
@@ -918,6 +924,26 @@ function navigate(urlPath, replace = false) {
         clearInterval(window._globalAiPollTimer);
         window._globalAiPollTimer = null;
     }
+
+    // Loops other modules own. Each is optional — a module that isn't loaded simply isn't stopped.
+    const stop = (fn) => { try { if (typeof window[fn] === 'function') window[fn](); } catch { /* */ } };
+    stop('_aStopTimers');
+    stop('stopAiViewerActivity');
+    stop('stopPlayerStatsPoll');
+    // The broadcast desk's polls only matter while you are on it. Leaving them running elsewhere
+    // costs roughly a request a second for the rest of the session.
+    const goingToBroadcast = typeof nextPath === 'string' && nextPath.startsWith('/broadcast');
+    if (!goingToBroadcast) {
+        stop('stopRtmpStatusPoll');
+        stop('stopRtmpPreview');
+        stop('stopRestreamStatusPolling');
+        stop('_stopMediaPipPoll');
+    }
+}
+
+function navigate(urlPath, replace = false) {
+    closeMobileNav();
+    teardownRoute(urlPath);
 
     // Normalize path
     if (!urlPath.startsWith('/')) urlPath = '/' + urlPath;
@@ -947,8 +973,10 @@ function routeFromURL() {
     const path = window.location.pathname;
     const segments = path.split('/').filter(Boolean);
 
-    // Clean up existing page state
-    if (typeof destroyPlayer === 'function') destroyPlayer();
+    // Full teardown, not just the player. navigate() has already run this for in-app links; on a
+    // Back/Forward press this is the only place it happens, and running it twice is harmless
+    // because every stopper is idempotent.
+    teardownRoute(path);
 
     // Hide all pages
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -2572,6 +2600,9 @@ function _initUptimeTooltip() {
 // animate out ended ones — no full re-render, no flashing.
 async function refreshHomeLive() {
     if (!_homeIsActive()) return;
+    // A background tab has nobody to show a refreshed grid to. refreshHomeSections() already
+    // skips in that case; this one polled /api/streams forever regardless.
+    if (document.hidden) return;
     let streams;
     try { const d = await api('/streams'); streams = d.streams || []; } catch { return; }
     const grid = document.getElementById('stream-grid-live');
