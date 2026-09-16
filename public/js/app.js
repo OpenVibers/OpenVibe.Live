@@ -1994,7 +1994,7 @@ async function loadHomeDigest() {
     const st = d.stats || {};
     const stats = [
         st.streams ? `<span class="digest-stat"><i class="fa-solid fa-tower-broadcast"></i> <b>${n(st.streams)}</b> stream${st.streams === 1 ? '' : 's'}</span>` : '',
-        st.hours >= 0.5 ? `<span class="digest-stat"><i class="fa-regular fa-clock"></i> <b>${n(Math.round(st.hours))}</b>h live</span>` : '',
+        st.hours >= 0.5 ? (() => { const hrs = Math.round(st.hours); return `<span class="digest-stat"><i class="fa-regular fa-clock"></i> <b>${n(hrs)}</b> ${hrs === 1 ? 'hour' : 'hours'} live</span>`; })() : '',
         st.chat_lines ? `<span class="digest-stat"><i class="fa-solid fa-comments"></i> <b>${n(st.chat_lines)}</b> chat lines</span>` : '',
         st.new_follows ? `<span class="digest-stat"><i class="fa-solid fa-heart"></i> <b>${n(st.new_follows)}</b> new follow${st.new_follows === 1 ? '' : 's'}</span>` : '',
         st.new_members ? `<span class="digest-stat"><i class="fa-solid fa-user-plus"></i> <b>${n(st.new_members)}</b> joined</span>` : '',

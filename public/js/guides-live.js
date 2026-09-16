@@ -31,7 +31,46 @@
     async function pickDefaultSlot() { await loadSlots(); const cur = (typeof _wsState !== 'undefined' && _wsState.selectedId) ? D.slots.find(s => s.id === _wsState.selectedId) : null; D.slot = cur || D.slots[0] || null; if (D.slot) { D.method = D.slot.streaming_method || 'browser'; D.mode = D.slot.browser_mode || 'camera'; await loadEndpoint(); await loadDests(); } }
     async function syncWorkspace() { try { if (typeof _wsLoadManagedStreams === 'function') await _wsLoadManagedStreams(); if (typeof _wsRenderSidebar === 'function') _wsRenderSidebar(); if (D.slot && typeof _wsSelectStream === 'function') await _wsSelectStream(D.slot.id); } catch { /* */ } }
     const onBroadcast = () => location.pathname.startsWith('/broadcast');
-    const dashboard = (tab, heading) => { G.close(false); G.cfg.navigate('/dashboard'); setTimeout(() => { try { if (typeof switchDashTab === 'function' && tab) { const b = document.querySelector(`[data-dtab="${tab}"]`); switchDashTab(tab, b); } if (heading) { const h = [...document.querySelectorAll('h3, h4')].find(x => x.textContent.trim().toLowerCase().startsWith(heading.toLowerCase())); if (h) { h.scrollIntoView({ block: 'center', behavior: 'smooth' }); G.spotlight({ target: h.closest('.card, .dash-card, section, div') || h, title: heading, text: 'Here it is — set it up right here.' }); } } } catch { /* */ } }, 900); };
+    /**
+     * Send someone to a real control in the dashboard and point at it.
+     * Targets a stable element id rather than matching heading text, opens whichever tab and
+     * sub-panel actually contains it, and waits for it to be laid out before spotlighting —
+     * a hidden element has a zero-size rect, which is how the spotlight used to land in the
+     * top-left corner highlighting nothing.
+     */
+    async function dashboard(targetSel, label, hint) {
+        G.close(false);
+        if (!location.pathname.startsWith('/dashboard')) G.cfg.navigate('/dashboard');
+        const deadline = Date.now() + 12000;
+        let el = null;
+        while (Date.now() < deadline) {
+            el = document.querySelector(targetSel);
+            if (el) {
+                // Open the dashboard tab and sub-panel that own this element.
+                try {
+                    const panel = el.closest('.dash-tab-panel[id^="dash-panel-"]');
+                    if (panel && !panel.classList.contains('active') && typeof switchDashTab === 'function') {
+                        const tab = panel.id.replace('dash-panel-', '');
+                        switchDashTab(tab, document.querySelector(`[data-dtab="${tab}"]`));
+                        await new Promise(r => setTimeout(r, 400));
+                    }
+                    const sub = el.closest('.dash-subpanel');
+                    if (sub && !sub.classList.contains('active')) {
+                        const btn = document.querySelector(`[data-ctab="${sub.id.replace(/^dash-[a-z]+-/, '')}"]`);
+                        if (btn) { btn.click(); await new Promise(r => setTimeout(r, 400)); }
+                    }
+                } catch { /* */ }
+                const r = el.getBoundingClientRect();
+                if (r.height > 8 && el.offsetParent !== null) break;      // laid out and visible
+            }
+            await new Promise(r => setTimeout(r, 250));
+            el = null;
+        }
+        if (!el) { say(`${label} is in your dashboard — scroll down to find it.`, 'info'); return; }
+        try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch { /* */ }
+        await new Promise(r => setTimeout(r, 450));
+        G.spotlight({ target: el, title: label, text: hint || 'Set it up right here — the guide is done, this is the real control.', actions: [{ label: 'Got it', primary: true }] });
+    }
 
     // ── Journey: go live (stream → method → restream → go live) ─
     const streamStep = {
@@ -193,7 +232,7 @@
         async () => { const cmd = ((document.querySelector('#ovg-sound-cmd') || {}).value || '').trim().replace(/^!+/, ''); const f = document.querySelector('#ovg-sound-file'); const file = f && f.files && f.files[0]; if (!cmd) return 'Name the command'; if (!file) return 'Choose an audio file'; try { await ui.upload('/sounds', { command: cmd }, file, 'sound'); say(`!${cmd} is ready`, 'success'); ui.confetti(); return true; } catch (e) { return (e && e.message) || 'Upload failed'; } }, 'Add sound');
     one('offline', 'Offline screen', 'fa-image', async () => `${ui.lead('What visitors see on your channel when you are not live: an image, a looping video, or your own HTML page. It sits above your top content and the discover board.')}${ui.grid([ui.pick({ id: 'image', icon: 'fa-solid fa-image', title: 'Image', sub: 'a banner or a still from your stream' }), ui.pick({ id: 'video', icon: 'fa-solid fa-film', title: 'Video loop', sub: 'a short muted clip' }), ui.pick({ id: 'html', icon: 'fa-solid fa-code', title: 'Custom HTML', sub: 'anything you can build' })], 3)}<p class="muted ovg-fine">The upload lives in your dashboard — the button below takes you straight to it and points at the right spot.</p>`,
         (el) => { el.querySelectorAll('[data-pick]').forEach(b => b.addEventListener('click', () => { el.querySelectorAll('[data-pick]').forEach(x => x.classList.remove('on')); b.classList.add('on'); })); },
-        async () => { dashboard('content', 'Offline Screen'); return true; }, 'Open the offline screen settings');
+        async () => { dashboard('#dash-card-offline', 'Offline Screen', 'Pick an image, a looping video or your own HTML — this is what visitors see when you are not live.'); return true; }, 'Open the offline screen settings');
     one('panels', 'Your About panels', 'fa-table-columns', async () => `${ui.lead('Panels are the blocks under your player: schedule, links, rules, gear, whatever you want people to know. They live on your channel page and in the About tab.')}${ui.steps(['Open your channel page', 'Tap <b>About</b> → <b>Edit panels</b>', 'Add a title and text (links and images work)', 'Save — it shows up for everyone right away'])}`,
         null, async () => { const u = me(); G.close(false); G.cfg.navigate(`/@${(u && u.username) || ''}#about`); return true; }, 'Go to my channel');
     one('powerchat', 'Connect PowerChat', 'fa-hand-holding-dollar', async () => `${ui.lead('PowerChat handles real-money tips (card and crypto) for OpenVibe streamers, with alerts on your stream and a tip link you can share anywhere.')}${ui.steps(['Press <b>Connect PowerChat</b> — you sign in there once', 'Tips land as chat alerts with the amount and message', 'Your channel gets a <b>Tip</b> button and a shareable tip link'])}<p class="muted ovg-fine">Nothing to pay to set up; PowerChat takes its cut per tip.</p>`,
