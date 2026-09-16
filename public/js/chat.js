@@ -6499,15 +6499,19 @@ const _origAddChatMessage = typeof addChatMessage === 'function' ? addChatMessag
         if (_mobileChatOpen) toggleMobileChat();
     });
 
-    // Close mobile chat when tapping the backdrop scrim
+    // Close mobile chat when tapping the backdrop scrim. The open sheet is #chat-sidebar on a
+    // LIVE channel but #offline-global-chat on an offline one — checking only the live one made
+    // every tap inside the offline chat (the input, the emote button…) count as "outside" and
+    // slam the sheet shut. Anything chat-owned that renders outside the sheet (pickers, modals,
+    // toasts) is inside too.
+    const INSIDE = ['#chat-sidebar', '#offline-global-chat', '#mobile-chat-toggle', '.emote-picker', '.emote-picker-panel', '.gif-picker', '.soundboard-panel', '.chat-picker', '.modal', '.modal-overlay', '.toast', '.tts-voice-picker', '.chat-context-menu'];
     document.addEventListener('click', (e) => {
         if (!_mobileChatOpen || !isMobileChatLayout()) return;
-        // Check if click is on the scrim (the ::after pseudo-element area above chat)
-        const sidebar = document.getElementById('chat-sidebar');
-        const fab = document.getElementById('mobile-chat-toggle');
-        if (sidebar && !sidebar.contains(e.target) && fab && !fab.contains(e.target)) {
-            toggleMobileChat();
-        }
+        const t = e.target;
+        if (!t || !(t instanceof Element)) return;
+        if (INSIDE.some(sel => t.closest(sel))) return;
+        // Only the scrim (the page behind the sheet) closes it.
+        toggleMobileChat();
     });
 
     // Reset state on resize crossing the breakpoint
@@ -6517,8 +6521,7 @@ const _origAddChatMessage = typeof addChatMessage === 'function' ? addChatMessag
         if (_wasMobile && !nowMobile && _mobileChatOpen) {
             // Went from mobile → desktop while chat was open: reset
             _mobileChatOpen = false;
-            const sidebar = document.getElementById('chat-sidebar');
-            if (sidebar) sidebar.classList.remove('mobile-chat-open');
+            for (const id of ['chat-sidebar', 'offline-global-chat']) { const sb = document.getElementById(id); if (sb) sb.classList.remove('mobile-chat-open'); }
             document.body.classList.remove('mobile-chat-visible');
             const fab = document.getElementById('mobile-chat-toggle');
             if (fab) {
