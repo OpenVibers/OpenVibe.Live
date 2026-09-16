@@ -14804,3 +14804,4 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 .rs-lite .ov-orbit, .rs-lite .ov-spark { filter: none; }
 @media (prefers-reduced-motion: reduce) { .brand-mark svg, .ov-glow, .ov-comet, .ov-v, .ov-dot, .ov-spark { animation: none !important; } .ov-orbit, .ov-spark { display: none; } .ov-comet { stroke-dasharray: none; opacity: 0.9; } }
 @media (max-width: 600px) { .brand-mark { width: 26px; height: 26px; } .brand-mark svg { width: 25px; height: 25px; } }
+.ov-mark--ph { opacity: 0.45; color: var(--text-muted); }

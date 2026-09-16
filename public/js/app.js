@@ -4383,7 +4383,7 @@ function updateCumulativeViewers(liveStreams, rsRestream = {}, restreamLinks = n
     // OpenVibe.Live-native viewer badge — styled like the platform restream badges, in brand
     // green, so it reads as "this is the count HERE" alongside the RS/Twitch/etc badges.
     if (liveStreams.length > 0) {
-        html += `<span class="ch-restream-badge" style="color:var(--accent)" title="Watching live on OpenVibe.Live${streamCount > 1 ? ` (across ${streamCount} streams)` : ''}"><i class="fa-solid fa-circle-nodes"></i> OV <i class="fa-solid fa-eye" style="font-size:0.75em"></i> ${hsTotal}</span>`;
+        html += `<span class="ch-restream-badge" style="color:var(--accent)" title="Watching live on OpenVibe.Live${streamCount > 1 ? ` (across ${streamCount} streams)` : ''}"><span class="ov-mark" data-size="14" data-static="1"></span> OV <i class="fa-solid fa-eye" style="font-size:0.75em"></i> ${hsTotal}</span>`;
     }
 
     // RS restream badge — reflect the WATCHED slot's robot only (not the first slot's).
@@ -8089,14 +8089,18 @@ async function handleThumbnailError(img) {
 }
 
 function thumbImg(thumbnailUrl, fallbackIcon, alt, regenerateUrl = null) {
+    // The old brand glyph as a placeholder → the OV mark (static, muted).
+    const iconHtml = (extra) => fallbackIcon === 'fa-circle-nodes'
+        ? `<span class="ov-mark ov-mark--ph" data-size="44" data-static="1"${extra || ''}></span>`
+        : `<i class="fa-solid ${fallbackIcon}"${extra || ''}></i>`;
     if (thumbnailUrl) {
         return `<img src="${esc(thumbnailUrl)}" alt="${esc(alt || '')}" loading="lazy" data-regenerate-url="${esc(regenerateUrl || '')}" onerror="handleThumbnailError(this)">
-                <i class="fa-solid ${fallbackIcon}" style="display:none"></i>`;
+                ${iconHtml(' style="display:none"')}`;
     }
     if (regenerateUrl) {
         // No thumbnail yet but we can try generating one — show icon and trigger generation
         return `<img src="" alt="${esc(alt || '')}" style="display:none" data-regenerate-url="${esc(regenerateUrl)}" data-regenerate-tried="" onerror="handleThumbnailError(this)">
-                <i class="fa-solid ${fallbackIcon}"></i>`;
+                ${iconHtml()}`;
     }
     return `<i class="fa-solid ${fallbackIcon}"></i>`;
 }
