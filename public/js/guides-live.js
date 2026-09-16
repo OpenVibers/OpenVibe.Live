@@ -349,8 +349,14 @@
     }
 
     function renderJoin(el) {
+        // Six perks with a sentence each is a tall block to put in the middle of a front page, and
+        // most of that height is explanation nobody needs before they are interested. Collapsed,
+        // the perks are a single wrapped row of labels — still the whole pitch, at a glance — and
+        // the sentences are one tap away for anyone who wants them. The call to action never
+        // moves or hides.
+        const open = (() => { try { return localStorage.getItem('ov_join_open') === '1'; } catch { return false; } })();
         el.innerHTML = `
-            <div class="ovg-join">
+            <div class="ovg-join${open ? ' is-open' : ''}">
                 <span class="ovg-join-glow" aria-hidden="true"></span>
                 <div class="ovg-join-head">
                     <span class="ovg-join-mark" aria-hidden="true"><i class="fa-solid fa-circle-nodes"></i></span>
@@ -359,9 +365,12 @@
                         <p>Free to make, works everywhere on the network, and takes about ten seconds.</p>
                     </div>
                 </div>
-                <ul class="ovg-join-perks">
+                <ul class="ovg-join-perks" id="ovg-join-perks">
                     ${PERKS.map(([ico, title, why], i) => `<li style="--i:${i}"><span class="ovg-join-ico"><i class="fa-solid ${ico}"></i></span><span><b>${title}</b><small>${why}</small></span></li>`).join('')}
                 </ul>
+                <button type="button" class="ovg-join-expand" aria-expanded="${open}" aria-controls="ovg-join-perks">
+                    <i class="fa-solid fa-chevron-down"></i><span></span>
+                </button>
                 <div class="ovg-join-cta">
                     <a class="btn btn-primary btn-lg ovg-join-go" href="/api/auth/sso/login"><i class="fa-solid fa-user-plus"></i> Create your free account</a>
                     <a class="btn btn-outline ovg-join-in" href="/api/auth/sso/login"><i class="fa-solid fa-right-to-bracket"></i> I already have one</a>
@@ -369,6 +378,16 @@
                 </div>
             </div>`;
         el.querySelector('.ovg-join-tour').addEventListener('click', () => openSiteTour());
+        const panel = el.querySelector('.ovg-join');
+        const exp = el.querySelector('.ovg-join-expand');
+        const label = () => { exp.querySelector('span').textContent = panel.classList.contains('is-open') ? 'Less detail' : 'What each of these means'; };
+        label();
+        exp.addEventListener('click', () => {
+            panel.classList.toggle('is-open');
+            exp.setAttribute('aria-expanded', String(panel.classList.contains('is-open')));
+            label();
+            try { localStorage.setItem('ov_join_open', panel.classList.contains('is-open') ? '1' : '0'); } catch { /* */ }
+        });
     }
 
     window.setupNextUp = async function (el) {
