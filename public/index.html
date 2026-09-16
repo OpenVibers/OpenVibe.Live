@@ -88,7 +88,7 @@
          overlay) and is fetched without blocking the first paint: media="print" makes the browser
          treat it as non-critical, and the onload flips it back to all once it has arrived. -->
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-    <link rel="stylesheet" href="/css/style.css?v=206">
+    <link rel="stylesheet" href="/css/style.css?v=208">
     <link rel="stylesheet" href="/css/home-fx.css?v=14">
     <link rel="stylesheet" href="/css/home-tour.css?v=10">
     <link rel="stylesheet" href="/css/i18n-star.css?v=11">
@@ -227,23 +227,45 @@
                 <span id="nav-username"></span>
                 <i class="fa-solid fa-caret-down"></i>
             </div>
+            <!-- The account menu. Deliberately not shaped like the nav menu next to it: that one is
+                 a list of places, this one is about who you are signed in as, so it opens with your
+                 identity and what you are carrying, and groups the rest under labels. -->
             <div class="user-dropdown" id="user-dropdown">
-                <a href="/dashboard" onclick="return handleLinkClick(event, '/dashboard')"><i class="fa-solid fa-gauge-high"></i> My Dashboard</a>
-                <a href="#" onclick="return handleLinkClick(event, channelPath(currentUser?.username))"><i class="fa-solid fa-user"></i> My Channel</a>
-                <a href="https://openvibe.network/admin" target="_blank" rel="noopener" id="user-dropdown-admin" style="display:none"><i class="fa-solid fa-shield-halved"></i> Admin Panel</a>
-                <hr>
-                <a href="https://openvibe.network" target="_blank"><i class="fa-solid fa-network-wired"></i> OpenVibe</a>
-                <a href="#" onclick="event.preventDefault();showModal('buy-funds')"><i class="fa-solid fa-coins"></i> Support Us</a>
-                <a href="#" onclick="event.preventDefault();if(typeof openCosmeticsModal==='function')openCosmeticsModal()"><i class="fa-solid fa-shirt"></i> Cosmetics</a>
-                <a href="https://openvibe.network/themes" target="_blank" rel="noopener"><i class="fa-solid fa-palette"></i> Themes</a>
-                <hr>
-                <a href="#" onclick="event.preventDefault();captureScreenshot()"><i class="fa-solid fa-camera"></i> Screenshot</a>
-                <a href="/documentation" onclick="return handleLinkClick(event, '/documentation')"><i class="fa-solid fa-book"></i> Documentation</a>
-                <hr>
-                <a href="#" onclick="event.preventDefault();openSetupHub()"><i class="fa-solid fa-list-check"></i> Streamer setup</a>
-                <a href="#" onclick="event.preventDefault();switchAccount()"><i class="fa-solid fa-people-arrows"></i> Switch account</a>
-                <a href="#" onclick="event.preventDefault();browseAsGuest()"><i class="fa-solid fa-user-secret"></i> Browse as guest</a>
-                <a href="#" onclick="event.preventDefault();logout()"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
+                <div class="ud-head">
+                    <div class="ud-avatar" id="ud-avatar" aria-hidden="true">?</div>
+                    <div class="ud-who">
+                        <b id="ud-name">&nbsp;</b>
+                        <small id="ud-handle"></small>
+                    </div>
+                    <div class="ud-wallet">
+                        <span class="ud-coin" title="OpenCoins"><i class="fa-solid fa-coins"></i><b id="ud-coins">0</b></span>
+                        <span class="ud-vibe" title="Vibes"><i class="fa-solid fa-wallet"></i><b id="ud-vibes">0</b></span>
+                    </div>
+                </div>
+                <div class="ud-group">
+                    <span class="ud-label">You</span>
+                    <a href="/dashboard" onclick="return handleLinkClick(event, '/dashboard')"><i class="fa-solid fa-gauge-high"></i> My Dashboard</a>
+                    <a href="#" onclick="return handleLinkClick(event, channelPath(currentUser?.username))"><i class="fa-solid fa-user"></i> My Channel</a>
+                    <a href="#" onclick="event.preventDefault();openSetupHub()"><i class="fa-solid fa-list-check"></i> Streamer setup</a>
+                    <a href="https://openvibe.network/admin" target="_blank" rel="noopener" id="user-dropdown-admin" style="display:none"><i class="fa-solid fa-shield-halved"></i> Admin Panel</a>
+                </div>
+                <div class="ud-group">
+                    <span class="ud-label">Across OpenVibe</span>
+                    <a href="https://openvibe.network" target="_blank"><i class="fa-solid fa-network-wired"></i> OpenVibe</a>
+                    <a href="#" onclick="event.preventDefault();showModal('buy-funds')"><i class="fa-solid fa-coins"></i> Support Us</a>
+                    <a href="#" onclick="event.preventDefault();if(typeof openCosmeticsModal==='function')openCosmeticsModal()"><i class="fa-solid fa-shirt"></i> Cosmetics</a>
+                    <a href="https://openvibe.network/themes" target="_blank" rel="noopener"><i class="fa-solid fa-palette"></i> Themes</a>
+                </div>
+                <div class="ud-group">
+                    <span class="ud-label">Tools</span>
+                    <a href="#" onclick="event.preventDefault();captureScreenshot()"><i class="fa-solid fa-camera"></i> Screenshot</a>
+                    <a href="/documentation" onclick="return handleLinkClick(event, '/documentation')"><i class="fa-solid fa-book"></i> Documentation</a>
+                </div>
+                <div class="ud-group ud-group--exit">
+                    <a href="#" onclick="event.preventDefault();switchAccount()"><i class="fa-solid fa-people-arrows"></i> Switch account</a>
+                    <a href="#" onclick="event.preventDefault();browseAsGuest()"><i class="fa-solid fa-user-secret"></i> Browse as guest</a>
+                    <a class="ud-logout" href="#" onclick="event.preventDefault();logout()"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
+                </div>
             </div>
         </div>
     </div>
@@ -5095,7 +5117,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/ov-skeleton.js?v=1" defer></script>
 <script src="/js/ov-odometer.js?v=3" defer></script>
 <script src="/js/ov-density.js?v=3" defer></script>
-<script src="/js/app.js?v=174" defer></script>
+<script src="/js/app.js?v=175" defer></script>
 <script src="/js/stream-player.js?v=22" defer></script>
 <script src="/js/stream-pip.js?v=1" defer></script>
 <script src="/js/chat-shared.js?v=3" defer></script>

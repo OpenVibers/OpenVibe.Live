@@ -6442,15 +6442,19 @@ textarea.form-input { resize: vertical; min-height: 60px; }
     #nav-auth-anon .btn { padding: 6px 10px; font-size: 0.82rem; }
 
     /* User dropdown full-width on mobile */
+    /* Anchored under the avatar and sized to itself, like the nav panel — but its own width and
+       its own entrance, because it is its own thing. */
     .user-dropdown {
-        position: fixed; top: var(--navbar-h); left: 8px; right: 8px;
-        width: auto; min-width: 0; max-height: calc(100vh - var(--navbar-h) - 16px);
-        max-height: calc(100dvh - var(--navbar-h) - 16px);
-        overflow-y: auto;
-        border-radius: 12px;
-        animation: nav-drawer-in 0.15s ease-out;
+        position: fixed; top: calc(var(--navbar-h) + 7px); left: auto; right: 8px;
+        width: min(300px, calc(100vw - 16px)); min-width: 250px;
+        max-height: calc(100vh - var(--navbar-h) - 22px);
+        max-height: calc(100dvh - var(--navbar-h) - 22px);
+        overflow-y: auto; overscroll-behavior: contain;
+        border-radius: 16px;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
     }
-    .user-dropdown a { padding: 12px 16px; font-size: 0.92rem; }
+    .user-dropdown .ud-group a { padding: 10px 11px; font-size: 0.9rem; }
+    .ud-head { padding: 14px 14px 12px; }
 
     /* Nav drawer tighter */
     /* Only the outer inset tightens on a very small screen; row size is set with the panel. */
@@ -15389,10 +15393,11 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 /* The menu itself: anchored to the avatar, never wider than the screen, and scrollable rather
    than running off the bottom on a short screen or a landscape phone. */
 .user-dropdown {
-    top: calc(100% + 6px); right: 0;
-    min-width: 230px; max-width: min(300px, calc(100vw - 20px));
+    top: calc(100% + 7px); right: 0;
+    /* Wide enough for the identity header's name and both wallet chips on one line. */
+    min-width: 262px; max-width: min(312px, calc(100vw - 20px));
     max-height: calc(100vh - var(--navbar-h) - 20px); overflow-y: auto;
-    border-radius: 14px; padding: 5px;
+    border-radius: 16px; padding: 0;
     box-shadow: 0 22px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
     overscroll-behavior: contain;
 }
@@ -15606,4 +15611,108 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 @keyframes alphaGlow  { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
     .alpha-badge::before, .alpha-badge::after { animation: none !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   The account menu.
+
+   The nav menu beside it is a list of places, so it is a compact column of equal rows. This one
+   answers a different question — who am I signed in as, and what am I carrying — so it opens with
+   that and groups everything under it by what the row is for. Same glass family as the nav panel
+   so they belong to the same navbar, but its own shape: a tinted identity header, labelled
+   sections instead of bare rules, and a logout row that reads as the way out.
+   ═══════════════════════════════════════════════════════════════ */
+.user-dropdown {
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border));
+    background:
+        linear-gradient(180deg,
+            color-mix(in srgb, var(--accent) 10%, var(--bg-card)) 0,
+            var(--bg-secondary) 92px),
+        var(--bg-secondary);
+    box-shadow:
+        0 24px 60px rgba(0, 0, 0, 0.5),
+        0 3px 12px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(22px) saturate(1.6);
+    -webkit-backdrop-filter: blur(22px) saturate(1.6);
+    transform-origin: top right;
+}
+.user-dropdown.show { animation: udIn 0.24s cubic-bezier(.2, 1, .3, 1) both; }
+@keyframes udIn { from { opacity: 0; transform: translateY(-8px) scale(0.95); } to { opacity: 1; transform: none; } }
+
+/* ── Identity header ── */
+.ud-head {
+    display: grid; grid-template-columns: auto 1fr; gap: 3px 11px;
+    align-items: center; padding: 13px 14px 11px;
+    border-bottom: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
+}
+.ud-avatar {
+    grid-row: span 2; width: 40px; height: 40px; border-radius: 50%;
+    display: grid; place-items: center; overflow: hidden;
+    font-weight: 900; font-size: 1rem; color: #fff;
+    background: var(--accent);
+    border: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.ud-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.ud-who { min-width: 0; display: grid; gap: 1px; }
+.ud-who b { font-size: 0.94rem; font-weight: 850; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ud-who small { font-size: 0.73rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ud-wallet { grid-column: 2; display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+.ud-wallet span {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 8px; border-radius: 999px;
+    font-size: 0.72rem; font-weight: 800; font-variant-numeric: tabular-nums;
+    border: 1px solid transparent;
+}
+.ud-coin { color: #f6c945; background: color-mix(in srgb, #f6c945 13%, transparent); border-color: color-mix(in srgb, #f6c945 30%, transparent) !important; }
+.ud-vibe { color: #4ade80; background: color-mix(in srgb, #4ade80 13%, transparent); border-color: color-mix(in srgb, #4ade80 30%, transparent) !important; }
+.ud-wallet i { font-size: 0.86em; opacity: 0.9; }
+
+/* ── Groups ── */
+.ud-group { padding: 6px 5px; }
+.ud-group + .ud-group { border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
+.ud-label {
+    display: block; padding: 3px 9px 5px;
+    font-size: 0.6rem; font-weight: 800; letter-spacing: 0.13em; text-transform: uppercase;
+    color: var(--text-muted);
+}
+.user-dropdown .ud-group a {
+    border-radius: 9px; padding: 8px 9px; gap: 11px;
+    font-size: 0.86rem; font-weight: 600;
+    border: 1px solid transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+.user-dropdown .ud-group a > i:first-child {
+    width: 18px; flex: none; text-align: center; opacity: 0.8;
+    transition: color 0.15s ease, opacity 0.15s ease;
+}
+.user-dropdown .ud-group a:hover {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+    transform: translateX(2px);
+}
+.user-dropdown .ud-group a:hover > i:first-child { color: var(--accent); opacity: 1; }
+.user-dropdown .ud-group a:active { transform: translateX(2px) scale(0.985); }
+
+/* Leaving is a different kind of action from going somewhere. */
+.ud-logout { color: var(--danger, #e74c3c) !important; }
+.user-dropdown .ud-group a.ud-logout:hover {
+    background: color-mix(in srgb, var(--danger, #e74c3c) 14%, transparent);
+    border-color: color-mix(in srgb, var(--danger, #e74c3c) 30%, transparent);
+}
+.user-dropdown .ud-group a.ud-logout:hover > i:first-child { color: var(--danger, #e74c3c); }
+
+/* Rows arrive just behind the panel, capped so a long menu never feels slow. */
+@keyframes udRow { from { opacity: 0; transform: translateX(6px); } to { opacity: 1; transform: none; } }
+.user-dropdown.show .ud-group a { animation: udRow 0.22s ease both; animation-delay: calc(70ms + var(--ud-i, 0) * 18ms); }
+.user-dropdown.show .ud-group:nth-of-type(1) a { --ud-i: 0; }
+.user-dropdown.show .ud-group:nth-of-type(2) a { --ud-i: 1; }
+.user-dropdown.show .ud-group:nth-of-type(3) a { --ud-i: 2; }
+.user-dropdown.show .ud-group:nth-of-type(n+4) a { --ud-i: 3; }
+
+@media (prefers-reduced-motion: reduce) {
+    .user-dropdown.show, .user-dropdown.show .ud-group a { animation: none !important; }
+    .user-dropdown .ud-group a:hover { transform: none; }
 }
