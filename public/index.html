@@ -88,10 +88,10 @@
          overlay) and is fetched without blocking the first paint: media="print" makes the browser
          treat it as non-critical, and the onload flips it back to all once it has arrived. -->
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-    <link rel="stylesheet" href="/css/style.css?v=194">
+    <link rel="stylesheet" href="/css/style.css?v=196">
     <link rel="stylesheet" href="/css/home-fx.css?v=13">
     <link rel="stylesheet" href="/css/home-tour.css?v=8">
-    <link rel="stylesheet" href="/css/i18n-star.css?v=10">
+    <link rel="stylesheet" href="/css/i18n-star.css?v=11">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="/css/chat-shared.css?v=1" media="print" onload="this.media='all';this.onload=null">
     <link rel="stylesheet" href="/css/broadcast.css?v=11" media="print" onload="this.media='all';this.onload=null">
@@ -559,7 +559,7 @@
             <div id="stream-grid-recent-pagination" class="pastes-pagination" style="display:none"></div>
 
             <!-- Recent VODs -->
-            <div class="section-header" style="--sc:#a78bfa" id="home-recent-vods-header" style="display:none">
+            <div class="section-header" style="--sc:#a78bfa;display:none" id="home-recent-vods-header">
                 <h2><i class="fa-solid fa-video"></i> Recent VODs<small class="section-kicker">full streams</small></h2>
                 <a href="/vods" onclick="return handleLinkClick(event, '/vods')" class="badge" style="cursor:pointer;text-decoration:none;background:var(--surface);">View All</a>
             </div>
@@ -567,7 +567,7 @@
             <div id="home-recent-vods-pagination" class="pastes-pagination" style="display:none"></div>
 
             <!-- Recent Clips -->
-            <div class="section-header" style="--sc:#f472b6" id="home-clips-header" style="display:none">
+            <div class="section-header" style="--sc:#f472b6;display:none" id="home-clips-header">
                 <h2><i class="fa-solid fa-scissors"></i> Recent Clips<small class="section-kicker">the good bits</small></h2>
                 <a href="/clips" onclick="return handleLinkClick(event, '/clips')" class="badge" style="cursor:pointer;text-decoration:none;background:var(--surface);">View All</a>
             </div>
@@ -575,7 +575,7 @@
             <div id="home-clips-pagination" class="pastes-pagination" style="display:none"></div>
 
             <!-- Recent Pastes -->
-            <div class="section-header" style="--sc:#2dd4bf" id="home-pastes-header" style="display:none">
+            <div class="section-header" style="--sc:#2dd4bf;display:none" id="home-pastes-header">
                 <h2><i class="fa-solid fa-paste"></i> Recent Pastes<small class="section-kicker">shots & snippets</small></h2>
                 <a href="/pastes" onclick="return handleLinkClick(event, '/pastes')" class="badge" style="cursor:pointer;text-decoration:none;background:var(--surface);">View All</a>
             </div>
@@ -5085,7 +5085,8 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/live-notify.js?v=3" defer></script>
 <script src="/js/ov-skeleton.js?v=1" defer></script>
 <script src="/js/ov-odometer.js?v=3" defer></script>
-<script src="/js/app.js?v=167" defer></script>
+<script src="/js/ov-density.js?v=1" defer></script>
+<script src="/js/app.js?v=169" defer></script>
 <script src="/js/stream-player.js?v=22" defer></script>
 <script src="/js/stream-pip.js?v=1" defer></script>
 <script src="/js/chat-shared.js?v=3" defer></script>

@@ -2457,10 +2457,14 @@ async function loadHomeDigest() {
 
 async function loadHomeRecentOnline(page, append) {
     if (page !== undefined) _homeRecentOnlinePage = page;
-    const offset = (_homeRecentOnlinePage - 1) * HOME_RECENT_ONLINE_PAGE_SIZE;
+    const { offset, limit } = homePageRange(_homeRecentOnlinePage, HOME_RECENT_ONLINE_PAGE_SIZE);
     try {
-        const recentData = await api(`/streams/recently-online?limit=${HOME_RECENT_ONLINE_PAGE_SIZE}&offset=${offset}`);
+        const recentData = await api(`/streams/recently-online?limit=${limit}&offset=${offset}`);
         renderRecentlyOnline('stream-grid-recent', recentData.streamers || [], append);
+        if (window.OVDensity) {
+            OVDensity.attach(document.getElementById('stream-grid-recent'),
+                { key: 'recent', header: document.getElementById('stream-grid-recent')?.previousElementSibling });
+        }
         renderHomePagination('stream-grid-recent-pagination', recentData.total || 0, _homeRecentOnlinePage, HOME_RECENT_ONLINE_PAGE_SIZE, 'loadHomeRecentOnline');
     } catch { /* silent */ }
 }
@@ -2519,7 +2523,7 @@ function renderRecentlyOnline(containerId, streamers, append) {
 
 async function loadHomeRecentVods(page, append) {
     if (page !== undefined) _homeRecentVodsPage = page;
-    const offset = (_homeRecentVodsPage - 1) * HOME_RECENT_VODS_PAGE_SIZE;
+    const { offset, limit } = homePageRange(_homeRecentVodsPage, HOME_RECENT_VODS_PAGE_SIZE);
     try {
         const render = (data) => {
             const vods = data.vods || [];
@@ -2550,15 +2554,16 @@ async function loadHomeRecentVods(page, append) {
                     </a>
                 `;
             }).join(''));
+            if (window.OVDensity) OVDensity.attach(grid, { key: 'vods', header: header });
             renderHomePagination('home-recent-vods-pagination', data.total || 0, _homeRecentVodsPage, HOME_RECENT_VODS_PAGE_SIZE, 'loadHomeRecentVods');
         };
-        await apiSWR(`/streams/recent-vods?limit=${HOME_RECENT_VODS_PAGE_SIZE}&offset=${offset}`, render, { ttl: 180000 });
+        await apiSWR(`/streams/recent-vods?limit=${limit}&offset=${offset}`, render, { ttl: 180000 });
     } catch { /* silent */ }
 }
 
 async function loadHomeClips(page, append) {
     if (page !== undefined) _homeClipsPage = page;
-    const offset = (_homeClipsPage - 1) * HOME_CLIPS_PAGE_SIZE;
+    const { offset, limit } = homePageRange(_homeClipsPage, HOME_CLIPS_PAGE_SIZE);
     try {
         const render = (data) => {
             const clips = data.clips || [];
@@ -2585,15 +2590,16 @@ async function loadHomeClips(page, append) {
                     </div>
                 </a>
             `).join(''));
+            if (window.OVDensity) OVDensity.attach(grid, { key: 'clips', header: header });
             renderHomePagination('home-clips-pagination', data.total || 0, _homeClipsPage, HOME_CLIPS_PAGE_SIZE, 'loadHomeClips');
         };
-        await apiSWR(`/clips?limit=${HOME_CLIPS_PAGE_SIZE}&offset=${offset}`, render, { ttl: 180000 });
+        await apiSWR(`/clips?limit=${limit}&offset=${offset}`, render, { ttl: 180000 });
     } catch { /* silent */ }
 }
 
 async function loadHomePastes(page, append) {
     if (page !== undefined) _homePastesPage = page;
-    const offset = (_homePastesPage - 1) * HOME_PASTES_PAGE_SIZE;
+    const { offset, limit } = homePageRange(_homePastesPage, HOME_PASTES_PAGE_SIZE);
     try {
         const render = (data) => {
             const pastes = data.pastes || [];
@@ -2624,9 +2630,10 @@ async function loadHomePastes(page, append) {
                     </div>
                 </a>`;
             }).join(''));
+            if (window.OVDensity) OVDensity.attach(list, { key: 'pastes', header: document.getElementById('home-pastes-header') });
             renderHomePagination('home-pastes-pagination', data.total || 0, _homePastesPage, HOME_PASTES_PAGE_SIZE, 'loadHomePastes');
         };
-        await apiSWR(`/pastes?limit=${HOME_PASTES_PAGE_SIZE}&offset=${offset}`, render, { ttl: 180000 });
+        await apiSWR(`/pastes?limit=${limit}&offset=${offset}`, render, { ttl: 180000 });
     } catch { /* silent */ }
 }
 
@@ -2999,6 +3006,24 @@ const HOME_RECENT_ONLINE_PAGE_SIZE = _narrow ? 4 : 6;
 const HOME_RECENT_VODS_PAGE_SIZE = _narrow ? 4 : 6;
 const HOME_CLIPS_PAGE_SIZE = _narrow ? 4 : 6;
 const HOME_PASTES_PAGE_SIZE = _narrow ? 4 : 5;
+/**
+ * How many more a "Load more" press brings in.
+ *
+ * The first page is deliberately small — it is a taste of the section, not a browse view. Once
+ * somebody has pressed Load more they have said they want to browse, so subsequent pages are
+ * larger: fewer presses to get anywhere, and the cost is paid only by people who asked for it.
+ */
+const HOME_LOAD_MORE = 8;
+/** Offset and limit for a given page, given a first page that is a different size to the rest. */
+function homePageRange(page, firstSize) {
+    if (page <= 1) return { offset: 0, limit: firstSize };
+    return { offset: firstSize + (page - 2) * HOME_LOAD_MORE, limit: HOME_LOAD_MORE };
+}
+/** How many rows are on screen once `page` has loaded. */
+function homeShownCount(page, firstSize) {
+    const r = homePageRange(page, firstSize);
+    return r.offset + r.limit;
+}
 
 // Small Newest/Oldest segmented control (shared markup). `setter` is a global fn name
 // taking 'newest'|'oldest'.
@@ -3054,13 +3079,15 @@ function renderVodsPagination(containerId, page, total, pageSize, setterName, it
 function renderHomePagination(containerId, total, page, pageSize, setterName) {
     const el = document.getElementById(containerId);
     if (!el) return;
-    const shown = page * pageSize;
+    // The first page is a different size to the ones after it, so "how many are on screen" is not
+    // page * pageSize.
+    const shown = homeShownCount(page, pageSize);
     const left = Math.max(0, (total || 0) - shown);
     // These containers ship with an inline display:none — the old pager unhid them itself, and
     // this one has to as well or the button renders into a hidden box and nobody ever sees it.
     if (left <= 0) { el.innerHTML = ''; el.style.display = 'none'; return; }
     el.style.display = 'block';
-    const next = Math.min(left, pageSize);
+    const next = Math.min(left, HOME_LOAD_MORE);
     el.innerHTML = `<button type="button" class="home-load-more" onclick="${setterName}(${page + 1}, true)">
         <i class="fa-solid fa-arrow-down"></i>
         <span>Load ${next} more</span>
@@ -9686,7 +9713,7 @@ async function loadHomeStar() {
     if (card && btn && more) {
         card.classList.add('is-compact');
         const label = () => {
-            btn.querySelector('span').textContent = more.hidden ? `More about ${s.display_name || s.username}` : 'Less';
+            btn.querySelector('span').textContent = more.hidden ? `More about ${s.display_name || s.username}` : 'Show less';
             btn.classList.toggle('is-open', !more.hidden);
             btn.setAttribute('aria-expanded', String(!more.hidden));
         };
