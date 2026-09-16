@@ -198,3 +198,23 @@
 #page-home .hero-cta.fx-live .hb-vibe, #page-home .hero-cta.fx-live .hb-vibe .hb-ico::after { animation-play-state: running; }
 @media (max-width: 520px) { .hb-label small { display: none; } }
 @media (prefers-reduced-motion: reduce) { .hb-vibe, .hb-vibe .hb-ico::after { animation: none !important; } }
+
+/* Touch devices get no hover, so the one button on the row that has something extra to say needs
+   to advertise it. A small pulsing dot marks it as tappable-for-more; it is pointer-events:none
+   so it never eats the tap itself. */
+@media (hover: none) {
+    .hb[data-ovtip] { position: relative; }
+    .hb[data-ovtip]::after {
+        content: ''; display: block; position: absolute; top: 9px; right: 11px;
+        width: 6px; height: 6px; border-radius: 50%; padding: 0; inset: auto 11px auto auto;
+        background: var(--c); box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 60%, transparent);
+        -webkit-mask: none; mask: none; opacity: 1; z-index: 2; pointer-events: none;
+        animation: hbHintPulse 2.4s ease-out infinite;
+    }
+    @keyframes hbHintPulse {
+        0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 55%, transparent); }
+        70% { box-shadow: 0 0 0 7px transparent; }
+        100% { box-shadow: 0 0 0 0 transparent; }
+    }
+}
+@media (hover: none) and (prefers-reduced-motion: reduce) { .hb[data-ovtip]::after { animation: none; } }

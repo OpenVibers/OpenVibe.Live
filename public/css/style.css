@@ -2598,7 +2598,12 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     background: rgba(255,255,255,0.028);
     border: 1px solid rgba(255,255,255,0.07);
     transition: transform .16s ease, background .16s ease, border-color .16s ease, box-shadow .16s ease;
-    animation: ctaRise .5s ease both;
+    /* `both` holds the from-state (opacity 0) for the whole animation-delay, and a subtree whose
+       rendering is skipped or deferred can sit in that state indefinitely — which is how a card
+       ends up as an empty outline in the middle of the list. `backwards` is not needed here: the
+       card's resting style is already the end state, so without a fill mode it is simply visible
+       until the animation runs, and visible after. Nothing can leave it blank. */
+    animation: ctaRise .5s ease;
 }
 .home-cta-features .home-cta-feature:nth-child(1){ animation-delay: .02s; }
 .home-cta-features .home-cta-feature:nth-child(2){ animation-delay: .06s; }
@@ -14740,7 +14745,7 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 .arena-feed-section h2 small .arena-fresh { color: var(--success); }
 .arena-mic-feed-list { display: grid; gap: 8px; }
 .arena-mic-feed-list.is-compact .arena-mic-moment { padding: 8px; }
-.arena-mic-moment { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--fc, var(--accent)); animation: arenaMomentIn 0.4s ease both; }
+.arena-mic-moment { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--fc, var(--accent)); animation: arenaMomentIn 0.4s ease; }
 .arena-mic-moment.is-beef { border-left-color: var(--live-red); background: linear-gradient(90deg, color-mix(in srgb, var(--live-red) 8%, var(--bg-card)), var(--bg-card)); }
 .arena-mic-moment.is-fire { box-shadow: 0 0 18px color-mix(in srgb, var(--live-red) 22%, transparent); }
 @keyframes arenaMomentIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
@@ -15171,3 +15176,74 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 }
 /* Nothing inside the hero should be re-rasterised by the board changing size. */
 #page-home .hero-content > h1, #page-home .hero-tagline, #page-home .hero-philosophy-links { will-change: auto; }
+
+/* ── Navbar right cluster + user menu ────────────────────────────────────────
+   The signed-in cluster is a wallet chip, a coin chip, a bell with a count badge, an avatar, a
+   username and a hamburger, and each was sized independently — so nothing shared a baseline, the
+   bell's badge collided with its neighbour, and the whole row grew until it pushed off a small
+   screen. Everything in it is now the same height and vertically centred, the badge is anchored
+   to its own bell rather than floating over the row, and the username truncates instead of
+   pushing. */
+.nav-right { gap: clamp(5px, 1.2vw, 10px); align-items: center; }
+#nav-auth-user { gap: clamp(5px, 1.2vw, 9px); align-items: center; }
+.nav-right .nav-coins,
+.nav-right .nav-balance {
+    height: 32px; display: inline-flex; align-items: center; gap: 5px;
+    padding: 0 clamp(7px, 1.4vw, 11px); border-radius: 11px;
+    font-size: clamp(0.72rem, 1.7vw, 0.85rem); line-height: 1; white-space: nowrap;
+}
+#openvibe-bell-mount { height: 32px; display: inline-flex; align-items: center; position: relative; }
+#openvibe-bell-mount > * { position: relative; }
+.nav-avatar-wrap {
+    height: 34px; padding: 0 6px 0 3px; gap: 7px; border-radius: 999px;
+    max-width: min(40vw, 190px); min-width: 0;
+}
+.nav-avatar { width: 28px; height: 28px; font-size: 0.78rem; flex: none; }
+#nav-username {
+    font-size: clamp(0.75rem, 1.8vw, 0.9rem); font-weight: 650;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.nav-hamburger { height: 34px; width: 34px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+
+/* The menu itself: anchored to the avatar, never wider than the screen, and scrollable rather
+   than running off the bottom on a short screen or a landscape phone. */
+.user-dropdown {
+    top: calc(100% + 6px); right: 0;
+    min-width: 230px; max-width: min(300px, calc(100vw - 20px));
+    max-height: calc(100vh - var(--navbar-h) - 20px); overflow-y: auto;
+    border-radius: 14px; padding: 5px;
+    box-shadow: 0 22px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+    overscroll-behavior: contain;
+}
+.user-dropdown a {
+    border-radius: 9px; padding: 9px 11px; gap: 11px;
+    font-size: 0.86rem; line-height: 1.25;
+}
+.user-dropdown a > i:first-child { width: 17px; text-align: center; flex: none; opacity: 0.85; }
+.user-dropdown hr { margin: 5px 7px; border: 0; border-top: 1px solid var(--border); }
+
+@media (max-width: 560px) {
+    /* Anchor to the bar rather than the avatar, so a wide menu can't hang off the right edge. */
+    .user-dropdown { position: fixed; top: calc(var(--navbar-h) + 6px); right: 8px; left: auto; min-width: 0; width: min(290px, calc(100vw - 16px)); }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+    .user-dropdown { max-height: calc(100vh - var(--navbar-h) - 12px); }
+    .user-dropdown a { padding: 7px 10px; font-size: 0.82rem; }
+}
+/* Signed-out: the sign-in button should match the cluster's height, not tower over it. */
+#nav-auth-anon .btn { height: 34px; padding: 0 clamp(10px, 2vw, 15px); font-size: clamp(0.76rem, 1.8vw, 0.88rem); border-radius: 11px; }
+
+
+/* Belt and braces for the About section's cards: whatever happens with animations or deferred
+   rendering, a card is never allowed to end up as an empty outline. */
+.home-cta-feature { opacity: 1; }
+.home-cta-feature > i, .home-cta-feature > strong, .home-cta-feature > span { opacity: 1; }
+
+/* The user menu at tablet widths: anchored to the avatar it could still reach past the right
+   edge, so the fixed anchoring now covers everything below 900px rather than below 560. */
+@media (max-width: 900px) {
+    .user-dropdown {
+        position: fixed; top: calc(var(--navbar-h) + 6px); right: 8px; left: auto;
+        min-width: 0; width: min(290px, calc(100vw - 16px));
+    }
+}

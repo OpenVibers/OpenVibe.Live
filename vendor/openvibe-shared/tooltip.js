@@ -54,6 +54,26 @@
 .ovtip-arrow.is-on{opacity:1}
 .ovtip-arrow.from-top{border-top:0;border-left:0}
 .ovtip-arrow.from-bottom{border-bottom:0;border-right:0}
+.ovtip-actions{display:flex;gap:8px;margin-top:11px;padding-top:10px;border-top:1px solid var(--border,rgba(255,255,255,.1))}
+.ovtip-go,.ovtip-dismiss{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  padding:9px 12px;border-radius:10px;font:inherit;font-size:.8rem;font-weight:750;cursor:pointer;
+  transition:transform .15s,filter .15s}
+.ovtip-go{color:#fff;border:0;
+  background:linear-gradient(135deg,var(--ovtip-accent,var(--accent,#a78bfa)),color-mix(in srgb,var(--ovtip-accent,var(--accent,#a78bfa)) 60%,#000));
+  box-shadow:0 6px 16px color-mix(in srgb,var(--ovtip-accent,var(--accent,#a78bfa)) 40%,transparent)}
+.ovtip-dismiss{flex:0 0 auto;color:var(--text-muted,#8b93ad);background:none;border:1px solid var(--border,rgba(255,255,255,.12))}
+.ovtip-go:active,.ovtip-dismiss:active{transform:scale(.975)}
+.ovtip-go i{font-size:.72rem}
+/* On a phone a 330px tip pinned beside a button is unreadable and often half off-screen. Dock it
+   to the bottom of the viewport as a full-width card instead. */
+@media (hover:none){
+  .ovtip{position:fixed;left:12px!important;right:12px;top:auto!important;bottom:calc(14px + env(safe-area-inset-bottom,0px));
+    max-width:none;width:auto;padding:14px 16px;border-radius:18px;font-size:.88rem;
+    transform:translateY(14px) scale(1);box-shadow:0 -10px 40px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.05)}
+  .ovtip.is-on{transform:none}
+  .ovtip-arrow{display:none}
+  .ovtip-title{font-size:1rem}
+}
 @media (prefers-reduced-motion:reduce){.ovtip{transition:opacity .12s}.ovtip.is-on::after{animation:none}}`;
 
     let tip = null, arrow = null, current = null, raf = 0, hideTimer = 0;
@@ -74,14 +94,25 @@
         const icon = el.getAttribute('data-ovtip-icon');
         const body = el.getAttribute('data-ovtip') || '';
         const foot = el.getAttribute('data-ovtip-foot');
+        // On touch the first tap opens the tip and swallows the click, so without an explicit
+        // action the visitor is left tapping a button that appears to do nothing. Give them the
+        // destination as a real button inside the tip — and a way out that isn't "tap elsewhere".
+        const act = isTouch() ? `<div class="ovtip-actions">
+                <button type="button" class="ovtip-dismiss" data-ovtip-dismiss>Got it</button>
+                <button type="button" class="ovtip-go" data-ovtip-go>${esc(el.getAttribute('data-ovtip-go') || 'Open')}<i class="fa-solid fa-arrow-right"></i></button>
+            </div>` : '';
         return `${title ? `<div class="ovtip-head">${icon ? `<span class="ovtip-ico"><i class="fa-solid ${icon}"></i></span>` : ''}<span class="ovtip-title">${title}</span></div>` : ''}
             <div class="ovtip-body">${body}</div>
-            ${foot ? `<div class="ovtip-foot">${foot}</div>` : ''}`;
+            ${foot ? `<div class="ovtip-foot">${foot}</div>` : ''}${act}`;
     }
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
     function place() {
         if (!current || !tip) return;
         if (!current.isConnected) return hide();
+        // Docked to the bottom on touch — CSS owns the position, and following the trigger would
+        // fight it (and hide the tip the moment the page scrolls a little).
+        if (isTouch()) { arrow.classList.remove('is-on'); return; }
         const r = current.getBoundingClientRect();
         // Off-screen trigger: nothing to point at.
         if (r.bottom < -40 || r.top > window.innerHeight + 40) return hide();
@@ -111,7 +142,7 @@
         tip.style.setProperty('--ovtip-accent', el.getAttribute('data-ovtip-accent') || '');
         arrow.style.setProperty('--ovtip-accent', el.getAttribute('data-ovtip-accent') || '');
         tip.innerHTML = content(el);
-        tip.classList.toggle('is-interactive', el.hasAttribute('data-ovtip-interactive'));
+        tip.classList.toggle('is-interactive', el.hasAttribute('data-ovtip-interactive') || isTouch());
         tip.classList.remove('is-on'); arrow.classList.remove('is-on');
         cancelAnimationFrame(raf);
         place();
@@ -143,6 +174,19 @@
             if (!t) return hide();
             // On touch the first tap opens the tip; a second tap follows the link.
             if (isTouch() && current !== t) { e.preventDefault(); show(t); }
+        }, true);
+        // The touch action buttons.
+        document.addEventListener('click', (e) => {
+            const dismiss = e.target.closest && e.target.closest('[data-ovtip-dismiss]');
+            if (dismiss) { e.preventDefault(); e.stopPropagation(); hide(); return; }
+            const go = e.target.closest && e.target.closest('[data-ovtip-go]');
+            if (go && current) {
+                e.preventDefault(); e.stopPropagation();
+                const target = current;
+                hide();
+                // Replay the trigger's own behaviour: its click handler, then its href.
+                if (typeof target.click === 'function') target.click();
+            }
         }, true);
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
         window.addEventListener('scroll', () => { if (current && isTouch()) hide(); }, { passive: true });
