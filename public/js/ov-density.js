@@ -165,13 +165,24 @@
             }
             const effective = active || Math.min(natural, max);
             for (const b of ctrl.querySelectorAll('.ovd-btn')) {
-                b.setAttribute('aria-pressed', String(Number(b.dataset.n) === effective));
+                const pressed = String(Number(b.dataset.n) === effective);
+                if (b.getAttribute('aria-pressed') !== pressed) b.setAttribute('aria-pressed', pressed);
             }
         };
 
         // Follow the container, not the window: a resize, an orientation change and a sidebar
         // opening are all the same event as far as "how many cards fit" is concerned.
-        try { new ResizeObserver(() => render()).observe(grid); } catch { window.addEventListener('resize', render, { passive: true }); }
+        // Only a width change can change how many columns fit. The grid's height changes constantly —
+        // skeletons resolving, images loading, Load more — and each of those used to re-run the whole
+        // render, rewriting the control and, through the page's mutation observers, the reveal pass.
+        let lastW = -1;
+        try {
+            new ResizeObserver((entries) => {
+                const w = Math.round(entries[0] && entries[0].contentRect ? entries[0].contentRect.width : grid.clientWidth);
+                if (w === lastW) return;
+                lastW = w; render();
+            }).observe(grid);
+        } catch { window.addEventListener('resize', render, { passive: true }); }
         render();
         grid._ovdRender = render;
     }

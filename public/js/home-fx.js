@@ -81,7 +81,10 @@
             const x = e.clientX - r.left, y = e.clientY - r.top;
             cancelAnimationFrame(raf);
             raf = requestAnimationFrame(() => {
-                spot.style.setProperty('--x', `${x}px`); spot.style.setProperty('--y', `${y}px`); spot.style.opacity = '1';
+                // A transform on a fixed-size disc, not a gradient centre in a custom property on a
+                // hero-sized element: the old way repainted the whole 1.3MP hero on every move.
+                spot.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+                if (spot.style.opacity !== '1') spot.style.opacity = '1';
             });
         });
         hero.addEventListener('pointerleave', () => { spot.style.opacity = '0'; });
@@ -115,20 +118,35 @@
         revealSafety = setTimeout(sweep, 1200);
     }
 
-    function attachReveal() {
+    const REVEAL_SEL = '#page-home .section-header, #page-home .stream-card, #page-home .home-cta-banner, #page-home .home-star-section, #page-home .rs-hero-mount, #page-home .pulse-grid > *, #page-home .moments-row > *, #page-home .home-digest';
+    // Elements added after the first pass wait here for their first IntersectionObserver report,
+    // which says whether they are already on screen without forcing a layout to find out.
+    let lateIo = null;
+    function attachReveal(roots) {
         if (!('IntersectionObserver' in window)) return;
         if (!io) io = new IntersectionObserver((entries) => { for (const en of entries) if (en.isIntersecting) { en.target.classList.add('is-in'); io.unobserve(en.target); } }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
-        const sel = '#page-home .section-header, #page-home .stream-card, #page-home .home-cta-banner, #page-home .home-star-section, #page-home .rs-hero-mount, #page-home .pulse-grid > *, #page-home .moments-row > *, #page-home .home-digest';
-        document.querySelectorAll(sel).forEach((el, i) => {
-            if (el.classList.contains('hfx-reveal')) return;
-            // Anything already on screen after the first pass is NOT new to the reader — it is a
-            // card the 60-second section refresh just rebuilt underneath them. Fading it out and
-            // back in made the whole home page flash once a minute, collapsing expanded AI
-            // overviews and destroying text selection on the way. Show it and move on.
-            if (!firstRevealPass) {
-                const r = el.getBoundingClientRect();
-                if (r.height && r.top < window.innerHeight && r.bottom > 0) { el.classList.add('hfx-reveal', 'is-in'); return; }
+        if (!lateIo) lateIo = new IntersectionObserver((entries) => {
+            for (const en of entries) {
+                const el = en.target; lateIo.unobserve(el);
+                // Anything already on screen when it arrives is a card the section refresh rebuilt
+                // underneath the reader — show it as it is. Only off-screen arrivals get the reveal.
+                if (en.isIntersecting) el.classList.add('hfx-reveal', 'is-in');
+                else { el.classList.add('hfx-reveal'); io.observe(el); }
             }
+        });
+        // First pass reads the page once; after that only the nodes a mutation added are considered.
+        // getBoundingClientRect on a freshly rebuilt card forced a full layout of the home page —
+        // measured at ~150ms, repeated every time the hero's live numbers or a feed re-rendered.
+        const candidates = [];
+        if (!roots) document.querySelectorAll(REVEAL_SEL).forEach(el => candidates.push(el));
+        else for (const r of roots) {
+            if (r.nodeType !== 1) continue;
+            if (r.matches && r.matches(REVEAL_SEL)) candidates.push(r);
+            if (r.querySelectorAll) r.querySelectorAll(REVEAL_SEL).forEach(el => candidates.push(el));
+        }
+        candidates.forEach((el, i) => {
+            if (el.classList.contains('hfx-reveal') || el.dataset.hfxWait) return;
+            if (!firstRevealPass) { el.dataset.hfxWait = '1'; lateIo.observe(el); return; }
             el.classList.add('hfx-reveal');
             el.style.setProperty('--d', `${(i % 6) * 60}ms`);
             io.observe(el);
@@ -160,20 +178,36 @@
         if (!stats) return;
         const run = () => stats.querySelectorAll('b, strong, .hero-stat-value, .hero-stat-num').forEach(countUp);
         run();
-        new MutationObserver(() => run()).observe(stats, { childList: true, subtree: true });
+        // The odometer rolls digits by mutating the board, so this observer fired once per digit per
+        // roll and re-queried the whole board every time. Coalesced to one pass per frame, and only
+        // when nodes were actually added — a digit roll adds none.
+        let pending = 0;
+        new MutationObserver((muts) => {
+            if (pending) return;
+            if (!muts.some(m => m.addedNodes && m.addedNodes.length)) return;
+            pending = requestAnimationFrame(() => { pending = 0; run(); });
+        }).observe(stats, { childList: true, subtree: true });
     }
 
     // ── Stream card tilt ───────────────────────────────────────
     function attachTilt() {
         if (LITE) return;
+        // Pointer events arrive faster than frames; the old handler read layout on every one of them.
+        let tiltRaf = 0, lastEv = null;
         document.addEventListener('pointermove', (e) => {
-            const card = e.target.closest && e.target.closest('#page-home .stream-card');
-            if (!card) return;
-            const r = card.getBoundingClientRect();
-            const px = (e.clientX - r.left) / r.width - 0.5, py = (e.clientY - r.top) / r.height - 0.5;
-            card.style.transform = `perspective(700px) rotateY(${(px * 6).toFixed(2)}deg) rotateX(${(-py * 6).toFixed(2)}deg) translateY(-3px)`;
-            card.classList.add('hfx-tilting');
-        });
+            if (!onHome()) return;
+            lastEv = e;
+            if (tiltRaf) return;
+            tiltRaf = requestAnimationFrame(() => {
+                tiltRaf = 0; const ev = lastEv;
+                const card = ev.target.closest && ev.target.closest('#page-home .stream-card');
+                if (!card) return;
+                const r = card.getBoundingClientRect();
+                const px = (ev.clientX - r.left) / r.width - 0.5, py = (ev.clientY - r.top) / r.height - 0.5;
+                card.style.transform = `perspective(700px) rotateY(${(px * 6).toFixed(2)}deg) rotateX(${(-py * 6).toFixed(2)}deg) translateY(-3px)`;
+                card.classList.add('hfx-tilting');
+            });
+        }, { passive: true });
         document.addEventListener('pointerout', (e) => { const card = e.target.closest && e.target.closest('#page-home .stream-card'); if (card && !card.contains(e.relatedTarget)) { card.style.transform = ''; card.classList.remove('hfx-tilting'); } });
     }
 
@@ -238,8 +272,12 @@
             // Coalesce to one pass per frame. Unthrottled, this ran an eight-selector
             // querySelectorAll over the whole document on every single DOM mutation — every chat
             // message, every grid tick, every activity row.
-            let pending = 0;
-            const queue = () => { if (pending) return; pending = requestAnimationFrame(() => { pending = 0; if (onHome()) attachReveal(); }); };
+            let pending = 0; const added = [];
+            const queue = (muts) => {
+                for (const m of muts) for (const n of m.addedNodes) if (n.nodeType === 1) added.push(n);
+                if (pending || !added.length) return;
+                pending = requestAnimationFrame(() => { pending = 0; const batch = added.splice(0); if (onHome()) attachReveal(batch); });
+            };
             new MutationObserver(queue).observe(container, { childList: true, subtree: true });
         }
     }
