@@ -447,19 +447,32 @@ function synthesizeEspeak(text, voiceDef) {
         if (p.pitch != null) args.push('-p', String(p.pitch));
         if (p.speed != null) args.push('-s', String(p.speed));
         if (p.gap != null) args.push('-g', String(p.gap));
-        args.push('--', text);
+        // Feed the text over stdin, NOT as an argument: espeak-ng's command-line text buffer is
+        // 1000 bytes, so anything longer was silently cut at exactly character 1000 no matter
+        // what the channel's TTS limit said. stdin has no such cap.
+        args.push('--stdin');
 
-        execFile(bin, args, { timeout: 10000 }, (err) => {
+        const child = execFile(bin, args, { timeout: 30000 }, (err) => {
             if (err) {
                 try { fs.unlinkSync(tmpFile); } catch {}
                 return reject(err);
             }
-            try {
-                const wav = fs.readFileSync(tmpFile);
-                fs.unlinkSync(tmpFile);
-                resolve({ audio: wav.toString('base64'), mimeType: 'audio/wav', engine: 'espeak-ng', voiceName: p.voice });
-            } catch (e) { reject(e); }
+            // Ship MP3, not raw WAV: a 1200-character line is ~3 MB of WAV (4 MB as base64 in
+            // the chat socket frame) delivered to EVERY viewer; the same audio is ~200 KB as MP3.
+            // Falls back to the WAV if ffmpeg is missing or fails.
+            const mp3File = tmpFile.replace(/\.wav$/, '.mp3');
+            execFile('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', tmpFile, '-ac', '1', '-ar', '22050', '-codec:a', 'libmp3lame', '-b:a', '48k', mp3File], { timeout: 30000 }, (ffErr) => {
+                try {
+                    let audio, mimeType;
+                    if (!ffErr && fs.existsSync(mp3File) && fs.statSync(mp3File).size > 200) { audio = fs.readFileSync(mp3File); mimeType = 'audio/mpeg'; }
+                    else { audio = fs.readFileSync(tmpFile); mimeType = 'audio/wav'; }
+                    try { fs.unlinkSync(tmpFile); } catch {}
+                    try { fs.unlinkSync(mp3File); } catch {}
+                    resolve({ audio: audio.toString('base64'), mimeType, engine: 'espeak-ng', voiceName: p.voice });
+                } catch (e) { reject(e); }
+            });
         });
+        try { child.stdin.on('error', () => {}); child.stdin.end(String(text) + '\n'); } catch (e) { reject(e); }
     });
 }
 
