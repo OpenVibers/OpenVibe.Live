@@ -67,7 +67,7 @@
     <link rel="stylesheet" href="/css/broadcast.css?v=11">
     <link rel="stylesheet" href="/css/cosmetics.css?v=2">
     <link rel="stylesheet" href="/css/messenger.css?v=1">
-    <link rel="stylesheet" href="/css/home-fx.css?v=6">
+    <link rel="stylesheet" href="/css/home-fx.css?v=7">
     <link rel="stylesheet" href="/css/home-tour.css?v=2">
     <link rel="stylesheet" href="/css/ov-guide.css?v=1">
     <link rel="stylesheet" href="/css/i18n-star.css?v=5">
@@ -280,12 +280,12 @@
                     </div>
                 </div>
                 <div class="hero-cta">
-                    <button class="hb hb-stream" onclick="currentUser ? navigate('/broadcast') : showModal('register')"><span class="hb-ico"><i class="fa-solid fa-broadcast-tower"></i></span><span class="hb-label">Stream</span></button>
-                    <a href="https://openvibe.network" class="hb hb-tools"><span class="hb-ico"><i class="fa-solid fa-screwdriver-wrench"></i></span><span class="hb-label">Tools</span></a>
-                    <a href="https://openvibe.games/game" class="hb hb-game"><span class="hb-ico"><i class="fa-solid fa-gamepad"></i></span><span class="hb-label">Game</span></a>
-                    <a href="https://github.com/OpenVibers/OpenVibe.Live" target="_blank" class="hb hb-github" rel="noopener"><span class="hb-ico"><i class="fa-brands fa-github"></i></span><span class="hb-label">GitHub</span></a>
-                    <a href="https://discord.gg/M6MuRUaeJj" target="_blank" class="hb hb-discord" rel="noopener noreferrer"><span class="hb-ico"><i class="fa-brands fa-discord"></i></span><span class="hb-label">Discord</span></a>
-                    <a href="/documentation" onclick="return handleLinkClick(event, '/documentation')" class="hb hb-vibe"><span class="hb-ico"><i class="fa-solid fa-wand-magic-sparkles"></i></span><span class="hb-label">Vibe Coders</span></a>
+                    <button style="--i:0" class="hb hb-stream" onclick="currentUser ? navigate('/broadcast') : showModal('register')"><span class="hb-ico"><i class="fa-solid fa-broadcast-tower"></i></span><span class="hb-label">Stream</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></button>
+                    <a href="https://openvibe.network" style="--i:1" class="hb hb-tools"><span class="hb-ico"><i class="fa-solid fa-screwdriver-wrench"></i></span><span class="hb-label">Tools</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                    <a href="https://openvibe.games/game" style="--i:2" class="hb hb-game"><span class="hb-ico"><i class="fa-solid fa-gamepad"></i></span><span class="hb-label">Game</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                    <a href="https://github.com/OpenVibers/OpenVibe.Live" target="_blank" style="--i:3" class="hb hb-github" rel="noopener"><span class="hb-ico"><i class="fa-brands fa-github"></i></span><span class="hb-label">GitHub</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                    <a href="https://discord.gg/M6MuRUaeJj" target="_blank" style="--i:4" class="hb hb-discord" rel="noopener noreferrer"><span class="hb-ico"><i class="fa-brands fa-discord"></i></span><span class="hb-label">Discord</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                    <a href="/documentation" onclick="return handleLinkClick(event, '/documentation')" style="--i:5" class="hb hb-vibe"><span class="hb-ico"><i class="fa-solid fa-wand-magic-sparkles"></i></span><span class="hb-label">Vibe Coders</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
                 </div>
                 <!-- One stream, everywhere — restream pipeline + feature tour (public/js/home-tour.js) -->
                 <div class="home-tour-mount" id="home-tour-mount"></div>
@@ -5089,7 +5089,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <!-- Scripts -->
 <script src="/js/theme-engine.js?v=4"></script>
 <script src="/live-notify.js?v=3" defer></script>
-<script src="/js/app.js?v=141" defer></script>
+<script src="/js/app.js?v=142" defer></script>
 <script src="/js/stream-player.js?v=21" defer></script>
 <script src="/js/stream-pip.js?v=1" defer></script>
 <script src="/js/chat-shared.js?v=3" defer></script>
