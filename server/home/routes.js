@@ -178,9 +178,18 @@ router.get('/stats/series/:metric', (req, res) => {
     res.json(series);
 });
 
-async function heroStats() {
+async function heroStats(timing) {
+    const mark = (k, a) => { if (timing) timing[k] = Date.now() - a; };
+    let a = Date.now();
     const stats = { ...db.getHomeStats() };
-    const m = await _mediaStatsCached();
+    mark('db', a);
+    // Media stats and the network coin ledger are independent upstream calls; they used to be awaited
+    // one after the other, so a cold cache paid for both in sequence.
+    a = Date.now();
+    const [m, c] = await Promise.all([
+        _mediaStatsCached().then(v => { mark('media_stats', a); return v; }),
+        require('../monetization/wallet-client').networkCoinStats().then(v => { mark('coins', a); return v; }).catch(() => null),
+    ]);
     if (m) {
         stats.vods = m.vods;
         stats.clips = m.clips;
@@ -194,7 +203,6 @@ async function heroStats() {
     // currency people earn everywhere, the other is per-channel. The ledger lives on
     // OpenVibe.Network, so this is a cached internal call that is allowed to come back empty.
     try {
-        const c = await require('../monetization/wallet-client').networkCoinStats();
         if (c) {
             stats.coinsEarned = c.earned;
             stats.coinsSpent = c.spent;
@@ -249,13 +257,29 @@ router.get('/stats-live', (req, res) => {
     }
 });
 
+async function buildHero(timing) {
+    const t0 = Date.now();
+    // The stats and the media pool do not depend on each other either.
+    const [stats, mediaItems] = await Promise.all([
+        heroStats(timing),
+        (async () => { const a = Date.now(); const v = await heroMedia(); if (timing) timing.media_pool = Date.now() - a; return v; })(),
+    ]);
+    let a = Date.now();
+    // 24h viewer trend for the hero sparkline (sampled every 5 min by the sampler).
+    try { stats.viewerTrend = db.getViewerTrend(24, 48); } catch { stats.viewerTrend = []; }
+    const payload = { stats, media: mediaItems, moments: heroMoments(), slogans: heroSlogans() };
+    if (timing) { timing.local = Date.now() - a; timing.total = Date.now() - t0; }
+    return payload;
+}
+
 router.get('/hero', async (req, res) => {
     try {
         res.set('Cache-Control', 'public, max-age=20');
-        const stats = await heroStats();
-        // 24h viewer trend for the hero sparkline (sampled every 5 min by the sampler).
-        try { stats.viewerTrend = db.getViewerTrend(24, 48); } catch { stats.viewerTrend = []; }
-        res.json({ stats, media: await heroMedia(), moments: heroMoments(), slogans: heroSlogans() });
+        const timing = {};
+        const payload = await buildHero(timing);
+        // Where the time went, visible in devtools and to curl -I. Durations only, no data.
+        res.set('Server-Timing', Object.entries(timing).map(([k, v]) => `${k};dur=${v}`).join(', '));
+        res.json(payload);
     } catch (err) {
         console.error('[Home] hero error:', err.message);
         res.status(500).json({ error: 'Failed to load hero' });
@@ -507,3 +531,8 @@ module.exports = router;
 module.exports.startViewerSampler = startViewerSampler;
 module.exports.FALLBACK_AUDIENCES = FALLBACK_AUDIENCES;
 module.exports.FALLBACK_QUIPS = FALLBACK_QUIPS;
+
+// Warm the hero caches once boot has finished (~6s on production). Every deploy restarts the process with empty caches, and
+// the first home page load after it used to wait on every upstream call cold (~2.3s measured right
+// after a deploy). The timer is unref'd so it never holds the process open.
+setTimeout(() => { buildHero(null).catch(() => {}); }, 15000).unref?.();
