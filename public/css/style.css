@@ -15247,3 +15247,35 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
         min-width: 0; width: min(290px, calc(100vw - 16px));
     }
 }
+
+/* ── About section sub-headings ──────────────────────────────────────────────
+   Three sub-sections inside one long panel, all introduced by the same small grey line of caps —
+   scrolling through it there was nothing to tell you that you had moved from "ways to go live"
+   to "what you get" to "where the money goes". They now carry the same signal the page's other
+   section headers use: a tinted tile round the icon, a tinted title, and a rule that runs out and
+   fades. Spacing is tightened at the same time; the old margins left a dead band above each one. */
+.cta-section-label {
+    --sc: var(--accent);
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    margin: 26px 0 12px; font-size: 0.8rem; letter-spacing: 0.05em;
+    color: color-mix(in srgb, var(--sc) 62%, var(--text-primary)) !important;
+}
+.cta-section-label > i:first-child {
+    width: 28px; height: 28px; flex: none; border-radius: 50%;
+    display: grid; place-items: center; line-height: 1; font-size: 0.76rem;
+    color: var(--sc);
+    background: radial-gradient(120% 120% at 30% 20%, color-mix(in srgb, var(--sc) 24%, transparent), color-mix(in srgb, var(--sc) 10%, transparent));
+    border: 1px solid color-mix(in srgb, var(--sc) 30%, transparent);
+}
+.cta-section-label::after {
+    content: ''; flex: 1 1 auto; height: 1px; min-width: 16px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--sc) 42%, transparent), transparent 88%);
+}
+.home-cta-features { margin: 2px 0 6px; gap: 12px; }
+.cta-lede { margin: 0 0 12px; }
+@media (max-width: 640px) {
+    .cta-section-label { margin: 20px 0 10px; font-size: 0.72rem; gap: 8px; }
+    .cta-section-label > i:first-child { width: 25px; height: 25px; font-size: 0.7rem; }
+    .home-cta-features { grid-template-columns: 1fr; gap: 9px; }
+    .home-cta-feature { padding: 13px 14px; }
+}
