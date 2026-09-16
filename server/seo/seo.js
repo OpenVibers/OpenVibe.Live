@@ -402,10 +402,25 @@ function _detailSnapshot({ title, byline, desc, overview, transcript, canonicalP
 }
 
 // ── Inject metadata into the base index.html ────────────────────────────────────────────────
-let _baseHtml = null;
+// The base document is re-read when index.html changes on disk, checked at most every 2s.
+//
+// It used to be read once per process. Every client-side change bumps a ?v= in index.html, so
+// shipping even a CSS tweak needed a service restart to be seen — and a restart drops every live
+// RTMP stream, because RTMP ingest is owned by this process (socket activation only covers HTTP).
+// With this, a change that only touches public/ goes live with a git pull and no restart.
+let _baseHtml = null, _baseMtime = 0, _baseCheckedAt = 0;
 function _base() {
-    if (_baseHtml == null) {
-        try { _baseHtml = fs.readFileSync(INDEX_HTML_PATH, 'utf8'); } catch { _baseHtml = ''; }
+    const now = Date.now();
+    if (_baseHtml == null || now - _baseCheckedAt > 2000) {
+        _baseCheckedAt = now;
+        let mtime = 0;
+        try { mtime = fs.statSync(INDEX_HTML_PATH).mtimeMs; } catch { /* keep what we have */ }
+        if (_baseHtml == null || (mtime && mtime !== _baseMtime)) {
+            try { _baseHtml = fs.readFileSync(INDEX_HTML_PATH, 'utf8'); _baseMtime = mtime; }
+            catch { if (_baseHtml == null) _baseHtml = ''; }
+            // Pages rendered from the old document reference old asset versions.
+            if (typeof _cache !== 'undefined') _cache.clear();
+        }
     }
     return _baseHtml;
 }
@@ -496,6 +511,9 @@ async function middleware(req, res, next) {
     // Only rewrite HTML navigations, not fetch()/XHR/asset probes.
     if (req.headers.accept && req.headers.accept.indexOf('text/html') === -1) return next();
     try {
+        // Check for a changed index.html before trusting the page cache: a cache hit would otherwise
+        // skip the check and keep serving pages that point at the previous asset versions.
+        _base();
         const cached = _cacheGet(p);
         if (cached) { res.set('Cache-Control', 'public, max-age=300'); res.type('html'); return res.send(cached); }
         const meta = await _pageMeta(p);
