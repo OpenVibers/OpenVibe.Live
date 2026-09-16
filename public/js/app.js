@@ -2861,7 +2861,10 @@ function renderHomePagination(containerId, total, page, pageSize, setterName) {
     if (!el) return;
     const shown = page * pageSize;
     const left = Math.max(0, (total || 0) - shown);
-    if (left <= 0) { el.innerHTML = ''; return; }
+    // These containers ship with an inline display:none — the old pager unhid them itself, and
+    // this one has to as well or the button renders into a hidden box and nobody ever sees it.
+    if (left <= 0) { el.innerHTML = ''; el.style.display = 'none'; return; }
+    el.style.display = 'block';
     const next = Math.min(left, pageSize);
     el.innerHTML = `<button type="button" class="home-load-more" onclick="${setterName}(${page + 1}, true)">
         <i class="fa-solid fa-arrow-down"></i>
