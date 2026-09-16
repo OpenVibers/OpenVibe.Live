@@ -9647,19 +9647,19 @@ async function loadHomeStar() {
                     <div class="star-kicker"><i class="fa-solid fa-star"></i> ${s.rotates ? 'Star of the day' : 'Featured streamer'}</div>
                     <h3 class="star-name"><a href="${esc(path)}" onclick="return handleLinkClick(event, '${esc(path)}')">${name}</a>${foreign && lang.code === 'ja' ? '<span class="star-jp">OpenVibeの看板配信者 — ようこそ！</span>' : ''}</h3>
                     <div class="star-chips">${chips}</div>
-                    <div class="star-more" id="star-more" hidden>
-                        ${why}
-                        ${bioHtml}
-                        ${overview}
-                        ${offline}
-                    </div>
-                    <div class="star-actions">
+                </div>
+                <div class="star-more" id="star-more" hidden>
+                    ${why}
+                    ${bioHtml}
+                    ${overview}
+                    ${offline}
+                </div>
+                <div class="star-actions">
                         <a class="btn btn-lg star-btn-watch" href="${esc(path)}" onclick="return handleLinkClick(event, '${esc(path)}')"><i class="fa-solid ${isLive ? 'fa-play' : 'fa-user'}"></i> ${isLive ? 'Watch now' : 'Visit channel'}</a>
                         <a class="btn btn-outline btn-lg" href="${esc(path)}#about" onclick="return handleLinkClick(event, '${esc(path)}#about')"><i class="fa-solid fa-comments"></i> Say hi${foreign ? ' — any language works' : ''}</a>
                         <button type="button" class="star-expand" id="star-expand" aria-expanded="false" aria-controls="star-more">
                             <i class="fa-solid fa-chevron-down"></i><span>More about ${name}</span>
                         </button>
-                    </div>
                 </div>
             </div>
         </div>`;
