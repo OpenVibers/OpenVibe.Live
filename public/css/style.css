@@ -14845,14 +14845,17 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 .hero-stat-more i { font-size: 0.7rem; transition: transform 0.28s cubic-bezier(.2, 1, .3, 1); }
 .hero-stat-more.is-open i { transform: rotate(180deg); }
 .hero-stat-full { border-top: 1px solid color-mix(in srgb, var(--accent) 12%, transparent); }
-.hero-stat-full:not([hidden]) { animation: heroStatsOpen 0.4s cubic-bezier(.2, 1, .3, 1); }
-@keyframes heroStatsOpen { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+/* The incoming block fades up while the container animates its height — see the swap() helper.
+   Only the element that is arriving animates, so the one leaving doesn't flash on its way out. */
+.hero-stat-full.is-entering, .hero-stat-strip.is-entering { animation: heroStatsOpen 0.42s cubic-bezier(.2, 1, .3, 1); }
+@keyframes heroStatsOpen { from { opacity: 0; transform: translateY(-7px); } to { opacity: 1; transform: none; } }
 .hero-stat-full .hero-stat-group:first-child { border-top: 0; }
 @media (max-width: 640px) {
     .hero-stats { min-height: 182px; }
 }
 @media (prefers-reduced-motion: reduce) {
-    .hero-stat-full:not([hidden]) { animation: none; }
+    .hero-stat-full.is-entering, .hero-stat-strip.is-entering { animation: none; }
+    .hero-stats.is-swapping { transition: none; }
     .hero-stat-more i { transition: none; }
 }
 
@@ -15050,4 +15053,14 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 @media (max-width: 420px) {
     .hero-stat-delta { font-size: 0.55rem; padding: 1px 5px 1px 3px; }
     .hero-stat-delta em { display: none; }
+}
+
+
+/* Height is pinned only while the board is swapping between the strip and the full set, so the
+   container can still grow freely the rest of the time. min-height would fight an explicit
+   height on the way down, so it is dropped for the duration of the animation. */
+.hero-stats.is-swapping {
+    overflow: hidden;
+    min-height: 0 !important;
+    transition: height 0.42s cubic-bezier(.2, 1, .3, 1);
 }
