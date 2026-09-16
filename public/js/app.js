@@ -324,6 +324,62 @@ function authHeaders() {
     return tok ? { Authorization: `Bearer ${tok}` } : {};
 }
 
+/**
+ * Stale-while-revalidate for public GET payloads.
+ *
+ * A returning visitor already has last visit's answer sitting in localStorage, and for a feed of
+ * clips or a stat board that answer is almost always still right. Rendering it immediately and
+ * then reconciling with the live response makes the page look finished on arrival instead of
+ * assembling itself over several seconds — which is the whole point of the skeletons, done one
+ * better: real content instead of grey bars.
+ *
+ * The render callback runs at most twice, and the second time only if the response actually
+ * differs from what was already drawn, so a warm cache costs one paint rather than two.
+ *
+ * Only ever used for responses that are identical for every visitor. Anything per-user — the
+ * digest, balances, unread counts, auth state — is deliberately not routed through here, and the
+ * key includes the signed-in user id so a shared device can never show one account another's
+ * cached page.
+ */
+const _SWR_PREFIX = 'ovswr:';
+function _swrKey(path) {
+    let uid = 0;
+    try { uid = (typeof currentUser !== 'undefined' && currentUser && currentUser.id) || 0; } catch { /* */ }
+    return `${_SWR_PREFIX}${uid}:${path}`;
+}
+/** localStorage is small and shared; keep this to the most recent entries. */
+function _swrTrim(max = 40) {
+    try {
+        const keys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith(_SWR_PREFIX)) keys.push(k);
+        }
+        if (keys.length <= max) return;
+        const aged = keys.map(k => { let at = 0; try { at = JSON.parse(localStorage.getItem(k)).at || 0; } catch { /* */ } return { k, at }; })
+            .sort((a, b) => a.at - b.at);
+        for (const { k } of aged.slice(0, keys.length - max)) localStorage.removeItem(k);
+    } catch { /* */ }
+}
+async function apiSWR(path, onData, { ttl = 120000 } = {}) {
+    const key = _swrKey(path);
+    let cached = null;
+    try { const raw = localStorage.getItem(key); if (raw) cached = JSON.parse(raw); } catch { /* */ }
+    const fresh = cached && (Date.now() - (cached.at || 0)) < ttl;
+    if (fresh) { try { onData(cached.d, true); } catch (e) { console.warn('[swr] cached render failed', path, e); } }
+    try {
+        const live = await api(path);
+        const same = cached && JSON.stringify(cached.d) === JSON.stringify(live);
+        try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), d: live })); _swrTrim(); } catch { /* quota or private mode */ }
+        if (!fresh || !same) onData(live, false);
+        return live;
+    } catch (err) {
+        // Offline or the server is having a moment: whatever we already drew stands.
+        if (fresh) return cached.d;
+        throw err;
+    }
+}
+
 async function api(path, opts = {}) {
     const res = await fetch(`${API}/api${path}`, {
         headers: { 'Content-Type': 'application/json', ...authHeaders(), ...opts.headers },
@@ -2021,12 +2077,16 @@ async function loadHome() {
     _homePastesPage = 1;
 
     try {
-        const liveData = await api('/streams');
-        const streams = liveData.streams || [];
-        document.getElementById('live-count').textContent = streams.length;
-        const noLiveEl = document.getElementById('no-live-streams');
-        if (noLiveEl) noLiveEl.style.display = streams.length ? 'none' : '';
-        renderStreamGrid('stream-grid-live', streams, true);
+        // Paint last visit's grid immediately, then reconcile with what is live now. The cached
+        // copy is at most 20 seconds old; anything older falls through to a normal load and the
+        // placeholders cover the gap.
+        await apiSWR('/streams', (liveData) => {
+            const streams = liveData.streams || [];
+            document.getElementById('live-count').textContent = streams.length;
+            const noLiveEl = document.getElementById('no-live-streams');
+            if (noLiveEl) noLiveEl.style.display = streams.length ? 'none' : '';
+            renderStreamGrid('stream-grid-live', streams, true);
+        }, { ttl: 20000 });
     } catch (e) {
         console.error('Failed to load live streams', e);
         // Never leave placeholders shimmering over a failed request.
@@ -2233,35 +2293,37 @@ async function loadHomeRecentVods(page) {
     if (page !== undefined) _homeRecentVodsPage = page;
     const offset = (_homeRecentVodsPage - 1) * HOME_RECENT_VODS_PAGE_SIZE;
     try {
-        const data = await api(`/streams/recent-vods?limit=${HOME_RECENT_VODS_PAGE_SIZE}&offset=${offset}`);
-        const vods = data.vods || [];
-        const header = document.getElementById('home-recent-vods-header');
-        const grid = document.getElementById('home-recent-vods-grid');
-        if (!header || !grid) return;
-        if (!vods.length && _homeRecentVodsPage === 1) { header.style.display = 'none'; grid.innerHTML = ''; return; }
-        header.style.display = '';
-        grid.innerHTML = vods.map(v => {
-            const href = `/vod/${v.id}`;
-            return `
-                <a class="stream-card" href="${href}" onclick="return handleLinkClick(event, '${href}')">
-                    <div class="stream-card-thumb">
-                        ${thumbImg(v.thumbnail_url, 'fa-video', v.title, `/api/thumbnails/generate/vod/${v.id}`)}
-                        ${v.duration_seconds ? `<span class="stream-card-duration">${formatDuration(v.duration_seconds)}</span>` : ''}
-                        <span class="stream-card-viewers"><i class="fa-solid fa-eye"></i> ${v.view_count || 0}</span>
-                    </div>
-                    <div class="stream-card-info">
-                        <div class="stream-card-title">${esc(v.title || 'VOD')}</div>
-                        <div class="stream-card-streamer">
-                            ${_avatarSpan(v.avatar_url, v.username, v.profile_color)}
-                            ${esc(v.display_name || v.username)}
-                            <span class="muted" style="margin-left:auto;font-size:0.75rem">${timeAgo(v.created_at)}</span>
+        const render = (data) => {
+            const vods = data.vods || [];
+            const header = document.getElementById('home-recent-vods-header');
+            const grid = document.getElementById('home-recent-vods-grid');
+            if (!header || !grid) return;
+            if (!vods.length && _homeRecentVodsPage === 1) { header.style.display = 'none'; grid.innerHTML = ''; return; }
+            header.style.display = '';
+            grid.innerHTML = vods.map(v => {
+                const href = `/vod/${v.id}`;
+                return `
+                    <a class="stream-card" href="${href}" onclick="return handleLinkClick(event, '${href}')">
+                        <div class="stream-card-thumb">
+                            ${thumbImg(v.thumbnail_url, 'fa-video', v.title, `/api/thumbnails/generate/vod/${v.id}`)}
+                            ${v.duration_seconds ? `<span class="stream-card-duration">${formatDuration(v.duration_seconds)}</span>` : ''}
+                            <span class="stream-card-viewers"><i class="fa-solid fa-eye"></i> ${v.view_count || 0}</span>
                         </div>
-                        ${_cardAiHTML(v.ai_overview_short, v.ai_overview)}
-                    </div>
-                </a>
-            `;
-        }).join('');
-        renderHomePagination('home-recent-vods-pagination', data.total || 0, _homeRecentVodsPage, HOME_RECENT_VODS_PAGE_SIZE, 'loadHomeRecentVods');
+                        <div class="stream-card-info">
+                            <div class="stream-card-title">${esc(v.title || 'VOD')}</div>
+                            <div class="stream-card-streamer">
+                                ${_avatarSpan(v.avatar_url, v.username, v.profile_color)}
+                                ${esc(v.display_name || v.username)}
+                                <span class="muted" style="margin-left:auto;font-size:0.75rem">${timeAgo(v.created_at)}</span>
+                            </div>
+                            ${_cardAiHTML(v.ai_overview_short, v.ai_overview)}
+                        </div>
+                    </a>
+                `;
+            }).join('');
+            renderHomePagination('home-recent-vods-pagination', data.total || 0, _homeRecentVodsPage, HOME_RECENT_VODS_PAGE_SIZE, 'loadHomeRecentVods');
+        };
+        await apiSWR(`/streams/recent-vods?limit=${HOME_RECENT_VODS_PAGE_SIZE}&offset=${offset}`, render, { ttl: 180000 });
     } catch { /* silent */ }
 }
 
@@ -2269,31 +2331,33 @@ async function loadHomeClips(page) {
     if (page !== undefined) _homeClipsPage = page;
     const offset = (_homeClipsPage - 1) * HOME_CLIPS_PAGE_SIZE;
     try {
-        const data = await api(`/clips?limit=${HOME_CLIPS_PAGE_SIZE}&offset=${offset}`);
-        const clips = data.clips || [];
-        const header = document.getElementById('home-clips-header');
-        const grid = document.getElementById('home-clips-grid');
-        if (!clips.length && _homeClipsPage === 1) { if (header) header.style.display = 'none'; return; }
-        if (header) header.style.display = '';
-        grid.innerHTML = clips.map(c => `
-            <a class="stream-card" href="/clip/${c.id}" onclick="return handleLinkClick(event, '/clip/${c.id}')">
-                <div class="stream-card-thumb">
-                    ${thumbImg(c.thumbnail_url, 'fa-scissors', c.title, `/api/thumbnails/generate/clip/${c.id}`)}
-                    <span class="stream-card-viewers"><i class="fa-solid fa-eye"></i> ${c.view_count || 0}</span>
-                    ${c.duration_seconds ? `<span class="stream-card-duration">${formatDuration(c.duration_seconds)}</span>` : ''}
-                </div>
-                <div class="stream-card-info">
-                    <div class="stream-card-title">${esc(c.title || 'Untitled Clip')}</div>
-                    <div class="stream-card-streamer">
-                        ${_avatarSpan(c.avatar_url, c.username, c.profile_color)}
-                        ${esc(c.username || 'Anonymous')}
-                        <span class="muted" style="margin-left:auto;font-size:0.75rem">${timeAgo(c.created_at)}</span>
+        const render = (data) => {
+            const clips = data.clips || [];
+            const header = document.getElementById('home-clips-header');
+            const grid = document.getElementById('home-clips-grid');
+            if (!clips.length && _homeClipsPage === 1) { if (header) header.style.display = 'none'; return; }
+            if (header) header.style.display = '';
+            grid.innerHTML = clips.map(c => `
+                <a class="stream-card" href="/clip/${c.id}" onclick="return handleLinkClick(event, '/clip/${c.id}')">
+                    <div class="stream-card-thumb">
+                        ${thumbImg(c.thumbnail_url, 'fa-scissors', c.title, `/api/thumbnails/generate/clip/${c.id}`)}
+                        <span class="stream-card-viewers"><i class="fa-solid fa-eye"></i> ${c.view_count || 0}</span>
+                        ${c.duration_seconds ? `<span class="stream-card-duration">${formatDuration(c.duration_seconds)}</span>` : ''}
                     </div>
-                    ${_cardAiHTML(c.ai_overview_short, c.ai_overview)}
-                </div>
-            </a>
-        `).join('');
-        renderHomePagination('home-clips-pagination', data.total || 0, _homeClipsPage, HOME_CLIPS_PAGE_SIZE, 'loadHomeClips');
+                    <div class="stream-card-info">
+                        <div class="stream-card-title">${esc(c.title || 'Untitled Clip')}</div>
+                        <div class="stream-card-streamer">
+                            ${_avatarSpan(c.avatar_url, c.username, c.profile_color)}
+                            ${esc(c.username || 'Anonymous')}
+                            <span class="muted" style="margin-left:auto;font-size:0.75rem">${timeAgo(c.created_at)}</span>
+                        </div>
+                        ${_cardAiHTML(c.ai_overview_short, c.ai_overview)}
+                    </div>
+                </a>
+            `).join('');
+            renderHomePagination('home-clips-pagination', data.total || 0, _homeClipsPage, HOME_CLIPS_PAGE_SIZE, 'loadHomeClips');
+        };
+        await apiSWR(`/clips?limit=${HOME_CLIPS_PAGE_SIZE}&offset=${offset}`, render, { ttl: 180000 });
     } catch { /* silent */ }
 }
 
@@ -2301,35 +2365,37 @@ async function loadHomePastes(page) {
     if (page !== undefined) _homePastesPage = page;
     const offset = (_homePastesPage - 1) * HOME_PASTES_PAGE_SIZE;
     try {
-        const data = await api(`/pastes?limit=${HOME_PASTES_PAGE_SIZE}&offset=${offset}`);
-        const pastes = data.pastes || [];
-        const header = document.getElementById('home-pastes-header');
-        const list = document.getElementById('home-pastes-list');
-        if (!pastes.length && _homePastesPage === 1) { if (header) header.style.display = 'none'; return; }
-        if (header) header.style.display = '';
-        list.innerHTML = pastes.map(p => {
-            const icon = p.type === 'screenshot' ? 'fa-image' : (p.language && p.language !== 'plaintext' ? 'fa-code' : 'fa-file-lines');
-            const preview = p.type === 'paste' ? esc((p.content || '').slice(0, 220)).replace(/\n{3,}/g, '\n\n') : '';
-            const media = p.type === 'screenshot' && p.screenshot_url
-                ? `<div class="home-paste-media"><img src="${esc(p.screenshot_url)}" alt="${esc(p.title || 'Screenshot paste')}" loading="lazy"><span class="home-paste-type">Image</span></div>`
-                : `<div class="home-paste-media"><div class="home-paste-snippet">${preview || esc(p.title || 'Untitled paste')}</div><div class="home-paste-icon"><i class="fa-solid ${icon}"></i></div><span class="home-paste-type">${p.language && p.language !== 'plaintext' ? esc(p.language) : 'Text'}</span></div>`;
-            return `
-            <a class="home-paste-card" href="/p/${esc(p.slug)}" onclick="return handleLinkClick(event, '/p/${esc(p.slug)}')">
-                ${media}
-                <div class="home-paste-body">
-                <div class="home-paste-info">
-                    <div class="home-paste-title">${esc(p.title || 'Untitled')}</div>
-                    <div class="home-paste-meta">
-                        ${p.username ? esc(p.username) : 'Anonymous'}
-                        ${p.language && p.language !== 'plaintext' ? ` · <span class="home-paste-lang">${esc(p.language)}</span>` : ''}
-                        · ${timeAgo(p.created_at)}
+        const render = (data) => {
+            const pastes = data.pastes || [];
+            const header = document.getElementById('home-pastes-header');
+            const list = document.getElementById('home-pastes-list');
+            if (!pastes.length && _homePastesPage === 1) { if (header) header.style.display = 'none'; return; }
+            if (header) header.style.display = '';
+            list.innerHTML = pastes.map(p => {
+                const icon = p.type === 'screenshot' ? 'fa-image' : (p.language && p.language !== 'plaintext' ? 'fa-code' : 'fa-file-lines');
+                const preview = p.type === 'paste' ? esc((p.content || '').slice(0, 220)).replace(/\n{3,}/g, '\n\n') : '';
+                const media = p.type === 'screenshot' && p.screenshot_url
+                    ? `<div class="home-paste-media"><img src="${esc(p.screenshot_url)}" alt="${esc(p.title || 'Screenshot paste')}" loading="lazy"><span class="home-paste-type">Image</span></div>`
+                    : `<div class="home-paste-media"><div class="home-paste-snippet">${preview || esc(p.title || 'Untitled paste')}</div><div class="home-paste-icon"><i class="fa-solid ${icon}"></i></div><span class="home-paste-type">${p.language && p.language !== 'plaintext' ? esc(p.language) : 'Text'}</span></div>`;
+                return `
+                <a class="home-paste-card" href="/p/${esc(p.slug)}" onclick="return handleLinkClick(event, '/p/${esc(p.slug)}')">
+                    ${media}
+                    <div class="home-paste-body">
+                    <div class="home-paste-info">
+                        <div class="home-paste-title">${esc(p.title || 'Untitled')}</div>
+                        <div class="home-paste-meta">
+                            ${p.username ? esc(p.username) : 'Anonymous'}
+                            ${p.language && p.language !== 'plaintext' ? ` · <span class="home-paste-lang">${esc(p.language)}</span>` : ''}
+                            · ${timeAgo(p.created_at)}
+                        </div>
+                        ${_cardAiHTML(p.ai_summary)}
                     </div>
-                    ${_cardAiHTML(p.ai_summary)}
-                </div>
-                </div>
-            </a>`;
-        }).join('');
-        renderHomePagination('home-pastes-pagination', data.total || 0, _homePastesPage, HOME_PASTES_PAGE_SIZE, 'loadHomePastes');
+                    </div>
+                </a>`;
+            }).join('');
+            renderHomePagination('home-pastes-pagination', data.total || 0, _homePastesPage, HOME_PASTES_PAGE_SIZE, 'loadHomePastes');
+        };
+        await apiSWR(`/pastes?limit=${HOME_PASTES_PAGE_SIZE}&offset=${offset}`, render, { ttl: 180000 });
     } catch { /* silent */ }
 }
 
