@@ -1598,8 +1598,11 @@ function _startHeroStatsLive() {
             // Deltas move too — refresh them in place rather than rebuilding the chip.
             const DELTA_FOR = {
                 users: d.recent?.users, anons: d.recent?.anons,
-                chatMessages: d.recent?.messages, hoursWatched: d.recent?.hours,
+                chatMessages: d.recent?.messages,
                 streamers: d.recent?.streamers,
+                // hoursWatched is deliberately absent: its 7-day figure comes from OpenVibe.Media
+                // (that is where VODs live now), and this endpoint only knows the local number,
+                // which is zero. Overwriting it here would wipe a correct value with a wrong one.
                 weeklyActive: { w: d.weeklyActive, pw: d.prevWeeklyActive },
                 weeklyVisitors: { w: d.weeklyVisitors, pw: d.prevWeeklyVisitors },
             };

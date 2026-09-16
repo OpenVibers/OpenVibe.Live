@@ -225,8 +225,11 @@ router.get('/stats-live', (req, res) => {
             prevWeeklyVisitors: s.prevWeeklyVisitors, prevWeeklyActive: s.prevWeeklyActive,
             recent: {
                 users: s.recent?.users, anons: s.recent?.anons,
-                messages: s.recent?.messages, hours: s.recent?.hours,
+                messages: s.recent?.messages,
                 streamers: s.recent?.streamers,
+                // No `hours` here on purpose — the real figure comes from OpenVibe.Media and is
+                // merged into the hero payload; the local number is zero and would be wrong.
+                
             },
         };
         _liveStats = { at: Date.now(), data };
