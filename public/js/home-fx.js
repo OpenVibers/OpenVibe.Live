@@ -88,7 +88,7 @@
     }
 
     // ── Scroll reveal ──────────────────────────────────────────
-    let io = null, revealSafety = 0, revealPasses = 0;
+    let io = null, revealSafety = 0, revealPasses = 0, firstRevealPass = true;
     /**
      * Failsafe for the reveal animation.
      *
@@ -119,7 +119,21 @@
         if (!('IntersectionObserver' in window)) return;
         if (!io) io = new IntersectionObserver((entries) => { for (const en of entries) if (en.isIntersecting) { en.target.classList.add('is-in'); io.unobserve(en.target); } }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
         const sel = '#page-home .section-header, #page-home .stream-card, #page-home .home-cta-banner, #page-home .home-star-section, #page-home .rs-hero-mount, #page-home .pulse-grid > *, #page-home .moments-row > *, #page-home .home-digest';
-        document.querySelectorAll(sel).forEach((el, i) => { if (el.classList.contains('hfx-reveal')) return; el.classList.add('hfx-reveal'); el.style.setProperty('--d', `${(i % 6) * 60}ms`); io.observe(el); });
+        document.querySelectorAll(sel).forEach((el, i) => {
+            if (el.classList.contains('hfx-reveal')) return;
+            // Anything already on screen after the first pass is NOT new to the reader — it is a
+            // card the 60-second section refresh just rebuilt underneath them. Fading it out and
+            // back in made the whole home page flash once a minute, collapsing expanded AI
+            // overviews and destroying text selection on the way. Show it and move on.
+            if (!firstRevealPass) {
+                const r = el.getBoundingClientRect();
+                if (r.height && r.top < window.innerHeight && r.bottom > 0) { el.classList.add('hfx-reveal', 'is-in'); return; }
+            }
+            el.classList.add('hfx-reveal');
+            el.style.setProperty('--d', `${(i % 6) * 60}ms`);
+            io.observe(el);
+        });
+        firstRevealPass = false;
         startRevealSafety();
     }
 
@@ -204,7 +218,11 @@
         });
         watch();
         // Sections mount asynchronously, so pick up anything that arrives later.
-        try { new MutationObserver(watch).observe(document.body, { childList: true, subtree: true }); } catch { /* */ }
+        try {
+            let pending = 0;
+            const queue = () => { if (pending) return; pending = requestAnimationFrame(() => { pending = 0; watch(); }); };
+            new MutationObserver(queue).observe(document.body, { childList: true, subtree: true });
+        } catch { /* */ }
     }
 
     function boot() {
@@ -216,7 +234,14 @@
         if (page && 'MutationObserver' in window) new MutationObserver(apply).observe(page, { attributes: true, attributeFilter: ['class'] });
         // New cards arrive as sections load — reveal them too.
         const container = page && page.querySelector('.container');
-        if (container) new MutationObserver(() => { if (onHome()) attachReveal(); }).observe(container, { childList: true, subtree: true });
+        if (container) {
+            // Coalesce to one pass per frame. Unthrottled, this ran an eight-selector
+            // querySelectorAll over the whole document on every single DOM mutation — every chat
+            // message, every grid tick, every activity row.
+            let pending = 0;
+            const queue = () => { if (pending) return; pending = requestAnimationFrame(() => { pending = 0; if (onHome()) attachReveal(); }); };
+            new MutationObserver(queue).observe(container, { childList: true, subtree: true });
+        }
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

@@ -237,8 +237,11 @@ function renderRedemption(msg, container) {
     const el = document.createElement('div');
     el.className = 'chat-msg redemption';
     el.innerHTML = `<i class="fa-solid fa-gem" style="color:${esc(msg.reward_color || 'var(--accent)')}"></i> <strong>${esc(msg.username || 'Someone')}</strong> redeemed <strong>${esc(msg.reward_title || 'a reward')}</strong>${msg.user_input ? `: ${esc(msg.user_input)}` : ''} <span class="muted">(${(msg.cost || 0).toLocaleString()} ${esc(channelPointsName())})</span>`;
+    // Follow the live edge only if the reader was already there — measured before the append,
+    // since scrollHeight counts the new row the moment it lands.
+    const wasPinned = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
     container.appendChild(el);
-    container.scrollTop = container.scrollHeight;
+    if (wasPinned) container.scrollTop = container.scrollHeight;
 }
 
 // ── Add Reward Modal (Dashboard) ─────────────────────────────

@@ -431,10 +431,12 @@
                 </div>
             </div>`;
         }
+        // Was the reader at the live edge before we replaced the thread? Measured first, because
+        // after the write scrollHeight already includes the new messages. Someone reading back
+        // through a conversation should not be thrown to the bottom every three seconds.
+        const wasPinned = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80 || thread.scrollTop === 0;
         thread.innerHTML = html;
-
-        // Scroll to bottom
-        thread.scrollTop = thread.scrollHeight;
+        if (wasPinned) thread.scrollTop = thread.scrollHeight;
 
         // Wire up message delete buttons
         thread.querySelectorAll('.msg-bubble-delete').forEach(btn => {

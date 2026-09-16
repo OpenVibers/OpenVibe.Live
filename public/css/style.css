@@ -14804,6 +14804,10 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
    would make each chip absurdly long, so the strip caps and centres itself. Everything inside
    scales with clamp() rather than switching at breakpoints, so it reads the same on a 320px
    phone, a landscape phone, a tablet and a monitor. */
+/* An author `display` declaration beats the browser's own [hidden] { display: none } rule, so
+   setting .hidden on the strip did nothing and the expanded board showed both copies of the same
+   nine numbers. Restate it explicitly. */
+.hero-stat-strip[hidden] { display: none !important; }
 .hero-stat-strip {
     display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: clamp(4px, 0.8vw, 9px); padding: clamp(7px, 1vw, 11px);
