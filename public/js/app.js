@@ -727,9 +727,23 @@ function showModal(id) {
     if (id === 'donate' && typeof _initDonateModal === 'function') _initDonateModal();
 }
 
+// Defined here once. dashboard.js used to carry a second, fuller copy that silently replaced this one
+// because it loaded later — so the site's modals were closing through the dashboard's version.
 function closeModal() {
-    document.getElementById('modal-overlay').classList.remove('show');
+    const overlay = document.getElementById('modal-overlay');
+    if (overlay) overlay.classList.remove('show');
+    // The clone-preset modal toggles style.display rather than the .show class.
+    const cloneModal = document.getElementById('clone-preset-config-modal');
+    if (cloneModal) cloneModal.style.display = 'none';
 }
+
+// Escapes quotes as well as < > &. The previous version used the textContent/innerHTML trick,
+// which leaves " and ' untouched — safe in text, but these helpers are also interpolated into
+// attribute values, where an unescaped quote ends the attribute and starts a new one.
+function escapeHtml(str) {
+    return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 
 /* ── Auth ──────────────────────────────────────────────────────── */
 // Local login/register removed — all auth goes through OpenVibe SSO
@@ -1213,7 +1227,7 @@ function routeFromURL() {
         loadClipPlayer(segments[1]);
     } else if (segments[0] === 'dashboard') {
         showPage('dashboard');
-        loadDashboard();
+        ovLoadRoute('dashboard').then(() => { if (typeof loadDashboard === 'function') loadDashboard(); });
     } else if (segments[0] === 'settings') {
         // /settings was merged into the dashboard — redirect there.
         navigate('/dashboard', true);
@@ -1240,12 +1254,14 @@ function routeFromURL() {
         return;
     } else if (segments[0] === 'pastes') {
         showPage('pastes');
-        loadPastesPage();
-        // Handle ?edit=slug
         const editSlug = new URLSearchParams(window.location.search).get('edit');
+        ovLoadRoute('pastes').then(() => {
+            if (typeof loadPastesPage === 'function') loadPastesPage();
+        });
+        // Handle ?edit=slug
         if (editSlug) {
-            api(`/pastes/${editSlug}`).then(data => {
-                if (data.paste) openNewPasteModal({
+            Promise.all([api(`/pastes/${editSlug}`), ovLoadRoute('pastes')]).then(([data]) => {
+                if (data.paste && typeof openNewPasteModal === 'function') openNewPasteModal({
                     title: data.paste.title,
                     content: data.paste.content,
                     language: data.paste.language,
@@ -1275,7 +1291,7 @@ function routeFromURL() {
         return;
     } else if (segments[0] === 'p' && segments[1]) {
         showPage('paste-viewer');
-        loadPasteViewer(segments[1]);
+        ovLoadRoute('pastes').then(() => { if (typeof loadPasteViewer === 'function') loadPasteViewer(segments[1]); });
     } else if (segments[0] === 'documentation') {
         showPage('documentation');
         initDocsTabScroller();

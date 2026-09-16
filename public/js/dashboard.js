@@ -380,14 +380,7 @@ function openClonePresetModal() {
     };
 }
 
-function closeModal() {
-    // Hide main modal (app.js uses classList 'show')
-    const overlay = document.getElementById('modal-overlay');
-    if (overlay) overlay.classList.remove('show');
-    // Also hide clone preset modal (uses style.display)
-    const cloneModal = document.getElementById('clone-preset-config-modal');
-    if (cloneModal) cloneModal.style.display = 'none';
-}
+// closeModal() lives in app.js — every modal on the site uses it, not only the dashboard's.
 
 async function doClonePresetConfig() {
     const select = document.getElementById('clone-preset-select');

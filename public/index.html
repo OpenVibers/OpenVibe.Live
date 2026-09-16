@@ -5114,7 +5114,10 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 (function () {
     var BUNDLES = {
         broadcast: ['/js/broadcast-workspace.js?v=16', '/js/broadcast.js?v=31'],
-        arena: ['/js/arena.js?v=18']
+        arena: ['/js/arena.js?v=18'],
+        pastes: ['/js/pastes.js?v=17'],
+        // The dashboard renders paste cards with pastes.js helpers, synchronously.
+        dashboard: ['/js/pastes.js?v=17', '/js/dashboard.js?v=17']
     };
     var started = Object.create(null);
     function one(src) {
@@ -5137,9 +5140,29 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
     window.ovPrefetchRoutes = function () {
         for (var k in BUNDLES) window.ovLoadRoute(k);
     };
+    // A few handlers in those files are reachable from pages that do not load them: "Screenshot" in
+    // the account menu, the stream-key button on the broadcast desk, the control-profile modal
+    // buttons. Each gets a stand-in that loads its bundle and then calls the real function, which
+    // replaces the stand-in when the script runs (a top-level function declaration overwrites the
+    // window property). If the real function never arrives, the stand-in gives up instead of
+    // calling itself forever.
+    function stub(name, bundle) {
+        var fake = function () {
+            var args = arguments;
+            return window.ovLoadRoute(bundle).then(function () {
+                if (window[name] !== fake && typeof window[name] === 'function') return window[name].apply(window, args);
+                console.warn('[routes] ' + name + ' is unavailable');
+            });
+        };
+        window[name] = fake;
+    }
+    stub('captureScreenshot', 'pastes');
+    stub('regenerateDashStreamKey', 'dashboard');
+    stub('doCreateConfig', 'dashboard');
+    stub('doAddConfigButton', 'dashboard');
 })();
 </script>
-<script src="/js/app.js?v=183" defer></script>
+<script src="/js/app.js?v=184" defer></script>
 <script src="/js/stream-player.js?v=22" defer></script>
 <script src="/js/stream-pip.js?v=1" defer></script>
 <script src="/js/chat-shared.js?v=3" defer></script>
@@ -5150,7 +5173,6 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/channel-uploads.js?v=12" defer></script>
 <script src="/js/controls.js?v=8" defer></script>
 <script src="/js/onvif-dashboard.js?v=6" defer></script>
-<script src="/js/dashboard.js?v=16" defer></script>
 <!-- (js/admin.js removed — 130KB of unreachable code; /admin redirects off-site.) -->
 <!-- ── Floating Global Chat Widget (visible on non-chat pages) ── -->
 <div id="floating-chat-widget" class="floating-chat-widget" style="display:none">
@@ -5211,7 +5233,6 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/recap.js?v=1" defer></script>
 <script src="/js/context-cards.js?v=4" defer></script>
 <script src="/js/powerchat.js?v=10" defer></script>
-<script src="/js/pastes.js?v=16" defer></script>
 <script src="/js/draggable-fab.js?v=2" defer></script>
 <script src="/js/messenger.js?v=4" defer></script>
 <script src="/js/ov-mark.js?v=2" defer></script>
