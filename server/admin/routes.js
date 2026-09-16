@@ -214,6 +214,8 @@ router.put('/users/:id', (req, res) => {
 router.post('/users/:id/ban', (req, res) => {
     try {
         const { reason, duration_hours } = req.body;
+        // An admin banning their own account locks them out; there is no one above them to undo it.
+        if (Number(req.params.id) === req.user.id) return res.status(400).json({ error: 'You cannot ban yourself' });
         const expires = duration_hours
             ? new Date(Date.now() + duration_hours * 3600000).toISOString()
             : null;

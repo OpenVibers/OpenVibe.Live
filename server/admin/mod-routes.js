@@ -64,73 +64,90 @@ router.get('/bans', permissions.requireGlobalMod, (req, res) => {
 // ── Global Ban (admin + global_mod) ──────────────────────────
 // Site-wide ban: sets is_banned flag, creates bans entry with no stream_id, adds IP ban.
 // Also cascades: bans all other accounts that share this user's IP.
+/**
+ * Site-wide ban: the account, the IP it was last seen on, and every other account that has used
+ * that IP.
+ *
+ * /global-ban and /users/:id/ban used to be two copies of this code. Neither checked who the
+ * cascade was about to hit. getLinkedAccounts() returns every account that ever shared an IP with
+ * the target — and on production all three admin accounts share an IP with some other account,
+ * because staff browse from the same home and phone networks as people who have been banned. The
+ * IP-ban exemption for admins only applies to sessions that are not themselves banned, so a
+ * cascade that set is_banned on an admin would have locked them out of their own site.
+ *
+ * Staff are now never swept up by the cascade, nobody can ban themselves by association, and a
+ * moderator cannot ban someone of equal or higher rank directly either.
+ */
+function performGlobalBan(req, res, { userId, reason, durationHours, ipAddress }) {
+    const targetUser = db.getUserById(parseInt(userId));
+    if (!targetUser) return res.status(404).json({ error: 'User not found' });
+    if (targetUser.id === req.user.id) return res.status(400).json({ error: 'You cannot ban yourself' });
+    if (permissions.isStaff(targetUser) && permissions.roleRank(targetUser.role) >= permissions.roleRank(req.user.role)) {
+        return res.status(403).json({ error: 'You cannot ban staff of equal or higher rank' });
+    }
+
+    const banReason = reason || 'Banned by moderator';
+    const expires = durationHours
+        ? new Date(Date.now() + parseInt(durationHours) * 3600000).toISOString()
+        : null;
+
+    // Auto-detect IP from connected WebSocket clients, then fall back to IP log
+    let resolvedIp = ipAddress || chatServer.getConnectedUserIp(targetUser.id);
+    if (!resolvedIp) {
+        const latest = db.getLatestIpForUser(targetUser.id);
+        if (latest) resolvedIp = latest.ip_address;
+    }
+
+    // Set the site-wide is_banned flag
+    db.run('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ?', [banReason, targetUser.id]);
+    db.run(
+        `INSERT INTO bans (user_id, ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?, ?)`,
+        [targetUser.id, resolvedIp, banReason, req.user.id, expires]
+    );
+
+    let cascadeBanned = 0, cascadeSkippedStaff = 0;
+    if (resolvedIp) {
+        // Standalone IP ban (catches future visits and new alts)
+        db.run(
+            `INSERT INTO bans (ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?)`,
+            [resolvedIp, banReason + ` (IP of ${targetUser.username})`, req.user.id, expires]
+        );
+        // Cascade: ban the other accounts that have used this IP — except staff and the moderator
+        // doing the banning.
+        for (const alt of db.getLinkedAccounts(targetUser.id)) {
+            if (alt.is_banned) continue;
+            if (alt.id === req.user.id || permissions.isStaff(alt)) { cascadeSkippedStaff++; continue; }
+            db.run('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ?',
+                [banReason + ` (alt of ${targetUser.username})`, alt.id]);
+            db.run(`INSERT INTO bans (user_id, reason, banned_by, expires_at) VALUES (?, ?, ?, ?)`,
+                [alt.id, banReason + ` (alt of ${targetUser.username})`, req.user.id, expires]);
+            chatServer.disconnectUser({ userId: alt.id });
+            cascadeBanned++;
+        }
+        if (cascadeBanned || cascadeSkippedStaff) {
+            console.log(`[Mod] Global ban cascade for ${targetUser.username}: ${cascadeBanned} alt account(s) banned, ${cascadeSkippedStaff} staff account(s) on a shared IP left alone`);
+        }
+    }
+
+    // Immediately disconnect the user from chat
+    chatServer.disconnectUser({ userId: targetUser.id, ip: resolvedIp });
+
+    db.logModerationAction({
+        scope_type: 'site',
+        actor_user_id: req.user.id,
+        target_user_id: targetUser.id,
+        action_type: 'global_ban',
+        details: { reason: banReason, duration_hours: durationHours || null, ip: resolvedIp, cascade_banned: cascadeBanned, cascade_skipped_staff: cascadeSkippedStaff },
+    });
+
+    return res.json({ message: `${targetUser.username} globally banned` });
+}
+
 router.post('/global-ban', permissions.requireGlobalMod, (req, res) => {
     try {
         const { user_id, reason, duration_hours, ip_address } = req.body;
         if (!user_id) return res.status(400).json({ error: 'user_id required' });
-
-        const targetUser = db.getUserById(parseInt(user_id));
-        if (!targetUser) return res.status(404).json({ error: 'User not found' });
-
-        const banReason = reason || 'Banned by moderator';
-        const expires = duration_hours
-            ? new Date(Date.now() + parseInt(duration_hours) * 3600000).toISOString()
-            : null;
-
-        // Auto-detect IP from connected WebSocket clients, then fall back to IP log
-        let resolvedIp = ip_address || chatServer.getConnectedUserIp(targetUser.id);
-        if (!resolvedIp) {
-            const latest = db.getLatestIpForUser(targetUser.id);
-            if (latest) resolvedIp = latest.ip_address;
-        }
-
-        // Set the site-wide is_banned flag
-        db.run('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ?',
-            [banReason, targetUser.id]);
-
-        // Create user-based global ban
-        db.run(
-            `INSERT INTO bans (user_id, ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?, ?)`,
-            [targetUser.id, resolvedIp, banReason, req.user.id, expires]
-        );
-
-        // Also create standalone IP ban for the IP (catches alt accounts + future visits)
-        if (resolvedIp) {
-            db.run(
-                `INSERT INTO bans (ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?)`,
-                [resolvedIp, banReason + ` (IP of ${targetUser.username})`, req.user.id, expires]
-            );
-
-            // Cascade: ban all other accounts that have ever used this IP
-            const linked = db.getLinkedAccounts(targetUser.id);
-            let cascadeBanned = 0;
-            for (const alt of linked) {
-                if (alt.is_banned) continue; // already banned
-                db.run('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ?',
-                    [banReason + ` (alt of ${targetUser.username})`, alt.id]);
-                db.run(`INSERT INTO bans (user_id, reason, banned_by, expires_at) VALUES (?, ?, ?, ?)`,
-                    [alt.id, banReason + ` (alt of ${targetUser.username})`, req.user.id, expires]);
-                chatServer.disconnectUser({ userId: alt.id });
-                cascadeBanned++;
-            }
-
-            if (cascadeBanned > 0) {
-                console.log(`[Mod] Global ban cascade: ${cascadeBanned} alt accounts of ${targetUser.username} also banned`);
-            }
-        }
-
-        // Immediately disconnect the user from chat
-        chatServer.disconnectUser({ userId: targetUser.id, ip: resolvedIp });
-
-        db.logModerationAction({
-            scope_type: 'site',
-            actor_user_id: req.user.id,
-            target_user_id: targetUser.id,
-            action_type: 'global_ban',
-            details: { reason: banReason, duration_hours: duration_hours || null, ip: resolvedIp },
-        });
-
-        res.json({ message: `${targetUser.username} globally banned` });
+        return performGlobalBan(req, res, { userId: user_id, reason, durationHours: duration_hours, ipAddress: ip_address });
     } catch (err) {
         console.error('[Mod] Global ban error:', err.message);
         res.status(500).json({ error: 'Failed to ban user' });
@@ -138,60 +155,11 @@ router.post('/global-ban', permissions.requireGlobalMod, (req, res) => {
 });
 
 // ── Per-User Ban/Unban (staff console) ───────────────────────
-// Aliases for /global-ban and unban — the staff console calls /mod/users/:id/ban
+// Same ban, addressed by URL; both routes share performGlobalBan so they cannot drift apart again.
 router.post('/users/:id/ban', permissions.requireGlobalMod, (req, res) => {
     try {
-        const userId = parseInt(req.params.id);
         const { reason, duration_hours } = req.body;
-
-        const targetUser = db.getUserById(userId);
-        if (!targetUser) return res.status(404).json({ error: 'User not found' });
-
-        const banReason = reason || 'Banned by moderator';
-        const expires = duration_hours
-            ? new Date(Date.now() + parseInt(duration_hours) * 3600000).toISOString()
-            : null;
-
-        let resolvedIp = chatServer.getConnectedUserIp(targetUser.id);
-        if (!resolvedIp) {
-            const latest = db.getLatestIpForUser(targetUser.id);
-            if (latest) resolvedIp = latest.ip_address;
-        }
-
-        db.run('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ?',
-            [banReason, targetUser.id]);
-        db.run(
-            `INSERT INTO bans (user_id, ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?, ?)`,
-            [targetUser.id, resolvedIp, banReason, req.user.id, expires]
-        );
-
-        if (resolvedIp) {
-            db.run(
-                `INSERT INTO bans (ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?)`,
-                [resolvedIp, banReason + ` (IP of ${targetUser.username})`, req.user.id, expires]
-            );
-            const linked = db.getLinkedAccounts(targetUser.id);
-            for (const alt of linked) {
-                if (alt.is_banned) continue;
-                db.run('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ?',
-                    [banReason + ` (alt of ${targetUser.username})`, alt.id]);
-                db.run(`INSERT INTO bans (user_id, reason, banned_by, expires_at) VALUES (?, ?, ?, ?)`,
-                    [alt.id, banReason + ` (alt of ${targetUser.username})`, req.user.id, expires]);
-                chatServer.disconnectUser({ userId: alt.id });
-            }
-        }
-
-        chatServer.disconnectUser({ userId: targetUser.id, ip: resolvedIp });
-
-        db.logModerationAction({
-            scope_type: 'site',
-            actor_user_id: req.user.id,
-            target_user_id: targetUser.id,
-            action_type: 'global_ban',
-            details: { reason: banReason, duration_hours: duration_hours || null, ip: resolvedIp },
-        });
-
-        res.json({ message: `${targetUser.username} globally banned` });
+        return performGlobalBan(req, res, { userId: req.params.id, reason, durationHours: duration_hours });
     } catch (err) {
         console.error('[Mod] User ban error:', err.message);
         res.status(500).json({ error: 'Failed to ban user' });
@@ -852,10 +820,15 @@ router.post('/ip/ban-all', permissions.requireGlobalMod, (req, res) => {
             scope_type: 'site',
             actor_user_id: req.user.id,
             action_type: 'ip_ban_all',
-            details: { ip, reason: banReason, banned_user_ids: bannedIds, duration_hours: duration_hours || null },
+            details: { ip, reason: banReason, banned_user_ids: [...bannedIds], skipped_staff_ids: bannedIds.skippedStaff || [], duration_hours: duration_hours || null },
         });
 
-        res.json({ message: `Banned IP ${ip} and ${bannedIds.length} associated account(s)`, banned_user_ids: bannedIds });
+        const skipped = (bannedIds.skippedStaff || []).length;
+        res.json({
+            message: `Banned IP ${ip} and ${bannedIds.length} associated account(s)` + (skipped ? ` — ${skipped} staff account(s) on this IP were not banned` : ''),
+            banned_user_ids: [...bannedIds],
+            skipped_staff_ids: bannedIds.skippedStaff || [],
+        });
     } catch (err) {
         console.error('[Mod] IP ban-all error:', err.message);
         res.status(500).json({ error: 'Failed to ban IP' });
