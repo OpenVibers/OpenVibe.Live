@@ -2076,7 +2076,10 @@ async function loadHome() {
     _homeClipsPage = 1;
     _homePastesPage = 1;
 
-    try {
+    // Deliberately NOT awaited. Every other section used to sit behind this one request, so a
+    // slow /streams held up the clips, VODs, pastes, digest and star rails even though none of
+    // them depend on it. They all start together now and each fills in as it arrives.
+    void (async () => { try {
         // Paint last visit's grid immediately, then reconcile with what is live now. The cached
         // copy is at most 20 seconds old; anything older falls through to a normal load and the
         // placeholders cover the gap.
@@ -2093,7 +2096,7 @@ async function loadHome() {
         if (window.OVSkeleton) OVSkeleton.clear('stream-grid-live');
         const noLiveEl = document.getElementById('no-live-streams');
         if (noLiveEl) noLiveEl.style.display = '';
-    }
+    } })();
 
     loadHomeRecentOnline();
     void loadHomePulse();     // happening-now rail + weekly leaders + AI moments + latest update
