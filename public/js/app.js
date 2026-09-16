@@ -835,6 +835,14 @@ function onAuthChange() {
             if (navAv) navAv.innerHTML = _avatarInner(currentUser.avatar_url, currentUser.username);
             const navUn = document.getElementById('nav-username');
             if (navUn) navUn.textContent = currentUser.display_name || currentUser.username;
+            // The account menu opens with the same identity the navbar shows, so it does not need
+            // a second source of truth — it is filled from here.
+            const udAv = document.getElementById('ud-avatar');
+            if (udAv) udAv.innerHTML = _avatarInner(currentUser.avatar_url, currentUser.username);
+            const udName = document.getElementById('ud-name');
+            if (udName) udName.textContent = currentUser.display_name || currentUser.username;
+            const udHandle = document.getElementById('ud-handle');
+            if (udHandle) udHandle.textContent = '@' + (currentUser.username || '');
             loadBalance();
         } else {
             anon.style.display = '';
@@ -872,6 +880,8 @@ async function loadBalance() {
         const bal = Math.round(data.balance || 0);
         const balEl = document.getElementById('nav-balance-amount');
         if (balEl) balEl.textContent = bal.toLocaleString();
+        const udV = document.getElementById('ud-vibes');
+        if (udV) udV.textContent = bal.toLocaleString();
     } catch { /* silent */ }
     // Navbar OpenCoins = the GLOBAL currency (game / cosmetics / media wallet).
     try {
@@ -879,6 +889,8 @@ async function loadBalance() {
         const coins = coinData.balance || 0;
         const coinEl = document.getElementById('nav-coins-amount');
         if (coinEl) coinEl.textContent = coins.toLocaleString();
+        const udC = document.getElementById('ud-coins');
+        if (udC) udC.textContent = coins.toLocaleString();
     } catch { /* silent */ }
 }
 
