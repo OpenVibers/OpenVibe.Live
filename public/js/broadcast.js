@@ -5754,7 +5754,10 @@ function _initPipDragResize() {
     preview.addEventListener('pointercancel', onPointerUp);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+// This file is loaded on demand when /broadcast is opened, which is almost always after
+// DOMContentLoaded has already fired — a listener added then never runs. Run immediately if the
+// document is already parsed, and wait only when it genuinely is not.
+const _bcBoot = () => {
     initBroadcastSettingsListeners();
     // Restoring the saved tab can issue broadcast API calls and force a layout on a hidden page.
     // Only do it once the broadcast desk is the route the visitor is actually on.
@@ -5829,7 +5832,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── PiP drag/resize on preview ──
     _initPipDragResize();
-});
+};
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _bcBoot);
+else _bcBoot();
 
 // ═══════════════════════════════════════════════════════════════
 // Media Request PiP Player (inline on broadcast page)

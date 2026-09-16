@@ -1145,6 +1145,32 @@ function setPageTitle(name) {
 }
 window.setPageTitle = setPageTitle;
 
+/** No-op fallback: if the inline bundle loader is missing, routes still resolve. */
+if (typeof window.ovLoadRoute !== 'function') window.ovLoadRoute = () => Promise.resolve();
+
+/**
+ * Warm the route bundles once the page has gone quiet.
+ *
+ * Taking them off the initial parse is the win; making the reader wait for a download when they
+ * finally click "Go live" would just move the cost somewhere more annoying. requestIdleCallback
+ * fetches them while nothing else is happening, so the first navigation to those routes is as
+ * instant as it was when they shipped on every page — without costing anything on the pages that
+ * never use them.
+ */
+(function warmRouteBundles() {
+    let done = false;
+    const go = () => {
+        if (done) return; done = true;
+        try { if (typeof window.ovPrefetchRoutes === 'function') window.ovPrefetchRoutes(); } catch { /* */ }
+    };
+    const start = () => {
+        if ('requestIdleCallback' in window) requestIdleCallback(go, { timeout: 12000 });
+        else setTimeout(go, 6000);
+    };
+    if (document.readyState === 'complete') setTimeout(start, 2500);
+    else window.addEventListener('load', () => setTimeout(start, 2500), { once: true });
+})();
+
 function routeFromURL() {
     // Remove the server-rendered SEO prerender block once the SPA takes over (it's crawlable
     // content for no-JS scrapers; JS clients render the real interactive page instead).
@@ -1193,8 +1219,9 @@ function routeFromURL() {
         navigate('/dashboard', true);
         return;
     } else if (segments[0] === 'broadcast') {
+        // Show the shell first so the route feels instant, then fill it once its bundle is in.
         showPage('broadcast');
-        loadBroadcastPage();
+        ovLoadRoute('broadcast').then(() => { if (typeof loadBroadcastPage === 'function') loadBroadcastPage(); });
     } else if (segments[0] === 'admin') {
         window.location.href = `${getOpenVibeToolsUrl()}/admin`;
         return;
@@ -1233,7 +1260,7 @@ function routeFromURL() {
         if (typeof loadRecapPage === 'function') loadRecapPage(segments[1]);
     } else if (segments[0] === 'arena') {
         showPage('arena');
-        if (typeof loadArenaPage === 'function') loadArenaPage(segments);
+        ovLoadRoute('arena').then(() => { if (typeof loadArenaPage === 'function') loadArenaPage(segments); });
     } else if (segments[0] === 'updates') {
         showPage('updates');
         loadUpdatesPage();

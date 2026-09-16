@@ -5117,7 +5117,50 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/ov-skeleton.js?v=1" defer></script>
 <script src="/js/ov-odometer.js?v=3" defer></script>
 <script src="/js/ov-density.js?v=3" defer></script>
-<script src="/js/app.js?v=175" defer></script>
+<!-- ── Route bundles ──────────────────────────────────────────────────────────
+     Measured with Chrome's precise coverage on a loaded home page: 14.3% of the JavaScript this
+     page ships actually executes. The broadcast desk and the Arena are the clearest of the rest —
+     471KB and 57KB of source that only ever runs on /broadcast and /arena, parsed and compiled on
+     every visit to every other page.
+
+     They load when the route is opened, and again during idle time after first paint so a later
+     navigation is instant. Execution order inside a bundle is preserved (async=false on an
+     injected script keeps document order), which matters: broadcast-workspace.js has to run
+     before broadcast.js, as the old tag order did.
+
+     Everything outside these files that reaches into them already guards with
+     `typeof fn === 'function'`, so a page where the bundle has not loaded behaves as it did
+     before the route existed rather than throwing. -->
+<script>
+(function () {
+    var BUNDLES = {
+        broadcast: ['/js/broadcast-workspace.js?v=16', '/js/broadcast.js?v=31'],
+        arena: ['/js/arena.js?v=18']
+    };
+    var started = Object.create(null);
+    function one(src) {
+        if (started[src]) return started[src];
+        started[src] = new Promise(function (resolve) {
+            var s = document.createElement('script');
+            s.src = src;
+            s.async = false;                 // keeps execution in the order they are appended
+            s.onload = function () { resolve(true); };
+            s.onerror = function () { console.warn('[routes] failed to load', src); resolve(false); };
+            document.head.appendChild(s);
+        });
+        return started[src];
+    }
+    window.ovLoadRoute = function (name) {
+        var list = BUNDLES[name];
+        if (!list) return Promise.resolve();
+        return Promise.all(list.map(one));   // appended together, so they run in order
+    };
+    window.ovPrefetchRoutes = function () {
+        for (var k in BUNDLES) window.ovLoadRoute(k);
+    };
+})();
+</script>
+<script src="/js/app.js?v=176" defer></script>
 <script src="/js/stream-player.js?v=22" defer></script>
 <script src="/js/stream-pip.js?v=1" defer></script>
 <script src="/js/chat-shared.js?v=3" defer></script>
@@ -5181,15 +5224,12 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/broadcast-media-setup.js?v=1" defer></script>
 <script src="/js/broadcast-devices.js?v=2" defer></script>
 <script src="/js/broadcast-vods.js?v=2" defer></script>
-<script src="/js/broadcast-workspace.js?v=16" defer></script>
-<script src="/js/broadcast.js?v=30" defer></script>
 <script src="/js/call.js?v=3" defer></script>
 <script src="/js/voice-channels.js?v=2" defer></script>
 <script src="/js/settings.js?v=12" defer></script>
 <script src="/js/staff-console.js?v=1" defer></script>
 <script src="/js/dashboard-moderation.js?v=5" defer></script>
 <script src="/js/ai-viewers.js?v=3" defer></script>
-<script src="/js/arena.js?v=18" defer></script>
 <script src="/js/recap.js?v=1" defer></script>
 <script src="/js/context-cards.js?v=4" defer></script>
 <script src="/js/powerchat.js?v=10" defer></script>
