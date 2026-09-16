@@ -1956,7 +1956,9 @@ function _startHeroStatsLive() {
             for (const [key, now, avg, peak] of reBase) {
                 wrap.querySelectorAll(`[data-stat="${key}"] .hero-stat-delta`).forEach(el => {
                     const html = _baselineDeltaHTML(now, avg, peak);
-                    if (html) el.outerHTML = html;
+                    // Replacing the node every ten seconds whether or not it changed was a steady
+                    // stream of mutations for every observer watching the board.
+                    if (html && el.outerHTML !== html) el.outerHTML = html;
                 });
             }
             for (const [key, rec] of Object.entries(DELTA_FOR)) {
@@ -2185,13 +2187,10 @@ function renderHeroCollage(media) {
         const z = Math.round(-260 + Math.random() * 380);
         const depth = (z + 260) / 380;                 // 0 = far, 1 = near
         const op = (0.32 + depth * 0.44).toFixed(2);
-        const blur = (Math.max(0, -z) / 130 * 1.7).toFixed(2);
         const size = Math.round(84 + depth * 98);
-        const rx = (Math.random() * 10 - 5).toFixed(1);
-        const ry = (Math.random() * 14 - 7).toFixed(1);
         const rot = (Math.random() * 6 - 3).toFixed(1);
         el.style.cssText = `left:${positions[i].left}%;top:${positions[i].top}%;`
-            + `--w:${size}px;--z:${z}px;--op:${op};--blur:${blur}px;--rx:${rx}deg;--ry:${ry}deg;--rot:${rot}deg;`
+            + `--w:${size}px;--op:${op};--rot:${rot}deg;`
             + `--dur:${(11 + Math.random() * 9).toFixed(1)}s;--delay:${(Math.random() * -8).toFixed(1)}s;--in-delay:${(i * 0.05).toFixed(2)}s;`;
         _heroFloatFill(el, media[i % media.length]);
         wrap.appendChild(el);
@@ -2201,12 +2200,17 @@ function renderHeroCollage(media) {
     if (reduce || media.length <= count) return;
     let ptr = count;
     _heroCollageTimer = setInterval(() => {
+        // A swap decodes an image and repaints a card. Nobody sees it while the hero is scrolled
+        // away or the tab is in the background, so it waits.
         if (document.hidden) return;
+        const heroEl = document.querySelector('#page-home .hero');
+        if (heroEl && heroEl.hasAttribute('data-fx-viewport') && !heroEl.classList.contains('fx-live')) return;
+        if (!document.getElementById('page-home')?.classList.contains('active')) return;
         const card = cards[Math.floor(Math.random() * cards.length)];
         const item = media[ptr % media.length]; ptr++;
         card.classList.add('swapping');
         setTimeout(() => { _heroFloatFill(card, item); card.classList.remove('swapping'); }, 560);
-    }, 5600);
+    }, 8000);
 }
 
 // Mouse-parallax: gently tilt the whole 3D collage toward the cursor (desktop only).
@@ -2218,15 +2222,22 @@ function _heroParallaxInit() {
     if (!hero || !collage) return;
     if (window.matchMedia && (window.matchMedia('(prefers-reduced-motion: reduce)').matches || window.matchMedia('(pointer: coarse)').matches)) return;
     _heroParallaxBound = true;
-    let raf = 0, ry = 0, rx = 0;
-    const apply = () => { raf = 0; collage.style.setProperty('--tilt-y', ry.toFixed(2) + 'deg'); collage.style.setProperty('--tilt-x', rx.toFixed(2) + 'deg'); };
-    hero.addEventListener('pointermove', (e) => {
-        const r = hero.getBoundingClientRect();
-        ry = (((e.clientX - r.left) / r.width) * 2 - 1) * 7;
-        rx = -(((e.clientY - r.top) / r.height) * 2 - 1) * 5;
-        if (!raf) raf = requestAnimationFrame(apply);
-    }, { passive: true });
-    hero.addEventListener('pointerleave', () => { ry = 0; rx = 0; if (!raf) raf = requestAnimationFrame(apply); });
+    // Parallax is a plain 2D shift of the whole collage, written straight to its transform. It used
+    // to write --tilt-x/--tilt-y custom properties; custom properties inherit, so every pointer move
+    // invalidated style for the collage and every card inside it, and the rotateX/rotateY they fed
+    // kept the scene in 3D. The rect is read once per frame rather than once per pointer event.
+    let raf = 0, nx = 0, ny = 0, lastE = null;
+    const apply = () => {
+        raf = 0;
+        if (lastE) {
+            const r = hero.getBoundingClientRect();
+            nx = ((lastE.clientX - r.left) / r.width) * 2 - 1;
+            ny = ((lastE.clientY - r.top) / r.height) * 2 - 1;
+        }
+        collage.style.transform = `translate3d(${(-nx * 14).toFixed(1)}px, ${(-ny * 9).toFixed(1)}px, 0)`;
+    };
+    hero.addEventListener('pointermove', (e) => { lastE = e; if (!raf) raf = requestAnimationFrame(apply); }, { passive: true });
+    hero.addEventListener('pointerleave', () => { lastE = null; nx = 0; ny = 0; if (!raf) raf = requestAnimationFrame(apply); });
 }
 
 // ── Hero data: stats + collage + AI slogans (falls back gracefully) ──
