@@ -1369,8 +1369,8 @@ function renderHeroStats(stats) {
 
     // ── Right now ────────────────────────────────────────────────
     const now = [
-        { key: 'liveNow', cls: stats.liveNow > 0 ? 'hero-stat--live' : '', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', num: stats.liveNow, label: 'Live', title: stats.liveNow > 0 ? 'Streams live right now' : 'Nobody is live right now — check Recently Online below' },
-        { key: 'viewersNow', cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', icon: 'fa-eye', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
+        { key: 'liveNow', deltaHTML: baselineDelta(stats.liveNow, CC.liveAvg24h, CC.livePeak24h), cls: stats.liveNow > 0 ? 'hero-stat--live' : '', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', num: stats.liveNow, label: 'Live', title: stats.liveNow > 0 ? 'Streams live right now' : 'Nobody is live right now — check Recently Online below' },
+        { key: 'viewersNow', deltaHTML: baselineDelta(stats.viewersNow, CC.viewersAvg24h, CC.viewersPeak24h), cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', icon: 'fa-eye', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
         { key: 'weeklyActive', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active', title: 'People who chatted in the last 7 days', desc: 'Distinct chatters in the last 7 days — signed-in users, anonymous chatters and relayed (Twitch/Kick/YouTube) chatters, each counted once.', metric: 'active' },
         { key: 'weeklyVisitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors', title: 'First-time visitors in the last 7 days', desc: 'Browsers seen on the site for the first time in the last 7 days (a privacy-safe fingerprint, no account needed). A proxy for new people showing up, not just chatting.', metric: 'visitors' },
     ];
@@ -1392,12 +1392,12 @@ function renderHeroStats(stats) {
     // ── Community ────────────────────────────────────────────────
     groups.push({
         kicker: 'Community', icon: 'fa-people-group', rows: [
-            { key: 'streamers', icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', metric: 'streamers', title: 'People who have gone live' },
+            { key: 'streamers', recent: R.streamers, icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', metric: 'streamers', title: 'People who have gone live' },
             { key: 'users', icon: 'fa-users', num: stats.users, label: 'Users', metric: 'users', title: 'Registered users', recent: R.users },
             { key: 'anons', icon: 'fa-user-secret', num: stats.anons, label: 'Anons', metric: 'anons', title: 'Anonymous chatters ever seen', recent: R.anons },
             { icon: 'fa-heart', num: stats.follows, label: 'Follows', metric: 'follows', title: 'Channel follows', recent: R.follows },
             { key: 'chatMessages', icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', metric: 'messages', title: 'Chat messages sent', recent: R.messages },
-            { key: 'hoursWatched', icon: 'fa-couch', num: stats.hoursWatched, label: 'Hrs Watched', metric: 'hoursWatched', title: 'Hours the community has spent watching streams', unit: 'h' },
+            { key: 'hoursWatched', recent: R.hours, unit: 'h', icon: 'fa-couch', num: stats.hoursWatched, label: 'Hrs Watched', metric: 'hoursWatched', title: 'Hours the community has spent watching streams', unit: 'h' },
         ],
     });
 
@@ -1405,20 +1405,20 @@ function renderHeroStats(stats) {
     groups.push({
         kicker: 'Economy', icon: 'fa-coins', rows: [
             { icon: 'fa-hand-holding-dollar', num: stats.vibesTipped, label: 'Vibes Tipped', metric: 'vibes', title: 'Vibes donated between people (100 Vibes = $1)', recent: R.vibes },
-            { icon: 'fa-hand-holding-heart', num: stats.supporters, label: 'Supporters', metric: 'supporters', title: 'People who have tipped Vibes to a streamer' },
+            { recent: R.supporters, icon: 'fa-hand-holding-heart', num: stats.supporters, label: 'Supporters', metric: 'supporters', title: 'People who have tipped Vibes to a streamer' },
             { icon: 'fa-cart-shopping', num: stats.vibesBought, label: 'Vibes Bought', metric: 'vibesBought', title: 'Vibes purchased with real money (PowerChat, card, PayPal, crypto)', recent: R.vibesBought },
             { icon: 'fa-star', num: stats.activeSubs, label: 'Subs', metric: 'subs', title: 'Active channel subscriptions', recent: R.subs },
             // OpenCoins are network-wide; channel points below are per channel. Shown only when
             // the wallet service answered — four zeroed chips would read as "nobody has any".
             ...(stats.coinsEarned != null ? [
-                { icon: 'fa-circle-dollar-to-slot', num: stats.coinsEarned, label: 'Coins Earned', title: 'OpenCoins earned across the whole network — the site-wide currency you get for watching, chatting and using the tools' },
-                { icon: 'fa-basket-shopping', num: stats.coinsSpent, label: 'Coins Spent', title: 'OpenCoins spent on emotes, themes, cosmetics and sounds' },
+                { recent: R.coinsEarned, icon: 'fa-circle-dollar-to-slot', num: stats.coinsEarned, label: 'Coins Earned', title: 'OpenCoins earned across the whole network — the site-wide currency you get for watching, chatting and using the tools' },
+                { recent: R.coinsSpent, icon: 'fa-basket-shopping', num: stats.coinsSpent, label: 'Coins Spent', title: 'OpenCoins spent on emotes, themes, cosmetics and sounds' },
                 { icon: 'fa-vault', num: stats.coinsCirculating, label: 'Coins Held', title: 'OpenCoins sitting in wallets right now, across every OpenVibe site' },
-                { icon: 'fa-wallet', num: stats.coinHolders, label: 'Wallets', title: 'People holding OpenCoins' },
+                { recent: R.coinHolders, icon: 'fa-wallet', num: stats.coinHolders, label: 'Wallets', title: 'People holding OpenCoins' },
             ] : []),
             { icon: 'fa-coins', num: stats.pointsEarned, label: 'Points Earned', metric: 'points', title: 'Channel points earned by viewers (watching, chatting, following) — per channel, unlike OpenCoins', recent: R.points },
             { icon: 'fa-gift', num: stats.pointsSpent, label: 'Points Spent', metric: 'pointsSpent', title: `Channel points spent on rewards · ${_fmtCount(stats.redemptions || 0)} rewards redeemed`, recent: R.pointsSpent, sub: stats.redemptions ? `${_fmtCount(stats.redemptions)} rewards` : '' },
-            { icon: 'fa-bullseye', num: stats.goalsActive, label: 'Goals', title: `Donation goals running now · ${stats.goalsReached || 0} reached so far`, sub: stats.goalsReached ? `${_fmtCount(stats.goalsReached)} reached` : '' },
+            { recent: R.goals, icon: 'fa-bullseye', num: stats.goalsActive, label: 'Goals', title: `Donation goals running now · ${stats.goalsReached || 0} reached so far`, sub: stats.goalsReached ? `${_fmtCount(stats.goalsReached)} reached` : '' },
         ],
     });
 
@@ -1430,7 +1430,7 @@ function renderHeroStats(stats) {
             { icon: 'fa-scissors', num: stats.clips, label: 'Clips', metric: 'clips', title: 'Clips created', recent: R.clips },
             { icon: 'fa-clock', num: stats.streamHours, label: 'Hours', metric: 'hours', title: 'Hours of video archived', recent: R.hours, unit: 'h' },
             { icon: 'fa-brain', num: stats.aiMemories, label: 'AI Moments', metric: 'aiMoments', title: 'Moments the AI remembers across every stream', recent: R.aiMoments },
-            { icon: 'fa-face-grin-squint', num: stats.emotes, label: 'Emotes', metric: 'emotes', title: 'Custom channel emotes uploaded' },
+            { recent: R.emotes, icon: 'fa-face-grin-squint', num: stats.emotes, label: 'Emotes', metric: 'emotes', title: 'Custom channel emotes uploaded' },
             { icon: 'fa-paste', num: stats.pastes, label: 'Pastes', title: `${stats.pasteText || 0} text · ${stats.pasteImages || 0} image pastes`, sub: (stats.pasteText != null && stats.pasteImages != null) ? `${_fmtCount(stats.pasteText)} txt · ${_fmtCount(stats.pasteImages)} img` : '' },
         ],
     });
