@@ -341,7 +341,10 @@ router.delete('/ban/:id', (req, res) => {
 });
 
 // ── Search chat messages (all users) ─────────────────────────
-router.get('/chat/search', (req, res) => {
+// Unscoped: searches every channel's chat, by user or by text. Every other route in this file
+// checks a permission in its body; these two had none, so requireAuth alone let any signed-in
+// account read anyone's chat history site-wide. Their only caller is the staff console.
+router.get('/chat/search', permissions.requireGlobalMod, (req, res) => {
     try {
         const limit = Math.min(parseInt(req.query.limit || '50'), 200);
         const offset = parseInt(req.query.offset || '0');
@@ -372,7 +375,7 @@ router.get('/chat/search', (req, res) => {
 });
 
 // ── View a user's chat history ───────────────────────────────
-router.get('/chat/user/:userId', (req, res) => {
+router.get('/chat/user/:userId', permissions.requireGlobalMod, (req, res) => {
     try {
         const userId = parseInt(req.params.userId);
         const limit = Math.min(parseInt(req.query.limit || '50'), 200);
