@@ -965,10 +965,20 @@ function ovPutCards(container, html, append) {
     if (!append) { container.innerHTML = html; return; }
     const first = container.children.length;
     container.insertAdjacentHTML('beforeend', html);
+    const added = Array.prototype.slice.call(container.children, first);
+
+    // home-fx runs its own scroll-reveal over every .stream-card on the home page and parks each
+    // one at opacity 0 until it is scrolled to. That is right for cards the reader is scrolling
+    // toward and wrong for cards they just asked for by name. Worse, the two animations fight:
+    // when .ov-enter is cleaned up below, a card that had not been revealed yet would drop back
+    // to opacity 0 and disappear. Marking these as already revealed makes attachReveal() skip
+    // them — it early-returns on .hfx-reveal — and leaves them opaque underneath, so .ov-enter is
+    // the only thing animating.
+    added.forEach(el => el.classList.add('hfx-reveal', 'is-in'));
+
     let reduce = false;
     try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { /* */ }
     if (reduce) return;
-    const added = Array.prototype.slice.call(container.children, first);
     added.forEach((el, i) => {
         el.classList.add('ov-enter');
         el.style.setProperty('--ov-enter-i', String(Math.min(i, 11)));
