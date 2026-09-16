@@ -3926,6 +3926,35 @@ function recordViewerSample() {
     run(`DELETE FROM viewer_samples WHERE sampled_at < datetime('now', '-7 days')`);
     return r;
 }
+/**
+ * What "normal" looks like for the two instantaneous numbers.
+ *
+ * Live streams and current viewers have no seven-day total — they are readings, not counters, so
+ * "+2 in 7d" is meaningless for them. What is meaningful is whether right now is busier or
+ * quieter than usual, and the five-minute sampler has been recording exactly that for a week.
+ * Averages are taken over samples where anything was happening, so a quiet night does not drag
+ * the baseline to zero and make every daytime reading look like a record.
+ */
+function getConcurrencyBaseline() {
+    _ensureViewerSamples();
+    const row = get(`
+        SELECT
+            AVG(CASE WHEN sampled_at >= datetime('now','-1 day') AND viewers > 0 THEN viewers END)      AS vAvg24,
+            MAX(CASE WHEN sampled_at >= datetime('now','-1 day') THEN viewers END)                      AS vPeak24,
+            AVG(CASE WHEN viewers > 0 THEN viewers END)                                                 AS vAvg7,
+            AVG(CASE WHEN sampled_at >= datetime('now','-1 day') AND live_streams > 0 THEN live_streams END) AS lAvg24,
+            MAX(CASE WHEN sampled_at >= datetime('now','-1 day') THEN live_streams END)                 AS lPeak24,
+            AVG(CASE WHEN live_streams > 0 THEN live_streams END)                                       AS lAvg7,
+            COUNT(*)                                                                                    AS samples
+        FROM viewer_samples WHERE sampled_at >= datetime('now','-7 days')`) || {};
+    const num = (v) => (Number.isFinite(Number(v)) ? Math.round(Number(v) * 10) / 10 : null);
+    return {
+        viewersAvg24h: num(row.vAvg24), viewersPeak24h: num(row.vPeak24), viewersAvg7d: num(row.vAvg7),
+        liveAvg24h: num(row.lAvg24), livePeak24h: num(row.lPeak24), liveAvg7d: num(row.lAvg7),
+        samples: Number(row.samples) || 0,
+    };
+}
+
 function getViewerTrend(hours = 24, maxPoints = 48) {
     _ensureViewerSamples();
     const rows = all(`SELECT strftime('%s', sampled_at) AS t, viewers, live_streams FROM viewer_samples
@@ -8196,6 +8225,7 @@ function addToDonationGoal(id, amount) {
 }
 
 module.exports = {
+    getConcurrencyBaseline,
     getHomeStatSeries, HOME_SERIES_KEYS, vibesStatsSince, _computeHomeStats,
     getVodAiState, getClipAiState,
     scheduleClipNotifyState, bumpClipNotifyNowState, markClipNotifiedState, getDueClipNotifies,

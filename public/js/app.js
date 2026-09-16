@@ -1325,6 +1325,23 @@ function startHeroQuips(quips) {
 }
 
 // ── Hero stats bar (animated count-up) ──────────────────────────
+function _baselineDeltaHTML(now, avg, peak, window = '24h') {
+    const n = Number(now) || 0;
+    const a = Number(avg);
+    const fmtAvg = (v) => (v < 10 ? String(Math.round(v * 10) / 10) : _fmtCount(Math.round(v)));
+    if (!Number.isFinite(a) || a <= 0) {
+        const tip = n > 0 ? `${_fmtCount(n)} right now — nothing recorded in the last ${window}`
+            : `Nothing in the last ${window}`;
+        return `<span class="hero-stat-delta ${n > 0 ? 'is-up' : 'is-flat'}" title="${esc(tip)}"><b>${n > 0 ? 'first today' : 'quiet'}</b></span>`;
+    }
+    const pct = Math.round(((n - a) / a) * 100);
+    const bits = [`${_fmtCount(n)} right now`, `${fmtAvg(a)} on average over the last ${window}`];
+    if (Number.isFinite(Number(peak))) bits.push(`peak ${_fmtCount(Math.round(peak))}`);
+    const cls = pct > 0 ? 'is-up' : pct < 0 ? 'is-down' : 'is-flat';
+    return `<span class="hero-stat-delta ${cls}" title="${esc(bits.join(' · '))}">`
+        + `<b>${pct > 0 ? '+' : ''}${pct}%</b><em>vs ${window}</em></span>`;
+}
+
 function _heroStatFmt(n) {
     n = Math.max(0, Math.round(n || 0));
     if (n >= 1000000) return (n / 1000000).toFixed(n >= 10000000 ? 0 : 1).replace(/\.0$/, '') + 'M';
@@ -1441,6 +1458,14 @@ function renderHeroStats(stats) {
         const up = pct > 0;
         return `<span class="hero-stat-trend ${up ? 'is-up' : 'is-down'}"><i></i>${Math.abs(pct)}%</span>`;
     };
+    /**
+     * The two instantaneous readings — streams live and people watching — against what's normal.
+     *
+     * A seven-day total makes no sense for a reading, but "busier than usual" does, and the
+     * five-minute sampler has a week of history to compare against. Averages ignore samples where
+     * nothing was happening, so an empty night doesn't make every afternoon look like a record.
+     */
+    const baselineDelta = (now, avg, peak, window = '24h') => _baselineDeltaHTML(now, avg, peak, window);
     const recDelta = (rec, u = '') => {
         if (!rec) return '';
         const w = Number(rec.w), pw = Number(rec.pw);
@@ -1463,7 +1488,7 @@ function renderHeroStats(stats) {
             metric: r.metric || null,
         };
         const clickable = !!r.metric;
-        return `<div class="hero-stat ${r.cls || ''} ${clickable ? 'hero-stat--clickable' : ''}" ${r.key ? `data-stat="${r.key}"` : ''} data-tip="${esc(JSON.stringify(tip))}" ${clickable ? `data-metric="${r.metric}" role="button" tabindex="0" aria-label="${esc(r.label)} — show over time"` : ''}><i class="fa-solid ${r.icon}"></i><div class="hero-stat-meta"><span class="hero-stat-num" data-n="${r.num || 0}">0</span><span class="hero-stat-label">${r.label}${clickable ? ' <i class="fa-solid fa-chart-line hero-stat-chart-hint"></i>' : ''}</span>${sub && !r.recent ? `<span class="hero-stat-sub">${sub}</span>` : ''}</div>${recDelta(r.recent, r.unit || '')}</div>`;
+        return `<div class="hero-stat ${r.cls || ''} ${clickable ? 'hero-stat--clickable' : ''}" ${r.key ? `data-stat="${r.key}"` : ''} data-tip="${esc(JSON.stringify(tip))}" ${clickable ? `data-metric="${r.metric}" role="button" tabindex="0" aria-label="${esc(r.label)} — show over time"` : ''}><i class="fa-solid ${r.icon}"></i><div class="hero-stat-meta"><span class="hero-stat-num" data-n="${r.num || 0}">0</span><span class="hero-stat-label">${r.label}${clickable ? ' <i class="fa-solid fa-chart-line hero-stat-chart-hint"></i>' : ''}</span>${sub && !r.recent ? `<span class="hero-stat-sub">${sub}</span>` : ''}</div>${r.deltaHTML || recDelta(r.recent, r.unit || '')}</div>`;
     };
     // The full board is four groups and two dozen chips. Shown by default it pushed every live
     // stream on the site below the fold, and because it only arrives once the stats request lands
@@ -1475,9 +1500,10 @@ function renderHeroStats(stats) {
     // Seven live numbers, three to a row. These are the ones that move — every other number on
     // the board is an all-time total that changes once an hour at best, so it lives under the
     // toggle. Each is keyed so the poller below can roll it to a new value without a re-render.
+    const CC = stats.concurrency || {};
     const HEADLINE = [
-        { key: 'liveNow', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', cls: stats.liveNow > 0 ? 'hero-stat--live' : '', num: stats.liveNow, label: 'Live', title: 'Streams live right now' },
-        { key: 'viewersNow', icon: 'fa-eye', cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
+        { key: 'liveNow', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', cls: stats.liveNow > 0 ? 'hero-stat--live' : '', num: stats.liveNow, label: 'Live', title: 'Streams live right now', deltaHTML: baselineDelta(stats.liveNow, CC.liveAvg24h, CC.livePeak24h) },
+        { key: 'viewersNow', icon: 'fa-eye', cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now', deltaHTML: baselineDelta(stats.viewersNow, CC.viewersAvg24h, CC.viewersPeak24h) },
         { key: 'weeklyActive', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active · 7d', title: 'People who chatted in the last 7 days', recent: { w: stats.weeklyActive, pw: stats.prevWeeklyActive } },
         { key: 'users', icon: 'fa-user-group', num: stats.users, label: 'Users', title: 'Accounts on OpenVibe.Live', recent: R.users },
         { key: 'weeklyVisitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors · 7d', title: 'First-time visitors in the last 7 days', recent: { w: stats.weeklyVisitors, pw: stats.prevWeeklyVisitors } },
@@ -1606,6 +1632,16 @@ function _startHeroStatsLive() {
                 weeklyActive: { w: d.weeklyActive, pw: d.prevWeeklyActive },
                 weeklyVisitors: { w: d.weeklyVisitors, pw: d.prevWeeklyVisitors },
             };
+            // The two instantaneous readings are re-rendered whole: their pill is a percentage
+            // against a moving baseline, not a running total, so patching one number isn't enough.
+            const cc = d.concurrency || {};
+            const reBase = [['liveNow', d.liveNow, cc.liveAvg24h, cc.livePeak24h], ['viewersNow', d.viewersNow, cc.viewersAvg24h, cc.viewersPeak24h]];
+            for (const [key, now, avg, peak] of reBase) {
+                wrap.querySelectorAll(`[data-stat="${key}"] .hero-stat-delta`).forEach(el => {
+                    const html = _baselineDeltaHTML(now, avg, peak);
+                    if (html) el.outerHTML = html;
+                });
+            }
             for (const [key, rec] of Object.entries(DELTA_FOR)) {
                 const w = rec && Number(rec.w);
                 if (!Number.isFinite(w)) continue;
