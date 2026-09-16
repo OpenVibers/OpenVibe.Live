@@ -301,6 +301,9 @@ router.get('/sso/login', (req, res) => {
         scope: 'profile theme',
         state,
     });
+    // ?silent=1: continue as the account openvibe.network already knows (no chooser); if the
+    // network has no session either, it bounces back with error=login_required and we stay quiet.
+    if (req.query.silent) params.set('prompt', 'none');
     res.redirect(`${getNetworkBase()}/oauth/authorize?${params.toString()}`);
 });
 
@@ -308,6 +311,11 @@ router.get('/sso/login', (req, res) => {
 router.get('/callback', async (req, res) => {
     try {
         const { code, state } = req.query;
+        if (!code && req.query.error) {
+            // Silent sign-in found no network session — go home quietly as a guest.
+            res.clearCookie('oauth_state');
+            return res.redirect('/?sso=none');
+        }
         if (!code) return res.status(400).send('Missing authorization code');
 
         // Validate CSRF state
