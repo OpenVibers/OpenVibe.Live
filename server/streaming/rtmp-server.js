@@ -236,8 +236,31 @@ class RTMPServer extends EventEmitter {
         this.nms.on('prePlay', () => {});
         this.nms.on('donePlay', () => {});
 
-        this.nms.run();
-        console.log(`[RTMP] Server started on port ${config.rtmp.port}`);
+        // Bind the HTTP-FLV server to loopback. node-media-server 2.7.4 calls httpServer.listen(port)
+        // with no host, so it listened on every interface — but every consumer of it (the FLV
+        // proxy route, the restreamer, AI audio/vision, live thumbnails, the RobotStreamer
+        // publisher) connects to 127.0.0.1, and browsers only ever reach it through the proxy.
+        // The library starts that server synchronously inside run(), so the host is supplied for
+        // exactly that one listen() call and the original is put back straight after. RTMP ingest
+        // (a net.Server on config.rtmp.port) is not an http.Server and is untouched: streamers
+        // still push from anywhere.
+        const http = require('http');
+        const flvPort = config.rtmp.port + 8000;
+        const hadOwnListen = Object.prototype.hasOwnProperty.call(http.Server.prototype, 'listen');
+        const origListen = http.Server.prototype.listen;
+        http.Server.prototype.listen = function (...args) {
+            if (args[0] === flvPort && (args.length === 1 || typeof args[1] === 'function')) {
+                args.splice(1, 0, '127.0.0.1');
+            }
+            return origListen.apply(this, args);
+        };
+        try {
+            this.nms.run();
+        } finally {
+            if (hadOwnListen) http.Server.prototype.listen = origListen;
+            else delete http.Server.prototype.listen;
+        }
+        console.log(`[RTMP] Server started on port ${config.rtmp.port} (HTTP-FLV on 127.0.0.1:${flvPort})`);
     }
 
     getActiveStreams() {
