@@ -59,13 +59,36 @@ function _clueFor(tok, i, rnd) {
     return forms[Math.floor(rnd() * forms.length)];
 }
 function _rngFor(seedStr) { let seed = 7; for (const ch of seedStr) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0; return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
-/** One clue per token, in order — AI clues kept when they line up, bank clues fill the gaps. */
+// Does this clue actually point at this token? Arrow clues must use that direction's imagery and
+// none of the other three; letter clues must quote a word that starts with the letter (or say
+// "the letter X"). The model gets this wrong often enough that unchecked clues made the game
+// unwinnable — anything that fails is replaced with a clue-bank line.
+const DIR_WORDS = {
+    up: /\b(up|upward|upwards|sky|skyward|heaven|heavens|north|ceiling|climb|climbs|rise|rises|rising|ascend|balloon|top|above)\b/i,
+    down: /\b(down|downward|downwards|floor|ground|south|fall|falls|falling|sink|sinks|descend|roots|below|gravity|depths)\b/i,
+    left: /\b(left|west|sunset|sets|heart|port|past|backward|backwards|rewind)\b/i,
+    right: /\b(right|east|sunrise|rises|starboard|future|forward|write|writes)\b/i,
+};
+function _clueLooksRight(tok, clue) {
+    const c = String(clue || '');
+    if (!c || c.length < 6) return false;
+    if (DIR_WORDS[tok]) {
+        if (!DIR_WORDS[tok].test(c)) return false;
+        // "rises" is shared by up (rise) and right (sunrise); resolve by the other words present.
+        const others = Object.keys(DIR_WORDS).filter(d => d !== tok && new RegExp(`\\b(${d})\\b`, 'i').test(c));
+        return others.length === 0;
+    }
+    if (new RegExp(`\\bletter\\s+["'“‘]?${tok}["'”’]?\\b`, 'i').test(c)) return true;
+    const quoted = [...c.matchAll(/["'“‘]([a-z][a-z-]*)["'”’]/gi)].map(m => m[1].toLowerCase());
+    return quoted.some(w => w[0] === tok);
+}
+/** One clue per token, in order — AI clues kept only when they check out, bank clues fill the gaps. */
 function _alignClues(code, aiClues) {
     const rnd = _rngFor(_today() + code.join(','));
     const out = [];
     for (let i = 0; i < code.length; i++) {
         const c = Array.isArray(aiClues) && aiClues[i] ? String(aiClues[i]).replace(/\s+/g, ' ').trim().slice(0, 110) : '';
-        out.push(c || _clueFor(code[i], i, rnd));
+        out.push(c && _clueLooksRight(code[i], c) ? c : _clueFor(code[i], i, rnd));
     }
     return out;
 }
@@ -86,7 +109,7 @@ Return STRICT JSON only, nothing else:
 CLUE RULES (this is a game people must actually be able to win):
 - Clue i describes token i and ONLY token i. Never list the token literally, but make it fair: a normal person should get it in one or two guesses.
 - Arrow clues use direction imagery ("where the sun rises" = right, "toward the sky" = up, "the way rain falls" = down, "the side your heart is on" = left).
-- Letter clues name a common word the letter starts ("the letter that starts 'goose'" = g), or a famous initial.
+- Letter clues MUST quote a common word that starts with that exact letter, in quotes: "the letter that starts 'goose'" = g, "'vibe' begins with it" = v. Double-check the first letter of the quoted word.
 - Keep the flavour playful and on-theme, but clarity beats cleverness.`;
         try {
             const text = await ai.summarizeText(prompt, 600, 'easter_egg');
