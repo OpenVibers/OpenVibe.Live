@@ -1349,12 +1349,53 @@ function renderHeroStats(stats) {
         const clickable = !!r.metric;
         return `<div class="hero-stat ${r.cls || ''} ${clickable ? 'hero-stat--clickable' : ''}" data-tip="${esc(JSON.stringify(tip))}" ${clickable ? `data-metric="${r.metric}" role="button" tabindex="0" aria-label="${esc(r.label)} — show over time"` : ''}><i class="fa-solid ${r.icon}"></i><div class="hero-stat-meta"><span class="hero-stat-num" data-n="${r.num || 0}">0</span><span class="hero-stat-label">${r.label}${clickable ? ' <i class="fa-solid fa-chart-line hero-stat-chart-hint"></i>' : ''}</span>${sub ? `<span class="hero-stat-sub">${sub}</span>` : ''}</div></div>`;
     };
-    wrap.innerHTML = groups.filter(g => g.rows.length).map(g => `
-        <div class="hero-stat-group">
-            <span class="hero-stat-kicker"><i class="fa-solid ${g.icon}"></i>${g.kicker}</span>
-            <div class="hero-stat-row">${g.rows.map(chip).join('')}</div>
-        </div>`).join('');
-    wrap.querySelectorAll('.hero-stat-num').forEach(el => _heroCountUp(el, parseInt(el.dataset.n, 10) || 0));
+    // The full board is four groups and two dozen chips. Shown by default it pushed every live
+    // stream on the site below the fold, and because it only arrives once the stats request lands
+    // it was also the single biggest source of layout shift on the page — the content underneath
+    // jumped down by the height of the whole board, several seconds in.
+    //
+    // So: a fixed-height headline strip by default, the full board one tap away. The strip's
+    // height is reserved in CSS, so filling it in moves nothing.
+    const HEADLINE = [
+        { icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', cls: stats.liveNow > 0 ? 'hero-stat--live' : '', num: stats.liveNow, label: 'Live', title: 'Streams live right now' },
+        { icon: 'fa-eye', cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
+        { icon: 'fa-fire', num: stats.weeklyActive, label: 'Active · 7d', title: 'People who chatted in the last 7 days' },
+        { icon: 'fa-clock-rotate-left', num: stats.hoursWatched, label: 'Hours watched', title: 'Community watch time, all time' },
+        ...(stats.coinsEarned != null ? [{ icon: 'fa-circle-dollar-to-slot', num: stats.coinsEarned, label: 'Coins earned', title: 'OpenCoins earned across the whole network' }] : []),
+    ];
+    const open = (() => { try { return localStorage.getItem('ov_stats_open') === '1'; } catch { return false; } })();
+    wrap.innerHTML = `
+        <div class="hero-stat-strip">${HEADLINE.map(chip).join('')}</div>
+        <button type="button" class="hero-stat-more" id="hero-stat-more" aria-expanded="${open}" aria-controls="hero-stat-full">
+            <i class="fa-solid fa-chevron-down"></i><span></span>
+        </button>
+        <div class="hero-stat-full" id="hero-stat-full" ${open ? '' : 'hidden'}>
+            ${groups.filter(g => g.rows.length).map(g => `
+            <div class="hero-stat-group">
+                <span class="hero-stat-kicker"><i class="fa-solid ${g.icon}"></i>${g.kicker}</span>
+                <div class="hero-stat-row">${g.rows.map(chip).join('')}</div>
+            </div>`).join('')}
+        </div>`;
+
+    const btn = wrap.querySelector('#hero-stat-more');
+    const full = wrap.querySelector('#hero-stat-full');
+    const total = groups.reduce((n, g) => n + g.rows.length, 0);
+    const label = () => { btn.querySelector('span').textContent = full.hidden ? `All ${total} numbers` : 'Hide the numbers'; };
+    label();
+    btn.classList.toggle('is-open', !full.hidden);
+    btn.addEventListener('click', () => {
+        full.hidden = !full.hidden;
+        btn.setAttribute('aria-expanded', String(!full.hidden));
+        btn.classList.toggle('is-open', !full.hidden);
+        label();
+        try { localStorage.setItem('ov_stats_open', full.hidden ? '0' : '1'); } catch { /* */ }
+        // Count the numbers up the first time they are actually looked at.
+        if (!full.hidden) full.querySelectorAll('.hero-stat-num:not([data-counted])').forEach(el => {
+            el.setAttribute('data-counted', '1'); _heroCountUp(el, parseInt(el.dataset.n, 10) || 0);
+        });
+    });
+    wrap.querySelectorAll('.hero-stat-strip .hero-stat-num').forEach(el => { el.setAttribute('data-counted', '1'); _heroCountUp(el, parseInt(el.dataset.n, 10) || 0); });
+    if (open) full.querySelectorAll('.hero-stat-num').forEach(el => { el.setAttribute('data-counted', '1'); _heroCountUp(el, parseInt(el.dataset.n, 10) || 0); });
     _heroBindInteractions(wrap);
 }
 
@@ -2557,10 +2598,19 @@ let _homeRecentOnlinePage = 1;
 let _homeRecentVodsPage = 1;
 let _homeClipsPage = 1;
 let _homePastesPage = 1;
-const HOME_RECENT_ONLINE_PAGE_SIZE = 12;
-const HOME_RECENT_VODS_PAGE_SIZE = 12;
-const HOME_CLIPS_PAGE_SIZE = 12;
-const HOME_PASTES_PAGE_SIZE = 10;
+// The home page used to open with 46 cards across four list sections, which made it enormous and
+// meant every visitor downloaded four full pages of thumbnails to scroll past them. One row's
+// worth each is plenty for a front page; the pagination underneath still reaches the rest, and
+// the dedicated /vods, /clips and /pastes pages are where you go to actually browse.
+//
+// Wide screens fit more per row, so the counts follow the viewport rather than being fixed — six
+// cards is one tidy row at 1400px and two rows on a laptop, but four is the right number on a
+// phone where each card is full width.
+const _narrow = typeof window !== 'undefined' && window.innerWidth < 760;
+const HOME_RECENT_ONLINE_PAGE_SIZE = _narrow ? 4 : 6;
+const HOME_RECENT_VODS_PAGE_SIZE = _narrow ? 4 : 6;
+const HOME_CLIPS_PAGE_SIZE = _narrow ? 4 : 6;
+const HOME_PASTES_PAGE_SIZE = _narrow ? 4 : 5;
 
 // Small Newest/Oldest segmented control (shared markup). `setter` is a global fn name
 // taking 'newest'|'oldest'.
