@@ -350,7 +350,7 @@ async function loadSettingsStreams() {
         const allStreams = data.streams || [];
 
         if (!allStreams.length) {
-            container.innerHTML = `<div class="empty-state"><i class="fa-solid fa-circle-nodes fa-3x" style="color:var(--accent)"></i><p>No streams yet</p><p class="muted">Go live from the <a href="#" onclick="event.preventDefault();navigate('/broadcast')">Go Live</a> page to create your first stream!</p></div>`;
+            container.innerHTML = `<div class="empty-state"><span class="ov-mark" data-size="44" data-static="1"></span><i class="fa-solid fa-circle-nodes" style="display:none" fa-3x" style="color:var(--accent)"></i><p>No streams yet</p><p class="muted">Go live from the <a href="#" onclick="event.preventDefault();navigate('/broadcast')">Go Live</a> page to create your first stream!</p></div>`;
             return;
         }
 
