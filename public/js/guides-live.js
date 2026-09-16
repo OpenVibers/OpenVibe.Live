@@ -283,17 +283,101 @@
     window.startRestreamGuide = () => { if (onBroadcast()) return G.open('golive', { step: 'restream' }); G.cfg.navigate('/broadcast?guide=golive:restream'); };
     window.openSetupHub = (focus) => G.open('setup-hub', { ctx: { focus } });
     window.openSiteTour = () => G.open('tour');
+    // ── The home page quest / join panel ──────────────────────
+    //
+    // One slot in the tour card, two audiences. A signed-in streamer sees how far through setup
+    // they are as a tank of water that fills as they finish tasks — it names the next task, and
+    // the level visibly rises the first time they come back after finishing one. Everyone else
+    // sees what an account actually gets them, because "Sign in" on its own is not a reason.
+
+    const PERKS = [
+        ['fa-tower-broadcast', 'Go live for free', 'Browser, OBS or a robot. No approval queue, no invite, no waiting list.'],
+        ['fa-satellite-dish', 'Restream everywhere at once', 'Twitch, YouTube, Kick, RobotStreamer and any RTMP server from one stream.'],
+        ['fa-comments', 'One chat, every platform', '7TV, BTTV and FFZ emotes, sound commands and TTS, translated both ways.'],
+        ['fa-coins', 'Earn Vibes just for watching', 'Spend them on emotes, themes, cosmetics and sounds that play on stream.'],
+        ['fa-scissors', 'Clips and VODs cut for you', 'Every stream is recorded and the good bits are found automatically.'],
+        ['fa-circle-nodes', 'One account, whole network', 'The same login works across every OpenVibe site and tool.'],
+    ];
+
+    /** Water colour by progress — cool at the start, gold once it is done. */
+    function questTone(pct) {
+        if (pct >= 100) return { c: '#fbbf24', ico: 'fa-trophy' };
+        if (pct >= 66) return { c: '#4ade80', ico: 'fa-bolt' };
+        if (pct >= 33) return { c: '#2dd4bf', ico: 'fa-droplet' };
+        return { c: 'var(--accent)', ico: 'fa-droplet' };
+    }
+
+    const SEEN_KEY = 'ov_quest_seen_done';
+
+    function renderQuest(el, p) {
+        const pct = Math.max(0, Math.min(100, Math.round((p.done / p.total) * 100)));
+        const tone = questTone(pct);
+        const next = p.next;
+        const icon = next ? (TASK_ICON[next.id] || 'fa-arrow-right') : 'fa-trophy';
+        // Did they finish something since they last looked? Then let the water surge up to meet it.
+        let prev = null;
+        try { const v = localStorage.getItem(SEEN_KEY); if (v !== null) prev = parseInt(v, 10); } catch { /* */ }
+        const gained = Number.isFinite(prev) && p.done > prev ? p.done - prev : 0;
+        const startPct = gained ? Math.round((prev / p.total) * 100) : pct;
+
+        el.innerHTML = `
+            <button type="button" class="ovg-quest${pct >= 100 ? ' is-done' : ''}" style="--q:${tone.c};--pct:${startPct}"
+                aria-label="${next ? `Streamer setup, ${p.done} of ${p.total} done. Next up: ${esc(next.title)}` : 'Streamer setup complete'}">
+                <span class="ovg-quest-liquid" aria-hidden="true">
+                    <span class="ovg-quest-wave"></span><span class="ovg-quest-wave ovg-quest-wave--b"></span>
+                    ${[9, 27, 46, 63, 81].map((x, i) => `<span class="ovg-quest-bub" style="--x:${x}%;--i:${i}"></span>`).join('')}
+                </span>
+                <span class="ovg-quest-sheen" aria-hidden="true"></span>
+                <span class="ovg-quest-ico"><i class="fa-solid ${icon}"></i></span>
+                <span class="ovg-quest-text">
+                    <b>${next ? `Next up: ${esc(next.title)}` : 'Streamer setup complete'}</b>
+                    <small>${next ? esc(next.why) : 'Everything on the list is done. Come back when something new ships.'}</small>
+                </span>
+                <span class="ovg-quest-count"><b>${p.done}</b><i>/${p.total}</i></span>
+                <span class="ovg-quest-go" aria-hidden="true"><i class="fa-solid fa-chevron-right"></i></span>
+                ${gained ? `<span class="ovg-quest-pop">+${gained}</span>` : ''}
+            </button>`;
+
+        const btn = el.firstElementChild;
+        btn.addEventListener('click', () => openSetupHub(next ? next.id : null));
+        if (gained) {
+            // Fill from where they were to where they are, so the progress is something they watch happen.
+            requestAnimationFrame(() => setTimeout(() => { btn.style.setProperty('--pct', pct); btn.classList.add('is-surging'); }, 550));
+            setTimeout(() => btn.classList.remove('is-surging'), 3200);
+        }
+        try { localStorage.setItem(SEEN_KEY, String(p.done)); } catch { /* */ }
+    }
+
+    function renderJoin(el) {
+        el.innerHTML = `
+            <div class="ovg-join">
+                <span class="ovg-join-glow" aria-hidden="true"></span>
+                <div class="ovg-join-head">
+                    <span class="ovg-join-mark" aria-hidden="true"><i class="fa-solid fa-circle-nodes"></i></span>
+                    <div>
+                        <h3>Make a free account and the whole thing opens up</h3>
+                        <p>Free to make, works everywhere on the network, and takes about ten seconds.</p>
+                    </div>
+                </div>
+                <ul class="ovg-join-perks">
+                    ${PERKS.map(([ico, title, why], i) => `<li style="--i:${i}"><span class="ovg-join-ico"><i class="fa-solid ${ico}"></i></span><span><b>${title}</b><small>${why}</small></span></li>`).join('')}
+                </ul>
+                <div class="ovg-join-cta">
+                    <a class="btn btn-primary btn-lg ovg-join-go" href="/api/auth/sso/login"><i class="fa-solid fa-user-plus"></i> Create your free account</a>
+                    <a class="btn btn-outline ovg-join-in" href="/api/auth/sso/login"><i class="fa-solid fa-right-to-bracket"></i> I already have one</a>
+                    <button type="button" class="ovg-join-tour"><i class="fa-solid fa-wand-magic-sparkles"></i> Just show me around first</button>
+                </div>
+            </div>`;
+        el.querySelector('.ovg-join-tour').addEventListener('click', () => openSiteTour());
+    }
+
     window.setupNextUp = async function (el) {
-        // The home page button: names the next task for signed-in streamers, offers the tour otherwise.
+        // The home page slot: setup progress for signed-in streamers, the pitch for everyone else.
         if (!el) return;
-        if (!me()) { el.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> See what you can do here'; el.onclick = (e) => { e.preventDefault(); openSiteTour(); }; return; }
+        if (!me()) { if (!el.querySelector('.ovg-join')) renderJoin(el); return; }
         const p = await loadProgress();
-        if (!p) return;
-        const pct = Math.round((p.done / p.total) * 100);
-        const ring = `<span class="ovg-mini-ring" style="--pct:${pct}"></span>`;
-        el.innerHTML = p.next ? `${ring} Next up: ${esc(p.next.title)} <small>${p.done}/${p.total}</small>` : `${ring} Streamer setup complete <small>${p.done}/${p.total}</small>`;
-        el.onclick = (e) => { e.preventDefault(); openSetupHub(p.next ? p.next.id : null); };
-        el.classList.add('is-ready');
+        if (!p || !p.total) return;
+        renderQuest(el, p);
     };
     // First visit to Go Live with no slots → the go-live journey opens itself (until dismissed once).
     (function autoFirstTime() {

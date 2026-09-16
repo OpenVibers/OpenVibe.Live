@@ -63,7 +63,12 @@
                 <div class="tour-features">${FEATURES.map(([i, t], k) => `<span class="tour-feat" style="--i:${k}"><i class="${i.startsWith('fa-brands') ? i : 'fa-solid ' + i}"></i> ${t}</span>`).join('')}</div>
                 <div class="tour-actions">
                     <a class="btn btn-primary btn-lg" ${go('/broadcast')}><i class="fa-solid fa-tower-broadcast"></i> Go live</a>
-                    <a class="btn btn-outline btn-lg tour-next-up" id="tour-next-up" href="/broadcast?guide=golive:restream" onclick="event.preventDefault(); if (typeof startRestreamGuide === 'function') startRestreamGuide();"><i class="fa-solid fa-satellite-dish"></i> Set up restreams (guided)</a>
+                </div>
+                <!-- Filled by setupNextUp() in guides-live.js: the progress quest for signed-in
+                     streamers, the join panel for everyone else. The link below is the no-JS
+                     fallback and what a crawler sees. -->
+                <div class="tour-quest-slot" id="tour-next-up" data-fx-viewport>
+                    <a class="btn btn-outline btn-lg" href="/broadcast?guide=golive:restream" onclick="event.preventDefault(); if (typeof startRestreamGuide === 'function') startRestreamGuide();"><i class="fa-solid fa-satellite-dish"></i> Set up restreams (guided)</a>
                 </div>
             </section>`;
         wire();

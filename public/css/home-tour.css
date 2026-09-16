@@ -80,3 +80,168 @@
 @media (prefers-reduced-motion: reduce) { .tour-wire, .tour-node-dot, .tour-core-ring, .tour-feat { animation: none; } .tour-feat { opacity: 1; transform: none; } }
 .rs-lite .tour::before, .rs-lite .tour-core-ring { display: none; }
 .rs-lite .tour-wire { animation: none; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Setup quest + join panel (the slot under "Go live" in the tour card)
+
+   Two very different things live in one slot. Signed-in streamers get a tank of water that
+   fills as they finish setup: the level is their progress, the crest bobs, bubbles rise, and
+   when they come back after finishing a task the water surges up to the new level so the
+   progress is something they watch happen rather than a number that quietly changed.
+   Everyone else gets the case for making an account, because "Sign in" is not a reason.
+
+   All idle motion is gated on .fx-live, which home-fx.js adds when the slot scrolls into
+   view — nothing animates off-screen, and the effect restarts each time it is reached.
+   ═══════════════════════════════════════════════════════════════ */
+
+.tour-quest-slot { display: flex; justify-content: center; margin-top: 12px; }
+
+/* ── The quest ────────────────────────────────────────────── */
+.ovg-quest {
+    position: relative; overflow: hidden; isolation: isolate;
+    display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 12px;
+    width: min(560px, 100%); padding: 12px 15px; text-align: left; cursor: pointer;
+    font: inherit; color: var(--text-primary);
+    border-radius: 16px; border: 1px solid color-mix(in srgb, var(--q) 40%, var(--border));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--q) 8%, var(--bg-card)), var(--bg-secondary));
+    box-shadow: 0 10px 26px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.05);
+    transition: transform 0.2s, box-shadow 0.25s, border-color 0.25s;
+}
+.ovg-quest:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--q) 70%, transparent);
+    box-shadow: 0 16px 38px rgba(0,0,0,0.42), 0 0 28px color-mix(in srgb, var(--q) 24%, transparent); }
+.ovg-quest:active { transform: translateY(0) scale(0.99); }
+.ovg-quest:focus-visible { outline: 2px solid var(--q); outline-offset: 3px; }
+
+/* The water itself. Height is the progress; the transition is what makes a finished task feel
+   like something happened. */
+.ovg-quest-liquid {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 0; pointer-events: none;
+    height: calc(var(--pct, 0) * 1%);
+    transition: height 1.8s cubic-bezier(.32, 1, .38, 1);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--q) 20%, transparent), color-mix(in srgb, var(--q) 9%, transparent));
+}
+/* A big, almost-round blob whose top edge sits just above the water line. Rotating it makes that
+   edge rise and fall — a crest, with no SVG and no script. */
+.ovg-quest-wave {
+    position: absolute; left: 50%; margin-left: -85%; top: -4px; width: 170%; aspect-ratio: 1;
+    border-radius: 43% 47% 44% 46%;
+    background: color-mix(in srgb, var(--q) 24%, transparent);
+    box-shadow: 0 -1px 0 color-mix(in srgb, var(--q) 55%, #fff 25%);
+    animation: questWave 9s linear infinite;
+}
+.ovg-quest-wave--b { top: -9px; opacity: 0.45; box-shadow: none; border-radius: 47% 42% 46% 44%; animation-duration: 13.5s; animation-direction: reverse; }
+@keyframes questWave { to { transform: rotate(360deg); } }
+.ovg-quest-bub {
+    position: absolute; left: var(--x); bottom: -6px; width: 5px; height: 5px; border-radius: 50%;
+    background: color-mix(in srgb, var(--q) 60%, #fff 25%); opacity: 0;
+    animation: questBub 4.6s ease-in infinite; animation-delay: calc(var(--i) * 0.72s);
+}
+@keyframes questBub { 0% { opacity: 0; transform: translateY(0) scale(0.55); } 18% { opacity: 0.8; } 100% { opacity: 0; transform: translateY(-44px) scale(1.15); } }
+
+.ovg-quest-sheen {
+    position: absolute; top: 0; bottom: 0; left: -40%; width: 32%; z-index: 1; pointer-events: none;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,0.10), transparent);
+    animation: questSheen 7s ease-in-out infinite;
+}
+@keyframes questSheen { 0%, 58% { transform: translateX(0); } 100% { transform: translateX(440%); } }
+
+.ovg-quest-ico, .ovg-quest-text, .ovg-quest-count, .ovg-quest-go, .ovg-quest-pop { position: relative; z-index: 2; }
+.ovg-quest-ico {
+    width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; font-size: 0.88rem;
+    color: var(--q); background: color-mix(in srgb, var(--q) 20%, transparent);
+    border: 1px solid color-mix(in srgb, var(--q) 45%, transparent);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--q) 25%, transparent);
+    animation: questBob 3.6s ease-in-out infinite;
+}
+@keyframes questBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+.ovg-quest-text { min-width: 0; }
+.ovg-quest-text b { display: block; font-size: 0.94rem; font-weight: 800; letter-spacing: -0.01em; text-shadow: 0 1px 3px rgba(0,0,0,0.45); }
+.ovg-quest-text small { display: block; margin-top: 2px; font-size: 0.75rem; color: var(--text-secondary); text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ovg-quest-count { text-align: right; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.ovg-quest-count b { font-size: 1.06rem; font-weight: 900; color: var(--q); }
+.ovg-quest-count i { font-style: normal; font-size: 0.72rem; color: var(--text-secondary); text-shadow: 0 1px 3px rgba(0,0,0,0.45); }
+.ovg-quest-go { color: var(--q); opacity: 0.55; font-size: 0.8rem; transition: transform 0.2s, opacity 0.2s; }
+.ovg-quest:hover .ovg-quest-go { opacity: 1; transform: translateX(3px); }
+
+/* Came back with a task finished: the water climbs, the frame lights up, the gain floats off. */
+.ovg-quest-pop { position: absolute; right: 54px; top: 50%; font-size: 0.95rem; font-weight: 900; color: var(--q);
+    pointer-events: none; animation: questPop 2.6s ease-out forwards; }
+@keyframes questPop {
+    0% { opacity: 0; transform: translateY(8px) scale(0.8); }
+    20% { opacity: 1; transform: translateY(-6px) scale(1.18); }
+    70% { opacity: 1; transform: translateY(-16px) scale(1); }
+    100% { opacity: 0; transform: translateY(-30px) scale(0.95); }
+}
+.ovg-quest.is-surging { border-color: var(--q); box-shadow: 0 0 34px color-mix(in srgb, var(--q) 42%, transparent), 0 14px 34px rgba(0,0,0,0.40); }
+.ovg-quest.is-done .ovg-quest-text b { background: linear-gradient(95deg, #fbbf24, #fff 45%, #fbbf24);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+
+/* Idle motion only while the slot is on screen. */
+.tour-quest-slot .ovg-quest-wave, .tour-quest-slot .ovg-quest-bub,
+.tour-quest-slot .ovg-quest-sheen, .tour-quest-slot .ovg-quest-ico { animation-play-state: paused; }
+.tour-quest-slot.fx-live .ovg-quest-wave, .tour-quest-slot.fx-live .ovg-quest-bub,
+.tour-quest-slot.fx-live .ovg-quest-sheen, .tour-quest-slot.fx-live .ovg-quest-ico { animation-play-state: running; }
+
+/* ── The join panel ───────────────────────────────────────── */
+.ovg-join {
+    position: relative; overflow: hidden; width: min(680px, 100%); text-align: left;
+    padding: 18px 18px 16px; border-radius: 20px;
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+    background: linear-gradient(165deg, color-mix(in srgb, var(--accent) 10%, var(--bg-card)), var(--bg-secondary) 62%);
+    box-shadow: 0 18px 44px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+.ovg-join-glow {
+    position: absolute; inset: -40% -10% auto -10%; height: 200%; pointer-events: none;
+    background: radial-gradient(45% 40% at 20% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%),
+                radial-gradient(40% 40% at 85% 8%, rgba(45,212,191,0.16), transparent 70%);
+    animation: joinDrift 16s ease-in-out infinite alternate; animation-play-state: paused;
+}
+.tour-quest-slot.fx-live .ovg-join-glow { animation-play-state: running; }
+@keyframes joinDrift { to { transform: translate3d(-5%, 3%, 0) scale(1.1); } }
+.ovg-join-head { position: relative; display: flex; gap: 12px; align-items: flex-start; }
+.ovg-join-mark { width: 40px; height: 40px; flex: none; border-radius: 13px; display: grid; place-items: center; color: #fff;
+    background: linear-gradient(135deg, var(--accent), #2dd4bf);
+    box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 45%, transparent); }
+.tour-quest-slot.fx-live .ovg-join-mark { animation: joinMark 5.5s ease-in-out infinite; }
+@keyframes joinMark { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-3px) rotate(-7deg); } }
+.ovg-join-head h3 { margin: 0; font-size: 1.02rem; font-weight: 900; letter-spacing: -0.015em; }
+.ovg-join-head p { margin: 3px 0 0; font-size: 0.82rem; color: var(--text-muted); }
+.ovg-join-perks { position: relative; list-style: none; margin: 14px 0 0; padding: 0;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px 18px; }
+/* Visible by default — the entrance is a bonus, never the reason anything is readable. */
+.ovg-join-perks li { display: flex; gap: 10px; align-items: flex-start; }
+.tour-quest-slot.fx-live .ovg-join-perks li { animation: joinPerk 0.6s cubic-bezier(.2, 1, .3, 1) both;
+    animation-delay: calc(var(--i) * 85ms + 100ms); }
+@keyframes joinPerk { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.ovg-join-ico { width: 28px; height: 28px; flex: none; border-radius: 9px; display: grid; place-items: center; font-size: 0.76rem;
+    color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent); }
+.ovg-join-perks b { display: block; font-size: 0.86rem; font-weight: 800; }
+.ovg-join-perks small { display: block; margin-top: 1px; font-size: 0.76rem; line-height: 1.45; color: var(--text-muted); }
+.ovg-join-cta { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
+.ovg-join-go { position: relative; overflow: hidden; }
+.ovg-join-go::after { content: ''; position: absolute; top: 0; bottom: 0; left: -45%; width: 35%;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,0.28), transparent); }
+.tour-quest-slot.fx-live .ovg-join-go::after { animation: questSheen 5.5s ease-in-out infinite; }
+.ovg-join-tour { background: none; border: 0; padding: 4px 2px; cursor: pointer; font: inherit;
+    font-size: 0.8rem; color: var(--text-muted); text-decoration: underline; text-underline-offset: 3px;
+    text-decoration-style: dotted; transition: color 0.2s; }
+.ovg-join-tour:hover { color: var(--accent); }
+
+@media (max-width: 620px) {
+    .ovg-quest { grid-template-columns: auto 1fr auto; gap: 10px; padding: 11px 12px; }
+    .ovg-quest-go { display: none; }
+    .ovg-quest-text b { font-size: 0.88rem; }
+    .ovg-quest-text small { font-size: 0.72rem; }
+    .ovg-join { padding: 15px 14px 14px; border-radius: 16px; }
+    .ovg-join-perks { grid-template-columns: 1fr; gap: 9px; }
+    .ovg-join-cta .btn { width: 100%; justify-content: center; }
+    .ovg-join-tour { width: 100%; text-align: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ovg-quest-wave, .ovg-quest-bub, .ovg-quest-sheen, .ovg-quest-ico,
+    .ovg-join-glow, .ovg-join-mark, .ovg-join-go::after { animation: none !important; }
+    .ovg-quest-liquid { transition: none; }
+    .ovg-join-perks li { animation: none !important; }
+}

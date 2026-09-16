@@ -27,7 +27,7 @@ const FALLBACK_AUDIENCES = [
     'keyboard warriors (literal)', 'off-grid dreamers', 'the beautifully unhinged',
 ];
 const FALLBACK_QUIPS = [
-    'No ads. No investors. No suits. Just vibes.',
+    'No investors. No suits. Just vibes.',
     'The stream site that pays rent in good vibes.',
     'Open source and proud of it.',
     'Built in the open, for everyone.',
@@ -38,7 +38,7 @@ const FALLBACK_QUIPS = [
     'Powered by caffeine and spite.',
     'The internet hangout everyone forgot they wanted.',
     'Clip it before it happens.',
-    'Free forever, because we forgot to add a paywall.',
+    'Free to start, because gatekeeping is boring.',
     'Where the wifi is questionable and the community is not.',
     'Stream from a van. We support that lifestyle.',
     'One account. All of OpenVibe.',

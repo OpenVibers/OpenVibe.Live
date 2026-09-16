@@ -1214,7 +1214,7 @@ function startHeroRotation(words) {
 
 // ── Hero quip rotator (funny AI-generated slogans) ──────────────
 const HERO_FALLBACK_QUIPS = [
-    'No ads. No investors. No suits. Just vibes.',
+    'No investors. No suits. Just vibes.',
     'Built by openvibes, for openvibes.',
     "Corporate streaming? We don't know her.",
     'Open source and proud of it.',
