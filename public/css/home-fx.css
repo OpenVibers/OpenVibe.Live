@@ -32,12 +32,15 @@
     box-shadow: 0 2px 0 0 color-mix(in srgb, var(--c) 22%, transparent), 0 8px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.09);
     transition: transform 0.18s cubic-bezier(.2,1.3,.3,1), border-color 0.2s, box-shadow 0.2s, background 0.2s;
 }
-/* Slow sheen that crosses each button in turn — the idle "these are buttons" tell. */
+/* One wave, not six blinks: every button shares --hb-wave, so they can never drift apart, and a
+   small per-button offset makes a single highlight travel across the row. */
+.hb { --hb-wave: 5s; --hb-step: 0.15s; }
 .hb::before {
-    content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
-    background: linear-gradient(105deg, transparent 38%, color-mix(in srgb, var(--c) 26%, transparent) 50%, transparent 62%);
-    background-size: 280% 100%; background-position: 220% 0;
-    animation: hbSheen 9s ease-in-out infinite; animation-delay: calc(var(--i, 0) * 0.7s);
+    content: ''; position: absolute; top: 0; bottom: 0; left: -65%; width: 55%; z-index: -1;
+    pointer-events: none; will-change: transform;
+    background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--c) 34%, transparent) 50%, transparent);
+    animation: hbWave var(--hb-wave) linear infinite;
+    animation-delay: calc(var(--i, 0) * var(--hb-step));
 }
 .hb::after {
     content: ''; position: absolute; inset: -1px; border-radius: inherit; z-index: -2; padding: 1px;
@@ -52,7 +55,7 @@
     border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
     box-shadow: 0 2px 6px rgba(0,0,0,0.35) inset;
     transition: transform 0.35s cubic-bezier(.2,1.6,.3,1), background 0.25s, color 0.25s, box-shadow 0.25s;
-    animation: hbBreathe 4.5s ease-in-out infinite; animation-delay: calc(var(--i, 0) * 0.35s);
+    animation: hbPulse var(--hb-wave) ease-in-out infinite; animation-delay: calc(var(--i, 0) * var(--hb-step));
 }
 .hb-label { flex: 1; text-align: left; }
 /* Chevron appears on hover/focus: an explicit "this goes somewhere" cue. */
@@ -69,8 +72,8 @@
 .hb:active { transform: translateY(0) scale(0.975); box-shadow: 0 1px 0 0 color-mix(in srgb, var(--c) 30%, transparent), 0 4px 12px rgba(0,0,0,0.35), inset 0 2px 6px rgba(0,0,0,0.3); }
 @property --a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 @keyframes hbOrbit { to { --a: 360deg; } }
-@keyframes hbSheen { 0%, 62% { background-position: 220% 0; } 88%, 100% { background-position: -120% 0; } }
-@keyframes hbBreathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+@keyframes hbWave { 0% { transform: translateX(0); } 22%, 100% { transform: translateX(330%); } }
+@keyframes hbPulse { 0%, 100% { transform: scale(1); } 7% { transform: scale(1.11); } 20% { transform: scale(1); } }
 .hb-stream { --c: var(--accent); color: #fff;
     background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0) 50%), linear-gradient(160deg, color-mix(in srgb, var(--accent) 80%, #000) 0%, color-mix(in srgb, var(--accent) 58%, #000) 100%);
     border-color: color-mix(in srgb, var(--accent) 65%, transparent);
@@ -116,7 +119,7 @@
 
 .rs-lite .hfx-sparks, .rs-lite .hfx-spot { display: none; }
 .rs-lite .hfx-shimmer, .rs-lite .hfx-glow, .rs-lite .hb::after, .rs-lite #page-home .section-header h2 .live-dot { animation: none !important; text-shadow: none; }
-.rs-lite .hb::before { animation-duration: 14s; }
+.rs-lite .hb { --hb-wave: 8s; }
 .rs-lite #page-home .stream-card { transition: none; }
 
 /* ── Mobile / lite: the home page's own heavy effects (pre-existing) ──────────────

@@ -117,6 +117,7 @@ async function _pageMeta(routePath) {
     if ((m = p.match(/^\/p\/([A-Za-z0-9_-]+)$/))) return _pasteMeta(m[1]);
     if ((m = p.match(/^\/@([A-Za-z0-9_.-]+)$/))) return _channelMeta(m[1]);
     if ((m = p.match(/^\/recap\/(\d+)$/))) return _recapMeta(parseInt(m[1], 10));
+    if (p === '/arena') return _arenaMeta();
 
     return null;
     void bu;
@@ -152,6 +153,33 @@ function _channelMeta(username) {
         title: `${name} (${handle}) — ${SITE_NAME}`, description: desc,
         canonicalPath, image, ogType: 'profile', robots: 'index,follow',
         jsonLd: [profile, _breadcrumb([{ name: 'Home', url: '/' }, { name: name, url: canonicalPath }])],
+        snapshot,
+    };
+}
+
+// The Arena: a real content page (mic-judged trash talk), so give it real metadata.
+function _arenaMeta() {
+    let fighters = [], moments = [];
+    try { fighters = (require('../arena/arena-service').loadRoster() || {}).order || []; } catch { fighters = []; }
+    try { moments = require('../arena/mic').feed({ limit: 10 }) || []; } catch { moments = []; }
+    const nameOf = (id) => { try { return require('../arena/mic').nameOf(id); } catch { return null; } };
+    const names = fighters.slice(0, 8).map(nameOf).filter(Boolean);
+    const title = 'The Arena — Mic-Judged Trash Talk Between Streamers';
+    const desc = clean(`Every callout streamers make on mic, judged and ranked. ${names.length ? 'Fighters right now: ' + names.slice(0, 5).join(', ') + '. ' : ''}Chat can hype a beef but never write one.`, 200);
+    const items = moments.slice(0, 10).map((mo, i) => ({ '@type': 'ListItem', position: i + 1, name: clean(mo.text || 'Mic moment', 110) }));
+    const snapshot = _detailSnapshot({
+        title: 'The Arena', byline: names.length ? `Fighters: ${names.join(', ')}` : null,
+        desc, overview: moments.slice(0, 8).map(mo => mo.text).filter(Boolean).join(' · ') || null,
+        transcript: null, canonicalPath: '/arena', watchLabel: 'Open the Arena',
+    });
+    return {
+        title: `${title} | ${SITE_NAME}`, description: desc, canonicalPath: '/arena',
+        image: DEFAULT_OG_IMAGE, ogType: 'website', robots: 'index,follow',
+        jsonLd: [
+            { '@context': 'https://schema.org', '@type': 'CollectionPage', name: title, url: abs('/arena'), description: desc },
+            ...(items.length ? [{ '@context': 'https://schema.org', '@type': 'ItemList', name: 'Latest mic moments', itemListElement: items }] : []),
+            _breadcrumb([{ name: 'Home', url: '/' }, { name: 'The Arena', url: '/arena' }]),
+        ],
         snapshot,
     };
 }
@@ -213,6 +241,24 @@ async function _homeMeta() {
     const listEls = [...liveItems, ...vodItems, ...clipItems].slice(0, 20)
         .map((it, i) => ({ '@type': 'ListItem', position: i + 1, url: abs(it.url), name: clean(it.name, 110) }));
     const jsonLd = [
+        {
+            '@context': 'https://schema.org', '@type': 'WebSite',
+            name: SITE_NAME, url: baseUrl(), description: clean(description, 300),
+            inLanguage: 'en', publisher: { '@id': `${baseUrl()}/#org` },
+        },
+        {
+            '@context': 'https://schema.org', '@type': 'Organization', '@id': `${baseUrl()}/#org`,
+            name: 'OpenVibe', url: baseUrl(), logo: DEFAULT_OG_IMAGE,
+            description: 'A free, open-source network of live streaming, media and developer tools, run by its community with no ads and no investors.',
+            // sameAs is how a search engine learns these properties are one brand rather than
+            // unrelated sites that happen to share a name.
+            sameAs: [
+                'https://github.com/OpenVibers',
+                'https://discord.gg/M6MuRUaeJj',
+                'https://openvibe.tools',
+                'https://openvibe.network',
+            ],
+        },
         { '@context': 'https://schema.org', '@type': 'ItemList', name: 'Live & recent on OpenVibe.Live', itemListElement: listEls },
     ];
     return { title, description, canonicalPath: '/', image: DEFAULT_OG_IMAGE, ogType: 'website', robots: 'index,follow', jsonLd, snapshot };
@@ -425,7 +471,7 @@ function _cacheSet(key, html) {
     _cache.set(key, { html, at: Date.now() });
 }
 
-const SEO_ROUTE_RE = /^\/(?:$|vods$|clips$|pastes$|vod\/\d+$|clip\/\d+$|recap\/\d+$|p\/[A-Za-z0-9_-]+$|@[A-Za-z0-9_.-]+$)/;
+const SEO_ROUTE_RE = /^\/(?:$|vods$|clips$|pastes$|arena$|vod\/\d+$|clip\/\d+$|recap\/\d+$|p\/[A-Za-z0-9_-]+$|@[A-Za-z0-9_.-]+$)/;
 
 async function middleware(req, res, next) {
     if (req.method !== 'GET') return next();

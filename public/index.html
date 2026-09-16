@@ -62,12 +62,12 @@
     </script>
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="/css/style.css?v=164">
+    <link rel="stylesheet" href="/css/style.css?v=166">
     <link rel="stylesheet" href="/css/chat-shared.css?v=1">
     <link rel="stylesheet" href="/css/broadcast.css?v=11">
     <link rel="stylesheet" href="/css/cosmetics.css?v=2">
     <link rel="stylesheet" href="/css/messenger.css?v=1">
-    <link rel="stylesheet" href="/css/home-fx.css?v=7">
+    <link rel="stylesheet" href="/css/home-fx.css?v=8">
     <link rel="stylesheet" href="/css/home-tour.css?v=2">
     <link rel="stylesheet" href="/css/ov-guide.css?v=1">
     <link rel="stylesheet" href="/css/i18n-star.css?v=5">
@@ -5040,17 +5040,57 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <!--  FOOTER                                                     -->
 <!-- ═══════════════════════════════════════════════════════════ -->
 <footer class="footer">
-    <div class="footer-content">
-        <span class="footer-brand"><span class="ov-mark" data-size="22"></span> OpenVibe.Live</span>
-        <span class="footer-divider">&middot;</span>
-        <a href="https://github.com/OpenVibers/OpenVibe.Live" target="_blank"><i class="fa-brands fa-github"></i></a>
-        <a href="https://discord.gg/M6MuRUaeJj" target="_blank"><i class="fa-brands fa-discord"></i></a>
-        <span class="footer-divider">&middot;</span>
-        <span class="footer-copy">Open Source &amp; Community Driven</span>
-        <span class="footer-divider">&middot;</span>
-        <a href="/tos">Terms</a>
-        <a href="/privacy">Privacy</a>
-        <a href="/dmca">DMCA</a>
+    <div class="footer-inner">
+        <div class="footer-cols">
+            <div class="footer-col footer-col--brand">
+                <a class="footer-brand" href="/" onclick="return handleLinkClick(event, '/')"><span class="ov-mark" data-size="26"></span> <span>OpenVibe<strong>.Live</strong></span></a>
+                <p class="footer-tagline">Free, open-source live streaming. Go live from a browser, OBS or a robot, restream everywhere, and keep your chat, emotes and clips in one place.</p>
+                <div class="footer-social">
+                    <a href="https://github.com/OpenVibers/OpenVibe.Live" target="_blank" rel="noopener" title="OpenVibe.Live on GitHub" aria-label="GitHub"><i class="fa-brands fa-github"></i></a>
+                    <a href="https://discord.gg/M6MuRUaeJj" target="_blank" rel="noopener noreferrer" title="Join the OpenVibe Discord" aria-label="Discord"><i class="fa-brands fa-discord"></i></a>
+                    <a href="/sitemap.xml" title="Sitemap" aria-label="Sitemap"><i class="fa-solid fa-sitemap"></i></a>
+                </div>
+            </div>
+            <nav class="footer-col" aria-label="Watch">
+                <h3>Watch</h3>
+                <a href="/" onclick="return handleLinkClick(event, '/')">Live streams</a>
+                <a href="/vods" onclick="return handleLinkClick(event, '/vods')">Stream VODs</a>
+                <a href="/clips" onclick="return handleLinkClick(event, '/clips')">Clips</a>
+                <a href="/arena" onclick="return handleLinkClick(event, '/arena')">The Arena</a>
+                <a href="/chat" onclick="return handleLinkClick(event, '/chat')">Global chat</a>
+            </nav>
+            <nav class="footer-col" aria-label="Create">
+                <h3>Create</h3>
+                <a href="/broadcast" onclick="return handleLinkClick(event, '/broadcast')">Start streaming</a>
+                <a href="/broadcast?guide=golive:restream" onclick="event.preventDefault(); if (typeof startRestreamGuide === 'function') startRestreamGuide();">Set up restreams</a>
+                <a href="/dashboard" onclick="return handleLinkClick(event, '/dashboard')">Streamer dashboard</a>
+                <a href="/pastes" onclick="return handleLinkClick(event, '/pastes')">Pastes</a>
+                <a href="/documentation" onclick="return handleLinkClick(event, '/documentation')">Documentation</a>
+            </nav>
+            <nav class="footer-col" aria-label="The OpenVibe network">
+                <h3>Network</h3>
+                <a href="https://openvibe.tools" target="_blank" rel="noopener">Free online tools</a>
+                <a href="https://dev.openvibe.tools" target="_blank" rel="noopener">Developer tools</a>
+                <a href="https://net.openvibe.tools" target="_blank" rel="noopener">Network diagnostics</a>
+                <a href="https://img.openvibe.tools" target="_blank" rel="noopener">Image converter</a>
+                <a href="https://openvibe.network" target="_blank" rel="noopener">Account &amp; themes</a>
+            </nav>
+            <nav class="footer-col" aria-label="Legal">
+                <h3>Legal</h3>
+                <a href="/tos" onclick="return handleLinkClick(event, '/tos')">Terms of Service</a>
+                <a href="/privacy" onclick="return handleLinkClick(event, '/privacy')">Privacy Policy</a>
+                <a href="/dmca" onclick="return handleLinkClick(event, '/dmca')">DMCA</a>
+                <a href="/documentation#philosophy" onclick="return handleLinkClick(event, '/documentation')">What is this?</a>
+            </nav>
+        </div>
+        <div class="footer-bar">
+            <span class="footer-copy">Open source &amp; community driven &middot; no ads, no trackers, no investors</span>
+            <span class="footer-legal-inline">
+                <a href="/tos" onclick="return handleLinkClick(event, '/tos')">Terms</a>
+                <a href="/privacy" onclick="return handleLinkClick(event, '/privacy')">Privacy</a>
+                <a href="/dmca" onclick="return handleLinkClick(event, '/dmca')">DMCA</a>
+            </span>
+        </div>
     </div>
 </footer>
 
