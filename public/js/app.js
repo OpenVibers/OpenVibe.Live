@@ -2254,15 +2254,19 @@ function demoteHomeIntroSections() {
     const views = _homeIntroViews(true);
     if (views < HOME_INTRO_VIEWS_BEFORE_DEMOTING) return;
     const container = document.querySelector('#page-home .container');
-    const anchorEl = document.getElementById('home-changelog-wrapper');
-    if (!container || !anchorEl) return;
+    if (!container) return;
+    // Land them before the changelog if it is a sibling, otherwise at the end of the container.
+    // Reading the anchor's parent rather than assuming it means a future markup change cannot
+    // silently turn this into a no-op.
+    const changelog = document.getElementById('home-changelog-wrapper');
+    const anchorEl = changelog && changelog.parentElement === container ? changelog : null;
     for (const id of ['home-tour-mount', 'home-cta-banner']) {
         const el = document.getElementById(id);
         // Already moved (a re-render, or a second visit in the same session)? Leave it be.
         if (!el || el.dataset.ovDemoted) continue;
         el.dataset.ovDemoted = '1';
         el.classList.add('home-intro-demoted');
-        try { container.insertBefore(el, anchorEl); } catch { /* */ }
+        try { if (anchorEl) container.insertBefore(el, anchorEl); else container.appendChild(el); } catch { /* */ }
     }
 }
 
