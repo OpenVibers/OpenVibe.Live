@@ -202,6 +202,7 @@ async function heroStats() {
             stats.coinHolders = c.holders;
         }
     } catch { /* the board is better off missing four chips than failing */ }
+    try { stats.concurrency = db.getConcurrencyBaseline(); } catch { /* */ }
     return stats;
 }
 
@@ -223,6 +224,9 @@ router.get('/stats-live', (req, res) => {
             // The 7-day deltas the hero chips show under their numbers. Same shape as the full
             // board's `recent`, trimmed to the four that have one.
             prevWeeklyVisitors: s.prevWeeklyVisitors, prevWeeklyActive: s.prevWeeklyActive,
+            // What counts as a normal number of live streams and viewers, so the two instantaneous
+            // readings can say whether right now is busy or quiet.
+            concurrency: (() => { try { return db.getConcurrencyBaseline(); } catch { return null; } })(),
             recent: {
                 users: s.recent?.users, anons: s.recent?.anons,
                 messages: s.recent?.messages,
