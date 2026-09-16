@@ -1060,12 +1060,19 @@ router.get('/', optionalAuth, (req, res) => {
             const ext = restreamManager.getExternalViewerCountsForUser(s.user_id, slotId);
             const rsVc = robotStreamerService.getRsViewerCount(s.user_id, slotId);
             const externalTotal = ext.total + rsVc;
-            return {
+            // getLiveStreams() selects s.* plus ms.stream_key, and this endpoint is public
+            // (optionalAuth, no user required). Every sibling handler redacts the ingest keys
+            // before responding; this one did not, so an anonymous GET returned the live ingest
+            // key of every broadcasting channel — enough to take over their stream.
+            const out = {
                 ...s,
                 channel: channel || null,
                 external_viewer_count: externalTotal,
                 total_viewer_count: (s.viewer_count || 0) + externalTotal,
             };
+            delete out.stream_key;
+            delete out.managed_stream_key;
+            return out;
         });
         res.json({ streams: enriched });
     } catch (err) {
