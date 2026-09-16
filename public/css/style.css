@@ -1860,34 +1860,66 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .stream-card-thumb .protocol-badge {
     position: absolute; bottom: 8px; left: 8px;
 }
-/* The view count and the duration sit on the same thumbnail and used to be two different
-   objects: one a translucent grey box, the other a near-opaque black one, both with square-ish
-   corners and neither aligned with the other. They are one component now — a frosted pill with a
-   hairline, tabular figures so the width does not jitter as counts change, and a dimmed icon so
-   the number is what the eye lands on. */
+/* ── Thumbnail badges: elapsed time (left) and view count (right) ──────────────
+   These sit on top of someone's video frame, so the job is to stay readable on a dark, noisy
+   thumbnail while hiding as little of it as possible.
+
+   - Backdrop blur is gone. It was expensive on a grid of a dozen cards, and on a rounded
+     overflow:hidden thumb it painted outside the card on some frames — the stray black box the
+     reader saw over a VOD tile. A tinted scrim plus a text shadow gives the same legibility with
+     no compositing surprise.
+   - They sit at 72% opacity and lift to full on hover, so the artwork reads first and the numbers
+     read when you look at them.
+   - Size comes from the thumbnail's own width via a container query, so a card in a six-across
+     row gets a smaller badge than the same card one-across on a phone, without a media query per
+     breakpoint.
+   - The scrim is tinted with the theme's accent so it belongs to the page, but its base stays
+     dark: white numerals over a photo need a dark backing whatever palette the reader picked. */
+.stream-card-thumb { container-type: inline-size; }
+
 .stream-card-viewers,
 .stream-card-duration {
-    position: absolute; bottom: 7px;
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 3px 8px; border-radius: 999px;
-    font-size: 0.72rem; font-weight: 700; line-height: 1.25;
+    --badge-ink: color-mix(in srgb, var(--accent) 16%, rgba(9, 9, 13, 0.56));
+    --badge-ink-hover: color-mix(in srgb, var(--accent) 18%, rgba(9, 9, 13, 0.82));
+    position: absolute; bottom: 5px;
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 6px; border-radius: 7px;
+    font-size: clamp(0.56rem, 4.4cqw, 0.7rem);
+    font-weight: 700; line-height: 1.3;
     color: #fff;
     font-variant-numeric: tabular-nums;
-    background: rgba(12, 12, 16, 0.62);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
-    -webkit-backdrop-filter: blur(9px) saturate(1.3);
-    backdrop-filter: blur(9px) saturate(1.3);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    background: var(--badge-ink);
+    box-shadow: 0 1px 7px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.11);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 5px rgba(0, 0, 0, 0.55);
+    opacity: 0.72;
+    pointer-events: none;
+    transition: opacity 0.18s ease, background-color 0.18s ease;
 }
-.stream-card-viewers { right: 7px; }
-.stream-card-viewers i { font-size: 0.68em; opacity: 0.75; }
+.stream-card-duration { left: 5px; }
+.stream-card-viewers { right: 5px; }
+/* The eye was the least legible thing on the badge at 0.68em and 75% — it is the label for the
+   number beside it, so it has to survive a bright thumbnail. */
+.stream-card-viewers i { font-size: 0.8em; opacity: 0.92; }
 .stream-card-viewers b { font-weight: 800; letter-spacing: 0.01em; }
-/* A thumbnail the reader is hovering can afford a little more contrast. */
 .stream-card:hover .stream-card-viewers,
-.stream-card:hover .stream-card-duration { background: rgba(12, 12, 16, 0.78); border-color: rgba(255, 255, 255, 0.22); }
-@supports not (backdrop-filter: blur(4px)) {
-    .stream-card-viewers, .stream-card-duration { background: rgba(12, 12, 16, 0.82); }
+.stream-card:hover .stream-card-duration,
+.stream-card:focus-within .stream-card-viewers,
+.stream-card:focus-within .stream-card-duration {
+    opacity: 1;
+    background: var(--badge-ink-hover);
+}
+/* No hover on a touch screen, so there is nothing to reveal — settle at a readable middle. */
+@media (hover: none) {
+    .stream-card-viewers, .stream-card-duration { opacity: 0.86; }
+}
+/* Very small tiles: the badge would otherwise eat the corner of the frame. */
+@container (max-width: 150px) {
+    .stream-card-viewers, .stream-card-duration { padding: 1px 4px; gap: 3px; bottom: 4px; border-radius: 6px; }
+    .stream-card-duration { left: 4px; }
+    .stream-card-viewers { right: 4px; }
+}
+@supports not (container-type: inline-size) {
+    .stream-card-viewers, .stream-card-duration { font-size: 0.68rem; }
 }
 .stream-card-nsfw {
     position: absolute; top: 8px; right: 8px;
@@ -2406,8 +2438,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 /* ═══════════════════════════════════════════════════════════════
    STREAM CARD EXTRAS (duration, ago badge)
    ═══════════════════════════════════════════════════════════════ */
-/* Shape and colour come from the shared rule alongside .stream-card-viewers; only the side differs. */
-.stream-card-duration { left: 7px; }
+/* Shape, colour and position all come from the shared rule alongside .stream-card-viewers. */
 .stream-card-ago {
     margin-left: auto;
     font-size: 0.75rem;
