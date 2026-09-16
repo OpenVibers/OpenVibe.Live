@@ -88,22 +88,39 @@
     }
 
     // ── Scroll reveal ──────────────────────────────────────────
-    let io = null, revealSafety = 0;
+    let io = null, revealSafety = 0, revealPasses = 0;
+    /**
+     * Failsafe for the reveal animation.
+     *
+     * A revealed element starts at opacity 0, so anything the observer never reports on stays
+     * invisible — which is a broken page, not a missing animation. The first version of this
+     * cleared and rescheduled its timer inside attachReveal(), and attachReveal runs on every
+     * container mutation; the home page mutates constantly (the live grid alone refreshes every
+     * 12 seconds), so the timer was cancelled forever and never ran once. Hence a "Live Now"
+     * heading sitting at opacity 0 with nothing wrong with it.
+     *
+     * It is now a standalone schedule that cannot be starved, and it sweeps a few times to catch
+     * sections that mount late.
+     */
+    function startRevealSafety() {
+        if (revealSafety) return;
+        const sweep = () => {
+            document.querySelectorAll('.hfx-reveal:not(.is-in)').forEach(el => {
+                const r = el.getBoundingClientRect();
+                if (r.height && r.top < window.innerHeight && r.bottom > 0) el.classList.add('is-in');
+            });
+            revealPasses++;
+            revealSafety = revealPasses < 5 ? setTimeout(sweep, 2000) : 0;
+        };
+        revealSafety = setTimeout(sweep, 1200);
+    }
+
     function attachReveal() {
         if (!('IntersectionObserver' in window)) return;
         if (!io) io = new IntersectionObserver((entries) => { for (const en of entries) if (en.isIntersecting) { en.target.classList.add('is-in'); io.unobserve(en.target); } }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
         const sel = '#page-home .section-header, #page-home .stream-card, #page-home .home-cta-banner, #page-home .home-star-section, #page-home .rs-hero-mount, #page-home .pulse-grid > *, #page-home .moments-row > *, #page-home .home-digest';
         document.querySelectorAll(sel).forEach((el, i) => { if (el.classList.contains('hfx-reveal')) return; el.classList.add('hfx-reveal'); el.style.setProperty('--d', `${(i % 6) * 60}ms`); io.observe(el); });
-        // Failsafe. A revealed element starts at opacity 0, so anything the observer never reports
-        // on would stay invisible — a skipped content-visibility subtree or a restored page can do
-        // that. One late pass shows whatever is already on screen regardless.
-        clearTimeout(revealSafety);
-        revealSafety = setTimeout(() => {
-            document.querySelectorAll('.hfx-reveal:not(.is-in)').forEach(el => {
-                const r = el.getBoundingClientRect();
-                if (r.height && r.top < window.innerHeight && r.bottom > 0) el.classList.add('is-in');
-            });
-        }, 2500);
+        startRevealSafety();
     }
 
     // ── Count-up on the hero stats ─────────────────────────────

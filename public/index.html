@@ -88,7 +88,7 @@
          overlay) and is fetched without blocking the first paint: media="print" makes the browser
          treat it as non-critical, and the onload flips it back to all once it has arrived. -->
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-    <link rel="stylesheet" href="/css/style.css?v=166">
+    <link rel="stylesheet" href="/css/style.css?v=167">
     <link rel="stylesheet" href="/css/home-fx.css?v=10">
     <link rel="stylesheet" href="/css/home-tour.css?v=4">
     <link rel="stylesheet" href="/css/i18n-star.css?v=5">
@@ -283,7 +283,50 @@
                 <p class="hero-tagline">Live streaming for <span class="hero-rotate-wrap"><span class="hero-rotate" id="hero-rotate"></span></span></p>
                 <p class="hero-quip" id="hero-quip" aria-live="polite"></p>
                 <div class="hero-slogan-timer" id="hero-slogan-timer" hidden></div>
+                <div class="hero-cta" data-fx-viewport>
+                    <button style="--i:0" class="hb hb-stream" onclick="currentUser ? navigate('/broadcast') : showModal('register')"><span class="hb-ico"><i class="fa-solid fa-broadcast-tower"></i></span><span class="hb-label">Stream</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></button>
+                    <a href="https://openvibe.network" style="--i:1" class="hb hb-tools"><span class="hb-ico"><i class="fa-solid fa-screwdriver-wrench"></i></span><span class="hb-label">Tools</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                    <a href="https://openvibe.games/game" style="--i:2" class="hb hb-game"><span class="hb-ico"><i class="fa-solid fa-gamepad"></i></span><span class="hb-label">Game</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                    <a href="https://github.com/OpenVibers/OpenVibe.Live" target="_blank" style="--i:3" class="hb hb-github" rel="noopener"><span class="hb-ico"><i class="fa-brands fa-github"></i></span><span class="hb-label">GitHub</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                    <a href="https://discord.gg/M6MuRUaeJj" target="_blank" style="--i:4" class="hb hb-discord" rel="noopener noreferrer"><span class="hb-ico"><i class="fa-brands fa-discord"></i></span><span class="hb-label">Discord</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                    <a href="/documentation" onclick="return handleLinkClick(event, '/documentation')" style="--i:5" class="hb hb-vibe"
+                       data-ovtip-title="Mod it, bot it, build on it"
+                       data-ovtip-icon="fa-wand-magic-sparkles"
+                       data-ovtip-accent="#f472b6"
+                       data-ovtip-place="top"
+                       data-ovtip="Chat, streams, clips, overlays, robots, sound commands, whole games &mdash; every feature here has an <b>open API</b>, and the entire site is <b>open source</b>. <em>You do not need to know how to code.</em> Point an AI at these docs, describe the thing you want, and it writes it for you."
+                       data-ovtip-foot="<i class=&quot;fa-solid fa-heart&quot;></i> We love what people build here &mdash; come make something"><span class="hb-ico"><i class="fa-solid fa-wand-magic-sparkles"></i></span><span class="hb-label">Build &amp; Mod <small>API docs</small></span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                </div>
                 <div class="hero-stats" id="hero-stats" aria-label="Site stats"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div></div></div>
+            </div>
+        </div>
+
+        <div class="container">
+            <!-- Live Streams -->
+            <div class="section-header">
+                <h2><i class="fa-solid fa-circle live-dot"></i> Live Now</h2>
+                <span id="live-count" class="badge">0</span>
+            </div>
+            <div class="stream-grid" id="stream-grid-live">
+                <div class="ovsk ovsk-card" aria-hidden="true"><div class="ovsk-thumb"></div><div class="ovsk-meta"><div class="ovsk-bar ovsk-av"></div><div class="ovsk-lines"><div class="ovsk-bar" style="height:11px;width:72%"></div><div class="ovsk-bar" style="height:9px;width:45%"></div></div></div></div>
+                <div class="ovsk ovsk-card" aria-hidden="true"><div class="ovsk-thumb"></div><div class="ovsk-meta"><div class="ovsk-bar ovsk-av"></div><div class="ovsk-lines"><div class="ovsk-bar" style="height:11px;width:72%"></div><div class="ovsk-bar" style="height:9px;width:45%"></div></div></div></div>
+                <div class="ovsk ovsk-card" aria-hidden="true"><div class="ovsk-thumb"></div><div class="ovsk-meta"><div class="ovsk-bar ovsk-av"></div><div class="ovsk-lines"><div class="ovsk-bar" style="height:11px;width:72%"></div><div class="ovsk-bar" style="height:9px;width:45%"></div></div></div></div>
+                <div class="ovsk ovsk-card" aria-hidden="true"><div class="ovsk-thumb"></div><div class="ovsk-meta"><div class="ovsk-bar ovsk-av"></div><div class="ovsk-lines"><div class="ovsk-bar" style="height:11px;width:72%"></div><div class="ovsk-bar" style="height:9px;width:45%"></div></div></div></div>
+                <div class="empty-state" id="no-live-streams" style="display:none">
+                    <i class="fa-solid fa-tower-broadcast fa-3x"></i>
+                    <p>No one is streaming right now</p>
+                    <p class="muted">Be the first to go live!</p>
+                </div>
+            </div>
+
+            <!-- "While you were away" (signed-in, returning) / "Lately on OpenVibe" (everyone) — site activity digest -->
+            <div class="home-digest" id="home-digest"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div></div></div>
+
+            <!-- Star of OpenVibe — featured streamer spotlight (star_streamer setting / STAR_STREAMER env) -->
+            <div class="home-star-section" id="home-star-section"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div><div class="ovsk-bar" style="height:10px;width:80%"></div></div></div>
+
+                <!-- One stream, everywhere — restream pipeline + feature tour (public/js/home-tour.js) -->
+                <div class="home-tour-mount home-section-lazy" id="home-tour-mount" data-fx-viewport></div>
                 <div class="hero-egg" id="hero-egg" style="display:none">
                     <button class="hero-egg-head" type="button" onclick="toggleHeroEgg()">
                         <span class="hero-egg-icon">🥚</span>
@@ -314,60 +357,6 @@
                         </div>
                     </div>
                 </div>
-                <div class="hero-cta" data-fx-viewport>
-                    <button style="--i:0" class="hb hb-stream" onclick="currentUser ? navigate('/broadcast') : showModal('register')"><span class="hb-ico"><i class="fa-solid fa-broadcast-tower"></i></span><span class="hb-label">Stream</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></button>
-                    <a href="https://openvibe.network" style="--i:1" class="hb hb-tools"><span class="hb-ico"><i class="fa-solid fa-screwdriver-wrench"></i></span><span class="hb-label">Tools</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
-                    <a href="https://openvibe.games/game" style="--i:2" class="hb hb-game"><span class="hb-ico"><i class="fa-solid fa-gamepad"></i></span><span class="hb-label">Game</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
-                    <a href="https://github.com/OpenVibers/OpenVibe.Live" target="_blank" style="--i:3" class="hb hb-github" rel="noopener"><span class="hb-ico"><i class="fa-brands fa-github"></i></span><span class="hb-label">GitHub</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
-                    <a href="https://discord.gg/M6MuRUaeJj" target="_blank" style="--i:4" class="hb hb-discord" rel="noopener noreferrer"><span class="hb-ico"><i class="fa-brands fa-discord"></i></span><span class="hb-label">Discord</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
-                    <a href="/documentation" onclick="return handleLinkClick(event, '/documentation')" style="--i:5" class="hb hb-vibe"
-                       data-ovtip-title="Mod it, bot it, build on it"
-                       data-ovtip-icon="fa-wand-magic-sparkles"
-                       data-ovtip-accent="#f472b6"
-                       data-ovtip-place="top"
-                       data-ovtip="Chat, streams, clips, overlays, robots, sound commands, whole games &mdash; every feature here has an <b>open API</b>, and the entire site is <b>open source</b>. <em>You do not need to know how to code.</em> Point an AI at these docs, describe the thing you want, and it writes it for you."
-                       data-ovtip-foot="<i class=&quot;fa-solid fa-heart&quot;></i> We love what people build here &mdash; come make something"><span class="hb-ico"><i class="fa-solid fa-wand-magic-sparkles"></i></span><span class="hb-label">Build &amp; Mod <small>API docs</small></span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
-                </div>
-                <!-- One stream, everywhere — restream pipeline + feature tour (public/js/home-tour.js) -->
-                <div class="home-tour-mount home-section-lazy" id="home-tour-mount" data-fx-viewport></div>
-                <!-- Newest shipped commit — built in the open, receipts included. -->
-                <a class="hero-latest" id="hero-latest" href="/updates" onclick="return handleLinkClick(event, '/updates')" style="display:none"></a>
-                <div class="hero-philosophy-links">
-                    <a href="#home-cta-banner" class="hero-philosophy-btn" onclick="event.preventDefault();openHomeAbout();">
-                        <i class="fa-solid fa-book-open"></i> What Is This? (Philosophy)
-                    </a>
-                    <a href="/tos" class="hero-philosophy-link" onclick="return handleLinkClick(event, '/tos')">Terms</a>
-                    <span aria-hidden="true">•</span>
-                    <a href="/privacy" class="hero-philosophy-link" onclick="return handleLinkClick(event, '/privacy')">Privacy</a>
-                    <span aria-hidden="true">•</span>
-                    <a href="/dmca" class="hero-philosophy-link" onclick="return handleLinkClick(event, '/dmca')">DMCA</a>
-                </div>
-            </div>
-        </div>
-
-        <div class="container">
-            <!-- "While you were away" (signed-in, returning) / "Lately on OpenVibe" (everyone) — site activity digest -->
-            <div class="home-digest" id="home-digest"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div></div></div>
-
-            <!-- Star of OpenVibe — featured streamer spotlight (star_streamer setting / STAR_STREAMER env) -->
-            <div class="home-star-section" id="home-star-section"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div><div class="ovsk-bar" style="height:10px;width:80%"></div></div></div>
-
-            <!-- Live Streams -->
-            <div class="section-header">
-                <h2><i class="fa-solid fa-circle live-dot"></i> Live Now</h2>
-                <span id="live-count" class="badge">0</span>
-            </div>
-            <div class="stream-grid" id="stream-grid-live">
-                <div class="ovsk ovsk-card" aria-hidden="true"><div class="ovsk-thumb"></div><div class="ovsk-meta"><div class="ovsk-bar ovsk-av"></div><div class="ovsk-lines"><div class="ovsk-bar" style="height:11px;width:72%"></div><div class="ovsk-bar" style="height:9px;width:45%"></div></div></div></div>
-                <div class="ovsk ovsk-card" aria-hidden="true"><div class="ovsk-thumb"></div><div class="ovsk-meta"><div class="ovsk-bar ovsk-av"></div><div class="ovsk-lines"><div class="ovsk-bar" style="height:11px;width:72%"></div><div class="ovsk-bar" style="height:9px;width:45%"></div></div></div></div>
-                <div class="ovsk ovsk-card" aria-hidden="true"><div class="ovsk-thumb"></div><div class="ovsk-meta"><div class="ovsk-bar ovsk-av"></div><div class="ovsk-lines"><div class="ovsk-bar" style="height:11px;width:72%"></div><div class="ovsk-bar" style="height:9px;width:45%"></div></div></div></div>
-                <div class="ovsk ovsk-card" aria-hidden="true"><div class="ovsk-thumb"></div><div class="ovsk-meta"><div class="ovsk-bar ovsk-av"></div><div class="ovsk-lines"><div class="ovsk-bar" style="height:11px;width:72%"></div><div class="ovsk-bar" style="height:9px;width:45%"></div></div></div></div>
-                <div class="empty-state" id="no-live-streams" style="display:none">
-                    <i class="fa-solid fa-tower-broadcast fa-3x"></i>
-                    <p>No one is streaming right now</p>
-                    <p class="muted">Be the first to go live!</p>
-                </div>
-            </div>
 
             <!-- Community pulse: goals near completion, latest activity, weekly leaders -->
             <div class="home-section-lazy" id="home-pulse-section" style="display:none">
@@ -739,6 +728,21 @@
                     <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
                 </div>
                 <div class="home-changelog-fade" id="home-changelog-fade"></div>
+            </div>
+
+            <!-- The quiet bits. These used to sit in the hero, above every stream on the site;
+                 they belong under the content, not in front of it. -->
+            <!-- Newest shipped commit — built in the open, receipts included. -->
+            <a class="hero-latest" id="hero-latest" href="/updates" onclick="return handleLinkClick(event, '/updates')" style="display:none"></a>
+            <div class="hero-philosophy-links">
+                <a href="#home-cta-banner" class="hero-philosophy-btn" onclick="event.preventDefault();openHomeAbout();">
+                    <i class="fa-solid fa-book-open"></i> What Is This? (Philosophy)
+                </a>
+                <a href="/tos" class="hero-philosophy-link" onclick="return handleLinkClick(event, '/tos')">Terms</a>
+                <span aria-hidden="true">&bull;</span>
+                <a href="/privacy" class="hero-philosophy-link" onclick="return handleLinkClick(event, '/privacy')">Privacy</a>
+                <span aria-hidden="true">&bull;</span>
+                <a href="/dmca" class="hero-philosophy-link" onclick="return handleLinkClick(event, '/dmca')">DMCA</a>
             </div>
 
         </div>
@@ -5124,7 +5128,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/js/theme-engine.js?v=4"></script>
 <script src="/live-notify.js?v=3" defer></script>
 <script src="/js/ov-skeleton.js?v=1" defer></script>
-<script src="/js/app.js?v=144" defer></script>
+<script src="/js/app.js?v=145" defer></script>
 <script src="/js/stream-player.js?v=21" defer></script>
 <script src="/js/stream-pip.js?v=1" defer></script>
 <script src="/js/chat-shared.js?v=3" defer></script>
@@ -5207,7 +5211,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <script src="/shared/tooltip.js?v=1" defer></script>
 <script src="/shared/footer.js?v=1" defer></script>
 <script src="/js/footer-live.js?v=1" defer></script>
-<script src="/js/home-fx.js?v=6" defer></script>
+<script src="/js/home-fx.js?v=7" defer></script>
 <script src="/js/home-tour.js?v=6" defer></script>
 <script src="/js/ov-guide.js?v=1" defer></script>
 <script src="/js/guides-live.js?v=4" defer></script>
