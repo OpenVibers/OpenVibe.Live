@@ -123,3 +123,20 @@ Related surfaces: `GET /api/streams/channel/:username/bio-en` (bio in English),
 `GET /api/chat-ai/live-captions/:username` (English rendering of live speech — needs the AI
 timeline on and a multilingual whisper model, see `WHISPER_MODEL_MULTI`), and the home-page
 "Star of OpenVibe" spotlight (`GET /api/home/star`, `star_streamer` setting / `STAR_STREAMER` env).
+
+
+## Friendly global chat (2026-09-17)
+
+A viewer-side setting (chat settings → Behavior). When on, messages in global chat that match
+`FRIENDLY_FILTER_CATEGORIES` in `server/chat/moderation-utils.js` (slurs, hate slogans, threats,
+sexual content, anything sexualising minors) fold into a "N messages hidden by Friendly chat ·
+Show" line. Nothing is deleted and nobody is moderated for it. It is on for a viewer's first day
+(the chat `auth` message carries `newcomer`, from the account age or the anon's first sighting)
+unless the viewer chose otherwise; the rules come from `GET /api/chat/filters/friendly`.
+
+## History and rendering
+
+`buildChatMessageEl()` in `public/js/chat.js` renders every surface (page, popout, broadcast desk,
+floating widget). History renders off-screen and swaps in once; the last 200 rows of a room are
+cached in localStorage per user for an instant paint on reload. The view follows new messages
+unless the reader scrolled back (`_watchChatPin`).
