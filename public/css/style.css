@@ -22,7 +22,7 @@
     --accent: #3b82f6;           /* OpenVibe blue */
     --accent-light: #60a5fa;
     --accent-dark: #1d4ed8;
-    --on-accent: #0b0d10; /* readable text/icon color on top of --accent (themes override) */
+    --on-accent: #ffffff; /* readable text/icon color on top of --accent; every theme sets its own */
 
     --live-red: #ef4444;
     --success: #22c55e;
