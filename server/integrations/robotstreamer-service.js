@@ -513,38 +513,6 @@ class RobotStreamerService {
     }
 
     /**
-     * Start the native (server-side) RS video publisher for streams whose
-     * ingest has no browser publisher: WHIP/OBS and RTMP. Browser broadcasts
-     * publish to RS from the client via /ws/robotstreamer-publish instead.
-     */
-    _maybeStartNativePublish(stream, integration, opts = {}) {
-        try {
-            if (!integration?.enabled || !integration.token || !integration.robot_id) return;
-            if (this._activePublish.has(stream.id)) return; // browser publisher already connected
-            const rsNativePublisher = require('./rs-native-publisher');
-            if (rsNativePublisher.isActive(stream.id)) return;
-
-            // Determine the real ingest. When the caller KNOWS the ingest (e.g. we
-            // were triggered from the WHIP ICE-connected handler), trust that over
-            // the configured managed_stream.streaming_method — which can be stale
-            // or misconfigured ('browser') even though OBS is pushing via WHIP.
-            const db2 = require('../db/database');
-            const ms = stream.managed_stream_id ? db2.getManagedStreamById(stream.managed_stream_id) : null;
-            let method = ms?.streaming_method || 'browser';
-            if (opts.ingest === 'whip' || opts.ingest === 'rtmp') method = opts.ingest;
-            if (method !== 'whip' && method !== 'rtmp') {
-                console.log(`[RS] Native publish skipped for stream ${stream.id}: method='${method}' (no browserless ingest)`);
-                return;
-            }
-
-            console.log(`[RS] Starting native video publish for stream ${stream.id} (ingest=${method}, robot=${integration.robot_id})`);
-            rsNativePublisher.start(stream, integration);
-        } catch (err) {
-            console.warn(`[RS] Native publish start failed for stream ${stream.id}:`, err.message);
-        }
-    }
-
-    /**
      * Idempotent per stream, including while a previous call is still in flight.
      *
      * Four different lifecycle hooks call this — stream creation, the WHIP ingest going
@@ -579,7 +547,11 @@ class RobotStreamerService {
         // RAW passthrough relay (zero re-encode) is the ONLY restream path now: the server
         // forwards the source's already-encoded RTP straight to RobotStreamer, replacing both
         // the browser's second encode and the old ffmpeg transcode publisher.
-        if (this._passthroughEnabledFor(integration)) {
+        if (stream.protocol === 'rtmp' || stream.protocol === 'jsmpeg') {
+            // No SFU producers to forward: the relay would sit waiting for a video producer,
+            // time out and restart in a loop. Chat mirroring below still applies.
+            console.log(`[RS] Video passthrough skipped for stream ${stream.id}: ${stream.protocol} ingest has no SFU producer (browser/WHIP sources only)`);
+        } else if (this._passthroughEnabledFor(integration)) {
             try {
                 require('./rs-passthrough-relay').start(stream, integration);
                 console.log(`[RS] Raw passthrough relay started for stream ${stream.id} (robot ${integration.robot_id})`);
@@ -819,7 +791,6 @@ class RobotStreamerService {
 
     stopForStream(streamId) {
         this.stopChatBridge(streamId);
-        try { require('./rs-native-publisher').stop(streamId); } catch { /* ignore */ }
         try { require('./rs-passthrough-relay').stop(streamId); } catch { /* ignore */ }
     }
 

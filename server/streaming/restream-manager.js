@@ -30,7 +30,12 @@ const MAX_RESTART_ATTEMPTS = 30;           // 30 attempts (was 10 — too few fo
 const FFMPEG_STARTUP_DELAY_RTMP = 3000;
 const RAPID_CRASH_THRESHOLD_MS = 5000;     // If FFmpeg exits within this, apply extra backoff
 const RAPID_CRASH_GIVEUP = 4;              // …this many rapid crashes in a row = destination is dead (circuit-break)
-const LIVE_OUTPUT_BUFFER_MS = 1000;
+// ffmpeg is spawned with `-progress pipe:1`, which prints a key=value block to stdout every
+// stats period once the output is open and frames are flowing. That is the live signal: the
+// first block with frame>0 (or out_time>0 for a codec copy) means the ingest accepted the
+// stream and is taking data. Without it we used to guess after 15s.
+const LIVE_ACK_TIMEOUT_MS = 20000;         // no progress at all in this long = the ingest never took our data
+const SRT_DEFAULT_LATENCY_MS = 120;        // SRT's own default; enough for a same-continent ingest
 
 /**
  * Path to a static FFmpeg binary built with OpenSSL (not GnuTLS).
@@ -66,7 +71,7 @@ const QUALITY_PRESETS = {
         label: 'Low (720p 1500k)',
         videoBitrate: '1500k',
         maxrate: '1800k',
-        bufsize: '3000k',
+        bufsize: '1500k',      // 1x bitrate VBV: about a second less latency than the old 2x, still CBR-safe
         audioBitrate: '96k',
         preset: 'ultrafast',       // ultrafast: ~50% less CPU than veryfast — critical for multi-dest servers
         scale: '1280:720',
@@ -77,7 +82,7 @@ const QUALITY_PRESETS = {
         label: 'Medium (720p 2500k)',
         videoBitrate: '2500k',
         maxrate: '3000k',
-        bufsize: '5000k',
+        bufsize: '2500k',      // 1x bitrate VBV: about a second less latency than the old 2x, still CBR-safe
         audioBitrate: '128k',
         preset: 'ultrafast',       // ultrafast: stream stability > marginal quality gain from veryfast
         scale: '1280:720',
@@ -88,7 +93,7 @@ const QUALITY_PRESETS = {
         label: 'High (720p 4000k)',
         videoBitrate: '4000k',
         maxrate: '4500k',
-        bufsize: '8000k',
+        bufsize: '4000k',      // 1x bitrate VBV: about a second less latency than the old 2x, still CBR-safe
         audioBitrate: '160k',
         preset: 'superfast',       // superfast: good balance for single-dest or beefier servers
         scale: '1280:720',
@@ -99,7 +104,7 @@ const QUALITY_PRESETS = {
         label: 'Ultra (1080p 6000k)',
         videoBitrate: '6000k',
         maxrate: '6500k',
-        bufsize: '12000k',
+        bufsize: '6000k',      // 1x bitrate VBV: about a second less latency than the old 2x, still CBR-safe
         audioBitrate: '192k',
         preset: 'veryfast',
         scale: null,     // No scaling — pass through native resolution
@@ -372,7 +377,60 @@ class RestreamManager extends EventEmitter {
             url += '/app';
         }
 
+        if (/^srt:\/\//i.test(url)) return this._buildSrtUrl(url, dest);
         return `${url}/${dest.stream_key}`;
+    }
+
+    /**
+     * SRT destination: the "stream key" is the SRT streamid, and latency/passphrase travel as
+     * URL options. The muxer is MPEG-TS, not FLV, and the caller mode with 1316-byte packets
+     * is what every SRT ingest (OBS-style, Haivision, MediaMTX, SRT Live Server) expects.
+     */
+    _buildSrtUrl(base, dest) {
+        const u = new URL(base);
+        const q = u.searchParams;
+        if (dest.stream_key && !q.has('streamid')) q.set('streamid', dest.stream_key);
+        const latency = Number(dest.srt_latency_ms) > 0 ? Number(dest.srt_latency_ms) : SRT_DEFAULT_LATENCY_MS;
+        q.set('latency', String(latency * 1000));            // libsrt takes microseconds
+        if (dest.srt_passphrase) q.set('passphrase', dest.srt_passphrase);
+        if (!q.has('mode')) q.set('mode', 'caller');
+        if (!q.has('pkt_size')) q.set('pkt_size', '1316');
+        return u.toString();
+    }
+
+    /** Is this destination URL an SRT one (MPEG-TS muxer) rather than RTMP/RTMPS (FLV)? */
+    static isSrtUrl(url) { return /^srt:\/\//i.test(String(url || '')); }
+
+    /**
+     * Muxer + real-time flags for the output. FLV for RTMP(S); MPEG-TS for SRT. Everything that
+     * delays a packet on the way out is off: no mux buffering, flush every packet.
+     */
+    _outputArgs(destUrl) {
+        const common = ['-muxdelay', '0', '-muxpreload', '0', '-flush_packets', '1', '-max_muxing_queue_size', '4096'];
+        if (RestreamManager.isSrtUrl(destUrl)) {
+            return [...common, '-f', 'mpegts', '-mpegts_flags', '+resend_headers', destUrl];
+        }
+        return [...common, '-rtmp_live', 'live', '-f', 'flv', '-flvflags', 'no_duration_filesize', destUrl];
+    }
+
+    /**
+     * Turn ffmpeg's last stderr lines into something a streamer can act on. The raw text is kept
+     * alongside for the log; this is what the dashboard shows.
+     */
+    static friendlyFfmpegError(raw, platform = 'the destination') {
+        const t = String(raw || '');
+        const name = platform === 'custom' ? 'the destination' : platform.charAt(0).toUpperCase() + platform.slice(1);
+        if (/NetStream\.Publish\.BadName|Authentication|Unauthorized|403|Access denied|invalid stream key|bad name|not authorized|Publish rejected/i.test(t)) return `${name} rejected the stream key — check the key (and that it is a live key, not an expired one)`;
+        if (/Name or service not known|Temporary failure in name resolution|getaddrinfo|could not resolve/i.test(t)) return `Could not resolve the ingest host name — check the server URL`;
+        if (/Connection refused|No route to host|Network is unreachable|Connection timed out|timed out|Failed to connect|Cannot open connection/i.test(t)) return `Could not connect to ${name}'s ingest server — it may be down or the URL/port is wrong`;
+        if (/TLS|SSL|gnutls|handshake|certificate/i.test(t)) return `TLS handshake with ${name} failed — try the plain rtmp:// ingest URL or the platform's rtmps:// address`;
+        if (/Broken pipe|Connection reset|End of file|EOF|I\/O error|Input\/output error|Server closed/i.test(t)) return `${name} closed the connection — usually a rejected key, a second stream on the same key, or a platform-side hiccup (auto-retrying)`;
+        if (/srt|SRT/.test(t) && /passphrase|encrypt|crypto|Wrong password/i.test(t)) return `SRT passphrase rejected — the passphrase (or its length, 10–79 characters) does not match the receiver`;
+        if (/SRT.*(Connection setup failure|rejected|timeout)/i.test(t)) return `SRT receiver did not accept the connection — check host, port, streamid and that the receiver is in listener mode`;
+        if (/Unrecognized option|Invalid argument|Option .* not found/i.test(t)) return `Encoder configuration was rejected by ffmpeg (${t.slice(0, 80)})`;
+        if (/No such file|not found/i.test(t) && /ffmpeg/i.test(t)) return 'ffmpeg is not installed on the server';
+        if (!t.trim()) return 'Restream process stopped without a message';
+        return t.slice(0, 160);
     }
 
     /**
@@ -389,14 +447,7 @@ class RestreamManager extends EventEmitter {
             '-i', flvUrl,
             '-c', 'copy',               // Codec copy — no re-encoding
             '-fflags', '+nobuffer+discardcorrupt',
-            '-muxdelay', '0',
-            '-muxpreload', '0',
-            '-flush_packets', '1',
-            '-rtmp_live', 'live',
-            '-rtmp_buffer', '2000',      // 2s output buffer — absorbs input jitter
-            '-f', 'flv',
-            '-flvflags', 'no_duration_filesize',
-            destUrl,
+            ...this._outputArgs(destUrl),
         ];
 
         this._spawnFFmpeg(session, args);
@@ -418,15 +469,7 @@ class RestreamManager extends EventEmitter {
             '-f', 'mpegts',
             '-i', 'pipe:0',             // Read combined MPEG-TS from stdin
             ...this._getEncodingArgs(preset, { customOverrides }),
-            '-muxdelay', '0',
-            '-muxpreload', '0',
-            '-flush_packets', '1',
-            '-rtmp_live', 'live',
-            '-rtmp_buffer', '2000',
-            '-max_muxing_queue_size', '4096',
-            '-f', 'flv',
-            '-flvflags', 'no_duration_filesize',
-            destUrl,
+            ...this._outputArgs(destUrl),
         ];
 
         this._spawnFFmpeg(session, args);
@@ -583,15 +626,7 @@ class RestreamManager extends EventEmitter {
             '-avoid_negative_ts', 'make_zero', // Handle timestamp resets from packet gaps gracefully
             '-i', sdpPath,
             ...this._getEncodingArgs(preset, { hasAudio: !!audioConsumer, customOverrides }),
-            '-muxdelay', '0',
-            '-muxpreload', '0',
-            '-flush_packets', '1',
-            '-rtmp_live', 'live',
-            '-rtmp_buffer', '2000',            // 2s output buffer (was 1s) — absorbs input jitter
-            '-max_muxing_queue_size', '4096',  // Prevent FLV muxer stalls from interleave gaps
-            '-f', 'flv',
-            '-flvflags', 'no_duration_filesize',
-            destUrl,
+            ...this._outputArgs(destUrl),
         ];
 
         this._spawnFFmpeg(session, args);
@@ -672,7 +707,7 @@ class RestreamManager extends EventEmitter {
         if (customOverrides.videoBitrate) {
             const kbps = parseInt(customOverrides.videoBitrate, 10);
             maxrate = `${kbps}k`;
-            bufsize = `${kbps * 2}k`;
+            bufsize = `${kbps}k`;        // 1x VBV, same as the presets
         }
 
         // Video encoding — CBR with zerolatency for stable real-time RTMP delivery
@@ -809,13 +844,20 @@ class RestreamManager extends EventEmitter {
         const binLabel = useOpenSslBinary ? 'ffmpeg(openssl)' : 'ffmpeg';
         console.log(`[Restream] Spawning FFmpeg for ${session.key}: ${binLabel} ${maskedArgs.join(' ')}`);
 
-        const proc = spawn(ffmpegBin, args, {
+        // `-progress pipe:1` is inserted after the global flags (args start with -hide_banner):
+        // ffmpeg then reports frame/fps/bitrate/speed on stdout, which is both the live ACK and
+        // the health line the dashboard shows.
+        const spawnArgs = args[0] === '-hide_banner' ? ['-hide_banner', '-progress', 'pipe:1', '-stats_period', '1', ...args.slice(1)] : ['-progress', 'pipe:1', ...args];
+        const proc = spawn(ffmpegBin, spawnArgs, {
             stdio: ['pipe', 'pipe', 'pipe'],
         });
 
         session.process = proc;
         session.startedAt = Date.now();
+        session.liveAt = null;
         session.liveConfirmedThisRun = false; // reset per ffmpeg run; set true once this run reaches 'live'
+        session.progress = null;
+        session.lastErrorRaw = null;
 
         let stderrBuf = '';
         let liveConfirmed = false;
@@ -833,6 +875,8 @@ class RestreamManager extends EventEmitter {
             try { require('../db/database').clearRestreamDestinationCooldown(session.destId); } catch { /* */ }
 
             session.status = 'live';
+            session.liveAt = Date.now();
+            session.lastError = null;
             this.emit('status-change', {
                 streamId: session.streamId, destId: session.destId, status: 'live',
             });
@@ -854,15 +898,35 @@ class RestreamManager extends EventEmitter {
             const chunk = data.toString();
             stderrBuf += chunk;
             if (stderrBuf.length > 4096) stderrBuf = stderrBuf.slice(-4096);
-
-            // FFmpeg prints "Output #0" when it opens the output and "frame=" when encoding frames.
-            // Either one confirms the RTMP connection is alive.
-            if (!liveConfirmed && (chunk.includes('Output #0') || chunk.includes('frame='))) {
-                confirmLive();
-            }
         });
 
-        proc.stdout.on('data', () => {}); // drain stdout
+        // Progress blocks: one key=value per line, terminated by `progress=continue|end`.
+        let progressBuf = '';
+        let progressSeenAt = 0;
+        proc.stdout.on('data', (data) => {
+            progressBuf += data.toString();
+            if (progressBuf.length > 8192) progressBuf = progressBuf.slice(-8192);
+            let nl;
+            const cur = session.progress || {};
+            while ((nl = progressBuf.indexOf('\n')) >= 0) {
+                const line = progressBuf.slice(0, nl).trim(); progressBuf = progressBuf.slice(nl + 1);
+                const eq = line.indexOf('='); if (eq <= 0) continue;
+                const k = line.slice(0, eq), v = line.slice(eq + 1).trim();
+                if (k === 'frame') cur.frame = +v || 0;
+                else if (k === 'fps') cur.fps = +v || 0;
+                else if (k === 'bitrate') cur.bitrate_kbps = v.endsWith('kbits/s') ? +parseFloat(v) || 0 : null;
+                else if (k === 'speed') cur.speed = v === 'N/A' ? null : +parseFloat(v) || 0;
+                else if (k === 'drop_frames') cur.dropped = +v || 0;
+                else if (k === 'out_time_us' || k === 'out_time_ms') cur.out_ms = Math.round((+v || 0) / 1000);
+                else if (k === 'progress') {
+                    progressSeenAt = Date.now();
+                    cur.at = progressSeenAt;
+                    session.progress = cur;
+                    // Frames (or, for a codec copy, output time) advancing means the ingest is taking data.
+                    if (!liveConfirmed && ((cur.frame || 0) > 0 || (cur.out_ms || 0) > 0)) confirmLive();
+                }
+            }
+        });
 
         proc.on('error', (err) => {
             this._disposeTransientSessionState(session, proc);
@@ -891,7 +955,8 @@ class RestreamManager extends EventEmitter {
                     streamId: session.streamId, destId: session.destId, status: 'idle',
                 });
             } else {
-                session.lastError = lastLines || `FFmpeg exit code ${code}`;
+                session.lastErrorRaw = lastLines || `FFmpeg exit code ${code}`;
+                session.lastError = RestreamManager.friendlyFfmpegError(session.lastErrorRaw, session.destination?.platform);
                 session.status = 'error';
                 this.emit('status-change', {
                     streamId: session.streamId, destId: session.destId,
@@ -901,14 +966,18 @@ class RestreamManager extends EventEmitter {
             }
         });
 
-        // Fallback: if stderr parsing hasn't confirmed live after 15s and FFmpeg is
-        // still running, assume it's connected (some FFmpeg builds suppress output)
+        // No progress at all within the ACK window means the output never opened (an ingest that
+        // accepts the TCP connection and then sits on the handshake, a key that is silently
+        // ignored): kill this run so the restart/back-off machinery — and the dashboard — see a
+        // real error instead of a "Starting…" that never ends.
         setTimeout(() => {
-            if (!liveConfirmed && session.process === proc && session.status === 'starting') {
-                console.log(`[Restream] Fallback live confirmation for ${session.key} (no stderr signal after 15s)`);
-                confirmLive();
-            }
-        }, 15000);
+            if (liveConfirmed || session.process !== proc || session.status !== 'starting') return;
+            if (progressSeenAt) { confirmLive(); return; }      // progress arrived but no frames yet: treat as connected
+            session.lastErrorRaw = stderrBuf.split('\n').filter(Boolean).slice(-3).join(' | ') || 'no output progress';
+            session.lastError = `No response from the ingest within ${LIVE_ACK_TIMEOUT_MS / 1000}s — ${RestreamManager.friendlyFfmpegError(session.lastErrorRaw, session.destination?.platform)}`;
+            console.warn(`[Restream] ${session.key}: ${session.lastError}`);
+            try { proc.kill('SIGTERM'); } catch { /* */ }
+        }, LIVE_ACK_TIMEOUT_MS).unref?.();
     }
 
     /**
@@ -960,9 +1029,11 @@ class RestreamManager extends EventEmitter {
         session.restartAttempts++;
 
         console.log(`[Restream] Scheduling restart for ${session.key} in ${(delay / 1000).toFixed(1)}s (attempt ${session.restartAttempts}/${MAX_RESTART_ATTEMPTS}, ran ${(runtime / 1000).toFixed(1)}s)`);
+        session.nextRestartAt = Date.now() + delay;
 
         session.restartTimer = setTimeout(() => {
             session.restartTimer = null;
+            session.nextRestartAt = null;
             if (session.status === 'stopped') return;
 
             // Lazy-require db to avoid circular dependency at module load
@@ -1672,39 +1743,24 @@ class RestreamManager extends EventEmitter {
 
                 statuses.push({
                     destId: session.destId,
+                    platform: session.destination?.platform || null,
                     status: effectiveStatus,
                     startedAt: session.startedAt,
+                    liveAt: session.liveAt || null,
+                    uptimeMs: session.liveAt && effectiveStatus === 'live' ? Date.now() - session.liveAt : 0,
                     restartAttempts: session.restartAttempts,
+                    maxRestartAttempts: MAX_RESTART_ATTEMPTS,
+                    nextRestartAt: session.nextRestartAt || null,
                     lastError: effectiveError,
+                    transport: RestreamManager.isSrtUrl(session.destination?.server_url) ? 'srt' : 'rtmp',
+                    progress: session.progress ? {
+                        fps: session.progress.fps ?? null, bitrate_kbps: session.progress.bitrate_kbps ?? null,
+                        speed: session.progress.speed ?? null, dropped: session.progress.dropped ?? 0, frame: session.progress.frame ?? 0,
+                    } : null,
                 });
             }
         }
         return statuses;
-    }
-
-    /**
-     * Auto-start enabled restreams when a stream goes live.
-     * Called by server/index.js when RTMP publishes or JSMPEG channel is created.
-     * @param {number} streamId
-     * @param {number} userId
-     * @param {object} streamInfo - { protocol, streamKey }
-     */
-    async autoStartForStream(streamId, userId, streamInfo) {
-        const db = require('../db/database');
-        const destinations = db.getRestreamDestinationsByUserId(userId);
-        if (!destinations?.length) return;
-
-        for (const dest of destinations) {
-            if (!dest.enabled || !dest.auto_start) continue;
-            if (!dest.server_url || !dest.stream_key) continue;
-
-            console.log(`[Restream] Auto-starting ${dest.platform} restream for stream ${streamId}`);
-            try {
-                await this.startRestream(streamId, dest, streamInfo);
-            } catch (err) {
-                console.warn(`[Restream] Auto-start failed for dest ${dest.id}:`, err.message);
-            }
-        }
     }
 
     /**

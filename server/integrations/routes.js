@@ -180,6 +180,48 @@ router.put('/integration', requireAuth, async (req, res) => {
     }
 });
 
+// ── Server-side RobotStreamer restream control ───────────────
+// The video passthrough runs on the server, so the dashboard's Start/Stop must reach it: before
+// these routes existed the button only touched the browser's own (unused) publisher, and the
+// only way to stop the robot was to disable the whole integration.
+function ownLiveStream(req, res) {
+    const id = parseInt(req.body?.stream_id, 10);
+    const stream = Number.isFinite(id) ? db.getStreamById(id) : null;
+    if (!stream || stream.user_id !== req.user.id) { res.status(404).json({ error: 'Stream not found' }); return null; }
+    return stream;
+}
+
+router.post('/restream/start', requireAuth, async (req, res) => {
+    try {
+        const stream = ownLiveStream(req, res);
+        if (!stream) return;
+        if (!stream.is_live) return res.status(409).json({ error: 'Stream is not live' });
+        const integration = robotStreamerService.getIntegrationForStream(stream);
+        if (!integration?.enabled || !integration.token || !integration.robot_id) {
+            return res.status(400).json({ error: 'RobotStreamer is not configured (or disabled) for this stream' });
+        }
+        if (!['webrtc', 'whip'].includes(stream.protocol) && !require('../streaming/webrtc-sfu').hasProducers(`stream-${stream.id}`)) {
+            return res.status(400).json({ error: `RobotStreamer passthrough needs a browser or OBS/WHIP source; this stream is ${stream.protocol}` });
+        }
+        await robotStreamerService.startForStream(stream);
+        const relay = require('./rs-passthrough-relay');
+        res.json({ ok: true, status: relay.status(stream.id) });
+    } catch (err) {
+        res.status(500).json({ error: err.message || 'Failed to start RobotStreamer restream' });
+    }
+});
+
+router.post('/restream/stop', requireAuth, (req, res) => {
+    try {
+        const stream = ownLiveStream(req, res);
+        if (!stream) return;
+        require('./rs-passthrough-relay').stop(stream.id);
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message || 'Failed to stop RobotStreamer restream' });
+    }
+});
+
 // Remove a slot-specific RS config (the slot falls back to the account default)
 router.delete('/integration', requireAuth, (req, res) => {
     try {

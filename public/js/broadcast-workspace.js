@@ -2668,8 +2668,8 @@ function _wsRenderRestreamList(container) {
                 </div>
             </div>
             <div class="bc-ws-restream-card-info">
-                <span class="muted" style="font-size:0.78rem">${esc(d.server_url || '')} · Key: ****${esc(d.stream_key ? d.stream_key.slice(-4) : '')}</span>
-                <span class="muted" style="font-size:0.78rem">Quality: ${esc(d.quality_preset || 'auto')}</span>
+                <span class="muted" style="font-size:0.78rem">${esc(d.server_url || '')} · ${d.transport === 'srt' ? 'Stream ID' : 'Key'}: ****${esc(d.stream_key ? d.stream_key.slice(-4) : '')}</span>
+                <span class="muted" style="font-size:0.78rem">${d.transport === 'srt' ? `SRT · ${d.srt_latency_ms || 120} ms latency${d.has_srt_passphrase ? ' · encrypted' : ''} · ` : ''}Quality: ${esc(d.quality_preset || 'auto')}${d.custom_encoder_preset ? ` · ${esc(d.custom_encoder_preset)}` : ''}</span>
             </div>
             ${coolBanner}
         </div>`;
@@ -2833,6 +2833,19 @@ async function _wsDeleteRestreamDest(destId) {
     }
 }
 
+/** Show the SRT options only for srt:// URLs and label the key field accordingly. */
+function _wsSyncRestreamTransport() {
+    const url = (document.getElementById('ws-rs-server-url')?.value || '').trim();
+    const isSrt = /^srt:\/\//i.test(url);
+    const srt = document.getElementById('ws-rs-srt-fields');
+    if (srt) srt.style.display = isSrt ? '' : 'none';
+    const keyLabel = document.getElementById('ws-rs-stream-key-label');
+    if (keyLabel) keyLabel.textContent = isSrt ? 'Stream ID (streamid)' : 'Stream Key';
+    const hint = document.getElementById('ws-rs-transport-hint');
+    if (hint) hint.textContent = isSrt ? 'SRT: MPEG-TS over UDP in caller mode — lower latency than RTMP and survives packet loss.'
+        : (/^rtmps:\/\//i.test(url) ? 'RTMPS: RTMP over TLS.' : (url ? 'RTMP (FLV).' : ''));
+}
+
 function _wsShowRestreamForm(existing) {
     const isRsEdit = !!existing?.__rs;
     if (isRsEdit) existing = null; // RS config comes from _wsSlotRsIntegration, not a destination row
@@ -2910,11 +2923,24 @@ function _wsShowRestreamForm(existing) {
             </div>
             <div class="form-group">
                 <label>Server URL</label>
-                <input type="text" id="ws-rs-server-url" class="form-input form-input-sm" value="${esc(existing?.server_url || '')}" placeholder="rtmp://...">
+                <input type="text" id="ws-rs-server-url" class="form-input form-input-sm" value="${esc(existing?.server_url || '')}" placeholder="rtmp://… rtmps://… or srt://host:port" oninput="_wsSyncRestreamTransport()">
+                <small class="muted" id="ws-rs-transport-hint"></small>
             </div>
             <div class="form-group">
-                <label>Stream Key</label>
+                <label id="ws-rs-stream-key-label">Stream Key</label>
                 <input type="password" id="ws-rs-stream-key" class="form-input form-input-sm" value="${esc(existing?.stream_key || '')}" placeholder="Paste stream key" autocomplete="off">
+            </div>
+            <div id="ws-rs-srt-fields" class="bc-ws-row" style="display:none;gap:8px">
+                <div class="form-group" style="flex:1;margin:0">
+                    <label style="font-size:0.78rem">SRT latency (ms)</label>
+                    <input type="number" id="ws-rs-srt-latency" class="form-input form-input-sm" value="${existing?.srt_latency_ms || ''}" placeholder="120" min="20" max="8000">
+                    <small class="muted">Receiver buffer. 120 ms same-continent; 300–600 ms across oceans or on Wi-Fi.</small>
+                </div>
+                <div class="form-group" style="flex:1;margin:0">
+                    <label style="font-size:0.78rem">SRT passphrase <span class="muted">(optional, 10–79 chars)</span></label>
+                    <input type="password" id="ws-rs-srt-passphrase" class="form-input form-input-sm" value="" placeholder="${existing?.has_srt_passphrase ? '•••••••• (saved — leave blank to keep)' : 'None (unencrypted)'}" autocomplete="off" minlength="10" maxlength="79">
+                    ${existing?.has_srt_passphrase ? '<label class="bc-toggle-label" style="font-size:0.75rem;margin-top:4px"><input type="checkbox" id="ws-rs-srt-clear-pass"> Remove passphrase</label>' : ''}
+                </div>
             </div>
             <div class="form-group">
                 <label>Channel URL <span class="muted">(for chat relay)</span></label>
@@ -2969,7 +2995,14 @@ function _wsShowRestreamForm(existing) {
                         <label style="font-size:0.78rem">FPS</label>
                         <input type="number" id="ws-rs-fps" class="form-input form-input-sm" value="${existing?.custom_fps || ''}" placeholder="Auto" min="15" max="120">
                     </div>
+                    <div class="form-group" style="flex:1;margin:0">
+                        <label style="font-size:0.78rem" title="x264 speed/quality trade-off. Faster presets use less CPU (safer with several destinations); slower ones look better at the same bitrate.">Encoder speed</label>
+                        <select id="ws-rs-encoder-preset" class="form-input form-input-sm">
+                            ${['', 'ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow'].map(v => `<option value="${v}" ${(existing?.custom_encoder_preset || '') === v ? 'selected' : ''}>${v ? v : 'Auto (per preset)'}</option>`).join('')}
+                        </select>
+                    </div>
                 </div>
+                <p class="muted" style="font-size:0.74rem;margin:6px 0 0">Browser and WHIP sources are re-encoded on the server with these settings; an OBS/RTMP source is forwarded as-is (codec copy), so only the destination sees them.</p>
             </details>
         </div>
         <div class="bc-ws-confirm-actions" style="margin-top:16px">
@@ -2981,6 +3014,7 @@ function _wsShowRestreamForm(existing) {
     </div>`;
 
     document.body.appendChild(overlay);
+    _wsSyncRestreamTransport();
 
     // Apply platform-specific UI on open
     _wsRestreamPlatformChanged();
@@ -3036,8 +3070,18 @@ function _wsShowRestreamForm(existing) {
             custom_video_bitrate: parseInt(document.getElementById('ws-rs-video-bitrate').value) || null,
             custom_audio_bitrate: parseInt(document.getElementById('ws-rs-audio-bitrate').value) || null,
             custom_fps: parseInt(document.getElementById('ws-rs-fps').value) || null,
+            custom_encoder_preset: document.getElementById('ws-rs-encoder-preset')?.value || null,
+            srt_latency_ms: parseInt(document.getElementById('ws-rs-srt-latency')?.value) || null,
             managed_stream_id: _wsState.selectedId,
         };
+        // Passphrase: blank keeps the saved one; the checkbox removes it; text replaces it.
+        const passEl = document.getElementById('ws-rs-srt-passphrase');
+        if (document.getElementById('ws-rs-srt-clear-pass')?.checked) body.srt_passphrase = '';
+        else if (passEl && passEl.value) body.srt_passphrase = passEl.value;
+        if (body.srt_passphrase && (body.srt_passphrase.length < 10 || body.srt_passphrase.length > 79)) {
+            toast('SRT passphrase must be 10–79 characters', 'error');
+            return;
+        }
 
         if (!body.stream_key) {
             toast('Stream key is required', 'error');

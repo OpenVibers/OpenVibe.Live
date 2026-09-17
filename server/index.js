@@ -1169,6 +1169,10 @@ async function start() {
     });
     rtmpServer.on('unpublish', ({ streamId }) => {
         restreamManager.stopAllForStream(streamId);
+        // OBS stopped: the RS chat mirror/passthrough, chat relays and AI bots end with the ingest.
+        try { robotStreamerService.stopForStream(streamId); } catch (err) { console.warn('[RS] stop on unpublish failed:', err.message); }
+        try { chatRelayService.stopForStream(streamId); } catch { /* non-critical */ }
+        try { require('./integrations/ai-chatbot-service').stopForStream(streamId); } catch { /* non-critical */ }
     });
 
     // 6c. Hook WebRTC SFU events for auto-start restreams

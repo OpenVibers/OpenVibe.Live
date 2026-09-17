@@ -579,6 +579,12 @@ class BroadcastServer extends EventEmitter {
                             require('./recorder').finalizeStream(client.streamId).catch((err) => {
                                 console.warn(`[Broadcast] Failed to finalize VOD for stale stream ${client.streamId}:`, err.message);
                             });
+                            // Everything that forwards this stream elsewhere must stop with it. This
+                            // path (tab closed, laptop lid shut) used to end only the room, so the
+                            // RobotStreamer passthrough and any ffmpeg restreams kept their
+                            // outbound connections open and the robot / platform stayed "live"
+                            // showing nothing.
+                            this._stopForwarders(client.streamId);
                             webrtcSFU.closeRoom(`stream-${client.streamId}`);
                         } catch (err) {
                             console.error('[Broadcast] Failed to end stale stream:', err.message);
@@ -1000,6 +1006,14 @@ class BroadcastServer extends EventEmitter {
         room._sfuProduceRequestedAt = 0;
         room._pendingWatchers.clear();
         console.log(`[Broadcast] Notified pending viewers of SFU producers for stream ${streamId}`);
+    }
+
+    /** Stop every outbound forwarder (RS passthrough, ffmpeg restreams, chat relays, AI bots) for a stream. */
+    _stopForwarders(streamId) {
+        try { require('../integrations/robotstreamer-service').stopForStream(streamId); } catch (err) { console.warn('[Broadcast] RS stop failed:', err.message); }
+        try { require('./restream-manager').stopAllForStream(streamId); } catch (err) { console.warn('[Broadcast] restream stop failed:', err.message); }
+        try { require('../integrations/chat-relay-service').stopForStream(streamId); } catch { /* non-critical */ }
+        try { require('../integrations/ai-chatbot-service').stopForStream(streamId); } catch { /* non-critical */ }
     }
 
     /**

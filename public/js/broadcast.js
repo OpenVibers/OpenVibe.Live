@@ -151,8 +151,29 @@ function stopRsRestream() {
     const slot = getRsRestreamSlotStreamId();
     if (slot) {
         stopRobotStreamerRestream(slot).catch(() => {});
+        // The video actually leaves from the server: tell it to close the robot session, or
+        // RobotStreamer keeps showing the robot live with a black picture.
+        if (rsServerPassthrough()) {
+            api('/robotstreamer/restream/stop', { method: 'POST', body: { stream_id: slot } })
+                .then(() => { _lastRsServerStatuses[slot] = null; setRobotStreamerStatus('RobotStreamer restream stopped.', 'info', 'bc-rsLiveStatus'); updateRestreamControlPanel(); })
+                .catch(err => toast(err?.message || 'Could not stop the RobotStreamer restream', 'error'));
+        }
     }
     setRsRestreamSlot(null);
+    updateRsRestreamSlotUI();
+}
+
+/** Ask the server to (re)start the passthrough for a stream and refresh the panel with its answer. */
+async function startRsServerRestream(streamId) {
+    try {
+        const data = await api('/robotstreamer/restream/start', { method: 'POST', body: { stream_id: streamId } });
+        if (data?.status) _lastRsServerStatuses[streamId] = data.status;
+        setRobotStreamerStatus('Restreaming to RobotStreamer via server (raw passthrough, no re-encode).', 'success', 'bc-rsLiveStatus');
+    } catch (err) {
+        setRobotStreamerStatus(err?.message || 'Could not start the RobotStreamer restream', 'error', 'bc-rsLiveStatus');
+        toast(err?.message || 'Could not start the RobotStreamer restream', 'error');
+    }
+    updateRestreamControlPanel();
     updateRsRestreamSlotUI();
 }
 
@@ -169,6 +190,13 @@ function startOrRetryRsRestream() {
     }
 
     if (!targetId) return;
+    // Server passthrough: the server forwards whatever the stream's source is (browser, OBS/WHIP),
+    // so there is no local media requirement — just ask it to (re)start.
+    if (rsServerPassthrough()) {
+        setRsRestreamSlot(targetId);
+        startRsServerRestream(targetId);
+        return;
+    }
     const ss = getStreamState(targetId);
     if (!ss?.localStream) {
         if (slotStreamId) {
@@ -217,9 +245,11 @@ function updateRsRestreamSlotUI() {
 
     const slotId = getRsRestreamSlotStreamId();
     const slotSs = slotId ? getStreamState(slotId) : null;
-    const isLive = !!(slotSs?.robotStreamer?.active);
-    const isStarting = !!(slotSs?._rsRestreamStarting);
-    const hasFailed = !isLive && !isStarting && slotSs && !slotSs.robotStreamer && (slotSs._rsConsecutiveShortLived || 0) >= RS_MAX_SHORT_LIVED_RETRIES;
+    const rsSrv = rsServerPassthrough() ? rsServerStatusFor(slotId) : null;
+    const isLive = rsSrv ? rsSrv.state === 'live' : !!(slotSs?.robotStreamer?.active);
+    const isStarting = rsSrv ? (rsSrv.state === 'starting' || rsSrv.state === 'restarting') : !!(slotSs?._rsRestreamStarting);
+    const hasFailed = rsSrv ? rsSrv.state === 'failed'
+        : (!isLive && !isStarting && slotSs && !slotSs.robotStreamer && (slotSs._rsConsecutiveShortLived || 0) >= RS_MAX_SHORT_LIVED_RETRIES);
 
     let html = '';
 
@@ -263,6 +293,7 @@ function updateRsRestreamSlotUI() {
         html += `<button class="bc-ctrl-btn bc-ctrl-btn-sm" onclick="startOrRetryRsRestream()"><i class="fa-solid fa-play"></i> Start</button>`;
     }
     html += '</div>';
+    if (rsSrv) html += rsDetailLine(rsSrv);
 
     panel.innerHTML = html;
 }
@@ -3122,14 +3153,108 @@ async function stopRestreamDest(destId) {
  * Called periodically while streaming.
  */
 let _lastRestreamStatuses = {};
+/** streamId → server-side RobotStreamer passthrough status (null when no relay session). */
+let _lastRsServerStatuses = {};
 async function pollRestreamStatus() {
     try {
         const data = await api('/restream/status');
         _lastRestreamStatuses = data.statuses || {};
+        _lastRsServerStatuses = data.robotstreamer || {};
         updateRestreamControlPanel();
+        updateRsRestreamSlotUI();
     } catch {
         // Silent — polling failure is non-critical
     }
+}
+
+/** Is the RobotStreamer video path the server-side passthrough (true) or the browser publisher? */
+function rsServerPassthrough() {
+    return !!broadcastState.robotStreamer?.passthrough;
+}
+
+/** Server passthrough status for the RS slot's stream (or the active stream). */
+function rsServerStatusFor(streamId) {
+    const id = streamId || getRsRestreamSlotStreamId() || broadcastState.activeStreamId;
+    if (id && _lastRsServerStatuses[id]) return _lastRsServerStatuses[id];
+    // The server auto-starts the passthrough on go-live (OBS/WHIP sources never assign a
+    // browser-side slot), so fall back to whichever of the user's live streams has a session.
+    for (const v of Object.values(_lastRsServerStatuses)) if (v) return v;
+    return null;
+}
+
+function fmtUptime(ms) {
+    const s = Math.max(0, Math.round(ms / 1000));
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60), h = Math.floor(m / 60);
+    return h ? `${h}h ${m % 60}m` : `${m}m ${s % 60}s`;
+}
+
+/**
+ * One line of detail under a restream badge: what it is doing, or why it is not.
+ * Built from the server's status so the streamer never has to read the server log.
+ */
+function restreamDetailLine(st) {
+    if (!st) return '';
+    const bits = [];
+    const now = Date.now();
+    if (st.status === 'live') {
+        if (st.uptimeMs) bits.push(`up ${fmtUptime(st.uptimeMs)}`);
+        const p = st.progress;
+        if (p) {
+            if (p.fps) bits.push(`${Math.round(p.fps)} fps`);
+            if (p.bitrate_kbps) bits.push(`${Math.round(p.bitrate_kbps)} kbps`);
+            if (p.speed != null && p.speed < 0.95) bits.push(`<span class="bc-restream-warn">encoder at ${p.speed.toFixed(2)}× — falling behind</span>`);
+            if (p.dropped) bits.push(`${p.dropped} dropped`);
+        }
+        if (st.restartAttempts) bits.push(`${st.restartAttempts} reconnect${st.restartAttempts === 1 ? '' : 's'}`);
+    } else if (st.status === 'starting') {
+        bits.push('connecting to the ingest…');
+    } else if (st.status === 'error') {
+        if (st.lastError) bits.push(`<span class="bc-restream-err">${esc(st.lastError)}</span>`);
+        if (st.nextRestartAt && st.nextRestartAt > now) bits.push(`retry in ${Math.max(1, Math.round((st.nextRestartAt - now) / 1000))}s (${st.restartAttempts}/${st.maxRestartAttempts || '∞'})`);
+    } else if (st.status === 'failed') {
+        bits.push(`<span class="bc-restream-err">${esc(st.lastError || 'gave up after repeated failures')}</span>`);
+    } else if (st.status === 'cooldown') {
+        bits.push(`<span class="bc-restream-err">${esc(st.lastError || 'paused after repeated failures')}</span>`);
+    }
+    return bits.length ? `<div class="bc-restream-detail">${bits.join(' · ')}</div>` : '';
+}
+
+/** Same, for the server-side RobotStreamer passthrough status. */
+function rsDetailLine(rs) {
+    if (!rs) return '';
+    const bits = [];
+    const now = Date.now();
+    if (rs.state === 'live') {
+        bits.push(`up ${fmtUptime(rs.uptime_ms || 0)}`);
+        bits.push(rs.video_codec ? `${String(rs.video_codec).replace('video/', '')} passthrough` : 'passthrough');
+        if (!rs.has_audio) bits.push('<span class="bc-restream-warn">no audio</span>');
+        if (rs.rs) {
+            if (rs.rs.rtt_ms != null) bits.push(`${rs.rs.rtt_ms} ms to RS`);
+            if (rs.rs.loss_pct != null && rs.rs.loss_pct >= 1) bits.push(`<span class="bc-restream-warn">${rs.rs.loss_pct}% loss</span>`);
+            if (rs.rs.stalled_ms > 1500) bits.push(`<span class="bc-restream-warn">source stalled ${Math.round(rs.rs.stalled_ms / 1000)}s</span>`);
+        }
+        if (rs.restarts) bits.push(`${rs.restarts} reconnect${rs.restarts === 1 ? '' : 's'}`);
+    } else if (rs.state === 'starting') {
+        bits.push('connecting to RobotStreamer…');
+    } else if (rs.state === 'restarting') {
+        if (rs.last_restart_reason) bits.push(`<span class="bc-restream-err">${esc(rs.last_restart_reason)}</span>`);
+        if (rs.next_restart_at && rs.next_restart_at > now) bits.push(`retry in ${Math.max(1, Math.round((rs.next_restart_at - now) / 1000))}s (#${rs.restarts})`);
+    } else if (rs.state === 'failed') {
+        bits.push(`<span class="bc-restream-err">${esc(rs.last_error || 'gave up after repeated failures')}</span>`);
+    }
+    return bits.length ? `<div class="bc-restream-detail">${bits.join(' · ')}</div>` : '';
+}
+
+/** Badge class/icon/text for a server-side RS passthrough state. */
+function rsBadgeFor(rs, clientFallback) {
+    if (rs) {
+        if (rs.state === 'live') return { cls: 'bc-restream-status-live', icon: 'fa-solid fa-circle', text: 'Live', active: true };
+        if (rs.state === 'starting') return { cls: 'bc-restream-status-starting', icon: 'fa-solid fa-spinner fa-spin', text: 'Starting…', active: true };
+        if (rs.state === 'restarting') return { cls: 'bc-restream-status-starting', icon: 'fa-solid fa-spinner fa-spin', text: 'Reconnecting…', active: true };
+        if (rs.state === 'failed') return { cls: 'bc-restream-status-failed', icon: 'fa-solid fa-circle-xmark', text: 'Failed', active: false };
+    }
+    return clientFallback;
 }
 
 /** Start polling restream status (called when going live) */
@@ -3200,51 +3325,57 @@ function updateRestreamControlPanel() {
             badgeText = 'Failed';
         }
 
-        const isActive = statusLabel === 'live' || statusLabel === 'starting';
+        else if (statusLabel === 'cooldown' || (!status && dest.cooldown_ms > 0)) {
+            badgeClass = 'bc-restream-status-failed';
+            badgeIcon = 'fa-solid fa-pause';
+            badgeText = 'Paused';
+        }
 
-        html += `<div class="bc-restream-row">
+        const isActive = statusLabel === 'live' || statusLabel === 'starting' || statusLabel === 'error';
+        const transport = dest.transport === 'srt' ? '<span class="bc-restream-transport" title="SRT (MPEG-TS)">SRT</span>' : '';
+        const detail = status ? restreamDetailLine(status)
+            : (dest.cooldown_ms > 0 ? `<div class="bc-restream-detail"><span class="bc-restream-err">${esc(dest.last_error || 'paused after repeated failures')}</span> · retry in ~${Math.max(1, Math.ceil(dest.cooldown_ms / 60000))}m</div>` : '');
+
+        html += `<div class="bc-restream-row" data-dest="${dest.id}">
             <span class="bc-restream-platform-icon" style="color:${meta.color}"><i class="${meta.icon}"></i></span>
-            <span class="bc-restream-name">${dest.name || meta.name}</span>
+            <span class="bc-restream-name">${esc(dest.name || meta.name)}${transport}</span>
             <span class="bc-restream-status-badge ${badgeClass}"><i class="${badgeIcon}"></i> ${badgeText}</span>
             <div class="bc-restream-actions">
                 ${isActive
-                    ? `<button class="bc-ctrl-btn-sm" onclick="stopRestreamDest(${dest.id})"><i class="fa-solid fa-stop"></i> Stop</button>`
-                    : `<button class="bc-ctrl-btn-sm" onclick="startRestreamDest(${dest.id})"><i class="fa-solid fa-play"></i> Start</button>`
+                    ? `<button class="bc-ctrl-btn-sm" onclick="stopRestreamDest(${dest.id})" title="Stop pushing to this destination"><i class="fa-solid fa-stop"></i> Stop</button>`
+                    : `<button class="bc-ctrl-btn-sm" onclick="startRestreamDest(${dest.id})" title="${statusLabel === 'failed' || dest.cooldown_ms > 0 ? 'Clear the failure and try again' : 'Start pushing to this destination'}"><i class="fa-solid ${statusLabel === 'failed' || dest.cooldown_ms > 0 ? 'fa-rotate-right' : 'fa-play'}"></i> ${statusLabel === 'failed' || dest.cooldown_ms > 0 ? 'Retry' : 'Start'}</button>`
                 }
             </div>
+            ${detail}
         </div>`;
     }
 
-    // RS status row (if configured)
+    // RS status row (if configured). With the server passthrough the truth lives on the server
+    // (polled every 5s); the browser publisher's own state is the fallback.
     if (hasRs) {
         const slotId = getRsRestreamSlotStreamId();
         const slotSs = slotId ? getStreamState(slotId) : null;
         const isRsLive = !!(slotSs?.robotStreamer?.active);
         const isRsStarting = !!(slotSs?._rsRestreamStarting);
+        const rsSrv = rsServerPassthrough() ? rsServerStatusFor(slotId) : null;
 
-        let rsBadgeClass = 'bc-restream-status-idle';
-        let rsBadgeIcon = 'fa-solid fa-circle';
-        let rsBadgeText = 'Idle';
+        let fallback = { cls: 'bc-restream-status-idle', icon: 'fa-solid fa-circle', text: 'Idle', active: false };
+        if (isRsLive) fallback = { cls: 'bc-restream-status-live', icon: 'fa-solid fa-circle', text: 'Live', active: true };
+        else if (isRsStarting || slotSs?._rsReconnectTimer) fallback = { cls: 'bc-restream-status-starting', icon: 'fa-solid fa-spinner fa-spin', text: isRsStarting ? 'Starting…' : 'Reconnecting…', active: true };
+        const b = rsBadgeFor(rsSrv, fallback);
+        const robot = broadcastState.robotStreamer?.robotId || rsSrv?.robot_id;
 
-        if (isRsLive) {
-            rsBadgeClass = 'bc-restream-status-live';
-            rsBadgeText = 'Live';
-        } else if (isRsStarting || slotSs?._rsReconnectTimer) {
-            rsBadgeClass = 'bc-restream-status-starting';
-            rsBadgeIcon = 'fa-solid fa-spinner fa-spin';
-            rsBadgeText = isRsStarting ? 'Starting…' : 'Reconnecting…';
-        }
-
-        html += `<div class="bc-restream-row">
+        html += `<div class="bc-restream-row" data-dest="rs">
             <span class="bc-restream-platform-icon" style="color:#4a9eff"><i class="fa-solid fa-robot"></i></span>
-            <span class="bc-restream-name">RobotStreamer</span>
-            <span class="bc-restream-status-badge ${rsBadgeClass}"><i class="${rsBadgeIcon}"></i> ${rsBadgeText}</span>
+            <span class="bc-restream-name">RobotStreamer${robot ? ` <span class="bc-restream-transport" title="Robot id">#${esc(String(robot))}</span>` : ''}</span>
+            <span class="bc-restream-status-badge ${b.cls}"><i class="${b.icon}"></i> ${b.text}</span>
             <div class="bc-restream-actions">
-                ${isRsLive
-                    ? `<button class="bc-ctrl-btn-sm" onclick="stopRsRestream()"><i class="fa-solid fa-stop"></i> Stop</button>`
-                    : `<button class="bc-ctrl-btn-sm" onclick="startOrRetryRsRestream()"><i class="fa-solid fa-play"></i> Start</button>`
+                ${b.active
+                    ? `<button class="bc-ctrl-btn-sm" onclick="stopRsRestream()" title="Take the robot offline"><i class="fa-solid fa-stop"></i> Stop</button>`
+                    : `<button class="bc-ctrl-btn-sm" onclick="startOrRetryRsRestream()" title="${rsSrv?.state === 'failed' ? 'Try again' : 'Send this stream to the robot'}"><i class="fa-solid ${rsSrv?.state === 'failed' ? 'fa-rotate-right' : 'fa-play'}"></i> ${rsSrv?.state === 'failed' ? 'Retry' : 'Start'}</button>`
                 }
             </div>
+            ${rsDetailLine(rsSrv)}
         </div>`;
     }
 

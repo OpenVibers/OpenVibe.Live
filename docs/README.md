@@ -14,7 +14,8 @@
 
 ## Streamer Tools
 - [Dashboard](dashboard.md) — Streamer dashboard features: emotes, rewards, chat logs, media management
-- [Restream Branding](restream-branding.md) — Multi-platform restream configuration
+- [Restreaming](restreaming.md) — ffmpeg restreams (RTMP/RTMPS/SRT) and the RobotStreamer passthrough: latency, live acknowledgement, error relay, lifecycle
+- [Restream Branding](restream-branding.md) — Channel branding for the restream targets
 
 ## Architecture
 - [System Overview](architecture.md) — Server components, protocols, data flow

@@ -69,6 +69,10 @@ function sanitizeDest(d) {
         quality_preset: d.quality_preset || 'auto',
         channel_url: d.channel_url || '',
         chat_relay: !!d.chat_relay,
+        transport: /^srt:\/\//i.test(String(d.server_url || '')) ? 'srt' : 'rtmp',
+        srt_latency_ms: d.srt_latency_ms || null,
+        srt_passphrase: undefined,                       // never leaves the server
+        has_srt_passphrase: !!d.srt_passphrase,
         powerchat_relay: d.powerchat_relay !== 0,
         powerchat_count_views: d.powerchat_count_views !== 0,
         // Circuit-breaker status — non-zero when the destination is paused after repeated failures.
@@ -123,6 +127,17 @@ function parseCustomOverrides(body) {
     if (body.custom_encoder_preset !== undefined) {
         overrides.custom_encoder_preset = VALID_ENCODER_PRESETS.includes(body.custom_encoder_preset)
             ? body.custom_encoder_preset : null;
+    }
+    // SRT options. Latency is the receiver's buffer window (libsrt default 120ms); the passphrase
+    // must be 10–79 characters per the SRT spec. An empty string clears the passphrase; leaving the
+    // field out keeps the stored one (the form never sees the stored value).
+    if (body.srt_latency_ms !== undefined) {
+        const v = body.srt_latency_ms === null || body.srt_latency_ms === '' ? null : parseInt(body.srt_latency_ms, 10);
+        overrides.srt_latency_ms = (v !== null && Number.isFinite(v) && v >= 20 && v <= 8000) ? v : null;
+    }
+    if (body.srt_passphrase !== undefined && body.srt_passphrase !== '__keep__') {
+        const v = body.srt_passphrase === null ? '' : String(body.srt_passphrase);
+        overrides.srt_passphrase = v.length >= 10 && v.length <= 79 ? v : null;
     }
 
     return overrides;
@@ -426,10 +441,14 @@ router.get('/status', requireAuth, (req, res) => {
     try {
         const liveStreams = db.getLiveStreamsByUserId(req.user.id) || [];
         const allStatuses = {};
+        const robotstreamer = {};
         for (const stream of liveStreams) {
             allStatuses[stream.id] = restreamManager.getStreamStatus(stream.id);
+            // Server-side RobotStreamer passthrough state for the same streams (null = no session).
+            try { robotstreamer[stream.id] = require('../integrations/rs-passthrough-relay').status(stream.id); } catch { robotstreamer[stream.id] = null; }
         }
-        res.json({ statuses: allStatuses });
+        res.set('Cache-Control', 'no-store');
+        res.json({ statuses: allStatuses, robotstreamer });
     } catch (err) {
         console.error('[Restream] Status error:', err.message);
         res.status(500).json({ error: 'Failed to get restream status' });

@@ -322,7 +322,7 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             const rsVc = robotStreamerService.getRsViewerCount(ls.user_id, slotId);
             const hasBridge = robotStreamerService.chatBridges.has(ls.id);
             let hasPublish = robotStreamerService._activePublish?.has(ls.id);
-            try { hasPublish = hasPublish || require('../integrations/rs-native-publisher').isActive(ls.id); } catch { /* ignore */ }
+            try { hasPublish = hasPublish || require('../integrations/rs-passthrough-relay').status(ls.id)?.state === 'live'; } catch { /* ignore */ }
             const rsActive = hasBridge || hasPublish;
             if (rsActive) {
                 const integration = db.getRobotStreamerIntegrationForStream(ls.user_id, slotId);

@@ -238,7 +238,6 @@ function buildConfig(registryValues) {
             // the ffmpeg transcode worker. This is now the ONLY restream path and is ON by
             // default; set RS_PASSTHROUGH=0 only as an emergency kill-switch.
             passthrough: process.env.RS_PASSTHROUGH !== '0',
-            passthroughRobots: (process.env.RS_PASSTHROUGH_ROBOTS || '').split(',').map(s => s.trim()).filter(Boolean),
         },
         openvibeBucks: {
             // Bit-style currency: integer bucks, 100 bucks = $1.00 streamer cashout
