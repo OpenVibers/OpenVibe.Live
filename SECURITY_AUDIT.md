@@ -49,7 +49,7 @@ test/authorization were also run against the previous code and failed there, cas
 | Medium | Kiosk link preview followed redirects to internal services and returned their `<title>`. | egress.fetchText. | egress |
 | Medium | Chat-relay YouTube host check used `includes` (`youtube.com.evil`), unbounded fetch. | Exact host/subdomain match; guarded, size-capped fetch. | manual |
 | Medium | Public VOD/clip lists passed `include_private` to Media under the app key. | Stripped on public lists. | manual |
-| Medium | Stream keys in logs (RTMP publish/reject/end, restream command lines incl. SRT passphrases, RS worker ffmpeg line). | server/utils/redact.js. | manual |
+| Medium | Stream keys in logs (RTMP publish/reject/end, restream command lines incl. SRT passphrases, RS worker ffmpeg line, node-media-server's own connect/publish/play lines). | server/utils/redact.js; the library logs errors only. | manual |
 | Medium | OAuth callback skipped the state check when the cookie was missing (login CSRF). | State cookie required. | manual |
 | Medium | Media request state (public + broadcast to chat) exposed server file paths and raw yt-dlp errors; `stream-url` returned raw errors to anyone. | Public projection; raw errors only for channel managers. | manual |
 | Medium | Real-money Vibes balance and last-seen time on public profiles. | Only for the user themself. | manual |

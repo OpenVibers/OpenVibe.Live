@@ -35,6 +35,9 @@ class RTMPServer extends EventEmitter {
         }
 
         const nmsConfig = {
+            // ERROR only: the library's info lines print streamPath, i.e. /live/<stream key>, into the
+            // journal on every connect/publish/play. Our own [RTMP] lines are redacted.
+            logType: 1,
             rtmp: {
                 port: config.rtmp.port,
                 chunk_size: config.rtmp.chunkSize,
