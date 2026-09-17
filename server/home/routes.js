@@ -171,10 +171,29 @@ async function _mediaStatsCached() {
 }
 
 // GET /api/home/stats/series/:metric?days=30 — daily values behind a hero stat.
-router.get('/stats/series/:metric', (req, res) => {
-    const series = db.getHomeStatSeries(String(req.params.metric), req.query.days);
-    if (!series) return res.status(404).json({ error: 'Unknown metric', metrics: db.HOME_SERIES_KEYS });
+// VODs, clips, pastes and archived hours live in OpenVibe.Media; the local tables stopped at the split.
+const MEDIA_SERIES = new Set(['vods', 'clips', 'pastes', 'hours']);
+const _seriesCache = new Map(); // `${metric}:${days}` → { at, data }
+router.get('/stats/series/:metric', async (req, res) => {
+    const metric = String(req.params.metric);
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days, 10) || 30));
+    const key = `${metric}:${days}`;
+    const hit = _seriesCache.get(key);
     res.set('Cache-Control', 'public, max-age=120');
+    if (hit && Date.now() - hit.at < 120_000) return res.json(hit.data);
+    let series = null;
+    if (MEDIA_SERIES.has(metric)) {
+        try {
+            const m = await media.request('GET', `/stats/series/${metric}?days=${days}`);
+            if (m && Array.isArray(m.points)) series = { ...m, kind: 'count', peak: Math.max(0, ...m.points.map(p => p.value)), source: 'media' };
+        } catch (err) { console.warn('[Home] Media series unavailable:', err.message); }
+        if (!series) return res.status(503).json({ error: 'Media stats are unavailable right now' });
+    } else {
+        series = db.getReadingSeries(metric, days) || db.getHomeStatSeries(metric, days);
+    }
+    if (!series) return res.status(404).json({ error: 'Unknown metric', metrics: [...db.HOME_SERIES_KEYS, ...MEDIA_SERIES] });
+    if (_seriesCache.size > 200) _seriesCache.clear();
+    _seriesCache.set(key, { at: Date.now(), data: series });
     res.json(series);
 });
 

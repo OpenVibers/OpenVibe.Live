@@ -270,8 +270,8 @@ function _renderHeroStats(stats) {
 
     // ── Right now ────────────────────────────────────────────────
     const now = [
-        { key: 'liveNow', deltaHTML: _baselineDeltaHTML(stats.liveNow, CC.liveAvg24h, CC.livePeak24h), cls: stats.liveNow > 0 ? 'hero-stat--live' : '', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', num: stats.liveNow, label: 'Live', title: stats.liveNow > 0 ? 'Streams live right now' : 'Nobody is live right now — check Recently Online below' },
-        { key: 'viewersNow', deltaHTML: _baselineDeltaHTML(stats.viewersNow, CC.viewersAvg24h, CC.viewersPeak24h), cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', icon: 'fa-eye', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
+        { key: 'liveNow', metric: 'liveNow', deltaHTML: _baselineDeltaHTML(stats.liveNow, CC.liveAvg24h, CC.livePeak24h), cls: stats.liveNow > 0 ? 'hero-stat--live' : '', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', num: stats.liveNow, label: 'Live', title: stats.liveNow > 0 ? 'Streams live right now' : 'Nobody is live right now — check Recently Online below' },
+        { key: 'viewersNow', metric: 'viewersNow', deltaHTML: _baselineDeltaHTML(stats.viewersNow, CC.viewersAvg24h, CC.viewersPeak24h), cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', icon: 'fa-eye', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
         { key: 'weeklyActive', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active', title: 'People who chatted in the last 7 days', desc: 'Distinct chatters in the last 7 days — signed-in users, anonymous chatters and relayed (Twitch/Kick/YouTube) chatters, each counted once.', metric: 'active' },
         { key: 'weeklyVisitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors', title: 'First-time visitors in the last 7 days', desc: 'Browsers seen on the site for the first time in the last 7 days (a privacy-safe fingerprint, no account needed). A proxy for new people showing up, not just chatting.', metric: 'visitors' },
     ];
@@ -332,7 +332,7 @@ function _renderHeroStats(stats) {
             { icon: 'fa-clock', num: stats.streamHours, label: 'Hours', metric: 'hours', title: 'Hours of video archived', recent: R.hours, unit: 'h' },
             { icon: 'fa-brain', num: stats.aiMemories, label: 'AI Moments', metric: 'aiMoments', title: 'Moments the AI remembers across every stream', recent: R.aiMoments },
             { recent: R.emotes, icon: 'fa-face-grin-squint', num: stats.emotes, label: 'Emotes', metric: 'emotes', title: 'Custom channel emotes uploaded' },
-            { icon: 'fa-paste', num: stats.pastes, label: 'Pastes', title: `${stats.pasteText || 0} text · ${stats.pasteImages || 0} image pastes`, sub: (stats.pasteText != null && stats.pasteImages != null) ? `${_fmtCount(stats.pasteText)} txt · ${_fmtCount(stats.pasteImages)} img` : '' },
+            { icon: 'fa-paste', num: stats.pastes, label: 'Pastes', metric: 'pastes', title: `${stats.pasteText || 0} text · ${stats.pasteImages || 0} image pastes`, sub: (stats.pasteText != null && stats.pasteImages != null) ? `${_fmtCount(stats.pasteText)} txt · ${_fmtCount(stats.pasteImages)} img` : '' },
         ],
     });
 
@@ -401,15 +401,15 @@ function _renderHeroStats(stats) {
     // the board is an all-time total that changes once an hour at best, so it lives under the
     // toggle. Each is keyed so the poller below can roll it to a new value without a re-render.
     const HEADLINE = [
-        { key: 'liveNow', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', cls: stats.liveNow > 0 ? 'hero-stat--live' : '', num: stats.liveNow, label: 'Live', title: 'Streams live right now', deltaHTML: _baselineDeltaHTML(stats.liveNow, CC.liveAvg24h, CC.livePeak24h) },
-        { key: 'viewersNow', icon: 'fa-eye', cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now', deltaHTML: _baselineDeltaHTML(stats.viewersNow, CC.viewersAvg24h, CC.viewersPeak24h) },
-        { key: 'weeklyActive', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active · 7d', title: 'People who chatted in the last 7 days', recent: { w: stats.weeklyActive, pw: stats.prevWeeklyActive } },
-        { key: 'users', icon: 'fa-user-group', num: stats.users, label: 'Users', title: 'Accounts on OpenVibe.Live', recent: R.users },
-        { key: 'weeklyVisitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors · 7d', title: 'First-time visitors in the last 7 days', recent: { w: stats.weeklyVisitors, pw: stats.prevWeeklyVisitors } },
-        { key: 'anons', icon: 'fa-user-secret', num: stats.anons, label: 'Anons', title: 'Anonymous chatters who have been given a name', recent: R.anons },
-        { key: 'chatMessages', icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', title: 'Chat messages sent, all time', recent: R.messages },
-        { key: 'streamers', icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', title: 'People who have gone live here', recent: R.streamers },
-        { key: 'hoursWatched', icon: 'fa-couch', num: stats.hoursWatched, label: 'Hours', title: 'Hours the community has spent watching', recent: R.hours },
+        { key: 'liveNow', metric: 'liveNow', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', cls: stats.liveNow > 0 ? 'hero-stat--live' : '', num: stats.liveNow, label: 'Live', title: 'Streams live right now', deltaHTML: _baselineDeltaHTML(stats.liveNow, CC.liveAvg24h, CC.livePeak24h) },
+        { key: 'viewersNow', metric: 'viewersNow', icon: 'fa-eye', cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now', deltaHTML: _baselineDeltaHTML(stats.viewersNow, CC.viewersAvg24h, CC.viewersPeak24h) },
+        { key: 'weeklyActive', metric: 'active', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active · 7d', title: 'People who chatted in the last 7 days', recent: { w: stats.weeklyActive, pw: stats.prevWeeklyActive } },
+        { key: 'users', metric: 'users', icon: 'fa-user-group', num: stats.users, label: 'Users', title: 'Accounts on OpenVibe.Live', recent: R.users },
+        { key: 'weeklyVisitors', metric: 'visitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors · 7d', title: 'First-time visitors in the last 7 days', recent: { w: stats.weeklyVisitors, pw: stats.prevWeeklyVisitors } },
+        { key: 'anons', metric: 'anons', icon: 'fa-user-secret', num: stats.anons, label: 'Anons', title: 'Anonymous chatters who have been given a name', recent: R.anons },
+        { key: 'chatMessages', metric: 'messages', icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', title: 'Chat messages sent, all time', recent: R.messages },
+        { key: 'streamers', metric: 'streamers', icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', title: 'People who have gone live here', recent: R.streamers },
+        { key: 'hoursWatched', metric: 'hoursWatched', icon: 'fa-couch', num: stats.hoursWatched, label: 'Hours', title: 'Hours the community has spent watching', recent: R.hours },
     ];
     // Always starts collapsed. Persisting "expanded" meant every reload rendered and counted up
     // two dozen extra chips before the page had finished loading, for a view the reader asked for
@@ -418,7 +418,7 @@ function _renderHeroStats(stats) {
     wrap.innerHTML = `
         <div class="hero-stat-strip">${HEADLINE.map(chip).join('')}</div>
         <button type="button" class="hero-stat-more" id="hero-stat-more" aria-expanded="${open}" aria-controls="hero-stat-full">
-            <i class="fa-solid fa-chevron-down"></i><span></span>
+            <span class="hero-stat-more-icon" aria-hidden="true"><i class="fa-solid fa-chart-simple"></i></span><span class="hero-stat-more-text"></span><i class="fa-solid fa-chevron-down hero-stat-more-chev" aria-hidden="true"></i>
         </button>
         <div class="hero-stat-full" id="hero-stat-full" ${open ? '' : 'hidden'}>
             ${groups.filter(g => g.rows.length).map(g => `
@@ -432,7 +432,7 @@ function _renderHeroStats(stats) {
     const full = wrap.querySelector('#hero-stat-full');
     const strip = wrap.querySelector('.hero-stat-strip');
     const total = groups.reduce((n, g) => n + g.rows.length, 0);
-    const label = () => { btn.querySelector('span').textContent = full.hidden ? `All ${total} numbers` : 'Just the highlights'; };
+    const label = () => { btn.querySelector('.hero-stat-more-text').textContent = full.hidden ? `Show all ${total} stats` : 'Show fewer stats'; };
     const sync = () => { strip.hidden = !full.hidden; btn.classList.toggle('is-open', !full.hidden); label(); };
     sync();
 
@@ -615,65 +615,15 @@ function _heroBindInteractions(wrap) {
         chip.addEventListener('focus', () => _heroTipShow(chip));
         chip.addEventListener('blur', _heroTipHide);
         if (chip.dataset.metric) {
-            const open = () => { _heroTipHide(); _heroStatModal(chip); };
+            const open = () => { _heroTipHide(); if (typeof openStatsNerds === 'function') openStatsNerds(chip); };
             chip.addEventListener('click', open);
+            // Start fetching the stats view on intent, so the dialog opens without a wait.
+            chip.addEventListener('pointerenter', () => { try { window.ov?.prefetch?.('statsNerds'); } catch { /* */ } }, { once: true });
             chip.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
         }
     });
     window.addEventListener('scroll', _heroTipHide, { passive: true });
 }
-const _HERO_METRIC_ICON = { users: 'fa-users', anons: 'fa-user-secret', visitors: 'fa-user-plus', active: 'fa-fire', follows: 'fa-heart', messages: 'fa-comments', sessions: 'fa-tower-broadcast', streamers: 'fa-satellite-dish', vods: 'fa-film', clips: 'fa-scissors', hours: 'fa-clock', hoursWatched: 'fa-couch', aiMoments: 'fa-brain', vibes: 'fa-hand-holding-dollar', supporters: 'fa-hand-holding-heart', vibesBought: 'fa-cart-shopping', subs: 'fa-star', points: 'fa-coins', pointsSpent: 'fa-gift', redemptions: 'fa-gift', emotes: 'fa-face-grin-squint' };
-async function _heroStatModal(chip) {
-    let tip; try { tip = JSON.parse(chip.dataset.tip || '{}'); } catch { tip = {}; }
-    const metric = chip.dataset.metric;
-    document.querySelector('.hero-chart-overlay')?.remove();
-    const overlay = document.createElement('div');
-    overlay.className = 'hero-chart-overlay';
-    overlay.innerHTML = `<div class="hero-chart" role="dialog" aria-modal="true" aria-label="${esc(tip.label || metric)} over time">
-        <div class="hero-chart-head"><h3><i class="fa-solid ${_HERO_METRIC_ICON[metric] || 'fa-chart-line'}"></i> ${esc(tip.label || metric)}</h3><button class="hero-chart-close" aria-label="Close">&times;</button></div>
-        <p class="hero-chart-desc">${esc(tip.desc || tip.title || '')}</p>
-        <div class="hero-chart-ranges"><button data-days="7">7 days</button><button data-days="30" class="active">30 days</button><button data-days="90">90 days</button></div>
-        <div class="hero-chart-body"><div class="hero-chart-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div></div>
-        <div class="hero-chart-foot"></div>
-    </div>`;
-    document.body.appendChild(overlay);
-    const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
-    const onKey = (e) => { if (e.key === 'Escape') close(); };
-    document.addEventListener('keydown', onKey);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target.closest('.hero-chart-close')) close(); });
-    const unit = tip.recent?.unit || '';
-    const load = async (days) => {
-        const body = overlay.querySelector('.hero-chart-body'), foot = overlay.querySelector('.hero-chart-foot');
-        body.innerHTML = '<div class="hero-chart-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
-        try {
-            const d = await api(`/home/stats/series/${encodeURIComponent(metric)}?days=${days}`);
-            body.innerHTML = _heroChartSvg(d.points, unit);
-            const best = d.points.reduce((a, p) => (p.value > a.value ? p : a), { value: -1 });
-            foot.innerHTML = `<span><b>${_fmtCount(d.total)}${unit}</b> in the last ${d.days} days</span><span>avg <b>${_fmtCount(d.total / d.days)}${unit}</b> / day</span>${best.value > 0 ? `<span>best day <b>${_fmtCount(best.value)}${unit}</b> · ${esc(_heroDay(best.day))}</span>` : ''}`;
-        } catch { body.innerHTML = '<div class="hero-chart-loading">No data for this metric yet.</div>'; foot.innerHTML = ''; }
-    };
-    overlay.querySelectorAll('.hero-chart-ranges button').forEach(b => b.addEventListener('click', () => {
-        overlay.querySelectorAll('.hero-chart-ranges button').forEach(x => x.classList.toggle('active', x === b));
-        load(Number(b.dataset.days));
-    }));
-    load(30);
-}
-function _heroDay(iso) { try { return new Date(iso + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }); } catch { return iso; } }
-function _heroChartSvg(points, unit = '') {
-    const W = 720, H = 220, padL = 40, padR = 10, padT = 12, padB = 26;
-    const n = points.length;
-    const max = Math.max(1, ...points.map(p => p.value));
-    const x = (i) => padL + (i + 0.5) * ((W - padL - padR) / n);
-    const y = (v) => padT + (H - padT - padB) * (1 - v / max);
-    const bw = Math.max(2, ((W - padL - padR) / n) * (n > 40 ? 0.8 : 0.62));
-    const bars = points.map((p, i) => `<rect class="bar" x="${(x(i) - bw / 2).toFixed(1)}" y="${y(p.value).toFixed(1)}" width="${bw.toFixed(1)}" height="${(H - padB - y(p.value)).toFixed(1)}" rx="2" style="animation-delay:${(i * (0.35 / n)).toFixed(3)}s"><title>${esc(_heroDay(p.day))}: ${_fmtCount(p.value)}${unit}</title></rect>`).join('');
-    const line = points.map((p, i) => `${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
-    const grid = [0, 0.5, 1].map(f => { const yy = y(max * f); return `<line class="grid" x1="${padL}" x2="${W - padR}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}"></line><text x="${padL - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${_fmtCount(max * f)}</text>`; }).join('');
-    const labelEvery = n > 40 ? Math.ceil(n / 8) : n > 10 ? Math.ceil(n / 6) : 1;
-    const labels = points.map((p, i) => (i % labelEvery === 0 || i === n - 1) ? `<text x="${x(i).toFixed(1)}" y="${H - 8}" text-anchor="middle">${esc(_heroDay(p.day))}</text>` : '').join('');
-    return `<svg class="hero-chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${grid}${bars}${n > 1 ? `<polyline class="line" points="${line}"></polyline>` : ''}${labels}</svg>`;
-}
-
 // ── Hero floating thumbnail collage ─────────────────────────────
 const _HERO_BADGE = { live: 'LIVE', vod: 'VOD', clip: 'CLIP', paste: 'PASTE', moment: 'AI MOMENT' };
 let _heroCollageTimer = null;
