@@ -101,6 +101,24 @@ class ChatServer {
      * then X-Forwarded-For first entry, then socket remote address.
      */
     /** Admins (the site owner) pass IP / network bans — they may share a home network with a banned person. */
+    /**
+     * Is this viewer new to OpenVibe.Live? True for an account under a day old — unless the same
+     * address has had an anon identity for longer — and for an anon first seen under a day ago.
+     * Drives the default of the viewer-side "Friendly global chat" setting only.
+     */
+    _isNewcomer(client) {
+        const DAY = 24 * 3600 * 1000;
+        const age = (ts) => { if (!ts) return null; const t = Date.parse(String(ts).replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(String(ts)) ? '' : 'Z')); return Number.isFinite(t) ? Date.now() - t : null; };
+        let anonAge = null;
+        try { anonAge = age(db.getAnonFirstSeen(this.normalizeIp(client.ip))); } catch { /* */ }
+        if (client.user) {
+            const userAge = age(client.user.created_at);
+            if (userAge == null || userAge >= DAY) return false;
+            return !(anonAge != null && anonAge >= DAY);
+        }
+        return anonAge == null ? false : anonAge < DAY;
+    }
+
     _isBanExemptAdmin(client) { return !!(client && client.user && !client.user.is_banned && client.user.role === 'admin'); }
 
     getClientIp(req) {
@@ -443,6 +461,7 @@ class ChatServer {
                 this.sendTo(ws, {
                     type: 'auth',
                     authenticated: !!client.user,
+                    newcomer: this._isNewcomer(client),
                     username: displayName,
                     core_username: client.user?.username || null,
                     role: client.user ? client.user.role : 'anon',

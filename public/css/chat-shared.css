@@ -425,3 +425,48 @@
     .link-preview-header { flex-direction: column; gap: 6px; }
     .link-context-menu { min-width: 160px; }
 }
+
+/* ── Chat rendering (public/js/chat.js) ─────────────────────────────────────────────────────── */
+/* Scroll containment without a wheel handler: a chat pane never drags the page along at its ends. */
+.chat-sidebar, .global-chat-main, .offline-global-chat, .chat-vibe-widget-feed, .chat-messages,
+.global-chat-messages, .fullscreen-chat-messages, .chat-users-panel, .rewards-panel, .fcw-messages, #pc-msgs {
+    overscroll-behavior: contain;
+}
+/* chat.js keeps the reader's place itself (pinned to the bottom, or the same distance from it);
+   browser scroll anchoring on top of that double-corrects when old rows are trimmed. */
+.chat-messages, .global-chat-messages, .fcw-messages, #pc-msgs, #offline-chat-messages, #bc-chat-messages { overflow-anchor: none; }
+
+/* Cosmetic name/hat effects only animate while their row is on screen (IntersectionObserver). */
+.chat-msg.has-fx:not(.fx-on) .chat-user, .chat-msg.has-fx:not(.fx-on) .chat-user *,
+.chat-msg.has-fx:not(.fx-on) .chat-hat { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) {
+    .chat-msg .chat-user, .chat-msg .chat-hat, .chat-particle { animation: none !important; }
+}
+
+.chat-loading-history { padding: 14px; color: var(--text-muted); text-align: center; font-size: 0.85rem; }
+
+/* New rows arrive with a short rise; history (rendered off-screen and swapped in) does not animate. */
+@keyframes chatRowIn { from { opacity: 0; transform: translateY(6px); } }
+.chat-msg.chat-msg-new { animation: chatRowIn 180ms cubic-bezier(.2, .8, .3, 1); }
+@media (prefers-reduced-motion: reduce) { .chat-msg.chat-msg-new { animation: none; } }
+
+/* Friendly global chat: folded rows. */
+.chat-friendly-group { margin: 2px 0; }
+.chat-friendly-group > .chat-msg { display: none; }
+.chat-friendly-group.is-open > .chat-msg { display: block; animation: chatRowIn 180ms ease-out; }
+.chat-friendly-toggle {
+    display: inline-flex; align-items: center; gap: 7px; max-width: 100%;
+    padding: 3px 10px; border-radius: 999px; cursor: pointer; font: inherit; font-size: 0.74rem;
+    color: var(--text-muted); background: color-mix(in srgb, var(--text-primary, #fff) 5%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--text-primary, #fff) 16%, transparent);
+    transition: color 0.15s, border-color 0.15s;
+}
+.chat-friendly-toggle:hover { color: var(--text-secondary); border-color: color-mix(in srgb, var(--accent, #8b5cf6) 50%, transparent); }
+.chat-friendly-show { color: var(--accent-light, #a78bfa); font-weight: 600; }
+
+/* Settings: friendly chat row with an info toggle. */
+.csp-row-friendly { display: flex; align-items: center; gap: 6px; }
+.csp-friendly-label { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; }
+.csp-info-btn { background: none; border: 0; padding: 2px 4px; color: var(--text-muted); cursor: pointer; font-size: 0.85rem; }
+.csp-info-btn:hover, .csp-info-btn[aria-expanded="true"] { color: var(--accent-light, #a78bfa); }
+.csp-info-text { margin: 2px 0 8px; padding: 8px 10px; border-radius: 8px; font-size: 0.74rem; line-height: 1.45; color: var(--text-secondary); background: color-mix(in srgb, var(--accent, #8b5cf6) 9%, transparent); }

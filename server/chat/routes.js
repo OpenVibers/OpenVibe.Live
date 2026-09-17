@@ -456,6 +456,14 @@ router.get('/relay-user/:platform/:username/logs', requireAuth, (req, res) => {
 });
 
 // ── Global Chat History (all streams) ────────────────────────
+// Patterns behind the viewer-side "Friendly global chat" setting (server/chat/moderation-utils.js is
+// the single source; the client compiles these).
+router.get('/filters/friendly', (req, res) => {
+    const { FRIENDLY_FILTER_CATEGORIES } = require('./moderation-utils');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.json({ version: 1, categories: FRIENDLY_FILTER_CATEGORIES.map(({ key, label, patterns }) => ({ key, label, patterns })) });
+});
+
 router.get('/global/history', optionalAuth, (req, res) => {
     try {
         const limit = Math.min(parseInt(req.query.limit || '500'), 500);

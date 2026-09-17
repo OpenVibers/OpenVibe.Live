@@ -7405,6 +7405,11 @@ function deletePasteComment(commentId) {
  * Returns the existing number if the IP was seen before, or assigns
  * the next sequential number. Survives server restarts.
  */
+/** When this address was first given an anon number (null for rows from before that was recorded). */
+function getAnonFirstSeen(ip) {
+    try { return get('SELECT created_at FROM anon_ip_mappings WHERE ip = ?', [ip])?.created_at || null; } catch { return null; }
+}
+
 function getOrCreateAnonNum(ip) {
     const existing = get('SELECT anon_num FROM anon_ip_mappings WHERE ip = ?', [ip]);
     if (existing) return existing.anon_num;
@@ -8514,7 +8519,7 @@ module.exports = {
     getPasteCommentById, getPasteCommentCount, deletePasteComment,
     getRecentPasteCommentsByIp,
     // Anon IP Mappings
-    getOrCreateAnonNum, loadAnonMappings,
+    getOrCreateAnonNum, getAnonFirstSeen, loadAnonMappings,
     // Stream first chats (welcome messages)
     isFirstChatInChannel, recordFirstChat,
     // Moderation Action Logging
