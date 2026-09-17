@@ -190,6 +190,8 @@ const CHAT_SETTINGS_DEFAULTS = {
     ttsSrcKick: true,             // Kick relay
     ttsSrcYoutube: true,          // YouTube relay
     ttsSrcTwitch: true,           // Twitch relay
+    // Friendly global chat: null = not chosen yet (on for a viewer's first day), true/false = chosen.
+    friendlyGlobal: null,
 };
 let chatSettings = { ...CHAT_SETTINGS_DEFAULTS };
 let chatSettingsPanelOpen = false;
@@ -614,83 +616,10 @@ function _handleVcCallResponse(msg) {
     if (typeof toast === 'function') toast(`${who} declined your call`, 'error');
 }
 
-function bindContainedChatScroll() {
-    const selectors = [
-        '.chat-sidebar',
-        '.global-chat-main',
-        '.offline-global-chat',
-        '.chat-vibe-widget-feed',
-        '.chat-messages',
-        '.global-chat-messages',
-        '.fullscreen-chat-messages',
-        '.chat-users-panel',
-        '.rewards-panel',
-    ];
-
-    document.querySelectorAll(selectors.join(', ')).forEach(el => {
-        if (!el || el.dataset.scrollContainBound === '1') return;
-        el.dataset.scrollContainBound = '1';
-
-        const findNestedScrollable = (node) => {
-            while (node && node !== el) {
-                if (node instanceof HTMLElement) {
-                    const style = window.getComputedStyle(node);
-                    const isScrollable = /(auto|scroll)/.test(style.overflowY || '') && node.scrollHeight > node.clientHeight;
-                    if (isScrollable) return node;
-                }
-                node = node.parentElement;
-            }
-            return null;
-        };
-
-        const containScroll = (deltaY, event) => {
-            const canScroll = el.scrollHeight > (el.clientHeight + 1);
-            if (!canScroll) {
-                event.preventDefault();
-                event.stopPropagation();
-                return;
-            }
-
-            const atTop = el.scrollTop <= 0;
-            const atBottom = Math.ceil(el.scrollTop + el.clientHeight) >= el.scrollHeight;
-            if ((deltaY < 0 && atTop) || (deltaY > 0 && atBottom)) {
-                event.preventDefault();
-            }
-            event.stopPropagation();
-        };
-
-        el.addEventListener('wheel', (event) => {
-            if (Math.abs(event.deltaY) >= Math.abs(event.deltaX || 0)) {
-                const nestedScrollable = findNestedScrollable(event.target);
-                if (nestedScrollable && nestedScrollable !== el) {
-                    return;
-                }
-                containScroll(event.deltaY, event);
-            }
-        }, { passive: false });
-
-        let lastTouchY = null;
-        el.addEventListener('touchstart', (event) => {
-            if (event.touches && event.touches.length) {
-                lastTouchY = event.touches[0].clientY;
-            }
-        }, { passive: true });
-        el.addEventListener('touchmove', (event) => {
-            if (!event.touches || !event.touches.length || lastTouchY == null) return;
-            const currentY = event.touches[0].clientY;
-            const deltaY = lastTouchY - currentY;
-            lastTouchY = currentY;
-            // Same bail-out the wheel handler has: touches inside a nested scrollable
-            // (settings panel, users panel, …) scroll THAT element — without this the
-            // sidebar's containScroll preventDefault()s every finger-scroll on mobile.
-            const nestedScrollable = findNestedScrollable(event.target);
-            if (nestedScrollable && nestedScrollable !== el) return;
-            containScroll(deltaY, event);
-        }, { passive: false });
-        el.addEventListener('touchend', () => { lastTouchY = null; }, { passive: true });
-        el.addEventListener('touchcancel', () => { lastTouchY = null; }, { passive: true });
-    });
-}
+// Scroll containment for chat panes is CSS now (overscroll-behavior: contain in chat-shared.css).
+// The old version was a non-passive wheel/touchmove handler that walked computed styles on every
+// wheel tick and cancelled scrolls at the edges — the source of stuck and jumpy scrolling.
+function bindContainedChatScroll() { /* kept for callers; nothing to bind */ }
 
 function applyChatSettings() {
     bindContainedChatScroll();
@@ -728,7 +657,8 @@ function syncSettingsPanelUI() {
     document.querySelectorAll('.chat-settings-panel').forEach(panel => {
         panel.querySelectorAll('[data-setting]').forEach(el => {
             const key = el.dataset.setting;
-            if (el.type === 'checkbox') el.checked = chatSettings[key];
+            if (key === 'friendlyGlobal') el.checked = _friendlyOn();
+            else if (el.type === 'checkbox') el.checked = chatSettings[key];
             else if (el.type === 'range') el.value = chatSettings[key];
             else if (el.tagName === 'SELECT') el.value = chatSettings[key];
         });
@@ -916,6 +846,8 @@ let activeContextMenu = null;
  * and return the correct input + messages container elements.
  */
 function getChatEl() {
+    // History renders into a detached staging element and is swapped in at once (hydrateActiveChatHistory).
+    if (_chatStaging) return _chatStaging;
     // Global chat page
     const chatPage = document.getElementById('page-chat');
     if (chatPage && chatPage.classList.contains('active')) {
@@ -2222,50 +2154,236 @@ function setupFullscreenChatOverlay() {
     });
 }
 
-async function hydrateActiveChatHistory(streamId, { clear = false } = {}) {
-    const { messages } = getChatEl();
-    if (!messages) return;
+/**
+ * History, without the jumps.
+ *
+ * It used to clear the container (the reader was thrown to the top), then append up to 500 rows
+ * one at a time, scrolling and measuring after each — hundreds of forced layouts — and on /chat it
+ * did all of that twice. Now:
+ *
+ *   1. The last copy of this room from localStorage paints at once (a reload shows the conversation
+ *      immediately, not a spinner).
+ *   2. The fresh history is fetched and rendered into a detached element, then swapped in with one
+ *      DOM operation that keeps the reader where they were (at the bottom, or the same distance from it).
+ *   3. Anything that arrived live while the fetch was in flight is re-added if history did not have it.
+ *
+ * A newer hydrate (room switch) makes an older one give up (generation check).
+ */
+let _chatStaging = null;
+let _chatHydrating = false;
+let _chatLiveDuringHydrate = [];
+let _chatHydrateGen = 0;
 
-    // If clearing, show a loading skeleton rather than an empty panel while
-    // we wait for history to arrive — avoids a blank flash on stream restart.
-    if (clear) {
-        messages.innerHTML = '<div class="chat-loading-history" style="padding:12px;color:var(--text-muted);text-align:center;font-size:0.85rem"><i class="fa-solid fa-spinner fa-spin"></i> Loading history…</div>';
+let _fcwHistoryBuffer = null;
+function _renderHistoryOffscreen(chatEl, fill) {
+    const staging = document.createElement('div');
+    _chatStaging = { ...chatEl, messages: staging };
+    _fcwHistoryBuffer = [];
+    const prevLoading = _loadingHistory;
+    _loadingHistory = true;
+    try { fill(); } finally { _chatStaging = null; _loadingHistory = prevLoading; }
+    // The floating widget gets the same history, once, in the background (it is hidden on most
+    // pages; mirroring 500 rows into it one by one cost as much as rendering the main chat).
+    const forWidget = _fcwHistoryBuffer.slice(-200);
+    _fcwHistoryBuffer = null;
+    if (forWidget.length) _idle(() => { const prev = _loadingHistory; _loadingHistory = true; try { forWidget.forEach((m) => _fcwAddMessage(m)); } finally { _loadingHistory = prev; } });
+    return staging;
+}
+const _idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1200 }) : setTimeout(fn, 60));
+
+/** The newest `n` rows of a payload: what fits on screen, rendered first. */
+function _historyTail(p, n) {
+    if (!p || !p.data) return p;
+    const t = (a) => (Array.isArray(a) && a.length > n ? a.slice(-n) : a);
+    return { ...p, data: { ...p.data, messages: t(p.data.messages) }, globalMsgs: t(p.globalMsgs) };
+}
+const _payloadSize = (p) => ((p && p.data && p.data.messages) ? p.data.messages.length : 0) + ((p && p.globalMsgs) ? p.globalMsgs.length : 0);
+
+function _swapChatHistory(container, staging) {
+    const pinned = _chatPinned || !container.children.length;
+    const fromBottom = container.scrollHeight - container.scrollTop;
+    const status = container.querySelector(':scope > .chat-conn-status');
+    container.replaceChildren(...staging.childNodes);
+    if (status) container.appendChild(status);
+    container.scrollTop = pinned ? container.scrollHeight : Math.max(0, container.scrollHeight - fromBottom);
+    renderChatStreamHops();
+}
+
+function _chatRoomKey(streamId) {
+    if (streamId) return `s${streamId}`;
+    if (chatChannelUserId) return `c${chatChannelUserId}`;
+    return 'global';
+}
+
+async function _fetchHistoryPayload(streamId) {
+    if (streamId) {
+        const [data, globalMsgs] = await Promise.all([api(`/chat/${streamId}/history?limit=500`), _fetchGlobalHistoryForMerge()]);
+        return { kind: 'stream', data, globalMsgs };
+    }
+    if (chatChannelUserId) {
+        const [data, globalMsgs] = await Promise.all([api(`/chat/channel/${chatChannelUserId}/history?limit=500`), _fetchGlobalHistoryForMerge()]);
+        return { kind: 'channel', data, globalMsgs };
+    }
+    return { kind: 'global', data: await api('/chat/global/history?limit=500') };
+}
+
+function _renderHistoryPayload(p) {
+    if (!p || !p.data) return;
+    if (p.kind === 'global') _renderGlobalHistoryMessages(p.data.messages || []);
+    else _renderChatHistoryData(p.data, p.globalMsgs || []);
+}
+
+async function hydrateActiveChatHistory(streamId, { clear = false } = {}) {
+    const chatEl = getChatEl();
+    const { messages } = chatEl;
+    if (!messages) return;
+    const gen = ++_chatHydrateGen;
+    const room = _chatRoomKey(streamId);
+    _watchChatPin(messages);
+
+    // 1. Instant paint from this browser's last copy of the room.
+    const roomChanged = messages.dataset.room !== room;
+    if (roomChanged || clear || !messages.querySelector('.chat-msg')) {
+        const cached = _chatCacheRead(room);
+        if (cached) {
+            _chatPinned = true;
+            _swapChatHistory(messages, _renderHistoryOffscreen(chatEl, () => _renderHistoryPayload(cached)));
+            messages.dataset.room = room;
+        } else if (clear || roomChanged) {
+            messages.innerHTML = '<div class="chat-loading-history"><i class="fa-solid fa-spinner fa-spin"></i> Loading history…</div>';
+            messages.dataset.room = room;
+        }
     }
 
-    _loadingHistory = true;
+    _chatHydrating = true;
+    _chatLiveDuringHydrate = [];
+    let payload = null;
     try {
-        // Load emotes BEFORE rendering history — otherwise parseEmotes falls back to
-        // plain text and historical messages show raw codes (e.g. "PepeD") instead of
-        // the emote image. Deduped with the connect-time load, so it's a single fetch.
-        if (typeof loadEmotes === 'function') {
-            try { await loadEmotes(streamId); } catch { /* non-fatal — history still renders */ }
-        }
-        if (streamId) await loadChatHistory(streamId);
-        else if (chatChannelUserId) await loadChannelChatHistory(chatChannelUserId);
-        else await loadGlobalChatHistory();
+        // Emotes first — otherwise parseEmotes falls back to plain text and historical messages show
+        // raw codes (e.g. "PepeD"). Deduped with the connect-time load, so it's a single fetch; it runs
+        // alongside the history request instead of before it.
+        const emotes = (typeof loadEmotes === 'function') ? Promise.resolve(loadEmotes(streamId)).catch(() => { }) : null;
+        [payload] = await Promise.all([_fetchHistoryPayload(streamId), emotes, chatEl.isGlobal ? _friendlyEnsureRules() : null]);
     } catch {
-        // History failed — just clear the skeleton and let chat continue live
-        if (clear) messages.innerHTML = '';
+        payload = null;
     } finally {
-        _loadingHistory = false;
+        if (gen === _chatHydrateGen) _chatHydrating = false;
+    }
+    if (gen !== _chatHydrateGen) return; // a newer room took over
+    const now = getChatEl();
+    if (now.messages !== messages) return;  // the page changed under us
+
+    if (payload) {
+        // What fits on screen first; the rest of the scrollback follows when the browser is idle.
+        const TAIL = 120;
+        const big = _payloadSize(payload) > TAIL + 40;
+        _swapChatHistory(messages, _renderHistoryOffscreen(now, () => _renderHistoryPayload(big ? _historyTail(payload, TAIL) : payload)));
+        messages.dataset.room = room;
+        _chatCacheWrite(room, payload);
+        // 3. Live messages that raced the fetch.
+        const late = _chatLiveDuringHydrate;
+        _chatLiveDuringHydrate = [];
+        late.forEach((m) => addChatMessage(m));
+        if (big) {
+            _idle(() => {
+                if (gen !== _chatHydrateGen || getChatEl().messages !== messages) return;
+                const liveTail = [...messages.querySelectorAll(':scope > .chat-msg-new')];
+                _swapChatHistory(messages, _renderHistoryOffscreen(getChatEl(), () => _renderHistoryPayload(payload)));
+                // Rows that arrived live after the first paint stay.
+                liveTail.forEach((el) => { if (!el.dataset.msgId || !messages.querySelector(`[data-msg-id="${CSS.escape(el.dataset.msgId)}"]`)) messages.appendChild(el); });
+                if (_chatPinned) messages.scrollTop = messages.scrollHeight;
+            });
+        }
+    } else {
+        messages.querySelector(':scope > .chat-loading-history')?.remove();
     }
 
     applyChatSettings();
-    // Always scroll to the bottom after loading history — reset scroll state
-    // to prevent false "new messages below" indicators on first open
-    scrollChatToBottom();
-    _chatUserScrolledUp = false;
-    _chatUnreadCount = 0;
-    _hideChatNewMessagesIndicator();
-    // Re-scroll after a frame to catch any late DOM renders
-    requestAnimationFrame(() => {
-        scrollChatToBottom();
-        _chatUserScrolledUp = false;
-        _chatUnreadCount = 0;
-        _hideChatNewMessagesIndicator();
-    });
-    // Also scroll the floating chat widget if it's open
+    if (_chatPinned) scrollChatToBottom();
     _fcwScrollToBottom();
+}
+
+// ── Local history cache ──────────────────────────────────────────────────────────────────────
+// Public room history only, per signed-in user (or "anon"), the newest 200 rows of up to 6 rooms.
+// Storage can be full, disabled or cleared at any time: every read and write is best-effort.
+const _CHAT_CACHE_PREFIX = 'ovchat:v1:';
+const _CHAT_CACHE_ROWS = 200;
+const _CHAT_CACHE_ROOMS = 6;
+function _chatCacheKey(room) {
+    const who = (typeof currentUser !== 'undefined' && currentUser && currentUser.id) ? `u${currentUser.id}` : 'anon';
+    return `${_CHAT_CACHE_PREFIX}${who}:${room}`;
+}
+function _chatCacheRead(room) {
+    try {
+        const raw = localStorage.getItem(_chatCacheKey(room));
+        if (!raw) return null;
+        const v = JSON.parse(raw);
+        if (!v || !v.data || !Array.isArray(v.data.messages)) return null;
+        if (Date.now() - (v.at || 0) > 3 * 86400000) return null; // older than three days: not worth showing
+        return v;
+    } catch { return null; }
+}
+function _chatCacheWrite(room, payload) {
+    try {
+        const trim = (arr) => (Array.isArray(arr) ? arr.slice(-_CHAT_CACHE_ROWS) : []);
+        const data = { ...payload.data, messages: trim(payload.data && payload.data.messages) };
+        const entry = { at: Date.now(), kind: payload.kind, data, globalMsgs: trim(payload.globalMsgs) };
+        _chatCacheLive.room = room;
+        _chatCacheLive.entry = entry;
+        localStorage.setItem(_chatCacheKey(room), JSON.stringify(entry));
+        // Keep at most N rooms: drop the oldest.
+        const mine = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith(_CHAT_CACHE_PREFIX)) { try { mine.push([k, JSON.parse(localStorage.getItem(k)).at || 0]); } catch { mine.push([k, 0]); } }
+        }
+        mine.sort((a, b) => b[1] - a[1]).slice(_CHAT_CACHE_ROOMS).forEach(([k]) => localStorage.removeItem(k));
+    } catch { /* quota or disabled storage: the cache is only a head start */ }
+}
+// Live messages extend the cached copy (debounced), so the next reload is current too.
+const _chatCacheLive = { room: null, entry: null, timer: 0 };
+function _chatCacheNoteLive(msg) {
+    const c = _chatCacheLive;
+    if (!c.entry || !msg || msg.id == null || !msg.message) return;
+    if (c.room !== _chatRoomKey(chatStreamId)) return;
+    c.entry.data.messages.push({ ...msg, message: msg.message || msg.text, user_id: msg.user_id, timestamp: msg.timestamp || new Date().toISOString() });
+    if (c.entry.data.messages.length > _CHAT_CACHE_ROWS) c.entry.data.messages.splice(0, c.entry.data.messages.length - _CHAT_CACHE_ROWS);
+    clearTimeout(c.timer);
+    c.timer = setTimeout(() => { try { c.entry.at = Date.now(); localStorage.setItem(_chatCacheKey(c.room), JSON.stringify(c.entry)); } catch { /* */ } }, 2000);
+}
+function _chatCacheForget(ids) {
+    const c = _chatCacheLive;
+    if (!c.entry || !ids || !ids.length) return;
+    const drop = new Set(ids.map(String));
+    c.entry.data.messages = c.entry.data.messages.filter((m) => !drop.has(String(m.id)));
+    try { localStorage.setItem(_chatCacheKey(c.room), JSON.stringify(c.entry)); } catch { /* */ }
+}
+
+/**
+ * Remove the oldest rows past `max`. Only a reader who has scrolled back needs the offset given back,
+ * and that is measured once for the whole batch rather than per row.
+ */
+function _chatTrim(container, max) {
+    const extra = container.children.length - max;
+    if (extra <= 0) return;
+    const keep = !_chatPinned;
+    const before = keep ? container.scrollHeight : 0;
+    for (let i = 0; i < extra; i++) container.removeChild(container.firstChild);
+    if (keep) container.scrollTop = Math.max(0, container.scrollTop - (before - container.scrollHeight));
+}
+
+// Name/hat effects animate only while their row is on screen; 500 glitching names in scrollback
+// cost a style recalculation every frame for nothing.
+let _chatFxIO = null;
+function _chatFxObserve(el) {
+    if (!('IntersectionObserver' in window)) return;
+    el.classList.add('has-fx');
+    if (!_chatFxIO) {
+        _chatFxIO = new IntersectionObserver((entries) => {
+            for (const e of entries) e.target.classList.toggle('fx-on', e.isIntersecting);
+        }, { rootMargin: '120px 0px' });
+    }
+    _chatFxIO.observe(el);
 }
 
 /**
@@ -2459,21 +2577,8 @@ function initChat(streamId, channelUserId = null) {
     // Start cross-feed if enabled and we're in a stream chat
     _syncGlobalFeed();
 
-    // Track user scroll position — clear indicator when user scrolls to bottom
-    const { messages: chatContainer } = getChatEl();
-    if (chatContainer && !chatContainer._scrollListenerAttached) {
-        chatContainer._scrollListenerAttached = true;
-        chatContainer.addEventListener('scroll', () => {
-            const nearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < 100;
-            if (nearBottom) {
-                _chatUserScrolledUp = false;
-                _chatUnreadCount = 0;
-                _hideChatNewMessagesIndicator();
-            } else {
-                _chatUserScrolledUp = true;
-            }
-        }, { passive: true });
-    }
+    // Follow new messages unless the reader scrolls back (see _watchChatPin).
+    _watchChatPin(getChatEl().messages);
 }
 
 /**
@@ -2816,6 +2921,7 @@ function handleChatMessage(msg) {
             renderChatUsersList(msg.users);
             break;
         case 'auth':
+            _friendlyNoteNewcomer(msg.newcomer);
             // Remember who WE are in this chat (stable key + display name) so TTS of
             // our own messages can be skipped locally (see _isOwnTtsMessage).
             _myChatIdentity = {
@@ -2921,6 +3027,8 @@ function handleChatMessage(msg) {
         case 'clear': {
             const { messages: clearTarget } = getChatEl();
             if (clearTarget) clearTarget.innerHTML = '';
+            try { localStorage.removeItem(_chatCacheKey(_chatRoomKey(chatStreamId))); } catch { /* */ }
+            if (_chatCacheLive.entry) _chatCacheLive.entry.data.messages = [];
             addSystemMessage('Chat was cleared by a moderator');
             break;
         }
@@ -3078,41 +3186,94 @@ function handleChatMessage(msg) {
 }
 
 
-function addChatMessage(msg) {
-    // Feed username into autocomplete cache
-    if (typeof acTrackUser === 'function') acTrackUser(msg);
+// ── Friendly global chat ────────────────────────────────────────────────────────────────────
+// Viewer-side only: rows that match server/chat/moderation-utils.js FRIENDLY_FILTER_CATEGORIES are
+// folded into a "hidden by Friendly chat · Show" line in global chat. On by default for a viewer's
+// first day (the server says so in the chat `auth` message); the viewer's own choice always wins.
+// Until the server has answered for a new browser, it is on — first impressions are the point.
+const _FRIENDLY_RULES_KEY = 'ovchat:friendly-rules:v1';
+const _FRIENDLY_NEWCOMER_KEY = 'ovchat:newcomer:v1';
+let _friendlyRules = null;
+let _friendlyRulesLoading = null;
+let _friendlyNewcomer = (() => { try { const v = JSON.parse(localStorage.getItem(_FRIENDLY_NEWCOMER_KEY)); return v && typeof v.newcomer === 'boolean' ? v.newcomer : null; } catch { return null; } })();
 
-    const chatEl = getChatEl();
-    const container = chatEl.messages;
-
-    // De-dupe double-delivered messages (a message can arrive via both the stream room and
-    // a cross-slot/global forward). Scoped to what's actually IN this container: we only skip
-    // a message whose id is already rendered here. This can never hide a message that isn't
-    // already visible, and it resets on its own when the container is cleared (room switch /
-    // history reload) — unlike a session-wide "seen" set, which wrongly suppressed messages
-    // across rooms and blanked global chat.
-    if (msg && msg.id != null && container &&
-        container.querySelector(`[data-msg-id="${CSS.escape(String(msg.id))}"]`)) return;
-
-    // Voice Call mode filter: skip messages not tagged with our voice channel
-    const isVoiceMsg = !!msg.voiceChannelId;
-    if (chatMode === 'voice' && !isVoiceMsg) {
-        // Still mirror to floating widget even if filtered from main view
-        _fcwAddMessage(msg);
-        return;
+function _friendlyOn() {
+    if (chatSettings.friendlyGlobal === true || chatSettings.friendlyGlobal === false) return chatSettings.friendlyGlobal;
+    return _friendlyNewcomer !== false;
+}
+function _friendlyNoteNewcomer(v) {
+    if (typeof v !== 'boolean') return;
+    const was = _friendlyOn();
+    _friendlyNewcomer = v;
+    try { localStorage.setItem(_FRIENDLY_NEWCOMER_KEY, JSON.stringify({ newcomer: v, at: Date.now() })); } catch { /* */ }
+    syncSettingsPanelUI();
+    // Found out this browser is not new after all: show what was folded away.
+    if (was && !_friendlyOn()) document.querySelectorAll('.chat-friendly-group').forEach((g) => _friendlyReveal(g));
+}
+function _friendlyCompile(cats) {
+    return (cats || []).map((c) => ({ key: c.key, res: (c.patterns || []).map((p) => { try { return new RegExp(p, 'i'); } catch { return null; } }).filter(Boolean) }));
+}
+function _friendlyEnsureRules() {
+    if (_friendlyRules) return Promise.resolve(_friendlyRules);
+    if (!_friendlyRulesLoading) {
+        try { const c = JSON.parse(localStorage.getItem(_FRIENDLY_RULES_KEY)); if (c && Array.isArray(c.categories)) _friendlyRules = _friendlyCompile(c.categories); } catch { /* */ }
+        _friendlyRulesLoading = api('/chat/filters/friendly').then((d) => {
+            _friendlyRules = _friendlyCompile(d.categories);
+            try { localStorage.setItem(_FRIENDLY_RULES_KEY, JSON.stringify({ categories: d.categories, at: Date.now() })); } catch { /* */ }
+            return _friendlyRules;
+        }).catch(() => _friendlyRules);
     }
-    if (chatMode === 'voice' && isVoiceMsg) {
-        // Only show messages from the same channel
-        if (typeof callState !== 'undefined' && callState.joined && msg.voiceChannelId !== callState.channelId) {
-            _fcwAddMessage(msg);
-            return;
-        }
+    return _friendlyRules ? Promise.resolve(_friendlyRules) : _friendlyRulesLoading;
+}
+function _friendlyHides(msg) {
+    if (!_friendlyOn() || !_friendlyRules || !msg) return false;
+    const type = msg.message_type || 'chat';
+    if (type !== 'chat' && type !== 'tts') return false;
+    // Never fold a viewer's own words away from them.
+    const me = typeof getCurrentUsername === 'function' ? getCurrentUsername() : '';
+    if (me && String(msg.username || '').toLowerCase() === String(me).toLowerCase()) return false;
+    const text = String(msg.message || msg.text || '');
+    if (!text) return false;
+    const n = normalizeSlurPatternText(text);
+    const raw = text.toLowerCase();
+    return _friendlyRules.some((c) => c.res.some((re) => re.test(n) || re.test(raw)));
+}
+/** Append a folded row: consecutive folded rows share one "N hidden" line. */
+function _friendlyAppend(container, el) {
+    el.classList.add('chat-friendly-hidden');
+    let group = container.lastElementChild;
+    if (!group || !group.classList.contains('chat-friendly-group') || group.classList.contains('is-open')) {
+        group = document.createElement('div');
+        group.className = 'chat-friendly-group';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'chat-friendly-toggle';
+        btn.innerHTML = '<i class="fa-solid fa-eye-slash" aria-hidden="true"></i><span class="chat-friendly-count"></span><span class="chat-friendly-show">Show</span>';
+        group.appendChild(btn);
+        container.appendChild(group);
     }
+    group.appendChild(el);
+    const n = group.querySelectorAll(':scope > .chat-msg').length;
+    group.querySelector('.chat-friendly-count').textContent = `${n} message${n === 1 ? '' : 's'} hidden by Friendly chat`;
+}
+function _friendlyReveal(group) {
+    group.classList.add('is-open');
+    group.querySelector('.chat-friendly-toggle')?.remove();
+}
+function _friendlyToggleInfo(btn) {
+    const text = btn.closest('.csp-section')?.querySelector('.csp-info-text');
+    if (!text) return;
+    text.hidden = !text.hidden;
+    btn.setAttribute('aria-expanded', String(!text.hidden));
+}
 
-    if (!container) {
-        _fcwAddMessage(msg);
-        return;
-    }
+/**
+ * Build one chat row. Shared by every surface — the stream/channel chat, the global /chat page,
+ * the popout, the broadcast desk and the floating widget (opts.widget: compact, no avatar,
+ * timestamp or hover actions, with opts.prefixHtml as its source badge) — so they all get the
+ * same badges, cosmetics, reply headers, translations and the tap-for-menu username.
+ */
+function buildChatMessageEl(msg, opts = {}) {
     const el = document.createElement('div');
     el.className = 'chat-msg';
 
@@ -3134,10 +3295,12 @@ function addChatMessage(msg) {
     if (msg.message_type === 'news') el.classList.add('news');
     if (msg.message_type === 'soundboard') el.classList.add('soundboard');
 
-    const isGlobal = chatEl.isGlobal;
+    const isGlobal = !!opts.isGlobal;
+    const widget = !!opts.widget;
+    const isVoiceMsg = !!msg.voiceChannelId;
 
     // Timestamps — normalize to UTC then display in browser local time
-    const showTs = isGlobal || chatSettings.showTimestamps;
+    const showTs = !widget && (isGlobal || chatSettings.showTimestamps);
     let tsSource;
     if (msg.timestamp) {
         tsSource = _parseMsgTime(msg.timestamp);
@@ -3153,8 +3316,8 @@ function addChatMessage(msg) {
 
     // Stream source badge for global chat: show the STREAM TITLE (username fallback).
     // Live → click opens the live stream; offline → opens the streamer's channel.
-    let streamBadge = '';
-    if (isGlobal) {
+    let streamBadge = widget ? (opts.prefixHtml || '') : '';
+    if (isGlobal && !widget) {
         const srcUser = msg.stream_channel || msg.stream_username || '';
         if (srcUser) {
             const label = esc(msg.source_stream_title || srcUser);
@@ -3175,7 +3338,7 @@ function addChatMessage(msg) {
     const _curManagedId = ((typeof currentStreamData !== 'undefined' && currentStreamData && currentStreamData.managed_stream_id != null)
         ? currentStreamData.managed_stream_id : chatCurrentManagedId);
     const _srcManagedId = (msg.source_managed_id != null) ? Number(msg.source_managed_id) : null;
-    const isOtherSlot = !isGlobal && _srcManagedId != null && _curManagedId != null
+    const isOtherSlot = !isGlobal && !widget && _srcManagedId != null && _curManagedId != null
         && _srcManagedId !== Number(_curManagedId) && (msg.source_stream_title || msg.source_slug);
     if (isOtherSlot) {
         el.classList.add('chat-msg-otherslot');
@@ -3314,14 +3477,14 @@ function addChatMessage(msg) {
         // Only alert (tab flash / sound) for LIVE mentions — not when replaying
         // chat history, where old, already-seen mentions would otherwise falsely
         // flash the tab title as if someone just mentioned you.
-        if (!_loadingHistory) {
+        if (!_loadingHistory && !widget) {
             if (chatSettings.flashOnMention) flashTabTitle(displayName);
             if (chatSettings.soundOnMention) playMentionSound();
         }
     }
 
     // Avatar (respects showAvatars setting via CSS class on root, but still render for toggle)
-    const avatarHtml = msg.avatar_url
+    const avatarHtml = widget ? '' : msg.avatar_url
         ? `<img class="chat-avatar" src="${esc(msg.avatar_url)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display=''">`
         + `<span class="chat-avatar-letter" style="display:none;background:${esc(nameColor)}">${avatarInitial}</span>`
         : `<span class="chat-avatar-letter" style="background:${esc(nameColor)}">${avatarInitial}</span>`;
@@ -3355,28 +3518,22 @@ function addChatMessage(msg) {
 
     // tts-off messages drop the ":" so it reads "name 🔇 message" after the mute marker.
     const separator = (ttsOff || msg.message_type === 'soundboard' || msg.message_type === 'channel-sound') ? ' ' : ': ';
-    el.innerHTML = `${replyHtml}${timestamp}${streamBadge}${voiceBadge}${gameBadge}<span class="chat-avatar-wrap">${avatarHtml}</span>${badge}${_relayBadge}${_aiBadge}${hatHtml}${particleWrapOpen}<span class="chat-user${nameFXClass}" style="color:${esc(nameColor)}" data-username="${displayName}" data-core-username="${coreUsername}" data-user-id="${userId}" data-anon="${isAnon ? '1' : ''}" oncontextmenu="showChatContextMenu(event)" onclick="showChatContextMenu(event)">${_visibleName}</span>${particleWrapClose}${separator}${text}`;
+    el.innerHTML = `${replyHtml}${timestamp}${streamBadge}${voiceBadge}${gameBadge}${widget ? '' : `<span class="chat-avatar-wrap">${avatarHtml}</span>`}${badge}${_relayBadge}${_aiBadge}${hatHtml}${particleWrapOpen}<span class="chat-user${nameFXClass}" style="color:${esc(nameColor)}" data-username="${displayName}" data-core-username="${coreUsername}" data-user-id="${userId}" data-anon="${isAnon ? '1' : ''}" oncontextmenu="showChatContextMenu(event)" onclick="showChatContextMenu(event)">${_visibleName}</span>${particleWrapClose}${separator}${text}`;
 
     // Auto-translation under the message (live 'chat_translation' event, or persisted
     // metadata.translation on history). See server/i18n/translate.js for the direction rules.
     const _tr = _msgTranslation(msg);
     if (_tr) el.appendChild(_translationEl(_tr));
 
-    // Reply action button (hover)
-    if (msg.id) {
+    // Reply / translate actions. No per-message listeners: one delegated handler (bottom of this
+    // file) reads what it needs from these expandos, so 500 rows cost 0 listeners, not 1,000.
+    if (msg.id && !widget) {
+        el._ovMsg = { id: msg.id, username: msg.username || msg.displayName || 'anon', user_id: msg.user_id, message: (msg.message || msg.text || '').slice(0, 100) };
+        el._ovRaw = displayRaw;
         const replyBtn = document.createElement('button');
         replyBtn.className = 'chat-reply-btn';
         replyBtn.title = 'Reply';
         replyBtn.innerHTML = '<i class="fa-solid fa-reply"></i>';
-        replyBtn.onclick = (e) => {
-            e.stopPropagation();
-            setChatReply({
-                id: msg.id,
-                username: msg.username || msg.displayName || 'anon',
-                user_id: msg.user_id,
-                message: (msg.message || msg.text || '').slice(0, 100),
-            });
-        };
         el.appendChild(replyBtn);
         // "Translate to my language" — for every viewer, whatever the channel's language is
         // (the automatic translations only cover English ↔ the streamer's language).
@@ -3385,17 +3542,18 @@ function addChatMessage(msg) {
             trBtn.className = 'chat-translate-btn';
             trBtn.title = `Translate to ${_LANG_LABEL[_viewerLang()] || 'my language'}`;
             trBtn.innerHTML = '<i class="fa-solid fa-language"></i>';
-            trBtn.onclick = (e) => { e.stopPropagation(); _translateForMe(el, displayRaw, trBtn); };
             el.appendChild(trBtn);
         }
         el.classList.add('chat-msg-hoverable');
     }
 
-    // Spawn particles if equipped
-    if (hasParticles) {
+    // Cosmetics: particles only burst for messages arriving now (a 500-row history used to start
+    // ~2,000 animations at once); name/hat effects run only while the row is on screen.
+    if (hasParticles && !_loadingHistory && !document.hidden) {
         const wrap = el.querySelector('.chat-particle-wrap');
         if (wrap) spawnChatParticles(wrap, msg.particleFX.chars);
     }
+    if (nameFXClass || (msg.hatFX && msg.hatFX.animated)) _chatFxObserve(el);
 
     // Freeze animated emotes if setting is off
     if (!chatSettings.animatedEmotes) {
@@ -3404,18 +3562,56 @@ function addChatMessage(msg) {
         });
     }
 
-    container.appendChild(el);
-    // Cap the main chat DOM so a long/busy session doesn't accumulate thousands of heavy
-    // message nodes (memory + scroll/layout thrash). Mirrors the caps the cross-feed /
-    // widget containers already have. Don't trim mid history-hydration.
-    if (!_loadingHistory) {
-        while (container.children.length > MAIN_CHAT_MAX_MESSAGES) {
-            // Removing from the top shortens everything above the viewport, so a reader who has
-            // scrolled back sees the text jump upward. Give back exactly what we took.
-            const lost = container.firstChild.getBoundingClientRect().height;
-            container.removeChild(container.firstChild);
-            if (!_chatPinned) container.scrollTop = Math.max(0, container.scrollTop - lost);
+    return el;
+}
+
+function addChatMessage(msg) {
+    // Feed username into autocomplete cache
+    if (typeof acTrackUser === 'function') acTrackUser(msg);
+
+    const chatEl = getChatEl();
+    const container = chatEl.messages;
+
+    // A live message that lands while history is being fetched is remembered, so the history swap
+    // cannot drop it (see hydrateActiveChatHistory).
+    if (_chatHydrating && !_loadingHistory && msg && msg.id != null) _chatLiveDuringHydrate.push(msg);
+
+    // De-dupe double-delivered messages (a message can arrive via both the stream room and
+    // a cross-slot/global forward). Scoped to what's actually IN this container: we only skip
+    // a message whose id is already rendered here. This can never hide a message that isn't
+    // already visible, and it resets on its own when the container is cleared (room switch /
+    // history reload) — unlike a session-wide "seen" set, which wrongly suppressed messages
+    // across rooms and blanked global chat.
+    if (msg && msg.id != null && container &&
+        container.querySelector(`[data-msg-id="${CSS.escape(String(msg.id))}"]`)) return;
+
+    // Voice Call mode filter: skip messages not tagged with our voice channel
+    const isVoiceMsg = !!msg.voiceChannelId;
+    if (chatMode === 'voice' && !isVoiceMsg) {
+        // Still mirror to floating widget even if filtered from main view
+        _fcwAddMessage(msg);
+        return;
+    }
+    if (chatMode === 'voice' && isVoiceMsg) {
+        // Only show messages from the same channel
+        if (typeof callState !== 'undefined' && callState.joined && msg.voiceChannelId !== callState.channelId) {
+            _fcwAddMessage(msg);
+            return;
         }
+    }
+
+    if (!container) {
+        _fcwAddMessage(msg);
+        return;
+    }
+    const el = buildChatMessageEl(msg, { isGlobal: chatEl.isGlobal });
+    if (!_loadingHistory) el.classList.add('chat-msg-new');
+
+    if (chatEl.isGlobal && _friendlyHides(msg)) _friendlyAppend(container, el);
+    else container.appendChild(el);
+    if (!_loadingHistory) {
+        _chatTrim(container, MAIN_CHAT_MAX_MESSAGES);
+        _chatCacheNoteLive(msg);
     }
     if (chatSettings.autoScroll) {
         if (_loadingHistory) {
@@ -4111,29 +4307,9 @@ async function _fetchGlobalHistoryForMerge() {
     catch { return []; }
 }
 
-async function loadChatHistory(streamId) {
-    if (!streamId) return; // Use loadGlobalChatHistory() for global
-    try {
-        const [data, globalMsgs] = await Promise.all([
-            api(`/chat/${streamId}/history?limit=500`),
-            _fetchGlobalHistoryForMerge(),
-        ]);
-        _renderChatHistoryData(data, globalMsgs);
-    } catch { /* silent */ }
-}
-
-// Persistent per-streamer history by broadcaster user id — works offline + across
-// slots (backed by channel_user_id). Used on channel pages.
-async function loadChannelChatHistory(userId) {
-    if (!userId) return;
-    try {
-        const [data, globalMsgs] = await Promise.all([
-            api(`/chat/channel/${userId}/history?limit=500`),
-            _fetchGlobalHistoryForMerge(),
-        ]);
-        _renderChatHistoryData(data, globalMsgs);
-    } catch { /* silent */ }
-}
+// Kept for callers outside this file; both go through the same staged, cached path.
+async function loadChatHistory(streamId) { if (streamId) return hydrateActiveChatHistory(streamId); }
+async function loadChannelChatHistory(userId) { if (userId) return hydrateActiveChatHistory(null); }
 
 function _renderChatHistoryData(data, globalMsgs = []) {
     const msgs = data.messages || [];
@@ -4278,56 +4454,55 @@ async function loadGlobalChatHistory() {
     chatLiveSlots = [];
     chatChannel = null;
     renderChatStreamHops();
-    try {
-        const data = await api('/chat/global/history?limit=500');
-        const msgs = data.messages || [];
-        // Clear any loading skeleton / stale messages before inserting history
-        const { messages } = getChatEl();
-        if (messages) messages.innerHTML = '';
-        msgs.forEach(m => {
-            if (m.message_type === 'system') {
-                // Render system messages (update announcements, etc.) with system styling
-                addRichSystemMessage(esc(m.message), 'update');
-            } else if (m.message_type === 'donation') {
-                // Donations carry their payload in metadata — render the rich card here
-                // too, not a plain text line. Global history renders through addChatMessage
-                // directly rather than _renderHistoryMainMsg, so it needs its own hook.
-                let meta = null;
-                try { meta = typeof m.metadata === 'string' ? JSON.parse(m.metadata) : m.metadata; } catch { meta = null; }
-                if (meta && meta.kind === 'goal-reached') {
-                    addDonationGoalMessage({ goal: { title: meta.title, target_amount: meta.target, image_url: meta.image, media_type: meta.media_type }, by: meta.by });
-                } else if (meta && meta.kind === 'donation') {
-                    addDonationMessage({ username: meta.username, amount: meta.amount, message: meta.message, avatar_url: meta.avatar_url, user_id: meta.user_id });
-                } else {
-                    addRichSystemMessage(esc(m.message), 'update');
-                }
+    return hydrateActiveChatHistory(null);
+}
+
+function _renderGlobalHistoryMessages(msgs) {
+    chatLiveSlots = [];
+    chatChannel = null;
+    msgs.forEach(m => {
+        if (m.message_type === 'system') {
+            // Render system messages (update announcements, etc.) with system styling
+            addRichSystemMessage(esc(m.message), 'update');
+        } else if (m.message_type === 'donation') {
+            // Donations carry their payload in metadata — render the rich card here
+            // too, not a plain text line. Global history renders through addChatMessage
+            // directly rather than _renderHistoryMainMsg, so it needs its own hook.
+            let meta = null;
+            try { meta = typeof m.metadata === 'string' ? JSON.parse(m.metadata) : m.metadata; } catch { meta = null; }
+            if (meta && meta.kind === 'goal-reached') {
+                addDonationGoalMessage({ goal: { title: meta.title, target_amount: meta.target, image_url: meta.image, media_type: meta.media_type }, by: meta.by });
+            } else if (meta && meta.kind === 'donation') {
+                addDonationMessage({ username: meta.username, amount: meta.amount, message: meta.message, avatar_url: meta.avatar_url, user_id: meta.user_id });
             } else {
-                addChatMessage({
-                    id: m.id,
-                    username: m.username || m.display_name || `anon${m.user_id || ''}`,
-                    core_username: m.core_username || null,
-                    message: m.message,
-                    role: m.role || 'user',
-                    color: m.color,
-                    avatar_url: m.avatar_url,
-                    profile_color: m.profile_color,
-                    user_id: m.user_id,
-                    timestamp: m.timestamp,
-                    stream_id: m.stream_id || null,
-                    stream_channel: m.stream_channel || null,
-                    source_stream_id: m.stream_id || null,
-                    source_stream_title: m.source_stream_title || null,
-                    source_slug: m.source_slug || null,
-                    source_managed_id: m.source_managed_id || null,
-                    source_is_live: m.source_is_live ? 1 : 0,
-                    hatFX: m.hatFX || null,
-                    nameFX: m.nameFX || null,
-                    particleFX: m.particleFX || null,
-                    reply_to: m.reply_to || null,
-                });
+                addRichSystemMessage(esc(m.message), 'update');
             }
-        });
-    } catch { /* silent */ }
+        } else {
+            addChatMessage({
+                id: m.id,
+                username: m.username || m.display_name || `anon${m.user_id || ''}`,
+                core_username: m.core_username || null,
+                message: m.message,
+                role: m.role || 'user',
+                color: m.color,
+                avatar_url: m.avatar_url,
+                profile_color: m.profile_color,
+                user_id: m.user_id,
+                timestamp: m.timestamp,
+                stream_id: m.stream_id || null,
+                stream_channel: m.stream_channel || null,
+                source_stream_id: m.stream_id || null,
+                source_stream_title: m.source_stream_title || null,
+                source_slug: m.source_slug || null,
+                source_managed_id: m.source_managed_id || null,
+                source_is_live: m.source_is_live ? 1 : 0,
+                hatFX: m.hatFX || null,
+                nameFX: m.nameFX || null,
+                particleFX: m.particleFX || null,
+                reply_to: m.reply_to || null,
+            });
+        }
+    });
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -4789,6 +4964,7 @@ function _fadeRemoveMsg(el) {
 }
 function removeMessagesFromDom(ids) {
     if (!ids || !ids.length) return;
+    _chatCacheForget(ids);
     const idSet = new Set(ids.map(String));
     document.querySelectorAll('.chat-msg[data-msg-id]').forEach(el => {
         if (idSet.has(el.dataset.msgId)) _fadeRemoveMsg(el);
@@ -5470,21 +5646,51 @@ let _loadingHistory = false;
  * actually wanted — with no need to pass anything through six call sites.
  */
 let _chatPinned = true;
+/**
+ * Follow the conversation unless the reader has scrolled back — and only the READER unpins it.
+ *
+ * Unpinning used to be "more than 100px from the bottom", so anything that grew the content without
+ * a scroll (an avatar or emote finishing loading, a translation line, a clip card) unpinned chat on
+ * its own: new messages stopped following, and the next history refill "jumped". Now a scroll away
+ * from the bottom only counts when a wheel, touch, key or scrollbar drag started it; any other
+ * growth while pinned is followed (image loads, container resizes such as the mobile keyboard).
+ */
 function _watchChatPin(container) {
     if (!container || container._ovPinWatch) return;
     container._ovPinWatch = true;
-    const update = () => {
-        _chatPinned = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-        if (_chatPinned) {
+    let intentAt = 0;
+    let queued = false;
+    const intent = () => { intentAt = performance.now(); };
+    const stick = () => {
+        if (!_chatPinned || queued) return;
+        queued = true;
+        requestAnimationFrame(() => { queued = false; if (_chatPinned) container.scrollTop = container.scrollHeight; });
+    };
+    container.addEventListener('wheel', intent, { passive: true });
+    container.addEventListener('touchstart', intent, { passive: true });
+    container.addEventListener('touchmove', intent, { passive: true });
+    container.addEventListener('pointerdown', intent, { passive: true });
+    container.addEventListener('keydown', intent);
+    container.addEventListener('scroll', () => {
+        const dist = container.scrollHeight - container.scrollTop - container.clientHeight;
+        if (dist < 80) {
+            _chatPinned = true;
             _chatUserScrolledUp = false;
             _chatUnreadCount = 0;
             _hideChatNewMessagesIndicator();
-        } else {
+        } else if (performance.now() - intentAt < 1200) {
+            _chatPinned = false;
             _chatUserScrolledUp = true;
+        } else {
+            stick();
         }
-    };
-    container.addEventListener('scroll', update, { passive: true });
-    update();
+    }, { passive: true });
+    container.addEventListener('load', stick, true);   // an avatar or emote finished loading
+    container.addEventListener('error', stick, true);
+    if ('ResizeObserver' in window) new ResizeObserver(stick).observe(container); // viewport / mobile keyboard
+    // Anything else that changes the content height without a scroll: a translation line appearing,
+    // a clip card resolving, a folded Friendly-chat group opening.
+    if ('MutationObserver' in window) new MutationObserver(stick).observe(container, { childList: true, subtree: true });
 }
 
 function scrollChat() {
@@ -5508,6 +5714,7 @@ function scrollChat() {
 function scrollChatToBottom() {
     const { messages: container } = getChatEl();
     if (!container) return;
+    _chatPinned = true;
     container.scrollTop = container.scrollHeight;
     _chatUserScrolledUp = false;
     _chatUnreadCount = 0;
@@ -6261,6 +6468,13 @@ function buildSettingsPanelHTML() {
         </div>
         <div class="csp-section">
             <div class="csp-title"><i class="fa-solid fa-sliders"></i> Behavior</div>
+            <div class="csp-row csp-row-friendly">
+                <label class="csp-friendly-label"><span>Friendly global chat</span>
+                    <input type="checkbox" data-setting="friendlyGlobal" onchange="onChatSettingChange(this)">
+                </label>
+                <button type="button" class="csp-info-btn" aria-expanded="false" aria-label="About friendly global chat" onclick="_friendlyToggleInfo(this)"><i class="fa-solid fa-circle-info"></i></button>
+            </div>
+            <p class="csp-info-text" hidden>Hides slurs, hate slogans, threats and sexual content in global chat — on your screen only, with a tap to see it anyway. It's on for your first day so people checking OpenVibe out (including partners) get a good first look. OpenVibe is all for free speech: nothing is deleted and nobody is banned for it, and you can switch it off any time.</p>
             <label class="csp-row">
                 <span>Show Deleted Messages</span>
                 <input type="checkbox" data-setting="showDeletedMessages" onchange="onChatSettingChange(this)">
@@ -6408,6 +6622,7 @@ function onChatSettingChange(el) {
     if (key === 'ttsEnabled' || key === 'streamingTtsEnabled') syncTTSToggleButtons();
     if (key === 'showFloatingChat') _fcwUpdateVisibility();
     if (key === 'showGlobalInStream' || key === 'showAllStreamsInStream') _syncGlobalFeed();
+    if (key === 'friendlyGlobal') { _friendlyEnsureRules().then(() => { if (getChatEl().isGlobal) hydrateActiveChatHistory(chatStreamId).catch(() => { }); }); }
 }
 
 function resetChatSettings() {
@@ -6821,30 +7036,15 @@ function _fcwSourceLabel(msg) {
     return { text: 'Global', cls: 'fcw-src-global' };
 }
 
+function _chatTrimWidget(container) {
+    while (container.children.length > 200) container.removeChild(container.firstChild);
+}
+
 function _fcwAddMessage(msg) {
+    if (_fcwHistoryBuffer) { _fcwHistoryBuffer.push(msg); return; }
     const container = document.getElementById('fcw-messages');
     if (!container) return;
-
-    const username = msg.username || msg.displayName || 'anon';
-    const text = msg.message || msg.text || '';
-
-    // Full parity with the main chat: role badge, relay platform badge (icon
-    // instead of the "[RS]" text prefix), relay/role name color, name effects,
-    // hat, and particles.
-    const badge = chatSettings.showBadges ? getBadgeHTML(msg.role) : '';
-    const _relayPlatform = (msg.source_platform || parseRelayUsername(username).platform || '').toLowerCase();
-    const _relayBadge = relayBadgeHTML(_relayPlatform);
-    const _visibleName = _relayBadge ? username.replace(/^\[[^\]]+\]\s*/, '') : username;
-    const nameColor = relayColorFor(msg) || msg.color || msg.profile_color || getRoleColor(msg.role);
-    const nameFXClass = msg.nameFX?.cssClass ? ` ${esc(msg.nameFX.cssClass)}` : '';
-    let hatHtml = '';
-    if (msg.hatFX && msg.hatFX.hatChar) {
-        const animClass = msg.hatFX.animated ? ` hat-${esc(msg.hatFX.animated)}` : '';
-        hatHtml = `<span class="chat-hat${animClass}">${esc(msg.hatFX.hatChar)}</span>`;
-    }
-    const hasParticles = msg.particleFX?.chars;
-    const particleOpen = hasParticles ? `<span class="chat-particle-wrap ${esc(msg.particleFX.cssClass || '')}">` : '';
-    const particleClose = hasParticles ? '</span>' : '';
+    if (msg && msg.id != null && container.querySelector(`[data-msg-id="${CSS.escape(String(msg.id))}"]`)) return;
 
     // Stream source badge — clickable stream TITLE (live → watch, offline → channel).
     const src = _fcwSourceLabel(msg);
@@ -6862,20 +7062,22 @@ function _fcwAddMessage(msg) {
         srcBadge = `<span class="fcw-msg-source ${src.cls}" title="Sent from ${esc(src.text)}">${esc(src.text)}</span>`;
     }
 
-    const el = document.createElement('div');
-    el.className = 'chat-msg';
-    el.innerHTML = `${srcBadge}${badge}${_relayBadge}${hatHtml}${particleOpen}<span class="chat-user${nameFXClass}" style="color:${esc(nameColor)}">${esc(_visibleName)}</span>${particleClose}: ${(typeof parseEmotes === 'function') ? parseEmotes(text) : esc(text)}`;
-    container.appendChild(el);
+    // Same row as every other surface (badges, cosmetics, and a username that opens the
+    // user menu on tap — the widget's own renderer had no menu at all).
+    const el = buildChatMessageEl(msg, { widget: true, prefixHtml: srcBadge });
+    if (_friendlyHides(msg)) _friendlyAppend(container, el);
+    else container.appendChild(el);
 
-    // Trim old messages
-    while (container.children.length > 200) container.removeChild(container.firstChild);
-
-    // Auto-scroll: force during history load, otherwise only when near bottom
-    if (_loadingHistory) {
-        container.scrollTop = container.scrollHeight;
-    } else {
-        const isScrolledDown = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
-        if (isScrolledDown) container.scrollTop = container.scrollHeight;
+    _chatTrimWidget(container);
+    // One scroll per frame, however many rows arrived in it (history mirrors hundreds at once).
+    if (!container._fcwScrollQueued) {
+        container._fcwScrollQueued = true;
+        const force = _loadingHistory;
+        requestAnimationFrame(() => {
+            container._fcwScrollQueued = false;
+            if (!container.offsetParent) return; // widget closed: nothing to scroll
+            if (force || container.scrollHeight - container.scrollTop - container.clientHeight < 120) container.scrollTop = container.scrollHeight;
+        });
     }
 
     // Increment unread if widget is closed and not on chat page
@@ -7245,3 +7447,27 @@ function initChatResize() {
     });
 }
 initChatResize();
+
+// Reply / translate buttons and folded Friendly-chat groups, for every chat surface: one listener.
+(function _wireChatRowActions() {
+    if (window._chatRowActionsWired) return;
+    window._chatRowActionsWired = true;
+    document.addEventListener('click', (e) => {
+        const t = e.target;
+        if (!t || !t.closest) return;
+        const reply = t.closest('.chat-reply-btn');
+        if (reply) {
+            const row = reply.closest('.chat-msg');
+            if (row && row._ovMsg) { e.stopPropagation(); setChatReply({ ...row._ovMsg }); }
+            return;
+        }
+        const tr = t.closest('.chat-translate-btn');
+        if (tr) {
+            const row = tr.closest('.chat-msg');
+            if (row) { e.stopPropagation(); _translateForMe(row, row._ovRaw || '', tr); }
+            return;
+        }
+        const fold = t.closest('.chat-friendly-toggle');
+        if (fold) { e.stopPropagation(); _friendlyReveal(fold.closest('.chat-friendly-group')); }
+    });
+})();

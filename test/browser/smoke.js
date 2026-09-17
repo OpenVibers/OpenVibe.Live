@@ -160,6 +160,37 @@ const pageState = `(() => ({
         cdp.close();
     }
 
+    // 3b. Chat: rows render, the view follows the conversation, and the popout is the same chat.
+    if (!ONLY_SIGNED && !ROUTES_ONLY) {
+        const { cdp, errors } = await openPage(1366);
+        await cdp.send('Page.navigate', { url: BASE + '/chat' });
+        await sleep(SETTLE + 2000);
+        const st = await cdp.evaluate(`(() => {
+            const box = document.getElementById('global-chat-messages');
+            if (!box) return { err: 'no global chat container' };
+            return { rows: box.querySelectorAll('.chat-msg').length, gap: Math.round(box.scrollHeight - box.scrollTop - box.clientHeight), pinned: window._chatPinned };
+        })()`);
+        if (st.err) fail(`chat: ${st.err}`);
+        else if (st.gap > 120) fail(`chat: not following the conversation after load (${st.gap}px from the bottom)`);
+        else pass(`chat renders and stays pinned to the bottom (${st.rows} rows)`);
+        // Growth that isn't the reader (a late image, a translation line) must not unpin chat.
+        const after = await cdp.evaluate(`(() => {
+            const box = document.getElementById('global-chat-messages');
+            const filler = document.createElement('div'); filler.style.height = '400px'; filler.className = 'chat-msg';
+            box.appendChild(filler);
+            return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r({ gap: Math.round(box.scrollHeight - box.scrollTop - box.clientHeight), pinned: window._chatPinned }))));
+        })()`);
+        if (after.gap > 120) fail(`chat: content growth unpinned the view (${after.gap}px from the bottom)`);
+        else pass('chat keeps following when content grows under it');
+        await cdp.send('Page.navigate', { url: BASE + '/popout/global' });
+        await sleep(SETTLE);
+        const pop = await cdp.evaluate(`({ rows: document.querySelectorAll('#pc-msgs .chat-msg').length, hasInput: !!document.getElementById('pc-input') })`);
+        if (!pop.hasInput) fail('popout chat did not render');
+        else pass(`popout chat renders (${pop.rows} rows)`);
+        if (errors.length) fail(`errors on chat pages: ${errors.slice(0, 3).join(' | ')}`);
+        cdp.close();
+    }
+
     // 4. Leak check over repeated laps.
     {
         const { cdp, errors } = await openPage(1366);

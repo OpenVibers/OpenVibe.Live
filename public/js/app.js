@@ -622,7 +622,17 @@ function logout() {
 async function loadUser() {
     let tok = localStorage.getItem('token');
     if (!tok) {
-        // No token in localStorage — try refreshing from httpOnly cookie
+        // No token in localStorage — try refreshing from the httpOnly cookie. A browser last seen as
+        // a guest doesn't hold the page for that round trip (it answers 401 for nearly everyone):
+        // the page routes now, and if a session does turn up the normal auth-change path signs in.
+        if (_ssoHint() !== 'account') {
+            tryRefreshToken().then(async (ok) => {
+                if (!ok || !localStorage.getItem('token')) return;
+                await loadUser();
+                if (currentUser) onAuthChange();
+            }).catch(() => { });
+            return;
+        }
         const refreshed = await tryRefreshToken();
         if (!refreshed) { _trySilentSso(); return; }
         tok = localStorage.getItem('token');
