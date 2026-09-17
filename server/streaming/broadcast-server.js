@@ -20,6 +20,7 @@ const webrtcSFU = require('./webrtc-sfu');
 // Per-address cap on viewer sockets (a household or office behind one NAT watching several tabs fits).
 const MAX_VIEWER_SOCKETS_PER_IP = 16;
 const config = require('../config');
+const { turnEntries } = require('../net/turn');
 const whipHandler = require('./whip-handler');
 
 const WS_HEARTBEAT_MS = 30000;
@@ -58,12 +59,6 @@ class BroadcastServer extends EventEmitter {
         return normalized;
     }
 
-    _appendTransportParam(url, transport) {
-        if (!url.includes('?')) return `${url}?transport=${transport}`;
-        if (/[?&]transport=/i.test(url)) return url;
-        return `${url}&transport=${transport}`;
-    }
-
     _sanitizeIceServers(servers) {
         if (!Array.isArray(servers)) return [];
         const result = [];
@@ -84,26 +79,14 @@ class BroadcastServer extends EventEmitter {
     }
 
     /** Build ICE servers array from config (STUN + optional TURN) */
-    _getIceServers() {
-        const servers = [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-        ];
+    _getIceServers(tag = 'sfu') {
+        const servers = [{ urls: 'stun:stun.l.google.com:19302' }];
         if (config.turn?.url) {
             const turnUrl = this._normalizeTurnUrl(config.turn.url);
             if (turnUrl) {
-                const hasTurnAuth = config.turn.username && config.turn.credential;
-                servers.push(
-                    hasTurnAuth
-                        ? { urls: turnUrl, username: config.turn.username, credential: config.turn.credential }
-                        : { urls: turnUrl },
-                    hasTurnAuth
-                        ? { urls: this._appendTransportParam(turnUrl, 'tcp'), username: config.turn.username, credential: config.turn.credential }
-                        : { urls: this._appendTransportParam(turnUrl, 'tcp') },
-                );
-                if (!hasTurnAuth && (config.turn.username || config.turn.credential)) {
-                    console.warn('[ICE] Incomplete TURN credentials configured; emitting TURN URLs without auth.');
-                }
+                const entries = turnEntries(turnUrl, tag);
+                if (entries.length) servers.push(...entries);
+                else if (config.turn.username || config.turn.credential) console.warn('[ICE] Incomplete TURN credentials configured; TURN left out.');
             } else {
                 console.warn('[ICE] Skipping invalid TURN_URL; only turn: or turns: URLs are accepted:', config.turn.url);
             }

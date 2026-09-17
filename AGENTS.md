@@ -44,6 +44,7 @@ Each feature lives in its own `server/<feature>/` directory with `routes.js` + s
 - **Auth middleware:** `requireAuth` from `auth.js`. Permission checks via `permissions.js`.
 - **DB migrations:** Idempotent `CREATE … IF NOT EXISTS`/`ADD COLUMN` may stay inline; anything that transforms data goes in [server/db/migrations.js](server/db/migrations.js) (ledger, transaction, `adopt`, `DEFER`).
 - **Public responses:** serialize through [server/web/serializers.js](server/web/serializers.js) — never return raw `managed_streams`/`users` rows.
+- **TURN:** ICE lists come from [server/net/turn.js](server/net/turn.js); set `TURN_AUTH_SECRET` (coturn `use-auth-secret`) for short-lived credentials.
 - **Outbound fetches of user-chosen URLs:** [server/net/egress.js](server/net/egress.js) only. Background loops: `server/utils/jobs.js`.
 - **WebSocket servers:** Each has `init(server)` and `handleUpgrade(req, socket, head)` methods.
 - **Frontend globals:** `currentUser`, `api()`, `navigate()`, `handleLinkClick()`. Cross-component sync via `CustomEvent` (e.g., `openvibe-auth-changed`).

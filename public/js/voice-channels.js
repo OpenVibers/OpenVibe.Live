@@ -43,7 +43,11 @@ async function vcFetchChannels() {
 }
 /** The list from a fetch or a server push. */
 function vcApplyChannels(channels) {
-    vcState.channels = Array.isArray(channels) ? channels : [];
+    const next = Array.isArray(channels) ? channels : [];
+    // The server's push is the public list; a private call this viewer can see (they were invited
+    // or created it) is only in their own fetch, so it is carried over rather than dropped.
+    const keep = vcState.channels.filter((c) => c.private && !next.some((n) => n.id === c.id));
+    vcState.channels = keep.length ? [...next, ...keep] : next;
     vcRenderChannelList();
     vcUpdateMiniBar();
 }

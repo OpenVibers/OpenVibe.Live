@@ -235,6 +235,7 @@
         if (t) { t.hidden = !(isOff() && st.hasLive); t.onclick = () => setOff(false); }
         st.el = document.getElementById('home-featured');
         if (!st.el || !st.hasLive || isOff()) { stop(); return; }
+        if (st.poll) return; // already running; the live-list poll calls this every 20 s
         watchVisibility();
         load(false);
         clearInterval(st.poll);

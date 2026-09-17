@@ -57,6 +57,13 @@ public/js/app-*.js       route code split out of app.js: home, channel, media, c
 - **Assets.** Every asset URL is content-hashed at serve time (see [deploy.md](deploy.md#assets-and-caching)).
 - **Cached-first rendering.** `apiSWR()` (public/js/app-home.js) paints the home page's public data
   from `localStorage` (versioned records, keyed by user id) and reconciles with the fresh response.
+- **Featured live stream.** `public/js/home-featured.js` (feature `featured`) loads only when someone is
+  live: `GET /api/home/featured` picks and rotates the stream; playback is FLV (RTMP) or the JSMPEG relay,
+  live frames for WebRTC. Off switch remembered in `localStorage` (`ov_home_featured_off`).
+- **Voice channels.** `public/js/call.js` + `voice-channels.js` (feature `voice`, chat route): full-mesh
+  WebRTC, signalling over `/ws/call` (`server/streaming/call-server.js`). The newcomer offers, existing
+  members answer; the server pushes the channel list to every chat socket (`voice-channels` message);
+  TURN credentials come from `server/net/turn.js` (short-lived with `TURN_AUTH_SECRET`).
 - **Budgets.** `scripts/perf/check-budgets.js` (in `npm test`) fails if the home page's HTML, eager
   JavaScript or blocking CSS grow past recorded limits, or if route code returns to the home page.
 
