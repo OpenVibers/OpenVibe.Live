@@ -324,6 +324,16 @@ router.delete('/streams/:id', (req, res) => {
         }
 
         db.endStream(req.params.id);
+        // A force-end must actually take the stream down everywhere, not just flip is_live:
+        // outbound forwarders (RobotStreamer passthrough, ffmpeg restreams, chat relays), the
+        // signaling room and its viewers, the SFU room and any voice channel.
+        try { require('../integrations/robotstreamer-service').stopForStream(stream.id); } catch (e) { console.warn('[Admin] RS stop failed:', e.message); }
+        try { require('../streaming/restream-manager').stopAllForStream(stream.id); } catch (e) { console.warn('[Admin] restream stop failed:', e.message); }
+        try { require('../integrations/chat-relay-service').stopForStream(stream.id); } catch { /* non-critical */ }
+        try { require('../integrations/ai-chatbot-service').stopForStream(stream.id); } catch { /* non-critical */ }
+        try { require('../streaming/broadcast-server').endStream(stream.id); } catch { /* no room */ }
+        try { require('../streaming/webrtc-sfu').closeRoom(`stream-${stream.id}`); } catch { /* no room */ }
+        try { require('../streaming/call-server').removeStreamChannel(stream.id); } catch { /* no channel */ }
 
         // Accountability: force-ending someone's live stream is a moderation action
         // and MUST be logged (previously it left no trace at all).

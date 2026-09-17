@@ -1,10 +1,9 @@
 /**
  * OpenVibe.Live — RobotStreamer RAW passthrough relay (zero re-encode).
  *
- * The old native publisher decodes the stream and RE-ENCODES it to RobotStreamer
- * (ffmpeg + libwebrtc), and browser broadcasters publish to RS from the browser as a
- * SECOND encode. Both waste CPU and soften the picture. This relay instead forwards
- * goosely's ALREADY-ENCODED RTP straight through:
+ * Re-encoding the stream for RobotStreamer (the removed ffmpeg "native publisher") or
+ * publishing it a SECOND time from the broadcaster's browser both waste CPU and soften
+ * the picture. This relay instead forwards the source's ALREADY-ENCODED RTP straight through:
  *
  *   our mediasoup SFU (goosely's producer, NACK-protected)
  *     → DirectTransport consumer (in-process, lossless, encoded RTP)
@@ -17,8 +16,16 @@
  *
  * The werift↔mediasoup bridge (hand-rolled SDP answer from RS's transport params) is
  * validated end-to-end in scratch/werift-ms-harness.js. RS's SFU is mediasoup, so the
- * same bridge applies. Gated behind config.robotstreamer.passthrough (default off) with
- * the transcode publisher kept as fallback.
+ * same bridge applies. This is the only RobotStreamer video path; RS_PASSTHROUGH=0 is an
+ * emergency kill-switch (chat mirroring keeps working without video).
+ *
+ * Sources: anything that produces into our mediasoup SFU — browser broadcasts and OBS/WHIP.
+ * RTMP and JSMPEG ingests have no SFU producers and are not forwarded (robotstreamer-service
+ * skips the relay for them rather than letting it wait for a producer that never comes).
+ *
+ * Lifecycle: the session ends with its source (producer-removed, the stream row going
+ * not-live, or an explicit stop); restarts back off and give up; status(streamId) is what
+ * the dashboard polls.
  */
 const WebSocket = require('ws');
 const https = require('node:https');
@@ -30,6 +37,16 @@ try { werift = require('werift'); } catch { /* optional dep — relay disabled i
 
 const RS_API_HOST = 'api.robotstreamer.com';
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) OpenVibe.Live-RelayPassthrough';
+
+// Restart policy. Every restart is visible on RobotStreamer as the video cutting out (see
+// _scheduleRestart), so restarts back off instead of hammering at a flat 4s, and a session that
+// keeps dying gives up rather than looping forever — the old loop never stopped, not even after
+// the OpenVibe stream had ended, which is how a robot stayed "live" (black) on robotstreamer.com.
+const RESTART_BASE_MS = 3000;
+const RESTART_MAX_MS = 30000;
+const MAX_RESTARTS = 12;             // consecutive restarts before giving up (a stable run resets it)
+const STABLE_MS = 60000;             // a run that stayed live this long resets the restart counter
+const SOURCE_CHECK_MS = 5000;        // how often a running session re-checks that its source is live
 
 function log(streamId, ...a) { console.log(`[RS Passthrough ${streamId}]`, ...a); }
 
@@ -293,22 +310,47 @@ class RsPassthroughRelay {
 
     async start(stream, integration) {
         if (!werift) { log(stream.id, 'werift not installed — cannot start passthrough'); return false; }
-        if (this.sessions.has(stream.id)) return true;
-        const session = { streamId: stream.id, robotId: integration.robot_id, token: integration.token, stopped: false, peer: null, pc: null, ingests: [], roomId: `stream-${stream.id}`, restartTimer: null };
+        const existing = this.sessions.get(stream.id);
+        if (existing) {
+            // A session that gave up stays in the map so its failure is visible; an explicit
+            // start (user pressed Retry, integration re-saved) relaunches it from a clean slate.
+            if (existing.state !== 'failed') return true;
+            existing.stopped = false; existing.restarts = 0; existing.lastError = null;
+            this._launch(existing);
+            return true;
+        }
+        const session = {
+            streamId: stream.id, robotId: integration.robot_id, token: integration.token,
+            stopped: false, peer: null, pc: null, ingests: [], roomId: `stream-${stream.id}`,
+            restartTimer: null, sourceCheck: null,
+            state: 'starting', startedAt: 0, liveAt: 0, firstStartedAt: Date.now(),
+            restarts: 0, lastError: null, lastRestartReason: null, nextRestartAt: 0,
+            stats: null, rs: null,
+        };
         this.sessions.set(stream.id, session);
-        this._run(session).catch(err => {
-            log(stream.id, 'run error:', err.message);
-            this._teardown(session);
-            this._scheduleRestart(session, stream, integration, `_run threw: ${err.message}`);
-        });
+        this._launch(session);
         return true;
+    }
+
+    /** Run (or re-run) the passthrough for an existing session record. */
+    _launch(session) {
+        session.state = 'starting'; session.startedAt = Date.now(); session.liveAt = 0; session.nextRestartAt = 0;
+        session.stats = null; session.rs = null;
+        this._run(session).catch(err => {
+            // A stop that lands while _run is awaiting (RS handshake, ICE) must not leave the
+            // half-built peer behind: that peer would keep the robot live on RS after we forgot it.
+            if (session.stopped) { this._teardown(session); return; }
+            log(session.streamId, 'run error:', err.message);
+            this._teardown(session);
+            this._scheduleRestart(session, `${err.message}`);
+        });
     }
 
     stop(streamId) {
         const s = this.sessions.get(streamId);
         if (!s) return;
-        s.stopped = true;
-        if (s.restartTimer) clearTimeout(s.restartTimer);
+        s.stopped = true; s.state = 'stopped';
+        if (s.restartTimer) { clearTimeout(s.restartTimer); s.restartTimer = null; }
         this._teardown(s);
         this.sessions.delete(streamId);
         log(streamId, 'stopped');
@@ -326,7 +368,7 @@ class RsPassthroughRelay {
         for (const id of ids) {
             const s = this.sessions.get(id);
             if (!s) continue;
-            s.stopped = true;
+            s.stopped = true; s.state = 'stopped';
             if (s.restartTimer) { clearTimeout(s.restartTimer); s.restartTimer = null; }
             try { this._teardown(s); } catch { /* */ }
             this.sessions.delete(id);
@@ -336,31 +378,94 @@ class RsPassthroughRelay {
     }
 
     /**
+     * Is the OpenVibe stream this session forwards still live? The relay must never outlive its
+     * source: RobotStreamer keeps a robot "live" for as long as our producers exist, so a relay
+     * that keeps its peer open (or keeps restarting) after the streamer stopped shows RS viewers
+     * a live robot with a black picture. Injectable for tests.
+     */
+    _sourceLive(streamId) {
+        if (this._sourceLiveOverride) return this._sourceLiveOverride(streamId);
+        try { return !!require('../db/database').getStreamById(streamId)?.is_live; } catch { return true; }
+    }
+
+    /**
+     * What the broadcaster's dashboard shows for this stream, or null when no session exists.
+     * Never includes the RS token.
+     */
+    status(streamId) {
+        const s = this.sessions.get(streamId);
+        if (!s) return null;
+        const now = Date.now();
+        const st = s.stats || {};
+        return {
+            active: !s.stopped && s.state !== 'failed',
+            state: s.state,                                   // starting | live | restarting | failed
+            robot_id: s.robotId,
+            started_at: s.firstStartedAt,
+            live_at: s.liveAt || null,
+            uptime_ms: s.liveAt && s.state === 'live' ? now - s.liveAt : 0,
+            restarts: s.restarts,
+            last_error: s.lastError,
+            last_restart_reason: s.lastRestartReason,
+            next_restart_at: s.nextRestartAt || null,
+            has_audio: !!(st.hasAudio),
+            video_codec: st.codec || null,
+            packets_out: (st.vOut || 0) + (st.aOut || 0),
+            keyframe_requests: st.pli || 0,
+            ingest_stalls: st.ingestStalls || 0,
+            rs: s.rs,                                         // { loss_pct, rtt_ms, nacks, plis } from RS's RTCP
+        };
+    }
+
+    /**
      * Every restart re-produces to RS with a FRESH SSRC, which RobotStreamer surfaces to viewers
      * as a new consumer on a new mid — and RS's viewer client reacts to the matching
      * consumerClosed by blanking the whole MediaStream (srcObject = new MediaStream()), so a
      * restart is directly visible as the stream cutting out. `reason` is therefore not a nicety:
      * it is the difference between "RS dropped our websocket", "ICE/DTLS failed" and "_run threw"
      * (e.g. mediasoup out of RTC ports), which are three unrelated bugs with one symptom.
+     *
+     * Bails out (stops the session) when the source stream is no longer live, backs off
+     * exponentially, and gives up after MAX_RESTARTS consecutive attempts.
      */
-    _scheduleRestart(session, stream, integration, reason = 'unspecified') {
+    _scheduleRestart(session, reason = 'unspecified') {
         if (session.stopped || session.restartTimer) return;
-        this.restartCount = (this.restartCount || 0) + 1;
-        log(session.streamId, `⚠️ passthrough restart #${this.restartCount} scheduled — reason: ${reason} ` +
+        session.lastRestartReason = reason;
+        session.lastError = reason;
+        if (!this._sourceLive(session.streamId)) {
+            log(session.streamId, `source stream is no longer live — stopping passthrough instead of restarting (${reason})`);
+            this.stop(session.streamId);
+            return;
+        }
+        // A run that stayed live for a while proves the path works; only count consecutive failures.
+        if (session.liveAt && Date.now() - session.liveAt > STABLE_MS) session.restarts = 0;
+        session.restarts++;
+        if (session.restarts > MAX_RESTARTS) {
+            session.state = 'failed';
+            session.lastError = `gave up after ${MAX_RESTARTS} restarts — last: ${reason}`;
+            log(session.streamId, `❌ ${session.lastError}`);
+            return;
+        }
+        const delay = Math.min(RESTART_BASE_MS * 2 ** (session.restarts - 1), RESTART_MAX_MS);
+        session.state = 'restarting';
+        session.nextRestartAt = Date.now() + delay;
+        log(session.streamId, `⚠️ passthrough restart #${session.restarts}/${MAX_RESTARTS} in ${delay}ms — reason: ${reason} ` +
             `(RS viewers see this as the video cutting out: new SSRC → new consumer → client blanks the MediaStream)`);
         session.restartTimer = setTimeout(() => {
             session.restartTimer = null;
             if (session.stopped) return;
-            this.sessions.delete(session.streamId);
+            if (!this._sourceLive(session.streamId)) { this.stop(session.streamId); return; }
             log(session.streamId, 'restarting passthrough…');
-            this.start(stream, integration);
-        }, 4000);
+            this._launch(session);
+        }, delay);
     }
 
     _teardown(session) {
         if (session.statsTimer) { clearInterval(session.statsTimer); session.statsTimer = null; }
         if (session.ingestWatchdog) { clearInterval(session.ingestWatchdog); session.ingestWatchdog = null; }
         if (session._audioWatch) { try { session._audioWatch(); } catch { /* */ } session._audioWatch = null; }
+        if (session._producerWatch) { try { session._producerWatch(); } catch { /* */ } session._producerWatch = null; }
+        if (session.sourceCheck) { clearInterval(session.sourceCheck); session.sourceCheck = null; }
         const sfu = require('../streaming/webrtc-sfu');
         for (const ing of session.ingests) {
             try { ing.socket.removeAllListeners('message'); ing.socket.close(); } catch {}
@@ -387,6 +492,7 @@ class RsPassthroughRelay {
         // grace period so a mic that is a moment behind the video producer still makes
         // it into the session, and watch for a later one so we can rebuild.
         const videoProd = await sfu.waitForProducer(session.roomId, 'video', 30000);
+        if (session.stopped) throw new Error('stopped during setup');
         let audioProd = sfu.findProducerByKind(session.roomId, 'audio');
         if (!audioProd) {
             try { audioProd = await sfu.waitForProducer(session.roomId, 'audio', 4000); }
@@ -400,32 +506,63 @@ class RsPassthroughRelay {
                 if (session.stopped || kind !== 'audio' || roomId !== session.roomId) return;
                 sfu.removeListener?.('producer-added', onAudio);
                 log(sid, 'audio producer appeared after start — restarting passthrough to include it');
-                const st = { id: sid }; const integ = { robot_id: session.robotId, token: session.token };
                 this._teardown(session);
-                this._scheduleRestart(session, st, integ, 'audio producer added after a video-only start');
+                this._scheduleRestart(session, 'audio producer added after a video-only start');
             };
             sfu.on?.('producer-added', onAudio);
             session._audioWatch = () => sfu.removeListener?.('producer-added', onAudio);
         }
+
+        // The source going away is the ONE event this relay must react to immediately. When the
+        // broadcaster's SFU transport closes (tab closed, stream ended, room closed) mediasoup
+        // removes the producer; our plain consumer then feeds nothing, but the werift peer to RS
+        // stays connected and RS keeps the robot "live" with a black picture until a human
+        // notices. Tear down at once: if the OpenVibe stream is over, stop for good; if it is a
+        // reconnect (stream still live), come back through the restart path and wait for the new
+        // producer.
+        const onProducerRemoved = ({ roomId, kind }) => {
+            if (session.stopped || roomId !== session.roomId || kind !== 'video') return;
+            sfu.removeListener?.('producer-removed', onProducerRemoved);
+            session._producerWatch = null;
+            log(sid, 'source video producer removed');
+            this._teardown(session);
+            this._scheduleRestart(session, 'source video producer removed');
+        };
+        sfu.on?.('producer-removed', onProducerRemoved);
+        session._producerWatch = () => sfu.removeListener?.('producer-removed', onProducerRemoved);
+
+        // Backstop for end paths that never touch the SFU room (a stale-heartbeat sweep, an
+        // admin force-end, db.endStream from an ingest handler): stop as soon as the stream row
+        // says the source is over.
+        session.sourceCheck = setInterval(() => {
+            if (session.stopped) return;
+            if (!this._sourceLive(sid)) {
+                log(sid, 'source stream ended — stopping passthrough');
+                this.stop(sid);
+            }
+        }, SOURCE_CHECK_MS);
+        session.sourceCheck.unref?.();
 
         // 2) Encoded-RTP ingest (PlainTransport → localhost UDP socket).
         const videoIn = await openPlainIngest(sfu, session.roomId, videoProd.id);
         session.ingests.push(videoIn);
         let audioIn = null;
         if (audioProd) { audioIn = await openPlainIngest(sfu, session.roomId, audioProd.id); session.ingests.push(audioIn); }
+        if (session.stopped) throw new Error('stopped during setup');
 
         // 3) Connect to RS: discover SFU, open protoo.
         const page = await postJson(RS_API_HOST, '/v1/robot_page_load', { token: session.token, robot_id: session.robotId, referrer: `https://robotstreamer.com/robot/${session.robotId}` });
         if (!page?.rtc_sfu?.host || !page?.rtc_sfu?.port) throw new Error('robot_page_load missing rtc_sfu');
+        if (session.stopped) throw new Error('stopped during setup');
         const peerId = `p:${crypto.randomBytes(3).toString('hex')}`;
         const wsUrl = `wss://${page.rtc_sfu.host}:${page.rtc_sfu.port}/?roomId=${encodeURIComponent(session.robotId)}&peerId=${encodeURIComponent(peerId)}`;
         const peer = new ProtooPeer(wsUrl, session.robotId, (code) => {
             if (session.stopped) return;
-            const st = { id: sid }; const integ = { robot_id: session.robotId, token: session.token };
-            this._teardown(session); this._scheduleRestart(session, st, integ, `RS protoo websocket closed (code ${code})`);
+            this._teardown(session); this._scheduleRestart(session, `RS protoo websocket closed (code ${code})`);
         });
         session.peer = peer;
         await peer.connect();
+        if (session.stopped) throw new Error('stopped during setup');
         log(sid, 'RS protoo connected');
 
         const routerRtpCapabilities = await peer.request('getRouterRtpCapabilities');
@@ -438,6 +575,7 @@ class RsPassthroughRelay {
 
         // 4) Create RS send transport.
         const transportInfo = await peer.request('createWebRtcTransport', { producing: true, consuming: false, streamkey: session.token });
+        if (session.stopped) throw new Error('stopped during setup');
 
         // 5) Build werift peer: sendonly transceivers whose codec MATCHES the source (so RS
         //    decodes the forwarded payload) and that carry the header extensions RS needs
@@ -465,8 +603,7 @@ class RsPassthroughRelay {
         pc.connectionStateChange.subscribe(() => {
             log(sid, 'werift conn', pc.connectionState);
             if ((pc.connectionState === 'failed' || pc.connectionState === 'disconnected') && !session.stopped) {
-                const st = { id: sid }; const integ = { robot_id: session.robotId, token: session.token };
-                this._teardown(session); this._scheduleRestart(session, st, integ, `werift connectionState=${pc.connectionState} (ICE/DTLS to RS lost)`);
+                this._teardown(session); this._scheduleRestart(session, `werift connectionState=${pc.connectionState} (ICE/DTLS to RS lost)`);
             }
         });
 
@@ -484,12 +621,14 @@ class RsPassthroughRelay {
 
         // 6) Answer from RS transport params → werift connects ICE+DTLS as client.
         await pc.setRemoteDescription({ type: 'answer', sdp: buildAnswer(transportInfo, parsed) });
+        if (session.stopped) throw new Error('stopped during setup');
 
         // 7) Hand RS our DTLS fingerprint (role client) + join.
         const [fpAlg, fpVal] = parsed.fingerprint.split(' ');
         await peer.request('connectWebRtcTransport', { transportId: transportInfo.id, dtlsParameters: { role: 'client', fingerprints: [{ algorithm: fpAlg, value: fpVal }] } });
         await peer.request('join', { displayName: 'OpenVibe.Live', device: { flag: 'openvibe-relay', name: 'werift', version: '1' }, rtpCapabilities: routerRtpCapabilities, token: session.token });
         log(sid, 'RS transport connected + joined');
+        if (session.stopped) throw new Error('stopped during setup');
 
         // 8) Produce (video, then audio) with rtpParameters matching what werift sends.
         const vProd = await peer.request('produce', { transportId: transportInfo.id, kind: 'video', rtpParameters: buildProduceParams(vMedia), appData: { source: 'openvibe-passthrough' } });
@@ -513,7 +652,9 @@ class RsPassthroughRelay {
             pli: 0, lostIn: 0, kf: 0, maxKfGap: 0, inj: 0,
             rtxDeep: 0, rtxMiss: 0, rtxTooOld: 0, gopDamaged: 0, lateFill: 0,
             ingestStalls: 0, ingestStallMs: 0, vAlien: 0, aAlien: 0,
+            hasAudio: !!audioIn, codec: videoCodec.mimeType,
         };
+        session.stats = stats;
         const vPt = +vMedia.pts[0];
 
         // ── Deep retransmit cache ────────────────────────────────────────────────────────
@@ -833,6 +974,12 @@ class RsPassthroughRelay {
             const remb = typeof s.receiverEstimatedMaxBitrate === 'number' ? kbps(s.receiverEstimatedMaxBitrate / 1000) + 'k' : '?';
             const bwe = typeof s.senderBWE?.availableBitrate === 'number' ? kbps(s.senderBWE.availableBitrate / 1000) + 'k' : '?';
             const stalled = _videoStalledSince ? ` STALLED-${Date.now() - _videoStalledSince}ms` : '';
+            session.rs = {
+                loss_pct: typeof s.remoteFractionLost === 'number' ? +((s.remoteFractionLost / 256) * 100).toFixed(1) : null,
+                rtt_ms: typeof s.rtt === 'number' ? Math.round(s.rtt * 1000) : null,
+                nacks: s.nackCount ?? null, plis: s.pliCount ?? null,
+                stalled_ms: _videoStalledSince ? Date.now() - _videoStalledSince : 0,
+            };
             log(sid, `flow: vIn ${Math.round((stats.vIn - lastVIn) / 10)}/s vOut ${Math.round((stats.vOut - lastVOut) / 10)}/s ` +
                 `aIn ${Math.round((stats.aIn - lastAIn) / 10)}/s aOut ${Math.round((stats.aOut - lastAOut) / 10)}/s${stalled} ` +
                 `| writeErr v=${stats.vErr} a=${stats.aErr} alienSsrc v=${stats.vAlien} a=${stats.aAlien} | stalls=${stats.ingestStalls} (${Math.round(stats.ingestStallMs / 1000)}s total) ` +
@@ -893,6 +1040,7 @@ class RsPassthroughRelay {
         // link and caused a loss burst → the freeze seen right after every (re)connect.
         setTimeout(reqKey, 600);
 
+        session.state = 'live'; session.liveAt = Date.now(); session.lastError = null;
         log(sid, '✅ raw passthrough live (zero re-encode)');
     }
 }

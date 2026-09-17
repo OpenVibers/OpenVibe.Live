@@ -805,6 +805,9 @@ function initDb() {
             { name: 'custom_audio_bitrate', def: 'INTEGER DEFAULT NULL' },
             { name: 'custom_fps', def: 'INTEGER DEFAULT NULL' },
             { name: 'custom_encoder_preset', def: 'TEXT DEFAULT NULL' },
+            // SRT destinations (srt:// server URL): receiver latency window and optional encryption.
+            { name: 'srt_latency_ms', def: 'INTEGER DEFAULT NULL' },
+            { name: 'srt_passphrase', def: 'TEXT DEFAULT NULL' },
         ];
         for (const col of newCols) {
             if (!cols.includes(col.name)) {
@@ -4702,13 +4705,14 @@ function getRestreamDestinationById(id) {
 function createRestreamDestination(userId, fields) {
     const result = run(
         `INSERT INTO restream_destinations (user_id, managed_stream_id, platform, name, server_url, stream_key, enabled, auto_start, quality_preset,
-         custom_video_bitrate, custom_audio_bitrate, custom_fps, custom_encoder_preset, channel_url, chat_relay, powerchat_relay, powerchat_count_views)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         custom_video_bitrate, custom_audio_bitrate, custom_fps, custom_encoder_preset, srt_latency_ms, srt_passphrase, channel_url, chat_relay, powerchat_relay, powerchat_count_views)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [userId, fields.managed_stream_id || null, fields.platform, fields.name || null, fields.server_url || null,
          fields.stream_key || null, fields.enabled ?? 1, fields.auto_start ?? 0,
          fields.quality_preset || 'auto',
          fields.custom_video_bitrate ?? null, fields.custom_audio_bitrate ?? null,
          fields.custom_fps ?? null, fields.custom_encoder_preset || null,
+         fields.srt_latency_ms ?? null, fields.srt_passphrase || null,
          fields.channel_url || null, fields.chat_relay ? 1 : 0, fields.powerchat_relay === 0 ? 0 : 1, fields.powerchat_count_views === 0 ? 0 : 1]
     );
     return get('SELECT * FROM restream_destinations WHERE id = ?', [result.lastInsertRowid]);
@@ -4716,7 +4720,7 @@ function createRestreamDestination(userId, fields) {
 
 function updateRestreamDestination(id, fields) {
     const allowed = new Set(['name', 'server_url', 'stream_key', 'enabled', 'auto_start', 'quality_preset',
-        'custom_video_bitrate', 'custom_audio_bitrate', 'custom_fps', 'custom_encoder_preset',
+        'custom_video_bitrate', 'custom_audio_bitrate', 'custom_fps', 'custom_encoder_preset', 'srt_latency_ms', 'srt_passphrase',
         'channel_url', 'chat_relay', 'powerchat_relay', 'powerchat_count_views', 'managed_stream_id', 'connection_id']);
     const filtered = Object.entries(fields || {}).filter(([key]) => allowed.has(key));
     if (!filtered.length) return getRestreamDestinationById(id);

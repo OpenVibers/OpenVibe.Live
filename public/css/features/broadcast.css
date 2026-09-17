@@ -777,8 +777,31 @@
 .bc-restream-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    flex-wrap: wrap;
+    gap: 6px 10px;
     font-size: 0.82rem;
+}
+/* Second line under a destination: uptime, fps/bitrate, the last error, retry countdown. */
+.bc-restream-detail {
+    flex-basis: 100%;
+    padding-left: 30px;
+    font-size: 0.74rem;
+    color: var(--text-secondary);
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+.bc-restream-err { color: var(--danger, #e74c3c); }
+.bc-restream-warn { color: var(--warning, #f39c12); }
+.bc-restream-transport {
+    margin-left: 6px;
+    padding: 1px 5px;
+    border-radius: 6px;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    vertical-align: 1px;
 }
 
 .bc-restream-platform-icon {
@@ -793,7 +816,7 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 120px;
+    max-width: 200px;
 }
 
 .bc-restream-status-badge {
