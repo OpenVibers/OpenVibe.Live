@@ -22,135 +22,151 @@ const vcState = {
     testing: false,
     settingsOpen: false,
     pollTimer: null,
-    pollInterval: 4000,
+    pollInterval: 30000,   // safety net; the server pushes the list on every change
     lastJoinedChannelId: null,
+    joinSeq: 0,
+    status: 'idle',
 };
 
 /* ── Channel List ──────────────────────────────────────────── */
 
+let _vcFetchSeq = 0;
 async function vcFetchChannels() {
+    const seq = ++_vcFetchSeq;
     try {
-        const resp = await fetch('/api/streams/voice-channels');
-        if (!resp.ok) return;
+        const token = typeof _getAuthToken === 'function' ? _getAuthToken() : null;
+        const resp = await fetch('/api/streams/voice-channels', { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+        if (!resp.ok || seq !== _vcFetchSeq) return; // a newer answer already landed
         const data = await resp.json();
-        vcState.channels = data.channels || data || [];
-        vcRenderChannelList();
+        vcApplyChannels(data.channels || data || []);
     } catch {}
 }
+/** The list from a fetch or a server push. */
+function vcApplyChannels(channels) {
+    vcState.channels = Array.isArray(channels) ? channels : [];
+    vcRenderChannelList();
+    vcUpdateMiniBar();
+}
 
+/**
+ * The channel list is updated in place, keyed by channel id: an item that is still there keeps its
+ * node (a click that straddles an update is not lost, nothing flickers), new ones slide in, gone
+ * ones fade out.
+ */
 function vcRenderChannelList() {
     const list = document.getElementById('vc-channel-list');
     if (!list) return;
-    list.innerHTML = '';
-
-    const joinedId = callState.joined ? (callState.channelId || null) : null;
-
+    const joinedId = (callState.joined || callState.connecting) ? (callState.channelId || null) : null;
+    const have = new Map([...list.querySelectorAll(':scope > .vc-channel-item')].map((el) => [el.dataset.channelId, el]));
+    let cursor = null;
     for (const ch of vcState.channels) {
-        const item = document.createElement('div');
-        item.className = 'vc-channel-item' + (ch.id === joinedId ? ' joined' : '');
-        item.dataset.channelId = ch.id;
-
-        // Icon
-        const icon = document.createElement('span');
-        icon.className = 'vc-channel-icon';
-        if (ch.streamId) {
-            icon.innerHTML = '<i class="fa-solid fa-broadcast-tower"></i>';
-            icon.title = 'Stream channel';
-        } else if (ch.permanent) {
-            icon.innerHTML = '<i class="fa-solid fa-globe"></i>';
-            icon.title = 'Public channel';
+        const fresh = vcChannelItem(ch, joinedId);
+        const old = have.get(String(ch.id));
+        let node;
+        if (old) {
+            have.delete(String(ch.id));
+            if (old.dataset.sig !== fresh.dataset.sig) { old.replaceWith(fresh); node = fresh; } else node = old;
         } else {
-            icon.innerHTML = '<i class="fa-solid fa-headset"></i>';
+            fresh.classList.add('is-entering');
+            node = fresh;
         }
-
-        // Name + mode badge
-        const nameRow = document.createElement('div');
-        nameRow.className = 'vc-channel-name-row';
-        const name = document.createElement('span');
-        name.className = 'vc-channel-name';
-        name.textContent = ch.name;
-        nameRow.appendChild(name);
-
-        const mode = document.createElement('span');
-        mode.className = 'vc-channel-mode';
-        mode.textContent = ch.mode === 'mic' ? 'Voice' : ch.mode === 'cam+mic' ? 'Video' : 'Voice+Cam';
-        nameRow.appendChild(mode);
-
-        // Participant count badge (top-right)
-        const count = document.createElement('span');
-        count.className = 'vc-channel-count';
-        const pc = ch.participantCount || 0;
-        count.innerHTML = `<i class="fa-solid fa-user"></i> ${pc}`;
-        if (pc >= (ch.maxParticipants || 15)) count.classList.add('full');
-
-        // Participant names list (avatar + name per row)
-        const participantList = document.createElement('div');
-        participantList.className = 'vc-participant-list';
-        if (ch.participants && ch.participants.length) {
-            ch.participants.slice(0, 6).forEach(p => {
-                const row = document.createElement('div');
-                row.className = 'vc-participant-row';
-
-                const av = document.createElement('div');
-                av.className = 'vc-avatar-mini';
-                if (p.avatarUrl) {
-                    av.style.backgroundImage = `url(${p.avatarUrl})`;
-                } else {
-                    const initial = (p.displayName || p.username || p.anonId || '?')[0].toUpperCase();
-                    if (p.profileColor) av.style.background = p.profileColor;
-                    av.textContent = initial;
-                }
-
-                const pname = document.createElement('span');
-                pname.className = 'vc-participant-name';
-                pname.textContent = p.displayName || p.username || p.anonId || 'Anonymous';
-
-                row.appendChild(av);
-                row.appendChild(pname);
-
-                if (p.muted) {
-                    const mu = document.createElement('i');
-                    mu.className = 'fa-solid fa-microphone-slash vc-participant-muted';
-                    row.appendChild(mu);
-                } else if (p.speaking) {
-                    row.classList.add('speaking');
-                }
-
-                participantList.appendChild(row);
-            });
-            if (ch.participants.length > 6) {
-                const more = document.createElement('div');
-                more.className = 'vc-participant-more';
-                more.textContent = `+${ch.participants.length - 6} more`;
-                participantList.appendChild(more);
-            }
-        }
-
-        const body = document.createElement('div');
-        body.className = 'vc-channel-body';
-        body.appendChild(nameRow);
-        body.appendChild(participantList);
-
-        item.appendChild(icon);
-        item.appendChild(body);
-        item.appendChild(count);
-
-        item.onclick = () => vcSelectChannel(ch.id);
-        list.appendChild(item);
+        const anchor = cursor ? cursor.nextSibling : list.firstChild;
+        if (node !== anchor) list.insertBefore(node, anchor);
+        cursor = node;
+    }
+    for (const [, el] of have) {
+        el.classList.add('is-leaving');
+        el.style.pointerEvents = 'none';
+        setTimeout(() => el.remove(), 220);
     }
 }
 
+function vcChannelItem(ch, joinedId) {
+    const item = document.createElement('div');
+    item.className = 'vc-channel-item' + (ch.id === joinedId ? ' joined' : '') + (ch.private ? ' is-private' : '');
+    item.dataset.channelId = ch.id;
+
+    const icon = document.createElement('span');
+    icon.className = 'vc-channel-icon';
+    if (ch.streamId) { icon.innerHTML = '<i class="fa-solid fa-broadcast-tower"></i>'; icon.title = 'Stream channel'; }
+    else if (ch.permanent) { icon.innerHTML = '<i class="fa-solid fa-globe"></i>'; icon.title = 'Public channel'; }
+    else if (ch.private) { icon.innerHTML = '<i class="fa-solid fa-phone"></i>'; icon.title = 'Private call'; }
+    else icon.innerHTML = '<i class="fa-solid fa-headset"></i>';
+
+    const nameRow = document.createElement('div');
+    nameRow.className = 'vc-channel-name-row';
+    const name = document.createElement('span');
+    name.className = 'vc-channel-name';
+    name.textContent = ch.name;
+    nameRow.appendChild(name);
+    const mode = document.createElement('span');
+    mode.className = 'vc-channel-mode';
+    mode.textContent = ch.mode === 'mic' ? 'Voice' : ch.mode === 'cam+mic' ? 'Video' : 'Voice+Cam';
+    nameRow.appendChild(mode);
+
+    const count = document.createElement('span');
+    count.className = 'vc-channel-count';
+    const pc = ch.participantCount || 0;
+    count.innerHTML = `<i class="fa-solid fa-user"></i> ${pc}`;
+    if (pc >= (ch.maxParticipants || 8)) count.classList.add('full');
+
+    const participantList = document.createElement('div');
+    participantList.className = 'vc-participant-list';
+    const parts = ch.participants || [];
+    parts.slice(0, 6).forEach(p => {
+        const row = document.createElement('div');
+        row.className = 'vc-participant-row';
+        const av = document.createElement('div');
+        av.className = 'vc-avatar-mini';
+        if (p.avatarUrl) {
+            av.style.backgroundImage = `url("${String(p.avatarUrl).replace(/["\\]/g, '')}")`;
+        } else {
+            const initial = (p.displayName || p.username || p.anonId || '?')[0].toUpperCase();
+            if (p.profileColor) av.style.background = p.profileColor;
+            av.textContent = initial;
+        }
+        const pname = document.createElement('span');
+        pname.className = 'vc-participant-name';
+        pname.textContent = p.displayName || p.username || p.anonId || 'Anonymous';
+        row.appendChild(av);
+        row.appendChild(pname);
+        if (p.muted) {
+            const mu = document.createElement('i');
+            mu.className = 'fa-solid fa-microphone-slash vc-participant-muted';
+            row.appendChild(mu);
+        } else if (p.speaking) row.classList.add('speaking');
+        participantList.appendChild(row);
+    });
+    if (parts.length > 6) {
+        const more = document.createElement('div');
+        more.className = 'vc-participant-more';
+        more.textContent = `+${parts.length - 6} more`;
+        participantList.appendChild(more);
+    }
+
+    const body = document.createElement('div');
+    body.className = 'vc-channel-body';
+    body.appendChild(nameRow);
+    body.appendChild(participantList);
+    item.appendChild(icon);
+    item.appendChild(body);
+    item.appendChild(count);
+    // What a re-render compares: identical content keeps the existing node.
+    item.dataset.sig = [ch.name, ch.mode, pc, ch.maxParticipants, ch.id === joinedId ? 1 : 0, ...parts.map(p => `${p.peerId}:${p.displayName || p.username || p.anonId}:${p.muted ? 1 : 0}:${p.speaking ? 1 : 0}:${p.avatarUrl || ''}`)].join('|');
+    item.onclick = () => vcSelectChannel(ch.id);
+    return item;
+}
+
 function vcSelectChannel(channelId) {
-    // If already connected to this channel, ignore
-    if (callState.joined && callState.channelId === channelId) return;
+    // Already in (or joining) this channel
+    if ((callState.joined || callState.connecting) && callState.channelId === channelId) return;
 
     const ch = vcState.channels.find(c => c.id === channelId);
     if (!ch) { vcFetchChannels(); return; }
 
-    // Leave current channel first if in a different one
-    if (callState.joined && callState.channelId && callState.channelId !== channelId) {
-        vcLeave();
-    }
+    // Leave the current one first, even one that is still connecting, so a quick second click
+    // cannot leave you in A with B's name on the panel.
+    if (callState.joined || callState.connecting) vcLeave({ switching: true });
 
     vcJoinChannel(ch);
 }
@@ -159,6 +175,7 @@ function vcSelectChannel(channelId) {
 
 async function vcJoinChannel(ch) {
     if (!ch) return;
+    const seq = ++vcState.joinSeq;
 
     // Configure callState for channel-based join
     callState.channelId = ch.id;
@@ -171,9 +188,13 @@ async function vcJoinChannel(ch) {
 
     vcState.lastJoinedChannelId = ch.id;
 
-    // Show connected panel immediately
+    // Show the panel at once, empty and marked "connecting" (the previous channel's tiles used to
+    // stay on screen until the new welcome arrived).
     const connPanel = document.getElementById('vc-connected-panel');
-    if (connPanel) connPanel.style.display = '';
+    if (connPanel) { connPanel.style.display = ''; connPanel.classList.add('is-open'); }
+    const grid = document.getElementById('vc-participants-grid');
+    if (grid) grid.innerHTML = '';
+    vcSetStatus('connecting');
 
     const channelLabel = document.getElementById('vc-connected-channel');
     if (channelLabel) channelLabel.textContent = ch.name;
@@ -184,9 +205,6 @@ async function vcJoinChannel(ch) {
     const camSwitchGroup = document.getElementById('vc-cam-switch-group');
     if (camSwitchGroup) camSwitchGroup.style.display = ch.mode === 'mic' ? 'none' : '';
 
-    // Populate in-call device switchers (non-blocking)
-    vcEnumerateDevices(ch.mode).catch(() => {});
-
     // Sync in-call input mode settings
     const inputModeSwitch = document.getElementById('vc-input-mode-switch');
     if (inputModeSwitch) inputModeSwitch.value = callState.inputMode;
@@ -195,6 +213,7 @@ async function vcJoinChannel(ch) {
     try {
         await joinCall();
     } catch (err) {
+        if (seq !== vcState.joinSeq) return;
         console.error('[VC] Join failed:', err);
         toast(`Failed to join voice channel: ${err.message || 'Unknown error'}`, 'error');
         callState.channelId = null;
@@ -202,7 +221,10 @@ async function vcJoinChannel(ch) {
         if (connPanel) connPanel.style.display = 'none';
         return;
     }
+    if (seq !== vcState.joinSeq) return; // another channel was chosen meanwhile
 
+    // Device pickers, now that the microphone is open and labels are readable.
+    vcEnumerateDevices(ch.mode).catch(() => {});
     vcRenderChannelList();
     if (typeof updateChatModeVoiceOption === 'function') updateChatModeVoiceOption(true);
     vcUpdateMiniBar();
@@ -210,68 +232,15 @@ async function vcJoinChannel(ch) {
 
 /* ── Device Setup Panel ────────────────────────────────────── */
 
-async function vcShowSetup(channel) {
-    const panel = document.getElementById('vc-setup-panel');
-    const connected = document.getElementById('vc-connected-panel');
-    if (!panel) return;
-    if (connected) connected.style.display = 'none';
-
-    const title = document.getElementById('vc-setup-title');
-    if (title) title.textContent = `Join "${channel.name}"`;
-
-    // Show/hide camera selector based on mode
-    const camGroup = document.getElementById('vc-cam-group');
-    if (camGroup) camGroup.style.display = channel.mode === 'mic' ? 'none' : '';
-
-    // Show camera-off toggle for modes that support camera
-    const camOffToggle = document.getElementById('vc-cam-off-toggle');
-    if (camOffToggle) camOffToggle.style.display = channel.mode === 'mic' ? 'none' : '';
-    // Always default to camera off — user must explicitly opt in
-    const startCamOff = document.getElementById('vc-start-cam-off');
-    if (startCamOff) startCamOff.checked = true;
-
-    // Set current input mode from callState (persisted settings)
-    const inputMode = document.getElementById('vc-input-mode');
-    if (inputMode) inputMode.value = callState.inputMode;
-    vcOnInputModeChange(callState.inputMode);
-
-    const pttKey = document.getElementById('vc-ptt-key');
-    if (pttKey) pttKey.value = callState.pttKey;
-
-    const vadThreshold = document.getElementById('vc-vad-threshold');
-    if (vadThreshold) vadThreshold.value = callState.vadThreshold;
-    const vadValue = document.getElementById('vc-vad-value');
-    if (vadValue) vadValue.textContent = `${callState.vadThreshold}%`;
-
-    panel.style.display = '';
-
-    // Enumerate devices (may prompt for permission if not yet granted)
-    await vcEnumerateDevices(channel.mode);
-
-    // Mic preview is optional — user can click "Test Mic" to start it
-    // vcStartPreview() is intentionally not called here so joining works
-    // even when mic permission hasn't been granted yet.
-}
-
 async function vcEnumerateDevices(mode) {
     try {
         // First try enumerating without a temp stream — if permission was already
         // granted, browsers return labeled devices. This avoids acquiring a temp
         // getUserMedia stream that can steal the audio device from an active broadcast
         // on Linux/PipeWire.
-        let devices = await navigator.mediaDevices.enumerateDevices();
-        const hasLabels = devices.some(d => d.kind === 'audioinput' && d.label);
-
-        if (!hasLabels) {
-            // No labels yet — need a temp stream to trigger permission prompt.
-            // Skip if actively broadcasting to avoid device contention.
-            const isBroadcasting = typeof isStreaming === 'function' && isStreaming();
-            if (!isBroadcasting) {
-                const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                tempStream.getTracks().forEach(t => t.stop());
-                devices = await navigator.mediaDevices.enumerateDevices();
-            }
-        }
+        // Runs after the call's own microphone is open, so labels are readable without opening a
+        // second one (two getUserMedia calls at once fought over the device on PipeWire).
+        const devices = await navigator.mediaDevices.enumerateDevices();
         const audioInputs = devices.filter(d => d.kind === 'audioinput');
         const videoInputs = devices.filter(d => d.kind === 'videoinput');
 
@@ -303,191 +272,6 @@ async function vcEnumerateDevices(mode) {
         console.warn('[VC] Device enumeration failed:', err.message);
     }
 }
-
-async function vcStartPreview(mode) {
-    vcStopPreview();
-
-    try {
-        const constraints = {
-            audio: { deviceId: callState.selectedMic !== 'default' ? { exact: callState.selectedMic } : undefined }
-        };
-        if (mode !== 'mic') {
-            constraints.video = {
-                deviceId: callState.selectedCam !== 'default' ? { exact: callState.selectedCam } : undefined,
-                width: { ideal: 240 }, height: { ideal: 180 },
-            };
-        }
-
-        vcState.previewStream = await navigator.mediaDevices.getUserMedia(constraints);
-
-        // Show video preview in avatar area
-        const avatarEl = document.getElementById('vc-setup-avatar');
-        if (avatarEl && mode !== 'mic') {
-            const existingVideo = avatarEl.querySelector('video');
-            if (existingVideo) existingVideo.remove();
-            const video = document.createElement('video');
-            video.autoplay = true;
-            video.muted = true;
-            video.playsInline = true;
-            video.className = 'vc-preview-video';
-            video.srcObject = vcState.previewStream;
-            avatarEl.insertBefore(video, avatarEl.firstChild);
-        } else if (avatarEl) {
-            // Show user avatar / initial
-            const existingVideo = avatarEl.querySelector('video');
-            if (existingVideo) existingVideo.remove();
-            const av = avatarEl.querySelector('.vc-setup-avatar-img');
-            if (!av) {
-                const d = document.createElement('div');
-                d.className = 'vc-setup-avatar-img';
-                if (typeof currentUser !== 'undefined' && currentUser?.avatar_url) {
-                    d.style.backgroundImage = `url(${currentUser.avatar_url})`;
-                } else {
-                    d.textContent = (typeof currentUser !== 'undefined' && currentUser?.username || 'U')[0].toUpperCase();
-                }
-                avatarEl.insertBefore(d, avatarEl.firstChild);
-            }
-        }
-
-        // Setup mic level meter
-        const Ctx = window.AudioContext || window.webkitAudioContext;
-        if (Ctx) {
-            vcState.previewAudioCtx = new Ctx();
-            vcState.previewSource = vcState.previewAudioCtx.createMediaStreamSource(vcState.previewStream);
-            vcState.previewAnalyser = vcState.previewAudioCtx.createAnalyser();
-            vcState.previewAnalyser.fftSize = 512;
-            vcState.previewAnalyser.smoothingTimeConstant = 0.7;
-            vcState.previewSource.connect(vcState.previewAnalyser);
-
-            vcState.previewLevelInterval = setInterval(() => {
-                if (!vcState.previewAnalyser) return;
-                const bins = new Uint8Array(vcState.previewAnalyser.frequencyBinCount);
-                vcState.previewAnalyser.getByteFrequencyData(bins);
-                let sum = 0;
-                for (let i = 0; i < bins.length; i++) sum += bins[i];
-                const avg = bins.length ? sum / bins.length : 0;
-                const percent = Math.round((avg / 255) * 100);
-
-                const bar = document.getElementById('vc-meter-bar');
-                if (bar) bar.style.width = `${percent}%`;
-
-                const ring = document.getElementById('vc-mic-level');
-                if (ring) {
-                    ring.classList.toggle('active', percent > callState.vadThreshold);
-                }
-            }, 60);
-        }
-    } catch (err) {
-        console.warn('[VC] Preview stream failed:', err.message);
-    }
-}
-
-function vcStopPreview() {
-    if (vcState.previewLevelInterval) {
-        clearInterval(vcState.previewLevelInterval);
-        vcState.previewLevelInterval = null;
-    }
-    if (vcState.previewSource) {
-        try { vcState.previewSource.disconnect(); } catch {}
-        vcState.previewSource = null;
-    }
-    if (vcState.previewTestNode) {
-        try { vcState.previewTestNode.disconnect(); } catch {}
-        vcState.previewTestNode = null;
-    }
-    vcState.previewAnalyser = null;
-    if (vcState.previewAudioCtx) {
-        try { vcState.previewAudioCtx.close(); } catch {}
-        vcState.previewAudioCtx = null;
-    }
-    if (vcState.previewStream) {
-        vcState.previewStream.getTracks().forEach(t => t.stop());
-        vcState.previewStream = null;
-    }
-    vcState.testing = false;
-
-    const avatarEl = document.getElementById('vc-setup-avatar');
-    if (avatarEl) {
-        const video = avatarEl.querySelector('video');
-        if (video) { video.srcObject = null; video.remove(); }
-    }
-
-    const bar = document.getElementById('vc-meter-bar');
-    if (bar) bar.style.width = '0%';
-
-    const testBtn = document.getElementById('vc-test-btn');
-    if (testBtn) testBtn.innerHTML = '<i class="fa-solid fa-play"></i> Test Mic';
-}
-
-function vcCancelSetup() {
-    vcStopPreview();
-    vcState.selectedChannelId = null;
-
-    const panel = document.getElementById('vc-setup-panel');
-    if (panel) panel.style.display = 'none';
-    vcRenderChannelList();
-}
-
-function vcToggleTest() {
-    if (!vcState.previewStream || !vcState.previewAudioCtx) {
-        // Preview not ready — attempt to start it then retry
-        const ch = vcState.channels.find(c => c.id === vcState.selectedChannelId);
-        if (!vcState.previewStream && ch) {
-            toast('Starting microphone preview…', 'info');
-            vcStartPreview(ch.mode || 'mic').then(() => {
-                if (vcState.previewStream && vcState.previewAudioCtx) {
-                    vcToggleTest(); // retry after preview started
-                } else {
-                    toast('Could not access microphone — check permissions', 'error');
-                }
-            }).catch(() => {
-                toast('Could not access microphone — check permissions', 'error');
-            });
-        } else {
-            toast('Microphone not available — check permissions and try again', 'error');
-        }
-        return;
-    }
-
-    if (vcState.testing) {
-        // Stop test
-        if (vcState.previewTestNode) {
-            try { vcState.previewTestNode.disconnect(); } catch {}
-            vcState.previewTestNode = null;
-        }
-        vcState.testing = false;
-        const btn = document.getElementById('vc-test-btn');
-        if (btn) btn.innerHTML = '<i class="fa-solid fa-play"></i> Test Mic';
-    } else {
-        // Start test — route mic to speakers
-        try {
-            if (!vcState.previewSource) {
-                toast('Microphone source not available — try re-selecting your mic', 'error');
-                return;
-            }
-
-            // Resume AudioContext if suspended (browsers require user gesture)
-            if (vcState.previewAudioCtx.state === 'suspended') {
-                vcState.previewAudioCtx.resume().catch(() => {});
-            }
-
-            const dest = vcState.previewAudioCtx.destination;
-            vcState.previewTestNode = vcState.previewAudioCtx.createGain();
-            vcState.previewTestNode.gain.value = 0.8;
-            vcState.previewSource.connect(vcState.previewTestNode);
-            vcState.previewTestNode.connect(dest);
-            vcState.testing = true;
-            const btn = document.getElementById('vc-test-btn');
-            if (btn) btn.innerHTML = '<i class="fa-solid fa-stop"></i> Stop Test';
-            toast('You should hear your microphone through your speakers', 'info');
-        } catch (err) {
-            console.warn('[VC] Test mic failed:', err.message);
-            toast(`Mic test failed: ${err.message}`, 'error');
-        }
-    }
-}
-
-/* ── Input Mode Handlers ───────────────────────────────────── */
 
 function vcOnInputModeChange(value) {
     if (!['open', 'ptt', 'vad'].includes(value)) return;
@@ -560,15 +344,8 @@ function vcOnVadChange(value) {
 
 /* ── Join / Leave ──────────────────────────────────────────── */
 
-async function vcJoinFromSetup() {
-    // Legacy: called from setup panel (no longer shown). Delegate to vcJoinChannel.
-    const channelId = vcState.selectedChannelId;
-    if (!channelId) return;
-    const ch = vcState.channels.find(c => c.id === channelId);
-    if (ch) await vcJoinChannel(ch);
-}
-
-function vcLeave() {
+function vcLeave(opts = {}) {
+    vcState.joinSeq++;
     leaveCall();
     callState.channelId = null;
     callState.vcMode = false;
@@ -576,7 +353,13 @@ function vcLeave() {
     vcState.settingsOpen = false;
 
     const connPanel = document.getElementById('vc-connected-panel');
-    if (connPanel) connPanel.style.display = 'none';
+    if (connPanel) { connPanel.style.display = 'none'; connPanel.classList.remove('is-open'); }
+    const grid = document.getElementById('vc-participants-grid');
+    if (grid) grid.innerHTML = '';
+    // streamId doubles as the channel id in this mode; left set, call.js would ask the stream API
+    // about a channel that is not a stream.
+    callState.streamId = null;
+    vcSetStatus('idle');
 
     const settingsPanel = document.getElementById('vc-incall-settings');
     if (settingsPanel) settingsPanel.style.display = 'none';
@@ -584,11 +367,21 @@ function vcLeave() {
     vcState.selectedChannelId = null;
     vcRenderChannelList();
 
-    // Disable voice call chat mode option & switch back to global
-    if (typeof updateChatModeVoiceOption === 'function') updateChatModeVoiceOption(false);
+    // Switching channels keeps the chat where it is; a real leave goes back to global.
+    if (!opts.switching && typeof updateChatModeVoiceOption === 'function') updateChatModeVoiceOption(false);
 
     // Hide mini VC bar
     vcUpdateMiniBar();
+}
+
+/** Status pill: connecting / connected / reconnecting. */
+function vcSetStatus(state) {
+    vcState.status = state;
+    const badge = document.querySelector('#vc-connected-panel .vc-connected-badge');
+    if (!badge) return;
+    const label = { connecting: 'Connecting\u2026', connected: 'Voice Connected', reconnecting: 'Reconnecting\u2026' }[state] || 'Voice';
+    badge.className = `vc-connected-badge is-${state}`;
+    badge.innerHTML = `<i class="fa-solid fa-circle"></i> ${label}`;
 }
 
 /* ── Controls ──────────────────────────────────────────────── */
@@ -600,14 +393,7 @@ function vcToggleMute() {
 }
 
 function vcToggleCamera() {
-    toggleCallCamera();
-    // toggleCallCamera is async, update after a tick
-    setTimeout(vcUpdateControlButtons, 50);
-}
-
-function vcToggleScreenShare() {
-    // Future feature placeholder
-    console.log('[VC] Screen share not yet implemented');
+    toggleCallCamera(); // re-renders the panel itself when the track is up
 }
 
 function vcToggleSettings() {
@@ -684,10 +470,10 @@ function vcRenderUI() {
 
     const grid = document.getElementById('vc-participants-grid');
     if (!grid) return;
-    grid.innerHTML = '';
-
-    // Local tile
-    grid.appendChild(_createParticipantTile({
+    // Keyed by peer: a tile that is still there is swapped for its fresh version (video elements are
+    // cached on the peer, so the picture does not restart), newcomers pop in, leavers fade out.
+    const wanted = [];
+    wanted.push(_createParticipantTile({
         peerId: callState.myPeerId,
         username: callState.localUsername,
         displayName: callState.localDisplayName || (typeof currentUser !== 'undefined' ? (currentUser?.display_name || currentUser?.username) : 'You'),
@@ -704,10 +490,8 @@ function vcRenderUI() {
         profileColor: callState.localProfileColor || (typeof currentUser !== 'undefined' ? currentUser?.profile_color : null),
         isLocal: true,
     }));
-
-    // Remote tiles
     for (const [peerId, peer] of callState.peers) {
-        grid.appendChild(_createParticipantTile({
+        wanted.push(_createParticipantTile({
             peerId,
             username: peer.username,
             anonId: peer.anonId,
@@ -726,8 +510,20 @@ function vcRenderUI() {
             videoStream: peer.videoStream,
             avatarUrl: peer.avatarUrl,
             profileColor: peer.profileColor,
+            connecting: peer.connecting,
         }));
     }
+    const have = new Map([...grid.querySelectorAll(':scope > .call-participant-tile:not(.is-leaving)')].map((el) => [el.dataset.peerId, el]));
+    let cursor = null;
+    for (const tile of wanted) {
+        const old = have.get(tile.dataset.peerId);
+        if (old) { have.delete(tile.dataset.peerId); if (old._ovLvl) { tile._ovLvl = old._ovLvl; tile.style.setProperty('--lvl', old.style.getPropertyValue('--lvl')); } old.replaceWith(tile); }
+        else tile.classList.add('is-entering');
+        const anchor = cursor ? cursor.nextSibling : grid.firstChild;
+        if (tile !== anchor) grid.insertBefore(tile, anchor);
+        cursor = tile;
+    }
+    for (const [, el] of have) { el.classList.add('is-leaving'); setTimeout(() => el.remove(), 260); }
 
     // Hide camera switch in mic-only mode
     const camSwitchGroup = document.getElementById('vc-cam-switch-group');
@@ -768,7 +564,7 @@ function vcHideCreateModal() {
 async function vcCreateChannel() {
     const name = (document.getElementById('vc-create-name')?.value || '').trim();
     const mode = document.getElementById('vc-create-mode')?.value || 'mic+cam';
-    const maxP = parseInt(document.getElementById('vc-create-max')?.value, 10) || 15;
+    const maxP = Math.min(8, parseInt(document.getElementById('vc-create-max')?.value, 10) || 8);
 
     if (!name) {
         const input = document.getElementById('vc-create-name');
@@ -806,7 +602,7 @@ async function vcCreateChannel() {
 function vcStartPolling() {
     vcStopPolling();
     vcFetchChannels();
-    vcState.pollTimer = setInterval(vcFetchChannels, vcState.pollInterval);
+    vcState.pollTimer = setInterval(() => { if (!document.hidden) vcFetchChannels(); }, vcState.pollInterval);
 }
 
 function vcStopPolling() {

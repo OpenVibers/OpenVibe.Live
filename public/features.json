@@ -125,7 +125,6 @@
         "vcCreateChannel",
         "vcToggleMute",
         "vcToggleCamera",
-        "vcToggleScreenShare",
         "vcToggleSettings",
         "vcLeave",
         "vcSwitchMic",
@@ -262,6 +261,14 @@
       ],
       "stubs": [
         "openStatsNerds"
+      ]
+    },
+    "featured": {
+      "css": [
+        "/css/features/featured.css"
+      ],
+      "js": [
+        "/js/home-featured.js"
       ]
     }
   },

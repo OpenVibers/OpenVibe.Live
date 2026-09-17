@@ -239,6 +239,45 @@ async function heroStats(timing) {
     return stats;
 }
 
+// ── GET /api/home/featured ──────────────────────────────────────────
+// The stream the home page opens on. Everyone live, busiest first, and the pick moves along that
+// list every few minutes so a small stream gets its turn while the busy one is still one click
+// away. `?not=<id>` asks for the next one after that stream (the reader pressed Next).
+const FEATURED_ROTATE_MS = 4 * 60 * 1000;
+router.get('/featured', (req, res) => {
+    res.set('Cache-Control', 'public, max-age=10');
+    try {
+        const live = (db.getLiveStreams() || []).filter((s) => !s.is_nsfw);
+        if (!live.length) return res.json({ stream: null, count: 0 });
+        let idx = Math.floor(Date.now() / FEATURED_ROTATE_MS) % live.length;
+        const not = parseInt(req.query.not, 10);
+        if (not && live.length > 1) {
+            const at = live.findIndex((s) => s.id === not);
+            if (at >= 0) idx = (at + 1) % live.length;
+        }
+        const pick = live[idx];
+        const { publicStream } = require('../web/serializers');
+        const stream = publicStream(pick);
+        // Playback endpoint for the two protocols the home page can play itself; no keys travel.
+        if (pick.protocol === 'rtmp') stream.endpoint = { flvUrl: `/api/streams/rtmp-proxy/${pick.id}.flv` };
+        else if (pick.protocol === 'jsmpeg') {
+            try {
+                const key = pick.managed_stream_key || db.getUserById(pick.user_id)?.stream_key;
+                const info = require('../streaming/jsmpeg-relay').getChannelInfo(key) || {};
+                stream.endpoint = { videoPort: info.videoPort || info.video_port || info.wsPort || null };
+            } catch { stream.endpoint = null; }
+        } else stream.endpoint = null;
+        let moment = null;
+        try {
+            const m = db.getLatestStreamMemory(pick.id);
+            if (m && m.description) moment = { description: m.description, captured_at: m.captured_at || m.created_at || null, thumbnail_url: m.thumbnail_url || null };
+        } catch { /* */ }
+        res.json({ stream, moment, count: live.length, index: idx, next_in_ms: FEATURED_ROTATE_MS - (Date.now() % FEATURED_ROTATE_MS) });
+    } catch (err) {
+        res.status(500).json({ error: 'featured unavailable' });
+    }
+});
+
 // ── GET /api/home/stats-live ────────────────────────────────────────
 // Just the numbers the hero strip shows, so the home page can keep them current without
 // re-fetching the whole hero payload (slogans, collage, moments) every few seconds. The

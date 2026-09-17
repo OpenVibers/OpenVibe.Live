@@ -358,10 +358,13 @@
         </div>
 
         <div class="container">
+            <!-- Featured live stream (public/js/home-featured.js): filled only when someone is live. -->
+            <div class="home-featured" id="home-featured" hidden></div>
             <!-- Live Streams -->
             <div class="section-header" style="--sc:#ef4444">
                 <h2><i class="fa-solid fa-circle live-dot"></i> Live Now<small class="section-kicker">on air</small></h2>
                 <span id="live-count" class="badge">0</span>
+                <button type="button" class="home-featured-toggle" id="home-featured-toggle" hidden><i class="fa-solid fa-satellite-dish"></i> Show featured stream</button>
             </div>
             <div class="stream-grid" id="stream-grid-live">
                 <div class="ovsk ovsk-card" aria-hidden="true"><div class="ovsk-thumb"></div><div class="ovsk-meta"><div class="ovsk-bar ovsk-av"></div><div class="ovsk-lines"><div class="ovsk-bar" style="height:11px;width:72%"></div><div class="ovsk-bar" style="height:9px;width:45%"></div></div></div></div>
@@ -454,9 +457,14 @@
                          STREAM SITE") was a louder restatement of the lede two lines below it, which
                          already says the platform is built by one person who streams here. One of them
                          is enough, and the lede is the one that reads like a human wrote it. -->
+                    <div class="cta-chips" aria-hidden="true">
+                        <span class="cta-chip"><i class="fa-solid fa-people-group"></i> Community-run</span>
+                        <span class="cta-chip"><i class="fa-solid fa-comment"></i> Free speech, light rules</span>
+                        <span class="cta-chip"><i class="fa-solid fa-code-branch"></i> Built in the open</span>
+                    </div>
                     <h2 class="cta-hero">Streaming the way it <span class="cta-hero-grad">should</span> be.</h2>
                     <p class="cta-lede">
-                        OpenVibe.Live is a living platform built by <strong>one person who actually streams here</strong>, hangs out in chat, and ships your ideas. No boardroom, no algorithm games, no mystery bans — just an <strong>epic</strong> streaming stack packed with things the big sites flat-out don't have.
+                        OpenVibe.Live is an <strong>open, community-run</strong> streaming platform. It's built here, in public, by people who actually stream and hang out in chat — and the ideas that come up in chat are the ones that get shipped. Say what you think: <strong>free speech, light-touch moderation, no mystery bans</strong>. Underneath it all is a streaming stack with things the big sites just don't have.
                     </p>
 
                     <button class="home-about-toggle" type="button" onclick="toggleHomeAbout()" aria-expanded="false" aria-controls="home-about-body">

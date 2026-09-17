@@ -184,43 +184,6 @@
     background-position: center;
     flex-shrink: 0;
 }
-.vc-setup-panel {
-    border-top: 1px solid var(--border);
-    padding: 16px;
-    background: var(--bg-primary);
-    flex-shrink: 0;
-}
-.vc-setup-title {
-    font-weight: 700;
-    font-size: 0.9rem;
-    color: var(--text-primary);
-}
-.vc-setup-avatar video.vc-preview-video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border-radius: 50%;
-}
-.vc-setup-avatar-img {
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.8rem;
-    font-weight: 700;
-    color: var(--text-muted);
-    background-size: cover;
-    background-position: center;
-}
-.vc-meter-bar {
-    height: 100%;
-    width: 0%;
-    background: linear-gradient(90deg, var(--success, #22c55e), var(--accent));
-    border-radius: 4px;
-    transition: width 0.06s linear;
-}
 .vc-device-group {
     display: flex;
     flex-direction: column;
@@ -230,9 +193,6 @@
 .vc-threshold-slider {
     width: 100%;
     accent-color: var(--accent);
-}
-.vc-test-btn {
-    flex: 0 0 auto;
 }
 .vc-connected-panel {
     border-top: 1px solid var(--border);
@@ -358,13 +318,6 @@
     .vc-sidebar-header {
         padding: 10px 12px 8px;
     }
-    .vc-setup-panel {
-        padding: 10px;
-    }
-    .vc-setup-avatar {
-        width: 56px;
-        height: 56px;
-    }
     .vc-connected-header {
         padding: 8px 10px;
     }
@@ -377,3 +330,14 @@
     align-items: center;
     gap: 8px;
 }
+
+/* Channel rows arrive and leave with a short move; the joined row and speaking names stay clear. */
+.vc-channel-item.is-entering { animation: vcRowIn 200ms cubic-bezier(.2, .9, .3, 1); }
+.vc-channel-item.is-leaving { animation: vcRowOut 200ms ease-in forwards; }
+@keyframes vcRowIn { from { opacity: 0; transform: translateX(-6px); } }
+@keyframes vcRowOut { to { opacity: 0; transform: translateX(-6px); } }
+.vc-channel-item.is-private .vc-channel-icon { color: #f472b6; }
+.vc-participant-row.speaking .vc-avatar-mini { box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.7); }
+.vc-connected-panel.is-open { animation: vcPanelIn 220ms cubic-bezier(.2, .9, .3, 1); }
+@keyframes vcPanelIn { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { .vc-channel-item.is-entering, .vc-channel-item.is-leaving, .vc-connected-panel.is-open { animation: none; } }

@@ -170,6 +170,11 @@
                 }
             }
             const effective = active || Math.min(natural, max);
+            if (grid._ovdEffective !== effective) {
+                grid._ovdEffective = effective;
+                // Rails fill their last row to this count (app-home.js listens).
+                try { grid.dispatchEvent(new CustomEvent('ovd:columns', { detail: { columns: effective } })); } catch { /* */ }
+            }
             for (const b of ctrl.querySelectorAll('.ovd-btn')) {
                 const pressed = String(Number(b.dataset.n) === effective);
                 if (b.getAttribute('aria-pressed') !== pressed) b.setAttribute('aria-pressed', pressed);
@@ -213,5 +218,14 @@
     /** Re-apply after a re-render replaced the grid's children. */
     function apply(grid, key) { if (grid && typeof grid._ovdRender === 'function') grid._ovdRender(); }
 
-    window.OVDensity = { attach, apply, MIN_CARD, HARD_MAX };
+    /** How many cards a grid shows per row right now (the reader's choice, else what fits). */
+    function columns(grid) {
+        if (!grid) return 1;
+        const forced = Number(grid.dataset.ovdCols) || 0;
+        if (forced) return forced;
+        if (grid._ovdEffective) return grid._ovdEffective;
+        return autoColumns(grid, HARD_MAX);
+    }
+
+    window.OVDensity = { attach, apply, columns, MIN_CARD, HARD_MAX };
 })();

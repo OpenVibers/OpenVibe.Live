@@ -31,14 +31,14 @@ async function launch(opts = {}, attempt = 0) {
     catch (e) { if (attempt < 3) return launch(opts, attempt + 1); throw e; }
 }
 
-async function launchOnce({ width = 1366, height = 900 } = {}) {
+async function launchOnce({ width = 1366, height = 900, args = [] } = {}) {
     const bin = findChrome();
     if (!bin) throw new Error('Chrome not found (set CHROME_BIN)');
     // Random port: a collision with another Chrome just fails this attempt and launch() retries.
     const port = 9800 + Math.floor(Math.random() * 5000);
     const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-cdp-'));
     const proc = spawn(bin, ['--headless=new', `--remote-debugging-port=${port}`, '--no-sandbox', '--no-first-run',
-        `--user-data-dir=${profile}`, `--window-size=${width},${height}`, 'about:blank'], { stdio: 'ignore' });
+        `--user-data-dir=${profile}`, `--window-size=${width},${height}`, ...args, 'about:blank'], { stdio: 'ignore' });
     let targets;
     for (let i = 0; i < 120; i++) {
         try { targets = await getJson(`http://127.0.0.1:${port}/json`); break; } catch { await sleep(250); }

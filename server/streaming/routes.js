@@ -1222,19 +1222,19 @@ router.get('/recent-vods', async (req, res) => {
 
 /* ── Voice Channels (global, non-stream) ───────────────────── */
 
-router.get('/voice-channels', (req, res) => {
+router.get('/voice-channels', optionalAuth, (req, res) => {
     try {
-        res.set('Cache-Control', 'public, max-age=2');
-        res.json({ channels: callServer.listChannels() });
+        res.set('Cache-Control', 'no-store'); // private calls differ per viewer; the list is pushed anyway
+        res.json({ channels: callServer.listChannels(req.user || null) });
     } catch (err) {
         console.error('[Streaming]', err.message);
         res.status(500).json({ error: 'Failed to list voice channels' });
     }
 });
 
-router.get('/voice-channels/:channelId', (req, res) => {
+router.get('/voice-channels/:channelId', optionalAuth, (req, res) => {
     try {
-        const ch = callServer.getChannel(req.params.channelId);
+        const ch = callServer.getChannel(req.params.channelId, req.user || null);
         if (!ch) return res.status(404).json({ error: 'Channel not found' });
         res.json({ channel: ch });
     } catch (err) {
@@ -1266,8 +1266,14 @@ router.delete('/voice-channels/:channelId', requireAuth, (req, res) => {
     }
 });
 
+const _callUserRate = new Map(); // userId → [timestamps]
 router.post('/voice-channels/call-user', requireAuth, (req, res) => {
     try {
+        // Six calls a minute per account: a ring is a notification on someone else's screen.
+        const now = Date.now();
+        const recent = (_callUserRate.get(req.user.id) || []).filter((t) => now - t < 60000);
+        if (recent.length >= 6) return res.status(429).json({ error: 'Slow down — try again in a minute' });
+        recent.push(now); _callUserRate.set(req.user.id, recent);
         const targetUserId = Number(req.body?.user_id || 0);
         const targetUsername = String(req.body?.username || '').trim();
 
@@ -1276,15 +1282,19 @@ router.post('/voice-channels/call-user', requireAuth, (req, res) => {
         if (!targetUser && targetUsername) targetUser = db.getUserByUsername(targetUsername);
         if (!targetUser) return res.status(404).json({ error: 'User not found' });
         if (targetUser.id === req.user.id) return res.status(400).json({ error: 'You cannot call yourself' });
+        try { const dm = require('../chat/dm'); if (dm.isBlockedEither && dm.isBlockedEither(req.user.id, targetUser.id)) return res.status(403).json({ error: 'You cannot call this user' }); } catch { /* */ }
 
-        // Reuse caller's existing temp channel if present; otherwise create one.
-        const existing = (callServer.listChannels() || []).find(ch => !ch.permanent && !ch.streamId && ch.createdBy === req.user.id) || null;
+        // Reuse caller's existing temp channel if present; otherwise create a private one — a
+        // 1:1 call is not something the whole site should see listed and be able to walk into.
+        const existing = (callServer.listChannels(req.user) || []).find(ch => !ch.permanent && !ch.streamId && ch.createdBy === req.user.id) || null;
         const channel = existing || callServer.createChannel({
             name: `${req.user.display_name || req.user.username}'s call`,
             mode: 'mic+cam',
             createdBy: req.user.id,
             maxParticipants: 8,
+            isPrivate: true,
         });
+        callServer.invite(channel.id, targetUser.id);
 
         const callerName = req.user.display_name || req.user.username || 'Someone';
         const payload = {
@@ -1338,6 +1348,9 @@ router.post('/voice-channels/call-user/respond', requireAuth, (req, res) => {
         if (!channelId) return res.status(400).json({ error: 'channel_id is required' });
         if (!allowed.has(status)) return res.status(400).json({ error: 'Invalid response status' });
         if (callerUserId === req.user.id) return res.status(400).json({ error: 'Invalid caller target' });
+        // Only an invited user can answer, and only to the caller who owns that channel.
+        const ch = callServer.getChannel(channelId, req.user);
+        if (!ch || ch.createdBy !== callerUserId || !callServer.hasInvite(channelId, req.user.id)) return res.status(403).json({ error: 'No such invite' });
 
         const fromDisplayName = req.user.display_name || req.user.username || 'Someone';
         chatServer.sendDm(callerUserId, {

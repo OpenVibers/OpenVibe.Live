@@ -1176,11 +1176,8 @@ async function loadHome() {
         setTimeout(() => OVSkeleton.clearAll(), 9000);
     }
 
-    // Reset homepage pagination on fresh load
-    _homeRecentOnlinePage = 1;
-    _homeRecentVodsPage = 1;
-    _homeClipsPage = 1;
-    _homePastesPage = 1;
+    // Reset homepage rails on fresh load
+    homeRailReset();
 
     // Deliberately NOT awaited. Every other section used to sit behind this one request, so a
     // slow /streams held up the clips, VODs, pastes, digest and star rails even though none of
@@ -1195,6 +1192,7 @@ async function loadHome() {
             const noLiveEl = document.getElementById('no-live-streams');
             if (noLiveEl) noLiveEl.style.display = streams.length ? 'none' : '';
             renderStreamGrid('stream-grid-live', streams, true);
+            _homeFeaturedSync(streams.length > 0);
         }, { ttl: 20000 });
     } catch (e) {
         console.error('Failed to load live streams', e);
@@ -1338,9 +1336,8 @@ async function loadHomeDigest() {
     box.style.display = '';
 }
 
-async function loadHomeRecentOnline(page, append) {
-    if (page !== undefined) _homeRecentOnlinePage = page;
-    const { offset, limit } = homePageRange(_homeRecentOnlinePage, HOME_RECENT_ONLINE_PAGE_SIZE);
+async function loadHomeRecentOnline(opts) {
+    const { offset, limit, append, rail } = homeRailRange('recent', opts, 'stream-grid-recent', 'loadHomeRecentOnline');
     try {
         const recentData = await api(`/streams/recently-online?limit=${limit}&offset=${offset}`);
         renderRecentlyOnline('stream-grid-recent', recentData.streamers || [], append);
@@ -1351,8 +1348,9 @@ async function loadHomeRecentOnline(page, append) {
             OVDensity.attach(document.getElementById('stream-grid-recent'),
                 { key: 'recent', minCard: 188, header: document.getElementById('stream-grid-recent')?.previousElementSibling });
         }
-        renderHomePagination('stream-grid-recent-pagination', recentData.total || 0, _homeRecentOnlinePage, HOME_RECENT_ONLINE_PAGE_SIZE, 'loadHomeRecentOnline');
-    } catch { /* silent */ }
+        homeRailLoaded(rail, offset, (recentData.streamers || []).length, recentData.total);
+        renderHomePagination('stream-grid-recent-pagination', rail);
+    } catch { rail.filling = false; }
 }
 
 function renderRecentlyOnline(containerId, streamers, append) {
@@ -1407,16 +1405,15 @@ function renderRecentlyOnline(containerId, streamers, append) {
     }).join(''));
 }
 
-async function loadHomeRecentVods(page, append) {
-    if (page !== undefined) _homeRecentVodsPage = page;
-    const { offset, limit } = homePageRange(_homeRecentVodsPage, HOME_RECENT_VODS_PAGE_SIZE);
+async function loadHomeRecentVods(opts) {
+    const { offset, limit, append, rail } = homeRailRange('vods', opts, 'home-recent-vods-grid', 'loadHomeRecentVods');
     try {
         const render = (data) => {
             const vods = data.vods || [];
             const header = document.getElementById('home-recent-vods-header');
             const grid = document.getElementById('home-recent-vods-grid');
             if (!header || !grid) return;
-            if (!vods.length && _homeRecentVodsPage === 1) { header.style.display = 'none'; grid.innerHTML = ''; return; }
+            if (!vods.length && !append) { header.style.display = 'none'; grid.innerHTML = ''; return; }
             header.style.display = '';
             const _put = (html) => ovPutCards(grid, html, append);
             _put(vods.map(v => {
@@ -1441,21 +1438,21 @@ async function loadHomeRecentVods(page, append) {
                 `;
             }).join(''));
             if (window.OVDensity) OVDensity.attach(grid, { key: 'vods', header: header });
-            renderHomePagination('home-recent-vods-pagination', data.total || 0, _homeRecentVodsPage, HOME_RECENT_VODS_PAGE_SIZE, 'loadHomeRecentVods');
+            homeRailLoaded(rail, offset, vods.length, data.total);
+            renderHomePagination('home-recent-vods-pagination', rail);
         };
         await apiSWR(`/streams/recent-vods?limit=${limit}&offset=${offset}`, render, { ttl: 180000 });
-    } catch { /* silent */ }
+    } catch { rail.filling = false; }
 }
 
-async function loadHomeClips(page, append) {
-    if (page !== undefined) _homeClipsPage = page;
-    const { offset, limit } = homePageRange(_homeClipsPage, HOME_CLIPS_PAGE_SIZE);
+async function loadHomeClips(opts) {
+    const { offset, limit, append, rail } = homeRailRange('clips', opts, 'home-clips-grid', 'loadHomeClips');
     try {
         const render = (data) => {
             const clips = data.clips || [];
             const header = document.getElementById('home-clips-header');
             const grid = document.getElementById('home-clips-grid');
-            if (!clips.length && _homeClipsPage === 1) { if (header) header.style.display = 'none'; return; }
+            if (!clips.length && !append) { if (header) header.style.display = 'none'; return; }
             if (header) header.style.display = '';
             const _put = (html) => ovPutCards(grid, html, append);
             _put(clips.map(c => `
@@ -1477,21 +1474,21 @@ async function loadHomeClips(page, append) {
                 </a>
             `).join(''));
             if (window.OVDensity) OVDensity.attach(grid, { key: 'clips', header: header });
-            renderHomePagination('home-clips-pagination', data.total || 0, _homeClipsPage, HOME_CLIPS_PAGE_SIZE, 'loadHomeClips');
+            homeRailLoaded(rail, offset, clips.length, data.total);
+            renderHomePagination('home-clips-pagination', rail);
         };
         await apiSWR(`/clips?limit=${limit}&offset=${offset}`, render, { ttl: 180000 });
-    } catch { /* silent */ }
+    } catch { rail.filling = false; }
 }
 
-async function loadHomePastes(page, append) {
-    if (page !== undefined) _homePastesPage = page;
-    const { offset, limit } = homePageRange(_homePastesPage, HOME_PASTES_PAGE_SIZE);
+async function loadHomePastes(opts) {
+    const { offset, limit, append, rail } = homeRailRange('pastes', opts, 'home-pastes-list', 'loadHomePastes');
     try {
         const render = (data) => {
             const pastes = data.pastes || [];
             const header = document.getElementById('home-pastes-header');
             const list = document.getElementById('home-pastes-list');
-            if (!pastes.length && _homePastesPage === 1) { if (header) header.style.display = 'none'; return; }
+            if (!pastes.length && !append) { if (header) header.style.display = 'none'; return; }
             if (header) header.style.display = '';
             const _put = (html) => ovPutCards(list, html, append);
             _put(pastes.map(p => {
@@ -1517,10 +1514,11 @@ async function loadHomePastes(page, append) {
                 </a>`;
             }).join(''));
             if (window.OVDensity) OVDensity.attach(list, { key: 'pastes', header: document.getElementById('home-pastes-header') });
-            renderHomePagination('home-pastes-pagination', data.total || 0, _homePastesPage, HOME_PASTES_PAGE_SIZE, 'loadHomePastes');
+            homeRailLoaded(rail, offset, pastes.length, data.total);
+            renderHomePagination('home-pastes-pagination', rail);
         };
         await apiSWR(`/pastes?limit=${limit}&offset=${offset}`, render, { ttl: 180000 });
-    } catch { /* silent */ }
+    } catch { rail.filling = false; }
 }
 
 async function loadHomeLeaderboards() {
@@ -1680,6 +1678,22 @@ function streamCardHTML(s, isLive) {
                 </div>
             </div>
         </a>`;
+}
+
+/**
+ * The featured stream box lives in its own lazily loaded feature; it is only fetched the first time
+ * someone is live, and it stays out of the page entirely if the reader switched it off.
+ */
+let _homeFeaturedLoading = null;
+function _homeFeaturedSync(hasLive) {
+    const off = (() => { try { return localStorage.getItem('ov_home_featured_off') === '1'; } catch { return false; } })();
+    const t = document.getElementById('home-featured-toggle');
+    if (t) { t.hidden = !(off && hasLive); if (!t._ovBound) { t._ovBound = true; t.addEventListener('click', () => { if (window.homeFeatured) homeFeatured.setOff(false); else { try { localStorage.removeItem('ov_home_featured_off'); } catch { /* */ } _homeFeaturedSync(true); } }); } }
+    if (!hasLive || off) { if (window.homeFeatured) homeFeatured.boot(hasLive); return; }
+    if (window.homeFeatured) { homeFeatured.boot(true); return; }
+    if (!_homeFeaturedLoading && window.ov && ov.load) {
+        _homeFeaturedLoading = ov.load('featured').then(() => { if (_homeIsActive() && window.homeFeatured) homeFeatured.boot(true); }).catch(() => { _homeFeaturedLoading = null; });
+    }
 }
 
 function renderStreamGrid(containerId, streams, isLive) {
@@ -1867,10 +1881,12 @@ async function refreshHomeLive() {
 // never disrupt someone paging through or reading below the fold).
 function refreshHomeSections() {
     if (!_homeIsActive() || document.visibilityState !== 'visible') return;
-    if (_homeRecentOnlinePage === 1 && typeof loadHomeRecentOnline === 'function') loadHomeRecentOnline();
-    if (_homeRecentVodsPage === 1 && typeof loadHomeRecentVods === 'function') loadHomeRecentVods();
-    if (_homeClipsPage === 1 && typeof loadHomeClips === 'function') loadHomeClips();
-    if (_homePastesPage === 1 && typeof loadHomePastes === 'function') loadHomePastes();
+    // Only rails the reader has not expanded: a refresh must never fold a browsed rail back up.
+    const untouched = (k) => { const r = _homeRails[k]; return !r || r.shown <= Math.max(_narrow ? 2 : 4, _homeRailCols(r.grid) * 2); };
+    if (untouched('recent') && typeof loadHomeRecentOnline === 'function') loadHomeRecentOnline();
+    if (untouched('vods') && typeof loadHomeRecentVods === 'function') loadHomeRecentVods();
+    if (untouched('clips') && typeof loadHomeClips === 'function') loadHomeClips();
+    if (untouched('pastes') && typeof loadHomePastes === 'function') loadHomePastes();
     if (typeof loadHomeLeaderboards === 'function') loadHomeLeaderboards();
 }
 
@@ -1885,10 +1901,6 @@ function stopHomeRefresh() {
     if (_homeSectionsTimer) { clearInterval(_homeSectionsTimer); _homeSectionsTimer = null; }
 } // populated on channel load, used for filter bar
 // Homepage pagination state
-let _homeRecentOnlinePage = 1;
-let _homeRecentVodsPage = 1;
-let _homeClipsPage = 1;
-let _homePastesPage = 1;
 // The home page used to open with 46 cards across four list sections, which made it enormous and
 // meant every visitor downloaded four full pages of thumbnails to scroll past them. One row's
 // worth each is plenty for a front page; the pagination underneath still reaches the rest, and
@@ -1900,27 +1912,51 @@ let _homePastesPage = 1;
 // matchMedia, not innerWidth: reading innerWidth while the page is still being styled forces a
 // synchronous style and layout pass of the whole document.
 const _narrow = typeof window !== 'undefined' && window.matchMedia('(max-width: 759px)').matches;
-const HOME_RECENT_ONLINE_PAGE_SIZE = _narrow ? 4 : 6;
-const HOME_RECENT_VODS_PAGE_SIZE = _narrow ? 4 : 6;
-const HOME_CLIPS_PAGE_SIZE = _narrow ? 4 : 6;
-const HOME_PASTES_PAGE_SIZE = _narrow ? 4 : 5;
 /**
- * How many more a "Load more" press brings in.
+ * Home rails are sized by the row, not by a page number.
  *
- * The first page is deliberately small — it is a taste of the section, not a browse view. Once
- * somebody has pressed Load more they have said they want to browse, so subsequent pages are
- * larger: fewer presses to get anywhere, and the cost is paid only by people who asked for it.
+ * A rail's grid decides how many cards fit per row (ov-density.js); the rail then always shows
+ * whole rows: the first load is two rows, "Load more" adds whole rows, and if the row count
+ * changes (a rotated phone, a narrower window, the per-row control) the last row is filled in
+ * with one small request. A rail of six cards in four-wide rows no longer ends with two cards
+ * and a hole.
  */
-const HOME_LOAD_MORE = 8;
-/** Offset and limit for a given page, given a first page that is a different size to the rest. */
-function homePageRange(page, firstSize) {
-    if (page <= 1) return { offset: 0, limit: firstSize };
-    return { offset: firstSize + (page - 2) * HOME_LOAD_MORE, limit: HOME_LOAD_MORE };
+const _homeRails = {}; // key → { shown, total, grid, loader, filling }
+function homeRailReset() { for (const k of Object.keys(_homeRails)) delete _homeRails[k]; }
+function _homeRailCols(grid) {
+    try { return Math.max(1, (window.OVDensity && grid) ? OVDensity.columns(grid) : 1); } catch { return 1; }
 }
-/** How many rows are on screen once `page` has loaded. */
-function homeShownCount(page, firstSize) {
-    const r = homePageRange(page, firstSize);
-    return r.offset + r.limit;
+/** offset/limit for a fresh load (two rows) or for `more` cards, plus the rail record to update after. */
+function homeRailRange(key, opts, gridId, loaderName) {
+    const rail = _homeRails[key] || (_homeRails[key] = { shown: 0, total: 0, filling: false });
+    rail.grid = document.getElementById(gridId);
+    rail.loader = loaderName;
+    if (opts && opts.more) return { offset: rail.shown, limit: opts.more, append: true, rail };
+    rail.shown = 0;
+    const cols = _homeRailCols(rail.grid);
+    return { offset: 0, limit: Math.max(_narrow ? 2 : 4, cols * 2), append: false, rail };
+}
+/** Record what a load brought in, then fill the last row if it is short. */
+function homeRailLoaded(rail, offset, count, total) {
+    rail.shown = offset + count;
+    rail.total = Number(total) || 0;
+    rail.filling = false;
+    if (rail.grid && !rail.grid._ovRailBound) {
+        rail.grid._ovRailBound = true;
+        rail.grid.addEventListener('ovd:columns', () => homeRailAutofill(rail));
+    }
+    homeRailAutofill(rail);
+}
+function homeRailAutofill(rail) {
+    if (!rail || rail.filling || !rail.loader || !rail.grid) return;
+    const cols = _homeRailCols(rail.grid);
+    const left = Math.max(0, rail.total - rail.shown);
+    const short = rail.shown % cols;
+    if (!left || !short) return;
+    const need = Math.min(left, cols - short);
+    rail.filling = true;
+    const fn = window[rail.loader];
+    if (typeof fn === 'function') fn({ more: need, auto: true }); else rail.filling = false;
 }
 
 // Thin wrapper for homepage section pagination — same visual style as renderVodsPagination.
@@ -1932,19 +1968,21 @@ function homeShownCount(page, firstSize) {
  * they're looking at, or they want the dedicated page. So: one button that appends the next
  * batch, showing how many are left, and it disappears when there are none.
  */
-function renderHomePagination(containerId, total, page, pageSize, setterName) {
+function renderHomePagination(containerId, rail) {
     const el = document.getElementById(containerId);
-    if (!el) return;
-    // The first page is a different size to the ones after it, so "how many are on screen" is not
-    // page * pageSize.
-    const shown = homeShownCount(page, pageSize);
-    const left = Math.max(0, (total || 0) - shown);
+    if (!el || !rail) return;
+    const left = Math.max(0, rail.total - rail.shown);
     // These containers ship with an inline display:none — the old pager unhid them itself, and
     // this one has to as well or the button renders into a hidden box and nobody ever sees it.
     if (left <= 0) { el.innerHTML = ''; el.style.display = 'none'; return; }
     el.style.display = 'block';
-    const next = Math.min(left, HOME_LOAD_MORE);
-    el.innerHTML = `<button type="button" class="home-load-more" onclick="${setterName}(${page + 1}, true)">
+    // Whole rows: whatever completes the current row, then two more rows (one on a phone, where a
+    // row is a screen). "8 more" into a four-wide grid was two rows; into a three-wide grid it was
+    // two rows and a stray pair.
+    const cols = _homeRailCols(rail.grid);
+    const short = rail.shown % cols;
+    const next = Math.min(left, (short ? cols - short : 0) + cols * (_narrow ? 1 : 2));
+    el.innerHTML = `<button type="button" class="home-load-more" onclick="${rail.loader}({ more: ${next} })">
         <i class="fa-solid fa-arrow-down"></i>
         <span>Load ${next} more</span>
         <small>${left.toLocaleString()} left</small>

@@ -26,6 +26,9 @@ const cosmetics = require('../monetization/cosmetics');
 
 const WS_HEARTBEAT_MS = 30000;
 const MAX_PARTICIPANTS = 8;
+const MAX_SOCKETS_PER_IP = 3;          // one household in one channel; never one host filling it
+const KICK_COOLDOWN_MS = 60 * 1000;
+const COSMETIC_TTL_MS = 60 * 1000;
 const PUBLIC_CHANNEL_ID = 'public';
 
 class CallServer {
@@ -42,6 +45,11 @@ class CallServer {
         this._nextPeerId = 1;
         this._heartbeatInterval = null;
         this._inactivityTimer = null;
+        /** `${channelId}:${identity}` → until (ms): a kicked participant waits before rejoining */
+        this.kickCooldown = new Map();
+        /** userId → { at, profile } */
+        this._cosmeticCache = new Map();
+        this._notifyTimer = null;
 
         // Seed the permanent Public channel
         this.channels.set(PUBLIC_CHANNEL_ID, {
@@ -73,6 +81,7 @@ class CallServer {
     _cleanupInactiveChannels() {
         const ONE_HOUR = 60 * 60 * 1000;
         const now = Date.now();
+        for (const [k, until] of this.kickCooldown) if (until <= now) this.kickCooldown.delete(k);
         for (const [channelId, ch] of this.channels) {
             if (ch.permanent || ch.streamId) continue;
             const room = this.rooms.get(channelId);
@@ -93,27 +102,56 @@ class CallServer {
 
     /* ── Channel management ──────────────────────────────────── */
 
-    listChannels() {
+    /** Channels a viewer may see: a private call only for its creator, its invitees and staff. */
+    listChannels(viewer = null) {
         const result = [];
         for (const [id, ch] of this.channels) {
+            if (ch.private && !this._canSeePrivate(ch, viewer)) continue;
             const room = this.rooms.get(id);
             const participants = [];
             if (room) { for (const [pid, info] of room) participants.push(this._buildParticipantInfo(pid, info)); }
-            result.push({ ...ch, participantCount: room ? room.size : 0, participants });
+            result.push({ ...this._publicChannel(ch), participantCount: room ? room.size : 0, participants });
         }
         return result;
     }
-
-    getChannel(channelId) {
+    _publicChannel(ch) { const { invited, ...rest } = ch; return rest; }
+    _canSeePrivate(ch, viewer) {
+        if (!ch.private) return true;
+        if (!viewer) return false;
+        if (viewer.role === 'admin' || viewer.role === 'global_mod') return true;
+        return ch.createdBy === viewer.id || !!(ch.invited && ch.invited.has(viewer.id));
+    }
+    /** A caller invited this user to their call (POST /voice-channels/call-user). */
+    invite(channelId, userId) {
         const ch = this.channels.get(channelId);
-        if (!ch) return null;
+        if (!ch) return false;
+        if (!ch.invited) ch.invited = new Set();
+        ch.invited.add(userId);
+        return true;
+    }
+    hasInvite(channelId, userId) {
+        const ch = this.channels.get(channelId);
+        return !!(ch && ch.invited && ch.invited.has(userId));
+    }
+    /** Debounced "the list changed" for every chat socket (the sidebar used to poll every 4 s). */
+    _notifyChannelsChanged() {
+        if (this._notifyTimer) return;
+        this._notifyTimer = setTimeout(() => {
+            this._notifyTimer = null;
+            try { chatServer.broadcastAll({ type: 'voice-channels', channels: this.listChannels(null) }); } catch { /* */ }
+        }, 400);
+    }
+
+    getChannel(channelId, viewer = null) {
+        const ch = this.channels.get(channelId);
+        if (!ch || !this._canSeePrivate(ch, viewer)) return null;
         const room = this.rooms.get(channelId);
         const participants = [];
         if (room) { for (const [pid, info] of room) participants.push(this._buildParticipantInfo(pid, info)); }
-        return { ...ch, participantCount: room ? room.size : 0, participants };
+        return { ...this._publicChannel(ch), participantCount: room ? room.size : 0, participants };
     }
 
-    createChannel({ name, mode, createdBy, maxParticipants }) {
+    createChannel({ name, mode, createdBy, maxParticipants, isPrivate = false }) {
         // One user-created channel per user
         for (const [, ch] of this.channels) {
             if (!ch.permanent && !ch.streamId && ch.createdBy === createdBy) {
@@ -127,9 +165,11 @@ class CallServer {
             createdBy, streamId: null, permanent: false, createdAt: Date.now(),
             maxParticipants: Math.min(Math.max(Number(maxParticipants) || MAX_PARTICIPANTS, 2), MAX_PARTICIPANTS),
             lastEmptiedAt: Date.now(), // starts empty; inactivity timer tracks from creation
+            private: !!isPrivate,
         };
         this.channels.set(id, ch);
-        return ch;
+        this._notifyChannelsChanged();
+        return this._publicChannel(ch);
     }
 
     createStreamChannel(streamId, mode, streamerId) {
@@ -163,6 +203,7 @@ class CallServer {
         this.endCall(channelId);
         this.channels.delete(channelId);
         this.callBans.delete(channelId);
+        this._notifyChannelsChanged();
         return true;
     }
 
@@ -172,7 +213,12 @@ class CallServer {
 
     _buildParticipantInfo(peerId, info) {
         let cosmeticProfile = {};
-        if (info.user?.id) { try { cosmeticProfile = cosmetics.getCosmeticProfile(info.user.id) || {}; } catch {} }
+        if (info.user?.id) {
+            // One query per participant per minute, not one per participant per list request.
+            const c = this._cosmeticCache.get(info.user.id);
+            if (c && Date.now() - c.at < COSMETIC_TTL_MS) cosmeticProfile = c.profile;
+            else { try { cosmeticProfile = cosmetics.getCosmeticProfile(info.user.id) || {}; } catch {} this._cosmeticCache.set(info.user.id, { at: Date.now(), profile: cosmeticProfile }); }
+        }
         return {
             peerId, username: info.user ? info.user.username : null,
             anonId: info.anonId || null,
@@ -214,9 +260,13 @@ class CallServer {
         }
 
         const user = authenticateWs(token);
+        if (channel.private && !this._canSeePrivate(channel, user)) { ws.send(JSON.stringify({ type: 'error', message: 'This is a private call' })); ws.close(); return; }
 
         const peerId = this._generatePeerId();
         const anonId = user ? null : chatServer.getAnonIdForConnection(ip, resolvedId);
+        const identity = user ? `u:${user.id}` : (anonId ? `a:${anonId}` : `ip:${ip}`);
+        const cooled = this.kickCooldown.get(`${resolvedId}:${identity}`);
+        if (cooled && cooled > Date.now()) { ws.send(JSON.stringify({ type: 'error', message: 'You were removed from this channel; try again in a minute' })); ws.close(); return; }
         const isChannelCreator = user && channel.createdBy === user.id;
         const isStreamer = channel.streamId ? (user && db.getStreamById(channel.streamId)?.user_id === user.id) : false;
         const canModerate = this._canModerate(user, resolvedId);
@@ -233,10 +283,24 @@ class CallServer {
 
         if (!this.rooms.has(resolvedId)) this.rooms.set(resolvedId, new Map());
         const room = this.rooms.get(resolvedId);
+        // The same account again (a second tab, or a reconnect before the old socket timed out)
+        // replaces its older socket instead of standing next to it as a ghost for a minute.
+        if (user) {
+            for (const [pid, info] of room) {
+                if (info.user && info.user.id === user.id) {
+                    try { info.ws.send(JSON.stringify({ type: 'replaced' })); } catch { /* */ }
+                    this._handleDisconnect(info.ws, resolvedId, pid);
+                    try { info.ws.close(); } catch { /* */ }
+                }
+            }
+        }
+        let fromIp = 0;
+        for (const [, info] of room) if (info.ip === ip) fromIp++;
+        if (fromIp >= MAX_SOCKETS_PER_IP && !(user && (user.role === 'admin' || user.role === 'global_mod'))) { ws.send(JSON.stringify({ type: 'error', message: 'Too many connections from your network' })); ws.close(); return; }
         const maxP = channel.maxParticipants || MAX_PARTICIPANTS;
         if (room.size >= maxP) { ws.send(JSON.stringify({ type: 'error', message: `Channel full (max ${maxP})` })); ws.close(); return; }
 
-        const clientInfo = { ws, user, anonId, ip, peerId, muted: false, cameraOff: true, forceMuted: false, forceCameraOff: false, speaking: false, isChannelCreator, isStreamer, _msgCount: 0, _msgResetTime: Date.now() };
+        const clientInfo = { ws, user, anonId, ip, peerId, identity, muted: false, cameraOff: true, forceMuted: false, forceCameraOff: false, speaking: false, isChannelCreator, isStreamer, _msgCount: 0, _msgResetTime: Date.now() };
         this.clients.set(ws, { channelId: resolvedId, peerId });
         room.set(peerId, clientInfo);
 
@@ -262,12 +326,14 @@ class CallServer {
         const joinMsg = JSON.stringify({ type: 'peer-joined', ...this._buildParticipantInfo(peerId, clientInfo) });
         for (const [pid, info] of room) { if (pid !== peerId && info.ws.readyState === WebSocket.OPEN) info.ws.send(joinMsg); }
         this._broadcastParticipantCount(resolvedId);
+        this._notifyChannelsChanged();
 
         ws.on('message', (data) => {
-            // Rate limit: drop messages if client exceeds 50/sec
+            // Rate limit: 200/s. A newcomer to a full room sends seven offers and their candidates in
+            // a burst; the old 50/s silently dropped some of them and the join stalled.
             const now = Date.now();
             if (now - clientInfo._msgResetTime > 1000) { clientInfo._msgCount = 0; clientInfo._msgResetTime = now; }
-            if (++clientInfo._msgCount > 50) return;
+            if (++clientInfo._msgCount > 200) return;
             try { this._handleMessage(ws, JSON.parse(data), resolvedId, peerId); } catch (err) { console.warn('[Call] Message error for peer', peerId, ':', err.message); }
         });
         ws.on('close', () => this._handleDisconnect(ws, resolvedId, peerId));
@@ -301,6 +367,7 @@ class CallServer {
                 c.muted = !!msg.muted;
                 const m = JSON.stringify({ type: 'peer-muted', peerId, muted: c.muted });
                 for (const [pid, info] of room) { if (pid !== peerId && info.ws.readyState === WebSocket.OPEN) info.ws.send(m); }
+                this._notifyChannelsChanged();
                 break;
             }
             case 'camera-off': {
@@ -369,6 +436,7 @@ class CallServer {
             case 'kick': {
                 const sender = room.get(peerId); if (!sender || !this._canModerate(sender.user, channelId)) break;
                 const target = room.get(msg.targetPeerId); if (!target || target.isChannelCreator || target.isStreamer) break;
+                if (target.identity) this.kickCooldown.set(`${channelId}:${target.identity}`, Date.now() + KICK_COOLDOWN_MS);
                 if (target.ws.readyState === WebSocket.OPEN) { target.ws.send(JSON.stringify({ type: 'kicked' })); target.ws.close(); }
                 room.delete(msg.targetPeerId); this.clients.delete(target.ws);
                 const m = JSON.stringify({ type: 'peer-left', peerId: msg.targetPeerId, reason: 'kicked' });
@@ -425,6 +493,7 @@ class CallServer {
         const m = JSON.stringify({ type: 'peer-left', ...leftInfo, reason: 'disconnect' });
         for (const [pid, info] of room) { if (info.ws.readyState === WebSocket.OPEN) info.ws.send(m); }
         this._broadcastParticipantCount(channelId);
+        this._notifyChannelsChanged();
         if (room.size === 0) {
             this.rooms.delete(channelId);
             const ch = this.channels.get(channelId);

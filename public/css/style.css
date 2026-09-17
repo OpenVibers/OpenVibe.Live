@@ -2027,16 +2027,13 @@ main#app { position: relative; z-index: 1; }
    the same chip column grid so chips line up top-to-bottom and each row spans the
    full board width — no more differently-sized islands stacked down the middle. */
 .hero-stats {
-    display: flex; flex-direction: column; margin: 4px 0 26px;
+    display: flex; flex-direction: column; gap: 10px; margin: 4px 0 26px;
     /* Break out of the 860px hero text column: a stat board wants dashboard width. */
     width: min(1240px, 94vw); position: relative; left: 50%; transform: translateX(-50%);
-    border-radius: 18px; overflow: hidden;
-    background: color-mix(in srgb, var(--bg-primary) 58%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
-    box-shadow: 0 18px 50px -30px rgba(0, 0, 0, 0.9);
-    backdrop-filter: blur(10px); text-align: left;
+    /* No panel: the chips are the cards. A big translucent rectangle behind them only boxed the
+       hero in and fought the background art. */
+    background: none; border: 0; box-shadow: none; text-align: left;
 }
-.hero-stat-group:nth-child(even) { background: color-mix(in srgb, var(--accent) 4%, transparent); }
 .hero-stat-kicker i { color: var(--accent); font-size: 0.8rem; opacity: 0.9; }
 /* auto-fit: a row with fewer chips stretches them to the board edge instead of
    leaving a ragged gap — every row reads as one full-width band. */
@@ -6502,13 +6499,28 @@ body.theme-light .user-dropdown {
     border: 3px solid transparent;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.call-avatar.speaking {
-    border-color: #22c55e;
-    box-shadow: 0 0 0 2px rgba(34,197,94,0.45), 0 0 12px rgba(34,197,94,0.3);
+.call-avatar.speaking, .call-participant-tile.is-speaking .call-avatar { border-color: #22c55e; }
+/* The ring around a speaker follows their audio level (--lvl, 0–1, set by call.js) with a transform
+   and an opacity — nothing that repaints the tile. */
+.call-participant-tile { --lvl: 0; }
+.call-avatar { position: relative; }
+.call-avatar::after {
+    content: ''; position: absolute; inset: -6px; border-radius: 50%; pointer-events: none;
+    border: 2px solid rgba(34, 197, 94, 0.9); box-shadow: 0 0 14px rgba(34, 197, 94, 0.45);
+    opacity: 0; transform: scale(0.9);
+    transition: transform 90ms linear, opacity 120ms linear;
 }
-.call-participant-tile.is-speaking .call-avatar {
-    border-color: #22c55e;
-    box-shadow: 0 0 0 2px rgba(34,197,94,0.45), 0 0 12px rgba(34,197,94,0.3);
+.call-participant-tile.is-speaking .call-avatar::after { opacity: calc(0.35 + var(--lvl) * 0.65); transform: scale(calc(1 + var(--lvl) * 0.18)); }
+.call-participant-tile.is-connecting { opacity: 0.6; }
+.call-participant-tile.is-connecting .call-avatar { animation: callTileConnecting 1.4s ease-in-out infinite; }
+@keyframes callTileConnecting { 50% { opacity: 0.45; } }
+.call-participant-tile.is-entering { animation: callTileIn 220ms cubic-bezier(.2, .9, .3, 1.2); }
+.call-participant-tile.is-leaving { animation: callTileOut 240ms ease-in forwards; pointer-events: none; }
+@keyframes callTileIn { from { opacity: 0; transform: scale(0.86); } }
+@keyframes callTileOut { to { opacity: 0; transform: scale(0.86); } }
+@media (prefers-reduced-motion: reduce) {
+    .call-participant-tile.is-entering, .call-participant-tile.is-leaving, .call-participant-tile.is-connecting .call-avatar, .vc-connected-badge i { animation: none !important; }
+    .call-avatar::after { transition: none; }
 }
 
 /* Video (camera on) */
@@ -7927,123 +7939,16 @@ body.theme-light .user-dropdown {
 
 /* Small avatar used in participant rows */
 
-/* ── Setup Panel ───────────────────────────────────────────── */
-
-.vc-setup-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 14px;
-}
-.vc-setup-close {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 1rem;
-    padding: 2px 6px;
-    border-radius: var(--radius-sm);
-    transition: color 0.15s, background 0.15s;
-}
-.vc-setup-close:hover {
-    color: var(--text-primary);
-    background: var(--bg-tertiary);
-}
-
-.vc-setup-preview {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    margin-bottom: 14px;
-}
-
-.vc-setup-avatar {
-    position: relative;
-    width: 72px;
-    height: 72px;
-    border-radius: 50%;
-    background: var(--bg-tertiary);
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
-.vc-mic-level {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    border: 3px solid transparent;
-    transition: border-color 0.1s;
-    pointer-events: none;
-}
-.vc-mic-level.active {
-    border-color: var(--success, #22c55e);
-    box-shadow: 0 0 10px rgba(34, 197, 94, 0.3);
-}
-
-.vc-setup-meter {
-    flex: 1;
-    min-width: 0;
-}
-.vc-setup-meter {
-    height: 8px;
-    background: var(--bg-tertiary);
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-/* Device select groups */
-.vc-setup-devices,
-.vc-setup-input-mode {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-bottom: 14px;
-}
-.vc-device-group label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-.vc-device-group label i {
-    font-size: 0.7rem;
-}
-.vc-device-group select,
-.vc-device-group input[type="text"] {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 6px 10px;
-    font-size: 0.82rem;
-}
-.vc-device-group span {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    text-align: right;
-}
-
-.vc-setup-actions {
-    display: flex;
-    gap: 8px;
-}
-.vc-join-btn {
-    flex: 1;
-}
-
 /* ── Connected Panel ───────────────────────────────────────── */
-.vc-connected-badge i {
-    font-size: 0.5rem;
-    animation: vc-pulse 2s infinite;
-}
+.vc-connected-badge i { font-size: 0.5rem; }
+/* Only while the connection is in flux does the dot move; a settled call has nothing to pulse about. */
+.vc-connected-badge.is-connecting i, .vc-connected-badge.is-reconnecting i { animation: vc-pulse 1.2s infinite; }
+.vc-connected-badge.is-connecting { color: var(--text-muted); }
+.vc-connected-badge.is-reconnecting { color: #f59e0b; }
+.vc-connected-badge.is-connected i { color: #22c55e; }
 @keyframes vc-pulse {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
+    50% { opacity: 0.35; }
 }
 
 /* Participant grid */
@@ -8759,11 +8664,6 @@ body.theme-light .user-dropdown {
     font-size: 0.5rem;
     color: #22c55e;
     margin-right: 4px;
-    animation: vc-mini-pulse 2s infinite;
-}
-@keyframes vc-mini-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
 }
 .vc-mini-status { font-weight: 600; white-space: nowrap; }
 .vc-mini-channel { color: var(--accent, #6366f1); font-weight: 500; white-space: nowrap; }
