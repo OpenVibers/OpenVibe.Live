@@ -6,30 +6,32 @@
 
 /* ── Variables ────────────────────────────────────────────────── */
 :root {
-    --bg-primary: #0d0d0f;
-    --bg-secondary: #16161a;
-    --bg-tertiary: #1e1e24;
-    --bg-card: #1a1a20;
-    --bg-hover: #242430;
-    --bg-input: #12121a;
+    /* Fallbacks only: the Vibe theme (openvibe-shared/builtin-themes.js) sets these on <html>
+       before the first paint. Kept identical to it so a no-JS page looks the same. */
+    --bg-primary: #0a0f1c;
+    --bg-secondary: #101828;
+    --bg-tertiary: #172238;
+    --bg-card: #131c2e;
+    --bg-hover: #1c2a44;
+    --bg-input: #0d1424;
 
-    --text-primary: #e8e6e3;
-    --text-secondary: #9a9a9a;
-    --text-muted: #666;
+    --text-primary: #e6edf7;
+    --text-secondary: #96a7c2;
+    --text-muted: #7386a3;
 
-    --accent: #8b5cf6;           /* OpenVibe violet */
-    --accent-light: #a78bfa;
-    --accent-dark: #6d28d9;
+    --accent: #3b82f6;           /* OpenVibe blue */
+    --accent-light: #60a5fa;
+    --accent-dark: #1d4ed8;
     --on-accent: #0b0d10; /* readable text/icon color on top of --accent (themes override) */
 
-    --live-red: #e74c3c;
-    --success: #2ecc71;
-    --warning: #f39c12;
-    --danger: #e74c3c;
-    --info: #3498db;
+    --live-red: #ef4444;
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --info: #38bdf8;
 
-    --border: #2a2a32;
-    --border-light: #3a3a44;
+    --border: #1f2d47;
+    --border-light: #2c3d5c;
 
     --radius: 8px;
     --radius-sm: 4px;
