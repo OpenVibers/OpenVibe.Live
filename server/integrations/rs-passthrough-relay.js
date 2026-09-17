@@ -40,7 +40,10 @@ function postJson(host, path, body) {
         const req = https.request({
             host, port: 443, path, method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload), 'User-Agent': UA },
-            timeout: 15000, rejectUnauthorized: false,
+            // api.robotstreamer.com has a valid public certificate; this request carries the user's RS
+            // token, so it must not accept an impostor's. (The SFU WebSocket below still connects to
+            // hosts RS hands out at runtime — see SECURITY_AUDIT.md.)
+            timeout: 15000,
         }, res => {
             let raw = '';
             res.on('data', d => raw += d);

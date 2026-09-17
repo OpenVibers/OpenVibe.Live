@@ -1461,7 +1461,8 @@ async function initWebRTC(stream) {
             // Reconnect signaling WS with exponential backoff
             // The WebRTC peer connection may still be delivering media even without signaling
             if (player && streamRef) {
-                const delay = _viewerReconnectDelay;
+                // Jittered so every viewer dropped by one server restart does not reconnect in lockstep.
+                const delay = _viewerReconnectDelay * (0.75 + Math.random() * 0.5);
                 _viewerReconnectDelay = Math.min(_viewerReconnectDelay * 1.5, 30000);
                 console.log(`[Player] Reconnecting signaling in ${Math.round(delay)}ms`);
                 _viewerReconnectTimer = setTimeout(() => {

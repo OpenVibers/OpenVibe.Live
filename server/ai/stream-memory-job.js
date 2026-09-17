@@ -203,6 +203,8 @@ async function _maybeLivePaste(stream, image, r, offset) {
     }
 }
 
+const _captures = require('../utils/limit')('stream-memory-capture', 2);
+
 async function tick() {
     if (!ai.streamMemoryEnabled()) return;
     let streams = [];
@@ -213,7 +215,9 @@ async function tick() {
         if (now - (_last.get(stream.id) || 0) < intervalMs) continue;
         _last.set(stream.id, now); // set before the async work so we don't double-capture
         if (_inflight.has(stream.id)) continue;
-        captureMemoryNow(stream, { allowFfmpeg: true, reason: 'periodic' }).catch(() => {});
+        // Two at a time across all live streams: each is an ffmpeg frame grab plus a vision call, and
+        // with several streams live they all came due in the same 30s tick.
+        _captures.run(() => captureMemoryNow(stream, { allowFfmpeg: true, reason: 'periodic' }), { maxQueue: 20 }).catch(() => {});
     }
     // GC entries for streams no longer live.
     if (_last.size > 300 || _lastSummary.size > 300) {

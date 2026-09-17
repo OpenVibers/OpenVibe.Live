@@ -1149,7 +1149,10 @@ router.put('/configs/:id/buttons/:btnId', requireAuth, (req, res) => {
         if (btn_border_color !== undefined) updates.btn_border_color = sanitizeCssColor(btn_border_color);
         if (is_enabled !== undefined) updates.is_enabled = is_enabled ? 1 : 0;
 
-        db.updateConfigButton(parseInt(req.params.btnId), updates);
+        // Scoped to this config: the ownership check above is on the config in the URL, so the
+        // button id must belong to it or a user could rewrite anyone's button through their own config.
+        const changed = db.updateConfigButton(parseInt(req.params.btnId), updates, config.id);
+        if (changed && changed.changes === 0) return res.status(404).json({ error: 'Button not found' });
         syncConfigToBoundLiveStreams(config.id);
         const buttons = db.getConfigButtons(config.id);
         res.json({ buttons });
@@ -1166,7 +1169,8 @@ router.delete('/configs/:id/buttons/:btnId', requireAuth, (req, res) => {
         if (config.user_id !== req.user.id && req.user.role !== 'admin') {
             return res.status(403).json({ error: 'Not authorized' });
         }
-        db.deleteConfigButton(parseInt(req.params.btnId));
+        const removed = db.deleteConfigButton(parseInt(req.params.btnId), config.id);
+        if (removed && removed.changes === 0) return res.status(404).json({ error: 'Button not found' });
         syncConfigToBoundLiveStreams(config.id);
         const buttons = db.getConfigButtons(config.id);
         res.json({ buttons });

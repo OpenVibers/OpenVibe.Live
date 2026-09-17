@@ -1,5 +1,9 @@
 # VODs & Clips
 
+> Written before the media split. Storage, cutting, thumbnails and files now live in OpenVibe.Media;
+> Live proxies to it (`server/media-proxy/`) and starts/stops recordings (`server/streaming/recorder.js`).
+> The local `vods`/`clips` tables are frozen and read-only. Implementation details below may be out of date.
+
 ## Recording System
 
 OpenVibe.Live automatically records your streams as VODs (Video on Demand).

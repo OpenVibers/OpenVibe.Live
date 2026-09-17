@@ -64,10 +64,13 @@ function decryptPassword(hash) {
  * POST /api/onvif/discover
  * Discover ONVIF devices on local network
  */
-router.post('/discover', requireAuth, async (req, res) => {
+// Discovery multicasts on the SERVER's network and tries admin/admin on whatever answers. A streamer's
+// cameras are on their own network, never this one, so for anyone but staff this was only a way to
+// scan the hosting provider's LAN. Admin only, with a bounded timeout.
+router.post('/discover', requireAuth, (req, res, next) => (req.user && req.user.role === 'admin' ? next() : res.status(403).json({ error: 'Camera discovery scans the server network and is limited to admins. Add your camera by address instead.' })), async (req, res) => {
     try {
         const discovery = new OnvifDiscovery();
-        const devices = await discovery.discover(req.body.timeout || 3000);
+        const devices = await discovery.discover(Math.min(Math.max(Number(req.body.timeout) || 3000, 500), 5000));
         
         // Test each discovered device for connectivity
         const tested = await Promise.all(devices.map(async (device) => {

@@ -2,64 +2,16 @@ const db = require('../db/database');
 const downloader = require('./media-downloader');
 const https = require('https');
 const http = require('http');
-const dns = require('dns').promises;
-const net = require('net');
 
-/**
- * Is this address one the server should never be asked to reach on a stranger's behalf?
- *
- * Loopback, link-local (169.254.x, which is where every cloud provider's instance-metadata
- * service lives), the RFC1918 ranges, CGNAT, and the IPv6 equivalents including v4-mapped forms.
- */
-function isInternalAddress(ip) {
-    if (!ip) return true;
-    const v = net.isIP(ip);
-    if (v === 4) {
-        const p = ip.split('.').map(Number);
-        if (p[0] === 10 || p[0] === 127 || p[0] === 0) return true;
-        if (p[0] === 169 && p[1] === 254) return true;
-        if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true;
-        if (p[0] === 192 && p[1] === 168) return true;
-        if (p[0] === 100 && p[1] >= 64 && p[1] <= 127) return true;   // CGNAT
-        if (p[0] >= 224) return true;                                  // multicast / reserved
-        return false;
-    }
-    if (v === 6) {
-        const l = ip.toLowerCase();
-        if (l === '::' || l === '::1') return true;
-        if (l.startsWith('fe80') || l.startsWith('fc') || l.startsWith('fd')) return true;
-        const mapped = l.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-        if (mapped) return isInternalAddress(mapped[1]);
-        return false;
-    }
-    return true;
-}
-
-/**
- * Refuse to probe a URL that points back inside the network.
- *
- * POST /api/media/quote is optionalAuth — anyone on the internet can reach it — and the generic
- * branch of normalizeInput hands whatever they send to yt-dlp, which will fetch it. Without this
- * that is an unauthenticated request generator aimed at localhost and at 169.254.169.254.
- *
- * Note this resolves the name and checks the answers; it does not pin the address that the later
- * fetch will use, so a DNS entry that changes between the two (rebinding) is not covered. Closing
- * that properly means resolving once and connecting by IP with an explicit Host header, which is
- * not something yt-dlp exposes.
- */
+// The address policy for URLs strangers submit lives in server/net/egress.js: it is enforced at
+// connect time (no second DNS resolution to rebind), on every redirect, and — through a loopback
+// proxy set in yt-dlp's environment — on the connections yt-dlp and ffmpeg make themselves.
+const egress = require('../net/egress');
 async function assertFetchableUrl(url) {
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-        throw new Error('Only http and https links can be looked up');
-    }
-    const host = url.hostname.replace(/^\[|\]$/g, '');
-    if (net.isIP(host)) {
-        if (isInternalAddress(host)) throw new Error('That address is not reachable from here');
-        return;
-    }
-    let addrs = [];
-    try { addrs = await dns.lookup(host, { all: true }); } catch { throw new Error('Could not resolve that host'); }
-    if (!addrs.length || addrs.some(a => isInternalAddress(a.address))) {
-        throw new Error('That address is not reachable from here');
+    try { await egress.assertPublicUrl(url); }
+    catch (e) {
+        if (e && e.code === 'EGRESS_DENIED') throw new Error('That address is not reachable from here');
+        throw new Error('Could not resolve that host');
     }
 }
 
@@ -535,9 +487,18 @@ class MediaQueue {
             if (currency === 'points') {
                 db.addChannelPoints(request.user_id, request.streamer_id, amount);
             } else if (currency === 'vibes') {
-                // The charge was booked as a donation to the streamer, so unwind both sides.
-                db.deductVibesCashout(request.streamer_id, amount);
-                db.addVibes(request.user_id, amount);
+                // The charge was booked as a donation to the streamer, so unwind both sides — atomically,
+                // and only if the streamer still holds the money. Crediting the requester after a failed
+                // deduction minted Vibes: pay, move the balance out (recycle or cash out), then refund.
+                const unwound = db.getDb().transaction(() => {
+                    if (!db.deductVibesCashout(request.streamer_id, amount)) return false;
+                    db.addVibes(request.user_id, amount);
+                    return true;
+                })();
+                if (!unwound) {
+                    console.warn(`[MediaQueue] refund of request ${request.id} refused: streamer ${request.streamer_id} no longer holds ${amount} Vibes`);
+                    return 0;
+                }
             } else {
                 // Idempotent per request id, so a double-refund is a no-op server-side.
                 require('../monetization/wallet-client')
@@ -610,11 +571,14 @@ class MediaQueue {
     }
 
     getState(streamerId) {
+        // This state is public (GET /api/media/channel/:username) and broadcast to every viewer in
+        // chat. Server file paths and raw yt-dlp errors are not viewer information; nothing renders them.
+        const publicRow = (r) => { if (!r) return r; const { file_path, last_error, ...rest } = r; void file_path; return { ...rest, failed: !!last_error }; };
         return {
             settings: this.getSettings(streamerId),
-            now_playing: db.getActiveMediaRequestByStreamer(streamerId),
-            queue: db.getPendingMediaRequestsByStreamer(streamerId, 50),
-            history: db.getRecentMediaRequestsByStreamer(streamerId, 20),
+            now_playing: publicRow(db.getActiveMediaRequestByStreamer(streamerId)),
+            queue: (db.getPendingMediaRequestsByStreamer(streamerId, 50) || []).map(publicRow),
+            history: (db.getRecentMediaRequestsByStreamer(streamerId, 20) || []).map(publicRow),
         };
     }
 
@@ -758,7 +722,12 @@ class MediaQueue {
                 throw new Error(err.message || 'That link cannot be looked up');
             }
             try {
+                // Make sure the egress proxy is up before yt-dlp's first request goes out.
+                await downloader.ready();
                 const info = await downloader.getInfo(href);
+                // yt-dlp reports the page's own canonical URL, which is fetched again later
+                // (stream-url extraction, downloads). Hold it to the same rule as the input.
+                if (info.url && info.url !== href) await assertFetchableUrl(new URL(info.url));
                 return {
                     canonical_url: info.url || href,
                     embed_url: null,

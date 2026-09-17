@@ -277,7 +277,8 @@ function simulateDonation(userId, { amountUsd = 5, donor = 'Test Tipper', messag
         amount, message, source: 'powerchat-test', timestamp: ts,
     };
     chatServer.broadcastToChannelRoom(userId, streamId, testEvent);
-    try { chatServer.broadcastGlobal({ ...testEvent, global: true, channel_user_id: userId }); } catch { /* */ }
+    // Not to global chat: a test tip is the streamer's own preview, and any signed-in user could
+    // otherwise announce a fake 99,900-Vibe donation site-wide.
     // Persist it, exactly like a real tip. A test that vanishes on reload does not
     // actually test what the streamer is checking — that the alert lands in chat AND
     // survives a refresh. This was the only donation path that broadcast without saving.

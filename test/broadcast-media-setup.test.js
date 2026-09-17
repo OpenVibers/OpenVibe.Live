@@ -15,15 +15,21 @@ const setup = read('public/js/broadcast-media-setup.js');
 const workspace = read('public/js/broadcast-workspace.js');
 const devices = read('public/js/broadcast-devices.js');
 const html = read('public/index.html');
-const css = read('public/css/broadcast.css');
+// Broadcast styles live in the global broadcast.css and the broadcast feature stylesheet.
+const css = read('public/css/broadcast.css') + read('public/css/features/broadcast.css');
 
 // ── A: the module is actually loaded, and before its consumers ───────────────────────
-assert.ok(html.includes('/js/broadcast-media-setup.js'), 'index.html must load broadcast-media-setup.js');
-const at = (f) => html.indexOf(f);
+// Broadcast scripts load as one ordered feature (public/features.json), not as index.html tags.
+const registry = JSON.parse(read('public/features.json'));
+const bcJs = (registry.features.broadcast && registry.features.broadcast.js) || [];
+const at = (f) => bcJs.indexOf(f);
+assert.ok(at('/js/broadcast-media-setup.js') !== -1, 'the broadcast feature must load broadcast-media-setup.js');
 assert.ok(at('/js/broadcast-media-setup.js') < at('/js/broadcast-workspace.js'),
     'media-setup must load before broadcast-workspace.js, which calls into it');
 assert.ok(at('/js/broadcast-media-setup.js') < at('/js/broadcast-devices.js'),
     'media-setup must load before broadcast-devices.js, which calls into it');
+assert.ok(at('/js/call.js') !== -1 && at('/js/call.js') < at('/js/broadcast.js'),
+    'call.js must load before broadcast.js (cleanupStream reads callState unguarded)');
 console.log('OK A: broadcast-media-setup.js is loaded ahead of both consumers');
 
 // ── B: the public surface consumers rely on exists ───────────────────────────────────

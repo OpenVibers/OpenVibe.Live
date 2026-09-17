@@ -19,12 +19,7 @@ const ok = (name) => { pass++; console.log('  ok -', name); };
 
 // ── publicStream() strips both credentials and keeps everything else ──────────
 {
-    const src = fs.readFileSync(path.join(ROOT, 'server/db/database.js'), 'utf8');
-    const m = src.match(/function publicStream\(row\) \{[\s\S]*?\n\}/);
-    assert(m, 'publicStream() should exist in server/db/database.js');
-    // eslint-disable-next-line no-new-func
-    const publicStream = new Function(`${m[0]}; return publicStream;`)();
-
+    const { publicStream } = require('../server/web/serializers');
     const row = {
         id: 7, title: 'a stream', viewer_count: 12, username: 'someone',
         stream_key: 'SECRET-USER-KEY', managed_stream_key: 'SECRET-SLOT-KEY',
@@ -45,6 +40,10 @@ const ok = (name) => { pass++; console.log('  ok -', name); };
     // The original must not be mutated — callers may still need the key for the publish path.
     assert.strictEqual(row.stream_key, 'SECRET-USER-KEY', 'input row must not be mutated');
     ok('publicStream does not mutate its input');
+
+    const dbSrc = fs.readFileSync(path.join(ROOT, 'server/db/database.js'), 'utf8');
+    assert(/function publicStream\(row\) \{[\s\S]*?serializers'\)\.publicStream\(row\)/.test(dbSrc), 'db.publicStream delegates to server/web/serializers');
+    ok('db.publicStream is the shared serializer');
 }
 
 // ── The two endpoints that leaked must go through a redaction step ────────────
@@ -55,10 +54,8 @@ const ok = (name) => { pass++; console.log('  ok -', name); };
     ok('media channel endpoint redacts live_stream');
 
     const streaming = fs.readFileSync(path.join(ROOT, 'server/streaming/routes.js'), 'utf8');
-    assert(/delete out\.managed_stream_key/.test(streaming),
-        'GET /api/streams must delete managed_stream_key');
-    assert(/delete out\.stream_key/.test(streaming),
-        'GET /api/streams must delete stream_key');
+    assert(/return publicStream\(\{\s*\.\.\.s,/.test(streaming),
+        'GET /api/streams must go through publicStream (behaviour is covered by test/public-serializers.test.js)');
     ok('public stream list redacts both keys');
 }
 
@@ -213,21 +210,25 @@ const ok = (name) => { pass++; console.log('  ok -', name); };
 }
 
 // ── /api/media/quote is unauthenticated, so it must not probe internal hosts ──
+// Address policy and connect-time enforcement live in server/net/egress.js (test/egress.test.js
+// covers the proxy, redirects and rebinding); this checks the media queue actually uses it.
 {
-    const src = fs.readFileSync(path.join(ROOT, 'server/media/media-queue.js'), 'utf8');
-    const fn = src.match(/function isInternalAddress\(ip\) \{[\s\S]*?\n\}/);
-    assert(fn, 'isInternalAddress should exist');
-    // eslint-disable-next-line no-new-func
-    const isInternal = new Function('net', `${fn[0]}; return isInternalAddress;`)(require('net'));
-    for (const blocked of ['127.0.0.1', '169.254.169.254', '10.0.0.1', '172.16.5.5', '192.168.1.1', '100.64.0.1', '::1', 'fd00::1', '::ffff:127.0.0.1']) {
-        assert.strictEqual(isInternal(blocked), true, `${blocked} must count as internal`);
+    const { isPublicAddress } = require('../server/net/egress');
+    for (const blocked of ['127.0.0.1', '169.254.169.254', '10.0.0.1', '172.16.5.5', '192.168.1.1', '100.64.0.1', '::1', 'fd00::1',
+        '::ffff:127.0.0.1', '::ffff:7f00:1', '::ffff:a9fe:a9fe', '64:ff9b::a9fe:a9fe', '2002:7f00:1::', 'fec0::1', '198.18.0.1']) {
+        assert.strictEqual(isPublicAddress(blocked), false, `${blocked} must count as internal`);
     }
     for (const allowed of ['8.8.8.8', '1.1.1.1', '172.32.0.1', '2606:4700::1111']) {
-        assert.strictEqual(isInternal(allowed), false, `${allowed} should be reachable`);
+        assert.strictEqual(isPublicAddress(allowed), true, `${allowed} should be reachable`);
     }
+    const src = fs.readFileSync(path.join(ROOT, 'server/media/media-queue.js'), 'utf8');
     assert(/await assertFetchableUrl\(url\)/.test(src), 'the generic yt-dlp branch must check the URL first');
+    assert(/egress\.assertPublicUrl/.test(src), 'assertFetchableUrl must use the egress policy');
+    assert(/assertFetchableUrl\(new URL\(info\.url\)\)/.test(src), 'the canonical URL yt-dlp reports is checked too');
+    const dl = fs.readFileSync(path.join(ROOT, 'server/media/media-downloader.js'), 'utf8');
+    assert(/HTTPS_PROXY/.test(dl) && /egress\.proxy\(\)/.test(dl), 'yt-dlp runs through the egress proxy');
     assert(/url\.protocol !== 'http:' && url\.protocol !== 'https:'/.test(src), 'non-http schemes must be rejected on entry');
-    ok('media quote refuses internal addresses and non-http schemes');
+    ok('media quote refuses internal addresses (all IPv6 spellings) and non-http schemes');
 }
 
 // ── A ban has to stop commands too, not just plain messages ──────────────────
@@ -236,7 +237,7 @@ const ok = (name) => { pass++; console.log('  ok -', name); };
     const fnStart = src.indexOf('handleChatMessage(ws, client, msg) {');
     assert(fnStart > 0, 'handleChatMessage should exist');
     const body = src.slice(fnStart, fnStart + 3000);
-    const banAt = body.indexOf('db.isUserBanned(client.user.id, client.streamId)');
+    const banAt = body.indexOf('db.isUserBanned(client.user.id, modStreamId)');
     const bangAt = body.indexOf("text.startsWith('!')");
     const slashAt = body.indexOf("text.startsWith('/')");
     assert(banAt > 0 && bangAt > 0 && slashAt > 0, 'all three branches should be present');

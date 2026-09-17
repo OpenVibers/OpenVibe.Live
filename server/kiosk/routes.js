@@ -10,6 +10,7 @@ const express = require('express');
 const dns = require('dns').promises;
 const net = require('net');
 
+const egress = require('../net/egress');
 const router = express.Router();
 
 const FETCH_TIMEOUT_MS = 3500;
@@ -50,12 +51,12 @@ async function hostIsPublic(host) {
     host = host.toLowerCase();
     if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal')) return false;
     // If the host is itself an IP literal, check it directly.
-    if (net.isIP(host)) return !ipIsPrivate(host);
+    if (net.isIP(host)) return egress.isPublicAddress(host);
     if (!/^[a-z0-9.-]+$/.test(host) || host.length > 253) return false;
     try {
         const addrs = await dns.lookup(host, { all: true });
         if (!addrs.length) return false;
-        return addrs.every((a) => !ipIsPrivate(a.address));
+        return addrs.every((a) => egress.isPublicAddress(a.address));
     } catch {
         return false;
     }
@@ -85,36 +86,25 @@ router.get('/site', async (req, res) => {
     if (!(await hostIsPublic(u.hostname))) return res.json({ reachable: false });
 
     let title = '', finalUrl = u.href, finalHost = u.hostname;
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
     try {
-        const r = await fetch(u.href, {
-            signal: ac.signal,
-            redirect: 'follow',
+        // egress.fetchText re-applies the public-address rule at connect time on every redirect hop.
+        // The old fetch({ redirect: 'follow' }) only checked the first host, so a public page that
+        // redirected to an internal service had that service's <title> returned to anyone.
+        const r = await egress.fetchText(u.href, {
+            timeoutMs: FETCH_TIMEOUT_MS,
+            maxBytes: MAX_HTML_BYTES,
             headers: {
                 // A real browser UA gets past most simple bot walls so we can read the <title>.
-                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-                'accept': 'text/html,application/xhtml+xml',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+                Accept: 'text/html,application/xhtml+xml',
             },
         });
-        // Follow redirects but keep the favicon/host on a still-public final host.
-        try { const fu = new URL(r.url || u.href); if (await hostIsPublic(fu.hostname)) { finalUrl = fu.href; finalHost = fu.hostname; } } catch { /* keep */ }
-        const ct = r.headers.get('content-type') || '';
-        if (ct.includes('text/html') && r.body?.getReader) {
-            const reader = r.body.getReader();
-            let received = 0; const chunks = [];
-            while (received < MAX_HTML_BYTES) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                chunks.push(value); received += value.length;
-            }
-            try { reader.cancel(); } catch { /* */ }
-            const html = Buffer.concat(chunks.map((c) => Buffer.from(c))).toString('utf8');
-            const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        try { const fu = new URL(r.url); finalUrl = fu.href; finalHost = fu.hostname; } catch { /* keep */ }
+        if (String(r.headers['content-type'] || '').includes('text/html')) {
+            const m = r.text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
             if (m) title = m[1].replace(/\s+/g, ' ').trim().slice(0, 140);
         }
-    } catch { /* blocked / slow / 403 — irrelevant; the domain resolves, so we still navigate */ }
-    clearTimeout(timer);
+    } catch { /* blocked / slow / 403 / denied redirect — the domain resolves, so we still navigate */ }
 
     // Domain resolves → it's a real site → navigate there (title may be empty if the GET was blocked).
     return res.json({

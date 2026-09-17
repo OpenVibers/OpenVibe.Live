@@ -124,6 +124,9 @@ function withUserFields(row) {
 // Media doesn't know usernames — translate a ?username= filter to user_id here.
 function usernameToUserId(query) {
     const q = { ...query };
+    // Public lists only. Media honours these for the app key, which every call through here carries,
+    // so a browser adding ?include_private=1 listed anyone's private VODs. Owner lists live on /mine.
+    delete q.include_private; delete q.include_unlisted;
     const username = String(q.username || '').trim();
     delete q.username;
     if (username) {
@@ -631,7 +634,13 @@ router.post('/clips', requireAuth, memUpload.single('video'), async (req, res) =
         // POST /clips — an inherited-behavior extension beyond the documented JSON body.
         if (req.file) {
             const liveStream = parsedStreamId ? db.getStreamById(parsedStreamId) : null;
-            if (liveStream && !db.isStreamClipRecordingEnabled(liveStream)) {
+            // An uploaded blob is filed under the stream's channel and notifies the streamer, so it has
+            // to be a clip of a stream that is actually live right now. Any stream id used to work,
+            // which let anyone post arbitrary video onto someone else's clips page.
+            if (!liveStream || !liveStream.is_live) {
+                return res.status(400).json({ error: 'Clips can only be uploaded from a live stream.' });
+            }
+            if (!db.isStreamClipRecordingEnabled(liveStream)) {
                 return res.status(403).json({ error: 'Clipping is disabled for this stream.' });
             }
             const fd = new FormData();

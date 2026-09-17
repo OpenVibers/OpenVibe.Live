@@ -170,10 +170,8 @@ async function reconcileOnce() {
 let _timer = null;
 function startReconciler() {
     if (_timer) return;
-    const run = () => { reconcileOnce().catch((e) => console.warn('[PowerChat] reconcile sweep failed:', e.message)); };
-    setTimeout(run, FIRST_SWEEP_MS).unref();
-    _timer = setInterval(run, SWEEP_MS);
-    if (_timer.unref) _timer.unref();
+    // Credits money from paginated upstream calls: a slow sweep must never be joined by the next one.
+    _timer = require('../utils/jobs').every('powerchat-reconcile', SWEEP_MS, () => reconcileOnce(), { initialDelayMs: FIRST_SWEEP_MS, jitterMs: 30 * 1000 });
     console.log('[PowerChat] paid-messages reconciler started (backfills missed checkout webhooks every 15 min)');
 }
 

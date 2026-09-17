@@ -1,0 +1,24 @@
+# OpenVibe.Live — listening socket, owned by systemd rather than by the process.
+#
+# nginx proxies straight to 127.0.0.1:3000. Without this, every restart closes that listener and
+# nginx gets ECONNREFUSED for the whole boot — which reaches users as a Cloudflare 502. With the
+# socket held here, connections that arrive mid-restart wait in the kernel accept queue and are
+# served as soon as the new process calls accept().
+#
+# What this does NOT do: it does not preserve established connections. Open WebSockets, WHIP
+# sessions, RTMP ingests and WebRTC transports all live in the process and die with it. This buys
+# clean HTTP continuity, nothing more — see deploy/README.md.
+[Unit]
+Description=OpenVibe.Live HTTP socket
+PartOf=openvibe-live.service
+
+[Socket]
+ListenStream=0.0.0.0:3000
+NoDelay=true
+# Node's libuv expects a non-blocking descriptor.
+NonBlocking=true
+# Match the listen backlog the process would have used itself.
+Backlog=511
+
+[Install]
+WantedBy=sockets.target

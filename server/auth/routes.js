@@ -319,9 +319,17 @@ router.get('/callback', async (req, res) => {
         if (!code) return res.status(400).send('Missing authorization code');
 
         // Validate CSRF state
+        // The state cookie is required, not just compared when present. Skipping the check when the
+        // cookie was missing let a crafted link sign a visitor into someone else's account (login CSRF).
+        // Only /sso/login starts this flow, and it always sets the cookie.
         const savedState = req.cookies?.oauth_state;
-        if (savedState && savedState !== state) {
-            return res.status(403).send('Invalid state parameter');
+        if (!savedState || !state || savedState !== state) {
+            res.clearCookie('oauth_state');
+            return res.status(403).type('html').send('<!doctype html><meta charset="utf-8"><title>Sign-in expired</title>'
+                + '<body style="font-family:system-ui;background:#0f0f14;color:#eee;display:grid;place-items:center;min-height:100vh;margin:0">'
+                + '<div style="text-align:center"><h1 style="font-size:1.3rem">That sign-in link expired</h1>'
+                + '<p>Sign-in links only work in the browser that started them, for a few minutes.</p>'
+                + '<p><a style="color:#c4a1ff" href="/api/auth/sso/login">Sign in again</a> · <a style="color:#c4a1ff" href="/">Home</a></p></div>');
         }
         res.clearCookie('oauth_state');
 
@@ -561,12 +569,13 @@ function sanitizeUser(user, publicOnly = false) {
         bio: user.bio,
         role: user.role,
         profile_color: user.profile_color,
-        openvibe_bucks_balance: user.openvibe_bucks_balance,
-        openvibe_coins_balance: user.openvibe_coins_balance,
         created_at: user.created_at,
         capabilities: permissions.getCapabilities(user),
     };
     if (!publicOnly) {
+        // Balances are real money (Vibes) and the user's own business, like email and the key.
+        safe.openvibe_bucks_balance = user.openvibe_bucks_balance;
+        safe.openvibe_coins_balance = user.openvibe_coins_balance;
         safe.email = user.email;
         safe.stream_key = user.stream_key;
     }

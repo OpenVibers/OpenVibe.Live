@@ -367,6 +367,12 @@ router.get('/user/:username/profile', optionalAuth, (req, res) => {
 
         const profile = db.getUserProfile(user.id);
         if (!profile) return res.status(404).json({ error: 'Profile not found' });
+        // The card shows OpenCoins (earned, part of the game). Vibes are real money and presence is
+        // personal, so both stay with the user themselves.
+        if (!req.user || req.user.id !== user.id) {
+            delete profile.openvibe_bucks_balance;
+            delete profile.last_seen;
+        }
 
         // Add game stats if available
         try {

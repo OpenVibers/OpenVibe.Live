@@ -4,7 +4,6 @@
    restream, RobotStreamer, live controls, TTS, clip creation.
    State foundation  → broadcast-state.js
    Device enumeration→ broadcast-devices.js
-   VOD archive       → broadcast-vods.js
    Workspace UI      → broadcast-workspace.js
    ═══════════════════════════════════════════════════════════════ */
 
@@ -546,9 +545,7 @@ function switchBroadcastTab(tabName) {
     }
 
     // Load tab content if needed
-    if (tabName === 'past-streams') {
-        loadBroadcastVODs();
-    } else if (tabName === 'broadcast-settings') {
+    if (tabName === 'broadcast-settings') {
         loadBroadcastSettingsForm();
     } else if (tabName === 'go-live') {
         // If there's an active stream, restore the live broadcast view
@@ -6127,7 +6124,6 @@ function _connectMediaPipSocket() {
     });
     _mediaPipSocket = ws;
 }
-/* VOD archive functions → broadcast-vods.js */
 /**
  * Load Broadcast Settings form
  */

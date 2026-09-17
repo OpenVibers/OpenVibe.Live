@@ -51,6 +51,26 @@ const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const config = require('./config');
+const assets = require('./web/assets');
+// Starts the event-loop delay histogram at boot so the first diagnostics window is complete.
+require('./diagnostics');
+
+/**
+ * Send an HTML document from public/ with its asset URLs content-versioned. Returns false when the
+ * file does not exist so a caller can fall through. Documents are never cached (they name the asset
+ * versions), unless the route already chose a stricter policy.
+ */
+function sendDocument(res, relPath, urlPath) {
+    let doc = null;
+    try { doc = assets.document(relPath); } catch { doc = null; }
+    if (!doc) return false;
+    if (!res.getHeader('Cache-Control')) assets.setNoCache(res);
+    // The SPA shell carries only the assets of the route being opened (see public/features.json).
+    const html = relPath === 'index.html' ? assets.renderRoute(doc.html, urlPath || '/') : doc.html;
+    try { res.setHeader('Content-Security-Policy-Report-Only', assets.cspReportOnly(html)); } catch { /* */ }
+    res.type('html').send(html);
+    return true;
+}
 
 // Database
 const db = require('./db/database');
@@ -378,7 +398,7 @@ function banNameFor(ban) {
 }
 function renderBannedPage(req, res, { name, reason } = {}) {
     let html = '';
-    try { html = require('fs').readFileSync(path.join(__dirname, '../public/banned.html'), 'utf8'); } catch { html = '<h1>Banned</h1>'; }
+    try { html = require('fs').readFileSync(path.join(assets.PUBLIC_DIR, 'banned.html'), 'utf8'); } catch { html = '<h1>Banned</h1>'; }
     html = html
         .replace('{{HEADLINE}}', name ? `${escBanHtml(name)}, you are banned from OpenVibe.Live.` : 'You are banned from OpenVibe.Live.')
         .replace('{{REASON}}', escBanHtml(reason || DEFAULT_BAN_REASON));
@@ -437,6 +457,7 @@ let sharedServePath = null;
                 const found = SHARED_BROWSER_FILES.filter(f => fs.existsSync(path.join(p, f)));
                 if (found.length > 0) {
                     sharedServePath = p;
+                    assets.setSharedDir(p);
                     console.log(`[Server] /shared: serving ${found.length}/${SHARED_BROWSER_FILES.length} browser file(s) from ${p}`);
                     const missing = SHARED_BROWSER_FILES.filter(f => !found.includes(f));
                     if (missing.length) console.warn(`[Server] /shared: missing files: ${missing.join(', ')}`);
@@ -466,8 +487,9 @@ if (sharedServePath) {
         const filePath = path.join(sharedServePath, fileName);
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-        // Same deal as /js and /css: a ?v= request is a version-pinned URL and can be cached hard.
-        res.setHeader('Cache-Control', req.query.v ? 'public, max-age=31536000, immutable' : 'public, max-age=300');
+        // Same deal as /js and /css: only a ?v= that matches the file's content hash is immutable.
+        if (req.query.v && req.query.v === assets.hashOf('/shared/' + fileName)) assets.setImmutable(res);
+        else res.setHeader('Cache-Control', 'public, max-age=300');
         res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
         res.sendFile(filePath, (err) => {
             if (err && !res.headersSent) {
@@ -482,7 +504,7 @@ if (sharedServePath) {
     });
 }
 
-const soundsPath = path.resolve(__dirname, '../public/assets/sounds');
+const soundsPath = path.join(assets.PUBLIC_DIR, 'assets/sounds');
 app.use('/assets/sounds', express.static(soundsPath, {
     fallthrough: false,
     setHeaders(res) {
@@ -490,32 +512,30 @@ app.use('/assets/sounds', express.static(soundsPath, {
     },
 }));
 
-// JS/CSS/HTML caching.
+// JS/CSS/HTML caching — see server/web/assets.js.
 //
-// Every script and stylesheet in our HTML is referenced with ?v=N, which makes each version a
-// distinct URL — so a versioned request can be cached hard, by the browser and at the Cloudflare
-// edge, and a deploy that bumps ?v= is picked up instantly because it is a different URL. That
-// turns a repeat visit from "revalidate ~50 files" into "read them from disk cache", and it lets
-// the edge serve them without touching this box at all.
-//
-// A request with no ?v= is something we cannot version-track, so it keeps the old behaviour:
-// revalidate every time, never cache at the edge. HTML is always no-cache — it is the document
-// that names the current asset versions.
-const noCacheHeaders = (res) => { res.setHeader('Cache-Control', 'no-cache'); res.setHeader('CDN-Cache-Control', 'no-store'); };
-const IMMUTABLE = 'public, max-age=31536000, immutable';
-const markVersioned = (req, res, next) => { res.locals.ovVersioned = !!req.query.v; next(); };
-const assetHeaders = (res) => {
-    if (res.locals && res.locals.ovVersioned) { res.setHeader('Cache-Control', IMMUTABLE); res.setHeader('CDN-Cache-Control', IMMUTABLE); }
-    else noCacheHeaders(res);
-};
-const assetOpts = { etag: true, lastModified: true, setHeaders: assetHeaders };
-app.use('/js', markVersioned, express.static(path.join(__dirname, '../public/js'), assetOpts));
-app.use('/css', markVersioned, express.static(path.join(__dirname, '../public/css'), assetOpts));
+// Asset URLs in every HTML document are rewritten to ?v=<content hash> when the document is served,
+// so nobody bumps a ?v= counter by hand any more. A request whose ?v= matches the current bytes is
+// immutable for a year at the browser and at Cloudflare; a request for an earlier release's hash is
+// served from that release's directory when it still exists; anything else is served no-cache so no
+// cache can pin the wrong bytes under that URL. HTML is always no-cache — it names the versions.
+const noCacheHeaders = assets.setNoCache;
+const assetOpts = { etag: true, lastModified: true, setHeaders: assets.staticHeaders };
+app.use('/js', assets.versionedStatic('/js'), express.static(path.join(assets.PUBLIC_DIR, 'js'), assetOpts));
+app.use('/css', assets.versionedStatic('/css'), express.static(path.join(assets.PUBLIC_DIR, 'css'), assetOpts));
+// Page markup that is fetched when a route is first opened instead of shipping inside index.html.
+app.use('/fragments', assets.versionedStatic('/fragments'), express.static(path.join(assets.PUBLIC_DIR, 'fragments'), { ...assetOpts, fallthrough: false }));
 // SEO: per-route <head> meta/OG/JSON-LD injection + dynamic sitemap. MUST be before the public
 // static below (so it can intercept "/") and before the SPA catch-all. Only touches the SPA
 // HTML routes (home, vods/clips/pastes lists, vod/clip/paste detail); everything else falls through.
 try { require('./seo/seo').register(app); } catch (e) { console.warn('[SEO] not registered:', e.message); }
-app.use(express.static(path.join(__dirname, '../public'), { setHeaders: (res, filePath) => { if (filePath.endsWith('.html')) noCacheHeaders(res); } }));
+// Standalone HTML pages (popout chat, kiosk, legal, OBS overlays…) go through the same asset rewrite
+// as the SPA shell, so their script and stylesheet URLs can never drift out of date again.
+app.use((req, res, next) => {
+    if ((req.method !== 'GET' && req.method !== 'HEAD') || !req.path.endsWith('.html')) return next();
+    if (!sendDocument(res, req.path.slice(1))) return next();
+});
+app.use(express.static(assets.PUBLIC_DIR, { setHeaders: (res, filePath) => { if (filePath.endsWith('.html')) noCacheHeaders(res); } }));
 
 // Ensure data directories exist. VOD/clip/paste/thumbnail files live in
 // OpenVibe.Media now; what remains is Live-local state (live thumbs, emotes,
@@ -786,6 +806,27 @@ app.post('/api/admin/broadcast', requireAuth, permissions.requireAdmin, (req, re
     }
 });
 
+// ── CSP violation reports (from the report-only policy on HTML documents) ──
+// Counted per directive + blocked origin and logged at most once a minute per key, so a noisy page
+// cannot fill the journal. Counts are visible in /api/admin/diagnostics.
+const _cspCounts = new Map();
+app.post('/api/csp-report', express.json({ type: ['application/csp-report', 'application/reports+json', 'application/json'], limit: '16kb' }), (req, res) => {
+    try {
+        const r = (req.body && (req.body['csp-report'] || (Array.isArray(req.body) && req.body[0] && req.body[0].body))) || {};
+        const directive = String(r['violated-directive'] || r.effectiveDirective || 'unknown').split(' ')[0].slice(0, 40);
+        let blocked = String(r['blocked-uri'] || r.blockedURL || 'inline');
+        try { blocked = new URL(blocked).origin; } catch { blocked = blocked.slice(0, 40); }
+        const key = `${directive} ${blocked}`;
+        const e = _cspCounts.get(key) || { n: 0, loggedAt: 0 };
+        e.n++;
+        if (Date.now() - e.loggedAt > 60000) { e.loggedAt = Date.now(); console.warn(`[CSP report-only] ${key} (${e.n} so far)`); }
+        _cspCounts.set(key, e);
+        if (_cspCounts.size > 500) _cspCounts.delete(_cspCounts.keys().next().value);
+    } catch { /* malformed report */ }
+    res.status(204).end();
+});
+app.locals.cspCounts = _cspCounts;
+
 // ── Docs ─────────────────────────────────────────────────────
 // docs/*.md rendered as HTML at /docs/<name> (+ /docs/<name>.md) with GitHub-compatible
 // heading anchors, so https://openvibe.live/docs/whip#publishing-from-a-browser is a
@@ -796,33 +837,33 @@ app.use('/docs', require('./docs/routes'));
 // Modular system: /obs/<widget>/<username>
 // Each widget is a standalone HTML page designed for OBS browser sources.
 app.get('/obs/chat/:username', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/obs/chat.html'));
+    sendDocument(res, 'obs/chat.html');
 });
 
 // New overlay routes — per-slot and global
 app.get('/overlay/chat/:username/:slotIdOrSlug', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/obs/chat.html'));
+    sendDocument(res, 'obs/chat.html');
 });
 app.get('/overlay/chat/:username', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/obs/chat.html'));
+    sendDocument(res, 'obs/chat.html');
 });
 
 app.get('/media/:username', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/media-player.html'));
+    sendDocument(res, 'media-player.html');
 });
 
 // ── Legal Pages ───────────────────────────────────────────────
 app.get('/dmca', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/dmca.html'));
+    sendDocument(res, 'dmca.html');
 });
 app.get('/tos', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/tos.html'));
+    sendDocument(res, 'tos.html');
 });
 app.get('/terms', (req, res) => {
     res.redirect(302, '/tos');
 });
 app.get('/privacy', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/privacy.html'));
+    sendDocument(res, 'privacy.html');
 });
 
 // ── WHIP Endpoint (WebRTC-HTTP Ingestion Protocol) ───────────
@@ -840,7 +881,7 @@ app.delete('/whip/:streamId/:resourceId', whipHandler.handleWhipDelete);
 // both /kiosk and /kiosk.html so either URL works.
 app.get(['/kiosk', '/kiosk.html'], (req, res) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.sendFile(path.join(__dirname, '../public/kiosk.html'));
+    sendDocument(res, 'kiosk.html');
 });
 
 // Popout chat pretty URLs: /popout/global, /popout/:username (channel chat) and
@@ -851,7 +892,7 @@ app.get(['/kiosk', '/kiosk.html'], (req, res) => {
 // /popout-chat/… works as an alias; with no username both prefixes mean global chat.
 app.get(['/popout', '/popout/*', '/popout-chat', '/popout-chat/*'], (req, res) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.sendFile(path.join(__dirname, '../public/popout-chat.html'));
+    sendDocument(res, 'popout-chat.html');
 });
 
 // ── Ban screen ───────────────────────────────────────────────
@@ -862,14 +903,31 @@ app.get(['/popout', '/popout/*', '/popout-chat', '/popout-chat/*'], (req, res) =
  * The "Continue" button on the ban page: the site owner chose to let the banned person back in.
  * Lifts the account ban and every network ban attached to them, clears the sticky cookie.
  */
+function signBannedUid(id) {
+    const mac = require('crypto').createHmac('sha256', String(config.jwt && config.jwt.secret || '')).update(`ban:${id}`).digest('base64url');
+    return `${id}.${mac}`;
+}
+function verifyBannedUidCookie(value) {
+    const m = /^(\d+)\.([A-Za-z0-9_-]+)$/.exec(String(value || ''));
+    if (!m) return null;
+    const expected = signBannedUid(Number(m[1])).split('.')[1];
+    const a = Buffer.from(m[2]), b = Buffer.from(expected);
+    return a.length === b.length && require('crypto').timingSafeEqual(a, b) ? Number(m[1]) : null;
+}
 app.post('/banned/continue', (req, res) => {
     const user = banRequestUser(req);
     const ipBan = (() => { try { return db.getIpBan(req.ip, null); } catch { return null; } })();
     let subject = null;
     if (user && user.is_banned) subject = db.getUserById(user.id);
     else if (ipBan && ipBan.user_id) subject = db.getUserById(ipBan.user_id);
-    else if (req.cookies && req.cookies.ov_banned_name) subject = db.getUserByUsername(String(req.cookies.ov_banned_name)) || null;
-    res.clearCookie('ov_banned'); res.clearCookie('ov_banned_name');
+    else {
+        // A browser that was signed in as the banned account when it saw the ban page carries a
+        // signed id. It used to be the display name in plain text, looked up as a username, so
+        // anyone could lift any account's ban by sending a made-up cookie.
+        const uid = verifyBannedUidCookie(req.cookies && req.cookies.ov_banned_uid);
+        if (uid) subject = db.getUserById(uid) || null;
+    }
+    res.clearCookie('ov_banned'); res.clearCookie('ov_banned_name'); res.clearCookie('ov_banned_uid');
     if (!subject) {
         // Nothing to lift for this visitor (stray cookie) — just let them through.
         return res.json({ ok: true, name: null, lifted: 0 });
@@ -896,6 +954,7 @@ app.get('/banned', (req, res) => {
     if (user && user.is_banned) {
         res.cookie('ov_banned', '1', { httpOnly: true, maxAge: tenYears, sameSite: 'Lax', secure: isSecure });
         res.cookie('ov_banned_name', String(user.display_name || user.username).slice(0, 60), { httpOnly: true, maxAge: tenYears, sameSite: 'Lax', secure: isSecure });
+        res.cookie('ov_banned_uid', signBannedUid(user.id), { httpOnly: true, maxAge: tenYears, sameSite: 'Lax', secure: isSecure });
     }
     const name = (user && user.is_banned) ? (user.display_name || user.username)
         : (req.cookies && req.cookies.ov_banned_name ? String(req.cookies.ov_banned_name) : banNameFor(ipBan));
@@ -909,7 +968,7 @@ app.get('*', (req, res) => {
     if (req.url.startsWith('/api/') || req.url.startsWith('/ws/')) {
         return res.status(404).json({ error: 'Not found' });
     }
-    res.sendFile(path.join(__dirname, '../public/index.html'));
+    if (!sendDocument(res, 'index.html', req.path)) res.status(503).type('text/plain').send('Site shell unavailable');
 });
 
 // ── Global Error Handler ─────────────────────────────────────
@@ -1502,7 +1561,7 @@ async function start() {
     // 9. Periodic registry refresh — re-syncs config with openvibe.network every 5 minutes.
     // This is a safety net: if the startup refresh failed (openvibe.network was temporarily
     // unreachable), subsequent refreshes will fix CORS, issuer, and other URL config.
-    const registryRefreshInterval = setInterval(async () => {
+    require('./utils/jobs').every('registry-refresh', 5 * 60 * 1000, async () => {
         try {
             await config.refreshRegistry();
             const freshOrigins = getAllowedOrigins();
@@ -1513,8 +1572,7 @@ async function start() {
         } catch (err) {
             console.warn('[Config] Periodic registry refresh failed:', err.message);
         }
-    }, 5 * 60 * 1000);
-    if (typeof registryRefreshInterval.unref === 'function') registryRefreshInterval.unref();
+    }, { jitterMs: 30 * 1000 });
 }
 
 // ── Graceful Shutdown ────────────────────────────────────────
@@ -1546,6 +1604,10 @@ function shutdown() {
     // Stop advertising readiness immediately: from here on this process is draining, and anything
     // gating on /api/ready should see that before the socket actually closes.
     _bootComplete = false;
+    // No new background runs from here on (the jobs helper's loops); and end SSE streams so
+    // server.close() can actually complete instead of always hitting the forced exit.
+    try { require('./utils/jobs').stopAll(); } catch { /* */ }
+    try { require('./streaming/live-events').closeAll(); } catch { /* */ }
 
     // Small delay to let the message reach clients before closing sockets
     setTimeout(() => {

@@ -150,6 +150,8 @@ router.get('/', async (req, res) => {
     try {
         // Media doesn't know usernames — translate ?username= to a user filter.
         const q = { ...req.query };
+        // Public list: never pass owner-view switches through under the app key (see vods.js).
+        delete q.include_private; delete q.include_unlisted;
         const username = String(q.username || '').trim();
         delete q.username;
         if (username) {
@@ -268,7 +270,13 @@ router.put('/:id/visibility', requireAuth, async (req, res) => {
         let clip;
         try { clip = await media.getClip(req.params.id); } catch (err) { return mediaErr(res, err, 'Clip not found'); }
         if (!clip) return res.status(404).json({ error: 'Clip not found' });
-        if (!(await canActorModerateClip(req.user, clip))) return res.status(403).json({ error: 'Only the streamer can change clip visibility' });
+        // Not the clipper: a viewer's clip inherits the channel's default visibility, and whoever made it
+        // must not be able to override the streamer's choice. Channel owner, channel mods, staff.
+        const ownerId = await clipChannelOwnerId(clip);
+        const canByChannel = ownerId && (req.user.id === ownerId || (() => { const ch = db.getChannelByUserId(ownerId); return !!(ch && db.isChannelModerator(req.user.id, ch.id)); })());
+        const canByStaff = !canByChannel && req.user.id !== clip.user_id && await canActorModerateClip(req.user, clip);
+        const ownClipNoChannel = !ownerId && req.user.id === clip.user_id;
+        if (!(canByChannel || canByStaff || ownClipNoChannel)) return res.status(403).json({ error: 'Only the streamer can change clip visibility' });
         if (req.body.visibility !== undefined) {
             await media.updateClip(clip.id, { visibility: req.body.visibility });
             return res.json({ message: `Clip is now ${req.body.visibility}`, visibility: req.body.visibility, is_public: req.body.visibility === 'public' ? 1 : 0 });

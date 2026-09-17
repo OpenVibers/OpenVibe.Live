@@ -49,12 +49,18 @@ const offlineUpload = multer({
     limits: { fileSize: 80 * 1024 * 1024 }, // 80MB
 });
 // Transcode any uploaded video/gif to an optimized, muted, looping WebM.
+// One encode at a time site-wide, at low CPU priority: any signed-in user can upload, and a VP8 encode
+// of up to three minutes per upload competed with live ingest and chat for the same four cores.
+const _offlineEncodes = require('../utils/limit')('offline-encode', 1);
 function transcodeOfflineWebm(input, output) {
+    return _offlineEncodes.run(() => _transcodeOfflineWebm(input, output), { maxQueue: 6 });
+}
+function _transcodeOfflineWebm(input, output) {
     return new Promise((resolve, reject) => {
-        const args = ['-y', '-i', input,
+        const args = ['-n', '15', 'ffmpeg', '-y', '-i', input,
             '-c:v', 'libvpx', '-b:v', '1200k', '-crf', '24', '-deadline', 'good', '-cpu-used', '2',
             '-vf', "scale='min(1280,iw)':-2", '-an', '-f', 'webm', output];
-        const p = spawn('ffmpeg', args);
+        const p = spawn('nice', args);
         let err = '';
         p.stderr.on('data', d => { err += d; if (err.length > 4000) err = err.slice(-4000); });
         const to = setTimeout(() => { try { p.kill('SIGKILL'); } catch {} reject(new Error('transcode timeout')); }, 180000);
@@ -77,6 +83,17 @@ const MAX_PANELS_LENGTH = 20000;
 
 // ── Go-Live Notification Push ────────────────────────────────
 const { pushBulkNotification } = require('../utils/notify');
+const { publicManagedStream, publicChannel, publicStream } = require('../web/serializers');
+
+/** A control profile id a slot may point at: one of the caller's own (admins may use anyone's). */
+function ownControlConfigId(req, raw) {
+    if (raw === null || raw === undefined || raw === '') return null;
+    const id = parseInt(raw);
+    const cfg = Number.isFinite(id) ? db.getControlConfig(id) : null;
+    if (!cfg || (cfg.user_id !== req.user.id && req.user.role !== 'admin')) return undefined;
+    return id;
+}
+
 const { notifyDiscordGoLive } = require('../integrations/discord-webhook');
 
 const INTERNAL_API_KEY = config.internalApiKey || process.env.INTERNAL_API_KEY || process.env.OV_INTERNAL_KEY || '';
@@ -472,7 +489,10 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             language: i18n.channelMeta(channel.user_id),
             stream: liveStreams[0] || null,
             streams: liveStreams,
-            managed_streams: managedStreams,
+            // Slots are rows from `SELECT ms.*` — the owner's ingest key and home ZIP are on them.
+            // This endpoint is public, so everyone gets the public projection; the owner reads keys
+            // from /api/streams/managed/:id/profile.
+            managed_streams: managedStreams.map(publicManagedStream),
             rs_restream: Object.keys(rsInfo).length ? rsInfo : null,
             restream_links: restreamLinks,
             external_viewers: externalViewers,
@@ -1074,15 +1094,13 @@ router.get('/', optionalAuth, (req, res) => {
             // (optionalAuth, no user required). Every sibling handler redacts the ingest keys
             // before responding; this one did not, so an anonymous GET returned the live ingest
             // key of every broadcasting channel — enough to take over their stream.
-            const out = {
+            // publicStream drops both ingest keys and the channel's home ZIP.
+            return publicStream({
                 ...s,
                 channel: channel || null,
                 external_viewer_count: externalTotal,
                 total_viewer_count: (s.viewer_count || 0) + externalTotal,
-            };
-            delete out.stream_key;
-            delete out.managed_stream_key;
-            return out;
+            });
         });
         res.json({ streams: enriched });
     } catch (err) {
@@ -1110,7 +1128,7 @@ router.get('/recent', (req, res) => {
         const streams = db.getRecentStreams(limit);
         const enriched = streams.map(s => {
             const channel = db.getChannelByUserId(s.user_id);
-            return { ...s, channel: channel || null };
+            return publicStream({ ...s, channel: channel || null });
         });
         res.json({ streams: enriched });
     } catch (err) {
@@ -1579,7 +1597,8 @@ router.post('/managed', requireAuth, (req, res) => {
             streaming_method: cleanText(req.body.streaming_method, { maxLength: 20 }) || null,
             stream_key,
             is_nsfw,
-            control_config_id: req.body.control_config_id ? parseInt(req.body.control_config_id) : null,
+            // Someone else's profile would copy their buttons onto this slot and keep it in sync.
+            control_config_id: ownControlConfigId(req, req.body.control_config_id) || null,
         });
 
         const managedStream = db.getManagedStreamById(result.lastInsertRowid);
@@ -1625,7 +1644,9 @@ router.put('/managed/:id', requireAuth, (req, res) => {
             if (fields.tags === null) return res.status(400).json({ error: 'Invalid tags' });
         }
         if (hasOwn(req.body, 'control_config_id')) {
-            fields.control_config_id = req.body.control_config_id === null ? null : parseInt(req.body.control_config_id);
+            const cfgId = ownControlConfigId(req, req.body.control_config_id);
+            if (cfgId === undefined) return res.status(403).json({ error: 'Not your control profile' });
+            fields.control_config_id = cfgId;
         }
         if (hasOwn(req.body, 'pip_source_msid')) {
             // null / '' clears the overlay. Anything else must be one of this user's own
@@ -1799,12 +1820,14 @@ router.get('/:id', optionalAuth, (req, res) => {
         const stream = db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
 
+        // Read the key before redacting it: the JSMPEG relay channel is addressed by the slot key,
+        // and deleting it first sent slot-keyed JSMPEG streams to the account-key channel.
+        const jsmpegKey = stream.managed_stream_key || db.getUserById(stream.user_id)?.stream_key;
         delete stream.stream_key;
         delete stream.managed_stream_key;
 
         if (stream.is_live) {
             if (stream.protocol === 'jsmpeg') {
-                const jsmpegKey = stream.managed_stream_key || db.getUserById(stream.user_id)?.stream_key;
                 stream.endpoint = jsmpegRelay.getChannelInfo(jsmpegKey);
             } else if (stream.protocol === 'webrtc') {
                 stream.endpoint = { roomId: `stream-${stream.id}` };
@@ -1817,7 +1840,7 @@ router.get('/:id', optionalAuth, (req, res) => {
 
         stream.cameras = db.all('SELECT * FROM cameras WHERE stream_id = ?', [stream.id]);
         stream.controls = db.getStreamControls(stream.id);
-        stream.channel = db.getChannelByUserId(stream.user_id) || null;
+        stream.channel = publicChannel(db.getChannelByUserId(stream.user_id)) || null;
 
         // Picture-in-picture camera overlay: another SLOT of this owner's whose live
         // stream should be drawn on top of this one. It is a normal stream in its own

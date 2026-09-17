@@ -445,6 +445,9 @@ router.post('/viewer-counts', requireAuth, (req, res) => {
         if (!Array.isArray(counts)) return res.status(400).json({ error: 'counts must be an array' });
         for (const { destId, count } of counts) {
             if (!Number.isFinite(destId) || (count != null && !Number.isFinite(count))) continue;
+            // Only your own destinations: this feeds external viewer totals and PowerChat view counts.
+            const dest = db.getRestreamDestinationById(destId);
+            if (!dest || (dest.user_id !== req.user.id && req.user.role !== 'admin')) continue;
             restreamManager.setViewerCount(destId, count);
         }
         res.json({ ok: true });

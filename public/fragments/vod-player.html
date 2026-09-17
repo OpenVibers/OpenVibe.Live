@@ -1,0 +1,176 @@
+<!-- #page-vod-player markup, loaded on first visit to the route (public/features.json). The server inlines it for direct visits. -->
+        <div class="container">
+            <div class="vod-player-layout">
+                <div class="vod-player-row">
+                    <div class="vod-player-main">
+                        <div class="vod-player-container" id="vp-container">
+                            <video id="vp-video" class="vod-video" style="display:none" playsinline></video>
+                            <div id="vp-private-notice" class="vod-private-notice" style="display:none">
+                                <i class="fa-solid fa-lock" style="font-size:2.5rem;margin-bottom:12px;color:var(--text-muted)"></i>
+                                <p style="font-size:1.1rem;margin:0 0 4px">This video is private</p>
+                                <p class="muted" style="font-size:0.85rem">Only the uploader can watch this video</p>
+                            </div>
+                            <div class="vp-live-indicator" id="vp-live-indicator" style="display:none">
+                                <span class="vp-live-badge"><i class="fa-solid fa-circle"></i> LIVE</span>
+                                <button class="vp-jump-live-btn" id="vp-jump-live" title="Jump to live"><i class="fa-solid fa-forward"></i> Jump to Live</button>
+                            </div>
+                            <div class="video-overlay">
+                                <div class="vc-progress-wrap" id="vp-progress-wrap">
+                                    <div class="vc-progress-bar">
+                                        <div class="vc-progress-buffer" id="vp-progress-buffer"></div>
+                                        <div class="vc-progress-fill" id="vp-progress-fill"></div>
+                                    </div>
+                                </div>
+                                <div class="video-controls">
+                                    <button class="vc-btn" id="vp-btn-play" title="Play/Pause"><i class="fa-solid fa-play"></i></button>
+                                    <div class="vc-volume-group">
+                                        <button class="vc-btn" id="vp-btn-vol" title="Mute"><i class="fa-solid fa-volume-high"></i></button>
+                                        <input type="range" id="vp-vol-slider" min="0" max="100" value="100" class="volume-slider">
+                                    </div>
+                                    <span class="vc-time-display" id="vp-time">0:00 / 0:00</span>
+                                    <div class="vc-spacer"></div>
+                                    <button class="vc-btn" id="vp-btn-clip" title="Create Clip" onclick="toggleVodClipPanel()"><i class="fa-solid fa-scissors"></i></button>
+                                    <button class="vc-speed-btn" id="vp-btn-speed" title="Playback Speed">1x</button>
+                                    <button class="vc-btn" id="vp-btn-fullscreen" title="Fullscreen"><i class="fa-solid fa-expand"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Chat Replay Sidebar (VOD) -->
+                    <div class="chat-replay-sidebar" id="vp-chat-replay">
+                        <div class="chat-replay-header">
+                            <h4><i class="fa-solid fa-clock-rotate-left"></i> Chat Replay</h4>
+                        </div>
+                        <div class="chat-replay-messages" id="vp-chat-replay-messages">
+                            <div class="chat-replay-empty" id="vp-chat-replay-empty">
+                                <i class="fa-solid fa-comments" style="font-size:1.5rem"></i>
+                                <p>Chat messages will appear here as the video plays</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="vod-player-info">
+                    <h2 id="vp-title">Video</h2>
+                    <div class="vod-player-meta">
+                        <a href="#" class="vod-player-streamer" id="vp-streamer-link" style="cursor:pointer;text-decoration:none;color:inherit">
+                            <span class="stream-card-avatar" id="vp-avatar">?</span>
+                            <span id="vp-streamer">Streamer</span>
+                        </a>
+                        <span class="muted" id="vp-date"></span>
+                        <span class="muted"><i class="fa-solid fa-clock"></i> <span id="vp-duration">0:00</span></span>
+                        <span class="muted"><i class="fa-solid fa-eye"></i> <span id="vp-views">0</span></span>
+                        <span id="vp-protocol"></span>
+                    </div>
+                    <div id="vp-extra-details" class="vod-extra-details" style="display:none"></div>
+                    <p id="vp-description" class="vod-player-description"></p>
+                    <div id="vp-stream-source" class="vod-source-info muted" style="display:none"></div>
+                    <div id="vp-ai-timeline" class="vod-ai-timeline" style="display:none"></div>
+                    <div id="vp-actions" style="margin-top:10px;display:none"></div>
+
+                    <!-- VOD Clip Creator Modal (opened by clip button in video controls) -->
+                    <div id="vp-clip-modal" class="clip-modal-overlay" style="display:none" onclick="if(event.target===this)closeClipCreator()">
+                        <div class="clip-modal">
+                            <div class="clip-modal-header">
+                                <h3><i class="fa-solid fa-scissors"></i> Create Clip</h3>
+                                <button class="clip-modal-close" onclick="closeClipCreator()" title="Close"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+
+                            <div class="clip-modal-body">
+                                <!-- Mini preview player -->
+                                <div class="clip-preview-wrap">
+                                    <video id="clip-preview-video" class="clip-preview-video" playsinline muted></video>
+                                    <div class="clip-preview-badge" id="clip-preview-badge">Preview</div>
+                                    <button class="clip-preview-play-btn" id="clip-preview-play-btn" onclick="toggleClipPreview()">
+                                        <i class="fa-solid fa-play"></i>
+                                    </button>
+                                </div>
+
+                                <!-- Timeline range selector -->
+                                <div class="clip-timeline-section">
+                                    <div class="clip-timeline-label">
+                                        <span>Drag the handles to select your clip range (max 60s)</span>
+                                    </div>
+                                    <div class="clip-timeline-wrap" id="clip-timeline-wrap">
+                                        <div class="clip-timeline-bar">
+                                            <div class="clip-timeline-fill" id="clip-timeline-fill"></div>
+                                            <div class="clip-handle clip-handle-start" id="clip-handle-start" title="Drag to set clip start">
+                                                <div class="clip-handle-grip"></div>
+                                            </div>
+                                            <div class="clip-handle clip-handle-end" id="clip-handle-end" title="Drag to set clip end">
+                                                <div class="clip-handle-grip"></div>
+                                            </div>
+                                            <div class="clip-playhead" id="clip-playhead"></div>
+                                        </div>
+                                        <div class="clip-timeline-ticks" id="clip-timeline-ticks"></div>
+                                    </div>
+                                </div>
+
+                                <!-- Time controls row -->
+                                <div class="clip-time-controls">
+                                    <div class="clip-time-field">
+                                        <label>Start</label>
+                                        <div class="clip-time-input-group">
+                                            <button class="clip-nudge-btn" onclick="nudgeClipMark('start',-5)" title="-5s"><i class="fa-solid fa-backward"></i></button>
+                                            <button class="clip-nudge-btn clip-nudge-sm" onclick="nudgeClipMark('start',-1)" title="-1s">-1</button>
+                                            <span class="clip-time-display" id="clip-start-display">0:00</span>
+                                            <button class="clip-nudge-btn clip-nudge-sm" onclick="nudgeClipMark('start',1)" title="+1s">+1</button>
+                                            <button class="clip-nudge-btn" onclick="nudgeClipMark('start',5)" title="+5s"><i class="fa-solid fa-forward"></i></button>
+                                        </div>
+                                        <button class="clip-set-btn" onclick="setClipMarkToCurrent('start')"><i class="fa-solid fa-location-dot"></i> Use current time</button>
+                                    </div>
+                                    <div class="clip-duration-display">
+                                        <div class="clip-duration-number" id="clip-duration-number">0</div>
+                                        <div class="clip-duration-label">seconds</div>
+                                        <div class="clip-duration-bar-wrap">
+                                            <div class="clip-duration-bar" id="clip-duration-bar"></div>
+                                        </div>
+                                    </div>
+                                    <div class="clip-time-field">
+                                        <label>End</label>
+                                        <div class="clip-time-input-group">
+                                            <button class="clip-nudge-btn" onclick="nudgeClipMark('end',-5)" title="-5s"><i class="fa-solid fa-backward"></i></button>
+                                            <button class="clip-nudge-btn clip-nudge-sm" onclick="nudgeClipMark('end',-1)" title="-1s">-1</button>
+                                            <span class="clip-time-display" id="clip-end-display">0:00</span>
+                                            <button class="clip-nudge-btn clip-nudge-sm" onclick="nudgeClipMark('end',1)" title="+1s">+1</button>
+                                            <button class="clip-nudge-btn" onclick="nudgeClipMark('end',5)" title="+5s"><i class="fa-solid fa-forward"></i></button>
+                                        </div>
+                                        <button class="clip-set-btn" onclick="setClipMarkToCurrent('end')"><i class="fa-solid fa-location-dot"></i> Use current time</button>
+                                    </div>
+                                </div>
+
+                                <!-- Title input -->
+                                <div class="clip-title-section">
+                                    <input type="text" id="clip-title-input" class="form-input" placeholder="Give your clip a title (optional)" maxlength="200">
+                                </div>
+                            </div>
+
+                            <div class="clip-modal-footer">
+                                <button class="btn btn-outline" onclick="closeClipCreator()">Cancel</button>
+                                <button class="btn btn-primary" id="clip-create-btn" onclick="createVodClip()">
+                                    <i class="fa-solid fa-scissors"></i> Create Clip
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="section-header">
+                    <h3><i class="fa-solid fa-scissors"></i> Clips from this stream</h3>
+                </div>
+                <div class="stream-grid" id="vp-clips-grid"></div>
+
+                <!-- Comments Section (VOD) -->
+                <div class="comments-section" id="vp-comments">
+                    <div class="comments-header">
+                        <h3><i class="fa-solid fa-comments"></i> Comments <span class="comments-count" id="vp-comment-count"></span></h3>
+                    </div>
+                    <div class="comment-form" id="vp-comment-form" style="display:none">
+                        <textarea id="vp-comment-input" placeholder="Add a comment..." rows="2" maxlength="2000"></textarea>
+                        <div class="comment-form-actions">
+                            <button class="btn btn-primary btn-small" onclick="postComment('vod', window._vpVodId)">Comment</button>
+                        </div>
+                    </div>
+                    <div class="comments-list" id="vp-comments-list"></div>
+                </div>
+            </div>
+        </div>
+    

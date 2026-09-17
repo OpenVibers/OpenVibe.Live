@@ -31,64 +31,21 @@
 @keyframes i18nPulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); } 50% { box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent); } }
 
 /* ── Channel: language chip in the info bar ─────────────────── */
-.ch-lang-chip {
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 2px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 700;
-    color: #fde68a; background: linear-gradient(135deg, rgba(190,24,93,0.35), rgba(139,92,246,0.3));
-    border: 1px solid rgba(253,230,138,0.45); white-space: nowrap; cursor: help;
-}
 .ch-lang-chip i { color: #fff; }
 
 /* ── Channel: live captions panel (under the player) ─────────── */
-.ch-captions {
-    margin: 10px 0 0; border-radius: 14px; overflow: hidden;
-    background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 10%, var(--bg-card)), var(--bg-card));
-    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
-    box-shadow: 0 10px 30px rgba(0,0,0,0.25);
-    animation: i18nSlideIn 0.4s ease both;
-}
-.ch-captions-head {
-    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-    padding: 8px 12px; border-bottom: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
-}
-.ch-captions-title { display: inline-flex; align-items: center; gap: 7px; font-weight: 800; font-size: 0.88rem; color: var(--text-primary); }
 .ch-captions-title i { color: var(--accent-light); }
-.ch-captions-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--live-red); animation: i18nBlink 1.4s ease-in-out infinite; }
 @keyframes i18nBlink { 0%,100% { opacity: 1; box-shadow: 0 0 0 0 rgba(231,76,60,0.6); } 50% { opacity: 0.55; box-shadow: 0 0 0 5px rgba(231,76,60,0); } }
-.ch-captions-sub { color: var(--text-secondary); font-size: 0.76rem; }
-.ch-captions-toggle { margin-left: auto; background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px 6px; border-radius: 6px; }
-.ch-captions-toggle:hover { color: var(--text-primary); background: var(--bg-hover); }
-.ch-captions-lines { max-height: 190px; overflow-y: auto; padding: 8px 12px; display: grid; gap: 6px; scroll-behavior: smooth; }
-.ch-captions.collapsed .ch-captions-lines { display: none; }
 .ch-captions.collapsed .ch-captions-toggle i { transform: rotate(180deg); }
-.ch-captions-wait { color: var(--text-muted); font-size: 0.8rem; font-style: italic; }
-.ch-caption { animation: i18nSlideIn 0.35s ease both; padding: 4px 0; border-bottom: 1px dashed color-mix(in srgb, var(--border) 70%, transparent); }
-.ch-caption:last-child { border-bottom: none; }
-.ch-caption-en { font-size: 0.95rem; color: var(--text-primary); line-height: 1.35; }
-.ch-caption-src { font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px; }
-.ch-caption:last-child .ch-caption-en { font-weight: 600; }
 
 /* ── About tab: bio translation ─────────────────────────────── */
-.ch-about-bio-translated {
-    margin: 8px 0 12px; padding: 10px 12px; border-radius: 10px;
-    background: color-mix(in srgb, var(--accent) 8%, transparent);
-    border-left: 3px solid var(--accent); white-space: pre-wrap; line-height: 1.5;
-    animation: i18nSlideIn 0.4s ease both;
-}
-.ch-about-bio-translated-label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-light); margin-bottom: 4px; }
 
 /* ═══════════════════════════════════════════════════════════════
    STAR OF OPENVIBE — home spotlight
    ═══════════════════════════════════════════════════════════════ */
-.home-star-section { margin: 4px 0 28px; }
 .star-card-border {
     position: relative; border-radius: 22px; padding: 2px; overflow: hidden; isolation: isolate;
     animation: starCardIn 0.8s cubic-bezier(.2,1.3,.3,1) both;
-}
-.star-card-border::before {
-    content: ''; position: absolute; inset: -60%; z-index: -1;
-    background: conic-gradient(from 0deg, #fbbf24, #f472b6, var(--accent), #fbbf24);
-    animation: starSpin 7s linear infinite;
 }
 @keyframes starSpin { to { transform: rotate(360deg); } }
 @keyframes starCardIn { from { opacity: 0; transform: translateY(24px) scale(0.97); } to { opacity: 1; transform: none; } }
@@ -102,7 +59,6 @@
         var(--bg-card);
     color: var(--text-primary);
 }
-.star-card.is-live { grid-template-columns: auto 1fr minmax(260px, 340px); }
 .star-card > * { position: relative; z-index: 1; }
 
 /* Drifting sakura petals */
@@ -112,12 +68,6 @@
     animation: starPetal 9s linear infinite;
     filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));
 }
-.star-petals span:nth-child(1) { left: 6%;  animation-delay: 0s;   }
-.star-petals span:nth-child(2) { left: 22%; animation-delay: -2s;  font-size: 0.9rem; }
-.star-petals span:nth-child(3) { left: 41%; animation-delay: -5s;  }
-.star-petals span:nth-child(4) { left: 58%; animation-delay: -1s;  font-size: 1.3rem; }
-.star-petals span:nth-child(5) { left: 74%; animation-delay: -7s;  }
-.star-petals span:nth-child(6) { left: 90%; animation-delay: -3.5s; font-size: 0.85rem; }
 @keyframes starPetal {
     0%   { transform: translate(0, -20px) rotate(0deg); opacity: 0; }
     10%  { opacity: 0.8; }
@@ -139,7 +89,6 @@
     background: var(--bg-tertiary); display: grid; place-items: center;
     font-size: 2.4rem; font-weight: 900; color: #fff; overflow: hidden;
 }
-.star-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .star-badge {
     position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
     padding: 2px 10px; border-radius: 999px; white-space: nowrap;
@@ -152,53 +101,23 @@
     background: var(--live-red); color: #fff; font-size: 0.64rem; font-weight: 900; letter-spacing: 0.08em;
     animation: i18nBlink 1.4s ease-in-out infinite;
 }
-
-.star-body { min-width: 0; }
-.star-kicker { display: inline-flex; align-items: center; gap: 7px; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: #fbbf24; margin-bottom: 4px; }
 .star-kicker i { animation: starTwinkle 1.8s ease-in-out infinite; }
 @keyframes starTwinkle { 0%,100% { transform: scale(1) rotate(0); opacity: 1; } 50% { transform: scale(1.35) rotate(20deg); opacity: 0.7; } }
-.star-name { margin: 0 0 6px; font-size: clamp(1.4rem, 3vw, 2rem); font-weight: 900; line-height: 1.1; letter-spacing: -0.01em; }
-.star-name a { color: inherit; text-decoration: none; }
-.star-name a:hover { color: var(--accent-light); }
-.star-name .star-jp { display: block; font-size: 0.55em; font-weight: 600; color: var(--text-secondary); margin-top: 2px; }
-.star-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
-.star-chip {
-    display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px;
-    font-size: 0.74rem; font-weight: 700; color: var(--text-primary);
-    background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-}
-.star-chip.gold { color: #fde68a; background: rgba(251,191,36,0.12); border-color: rgba(251,191,36,0.45); }
-.star-chip.pink { color: #fbcfe8; background: rgba(244,114,182,0.12); border-color: rgba(244,114,182,0.45); }
-.star-bio { margin: 0 0 4px; color: var(--text-primary); line-height: 1.5; white-space: pre-wrap; font-size: 0.95rem; }
-.star-bio-src { margin: 0 0 8px; color: var(--text-secondary); font-size: 0.82rem; white-space: pre-wrap; line-height: 1.45; }
-.star-bio-label { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-light); margin: 6px 0 2px; }
-.star-overview { color: var(--text-secondary); font-size: 0.84rem; line-height: 1.45; margin: 8px 0 0; }
-.star-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; margin-bottom: 6px; }
-.star-actions .btn { font-weight: 700; }
 .star-btn-watch {
     background: linear-gradient(135deg, #fde68a, #fbbf24 50%, #f59e0b); color: #1c1002; border: none;
     box-shadow: 0 8px 24px rgba(251,191,36,0.4); position: relative; overflow: hidden;
 }
-.star-btn-watch::after { content: ''; position: absolute; inset: 0; background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.6) 50%, transparent 65%); background-size: 250% 100%; animation: starSheen 2.6s linear infinite; pointer-events: none; }
 @keyframes starSheen { 0% { background-position: 120% 0; } 100% { background-position: -120% 0; } }
-.star-live-card { align-self: stretch; }
-.star-live-card .stream-card { height: 100%; }
-.star-offline { color: var(--text-muted); font-size: 0.8rem; margin-top: 8px; }
 
 @media (max-width: 860px) {
     .star-card, .star-card.is-live { grid-template-columns: 1fr; text-align: center; gap: 14px; padding: 20px 16px 34px; }
     .star-actions .btn { flex: 1 1 140px; justify-content: center; }
-    .home-star-section { margin-bottom: 34px; }
-    .star-avatar-wrap { margin: 0 auto; }
-    .star-chips, .star-actions { justify-content: center; }
-    .star-live-card { max-width: 420px; width: 100%; margin: 0 auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .chat-translation, .chat-translate-hint, .ch-captions, .ch-caption, .ch-captions-dot, .ch-about-bio-translated,
     .star-card-border, .star-card-border::before, .star-petals span, .star-avatar-ring, .star-avatar-glow, .star-live-pill,
     .star-kicker i, .star-btn-watch::after { animation: none !important; }
-    .star-petals { display: none; }
     .chat-translation, .ch-caption, .star-card-border { opacity: 1; transform: none; }
 }
 
@@ -214,19 +133,10 @@
 .chat-translation[hidden] { display: none; }
 
 /* Lite mode (phones / weak GPUs): no blur, no filters, no shadow animations */
-.rs-lite .star-card-border::before { animation: none; background: linear-gradient(135deg, #fbbf24, #f472b6, var(--accent)); inset: 0; }
-.rs-lite .star-avatar-glow, .rs-lite .star-petals { display: none; }
-.rs-lite .star-avatar-ring { animation: none; }
 .rs-lite .star-btn-watch::after, .rs-lite .star-kicker i, .rs-lite .star-live-pill { animation: none; }
-.rs-lite .star-btn-watch { box-shadow: none; }
 .rs-lite .ch-captions-dot, .rs-lite .chat-translate-hint { animation: none; box-shadow: none; }
 
 /* Why they're today's star (AI pick) */
-.star-why { margin: 10px 0 12px; padding: 12px 14px; border-radius: 12px; background: linear-gradient(135deg, rgba(251,191,36,0.12), rgba(244,114,182,0.08)); border: 1px solid rgba(251,191,36,0.35); }
-.star-why-head { font-size: 1.05rem; font-weight: 900; color: #fff; margin-bottom: 4px; }
-.star-why-body { font-size: 0.92rem; line-height: 1.45; color: var(--text-secondary); }
-.star-why-meta { margin-top: 8px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #fbbf24; }
-.star-why-meta i { margin-right: 4px; }
 
 /* ── Compact Star card ───────────────────────────────────────────────────────
    The first compact pass just shrank the feature layout, and it showed: a centred kicker and
@@ -245,97 +155,33 @@
     padding: 15px 17px 16px;
     text-align: left;
 }
-.star-card.is-compact .star-avatar-wrap { grid-area: avatar; width: 62px; height: 62px; align-self: center; }
-.star-card.is-compact .star-avatar { width: 62px; height: 62px; font-size: 1.45rem; }
-.star-card.is-compact .star-body {
-    grid-area: text; display: flex; flex-direction: column; align-items: flex-start;
-    gap: 3px; min-width: 0;
-}
 /* The badge under the avatar duplicates the kicker and was the piece sticking out at an angle. */
-.star-card.is-compact .star-badge,
-.star-card.is-compact .star-petals { display: none; }
-.star-card.is-compact .star-kicker { font-size: 0.6rem; letter-spacing: 0.15em; margin: 0; }
-.star-card.is-compact .star-name { font-size: clamp(1.1rem, 4.2vw, 1.5rem); margin: 0; }
-.star-card.is-compact .star-name .star-jp { font-size: 0.5em; margin-top: 0; }
 
 /* Category and followers read as one meta line, not as competing pills. */
-.star-card.is-compact .star-chips { gap: 5px; margin: 3px 0 0; }
-.star-card.is-compact .star-chip {
-    font-size: 0.68rem; padding: 2px 9px; border-radius: 999px;
-    background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.12); color: var(--text-secondary);
-}
-.star-card.is-compact .star-chip.gold { color: #fde68a; background: rgba(251,191,36,0.1); border-color: rgba(251,191,36,0.3); }
 
 /* One action row, one height, one line. */
-.star-card.is-compact .star-actions {
-    grid-area: actions; display: flex; flex-wrap: wrap; align-items: center;
-    gap: 8px; margin: 4px 0 0;
-}
-.star-card.is-compact .star-actions .btn,
-.star-card.is-compact .star-expand {
-    height: 38px; padding: 0 15px; font-size: 0.82rem; border-radius: 11px;
-    display: inline-flex; align-items: center; gap: 8px; line-height: 1;
-}
-.star-card.is-compact .star-btn-watch { flex: 1 1 auto; min-width: 140px; justify-content: center; }
-.star-card.is-compact .star-actions .btn-outline { flex: 0 1 auto; }
-.star-card.is-compact .star-expand { flex: 0 0 auto; margin-left: auto; padding-left: 8px; }
 /* Open state: the label is one short word, so give it the same presence as the buttons beside it
    instead of letting it collapse to a cramped chip. */
-.star-expand.is-open { padding-right: 16px; }
-.star-expand.is-open span { font-weight: 800; }
 
 /* The disclosure. Fades up as the card grows — see animateHeightChange().
    [hidden] is a UA rule, so any author `display` here silently beats it and the panel never
    actually hides. Stated explicitly, the same trap the hero strip fell into. */
-.star-more[hidden] { display: none !important; }
-.star-more { display: block; grid-column: 1 / -1; }
 /* Expanded (non-compact) card: both blocks run the full width under the avatar and text. */
-.star-card > .star-actions, .star-card > .star-more { grid-column: 1 / -1; }
-.star-more.is-entering { animation: starMoreIn 0.42s cubic-bezier(.2, 1, .3, 1); }
 @keyframes starMoreIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
-.star-card.is-swapping { overflow: hidden; transition: height 0.42s cubic-bezier(.2, 1, .3, 1); }
 
 /* The avatar ring: a slow conic sweep rather than a static rainbow, so the card has one moving
    element instead of several competing ones. Paused off-screen by the viewport gate. */
-.star-card.is-compact .star-avatar-ring {
-    inset: -3px; border-radius: 50%;
-    background: conic-gradient(from 0deg, #fbbf24, #f472b6, var(--accent), #fbbf24);
-    animation: starRingSpin 6s linear infinite;
-    opacity: 0.9;
-}
 @keyframes starRingSpin { to { transform: rotate(360deg); } }
-.star-card.is-compact:hover .star-avatar-ring { opacity: 1; }
-.star-card.is-compact .star-avatar { transition: transform 0.28s cubic-bezier(.2, 1.2, .3, 1); }
-.star-card.is-compact:hover .star-avatar { transform: scale(1.04); }
-
-.star-expand {
-    cursor: pointer; font: inherit; font-weight: 750;
-    color: color-mix(in srgb, #fbbf24 82%, var(--text-primary));
-    background: color-mix(in srgb, #fbbf24 9%, transparent);
-    border: 1px solid color-mix(in srgb, #fbbf24 26%, transparent);
-    transition: transform 0.2s cubic-bezier(.2, 1, .3, 1), background 0.2s, border-color 0.2s, box-shadow 0.22s;
-}
-.star-expand:hover {
-    transform: translateY(-1px);
-    background: color-mix(in srgb, #fbbf24 17%, transparent);
-    border-color: color-mix(in srgb, #fbbf24 50%, transparent);
-    box-shadow: 0 6px 16px color-mix(in srgb, #fbbf24 20%, transparent);
-}
-.star-expand:active { transform: translateY(0) scale(0.985); }
-.star-expand:focus-visible { outline: 2px solid #fbbf24; outline-offset: 3px; }
 .star-expand i {
     width: 19px; height: 19px; flex: none; border-radius: 50%; display: grid; place-items: center;
     font-size: 0.55rem; color: #1a1506; line-height: 1;
     background: linear-gradient(140deg, #fbbf24, #f59e0b);
     transition: transform 0.3s cubic-bezier(.2, 1, .3, 1);
 }
-.star-expand.is-open i { transform: rotate(180deg); }
 .star-expand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* The gold border sweep is the card's one loud effect; calm it down when compact so it frames
    the card instead of shouting over it. */
-.star-card.is-compact ~ .star-card-border::before,
-.home-star-section:has(.star-card.is-compact) .star-card-border::before { opacity: 0.55; }
 
 /* ── Expanded card ───────────────────────────────────────────────────────────
    Opening the card used to drop it back to the original feature layout: centred text, a big
@@ -347,28 +193,9 @@
     align-items: center; gap: 12px 16px; text-align: left;
     padding: 16px 18px 18px;
 }
-.star-card:not(.is-compact) .star-avatar-wrap,
-.star-card:not(.is-compact) .star-avatar { width: 76px; height: 76px; }
-.star-card:not(.is-compact) .star-avatar { font-size: 1.7rem; }
-.star-card:not(.is-compact) .star-body {
-    display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0;
-}
-.star-card:not(.is-compact) .star-name { margin: 0; }
-.star-card:not(.is-compact) .star-chips { margin: 4px 0 0; }
-.star-card:not(.is-compact) .star-badge { display: none; }
-.star-card:not(.is-compact) .star-more { text-align: left; }
-.star-card:not(.is-compact) .star-more > * { margin-left: 0; margin-right: 0; }
-.star-card:not(.is-compact) .star-actions { justify-content: flex-start; }
 
 /* The disclosure body: its own quiet panel so the reason, bio and overview read as one block
    rather than three loose paragraphs stacked on the card background. */
-.star-more {
-    margin-top: 12px; padding: 13px 15px; border-radius: 13px;
-    background: color-mix(in srgb, var(--bg-primary) 45%, transparent);
-    border: 1px solid color-mix(in srgb, #fbbf24 13%, var(--border));
-}
-.star-more > *:first-child { margin-top: 0; }
-.star-more > *:last-child { margin-bottom: 0; }
 
 /* Wide enough for one line: avatar, who they are, and the actions on the right. Below this the
    actions drop to their own row rather than squeezing. */
@@ -378,29 +205,12 @@
         grid-template-areas: "avatar text actions";
         gap: 16px;
     }
-    .star-card.is-compact .star-actions { margin: 0; justify-content: flex-end; flex-wrap: nowrap; }
-    .star-card.is-compact .star-btn-watch { flex: 0 0 auto; min-width: 0; }
-    .star-card.is-compact .star-expand { margin-left: 0; }
-    .star-card.is-compact .star-more { grid-column: 1 / -1; }
 }
 
 @media (max-width: 560px) {
     .star-card.is-compact { padding: 13px 13px 14px; gap: 9px 11px; }
-    .star-card.is-compact .star-avatar-wrap,
-    .star-card.is-compact .star-avatar { width: 52px; height: 52px; }
-    .star-card.is-compact .star-avatar { font-size: 1.2rem; }
-    .star-card.is-compact .star-actions .btn,
-    .star-card.is-compact .star-expand { height: 36px; font-size: 0.78rem; padding: 0 12px; }
     /* On a phone the three actions stack two-then-one cleanly rather than at random. */
-    .star-card.is-compact .star-btn-watch { flex: 1 1 100%; }
-    .star-card.is-compact .star-expand { margin-left: 0; flex: 1 1 auto; justify-content: center; }
-}
-@media (max-width: 380px) {
-    .star-card.is-compact .star-actions .btn-outline { flex: 1 1 100%; justify-content: center; }
 }
 @media (prefers-reduced-motion: reduce) {
-    .star-more.is-entering { animation: none; }
-    .star-card.is-swapping { transition: none; }
     .star-expand, .star-expand i, .star-card.is-compact .star-avatar { transition: none; }
-    .star-card.is-compact .star-avatar-ring { animation: none; }
 }

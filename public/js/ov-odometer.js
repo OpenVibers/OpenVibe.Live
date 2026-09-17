@@ -28,6 +28,7 @@
 .ovnum-cell{display:inline-block;line-height:var(--ovnum-h)}
 .ovnum-digit{display:inline-block;overflow:hidden;height:var(--ovnum-h);width:1ch;position:relative}
 .ovnum-track{display:block;transition:transform var(--ovnum-dur,.62s) cubic-bezier(.22,1,.28,1)}
+.ovnum-still .ovnum-track{transition:none}
 .ovnum-track span{display:block;height:var(--ovnum-h);line-height:var(--ovnum-h);text-align:center}
 .ovnum.is-up .ovnum-digit.changed{animation:ovnumUp .62s ease-out}
 .ovnum.is-down .ovnum-digit.changed{animation:ovnumDown .62s ease-out}
@@ -80,10 +81,15 @@
             const want = Number(ch);
             const had = d.dataset.v === undefined ? null : Number(d.dataset.v);
             d.classList.toggle('changed', animate && had !== null && had !== want);
-            if (!animate) track.style.transition = 'none';
             track.style.transform = `translateY(calc(${-want} * var(--ovnum-h)))`;
-            if (!animate) { void track.offsetHeight; track.style.transition = ''; }
             d.dataset.v = String(want);
+        }
+        // A jump (no roll) used to disable each digit's transition and read offsetHeight to commit it —
+        // one forced layout per digit, while the hero was still building. The whole number is frozen
+        // with one class instead, released two frames later once the new position has been styled.
+        if (!animate) {
+            el.classList.add('ovnum-still');
+            requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('ovnum-still')));
         }
     }
 

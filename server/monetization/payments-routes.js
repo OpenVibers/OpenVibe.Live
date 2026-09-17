@@ -82,9 +82,10 @@ router.post('/bucks/checkout', requireAuth, async (req, res) => {
 router.get('/paypal/return', async (req, res) => {
     try {
         const order = db.getPaymentOrderById(parseInt(req.query.order, 10));
-        if (!order) return res.redirect('/?purchase=error');
+        if (!order || order.provider !== 'paypal' || !order.provider_ref) return res.redirect('/?purchase=error');
         const cap = await pay.paypalCaptureOrder(order.provider_ref);
-        const ok = cap.status === 'COMPLETED';
+        const captured = cap.purchase_units?.[0]?.payments?.captures?.[0]?.amount?.value;
+        const ok = cap.status === 'COMPLETED' && pay.paidAmountCovers(order, captured) !== false;
         if (ok) {
             if (order.kind === 'subscription') pay.fulfillSubscriptionOrder(order);
             else pay.fulfillBucksOrder(order);
@@ -216,6 +217,18 @@ router.post('/subscriptions/:id/cancel', requireAuth, async (req, res) => {
 // ════════════════════════ WEBHOOKS ════════════════════════════
 function rawBody(req) { return req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body || {}); }
 
+// Every webhook: the order must belong to that provider, and when the provider reports what was
+// paid it must cover the order (an order id is passed through the buyer's browser for some
+// providers, so without this a small payment could be pointed at a large order).
+function payable(order, provider, paidUsd) {
+    if (!order || order.provider !== provider) return false;
+    if (pay.paidAmountCovers(order, paidUsd) === false) {
+        console.warn(`[Payments] ${provider} paid ${paidUsd} for order ${order.id} (${order.amount_cents / 100}) — not credited`);
+        return false;
+    }
+    return true;
+}
+
 // Stripe
 router.post('/webhook/stripe', (req, res) => {
     const event = pay.stripeVerify(rawBody(req), req.headers['stripe-signature']);
@@ -225,7 +238,8 @@ router.post('/webhook/stripe', (req, res) => {
         const orderId = obj && ((obj.metadata && obj.metadata.order_id) || obj.client_reference_id);
         if (event.type === 'checkout.session.completed' && orderId) {
             const order = db.getPaymentOrderById(parseInt(orderId, 10));
-            if (order) {
+            const paid = Number.isFinite(obj.amount_total) ? obj.amount_total / 100 : null;
+            if (payable(order, 'stripe', paid)) {
                 if (order.kind === 'subscription') pay.fulfillSubscriptionOrder(order, { providerRef: obj.subscription });
                 else pay.fulfillBucksOrder(order);
             }
@@ -255,7 +269,8 @@ router.post('/webhook/paypal', async (req, res) => {
         if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED') {
             const orderId = rsrc.custom_id || (rsrc.supplementary_data && rsrc.supplementary_data.related_ids && rsrc.supplementary_data.related_ids.order_id);
             const order = orderId && db.getPaymentOrderById(parseInt(orderId, 10));
-            if (order) (order.kind === 'subscription' ? pay.fulfillSubscriptionOrder(order) : pay.fulfillBucksOrder(order));
+            const paid = rsrc.amount && rsrc.amount.currency_code === 'USD' ? rsrc.amount.value : null;
+            if (payable(order, 'paypal', paid)) (order.kind === 'subscription' ? pay.fulfillSubscriptionOrder(order) : pay.fulfillBucksOrder(order));
         }
     } catch (err) { console.error('[Payments] paypal webhook:', err.message); }
     res.json({ received: true });
@@ -270,7 +285,12 @@ router.all('/webhook/ccbill', (req, res) => {
         const order = orderId && db.getPaymentOrderById(parseInt(orderId, 10));
         const success = String(p.eventType || p.transactionType || '').toLowerCase().includes('success')
             || p.accountingAmount || p.priceInfo || p.eventType === 'NewSaleSuccess';
-        if (order && success) (order.kind === 'subscription' ? pay.fulfillSubscriptionOrder(order) : pay.fulfillBucksOrder(order));
+        // X-order rides in the buyer-editable form URL (the digest covers only the price), so
+        // CCBill's reported price is required here, not optional.
+        const paid = [p.billedInitialPrice, p.subscriptionInitialPrice, p.accountingInitialPrice, p.initialPrice, p.accountingAmount]
+            .find((v) => v != null && v !== '' && Number.isFinite(Number(v)));
+        if (order && success && paid == null) console.warn(`[Payments] ccbill webhook for order ${order.id} carried no price — not credited`);
+        else if (success && payable(order, 'ccbill', paid)) (order.kind === 'subscription' ? pay.fulfillSubscriptionOrder(order) : pay.fulfillBucksOrder(order));
     } catch (err) { console.error('[Payments] ccbill webhook:', err.message); }
     res.status(200).send('OK');
 });
@@ -282,7 +302,8 @@ router.post('/webhook/crypto', (req, res) => {
     try {
         if (['finished', 'confirmed', 'sending'].includes(String(body.payment_status))) {
             const order = db.getPaymentOrderById(parseInt(body.order_id, 10));
-            if (order) (order.kind === 'subscription' ? pay.fulfillSubscriptionOrder(order) : pay.fulfillBucksOrder(order));
+            const paid = String(body.price_currency || 'usd').toLowerCase() === 'usd' ? body.price_amount : null;
+            if (payable(order, 'crypto', paid)) (order.kind === 'subscription' ? pay.fulfillSubscriptionOrder(order) : pay.fulfillBucksOrder(order));
         }
     } catch (err) { console.error('[Payments] crypto webhook:', err.message); }
     res.json({ received: true });

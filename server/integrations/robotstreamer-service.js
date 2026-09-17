@@ -61,7 +61,9 @@ class RobotStreamerService {
      */
     _startRsViewerPolling() {
         if (this._rsViewerPollTimer) return;
-        this._rsViewerPollTimer = setInterval(async () => {
+        // Single-flight: bridges are polled one after another with a 15s timeout each, so three slow
+        // ones outlasted the 45s period and runs stacked up.
+        this._rsViewerPollTimer = require('../utils/jobs').every('rs-viewer-counts', 45000, async () => {
             for (const [, bridge] of this.chatBridges) {
                 if (bridge.stopped || !bridge.token || !bridge.robotId) continue;
                 try {
@@ -70,8 +72,7 @@ class RobotStreamerService {
                     this.setRsViewerCount(bridge.userId, viewers, bridge.managedStreamId || null);
                 } catch { /* transient — keep the last cached value */ }
             }
-        }, 45000);
-        if (this._rsViewerPollTimer.unref) this._rsViewerPollTimer.unref();
+        }, { jitterMs: 5000 });
     }
 
     /**

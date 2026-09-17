@@ -199,12 +199,20 @@ async function tick() {
     }
 }
 
+let _interval = null;
 function start() {
-    setInterval(() => { tick().catch(() => {}); }, POLL_MS);
+    if (_interval) return;
+    _interval = setInterval(() => { tick().catch(() => {}); }, POLL_MS);
     console.log('[AI] Timeline job started (continuous audio → stream_timeline_events)');
 }
 
-/** Called on shutdown so ffmpeg children do not orphan. */
-function stopAll() { return audio.stopAllCaptures(); }
+/**
+ * Called on shutdown so ffmpeg children do not orphan. The interval stops first: a tick in the
+ * shutdown window used to start new captures right after they were stopped.
+ */
+function stopAll() {
+    if (_interval) { clearInterval(_interval); _interval = null; }
+    return audio.stopAllCaptures();
+}
 
 module.exports = { start, tick, stopAll, timelineEnabled };

@@ -446,9 +446,9 @@ class RestreamManager extends EventEmitter {
         const registered = jsmpegRelay.registerDataTap(streamKey, tap);
         if (registered) {
             session.dataTapCleanup = () => jsmpegRelay.unregisterDataTap(streamKey, tap);
-            console.log(`[Restream] JSMPEG data tap registered for ${streamKey}`);
+            console.log(`[Restream] JSMPEG data tap registered for ${require("../utils/redact").maskKey(streamKey)}`);
         } else {
-            console.warn(`[Restream] JSMPEG channel not found for ${streamKey} — tap will miss initial data`);
+            console.warn(`[Restream] JSMPEG channel not found for ${require("../utils/redact").maskKey(streamKey)} — tap will miss initial data`);
         }
     }
 
@@ -804,9 +804,8 @@ class RestreamManager extends EventEmitter {
             console.warn(`[Restream] RTMPS destination but OpenSSL FFmpeg not found at ${OPENSSL_FFMPEG_PATH} — using system ffmpeg (GnuTLS TLS rekeying issues likely)`);
         }
 
-        const maskedArgs = args.map(a =>
-            (a.includes('rtmp://') || a.includes('rtmps://')) ? a.replace(/\/[^/]+$/, '/****') : a
-        );
+        // Masks rtmp(s)/srt keys, SRT passphrases and the local /live/<key>.flv source, not just rtmp URLs.
+        const maskedArgs = args.map(a => require('../utils/redact').redactUrl(a));
         const binLabel = useOpenSslBinary ? 'ffmpeg(openssl)' : 'ffmpeg';
         console.log(`[Restream] Spawning FFmpeg for ${session.key}: ${binLabel} ${maskedArgs.join(' ')}`);
 
@@ -1185,14 +1184,14 @@ class RestreamManager extends EventEmitter {
      */
     startViewerCountPolling() {
         if (this._viewerPollTimer) return;
-        this._viewerPollTimer = setInterval(() => this._pollViewerCounts(), 60000);
-        // Initial poll after short delay
-        setTimeout(() => this._pollViewerCounts(), 5000);
+        // Sequential external calls with 8s timeouts each: with several destinations a run can outlast
+        // the minute, so it is single-flight and measured from the end of the previous run.
+        this._viewerPollTimer = require('../utils/jobs').every('restream-viewer-counts', 60000, () => this._pollViewerCounts(), { initialDelayMs: 5000, jitterMs: 5000 });
     }
 
     stopViewerCountPolling() {
         if (this._viewerPollTimer) {
-            clearInterval(this._viewerPollTimer);
+            this._viewerPollTimer();   // jobs.every() returns its stop function
             this._viewerPollTimer = null;
         }
     }

@@ -267,7 +267,14 @@ router.post('/conversations/:id/participants', (req, res) => {
         const target = userDb.getUserById(user_id);
         if (!target) return res.status(400).json({ error: 'User not found' });
         if (target.is_banned) return res.status(400).json({ error: 'Cannot add banned users' });
-        if (dm.isBlockedEither(req.user.id, user_id)) {
+        // A private 1:1 stays private: adding a third person would hand them the whole history.
+        const conv = dm.getConversation(convId);
+        if (!conv || !conv.is_group) {
+            return res.status(400).json({ error: 'Start a group conversation to add people' });
+        }
+        // Nobody already in the group should end up talking to someone they blocked (or who blocked them).
+        const members = dm.getParticipants(convId) || [];
+        if (members.some((p) => dm.isBlockedEither(p.user_id || p.id, user_id))) {
             return res.status(403).json({ error: 'Cannot add this user' });
         }
 

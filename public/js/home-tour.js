@@ -30,7 +30,9 @@
         ['fa-clipboard-list', 'After-show reports'], ['fa-brands fa-github', '100% open source'],
     ];
 
-    let _tourVisible = true;
+    // Starts false: the IntersectionObserver reports visibility on its first callback, and nothing is
+    // measured or animated before then.
+    let _tourVisible = false;
 
     function mount() {
         const el = document.getElementById('home-tour-mount');
@@ -76,12 +78,18 @@
                     <a class="btn btn-outline btn-lg" href="/broadcast?guide=golive:restream" onclick="event.preventDefault(); if (typeof startRestreamGuide === 'function') startRestreamGuide();"><i class="fa-solid fa-satellite-dish"></i> Set up restreams (guided)</a>
                 </div>
             </section>`;
-        wire();
+        // Wiring measures the diagram's layout, so it waits until the diagram is near the viewport: it
+        // sits well below the fold, and measuring it during page load forced a full synchronous
+        // layout (~165ms on a 4x-throttled phone profile) for something nobody could see yet.
         // Signed-in streamers get a context-aware button: the next thing they haven't set up.
         const nextUp = () => { if (typeof setupNextUp === 'function') setupNextUp(document.getElementById('tour-next-up')); };
         setTimeout(nextUp, 900); setTimeout(nextUp, 3500);
-        let raf = 0;
-        const redraw = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(wire); };
+        let raf = 0, dirty = true;
+        const redraw = () => {
+            dirty = true;
+            if (!_tourVisible) return;          // drawn when it scrolls into view
+            cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { dirty = false; wire(); });
+        };
         if ('ResizeObserver' in window) new ResizeObserver(redraw).observe(el.querySelector('#tour-stage'));
         window.addEventListener('resize', redraw);
         document.fonts && document.fonts.ready && document.fonts.ready.then(redraw);
@@ -92,10 +100,14 @@
             new IntersectionObserver((entries) => {
                 for (const en of entries) {
                     _tourVisible = en.isIntersecting;
+                    if (_tourVisible && dirty) redraw();
                     const svg = document.getElementById('tour-wires');
                     try { if (svg) (_tourVisible ? svg.unpauseAnimations() : svg.pauseAnimations()); } catch { /* */ }
                 }
-            }, { rootMargin: '100px 0px' }).observe(el.querySelector('#tour-stage'));
+            }, { rootMargin: '300px 0px' }).observe(el.querySelector('#tour-stage'));
+        } else {
+            _tourVisible = true;
+            redraw();
         }
         el.querySelectorAll('.tour-node--dst').forEach(nd => {
             nd.addEventListener('pointerenter', () => el.querySelector('#tour-wires').classList.add(`hot-${nd.dataset.node}`));

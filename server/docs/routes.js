@@ -17,7 +17,8 @@ const fs = require('fs');
 const path = require('path');
 
 const router = express.Router();
-const DOCS_DIR = path.join(__dirname, '../../docs');
+// Through OV_APP_ROOT (the `current` release symlink) when set, so doc edits go live without a restart.
+const DOCS_DIR = process.env.OV_APP_ROOT ? path.join(process.env.OV_APP_ROOT, 'docs') : path.join(__dirname, '../../docs');
 const GITHUB_BLOB = 'https://github.com/OpenVibers/OpenVibe.Live/blob/main';
 
 // ── Helpers ──────────────────────────────────────────────────

@@ -23,6 +23,9 @@ const ttsEngine = require('./tts-engine');
 const soundboard = require('./soundboard-service');
 const dm = require('./dm');
 const ipUtils = require('../admin/ip-utils');
+// Concurrent chat sockets per address. Generous: one person has several tabs, a school or
+// carrier NAT puts many people behind one address; this only stops one host opening thousands.
+const MAX_CHAT_SOCKETS_PER_IP = 48;
 
 const DEBUG_DM_DELIVERY = process.env.DEBUG_DM_DELIVERY === '1';
 
@@ -55,6 +58,8 @@ class ChatServer {
         this.wss = null;
         /** @type {Map<WebSocket, { user: object|null, anonId: string, streamId: number|null, ip: string }>} */
         this.clients = new Map();
+        /** @type {Map<string, number>} ip → open sockets */
+        this._ipSockets = new Map();
         /** @type {Map<string, number>} IP → unified anon number (warm cache, backed by openvibe.network) */
         this.anonMap = new Map();
         this.nextAnonId = 1;
@@ -305,6 +310,20 @@ class ChatServer {
         // Authenticate (optional — anon if no token)
         const user = authenticateWs(token);
 
+        const perIp = this._ipSockets.get(ip) || 0;
+        if (ip && ip !== 'unknown' && perIp >= MAX_CHAT_SOCKETS_PER_IP && !(user && user.role === 'admin')) {
+            ws.close(4029, 'Too many connections');
+            return;
+        }
+        this._ipSockets.set(ip, perIp + 1);
+        let released = false;
+        const release = () => {
+            if (released) return;
+            released = true;
+            const n = (this._ipSockets.get(ip) || 1) - 1;
+            if (n > 0) this._ipSockets.set(ip, n); else this._ipSockets.delete(ip);
+        };
+
         // Generate or reuse anon ID for this IP
         const anonId = user ? null : this.getAnonIdForConnection(ip, streamId);
 
@@ -341,6 +360,7 @@ class ChatServer {
         });
 
         ws.on('close', () => {
+            release();
             this.clients.delete(ws);
             this.broadcastUserCount(streamId);
             this.broadcastUsersList(streamId);
@@ -348,6 +368,7 @@ class ChatServer {
 
         ws.on('error', (err) => {
             console.warn('[Chat] WebSocket error for', ws._clientIp || 'unknown', ':', err.message);
+            release();
             this.clients.delete(ws);
         });
     }
@@ -401,10 +422,15 @@ class ChatServer {
                 // is offline. Prefer an explicit channelUserId from the client; else
                 // derive it from the live stream's owner.
                 let channelUserId = parseInt(msg.channelUserId || msg.channel_user_id) || null;
-                if (!channelUserId && client.streamId) {
+                // With a stream, the room is that stream's owner — whatever the client says. Taking the
+                // client's value let a viewer join stream A's session while posting into channel B's
+                // room, where B's bans and chat rules (checked against the stream) never applied.
+                if (client.streamId) {
+                    channelUserId = null;
                     try { const s = db.getStreamById(client.streamId); if (s) channelUserId = s.user_id; } catch { /* ignore */ }
                 }
                 client.channelUserId = channelUserId;
+                client._modStream = null;
                 // Update viewer counts for old and new streams
                 if (oldStream !== client.streamId) {
                     if (oldStream) this.broadcastUserCount(oldStream);
@@ -455,6 +481,17 @@ class ChatServer {
             default:
                 break;
         }
+    }
+
+    /** The stream whose bans and chat settings govern an offline channel-room chatter (cached 30s). */
+    _moderationStreamFor(client) {
+        if (!client || !client.channelUserId) return null;
+        const now = Date.now();
+        if (client._modStream && now - client._modStream.at < 30000) return client._modStream.id;
+        let id = null;
+        try { id = (db.get('SELECT id FROM streams WHERE user_id = ? ORDER BY id DESC LIMIT 1', [client.channelUserId]) || {}).id || null; } catch { id = null; }
+        client._modStream = { id, at: now };
+        return id;
     }
 
     handleSelfDeleteHistory(ws, client) {
@@ -579,11 +616,14 @@ class ChatServer {
         // and skipping media on the stream they were banned from — and every "/" command,
         // including /me, which puts their text back in the chat they are banned from. A ban means
         // no input of any kind.
-        if (client.user && db.isUserBanned(client.user.id, client.streamId)) {
+        // Offline channel chat has no stream of its own; bans and chat rules come from the channel's
+        // most recent stream, so a ban does not stop at the end of a broadcast.
+        const modStreamId = client.streamId || this._moderationStreamFor(client);
+        if (client.user && db.isUserBanned(client.user.id, modStreamId)) {
             this.sendTo(ws, { type: 'system', message: 'You are banned from this chat.' });
             return;
         }
-        if (!this._isBanExemptAdmin(client) && db.isIpBanned(client.ip, client.streamId)) {
+        if (!this._isBanExemptAdmin(client) && db.isIpBanned(client.ip, modStreamId)) {
             this.sendTo(ws, { type: 'system', message: 'You are banned from this chat.' });
             return;
         }
@@ -652,10 +692,10 @@ class ChatServer {
         }
 
         // ── Channel moderation settings ──────────────────────
-        if (client.streamId) {
-            const chatSettings = this._getChannelChatSettings(client.streamId);
+        if (modStreamId) {
+            const chatSettings = this._getChannelChatSettings(modStreamId);
             const isStaff = client.user && permissions.isGlobalModOrAbove(client.user);
-            const canModerateThisStream = permissions.canModerateStream(client.user, client.streamId);
+            const canModerateThisStream = permissions.canModerateStream(client.user, modStreamId);
 
             // Max message length
             const maxLen = Math.max(50, Number(chatSettings.max_message_length || 500));
@@ -697,7 +737,7 @@ class ChatServer {
 
             // Followers only
             if (chatSettings.followers_only && client.user && !isStaff) {
-                const stream = db.getStreamById(client.streamId);
+                const stream = db.getStreamById(modStreamId);
                 if (stream && stream.user_id !== client.user.id && !db.isFollowing(client.user.id, stream.user_id)) {
                     this.sendTo(ws, { type: 'system', message: 'This chat is currently followers-only.' });
                     return;
@@ -1907,7 +1947,9 @@ class ChatServer {
      */
     canModerate(client) {
         if (!client.user) return false;
-        return permissions.canModerateStream(client.user, client.streamId);
+        // Offline channel chat: the channel's latest stream stands in (see _moderationStreamFor).
+        const sid = client.streamId || this._moderationStreamFor(client);
+        return !!sid && permissions.canModerateStream(client.user, sid) || permissions.isGlobalModOrAbove(client.user);
     }
 
     /** @deprecated Use canModerate(client) — kept temporarily for any external callers */

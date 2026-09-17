@@ -51,7 +51,6 @@ function _overlayAiState(row, kind) {
     } catch { /* */ }
 }
 
-const INDEX_HTML_PATH = path.join(__dirname, '../../public/index.html');
 const SITE_NAME = 'OpenVibe.Live';
 const DEFAULT_OG_IMAGE = '/og-image.png';
 
@@ -402,27 +401,23 @@ function _detailSnapshot({ title, byline, desc, overview, transcript, canonicalP
 }
 
 // ── Inject metadata into the base index.html ────────────────────────────────────────────────
-// The base document is re-read when index.html changes on disk, checked at most every 2s.
-//
-// It used to be read once per process. Every client-side change bumps a ?v= in index.html, so
-// shipping even a CSS tweak needed a service restart to be seen — and a restart drops every live
-// RTMP stream, because RTMP ingest is owned by this process (socket activation only covers HTTP).
-// With this, a change that only touches public/ goes live with a git pull and no restart.
-let _baseHtml = null, _baseMtime = 0, _baseCheckedAt = 0;
+// The base document comes from server/web/assets.js: index.html with its asset URLs rewritten to
+// content hashes, re-read when index.html or any asset it references changes (checked at most
+// every 2s). A change that only touches public/ therefore goes live with a git pull and no
+// restart — and a restart drops every live RTMP stream, because RTMP ingest is owned by this
+// process (socket activation only covers HTTP).
+const assets = require('../web/assets');
+let _baseVersion = null;
 function _base() {
-    const now = Date.now();
-    if (_baseHtml == null || now - _baseCheckedAt > 2000) {
-        _baseCheckedAt = now;
-        let mtime = 0;
-        try { mtime = fs.statSync(INDEX_HTML_PATH).mtimeMs; } catch { /* keep what we have */ }
-        if (_baseHtml == null || (mtime && mtime !== _baseMtime)) {
-            try { _baseHtml = fs.readFileSync(INDEX_HTML_PATH, 'utf8'); _baseMtime = mtime; }
-            catch { if (_baseHtml == null) _baseHtml = ''; }
-            // Pages rendered from the old document reference old asset versions.
-            if (typeof _cache !== 'undefined') _cache.clear();
-        }
+    let doc = null;
+    try { doc = assets.document('index.html'); } catch { doc = null; }
+    if (!doc) return '';
+    if (doc.version !== _baseVersion) {
+        _baseVersion = doc.version;
+        // Pages rendered from the old document reference old asset versions.
+        if (typeof _cache !== 'undefined') _cache.clear();
     }
-    return _baseHtml;
+    return doc.html;
 }
 function _headBlock(meta) {
     const canonical = abs(meta.canonicalPath || '/');
@@ -451,9 +446,10 @@ function _headBlock(meta) {
     for (const l of (meta.jsonLd || [])) parts.push(jsonLd(l));
     return '\n' + parts.map(x => '    ' + x).join('\n') + '\n';
 }
-function render(meta) {
+function render(meta, urlPath) {
     let html = _base();
     if (!html) return null;
+    html = assets.renderRoute(html, urlPath || meta.canonicalPath || '/');
 
     // Only the <head> is rewritten, so only the <head> is scanned.
     //
@@ -515,13 +511,14 @@ async function middleware(req, res, next) {
         // skip the check and keep serving pages that point at the previous asset versions.
         _base();
         const cached = _cacheGet(p);
-        if (cached) { res.set('Cache-Control', 'public, max-age=300'); res.type('html'); return res.send(cached); }
+        if (cached) { res.set('Cache-Control', 'public, max-age=300'); res.set('Content-Security-Policy-Report-Only', assets.cspReportOnly(cached)); res.type('html'); return res.send(cached); }
         const meta = await _pageMeta(p);
         if (!meta) return next(); // unknown / not found → let the SPA 404 client-side
-        const html = render(meta);
+        const html = render(meta, p);
         if (!html) return next();
         _cacheSet(p, html);
         res.set('Cache-Control', 'public, max-age=300');
+        res.set('Content-Security-Policy-Report-Only', assets.cspReportOnly(html));
         res.type('html');
         return res.send(html);
     } catch (e) {

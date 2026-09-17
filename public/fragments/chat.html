@@ -1,0 +1,226 @@
+<!-- #page-chat markup, loaded on first visit to the route (public/features.json). The server inlines it for direct visits. -->
+        <div class="chat-voice-layout">
+            <!-- ── Left: Voice Channels ── -->
+            <div class="vc-sidebar">
+                <div class="vc-sidebar-header">
+                    <h3><i class="fa-solid fa-headset"></i> Voice Channels</h3>
+                    <button class="vc-create-btn" onclick="vcShowCreateModal()" title="Create Channel">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                </div>
+                <div class="vc-channel-list" id="vc-channel-list">
+                    <!-- Populated by voice-channels.js -->
+                </div>
+
+                <!-- ── Connected Panel (shown when in a voice channel) ── -->
+                <div class="vc-connected-panel" id="vc-connected-panel" style="display:none">
+                    <div class="vc-connected-header">
+                        <div class="vc-connected-info">
+                            <span class="vc-connected-badge"><i class="fa-solid fa-circle"></i> Voice Connected</span>
+                            <span class="vc-connected-channel" id="vc-connected-channel">Public</span>
+                        </div>
+                        <div class="vc-connected-status" id="vc-connected-status" style="display:none; color:#f87171; font-size:0.8rem; padding:4px 8px;"></div>
+                    </div>
+                    <div class="vc-participants-grid" id="vc-participants-grid"></div>
+                    <!-- No-mic banner: shown when user joined without granting microphone access -->
+                    <div class="vc-no-mic-banner" id="vc-no-mic-banner" style="display:none">
+                        <i class="fa-solid fa-microphone-slash"></i>
+                        <span>No microphone — others can't hear you</span>
+                        <button id="vc-enable-mic-btn" class="vc-enable-mic-btn" onclick="requestMicAccess()">
+                            <i class="fa-solid fa-microphone"></i> Enable Mic
+                        </button>
+                    </div>
+                    <div class="vc-controls">
+                        <button class="vc-ctrl-btn" id="vc-btn-mute" onclick="vcToggleMute()" title="Mute">
+                            <i class="fa-solid fa-microphone"></i>
+                        </button>
+                        <button class="vc-ctrl-btn" id="vc-btn-camera" onclick="vcToggleCamera()" title="Toggle Camera">
+                            <i class="fa-solid fa-video"></i>
+                        </button>
+                        <button class="vc-ctrl-btn" id="vc-btn-screen" onclick="vcToggleScreenShare()" title="Share Screen" style="display:none">
+                            <i class="fa-solid fa-display"></i>
+                        </button>
+                        <button class="vc-ctrl-btn vc-ctrl-settings" id="vc-btn-settings" onclick="vcToggleSettings()" title="Settings">
+                            <i class="fa-solid fa-gear"></i>
+                        </button>
+                        <button class="vc-ctrl-btn vc-ctrl-leave" onclick="vcLeave()" title="Disconnect">
+                            <i class="fa-solid fa-phone-slash"></i>
+                        </button>
+                    </div>
+                    <!-- In-call settings (toggled) -->
+                    <div class="vc-incall-settings" id="vc-incall-settings" style="display:none">
+                        <div class="vc-device-group">
+                            <label><i class="fa-solid fa-microphone"></i> Mic</label>
+                            <select id="vc-mic-switch" class="form-input form-input-sm" onchange="vcSwitchMic(this.value)">
+                                <option value="default">Default</option>
+                            </select>
+                        </div>
+                        <div class="vc-device-group" id="vc-cam-switch-group">
+                            <label><i class="fa-solid fa-video"></i> Camera</label>
+                            <select id="vc-cam-switch" class="form-input form-input-sm" onchange="vcSwitchCam(this.value)">
+                                <option value="default">Default</option>
+                            </select>
+                        </div>
+                        <div class="vc-device-group">
+                            <label><i class="fa-solid fa-wave-square"></i> Input Mode</label>
+                            <select id="vc-input-mode-switch" class="form-input form-input-sm" onchange="vcOnInputModeChange(this.value)">
+                                <option value="open">Open Mic</option>
+                                <option value="ptt">Push to Talk</option>
+                                <option value="vad">Voice Activation</option>
+                            </select>
+                        </div>
+                        <div class="vc-device-group vc-ptt-group" id="vc-ptt-switch-group" style="display:none">
+                            <label><i class="fa-solid fa-keyboard"></i> Push Key</label>
+                            <select id="vc-ptt-key-switch" class="form-input form-input-sm" onchange="vcOnPttKeyChange(this.value)">
+                                <option value="Space">Space</option>
+                                <option value="KeyV">V</option>
+                                <option value="KeyT">T</option>
+                                <option value="KeyB">B</option>
+                                <option value="KeyX">X</option>
+                                <option value="AltLeft">Left Alt</option>
+                                <option value="AltRight">Right Alt</option>
+                                <option value="ControlLeft">Left Ctrl</option>
+                                <option value="ShiftLeft">Left Shift</option>
+                                <option value="Mouse3">Mouse Middle</option>
+                                <option value="Mouse4">Mouse Button 4</option>
+                                <option value="Mouse5">Mouse Button 5</option>
+                            </select>
+                        </div>
+                        <div class="vc-device-group vc-vad-group" id="vc-vad-switch-group" style="display:none">
+                            <label><i class="fa-solid fa-sliders"></i> Sensitivity</label>
+                            <input id="vc-vad-threshold-switch" class="vc-threshold-slider" type="range" min="5" max="80" step="1" value="32" oninput="vcOnVadChange(this.value)">
+                            <span id="vc-vad-switch-value">32%</span>
+                        </div>
+                        <div class="vc-ptt-status" id="vc-ptt-status" style="display:none">Hold <strong id="vc-ptt-status-key">Space</strong> to talk</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Right: Global Chat ── -->
+            <div class="global-chat-main">
+                <div class="global-chat-header">
+                    <div>
+                        <h2><i class="fa-solid fa-comments"></i> <span id="chat-mode-title">Global Chat</span></h2>
+                        <p class="muted" id="chat-mode-subtitle">Live messages from all streams and the lobby</p>
+                    </div>
+                    <div class="chat-header-controls">
+                        <select id="chat-mode-select" class="form-input form-input-sm chat-mode-select" onchange="onChatModeChange(this.value)">
+                            <option value="global">Global</option>
+                            <option value="voice" id="chat-mode-voice-opt" disabled>Voice Call</option>
+                        </select>
+                        <button class="chat-settings-btn" onclick="toggleChatUsers(this)" title="Users">
+                            <i class="fa-solid fa-users"></i>
+                        </button>
+                        <button class="chat-settings-btn" onclick="popoutGlobalChat()" title="Pop Out Chat">
+                            <i class="fa-solid fa-up-right-from-square"></i>
+                        </button>
+                        <button class="chat-settings-btn" onclick="toggleChatSettings(this)" title="Chat Settings">
+                            <i class="fa-solid fa-gear"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="global-ai-strip" id="global-ai-strip" style="display:none" onclick="toggleGlobalAiPanel()" title="AI read of the chat — click for the full insight &amp; timeline">
+                    <span class="gai-badge"><i class="fa-solid fa-wand-magic-sparkles"></i> AI</span>
+                    <span class="gai-strip-text" id="global-ai-strip-text"></span>
+                    <i class="fa-solid fa-chevron-down gai-strip-caret" id="global-ai-strip-caret"></i>
+                </div>
+                <div class="chat-users-panel"></div>
+                <div class="global-chat-messages" id="global-chat-messages"></div>
+                <div class="chat-input-area">
+                    <!-- Emote Picker -->
+                    <div id="gc-emote-picker" class="emote-picker" style="display:none">
+                        <div class="emote-picker-header">
+                            <input type="text" class="emote-search" placeholder="Search emotes..." oninput="onEmoteSearch(this.value)">
+                        </div>
+                        <div class="emote-picker-tabs">
+                            <button class="emote-tab-btn active" data-tab="all" onclick="renderEmotePicker('all')">All</button>
+                            <button class="emote-tab-btn" data-tab="defaults" onclick="renderEmotePicker('defaults')">Popular</button>
+                            <button class="emote-tab-btn" data-tab="channel" onclick="renderEmotePicker('channel')">Channel</button>
+                            <button class="emote-tab-btn" data-tab="global" onclick="renderEmotePicker('global')">Custom</button>
+                            <button class="emote-tab-btn" data-tab="ffz" onclick="renderEmotePicker('ffz')">FFZ</button>
+                            <button class="emote-tab-btn" data-tab="7tv" onclick="renderEmotePicker('7tv')">7TV</button>
+                            <button class="emote-tab-btn" data-tab="bttv" onclick="renderEmotePicker('bttv')">BTTV</button>
+                        </div>
+                        <div class="emote-picker-grid" id="gc-emote-picker-grid"></div>
+                    </div>
+                    <div class="chat-input-row">
+                        <textarea id="global-chat-input" class="chat-textarea" placeholder="Send a message..." maxlength="500"
+                                  rows="1" autocomplete="off" spellcheck="true" enterkeyhint="send"></textarea>
+                        <button class="chat-send-btn" onclick="sendChat()">
+                            <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
+                    <div class="chat-tools-row">
+                        <button class="emote-picker-btn" onclick="toggleEmotePicker('global-chat-input')" title="Emotes">
+                            <i class="fa-solid fa-face-smile"></i>
+                        </button>
+                        <button class="emote-picker-btn gif-btn" onclick="toggleGifPicker('global-chat-input')" title="GIFs">
+                            <span class="gif-btn-text">GIF</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Global Chat AI insight + timeline (below the layout) ── -->
+        <section class="global-ai-panel" id="global-ai-panel" style="display:none">
+            <div class="gai-panel-head">
+                <h3><i class="fa-solid fa-wand-magic-sparkles"></i> Global Chat &mdash; AI Insight</h3>
+                <span class="gai-meta" id="global-ai-meta"></span>
+                <button class="gai-collapse-btn" onclick="toggleGlobalAiPanel()" title="Collapse"><i class="fa-solid fa-chevron-up"></i></button>
+            </div>
+            <div class="gai-overview" id="global-ai-overview"></div>
+            <div class="gai-cols">
+                <div class="gai-col gai-col-timeline">
+                    <div class="gai-tl-head">
+                        <h4><i class="fa-solid fa-timeline"></i> Timeline</h4>
+                        <input type="search" id="gai-tl-search" class="gai-tl-search" placeholder="Search moments…" oninput="_gaiTlSearchDebounced(this.value)">
+                    </div>
+                    <div class="gai-tl-periods" id="gai-tl-periods">
+                        <button class="gai-tl-chip active" data-period="all" onclick="_gaiTlPeriod('all', this)">All</button>
+                        <button class="gai-tl-chip" data-period="today" onclick="_gaiTlPeriod('today', this)">Today</button>
+                        <button class="gai-tl-chip" data-period="yesterday" onclick="_gaiTlPeriod('yesterday', this)">Yesterday</button>
+                        <button class="gai-tl-chip" data-period="week" onclick="_gaiTlPeriod('week', this)">Week</button>
+                        <button class="gai-tl-chip" data-period="month" onclick="_gaiTlPeriod('month', this)">Month</button>
+                    </div>
+                    <div class="gai-timeline" id="global-ai-timeline" onscroll="_gaiTlOnScroll(this)"></div>
+                </div>
+                <div class="gai-col">
+                    <h4><i class="fa-solid fa-brain"></i> Community Memory</h4>
+                    <div class="gai-memory" id="global-ai-memory"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Create Channel Modal -->
+        <div class="vc-modal-overlay" id="vc-create-modal" style="display:none" onclick="if(event.target===this)vcHideCreateModal()">
+            <div class="modal-box">
+                <div class="modal-header">
+                    <h3>Create Voice Channel</h3>
+                    <button class="modal-close" onclick="vcHideCreateModal()"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Channel Name</label>
+                        <input type="text" id="vc-create-name" class="form-input" placeholder="e.g. Chill Zone" maxlength="40">
+                    </div>
+                    <div class="form-group">
+                        <label>Mode</label>
+                        <select id="vc-create-mode" class="form-input">
+                            <option value="mic">Voice Only</option>
+                            <option value="mic+cam" selected>Voice + Camera</option>
+                            <option value="cam+mic">Video Call</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Max Participants</label>
+                        <input type="number" id="vc-create-max" class="form-input" value="15" min="2" max="15">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="vcHideCreateModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="vcCreateChannel()">Create</button>
+                </div>
+            </div>
+        </div>
+    

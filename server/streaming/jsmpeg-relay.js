@@ -67,7 +67,7 @@ class JSMPEGRelay {
                     // Feed data taps (restream FFmpeg processes)
                     if (dataTaps.size > 0) {
                         for (const tap of dataTaps) {
-                            try { tap('video', chunk); } catch (e) { console.error(`[JSMPEG] Video data tap error (${streamKey}):`, e.message); }
+                            try { tap('video', chunk); } catch (e) { console.error(`[JSMPEG] Video data tap error (${require("../utils/redact").maskKey(streamKey)}):`, e.message); }
                         }
                     }
                 });
@@ -84,15 +84,15 @@ class JSMPEGRelay {
         videoServer.on('upgrade', (req, socket, head) => {
             videoWss.handleUpgrade(req, socket, head, (ws) => {
                 videoWss.emit('connection', ws, req);
-                console.log(`[JSMPEG] Video viewer connected (${streamKey}), total: ${videoWss.clients.size}`);
+                console.log(`[JSMPEG] Video viewer connected (${require("../utils/redact").maskKey(streamKey)}), total: ${videoWss.clients.size}`);
                 ws.on('close', () => {
-                    console.log(`[JSMPEG] Video viewer disconnected (${streamKey}), total: ${videoWss.clients.size}`);
+                    console.log(`[JSMPEG] Video viewer disconnected (${require("../utils/redact").maskKey(streamKey)}), total: ${videoWss.clients.size}`);
                 });
             });
         });
 
         videoServer.listen(videoPort, () => {
-            console.log(`[JSMPEG] Video relay for ${streamKey} on port ${videoPort}`);
+            console.log(`[JSMPEG] Video relay for ${require("../utils/redact").maskKey(streamKey)} on port ${videoPort}`);
         });
 
         // ── Audio relay ──────────────────────────────────────
@@ -112,7 +112,7 @@ class JSMPEGRelay {
                     // Feed data taps (restream FFmpeg processes)
                     if (dataTaps.size > 0) {
                         for (const tap of dataTaps) {
-                            try { tap('audio', chunk); } catch (e) { console.error(`[JSMPEG] Audio data tap error (${streamKey}):`, e.message); }
+                            try { tap('audio', chunk); } catch (e) { console.error(`[JSMPEG] Audio data tap error (${require("../utils/redact").maskKey(streamKey)}):`, e.message); }
                         }
                     }
                 });
@@ -133,7 +133,7 @@ class JSMPEGRelay {
         });
 
         audioServer.listen(audioPort, () => {
-            console.log(`[JSMPEG] Audio relay for ${streamKey} on port ${audioPort}`);
+            console.log(`[JSMPEG] Audio relay for ${require("../utils/redact").maskKey(streamKey)} on port ${audioPort}`);
         });
 
         this.channels.set(streamKey, {
@@ -190,7 +190,7 @@ class JSMPEGRelay {
         ch.videoServer.close();
         ch.audioServer.close();
         this.channels.delete(streamKey);
-        console.log(`[JSMPEG] Channel destroyed: ${streamKey}`);
+        console.log(`[JSMPEG] Channel destroyed: ${require("../utils/redact").maskKey(streamKey)}`);
     }
 
     /**

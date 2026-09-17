@@ -1,3 +1,4 @@
+const { maskKey, redactUrl } = require('../utils/redact');
 /**
  * OpenVibe.Live — RTMP Ingest Server
  * 
@@ -79,13 +80,13 @@ class RTMPServer extends EventEmitter {
 
         // ── Auth: Validate stream key on publish ─────────────
         this.nms.on('prePublish', (id, streamPath, args) => {
-            console.log(`[RTMP] PrePublish: ${streamPath} from session ${id}`);
+            console.log(`[RTMP] PrePublish: ${redactUrl(streamPath)} from session ${id}`);
             // Stream path format: /live/STREAM_KEY
             const parts = streamPath.split('/');
             const streamKey = parts[parts.length - 1];
 
             if (!streamPath.startsWith('/live/') || !/^[a-zA-Z0-9_-]{8,128}$/.test(streamKey)) {
-                console.log(`[RTMP] Rejected malformed publish path: ${streamPath}`);
+                console.log(`[RTMP] Rejected malformed publish path: ${redactUrl(streamPath)}`);
                 const session = this.nms.getSession(id);
                 if (session) session.reject();
                 return;
@@ -93,7 +94,7 @@ class RTMPServer extends EventEmitter {
 
             const existingActive = this.activeStreams.get(streamKey);
             if (existingActive && existingActive.sessionId !== id) {
-                console.log(`[RTMP] Rejected duplicate publisher for stream key ${streamKey}`);
+                console.log(`[RTMP] Rejected duplicate publisher for stream key ${maskKey(streamKey)}`);
                 const session = this.nms.getSession(id);
                 if (session) session.reject();
                 return;
@@ -104,7 +105,7 @@ class RTMPServer extends EventEmitter {
             const managedStream = !user ? db.getManagedStreamByStreamKey(streamKey) : null;
             const resolvedUser = user || (managedStream ? db.getUserById(managedStream.user_id) : null);
             if (!resolvedUser) {
-                console.log(`[RTMP] Rejected: invalid stream key ${streamKey}`);
+                console.log(`[RTMP] Rejected: invalid stream key ${maskKey(streamKey)}`);
                 const session = this.nms.getSession(id);
                 if (session) session.reject();
                 return;
@@ -172,9 +173,12 @@ class RTMPServer extends EventEmitter {
             // Ensure heartbeat is always set (for stale-stream cleanup)
             db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [streamId]);
 
+            // A throw inside a timer is an uncaught exception, and the process exits on those — one
+            // "database is locked" here would drop every live stream, not just this one.
             const heartbeatTimer = setInterval(() => {
-                db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [streamId]);
-                console.log(`[RTMP] Heartbeat refreshed for stream ${streamId}`);
+                try {
+                    db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [streamId]);
+                } catch (e) { console.warn(`[RTMP] heartbeat for stream ${streamId} failed: ${e.message}`); }
             }, RTMP_HEARTBEAT_INTERVAL_MS);
 
             this.activeStreams.set(streamKey, {
@@ -227,9 +231,9 @@ class RTMPServer extends EventEmitter {
                 db.endStream(info.streamId);
                 try { db.computeAndCacheStreamAnalytics(info.streamId); } catch {}
                 this.activeStreams.delete(streamKey);
-                console.log(`[RTMP] Stream ended: ${streamKey} (stream ${info.streamId})`);
+                console.log(`[RTMP] Stream ended: ${maskKey(streamKey)} (stream ${info.streamId})`);
             } else {
-                console.log(`[RTMP] donePublish received for unknown stream key: ${streamKey}`);
+                console.log(`[RTMP] donePublish received for unknown stream key: ${maskKey(streamKey)}`);
             }
         });
 

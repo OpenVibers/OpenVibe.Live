@@ -73,4 +73,10 @@ function announceGoLive(stream, streamer) {
     } catch (e) { console.warn('[LiveEvents] announce failed:', e.message); }
 }
 
-module.exports = { subscribe, broadcast, announceGoLive, clientCount: () => clients.size };
+/** End every open SSE stream. Without this, server.close() never called back on shutdown. */
+function closeAll() {
+    for (const res of clients) { try { res.end(); } catch { /* */ } }
+    clients.clear();
+}
+
+module.exports = { subscribe, broadcast, announceGoLive, closeAll, clientCount: () => clients.size };

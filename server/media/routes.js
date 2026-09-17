@@ -339,7 +339,9 @@ router.get('/queue/:id/stream-url', optionalAuth, async (req, res) => {
                 embed_url: request.embed_url || null,
                 provider: request.provider,
                 download_status: 'failed',
-                last_error: request.last_error,
+                // Raw yt-dlp output (hosts, ports, HTTP errors) is for the channel's managers; anyone
+                // else gets a generic reason instead of an oracle for probing what the server can reach.
+                last_error: canManageChannel(req.user, request.streamer_id) ? request.last_error : (request.last_error ? 'That link could not be played' : null),
             });
         }
 
@@ -358,9 +360,14 @@ router.get('/queue/:id/stream-url', optionalAuth, async (req, res) => {
 });
 
 // ── Playback position save (called periodically by player) ──
-router.post('/queue/:id/position', optionalAuth, (req, res) => {
+// The player page sends the session cookie (sendBeacon cannot set headers), so the same
+// manager check as /fail applies: nobody else can move a channel's resume point.
+router.post('/queue/:id/position', requireAuth, (req, res) => {
     try {
         const requestId = cleanInt(req.params.id, 0);
+        const request = db.getMediaRequestById(requestId);
+        if (!request) return res.status(404).json({ error: 'Request not found' });
+        if (!canManageChannel(req.user, request.streamer_id)) return res.status(403).json({ error: 'Forbidden' });
         const position = Number(req.body.position);
         if (!Number.isFinite(position) || position < 0) {
             return res.status(400).json({ error: 'Invalid position' });

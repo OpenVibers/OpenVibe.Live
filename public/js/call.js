@@ -976,7 +976,7 @@ function _connectCallWs() {
                 if (!callState.intentionalDisconnect && (callState.joined || callState.connecting) && (callState.channelId || callState.streamId)) {
                     _connectCallWs();
                 }
-            }, callState.reconnectDelay);
+            }, callState.reconnectDelay * (0.75 + Math.random() * 0.5));   // jittered: no reconnect stampede after a restart
             callState.reconnectDelay = Math.min(callState.reconnectDelay * 1.5, 15000);
         } else {
             callState.connecting = false;

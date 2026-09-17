@@ -247,11 +247,23 @@ class ControlServer {
             return;
         }
 
-        if (control_id) {
-            const control = db.get('SELECT * FROM stream_controls WHERE id = ?', [control_id]);
-            if (control) {
+        // The command that reaches the hardware is the stream's own configured button, never a string the
+        // viewer typed. Taking `command` from the message let any viewer send commands the streamer
+        // never configured or had disabled, skipping the button's cooldown by leaving out control_id.
+        let control = null;
+        if (!isOnvif) {
+            control = control_id
+                ? db.get('SELECT * FROM stream_controls WHERE id = ? AND stream_id = ? AND is_enabled = 1', [control_id, client.streamId])
+                : db.get('SELECT * FROM stream_controls WHERE stream_id = ? AND command = ? AND is_enabled = 1 LIMIT 1', [client.streamId, String(command || '')]);
+            if (!control) {
+                ws.send(JSON.stringify({ type: 'error', message: 'That control is not available on this stream' }));
+                return;
+            }
+        }
+        if (control) {
+            {
                 const buttonCooldownMs = Number.isFinite(control.cooldown_ms) ? parseInt(control.cooldown_ms, 10) : 100;
-                const key = `${client.streamId}-command-${control_id}-${userId}`;
+                const key = `${client.streamId}-command-${control.id}-${userId}`;
                 const lastCmd = this.commandCounts.get(key) || 0;
                 if (now - lastCmd < buttonCooldownMs) {
                     ws.send(JSON.stringify({ type: 'cooldown', message: 'Command on cooldown' }));
@@ -266,7 +278,11 @@ class ControlServer {
         if (isOnvif && cameraId && movement) {
             try {
                 const camera = db.getCameraProfile(cameraId);
-                if (!camera) {
+                // The camera has to belong to the stream being controlled (or be a global profile of
+                // the same streamer). Any camera id used to work from any stream's control socket.
+                const cameraOnThisStream = camera && (camera.stream_id === client.streamId
+                    || (camera.stream_id == null && camera.user_id === stream.user_id));
+                if (!cameraOnThisStream) {
                     ws.send(JSON.stringify({ type: 'error', message: 'Camera not found' }));
                     return;
                 }
@@ -337,8 +353,8 @@ class ControlServer {
         // Forward command to hardware
         hardwareWs.send(JSON.stringify({
             type: 'command',
-            command,
-            control_id,
+            command: control.command,
+            control_id: control.id,
             from_user: client.user?.username || 'anonymous',
             timestamp: new Date().toISOString(),
         }));
@@ -346,7 +362,7 @@ class ControlServer {
         // Broadcast command activity to other viewers
         this.broadcastToViewers(user.stream_key, {
             type: 'command_executed',
-            command,
+            command: control.command,
             by: client.user?.username || 'anonymous',
         });
     }

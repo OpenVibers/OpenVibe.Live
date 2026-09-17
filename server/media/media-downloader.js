@@ -150,8 +150,22 @@ function commonArgs() {
     return args;
 }
 
+// Every yt-dlp run (and the ffmpeg it starts) goes out through the egress proxy, so a user-chosen
+// URL cannot reach loopback, the private network or the cloud metadata address — not by DNS
+// rebinding, not by redirect. An admin-configured --proxy in the extra args still takes precedence
+// (a remote proxy cannot reach this machine's internal network either).
+const egress = require('../net/egress');
+let _egressUrl = null;
+const _egressReady = egress.proxy().then((url) => { _egressUrl = url; return url; })
+    .catch((e) => { console.warn('[MediaDownloader] egress proxy unavailable:', e.message); return null; });
+function ready() { return _egressReady; }
+
 function ytdlpEnv() {
     const env = { ...process.env };
+    for (const k of ['NO_PROXY', 'no_proxy']) delete env[k];
+    if (_egressUrl) {
+        for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'all_proxy']) env[k] = _egressUrl;
+    }
     const nodePath = getNodePath();
     if (nodePath) {
         const nodeDir = path.dirname(nodePath);
@@ -176,13 +190,45 @@ function cookieArgs() {
  * Return admin-configured extra yt-dlp arguments from the DB.
  * Each non-empty, non-comment line is treated as a separate argument.
  */
+// Options that only change how yt-dlp talks to sites. Anything that runs a program, reads or writes
+// a path, or loads configuration (--exec, --downloader, --config-location, --output, --cookies,
+// --plugin-dirs, …) is refused, because the setting is editable from the web.
+const EXTRA_ARG_FLAGS = new Map([
+    // flag -> takes a value
+    ['--extractor-args', true], ['--proxy', true], ['--geo-verification-proxy', true],
+    ['--sleep-requests', true], ['--sleep-interval', true], ['--max-sleep-interval', true], ['--sleep-subtitles', true],
+    ['--retries', true], ['--fragment-retries', true], ['--extractor-retries', true], ['--socket-timeout', true],
+    ['--source-address', true], ['--force-ipv4', false], ['--force-ipv6', false], ['-4', false], ['-6', false],
+    ['--user-agent', true], ['--referer', true], ['--add-header', true], ['--impersonate', true],
+    ['--geo-bypass', false], ['--geo-bypass-country', true], ['--xff', true],
+    ['--concurrent-fragments', true], ['-N', true], ['--limit-rate', true], ['-r', true], ['--throttled-rate', true],
+    ['--http-chunk-size', true], ['--format-sort', true], ['-S', true], ['--no-playlist', false], ['--live-from-start', false],
+]);
+function parseExtraArgs(raw) {
+    const lines = String(raw || '').split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+    const args = [], rejected = [];
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const flag = line.split('=')[0];
+        if (!EXTRA_ARG_FLAGS.has(flag)) { rejected.push(line.slice(0, 40)); continue; }
+        args.push(line);
+        // A value on its own line belongs to the flag before it.
+        if (EXTRA_ARG_FLAGS.get(flag) && !line.includes('=') && i + 1 < lines.length && !lines[i + 1].startsWith('-')) {
+            args.push(lines[++i]);
+        }
+    }
+    return { args, rejected };
+}
+function validateExtraArgs(raw) { return parseExtraArgs(raw).rejected; }
+
 function extraArgs() {
     try {
         const raw = getDb().getSetting('ytdlp_extra_args');
         if (!raw || typeof raw !== 'string') return [];
-        return raw.split('\n')
-            .map(l => l.trim())
-            .filter(l => l && !l.startsWith('#'));
+        const { args, rejected } = parseExtraArgs(raw);
+        // Values saved before the allow-list existed are skipped, not run.
+        if (rejected.length) console.warn(`[MediaDownloader] ignoring disallowed yt-dlp args: ${rejected.join(', ')}`);
+        return args;
     } catch {
         return [];
     }
@@ -524,6 +570,8 @@ function runYtdlp(args) {
 }
 
 module.exports = {
+    validateExtraArgs,
+    ready,
     isAvailable,
     getVersion,
     checkPotProvider,
