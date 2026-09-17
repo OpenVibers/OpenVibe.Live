@@ -50,13 +50,16 @@ function parseChannelUrl(url) {
     if (!url) return null;
     try {
         const u = new URL(url);
-        const host = u.hostname.toLowerCase().replace('www.', '');
+        const host = u.hostname.toLowerCase().replace(/^www\./, '');
+        // Exact host or a subdomain of it. includes() accepted youtube.com.attacker.example, and the
+        // channel URL is then fetched server-side.
+        const on = (domain) => host === domain || host.endsWith('.' + domain);
         const pathParts = u.pathname.split('/').filter(Boolean);
 
-        if (host.includes('twitch.tv') && pathParts[0]) {
+        if (on('twitch.tv') && pathParts[0]) {
             return { platform: 'twitch', channelName: pathParts[0].toLowerCase() };
         }
-        if (host.includes('kick.com') && pathParts[0]) {
+        if (on('kick.com') && pathParts[0]) {
             const result = { platform: 'kick', channelName: pathParts[0].toLowerCase() };
             // Support ?chatroom=ID for bypassing Kick's Cloudflare-blocked API
             const chatroomParam = u.searchParams.get('chatroom');
@@ -70,7 +73,7 @@ function parseChannelUrl(url) {
             }
             return result;
         }
-        if (host.includes('youtube.com')) {
+        if (on('youtube.com')) {
             // Handle youtube.com/live/VIDEO_ID, youtube.com/watch?v=VIDEO_ID, youtube.com/@channel
             if (pathParts[0] === 'live' && pathParts[1]) {
                 return { platform: 'youtube', channelName: pathParts[1] };
@@ -86,7 +89,7 @@ function parseChannelUrl(url) {
                 return { platform: 'youtube', channelName: pathParts[1] };
             }
         }
-        if (host.includes('youtu.be') && pathParts[0]) {
+        if (on('youtu.be') && pathParts[0]) {
             return { platform: 'youtube', channelName: pathParts[0] };
         }
     } catch {}
@@ -1060,20 +1063,10 @@ class ChatRelayService {
     // ── HTTP Helpers ──────────────────────────────────────────
 
     _httpGet(url, headers = {}) {
-        return new Promise((resolve, reject) => {
-            const mod = url.startsWith('https') ? https : http;
-            const req = mod.get(url, { headers, timeout: 15000 }, (res) => {
-                // Follow redirects
-                if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                    return resolve(this._httpGet(res.headers.location, headers));
-                }
-                let data = '';
-                res.on('data', (chunk) => { data += chunk; });
-                res.on('end', () => resolve(data));
-            });
-            req.on('error', reject);
-            req.on('timeout', () => req.destroy(new Error('HTTP request timed out')));
-        });
+        // Through the egress guard: redirects are followed hop by hop with the public-address rule,
+        // and the body is capped (a YouTube live page is ~1MB; an unbounded read was a memory lever).
+        return require('../net/egress').fetchText(url, { headers, timeoutMs: 15000, maxBytes: 4 * 1024 * 1024 })
+            .then((r) => r.text);
     }
 
     _httpPost(url, body) {

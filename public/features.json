@@ -1,0 +1,337 @@
+{
+  "_comment": "Feature and route registry, read by server/web/assets.js (first paint: which assets the requested route needs) and by public/js/ov-loader.js (navigation: what to load before a route renders). Scripts in a feature run in the listed order, after the feature's dependencies. `fragment` names public/fragments/<name>.html, inserted into section #page-<section> before any of the feature's scripts run. `after` names a global function called once when the feature has loaded. `stubs` are global functions that inline handlers call; until the feature is loaded they load it and then call the real function. See docs/architecture.md#frontend-loading.",
+  "features": {
+    "home": {
+      "css": [
+        "/css/features/home.css",
+        "/css/home-fx.css",
+        "/css/home-tour.css"
+      ],
+      "js": [
+        "/js/app-home.js",
+        "/js/ov-odometer.js",
+        "/js/ov-density.js",
+        "/js/home-fx.js",
+        "/js/home-tour.js",
+        "/shared/tooltip.js"
+      ],
+      "idle": [
+        "guide",
+        "player",
+        "channel"
+      ]
+    },
+    "appMedia": {
+      "css": [
+        "/css/features/media.css"
+      ],
+      "js": [
+        "/js/app-media.js"
+      ]
+    },
+    "lists": {
+      "js": [
+        "/js/ov-density.js"
+      ],
+      "deps": [
+        "appMedia"
+      ]
+    },
+    "player": {
+      "js": [
+        "/js/stream-player.js",
+        "/js/stream-pip.js"
+      ]
+    },
+    "controls": {
+      "js": [
+        "/js/controls.js"
+      ],
+      "stubs": [
+        "toggleControlsSection",
+        "toggleControlsDock"
+      ]
+    },
+    "context": {
+      "css": [
+        "/css/context-cards.css"
+      ],
+      "js": [
+        "/js/context-cards.js"
+      ]
+    },
+    "chatExtras": {
+      "js": [
+        "/js/emotes.js",
+        "/js/gif-picker.js",
+        "/js/chat-autocomplete.js"
+      ],
+      "after": "initGifPickers",
+      "stubs": [
+        "toggleEmotePicker",
+        "renderEmotePicker",
+        "onEmoteSearch",
+        "toggleGifPicker"
+      ]
+    },
+    "uploads": {
+      "js": [
+        "/js/channel-uploads.js"
+      ],
+      "stubs": [
+        "openChannelUploadModal"
+      ]
+    },
+    "channel": {
+      "fragment": "channel",
+      "css": [
+        "/css/features/channel.css"
+      ],
+      "deps": [
+        "player",
+        "controls",
+        "context",
+        "chatExtras",
+        "uploads"
+      ],
+      "js": [
+        "/js/app-channel.js"
+      ]
+    },
+    "vodPage": {
+      "fragment": "vod-player",
+      "deps": [
+        "context",
+        "appMedia"
+      ]
+    },
+    "clipPage": {
+      "fragment": "clip-player",
+      "deps": [
+        "context",
+        "appMedia"
+      ]
+    },
+    "voice": {
+      "js": [
+        "/js/call.js",
+        "/js/voice-channels.js"
+      ],
+      "after": "vcBoot",
+      "stubs": [
+        "requestMicAccess",
+        "vcShowCreateModal",
+        "vcHideCreateModal",
+        "vcCreateChannel",
+        "vcToggleMute",
+        "vcToggleCamera",
+        "vcToggleScreenShare",
+        "vcToggleSettings",
+        "vcLeave",
+        "vcSwitchMic",
+        "vcSwitchCam",
+        "vcOnInputModeChange",
+        "vcOnPttKeyChange",
+        "vcOnVadChange"
+      ]
+    },
+    "chatpage": {
+      "fragment": "chat",
+      "css": [
+        "/css/features/chatpage.css"
+      ],
+      "deps": [
+        "voice",
+        "chatExtras"
+      ],
+      "js": [
+        "/js/app-chatpage.js"
+      ]
+    },
+    "aiViewers": {
+      "js": [
+        "/js/ai-viewers.js"
+      ],
+      "stubs": [
+        "aivCloneChatter"
+      ]
+    },
+    "guide": {
+      "css": [
+        "/css/ov-guide.css"
+      ],
+      "js": [
+        "/js/ov-guide.js",
+        "/js/guides-live.js"
+      ],
+      "stubs": [
+        "openSetupHub",
+        "startGoLiveJourney",
+        "startRestreamGuide",
+        "setupNextUp"
+      ]
+    },
+    "broadcast": {
+      "fragment": "broadcast",
+      "css": [
+        "/css/features/broadcast.css"
+      ],
+      "deps": [
+        "chatExtras",
+        "guide",
+        "aiViewers"
+      ],
+      "js": [
+        "/js/broadcast-state.js",
+        "/js/broadcast-media-setup.js",
+        "/js/broadcast-devices.js",
+        "/js/call.js",
+        "/js/broadcast-workspace.js",
+        "/js/broadcast.js"
+      ]
+    },
+    "pastes": {
+      "js": [
+        "/js/pastes.js"
+      ],
+      "stubs": [
+        "captureScreenshot"
+      ]
+    },
+    "dashboard": {
+      "fragment": "dashboard",
+      "css": [
+        "/css/features/dashboard.css"
+      ],
+      "deps": [
+        "pastes",
+        "aiViewers"
+      ],
+      "js": [
+        "/js/settings.js",
+        "/js/dashboard-moderation.js",
+        "/js/powerchat.js",
+        "/js/onvif-dashboard.js",
+        "/js/dashboard.js"
+      ],
+      "stubs": [
+        "regenerateDashStreamKey",
+        "doCreateConfig",
+        "doAddConfigButton"
+      ]
+    },
+    "arena": {
+      "css": [
+        "/css/features/arena.css"
+      ],
+      "js": [
+        "/js/arena.js"
+      ]
+    },
+    "recap": {
+      "css": [
+        "/css/recap.css"
+      ],
+      "js": [
+        "/js/recap.js"
+      ]
+    },
+    "cosmetics": {
+      "js": [
+        "/js/cosmetics-ui.js"
+      ],
+      "stubs": [
+        "openCosmeticsModal"
+      ]
+    },
+    "docs": {
+      "fragment": "documentation",
+      "css": [
+        "/css/features/docs.css"
+      ],
+      "js": [
+        "/js/app-docs.js"
+      ]
+    }
+  },
+  "routes": [
+    {
+      "path": "^/$",
+      "features": [
+        "home"
+      ]
+    },
+    {
+      "path": "^/(vods|clips)/?$",
+      "features": [
+        "lists"
+      ]
+    },
+    {
+      "path": "^/vod/[^/]+",
+      "features": [
+        "vodPage"
+      ]
+    },
+    {
+      "path": "^/clip/[^/]+",
+      "features": [
+        "clipPage"
+      ]
+    },
+    {
+      "path": "^/dashboard",
+      "features": [
+        "dashboard"
+      ]
+    },
+    {
+      "path": "^/broadcast",
+      "features": [
+        "broadcast"
+      ]
+    },
+    {
+      "path": "^/chat",
+      "features": [
+        "chatpage"
+      ]
+    },
+    {
+      "path": "^/(pastes/?$|p/)",
+      "features": [
+        "pastes"
+      ]
+    },
+    {
+      "path": "^/recap/",
+      "features": [
+        "recap"
+      ]
+    },
+    {
+      "path": "^/arena",
+      "features": [
+        "arena"
+      ]
+    },
+    {
+      "path": "^/documentation",
+      "features": [
+        "docs"
+      ]
+    },
+    {
+      "path": "^/stream/",
+      "features": [
+        "channel"
+      ]
+    },
+    {
+      "path": "^/@",
+      "features": [
+        "channel"
+      ]
+    }
+  ]
+}

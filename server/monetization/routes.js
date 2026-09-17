@@ -66,6 +66,12 @@ router.post('/donate', requireAuth, (req, res) => {
             return res.status(400).json({ error: 'Could not determine streamer' });
         }
         streamer_id = Number(streamer_id);
+        // Donating to yourself turns bought (spendable) Vibes into received (cash-out-able) Vibes.
+        if (streamer_id === req.user.id) return res.status(400).json({ error: 'You cannot donate to yourself' });
+        if (stream_id) {
+            const s = db.getStreamById(stream_id);
+            if (!s || s.user_id !== streamer_id) return res.status(400).json({ error: 'That stream does not belong to this streamer' });
+        }
 
         const result = openvibeBucks.donate(req.user.id, streamer_id, stream_id, amount, message, goal_id || null);
 

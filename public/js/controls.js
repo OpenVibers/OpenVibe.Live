@@ -515,8 +515,8 @@ function _connectControlWsInner(streamId) {
                     console.log(`[Controls] Reconnecting (delay=${_controlReconnectDelay}ms)...`);
                     _connectControlWsInner(_controlStreamId);
                 }
-            }, _controlReconnectDelay);
-            // Exponential backoff: 1s → 2s → 4s → 8s → max 15s
+            }, _controlReconnectDelay * (0.75 + Math.random() * 0.5));
+            // Exponential backoff with jitter: ~1s → 2s → 4s → 8s → max 15s
             _controlReconnectDelay = Math.min(_controlReconnectDelay * 2, 15000);
         }
     };

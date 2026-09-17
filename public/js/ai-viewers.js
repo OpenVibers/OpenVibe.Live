@@ -336,7 +336,7 @@
                 <div class="ai-bot-actions" style="margin-top:8px">
                     <button class="btn btn-small btn-outline" onclick="aivCommand('${st.paused ? 'resume' : 'pause'}', this)"><i class="fa-solid ${st.paused ? 'fa-play' : 'fa-pause'}"></i> ${st.paused ? 'Resume' : 'Pause'}</button>
                     <button class="btn btn-small btn-outline" onclick="aivCommand('nudge', this)" ${st.running ? '' : 'disabled'}><i class="fa-solid fa-hand-point-right"></i> Nudge</button>
-                    <a class="btn btn-small btn-outline" href="/dashboard#chatai" onclick="if(typeof navigate==='function'){event.preventDefault();navigate('/dashboard');setTimeout(()=>{const b=document.querySelector('#dash-tabs .ch-tab[data-dtab=chatai]'); if(b) b.click();},300);}"><i class="fa-solid fa-sliders"></i> All settings, roster &amp; activity feed</a>
+                    <a class="btn btn-small btn-outline" href="/dashboard#chatai" onclick="if(typeof navigate==='function'){event.preventDefault();navigate('/dashboard');(window.ov?ov.route('/dashboard'):Promise.resolve()).then(()=>{const b=document.querySelector('#dash-tabs .ch-tab[data-dtab=chatai]'); if(b) b.click();});}"><i class="fa-solid fa-sliders"></i> All settings, roster &amp; activity feed</a>
                 </div>
                 <div class="muted" style="font-size:0.78rem;margin-top:6px">Mods can type <code>/ai pause</code>, <code>/ai resume</code>, <code>/ai mute name</code> in chat. The bots always answer you when you address chat or say a viewer's name.</div>`;
         } catch (e) { container.innerHTML = `<span class="muted">AI viewers unavailable: ${esc(e.message)}</span>`; }

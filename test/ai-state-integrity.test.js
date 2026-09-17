@@ -157,12 +157,16 @@ db.addTimelineEvents([
     { stream_id: 902, kind: 'speech', start_sec: 120, text: 'and later still' },
 ]);
 assert.strictEqual(db.getTimelineByVod(501).length, 1, 'late rows start orphaned (the bug)');
-db.initDb();                                    // startup repair
+db.initDb();
+// initDb() schedules the repair a few seconds after boot so it never delays the first request;
+// run that scheduled step directly instead of sleeping.
+db.adoptOrphanedTimelineRows();
 assert.strictEqual(db.getTimelineByVod(501).length, 3,
     'orphaned rows must be adopted onto the VOD their siblings already point at');
 // A stream that never had a VOD must stay untouched — nothing to infer from.
 db.addTimelineEvents([{ stream_id: 900, kind: 'speech', start_sec: 5, text: 'never recorded' }]);
 db.initDb();
+db.adoptOrphanedTimelineRows();
 const orphanCount = raw.prepare('SELECT COUNT(*) n FROM stream_timeline_events WHERE stream_id = 900 AND vod_id IS NULL').get().n;
 assert.strictEqual(orphanCount, 1, 'a stream with no VOD at all must not be given one');
 console.log('OK 8: late rows adopted onto their VOD; VOD-less streams left alone');

@@ -283,7 +283,7 @@
         },
         mount: (el) => {
             const m = D.method || D.slot.streaming_method || 'browser';
-            if (m === 'browser') { const b = el.querySelector('#ovg-golive'); if (b) b.onclick = async () => { G.close(true); if (!onBroadcast()) { G.cfg.navigate('/broadcast'); await new Promise(r => setTimeout(r, 1200)); } try { await syncWorkspace(); if (typeof goLiveFromWorkspace === 'function') await goLiveFromWorkspace(); else say('Press Go Live on this page to start', 'info'); } catch (e) { say((e && e.message) || 'Could not start — use the Go Live button on the page', 'error'); } }; }
+            if (m === 'browser') { const b = el.querySelector('#ovg-golive'); if (b) b.onclick = async () => { G.close(true); if (!onBroadcast()) { G.cfg.navigate('/broadcast'); if (window.ov) { try { await ov.route('/broadcast'); } catch (_) { /* */ } } await new Promise(r => setTimeout(r, 300)); } try { await syncWorkspace(); if (typeof goLiveFromWorkspace === 'function') await goLiveFromWorkspace(); else say('Press Go Live on this page to start', 'info'); } catch (e) { say((e && e.message) || 'Could not start — use the Go Live button on the page', 'error'); } }; }
             else { clearInterval(D.poll); D.poll = setInterval(async () => { if (!G.state.open) return clearInterval(D.poll); await loadSlots(); const cur = D.slots.find(s => s.id === D.slot.id); if (cur && cur.is_currently_live) { clearInterval(D.poll); celebrate(el, cur); } }, 4000); }
         },
         footer: () => `<button type="button" class="btn btn-outline" data-act="back"><i class="fa-solid fa-arrow-left"></i> Back</button><span class="ovg-foot-note">Step 4 of 4</span><button type="button" class="btn btn-outline" data-act="next">Finish</button>`,

@@ -1,0 +1,1214 @@
+<!-- #page-broadcast markup, loaded on first visit to the route (public/features.json). The server inlines it for direct visits. -->
+        <div class="broadcast-layout">
+            <div class="broadcast-main">
+
+                <!-- ═══ Broadcast Stream Tabs (shown when 1+ streams active) ═══ -->
+                <div class="bc-tabs-bar" id="bc-tabs-bar" style="display:none">
+                    <div class="bc-tabs-scroll" id="bc-tabs-scroll"></div>
+                    <button class="bc-tab bc-tab-add" onclick="showCreateStreamPanel()" title="Add another stream">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                </div>
+
+                <!-- ═══════════════════════════════════════════════════════════ -->
+                <!-- BROADCAST SECTION (Go Live)                                 -->
+                <!-- Past Streams and Broadcast Settings moved to slot workspace -->
+                <!-- ═══════════════════════════════════════════════════════════ -->
+
+                <!-- ═══ STEP 0: Stream Manager (existing streams + create new) ═══ -->
+                <div id="bc-stream-manager" class="broadcast-tab-content active" data-tab="go-live">
+                    <h2><i class="fa-solid fa-tower-broadcast"></i> Go Live <button type="button" class="btn btn-outline btn-sm glw-open-btn" onclick="openSetupHub()" title="Everything you can set up, step by step"><i class="fa-solid fa-list-check"></i> Streamer setup</button></h2>
+                    <p class="bc-page-subtitle">Select a stream slot to configure your profile and go live.</p>
+
+                    <!-- Top-level tabs — the "Active Streams" tab only appears when a stream is live -->
+                    <div class="bc-top-tabs" id="bc-top-tabs" style="display:none">
+                        <button class="bc-top-tab" data-bctab="active" style="display:none" onclick="switchBroadcastTopTab('active')">
+                            <i class="fa-solid fa-circle-dot"></i> Active Streams
+                            <span class="bc-top-tab-badge" id="bc-active-count" style="display:none">0</span>
+                        </button>
+                        <button class="bc-top-tab active" data-bctab="mine" onclick="switchBroadcastTopTab('mine')">
+                            <i class="fa-solid fa-tower-broadcast"></i> My Streams
+                        </button>
+                    </div>
+
+                    <!-- Active Streams panel -->
+                    <div id="bc-active-streams-container" class="bc-active-streams-section bc-top-tab-panel" data-bctabpanel="active">
+                        <div id="bc-active-list" class="bc-streams-list">
+                            <!-- Populated by JavaScript -->
+                        </div>
+                    </div>
+
+                    <!-- My Streams panel: managed-stream workspace (broadcast-workspace.js) -->
+                    <div class="bc-top-tab-panel active" data-bctabpanel="mine">
+                    <div class="bc-workspace" id="bc-workspace">
+
+                        <!-- Left sidebar: stream slot list -->
+                        <div class="bc-ws-sidebar">
+                            <div class="bc-ws-sidebar-hd">
+                                <span><i class="fa-solid fa-tower-broadcast"></i> My Streams</span>
+                                <button class="btn btn-small btn-ghost bc-ws-add-btn"
+                                    onclick="showCreateManagedStreamModal()" title="Add stream slot">
+                                    <i class="fa-solid fa-plus"></i>
+                                </button>
+                            </div>
+                            <div class="bc-ws-list" id="bc-ws-list">
+                                <p class="muted" style="padding:12px"><i class="fa-solid fa-spinner fa-spin"></i> Loading&hellip;</p>
+                            </div>
+                        </div>
+
+                        <!-- Right main panel -->
+                        <div class="bc-ws-main">
+                            <!-- Empty state: no stream selected -->
+                            <div class="bc-ws-empty" id="bc-ws-empty">
+                                <i class="fa-solid fa-tower-broadcast" style="font-size:2.5rem;opacity:0.2;margin-bottom:16px"></i>
+                                <p class="muted" style="margin:0 0 16px">Select a stream slot from the sidebar to configure and go live</p>
+                                <button class="btn btn-outline" onclick="showCreateManagedStreamModal()">
+                                    <i class="fa-solid fa-plus"></i> Create stream slot
+                                </button>
+                            </div>
+                            <!-- Profile editor + Go Live + History (populated by broadcast-workspace.js) -->
+                            <div class="bc-ws-panel" id="bc-ws-panel" style="display:none"></div>
+                        </div>
+
+                    </div><!-- .bc-workspace -->
+                    </div><!-- .bc-top-tab-panel[mine] -->
+
+                </div>
+
+                <!-- Past Streams and Broadcast Settings tabs removed — -->
+                <!-- VOD archive now accessible via slot workspace history section -->
+                <!-- Broadcast settings now per-slot in workspace settings panel -->
+
+                <!-- ═══ STEP 1: Method-specific setup (shown after create) ═══ -->
+
+                <!-- RTMP Instructions Panel -->
+                <div id="bc-rtmp-instructions" style="display:none" class="bc-instructions-panel">
+                    <!-- Live Action Bar (shown when streaming, replaces buried End Stream) -->
+                    <div class="bc-ext-live-bar" id="bc-rtmp-live-bar" style="display:none">
+                        <div class="bc-ext-live-bar-left">
+                            <span class="bc-ext-live-badge"><i class="fa-solid fa-circle"></i> LIVE</span>
+                            <span class="bc-ext-live-info">
+                                <i class="fa-solid fa-eye"></i> <strong id="bc-rtmp-viewer-count">0</strong>
+                                <i class="fa-solid fa-clock" style="margin-left:8px"></i> <strong id="bc-rtmp-uptime">0:00:00</strong>
+                            </span>
+                        </div>
+                        <div class="bc-ext-live-bar-right">
+                            <button class="btn btn-small" onclick="openViewerPreview()" title="Open viewer preview"><i class="fa-solid fa-eye"></i> Preview</button>
+                            <button class="btn btn-small btn-danger" onclick="endSetupStream()"><i class="fa-solid fa-stop"></i> End Stream</button>
+                        </div>
+                    </div>
+
+                    <h2><i class="fa-solid fa-server"></i> RTMP Stream Setup</h2>
+                    <p class="bc-instructions-intro">Your stream is created! Paste the info below into your streaming software and hit "Start Streaming".</p>
+                    <div class="bc-code-block">
+                        <label>Server URL</label>
+                        <div class="bc-code-copy">
+                            <code id="bc-rtmp-url">rtmp://localhost:1935/live</code>
+                            <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-rtmp-url').textContent)"><i class="fa-solid fa-copy"></i></button>
+                        </div>
+                    </div>
+                    <div class="bc-code-block">
+                        <label>Stream Key</label>
+                        <div class="bc-code-copy">
+                            <code id="bc-rtmp-key">loading...</code>
+                            <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-rtmp-key').textContent)" title="Copy"><i class="fa-solid fa-copy"></i></button>
+                            <button class="btn btn-small btn-outline" onclick="regenerateDashStreamKey()" title="Generate a new stream key"><i class="fa-solid fa-arrows-rotate"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- RTMP Feed Status Indicator -->
+                    <div id="bc-rtmp-status" class="bc-rtmp-status waiting">
+                        <div class="bc-rtmp-status-icon">
+                            <i class="fa-solid fa-circle-notch fa-spin" id="bc-rtmp-status-spinner"></i>
+                            <i class="fa-solid fa-check-circle" id="bc-rtmp-status-ok" style="display:none"></i>
+                        </div>
+                        <div class="bc-rtmp-status-text">
+                            <strong id="bc-rtmp-status-label">Waiting for OBS...</strong>
+                            <span id="bc-rtmp-status-detail">Start streaming in OBS to connect</span>
+                        </div>
+                    </div>
+
+                    <!-- Live Thumbnail Preview (RTMP/JSMPEG) -->
+                    <div id="bc-rtmp-preview" class="bc-rtmp-preview" style="display:none">
+                        <img id="bc-rtmp-preview-img" alt="Stream preview" loading="lazy">
+                        <div class="bc-live-badge" style="position:absolute;top:8px;left:8px;display:flex"><i class="fa-solid fa-circle"></i> LIVE</div>
+                    </div>
+
+                    <!-- Quick Setup Guides (collapsed by default) -->
+                    <details class="bc-app-guide">
+                        <summary>
+                            <span class="bc-app-guide-header">
+                                <i class="fa-solid fa-desktop"></i>
+                                <strong>OBS Studio Setup</strong>
+                            </span>
+                        </summary>
+                        <div class="bc-app-guide-body">
+                            <ol>
+                                <li>Open OBS → Settings → Stream</li>
+                                <li>Set Service to <strong>Custom</strong></li>
+                                <li>Paste the <strong>Server URL</strong> above</li>
+                                <li>Paste the <strong>Stream Key</strong></li>
+                                <li>Click "Start Streaming" in OBS</li>
+                            </ol>
+                        </div>
+                    </details>
+
+                    <!-- IRL Pro Mobile Setup -->
+                    <details class="bc-app-guide" id="bc-irlpro-guide">
+                        <summary>
+                            <span class="bc-app-guide-header">
+                                <i class="fa-solid fa-mobile-screen-button"></i>
+                                <strong>IRL Pro / Mobile Apps</strong>
+                                <span class="bc-app-guide-badge">Mobile</span>
+                            </span>
+                        </summary>
+                        <div class="bc-app-guide-body">
+                            <p class="bc-app-guide-desc">Stream from your phone using <a href="https://play.google.com/store/apps/details?id=app.irlpro.android" target="_blank" rel="noopener">IRL Pro</a>, <a href="https://play.google.com/store/apps/details?id=com.wmspanel.larix_broadcaster" target="_blank" rel="noopener">Larix</a>, <a href="https://play.google.com/store/apps/details?id=com.hecorat.screenrecorder.free" target="_blank" rel="noopener">Prism Live</a>, or any RTMP-capable mobile app.</p>
+
+                            <h4 style="margin:12px 0 8px">Option A — Separate URL + Key fields</h4>
+                            <p class="muted" style="margin-bottom:8px">Use this if your app has separate "Server URL" and "Stream Key" fields (like OBS):</p>
+                            <ol>
+                                <li>In the <strong>RTMP URL / Server</strong> field, paste:<br>
+                                    <code class="bc-inline-code" id="bc-irlpro-url"></code>
+                                    <button class="btn btn-small btn-inline-copy" onclick="copyToClipboard(document.getElementById('bc-rtmp-url').textContent)" title="Copy URL"><i class="fa-solid fa-copy"></i></button>
+                                </li>
+                                <li>In the <strong>Stream Key</strong> field, paste:<br>
+                                    <code class="bc-inline-code" id="bc-irlpro-key"></code>
+                                    <button class="btn btn-small btn-inline-copy" onclick="copyToClipboard(document.getElementById('bc-rtmp-key').textContent)" title="Copy Key"><i class="fa-solid fa-copy"></i></button>
+                                </li>
+                            </ol>
+
+                            <h4 style="margin:12px 0 8px">Option B — Single combined URL</h4>
+                            <p class="muted" style="margin-bottom:8px">Some apps only have one URL field. Paste the full URL with the key included:</p>
+                            <div class="bc-code-block" style="margin-bottom:12px">
+                                <div class="bc-code-copy">
+                                    <code id="bc-irlpro-combined">loading...</code>
+                                    <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-irlpro-combined').textContent)" title="Copy combined URL"><i class="fa-solid fa-copy"></i></button>
+                                </div>
+                            </div>
+
+                            <div class="bc-app-guide-tips" style="background:var(--surface-raised);border-radius:8px;padding:10px 14px;margin-bottom:12px">
+                                <p><i class="fa-solid fa-circle-exclamation" style="color:var(--accent)"></i> <strong>Username &amp; Password: Leave blank!</strong></p>
+                                <p class="muted" style="margin:4px 0 0">OpenVibe.Live uses your stream key for authentication — no username or password. If your app asks for credentials, leave both fields empty. The stream key in the URL is all you need.</p>
+                            </div>
+
+                            <h4 style="margin:12px 0 8px">IRL Pro Step-by-Step</h4>
+                            <ol>
+                                <li>Open <strong>IRL Pro</strong> → <strong>⚙️ Settings</strong> → <strong>Streaming</strong></li>
+                                <li>Select <strong>Platform</strong> → <strong>Custom RTMP</strong></li>
+                                <li>Paste the <strong>Server URL</strong> and <strong>Stream Key</strong> from Option A above</li>
+                                <li><strong>Leave Username and Password empty</strong></li>
+                                <li>Set <strong>Resolution</strong> to 720p, <strong>Bitrate</strong> to 2500–4000 kbps</li>
+                                <li>Go back and tap <strong>Go Live</strong></li>
+                            </ol>
+                            <div class="bc-app-guide-tips">
+                                <p><i class="fa-solid fa-lightbulb"></i> <strong>Tips:</strong></p>
+                                <ul>
+                                    <li>Enable <strong>SRTLA Bonding</strong> in IRL Pro for better mobile reliability — combines WiFi + cellular</li>
+                                    <li>Set the codec to <strong>H.264</strong> for best compatibility</li>
+                                    <li>If you see buffering, lower your bitrate to <strong>1500–2000 kbps</strong></li>
+                                    <li>IRL Pro's chat overlay can be pointed at <code>https://openvibe.live/embed/chat/<em>your-stream-id</em></code> for live chat on screen</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Live Settings — rendered via shared panel (bc-shared-live-settings) -->
+                    <div class="bc-live-settings-anchor" id="bc-rtmp-live-settings-anchor"></div>
+
+                    <!-- FFmpeg RTMP (for headless / CLI users) -->
+                    <details class="bc-app-guide">
+                        <summary>
+                            <span class="bc-app-guide-header">
+                                <i class="fa-solid fa-terminal"></i>
+                                <strong>FFmpeg CLI (No OBS)</strong>
+                                <span class="bc-app-guide-badge">Advanced</span>
+                            </span>
+                        </summary>
+                        <div class="bc-app-guide-body">
+                            <p class="bc-app-guide-desc">Stream directly from a terminal — great for headless servers, Raspberry Pi, 3D printer cams, and automated pipelines.</p>
+                            <div class="bc-code-block" style="margin-bottom:12px">
+                                <label><i class="fa-solid fa-video"></i> Webcam + Audio → RTMP</label>
+                                <div class="bc-code-copy">
+                                    <code id="bc-rtmp-ffmpeg-cam" style="white-space:pre-wrap;word-break:break-all">loading...</code>
+                                    <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-rtmp-ffmpeg-cam').textContent)"><i class="fa-solid fa-copy"></i></button>
+                                </div>
+                            </div>
+                            <div class="bc-code-block" style="margin-bottom:12px">
+                                <label><i class="fa-solid fa-display"></i> Screen Capture → RTMP</label>
+                                <div class="bc-code-copy">
+                                    <code id="bc-rtmp-ffmpeg-screen" style="white-space:pre-wrap;word-break:break-all">loading...</code>
+                                    <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-rtmp-ffmpeg-screen').textContent)"><i class="fa-solid fa-copy"></i></button>
+                                </div>
+                            </div>
+                            <div class="bc-code-block" style="margin-bottom:12px">
+                                <label><i class="fa-solid fa-print"></i> 3D Printer / IP Camera (low bitrate, 24/7)</label>
+                                <div class="bc-code-copy">
+                                    <code id="bc-rtmp-ffmpeg-printer" style="white-space:pre-wrap;word-break:break-all">loading...</code>
+                                    <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-rtmp-ffmpeg-printer').textContent)"><i class="fa-solid fa-copy"></i></button>
+                                </div>
+                            </div>
+                            <div class="bc-app-guide-tips" style="background:var(--surface-raised);border-radius:8px;padding:10px 14px;margin-top:12px">
+                                <p><i class="fa-solid fa-lightbulb"></i> <strong>24/7 Tips:</strong></p>
+                                <ul>
+                                    <li>Wrap in <code>while true; do ffmpeg ...; sleep 5; done</code> for auto-restart on disconnect</li>
+                                    <li>Use a <code>systemd</code> service or <code>tmux</code>/<code>screen</code> session for unattended streams</li>
+                                    <li>For IP cameras via RTSP, replace <code>-f v4l2 -i /dev/video0</code> with <code>-rtsp_transport tcp -i rtsp://camera-ip:554/stream</code></li>
+                                    <li><code>-tune zerolatency</code> minimizes delay; remove it for 24/7 streams where latency doesn't matter</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </details>
+
+                    <button class="btn btn-outline" style="margin-top:16px" onclick="endSetupStream()"><i class="fa-solid fa-stop"></i> End Stream</button>
+                </div>
+
+                <!-- JSMPEG Instructions Panel -->
+                <div id="bc-jsmpeg-instructions" style="display:none" class="bc-instructions-panel">
+                    <!-- Live Action Bar -->
+                    <div class="bc-ext-live-bar" id="bc-jsmpeg-live-bar" style="display:none">
+                        <div class="bc-ext-live-bar-left">
+                            <span class="bc-ext-live-badge"><i class="fa-solid fa-circle"></i> LIVE</span>
+                            <span class="bc-ext-live-info">
+                                <i class="fa-solid fa-eye"></i> <strong id="bc-jsmpeg-viewer-count">0</strong>
+                                <i class="fa-solid fa-clock" style="margin-left:8px"></i> <strong id="bc-jsmpeg-uptime">0:00:00</strong>
+                            </span>
+                        </div>
+                        <div class="bc-ext-live-bar-right">
+                            <button class="btn btn-small" onclick="openViewerPreview()" title="Open viewer preview"><i class="fa-solid fa-eye"></i> Preview</button>
+                            <button class="btn btn-small btn-danger" onclick="endSetupStream()"><i class="fa-solid fa-stop"></i> End Stream</button>
+                        </div>
+                    </div>
+
+                    <h2><i class="fa-solid fa-terminal"></i> JSMPEG Stream Setup</h2>
+                    <p class="bc-instructions-intro">Your stream is created! Copy one of the FFmpeg commands below and run it in your terminal. Ideal for Raspberry Pi, embedded devices, Linux desktops, and headless servers.</p>
+
+                    <!-- Quick-copy commands -->
+                    <div class="bc-code-block">
+                        <label><i class="fa-solid fa-video"></i> Video + Audio (recommended)</label>
+                        <div class="bc-code-copy">
+                            <code id="bc-jsmpeg-cmd" style="white-space:pre-wrap;word-break:break-all">loading...</code>
+                            <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-jsmpeg-cmd').textContent)"><i class="fa-solid fa-copy"></i></button>
+                        </div>
+                    </div>
+                    <div class="bc-code-block">
+                        <label><i class="fa-solid fa-video-slash"></i> Video Only (no microphone)</label>
+                        <div class="bc-code-copy">
+                            <code id="bc-jsmpeg-cmd-videoonly" style="white-space:pre-wrap;word-break:break-all">loading...</code>
+                            <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-jsmpeg-cmd-videoonly').textContent)"><i class="fa-solid fa-copy"></i></button>
+                        </div>
+                    </div>
+                    <div class="bc-code-block">
+                        <label><i class="fa-solid fa-display"></i> Screen Capture + Audio</label>
+                        <div class="bc-code-copy">
+                            <code id="bc-jsmpeg-cmd-screen" style="white-space:pre-wrap;word-break:break-all">loading...</code>
+                            <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-jsmpeg-cmd-screen').textContent)"><i class="fa-solid fa-copy"></i></button>
+                        </div>
+                    </div>
+                    <div class="bc-code-block">
+                        <label><i class="fa-solid fa-display"></i> OBS Virtual Camera → JSMPEG</label>
+                        <div class="bc-code-copy">
+                            <code id="bc-jsmpeg-cmd-obs" style="white-space:pre-wrap;word-break:break-all">loading...</code>
+                            <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-jsmpeg-cmd-obs').textContent)"><i class="fa-solid fa-copy"></i></button>
+                        </div>
+                    </div>
+                    <div class="bc-code-block">
+                        <label><i class="fa-solid fa-microphone"></i> Audio Only (no video)</label>
+                        <div class="bc-code-copy">
+                            <code id="bc-jsmpeg-cmd-audioonly" style="white-space:pre-wrap;word-break:break-all">loading...</code>
+                            <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-jsmpeg-cmd-audioonly').textContent)"><i class="fa-solid fa-copy"></i></button>
+                        </div>
+                    </div>
+                    <div class="bc-code-block">
+                        <label><i class="fa-solid fa-expand"></i> HD 720p (higher quality)</label>
+                        <div class="bc-code-copy">
+                            <code id="bc-jsmpeg-cmd-hd" style="white-space:pre-wrap;word-break:break-all">loading...</code>
+                            <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-jsmpeg-cmd-hd').textContent)"><i class="fa-solid fa-copy"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- Quick Start Guide -->
+                    <div class="bc-instructions-steps">
+                        <h3><i class="fa-solid fa-rocket"></i> Quick Start</h3>
+                        <ol>
+                            <li>Install FFmpeg: <code>sudo apt install ffmpeg</code> (Debian/Ubuntu) or <code>brew install ffmpeg</code> (macOS)</li>
+                            <li>Copy a command above and paste it in your terminal</li>
+                            <li>Adjust the device paths if needed (see device discovery below)</li>
+                            <li>Press Enter — your stream will appear on your channel page</li>
+                        </ol>
+                    </div>
+
+                    <!-- Find Devices -->
+                    <div class="bc-instructions-steps">
+                        <h3><i class="fa-solid fa-magnifying-glass"></i> Finding Your Devices</h3>
+                        <h4>Camera / Video</h4>
+                        <div class="bc-code-block" style="margin-bottom:8px">
+                            <label>List cameras (Linux)</label>
+                            <div class="bc-code-copy">
+                                <code style="white-space:pre-wrap">v4l2-ctl --list-devices</code>
+                                <button class="btn btn-small" onclick="copyToClipboard('v4l2-ctl --list-devices')"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="bc-code-block" style="margin-bottom:8px">
+                            <label>List camera formats &amp; resolutions</label>
+                            <div class="bc-code-copy">
+                                <code style="white-space:pre-wrap">v4l2-ctl -d /dev/video0 --list-formats-ext</code>
+                                <button class="btn btn-small" onclick="copyToClipboard('v4l2-ctl -d /dev/video0 --list-formats-ext')"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="bc-code-block" style="margin-bottom:8px">
+                            <label>List cameras (macOS)</label>
+                            <div class="bc-code-copy">
+                                <code style="white-space:pre-wrap">ffmpeg -f avfoundation -list_devices true -i ""</code>
+                                <button class="btn btn-small" onclick='copyToClipboard(`ffmpeg -f avfoundation -list_devices true -i ""`)'><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="bc-code-block" style="margin-bottom:8px">
+                            <label>Test camera snapshot</label>
+                            <div class="bc-code-copy">
+                                <code style="white-space:pre-wrap">ffmpeg -f v4l2 -i /dev/video0 -frames 1 test.jpg && xdg-open test.jpg</code>
+                                <button class="btn btn-small" onclick='copyToClipboard(`ffmpeg -f v4l2 -i /dev/video0 -frames 1 test.jpg && xdg-open test.jpg`)'><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <h4>Audio / Microphone</h4>
+                        <div class="bc-code-block" style="margin-bottom:8px">
+                            <label>List audio devices (ALSA)</label>
+                            <div class="bc-code-copy">
+                                <code style="white-space:pre-wrap">arecord -l</code>
+                                <button class="btn btn-small" onclick="copyToClipboard('arecord -l')"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="bc-code-block" style="margin-bottom:8px">
+                            <label>List audio devices (PulseAudio / PipeWire)</label>
+                            <div class="bc-code-copy">
+                                <code style="white-space:pre-wrap">pactl list short sources</code>
+                                <button class="btn btn-small" onclick="copyToClipboard('pactl list short sources')"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="bc-code-block" style="margin-bottom:8px">
+                            <label>Test microphone (record 5 seconds)</label>
+                            <div class="bc-code-copy">
+                                <code style="white-space:pre-wrap">arecord -d 5 -f cd test.wav && aplay test.wav</code>
+                                <button class="btn btn-small" onclick="copyToClipboard('arecord -d 5 -f cd test.wav && aplay test.wav')"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="bc-code-block" style="margin-bottom:8px">
+                            <label>Use PulseAudio instead of ALSA</label>
+                            <div class="bc-code-copy">
+                                <code style="white-space:pre-wrap">Replace: -f alsa -i default → -f pulse -i default</code>
+                                <button class="btn btn-small" onclick="copyToClipboard('-f pulse -i default')"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <h4>Special Inputs</h4>
+                        <div class="bc-code-block" style="margin-bottom:8px">
+                            <label>OBS Virtual Camera</label>
+                            <div class="bc-code-copy">
+                                <code style="white-space:pre-wrap">Start OBS → Tools → Start Virtual Camera → use /dev/video2 (or check v4l2-ctl --list-devices)</code>
+                                <button class="btn btn-small" onclick="copyToClipboard('v4l2-ctl --list-devices')"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="bc-code-block" style="margin-bottom:8px">
+                            <label>Raspberry Pi Camera (libcamera)</label>
+                            <div class="bc-code-copy">
+                                <code style="white-space:pre-wrap">libcamera-vid -t 0 --inline --codec mjpeg -o - | ffmpeg -i pipe:0 -f mpegts -codec:v mpeg1video -s 640x480 -b:v 350k -bf 0 http://SERVER:PORT/KEY/640/480/</code>
+                                <button class="btn btn-small" onclick="copyToClipboard('libcamera-vid -t 0 --inline --codec mjpeg -o -')"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- FFmpeg Reference -->
+                    <div class="bc-instructions-steps">
+                        <h3><i class="fa-solid fa-sliders"></i> FFmpeg Tuning Reference</h3>
+                        <table class="bc-ref-table" style="width:100%;font-size:0.85rem;border-collapse:collapse">
+                            <tr><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Flag</th><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">What it does</th><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Example</th></tr>
+                            <tr><td style="padding:4px 8px"><code>-s</code></td><td style="padding:4px 8px">Resolution</td><td style="padding:4px 8px"><code>-s 1280x720</code></td></tr>
+                            <tr><td style="padding:4px 8px"><code>-b:v</code></td><td style="padding:4px 8px">Video bitrate</td><td style="padding:4px 8px"><code>-b:v 800k</code></td></tr>
+                            <tr><td style="padding:4px 8px"><code>-r</code></td><td style="padding:4px 8px">Frame rate</td><td style="padding:4px 8px"><code>-r 30</code></td></tr>
+                            <tr><td style="padding:4px 8px"><code>-b:a</code></td><td style="padding:4px 8px">Audio bitrate</td><td style="padding:4px 8px"><code>-b:a 128k</code></td></tr>
+                            <tr><td style="padding:4px 8px"><code>-ar</code></td><td style="padding:4px 8px">Audio sample rate</td><td style="padding:4px 8px"><code>-ar 44100</code></td></tr>
+                            <tr><td style="padding:4px 8px"><code>-ac</code></td><td style="padding:4px 8px">Audio channels (1=mono, 2=stereo)</td><td style="padding:4px 8px"><code>-ac 1</code></td></tr>
+                            <tr><td style="padding:4px 8px"><code>-bf 0</code></td><td style="padding:4px 8px">Disable B-frames (required for JSMPEG)</td><td style="padding:4px 8px"><code>-bf 0</code></td></tr>
+                            <tr><td style="padding:4px 8px"><code>-q:v</code></td><td style="padding:4px 8px">Quality (2=best, 31=worst)</td><td style="padding:4px 8px"><code>-q:v 5</code></td></tr>
+                            <tr><td style="padding:4px 8px"><code>-muxdelay</code></td><td style="padding:4px 8px">Lower = less latency</td><td style="padding:4px 8px"><code>-muxdelay 0.001</code></td></tr>
+                        </table>
+                        <p class="muted" style="margin-top:8px"><i class="fa-solid fa-info-circle"></i> JSMPEG requires <code>mpeg1video</code> codec and <code>mp2</code> audio. H.264/AAC will not work. <code>-bf 0</code> is mandatory.</p>
+                    </div>
+
+                    <!-- Recommended Settings -->
+                    <div class="bc-instructions-steps">
+                        <h3><i class="fa-solid fa-gauge-high"></i> Recommended Presets</h3>
+                        <table class="bc-ref-table" style="width:100%;font-size:0.85rem;border-collapse:collapse">
+                            <tr><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Use Case</th><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Resolution</th><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Video Bitrate</th><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Audio</th></tr>
+                            <tr><td style="padding:4px 8px">Raspberry Pi Zero</td><td style="padding:4px 8px">320x240</td><td style="padding:4px 8px">200k</td><td style="padding:4px 8px">64k mono</td></tr>
+                            <tr><td style="padding:4px 8px">Raspberry Pi 3/4</td><td style="padding:4px 8px">640x480</td><td style="padding:4px 8px">350–500k</td><td style="padding:4px 8px">128k mono</td></tr>
+                            <tr><td style="padding:4px 8px">Desktop / Laptop</td><td style="padding:4px 8px">1280x720</td><td style="padding:4px 8px">800k–1.5M</td><td style="padding:4px 8px">128k stereo</td></tr>
+                            <tr><td style="padding:4px 8px">High Quality</td><td style="padding:4px 8px">1920x1080</td><td style="padding:4px 8px">2–4M</td><td style="padding:4px 8px">192k stereo</td></tr>
+                        </table>
+                    </div>
+
+                    <!-- Troubleshooting -->
+                    <div class="bc-instructions-steps">
+                        <h3><i class="fa-solid fa-wrench"></i> Troubleshooting</h3>
+                        <ul style="list-style:none;padding:0">
+                            <li style="margin-bottom:6px"><strong>No video device:</strong> Check <code>ls /dev/video*</code> — if empty, your camera isn't connected or the driver isn't loaded. Try <code>sudo modprobe uvcvideo</code>.</li>
+                            <li style="margin-bottom:6px"><strong>No audio device:</strong> Run <code>arecord -l</code> — if empty, plug in a USB mic or check <code>pulseaudio --check</code>. Use <code>-f pulse -i default</code> if using PipeWire or PulseAudio.</li>
+                            <li style="margin-bottom:6px"><strong>Device busy:</strong> Another app is using the camera. Close OBS, Cheese, or any other camera app and retry.</li>
+                            <li style="margin-bottom:6px"><strong>Connection refused:</strong> Make sure the server is running and the port is reachable. Check firewalls: <code>sudo ufw allow PORT</code>.</li>
+                            <li style="margin-bottom:6px"><strong>High latency:</strong> Lower the resolution, reduce bitrate, and ensure <code>-muxdelay 0.001</code> is set.</li>
+                            <li style="margin-bottom:6px"><strong>Choppy video:</strong> Your upload bandwidth may be too low for the bitrate. Reduce <code>-b:v</code> or resolution.</li>
+                            <li style="margin-bottom:6px"><strong>Permission denied on camera:</strong> Add yourself to the video group: <code>sudo usermod -aG video $USER</code> then log out and back in.</li>
+                            <li style="margin-bottom:6px"><strong>macOS:</strong> Use <code>-f avfoundation -i "0:0"</code> instead of <code>-f v4l2 -i /dev/video0</code>. Device indices from <code>ffmpeg -f avfoundation -list_devices true -i ""</code>.</li>
+                        </ul>
+                    </div>
+
+                    <!-- 3D Printer / Long-Running Streams -->
+                    <div class="bc-instructions-steps">
+                        <h3><i class="fa-solid fa-print"></i> 3D Printer &amp; 24/7 Streams</h3>
+                        <p class="muted">For unattended, always-on streams (3D printers, security cameras, aquariums, etc.) — optimize for stability over latency.</p>
+                        <div class="bc-code-block" style="margin-bottom:12px">
+                            <label>USB webcam — low bitrate, 10fps, no audio</label>
+                            <div class="bc-code-copy">
+                                <code id="bc-jsmpeg-cmd-printer" style="white-space:pre-wrap;word-break:break-all">loading...</code>
+                                <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-jsmpeg-cmd-printer').textContent)"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="bc-code-block" style="margin-bottom:12px">
+                            <label>IP camera (RTSP) → JSMPEG</label>
+                            <div class="bc-code-copy">
+                                <code id="bc-jsmpeg-cmd-ipcam" style="white-space:pre-wrap;word-break:break-all">loading...</code>
+                                <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-jsmpeg-cmd-ipcam').textContent)"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <h4 style="margin:12px 0 8px">Auto-Restart with systemd</h4>
+                        <p class="muted" style="margin-bottom:8px">Create a service file so your stream starts on boot and auto-restarts on failure:</p>
+                        <div class="bc-code-block" style="margin-bottom:12px">
+                            <label>sudo nano /etc/systemd/system/openvibe-stream.service</label>
+                            <div class="bc-code-copy">
+                                <code style="white-space:pre-wrap;word-break:break-all;font-size:0.8rem">[Unit]
+Description=OpenVibe.Live JSMPEG Feed
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/ffmpeg -f v4l2 -framerate 10 -video_size 640x480 -i /dev/video0 -f mpegts -codec:v mpeg1video -s 640x480 -b:v 250k -bf 0 -muxdelay 0.001 http://YOUR_SERVER:PORT/KEY/640/480/
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target</code>
+                                <button class="btn btn-small" onclick="copyToClipboard(this.closest('.bc-code-copy').querySelector('code').textContent)"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="bc-code-block" style="margin-bottom:12px">
+                            <label>Enable and start</label>
+                            <div class="bc-code-copy">
+                                <code style="white-space:pre-wrap">sudo systemctl daemon-reload && sudo systemctl enable --now openvibe-stream</code>
+                                <button class="btn btn-small" onclick="copyToClipboard('sudo systemctl daemon-reload && sudo systemctl enable --now openvibe-stream')"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="bc-app-guide-tips" style="background:var(--surface-raised);border-radius:8px;padding:10px 14px">
+                            <p><i class="fa-solid fa-lightbulb"></i> <strong>Tips:</strong></p>
+                            <ul>
+                                <li>10fps is plenty for 3D printers — saves bandwidth and CPU</li>
+                                <li>Use <code>-b:v 150k</code> to <code>-b:v 300k</code> depending on resolution and motion</li>
+                                <li>For Raspberry Pi, prefer 320x240 or 640x480 to reduce CPU load</li>
+                                <li>Shell loop alternative: <code>while true; do ffmpeg ...; sleep 5; done</code></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Live Settings — rendered via shared panel (bc-shared-live-settings) -->
+                    <div class="bc-live-settings-anchor" id="bc-jsmpeg-live-settings-anchor"></div>
+
+                    <button class="btn btn-outline" style="margin-top:16px" onclick="endSetupStream()"><i class="fa-solid fa-stop"></i> End Stream</button>
+                </div>
+
+                <!-- WHIP Instructions Panel -->
+                <div id="bc-webrtc-obs-instructions" style="display:none" class="bc-instructions-panel">
+                    <!-- Live Action Bar -->
+                    <div class="bc-ext-live-bar" id="bc-whip-live-bar" style="display:none">
+                        <div class="bc-ext-live-bar-left">
+                            <span class="bc-ext-live-badge"><i class="fa-solid fa-circle"></i> LIVE</span>
+                            <span class="bc-ext-live-info">
+                                <i class="fa-solid fa-eye"></i> <strong id="bc-whip-viewer-count">0</strong>
+                                <i class="fa-solid fa-clock" style="margin-left:8px"></i> <strong id="bc-whip-uptime">0:00:00</strong>
+                            </span>
+                        </div>
+                        <div class="bc-ext-live-bar-right">
+                            <button class="btn btn-small" onclick="openViewerPreview()" title="Open viewer preview"><i class="fa-solid fa-eye"></i> Preview</button>
+                            <button class="btn btn-small btn-danger" onclick="endSetupStream()"><i class="fa-solid fa-stop"></i> End Stream</button>
+                        </div>
+                    </div>
+
+                    <h2><i class="fa-solid fa-desktop"></i> WebRTC via OBS (WHIP)</h2>
+                    <p class="bc-instructions-intro">Your stream is created! Paste the info below into OBS Studio 30+ to start streaming with ultra-low latency via WebRTC. This is newer and faster than RTMP.</p>
+                    <p class="muted" style="margin-top:8px"><i class="fa-solid fa-info-circle"></i> Note: on some Linux distributions, the system OBS package may disable WHIP even in OBS 30+. If you do not see the WHIP service in Settings → Stream, install OBS from Flatpak or AppImage instead of the distro package.</p>
+                    <div class="bc-code-block">
+                        <label>WHIP Endpoint</label>
+                        <div class="bc-code-copy">
+                            <code id="bc-whip-url">loading...</code>
+                            <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-whip-url').textContent)"><i class="fa-solid fa-copy"></i></button>
+                        </div>
+                    </div>
+                    <div class="bc-code-block bc-secret-token-block">
+                        <label>Bearer Token</label>
+                        <div class="bc-secret-token-row">
+                            <code id="bc-whip-token" data-value="loading...">hidden</code>
+                            <button id="bc-whip-token-toggle" class="btn btn-small" onclick="toggleWhipToken()">Show</button>
+                            <button class="btn btn-small" onclick="copyWhipToken()" title="Copy bearer token"><i class="fa-solid fa-copy"></i></button>
+                        </div>
+                        <p class="muted" style="margin-top:8px;font-size:0.85rem">The bearer token is hidden by default to prevent accidental disclosure. Tap Show only when you need it, and paste only the raw JWT string into OBS — do not include the word <code>Bearer</code>.</p>
+                    </div>
+                    <div class="bc-instructions-steps">
+                        <h3>OBS 30+ Setup</h3>
+                        <ol>
+                            <li>Open OBS → Settings → Stream</li>
+                            <li>Set Service to <strong>WHIP</strong></li>
+                            <li>Paste the <strong>WHIP Endpoint</strong> URL above</li>
+                            <li>Paste the <strong>Bearer Token</strong> as the auth key</li>
+                            <li>Click "Start Streaming" in OBS</li>
+                        </ol>
+                        <p class="muted"><i class="fa-solid fa-info-circle"></i> Requires OBS Studio 30.0 or newer. Older versions do not support WHIP. If the WHIP option is missing in OBS, use the Flatpak or AppImage build, or switch to RTMP.</p>
+                    </div>
+
+                    <!-- Live Settings — rendered via shared panel (bc-shared-live-settings) -->
+                    <div class="bc-live-settings-anchor" id="bc-whip-live-settings-anchor"></div>
+
+                    <button class="btn btn-outline" style="margin-top:16px" onclick="endSetupStream()"><i class="fa-solid fa-stop"></i> End Stream</button>
+                </div>
+
+                <!-- ═══ Shared Live Settings Panel (moved to active panel via JS) ═══ -->
+                <div id="bc-shared-live-settings" class="bc-live-settings-panel" style="display:none">
+                    <!-- TTS Settings -->
+                    <div class="bc-settings-group">
+                        <div class="bc-settings-title"><i class="fa-solid fa-comment-dots"></i> Text To Speech</div>
+                        <div class="bc-setting-row">
+                            <span class="bc-setting-label">TTS Mode</span>
+                            <div class="bc-setting-control">
+                                <select id="bc-ext-ttsMode" onchange="syncExternalTTSSetting('ttsMode', this.value)">
+                                    <option value="site-wide">Site-Wide TTS (Server Voices)</option>
+                                    <option value="self">Self TTS (Browser Voices)</option>
+                                    <option value="off">Off</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="bc-setting-row">
+                            <span class="bc-setting-label">TTS Volume</span>
+                            <div class="bc-setting-control"><input type="range" id="bc-ext-ttsVolume" min="0" max="1000" step="50" onchange="syncExternalTTSSetting('ttsVolume', this.value)"></div>
+                        </div>
+                    </div>
+
+                    <!-- Disconnect Audio Alert -->
+                    <div class="bc-settings-group">
+                        <div class="bc-settings-title"><i class="fa-solid fa-bell"></i> Alerts</div>
+                        <div class="bc-setting-row">
+                            <span class="bc-setting-label">Disconnect Audio</span>
+                            <div class="bc-setting-control">
+                                <label class="toggle-switch" style="margin:0">
+                                    <input type="checkbox" id="bc-ext-disconnectAudio" onchange="_disconnectAudioEnabled = this.checked; localStorage.setItem('bc-disconnect-audio', this.checked ? '1' : '0')">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Restreams -->
+                    <div class="bc-settings-group">
+                        <div class="bc-settings-title"><i class="fa-solid fa-tower-broadcast"></i> Restreams</div>
+                        <div class="bc-restream-control" id="bc-ext-restream-control"></div>
+                        <p class="bc-call-explainer" id="bc-ext-restream-hint">
+                            <i class="fa-solid fa-circle-info"></i> Manage restream destinations in the stream slot workspace.
+                        </p>
+                    </div>
+
+                    <!-- Interactive Controls Status -->
+                    <div class="bc-settings-group">
+                        <div class="bc-settings-title"><i class="fa-solid fa-gamepad"></i> Interactive Controls</div>
+                        <div id="bc-ext-controls-status" style="margin-bottom:8px"><p class="muted" style="font-size:0.85rem">Loading...</p></div>
+                        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                            <select id="bc-ext-live-config-select" class="form-input form-input-sm" style="flex:1;min-width:120px">
+                                <option value="">None (no controls)</option>
+                            </select>
+                            <button class="btn btn-small btn-outline" onclick="applyLiveControlProfile()"><i class="fa-solid fa-check"></i> Apply</button>
+                        </div>
+                        <p class="bc-call-explainer" style="margin-top:6px"><i class="fa-solid fa-circle-info"></i> Change profile without ending the stream. Viewers see the new buttons immediately.</p>
+                    </div>
+                </div>
+
+                <!-- ═══ WebRTC Browser Broadcast (live controls) ═══ -->
+                <div id="bc-browser-broadcast" style="display:none">
+                    <!-- Video Preview -->
+                    <div class="bc-video-container">
+                        <video id="bc-video-preview" autoplay playsinline muted></video>
+                        <div class="bc-video-placeholder" id="bc-video-placeholder">
+                            <i class="fa-solid fa-video"></i>
+                            <span>Camera preview will appear here</span>
+                        </div>
+                        <!-- Stats overlay (hidden by default) -->
+                        <div class="bc-stats-overlay" id="bc-stats-overlay" style="display:none">
+                            <span><span class="bc-stat-label">Bitrate</span> <span id="bc-stat-bitrate">-- kbps</span></span>
+                            <span><span class="bc-stat-label">FPS</span> <span id="bc-stat-fps">--</span></span>
+                            <span><span class="bc-stat-label">Resolution</span> <span id="bc-stat-resolution">--</span></span>
+                            <span><span class="bc-stat-label">Codec</span> <span id="bc-stat-codec">--</span></span>
+                            <span><span class="bc-stat-label">Status</span> <span id="bc-stat-status">--</span></span>
+                            <span><span class="bc-stat-label">Health</span> <span id="bc-stat-health">--</span></span>
+                        </div>
+                        <!-- Live badge (hidden until live) -->
+                        <div class="bc-live-badge" id="bc-live-badge" style="display:none">
+                            <i class="fa-solid fa-circle"></i> LIVE
+                        </div>
+                        <!-- Connection status -->
+                        <div class="bc-connection-status" id="bc-connection-status"></div>
+                    </div>
+
+                    <!-- Info bar -->
+                    <div class="bc-info-bar" id="bc-info-bar" style="display:none">
+                        <div class="bc-info-item">
+                            <i class="fa-solid fa-eye"></i> <strong id="bc-viewer-count">0</strong> total viewers
+                        </div>
+                        <div class="bc-info-item" id="bc-rs-viewer-count" style="display:none">
+                            <i class="fa-solid fa-robot"></i> <strong>0</strong> on RS
+                        </div>
+                        <span id="bc-platform-viewer-badges"></span>
+                        <div class="bc-info-item">
+                            <i class="fa-solid fa-clock"></i> <strong id="bc-uptime">0:00:00</strong>
+                        </div>
+                    </div>
+
+                    <div class="bc-rs-control" id="bc-rs-control" style="display:none"></div>
+
+                    <!-- Live controls (visible when streaming) -->
+                    <div class="bc-controls" id="bc-live-section">
+                        <!-- Quick Action Buttons -->
+                        <div class="bc-ctrl-buttons">
+                            <button class="bc-ctrl-btn bc-ctrl-btn-danger" id="bc-toggle-stream" onclick="stopBroadcast()">
+                                <i class="fa-solid fa-stop"></i> Stop Stream
+                            </button>
+                            <button class="bc-ctrl-btn" id="bc-btn-switch-cam" onclick="openCameraSwitcher()">
+                                <i class="fa-solid fa-camera-rotate"></i> Switch Cam
+                            </button>
+                            <button class="bc-ctrl-btn" id="bc-btn-screenshare" onclick="toggleScreenShare()">
+                                <i class="fa-solid fa-display"></i> Screen
+                            </button>
+                            <button class="bc-ctrl-btn" id="bc-btn-cam-overlay" onclick="toggleCameraOverlay()" style="display:none">
+                                <i class="fa-solid fa-video"></i> Cam PiP
+                            </button>
+                            <button class="bc-ctrl-btn" id="bc-btn-toggle-mic" onclick="toggleScreenShareMic()" style="display:none">
+                                <i class="fa-solid fa-microphone"></i> Mic
+                            </button>
+                            <button class="bc-ctrl-btn" onclick="toggleBroadcastStats()">
+                                <i class="fa-solid fa-chart-line"></i> Stats
+                            </button>
+                            <button class="bc-ctrl-btn" onclick="testTTS()">
+                                <i class="fa-solid fa-volume-high"></i> Test TTS
+                            </button>
+                            <button class="bc-ctrl-btn" onclick="cancelTTS()">
+                                <i class="fa-solid fa-ban"></i> Reset TTS
+                            </button>
+                            <button class="bc-ctrl-btn" id="bc-btn-clip" onclick="toggleBroadcastClipPanel()">
+                                <i class="fa-solid fa-scissors"></i> Clip
+                            </button>
+                            <button class="bc-ctrl-btn" id="bc-btn-media-pip" onclick="toggleMediaPip()">
+                                <i class="fa-solid fa-film"></i> Media
+                            </button>
+                            <button class="bc-ctrl-btn" id="bc-btn-toggle-preview" onclick="toggleBroadcastPreview()">
+                                <i class="fa-solid fa-eye"></i> Preview
+                            </button>
+                            <button class="bc-ctrl-btn" onclick="openViewerPreview()" title="Open a popup showing exactly what viewers see">
+                                <i class="fa-solid fa-tv"></i> Viewer
+                            </button>
+                        </div>
+
+                        <!-- Live Clip Panel -->
+                        <div id="bc-clip-panel" class="vod-clip-panel" style="display:none">
+                            <div class="vod-clip-header">
+                                <h4><i class="fa-solid fa-scissors"></i> Create Clip</h4>
+                                <button class="btn btn-small btn-outline" onclick="toggleBroadcastClipPanel()"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+                            <p class="muted" style="font-size:0.82rem;margin:0 0 10px">Mark a start and end time from your stream (max 60 seconds). The clip is extracted from the server-side recording.</p>
+                            <div class="vod-clip-times">
+                                <div class="vod-clip-time-group">
+                                    <label><i class="fa-solid fa-play"></i> Start</label>
+                                    <div class="vod-clip-time-row">
+                                        <input type="text" id="bc-clip-start" class="form-input form-input-sm" value="0:00" readonly>
+                                        <button class="btn btn-small btn-outline" onclick="setBroadcastClipMark('start')"><i class="fa-solid fa-location-dot"></i> Set</button>
+                                    </div>
+                                </div>
+                                <div class="vod-clip-time-group">
+                                    <label><i class="fa-solid fa-stop"></i> End</label>
+                                    <div class="vod-clip-time-row">
+                                        <input type="text" id="bc-clip-end" class="form-input form-input-sm" value="0:00" readonly>
+                                        <button class="btn btn-small btn-outline" onclick="setBroadcastClipMark('end')"><i class="fa-solid fa-location-dot"></i> Set</button>
+                                    </div>
+                                </div>
+                                <div class="vod-clip-time-group">
+                                    <label>Duration</label>
+                                    <span class="vod-clip-duration" id="bc-clip-duration">0s</span>
+                                </div>
+                            </div>
+                            <div class="form-group" style="margin-top:10px">
+                                <input type="text" id="bc-clip-title" class="form-input" placeholder="Clip title (optional)" maxlength="200">
+                            </div>
+                            <div class="vod-clip-actions">
+                                <button class="btn btn-outline" onclick="setBroadcastClipLast30()">
+                                    <i class="fa-solid fa-clock-rotate-left"></i> Last 30s
+                                </button>
+                                <button class="btn btn-primary" id="bc-clip-create-btn" onclick="createBroadcastClip()">
+                                    <i class="fa-solid fa-scissors"></i> Create Clip
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Media Request PiP Player -->
+                        <div id="bc-media-pip" class="bc-media-pip" style="display:none">
+                            <div class="bc-media-pip-header">
+                                <div class="bc-media-pip-title">
+                                    <i class="fa-solid fa-film"></i>
+                                    <span id="bc-media-pip-now">Media Requests</span>
+                                </div>
+                                <div class="bc-media-pip-actions">
+                                    <button class="btn btn-small btn-outline" onclick="mediaPopout()" title="Open full player"><i class="fa-solid fa-up-right-from-square"></i></button>
+                                    <button class="btn btn-small btn-outline" onclick="toggleMediaPip()"><i class="fa-solid fa-xmark"></i></button>
+                                </div>
+                            </div>
+                            <div class="bc-media-pip-player" id="bc-media-pip-player">
+                                <div class="bc-media-pip-empty" id="bc-media-pip-empty">
+                                    <i class="fa-solid fa-music"></i>
+                                    <span>No media playing</span>
+                                </div>
+                                <div class="bc-media-pip-loading" id="bc-media-pip-loading" style="display:none">
+                                    <div class="spinner-small"></div>
+                                    <span>Loading…</span>
+                                </div>
+                                <div id="bc-media-pip-host"></div>
+                            </div>
+                            <div class="bc-media-pip-controls" id="bc-media-pip-controls" style="display:none">
+                                <div class="bc-media-pip-info">
+                                    <div class="bc-media-pip-track" id="bc-media-pip-track"></div>
+                                    <div class="bc-media-pip-requester" id="bc-media-pip-requester"></div>
+                                </div>
+                                <div class="bc-media-pip-btns">
+                                    <button class="bc-pip-btn" onclick="mediaPipSkip()" title="Skip"><i class="fa-solid fa-forward-step"></i></button>
+                                    <button class="bc-pip-btn" onclick="mediaPipStartNext()" title="Play next"><i class="fa-solid fa-play"></i></button>
+                                </div>
+                            </div>
+                            <div class="bc-media-pip-queue" id="bc-media-pip-queue">
+                                <div class="bc-media-pip-queue-empty">Queue empty</div>
+                            </div>
+                        </div>
+
+                        <!-- TTS Settings -->
+                        <div class="bc-settings-group">
+                            <div class="bc-settings-title"><i class="fa-solid fa-comment-dots"></i> Text To Speech</div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">TTS Mode</span>
+                                <div class="bc-setting-control">
+                                    <select id="bc-ttsMode">
+                                        <option value="site-wide">Site-Wide TTS (Server Voices)</option>
+                                        <option value="self">Self TTS (Browser Voices)</option>
+                                        <option value="off">Off</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">TTS Volume</span>
+                                <div class="bc-setting-control"><input type="range" id="bc-ttsVolume" min="0" max="1000" step="50"></div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">TTS Pitch</span>
+                                <div class="bc-setting-control"><input type="range" id="bc-ttsPitch" min="0" max="200" step="10"></div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">TTS Rate</span>
+                                <div class="bc-setting-control"><input type="range" id="bc-ttsRate" min="1" max="20" step="1"></div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">TTS Voice</span>
+                                <div class="bc-setting-control"><select id="bc-ttsVoice"></select></div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Duration Limit (sec)</span>
+                                <div class="bc-setting-control">
+                                    <select id="bc-ttsDuration">
+                                        <option value="0">No limit</option>
+                                        <option value="5">5s</option>
+                                        <option value="10" selected>10s</option>
+                                        <option value="15">15s</option>
+                                        <option value="30">30s</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Read Names</span>
+                                <div class="bc-setting-control">
+                                    <select id="bc-ttsNames"><option value="off">Off</option><option value="on">On</option></select>
+                                </div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Queue Size</span>
+                                <div class="bc-setting-control">
+                                    <select id="bc-ttsQueue">
+                                        <option value="0">Unlimited</option>
+                                        <option value="3">3</option>
+                                        <option value="5" selected>5</option>
+                                        <option value="10">10</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Audio Settings -->
+                        <div class="bc-settings-group">
+                            <div class="bc-settings-title"><i class="fa-solid fa-microphone"></i> Audio</div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Microphone</span>
+                                <div class="bc-setting-control"><select id="bc-forceAudio"><option value="default">Default</option></select></div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Auto Gain</span>
+                                <div class="bc-setting-control"><label class="bc-toggle"><input type="checkbox" id="bc-autoGain"><span class="bc-toggle-slider"></span></label></div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Echo Cancellation</span>
+                                <div class="bc-setting-control"><label class="bc-toggle"><input type="checkbox" id="bc-echoCancellation"><span class="bc-toggle-slider"></span></label></div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Noise Suppression</span>
+                                <div class="bc-setting-control"><label class="bc-toggle"><input type="checkbox" id="bc-noiseSuppression"><span class="bc-toggle-slider"></span></label></div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Manual Gain</span>
+                                <div class="bc-setting-control">
+                                    <label class="bc-toggle"><input type="checkbox" id="bc-manualGainEnabled"><span class="bc-toggle-slider"></span></label>
+                                    <input type="range" id="bc-manualGain" min="0" max="300" step="10">
+                                </div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Force 48kHz Sample Rate</span>
+                                <div class="bc-setting-control"><label class="bc-toggle"><input type="checkbox" id="bc-force48kSampleRate"><span class="bc-toggle-slider"></span></label></div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Notification Volume</span>
+                                <div class="bc-setting-control"><input type="range" id="bc-notificationVolume" min="0" max="1000" step="50"></div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Disconnect Sound Alert</span>
+                                <div class="bc-setting-control"><label class="bc-toggle"><input type="checkbox" id="bc-disconnectAudio" onchange="_disconnectAudioEnabled = this.checked; try { localStorage.setItem('bc-disconnect-audio', this.checked ? '1' : '0'); } catch{}"><span class="bc-toggle-slider"></span></label></div>
+                            </div>
+                        </div>
+
+                        <!-- Interactive Controls Profile (live) -->
+                        <div class="bc-settings-group" id="bc-browser-controls-group">
+                            <div class="bc-settings-title"><i class="fa-solid fa-gamepad"></i> Interactive Controls</div>
+                            <div id="bc-browser-controls-status" style="margin-bottom:8px"><p class="muted" style="font-size:0.85rem">Loading…</p></div>
+                            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                                <select id="bc-live-config-select" class="form-input form-input-sm" style="flex:1;min-width:120px">
+                                    <option value="">None (no controls)</option>
+                                </select>
+                                <button class="btn btn-small btn-outline" onclick="applyLiveControlProfile()"><i class="fa-solid fa-check"></i> Apply</button>
+                            </div>
+                            <p class="bc-call-explainer" style="margin-top:6px"><i class="fa-solid fa-circle-info"></i> Change profile without ending the stream. Viewers see the new buttons immediately.</p>
+                        </div>
+
+                        <!-- Restreams — configured in Broadcast Settings tab -->
+                        <div class="bc-settings-group">
+                            <div class="bc-settings-title"><i class="fa-solid fa-tower-broadcast"></i> Restreams</div>
+                            <div class="bc-restream-control" id="bc-restream-control" style="display:none"></div>
+                            <p class="bc-call-explainer" id="bc-restream-live-hint">
+                                <i class="fa-solid fa-circle-info"></i> Manage restream destinations in the stream slot workspace. Destinations with Auto-Start will begin automatically when you go live.
+                            </p>
+                        </div>
+
+                        <!-- RobotStreamer Integration -->
+                        <div class="bc-settings-group" id="bc-rs-settings-group">
+                            <div class="bc-settings-title"><i class="fa-solid fa-robot"></i> RobotStreamer</div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Enable RobotStreamer</span>
+                                <div class="bc-setting-control">
+                                    <label class="bc-toggle"><input type="checkbox" id="bc-rsEnabled"><span class="bc-toggle-slider"></span></label>
+                                </div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Robot ID</span>
+                                <div class="bc-setting-control"><input type="text" id="bc-rsRobotInput" class="form-input form-input-sm" placeholder="Paste robot ID or select a robot"></div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Saved Token</span>
+                                <div class="bc-setting-control"><input type="password" id="bc-rsToken" class="form-input form-input-sm" autocomplete="new-password" placeholder="Paste your RobotStreamer token"></div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Select Robot</span>
+                                <div class="bc-setting-control"><select id="bc-rsRobotSelect" class="form-input form-input-sm"><option value="">Validate to load your RobotStreamer streams</option></select></div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Mirror Chat</span>
+                                <div class="bc-setting-control">
+                                    <label class="bc-toggle"><input type="checkbox" id="bc-rsMirrorChat"><span class="bc-toggle-slider"></span></label>
+                                </div>
+                            </div>
+                            <div class="bc-setting-row" style="gap:12px;flex-wrap:wrap">
+                                <button class="btn btn-small btn-outline" onclick="validateRobotStreamerIntegration()"><i class="fa-solid fa-check"></i> Validate</button>
+                                <button class="btn btn-small btn-primary" onclick="saveRobotStreamerIntegration()"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Status</span>
+                                <div class="bc-setting-control"><span id="bc-rsStatus" class="muted">Paste your RobotStreamer token, validate a robot, then go live.</span></div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Live Status</span>
+                                <div class="bc-setting-control"><span id="bc-rsLiveStatus" class="muted">Not configured</span></div>
+                            </div>
+                        </div>
+
+                        <!-- Video / Broadcast Settings -->
+                        <div class="bc-settings-group">
+                            <div class="bc-settings-title"><i class="fa-solid fa-video"></i> Video</div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Camera</span>
+                                <div class="bc-setting-control"><select id="bc-forceCamera"><option value="default">Default</option></select></div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Screen Share</span>
+                                <div class="bc-setting-control"><label class="bc-toggle"><input type="checkbox" id="bc-screenShare"><span class="bc-toggle-slider"></span></label></div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Capture Source</span>
+                                <div class="bc-setting-control">
+                                    <select id="bc-screenCaptureSource">
+                                        <option value="auto">Auto (browser decides)</option>
+                                        <option value="monitor">Entire Screen</option>
+                                        <option value="window">Application Window</option>
+                                        <option value="browser">Browser Tab</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">System Audio</span>
+                                <div class="bc-setting-control">
+                                    <select id="bc-screenSystemAudio">
+                                        <option value="include">Include</option>
+                                        <option value="auto">Auto</option>
+                                        <option value="exclude">Exclude</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">This Tab in Picker</span>
+                                <div class="bc-setting-control">
+                                    <select id="bc-screenSelfBrowser">
+                                        <option value="exclude">Exclude</option>
+                                        <option value="include">Include</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Surface Switching</span>
+                                <div class="bc-setting-control">
+                                    <select id="bc-screenSurfaceSwitching">
+                                        <option value="include">Allow</option>
+                                        <option value="exclude">Disallow</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Prefer Current Tab</span>
+                                <div class="bc-setting-control"><label class="bc-toggle"><input type="checkbox" id="bc-screenPreferCurrentTab"><span class="bc-toggle-slider"></span></label></div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Resolution</span>
+                                <div class="bc-setting-control">
+                                    <select id="bc-broadcastRes">
+                                        <option value="360">360p</option>
+                                        <option value="480">480p</option>
+                                        <option value="720" selected>720p</option>
+                                        <option value="1080">1080p</option>
+                                        <option value="1440">1440p</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">FPS</span>
+                                <div class="bc-setting-control">
+                                    <select id="bc-broadcastFps">
+                                        <option value="15">15</option>
+                                        <option value="24">24</option>
+                                        <option value="30" selected>30</option>
+                                        <option value="60">60</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Codec Preference</span>
+                                <div class="bc-setting-control">
+                                    <select id="bc-broadcastCodec">
+                                        <option value="auto" selected>Auto</option>
+                                        <option value="vp8">VP8</option>
+                                        <option value="vp9">VP9</option>
+                                        <option value="h264">H.264</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Max Bitrate (kbps)</span>
+                                <div class="bc-setting-control">
+                                    <select id="bc-broadcastBps">
+                                        <option value="100">100</option>
+                                        <option value="250">250</option>
+                                        <option value="500">500</option>
+                                        <option value="1000">1000</option>
+                                        <option value="1500">1500</option>
+                                        <option value="2000">2000</option>
+                                        <option value="2500" selected>2500</option>
+                                        <option value="3000">3000</option>
+                                        <option value="4000">4000</option>
+                                        <option value="5000">5000</option>
+                                        <option value="6000">6000</option>
+                                        <option value="8000">8000</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Min Bitrate (kbps)</span>
+                                <div class="bc-setting-control">
+                                    <select id="bc-broadcastBpsMin">
+                                        <option value="50">50</option>
+                                        <option value="100">100</option>
+                                        <option value="250">250</option>
+                                        <option value="500" selected>500</option>
+                                        <option value="1000">1000</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">On Disconnect</span>
+                                <div class="bc-setting-control">
+                                    <select id="bc-broadcastLimit">
+                                        <option value="restart" selected>Auto Restart</option>
+                                        <option value="stop">Stop Stream</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Server Reconnect</span>
+                                <div class="bc-setting-control">
+                                    <label class="bc-toggle"><input type="checkbox" id="bc-serverReconnect" checked onchange="updateBroadcastSetting('serverReconnect', this.checked)"><span class="bc-toggle-slider"></span></label>
+                                    <span class="bc-setting-hint" style="font-size:11px;color:var(--text-muted);margin-left:8px">Auto-reconnect stream after server restart</span>
+                                </div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Allow Sounds</span>
+                                <div class="bc-setting-control">
+                                    <select id="bc-allowSounds"><option value="false" selected>Off</option><option value="true">On</option></select>
+                                </div>
+                            </div>
+                            <div class="bc-setting-row">
+                                <span class="bc-setting-label">Sound Volume</span>
+                                <div class="bc-setting-control"><input type="range" id="bc-soundVolume" min="0" max="1000" step="50"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat sidebar (reused when live) -->
+            <div class="chat-sidebar" id="bc-chat-sidebar" style="display:none">
+                <div class="chat-header">
+                    <span>STREAM CHAT</span>
+                    <div class="chat-header-actions">
+                        <button class="chat-settings-btn" onclick="popoutBroadcastChat()" title="Pop Out Chat">
+                            <i class="fa-solid fa-up-right-from-square"></i>
+                        </button>
+                        <button class="chat-settings-btn" onclick="toggleChatUsers(this)" title="Users">
+                            <i class="fa-solid fa-users"></i>
+                        </button>
+                        <button class="chat-settings-btn" onclick="toggleChatSettings(this)" title="Chat Settings">
+                            <i class="fa-solid fa-gear"></i>
+                        </button>
+                        <button class="mobile-chat-close" onclick="toggleBroadcastMobileChat()" title="Close Chat">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="chat-users-panel"></div>
+                <div class="chat-messages" id="bc-chat-messages"></div>
+                <div class="chat-input-area">
+                    <!-- Emote Picker (broadcast) -->
+                    <div id="bc-emote-picker" class="emote-picker" style="display:none">
+                        <div class="emote-picker-header">
+                            <input type="text" class="emote-search" placeholder="Search emotes..." oninput="onEmoteSearch(this.value)">
+                        </div>
+                        <div class="emote-picker-tabs">
+                            <button class="emote-tab-btn active" data-tab="all" onclick="renderEmotePicker('all')">All</button>
+                            <button class="emote-tab-btn" data-tab="defaults" onclick="renderEmotePicker('defaults')">Popular</button>
+                            <button class="emote-tab-btn" data-tab="channel" onclick="renderEmotePicker('channel')">Channel</button>
+                            <button class="emote-tab-btn" data-tab="global" onclick="renderEmotePicker('global')">Custom</button>
+                            <button class="emote-tab-btn" data-tab="ffz" onclick="renderEmotePicker('ffz')">FFZ</button>
+                            <button class="emote-tab-btn" data-tab="7tv" onclick="renderEmotePicker('7tv')">7TV</button>
+                            <button class="emote-tab-btn" data-tab="bttv" onclick="renderEmotePicker('bttv')">BTTV</button>
+                        </div>
+                        <div class="emote-picker-grid" id="bc-emote-picker-grid"></div>
+                    </div>
+                    <div class="chat-input-row">
+                        <textarea id="bc-chat-input" class="chat-textarea" placeholder="Send a message..." maxlength="500"
+                                  rows="1" autocomplete="off" spellcheck="true" enterkeyhint="send"></textarea>
+                        <button class="chat-send-btn" onclick="sendChat()">
+                            <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
+                    <div class="chat-tools-row">
+                        <button class="emote-picker-btn" onclick="toggleEmotePicker('bc-chat-input')" title="Emotes">
+                            <i class="fa-solid fa-face-smile"></i>
+                        </button>
+                        <button class="emote-picker-btn gif-btn" onclick="toggleGifPicker('bc-chat-input')" title="GIFs">
+                            <span class="gif-btn-text">GIF</span>
+                        </button>
+                        <button class="chat-tts-toggle tts-active" onclick="toggleChatTTS(this)" title="TTS On (click to mute)">
+                            <i class="fa-solid fa-volume-high"></i>
+                        </button>
+                        <button class="btn btn-openvibe-coins-mini" onclick="toggleRewardsPanel()" title="Redeem OpenCoins">
+                            <i class="fa-solid fa-coins"></i>
+                        </button>
+                        <button class="btn btn-openvibe-bucks-mini" onclick="showModal('donate')" title="Send Vibes">
+                            <i class="fa-solid fa-dollar-sign"></i>
+                        </button>
+                    </div>
+                    <!-- Rewards Panel (OpenCoins) — broadcast page -->
+                    <div class="rewards-panel" id="bc-rewards-panel" style="display:none">
+                        <div class="rewards-panel-header">
+                            <span><i class="fa-solid fa-coins rewards-cp-icon"></i> <span class="rewards-cp-label">Channel Points</span> Rewards</span>
+                            <span class="rewards-coin-bal"><i class="fa-solid fa-coins"></i> <span class="rewards-coin-balance">0</span></span>
+                        </div>
+                        <div class="rewards-grid bc-rewards-grid">
+                            <p class="muted">No rewards configured for this channel</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Chat Toggle FAB for Broadcast page (visible only on small screens when live) -->
+        <button class="mobile-chat-toggle bc-mobile-chat-fab" id="bc-mobile-chat-toggle" onclick="toggleBroadcastMobileChat()" title="Toggle Chat" style="display:none">
+            <i class="fa-solid fa-comment"></i>
+            <span class="mobile-chat-badge" id="bc-mobile-chat-badge" style="display:none">0</span>
+        </button>
+
+        <div class="bc-camera-sheet" id="bc-camera-sheet" style="display:none" onclick="if(event.target===this)closeCameraSwitcher()">
+            <div class="bc-camera-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="bc-camera-sheet-title">
+                <div class="bc-camera-sheet-header">
+                    <div>
+                        <h3 id="bc-camera-sheet-title"><i class="fa-solid fa-camera"></i> Switch Camera</h3>
+                        <p id="bc-camera-sheet-subtitle">Pick the exact camera you want to use live.</p>
+                    </div>
+                    <button class="bc-camera-sheet-close" type="button" onclick="closeCameraSwitcher()" aria-label="Close camera switcher">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="bc-camera-sheet-list" id="bc-camera-sheet-list">
+                    <div class="bc-camera-sheet-empty">
+                        <i class="fa-solid fa-spinner fa-spin"></i>
+                        <span>Loading cameras…</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    

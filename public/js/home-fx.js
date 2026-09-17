@@ -19,7 +19,8 @@
     // pointer spotlight, no tilt. They still get the cheap IntersectionObserver work, because the
     // viewport gate below is the only thing that starts the hero button wave — bailing out of the
     // whole module here is why those buttons sat frozen on a phone.
-    const LITE = COARSE || window.innerWidth <= 820 || (navigator.deviceMemory && navigator.deviceMemory <= 4);
+    // matchMedia rather than innerWidth, which forces a synchronous layout while the page is loading.
+    const LITE = COARSE || window.matchMedia('(max-width: 820px)').matches || (navigator.deviceMemory && navigator.deviceMemory <= 4);
     if (LITE) document.documentElement.classList.add('rs-lite');
 
     const onHome = () => { const p = document.getElementById('page-home'); return !!(p && p.classList.contains('active')); };

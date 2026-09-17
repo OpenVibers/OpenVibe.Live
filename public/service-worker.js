@@ -1,3 +1,6 @@
+// Legacy push worker from the first release. Nothing registers it any more (the site uses /openvibe-sw.js
+// from openvibe-shared); it stays so browsers that registered it long ago keep a valid script, and its
+// icon paths now point at files that exist.
 /* OpenVibe.Live — Service Worker for Push Notifications */
 
 self.addEventListener('push', (event) => {
@@ -6,8 +9,8 @@ self.addEventListener('push', (event) => {
         const data = event.data.json();
         const options = {
             body: data.body || '',
-            icon: data.icon || '/assets/img/logo-192.png',
-            badge: '/assets/img/logo-72.png',
+            icon: data.icon || '/assets/logo-192.png',
+            badge: '/assets/logo-72.png',
             tag: data.tag || 'openvibe-notification',
             data: { url: data.url || '/' },
             requireInteraction: false,

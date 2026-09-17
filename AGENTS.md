@@ -14,12 +14,14 @@ npm start                 # Start production server (node server/index.js)
 npm run init-db           # Initialize database from schema.sql
 npm run seed              # Seed sample data
 node --check <file.js>    # Syntax check (no linter configured)
-node test/<file>.test.js  # Run individual test (no test runner)
+npm test                  # All unit/security/migration/deploy tests + size budgets (test/run.js)
+node test/<file>.test.js  # One test
+BASE=http://127.0.0.1:3000 npm run test:browser  # Browser smoke (running server + Chrome)
 ```
 
-**No build step.** Frontend is plain JS served directly — no bundler, no transpiler. Bump `?v=N` on script tags in `index.html` to bust cache on deploy.
+**No build step.** Frontend is plain JS served directly — no bundler, no transpiler. Asset URLs are content-hashed at serve time (`server/web/assets.js`) — **never add `?v=` by hand**.
 
-**Deploy:** production path `/opt/openvibe.live`, env `/etc/openvibe/live.env`, unit `openvibe-live.service`. See [deploy/README.md](deploy/README.md).
+**Deploy:** production path `/opt/openvibe.live`, env `/etc/openvibe/live.env`, unit `openvibe-live.service`. Static-only changes deploy without a restart. See [docs/deploy.md](docs/deploy.md).
 
 ## Architecture at a Glance
 
@@ -28,9 +30,10 @@ node test/<file>.test.js  # Run individual test (no test runner)
 - **Database:** [server/db/database.js](server/db/database.js) — all queries, schema in [server/db/schema.sql](server/db/schema.sql)
 - **Auth:** [server/auth/auth.js](server/auth/auth.js) — RS256 JWT from openvibe.tools SSO + `hbt_` API tokens
 - **Permissions:** [server/auth/permissions.js](server/auth/permissions.js) — role hierarchy: `user < streamer < global_mod < admin`
-- **Frontend shell:** [public/index.html](public/index.html) — all pages as `<section id="page-*">`, routing via `history.pushState` in [public/js/app.js](public/js/app.js)
+- **Frontend shell:** [public/index.html](public/index.html) — navbar, home page and empty `<section id="page-*">` shells; routing via `history.pushState` in [public/js/app.js](public/js/app.js)
+- **Route loading:** [public/features.json](public/features.json) maps routes → features (fragment in `public/fragments/`, CSS in `public/css/features/`, scripts, deps, stubs); [public/js/ov-loader.js](public/js/ov-loader.js) loads them. New page code goes in a feature, not in `index.html`/core `app.js`. See [docs/architecture.md](docs/architecture.md#frontend-loading).
 
-Each feature lives in its own `server/<feature>/` directory with `routes.js` + service files. Frontend: one JS file per feature in `public/js/`.
+Each feature lives in its own `server/<feature>/` directory with `routes.js` + service files. Frontend: one JS file per feature in `public/js/`, registered in `public/features.json`.
 
 ## Conventions
 
@@ -39,19 +42,22 @@ Each feature lives in its own `server/<feature>/` directory with `routes.js` + s
 - **Naming:** `camelCase` for JS, `snake_case` for SQLite columns/tables.
 - **DB access:** Direct `better-sqlite3` calls in `database.js` (e.g., `db.getUserById()`, `db.run()`, `db.get()`, `db.all()`).
 - **Auth middleware:** `requireAuth` from `auth.js`. Permission checks via `permissions.js`.
-- **DB migrations:** Inline `ALTER TABLE` wrapped in `try/catch` for idempotency — no migration framework.
+- **DB migrations:** Idempotent `CREATE … IF NOT EXISTS`/`ADD COLUMN` may stay inline; anything that transforms data goes in [server/db/migrations.js](server/db/migrations.js) (ledger, transaction, `adopt`, `DEFER`).
+- **Public responses:** serialize through [server/web/serializers.js](server/web/serializers.js) — never return raw `managed_streams`/`users` rows.
+- **Outbound fetches of user-chosen URLs:** [server/net/egress.js](server/net/egress.js) only. Background loops: `server/utils/jobs.js`.
 - **WebSocket servers:** Each has `init(server)` and `handleUpgrade(req, socket, head)` methods.
 - **Frontend globals:** `currentUser`, `api()`, `navigate()`, `handleLinkClick()`. Cross-component sync via `CustomEvent` (e.g., `openvibe-auth-changed`).
 - **ChatServer:** Singleton — `chat-server.js` exports `new ChatServer()`, not the class.
 
 ## Key Pitfalls
 
-- **No build step:** Changes to `public/js/*.js` take effect immediately on deploy. Cache busting is manual (`?v=N` in script tags).
+- **No build step:** Changes to `public/` take effect on deploy without a restart; caching follows content hashes. `npm test` fails if the home page's size budgets grow (scripts/perf/check-budgets.js).
+- **Inline handlers on lazy features:** a function called from `onclick=` in markup that exists before its feature loads must be listed in that feature's `stubs`.
 - **innerHTML usage:** Frontend has heavy `innerHTML` — prefer DOM node creation for new code to avoid XSS.
 - **WebSocket auth lifecycle:** WS connections can start anonymous and upgrade via `join` message. On account switch, the socket must be rebuilt (not just re-joined) — see `openvibe-auth-changed` handling in `chat.js`.
 - **openvibe-shared:** Vendored package at `./vendor/openvibe-shared` linked via `file:` in package.json. Canonical copy lives in OpenVibe.Network; re-sync, don't hand-edit.
 - **DM delivery:** Server verifies `dm.isParticipant()` before delivering — always maintain this check.
-- **Schema:** `ensureTables()` functions create tables on first use. Some modules (DMs, game, etc.) have their own `ensureTables()`.
+- **Schema:** `ensureTables()` functions create tables on first use. Some modules (DMs, arena, etc.) have their own `ensureTables()`.
 
 ## WebSocket Endpoints
 
@@ -59,7 +65,7 @@ Each feature lives in its own `server/<feature>/` directory with `routes.js` + s
 
 ## Testing
 
-Standalone Node scripts in `test/` using `assert`. They create temp SQLite databases. Always `node --check` modified files before committing.
+Standalone Node scripts in `test/` using `assert`, run together by `npm test`. They create temp SQLite databases. Browser smoke: `test/browser/smoke.js` (routes × widths, console errors, overflow, duplicate scripts, resource growth). Always `node --check` modified files before committing.
 
 ## Documentation
 
@@ -74,6 +80,8 @@ Every file below is also served on the site at `/docs/<name>` (rendered by `serv
 - [docs/vods-and-clips.md](docs/vods-and-clips.md) — VOD/clip pipeline (pre-split; storage/cutting now in OpenVibe.Media)
 - [docs/dashboard.md](docs/dashboard.md) — Streamer dashboard
 - [docs/onboarding.md](docs/onboarding.md) — New user flow
+- [docs/deploy.md](docs/deploy.md) — Deploy kinds, release layout, caching, nginx
+- [docs/performance-audit.md](docs/performance-audit.md) — Measurements and tools
 - [SETUP.md](SETUP.md) — Full deployment guide
 - [SECURITY_AUDIT.md](SECURITY_AUDIT.md) — Security audit findings
 - [hardware/README.md](hardware/README.md) — Raspberry Pi integration

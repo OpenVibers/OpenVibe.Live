@@ -369,13 +369,20 @@ router.post('/delete-message', (req, res) => {
         const message = db.getChatMessageById(parseInt(message_id));
         if (!message) return res.status(404).json({ error: 'Message not found' });
 
-        // Permission: stream mod can delete messages in their stream, global mod can delete anything
+        // Permission: stream mod can delete messages in their stream, global mod can delete anything.
+        // Checked against the MESSAGE's own stream or channel. It used to prefer the stream_id in the
+        // request body, so the owner of any stream could delete any message on the site by naming
+        // their own stream alongside someone else's message id. `stream_id` is ignored now.
+        void stream_id;
         const isGlobal = permissions.isGlobalModOrAbove(req.user);
         if (!isGlobal) {
-            const targetStreamId = stream_id || message.stream_id;
-            if (!targetStreamId || !permissions.canModerateStream(req.user, targetStreamId)) {
-                return res.status(403).json({ error: 'You cannot moderate this stream' });
+            let allowed = false;
+            if (message.stream_id) allowed = permissions.canModerateStream(req.user, message.stream_id);
+            else if (message.channel_user_id) {
+                const ownerChannel = db.getChannelByUserId(message.channel_user_id);
+                allowed = !!(ownerChannel && permissions.canModerateChannel(req.user, ownerChannel.id));
             }
+            if (!allowed) return res.status(403).json({ error: 'You cannot moderate this stream' });
         }
 
         db.deleteChatMessage(parseInt(message_id), req.user.id);
@@ -483,11 +490,13 @@ router.post('/relay-user/hide', (req, res) => {
 
         // Permission: channel owner/mod or global mod
         const isGlobal = permissions.isGlobalModOrAbove(req.user);
-        if (!isGlobal && channel_id) {
+        // Without a channel_id the hide is site-wide, which is staff business. Channel owners and
+        // their mods act on their own channel. (Leaving channel_id out used to skip the check.)
+        if (!isGlobal) {
+            if (!channel_id) return res.status(403).json({ error: 'Only staff can hide relay users site-wide' });
             const channel = db.getChannelById(channel_id);
             if (!channel) return res.status(404).json({ error: 'Channel not found' });
-            // Stream owner or global mod
-            if (channel.user_id !== req.user.id) {
+            if (!permissions.canModerateChannel(req.user, channel.id)) {
                 return res.status(403).json({ error: 'You cannot moderate this channel' });
             }
         }
@@ -532,7 +541,13 @@ router.post('/relay-user/hide', (req, res) => {
 // ── Unhide a relayed user ────────────────────────────────────
 router.delete('/relay-user/:id', (req, res) => {
     try {
-        db.unhideRelayUser(parseInt(req.params.id));
+        const row = db.get('SELECT id, channel_id FROM hidden_relay_users WHERE id = ?', [parseInt(req.params.id)]);
+        if (!row) return res.status(404).json({ error: 'Not found' });
+        // Site rows are staff's; a channel row belongs to that channel's moderators. This had no check.
+        const allowed = permissions.isGlobalModOrAbove(req.user)
+            || (row.channel_id != null && permissions.canModerateChannel(req.user, row.channel_id));
+        if (!allowed) return res.status(403).json({ error: 'You cannot moderate this channel' });
+        db.unhideRelayUser(row.id);
 
         db.logModerationAction({
             scope_type: 'site',
@@ -552,6 +567,7 @@ router.delete('/relay-user/:id', (req, res) => {
 router.get('/relay-users/hidden/:channelId', (req, res) => {
     try {
         const channelId = parseInt(req.params.channelId);
+        if (!permissions.canModerateChannel(req.user, channelId)) return res.status(403).json({ error: 'Access denied' });
         const hidden = db.getHiddenRelayUsers(channelId);
         res.json({ hidden });
     } catch (err) {
@@ -568,12 +584,10 @@ router.get('/relay-users/hidden/:channelId', (req, res) => {
 router.get('/ip-approval/:channelId/pending', (req, res) => {
     try {
         const channelId = parseInt(req.params.channelId);
-        if (!permissions.canModerateStream(req.user, channelId) && !permissions.isGlobalModOrAbove(req.user)) {
-            // Also check channel ownership
-            const channel = db.getChannelById(channelId);
-            if (!channel || channel.user_id !== req.user.id) {
-                return res.status(403).json({ error: 'Access denied' });
-            }
+        // A channel id, checked as a channel. canModerateStream() was given this id as if it were a
+        // stream id, so owning stream #N opened channel #N's queue — IP addresses and locations.
+        if (!permissions.canModerateChannel(req.user, channelId)) {
+            return res.status(403).json({ error: 'Access denied' });
         }
         const pending = db.getPendingIpMessages(channelId);
 

@@ -1,0 +1,529 @@
+<!-- #page-dashboard markup, loaded on first visit to the route (public/features.json). The server inlines it for direct visits. -->
+        <div class="container">
+            <div class="section-header">
+                <h2><i class="fa-solid fa-gauge-high"></i> Streamer Dashboard</h2>
+            </div>
+
+            <div class="ch-tabs dash-tabs" id="dash-tabs" role="tablist">
+                <button class="ch-tab active" role="tab" aria-selected="true" data-dtab="home" onclick="switchDashTab('home', this)"><i class="fa-solid fa-house"></i> Home</button>
+                <button class="ch-tab" role="tab" aria-selected="false" data-dtab="content" onclick="switchDashTab('content', this)"><i class="fa-solid fa-photo-film"></i> Content</button>
+                <button class="ch-tab" role="tab" aria-selected="false" data-dtab="moderation" onclick="switchDashTab('moderation', this)"><i class="fa-solid fa-shield-halved"></i> Moderation</button>
+                <button class="ch-tab" role="tab" aria-selected="false" data-dtab="chatai" onclick="switchDashTab('chatai', this)"><i class="fa-solid fa-comments"></i> Chat</button>
+                <button class="ch-tab" role="tab" aria-selected="false" data-dtab="controls" onclick="switchDashTab('controls', this)"><i class="fa-solid fa-gamepad"></i> Controls</button>
+                <button class="ch-tab" role="tab" aria-selected="false" data-dtab="money" onclick="switchDashTab('money', this)"><i class="fa-solid fa-hand-holding-dollar"></i> Monetize</button>
+                <button class="ch-tab" role="tab" aria-selected="false" data-dtab="points" onclick="switchDashTab('points', this)"><i class="fa-solid fa-star"></i> Points</button>
+            </div>
+
+            <div class="ch-tab-panel dash-tab-panel active" id="dash-panel-home" role="tabpanel"><div class="dash-grid" id="dash-grid-home"></div></div>
+            <div class="ch-tab-panel dash-tab-panel" id="dash-panel-chatai" role="tabpanel"><div class="dash-grid" id="dash-grid-chatai"></div></div>
+            <div class="ch-tab-panel dash-tab-panel" id="dash-panel-moderation" role="tabpanel"><div class="dash-grid" id="dash-grid-moderation"></div></div>
+            <div class="ch-tab-panel dash-tab-panel" id="dash-panel-controls" role="tabpanel"><div class="dash-grid" id="dash-grid-controls"></div></div>
+            <div class="ch-tab-panel dash-tab-panel" id="dash-panel-money" role="tabpanel"><div class="dash-grid" id="dash-grid-money"></div></div>
+            <div class="ch-tab-panel dash-tab-panel" id="dash-panel-points" role="tabpanel"><div class="dash-grid" id="dash-grid-points"></div></div>
+            <div class="ch-tab-panel dash-tab-panel" id="dash-panel-content" role="tabpanel">
+                <div class="ch-tabs dash-subtabs" id="dash-content-subtabs" role="tablist">
+                    <button class="ch-tab active" data-cdtab="videos" onclick="switchDashContentTab('videos', this)"><i class="fa-solid fa-video"></i> Videos</button>
+                    <button class="ch-tab" data-cdtab="streamclips" onclick="switchDashContentTab('streamclips', this)"><i class="fa-solid fa-scissors"></i> Clips of My Stream</button>
+                    <button class="ch-tab" data-cdtab="myclips" onclick="switchDashContentTab('myclips', this)"><i class="fa-solid fa-film"></i> My Clips</button>
+                    <button class="ch-tab" data-cdtab="pastes" onclick="switchDashContentTab('pastes', this)"><i class="fa-solid fa-paste"></i> Pastes</button>
+                </div>
+                <div class="dash-subpanel active" id="dash-content-videos"><div class="dash-grid" id="dash-grid-content-videos"></div></div>
+                <div class="dash-subpanel" id="dash-content-streamclips"><div class="dash-grid" id="dash-grid-content-streamclips"></div></div>
+                <div class="dash-subpanel" id="dash-content-myclips"><div class="dash-grid" id="dash-grid-content-myclips"></div></div>
+                <div class="dash-subpanel" id="dash-content-pastes"><div class="dash-grid" id="dash-grid-content-pastes"></div></div>
+            </div>
+
+            <div class="dash-grid" id="dash-staging" style="display:none">
+                <div class="dash-card" id="dash-card-overlay">
+                    <h3><i class="fa-solid fa-layer-group"></i> Chat Overlay</h3>
+                    <p class="muted" style="margin-bottom:12px">Use this as a Browser Source in OBS to show your live chat on stream. This global URL shows chat from any of your live stream slots.</p>
+                    <div class="form-group">
+                        <label>Global Chat Overlay URL</label>
+                        <div class="key-display">
+                            <input type="text" id="dash-obs-chat-overlay-url" readonly class="form-input">
+                            <button class="btn btn-small" onclick="copyDashObsOverlayUrl()" title="Copy overlay URL">
+                                <i class="fa-solid fa-copy"></i>
+                            </button>
+                            <button class="btn btn-small" onclick="openDashObsOverlay()" title="Open overlay">
+                                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <p class="muted" style="font-size:0.82rem;margin-bottom:0">Per-slot overlay URLs are available in each stream slot's Settings tab on the <a href="/broadcast">Broadcast page</a>.<br>Browser Source size: 800×600 is a good starting point. Background stays transparent.</p>
+                </div>
+
+                <!-- Controls Manager -->
+                <div class="dash-card" id="dash-card-controls">
+                    <h3><i class="fa-solid fa-gamepad"></i> Interactive Controls</h3>
+
+                    <!-- Control Config Profiles -->
+                    <div style="margin-bottom:12px">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                            <label style="font-weight:600;font-size:0.9rem;color:var(--text-secondary)"><i class="fa-solid fa-sliders"></i> Control Profiles</label>
+                            <div style="display:flex;gap:6px">
+                                <button class="btn btn-small btn-outline" onclick="showModal('create-config')"><i class="fa-solid fa-plus"></i> New Profile</button>
+                                <button class="btn btn-small btn-outline" onclick="openClonePresetModal()"><i class="fa-solid fa-clone"></i> Clone Preset</button>
+                            </div>
+                        <!-- Clone Preset Config Modal -->
+                        <div id="clone-preset-config-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
+                            <div class="modal" onclick="event.stopPropagation()">
+                                <button class="modal-close" onclick="closeModal()">&times;</button>
+                                <div class="modal-header">
+                                    <h3><i class="fa-solid fa-clone"></i> Clone Preset Control Profile</h3>
+                                </div>
+                                <div class="modal-body">
+                                    <p class="muted" style="margin-bottom:10px">Choose a preset profile to clone. You can edit the name and description before creating your own copy.</p>
+                                    <div class="form-group">
+                                        <label>Preset</label>
+                                        <select id="clone-preset-select" class="form-input">
+                                            <option value="">Loading...</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Name</label>
+                                        <input type="text" id="clone-preset-name" class="form-input" maxlength="50" placeholder="Profile name">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Description</label>
+                                        <input type="text" id="clone-preset-desc" class="form-input" maxlength="200" placeholder="Profile description (optional)">
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                                    <button class="btn btn-primary" onclick="doClonePresetConfig()"><i class="fa-solid fa-clone"></i> Clone</button>
+                                </div>
+                            </div>
+                        </div>
+                        </div>
+                        <div id="dash-config-list"></div>
+                        <div id="dash-config-editor" style="display:none">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin:12px 0 8px">
+                                <h4 id="dash-config-editor-title" style="margin:0;font-size:0.95rem;color:var(--accent)">Editing: Config</h4>
+                                <div style="display:flex;gap:6px">
+                                    <button class="btn btn-small btn-outline" onclick="showModal('add-config-button')"><i class="fa-solid fa-plus"></i> Add Button</button>
+                                    <button class="btn btn-small btn-outline" onclick="closeConfigEditor()"><i class="fa-solid fa-times"></i> Close</button>
+                                </div>
+                            </div>
+                            <div id="dash-config-buttons-list"></div>
+                        </div>
+                    </div>
+
+                    <hr style="border-color:var(--border);margin:12px 0">
+
+                    <!-- Control Settings -->
+                    <details class="dash-control-settings" style="margin-top:12px;">
+                        <summary style="cursor:pointer;font-weight:600;font-size:0.9rem;color:var(--text-secondary)"><i class="fa-solid fa-sliders"></i> Control Settings</summary>
+                        <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px;">
+                            <div class="form-group" style="margin:0">
+                                <label style="font-size:0.85rem">Control Mode</label>
+                                <select id="dash-control-mode" class="form-input form-input-sm" onchange="updateControlSettings()">
+                                    <option value="open">Open (anyone can control)</option>
+                                    <option value="whitelist">Whitelist Only</option>
+                                    <option value="disabled">Disabled</option>
+                                </select>
+                            </div>
+                            <label class="bc-toggle-label" style="font-size:0.85rem;gap:8px">
+                                <input type="checkbox" id="dash-anon-controls" checked onchange="updateControlSettings()">
+                                Allow anonymous users to use controls
+                            </label>
+                            <label class="bc-toggle-label" style="font-size:0.85rem;gap:8px">
+                                <input type="checkbox" id="dash-video-click" onchange="updateControlSettings()">
+                                Enable video click (viewers click on stream to send coordinates)
+                            </label>
+                            <p class="bc-field-hint" style="margin:2px 0 0">Command rate limits are per-button (set each control's cooldown in its profile). A high global burst cap prevents floods automatically.</p>
+                        </div>
+                    </details>
+
+                    <!-- Whitelist -->
+                    <details id="dash-control-whitelist-section" style="margin-top:8px;display:none">
+                        <summary style="cursor:pointer;font-weight:600;font-size:0.9rem;color:var(--text-secondary)"><i class="fa-solid fa-list-check"></i> Control Whitelist</summary>
+                        <div style="margin-top:8px">
+                            <div id="dash-control-whitelist"></div>
+                            <div style="display:flex;gap:8px;margin-top:8px">
+                                <input type="text" id="dash-whitelist-username" class="form-input form-input-sm" placeholder="Username" style="flex:1">
+                                <button class="btn btn-small btn-outline" onclick="addToControlWhitelist()"><i class="fa-solid fa-plus"></i> Add</button>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Hardware Bridge Scripts -->
+                    <details style="margin-top:8px">
+                        <summary style="cursor:pointer;font-weight:600;font-size:0.9rem;color:var(--text-secondary)"><i class="fa-solid fa-robot"></i> Hardware Bridge Scripts</summary>
+                        <div style="margin-top:8px">
+                            <p class="bc-field-hint" style="margin-bottom:8px">Download Python scripts to connect hardware (robots, GPIO, servos) to your control profiles. Each script is pre-configured with your stream key and the buttons from the selected profile.</p>
+                            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                                <select id="dash-bridge-config-select" class="form-input form-input-sm" style="flex:1;min-width:140px">
+                                    <option value="">Select a control profile...</option>
+                                </select>
+                                <button class="btn btn-small btn-outline" onclick="downloadDashBridgeScript('generic')" title="Generic hardware bridge — prints commands"><i class="fa-solid fa-download"></i> Generic Script</button>
+                                <button class="btn btn-small btn-outline" onclick="downloadDashBridgeScript('cozmo')" title="Cozmo robot bridge — requires pycozmo"><i class="fa-solid fa-robot"></i> Cozmo Script</button>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+
+                <!-- API Tokens (Bot / Integration) -->
+                <div class="dash-card" id="dash-card-tokens">
+                    <h3><i class="fa-solid fa-key"></i> API Tokens</h3>
+                    <p class="muted" style="font-size:0.85rem;margin-bottom:8px">Create long-lived API tokens for bots and integrations. Tokens can authenticate against the REST API and authenticated WebSocket integrations without an OAuth login.</p>
+                    <p class="muted" style="font-size:0.8rem;margin-bottom:12px" id="dash-token-summary"></p>
+                    <div id="dash-token-list" style="margin-bottom:10px"></div>
+                    <button class="btn btn-outline btn-small" id="dash-token-create-btn" onclick="showCreateTokenModal()">
+                        <i class="fa-solid fa-plus"></i> Create Token
+                    </button>
+                </div>
+
+                <!-- Chat Logs (Streamer Self-Service) -->
+                <div class="dash-card dash-card-wide" id="dash-card-chatlogs">
+                    <h3><i class="fa-solid fa-clock-rotate-left"></i> Chat Logs</h3>
+                    <p class="muted" style="font-size:0.85rem;margin-bottom:12px">View and manage chat messages from your streams. Search, filter, and purge messages by time range.</p>
+                    <div class="dash-chat-log-controls" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+                        <input type="text" id="dash-chatlog-search" class="form-input form-input-sm" placeholder="Search messages..." style="flex:1;min-width:150px">
+                        <input type="text" id="dash-chatlog-username" class="form-input form-input-sm" placeholder="Username" style="width:130px">
+                        <input type="datetime-local" id="dash-chatlog-from" class="form-input form-input-sm" style="width:180px">
+                        <input type="datetime-local" id="dash-chatlog-to" class="form-input form-input-sm" style="width:180px">
+                        <button class="btn btn-small btn-primary" onclick="loadDashChatLogs()">
+                            <i class="fa-solid fa-search"></i> Search
+                        </button>
+                        <button class="btn btn-small btn-danger" onclick="dashPurgeChatRange()">
+                            <i class="fa-solid fa-trash-can"></i> Purge Range
+                        </button>
+                    </div>
+                    <div id="dash-chatlog-results" style="max-height:400px;overflow-y:auto;font-size:0.85rem"></div>
+                    <div id="dash-chatlog-pagination" style="display:flex;gap:8px;justify-content:center;margin-top:8px"></div>
+                </div>
+
+                <!-- ONVIF Camera Controls -->
+                <div class="dash-card" id="dash-card-cameras">
+                    <h3><i class="fa-solid fa-video"></i> Camera Controls (ONVIF PTZ)</h3>
+                    <p class="muted" style="font-size: 0.85rem;">Add ONVIF-compatible cameras (Hikvision, Axis, Dahua, etc.) for pan/tilt/zoom viewer control.</p>
+                    <div id="dash-cameras-list"></div>
+                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <button class="btn btn-outline" onclick="showModal('discover-cameras')">
+                            <i class="fa-solid fa-magnifying-glass"></i> Discover Cameras
+                        </button>
+                        <button class="btn btn-outline" onclick="showModal('add-camera')">
+                            <i class="fa-solid fa-plus"></i> Add Camera Manually
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Donation Goals -->
+                <div class="dash-card" id="dash-card-goals">
+                    <h3><i class="fa-solid fa-bullseye"></i> Donation Goals</h3>
+                    <div id="dash-goals-list"></div>
+                    <button class="btn btn-outline" onclick="openAddGoal()">
+                        <i class="fa-solid fa-plus"></i> Add Goal
+                    </button>
+                </div>
+
+                <!-- PowerChat donations -->
+                <div class="dash-card" id="dash-powerchat-card" style="display:none">
+                    <h3><i class="fa-solid fa-hand-holding-dollar"></i> PowerChat Tips <span class="muted">real donations</span></h3>
+                    <p class="muted" style="font-size:0.9rem">Connect your <a href="https://powerchatlive.dev" target="_blank" rel="noopener">PowerChat</a> account to take real tips. Confirmed donations fire your alert sound, credit your donation goals, and pop a chat celebration — automatically.</p>
+                    <div id="pc-status" class="pc-status"></div>
+                    <div id="pc-actions" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"></div>
+                    <p class="muted" id="pc-hint" style="font-size:0.82rem;margin-top:10px"></p>
+                </div>
+
+                <!-- AI Chat Bots -->
+                <div class="dash-card dash-card-wide" id="dash-aibot-card">
+                    <h3><i class="fa-solid fa-robot"></i> AI Chat Viewers <span class="muted">a chat that remembers</span></h3>
+                    <p class="muted">Give your channel a persistent cast of AI viewers. They react to what's actually happening on stream, remember regulars across sessions, and each keeps their own personality and memory. Right-click anyone in chat to <b>AI Clone</b> them into a bot. Runs on OpenVibe.Live's shared AI up to your daily budget — or bring your own key for no cap.</p>
+
+                    <div class="ai-viewers-tabs ch-tabs" id="aiv-subtabs" role="tablist">
+                        <button class="ch-tab active" data-avtab="config" onclick="switchAivTab('config', this)"><i class="fa-solid fa-sliders"></i> Settings</button>
+                        <button class="ch-tab" data-avtab="roster" onclick="switchAivTab('roster', this)"><i class="fa-solid fa-users"></i> Roster <span class="aiv-count" id="aiv-roster-count"></span></button>
+                        <button class="ch-tab" data-avtab="activity" onclick="switchAivTab('activity', this)"><i class="fa-solid fa-list-ul"></i> Activity</button>
+                        <button class="ch-tab" data-avtab="budget" onclick="switchAivTab('budget', this)"><i class="fa-solid fa-gauge"></i> Key &amp; Budget</button>
+                    </div>
+
+                    <!-- Settings (rendered from the server's settings schema) -->
+                    <div class="aiv-panel active" id="aiv-panel-config">
+                        <div id="aiv-settings-root"><p class="muted">Loading…</p></div>
+                    </div>
+
+                    <!-- Activity: live feed of what the director decided and why -->
+                    <div class="aiv-panel" id="aiv-panel-activity">
+                        <div class="aiv-senses" id="aiv-senses-activity"></div>
+                        <div class="ai-bot-actions" style="margin:6px 0 8px">
+                            <button class="btn btn-small btn-outline" onclick="aivCommand('pause', this)"><i class="fa-solid fa-pause"></i> Pause</button>
+                            <button class="btn btn-small btn-outline" onclick="aivCommand('resume', this)"><i class="fa-solid fa-play"></i> Resume</button>
+                            <button class="btn btn-small btn-outline" onclick="aivCommand('nudge', this)"><i class="fa-solid fa-hand-point-right"></i> Nudge the director</button>
+                            <span class="muted" id="aiv-hour-stats" style="font-size:0.8rem"></span>
+                        </div>
+                        <div class="aiv-log" id="aiv-log"><p class="muted">Loading…</p></div>
+                    </div>
+
+                    <!-- Roster -->
+                    <div class="aiv-panel" id="aiv-panel-roster">
+                        <p class="muted" style="font-size:0.85rem">Your channel's persistent bots. Ambient bots are generated automatically; clones come from real chatters. Personalities and memories persist across every stream.</p>
+                        <div id="aiv-roster-list"><p class="muted">Loading roster…</p></div>
+                    </div>
+
+                    <!-- Key & Budget -->
+                    <div class="aiv-panel" id="aiv-panel-budget">
+                        <div class="aiv-usage-meter" id="aiv-usage-meter"></div>
+                        <div class="ai-bot-grid">
+                            <label>
+                                <span>AI source</span>
+                                <select id="aiv-keymode" class="form-input" style="max-width:320px" onchange="_aivToggleKeyMode()">
+                                    <option value="shared">OpenVibe.Live shared AI (daily budget)</option>
+                                    <option value="byo">My own API key (no cap)</option>
+                                </select>
+                            </label>
+                            <label id="aiv-budget-wrap">
+                                <span>Daily budget</span>
+                                <span style="display:flex;align-items:center;gap:6px">$<input type="number" id="aiv-budget" class="form-input" min="0" max="100" step="0.05" value="0.20" style="max-width:120px;"></span>
+                                <span class="ai-bot-hint">When today's spend hits this, the viewers go quiet until tomorrow.</span>
+                            </label>
+                            <div id="aiv-byo-fields" style="display:none">
+                                <label>
+                                    <span>Base URL</span>
+                                    <input type="text" id="aiv-byo-url" class="form-input" placeholder="https://api.openai.com/v1" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other" name="aiv_byo_url_field">
+                                    <span class="ai-bot-hint">OpenAI-compatible endpoint (OpenAI, OpenRouter, Groq, or a public Ollama / LM Studio URL). Must be reachable from the public internet.</span>
+                                </label>
+                                <label>
+                                    <span>API key <span class="muted" style="font-weight:400">(optional for self-hosted)</span></span>
+                                    <input type="password" id="aiv-byo-key" class="form-input" placeholder="Paste your API key — or leave blank for Ollama/LM Studio" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other" name="aiv_byo_key_field">
+                                    <span class="ai-bot-hint" id="aiv-byo-key-status"></span>
+                                </label>
+                                <label>
+                                    <span>Provider shape</span>
+                                    <select id="aiv-byo-provider" class="form-input" style="max-width:220px"><option value="openai">OpenAI-compatible</option><option value="anthropic">Anthropic</option></select>
+                                </label>
+                                <label>
+                                    <span>Default model</span>
+                                    <input type="text" id="aiv-byo-model" class="form-input" placeholder="gpt-4o-mini" autocomplete="off" style="max-width:220px;">
+                                    <span class="ai-bot-hint">Used for every role unless overridden below.</span>
+                                </label>
+                                <div class="ai-bot-row">
+                                    <label><span>Chat lines model</span><input type="text" id="aiv-byo-model-chat" class="form-input" placeholder="(default)" style="max-width:200px"></label>
+                                    <label><span>Director model</span><input type="text" id="aiv-byo-model-director" class="form-input" placeholder="(default)" style="max-width:200px"><span class="ai-bot-hint">Plans several lines per call; needs JSON output.</span></label>
+                                    <label><span>Vision model</span><input type="text" id="aiv-byo-model-vision" class="form-input" placeholder="(default)" style="max-width:200px"><span class="ai-bot-hint">Only used when the shared site vision is off.</span></label>
+                                    <label><span>Summary model</span><input type="text" id="aiv-byo-model-summary" class="form-input" placeholder="(default)" style="max-width:200px"></label>
+                                </div>
+                                <div class="ai-bot-actions"><button class="btn btn-small btn-outline" onclick="testAivByo(this)"><i class="fa-solid fa-plug-circle-check"></i> Test connection</button><span id="aiv-byo-test-out" class="muted" style="font-size:0.8rem"></span></div>
+                            </div>
+                            <div class="ai-bot-actions">
+                                <button class="btn btn-primary btn-small" onclick="saveAiViewers(this)"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- My Videos -->
+                <div id="dash-my-videos-card" class="dash-card dash-card-wide">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+                        <h3 style="margin:0"><i class="fa-solid fa-video"></i> My Videos</h3>
+                        <button class="btn btn-small btn-outline sel-all-btn" data-sel-container="dash-vods-list" style="display:none" onclick="_selAllToggle(this.dataset.selContainer)"><i class="fa-solid fa-check-double"></i> <span class="sel-all-label">Select all</span></button>
+                    </div>
+                    <p class="muted">Videos are <strong>public by default</strong>. You can set individual videos to private, or bulk-manage older media below.</p>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:10px 0 14px">
+                        <label style="display:flex;align-items:center;gap:6px">
+                            <select id="dash-bulk-action" class="form-input form-input-sm" style="width:auto">
+                                <option value="delete">Delete</option>
+                                <option value="private">Make private</option>
+                                <option value="unlisted">Unlist</option>
+                                <option value="public">Make public</option>
+                            </select>
+                            <span class="muted" style="font-size:0.85rem">media older than</span>
+                            <input type="number" id="dash-bulk-delete-age-days" class="form-input form-input-sm" min="1" step="1" value="30" style="width:96px">
+                            <span class="muted" style="font-size:0.85rem">days</span>
+                        </label>
+                        <label class="bc-toggle-label" style="font-size:0.85rem;gap:6px">
+                            <input type="checkbox" id="dash-bulk-delete-vods" checked>
+                            VODs
+                        </label>
+                        <label class="bc-toggle-label" style="font-size:0.85rem;gap:6px">
+                            <input type="checkbox" id="dash-bulk-delete-clips" checked>
+                            Clips
+                        </label>
+                        <button class="btn btn-small btn-danger" onclick="dashBulkActionByAge()">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> Apply
+                        </button>
+                    </div>
+                    <div id="dash-vods-list" class="vod-grid"></div>
+                </div>
+
+                <!-- My Clips (clips I created) -->
+                <div class="dash-card dash-card-wide" id="dash-card-myclips">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+                        <h3 style="margin:0"><i class="fa-solid fa-scissors"></i> My Clips</h3>
+                        <button class="btn btn-small btn-outline sel-all-btn" data-sel-container="dash-my-clips" style="display:none" onclick="_selAllToggle(this.dataset.selContainer)"><i class="fa-solid fa-check-double"></i> <span class="sel-all-label">Select all</span></button>
+                    </div>
+                    <p class="muted">Clips you've taken from other streams. New clips are <strong>unlisted</strong> until the streamer makes them public.</p>
+                    <div id="dash-my-clips" class="vod-grid"></div>
+                </div>
+
+                <!-- Clips of My Stream -->
+                <div class="dash-card dash-card-wide" id="dash-card-streamclips">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+                        <h3 style="margin:0"><i class="fa-solid fa-clapperboard"></i> Clips of My Stream</h3>
+                        <button class="btn btn-small btn-outline sel-all-btn" data-sel-container="dash-stream-clips" style="display:none" onclick="_selAllToggle(this.dataset.selContainer)"><i class="fa-solid fa-check-double"></i> <span class="sel-all-label">Select all</span></button>
+                    </div>
+                    <p class="muted">Clips viewers have taken from your streams. You can publish or delete them.</p>
+                    <label class="staff-inline-toggle" style="margin-bottom:12px">
+                        <input type="checkbox" id="dash-clips-allow-creator-delete" onchange="saveClipSettings()">
+                        <span>Let clip creators delete their own clips of my channel <span class="muted" style="font-weight:400">(off = only you, your mods, and staff can delete)</span></span>
+                    </label>
+                    <div id="dash-stream-clips" class="vod-grid"></div>
+                </div>
+
+                <!-- My Pastes -->
+                <div class="dash-card dash-card-wide" id="dash-card-pastes">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+                        <h3 style="margin:0"><i class="fa-solid fa-paste"></i> My Pastes</h3>
+                        <button class="btn btn-small btn-outline" onclick="navigate('/pastes')"><i class="fa-solid fa-up-right-from-square"></i> All pastes</button>
+                    </div>
+                    <p class="muted">Text, code, and screenshots you've shared.</p>
+                    <div id="dash-pastes-list" class="pastes-grid"></div>
+                </div>
+
+                <!-- Cashout (Vibes received) -->
+                <div class="dash-card" id="dash-card-bucks">
+                    <h3><i class="fa-solid fa-hand-holding-dollar"></i> Cashout</h3>
+                    <div class="funds-display">
+                        <span class="funds-amount coins-color" id="dash-cashout-amount">0</span>
+                        <span class="funds-usd" id="dash-cashout-usd">($0.00)</span>
+                    </div>
+                    <p class="muted" style="font-size:0.82rem;margin-bottom:12px">Only Vibes <strong>sent to you</strong> land here — the only balance you can cash out. Or recycle it into your spendable balance to give back to the community.</p>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary btn-small" onclick="showModal('cashout')"><i class="fa-solid fa-money-bill-transfer"></i> Cash Out</button>
+                        <button class="btn btn-outline btn-small" onclick="dashRecycleBucks()"><i class="fa-solid fa-recycle"></i> Move to spendable</button>
+                    </div>
+                </div>
+
+
+                <!-- Channel Points settings (migrated from the "Add to this channel" popover) -->
+                <div class="dash-card dash-card-wide" id="dash-card-points-config">
+                    <h3><i class="fa-solid fa-star"></i> Channel Points</h3>
+                    <p class="muted">Viewers earn your channel points by watching and chatting, then spend them on the rewards you create below. Name them whatever you like.</p>
+                    <div class="dash-cp-grid">
+                        <label><span>Name</span><input type="text" id="dash-cp-name" class="form-input" maxlength="32" placeholder="Channel Points"></label>
+                        <label><span>Icon <span class="muted" style="font-weight:400">(Font Awesome, e.g. fa-star)</span></span><input type="text" id="dash-cp-icon" class="form-input" placeholder="fa-coins"></label>
+                        <label><span>Earn every (minutes)</span><input type="number" id="dash-cp-interval" class="form-input" min="1" max="120" value="5"></label>
+                        <label><span>Amount per earn</span><input type="number" id="dash-cp-amount" class="form-input" min="0" max="100000" value="10"></label>
+                        <label><span>Bonus chest every (min, 0 = off)</span><input type="number" id="dash-cp-game" class="form-input" min="0" max="1440" value="0"></label>
+                    </div>
+                    <div style="margin-top:12px">
+                        <button class="btn btn-primary btn-small" onclick="saveDashPointsConfig(this)"><i class="fa-solid fa-floppy-disk"></i> Save Channel Points</button>
+                    </div>
+                    <p class="muted" style="font-size:0.8rem;margin-top:10px">The bonus chest shows viewers a clickable chest on a timer for extra points.</p>
+                </div>
+
+                <!-- Coin Rewards (Streamer Configuration) -->
+                <div class="dash-card dash-card-wide" id="dash-card-rewards">
+                    <h3><i class="fa-solid fa-gift"></i> Rewards</h3>
+                    <p class="muted">Create rewards your viewers can redeem with your channel points — TTS, sound effects, chat highlights, streamer challenges, and more.</p>
+                    <div id="dash-rewards-list" class="dash-rewards-grid"></div>
+                    <button class="btn btn-outline" onclick="showModal('add-reward')" style="margin-top:12px">
+                        <i class="fa-solid fa-plus"></i> Add Reward
+                    </button>
+                </div>
+
+                <!-- Redemption Queue -->
+                <div class="dash-card dash-card-wide" id="dash-card-redemptions">
+                    <h3><i class="fa-solid fa-bell"></i> Redemption Queue</h3>
+                    <p class="muted">Viewers who redeemed rewards. Fulfill or reject them.</p>
+                    <div id="dash-redemptions-list"></div>
+                </div>
+
+                <!-- Profile / Account (migrated from /settings) -->
+                <div class="dash-card dash-card-wide" id="dash-card-profile">
+                    <h3 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                        <span><i class="fa-solid fa-id-card"></i> Profile</span>
+                        <button class="dash-bucks-badge" onclick="showBucksLogs()" title="Your spendable Vibes — click to see your history">
+                            <i class="fa-solid fa-coins"></i> <span id="dash-funds-amount">0</span>
+                        </button>
+                    </h3>
+                    <div class="dash-profile-head">
+                        <div class="settings-banner-avatar" id="settings-banner-initial" title="Change avatar" onclick="document.getElementById('set-avatar-file').click()" style="cursor:pointer;position:relative">
+                            ?
+                            <span class="settings-avatar-edit"><i class="fa-solid fa-camera"></i></span>
+                        </div>
+                        <input type="file" id="set-avatar-file" accept="image/png,image/jpeg,image/gif,image/webp,image/avif" style="display:none" onchange="uploadSettingsAvatar(this)">
+                        <div class="dash-profile-head-info">
+                            <div class="settings-banner-name" id="settings-banner-name">User</div>
+                            <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:0.82rem;margin-top:6px">
+                                <input type="checkbox" id="avatar-public-check" checked>
+                                <span class="muted">Show this avatar image in my public Pastes</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div id="settings-avatar-history-card" style="display:none;margin-top:14px">
+                        <div class="settings-row-hint" style="margin-bottom:8px">Every avatar you upload is saved here. Click one to use it again.</div>
+                        <div id="settings-avatar-history" class="settings-avatar-history"></div>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-row-label">Username</span>
+                        <div class="settings-row-content">
+                            <input type="text" id="set-username" disabled>
+                            <div class="settings-row-hint"><i class="fa-solid fa-lock"></i> Cannot be changed</div>
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-row-label">Display Name</span>
+                        <div class="settings-row-content">
+                            <input type="text" id="set-display-name" placeholder="Display name">
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-row-label">Email</span>
+                        <div class="settings-row-content">
+                            <input type="email" id="set-email" placeholder="email@example.com">
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-row-label">Bio</span>
+                        <div class="settings-row-content">
+                            <textarea id="set-bio" rows="3" placeholder="Tell us about yourself..."></textarea>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap">
+                        <button class="btn btn-primary btn-small" onclick="saveSettingsProfile()"><i class="fa-solid fa-floppy-disk"></i> Save Profile</button>
+                        <a href="https://openvibe.network" target="_blank" rel="noopener" class="btn btn-outline btn-small" style="text-decoration:none"><i class="fa-solid fa-arrow-up-right-from-square"></i> Manage account on openvibe.network</a>
+                    </div>
+                </div>
+
+                <!-- Offline Screen (migrated from /settings) -->
+                <div class="dash-card dash-card-wide" id="dash-card-offline">
+                    <h3><i class="fa-solid fa-image"></i> Offline Screen</h3>
+                    <p class="muted" style="margin-bottom:14px">What viewers see in the video area when you're offline. Your chat stays open below it either way.</p>
+                    <div class="settings-row">
+                        <span class="settings-row-label">Mode</span>
+                        <div class="settings-row-content">
+                            <select id="offline-screen-type" onchange="onOfflineTypeChange()">
+                                <option value="none">Default (avatar + name)</option>
+                                <option value="image">Image / video</option>
+                                <option value="html">Custom HTML / CSS</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="offline-media-row" style="display:none">
+                        <div class="settings-row" style="flex-direction:column;align-items:stretch">
+                            <span class="settings-row-label">Upload image or video</span>
+                            <div class="settings-row-content">
+                                <input type="file" id="offline-file" accept="image/png,image/jpeg,image/webp,image/avif,image/gif,video/mp4,video/webm,video/quicktime" onchange="uploadOfflineScreen(this)">
+                                <p class="muted" style="font-size:0.8rem;margin-top:5px">Images (PNG/JPG/WebP) or video/GIF (MP4/WebM/MOV/GIF) — video is auto-converted to an optimized muted loop.</p>
+                                <div id="offline-preview" style="margin-top:12px"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="offline-html-row" style="display:none">
+                        <div class="settings-row" style="flex-direction:column;align-items:stretch">
+                            <span class="settings-row-label">HTML</span>
+                            <textarea id="offline-html" rows="8" placeholder="&lt;div class=&quot;card&quot;&gt;Back soon! Follow me on ...&lt;/div&gt;" style="width:100%;font-family:ui-monospace,monospace;font-size:0.82rem"></textarea>
+                        </div>
+                        <div class="settings-row" style="flex-direction:column;align-items:stretch">
+                            <span class="settings-row-label">CSS</span>
+                            <textarea id="offline-css" rows="6" placeholder=".card{padding:20px;background:#222;border-radius:12px;text-align:center}" style="width:100%;font-family:ui-monospace,monospace;font-size:0.82rem"></textarea>
+                        </div>
+                        <p class="muted" style="font-size:0.8rem"><i class="fa-solid fa-shield-halved"></i> Runs sandboxed (isolated from the site). Great for a links library, embeds, or animated flair.</p>
+                    </div>
+                    <button class="btn btn-primary btn-small" onclick="saveOfflineScreen()"><i class="fa-solid fa-floppy-disk"></i> Save offline screen</button>
+                    <span id="offline-save-status" style="margin-left:10px"></span>
+                </div>
+            </div>
+        </div>
+    

@@ -359,13 +359,18 @@ function _onvifMaybeLoad() {
     const page = document.getElementById('page-dashboard');
     if (!page || !page.classList.contains('active')) return;
     if (page.dataset.onvifLoaded) return;
+    // Mark loaded only once the list exists: the class flips before the dashboard markup is in.
+    if (!document.getElementById('dash-cameras-list')) return;
     page.dataset.onvifLoaded = '1';
-    if (document.getElementById('dash-cameras-list')) loadDashboardCameras();
+    loadDashboardCameras();
 }
-document.addEventListener('DOMContentLoaded', () => {
+// This file loads with the dashboard, usually long after DOMContentLoaded has fired.
+function _onvifBoot() {
     _onvifMaybeLoad();
     const page = document.getElementById('page-dashboard');
-    if (page && 'MutationObserver' in window) {
+    if (page && 'MutationObserver' in window && !page._onvifObserved) {
+        page._onvifObserved = true;
         new MutationObserver(_onvifMaybeLoad).observe(page, { attributes: true, attributeFilter: ['class'] });
     }
-});
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _onvifBoot); else _onvifBoot();

@@ -17,6 +17,8 @@ const WebSocket = require('ws');
 const { extractWsToken, authenticateWs } = require('../auth/auth');
 const db = require('../db/database');
 const webrtcSFU = require('./webrtc-sfu');
+// Per-address cap on viewer sockets (a household or office behind one NAT watching several tabs fits).
+const MAX_VIEWER_SOCKETS_PER_IP = 16;
 const config = require('../config');
 const whipHandler = require('./whip-handler');
 
@@ -252,9 +254,29 @@ class BroadcastServer extends EventEmitter {
             }
         }
 
+        // Viewers: only for a stream that exists and is live, and only a handful of sockets per address.
+        // Any number used to be accepted as streamId, each creating room state, and each socket could
+        // ask the SFU for a router and a WebRTC transport — about 100 anonymous sockets exhausted the
+        // RTC port range and locked out real viewers and ingest.
+        const ip = String(req.headers['cf-connecting-ip'] || (req.socket && req.socket.remoteAddress) || '');
+        if (role === 'viewer') {
+            let stream = null;
+            try { stream = db.getStreamById(streamId); } catch { stream = null; }
+            if (!stream || !stream.is_live) {
+                ws.close(4004, 'Stream not live');
+                return;
+            }
+            let fromIp = 0;
+            for (const info of this.clients.values()) if (info.role === 'viewer' && info.ip === ip) fromIp++;
+            if (ip && fromIp >= MAX_VIEWER_SOCKETS_PER_IP) {
+                ws.close(4029, 'Too many connections');
+                return;
+            }
+        }
+
         const peerId = `peer-${this.nextPeerId++}`;
 
-        const clientInfo = { user, streamId, role, peerId };
+        const clientInfo = { user, streamId, role, peerId, ip };
         this.clients.set(ws, clientInfo);
 
         // Set up room
@@ -884,6 +906,8 @@ class BroadcastServer extends EventEmitter {
 
     async _handleSfuViewerCreateTransport(ws, client) {
         const roomId = `stream-${client.streamId}`;
+        // A viewer consumes an existing broadcast; it must never be the reason a router is created.
+        if (!webrtcSFU.rooms || !webrtcSFU.rooms.has(roomId)) throw new Error('No live media for this stream');
         // Clean up previous transport on re-negotiate
         this._cleanupSfuViewerTransport(client);
 

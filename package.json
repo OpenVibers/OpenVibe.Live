@@ -8,7 +8,12 @@
     "dev": "NODE_ENV=development node server/index.js",
     "init-db": "node server/db/init.js",
     "seed": "node server/db/seed.js",
-    "test:powerchat": "for f in test/powerchat-*.test.js; do node \"$f\" || exit 1; done"
+    "test": "node test/run.js",
+    "test:unit": "node test/run.js",
+    "test:powerchat": "for f in test/powerchat-*.test.js; do node \"$f\" || exit 1; done",
+    "test:browser": "node test/browser/smoke.js",
+    "perf:page": "node scripts/perf/measure-page.js",
+    "perf:budget": "node scripts/perf/check-budgets.js"
   },
   "keywords": [
     "streaming",

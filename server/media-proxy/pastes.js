@@ -36,9 +36,38 @@ function forwardAsApp(subPath) {
 
 const router = express.Router();
 const shotUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+// Anonymous pastes and comments are allowed, but Media does not rate-limit app-key calls, so the
+// limit for anonymous writes lives here.
+const anonWriteLimiter = require('express-rate-limit')({
+    windowMs: 10 * 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => !!(req.user && req.user.id),
+    message: { error: 'Too many anonymous posts — sign in or try again later' },
+});
+
+/**
+ * Every request reaches Media with Live's app key. Media treats an app-key call that names no acting
+ * user as the app itself — full authority: it trusts `user_id` in the body and query, lists private
+ * pastes, and moderates comments freely. A signed-in caller is pinned by X-OV-User-Id and gets
+ * normal ownership checks; an anonymous one would get app authority. So identity fields a browser
+ * sends are dropped here, always, and owner-view switches are dropped for anonymous callers.
+ */
+const IDENTITY_FIELDS = ['user_id', 'userId', 'author_id', 'owner_id'];
+const OWNER_VIEW_FIELDS = ['include_unlisted', 'include_private', 'mine'];
+function scrubIdentity(req) {
+    const anon = media.actingUserFrom(req) == null;
+    if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+        for (const k of IDENTITY_FIELDS) delete req.body[k];
+    }
+    if (anon && req.query) for (const k of OWNER_VIEW_FIELDS) delete req.query[k];
+    return anon;
+}
 
 function forward(subPath) {
     return (req, res) => {
+        scrubIdentity(req);
         const p = typeof subPath === 'function' ? subPath(req) : subPath;
         media.proxy(req, res, `/pastes${p}`, { actingUser: media.actingUserFrom(req) })
             .catch((err) => {
@@ -51,7 +80,7 @@ function forward(subPath) {
 const slugPath = (suffix = '') => (req) => `/${encodeURIComponent(req.params.slug)}${suffix}`;
 
 // ── Screenshot upload (multipart re-wrap) ────────────────────
-router.post('/screenshot', optionalAuth, shotUpload.single('screenshot'), async (req, res) => {
+router.post('/screenshot', optionalAuth, anonWriteLimiter, shotUpload.single('screenshot'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: 'No screenshot uploaded' });
         const out = await media.createPaste({
@@ -111,6 +140,7 @@ function _nameUsers(rows) {
 function forwardEnriched(subPath, pick) {
     return async (req, res) => {
         try {
+            const anon = scrubIdentity(req);
             const query = { ...req.query };
             if (query.username && query.username !== 'all') {
                 const u = db.getUserByUsername(query.username);
@@ -120,6 +150,9 @@ function forwardEnriched(subPath, pick) {
             }
             const p = typeof subPath === 'function' ? subPath(req) : subPath;
             const out = await media.request('GET', `/pastes${p}`, { query, actingUser: media.actingUserFrom(req) });
+            // Media shows private pastes to the app itself, which is what an anonymous call looks like.
+            if (anon && out && out.paste && out.paste.visibility === 'private') return res.status(404).json({ error: 'Paste not found' });
+            if (anon && out && Array.isArray(out.pastes)) out.pastes = out.pastes.filter((x) => !x || x.visibility !== 'private');
             _nameUsers(pick(out));
             res.json(out);
         } catch (err) {
@@ -130,7 +163,7 @@ function forwardEnriched(subPath, pick) {
     };
 }
 router.get('/', optionalAuth, forwardEnriched('', (o) => o?.pastes));
-router.post('/', optionalAuth, forward(''));
+router.post('/', optionalAuth, anonWriteLimiter, forward(''));
 router.get('/config', forward('/config'));
 router.get('/admin/stats', requireAdmin, forwardAsApp('/admin/stats'));
 router.delete('/admin/forks', requireAdmin, forwardAsApp('/admin/forks'));
@@ -200,7 +233,7 @@ router.post('/:slug/censor', requireAdmin, shotUpload.single('screenshot'), asyn
         res.status(502).json({ error: 'Media service unavailable' });
     }
 });
-router.post('/:slug/fork', optionalAuth, forward(slugPath('/fork')));
+router.post('/:slug/fork', optionalAuth, anonWriteLimiter, forward(slugPath('/fork')));
 // Raw content is public on Media (/p/:slug/raw) — bounce the API-shaped URL there.
 router.get('/:slug/raw', (req, res) => res.redirect(302, media.pasteRawUrl(req.params.slug)));
 router.post('/:slug/like', requireAuth, forward(slugPath('/like')));
@@ -208,7 +241,8 @@ router.post('/:slug/copy', optionalAuth, forward(slugPath('/copy')));
 router.get('/:slug/comments', optionalAuth, forwardEnriched(slugPath('/comments'), (o) => o?.comments));
 // optionalAuth, not requireAuth: anonymous comments are allowed, and Media decides
 // whether they are enabled. What matters is that a signed-in commenter is named.
-router.post('/:slug/comments', optionalAuth, forward(slugPath('/comments')));
-router.delete('/:slug/comments/:commentId', optionalAuth, forward((req) => `/${encodeURIComponent(req.params.slug)}/comments/${encodeURIComponent(req.params.commentId)}`));
+router.post('/:slug/comments', optionalAuth, anonWriteLimiter, forward(slugPath('/comments')));
+// Deleting needs an identity: without one Media sees the app key alone and lets it delete anything.
+router.delete('/:slug/comments/:commentId', requireAuth, forward((req) => `/${encodeURIComponent(req.params.slug)}/comments/${encodeURIComponent(req.params.commentId)}`));
 
 module.exports = router;

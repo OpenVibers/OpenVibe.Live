@@ -53,6 +53,7 @@ function setGifApiKey() {
 
 // ── GIF Picker UI ──────────────────────────────────────────────
 
+let _gifDocListeners = false;
 function _getGifPicker() {
     if (_gifPickerEl && document.body.contains(_gifPickerEl)) return _gifPickerEl;
     _gifPickerEl = document.getElementById('gif-picker-global');
@@ -74,14 +75,19 @@ function _getGifPicker() {
     `;
 
     picker.addEventListener('click', (event) => event.stopPropagation());
-    document.addEventListener('click', (event) => {
-        if (!_gifPickerOpen || !_gifPickerEl) return;
-        if (_gifPickerEl.contains(event.target)) return;
-        closeGifPicker();
-    });
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && _gifPickerOpen) closeGifPicker();
-    });
+    // Once per page, not once per picker: the picker is rebuilt if it gets detached, and each
+    // rebuild used to add another pair of document listeners.
+    if (!_gifDocListeners) {
+        _gifDocListeners = true;
+        document.addEventListener('click', (event) => {
+            if (!_gifPickerOpen || !_gifPickerEl) return;
+            if (_gifPickerEl.contains(event.target)) return;
+            closeGifPicker();
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && _gifPickerOpen) closeGifPicker();
+        });
+    }
 
     _gifPickerEl = picker;
     return picker;

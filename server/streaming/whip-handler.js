@@ -146,8 +146,10 @@ function cleanupExistingSessionsForStream(streamId) {
 
 function touchWhipHeartbeat(streamId, reason = 'whip_session') {
     if (!streamId) return;
-    db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [streamId]);
-    console.log(`[WHIP] Refreshed heartbeat for stream ${streamId} via ${reason}`);
+    // Called from a keepalive timer: a throw there would exit the process (see server/index.js).
+    try {
+        db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [streamId]);
+    } catch (e) { console.warn(`[WHIP] heartbeat for stream ${streamId} (${reason}) failed: ${e.message}`); }
 }
 
 function hasActiveSessionsForStream(streamId) {

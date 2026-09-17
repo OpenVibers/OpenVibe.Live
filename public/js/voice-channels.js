@@ -845,32 +845,28 @@ function vcDeinit() {
     vcStopPolling();
 }
 
-// Auto-init if chat tab is already visible (e.g. on page load)
-document.addEventListener('DOMContentLoaded', () => {
-    // Listen for tab switches to start/stop polling
-    const chatTab = document.getElementById('page-chat');
-    if (chatTab) {
-        // Create a MutationObserver to watch for class changes (active/inactive)
-        const observer = new MutationObserver(() => {
-            const isVisible = chatTab.classList.contains('active');
-            if (isVisible && !vcState.pollTimer) {
-                vcInit();
-            } else if (!isVisible && vcState.pollTimer) {
-                vcDeinit();
-            }
-            // Show/hide mini bar based on whether we're on the chat tab
-            vcUpdateMiniBar();
-        });
-        observer.observe(chatTab, { attributes: true, attributeFilter: ['class'] });
-    }
-
-    // Also watch all pages for mini bar updates
-    document.querySelectorAll('.page').forEach(page => {
-        if (page.id === 'page-chat') return; // already handled
-        const obs = new MutationObserver(() => vcUpdateMiniBar());
-        obs.observe(page, { attributes: true, attributeFilter: ['class'] });
-    });
-});
+/**
+ * Start/stop voice polling with the Chat page and keep the mini bar in step with the route.
+ *
+ * This file is loaded on demand (public/features.json → voice), usually after DOMContentLoaded, so
+ * it boots through the loader's after-hook. It used to attach one MutationObserver per page section
+ * (about 16) just to toggle the mini bar; one listener for the router's page event replaces them.
+ */
+let _vcBooted = false;
+function vcBoot() {
+    if (_vcBooted) return;
+    _vcBooted = true;
+    const sync = () => {
+        const chatTab = document.getElementById('page-chat');
+        const isVisible = !!(chatTab && chatTab.classList.contains('active'));
+        if (isVisible && !vcState.pollTimer) vcInit();
+        else if (!isVisible && vcState.pollTimer) vcDeinit();
+        vcUpdateMiniBar();
+    };
+    document.addEventListener('ov:page', sync);
+    sync();
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', vcBoot); else vcBoot();
 
 /* ── Mini Voice Channel Bar ────────────────────────────────── */
 

@@ -1061,28 +1061,9 @@ function initDb() {
         const seedPay = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
         for (const [k, v, d, t] of paymentSeeds) seedPay.run(k, v, d, t);
 
-        // ── One-time migration: decimal-dollar Vibes → bit-style (×100) ──────────
-        // Old model: 1 buck = $1 (stored as decimal dollars). New model: integer bucks,
-        // 100 bucks = $1. So existing balances / goals / ledger amounts multiply by 100,
-        // and the value rate flips from 1 to 100. Guarded so it runs exactly once.
-        try {
-            const done = database.prepare("SELECT value FROM site_settings WHERE key = 'bucks_bits_migration_done'").get();
-            if (!done) {
-                database.exec(`
-                    UPDATE users SET
-                        openvibe_bucks_balance = ROUND(COALESCE(openvibe_bucks_balance,0) * 100),
-                        openvibe_bucks_cashout_balance = ROUND(COALESCE(openvibe_bucks_cashout_balance,0) * 100);
-                    UPDATE donation_goals SET
-                        target_amount = ROUND(COALESCE(target_amount,0) * 100),
-                        current_amount = ROUND(COALESCE(current_amount,0) * 100);
-                    UPDATE transactions SET amount = ROUND(COALESCE(amount,0) * 100);
-                `);
-                // Flip the value rate (used for sub-share + external-tip conversion) 1 → 100.
-                database.prepare("UPDATE site_settings SET value = '100' WHERE key = 'bucks_per_usd'").run();
-                database.prepare("INSERT OR REPLACE INTO site_settings (key, value, description, type) VALUES ('bucks_bits_migration_done', '1', 'Internal: decimal→bit Vibes migration applied', 'boolean')").run();
-                console.log('[DB] Migrated Vibes decimal-dollars → bit-style (×100)');
-            }
-        } catch (e) { console.warn('[DB] Vibes bit migration:', e.message); }
+        // The decimal→bit Vibes conversion (×100) is migration 001 in server/db/migrations.js, run
+        // from the ledger at the end of initDb(). Its old guard was a site_settings row any admin
+        // could delete, which would have multiplied every balance by 100 again on the next boot.
 
         // AI analysis subsystem (configured in openvibe.network/admin → AI). Master switch
         // OFF by default so no API calls (or cost) happen until an admin enables it.
@@ -1386,14 +1367,7 @@ function initDb() {
         // Isolated in its own try so a missing table on first boot costs nothing but a skip; the
         // columns are added on the next start, and the paste AI columns are also declared at the
         // CREATE TABLE below for fresh databases.
-        try {
-            const pcols = database.prepare('PRAGMA table_info(pastes)').all().map(c => c.name);
-            if (pcols.length) {
-                if (!pcols.includes('ai_summary')) database.exec('ALTER TABLE pastes ADD COLUMN ai_summary TEXT');
-                if (!pcols.includes('ai_tags')) database.exec('ALTER TABLE pastes ADD COLUMN ai_tags TEXT');
-                if (!pcols.includes('ai_analyzed_at')) database.exec('ALTER TABLE pastes ADD COLUMN ai_analyzed_at DATETIME');
-            }
-        } catch { /* table not created yet on a first boot — added on the next start */ }
+        // (Now migration 002 in server/db/migrations.js, which runs after the pastes table exists.)
 
         const scols = database.prepare('PRAGMA table_info(streams)').all().map(c => c.name);
         if (!scols.includes('ai_overview')) database.exec('ALTER TABLE streams ADD COLUMN ai_overview TEXT');
@@ -2233,7 +2207,7 @@ function initDb() {
         'CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)',
         'CREATE INDEX IF NOT EXISTS idx_anon_ip_created ON anon_ip_mappings(created_at)',
         'CREATE INDEX IF NOT EXISTS idx_goals_active ON donation_goals(is_active)',
-        'CREATE INDEX IF NOT EXISTS idx_arena_moments_said ON arena_mic_moments(said_at)',
+        // idx_arena_moments_said: migration 003 (its table is created later, by the arena job).
         // Boot-time transcript backfill sweeps.
         'CREATE INDEX IF NOT EXISTS idx_vods_transcript ON vods(transcript_status)',
         'CREATE INDEX IF NOT EXISTS idx_clips_transcript ON clips(transcript_status)',
@@ -2720,6 +2694,14 @@ function initDb() {
         database.exec('CREATE INDEX IF NOT EXISTS idx_vibe_events_stream ON vibe_coding_events(stream_id)');
     } catch (e) { console.warn('[DB] vibe_coding migration:', e.message); }
 
+    // Versioned migrations run last, so none of them can run before the tables they touch exist.
+    // A critical (money) migration that fails throws here and stops the boot rather than serving
+    // half-converted balances.
+    require('./migrations').run(database);
+    // Deferred migrations wait for tables that feature jobs create after boot; try them again once
+    // those jobs have started.
+    setTimeout(() => { try { require('./migrations').run(database); } catch (e) { console.error('[DB] deferred migrations:', e.message); } }, 120000).unref?.();
+
     console.log('[DB] Schema initialized');
     return database;
 }
@@ -2880,9 +2862,8 @@ function getStreamByUserId(userId) {
  * lot easier to review than a `delete` three screens away from the query.
  */
 function publicStream(row) {
-    if (!row || typeof row !== 'object') return row;
-    const { stream_key, managed_stream_key, ...safe } = row;
-    return safe;
+    // One implementation for the whole server — it also drops the attached channel's home ZIP.
+    return require('../web/serializers').publicStream(row);
 }
 
 function getLiveStreamsByUserId(userId) {
@@ -4927,6 +4908,20 @@ function getUserChatHistory(userId, limit = 50, offset = 0) {
     return { messages, total };
 }
 
+// A chatter's recent messages in ONE channel (clone source for that channel's AI viewers).
+// relay = { platform, rawUsername } matches relayed chatters instead of a user id.
+function getChatSamplesInChannel(channelUserId, { userId = null, relay = null, limit = 30 } = {}) {
+    let where = `cm.is_deleted = 0 AND cm.message_type != 'system'
+        AND (cm.auto_delete_at IS NULL OR datetime(cm.auto_delete_at) > CURRENT_TIMESTAMP)
+        AND COALESCE(cm.channel_user_id, (SELECT s.user_id FROM streams s WHERE s.id = cm.stream_id)) = ?`;
+    const params = [channelUserId];
+    if (relay) { where += ` AND ${_RELAY_MATCH}`; params.push(..._relayMatchParams(relay.platform, relay.rawUsername)); }
+    else { where += ' AND cm.user_id = ?'; params.push(userId); }
+    return all(`SELECT cm.id, cm.username, cm.message, cm.message_type, cm.timestamp, cm.stream_id
+                FROM chat_messages cm WHERE ${where} ORDER BY cm.timestamp DESC LIMIT ?`,
+        [...params, Math.max(1, Math.min(200, limit))]);
+}
+
 // ── Chat AI summaries (global overview/timeline + per-user insights) ──────────
 // Messages worth analyzing: real chat, exclude system noise + deleted + expired.
 const _CHAT_AI_WHERE = `cm.is_deleted = 0 AND cm.message_type != 'system'
@@ -5946,7 +5941,7 @@ function createConfigButton({ config_id, label, command, icon, control_type, key
     );
 }
 
-function updateConfigButton(buttonId, fields) {
+function updateConfigButton(buttonId, fields, configId) {
     const allowed = ['label', 'command', 'icon', 'control_type', 'key_binding', 'cooldown_ms', 'sort_order', 'btn_color', 'btn_bg', 'btn_border_color', 'is_enabled'];
     const updates = [];
     const params = [];
@@ -5958,10 +5953,13 @@ function updateConfigButton(buttonId, fields) {
     }
     if (updates.length === 0) return;
     params.push(buttonId);
+    // Callers that authorised a config pass its id, so a button id from another config matches nothing.
+    if (configId != null) { params.push(configId); return run(`UPDATE control_config_buttons SET ${updates.join(', ')} WHERE id = ? AND config_id = ?`, params); }
     return run(`UPDATE control_config_buttons SET ${updates.join(', ')} WHERE id = ?`, params);
 }
 
-function deleteConfigButton(buttonId) {
+function deleteConfigButton(buttonId, configId) {
+    if (configId != null) return run('DELETE FROM control_config_buttons WHERE id = ? AND config_id = ?', [buttonId, configId]);
     return run('DELETE FROM control_config_buttons WHERE id = ?', [buttonId]);
 }
 
@@ -6144,9 +6142,11 @@ function isIpBanned(ip, streamId) {
  * (account rows and any IP / network rows attached to them). Returns the removed rows.
  */
 function forgiveBan(userId) {
-    const rows = all('SELECT id, ip_address, stream_id, reason FROM bans WHERE user_id = ?', [userId]);
+    // Site-level bans only. Bans a streamer placed on their own stream are theirs to lift, not the
+    // site ban page's.
+    const rows = all('SELECT id, ip_address, stream_id, reason FROM bans WHERE user_id = ? AND stream_id IS NULL', [userId]);
     run('UPDATE users SET is_banned = 0, ban_reason = NULL WHERE id = ?', [userId]);
-    run('DELETE FROM bans WHERE user_id = ?', [userId]);
+    run('DELETE FROM bans WHERE user_id = ? AND stream_id IS NULL', [userId]);
     invalidateIpBanCache();
     return rows;
 }
@@ -7636,7 +7636,13 @@ function getPendingIpMessages(channelId, { limit = 50 } = {}) {
  * Approve or deny a pending IP message. If approved, auto-approve the IP too.
  */
 function reviewPendingIpMessage(id, { status, reviewedBy, channelId }) {
-    run('UPDATE pending_ip_messages SET status = ?, reviewed_by = ? WHERE id = ?', [status, reviewedBy, id]);
+    // Scoped to the channel the caller was authorised for, so a message id from another channel's
+    // queue matches nothing.
+    const scoped = channelId != null;
+    const res = scoped
+        ? run('UPDATE pending_ip_messages SET status = ?, reviewed_by = ? WHERE id = ? AND channel_id = ?', [status, reviewedBy, id, channelId])
+        : run('UPDATE pending_ip_messages SET status = ?, reviewed_by = ? WHERE id = ?', [status, reviewedBy, id]);
+    if (!res.changes) return;
     if (status === 'approved') {
         const msg = get('SELECT * FROM pending_ip_messages WHERE id = ?', [id]);
         if (msg) approveIp(channelId || msg.channel_id, msg.ip_address, reviewedBy, 'manual');
@@ -8299,6 +8305,8 @@ function addToDonationGoal(id, amount) {
 }
 
 module.exports = {
+    // Startup repair that initDb() defers by a few seconds; exported so tests can run it directly.
+    adoptOrphanedTimelineRows: () => _adoptOrphanedTimelineRows(getDb()),
     publicStream,
     getConcurrencyBaseline,
     getHomeStatSeries, HOME_SERIES_KEYS, vibesStatsSince, _computeHomeStats,
@@ -8366,7 +8374,7 @@ module.exports = {
     getSubscriptionsDueRenewal,
     getRestreamDestinationsByManagedStream,
     // Chat
-    saveChatMessage, searchChatMessages, getUserChatHistory,
+    saveChatMessage, searchChatMessages, getUserChatHistory, getChatSamplesInChannel,
     // Chat AI summaries
     getMaxChatMessageId, countChatMessagesSince, getChatMessagesForAi, getNthRecentChatTs,
     getChatAiSummary, getChatAiSummaries, upsertChatAiSummary, getUsersNeedingChatAi,

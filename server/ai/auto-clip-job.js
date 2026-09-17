@@ -313,11 +313,13 @@ function start() {
     // Historical VOD backfill: schedule is persistent (due-ness from the DB-stored
     // auto_clip_backfill.updated_at), so deploys/restarts never reset it. Re-check every 5m +
     // shortly after boot so a due run resumes promptly.
-    setTimeout(() => { backfillVodClips().catch(() => {}); }, 30 * 1000);
-    _backfillTimer = setInterval(() => { backfillVodClips().catch(() => {}); }, 5 * 60 * 1000);
+    // Single-flight: the due marker is written at the END of a run, so a run longer than the 5 min
+    // re-check used to be joined by a second one over the same VODs (double AI + ffmpeg, duplicate
+    // clips). Jittered so it does not start in lockstep with every other boot-time job.
+    _backfillTimer = require('../utils/jobs').every('auto-clip-vod-backfill', 5 * 60 * 1000, () => backfillVodClips(), { initialDelayMs: 30 * 1000, jitterMs: 30 * 1000 });
     console.log('[AutoClip] Live auto-clip job started (selective chat-spike + AI agreement, cuts via OpenVibe.Media) + persistent VOD backfill');
 }
-function stop() { if (_timer) { clearInterval(_timer); _timer = null; } if (_backfillTimer) { clearInterval(_backfillTimer); _backfillTimer = null; } }
+function stop() { if (_timer) { clearInterval(_timer); _timer = null; } if (_backfillTimer) { _backfillTimer(); _backfillTimer = null; } }
 
 module.exports = { start, stop, clipVodMoment, backfillVodClips, _tick };
 

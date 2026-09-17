@@ -73,8 +73,8 @@
      * "streamed 2h ago" line side by side, so it needs more width than a VOD thumbnail before it
      * stops looking cramped. attach() stores that per grid.
      */
-    function maxColumns(el) {
-        const w = el.getBoundingClientRect().width || el.clientWidth || 0;
+    function maxColumns(el, knownWidth) {
+        const w = knownWidth != null ? knownWidth : (el.getBoundingClientRect().width || el.clientWidth || 0);
         if (!w) return 1;
         const min = Number(el.dataset.ovdMin) || MIN_CARD;
         return Math.max(1, Math.min(HARD_MAX, Math.floor(w / min)));
@@ -98,11 +98,11 @@
             host.appendChild(ctrl);
         }
 
-        const render = () => {
-            const max = maxColumns(grid);
-            const store = readStore();
-            const wanted = Number(store[key]) || 0;
-
+        // Measurements are taken where layout is already clean — in the ResizeObserver callback — and
+        // cached per width. Measuring inside render() forced a synchronous layout every time a feed
+        // re-rendered its cards: ~0.5s of the home page's load on a 4x-throttled phone profile.
+        let measured = null; // { w, max, natural }
+        const measure = (width) => {
             // Drop an override this function applied on a previous pass before measuring. The
             // stylesheet's natural column count has to be read with our own clamp *off*: reading
             // it with the clamp on returns the clamp, the comparison below then goes false, the
@@ -113,7 +113,13 @@
                 delete grid.dataset.ovdCols;
                 grid.style.removeProperty('--ovd-cols');
             }
-            const natural = autoColumns(grid, HARD_MAX);
+            measured = { w: width, max: maxColumns(grid, width), natural: autoColumns(grid, HARD_MAX) };
+        };
+        const render = () => {
+            if (!measured) measure(grid.getBoundingClientRect().width || grid.clientWidth || 0);
+            const { max, natural } = measured;
+            const store = readStore();
+            const wanted = Number(store[key]) || 0;
 
             // Honour the preference where possible, clamp where not, and keep it either way.
             let active = wanted ? Math.min(wanted, max) : 0;
@@ -176,15 +182,25 @@
         // skeletons resolving, images loading, Load more — and each of those used to re-run the whole
         // render, rewriting the control and, through the page's mutation observers, the reveal pass.
         let lastW = -1;
+        let observing = false;
         try {
             new ResizeObserver((entries) => {
                 const w = Math.round(entries[0] && entries[0].contentRect ? entries[0].contentRect.width : grid.clientWidth);
                 if (w === lastW) return;
-                lastW = w; render();
+                lastW = w;
+                measure(w);
+                render();
             }).observe(grid);
-        } catch { window.addEventListener('resize', render, { passive: true }); }
-        render();
-        grid._ovdRender = render;
+            observing = true;   // the first callback arrives after this frame's layout, before paint
+        } catch { window.addEventListener('resize', () => { measured = null; render(); }, { passive: true }); }
+        if (!observing) render();
+        // Re-renders of the grid's cards ask for a refresh; one per frame is plenty, and the cached
+        // measurement stays valid because only a width change can change how many columns fit.
+        let queued = 0;
+        grid._ovdRender = () => {
+            if (queued) return;
+            queued = requestAnimationFrame(() => { queued = 0; render(); });
+        };
     }
 
     /** What the browser's own auto-fit is currently producing, so the control can show it. */

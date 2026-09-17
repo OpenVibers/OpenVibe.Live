@@ -208,6 +208,13 @@ router.post('/redeem', requireAuth, (req, res) => {
     try {
         const { rewardId, streamId, userInput } = req.body;
         if (!rewardId) return res.status(400).json({ error: 'rewardId required' });
+        // A channel's own reward can only be announced in that channel's chat. Any stream id was
+        // accepted, which put the viewer's text into someone else's chat past their filters.
+        const rewardRow = db.getCoinRewardById(rewardId);
+        if (rewardRow && !rewardRow.is_global && streamId) {
+            const target = db.getStreamById(streamId);
+            if (!target || target.user_id !== rewardRow.streamer_id) return res.status(400).json({ error: 'That reward belongs to a different channel' });
+        }
 
         const result = openvibeCoins.redeem(req.user.id, rewardId, streamId, userInput);
 

@@ -15,7 +15,8 @@ const fs = require('fs');
 const path = require('path');
 
 const PUBLIC = path.join(__dirname, '..', 'public');
-const files = fs.readdirSync(PUBLIC).filter(f => f.endsWith('.html'));
+const files = fs.readdirSync(PUBLIC).filter(f => f.endsWith('.html'))
+    .concat(fs.readdirSync(path.join(PUBLIC, 'fragments')).filter(f => f.endsWith('.html')).map(f => path.join('fragments', f)));
 let problems = [];
 
 for (const f of files) {

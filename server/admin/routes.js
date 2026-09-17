@@ -47,6 +47,18 @@ const router = express.Router();
 // All admin routes require admin role
 router.use(requireAuth, permissions.requireAdmin);
 
+// ── Process diagnostics (event-loop delay, memory, sockets, jobs, queues, migrations) ──
+router.get('/diagnostics', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json(require('../diagnostics').snapshot({
+        db,
+        chatServer: require('../chat/chat-server'),
+        broadcastServer: require('../streaming/broadcast-server'),
+        callServer: (() => { try { return require('../streaming/call-server'); } catch { return null; } })(),
+        restreamManager: (() => { try { return require('../streaming/restream-manager'); } catch { return null; } })(),
+    }));
+});
+
 // ── Dashboard Stats ──────────────────────────────────────────
 router.get('/stats', (req, res) => {
     try {
@@ -137,6 +149,17 @@ router.put('/users/:id', (req, res) => {
         let { role, display_name, username, max_managed_streams } = req.body;
         const updates = [];
         const params = [];
+        // The owner is out of reach of other admins, and only the owner hands out or takes away the
+        // admin role — the same boundary POST/DELETE /admins already enforce. This route used to
+        // accept any role from any admin, so an admin could demote the owner or promote a sock account.
+        const target = db.getUserById(req.params.id);
+        if (!target) return res.status(404).json({ error: 'User not found' });
+        if (target.is_owner && !permissions.isOwner(req.user)) {
+            return res.status(403).json({ error: 'Only the owner can change the owner account' });
+        }
+        if (role && role !== target.role && (role === 'admin' || target.role === 'admin') && !permissions.canGrantAdmin(req.user)) {
+            return res.status(403).json({ error: 'Only the owner can grant or remove the admin role' });
+        }
 
         if (role) {
             const validRoles = ['user', 'streamer', 'global_mod', 'admin'];
@@ -216,6 +239,12 @@ router.post('/users/:id/ban', (req, res) => {
         const { reason, duration_hours } = req.body;
         // An admin banning their own account locks them out; there is no one above them to undo it.
         if (Number(req.params.id) === req.user.id) return res.status(400).json({ error: 'You cannot ban yourself' });
+        // Nor may an admin ban the owner, or another admin unless they are the owner.
+        const banTarget = db.getUserById(req.params.id);
+        if (!banTarget) return res.status(404).json({ error: 'User not found' });
+        if ((banTarget.is_owner || banTarget.role === 'admin') && !permissions.isOwner(req.user)) {
+            return res.status(403).json({ error: 'Only the owner can ban an admin' });
+        }
         const expires = duration_hours
             ? new Date(Date.now() + duration_hours * 3600000).toISOString()
             : null;
@@ -1184,11 +1213,17 @@ router.delete('/media-tools/cookies', (req, res) => {
 });
 
 // PUT  /api/admin/media-tools/extra-args — Save extra yt-dlp CLI arguments
-router.put('/media-tools/extra-args', (req, res) => {
+// Owner only, and only flags from an allow-list: yt-dlp options such as --exec, --downloader and
+// --config-location run programs or read files, so free-form arguments were a shell for any admin.
+router.put('/media-tools/extra-args', permissions.requireOwner, (req, res) => {
     try {
         const { extra_args } = req.body;
         if (typeof extra_args !== 'string') {
             return res.status(400).json({ error: 'extra_args must be a string' });
+        }
+        const rejected = require('../media/media-downloader').validateExtraArgs(extra_args);
+        if (rejected.length) {
+            return res.status(400).json({ error: `Not allowed: ${rejected.join(', ')}` });
         }
         db.setSetting('ytdlp_extra_args', extra_args.trim());
         console.log(`[Admin] yt-dlp extra args updated by ${req.user.username}`);

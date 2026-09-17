@@ -2365,7 +2365,8 @@ function initChat(streamId, channelUserId = null) {
                 handleChatMessage(msg);
             } catch { /* ignore */ }
         };
-        chatWs.onclose = () => {
+        chatWs.onclose = (e) => {
+            if (e && e.code === 4029) _chatReconnectDelay = CHAT_RECONNECT_MAX; // per-address cap: back off
             addSystemMessage('Chat disconnected');
             if (!_chatIntentionalClose && _chatActive) {
                 _scheduleChatReconnect(chatStreamId);
@@ -2439,9 +2440,9 @@ function initChat(streamId, channelUserId = null) {
         addSystemMessage('Chat connection error');
     };
 
-    ws.onclose = () => {
+    ws.onclose = (e) => {
         if (chatWs !== ws) return; // stale close from old socket — ignore
-        addSystemMessage('Chat disconnected');
+        if (e && e.code === 4029) _chatReconnectDelay = CHAT_RECONNECT_MAX; // per-address cap: back off
         // Auto-reconnect unless intentionally closed (navigation/destroy)
         // For global chat, chatStreamId is null — use _chatActive to track connection intent
         if (!_chatIntentionalClose && _chatActive) {
@@ -2478,11 +2479,44 @@ function initChat(streamId, channelUserId = null) {
 /**
  * Schedule a chat reconnect with exponential backoff.
  */
+/**
+ * Connection state shown to the reader, in one place instead of a new line per attempt.
+ *
+ * Each failed attempt used to append "Chat disconnected" and "Reconnecting in Ns…" to the log, so a
+ * two-minute outage buried the conversation under dozens of system lines. There is now one status
+ * row (updated in place, removed once connected) plus the site-wide pill (ovConnectionPill in app.js).
+ */
+let _chatConnDropAt = 0;
+let _chatServerUpdating = false;
+function _chatConnState(state, detail) {
+    const { messages: container } = getChatEl();
+    if (container) {
+        let row = container.querySelector(':scope > .chat-conn-status');
+        if (state === 'connected') {
+            if (row) { row.dataset.state = 'connected'; row.textContent = 'Reconnected'; setTimeout(() => row.remove(), 2500); }
+        } else {
+            if (!row) { row = document.createElement('div'); row.className = 'chat-msg system chat-conn-status'; row.setAttribute('role', 'status'); }
+            if (row !== container.lastElementChild) container.appendChild(row);
+            row.dataset.state = state;
+            row.textContent = state === 'updating' ? 'OpenVibe is updating — chat will be back in a moment…'
+                : state === 'offline' ? 'You are offline — chat reconnects when your connection returns.'
+                : `Reconnecting to chat${detail ? ` (${detail})` : '…'}`;
+            scrollChat();
+        }
+    }
+    if (typeof window.ovConnectionPill === 'function') window.ovConnectionPill(state, 'chat');
+}
+
 function _scheduleChatReconnect(streamId) {
     if (_chatReconnectTimer) return; // already scheduled
-    const delay = _chatReconnectDelay;
+    if (!_chatConnDropAt) _chatConnDropAt = Date.now();
+    // Jittered backoff: every client dropped by the same restart must not come back in the same
+    // millisecond. A deploy notice makes the first retry a short random wait instead.
+    let delay = _chatReconnectDelay * (0.75 + Math.random() * 0.5);
+    if (_chatServerUpdating) delay = Math.min(delay, 1000 + Math.random() * 3000);
     _chatReconnectDelay = Math.min(_chatReconnectDelay * 1.5, CHAT_RECONNECT_MAX);
-    addSystemMessage(`Reconnecting in ${Math.round(delay / 1000)}s…`);
+    if (navigator.onLine === false) { _chatConnState('offline'); }
+    else _chatConnState(_chatServerUpdating ? 'updating' : 'reconnecting');
     _chatReconnectTimer = setTimeout(() => {
         _chatReconnectTimer = null;
         if (_chatIntentionalClose || !_chatActive) return;
@@ -2494,6 +2528,14 @@ function _scheduleChatReconnect(streamId) {
         _reconnectChatWs(targetStream);
     }, delay);
 }
+
+// Coming back online retries immediately instead of waiting out the backoff.
+window.addEventListener('online', () => {
+    if (!_chatReconnectTimer || _chatIntentionalClose || !_chatActive) return;
+    clearTimeout(_chatReconnectTimer); _chatReconnectTimer = null;
+    _reconnectChatWs(chatStreamId ?? null);
+});
+window.addEventListener('offline', () => { if (_chatActive && !_chatIntentionalClose) _chatConnState('offline'); });
 
 /**
  * Reconnect just the WebSocket without clearing the chat UI.
@@ -2529,7 +2571,13 @@ function _reconnectChatWs(streamId) {
         _chatIsReconnecting = false;
         ws.send(JSON.stringify({ type: 'join', streamId, channelUserId: chatChannelUserId || undefined, token: token || undefined }));
         _chatReconnectDelay = CHAT_RECONNECT_BASE;
-        addSystemMessage('Reconnected to chat');
+        _chatServerUpdating = false;
+        const outage = _chatConnDropAt ? Date.now() - _chatConnDropAt : 0;
+        _chatConnDropAt = 0;
+        _chatConnState('connected');
+        // Messages sent while we were away are only in the history. Refill it — but not under a reader
+        // who has scrolled back, since reloading history redraws the list.
+        if (outage > 1500 && !_chatUserScrolledUp) hydrateActiveChatHistory(streamId).catch(() => {});
     };
 
     ws.onmessage = (e) => {
@@ -2546,14 +2594,13 @@ function _reconnectChatWs(streamId) {
 
     ws.onerror = () => {
         if (chatWs !== ws) return;
-        _chatIsReconnecting = false;
-        addSystemMessage('Chat connection error');
+        _chatIsReconnecting = false;   // onclose follows and schedules the retry
     };
 
-    ws.onclose = () => {
+    ws.onclose = (e) => {
         if (chatWs !== ws) return;
         _chatIsReconnecting = false;
-        addSystemMessage('Chat disconnected');
+        if (e && e.code === 4029) _chatReconnectDelay = CHAT_RECONNECT_MAX; // per-address cap: back off
         if (!_chatIntentionalClose && _chatActive) {
             _scheduleChatReconnect(chatStreamId);
         }
@@ -2965,12 +3012,10 @@ function handleChatMessage(msg) {
             addSystemMessage('Message blocked by this streamer\'s Anti-Slur Nudge setting.');
             break;
         case 'server_restart':
-            // Server is about to restart — show prominent notice with refresh button
-            addRichSystemMessage(
-                (msg.message || 'Server restarting — chat will reconnect automatically.') +
-                ' <button onclick="location.href=location.pathname+\'?_=\'+Date.now()" style="margin-left:8px;padding:2px 10px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:var(--radius-sm);cursor:pointer;font-size:0.8rem;font-family:var(--font)">Refresh Page</button>',
-                'warning'
-            );
+            // A deploy is restarting the server. No reload needed: the socket reconnects on its own
+            // (with a short random delay, so everyone does not arrive at once) and history refills.
+            _chatServerUpdating = true;
+            _chatConnState('updating');
             break;
         case 'update': {
             // Platform update notification with commit logs + expandable changelog
@@ -4593,6 +4638,10 @@ async function _joinVoiceChannelFromInvite(channelId, channelName, switchToChat 
         showPage('chat');
     }
 
+    // Voice code loads on demand (features.json → voice); an invite is reason enough to fetch it.
+    if (typeof vcJoinChannel !== 'function' && window.ov) {
+        try { await ov.load('voice'); } catch { /* falls through to the pending-invite path */ }
+    }
     if (typeof vcFetchChannels !== 'function' || typeof vcJoinChannel !== 'function' || typeof vcState === 'undefined') {
         window._pendingVcInvite = { channelId, channelName, at: Date.now() };
         toast(`Invite received for ${channelName || 'Voice Channel'}. Open Chat to join.`, 'info');
@@ -6527,13 +6576,16 @@ function setUnreadBadge(el, n) {
         sweep();
         for (const id of IDS) {
             const el = document.getElementById(id);
-            if (!el) continue;
+            if (!el || el._ovBadgeGuard) continue;
+            el._ovBadgeGuard = true;
             try {
                 new MutationObserver(sweep).observe(el, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['style'] });
             } catch { /* */ }
         }
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+    // Channel and broadcast markup arrive as fragments on first visit (ov-loader.js).
+    document.addEventListener('ov:fragment', start);
 })();
 
 function incrementMobileChatUnread() {
@@ -6553,16 +6605,17 @@ const _origAddChatMessage = typeof addChatMessage === 'function' ? addChatMessag
             }
         }
     });
-    // Start observing when chat panel exists
+    // Start observing when the channel chat panel exists. It used to re-check every second on every
+    // page until someone opened a channel; the channel markup now announces itself when inserted.
     function _tryObserve() {
         const container = document.getElementById('chat-messages');
-        if (container) {
+        if (container && !container._ovUnreadObserved) {
+            container._ovUnreadObserved = true;
             observer.observe(container, { childList: true });
-        } else {
-            setTimeout(_tryObserve, 1000);
         }
     }
     _tryObserve();
+    document.addEventListener('ov:fragment', _tryObserve);
 
     // Close mobile chat on Escape
     document.addEventListener('keydown', (e) => {
@@ -6903,14 +6956,20 @@ function _fcwStopResize() {
     document.removeEventListener('mouseup', _fcwStopResize);
 }
 
+// Page markup that arrives later (ov-loader.js fragments) gets the same one-time setup the
+// boot-time markup got: font-size classes and scroll containment, the resize handle, GIF buttons.
+document.addEventListener('ov:fragment', () => {
+    try { applyChatSettings(); } catch { /* */ }
+    try { initChatResize(); } catch { /* */ }
+    if (typeof initGifPickers === 'function') { try { initGifPickers(); } catch { /* */ } }
+});
+
 // Hook into page navigation to show/hide FAB
 document.addEventListener('DOMContentLoaded', () => {
-    if (typeof initGifPickers === 'function') initGifPickers();
-    // Watch all page sections for class changes
-    document.querySelectorAll('.page').forEach(page => {
-        const obs = new MutationObserver(_fcwUpdateVisibility);
-        obs.observe(page, { attributes: true, attributeFilter: ['class'] });
-    });
+    // GIF pickers initialise when the chat extras load (features.json → chatExtras.after); calling
+    // it here fetched /api/chat/gif/providers on every page, the home page included.
+    // The router announces page changes; this replaces one MutationObserver per page section.
+    document.addEventListener('ov:page', _fcwUpdateVisibility);
     // Initial check
     setTimeout(_fcwUpdateVisibility, 100);
 
@@ -6938,31 +6997,26 @@ document.addEventListener('DOMContentLoaded', () => {
 // message with the new token so the server upgrades the connection.
 // On logout, reconnect so the server assigns a fresh anon identity.
 window.addEventListener('openvibe-auth-changed', (e) => {
-    const token = e.detail?.token;
-    const wasAuthed = chatWs?._openvibeAuthed;
-
-    if (token && chatWs && chatWs.readyState === WebSocket.OPEN) {
-        // Logged in — if the token changed from the existing authenticated session,
-        // rebuild the chat WebSocket so we don't keep an old user identity alive.
-        if (chatWs._authToken && chatWs._authToken !== token && chatWs._openvibeAuthed) {
-            const sid = chatStreamId;
-            destroyChat(true);
-            initChat(sid);
-        } else {
-            chatWs.send(JSON.stringify({
-                type: 'join',
-                streamId: chatStreamId,
-                token,
-            }));
+    const token = e.detail?.token || null;
+    // The socket remembers the token it authenticated with (set when it was created and on join).
+    // That is the identity to compare against. The old check looked at a flag set only when someone
+    // signed in AFTER the socket opened, so a visitor who arrived signed in and then logged out — or
+    // switched accounts — kept chatting as the previous account until they reloaded.
+    if (chatWs && (chatWs.readyState === WebSocket.OPEN || chatWs.readyState === WebSocket.CONNECTING)) {
+        const had = chatWs._authToken || null;
+        if (had === token) {
+            // Same identity (auth events also fire for profile refreshes): nothing to do.
+        } else if (!had && token && chatWs.readyState === WebSocket.OPEN) {
+            // Anonymous → signed in: the server upgrades an anonymous connection in place.
+            chatWs.send(JSON.stringify({ type: 'join', streamId: chatStreamId, token }));
             chatWs._openvibeAuthed = true;
             chatWs._authToken = token;
+        } else {
+            // Signed out, or a different account: a connection's identity is never swapped in place.
+            const sid = chatStreamId;
+            destroyChat(true);
+            initChat(sid || null);
         }
-    } else if (!token && wasAuthed) {
-        // Logged out — reconnect to get a fresh anon identity
-        chatWs._openvibeAuthed = false;
-        const sid = chatStreamId;
-        destroyChat(true);
-        if (sid) initChat(sid); else initChat(null);
     }
 
     // Also re-auth background broadcast WS if active
@@ -7140,10 +7194,11 @@ function closeChatUsersPanel(btn) {
 /* ══════════════════════════════════════════════════════════════
    CHAT RESIZE HANDLE — drag to change chat sidebar width
    ══════════════════════════════════════════════════════════════ */
-(function initChatResize() {
+function initChatResize() {
     const handle = document.getElementById('chat-resize-handle');
     const sidebar = document.getElementById('chat-sidebar');
-    if (!handle || !sidebar) return;
+    if (!handle || !sidebar || handle._ovResizeBound) return;
+    handle._ovResizeBound = true;
 
     const MIN_W = 250;
     const MAX_RATIO = 0.5; // max 50% of viewport
@@ -7188,4 +7243,5 @@ function closeChatUsersPanel(btn) {
         document.body.style.userSelect = '';
         localStorage.setItem('openvibe_chat_width', sidebar.offsetWidth);
     });
-})();
+}
+initChatResize();

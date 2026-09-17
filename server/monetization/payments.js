@@ -240,8 +240,22 @@ function sortObject(o) {
 
 // ── Fulfillment (idempotent) ─────────────────────────────────
 
+/** The caller's copy of an order can predate an await (the PayPal return captures while the
+ *  webhook credits); crediting that stale 'pending' copy would pay twice. Read it again. */
+function _freshOrder(order) {
+    return order && order.id ? (db.getPaymentOrderById(order.id) || order) : order;
+}
+
+/** Does a provider-reported amount (USD) cover the order? Unknown amounts return null. */
+function paidAmountCovers(order, paidUsd) {
+    const paid = Number(paidUsd);
+    if (paidUsd == null || paidUsd === '' || !Number.isFinite(paid)) return null;
+    return Math.round(paid * 100) >= Number(order.amount_cents || 0) - 1;
+}
+
 /** Credit a paid bucks order exactly once. Returns true if newly credited. */
 function fulfillBucksOrder(order) {
+    order = _freshOrder(order);
     if (!order || order.status === 'credited') return false;
     const bucks = order.bucks || bucksForUsd(order.amount_cents / 100);
     db.addVibes(order.user_id, bucks);
@@ -261,7 +275,12 @@ function fulfillBucksOrder(order) {
  *  PowerChat tip on their own page) — activate the sub without minting their
  *  cashout-Vibes share on top. autoRenew: null leaves the sub's flag untouched. */
 function fulfillSubscriptionOrder(order, { providerRef = null, periodEnd = null, creditShare = true, autoRenew = null, shareBaseCents = null } = {}) {
+    order = _freshOrder(order);
     if (!order || !order.streamer_id) return null;
+    if (order.status === 'credited') {
+        // A replayed webhook must not push the period out again or re-pay the streamer.
+        try { const existing = db.getActiveSubscription(order.user_id, order.streamer_id); if (existing) return existing; } catch { /* */ }
+    }
     const end = periodEnd || new Date(Date.now() + 31 * 24 * 3600 * 1000).toISOString();
     // Note BEFORE the upsert whether this subscriber already had a sub row — that makes
     // a renewal a resub for the PowerChat alert below.
@@ -309,7 +328,10 @@ function fulfillSubscriptionOrder(order, { providerRef = null, periodEnd = null,
 //     (or auto_renew off / cancel-at-period-end) → the sub expires with a notification.
 const STRIPE_GRACE_MS = 3 * 24 * 3600 * 1000;
 function _sweepRenewals() {
-    const due = db.getSubscriptionsDueRenewal(50) || [];
+    // Runs from an hourly timer; an uncaught throw there exits the whole server.
+    let due = [];
+    try { due = db.getSubscriptionsDueRenewal(50) || []; }
+    catch (e) { console.warn('[Payments] renewal sweep skipped:', e.message); return; }
     for (const sub of due) {
         try {
             const endMs = Date.parse(sub.current_period_end) || 0;
@@ -365,7 +387,8 @@ module.exports = {
     // stripe
     stripeCheckout, stripeVerify,
     // paypal
-    paypalCreateOrder, paypalCaptureOrder, paypalVerify,
+paidAmountCovers,
+        paypalCreateOrder, paypalCaptureOrder, paypalVerify,
     // ccbill
     ccbillUrl, ccbillVerify,
     // crypto

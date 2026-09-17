@@ -88,10 +88,12 @@ console.log('OK G: API rejects self-reference and cross-owner slots, and exposes
 // ── H: the viewer overlay is an independent session, torn down with the player ───────
 const pip = read('public/js/stream-pip.js');
 const player = read('public/js/stream-player.js');
-const html = read('public/index.html');
-assert.ok(html.includes('/js/stream-pip.js'), 'index.html must load stream-pip.js');
-assert.ok(html.indexOf('/js/stream-player.js') < html.indexOf('/js/stream-pip.js'),
+// The player loads as a feature (public/features.json → player), in order.
+const playerJs = JSON.parse(read('public/features.json')).features.player.js;
+assert.ok(playerJs.includes('/js/stream-pip.js'), 'the player feature must load stream-pip.js');
+assert.ok(playerJs.indexOf('/js/stream-player.js') < playerJs.indexOf('/js/stream-pip.js'),
     'stream-pip.js relies on loadMediasoupClient/sanitizeIceServers from stream-player.js');
+assert.ok(JSON.parse(read('public/features.json')).features.channel.deps.includes('player'), 'channel pages load the player');
 assert.ok(/streamPip\?\.attach\(stream\)/.test(player), 'initPlayer must attach the overlay');
 assert.ok(/streamPip\?\.detach\(\)/.test(player),
     'destroyPlayer must detach it — the overlay owns a websocket and a transport of its own');

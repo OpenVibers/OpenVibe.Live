@@ -1,0 +1,77 @@
+<!-- #page-clip-player markup, loaded on first visit to the route (public/features.json). The server inlines it for direct visits. -->
+        <div class="container">
+            <div class="vod-player-layout">
+                <div class="vod-player-row">
+                    <div class="vod-player-main">
+                        <div class="vod-player-container" id="clp-container">
+                            <video id="clp-video" class="vod-video" style="display:none" playsinline></video>
+                            <div class="video-overlay">
+                                <div class="vc-progress-wrap" id="clp-progress-wrap">
+                                    <div class="vc-progress-bar">
+                                        <div class="vc-progress-buffer" id="clp-progress-buffer"></div>
+                                        <div class="vc-progress-fill" id="clp-progress-fill"></div>
+                                    </div>
+                                </div>
+                                <div class="video-controls">
+                                    <button class="vc-btn" id="clp-btn-play" title="Play/Pause"><i class="fa-solid fa-play"></i></button>
+                                    <div class="vc-volume-group">
+                                        <button class="vc-btn" id="clp-btn-vol" title="Mute"><i class="fa-solid fa-volume-high"></i></button>
+                                        <input type="range" id="clp-vol-slider" min="0" max="100" value="100" class="volume-slider">
+                                    </div>
+                                    <span class="vc-time-display" id="clp-time">0:00 / 0:00</span>
+                                    <div class="vc-spacer"></div>
+                                    <button class="vc-speed-btn" id="clp-btn-speed" title="Playback Speed">1x</button>
+                                    <button class="vc-btn" id="clp-btn-fullscreen" title="Fullscreen"><i class="fa-solid fa-expand"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Chat Replay Sidebar (Clip) -->
+                    <div class="chat-replay-sidebar" id="clp-chat-replay">
+                        <div class="chat-replay-header">
+                            <h4><i class="fa-solid fa-clock-rotate-left"></i> Chat Replay</h4>
+                        </div>
+                        <div class="chat-replay-messages" id="clp-chat-replay-messages">
+                            <div class="chat-replay-empty" id="clp-chat-replay-empty">
+                                <i class="fa-solid fa-comments" style="font-size:1.5rem"></i>
+                                <p>Chat messages will appear here as the clip plays</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="vod-player-info">
+                    <h2 id="clp-title">Clip Title</h2>
+                    <span id="clp-unlisted-badge" class="badge-unlisted" style="display:none"><i class="fa-solid fa-eye-slash"></i> Unlisted</span>
+                    <div class="vod-player-meta">
+                        <a href="#" class="vod-player-streamer" id="clp-streamer-link" style="cursor:pointer;text-decoration:none;color:inherit">
+                            <span class="stream-card-avatar" id="clp-avatar">?</span>
+                            <span id="clp-streamer">Streamer</span>
+                        </a>
+                        <span class="muted" id="clp-date"></span>
+                        <span class="muted"><i class="fa-solid fa-clock"></i> <span id="clp-duration">0:00</span></span>
+                        <span class="muted"><i class="fa-solid fa-eye"></i> <span id="clp-views">0</span></span>
+                        <span id="clp-protocol"></span>
+                    </div>
+                    <div id="clp-extra-details" class="vod-extra-details" style="display:none"></div>
+                    <p id="clp-description" class="vod-player-description"></p>
+                    <div id="clp-stream-source" class="vod-source-info muted" style="display:none"></div>
+                    <div id="clp-clipped-by" class="muted" style="margin-top:4px"></div>
+                    <div id="clp-actions" style="margin-top:10px;display:none"></div>
+                </div>
+
+                <!-- Comments Section (Clip) -->
+                <div class="comments-section" id="clp-comments">
+                    <div class="comments-header">
+                        <h3><i class="fa-solid fa-comments"></i> Comments <span class="comments-count" id="clp-comment-count"></span></h3>
+                    </div>
+                    <div class="comment-form" id="clp-comment-form" style="display:none">
+                        <textarea id="clp-comment-input" placeholder="Add a comment..." rows="2" maxlength="2000"></textarea>
+                        <div class="comment-form-actions">
+                            <button class="btn btn-primary btn-small" onclick="postComment('clip', window._clpClipId)">Comment</button>
+                        </div>
+                    </div>
+                    <div class="comments-list" id="clp-comments-list"></div>
+                </div>
+            </div>
+        </div>
+    

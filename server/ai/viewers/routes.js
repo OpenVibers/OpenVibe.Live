@@ -14,6 +14,7 @@
 const express = require('express');
 const db = require('../../db/database');
 const { requireAuth } = require('../../auth/auth');
+const { isStaff } = require('../../auth/permissions');
 const chatAi = require('../chat-ai');
 const budget = require('./budget');
 const roster = require('./roster');
@@ -237,11 +238,15 @@ router.post('/clone', requireAuth, async (req, res) => {
             const userId = parseInt(ref, 10);
             const u = userId ? db.getUserById(userId) : null;
             if (!u) return res.status(404).json({ error: 'User not found' });
+            // Staff may clone anyone; a streamer only from what that person said in their own
+            // channel (the site-wide history and AI insight describe other channels too).
+            const wide = isStaff(req.user) || userId === req.user.id;
             src = {
                 kind: 'user', ref: String(userId),
                 displayName: u.display_name || u.username,
-                insight: chatAi.getUserInsight(userId),
-                samples: (db.getUserChatHistory(userId, 30).messages || []),
+                insight: wide ? chatAi.getUserInsight(userId) : null,
+                samples: wide ? (db.getUserChatHistory(userId, 30).messages || [])
+                    : db.getChatSamplesInChannel(req.user.id, { userId, limit: 30 }),
             };
         } else if (kind === 'relay') {
             // ref = "platform:username"
@@ -250,14 +255,19 @@ router.post('/clone', requireAuth, async (req, res) => {
             const username = idx > 0 ? ref.slice(idx + 1) : '';
             if (!platform || !username) return res.status(400).json({ error: 'Bad relay ref' });
             const relay = db.getRelayUser(platform, username);
+            const wide = isStaff(req.user);
             src = {
                 kind: 'relay', ref: `${platform}:${username}`,
                 displayName: username,
-                insight: relay ? chatAi.getRelayUserInsight(relay.id) : null,
-                samples: (db.getRelayUserChatHistory(platform, username, { limit: 30 }).messages || []),
+                insight: relay && wide ? chatAi.getRelayUserInsight(relay.id) : null,
+                samples: wide ? (db.getRelayUserChatHistory(platform, username, { limit: 30 }).messages || [])
+                    : db.getChatSamplesInChannel(req.user.id, { relay: { platform, rawUsername: username }, limit: 30 }),
             };
         } else {
             return res.status(400).json({ error: 'kind must be user or relay' });
+        }
+        if (!src.samples.length && !src.insight) {
+            return res.status(404).json({ error: 'That chatter has not talked in your channel yet' });
         }
         const bot = await roster.createCloneBot(req.user.id, src);
         try { engine.applyConfigForUser(req.user.id); } catch { /* */ }

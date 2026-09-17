@@ -164,8 +164,14 @@ router.get('/:channelId/moderation', requireAuth, requireChannelAccess, (req, re
 });
 
 // ── Update channel moderation settings ───────────────────────
+// Settings that decide what moderators themselves may do, or who can chat at all, belong to the
+// channel owner. A mod could otherwise grant themselves About-page editing or switch off IP approval.
+const OWNER_POLICY_KEYS = ['mods_can_edit_about', 'ip_approval_mode', 'uploads_mods_only', 'allow_anonymous', 'sounds_mods_only'];
 router.put('/:channelId/moderation', requireAuth, requireChannelAccess, (req, res) => {
     try {
+        const isOwnerOrStaff = req.channel.user_id === req.user.id || permissions.isGlobalModOrAbove(req.user);
+        // The dashboard form sends every field, so for a moderator these are ignored rather than refused.
+        if (!isOwnerOrStaff) for (const k of OWNER_POLICY_KEYS) delete req.body[k];
         const settings = db.upsertChannelModerationSettings(req.channel.id, {
             slow_mode_seconds: req.body.slow_mode_seconds !== undefined
                 ? Math.max(0, parseInt(req.body.slow_mode_seconds) || 0) : undefined,
@@ -317,12 +323,18 @@ router.post('/:channelId/moderation/messages/:messageId/delete', requireAuth, re
         const message = db.getChatMessageById(messageId);
         if (!message) return res.status(404).json({ error: 'Message not found' });
 
-        // Verify message belongs to this channel's streams
-        if (message.stream_id) {
-            const stream = db.getStreamById(message.stream_id);
-            if (stream && stream.channel_id !== req.channel.id && !permissions.isGlobalModOrAbove(req.user)) {
-                return res.status(403).json({ error: 'Message is outside this channel scope' });
+        // Verify message belongs to this channel: one of its streams, or its offline channel room.
+        // Messages with no stream (global chat, other channels' offline rooms) and messages whose
+        // stream row is gone used to pass this check.
+        if (!permissions.isGlobalModOrAbove(req.user)) {
+            let inScope = false;
+            if (message.stream_id) {
+                const stream = db.getStreamById(message.stream_id);
+                inScope = !!(stream && (stream.channel_id === req.channel.id || (!stream.channel_id && stream.user_id === req.channel.user_id)));
+            } else if (message.channel_user_id) {
+                inScope = message.channel_user_id === req.channel.user_id;
             }
+            if (!inScope) return res.status(403).json({ error: 'Message is outside this channel scope' });
         }
 
         db.deleteChatMessage(messageId, req.user.id);

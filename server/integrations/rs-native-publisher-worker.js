@@ -279,7 +279,7 @@ function spawnFfmpeg(videoSource, audioSource) {
         );
     }
 
-    log('[ffmpeg] starting:', 'ffmpeg', args.join(' '));
+    log('[ffmpeg] starting:', 'ffmpeg', require('../utils/redact').redactUrl(args.join(' ')));
 
     const ff = spawn('ffmpeg', args, {
         stdio: hasAudio ? ['ignore', 'pipe', 'inherit', 'pipe'] : ['ignore', 'pipe', 'inherit'],

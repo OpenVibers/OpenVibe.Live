@@ -184,6 +184,34 @@ function authenticateApiToken(rawToken) {
 }
 
 /**
+ * What an hbt_ API token may do over REST, by scope.
+ *
+ * Scopes were stored and shown in the token UI but never checked, so a "read" chat-bot token could
+ * cash out, delete VODs, or — held by an admin — call every /api/admin route. The rule now:
+ *   - money, staff and credential routes refuse API tokens outright;
+ *   - reads (GET/HEAD) need any scope;
+ *   - writes need the scope that covers the area, and areas with no scope refuse tokens.
+ * Session (JWT) auth is unaffected.
+ */
+const TOKEN_DENIED_PREFIXES = ['/api/admin', '/api/mod', '/api/funds', '/api/payments', '/api/auth/stream-key', '/api/auth/tokens', '/api/cosmetics', '/api/analytics'];
+const TOKEN_WRITE_SCOPES = [
+    ['/api/chat', ['chat']], ['/api/dm', ['chat']], ['/api/emotes', ['chat']], ['/api/sounds', ['chat']], ['/api/tts', ['chat']],
+    ['/api/streams', ['stream']], ['/api/restream', ['stream']], ['/api/robotstreamer', ['stream']], ['/api/thumbnails', ['stream']],
+    ['/api/vods', ['stream']], ['/api/clips', ['stream']], ['/api/media', ['stream', 'chat']],
+    ['/api/controls', ['control']], ['/api/onvif', ['control']],
+    ['/api/vibe-coding', ['vibe_coding_publish', 'stream']],
+];
+function apiTokenAllows(req, scopes) {
+    const path = String(req.originalUrl || req.url || '').split('?')[0];
+    const under = (prefix) => path === prefix || path.startsWith(prefix + '/');
+    if (TOKEN_DENIED_PREFIXES.some(under)) return false;
+    const list = Array.isArray(scopes) ? scopes : [];
+    if (req.method === 'GET' || req.method === 'HEAD') return list.length > 0;
+    const rule = TOKEN_WRITE_SCOPES.find(([prefix]) => under(prefix));
+    return !!rule && rule[1].some((sc) => list.includes(sc));
+}
+
+/**
  * Express middleware — requires valid openvibe.network JWT or API token
  * Resolves to local user via linked_accounts (auto-creates if needed).
  */
@@ -198,6 +226,9 @@ function requireAuth(req, res, next) {
     if (apiUser) {
         if (apiUser.is_banned) {
             return res.status(403).json({ error: 'Account is banned' });
+        }
+        if (!apiTokenAllows(req, apiUser.scopes)) {
+            return res.status(403).json({ error: 'This API token\'s scopes do not allow this request' });
         }
         req.user = apiUser;
         req.authSource = 'api_token';
@@ -232,7 +263,7 @@ function optionalAuth(req, res, next) {
     if (token) {
         // Try API token first
         const apiUser = authenticateApiToken(token);
-        if (apiUser && !apiUser.is_banned) {
+        if (apiUser && !apiUser.is_banned && apiTokenAllows(req, apiUser.scopes)) {
             req.user = apiUser;
             req.authSource = 'api_token';
             req.tokenScopes = apiUser.scopes || [];
@@ -375,6 +406,7 @@ function reloadNetworkKey() {
 }
 
 module.exports = {
+    apiTokenAllows,
     verifyToken,
     requireAuth,
     optionalAuth,

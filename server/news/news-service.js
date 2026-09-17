@@ -264,7 +264,9 @@ class NewsService {
 
     _getActiveStreamIds() {
         try {
-            const rows = db.all(`SELECT id FROM streams WHERE status = 'live'`) || [];
+            // streams has no `status` column; the query threw, the catch returned [], and no headline
+            // was ever delivered while the sources kept polling.
+            const rows = db.all('SELECT id FROM streams WHERE is_live = 1') || [];
             return rows.map(r => r.id);
         } catch {
             return [];

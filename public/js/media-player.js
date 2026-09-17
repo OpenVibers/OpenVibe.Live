@@ -13,6 +13,7 @@
 let mpState = null;
 let mpChannel = null;
 let mpOwner = false;
+let mpCanManage = false;
 let mpLiveStream = null;
 let mpPollTimer = null;
 let mpSocket = null;
@@ -171,6 +172,7 @@ async function refreshState() {
     mpChannel = data.channel;
     mpState = data.state;
     mpOwner = !!data.is_owner;
+    mpCanManage = !!data.can_manage;
     mpLiveStream = data.live_stream;
 
     renderPage();
@@ -449,9 +451,9 @@ function startPositionSave(requestId) {
         if (!mpMedia || !requestId) return;
         const pos = mpMedia.currentTime;
         if (Number.isFinite(pos) && pos > 0) {
-            fetch(`/api/media/queue/${requestId}/position`, {
+            if (!mpCanManage) return;
+            mpApi(`/api/media/queue/${requestId}/position`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ position: pos }),
             }).catch(() => {});
         }
@@ -868,7 +870,7 @@ function connectSocket() {
 // ── Cleanup ─────────────────────────────────────────────────
 window.addEventListener('beforeunload', () => {
     // Save final position before leaving
-    if (mpMedia && mpCurrentRequestId && Number.isFinite(mpMedia.currentTime) && mpMedia.currentTime > 0) {
+    if (mpCanManage && mpMedia && mpCurrentRequestId && Number.isFinite(mpMedia.currentTime) && mpMedia.currentTime > 0) {
         navigator.sendBeacon(`/api/media/queue/${mpCurrentRequestId}/position`,
             new Blob([JSON.stringify({ position: mpMedia.currentTime })], { type: 'application/json' }));
     }
