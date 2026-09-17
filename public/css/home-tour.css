@@ -178,17 +178,17 @@
     transition: height 1.8s cubic-bezier(.32, 1, .38, 1);
     background: linear-gradient(180deg, color-mix(in srgb, var(--q) 20%, transparent), color-mix(in srgb, var(--q) 9%, transparent));
 }
-/* A big, almost-round blob whose top edge sits just above the water line. Rotating it makes that
-   edge rise and fall — a crest, with no SVG and no script. */
+/* The surface: two strips of a repeating wave, masked out of the water colour, drifting sideways
+   at different speeds. One wavelength of travel per loop, so the motion never skips. */
 .ovg-quest-wave {
-    position: absolute; left: 50%; margin-left: -85%; top: -4px; width: 170%; aspect-ratio: 1;
-    border-radius: 43% 47% 44% 46%;
-    background: color-mix(in srgb, var(--q) 24%, transparent);
-    box-shadow: 0 -1px 0 color-mix(in srgb, var(--q) 55%, #fff 25%);
-    animation: questWave 9s linear infinite;
+    --wl: 84px; position: absolute; left: 0; top: -8px; width: calc(100% + var(--wl)); height: 16px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--q) 34%, #fff 14%), color-mix(in srgb, var(--q) 22%, transparent));
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 84 16' preserveAspectRatio='none'%3E%3Cpath d='M0 9 C14 3 28 3 42 9 S70 15 84 9 V16 H0 Z'/%3E%3C/svg%3E") repeat-x left top / var(--wl) 16px;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 84 16' preserveAspectRatio='none'%3E%3Cpath d='M0 9 C14 3 28 3 42 9 S70 15 84 9 V16 H0 Z'/%3E%3C/svg%3E") repeat-x left top / var(--wl) 16px;
+    animation: questWave 4.5s linear infinite;
 }
-.ovg-quest-wave--b { top: -9px; opacity: 0.45; box-shadow: none; border-radius: 47% 42% 46% 44%; animation-duration: 13.5s; animation-direction: reverse; }
-@keyframes questWave { to { transform: rotate(360deg); } }
+.ovg-quest-wave--b { --wl: 118px; top: -11px; opacity: 0.45; animation-duration: 7s; animation-direction: reverse; }
+@keyframes questWave { to { transform: translateX(calc(var(--wl) * -1)); } }
 .ovg-quest-bub {
     position: absolute; left: var(--x); bottom: -6px; width: 5px; height: 5px; border-radius: 50%;
     background: color-mix(in srgb, var(--q) 60%, #fff 25%); opacity: 0;

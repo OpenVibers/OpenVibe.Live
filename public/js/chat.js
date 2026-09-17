@@ -3182,6 +3182,11 @@ function handleChatMessage(msg) {
             _handleVcCallResponse(msg);
             break;
         }
+        case 'voice-channels': {
+            // The server pushes the sidebar list on every change; the voice code applies it when loaded.
+            if (typeof vcApplyChannels === 'function') vcApplyChannels(msg.channels);
+            break;
+        }
     }
 }
 
@@ -4829,10 +4834,11 @@ async function _joinVoiceChannelFromInvite(channelId, channelName, switchToChat 
         toast('That call channel is no longer available', 'error');
         return;
     }
-    if (typeof callState !== 'undefined' && callState.joined && callState.channelId === ch.id) {
+    if (typeof callState !== 'undefined' && (callState.joined || callState.connecting) && callState.channelId === ch.id) {
         return;
     }
-    await vcJoinChannel(ch);
+    // Through the same door as a click: leaves whatever channel we are in first.
+    vcSelectChannel(ch.id);
 }
 
 async function acceptVcInvite(channelId, channelName) {

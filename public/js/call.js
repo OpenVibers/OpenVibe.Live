@@ -64,13 +64,19 @@ let _iceServers = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
 ];
+let _iceServersAt = 0;
+// Fetched once per five minutes (short-lived TURN credentials last longer than that), and never
+// again on every join — the list used to be a round trip on the critical path of each join.
 async function _ensureIceServers() {
+    if (Date.now() - _iceServersAt < 5 * 60 * 1000) return;
     try {
         const res = await fetch('/api/auth/ice-servers');
         if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data.iceServers) && data.iceServers.length) {
-                _iceServers = data.iceServers;
+                // A turn: entry without credentials would make every RTCPeerConnection throw.
+                const ok = data.iceServers.filter((s) => s && s.urls && (!/^turns?:/i.test(String(s.urls)) || (s.username && s.credential)));
+                if (ok.length) { _iceServers = ok; _iceServersAt = Date.now(); }
             }
         }
     } catch (e) {
@@ -346,6 +352,43 @@ function _scheduleRender() {
  * frequent event (~12 updates/sec per speaking participant).
  * Returns true if the tile was found and updated in-place.
  */
+function _tileFor(peerId) {
+    const gridId = callState.vcMode ? 'vc-participants-grid' : (callState.broadcastMode ? 'bc-call-participants-grid' : 'call-participants-grid');
+    const grid = document.getElementById(gridId);
+    return grid ? grid.querySelector(`[data-peer-id="${CSS.escape(peerId)}"]`) : null;
+}
+function _updateTileConnecting(peerId, connecting) {
+    const tile = _tileFor(peerId);
+    if (tile) tile.classList.toggle('is-connecting', !!connecting);
+}
+/** Audio level (0–1) drives the avatar ring through a CSS variable — no re-render, no layout. */
+function _setTileLevel(peerId, level) {
+    const tile = _tileFor(peerId);
+    if (!tile) return;
+    const v = Math.max(0, Math.min(1, level));
+    if (Math.abs((tile._ovLvl || 0) - v) < 0.04) return;
+    tile._ovLvl = v;
+    tile.style.setProperty('--lvl', v.toFixed(2));
+}
+// Remote levels come from the receiver itself (what is actually being heard), ten times a second
+// while the tab is visible — no AnalyserNode per peer, no socket messages.
+let _levelTimer = null;
+function _startLevelLoop() {
+    _stopLevelLoop();
+    _levelTimer = setInterval(() => {
+        if (document.hidden || !callState.joined) return;
+        for (const [peerId, peer] of callState.peers) {
+            if (!peer.pc || peer.muted || peer.forceMuted || peer.localMuted) { _setTileLevel(peerId, 0); continue; }
+            try {
+                const r = peer.pc.getReceivers().find((x) => x.track && x.track.kind === 'audio');
+                const src = r && r.getSynchronizationSources ? r.getSynchronizationSources()[0] : null;
+                _setTileLevel(peerId, src && typeof src.audioLevel === 'number' ? Math.min(1, src.audioLevel * 4) : 0);
+            } catch { /* */ }
+        }
+    }, 100);
+}
+function _stopLevelLoop() { if (_levelTimer) { clearInterval(_levelTimer); _levelTimer = null; } }
+
 function _updateTileSpeaking(peerId, speaking, muted, forceMuted) {
     const gridId = callState.vcMode ? 'vc-participants-grid' : (callState.broadcastMode ? 'bc-call-participants-grid' : 'call-participants-grid');
     const grid = document.getElementById(gridId);
@@ -426,71 +469,6 @@ function _updateTileMuted(peerId, muted, forceMuted) {
 
 /* ── Public API (called from stream page) ──────────────────── */
 
-/**
- * Initialize the call panel UI for a stream.
- * Called when a channel page loads and the stream has call_mode set.
- */
-function initCallPanel(stream) {
-    const panel = document.getElementById('call-panel');
-    if (!panel) return;
-
-    callState.broadcastMode = false;
-
-    callState.streamId = stream.id;
-    callState.callMode = stream.call_mode;
-    callState.lastSyncedCallMode = stream.call_mode || null;
-    callState.isStreamer = !!(currentUser && stream.user_id === currentUser.id);
-
-    _syncCallSettingsUI();
-    _startViewerCallStatusSync(stream.id);
-
-    if (!stream.call_mode) {
-        panel.style.display = 'none';
-        return;
-    }
-
-    panel.style.display = '';
-
-    // Update mode display
-    const modeLabel = document.getElementById('call-mode-label');
-    if (modeLabel) {
-        const labels = { 'mic': 'Voice Chat', 'mic+cam': 'Voice + Camera', 'cam+mic': 'Video Call' };
-        modeLabel.textContent = labels[stream.call_mode] || 'Group Call';
-    }
-
-    // Update hint text based on mode
-    const hint = document.getElementById('call-join-hint');
-    if (hint) {
-        const hints = {
-            'mic': 'Join the voice chat to talk with the streamer and other viewers',
-            'mic+cam': 'Join voice chat — you can optionally enable your camera',
-            'cam+mic': 'Join the video call — microphone and camera required',
-        };
-        hint.textContent = hints[stream.call_mode] || '';
-    }
-
-    // Show/hide camera elements based on mode
-    const camBtn = document.getElementById('call-btn-camera');
-    if (camBtn) camBtn.style.display = stream.call_mode === 'mic' ? 'none' : '';
-
-    const camGroup = document.getElementById('call-cam-group');
-    if (camGroup) camGroup.style.display = stream.call_mode === 'mic' ? 'none' : '';
-
-    // Reset connected badge
-    const connBadge = document.getElementById('call-connected-badge');
-    if (connBadge) connBadge.style.display = 'none';
-
-    // Populate device selectors
-    _populateCallDevices();
-
-    // Fetch current participants
-    _fetchCallStatus(stream.id);
-}
-
-/**
- * Initialize the call panel for the broadcast/dashboard page.
- * The streamer auto-joins the call — no join button needed.
- */
 function initBroadcastCallPanel(streamId, callMode) {
     const panel = document.getElementById('bc-call-panel');
     if (!panel || !callMode) {
@@ -501,11 +479,11 @@ function initBroadcastCallPanel(streamId, callMode) {
     // If already in a call for this stream, skip re-init
     if ((callState.joined || callState.connecting) && callState.streamId === streamId && callState.broadcastMode && callState.callMode === callMode) return;
 
-    // Clean up any previous call
+    // Clean up any previous call. A voice channel is left properly (its panel, mini bar and chat
+    // mode reset) instead of being cut off underneath the broadcast desk.
     if (callState.joined || callState.connecting) {
-        callState.joined = false;
-        callState.connecting = false;
-        _cleanupCall();
+        if (callState.vcMode && typeof vcLeave === 'function') { vcLeave(); _callSystemMessage('Left the voice channel to open the broadcast call panel'); }
+        else { callState.joined = false; callState.connecting = false; _cleanupCall(); }
     }
 
     callState.streamId = streamId;
@@ -542,9 +520,10 @@ async function joinCall() {
     if (callState.joined || callState.connecting || !(callState.channelId || callState.streamId)) return;
 
     callState.connecting = true;
+    _setConnState('connecting');
 
-    // Fetch ICE/TURN server config from the server before creating any peer connections
-    await _ensureIceServers();
+    // ICE/TURN config loads while the microphone is being opened, not before it.
+    const icePromise = _ensureIceServers();
 
     if (callState.reconnectTimer) {
         clearTimeout(callState.reconnectTimer);
@@ -555,35 +534,7 @@ async function joinCall() {
     // Camera is always off by default — user must explicitly opt in
     const wantCameraOff = callState.startCameraOff !== undefined ? callState.startCameraOff : true;
 
-    // If a reusable preview stream was passed in (from voice-channels setup),
-    // use it directly instead of calling getUserMedia again — avoids the
-    // double-acquisition lag on Steam Deck / PipeWire.
-    let reuseStream = callState._reusableStream || null;
-    delete callState._reusableStream;
-
-    if (reuseStream) {
-        // Ensure the reusable stream has an audio track; drop video if camera should be off
-        const audioTracks = reuseStream.getAudioTracks();
-        if (!audioTracks.length || audioTracks[0].readyState !== 'live') {
-            // Stream is stale — fall through to fresh getUserMedia
-            reuseStream.getTracks().forEach(t => t.stop());
-            reuseStream = null;
-        } else if (wantCameraOff) {
-            // Strip video tracks when starting with camera off
-            reuseStream.getVideoTracks().forEach(t => {
-                t.stop();
-                reuseStream.removeTrack(t);
-            });
-            callState.cameraOff = true;
-        } else {
-            callState.cameraOff = !reuseStream.getVideoTracks().some(t => t.readyState === 'live');
-        }
-    }
-
-    if (reuseStream) {
-        callState.localStream = reuseStream;
-        callState.noMic = false;
-    } else {
+    {
         // If we're broadcasting, clone the broadcast's audio track instead of
         // calling getUserMedia again — avoids device contention on Linux/PipeWire
         // where a second getUserMedia can steal the mic from the broadcast or
@@ -654,8 +605,17 @@ async function joinCall() {
     // Show local preview
     _updateLocalPreview();
 
-    // Connect signaling WebSocket
+    // Peer connections are built from `welcome`, so the ICE list must be in by the time the
+    // socket opens — it almost always is by now.
+    await icePromise;
+    if (!callState.connecting) return; // left while the microphone was being opened
     _connectCallWs();
+}
+
+/** connecting → connected → reconnecting, for the voice channel status pill. */
+function _setConnState(state) {
+    callState.connState = state;
+    if (typeof vcSetStatus === 'function') vcSetStatus(state);
 }
 
 /** Leave the group call */
@@ -720,11 +680,16 @@ function _cleanupCall() {
         _sharedPeerAudioCtx = null;
     }
 
-    // Close WebSocket
+    // Close the socket with its handlers detached: its close event must not reach the reconnect
+    // path of a join that starts right after this (leave, rejoin, ghost participant).
     if (callState.ws) {
-        try { callState.ws.close(); } catch {}
+        const w = callState.ws;
         callState.ws = null;
+        w.onopen = null; w.onmessage = null; w.onclose = null; w.onerror = null;
+        try { w.close(); } catch {}
     }
+    _stopLevelLoop();
+    callState.connState = 'idle';
 
     if (callState.reconnectTimer) {
         clearTimeout(callState.reconnectTimer);
@@ -928,7 +893,10 @@ function _connectCallWs() {
     const token = _getAuthToken();
     const channelParam = callState.channelId || callState.streamId;
     let url = `${proto}//${location.host}/ws/call?channelId=${encodeURIComponent(channelParam)}`;
-    if (token) url += `&token=${token}`;
+    // The server reads the session cookie on the upgrade; the token only rides in the URL (and
+    // every proxy log) for a browser that has no cookie.
+    const hasCookie = /(?:^|;\s*)(?:ov_token|token)=/.test(document.cookie);
+    if (token && !hasCookie) url += `&token=${encodeURIComponent(token)}`;
 
     if (callState.reconnectTimer) {
         clearTimeout(callState.reconnectTimer);
@@ -954,23 +922,28 @@ function _connectCallWs() {
     }
     callState.peers.clear();
 
-    callState.ws = new WebSocket(url);
+    const ws = new WebSocket(url);
+    callState.ws = ws;
 
-    callState.ws.onopen = () => {
+    ws.onopen = () => {
+        if (callState.ws !== ws) return;
         callState.reconnectDelay = 3000;
     };
 
-    callState.ws.onmessage = (e) => {
+    ws.onmessage = (e) => {
+        if (callState.ws !== ws) return;
         try {
             const msg = JSON.parse(e.data);
             _handleCallMessage(msg);
         } catch {}
     };
 
-    callState.ws.onclose = () => {
+    ws.onclose = () => {
+        if (callState.ws !== ws) return; // a socket this join already replaced
         const shouldReconnect = !callState.intentionalDisconnect && (callState.joined || callState.connecting) && (callState.channelId || callState.streamId);
         callState.ws = null;
         if (shouldReconnect) {
+            _setConnState('reconnecting');
             // Reconnect
             callState.reconnectTimer = setTimeout(() => {
                 if (!callState.intentionalDisconnect && (callState.joined || callState.connecting) && (callState.channelId || callState.streamId)) {
@@ -983,7 +956,8 @@ function _connectCallWs() {
         }
     };
 
-    callState.ws.onerror = (e) => {
+    ws.onerror = (e) => {
+        if (callState.ws !== ws) return;
         console.warn('[Call] WebSocket error:', e);
     };
 }
@@ -991,9 +965,20 @@ function _connectCallWs() {
 function _handleCallMessage(msg) {
     switch (msg.type) {
         case 'welcome':
+            // A click on channel B while A was still connecting used to land you in A with B's
+            // label; the welcome names its channel, so a stale one is refused.
+            if (callState.vcMode && msg.channelId && callState.channelId && msg.channelId !== callState.channelId) {
+                try { callState.ws.close(); } catch {}
+                break;
+            }
             callState.myPeerId = msg.peerId;
             callState.joined = true;
             callState.connecting = false;
+            _setConnState('connected');
+            // A reconnect gets a fresh server-side record (unmuted, camera off): say what we are.
+            if (callState.muted) _sendCallMsg({ type: 'mute', muted: true });
+            if (!callState.cameraOff) _sendCallMsg({ type: 'camera-off', cameraOff: false });
+            _startLevelLoop();
             callState.isStreamer = msg.isStreamer;
             // Server provides canonical moderation capability for this channel.
             callState.canModerate = !!msg.canModerate;
@@ -1038,7 +1023,9 @@ function _handleCallMessage(msg) {
             break;
 
         case 'peer-joined': {
-            _createPeerConnection(msg.peerId, true, msg);
+            // The newcomer offers to everyone already here; this side only answers. Both sides
+            // offering at once cost every pair a collision, a rollback and dropped candidates.
+            _createPeerConnection(msg.peerId, false, msg);
             _renderCallUI();
             _callSystemMessage(`${_resolveParticipantDisplayName(msg)} joined the call`);
             _callSounds.play('join');
@@ -1226,10 +1213,12 @@ function _handleCallMessage(msg) {
 
         case 'error': {
             _callSystemMessage(msg.message || 'Call error');
-            if (!callState.joined) {
-                callState.connecting = false;
-                _cleanupCall();
-                _renderCallUI();
+            // "Channel not found" after a server restart, full, not live, banned, private: nothing a
+            // retry can fix — reconnecting every few seconds with a toast each time was the bug.
+            const fatal = /not found|full|not live|banned|private|missing/i.test(String(msg.message || ''));
+            if (!callState.joined || fatal) {
+                if (callState.vcMode && typeof vcLeave === 'function') vcLeave();
+                else { callState.joined = false; callState.connecting = false; _cleanupCall(); _renderCallUI(); }
             }
             break;
         }
@@ -1242,11 +1231,10 @@ function _createPeerConnection(peerId, initiator, peerInfo) {
     if (callState.peers.has(peerId)) {
         _closePeer(peerId);
     }
-
-    const pc = new RTCPeerConnection({ iceServers: _iceServers });
-
     const peer = {
-        pc,
+        pc: null,
+        connecting: true,
+        _pendingIce: [],
         username: peerInfo?.username || null,
         anonId: peerInfo?.anonId || null,
         displayName: _resolveParticipantDisplayName(peerInfo),
@@ -1269,6 +1257,18 @@ function _createPeerConnection(peerId, initiator, peerInfo) {
         videoStream: null,
     };
     callState.peers.set(peerId, peer);
+    // The offering side builds its connection now; the answering side waits for the offer.
+    if (initiator) _attachPeerPc(peerId, peer);
+    return peer;
+}
+
+/** The RTCPeerConnection for a peer record: local tracks, ICE, remote tracks, state handling. */
+function _attachPeerPc(peerId, peer) {
+    if (peer.pc) return peer.pc;
+    let pc;
+    try { pc = new RTCPeerConnection({ iceServers: _iceServers }); }
+    catch (err) { console.warn('[Call] ICE config rejected, using STUN only:', err.message); pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }); }
+    peer.pc = pc;
 
     // Add local tracks to the connection
     if (callState.localStream) {
@@ -1319,18 +1319,11 @@ function _createPeerConnection(peerId, initiator, peerInfo) {
                         return;
                     }
                     console.log(`[Call] Attempting ICE restart for peer ${peerId} (attempt ${peer._iceRestartCount})`);
+                    // One side restarts (restartIce() raises negotiationneeded, which sends the
+                    // offer); the other answers. Both restarting at once collided every time.
                     try {
-                        peer.pc.restartIce();
-                        peer.pc.createOffer({ iceRestart: true }).then(offer => {
-                            return peer.pc.setLocalDescription(offer);
-                        }).then(() => {
-                            _sendCallMsg({ type: 'offer', targetPeerId: peerId, sdp: peer.pc.localDescription });
-                        }).catch(err => {
-                            console.warn(`[Call] ICE restart offer failed for ${peerId}:`, err.message);
-                            _closePeer(peerId);
-                            callState.peers.delete(peerId);
-                            _scheduleRender();
-                        });
+                        if (callState.myPeerId < peerId) peer.pc.restartIce();
+                        else peer._disconnectTimer = setTimeout(() => { if (callState.joined && peer.pc && peer.pc.iceConnectionState !== 'connected' && peer.pc.iceConnectionState !== 'completed') { _closePeer(peerId); callState.peers.delete(peerId); _scheduleRender(); } }, 8000);
                     } catch {
                         _closePeer(peerId);
                         callState.peers.delete(peerId);
@@ -1342,6 +1335,7 @@ function _createPeerConnection(peerId, initiator, peerInfo) {
             if (peer._disconnectTimer) { clearTimeout(peer._disconnectTimer); peer._disconnectTimer = null; }
             // Reset restart counter on successful connection
             peer._iceRestartCount = 0;
+            if (peer.connecting) { peer.connecting = false; _updateTileConnecting(peerId, false); }
         } else if (state === 'failed') {
             if (peer._disconnectTimer) { clearTimeout(peer._disconnectTimer); peer._disconnectTimer = null; }
             // One ICE restart attempt before giving up
@@ -1349,16 +1343,8 @@ function _createPeerConnection(peerId, initiator, peerInfo) {
                 peer._iceRestartAttempted = true;
                 console.log(`[Call] Peer ${peerId} ICE failed — attempting one restart`);
                 try {
-                    peer.pc.restartIce();
-                    peer.pc.createOffer({ iceRestart: true }).then(offer => {
-                        return peer.pc.setLocalDescription(offer);
-                    }).then(() => {
-                        _sendCallMsg({ type: 'offer', targetPeerId: peerId, sdp: peer.pc.localDescription });
-                    }).catch(() => {
-                        _closePeer(peerId);
-                        callState.peers.delete(peerId);
-                        _scheduleRender();
-                    });
+                    if (callState.myPeerId < peerId) peer.pc.restartIce();
+                    else setTimeout(() => { if (callState.joined && peer.pc && peer.pc.iceConnectionState === 'failed') { _closePeer(peerId); callState.peers.delete(peerId); _scheduleRender(); } }, 8000);
                 } catch {
                     _closePeer(peerId);
                     callState.peers.delete(peerId);
@@ -1387,8 +1373,8 @@ function _createPeerConnection(peerId, initiator, peerInfo) {
         if (peer._negotiating || peer._handlingRemoteOffer) return; // prevent re-entrant negotiation
         peer._negotiating = true;
         try {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
+            // No explicit offer: after a rollback the browser knows which description is right.
+            await pc.setLocalDescription();
             _sendCallMsg({
                 type: 'offer',
                 targetPeerId: peerId,
@@ -1412,6 +1398,7 @@ async function _handleOffer(msg) {
     }
     const peer = callState.peers.get(peerId);
     if (!peer) return;
+    if (!peer.pc) _attachPeerPc(peerId, peer);
 
     try {
         // Perfect negotiation: detect offer collision (both sides sent offers simultaneously)
@@ -1434,8 +1421,8 @@ async function _handleOffer(msg) {
 
         peer._handlingRemoteOffer = true;
         await peer.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-        const answer = await peer.pc.createAnswer();
-        await peer.pc.setLocalDescription(answer);
+        _flushPendingIce(peer);
+        await peer.pc.setLocalDescription();
         _sendCallMsg({
             type: 'answer',
             targetPeerId: peerId,
@@ -1458,21 +1445,22 @@ async function _handleAnswer(msg) {
     }
     try {
         await peer.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+        _flushPendingIce(peer);
     } catch (err) {
         console.error('[Call] Handle answer failed:', err);
     }
 }
 
+/** Candidates that arrive before the remote description are kept, not thrown away. */
 async function _handleIceCandidate(msg) {
     const peer = callState.peers.get(msg.fromPeerId);
-    if (!peer) return;
-    try {
-        if (msg.candidate) {
-            await peer.pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
-        }
-    } catch (err) {
-        // ICE candidate errors are common during renegotiation, ignore
-    }
+    if (!peer || !msg.candidate) return;
+    if (!peer.pc || !peer.pc.remoteDescription) { peer._pendingIce.push(msg.candidate); return; }
+    try { await peer.pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch { /* stale during renegotiation */ }
+}
+function _flushPendingIce(peer) {
+    const list = peer._pendingIce.splice(0);
+    for (const c of list) { try { peer.pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => { }); } catch { /* */ } }
 }
 
 function _closePeer(peerId) {
@@ -1751,9 +1739,13 @@ function _closeCallVideoPopout() {
 function _renderCallUI() {
     _syncCallSettingsUI();
 
-    // Voice channel mode — delegate rendering to voice-channels.js
+    // Voice channel mode — delegate rendering to voice-channels.js. The floating peer menu and the
+    // video popout are page-level, so they are kept in step here as well (the ⋮ menu never opened
+    // in a voice channel because this returned before it was drawn).
     if (callState.vcMode && typeof vcRenderUI === 'function') {
         vcRenderUI();
+        _syncCallVideoPopout();
+        _renderFloatingPeerContextMenu();
         return;
     }
 
@@ -1876,6 +1868,7 @@ function _createParticipantTile(opts) {
     if (opts.muted || opts.forceMuted) tile.classList.add('is-muted');
     if (opts.localMuted) tile.classList.add('is-local-muted');
     if (opts.speaking && !opts.muted && !opts.forceMuted) tile.classList.add('is-speaking');
+    if (opts.connecting) tile.classList.add('is-connecting');
 
     // Video or avatar placeholder
     const showVideo = _peerHasActiveVideo(opts);
@@ -2410,7 +2403,8 @@ function _setupLocalAudioProcessing() {
 
 function _processLocalSpeechFrame() {
     if (!callState.localAnalyser) return;
-    const bins = new Uint8Array(callState.localAnalyser.frequencyBinCount);
+    if (!callState._bins || callState._bins.length !== callState.localAnalyser.frequencyBinCount) callState._bins = new Uint8Array(callState.localAnalyser.frequencyBinCount);
+    const bins = callState._bins;
     callState.localAnalyser.getByteFrequencyData(bins);
     // Only average bins in the speech frequency band (~85–3400 Hz) to reduce
     // false positives from fans, keyboard clicks, and low-frequency rumble
@@ -2432,6 +2426,7 @@ function _processLocalSpeechFrame() {
     callState.localSpeechDetected = detected || Date.now() < callState.speechHoldUntil;
 
     _applyLocalAudioGate();
+    if (callState.myPeerId && !document.hidden) _setTileLevel(callState.myPeerId, _shouldTransmitAudio() ? percent / 60 : 0);
 
     const speaking = _shouldBeSpeaking();
     if (speaking !== callState.localSpeaking) {
@@ -2482,7 +2477,8 @@ function _applyLocalAudioGate() {
             if (t.enabled !== enabled) t.enabled = enabled;
         });
     }
-    _syncCallSettingsUI();
+    // Forty element lookups twelve times a second, for a panel that only changes when the gate does.
+    if (callState._lastGate !== enabled) { callState._lastGate = enabled; _syncCallSettingsUI(); }
 }
 
 function onCallInputModeChange(value) {

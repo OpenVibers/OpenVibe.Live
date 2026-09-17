@@ -10,11 +10,15 @@
  */
 (function () {
     'use strict';
+    // Every way in. The pairs are real ingest paths (server/streaming/*): WebRTC from the browser,
+    // RTMP and WHIP from encoders, the JSMPEG relay for scripts and small boards.
     const SRC = [
-        { id: 'cam', icon: 'fa-solid fa-video', label: 'Your cam', sub: 'browser · phone' },
+        { id: 'cam', icon: 'fa-solid fa-video', label: 'Your cam', sub: 'browser · phone · WebRTC' },
         { id: 'screen', icon: 'fa-solid fa-display', label: 'Your screen', sub: 'share from the browser' },
-        { id: 'robot', icon: 'fa-solid fa-robot', label: 'Your robot', sub: 'viewer-controlled' },
-        { id: 'obs', icon: 'fa-solid fa-desktop', label: 'OBS / RTMP', sub: 'or WHIP' },
+        { id: 'obs', icon: 'fa-solid fa-sliders', label: 'OBS · Streamlabs', sub: 'RTMP or WHIP' },
+        { id: 'ffmpeg', icon: 'fa-solid fa-terminal', label: 'ffmpeg · scripts', sub: 'RTMP · WHIP · JSMPEG' },
+        { id: 'robot', icon: 'fa-solid fa-robot', label: 'Your robot · Pi', sub: 'viewer-controlled' },
+        { id: 'encoder', icon: 'fa-solid fa-microchip', label: 'Any encoder', sub: 'hardware · Larix · drones' },
     ];
     const DST = [
         { id: 'twitch', icon: 'fa-brands fa-twitch', label: 'Twitch', color: '#a970ff' },

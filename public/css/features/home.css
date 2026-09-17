@@ -81,7 +81,9 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 }
 .network-hub-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    /* minmax(0, 1fr): a plain 1fr floors at the card's min-content, and a nowrap description made
+       two columns wider than a 390px phone (the third card was cut off at the edge). */
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
     max-width: 960px; margin: 0 auto;
 }
@@ -112,15 +114,15 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .network-card:hover .network-card-arrow { opacity: 1; transform: translateX(3px); }
 
 @media (max-width: 960px) {
-    .network-hub-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .network-hub-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 }
 @media (max-width: 768px) {
-    .network-hub-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .network-hub-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .network-hub { padding: 24px 16px; }
     .network-hub-header { flex-direction: column; gap: 8px; }
 }
 @media (max-width: 480px) {
-    .network-hub-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .network-hub-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .network-hub { padding: 20px 12px; }
     .network-card { padding: 12px; gap: 10px; }
     .network-card-icon { width: 36px; height: 36px; font-size: 1rem; border-radius: 8px; }
@@ -203,10 +205,11 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .hero-philosophy-links { margin-top: 24px; }
 .hero-stat-group {
     display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 12px; align-items: center;
-    padding: 11px 14px 11px 0;
-    border-top: 1px solid color-mix(in srgb, var(--accent) 12%, transparent);
+    padding: 11px 14px 11px 0; border-radius: 16px;
+    background: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 14%, transparent);
 }
-.hero-stat-group:first-child { border-top: 0; }
+.hero-stat-group + .hero-stat-group { margin-top: 8px; }
 .hero-stat-kicker {
     display: flex; align-items: center; gap: 7px; padding-left: 16px; align-self: stretch;
     border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
@@ -512,7 +515,7 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .hero-stat-strip[hidden] { display: none !important; }
 .hero-stat-strip {
     display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: clamp(4px, 0.8vw, 9px); padding: clamp(7px, 1vw, 11px);
+    gap: clamp(6px, 0.9vw, 10px); padding: 0;
     max-width: 940px; margin: 0 auto; width: 100%;
 }
 .hero-stat-strip .hero-stat { min-width: 0; padding: clamp(6px, 1.1vw, 10px) clamp(7px, 1.2vw, 12px); gap: clamp(5px, 0.9vw, 10px); }
@@ -530,13 +533,17 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 }
 .hero-stat-strip .hero-stat { background: color-mix(in srgb, var(--accent) 7%, transparent); }
 .hero-stat-more {
-    display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
-    padding: 8px 12px 9px; cursor: pointer; font: inherit;
+    display: inline-flex; align-items: center; justify-content: center; gap: 9px; width: auto;
+    margin: 0 auto; padding: 8px 16px 8px 9px; cursor: pointer; font: inherit; border-radius: 13px;
     font-size: 0.76rem; font-weight: 700; letter-spacing: 0.02em;
     color: var(--text-primary);
-    background: none; border: 0; border-top: 1px solid color-mix(in srgb, var(--accent) 12%, transparent);
-    transition: color 0.2s, background 0.2s;
+    /* The same card as the chips above, so it belongs to the row instead of underlining a panel. */
+    background: color-mix(in srgb, var(--bg-secondary) 78%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent); backdrop-filter: blur(8px);
+    box-shadow: 0 6px 20px -12px rgba(0, 0, 0, 0.7);
+    transition: color 0.2s, background 0.2s, border-color 0.2s, transform 0.2s;
 }
+.hero-stat-more:hover { border-color: color-mix(in srgb, var(--accent) 55%, transparent); transform: translateY(-1px); }
 /* The stats are something to be proud of — the toggle reads as an invitation, not a footnote. */
 .hero-stat-more-icon {
     display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px;
@@ -547,14 +554,12 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .hero-stat-more-icon i { font-size: 0.7rem; }
 .hero-stat-more-text { background: linear-gradient(90deg, var(--text-primary), color-mix(in srgb, var(--accent) 60%, var(--text-primary))); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .hero-stat-more-chev { color: var(--text-muted); }
-.hero-stat-more:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .hero-stat-more:hover .hero-stat-more-icon { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); transform: rotate(-6deg) scale(1.06); }
 .hero-stat-more.is-open .hero-stat-more-chev { transform: rotate(180deg); }
 /* Every number opens its history: say so without a hover (touch screens have none). */
 .hero-stat--clickable { cursor: pointer; }
 @media (hover: none) { .hero-stat-chart-hint { opacity: 0.55; } }
-.hero-stat-full { border-top: 1px solid color-mix(in srgb, var(--accent) 12%, transparent); }
-.hero-stat-full .hero-stat-group:first-child { border-top: 0; }
+.hero-stat-full { border: 0; }
 @media (max-width: 640px) {
     .hero-stats { min-height: 182px; }
 }
@@ -670,7 +675,7 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .hero-stat-strip { grid-auto-rows: 1fr; align-items: stretch; }
 .hero-stat--spark { display: flex; }
 .hero-stats.is-swapping { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-.hero-stats.is-swapping { background: color-mix(in srgb, var(--bg-primary) 88%, transparent); }
+.hero-stats.is-swapping { background: none; }
 @media (max-width: 900px) {
     .hero-stats {
         backdrop-filter: none; -webkit-backdrop-filter: none;
@@ -978,3 +983,13 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     .star-card.is-swapping { transition: none; }
     .star-card.is-compact .star-avatar-ring { animation: none; }
 }
+
+/* The pitch banner: what kind of place this is, before the headline says it. */
+.cta-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 0 0 16px; }
+.cta-chip {
+    display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px;
+    font-size: 0.74rem; font-weight: 700; letter-spacing: 0.02em; color: var(--text-secondary);
+    background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.cta-chip i { color: var(--accent-light); }
+.cta-hero { text-shadow: 0 6px 30px color-mix(in srgb, var(--accent) 35%, transparent); }

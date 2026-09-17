@@ -20,20 +20,19 @@
 /* Six buttons may only lay out as 6×1, 3×2 or 2×3 — the divisors of six. auto-fit chose however
    many max-content columns happened to fit, which is how the row came out as four and then two.
    The column count is picked explicitly per width, and every column is the same width. */
+/* Equal columns cut labels short ("GitH…", "Disc…") whenever the row was narrower than six full
+   labels. The row now sizes to its content and wraps: a button is never narrower than its own
+   label, and the row centres whatever fits per line. */
 #page-home .hero-cta {
-    --hb-cols: 3;
-    display: grid; gap: clamp(8px, 1.4vw, 12px); margin-inline: auto;
-    grid-template-columns: repeat(var(--hb-cols), minmax(0, 1fr));
-    width: 100%; max-width: 720px;
+    display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch;
+    gap: clamp(8px, 1.4vw, 12px); margin-inline: auto;
+    width: 100%; max-width: min(1180px, 96vw);
 }
 /* Six across only when the hero column is genuinely wide enough for full labels. The hero content
    is capped well under the viewport, so a viewport breakpoint alone gave 133px buttons at 1280px
    with every label cut to an ellipsis. */
-@media (min-width: 1500px) {
-    #page-home .hero-cta { --hb-cols: 6; max-width: 1180px; }
-}
-#page-home .hero-cta > .hb { min-width: 0; }
-#page-home .hero-cta .hb-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#page-home .hero-cta > .hb { flex: 0 1 auto; width: auto; min-width: max-content; }
+#page-home .hero-cta .hb-label { white-space: nowrap; }
 /* The "API docs" aside only fits beside "Build & Mod" when the buttons are wide; everywhere else it
    is what pushes the label into an ellipsis. The tooltip still says it. */
 #page-home .hero-cta .hb-label small { display: none; }
@@ -119,14 +118,16 @@
 .hb-tools { --c: #2dd4bf; } .hb-game { --c: #4ade80; } .hb-github { --c: #e5e7eb; } .hb-discord { --c: #5865f2; } .hb-vibe { --c: #f472b6; }
 /* Narrow phones: two tidy columns instead of a ragged wrap. Landscape keeps a single row. */
 @media (max-width: 560px) {
-    #page-home .hero-cta { --hb-cols: 2; max-width: 420px; }
+    #page-home .hero-cta { max-width: 420px; }
+    /* Two per line on a phone, still never narrower than the label. */
+    #page-home .hero-cta > .hb { flex: 1 1 calc(50% - 12px); justify-content: flex-start; }
     .hb { font-size: 0.86rem; padding-right: 12px; }
     /* The "API docs" note is what would push "Build & Mod" to an ellipsis at two columns. */
     .hb-label small { display: none; }
 }
 /* A landscape phone is wide but short: three across keeps it to two rows, never a ragged wrap. */
 @media (max-width: 900px) and (orientation: landscape) and (max-height: 500px) {
-    #page-home .hero-cta { --hb-cols: 3; max-width: 96vw; }
+    #page-home .hero-cta { max-width: 96vw; }
     .hb { min-height: 40px; }
 }
 @keyframes hfxPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 70% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--accent) 0%, transparent); } 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); } }
@@ -283,7 +284,7 @@
 #page-home .hero-float-badge {
     backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
 }
-#page-home .hero-stats { background: color-mix(in srgb, var(--bg-primary) 84%, transparent); }
+#page-home .hero-stats { background: none; } /* the chips are the cards; no panel behind them */
 #page-home .hero-stat { background: color-mix(in srgb, var(--bg-secondary) 90%, transparent); }
 #page-home .hero-latest { background: color-mix(in srgb, var(--bg-secondary) 88%, transparent); }
 

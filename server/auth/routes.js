@@ -801,24 +801,27 @@ router.delete('/tokens/:id', requireAuth, (req, res) => {
 });
 
 // ── ICE / TURN server config (public — needed by unauthenticated voice chat) ─
+// One STUN server: with TURN present, extra STUN entries only slow candidate gathering (Chrome
+// warns at five or more servers). With TURN_AUTH_SECRET set (coturn `use-auth-secret`), every
+// response carries a credential that expires in an hour instead of the same static one forever.
 router.get('/ice-servers', (req, res) => {
-    const servers = [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-    ];
+    const servers = [{ urls: 'stun:stun.l.google.com:19302' }];
     if (config.turn?.url) {
-        const hasTurnAuth = config.turn.username && config.turn.credential;
-        servers.push(
-            hasTurnAuth
-                ? { urls: config.turn.url, username: config.turn.username, credential: config.turn.credential }
-                : { urls: config.turn.url },
-            hasTurnAuth
-                ? { urls: `${config.turn.url}?transport=tcp`, username: config.turn.username, credential: config.turn.credential }
-                : { urls: `${config.turn.url}?transport=tcp` },
-        );
-        if (!hasTurnAuth && (config.turn.username || config.turn.credential)) {
-            console.warn('[ICE] Incomplete TURN credentials configured; emitting TURN URLs without auth.');
+        const secret = String(process.env.TURN_AUTH_SECRET || '').trim();
+        let username = config.turn.username, credential = config.turn.credential;
+        if (secret) {
+            const expires = Math.floor(Date.now() / 1000) + 3600;
+            username = `${expires}:${req.user ? req.user.id : 'anon'}`;
+            credential = require('crypto').createHmac('sha1', secret).update(username).digest('base64');
+            res.set('Cache-Control', 'private, max-age=300');
+        }
+        const hasTurnAuth = username && credential;
+        // A turn: URL without credentials makes RTCPeerConnection throw in the browser, so a box with
+        // no TURN secret configured gets STUN only.
+        if (hasTurnAuth) {
+            servers.push({ urls: config.turn.url, username, credential }, { urls: `${config.turn.url}?transport=tcp`, username, credential });
+        } else if (username || credential) {
+            console.warn('[ICE] Incomplete TURN credentials configured; TURN left out.');
         }
     }
     res.json({ iceServers: servers });
