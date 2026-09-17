@@ -535,7 +535,9 @@ app.use((req, res, next) => {
     if ((req.method !== 'GET' && req.method !== 'HEAD') || !req.path.endsWith('.html')) return next();
     if (!sendDocument(res, req.path.slice(1))) return next();
 });
-app.use(express.static(assets.PUBLIC_DIR, { setHeaders: (res, filePath) => { if (filePath.endsWith('.html')) noCacheHeaders(res); } }));
+// index: false — "/" must reach sendDocument (the SPA fallback), never the raw index.html with its
+// unfilled route markers and unversioned asset URLs (a request without Accept: text/html skips SEO).
+app.use(express.static(assets.PUBLIC_DIR, { index: false, setHeaders: (res, filePath) => { if (filePath.endsWith('.html')) noCacheHeaders(res); } }));
 
 // Ensure data directories exist. VOD/clip/paste/thumbnail files live in
 // OpenVibe.Media now; what remains is Live-local state (live thumbs, emotes,
