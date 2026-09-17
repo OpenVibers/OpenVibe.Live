@@ -10846,14 +10846,6 @@ label.staff-inline-toggle.aiv-field { flex-direction:row; align-items:center; }
 .hero-tip { position: fixed; z-index: 4000; max-width: 300px; padding: 10px 12px; border-radius: 12px; background: var(--bg-card, #1a1a20); border: 1px solid var(--border-light, #3a3a44); box-shadow: 0 12px 34px rgba(0, 0, 0, 0.5); color: var(--text-primary); font-size: 0.8rem; line-height: 1.45; pointer-events: none; opacity: 0; transform: translateY(4px); transition: opacity 0.12s, transform 0.12s; }
 .hero-tip-recent b { display: block; font-size: 0.9rem; color: var(--accent-light, #a78bfa); }
 .hero-tip-recent span { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
-.hero-chart-overlay { position: fixed; inset: 0; z-index: 4100; background: rgba(0, 0, 0, 0.7); display: flex; align-items: center; justify-content: center; padding: 20px; animation: heroFadeIn 0.18s ease-out; }
-@keyframes heroFadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes heroPop { from { transform: scale(0.96); opacity: 0; } to { transform: none; opacity: 1; } }
-.hero-chart-head h3 { margin: 0; font-size: 1.15rem; display: flex; align-items: center; gap: 8px; }
-.hero-chart-svg .bar { fill: var(--accent); opacity: 0.85; transition: opacity 0.1s; transform-origin: bottom; animation: heroBarGrow 0.5s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
-@keyframes heroBarGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
-.hero-chart-svg text { fill: var(--text-muted); font-size: 10px; }
-.hero-chart-foot b { color: var(--text-primary); }
 @media (max-width: 720px) {
     /* (The counterpart !important rule lived here. It forced display:inline-block, which beat the
        tile's grid centring and left every glyph sitting off-centre.) */
@@ -10868,7 +10860,6 @@ label.staff-inline-toggle.aiv-field { flex-direction:row; align-items:center; }
        to 602px and then snapped to its real 976px. */
     .hero-bg-layer.active { animation: none !important; }
 }
-@media (prefers-reduced-motion: reduce) { .hero-chart-svg .bar { animation: none; } }
 
 @keyframes arena-stamp-in { from { transform: scale(2.2) rotate(-12deg); opacity: 0; } to { transform: scale(1) rotate(-3deg); opacity: 1; } }
 .arena-mic-status { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--text-secondary); }

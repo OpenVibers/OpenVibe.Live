@@ -28,7 +28,27 @@ assert.strictEqual(users7.points[6 - 1].value, 1, 'bob yesterday');
 assert.strictEqual(users7.points[6].value, 0, 'nobody today');
 assert.strictEqual(db.getHomeStatSeries('users', 2).total, 1, 'window shrinks the total');
 assert.strictEqual(db.getHomeStatSeries('users', 9999).days, 365, 'days are clamped');
+assert.strictEqual(db.getHomeStatSeries('users', 2).before, 1, 'before: alice, ahead of a 2-day window');
+assert.strictEqual(db.getHomeStatSeries('users', 2).prev_total, 1, 'prev_total: the 2 days before that');
 console.log('✅ daily series are zero-filled and windowed');
+
+// ── readings: live streams / viewers from the five-minute sampler ──
+db.recordViewerSample();
+db.run("INSERT INTO viewer_samples (sampled_at, viewers, live_streams) VALUES (datetime('now', '-2 hours'), 10, 2), (datetime('now', '-2 hours'), 20, 4)");
+db.run("INSERT INTO viewer_samples (sampled_at, viewers, live_streams) VALUES (datetime('now', '-500 days'), 1, 1)");
+const v = db.getReadingSeries('viewersNow', 1);
+assert.strictEqual(v.kind, 'reading');
+assert.strictEqual(v.bucket, 'hour');
+assert.strictEqual(v.points.length, 24);
+const twoAgo = v.points[v.points.length - 3];
+assert.strictEqual(twoAgo.value, 15, 'hour bucket averages its samples');
+assert.strictEqual(twoAgo.peak, 20);
+assert.strictEqual(v.points[0].value, null, 'no samples → null, not zero');
+assert.strictEqual(db.getReadingSeries('liveNow', 30).bucket, 'day');
+assert.strictEqual(db.getReadingSeries('users', 7), null);
+db.recordViewerSample();
+assert.strictEqual(db.get("SELECT COUNT(*) AS n FROM viewer_samples WHERE sampled_at < datetime('now', '-400 days')").n, 0, 'retention trims past 400 days');
+console.log('✅ reading series are bucketed, null-filled and retained for 400 days');
 
 // ── vibes: test money before the reset never counts ──
 db.run("INSERT INTO transactions (from_user_id, to_user_id, amount, type, status, created_at) VALUES (?, ?, 500, 'donation', 'completed', datetime('now', '-10 days'))", [a, b]);

@@ -3962,7 +3962,9 @@ function recordViewerSample() {
     _ensureViewerSamples();
     const r = get(`SELECT COALESCE(SUM(viewer_count),0) AS v, COUNT(*) AS n FROM streams WHERE is_live = 1`) || { v: 0, n: 0 };
     run('INSERT INTO viewer_samples (viewers, live_streams) VALUES (?, ?)', [r.v || 0, r.n || 0]);
-    run(`DELETE FROM viewer_samples WHERE sampled_at < datetime('now', '-7 days')`);
+    // A year of five-minute samples is ~105k small rows; it is what the "over time" charts for the
+    // two live readings are drawn from.
+    run(`DELETE FROM viewer_samples WHERE sampled_at < datetime('now', '-400 days')`);
     return r;
 }
 /**
@@ -4089,7 +4091,7 @@ const HOME_SERIES = {
     redemptions: { table: 'coin_redemptions',  ts: 'created_at',  agg: 'COUNT(*)',              where: "status NOT IN ('rejected', 'refunded')" },
     emotes:      { table: 'emotes',            ts: 'created_at',  agg: 'COUNT(*)' },
 };
-const HOME_SERIES_KEYS = Object.keys(HOME_SERIES);
+const HOME_SERIES_KEYS = [...Object.keys(HOME_SERIES), 'liveNow', 'viewersNow'];
 
 function getHomeStatSeries(metric, days = 30) {
     const def = HOME_SERIES[metric];
@@ -4109,7 +4111,54 @@ function getHomeStatSeries(metric, days = 30) {
         points.push({ day, value: Number((byDay.get(day) || 0).toFixed(2)) });
     }
     const total = Number(points.reduce((a, p) => a + p.value, 0).toFixed(2));
-    return { metric, days, points, total, peak: Math.max(0, ...points.map(p => p.value)) };
+    // `before`: everything up to the window, so a running total starts at the real all-time figure.
+    // `prev_total`: the same-length window just before this one, for "vs previous period".
+    const scalar = (extra, params) => {
+        const w = [...(def.where ? [def.where] : []), ...(def.vibesReset ? [`${def.ts} >= '${vibesStatsSince()}'`] : []), extra];
+        try { return Number(get(`SELECT ${def.agg} AS value FROM ${def.table} WHERE ${w.join(' AND ')}`, params)?.value) || 0; } catch { return 0; }
+    };
+    const before = scalar(`${def.ts} < datetime('now', ?)`, [`-${days - 1} days`]);
+    const prevTotal = scalar(`${def.ts} >= datetime('now', ?) AND ${def.ts} < datetime('now', ?)`, [`-${2 * days - 1} days`, `-${days - 1} days`]);
+    return { metric, kind: 'count', days, points, total, peak: Math.max(0, ...points.map(p => p.value)),
+        before: Number(before.toFixed(2)), prev_total: Number(prevTotal.toFixed(2)) };
+}
+
+/**
+ * The two live readings (streams live, people watching) over time, from the five-minute sampler.
+ * Unlike counters they do not add up across a day, so each bucket carries the average reading
+ * and the peak. Up to a week is shown per hour, longer ranges per day. Buckets with no samples
+ * (before the sampler existed, or while the server was down) are null, not zero.
+ */
+const READING_SERIES = { liveNow: 'live_streams', viewersNow: 'viewers' };
+function getReadingSeries(metric, days = 7) {
+    const col = READING_SERIES[metric];
+    if (!col) return null;
+    _ensureViewerSamples();
+    days = Math.max(1, Math.min(365, parseInt(days, 10) || 7));
+    const hourly = days <= 7;
+    const fmt = hourly ? '%Y-%m-%dT%H:00:00Z' : '%Y-%m-%d';
+    let rows = [];
+    try {
+        rows = all(`SELECT strftime('${fmt}', sampled_at) AS b, AVG(${col}) AS avg, MAX(${col}) AS peak, COUNT(*) AS n
+            FROM viewer_samples WHERE sampled_at >= datetime('now', ?) GROUP BY b`, [hourly ? `-${days * 24 - 1} hours` : `-${days - 1} days`]);
+    } catch { rows = []; }
+    const byB = new Map(rows.map(r => [r.b, r]));
+    const points = [];
+    const now = Date.now();
+    const n = hourly ? days * 24 : days;
+    for (let i = n - 1; i >= 0; i--) {
+        const d = new Date(now - i * (hourly ? 3600000 : 86400000));
+        const key = hourly ? d.toISOString().slice(0, 13) + ':00:00Z' : d.toISOString().slice(0, 10);
+        const r = byB.get(key);
+        points.push({ t: key, value: r ? Math.round(Number(r.avg) * 10) / 10 : null, peak: r ? Number(r.peak) : null });
+    }
+    const have = points.filter(p => p.value != null);
+    return {
+        metric, kind: 'reading', bucket: hourly ? 'hour' : 'day', days, points,
+        peak: have.length ? Math.max(...have.map(p => p.peak)) : 0,
+        avg: have.length ? Math.round(have.reduce((a, p) => a + p.value, 0) / have.length * 10) / 10 : 0,
+        coverage: Math.round((have.length / points.length) * 100),
+    };
 }
 
 function getHomeStats() {
@@ -8315,7 +8364,7 @@ module.exports = {
     getDb, initDb, run, get, all, close,
     mergeChatMessageMetadata, getTimelineSpeechSince,
     getDonationGoalsForWidget, getAllDonationGoals, getActiveDonationGoals, getDonationGoalById,
-    recordViewerSample, getViewerTrend, getHomePulse, getActiveGoalsForUsers,
+    recordViewerSample, getViewerTrend, getReadingSeries, getHomePulse, getActiveGoalsForUsers,
     createDonationGoal, updateDonationGoal, deleteDonationGoal, addToDonationGoal,
     setChannelAlertSound, getChannelAlertSoundsByUser,
     // Users

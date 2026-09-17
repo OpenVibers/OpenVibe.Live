@@ -252,6 +252,17 @@
       "js": [
         "/js/app-docs.js"
       ]
+    },
+    "statsNerds": {
+      "css": [
+        "/css/features/stats.css"
+      ],
+      "js": [
+        "/js/stats-nerds.js"
+      ],
+      "stubs": [
+        "openStatsNerds"
+      ]
     }
   },
   "routes": [
