@@ -122,6 +122,13 @@ async function check(name, fn) {
         }
     });
 
+    await check('the public static mount never serves index.html for "/" (it would skip rendering)', () => {
+        const src = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
+        const mount = src.match(/app\.use\(express\.static\(assets\.PUBLIC_DIR,[^\n]*/);
+        assert.ok(mount, 'root static mount not found');
+        assert.match(mount[0], /index:\s*false/);
+    });
+
     server.close();
     fs.rmSync(base, { recursive: true, force: true });
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1); }
