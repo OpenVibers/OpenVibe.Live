@@ -165,7 +165,8 @@ const pageState = `(() => ({
         const { cdp, errors } = await openPage(1366);
         await cdp.send('Page.navigate', { url: BASE + '/' });
         await sleep(SETTLE);
-        const lap = ['/@admin', '/chat', '/dashboard', '/', '/broadcast', '/@admin', '/', '/vods', '/'];
+        const ch = process.env.CHANNEL || '/@admin';
+        const lap = [ch, '/chat', '/dashboard', '/', '/broadcast', ch, '/', '/vods', '/'];
         const probes = [];
         for (let i = 0; i < 3; i++) {
             for (const p of lap) { await cdp.evaluate(`navigate(${JSON.stringify(p)})`); await sleep(1200); }
