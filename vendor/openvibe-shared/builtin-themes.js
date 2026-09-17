@@ -5,7 +5,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Vibe',
         slug: 'vibe',
         mode: 'dark',
-        description: 'The OpenVibe default: deep blue night with an electric-blue glow.',
+        description: 'OpenVibe\'s default: deep blue night with an electric-blue glow.',
         tags: ['default', 'cool', 'blue'],
         variables: {
             '--bg-primary': '#0a0f1c',
@@ -32,10 +32,10 @@ const RAW_BUILTIN_THEMES = [
         },
     },
     {
-        name: 'Classic Vibe',
-        slug: 'vibe-classic',
+        name: 'Violet Hour',
+        slug: 'violet-hour',
         mode: 'dark',
-        description: 'The original OpenVibe look: violet over charcoal.',
+        description: 'Charcoal and violet: the colours OpenVibe started with.',
         tags: ['classic', 'purple', 'warm'],
         variables: {
             '--bg-primary': '#0d0d0f',
@@ -65,7 +65,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Midnight',
         slug: 'midnight',
         mode: 'dark',
-        description: 'Deep blue-black with cool steel accents.',
+        description: 'Blue-black with steel-indigo light.',
         tags: ['cool', 'minimal', 'blue'],
         variables: {
             '--bg-primary': '#0a0e17',
@@ -85,10 +85,10 @@ const RAW_BUILTIN_THEMES = [
         },
     },
     {
-        name: 'Forest',
+        name: 'Understory',
         slug: 'forest',
         mode: 'dark',
-        description: 'Deep greens and earthy tones — nature at night.',
+        description: 'Deep greens under the canopy.',
         tags: ['nature', 'green', 'earthy'],
         variables: {
             '--bg-primary': '#0a120a',
@@ -111,7 +111,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Neon Tokyo',
         slug: 'neon-tokyo',
         mode: 'dark',
-        description: 'Cyberpunk neon pink/purple over dark chrome.',
+        description: 'Hot pink neon on wet chrome.',
         tags: ['cyberpunk', 'neon', 'vibrant'],
         variables: {
             '--bg-primary': '#0a0a0f',
@@ -134,7 +134,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Dracula',
         slug: 'dracula',
         mode: 'dark',
-        description: 'The beloved Dracula color scheme.',
+        description: 'The Dracula scheme, as its authors drew it.',
         tags: ['popular', 'purple', 'classic'],
         variables: {
             '--bg-primary': '#282a36',
@@ -162,7 +162,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Monokai',
         slug: 'monokai',
         mode: 'dark',
-        description: 'Classic Monokai developer palette.',
+        description: 'The Monokai editor palette.',
         tags: ['developer', 'classic', 'warm'],
         variables: {
             '--bg-primary': '#272822',
@@ -185,10 +185,10 @@ const RAW_BUILTIN_THEMES = [
         },
     },
     {
-        name: 'Ocean Deep',
+        name: 'Trench',
         slug: 'ocean-deep',
         mode: 'dark',
-        description: 'Dark ocean depths with teal highlights.',
+        description: 'Pressure-dark water with a teal glow.',
         tags: ['ocean', 'teal', 'calm'],
         variables: {
             '--bg-primary': '#0a1215',
@@ -208,10 +208,10 @@ const RAW_BUILTIN_THEMES = [
         },
     },
     {
-        name: 'Sunset',
+        name: 'Dusk',
         slug: 'sunset',
         mode: 'dark',
-        description: 'Warm orange-to-pink gradient vibes at dusk.',
+        description: 'Orange fading to rose over dark ground.',
         tags: ['warm', 'gradient', 'vibrant'],
         variables: {
             '--bg-primary': '#120a0a',
@@ -234,7 +234,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Arctic',
         slug: 'arctic',
         mode: 'dark',
-        description: 'Frost: ice-blue surfaces, cyan light and crisp white text.',
+        description: 'Frost surfaces, cyan light, crisp white text.',
         tags: ['cool', 'ice', 'clean'],
         variables: {
             '--bg-primary': '#0b1620',
@@ -261,7 +261,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Ember',
         slug: 'ember',
         mode: 'dark',
-        description: 'Smoldering reds and warm charcoal.',
+        description: 'Smouldering red on warm charcoal.',
         tags: ['red', 'warm', 'intense'],
         variables: {
             '--bg-primary': '#120808',
@@ -284,7 +284,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Vapor',
         slug: 'vapor',
         mode: 'dark',
-        description: 'Vaporwave aesthetics — pink, purple, and teal.',
+        description: 'Magenta and teal, straight off a VHS tape.',
         tags: ['retro', 'aesthetic', 'neon'],
         variables: {
             '--bg-primary': '#0e0a14',
@@ -309,7 +309,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Slate',
         slug: 'slate',
         mode: 'dark',
-        description: 'Neutral gray with subtle blue undertones.',
+        description: 'Neutral grey with a cool violet accent.',
         tags: ['neutral', 'minimal', 'professional'],
         variables: {
             '--bg-primary': '#0f1118',
@@ -332,7 +332,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Matrix',
         slug: 'matrix',
         mode: 'dark',
-        description: 'Green terminal text on pitch black.',
+        description: 'Green phosphor on black.',
         tags: ['hacker', 'retro', 'terminal'],
         variables: {
             '--bg-primary': '#000000',
@@ -355,7 +355,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Nord',
         slug: 'nord',
         mode: 'dark',
-        description: 'Arctic, north-bluish color palette inspired by the Nord theme.',
+        description: 'The Nord palette: muted polar blues.',
         tags: ['popular', 'blue', 'soft'],
         variables: {
             '--bg-primary': '#2e3440',
@@ -379,10 +379,10 @@ const RAW_BUILTIN_THEMES = [
         },
     },
     {
-        name: 'Gruvbox Dark',
+        name: 'Gruvbox',
         slug: 'gruvbox-dark',
         mode: 'dark',
-        description: 'Retro groove colors with warm, high-contrast tones.',
+        description: 'Warm retro contrast.',
         tags: ['retro', 'warm', 'developer'],
         variables: {
             '--bg-primary': '#1d2021',
@@ -409,7 +409,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Abyss',
         slug: 'abyss',
         mode: 'dark',
-        description: 'The deepest dark — nearly pure black with dim accents.',
+        description: 'Nearly black; the interface is the light.',
         tags: ['minimal', 'ultra-dark', 'oled'],
         variables: {
             '--bg-primary': '#000000',
@@ -432,7 +432,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Copper',
         slug: 'copper',
         mode: 'dark',
-        description: 'Rich copper and bronze on dark walnut.',
+        description: 'Bronze on dark walnut.',
         tags: ['metallic', 'warm', 'premium'],
         variables: {
             '--bg-primary': '#110d09',
@@ -452,10 +452,10 @@ const RAW_BUILTIN_THEMES = [
         },
     },
     {
-        name: 'Sakura Night',
+        name: 'Sakura',
         slug: 'sakura-night',
         mode: 'dark',
-        description: 'Soft pink cherry blossom on dark indigo.',
+        description: 'Cherry blossom on indigo.',
         tags: ['japanese', 'pink', 'soft'],
         variables: {
             '--bg-primary': '#0e0a14',
@@ -475,10 +475,10 @@ const RAW_BUILTIN_THEMES = [
         },
     },
     {
-        name: 'Hacker',
+        name: 'Amber',
         slug: 'hacker',
         mode: 'dark',
-        description: 'Amber-on-black retro terminal look.',
+        description: 'Amber phosphor on black.',
         tags: ['retro', 'terminal', 'nostalgia'],
         variables: {
             '--bg-primary': '#000000',
@@ -501,7 +501,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Daylight',
         slug: 'daylight',
         mode: 'light',
-        description: 'Clean, bright white with warm accents for daytime use.',
+        description: 'Bright white with warm accents.',
         tags: ['clean', 'bright', 'default-light'],
         variables: {
             '--bg-primary': '#ffffff',
@@ -526,7 +526,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Paper',
         slug: 'paper',
         mode: 'light',
-        description: 'Warm off-white like aged paper with ink accents.',
+        description: 'Aged paper and ink.',
         tags: ['warm', 'soft', 'minimal'],
         variables: {
             '--bg-primary': '#faf8f5',
@@ -551,7 +551,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Cloud',
         slug: 'cloud',
         mode: 'light',
-        description: 'Airy light blue with sky accents.',
+        description: 'Airy blue-white with sky accents.',
         tags: ['blue', 'airy', 'fresh'],
         variables: {
             '--bg-primary': '#f0f5ff',
@@ -576,7 +576,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Meadow',
         slug: 'meadow',
         mode: 'light',
-        description: 'Fresh spring greens with natural tones.',
+        description: 'Spring greens in daylight.',
         tags: ['nature', 'green', 'fresh'],
         variables: {
             '--bg-primary': '#f2f8f0',
@@ -601,7 +601,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Peach',
         slug: 'peach',
         mode: 'light',
-        description: 'Soft peachy pinks with warm coral accents.',
+        description: 'Peach and coral, soft and warm.',
         tags: ['warm', 'pink', 'soft'],
         variables: {
             '--bg-primary': '#fff5f0',
@@ -626,7 +626,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Lavender',
         slug: 'lavender',
         mode: 'light',
-        description: 'Gentle purple hues — calming and elegant.',
+        description: 'Calm pale violet.',
         tags: ['purple', 'calm', 'elegant'],
         variables: {
             '--bg-primary': '#f8f5ff',
@@ -651,7 +651,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Gruvbox Light',
         slug: 'gruvbox-light',
         mode: 'light',
-        description: 'Light retro groove — warm cream with bold accents.',
+        description: 'Cream with bold retro accents.',
         tags: ['retro', 'warm', 'developer'],
         variables: {
             '--bg-primary': '#fbf1c7',
@@ -680,7 +680,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Snow',
         slug: 'snow',
         mode: 'light',
-        description: 'Pure white with icy blue accents.',
+        description: 'Pure white with icy blue.',
         tags: ['minimal', 'clean', 'blue'],
         variables: {
             '--bg-primary': '#ffffff',
@@ -705,7 +705,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Sand',
         slug: 'sand',
         mode: 'light',
-        description: 'Desert sand and warm tan tones.',
+        description: 'Desert tan and warm stone.',
         tags: ['warm', 'earthy', 'desert'],
         variables: {
             '--bg-primary': '#f8f4ef',
@@ -730,7 +730,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Rose',
         slug: 'rose',
         mode: 'light',
-        description: 'Delicate rose pink with warm blush tones.',
+        description: 'Blush pink, light and delicate.',
         tags: ['pink', 'romantic', 'soft'],
         variables: {
             '--bg-primary': '#fff5f7',
@@ -755,7 +755,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Solarized Dark',
         slug: 'solarized-dark',
         mode: 'dark',
-        description: 'Ethan Schoonover\'s precision color scheme — dark variant.',
+        description: 'Ethan Schoonover\'s precision palette, dark.',
         tags: ['popular', 'developer', 'balanced'],
         variables: {
             '--bg-primary': '#002b36',
@@ -782,7 +782,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Solarized Light',
         slug: 'solarized-light',
         mode: 'light',
-        description: 'Ethan Schoonover\'s precision color scheme — light variant.',
+        description: 'Ethan Schoonover\'s precision palette, light.',
         tags: ['popular', 'developer', 'balanced'],
         variables: {
             '--bg-primary': '#fdf6e3',
@@ -811,7 +811,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Catppuccin Mocha',
         slug: 'catppuccin-mocha',
         mode: 'dark',
-        description: 'Soothing pastel theme for the high-spirited.',
+        description: 'Soothing pastels on mocha.',
         tags: ['popular', 'pastel', 'soft'],
         variables: {
             '--bg-primary': '#1e1e2e',
@@ -839,7 +839,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'Catppuccin Latte',
         slug: 'catppuccin-latte',
         mode: 'light',
-        description: 'Soothing pastel theme — light variant.',
+        description: 'Soothing pastels on latte.',
         tags: ['popular', 'pastel', 'soft'],
         variables: {
             '--bg-primary': '#eff1f5',
@@ -869,7 +869,7 @@ const RAW_BUILTIN_THEMES = [
         name: 'High Contrast',
         slug: 'high-contrast',
         mode: 'dark',
-        description: 'Maximum contrast for accessibility — bold yellow on black.',
+        description: 'Bold yellow on black for maximum legibility.',
         tags: ['accessibility', 'high-contrast', 'bold'],
         variables: {
             '--bg-primary': '#000000',
@@ -895,11 +895,45 @@ const RAW_BUILTIN_THEMES = [
     },
 ];
 
+// ── Derived tokens ──────────────────────────────────────────────────────────────
+// Every theme also carries tokens a site cannot guess from the palette alone:
+//   --on-accent     text/icon colour that reads on top of --accent (dark ink for light accents
+//                   such as cyan or lime, white for deep ones) — chosen by WCAG contrast
+//   --accent-rgb    "r,g,b" of the accent, for rgba(var(--accent-rgb), .3) in older stylesheets
+//   --accent-glow   the accent at 35% for glows and focus rings
+//   --color-scheme  dark|light, so native controls and scrollbars follow the theme
+// A theme may set any of them explicitly; otherwise they are computed here so all 35 themes,
+// and community themes that only define the base palette, stay consistent on every site.
+function hexToRgb(hex) {
+    const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex || '').trim());
+    if (!m) return null;
+    let h = m[1]; if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+function luminance(rgb) {
+    const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
+}
+function contrast(a, b) { const [x, y] = [luminance(a), luminance(b)]; return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+function deriveTokens(vars, mode) {
+    const out = { ...vars };
+    const accent = hexToRgb(vars['--accent']);
+    if (accent) {
+        // White wherever it reads (>= 3:1, the large-text floor a button label meets); dark ink only
+        // on accents too light for it (cyan, lime, amber).
+        if (!out['--on-accent']) out['--on-accent'] = contrast([255, 255, 255], accent) >= 3 ? '#ffffff' : '#0b0d10';
+        if (!out['--accent-rgb']) out['--accent-rgb'] = accent.join(',');
+        if (!out['--accent-glow']) out['--accent-glow'] = `rgba(${accent.join(',')},0.35)`;
+    }
+    if (!out['--color-scheme']) out['--color-scheme'] = mode === 'light' ? 'light' : 'dark';
+    return out;
+}
+
 const BUILTIN_THEMES = RAW_BUILTIN_THEMES.map((theme) => ({
     id: theme.slug,
     ...theme,
     tags: Array.isArray(theme.tags) ? [...theme.tags] : [],
-    variables: { ...(theme.variables || {}) },
+    variables: deriveTokens(theme.variables || {}, theme.mode),
 }));
 
 const DEFAULT_THEME = BUILTIN_THEMES.find((theme) => theme.id === 'vibe') || BUILTIN_THEMES[0];
@@ -909,4 +943,7 @@ module.exports = {
     BUILTIN_THEMES,
     DEFAULT_THEME,
     DEFAULT_VARS,
+    deriveTokens,
+    hexToRgb,
+    contrast,
 };

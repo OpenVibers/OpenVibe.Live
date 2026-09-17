@@ -1,6 +1,6 @@
 'use strict';
 
-const { BUILTIN_THEMES, DEFAULT_VARS } = require('./builtin-themes');
+const { BUILTIN_THEMES, DEFAULT_VARS, deriveTokens } = require('./builtin-themes');
 
 // ═══════════════════════════════════════════════════════════════
 // OpenVibe — Theme Sync Engine
@@ -15,6 +15,8 @@ const CSS_VARIABLES = [
     '--accent', '--accent-light', '--accent-dark',
     '--live-red', '--success', '--warning', '--danger', '--info',
     '--border', '--border-light', '--shadow', '--shadow-lg',
+    // Derived on every theme (builtin-themes.js deriveTokens); community themes get them too.
+    '--on-accent', '--accent-rgb', '--accent-glow', '--color-scheme',
 ];
 
 const NORMALIZED_DEFAULT_VARS = Object.freeze({ ...DEFAULT_VARS });
@@ -44,7 +46,7 @@ function sanitizeCssValue(value) {
  */
 function applyTheme(theme, target) {
     if (!theme || !theme.variables) return;
-    const vars = { ...NORMALIZED_DEFAULT_VARS, ...theme.variables };
+    const vars = deriveTokens({ ...NORMALIZED_DEFAULT_VARS, ...theme.variables }, theme.mode);
     for (const [key, value] of Object.entries(vars)) {
         if (!CSS_VARIABLES.includes(key)) continue;
         const safe = sanitizeCssValue(value);
