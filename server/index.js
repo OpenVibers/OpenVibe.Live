@@ -573,6 +573,18 @@ app.use('/data/arena', express.static(path.resolve(process.env.ARENA_IMAGE_PATH 
 app.post('/internal/media-webhook', require('./media-proxy/webhook'));
 
 // Internal (server-to-server) routes — allow openvibe.network to call into this service
+// Summary numbers for the Network's navigation service (ordering sites by real use).
+// Internal key only; returns totals, never rows.
+app.get('/internal/analytics-summary', (req, res) => {
+    const key = req.headers['x-internal-key'];
+    if (!config.internalApiKey || !key || key !== config.internalApiKey) return res.status(401).json({ ok: false });
+    try {
+        const days = Math.min(parseInt(req.query.days, 10) || 7, 90);
+        const st = analytics.getStats({ days }) || {};
+        res.json({ ok: true, summary: st.summary || {} });
+    } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
 app.use('/internal', require('./internal/routes'));
 
 
