@@ -67,7 +67,7 @@ function manifest({ site = 'network', name, shortName, description, startUrl = '
 /** <head> tags every site shares: SVG favicon (inline, no request), theme colour, and the PNG touch icon when the site ships one. */
 function headTags({ site = 'network', iconBase = null } = {}) {
     const uri = 'data:image/svg+xml,' + encodeURIComponent(favicon({ site })).replace(/'/g, '%27');
-    return [`<link rel="icon" type="image/svg+xml" href="${uri}">`, '<meta name="theme-color" content="#3b82f6">', `<meta name="color-scheme" content="dark light">`,
+    return [`<link rel="icon" type="image/svg+xml" data-ov-icon="${String(site).replace(/[^a-z]/g, '')}" href="${uri}">`, '<meta name="theme-color" content="#0d131d">', `<meta name="color-scheme" content="dark light">`,
         iconBase ? `<link rel="apple-touch-icon" href="${iconBase}/logo-192.png">` : '', iconBase ? `<link rel="manifest" href="/manifest.webmanifest">` : ''].filter(Boolean).join('\n');
 }
 
