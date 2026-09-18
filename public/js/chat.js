@@ -3769,7 +3769,7 @@ function addRichSystemMessage(html, style = 'info') {
 function _deployCss() {
     if (document.getElementById('chat-deploy-css')) return;
     const st = document.createElement('style'); st.id = 'chat-deploy-css';
-    st.textContent = `.chat-deploy{margin:6px 0;padding:9px 11px;border-radius:10px;border:1px solid color-mix(in srgb,var(--accent,#3b82f6) 30%,transparent);background:color-mix(in srgb,var(--accent,#3b82f6) 7%,transparent);color:var(--text-secondary,#a8b3c4);font-style:normal;font-size:.84rem;line-height:1.45}
+    st.textContent = `.chat-msg.system.chat-deploy,.chat-msg.system.chat-deploy *{font-style:normal}.chat-deploy{margin:6px 0;padding:9px 11px;border-radius:10px;border:1px solid color-mix(in srgb,var(--accent,#3b82f6) 30%,transparent);background:color-mix(in srgb,var(--accent,#3b82f6) 7%,transparent);color:var(--text-secondary,#a8b3c4);font-style:normal;font-size:.84rem;line-height:1.45}
 .chat-deploy-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;color:var(--text-primary,#e6edf7)}.chat-deploy-h b{font-weight:700}.chat-deploy-t{font-size:.76rem;color:var(--text-muted,#7d8aa0)}
 .chat-deploy-a{margin-left:auto;display:flex;gap:10px;align-items:center}.chat-deploy a,.chat-deploy-more{color:var(--accent-light,var(--accent,#60a5fa));text-decoration:none;font-size:.78rem;cursor:pointer;background:none;border:0;padding:0;font-family:inherit}
 .chat-deploy-reload{border:0;border-radius:6px;background:var(--accent,#3b82f6);color:var(--on-accent,#fff);font:600 .74rem/1 inherit;padding:4px 9px;cursor:pointer}
