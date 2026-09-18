@@ -99,6 +99,14 @@
             .ovnav-launcher .ovl-soon { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 4px 4px; }
             .ovnav-launcher .ovl-soon a { font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--border, rgba(255,255,255,.1)); color: var(--text-secondary, #a8b3c4); }
             .ovnav-launcher .ovl-soon a:hover { border-color: var(--accent, #3b82f6); color: var(--text-primary, #e6edf7); background: none; }
+            .ovnav-launcher .ovl-display { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding: 10px 4px 2px; border-top: 1px solid var(--border, rgba(255,255,255,.08)); font-size: 12px; color: var(--text-muted, #7d8aa0); }
+            .ovnav-launcher .ovl-display[hidden] { display: none; }
+            .ovnav-launcher .ovl-dl { font-weight: 700; letter-spacing: .6px; text-transform: uppercase; font-size: 11px; margin-right: 2px; }
+            .ovnav-launcher .ovl-seg { display: inline-flex; border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 9px; overflow: hidden; }
+            .ovnav-launcher .ovl-seg button { all: unset; cursor: pointer; padding: 5px 9px; font-size: 12px; font-weight: 650; color: var(--text-secondary, #a8b3c4); }
+            .ovnav-launcher .ovl-seg button[aria-pressed="true"] { background: var(--accent, #3b82f6); color: var(--on-accent, #fff); }
+            .ovnav-launcher .ovl-seg button:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: -2px; }
+            .ovnav-launcher .ovl-display a { margin-left: auto; color: var(--accent-light, var(--accent, #60a5fa)); font-weight: 600; }
             .ovnav-launcher .ovl-empty { padding: 18px 8px; color: var(--text-secondary, #a8b3c4); font-size: 13px; }
             @media (max-width: 480px) { .ovnav-launcher { left: 8px; } .ovnav-launcher .ovl-fams { grid-template-columns: 1fr; } }
             @media (prefers-reduced-motion: reduce) { .ovnav-launcher { transition: none; } }
@@ -643,7 +651,8 @@
             if (panel && panel.classList.contains('open')) return close();
             if (!panel) {
                 panel = document.createElement('div'); panel.className = 'ovnav-launcher'; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'OpenVibe sites and tools');
-                panel.innerHTML = '<input type="search" class="ovl-q" placeholder="Find a tool or site" aria-label="Find a tool or site"><div class="ovl-body"></div>';
+                panel.innerHTML = '<input type="search" class="ovl-q" placeholder="Find a tool or site" aria-label="Find a tool or site"><div class="ovl-body"></div><div class="ovl-display" hidden></div>';
+                bindDisplayControls(panel.querySelector('.ovl-display'));
                 nav.appendChild(panel);
                 if (!root.OpenVibeIcons && !document.getElementById('ov-icons-loader')) { const sc = document.createElement('script'); sc.id = 'ov-icons-loader'; sc.src = 'https://openvibe.network/shared/ov-icons.js'; sc.async = true; document.head.appendChild(sc); }
                 let cat = null; paint(null, '');
@@ -689,6 +698,21 @@
         const pick = chrome.nav.filter(n => { try { const h = new URL(n.url).hostname; return h !== here && !here.endsWith('.' + h) && !taken.has(h); } catch { return false; } }).slice(0, max);
         if (!pick.length) return '';
         return `<span class="ovnav-sep" aria-hidden="true"></span>` + pick.map(n => `<a class="ovnav-net" href="${escapeAttr(n.url)}" title="${escapeAttr(n.tagline)}">${escapeAttr(n.name)}</a>`).join('');
+    }
+
+    /** Display settings in the launcher, for guests and members alike (theme-loader.js owns the state). */
+    function bindDisplayControls(box) {
+        const L = root.OpenVibeThemeLoader; if (!box || !L || !L.display) return;
+        const paint = () => {
+            const d = L.display.get();
+            const seg = (key, val, label, title) => `<button type="button" data-k="${key}" data-v="${val}" aria-pressed="${String(d[key]) === val}" title="${title}">${label}</button>`;
+            box.innerHTML = `<span class="ovl-dl">Display</span><span class="ovl-seg" role="group" aria-label="Text size">${seg('text', '100', 'A', 'Default text size')}${seg('text', '112', 'A+', 'Larger text')}${seg('text', '125', 'A++', 'Largest text')}</span>
+                <span class="ovl-seg" role="group" aria-label="Motion">${seg('motion', 'auto', 'Motion', 'Animations on')}${seg('motion', 'reduced', 'Calm', 'Reduce animations')}</span><a href="https://openvibe.network/themes">Themes</a>`;
+            box.hidden = false;
+        };
+        box.addEventListener('click', (e) => { const b = e.target.closest('button[data-k]'); if (!b) return; L.display.set({ [b.dataset.k]: b.dataset.v }); paint(); });
+        root.addEventListener('ov:display', paint);
+        paint();
     }
 
     // ── Notification bell (mounted by the navbar itself) ─────

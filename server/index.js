@@ -577,7 +577,7 @@ app.post('/internal/media-webhook', require('./media-proxy/webhook'));
 // Internal key only; returns totals, never rows.
 app.get('/internal/analytics-summary', (req, res) => {
     const key = req.headers['x-internal-key'];
-    if (!config.internalApiKey || !key || key !== config.internalApiKey) return res.status(401).json({ ok: false });
+    if (req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || !config.internalApiKey || !key || key !== config.internalApiKey) return res.status(401).json({ ok: false });
     try {
         const days = Math.min(parseInt(req.query.days, 10) || 7, 90);
         const st = analytics.getStats({ days }) || {};

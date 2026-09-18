@@ -7,7 +7,9 @@ const db = require('../db/database');
 
 function requireInternalKey(req, res, next) {
     const key = req.headers['x-internal-key'];
-    if (!key || key !== config.internalApiKey) {
+    // Service-to-service only: nginx adds X-Forwarded-For to everything from outside, loopback callers never do.
+    const viaProxy = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.headers['cf-connecting-ip'];
+    if (viaProxy || !key || !config.internalApiKey || key !== config.internalApiKey) {
         return res.status(403).json({ error: 'Invalid or missing internal key' });
     }
     next();
