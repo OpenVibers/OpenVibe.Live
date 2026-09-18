@@ -435,7 +435,7 @@ app.use((req, res, next) => {
 // Serve openvibe-shared browser assets at /shared/ — serve directly from the
 // resolved source directory to avoid write operations (the public/ directory
 // is read-only under systemd ProtectSystem=strict on production).
-const SHARED_BROWSER_FILES = ['theme-loader.js', 'notification-ui.js', 'account-switcher.js', 'openvibe-sw.js', 'footer.js', 'ov-mark.js', 'tooltip.js', 'history.js', 'navbar.js', 'sso-client.js', 'ov-icons.js', 'island.js', 'ui.js'];
+const SHARED_BROWSER_FILES = ['theme-loader.js', 'notification-ui.js', 'account-switcher.js', 'openvibe-sw.js', 'footer.js', 'ov-mark.js', 'tooltip.js', 'history.js', 'navbar.js', 'sso-client.js', 'ov-icons.js', 'island.js', 'ui.js', 'panels.js'];
 let sharedServePath = null;
 
 (function resolveSharedAssets() {

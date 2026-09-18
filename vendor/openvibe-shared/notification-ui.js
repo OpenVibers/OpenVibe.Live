@@ -567,6 +567,7 @@
     function togglePanel() {
         if (!_panelEl) createPanel();
         const opening = !_panelEl.classList.contains('open');
+        if (opening && window.OpenVibePanels && !_panelEl.__registered) { _panelEl.__registered = true; window.OpenVibePanels.register({ el: _panelEl, openClass: 'open', id: 'notifications', close: () => { if (_panelEl.classList.contains('open')) togglePanel(); } }); window.OpenVibePanels.closeAll(_panelEl); }
         if (opening) {
             // Sit directly under the site's navbar, whatever its height (sticky bars, banners, safe areas).
             const bar = _bellEl && _bellEl.closest('nav, header, .navbar');
