@@ -129,6 +129,24 @@
         return `<svg viewBox="0 0 48 48"${s} aria-hidden="true" focusable="false"><circle class="ovi-bg" cx="24" cy="24" r="21"/><circle class="ovi-ring" cx="24" cy="24" r="20"/><circle class="ovi-comet" cx="24" cy="24" r="20"/><circle class="ovi-prog" cx="24" cy="24" r="20"/><g transform="translate(${(13 + off[0] * .9167).toFixed(2)} ${(13 + off[1] * .9167).toFixed(2)}) scale(.9167)"><g class="ovi-glyph">${def.glyph}</g></g></svg>`;
     }
 
+    // ── Sprite mode (server-rendered lists) ──────────────────────────────────────────────
+    // A page that shows 170 icons should not ship 170 copies of the same ring and glyph. sprite(names) emits each
+    // icon once as a <symbol>; use(name) references it. Colours come from currentColor and inherited custom
+    // properties, so a referenced icon is themed exactly like an inline one. Static by design (no comet, no
+    // progress): pages use it for listings and keep the full inline icon where state or motion matters.
+    function sprite(names) {
+        const seen = new Set();
+        const symbols = (names || []).map(resolve).filter(n => !seen.has(n) && seen.add(n)).map((key) => {
+            const def = registry[key]; const off = def.offset || OFFSETS[key] || [0, 0];
+            return `<symbol id="ovi-${key}" viewBox="0 0 48 48"><circle cx="24" cy="24" r="21" fill="currentColor" opacity=".1"/><circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="2.4" opacity=".3"/><g transform="translate(${(13 + off[0] * .9167).toFixed(2)} ${(13 + off[1] * .9167).toFixed(2)}) scale(.9167)" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--ovi-glyph,var(--text-primary,#e6edf7))">${def.glyph}</g></symbol>`;
+        }).join('');
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">${symbols}</svg>`;
+    }
+    function use(name, size) {
+        const key = resolve(name);
+        return `<span class="ov-icon" data-icon="${key}" data-ovi="${key}" data-fx="none" style="--ovi-size:${parseInt(size, 10) || 32}px" aria-hidden="true"><svg viewBox="0 0 48 48" focusable="false"><use href="#ovi-${key}"/></svg></span>`;
+    }
+
     function applyProgress(el) {
         const raw = el.getAttribute('data-progress');
         const prog = el.querySelector('.ovi-prog');
@@ -168,7 +186,7 @@
         if (typeof document !== 'undefined') document.querySelectorAll(`.ov-icon[data-icon="${name}"]`).forEach((el) => { el.removeAttribute('data-ovi'); mountOne(el); });
     }
 
-    const api = { names: () => Object.keys(registry), register, mount, set, svg, resolve, CSS };
+    const api = { names: () => Object.keys(registry), register, mount, set, svg, sprite, use, resolve, CSS };
     root.OpenVibeIcons = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (typeof document === 'undefined') return;

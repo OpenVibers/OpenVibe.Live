@@ -83,6 +83,7 @@
             .ovnav-launcher a { all: unset; cursor: pointer; box-sizing: border-box; }
             .openvibe-navbar .ovnav-sep { width: 1px; height: 18px; background: var(--border, rgba(255,255,255,.12)); margin: 0 6px; flex: none; align-self: center; }
             @media (max-width: 1180px) { .openvibe-navbar .ovnav-net, .openvibe-navbar .ovnav-sep { display: none; } }
+            .openvibe-navbar .ovnav-ic, .openvibe-navbar-dropdown .ovnav-ic { flex: none; font-size: 1.05em; vertical-align: -.15em; }
             .ovnav-launcher { position: absolute; top: calc(100% + 6px); left: 12px; width: min(440px, calc(100vw - 24px));  background: var(--bg-elevated, var(--bg-secondary, #111826)); border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,.5); padding: 12px; z-index: 1000; opacity: 0; transform: translateY(-6px) scale(.98); transform-origin: top left; pointer-events: none; transition: opacity .16s, transform .2s cubic-bezier(.2,1.2,.3,1); }
             .ovnav-launcher.open { opacity: 1; transform: none; pointer-events: auto; }
             .ovnav-launcher .ovl-q { width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border, rgba(255,255,255,.12)); background: var(--bg-primary, #0a0f18); color: var(--text-primary, #e6edf7); font: 500 14px/1.2 inherit; outline: none; }
@@ -255,225 +256,30 @@
         document.head.appendChild(s);
     }
 
-    // Primary services (per CONTRACTS branding) + tool sub-brands (<Name>.OpenVibe)
-    const SERVICE_NAMES = {
-        live: 'OpenVibe.Live', tools: 'OpenVibe.Tools', games: 'OpenVibe.Games',
-        media: 'OpenVibe.Media', network: 'OpenVibe.Network',
-        net: 'Net.OpenVibe', dev: 'Dev.OpenVibe', paste: 'Paste.OpenVibe',
-        maps: 'Maps.OpenVibe', food: 'Food.OpenVibe', img: 'Img.OpenVibe',
-        yt: 'YT.OpenVibe', audio: 'Audio.OpenVibe', text: 'Text.OpenVibe',
-        logo: 'Logo.OpenVibe', docs: 'Docs.OpenVibe',
+    // ── Icons ────────────────────────────────────────────────
+    // The navbar draws its own icons. It used to borrow the page's Font Awesome, so on pages that do not load
+    // that font every menu row had an empty slot. Known names get an inline SVG; an unknown name still falls
+    // back to the page's icon font, so sites that pass their own Font Awesome icons keep working.
+    const NAV_ICONS = {
+        'fa-user': '<circle cx="12" cy="9" r="3.2"/><path d="M5.5 19a6.5 6.5 0 0 1 13 0"/>',
+        'fa-user-secret': '<path d="M4 11h16M7.5 11l1.2-5h6.6l1.2 5"/><circle cx="9" cy="15" r="2"/><circle cx="15" cy="15" r="2"/><path d="M11 15h2"/>',
+        'fa-clock-rotate-left': '<path d="M4.5 12a7.5 7.5 0 1 0 2.4-5.5L4.5 8.8M4.5 4.8v4h4M12 8v4.2l2.8 1.8"/>',
+        'fa-bell': '<path d="M6.5 16.5h11l-1.2-2V11a4.3 4.3 0 0 0-8.6 0v3.5zM10.5 19a1.6 1.6 0 0 0 3 0"/>',
+        'fa-palette': '<path d="M12 4.5a7.5 7.5 0 1 0 0 15c1 0 1.6-.8 1.2-1.7-.5-1.1.3-2.3 1.5-2.3h1.6a3.2 3.2 0 0 0 3.2-3.2C19.5 8 16.2 4.5 12 4.5z"/><circle cx="8.5" cy="11" r=".7"/><circle cx="11.5" cy="8" r=".7"/><circle cx="15" cy="9" r=".7"/>',
+        'fa-link': '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.700l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.700l1-1"/>',
+        'fa-shield-halved': '<path d="M12 3.5l7 2.500v5.500c0 4.3-3 7.3-7 9-4-1.7-7-4.7-7-9V6zM12 3.500v17"/>',
+        'fa-screwdriver-wrench': '<path d="M14.5 5.5a4 4 0 0 0-5.2 5.2L4.5 15.5a1.8 1.8 0 0 0 2.5 2.5l4.8-4.8a4 4 0 0 0 5.2-5.2l-2.6 2.6-2.1-.5-.5-2.1z"/>',
+        'fa-right-from-bracket': '<path d="M10 5H6.500A1.5 1.5 0 0 0 5 6.500v11A1.5 1.5 0 0 0 6.5 19H10M14 8l4 4-4 4M18 12H9.5"/>',
+        'fa-plus': '<path d="M12 5.500v13M5.5 12h13"/>',
+        'fa-paste': '<rect x="6" y="6" width="12" height="14" rx="1.8"/><path d="M9.5 6V5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1M9 11h6M9 14h6"/>',
+        'fa-house': '<path d="M4.5 11.5 12 5l7.5 6.500M6.5 10v8.500h11V10"/>',
+        'fa-gauge-high': '<path d="M4.5 17a8 8 0 1 1 15 0M12 13l3.5-4"/><circle cx="12" cy="13.5" r="1.3"/>',
     };
-
-    const SERVICE_ICONS = {
-        live: 'fa-tower-broadcast', tools: 'fa-screwdriver-wrench', games: 'fa-gamepad',
-        media: 'fa-photo-film', network: 'fa-circle-nodes',
-        net: 'fa-network-wired', dev: 'fa-code', paste: 'fa-paste',
-        maps: 'fa-map-location-dot', food: 'fa-utensils', img: 'fa-images',
-        yt: 'fa-circle-play', audio: 'fa-headphones', text: 'fa-pen-fancy',
-        logo: 'fa-wand-magic-sparkles', docs: 'fa-file-pdf',
-    };
-
-    // Subdomain → brand override for multi-subdomain services (Img.OpenVibe)
-    const SUBDOMAIN_BRANDS = {
-        'png.openvibe.tools':      { name: 'OpenVibePNG',      icon: 'fa-file-image' },
-        'jpg.openvibe.tools':      { name: 'OpenVibeJPG',      icon: 'fa-file-image' },
-        'jpeg.openvibe.tools':     { name: 'OpenVibeJPG',      icon: 'fa-file-image' },
-        'webp.openvibe.tools':     { name: 'OpenVibeWebP',     icon: 'fa-file-image' },
-        'avif.openvibe.tools':     { name: 'OpenVibeAVIF',     icon: 'fa-file-image' },
-        'heic.openvibe.tools':     { name: 'OpenVibeHEIC',     icon: 'fa-file-image' },
-        'heif.openvibe.tools':     { name: 'OpenVibeHEIC',     icon: 'fa-file-image' },
-        'svg.openvibe.tools':      { name: 'OpenVibeSVG',      icon: 'fa-bezier-curve' },
-        'gif.openvibe.tools':      { name: 'OpenVibeGIF',      icon: 'fa-film' },
-        'ico.openvibe.tools':      { name: 'OpenVibeICO',      icon: 'fa-icons' },
-        'tiff.openvibe.tools':     { name: 'OpenVibeTIFF',     icon: 'fa-file-image' },
-        'bmp.openvibe.tools':      { name: 'OpenVibeBMP',      icon: 'fa-file-image' },
-        'compress.openvibe.tools': { name: 'OpenVibeCompress',  icon: 'fa-compress' },
-        'resize.openvibe.tools':   { name: 'OpenVibeResize',    icon: 'fa-up-right-and-down-left-from-center' },
-        'crop.openvibe.tools':     { name: 'OpenVibeCrop',      icon: 'fa-crop-simple' },
-        'convert.openvibe.tools':  { name: 'OpenVibeConvert',   icon: 'fa-arrows-rotate' },
-        'favicon.openvibe.tools':  { name: 'OpenVibeFavicon',   icon: 'fa-icons' },
-        'yt.openvibe.tools':       { name: 'YT.OpenVibe',        icon: 'fa-circle-play' },
-        'maps.openvibe.tools':     { name: 'Maps.OpenVibe',      icon: 'fa-map-location-dot' },
-        'food.openvibe.tools':     { name: 'Food.OpenVibe',      icon: 'fa-utensils' },
-        // Audio tool subdomains
-        'audio.openvibe.tools':    { name: 'Audio.OpenVibe',     icon: 'fa-headphones' },
-        'mp3.openvibe.tools':      { name: 'OpenVibeMP3',       icon: 'fa-file-audio' },
-        'wav.openvibe.tools':      { name: 'OpenVibeWAV',       icon: 'fa-file-audio' },
-        'flac.openvibe.tools':     { name: 'OpenVibeFLAC',      icon: 'fa-file-audio' },
-        'ogg.openvibe.tools':      { name: 'OpenVibeOGG',       icon: 'fa-file-audio' },
-        'm4a.openvibe.tools':      { name: 'OpenVibeM4A',       icon: 'fa-file-audio' },
-        'aac.openvibe.tools':      { name: 'OpenVibeAAC',       icon: 'fa-file-audio' },
-        'opus.openvibe.tools':     { name: 'OpenVibeOPUS',      icon: 'fa-file-audio' },
-        'wma.openvibe.tools':      { name: 'OpenVibeWMA',       icon: 'fa-file-audio' },
-        'aiff.openvibe.tools':     { name: 'OpenVibeAIFF',      icon: 'fa-file-audio' },
-        'ac3.openvibe.tools':      { name: 'OpenVibeAC3',       icon: 'fa-file-audio' },
-        'trim.openvibe.tools':     { name: 'OpenVibeTrim',      icon: 'fa-scissors' },
-        'pitch.openvibe.tools':    { name: 'OpenVibePitch',     icon: 'fa-wave-square' },
-        'speed.openvibe.tools':    { name: 'OpenVibeSpeed',     icon: 'fa-gauge-high' },
-        'normalize.openvibe.tools':{ name: 'OpenVibeNormalize', icon: 'fa-sliders' },
-        'fade.openvibe.tools':     { name: 'OpenVibeFade',      icon: 'fa-volume-low' },
-        'bass.openvibe.tools':     { name: 'OpenVibeBass',      icon: 'fa-volume-high' },
-        'equalizer.openvibe.tools':{ name: 'OpenVibeEQ',        icon: 'fa-bars-staggered' },
-        'echo.openvibe.tools':     { name: 'OpenVibeEcho',      icon: 'fa-tower-broadcast' },
-        'reverb.openvibe.tools':   { name: 'OpenVibeReverb',    icon: 'fa-church' },
-        'voice.openvibe.tools':    { name: 'OpenVibeVoiceFX',   icon: 'fa-user-astronaut' },
-        'extract.openvibe.tools':  { name: 'OpenVibeExtract',   icon: 'fa-music' },
-        'ringtone.openvibe.tools': { name: 'OpenVibeRingtone',  icon: 'fa-bell' },
-        // Text tool subdomains
-        'text.openvibe.tools':       { name: 'Text.OpenVibe',       icon: 'fa-pen-fancy' },
-        'type.openvibe.tools':       { name: 'Text.OpenVibe',       icon: 'fa-pen-fancy' },
-        'fonts.openvibe.tools':      { name: 'OpenVibeFonts',      icon: 'fa-font' },
-        'fancy.openvibe.tools':      { name: 'OpenVibeFancy',      icon: 'fa-wand-sparkles' },
-        'zalgo.openvibe.tools':      { name: 'OpenVibeZalgo',      icon: 'fa-skull' },
-        'ascii.openvibe.tools':      { name: 'OpenVibeASCII',      icon: 'fa-terminal' },
-        'symbols.openvibe.tools':    { name: 'OpenVibeSymbols',    icon: 'fa-icons' },
-        'unicode.openvibe.tools':    { name: 'OpenVibeUnicode',    icon: 'fa-magnifying-glass' },
-        'bubble.openvibe.tools':     { name: 'OpenVibeBubble',     icon: 'fa-circle' },
-        'glitch.openvibe.tools':     { name: 'OpenVibeGlitch',     icon: 'fa-bug' },
-        'smallcaps.openvibe.tools':  { name: 'OpenVibeSmallCaps',  icon: 'fa-text-height' },
-        'cursive.openvibe.tools':    { name: 'OpenVibeCursive',    icon: 'fa-pen-nib' },
-        'gothic.openvibe.tools':     { name: 'OpenVibeGothic',     icon: 'fa-book-skull' },
-        'wide.openvibe.tools':       { name: 'OpenVibeWide',       icon: 'fa-arrows-left-right' },
-        'monospaced.openvibe.tools': { name: 'OpenVibeMono',       icon: 'fa-code' },
-        'braille.openvibe.tools':    { name: 'OpenVibeBraille',    icon: 'fa-braille' },
-        'morse.openvibe.tools':      { name: 'OpenVibeMorse',      icon: 'fa-tower-broadcast' },
-        'binary.openvibe.tools':     { name: 'OpenVibeBinary',     icon: 'fa-microchip' },
-        'case.openvibe.tools':       { name: 'OpenVibeCase',       icon: 'fa-text-height' },
-        'caps.openvibe.tools':       { name: 'OpenVibeCaps',       icon: 'fa-text-height' },
-        'titlecase.openvibe.tools':  { name: 'OpenVibeTitleCase',  icon: 'fa-heading' },
-        'reverse.openvibe.tools':    { name: 'OpenVibeReverse',    icon: 'fa-right-left' },
-        'clean.openvibe.tools':      { name: 'OpenVibeClean',      icon: 'fa-broom' },
-        'strip.openvibe.tools':      { name: 'OpenVibeStrip',      icon: 'fa-broom' },
-        'count.openvibe.tools':      { name: 'OpenVibeCount',      icon: 'fa-calculator' },
-        'lines.openvibe.tools':      { name: 'OpenVibeLines',      icon: 'fa-list-ol' },
-        'sort.openvibe.tools':       { name: 'OpenVibeSort',       icon: 'fa-arrow-down-a-z' },
-        'dedupe.openvibe.tools':     { name: 'OpenVibeDedupe',     icon: 'fa-filter' },
-        'slug.openvibe.tools':       { name: 'OpenVibeSlug',       icon: 'fa-link' },
-        'compare.openvibe.tools':    { name: 'OpenVibeCompare',    icon: 'fa-code-compare' },
-        'diff.openvibe.tools':       { name: 'OpenVibeDiff',       icon: 'fa-code-compare' },
-        'markdown.openvibe.tools':   { name: 'OpenVibeMarkdown',   icon: 'fa-file-lines' },
-        'json.openvibe.tools':       { name: 'OpenVibeJSON',       icon: 'fa-brackets-curly' },
-        'escape.openvibe.tools':     { name: 'OpenVibeEscape',     icon: 'fa-shield-halved' },
-        'bio.openvibe.tools':        { name: 'OpenVibeBio',        icon: 'fa-id-card' },
-        'nickname.openvibe.tools':   { name: 'OpenVibeNickname',   icon: 'fa-signature' },
-        'username.openvibe.tools':   { name: 'OpenVibeUsername',   icon: 'fa-at' },
-        'gamertag.openvibe.tools':   { name: 'OpenVibeGamertag',   icon: 'fa-gamepad' },
-        'kaomoji.openvibe.tools':    { name: 'OpenVibeKaomoji',    icon: 'fa-face-smile' },
-        'emojis.openvibe.tools':     { name: 'OpenVibeEmojis',     icon: 'fa-face-grin' },
-        'copypaste.openvibe.tools':  { name: 'OpenVibeCopyPaste',  icon: 'fa-paste' },
-        'banner.openvibe.tools':     { name: 'OpenVibeBanner',     icon: 'fa-rectangle-ad' },
-        'textart.openvibe.tools':    { name: 'Text.OpenVibeArt',    icon: 'fa-border-all' },
-        'figlet.openvibe.tools':     { name: 'OpenVibeFiglet',     icon: 'fa-terminal' },
-        // Logo / design subdomains
-        'logo.openvibe.tools':       { name: 'Logo.OpenVibe',       icon: 'fa-wand-magic-sparkles' },
-        'title.openvibe.tools':      { name: 'OpenVibeTitle',      icon: 'fa-heading' },
-        'wordmark.openvibe.tools':   { name: 'OpenVibeWordmark',   icon: 'fa-font' },
-        'textlogo.openvibe.tools':   { name: 'Text.OpenVibeLogo',   icon: 'fa-font' },
-        'transparent.openvibe.tools':{ name: 'OpenVibeTransparent', icon: 'fa-eye-slash' },
-        'badge.openvibe.tools':      { name: 'OpenVibeBadge',      icon: 'fa-certificate' },
-        'sticker.openvibe.tools':    { name: 'OpenVibeSticker',    icon: 'fa-note-sticky' },
-        'thumbnail.openvibe.tools':  { name: 'OpenVibeThumbnail',  icon: 'fa-photo-film' },
-        'cover.openvibe.tools':      { name: 'OpenVibeCover',      icon: 'fa-image' },
-        'channelart.openvibe.tools': { name: 'OpenVibeChannelArt', icon: 'fa-panorama' },
-        'watermark.openvibe.tools':  { name: 'OpenVibeWatermark',  icon: 'fa-droplet' },
-        'neon.openvibe.tools':       { name: 'OpenVibeNeon',       icon: 'fa-lightbulb' },
-        // Document / PDF subdomains
-        'docs.openvibe.tools':       { name: 'Docs.OpenVibe',      icon: 'fa-file-pdf' },
-        'pdf.openvibe.tools':        { name: 'OpenVibePDF',       icon: 'fa-file-pdf' },
-        'mergepdf.openvibe.tools':   { name: 'MergePDF',      icon: 'fa-object-group' },
-        'splitpdf.openvibe.tools':   { name: 'SplitPDF',      icon: 'fa-scissors' },
-        'compresspdf.openvibe.tools':{ name: 'CompressPDF',   icon: 'fa-compress' },
-        'rotatepdf.openvibe.tools':  { name: 'RotatePDF',     icon: 'fa-rotate' },
-        'reorderpdf.openvibe.tools': { name: 'ReorderPDF',    icon: 'fa-sort' },
-        'watermarkpdf.openvibe.tools':{ name: 'WatermarkPDF', icon: 'fa-stamp' },
-        'protectpdf.openvibe.tools': { name: 'ProtectPDF',    icon: 'fa-lock' },
-        'unlockpdf.openvibe.tools':  { name: 'UnlockPDF',     icon: 'fa-lock-open' },
-        'image2pdf.openvibe.tools':  { name: 'Image2PDF',     icon: 'fa-file-image' },
-        'jpg2pdf.openvibe.tools':    { name: 'JPG2PDF',       icon: 'fa-file-image' },
-        'png2pdf.openvibe.tools':    { name: 'PNG2PDF',       icon: 'fa-file-image' },
-        'pdf2jpg.openvibe.tools':    { name: 'PDF2JPG',       icon: 'fa-image' },
-        'pdf2png.openvibe.tools':    { name: 'PDF2PNG',       icon: 'fa-image' },
-        // Network tool subdomains
-        'net.openvibe.tools':        { name: 'Net.OpenVibe',       icon: 'fa-network-wired' },
-        'lookup.openvibe.tools':     { name: 'OpenVibeLookup',    icon: 'fa-magnifying-glass' },
-        'myip.openvibe.tools':       { name: 'OpenVibeMyIP',      icon: 'fa-location-crosshairs' },
-        'ip.openvibe.tools':         { name: 'OpenVibeIP',        icon: 'fa-at' },
-        'geoip.openvibe.tools':      { name: 'OpenVibeGeoIP',     icon: 'fa-earth-americas' },
-        'hostname.openvibe.tools':   { name: 'OpenVibeHostname',  icon: 'fa-server' },
-        'isp.openvibe.tools':        { name: 'OpenVibeISP',       icon: 'fa-building' },
-        'asn.openvibe.tools':        { name: 'OpenVibeASN',       icon: 'fa-diagram-project' },
-        'ipv4.openvibe.tools':       { name: 'OpenVibeIPv4',      icon: 'fa-hashtag' },
-        'ipv6.openvibe.tools':       { name: 'OpenVibeIPv6',      icon: 'fa-code' },
-        'rdns.openvibe.tools':       { name: 'OpenVibeReverseDNS',icon: 'fa-rotate-left' },
-        'whois.openvibe.tools':      { name: 'OpenVibeWhois',     icon: 'fa-address-book' },
-        'rdap.openvibe.tools':       { name: 'OpenVibeRDAP',      icon: 'fa-id-card' },
-        'dns.openvibe.tools':        { name: 'OpenVibeDNS',       icon: 'fa-sitemap' },
-        'dig.openvibe.tools':        { name: 'OpenVibeDig',       icon: 'fa-terminal' },
-        'nslookup.openvibe.tools':   { name: 'OpenVibeNSLookup',  icon: 'fa-magnifying-glass-arrow-right' },
-        'dnspropagation.openvibe.tools': { name: 'OpenVibeDNSPropagation', icon: 'fa-globe' },
-        'mx.openvibe.tools':         { name: 'OpenVibeMX',        icon: 'fa-envelope' },
-        'txt.openvibe.tools':        { name: 'OpenVibeTXT',       icon: 'fa-file-lines' },
-        'ns.openvibe.tools':         { name: 'OpenVibeNS',        icon: 'fa-server' },
-        'spf.openvibe.tools':        { name: 'OpenVibeSPF',       icon: 'fa-shield-halved' },
-        'dkim.openvibe.tools':       { name: 'OpenVibeDKIM',      icon: 'fa-key' },
-        'dmarc.openvibe.tools':      { name: 'OpenVibeDMARC',     icon: 'fa-user-shield' },
-        'ping.openvibe.tools':       { name: 'OpenVibePing',      icon: 'fa-satellite-dish' },
-        'traceroute.openvibe.tools': { name: 'OpenVibeTraceroute', icon: 'fa-route' },
-        'mtr.openvibe.tools':        { name: 'OpenVibeMTR',       icon: 'fa-chart-line' },
-        'port.openvibe.tools':       { name: 'OpenVibePortCheck', icon: 'fa-door-open' },
-        'headers.openvibe.tools':    { name: 'OpenVibeHeaders',   icon: 'fa-list' },
-        'redirects.openvibe.tools':  { name: 'OpenVibeRedirects', icon: 'fa-share' },
-        'ssl.openvibe.tools':        { name: 'OpenVibeSSL',       icon: 'fa-lock' },
-        'curl.openvibe.tools':       { name: 'OpenVibeCurl',      icon: 'fa-download' },
-        'httpstatus.openvibe.tools': { name: 'OpenVibeHTTPStatus', icon: 'fa-circle-check' },
-        'latency.openvibe.tools':    { name: 'OpenVibeLatency',   icon: 'fa-gauge-high' },
-        // Dev.OpenVibe subdomains
-        'dev.openvibe.tools':        { name: 'Dev.OpenVibe',       icon: 'fa-code' },
-        'code.openvibe.tools':       { name: 'Dev.OpenVibe',       icon: 'fa-code' },
-        'json.openvibe.tools':       { name: 'OpenVibeJSON',      icon: 'fa-code' },
-        'yaml.openvibe.tools':       { name: 'OpenVibeYAML',      icon: 'fa-file-code' },
-        'xml.openvibe.tools':        { name: 'OpenVibeXML',       icon: 'fa-file-code' },
-        'csv.openvibe.tools':        { name: 'OpenVibeCSV',       icon: 'fa-table' },
-        'sql.openvibe.tools':        { name: 'OpenVibeSQL',       icon: 'fa-database' },
-        'markdown.openvibe.tools':   { name: 'OpenVibeMarkdown',  icon: 'fa-file-lines' },
-        'html.openvibe.tools':       { name: 'OpenVibeHTML',      icon: 'fa-file-code' },
-        'base64.openvibe.tools':     { name: 'OpenVibeBase64',    icon: 'fa-lock' },
-        'url.openvibe.tools':        { name: 'OpenVibeURL',       icon: 'fa-link' },
-        'jwt.openvibe.tools':        { name: 'OpenVibeJWT',       icon: 'fa-key' },
-        'uuid.openvibe.tools':       { name: 'OpenVibeUUID',      icon: 'fa-fingerprint' },
-        'hash.openvibe.tools':       { name: 'OpenVibeHash',      icon: 'fa-hashtag' },
-        'hex.openvibe.tools':        { name: 'OpenVibeHex',       icon: 'fa-barcode' },
-        'escape.openvibe.tools':     { name: 'OpenVibeEscape',    icon: 'fa-shield-halved' },
-        'timestamp.openvibe.tools':  { name: 'OpenVibeTimestamp', icon: 'fa-clock' },
-        'cron.openvibe.tools':       { name: 'OpenVibeCron',      icon: 'fa-calendar-check' },
-        'beautify.openvibe.tools':   { name: 'OpenVibeBeautify',  icon: 'fa-wand-magic-sparkles' },
-        'minify.openvibe.tools':     { name: 'OpenVibeMinify',    icon: 'fa-compress' },
-        'diff.openvibe.tools':       { name: 'OpenVibeDiff',      icon: 'fa-code-compare' },
-        'regex.openvibe.tools':      { name: 'OpenVibeRegex',     icon: 'fa-magnifying-glass' },
-        'slug.openvibe.tools':       { name: 'OpenVibeSlug',      icon: 'fa-link' },
-        'lorem.openvibe.tools':      { name: 'OpenVibeLorem',     icon: 'fa-paragraph' },
-        'curl.openvibe.tools':       { name: 'OpenVibeCurl',      icon: 'fa-terminal' },
-        'webhook.openvibe.tools':    { name: 'OpenVibeWebhook',   icon: 'fa-satellite-dish' },
-        'color.openvibe.tools':      { name: 'OpenVibeColor',     icon: 'fa-palette' },
-        'opengraph.openvibe.tools':  { name: 'OpenVibeOpenGraph', icon: 'fa-share-nodes' },
-        // Dev.OpenVibe aliases
-        'build.openvibe.tools':      { name: 'Dev.OpenVibe',       icon: 'fa-code' },
-        'debug.openvibe.tools':      { name: 'Dev.OpenVibe',       icon: 'fa-code' },
-        'compare.openvibe.tools':    { name: 'OpenVibeDiff',      icon: 'fa-code-compare' },
-        'format.openvibe.tools':     { name: 'OpenVibeBeautify',  icon: 'fa-wand-magic-sparkles' },
-        'prettier.openvibe.tools':   { name: 'OpenVibeBeautify',  icon: 'fa-wand-magic-sparkles' },
-        'md.openvibe.tools':         { name: 'OpenVibeMarkdown',  icon: 'fa-file-lines' },
-        'unix.openvibe.tools':       { name: 'OpenVibeTimestamp', icon: 'fa-clock' },
-        'epoch.openvibe.tools':      { name: 'OpenVibeTimestamp', icon: 'fa-clock' },
-        'b64.openvibe.tools':        { name: 'OpenVibeBase64',    icon: 'fa-lock' },
-        'guid.openvibe.tools':       { name: 'OpenVibeUUID',      icon: 'fa-fingerprint' },
-        'sha256.openvibe.tools':     { name: 'OpenVibeHash',      icon: 'fa-hashtag' },
-        'entities.openvibe.tools':   { name: 'OpenVibeEscape',    icon: 'fa-shield-halved' },
-        'http.openvibe.tools':       { name: 'OpenVibeCurl',      icon: 'fa-terminal' },
-        'og.openvibe.tools':         { name: 'OpenVibeOpenGraph', icon: 'fa-share-nodes' },
-        'colors.openvibe.tools':     { name: 'OpenVibeColor',     icon: 'fa-palette' },
-    };
+    function navIcon(cls) {
+        const key = String(cls || '').split(/\s+/).find(c => NAV_ICONS[c]);
+        if (!key) return cls ? `<i class="fa-solid ${escapeAttr(cls)}"></i>` : '';
+        return `<svg class="ovnav-ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${NAV_ICONS[key]}</svg>`;
+    }
 
     // ─── Brand from hostname ───────────────────────────────────
     // Every property is <sub?>.openvibe.<tld> (plus openre.stream). The navbar spells the
@@ -759,7 +565,7 @@
     function menuItemHTML(item) {
         if (!item) return '';
         if (item.sep) return '<div class="sep"></div>';
-        const icon = item.icon ? `<span class="icon"><i class="fa-solid ${escapeAttr(item.icon)}"></i></span>` : '<span class="icon"></span>';
+        const icon = item.icon ? `<span class="icon">${navIcon(item.icon)}</span>` : '<span class="icon"></span>';
         const cls = item.danger ? ' class="danger"' : '';
         const id = item.id ? ` data-menu-id="${escapeAttr(item.id)}"` : '';
         if (item.href) return `<a href="${escapeAttr(item.href)}"${cls}${id}${item.external ? ' target="_blank" rel="noopener"' : ''}>${icon} ${escapeAttr(item.label)}</a>`;
@@ -1259,9 +1065,9 @@
         nav.innerHTML = `
             ${brandHTML(brand)}
             <div class="openvibe-navbar-links">
-                ${links.map(l => `<a href="${escapeAttr(l.href)}"${l.active ? ' class="active"' : ''}${l.external ? ' target="_blank" rel="noopener"' : ''}>${l.icon ? `<i class="fa-solid ${escapeAttr(l.icon)} icon"></i>` : ''}${escapeAttr(l.label)}</a>`).join('')}
+                ${links.map(l => `<a href="${escapeAttr(l.href)}"${l.active ? ' class="active"' : ''}${l.external ? ' target="_blank" rel="noopener"' : ''}>${l.icon ? `<span class="icon">${navIcon(l.icon)}</span>` : ''}${escapeAttr(l.label)}</a>`).join('')}
                 ${networkLinksHTML(links)}
-                ${u && u.role === 'admin' ? `<a href="https://openvibe.network/admin"><i class="fa-solid fa-shield-halved"></i> Admin</a>` : ''}
+                ${u && u.role === 'admin' ? `<a href="https://openvibe.network/admin">${navIcon('fa-shield-halved')} Admin</a>` : ''}
             </div>
             <div class="openvibe-navbar-spacer"></div>
             <div class="openvibe-navbar-right">
@@ -1302,26 +1108,26 @@
                         </div>
                     `).join('')}
                     <div class="account-item" data-account-id="anon" style="${isAnon ? 'display:none' : ''}">
-                        <span style="width:24px;text-align:center"><i class="fa-solid fa-user-secret"></i></span>
+                        <span style="width:24px;text-align:center">${navIcon('fa-user-secret')}</span>
                         <span>Switch to Anonymous</span>
                     </div>
                     <a class="add-account" id="openvibe-add-account" href="${escapeAttr(addAccountHref)}">
-                        <span style="width:24px;text-align:center"><i class="fa-solid fa-plus"></i></span>
+                        <span style="width:24px;text-align:center">${navIcon('fa-plus')}</span>
                         <span>Add another account</span>
                     </a>
                 </div>
                 <div class="openvibe-navbar-dropdown-recent" id="openvibe-recent" hidden></div>
                 <div class="openvibe-navbar-dropdown-menu">
                     ${before.map(menuItemHTML).join('')}${before.length ? '<div class="sep"></div>' : ''}
-                    <a href="https://openvibe.network/my"><span class="icon"><i class="fa-solid fa-user"></i></span> My Account</a>
-                    <a href="https://openvibe.network/my#history"><span class="icon"><i class="fa-solid fa-clock-rotate-left"></i></span> History</a>
-                    <a href="https://openvibe.network/my#notifications"><span class="icon"><i class="fa-solid fa-bell"></i></span> Notifications</a>
-                    <a href="https://openvibe.network/themes"><span class="icon"><i class="fa-solid fa-palette"></i></span> Themes</a>
-                    <a href="https://openvibe.network/my#linked"><span class="icon"><i class="fa-solid fa-link"></i></span> Linked Services</a>
-                    ${u.role === 'admin' ? `<a href="https://openvibe.network/admin"><span class="icon"><i class="fa-solid fa-screwdriver-wrench"></i></span> Admin Panel</a>` : ''}
+                    <a href="https://openvibe.network/my"><span class="icon">${navIcon('fa-user')}</span> My Account</a>
+                    <a href="https://openvibe.network/my#history"><span class="icon">${navIcon('fa-clock-rotate-left')}</span> History</a>
+                    <a href="https://openvibe.network/my#notifications"><span class="icon">${navIcon('fa-bell')}</span> Notifications</a>
+                    <a href="https://openvibe.network/themes"><span class="icon">${navIcon('fa-palette')}</span> Themes</a>
+                    <a href="https://openvibe.network/my#linked"><span class="icon">${navIcon('fa-link')}</span> Linked Services</a>
+                    ${u.role === 'admin' ? `<a href="https://openvibe.network/admin"><span class="icon">${navIcon('fa-screwdriver-wrench')}</span> Admin Panel</a>` : ''}
                     ${after.length ? '<div class="sep"></div>' : ''}${after.map(menuItemHTML).join('')}
                     <div class="sep"></div>
-                    <button id="openvibe-logout-btn" class="danger"><span class="icon"><i class="fa-solid fa-right-from-bracket"></i></span> Sign Out</button>
+                    <button id="openvibe-logout-btn" class="danger"><span class="icon">${navIcon('fa-right-from-bracket')}</span> Sign Out</button>
                 </div>
             `;
             nav.appendChild(dropdown);

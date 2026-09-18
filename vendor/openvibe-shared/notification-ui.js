@@ -131,9 +131,21 @@
             .openvibe-nv-foot a { color: var(--accent-light, #60a5fa); text-decoration: none; }
             .openvibe-nv-note { font-size: 11px; color: var(--text-muted, #707080); padding: 6px 12px; background: color-mix(in srgb, var(--warning, #f39c12) 10%, transparent); border-bottom: 1px solid var(--border, #333340); }
 
+            /* The panel hangs under whatever navbar the site has (its top is measured when it opens) and never
+               leaves the visible viewport: dvh instead of vh, room for the home indicator, list scrolls inside. */
+            .openvibe-notif-panel { top: var(--ovn-top, 62px); right: max(8px, env(safe-area-inset-right, 0px)); width: min(420px, calc(100vw - 16px));
+                max-height: calc(100vh - var(--ovn-top, 62px) - 12px); max-height: calc(100dvh - var(--ovn-top, 62px) - 12px - env(safe-area-inset-bottom, 0px)); border-radius: 16px; }
+            .openvibe-notif-item .title .count { display: inline-block; margin-left: 4px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; color: var(--accent-light, var(--accent, #60a5fa)); background: color-mix(in srgb, var(--accent, #3b82f6) 16%, transparent); vertical-align: 1px; }
+            /* Phones and narrow windows: a sheet from edge to edge under the bar, down to the bottom inset. */
+            @media (max-width: 640px) {
+                .openvibe-notif-panel { left: 8px; right: 8px; width: auto; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); max-height: none; }
+                .openvibe-notif-panel [data-act] > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }   /* icon-only actions, labels stay for screen readers */
+                .openvibe-notif-panel [data-act] { min-width: 36px; min-height: 36px; justify-content: center; }
+                .openvibe-notif-item { padding-top: 10px; padding-bottom: 10px; }
+            }
+            @media (max-height: 520px) { .openvibe-notif-item .msg { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; } }
             @media (max-width: 460px) {
                 .openvibe-toast-container { right: 8px; left: 8px; max-width: none; }
-                .openvibe-notif-panel { right: 6px; left: 6px; width: auto; top: 56px; max-height: calc(100vh - 66px); }
             }
         `;
         document.head.appendChild(style);
@@ -372,9 +384,11 @@
             const item = e.target.closest('.openvibe-notif-item');
             if (!item) return;
             const id = item.dataset.id;
-            if (dismissBtn) { e.stopPropagation(); dismiss(v, id); return; }
+            const ids = (item.dataset.ids || id).split(',').filter(Boolean);
+            if (dismissBtn) { e.stopPropagation(); ids.forEach(x => dismiss(v, x)); return; }
             const n = v.items.find(x => String(x.id) === id);
-            if (n && !isRead(n)) markRead([id]);
+            const unreadIds = ids.filter(x => { const it = v.items.find(y => String(y.id) === x); return it && !isRead(it); });
+            if (unreadIds.length) markRead(unreadIds);
             const u = urlOf(n);
             if (u) navigateTo(u);
         });
@@ -385,14 +399,21 @@
 
     function renderItems(v, { append = false } = {}) {
         const list = v.root.querySelector('[data-role="list"]');
-        const html = v.items.map(n => {
+        // The same event repeated back to back ("X is live!" six times) reads as one row with a count.
+        const groups = [];
+        for (const n of v.items) {
+            const key = [n.title, n.message || '', n.service || '', n.category || ''].join('\u0001');
+            const g = groups[groups.length - 1];
+            if (g && g.key === key) { g.ids.push(String(n.id)); if (!isRead(n)) g.unread = true; } else groups.push({ key, n, ids: [String(n.id)], unread: !isRead(n) });
+        }
+        const html = groups.map(({ n, ids, unread }) => {
             try {
                 const cat = CATEGORY_LABELS[n.category] || n.category || '';
                 const service = n.service && n.service !== 'network' ? `<span class="tag">${esc(SERVICE_LABELS[n.service] || n.service)}</span>` : '';
-                return `<div class="openvibe-notif-item ${isRead(n) ? '' : 'unread'}" data-id="${esc(n.id)}" title="${esc(urlOf(n) ? 'Open' : '')}">
+                return `<div class="openvibe-notif-item ${unread ? 'unread' : ''}" data-id="${esc(n.id)}" data-ids="${esc(ids.join(','))}" title="${esc(urlOf(n) ? 'Open' : '')}">
                     <span class="icon">${iconHtml(n)}</span>
                     <div class="content">
-                        <div class="title">${esc(n.title)}</div>
+                        <div class="title">${esc(n.title)}${ids.length > 1 ? ` <span class="count" title="${ids.length} times">×${ids.length}</span>` : ''}</div>
                         ${n.message ? `<div class="msg">${esc(n.message)}</div>` : ''}
                         <div class="meta"><span title="${esc(parseDate(n.created_at)?.toLocaleString() || '')}">${esc(timeAgo(n.created_at))}</span>${service}${cat ? `<span class="tag">${esc(cat)}</span>` : ''}</div>
                     </div>
@@ -546,6 +567,13 @@
     function togglePanel() {
         if (!_panelEl) createPanel();
         const opening = !_panelEl.classList.contains('open');
+        if (opening) {
+            // Sit directly under the site's navbar, whatever its height (sticky bars, banners, safe areas).
+            const bar = _bellEl && _bellEl.closest('nav, header, .navbar');
+            const bottom = bar ? bar.getBoundingClientRect().bottom : (_bellEl ? _bellEl.getBoundingClientRect().bottom : 56);
+            _panelEl.style.setProperty('--ovn-top', Math.max(8, Math.round(bottom) + 6) + 'px');
+            if (!_panelEl.__esc) { _panelEl.__esc = (e) => { if (e.key === 'Escape' && _panelEl.classList.contains('open')) togglePanel(); }; document.addEventListener('keydown', _panelEl.__esc); }
+        }
         _panelEl.classList.toggle('open', opening);
         _bellEl?.classList.toggle('open', opening);
         if (opening) { reload(_views.get(_panelEl)); refreshPushButton(_views.get(_panelEl)); pollUnread(); }

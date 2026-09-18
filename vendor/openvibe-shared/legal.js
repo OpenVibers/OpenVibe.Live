@@ -180,8 +180,8 @@ function page(kind, site) {
 ${head}
 ${require('./app-icon').headTags({ site: site.id })}
 <script src="https://openvibe.network/shared/theme-loader.js" defer></script><style>${CSS}</style></head><body>
-<noscript><p style="padding:12px 20px;margin:0"><a href="/">${esc(site.name)}</a></p></noscript>
-<main>${article(kind, site)}</main><div id="ov-footer"></div>
+${require('./chrome-ssr').noscriptNav({ name: site.name })}
+<main>${article(kind, site)}</main>${require('./footer').ssr({ service: site.service || site.id || 'network', variant: 'compact' })}
 <script src="https://openvibe.network/shared/navbar.js" defer></script><script src="https://openvibe.network/shared/footer.js" defer></script>
 <script>addEventListener('DOMContentLoaded',function(){var t=null;try{t=(document.cookie.match(/(?:^|; )ov_token=([^;]*)/)||[])[1]||localStorage.getItem('ov_token')}catch(e){}
 try{OpenVibeNavbar.init({service:${JSON.stringify(site.service || site.id || 'network')},apiBase:'https://openvibe.network',token:t?decodeURIComponent(t):null})}catch(e){}
