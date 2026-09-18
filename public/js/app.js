@@ -1144,6 +1144,9 @@ function routeFromURL() {
     } else if (segments[0] === 'privacy') {
         window.location.replace('/privacy');
         return;
+    } else if (segments[0] === 'pastes' && !segments[1] && document.querySelector('meta[name="ov-pastes-base"]')) {
+        location.replace(`${document.querySelector('meta[name="ov-pastes-base"]').content}/pastes${location.search}`);
+        return;
     } else if (segments[0] === 'p' && segments[1] && document.querySelector('meta[name="ov-pastes-base"]')) {
         // Pastes live on openvibe.community now — hand the browser over (same slug, same URL shape).
         location.replace(`${document.querySelector('meta[name="ov-pastes-base"]').content}/p/${encodeURIComponent(segments[1])}${location.search}`);
