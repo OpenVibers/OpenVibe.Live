@@ -1426,7 +1426,6 @@ function toggleNavDropdown(id) {
 
 function closeNavDropdowns() {
     document.querySelectorAll('.nav-dropdown.open').forEach(d => d.classList.remove('open'));
-    closeMobileNav();
 }
 
 // Close nav dropdowns when clicking outside
@@ -1476,10 +1475,20 @@ function positionNavDropdownMenu(dropdown) {
     menu.style.maxHeight = `${Math.max(120, vh - rect.bottom - pad)}px`;
 }
 
+// While the user menu or the mobile drawer is open, the floating chat button steps aside (it used to sit on
+// top of the menu's last rows). Driven by the panels' own classes, so every open/close path is covered.
+{
+    const sync = () => document.body.classList.toggle('ov-panel-open',
+        !!document.querySelector('#user-dropdown.show, .nav-links.show'));
+    const watch = () => { for (const el of [document.getElementById('user-dropdown'), document.querySelector('.nav-links')]) if (el) new MutationObserver(sync).observe(el, { attributes: true, attributeFilter: ['class'] }); };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
+}
+
 /** Close every navbar panel (used when the viewport changes under an open menu). */
 function closeNavPanels() {
     document.getElementById('user-dropdown')?.classList.remove('show');
-    document.querySelectorAll('.nav-dropdown.open').forEach(d => d.classList.remove('open'));
+    closeNavDropdowns();
+    closeMobileNav();
 }
 // A rotated phone, a resized window or an opened keyboard invalidates a fixed menu's position: reposition
 // what is open, and close panels on orientation change. Escape closes them too.

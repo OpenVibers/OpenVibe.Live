@@ -11864,12 +11864,14 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 /* Below tablet width the user menu is a sheet pinned under the bar, as wide as the phone allows. */
 @media (max-width: 900px) {
     .user-dropdown { position: fixed; top: calc(var(--navbar-h) + 6px); right: 8px; left: auto; min-width: 0; width: min(340px, calc(100vw - 16px)); }
-    /* The floating chat button sits over the bottom-right corner: let the last row scroll clear of it. */
-    .user-dropdown > :last-child { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
-    .user-dropdown::after { content: ''; display: block; height: 64px; }
+    /* The floating chat button steps aside while a navbar panel is open (body.ov-panel-open), so the menu
+       needs no dead space at its end to clear it. */
+    .user-dropdown > :last-child { padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)); }
 }
 /* Short screens (landscape phones, split view): tighter rows so more of the menu is visible at once. */
 @media (max-height: 560px) {
     .user-dropdown .ud-group a, .nav-links.show .nav-link { padding-top: 7px; padding-bottom: 7px; font-size: 0.86rem; }
     .user-dropdown .ud-label { padding-top: 8px; padding-bottom: 2px; }
 }
+
+body.ov-panel-open #floating-chat-fab { opacity: 0; pointer-events: none; transform: scale(.85); transition: opacity .15s, transform .15s; }
