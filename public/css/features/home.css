@@ -1070,3 +1070,12 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 /* Hero rhythm: one consistent vertical beat between title → tagline → buttons → links → receipt → stats. */
 .hero-slogan-timer { margin: -4px 0 16px; }
 .hero-philosophy-links { margin-top: 18px; }
+
+/* ── Hero rhythm ──────────────────────────────────────────────────────────────
+   The rows stacked under the hero buttons (philosophy + legal links, the "shipped" pill, the stats strip)
+   each carried their own margin from a different era: 8px, 28px and 14px in a row. One step for all
+   three, scaled with the viewport, so the block reads as a single evenly spaced column. */
+#page-home .hero { --hero-step: clamp(12px, 1.6vw, 18px); }
+#page-home .hero .hero-philosophy-links { margin: var(--hero-step) auto 0; row-gap: 6px; }
+#page-home .hero .hero-latest { margin: var(--hero-step) auto 0; }
+#page-home .hero .hero-stats { margin-top: var(--hero-step); }

@@ -25,6 +25,10 @@ const FOLD_WINDOW_MS = 12 * 60 * 60 * 1000;
 const MAX_COMMITS = 40;
 const ATTEMPTS_MS = [5000, 20000, 45000];        // clients reconnect with backoff after a restart
 
+// The notice for THIS boot, kept for a while so clients that reconnect late still get it exactly once.
+const REPLAY_MS = 15 * 60 * 1000;
+let _live = null;   // { payload, until, sent: WeakSet }
+
 const git = (args, timeout = 5000) => new Promise((resolve) => {
     execFile('git', args, { cwd: REPO_DIR, encoding: 'utf8', timeout, maxBuffer: 1024 * 1024 }, (err, out) => resolve(err ? '' : String(out || '')));
 });
@@ -84,6 +88,7 @@ async function announce({ db, chatServer, log = console }) {
 
     const payload = JSON.stringify({ type: 'update', kind: 'deploy', id: saved.id, fresh: commits.map(c => c.hash), url: '/updates', timestamp: saved.meta.updated_at, ...saved.meta });
     const sent = new WeakSet();
+    _live = { payload, until: Date.now() + REPLAY_MS, sent };
     const push = () => {
         let n = 0;
         for (const [ws] of chatServer.clients) {
@@ -96,4 +101,15 @@ async function announce({ db, chatServer, log = console }) {
     return { announced: commits.length };
 }
 
-module.exports = { announce, newCommits, persist, plainText, parseLog, SETTING };
+/**
+ * Called when a chat client finishes joining: if this boot shipped something and this socket has not had
+ * it, send it now. Covers clients whose reconnect backoff outlasted the broadcast passes, a chat server
+ * that came up late, and tabs that were asleep. The card is keyed by row id, so a repeat cannot duplicate.
+ */
+function replayTo(ws) {
+    if (!_live || Date.now() > _live.until || _live.sent.has(ws)) return false;
+    try { if (ws.readyState === 1) { ws.send(_live.payload); _live.sent.add(ws); return true; } } catch { /* socket went away */ }
+    return false;
+}
+
+module.exports = { replayTo, announce, newCommits, persist, plainText, parseLog, SETTING };

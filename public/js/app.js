@@ -840,7 +840,9 @@ function openChannelRewards() {
 }
 
 function toggleUserMenu() {
-    document.getElementById('user-dropdown').classList.toggle('show');
+    const dd = document.getElementById('user-dropdown');
+    const open = dd.classList.toggle('show');
+    if (open) { closeMobileNav(); dd.scrollTop = 0; }        // one panel at a time, always opened from the top
 }
 
 function closeMobileNav() {
@@ -853,6 +855,7 @@ function toggleMobileNav() {
     const hamburger = document.querySelector('.nav-hamburger');
     navLinks.classList.toggle('show');
     hamburger?.classList.toggle('open', navLinks.classList.contains('show'));
+    if (navLinks.classList.contains('show')) { document.getElementById('user-dropdown')?.classList.remove('show'); navLinks.scrollTop = 0; }
 }
 
 function isModifiedLinkClick(event) {
@@ -1423,6 +1426,7 @@ function toggleNavDropdown(id) {
 
 function closeNavDropdowns() {
     document.querySelectorAll('.nav-dropdown.open').forEach(d => d.classList.remove('open'));
+    closeMobileNav();
 }
 
 // Close nav dropdowns when clicking outside
@@ -1462,9 +1466,30 @@ function positionNavDropdownMenu(dropdown) {
     const menu = dropdown?.querySelector('.nav-dropdown-menu');
     const trigger = dropdown?.querySelector('.nav-link');
     if (!menu || !trigger) return;
+    if (getComputedStyle(menu).position !== 'fixed') { menu.style.top = menu.style.left = menu.style.maxHeight = ''; return; }   // inside the mobile drawer it flows inline
     const rect = trigger.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth, vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const width = menu.offsetWidth || 200, pad = 8;
+    // Keep the whole menu on screen: slide left when it would cross the right edge, cap its height to the space below.
+    menu.style.left = `${Math.max(pad, Math.min(rect.left, vw - width - pad))}px`;
     menu.style.top = `${rect.bottom}px`;
-    menu.style.left = `${rect.left}px`;
+    menu.style.maxHeight = `${Math.max(120, vh - rect.bottom - pad)}px`;
+}
+
+/** Close every navbar panel (used when the viewport changes under an open menu). */
+function closeNavPanels() {
+    document.getElementById('user-dropdown')?.classList.remove('show');
+    document.querySelectorAll('.nav-dropdown.open').forEach(d => d.classList.remove('open'));
+}
+// A rotated phone, a resized window or an opened keyboard invalidates a fixed menu's position: reposition
+// what is open, and close panels on orientation change. Escape closes them too.
+{
+    let raf = 0;
+    const reflow = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => document.querySelectorAll('.nav-dropdown.open, .nav-dropdown:hover').forEach(positionNavDropdownMenu)); };
+    window.addEventListener('resize', reflow, { passive: true });
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', reflow, { passive: true });
+    window.addEventListener('orientationchange', closeNavPanels, { passive: true });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNavPanels(); });
 }
 
 // Observe hover/open to position dropdown menus

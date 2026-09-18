@@ -454,6 +454,8 @@ class ChatServer {
                     if (oldStream) this.broadcastUserCount(oldStream);
                     this.broadcastUserCount(client.streamId);
                 }
+                // A deploy notice from this boot reaches late joiners too (once per socket; see deploy-notice.js).
+                setTimeout(() => { try { require('./deploy-notice').replayTo(ws); } catch { /* optional */ } }, 1200);
                 // Send identity confirmation so the client knows who it is
                 const displayName = client.user ? (client.user.display_name || client.user.username) : client.anonId;
                 const streamSlowSec = client.streamId ? Math.round((this.slowModeByStream.get(client.streamId) || 0) / 1000) : 0;

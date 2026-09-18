@@ -19,10 +19,12 @@
     display: inline-flex; align-items: center; gap: 6px; font-size: 0.68rem; font-weight: 800;
     letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted);
 }
-.sn-kicker i { color: var(--accent); }
+.sn-kicker i { color: var(--accent); flex: none; width: 1.5em; text-align: center; }
 .sn-pos { font-weight: 600; letter-spacing: 0; text-transform: none; opacity: 0.8; }
 .sn-head h3 { margin: 2px 0 2px; font-size: 1.3rem; display: flex; align-items: center; gap: 10px; }
-.sn-icon { color: var(--accent); font-size: 1rem; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; background: color-mix(in srgb, var(--accent) 16%, transparent); }
+/* Font Awesome sets `display` on the icon class itself, which used to beat this rule and leave the glyph in the
+   box's top-left corner. Its own custom property is the supported way to change that. */
+.sn-icon { --fa-display: inline-grid; flex: none; line-height: 1; color: var(--accent); font-size: 1rem; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .sn-desc { margin: 0; color: var(--text-secondary); font-size: 0.86rem; }
 .sn-nav, .sn-close {
     width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; cursor: pointer;
