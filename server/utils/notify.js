@@ -87,6 +87,18 @@ function reportLinkedAccount(user) {
 }
 
 /**
+ * The user picked a new avatar here. The avatar belongs to the network account, so say so explicitly: unlike the
+ * sign-in report above (which only fills an empty picture), this one replaces whatever the Network had.
+ */
+function reportAvatarChange(user) {
+    if (!user?.id || !INTERNAL_API_KEY) return;
+    const networkId = toNetworkId(user.id);
+    if (!networkId) return;
+    _post('/internal/user-avatar', { user_id: networkId, avatar_url: user.avatar_url || null, origin: 'live' })
+        .then(r => { if (r && !r.ok) console.warn(`[Notify] avatar sync refused (${r.status})`); }).catch(() => {});
+}
+
+/**
  * Push the same notification to many LIVE users (translated, deduped, chunked to the
  * network's 1000-per-call limit).
  */
@@ -126,4 +138,4 @@ function markNotificationsRead(userId, type, urlPattern) {
         .catch(err => console.warn('[Notify] Mark-read error:', err.message));
 }
 
-module.exports = { pushNotification, pushBulkNotification, actorInfo, markNotificationsRead, reportLinkedAccount, toNetworkId, toNetworkIds, OV_NETWORK_INTERNAL_URL, INTERNAL_API_KEY };
+module.exports = { reportAvatarChange, pushNotification, pushBulkNotification, actorInfo, markNotificationsRead, reportLinkedAccount, toNetworkId, toNetworkIds, OV_NETWORK_INTERNAL_URL, INTERNAL_API_KEY };
