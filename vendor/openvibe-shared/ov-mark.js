@@ -48,6 +48,13 @@
 .ov-mark:hover .c{animation-duration:.9s}
 .ov-mark[data-static] svg,.ov-mark[data-static] .g,.ov-mark[data-static] .c,.ov-mark[data-static] .v,.ov-mark[data-static] .d{animation:none!important}
 .ov-mark[data-static] .o{display:none}
+.ov-mark .p{fill:none;stroke:currentColor;stroke-width:4.4;stroke-linecap:round;transform:rotate(-90deg);transform-box:fill-box;transform-origin:center;stroke-dasharray:113.1;stroke-dashoffset:calc(113.1px * (1 - var(--ovm-p,0)));opacity:0;transition:stroke-dashoffset .35s cubic-bezier(.2,.8,.2,1),opacity .2s}
+.ov-mark[data-progress] .p{opacity:1}
+.ov-mark[data-progress] .c,.ov-mark[data-progress] .o{opacity:.25}
+.ov-mark[data-state=busy] .c{animation-duration:1.1s}
+.ov-mark[data-state=ok]{color:var(--success,#22c55e)!important}
+.ov-mark[data-state=error]{color:var(--danger,#ef4444)!important}
+.ov-mark[data-state=ok] svg{animation:ovmSpin .9s cubic-bezier(.2,1.5,.3,1) 1}
 @keyframes ovmFloat{0%,100%{transform:translateY(0) rotate(0deg)}50%{transform:translateY(-1px) rotate(2deg)}}
 @keyframes ovmGlow{0%,100%{opacity:.08;transform:scale(.92)}50%{opacity:.2;transform:scale(1.06)}}
 @keyframes ovmComet{to{transform:rotate(360deg)}}
@@ -61,6 +68,7 @@
 <linearGradient id="${id}v" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="0.5" stop-color="currentColor"/><stop offset="1" stop-color="#fff" stop-opacity="0.9"/><animateTransform attributeName="gradientTransform" type="translate" from="-1 0" to="1 0" dur="3.2s" repeatCount="indefinite"/></linearGradient>
 <path id="${id}p" d="M24,6 A18,18 0 1,1 23.99,6 Z"/></defs>
 <circle class="g" cx="24" cy="24" r="21"/><circle class="r" cx="24" cy="24" r="18"/><circle class="c" cx="24" cy="24" r="18" stroke="url(#${id}g)"/>
+<circle class="p" cx="24" cy="24" r="18"/>
 <path class="v" d="M14.5,17 L24,34 L33.5,17" stroke="url(#${id}v)"/><circle class="d" cx="24" cy="34" r="2.6"/>
 <circle class="o" r="2"><animateMotion dur="3.6s" repeatCount="indefinite"><mpath href="#${id}p"/></animateMotion></circle>
 <circle class="o o2" r="1.4"><animateMotion dur="3.6s" begin="0.14s" repeatCount="indefinite"><mpath href="#${id}p"/></animateMotion></circle></svg>`;

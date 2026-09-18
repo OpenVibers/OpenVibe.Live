@@ -61,7 +61,28 @@
                 color: var(--text-primary, #e0e0e0);
             }
             .openvibe-navbar-brand { display: flex; align-items: center; gap: 9px; text-decoration: none; color: inherit; margin-right: 8px; min-width: 0; }
-            .openvibe-navbar-brand .flame { font-size: 18px; color: var(--accent, #8b5cf6); display: inline-grid; place-items: center; width: 28px; height: 28px; flex: none; }
+            .openvibe-navbar-brand a { color: inherit; text-decoration: none; }
+            .openvibe-navbar-brand a.b-core:hover, .openvibe-navbar-brand a.b-tld:hover, .openvibe-navbar-brand a.b-sub:hover { color: var(--accent-light, var(--accent, #60a5fa)); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
+            .openvibe-navbar-brand a:focus-visible, .ovnav-launch:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 2px; border-radius: 6px; }
+            .ovnav-launch { appearance: none; border: 0; background: transparent; color: var(--text-secondary, #a8b3c4); width: 32px; height: 32px; border-radius: 9px; display: inline-grid; place-items: center; cursor: pointer; flex: none; margin-right: 6px; transition: background .15s, color .15s; }
+            .ovnav-launch:hover, .ovnav-launch[aria-expanded="true"] { background: var(--accent-glow, rgba(59,130,246,.14)); color: var(--accent-light, var(--accent, #60a5fa)); }
+            .ovnav-launcher { position: absolute; top: calc(100% + 6px); left: 12px; width: min(440px, calc(100vw - 24px)); max-height: min(560px, calc(100vh - 80px)); overflow: auto; background: var(--bg-elevated, var(--bg-secondary, #111826)); border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,.5); padding: 12px; z-index: 1000; opacity: 0; transform: translateY(-6px) scale(.98); transform-origin: top left; pointer-events: none; transition: opacity .16s, transform .2s cubic-bezier(.2,1.2,.3,1); }
+            .ovnav-launcher.open { opacity: 1; transform: none; pointer-events: auto; }
+            .ovnav-launcher .ovl-q { width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border, rgba(255,255,255,.12)); background: var(--bg-primary, #0a0f18); color: var(--text-primary, #e6edf7); font: 500 14px/1.2 inherit; outline: none; }
+            .ovnav-launcher .ovl-q:focus { border-color: var(--accent, #3b82f6); }
+            .ovnav-launcher .ovl-h { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; letter-spacing: .7px; text-transform: uppercase; color: var(--text-muted, #7d8aa0); margin: 12px 4px 6px; }
+            .ovnav-launcher .ovl-h a { color: var(--accent-light, var(--accent, #60a5fa)); text-decoration: none; text-transform: none; letter-spacing: 0; }
+            .ovnav-launcher .ovl-sites { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+            .ovnav-launcher .ovl-fams { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2px; }
+            .ovnav-launcher .ovl-site, .ovnav-launcher .ovl-fam { display: flex; align-items: center; gap: 9px; padding: 8px; border-radius: 10px; color: var(--text-primary, #e6edf7); text-decoration: none; min-width: 0; }
+            .ovnav-launcher .ovl-site { flex-direction: column; text-align: center; gap: 6px; padding: 12px 6px; }
+            .ovnav-launcher .ovl-site:hover, .ovnav-launcher .ovl-fam:hover, .ovnav-launcher a:focus-visible { background: var(--accent-glow, rgba(59,130,246,.14)); outline: none; }
+            .ovnav-launcher b { display: block; font-size: 13px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .ovnav-launcher small { display: block; font-size: 11px; color: var(--text-muted, #7d8aa0); margin-top: 1px; }
+            .ovnav-launcher .ovl-empty { padding: 18px 8px; color: var(--text-secondary, #a8b3c4); font-size: 13px; }
+            @media (max-width: 480px) { .ovnav-launcher { left: 8px; } .ovnav-launcher .ovl-fams { grid-template-columns: 1fr; } }
+            @media (prefers-reduced-motion: reduce) { .ovnav-launcher { transition: none; } }
+            .openvibe-navbar-brand .flame { font-size: 18px; text-decoration: none; color: var(--accent, #8b5cf6); display: inline-grid; place-items: center; width: 28px; height: 28px; flex: none; }
             .openvibe-navbar-brand .name { display: inline-flex; align-items: baseline; font-size: 15px; font-weight: 700; letter-spacing: -.3px; white-space: nowrap; line-height: 1; }
             /* Segments: subdomain · OpenVibe · TLD. The part that names *this* site is the loud one. */
             .openvibe-navbar-brand .b-sub { color: var(--text-primary, #e0e0e0); }
@@ -484,19 +505,117 @@
         return { sub, subText, core, tld, tldText, name, short: subText || `${core}.${tldText}`, icon, variant, tag: b.tag || null, href: b.href || '/' };
     }
 
+    /** Where each brand segment goes: sub → this tool, OpenVibe → the network, TLD → the site's apex. */
+    function brandLinks(brand) {
+        const apex = brand.core === 'OpenRe' ? 'https://openre.stream/' : `https://openvibe.${brand.tld}/`;
+        if (!brand.subText) return { sub: brand.href, core: brand.href, tld: brand.href, apex };
+        return { sub: brand.href, core: 'https://openvibe.network/', tld: apex, apex };
+    }
+
     function brandHTML(brand) {
-        const seg = (cls, text) => `<span class="${cls}">${escapeAttr(text)}</span>`;
+        const to = brandLinks(brand);
+        const seg = (cls, text, href, title) => `<a href="${escapeAttr(href)}"${title ? ` title="${escapeAttr(title)}"` : ''} class="${cls}">${escapeAttr(text)}</a>`;
         const dot = '<span class="b-dot">.</span>';
         const text = brand.subText
-            ? seg('b-sub', brand.subText) + dot + seg('b-core', brand.core) + dot + seg('b-tld', brand.tldText)
-            : seg('b-core', brand.core) + dot + seg('b-tld', brand.tldText);
+            ? seg('b-sub', brand.subText, to.sub, brand.name) + dot + seg('b-core', brand.core, to.core, 'OpenVibe Network') + dot + seg('b-tld', brand.tldText, to.tld, `All of ${brand.core}.${brand.tldText}`)
+            : seg('b-core', brand.core, to.core, brand.name) + dot + seg('b-tld', brand.tldText, to.tld, brand.name);
         const mark = brand.icon
             ? `<i class="fa-solid ${escapeAttr(brand.icon)}"></i>`
             : `<span class="ov-mark" data-size="28" data-variant="${escapeAttr(brand.variant)}"></span>`;
-        return `<a class="openvibe-navbar-brand${brand.subText ? ' has-sub' : ''}" href="${escapeAttr(brand.href)}" title="${escapeAttr(brand.name)}" aria-label="${escapeAttr(brand.name)}">
-                <span class="flame">${mark}</span>
+        return `<div class="openvibe-navbar-brand${brand.subText ? ' has-sub' : ''}">
+                <a class="flame" href="${escapeAttr(brand.href)}" aria-label="${escapeAttr(brand.name)} home">${mark}</a>
                 <span class="name">${text}${brand.tag ? `<span class="b-tag">${escapeAttr(brand.tag)}</span>` : ''}</span>
-            </a>`;
+            </div>
+            ${_config.launcher === false ? '' : '<button type="button" class="ovnav-launch" id="openvibe-launcher-btn" aria-label="All OpenVibe sites and tools" aria-haspopup="true" aria-expanded="false" title="All OpenVibe sites and tools"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="currentColor"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></g></svg></button>'}`;
+    }
+
+    // ── Network launcher ─────────────────────────────────────
+    const LAUNCHER_SITES = [
+        { name: 'Live', desc: 'Streams, clips and chat', icon: 'live', url: 'https://openvibe.live/' },
+        { name: 'Tools', desc: 'Every online tool', icon: 'tools', url: 'https://openvibe.tools/' },
+        { name: 'Community', desc: 'Pastes and posts', icon: 'community', url: 'https://openvibe.community/' },
+        { name: 'Games', desc: 'Browser games', icon: 'games', url: 'https://openvibe.games/' },
+        { name: 'Media', desc: 'VODs, clips, files', icon: 'media', url: 'https://openvibe.media/' },
+        { name: 'Network', desc: 'Account and themes', icon: 'network', url: 'https://openvibe.network/' },
+    ];
+    const LAUNCHER_FAMILIES = [
+        { name: 'Media Tools', icon: 'youtube', url: 'https://yt.openvibe.tools/' },
+        { name: 'Image Tools', icon: 'image', url: 'https://img.openvibe.tools/' },
+        { name: 'Audio Tools', icon: 'audio', url: 'https://audio.openvibe.tools/' },
+        { name: 'PDF & Documents', icon: 'pdf', url: 'https://docs.openvibe.tools/' },
+        { name: 'Text Tools', icon: 'text', url: 'https://text.openvibe.tools/' },
+        { name: 'Developer Tools', icon: 'code', url: 'https://dev.openvibe.tools/' },
+        { name: 'Network Tools', icon: 'dns', url: 'https://net.openvibe.tools/' },
+    ];
+    const CATALOG_URL = 'https://openvibe.tools/api/catalog.json';
+    const okUrl = (u) => { try { const x = new URL(u); return x.protocol === 'https:' ? x.href : null; } catch { return null; } };
+
+    async function launcherCatalog() {
+        try { const c = JSON.parse(sessionStorage.getItem('ov_catalog') || 'null'); if (c && Date.now() - c.at < 30 * 60000) return c.data; } catch { /* */ }
+        try {
+            const r = await fetch(CATALOG_URL, { credentials: 'omit' }); if (!r.ok) return null;
+            const j = await r.json();
+            const data = { families: (j.families || []).slice(0, 12).map(f => ({ name: String(f.name || ''), icon: String(f.icon || 'tools'), url: okUrl(f.url) })).filter(f => f.name && f.url),
+                tools: (j.tools || []).slice(0, 400).map(t => ({ name: String(t.name || ''), icon: String(t.icon || 'tools'), url: okUrl(t.url), k: [t.name, t.tagline].concat(t.keywords || []).join(' ').toLowerCase().slice(0, 400) })).filter(t => t.name && t.url) };
+            try { sessionStorage.setItem('ov_catalog', JSON.stringify({ at: Date.now(), data })); } catch { /* */ }
+            return data;
+        } catch { return null; }
+    }
+
+    function bindLauncher(nav) {
+        const btn = nav.querySelector('#openvibe-launcher-btn'); if (!btn) return;
+        let panel = null;
+        const tile = (it, cls) => `<a class="${cls}" href="${escapeAttr(it.url)}"><span class="ov-icon" data-icon="${escapeAttr(it.icon)}" data-size="${cls === 'ovl-site' ? 34 : 24}" data-fx="none"></span><span><b>${escapeAttr(it.name)}</b>${it.desc ? `<small>${escapeAttr(it.desc)}</small>` : ''}</span></a>`;
+        const close = () => { if (panel) panel.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); };
+        function paint(cat, q) {
+            const fams = (cat && cat.families.length ? cat.families : LAUNCHER_FAMILIES);
+            const body = panel.querySelector('.ovl-body');
+            if (q && cat) {
+                const hits = cat.tools.filter(t => t.k.includes(q)).slice(0, 12);
+                body.innerHTML = hits.length ? `<div class="ovl-h">Tools</div><div class="ovl-fams">${hits.map(t => tile(t, 'ovl-fam')).join('')}</div>` : '<div class="ovl-empty">No tool matches. <a href="https://openvibe.tools/">Browse them all</a></div>';
+                return;
+            }
+            body.innerHTML = `<div class="ovl-h">Sites</div><div class="ovl-sites">${LAUNCHER_SITES.map(x => tile(x, 'ovl-site')).join('')}</div>
+                <div class="ovl-h">Tools <a href="https://openvibe.tools/">See all</a></div><div class="ovl-fams">${fams.map(x => tile(x, 'ovl-fam')).join('')}</div>`;
+        }
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (panel && panel.classList.contains('open')) return close();
+            if (!panel) {
+                panel = document.createElement('div'); panel.className = 'ovnav-launcher'; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'OpenVibe sites and tools');
+                panel.innerHTML = '<input type="search" class="ovl-q" placeholder="Find a tool or site" aria-label="Find a tool or site"><div class="ovl-body"></div>';
+                nav.appendChild(panel);
+                if (!root.OpenVibeIcons && !document.getElementById('ov-icons-loader')) { const sc = document.createElement('script'); sc.id = 'ov-icons-loader'; sc.src = 'https://openvibe.network/shared/ov-icons.js'; sc.async = true; document.head.appendChild(sc); }
+                let cat = null; paint(null, '');
+                const input = panel.querySelector('.ovl-q');
+                input.addEventListener('input', () => paint(cat, input.value.trim().toLowerCase()));
+                input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { const first = panel.querySelector('.ovl-body a'); if (first) location.href = first.href; } if (ev.key === 'ArrowDown') { const first = panel.querySelector('.ovl-body a'); if (first) { ev.preventDefault(); first.focus(); } } });
+                panel.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Escape') { close(); btn.focus(); return; }
+                    if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+                    const links = [...panel.querySelectorAll('.ovl-body a')]; const i = links.indexOf(document.activeElement); if (i < 0) return;
+                    ev.preventDefault(); const n = i + (ev.key === 'ArrowDown' ? 1 : -1); (links[n] || (n < 0 ? input : links[0])).focus();
+                });
+                panel.addEventListener('click', (ev) => ev.stopPropagation());
+                document.addEventListener('click', close);
+                launcherCatalog().then((c) => { if (c) { cat = c; paint(cat, input.value.trim().toLowerCase()); } });
+            }
+            panel.classList.add('open'); btn.setAttribute('aria-expanded', 'true');
+            try { panel.querySelector('.ovl-q').focus({ preventScroll: true }); } catch { /* */ }
+        });
+    }
+
+    // ── Notification bell (mounted by the navbar itself) ─────
+    function mountBell(nav, u) {
+        if (_config.notifications === false || !u || u.is_anon || !_config.token) return;
+        const mount = nav.querySelector('#openvibe-bell-mount'); if (!mount || mount.childElementCount) return;
+        const go = () => {
+            const N = root.OpenVibeNotifications; if (!N || mount.childElementCount) return;
+            try { if (!N.__ovNavInit) { N.init({ token: _config.token, apiBase: 'https://openvibe.network' }); N.__ovNavInit = true; } N.createBell(mount); } catch { /* */ }
+        };
+        if (root.OpenVibeNotifications) return go();
+        if (document.getElementById('ov-notify-loader')) return;
+        const sc = document.createElement('script'); sc.id = 'ov-notify-loader'; sc.src = 'https://openvibe.network/shared/notification-ui.js'; sc.async = true; sc.onload = () => setTimeout(go, 0); document.head.appendChild(sc);
     }
 
     function menuItemHTML(item) {
@@ -1013,6 +1132,9 @@
                     `<a class="openvibe-navbar-login" id="openvibe-login-btn" href="${escapeAttr(loginHref)}">Sign In</a>`}
             </div>
         `;
+        bindLauncher(nav);
+        // Pages that wire the bell themselves run right after init(); give them the first go.
+        setTimeout(() => mountBell(nav, u), 0);
 
         // Dropdown
         if (u) {
@@ -1174,6 +1296,10 @@
 
         /** The resolved brand for this page ({ sub, core, tld, name, short, variant }). */
         brand() { return resolveBrand(); },
+
+        /** The activity island (island.js), loaded on first use: OpenVibeNavbar.activity.start({...}). */
+        get activity() { return root.OpenVibeIsland || null; },
+        set activity(_v) { /* island.js binds itself; nothing to store */ },
 
         setToken(token) { _config.token = token; },
 
