@@ -1,30 +1,48 @@
 {
   "name": "OpenVibe.Live",
-  "short_name": "OpenVibe.Live",
-  "description": "Live streaming on OpenVibe",
+  "short_name": "OpenVibe",
+  "description": "Live streams, clips and chat on the open network",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#1a1a24",
+  "background_color": "#0a0f1c",
   "theme_color": "#3b82f6",
   "icons": [
     {
       "src": "/assets/logo-72.png",
       "sizes": "72x72",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/assets/logo-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/assets/logo-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/logo-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/assets/logo-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/assets/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ]
 }

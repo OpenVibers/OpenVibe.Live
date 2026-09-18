@@ -87,6 +87,8 @@
 .ov-icon .ovi-prog{fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;transform:rotate(-90deg);transform-origin:24px 24px;stroke-dasharray:125.7;stroke-dashoffset:125.7;transition:stroke-dashoffset .35s cubic-bezier(.2,.8,.2,1),opacity .2s;opacity:0}
 .ov-icon .ovi-glyph{fill:none;stroke:var(--ovi-glyph,var(--text-primary,#e6edf7));stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;transform-origin:24px 24px;transition:transform .25s cubic-bezier(.2,1.4,.3,1),stroke .2s}
 .ov-icon .ovi-glyph circle[r=".6"],.ov-icon .ovi-glyph circle[r=".7"]{fill:currentColor;stroke:none}
+.ov-icon[style*="--ovi-size:2"] .ovi-glyph,.ov-icon[data-size^="2"] .ovi-glyph{stroke-width:2.3}
+.ov-icon[style*="--ovi-size:2"] .ovi-ring,.ov-icon[data-size^="2"] .ovi-ring{stroke-width:3;opacity:.34}
 .ov-icon:hover .ovi-glyph,a:hover>.ov-icon .ovi-glyph,button:hover>.ov-icon .ovi-glyph{transform:scale(1.1)}
 .ov-icon:hover .ovi-bg,a:hover>.ov-icon .ovi-bg{opacity:.18}
 .ov-icon[data-fx=none] .ovi-comet{display:none}

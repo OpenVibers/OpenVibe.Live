@@ -55,26 +55,26 @@
 
             .openvibe-toast-container { position: fixed; top: 82px; right: 14px; z-index: 100000; display: flex; flex-direction: column; gap: 6px; pointer-events: none; max-width: 340px; width: 100%; }
             .openvibe-toast { pointer-events: all; background: color-mix(in srgb, var(--bg-card, #22222c) 94%, transparent); border: 1px solid color-mix(in srgb, var(--border, #333340) 82%, transparent); border-radius: 10px; padding: 11px 12px; display: flex; gap: 10px; align-items: flex-start; box-shadow: 0 10px 24px rgba(0,0,0,0.28); animation: openvibe-toast-in .24s cubic-bezier(.34,1.56,.64,1); cursor: pointer; position: relative; overflow: hidden; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; color: var(--text-primary, #e0e0e0); transition: border-color .2s; }
-            .openvibe-toast:hover { border-color: var(--accent, #8b5cf6); }
+            .openvibe-toast:hover { border-color: var(--accent, #3b82f6); }
             .openvibe-toast.removing { animation: openvibe-toast-out .3s ease forwards; }
             .openvibe-toast-icon { font-size: 18px; flex-shrink: 0; line-height: 1; margin-top: 1px; }
             .openvibe-toast-icon img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; display: block; }
             .openvibe-toast-body { flex: 1; min-width: 0; }
             .openvibe-toast-title { font-weight: 600; font-size: 12px; margin-bottom: 2px; display: flex; align-items: center; gap: 6px; }
-            .openvibe-toast-title .service-badge { font-size: 9px; padding: 1px 6px; border-radius: 3px; background: color-mix(in srgb, var(--accent, #8b5cf6) 18%, transparent); color: var(--accent-light, #a78bfa); font-weight: 500; }
+            .openvibe-toast-title .service-badge { font-size: 9px; padding: 1px 6px; border-radius: 3px; background: color-mix(in srgb, var(--accent, #3b82f6) 18%, transparent); color: var(--accent-light, #60a5fa); font-weight: 500; }
             .openvibe-toast-msg { font-size: 11px; color: var(--text-secondary, #b0b0b8); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
             .openvibe-toast-close { position: absolute; top: 8px; right: 10px; background: none; border: none; color: var(--text-muted, #707080); cursor: pointer; font-size: 14px; padding: 2px; line-height: 1; }
             .openvibe-toast-close:hover { color: var(--text-primary, #e0e0e0); }
-            .openvibe-toast-progress { position: absolute; bottom: 0; left: 0; height: 2px; background: var(--accent, #8b5cf6); }
+            .openvibe-toast-progress { position: absolute; bottom: 0; left: 0; height: 2px; background: var(--accent, #3b82f6); }
             .openvibe-toast.priority-high { border-left: 3px solid var(--warning, #f39c12); }
             .openvibe-toast.priority-critical { border-left: 3px solid var(--live-red, #e74c3c); background: rgba(231,76,60,0.06); }
             .openvibe-toast-actions { display: flex; gap: 6px; margin-top: 8px; }
             .openvibe-toast-actions button { padding: 5px 12px; border-radius: 5px; border: 1px solid var(--border, #333340); background: var(--bg-hover, #2f2f3d); color: var(--text-primary, #e0e0e0); font-size: 11px; font-weight: 600; cursor: pointer; }
-            .openvibe-toast-actions button.primary { background: var(--accent, #8b5cf6); color: #fff; border-color: var(--accent, #8b5cf6); }
+            .openvibe-toast-actions button.primary { background: var(--accent, #3b82f6); color: #fff; border-color: var(--accent, #3b82f6); }
 
             .openvibe-bell { position: relative; cursor: pointer; padding: 6px; display: inline-flex; align-items: center; justify-content: center; }
             .openvibe-bell svg { width: 22px; height: 22px; fill: var(--text-secondary, #b0b0b8); transition: fill .2s; }
-            .openvibe-bell:hover svg, .openvibe-bell.open svg { fill: var(--accent-light, #a78bfa); }
+            .openvibe-bell:hover svg, .openvibe-bell.open svg { fill: var(--accent-light, #60a5fa); }
             .openvibe-bell .badge { position: absolute; top: 0; right: 0; min-width: 16px; height: 16px; padding: 0 4px; background: var(--live-red, #e74c3c); color: #fff; border-radius: 8px; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; line-height: 1; pointer-events: none; animation: openvibe-badge-pulse .4s ease; }
             .openvibe-bell .badge.hidden { display: none; }
             .openvibe-bell.ringing svg { animation: openvibe-bell-ring .6s ease; }
@@ -90,27 +90,27 @@
             .openvibe-nv-actions { display: flex; gap: 4px; align-items: center; }
             .openvibe-nv-actions button, .openvibe-nv-actions a { background: none; border: 1px solid transparent; color: var(--text-muted, #707080); cursor: pointer; font-size: 12px; padding: 5px 8px; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; line-height: 1; }
             .openvibe-nv-actions button:hover, .openvibe-nv-actions a:hover { background: var(--bg-hover, #2f2f3d); color: var(--text-primary, #e0e0e0); }
-            .openvibe-nv-actions button.on { color: var(--accent-light, #a78bfa); border-color: color-mix(in srgb, var(--accent, #8b5cf6) 40%, transparent); }
+            .openvibe-nv-actions button.on { color: var(--accent-light, #60a5fa); border-color: color-mix(in srgb, var(--accent, #3b82f6) 40%, transparent); }
             .openvibe-nv-actions button:disabled { opacity: .45; cursor: default; }
             .openvibe-nv-actions svg { width: 14px; height: 14px; fill: currentColor; }
 
             .openvibe-nv-tools { padding: 8px 12px; border-bottom: 1px solid var(--border, #333340); display: flex; flex-direction: column; gap: 8px; }
             .openvibe-nv-search { position: relative; }
             .openvibe-nv-search input { width: 100%; box-sizing: border-box; padding: 7px 28px 7px 30px; border-radius: 8px; border: 1px solid var(--border, #333340); background: var(--bg-input, var(--bg-tertiary, #1e1e28)); color: var(--text-primary, #e0e0e0); font-size: 12px; outline: none; }
-            .openvibe-nv-search input:focus { border-color: var(--accent, #8b5cf6); }
+            .openvibe-nv-search input:focus { border-color: var(--accent, #3b82f6); }
             .openvibe-nv-search svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; fill: var(--text-muted, #707080); pointer-events: none; }
             .openvibe-nv-search .clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted, #707080); cursor: pointer; font-size: 14px; display: none; }
             .openvibe-nv-search.has-q .clear { display: block; }
             .openvibe-nv-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
             .openvibe-nv-chips button { border: 1px solid var(--border, #333340); background: transparent; color: var(--text-secondary, #b0b0b8); font-size: 11px; padding: 4px 10px; border-radius: 999px; cursor: pointer; line-height: 1.2; }
-            .openvibe-nv-chips button:hover { border-color: var(--accent, #8b5cf6); color: var(--text-primary, #e0e0e0); }
-            .openvibe-nv-chips button.active { background: color-mix(in srgb, var(--accent, #8b5cf6) 18%, transparent); border-color: var(--accent, #8b5cf6); color: var(--accent-light, #a78bfa); }
+            .openvibe-nv-chips button:hover { border-color: var(--accent, #3b82f6); color: var(--text-primary, #e0e0e0); }
+            .openvibe-nv-chips button.active { background: color-mix(in srgb, var(--accent, #3b82f6) 18%, transparent); border-color: var(--accent, #3b82f6); color: var(--accent-light, #60a5fa); }
             .openvibe-nv-chips select { margin-left: auto; border: 1px solid var(--border, #333340); background: var(--bg-input, var(--bg-tertiary, #1e1e28)); color: var(--text-secondary, #b0b0b8); font-size: 11px; padding: 4px 8px; border-radius: 8px; cursor: pointer; }
 
             .openvibe-nv-list { flex: 1; overflow-y: auto; padding: 4px 0; overscroll-behavior: contain; }
             .openvibe-notif-item { padding: 10px 12px 10px 14px; display: flex; gap: 10px; align-items: flex-start; cursor: pointer; transition: background .15s; border-left: 3px solid transparent; position: relative; }
             .openvibe-notif-item:hover { background: var(--bg-hover, #2f2f3d); }
-            .openvibe-notif-item.unread { background: color-mix(in srgb, var(--accent, #8b5cf6) 7%, transparent); border-left-color: var(--accent, #8b5cf6); }
+            .openvibe-notif-item.unread { background: color-mix(in srgb, var(--accent, #3b82f6) 7%, transparent); border-left-color: var(--accent, #3b82f6); }
             .openvibe-notif-item .icon { font-size: 20px; flex-shrink: 0; margin-top: 2px; width: 32px; text-align: center; }
             .openvibe-notif-item .icon img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; display: block; }
             .openvibe-notif-item .content { flex: 1; min-width: 0; }
@@ -126,9 +126,9 @@
             .openvibe-nv-empty .icon { font-size: 34px; margin-bottom: 8px; display: block; opacity: .5; }
             .openvibe-nv-more { display: flex; justify-content: center; padding: 10px; }
             .openvibe-nv-more button { border: 1px solid var(--border, #333340); background: transparent; color: var(--text-secondary, #b0b0b8); font-size: 12px; padding: 6px 14px; border-radius: 8px; cursor: pointer; }
-            .openvibe-nv-more .spinner { width: 16px; height: 16px; border: 2px solid var(--border, #333340); border-top-color: var(--accent, #8b5cf6); border-radius: 50%; animation: openvibe-spin .8s linear infinite; }
+            .openvibe-nv-more .spinner { width: 16px; height: 16px; border: 2px solid var(--border, #333340); border-top-color: var(--accent, #3b82f6); border-radius: 50%; animation: openvibe-spin .8s linear infinite; }
             .openvibe-nv-foot { padding: 8px 12px; border-top: 1px solid var(--border, #333340); font-size: 11px; color: var(--text-muted, #707080); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-            .openvibe-nv-foot a { color: var(--accent-light, #a78bfa); text-decoration: none; }
+            .openvibe-nv-foot a { color: var(--accent-light, #60a5fa); text-decoration: none; }
             .openvibe-nv-note { font-size: 11px; color: var(--text-muted, #707080); padding: 6px 12px; background: color-mix(in srgb, var(--warning, #f39c12) 10%, transparent); border-bottom: 1px solid var(--border, #333340); }
 
             @media (max-width: 460px) {
