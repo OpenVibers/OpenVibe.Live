@@ -1208,10 +1208,13 @@
     }
 
     function render() {
+        // A site may put state classes on the bar (Live's transparent hero mode). A re-render must not lose them.
+        let carried = []; try { carried = Array.from((_navEl && _navEl.classList) || []).filter(c => c !== 'openvibe-navbar'); } catch { carried = []; }
         if (_navEl) _navEl.remove();
 
         const nav = document.createElement('nav');
         nav.className = 'openvibe-navbar';
+        carried.forEach(c => { try { nav.classList.add(c); } catch { /* */ } });
         const svc = _config.service;
 
         const brand = resolveBrand();
