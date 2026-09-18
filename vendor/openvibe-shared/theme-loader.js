@@ -108,6 +108,41 @@
         // Native controls, scrollbars and form fields follow the theme's light/dark mode.
         const scheme = vars['--color-scheme'];
         if (scheme === 'light' || scheme === 'dark') { el.style.colorScheme = scheme; el.setAttribute('data-theme-mode', scheme); }
+        syncChrome();
+    }
+
+    // ── Browser chrome follows the theme ─────────────────────────────────────────────────
+    // The tab icon and the browser/OS toolbar colour are repainted from the theme that was just
+    // applied, so a violet, light or custom theme gets a matching favicon and address bar. Runs on
+    // every apply: first paint, a change on this page, a change in another tab, a server sync.
+    //   favicon: only <link rel="icon" data-ov-icon="<site>"> (written by app-icon.headTags) is touched
+    //   event:   window 'ov:theme' { accent, accentLight, bg, mode } for anything else that wants to follow
+    const DOTS = { live: '#ef4444', games: '#facc15' };
+    const COLOR_RE = /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%/]+\)|hsla?\([\d\s.,%/deg]+\))$/i;
+    function readColor(name, fallback) {
+        try { const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return COLOR_RE.test(v) ? v : fallback; } catch { return fallback; }
+    }
+    function faviconSvg(site, accent, light, bg) {
+        const e = encodeURIComponent;
+        return 'data:image/svg+xml,' + e('<svg xmlns="http://www.w3.org/2000/svg" viewBox="-32 -32 64 64"><defs><linearGradient id="r" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + light + '"/><stop offset="1" stop-color="' + accent + '"/></linearGradient></defs>'
+            + '<rect x="-32" y="-32" width="64" height="64" rx="15" fill="' + bg + '"/><g transform="scale(1.22)"><circle r="18" fill="none" stroke="url(#r)" stroke-width="4" opacity=".38"/>'
+            + '<path d="M0,-18 A18,18 0 0,1 17.4,4.6" fill="none" stroke="url(#r)" stroke-width="4.4" stroke-linecap="round"/><path d="M-9.5,-7 L0,10 L9.5,-7" fill="none" stroke="' + (document.documentElement.getAttribute('data-theme-mode') === 'light' ? accent : '#fff') + '" stroke-width="4.8" stroke-linecap="round" stroke-linejoin="round"/>'
+            + '<circle cx="17.4" cy="4.6" r="3.2" fill="' + (DOTS[site] || light) + '"/></g></svg>');
+    }
+    let _chromeKey = '';
+    function syncChrome() {
+        if (typeof document === 'undefined' || !document.head) return;
+        const accent = readColor('--accent', '#3b82f6'), light = readColor('--accent-light', accent), bg = readColor('--bg-secondary', readColor('--bg-primary', '#0a0f1c'));
+        const mode = document.documentElement.getAttribute('data-theme-mode') || 'dark';
+        const key = [accent, light, bg, mode].join('|'); if (key === _chromeKey) return; _chromeKey = key;
+        try {
+            let meta = document.querySelector('meta[name="theme-color"]');
+            if (!meta) { meta = document.createElement('meta'); meta.name = 'theme-color'; document.head.appendChild(meta); }
+            meta.setAttribute('content', bg);
+            const link = document.querySelector('link[rel~="icon"][data-ov-icon]');
+            if (link) { link.type = 'image/svg+xml'; link.href = faviconSvg(link.getAttribute('data-ov-icon'), accent, light, readColor('--bg-primary', '#0a0f1c')); }
+        } catch { /* cosmetic */ }
+        try { window.dispatchEvent(new CustomEvent('ov:theme', { detail: { accent: accent, accentLight: light, bg: bg, mode: mode } })); } catch { /* */ }
     }
 
     /**
@@ -207,6 +242,10 @@
 
     // ── Auto-apply on load (synchronous, prevents FOUC) ─────
     const activeId = resolveAndApply();
+    // The icon link may be parsed after this script: repaint once the head is complete.
+    if (typeof document !== 'undefined' && document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { _chromeKey = ''; syncChrome(); });
+    // A theme picked in another tab (or on another OpenVibe page of this site) applies here at once.
+    if (typeof window !== 'undefined') window.addEventListener('storage', function (e) { if (e.key === 'ov_theme') { try { resolveAndApply(); } catch (err) { /* */ } } });
 
     // Look up a theme we don't ship in the built-in map (community/custom themes) from the
     // central catalog. Without this, any non-built-in id fell through to the default 'vibe'
