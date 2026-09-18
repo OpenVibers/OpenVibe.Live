@@ -2233,10 +2233,41 @@ function _renderHistoryPayload(p) {
     else _renderChatHistoryData(p.data, p.globalMsgs || []);
 }
 
+/**
+ * Pages without a chat pane (home, VODs, pastes…) only have the floating widget. History used to
+ * be fetched exclusively through the main pane's hydrate, so the widget opened empty there and
+ * stayed empty until someone typed. Fill it directly: cached copy first, then the network.
+ */
+let _fcwHydratedAt = 0, _fcwHydrating = false;
+async function hydrateWidgetOnly() {
+    const container = document.getElementById('fcw-messages');
+    if (!container || _fcwHydrating) return;
+    if (container.querySelector('.chat-msg') && Date.now() - _fcwHydratedAt < 10 * 60 * 1000) return;
+    _fcwHydrating = true;
+    const feed = (payload) => {
+        const rows = (payload && payload.data && payload.data.messages) || [];
+        if (!rows.length) return 0;
+        const prev = _loadingHistory; _loadingHistory = true;
+        try { rows.slice(-200).forEach((m) => _fcwAddMessage(m)); } finally { _loadingHistory = prev; }
+        _fcwScrollToBottom();
+        return rows.length;
+    };
+    try {
+        if (!container.querySelector('.chat-msg')) { const cached = _chatCacheRead('global'); if (cached) feed(cached); }
+        try { if (typeof loadEmotes === 'function') await loadEmotes(); } catch { /* plain text is fine */ }
+        const payload = await _fetchHistoryPayload(null);
+        feed(payload);
+        _fcwHydratedAt = Date.now();
+        try { _chatCacheWrite('global', payload); } catch { /* */ }
+    } catch (err) {
+        console.warn('[chat] widget history failed:', err && err.message);
+    } finally { _fcwHydrating = false; }
+}
+
 async function hydrateActiveChatHistory(streamId, { clear = false } = {}) {
     const chatEl = getChatEl();
     const { messages } = chatEl;
-    if (!messages) return;
+    if (!messages) { if (!streamId) hydrateWidgetOnly(); return; }
     const gen = ++_chatHydrateGen;
     const room = _chatRoomKey(streamId);
     _watchChatPin(messages);
@@ -6984,6 +7015,8 @@ function fcwToggle() {
         if (!chatWs || chatWs.readyState !== WebSocket.OPEN) {
             initChat(null);
         }
+        // The widget is its own chat surface on pages without a pane: give it the history.
+        hydrateWidgetOnly();
 
         // Scroll to bottom
         const msgs = document.getElementById('fcw-messages');

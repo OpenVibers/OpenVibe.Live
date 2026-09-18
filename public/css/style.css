@@ -935,20 +935,7 @@ main#app { position: relative; z-index: 1; }
 .brand-text { color: var(--text-primary); }
 .brand-text strong { color: var(--accent); }
 
-/* Alpha badge — sits above "Streamer" */
-.alpha-badge {
-    font-size: 0.45rem; font-weight: 800; letter-spacing: 0.08em;
-    padding: 1px 4px; border-radius: 3px;
-    background: linear-gradient(135deg, #ff6b6b, #ee5a24, #ff6b6b);
-    background-size: 200% 200%;
-    color: #fff; line-height: 1;
-    text-transform: uppercase;
-    animation: alpha-pulse 2.5s ease-in-out infinite;
-    box-shadow: 0 0 6px rgba(238, 90, 36, 0.35);
-    margin-bottom: -1px;
-}
-@keyframes alpha-pulse {
-    0%, 100% { background-position: 0% 50%; box-shadow: 0 0 8px rgba(238, 90, 36, 0.4); }
+
     50% { background-position: 100% 50%; box-shadow: 0 0 14px rgba(238, 90, 36, 0.7); }
 }
 
@@ -4933,16 +4920,21 @@ textarea.form-input { resize: vertical; min-height: 60px; }
 }
 
 /* 1024px: Hamburger menu + hide nav links (catches Steam Deck & small laptops) */
+/* Phones and small tablets: the hamburger replaces the link row. Between 820 and 1024px the
+   links fit (or scroll), so showing a menu button there only hid navigation that had room. */
+@media (max-width: 820px) {
+    .nav-links { display: none; }
+    .nav-links-wrap { display: contents; }
+    .nav-links-wrap .nav-scroll-btn { display: none !important; }
+    .nav-hamburger { display: inline-flex; }
+}
 @media (max-width: 1024px) {
     .navbar { gap: 8px; padding: 0 10px; }
     .nav-brand { font-size: 1.1rem; }
     .nav-brand i { font-size: 1.2rem; }
 
-    /* Hide inline nav links — hamburger takes over */
-    .nav-links { display: none; }
-    .nav-links-wrap { display: contents; }
-    .nav-links-wrap .nav-scroll-btn { display: none !important; }
-    .nav-hamburger { display: flex; }
+    /* (nav links stay visible here — the row scrolls when it overflows; the hamburger only
+       takes over below 820px, see the block right after this one.) */
 
     /* ── Mobile nav menu ──────────────────────────────────────────────────────
        This was a full-bleed sheet pinned to both edges of the screen, with the items centred
@@ -5106,7 +5098,6 @@ textarea.form-input { resize: vertical; min-height: 60px; }
 
 /* 900px: Compact currency, hide brand text (keep "OpenVibe" on mobile) */
 @media (max-width: 900px) {
-    .brand-text-wrap .alpha-badge { display: none; }
     .brand-text-wrap .brand-streamer { display: none; }
     .brand-text-wrap { flex-direction: row; align-items: center; }
     .brand-text { font-size: 1rem; font-weight: 700; }
@@ -10820,7 +10811,7 @@ label.staff-inline-toggle.aiv-field { flex-direction:row; align-items:center; }
 .arena-topic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
 .arena-topic { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 16px; background: var(--bg-card); border: 1px solid var(--border); position: relative; }
 .arena-topic-debate { border-left: 4px solid #60a5fa; }
-.arena-topic-phrase { border-left: 4px solid #a78bfa; }
+.arena-topic-phrase { border-left: 4px solid var(--accent-light, var(--accent)); }
 .arena-topic-bounty { border-left: 4px solid #f5c542; }
 .arena-topic-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.75rem; color: var(--text-muted); }
 .arena-kind { display: inline-flex; align-items: center; gap: 5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; font-size: 0.68rem; color: var(--accent-light); }
@@ -11530,7 +11521,9 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
     font-size: clamp(0.75rem, 1.8vw, 0.9rem); font-weight: 650;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
 }
-.nav-hamburger { height: 34px; width: 34px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+/* Size only — whether it shows is decided by the ≤820px block (it was display:inline-flex here,
+   which put a menu button on every desktop navbar next to the full link row). */
+.nav-hamburger { height: 34px; width: 34px; align-items: center; justify-content: center; flex: none; }
 
 /* The menu itself: anchored to the avatar, never wider than the screen, and scrollable rather
    than running off the bottom on a short screen or a landscape phone. */
@@ -11689,28 +11682,7 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
     animation-play-state: paused !important;
 }
 
-/* The ALPHA badge is in the navbar, so it is on screen for the whole session — and it animated
-   background-position and box-shadow together, the two most expensive things to animate. The
-   gradient now slides on a transform inside a clipped pseudo-element and the glow is an opacity
-   fade on a second one, so the same effect composites instead of repainting. */
-.alpha-badge { position: relative; isolation: isolate; overflow: hidden; animation: none !important; }
-.alpha-badge > * { position: relative; z-index: 2; }
-.alpha-badge::before {
-    content: ''; position: absolute; top: 0; left: -50%; width: 200%; bottom: 0; z-index: 0;
-    background: linear-gradient(135deg, #ff6b6b, #ee5a24, #ff6b6b, #ee5a24);
-    background-size: 50% 100%;
-    animation: alphaSlide 2.5s ease-in-out infinite;
-}
-.alpha-badge::after {
-    content: ''; position: absolute; inset: -3px; z-index: -1; border-radius: inherit;
-    box-shadow: 0 0 14px rgba(238, 90, 36, 0.7);
-    animation: alphaGlow 2.5s ease-in-out infinite;
-}
-@keyframes alphaSlide { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-25%); } }
-@keyframes alphaGlow  { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) {
-    .alpha-badge::before, .alpha-badge::after { animation: none !important; }
-}
+
 
 /* ═══════════════════════════════════════════════════════════════
    The account menu.

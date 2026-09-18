@@ -517,14 +517,14 @@ function showModal(id) {
         login: `
             <h3><i class="fa-solid fa-right-to-bracket"></i> Sign In</h3>
             <p style="color:var(--text-muted);margin-bottom:16px">Sign in with your OpenVibe account to continue.</p>
-            <a href="/api/auth/sso/login" class="btn btn-lg" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff;text-decoration:none;border:none;cursor:pointer">
+            <a href="/api/auth/sso/login" class="btn btn-lg" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,var(--accent),#6d28d9);color:#fff;text-decoration:none;border:none;cursor:pointer">
                 <i class="fa-solid fa-network-wired"></i> Sign in with OpenVibe
             </a>
             <p style="text-align:center;margin-top:12px;font-size:12px;color:var(--text-muted)">Don't have an account? One will be created when you sign in.</p>`,
         register: `
             <h3><i class="fa-solid fa-user-plus"></i> Sign Up</h3>
             <p style="color:var(--text-muted);margin-bottom:16px">Create your account on the OpenVibe.</p>
-            <a href="/api/auth/sso/login" class="btn btn-lg" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff;text-decoration:none;border:none;cursor:pointer">
+            <a href="/api/auth/sso/login" class="btn btn-lg" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,var(--accent),#6d28d9);color:#fff;text-decoration:none;border:none;cursor:pointer">
                 <i class="fa-solid fa-network-wired"></i> Sign in with OpenVibe
             </a>
             <p style="text-align:center;margin-top:12px;font-size:12px;color:var(--text-muted)">Registration is handled on openvibe.network</p>`,
@@ -2492,7 +2492,7 @@ function addConfigButtonModal() {
                 </div>
                 <div class="form-group" style="margin:0">
                     <label style="font-size:0.85rem">Border Color</label>
-                    <input type="text" id="modal-cfgbtn-border" class="form-input form-input-sm" placeholder="#8b5cf6 or var(--accent)">
+                    <input type="text" id="modal-cfgbtn-border" class="form-input form-input-sm" placeholder="var(--accent) or var(--accent)">
                 </div>
             </div>
         </details>
