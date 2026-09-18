@@ -315,6 +315,14 @@ router.get('/sso/login', (req, res) => {
     res.cookie('oauth_state', state, { httpOnly: true, maxAge: 5 * 60 * 1000, sameSite: 'Lax', secure: isSecure });
     // Where to go afterwards (the fanout chain, or the page that asked to sign in).
     const next = safeNext(req.query.next);
+    // Already signed in here (a link hand-off from another OpenVibe site, or a stale hint): no
+    // round trip to the network — straight to the page.
+    if (req.query.silent) {
+        try {
+            const have = req.cookies?.token || req.cookies?.ov_token;
+            if (have && require('./auth').verifyToken(have)) return res.redirect(next);
+        } catch { /* fall through to the network */ }
+    }
     if (next !== '/') res.cookie('oauth_next', next, { httpOnly: true, maxAge: 5 * 60 * 1000, sameSite: 'Lax', secure: isSecure });
     else res.clearCookie('oauth_next');
 
@@ -329,6 +337,150 @@ router.get('/sso/login', (req, res) => {
     // network has no session either, it bounces back with error=login_required and we stay quiet.
     if (req.query.silent) params.set('prompt', 'none');
     res.redirect(`${getNetworkBase()}/oauth/authorize?${params.toString()}`);
+});
+
+/**
+ * Turn a successful openvibe.network token response into this site's session: find or create
+ * the local account linked to that network user, set the cookies, return what the page needs.
+ * Shared by the OAuth callback and the FedCM sign-in. Throws { status, message } on bad input.
+ */
+function establishNetworkSession(req, res, tokenData) {
+    const ssoUser = tokenData.user;
+    if (!ssoUser) {
+        throw Object.assign(new Error('No user data in token response'), { status: 400 });
+    }
+
+    // Find or create local user linked to this openvibe.network account
+    const openvibeToolsId = String(ssoUser.id);
+
+    // Check linked_accounts first
+    let localUser = null;
+    const linked = db.getDb().prepare(
+        "SELECT user_id FROM linked_accounts WHERE service = 'network' AND service_user_id = ?"
+    ).get(openvibeToolsId);
+
+    if (linked) {
+        localUser = db.getUserById(linked.user_id);
+    }
+
+    // Try matching by username
+    if (!localUser) {
+        localUser = db.getUserByUsername(ssoUser.username);
+        if (localUser) {
+            // Auto-link
+            db.getDb().prepare(
+                "INSERT OR IGNORE INTO linked_accounts (user_id, service, service_user_id, service_username) VALUES (?, 'network', ?, ?)"
+            ).run(localUser.id, openvibeToolsId, ssoUser.username);
+        }
+    }
+
+    // Create new local user if none found
+    if (!localUser) {
+        const stream_key = uuidv4().replace(/-/g, '');
+        const result = db.createUser({
+            username: ssoUser.username,
+            email: ssoUser.email || null,
+            password_hash: '$sso$' + require('crypto').randomBytes(32).toString('hex'), // placeholder, can't login with password
+            display_name: ssoUser.display_name || ssoUser.username,
+            stream_key,
+        });
+        localUser = db.getUserById(result.lastInsertRowid);
+
+        // Sync optional fields from openvibe.network
+        if (ssoUser.avatar_url) db.updateUserAvatar(localUser.id, ssoUser.avatar_url);
+        if (ssoUser.bio) db.getDb().prepare('UPDATE users SET bio = ? WHERE id = ?').run(ssoUser.bio, localUser.id);
+        if (ssoUser.role && ['user', 'streamer', 'global_mod', 'admin'].includes(ssoUser.role)) {
+            db.getDb().prepare('UPDATE users SET role = ? WHERE id = ?').run(ssoUser.role, localUser.id);
+        }
+        if (ssoUser.profile_color) db.getDb().prepare('UPDATE users SET profile_color = ? WHERE id = ?').run(ssoUser.profile_color, localUser.id);
+
+        // Link to openvibe.network
+        db.getDb().prepare(
+            "INSERT OR IGNORE INTO linked_accounts (user_id, service, service_user_id, service_username) VALUES (?, 'network', ?, ?)"
+        ).run(localUser.id, openvibeToolsId, ssoUser.username);
+
+        localUser = db.getUserById(localUser.id); // re-fetch
+        console.log(`[Auth/SSO] New local account created for openvibe.network user ${ssoUser.username} (openvibe-tools id:${openvibeToolsId}, local id:${localUser.id})`);
+    }
+
+    // Register this account under the user's openvibe.network Linked Services.
+    try { require('../utils/notify').reportLinkedAccount(localUser); } catch { /* */ }
+
+    // Use the openvibe.network token directly (no more local tokens)
+    const openvibeToolsToken = tokenData.access_token;
+    const openvibeRefreshToken = tokenData.refresh_token;
+    if (!openvibeToolsToken) {
+        throw Object.assign(new Error('No access token in response'), { status: 500 });
+    }
+
+    const isSecure = (process.env.BASE_URL || '').startsWith('https');
+
+    // Set access token cookie (readable by JS for API calls)
+    res.cookie('token', openvibeToolsToken, { httpOnly: false, path: '/', maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'Lax', secure: isSecure });
+
+    // Also set ov_token (used by shared navbar/notification libs)
+    res.cookie('ov_token', openvibeToolsToken, { httpOnly: false, path: '/', maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'Lax', secure: isSecure });
+    // Long-lived hint (outlives the token): this browser has signed in here, so a later visit
+    // with no session may try one silent sign-in through the network.
+    res.cookie('ov_sso_hint', 'account', { ...HINT_COOKIE, secure: isSecure });
+
+    // Store refresh token in httpOnly cookie (not readable by JS — server handles refresh)
+    if (openvibeRefreshToken) {
+        res.cookie('ov_refresh', openvibeRefreshToken, { httpOnly: true, maxAge: 30 * 24 * 60 * 60 * 1000, sameSite: 'Lax', secure: isSecure, path: '/api/auth' });
+    }
+
+    // Return HTML that stores token in localStorage and redirects
+    return { localUser, openvibeToolsToken, openvibeRefreshToken };
+}
+
+/** POST to the network's /oauth/token (server-to-server) and parse the JSON answer. */
+function networkTokenRequest(payload) {
+    return new Promise((resolve, reject) => {
+        const body = JSON.stringify(payload);
+        const url = new URL(`${getNetworkTokenBase()}/oauth/token`);
+        const httpModule = getNetworkHttpModule();
+        const reqOpts = {
+            hostname: url.hostname,
+            port: url.port || (url.protocol === 'https:' ? 443 : 80),
+            path: url.pathname + url.search,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+        };
+        const httpReq = httpModule.request(reqOpts, (httpRes) => {
+            let data = '';
+            httpRes.on('data', chunk => data += chunk);
+            httpRes.on('end', () => { try { resolve(JSON.parse(data)); } catch { reject(new Error('Invalid token response')); } });
+        });
+        httpReq.on('error', reject);
+        httpReq.write(body);
+        httpReq.end();
+    });
+}
+
+// ── FedCM sign-in ────────────────────────────────────────────
+// The browser obtained an assertion from openvibe.network for this origin (shared sso-client.js);
+// exchange it server-to-server for the usual token pair and open the same session the OAuth
+// callback would. Same-origin JSON POST only.
+router.post('/fedcm', express.json({ limit: '8kb' }), async (req, res) => {
+    try {
+        if (!/application\/json/.test(String(req.headers['content-type'] || ''))) return res.status(400).json({ error: 'JSON only' });
+        const { token, nonce } = req.body || {};
+        if (!token || typeof token !== 'string') return res.status(400).json({ error: 'Missing token' });
+        let claims = null;
+        try { claims = JSON.parse(Buffer.from(String(token).split('.')[1] || '', 'base64url').toString('utf8')); } catch { /* */ }
+        if (!claims || (nonce && claims.nonce !== nonce)) return res.status(400).json({ error: 'Assertion does not match this request' });
+        const tokenData = await networkTokenRequest({
+            grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+            assertion: token, client_id: OV_CLIENT_ID, client_secret: OV_CLIENT_SECRET,
+        });
+        if (tokenData.error) return res.status(401).json({ error: tokenData.error, error_description: tokenData.error_description || null });
+        const { localUser } = establishNetworkSession(req, res, tokenData);
+        res.set('Cache-Control', 'no-store');
+        res.json({ ok: true, user: { id: localUser.id, username: localUser.username, display_name: localUser.display_name || localUser.username, avatar_url: localUser.avatar_url || null } });
+    } catch (err) {
+        console.error('[Auth/FedCM] sign-in failed:', err.message);
+        res.status(err.status || 500).json({ error: err.message || 'FedCM sign-in failed' });
+    }
 });
 
 // ── OAuth Callback (exchange code for token) ─────────────────
@@ -361,39 +513,12 @@ router.get('/callback', async (req, res) => {
         res.clearCookie('oauth_state');
 
         // Exchange code for tokens
-        const tokenData = await new Promise((resolve, reject) => {
-            const body = JSON.stringify({
-                grant_type: 'authorization_code',
-                client_id: OV_CLIENT_ID,
-                client_secret: OV_CLIENT_SECRET,
-                code,
-                redirect_uri: getNetworkRedirectUri(),
-            });
-
-            const url = new URL(`${getNetworkTokenBase()}/oauth/token`);
-            const httpModule = getNetworkHttpModule();
-            const reqOpts = {
-                hostname: url.hostname,
-                port: url.port || (url.protocol === 'https:' ? 443 : 80),
-                path: url.pathname + url.search,
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(body),
-                },
-            };
-
-            const httpReq = httpModule.request(reqOpts, (httpRes) => {
-                let data = '';
-                httpRes.on('data', chunk => data += chunk);
-                httpRes.on('end', () => {
-                    try { resolve(JSON.parse(data)); }
-                    catch { reject(new Error('Invalid token response')); }
-                });
-            });
-            httpReq.on('error', reject);
-            httpReq.write(body);
-            httpReq.end();
+        const tokenData = await networkTokenRequest({
+            grant_type: 'authorization_code',
+            client_id: OV_CLIENT_ID,
+            client_secret: OV_CLIENT_SECRET,
+            code,
+            redirect_uri: getNetworkRedirectUri(),
         });
 
         if (tokenData.error) {
@@ -401,91 +526,8 @@ router.get('/callback', async (req, res) => {
             return res.status(400).send(`OAuth error: ${tokenData.error_description || tokenData.error}`);
         }
 
-        const ssoUser = tokenData.user;
-        if (!ssoUser) {
-            return res.status(400).send('No user data in token response');
-        }
+        const { localUser, openvibeToolsToken, openvibeRefreshToken } = establishNetworkSession(req, res, tokenData);
 
-        // Find or create local user linked to this openvibe.network account
-        const openvibeToolsId = String(ssoUser.id);
-
-        // Check linked_accounts first
-        let localUser = null;
-        const linked = db.getDb().prepare(
-            "SELECT user_id FROM linked_accounts WHERE service = 'network' AND service_user_id = ?"
-        ).get(openvibeToolsId);
-
-        if (linked) {
-            localUser = db.getUserById(linked.user_id);
-        }
-
-        // Try matching by username
-        if (!localUser) {
-            localUser = db.getUserByUsername(ssoUser.username);
-            if (localUser) {
-                // Auto-link
-                db.getDb().prepare(
-                    "INSERT OR IGNORE INTO linked_accounts (user_id, service, service_user_id, service_username) VALUES (?, 'network', ?, ?)"
-                ).run(localUser.id, openvibeToolsId, ssoUser.username);
-            }
-        }
-
-        // Create new local user if none found
-        if (!localUser) {
-            const stream_key = uuidv4().replace(/-/g, '');
-            const result = db.createUser({
-                username: ssoUser.username,
-                email: ssoUser.email || null,
-                password_hash: '$sso$' + require('crypto').randomBytes(32).toString('hex'), // placeholder, can't login with password
-                display_name: ssoUser.display_name || ssoUser.username,
-                stream_key,
-            });
-            localUser = db.getUserById(result.lastInsertRowid);
-
-            // Sync optional fields from openvibe.network
-            if (ssoUser.avatar_url) db.updateUserAvatar(localUser.id, ssoUser.avatar_url);
-            if (ssoUser.bio) db.getDb().prepare('UPDATE users SET bio = ? WHERE id = ?').run(ssoUser.bio, localUser.id);
-            if (ssoUser.role && ['user', 'streamer', 'global_mod', 'admin'].includes(ssoUser.role)) {
-                db.getDb().prepare('UPDATE users SET role = ? WHERE id = ?').run(ssoUser.role, localUser.id);
-            }
-            if (ssoUser.profile_color) db.getDb().prepare('UPDATE users SET profile_color = ? WHERE id = ?').run(ssoUser.profile_color, localUser.id);
-
-            // Link to openvibe.network
-            db.getDb().prepare(
-                "INSERT OR IGNORE INTO linked_accounts (user_id, service, service_user_id, service_username) VALUES (?, 'network', ?, ?)"
-            ).run(localUser.id, openvibeToolsId, ssoUser.username);
-
-            localUser = db.getUserById(localUser.id); // re-fetch
-            console.log(`[Auth/SSO] New local account created for openvibe.network user ${ssoUser.username} (openvibe-tools id:${openvibeToolsId}, local id:${localUser.id})`);
-        }
-
-        // Register this account under the user's openvibe.network Linked Services.
-        try { require('../utils/notify').reportLinkedAccount(localUser); } catch { /* */ }
-
-        // Use the openvibe.network token directly (no more local tokens)
-        const openvibeToolsToken = tokenData.access_token;
-        const openvibeRefreshToken = tokenData.refresh_token;
-        if (!openvibeToolsToken) {
-            return res.status(500).send('No access token in response');
-        }
-
-        const isSecure = (process.env.BASE_URL || '').startsWith('https');
-
-        // Set access token cookie (readable by JS for API calls)
-        res.cookie('token', openvibeToolsToken, { httpOnly: false, path: '/', maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'Lax', secure: isSecure });
-
-        // Also set ov_token (used by shared navbar/notification libs)
-        res.cookie('ov_token', openvibeToolsToken, { httpOnly: false, path: '/', maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'Lax', secure: isSecure });
-        // Long-lived hint (outlives the token): this browser has signed in here, so a later visit
-        // with no session may try one silent sign-in through the network.
-        res.cookie('ov_sso_hint', 'account', { ...HINT_COOKIE, secure: isSecure });
-
-        // Store refresh token in httpOnly cookie (not readable by JS — server handles refresh)
-        if (openvibeRefreshToken) {
-            res.cookie('ov_refresh', openvibeRefreshToken, { httpOnly: true, maxAge: 30 * 24 * 60 * 60 * 1000, sameSite: 'Lax', secure: isSecure, path: '/api/auth' });
-        }
-
-        // Return HTML that stores token in localStorage and redirects
         const userJson = JSON.stringify({ id: localUser.id, username: localUser.username, display_name: localUser.display_name || localUser.username, avatar_url: localUser.avatar_url || null });
         res.send(`<!DOCTYPE html>
 <html><head><title>Logging in...</title></head>

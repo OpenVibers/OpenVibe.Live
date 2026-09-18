@@ -38,6 +38,10 @@
         // but this browser has signed in to the network before (ov_sso_hint), try one silent
         // prompt=none round trip per tab so a session on one site becomes a session on all.
         silentLogin: null,
+        // fedcm: false to opt out; 'optional' (default) shows the browser's native chip the first
+        // time and re-authenticates silently afterwards; 'silent' only re-authenticates.
+        fedcm: 'optional',
+        fedcmLogin: null,           // POST target for the assertion (default: this site's /auth/fedcm)
     };
     const _runtimeMenu = { before: [], after: [] };
     let _runtimeLinks = null;
@@ -790,15 +794,84 @@
      * never for bots. The site's login route turns silent=1 into prompt=none and comes straight
      * back on error=login_required, so a signed-out visitor sees one quick redirect at most.
      */
-    function maybeSilentLogin() {
-        if (!_config.silentLogin || typeof location === 'undefined') return false;
-        if (ssoHint() !== 'account') return false;
-        if (/bot|crawl|spider|slurp|headless/i.test(navigator.userAgent || '')) return false;
-        try { if (sessionStorage.getItem('ov_silent_sso')) return false; sessionStorage.setItem('ov_silent_sso', '1'); } catch { return false; }
-        if (/[?&]sso=none\b/.test(location.search)) return false;
+    let _ssoClientLoading = null;
+    function loadSsoClient() {
+        if (root.OpenVibeSSO) return Promise.resolve(root.OpenVibeSSO);
+        if (_ssoClientLoading) return _ssoClientLoading;
+        _ssoClientLoading = new Promise((resolve) => {
+            const sc = document.createElement('script'); sc.async = true; sc.src = `${_config.apiBase}/shared/sso-client.js`;
+            sc.onload = () => resolve(root.OpenVibeSSO || null); sc.onerror = () => resolve(null);
+            document.head.appendChild(sc);
+        });
+        return _ssoClientLoading;
+    }
+
+    /** Signed in here: cross-site links carry the session along (see sso-client.js). */
+    function enableHandoff() {
+        loadSsoClient().then((sso) => { try { sso && sso.handoffLinks({ signedIn: !!_config.user && !_config.user.is_anon }); } catch { /* */ } });
+    }
+
+    function silentLoginNow() {
         const url = String(_config.silentLogin).replace('{url}', encodeURIComponent(location.href));
         location.replace(url);
         return true;
+    }
+
+    /**
+     * Two ways to find out that this browser is signed in to the network without a session here:
+     *   1. the hint cookie this site set on an earlier sign-in ('account') — go straight to the
+     *      silent sign-in (one quick redirect, back where you were);
+     *   2. otherwise ask the network in a hidden iframe (GET /sso/check) — invisible, no
+     *      redirect unless the answer is yes. Browsers that partition third-party cookies answer
+     *      no and nothing happens, which is the same as before.
+     * At most once per tab per 10 minutes; never after an explicit sign-out ('guest'); never for bots.
+     */
+    function maybeSilentLogin() {
+        if (!_config.silentLogin || typeof location === 'undefined') return false;
+        const hint = ssoHint();
+        if (hint === 'guest') return false;
+        if (/bot|crawl|spider|slurp|headless/i.test(navigator.userAgent || '')) return false;
+        if (/[?&]sso=none\b/.test(location.search)) return false;
+        try {
+            const last = +sessionStorage.getItem('ov_silent_sso_at') || 0;
+            if (Date.now() - last < 10 * 60 * 1000) return false;
+            sessionStorage.setItem('ov_silent_sso_at', String(Date.now()));
+        } catch { return false; }
+        if (hint === 'account') return silentLoginNow();
+        checkNetworkSession().then((state) => {
+            if (state && state.signedIn) return silentLoginNow();
+            // No answer or "not signed in" — either a guest, or a browser that keeps the network's
+            // cookie away from iframes. FedCM asks the browser itself; the network's login status
+            // makes it a no-op for guests, a native chip (then silent re-auth) for signed-in users.
+            if (_config.fedcm === false) return;
+            loadSsoClient().then(async (sso) => {
+                if (!sso || !sso.fedcmAvailable()) return;
+                const r = await sso.fedcm({ apiBase: _config.apiBase, fedcmLogin: _config.fedcmLogin || undefined, mediation: _config.fedcm === 'silent' ? 'silent' : 'optional' });
+                if (r && r.ok) { try { sessionStorage.removeItem('ov_silent_sso_at'); } catch { /* */ } location.reload(); }
+            });
+        });
+        return false;
+    }
+
+    /** Ask the network (hidden iframe + postMessage) whether this browser is signed in there. */
+    function checkNetworkSession(timeoutMs = 4000) {
+        return new Promise((resolve) => {
+            let done = false, frame = null, timer = null;
+            const finish = (v) => { if (done) return; done = true; clearTimeout(timer); window.removeEventListener('message', onMsg); try { frame?.remove(); } catch { /* */ } resolve(v); };
+            const onMsg = (e) => {
+                if (e.origin !== _config.apiBase || !e.data || e.data.type !== 'ov-sso') return;
+                finish({ signedIn: !!e.data.signedIn, username: e.data.username || null });
+            };
+            try {
+                window.addEventListener('message', onMsg);
+                frame = document.createElement('iframe');
+                frame.setAttribute('aria-hidden', 'true'); frame.setAttribute('tabindex', '-1');
+                frame.style.cssText = 'position:absolute;width:0;height:0;border:0;opacity:0;pointer-events:none';
+                frame.src = `${_config.apiBase}/sso/check?origin=${encodeURIComponent(location.origin)}`;
+                (document.body || document.documentElement).appendChild(frame);
+                timer = setTimeout(() => finish(null), timeoutMs);
+            } catch { finish(null); }
+        });
     }
 
     function recordHistory() {
@@ -827,6 +900,7 @@
                     if (session.token) _config.token = session.token;
                     render();
                     recordHistory();
+                    enableHandoff();
                 } else {
                     maybeSilentLogin();
                 }
@@ -1019,6 +1093,8 @@
                     clearAuthState();
                     _config.user = null;
                     _config.token = null;
+                    try { root.OpenVibeSSO && root.OpenVibeSSO.preventSilent(); } catch { /* */ }
+                    try { localStorage.setItem('ov_sso_hint', 'guest'); } catch { /* */ }
                     if (onToolsDomain()) {
                         // The gateway also clears the Domain=.openvibe.tools cookie
                         // and the httpOnly refresh cookie, then sends us back here.
@@ -1060,7 +1136,7 @@
             // the shared SSO state (ov_token cookie / localStorage / optional
             // sessionUrl) and the navbar re-renders when it arrives.
             if (!_config.user) refreshAuthState();
-            else recordHistory();
+            else { recordHistory(); enableHandoff(); }
             return el;
         },
 
@@ -1092,6 +1168,9 @@
             for (const k of ['before', 'after']) _runtimeMenu[k] = _runtimeMenu[k].filter(i => i.id !== id);
             if (_navEl && _config.user) render();
         },
+
+        /** Is this browser signed in to the network? ({ signedIn, username } or null when unknown). */
+        checkNetworkSession,
 
         /** The resolved brand for this page ({ sub, core, tld, name, short, variant }). */
         brand() { return resolveBrand(); },

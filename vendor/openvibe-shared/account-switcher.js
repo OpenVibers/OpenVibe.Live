@@ -308,7 +308,14 @@
         }
     }
 
+    /** Drop the server-held cookies (ov_sso is httpOnly, so only the server can). Best effort. */
+    function serverLogout() {
+        try { fetch(`${_config.apiBase}/api/auth/logout`, { method: 'POST', credentials: 'include', keepalive: true }).catch(() => {}); } catch { /* */ }
+        try { localStorage.setItem('ov_sso_hint', 'guest'); } catch { /* */ }
+    }
+
     function logout() {
+        serverLogout();
         const activeId = getActiveId();
         if (activeId) removeAccount(activeId);
         localStorage.removeItem(TOKEN_KEY);
@@ -319,6 +326,7 @@
     }
 
     function logoutAll() {
+        serverLogout();
         localStorage.removeItem(STORAGE_KEY);
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(ACTIVE_KEY);
