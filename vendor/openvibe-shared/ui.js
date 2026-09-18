@@ -5,6 +5,9 @@
  *   OpenVibeUI.toast('Upload failed', { type: 'error', title: 'Images', action: { label: 'Retry', onClick } })
  *   if (await OpenVibeUI.confirm({ title: 'Delete paste?', message: 'This cannot be undone.', danger: true })) …
  *   await OpenVibeUI.alert({ title: 'Heads up', message: '…' })
+ *   OpenVibeUI.notice({ id: 'yt-upstream', type: 'warning', title: '…', message: '…', links: [{ label, href }], dismissible: true })
+ *       a page-level notice that always sits directly BELOW the site's navbar (never above it), one
+ *       design for service status, maintenance, read-only mode and similar. Returns { close, update }.
  *
  * Themed from the site's CSS variables, stacked bottom-right (bottom-centre on phones), announced
  * to assistive tech (role=status, role=alert for errors), pause-on-hover, Escape closes dialogs,
@@ -13,7 +16,7 @@
 (function (root) {
     'use strict';
     if (root.OpenVibeUI) return;
-    if (typeof document === 'undefined') { const noop = { toast() { return { close() {} }; }, confirm: async () => false, alert: async () => {} }; if (typeof module !== 'undefined') module.exports = noop; return; }
+    if (typeof document === 'undefined') { const noop = { toast() { return { close() {} }; }, notice() { return { close() {}, update() {} }; }, confirm: async () => false, alert: async () => {} }; if (typeof module !== 'undefined') module.exports = noop; return; }
 
     const CSS = `
 .ovui-toasts{position:fixed;right:16px;bottom:16px;z-index:2147483000;display:flex;flex-direction:column;gap:8px;max-width:min(380px,calc(100vw - 24px));pointer-events:none}
@@ -41,6 +44,14 @@
 .ovui-btn.is-primary{background:var(--accent,#3b82f6);border-color:transparent;color:var(--on-accent,#fff)}
 .ovui-btn.is-danger{background:var(--danger,#ef4444);border-color:transparent;color:#fff}
 .ovui-btn:focus-visible,.ovui-x:focus-visible,.ovui-act:focus-visible{outline:2px solid var(--accent,#3b82f6);outline-offset:2px}
+.ovui-notices{display:flex;flex-direction:column;gap:8px;max-width:1080px;margin:14px auto 0;padding:0 16px;box-sizing:border-box;width:100%}
+.ovui-notices:empty{display:none}
+.ovui-notice{--ovui-c:var(--accent,#3b82f6);display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start;padding:12px 14px;border-radius:14px;border:1px solid color-mix(in srgb,var(--ovui-c) 40%,transparent);background:color-mix(in srgb,var(--ovui-c) 9%,var(--bg-secondary,#111826));color:var(--text-primary,#e6edf7);font:400 14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;animation:ovuiIn .28s cubic-bezier(.2,1.2,.3,1)}
+.ovui-notice[data-type=success]{--ovui-c:var(--success,#22c55e)}.ovui-notice[data-type=error]{--ovui-c:var(--danger,#ef4444)}.ovui-notice[data-type=warning]{--ovui-c:var(--warning,#f59e0b)}
+.ovui-notice-ic{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--ovui-c);color:#0b1220;font:800 13px/1 system-ui,sans-serif;margin-top:1px}
+.ovui-notice b{font-weight:700}.ovui-notice-msg{color:var(--text-secondary,#a8b3c4)}
+.ovui-notice-links{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px}.ovui-notice-links a{color:var(--accent-light,var(--accent,#60a5fa));font-weight:600;text-decoration:none}.ovui-notice-links a:hover{text-decoration:underline}
+@media (max-width:560px){.ovui-notices{margin-top:10px;padding:0 12px}}
 @keyframes ovuiIn{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
 @keyframes ovuiOut{to{opacity:0;transform:translateX(16px)}}
 @keyframes ovuiFade{from{opacity:0}to{opacity:1}}
@@ -111,8 +122,48 @@
         });
     }
 
+    // ── Page notices ─────────────────────────────────────────
+    const notices = new Map();
+    let noticeHost = null;
+    function placeNoticeHost() {
+        if (!noticeHost) { noticeHost = el('div', 'ovui-notices'); noticeHost.setAttribute('aria-live', 'polite'); }
+        // Directly after the navbar, whichever flavour the site uses; otherwise at the top of the content.
+        const nav = document.querySelector('nav.openvibe-navbar, #navbar-mount, .navbar, header[role="banner"]');
+        const anchor = nav ? (nav.id === 'navbar-mount' || nav.parentNode === document.body ? nav : nav) : null;
+        if (anchor && anchor.parentNode) { if (anchor.nextSibling !== noticeHost) anchor.parentNode.insertBefore(noticeHost, anchor.nextSibling); return true; }
+        const main = document.querySelector('main') || document.body.firstElementChild;
+        if (!noticeHost.isConnected && main && main.parentNode) main.parentNode.insertBefore(noticeHost, main);
+        return false;
+    }
+    function notice(o) {
+        o = o || {}; css();
+        const id = String(o.id || 'n' + Date.now());
+        try { if (o.dismissible !== false && sessionStorage.getItem('ovui_notice_' + id) === '1') return { close() {}, update() {} }; } catch { /* */ }
+        if (notices.has(id)) notices.get(id).close(true);
+        const type = ['info', 'success', 'error', 'warning'].includes(o.type) ? o.type : 'info';
+        const n = el('div', 'ovui-notice'); n.dataset.type = type; n.setAttribute('role', type === 'error' ? 'alert' : 'status');
+        n.appendChild(el('span', 'ovui-notice-ic', type === 'success' ? '✓' : type === 'info' ? 'i' : '!'));
+        const body = el('div');
+        const fill = (p) => {
+            body.replaceChildren();
+            const line = el('div'); if (p.title) { line.appendChild(el('b', null, p.title)); line.appendChild(document.createTextNode(' ')); }
+            if (p.message) line.appendChild(el('span', 'ovui-notice-msg', p.message)); body.appendChild(line);
+            const links = (p.links || []).map((l) => { const h = l && l.label && safeHref(l.href); if (!h) return null; const a = el('a', null, l.label); a.href = h; return a; }).filter(Boolean);
+            if (links.length) { const row = el('div', 'ovui-notice-links'); links.forEach((a) => row.appendChild(a)); body.appendChild(row); }
+        };
+        fill(o); n.appendChild(body);
+        const close = (silent) => { n.remove(); notices.delete(id); if (!silent && o.dismissible !== false) { try { sessionStorage.setItem('ovui_notice_' + id, '1'); } catch { /* */ } } };
+        if (o.dismissible !== false) { const x = el('button', 'ovui-x', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Dismiss'); x.addEventListener('click', () => close(false)); n.appendChild(x); }
+        // The navbar may mount after us: keep trying briefly until the notice sits under it.
+        let tries = 0; const settle = () => { const ok = placeNoticeHost(); if (!ok && ++tries < 40) setTimeout(settle, 150); }; settle();
+        noticeHost.appendChild(n);
+        const handle = { close: () => close(true), update: (p) => fill(Object.assign({}, o, p)), el: n };
+        notices.set(id, handle);
+        return handle;
+    }
+
     const api = {
-        toast,
+        toast, notice,
         success: (m, o) => toast(m, Object.assign({}, o, { type: 'success' })),
         error: (m, o) => toast(m, Object.assign({}, o, { type: 'error' })),
         warning: (m, o) => toast(m, Object.assign({}, o, { type: 'warning' })),

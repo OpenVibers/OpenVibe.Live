@@ -499,7 +499,9 @@
     const SERVICE_SUB = { net: 'net', dev: 'dev', paste: 'pastes', maps: 'maps', food: 'food', img: 'img', yt: 'yt', audio: 'audio', text: 'text', logo: 'logo', docs: 'docs' };
 
     function titleCase(w) { return w ? w.charAt(0).toUpperCase() + w.slice(1) : ''; }
-    function subLabel(sub) { return SUB_LABELS[sub] || titleCase(sub); }
+    // Descriptive hosts ('youtube-downloader') are for search engines; the brand shows the name people use.
+    const LONG_SUBS = { 'youtube-downloader': 'YT', youtubedownloader: 'YT', 'youtube-download': 'YT', youtube: 'YT', ytdl: 'YT' };
+    function subLabel(sub) { return SUB_LABELS[sub] || SUB_LABELS[LONG_SUBS[sub] && LONG_SUBS[sub].toLowerCase()] || LONG_SUBS[sub] || titleCase(String(sub).replace(/-/g, ' ')).replace(/ /g, ''); }
 
     /**
      * { sub, core, tld, name, short, icon, variant } for the current page.
