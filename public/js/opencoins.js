@@ -221,6 +221,7 @@ function handleCoinEarned(msg) {
     if (msg.currency === 'gold') {
         const navCoins = document.getElementById('nav-coins-amount');
         if (navCoins) navCoins.textContent = msg.total.toLocaleString();
+        if (window.LiveNav) window.LiveNav.setChip('coins', msg.total.toLocaleString());
         return;
     }
     // Otherwise it's CHANNEL POINTS for a streamer → update the in-chat balance,

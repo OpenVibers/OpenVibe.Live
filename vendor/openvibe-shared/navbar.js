@@ -84,6 +84,41 @@
             .openvibe-navbar .ovnav-sep { width: 1px; height: 18px; background: var(--border, rgba(255,255,255,.12)); margin: 0 6px; flex: none; align-self: center; }
             @media (max-width: 1180px) { .openvibe-navbar .ovnav-net, .openvibe-navbar .ovnav-sep { display: none; } }
             .openvibe-navbar .ovnav-ic, .openvibe-navbar-dropdown .ovnav-ic { flex: none; font-size: 1.05em; vertical-align: -.15em; }
+            .openvibe-navbar-links { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+            .openvibe-navbar-links::-webkit-scrollbar { display: none; }
+            .openvibe-navbar-links a.ovnav-link { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex: none; }
+            .openvibe-navbar .ovnav-link[hidden], .openvibe-navbar .ovnav-dd[hidden], .openvibe-navbar-dropdown [hidden] { display: none !important; }
+            .openvibe-navbar .ovnav-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--danger, #ef4444); box-shadow: 0 0 0 0 rgba(239,68,68,.6); animation: ovnavPulse 1.8s infinite; }
+            .openvibe-navbar .ovnav-dot[hidden] { display: none; }
+            @keyframes ovnavPulse { 70% { box-shadow: 0 0 0 6px rgba(239,68,68,0); } 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } }
+            .openvibe-navbar .ovnav-caret { font-size: 10px; opacity: .6; }
+            .openvibe-navbar .ovnav-dd { position: relative; display: inline-flex; flex: none; }
+            .openvibe-navbar .ovnav-dd-menu { display: none; position: absolute; top: 100%; left: 0; min-width: 180px; padding: 5px; border-radius: 12px; z-index: 1002; background: var(--bg-elevated, var(--bg-secondary, #111826)); border: 1px solid var(--border, rgba(255,255,255,.12)); box-shadow: 0 18px 44px rgba(0,0,0,.45); flex-direction: column; gap: 2px; }
+            .openvibe-navbar .ovnav-dd:hover .ovnav-dd-menu, .openvibe-navbar .ovnav-dd.open .ovnav-dd-menu, .openvibe-navbar .ovnav-dd:focus-within .ovnav-dd-menu { display: flex; }
+            .openvibe-navbar .ovnav-chip { all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 11px; border-radius: 999px; font: 700 13px/1 inherit; color: var(--chip-c, var(--text-primary, #e6edf7)); background: color-mix(in srgb, var(--chip-c, var(--accent, #3b82f6)) 12%, transparent); border: 1px solid color-mix(in srgb, var(--chip-c, var(--accent, #3b82f6)) 38%, transparent); font-variant-numeric: tabular-nums; }
+            .ovnav-chip[data-tone="gold"] { --chip-c: #fbbf24; } .ovnav-chip[data-tone="green"] { --chip-c: #4ade80; } .ovnav-chip[hidden] { display: none !important; }
+            .openvibe-navbar-dropdown .ud-chips { display: flex; gap: 6px; flex-wrap: nowrap; margin-top: 6px; }
+            .openvibe-navbar-dropdown-header .info { min-width: 0; flex: 1; }
+            .openvibe-navbar-dropdown .ovnav-chip--menu { all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font: 700 12px/1.2 inherit; color: var(--chip-c, #fbbf24); background: color-mix(in srgb, var(--chip-c, #fbbf24) 12%, transparent); border: 1px solid color-mix(in srgb, var(--chip-c, #fbbf24) 34%, transparent); }
+            .openvibe-navbar .ovnav-burger { all: unset; box-sizing: border-box; cursor: pointer; display: none; width: 38px; height: 38px; border-radius: 11px; flex-direction: column; align-items: center; justify-content: center; gap: 4px; flex: none; }
+            .openvibe-navbar .ovnav-burger span { display: block; width: 18px; height: 2px; border-radius: 2px; background: currentColor; transition: transform .2s, opacity .2s; }
+            .openvibe-navbar .ovnav-burger[aria-expanded="true"] span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+            .openvibe-navbar .ovnav-burger[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+            .openvibe-navbar .ovnav-burger[aria-expanded="true"] span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+            .openvibe-navbar .ovnav-burger:hover, .openvibe-navbar .ovnav-burger[aria-expanded="true"] { background: var(--accent-glow, rgba(59,130,246,.14)); }
+            .ovnav-drawer { display: none; position: fixed; top: calc(var(--ovnav-h, 56px) + 6px); right: 8px; width: min(300px, calc(100vw - 16px)); padding: 7px; border-radius: 16px; z-index: 1001; flex-direction: column; gap: 2px;
+                background: var(--bg-elevated, var(--bg-secondary, #111826)); border: 1px solid var(--border, rgba(255,255,255,.12)); box-shadow: 0 22px 48px rgba(0,0,0,.45);
+                max-height: calc(100vh - var(--ovnav-h, 56px) - 16px); max-height: calc(100dvh - var(--ovnav-h, 56px) - 16px - env(safe-area-inset-bottom, 0px)); overflow-y: auto; overscroll-behavior: contain; }
+            .ovnav-drawer.open { display: flex; animation: openvibe-slide-down .2s ease; }
+            .ovnav-drawer a { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 10px; color: var(--text-primary, #e6edf7); text-decoration: none; font-size: 14.5px; font-weight: 600; }
+            .ovnav-drawer a.ovnav-sublink { padding-left: 34px; font-weight: 500; color: var(--text-secondary, #a8b3c4); }
+            .ovnav-drawer a:hover, .ovnav-drawer a.active { background: var(--accent-glow, rgba(59,130,246,.14)); }
+            .ovnav-drawer a[hidden] { display: none; }
+            .ovnav-drawer .ud-label { padding: 10px 12px 3px; font-size: 10.5px; font-weight: 800; letter-spacing: .9px; text-transform: uppercase; color: var(--text-muted, #7d8aa0); }
+            .ovnav-drawer-net:empty { display: none; } .ovnav-drawer-net { border-top: 1px solid var(--border, rgba(255,255,255,.08)); margin-top: 4px; }
+            .ovnav-drawer-net a.ovnav-net { display: flex !important; }
+            @media (max-width: 860px) { .openvibe-navbar .ovnav-burger { display: inline-flex; } .openvibe-navbar .openvibe-navbar-links { display: none; } .openvibe-navbar .ovnav-chip .ovnav-ic + .ovnav-chip-v:empty { display: none; } }
+            @media (max-width: 420px) { .openvibe-navbar .ovnav-chip { padding: 0 8px; height: 30px; font-size: 12px; } }
             .ovnav-launcher { position: absolute; top: calc(100% + 6px); left: 12px; width: min(440px, calc(100vw - 24px));  background: var(--bg-elevated, var(--bg-secondary, #111826)); border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,.5); padding: 12px; z-index: 1000; opacity: 0; transform: translateY(-6px) scale(.98); transform-origin: top left; pointer-events: none; transition: opacity .16s, transform .2s cubic-bezier(.2,1.2,.3,1); }
             .ovnav-launcher.open { opacity: 1; transform: none; pointer-events: auto; }
             .ovnav-launcher .ovl-q { width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border, rgba(255,255,255,.12)); background: var(--bg-primary, #0a0f18); color: var(--text-primary, #e6edf7); font: 500 14px/1.2 inherit; outline: none; }
@@ -281,6 +316,20 @@
         'fa-text-height': '<path d="M4 7V5.5h9V7M8.5 5.5v13M6.5 18.5h4M18 6v12M15.5 8.5 18 6l2.5 2.5M15.5 15.5 18 18l2.5-2.5"/>',
         'fa-wand-magic-sparkles': '<path d="M5 19 15 9M13.5 7.5l3 3M17.5 4l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4L15.5 6l1.4-.6zM7 5l.5 1.2 1.2.5-1.2.5L7 8.400l-.5-1.200L5.3 6.700l1.2-.5zM18.5 13l.5 1.2 1.2.5-1.2.5-.5 1.2-.5-1.2-1.2-.5 1.2-.5z"/>',
         'fa-coins': '<ellipse cx="12" cy="7.5" rx="6.5" ry="3"/><path d="M5.5 7.5v4.500c0 1.7 2.9 3 6.5 3s6.5-1.3 6.5-3V7.500M5.5 12v4.500c0 1.7 2.9 3 6.5 3s6.5-1.3 6.5-3V12"/>',
+        'fa-video': '<rect x="3.5" y="6.5" width="12" height="11" rx="2"/><path d="M15.5 10.5 20.5 8v8l-5-2.500z"/>',
+        'fa-scissors': '<circle cx="6.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="16.5" r="2.5"/><path d="M8.7 9 20 17M8.7 15 20 7"/>',
+        'fa-comments': '<path d="M4 6.500h10a1.5 1.5 0 0 1 1.5 1.500v5a1.5 1.5 0 0 1-1.5 1.500H9l-3 2.500v-2.500H4A1.5 1.5 0 0 1 2.5 13V8A1.5 1.5 0 0 1 4 6.500zM18 10.500h2A1.5 1.5 0 0 1 21.5 12v4.500A1.5 1.5 0 0 1 20 18h-1v2.500L16 18h-4"/>',
+        'fa-hand-fist': '<path d="M7 11V8a1.5 1.5 0 0 1 3 0v2M10 9.500V7a1.5 1.5 0 0 1 3 0v3M13 9.500V8a1.5 1.5 0 0 1 3 0v3M16 10.500a1.5 1.5 0 0 1 3 0V14a5.5 5.5 0 0 1-5.5 5.500h-2A5.5 5.5 0 0 1 6 14v-1.500a1.5 1.5 0 0 1 3 0"/>',
+        'fa-gamepad': '<path d="M7 9h10a4 4 0 0 1 3.9 4.900l-.6 2.600a2 2 0 0 1-3.5.8L15.5 16h-7l-1.3 1.300a2 2 0 0 1-3.5-.8l-.6-2.600A4 4 0 0 1 7 9zM8 11.500v3M6.5 13h3"/><circle cx="15.5" cy="12" r=".6"/><circle cx="17.5" cy="14" r=".6"/>',
+        'fa-list-check': '<path d="M4 7l1.5 1.500L8 6M4 12.5 5.5 14 8 11.500M11 7.500h9M11 13h9M4.5 18.500h.01M11 18.500h9"/>',
+        'fa-id-card': '<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 15.500a3 3 0 0 1 6 0M14.5 10h3.500M14.5 13.500h3.5"/>',
+        'fa-shirt': '<path d="M8.5 4.5 4 7l1.5 3.500L7.5 10v9.500h9V10l2 .5L20 7l-4.5-2.500a3.5 3.5 0 0 1-7 0z"/>',
+        'fa-camera': '<path d="M4 8.500h3l1.5-2.500h7L17 8.500h3A1.5 1.5 0 0 1 21.5 10v8A1.5 1.5 0 0 1 20 19.500H4A1.5 1.5 0 0 1 2.5 18v-8A1.5 1.5 0 0 1 4 8.500z"/><circle cx="12" cy="13.5" r="3.2"/>',
+        'fa-book': '<path d="M6 4.500h12v15H6.500A1.5 1.5 0 0 1 5 18V5.500a1 1 0 0 1 1-1zM5 17.500A1.5 1.5 0 0 1 6.5 16H18M9 8.500h6"/>',
+        'fa-wallet': '<path d="M4.5 7.500A1.5 1.5 0 0 1 6 6h11.500v3M4.5 7.500V17A1.5 1.5 0 0 0 6 18.500h12.500A1.5 1.5 0 0 0 20 17V10.500A1.5 1.5 0 0 0 18.5 9H6a1.5 1.5 0 0 1-1.5-1.500z"/><circle cx="16.5" cy="13.7" r=".8"/>',
+        'fa-people-arrows': '<circle cx="6" cy="8" r="2"/><circle cx="18" cy="8" r="2"/><path d="M3 17a3 3 0 0 1 6 0M15 17a3 3 0 0 1 6 0M9.5 12h5M12.5 10l2 2-2 2M11.5 10l-2 2 2 2"/>',
+        'fa-network-wired': '<rect x="9" y="3.5" width="6" height="4.5" rx="1"/><rect x="3" y="16" width="6" height="4.5" rx="1"/><rect x="15" y="16" width="6" height="4.5" rx="1"/><path d="M12 8v4M6 16v-2.500h12V16"/>',
+        'fa-people-group': '<circle cx="9" cy="9" r="2.6"/><circle cx="16.5" cy="10" r="2"/><path d="M3.8 18.500a5.2 5.2 0 0 1 10.4 0M14.6 14.200a4 4 0 0 1 5.6 3.8"/>',
         'fa-plus': '<path d="M12 5.500v13M5.5 12h13"/>',
         'fa-paste': '<rect x="6" y="6" width="12" height="14" rx="1.8"/><path d="M9.5 6V5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1M9 11h6M9 14h6"/>',
         'fa-house': '<path d="M4.5 11.5 12 5l7.5 6.500M6.5 10v8.500h11V10"/>',
@@ -533,6 +582,44 @@
         } catch { /* */ }
     }
 
+    /** Status chips beside the bell (balances, counters): [{ id, icon, value, valueId, title, tone, onClick, hidden }]. */
+    function chipsHTML(chips, cls) {
+        return (Array.isArray(chips) ? chips : []).filter(Boolean).map(c => `<button type="button" class="${cls || 'ovnav-chip'}" data-chip-id="${escapeAttr(c.id)}"${c.tone ? ` data-tone="${escapeAttr(c.tone)}"` : ''}${c.title ? ` title="${escapeAttr(c.title)}"` : ''}${c.hidden ? ' hidden' : ''}>${c.icon ? navIcon(c.icon) : ''}<span class="ovnav-chip-v"${c.valueId ? ` id="${escapeAttr((cls ? 'menu-' : '') + c.valueId)}"` : ''}>${escapeAttr(c.value == null ? '' : c.value)}</span></button>`).join('');
+    }
+    function bindChips(scope) {
+        (_config.chips || []).concat((_config.menu && _config.menu.headerChips) || []).forEach((c) => {
+            if (!c || typeof c.onClick !== 'function') return;
+            scope.querySelectorAll(`[data-chip-id="${c.id}"]`).forEach(el => { if (!el.__b) { el.__b = true; el.addEventListener('click', (e) => { e.stopPropagation(); c.onClick(e); }); } });
+        });
+    }
+
+    /** Link behaviour: per-link onClick, in-app navigation (onNavigate), dropdowns, the mobile drawer. */
+    function bindLinks(nav, links) {
+        const byId = new Map(flatLinks(links).filter(l => l.id).map(l => [l.id, l]));
+        const drawer = nav.querySelector('#openvibe-drawer'), burger = nav.querySelector('#openvibe-burger');
+        const closeDrawer = () => { if (drawer) drawer.classList.remove('open'); if (burger) burger.setAttribute('aria-expanded', 'false'); };
+        nav.addEventListener('click', (e) => {
+            const a = e.target.closest && e.target.closest('a.ovnav-link, .ovnav-net'); if (!a || !nav.contains(a)) return;
+            if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            const item = byId.get(a.getAttribute('data-link-id'));
+            // A parent of a dropdown opens it on touch (there is no hover); a second tap follows the link.
+            const dd = a.parentElement && a.parentElement.classList.contains('ovnav-dd') ? a.parentElement : null;
+            if (dd && matchMedia('(hover: none)').matches && !dd.classList.contains('open')) { e.preventDefault(); nav.querySelectorAll('.ovnav-dd.open').forEach(x => x.classList.remove('open')); dd.classList.add('open'); return; }
+            if (item && typeof item.onClick === 'function') { const r = item.onClick(e); if (r === false) e.preventDefault(); closeDrawer(); if (e.defaultPrevented) return; }
+            if (typeof _config.onNavigate === 'function' && a.target !== '_blank') {
+                let same = false; try { same = new URL(a.href, location.href).origin === location.origin; } catch { /* */ }
+                if (same && _config.onNavigate(a.getAttribute('href'), e) === false) e.preventDefault();
+            }
+            closeDrawer();
+        });
+        document.addEventListener('click', (e) => { if (!e.target.closest || !e.target.closest('.ovnav-dd')) nav.querySelectorAll('.ovnav-dd.open').forEach(x => x.classList.remove('open')); });
+        if (burger && drawer) {
+            burger.addEventListener('click', (e) => { e.stopPropagation(); const open = drawer.classList.toggle('open'); burger.setAttribute('aria-expanded', String(open)); });
+            document.addEventListener('click', (e) => { if (drawer.classList.contains('open') && !drawer.contains(e.target) && !burger.contains(e.target)) closeDrawer(); });
+            regPanel(drawer, 'nav-drawer', closeDrawer);
+        }
+    }
+
     /** Dropdown, launcher and notifications share one coordinator (panels.js): one open at a time, Escape, rotation.
      *  Panels are registered where they are created (no page-wide observers); registrations queue until the script loads. */
     const _panelQueue = [];
@@ -569,7 +656,7 @@
     /** OpenCoins balance in the menu header (one request when the menu first opens). */
     let _walletLoaded = false;
     async function loadWallet(dropdown) {
-        if (_walletLoaded || !_config.token) return; _walletLoaded = true;
+        if (_walletLoaded || !_config.token || (_config.menu && _config.menu.headerChips)) return; _walletLoaded = true;
         try {
             const r = await fetch(`${_config.apiBase}/api/coins/me`, { headers: { Authorization: `Bearer ${_config.token}` }, credentials: 'include' });
             if (!r.ok) return; const j = await r.json(); const bal = Number(j.balance ?? (j.wallet && j.wallet.balance));
@@ -579,16 +666,16 @@
     }
 
     /** The network's most used sites, after the page's own links (networkLinks: false turns it off). */
-    function networkLinksHTML(pageLinks) {
+    function networkLinksHTML(pageLinks, inDrawer) {
         if (_config.networkLinks === false) return '';
         const chrome = OVChrome.get((d) => { if (d && _navEl && !_navEl.querySelector('.ovnav-net')) { try { render(); } catch { /* */ } } });
         if (!chrome) return '';
         const here = currentHost().toLowerCase();
         const taken = new Set((pageLinks || []).map(l => { try { return new URL(l.href, location.href).hostname; } catch { return ''; } }));
-        const max = typeof _config.networkLinks === 'number' ? _config.networkLinks : 4;
+        const max = inDrawer ? 6 : (typeof _config.networkLinks === 'number' ? _config.networkLinks : 4);
         const pick = chrome.nav.filter(n => { try { const h = new URL(n.url).hostname; return h !== here && !here.endsWith('.' + h) && !taken.has(h); } catch { return false; } }).slice(0, max);
         if (!pick.length) return '';
-        return `<span class="ovnav-sep" aria-hidden="true"></span>` + pick.map(n => `<a class="ovnav-net" href="${escapeAttr(n.url)}" title="${escapeAttr(n.tagline)}">${escapeAttr(n.name)}</a>`).join('');
+        return (inDrawer ? '<div class="ud-label">Across OpenVibe</div>' : `<span class="ovnav-sep" aria-hidden="true"></span>`) + pick.map(n => `<a class="ovnav-net" href="${escapeAttr(n.url)}" title="${escapeAttr(n.tagline)}">${escapeAttr(n.name)}</a>`).join('');
     }
 
     /** Display settings in the launcher, for guests and members alike (theme-loader.js owns the state). */
@@ -619,29 +706,51 @@
         const sc = document.createElement('script'); sc.id = 'ov-notify-loader'; sc.src = 'https://openvibe.network/shared/notification-ui.js'; sc.async = true; sc.onload = () => setTimeout(go, 0); document.head.appendChild(sc);
     }
 
+    /** Custom sections for the user menu: [{ label, items: [{ label, icon, href, id, elId, hidden, danger, value, onClick }] }]. */
+    function sectionsHTML(sections) {
+        return (Array.isArray(sections) ? sections : []).filter(sec => sec && Array.isArray(sec.items) && sec.items.length).map(sec =>
+            `<div class="ud-sec"${sec.id ? ` data-sec-id="${escapeAttr(sec.id)}"` : ''}${sec.hidden ? ' hidden' : ''}>${sec.label ? `<div class="ud-label">${escapeAttr(sec.label)}</div>` : ''}${sec.items.map(menuItemHTML).join('')}</div><div class="sep"></div>`).join('');
+    }
+    const sectionItems = (sections) => (Array.isArray(sections) ? sections : []).reduce((o, sec) => o.concat((sec && sec.items) || []), []);
+
     function menuItemHTML(item) {
         if (!item) return '';
         if (item.sep) return '<div class="sep"></div>';
         const icon = item.icon ? `<span class="icon">${navIcon(item.icon)}</span>` : '<span class="icon"></span>';
         const cls = item.danger ? ' class="danger"' : '';
-        const id = item.id ? ` data-menu-id="${escapeAttr(item.id)}"` : '';
-        if (item.href) return `<a href="${escapeAttr(item.href)}"${cls}${id}${item.external ? ' target="_blank" rel="noopener"' : ''}>${icon} ${escapeAttr(item.label)}</a>`;
-        return `<button type="button"${cls}${id}>${icon} ${escapeAttr(item.label)}</button>`;
+        const id = `${item.id ? ` data-menu-id="${escapeAttr(item.id)}"` : ''}${item.elId ? ` id="${escapeAttr(item.elId)}"` : ''}${item.hidden ? ' hidden' : ''}`;
+        const val = item.value !== undefined ? `<b class="ud-val">${escapeAttr(item.value)}</b>` : '';
+        if (item.href) return `<a href="${escapeAttr(item.href)}"${cls}${id}${item.external ? ' target="_blank" rel="noopener"' : ''}>${icon} ${escapeAttr(item.label)}${val}</a>`;
+        return `<button type="button"${cls}${id}>${icon} ${escapeAttr(item.label)}${val}</button>`;
     }
 
     function bindMenuItems(container, items) {
         for (const item of items) {
             if (!item || !item.id || typeof item.onClick !== 'function') continue;
-            container.querySelector(`[data-menu-id="${item.id}"]`)?.addEventListener('click', (e) => { if (!item.href) e.preventDefault(); item.onClick(e); });
+            container.querySelector(`[data-menu-id="${item.id}"]`)?.addEventListener('click', (e) => { if (!item.href) e.preventDefault(); const r = item.onClick(e); if (r === false) e.preventDefault(); if (item.keepOpen !== true) container.closest('.openvibe-navbar-dropdown')?.classList.remove('open'); });
         }
     }
+
+    /** One top-level link. Supports { label, href, icon, id, elId, page, hidden, external, dot, dotId, children: [...] }. */
+    function linkHTML(l, inDrawer) {
+        const attrs = `${l.id ? ` data-link-id="${escapeAttr(l.id)}"` : ''}${l.elId ? ` id="${escapeAttr((inDrawer ? 'drawer-' : '') + l.elId)}"` : ''}${l.page ? ` data-page="${escapeAttr(l.page)}"` : ''}${l.hidden ? ' hidden' : ''}${l.external ? ' target="_blank" rel="noopener"' : ''}`;
+        const kids = Array.isArray(l.children) ? l.children.filter(Boolean) : [];
+        const inner = `${l.icon ? `<span class="icon">${navIcon(l.icon)}</span>` : ''}<span class="ovnav-l">${escapeAttr(l.label)}</span>${l.dot !== undefined ? `<span class="ovnav-dot"${l.dotId && !inDrawer ? ` id="${escapeAttr(l.dotId)}"` : ''}${l.dot ? '' : ' hidden'}></span>` : ''}`;
+        const a = `<a href="${escapeAttr(l.href || '#')}" class="ovnav-link${l.active ? ' active' : ''}"${attrs}>${inner}${kids.length && !inDrawer ? '<span class="ovnav-caret" aria-hidden="true">▾</span>' : ''}</a>`;
+        if (!kids.length) return a;
+        const menu = kids.map(k => `<a href="${escapeAttr(k.href || '#')}" class="ovnav-link ovnav-sublink"${k.id ? ` data-link-id="${escapeAttr(k.id)}"` : ''}${k.hidden ? ' hidden' : ''}>${k.icon ? `<span class="icon">${navIcon(k.icon)}</span>` : ''}<span class="ovnav-l">${escapeAttr(k.label)}</span></a>`).join('');
+        return inDrawer ? a + menu : `<div class="ovnav-dd"${l.hidden ? ' hidden' : ''}>${a}<div class="ovnav-dd-menu">${menu}</div></div>`;
+    }
+    const flatLinks = (list) => list.reduce((out, l) => out.concat([l], Array.isArray(l.children) ? l.children : []), []);
 
     function currentLinks() {
         const list = _runtimeLinks || _config.links || SERVICE_LINKS[_config.service] || [];
         const path = (typeof location !== 'undefined' && location.pathname) || '/';
-        return list.map((l) => Object.assign({}, l, { active: l.active !== undefined ? l.active : (l.href === path && path !== '/') }));
+        const activePage = _activePage;
+        return list.map((l) => Object.assign({}, l, { active: l.active !== undefined ? l.active : (activePage ? l.page === activePage : (l.href === path && path !== '/')) }));
     }
 
+    let _activePage = null;   // setActive(): single-page apps tell the navbar where they are
     const SERVICE_LINKS = {
         live: [
             { label: 'Watch', href: '/' },
@@ -1122,17 +1231,23 @@
         nav.innerHTML = `
             ${brandHTML(brand)}
             <div class="openvibe-navbar-links">
-                ${links.map(l => `<a href="${escapeAttr(l.href)}"${l.active ? ' class="active"' : ''}${l.external ? ' target="_blank" rel="noopener"' : ''}>${l.icon ? `<span class="icon">${navIcon(l.icon)}</span>` : ''}${escapeAttr(l.label)}</a>`).join('')}
+                ${links.map(l => linkHTML(l, false)).join('')}
                 ${networkLinksHTML(links)}
-                ${u && u.role === 'admin' ? `<a href="https://openvibe.network/admin">${navIcon('fa-shield-halved')} Admin</a>` : ''}
+                ${u && u.role === 'admin' && _config.adminLink !== false && !flatLinks(links).some(l => l.id === 'admin') ? `<a href="https://openvibe.network/admin">${navIcon('fa-shield-halved')} Admin</a>` : ''}
             </div>
             <div class="openvibe-navbar-spacer"></div>
             <div class="openvibe-navbar-right">
+                ${u ? chipsHTML(_config.chips) : ''}
                 <div id="openvibe-bell-mount"></div>
                 ${u ? avatarImg(u, 64, 'openvibe-navbar-avatar', 'openvibe-avatar-btn') :
                     `<a class="openvibe-navbar-login" id="openvibe-login-btn" href="${escapeAttr(loginHref)}">Sign In</a>`}
+                ${links.length ? '<button type="button" class="ovnav-burger" id="openvibe-burger" aria-label="Menu" aria-haspopup="true" aria-expanded="false"><span></span><span></span><span></span></button>' : ''}
             </div>
+            ${links.length ? `<div class="ovnav-drawer" id="openvibe-drawer" role="menu">${links.map(l => linkHTML(l, true)).join('')}<div class="ovnav-drawer-net">${networkLinksHTML(links, true)}</div></div>` : ''}
         `;
+        if (_config.className) String(_config.className).split(/\s+/).filter(Boolean).forEach(c => nav.classList.add(c));
+        bindLinks(nav, links);
+        bindChips(nav);
         bindLauncher(nav);
         countView();
         // Pages that wire the bell themselves run right after init(); give them the first go.
@@ -1145,6 +1260,7 @@
             dropdown.id = 'openvibe-user-dropdown';
 
             const otherAccounts = accounts.filter(a => isAnon ? !a.is_anon : String(a.id) !== String(u.id));
+            const menuCfg = _config.menu || {};
             const before = ((_config.menu && _config.menu.before) || []).concat(_runtimeMenu.before);
             const after = ((_config.menu && _config.menu.after) || []).concat(_runtimeMenu.after);
 
@@ -1154,11 +1270,11 @@
                     <div class="info">
                         <div class="name">${escapeAttr(u.display_name || u.username)}</div>
                         <div class="email">${isAnon ? '' : '@' + escapeAttr(u.username || '')}</div>
-                        <div class="ud-wallet" id="openvibe-wallet" hidden></div>
+                        ${menuCfg.headerChips ? `<div class="ud-chips">${chipsHTML(menuCfg.headerChips, 'ovnav-chip ovnav-chip--menu')}</div>` : '<div class="ud-wallet" id="openvibe-wallet" hidden></div>'}
                         ${isAnon ? `<div class="anon-tag">Anonymous #${u.anon_number || '?'}</div>` : ''}
                     </div>
                 </div>
-                <div class="openvibe-navbar-dropdown-accounts">
+                <div class="openvibe-navbar-dropdown-accounts"${_config.accounts === false ? ' hidden' : ''}>
                     ${otherAccounts.map(a => `
                         <div class="account-item" data-account-id="${a.id}">
                             ${avatarImg(a, 48, '', '')}
@@ -1177,11 +1293,12 @@
                 <div class="openvibe-navbar-dropdown-recent" id="openvibe-recent" hidden></div>
                 <div class="openvibe-navbar-dropdown-menu">
                     ${before.length ? `<div class="ud-label">${escapeAttr((_config.menu && _config.menu.label) || brand.short || 'This site')}</div>${before.map(menuItemHTML).join('')}<div class="sep"></div>` : ''}
-                    <div class="ud-label">You</div>
+                    ${sectionsHTML(menuCfg.sections)}
+                    ${menuCfg.defaults === false ? '' : `<div class="ud-label">You</div>
                     <a href="https://openvibe.network/my"><span class="icon">${navIcon('fa-user')}</span> My Account</a>
                     ${!isAnon && u.username ? `<a href="https://openvibe.live/@${escapeAttr(u.username)}"><span class="icon">${navIcon('fa-tower-broadcast')}</span> My Channel</a>` : ''}
                     <a href="https://openvibe.network/my#notifications"><span class="icon">${navIcon('fa-bell')}</span> Notifications</a>
-                    <div class="sep"></div>
+                    <div class="sep"></div>`}
                     <div class="ud-label">Display</div>
                     <button type="button" data-ov-display="text"><span class="icon">${navIcon('fa-text-height')}</span> Text size <b class="ud-val"></b></button>
                     <button type="button" data-ov-display="motion"><span class="icon">${navIcon('fa-wand-magic-sparkles')}</span> Animations <b class="ud-val"></b></button>
@@ -1189,16 +1306,19 @@
                     <div class="sep"></div>
                     <div class="ud-label">Across OpenVibe</div>
                     ${acrossHTML()}
+                    ${menuCfg.defaults === false ? '' : `
                     <a href="https://openvibe.network/my#history"><span class="icon">${navIcon('fa-clock-rotate-left')}</span> History</a>
                     <a href="https://openvibe.network/my#linked"><span class="icon">${navIcon('fa-link')}</span> Linked Services</a>
-                    ${u.role === 'admin' ? `<a href="https://openvibe.network/admin"><span class="icon">${navIcon('fa-shield-halved')}</span> Admin Panel</a>` : ''}
+                    ${u.role === 'admin' ? `<a href="https://openvibe.network/admin"><span class="icon">${navIcon('fa-shield-halved')}</span> Admin Panel</a>` : ''}`}
                     ${after.length ? '<div class="sep"></div>' : ''}${after.map(menuItemHTML).join('')}
                     <div class="sep"></div>
                     <button id="openvibe-logout-btn" class="danger"><span class="icon">${navIcon('fa-right-from-bracket')}</span> Sign Out</button>
                 </div>
             `;
             nav.appendChild(dropdown);
-            bindMenuItems(dropdown, before.concat(after));
+            bindMenuItems(dropdown, before.concat(after, sectionItems(menuCfg.sections)));
+            bindChips(dropdown);
+            if (typeof _config.onNavigate === 'function') dropdown.addEventListener('click', (e) => { const a = e.target.closest && e.target.closest('a[href]'); if (!a || e.defaultPrevented || a.target === '_blank' || e.metaKey || e.ctrlKey) return; let same = false; try { same = new URL(a.href, location.href).origin === location.origin; } catch { /* */ } if (same) { if (_config.onNavigate(a.getAttribute('href'), e) === false) e.preventDefault(); dropdown.classList.remove('open'); } });
             bindDisplayRows(dropdown);
             regPanel(dropdown, 'user-menu');
             if (_config.recent !== false) renderRecent(dropdown.querySelector('#openvibe-recent'));
@@ -1272,7 +1392,9 @@
             // only a token, or nothing at all — gets the user resolved from
             // the shared SSO state (ov_token cookie / localStorage / optional
             // sessionUrl) and the navbar re-renders when it arrives.
-            if (!_config.user) refreshAuthState();
+            // auth: 'external' — the site signs people in itself (Live) and tells us with setUser().
+            if (_config.auth === 'external') { if (_config.user) { recordHistory(); enableHandoff(); } }
+            else if (!_config.user) refreshAuthState();
             else { recordHistory(); enableHandoff(); }
             return el;
         },
@@ -1311,6 +1433,34 @@
 
         /** The resolved brand for this page ({ sub, core, tld, name, short, variant }). */
         brand() { return resolveBrand(); },
+
+        /** The signed-in user changed (sites with auth: 'external'). Pass null for signed out. */
+        setUser(user, token) { _config.user = user || null; if (token !== undefined) _config.token = token; _walletLoaded = false; return render(); },
+        /** Single-page apps: mark the link whose `page` matches as active. */
+        setActive(page) { _activePage = page || null; if (!_navEl) return; _navEl.querySelectorAll('.ovnav-link[data-page]').forEach(a => a.classList.toggle('active', a.getAttribute('data-page') === _activePage)); },
+        /** Change a status chip's text (navbar and menu header): setChip('coins', '1,234'). */
+        setChip(id, value, patch) {
+            const lists = [_config.chips || [], (_config.menu && _config.menu.headerChips) || []];
+            lists.forEach(l => l.forEach(c => { if (c && c.id === id) { c.value = value; if (patch) Object.assign(c, patch); } }));
+            document.querySelectorAll(`[data-chip-id="${id}"]`).forEach(el => { const v = el.querySelector('.ovnav-chip-v'); if (v) v.textContent = value == null ? '' : String(value); if (patch && 'hidden' in patch) el.hidden = !!patch.hidden; });
+        },
+        /** Patch a top-level or dropdown link by id: updateLink('broadcast', { hidden: false, dot: true, label }). */
+        updateLink(id, patch) {
+            const list = _runtimeLinks || _config.links || [];
+            const l = flatLinks(list).find(x => x && x.id === id); if (!l) return; Object.assign(l, patch || {});
+            if (!_navEl) return;
+            _navEl.querySelectorAll(`[data-link-id="${id}"]`).forEach(a => {
+                if ('hidden' in patch) { a.hidden = !!patch.hidden; const dd = a.parentElement; if (dd && dd.classList.contains('ovnav-dd')) dd.hidden = !!patch.hidden; }
+                if ('label' in patch) { const t = a.querySelector('.ovnav-l'); if (t) t.textContent = patch.label; }
+                if ('href' in patch) a.setAttribute('href', patch.href);
+                if ('dot' in patch) { const d = a.querySelector('.ovnav-dot'); if (d) d.hidden = !patch.dot; }
+            });
+        },
+        /** Patch a custom menu item by id: updateMenuItem('admin', { hidden: false, value: '3' }). */
+        updateMenuItem(id, patch) {
+            const item = sectionItems(_config.menu && _config.menu.sections).find(x => x && x.id === id); if (item) Object.assign(item, patch || {});
+            document.querySelectorAll(`.openvibe-navbar-dropdown [data-menu-id="${id}"]`).forEach(el => { if ('hidden' in patch) el.hidden = !!patch.hidden; if ('value' in patch) { const v = el.querySelector('.ud-val'); if (v) v.textContent = patch.value; } });
+        },
 
         /** The activity island (island.js), loaded on first use: OpenVibeNavbar.activity.start({...}). */
         get activity() { return root.OpenVibeIsland || null; },
