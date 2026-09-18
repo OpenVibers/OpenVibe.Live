@@ -3157,37 +3157,8 @@ function handleChatMessage(msg) {
             _chatConnState('updating');
             break;
         case 'update': {
-            // Platform update notification with commit logs + expandable changelog
-            const summary = esc(msg.summary || 'New update deployed!');
-            const commits = Array.isArray(msg.commits) ? msg.commits : [];
-            const linkUrl = msg.url ? esc(msg.url) : null;
-
-            let html = `🚀 ${summary}`;
-
-            if (commits.length > 0) {
-                const changelogId = 'update-changelog-' + Date.now();
-                html += ` <a href="#" onclick="event.preventDefault();document.getElementById('${changelogId}').classList.toggle('open')" style="color:var(--accent);text-decoration:underline;cursor:pointer">View changelog ▾</a>`;
-                if (linkUrl) {
-                    html += ` · <a href="${linkUrl}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:underline">Full patch notes →</a>`;
-                }
-                html += `<div id="${changelogId}" class="chat-changelog" style="display:none;margin-top:6px;padding:6px 8px;background:rgba(0,0,0,0.25);border-radius:6px;font-size:0.82rem;max-height:200px;overflow-y:auto;">`;
-                for (const c of commits) {
-                    const short = esc(c.short || '');
-                    const subject = esc(c.subject || '');
-                    const commitUrl = c.hash ? `https://github.com/OpenVibers/OpenVibe.Live/commit/${esc(c.hash)}` : '#';
-                    html += `<div style="padding:2px 0;display:flex;gap:6px;align-items:baseline;"><a href="${commitUrl}" target="_blank" rel="noopener" style="color:var(--accent);font-family:monospace;font-size:0.78rem;text-decoration:none;flex-shrink:0">${short}</a> <span style="opacity:0.85">${subject}</span></div>`;
-                }
-                html += '</div>';
-                // Auto-expand with a microtask so the DOM element exists
-                setTimeout(() => {
-                    const el = document.getElementById(changelogId);
-                    if (el) el.classList.add('open'), el.style.display = '';
-                }, 0);
-            } else if (linkUrl) {
-                html += ` <a href="${linkUrl}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:underline">View full patch notes →</a>`;
-            }
-            html += ' <button onclick="location.href=location.pathname+\'?_=\'+Date.now()" style="margin-left:8px;padding:2px 10px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:var(--radius-sm);cursor:pointer;font-size:0.8rem;font-family:var(--font)">Refresh Page</button>';
-            addRichSystemMessage(html, 'update');
+            // Deploy notice: one rolling card per run of deploys, replaced in place by id (never duplicated).
+            renderDeployCard({ id: msg.id, commits: msg.commits, deploys: msg.deploys, first_at: msg.first_at || msg.timestamp, updated_at: msg.updated_at || msg.timestamp, fresh: msg.fresh }, { live: true });
             break;
         }
         case 'coin_earned':
@@ -3788,6 +3759,87 @@ function addRichSystemMessage(html, style = 'info') {
     container.appendChild(el);
     scrollChat();
     if (_chatUserScrolledUp) _onNewChatMessageWhileScrolledUp();
+}
+
+/* ── Deploy notices ─────────────────────────────────────────────
+ * One card for a run of deploys: "🚀 5 updates shipped", the time range, the commit subjects (each
+ * listed once), a link to the full notes. Rendered from data (metadata.kind === 'deploy'), so times
+ * come from ISO timestamps and are always correct. Same card in global, channel, popout and widget
+ * chat because they all render through this file. Legacy one-line rows are folded on the way in. */
+function _deployCss() {
+    if (document.getElementById('chat-deploy-css')) return;
+    const st = document.createElement('style'); st.id = 'chat-deploy-css';
+    st.textContent = `.chat-deploy{margin:6px 0;padding:9px 11px;border-radius:10px;border:1px solid color-mix(in srgb,var(--accent,#3b82f6) 30%,transparent);background:color-mix(in srgb,var(--accent,#3b82f6) 7%,transparent);color:var(--text-secondary,#a8b3c4);font-style:normal;font-size:.84rem;line-height:1.45}
+.chat-deploy-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;color:var(--text-primary,#e6edf7)}.chat-deploy-h b{font-weight:700}.chat-deploy-t{font-size:.76rem;color:var(--text-muted,#7d8aa0)}
+.chat-deploy-a{margin-left:auto;display:flex;gap:10px;align-items:center}.chat-deploy a,.chat-deploy-more{color:var(--accent-light,var(--accent,#60a5fa));text-decoration:none;font-size:.78rem;cursor:pointer;background:none;border:0;padding:0;font-family:inherit}
+.chat-deploy-reload{border:0;border-radius:6px;background:var(--accent,#3b82f6);color:var(--on-accent,#fff);font:600 .74rem/1 inherit;padding:4px 9px;cursor:pointer}
+.chat-deploy ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:2px}.chat-deploy li{display:flex;gap:7px;align-items:baseline;min-width:0}.chat-deploy li.is-hidden{display:none}.chat-deploy.is-open li.is-hidden{display:flex}
+.chat-deploy li span{min-width:0;overflow-wrap:anywhere}.chat-deploy li a{font-family:ui-monospace,Menlo,monospace;font-size:.72rem;flex:none}.chat-deploy li.is-fresh span{color:var(--text-primary,#e6edf7)}`;
+    document.head.appendChild(st);
+}
+function _deployTime(d) {
+    const opts = chatSettings.timestampFormat === '24h' ? { hour: '2-digit', minute: '2-digit', hour12: false } : { hour: '2-digit', minute: '2-digit' };
+    const today = new Date().toDateString() === d.toDateString();
+    return (today ? '' : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ') + d.toLocaleTimeString([], opts);
+}
+function renderDeployCard(data, opts = {}) {
+    const { messages: container } = getChatEl();
+    if (!container) return;
+    _deployCss();
+    const seen = new Set();
+    const commits = (Array.isArray(data.commits) ? data.commits : []).filter(c => c && c.subject && !seen.has(c.hash || c.subject) && seen.add(c.hash || c.subject));
+    if (!commits.length) return;
+    const fresh = new Set(data.fresh || []);
+    const first = _parseMsgTime(data.first_at) || new Date(), last = _parseMsgTime(data.updated_at) || first;
+    const SHOW = 3;
+    const id = data.id != null ? String(data.id) : '';
+    let el = id ? container.querySelector('.chat-deploy[data-deploy-id="' + id.replace(/[^\w-]/g, '') + '"]') : null;
+    const wasOpen = el && el.classList.contains('is-open');
+    if (!el) { el = document.createElement('div'); el.className = 'chat-msg system chat-deploy'; if (id) el.dataset.deployId = id.replace(/[^\w-]/g, ''); }
+    const range = first.getTime() === last.getTime() || Math.abs(last - first) < 60000 ? _deployTime(last) : _deployTime(first) + ' – ' + _deployTime(last);
+    const deploys = Number(data.deploys) || 1;
+    el.innerHTML = `<div class="chat-deploy-h"><b>🚀 ${commits.length} update${commits.length === 1 ? '' : 's'} shipped</b><span class="chat-deploy-t" title="${esc(last.toLocaleString())}">${esc(range)}${deploys > 1 ? ' · ' + deploys + ' deploys' : ''}</span>
+        <span class="chat-deploy-a">${commits.length > SHOW ? `<button type="button" class="chat-deploy-more">${wasOpen ? 'Show less' : 'Show all ' + commits.length}</button>` : ''}<a href="/updates" target="_blank" rel="noopener">Patch notes</a>${opts.live ? '<button type="button" class="chat-deploy-reload" title="Load the new version">Reload</button>' : ''}</span></div>
+        <ul>${commits.map((c, i) => `<li class="${i >= SHOW ? 'is-hidden' : ''}${fresh.has(c.hash) ? ' is-fresh' : ''}">${c.hash ? `<a href="https://github.com/OpenVibers/OpenVibe.Live/commit/${esc(c.hash)}" target="_blank" rel="noopener">${esc(c.short || String(c.hash).slice(0, 7))}</a>` : ''}<span>${esc(c.subject)}</span></li>`).join('')}</ul>`;
+    if (wasOpen) el.classList.add('is-open');
+    const more = el.querySelector('.chat-deploy-more');
+    if (more) more.addEventListener('click', () => { const open = el.classList.toggle('is-open'); more.textContent = open ? 'Show less' : 'Show all ' + commits.length; });
+    const reload = el.querySelector('.chat-deploy-reload');
+    if (reload) reload.addEventListener('click', () => { location.href = location.pathname + '?_=' + Date.now(); });
+    // A live update moves the card to the end (it IS the newest message); history keeps its position.
+    if (!el.isConnected || opts.live) container.appendChild(el);
+    scrollChat();
+    if (opts.live && _chatUserScrolledUp) _onNewChatMessageWhileScrolledUp();
+}
+/** Old rows were prose: "🚀 Server restarted (abc1234) — a · b · c (2m ago)". Pull the subjects back out. */
+function _legacyDeploy(m) {
+    const t = String(m.message || '');
+    if (!/^🚀\s*Server restarted/.test(t)) return null;
+    const body = t.replace(/^🚀\s*Server restarted\s*(\([^)]*\)\s*)?—\s*/, '').replace(/\s*\((just now|\d+[mhd] ago)\)\s*$/, '');
+    const short = (/\(([0-9a-f]{6,12})\)/.exec(t) || [])[1] || '';
+    return body.split(' · ').map(x => x.trim()).filter(Boolean).map((subject, i) => ({ subject, short: i === 0 ? short : '', hash: '' }));
+}
+/** A deploy notice for history rows: structured rows as they are, consecutive legacy rows folded into one. */
+function _deployFromRow(m) {
+    let meta = null; try { meta = typeof m.metadata === 'string' ? JSON.parse(m.metadata) : m.metadata; } catch { meta = null; }
+    if (meta && meta.kind === 'deploy') return { id: m.id, commits: meta.commits, deploys: meta.deploys, first_at: meta.first_at, updated_at: meta.updated_at };
+    const legacy = _legacyDeploy(m);
+    return legacy ? { id: null, legacy: true, commits: legacy, deploys: 1, first_at: m.timestamp || m.created_at, updated_at: m.timestamp || m.created_at } : null;
+}
+function _foldDeployRows(msgs) {
+    const out = [];
+    for (const m of msgs) {
+        const d = m.message_type === 'system' ? _deployFromRow(m) : null;
+        const prev = out[out.length - 1];
+        if (d && prev && prev.__deploy) {
+            // Newest first inside the card; each subject once.
+            prev.__deploy.commits = d.commits.concat(prev.__deploy.commits);
+            prev.__deploy.deploys += d.deploys || 1;
+            prev.__deploy.updated_at = d.updated_at;
+            if (d.id != null) prev.__deploy.id = d.id;
+        } else out.push(d ? { __deploy: d } : m);
+    }
+    return out;
 }
 
 function addDonationMessage(msg) {
@@ -4496,9 +4548,11 @@ async function loadGlobalChatHistory() {
 function _renderGlobalHistoryMessages(msgs) {
     chatLiveSlots = [];
     chatChannel = null;
-    msgs.forEach(m => {
-        if (m.message_type === 'system') {
-            // Render system messages (update announcements, etc.) with system styling
+    _foldDeployRows(msgs).forEach(m => {
+        if (m.__deploy) {
+            renderDeployCard(m.__deploy);
+        } else if (m.message_type === 'system') {
+            // Other system messages keep the plain system styling
             addRichSystemMessage(esc(m.message), 'update');
         } else if (m.message_type === 'donation') {
             // Donations carry their payload in metadata — render the rich card here
