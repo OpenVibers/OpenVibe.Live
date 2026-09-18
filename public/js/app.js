@@ -842,7 +842,7 @@ function openChannelRewards() {
 function toggleUserMenu() {
     const dd = document.getElementById('user-dropdown');
     const open = dd.classList.toggle('show');
-    if (open) { closeMobileNav(); dd.scrollTop = 0; }        // one panel at a time, always opened from the top
+    if (open && !window.OpenVibePanels) closeMobileNav();   // the shared controller does this once it has loaded
 }
 
 function closeMobileNav() {
@@ -855,7 +855,7 @@ function toggleMobileNav() {
     const hamburger = document.querySelector('.nav-hamburger');
     navLinks.classList.toggle('show');
     hamburger?.classList.toggle('open', navLinks.classList.contains('show'));
-    if (navLinks.classList.contains('show')) { document.getElementById('user-dropdown')?.classList.remove('show'); navLinks.scrollTop = 0; }
+    if (navLinks.classList.contains('show') && !window.OpenVibePanels) document.getElementById('user-dropdown')?.classList.remove('show');
 }
 
 function isModifiedLinkClick(event) {
@@ -1475,13 +1475,21 @@ function positionNavDropdownMenu(dropdown) {
     menu.style.maxHeight = `${Math.max(120, vh - rect.bottom - pad)}px`;
 }
 
-// While the user menu or the mobile drawer is open, the floating chat button steps aside (it used to sit on
-// top of the menu's last rows). Driven by the panels' own classes, so every open/close path is covered.
+// Live's menus are coordinated by the network's shared panel controller (vendor/openvibe-shared/panels.js, the same
+// one the shared navbar uses on every other site): one panel open at a time, Escape and rotation close them, and
+// <body class="ov-panel-open"> lets the floating chat button step aside. Live keeps its own markup and toggles.
 {
-    const sync = () => document.body.classList.toggle('ov-panel-open',
-        !!document.querySelector('#user-dropdown.show, .nav-links.show'));
-    const watch = () => { for (const el of [document.getElementById('user-dropdown'), document.querySelector('.nav-links')]) if (el) new MutationObserver(sync).observe(el, { attributes: true, attributeFilter: ['class'] }); };
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
+    const register = () => {
+        const P = window.OpenVibePanels; if (!P) return;
+        const dd = document.getElementById('user-dropdown'); if (dd) P.register({ el: dd, openClass: 'show', id: 'user-menu' });
+        const nl = document.querySelector('.nav-links'); if (nl) P.register({ el: nl, openClass: 'show', id: 'nav-drawer', close: () => closeMobileNav() });
+        document.querySelectorAll('.nav-dropdown').forEach((d, i) => P.register({ el: d, openClass: 'open', id: 'nav-dropdown-' + i }));
+    };
+    const load = () => {
+        if (window.OpenVibePanels) return register();
+        const sc = document.createElement('script'); sc.src = '/shared/panels.js'; sc.async = true; sc.onload = register; document.head.appendChild(sc);
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load); else load();
 }
 
 /** Close every navbar panel (used when the viewport changes under an open menu). */
@@ -1497,8 +1505,6 @@ function closeNavPanels() {
     const reflow = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => document.querySelectorAll('.nav-dropdown.open, .nav-dropdown:hover').forEach(positionNavDropdownMenu)); };
     window.addEventListener('resize', reflow, { passive: true });
     if (window.visualViewport) window.visualViewport.addEventListener('resize', reflow, { passive: true });
-    window.addEventListener('orientationchange', closeNavPanels, { passive: true });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNavPanels(); });
 }
 
 // Observe hover/open to position dropdown menus

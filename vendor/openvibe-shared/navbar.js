@@ -151,6 +151,13 @@
             .openvibe-navbar-dropdown-recent .item .icon { width: 18px; text-align: center; color: var(--accent-light, #60a5fa); flex: none; }
             .openvibe-navbar-dropdown-recent .item .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
             .openvibe-navbar-dropdown-recent .item .s { margin-left: auto; font-size: 10px; color: var(--text-muted, #707080); flex: none; }
+            .openvibe-navbar-dropdown { width: min(300px, calc(100vw - 16px)); }
+            .openvibe-navbar-dropdown-menu .ud-label { padding: 8px 10px 3px; font-size: 10.5px; font-weight: 800; letter-spacing: .9px; text-transform: uppercase; color: var(--text-muted, #7d8aa0); }
+            .openvibe-navbar-dropdown-menu .ud-val { margin-left: auto; font-weight: 600; font-size: 12.5px; color: var(--text-secondary, #a8b3c4); }
+            .openvibe-navbar-dropdown-menu .icon { display: inline-grid; place-items: center; width: 22px; flex: none; }
+            .openvibe-navbar-dropdown-header { background: linear-gradient(180deg, color-mix(in srgb, var(--accent, #3b82f6) 10%, transparent), transparent); }
+            .openvibe-navbar-dropdown-header img { border-radius: 50%; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #3b82f6) 55%, transparent); }
+            .openvibe-navbar-dropdown-header .ud-wallet a { display: inline-flex; align-items: center; gap: 5px; margin-top: 5px; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; text-decoration: none; color: #fbbf24; background: rgba(251,191,36,.12); border: 1px solid rgba(251,191,36,.3); }
             .openvibe-navbar-dropdown-menu .sep { height: 1px; background: var(--border, #333340); margin: 4px -8px; }
 
             .openvibe-navbar-links { display: flex; align-items: center; gap: 4px; margin-left: 8px; }
@@ -270,6 +277,10 @@
         'fa-shield-halved': '<path d="M12 3.5l7 2.500v5.500c0 4.3-3 7.3-7 9-4-1.7-7-4.7-7-9V6zM12 3.500v17"/>',
         'fa-screwdriver-wrench': '<path d="M14.5 5.5a4 4 0 0 0-5.2 5.2L4.5 15.5a1.8 1.8 0 0 0 2.5 2.5l4.8-4.8a4 4 0 0 0 5.2-5.2l-2.6 2.6-2.1-.5-.5-2.1z"/>',
         'fa-right-from-bracket': '<path d="M10 5H6.500A1.5 1.5 0 0 0 5 6.500v11A1.5 1.5 0 0 0 6.5 19H10M14 8l4 4-4 4M18 12H9.5"/>',
+        'fa-tower-broadcast': '<circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/>',
+        'fa-text-height': '<path d="M4 7V5.5h9V7M8.5 5.5v13M6.5 18.5h4M18 6v12M15.5 8.5 18 6l2.5 2.5M15.5 15.5 18 18l2.5-2.5"/>',
+        'fa-wand-magic-sparkles': '<path d="M5 19 15 9M13.5 7.5l3 3M17.5 4l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4L15.5 6l1.4-.6zM7 5l.5 1.2 1.2.5-1.2.5L7 8.400l-.5-1.200L5.3 6.700l1.2-.5zM18.5 13l.5 1.2 1.2.5-1.2.5-.5 1.2-.5-1.2-1.2-.5 1.2-.5z"/>',
+        'fa-coins': '<ellipse cx="12" cy="7.5" rx="6.5" ry="3"/><path d="M5.5 7.5v4.500c0 1.7 2.9 3 6.5 3s6.5-1.3 6.5-3V7.500M5.5 12v4.500c0 1.7 2.9 3 6.5 3s6.5-1.3 6.5-3V12"/>',
         'fa-plus': '<path d="M12 5.500v13M5.5 12h13"/>',
         'fa-paste': '<rect x="6" y="6" width="12" height="14" rx="1.8"/><path d="M9.5 6V5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1M9 11h6M9 14h6"/>',
         'fa-house': '<path d="M4.5 11.5 12 5l7.5 6.500M6.5 10v8.500h11V10"/>',
@@ -488,6 +499,7 @@
                 panel.innerHTML = '<input type="search" class="ovl-q" placeholder="Find a tool or site" aria-label="Find a tool or site"><div class="ovl-body"></div><div class="ovl-display" hidden></div>';
                 bindDisplayControls(panel.querySelector('.ovl-display'));
                 nav.appendChild(panel);
+                regPanel(panel, 'launcher', close);
                 if (!root.OpenVibeIcons && !document.getElementById('ov-icons-loader')) { const sc = document.createElement('script'); sc.id = 'ov-icons-loader'; sc.src = 'https://openvibe.network/shared/ov-icons.js'; sc.async = true; document.head.appendChild(sc); }
                 let cat = null; paint(null, '');
                 const input = panel.querySelector('.ovl-q');
@@ -519,6 +531,51 @@
             const url = 'https://openvibe.network/api/chrome/hit';
             if (navigator.sendBeacon) navigator.sendBeacon(url);
         } catch { /* */ }
+    }
+
+    /** Dropdown, launcher and notifications share one coordinator (panels.js): one open at a time, Escape, rotation.
+     *  Panels are registered where they are created (no page-wide observers); registrations queue until the script loads. */
+    const _panelQueue = [];
+    function regPanel(el, id, close) {
+        if (!el) return;
+        const opts = { el, openClass: 'open', id, close };
+        if (root.OpenVibePanels) return root.OpenVibePanels.register(opts);
+        _panelQueue.push(opts);
+        if (document.getElementById('ov-panels-loader')) return;
+        const sc = document.createElement('script'); sc.id = 'ov-panels-loader'; sc.src = 'https://openvibe.network/shared/panels.js'; sc.async = true;
+        sc.onload = () => { while (_panelQueue.length) root.OpenVibePanels && root.OpenVibePanels.register(_panelQueue.shift()); };
+        document.head.appendChild(sc);
+    }
+
+    /** Sites in the user menu: most used first (chrome data), never the one we are on. */
+    function acrossHTML() {
+        const chrome = OVChrome.get();
+        const here = currentHost().toLowerCase();
+        const list = (chrome && chrome.nav.length ? chrome.nav.map(n => ({ name: n.name, url: n.url, icon: n.icon || n.id })) : LAUNCHER_SITES)
+            .filter(n => { try { const h = new URL(n.url).hostname; return h !== here && !here.endsWith('.' + h); } catch { return false; } }).slice(0, 5);
+        return list.map(n => `<a href="${escapeAttr(n.url)}"><span class="icon"><span class="ov-icon" data-icon="${escapeAttr(n.icon)}" data-size="20" data-fx="none"></span></span> ${escapeAttr(n.name)}</a>`).join('');
+    }
+
+    /** Display rows (text size, animations) cycle their value; state lives in theme-loader.js. */
+    function bindDisplayRows(dropdown) {
+        const L = root.OpenVibeThemeLoader; const rows = dropdown.querySelectorAll('[data-ov-display]');
+        if (!L || !L.display) { rows.forEach(r => { r.hidden = true; }); return; }
+        const LABEL = { text: { 100: 'Default', 112: 'Large', 125: 'Largest' }, motion: { auto: 'On', reduced: 'Calm' } };
+        const paint = () => { const d = L.display.get(); rows.forEach(r => { const k = r.getAttribute('data-ov-display'); r.querySelector('.ud-val').textContent = LABEL[k][d[k]] || ''; }); };
+        rows.forEach(r => r.addEventListener('click', (e) => { e.stopPropagation(); const k = r.getAttribute('data-ov-display'), o = L.display.options[k], cur = L.display.get()[k]; L.display.set({ [k]: o[(o.indexOf(cur) + 1) % o.length] }); paint(); }));
+        root.addEventListener('ov:display', paint); paint();
+    }
+
+    /** OpenCoins balance in the menu header (one request when the menu first opens). */
+    let _walletLoaded = false;
+    async function loadWallet(dropdown) {
+        if (_walletLoaded || !_config.token) return; _walletLoaded = true;
+        try {
+            const r = await fetch(`${_config.apiBase}/api/coins/me`, { headers: { Authorization: `Bearer ${_config.token}` }, credentials: 'include' });
+            if (!r.ok) return; const j = await r.json(); const bal = Number(j.balance ?? (j.wallet && j.wallet.balance));
+            const el = dropdown.querySelector('#openvibe-wallet'); if (!el || !isFinite(bal)) return;
+            el.innerHTML = `<a href="https://openvibe.network/my#coins" title="OpenCoins">${navIcon('fa-coins')} ${bal.toLocaleString()}</a>`; el.hidden = false;
+        } catch { /* the chip is optional */ }
     }
 
     /** The network's most used sites, after the page's own links (networkLinks: false turns it off). */
@@ -1095,8 +1152,9 @@
                 <div class="openvibe-navbar-dropdown-header">
                     ${avatarImg(u, 72, '', '')}
                     <div class="info">
-                        <div class="name">${u.display_name || u.username}</div>
-                        <div class="email">${u.email || `@${u.username}`}</div>
+                        <div class="name">${escapeAttr(u.display_name || u.username)}</div>
+                        <div class="email">${isAnon ? '' : '@' + escapeAttr(u.username || '')}</div>
+                        <div class="ud-wallet" id="openvibe-wallet" hidden></div>
                         ${isAnon ? `<div class="anon-tag">Anonymous #${u.anon_number || '?'}</div>` : ''}
                     </div>
                 </div>
@@ -1118,13 +1176,22 @@
                 </div>
                 <div class="openvibe-navbar-dropdown-recent" id="openvibe-recent" hidden></div>
                 <div class="openvibe-navbar-dropdown-menu">
-                    ${before.map(menuItemHTML).join('')}${before.length ? '<div class="sep"></div>' : ''}
+                    ${before.length ? `<div class="ud-label">${escapeAttr((_config.menu && _config.menu.label) || brand.short || 'This site')}</div>${before.map(menuItemHTML).join('')}<div class="sep"></div>` : ''}
+                    <div class="ud-label">You</div>
                     <a href="https://openvibe.network/my"><span class="icon">${navIcon('fa-user')}</span> My Account</a>
-                    <a href="https://openvibe.network/my#history"><span class="icon">${navIcon('fa-clock-rotate-left')}</span> History</a>
+                    ${!isAnon && u.username ? `<a href="https://openvibe.live/@${escapeAttr(u.username)}"><span class="icon">${navIcon('fa-tower-broadcast')}</span> My Channel</a>` : ''}
                     <a href="https://openvibe.network/my#notifications"><span class="icon">${navIcon('fa-bell')}</span> Notifications</a>
+                    <div class="sep"></div>
+                    <div class="ud-label">Display</div>
+                    <button type="button" data-ov-display="text"><span class="icon">${navIcon('fa-text-height')}</span> Text size <b class="ud-val"></b></button>
+                    <button type="button" data-ov-display="motion"><span class="icon">${navIcon('fa-wand-magic-sparkles')}</span> Animations <b class="ud-val"></b></button>
                     <a href="https://openvibe.network/themes"><span class="icon">${navIcon('fa-palette')}</span> Themes</a>
+                    <div class="sep"></div>
+                    <div class="ud-label">Across OpenVibe</div>
+                    ${acrossHTML()}
+                    <a href="https://openvibe.network/my#history"><span class="icon">${navIcon('fa-clock-rotate-left')}</span> History</a>
                     <a href="https://openvibe.network/my#linked"><span class="icon">${navIcon('fa-link')}</span> Linked Services</a>
-                    ${u.role === 'admin' ? `<a href="https://openvibe.network/admin"><span class="icon">${navIcon('fa-screwdriver-wrench')}</span> Admin Panel</a>` : ''}
+                    ${u.role === 'admin' ? `<a href="https://openvibe.network/admin"><span class="icon">${navIcon('fa-shield-halved')}</span> Admin Panel</a>` : ''}
                     ${after.length ? '<div class="sep"></div>' : ''}${after.map(menuItemHTML).join('')}
                     <div class="sep"></div>
                     <button id="openvibe-logout-btn" class="danger"><span class="icon">${navIcon('fa-right-from-bracket')}</span> Sign Out</button>
@@ -1132,11 +1199,14 @@
             `;
             nav.appendChild(dropdown);
             bindMenuItems(dropdown, before.concat(after));
+            bindDisplayRows(dropdown);
+            regPanel(dropdown, 'user-menu');
             if (_config.recent !== false) renderRecent(dropdown.querySelector('#openvibe-recent'));
 
             // Avatar click toggles dropdown
             nav.querySelector('#openvibe-avatar-btn').addEventListener('click', () => {
                 dropdown.classList.toggle('open');
+                if (dropdown.classList.contains('open')) { loadWallet(dropdown); dropdown.scrollTop = 0; if (root.OpenVibeIcons) root.OpenVibeIcons.mount(dropdown); else if (!document.getElementById('ov-icons-loader')) { const sc = document.createElement('script'); sc.id = 'ov-icons-loader'; sc.src = 'https://openvibe.network/shared/ov-icons.js'; sc.async = true; document.head.appendChild(sc); } }
             });
 
             // Close on outside click

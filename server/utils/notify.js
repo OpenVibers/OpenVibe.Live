@@ -64,10 +64,16 @@ function pushNotification(payload) {
 
 // Register this user as having a linked OpenVibe.Live account on openvibe.network so it
 // appears under their Linked Services. Fire-and-forget + deduped per process.
-const _linkedReported = new Set();
+const _linkedReported = new Map();   // live user id → what was last reported (so a new avatar or name is sent again)
 function reportLinkedAccount(user) {
-    if (!user?.id || _linkedReported.has(user.id) || !INTERNAL_API_KEY) return;
-    _linkedReported.add(user.id);
+    if (!user?.id || !INTERNAL_API_KEY) return;
+    // The Network adopts this picture and name when the account has none of its own, which is what makes the
+    // same face appear on every OpenVibe site. Relative upload paths are made absolute against this site.
+    let avatar = user.avatar_url || null;
+    if (avatar && avatar.startsWith('/')) avatar = `${String(config.baseUrl || 'https://openvibe.live').replace(/\/$/, '')}${avatar}`;
+    const sig = `${avatar || ''}|${user.display_name || ''}|${user.username || ''}`;
+    if (_linkedReported.get(user.id) === sig) return;
+    _linkedReported.set(user.id, sig);
     const networkId = toNetworkId(user.id);
     if (!networkId) { _linkedReported.delete(user.id); return; }
     _post('/internal/link-account', {
@@ -75,6 +81,8 @@ function reportLinkedAccount(user) {
         service: 'live',
         service_user_id: String(user.id),
         service_username: user.username || user.display_name || null,
+        avatar_url: avatar,
+        display_name: user.display_name || null,
     }).catch(() => { _linkedReported.delete(user.id); });
 }
 
