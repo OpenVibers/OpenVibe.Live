@@ -419,10 +419,15 @@ function _base() {
     }
     return doc.html;
 }
+// Pastes are moving to openvibe.community; when PASTES_ON_COMMUNITY=1 the SPA router sends
+// /p/<slug> there (server/index.js answers the same URL with a 301 for bots and direct hits).
+const PASTES_BASE = process.env.PASTES_ON_COMMUNITY === '1' ? (process.env.OV_COMMUNITY_URL || 'https://openvibe.community').replace(/\/$/, '') : '';
+
 function _headBlock(meta) {
     const canonical = abs(meta.canonicalPath || '/');
     const img = abs(meta.image || DEFAULT_OG_IMAGE);
     const parts = [
+        PASTES_BASE ? `<meta name="ov-pastes-base" content="${esc(PASTES_BASE)}">` : '',
         `<title>${esc(meta.title)}</title>`,
         `<meta name="description" content="${esc(meta.description)}">`,
         `<meta name="robots" content="${esc(meta.robots || 'index,follow')}">`,

@@ -288,12 +288,35 @@ function getNetworkRedirectUri() {
     return `${config.baseUrl.toLowerCase()}/api/auth/callback`;
 }
 
+/**
+ * Where a sign-in/sign-out may send the browser afterwards: a path on this site, or an
+ * https URL on the OpenVibe network — openvibe.network's "sign in everywhere" chain hops
+ * through /api/auth/sso/login?silent=1&next=https://openvibe.network/sso/fanout?… and must
+ * be handed back. Anything else falls back to the home page.
+ */
+function safeNext(raw) {
+    const s = String(raw || '');
+    if (!s) return '/';
+    if (s.startsWith('/') && !s.startsWith('//')) return s;
+    try {
+        const u = new URL(s);
+        if (u.protocol !== 'https:' && !(u.protocol === 'http:' && /^(localhost|127\.0\.0\.1)$/.test(u.hostname))) return '/';
+        if (/(^|\.)openvibe\.[a-z]+$/.test(u.hostname) || /(^|\.)openre\.stream$/.test(u.hostname) || /^(localhost|127\.0\.0\.1)$/.test(u.hostname)) return u.toString();
+    } catch { /* not a URL */ }
+    return '/';
+}
+const HINT_COOKIE = { httpOnly: false, path: '/', maxAge: 365 * 24 * 60 * 60 * 1000, sameSite: 'Lax' };
+
 // ── Initiate OAuth Login (redirect to openvibe.network) ───────────
 router.get('/sso/login', (req, res) => {
     const state = require('crypto').randomBytes(16).toString('hex');
     // Store state in a short-lived cookie for CSRF protection
     const isSecure = config.baseUrl.startsWith('https');
     res.cookie('oauth_state', state, { httpOnly: true, maxAge: 5 * 60 * 1000, sameSite: 'Lax', secure: isSecure });
+    // Where to go afterwards (the fanout chain, or the page that asked to sign in).
+    const next = safeNext(req.query.next);
+    if (next !== '/') res.cookie('oauth_next', next, { httpOnly: true, maxAge: 5 * 60 * 1000, sameSite: 'Lax', secure: isSecure });
+    else res.clearCookie('oauth_next');
 
     const params = new URLSearchParams({
         client_id: OV_CLIENT_ID,
@@ -312,10 +335,13 @@ router.get('/sso/login', (req, res) => {
 router.get('/callback', async (req, res) => {
     try {
         const { code, state } = req.query;
+        const next = safeNext(req.cookies?.oauth_next);
+        res.clearCookie('oauth_next');
         if (!code && req.query.error) {
-            // Silent sign-in found no network session — go home quietly as a guest.
+            // Silent sign-in found no network session — go on quietly as a guest.
             res.clearCookie('oauth_state');
-            return res.redirect('/?sso=none');
+            const sep = next.includes('?') ? '&' : '?';
+            return res.redirect(`${next}${sep}sso=none`);
         }
         if (!code) return res.status(400).send('Missing authorization code');
 
@@ -450,6 +476,9 @@ router.get('/callback', async (req, res) => {
 
         // Also set ov_token (used by shared navbar/notification libs)
         res.cookie('ov_token', openvibeToolsToken, { httpOnly: false, path: '/', maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'Lax', secure: isSecure });
+        // Long-lived hint (outlives the token): this browser has signed in here, so a later visit
+        // with no session may try one silent sign-in through the network.
+        res.cookie('ov_sso_hint', 'account', { ...HINT_COOKIE, secure: isSecure });
 
         // Store refresh token in httpOnly cookie (not readable by JS — server handles refresh)
         if (openvibeRefreshToken) {
@@ -470,10 +499,11 @@ router.get('/callback', async (req, res) => {
         var acct = { id: u.id, username: u.username, display_name: u.display_name, avatar_url: u.avatar_url, is_anon: false, token: ${JSON.stringify(openvibeToolsToken)}, added_at: Date.now() };
         localStorage.setItem('openvibe_accounts', JSON.stringify([acct]));
         localStorage.setItem('openvibe_active_account', String(u.id));
+        localStorage.setItem('ov_sso_hint', 'account');
     } catch(e) {}
-    window.location.href = '/';
+    window.location.replace(${JSON.stringify(next)});
 </script>
-<noscript><a href="/">Click here to continue</a></noscript>
+<noscript><a href="${next.replace(/"/g, '&quot;')}">Click here to continue</a></noscript>
 </body></html>`);
     } catch (err) {
         console.error('[Auth/SSO] Callback error:', err);
@@ -536,12 +566,29 @@ router.post('/refresh', async (req, res) => {
 });
 
 // ── Logout (clear all auth cookies) ──────────────────────────
-router.post('/logout', (req, res) => {
+function clearSessionCookies(res) {
     const isSecure = (process.env.BASE_URL || '').startsWith('https');
     res.clearCookie('token', { sameSite: 'Lax', secure: isSecure });
     res.clearCookie('ov_token', { sameSite: 'Lax', secure: isSecure });
     res.clearCookie('ov_refresh', { path: '/api/auth', sameSite: 'Lax', secure: isSecure });
+    res.cookie('ov_sso_hint', 'guest', { ...HINT_COOKIE, secure: isSecure });
+}
+
+router.post('/logout', (req, res) => {
+    clearSessionCookies(res);
     res.json({ ok: true });
+});
+
+// Sign-out-everywhere chain from openvibe.network: clear this site's cookies and hand the
+// browser back. The page-side localStorage copy is cleared by the tiny page below.
+router.get('/logout', (req, res) => {
+    clearSessionCookies(res);
+    const next = safeNext(req.query.next);
+    res.set('Cache-Control', 'no-store');
+    res.type('html').send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Signing out…</title></head><body><script>
+try { ['token','ov_token','openvibe_accounts','openvibe_active_account','openvibe_anon_token'].forEach(function(k){ localStorage.removeItem(k); }); localStorage.setItem('ov_sso_hint','guest'); } catch (e) {}
+location.replace(${JSON.stringify(next)});
+</script><noscript><a href="${next.replace(/"/g, '&quot;')}">Continue</a></noscript></body></html>`);
 });
 
 // ── SSO Status (for client-side detection) ───────────────────

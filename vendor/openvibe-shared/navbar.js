@@ -8,12 +8,39 @@
 //   onLogin/onLogout callbacks. When no `user` is passed the navbar resolves
 //   it itself: ov_token cookie → localStorage → token opt → sessionUrl, then
 //   GET {apiBase}/api/auth/me with `Authorization: Bearer <token>`.
+//
+// Brand: derived from the hostname — `pastes.openvibe.tools` renders as
+//   Pastes · OpenVibe · Tools (three segments, the subdomain first so the
+//   context reads left-to-right), `openvibe.live` as OpenVibe · Live. Pass
+//   brand: { sub, tld, name, icon, variant } to override any part, or the
+//   legacy brandName/brandIcon. compact: 'auto' (default — the brand shortens
+//   to the subdomain on narrow viewports), 'always', 'never'.
+// Menus are modular: every site keeps the shared account menu and adds its own
+//   pieces — links: [{label, href, icon?, active?}] replaces the service's top
+//   links; menu: { before: [item], after: [item] } adds dropdown rows
+//   ({label, href, icon, onClick, danger, external}); OpenVibeNavbar.addMenuItem()
+//   / setLinks() do the same at runtime. Signed-in users also get a
+//   "Recently used" row fed by the shared history module when it is loaded.
 // ═══════════════════════════════════════════════════════════════
 
 (function (root) {
     'use strict';
 
-    let _config = { service: 'network', token: null, user: null, apiBase: 'https://openvibe.network', onLogin: null, onLogout: null, loginUrl: null, sessionUrl: null };
+    let _config = {
+        service: 'network', token: null, user: null, apiBase: 'https://openvibe.network',
+        onLogin: null, onLogout: null, loginUrl: null, sessionUrl: null,
+        brand: null, brandName: null, brandIcon: null, compact: 'auto',
+        links: null, menu: null, recent: true,
+        // history: { type: 'tool'|'stream'|'paste'|'page'|…, title, url, icon } — recorded for the
+        // signed-in user once auth resolves (cross-site "Recently used" / History on the Network).
+        history: null,
+        // silentLogin: 'https://site/auth/login?silent=1&next={url}' — when nobody is signed in here
+        // but this browser has signed in to the network before (ov_sso_hint), try one silent
+        // prompt=none round trip per tab so a session on one site becomes a session on all.
+        silentLogin: null,
+    };
+    const _runtimeMenu = { before: [], after: [] };
+    let _runtimeLinks = null;
     let _navEl = null;
 
     function injectStyles() {
@@ -29,10 +56,44 @@
                 font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
                 color: var(--text-primary, #e0e0e0);
             }
-            .openvibe-navbar-brand { display: flex; align-items: center; gap: 8px; text-decoration: none; color: inherit; margin-right: 8px; }
-            .openvibe-navbar-brand .flame { font-size: 18px; color: var(--accent, #8b5cf6); }
-            .openvibe-navbar-brand .name { font-size: 15px; font-weight: 700; letter-spacing: -.3px; }
-            .openvibe-navbar-brand .service-name { font-size: 11px; color: var(--accent-light, #a78bfa); font-weight: 500; letter-spacing: .5px; text-transform: uppercase; }
+            .openvibe-navbar-brand { display: flex; align-items: center; gap: 9px; text-decoration: none; color: inherit; margin-right: 8px; min-width: 0; }
+            .openvibe-navbar-brand .flame { font-size: 18px; color: var(--accent, #8b5cf6); display: inline-grid; place-items: center; width: 28px; height: 28px; flex: none; }
+            .openvibe-navbar-brand .name { display: inline-flex; align-items: baseline; font-size: 15px; font-weight: 700; letter-spacing: -.3px; white-space: nowrap; line-height: 1; }
+            /* Segments: subdomain · OpenVibe · TLD. The part that names *this* site is the loud one. */
+            .openvibe-navbar-brand .b-sub { color: var(--text-primary, #e0e0e0); }
+            .openvibe-navbar-brand .b-core { color: var(--text-primary, #e0e0e0); }
+            .openvibe-navbar-brand .b-tld { color: var(--accent-light, var(--accent, #a78bfa)); }
+            .openvibe-navbar-brand.has-sub .b-core { color: var(--text-secondary, #b0b0b8); font-weight: 600; }
+            .openvibe-navbar-brand.has-sub .b-tld { color: var(--text-secondary, #b0b0b8); font-weight: 600; }
+            .openvibe-navbar-brand .b-dot { color: var(--accent, #8b5cf6); opacity: .75; margin: 0 1px; font-weight: 800; }
+            .openvibe-navbar-brand .b-sub, .openvibe-navbar-brand .b-core, .openvibe-navbar-brand .b-tld { transition: color .2s, opacity .2s; }
+            .openvibe-navbar-brand:hover .b-tld, .openvibe-navbar-brand:hover .b-sub { color: var(--accent-light, #a78bfa); }
+            .openvibe-navbar-brand:hover .b-dot { opacity: 1; }
+            .openvibe-navbar-brand .b-tag { font-size: 9px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: var(--accent-light, #a78bfa); background: var(--accent-glow, rgba(139,92,246,.14)); border-radius: 4px; padding: 2px 5px; margin-left: 6px; align-self: center; }
+            /* Compact: drop the trailing segments on narrow viewports, keep what identifies the page. */
+            .openvibe-navbar[data-compact="always"] .openvibe-navbar-brand.has-sub .b-core,
+            .openvibe-navbar[data-compact="always"] .openvibe-navbar-brand.has-sub .b-tld,
+            .openvibe-navbar[data-compact="always"] .openvibe-navbar-brand.has-sub .b-dot { display: none; }
+            @media (max-width: 860px) {
+                .openvibe-navbar[data-compact="auto"] .openvibe-navbar-brand.has-sub .b-core,
+                .openvibe-navbar[data-compact="auto"] .openvibe-navbar-brand.has-sub .b-tld,
+                .openvibe-navbar[data-compact="auto"] .openvibe-navbar-brand.has-sub .b-dot { display: none; }
+            }
+            @media (max-width: 420px) {
+                .openvibe-navbar[data-compact="auto"] .openvibe-navbar-brand:not(.has-sub) .b-core,
+                .openvibe-navbar[data-compact="auto"] .openvibe-navbar-brand:not(.has-sub) .b-dot { display: none; }
+                .openvibe-navbar[data-compact="auto"] .openvibe-navbar-brand .b-tag { display: none; }
+            }
+            .openvibe-navbar-links a .icon { margin-right: 5px; opacity: .8; }
+            .openvibe-navbar-dropdown-recent { padding: 6px 8px 2px; border-bottom: 1px solid var(--border, #333340); }
+            .openvibe-navbar-dropdown-recent .label { font-size: 10px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: var(--text-muted, #707080); padding: 2px 8px 4px; display: flex; justify-content: space-between; align-items: center; }
+            .openvibe-navbar-dropdown-recent .label a { color: var(--accent-light, #a78bfa); text-decoration: none; font-weight: 600; letter-spacing: 0; text-transform: none; }
+            .openvibe-navbar-dropdown-recent .item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; font-size: 12px; color: var(--text-secondary, #b0b0b8); text-decoration: none; transition: background .12s; min-width: 0; }
+            .openvibe-navbar-dropdown-recent .item:hover { background: var(--bg-hover, #2f2f3d); color: var(--text-primary, #e0e0e0); }
+            .openvibe-navbar-dropdown-recent .item .icon { width: 18px; text-align: center; color: var(--accent-light, #a78bfa); flex: none; }
+            .openvibe-navbar-dropdown-recent .item .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .openvibe-navbar-dropdown-recent .item .s { margin-left: auto; font-size: 10px; color: var(--text-muted, #707080); flex: none; }
+            .openvibe-navbar-dropdown-menu .sep { height: 1px; background: var(--border, #333340); margin: 4px -8px; }
 
             .openvibe-navbar-links { display: flex; align-items: center; gap: 4px; margin-left: 8px; }
             .openvibe-navbar-links a {
@@ -350,6 +411,113 @@
         'colors.openvibe.tools':     { name: 'OpenVibeColor',     icon: 'fa-palette' },
     };
 
+    // ─── Brand from hostname ───────────────────────────────────
+    // Every property is <sub?>.openvibe.<tld> (plus openre.stream). The navbar spells the
+    // whole name — Pastes.OpenVibe.Tools, not "Paste.OpenVibe" — because the subdomain and
+    // the TLD are what tell a visitor where they are in the network.
+    const TLD_LABELS = {
+        live: 'Live', tools: 'Tools', network: 'Network', media: 'Media', games: 'Games',
+        community: 'Community', chat: 'Chat', codes: 'Codes', blog: 'Blog', wiki: 'Wiki',
+        news: 'News', reviews: 'Reviews', tips: 'Tips', vip: 'VIP', trade: 'Trade', host: 'Host',
+        deals: 'Deals', coupons: 'Coupons',
+    };
+    const SUB_LABELS = {
+        json: 'JSON', yaml: 'YAML', xml: 'XML', csv: 'CSV', sql: 'SQL', html: 'HTML', jwt: 'JWT',
+        uuid: 'UUID', guid: 'GUID', url: 'URL', b64: 'B64', sha256: 'SHA256', og: 'OG', md: 'MD',
+        yt: 'YT', ip: 'IP', myip: 'MyIP', ipv4: 'IPv4', ipv6: 'IPv6', geoip: 'GeoIP', asn: 'ASN',
+        rdns: 'rDNS', dns: 'DNS', mx: 'MX', txt: 'TXT', ns: 'NS', spf: 'SPF', dkim: 'DKIM',
+        dmarc: 'DMARC', mtr: 'MTR', ssl: 'SSL', tls: 'TLS', ptr: 'PTR', smtp: 'SMTP', http: 'HTTP',
+        httpstatus: 'HTTPStatus', rdap: 'RDAP', isp: 'ISP', pdf: 'PDF', mergepdf: 'MergePDF',
+        splitpdf: 'SplitPDF', compresspdf: 'CompressPDF', rotatepdf: 'RotatePDF',
+        reorderpdf: 'ReorderPDF', watermarkpdf: 'WatermarkPDF', protectpdf: 'ProtectPDF',
+        unlockpdf: 'UnlockPDF', image2pdf: 'Image2PDF', jpg2pdf: 'JPG2PDF', png2pdf: 'PNG2PDF',
+        pdf2jpg: 'PDF2JPG', pdf2png: 'PDF2PNG', png: 'PNG', jpg: 'JPG', jpeg: 'JPEG', webp: 'WebP',
+        avif: 'AVIF', heic: 'HEIC', heif: 'HEIF', svg: 'SVG', gif: 'GIF', ico: 'ICO', tiff: 'TIFF',
+        bmp: 'BMP', mp3: 'MP3', wav: 'WAV', flac: 'FLAC', ogg: 'OGG', m4a: 'M4A', aac: 'AAC',
+        opus: 'Opus', wma: 'WMA', aiff: 'AIFF', ac3: 'AC3', eq: 'EQ', equalizer: 'EQ', mxn: 'MXN',
+        ascii: 'ASCII', smallcaps: 'SmallCaps', titlecase: 'TitleCase', textlogo: 'TextLogo',
+        textart: 'TextArt', channelart: 'ChannelArt', lowerthird: 'LowerThird', copypaste: 'CopyPaste',
+        dnspropagation: 'DNSPropagation', opengraph: 'OpenGraph', whip: 'WHIP', ingest: 'Ingest',
+        play: 'Play', my: 'My', auth: 'Auth', api: 'API', admin: 'Admin', docs: 'Docs', dev: 'Dev',
+        net: 'Net', img: 'Img', pastes: 'Pastes', paste: 'Pastes', maps: 'Maps', food: 'Food',
+        text: 'Text', logo: 'Logo', audio: 'Audio', ai: 'AI', cdn: 'CDN', status: 'Status',
+    };
+    const SERVICE_TLD = { live: 'live', tools: 'tools', games: 'games', media: 'media', network: 'network', community: 'community' };
+    const SERVICE_SUB = { net: 'net', dev: 'dev', paste: 'pastes', maps: 'maps', food: 'food', img: 'img', yt: 'yt', audio: 'audio', text: 'text', logo: 'logo', docs: 'docs' };
+
+    function titleCase(w) { return w ? w.charAt(0).toUpperCase() + w.slice(1) : ''; }
+    function subLabel(sub) { return SUB_LABELS[sub] || titleCase(sub); }
+
+    /**
+     * { sub, core, tld, name, short, icon, variant } for the current page.
+     *   sub   'Pastes' | null           tld  'Tools'        core 'OpenVibe'
+     *   name  'Pastes.OpenVibe.Tools'   short 'Pastes' (what compact mode keeps)
+     *   variant  the ov-mark flavour: the TLD id ('live', 'tools', …) — every site gets its own twist
+     */
+    function resolveBrand() {
+        const b = Object.assign({}, _config.brand || {});
+        const host = currentHost().toLowerCase();
+        let sub = null, tld = null, core = 'OpenVibe';
+        let m = host.match(/^(?:(.+)\.)?openvibe\.([a-z]+)$/);
+        if (m) { sub = m[1] && m[1] !== 'www' ? m[1] : null; tld = m[2]; }
+        else if ((m = host.match(/^(?:(.+)\.)?openre\.stream$/))) { sub = m[1] && m[1] !== 'www' ? m[1] : null; core = 'OpenRe'; tld = 'stream'; }
+        // Off-network hosts (localhost, previews): fall back to the service id.
+        if (!tld) { tld = SERVICE_TLD[_config.service] || (SERVICE_SUB[_config.service] ? 'tools' : 'network'); sub = SERVICE_SUB[_config.service] || null; }
+        // Legacy brandName ("Paste.OpenVibe", "OpenVibe.Live") still steers the segments.
+        if (_config.brandName && !b.sub && !b.tld) {
+            const parts = String(_config.brandName).split('.');
+            if (parts.length >= 2 && /^openvibe$/i.test(parts[0])) tld = parts[1].toLowerCase();
+            else if (parts.length >= 2 && /^openvibe$/i.test(parts[1])) sub = parts[0].toLowerCase();
+            else if (parts.length === 1) sub = parts[0].toLowerCase();
+        }
+        if (b.sub !== undefined) sub = b.sub ? String(b.sub).toLowerCase() : null;
+        if (b.tld) tld = String(b.tld).toLowerCase();
+        const subText = b.subLabel || (sub ? subLabel(sub) : null);
+        const tldText = b.tldLabel || TLD_LABELS[tld] || titleCase(tld);
+        const name = b.name || [subText, core, tldText].filter(Boolean).join('.');
+        const icon = b.icon || _config.brandIcon || null;
+        const variant = b.variant || (core === 'OpenRe' ? 'stream' : tld);
+        return { sub, subText, core, tld, tldText, name, short: subText || `${core}.${tldText}`, icon, variant, tag: b.tag || null, href: b.href || '/' };
+    }
+
+    function brandHTML(brand) {
+        const seg = (cls, text) => `<span class="${cls}">${escapeAttr(text)}</span>`;
+        const dot = '<span class="b-dot">.</span>';
+        const text = brand.subText
+            ? seg('b-sub', brand.subText) + dot + seg('b-core', brand.core) + dot + seg('b-tld', brand.tldText)
+            : seg('b-core', brand.core) + dot + seg('b-tld', brand.tldText);
+        const mark = brand.icon
+            ? `<i class="fa-solid ${escapeAttr(brand.icon)}"></i>`
+            : `<span class="ov-mark" data-size="28" data-variant="${escapeAttr(brand.variant)}"></span>`;
+        return `<a class="openvibe-navbar-brand${brand.subText ? ' has-sub' : ''}" href="${escapeAttr(brand.href)}" title="${escapeAttr(brand.name)}" aria-label="${escapeAttr(brand.name)}">
+                <span class="flame">${mark}</span>
+                <span class="name">${text}${brand.tag ? `<span class="b-tag">${escapeAttr(brand.tag)}</span>` : ''}</span>
+            </a>`;
+    }
+
+    function menuItemHTML(item) {
+        if (!item) return '';
+        if (item.sep) return '<div class="sep"></div>';
+        const icon = item.icon ? `<span class="icon"><i class="fa-solid ${escapeAttr(item.icon)}"></i></span>` : '<span class="icon"></span>';
+        const cls = item.danger ? ' class="danger"' : '';
+        const id = item.id ? ` data-menu-id="${escapeAttr(item.id)}"` : '';
+        if (item.href) return `<a href="${escapeAttr(item.href)}"${cls}${id}${item.external ? ' target="_blank" rel="noopener"' : ''}>${icon} ${escapeAttr(item.label)}</a>`;
+        return `<button type="button"${cls}${id}>${icon} ${escapeAttr(item.label)}</button>`;
+    }
+
+    function bindMenuItems(container, items) {
+        for (const item of items) {
+            if (!item || !item.id || typeof item.onClick !== 'function') continue;
+            container.querySelector(`[data-menu-id="${item.id}"]`)?.addEventListener('click', (e) => { if (!item.href) e.preventDefault(); item.onClick(e); });
+        }
+    }
+
+    function currentLinks() {
+        const list = _runtimeLinks || _config.links || SERVICE_LINKS[_config.service] || [];
+        const path = (typeof location !== 'undefined' && location.pathname) || '/';
+        return list.map((l) => Object.assign({}, l, { active: l.active !== undefined ? l.active : (l.href === path && path !== '/') }));
+    }
+
     const SERVICE_LINKS = {
         live: [
             { label: 'Watch', href: '/' },
@@ -610,6 +778,45 @@
 
     let _authInFlight = null;
 
+    function ssoHint() {
+        const m = (typeof document !== 'undefined' ? document.cookie : '').match(/(?:^|;\s*)ov_sso_hint=([^;]*)/);
+        if (m) return m[1];
+        try { return localStorage.getItem('ov_sso_hint'); } catch { return null; }
+    }
+
+    /**
+     * One silent sign-in attempt per tab: only when this browser has signed in to the network
+     * before (the hint survives token expiry), never after an explicit sign-out ('guest'), and
+     * never for bots. The site's login route turns silent=1 into prompt=none and comes straight
+     * back on error=login_required, so a signed-out visitor sees one quick redirect at most.
+     */
+    function maybeSilentLogin() {
+        if (!_config.silentLogin || typeof location === 'undefined') return false;
+        if (ssoHint() !== 'account') return false;
+        if (/bot|crawl|spider|slurp|headless/i.test(navigator.userAgent || '')) return false;
+        try { if (sessionStorage.getItem('ov_silent_sso')) return false; sessionStorage.setItem('ov_silent_sso', '1'); } catch { return false; }
+        if (/[?&]sso=none\b/.test(location.search)) return false;
+        const url = String(_config.silentLogin).replace('{url}', encodeURIComponent(location.href));
+        location.replace(url);
+        return true;
+    }
+
+    function recordHistory() {
+        const h = _config.history;
+        if (!h || !_config.user || _config.user.is_anon) return;
+        const rec = Object.assign({ url: location.href, title: document.title, service: resolveBrand().tld }, h);
+        const H = root.OpenVibeHistory;
+        if (H && typeof H.record === 'function') { H.record(rec, { token: _config.token, apiBase: _config.apiBase }); return; }
+        if (!document.getElementById('ov-history-loader')) {
+            const sc = document.createElement('script'); sc.id = 'ov-history-loader'; sc.async = true;
+            sc.src = `${_config.apiBase}/shared/history.js`;
+            sc.onload = () => { try { root.OpenVibeHistory.record(rec, { token: _config.token, apiBase: _config.apiBase }); } catch { /* */ } };
+            document.head.appendChild(sc);
+        } else {
+            document.getElementById('ov-history-loader').addEventListener('load', () => { try { root.OpenVibeHistory.record(rec, { token: _config.token, apiBase: _config.apiBase }); } catch { /* */ } });
+        }
+    }
+
     function refreshAuthState() {
         if (_authInFlight) return _authInFlight;
         _authInFlight = resolveSessionUser()
@@ -619,6 +826,9 @@
                     _config.user = session.user;
                     if (session.token) _config.token = session.token;
                     render();
+                    recordHistory();
+                } else {
+                    maybeSilentLogin();
                 }
                 try {
                     document.dispatchEvent(new CustomEvent('openvibe-navbar-auth', {
@@ -673,28 +883,37 @@
         });
     }
 
+    /**
+     * "Recently used" rows in the dropdown: the last few things this account touched anywhere
+     * on the network, from the shared history module (loaded lazily from the Network).
+     */
+    function renderRecent(el) {
+        if (!el || !_config.user || _config.user.is_anon) return;
+        const draw = (items) => {
+            if (!items || !items.length) { el.hidden = true; return; }
+            el.hidden = false;
+            el.innerHTML = `<div class="label"><span>Recently used</span><a href="https://openvibe.network/my#history">All history</a></div>` +
+                items.slice(0, 4).map(h => `<a class="item" href="${escapeAttr(h.url)}"><span class="icon"><i class="fa-solid ${escapeAttr(h.icon || 'fa-clock-rotate-left')}"></i></span><span class="t">${escapeAttr(h.title || h.url)}</span><span class="s">${escapeAttr(h.service_label || h.service || '')}</span></a>`).join('');
+        };
+        const H = root.OpenVibeHistory;
+        if (H && typeof H.recent === 'function') { H.recent({ limit: 4, token: _config.token, apiBase: _config.apiBase }).then(draw).catch(() => draw(null)); return; }
+        if (document.getElementById('ov-history-loader')) return;
+        const sc = document.createElement('script'); sc.id = 'ov-history-loader'; sc.async = true;
+        sc.src = `${_config.apiBase}/shared/history.js`;
+        sc.onload = () => { try { root.OpenVibeHistory.recent({ limit: 4, token: _config.token, apiBase: _config.apiBase }).then(draw).catch(() => draw(null)); } catch { /* */ } };
+        document.head.appendChild(sc);
+    }
+
     function render() {
         if (_navEl) _navEl.remove();
 
         const nav = document.createElement('nav');
         nav.className = 'openvibe-navbar';
         const svc = _config.service;
-        const links = SERVICE_LINKS[svc] || [];
 
-        // Resolve brand name + icon: config override > subdomain lookup > service defaults
-        const host = (typeof location !== 'undefined' && location.hostname) || '';
-        // Exact match first (e.g., hostname.openvibe.tools), then fallback to service name
-        let subBrand = SUBDOMAIN_BRANDS[host];
-        if (!subBrand && host && host.includes('.openvibe.tools')) {
-            // Try matching against service names
-            const parts = host.split('.');
-            const potential = parts[0]; // e.g., 'json' from 'json.openvibe.tools'
-            subBrand = SUBDOMAIN_BRANDS[`${potential}.openvibe.tools`];
-        }
-        const svcName = _config.brandName || (subBrand && subBrand.name) || SERVICE_NAMES[svc] || 'OpenVibe';
-        const svcIcon = _config.brandIcon || (subBrand && subBrand.icon) || SERVICE_ICONS[svc] || 'fa-circle-nodes';
-
-        const brandHref = '/';
+        const brand = resolveBrand();
+        if (typeof nav.setAttribute === 'function') { nav.setAttribute('data-compact', _config.compact || 'auto'); nav.setAttribute('data-service', svc); }
+        const links = currentLinks();
 
         const u = _config.user;
         const accounts = getAccounts();
@@ -702,20 +921,19 @@
         const loginHref = resolveLoginHref(currentHost(), window.location.href);
         const addAccountHref = `${_config.apiBase}/login?add_account=1&return=${encodeURIComponent(window.location.href)}`;
 
+        // The OV brand mark is a self-contained drop-in (mounts every .ov-mark it finds).
+        if (!window.__ovMark && !document.getElementById('ov-mark-loader')) {
+            try { const sc = document.createElement('script'); sc.id = 'ov-mark-loader'; sc.src = 'https://openvibe.network/shared/ov-mark.js'; sc.async = true; document.head.appendChild(sc); } catch { /* */ }
+        }
         nav.innerHTML = `
-            <a class="openvibe-navbar-brand" href="${brandHref}">
-                <span class="flame"><i class="fa-solid ${svcIcon}"></i></span>
-                <div>
-                    <div class="name">${svcName}</div>
-                </div>
-            </a>
+            ${brandHTML(brand)}
             <div class="openvibe-navbar-links">
-                ${links.map(l => `<a href="${l.href}">${l.label}</a>`).join('')}
+                ${links.map(l => `<a href="${escapeAttr(l.href)}"${l.active ? ' class="active"' : ''}${l.external ? ' target="_blank" rel="noopener"' : ''}>${l.icon ? `<i class="fa-solid ${escapeAttr(l.icon)} icon"></i>` : ''}${escapeAttr(l.label)}</a>`).join('')}
                 ${u && u.role === 'admin' ? `<a href="https://openvibe.network/admin"><i class="fa-solid fa-shield-halved"></i> Admin</a>` : ''}
             </div>
             <div class="openvibe-navbar-spacer"></div>
             <div class="openvibe-navbar-right">
-                <a class="openvibe-network-badge" href="https://openvibe.network" title="Connected to OpenVibe"><i class="fa-solid fa-circle-nodes"></i> OpenVibe</a>
+                <a class="openvibe-network-badge" href="https://openvibe.network" title="Connected to OpenVibe"><span class="ov-mark" data-size="16" data-static="1"></span> OpenVibe</a>
                 <div id="openvibe-bell-mount"></div>
                 ${u ? avatarImg(u, 64, 'openvibe-navbar-avatar', 'openvibe-avatar-btn') :
                     `<a class="openvibe-navbar-login" id="openvibe-login-btn" href="${escapeAttr(loginHref)}">Sign In</a>`}
@@ -729,6 +947,8 @@
             dropdown.id = 'openvibe-user-dropdown';
 
             const otherAccounts = accounts.filter(a => isAnon ? !a.is_anon : String(a.id) !== String(u.id));
+            const before = ((_config.menu && _config.menu.before) || []).concat(_runtimeMenu.before);
+            const after = ((_config.menu && _config.menu.after) || []).concat(_runtimeMenu.after);
 
             dropdown.innerHTML = `
                 <div class="openvibe-navbar-dropdown-header">
@@ -755,17 +975,23 @@
                         <span>Add another account</span>
                     </a>
                 </div>
+                <div class="openvibe-navbar-dropdown-recent" id="openvibe-recent" hidden></div>
                 <div class="openvibe-navbar-dropdown-menu">
+                    ${before.map(menuItemHTML).join('')}${before.length ? '<div class="sep"></div>' : ''}
                     <a href="https://openvibe.network/my"><span class="icon"><i class="fa-solid fa-user"></i></span> My Account</a>
-                    <a href="https://openvibe.network/my#notifications"><span class="icon"><i class="fa-solid fa-bell"></i></span> Notification Settings</a>
+                    <a href="https://openvibe.network/my#history"><span class="icon"><i class="fa-solid fa-clock-rotate-left"></i></span> History</a>
+                    <a href="https://openvibe.network/my#notifications"><span class="icon"><i class="fa-solid fa-bell"></i></span> Notifications</a>
                     <a href="https://openvibe.network/themes"><span class="icon"><i class="fa-solid fa-palette"></i></span> Themes</a>
                     <a href="https://openvibe.network/my#linked"><span class="icon"><i class="fa-solid fa-link"></i></span> Linked Services</a>
                     ${u.role === 'admin' ? `<a href="https://openvibe.network/admin"><span class="icon"><i class="fa-solid fa-screwdriver-wrench"></i></span> Admin Panel</a>` : ''}
-                    <div style="height:1px;background:var(--border,#333340);margin:4px -8px"></div>
+                    ${after.length ? '<div class="sep"></div>' : ''}${after.map(menuItemHTML).join('')}
+                    <div class="sep"></div>
                     <button id="openvibe-logout-btn" class="danger"><span class="icon"><i class="fa-solid fa-right-from-bracket"></i></span> Sign Out</button>
                 </div>
             `;
             nav.appendChild(dropdown);
+            bindMenuItems(dropdown, before.concat(after));
+            if (_config.recent !== false) renderRecent(dropdown.querySelector('#openvibe-recent'));
 
             // Avatar click toggles dropdown
             nav.querySelector('#openvibe-avatar-btn').addEventListener('click', () => {
@@ -834,8 +1060,12 @@
             // the shared SSO state (ov_token cookie / localStorage / optional
             // sessionUrl) and the navbar re-renders when it arrives.
             if (!_config.user) refreshAuthState();
+            else recordHistory();
             return el;
         },
+
+        /** Record something the signed-in user did here ({type, title, url, icon}) in their network history. */
+        record(entry) { const h = _config.history; _config.history = Object.assign({}, h || {}, entry || {}); recordHistory(); _config.history = h; },
 
         /** Re-resolve the signed-in user from the shared SSO state. */
         refreshAuth() { return refreshAuthState(); },
@@ -845,6 +1075,26 @@
             _config.user = user;
             render();
         },
+
+        /** Replace this site's top links at runtime ([{label, href, icon?, active?, external?}]). */
+        setLinks(links) { _runtimeLinks = Array.isArray(links) ? links : null; if (_navEl) render(); },
+
+        /** Add a row to the account dropdown: {label, href|onClick, icon, danger, external, position:'before'|'after'}. */
+        addMenuItem(item) {
+            if (!item || !item.label) return;
+            const it = Object.assign({ id: item.id || `mi-${Math.random().toString(36).slice(2, 8)}` }, item);
+            (it.position === 'before' ? _runtimeMenu.before : _runtimeMenu.after).push(it);
+            if (_navEl && _config.user) render();
+            return it.id;
+        },
+
+        removeMenuItem(id) {
+            for (const k of ['before', 'after']) _runtimeMenu[k] = _runtimeMenu[k].filter(i => i.id !== id);
+            if (_navEl && _config.user) render();
+        },
+
+        /** The resolved brand for this page ({ sub, core, tld, name, short, variant }). */
+        brand() { return resolveBrand(); },
 
         setToken(token) { _config.token = token; },
 

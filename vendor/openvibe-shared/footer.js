@@ -34,7 +34,7 @@
     // the link, with no edit anywhere else.
     const NETWORK = [
         { id: 'live', name: 'Live streaming', url: 'https://openvibe.live', desc: 'Go live, restream and clip' },
-        { id: 'tools', name: 'Free online tools', url: 'https://openvibe.tools', desc: 'The whole toolbox' },
+        { id: 'tools', name: 'Online tools', url: 'https://openvibe.tools', desc: 'The whole toolbox' },
         { id: 'dev', name: 'Developer tools', url: 'https://dev.openvibe.tools', desc: 'Formatters, encoders, validators' },
         { id: 'net', name: 'Network diagnostics', url: 'https://net.openvibe.tools', desc: 'Ping, DNS, Whois, SSL' },
         { id: 'img', name: 'Image converter', url: 'https://img.openvibe.tools', desc: 'Convert, resize, compress' },
@@ -42,7 +42,11 @@
         { id: 'docs', name: 'PDF & document tools', url: 'https://docs.openvibe.tools', desc: 'Merge, split, compress' },
         { id: 'text', name: 'Text tools', url: 'https://text.openvibe.tools', desc: 'Fancy text, case, ASCII' },
         { id: 'yt', name: 'YouTube downloader', url: 'https://yt.openvibe.tools', desc: 'Video and audio' },
+        { id: 'community', name: 'Community & pastes', url: 'https://openvibe.community', desc: 'Pastes, posts and the people of OpenVibe' },
+        { id: 'games', name: 'Games', url: 'https://openvibe.games', desc: 'Scraplandia and browser games' },
+        { id: 'media', name: 'Media', url: 'https://openvibe.media', desc: 'VODs, clips and files for every site' },
         { id: 'network', name: 'Account & themes', url: NETWORK_URL, desc: 'One account, every site' },
+        { id: 'more', name: 'The whole network →', url: NETWORK_URL + '/#network', desc: 'Every OpenVibe site, live and upcoming' },
     ];
 
     const LEGAL = [
@@ -59,7 +63,7 @@
     const DEFAULTS = {
         service: null,               // 'live' | 'tools' | 'dev' | … (auto-detected when omitted)
         brandName: null,
-        tagline: 'Free, open source and community run. Built in the open by the people using it.',
+        tagline: 'Open source and community run. Built in the open by the people using it.',
         variant: 'full',
         mount: '#ov-footer',
         links: [],                   // [{ heading, items: [{ name, url, onclick? }] }]
@@ -84,9 +88,17 @@
         return sub === h ? 'tools' : (sub || 'tools');
     }
 
+    const TLD_LABELS = { live: 'Live', tools: 'Tools', network: 'Network', media: 'Media', games: 'Games', community: 'Community', chat: 'Chat', codes: 'Codes', blog: 'Blog', wiki: 'Wiki', news: 'News', reviews: 'Reviews', tips: 'Tips', vip: 'VIP', trade: 'Trade', host: 'Host', deals: 'Deals', coupons: 'Coupons' };
+    /** The full site name from the hostname — the same spelling the navbar uses (Pastes.OpenVibe.Tools). */
     function brandFor(service) {
+        const h = typeof location !== 'undefined' ? location.hostname.toLowerCase() : '';
+        const cap = (w) => w ? w.charAt(0).toUpperCase() + w.slice(1) : '';
+        let m = h.match(/^(?:(.+)\.)?openvibe\.([a-z]+)$/);
+        if (m) { const sub = m[1] && m[1] !== 'www' ? m[1] : null; return [sub ? (sub.length <= 4 ? sub.toUpperCase() : cap(sub)) : null, 'OpenVibe', TLD_LABELS[m[2]] || cap(m[2])].filter(Boolean).join('.'); }
+        if ((m = h.match(/^(?:(.+)\.)?openre\.stream$/))) return 'OpenRe.Stream';
         const found = NETWORK.find(n => n.id === service);
-        if (found) return found.name === 'Account & themes' ? 'OpenVibe' : found.name;
+        if (service && TLD_LABELS[service]) return `OpenVibe.${TLD_LABELS[service]}`;
+        if (found && found.name !== 'Account & themes' && found.name !== 'The whole network →') return `${cap(service)}.OpenVibe.Tools`;
         return 'OpenVibe';
     }
 

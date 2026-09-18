@@ -575,7 +575,35 @@ function doRegister() { window.location.href = '/api/auth/sso/login'; }
 // Session hint: 'account' after a successful sign-in (silent SSO may re-sign you in when the
 // site token lapses), 'guest' after an explicit logout / "browse as guest" (never re-sign in).
 function _setSsoHint(v) { try { localStorage.setItem('ov_sso_hint', v); } catch { /* */ } }
-function _ssoHint() { try { return localStorage.getItem('ov_sso_hint') || ''; } catch { return ''; } }
+function _ssoHint() {
+    // The cookie is set by the server on sign-in/sign-out (and by the network's sign-in-everywhere
+    // chain, which never runs this page's JS); localStorage is the page-side copy.
+    const m = document.cookie.match(/(?:^|;\s*)ov_sso_hint=([^;]*)/);
+    if (m && m[1]) return m[1];
+    try { return localStorage.getItem('ov_sso_hint') || ''; } catch { return ''; }
+}
+
+// ── Cross-site history (openvibe.network) ────────────────────
+// What the signed-in account watches/opens here shows up in its network-wide History and the
+// "Recently used" rows of the shared navbar on every other site. Recorded after the route
+// rendered and its title settled; never for guests, and only for the pages worth remembering.
+const _HISTORY_PAGES = { channel: 'stream', 'vod-player': 'vod', 'clip-player': 'clip', 'paste-viewer': 'paste', pastes: null, game: 'game', arena: 'page' };
+let _historyTimer = null;
+function _recordHistory(pageId) {
+    const type = _HISTORY_PAGES[pageId];
+    if (!type) return;
+    clearTimeout(_historyTimer);
+    _historyTimer = setTimeout(() => {
+        const tok = (document.cookie.match(/(?:^|;\s*)ov_token=([^;]*)/) || [])[1] || localStorage.getItem('ov_token');
+        if (!tok || !currentUser) return;
+        const entry = { type, title: document.title.replace(/\s*[-–|]\s*OpenVibe\.Live\s*$/i, ''), url: location.href };
+        const send = () => { try { window.OpenVibeHistory.record(entry, { token: decodeURIComponent(tok) }); } catch { /* */ } };
+        if (window.OpenVibeHistory) return send();
+        if (document.getElementById('ov-history-loader')) return;
+        const sc = document.createElement('script'); sc.id = 'ov-history-loader'; sc.async = true; sc.src = '/shared/history.js'; sc.onload = send;
+        document.head.appendChild(sc);
+    }, 1800);
+}
 /** Try to sign back in through openvibe.network without a chooser — once per tab session. */
 function _trySilentSso() {
     if (_ssoHint() !== 'account') return false;
@@ -999,7 +1027,7 @@ function whenRouteReady(pageId, render) {
     const path = location.pathname;
     const run = () => {
         if (window.ov && !ov.isCurrent(gen)) return;
-        try { render(); }
+        try { render(); _recordHistory(pageId); }
         catch (err) {
             console.error(`[route] ${path} failed to render:`, err);
             if (window.ov) ov.showRouteError(`page-${pageId}`, err, () => whenRouteReady(pageId, render));
@@ -1115,6 +1143,10 @@ function routeFromURL() {
         return;
     } else if (segments[0] === 'privacy') {
         window.location.replace('/privacy');
+        return;
+    } else if (segments[0] === 'p' && segments[1] && document.querySelector('meta[name="ov-pastes-base"]')) {
+        // Pastes live on openvibe.community now — hand the browser over (same slug, same URL shape).
+        location.replace(`${document.querySelector('meta[name="ov-pastes-base"]').content}/p/${encodeURIComponent(segments[1])}${location.search}`);
         return;
     } else if (segments[0] === 'p' && segments[1]) {
         showPage('paste-viewer');
