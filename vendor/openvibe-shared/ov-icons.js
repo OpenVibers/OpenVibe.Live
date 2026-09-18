@@ -74,6 +74,8 @@
         error: P('M12 7v6M12 16.5h.01'),
         clip: P('M6 6l12 12M6 18L18 6') ,
     };
+    // [dx, dy] in glyph units that move each glyph's drawn bounds onto the centre of the ring. Generated.
+    const OFFSETS = {"ov":[0,-0.5],"network":[0,0.5],"tools":[1.26,0.24],"games":[0,-1.52],"community":[0,-0.45],"chat":[0,-1],"wiki":[0,-0.25],"reviews":[0,0.6],"tips":[0,-0.76],"vip":[0,-0.75],"trade":[0,-1],"deals":[0,-1],"coupons":[0,-0.5],"stream":[0,0.95],"download":[0,0.25],"audio":[0.7,-0.35],"pdf":[-0.25,0],"docs":[-0.25,0],"logo":[-1.25,-0.5],"ssl":[0,-0.25],"whois":[-0.5,-0.5],"search":[-0.5,-0.5],"food":[0.25,0],"account":[0,-0.4],"bell":[0,-1.37],"error":[-0.01,0.25]};
     const ALIASES = { yt: 'youtube', net: 'dns', dev: 'code', img: 'image', sound: 'audio', document: 'pdf', pastes: 'paste', openre: 'stream', maps: 'map', user: 'account', notifications: 'bell' };
     const registry = Object.create(null);
     for (const [k, g] of Object.entries(GLYPHS)) registry[k] = { glyph: g };
@@ -85,7 +87,7 @@
 .ov-icon .ovi-ring{fill:none;stroke:currentColor;stroke-width:2.4;opacity:.26}
 .ov-icon .ovi-comet{fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-dasharray:26 100;transform-origin:24px 24px;animation:oviSpin 3.6s linear infinite}
 .ov-icon .ovi-prog{fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;transform:rotate(-90deg);transform-origin:24px 24px;stroke-dasharray:125.7;stroke-dashoffset:125.7;transition:stroke-dashoffset .35s cubic-bezier(.2,.8,.2,1),opacity .2s;opacity:0}
-.ov-icon .ovi-glyph{fill:none;stroke:var(--ovi-glyph,var(--text-primary,#e6edf7));stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;transform-origin:24px 24px;transition:transform .25s cubic-bezier(.2,1.4,.3,1),stroke .2s}
+.ov-icon .ovi-glyph{fill:none;stroke:var(--ovi-glyph,var(--text-primary,#e6edf7));stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;transform-box:view-box;transform-origin:12px 12px;transition:transform .25s cubic-bezier(.2,1.4,.3,1),stroke .2s}
 .ov-icon .ovi-glyph circle[r=".6"],.ov-icon .ovi-glyph circle[r=".7"]{fill:currentColor;stroke:none}
 .ov-icon[style*="--ovi-size:2"] .ovi-glyph,.ov-icon[data-size^="2"] .ovi-glyph{stroke-width:2.3}
 .ov-icon[style*="--ovi-size:2"] .ovi-ring,.ov-icon[data-size^="2"] .ovi-ring{stroke-width:3;opacity:.34}
@@ -121,9 +123,10 @@
 
     /** Markup for one icon (usable server-side: no DOM needed). Glyph is scaled 24→22 and centred in the 48 box. */
     function svg(name, size) {
-        const def = registry[resolve(name)];
+        const key = resolve(name); const def = registry[key];
+        const off = def.offset || OFFSETS[key] || [0, 0];   // measured optical centring, see scripts/measure-icons.js
         const s = size ? ` width="${size}" height="${size}"` : '';
-        return `<svg viewBox="0 0 48 48"${s} aria-hidden="true" focusable="false"><circle class="ovi-bg" cx="24" cy="24" r="21"/><circle class="ovi-ring" cx="24" cy="24" r="20"/><circle class="ovi-comet" cx="24" cy="24" r="20"/><circle class="ovi-prog" cx="24" cy="24" r="20"/><g class="ovi-glyph" transform="translate(13 13) scale(.9167)">${def.glyph}</g></svg>`;
+        return `<svg viewBox="0 0 48 48"${s} aria-hidden="true" focusable="false"><circle class="ovi-bg" cx="24" cy="24" r="21"/><circle class="ovi-ring" cx="24" cy="24" r="20"/><circle class="ovi-comet" cx="24" cy="24" r="20"/><circle class="ovi-prog" cx="24" cy="24" r="20"/><g transform="translate(${(13 + off[0] * .9167).toFixed(2)} ${(13 + off[1] * .9167).toFixed(2)}) scale(.9167)"><g class="ovi-glyph">${def.glyph}</g></g></svg>`;
     }
 
     function applyProgress(el) {
@@ -161,7 +164,7 @@
 
     function register(name, def) {
         if (!name || !def || !def.glyph) return;
-        registry[String(name).toLowerCase()] = { glyph: def.glyph, fx: def.fx || null, accent: def.accent || null };
+        registry[String(name).toLowerCase()] = { glyph: def.glyph, fx: def.fx || null, accent: def.accent || null, offset: Array.isArray(def.offset) ? def.offset : null };
         if (typeof document !== 'undefined') document.querySelectorAll(`.ov-icon[data-icon="${name}"]`).forEach((el) => { el.removeAttribute('data-ovi'); mountOne(el); });
     }
 
