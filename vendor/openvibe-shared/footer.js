@@ -92,8 +92,8 @@
     ];
 
     const SOCIAL = [
-        { name: 'GitHub', icon: 'fa-brands fa-github', url: 'https://github.com/OpenVibers' },
-        { name: 'Discord', icon: 'fa-brands fa-discord', url: 'https://discord.gg/M6MuRUaeJj' },
+        { name: 'GitHub', icon: 'github', url: 'https://github.com/OpenVibers' },
+        { name: 'Discord', icon: 'discord', url: 'https://discord.gg/M6MuRUaeJj' },
     ];
 
     const DEFAULTS = {
@@ -151,6 +151,22 @@
         return item.fallback;
     }
 
+    // ── Icons ──────────────────────────────────────────────────
+    // The footer ships its own icons. It used to borrow the page's Font Awesome, so on pages that do not
+    // load that font (the server-rendered Tools and legal pages) every icon was an empty box.
+    const ICONS = {
+        github: '<path fill="currentColor" stroke="none" d="M12 2.2a9.8 9.8 0 0 0-3.1 19.1c.5.1.7-.2.7-.5v-1.7c-2.7.6-3.3-1.2-3.3-1.2-.4-1.1-1.1-1.4-1.1-1.4-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8.1-.6.3-1.1.6-1.3-2.2-.2-4.5-1.1-4.5-4.8 0-1.1.4-1.9 1-2.6-.1-.2-.4-1.2.1-2.6 0 0 .8-.3 2.7 1a9.3 9.3 0 0 1 4.9 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.6.6.7 1 1.5 1 2.6 0 3.7-2.3 4.6-4.5 4.8.4.3.7.9.7 1.800v2.700c0 .3.2.6.7.5A9.8 9.8 0 0 0 12 2.200z"/>',
+        discord: '<path fill="currentColor" stroke="none" d="M19.3 5.300a16.5 16.5 0 0 0-4.1-1.300l-.5 1a15.3 15.3 0 0 0-5.4 0l-.5-1a16.5 16.5 0 0 0-4.1 1.300C2.1 9.2 1.4 13 1.7 16.700a16.6 16.6 0 0 0 5.1 2.600l1.1-1.800c-.6-.2-1.2-.5-1.7-.8l.4-.3a11.8 11.8 0 0 0 10.8 0l.4.3c-.5.3-1.1.6-1.7.8l1.1 1.800a16.6 16.6 0 0 0 5.1-2.600c.4-4.3-.7-8.1-3-11.400zM8.7 14.400c-1 0-1.8-.9-1.8-2.100s.8-2.1 1.8-2.1 1.9 1 1.8 2.100c0 1.2-.8 2.1-1.8 2.100zm6.6 0c-1 0-1.8-.9-1.8-2.100s.8-2.1 1.8-2.1 1.9 1 1.8 2.100c0 1.2-.8 2.1-1.8 2.100z"/>',
+        sitemap: '<rect x="9" y="3.5" width="6" height="4.5" rx="1"/><rect x="3" y="16" width="6" height="4.5" rx="1"/><rect x="15" y="16" width="6" height="4.5" rx="1"/><path d="M12 8v4M6 16v-2.500h12V16"/>',
+        arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+        channel: '<circle cx="12" cy="12" r="2"/><path d="M7.8 7.800a6 6 0 0 0 0 8.400M16.2 7.800a6 6 0 0 1 0 8.400M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/>',
+        dashboard: '<path d="M4.5 17a8 8 0 1 1 15 0M12 13l3.5-4"/><circle cx="12" cy="13.5" r="1.3"/>',
+        account: '<circle cx="12" cy="9" r="3.2"/><path d="M5.5 19a6.5 6.5 0 0 1 13 0"/>',
+        themes: '<path d="M12 4.500a7.5 7.5 0 1 0 0 15c1 0 1.6-.8 1.2-1.7-.5-1.1.3-2.3 1.5-2.300h1.600a3.2 3.2 0 0 0 3.2-3.200C19.5 8 16.2 4.5 12 4.500z"/><circle cx="8.5" cy="11" r=".7"/><circle cx="11.5" cy="8" r=".7"/><circle cx="15" cy="9" r=".7"/>',
+        tools: '<path d="M14.5 5.500a4 4 0 0 0-5.2 5.200L4.5 15.500a1.8 1.8 0 0 0 2.5 2.500l4.8-4.800a4 4 0 0 0 5.2-5.200l-2.6 2.6-2.1-.5-.5-2.100z"/>',
+    };
+    const icon = (name) => `<svg class="ovf-ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${(ICONS[name] || ICONS.arrow)}</svg>`;
+
     // ── Markup ─────────────────────────────────────────────────
     function linkTag(item) {
         // Our own sites open in this tab (the sign-in hand-off follows the click); the rest of the web in a new one.
@@ -199,20 +215,20 @@
                     <a class="ovf-brand" href="/"><span class="ov-mark" data-size="26"></span><span>${esc(brand)}</span></a>
                     <p class="ovf-tagline">${esc(tagline)}</p>
                     <div class="ovf-social">
-                        ${SOCIAL.map(s => `<a href="${s.url}" target="_blank" rel="noopener" aria-label="${s.name}" title="${s.name}"><i class="${s.icon}"></i></a>`).join('')}
-                        <a href="${esc(c.sitemap)}" aria-label="Sitemap" title="Sitemap"><i class="fa-solid fa-sitemap"></i></a>
+                        ${SOCIAL.map(s => `<a href="${s.url}" target="_blank" rel="noopener" aria-label="${s.name}" title="${s.name}">${icon(s.icon)}</a>`).join('')}
+                        <a href="${esc(c.sitemap)}" aria-label="Sitemap" title="Sitemap">${icon('sitemap')}</a>
                     </div>
                 </div>
                 ${cols}
                 ${c.showNetwork ? `<nav class="ovf-col" aria-label="The OpenVibe network">
                     <h3>Network</h3>
                     ${network.slice(0, 6).map(linkTag).join('')}
-                    <a class="ovf-more" href="${NETWORK_URL}" target="_blank" rel="noopener">Everything else <i class="fa-solid fa-arrow-right"></i></a>
+                    <a class="ovf-more" href="${NETWORK_URL}" target="_blank" rel="noopener">Everything else ${icon('arrow')}</a>
                 </nav>` : ''}
                 ${popular.length ? `<nav class="ovf-col" aria-label="Popular tools">
                     <h3>Popular tools</h3>
                     ${popular.slice(0, 6).concat(discover.slice(0, 2)).map(linkTag).join('')}
-                    <a class="ovf-more" href="https://openvibe.tools/all-tools">All tools <i class="fa-solid fa-arrow-right"></i></a>
+                    <a class="ovf-more" href="https://openvibe.tools/all-tools">All tools ${icon('arrow')}</a>
                 </nav>` : ''}
                 <nav class="ovf-col" aria-label="Legal">
                     <h3>Legal</h3>
@@ -236,13 +252,13 @@
             ? `<img src="${esc(user.avatar_url)}" alt="">`
             : `<span>${esc(String(name).charAt(0).toUpperCase())}</span>`;
         const quick = [
-            service !== 'live' ? { name: 'My channel', url: `https://openvibe.live/@${esc(user.username || '')}`, icon: 'fa-tower-broadcast' } : { name: 'My dashboard', url: '/dashboard', icon: 'fa-gauge-high' },
-            { name: 'Account', url: `${NETWORK_URL}/my`, icon: 'fa-user' },
-            { name: 'Themes', url: `${NETWORK_URL}/themes`, icon: 'fa-palette' },
-            { name: 'Tools', url: 'https://openvibe.tools', icon: 'fa-screwdriver-wrench' },
+            service !== 'live' ? { name: 'My channel', url: `https://openvibe.live/@${esc(user.username || '')}`, icon: 'channel' } : { name: 'My dashboard', url: '/dashboard', icon: 'dashboard' },
+            { name: 'Account', url: `${NETWORK_URL}/my`, icon: 'account' },
+            { name: 'Themes', url: `${NETWORK_URL}/themes`, icon: 'themes' },
+            { name: 'Tools', url: 'https://openvibe.tools', icon: 'tools' },
         ];
         return `<span class="ovf-account-who"><span class="ovf-avatar">${avatar}</span> Signed in as <strong>${name}</strong> across OpenVibe</span>
-            <span class="ovf-account-links">${quick.map(q => `<a href="${esc(q.url)}"${/^https?:/.test(q.url) ? ' target="_blank" rel="noopener"' : ''}><i class="fa-solid ${q.icon}"></i> ${esc(q.name)}</a>`).join('')}</span>`;
+            <span class="ovf-account-links">${quick.map(q => `<a href="${esc(q.url)}"${/^https?:/.test(q.url) ? ' target="_blank" rel="noopener"' : ''}>${icon(q.icon)} ${esc(q.name)}</a>`).join('')}</span>`;
     }
 
     function storedToken() {
@@ -283,7 +299,7 @@
 .ovf-col h3{margin:0 0 2px;font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted,#8b93ad)}
 .ovf-col a{color:var(--text-secondary,#b6bdd2);font-size:.86rem;text-decoration:none;line-height:1.4;width:fit-content;transition:color .15s,transform .15s}
 .ovf-col a:hover{color:var(--accent,#60a5fa);transform:translateX(2px)}
-.ovf-more{font-weight:600;opacity:.85}.ovf-more i{font-size:.7rem;transition:transform .15s}.ovf-more:hover i{transform:translateX(3px)}
+.ovf-more{font-weight:600;opacity:.85}.ovf-ic{flex:none;vertical-align:-.14em}.ovf-more .ovf-ic{font-size:.85em;margin-left:3px;transition:transform .15s}.ovf-more:hover .ovf-ic{transform:translateX(3px)}.ovf-social .ovf-ic{font-size:17px}.ovf-account-links .ovf-ic{font-size:1.05em;opacity:.85}
 .ovf-brand{display:inline-flex;align-items:center;gap:9px;color:var(--text-primary,#f1f4fb);font-size:1.05rem;font-weight:700;text-decoration:none}
 .ovf-brand--sm{font-size:.9rem}
 .ovf-tagline{margin:0;font-size:.82rem;line-height:1.55;color:var(--text-muted,#8b93ad);max-width:46ch}
