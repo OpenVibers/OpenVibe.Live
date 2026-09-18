@@ -1,24 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
-  <!-- OpenVibe.Live mark: play glyph inside a broadcast ring, riding a vibe wave -->
-  <defs>
-    <linearGradient id="ovl-accent" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#a78bfa"/>
-      <stop offset="1" stop-color="#6d28d9"/>
-    </linearGradient>
-  </defs>
-  <!-- Soft glow -->
-  <circle cx="64" cy="58" r="40" fill="#8b5cf6" opacity="0.12"/>
-  <!-- Broadcast ring -->
-  <circle cx="64" cy="58" r="32" fill="none" stroke="url(#ovl-accent)" stroke-width="5"/>
-  <!-- Play triangle -->
-  <path d="M56 42 L82 58 L56 74 Z" fill="#8b5cf6"/>
-  <!-- Broadcast waves (top right) -->
-  <path d="M94 26 C99 21, 106 26, 101 32" stroke="#8b5cf6" stroke-width="3" fill="none" stroke-linecap="round"/>
-  <path d="M100 18 C108 11, 118 21, 110 29" stroke="#a78bfa" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.7"/>
-  <!-- Live dot -->
-  <circle cx="91" cy="31" r="3" fill="#e74c3c"/>
-  <!-- Vibe wave underline -->
-  <path d="M26 98 Q38 90, 50 98 T74 98 T98 98" stroke="#22d3ee" stroke-width="3.5" fill="none" stroke-linecap="round" opacity="0.9"/>
-  <!-- Wordmark -->
-  <text x="64" y="120" text-anchor="middle" font-family="'Segoe UI', system-ui, sans-serif" font-size="15" font-weight="700" fill="#a78bfa">OpenVibe.Live</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-32 -32 64 64"><defs><linearGradient id="ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#60a5fa"/><stop offset="1" stop-color="#2563eb"/></linearGradient>
+<radialGradient id="glow"><stop offset="0" stop-color="#60a5fa" stop-opacity=".34"/><stop offset="1" stop-color="#60a5fa" stop-opacity="0"/></radialGradient>
+<radialGradient id="bg" cx=".5" cy=".38" r=".8"><stop offset="0" stop-color="#16223a"/><stop offset=".6" stop-color="#0a0f1c"/><stop offset="1" stop-color="#060912"/></radialGradient></defs><rect x="-32" y="-32" width="64" height="64" rx="15" fill="url(#bg)"/><g transform="scale(1.22)">
+<circle r="21" fill="url(#glow)"/>
+<circle r="18" fill="none" stroke="url(#ring)" stroke-width="4" opacity=".38"/>
+<path d="M0,-18 A18,18 0 0,1 17.4,4.6" fill="none" stroke="url(#ring)" stroke-width="4.4" stroke-linecap="round"/>
+<path d="M-9.5,-7 L0,10 L9.5,-7" fill="none" stroke="#fff" stroke-width="4.8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="17.4" cy="4.6" r="3.2" fill="#ef4444"/></g></svg>

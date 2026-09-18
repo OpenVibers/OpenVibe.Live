@@ -13,7 +13,9 @@
     "./notifications": "./notifications.js",
     "./url-resolver": "./url-resolver.js",
     "./seo": "./seo.js",
-    "./icons": "./ov-icons.js"
+    "./icons": "./ov-icons.js",
+    "./legal": "./legal.js",
+    "./app-icon": "./app-icon.js"
   },
   "license": "MIT",
   "dependencies": {

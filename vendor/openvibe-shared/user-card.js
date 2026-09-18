@@ -30,7 +30,7 @@
                 animation: openvibe-card-in .2s ease; overflow: hidden;
             }
             .openvibe-usercard-banner {
-                height: 60px; background: linear-gradient(135deg, var(--accent-dark, #a07840), var(--accent, #8b5cf6));
+                height: 60px; background: linear-gradient(135deg, var(--accent-dark, #a07840), var(--accent, #3b82f6));
                 position: relative;
             }
             .openvibe-usercard-avatar {

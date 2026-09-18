@@ -27,6 +27,42 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
     'use strict';
 
+    const root = typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : {});
+    // ── Shared chrome data (https://openvibe.network/api/chrome) ─────────────────────────────
+    // Sites ordered by real use, footer copy and per-site legal links. Cached per host for 30
+    // minutes in localStorage and refreshed in the background, so pages paint from cache and the
+    // order never jumps while someone is looking at it. Defined once, shared by navbar + footer.
+    const OVChrome = root.OpenVibeChrome || (root.OpenVibeChrome = (function () {
+        const KEY = 'ov_chrome_v1', TTL = 30 * 60000;
+        let inflight = null;
+        const host = () => (typeof location !== 'undefined' ? location.hostname : '');
+        const https = (u) => { try { return new URL(u).protocol === 'https:'; } catch { return false; } };
+        function clean(d) {
+            if (!d || !Array.isArray(d.nav)) return null;
+            const link = (l) => (l && typeof l.name === 'string' && https(l.url) ? { id: String(l.id || ''), name: l.name.slice(0, 60), url: l.url, icon: String(l.icon || ''), tagline: String(l.tagline || '').slice(0, 80) } : null);
+            const f = d.footer || {}, lg = f.legal || {};
+            return { nav: d.nav.map(link).filter(Boolean).slice(0, 12), soon: (d.soon || []).map(link).filter(Boolean).slice(0, 24),
+                footer: { blurb: String(f.blurb || '').slice(0, 200), discover: (f.discover || []).map(link).filter(Boolean).slice(0, 6), popular: (f.popular || []).map(link).filter(Boolean).slice(0, 10),
+                    legal: https(lg.terms) && https(lg.privacy) && https(lg.dmca) ? { terms: lg.terms, privacy: lg.privacy, dmca: lg.dmca } : null } };
+        }
+        function cached() { try { const c = JSON.parse(localStorage.getItem(KEY) || 'null'); return c && c.host === host() && c.data ? c : null; } catch { return null; } }
+        function refresh() {
+            if (inflight || typeof fetch === 'undefined') return inflight || Promise.resolve(null);
+            inflight = fetch('https://openvibe.network/api/chrome?host=' + encodeURIComponent(host()), { credentials: 'omit' })
+                .then(r => (r.ok ? r.json() : null)).then(clean)
+                .then(d => { if (d) { try { localStorage.setItem(KEY, JSON.stringify({ at: Date.now(), host: host(), data: d })); } catch { /* */ } } return d; })
+                .catch(() => null);
+            return inflight;
+        }
+        /** Cached data now (or null); `onFirst` fires once when a first-ever fetch lands. */
+        function get(onFirst) {
+            const c = cached();
+            if (!c || Date.now() - c.at > TTL) { const p = refresh(); if (!c && onFirst) p.then(d => { if (d) onFirst(d); }); }
+            return c ? c.data : null;
+        }
+        return { get, refresh };
+    })());
+
     const NETWORK_URL = 'https://openvibe.network';
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -50,9 +86,9 @@
     ];
 
     const LEGAL = [
-        { name: 'Terms of Service', path: '/tos', fallback: 'https://openvibe.live/tos' },
-        { name: 'Privacy Policy', path: '/privacy', fallback: 'https://openvibe.live/privacy' },
-        { name: 'DMCA', path: '/dmca', fallback: 'https://openvibe.live/dmca' },
+        { key: 'terms', name: 'Terms of Service', path: '/tos', fallback: 'https://openvibe.live/tos' },
+        { key: 'privacy', name: 'Privacy Policy', path: '/privacy', fallback: 'https://openvibe.live/privacy' },
+        { key: 'dmca', name: 'DMCA', path: '/dmca', fallback: 'https://openvibe.live/dmca' },
     ];
 
     const SOCIAL = [
@@ -106,6 +142,9 @@
     }
 
     function legalHref(item, cfg) {
+        // Each site answers for itself: the chrome service names this domain's own documents.
+        const chrome = cfg._chrome;
+        if (chrome && chrome.footer.legal && !cfg.legalBase) return chrome.footer.legal[item.key];
         // Policies live on whichever site owns them; a tool subdomain links out rather than 404ing.
         if (cfg.legalBase) return cfg.legalBase.replace(/\/$/, '') + item.path;
         if (typeof location !== 'undefined' && location.hostname.endsWith('openvibe.live')) return item.path;
@@ -114,7 +153,9 @@
 
     // ── Markup ─────────────────────────────────────────────────
     function linkTag(item) {
-        const rel = /^https?:\/\//.test(item.url) ? ' target="_blank" rel="noopener"' : '';
+        // Our own sites open in this tab (the sign-in hand-off follows the click); the rest of the web in a new one.
+        const own = /^https:\/\/([a-z0-9-]+\.)*(openvibe\.[a-z]+|openre\.stream)(\/|$)/i.test(item.url);
+        const rel = /^https?:\/\//.test(item.url) && !own ? ' target="_blank" rel="noopener"' : '';
         const onclick = item.onclick ? ` onclick="${esc(item.onclick)}"` : '';
         const title = item.desc ? ` title="${esc(item.desc)}"` : '';
         return `<a href="${esc(item.url)}"${rel}${onclick}${title}>${esc(item.name)}</a>`;
@@ -124,7 +165,14 @@
         const c = { ...DEFAULTS, ...(cfg || {}) };
         const service = c.service || detectService();
         const brand = c.brandName || brandFor(service);
-        const network = NETWORK.filter(n => n.id !== service);
+        const chrome = c._chrome = OVChrome.get(() => { try { render(); } catch { /* */ } });
+        // Most used sites first when the chrome service has spoken; the built-in list otherwise.
+        const network = chrome && chrome.nav.length
+            ? chrome.nav.filter(n => n.id !== service && !(typeof location !== 'undefined' && new URL(n.url).hostname === location.hostname)).map(n => ({ name: 'OpenVibe.' + n.name, url: n.url, desc: n.tagline }))
+            : NETWORK.filter(n => n.id !== service);
+        const tagline = (cfg && cfg.tagline) || (chrome && chrome.footer.blurb) || c.tagline;
+        const popular = chrome ? chrome.footer.popular : [];
+        const discover = chrome ? chrome.footer.discover.filter(d => !network.slice(0, 6).some(n => n.url === d.url)) : [];
         const year = new Date().getFullYear();
 
         if (c.variant === 'compact') {
@@ -149,7 +197,7 @@
             <div class="ovf-cols">
                 <div class="ovf-col ovf-col--brand">
                     <a class="ovf-brand" href="/"><span class="ov-mark" data-size="26"></span><span>${esc(brand)}</span></a>
-                    <p class="ovf-tagline">${esc(c.tagline)}</p>
+                    <p class="ovf-tagline">${esc(tagline)}</p>
                     <div class="ovf-social">
                         ${SOCIAL.map(s => `<a href="${s.url}" target="_blank" rel="noopener" aria-label="${s.name}" title="${s.name}"><i class="${s.icon}"></i></a>`).join('')}
                         <a href="${esc(c.sitemap)}" aria-label="Sitemap" title="Sitemap"><i class="fa-solid fa-sitemap"></i></a>
@@ -160,6 +208,11 @@
                     <h3>Network</h3>
                     ${network.slice(0, 6).map(linkTag).join('')}
                     <a class="ovf-more" href="${NETWORK_URL}" target="_blank" rel="noopener">Everything else <i class="fa-solid fa-arrow-right"></i></a>
+                </nav>` : ''}
+                ${popular.length ? `<nav class="ovf-col" aria-label="Popular tools">
+                    <h3>Popular tools</h3>
+                    ${popular.slice(0, 6).concat(discover.slice(0, 2)).map(linkTag).join('')}
+                    <a class="ovf-more" href="https://openvibe.tools/all-tools">All tools <i class="fa-solid fa-arrow-right"></i></a>
                 </nav>` : ''}
                 <nav class="ovf-col" aria-label="Legal">
                     <h3>Legal</h3>
@@ -229,7 +282,7 @@
 .ovf-col{display:flex;flex-direction:column;gap:8px;min-width:0}
 .ovf-col h3{margin:0 0 2px;font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted,#8b93ad)}
 .ovf-col a{color:var(--text-secondary,#b6bdd2);font-size:.86rem;text-decoration:none;line-height:1.4;width:fit-content;transition:color .15s,transform .15s}
-.ovf-col a:hover{color:var(--accent,#a78bfa);transform:translateX(2px)}
+.ovf-col a:hover{color:var(--accent,#60a5fa);transform:translateX(2px)}
 .ovf-more{font-weight:600;opacity:.85}.ovf-more i{font-size:.7rem;transition:transform .15s}.ovf-more:hover i{transform:translateX(3px)}
 .ovf-brand{display:inline-flex;align-items:center;gap:9px;color:var(--text-primary,#f1f4fb);font-size:1.05rem;font-weight:700;text-decoration:none}
 .ovf-brand--sm{font-size:.9rem}
@@ -237,23 +290,23 @@
 .ovf-social{display:flex;gap:8px;margin-top:4px}
 .ovf-social a{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;color:var(--text-secondary,#b6bdd2);
   background:var(--bg-tertiary,#1a1b28);border:1px solid var(--border,rgba(255,255,255,.08));font-size:.95rem;transition:color .15s,border-color .15s,transform .15s}
-.ovf-social a:hover{color:var(--accent,#a78bfa);border-color:var(--accent,#a78bfa);transform:translateY(-2px)}
+.ovf-social a:hover{color:var(--accent,#60a5fa);border-color:var(--accent,#60a5fa);transform:translateY(-2px)}
 .ovf-account{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 18px;
   margin-top:clamp(18px,2.5vw,26px);padding:10px 14px;border-radius:14px;
-  background:color-mix(in srgb, var(--accent,#a78bfa) 8%, var(--bg-tertiary,#1a1b28));
-  border:1px solid color-mix(in srgb, var(--accent,#a78bfa) 26%, var(--border,rgba(255,255,255,.08)));
+  background:color-mix(in srgb, var(--accent,#60a5fa) 8%, var(--bg-tertiary,#1a1b28));
+  border:1px solid color-mix(in srgb, var(--accent,#60a5fa) 26%, var(--border,rgba(255,255,255,.08)));
   animation:ovfIn .4s ease-out both}
 @keyframes ovfIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .ovf-account-who{display:inline-flex;align-items:center;gap:8px;font-size:.84rem;color:var(--text-secondary,#b6bdd2)}
 .ovf-account-who strong{color:var(--text-primary,#f1f4fb)}
 .ovf-avatar{width:24px;height:24px;border-radius:50%;overflow:hidden;display:grid;place-items:center;
-  background:var(--accent,#a78bfa);color:#fff;font-size:.7rem;font-weight:800;flex:none}
+  background:var(--accent,#60a5fa);color:#fff;font-size:.7rem;font-weight:800;flex:none}
 .ovf-avatar img{width:100%;height:100%;object-fit:cover}
 .ovf-account-links{display:flex;flex-wrap:wrap;gap:6px}
 .ovf-account-links a{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:.78rem;font-weight:600;
   color:var(--text-secondary,#b6bdd2);background:var(--bg-secondary,#12131c);border:1px solid var(--border,rgba(255,255,255,.08));
   text-decoration:none;transition:color .15s,border-color .15s,transform .15s}
-.ovf-account-links a:hover{color:var(--accent,#a78bfa);border-color:var(--accent,#a78bfa);transform:translateY(-1px)}
+.ovf-account-links a:hover{color:var(--accent,#60a5fa);border-color:var(--accent,#60a5fa);transform:translateY(-1px)}
 .ovf-account-links i{font-size:.72rem;opacity:.8}
 .ovf-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;
   margin-top:clamp(20px,3vw,30px);padding-top:16px;border-top:1px solid var(--border,rgba(255,255,255,.08));
@@ -261,7 +314,7 @@
 .ovf-copy{color:var(--text-muted,#8b93ad);font-size:.78rem}
 .ovf-legal-inline,.ovf-compact-links{display:flex;flex-wrap:wrap;gap:14px}
 .ovf-legal-inline a,.ovf-compact-links a{color:var(--text-muted,#8b93ad);font-size:.78rem;text-decoration:none;transition:color .15s}
-.ovf-legal-inline a:hover,.ovf-compact-links a:hover{color:var(--accent,#a78bfa)}
+.ovf-legal-inline a:hover,.ovf-compact-links a:hover{color:var(--accent,#60a5fa)}
 .ovf-compact-meta{color:var(--text-muted,#8b93ad);font-size:.74rem}
 @media (max-width:900px){.ovf-cols{grid-template-columns:repeat(2,minmax(0,1fr))}.ovf-col--brand{grid-column:1/-1}}
 @media (max-width:560px){
