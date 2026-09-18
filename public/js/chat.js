@@ -3777,9 +3777,9 @@ function _deployCss() {
 .chat-deploy li span{min-width:0;overflow-wrap:anywhere}.chat-deploy li a{font-family:ui-monospace,Menlo,monospace;font-size:.72rem;flex:none}.chat-deploy li.is-fresh span{color:var(--text-primary,#e6edf7)}`;
     document.head.appendChild(st);
 }
-function _deployTime(d) {
+function _deployTime(d, forceDate) {
     const opts = chatSettings.timestampFormat === '24h' ? { hour: '2-digit', minute: '2-digit', hour12: false } : { hour: '2-digit', minute: '2-digit' };
-    const today = new Date().toDateString() === d.toDateString();
+    const today = !forceDate && new Date().toDateString() === d.toDateString();
     return (today ? '' : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ') + d.toLocaleTimeString([], opts);
 }
 function renderDeployCard(data, opts = {}) {
@@ -3796,7 +3796,7 @@ function renderDeployCard(data, opts = {}) {
     let el = id ? container.querySelector('.chat-deploy[data-deploy-id="' + id.replace(/[^\w-]/g, '') + '"]') : null;
     const wasOpen = el && el.classList.contains('is-open');
     if (!el) { el = document.createElement('div'); el.className = 'chat-msg system chat-deploy'; if (id) el.dataset.deployId = id.replace(/[^\w-]/g, ''); }
-    const range = first.getTime() === last.getTime() || Math.abs(last - first) < 60000 ? _deployTime(last) : _deployTime(first) + ' – ' + _deployTime(last);
+    const range = first.getTime() === last.getTime() || Math.abs(last - first) < 60000 ? _deployTime(last) : _deployTime(first, first.toDateString() !== last.toDateString()) + ' – ' + _deployTime(last, first.toDateString() !== last.toDateString());
     const deploys = Number(data.deploys) || 1;
     el.innerHTML = `<div class="chat-deploy-h"><b>🚀 ${commits.length} update${commits.length === 1 ? '' : 's'} shipped</b><span class="chat-deploy-t" title="${esc(last.toLocaleString())}">${esc(range)}${deploys > 1 ? ' · ' + deploys + ' deploys' : ''}</span>
         <span class="chat-deploy-a">${commits.length > SHOW ? `<button type="button" class="chat-deploy-more">${wasOpen ? 'Show less' : 'Show all ' + commits.length}</button>` : ''}<a href="/updates" target="_blank" rel="noopener">Patch notes</a>${opts.live ? '<button type="button" class="chat-deploy-reload" title="Load the new version">Reload</button>' : ''}</span></div>
