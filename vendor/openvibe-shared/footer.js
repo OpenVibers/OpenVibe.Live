@@ -91,6 +91,9 @@
     const TLD_LABELS = { live: 'Live', tools: 'Tools', network: 'Network', media: 'Media', games: 'Games', community: 'Community', chat: 'Chat', codes: 'Codes', blog: 'Blog', wiki: 'Wiki', news: 'News', reviews: 'Reviews', tips: 'Tips', vip: 'VIP', trade: 'Trade', host: 'Host', deals: 'Deals', coupons: 'Coupons' };
     /** The full site name from the hostname — the same spelling the navbar uses (Pastes.OpenVibe.Tools). */
     function brandFor(service) {
+        // The navbar already resolved the spelling (MergePDF, JSON, Pastes…): reuse it so the two
+        // never disagree on the same page.
+        try { const nb = typeof window !== 'undefined' && window.OpenVibeNavbar && window.OpenVibeNavbar.brand && window.OpenVibeNavbar.brand(); if (nb && nb.name) return nb.name; } catch { /* */ }
         const h = typeof location !== 'undefined' ? location.hostname.toLowerCase() : '';
         const cap = (w) => w ? w.charAt(0).toUpperCase() + w.slice(1) : '';
         let m = h.match(/^(?:(.+)\.)?openvibe\.([a-z]+)$/);
