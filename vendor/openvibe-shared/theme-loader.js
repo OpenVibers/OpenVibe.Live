@@ -108,6 +108,9 @@
         // Native controls, scrollbars and form fields follow the theme's light/dark mode.
         const scheme = vars['--color-scheme'];
         if (scheme === 'light' || scheme === 'dark') { el.style.colorScheme = scheme; el.setAttribute('data-theme-mode', scheme); }
+        // The inline critical style paints a fixed dark canvas before any stylesheet; keep it in step with the theme.
+        if (vars['--bg-primary']) el.style.background = vars['--bg-primary'];
+        if (vars['--text-primary']) el.style.color = vars['--text-primary'];
         syncChrome();
     }
 

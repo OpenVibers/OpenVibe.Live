@@ -1094,6 +1094,14 @@ function whenRouteReady(pageId, render) {
     });
 }
 
+/** Pastes live on openvibe.community. A signed-in user goes through its silent sign-in so they arrive
+ *  signed in; guests go straight to the page. */
+function _pasteHandOver(target) {
+    const base = document.querySelector('meta[name="ov-pastes-base"]').content;
+    const signedIn = /(?:^|;\s*)ov_sso_hint=account(?:;|$)/.test(document.cookie) || !!(typeof currentUser !== 'undefined' && currentUser);
+    location.replace(signedIn ? `${base}/auth/login?silent=1&next=${encodeURIComponent(target)}` : base + target);
+}
+
 function routeFromURL() {
     // Remove the server-rendered SEO prerender block once the SPA takes over (it's crawlable
     // content for no-JS scrapers; JS clients render the real interactive page instead).
@@ -1199,11 +1207,11 @@ function routeFromURL() {
         window.location.replace('/privacy');
         return;
     } else if (segments[0] === 'pastes' && !segments[1] && document.querySelector('meta[name="ov-pastes-base"]')) {
-        location.replace(`${document.querySelector('meta[name="ov-pastes-base"]').content}/pastes${location.search}`);
+        _pasteHandOver(`/pastes${location.search}`);
         return;
     } else if (segments[0] === 'p' && segments[1] && document.querySelector('meta[name="ov-pastes-base"]')) {
         // Pastes live on openvibe.community now — hand the browser over (same slug, same URL shape).
-        location.replace(`${document.querySelector('meta[name="ov-pastes-base"]').content}/p/${encodeURIComponent(segments[1])}${location.search}`);
+        _pasteHandOver(`/p/${encodeURIComponent(segments[1])}${location.search}`);
         return;
     } else if (segments[0] === 'p' && segments[1]) {
         showPage('paste-viewer');

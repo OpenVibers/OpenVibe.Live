@@ -259,7 +259,7 @@ app.use(helmet({
             // data: — the mod TTS voice preview plays a data:audio/… URL; without it the browser
             // rejects the element ("no supported source") even though the backend returned audio.
             mediaSrc: ["'self'", "blob:", "data:", "https://openvibe.media", "https://s3.us-west-004.backblazeb2.com", "https://*.backblazeb2.com", "https://*.r2.cloudflarestorage.com"],
-            frameSrc: ["'self'", "https://www.youtube.com", "https://www.youtube-nocookie.com", "https://player.vimeo.com"],
+            frameSrc: ["'self'", "https://openvibe.network", "https://www.youtube.com", "https://www.youtube-nocookie.com", "https://player.vimeo.com"],
             workerSrc: ["'self'", "blob:"],
             scriptSrcAttr: ["'unsafe-inline'"],
         },
@@ -612,8 +612,17 @@ app.get('/data/pastes/screenshots/:filename', (req, res) => {
 // working as permanent redirects, so links in chat, search results and clipboards survive.
 const COMMUNITY_URL = (process.env.OV_COMMUNITY_URL || 'https://openvibe.community').replace(/\/$/, '');
 if (process.env.PASTES_ON_COMMUNITY === '1') {
-    app.get('/p/:slug', (req, res) => res.redirect(301, `${COMMUNITY_URL}/p/${encodeURIComponent(req.params.slug)}`));
-    app.get('/pastes', (req, res) => res.redirect(301, `${COMMUNITY_URL}/pastes`));
+    // Someone signed in here should arrive signed in there: they go through Community's silent sign-in
+    // (one quiet round trip; it skips itself when Community already has a valid session and falls back
+    // to the plain page when the Network session is gone). Guests and crawlers get the permanent redirect.
+    const handOver = (req, res, target) => {
+        const signedIn = /(?:^|;\s*)ov_sso_hint=account(?:;|$)/.test(String(req.headers.cookie || ''));
+        if (!signedIn) return res.redirect(301, `${COMMUNITY_URL}${target}`);
+        res.set({ 'Cache-Control': 'private, no-store', Vary: 'Cookie' });
+        res.redirect(302, `${COMMUNITY_URL}/auth/login?silent=1&next=${encodeURIComponent(target)}`);
+    };
+    app.get('/p/:slug', (req, res) => handOver(req, res, `/p/${encodeURIComponent(req.params.slug)}`));
+    app.get('/pastes', (req, res) => handOver(req, res, '/pastes'));
 }
 
 // The SPA renders Media's relative paste URLs (/p/<slug>/screenshot, /raw)

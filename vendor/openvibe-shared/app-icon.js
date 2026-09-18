@@ -64,11 +64,18 @@ function manifest({ site = 'network', name, shortName, description, startUrl = '
     };
 }
 
+// First paint must never depend on another server. These two inline tags give every page the network's
+// dark canvas and the visitor's cached theme immediately; theme-loader.js (deferred, from the Network)
+// reconciles with the account afterwards. If the Network is slow or restarting, the page is still
+// styled and readable instead of blank white.
+const CRITICAL = `<style id="ov-critical">html{background:${BG};color:#e6edf7;color-scheme:dark}</style>`
+    + `<script>(function(){try{var r=localStorage.getItem('ov_theme');if(!r)return;var t=JSON.parse(r),v=t&&t.variables;if(!v)return;var e=document.documentElement;for(var k in v)if(k.charAt(0)==='-')e.style.setProperty(k,v[k]);if(v['--bg-primary'])e.style.background=v['--bg-primary'];if(v['--text-primary'])e.style.color=v['--text-primary'];if(v['--color-scheme']==='light'||v['--color-scheme']==='dark')e.style.colorScheme=v['--color-scheme'];if(t.id)e.setAttribute('data-theme',t.id)}catch(_){}})();</script>`;
+
 /** <head> tags every site shares: SVG favicon (inline, no request), theme colour, and the PNG touch icon when the site ships one. */
 function headTags({ site = 'network', iconBase = null } = {}) {
     const uri = 'data:image/svg+xml,' + encodeURIComponent(favicon({ site })).replace(/'/g, '%27');
-    return [`<link rel="icon" type="image/svg+xml" data-ov-icon="${String(site).replace(/[^a-z]/g, '')}" href="${uri}">`, '<meta name="theme-color" content="#0d131d">', `<meta name="color-scheme" content="dark light">`,
+    return [`<link rel="icon" type="image/svg+xml" data-ov-icon="${String(site).replace(/[^a-z]/g, '')}" href="${uri}">`, '<meta name="theme-color" content="#0d131d">', '<meta name="color-scheme" content="dark">', CRITICAL,
         iconBase ? `<link rel="apple-touch-icon" href="${iconBase}/logo-192.png">` : '', iconBase ? `<link rel="manifest" href="/manifest.webmanifest">` : ''].filter(Boolean).join('\n');
 }
 
-module.exports = { svg, favicon, manifest, headTags, SITES, BG };
+module.exports = { svg, favicon, manifest, headTags, CRITICAL, SITES, BG };
