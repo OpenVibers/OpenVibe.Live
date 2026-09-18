@@ -179,7 +179,7 @@ function page(kind, site) {
     return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 ${head}
 ${require('./app-icon').headTags({ site: site.id })}
-<script src="https://openvibe.network/shared/theme-loader.js"></script><style>${CSS}</style></head><body>
+<script src="https://openvibe.network/shared/theme-loader.js" defer></script><style>${CSS}</style></head><body>
 <noscript><p style="padding:12px 20px;margin:0"><a href="/">${esc(site.name)}</a></p></noscript>
 <main>${article(kind, site)}</main><div id="ov-footer"></div>
 <script src="https://openvibe.network/shared/navbar.js" defer></script><script src="https://openvibe.network/shared/footer.js" defer></script>

@@ -107,6 +107,10 @@
             .ovnav-launcher .ovl-seg button[aria-pressed="true"] { background: var(--accent, #3b82f6); color: var(--on-accent, #fff); }
             .ovnav-launcher .ovl-seg button:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: -2px; }
             .ovnav-launcher .ovl-display a { margin-left: auto; color: var(--accent-light, var(--accent, #60a5fa)); font-weight: 600; }
+            .ovnav-launcher .ovl-addr a { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+            .ovnav-launcher .ovl-addr a.is-here { border-color: var(--accent, #3b82f6); color: var(--text-primary, #e6edf7); }
+            .ovnav-launcher .ovl-all { grid-column: 1 / -1; color: var(--accent-light, var(--accent, #60a5fa)); }
+            .ovnav-launcher .ovl-h span { text-transform: none; letter-spacing: 0; font-weight: 500; }
             .ovnav-launcher .ovl-empty { padding: 18px 8px; color: var(--text-secondary, #a8b3c4); font-size: 13px; }
             @media (max-width: 480px) { .ovnav-launcher { left: 8px; } .ovnav-launcher .ovl-fams { grid-template-columns: 1fr; } }
             @media (prefers-reduced-motion: reduce) { .ovnav-launcher { transition: none; } }
@@ -613,17 +617,19 @@
         { name: 'Developer Tools', icon: 'code', url: 'https://dev.openvibe.tools/' },
         { name: 'Network Tools', icon: 'dns', url: 'https://net.openvibe.tools/' },
     ];
-    const CATALOG_URL = 'https://openvibe.tools/api/catalog.json';
+    const CATALOG_URL = 'https://openvibe.network/api/catalog.json';   // allowed by every site's CSP
+    const TOOLS_SEARCH = 'https://openvibe.tools/search?q=';
     const okUrl = (u) => { try { const x = new URL(u); return x.protocol === 'https:' ? x.href : null; } catch { return null; } };
 
     async function launcherCatalog() {
-        try { const c = JSON.parse(sessionStorage.getItem('ov_catalog') || 'null'); if (c && Date.now() - c.at < 30 * 60000) return c.data; } catch { /* */ }
+        try { const c = JSON.parse(sessionStorage.getItem('ov_catalog2') || 'null'); if (c && Date.now() - c.at < 30 * 60000) return c.data; } catch { /* */ }
         try {
             const r = await fetch(CATALOG_URL, { credentials: 'omit' }); if (!r.ok) return null;
             const j = await r.json();
             const data = { families: (j.families || []).slice(0, 12).map(f => ({ name: String(f.name || ''), icon: String(f.icon || 'tools'), url: okUrl(f.url) })).filter(f => f.name && f.url),
-                tools: (j.tools || []).slice(0, 400).map(t => ({ name: String(t.name || ''), icon: String(t.icon || 'tools'), url: okUrl(t.url), k: [t.name, t.tagline].concat(t.keywords || []).join(' ').toLowerCase().slice(0, 400) })).filter(t => t.name && t.url) };
-            try { sessionStorage.setItem('ov_catalog', JSON.stringify({ at: Date.now(), data })); } catch { /* */ }
+                tools: (j.tools || []).slice(0, 400).map(t => ({ name: String(t.name || ''), icon: String(t.icon || 'tools'), url: okUrl(t.url), go: t.hosts && t.hosts.short ? okUrl('https://' + t.hosts.short + '/') : null,
+                    hosts: [t.hosts && t.hosts.short, t.hosts && t.hosts.canonical].concat((t.hosts && t.hosts.mirrors) || [], (t.hosts && t.hosts.aliases) || []).filter(h => typeof h === 'string' && h), id: String(t.id || ''), k: [t.name, t.tagline].concat(t.keywords || []).join(' ').toLowerCase().slice(0, 400) })).filter(t => t.name && t.url) };
+            try { sessionStorage.setItem('ov_catalog2', JSON.stringify({ at: Date.now(), data })); } catch { /* */ }
             return data;
         } catch { return null; }
     }
@@ -631,20 +637,33 @@
     function bindLauncher(nav) {
         const btn = nav.querySelector('#openvibe-launcher-btn'); if (!btn) return;
         let panel = null;
-        const tile = (it, cls) => `<a class="${cls}" href="${escapeAttr(it.url)}"><span class="ov-icon" data-icon="${escapeAttr(it.icon)}" data-size="${cls === 'ovl-site' ? 34 : 24}" data-fx="none"></span><span><b>${escapeAttr(it.name)}</b>${it.desc ? `<small>${escapeAttr(it.desc)}</small>` : ''}</span></a>`;
+        const tile = (it, cls) => `<a class="${cls}" href="${escapeAttr(it.go || it.url)}"><span class="ov-icon" data-icon="${escapeAttr(it.icon)}" data-size="${cls === 'ovl-site' ? 34 : 24}" data-fx="none"></span><span><b>${escapeAttr(it.name)}</b>${it.desc ? `<small>${escapeAttr(it.desc)}</small>` : ''}</span></a>`;
         const close = () => { if (panel) panel.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); };
         function paint(cat, q) {
             const fams = (cat && cat.families.length ? cat.families : LAUNCHER_FAMILIES);
             const body = panel.querySelector('.ovl-body');
-            if (q && cat) {
-                const hits = cat.tools.filter(t => t.k.includes(q)).slice(0, 12);
-                body.innerHTML = hits.length ? `<div class="ovl-h">Tools</div><div class="ovl-fams">${hits.map(t => tile(t, 'ovl-fam')).join('')}</div>` : '<div class="ovl-empty">No tool matches. <a href="https://openvibe.tools/">Browse them all</a></div>';
+            if (q) {
+                // Sites and families always filter locally; tools need the catalog. Without it (offline, blocked),
+                // the last row hands the query to the Tools search page, so typing never does nothing.
+                const hit = (x) => (x.name + ' ' + (x.desc || '')).toLowerCase().includes(q);
+                const siteList = (OVChrome.get() && OVChrome.get().nav.length ? OVChrome.get().nav.map(n => ({ name: n.name, desc: n.tagline, icon: n.icon || n.id, url: n.url })) : LAUNCHER_SITES).filter(hit);
+                const famList = fams.filter(hit);
+                const tools = cat ? cat.tools.filter(t => t.k.includes(q)).slice(0, 12) : [];
+                const more = `<a class="ovl-fam ovl-all" href="${escapeAttr(TOOLS_SEARCH + encodeURIComponent(q))}"><span class="ov-icon" data-icon="search" data-size="24" data-fx="none"></span><span><b>Search all tools for “${escapeAttr(q)}”</b></span></a>`;
+                body.innerHTML = (siteList.length ? `<div class="ovl-h">Sites</div><div class="ovl-fams">${siteList.map(x => tile(x, 'ovl-fam')).join('')}</div>` : '')
+                    + (famList.length ? `<div class="ovl-h">Tool families</div><div class="ovl-fams">${famList.map(x => tile(x, 'ovl-fam')).join('')}</div>` : '')
+                    + `<div class="ovl-h">Tools${cat ? '' : ' <span>loading…</span>'}</div><div class="ovl-fams">${tools.map(t => tile(t, 'ovl-fam')).join('')}${more}</div>`;
                 return;
             }
             const chrome = OVChrome.get();
             const sites = chrome && chrome.nav.length ? chrome.nav.map(n => ({ name: n.name, desc: n.tagline, icon: n.icon || n.id, url: n.url })) : LAUNCHER_SITES;
             const soon = chrome ? chrome.soon : [];
-            body.innerHTML = `<div class="ovl-h">Sites</div><div class="ovl-sites">${sites.map(x => tile(x, 'ovl-site')).join('')}</div>
+            // On a tool: every address it answers to (short, search-friendly, mirrors, custom domains), so people
+            // can pick the one they will remember.
+            const cur = currentHost().toLowerCase();
+            const here = cat ? cat.tools.find(t => t.hosts.indexOf(cur) >= 0) : null;
+            const addresses = here && here.hosts.length > 1 ? `<div class="ovl-h">${escapeAttr(here.name)} lives at <a href="https://openvibe.tools/tool/${escapeAttr(here.id)}">About</a></div><div class="ovl-soon ovl-addr">${[...new Set(here.hosts)].filter(h => /^[a-z0-9.-]+$/.test(h)).map(h => `<a href="https://${h}/"${h === cur ? ' class="is-here" aria-current="page"' : ''}>${h}</a>`).join('')}</div>` : '';
+            body.innerHTML = addresses + `<div class="ovl-h">Sites</div><div class="ovl-sites">${sites.map(x => tile(x, 'ovl-site')).join('')}</div>
                 <div class="ovl-h">Tools <a href="https://openvibe.tools/">See all</a></div><div class="ovl-fams">${fams.map(x => tile(x, 'ovl-fam')).join('')}</div>
                 ${soon.length ? `<div class="ovl-h">Opening soon</div><div class="ovl-soon">${soon.map(x => `<a href="${escapeAttr(x.url)}">${escapeAttr(x.name)}</a>`).join('')}</div>` : ''}`;
         }
@@ -660,7 +679,7 @@
                 let cat = null; paint(null, '');
                 const input = panel.querySelector('.ovl-q');
                 input.addEventListener('input', () => paint(cat, input.value.trim().toLowerCase()));
-                input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { const first = panel.querySelector('.ovl-body a'); if (first) location.href = first.href; } if (ev.key === 'ArrowDown') { const first = panel.querySelector('.ovl-body a'); if (first) { ev.preventDefault(); first.focus(); } } });
+                input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { const first = panel.querySelector('.ovl-body a'); location.href = first ? first.href : TOOLS_SEARCH + encodeURIComponent(input.value.trim()); } if (ev.key === 'ArrowDown') { const first = panel.querySelector('.ovl-body a'); if (first) { ev.preventDefault(); first.focus(); } } });
                 panel.addEventListener('keydown', (ev) => {
                     if (ev.key === 'Escape') { close(); btn.focus(); return; }
                     if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
