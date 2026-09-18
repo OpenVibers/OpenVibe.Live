@@ -19,7 +19,7 @@ const BRAND_DEFAULTS = Object.freeze({
     gamesServiceName:   'OpenVibe.Games',
     mediaServiceName:   'OpenVibe.Media',
     tagline:            'One Account. All of OpenVibe.',
-    campTagline:        'Free & Open Live Streaming',
+    campTagline:        'Open Live Streaming, Community Run',
     toolsSubdomainBase: 'openvibe.tools',
     discord:            'https://discord.gg/M6MuRUaeJj',
     github:             'https://github.com/OpenVibe.Live',
@@ -99,8 +99,8 @@ function buildBrandFromRegistry(registry = {}, env = process.env) {
 
     // Build service list using registry URLs where available
     const services = [
-        { id: 'live',    name: streamerServiceName,             url: liveUrl,    description: 'Free & Open Live Streaming' },
-        { id: 'tools',   name: toolsServiceName,                url: toolsUrl,   description: 'Free Online Tools' },
+        { id: 'live',    name: streamerServiceName,             url: liveUrl,    description: 'Open live streaming, community run' },
+        { id: 'tools',   name: toolsServiceName,                url: toolsUrl,   description: 'Online tools for everyone' },
         { id: 'games',   name: gamesServiceName,                url: gamesUrl,   description: 'Games & Community Canvas' },
         { id: 'media',   name: mediaServiceName,                url: mediaUrl,   description: 'VODs, Clips, Pastes & Files' },
         { id: 'network', name: BRAND_DEFAULTS.networkServiceName, url: networkUrl, description: 'Accounts, SSO & OpenCoins' },
@@ -155,8 +155,8 @@ const BRAND = Object.freeze({
     // Primary services in the network (for dashboard display, health checks, etc.)
     // Static list with OpenVibe defaults — use buildBrandFromRegistry() for live values.
     services: Object.freeze([
-        { id: 'live',    name: 'OpenVibe.Live',    url: 'https://openvibe.live',    description: 'Free & Open Live Streaming' },
-        { id: 'tools',   name: 'OpenVibe.Tools',   url: 'https://openvibe.tools',   description: 'Free Online Tools' },
+        { id: 'live',    name: 'OpenVibe.Live',    url: 'https://openvibe.live',    description: 'Open live streaming, community run' },
+        { id: 'tools',   name: 'OpenVibe.Tools',   url: 'https://openvibe.tools',   description: 'Online tools for everyone' },
         { id: 'games',   name: 'OpenVibe.Games',   url: 'https://openvibe.games',   description: 'Games & Community Canvas' },
         { id: 'media',   name: 'OpenVibe.Media',   url: 'https://openvibe.media',   description: 'VODs, Clips, Pastes & Files' },
         { id: 'network', name: 'OpenVibe.Network', url: 'https://openvibe.network', description: 'Accounts, SSO & OpenCoins' },

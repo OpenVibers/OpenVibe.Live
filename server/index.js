@@ -1,7 +1,7 @@
 /**
  * ╔═══════════════════════════════════════════════════════════╗
  * ║              OpenVibe.Live — Main Server                  ║
- * ║        Free & Open Live Streaming · openvibe.live         ║
+ * ║        Open Live Streaming, Community Run · openvibe.live         ║
  * ║   Part of the OpenVibe network — Open Source & Community  ║
  * ╚═══════════════════════════════════════════════════════════╝
  *
@@ -596,6 +596,14 @@ app.get('/data/pastes/screenshots/:filename', (req, res) => {
     res.redirect(302, mediaClient.screenshotUrl(path.basename(req.params.filename)));
 });
 
+// Pastes are moving to openvibe.community (PASTES_ON_COMMUNITY=1): the old Live URLs keep
+// working as permanent redirects, so links in chat, search results and clipboards survive.
+const COMMUNITY_URL = (process.env.OV_COMMUNITY_URL || 'https://openvibe.community').replace(/\/$/, '');
+if (process.env.PASTES_ON_COMMUNITY === '1') {
+    app.get('/p/:slug', (req, res) => res.redirect(301, `${COMMUNITY_URL}/p/${encodeURIComponent(req.params.slug)}`));
+    app.get('/pastes', (req, res) => res.redirect(301, `${COMMUNITY_URL}/pastes`));
+}
+
 // The SPA renders Media's relative paste URLs (/p/<slug>/screenshot, /raw)
 // against THIS origin — bounce them to the Media public host, where the
 // canonical paste page lives.
@@ -1029,7 +1037,7 @@ async function start() {
     console.log('');
     console.log('  ╔══════════════════════════════════════════╗');
     console.log('  ║        OpenVibe.Live  v1.0.0             ║');
-    console.log('  ║   Free & Open Live Streaming ▶((( • )))  ║');
+    console.log('  ║   Open Live Streaming, Community Run ▶((( • )))  ║');
     console.log('  ╚══════════════════════════════════════════╝');
     console.log('');
 

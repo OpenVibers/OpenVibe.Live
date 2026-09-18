@@ -4,7 +4,7 @@
 
 **Brand colors:** Violet accent `#8b5cf6`, light violet `#a78bfa`, deep violet `#6d28d9`, cyan secondary `#22d3ee`, dark background `#131318`, live red `#e74c3c`
 **Logo motif:** Play triangle inside a broadcast ring + signal waves (see `public/assets/logo.svg`)
-**Tagline:** "Free & Open Live Streaming"
+**Tagline:** "Open Live Streaming, Community Run"
 **URL:** `https://openvibe.live`
 **OpenVibe.Network (SSO / accounts):** `https://openvibe.network`
 **OpenVibe.Tools:** `https://openvibe.tools`
