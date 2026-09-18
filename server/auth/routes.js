@@ -233,7 +233,7 @@ router.post('/avatar', requireAuth, avatarUpload.single('avatar'), async (req, r
         db.updateUserAvatar(req.user.id, screenshotUrl, paste.id || null);
 
         const updated = db.getUserById(req.user.id);
-        try { require('../utils/notify').reportLinkedAccount(updated); } catch { /* the Network learns the new picture on the next sign-in */ }
+        try { require('../utils/notify').reportAvatarChange(updated); } catch { /* the Network learns the new picture on the next sign-in */ }
         res.json({ user: sanitizeUser(updated), avatar_url: screenshotUrl });
     } catch (err) {
         if (req.file) try { fs.unlinkSync(req.file.path); } catch { }

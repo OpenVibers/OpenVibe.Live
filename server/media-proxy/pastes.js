@@ -118,6 +118,8 @@ router.post('/:slug/set-avatar', requireAuth, async (req, res) => {
         const avatarUrl = media.publicUrl(paste.screenshot_url)
             || (paste.screenshot_path ? media.screenshotUrl(require('path').basename(paste.screenshot_path)) : media.pasteRawUrl(paste.slug));
         db.updateUserAvatar(req.user.id, avatarUrl, paste.id || null);
+        // The avatar belongs to the network account: every other OpenVibe site shows it too.
+        try { require('../utils/notify').reportAvatarChange({ id: req.user.id, avatar_url: avatarUrl }); } catch { /* picked up at the next sign-in */ }
         res.json({ success: true, avatar_url: avatarUrl });
     } catch (err) {
         console.warn('[Pastes proxy] set-avatar:', err.message);
