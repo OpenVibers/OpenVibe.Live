@@ -47,6 +47,7 @@
         }
         function cached() { try { const c = JSON.parse(localStorage.getItem(KEY) || 'null'); return c && c.host === host() && c.data ? c : null; } catch { return null; } }
         function refresh() {
+            if (typeof window === 'undefined' || typeof document === 'undefined') return Promise.resolve(null);   // server-side render: never call out
             if (inflight || typeof fetch === 'undefined') return inflight || Promise.resolve(null);
             inflight = fetch('https://openvibe.network/api/chrome?host=' + encodeURIComponent(host()), { credentials: 'omit' })
                 .then(r => (r.ok ? r.json() : null)).then(clean)
@@ -379,5 +380,16 @@
         render();
     }
 
-    return { init, setVariant, buildHTML, render, CSS, NETWORK, LEGAL, detectService, get config() { return { ..._cfg }; } };
+    /**
+     * Server-side render: the complete footer as HTML + its CSS, so every page carries the network's links for
+     * crawlers and for visitors without JavaScript. In the browser, init() renders into the same element.
+     *   ssr({ service, variant, links, mountId }) → '<style>…</style><footer id="ov-footer" …>…</footer>'
+     */
+    function ssr(cfg = {}) {
+        const c = { ...DEFAULTS, ...cfg };
+        const id = String(cfg.mountId || 'ov-footer').replace(/[^\w-]/g, '');
+        return `<style id="ovf-css">${CSS}</style><footer id="${id}" class="ovf" data-variant="${c.variant === 'compact' ? 'compact' : 'full'}">${buildHTML(c)}</footer>`;
+    }
+
+    return { init, ssr, setVariant, buildHTML, render, CSS, NETWORK, LEGAL, detectService, get config() { return { ..._cfg }; } };
 });
