@@ -403,9 +403,9 @@ function _renderHeroStats(stats) {
     const HEADLINE = [
         { key: 'liveNow', metric: 'liveNow', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', cls: stats.liveNow > 0 ? 'hero-stat--live' : '', num: stats.liveNow, label: 'Live', title: 'Streams live right now', deltaHTML: _baselineDeltaHTML(stats.liveNow, CC.liveAvg24h, CC.livePeak24h) },
         { key: 'viewersNow', metric: 'viewersNow', icon: 'fa-eye', cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now', deltaHTML: _baselineDeltaHTML(stats.viewersNow, CC.viewersAvg24h, CC.viewersPeak24h) },
-        { key: 'weeklyActive', metric: 'active', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active · 7d', title: 'People who chatted in the last 7 days', recent: { w: stats.weeklyActive, pw: stats.prevWeeklyActive } },
+        { key: 'weeklyActive', metric: 'active', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active', title: 'People who chatted in the last 7 days', recent: { w: stats.weeklyActive, pw: stats.prevWeeklyActive } },
         { key: 'users', metric: 'users', icon: 'fa-user-group', num: stats.users, label: 'Users', title: 'Accounts on OpenVibe.Live', recent: R.users },
-        { key: 'weeklyVisitors', metric: 'visitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors · 7d', title: 'First-time visitors in the last 7 days', recent: { w: stats.weeklyVisitors, pw: stats.prevWeeklyVisitors } },
+        { key: 'weeklyVisitors', metric: 'visitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors', title: 'First-time visitors in the last 7 days', recent: { w: stats.weeklyVisitors, pw: stats.prevWeeklyVisitors } },
         { key: 'anons', metric: 'anons', icon: 'fa-user-secret', num: stats.anons, label: 'Anons', title: 'Anonymous chatters who have been given a name', recent: R.anons },
         { key: 'chatMessages', metric: 'messages', icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', title: 'Chat messages sent, all time', recent: R.messages },
         { key: 'streamers', metric: 'streamers', icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', title: 'People who have gone live here', recent: R.streamers },
@@ -612,8 +612,11 @@ function _heroBindInteractions(wrap) {
             chip.addEventListener('mouseenter', () => _heroTipShow(chip));
             chip.addEventListener('mouseleave', _heroTipHide);
         }
-        chip.addEventListener('focus', () => _heroTipShow(chip));
+        // Keyboard focus gets the tip; a tap on a touch screen focuses too, but the tap already
+        // opens the stats view, so the tip only got in the way there.
+        chip.addEventListener('focus', () => { if (fine || chip.matches(':focus-visible')) _heroTipShow(chip); });
         chip.addEventListener('blur', _heroTipHide);
+        chip.addEventListener('touchstart', _heroTipHide, { passive: true });
         if (chip.dataset.metric) {
             const open = () => { _heroTipHide(); if (typeof openStatsNerds === 'function') openStatsNerds(chip); };
             chip.addEventListener('click', open);
