@@ -605,12 +605,41 @@ function _recordHistory(pageId) {
     }, 1800);
 }
 /** Try to sign back in through openvibe.network without a chooser — once per tab session. */
-function _trySilentSso() {
-    if (_ssoHint() !== 'account') return false;
+function _trySilentSso(force) {
+    if (!force && _ssoHint() !== 'account') return false;
     try { if (sessionStorage.getItem('ov_silent_sso')) return false; sessionStorage.setItem('ov_silent_sso', '1'); } catch { return false; }
     if (location.pathname.startsWith('/banned') || location.pathname.startsWith('/api/')) return false;
-    location.href = '/api/auth/sso/login?silent=1';
+    // Come back to this exact page once the network has answered.
+    location.href = '/api/auth/sso/login?silent=1&next=' + encodeURIComponent(location.pathname + location.search);
     return true;
+}
+/**
+ * A guest with no hint yet: ask openvibe.network in a hidden iframe whether this browser is
+ * signed in there (GET /sso/check → one postMessage). Only a "yes" triggers the silent sign-in,
+ * so first-time visitors never see a redirect. Once per tab per 10 minutes.
+ */
+function _checkNetworkSession() {
+    if (_ssoHint() === 'guest' || /bot|crawl|spider|headless/i.test(navigator.userAgent)) return;
+    try {
+        const last = +sessionStorage.getItem('ov_sso_check_at') || 0;
+        if (Date.now() - last < 10 * 60 * 1000) return;
+        sessionStorage.setItem('ov_sso_check_at', String(Date.now()));
+    } catch { return; }
+    const base = (window.OV_NETWORK_URL || 'https://openvibe.network').replace(/\/$/, '');
+    let frame = null, timer = null;
+    const done = () => { window.removeEventListener('message', onMsg); clearTimeout(timer); try { frame?.remove(); } catch { /* */ } };
+    const onMsg = (e) => {
+        if (e.origin !== base || !e.data || e.data.type !== 'ov-sso') return;
+        done();
+        if (e.data.signedIn && !currentUser) _trySilentSso(true);
+    };
+    window.addEventListener('message', onMsg);
+    frame = document.createElement('iframe');
+    frame.setAttribute('aria-hidden', 'true'); frame.tabIndex = -1;
+    frame.style.cssText = 'position:absolute;width:0;height:0;border:0;opacity:0;pointer-events:none';
+    frame.src = `${base}/sso/check?origin=${encodeURIComponent(location.origin)}`;
+    (document.body || document.documentElement).appendChild(frame);
+    timer = setTimeout(done, 4000);
 }
 /** "Switch account": drop this site's session, keep openvibe.network's, open the account chooser. */
 function switchAccount() {
@@ -655,10 +684,10 @@ async function loadUser() {
         // the page routes now, and if a session does turn up the normal auth-change path signs in.
         if (_ssoHint() !== 'account') {
             tryRefreshToken().then(async (ok) => {
-                if (!ok || !localStorage.getItem('token')) return;
+                if (!ok || !localStorage.getItem('token')) { _checkNetworkSession(); return; }
                 await loadUser();
                 if (currentUser) onAuthChange();
-            }).catch(() => { });
+            }).catch(() => { _checkNetworkSession(); });
             return;
         }
         const refreshed = await tryRefreshToken();
