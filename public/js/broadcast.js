@@ -2326,6 +2326,7 @@ function cleanupAllStreams() {
 }
 
 function setNavLiveIndicator(isLive) {
+    if (window.LiveNav) window.LiveNav.setLive(!!isLive);
     const dot = document.getElementById('nav-live-dot');
     if (dot) dot.style.display = isLive ? '' : 'none';
     const link = document.getElementById('nav-broadcast');

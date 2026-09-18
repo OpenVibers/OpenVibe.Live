@@ -745,6 +745,8 @@ try { if (new URLSearchParams(location.search).get('sso') === 'none') { _setSsoH
 
 function onAuthChange() {
     if (currentUser) _enableHandoff(); else if (window.OpenVibeSSO) { try { window.OpenVibeSSO.handoffLinks({ signedIn: false }); } catch { /* */ } }
+    // The navbar is the network's shared component; tell it who is here (js/ov-navbar-live.js).
+    if (window.LiveNav) window.LiveNav.sync(currentUser || null);
     const anon = document.getElementById('nav-auth-anon');
     const user = document.getElementById('nav-auth-user');
     const admin = document.getElementById('nav-admin');
@@ -808,6 +810,7 @@ async function loadBalance() {
         const bal = Math.round(data.balance || 0);
         const balEl = document.getElementById('nav-balance-amount');
         if (balEl) balEl.textContent = bal.toLocaleString();
+        if (window.LiveNav) window.LiveNav.setChip('vibes', bal.toLocaleString());
         const udV = document.getElementById('ud-vibes');
         if (udV) udV.textContent = bal.toLocaleString();
     } catch { /* silent */ }
@@ -817,6 +820,7 @@ async function loadBalance() {
         const coins = coinData.balance || 0;
         const coinEl = document.getElementById('nav-coins-amount');
         if (coinEl) coinEl.textContent = coins.toLocaleString();
+        if (window.LiveNav) window.LiveNav.setChip('coins', coins.toLocaleString());
         const udC = document.getElementById('ud-coins');
         if (udC) udC.textContent = coins.toLocaleString();
     } catch { /* silent */ }
@@ -1396,6 +1400,7 @@ function showPage(page) {
         const link = document.querySelector(`.nav-link[data-page="${navPage}"]`);
         if (link) link.classList.add('active');
     }
+    if (window.LiveNav) window.LiveNav.setActive(navPage || null);
     updateNavHeroTransparency();
 }
 

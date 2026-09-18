@@ -166,137 +166,8 @@
 <!-- ═══════════════════════════════════════════════════════════ -->
 <!--  NAVBAR                                                     -->
 <!-- ═══════════════════════════════════════════════════════════ -->
-<nav class="navbar">
-    <a class="nav-brand" href="/" onclick="return handleLinkClick(event, '/')" data-brand-tooltip="This platform is in early alpha — features may be incomplete, buggy, or change without notice. Data will likely be reset multiple times during the alpha phase. Thanks for testing!">
-        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 48 48" width="30" height="30">
-            <defs>
-                <linearGradient id="ovn-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="currentColor"/><stop offset="1" stop-color="currentColor" stop-opacity="0.45"/></linearGradient>
-                <linearGradient id="ovn-v" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="0.5" stop-color="currentColor"/><stop offset="1" stop-color="#fff" stop-opacity="0.9"/><animateTransform attributeName="gradientTransform" type="translate" from="-1 0" to="1 0" dur="3.2s" repeatCount="indefinite"/></linearGradient>
-                <path id="ovn-ring" d="M24,6 A18,18 0 1,1 23.99,6 Z"/>
-            </defs>
-            <circle class="ov-glow" cx="24" cy="24" r="21"/>
-            <circle class="ov-ring" cx="24" cy="24" r="18"/>
-            <circle class="ov-comet" cx="24" cy="24" r="18" stroke="url(#ovn-g)"/>
-            <path class="ov-v" d="M14.5,17 L24,34 L33.5,17" stroke="url(#ovn-v)"/>
-            <circle class="ov-dot" cx="24" cy="34" r="2.6"/>
-            <circle class="ov-orbit" r="2"><animateMotion dur="3.6s" repeatCount="indefinite" rotate="auto"><mpath href="#ovn-ring"/></animateMotion></circle>
-            <circle class="ov-orbit ov-orbit--tail" r="1.4"><animateMotion dur="3.6s" begin="0.14s" repeatCount="indefinite"><mpath href="#ovn-ring"/></animateMotion></circle>
-        </svg></span>
-        <span class="brand-text-wrap">
-            <span class="brand-text"><span class="brand-openvibe">OpenVibe</span><strong class="brand-streamer">.Live</strong></span>
-        </span>
-    </a>
-    <div class="nav-links-wrap">
-        <button class="nav-scroll-btn nav-scroll-left" id="nav-scroll-left" onclick="scrollNavLinks(-1)" title="Scroll left"><i class="fa-solid fa-chevron-left"></i></button>
-        <div class="nav-links">
-            <a href="/" onclick="return handleLinkClick(event, '/')" class="nav-link active" data-page="home" data-tooltip="Home">
-            <i class="fa-solid fa-house"></i> <span>Home</span>
-        </a>
-        <a href="/vods" onclick="return handleLinkClick(event, '/vods')" class="nav-link" data-page="vods" data-tooltip="VODs">
-            <i class="fa-solid fa-video"></i> <span>VODs</span>
-        </a>
-        <a href="/clips" onclick="return handleLinkClick(event, '/clips')" class="nav-link" data-page="clips" data-tooltip="Clips">
-            <i class="fa-solid fa-scissors"></i> <span>Clips</span>
-        </a>
-        <a href="/pastes" onclick="return handleLinkClick(event, '/pastes')" class="nav-link" data-page="pastes" data-tooltip="Pastes">
-            <i class="fa-solid fa-paste"></i> <span>Pastes</span>
-        </a>
-        <a href="/chat" onclick="return handleLinkClick(event, '/chat')" class="nav-link" data-page="chat" data-tooltip="Chat">
-            <i class="fa-solid fa-comments"></i> <span>Chat</span>
-        </a>
-        <a href="/arena" onclick="return handleLinkClick(event, '/arena')" class="nav-link" data-page="arena" data-tooltip="Arena">
-            <i class="fa-solid fa-hand-fist"></i> <span>Arena</span>
-        </a>
-        <a href="https://openvibe.games" class="nav-link" data-page="game" data-tooltip="Game" target="_blank" rel="noopener">
-            <i class="fa-solid fa-gamepad"></i> <span>Game</span>
-        </a>
-        <div class="nav-dropdown" id="nav-golive-dropdown">
-            <a href="/broadcast" onclick="return goLiveNav(event)" class="nav-link" data-page="broadcast" id="nav-broadcast" data-tooltip="Go Live">
-                <i class="fa-solid fa-tower-broadcast"></i> <span>Go Live</span><span class="nav-live-dot" id="nav-live-dot" style="display:none"><i class="fa-solid fa-circle"></i></span> <i class="fa-solid fa-caret-down nav-dd-caret"></i>
-            </a>
-            <div class="nav-dropdown-menu" id="nav-golive-menu">
-                <a href="/dashboard" id="nav-golive-dash" onclick="return dashNav(event)"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
-            </div>
-        </div>
-        <a href="https://openvibe.network/admin" class="nav-link" data-page="admin" id="nav-admin" style="display:none" data-tooltip="Admin" rel="noopener noreferrer">
-            <i class="fa-solid fa-shield-halved"></i> <span>Admin</span>
-        </a>
-        </div>
-        <button class="nav-scroll-btn nav-scroll-right" id="nav-scroll-right" onclick="scrollNavLinks(1)" title="Scroll right"><i class="fa-solid fa-chevron-right"></i></button>
-    </div>
-    <div class="nav-right">
-        <div id="nav-auth-anon">
-            <a href="/api/auth/sso/login" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none">
-                <i class="fa-solid fa-network-wired"></i> Sign In
-            </a>
-        </div>
-        <div id="nav-auth-user" style="display:none">
-            <span class="nav-coins" id="nav-coins" title="OpenCoins — click to open inventory" onclick="openCosmeticsModal()">
-                <i class="fa-solid fa-coins"></i> <span id="nav-coins-amount">0</span>
-            </span>
-            <span class="nav-balance" id="nav-balance" title="Vibes balance" onclick="showModal('buy-funds')">
-                <i class="fa-solid fa-wallet"></i> <span id="nav-balance-amount">0</span>
-            </span>
-            <span id="openvibe-bell-mount" style="display:inline-flex;align-items:center"></span>
-            <div class="nav-avatar-wrap" onclick="toggleUserMenu()">
-                <div class="nav-avatar" id="nav-avatar">?</div>
-                <span id="nav-username"></span>
-                <i class="fa-solid fa-caret-down"></i>
-            </div>
-            <!-- The account menu. Deliberately not shaped like the nav menu next to it: that one is
-                 a list of places, this one is about who you are signed in as, so it opens with your
-                 identity and what you are carrying, and groups the rest under labels. -->
-            <div class="user-dropdown" id="user-dropdown">
-                <div class="ud-head">
-                    <div class="ud-avatar" id="ud-avatar" aria-hidden="true">?</div>
-                    <div class="ud-who">
-                        <b id="ud-name">&nbsp;</b>
-                        <small id="ud-handle"></small>
-                    </div>
-                    <div class="ud-wallet">
-                        <span class="ud-coin" title="OpenCoins"><i class="fa-solid fa-coins"></i><b id="ud-coins">0</b></span>
-                        <span class="ud-vibe" title="Vibes"><i class="fa-solid fa-wallet"></i><b id="ud-vibes">0</b></span>
-                    </div>
-                </div>
-                <div class="ud-group">
-                    <span class="ud-label">You</span>
-                    <a href="/dashboard" onclick="return handleLinkClick(event, '/dashboard')"><i class="fa-solid fa-gauge-high"></i> My Dashboard</a>
-                    <a href="#" onclick="return handleLinkClick(event, channelPath(currentUser?.username))"><i class="fa-solid fa-user"></i> My Channel</a>
-                    <a href="#" onclick="event.preventDefault();openSetupHub()"><i class="fa-solid fa-list-check"></i> Streamer setup</a>
-                    <a href="https://openvibe.network/admin" target="_blank" rel="noopener" id="user-dropdown-admin" style="display:none"><i class="fa-solid fa-shield-halved"></i> Admin Panel</a>
-                </div>
-                <div class="ud-group" id="ud-display">
-                    <span class="ud-label">Display</span>
-                    <a href="#" data-ov-display="text"><i class="fa-solid fa-text-height"></i> Text size <b data-v style="margin-left:auto;font-weight:600;opacity:.8"></b></a>
-                    <a href="#" data-ov-display="motion"><i class="fa-solid fa-wand-magic-sparkles"></i> Animations <b data-v style="margin-left:auto;font-weight:600;opacity:.8"></b></a>
-                </div>
-                <div class="ud-group">
-                    <span class="ud-label">Across OpenVibe</span>
-                    <a href="https://openvibe.network"><i class="fa-solid fa-network-wired"></i> OpenVibe Network</a>
-                    <a href="https://openvibe.tools"><i class="fa-solid fa-screwdriver-wrench"></i> Tools</a>
-                    <a href="https://openvibe.community"><i class="fa-solid fa-people-group"></i> Community</a>
-                    <a href="#" onclick="event.preventDefault();showModal('buy-funds')"><i class="fa-solid fa-coins"></i> Support Us</a>
-                    <a href="#" onclick="event.preventDefault();if(typeof openCosmeticsModal==='function')openCosmeticsModal()"><i class="fa-solid fa-shirt"></i> Cosmetics</a>
-                    <a href="https://openvibe.network/themes" target="_blank" rel="noopener"><i class="fa-solid fa-palette"></i> Themes</a>
-                    <a href="https://openvibe.network/my#history" target="_blank" rel="noopener"><i class="fa-solid fa-clock-rotate-left"></i> History</a>
-                </div>
-                <div class="ud-group">
-                    <span class="ud-label">Tools</span>
-                    <a href="#" onclick="event.preventDefault();captureScreenshot()"><i class="fa-solid fa-camera"></i> Screenshot</a>
-                    <a href="/documentation" onclick="return handleLinkClick(event, '/documentation')"><i class="fa-solid fa-book"></i> Documentation</a>
-                </div>
-                <div class="ud-group ud-group--exit">
-                    <a href="#" onclick="event.preventDefault();switchAccount()"><i class="fa-solid fa-people-arrows"></i> Switch account</a>
-                    <a href="#" onclick="event.preventDefault();browseAsGuest()"><i class="fa-solid fa-user-secret"></i> Browse as guest</a>
-                    <a class="ud-logout" href="#" onclick="event.preventDefault();logout()"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
-                </div>
-            </div>
-        </div>
-    </div>
-    <button class="nav-hamburger" onclick="toggleMobileNav()">
-        <i class="fa-solid fa-bars"></i>
-    </button>
-</nav>
+<!-- The navbar is the network's shared component (/shared/navbar.js), configured for Live in js/ov-navbar-live.js. -->
+<div id="navbar-mount"></div>
 
 <!-- ═══════════════════════════════════════════════════════════ -->
 <!--  MAIN CONTENT AREA (SPA pages rendered here)               -->
@@ -1149,7 +1020,9 @@
      rest when someone navigates. The asset manifest below carries content hashes and the registry. -->
 <!--ov:asset-manifest-->
 <script src="/js/ov-loader.js" defer></script>
+<script src="/shared/navbar.js" defer></script>
 <script src="/js/app.js" defer></script>
+<script src="/js/ov-navbar-live.js" defer></script>
 <script src="/js/chat-shared.js" defer></script>
 <script src="/js/chat.js" defer></script>
 <!-- (js/admin.js removed — 130KB of unreachable code; /admin redirects off-site.) -->
@@ -1239,7 +1112,8 @@ document.addEventListener('DOMContentLoaded', function initOpenVibeNetwork() {
             soundBase: '/assets/sounds',
             swPath: '/openvibe-sw.js',
         });
-        mount.appendChild(OpenVibeNotifications.createBell());
+        OpenVibeNotifications.__ovNavInit = true;   // the shared navbar mounts (and re-mounts) the bell itself
+        if (!mount.childElementCount) mount.appendChild(OpenVibeNotifications.createBell());
     }
 });
 </script>

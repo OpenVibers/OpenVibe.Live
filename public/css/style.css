@@ -11875,3 +11875,21 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 }
 
 body.ov-panel-open #floating-chat-fab { opacity: 0; pointer-events: none; transform: scale(.85); transition: opacity .15s, transform .15s; }
+
+/* ── Live on the shared navbar ────────────────────────────────────────────────
+   The bar is the network's shared component (/shared/navbar.js). It carries the class "navbar" as well,
+   so Live's fixed positioning, glass background and the transparent hero-top state keep applying; these
+   rules only settle the places where the component's own defaults would otherwise win. */
+.openvibe-navbar.navbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+    height: var(--navbar-h); padding: 0 clamp(10px, 2vw, 16px); gap: clamp(6px, 1.2vw, 14px);
+    background: var(--glass); border-bottom: 1px solid rgba(255,255,255,0.06);
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    --ovnav-h: var(--navbar-h);
+}
+.openvibe-navbar.navbar.nav-hero-top { background: transparent; border-bottom-color: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.openvibe-navbar.navbar .openvibe-navbar-links a.ovnav-link { font-size: 0.86rem; padding: 7px 11px; border-radius: 10px; }
+.openvibe-navbar.navbar .openvibe-navbar-links a.ovnav-link.active { color: var(--text-primary); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.openvibe-navbar.navbar .openvibe-navbar-dropdown { position: fixed; top: calc(var(--navbar-h) + 6px); right: 8px; }
+.openvibe-navbar.navbar .openvibe-navbar-avatar { width: 36px; height: 36px; border-radius: 50%; cursor: pointer; object-fit: cover; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 50%, transparent); }
+@media (max-width: 560px) { .openvibe-navbar.navbar .ovnav-chip { padding: 0 8px; } .openvibe-navbar.navbar .ovnav-launch { display: none; } }
