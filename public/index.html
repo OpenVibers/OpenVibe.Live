@@ -265,6 +265,11 @@
                     <a href="#" onclick="event.preventDefault();openSetupHub()"><i class="fa-solid fa-list-check"></i> Streamer setup</a>
                     <a href="https://openvibe.network/admin" target="_blank" rel="noopener" id="user-dropdown-admin" style="display:none"><i class="fa-solid fa-shield-halved"></i> Admin Panel</a>
                 </div>
+                <div class="ud-group" id="ud-display">
+                    <span class="ud-label">Display</span>
+                    <a href="#" data-ov-display="text"><i class="fa-solid fa-text-height"></i> Text size <b data-v style="margin-left:auto;font-weight:600;opacity:.8"></b></a>
+                    <a href="#" data-ov-display="motion"><i class="fa-solid fa-wand-magic-sparkles"></i> Animations <b data-v style="margin-left:auto;font-weight:600;opacity:.8"></b></a>
+                </div>
                 <div class="ud-group">
                     <span class="ud-label">Across OpenVibe</span>
                     <a href="https://openvibe.network"><i class="fa-solid fa-network-wired"></i> OpenVibe Network</a>
@@ -537,7 +542,7 @@
                         <div class="home-cta-feature">
                             <i class="fa-solid fa-paste"></i>
                             <strong>Pastes &amp; file sharing</strong>
-                            <span>Share code, text and files with syntax highlighting — a full Pastebin, built right into your channel.</span>
+                            <span>Share code, logs and files with syntax highlighting and a short link. Pastes live on OpenVibe.Community and still show up on your channel.</span>
                         </div>
                         <div class="home-cta-feature">
                             <i class="fa-solid fa-screwdriver-wrench"></i>
@@ -1201,6 +1206,7 @@
 
 <!-- ── OpenVibe shared libs (notifications, account sync, themes) ── -->
 <script src="/shared/theme-loader.js" defer></script>
+<script defer src="/js/ov-display-menu.js"></script>
 <script src="/shared/notification-ui.js" defer></script>
 <!-- The requested route's scripts (public/features.json), added by the server after the core ones.
      Other routes load theirs on navigation through js/ov-loader.js. -->

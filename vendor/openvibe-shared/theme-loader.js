@@ -241,11 +241,47 @@
     }
 
     // ── Auto-apply on load (synchronous, prevents FOUC) ─────
+    // ── Display preferences: motion + text size, one setting for every OpenVibe site ─────────────
+    //   OpenVibeThemeLoader.display.get() → { motion: 'auto'|'reduced', text: '100'|'112'|'125' }
+    //   OpenVibeThemeLoader.display.set({ motion, text })   applies here, in other tabs, and saves to the account
+    // Applied as <html data-ov-motion> and --ov-text-scale before first paint; the shared stylesheet
+    // below makes every shared component honour them, and sites can key their own CSS off the same hooks.
+    const DISPLAY_KEY = 'ov_display', DISPLAY_OPTS = { motion: ['auto', 'reduced'], text: ['100', '112', '125'] };
+    function readDisplay() {
+        const out = { motion: 'auto', text: '100' };
+        try { const d = JSON.parse(localStorage.getItem(DISPLAY_KEY) || 'null') || {}; for (const k in DISPLAY_OPTS) if (DISPLAY_OPTS[k].indexOf(String(d[k])) >= 0) out[k] = String(d[k]); } catch (e) { /* */ }
+        return out;
+    }
+    function applyDisplay(d) {
+        if (typeof document === 'undefined') return;
+        const el = document.documentElement;
+        if (d.motion === 'reduced') el.setAttribute('data-ov-motion', 'reduced'); else el.removeAttribute('data-ov-motion');
+        if (d.text === '100') { el.style.removeProperty('--ov-text-scale'); el.removeAttribute('data-ov-text'); } else { el.style.setProperty('--ov-text-scale', String(parseInt(d.text, 10) / 100)); el.setAttribute('data-ov-text', d.text); }
+        if (!document.getElementById('ov-display-css') && document.head) {
+            const st = document.createElement('style'); st.id = 'ov-display-css';
+            st.textContent = 'html[data-ov-text]{font-size:calc(100% * var(--ov-text-scale,1))}html[data-ov-motion=reduced] *,html[data-ov-motion=reduced] *::before,html[data-ov-motion=reduced] *::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}html[data-ov-motion=reduced] .ov-mark .o,html[data-ov-motion=reduced] .ov-icon .ovi-comet{display:none}';
+            document.head.appendChild(st);
+        }
+        try { window.dispatchEvent(new CustomEvent('ov:display', { detail: d })); } catch (e) { /* */ }
+    }
+    function setDisplay(patch, opts) {
+        const d = readDisplay();
+        for (const k in DISPLAY_OPTS) if (patch && DISPLAY_OPTS[k].indexOf(String(patch[k])) >= 0) d[k] = String(patch[k]);
+        try { localStorage.setItem(DISPLAY_KEY, JSON.stringify(d)); } catch (e) { /* */ }
+        applyDisplay(d);
+        if (!(opts && opts.local) && typeof fetch !== 'undefined') {
+            const token = authToken(); const headers = { 'Content-Type': 'application/json' }; if (token) headers.Authorization = 'Bearer ' + token;
+            if (token || /(?:^|; )ov_sso_hint=account/.test(document.cookie)) fetch(_config.apiBase + '/api/themes/me/display', { method: 'PUT', headers: headers, credentials: 'include', body: JSON.stringify(d) }).catch(function () {});
+        }
+        return d;
+    }
+    applyDisplay(readDisplay());
+
     const activeId = resolveAndApply();
     // The icon link may be parsed after this script: repaint once the head is complete.
     if (typeof document !== 'undefined' && document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { _chromeKey = ''; syncChrome(); });
     // A theme picked in another tab (or on another OpenVibe page of this site) applies here at once.
-    if (typeof window !== 'undefined') window.addEventListener('storage', function (e) { if (e.key === 'ov_theme') { try { resolveAndApply(); } catch (err) { /* */ } } });
+    if (typeof window !== 'undefined') window.addEventListener('storage', function (e) { if (e.key === 'ov_theme') { try { resolveAndApply(); } catch (err) { /* */ } } if (e.key === DISPLAY_KEY) applyDisplay(readDisplay()); });
 
     // Look up a theme we don't ship in the built-in map (community/custom themes) from the
     // central catalog. Without this, any non-built-in id fell through to the default 'vibe'
@@ -271,6 +307,7 @@
         fetch(_config.apiBase + '/api/themes/me/active', { headers: headers, credentials: 'include' })
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (data) {
+                if (data && data.display) { const cur = readDisplay(); if (JSON.stringify({ motion: data.display.motion || cur.motion, text: data.display.text || cur.text }) !== JSON.stringify(cur)) setDisplay(data.display, { local: true }); }
                 if (!data || !data.theme_id) return;
                 const serverId = data.theme_id;
                 const custom = (data.custom_variables && typeof data.custom_variables === 'object'
@@ -292,6 +329,7 @@
     // ── Public API ───────────────────────────────────────────
     const OpenVibeThemeLoader = {
         THEMES: THEMES,
+        display: { get: readDisplay, set: setDisplay, options: DISPLAY_OPTS },
         apply: applyById,
         applyVars: applyVars,
         save: save,
