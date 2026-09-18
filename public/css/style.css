@@ -1368,7 +1368,7 @@ main#app { position: relative; z-index: 1; }
 @keyframes eggShake { 10%,90%{transform:translate3d(-2px,0,0)} 20%,80%{transform:translate3d(4px,0,0)} 30%,50%,70%{transform:translate3d(-8px,0,0)} 40%,60%{transform:translate3d(8px,0,0)} }
 @keyframes eggRainbow { 0%{filter:hue-rotate(0)} 100%{filter:hue-rotate(360deg)} }
 .network-hub-header > i {
-    font-size: 1.6rem; color: var(--accent); flex-shrink: 0;
+    font-size: 1.6rem; line-height: 1; color: var(--accent); flex-shrink: 0;
     background: color-mix(in srgb, var(--accent) 10%, transparent); padding: 12px; border-radius: 12px;
 }
 .network-hub-header h3 {
@@ -11846,4 +11846,30 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 @media (prefers-reduced-motion: reduce) {
     .ov-conn-pill { transition: opacity var(--motion-fast) linear; transform: translate3d(-50%, 0, 0); }
     .ov-conn-pill .ov-conn-dot { animation: none !important; }
+}
+
+/* ── Dropdowns never leave the screen ─────────────────────────────────────────
+   One rule for every navbar panel (user menu, nav dropdowns, mobile nav drawer). 100vh on phones
+   includes the strip hidden behind the browser's address bar, which is why the bottom of a long menu
+   used to fall off-screen and could not be scrolled to: dvh is the visible height. The cap also
+   leaves room for the home indicator, and the panel scrolls inside itself without dragging the page. */
+.user-dropdown, .nav-dropdown-menu, .nav-links.show {
+    max-height: calc(100vh - var(--navbar-h) - 16px);
+    max-height: calc(100dvh - var(--navbar-h) - 16px - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto; overflow-x: hidden;
+    overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--accent) 40%, transparent) transparent;
+}
+.user-dropdown { max-width: calc(100vw - 16px); }
+/* Below tablet width the user menu is a sheet pinned under the bar, as wide as the phone allows. */
+@media (max-width: 900px) {
+    .user-dropdown { position: fixed; top: calc(var(--navbar-h) + 6px); right: 8px; left: auto; min-width: 0; width: min(340px, calc(100vw - 16px)); }
+    /* The floating chat button sits over the bottom-right corner: let the last row scroll clear of it. */
+    .user-dropdown > :last-child { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+    .user-dropdown::after { content: ''; display: block; height: 64px; }
+}
+/* Short screens (landscape phones, split view): tighter rows so more of the menu is visible at once. */
+@media (max-height: 560px) {
+    .user-dropdown .ud-group a, .nav-links.show .nav-link { padding-top: 7px; padding-bottom: 7px; font-size: 0.86rem; }
+    .user-dropdown .ud-label { padding-top: 8px; padding-bottom: 2px; }
 }

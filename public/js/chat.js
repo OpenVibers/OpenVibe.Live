@@ -3769,12 +3769,21 @@ function addRichSystemMessage(html, style = 'info') {
 function _deployCss() {
     if (document.getElementById('chat-deploy-css')) return;
     const st = document.createElement('style'); st.id = 'chat-deploy-css';
-    st.textContent = `.chat-msg.system.chat-deploy,.chat-msg.system.chat-deploy *{font-style:normal}.chat-deploy{margin:6px 0;padding:9px 11px;border-radius:10px;border:1px solid color-mix(in srgb,var(--accent,#3b82f6) 30%,transparent);background:color-mix(in srgb,var(--accent,#3b82f6) 7%,transparent);color:var(--text-secondary,#a8b3c4);font-style:normal;font-size:.84rem;line-height:1.45}
-.chat-deploy-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;color:var(--text-primary,#e6edf7)}.chat-deploy-h b{font-weight:700}.chat-deploy-t{font-size:.76rem;color:var(--text-muted,#7d8aa0)}
-.chat-deploy-a{margin-left:auto;display:flex;gap:10px;align-items:center}.chat-deploy a,.chat-deploy-more{color:var(--accent-light,var(--accent,#60a5fa));text-decoration:none;font-size:.78rem;cursor:pointer;background:none;border:0;padding:0;font-family:inherit}
-.chat-deploy-reload{border:0;border-radius:6px;background:var(--accent,#3b82f6);color:var(--on-accent,#fff);font:600 .74rem/1 inherit;padding:4px 9px;cursor:pointer}
-.chat-deploy ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:2px}.chat-deploy li{display:flex;gap:7px;align-items:baseline;min-width:0}.chat-deploy li.is-hidden{display:none}.chat-deploy.is-open li.is-hidden{display:flex}
-.chat-deploy li span{min-width:0;overflow-wrap:anywhere}.chat-deploy li a{font-family:ui-monospace,Menlo,monospace;font-size:.72rem;flex:none}.chat-deploy li.is-fresh span{color:var(--text-primary,#e6edf7)}`;
+    st.textContent = `.chat-msg.system.chat-deploy,.chat-msg.system.chat-deploy *{font-style:normal}
+.chat-deploy{margin:8px 0;padding:10px 12px;border-radius:12px;border:1px solid color-mix(in srgb,var(--accent,#3b82f6) 28%,transparent);background:color-mix(in srgb,var(--accent,#3b82f6) 6%,transparent);color:var(--text-secondary,#a8b3c4);font-size:.84rem;line-height:1.45;container-type:inline-size}
+.chat-deploy-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;color:var(--text-primary,#e6edf7)}.chat-deploy-h b{font-weight:700}.chat-deploy-t{font-size:.76rem;color:var(--text-muted,#7d8aa0)}
+.chat-deploy ul{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:4px}
+.chat-deploy li{display:grid;grid-template-columns:4.6em minmax(0,1fr);gap:8px;align-items:baseline}.chat-deploy li.is-hidden{display:none}.chat-deploy.is-open li.is-hidden{display:grid}
+.chat-deploy li a{font-family:ui-monospace,Menlo,monospace;font-size:.72rem;color:var(--accent-light,var(--accent,#60a5fa));text-decoration:none}
+.chat-deploy li span{min-width:0;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.chat-deploy.is-open li span{display:block}
+.chat-deploy li.is-fresh span{color:var(--text-primary,#e6edf7)}
+.chat-deploy-f{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:9px;padding-top:8px;border-top:1px solid color-mix(in srgb,var(--accent,#3b82f6) 16%,transparent)}
+.chat-deploy-a{margin-left:auto;display:flex;align-items:center;gap:12px}
+.chat-deploy-f a,.chat-deploy-more{color:var(--accent-light,var(--accent,#60a5fa));text-decoration:none;font:600 .78rem/1 inherit;cursor:pointer;background:none;border:0;padding:4px 0;min-height:24px}
+.chat-deploy-more::after{content:' ▾';font-size:.7em}.chat-deploy-more[aria-expanded=true]::after{content:' ▴'}
+.chat-deploy-reload{border:0;border-radius:8px;background:var(--accent,#3b82f6);color:var(--on-accent,#fff);font:700 .76rem/1 inherit;padding:7px 11px;cursor:pointer}
+.chat-deploy-f a:focus-visible,.chat-deploy-more:focus-visible,.chat-deploy-reload:focus-visible{outline:2px solid var(--accent,#3b82f6);outline-offset:2px;border-radius:6px}
+@container (max-width:300px){.chat-deploy li{grid-template-columns:minmax(0,1fr)}.chat-deploy li a{display:none}.chat-deploy-a{margin-left:0;width:100%;justify-content:space-between}}`;
     document.head.appendChild(st);
 }
 function _deployTime(d, forceDate) {
@@ -3798,12 +3807,13 @@ function renderDeployCard(data, opts = {}) {
     if (!el) { el = document.createElement('div'); el.className = 'chat-msg system chat-deploy'; if (id) el.dataset.deployId = id.replace(/[^\w-]/g, ''); }
     const range = first.getTime() === last.getTime() || Math.abs(last - first) < 60000 ? _deployTime(last) : _deployTime(first, first.toDateString() !== last.toDateString()) + ' – ' + _deployTime(last, first.toDateString() !== last.toDateString());
     const deploys = Number(data.deploys) || 1;
-    el.innerHTML = `<div class="chat-deploy-h"><b>🚀 ${commits.length} update${commits.length === 1 ? '' : 's'} shipped</b><span class="chat-deploy-t" title="${esc(last.toLocaleString())}">${esc(range)}${deploys > 1 ? ' · ' + deploys + ' deploys' : ''}</span>
-        <span class="chat-deploy-a">${commits.length > SHOW ? `<button type="button" class="chat-deploy-more">${wasOpen ? 'Show less' : 'Show all ' + commits.length}</button>` : ''}<a href="/updates" target="_blank" rel="noopener">Patch notes</a>${opts.live ? '<button type="button" class="chat-deploy-reload" title="Load the new version">Reload</button>' : ''}</span></div>
-        <ul>${commits.map((c, i) => `<li class="${i >= SHOW ? 'is-hidden' : ''}${fresh.has(c.hash) ? ' is-fresh' : ''}">${c.hash ? `<a href="https://github.com/OpenVibers/OpenVibe.Live/commit/${esc(c.hash)}" target="_blank" rel="noopener">${esc(c.short || String(c.hash).slice(0, 7))}</a>` : ''}<span>${esc(c.subject)}</span></li>`).join('')}</ul>`;
+    const rest = commits.length - SHOW;
+    el.innerHTML = `<div class="chat-deploy-h"><b>🚀 ${commits.length} update${commits.length === 1 ? '' : 's'} shipped</b><span class="chat-deploy-t" title="${esc(last.toLocaleString())}">${esc(range)}${deploys > 1 ? ' · ' + deploys + ' deploys' : ''}</span></div>
+        <ul>${commits.map((c, i) => `<li class="${i >= SHOW ? 'is-hidden' : ''}${fresh.has(c.hash) ? ' is-fresh' : ''}">${c.hash ? `<a href="https://github.com/OpenVibers/OpenVibe.Live/commit/${esc(c.hash)}" target="_blank" rel="noopener">${esc(c.short || String(c.hash).slice(0, 7))}</a>` : '<i></i>'}<span>${esc(c.subject)}</span></li>`).join('')}</ul>
+        <div class="chat-deploy-f">${rest > 0 ? `<button type="button" class="chat-deploy-more" aria-expanded="${wasOpen ? 'true' : 'false'}">${wasOpen ? 'Show fewer' : `Show ${rest} more`}</button>` : ''}<span class="chat-deploy-a"><a href="/updates" target="_blank" rel="noopener">Patch notes</a>${opts.live ? '<button type="button" class="chat-deploy-reload" title="Load the new version">Reload to update</button>' : ''}</span></div>`;
     if (wasOpen) el.classList.add('is-open');
     const more = el.querySelector('.chat-deploy-more');
-    if (more) more.addEventListener('click', () => { const open = el.classList.toggle('is-open'); more.textContent = open ? 'Show less' : 'Show all ' + commits.length; });
+    if (more) more.addEventListener('click', () => { const open = el.classList.toggle('is-open'); more.textContent = open ? 'Show fewer' : `Show ${rest} more`; more.setAttribute('aria-expanded', String(open)); });
     const reload = el.querySelector('.chat-deploy-reload');
     if (reload) reload.addEventListener('click', () => { location.href = location.pathname + '?_=' + Date.now(); });
     // A live update moves the card to the end (it IS the newest message); history keeps its position.

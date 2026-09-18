@@ -83,7 +83,7 @@
             .ovnav-launcher a { all: unset; cursor: pointer; box-sizing: border-box; }
             .openvibe-navbar .ovnav-sep { width: 1px; height: 18px; background: var(--border, rgba(255,255,255,.12)); margin: 0 6px; flex: none; align-self: center; }
             @media (max-width: 1180px) { .openvibe-navbar .ovnav-net, .openvibe-navbar .ovnav-sep { display: none; } }
-            .ovnav-launcher { position: absolute; top: calc(100% + 6px); left: 12px; width: min(440px, calc(100vw - 24px)); max-height: min(560px, calc(100vh - 80px)); overflow: auto; background: var(--bg-elevated, var(--bg-secondary, #111826)); border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,.5); padding: 12px; z-index: 1000; opacity: 0; transform: translateY(-6px) scale(.98); transform-origin: top left; pointer-events: none; transition: opacity .16s, transform .2s cubic-bezier(.2,1.2,.3,1); }
+            .ovnav-launcher { position: absolute; top: calc(100% + 6px); left: 12px; width: min(440px, calc(100vw - 24px));  background: var(--bg-elevated, var(--bg-secondary, #111826)); border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,.5); padding: 12px; z-index: 1000; opacity: 0; transform: translateY(-6px) scale(.98); transform-origin: top left; pointer-events: none; transition: opacity .16s, transform .2s cubic-bezier(.2,1.2,.3,1); }
             .ovnav-launcher.open { opacity: 1; transform: none; pointer-events: auto; }
             .ovnav-launcher .ovl-q { width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border, rgba(255,255,255,.12)); background: var(--bg-primary, #0a0f18); color: var(--text-primary, #e6edf7); font: 500 14px/1.2 inherit; outline: none; }
             .ovnav-launcher .ovl-q:focus { border-color: var(--accent, #3b82f6); }
@@ -188,6 +188,13 @@
                 animation: openvibe-slide-down .2s ease;
             }
             .openvibe-navbar-dropdown.open { display: flex; }
+            /* Panels never leave the screen: dvh is the VISIBLE height on phones (100vh reaches behind the address
+               bar), the panel scrolls inside itself, and it is never wider than the viewport. */
+            .openvibe-navbar-dropdown, .ovnav-launcher {
+                max-width: calc(100vw - 16px);
+                max-height: calc(100vh - 64px); max-height: calc(100dvh - 64px - env(safe-area-inset-bottom, 0px));
+                overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-width: thin;
+            }
             @keyframes openvibe-slide-down { from { transform: translateY(-8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
             .openvibe-navbar-dropdown-header {
