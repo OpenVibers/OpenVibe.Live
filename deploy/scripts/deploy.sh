@@ -52,6 +52,8 @@ BASE_DIR="${BASE_DIR:-/opt/openvibe.live}"
 SERVICE="${SERVICE:-openvibe-live}"
 SYSTEMD_DIR="${SYSTEMD_DIR:-/etc/systemd/system}"
 SYSTEMCTL="${SYSTEMCTL:-systemctl}"
+# Unit files land in /etc: when systemctl is being run through sudo, so is the install.
+SUDO_INSTALL=""; case "$SYSTEMCTL" in sudo*) SUDO_INSTALL="sudo";; esac; [ "$(id -u)" -eq 0 ] && SUDO_INSTALL=""
 SITE_URL="${SITE_URL:-https://openvibe.live}"
 API_URL="${API_URL:-http://127.0.0.1:3000}"
 GIT_REMOTE="${GIT_REMOTE:-origin}"
@@ -158,7 +160,7 @@ install_units() {
         [ -f "$src" ] || return 0
         if [ ! -f "$dest" ] || ! cmp -s "$src" "$dest"; then
             say "installing $(basename "$dest")"
-            run install -m 0644 -D "$src" "$dest"
+            run $SUDO_INSTALL install -m 0644 -D "$src" "$dest"
             changed=true
         fi
     }
