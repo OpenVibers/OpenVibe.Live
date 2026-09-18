@@ -618,6 +618,21 @@ function _trySilentSso(force) {
  * signed in there (GET /sso/check → one postMessage). Only a "yes" triggers the silent sign-in,
  * so first-time visitors never see a redirect. Once per tab per 10 minutes.
  */
+let _ssoClientPromise = null;
+function _loadSsoClient() {
+    if (window.OpenVibeSSO) return Promise.resolve(window.OpenVibeSSO);
+    if (_ssoClientPromise) return _ssoClientPromise;
+    _ssoClientPromise = new Promise((resolve) => {
+        const sc = document.createElement('script'); sc.async = true; sc.src = '/shared/sso-client.js';
+        sc.onload = () => resolve(window.OpenVibeSSO || null); sc.onerror = () => resolve(null);
+        document.head.appendChild(sc);
+    });
+    return _ssoClientPromise;
+}
+/** Signed in here: links to the other OpenVibe sites carry the session along (shared sso-client.js). */
+function _enableHandoff() {
+    _loadSsoClient().then((sso) => { try { sso && sso.handoffLinks({ signedIn: !!currentUser }); } catch { /* */ } });
+}
 function _checkNetworkSession() {
     if (_ssoHint() === 'guest' || /bot|crawl|spider|headless/i.test(navigator.userAgent)) return;
     try {
@@ -631,7 +646,15 @@ function _checkNetworkSession() {
     const onMsg = (e) => {
         if (e.origin !== base || !e.data || e.data.type !== 'ov-sso') return;
         done();
-        if (e.data.signedIn && !currentUser) _trySilentSso(true);
+        if (currentUser) return;
+        if (e.data.signedIn) { _trySilentSso(true); return; }
+        // Not visible from an iframe (guest, or the browser keeps third-party cookies away):
+        // let the browser itself ask the network — FedCM is a no-op for guests.
+        _loadSsoClient().then(async (sso) => {
+            if (!sso || !sso.fedcmAvailable() || currentUser) return;
+            const r = await sso.fedcm({ apiBase: base, fedcmLogin: '/api/auth/fedcm', mediation: 'optional' });
+            if (r && r.ok) { try { sessionStorage.removeItem('ov_silent_sso'); } catch { /* */ } _setSsoHint('account'); location.reload(); }
+        });
     };
     window.addEventListener('message', onMsg);
     frame = document.createElement('iframe');
@@ -654,6 +677,7 @@ function switchAccount() {
 function browseAsGuest() { logout(); try { toast('Browsing as a guest — Sign in brings you straight back.', 'info'); } catch { /* */ } }
 function logout() {
     _setSsoHint('guest');
+    try { window.OpenVibeSSO && window.OpenVibeSSO.preventSilent(); } catch { /* */ }
     // Clear server-side cookies via API
     fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
     // Clear client-side storage (both keys)
@@ -720,6 +744,7 @@ async function loadUser() {
 try { if (new URLSearchParams(location.search).get('sso') === 'none') { _setSsoHint('guest'); history.replaceState(null, '', location.pathname); } } catch { /* */ }
 
 function onAuthChange() {
+    if (currentUser) _enableHandoff(); else if (window.OpenVibeSSO) { try { window.OpenVibeSSO.handoffLinks({ signedIn: false }); } catch { /* */ } }
     const anon = document.getElementById('nav-auth-anon');
     const user = document.getElementById('nav-auth-user');
     const admin = document.getElementById('nav-admin');
