@@ -2238,30 +2238,74 @@ function _renderHistoryPayload(p) {
  * be fetched exclusively through the main pane's hydrate, so the widget opened empty there and
  * stayed empty until someone typed. Fill it directly: cached copy first, then the network.
  */
-let _fcwHydratedAt = 0, _fcwHydrating = false;
-async function hydrateWidgetOnly() {
+let _fcwHydratedAt = 0, _fcwHydrating = false, _fcwRefreshedAt = 0, _fcwSendRetries = 0;
+const _FCW_PAGE = '/chat/global/history?limit=500';
+/**
+ * Bring the widget up to date. Three shapes, picked by what the widget already holds:
+ *   empty            → cached copy first (instant paint), then a delta from the cache's cursor;
+ *   rows + cursor    → delta: only ids newer than the newest row we have (cheap PK scan);
+ *   gap too large    → the server says `complete:false`: wipe and take a fresh page.
+ * Runs on every open, on (re)connect, on tab focus and on coming back online — the old
+ * "hydrated less than 10 minutes ago" guard is what left stale rows on screen after the SPA
+ * router tore the socket down. A short throttle collapses the triggers that fire together.
+ */
+async function hydrateWidgetOnly({ reason = 'open' } = {}) {
     const container = document.getElementById('fcw-messages');
     if (!container || _fcwHydrating) return;
-    if (container.querySelector('.chat-msg') && Date.now() - _fcwHydratedAt < 10 * 60 * 1000) return;
+    const hasRows = !!container.querySelector('.chat-msg');
+    if (hasRows && _fcwLastId && Date.now() - _fcwRefreshedAt < 1500) return;
     _fcwHydrating = true;
-    const feed = (payload) => {
-        const rows = (payload && payload.data && payload.data.messages) || [];
-        if (!rows.length) return 0;
+    const feed = (rows) => {
+        if (!Array.isArray(rows) || !rows.length) return 0;
         const prev = _loadingHistory; _loadingHistory = true;
         try { rows.slice(-200).forEach((m) => _fcwAddMessage(m)); } finally { _loadingHistory = prev; }
         _fcwScrollToBottom();
         return rows.length;
     };
+    const fresh = async () => {
+        const page = await api(_FCW_PAGE);
+        container.replaceChildren();
+        _fcwIds.clear(); _fcwLastId = 0;
+        feed(page && page.messages);
+        try { _chatCacheWrite('global', { kind: 'global', data: page }); } catch { /* */ }
+    };
     try {
-        if (!container.querySelector('.chat-msg')) { const cached = _chatCacheRead('global'); if (cached) feed(cached); }
-        try { if (typeof loadEmotes === 'function') await loadEmotes(); } catch { /* plain text is fine */ }
-        const payload = await _fetchHistoryPayload(null);
-        feed(payload);
-        _fcwHydratedAt = Date.now();
-        try { _chatCacheWrite('global', payload); } catch { /* */ }
+        if (!hasRows) {
+            const cached = _chatCacheRead('global');
+            if (cached) feed(cached.data.messages);
+            try { if (typeof loadEmotes === 'function') await loadEmotes(); } catch { /* plain text is fine */ }
+        }
+        if (_fcwLastId) {
+            const d = await api(`/chat/global/history?after_id=${_fcwLastId}&limit=200`);
+            if (!d || d.complete === false) await fresh();
+            else if (d.messages && d.messages.length) { feed(d.messages); _fcwCacheAppend(d.messages); }
+        } else {
+            await fresh();
+        }
+        _fcwHydratedAt = _fcwRefreshedAt = Date.now();
     } catch (err) {
-        console.warn('[chat] widget history failed:', err && err.message);
+        console.warn(`[chat] widget history (${reason}) failed:`, err && err.message);
     } finally { _fcwHydrating = false; }
+}
+/** Delta rows extend the cached global copy so the next cold open starts from them. */
+function _fcwCacheAppend(rows) {
+    try {
+        const key = _chatCacheKey('global');
+        const raw = localStorage.getItem(key);
+        const entry = raw ? JSON.parse(raw) : { kind: 'global', data: { messages: [] } };
+        const seen = new Set((entry.data.messages || []).map((m) => String(m.id)));
+        for (const m of rows) if (m && m.id != null && !seen.has(String(m.id))) entry.data.messages.push(m);
+        if (entry.data.messages.length > _CHAT_CACHE_ROWS) entry.data.messages.splice(0, entry.data.messages.length - _CHAT_CACHE_ROWS);
+        entry.at = Date.now();
+        localStorage.setItem(key, JSON.stringify(entry));
+    } catch { /* best effort */ }
+}
+/** The widget refreshes itself whenever the page comes back: tab focus, network back, socket back. */
+function _fcwRefreshIfRelevant(reason) {
+    const container = document.getElementById('fcw-messages');
+    if (!container) return;
+    if (!_fcwOpen && !container.querySelector('.chat-msg')) return; // never opened: nothing to keep current
+    hydrateWidgetOnly({ reason }).catch(() => {});
 }
 
 async function hydrateActiveChatHistory(streamId, { clear = false } = {}) {
@@ -2566,6 +2610,9 @@ function initChat(streamId, channelUserId = null) {
         ws._authToken = token || null;
         _chatReconnectDelay = CHAT_RECONNECT_BASE; // reset backoff on success
         addRichSystemMessage('<i class="fa-solid fa-plug-circle-check" style="margin-right:5px;opacity:0.8"></i> Connected to chat');
+        // A fresh socket after the router tore the last one down: the widget may hold rows from
+        // before the gap. Pull what it missed instead of waiting for someone to type.
+        _fcwRefreshIfRelevant('connect');
     };
 
     // Load emotes + channel sounds for this stream context
@@ -2671,6 +2718,13 @@ window.addEventListener('online', () => {
     clearTimeout(_chatReconnectTimer); _chatReconnectTimer = null;
     _reconnectChatWs(chatStreamId ?? null);
 });
+// Mobile browsers freeze the page (and often the socket) in the background; on return, the widget
+// asks for what it missed rather than trusting rows that may be an hour old.
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !_fcwOpen) return;
+    if (!chatWs || chatWs.readyState !== WebSocket.OPEN) { try { initChat(null); } catch { /* */ } }
+    _fcwRefreshIfRelevant('focus');
+});
 window.addEventListener('offline', () => { if (_chatActive && !_chatIntentionalClose) _chatConnState('offline'); });
 
 /**
@@ -2714,6 +2768,7 @@ function _reconnectChatWs(streamId) {
         // Messages sent while we were away are only in the history. Refill it — but not under a reader
         // who has scrolled back, since reloading history redraws the list.
         if (outage > 1500 && !_chatUserScrolledUp) hydrateActiveChatHistory(streamId).catch(() => {});
+        _fcwRefreshIfRelevant('reconnect');
     };
 
     ws.onmessage = (e) => {
@@ -2780,6 +2835,8 @@ function destroyChat(forceClose = false) {
         }
         chatStreamId = null;
     }
+    // The channel scope belongs to the page that set it; a later global fetch must not inherit it.
+    chatChannelUserId = null;
     chatRenderTargetId = null;
     clearFullscreenChatMessages();
     _fullscreenChatRecent = [];
@@ -7079,8 +7136,9 @@ function fcwToggle() {
         if (!chatWs || chatWs.readyState !== WebSocket.OPEN) {
             initChat(null);
         }
-        // The widget is its own chat surface on pages without a pane: give it the history.
-        hydrateWidgetOnly();
+        // The widget is its own chat surface on pages without a pane: give it the history —
+        // a delta from the newest row it holds, or a fresh page when it has nothing.
+        hydrateWidgetOnly({ reason: 'open' });
 
         // Scroll to bottom
         const msgs = document.getElementById('fcw-messages');
@@ -7102,7 +7160,16 @@ function fcwSendChat() {
     const input = document.getElementById('fcw-chat-input');
     if (!input) return;
     const text = input.value.trim();
-    if (!text || !chatWs || chatWs.readyState !== WebSocket.OPEN) return;
+    if (!text) return;
+    if (!chatWs || chatWs.readyState !== WebSocket.OPEN) {
+        // The router closes the socket on navigation; bring it back and send once it is open.
+        _fcwSendRetries = (_fcwSendRetries || 0) + 1;
+        if (_fcwSendRetries > 4) { _fcwSendRetries = 0; return; }
+        try { initChat(null); } catch { /* */ }
+        setTimeout(() => { if (document.getElementById('fcw-chat-input')) fcwSendChat(); }, 900);
+        return;
+    }
+    _fcwSendRetries = 0;
 
     // Save to shared message history
     if (_chatMsgHistory[0] !== text) {
@@ -7143,11 +7210,36 @@ function _chatTrimWidget(container) {
     while (container.children.length > 200) container.removeChild(container.firstChild);
 }
 
+// Ids the widget has shown, kept past the 200-row DOM trim so a trimmed row cannot come back
+// through a delta, and the cursor the next delta read starts from.
+const _fcwIds = new Set();
+let _fcwLastId = 0;
+function _fcwRemember(id) {
+    _fcwIds.add(String(id));
+    const n = Number(id);
+    if (Number.isFinite(n) && n > _fcwLastId) _fcwLastId = n;
+    if (_fcwIds.size > 1500) { const it = _fcwIds.values(); for (let i = 0; i < 500; i++) _fcwIds.delete(it.next().value); }
+}
+// Rows arrive out of order when a delta lands under live rows that beat it; keep the list in id order.
+function _fcwInsertOrdered(container, el, id) {
+    const n = Number(id);
+    let ref = null;
+    if (Number.isFinite(n)) {
+        for (let node = container.lastElementChild; node; node = node.previousElementSibling) {
+            const nid = Number(node.dataset && node.dataset.msgId);
+            if (!Number.isFinite(nid) || nid <= n) break;
+            ref = node;
+        }
+    }
+    if (ref) container.insertBefore(el, ref); else container.appendChild(el);
+}
 function _fcwAddMessage(msg) {
     if (_fcwHistoryBuffer) { _fcwHistoryBuffer.push(msg); return; }
     const container = document.getElementById('fcw-messages');
     if (!container) return;
-    if (msg && msg.id != null && container.querySelector(`[data-msg-id="${CSS.escape(String(msg.id))}"]`)) return;
+    const mid = msg && msg.id != null ? String(msg.id) : null;
+    if (mid && (_fcwIds.has(mid) || container.querySelector(`[data-msg-id="${CSS.escape(mid)}"]`))) return;
+    if (mid) _fcwRemember(mid);
 
     // Stream source badge — clickable stream TITLE (live → watch, offline → channel).
     const src = _fcwSourceLabel(msg);
@@ -7169,7 +7261,7 @@ function _fcwAddMessage(msg) {
     // user menu on tap — the widget's own renderer had no menu at all).
     const el = buildChatMessageEl(msg, { widget: true, prefixHtml: srcBadge });
     if (_friendlyHides(msg)) _friendlyAppend(container, el);
-    else container.appendChild(el);
+    else _fcwInsertOrdered(container, el, mid);
 
     _chatTrimWidget(container);
     // One scroll per frame, however many rows arrived in it (history mirrors hundreds at once).

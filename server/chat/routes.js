@@ -12,6 +12,7 @@ const express = require('express');
 const db = require('../db/database');
 const { optionalAuth, requireAuth, requireAdmin } = require('../auth/auth');
 const permissions = require('../auth/permissions');
+const historyStore = require('./history-store');
 
 const router = express.Router();
 
@@ -466,42 +467,17 @@ router.get('/filters/friendly', (req, res) => {
 
 router.get('/global/history', optionalAuth, (req, res) => {
     try {
-        const limit = Math.min(parseInt(req.query.limit || '500'), 500);
+        const limit = req.query.limit;
         const before = req.query.before;
+        const afterId = req.query.after_id;
         const channelUsername = String(req.query.username || '').trim();
-
-        let sql = `SELECT cm.*, u.avatar_url, u.profile_color, u.role, u.display_name,
-                          u.username AS core_username,
-                          COALESCE(su.username, cu.username) AS stream_channel,
-                          s.is_live AS source_is_live,
-                          s.managed_stream_id AS source_managed_id,
-                          COALESCE(ms.title, s.title) AS source_stream_title,
-                          ms.slug AS source_slug
-                   FROM chat_messages cm
-                   LEFT JOIN users u ON cm.user_id = u.id
-                   LEFT JOIN streams s ON cm.stream_id = s.id
-                   LEFT JOIN users su ON s.user_id = su.id
-                   LEFT JOIN users cu ON cm.channel_user_id = cu.id
-                   LEFT JOIN managed_streams ms ON s.managed_stream_id = ms.id
-                   WHERE cm.is_deleted = 0 AND cm.message_type IN ('chat', 'system', 'channel-sound', 'soundboard', 'donation')
-                     AND (cm.auto_delete_at IS NULL OR datetime(cm.auto_delete_at) > CURRENT_TIMESTAMP)`;
-        const params = [];
-
-        if (channelUsername) {
-            sql += ` AND LOWER(COALESCE(su.username, cu.username)) = LOWER(?)`;
-            params.push(channelUsername);
-        }
-
-        if (before) {
-            sql += ` AND cm.timestamp < ?`;
-            params.push(before);
-        }
-
-        sql += ` ORDER BY cm.timestamp DESC LIMIT ?`;
-        params.push(limit);
-
-        const messages = enrichMessagesWithCosmetics(hydrateReplies(db.all(sql, params).reverse()));
-        res.json({ messages });
+        const decorate = (rows) => enrichMessagesWithCosmetics(hydrateReplies(rows));
+        // after_id = cursor read: only what the caller has not seen (oldest→newest, PK range scan).
+        // Anything else = a page: the newest rows, optionally before a timestamp.
+        const out = afterId != null
+            ? historyStore.delta('global', { afterId, limit, channelUsername, decorate })
+            : historyStore.page('global', { limit, before, channelUsername, decorate });
+        res.json(out);
     } catch (err) {
         res.status(500).json({ error: 'Failed to get global chat history' });
     }
@@ -578,15 +554,26 @@ router.get('/:streamId/history', optionalAuth, (req, res) => {
             params.push(req.params.streamId);
         }
 
-        if (before) {
-            sql += ` AND cm.timestamp < ?`;
-            params.push(before);
+        // after_id: cursor read (oldest→newest, primary-key range scan) for reopen/reconnect.
+        // Otherwise a page: the newest rows, optionally before a timestamp.
+        const afterId = req.query.after_id != null ? Math.max(0, parseInt(req.query.after_id, 10) || 0) : null;
+        if (afterId != null) {
+            sql += ` AND cm.id > ? ORDER BY cm.id ASC LIMIT ?`;
+            params.push(afterId, limit + 1);
+        } else {
+            if (before) {
+                sql += ` AND cm.timestamp < ?`;
+                params.push(before);
+            }
+            sql += ` ORDER BY cm.timestamp DESC LIMIT ?`;
+            params.push(limit);
         }
 
-        sql += ` ORDER BY cm.timestamp DESC LIMIT ?`;
-        params.push(limit);
-
-        const messages = enrichMessagesWithCosmetics(hydrateReplies(db.all(sql, params).reverse()));
+        let rows = db.all(sql, params);
+        let complete = true;
+        if (afterId != null) { complete = rows.length <= limit; rows = rows.slice(0, limit); } else rows.reverse();
+        const latest_id = rows.reduce((m, x) => (x.id > m ? x.id : m), 0) || (afterId || 0);
+        const messages = enrichMessagesWithCosmetics(hydrateReplies(rows));
 
         // Currently-live slots for this broadcaster — lets the client render a
         // "hop between live streams" affordance.
@@ -607,7 +594,7 @@ router.get('/:streamId/history', optionalAuth, (req, res) => {
             } catch { /* non-critical */ }
         }
         res.json({
-            messages, liveSlots, channel,
+            messages, latest_id, complete, liveSlots, channel,
             activeStreamId: parseInt(req.params.streamId) || null,
             activeManagedId: stream ? (stream.managed_stream_id || null) : null,
         });
@@ -623,26 +610,11 @@ router.get('/channel/:userId/history', optionalAuth, (req, res) => {
     try {
         const userId = parseInt(req.params.userId);
         if (!userId) return res.status(400).json({ error: 'Bad user id' });
-        const limit = Math.min(parseInt(req.query.limit || '500'), 500);
-        const before = req.query.before;
-        const select = `SELECT cm.*, u.avatar_url, u.profile_color, u.role, u.display_name,
-                          u.username AS core_username,
-                          s.title AS source_stream_title, s.managed_stream_id AS source_managed_id,
-                          s.is_live AS source_is_live, ms.slug AS source_slug,
-                          COALESCE(bu.username, cu.username) AS source_channel`;
-        let sql = `${select}
-                   FROM chat_messages cm
-                   LEFT JOIN users u ON cm.user_id = u.id
-                   LEFT JOIN streams s ON cm.stream_id = s.id
-                   LEFT JOIN managed_streams ms ON s.managed_stream_id = ms.id
-                   LEFT JOIN users bu ON s.user_id = bu.id
-                   LEFT JOIN users cu ON cm.channel_user_id = cu.id
-                   WHERE cm.channel_user_id = ? AND cm.is_deleted = 0
-                     AND (cm.auto_delete_at IS NULL OR datetime(cm.auto_delete_at) > CURRENT_TIMESTAMP)`;
-        const params = [userId];
-        if (before) { sql += ' AND cm.timestamp < ?'; params.push(before); }
-        sql += ' ORDER BY cm.timestamp DESC LIMIT ?'; params.push(limit);
-        const messages = enrichMessagesWithCosmetics(hydrateReplies(db.all(sql, params).reverse()));
+        const decorate = (rows) => enrichMessagesWithCosmetics(hydrateReplies(rows));
+        const room = `channel:${userId}`;
+        const out = req.query.after_id != null
+            ? historyStore.delta(room, { afterId: req.query.after_id, limit: req.query.limit, decorate })
+            : historyStore.page(room, { limit: req.query.limit, before: req.query.before, decorate });
         let liveSlots = [], channel = null;
         try {
             const owner = db.getUserById(userId);
@@ -651,7 +623,7 @@ router.get('/channel/:userId/history', optionalAuth, (req, res) => {
                 .filter(ms => ms.is_currently_live)
                 .map(ms => ({ managed_stream_id: ms.id, slug: ms.slug, title: ms.title, live_session_id: ms.live_session_id }));
         } catch { /* non-critical */ }
-        res.json({ messages, liveSlots, channel, activeStreamId: null, activeManagedId: null });
+        res.json({ ...out, liveSlots, channel, activeStreamId: null, activeManagedId: null });
     } catch (err) {
         res.status(500).json({ error: 'Failed to get channel chat history' });
     }
