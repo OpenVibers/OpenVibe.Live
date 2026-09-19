@@ -51,7 +51,15 @@ async function _persistMomentFrame(image, streamId, offset) {
         const dir = path.join(MOMENTS_DIR, String(streamId));
         fs.mkdirSync(dir, { recursive: true });
         const file = `${Math.max(0, Math.round(offset))}.jpg`;
-        const input = Buffer.isBuffer(image) ? image : fs.readFileSync(image);
+        // captureFrame may hand back a Buffer, a file path, or a data: URI (the AI viewers'
+        // "look now" path). A data URI is not a filename — decode it instead of open()ing it.
+        let input;
+        if (Buffer.isBuffer(image)) input = image;
+        else if (typeof image === 'string' && image.startsWith('data:')) {
+            const m = image.match(/^data:[^;,]+;base64,(.*)$/s);
+            if (!m) return null;
+            input = Buffer.from(m[1], 'base64');
+        } else input = fs.readFileSync(image);
         await sharp(input).resize({ width: 320, withoutEnlargement: true }).jpeg({ quality: 72 }).toFile(path.join(dir, file));
         return `/data/ai-moments/${streamId}/${file}`;
     } catch (e) {
