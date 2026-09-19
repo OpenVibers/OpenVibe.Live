@@ -56,3 +56,4 @@ bin/*.exe
 bin/*.dll
 bin/*.so
 bin/*.dylib
+.deploy.lock
