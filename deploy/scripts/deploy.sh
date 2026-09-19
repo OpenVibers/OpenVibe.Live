@@ -66,7 +66,8 @@ IDLE_MAX_SECONDS="${IDLE_MAX_SECONDS:-28800}"
 KEEP_RELEASES="${KEEP_RELEASES:-5}"
 NPM="${NPM:-npm}"
 DRY_RUN="${DRY_RUN:-0}"
-LOCK_FILE="${LOCK_FILE:-/tmp/openvibe-live-deploy.lock}"
+# Not /tmp: fs.protected_regular stops root from reopening a lock a plain user created there.
+LOCK_FILE="${LOCK_FILE:-$BASE_DIR/.deploy.lock}"
 
 say() { echo "[Deploy] $*"; }
 die() { echo "[Deploy] ✗ $1" >&2; exit "${2:-1}"; }
