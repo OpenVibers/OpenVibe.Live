@@ -86,7 +86,10 @@
         // sits well below the fold, and measuring it during page load forced a full synchronous
         // layout (~165ms on a 4x-throttled phone profile) for something nobody could see yet.
         // Signed-in streamers get a context-aware button: the next thing they haven't set up.
-        const nextUp = () => { if (typeof setupNextUp === 'function') setupNextUp(document.getElementById('tour-next-up')); };
+        const nextUp = () => {
+            if (typeof setupNextUp === 'function') setupNextUp(document.getElementById('tour-next-up'));
+            if (typeof setupHeroNextUp === 'function') setupHeroNextUp(document.getElementById('hero-next-up'));
+        };
         setTimeout(nextUp, 900); setTimeout(nextUp, 3500);
         let raf = 0, dirty = true;
         const redraw = () => {

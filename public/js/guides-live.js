@@ -338,6 +338,8 @@
         try {
             const slot = document.getElementById('tour-next-up');
             if (slot && typeof window.setupNextUp === 'function') await window.setupNextUp(slot);
+            const hero = document.getElementById('hero-next-up');
+            if (hero && typeof window.setupHeroNextUp === 'function') await window.setupHeroNextUp(hero);
         } catch { /* */ }
     }
     window.refreshSetupProgress = refreshSetupProgress;
@@ -532,6 +534,22 @@
             try { localStorage.setItem('ov_join_open', panel.classList.contains('is-open') ? '1' : '0'); } catch { /* */ }
         });
     }
+
+    /**
+     * The hero copy of the quest. Only a signed-in streamer with tasks left sees it: it sits under
+     * the Stream/Tools/Game buttons so the next setup step is in the row of things to do, not a
+     * screen below. Everyone else (signed out, or all done) sees nothing there — the tour card
+     * further down still carries the pitch and the "start streaming" button.
+     */
+    window.setupHeroNextUp = async function (el) {
+        if (!el) return;
+        const hide = () => { el.hidden = true; el.innerHTML = ''; };
+        if (!me()) return hide();
+        const p = await loadProgress();
+        if (!p || !p.total || p.done >= p.total) return hide();
+        renderQuest(el, p);
+        el.hidden = false;
+    };
 
     window.setupNextUp = async function (el) {
         // The home page slot: setup progress for signed-in streamers, the pitch for everyone else.
