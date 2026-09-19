@@ -1899,7 +1899,7 @@ main#app { position: relative; z-index: 1; }
    ═══════════════════════════════════════════════════════════════ */
 .hero-rotate-wrap {
     display: inline-block;
-    text-align: left;
+    text-align: center;
     position: relative;
     min-width: 0;
     vertical-align: baseline;
