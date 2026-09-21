@@ -53,6 +53,7 @@ router.get('/', async (req, res) => {
     res.setHeader('Content-Type', type);
     res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
     res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     // No Referer/identifying headers are forwarded to the client here — nothing about the
     // original fetch (redirect chain, upstream headers) leaks past content-type.
     res.end(r.body);
