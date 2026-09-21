@@ -70,9 +70,12 @@ function sanitizeOfflineHtml(html) {
     return sanitizeHtml(s, HTML_OPTIONS);
 }
 
-// offline_css is a standalone <style> block, never inline script-bearing markup — but strip the
-// handful of constructs that historically executed code from CSS (dead in modern engines, kept
-// as defense in depth) and any @import (would be a first-party-bypassing, untracked fetch).
+// offline_css is interpolated verbatim into `<style>${css}</style>` inside the iframe's srcdoc
+// (app-channel.js) — a plain string template, not a real DOM API, so it is an HTML *document*
+// context, not just a CSS context. A value containing "</style><script>…" would close the style
+// element early and open a real (if currently sandbox-inert) <script> element; a "<base href=…>"
+// could hijack how the proxied, origin-relative img-proxy URLs resolve. CSS never legitimately
+// needs a literal "<" or ">", so both are escaped — this can't break any valid stylesheet.
 function sanitizeOfflineCss(css) {
     const s = String(css || '');
     if (!s.trim()) return '';
@@ -80,7 +83,9 @@ function sanitizeOfflineCss(css) {
         .replace(/@import[^;]*;?/gi, '')
         .replace(/expression\s*\(/gi, 'blocked(')
         .replace(/-moz-binding\s*:/gi, 'blocked:')
-        .replace(/behavior\s*:/gi, 'blocked:');
+        .replace(/behavior\s*:/gi, 'blocked:')
+        .replace(/</g, '\\3C ')
+        .replace(/>/g, '\\3E ');
 }
 
 module.exports = { sanitizeOfflineHtml, sanitizeOfflineCss };
