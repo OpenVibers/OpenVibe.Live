@@ -2692,11 +2692,16 @@ function _renderOfflineScreen(ch) {
     } else if (type === 'video' && url) {
         host.innerHTML = `<video class="ch-offline-media" src="${esc(url)}" autoplay muted loop playsinline></video>`;
     } else if (type === 'html' && (ch.offline_html || ch.offline_css)) {
+        // The server sanitizes offline_html/offline_css to basic markup with no script, frames,
+        // forms or event handlers (server/streaming/offline-html-sanitize.js), on both save and
+        // every read — so this iframe needs no script/form/popup privileges at all. `allow-popups`
+        // is the one grant kept, so a plain `<a target="_blank">` still opens; it carries no
+        // sandbox-escape (no allow-popups-to-escape-sandbox), no allow-scripts, no allow-forms,
+        // and (as before) no allow-same-origin.
         const doc = `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;color:#eee;font-family:system-ui,sans-serif;overflow:auto}a{color:#e0a44a}${ch.offline_css || ''}</style></head><body>${ch.offline_html || ''}</body></html>`;
         const iframe = document.createElement('iframe');
         iframe.className = 'ch-offline-html';
-        // Sandbox WITHOUT allow-same-origin → the custom page is fully isolated.
-        iframe.setAttribute('sandbox', 'allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms');
+        iframe.setAttribute('sandbox', 'allow-popups');
         iframe.setAttribute('referrerpolicy', 'no-referrer');
         iframe.srcdoc = doc;
         host.innerHTML = '';
@@ -2775,10 +2780,16 @@ async function _fillOfflineExplore(username) {
     }
     // The discover board (live now, hot clips, fresh reports, star of the day, streamers like
     // this one) fills the rest of the offline screen — with or without this channel's own content.
+    // Over a custom offline image, #ch-offline-screen is clipped to the image's own aspect ratio
+    // (overflow:hidden), so the board has to anchor after that whole box, not after the explore
+    // host nested inside its overlay, or it renders clipped away and invisible.
+    const overlay = host.closest('.ch-offline-overlay');
     const mountDiscover = () => {
-        if (host.closest('.ch-offline-overlay')) return;          // over a custom image: keep it light
+        const anchor = overlay ? document.getElementById('ch-offline-screen') : host;
+        if (!anchor) return;
         let d = document.getElementById('ch-discover');
-        if (!d) { d = document.createElement('div'); d.id = 'ch-discover'; host.insertAdjacentElement('afterend', d); }
+        if (!d) { d = document.createElement('div'); d.id = 'ch-discover'; }
+        anchor.insertAdjacentElement('afterend', d);
         if (typeof renderOfflineDiscover === 'function') renderOfflineDiscover(username, d);
     };
     if (!built.length) {

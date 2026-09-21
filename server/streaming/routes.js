@@ -32,6 +32,7 @@ const i18n = require('../i18n/translate');
 const robotStreamerService = require('../integrations/robotstreamer-service');
 const chatRelayService = require('../integrations/chat-relay-service');
 const chatServer = require('../chat/chat-server');
+const { sanitizeOfflineHtml, sanitizeOfflineCss } = require('./offline-html-sanitize');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -429,6 +430,10 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
 
         // Strip private fields from public channel response
         const publicChannel = { ...channel, follower_count: followerCount, is_following: isFollowing };
+        // Re-sanitize on every read: covers rows saved before offline-html-sanitize.js existed,
+        // with no backfill migration needed, at the cost of re-running a cheap parse per request.
+        if (publicChannel.offline_html) publicChannel.offline_html = sanitizeOfflineHtml(publicChannel.offline_html);
+        if (publicChannel.offline_css) publicChannel.offline_css = sanitizeOfflineCss(publicChannel.offline_css);
         // Whether the weather widget is on (without leaking the zip) — used by the
         // client to decide if the About tab should show.
         publicChannel.weather_enabled = !!(channel.weather_zip && channel.weather_detail && channel.weather_detail !== 'off');
@@ -715,8 +720,10 @@ router.put('/channel', requireAuth, (req, res) => {
             const t = String(req.body.offline_screen_type || 'none').trim();
             if (['none', 'image', 'video', 'html'].includes(t)) fields.offline_screen_type = t;
         }
-        if (hasOwn(req.body, 'offline_html')) fields.offline_html = String(req.body.offline_html || '').slice(0, 20000);
-        if (hasOwn(req.body, 'offline_css')) fields.offline_css = String(req.body.offline_css || '').slice(0, 20000);
+        // Sanitized on write (basic markup, no script/frames/forms — see offline-html-sanitize.js)
+        // and again on every read below, so rows saved before this sanitizer existed are covered too.
+        if (hasOwn(req.body, 'offline_html')) fields.offline_html = sanitizeOfflineHtml(String(req.body.offline_html || '').slice(0, 20000));
+        if (hasOwn(req.body, 'offline_css')) fields.offline_css = sanitizeOfflineCss(String(req.body.offline_css || '').slice(0, 20000));
 
         if (Object.keys(fields).length > 0) {
             db.updateChannel(req.user.id, fields);

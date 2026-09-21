@@ -112,10 +112,12 @@ async function assertPublicUrl(url) {
 }
 
 /**
- * GET a URL with the policy enforced at connect time on every redirect hop.
- * Resolves { status, url, headers, text } with text capped at maxBytes.
+ * GET a URL with the policy enforced at connect time on every redirect hop, collecting the body
+ * as a Buffer capped at maxBytes. Shared core for fetchText (decodes utf8) and fetchBuffer (raw
+ * bytes — images and other binary payloads must never go through a text decode/re-encode).
+ * Resolves { status, url, headers, body }.
  */
-async function fetchText(url, { timeoutMs = 8000, maxBytes = 512 * 1024, maxRedirects = 4, headers = {} } = {}) {
+async function fetchRaw(url, { timeoutMs = 8000, maxBytes = 512 * 1024, maxRedirects = 4, headers = {} } = {}) {
     let current = await assertPublicUrl(url);
     const deadline = Date.now() + timeoutMs;
     for (let hop = 0; hop <= maxRedirects; hop++) {
@@ -129,7 +131,7 @@ async function fetchText(url, { timeoutMs = 8000, maxBytes = 512 * 1024, maxRedi
                 if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location) { r.resume(); return resolve({ redirect: r.headers.location, status: r.statusCode }); }
                 const chunks = []; let size = 0;
                 r.on('data', (c) => { size += c.length; if (size > maxBytes) { chunks.push(c.subarray(0, c.length - (size - maxBytes))); r.destroy(); } else chunks.push(c); });
-                const done = () => resolve({ status: r.statusCode, headers: r.headers, text: Buffer.concat(chunks).toString('utf8') });
+                const done = () => resolve({ status: r.statusCode, headers: r.headers, body: Buffer.concat(chunks) });
                 r.on('end', done); r.on('close', done); r.on('error', reject);
             });
             req.on('timeout', () => req.destroy(new Error('timeout')));
@@ -140,6 +142,17 @@ async function fetchText(url, { timeoutMs = 8000, maxBytes = 512 * 1024, maxRedi
         current = await assertPublicUrl(new URL(res.redirect, current));
     }
     throw new EgressDenied('Too many redirects');
+}
+
+/** GET a URL as decoded utf8 text. Resolves { status, url, headers, text } with text capped at maxBytes. */
+async function fetchText(url, opts = {}) {
+    const r = await fetchRaw(url, opts);
+    return { status: r.status, url: r.url, headers: r.headers, text: r.body.toString('utf8') };
+}
+
+/** GET a URL as a raw Buffer (images, fonts, anything binary). Resolves { status, url, headers, body }. */
+async function fetchBuffer(url, opts = {}) {
+    return fetchRaw(url, opts);
 }
 
 /**
@@ -202,4 +215,4 @@ function proxy() {
     return _proxy;
 }
 
-module.exports = { isPublicAddress, embeddedV4, safeLookup, assertPublicUrl, fetchText, proxy, EgressDenied };
+module.exports = { isPublicAddress, embeddedV4, safeLookup, assertPublicUrl, fetchText, fetchBuffer, proxy, EgressDenied };

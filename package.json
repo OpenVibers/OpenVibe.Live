@@ -1,7 +1,7 @@
 {
   "name": "live",
   "version": "1.0.0",
-  "description": "OpenVibe.Live \u2014 free & open live streaming. Part of the OpenVibe network (media by OpenVibe.Media, identity by OpenVibe.Network).",
+  "description": "OpenVibe.Live — free & open live streaming. Part of the OpenVibe network (media by OpenVibe.Media, identity by OpenVibe.Network).",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
@@ -44,6 +44,7 @@
     "node-media-server": "^2.7.1",
     "onnxruntime-node": "^1.20.0",
     "openvibe-shared": "file:./vendor/openvibe-shared",
+    "sanitize-html": "^2.17.7",
     "sdp-transform": "^3.0.0",
     "sharp": "^0.33.0",
     "uuid": "^10.0.0",

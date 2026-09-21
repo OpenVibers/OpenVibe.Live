@@ -690,6 +690,9 @@ app.use('/api/kiosk', require('./kiosk/routes'));
 // Song-request queue (watch-party) — stays Live-local (OpenVibe.Media does not
 // carry the downloader/queue subsystem). Spends OpenCoins via the Network wallet.
 app.use('/api/media', require('./media/routes'));
+// Privacy proxy for third-party images (offline-screen HTML, panels): fetched server-side so a
+// viewer's IP/UA never reaches a host a streamer chose. SSRF-guarded, image-only, cache-forever.
+app.use('/api/img-proxy', require('./media/external-image-proxy'));
 app.use('/api/vibe-coding', vibeCodingRoutes);
 const ttsRoutes = require('./chat/tts-routes');
 app.use('/api/tts', ttsRoutes);
