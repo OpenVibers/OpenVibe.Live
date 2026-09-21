@@ -29,9 +29,19 @@ function _parseJson(text) {
     if (m) { try { return JSON.parse(m[0]); } catch { /* */ } }
     return null;
 }
+// The model has produced every wrong shape at least once: "live streaming for X", "for X",
+// "X live streaming", "X for live streaming". The hero prints "Live streaming for {X}", so X must
+// be the bare noun phrase. Strip the framing at both ends; anything still containing
+// "streaming"/"livestream" is dropped by the caller.
 function _stripAudiencePrefix(s) {
-    return String(s == null ? '' : s).replace(/^\s*(live\s+)?streaming\s+for\s+/i, '').replace(/^\s*for\s+/i, '');
+    return String(s == null ? '' : s)
+        .replace(/^\s*(live\s*-?\s*)?streaming\s+for\s+/i, '')
+        .replace(/^\s*for\s+/i, '')
+        .replace(/[\s,.\-–—:]*(for\s+)?(live\s*-?\s*)?stream(ing|ers|s)?\s*$/i, '')
+        .replace(/[\s,.\-–—:]*(live\s*-?\s*)?streaming\s+for\s*$/i, '')
+        .trim();
 }
+const _BAD_AUDIENCE = /\b(live\s*-?\s*)?stream(ing|s)?\b|\blivestream/i;
 function _cleanList(arr, maxLen, max) {
     if (!Array.isArray(arr)) return [];
     const seen = new Set(); const out = [];
@@ -50,7 +60,7 @@ function _topUp(fresh, old, cap) {
     for (const s of (old || [])) { const v = String(s || '').trim(); if (!v) continue; const k = v.toLowerCase(); if (seen.has(k)) continue; seen.add(k); out.push(v); if (out.length >= cap) break; }
     return out.slice(0, cap);
 }
-const SLOGAN_FORMAT = 2; // bump to force a one-time regen after a prompt/format change
+const SLOGAN_FORMAT = 3; // bump to force a one-time regen after a prompt/format change
 function _loadPool() {
     try { const cur = db.getState('home_hero_slogans'); const o = typeof cur === 'string' ? JSON.parse(cur) : cur; if (o) return { audiences: o.audiences || [], quips: o.quips || [], updated_at: o.updated_at || 0, v: o.v || 1 }; } catch { /* */ }
     return { audiences: [], quips: [], updated_at: 0, v: 0 };
@@ -135,7 +145,7 @@ ${usernames.join(', ') || '(none yet)'}
 === TASK ===
 Produce STRICT JSON, exactly this shape and nothing else:
 {
-  "audiences": [ ${TARGET} short noun phrases, each finishing "Live streaming for ___". CRITICAL: ONLY the noun phrase (e.g. "van-dwelling coders", "goosely's loyal 3 viewers") — do NOT include "live streaming for" or "for". 1-6 words, lowercase, no trailing punctuation. Mix on-theme audiences with community in-jokes drawn from the data. ],
+  "audiences": [ ${TARGET} noun phrases naming WHO the site is for. The page prints the fixed headline "Live streaming for {phrase}" — you supply ONLY {phrase}. The words "live", "streaming", "stream", "streamers" and "for" must NOT appear anywhere in a phrase. Good: "van-dwelling coders", "goosely's loyal 3 viewers", "crouton connoisseurs". Bad: "live streaming for coders", "coders live streaming", "for coders". 1-5 words, lowercase (keep usernames' casing), plural people-nouns, no trailing punctuation. Mix on-theme audiences with community in-jokes drawn from the data. ],
   "quips": [ ${TARGET} standalone one-liner taglines, punchy, <= 75 chars. Several should be clear references/memes about the real streamers, VODs, running jokes, or usernames above. ]
 }
 Return ONLY the JSON object.`;
@@ -144,13 +154,13 @@ Return ONLY the JSON object.`;
         if (!text) return;
         const parsed = _parseJson(text);
         if (!parsed) return;
-        let audiences = _cleanList((parsed.audiences || []).map(_stripAudiencePrefix), 60, TARGET);
+        let audiences = _cleanList((parsed.audiences || []).map(_stripAudiencePrefix).filter(a => a && !_BAD_AUDIENCE.test(a) && !/^for\b/i.test(a)), 60, TARGET);
         let quips = _cleanList(parsed.quips || [], 110, TARGET);
         if (audiences.length < 6 && quips.length < 6) return; // bad batch — keep yesterday's
 
         // Fresh daily batch; top up from the previous batch only if the model returned few.
         const old = _loadPool();
-        audiences = _topUp(audiences, old.audiences.map(_stripAudiencePrefix), TARGET);
+        audiences = _topUp(audiences, old.audiences.map(_stripAudiencePrefix).filter(a => a && !_BAD_AUDIENCE.test(a)), TARGET);
         quips = _topUp(quips, old.quips, TARGET);
         db.setState('home_hero_slogans', JSON.stringify({ v: SLOGAN_FORMAT, audiences, quips, updated_at: Date.now() }));
         console.log(`[Slogans] Fresh daily batch: ${audiences.length} words, ${quips.length} slogans (from full AI context)`);
@@ -167,7 +177,7 @@ function _dueForRegen() {
     const pool = _loadPool();
     if (pool.v !== SLOGAN_FORMAT) return true;                 // new prompt/format
     if (pool.audiences.length < 8) return true;                // empty / too small
-    if (pool.audiences.some(a => /streaming\s+for/i.test(String(a)))) return true; // old buggy format
+    if (pool.audiences.some(a => _BAD_AUDIENCE.test(String(a)))) return true; // old buggy shapes ("… live streaming")
     if (!pool.updated_at || (Date.now() - pool.updated_at) >= INTERVAL_MS) return true; // 12h elapsed
     return false;
 }

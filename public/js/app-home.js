@@ -782,11 +782,12 @@ function _cleanAudiences(arr) {
     if (!Array.isArray(arr)) return arr;
     return arr
         .map(s => String(s == null ? '' : s)
-            .replace(/^\s*(live\s+)?streaming\s+for\s+/i, '')  // strip a baked-in "live streaming for"
+            .replace(/^\s*(live\s*-?\s*)?streaming\s+for\s+/i, '')  // strip a baked-in "live streaming for"
             .replace(/^\s*for\s+/i, '')
+            .replace(/[\s,.\-–—:]*(for\s+)?(live\s*-?\s*)?stream(ing|ers|s)?\s*$/i, '') // …or a trailing "live streaming"
             .replace(/^["'‘’“”\-\s]+|["'‘’“”\s]+$/g, '')
             .replace(/[.!,;:]+$/, ''))
-        .filter(s => s && s.length <= 60);
+        .filter(s => s && s.length <= 60 && !/\b(live\s*-?\s*)?stream(ing|s)?\b|\blivestream/i.test(s));
 }
 async function loadHeroData() {
     // Last visit's hero (stats, collage, slogans) paints at once; the fresh numbers then roll in
