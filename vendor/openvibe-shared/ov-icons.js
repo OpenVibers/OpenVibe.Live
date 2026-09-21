@@ -173,7 +173,12 @@
         if (!solid) return forSprite ? def.glyph : `<g class="ovi-glyph">${def.glyph}</g>`;
         const [w, d] = solid; const sc = 18 / 512; const tx = (24 - w * sc) / 2, ty = 3;
         const paint = forSprite ? ' fill="currentColor" stroke="none" style="fill:var(--ovi-glyph,var(--text-primary,#e6edf7))"' : '';
-        return `<g class="ovi-glyph ovi-glyph--solid"${paint} transform="translate(${tx.toFixed(2)} ${ty}) scale(${sc.toFixed(5)})"><path d="${d}"/></g>`;
+        // The position/scale transform must live on a plain (unclassed) <g>, not on the .ovi-glyph
+        // element itself: that class sets transform-box/transform-origin for the hover-scale
+        // animation, and browsers resolve a "transform" *attribute* through the same CSS transform
+        // pipeline — so pairing it with a non-default transform-origin pivots the glyph around
+        // (12,12) instead of applying it in place, throwing every solid glyph off-centre.
+        return `<g class="ovi-glyph ovi-glyph--solid"${paint}><g transform="translate(${tx.toFixed(2)} ${ty}) scale(${sc.toFixed(5)})"><path d="${d}"/></g></g>`;
     }
 
     function resolve(name) {
