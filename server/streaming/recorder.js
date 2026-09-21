@@ -55,7 +55,48 @@ class StreamRecorder {
      * @param {{ streamKey?: string, videoPort?: number }} endpoint
      * @param {{ mode?: 'vod'|'clips', part?: number, baseTitle?: string }} opts
      */
+    /**
+     * A browser broadcaster that reconnects (new WS, new transport, new producers) leaves an
+     * RTP recording bound to producers that are about to die: the PlainRTP consumers feeding
+     * Media keep "recording" nothing and the stream ends as a zero-byte VOD. Watch for a video
+     * producer arriving on a DIFFERENT transport than the one we recorded from, and roll the
+     * recording to a new part on the new producer. A second video source on the same transport
+     * (screen share next to the camera) is not a reconnect and is left alone.
+     */
+    _installProducerWatch() {
+        if (this._producerWatch) return;
+        let webrtcSFU;
+        try { webrtcSFU = require('./webrtc-sfu'); } catch (e) { console.warn('[VOD] producer watch not installed:', e.message); return; }
+        this._producerWatch = ({ roomId, producerId, kind }) => {
+            if (kind !== 'video') return;
+            const m = /^stream-(\d+)$/.exec(String(roomId || ''));
+            if (!m) return;
+            const streamId = Number(m[1]);
+            const rec = this.activeRecordings.get(streamId);
+            if (!rec || rec.type !== 'rtp' || !rec.videoProducerId || rec.videoProducerId === producerId || rec._rolling) return;
+            const room = webrtcSFU.rooms?.get(roomId);
+            const oldEntry = room?.producers?.get(rec.videoProducerId);
+            const newEntry = room?.producers?.get(producerId);
+            const oldAlive = !!(oldEntry && oldEntry.producer && !oldEntry.producer.closed);
+            const sameTransport = !!(oldEntry && newEntry && oldEntry.transportId === newEntry.transportId);
+            if (oldAlive && sameTransport) return;
+            rec._rolling = true;
+            const next = { mode: rec.mode, part: (rec.part || 1) + 1, baseTitle: rec.baseTitle };
+            console.log(`[VOD] Broadcaster re-produced video for stream ${streamId} on a new transport — rolling recording to part ${next.part}`);
+            this.stopRecording(streamId);
+            const timer = setTimeout(() => {
+                try {
+                    const live = db.getStreamById(streamId);
+                    if (!live || !live.is_live || this.isActivelyRecording(streamId)) return;
+                    this.startRecording(streamId, rec.protocol, {}, next);
+                } catch (e) { console.warn(`[VOD] roll restart failed for stream ${streamId}:`, e.message); }
+            }, 1500);
+            if (timer.unref) timer.unref();
+        };
+        webrtcSFU.on('producer-added', this._producerWatch);
+    }
     startRecording(streamId, protocol, endpoint = {}, opts = {}) {
+        this._installProducerWatch();
         if (this.activeRecordings.has(streamId)) {
             console.log(`[VOD] Already recording stream ${streamId}`);
             return;
@@ -180,6 +221,7 @@ class StreamRecorder {
             return;
         }
         if (rec._cancel || !this.activeRecordings.has(streamId)) return;
+        rec.videoProducerId = videoProducer.id;
         const audioProducer = webrtcSFU.findProducerByKind(roomId, 'audio');
 
         // Codec info for Media's SDP: mimeType/clockRate from the producer; payload type
