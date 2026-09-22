@@ -14,6 +14,7 @@
  */
 'use strict';
 const db = require('../db/database');
+const principal = require('../net/network-principal');
 
 const NETWORK_INTERNAL_URL = (process.env.OV_NETWORK_INTERNAL_URL || 'http://127.0.0.1:4000').replace(/\/+$/, '');
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || process.env.OV_INTERNAL_KEY || '';
@@ -42,18 +43,25 @@ function networkUserId(localUserId) {
     }
 }
 
-async function _post(apiPath, body) {
+async function _post(apiPath, body, retried = false) {
     let res;
+    const auth = await principal.headersFor(apiPath);   // scoped service token, or X-Internal-Key
     try {
         res = await fetch(`${NETWORK_INTERNAL_URL}${apiPath}`, {
             method: 'POST',
-            headers: { 'X-Internal-Key': INTERNAL_API_KEY, 'Content-Type': 'application/json', Accept: 'application/json' },
+            headers: { ...auth, 'Content-Type': 'application/json', Accept: 'application/json' },
             body: JSON.stringify(body),
         });
     } catch (err) {
         throw new WalletError(`Network wallet unreachable: ${err.message}`, 0);
     }
     const json = await res.json().catch(() => null);
+    // A rejected token (expired key rotation, revoked grant) is retried once with the internal key.
+    // Idempotency keys make the retry safe: a credit that did land is not applied twice.
+    if (res.status === 401 && auth.Authorization && !retried) {
+        principal.tokenRejected(json && json.code);
+        return _post(apiPath, body, true);
+    }
     if (!res.ok) {
         throw new WalletError((json && json.error) || `wallet ${res.status}`, res.status, json);
     }

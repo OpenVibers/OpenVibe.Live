@@ -15,10 +15,12 @@ process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.INTERNAL_API_KEY = 'k-test';
 
 const received = [];
+const mode = { old: false };
 const network = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => { body += c; });
     req.on('end', () => {
+        if (mode.old) { res.statusCode = 404; return res.end('{}'); }
         assert.strictEqual(req.headers['x-internal-key'], 'k-test');
         assert.strictEqual(req.url, '/internal/identity/legacy-map');
         const { entries } = JSON.parse(body);
@@ -68,11 +70,9 @@ const network = http.createServer((req, res) => {
     assert.strictEqual(sync.subjectOf(uid), 'usr_01JAB2C3D4E5F6G7H8J9K0MNPQ', 'a token for a different network id cannot rewrite the link');
 
     // Network without the endpoint yet: skip quietly.
-    network.close();
-    const old = http.createServer((req, res) => { res.statusCode = 404; res.end('{}'); });
-    await new Promise((r) => old.listen(Number(process.env.OV_NETWORK_INTERNAL_URL.split(':').pop()), '127.0.0.1', r));
+    mode.old = true;
     assert.deepStrictEqual(await sync.syncLegacyMap(), { skipped: 'network has no /internal/identity yet' });
-    old.close();
+    network.close();
 
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log('identity sync: all checks passed');

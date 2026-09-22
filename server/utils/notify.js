@@ -35,13 +35,19 @@ function toNetworkIds(liveUserIds) {
     return { ids: [...ids], unlinked };
 }
 
-function _post(path, body) {
-    if (!INTERNAL_API_KEY) return Promise.resolve(null);
-    return fetch(`${OV_NETWORK_INTERNAL_URL}${path}`, {
+async function _post(path, body, retried = false) {
+    if (!INTERNAL_API_KEY) return null;
+    const auth = await require('../net/network-principal').headersFor(path);  // service token where Network accepts one
+    const res = await fetch(`${OV_NETWORK_INTERNAL_URL}${path}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Internal-Key': INTERNAL_API_KEY },
+        headers: { 'Content-Type': 'application/json', ...auth },
         body: JSON.stringify(body),
     });
+    if (res.status === 401 && auth.Authorization && !retried) {
+        require('../net/network-principal').tokenRejected();
+        return _post(path, body, true);
+    }
+    return res;
 }
 
 /**
