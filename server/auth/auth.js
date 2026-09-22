@@ -117,7 +117,12 @@ function resolveNetworkUser(decoded) {
     ).get(openvibeToolsId);
 
     if (linked) {
-        return _syncSsoUserFields(db.getUserById(linked.user_id), decoded);
+        const user = _syncSsoUserFields(db.getUserById(linked.user_id), decoded);
+        if (user && decoded.subject_id) {
+            user.subject_id = decoded.subject_id;
+            require('./identity-sync').noteSubject(user.id, openvibeToolsId, decoded.subject_id);
+        }
+        return user;
     }
 
     // Try matching by username (case-insensitive)

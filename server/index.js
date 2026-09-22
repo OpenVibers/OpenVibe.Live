@@ -1499,6 +1499,11 @@ async function start() {
     }, 60000);
     if (typeof maintenanceInterval.unref === 'function') maintenanceInterval.unref();
 
+    // 8b. Canonical identity: report every Live<->Network link to Network's identity_legacy_map
+    // (roadmap Wave 1). Idempotent on Network's side; daily, first run a few minutes after boot.
+    require('./utils/jobs').every('identity-legacy-sync', 24 * 60 * 60 * 1000, () => require('./auth/identity-sync').syncLegacyMap(),
+        { initialDelayMs: 3 * 60 * 1000, jitterMs: 60 * 1000 });
+
     // 9. Periodic registry refresh — re-syncs config with openvibe.network every 5 minutes.
     // This is a safety net: if the startup refresh failed (openvibe.network was temporarily
     // unreachable), subsequent refreshes will fix CORS, issuer, and other URL config.

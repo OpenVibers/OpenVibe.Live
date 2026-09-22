@@ -402,6 +402,10 @@ function initDb() {
         if (moved || dropped) console.log(`[DB] linked_accounts: ${moved} hobotools→network row(s) renamed, ${dropped} duplicate(s) dropped`);
     } catch (e) { console.warn('[DB] linked_accounts rename:', e.message); }
 
+        // Canonical subject id (usr_<ULID>) from the Network token, next to the integer network id (Wave 1).
+        const laCols = database.prepare('PRAGMA table_info(linked_accounts)').all().map(c => c.name);
+        if (!laCols.includes('subject_id')) database.exec('ALTER TABLE linked_accounts ADD COLUMN subject_id TEXT');
+        database.exec(`CREATE INDEX IF NOT EXISTS idx_linked_subject ON linked_accounts(subject_id)`);
         database.exec(`CREATE INDEX IF NOT EXISTS idx_linked_service ON linked_accounts(service, service_user_id)`);
         database.exec(`CREATE INDEX IF NOT EXISTS idx_linked_user ON linked_accounts(user_id)`);
     } catch (e) { console.warn('[DB] linked_accounts migration:', e.message); }
