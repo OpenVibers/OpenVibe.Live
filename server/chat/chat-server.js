@@ -1608,7 +1608,7 @@ class ChatServer {
                     const title = `Chat paste by ${client.username || client.displayName || 'anon'}`;
                     const userId = client.userId || client.user?.id || null;
                     // Pastes live in OpenVibe.Media now — post through the media client.
-                    require('../media-client').createPaste({
+                    require('../pastes-client').createPaste({
                         title,
                         content: args.trim(),
                         language: 'auto',

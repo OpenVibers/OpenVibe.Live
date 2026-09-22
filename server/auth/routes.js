@@ -216,7 +216,7 @@ router.post('/avatar', requireAuth, avatarUpload.single('avatar'), async (req, r
         const makePublic = req.body.public === undefined ? true : !(req.body.public === 'false' || req.body.public === false || req.body.public === '0');
         const imageBuffer = fs.readFileSync(req.file.path);
         try { fs.unlinkSync(req.file.path); } catch { /* */ }
-        const paste = await media.createPaste({
+        const paste = await require('../pastes-client').createPaste({
             title: 'Avatar upload',
             content: '',
             language: 'text',

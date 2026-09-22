@@ -197,14 +197,14 @@ async function _maybeLivePaste(stream, image, r, offset) {
     if (!buffer || buffer.length < 2000) return;
     const username = stream.username || (db.getUserById(stream.user_id) || {}).username || 'someone';
     let base = 'https://openvibe.live'; try { const c = require('../config'); base = String(c.baseUrl || c.publicUrl || base).replace(/\/$/, ''); } catch { /* */ }
-    const media = require('../media-client');
-    const paste = await media.createPaste({
+    // AI output is never filed under a person (roadmap 33): origin 'ai', the stream rides along as its source.
+    const paste = await require('../pastes-client').createPaste({
         slug: moments.makeSlug ? moments.makeSlug() : undefined, user_id: stream.user_id,
         title: r.title.slice(0, 80), content: `${r.description}\n\n🔴 Caught live on @${username}'s stream — ${base}/${username}`, language: 'text', visibility: 'public',
         stream_id: stream.id, metadata: JSON.stringify({ ai_moment: true, live: true, stream_id: stream.id, offset, username, vod_link: null }),
         ai_summary: r.description, ai_tags: JSON.stringify(Array.isArray(r.tags) ? r.tags.slice(0, 8) : []),
         screenshot: { buffer, filename: `live-${stream.id}-${offset}.jpg`, contentType: 'image/jpeg' },
-    });
+    }, { origin: 'ai' });
     if (paste) {
         registry.record({ kind: 'paste', stream_id: stream.id, offset, desc: r.description, title: r.title });
         console.log(`[AI-Moments] live paste for stream ${stream.id} at ${offset}s: "${r.title}"`);

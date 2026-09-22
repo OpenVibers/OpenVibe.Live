@@ -20,9 +20,24 @@ const PAUSE_MS = 5 * 60 * 1000;
 // Network routes that accept a service token (OpenVibe.Network server/internal/routes.js TOKEN_ROUTES).
 const TOKEN_PATHS = new Set(['/internal/coins/credit', '/internal/coins/debit', '/internal/coins/transfer', '/internal/notifications/push', '/internal/notifications/push-bulk']);
 
-const tokens = CLIENT_SECRET ? serviceAuth.createTokenClient({
-    tokenUrl: `${NETWORK_INTERNAL_URL}/oauth/token`, clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, audience: 'openvibe.network',
-}) : null;
+const _clients = new Map();
+/** One cached client-credentials token client per audience (openvibe.network, openvibe.community, ...). */
+function clientFor(audience) {
+    if (!CLIENT_SECRET) return null;
+    if (!_clients.has(audience)) {
+        _clients.set(audience, serviceAuth.createTokenClient({ tokenUrl: `${NETWORK_INTERNAL_URL}/oauth/token`, clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, audience }));
+    }
+    return _clients.get(audience);
+}
+const tokens = clientFor('openvibe.network');
+
+/** Bearer headers for another service. Throws when no token can be had (no fallback: new APIs are token-only). */
+async function serviceHeaders(audience) {
+    const c = clientFor(audience);
+    if (!c) throw new Error('OV_OAUTH_CLIENT_SECRET is not set');
+    return c.authHeaders();
+}
+function invalidate(audience) { const c = _clients.get(audience); if (c) c.invalidate(); }
 let pausedUntil = 0;
 let lastFailure = null;
 const stats = { token: 0, key: 0, tokenFailures: 0 };
@@ -53,4 +68,4 @@ function tokenRejected(problemCode) {
     console.warn(`[Principal] Network refused the service token (${problemCode || '401'}); using the internal key for ${PAUSE_MS / 60000} min`);
 }
 
-module.exports = { headersFor, tokenRejected, TOKEN_PATHS, stats, _reset() { pausedUntil = 0; if (tokens) tokens.invalidate(); } };
+module.exports = { headersFor, tokenRejected, serviceHeaders, invalidate, TOKEN_PATHS, stats, _reset() { pausedUntil = 0; for (const c of _clients.values()) c.invalidate(); } };

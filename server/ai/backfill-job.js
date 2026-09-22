@@ -96,7 +96,7 @@ async function tick() {
         // a work queue and we post results back.
         if (ai.pasteAnalysisEnabled && ai.pasteAnalysisEnabled()) {
             try {
-                const out = await media.listPastesNeedingAi(anyLive ? 1 : 3).catch(() => null);
+                const out = await require('../pastes-client').listPastesNeedingAi(anyLive ? 1 : 3).catch(() => null);
                 for (const p of (out?.pastes || [])) {
                     if (!p || !p.slug) continue;
                     let r = null;
@@ -110,7 +110,7 @@ async function tick() {
                         r = await ai.analyzeTextPaste(p.content || '', p.title).catch(() => null);
                     }
                     if (!r || !r.description) continue;
-                    await media.setPasteAi(p.slug, {
+                    await require('../pastes-client').setPasteAi(p.slug, {
                         ai_summary: r.description,
                         ai_tags: JSON.stringify(r.tags || []),
                     }).catch((e) => console.warn('[AI backfill] paste ai write:', e.message));

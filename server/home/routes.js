@@ -58,7 +58,7 @@ async function _mediaContent() {
     const [vods, clips, pastes] = await Promise.all([
         media.listVods({ limit: 12 }).then(r => r?.vods || (Array.isArray(r) ? r : [])).catch(() => _mediaPool.vods),
         media.listClips({ limit: 12 }).then(r => r?.clips || (Array.isArray(r) ? r : [])).catch(() => _mediaPool.clips),
-        media.listPastes({ limit: 12, visibility: 'public' }).then(r => r?.pastes || (Array.isArray(r) ? r : [])).catch(() => _mediaPool.pastes),
+        require('../pastes-client').listPastes({ limit: 12, visibility: 'public' }).then(r => r?.pastes || (Array.isArray(r) ? r : [])).catch(() => _mediaPool.pastes),
     ]);
     _mediaPool = { vods, clips, pastes, at: Date.now() };
     return _mediaPool;

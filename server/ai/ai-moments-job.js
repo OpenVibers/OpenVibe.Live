@@ -435,7 +435,7 @@ async function tick(opts = {}) {
                 // Post the image paste to OpenVibe.Media. Extra fields (slug/metadata/
                 // ai_summary/ai_tags/stream_id) are inherited-shape extensions the
                 // contract leaves open — Media ignores what it doesn't know.
-                const paste = await media.createPaste({
+                const paste = await require('../pastes-client').createPaste({
                     slug, user_id: v.user_id,
                     title: title.slice(0, 80), content, language: 'text', visibility: 'public',
                     stream_id: v.stream_id, metadata,
@@ -445,7 +445,7 @@ async function tick(opts = {}) {
                         filename: path.basename(screenshotPath),
                         contentType: 'image/jpeg',
                     },
-                });
+                }, { origin: 'ai' });
                 if (paste) {
                     pasteSlug = paste.slug || slug;
                     // Screenshot pastes must use the image endpoint — /raw serves the

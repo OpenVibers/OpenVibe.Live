@@ -30,10 +30,10 @@ async function _cached(key, fn) {
 }
 const _vodList = (limit, offset = 0) => _cached(`vl:${limit}:${offset}`, async () => (await media.listVods({ limit, offset }))?.vods || []);
 const _clipList = (limit, offset = 0) => _cached(`cl:${limit}:${offset}`, async () => (await media.listClips({ limit, offset }))?.clips || []);
-const _pasteList = (limit, offset = 0) => _cached(`pl:${limit}:${offset}`, async () => (await media.listPastes({ limit, offset, visibility: 'public' }))?.pastes || []);
+const _pasteList = (limit, offset = 0) => _cached(`pl:${limit}:${offset}`, async () => (await require('../pastes-client').listPastes({ limit, offset, visibility: 'public' }))?.pastes || []);
 const _vodGet = (id) => _cached(`v:${id}`, () => media.getVod(id));
 const _clipGet = (id) => _cached(`c:${id}`, () => media.getClip(id));
-const _pasteGet = (slug) => _cached(`p:${slug}`, () => media.getPaste(slug));
+const _pasteGet = (slug) => _cached(`p:${slug}`, () => require('../pastes-client').getPaste(slug));
 
 // Overlay the Live-owned AI state (vod_ai_state/clip_ai_state) onto a Media row so
 // descriptions/transcripts keep enriching the crawlable snapshot.
@@ -572,7 +572,7 @@ async function buildSitemap() {
         urls.push(_urlTag(`/clip/${c.id}`, isoDate(c.created_at), 'weekly', '0.6'));
         if (c.username) seenChannels.add(c.username);
     });
-    await page((l, o) => media.listPastes({ limit: l, offset: o, visibility: 'public' }).then(r => r?.pastes || []), 200, SITEMAP_CAP, (x) => {
+    await page((l, o) => require('../pastes-client').listPastes({ limit: l, offset: o, visibility: 'public' }).then(r => r?.pastes || []), 200, SITEMAP_CAP, (x) => {
         if (!Number(x.is_nsfw)) urls.push(_urlTag(`/p/${x.slug}`, isoDate(x.created_at), 'monthly', '0.4'));
     });
     for (const u of seenChannels) if (u) urls.push(_urlTag(`/@${u}`, null, 'daily', '0.6'));
