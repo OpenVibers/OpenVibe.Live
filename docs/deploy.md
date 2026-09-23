@@ -47,6 +47,12 @@ restart. A rollback resets the checkout but cannot restore previous `node_module
   `OV_APP_ROOT=/opt/openvibe.live/current`, so static files and docs are read through the symlink and
   a static-only switch needs no restart.
 - If the restarted release never becomes ready, `current` is switched back and restarted (exit 3).
+  "Ready" is `GET /api/ready` → 200: boot finished and the database answers. The WebRTC SFU,
+  OpenVibe.Media and the Network signing key are optional checks: when one is missing the answer is
+  still 200 with `"status": "degraded"` and the check named in `degraded`, never a silent pass.
+- `GET /metrics` (Prometheus text: requests by route template, latency, in-flight, process,
+  `release_info`, live streams, WebSocket connections per server, outbox) answers only
+  `curl http://127.0.0.1:3000/metrics` on the host; through nginx it is a 404.
 - `--rollback` selects the previous release with **its own** `node_modules`.
 - The last 5 releases are kept.
 - Content-hashed assets from the previous release are still served under their old hashes, so a page
