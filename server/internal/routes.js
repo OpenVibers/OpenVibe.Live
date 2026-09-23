@@ -22,43 +22,8 @@ function notifyChat(userId) {
     try { const cs = require('../chat/chat-server'); if (cs.remote) cs.userChanged(userId); } catch { /* non-critical */ }
 }
 
-// ── Site copy for the shared footer (OpenVibe.Network → here, once a day) ─────────────
-// The Network sends facts about each site plus an allow-list of link ids; the model writes a
-// short blurb per site and PICKS ids from that list. It never returns URLs or markup, so nothing
-// it says can become a link or a tag on another site. Gated by the shared AI budget.
-let _siteCopyBusy = false;
-router.post('/ai/site-copy', async (req, res) => {
-    if (_siteCopyBusy) return res.status(429).json({ ok: false, error: 'busy' });
-    const sites = Array.isArray(req.body?.sites) ? req.body.sites.slice(0, 24) : [];
-    const links = Array.isArray(req.body?.links) ? req.body.links.slice(0, 80) : [];
-    if (!sites.length) return res.status(400).json({ ok: false, error: 'sites required' });
-    const clean = (v, n) => String(v == null ? '' : v).replace(/[<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
-    const facts = sites.map(x => ({ id: clean(x.id, 40), name: clean(x.name, 60), what: clean(x.what, 400), popular: (Array.isArray(x.popular) ? x.popular : []).slice(0, 8).map(v => clean(v, 60)) }));
-    const linkList = links.map(l => ({ id: clean(l.id, 60), name: clean(l.name, 60), about: clean(l.about, 120) }));
-    _siteCopyBusy = true;
-    try {
-        const aiService = require('../ai/ai-service');
-        if (aiService.enabled()) {
-            // AI_SERVICE=remote: OpenVibe.AI owns this workflow (network.site_copy). Network should call it
-            // directly; until it does, this endpoint answers from there instead of from Live's own key.
-            const run = await aiService.run('network.site_copy', { sites: facts, links: linkList });
-            const out = aiService.usable(run);
-            if (!out || !Array.isArray(out.sites)) return res.status(503).json({ ok: false, error: 'AI unavailable or over budget' });
-            return res.json({ ok: true, model: (run.provenance && run.provenance.model) || null, run_id: run.id, sites: out.sites });
-        }
-        const llm = require('../ai/llm');
-        const out = await llm.complete({
-            role: 'summary', kind: 'site_copy', source: 'network-footer', maxTokens: 2200, temperature: 0.7, timeoutMs: 60000,
-            system: 'You write footer copy for OpenVibe, an open source, community-run network of sites (live streaming, online tools, community pastes, games, media). Voice: plain, confident, specific, a little playful. Never claim anything is free, costs $0, or has no ads. No hype words, no emoji, no markup, no URLs. For each site write one blurb of at most 150 characters saying what a visitor can do there right now, and choose 4 link ids from the provided list that a visitor of that site would most likely want next (prefer other sites and popular tools; never the site itself).',
-            user: JSON.stringify({ sites: facts, links: linkList }),
-            json: { name: 'site_copy', strict: true, schema: { type: 'object', additionalProperties: false, required: ['sites'], properties: { sites: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['id', 'blurb', 'picks'], properties: { id: { type: 'string' }, blurb: { type: 'string' }, picks: { type: 'array', items: { type: 'string' } } } } } } } },
-        });
-        if (!out || !out.json || !Array.isArray(out.json.sites)) return res.status(503).json({ ok: false, error: 'AI unavailable or over budget' });
-        res.json({ ok: true, model: out.model, sites: out.json.sites });
-    } catch (err) {
-        res.status(502).json({ ok: false, error: err.message });
-    } finally { _siteCopyBusy = false; }
-});
+// Footer site copy is written by OpenVibe.AI for the Network directly (network.site_copy); the
+// /internal/ai/site-copy fallback that used to live here was retired on 2026-09-23.
 
 router.post('/url-registry/refresh', async (req, res) => {
     try {
