@@ -50,15 +50,16 @@ const stub = http.createServer((req, res) => {
     });
 });
 
-function signed(event, secret) {
-    const { signDelivery } = require('openvibe-sdk/events');
+function signed(event, secret, { now } = {}) {
+    const { signDelivery, signDeliveryHeaders } = require('openvibe-sdk/events');
     const raw = Buffer.from(JSON.stringify({ event, seq: 1 }));
-    return { raw, sig: signDelivery(raw, secret) };
+    return { raw, headers: signDeliveryHeaders(raw, secret, { now }), v1: { 'X-OpenVibe-Signature': signDelivery(raw, secret) } };
 }
 
-async function deliver(base, event, { secret = 'whsec_test', sig } = {}) {
-    const s = signed(event, secret);
-    const res = await fetch(`${base}/internal/openre-events`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-OpenVibe-Signature': sig || s.sig }, body: s.raw });
+/** POST a delivery: all three signature headers by default; `v1Only` sends only X-OpenVibe-Signature; `now` backdates the v2 timestamp. */
+async function deliver(base, event, { secret = 'whsec_test', headers, v1Only = false, now } = {}) {
+    const s = signed(event, secret, { now });
+    const res = await fetch(`${base}/internal/openre-events`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(headers || (v1Only ? s.v1 : s.headers)) }, body: s.raw });
     return res.status;
 }
 
@@ -162,7 +163,9 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     assert.strictEqual(openreCalls.filter(c => c.url.endsWith('/keys/rotate')).pop().subject, SUBJECT);
 
     // ── Mirror ────────────────────────────────────────────────
-    assert.strictEqual(await deliver(base, sessionEvent('started', SES(3), 2), { sig: 'sha256=00' }), 401, 'bad signature');
+    assert.strictEqual(await deliver(base, sessionEvent('started', SES(3), 2), { headers: { 'X-OpenVibe-Signature': 'sha256=00', 'X-OpenVibe-Timestamp': '1', 'X-OpenVibe-Signature-V2': 't=1,v2=00' } }), 401, 'bad signature');
+    assert.strictEqual(await deliver(base, sessionEvent('started', SES(3), 2), { v1Only: true }), 401, 'v1 only (no v2 header): refused');
+    assert.strictEqual(await deliver(base, sessionEvent('started', SES(3), 2), { now: Date.now() - 301000 }), 401, 'stale v2 (outside the 300 s window): refused');
     assert.strictEqual(await deliver(base, sessionEvent('started', SES(3), 2, { mirror_to_live: false })), 204);
     assert.strictEqual(d.prepare('SELECT COUNT(*) AS n FROM streams WHERE is_live = 1').get().n, 0, 'no consent, no mirror');
 

@@ -138,7 +138,8 @@ function webhookHandler(req, res) {
     const secret = process.env.OPENRE_EVENTS_SECRET || '';
     if (!secret) return res.status(503).json({ error: 'OPENRE_EVENTS_SECRET is not set' });
     const { parseDelivery } = require('openvibe-sdk/events');
-    const delivery = parseDelivery(req.rawBody, req.headers, secret);
+    // Signature v2 only: HMAC over "<t>.<raw body>" with t within ±300 s; a v1-only (v2 stripped) or stale delivery is refused.
+    const delivery = parseDelivery(req.rawBody, req.headers, secret, { requireV2: true });
     if (!delivery) return res.status(401).json({ error: 'bad signature' });
     // Signed but unusable (no event_id): acknowledge so it is not redelivered forever.
     if (!delivery.event || !delivery.event.event_id) return res.status(204).end();
