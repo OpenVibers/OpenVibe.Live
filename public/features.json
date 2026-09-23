@@ -8,6 +8,7 @@
         "/css/home-tour.css"
       ],
       "js": [
+        "/js/ov-rail.js",
         "/js/app-home.js",
         "/js/ov-odometer.js",
         "/js/ov-density.js",

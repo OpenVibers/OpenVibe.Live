@@ -817,13 +817,28 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 }
 
 /*  ── from i18n-star.css ──  */
-.home-star-section { margin: 4px 0 28px; }
-.star-card-border::before {
-    content: ''; position: absolute; inset: -60%; z-index: -1;
-    background: conic-gradient(from 0deg, #fbbf24, #f472b6, var(--accent), #fbbf24);
-    animation: starSpin 7s linear infinite;
+/* ═══ Star of OpenVibe (decoration and compact grid: css/i18n-star.css) ═══
+   Gold is the card's one fixed hue, but text never uses it raw: --star-ink mixes it with the
+   theme's text colour (light gold on dark themes, deep amber on light ones). */
+.home-star-section {
+    margin: 4px 0 28px;
+    --star-gold: #fbbf24;
+    --star-ink: color-mix(in srgb, #f59e0b 60%, var(--text-primary));
+    --star-pink-ink: color-mix(in srgb, #ec4899 58%, var(--text-primary));
 }
-.star-card.is-live { grid-template-columns: auto 1fr minmax(260px, 340px); }
+.home-star-section .section-header h2 > i.star-head-icon { color: var(--star-ink); }
+
+/* Border sweep: a rotating oversized square left a wide desktop card's border in patches. The
+   gradient turns in place instead (registered angle, like the pitch banner), at any card shape. */
+@property --star-sweep { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+@keyframes starSweep { to { --star-sweep: 360deg; } }
+.star-card-border::before {
+    content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
+    background: conic-gradient(from var(--star-sweep), var(--star-gold), #f472b6, var(--accent), var(--star-gold));
+    animation: starSweep 7s linear infinite;
+}
+.home-star-section:has(.star-card.is-compact) .star-card-border::before { opacity: 0.55; }
+
 .star-petals span:nth-child(1) { left: 6%;  animation-delay: 0s;   }
 .star-petals span:nth-child(2) { left: 22%; animation-delay: -2s;  font-size: 0.9rem; }
 .star-petals span:nth-child(3) { left: 41%; animation-delay: -5s;  }
@@ -833,8 +848,8 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .star-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .star-body { min-width: 0; }
-.star-kicker { display: inline-flex; align-items: center; gap: 7px; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: #fbbf24; margin-bottom: 4px; }
-.star-name { margin: 0 0 6px; font-size: clamp(1.4rem, 3vw, 2rem); font-weight: 900; line-height: 1.1; letter-spacing: -0.01em; }
+.star-kicker { display: inline-flex; align-items: center; gap: 7px; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--star-ink); margin-bottom: 4px; }
+.star-name { margin: 0 0 6px; font-size: clamp(1.4rem, 3vw, 2rem); font-weight: 900; line-height: 1.1; letter-spacing: -0.01em; overflow-wrap: anywhere; }
 .star-name a { color: inherit; text-decoration: none; }
 .star-name a:hover { color: var(--accent-light); }
 .star-name .star-jp { display: block; font-size: 0.55em; font-weight: 600; color: var(--text-secondary); margin-top: 2px; }
@@ -844,38 +859,46 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     font-size: 0.74rem; font-weight: 700; color: var(--text-primary);
     background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
 }
-.star-chip.gold { color: #fde68a; background: rgba(251,191,36,0.12); border-color: rgba(251,191,36,0.45); }
-.star-chip.pink { color: #fbcfe8; background: rgba(244,114,182,0.12); border-color: rgba(244,114,182,0.45); }
+.star-chip.gold { color: var(--star-ink); background: color-mix(in srgb, var(--star-gold) 12%, transparent); border-color: color-mix(in srgb, var(--star-gold) 45%, transparent); }
+.star-chip.pink { color: var(--star-pink-ink); background: color-mix(in srgb, #f472b6 12%, transparent); border-color: color-mix(in srgb, #f472b6 45%, transparent); }
 .star-bio { margin: 0 0 4px; color: var(--text-primary); line-height: 1.5; white-space: pre-wrap; font-size: 0.95rem; }
 .star-bio-src { margin: 0 0 8px; color: var(--text-secondary); font-size: 0.82rem; white-space: pre-wrap; line-height: 1.45; }
 .star-bio-label { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-light); margin: 6px 0 2px; }
 .star-overview { color: var(--text-secondary); font-size: 0.84rem; line-height: 1.45; margin: 8px 0 0; }
-.star-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; margin-bottom: 6px; }
-.star-actions .btn { font-weight: 700; }
 .star-btn-watch::after { content: ''; position: absolute; inset: 0; background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.6) 50%, transparent 65%); background-size: 250% 100%; animation: starSheen 2.6s linear infinite; pointer-events: none; }
 .star-live-card { align-self: stretch; }
 .star-live-card .stream-card { height: 100%; }
-.star-offline { color: var(--text-muted); font-size: 0.8rem; margin-top: 8px; }
+/* Icon beside the sentence, not above a wrapped second line. */
+.star-offline { display: flex; align-items: baseline; gap: 7px; margin-top: 10px; color: var(--text-muted); font-size: 0.8rem; line-height: 1.4; text-wrap: pretty; }
+.star-offline > i { flex: none; }
 
 @media (max-width: 860px) {
     .home-star-section { margin-bottom: 34px; }
-    .star-avatar-wrap { margin: 0 auto; }
-    .star-chips, .star-actions { justify-content: center; }
     .star-live-card { max-width: 420px; width: 100%; margin: 0 auto; }
 }
-
 @media (prefers-reduced-motion: reduce) {
     .star-petals { display: none; }
 }
-.rs-lite .star-card-border::before { animation: none; background: linear-gradient(135deg, #fbbf24, #f472b6, var(--accent)); inset: 0; }
+.rs-lite .star-card-border::before { animation: none; background: linear-gradient(135deg, var(--star-gold), #f472b6, var(--accent)); inset: 0; }
 .rs-lite .star-avatar-glow, .rs-lite .star-petals { display: none; }
 .rs-lite .star-avatar-ring { animation: none; }
-.rs-lite .star-btn-watch { box-shadow: none; }
-.star-why { margin: 10px 0 12px; padding: 12px 14px; border-radius: 12px; background: linear-gradient(135deg, rgba(251,191,36,0.12), rgba(244,114,182,0.08)); border: 1px solid rgba(251,191,36,0.35); }
-.star-why-head { font-size: 1.05rem; font-weight: 900; color: #fff; margin-bottom: 4px; }
+
+/* Why they're today's star; "picked by" and the countdown each stay on one line. */
+.star-why {
+    margin: 0 0 12px; padding: 12px 14px; border-radius: 12px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--star-gold) 12%, transparent), color-mix(in srgb, #f472b6 8%, transparent));
+    border: 1px solid color-mix(in srgb, var(--star-gold) 35%, transparent);
+}
+.star-why-head { font-size: 1.05rem; font-weight: 900; color: var(--text-primary); margin-bottom: 4px; }
 .star-why-body { font-size: 0.92rem; line-height: 1.45; color: var(--text-secondary); }
-.star-why-meta { margin-top: 8px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #fbbf24; }
-.star-why-meta i { margin-right: 4px; }
+.star-why-meta {
+    display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 9px;
+    font-size: 0.68rem; font-weight: 750; letter-spacing: 0.07em; text-transform: uppercase; color: var(--star-ink);
+}
+.star-why-meta > span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.star-why-meta .star-why-next { color: var(--text-muted); }
+
+/* Compact card: avatar, who they are, and one action row. */
 .star-card.is-compact .star-avatar-wrap { grid-area: avatar; width: 62px; height: 62px; align-self: center; }
 .star-card.is-compact .star-avatar { width: 62px; height: 62px; font-size: 1.45rem; }
 .star-card.is-compact .star-body {
@@ -889,24 +912,11 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .star-card.is-compact .star-name .star-jp { font-size: 0.5em; margin-top: 0; }
 .star-card.is-compact .star-chips { gap: 5px; margin: 3px 0 0; }
 .star-card.is-compact .star-chip {
-    font-size: 0.68rem; padding: 2px 9px; border-radius: 999px;
-    background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.12); color: var(--text-secondary);
+    font-size: 0.68rem; padding: 2px 9px; border-radius: 999px; color: var(--text-secondary);
+    background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+    border-color: color-mix(in srgb, var(--text-primary) 14%, transparent);
 }
-.star-card.is-compact .star-chip.gold { color: #fde68a; background: rgba(251,191,36,0.1); border-color: rgba(251,191,36,0.3); }
-.star-card.is-compact .star-actions {
-    grid-area: actions; display: flex; flex-wrap: wrap; align-items: center;
-    gap: 8px; margin: 4px 0 0;
-}
-.star-card.is-compact .star-actions .btn,
-.star-card.is-compact .star-expand {
-    height: 38px; padding: 0 15px; font-size: 0.82rem; border-radius: 11px;
-    display: inline-flex; align-items: center; gap: 8px; line-height: 1;
-}
-.star-card.is-compact .star-btn-watch { flex: 1 1 auto; min-width: 140px; justify-content: center; }
-.star-card.is-compact .star-actions .btn-outline { flex: 0 1 auto; }
-.star-card.is-compact .star-expand { flex: 0 0 auto; margin-left: auto; padding-left: 8px; }
-.star-expand.is-open { padding-right: 16px; }
-.star-expand.is-open span { font-weight: 800; }
+.star-card.is-compact .star-chip.gold { color: var(--star-ink); background: color-mix(in srgb, var(--star-gold) 10%, transparent); border-color: color-mix(in srgb, var(--star-gold) 32%, transparent); }
 .star-more[hidden] { display: none !important; }
 .star-more { display: block; grid-column: 1 / -1; }
 .star-card > .star-actions, .star-card > .star-more { grid-column: 1 / -1; }
@@ -914,7 +924,7 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .star-card.is-swapping { overflow: hidden; transition: height 0.42s cubic-bezier(.2, 1, .3, 1); }
 .star-card.is-compact .star-avatar-ring {
     inset: -3px; border-radius: 50%;
-    background: conic-gradient(from 0deg, #fbbf24, #f472b6, var(--accent), #fbbf24);
+    background: conic-gradient(from 0deg, var(--star-gold), #f472b6, var(--accent), var(--star-gold));
     animation: starRingSpin 6s linear infinite;
     opacity: 0.9;
 }
@@ -922,24 +932,53 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .star-card.is-compact .star-avatar { transition: transform 0.28s cubic-bezier(.2, 1.2, .3, 1); }
 .star-card.is-compact:hover .star-avatar { transform: scale(1.04); }
 
-.star-expand {
-    cursor: pointer; font: inherit; font-weight: 750;
-    color: color-mix(in srgb, #fbbf24 82%, var(--text-primary));
-    background: color-mix(in srgb, #fbbf24 9%, transparent);
-    border: 1px solid color-mix(in srgb, #fbbf24 26%, transparent);
-    transition: transform 0.2s cubic-bezier(.2, 1, .3, 1), background 0.2s, border-color 0.2s, box-shadow 0.22s;
+/* ── Action row: one family ──────────────────────────────────────────────────
+   One height, radius, type size and icon placement: gold filled primary, two identical outline
+   buttons, never wrapping. On a phone the toggle is a square chevron button (label kept for
+   screen readers). It used to open into a box with the chevron stacked above "Show less". */
+.star-actions { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 4px 0 0; }
+.star-card.is-compact .star-actions { grid-area: actions; }
+.star-act {
+    --star-act-h: 40px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    flex: 0 0 auto; min-width: 0; height: var(--star-act-h); padding: 0 15px;
+    border-radius: 12px; font: inherit; font-size: 0.84rem; font-weight: 750; line-height: 1;
+    white-space: nowrap; text-decoration: none; cursor: pointer;
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+    border: 1px solid color-mix(in srgb, var(--text-primary) 16%, transparent);
+    transition: background 0.18s, border-color 0.18s, box-shadow 0.2s, translate 0.2s cubic-bezier(.2, 1, .3, 1), scale 0.12s;
 }
-.star-expand:hover {
-    transform: translateY(-1px);
-    background: color-mix(in srgb, #fbbf24 17%, transparent);
-    border-color: color-mix(in srgb, #fbbf24 50%, transparent);
-    box-shadow: 0 6px 16px color-mix(in srgb, #fbbf24 20%, transparent);
+.star-act > i { flex: none; font-size: 0.92em; color: var(--star-ink); transition: rotate 0.3s cubic-bezier(.2, 1, .3, 1); }
+.star-act > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.star-act:hover {
+    color: var(--text-primary); translate: 0 -1px;
+    background: color-mix(in srgb, var(--star-gold) 10%, transparent);
+    border-color: color-mix(in srgb, var(--star-gold) 45%, transparent);
 }
-.star-expand:active { transform: translateY(0) scale(0.985); }
-.star-expand:focus-visible { outline: 2px solid #fbbf24; outline-offset: 3px; }
-.star-expand.is-open i { transform: rotate(180deg); }
-.star-card.is-compact ~ .star-card-border::before,
-.home-star-section:has(.star-card.is-compact) .star-card-border::before { opacity: 0.55; }
+.star-act:active { translate: none; scale: var(--press-scale, 0.97); }
+.star-act:focus-visible { outline: 2px solid var(--star-ink); outline-offset: 2px; }
+.star-act.star-btn-watch {
+    flex: 1 0 auto; position: relative; overflow: hidden;
+    color: #1c1002; border: 0;
+    background: linear-gradient(135deg, #fde68a, #fbbf24 50%, #f59e0b);
+    box-shadow: 0 6px 18px color-mix(in srgb, #fbbf24 32%, transparent);
+}
+.star-act.star-btn-watch > i { color: inherit; }
+.star-act.star-btn-watch:hover {
+    color: #1c1002;
+    background: linear-gradient(135deg, #fef3c7, #fcd34d 50%, #fbbf24);
+    box-shadow: 0 8px 22px color-mix(in srgb, #fbbf24 42%, transparent);
+}
+.star-expand { flex: 0 1 auto; }
+.star-expand.is-open {
+    background: color-mix(in srgb, var(--star-gold) 12%, transparent);
+    border-color: color-mix(in srgb, var(--star-gold) 42%, transparent);
+}
+.star-expand.is-open > i { rotate: 180deg; }
+.rs-lite .star-act.star-btn-watch { box-shadow: none; }
+
+/* Expanded card: the compact card's shape, with the detail revealed under it. */
 .star-card:not(.is-compact) .star-avatar-wrap,
 .star-card:not(.is-compact) .star-avatar { width: 76px; height: 76px; }
 .star-card:not(.is-compact) .star-avatar { font-size: 1.7rem; }
@@ -951,37 +990,48 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .star-card:not(.is-compact) .star-badge { display: none; }
 .star-card:not(.is-compact) .star-more { text-align: left; }
 .star-card:not(.is-compact) .star-more > * { margin-left: 0; margin-right: 0; }
-.star-card:not(.is-compact) .star-actions { justify-content: flex-start; }
 .star-more {
     margin-top: 12px; padding: 13px 15px; border-radius: 13px;
     background: color-mix(in srgb, var(--bg-primary) 45%, transparent);
-    border: 1px solid color-mix(in srgb, #fbbf24 13%, var(--border));
+    border: 1px solid color-mix(in srgb, var(--star-gold) 13%, var(--border));
 }
 .star-more > *:first-child { margin-top: 0; }
 .star-more > *:last-child { margin-bottom: 0; }
-@media (min-width: 820px) {
-    .star-card.is-compact .star-actions { margin: 0; justify-content: flex-end; flex-wrap: nowrap; }
-    .star-card.is-compact .star-btn-watch { flex: 0 0 auto; min-width: 0; }
-    .star-card.is-compact .star-expand { margin-left: 0; }
-    .star-card.is-compact .star-more { grid-column: 1 / -1; }
-}
 
+/* Wide: avatar, who they are, and the actions on the right, on one line. */
+@media (min-width: 820px) {
+    .star-card.is-compact .star-actions { margin: 0; justify-content: flex-end; }
+    .star-card.is-compact .star-btn-watch { flex: 0 0 auto; }
+    .star-card:not(.is-compact) .star-actions { justify-content: flex-start; }
+    .star-card:not(.is-compact) .star-btn-watch { flex: 0 0 auto; }
+}
+/* Phone: no panel-in-a-panel, and the toggle's label is visually hidden (still its name). */
 @media (max-width: 560px) {
     .star-card.is-compact .star-avatar-wrap,
     .star-card.is-compact .star-avatar { width: 52px; height: 52px; }
     .star-card.is-compact .star-avatar { font-size: 1.2rem; }
-    .star-card.is-compact .star-actions .btn,
-    .star-card.is-compact .star-expand { height: 36px; font-size: 0.78rem; padding: 0 12px; }
-    .star-card.is-compact .star-btn-watch { flex: 1 1 100%; }
-    .star-card.is-compact .star-expand { margin-left: 0; flex: 1 1 auto; justify-content: center; }
+    .star-act { padding: 0 14px; font-size: 0.82rem; }
+    .star-act-extra { display: none; }
+    .star-act.star-btn-watch { flex: 1 1 auto; }
+    .star-expand { flex: none; width: var(--star-act-h); padding: 0; }
+    .star-expand > i { font-size: 0.95rem; }
+    .star-expand-label {
+        position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+    }
+    .star-more { padding: 12px 0 0; border: 0; border-top: 1px solid color-mix(in srgb, var(--star-gold) 16%, var(--border)); border-radius: 0; background: none; }
 }
-@media (max-width: 380px) {
-    .star-card.is-compact .star-actions .btn-outline { flex: 1 1 100%; justify-content: center; }
+/* A 320px phone cannot fit three labelled buttons: "Say hi" goes to its icon as well. */
+@media (max-width: 350px) {
+    .star-act:not(.star-btn-watch) { flex: none; width: var(--star-act-h); padding: 0; }
+    .star-act:not(.star-btn-watch) > span {
+        position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+    }
 }
 @media (prefers-reduced-motion: reduce) {
     .star-more.is-entering { animation: none; }
     .star-card.is-swapping { transition: none; }
     .star-card.is-compact .star-avatar-ring { animation: none; }
+    .star-act, .star-act > i { transition: none; }
 }
 
 /* The pitch banner: what kind of place this is, before the headline says it. */
@@ -1079,3 +1129,47 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 #page-home .hero .hero-philosophy-links { margin: var(--hero-step) auto 0; row-gap: 6px; }
 #page-home .hero .hero-latest { margin: var(--hero-step) auto 0; }
 #page-home .hero .hero-stats { margin-top: var(--hero-step); }
+
+/* ── Section header actions ("View all", "Play game") ─────────────────────────
+   These were .badge links on var(--surface), a token no theme defines, so white text on nothing
+   (invisible on light themes). One pill, tinted by the section's colour. */
+.section-header > .section-action {
+    display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px;
+    border-radius: 999px; font: inherit; font-size: 0.74rem; font-weight: 750; line-height: 1;
+    white-space: nowrap; text-decoration: none; cursor: pointer;
+    color: color-mix(in srgb, var(--sc-on) 50%, var(--text-primary));
+    background: color-mix(in srgb, var(--sc-on) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--sc-on) 28%, transparent);
+    transition: background 0.15s, border-color 0.15s, color 0.15s, scale 0.12s;
+}
+.section-header > .section-action:hover {
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--sc-on) 18%, transparent);
+    border-color: color-mix(in srgb, var(--sc-on) 50%, transparent);
+}
+/* Phone: a header's sentence gets its own line under the title instead of being cut off. */
+@media (max-width: 560px) {
+    .section-header:has(> span.muted) { flex-wrap: wrap; row-gap: 3px; }
+    .section-header > span.muted {
+        order: 5; flex: 1 0 100%; margin-left: 34px;
+        white-space: normal; overflow: visible; line-height: 1.35; text-wrap: pretty;
+    }
+}
+
+/* The changelog's "show all" lives under the list it expands. */
+.home-changelog-toggle { margin: 12px auto 0; }
+.home-changelog-toggle > i { transition: rotate 0.3s cubic-bezier(.2, 1, .3, 1); }
+.home-changelog-toggle[aria-expanded="true"] > i { rotate: 180deg; }
+
+/* Network hub two-up on a phone: the icon beside the text left ~90px, and "OpenVibe.Community"
+   ran out of its card. Icon above text there; names may break after "OpenVibe." (<wbr>). */
+.network-card-info strong { overflow-wrap: break-word; }
+@media (min-width: 361px) and (max-width: 480px) {
+    .network-card { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .network-card-info { width: 100%; }
+}
+/* The ≤480px rule hiding the arrow lost to Font Awesome's later .fa-solid display rule. */
+@media (max-width: 480px) { .network-card > .network-card-arrow { display: none; } }
+
+/* Terms · Privacy · DMCA wrap as one group ("DMCA" was stranded alone at 360px). */
+.hero-legal { display: inline-flex; align-items: center; gap: inherit; white-space: nowrap; }

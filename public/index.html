@@ -218,11 +218,11 @@
                 <a href="#home-cta-banner" class="hero-philosophy-btn" onclick="event.preventDefault();openHomeAbout();">
                     <i class="fa-solid fa-book-open"></i> What Is This? (Philosophy)
                 </a>
-                <a href="/tos" class="hero-philosophy-link" onclick="return handleLinkClick(event, '/tos')">Terms</a>
+                <span class="hero-legal"><a href="/tos" class="hero-philosophy-link" onclick="return handleLinkClick(event, '/tos')">Terms</a>
                 <span aria-hidden="true">&bull;</span>
                 <a href="/privacy" class="hero-philosophy-link" onclick="return handleLinkClick(event, '/privacy')">Privacy</a>
                 <span aria-hidden="true">&bull;</span>
-                <a href="/dmca" class="hero-philosophy-link" onclick="return handleLinkClick(event, '/dmca')">DMCA</a>
+                <a href="/dmca" class="hero-philosophy-link" onclick="return handleLinkClick(event, '/dmca')">DMCA</a></span>
             </div>
                 <!-- Newest shipped commit — built in the open, receipts included. Sits under the
                      philosophy row so the proof is next to the promise. -->
@@ -312,7 +312,7 @@
                     <h2><i class="fa-solid fa-brain"></i> AI Moments<small class="section-kicker">picked by AI</small></h2>
                     <span class="muted" style="font-size:0.8rem">wild seconds the AI clipped from recent streams</span>
                 </div>
-                <div class="moments-row" id="home-moments-row"></div>
+                <div class="moments-row ov-rail-track" id="home-moments-row"></div>
             </div>
 
             <!-- The two introductions travel together: what OpenVibe does (the restream diagram), then
@@ -473,7 +473,7 @@
             <!-- Recent VODs -->
             <div class="section-header" style="--sc:#a78bfa;display:none" id="home-recent-vods-header">
                 <h2><i class="fa-solid fa-video"></i> Recent VODs<small class="section-kicker">full streams</small></h2>
-                <a href="/vods" onclick="return handleLinkClick(event, '/vods')" class="badge" style="cursor:pointer;text-decoration:none;background:var(--surface);">View All</a>
+                <a href="/vods" onclick="return handleLinkClick(event, '/vods')" class="section-action">View all</a>
             </div>
             <div class="stream-grid" id="home-recent-vods-grid"></div>
             <div id="home-recent-vods-pagination" class="pastes-pagination" style="display:none"></div>
@@ -481,7 +481,7 @@
             <!-- Recent Clips -->
             <div class="section-header" style="--sc:#f472b6;display:none" id="home-clips-header">
                 <h2><i class="fa-solid fa-scissors"></i> Recent Clips<small class="section-kicker">the good bits</small></h2>
-                <a href="/clips" onclick="return handleLinkClick(event, '/clips')" class="badge" style="cursor:pointer;text-decoration:none;background:var(--surface);">View All</a>
+                <a href="/clips" onclick="return handleLinkClick(event, '/clips')" class="section-action">View all</a>
             </div>
             <div class="stream-grid home-clips-grid" id="home-clips-grid"></div>
             <div id="home-clips-pagination" class="pastes-pagination" style="display:none"></div>
@@ -489,7 +489,7 @@
             <!-- Recent Pastes -->
             <div class="section-header" style="--sc:#2dd4bf;display:none" id="home-pastes-header">
                 <h2><i class="fa-solid fa-paste"></i> Recent Pastes<small class="section-kicker">shots & snippets</small></h2>
-                <a href="/pastes" onclick="return handleLinkClick(event, '/pastes')" class="badge" style="cursor:pointer;text-decoration:none;background:var(--surface);">View All</a>
+                <a href="/pastes" onclick="return handleLinkClick(event, '/pastes')" class="section-action">View all</a>
             </div>
             <div class="home-pastes-list" id="home-pastes-list"></div>
             <div id="home-pastes-pagination" class="pastes-pagination" style="display:none"></div>
@@ -497,14 +497,14 @@
             <!-- Scraplandia Leaderboards -->
             <div class="section-header" style="--sc:#fbbf24;display:none" id="home-quest-header">
                 <h2><i class="fa-solid fa-trophy"></i> Scraplandia Leaderboards<small class="section-kicker">the ladder</small></h2>
-                <a href="https://openvibe.games/game" class="badge" style="cursor:pointer;text-decoration:none;background:var(--surface);">Play Game</a>
+                <a href="https://openvibe.games/game" class="section-action">Play game</a>
             </div>
             <div class="home-leaderboards" id="home-leaderboards"></div>
 
             <!-- Canvas Preview -->
             <div class="section-header" style="--sc:#4ade80;display:none" id="home-canvas-header">
                 <h2><i class="fa-solid fa-palette"></i> Community Canvas<small class="section-kicker">drawn together</small></h2>
-                <a href="https://openvibe.games/canvas" class="badge" style="cursor:pointer;text-decoration:none;background:var(--surface);">Open Canvas</a>
+                <a href="https://openvibe.games/canvas" class="section-action">Open canvas</a>
             </div>
             <div class="home-canvas-preview" id="home-canvas-preview"></div>
 
@@ -520,7 +520,7 @@
                     <a href="https://openvibe.live" class="network-card network-card-featured">
                         <div class="network-card-icon" style="--card-accent:#e74c3c"><i class="fa-solid fa-tower-broadcast"></i></div>
                         <div class="network-card-info">
-                            <strong>OpenVibe.Live</strong>
+                            <strong>OpenVibe.<wbr>Live</strong>
                             <span>Live streaming, VODs, clips &amp; chat</span>
                         </div>
                         <i class="fa-solid fa-arrow-right network-card-arrow"></i>
@@ -528,7 +528,7 @@
                     <a href="https://openvibe.tools" class="network-card">
                         <div class="network-card-icon" style="--card-accent:#3b82f6"><i class="fa-solid fa-screwdriver-wrench"></i></div>
                         <div class="network-card-info">
-                            <strong>OpenVibe.Tools</strong>
+                            <strong>OpenVibe.<wbr>Tools</strong>
                             <span>Every online tool in one index</span>
                         </div>
                         <i class="fa-solid fa-arrow-right network-card-arrow"></i>
@@ -536,7 +536,7 @@
                     <a href="https://openvibe.community" class="network-card">
                         <div class="network-card-icon" style="--card-accent:#22c55e"><i class="fa-solid fa-people-group"></i></div>
                         <div class="network-card-info">
-                            <strong>OpenVibe.Community</strong>
+                            <strong>OpenVibe.<wbr>Community</strong>
                             <span>Pastes, posts and people</span>
                         </div>
                         <i class="fa-solid fa-arrow-right network-card-arrow"></i>
@@ -560,7 +560,7 @@
                     <a href="https://openvibe.media" class="network-card">
                         <div class="network-card-icon" style="--card-accent:#f59e0b"><i class="fa-solid fa-photo-film"></i></div>
                         <div class="network-card-info">
-                            <strong>OpenVibe.Media</strong>
+                            <strong>OpenVibe.<wbr>Media</strong>
                             <span>VODs, clips and files</span>
                         </div>
                         <i class="fa-solid fa-arrow-right network-card-arrow"></i>
@@ -651,10 +651,7 @@
             <!-- OpenVibe.Live Changelog -->
             <div class="section-header" style="--sc:#94a3b8;margin-top:32px;">
                 <h2><i class="fa-solid fa-code-commit"></i> Recent Changes<small class="section-kicker">built in the open</small></h2>
-                <div style="display:flex;gap:8px;align-items:center;">
-                    <button id="home-changelog-toggle" class="badge" onclick="toggleHomeChangelog()" style="cursor:pointer;border:none;background:var(--surface);padding:4px 10px;border-radius:6px;color:var(--text);font-size:0.78rem;">Show All</button>
-                    <a href="/updates" onclick="return handleLinkClick(event, '/updates')" class="badge" style="cursor:pointer;text-decoration:none;">View All</a>
-                </div>
+                <a href="/updates" onclick="return handleLinkClick(event, '/updates')" class="section-action">View all</a>
             </div>
             <div id="home-changelog-wrapper" class="home-changelog-wrapper collapsed">
                 <div id="home-changelog" class="home-changelog">
@@ -662,6 +659,9 @@
                 </div>
                 <div class="home-changelog-fade" id="home-changelog-fade"></div>
             </div>
+            <!-- Expands the preview in place; "View all" in the header opens /updates. It sits under
+                 the list it expands, in the same button style as the rails' "Load more". -->
+            <button type="button" id="home-changelog-toggle" class="home-load-more home-changelog-toggle" onclick="toggleHomeChangelog()" aria-expanded="false" aria-controls="home-changelog-wrapper"><i class="fa-solid fa-chevron-down" aria-hidden="true"></i><span>Show all recent changes</span></button>
 
 
 

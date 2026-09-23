@@ -1032,6 +1032,8 @@ function _wireEggKeys() {
         if (e.ctrlKey || e.metaKey || e.altKey) return;
         if (e.key === 'Backspace') { _eggBuf.pop(); _renderEggSlots(); return; }
         let tok = _EGG_ARROW[e.key];
+        // A focused card rail scrolls with the arrow keys; the secret must not swallow them.
+        if (tok && t && t.closest && t.closest('.ov-rail-track')) return;
         if (!tok && /^[a-zA-Z]$/.test(e.key)) tok = e.key.toLowerCase();
         if (!tok) return;
         if (_EGG_ARROW[e.key]) e.preventDefault();          // don't scroll the page on arrows
@@ -1291,6 +1293,8 @@ function _renderHomePulse(p) {
                     ${m.username ? `<div class="moment-user">@${esc(m.username)}</div>` : ''}
                 </div>
             </a>`).join('');
+        // Hidden scrollbar, snap, arrows, position bar (public/js/ov-rail.js). Idempotent.
+        if (window.OVRail && ms.length) OVRail.attach(momentsRow, { label: 'AI Moments' });
     }
 }
 
@@ -1322,7 +1326,7 @@ async function loadHomeDigest() {
     const stats = [
         st.streams ? `<span class="digest-stat"><i class="fa-solid fa-tower-broadcast"></i> <b>${n(st.streams)}</b> stream${st.streams === 1 ? '' : 's'}</span>` : '',
         st.hours >= 0.5 ? (() => { const hrs = Math.round(st.hours); return `<span class="digest-stat"><i class="fa-regular fa-clock"></i> <b>${n(hrs)}</b> ${hrs === 1 ? 'hour' : 'hours'} live</span>`; })() : '',
-        st.chat_lines ? `<span class="digest-stat"><i class="fa-solid fa-comments"></i> <b>${n(st.chat_lines)}</b> chat lines</span>` : '',
+        st.chat_lines ? `<span class="digest-stat"><i class="fa-solid fa-comments"></i> <b>${n(st.chat_lines)}</b> chat line${st.chat_lines === 1 ? '' : 's'}</span>` : '',
         st.new_follows ? `<span class="digest-stat"><i class="fa-solid fa-heart"></i> <b>${n(st.new_follows)}</b> new follow${st.new_follows === 1 ? '' : 's'}</span>` : '',
         st.new_members ? `<span class="digest-stat"><i class="fa-solid fa-user-plus"></i> <b>${n(st.new_members)}</b> joined</span>` : '',
         st.mic_moments ? `<span class="digest-stat"><i class="fa-solid fa-microphone-lines"></i> <b>${n(st.mic_moments)}</b> Arena mic moment${st.mic_moments === 1 ? '' : 's'}</span>` : '',
@@ -2045,7 +2049,10 @@ function toggleHomeChangelog() {
     if (!wrapper || !btn) return;
     const expanded = wrapper.classList.toggle('expanded');
     wrapper.classList.toggle('collapsed', !expanded);
-    btn.textContent = expanded ? 'Show Less' : 'Show All';
+    btn.setAttribute('aria-expanded', String(expanded));
+    const label = btn.querySelector('span');
+    if (label) label.textContent = expanded ? 'Show fewer changes' : 'Show all recent changes';
+    else btn.textContent = expanded ? 'Show Less' : 'Show All';
 }
 
 
@@ -2087,8 +2094,10 @@ function _renderHomeStar(data) {
     }
     const overview = s.ai_overview ? `<p class="star-overview"><i class="fa-solid fa-wand-magic-sparkles"></i> ${esc(String(s.ai_overview).slice(0, 260))}${String(s.ai_overview).length > 260 ? '…' : ''}</p>` : '';
     const pick = s.pick || null;
+    // Who picked them and when the next star lands are two separate facts, each kept on one line:
+    // as one uppercase run the countdown broke in half ("NEXT STAR / IN 3H") on a phone.
     const why = pick && (pick.headline || pick.reason)
-        ? `<div class="star-why">${pick.headline ? `<div class="star-why-head">${esc(pick.headline)}</div>` : ''}${pick.reason ? `<div class="star-why-body">${esc(pick.reason)}</div>` : ''}<div class="star-why-meta"><i class="fa-solid fa-wand-magic-sparkles"></i> ${pick.by === 'ai' ? 'Picked by OpenVibe\'s AI' : 'Picked on the numbers'}${pick.next_at ? ` · next star ${esc(_starCountdown(pick.next_at))}` : ''}</div></div>`
+        ? `<div class="star-why">${pick.headline ? `<div class="star-why-head">${esc(pick.headline)}</div>` : ''}${pick.reason ? `<div class="star-why-body">${esc(pick.reason)}</div>` : ''}<div class="star-why-meta"><span><i class="fa-solid fa-wand-magic-sparkles"></i> ${pick.by === 'ai' ? 'Picked by OpenVibe\'s AI' : 'Picked on the numbers'}</span>${pick.next_at ? `<span class="star-why-next"><i class="fa-regular fa-clock"></i> Next star ${esc(_starCountdown(pick.next_at))}</span>` : ''}</div></div>`
         : '';
     const chips = [
         foreign ? `<span class="star-chip pink">${esc(lang.flag)} Streams in ${esc(lang.name)}</span>` : '',
@@ -2097,11 +2106,11 @@ function _renderHomeStar(data) {
         (s.follower_count > 0) ? `<span class="star-chip gold"><i class="fa-solid fa-heart"></i> ${esc(String(s.follower_count))} follower${s.follower_count === 1 ? '' : 's'}</span>` : '',
     ].filter(Boolean).join('');
     const isLive = !!s.live;
-    const offline = !isLive && s.last_live_at ? `<div class="star-offline"><i class="fa-regular fa-clock"></i> Last live ${esc(timeAgo(s.last_live_at))} — follow to get pinged next time.</div>` : '';
+    const offline = !isLive && s.last_live_at ? `<div class="star-offline"><i class="fa-regular fa-clock"></i><span>Last live ${esc(timeAgo(s.last_live_at))} — follow to get pinged next time.</span></div>` : '';
     const liveCard = isLive ? `<div class="star-live-card">${streamCardHTML(s.live, true)}</div>` : '';
     sec.innerHTML = `
         <div class="section-header">
-            <h2><i class="fa-solid fa-star" style="color:#fbbf24"></i> Star of OpenVibe</h2>
+            <h2><i class="fa-solid fa-star star-head-icon"></i> Star of OpenVibe</h2>
             <span class="muted" style="font-size:0.8rem">${s.rotates ? 'a new star every day — picked by the site\'s AI from who actually showed up' : 'the streamer we\'re rolling out the red carpet for'}</span>
         </div>
         <div class="star-card-border">
@@ -2126,11 +2135,11 @@ function _renderHomeStar(data) {
                     ${offline}
                 </div>
                 <div class="star-actions">
-                        <a class="btn btn-lg star-btn-watch" href="${esc(path)}" onclick="return handleLinkClick(event, '${esc(path)}')"><i class="fa-solid ${isLive ? 'fa-play' : 'fa-user'}"></i> ${isLive ? 'Watch now' : 'Visit channel'}</a>
-                        <a class="btn btn-outline btn-lg" href="${esc(path)}#about" onclick="return handleLinkClick(event, '${esc(path)}#about')"><i class="fa-solid fa-comments"></i> Say hi${foreign ? ' — any language works' : ''}</a>
-                        <button type="button" class="star-expand" id="star-expand" aria-expanded="false" aria-controls="star-more">
-                            <i class="fa-solid fa-chevron-down"></i><span>More about ${name}</span>
-                        </button>
+                    <a class="star-act star-btn-watch" href="${esc(path)}" onclick="return handleLinkClick(event, '${esc(path)}')"><i class="fa-solid ${isLive ? 'fa-play' : 'fa-user'}" aria-hidden="true"></i><span>${isLive ? 'Watch now' : 'Visit channel'}</span></a>
+                    <a class="star-act" href="${esc(path)}#about" onclick="return handleLinkClick(event, '${esc(path)}#about')"><i class="fa-solid fa-comments" aria-hidden="true"></i><span>Say hi${foreign ? '<span class="star-act-extra"> — any language works</span>' : ''}</span></a>
+                    <button type="button" class="star-act star-expand" id="star-expand" aria-expanded="false" aria-controls="star-more" title="More about ${name}">
+                        <i class="fa-solid fa-chevron-down" aria-hidden="true"></i><span class="star-expand-label">More about ${name}</span>
+                    </button>
                 </div>
             </div>
         </div>`;
@@ -2142,8 +2151,12 @@ function _renderHomeStar(data) {
     const btn = sec.querySelector('#star-expand');
     if (card && btn && more) {
         card.classList.add('is-compact');
+        // On a phone the toggle is an icon button; the label stays in the DOM (visually hidden)
+        // so it is still the button's accessible name, and the title is the tooltip.
         const label = () => {
-            btn.querySelector('span').textContent = more.hidden ? `More about ${s.display_name || s.username}` : 'Show less';
+            const text = more.hidden ? `More about ${s.display_name || s.username}` : 'Show less';
+            btn.querySelector('.star-expand-label').textContent = text;
+            btn.title = text;
             btn.classList.toggle('is-open', !more.hidden);
             btn.setAttribute('aria-expanded', String(!more.hidden));
         };

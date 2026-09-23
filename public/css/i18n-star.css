@@ -109,11 +109,6 @@
 }
 @keyframes starSheen { 0% { background-position: 120% 0; } 100% { background-position: -120% 0; } }
 
-@media (max-width: 860px) {
-    .star-card, .star-card.is-live { grid-template-columns: 1fr; text-align: center; gap: 14px; padding: 20px 16px 34px; }
-    .star-actions .btn { flex: 1 1 140px; justify-content: center; }
-}
-
 @media (prefers-reduced-motion: reduce) {
     .chat-translation, .chat-translate-hint, .ch-captions, .ch-caption, .ch-captions-dot, .ch-about-bio-translated,
     .star-card-border, .star-card-border::before, .star-petals span, .star-avatar-ring, .star-avatar-glow, .star-live-pill,
@@ -172,13 +167,6 @@
 /* The avatar ring: a slow conic sweep rather than a static rainbow, so the card has one moving
    element instead of several competing ones. Paused off-screen by the viewport gate. */
 @keyframes starRingSpin { to { transform: rotate(360deg); } }
-.star-expand i {
-    width: 19px; height: 19px; flex: none; border-radius: 50%; display: grid; place-items: center;
-    font-size: 0.55rem; color: #1a1506; line-height: 1;
-    background: linear-gradient(140deg, #fbbf24, #f59e0b);
-    transition: transform 0.3s cubic-bezier(.2, 1, .3, 1);
-}
-.star-expand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* The gold border sweep is the card's one loud effect; calm it down when compact so it frames
    the card instead of shouting over it. */
