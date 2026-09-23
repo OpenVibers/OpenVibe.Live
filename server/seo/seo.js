@@ -31,6 +31,7 @@ async function _cached(key, fn) {
 const _vodList = (limit, offset = 0) => _cached(`vl:${limit}:${offset}`, async () => (await media.listVods({ limit, offset }))?.vods || []);
 const _clipList = (limit, offset = 0) => _cached(`cl:${limit}:${offset}`, async () => (await media.listClips({ limit, offset }))?.clips || []);
 const _pasteList = (limit, offset = 0) => _cached(`pl:${limit}:${offset}`, async () => (await require('../pastes-client').listPastes({ limit, offset, visibility: 'public' }))?.pastes || []);
+const { isPrivate } = require('../media-proxy/access');
 const _vodGet = (id) => _cached(`v:${id}`, () => media.getVod(id));
 const _clipGet = (id) => _cached(`c:${id}`, () => media.getClip(id));
 const _pasteGet = (slug) => _cached(`p:${slug}`, () => require('../pastes-client').getPaste(slug));
@@ -289,7 +290,9 @@ function _authorLd(name) { return name ? { '@type': 'Person', name: clean(name, 
 
 async function _vodMeta(id) {
     let v; try { v = await _vodGet(id); } catch { v = null; }
-    if (!v) return null;
+    // Private: fall through exactly like an unknown id. This HTML is cached per id and shared by
+    // every visitor, so it never carries a private VOD's title, overview or transcript.
+    if (!v || isPrivate(v)) return null;
     if (v.duration_seconds == null && v.duration != null) v.duration_seconds = v.duration;
     _overlayAiState(v, 'vod');
     const indexable = Number(v.is_public) === 1 && (!v.visibility || v.visibility === 'public');
@@ -322,7 +325,7 @@ async function _vodMeta(id) {
 
 async function _clipMeta(id) {
     let c; try { c = await _clipGet(id); } catch { c = null; }
-    if (!c) return null;
+    if (!c || isPrivate(c)) return null;   // private: same as unknown (see _vodMeta)
     if (c.duration_seconds == null && c.duration != null) c.duration_seconds = c.duration;
     _overlayAiState(c, 'clip');
     const indexable = Number(c.is_public) === 1 && (!c.visibility || c.visibility === 'public');

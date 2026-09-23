@@ -11,6 +11,7 @@ const db = require('../db/database');
 const media = require('../media-client');
 const { requireAuth, optionalAuth } = require('../auth/auth');
 const { pushNotification, actorInfo: notificationActor } = require('../utils/notify');
+const access = require('./access');
 
 const router = express.Router();
 
@@ -25,25 +26,35 @@ async function getCommentTarget(contentType, contentId) {
         if (contentType === 'vod') {
             const vod = await media.getVod(contentId);
             if (!vod) return null;
-            return { user_id: vod.user_id, title: vod.title || 'your VOD', label: 'VOD', url: `https://openvibe.live/vod/${contentId}` };
+            return { row: vod, user_id: vod.user_id, title: vod.title || 'your VOD', label: 'VOD', url: `https://openvibe.live/vod/${contentId}` };
         }
         if (contentType === 'clip') {
             const clip = await media.getClip(contentId);
             if (!clip) return null;
-            return { user_id: clip.user_id, title: clip.title || 'your clip', label: 'clip', url: `https://openvibe.live/clip/${contentId}`, stream_id: clip.stream_id || null };
+            return { row: clip, user_id: clip.user_id, title: clip.title || 'your clip', label: 'clip', url: `https://openvibe.live/clip/${contentId}`, stream_id: clip.stream_id || null };
         }
     } catch { /* Media unreachable → treat as not found */ }
     return null;
 }
 
+/**
+ * The commented-on VOD/clip, if this caller may see it. A private one is missing to everyone but
+ * its owners and staff (./access), so its comments are too — they quote and discuss it.
+ */
+async function visibleTarget(user, contentType, contentId) {
+    const target = await getCommentTarget(contentType, contentId);
+    return target && access.canView(user, target.row) ? target : null;
+}
+
 // ── List Comments ────────────────────────────────────────────
-router.get('/:type/:id', optionalAuth, (req, res) => {
+router.get('/:type/:id', optionalAuth, async (req, res) => {
     try {
         const contentType = req.params.type;
         const contentId = parseInt(req.params.id);
         if (!['vod', 'clip'].includes(contentType) || !contentId) {
             return res.status(400).json({ error: 'Invalid content type or ID' });
         }
+        if (!(await visibleTarget(req.user, contentType, contentId))) return res.status(404).json({ error: 'Content not found' });
         const limit = Math.min(parseInt(req.query.limit || '50'), 100);
         const offset = parseInt(req.query.offset || '0');
         const comments = db.getComments(contentType, contentId, limit, offset);
@@ -73,7 +84,7 @@ router.post('/:type/:id', requireAuth, async (req, res) => {
             return res.status(400).json({ error: 'Comment must be 1-2000 characters' });
         }
         const parentId = req.body.parent_id ? parseInt(req.body.parent_id) : null;
-        const target = await getCommentTarget(contentType, contentId);
+        const target = await visibleTarget(req.user, contentType, contentId);
         if (!target) return res.status(404).json({ error: 'Content not found' });
 
         let parent = null;
@@ -146,9 +157,13 @@ router.post('/:type/:id', requireAuth, async (req, res) => {
 });
 
 // ── Get Replies ──────────────────────────────────────────────
-router.get('/:commentId/replies', optionalAuth, (req, res) => {
+router.get('/:commentId/replies', optionalAuth, async (req, res) => {
     try {
-        const replies = db.getCommentReplies(parseInt(req.params.commentId));
+        const parent = db.getCommentById(parseInt(req.params.commentId));
+        if (!parent || !(await visibleTarget(req.user, parent.content_type, parent.content_id))) {
+            return res.status(404).json({ error: 'Comment not found' });
+        }
+        const replies = db.getCommentReplies(parent.id);
         res.json({ replies });
     } catch {
         res.status(500).json({ error: 'Failed to get replies' });

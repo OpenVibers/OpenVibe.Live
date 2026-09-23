@@ -13,6 +13,7 @@ const fs = require('fs');
 const multer = require('multer');
 const db = require('../db/database');
 const media = require('../media-client');
+const access = require('./access');
 const liveThumbs = require('./live-thumbs');
 const { requireAuth, optionalAuth } = require('../auth/auth');
 
@@ -50,7 +51,9 @@ router.post('/live/:streamId', requireAuth, upload.single('thumbnail'), (req, re
 async function generateFor(kind, id, req, res) {
     try {
         const meta = kind === 'vod' ? await media.getVod(id) : await media.getClip(id);
-        if (!meta) return res.status(404).json({ error: `${kind === 'vod' ? 'VOD' : 'Clip'} not found` });
+        const notFound = () => res.status(404).json({ error: `${kind === 'vod' ? 'VOD' : 'Clip'} not found` });
+        // A private item is missing to anyone who may not see it (a 403 would confirm it exists).
+        if (!meta || !access.canView(req.user, meta)) return notFound();
         const canManage = !!req.user && (meta.user_id === req.user.id || req.user.role === 'admin');
         const isPublic = meta.visibility ? meta.visibility === 'public' : !!meta.is_public;
         if (!canManage && !isPublic) return res.status(403).json({ error: `Not your ${kind}` });

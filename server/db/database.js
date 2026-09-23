@@ -2838,6 +2838,8 @@ function getRecentStreams(limit = 20) {
         ) latest ON latest.user_id = s.user_id AND latest.latest_ended_at = s.ended_at
         JOIN users u ON s.user_id = u.id
         LEFT JOIN vods v ON v.stream_id = s.id AND COALESCE(v.is_recording, 0) = 0
+            -- a public list: only a public VOD's id and thumbnail ride along (never a private or unlisted one)
+            AND COALESCE(v.visibility, CASE WHEN v.is_public = 1 THEN 'public' ELSE 'private' END) = 'public'
         WHERE s.is_live = 0 AND s.ended_at IS NOT NULL
         ORDER BY s.ended_at DESC
         LIMIT ?

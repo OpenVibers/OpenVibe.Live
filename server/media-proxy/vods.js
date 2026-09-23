@@ -4,8 +4,8 @@
  * Thin proxy that preserves the public API paths the SPA already calls and
  * forwards to OpenVibe.Media (Media API v1). Metadata is proxied as JSON; big
  * media file payloads 302-redirect to MEDIA_PUBLIC_URL. Auth/ownership checks
- * stay here (Live is the authority for its own users); Media additionally
- * applies user ACLs when the caller's Network JWT is forwarded.
+ * stay here (Live is the authority for its own users): reads use the app's
+ * authority and ./access decides who may see a private VOD.
  */
 'use strict';
 const express = require('express');
@@ -15,6 +15,7 @@ const media = require('../media-client');
 const recorder = require('../streaming/recorder');
 const { requireAuth, optionalAuth } = require('../auth/auth');
 const permissions = require('../auth/permissions');
+const access = require('./access');
 
 const router = express.Router();
 
@@ -70,6 +71,27 @@ function defaultClipTitle(sanitized, sourceTitle) {
     if (sanitized) return sanitized;
     const src = (sourceTitle || '').toString().replace(/<[^>]*>/g, '').trim();
     return (src ? `Clip: ${src}` : 'Untitled Clip').slice(0, 200);
+}
+
+/** The answer for a missing VOD — also what anyone who may not see a private one gets. */
+function vodNotFound(res) {
+    return res.status(404).json({ error: 'VOD not found' });
+}
+
+/**
+ * Load a VOD with the app's authority and apply Live's visibility rule (./access). Resolves to
+ * the row, or null after answering: 404 for missing or hidden, 502 when Media is unreachable.
+ */
+async function loadVisibleVod(req, res, id) {
+    if (!/^\d+$/.test(String(id))) { vodNotFound(res); return null; }
+    let vod;
+    try { vod = await media.getVod(id); } catch (err) {
+        if (err && err.name === 'MediaApiError' && err.status === 404) vodNotFound(res);
+        else mediaErr(res, err, 'Failed to get VOD');
+        return null;
+    }
+    if (!vod || !access.canView(req.user, vod)) { vodNotFound(res); return null; }
+    return vod;
 }
 
 function mediaErr(res, err, fallback) {
@@ -143,7 +165,12 @@ async function ownVodOrModerator(req, res) {
     let owns = vod.user_id === req.user.id;
     if (!owns && vod.stream_id) { const s = db.getStreamById(vod.stream_id); if (s && s.user_id === req.user.id) owns = true; }
     if (!owns) owns = permissions.canModerateContentOwner(req.user, vod.user_id ? db.getUserById(vod.user_id) : null);
-    if (!owns) { res.status(403).json({ error: 'Not authorized' }); return null; }
+    if (!owns) {
+        // Someone who may not even see a private VOD is not told it exists.
+        if (!access.canView(req.user, vod)) vodNotFound(res);
+        else res.status(403).json({ error: 'Not authorized' });
+        return null;
+    }
     return vod;
 }
 
@@ -232,6 +259,11 @@ router.get('/stream/:streamId/live', optionalAuth, async (req, res) => {
         if (!rec || !rec.vodId || rec.clipsOnly) return res.status(404).json({ error: 'No active VOD recording' });
         let vod = null;
         try { vod = await media.getVod(rec.vodId); } catch { /* Media hiccup — synthesize */ }
+        // A private recording of a public live stream is still private: without Media's row, the
+        // stream's own VOD visibility decides.
+        const stream = db.getStreamById(streamId);
+        const probe = vod || { user_id: stream?.user_id, stream_id: streamId, visibility: stream ? db.resolveStreamVodVisibility(stream) : 'private' };
+        if (!access.canView(req.user, probe)) return res.status(404).json({ error: 'No active VOD recording' });
         res.json({
             vod: vod || {
                 id: rec.vodId,
@@ -247,9 +279,8 @@ router.get('/stream/:streamId/live', optionalAuth, async (req, res) => {
 
 router.get('/:id/live-info', optionalAuth, async (req, res) => {
     try {
-        if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'VOD not found' });
-        const vod = await media.getVod(req.params.id);
-        if (!vod) return res.status(404).json({ error: 'VOD not found' });
+        const vod = await loadVisibleVod(req, res, req.params.id);
+        if (!vod) return;
         const recording = vod.status === 'recording' || !!vod.is_recording;
         res.json({
             id: vod.id,
@@ -343,9 +374,9 @@ router.post('/bulk-delete-old', requireAuth, async (req, res) => {
 // AI "memory" timeline for a VOD (stream_memories stays in live.db).
 router.get('/:id/memories', optionalAuth, async (req, res) => {
     try {
-        if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'VOD not found' });
-        let streamId = null;
-        try { const vod = await media.getVod(req.params.id); streamId = vod?.stream_id || null; } catch { /* */ }
+        const vod = await loadVisibleVod(req, res, req.params.id);
+        if (!vod) return;
+        const streamId = vod.stream_id || null;
         if (!streamId) return res.json({ memories: [] });
         const memories = (db.getStreamMemories(streamId) || []).map(m => ({
             offset_seconds: m.offset_seconds,
@@ -375,11 +406,9 @@ router.get('/:id/context', optionalAuth, async (req, res) => {
         // is served from the cache and never reaches the visibility check below.
         let vod = null;
         try { vod = await media.getVod(id); } catch { vod = null; }
-        if (!vod) return res.status(404).json({ error: 'VOD not found' });
-        const isPrivate = vod.visibility === 'private';
-        if (isPrivate && !(req.user && (req.user.id === vod.user_id || req.user.role === 'admin'))) {
-            return res.status(404).json({ error: 'VOD not found' });
-        }
+        if (!vod) return vodNotFound(res);
+        const isPrivate = access.isPrivate(vod);
+        if (!access.canView(req.user, vod)) return vodNotFound(res);
         // A private VOD's context must not sit in a shared cache anywhere on the way back either.
         const cacheHeader = isPrivate ? 'private, no-store' : 'public, max-age=60';
 
@@ -428,11 +457,12 @@ router.get('/:id/context', optionalAuth, async (req, res) => {
 
 router.get('/:id', optionalAuth, async (req, res) => {
     try {
-        if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'VOD not found' });
-        let vod;
-        try { vod = await media.getVod(req.params.id, { actingUser: media.actingUserFrom(req) }); }
-        catch (err) { return mediaErr(res, err, 'Failed to get VOD'); }
-        if (!vod) return res.status(404).json({ error: 'VOD not found' });
+        // Fetched with the app's authority (no acting user): Live decides who sees what, so staff
+        // can open a private VOD, and everyone else gets the missing-VOD answer — never a stub
+        // carrying the title and username, which is what anonymous callers used to get.
+        const vod = await loadVisibleVod(req, res, req.params.id);
+        if (!vod) return;
+        if (access.isPrivate(vod)) res.set('Cache-Control', 'private, no-store');
         withUserFields(vod);
 
         // Enrich with local stream details for chat replay.
@@ -461,24 +491,12 @@ router.get('/:id', optionalAuth, async (req, res) => {
             }
         } catch { /* */ }
 
-        const isOwnerOrAdmin = req.user && (req.user.id === vod.user_id || req.user.role === 'admin');
-        const isPrivate = (vod.visibility ? vod.visibility === 'private' : !vod.is_public);
         let clips = [];
         try {
             const q = vod.stream_id ? { stream_id: vod.stream_id } : { vod_id: vod.id };
             const co = await media.listClips(q);
             clips = co?.clips || (Array.isArray(co) ? co : []);
         } catch { /* */ }
-        if (isPrivate && !isOwnerOrAdmin) {
-            return res.json({
-                vod: {
-                    id: vod.id, title: vod.title, username: vod.username, display_name: vod.display_name,
-                    avatar_url: vod.avatar_url, is_public: 0, is_private: true, stream_id: vod.stream_id,
-                    created_at: vod.created_at, user_id: vod.user_id,
-                },
-                clips,
-            });
-        }
 
         // Unique-view tracking stays local (content_views is a Live table).
         try {
@@ -557,7 +575,7 @@ router.post('/:id/publish', requireAuth, async (req, res) => {
     try {
         let vod;
         try { vod = await media.getVod(req.params.id); } catch (err) { return mediaErr(res, err, 'VOD not found'); }
-        if (!vod) return res.status(404).json({ error: 'VOD not found' });
+        if (!vod || !access.canView(req.user, vod)) return vodNotFound(res);
         if (vod.user_id !== req.user.id) return res.status(403).json({ error: 'Not your VOD' });
         await media.updateVod(req.params.id, { visibility: 'public', is_public: 1 });
         res.json({ message: 'VOD published', is_public: true });
@@ -715,9 +733,8 @@ router.post('/clips', requireAuth, memUpload.single('video'), async (req, res) =
         let vod;
         try { vod = await media.getVod(parsedVodId); } catch (err) { return mediaErr(res, err, 'VOD not found'); }
         if (!vod) return res.status(404).json({ error: 'VOD not found or file missing' });
-        if ((vod.visibility === 'private' || (!vod.is_public && !vod.visibility)) && vod.user_id !== req.user.id && req.user.role !== 'admin') {
-            return res.status(403).json({ error: 'Cannot create clips from private videos' });
-        }
+        // Clipping someone else's private VOD: the same answer as a missing one.
+        if (!access.canView(req.user, vod)) return vodNotFound(res);
         const effStreamId = parsedStreamId || vod.stream_id || null;
         const effStream = effStreamId ? db.getStreamById(effStreamId) : null;
         if (effStream && !db.isStreamClipRecordingEnabled(effStream)) {

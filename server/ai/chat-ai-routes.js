@@ -264,14 +264,21 @@ router.get('/live-captions/:username', (req, res) => {
  * openvibe.media/live/:sel/transcript.json served null for every post-cutover VOD.
  * This is the endpoint Media reads instead of its own dead column.
  */
-router.get('/vod-transcripts', (req, res) => {
+router.get('/vod-transcripts', async (req, res) => {
     try {
         const ids = String(req.query.ids || '')
             .split(',').map(x => parseInt(x, 10)).filter(Number.isFinite).slice(0, 50);
         if (!ids.length) return res.json({ transcripts: {} });
 
+        // Public, unauthenticated endpoint: a private VOD's transcript and overview are left out,
+        // exactly like an id with no VOD. Media is asked for each VOD's visibility; an id it cannot
+        // vouch for (missing, or Media unreachable) is left out too.
+        const media = require('../media-client');
+        const { isPrivate } = require('../media-proxy/access');
+        const shown = await Promise.all(ids.map((id) => media.getVod(id).then((v) => (v && !isPrivate(v) ? id : null), () => null)));
+
         const out = {};
-        for (const vodId of ids) {
+        for (const vodId of shown.filter((id) => id != null)) {
             let segments = [];
             let events = [];
             // Prefer the timeline: it covers the whole stream and carries sound events.
@@ -334,8 +341,11 @@ router.get('/transcript/:streamId', async (req, res) => {
         } catch { /* */ }
         if (!vodId) {
             try {
-                const v = db.get('SELECT id FROM vods WHERE stream_id = ? AND COALESCE(is_recording, 0) = 0 ORDER BY COALESCE(is_public,1) DESC, id DESC LIMIT 1', [sid]);
-                vodId = v ? v.id : null; // legacy pre-migration rows
+                // Legacy pre-migration rows; never a private one (Media's list above is public-only too).
+                const v = db.get(`SELECT id FROM vods WHERE stream_id = ? AND COALESCE(is_recording, 0) = 0
+                                  AND COALESCE(visibility, CASE WHEN is_public = 1 THEN 'public' ELSE 'private' END) != 'private'
+                                  ORDER BY COALESCE(is_public,1) DESC, id DESC LIMIT 1`, [sid]);
+                vodId = v ? v.id : null;
             } catch { /* */ }
         }
         // Sound events ride alongside the speech segments so the transcript view can show

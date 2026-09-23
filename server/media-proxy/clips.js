@@ -10,8 +10,23 @@ const db = require('../db/database');
 const media = require('../media-client');
 const { requireAuth, optionalAuth } = require('../auth/auth');
 const permissions = require('../auth/permissions');
+const access = require('./access');
 
 const router = express.Router();
+
+/** The answer for a missing clip — also what anyone who may not see a private one gets. */
+function clipNotFound(res) {
+    return res.status(404).json({ error: 'Clip not found' });
+}
+
+/**
+ * A refusal on a clip the caller may not act on: 403 when they can see it anyway, the
+ * missing-clip 404 when it is private to them (a 403 would confirm that it exists).
+ */
+function refuse(req, res, clip, message) {
+    if (!access.canView(req.user, clip)) return clipNotFound(res);
+    return res.status(403).json({ error: message });
+}
 
 function mediaErr(res, err, fallback) {
     if (err && err.name === 'MediaApiError' && err.status) {
@@ -177,18 +192,19 @@ router.get('/', async (req, res) => {
 // ── Clip detail ──────────────────────────────────────────────
 router.get('/:id', optionalAuth, async (req, res) => {
     try {
-        if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'Clip not found' });
+        if (!/^\d+$/.test(req.params.id)) return clipNotFound(res);
+        // Fetched with the app's authority: Live applies the visibility rule (./access), so staff and
+        // the clipped channel's streamer can open a private clip and everyone else gets the
+        // missing-clip answer.
         let clip;
-        try { clip = await media.getClip(req.params.id, { actingUser: media.actingUserFrom(req) }); }
-        catch (err) { return mediaErr(res, err, 'Failed to get clip'); }
-        if (!clip) return res.status(404).json({ error: 'Clip not found' });
-        withUserFields(clip);
-
-        if (clip.visibility === 'private') {
-            let allowed = req.user && (req.user.id === clip.user_id || req.user.role === 'admin');
-            if (!allowed && req.user && clip.stream_id) { const s = db.getStreamById(clip.stream_id); if (s && s.user_id === req.user.id) allowed = true; }
-            if (!allowed) return res.status(404).json({ error: 'Clip not found' });
+        try { clip = await media.getClip(req.params.id); }
+        catch (err) {
+            if (err && err.name === 'MediaApiError' && err.status === 404) return clipNotFound(res);
+            return mediaErr(res, err, 'Failed to get clip');
         }
+        if (!clip || !access.canView(req.user, clip)) return clipNotFound(res);
+        if (access.isPrivate(clip)) res.set('Cache-Control', 'private, no-store');
+        withUserFields(clip);
 
         // Unique-view tracking (content_views stays in live.db).
         try {
@@ -237,7 +253,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
             try {
                 const v = await media.getVod(clip.vod_id);
                 const recording = v && (v.status === 'recording' || v.is_recording);
-                if (v && v.visibility !== 'private' && !recording) clip.vod_available = true;
+                if (v && access.canView(req.user, v) && !recording) clip.vod_available = true;
             } catch { /* */ }
         }
 
@@ -253,7 +269,7 @@ router.put('/:id/title', requireAuth, async (req, res) => {
         let clip;
         try { clip = await media.getClip(req.params.id); } catch (err) { return mediaErr(res, err, 'Clip not found'); }
         if (!clip) return res.status(404).json({ error: 'Clip not found' });
-        if (!(await canActorModerateClip(req.user, clip))) return res.status(403).json({ error: 'Not authorized to edit this clip' });
+        if (!(await canActorModerateClip(req.user, clip))) return refuse(req, res, clip, 'Not authorized to edit this clip');
         const title = (req.body.title || '').trim();
         if (!title || title.length > 200) return res.status(400).json({ error: 'Title must be 1-200 characters' });
         await media.updateClip(clip.id, { title });
@@ -276,7 +292,7 @@ router.put('/:id/visibility', requireAuth, async (req, res) => {
         const canByChannel = ownerId && (req.user.id === ownerId || (() => { const ch = db.getChannelByUserId(ownerId); return !!(ch && db.isChannelModerator(req.user.id, ch.id)); })());
         const canByStaff = !canByChannel && req.user.id !== clip.user_id && await canActorModerateClip(req.user, clip);
         const ownClipNoChannel = !ownerId && req.user.id === clip.user_id;
-        if (!(canByChannel || canByStaff || ownClipNoChannel)) return res.status(403).json({ error: 'Only the streamer can change clip visibility' });
+        if (!(canByChannel || canByStaff || ownClipNoChannel)) return refuse(req, res, clip, 'Only the streamer can change clip visibility');
         if (req.body.visibility !== undefined) {
             await media.updateClip(clip.id, { visibility: req.body.visibility });
             return res.json({ message: `Clip is now ${req.body.visibility}`, visibility: req.body.visibility, is_public: req.body.visibility === 'public' ? 1 : 0 });
@@ -319,7 +335,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
         let clip;
         try { clip = await media.getClip(req.params.id); } catch (err) { return mediaErr(res, err, 'Clip not found'); }
         if (!clip) return res.status(404).json({ error: 'Clip not found' });
-        if (!(await canActorDeleteClip(req.user, clip))) return res.status(403).json({ error: 'Not authorized to delete this clip' });
+        if (!(await canActorDeleteClip(req.user, clip))) return refuse(req, res, clip, 'Not authorized to delete this clip');
         await media.deleteClip(clip.id);
         res.json({ message: 'Clip deleted' });
     } catch (err) {
@@ -337,7 +353,7 @@ router.post('/:id/recut', requireAuth, async (req, res) => {
         let clip;
         try { clip = await media.getClip(req.params.id); } catch (err) { return mediaErr(res, err, 'Clip not found'); }
         if (!clip) return res.status(404).json({ error: 'Clip not found' });
-        if (!(await canActorDeleteClip(req.user, clip))) return res.status(403).json({ error: 'Not authorized to re-cut this clip' });
+        if (!(await canActorDeleteClip(req.user, clip))) return refuse(req, res, clip, 'Not authorized to re-cut this clip');
         const out = await media.recutClip(clip.id);
         res.json({ message: 'Re-cutting clip', status: out?.status || 'processing' });
     } catch (err) {

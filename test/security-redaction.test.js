@@ -251,7 +251,7 @@ const ok = (name) => { pass++; console.log('  ok -', name); };
     const src = fs.readFileSync(path.join(ROOT, 'server/media-proxy/vods.js'), 'utf8');
     const h = src.match(/router\.get\('\/:id\/context'[\s\S]*?res\.json\(data\);/);
     assert(h, 'the VOD context route should exist');
-    const checkAt = h[0].indexOf("vod.visibility === 'private'");
+    const checkAt = h[0].indexOf('access.canView(req.user, vod)');
     const cacheAt = h[0].indexOf('_ctxCache.get(id)');
     assert(checkAt > 0 && cacheAt > 0, 'both the visibility check and the cache read should be present');
     assert(checkAt < cacheAt, 'the visibility check must run before the cache is read');
