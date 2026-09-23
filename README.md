@@ -59,7 +59,7 @@ The media subsystem lives in **OpenVibe.Media**:
 - `data/live-thumbs` — ephemeral live-stream thumbnails.
 - `data/emotes`, `data/avatars`, `data/offline` — Live-local assets.
 - `data/media/cache` — song-request (watch-party) downloads.
-- `data/analytics.db` — request analytics (ADR-021: no IPs or user ids, route templates, raw rows ≤ 30 days; `scripts/analytics-prune.js`; see [docs/architecture.md](docs/architecture.md#analytics-adr-021)).
+- `data/analytics.db` — request analytics (ADR-021, `openvibe-shared/analytics` since v1.4.0: no IPs or user ids, route templates, raw rows ≤ 30 days; a request with `Sec-GPC: 1` or `DNT: 1` is not recorded at all; `scripts/analytics-prune.js`; see [docs/architecture.md](docs/architecture.md#analytics-adr-021)).
 - VOD/clip/paste **files** live in OpenVibe.Media's storage.
 
 ---

@@ -1,5 +1,5 @@
 /**
- * ADR-021 analytics bounds (server/analytics/, scripts/analytics-prune.js):
+ * ADR-021 analytics bounds (openvibe-shared/analytics, scripts/analytics-prune.js):
  *   - a tracked request stores no IP, user id, city, raw user agent, raw referer or query string,
  *     anywhere in analytics.db; the session id is a rotating id, never the user id;
  *   - paths become route templates (Express route when matched, normaliser otherwise);
@@ -18,8 +18,8 @@ const os = require('os');
 const path = require('path');
 const express = require('express');
 const Database = require('better-sqlite3');
-const { AnalyticsTracker, privacy, retention } = require('../server/analytics');
-const { sqlTime } = require('../server/analytics/tracker');
+const { AnalyticsTracker, privacy, retention } = require('openvibe-shared/analytics');
+const { sqlTime } = require('openvibe-shared/analytics/tracker');
 const cli = require('../scripts/analytics-prune');
 
 let failures = 0;

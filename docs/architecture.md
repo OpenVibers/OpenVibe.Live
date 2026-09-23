@@ -120,7 +120,7 @@ and refills history on reconnect.
 | Streams | `server/streaming/routes.js` | stream and slot CRUD, channel pages |
 | Media proxy | `server/media-proxy/*.js` | VODs, clips, pastes, thumbnails via OpenVibe.Media |
 | Auth | `server/auth/auth.js`, `server/auth/permissions.js` | JWT/API tokens, scopes, role ranks |
-| Analytics | `server/analytics/*.js` | request analytics in `data/analytics.db` within ADR-021 (see [Analytics](#analytics-adr-021)) |
+| Analytics | `openvibe-shared/analytics` | request analytics in `data/analytics.db` within ADR-021 (see [Analytics](#analytics-adr-021)) |
 
 ### Migrations
 
@@ -132,7 +132,8 @@ adopted, failing and deferred cases.
 
 ### Analytics (ADR-021)
 
-`server/analytics/` records one row per finished request in `data/analytics.db` (separate from `live.db`)
+`openvibe-shared/analytics` (the one ADR-021 module for Live, Tools and Network, wired in `server/index.js`)
+records one row per finished request in `data/analytics.db` (separate from `live.db`)
 and rolls rows up hourly and daily for the Network admin dashboards. What a raw row may carry is bound by
 ADR-021 (OpenVibe.Contracts `docs/adr/ADR-021-analytics.md`):
 
@@ -155,9 +156,12 @@ ADR-021 (OpenVibe.Contracts `docs/adr/ADR-021-analytics.md`):
   dashboards (sub-48 h summaries, realtime, top pages) count distinct sessions instead of IPs; "new vs
   returning visitors" and daily `new_users` are no longer measured (NULL).
 - **Retention:** raw events older than 30 days are deleted nightly in batches of 5000 (job
-  `analytics-prune`, `server/analytics/retention.js`); rollups are kept.
-- **Operator CLI:** `scripts/analytics-prune.js` — dry run by default (counts only). `--apply` needs
-  `--backup <new file>` (verified sqlite online backup) or an explicit `--no-backup`; `--scrub` also
+  `analytics-prune`, `retention.pruneRawEvents` from `openvibe-shared/analytics`); rollups are kept.
+- **Opt-out:** a request with `Sec-GPC: 1` or `DNT: 1` is not recorded at all: no raw row, visitor hash,
+  session id or rate counter, so it is also missing from the rollups.
+- **Operator CLI:** `scripts/analytics-prune.js`, a wrapper over `openvibe-shared/analytics/prune-cli` — dry
+  run by default (counts only). `--apply` needs `--backup <new file>` (verified sqlite online backup,
+  owner-only) or an explicit `--no-backup`; `--scrub` also
   rewrites rows written before ADR-021 (personal columns → NULL, path → template, referer → origin, user
   agent → class, legacy session ids → NULL) and the rollups' top-path/referer lists (counts unchanged).
   Rollup totals are compared before and after; the run ends with a VACUUM unless `--no-vacuum`.

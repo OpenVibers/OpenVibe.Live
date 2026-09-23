@@ -121,7 +121,7 @@ const vibeCodingRoutes = require('./vibe-coding/routes');
 // Restream
 const restreamRoutes = require('./streaming/restream-routes');
 const restreamManager = require('./streaming/restream-manager');
-const analyticsModule = require('./analytics'); // ADR-021: no IP/user id, route templates, 30-day raw retention
+const analyticsModule = require('openvibe-shared/analytics'); // ADR-021: no IP/user id, route templates, 30-day raw retention; Sec-GPC/DNT not recorded
 
 // WHIP (WebRTC-HTTP Ingestion Protocol)
 const whipHandler = require('./streaming/whip-handler');

@@ -95,7 +95,7 @@ validation, private VOD cache leak, HTTP-FLV bound to loopback, admin bans never
 | Medium | Per-address limits (broadcast viewers, rate limits) trust `CF-Connecting-IP`; if the origin is reachable without Cloudflare that header is spoofable. | Firewall the origin to Cloudflare ranges (deploy/cloudflare/checklist.md). |
 | Low | Chat connect/close/join still scan every client to update counts. | Profile under load before indexing clients by room. |
 | Low | RobotStreamer SFU WebSocket connections still skip certificate verification (hosts are assigned by RS at runtime). | Confirm RS SFU certificates and enable verification. |
-| Low | Analytics roll-ups and the 90-day DELETE run synchronously on the main thread (openvibe-shared/analytics.js). | Change in OpenVibe.Shared, release, bump the pin. |
+| Low | Analytics roll-ups (the hourly `aggregate()` in openvibe-shared/analytics/tracker.js, v1.4.0) run synchronously on the main thread. The raw-event prune is no longer a single DELETE: 30 days, in bounded batches (job `analytics-prune`, `retention.pruneRawEvents`). | Change in OpenVibe.Shared, release, bump the pin. |
 
 ## 5. Next hardening steps
 
