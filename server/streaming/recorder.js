@@ -15,7 +15,7 @@
  *                 TODO(contract): jsmpeg recording is skipped until Media grows an ingest for it.
  *
  * On stream end: ingestRtpStop / finalizeVod. Media probes, thumbnails, and fires the
- * vod.ready webhook (see server/media-proxy/webhook.js).
+ * vod.ready outcome (see server/media-proxy/outcomes.js).
  */
 'use strict';
 const db = require('../db/database');

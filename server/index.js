@@ -544,9 +544,14 @@ app.use('/data/arena', express.static(path.resolve(process.env.ARENA_IMAGE_PATH 
     setHeaders: (res) => res.setHeader('Content-Type', 'image/png'),
 }));
 
-// OpenVibe.Media → Live webhook (vod.ready / clip.ready …). Mounted BEFORE the
-// /internal router because it authenticates with an HMAC signature, not X-Internal-Key.
+// OpenVibe.Media → Live outcomes (vod.ready / clip.ready …), two ways during the Wave 3
+// transition, applied once whichever arrives first; MEDIA_EVENTS_AUTHORITY=webhook|both|events
+// picks the one that acts (server/media-proxy/outcomes.js). Mounted BEFORE the /internal router
+// because they authenticate with HMAC signatures, not X-Internal-Key.
+//   direct webhook (MEDIA_WEBHOOK_SECRET), to be removed once Events is proven
 app.post('/internal/media-webhook', require('./media-proxy/webhook'));
+//   OpenVibe.Events delivery of media.vod.* / media.clip.* / media.storage.* (MEDIA_EVENTS_SECRET)
+app.post('/internal/media-events', require('./media-proxy/media-events').handler);
 // OpenVibe.Events → Live: OpenRe session lifecycle mirrored into `streams` (signed delivery,
 // OPENRE_EVENTS_SECRET; server/openre/mirror.js). Also before /internal (no X-Internal-Key).
 app.post('/internal/openre-events', require('./openre/mirror').webhookHandler);

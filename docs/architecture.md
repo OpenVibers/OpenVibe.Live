@@ -169,3 +169,48 @@ SSO and wallet come from OpenVibe.Network; media storage and processing from Ope
 inter-service contracts are in `../CONTRACTS.md` (OpenVibers workspace). Deployment:
 [deploy.md](deploy.md). Security posture: [../SECURITY_AUDIT.md](../SECURITY_AUDIT.md). Measurements:
 [performance-audit.md](performance-audit.md).
+
+### Durable events (OpenVibe.Events)
+
+Live publishes through one transactional outbox (`event_outbox`, [server/events/stream-events.js](../server/events/stream-events.js);
+off unless `EVENTS_URL` and `OV_OAUTH_CLIENT_SECRET` are set). Every event is queued in the same SQLite
+transaction as the change it describes.
+
+| event | when | subject |
+|---|---|---|
+| `live.stream.started` / `live.stream.ended` | a `streams` row goes live / ends | `stream <id>` |
+| `live.release.deployed` | the first boot that runs new commits ([server/events/release-events.js](../server/events/release-events.js)), queued with the `deploy_last_announced` update; payload: `service`, `release`, `commit`, `previous`, `commit_count`, `commits[]` (≤ 40), `deployed_at`, `notes_url` | `release <head sha>` |
+
+The chat deploy notice itself is unchanged: stored in `chat_messages` (local chat) or handed to
+OpenVibe.Chat over the bridge (`CHAT_AUTHORITY=chat`). Once Chat consumes `live.release.deployed`, the
+bridge's `deployNotice` hop can be deleted.
+
+Live consumes, each on its own endpoint with its own subscription secret, signature v2 only, applied once
+through the SDK inbox (`idempotency_receipts`):
+
+| topics | endpoint | secret | subscribe with |
+|---|---|---|---|
+| `openre.session.*` | `/internal/openre-events` | `OPENRE_EVENTS_SECRET` | OpenRe's `scripts/subscribe-live-events.js` |
+| `media.vod.*`, `media.clip.*`, `media.storage.*` | `/internal/media-events` | `MEDIA_EVENTS_SECRET` | `scripts/subscribe-media-events.js` |
+
+#### Media outcomes over Events
+
+Media reports `vod.ready|failed`, `clip.ready|failed` and `storage.alert|recovered` both as the signed
+webhook (`POST /internal/media-webhook`, `MEDIA_WEBHOOK_SECRET`) and as `media.*` events. Media writes the
+event in the state change's transaction and puts its `event_id` in the webhook body, so
+[server/media-proxy/outcomes.js](../server/media-proxy/outcomes.js) applies each outcome once, whichever
+copy arrives first (receipt `media:<object type>:<object id>:<event id>`, consumer
+`live-media-outcomes`). Only Live's tenant (`MEDIA_APP_ID`) counts; `media.object.uploaded` is ignored.
+`MEDIA_EVENTS_AUTHORITY` picks the path that acts:
+
+- `webhook` (default): the webhook acts; Events deliveries are acknowledged and dropped.
+- `both`: the transition window; either acts, the other copy is a no-op.
+- `events`: Events acts; a webhook with an `event_id` is acknowledged and dropped (one without, from a
+  Media whose outbox is off, has no durable twin and still acts).
+
+Removing the webhook, once `events` has run clean (every recording and clip since the switch has its
+`vod_ai_state`/`clip_ai_state` row and `live-media-outcomes` receipts, and Events shows no DLQ entries for
+Live's subscriptions): clear Live's `webhook_url` in Media's `apps` row (then Media sends Live nothing
+directly), wait a release, and delete `/internal/media-webhook`, `server/media-proxy/webhook.js`,
+`MEDIA_WEBHOOK_SECRET` and the `webhook`/`both` modes. Rollback before that step: set
+`MEDIA_EVENTS_AUTHORITY=webhook` (or `scripts/subscribe-media-events.js --disable`).

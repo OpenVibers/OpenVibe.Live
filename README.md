@@ -44,7 +44,7 @@ The media subsystem lives in **OpenVibe.Media**:
 
 - On stream start, Live creates a VOD in Media and starts ingest — RTMP streams are pulled by Media from `rtmp://127.0.0.1:1935/live/<key>`; WebRTC/WHIP streams are forwarded over RTP to ports Media allocates (UDP 12000-12199); browser MediaRecorder chunks are proxied to Media's chunks endpoints.
 - The SPA's existing `/api/vods…`, `/api/clips…`, `/api/pastes…`, `/api/thumbnails/:filename` calls are preserved by thin proxies; big media files 302-redirect to `https://openvibe.media`.
-- Media calls back at `POST /internal/media-webhook` (`X-OVMedia-Signature` HMAC) on `vod.ready` / `clip.ready` — driving recording state, AI jobs, and clip chat announcements.
+- Media reports `vod.ready` / `clip.ready` (and failures, storage alerts) as `media.*` OpenVibe.Events events (`POST /internal/media-events`) and, during the transition, the direct webhook `POST /internal/media-webhook` (`X-OVMedia-Signature` HMAC) — driving recording state, AI jobs, and clip chat announcements. Each outcome is applied once; `MEDIA_EVENTS_AUTHORITY` picks the path (see [docs/architecture.md](docs/architecture.md#media-outcomes-over-events)).
 - Live-owned AI/transcript state for Media-hosted content lives in `vod_ai_state` / `clip_ai_state` in live.db.
 
 ### Authentication & currencies
