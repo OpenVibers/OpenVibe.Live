@@ -37,6 +37,15 @@ router.post('/ai/site-copy', async (req, res) => {
     const linkList = links.map(l => ({ id: clean(l.id, 60), name: clean(l.name, 60), about: clean(l.about, 120) }));
     _siteCopyBusy = true;
     try {
+        const aiService = require('../ai/ai-service');
+        if (aiService.enabled()) {
+            // AI_SERVICE=remote: OpenVibe.AI owns this workflow (network.site_copy). Network should call it
+            // directly; until it does, this endpoint answers from there instead of from Live's own key.
+            const run = await aiService.run('network.site_copy', { sites: facts, links: linkList });
+            const out = aiService.usable(run);
+            if (!out || !Array.isArray(out.sites)) return res.status(503).json({ ok: false, error: 'AI unavailable or over budget' });
+            return res.json({ ok: true, model: (run.provenance && run.provenance.model) || null, run_id: run.id, sites: out.sites });
+        }
         const llm = require('../ai/llm');
         const out = await llm.complete({
             role: 'summary', kind: 'site_copy', source: 'network-footer', maxTokens: 2200, temperature: 0.7, timeoutMs: 60000,

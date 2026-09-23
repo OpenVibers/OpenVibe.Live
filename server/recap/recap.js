@@ -148,8 +148,15 @@ async function aiWriteup(g) {
     };
     const system = `You write the "after-show report" for a live stream on OpenVibe.Live (a scrappy, open-source, community-run streaming site). Voice: sports-page energy, warm, specific, a little funny, never mocking the streamer or the viewers. Use the REAL numbers and names given. Small streams are fine — a 4-viewer night can still be an A if it was fun. Output only JSON.`;
     let r = null;
-    try { r = await llm.complete({ role: 'summary', kind: 'stream_recap', source: 'recap', ownerUserId: g.streamer.id, system, user: JSON.stringify(facts), json: SCHEMA, maxTokens: 500, temperature: 0.8, timeoutMs: 40000 }); } catch (e) { console.warn('[Recap] model call failed:', e.message); return null; }
-    const out = r && (r.json || (r.text ? llm.parseJsonLoose(r.text) : null));
+    let out = null;
+    const aiService = require('../ai/ai-service');
+    if (aiService.enabled()) {
+        // AI_SERVICE=remote: the prompt lives in OpenVibe.AI (workflow live.stream.recap).
+        out = await aiService.structured('live.stream.recap', { facts }, { target: { service: 'live', type: 'stream', id: String(g.stream.id) }, meter: { kind: 'stream_recap', role: 'summary', source: 'recap', ownerUserId: g.streamer.id } });
+    } else {
+        try { r = await llm.complete({ role: 'summary', kind: 'stream_recap', source: 'recap', ownerUserId: g.streamer.id, system, user: JSON.stringify(facts), json: SCHEMA, maxTokens: 500, temperature: 0.8, timeoutMs: 40000 }); } catch (e) { console.warn('[Recap] model call failed:', e.message); return null; }
+        out = r && (r.json || (r.text ? llm.parseJsonLoose(r.text) : null));
+    }
     if (!out || !out.headline || !out.summary) return null;
     return { headline: String(out.headline).trim().slice(0, 90), summary: String(out.summary).trim().slice(0, 500), moment: String(out.moment || '').trim().slice(0, 200), tags: (Array.isArray(out.tags) ? out.tags : []).map(t => String(t).trim().toLowerCase()).filter(Boolean).slice(0, 4), grade: ['S', 'A', 'B', 'C'].includes(out.grade) ? out.grade : 'B' };
 }

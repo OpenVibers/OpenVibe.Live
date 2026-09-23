@@ -23,6 +23,8 @@ const crypto = require('crypto');
 const db = require('../db/database');
 let llm = null;
 try { llm = require('../ai/llm'); } catch { llm = null; }
+let aiService = null;
+try { aiService = require('../ai/ai-service'); } catch { aiService = null; }
 
 const LANG_NAMES = {
     en: 'English', ja: 'Japanese', ko: 'Korean', zh: 'Chinese', ru: 'Russian', uk: 'Ukrainian', ar: 'Arabic',
@@ -191,6 +193,16 @@ async function translate(text, { from = 'auto', to = 'en', context = 'chat', max
     const ok = await _slot();
     if (!ok) return null;
     try {
+        if (aiService && aiService.enabled()) {
+            // AI_SERVICE=remote: the prompt lives in OpenVibe.AI (workflow live.translate).
+            const o = await aiService.structured('live.translate', { text: String(text).trim(), from, to, context, max_tokens: maxTokens || undefined });
+            if (o && o.unchanged) { _memSet(key, ''); return null; }
+            const remote = o && typeof o.text === 'string' ? o.text.trim() : '';
+            if (!remote) return null;
+            _memSet(key, remote);
+            try { db.run('INSERT OR REPLACE INTO translations (key, src, dst, text) VALUES (?, ?, ?, ?)', [key, from, to, remote]); } catch { /* */ }
+            return remote;
+        }
         const src = from === 'auto' ? 'the source language' : langName(from);
         const kind = context === 'bio' ? 'a streamer\'s profile bio'
             : context === 'speech' ? 'lines of live-stream speech (a casual gamer talking to his chat)'

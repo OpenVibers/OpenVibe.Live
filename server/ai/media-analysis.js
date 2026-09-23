@@ -297,7 +297,14 @@ async function analyzeMedia(src, { streamId = null, userId = null, numFrames = n
         if (frames.length) parts.push('Visual observations across the video (in order):\n' + frames.map(f => `- ${f.description}`).join('\n'));
         if (transcript) parts.push('Audio transcript (sampled from the recording):\n"' + transcript.slice(0, 4000) + '"');
         const prompt = `You are writing an AI overview of a recorded video. Using ONLY the signals below (be concrete, don't invent), summarize what the video is about in 2-5 sentences — the main activities, topics, and vibe.\n\n${parts.join('\n\n')}`;
-        overview = await ai.summarizeText(prompt, 400, 'media_overview');
+        const aiService = require('./ai-service');
+        if (aiService.enabled()) {
+            // AI_SERVICE=remote: the prompt lives in OpenVibe.AI (workflow live.media.overview).
+            const o = ai.isEnabled() && ai.withinBudget()
+                ? await aiService.structured('live.media.overview', { frames: frames.map(f => String(f.description || '').slice(0, 1000)).filter(Boolean).slice(0, 60), transcript: String(transcript || '').slice(0, 200000) }, { meter: { kind: 'media_overview', role: 'legacy', ownerUserId: userId } })
+                : null;
+            overview = o && o.overview ? o.overview : null;
+        } else overview = await ai.summarizeText(prompt, 400, 'media_overview');
         if (overview) overview = overview.slice(0, 2000);
     }
     return { overview: overview || null, transcript: transcript || '', segments: segments || [], frames, duration };

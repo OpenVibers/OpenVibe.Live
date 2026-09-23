@@ -16,7 +16,10 @@ function b(k) { const v = db.getSetting(k); return v === true || v === 'true' ||
 function num(k, d) { const v = parseFloat(db.getSetting(k)); return Number.isFinite(v) ? v : d; }
 
 const llm = require('./llm');
+const aiService = require('./ai-service');
 function isEnabled() { return llm.isEnabled(); }
+// AI_SERVICE=remote: the analyses below whose prompt moved to OpenVibe.AI run as its workflows.
+const remote = () => aiService.enabled() && isEnabled() && withinBudget();
 function pasteAnalysisEnabled() { return isEnabled() && b('ai_paste_analysis_enabled'); }
 function streamMemoryEnabled() { return isEnabled() && b('ai_stream_memory_enabled'); }
 // Local whisper.cpp transcription (default on when installed). Independent of the
@@ -121,6 +124,12 @@ async function _toVisionJpeg(image, opts = {}) {
 
 /** Describe an image paste → { description, tags }. */
 async function analyzeImagePaste(image, title, kind = 'paste_image') {
+    if (aiService.enabled()) {
+        if (!remote()) return null;
+        const img = await aiService.imageInput(image, { toVisionJpeg: llm.toVisionJpeg, maxWidth: 1280 });
+        const o = img ? await aiService.structured('live.paste.describe_image', { title: String(title || '').slice(0, 500), image: img }, { meter: { kind, role: 'vision' } }) : null;
+        return o && o.description ? { description: o.description, tags: o.tags || [] } : null;
+    }
     const prompt = `You are describing an uploaded image/screenshot for a paste titled "${(title || '').slice(0, 120)}".
 Reply ONLY with compact JSON: {"description":"1-2 sentence description of what the image shows","tags":["3-6","short","lowercase","tags"]}.`;
     const text = await _complete({ prompt, image, maxTokens: 300, kind, role: 'vision', imageMaxWidth: 1280 });
@@ -131,6 +140,11 @@ Reply ONLY with compact JSON: {"description":"1-2 sentence description of what t
 
 /** Summarize a text paste → { description }. */
 async function analyzeTextPaste(content, title) {
+    if (aiService.enabled()) {
+        if (!remote() || !String(content || '').trim()) return null;
+        const o = await aiService.structured('live.paste.summarize_text', { title: String(title || '').slice(0, 500), content: String(content || '').slice(0, 200000) }, { meter: { kind: 'paste_text', role: 'legacy' } });
+        return o && o.description ? { description: o.description, tags: [] } : null;
+    }
     const snippet = String(content || '').slice(0, 6000);
     const prompt = `Summarize what this pasted text is about in one short sentence (max 200 chars), plainly. Title: "${(title || '').slice(0, 120)}".\n\n---\n${snippet}`;
     const text = await _complete({ prompt, maxTokens: 120, kind: 'paste_text' });
@@ -139,6 +153,12 @@ async function analyzeTextPaste(content, title) {
 
 /** Analyze a live-stream frame → { description, tags }. */
 async function analyzeStreamFrame(image) {
+    if (aiService.enabled()) {
+        if (!remote()) return null;
+        const img = await aiService.imageInput(image, { toVisionJpeg: llm.toVisionJpeg, maxWidth: 768 });
+        const o = img ? await aiService.structured('live.stream.describe_frame', { image: img }, { meter: { kind: 'stream_memory', role: 'vision' } }) : null;
+        return o && o.description ? { description: o.description, tags: o.tags || [], worthy: o.worthy === true, title: o.worthy === true ? String(o.title || '').slice(0, 80) : '' } : null;
+    }
     // One vision call does three jobs: the memory description, the tags, and a screenshot-worthiness
     // verdict + caption (so live pastes need no extra call).
     const prompt = `This is a frame from a live stream. Reply ONLY with compact JSON: {"description":"one concise sentence describing what is happening on screen right now","tags":["2-5","short","tags"],"worthy":<true only if this exact frame is genuinely screenshot-worthy on its own: a face/reaction, a visual gag, something unusual or funny on screen — false for ordinary gameplay/desktop/chat/talking-head frames>,"title":"<if worthy: a punchy, funny 3-7 word caption for it, else empty>"}.`;
@@ -160,6 +180,18 @@ async function summarizeStreamMemories(memories, streamId = null) {
     // overview reflects the entire stream since it started, not just the latest frame.
     const lines = (memories || []).slice(-80).map(m => `- ${m.description}`).join('\n');
     if (!lines) return null;
+    if (aiService.enabled()) {
+        if (!remote()) return null;
+        const input = { observations: (memories || []).slice(-80).map(m => String(m.description || '').slice(0, 1000)).filter(Boolean) };
+        if (streamId) {
+            try {
+                input.speech = (db.getTimeline(streamId, { kind: 'speech', limit: 400 }) || []).slice(-200).map(r => ({ start_sec: Number(r.start_sec) || 0, text: String(r.text || '').slice(0, 2000) }));
+                input.sounds = (db.getTimeline(streamId, { kind: 'sound', limit: 120 }) || []).slice(-60).map(r => ({ start_sec: Number(r.start_sec) || 0, label: String(r.label || '').slice(0, 120), confidence: Number(r.confidence || 0) }));
+            } catch { /* timeline optional */ }
+        }
+        const o = await aiService.structured('live.stream.summarize', input, { target: streamId ? { service: 'live', type: 'stream', id: String(streamId) } : undefined, meter: { kind: 'stream_memory', role: 'legacy' } });
+        return o && o.overview ? { overview: o.overview, category: normalizeCategory(o.category), tags: Array.isArray(o.tags) ? o.tags.map(String).slice(0, 6) : [] } : null;
+    }
 
     // Fold in the audio timeline when one exists. Previously the transcript reached this
     // prompt only as a 500-char slice embedded inside a memory's description string, with
@@ -230,7 +262,14 @@ async function generateStreamerOverview(userId) {
 
     const prompt = `You are building an internal profile of a livestreamer for site staff, using aggregated signals across their streams, VODs, and pastes. Write a concise overview (4-8 sentences) covering: what they stream / their content niche, recurring themes or activities, tone/vibe, and anything notable for moderation. Be factual and neutral; do NOT invent specifics that aren't supported by the signals below.\n\n${ctx}`;
 
-    const text = await _complete({ prompt, maxTokens: 550, kind: 'streamer_overview' });
+    const text = aiService.enabled()
+        ? ((await aiService.structured('live.streamer.overview', {
+            streamer: { username: String(user.username), display_name: String(user.display_name || user.username), bio: String(channel?.bio || user.bio || '').slice(0, 2000), category: (channel?.ai_category || channel?.category) ? String(channel.ai_category || channel.category) : undefined, category_inferred: Boolean(channel?.ai_category) },
+            memories: memories.slice(0, 40).map(m => String(m.description || '').slice(0, 1000)).filter(Boolean),
+            vods: vods.map(v => ({ title: String(v.title || 'Untitled VOD').slice(0, 300), category: (v.ai_category || v.category) ? String(v.ai_category || v.category) : undefined })),
+            pastes: pastes.filter(p => p.ai_summary).map(p => ({ title: String(p.title || 'paste').slice(0, 300), summary: String(p.ai_summary).slice(0, 600) })),
+        }, { target: { service: 'live', type: 'user', id: String(userId) }, meter: { kind: 'streamer_overview', role: 'legacy' } })) || {}).overview || null
+        : await _complete({ prompt, maxTokens: 550, kind: 'streamer_overview' });
     if (!text) return null;
     const overview = text.slice(0, 4000);
     try {

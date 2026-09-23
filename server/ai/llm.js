@@ -21,6 +21,7 @@
 'use strict';
 const fs = require('fs');
 const db = require('../db/database');
+const aiService = require('./ai-service');
 
 const ROLES = ['chat', 'vision', 'director', 'summary', 'legacy'];
 const DEFAULT_TIMEOUT_MS = { chat: 20000, vision: 30000, director: 25000, summary: 30000, legacy: 30000 };
@@ -30,7 +31,8 @@ function b(k) { const v = db.getSetting(k); return v === true || v === 'true' ||
 function num(k, d) { const v = parseFloat(db.getSetting(k)); return Number.isFinite(v) ? v : d; }
 
 // ── Gates ────────────────────────────────────────────────────
-function isEnabled() { return b('ai_enabled') && !!s('ai_api_key'); }
+// AI_SERVICE=remote: the provider key lives in OpenVibe.AI, so the admin master switch alone decides.
+function isEnabled() { return b('ai_enabled') && (aiService.enabled() || !!s('ai_api_key')); }
 function withinBudget() {
     const cap = num('ai_max_cost_usd_per_day', 0);
     if (!cap || cap <= 0) return true;
@@ -294,6 +296,22 @@ function parseJsonLoose(text) {
  */
 async function complete(o = {}) {
     const role = ROLES.includes(o.role) ? o.role : 'legacy';
+    // AI_SERVICE=remote: shared-key calls become workflow runs on OpenVibe.AI (a streamer's BYO
+    // provider override still goes straight to that provider, below). Usage is still recorded here
+    // so per-streamer budgets and the admin cost views keep working unchanged.
+    if (aiService.enabled() && !(o.provider && (o.provider.apiKey || o.provider.baseUrl))) {
+        if (!isEnabled() || !withinBudget()) return null;
+        const r = await aiService.complete({ ...o, role }, { toVisionJpeg });
+        if (!r) { console.warn(`[AI] ${role}/${o.kind || role} via OpenVibe.AI returned no answer`); return null; }
+        if (o.json && !r.json) r.json = parseJsonLoose(r.text);
+        try {
+            db.recordAiUsage({
+                kind: o.kind || role, model: r.model, input_tokens: r.usage.input, output_tokens: r.usage.output, cached_tokens: r.usage.cached || 0,
+                cost_usd: r.cost || 0, owner_user_id: o.ownerUserId || null, source: o.source || null, role, provider: 'openvibe-ai', latency_ms: r.latencyMs,
+            });
+        } catch { /* metering is best-effort */ }
+        return r;
+    }
     const p = resolveProvider(role, o.provider || null);
     if (p.shared) { if (!isEnabled() || !withinBudget()) return null; }
     else if (!p.apiKey && !/localhost|127\.0\.0\.1|:\d+$/.test(p.baseUrl) && /api\.openai\.com|anthropic\.com/i.test(p.baseUrl)) return null;
@@ -356,5 +374,12 @@ async function testProvider(override = null) {
         return r ? { ok: true, model: r.model, latencyMs: r.latencyMs } : { ok: false, error: 'AI disabled, over budget, or the provider rejected the request' };
     } catch (e) { return { ok: false, error: e.message }; }
 }
+
+// Remote structured workflows (translate, paste/frame analysis, overviews, recap) meter here too.
+aiService.setRecorder((r, m) => db.recordAiUsage({
+    kind: m.kind || (r.workflow && r.workflow.key) || 'remote', model: (r.provenance && r.provenance.model) || null,
+    input_tokens: (r.usage && r.usage.tokens_in) || 0, output_tokens: (r.usage && r.usage.tokens_out) || 0, cached_tokens: 0,
+    cost_usd: (r.usage && r.usage.cost_usd) || 0, owner_user_id: m.ownerUserId || null, source: m.source || null, role: m.role || null, provider: 'openvibe-ai', latency_ms: null,
+}));
 
 module.exports = { complete, testProvider, resolveProvider, modelForRole, priceFor, estimateCost, toVisionJpeg, parseJsonLoose, isEnabled, withinBudget, defaultModel, ROLES };
