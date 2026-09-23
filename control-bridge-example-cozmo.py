@@ -24,7 +24,7 @@ except ImportError:
     exit(1)
 
 # ── Connection Settings ──────────────────────────────────────
-WS_URL = "wss://openvibe.live/ws/control?mode=hardware&stream_key=a959da5f2f6148d4b00e6717b60f2946"
+WS_URL = "wss://openvibe.live/ws/control?mode=hardware&stream_key=YOUR_STREAM_KEY"
 RECONNECT_DELAY = 5
 
 # ── Profile Buttons ──────────────────────────────────────────
