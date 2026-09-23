@@ -137,25 +137,6 @@ function channelStatus(segment) {
     } catch { return OK; }
 }
 
-/**
- * Channel links used to be written without the @ (openvibe.live/<username>, in go-live
- * notifications, Discord posts and follower notices): the canonical `/@<username>[/<slot>]` for
- * a path that names an existing user that way, else null. Only asked for paths no route knows.
- */
-const LEGACY_CHANNEL_RE = /^[A-Za-z0-9_]{3,24}$/;
-function legacyChannelPath(req) {
-    const segs = String(req.path || '/').split('/').filter(Boolean);
-    if (!segs.length || segs.length > 2 || !LEGACY_CHANNEL_RE.test(segs[0])) return null;
-    if (segs[1] !== undefined && !SLUG_RE.test(segs[1])) return null;
-    let row = null;
-    try { row = db.getChannelByUsername(segs[0]) || db.getUserByUsername(segs[0]); } catch { return null; }
-    const name = row && row.username;
-    if (!name || !LEGACY_CHANNEL_RE.test(name)) return null;
-    const q = String(req.originalUrl || req.url || '').indexOf('?');
-    const query = q >= 0 ? String(req.originalUrl || req.url).slice(q) : '';
-    return `/@${name}${segs[1] ? `/${segs[1]}` : ''}${query}`;
-}
-
 function streamStatus(id) {
     if (!ID_RE.test(id)) return NOT_FOUND;
     try { return db.getStreamById(Number(id)) ? OK : NOT_FOUND; } catch { return OK; }
@@ -201,8 +182,6 @@ function spaFallback(sendShell) {
         }
         const status = await statusFor(req);
         if (res.headersSent) return;
-        const channel = status === NOT_FOUND ? legacyChannelPath(req) : null;
-        if (channel) return res.redirect(301, channel);
         try {
             res.status(status);
             if (!sendShell(res, req.path)) res.status(503).type('text/plain').send('Site shell unavailable');
@@ -213,4 +192,4 @@ function spaFallback(sendShell) {
 /** Forget cached lookups (tests; or after a change that must show at once). */
 function clearCache() { _cache.clear(); }
 
-module.exports = { statusFor, spaFallback, legacyChannelPath, clearCache, EXACT, PREFIX, LOOKUP_DEADLINE_MS };
+module.exports = { statusFor, spaFallback, clearCache, EXACT, PREFIX, LOOKUP_DEADLINE_MS };
