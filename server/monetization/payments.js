@@ -205,7 +205,11 @@ function ccbillUrl({ order, amountUsd }) {
 function ccbillVerify(query) {
     const secret = s('ccbill_webhook_secret');
     if (!secret) return false;
-    return String(query.secret || '') === secret;
+    // Constant-time: compare SHA-256 digests so neither length nor content leaks through timing.
+    const nodeCrypto = require('crypto');
+    const a = nodeCrypto.createHash('sha256').update(String(query.secret || '')).digest();
+    const b = nodeCrypto.createHash('sha256').update(String(secret)).digest();
+    return nodeCrypto.timingSafeEqual(a, b);
 }
 
 // ══════════════════════════════════════════ CRYPTO (NOWPayments) ══
