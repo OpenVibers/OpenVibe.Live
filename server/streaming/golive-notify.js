@@ -56,12 +56,15 @@ function notifyFollowersGoLive(streamer, stream, { force = false } = {}) {
         follower_network_ids: followerNetworkIds,
     };
 
-    if (!INTERNAL_API_KEY) { _fallback(streamer, stream, followerNetworkIds); return; }
-    fetch(`${OV_NETWORK_INTERNAL_URL}/internal/events/stream-live`, {
+    if (!INTERNAL_API_KEY && !process.env.OV_OAUTH_CLIENT_SECRET) { _fallback(streamer, stream, followerNetworkIds); return; }
+    // Service token (network.notifications.push) when Network grants it, the internal key otherwise.
+    const principal = require('../net/network-principal');
+    principal.headersFor('/internal/events/stream-live').then((auth) => fetch(`${OV_NETWORK_INTERNAL_URL}/internal/events/stream-live`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Internal-Key': INTERNAL_API_KEY },
+        headers: { 'Content-Type': 'application/json', ...auth },
         body: JSON.stringify(payload),
-    }).then(async (r) => {
+    })).then(async (r) => {
+        if (r.status === 401) principal.tokenRejected('stream-live');
         if (r.ok) {
             let d = null; try { d = await r.json(); } catch { /* */ }
             if (d && d.skipped) { console.log(`[GoLive] ${streamer.username}: network skipped announcement (${d.reason}${d.next_allowed_at ? `, next ${d.next_allowed_at}` : ''})`); return; }

@@ -18,7 +18,7 @@ const CLIENT_SECRET = process.env.OV_OAUTH_CLIENT_SECRET || '';
 const PAUSE_MS = 5 * 60 * 1000;
 
 // Network routes that accept a service token (OpenVibe.Network server/internal/routes.js TOKEN_ROUTES).
-const TOKEN_PATHS = new Set(['/internal/coins/credit', '/internal/coins/debit', '/internal/coins/transfer', '/internal/notifications/push', '/internal/notifications/push-bulk']);
+const TOKEN_PATHS = new Set(['/internal/coins/credit', '/internal/coins/debit', '/internal/coins/transfer', '/internal/notifications/push', '/internal/notifications/push-bulk', '/internal/events/stream-live']);
 
 const _clients = new Map();
 /** One cached client-credentials token client per audience (openvibe.network, openvibe.community, ...). */
