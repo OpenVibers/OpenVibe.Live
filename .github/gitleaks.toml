@@ -15,3 +15,9 @@ description = "Stream key committed in the initial release's hardware-bridge exa
 condition = "AND"
 paths = ['''^control-bridge-example-cozmo\.py$''']
 commits = ["ac0d6a47f8d4e7f86bb2a9323bd7d3047da9c821"]
+
+[[allowlists]]
+description = "RFC 6455's sample Sec-WebSocket-Key (base64 of 'the sample nonce') in the drill-mode test's upgrade request; not a secret"
+condition = "AND"
+paths = ['''^test/drill-mode\.test\.js$''']
+regexes = ['''^dGhlIHNhbXBsZSBub25jZQ==$''']
