@@ -886,6 +886,10 @@ app.get('/media/:username', (req, res) => {
     sendDocument(res, 'media-player.html');
 });
 
+// DM notifications sent before 2026-09-23 linked to /dm/<conversation id>, a page Live never had;
+// the messenger opens the thread from /?dm=<id> now.
+app.get(/^\/dm\/(\d{1,12})\/?$/, (req, res) => res.redirect(302, `/?dm=${req.params[0]}`));
+
 // ── Legal Pages ───────────────────────────────────────────────
 app.get('/dmca', (req, res) => {
     sendDocument(res, 'dmca.html');

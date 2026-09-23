@@ -564,7 +564,7 @@ effectsRouter.post('/notify/dm', (req, res) => {
                 type: 'DIRECT_MESSAGE',
                 title: `Message from ${senderName}`,
                 message: 'Sent you a message',
-                url: `https://openvibe.live/dm/${convId}`,
+                url: `https://openvibe.live/?dm=${convId}`,
                 ...actorInfo(sender),
             });
         }

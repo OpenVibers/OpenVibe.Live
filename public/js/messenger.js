@@ -1193,6 +1193,27 @@
         // Hook into chat WebSocket message handler
         // The chat.js `handleChatMessage` will call `handleIncomingDm` for DM type messages
         window._messengerHandleDm = handleIncomingDm;
+        openLinkedThread();
+    }
+
+    // DM notifications (Network push, the notification centre) link to /?dm=<conversation id>:
+    // open that thread once someone is signed in, and take the parameter out of the address bar.
+    function openLinkedThread() {
+        const params = new URLSearchParams(location.search);
+        if (!params.has('dm')) return;
+        const id = Number(params.get('dm'));
+        params.delete('dm');
+        const qs = params.toString();
+        history.replaceState(history.state, '', location.pathname + (qs ? `?${qs}` : '') + location.hash);
+        if (!Number.isSafeInteger(id) || id <= 0) return;
+        const open = () => { if (!panelOpen) togglePanel(); openThread(id); };
+        if (typeof currentUser !== 'undefined' && currentUser) return open();
+        const onAuth = (e) => {
+            if (!e.detail || !e.detail.user) return;
+            window.removeEventListener('openvibe-auth-changed', onAuth);
+            open();
+        };
+        window.addEventListener('openvibe-auth-changed', onAuth);
     }
 
     function resetMessengerStateForAuthChange(newUser) {

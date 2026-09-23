@@ -217,7 +217,7 @@ router.post('/conversations/:id/messages', (req, res) => {
                     type: 'DIRECT_MESSAGE',
                     title: `Message from ${senderName}`,
                     message: preview,
-                    url: `https://openvibe.live/dm/${convId}`,
+                    url: `https://openvibe.live/?dm=${convId}`,
                     ...actorInfo(sender),
                 });
             }
