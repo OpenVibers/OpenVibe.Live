@@ -277,6 +277,51 @@ function saveChatSettings() {
     _debounceSyncSettingsToServer();
 }
 
+// Portable chat preferences live in OpenVibe.Network (user module chat.preferences), read and written
+// through OpenVibe.Chat at /api/chat/preferences. Only these four settings have fields there (schema v1);
+// the rest of chatSettings stays in Live's /api/auth/preferences. A patch value of null removes the
+// field, i.e. "Live's default"; Chat writes nothing when nothing changed.
+const CHAT_PREFS_FONT_SCALE = { small: 0.88, large: 1.18 };
+function _chatPrefsFromSettings(s) {
+    return {
+        timestamps: s.showTimestamps ? true : null,
+        compact: s.compactMode ? true : null,
+        font_scale: CHAT_PREFS_FONT_SCALE[s.fontSize] || null,
+        show_badges: s.showBadges === false ? false : null,
+    };
+}
+function _chatSettingsFromPrefs(p) {
+    const out = {
+        showTimestamps: p.timestamps === true,
+        compactMode: p.compact === true,
+        fontSize: 'default',
+        showBadges: p.show_badges !== false,
+    };
+    if (typeof p.font_scale === 'number') out.fontSize = p.font_scale < 0.95 ? 'small' : p.font_scale > 1.05 ? 'large' : 'default';
+    return out;
+}
+function _pushChatPrefs(token) {
+    return fetch('/api/chat/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ preferences: _chatPrefsFromSettings(chatSettings) }),
+    }).catch(() => { /* Chat or Network unavailable: Live's copy still has them */ });
+}
+/** After Live's copy: the Network record wins for its fields; none yet → seed it from this browser. */
+function _syncChatPrefsFromChat(token) {
+    fetch('/api/chat/preferences', { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+            if (!data || !data.preferences || typeof data.preferences !== 'object') return;
+            if (!data.revision) { _pushChatPrefs(token); return; }
+            chatSettings = { ...chatSettings, ..._chatSettingsFromPrefs(data.preferences) };
+            try { localStorage.setItem(CHAT_SETTINGS_KEY, JSON.stringify(chatSettings)); } catch { }
+            applyChatSettings();
+            syncSettingsPanelUI();
+        })
+        .catch(() => { /* offline — use local */ });
+}
+
 function _syncSettingsFromServer() {
     const token = localStorage.getItem('token');
     if (!token) return;
@@ -293,7 +338,8 @@ function _syncSettingsFromServer() {
                 syncTTSToggleButtons();
             }
         })
-        .catch(() => { /* offline — use local */ });
+        .catch(() => { /* offline — use local */ })
+        .finally(() => _syncChatPrefsFromChat(token));
 }
 
 function _debounceSyncSettingsToServer() {
@@ -306,6 +352,7 @@ function _debounceSyncSettingsToServer() {
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify({ chatSettings })
         }).catch(() => { /* silent fail */ });
+        _pushChatPrefs(token);
     }, 500);
 }
 
