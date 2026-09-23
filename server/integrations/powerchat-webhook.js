@@ -232,7 +232,10 @@ function processEvent(envelope) {
                 // checkout module; when it consumes the event, the receiving account's
                 // normal donation pipeline must NOT also run.
                 if (data.appExternalRef && /^(pcorder|pcsub|pcdon):/.test(String(data.appExternalRef))) {
-                    if (require('./powerchat-checkout').handleAttributedDonation(userId, data)) break;
+                    const siteName = String(db.getSetting('powerchat_site_tip_username') || '').trim().toLowerCase();
+                    const receiving = String((envelope.streamer && envelope.streamer.username) || '').toLowerCase();
+                    const viaSiteAccount = !!siteName && receiving === siteName;
+                    if (require('./powerchat-checkout').handleAttributedDonation(userId, data, { viaSiteAccount })) break;
                 }
                 _handleDonation(userId, data);
                 break;

@@ -45,13 +45,21 @@ loadNetworkPublicKey();
  * Verify a openvibe.network RS256 JWT token.
  * Returns decoded payload or null.
  */
+// A user session token carries neither `typ` (FedCM assertions: 5 minutes, minted for one origin, to be
+// exchanged at Network, never a session) nor `actor_type` (service/app principal tokens). Both are
+// signed with the same Network key, so the signature alone does not make a token a login.
+function isUserSessionClaims(decoded) {
+    return !!decoded && typeof decoded === 'object' && decoded.typ === undefined && decoded.actor_type === undefined;
+}
+
 function verifyToken(token) {
     if (!openvibeToolsPublicKey) return null;
     try {
-        return jwt.verify(token, openvibeToolsPublicKey, {
+        const decoded = jwt.verify(token, openvibeToolsPublicKey, {
             algorithms: ['RS256'],
             issuer: getNetworkIssuer(),
         });
+        return isUserSessionClaims(decoded) ? decoded : null;
     } catch {
         return null;
     }
@@ -68,6 +76,7 @@ function verifyTokenWithReason(token) {
             algorithms: ['RS256'],
             issuer: getNetworkIssuer(),
         });
+        if (!isUserSessionClaims(decoded)) return { ok: false, reason: 'not_a_session_token' };
         return { ok: true, decoded };
     } catch (err) {
         return { ok: false, reason: err.name, message: err.message };

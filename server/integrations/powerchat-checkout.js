@@ -300,12 +300,22 @@ function buildDonateLink(streamerUserId, donorUserId, { goalId = null } = {}) {
 // matches one of our prefixes. Returns true when the event was CONSUMED (the normal
 // donation pipeline for the receiving account must then be skipped), false to fall
 // through to plain donation handling.
-function handleAttributedDonation(receivingUserId, data) {
+// The checkout reference rides in the tip link and the buyer can edit it, so a reference only
+// counts when the money landed where that kind of checkout sends it: purchases, site-routed
+// donations and site-routed subscriptions on the SITE tips account, a direct subscription on
+// the subscribed streamer's own account. Anything else (a streamer tipping their own PowerChat
+// with `pcdon:<self>`, a viewer tipping themselves with `pcsub:<x>`) is an ordinary tip to the
+// receiving account and falls through to normal handling.
+function handleAttributedDonation(receivingUserId, data, { viaSiteAccount = receivingUserId == null } = {}) {
     const ref = String(data.appExternalRef || '');
     const usdCents = Math.max(0, Math.round(Number(data.amountUsdCents || 0)));
     try {
         // Buy Vibes ---------------------------------------------------------
         let m = ref.match(/^pcorder:(\d+)$/);
+        if (m && !viaSiteAccount) {
+            console.warn(`[PowerChat] ${ref} paid to a streamer account, not the site account — not a purchase`);
+            return false;
+        }
         if (m) {
             const order = db.getPaymentOrderById(Number(m[1]));
             if (!order || order.kind !== 'bucks') return true; // ours but unusable — never double-handle
@@ -333,6 +343,13 @@ function handleAttributedDonation(receivingUserId, data) {
             // discounted sub. Direct mode = the receiving account IS the streamer, so
             // falling through does the right thing; site mode routes explicitly.
             const mode = String(order.provider_ref || 'site').split(':')[0];
+            // Direct: the tip must land on the subscribed streamer's own account (which may also be
+            // the site tips account). Site-routed: it must land on the site tips account.
+            const paidWhereExpected = mode === 'direct' ? (receivingUserId != null && Number(receivingUserId) === Number(order.streamer_id)) : viaSiteAccount;
+            if (!paidWhereExpected) {
+                console.warn(`[PowerChat] ${ref} (${mode}) paid to the wrong account — not a subscription`);
+                return false;
+            }
             const autoRenew = /:renew$/.test(String(order.provider_ref || '')) ? 1 : 0;
             const feeCents = Number((String(order.provider_ref || '').match(/:fee=(\d+)/) || [])[1] || 0);
             if (usdCents + 1 < (order.amount_cents || 0)) {
@@ -351,6 +368,10 @@ function handleAttributedDonation(receivingUserId, data) {
         }
         // Site-routed donation ----------------------------------------------
         m = ref.match(/^pcdon:(\d+):(\d+)$/);
+        if (m && !viaSiteAccount) {
+            console.warn(`[PowerChat] ${ref} paid to a streamer account, not the site account — not a site-routed donation`);
+            return false;
+        }
         if (m) {
             _creditSiteRoutedDonation(Number(m[1]), Number(m[2]) || null, data);
             return true;

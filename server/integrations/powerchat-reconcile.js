@@ -52,12 +52,12 @@ function _hostFor(order) {
     const mode = String(order.provider_ref || 'site').split(':')[0];
     if (order.kind === 'subscription' && mode === 'direct' && order.streamer_id) {
         const conn = db.getPowerchatConnection(order.streamer_id);
-        return conn && conn.powerchat_username ? { username: conn.powerchat_username, conn, receivingUserId: order.streamer_id } : null;
+        return conn && conn.powerchat_username ? { username: conn.powerchat_username, conn, receivingUserId: order.streamer_id, viaSiteAccount: false } : null;
     }
     const site = checkout.getSiteAccount();
     if (!site) return null;
     const conn = db.getPowerchatConnectionByUsername(site.username);
-    return { username: site.username, conn: conn || null, receivingUserId: conn ? conn.user_id : null };
+    return { username: site.username, conn: conn || null, receivingUserId: conn ? conn.user_id : null, viaSiteAccount: true };
 }
 function _refFor(order) {
     return order.kind === 'subscription' ? `pcsub:${order.id}` : `pcorder:${order.id}`;
@@ -150,7 +150,7 @@ async function reconcileOnce() {
                     appExternalRef: ref, isTest, reconciled: true,
                 };
                 let consumed = false;
-                try { consumed = checkout.handleAttributedDonation(host.receivingUserId, data); }
+                try { consumed = checkout.handleAttributedDonation(host.receivingUserId, data, { viaSiteAccount: host.viaSiteAccount }); }
                 catch (e) { summary.errors++; console.warn(`[PowerChat] reconcile: fulfillment for ${ref} failed: ${e.message}`); }
                 orders.delete(ref);
                 let after = null;
