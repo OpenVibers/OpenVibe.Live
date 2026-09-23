@@ -47,6 +47,14 @@ public/js/app-*.js       route code split out of app.js: home, channel, media, c
   feature's markup first (modules bind to it on load), then dependencies, stylesheets and scripts in
   order, runs the feature's `after` hook once, and renders only if the route generation is still
   current (a slow bundle can no longer start the broadcast desk on the page you moved to).
+- **Unknown pages.** Every page path gets the same shell, but a path that names nothing answers
+  **404** (server/web/page-status.js, the SPA fallback): an unknown route, a channel whose user does
+  not exist, a VOD or clip Media does not have or that this visitor may not see (private items, by
+  the rule in server/media-proxy/access.js), an unknown paste, recap or stream. The client renders
+  its not-found view (`showNotFound()`) at the same URL. The server's page list mirrors
+  `routeFromURL()`: add a new top-level route to both (test/page-status.test.js compares them).
+  Media and paste lookups are cached per id for a minute and wait at most 2.5 s; when Media or
+  Community cannot answer, the page is 200, never a false 404.
 - **Stubs.** Inline handlers such as `onclick="openSetupHub()"` work before a feature is loaded: the
   stub loads the feature, then calls the real function.
 - **Prefetch.** Hover or keyboard focus on an in-site link prefetches that route's files

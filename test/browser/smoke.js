@@ -27,6 +27,8 @@ const ROUTES = [
     ['/', 'page-home'], ['/vods', 'page-vods'], ['/clips', 'page-clips'], ['/pastes', 'page-pastes'],
     ['/chat', 'page-chat'], ['/arena', 'page-arena'], ['/broadcast', 'page-broadcast'], ['/documentation', 'page-documentation'],
     ['/updates', 'page-updates'], ['/dashboard', null], [process.env.CHANNEL || '/@admin', 'page-channel'],
+    // Answered 404 by the server (server/web/page-status.js) with the same shell.
+    ['/no-such-page', 'page-not-found'],
 ];
 const ONLY_SIGNED = process.argv.includes('--signed-in-only');
 const WIDTHS = ONLY_SIGNED ? [] : ROUTES_ONLY ? [1366] : [320, 412, 768, 1440];

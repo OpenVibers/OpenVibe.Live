@@ -21,12 +21,16 @@ const MC_TTL_MS = 60_000;
 async function _cached(key, fn) {
     const e = _mc.get(key);
     if (e && Date.now() - e.at < MC_TTL_MS) return e.v;
-    try {
-        const v = await fn();
-        _mc.set(key, { v, at: Date.now() });
-        if (_mc.size > 300) _mc.delete(_mc.keys().next().value);
-        return v;
-    } catch { return e ? e.v : null; }
+    let v;
+    try { v = await fn(); } catch (err) {
+        // A missing id is remembered too: otherwise every request for a dead link (the SPA fallback
+        // then answers it 404, see server/web/page-status.js) is another round trip to Media.
+        if (!err || (err.status !== 404 && err.status !== 410)) return e ? e.v : null;
+        v = null;
+    }
+    _mc.set(key, { v, at: Date.now() });
+    if (_mc.size > 300) _mc.delete(_mc.keys().next().value);
+    return v;
 }
 const _vodList = (limit, offset = 0) => _cached(`vl:${limit}:${offset}`, async () => (await media.listVods({ limit, offset }))?.vods || []);
 const _clipList = (limit, offset = 0) => _cached(`cl:${limit}:${offset}`, async () => (await media.listClips({ limit, offset }))?.clips || []);

@@ -997,13 +997,11 @@ app.get('/banned', (req, res) => {
 });
 
 // ── SPA Fallback ─────────────────────────────────────────────
-app.get('*', (req, res) => {
-    // Don't serve HTML for API routes
-    if (req.url.startsWith('/api/') || req.url.startsWith('/ws/')) {
-        return res.status(404).json({ error: 'Not found' });
-    }
-    if (!sendDocument(res, 'index.html', req.path)) res.status(503).type('text/plain').send('Site shell unavailable');
-});
+// Every page gets the SPA shell, but a path that names nothing (unknown route, channel, VOD, clip,
+// paste or stream, or a private item this visitor may not see) gets it with a 404 status, so
+// search engines and monitors see a real 404; the client renders its not-found view either way.
+// API paths still get the JSON 404. See server/web/page-status.js for the page list.
+app.get('*', require('./web/page-status').spaFallback((res, urlPath) => sendDocument(res, 'index.html', urlPath)));
 
 // ── Global Error Handler ─────────────────────────────────────
 app.use((err, req, res, _next) => {

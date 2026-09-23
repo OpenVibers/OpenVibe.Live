@@ -150,14 +150,7 @@
       "@type": "WebSite",
       "name": "OpenVibe.Live",
       "url": "https://openvibe.live",
-      "description": "Open source live streaming platform, community run",
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": {
-          "@type": "EntryPoint",
-          "urlTemplate": "https://openvibe.live/search?q={search_term_string}"
-        }
-      }
+      "description": "Open source live streaming platform, community run"
     }
     </script>
 </head>
@@ -832,6 +825,8 @@
     </section>
 
     <section id="page-documentation" class="page" data-fragment="documentation"><!--ov:fragment:documentation--><div class="ov-route-skel" aria-hidden="true"><span></span><span></span><span></span></div><!--/ov:fragment--></section>
+    <!-- A path no route knows (the server answers it 404): filled by showNotFound() in app.js -->
+    <section id="page-not-found" class="page"></section>
 
     <!-- Paste Create Modal -->
     <div id="paste-create-modal" class="paste-modal-overlay" style="display:none" onclick="if(event.target===this)closePasteModal()">

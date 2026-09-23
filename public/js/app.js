@@ -1170,14 +1170,40 @@ function routeFromURL() {
             const legacyStreamParam = new URLSearchParams(window.location.search).get('stream');
             whenRouteReady('channel', () => loadChannelPage(username, managedStreamRef, legacyStreamParam ? parseInt(legacyStreamParam, 10) : null));
         } else {
-            showPage('home');
-            ov.load('home').then(() => loadHome());
+            showNotFound();
         }
     } else {
-        // 404 fallback
-        showPage('home');
-        ov.load('home').then(() => loadHome());
+        // No such page. The server answers these paths 404 with this same shell
+        // (server/web/page-status.js), so keep the two lists of routes in step.
+        showNotFound();
     }
+}
+
+/** The page for an address no route knows: say so, and offer the way back in. */
+function showNotFound() {
+    const el = document.getElementById('page-not-found');
+    if (el && !el.firstChild) {
+        const box = document.createElement('div');
+        box.className = 'content-container';
+        box.style.cssText = 'text-align:center;padding:12vh 16px';
+        const h1 = document.createElement('h1');
+        h1.textContent = 'Page not found';
+        const p = document.createElement('p');
+        p.className = 'page-subtitle';
+        p.textContent = 'Nothing lives at this address. The link may be mistyped, or what it pointed to was removed or made private.';
+        const links = document.createElement('p');
+        links.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:20px';
+        for (const [href, label, cls] of [['/', 'Home', 'btn btn-primary'], ['/vods', 'VODs', 'btn btn-outline'], ['/clips', 'Clips', 'btn btn-outline'], ['/chat', 'Chat', 'btn btn-outline']]) {
+            const a = document.createElement('a');
+            a.href = href; a.className = cls; a.textContent = label;
+            a.addEventListener('click', (e) => handleLinkClick(e, href));
+            links.appendChild(a);
+        }
+        box.append(h1, p, links);
+        el.appendChild(box);
+    }
+    showPage('not-found');
+    setPageTitle('Page not found');
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

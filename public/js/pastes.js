@@ -1119,7 +1119,7 @@ function _renderLimitInfo(container, info) {
     if (isUnlimited) {
         label = `<i class="fa-solid fa-infinity" style="font-size:0.7em;"></i> Unlimited (staff)`;
     } else if (isAnon) {
-        label = `${li.remaining}/${li.dailyLimit} today · <a href="#" onclick="navigate('/login');return false" style="color:var(--accent);">Log in</a> for more`;
+        label = `${li.remaining}/${li.dailyLimit} today · <a href="/api/auth/sso/login" onclick="doLogin();return false" style="color:var(--accent);">Log in</a> for more`;
     } else {
         label = `${li.remaining}/${li.dailyLimit} today · ${li.tierLabel}`;
     }
