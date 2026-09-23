@@ -8,6 +8,29 @@ The OpenVibe.Live chat system provides real-time messaging, moderation, and exte
 - **REST API**: `server/chat/routes.js` — moderation endpoints, message search, admin tools
 - **Client**: `public/js/chat.js` — rendering, emotes, TTS, settings sync
 
+### OpenVibe.Chat (roadmap Wave 6)
+
+Chat is moving to [OpenVibe.Chat](https://github.com/OpenVibers/OpenVibe.Chat) (127.0.0.1:4400)
+with the same WebSocket protocol and REST paths. `CHAT_AUTHORITY=chat` switches it on
+(`server/chat/chat-authority.js`); without it nothing here changes.
+
+- nginx sends `/ws/chat`, `/api/chat/`, `/api/dm/`, `/api/tts/` and `/api/sounds` to Chat; Live answers
+  them with 503 if one still arrives, and `/ws/chat` upgrades are refused.
+- `require('./chat/chat-server')` returns `chat-remote.js`: the same methods, forwarded in order to
+  Chat's `POST /internal/live/calls` (broadcasts, DMs, TTS, channel sounds, disconnects, user updates).
+  Chat-table writes Live's other modules make (AI viewers, relays, donations, `/api/mod`) are forwarded
+  too; inserts return a placeholder id (≤ -2^40) Chat maps to the real one. Unacknowledged writes wait
+  in `chat_bridge_outbox` (and are applied here if Live boots without the flag again — rollback).
+- Synchronous reads (`getTotalConnections`, viewer counts, slow modes, a connected user's IP) come from
+  Chat's presence snapshot, polled every 3 s.
+- Chat reads Live data and asks for side effects on `/internal/chat-context/*` and
+  `/internal/chat-effects/*` (`server/chat/live-context-routes.js`), with Network service tokens
+  (`live.chat_context.read`, `live.chat_effects.write`, `live.chat_mirror.write`,
+  `server/net/service-guard.js`). Effects re-check the acting moderator/owner/admin and are refused
+  unless `CHAT_AUTHORITY=chat`.
+- Live's chat tables become Chat's read mirror (`POST /internal/chat-effects/mirror`): same ids, so home
+  stats, recaps, AI context, VOD chat replay and the `/api/mod` queues keep reading them in place.
+
 ## Features
 
 ### Real-time Chat

@@ -17,6 +17,11 @@ function requireInternalKey(req, res, next) {
 
 router.use(requireInternalKey);
 
+// CHAT_AUTHORITY=chat: OpenVibe.Chat caches users; a role or avatar pushed here reaches it at once.
+function notifyChat(userId) {
+    try { const cs = require('../chat/chat-server'); if (cs.remote) cs.userChanged(userId); } catch { /* non-critical */ }
+}
+
 // ── Site copy for the shared footer (OpenVibe.Network → here, once a day) ─────────────
 // The Network sends facts about each site plus an allow-list of link ids; the model writes a
 // short blurb per site and PICKS ids from that list. It never returns URLs or markup, so nothing
@@ -81,6 +86,7 @@ router.post('/user-avatar', (req, res) => {
         if (!user && username) user = db.getUserByUsername(username);
         if (!user) return res.status(404).json({ ok: false, error: 'user not found' });
         if ((user.avatar_url || null) !== url) db.updateUserAvatar(user.id, url, null);
+        notifyChat(user.id);
         return res.json({ ok: true, id: user.id, changed: (user.avatar_url || null) !== url });
     } catch (err) {
         console.error('[Internal] user-avatar error:', err.message);
@@ -107,6 +113,7 @@ router.post('/user-role', (req, res) => {
         // Never strip the owner's admin role via a role push (is_owner is local).
         const finalRole = (user.is_owner && role !== 'admin') ? 'admin' : role;
         db.getDb().prepare('UPDATE users SET role = ? WHERE id = ?').run(finalRole, user.id);
+        notifyChat(user.id);
         console.log(`[Internal] role push: ${user.username} -> ${finalRole}`);
         return res.json({ ok: true, id: user.id, username: user.username, role: finalRole });
     } catch (err) {

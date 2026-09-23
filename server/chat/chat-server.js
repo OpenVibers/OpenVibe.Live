@@ -2491,4 +2491,6 @@ class ChatServer {
     }
 }
 
-module.exports = new ChatServer();
+// CHAT_AUTHORITY=chat: OpenVibe.Chat runs the chat server; Live's modules get a proxy with the same
+// methods that hands every call to it (chat-remote.js). Default: Live runs chat itself.
+module.exports = require('./chat-authority').isRemote() ? require('./chat-remote').create(ChatServer) : new ChatServer();

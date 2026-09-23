@@ -413,6 +413,10 @@ function reloadNetworkKey() {
 module.exports = {
     apiTokenAllows,
     verifyToken,
+    verifyTokenWithReason,
+    getNetworkIssuer,
+    // The Network's RS256 key also signs service tokens (server/net/service-guard.js).
+    getNetworkPublicKey: () => openvibeToolsPublicKey,
     requireAuth,
     optionalAuth,
     requireAdmin,

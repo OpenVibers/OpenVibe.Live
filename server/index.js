@@ -552,6 +552,11 @@ app.get('/internal/analytics-summary', (req, res) => {
     } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
 
+// OpenVibe.Chat reads Live data and asks for side effects here, with Network service tokens
+// (server/chat/live-context-routes.js); mounted before the X-Internal-Key routes below.
+const chatLiveContext = require('./chat/live-context-routes');
+app.use('/internal/chat-context', chatLiveContext.contextRouter);
+app.use('/internal/chat-effects', chatLiveContext.effectsRouter);
 app.use('/internal', require('./internal/routes'));
 
 
@@ -620,7 +625,11 @@ app.use('/api/streams', streamRoutes);
 // Cross-site "streamer went live" SSE feed (consumed by /live-notify.js everywhere).
 const liveEvents = require('./streaming/live-events');
 app.get('/api/live-events', (req, res) => liveEvents.subscribe(req, res));
-app.use('/api/chat', chatRoutes);
+// CHAT_AUTHORITY=chat: OpenVibe.Chat serves the chat REST routes (nginx sends /api/chat/, /api/dm/,
+// /api/tts/, /api/sounds there). One that still reaches Live must not write to the mirror.
+const chatRemote = require('./chat/chat-authority').isRemote();
+const chatMoved = (req, res) => res.status(503).set('Retry-After', '2').json({ error: 'Chat is served by OpenVibe.Chat' });
+app.use('/api/chat', chatRemote ? chatMoved : chatRoutes);
 app.use('/api/funds', monetizationRoutes);
 app.use('/api/coins', coinsRoutes);
 app.use('/api/payments', require('./monetization/payments-routes'));
@@ -642,7 +651,7 @@ app.use('/api/restream', restreamRoutes);
 app.use('/api/thumbnails', thumbnailRoutes);
 app.use('/api/themes', themeRoutes);
 app.use('/api/emotes', emoteRoutes);
-app.use('/api/sounds', require('./chat/sounds-routes'));
+app.use('/api/sounds', chatRemote ? chatMoved : require('./chat/sounds-routes'));
 app.use('/api/ai-viewers', require('./ai/viewers/routes'));
 app.use('/api/powerchat', require('./integrations/powerchat-routes'));
 // Game & Canvas — migrated to openvibe.games
@@ -662,9 +671,9 @@ app.use('/api/media', require('./media/routes'));
 app.use('/api/img-proxy', require('./media/external-image-proxy'));
 app.use('/api/vibe-coding', vibeCodingRoutes);
 const ttsRoutes = require('./chat/tts-routes');
-app.use('/api/tts', ttsRoutes);
+app.use('/api/tts', chatRemote ? chatMoved : ttsRoutes);
 const dmRoutes = require('./chat/dm-routes');
-app.use('/api/dm', dmRoutes);
+app.use('/api/dm', chatRemote ? chatMoved : dmRoutes);
 const analyticsRoutes = require('./streaming/analytics-routes');
 app.use('/api/analytics', analyticsRoutes);
 const newsRoutes = require('./news/news-routes');
@@ -1056,6 +1065,8 @@ async function start() {
     // Initialize DM tables
     const dm = require('./chat/dm');
     dm.ensureTables();
+    // Back from CHAT_AUTHORITY=chat (rollback): chat writes OpenVibe.Chat never acknowledged land here.
+    if (!require('./chat/chat-authority').isRemote()) require('./chat/chat-remote').drainToLocal();
     // Migrate: add last_heartbeat column if missing
     try { db.run("ALTER TABLE streams ADD COLUMN last_heartbeat DATETIME"); console.log('[DB] Added last_heartbeat column'); } catch { /* already exists */ }
     // Migrate: add theme_id to users table if missing

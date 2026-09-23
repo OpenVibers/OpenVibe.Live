@@ -82,6 +82,14 @@ async function announce({ db, chatServer, log = console }) {
     const { head, commits } = await newCommits(db);
     if (!head || !commits.length) return { announced: 0 };
 
+    // CHAT_AUTHORITY=chat: Live still decides what shipped; OpenVibe.Chat stores the rolling
+    // message and shows it (its own copy of this module), so hand it the commits.
+    if (chatServer && chatServer.remote) {
+        chatServer.deployNotice(commits);
+        try { db.setSetting(SETTING, head); } catch (err) { log.warn('[Deploy notice] not recorded:', err.message); }
+        return { announced: commits.length };
+    }
+
     let saved;
     try { saved = persist(db, commits); db.setSetting(SETTING, head); }
     catch (err) { log.warn('[Deploy notice] not saved:', err.message); return { announced: 0 }; }
