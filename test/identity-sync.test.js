@@ -15,13 +15,30 @@ process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.INTERNAL_API_KEY = 'k-test';
 
 const received = [];
+const resolveCalls = [];
 const mode = { old: false };
+// A well-formed subject per Network user id (Crockford base32, 26 chars).
+const subjectFor = (n) => `usr_01J${String(n).padStart(23, '0')}`;
 const network = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => { body += c; });
     req.on('end', () => {
         if (mode.old) { res.statusCode = 404; return res.end('{}'); }
         assert.strictEqual(req.headers['x-internal-key'], 'k-test');
+        if (req.url === '/internal/identity/resolve-batch') {
+            const q = JSON.parse(body);
+            resolveCalls.push(q);
+            const results = {};
+            for (const id of q.ids) {
+                const n = Number(id);
+                if (n === 1002) results[id] = null;                                                              // Network does not know it
+                else if (n === 1003) results[id] = { subject: { type: 'user', id: subjectFor(n) }, network_user_id: 7 };  // answers for someone else
+                else if (n === 1004) results[id] = { subject: { type: 'user', id: 'not-a-subject' }, network_user_id: n };
+                else results[id] = { subject: { type: 'user', id: subjectFor(n) }, network_user_id: n };
+            }
+            res.setHeader('Content-Type', 'application/json');
+            return res.end(JSON.stringify({ results }));
+        }
         assert.strictEqual(req.url, '/internal/identity/legacy-map');
         const { entries } = JSON.parse(body);
         received.push(entries);
@@ -69,9 +86,28 @@ const network = http.createServer((req, res) => {
     sync.noteSubject(uid, 9999, 'usr_01JAB2C3D4E5F6G7H8J9K0MNPR');
     assert.strictEqual(sync.subjectOf(uid), 'usr_01JAB2C3D4E5F6G7H8J9K0MNPQ', 'a token for a different network id cannot rewrite the link');
 
+    // Backfill: every link without a subject is asked by Network user id, in batches; only an answer
+    // naming the same Network user id with a well-formed subject is stored, and a known one is kept.
+    const back = await sync.backfillSubjects();
+    assert.strictEqual(resolveCalls.length, 2, 'batched by 500');
+    assert.strictEqual(resolveCalls[0].system, 'network');
+    assert.strictEqual(resolveCalls[0].type, 'user');
+    assert.ok(!resolveCalls.flatMap(q => q.ids).includes('1001'), 'a link with a subject is not asked');
+    assert.ok(!resolveCalls.flatMap(q => q.ids).includes('network:odd'), 'non-numeric links are not asked');
+    assert.deepStrictEqual(back, { asked: 599, stored: 596, unknown: 3 });
+    assert.strictEqual(sync.subjectOf(uid), 'usr_01JAB2C3D4E5F6G7H8J9K0MNPQ', 'the token subject stays');
+    const linkOf = (n) => d.prepare('SELECT user_id FROM linked_accounts WHERE service_user_id = ?').get(String(n)).user_id;
+    assert.strictEqual(sync.subjectOf(linkOf(1600)), subjectFor(1600));
+    assert.strictEqual(sync.subjectOf(linkOf(1002)), null, 'unknown to Network');
+    assert.strictEqual(sync.subjectOf(linkOf(1003)), null, 'an answer for another Network user is ignored');
+    assert.strictEqual(sync.subjectOf(linkOf(1004)), null, 'a malformed subject is ignored');
+    resolveCalls.length = 0;
+    assert.deepStrictEqual(await sync.backfillSubjects(), { asked: 3, stored: 0, unknown: 3 }, 'the next run asks only what is still missing');
+
     // Network without the endpoint yet: skip quietly.
     mode.old = true;
     assert.deepStrictEqual(await sync.syncLegacyMap(), { skipped: 'network has no /internal/identity yet' });
+    assert.deepStrictEqual(await sync.backfillSubjects(), { asked: 3, stored: 0, unknown: 0, skipped: 'network has no /internal/identity yet' });
     network.close();
 
     fs.rmSync(tmp, { recursive: true, force: true });

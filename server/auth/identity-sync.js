@@ -9,6 +9,10 @@
  *   identity_legacy_map (POST /internal/identity/legacy-map), so any service can resolve
  *   "live user N" without calling Live. Network never repoints an existing mapping; conflicts are
  *   logged here for a human to look at.
+ * - backfillSubjects(): asks Network (POST /internal/identity/resolve-batch, by Network user id)
+ *   for the subject of every linked account Live has not seen a token subject for yet, so people
+ *   who have not signed in since Wave 1 still have one (module migrations, events, the lineage
+ *   resolver all key on it). Only an answer naming the same Network user id is stored.
  */
 const db = require('../db/database');
 const { OV_NETWORK_INTERNAL_URL, INTERNAL_API_KEY } = require('../utils/notify');
@@ -59,4 +63,32 @@ async function syncLegacyMap() {
     return total;
 }
 
-module.exports = { noteSubject, subjectOf, syncLegacyMap };
+async function backfillSubjects() {
+    if (!INTERNAL_API_KEY) return { skipped: 'no INTERNAL_API_KEY' };
+    const rows = db.getDb().prepare("SELECT user_id, service_user_id FROM linked_accounts WHERE service = 'network' AND subject_id IS NULL AND service_user_id GLOB '[0-9]*' ORDER BY user_id").all();
+    const total = { asked: rows.length, stored: 0, unknown: 0 };
+    const store = db.getDb().prepare("UPDATE linked_accounts SET subject_id = ? WHERE service = 'network' AND user_id = ? AND service_user_id = ? AND subject_id IS NULL");
+    for (let i = 0; i < rows.length; i += BATCH) {
+        const batch = rows.slice(i, i + BATCH);
+        const res = await fetch(`${OV_NETWORK_INTERNAL_URL}/internal/identity/resolve-batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Internal-Key': INTERNAL_API_KEY },
+            body: JSON.stringify({ system: 'network', type: 'user', ids: batch.map(r => String(r.service_user_id)) }),
+            signal: AbortSignal.timeout(15_000),
+        });
+        if (res.status === 404) return { ...total, skipped: 'network has no /internal/identity yet' };
+        if (!res.ok) throw new Error(`resolve-batch ${res.status}`);
+        const { results = {} } = await res.json();
+        for (const r of batch) {
+            const p = results[String(r.service_user_id)];
+            const sid = p && p.subject && p.subject.type === 'user' ? p.subject.id : null;
+            if (!sid || !SUBJECT_RE.test(sid) || String(p.network_user_id) !== String(r.service_user_id)) { total.unknown++; continue; }
+            total.stored += store.run(sid, r.user_id, String(r.service_user_id)).changes;
+            _known.set(r.user_id, sid);
+        }
+    }
+    if (total.stored || total.unknown) console.log(`[Identity] subject backfill: ${JSON.stringify(total)}`);
+    return total;
+}
+
+module.exports = { noteSubject, subjectOf, syncLegacyMap, backfillSubjects };

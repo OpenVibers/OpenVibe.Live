@@ -1489,7 +1489,12 @@ async function start() {
 
     // 8b. Canonical identity: report every Live<->Network link to Network's identity_legacy_map
     // (roadmap Wave 1). Idempotent on Network's side; daily, first run a few minutes after boot.
-    require('./utils/jobs').every('identity-legacy-sync', 24 * 60 * 60 * 1000, () => require('./auth/identity-sync').syncLegacyMap(),
+    // Then fill in the subject of every linked account no token has told Live about yet.
+    require('./utils/jobs').every('identity-legacy-sync', 24 * 60 * 60 * 1000, async () => {
+        const sync = require('./auth/identity-sync');
+        await sync.syncLegacyMap();
+        return sync.backfillSubjects();
+    },
         { initialDelayMs: 3 * 60 * 1000, jitterMs: 60 * 1000 });
 
     // 8b2. Raw analytics retention (ADR-021): events older than 30 days go, in bounded batches;
