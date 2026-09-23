@@ -15,6 +15,11 @@
 //     updated_at }. Clients render times from ISO timestamps, so they are always right.
 //   • The live broadcast carries the row id; clients replace the card with that id instead of
 //     appending, so reconnects and repeats can never duplicate it.
+//   • The deploy is also a durable OpenVibe.Events event, live.release.deployed
+//     (server/events/release-events.js), queued in the SAME transaction that records the commits
+//     as announced (and, without the Chat service, stores the chat row). The chat notice itself
+//     still goes to OpenVibe.Chat over the bridge (chat-remote deployNotice) until Chat consumes
+//     the event; then that hop can go.
 // ═══════════════════════════════════════════════════════════════
 const { execFile } = require('child_process');
 const path = require('path');
@@ -41,15 +46,16 @@ const parseLog = (raw) => raw.trim().split('\n').filter(Boolean).map((line) => {
 /** Commits on HEAD that have not been announced yet (newest first). */
 async function newCommits(db) {
     const head = (await git(['rev-parse', 'HEAD'], 3000)).trim();
-    if (!/^[0-9a-f]{40}$/.test(head)) return { head: '', commits: [] };
+    if (!/^[0-9a-f]{40}$/.test(head)) return { head: '', previous: null, commits: [] };
     const last = String(db.getSetting(SETTING) || '').trim();
-    if (last === head) return { head, commits: [] };
+    const previous = /^[0-9a-f]{40}$/.test(last) ? last : null;
+    if (last === head) return { head, previous, commits: [] };
     const fmt = '--pretty=format:%H%x1f%h%x1f%aI%x1f%s';
     let raw = '';
     if (/^[0-9a-f]{40}$/.test(last)) raw = await git(['--no-pager', 'log', fmt, '-n', String(MAX_COMMITS), `${last}..${head}`]);
     // First run, or history was rewritten: announce the current commit only, never a backlog.
     if (!raw.trim()) raw = await git(['--no-pager', 'log', fmt, '-n', '1', head]);
-    return { head, commits: parseLog(raw) };
+    return { head, previous, commits: parseLog(raw) };
 }
 
 const plainText = (meta) => `🚀 ${meta.commits.length} update${meta.commits.length === 1 ? '' : 's'} shipped: ${meta.commits.slice(0, 3).map(c => c.subject).join(' · ')}${meta.commits.length > 3 ? ` · and ${meta.commits.length - 3} more` : ''}`;
@@ -76,23 +82,40 @@ function persist(db, commits) {
 
 /**
  * Announce this boot's new commits. Safe to call once after the chat server is up.
- * @returns {Promise<{ announced: number }>}
+ * @returns {Promise<{ announced: number, event_id?: string|null }>}
  */
 async function announce({ db, chatServer, log = console }) {
-    const { head, commits } = await newCommits(db);
+    const { head, previous, commits } = await newCommits(db);
     if (!head || !commits.length) return { announced: 0 };
+
+    // Live's outbox exists before the transaction (idempotent; null while Events is off).
+    let outbox = null;
+    try { outbox = require('../events/stream-events'); outbox.init(); } catch (err) { log.warn('[Deploy notice] Events outbox unavailable:', err.message); outbox = null; }
+    let eventId = null;
+    // Recording the commits as announced and queueing live.release.deployed are one commit: the
+    // event exists if and only if this deploy counts as announced.
+    const recordDeploy = () => {
+        db.setSetting(SETTING, head);
+        if (outbox) {
+            const env = require('../events/release-events').record({ head, previous, commits });
+            eventId = env ? env.event_id : null;
+        }
+    };
+    const inTransaction = (fn) => db.getDb().transaction(fn)();
 
     // CHAT_AUTHORITY=chat: Live still decides what shipped; OpenVibe.Chat stores the rolling
     // message and shows it (its own copy of this module), so hand it the commits.
     if (chatServer && chatServer.remote) {
         chatServer.deployNotice(commits);
-        try { db.setSetting(SETTING, head); } catch (err) { log.warn('[Deploy notice] not recorded:', err.message); }
-        return { announced: commits.length };
+        try { inTransaction(recordDeploy); } catch (err) { log.warn('[Deploy notice] not recorded:', err.message); return { announced: commits.length, event_id: null }; }
+        if (outbox) outbox.kick();
+        return { announced: commits.length, event_id: eventId };
     }
 
     let saved;
-    try { saved = persist(db, commits); db.setSetting(SETTING, head); }
+    try { saved = inTransaction(() => { const s = persist(db, commits); recordDeploy(); return s; }); }
     catch (err) { log.warn('[Deploy notice] not saved:', err.message); return { announced: 0 }; }
+    if (outbox) outbox.kick();
 
     const payload = JSON.stringify({ type: 'update', kind: 'deploy', id: saved.id, fresh: commits.map(c => c.hash), url: '/updates', timestamp: saved.meta.updated_at, ...saved.meta });
     const sent = new WeakSet();
@@ -106,7 +129,7 @@ async function announce({ db, chatServer, log = console }) {
         return n;
     };
     ATTEMPTS_MS.forEach((ms, i) => { const t = setTimeout(() => { const n = push(); if (n) log.log(`[Deploy notice] ${commits.length} commit(s) → ${n} client(s) (pass ${i + 1})`); }, ms); if (t.unref) t.unref(); });
-    return { announced: commits.length };
+    return { announced: commits.length, event_id: eventId };
 }
 
 /**

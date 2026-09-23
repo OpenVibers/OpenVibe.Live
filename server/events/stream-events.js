@@ -10,6 +10,9 @@
  * token (audience openvibe.events, capability events.event.publish). If Events or Network is down
  * the rows wait and are retried with backoff; going live never waits on either.
  *
+ * The same outbox carries Live's other events (enqueue()): live.release.deployed from the deploy
+ * notice (server/events/release-events.js).
+ *
  * Off unless EVENTS_URL and OV_OAUTH_CLIENT_SECRET are set (EVENTS_PUBLISH=off disables it).
  * Payloads carry public channel facts only (the stream is already listed publicly); consumers such
  * as Network's go-live notifications decide who hears about it.
@@ -100,6 +103,22 @@ function init({ eventsUrl = EVENTS_URL, clientSecret = CLIENT_SECRET, fetchImpl,
     return outbox;
 }
 
+/**
+ * Queue another Live event in the outbox. MUST run inside the transaction that makes the change it
+ * describes (the SDK outbox refuses otherwise); throws when the insert fails so the change rolls
+ * back with it. Returns the envelope, or null while publishing is off. Call init() before the
+ * transaction (it is idempotent), and kick() after the commit.
+ */
+function enqueue(envelope) {
+    if (!outbox) return null;
+    const env = outbox.enqueue(envelope);
+    stats.queued++;
+    return env;
+}
+
+/** Wake the relay once the transaction that queued an event has committed. */
+function kick() { if (outbox) setImmediate(() => outbox && outbox.kick()); }
+
 function status() {
     if (!outbox) return { enabled: false };
     return { enabled: true, pending: outbox.pending(), rejected: outbox.rejected(), queued_since_boot: stats.queued, last_error: stats.lastError };
@@ -107,4 +126,4 @@ function status() {
 
 function _reset() { if (outbox) outbox.stop(); outbox = null; db.onStreamLifecycle(null); stats.queued = 0; stats.lastError = null; }
 
-module.exports = { init, status, envelopeFor, _reset };
+module.exports = { init, enqueue, kick, status, envelopeFor, _reset };
