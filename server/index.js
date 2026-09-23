@@ -131,6 +131,13 @@ const whipHandler = require('./streaming/whip-handler');
 // ── Express App ──────────────────────────────────────────────
 const app = express();
 const server = http.createServer(app);
+
+// What this server runs (ADR-016): GET /release.json below, and release_info in /metrics.
+const release = require('openvibe-shared/release').createRelease({ service: 'live', root: path.join(__dirname, '..') });
+// Metrics first, so every request is counted (by route template, never by raw URL). GET /metrics
+// answers direct loopback callers only; through nginx it is a 404 (server/web/observability.js).
+const observability = require('./web/observability');
+const { registry: metricsRegistry } = observability.mountMetrics(app, { release });
 const vibeCodingPublishServer = new VibeCodingPublishServer(chatServer, db);
 
 function normalizeOrigin(origin) {
@@ -723,36 +730,27 @@ app.get('/api/health', (req, res) => {
  * genuine gate.
  */
 let _bootComplete = false;
-// What this server runs (ADR-016). The shared navbar loads /shared/release-watch.js, which polls
-// this and prompts open tabs after a deploy; it never reloads a tab that is watching, broadcasting
-// or typing.
-{
-    const release = require('openvibe-shared/release').createRelease({ service: 'live', root: path.join(__dirname, '..') });
-    app.get('/release.json', release.handler);
-}
+// The shared navbar loads /shared/release-watch.js, which polls this and prompts open tabs after a
+// deploy; it never reloads a tab that is watching, broadcasting or typing.
+app.get('/release.json', release.handler);
 
-app.get('/api/ready', (req, res) => {
-    res.set('Cache-Control', 'no-store');
-    const checks = { boot: _bootComplete, db: false };
-    try {
-        // Cheapest possible proof that the connection is open and the schema exists.
-        db.get('SELECT 1 AS ok');
-        checks.db = true;
-    } catch (err) {
-        checks.dbError = String(err && err.message || err).slice(0, 200);
-    }
-    const ready = checks.boot && checks.db;
-    res.status(ready ? 200 : 503).json({
-        ready,
-        checks,
-        uptime: Math.round(process.uptime()),
-        // Advisory only — a deploy gate should not wait on optional subsystems, which can be
-        // legitimately unavailable (no mediasoup worker on a box that only relays RTMP, say).
-        optional: {
-            sfu: (() => { try { return !!webrtcSFU.isReady?.(); } catch { return null; } })(),
-            media: (() => { try { return require('./media-client').lastOk === true; } catch { return null; } })(),
-        },
-    });
+// Required: boot finished and the database answers. Optional (a failure is "degraded", still 200):
+// the WebRTC SFU, OpenVibe.Media and the Network signing key — Live serves channels, chat and RTMP
+// without them, so they must neither pass silently nor take the whole service out of rotation.
+const readiness = observability.createLiveReadiness({
+    release,
+    bootComplete: () => _bootComplete,
+    dbQuery: () => db.get('SELECT 1 AS ok'),
+    sfuReady: () => webrtcSFU.ready === true && !!webrtcSFU.worker,
+    mediaUrl: mediaClient.MEDIA_URL,
+    networkKey: () => require('./auth/auth').getNetworkPublicKey(),
+});
+app.get('/api/ready', readiness.handler);
+
+observability.registerDomainGauges(metricsRegistry, {
+    liveStreams: () => db.getLiveStreams().length,
+    wsServers: { chat: chatServer, broadcast: broadcastServer, control: controlServer, call: callServer },
+    outboxStatus: () => require('./events/stream-events').status(),
 });
 
 // ── Updates / Changelog ──────────────────────────────────────
