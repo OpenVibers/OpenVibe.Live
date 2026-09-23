@@ -53,6 +53,7 @@ const stub = http.createServer((req, res) => {
     const sample = releaseEvents.envelopeFor({ head, previous: null, commits: [{ hash: head, short: head.slice(0, 7), subject: 'x', date: '2026-09-23T00:00:00Z' }] });
     const full = { ...sample, event_id: 'evt_01JAB2C3D4E5F6G7H8J9K0MNPQ', version: 1, source: 'live', timestamp: new Date().toISOString() };
     contracts.assertValid('events.event-envelope@1', full);
+    contracts.assertValid('live.release.deployed@1', full.payload);
     assert.strictEqual(sample.payload.release, head.slice(0, 7));
     assert.throws(() => releaseEvents.envelopeFor({ head: 'nope' }), /full commit sha/);
 

@@ -72,9 +72,10 @@ const mediaServer = http.createServer((req, res) => {
     send(404, { error: 'no route' });
 });
 
-// Every contract answer is checked against lineage.resolution@1 when the installed contracts know it.
+// Every contract answer is checked against lineage.resolution@1 (openvibe-contracts 0.32.0+, which Live pins).
 const RESOLUTION = 'lineage.resolution@1';
 const contractKnown = (() => { try { contracts.resolve(RESOLUTION); return true; } catch { return false; } })();
+assert.ok(contractKnown, `the pinned openvibe-contracts defines ${RESOLUTION}`);
 let validated = 0;
 function checkContract(out, label) {
     if (!contractKnown) return out;

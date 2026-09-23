@@ -10,23 +10,14 @@
  *
  * Every well-formed request is answered 200 with a lineage.resolution@1, resolved or unresolved
  * (a conflict, a display name alone, Media down); a malformed one is 400 lineage.invalid_request.
- *
- * The capability id is passed as a constant, not a string literal inside the guard call:
- * live.lineage.resolve is registered in openvibe-contracts 0.32.0, Live still pins 0.30.2, and
- * `openvibe-contracts-check` in CI fails on a literal capability id the pinned registry does not
- * define (it scans comments too). guard() checks the grant itself while the id is unknown to the
- * registry and switches to capabilities.check() once the pin moves. When Live pins 0.32.0+, inline
- * the id so the CI check enforces it.
  */
 const express = require('express');
 const { http } = require('openvibe-contracts');
 const { guard } = require('../net/service-guard');
 const resolver = require('./resolver');
 
-const CAPABILITY = 'live.lineage.resolve';
-
 const router = express.Router();
-router.use(guard(CAPABILITY));
+router.use(guard('live.lineage.resolve'));
 
 async function answer(req, res, raw, flat) {
     const { input, error } = resolver.normalizeRequest(raw, { flat });

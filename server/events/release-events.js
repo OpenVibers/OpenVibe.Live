@@ -15,8 +15,8 @@
  *               first, at most 40), deployed_at, notes_url }
  *
  * Visibility is `internal`: the commit subjects are public in chat and on /updates already, but
- * the consumer (the chat notice) decides what is shown. No contract in openvibe-contracts v0.30.1
- * defines this type yet; it is listed as a contract addition for the `live.*` namespace Live owns.
+ * the consumer (the chat notice) decides what is shown. Contract: live.release.deployed@1
+ * (openvibe-contracts 0.32.0).
  */
 const EVENT_TYPE = 'live.release.deployed';
 const NOTES_URL = 'https://openvibe.live/updates';

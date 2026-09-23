@@ -7,11 +7,10 @@
  * today the ones OpenVibe.Chat calls (/internal/chat-context/*, /internal/chat-effects/*). The
  * token is verified with the same Network key Live verifies user JWTs with.
  *
- * Chat's capabilities (live.chat_context.read, live.chat_effects.write, live.chat_mirror.write)
- * are proposals not yet in the openvibe-contracts registry, whose requireCapability() refuses
- * unknown ids; until they are registered the grant is checked with capabilities.grants() and the
- * guard switches to capabilities.check() by itself once the registry knows the id. Like
- * X-Internal-Key routes, these are loopback-only: anything that came through nginx is refused.
+ * The capability ids are registered in openvibe-contracts (checked with capabilities.check()); an
+ * id the pinned registry does not know yet is checked as a plain grant with capabilities.grants()
+ * until the pin moves. Like X-Internal-Key routes, these are loopback-only: anything that came
+ * through nginx is refused.
  */
 const { serviceAuth, capabilities, http } = require('openvibe-contracts');
 const { getNetworkPublicKey, getNetworkIssuer } = require('../auth/auth');

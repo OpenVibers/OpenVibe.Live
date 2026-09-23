@@ -75,6 +75,8 @@ const stub = http.createServer((req, res) => {
     assert.strictEqual(ev.payload.channel.username, 'streamer');
     assert.match(ev.payload.started_at, /^\d{4}-\d\d-\d\dT/);
     assert.match(ev.event_id, /^evt_[0-9A-HJKMNP-TV-Z]{26}$/);
+    assert.strictEqual(ev.payload.channel.url, 'https://openvibe.live/@streamer', 'the channel link is the channel page');
+    require('openvibe-contracts').assertValid('live.stream.started@1', ev.payload);
 
     // Ending a stream that is already ended emits nothing; ending a live one emits ended.
     db.endStream(id);
@@ -84,6 +86,7 @@ const stub = http.createServer((req, res) => {
     assert.strictEqual(published[1].event_type, 'live.stream.ended');
     assert.strictEqual(published[1].subject.revision, 2);
     assert.ok('duration_seconds' in published[1].payload);
+    require('openvibe-contracts').assertValid('live.stream.ended@1', published[1].payload);
 
     // A rolled-back go-live leaves no event.
     assert.throws(() => d.transaction(() => { db.createStream({ user_id: 501, title: 'rolled back' }); throw new Error('abort'); })());
