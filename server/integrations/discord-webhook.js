@@ -28,7 +28,7 @@ async function notifyDiscordGoLive(streamer, stream) {
         if (lastNotify && (Date.now() - lastNotify) < cooldownMs) return;
 
         const displayName = streamer.display_name || streamer.username;
-        const streamUrl = `https://openvibe.live/${streamer.username}`;
+        const streamUrl = `https://openvibe.live/@${encodeURIComponent(streamer.username)}`;
         const title = stream.title || 'Started streaming';
 
         const embed = {

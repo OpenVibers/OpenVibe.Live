@@ -6495,14 +6495,8 @@ function openViewerPreview() {
     const ss = streamId ? getStreamState(streamId) : null;
     const streamData = ss?.streamData || null;
     const slug = streamData?.slug || null;
-    let url;
-    if (streamId) {
-        url = slug && currentUser?.username
-            ? `/${currentUser.username}/${slug}`
-            : `/watch/${streamId}`;
-    } else {
-        url = `/${currentUser?.username || ''}`;
-    }
+    // The channel page for this slot (by slug, else by id); /watch/<id> never existed.
+    const url = currentUser?.username ? channelPath(currentUser.username, streamId ? (slug || streamId) : null) : '/';
     _viewerPreviewWindow = window.open(
         url,
         'viewer-preview',
@@ -6516,7 +6510,7 @@ function popoutBroadcastChat() {
     if (typeof popoutStreamChat === 'function') {
         popoutStreamChat();
     } else if (currentUser?.username) {
-        window.open(`/${currentUser.username}`, '_blank', 'width=400,height=700');
+        window.open(channelPath(currentUser.username), '_blank', 'width=400,height=700');
     }
 }
 

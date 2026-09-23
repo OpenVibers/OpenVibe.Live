@@ -378,7 +378,7 @@ function _renewNotify(sub, message) {
         pushNotification({
             user_id: sub.subscriber_id, type: 'PAYMENT', title: 'Subscription update',
             message: `${streamer ? (streamer.display_name || streamer.username) + ': ' : ''}${message}`,
-            url: streamer ? `/${streamer.username}` : '/',
+            url: streamer ? `/@${encodeURIComponent(streamer.username)}` : '/',
         });
     } catch { /* optional */ }
 }

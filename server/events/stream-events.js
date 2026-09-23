@@ -39,7 +39,7 @@ function envelopeFor(kind, streamId) {
         FROM streams s JOIN users u ON u.id = s.user_id WHERE s.id = ?`).get(streamId);
     if (!s) return null;
     const subjectId = identity.subjectOf(s.user_id);
-    const channel = { username: s.username, display_name: s.display_name || s.username, url: `https://openvibe.live/${encodeURIComponent(s.username)}` };
+    const channel = { username: s.username, display_name: s.display_name || s.username, url: `https://openvibe.live/@${encodeURIComponent(s.username)}` };
     if (subjectId) channel.subject = { type: 'user', id: subjectId };
     const payload = {
         stream_id: s.id,

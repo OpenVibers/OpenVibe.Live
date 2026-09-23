@@ -105,7 +105,7 @@ function get(p, { user, html = false, method = 'GET' } = {}) {
         const req = http.request(base + p, { method, headers }, (res) => {
             let body = '';
             res.on('data', (c) => { body += c; });
-            res.on('end', () => resolve({ status: res.statusCode, body, type: res.headers['content-type'] || '' }));
+            res.on('end', () => resolve({ status: res.statusCode, body, type: res.headers['content-type'] || '', location: res.headers.location || null }));
         });
         req.on('error', reject);
         req.end();
@@ -145,11 +145,22 @@ server.listen(0, '127.0.0.1', async () => {
 
     await check('unknown paths answer 404', () => expectAll([
         '/nope', '/search', '/login', '/wp-login.php', '/favicon-missing.ico', '/Vods', '/vods/extra', '/updates/1',
-        '/@nobody', '/@ab', '/@alice/main/extra', '/@bad.name', '/alice',
+        '/@nobody', '/@ab', '/@alice/main/extra', '/@bad.name', '/nobody', '/nobody/main', '/alice/main/extra', '/alice/bad!slot',
         '/vod', '/vod/999', '/vod/abc', '/vod/100/extra', '/clip/999', '/clip/-1',
         '/p/missing', '/p/bad!slug', '/p/abc123/extra',
         '/recap/999999', '/recap/x', '/stream/999999', '/stream',
     ], 404));
+
+    await check('a channel link without the @ redirects to the channel page (old notifications)', async () => {
+        for (const [from, to] of [['/alice', '/@alice'], ['/Alice/', '/@alice'], ['/alice/main', '/@alice/main'], ['/bob?stream=5', '/@bob?stream=5']]) {
+            for (const html of [false, true]) {
+                const r = await get(from, { html });
+                assert.strictEqual(r.status, 301, `${from}${html ? ' (html)' : ''} → ${r.status}`);
+                assert.strictEqual(r.location, to, `${from} → ${r.location}`);
+            }
+        }
+        assert.strictEqual((await get('/vods')).status, 200, 'a route name is never taken for a user');
+    });
 
     await check('a private VOD or clip is a 404 to strangers, with or without a sign-in', async () => {
         await expectAll(['/vod/101', '/vod/102', '/clip/201'], 404);

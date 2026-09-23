@@ -2336,7 +2336,7 @@ router.post('/:id/follow', requireAuth, (req, res) => {
                     type: 'FOLLOW',
                     title: 'New Follower',
                     message: `${follower?.display_name || follower?.username || 'Someone'} followed you`,
-                    url: `${config.baseUrl}/${follower?.username || ''}`,
+                    url: follower?.username ? `${config.baseUrl}/@${encodeURIComponent(follower.username)}` : config.baseUrl,
                     ...actorInfo(follower),
                 });
             } catch { /* non-critical */ }
@@ -2381,7 +2381,7 @@ router.post('/channel/:username/follow', requireAuth, (req, res) => {
                     type: 'FOLLOW',
                     title: 'New Follower',
                     message: `${follower?.display_name || follower?.username || 'Someone'} followed you`,
-                    url: `${config.baseUrl}/${follower?.username || ''}`,
+                    url: follower?.username ? `${config.baseUrl}/@${encodeURIComponent(follower.username)}` : config.baseUrl,
                     ...actorInfo(follower),
                 });
             } catch { /* non-critical */ }

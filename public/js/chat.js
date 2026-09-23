@@ -7641,7 +7641,7 @@ function renderChatUsersList(users) {
             ? `<img src="${esc(u.avatar_url)}" class="chat-users-avatar" alt="" loading="lazy">`
             : `<div class="chat-users-avatar chat-users-avatar-default"><i class="fa-solid fa-user"></i></div>`;
         const badge = getBadgeHTML(u.role);
-        listHtml += `<div class="chat-users-row"><a href="/${esc(u.username)}" class="chat-users-link" onclick="event.preventDefault(); if(typeof showPage==='function') showPage('/${esc(u.username)}')">${avatar}<span class="chat-users-name">${esc(u.display_name)}</span>${badge}</a></div>`;
+        listHtml += `<div class="chat-users-row"><a href="/@${esc(u.username)}" class="chat-users-link" onclick="if(typeof handleLinkClick==='function') handleLinkClick(event, this.getAttribute('href'))">${avatar}<span class="chat-users-name">${esc(u.display_name)}</span>${badge}</a></div>`;
     }
     if (anonCount > 0) {
         listHtml += `<div class="chat-users-row chat-users-anon"><div class="chat-users-avatar chat-users-avatar-default"><i class="fa-solid fa-user-secret"></i></div><span class="chat-users-name">${anonCount} anonymous viewer${anonCount !== 1 ? 's' : ''}</span></div>`;
