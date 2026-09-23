@@ -1,0 +1,34 @@
+<div class="cf-wrap" data-feed="content">
+    <header class="cf-head">
+        <div class="cf-head-text">
+            <h1 class="cf-h1">Content</h1>
+            <p class="cf-sub">Streams, clips and pastes made by people on OpenVibe.</p>
+        </div>
+        <div class="cf-head-actions">
+            <a class="cf-crosslink" href="/moments" data-cf-link><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> AI Moments</a>
+            <button type="button" class="btn btn-small btn-outline cf-new-paste" data-cf-new-paste hidden><i class="fa-solid fa-plus" aria-hidden="true"></i> New paste</button>
+        </div>
+    </header>
+    <div class="cf-bar">
+        <div class="cf-chips" role="group" aria-label="Show">
+            <button type="button" class="cf-chip" data-cf-type="all" aria-pressed="true">All</button>
+            <button type="button" class="cf-chip" data-cf-type="vods" aria-pressed="false"><i class="fa-solid fa-video" aria-hidden="true"></i> VODs</button>
+            <button type="button" class="cf-chip" data-cf-type="clips" aria-pressed="false"><i class="fa-solid fa-scissors" aria-hidden="true"></i> Clips</button>
+            <button type="button" class="cf-chip" data-cf-type="pastes" aria-pressed="false"><i class="fa-solid fa-paste" aria-hidden="true"></i> Pastes</button>
+        </div>
+        <div class="cf-sorts">
+            <div class="cf-seg" role="group" aria-label="Sort">
+                <button type="button" data-cf-sort="new" aria-pressed="true">New</button>
+                <button type="button" data-cf-sort="top" aria-pressed="false">Top</button>
+            </div>
+            <div class="cf-seg cf-window" role="group" aria-label="Top of" hidden>
+                <button type="button" data-cf-window="week" aria-pressed="false">Week</button>
+                <button type="button" data-cf-window="month" aria-pressed="true">Month</button>
+                <button type="button" data-cf-window="all" aria-pressed="false">All time</button>
+            </div>
+        </div>
+    </div>
+    <div class="cf-feed" aria-busy="true"></div>
+    <div class="cf-foot" aria-live="polite"></div>
+    <div class="cf-sentinel" aria-hidden="true"></div>
+</div>

@@ -55,7 +55,7 @@ function isStaffUser(user = currentUser) {
 }
 
 // Reserved paths (not usernames)
-const RESERVED = new Set(['vods', 'clips', 'vod', 'clip', 'dashboard', 'settings', 'broadcast', 'admin', 'themes', 'game', 'canvas', 'chat', 'api', 'ws', 'media', 'pastes', 'p', 'updates', 'dmca', 'tos', 'terms', 'arena', 'recap']);
+const RESERVED = new Set(['content', 'moments', 'vods', 'clips', 'vod', 'clip', 'dashboard', 'settings', 'broadcast', 'admin', 'themes', 'game', 'canvas', 'chat', 'api', 'ws', 'media', 'pastes', 'p', 'updates', 'dmca', 'tos', 'terms', 'arena', 'recap']);
 const CHANNEL_USERNAME_RE = /^[a-zA-Z0-9_]{3,24}$/;
 
 function normalizeChannelUsername(username) {
@@ -1064,12 +1064,15 @@ function routeFromURL() {
         // Home: /
         showPage('home');
         whenRouteReady('home', () => loadHome());
-    } else if (segments[0] === 'vods') {
-        showPage('vods');
-        whenRouteReady('vods', () => loadVodsPage());
-    } else if (segments[0] === 'clips') {
-        showPage('clips');
-        whenRouteReady('clips', () => loadClipsPage());
+    } else if (segments[0] === 'content' || segments[0] === 'vods' || segments[0] === 'clips') {
+        // What people made (public/js/content-feed.js). /vods and /clips are it with a filter.
+        showPage('content');
+        const preset = segments[0] === 'content' ? null : segments[0];
+        whenRouteReady('content', () => loadContentPage({ type: preset }));
+    } else if (segments[0] === 'moments') {
+        // What the AI made: auto-clips, AI moments, AI recaps.
+        showPage('moments');
+        whenRouteReady('moments', () => loadMomentsPage());
     } else if (segments[0] === 'vod' && segments[1]) {
         // VOD player: /vod/:id  (optional ?t=<seconds> to auto-seek, e.g. from a clip link)
         showPage('vod-player');
@@ -1107,12 +1110,10 @@ function routeFromURL() {
         window.location.href = `${getScraplandiaUrl()}/canvas`;
         return;
     } else if (segments[0] === 'pastes') {
-        showPage('pastes');
+        // The Content feed's Pastes filter; ?edit=<slug> (from a paste's Edit button) opens the editor over it.
+        showPage('content');
         const editSlug = new URLSearchParams(window.location.search).get('edit');
-        whenRouteReady('pastes', () => {
-            if (typeof loadPastesPage === 'function') loadPastesPage();
-        });
-        // Handle ?edit=slug
+        whenRouteReady('content', () => loadContentPage({ type: 'pastes' }));
         if (editSlug) {
             Promise.all([api(`/pastes/${editSlug}`), ov.load('pastes')]).then(([data]) => {
                 if (data.paste && typeof openNewPasteModal === 'function') openNewPasteModal({
@@ -1142,9 +1143,6 @@ function routeFromURL() {
         return;
     } else if (segments[0] === 'privacy') {
         window.location.replace('/privacy');
-        return;
-    } else if (segments[0] === 'pastes' && !segments[1] && document.querySelector('meta[name="ov-pastes-base"]')) {
-        _pasteHandOver(`/pastes${location.search}`);
         return;
     } else if (segments[0] === 'p' && segments[1] && document.querySelector('meta[name="ov-pastes-base"]')) {
         // Pastes live on openvibe.community now — hand the browser over (same slug, same URL shape).
@@ -1193,7 +1191,7 @@ function showNotFound() {
         p.textContent = 'Nothing lives at this address. The link may be mistyped, or what it pointed to was removed or made private.';
         const links = document.createElement('p');
         links.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:20px';
-        for (const [href, label, cls] of [['/', 'Home', 'btn btn-primary'], ['/vods', 'VODs', 'btn btn-outline'], ['/clips', 'Clips', 'btn btn-outline'], ['/chat', 'Chat', 'btn btn-outline']]) {
+        for (const [href, label, cls] of [['/', 'Home', 'btn btn-primary'], ['/content', 'Content', 'btn btn-outline'], ['/moments', 'AI Moments', 'btn btn-outline'], ['/chat', 'Chat', 'btn btn-outline']]) {
             const a = document.createElement('a');
             a.href = href; a.className = cls; a.textContent = label;
             a.addEventListener('click', (e) => handleLinkClick(e, href));
@@ -1350,7 +1348,7 @@ function showPage(page) {
     }
 
     // Highlight nav link
-    const pageToNav = { home: 'home', vods: 'vods', clips: 'clips', broadcast: 'broadcast', dashboard: 'dashboard', admin: 'admin', chat: 'chat', game: 'game', canvas: 'game', pastes: 'pastes', 'paste-viewer': 'pastes', arena: 'arena' };
+    const pageToNav = { home: 'home', content: 'content', moments: 'moments', broadcast: 'broadcast', dashboard: 'dashboard', admin: 'admin', chat: 'chat', game: 'game', canvas: 'game', 'paste-viewer': 'content', arena: 'arena' };
     const navPage = pageToNav[page];
     if (navPage) {
         const link = document.querySelector(`.nav-link[data-page="${navPage}"]`);
@@ -1379,8 +1377,6 @@ window.addEventListener('resize', updateNavHeroTransparency, { passive: true });
 /* ── Channel Page (/:username) ────────────────────────────────── */
 let currentChannelUsername = null; // is the current channel's user owner-rank?
 let _activeChannelUserId = null;
-let currentVodsPage = 1;
-let currentVodsStreamerFilter = 'all';
 
 // Small Newest/Oldest segmented control (shared markup). `setter` is a global fn name
 // taking 'newest'|'oldest'.
@@ -1434,65 +1430,6 @@ function _capTag(s) {
         if (_TAG_ACRONYMS[lw]) return _TAG_ACRONYMS[lw];
         return w.charAt(0).toUpperCase() + w.slice(1);
     }).join(' ');
-}
-
-function renderMediaStreamerFilters({
-    barId,
-    streamers = [],
-    activeFilter = 'all',
-    onSelect = 'setVodsStreamerFilter',
-    countKey = 'vod_count',
-    allLabel = 'All streamers',
-} = {}) {
-    const bar = document.getElementById(barId);
-    if (!bar) return;
-
-    const normalizedActive = (activeFilter || 'all').toLowerCase();
-    const unique = [];
-    const seen = new Set();
-    for (const streamer of (streamers || [])) {
-        const username = String(streamer?.username || '').trim();
-        if (!username) continue;
-        const key = username.toLowerCase();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        unique.push(streamer);
-    }
-
-    if (!unique.length) {
-        bar.style.display = 'none';
-        bar.innerHTML = '';
-        return;
-    }
-
-    bar.style.display = 'flex';
-    bar.innerHTML = `
-        <button class="media-filter-chip ${normalizedActive === 'all' ? 'active' : ''}" onclick="${onSelect}('all')">
-            <i class="fa-solid fa-layer-group"></i>
-            <span>${esc(allLabel)}</span>
-        </button>
-        ${unique.map(streamer => {
-            const username = String(streamer.username || '').trim();
-            const label = streamer.display_name || username;
-            const count = Number(streamer[countKey] || 0);
-            return `
-                <button class="media-filter-chip ${normalizedActive === username.toLowerCase() ? 'active' : ''}" onclick="${onSelect}('${esc(username)}')">
-                    <span>${esc(label)}</span>
-                    ${count > 0 ? `<span class="media-filter-chip-count">${count}</span>` : ''}
-                </button>
-            `;
-        }).join('')}
-    `;
-}
-
-function setVodsStreamerFilter(username = 'all') {
-    const nextFilter = String(username || 'all').trim() || 'all';
-    if (nextFilter === currentVodsStreamerFilter) return;
-    currentVodsStreamerFilter = nextFilter;
-    currentVodsPage = 1;
-    loadVodsPage();
-    const top = document.getElementById('page-vods');
-    if (top) top.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // Turn a UTC SQL timestamp ("YYYY-MM-DD HH:MM:SS") or ISO string into "x ago".

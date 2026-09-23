@@ -604,8 +604,9 @@ app.get('/data/pastes/screenshots/:filename', (req, res) => {
     res.redirect(302, mediaClient.screenshotUrl(path.basename(req.params.filename)));
 });
 
-// Pastes are moving to openvibe.community (PASTES_ON_COMMUNITY=1): the old Live URLs keep
+// Pastes are moving to openvibe.community (PASTES_ON_COMMUNITY=1): the old Live paste URLs keep
 // working as permanent redirects, so links in chat, search results and clipboards survive.
+// /pastes itself stays here: it is the Content feed with the Pastes filter (public/js/content-feed.js).
 const COMMUNITY_URL = (process.env.OV_COMMUNITY_URL || 'https://openvibe.community').replace(/\/$/, '');
 if (process.env.PASTES_ON_COMMUNITY === '1') {
     // Someone signed in here should arrive signed in there: they go through Community's silent sign-in
@@ -618,7 +619,6 @@ if (process.env.PASTES_ON_COMMUNITY === '1') {
         res.redirect(302, `${COMMUNITY_URL}/auth/login?silent=1&next=${encodeURIComponent(target)}`);
     };
     app.get('/p/:slug', (req, res) => handOver(req, res, `/p/${encodeURIComponent(req.params.slug)}`));
-    app.get('/pastes', (req, res) => handOver(req, res, '/pastes'));
 }
 
 // The SPA renders Media's relative paste URLs (/p/<slug>/screenshot, /raw)
@@ -685,6 +685,7 @@ app.get('/canvas', (req, res) => res.redirect(301, 'https://openvibe.games/canva
 app.use('/api/game', (req, res) => res.status(410).json({ error: 'Game has moved to https://openvibe.games/game' }));
 app.use('/api/meta', metaRoutes);
 app.use('/api/pastes', pasteRoutes);
+app.use('/api/content', require('./content/routes'));    // Content (people's work) + Moments (AI) feeds
 app.use('/api/home', require('./home/routes'));
 app.use('/api/i18n', require('./i18n/routes'));                 // on-demand translation for viewers (any line → your language)
 app.use('/api/kiosk', require('./kiosk/routes'));

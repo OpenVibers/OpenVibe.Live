@@ -24,7 +24,9 @@ const ROUTES_ONLY = process.argv.includes('--routes-only');
 const SETTLE = Number(process.env.SETTLE || 3500);
 
 const ROUTES = [
-    ['/', 'page-home'], ['/vods', 'page-vods'], ['/clips', 'page-clips'], ['/pastes', 'page-pastes'],
+    ['/', 'page-home'], ['/content', 'page-content'], ['/moments', 'page-moments'],
+    // The old list pages are the Content feed with a filter.
+    ['/vods', 'page-content'], ['/clips', 'page-content'], ['/pastes', 'page-content'],
     ['/chat', 'page-chat'], ['/arena', 'page-arena'], ['/broadcast', 'page-broadcast'], ['/documentation', 'page-documentation'],
     ['/updates', 'page-updates'], ['/dashboard', null], [process.env.CHANNEL || '/@admin', 'page-channel'],
     // Answered 404 by the server (server/web/page-status.js) with the same shell.
@@ -145,14 +147,14 @@ const pageState = `(() => ({
         await cdp.send('Page.navigate', { url: BASE + '/' });
         await sleep(SETTLE);
         const go = async (p) => { await cdp.evaluate(`navigate(${JSON.stringify(p)})`); await sleep(1500); return cdp.evaluate(pageState); };
-        const a = await go('/vods');
+        const a = await go('/content');
         const b = await go('/chat');
         const c = await go('/broadcast');
         await cdp.evaluate('history.back()'); await sleep(1500);
         const back = await cdp.evaluate(pageState);
         await cdp.evaluate('history.forward()'); await sleep(1500);
         const fwd = await cdp.evaluate(pageState);
-        const ok = a.active === 'page-vods' && b.active === 'page-chat' && c.active === 'page-broadcast' && back.active === 'page-chat' && fwd.active === 'page-broadcast';
+        const ok = a.active === 'page-content' && b.active === 'page-chat' && c.active === 'page-broadcast' && back.active === 'page-chat' && fwd.active === 'page-broadcast';
         if (ok) pass('SPA navigate + back/forward land on the right page'); else fail(`navigation: ${[a, b, c, back, fwd].map(s => s.active).join(' → ')}`);
         const seen = new Map();
         for (const u of scripts) { const k = u.split('?')[0]; seen.set(k, (seen.get(k) || 0) + 1); }
@@ -199,7 +201,7 @@ const pageState = `(() => ({
         await cdp.send('Page.navigate', { url: BASE + '/' });
         await sleep(SETTLE);
         const ch = process.env.CHANNEL || '/@admin';
-        const lap = [ch, '/chat', '/dashboard', '/', '/broadcast', ch, '/', '/vods', '/'];
+        const lap = [ch, '/chat', '/dashboard', '/', '/broadcast', ch, '/', '/content', '/moments', '/'];
         const probes = [];
         for (let i = 0; i < 3; i++) {
             for (const p of lap) { await cdp.evaluate(`navigate(${JSON.stringify(p)})`); await sleep(1200); }

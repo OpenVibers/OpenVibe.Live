@@ -30,12 +30,24 @@
         "/js/app-media.js"
       ]
     },
-    "lists": {
-      "js": [
-        "/js/ov-density.js"
+    "feeds": {
+      "css": [
+        "/css/features/content.css"
       ],
+      "js": [
+        "/js/content-feed.js"
+      ]
+    },
+    "content": {
+      "fragment": "content",
       "deps": [
-        "appMedia"
+        "feeds"
+      ]
+    },
+    "moments": {
+      "fragment": "moments",
+      "deps": [
+        "feeds"
       ]
     },
     "player": {
@@ -281,9 +293,15 @@
       ]
     },
     {
-      "path": "^/(vods|clips)/?$",
+      "path": "^/(content|vods|clips|pastes)/?$",
       "features": [
-        "lists"
+        "content"
+      ]
+    },
+    {
+      "path": "^/moments/?$",
+      "features": [
+        "moments"
       ]
     },
     {
@@ -317,7 +335,7 @@
       ]
     },
     {
-      "path": "^/(pastes/?$|p/)",
+      "path": "^/p/",
       "features": [
         "pastes"
       ]

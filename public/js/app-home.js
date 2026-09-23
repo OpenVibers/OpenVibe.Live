@@ -1497,7 +1497,8 @@ async function loadHomeClips(opts) {
             homeRailLoaded(rail, offset, clips.length, data.total);
             renderHomePagination('home-clips-pagination', rail);
         };
-        await apiSWR(`/clips?limit=${limit}&offset=${offset}`, render, { ttl: 180000 });
+        // People's clips; the AI's auto-clips have their own place (/moments, the AI Moments rail).
+        await apiSWR(`/clips?limit=${limit}&offset=${offset}&auto_generated=0`, render, { ttl: 180000 });
     } catch { rail.filling = false; }
 }
 
@@ -1537,7 +1538,7 @@ async function loadHomePastes(opts) {
             homeRailLoaded(rail, offset, pastes.length, data.total);
             renderHomePagination('home-pastes-pagination', rail);
         };
-        await apiSWR(`/pastes?limit=${limit}&offset=${offset}`, render, { ttl: 180000 });
+        await apiSWR(`/pastes?limit=${limit}&offset=${offset}&origin=user`, render, { ttl: 180000 });
     } catch { rail.filling = false; }
 }
 

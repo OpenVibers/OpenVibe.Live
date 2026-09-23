@@ -153,7 +153,9 @@ async function _checkLiveStream(stream) {
             stream_id: streamId, auto_generated: true, description: verdict.desc || '',
         }).catch((e) => { console.warn(`[AutoClip] Media createClip failed for stream ${streamId}:`, e.message); return null; });
         if (clip) {
-            _logClip({ stream_id: streamId, vod_id: rec.vodId, start_time: start, title, clip_id: clip.id, sig: _sceneSig(verdict.desc || title) });
+            // deduplicated: Media handed back a clip someone already cut of this window. It stays in
+            // the log for the caps, but it is theirs, not the AI's (syncAutoClipFlags skips it).
+            _logClip({ stream_id: streamId, vod_id: rec.vodId, start_time: start, title, clip_id: clip.id, dedup: !!clip.deduplicated || undefined, sig: _sceneSig(verdict.desc || title) });
             console.log(`[AutoClip] LIVE clip for stream ${streamId} @${Math.round(momentOffset)}s ("${title}") — spike ${peak.count} msgs`);
         }
     } catch (e) {
@@ -297,12 +299,50 @@ async function clipVodMoment(o) {
             title: title || 'Standout Moment', user_id: vod.user_id,
             stream_id: vod.stream_id || undefined, auto_generated: true, description: desc || '',
         });
-        if (clip) _logClip({ stream_id: vod.stream_id || null, vod_id: vodId, start_time: start, title: title || 'Standout Moment', clip_id: clip.id, sig: _sceneSig(desc || title) });
+        if (clip) _logClip({ stream_id: vod.stream_id || null, vod_id: vodId, start_time: start, title: title || 'Standout Moment', clip_id: clip.id, dedup: !!clip.deduplicated || undefined, sig: _sceneSig(desc || title) });
         return clip || null;
     } catch { return null; }
 }
 
+// ── Tell Media which clips the AI cut ────────────────────────────────────────────────────
+// Media dropped the auto_generated flag Live sent with every auto-clip until it learned to keep it,
+// so those clips were listed as people's clips (the Content feed shows people's work only; the
+// AI's goes to Moments). This log names every auto-clip Live made; each one is marked in Media
+// once (PUT /clips/:id { auto_generated }, app authority) and remembered, so the next run only
+// asks about new ones. A Media that answers without the flag has not been upgraded yet: stop and
+// try again on the next run. A clip Media no longer has is done.
+const FLAG_SYNC_SETTING = 'auto_clip_flags_synced';
+const FLAG_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
+async function syncAutoClipFlags({ max = 400 } = {}) {
+    let done = new Set();
+    try { const d = JSON.parse(db.getState(FLAG_SYNC_SETTING) || '[]'); if (Array.isArray(d)) done = new Set(d.map(String)); } catch { /* */ }
+    const ids = [...new Set(_clipLog().filter((e) => e && !e.dedup).map((e) => e.clip_id).filter((id) => id != null && /^\d+$/.test(String(id))).map(String))]
+        .filter((id) => !done.has(id)).slice(0, max);
+    let marked = 0, gone = 0, pending = 0, skipped = 0;
+    for (const id of ids) {
+        try {
+            // The job cuts in the streamer's name. A clip under anyone else is one Media returned as a
+            // duplicate of a person's clip before the log said so: never relabel a person's work.
+            const cur = await media.getClip(id, { timeoutMs: 10_000 });
+            if (cur && cur.auto_generated === true) { done.add(id); marked++; continue; }
+            if (!cur || (cur.channel_user_id != null && String(cur.user_id) !== String(cur.channel_user_id))) { done.add(id); skipped++; continue; }
+            const out = await media.updateClip(id, { auto_generated: true }, { timeoutMs: 10_000 });
+            const clip = (out && out.clip) || out;
+            if (!clip || clip.auto_generated !== true) { pending = ids.length - marked - gone - skipped; break; }   // Media not upgraded yet
+            done.add(id); marked++;
+        } catch (e) {
+            if (e && (e.status === 404 || e.status === 410)) { done.add(id); gone++; continue; }
+            pending = ids.length - marked - gone - skipped;
+            break;   // Media down or refusing: the rest wait for the next run
+        }
+    }
+    try { db.setState(FLAG_SYNC_SETTING, JSON.stringify([...done].slice(-2000))); } catch { /* */ }
+    if (marked || gone || skipped) console.log(`[AutoClip] Marked ${marked} auto-clip(s) as AI-made in Media${gone ? `, ${gone} no longer there` : ''}${skipped ? `, ${skipped} left as a person's clip` : ''}${pending ? `, ${pending} left for the next run` : ''}`);
+    return { marked, gone, skipped, pending };
+}
+
 let _backfillTimer = null;
+let _flagTimer = null;
 function start() {
     if (_timer) return;
     _timer = setInterval(() => { _tick().catch(() => {}); }, CHECK_INTERVAL_MS);
@@ -313,11 +353,16 @@ function start() {
     // re-check used to be joined by a second one over the same VODs (double AI + ffmpeg, duplicate
     // clips). Jittered so it does not start in lockstep with every other boot-time job.
     _backfillTimer = require('../utils/jobs').every('auto-clip-vod-backfill', 5 * 60 * 1000, () => backfillVodClips(), { initialDelayMs: 30 * 1000, jitterMs: 30 * 1000 });
+    _flagTimer = require('../utils/jobs').every('auto-clip-flag-sync', FLAG_SYNC_INTERVAL_MS, () => syncAutoClipFlags(), { initialDelayMs: 90 * 1000, jitterMs: 60 * 1000 });
     console.log('[AutoClip] Live auto-clip job started (selective chat-spike + AI agreement, cuts via OpenVibe.Media) + persistent VOD backfill');
 }
-function stop() { if (_timer) { clearInterval(_timer); _timer = null; } if (_backfillTimer) { _backfillTimer(); _backfillTimer = null; } }
+function stop() {
+    if (_timer) { clearInterval(_timer); _timer = null; }
+    if (_backfillTimer) { _backfillTimer(); _backfillTimer = null; }
+    if (_flagTimer) { _flagTimer(); _flagTimer = null; }
+}
 
-module.exports = { start, stop, clipVodMoment, backfillVodClips, _tick };
+module.exports = { start, stop, clipVodMoment, backfillVodClips, syncAutoClipFlags, _tick };
 
 // CLI: force a historical backfill batch, e.g. `node server/ai/auto-clip-job.js --backfill --limit=4`
 if (require.main === module) {
