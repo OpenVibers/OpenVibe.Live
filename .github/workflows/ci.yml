@@ -16,3 +16,6 @@ jobs:
       - run: npm test
       - name: contract check (openvibe-contracts)
         run: npx openvibe-contracts-check --service live --src server
+  # Secret scan (gitleaks) and dependency audit, shared by every OpenVibers repo (Track Q).
+  security:
+    uses: OpenVibers/OpenVibe.Shared/.github/workflows/security.yml@83c998b65424fb97e6f6de55ad9cc5981767e89c
