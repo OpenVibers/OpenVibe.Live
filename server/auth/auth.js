@@ -24,7 +24,7 @@ function getNetworkIssuer() {
 function loadNetworkPublicKey() {
     const keyPaths = [
         process.env.OV_NETWORK_PUBLIC_KEY,
-        path.resolve('./data/keys/openvibe-tools-public.pem'),
+        require('../paths').data('keys', 'openvibe-tools-public.pem'),
         '/opt/openvibe/openvibe-tools/data/keys/public.pem',
     ].filter(Boolean);
 

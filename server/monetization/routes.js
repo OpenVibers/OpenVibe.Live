@@ -278,7 +278,7 @@ router.delete('/goals/:id', requireAuth, (req, res) => {
         if (g && g.image_url && /^\/data\/offline\//.test(g.image_url)) {
             try {
                 const fs = require('fs'); const path = require('path');
-                const p = path.join(process.env.OFFLINE_SCREEN_PATH || './data/offline', path.basename(g.image_url));
+                const p = path.join(require('../paths').dir('OFFLINE_SCREEN_PATH', 'offline'), path.basename(g.image_url));
                 if (fs.existsSync(p)) fs.unlinkSync(p);
             } catch { /* orphan is harmless */ }
         }

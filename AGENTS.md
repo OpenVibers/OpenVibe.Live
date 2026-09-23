@@ -46,6 +46,7 @@ Each feature lives in its own `server/<feature>/` directory with `routes.js` + s
 - **Public responses:** serialize through [server/web/serializers.js](server/web/serializers.js) — never return raw `managed_streams`/`users` rows.
 - **TURN:** ICE lists come from [server/net/turn.js](server/net/turn.js); set `TURN_AUTH_SECRET` (coturn `use-auth-secret`) for short-lived credentials.
 - **Outbound fetches of user-chosen URLs:** [server/net/egress.js](server/net/egress.js) only. Background loops: `server/utils/jobs.js`.
+- **Files and restore drills:** every file location comes from [server/paths.js](server/paths.js) (`DATA_DIR`, `DB_PATH`), never a literal `./data`. Anything started at boot or at module load (timers, listeners, sockets, jobs, outbound calls) must stay off under `LIVE_DRILL` ([server/drill.js](server/drill.js)); `test/drill-mode.test.js` fails on any new one.
 - **WebSocket servers:** Each has `init(server)` and `handleUpgrade(req, socket, head)` methods.
 - **Frontend globals:** `currentUser`, `api()`, `navigate()`, `handleLinkClick()`. Cross-component sync via `CustomEvent` (e.g., `openvibe-auth-changed`).
 - **ChatServer:** Singleton — `chat-server.js` exports `new ChatServer()`, not the class.

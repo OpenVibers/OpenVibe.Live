@@ -42,7 +42,7 @@ const { spawn } = require('child_process');
 let sharp; try { sharp = require('sharp'); } catch { /* optional */ }
 
 // Offline-screen asset storage + upload/transcode
-const OFFLINE_DIR = process.env.OFFLINE_SCREEN_PATH || './data/offline';
+const OFFLINE_DIR = require('../paths').dir('OFFLINE_SCREEN_PATH', 'offline');
 try { fs.mkdirSync(OFFLINE_DIR, { recursive: true }); } catch { /* exists */ }
 const offlineUpload = multer({
     storage: multer.diskStorage({

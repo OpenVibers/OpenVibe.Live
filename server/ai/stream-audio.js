@@ -227,7 +227,7 @@ async function captureAudioChunk(stream, seconds = 12) {
 // 10s is the balance point; most boundaries land in silence anyway, since only ~13% of
 // this audio is speech. Tune with AI_HEAR_SEGMENT_SEC.
 const SEGMENT_SEC = Math.max(5, Math.min(120, parseInt(process.env.AI_HEAR_SEGMENT_SEC, 10) || 10));
-const SPOOL_ROOT = path.join(__dirname, '../../data/asr');
+const SPOOL_ROOT = require('../paths').data('asr');
 // Hard cap on spooled audio per stream. The box has ~34GB free on a filesystem that
 // openvibe.media is actively growing into, so an unbounded spool is not an option.
 const MAX_SPOOL_FILES = Math.max(4, parseInt(process.env.AI_HEAR_MAX_SPOOL, 10) || 40);

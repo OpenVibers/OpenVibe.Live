@@ -7,6 +7,8 @@
 require('dotenv').config();
 
 const { resolveRegistryValues, URL_DEFINITIONS } = require('openvibe-shared/url-resolver');
+// File locations: all under the data directory (DATA_DIR, else ./data); see paths.js.
+const paths = require('./paths');
 
 const DEFAULTS = {
     BASE_URL: 'http://localhost:3000',
@@ -225,7 +227,7 @@ function buildConfig(registryValues) {
             expiresIn: '7d',
         },
         db: {
-            path: process.env.DB_PATH || './data/live.db',
+            path: paths.dbPath(),
         },
         jsmpeg: {
             publicUrl: jsmpegPublicUrl,
@@ -248,16 +250,16 @@ function buildConfig(registryValues) {
             escrowDays: parseInt(process.env.ESCROW_HOLD_DAYS || '14', 10),
         },
         vod: {
-            path: process.env.VOD_PATH || './data/vods',
+            path: paths.dir('VOD_PATH', 'vods'),
             coldPath: process.env.COLD_STORAGE_PATH || '',
-            clipsPath: process.env.CLIPS_PATH || './data/clips',
+            clipsPath: paths.dir('CLIPS_PATH', 'clips'),
             maxSizeMb: parseInt(process.env.MAX_VOD_SIZE_MB || '2048', 10),
         },
         thumbnails: {
-            path: process.env.THUMBNAILS_PATH || './data/thumbnails',
+            path: paths.dir('THUMBNAILS_PATH', 'thumbnails'),
         },
         emotes: {
-            path: process.env.EMOTES_PATH || './data/emotes',
+            path: paths.dir('EMOTES_PATH', 'emotes'),
             maxSizeKb: parseInt(process.env.MAX_EMOTE_SIZE_KB || '2048', 10),
             maxPerUser: parseInt(process.env.MAX_EMOTES_PER_USER || '30', 10),
             // A channel holds up to 30 emotes total (streamer + viewer uploads), first-come until
@@ -269,7 +271,7 @@ function buildConfig(registryValues) {
             sevenTvCacheTtl: parseInt(process.env.SEVENTV_CACHE_TTL || '3600', 10),
         },
         sounds: {
-            path: process.env.SOUNDS_PATH || './data/sounds',
+            path: paths.dir('SOUNDS_PATH', 'sounds'),
             maxSizeKb: parseInt(process.env.MAX_SOUND_SIZE_KB || '2048', 10),   // 2MB per clip
             defaultMaxSeconds: parseInt(process.env.SOUND_DEFAULT_MAX_SECONDS || '10', 10),
             maxPerChannel: parseInt(process.env.MAX_SOUNDS_PER_CHANNEL || '150', 10),

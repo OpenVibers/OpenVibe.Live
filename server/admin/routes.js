@@ -968,16 +968,17 @@ function diskUsage(targetPath) {
 // Full disk overview + per-directory breakdown
 router.get('/storage', (req, res) => {
     try {
-        const dataRoot = path.resolve('./data');
+        const paths = require('../paths');
+        const dataRoot = paths.dataDir();
         const disk = diskUsage(dataRoot);
 
         // Per-directory breakdown
         // VODs/clips/pastes/thumbnails moved to OpenVibe.Media — only Live-local dirs remain.
         const directories = [
-            { name: 'Live thumbs', path: './data/live-thumbs',        icon: 'fa-image' },
-            { name: 'Avatars',    path: './data/avatars',             icon: 'fa-user-circle' },
-            { name: 'Emotes',     path: './data/emotes',              icon: 'fa-face-smile' },
-            { name: 'Offline screens', path: './data/offline',        icon: 'fa-tv' },
+            { name: 'Live thumbs', path: paths.data('live-thumbs'),  icon: 'fa-image' },
+            { name: 'Avatars',    path: paths.data('avatars'),       icon: 'fa-user-circle' },
+            { name: 'Emotes',     path: paths.data('emotes'),        icon: 'fa-face-smile' },
+            { name: 'Offline screens', path: paths.data('offline'),  icon: 'fa-tv' },
         ];
 
         const breakdown = directories.map(d => {
@@ -987,7 +988,7 @@ router.get('/storage', (req, res) => {
 
         // Database file size
         let dbBytes = 0;
-        try { dbBytes = fs.statSync(path.resolve('./data/live.db')).size; } catch {}
+        try { dbBytes = fs.statSync(paths.dbPath()).size; } catch {}
 
         // Total data directory
         const dataTotal = dirStats(dataRoot);

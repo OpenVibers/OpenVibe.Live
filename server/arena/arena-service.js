@@ -27,7 +27,8 @@ const crypto = require('crypto');
 const db = require('../db/database');
 const llm = require('../ai/llm');
 
-const ARENA_DIR = path.resolve(process.env.ARENA_IMAGE_PATH || './data/arena');
+const paths = require('../paths');
+const ARENA_DIR = paths.dir('ARENA_IMAGE_PATH', 'arena');
 const ACTIVE_DAYS = 45;
 const STATS_WINDOW_DAYS = 90;
 const PERSONA_TTL_MS = 24 * 60 * 60 * 1000;
@@ -415,11 +416,11 @@ async function referenceImagesFor(userId) {
         if (live) {
             const thumbs = require('../media-proxy/live-thumbs');
             const url = thumbs.getCurrentLiveThumbnailUrl(live.id);
-            if (url) { const local = path.resolve('./data/live-thumbs', path.basename(url)); if (fs.existsSync(local)) push(local); else if (url.startsWith('http')) push(url); }
+            if (url) { const local = paths.data('live-thumbs', path.basename(url)); if (fs.existsSync(local)) push(local); else if (url.startsWith('http')) push(url); }
         }
     } catch { /* */ }
     try {
-        const momentsDir = path.resolve(process.env.AI_MOMENTS_PATH || './data/ai-moments');
+        const momentsDir = paths.dir('AI_MOMENTS_PATH', 'ai-moments');
         const streams = db.all(`SELECT id FROM streams WHERE user_id = ? AND duration_seconds > 0 ORDER BY started_at DESC LIMIT 6`, [userId]);
         for (const s of streams) {
             const dir = path.join(momentsDir, String(s.id));

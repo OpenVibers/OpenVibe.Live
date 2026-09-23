@@ -42,7 +42,7 @@ function captureMemoryNow(stream, { allowFfmpeg = true, reason = 'manual' } = {}
 // within the hour, so every moment in the timeline ended up showing the placeholder
 // pixel (a white box). Keep a small JPEG of the analysed frame per moment instead,
 // under data/ai-moments/<streamId>/<offset>.jpg (served at /data/ai-moments/…, ~15 KB).
-const MOMENTS_DIR = require('path').resolve(process.env.AI_MOMENTS_PATH || './data/ai-moments');
+const MOMENTS_DIR = require('../paths').dir('AI_MOMENTS_PATH', 'ai-moments');
 async function _persistMomentFrame(image, streamId, offset) {
     if (!image) return null;
     try {

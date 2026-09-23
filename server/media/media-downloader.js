@@ -23,7 +23,8 @@ function getDb() {
 
 // ── Config ──────────────────────────────────────────────────
 const YTDLP_PATH = process.env.YTDLP_PATH || '/usr/local/bin/yt-dlp';
-const CACHE_DIR = path.resolve('./data/media/cache');
+const paths = require('../paths');
+const CACHE_DIR = paths.data('media', 'cache');
 /**
  * The yt-dlp cookie jar.
  *
@@ -35,9 +36,10 @@ const CACHE_DIR = path.resolve('./data/media/cache');
  * first load so an upgrade does not silently lose a working configuration — and deletes the old
  * copy, which is the part that actually closes the hole.
  */
-const COOKIES_PATH = path.resolve('./data/ytdlp/cookies.txt');
-const LEGACY_COOKIES_PATH = path.resolve('./data/media/cookies.txt');
+const COOKIES_PATH = paths.data('ytdlp', 'cookies.txt');
+const LEGACY_COOKIES_PATH = paths.data('media', 'cookies.txt');
 (function migrateCookieJar() {
+    if (require('../drill').enabled) return;   // a restore drill touches no files at load
     try {
         fs.mkdirSync(path.dirname(COOKIES_PATH), { recursive: true });
         if (fs.existsSync(LEGACY_COOKIES_PATH)) {
@@ -156,7 +158,8 @@ function commonArgs() {
 // (a remote proxy cannot reach this machine's internal network either).
 const egress = require('../net/egress');
 let _egressUrl = null;
-const _egressReady = egress.proxy().then((url) => { _egressUrl = url; return url; })
+// A restore drill (LIVE_DRILL) runs no downloads and opens no listener besides its HTTP port.
+const _egressReady = require('../drill').enabled ? Promise.resolve(null) : egress.proxy().then((url) => { _egressUrl = url; return url; })
     .catch((e) => { console.warn('[MediaDownloader] egress proxy unavailable:', e.message); return null; });
 function ready() { return _egressReady; }
 
@@ -545,17 +548,19 @@ function purgeCache() {
     } catch {}
 }
 
-// Purge on startup and periodically
-purgeCache();
-setInterval(purgeCache, 60 * 60 * 1000); // Every hour
+// Purge on startup and periodically (never in a restore drill: no timers, no file work)
+if (!require('../drill').enabled) {
+    purgeCache();
+    setInterval(purgeCache, 60 * 60 * 1000); // Every hour
 
-// Clean up expired URL cache entries periodically
-setInterval(() => {
-    const now = Date.now();
-    for (const [key, val] of urlCache) {
-        if (now >= val.expiresAt) urlCache.delete(key);
-    }
-}, 30 * 60 * 1000);
+    // Clean up expired URL cache entries periodically
+    setInterval(() => {
+        const now = Date.now();
+        for (const [key, val] of urlCache) {
+            if (now >= val.expiresAt) urlCache.delete(key);
+        }
+    }, 30 * 60 * 1000);
+}
 
 /**
  * Run yt-dlp with given args. Returns stdout.

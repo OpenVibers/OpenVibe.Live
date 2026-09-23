@@ -15,7 +15,7 @@ const path = require('path');
 const crypto = require('crypto');
 const db = require('../db/database');
 
-const CACHE_DIR = path.resolve(process.env.TTS_CACHE_PATH || './data/tts-cache');
+const CACHE_DIR = require('../paths').dir('TTS_CACHE_PATH', 'tts-cache');
 const MAX_TEXT = 240;
 const MAX_CACHE_MB = 300;
 const MAX_AGE_MS = 60 * 24 * 3600_000;

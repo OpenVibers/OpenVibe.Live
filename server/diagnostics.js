@@ -15,7 +15,8 @@ const WARN_P99_MS = 200;
 const histogram = monitorEventLoopDelay({ resolution: 20 });
 histogram.enable();
 let lastWindow = null;
-const windowTimer = setInterval(() => {
+// A restore drill (LIVE_DRILL) runs no timers at all; its delay window simply stays empty.
+const windowTimer = require('./drill').enabled ? null : setInterval(() => {
     const ms = (ns) => Math.round(ns / 1e6);
     lastWindow = {
         endedAt: new Date().toISOString(),
@@ -29,7 +30,7 @@ const windowTimer = setInterval(() => {
     }
     histogram.reset();
 }, WINDOW_MS);
-if (windowTimer.unref) windowTimer.unref();
+if (windowTimer && windowTimer.unref) windowTimer.unref();
 
 const safe = (fn, fallback = null) => { try { return fn(); } catch { return fallback; } };
 

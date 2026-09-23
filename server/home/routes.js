@@ -426,8 +426,9 @@ function _latestUpdate() {
     if (Date.now() - _updateCache.at >= 5 * 60_000) _refreshLatestUpdate();   // never awaited
     return _updateCache.data;
 }
-// Resolve it once at startup so the very first home load already has it.
-setTimeout(_refreshLatestUpdate, 1500).unref?.();
+// Resolve it once at startup so the very first home load already has it (a restore drill runs no
+// timers; there the first /pulse asks git).
+if (!require('../drill').enabled) setTimeout(_refreshLatestUpdate, 1500).unref?.();
 
 // ── "While you were away" / "Lately on OpenVibe" digest — for everyone ────────
 // ?since=<ISO> (the client remembers its own last visit; anonymous / first visit → last 48h).
@@ -573,4 +574,5 @@ module.exports.FALLBACK_QUIPS = FALLBACK_QUIPS;
 // Warm the hero caches once boot has finished (~6s on production). Every deploy restarts the process with empty caches, and
 // the first home page load after it used to wait on every upstream call cold (~2.3s measured right
 // after a deploy). The timer is unref'd so it never holds the process open.
-setTimeout(() => { buildHero(null).catch(() => {}); }, 15000).unref?.();
+// A restore drill runs no timers (and its hero would only find Media and Network down).
+if (!require('../drill').enabled) setTimeout(() => { buildHero(null).catch(() => {}); }, 15000).unref?.();

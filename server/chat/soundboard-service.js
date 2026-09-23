@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../db/database');
 
-const CACHE_DIR = path.join(__dirname, '..', '..', 'data', 'soundboard-cache');
+const CACHE_DIR = require('../paths').data('soundboard-cache');
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const URL_REGEX = /(?:https?:\/\/)?(?:www\.)?101soundboards\.com\/sounds\/(\d+)(?:[-\w/?#=&.]*)/i;
 const CMD_REGEX = /^!sb\s+(.+)$/i;

@@ -80,6 +80,27 @@ checks each of these behaviours.
 static cache, gzip and log format for Live, enforced by that repo's `test/nginx-generator-live.test.js`.
 Apply nginx changes by hand: copy the file, `nginx -t`, `systemctl reload nginx`.
 
+## Restore drills
+
+`ovhost drill live` (OpenVibe.Host, `docs/restore-drills.md`) restores `live.db` from the latest
+backup into a directory of its own and starts a second Live from this checkout on 127.0.0.1:13000
+with `LIVE_DRILL=1`, `DB_PATH` on the copy and `DATA_DIR` in that directory. In that mode
+(`server/drill.js`) Live:
+
+- refuses to start unless `DB_PATH` and `DATA_DIR` are set and outside the checkout and
+  `/opt/openvibe.live`, `HOST` is loopback, `PORT` is not 3000 and no socket was handed over by systemd;
+- writes nothing outside `DATA_DIR` and the copy's directory (`server/paths.js`: the per-location
+  `*_PATH` variables from the env file are ignored);
+- starts only its HTTP server: no job, WebSocket server, RTMP, SFU, JSMPEG, WHIP, TURN credential,
+  restream or relay resume, AI job, Media reconciler, Events outbox, chat bridge, identity sync,
+  deploy notice or registry refresh;
+- connects to nothing and runs no program but `git`: other services look down to it, so a route that
+  asks Media or Community answers as it does when they are down;
+- answers 403 to every method but GET, HEAD and OPTIONS, and to every WebSocket upgrade;
+- reports `"mode": "drill"` in `/api/ready`.
+
+`test/drill-mode.test.js` boots the real server that way and checks each point.
+
 ## Checks
 
 ```bash

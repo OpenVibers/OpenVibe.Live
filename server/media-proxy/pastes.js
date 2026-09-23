@@ -38,7 +38,8 @@ const router = express.Router();
 const shotUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 // Anonymous pastes and comments are allowed, but Media does not rate-limit app-key calls, so the
 // limit for anonymous writes lives here.
-const anonWriteLimiter = require('express-rate-limit')({
+// (A restore drill refuses every write, so it has no limiter and no limiter timer.)
+const anonWriteLimiter = require('../drill').enabled ? (req, res, next) => next() : require('express-rate-limit')({
     windowMs: 10 * 60 * 1000,
     max: 20,
     standardHeaders: true,

@@ -44,12 +44,29 @@ const fs = require('fs');
 // Load env before anything else
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
+// Restore-drill mode (LIVE_DRILL=1, `ovhost drill live`): refuse an unsafe environment before
+// anything opens a file, then cut every way out of the process but its own HTTP port. The instance
+// serves reads from a restored copy of the database and starts nothing else (server/drill.js).
+const drill = require('./drill');
+if (drill.enabled) {
+    try {
+        drill.assertSafe();
+    } catch (err) {
+        console.error(`[Drill] ${err.message}`);
+        process.exit(1);
+    }
+    drill.installGuards();
+    console.log(`[Drill] LIVE_DRILL: restore-drill instance on ${process.env.HOST}:${process.env.PORT}, database ${path.resolve(process.env.DB_PATH)}, data ${path.resolve(process.env.DATA_DIR)}. Reads only; no background work, sockets or outbound connections.`);
+}
+const paths = require('./paths');
+
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
-const rateLimit = require('express-rate-limit');
+// A restore drill has one loopback client and answers reads only: no limiter (and so no limiter timers).
+const rateLimit = drill.enabled ? () => (req, res, next) => next() : require('express-rate-limit');
 const config = require('./config');
 const assets = require('./web/assets');
 // Starts the event-loop delay histogram at boot so the first diagnostics window is complete.
@@ -239,6 +256,9 @@ function hasActiveLiveFeed(stream) {
 // ── Middleware ────────────────────────────────────────────────
 app.set('trust proxy', 2); // Two hops: Cloudflare → nginx → Node
 
+// A restore-drill instance answers reads only: 403 for every other method, on every path.
+if (drill.enabled) app.use(drill.readOnly);
+
 // RTMP FLV is now proxied same-origin via /api/streams/rtmp-proxy/:id.flv — no external CSP entry needed
 
 // The hosted browser WHIP publisher (/whip-publisher.html) POSTs its SDP offer to the
@@ -358,12 +378,15 @@ const uploadLimiter = rateLimit({
 });
 // ── Analytics Tracking ────────────────────────────────────────
 const BetterSqlite3 = require('better-sqlite3');
-const analyticsDbPath = path.join(__dirname, '..', 'data', 'analytics.db');
+// <data dir>/analytics.db (ANALYTICS_DB_PATH overrides it outside a drill; server/paths.js).
+const analyticsDbPath = paths.analyticsDbPath();
+fs.mkdirSync(path.dirname(analyticsDbPath), { recursive: true });
 const analyticsDb = new BetterSqlite3(analyticsDbPath);
 analyticsDb.pragma('journal_mode = WAL');
-const analytics = new analyticsModule.AnalyticsTracker(analyticsDb, 'live', { retention: false }); // prune: job 8b2 below
+// A drill records no page views and runs no flush/aggregate timers (its analytics.db is its own, empty).
+const analytics = new analyticsModule.AnalyticsTracker(analyticsDb, 'live', { retention: false, timers: !drill.enabled }); // prune: job 8b2 below
 app.locals.analytics = analytics;
-app.use(analytics.middleware());
+if (!drill.enabled) app.use(analytics.middleware());
 
 app.use('/api/', apiLimiter);
 app.use('/api/auth/login', authLimiter);
@@ -515,11 +538,10 @@ app.use((req, res, next) => {
 // unfilled route markers and unversioned asset URLs (a request without Accept: text/html skips SEO).
 app.use(express.static(assets.PUBLIC_DIR, { index: false, setHeaders: (res, filePath) => { if (filePath.endsWith('.html')) noCacheHeaders(res); } }));
 
-// Ensure data directories exist. VOD/clip/paste/thumbnail files live in
-// OpenVibe.Media now; what remains is Live-local state (live thumbs, emotes,
+// Ensure data directories exist (all under the data directory, server/paths.js). VOD/clip/paste/
+// thumbnail files live in OpenVibe.Media now; what remains is Live-local state (live thumbs, emotes,
 // avatars, offline screens) + the local song-request media cache.
-['./data', './data/live-thumbs', './data/emotes', './data/avatars', './data/offline', './data/media', './data/media/cache'].forEach(dir => {
-    const fullPath = path.resolve(dir);
+[paths.dataDir(), paths.data('live-thumbs'), paths.data('emotes'), paths.data('avatars'), paths.data('offline'), paths.data('media'), paths.data('media', 'cache')].forEach(fullPath => {
     if (!fs.existsSync(fullPath)) fs.mkdirSync(fullPath, { recursive: true });
 });
 
@@ -527,19 +549,19 @@ app.use(express.static(assets.PUBLIC_DIR, { index: false, setHeaders: (res, file
 // Locally cached song-request media. Only the cache subtree is public: this directory has held
 // operational files before (the yt-dlp cookie jar, which was therefore downloadable by anyone),
 // and a static mount over a directory that other code writes into is a standing invitation.
-app.use('/media', express.static(path.resolve('./data/media'), {
+app.use('/media', express.static(paths.data('media'), {
     dotfiles: 'deny',
     index: false,
     setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff'),
 }));
 
 // AI moment frames (one small JPEG per stream memory, see server/ai/stream-memory-job.js)
-app.use('/data/ai-moments', express.static(path.resolve(process.env.AI_MOMENTS_PATH || './data/ai-moments'), {
+app.use('/data/ai-moments', express.static(paths.dir('AI_MOMENTS_PATH', 'ai-moments'), {
     maxAge: '30d', immutable: true, index: false, dotfiles: 'deny',
 }));
 
 // Arena portraits (AI-generated fighting-game character art, see server/arena)
-app.use('/data/arena', express.static(path.resolve(process.env.ARENA_IMAGE_PATH || './data/arena'), {
+app.use('/data/arena', express.static(paths.dir('ARENA_IMAGE_PATH', 'arena'), {
     maxAge: '7d', immutable: true, index: false, dotfiles: 'deny',
     setHeaders: (res) => res.setHeader('Content-Type', 'image/png'),
 }));
@@ -588,7 +610,7 @@ app.use('/internal', require('./internal/routes'));
 const IMAGE_EXT_MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.avif': 'image/avif', '.svg': 'image/svg+xml' };
 
 // Serve avatar files (force image Content-Type, prevent XSS via spoofed extensions)
-app.use('/data/avatars', express.static(path.resolve('./data/avatars'), {
+app.use('/data/avatars', express.static(paths.data('avatars'), {
     setHeaders: (res, filePath) => {
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Content-Disposition', 'inline');
@@ -633,7 +655,7 @@ app.get('/p/:slug/raw', (req, res) => {
 });
 
 // Offline-screen assets (channel offline background: webp images + transcoded webm)
-app.use('/data/offline', express.static(path.resolve('./data/offline'), {
+app.use('/data/offline', express.static(paths.data('offline'), {
     maxAge: '1h',
     setHeaders: (res, filePath) => {
         res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -761,8 +783,10 @@ const readiness = observability.createLiveReadiness({
     bootComplete: () => _bootComplete,
     dbQuery: () => db.get('SELECT 1 AS ok'),
     sfuReady: () => webrtcSFU.ready === true && !!webrtcSFU.worker,
-    mediaUrl: mediaClient.MEDIA_URL,
+    // A drill asks no other service anything, Media's health included.
+    mediaUrl: drill.enabled ? null : mediaClient.MEDIA_URL,
     networkKey: () => require('./auth/auth').getNetworkPublicKey(),
+    drill: drill.enabled,
 });
 app.get('/api/ready', readiness.handler);
 
@@ -1020,6 +1044,9 @@ app.use((err, req, res, _next) => {
 
 // ── WebSocket Upgrade Handler ────────────────────────────────
 server.on('upgrade', (req, socket, head) => {
+    // A restore-drill instance has no WebSocket servers: chat, broadcast, calls and controls are live
+    // traffic, and a drill only answers reads.
+    if (drill.enabled) return drill.refuseUpgrade(socket);
     const url = req.url || '';
     const origin = normalizeOrigin(req.headers.origin);
 
@@ -1067,6 +1094,8 @@ async function start() {
     console.log('  ║   Open Live Streaming, Community Run ▶((( • )))  ║');
     console.log('  ╚══════════════════════════════════════════╝');
     console.log('');
+
+    if (drill.enabled) return startDrill();
 
     await config.refreshRegistry();
     allowedOrigins = getAllowedOrigins();
@@ -1530,8 +1559,39 @@ async function start() {
     }, { jitterMs: 30 * 1000 });
 }
 
+/**
+ * Boot a restore-drill instance (LIVE_DRILL): open the restored database, bring its schema up to
+ * this release the way any boot does, and serve HTTP on HOST:PORT. Nothing else from start() runs:
+ * no registry refresh (config comes from the env), no seeding, no chat drain, no socket servers, no
+ * RTMP/SFU/JSMPEG, no restream or relay resume, no heartbeat refresh, no jobs of any kind.
+ */
+function startDrill() {
+    db.initDb();
+    cosmeticsModule.ensureTables();
+    require('./game/tags').ensureTagTables();
+    require('./chat/dm').ensureTables();
+    console.log(`[Drill] Database ready: ${paths.dbPath()}`);
+    // Its port taken: stop (the process-wide handler would log EADDRINUSE and keep running unready).
+    server.once('error', (err) => { console.error(`[Drill] HTTP server: ${err.message}`); process.exit(1); });
+    // Never fd 3: a drill does not serve on a socket systemd handed over (assertSafe refuses that too).
+    server.listen({ port: config.port, host: config.host }, () => {
+        _bootComplete = true;
+        console.log(`[Drill] Ready: http://${config.host}:${config.port} (reads only)`);
+    });
+}
+
 // ── Graceful Shutdown ────────────────────────────────────────
 function shutdown() {
+    if (drill.enabled) {
+        // Nothing was started but the HTTP server and the two databases.
+        console.log('[Drill] Shutting down');
+        _bootComplete = false;
+        try { analytics.destroy(); analyticsDb.close(); } catch { /* */ }
+        server.close(() => { try { db.close(); } catch { /* */ } process.exit(0); });
+        try { server.closeAllConnections(); } catch { /* */ }
+        setTimeout(() => process.exit(0), 3000).unref();
+        return;
+    }
     console.log('\n[Server] Shutting down...');
 
     // Notify all chat clients before closing connections

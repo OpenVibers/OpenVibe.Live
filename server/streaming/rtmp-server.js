@@ -60,7 +60,7 @@ class RTMPServer extends EventEmitter {
                 // edge drops it), but that is somebody else's firewall, not ours, so the origin
                 // is narrowed here as the part we control.
                 allow_origin: config.baseUrl || 'http://127.0.0.1',
-                mediaroot: './data/media',
+                mediaroot: require('../paths').data('media'),
             },
             // NOTE: NMS trans server crashes on v2.7.4 with 'version is not defined'
             // in node_trans_server.js. HTTP-FLV playback works without HLS transcoding.

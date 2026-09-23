@@ -14,6 +14,8 @@ const config = require('../config');
 const TTL_SECONDS = 3600;
 
 function turnCredentials(tag = 'anon') {
+    // A restore-drill instance (LIVE_DRILL) hands out no credential for production's TURN server.
+    if (require('../drill').enabled) return null;
     const secret = String(process.env.TURN_AUTH_SECRET || '').trim();
     if (secret) {
         const username = `${Math.floor(Date.now() / 1000) + TTL_SECONDS}:${String(tag).replace(/[^A-Za-z0-9_-]/g, '')}`;

@@ -16,8 +16,9 @@ const path = require('path');
 const db = require('../db/database');
 const media = require('../media-client');
 
-const EMOTE_DIR = path.resolve(process.env.EMOTES_PATH || './data/emotes');
-const SOUND_DIR = path.resolve(process.env.SOUNDS_PATH || './data/sounds');
+const paths = require('../paths');
+const EMOTE_DIR = paths.dir('EMOTES_PATH', 'emotes');
+const SOUND_DIR = paths.dir('SOUNDS_PATH', 'sounds');
 const MIME_BY_EXT = {
     '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
     '.webp': 'image/webp', '.avif': 'image/avif',

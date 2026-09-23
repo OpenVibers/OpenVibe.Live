@@ -18,7 +18,7 @@ const WebSocket = require('ws');
 const config = require('../config');
 const db = require('../db/database');
 
-const THUMB_DIR = path.resolve(process.env.LIVE_THUMBS_PATH || './data/live-thumbs');
+const THUMB_DIR = require('../paths').dir('LIVE_THUMBS_PATH', 'live-thumbs');
 const THUMB_WIDTH = 640;
 const THUMB_QUALITY = 6;
 const LIVE_THUMB_MIN_INTERVAL_MS = 120000;

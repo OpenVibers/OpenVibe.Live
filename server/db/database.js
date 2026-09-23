@@ -83,7 +83,8 @@ const crypto = require('crypto');
 // BILLING_AUTHORITY tripwire: Live's money columns/tables are only written in `live` mode.
 const { assertLiveLedger } = require('../monetization/money-authority');
 
-const DB_PATH = process.env.DB_PATH || './data/live.db';
+// DB_PATH, else <data dir>/live.db (server/paths.js).
+const DB_PATH = require('../paths').dbPath();
 const dbDir = path.dirname(path.resolve(DB_PATH));
 
 // Ensure data directory exists
@@ -1224,7 +1225,8 @@ function initDb() {
         _dedupeStreamMemories(database);
         // Deferred: this repairs a historical backlog and no request depends on it, so it must
         // not sit between process start and the first served request. Runs shortly after boot.
-        setTimeout(() => { try { _adoptOrphanedTimelineRows(database); } catch { /* */ } }, 4000).unref?.();
+        // A restore drill (LIVE_DRILL) runs no timers and repairs nothing in its copy.
+        if (!require('../drill').enabled) setTimeout(() => { try { _adoptOrphanedTimelineRows(database); } catch { /* */ } }, 4000).unref?.();
 
         // ── Unified audio timeline ───────────────────────────────────────────────
         // One time-indexed row per thing heard on a stream: a phrase that was spoken
@@ -2678,8 +2680,8 @@ function initDb() {
     // half-converted balances.
     require('./migrations').run(database);
     // Deferred migrations wait for tables that feature jobs create after boot; try them again once
-    // those jobs have started.
-    setTimeout(() => { try { require('./migrations').run(database); } catch (e) { console.error('[DB] deferred migrations:', e.message); } }, 120000).unref?.();
+    // those jobs have started. A restore drill starts no jobs and runs no timers.
+    if (!require('../drill').enabled) setTimeout(() => { try { require('./migrations').run(database); } catch (e) { console.error('[DB] deferred migrations:', e.message); } }, 120000).unref?.();
 
     console.log('[DB] Schema initialized');
     return database;

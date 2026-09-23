@@ -36,7 +36,8 @@ function _checkRate(userId, bucket, max, windowMs) {
     u[bucket].push(now);
     return true;
 }
-setInterval(() => {
+// Not in a restore drill (LIVE_DRILL): it runs no timers, and it takes no DMs.
+if (!require('../drill').enabled) setInterval(() => {
     const cutoff = Date.now() - 3_600_000;
     for (const [uid, b] of _rateBuckets) {
         b.messages = b.messages.filter(t => t > cutoff);

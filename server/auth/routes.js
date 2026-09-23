@@ -68,7 +68,7 @@ function isAllowedAvatarUrl(value) {
 }
 
 // ── Avatar Upload Config ─────────────────────────────────────
-const avatarDir = path.resolve('./data/avatars');
+const avatarDir = require('../paths').data('avatars');
 if (!fs.existsSync(avatarDir)) fs.mkdirSync(avatarDir, { recursive: true });
 
 const MIME_TO_EXT = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp', 'image/avif': '.avif' };

@@ -26,9 +26,9 @@ const fs = require('fs');
 const path = require('path');
 
 const MODEL_PATH = process.env.YAMNET_MODEL
-    || path.join(__dirname, '../../data/models/yamnet.onnx');
+    || require('../paths').data('models', 'yamnet.onnx');
 const CLASSMAP_PATH = process.env.YAMNET_CLASSMAP
-    || path.join(__dirname, '../../data/models/yamnet_class_map.csv');
+    || require('../paths').data('models', 'yamnet_class_map.csv');
 
 // YAMNet emits one score vector per 0.96s window advanced by 0.48s.
 const FRAME_HOP_SEC = 0.48;

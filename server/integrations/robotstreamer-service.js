@@ -41,7 +41,8 @@ class RobotStreamerService {
         this._rsViewerCounts = new Map();
         this.publishProxy = new WebSocket.Server({ noServer: true, maxPayload: 512 * 1024, perMessageDeflate: false });
         this.publishProxy.on('connection', (ws, req, ctx) => this._handlePublishConnection(ws, req, ctx));
-        this._startRsViewerPolling();
+        // A restore drill (LIVE_DRILL) polls nothing: it has no bridges and makes no outbound calls.
+        if (!require('../drill').enabled) this._startRsViewerPolling();
     }
 
     /** Extract a robot's live viewer count from a robot_page_load response. */

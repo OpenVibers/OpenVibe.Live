@@ -76,7 +76,7 @@ function registerDomainGauges(registry, { liveStreams, wsServers = {}, outboxSta
  *                                   GET <mediaUrl>/healthz, cached 30 s
  *   networkKey()   -> PEM or null   optional (sign-in: RS256 key from OpenVibe.Network)
  */
-function createLiveReadiness({ release, bootComplete, dbQuery, sfuReady, mediaUrl, networkKey, fetchImpl = globalThis.fetch }) {
+function createLiveReadiness({ release, bootComplete, dbQuery, sfuReady, mediaUrl, networkKey, drill = false, fetchImpl = globalThis.fetch }) {
     return createReadiness({
         service: 'live',
         release: release && release.release,
@@ -87,6 +87,8 @@ function createLiveReadiness({ release, bootComplete, dbQuery, sfuReady, mediaUr
             {
                 name: 'media', required: false, cacheMs: 30000, timeoutMs: 2000, description: 'OpenVibe.Media (VODs, clips, thumbnails)',
                 check: async () => {
+                    // No URL: not asked (a restore drill talks to no other service).
+                    if (!mediaUrl) return 'not checked (restore drill)';
                     const res = await fetchImpl(`${mediaUrl}/healthz`, { signal: AbortSignal.timeout(2000) });
                     return res.ok ? true : `Media answered ${res.status}`;
                 },
@@ -95,6 +97,8 @@ function createLiveReadiness({ release, bootComplete, dbQuery, sfuReady, mediaUr
         ],
         // Fields the previous /api/ready served, so nothing that read them breaks.
         details: (body) => ({
+            // A restore-drill instance (LIVE_DRILL) says so: it serves reads from a restored copy only.
+            ...(drill ? { mode: 'drill' } : {}),
             uptime: Math.round(process.uptime()),
             optional: {
                 sfu: body.checks.sfu.status === 'ok',
