@@ -258,9 +258,15 @@ assert.ok(
     indexSrc.includes('TURN server:') && indexSrc.includes('not configured (STUN-only'),
     'server/index.js must log TURN configuration status at startup'
 );
+// The WHIP host is behind Cloudflare (whip.openvibe.live), so it never resolves to the announced IP;
+// ICE candidates carry the announced IP regardless. Only a local announced IP is worth a warning.
 assert.ok(
-    indexSrc.includes('MEDIASOUP_ANNOUNCED_IP does not match WHIP_PUBLIC_URL host'),
-    'server/index.js must warn when announced IP does not match the public WHIP host'
+    !indexSrc.includes('MEDIASOUP_ANNOUNCED_IP does not match WHIP_PUBLIC_URL host'),
+    'server/index.js must not compare the announced IP with the (proxied) WHIP host'
+);
+assert.ok(
+    indexSrc.includes('Mediasoup announcedIp is configured as a local address'),
+    'server/index.js must warn when the announced IP is a local address'
 );
 assert.ok(
     indexSrc.includes('WHIP_PUBLIC_URL is using http:// in production'),

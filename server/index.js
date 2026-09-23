@@ -242,7 +242,7 @@ app.set('trust proxy', 2); // Two hops: Cloudflare → nginx → Node
 // RTMP FLV is now proxied same-origin via /api/streams/rtmp-proxy/:id.flv — no external CSP entry needed
 
 // The hosted browser WHIP publisher (/whip-publisher.html) POSTs its SDP offer to the
-// dedicated WHIP host when one is configured (ingest.openvibe.live), which is a different
+// dedicated WHIP host when one is configured (whip.openvibe.live), which is a different
 // origin from the page itself and would otherwise be blocked by connect-src 'self'.
 // Resolved per request, not at boot: config.whip is (re)filled by the URL-registry refresh
 // in start(), which runs after this middleware is built — a value captured here would be
@@ -1282,25 +1282,8 @@ async function start() {
                 // ignore malformed host
             }
         }
-        function hostsEquivalent(a, b) {
-            const normalize = (value) => String(value || '').toLowerCase().replace(/^[\[\]]+/g, '').replace(/[\[\]]+$/g, '');
-            const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
-            const na = normalize(a);
-            const nb = normalize(b);
-            if (na === nb) return true;
-            return localHosts.has(na) && localHosts.has(nb);
-        }
-
-        if (config.whip?.publicUrl && config.mediasoup?.announcedIp) {
-            try {
-                const whipHost = new URL(config.whip.publicUrl).hostname;
-                if (!hostsEquivalent(config.mediasoup.announcedIp, whipHost)) {
-                    console.warn('[Server] WARNING: MEDIASOUP_ANNOUNCED_IP does not match WHIP_PUBLIC_URL host. This may cause incorrect ICE candidate advertisement for WHIP/WebRTC.');
-                }
-            } catch (e) {
-                // ignore malformed host
-            }
-        }
+        // No check of MEDIASOUP_ANNOUNCED_IP against the WHIP host: ICE candidates carry the announced
+        // IP whatever host the signaling reached, and whip.openvibe.live is behind Cloudflare.
         if (config.nodeEnv === 'production' && config.mediasoup?.announcedIp && ['127.0.0.1', 'localhost', '::1'].includes(config.mediasoup.announcedIp)) {
             console.warn('[Server] WARNING: Mediasoup announcedIp is configured as a local address. External WebRTC clients may be unable to connect. Set MEDIASOUP_ANNOUNCED_IP to your public WHIP/WebRTC hostname.');
         }

@@ -32,10 +32,10 @@ This repository contains the OpenVibe.Live server, browser assets, and runtime c
 
 ### Streaming support
 
-- RTMP ingest using `node-media-server` (ports 1935 / 9935, public host `ingest.openvibe.live`).
+- RTMP ingest using `node-media-server` (ports 1935 / 9935, public host `ingest.openvibe.live`, DNS-only: Cloudflare does not carry RTMP).
 - optional WebRTC SFU via `mediasoup` (ports 11000-11300 in production).
 - JSMPEG relay (TLS relay ports 9710-9789 via nginx stream).
-- WHIP/HTTP ingestion support (`ingest.openvibe.live`) — open CORS, so even a backend-less web page can publish; see [docs/whip.md → Publishing from a browser](docs/whip.md#publishing-from-a-browser) and the hosted [browser publisher](https://openvibe.live/whip-publisher.html).
+- WHIP/HTTP ingestion support (`whip.openvibe.live`, behind Cloudflare; `ingest.openvibe.live` still answers for older encoder configs) — open CORS, so even a backend-less web page can publish; see [docs/whip.md → Publishing from a browser](docs/whip.md#publishing-from-a-browser) and the hosted [browser publisher](https://openvibe.live/whip-publisher.html).
 - real-time broadcast and control channels.
 
 ### Media (VODs / clips / pastes / thumbnails)
