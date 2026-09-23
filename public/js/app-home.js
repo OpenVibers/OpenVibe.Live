@@ -1030,16 +1030,28 @@ function _wireEggKeys() {
         const t = e.target;
         if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
         if (e.ctrlKey || e.metaKey || e.altKey) return;
-        if (e.key === 'Backspace') { _eggBuf.pop(); _renderEggSlots(); return; }
+        // Only while the secret is on screen on the home page: everywhere else the keys (arrow
+        // scrolling, a player's shortcuts, Backspace) belong to the page.
+        const el = document.getElementById('hero-egg');
+        const home = document.getElementById('page-home');
+        if (!el || !home || !home.classList.contains('active') || el.offsetParent === null) return;
+        const inside = !!(t && el.contains(t));
+        const r = el.getBoundingClientRect();
+        if (!inside && (r.bottom <= 0 || r.top >= window.innerHeight)) return;
+        if (e.key === 'Backspace') { if (inside || el.classList.contains('open')) { _eggBuf.pop(); _renderEggSlots(); } return; }
         let tok = _EGG_ARROW[e.key];
         // A focused card rail scrolls with the arrow keys; the secret must not swallow them.
         if (tok && t && t.closest && t.closest('.ov-rail-track')) return;
         if (!tok && /^[a-zA-Z]$/.test(e.key)) tok = e.key.toLowerCase();
         if (!tok) return;
-        if (_EGG_ARROW[e.key]) e.preventDefault();          // don't scroll the page on arrows
+        // Arrows scroll the page unless someone is playing: the panel is open or has focus.
+        if (_EGG_ARROW[e.key]) {
+            if (!inside && !el.classList.contains('open')) return;
+            e.preventDefault();
+        }
         _eggPush(tok);
         // Typing counts as engagement: pop the panel open so people see the keys land.
-        const el = document.getElementById('hero-egg'); if (el && !el.classList.contains('open') && _eggBuf.length === 1) el.classList.add('open');
+        if (!el.classList.contains('open') && _eggBuf.length === 1) el.classList.add('open');
     });
 }
 async function _submitEgg() {
