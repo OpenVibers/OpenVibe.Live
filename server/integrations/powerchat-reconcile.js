@@ -82,6 +82,8 @@ function _warnHost(username, msg) {
 /** One sweep. Returns a summary; never throws. */
 async function reconcileOnce() {
     const summary = { orders: 0, hosts: 0, pages: 0, rows: 0, credited: [], underpaid: [], skippedTest: 0, skippedHosts: 0, errors: 0 };
+    // BILLING_AUTHORITY=billing: PowerChat money settles in OpenVibe.Billing; Live credits nothing.
+    if (require('../monetization/money-authority').authority() !== 'live') return { ...summary, skipped: 'billing_authority' };
     let pending;
     try { pending = db.getPendingPowerchatOrders(LOOKBACK_DAYS) || []; } catch (e) { summary.errors++; return summary; }
     summary.orders = pending.length;
@@ -170,6 +172,7 @@ async function reconcileOnce() {
 let _timer = null;
 function startReconciler() {
     if (_timer) return;
+    if (require('../monetization/money-authority').onBilling()) { console.log('[PowerChat] paid-messages reconciler not started: OpenVibe.Billing settles PowerChat money (BILLING_AUTHORITY=billing)'); return; }
     // Credits money from paginated upstream calls: a slow sweep must never be joined by the next one.
     _timer = require('../utils/jobs').every('powerchat-reconcile', SWEEP_MS, () => reconcileOnce(), { initialDelayMs: FIRST_SWEEP_MS, jitterMs: 30 * 1000 });
     console.log('[PowerChat] paid-messages reconciler started (backfills missed checkout webhooks every 15 min)');

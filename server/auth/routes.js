@@ -665,7 +665,9 @@ function sanitizeUser(user, publicOnly = false) {
     };
     if (!publicOnly) {
         // Balances are real money (Vibes) and the user's own business, like email and the key.
-        safe.openvibe_bucks_balance = user.openvibe_bucks_balance;
+        // Under BILLING_AUTHORITY=billing the column is a frozen legacy copy (ADR-012 rule 8: never
+        // shown as live); the balance comes from /api/funds/balance.
+        if (!require('../monetization/money-authority').onBilling()) safe.openvibe_bucks_balance = user.openvibe_bucks_balance;
         safe.openvibe_coins_balance = user.openvibe_coins_balance;
         safe.email = user.email;
         safe.stream_key = user.stream_key;

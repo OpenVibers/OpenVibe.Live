@@ -17,6 +17,7 @@
 const crypto = require('crypto');
 const db = require('../db/database');
 const config = require('../config');
+const money = require('./money-authority');
 
 function baseUrl() { return config.baseUrl.replace(/\/+$/, ''); }
 function s(key) { return (db.getSetting(key) || '').toString().trim(); }
@@ -61,6 +62,9 @@ function publicConfig() {
             powerchat: powerchatAvailable,
         },
         stripePublishableKey: s('stripe_publishable_key'),
+        // Who holds the money (BILLING_AUTHORITY) and whether money actions are paused.
+        authority: money.authority(),
+        moneyFrozen: money.isFrozen(),
     };
 }
 
@@ -328,6 +332,8 @@ function fulfillSubscriptionOrder(order, { providerRef = null, periodEnd = null,
 //     (or auto_renew off / cancel-at-period-end) → the sub expires with a notification.
 const STRIPE_GRACE_MS = 3 * 24 * 3600 * 1000;
 function _sweepRenewals() {
+    // OpenVibe.Billing renews its own subscriptions; a freeze pauses renewals until it lifts.
+    if (money.authority() !== 'live' || money.isFrozen()) return;
     // Runs from an hourly timer; an uncaught throw there exits the whole server.
     let due = [];
     try { due = db.getSubscriptionsDueRenewal(50) || []; }
@@ -376,6 +382,7 @@ function _renewNotify(sub, message) {
 let _renewTimer = null;
 function startRenewalSweeper() {
     if (_renewTimer) return;
+    if (money.onBilling()) { console.log('[Payments] renewal sweeper not started: OpenVibe.Billing renews subscriptions (BILLING_AUTHORITY=billing)'); return; }
     _sweepRenewals(); // catch up immediately on boot
     _renewTimer = setInterval(_sweepRenewals, 60 * 60 * 1000);
     if (_renewTimer.unref) _renewTimer.unref();

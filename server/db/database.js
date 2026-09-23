@@ -80,6 +80,8 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+// BILLING_AUTHORITY tripwire: Live's money columns/tables are only written in `live` mode.
+const { assertLiveLedger } = require('../monetization/money-authority');
 
 const DB_PATH = process.env.DB_PATH || './data/live.db';
 const dbDir = path.dirname(path.resolve(DB_PATH));
@@ -1036,6 +1038,7 @@ function initDb() {
         // Master switch is OFF by default so nothing goes live until an admin enables it.
         const paymentSeeds = [
             ['payments_enabled', 'false', 'Master switch: enable real-money purchases & subscriptions', 'boolean'],
+            ['money_writes_frozen', 'false', 'Freeze: refuse every Live money action (checkouts, donations, cashouts, recycling, subscriptions, Vibes media requests) in both billing modes; reads keep working. Owner only — use /api/admin/money/freeze', 'boolean'],
             ['bucks_per_usd', '100', 'Vibes value per 1 USD (100 Bucks = $1.00 cashout). Purchase price adds a margin, see the buy tiers.', 'number'],
             ['bucks_min_purchase_bucks', '100', 'Minimum Vibes purchase (bucks)', 'number'],
             ['sub_price_usd', '4.99', 'Monthly channel subscription price in USD', 'number'],
@@ -5396,6 +5399,7 @@ function getFollowerIds(streamerId) {
 // ── Transaction helpers ──────────────────────────────────────
 
 function createTransaction({ from_user_id, to_user_id, stream_id, amount, type, status, message }) {
+    assertLiveLedger('transactions insert');
     return run(
         `INSERT INTO transactions (from_user_id, to_user_id, stream_id, amount, type, status, message)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -5404,11 +5408,13 @@ function createTransaction({ from_user_id, to_user_id, stream_id, amount, type, 
 }
 
 function addVibes(userId, amount) {
+    assertLiveLedger('openvibe_bucks_balance credit');
     return run(`UPDATE users SET openvibe_bucks_balance = openvibe_bucks_balance + ? WHERE id = ?`,
         [amount, userId]);
 }
 
 function deductVibes(userId, amount) {
+    assertLiveLedger('openvibe_bucks_balance debit');
     const user = getUserById(userId);
     if (!user || user.openvibe_bucks_balance < amount) return false;
     run(`UPDATE users SET openvibe_bucks_balance = openvibe_bucks_balance - ? WHERE id = ?`,
@@ -5418,10 +5424,12 @@ function deductVibes(userId, amount) {
 
 // Streamer cashout balance (received donations; the only cashout-able balance).
 function addVibesCashout(userId, amount) {
+    assertLiveLedger('openvibe_bucks_cashout_balance credit');
     return run(`UPDATE users SET openvibe_bucks_cashout_balance = openvibe_bucks_cashout_balance + ? WHERE id = ?`,
         [amount, userId]);
 }
 function deductVibesCashout(userId, amount) {
+    assertLiveLedger('openvibe_bucks_cashout_balance debit');
     const user = getUserById(userId);
     if (!user || (user.openvibe_bucks_cashout_balance || 0) < amount) return false;
     run(`UPDATE users SET openvibe_bucks_cashout_balance = openvibe_bucks_cashout_balance - ? WHERE id = ?`,
@@ -5432,6 +5440,7 @@ function deductVibesCashout(userId, amount) {
 // ── Payment orders (idempotent purchase tracking) ────────────
 
 function createPaymentOrder({ user_id, provider, provider_ref = null, kind = 'bucks', amount_cents = 0, currency = 'usd', bucks = 0, streamer_id = null, status = 'pending' }) {
+    assertLiveLedger('payment_orders insert');
     const res = run(
         `INSERT INTO payment_orders (user_id, provider, provider_ref, kind, amount_cents, currency, bucks, streamer_id, status)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -5460,6 +5469,7 @@ function getPendingPowerchatOrders(days = 3) {
 }
 
 function updatePaymentOrder(id, fields) {
+    assertLiveLedger('payment_orders update');
     const allowed = new Set(['provider_ref', 'status', 'amount_cents', 'bucks', 'currency', 'streamer_id']);
     const entries = Object.entries(fields || {}).filter(([k]) => allowed.has(k));
     if (!entries.length) return getPaymentOrderById(id);
@@ -5472,6 +5482,7 @@ function updatePaymentOrder(id, fields) {
 // ── Subscription helpers ─────────────────────────────────────
 
 function upsertSubscription({ subscriber_id, streamer_id, tier = 1, provider = null, provider_ref = null, price_cents = 0, currency = 'usd', status = 'active', current_period_end = null, auto_renew = null }) {
+    assertLiveLedger('subscriptions upsert');
     // Reuse an existing (subscriber,streamer) row if present, else insert.
     // auto_renew: null = leave as-is on update (0 on insert); 0/1 = set explicitly.
     const existing = get('SELECT * FROM subscriptions WHERE subscriber_id = ? AND streamer_id = ?', [subscriber_id, streamer_id]);
@@ -5510,6 +5521,11 @@ function getActiveSubscription(subscriberId, streamerId) {
 
 function isActiveSubscriber(subscriberId, streamerId) {
     if (!subscriberId || !streamerId) return false;
+    // BILLING_AUTHORITY=billing: subscriber perks follow Billing's entitlements (short-lived cache;
+    // legacy subscriptions rows are not consulted).
+    if (process.env.BILLING_AUTHORITY && require('../monetization/money-authority').onBilling()) {
+        return require('../monetization/billing-actions').isSubscriberCached(subscriberId, streamerId);
+    }
     return !!getActiveSubscription(subscriberId, streamerId);
 }
 
@@ -5532,6 +5548,7 @@ function getActiveSubscriberCount(streamerId) {
 }
 
 function setSubscriptionStatus(id, status, fields = {}) {
+    assertLiveLedger('subscriptions status');
     const cpe = fields.current_period_end !== undefined ? fields.current_period_end : null;
     const cape = fields.cancel_at_period_end !== undefined ? (fields.cancel_at_period_end ? 1 : 0) : 0;
     run(`UPDATE subscriptions SET status=?, is_active=?, cancel_at_period_end=?,

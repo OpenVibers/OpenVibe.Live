@@ -15,6 +15,14 @@ const { requireAuth, requireAdmin } = require('../auth/auth');
 const { requireOwner } = require('../auth/permissions');
 const openvibeBucks = require('./vibes');
 const db = require('../db/database');
+// BILLING_AUTHORITY=billing: every money action below goes to OpenVibe.Billing instead of Live's
+// columns (billing-actions.js); money_writes_frozen refuses them in both modes.
+const money = require('./money-authority');
+const billingActions = require('./billing-actions');
+const cashoutsInBilling = (res) => res.status(409).json({
+    error: 'Cashouts are decided in OpenVibe.Billing now: approving or denying a payout needs its operator API (billing.cashout.manage) and the PayPal payout reference.',
+    code: 'cashouts_in_billing',
+});
 
 const router = express.Router();
 
@@ -50,7 +58,7 @@ function publicGoal(g) {
 }
 
 // ── Donate to Streamer ───────────────────────────────────────
-router.post('/donate', requireAuth, (req, res) => {
+router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
     try {
         let { streamer_id, stream_id, amount, message, goal_id } = req.body;
         if (!amount || amount <= 0) {
@@ -73,7 +81,11 @@ router.post('/donate', requireAuth, (req, res) => {
             if (!s || s.user_id !== streamer_id) return res.status(400).json({ error: 'That stream does not belong to this streamer' });
         }
 
-        const result = openvibeBucks.donate(req.user.id, streamer_id, stream_id, amount, message, goal_id || null);
+        const result = money.onBilling()
+            ? await billingActions.donate(req, { toUserId: streamer_id, streamId: stream_id, amount, message, goalId: goal_id || null })
+            : openvibeBucks.donate(req.user.id, streamer_id, stream_id, amount, message, goal_id || null);
+        // A request the browser repeated with the same Idempotency-Key: already celebrated.
+        if (result.replayed) return res.json({ success: true, amount: result.amount, balance: result.balance, goal_reached: false });
 
         const chatServer = require('../chat/chat-server');
         const alerts = require('./alerts');
@@ -141,30 +153,43 @@ router.post('/donate', requireAuth, (req, res) => {
             alerts.playAlertSound(chatServer, streamer_id, stream_id, 'goal');
         }
 
-        const user = db.getUserById(req.user.id);
-        res.json({ success: true, amount: result.amount, balance: user.openvibe_bucks_balance, goal_reached: !!result.goalReached });
+        const balance = money.onBilling() ? result.balance : db.getUserById(req.user.id).openvibe_bucks_balance;
+        res.json({ success: true, amount: result.amount, balance, goal_reached: !!result.goalReached });
     } catch (err) {
+        if (billingActions.sendError(res, err, { insufficient: 'Insufficient Vibes', self: 'You cannot donate to yourself' })) return;
         res.status(400).json({ error: err.message });
     }
 });
 
 // ── Request Cashout ──────────────────────────────────────────
-router.post('/cashout', requireAuth, (req, res) => {
+router.post('/cashout', requireAuth, money.guardWrite, async (req, res) => {
     try {
         const { amount, paypal_email } = req.body;
         if (!amount || !paypal_email) {
             return res.status(400).json({ error: 'Amount and PayPal email required' });
         }
 
-        const result = openvibeBucks.requestCashout(req.user.id, amount, paypal_email);
+        const result = money.onBilling()
+            ? await billingActions.requestCashout(req, { amount, paypalEmail: paypal_email })
+            : openvibeBucks.requestCashout(req.user.id, amount, paypal_email);
         res.json(result);
     } catch (err) {
+        if (billingActions.sendError(res, err, { insufficient: 'Insufficient cashout balance — only Vibes sent to you can be cashed out' })) return;
         res.status(400).json({ error: err.message });
     }
 });
 
 // ── Get Balance ──────────────────────────────────────────────
-router.get('/balance', requireAuth, (req, res) => {
+router.get('/balance', requireAuth, async (req, res) => {
+    if (money.onBilling()) {
+        // Billing is the only truth: when it cannot answer, the balance is "unavailable" — never
+        // the frozen legacy column.
+        try { return res.json(await billingActions.balance(req.user.id, req.headers)); }
+        catch (err) {
+            if (billingActions.sendError(res, err, { unavailable: 'Vibes balance unavailable right now — the billing service is not answering.' })) return;
+            return res.status(503).json({ error: 'Vibes balance unavailable right now', unavailable: true });
+        }
+    }
     const user = db.getUserById(req.user.id);
     const bal = Math.round(user.openvibe_bucks_balance || 0);
     const cashout = Math.round(user.openvibe_bucks_cashout_balance || 0);
@@ -178,18 +203,28 @@ router.get('/balance', requireAuth, (req, res) => {
 });
 
 // ── Recycle cashout balance → spendable Vibes ───────────
-router.post('/recycle', requireAuth, (req, res) => {
+router.post('/recycle', requireAuth, money.guardWrite, async (req, res) => {
     try {
-        const result = openvibeBucks.recycleCashout(req.user.id, req.body.amount);
+        const result = money.onBilling()
+            ? await billingActions.recycle(req, req.body.amount)
+            : openvibeBucks.recycleCashout(req.user.id, req.body.amount);
         res.json(result);
     } catch (err) {
+        if (billingActions.sendError(res, err, { insufficient: 'Insufficient cashout balance' })) return;
         res.status(400).json({ error: err.message });
     }
 });
 
 // ── Transaction History ──────────────────────────────────────
-router.get('/history', requireAuth, (req, res) => {
+router.get('/history', requireAuth, async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit || '50'), 200);
+    if (money.onBilling()) {
+        try { return res.json({ transactions: await billingActions.history(req.user.id, limit) }); }
+        catch (err) {
+            if (billingActions.sendError(res, err, { unavailable: 'Vibes history unavailable right now — the billing service is not answering.' })) return;
+            return res.status(503).json({ error: 'Vibes history unavailable right now', unavailable: true });
+        }
+    }
     const history = openvibeBucks.getHistory(req.user.id, limit);
     res.json({ transactions: history });
 });
@@ -260,7 +295,8 @@ router.get('/goals/:userId', (req, res) => {
 });
 
 // ── Admin: Approve Cashout ───────────────────────────────────
-router.post('/cashout/:id/approve', requireOwner, (req, res) => {
+router.post('/cashout/:id/approve', requireOwner, money.guardWrite, (req, res) => {
+    if (money.onBilling()) return cashoutsInBilling(res);
     try {
         openvibeBucks.approveCashout(req.params.id);
         res.json({ message: 'Cashout approved' });
@@ -270,7 +306,8 @@ router.post('/cashout/:id/approve', requireOwner, (req, res) => {
 });
 
 // ── Admin: Deny Cashout ──────────────────────────────────────
-router.post('/cashout/:id/deny', requireOwner, (req, res) => {
+router.post('/cashout/:id/deny', requireOwner, money.guardWrite, (req, res) => {
+    if (money.onBilling()) return cashoutsInBilling(res);
     try {
         openvibeBucks.denyCashout(req.params.id, req.body.reason);
         res.json({ message: 'Cashout denied, funds refunded' });
@@ -281,6 +318,7 @@ router.post('/cashout/:id/deny', requireOwner, (req, res) => {
 
 // ── Admin: Get Pending Cashouts ──────────────────────────────
 router.get('/cashouts/pending', requireOwner, (req, res) => {
+    if (money.onBilling()) return cashoutsInBilling(res);
     const pending = db.all(`
         SELECT t.*, u.username, u.display_name, u.email
         FROM transactions t

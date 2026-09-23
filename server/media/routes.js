@@ -188,7 +188,12 @@ router.post('/quote', optionalAuth, async (req, res) => {
         // What the viewer can actually pay right now, so the UI can say "you have X".
         let balance = null;
         if (req.user && currency === 'points') balance = db.getChannelPoints(req.user.id, streamerId);
-        else if (req.user && currency === 'vibes') balance = db.getUserById(req.user.id)?.openvibe_bucks_balance ?? null;
+        else if (req.user && currency === 'vibes') {
+            if (require('../monetization/money-authority').onBilling()) {
+                // Billing holds Vibes; unknown (null) when it cannot answer — never the legacy column.
+                try { balance = (await require('../monetization/billing-actions').balance(req.user.id, req.headers)).balance; } catch { balance = null; }
+            } else balance = db.getUserById(req.user.id)?.openvibe_bucks_balance ?? null;
+        }
 
         res.json({
             title: normalized.title,
@@ -380,14 +385,14 @@ router.post('/queue/:id/position', requireAuth, (req, res) => {
 });
 
 // ── Manual refund by streamer ──────────────────────────────
-router.post('/queue/:id/refund', requireAuth, (req, res) => {
+router.post('/queue/:id/refund', requireAuth, async (req, res) => {
     try {
         const request = db.getMediaRequestById(cleanInt(req.params.id, 0));
         if (!request) return res.status(404).json({ error: 'Request not found' });
         if (!canManageChannel(req.user, request.streamer_id)) {
             return res.status(403).json({ error: 'Only the channel owner or its mods can issue refunds' });
         }
-        const amount = mediaQueue.refund(request.id);
+        const amount = await mediaQueue.refund(request.id);
         res.json({ refunded: amount, request: db.getMediaRequestById(request.id) });
     } catch (err) {
         res.status(400).json({ error: err.message || 'Failed to refund' });

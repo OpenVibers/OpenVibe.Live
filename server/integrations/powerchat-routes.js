@@ -440,6 +440,15 @@ router.get('/authorize-url', requireAuth, (req, res) => {
 // ── POST /webhook — signed event receiver ────────────────────────────────────
 // No auth middleware: authenticity is the HMAC signature. Ack fast, process async.
 router.post('/webhook', (req, res) => {
+    // BILLING_AUTHORITY=billing: PowerChat money settles in OpenVibe.Billing, and this receiver
+    // must not process anything. 410 names where the webhook lives now (the PowerChat dashboard
+    // is re-pointed by hand — docs/live-cutover.md in OpenVibe.Billing).
+    if (require('../monetization/money-authority').onBilling()) {
+        return res.status(410).json({
+            error: 'PowerChat webhooks are received by OpenVibe.Billing now.',
+            webhook_url: `${require('../monetization/billing-client').publicUrl()}/webhooks/powerchat`,
+        });
+    }
     try {
         const raw = req.rawBody || (req.body ? Buffer.from(JSON.stringify(req.body)) : Buffer.alloc(0));
         const check = webhook.verifySignature(raw, req.headers);

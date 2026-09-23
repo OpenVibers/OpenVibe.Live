@@ -132,6 +132,19 @@ class MediaQueue {
             return;
         }
         if (currency === 'vibes') {
+            // Vibes are money (ADR-012): refused while money writes are frozen, in both modes.
+            require('../monetization/money-authority').assertWritable();
+            if (require('../monetization/money-authority').onBilling()) {
+                // A paid interaction through OpenVibe.Billing (the requester's credit → the
+                // streamer's payable); the returned charge is linked to the request for refunds.
+                const billingActions = require('../monetization/billing-actions');
+                try {
+                    return await billingActions.chargeMedia({ userId, streamerId, streamId, cost, label });
+                } catch (e) {
+                    const live = billingActions.toLive(e, { insufficient: `Not enough Vibes — this costs ${cost}.` });
+                    throw new Error(live ? live.body.error : (e?.message || `Could not charge ${cost} Vibes.`));
+                }
+            }
             // Vibes have no generic spend: paying a streamer for a request IS a donation
             // to them, so it goes through the same path and shows up in their totals.
             try {
@@ -201,8 +214,9 @@ class MediaQueue {
         if (unpriceable) throw new Error(unpriceable);
         // A free channel stores cost 0, so the queue does not display a price nobody paid.
         const cost = currency === 'free' ? 0 : this.calculateCost(settings, normalized.duration_seconds);
+        let billingCharge = null;
         if (cost > 0) {
-            await this.charge({
+            billingCharge = await this.charge({
                 currency, cost, userId, streamerId, streamId,
                 label: `Media request: ${normalized.title || trimmed}`,
             });
@@ -239,6 +253,7 @@ class MediaQueue {
         }
 
         const request = db.getMediaRequestById(result.lastInsertRowid);
+        if (billingCharge && billingCharge.actionId) require('../monetization/billing-actions').linkMediaCharge(billingCharge.actionId, request.id);
         this.broadcastQueueUpdate(streamerId);
 
         // Kick off background stream URL extraction for the new request
@@ -487,6 +502,19 @@ class MediaQueue {
             if (currency === 'points') {
                 db.addChannelPoints(request.user_id, request.streamer_id, amount);
             } else if (currency === 'vibes') {
+                const money = require('../monetization/money-authority');
+                if (money.writeRefusal()) {
+                    // Frozen (or misconfigured): not refunded now and NOT marked refunded, so the
+                    // streamer's refund button works again once money writes are back.
+                    console.warn(`[MediaQueue] refund of request ${request.id} deferred: money writes are frozen`);
+                    return 0;
+                }
+                if (money.onBilling()) {
+                    return require('../monetization/billing-actions').refundMedia(request).then((n) => {
+                        if (n > 0) db.updateMediaRequest(requestId, { refunded: 1 });
+                        return n;
+                    });
+                }
                 // The charge was booked as a donation to the streamer, so unwind both sides — atomically,
                 // and only if the streamer still holds the money. Crediting the requester after a failed
                 // deduction minted Vibes: pay, move the balance out (recycle or cash out), then refund.
@@ -527,8 +555,8 @@ class MediaQueue {
             last_error: errorMessage || 'Playback failed',
         });
 
-        // Auto-refund on failure
-        this.refund(requestId);
+        // Auto-refund on failure (a Promise when OpenVibe.Billing refunds it)
+        Promise.resolve(this.refund(requestId)).catch((e) => console.warn('[MediaQueue] refund failed:', e.message));
 
         db.renormalizePendingMediaRequestPositions(request.streamer_id);
         this.broadcastQueueUpdate(request.streamer_id);

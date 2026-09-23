@@ -226,6 +226,42 @@ async function buildSubscribeLink(order, streamerUserId, { autoRenew = 0, route 
     return { url: link.url, mode: 'site', feeCents: fee, minted: link.minted, expiresAt: link.expiresAt };
 }
 
+// ── Checkouts for OpenVibe.Billing intents (BILLING_AUTHORITY=billing) ───────
+// Billing owns the order (a payment intent) and prices it; Live only builds the PowerChat link,
+// because Live holds the PowerChat connections that can mint pinned checkouts. The ref is Billing's
+// own checkout_ref ("pcorder:pi_…" / "pcsub:pi_…"): PowerChat echoes it to Billing's webhook, which
+// settles it. Nothing here touches payment_orders.
+async function buildBillingPurchaseLink(intent) {
+    const site = getSiteAccount();
+    if (!site || !intent || !intent.checkout_ref) return null;
+    const bits = Number(intent.bits) || 0;
+    const link = await mintCheckoutLink(site.username, intent.checkout_ref, {
+        purpose: 'vibes', amountCents: intent.amount_cents, returnTo: true,
+        itemName: bits ? `${bits.toLocaleString()} Vibes` : 'Vibes',
+    });
+    return { url: link.url, mode: 'site', minted: link.minted, expiresAt: link.expiresAt };
+}
+
+async function buildBillingSubscribeLink(intent, streamerUserId) {
+    if (!intent || !intent.checkout_ref) return null;
+    const streamer = db.getUserById(streamerUserId);
+    const who = streamer ? (streamer.display_name || streamer.username) : 'channel';
+    const opts = {
+        purpose: 'subscription', amountCents: intent.amount_cents, returnTo: true,
+        itemName: `${who} — 1 month subscription${intent.auto_renew ? ' (auto-renew)' : ''}`,
+    };
+    if (intent.route === 'direct') {
+        const direct = _checkoutConn(streamerUserId);
+        if (!direct) return null;
+        const link = await mintCheckoutLink(direct.powerchat_username, intent.checkout_ref, opts);
+        return { url: link.url, mode: 'direct', minted: link.minted, expiresAt: link.expiresAt };
+    }
+    const site = getSiteAccount();
+    if (!site) return null;
+    const link = await mintCheckoutLink(site.username, intent.checkout_ref, opts);
+    return { url: link.url, mode: 'site', feeCents: intent.fee_cents || 0, minted: link.minted, expiresAt: link.expiresAt };
+}
+
 /** Which PowerChat subscription routes a streamer currently supports (for the UI). */
 function subscribeRoutes(streamerUserId) {
     return { direct: !!_checkoutConn(streamerUserId), site: !!getSiteAccount() };
@@ -357,6 +393,6 @@ function _notify(userId, title, message) {
 module.exports = {
     isAvailable, getSiteAccount, tipLinkFor, mintCheckoutLink, checkoutIntentSupport, subscribeRoutes,
     _test: { resetIntentSupport: () => _intentSupport.clear() },
-    buildPurchaseLink, buildSubscribeLink, buildDonateLink,
+    buildPurchaseLink, buildSubscribeLink, buildDonateLink, buildBillingPurchaseLink, buildBillingSubscribeLink,
     handleAttributedDonation,
 };
