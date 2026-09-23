@@ -221,6 +221,7 @@ const safe = { DB_PATH, DATA_DIR, HOST: '127.0.0.1', PORT: '13000' };
         const rel = await request('GET', '/release.json');
         assert.strictEqual(rel.status, 200);
         assert.strictEqual(rel.json.release, head);
+        assert.deepStrictEqual(require('openvibe-contracts').validate('registry.release-manifest@1', rel.json).errors, []);
         const streams = await request('GET', '/api/streams');
         assert.strictEqual(streams.status, 200);
         assert.deepStrictEqual(streams.json.streams.map((s) => [s.title, s.user_id, s.username]), [['Restored stream', 1, 'drillstar']]);
@@ -269,7 +270,7 @@ const safe = { DB_PATH, DATA_DIR, HOST: '127.0.0.1', PORT: '13000' };
             ['POST', '/api/streams', { title: 'x' }], ['PUT', '/api/streams/1', { title: 'y' }], ['PATCH', '/api/streams/1', { title: 'y' }],
             ['DELETE', '/api/streams/1', null], ['POST', '/api/chat/send', { message: 'hi' }], ['POST', '/api/auth/logout', null],
             ['POST', '/internal/media-events', { type: 'media.vod.ready' }], ['POST', '/internal/media-webhook', {}], ['POST', '/whip/1', null],
-            ['POST', '/banned/continue', null], ['POST', '/api/csp-report', {}],
+            ['POST', '/banned/continue', null], ['POST', '/api/csp-report', {}], ['POST', '/release-metrics', { counts: { applied: { style: 1 } } }],
         ];
         for (const [m, p, body] of writes) {
             const r = await request(m, p, { body });

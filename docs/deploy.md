@@ -53,6 +53,9 @@ restart. A rollback resets the checkout but cannot restore previous `node_module
 - `GET /metrics` (Prometheus text: requests by route template, latency, in-flight, process,
   `release_info`, live streams, WebSocket connections per server, outbox) answers only
   `curl http://127.0.0.1:3000/metrics` on the host; through nginx it is a 404.
+  `release_client_updates_total{outcome,reason}` counts what open tabs did with a new release
+  (applied, reloaded, deferred, failed); they report it to `POST /release-metrics`, which
+  `/release.json` names in `metrics_url` (openvibe-shared `release.mount`).
 - `--rollback` selects the previous release with **its own** `node_modules`.
 - The last 5 releases are kept.
 - Content-hashed assets from the previous release are still served under their old hashes, so a page

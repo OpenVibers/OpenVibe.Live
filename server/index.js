@@ -772,8 +772,9 @@ app.get('/api/health', (req, res) => {
  */
 let _bootComplete = false;
 // The shared navbar loads /shared/release-watch.js, which polls this and prompts open tabs after a
-// deploy; it never reloads a tab that is watching, broadcasting or typing.
-app.get('/release.json', release.handler);
+// deploy; it never reloads a tab that is watching, broadcasting or typing. GET /release.json, and
+// POST /release-metrics: open tabs' update reports into /metrics (release_client_updates_total).
+release.mount(app, { registry: metricsRegistry });
 
 // Required: boot finished and the database answers. Optional (a failure is "degraded", still 200):
 // the WebRTC SFU, OpenVibe.Media and the Network signing key — Live serves channels, chat and RTMP

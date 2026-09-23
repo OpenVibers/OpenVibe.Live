@@ -6,6 +6,8 @@
  *   - release_info and the domain gauges (live streams, WebSocket connections, outbox)
  *   - /api/ready: boot + db required (503 when either fails); SFU, Media and the Network key optional
  *     (200 "degraded", naming what is missing)
+ *   - /release.json validates as registry.release-manifest@1 and names /release-metrics, whose beacons
+ *     (text/plain or JSON, behind the global JSON parser) land in release_client_updates_total
  * A temp SQLite database stands in for Live's; no Media, Network or mediasoup is needed.
  *
  * Run: node test/observability.test.js
@@ -41,6 +43,10 @@ const tmpDb = path.join(os.tmpdir(), `openvibe-observability-test-${process.pid}
 
     const app = express();
     const { registry } = observability.mountMetrics(app, { release });
+    // As server/index.js: the global JSON parser, then GET /release.json + POST /release-metrics.
+    app.use(express.json({ limit: '1mb' }));
+    const liveRelease = require('openvibe-shared/release').createRelease({ service: 'live', root: path.join(__dirname, '..') });
+    liveRelease.mount(app, { registry });
     const readiness = observability.createLiveReadiness({
         release, bootComplete: () => booted, dbQuery, sfuReady: () => sfu, mediaUrl, networkKey: () => key,
     });
@@ -154,6 +160,27 @@ const tmpDb = path.join(os.tmpdir(), `openvibe-observability-test-${process.pid}
     outbox = { enabled: false };
     assert.ok(!(await get('/metrics')).body.includes('live_events_outbox{'), 'a disabled outbox reports nothing, not zero');
 
+    // ── release manifest (ADR-016, Track R) ──
+    // registry.release-manifest 1.1.0 under openvibe-contracts >= 0.31: it names where open tabs report.
+    const rel = await get('/release.json');
+    assert.strictEqual(rel.status, 200);
+    const manifest = JSON.parse(rel.body);
+    assert.strictEqual(manifest.service, 'live');
+    assert.deepStrictEqual(require('openvibe-contracts').validate('registry.release-manifest@1', manifest).errors, []);
+    assert.strictEqual(manifest.metrics_url, '/release-metrics');
+    // release-watch beacons its counts as text/plain (sendBeacon); express.json() must not swallow them.
+    const beacon = (payload, type = 'text/plain;charset=UTF-8') => new Promise((resolve, reject) => {
+        const req = http.request(base + '/release-metrics', { method: 'POST', headers: { 'Content-Type': type } }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
+        req.on('error', reject); req.end(payload);
+    });
+    assert.strictEqual(await beacon(JSON.stringify({ counts: { applied: { style: 2 }, reloaded: { user: 1 } } })), 204);
+    assert.strictEqual(await beacon(JSON.stringify({ counts: { deferred: { typing: 1 } } }), 'application/json'), 204);
+    assert.strictEqual(await beacon('not json'), 400);
+    const mt = (await get('/metrics')).body;
+    assert.ok(mt.includes('release_client_updates_total{outcome="applied",reason="style"} 2\n'), mt);
+    assert.ok(mt.includes('release_client_updates_total{outcome="reloaded",reason="user"} 1\n'));
+    assert.ok(mt.includes('release_client_updates_total{outcome="deferred",reason="typing"} 1\n'));
+
     // Through nginx (X-Forwarded-For on a loopback connection) /metrics does not exist.
     assert.strictEqual((await get('/metrics', { 'X-Forwarded-For': '203.0.113.7' })).status, 404);
     assert.strictEqual((await get('/metrics', { 'X-Real-IP': '203.0.113.7' })).status, 404);
@@ -163,6 +190,8 @@ const tmpDb = path.join(os.tmpdir(), `openvibe-observability-test-${process.pid}
     const mountAt = src.indexOf('observability.mountMetrics(app');
     assert.ok(mountAt > 0 && mountAt < src.indexOf('app.use(helmet('), 'metrics middleware is mounted before the rest of the middleware');
     assert.ok(/app\.get\('\/api\/ready', readiness\.handler\)/.test(src));
+    assert.ok(/release\.mount\(app, \{ registry: metricsRegistry \}\)/.test(src), '/release.json and /release-metrics are mounted with the metrics registry');
+    assert.ok(src.indexOf('release.mount(app') > src.indexOf('app.use(express.json('), 'after the JSON parser, as tested above');
 
     server.close(); media.close(); sqlite.close();
     for (const f of [tmpDb, `${tmpDb}-wal`, `${tmpDb}-shm`]) { try { fs.unlinkSync(f); } catch { /* */ } }
