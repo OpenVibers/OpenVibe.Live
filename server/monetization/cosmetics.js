@@ -7,8 +7,10 @@
 const db = require('../db/database');
 const http = require('http');
 
-// openvibe-quest internal API base (server-to-server on localhost)
-const LEGACY_QUEST_API = 'http://127.0.0.1:3200';
+// openvibe-quest internal API base (server-to-server). The quest game no longer runs on this host
+// (2026-09-23), so the game-item bridge is off unless LEGACY_QUEST_API_URL names one; it
+// authenticates with INTERNAL_API_KEY, never a secret written into the code.
+const LEGACY_QUEST_API = String(process.env.LEGACY_QUEST_API_URL || '').replace(/\/+$/, '');
 
 // ── Cosmetic Catalog (defines all cosmetics and their CSS/rendering data) ───
 const COSMETICS = {
@@ -220,13 +222,14 @@ function unequipSlot(userId, slot) {
 
 // ── Helper: call openvibe-quest internal API ─────────────────────
 function questApi(method, path, body) {
+    if (!LEGACY_QUEST_API) return Promise.reject(new Error('the quest game bridge is off (LEGACY_QUEST_API_URL is not set)'));
     return new Promise((resolve, reject) => {
         const data = body ? JSON.stringify(body) : null;
         const req = http.request(`${LEGACY_QUEST_API}${path}`, {
             method,
             headers: {
                 'Content-Type': 'application/json',
-                'X-Internal-Secret': 'openvibe-internal-2026',
+                'X-Internal-Key': String(require('../config').internalApiKey || ''),
                 ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}),
             },
             timeout: 5000,

@@ -80,17 +80,13 @@ router.post('/deactivate', requireAuth, async (req, res) => {
 
 // ── Internal: auto-unlock cosmetic from openvibe-quest game ──────
 // Called server-to-server when openvibe-quest game awards a hat/cosmetic item.
-// The shared secret in the X-Internal-Secret header is in git history, so on its own it proves
-// nothing. Accept either the configured internal API key, or the legacy header from loopback only
-// (the game ran on this host). Anyone on the internet could otherwise unlock paid cosmetics.
+// Only the configured internal API key: the legacy X-Internal-Secret is in git history, and the
+// quest game that sent it from this host is gone. Anyone else could unlock paid cosmetics.
 function internalCallerOk(req) {
     const crypto = require('crypto');
     const key = String(require('../config').internalApiKey || '');
     const given = String(req.headers['x-internal-key'] || '');
-    if (key && given.length === key.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(key))) return true;
-    const loopback = /^(127\.|::1$|::ffff:127\.)/.test(String(req.socket && req.socket.remoteAddress || ''));
-    const forwarded = !!(req.headers['x-forwarded-for'] || req.headers['cf-connecting-ip']);
-    return loopback && !forwarded && req.headers['x-internal-secret'] === 'openvibe-internal-2026';
+    return !!key && given.length === key.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(key));
 }
 router.post('/internal-unlock', (req, res) => {
     if (!internalCallerOk(req)) {

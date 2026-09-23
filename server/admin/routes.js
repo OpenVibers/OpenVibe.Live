@@ -423,17 +423,6 @@ router.put('/streams/:id/nsfw', (req, res) => {
     }
 });
 
-// ── Force NSFW on a Paste ────────────────────────────────────
-router.put('/pastes/:id/nsfw', (req, res) => {
-    try {
-        const { is_nsfw } = req.body;
-        db.run('UPDATE pastes SET is_nsfw = ? WHERE id = ?', [is_nsfw ? 1 : 0, req.params.id]);
-        res.json({ message: is_nsfw ? 'Paste marked as NSFW' : 'NSFW removed from paste' });
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to update paste NSFW' });
-    }
-});
-
 // ── List Bans ────────────────────────────────────────────────
 router.get('/bans', (req, res) => {
     try {
