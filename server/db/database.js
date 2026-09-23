@@ -3204,10 +3204,6 @@ function getPastesNeedingAnalysis(limit = 5) {
     return all("SELECT * FROM pastes WHERE ai_summary IS NULL AND type IN ('paste','screenshot') ORDER BY created_at DESC LIMIT ?", [limit]);
 }
 // deleteAiMomentTextPastes() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
-function updatePasteAi(pasteId, { ai_summary = null, ai_tags = null }) {
-    return run('UPDATE pastes SET ai_summary = ?, ai_tags = ?, ai_analyzed_at = CURRENT_TIMESTAMP WHERE id = ?',
-        [ai_summary, ai_tags ? (typeof ai_tags === 'string' ? ai_tags : JSON.stringify(ai_tags)) : null, pasteId]);
-}
 // ── One-time cleanup: earlier builds stored raw (often malformed) model JSON like
 // `{"description":"…","tags":[…]}` directly into text columns. Extract just the
 // human description so cards/overviews stop showing JSON. Idempotent; cheap to re-run.
@@ -5560,52 +5556,10 @@ function setSubscriptionStatus(id, status, fields = {}) {
         [status, status === 'active' ? 1 : 0, cape, cpe, id]);
     return get('SELECT * FROM subscriptions WHERE id = ?', [id]);
 }
-
 // ── VOD helpers ──────────────────────────────────────────────
 
 // createVod() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
-
-function updateVodHealth(vodId, { status, score, issues = [], probeDuration, probeFormat, quarantine = false, keepPublic = false }) {
-    const updates = [];
-    const params = [];
-    if (status) {
-        updates.push('health_status = ?');
-        params.push(status);
-    }
-    if (typeof score === 'number') {
-        updates.push('health_score = ?');
-        params.push(score);
-    }
-    if (issues) {
-        updates.push('health_issues_json = ?');
-        params.push(JSON.stringify(issues));
-    }
-    if (typeof probeDuration === 'number') {
-        updates.push('probe_duration_seconds = ?');
-        params.push(probeDuration);
-    }
-    if (probeFormat !== undefined) {
-        updates.push('probe_format_json = ?');
-        params.push(JSON.stringify(probeFormat || {}));
-    }
-    if (quarantine) {
-        updates.push('quarantined_at = datetime(\'now\')');
-        if (!keepPublic) {
-            updates.push('is_public = 0');
-        }
-    }
-    updates.push('last_health_scan_at = datetime(\'now\')');
-    params.push(vodId);
-    if (!updates.length) return null;
-    return run(`UPDATE vods SET ${updates.join(', ')} WHERE id = ?`, params);
-}
-
-function repairVodDuration(vodId, duration, fileSize) {
-    return run(
-        `UPDATE vods SET duration_seconds = ?, file_size = ?, probe_duration_seconds = ?, last_health_scan_at = datetime('now') WHERE id = ?`,
-        [duration, fileSize, duration, vodId]
-    );
-}
+// The legacy vods/clips/pastes tables are read-only here: test/frozen-tables.test.js fails on a new write.
 
 function getVodHealthById(id) {
     return get(`SELECT * FROM vods WHERE id = ?`, [id]);
@@ -7290,29 +7244,6 @@ function listPastes({ visibility = 'public', type, search, limit = 30, offset = 
     return { pastes, total };
 }
 
-function incrementPasteViews(slug) {
-    return run('UPDATE pastes SET views = views + 1 WHERE slug = ?', [slug]);
-}
-
-function updatePaste(slug, fields) {
-    const updates = [];
-    const params = [];
-    for (const [key, val] of Object.entries(fields)) {
-        if (['title', 'content', 'language', 'visibility', 'pinned', 'metadata'].includes(key)) {
-            updates.push(`${key} = ?`);
-            params.push(val);
-        }
-    }
-    if (updates.length === 0) return;
-    updates.push('updated_at = CURRENT_TIMESTAMP');
-    params.push(slug);
-    return run(`UPDATE pastes SET ${updates.join(', ')} WHERE slug = ?`, params);
-}
-
-function deletePaste(slug) {
-    return run('DELETE FROM pastes WHERE slug = ?', [slug]);
-}
-
 function getUserPastes(userId, limit = 50) {
     return all(`
         SELECT id, slug, type, title, language, visibility, burn_after_read, pinned, views, copies, likes, created_at
@@ -7320,25 +7251,9 @@ function getUserPastes(userId, limit = 50) {
     `, [userId, limit]);
 }
 
-function likePaste(pasteId, userId) {
-    run('INSERT OR IGNORE INTO paste_likes (paste_id, user_id) VALUES (?, ?)', [pasteId, userId]);
-    run('UPDATE pastes SET likes = (SELECT COUNT(*) FROM paste_likes WHERE paste_id = ?) WHERE id = ?', [pasteId, pasteId]);
-    return get('SELECT likes FROM pastes WHERE id = ?', [pasteId]);
-}
-
-function unlikePaste(pasteId, userId) {
-    run('DELETE FROM paste_likes WHERE paste_id = ? AND user_id = ?', [pasteId, userId]);
-    run('UPDATE pastes SET likes = (SELECT COUNT(*) FROM paste_likes WHERE paste_id = ?) WHERE id = ?', [pasteId, pasteId]);
-    return get('SELECT likes FROM pastes WHERE id = ?', [pasteId]);
-}
-
 function hasUserLikedPaste(pasteId, userId) {
     const row = get('SELECT 1 FROM paste_likes WHERE paste_id = ? AND user_id = ?', [pasteId, userId]);
     return !!row;
-}
-
-function incrementPasteCopies(slug) {
-    return run('UPDATE pastes SET copies = copies + 1 WHERE slug = ?', [slug]);
 }
 
 function countUserPastesToday(userId, ip) {
@@ -7378,16 +7293,6 @@ function getLastPasteTime(userId, ip) {
         row = get('SELECT created_at FROM pastes WHERE ip_address = ? ORDER BY created_at DESC LIMIT 1', [ip]);
     }
     return row ? new Date(row.created_at + (row.created_at.includes('Z') ? '' : 'Z')).getTime() : 0;
-}
-
-function deleteAllForks() {
-    const forks = all('SELECT id, screenshot_path FROM pastes WHERE forked_from IS NOT NULL');
-    // Unlink the fork screenshots so they don't leak on disk.
-    for (const f of forks) {
-        if (f.screenshot_path) { try { fs.unlinkSync(f.screenshot_path); } catch { /* ignore */ } }
-    }
-    run('DELETE FROM pastes WHERE forked_from IS NOT NULL');
-    return forks.length;
 }
 
 function getPasteStats() {
@@ -8437,7 +8342,7 @@ module.exports = {
     setVodAiOverview, setClipAiOverview, setVodTranscript, setClipTranscript, getStreamMemoriesInRange,
     getVodsNeedingOverview, getClipsNeedingOverview, getVodsNeedingTimeline, getVodsNeedingTranscript, getClipsNeedingTranscript, getPastesNeedingAnalysis,
     setVodTranscriptStatus, setClipTranscriptStatus, bumpVodTranscriptAttempt, bumpClipTranscriptAttempt,
-    updatePasteAi, cleanupMalformedAiText,  recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
+    cleanupMalformedAiText, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
     getStreamMemoriesByUser, countStreamMemoriesByUser, getAiMomentCandidates, getStreamTranscriptSegments, getUserPastesForAi,
     addTimelineEvents, getTimeline, getTimelineText, getTimelineCoverage, linkTimelineToVod, getTimelineByVod, getTimelineVodId,
     getVodsForMomentRanking, getClipStartTimesForStream, getChatSpikeOffsets,
@@ -8508,7 +8413,7 @@ module.exports = {
     renormalizePendingMediaRequestPositions,
     // VODs
     getVodById, getVodsByUser, countVodsByUser, getPublicVods, countPublicVods, listVodStreamers, getActiveVodByStream, 
-    updateVodHealth, repairVodDuration, getVodHealthById, getVodScanCandidates,
+    getVodHealthById, getVodScanCandidates,
     getVodsNeedingHealthScan, getQuarantinedVodsForCleanup,
     // Clips
     getClipById, getClipsByUser, countClipsByUser, getPublicClips, countPublicClips, listClipStreamers, getClipsByStream,    getClipsOfUserStreams, 
@@ -8558,9 +8463,8 @@ module.exports = {
     getChannelModerationSettings, upsertChannelModerationSettings,
     // Pastes
     getPasteBySlug, getPasteById, listPastes,
-    incrementPasteViews, updatePaste, deletePaste, getUserPastes, getUserPastesForChannel, countUserPastesForChannel,
-    likePaste, unlikePaste, hasUserLikedPaste, incrementPasteCopies,
-    countUserPastesToday, getLastPasteTime, deleteAllForks, getPasteStats, getUserTotalGameLevel,
+    getUserPastes, getUserPastesForChannel, countUserPastesForChannel,
+    hasUserLikedPaste, countUserPastesToday, getLastPasteTime, getPasteStats, getUserTotalGameLevel,
     // Paste Comments
     createPasteComment, getPasteComments, getPasteCommentReplies,
     getPasteCommentById, getPasteCommentCount, deletePasteComment,
