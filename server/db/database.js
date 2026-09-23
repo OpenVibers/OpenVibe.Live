@@ -2927,23 +2927,41 @@ function getStreamHistoryByManagedStream(managedStreamId, userId, limit = 20) {
     `, [managedStreamId, userId, limit]);
 }
 
+// Stream lifecycle hook (server/events/stream-events.js registers it at boot). It runs inside the
+// same transaction as the write, so the durable event exists if and only if the change committed
+// (roadmap Wave 3, ADR-004). A failing hook is logged and never blocks going live or ending.
+let streamLifecycleHook = null;
+function onStreamLifecycle(fn) { streamLifecycleHook = typeof fn === 'function' ? fn : null; }
+function fireStreamLifecycle(kind, streamId) {
+    if (!streamLifecycleHook) return;
+    try { streamLifecycleHook(kind, streamId); } catch (err) { console.warn(`[Events] stream ${kind} event for ${streamId} not queued:`, err.message); }
+}
+
 function createStream({ user_id, channel_id, managed_stream_id, control_config_id, title, description, category, protocol, is_nsfw, thumbnail_url }) {
-    return run(
-        `INSERT INTO streams (user_id, channel_id, managed_stream_id, control_config_id, title, description, category, protocol, is_nsfw, thumbnail_url, is_live, started_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)`,
-        [user_id, channel_id || null, managed_stream_id || null, control_config_id || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', is_nsfw ? 1 : 0, thumbnail_url || null]
-    );
+    return getDb().transaction(() => {
+        const result = run(
+            `INSERT INTO streams (user_id, channel_id, managed_stream_id, control_config_id, title, description, category, protocol, is_nsfw, thumbnail_url, is_live, started_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)`,
+            [user_id, channel_id || null, managed_stream_id || null, control_config_id || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', is_nsfw ? 1 : 0, thumbnail_url || null]
+        );
+        fireStreamLifecycle('started', result.lastInsertRowid);
+        return result;
+    })();
 }
 
 function endStream(streamId) {
-    const stream = get('SELECT started_at FROM streams WHERE id = ?', [streamId]);
-    if (!stream) return null;
-    return run(
-        `UPDATE streams SET is_live = 0, ended_at = CURRENT_TIMESTAMP,
-         duration_seconds = CAST((julianday(CURRENT_TIMESTAMP) - julianday(started_at)) * 86400 AS INTEGER)
-         WHERE id = ?`,
-        [streamId]
-    );
+    return getDb().transaction(() => {
+        const stream = get('SELECT started_at, is_live FROM streams WHERE id = ?', [streamId]);
+        if (!stream) return null;
+        const result = run(
+            `UPDATE streams SET is_live = 0, ended_at = CURRENT_TIMESTAMP,
+             duration_seconds = CAST((julianday(CURRENT_TIMESTAMP) - julianday(started_at)) * 86400 AS INTEGER)
+             WHERE id = ?`,
+            [streamId]
+        );
+        if (stream.is_live) fireStreamLifecycle('ended', streamId);
+        return result;
+    })();
 }
 
 /**
@@ -8393,7 +8411,7 @@ module.exports = {
     ensureStreamerRoleOnFeed,
     // Streams (sessions)
     getLiveStreams, getRecentStreams, getStreamById, setStreamAiCategory, effectiveCategory, getStreamByUserId, getLiveStreamsByUserId, getLiveStreamsByControlConfigId, getStreamsByUserId, getStreamHistoryByManagedStream,
-    createStream, endStream, endOtherLiveStreamsForSlot, updateViewerCount,
+    createStream, endStream, onStreamLifecycle, endOtherLiveStreamsForSlot, updateViewerCount,
     addStreamMemory, getStreamMemories, getLatestStreamMemory, updateStreamAiOverview,
     setVodAiOverview, setClipAiOverview, setVodTranscript, setClipTranscript, getStreamMemoriesInRange,
     getVodsNeedingOverview, getClipsNeedingOverview, getVodsNeedingTimeline, getVodsNeedingTranscript, getClipsNeedingTranscript, getPastesNeedingAnalysis,

@@ -1471,6 +1471,10 @@ async function start() {
     require('./utils/jobs').every('identity-legacy-sync', 24 * 60 * 60 * 1000, () => require('./auth/identity-sync').syncLegacyMap(),
         { initialDelayMs: 3 * 60 * 1000, jitterMs: 60 * 1000 });
 
+    // 8c. Durable events (roadmap Wave 3): stream lifecycle goes to OpenVibe.Events through the
+    // transactional outbox (server/events/stream-events.js). Off unless EVENTS_URL is set.
+    try { require('./events/stream-events').init(); } catch (err) { console.warn('[Events] not started:', err.message); }
+
     // 9. Periodic registry refresh — re-syncs config with openvibe.network every 5 minutes.
     // This is a safety net: if the startup refresh failed (openvibe.network was temporarily
     // unreachable), subsequent refreshes will fix CORS, issuer, and other URL config.
