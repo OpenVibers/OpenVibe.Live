@@ -121,7 +121,7 @@ const vibeCodingRoutes = require('./vibe-coding/routes');
 // Restream
 const restreamRoutes = require('./streaming/restream-routes');
 const restreamManager = require('./streaming/restream-manager');
-const { AnalyticsTracker } = require('openvibe-shared/analytics');
+const analyticsModule = require('./analytics'); // ADR-021: no IP/user id, route templates, 30-day raw retention
 
 // WHIP (WebRTC-HTTP Ingestion Protocol)
 const whipHandler = require('./streaming/whip-handler');
@@ -361,7 +361,7 @@ const BetterSqlite3 = require('better-sqlite3');
 const analyticsDbPath = path.join(__dirname, '..', 'data', 'analytics.db');
 const analyticsDb = new BetterSqlite3(analyticsDbPath);
 analyticsDb.pragma('journal_mode = WAL');
-const analytics = new AnalyticsTracker(analyticsDb, 'live');
+const analytics = new analyticsModule.AnalyticsTracker(analyticsDb, 'live', { retention: false }); // prune: job 8b2 below
 app.locals.analytics = analytics;
 app.use(analytics.middleware());
 
@@ -1500,6 +1500,13 @@ async function start() {
     // (roadmap Wave 1). Idempotent on Network's side; daily, first run a few minutes after boot.
     require('./utils/jobs').every('identity-legacy-sync', 24 * 60 * 60 * 1000, () => require('./auth/identity-sync').syncLegacyMap(),
         { initialDelayMs: 3 * 60 * 1000, jitterMs: 60 * 1000 });
+
+    // 8b2. Raw analytics retention (ADR-021): events older than 30 days go, in bounded batches;
+    // hourly/daily rollups stay. Nightly, first run a few minutes after boot.
+    require('./utils/jobs').every('analytics-prune', 24 * 60 * 60 * 1000, async () => {
+        const out = await analyticsModule.retention.pruneRawEvents(analyticsDb, { days: analyticsModule.retention.MAX_DAYS });
+        if (out.deleted) console.log(`[Analytics] pruned ${out.deleted} raw events older than ${out.cutoff}`);
+    }, { initialDelayMs: 5 * 60 * 1000, jitterMs: 60 * 1000 });
 
     // 8c. Durable events (roadmap Wave 3): stream lifecycle goes to OpenVibe.Events through the
     // transactional outbox (server/events/stream-events.js). Off unless EVENTS_URL is set.

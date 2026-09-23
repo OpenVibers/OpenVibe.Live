@@ -118,6 +118,7 @@ and refills history on reconnect.
 | Streams | `server/streaming/routes.js` | stream and slot CRUD, channel pages |
 | Media proxy | `server/media-proxy/*.js` | VODs, clips, pastes, thumbnails via OpenVibe.Media |
 | Auth | `server/auth/auth.js`, `server/auth/permissions.js` | JWT/API tokens, scopes, role ranks |
+| Analytics | `server/analytics/*.js` | request analytics in `data/analytics.db` within ADR-021 (see [Analytics](#analytics-adr-021)) |
 
 ### Migrations
 
@@ -126,6 +127,39 @@ Each migration runs once, inside a transaction that records it; `adopt()` marks 
 have the change; a migration waiting for a table another module creates returns `DEFER` and is retried.
 A failing `critical` migration stops the boot. `test/migrations.test.js` covers fresh, repeated,
 adopted, failing and deferred cases.
+
+### Analytics (ADR-021)
+
+`server/analytics/` records one row per finished request in `data/analytics.db` (separate from `live.db`)
+and rolls rows up hourly and daily for the Network admin dashboards. What a raw row may carry is bound by
+ADR-021 (OpenVibe.Contracts `docs/adr/ADR-021-analytics.md`):
+
+- **Stored:** event type, service, **route template** (the matched Express route, else `privacy.normalisePath`:
+  no query string, ids/hashes/ULIDs → `:id`, the segment after words like `vod`, `p`, `u`, `users` → `:param`,
+  `/@name` → `/@:user`), method, status, response time, a **rotating session id**, country (CDN header),
+  **user-agent class** (`chrome/windows/desktop`, `bot:googlebot`) plus browser/os/device, referer
+  **origin** only, bot flags, a signed-in flag, timestamp.
+- **Never stored:** IP address, user or subject id, city/precise location, the user-agent string, full
+  referer URLs. The `ip`, `user_id`, `city` columns remain for compatibility and are always NULL.
+- **Session id:** 16 random hex chars kept in memory against the visitor hash; new after 30 minutes idle
+  and at every UTC midnight. Not derived from any id.
+- **Bot rate check:** per-IP hit counters for the current and previous minute, in memory only (dropped
+  after 2 idle minutes). `analytics_rate_tracking` is emptied at boot and no longer written.
+- **Unique visitors:** `HMAC-SHA256(day salt, ip + "\n" + user agent)`, truncated to 16 hex chars. The salt is
+  random per UTC day (`analytics_day_salts`; deleted once the day is over). Hashes live only in
+  `analytics_visitor_days`, never in raw events, and are deleted by the first hourly aggregation after
+  their day ends — right after that day's final rollup — so none outlives its day by more than about an
+  hour. Rollups keep counts only, and a recompute never lowers a stored unique count. Raw-event
+  dashboards (sub-48 h summaries, realtime, top pages) count distinct sessions instead of IPs; "new vs
+  returning visitors" and daily `new_users` are no longer measured (NULL).
+- **Retention:** raw events older than 30 days are deleted nightly in batches of 5000 (job
+  `analytics-prune`, `server/analytics/retention.js`); rollups are kept.
+- **Operator CLI:** `scripts/analytics-prune.js` — dry run by default (counts only). `--apply` needs
+  `--backup <new file>` (verified sqlite online backup) or an explicit `--no-backup`; `--scrub` also
+  rewrites rows written before ADR-021 (personal columns → NULL, path → template, referer → origin, user
+  agent → class, legacy session ids → NULL) and the rollups' top-path/referer lists (counts unchanged).
+  Rollup totals are compared before and after; the run ends with a VACUUM unless `--no-vacuum`.
+  Space: the backup needs about the size of `analytics.db` + its WAL; VACUUM about twice the size.
 
 ## OpenVibe Integration
 
