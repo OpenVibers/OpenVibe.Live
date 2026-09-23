@@ -181,6 +181,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.strictEqual(b2.bans.length, 1, 'the version moved with the table');
         assert.strictEqual((await ban({ action: 'unban', actor_user_id: mod, moderation_stream_id: streamId, stream_id: streamId, user_id: viewer })).status, 200);
         assert.ok(!db.isUserBanned(viewer, streamId));
+        // A null stream id is a site-wide ban: global staff only, and a channel unban never lifts one.
+        assert.strictEqual((await ban({ action: 'ban', actor_user_id: mod, moderation_stream_id: streamId, stream_id: null, user_id: viewer })).status, 403, 'a channel mod cannot ban site-wide');
+        assert.strictEqual((await ban({ action: 'ban', actor_user_id: admin, stream_id: null, user_id: viewer, reason: 'site' })).status, 200);
+        assert.strictEqual((await ban({ action: 'unban', actor_user_id: mod, moderation_stream_id: streamId, stream_id: null, user_id: viewer })).status, 403, 'a channel mod cannot lift a site-wide ban');
+        assert.strictEqual((await ban({ action: 'unban', actor_user_id: mod, moderation_stream_id: streamId, stream_id: streamId, user_id: viewer })).status, 200);
+        assert.ok(db.get('SELECT 1 FROM bans WHERE user_id = ? AND stream_id IS NULL', [viewer]), 'the channel unban left the site-wide row');
+        assert.strictEqual((await ban({ action: 'unban', actor_user_id: admin, stream_id: null, user_id: viewer })).status, 200);
+        assert.ok(!db.get('SELECT 1 FROM bans WHERE user_id = ?', [viewer]));
 
         // 7. TTS settings: admins; credentials only the owner.
         const put = (actor, settingsBody) => call('POST', '/internal/chat-effects/site-settings', { token: WRITE, body: { actor_user_id: actor, settings: settingsBody } });

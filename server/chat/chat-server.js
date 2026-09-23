@@ -1647,6 +1647,15 @@ class ChatServer {
 
         const target = args.split(' ')[0];
         if (!target) return;
+        // Where the ban applies. In an offline channel room it is that channel's latest stream: a
+        // null stream id is a SITE-WIDE ban row (and /unban with null lifts site-wide rows), which
+        // only global chat — where canModerate() already requires global staff — may write.
+        const scopeStreamId = client.streamId || (client.channelUserId ? this._moderationStreamFor(client) : null);
+        if (!scopeStreamId && client.channelUserId) {
+            this.sendTo(ws, { type: 'system', message: 'This channel has no stream to moderate yet.' });
+            return;
+        }
+        const scoped = !!scopeStreamId;
 
         switch (action) {
             case 'ban': {
@@ -1659,24 +1668,24 @@ class ChatServer {
                     }
                     db.run(
                         `INSERT INTO bans (stream_id, user_id, reason, banned_by) VALUES (?, ?, ?, ?)`,
-                        [client.streamId, targetUser.id, 'Banned by moderator', client.user.id]
+                        [scopeStreamId, targetUser.id, 'Banned by moderator', client.user.id]
                     );
                     this.sendTo(ws, { type: 'system', message: `${target} has been banned.` });
                     this.broadcastToStream(client.streamId, {
                         type: 'system', message: `${target} has been banned.`
                     });
-                    this.logChatModeration(client, client.streamId ? 'channel_ban' : 'site_ban', { username: targetUser.username }, targetUser.id);
+                    this.logChatModeration(client, scoped ? 'channel_ban' : 'site_ban', { username: targetUser.username }, targetUser.id);
                 } else {
                     // Ban by anon ID
                     const anonTarget = this.findClientByAnonId(target, client.streamId);
                     if (anonTarget) {
                         db.run(
                             `INSERT INTO bans (stream_id, ip_address, anon_id, reason, banned_by) VALUES (?, ?, ?, ?, ?)`,
-                            [client.streamId, anonTarget.ip, target, 'Banned by moderator', client.user.id]
+                            [scopeStreamId, anonTarget.ip, target, 'Banned by moderator', client.user.id]
                         );
                         this.sendTo(ws, { type: 'system', message: `${target} has been banned.` });
                     }
-                    this.logChatModeration(client, client.streamId ? 'channel_anon_ban' : 'site_anon_ban', { anon_id: target });
+                    this.logChatModeration(client, scoped ? 'channel_anon_ban' : 'site_anon_ban', { anon_id: target });
                 }
                 break;
             }
@@ -1687,9 +1696,9 @@ class ChatServer {
                 if (targetUser) {
                     db.run(
                         `INSERT INTO bans (stream_id, user_id, reason, banned_by, expires_at) VALUES (?, ?, ?, ?, ?)`,
-                        [client.streamId, targetUser.id, `Timeout ${duration}s`, client.user.id, expires]
+                        [scopeStreamId, targetUser.id, `Timeout ${duration}s`, client.user.id, expires]
                     );
-                    this.logChatModeration(client, client.streamId ? 'channel_timeout' : 'site_timeout', { username: targetUser.username, duration }, targetUser.id);
+                    this.logChatModeration(client, scoped ? 'channel_timeout' : 'site_timeout', { username: targetUser.username, duration }, targetUser.id);
                 }
                 this.sendTo(ws, { type: 'system', message: `${target} timed out for ${duration}s.` });
                 break;
@@ -1697,9 +1706,10 @@ class ChatServer {
             case 'unban': {
                 const targetUser = db.getUserByUsername(target);
                 if (targetUser) {
-                    db.run('DELETE FROM bans WHERE user_id = ? AND (stream_id = ? OR stream_id IS NULL)',
-                        [targetUser.id, client.streamId]);
-                    this.logChatModeration(client, client.streamId ? 'channel_unban' : 'site_unban', { username: targetUser.username }, targetUser.id);
+                    // A channel unban lifts that channel's rows only; site-wide rows are global chat's.
+                    if (scoped) db.run('DELETE FROM bans WHERE user_id = ? AND stream_id = ?', [targetUser.id, scopeStreamId]);
+                    else db.run('DELETE FROM bans WHERE user_id = ? AND stream_id IS NULL', [targetUser.id]);
+                    this.logChatModeration(client, scoped ? 'channel_unban' : 'site_unban', { username: targetUser.username }, targetUser.id);
                 }
                 this.sendTo(ws, { type: 'system', message: `${target} has been unbanned.` });
                 break;

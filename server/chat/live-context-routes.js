@@ -322,10 +322,15 @@ effectsRouter.post('/ban', (req, res) => {
     const allowed = actor && !actor.is_banned && (permissions.isGlobalModOrAbove(actor) || (modStream && permissions.canModerateStream(actor, modStream)));
     if (!allowed) return fail(res, 403, 'You do not have permission.');
     const streamId = b.stream_id != null ? int(b.stream_id) || null : null;
+    // A null stream id is a SITE-WIDE ban (or lifts one): global staff only. A channel moderator
+    // acts on the stream they moderate, never on another channel's.
+    const staff = permissions.isGlobalModOrAbove(actor);
+    if (!staff && (!streamId || !permissions.canModerateStream(actor, streamId))) return fail(res, 403, 'You do not have permission.');
     if (b.action === 'unban') {
         const userId = int(b.user_id);
         if (!userId) return fail(res, 400, 'user_id required');
-        db.run('DELETE FROM bans WHERE user_id = ? AND (stream_id = ? OR stream_id IS NULL)', [userId, streamId]);
+        if (streamId) db.run('DELETE FROM bans WHERE user_id = ? AND stream_id = ?', [userId, streamId]);
+        else db.run('DELETE FROM bans WHERE user_id = ? AND stream_id IS NULL', [userId]);
         return res.json({ ok: true });
     }
     if (b.action !== 'ban') return fail(res, 400, 'action must be ban or unban');
