@@ -57,6 +57,44 @@ function publicUserProfile(u) {
         'openvibe_coins_balance', 'last_seen', 'is_owner']);
 }
 
+// ── Feed items (server/content/feed.js) ───────────────────────────────────────────────────────
+// Built from Media, Community and Live rows that carry far more than a card needs (file paths,
+// storage keys, owner subjects, AI state). Copied through an allow-list, so a field a source adds
+// later never reaches the public feed by accident.
+const FEED_ITEM_FIELDS = {
+    kind: 'string', id: 'id', href: 'string', title: 'string', created_at: 'string',
+    views: 'number', likes: 'number', duration_seconds: 'number',
+    thumbnail_url: 'string', preview_url: 'string', image_url: 'string',
+    excerpt: 'string', paste_type: 'string', language: 'string', nsfw: 'boolean',
+    ai: 'boolean', ai_label: 'string', moment_href: 'string', grade: 'string', stream_title: 'string',
+};
+const FEED_PERSON_FIELDS = ['username', 'display_name', 'avatar_url', 'profile_color', 'href'];
+
+function _feedPerson(p) {
+    if (!p || typeof p !== 'object' || !p.username) return null;
+    const out = {};
+    for (const k of FEED_PERSON_FIELDS) out[k] = p[k] == null ? null : String(p[k]);
+    return out;
+}
+
+/** One card of the Content or Moments feed as anyone may see it. */
+function publicFeedItem(item) {
+    if (!item || typeof item !== 'object') return null;
+    const out = { key: `${item.kind}:${item.id}` };
+    for (const [k, type] of Object.entries(FEED_ITEM_FIELDS)) {
+        const v = item[k];
+        if (v === undefined) continue;
+        if (v === null) { out[k] = null; continue; }
+        if (type === 'id') out[k] = typeof v === 'number' ? v : String(v);
+        else if (type === 'number') out[k] = Number.isFinite(Number(v)) ? Number(v) : 0;
+        else if (type === 'boolean') out[k] = !!v;
+        else out[k] = String(v);
+    }
+    out.channel = _feedPerson(item.channel);
+    if (item.by !== undefined) out.by = _feedPerson(item.by);
+    return out;
+}
+
 /**
  * Defence in depth for JSON that is about to be sent to an unprivileged caller: walks the value and
  * reports any ALWAYS_SECRET key with a non-empty value. Used by tests over real route responses.
@@ -72,4 +110,4 @@ function findSecrets(value, path = '$', out = []) {
     return out;
 }
 
-module.exports = { ALWAYS_SECRET, omit, publicManagedStream, publicChannel, publicStream, publicUserProfile, findSecrets };
+module.exports = { ALWAYS_SECRET, omit, publicManagedStream, publicChannel, publicStream, publicUserProfile, publicFeedItem, findSecrets };

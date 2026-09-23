@@ -13,7 +13,8 @@
  * fallback):
  *
  *   /                                                   home
- *   /vods /clips /pastes /updates /documentation        exact path
+ *   /content /moments                                   the feeds (people's work, AI's)
+ *   /vods /clips /pastes /updates /documentation        exact path (the first three are /content filtered)
  *   /settings /admin /themes                            exact path (the client redirects them)
  *   /dashboard/… /broadcast/… /chat/… /arena/…          any depth: these pages route sub-paths themselves
  *   /@user  /@user/<slot>                               a user that exists
@@ -39,7 +40,7 @@ const OK = 200;
 const NOT_FOUND = 404;
 
 // Pages that exist only at their exact path.
-const EXACT = new Set(['vods', 'clips', 'pastes', 'updates', 'documentation', 'settings', 'admin', 'themes']);
+const EXACT = new Set(['content', 'moments', 'vods', 'clips', 'pastes', 'updates', 'documentation', 'settings', 'admin', 'themes']);
 // Pages that route their own sub-paths (dashboard tabs, broadcast slots, chat rooms, arena fighters).
 const PREFIX = new Set(['dashboard', 'broadcast', 'chat', 'arena']);
 

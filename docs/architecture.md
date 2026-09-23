@@ -33,7 +33,7 @@ The SPA is plain JavaScript with no build step. What loads is decided per route:
 public/index.html        shell: navbar, home page, empty <section id="page-*"> shells, core scripts
 public/features.json     registry: feature → fragment, stylesheets, scripts, dependencies, stubs, idle prefetch
                          routes: URL pattern → features
-public/fragments/*.html  page markup for channel, VOD/clip players, dashboard, broadcast, chat, documentation
+public/fragments/*.html  page markup for channel, VOD/clip players, dashboard, broadcast, chat, documentation, content, moments
 public/css/features/*.css rules used only by one feature (split out of style.css / broadcast.css / i18n-star.css)
 public/js/ov-loader.js   ov.load(feature), ov.route(path), ov.prefetch(), route generations, scopes, stubs
 public/js/app.js         core: router, auth, API helper, shared renderers, connection pill
@@ -72,6 +72,19 @@ public/js/app-*.js       route code split out of app.js: home, channel, media, c
 - **Featured live stream.** `public/js/home-featured.js` (feature `featured`) loads only when someone is
   live: `GET /api/home/featured` picks and rotates the stream; playback is FLV (RTMP) or the JSMPEG relay,
   live frames for WebRTC. Off switch remembered in `localStorage` (`ov_home_featured_off`).
+- **Content and Moments.** `/content` is what people made (VODs, clips people cut, people's pastes);
+  `/moments` is what the AI made (auto-clips, AI moment pastes, AI-written after-show recaps), every
+  card marked AI. `/vods`, `/clips` and `/pastes` are `/content` with that filter (the address becomes
+  `/content?type=…`). One lazy feature (`public/js/content-feed.js`, fragments `content`/`moments`):
+  a masonry of cards (one column on phones, two or three wider), infinite scroll by cursor, clips
+  that play muted one at a time when mostly in view. The server merges the sources
+  (`server/content/feed.js`, `GET /api/content/feed` and `/api/content/moments`): who made an item is
+  the store's answer, never a guess here (Media's clip `auto_generated`, Community's paste `origin`,
+  `stream_recaps.ai`), each source filters server-side, public items only. The cursor carries each
+  source's offset (and a Top window's start); source pages are cached 30 s (Top 2 min) and a page
+  waits at most 4 s for Media and Community, leaving a slow one out and asking again on the next
+  page. Auto-clips made before Media kept the flag are marked from Live's `auto_clip_log`
+  (`syncAutoClipFlags` in `server/ai/auto-clip-job.js`).
 - **Voice channels.** `public/js/call.js` + `voice-channels.js` (feature `voice`, chat route): full-mesh
   WebRTC, signalling over `/ws/call` (`server/streaming/call-server.js`). The newcomer offers, existing
   members answer; the server pushes the channel list to every chat socket (`voice-channels` message);

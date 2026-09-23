@@ -310,7 +310,7 @@
             <div class="home-section-lazy" id="home-moments-section" style="display:none">
                 <div class="section-header" style="--sc:#22d3ee">
                     <h2><i class="fa-solid fa-brain"></i> AI Moments<small class="section-kicker">picked by AI</small></h2>
-                    <span class="muted" style="font-size:0.8rem">wild seconds the AI clipped from recent streams</span>
+                    <a href="/moments" onclick="return handleLinkClick(event, '/moments')" class="badge" style="cursor:pointer;text-decoration:none;background:var(--surface);">See all</a>
                 </div>
                 <div class="moments-row" id="home-moments-row"></div>
             </div>
@@ -473,7 +473,7 @@
             <!-- Recent VODs -->
             <div class="section-header" style="--sc:#a78bfa;display:none" id="home-recent-vods-header">
                 <h2><i class="fa-solid fa-video"></i> Recent VODs<small class="section-kicker">full streams</small></h2>
-                <a href="/vods" onclick="return handleLinkClick(event, '/vods')" class="badge" style="cursor:pointer;text-decoration:none;background:var(--surface);">View All</a>
+                <a href="/content?type=vods" onclick="return handleLinkClick(event, '/content?type=vods')" class="badge" style="cursor:pointer;text-decoration:none;background:var(--surface);">View All</a>
             </div>
             <div class="stream-grid" id="home-recent-vods-grid"></div>
             <div id="home-recent-vods-pagination" class="pastes-pagination" style="display:none"></div>
@@ -481,7 +481,7 @@
             <!-- Recent Clips -->
             <div class="section-header" style="--sc:#f472b6;display:none" id="home-clips-header">
                 <h2><i class="fa-solid fa-scissors"></i> Recent Clips<small class="section-kicker">the good bits</small></h2>
-                <a href="/clips" onclick="return handleLinkClick(event, '/clips')" class="badge" style="cursor:pointer;text-decoration:none;background:var(--surface);">View All</a>
+                <a href="/content?type=clips" onclick="return handleLinkClick(event, '/content?type=clips')" class="badge" style="cursor:pointer;text-decoration:none;background:var(--surface);">View All</a>
             </div>
             <div class="stream-grid home-clips-grid" id="home-clips-grid"></div>
             <div id="home-clips-pagination" class="pastes-pagination" style="display:none"></div>
@@ -489,7 +489,7 @@
             <!-- Recent Pastes -->
             <div class="section-header" style="--sc:#2dd4bf;display:none" id="home-pastes-header">
                 <h2><i class="fa-solid fa-paste"></i> Recent Pastes<small class="section-kicker">shots & snippets</small></h2>
-                <a href="/pastes" onclick="return handleLinkClick(event, '/pastes')" class="badge" style="cursor:pointer;text-decoration:none;background:var(--surface);">View All</a>
+                <a href="/content?type=pastes" onclick="return handleLinkClick(event, '/content?type=pastes')" class="badge" style="cursor:pointer;text-decoration:none;background:var(--surface);">View All</a>
             </div>
             <div class="home-pastes-list" id="home-pastes-list"></div>
             <div id="home-pastes-pagination" class="pastes-pagination" style="display:none"></div>
@@ -679,29 +679,9 @@
         </div>
     </section>
 
-    <!-- ── VIDEOS PAGE ───────────────────────────────────── -->
-    <section id="page-vods" class="page">
-        <div class="container">
-            <div class="section-header">
-                <h2><i class="fa-solid fa-video"></i> Videos</h2>
-            </div>
-            <div id="vods-streamer-filters" class="media-filter-bar" style="display:none"></div>
-            <div class="stream-grid" id="vods-grid-page"></div>
-            <div id="vods-pagination-page" class="pastes-pagination" style="display:none"></div>
-        </div>
-    </section>
-
-    <!-- ── CLIPS PAGE ─────────────────────────────────────── -->
-    <section id="page-clips" class="page">
-        <div class="container">
-            <div class="section-header">
-                <h2><i class="fa-solid fa-scissors"></i> Clips</h2>
-            </div>
-            <div id="clips-streamer-filters" class="media-filter-bar" style="display:none"></div>
-            <div class="stream-grid" id="clips-grid-page"></div>
-            <div id="clips-pagination-page" class="pastes-pagination" style="display:none"></div>
-        </div>
-    </section>
+    <!-- ── CONTENT (/content; /vods /clips /pastes are it with a filter) and AI MOMENTS (/moments) ── -->
+    <section id="page-content" class="page" data-fragment="content"><!--ov:fragment:content--><div class="ov-route-skel" aria-hidden="true"><span></span><span></span><span></span></div><!--/ov:fragment--></section>
+    <section id="page-moments" class="page" data-fragment="moments"><!--ov:fragment:moments--><div class="ov-route-skel" aria-hidden="true"><span></span><span></span><span></span></div><!--/ov:fragment--></section>
 
     <!-- ── CHANNEL PAGE (/:username) ─────────────────────── -->
     <section id="page-channel" class="page" data-fragment="channel"><!--ov:fragment:channel--><div class="ov-route-skel" aria-hidden="true"><span></span><span></span><span></span></div><!--/ov:fragment--></section>
@@ -756,49 +736,12 @@
     </section>
 
     <!-- ═══════════════════════════════════════════════════════════ -->
-    <!--  PASTES INDEX                                               -->
-    <!-- ═══════════════════════════════════════════════════════════ -->
-    <section id="page-pastes" class="page">
-        <div class="content-container">
-            <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
-                <div>
-                    <h1><i class="fa-solid fa-paste"></i> Pastes &amp; Images</h1>
-                    <p class="page-subtitle">Share code, notes, prompts, and images with the community. <span id="pastes-count"></span></p>
-                </div>
-                <div style="display:flex;gap:8px;">
-                    <button class="btn btn-primary" onclick="openNewPasteModal()"><i class="fa-solid fa-plus"></i> New Paste</button>
-                    <button class="btn btn-outline" onclick="openImageUpload()"><i class="fa-solid fa-cloud-arrow-up"></i> Upload Image</button>
-                </div>
-            </div>
-
-            <div class="pastes-toolbar">
-                <div class="pastes-filters">
-                    <button class="btn btn-sm pastes-filter-btn active" data-filter="all" onclick="filterPastes('all')">All</button>
-                    <button class="btn btn-sm pastes-filter-btn" data-filter="paste" onclick="filterPastes('paste')"><i class="fa-solid fa-code"></i> Pastes</button>
-                    <button class="btn btn-sm pastes-filter-btn" data-filter="screenshot" onclick="filterPastes('screenshot')"><i class="fa-solid fa-image"></i> Images</button>
-                </div>
-                <div class="pastes-search">
-                    <input type="text" id="pastes-search-input" placeholder="Search pastes…" onkeydown="if(event.key==='Enter')searchPastes()">
-                    <button class="btn btn-sm btn-outline" onclick="searchPastes()"><i class="fa-solid fa-search"></i></button>
-                </div>
-            </div>
-
-            <div id="pastes-streamer-filters" class="media-filter-bar" style="display:none"></div>
-
-            <div class="pastes-grid" id="pastes-grid">
-                <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
-            </div>
-            <div id="pastes-pagination" class="pastes-pagination"></div>
-        </div>
-    </section>
-
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <!--  PASTE VIEWER                                               -->
     <!-- ═══════════════════════════════════════════════════════════ -->
     <section id="page-paste-viewer" class="page">
         <div class="content-container">
             <div class="paste-viewer-nav">
-                <button class="btn btn-outline btn-sm" onclick="navigate('/pastes')"><i class="fa-solid fa-arrow-left"></i> All Pastes</button>
+                <button class="btn btn-outline btn-sm" onclick="navigate('/content?type=pastes')"><i class="fa-solid fa-arrow-left"></i> All Pastes</button>
             </div>
             <div id="paste-viewer-content">
                 <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>

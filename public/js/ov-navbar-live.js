@@ -20,9 +20,9 @@
         const staff = !!(user && ((user.capabilities && user.capabilities.admin_panel) || (typeof hasCapability === 'function' && hasCapability('can_access_staff_console'))));
         return [
             { id: 'home', page: 'home', label: 'Home', href: '/', icon: 'fa-house' },
-            { id: 'vods', page: 'vods', label: 'VODs', href: '/vods', icon: 'fa-video' },
-            { id: 'clips', page: 'clips', label: 'Clips', href: '/clips', icon: 'fa-scissors' },
-            { id: 'pastes', page: 'pastes', label: 'Pastes', href: '/pastes', icon: 'fa-paste' },
+            // VODs, clips and pastes people made are one feed; what the AI made is the other.
+            { id: 'content', page: 'content', label: 'Content', href: '/content', icon: 'fa-photo-film' },
+            { id: 'moments', page: 'moments', label: 'Moments', href: '/moments', icon: 'fa-wand-magic-sparkles' },
             { id: 'chat', page: 'chat', label: 'Chat', href: '/chat', icon: 'fa-comments' },
             { id: 'arena', page: 'arena', label: 'Arena', href: '/arena', icon: 'fa-hand-fist' },
             { id: 'game', page: 'game', label: 'Game', href: 'https://openvibe.games', icon: 'fa-gamepad' },

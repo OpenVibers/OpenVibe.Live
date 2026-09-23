@@ -17,8 +17,8 @@
             heading: 'Watch',
             items: [
                 { name: 'Live streams', url: '/', onclick: "return handleLinkClick(event, '/')" },
-                { name: 'Stream VODs', url: '/vods', onclick: "return handleLinkClick(event, '/vods')" },
-                { name: 'Clips', url: '/clips', onclick: "return handleLinkClick(event, '/clips')" },
+                { name: 'VODs, clips & pastes', url: '/content', onclick: "return handleLinkClick(event, '/content')" },
+                { name: 'AI Moments', url: '/moments', onclick: "return handleLinkClick(event, '/moments')" },
                 { name: 'The Arena', url: '/arena', onclick: "return handleLinkClick(event, '/arena')" },
                 { name: 'Global chat', url: '/chat', onclick: "return handleLinkClick(event, '/chat')" },
             ],
