@@ -564,6 +564,8 @@ app.get('/internal/analytics-summary', (req, res) => {
 const chatLiveContext = require('./chat/live-context-routes');
 app.use('/internal/chat-context', chatLiveContext.contextRouter);
 app.use('/internal/chat-effects', chatLiveContext.effectsRouter);
+// OpenVibe.Tips announces settled tips in the creator's chat here (service token, live.tips_delivery.write).
+app.use('/internal/tips', require('./tips/delivery-routes'));
 app.use('/internal', require('./internal/routes'));
 
 
