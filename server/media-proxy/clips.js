@@ -13,6 +13,7 @@ const permissions = require('../auth/permissions');
 const access = require('./access');
 const commentsClient = require('../comments-client');
 const { commentCount } = require('./comments');
+const lineage = require('../lineage/resolver');
 
 const router = express.Router();
 
@@ -77,13 +78,14 @@ function withUserFields(clip) {
     return clip;
 }
 
+// The clipped channel's owner (Live user id), from the canonical resolver (server/lineage): the
+// clip's stream, else its VOD's lineage; null when neither answers or Media is down. Kept to those
+// two links as before, so the channel Media recorded on the clip (legacy_metadata) does not decide
+// here; the clipper (clip.user_id) and display names never do.
 async function clipChannelOwnerId(clip) {
-    if (!clip) return null;
-    if (clip.stream_id) { const s = db.getStreamById(clip.stream_id); if (s) return s.user_id; }
-    if (clip.vod_id) {
-        try { const v = await media.getVod(clip.vod_id); if (v) return v.user_id; } catch { /* */ }
-    }
-    return null;
+    if (!clip || clip.id == null) return null;
+    const r = await lineage.resolveOwner({ clip_id: String(clip.id) }, { records: { clip }, rules: ['stream_lookup', 'vod_parent'] });
+    return r.status === 'resolved' ? r.userId : null;
 }
 
 async function canActorModerateClip(actor, clip) {
@@ -365,3 +367,4 @@ router.post('/:id/recut', requireAuth, async (req, res) => {
 });
 
 module.exports = router;
+module.exports._internals = { clipChannelOwnerId };
