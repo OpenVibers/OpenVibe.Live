@@ -56,7 +56,7 @@ Each feature lives in its own `server/<feature>/` directory with `routes.js` + s
 - **Inline handlers on lazy features:** a function called from `onclick=` in markup that exists before its feature loads must be listed in that feature's `stubs`.
 - **innerHTML usage:** Frontend has heavy `innerHTML` — prefer DOM node creation for new code to avoid XSS.
 - **WebSocket auth lifecycle:** WS connections can start anonymous and upgrade via `join` message. On account switch, the socket must be rebuilt (not just re-joined) — see `openvibe-auth-changed` handling in `chat.js`.
-- **openvibe-shared:** Vendored package at `./vendor/openvibe-shared` linked via `file:` in package.json. Canonical copy lives in OpenVibe.Network; re-sync, don't hand-edit.
+- **openvibe-shared:** Pinned release of OpenVibers/OpenVibe.Shared (`"openvibe-shared": "https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/vX.Y.Z"`), served at `/shared/*` from `node_modules`. Change it there and bump the tag; never edit `node_modules`.
 - **DM delivery:** Server verifies `dm.isParticipant()` before delivering — always maintain this check.
 - **Schema:** `ensureTables()` functions create tables on first use. Some modules (DMs, arena, etc.) have their own `ensureTables()`.
 

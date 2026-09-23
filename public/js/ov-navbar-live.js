@@ -1,4 +1,4 @@
-/* OpenVibe.Live on the network's shared navbar (vendor/openvibe-shared/navbar.js, served at /shared/navbar.js).
+/* OpenVibe.Live on the network's shared navbar (openvibe-shared/navbar.js from OpenVibe.Shared, served at /shared/navbar.js).
  *
  * Live used to carry its own navbar: 130 lines of markup, its own user menu, its own mobile drawer. It now
  * mounts the same component every other OpenVibe site uses and describes what is specific to Live as data:

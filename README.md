@@ -18,7 +18,7 @@ This repository contains the OpenVibe.Live server, browser assets, and runtime c
 - `server/monetization/wallet-client.js` — OpenCoins wallet client (Network internal API).
 - `public/` — static browser UI assets (no build step).
 - `data/` — Live-local runtime storage (SQLite, live thumbnails, emotes, song-request cache, analytics).
-- `vendor/openvibe-shared/` — vendored shared package (`"openvibe-shared": "file:./vendor/openvibe-shared"`).
+- `node_modules/openvibe-shared/` — pinned OpenVibe.Shared release (`"openvibe-shared": "https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/vX.Y.Z"`), served at `/shared/*`. Change it in OpenVibe.Shared and bump the tag; never edit `node_modules`.
 - `deploy/` — nginx / systemd / fail2ban reference configs.
 - `.env.example` — runtime configuration template.
 

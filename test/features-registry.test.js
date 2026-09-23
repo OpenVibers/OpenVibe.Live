@@ -21,7 +21,7 @@ const reg = JSON.parse(fs.readFileSync(path.join(PUB, 'features.json'), 'utf8'))
 const index = fs.readFileSync(path.join(PUB, 'index.html'), 'utf8');
 let pass = 0;
 const ok = (m) => { pass++; console.log('  ok -', m); };
-const fileFor = (url) => url.startsWith('/shared/') ? path.join(ROOT, 'vendor/openvibe-shared', path.basename(url)) : path.join(PUB, url);
+const fileFor = (url) => url.startsWith('/shared/') ? require('openvibe-shared/files').path(path.basename(url)) : path.join(PUB, url);
 
 for (const [name, f] of Object.entries(reg.features)) {
     for (const url of [...(f.js || []), ...(f.css || [])]) assert.ok(fs.existsSync(fileFor(url)), `${name}: ${url} does not exist`);

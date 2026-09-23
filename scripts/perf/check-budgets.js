@@ -29,11 +29,12 @@ const FORBIDDEN_ON_HOME = ['/js/broadcast.js', '/js/broadcast-workspace.js', '/j
     '/js/stream-player.js', '/js/app-channel.js', '/js/arena.js', '/js/pastes.js', '/css/features/broadcast.css', '/css/features/channel.css'];
 
 const assets = require(path.join(ROOT, 'server/web/assets'));
-try { assets.setSharedDir(path.join(ROOT, 'vendor/openvibe-shared')); } catch { /* */ }
+const SHARED_DIR = require('openvibe-shared/files').dir;
+try { assets.setSharedDir(SHARED_DIR); } catch { /* */ }
 const html = assets.renderRoute(assets.document('index.html').html, '/');
 const fileFor = (url) => {
     const p = url.split('?')[0];
-    return p.startsWith('/shared/') ? path.join(ROOT, 'vendor/openvibe-shared', path.basename(p)) : path.join(ROOT, 'public', p);
+    return p.startsWith('/shared/') ? path.join(SHARED_DIR, path.basename(p)) : path.join(ROOT, 'public', p);
 };
 const kb = (n) => +(n / 1024).toFixed(1);
 const br = (buf) => zlib.brotliCompressSync(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } }).length;

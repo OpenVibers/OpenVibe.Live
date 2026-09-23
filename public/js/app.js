@@ -1480,7 +1480,7 @@ function positionNavDropdownMenu(dropdown) {
     menu.style.maxHeight = `${Math.max(120, vh - rect.bottom - pad)}px`;
 }
 
-// Live's menus are coordinated by the network's shared panel controller (vendor/openvibe-shared/panels.js, the same
+// Live's menus are coordinated by the network's shared panel controller (openvibe-shared/panels.js, the same
 // one the shared navbar uses on every other site): one panel open at a time, Escape and rotation close them, and
 // <body class="ov-panel-open"> lets the floating chat button step aside. Live keeps its own markup and toggles.
 {

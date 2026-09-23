@@ -432,44 +432,16 @@ app.use((req, res, next) => {
 });
 
 // ── Static Files ─────────────────────────────────────────────
-// Serve openvibe-shared browser assets at /shared/ — serve directly from the
-// resolved source directory to avoid write operations (the public/ directory
-// is read-only under systemd ProtectSystem=strict on production).
-const SHARED_BROWSER_FILES = ['theme-loader.js', 'notification-ui.js', 'account-switcher.js', 'openvibe-sw.js', 'footer.js', 'ov-mark.js', 'tooltip.js', 'history.js', 'navbar.js', 'sso-client.js', 'ov-icons.js', 'island.js', 'ui.js', 'panels.js'];
-let sharedServePath = null;
+// Serve openvibe-shared browser assets at /shared/ — straight from node_modules/openvibe-shared,
+// the OpenVibe.Shared release package.json pins (the public/ directory is read-only under
+// systemd ProtectSystem=strict on production). The package lists its own browser files.
+const sharedFiles = require('openvibe-shared/files');
+const SHARED_BROWSER_FILES = sharedFiles.BROWSER;
+const sharedServePath = sharedFiles.dir;
+assets.setSharedDir(sharedServePath);
+console.log(`[Server] /shared: serving ${SHARED_BROWSER_FILES.length} browser file(s) from ${sharedServePath}`);
 
-(function resolveSharedAssets() {
-    const candidates = [
-        // The vendored copy is the source of truth (synced from OpenVibe.Network). On the
-        // server node_modules/openvibe-shared is a stale COPY, not a symlink, so it must
-        // never win over vendor/.
-        () => path.resolve(__dirname, '../vendor/openvibe-shared'),
-        () => path.dirname(require.resolve('openvibe-shared/package.json')),
-        () => path.resolve(__dirname, '../node_modules/openvibe-shared'),
-        () => path.resolve(__dirname, '..', '..', 'OpenVibeApp', 'packages', 'openvibe-shared'),
-        () => path.resolve(__dirname, '..', '..', 'packages', 'openvibe-shared'),
-    ];
-    for (const getPath of candidates) {
-        try {
-            const p = getPath();
-            if (p && fs.existsSync(p)) {
-                // Verify at least one required browser file exists
-                const found = SHARED_BROWSER_FILES.filter(f => fs.existsSync(path.join(p, f)));
-                if (found.length > 0) {
-                    sharedServePath = p;
-                    assets.setSharedDir(p);
-                    console.log(`[Server] /shared: serving ${found.length}/${SHARED_BROWSER_FILES.length} browser file(s) from ${p}`);
-                    const missing = SHARED_BROWSER_FILES.filter(f => !found.includes(f));
-                    if (missing.length) console.warn(`[Server] /shared: missing files: ${missing.join(', ')}`);
-                    return;
-                }
-            }
-        } catch (_) {}
-    }
-    console.error('[Server] /shared: openvibe-shared source not found — shared browser assets will return 404');
-})();
-
-if (sharedServePath) {
+{
     // Web-push service worker must be same-origin with scope "/" → expose it at the root.
     app.get('/openvibe-sw.js', (req, res) => {
         res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
@@ -496,11 +468,6 @@ if (sharedServePath) {
                 res.status(404).type('text/plain').send('Not found');
             }
         });
-    });
-} else {
-    console.error('[Server] /shared: serving unavailable — shared browser assets will return 404');
-    app.use('/shared', (req, res) => {
-        res.status(404).type('text/plain').send('Shared assets unavailable');
     });
 }
 

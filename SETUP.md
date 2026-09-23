@@ -11,7 +11,7 @@ OpenVibe.Live (port **3000**) is the streaming front — ingest (RTMP / WHIP / W
 
 Live keeps locally: live.db (users/streams/chat/channel state), Vibes (PayPal tipping/cashout), channel points, comments, stream memories + AI state for Media-hosted vods/clips (`vod_ai_state` / `clip_ai_state`), ephemeral live thumbnails, and the song-request queue.
 
-The vendored shared package lives at `./vendor/openvibe-shared` (`"openvibe-shared": "file:./vendor/openvibe-shared"`); browser assets load from `https://openvibe.network/shared/*`.
+The shared package is a pinned OpenVibe.Shared release (`"openvibe-shared": "https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/vX.Y.Z"` in package.json), installed into `node_modules` by `npm ci` (the host needs outbound HTTPS to codeload.github.com) and served at `/shared/*`. Change it in OpenVibe.Shared and bump the tag; never edit `node_modules`.
 
 ## Prerequisites
 
@@ -27,7 +27,7 @@ The vendored shared package lives at `./vendor/openvibe-shared` (`"openvibe-shar
 npm install
 ```
 
-The shared package resolves from `./vendor/openvibe-shared` — no external workspace layout needed.
+The shared package resolves from `node_modules/openvibe-shared` (the pinned release) — no external workspace layout needed.
 
 ## Environment configuration
 
