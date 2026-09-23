@@ -61,7 +61,6 @@ const sIdle = stream(idle, 50, 120); // too old → not on the roster even with 
 stream(mute, 50, 1);                 // streams a lot, never transcribed → not on the roster
 
 // Transcript for alpha: 40 lines over the 6 h stream, some hype, all linked to a VOD.
-db.run(`INSERT INTO vods (id, user_id, stream_id, title, file_path, is_public, created_at) VALUES (901, ?, ?, 'alpha vod', '/x/alpha.webm', 1, datetime('now', '-2 days'))`, [u1, s1]);
 const lines = [];
 for (let i = 0; i < 40; i++) {
     const t = i % 4 === 0 ? `Let's go chat, that was insane, no way we just did that number ${i}!` : `Okay so here is the current situation with the setup number ${i}, we are rebuilding it live.`;

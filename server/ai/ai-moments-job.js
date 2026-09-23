@@ -136,10 +136,11 @@ function _sample(arr, max) {
     for (let i = 0; i < max; i++) out.push(arr[Math.floor(i * step)]);
     return out;
 }
-function _momentContext(streamId, vodId) {
+async function _momentContext(streamId, vodId) {
     const memories = _sample((db.getStreamMemories(streamId) || []).filter(m => m.description), 45);
     const transcript = _sample(db.getStreamTranscriptSegments(streamId) || [], 60);
-    const clipTimes = db.getClipStartTimesForStream(streamId, vodId) || [];
+    // Where viewers clipped: the clips live in OpenVibe.Media.
+    const clipTimes = await require('../media-proxy/lookups').clipStartTimes(streamId, vodId);
     const spikes = db.getChatSpikeOffsets(streamId, 30, 8) || [];
     // Non-speech sounds are strong moment candidates — an explosion or a burst of
     // laughter marks a highlight as reliably as anything said out loud.
@@ -163,7 +164,7 @@ const FLAVOR_HINT = {
 };
 async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
     const dur = Math.floor(vod.duration || 0);
-    const ctx = _momentContext(vod.stream_id, vod.vod_id);
+    const ctx = await _momentContext(vod.stream_id, vod.vod_id);
     const avoidList = [...new Set([...(avoid || []), ...registry.usedOffsets(vod.vod_id, vod.stream_id)])].sort((a, b) => a - b);
     const farFromUsed = (t) => avoidList.every(a => Math.abs(a - t) >= registry.GAP_SEC);
     if (!ctx.memories.length && !ctx.transcript.length) return null;
@@ -262,7 +263,7 @@ function _sig(desc) {
 function _dedupePastes() { /* moved to Media — sig-dedup happens pre-post */ }
 
 // Build the moment-ranking VOD pool: Media list (most-viewed public VODs) joined with
-// local AI state + stream memories. Shapes rows like the old getVodsForMomentRanking.
+// local AI state + stream memories. Media down → an empty pool (the run makes nothing).
 async function _momentPool(limit) {
     try {
         const r = await media.listVods({ limit, order: 'views' });
@@ -288,8 +289,8 @@ async function _momentPool(limit) {
                 };
             });
         }
-    } catch { /* fall through to legacy local rows */ }
-    try { return db.getVodsForMomentRanking ? (db.getVodsForMomentRanking(limit) || []) : []; } catch { return []; }
+    } catch { /* Media down */ }
+    return [];
 }
 
 async function tick(opts = {}) {
@@ -366,23 +367,17 @@ async function tick(opts = {}) {
             const slug = _slug();
 
             // Extract the real frame at this moment so the paste is a true IMAGE paste.
-            // The source is the still-present legacy local file, or the OpenVibe.Media
-            // playback URL — ffmpeg range-seeks the remote file, so cold VODs still work.
+            // The source is the OpenVibe.Media playback URL — ffmpeg range-seeks the remote
+            // file, so cold VODs still work.
             let screenshotPath = null;
-            let momentSource = null; // resolved media (local path or Media URL) for clipping
+            let momentSource = null; // resolved Media URL, for clipping
             let img = `/api/thumbnails/generate/vod/${v.vod_id}`;
             try {
                 let source = null;
                 try {
-                    const vod = db.getVodById ? db.getVodById(v.vod_id) : null;
-                    if (vod && vod.file_path && fs.existsSync(vod.file_path)) source = vod.file_path;
-                } catch { /* */ }
-                if (!source) {
-                    try {
-                        const meta = await media.getVod(v.vod_id);
-                        source = media.publicUrl(meta && meta.playback_url) || media.vodPlaybackUrl(v.vod_id);
-                    } catch { source = media.vodPlaybackUrl(v.vod_id); }
-                }
+                    const meta = await media.getVod(v.vod_id);
+                    source = media.publicUrl(meta && meta.playback_url) || media.vodPlaybackUrl(v.vod_id);
+                } catch { source = media.vodPlaybackUrl(v.vod_id); }
                 momentSource = source || null;
                 if (thumb && source && thumb.extractFrameToFile) {
                     const fname = `ai-moment-vod${v.vod_id}-${offset}.jpg`;

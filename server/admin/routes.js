@@ -64,8 +64,10 @@ router.get('/diagnostics', (req, res) => {
 });
 
 // ── Dashboard Stats ──────────────────────────────────────────
-router.get('/stats', (req, res) => {
+router.get('/stats', async (req, res) => {
     try {
+        // VODs live in OpenVibe.Media (null when it does not answer); Live's vods table is frozen.
+        const vodCounts = await require('../media-proxy/lookups').vodCounts();
         const stats = {
             users: {
                 total: db.get('SELECT COUNT(*) as c FROM users').c,
@@ -88,8 +90,8 @@ router.get('/stats', (req, res) => {
                 totalDonated: db.get("SELECT COALESCE(SUM(amount), 0) as c FROM transactions WHERE type = 'donation'").c,
             },
             vods: {
-                total: db.get('SELECT COUNT(*) as c FROM vods').c,
-                public: db.get('SELECT COUNT(*) as c FROM vods WHERE is_public = 1').c,
+                total: vodCounts.total,
+                public: vodCounts.public,
             },
             chat: {
                 totalMessages: db.get('SELECT COUNT(*) as c FROM chat_messages').c,
@@ -574,7 +576,8 @@ router.get('/ai/status', async (req, res) => {
 });
 
 // Browse a streamer's AI-relevant data: memories, AI-analyzed pastes, VODs, overview.
-router.get('/ai/explorer/:userId', (req, res) => {
+// Pastes come from OpenVibe.Community and VODs/clips from OpenVibe.Media, any visibility (staff).
+router.get('/ai/explorer/:userId', async (req, res) => {
     try {
         const userId = parseInt(req.params.userId, 10);
         const user = db.getUserById(userId);
@@ -583,13 +586,18 @@ router.get('/ai/explorer/:userId', (req, res) => {
             id: m.id, stream_id: m.stream_id, description: m.description,
             tags: m.tags, created_at: m.created_at, thumbnail_url: m.thumbnail_url,
         }));
-        const pastes = db.getUserPastesForAi(userId, 40);
-        const vods = (db.getVodsByUser ? db.getVodsByUser(userId, true, 40, 0) : []).map(v => ({
+        const lookups = require('../media-proxy/lookups');
+        const [pastes, userVods, userClips] = await Promise.all([
+            lookups.userPastesForAi(user, 40),
+            lookups.userVods(userId, { includePrivate: true, limit: 40 }),
+            lookups.userClips(userId, { includePrivate: true, limit: 40 }),
+        ]);
+        const vods = userVods.map(v => ({
             id: v.id, title: v.title, category: v.category, created_at: v.created_at,
             duration_seconds: v.duration_seconds, ai_overview: v.ai_overview || null,
             ai_transcript: (v.ai_transcript && v.ai_transcript.trim()) ? v.ai_transcript : null,
         }));
-        const clips = (db.getClipsByUser ? db.getClipsByUser(userId, true, 40, 0) : []).map(c => ({
+        const clips = userClips.map(c => ({
             id: c.id, title: c.title, created_at: c.created_at,
             duration_seconds: c.duration_seconds, ai_overview: c.ai_overview || null,
             ai_transcript: (c.ai_transcript && c.ai_transcript.trim()) ? c.ai_transcript : null,

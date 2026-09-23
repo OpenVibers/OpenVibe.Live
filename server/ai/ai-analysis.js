@@ -243,10 +243,12 @@ async function generateStreamerOverview(userId) {
     const memories = (db.getStreamMemoriesByUser ? db.getStreamMemoriesByUser(userId, 60) : []) || [];
     const memLines = memories.slice(0, 40).map(m => `- ${m.description}`).filter(l => l.length > 2);
 
-    const vods = (db.getVodsByUser ? db.getVodsByUser(userId, false, 20, 0) : []) || [];
+    // VODs from OpenVibe.Media (public ones) and pastes from OpenVibe.Community (any visibility:
+    // this overview is for site staff), both through media-proxy/lookups.js.
+    const lookups = require('../media-proxy/lookups');
+    const [vods, pastes] = await Promise.all([lookups.userVods(userId, { limit: 20 }), lookups.userPastesForAi(user, 25)]);
     const vodLines = vods.map(v => `- ${v.title || 'Untitled VOD'}${(v.ai_category || v.category) ? ` [${v.ai_category || v.category}]` : ''}`);
 
-    const pastes = (db.getUserPastesForAi ? db.getUserPastesForAi(userId, 25) : []) || [];
     const pasteLines = pastes.filter(p => p.ai_summary).map(p => `- "${p.title || 'paste'}": ${p.ai_summary}`);
 
     if (!memLines.length && !vodLines.length && !pasteLines.length) return null;

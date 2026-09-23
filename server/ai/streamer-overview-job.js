@@ -6,7 +6,7 @@
  * Cadence (enforced in SQL by getStreamersNeedingOverview):
  *   - A "decent" overview (>= DECENT_LEN chars) is refreshed at most once per 12h.
  *   - A sparse/missing overview is retried hourly until it fills out.
- * Only streamers with some signal (memories or VODs) are considered, and it no-ops
+ * Only streamers with stream memories are considered, and it no-ops
  * entirely until AI is enabled in openvibe.network/admin → AI.
  */
 'use strict';

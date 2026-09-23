@@ -6,7 +6,7 @@
  * edit and thumbnail routes answered 403, which confirms the id; comments on private items were
  * readable; the batch transcript endpoint returned any VOD's transcript; the server-rendered
  * /vod/:id and /clip/:id pages put a private item's title and overview into shared HTML; and the
- * recently-ended list carried a private legacy VOD's id and thumbnail. Every one of those now gives
+ * recently-ended list carried a private legacy VOD's id and thumbnail (it now asks Media, public only). Every one of those now gives
  * the exact answer an unknown id gets.
  *
  * The real routers run on a temp database with Media stubbed in-process and sign-in stubbed by an
@@ -247,19 +247,31 @@ async function check(name, fn) {
         assert.ok(await seo._pageMeta('/clip/200'), 'public clips still render');
     });
 
-    await check('recently-ended streams (legacy vods table): only a public VOD rides along', async () => {
+    await check('recently-ended streams: only a public VOD from Media rides along', async () => {
         db.endStream(streamA);
-        // Test fixture rows in the temp database; server code never writes the frozen table.
-        const legacy = raw.prepare(`INSERT INTO vods (stream_id, user_id, title, file_path, is_public, visibility, thumbnail_url) VALUES (?, 3, ?, '/x', ?, ?, ?)`);
-        legacy.run(streamA, 'Secret legacy', 0, 'private', '/t/secret.jpg');
-        let row = db.getRecentStreams(10).find((s) => s.id === streamA);
-        assert.ok(row, 'the stream is listed');
-        assert.strictEqual(row.vod_id, null, 'no private VOD id');
-        assert.strictEqual(row.vod_thumbnail_url, null, 'no private VOD thumbnail');
-        raw.prepare('DELETE FROM vods').run();
-        legacy.run(streamA, 'Public legacy', 1, 'public', '/t/pub.jpg');
-        row = db.getRecentStreams(10).find((s) => s.id === streamA);
-        assert.ok(row.vod_id, 'a public VOD is still attached');
+        const lookups = require('../server/media-proxy/lookups');
+        const saved = media.listVods;
+        const asked = [];
+        let answer = [
+            { id: 101, stream_id: streamA, user_id: 3, visibility: 'private', is_public: 0, thumbnail_url: 'https://media.test/t/secret.jpg', duration_seconds: 9 },
+            { id: 103, stream_id: streamA, user_id: 3, visibility: 'unlisted', is_public: 0, thumbnail_url: 'https://media.test/t/unlisted.jpg', duration_seconds: 9 },
+            { id: 102, stream_id: streamA, user_id: 3, is_public: 0, thumbnail_url: 'https://media.test/t/legacy.jpg' },   // legacy private
+        ];
+        media.listVods = async (q) => { asked.push(q); return { vods: answer }; };
+        try {
+            let row = (await lookups.attachPublicVods(db.getRecentStreams(10))).find((s) => s.id === streamA);
+            assert.ok(row, 'the stream is listed');
+            assert.strictEqual(row.vod_id, null, 'no private or unlisted VOD id');
+            assert.strictEqual(row.vod_thumbnail_url, null, 'no private or unlisted VOD thumbnail');
+            assert.ok(asked.length && asked.every((q) => !q.include_private), 'never asks Media for hidden VODs');
+            lookups._resetCaches();
+            answer = [{ id: 100, stream_id: streamA, user_id: 3, visibility: 'public', is_public: 1, thumbnail_url: 'https://media.test/t/pub.jpg', duration_seconds: 42 }];
+            row = (await lookups.attachPublicVods(db.getRecentStreams(10))).find((s) => s.id === streamA);
+            assert.strictEqual(row.vod_id, 100, 'a public VOD is attached');
+            assert.strictEqual(row.vod_is_public, 1);
+            assert.strictEqual(row.vod_thumbnail_url, 'https://media.test/t/pub.jpg');
+            assert.strictEqual(row.vod_duration, 42);
+        } finally { media.listVods = saved; lookups._resetCaches(); }
     });
 
     server.close();

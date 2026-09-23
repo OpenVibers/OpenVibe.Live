@@ -155,20 +155,9 @@ function heroSlogans() {
     };
 }
 
-// ── Media-side counters (VODs/clips/pastes live in OpenVibe.Media now — the
-// local tables are empty post-split, so hero counts come from Media, cached).
-let _mediaStats = { at: 0, data: null };
-const MEDIA_STATS_TTL_MS = 5 * 60_000;
-async function _mediaStatsCached() {
-    if (Date.now() - _mediaStats.at < MEDIA_STATS_TTL_MS) return _mediaStats.data;
-    try {
-        _mediaStats = { at: Date.now(), data: await media.request('GET', '/stats') };
-    } catch (err) {
-        console.warn('[Home] Media stats unavailable:', err.message);
-        _mediaStats.at = Date.now() - MEDIA_STATS_TTL_MS + 30_000;   // retry in 30s
-    }
-    return _mediaStats.data;
-}
+// ── Archive counters (VODs, clips, hours from OpenVibe.Media; pastes from OpenVibe.Community):
+// server/media-proxy/lookups.js fetches and caches them. Live's own frozen tables are not counted.
+const lookups = require('../media-proxy/lookups');
 
 // GET /api/home/stats/series/:metric?days=30 — daily values behind a hero stat.
 // VODs, clips, pastes and archived hours live in OpenVibe.Media; the local tables stopped at the split.
@@ -205,19 +194,10 @@ async function heroStats(timing) {
     // Media stats and the network coin ledger are independent upstream calls; they used to be awaited
     // one after the other, so a cold cache paid for both in sequence.
     a = Date.now();
-    const [m, c] = await Promise.all([
-        _mediaStatsCached().then(v => { mark('media_stats', a); return v; }),
+    const [, c] = await Promise.all([
+        lookups.withArchiveStats(stats).then(v => { mark('media_stats', a); return v; }),
         require('../monetization/wallet-client').networkCoinStats().then(v => { mark('coins', a); return v; }).catch(() => null),
     ]);
-    if (m) {
-        stats.vods = m.vods;
-        stats.clips = m.clips;
-        stats.pastes = m.pastes;
-        stats.pasteImages = m.pasteImages;
-        stats.pasteText = m.pasteText;
-        stats.streamHours = Math.round((m.durationSeconds || 0) / 3600);
-        stats.recent = { ...stats.recent, vods: m.recent?.vods, clips: m.recent?.clips, hours: m.recent?.hours };
-    }
     // Site-wide OpenCoins sit next to channel points on the board: one is the network-wide
     // currency people earn everywhere, the other is per-channel. The ledger lives on
     // OpenVibe.Network, so this is a cached internal call that is allowed to come back empty.

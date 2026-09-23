@@ -293,11 +293,11 @@ function initDb() {
         }
     } catch (e) { console.warn('[DB] ai-overview column migration:', e.message); }
 
-    // Transcript job-state recovery — on the tables that actually hold it. The older
-    // recovery loop above targets the legacy local `vods`/`clips` tables, which moved to
-    // OpenVibe.Media; it throws on the first PRAGMA and silently does nothing, which is
-    // why rows killed mid-flight by a deploy stayed 'processing' forever and 'failed' was
-    // permanent. Also adds resumable-progress columns (finished windows survive restarts).
+    // Transcript job-state recovery — on the tables that actually hold it. An older recovery
+    // loop targeted the legacy local `vods`/`clips` tables (which moved to OpenVibe.Media), so
+    // rows killed mid-flight by a deploy stayed 'processing' forever and 'failed' was
+    // permanent; that loop is gone. Also adds resumable-progress columns (finished windows
+    // survive restarts).
     try {
         for (const t of ['vod_ai_state', 'clip_ai_state']) {
             const cols = database.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
@@ -1454,8 +1454,7 @@ function initDb() {
     try {
         for (const [t, col, scol] of [
             ['streams', 'ai_overview', 'ai_overview_short'],
-            ['vods', 'ai_overview', 'ai_overview_short'],
-            ['clips', 'ai_overview', 'ai_overview_short'],
+            // (vods/clips are frozen: their overviews live in vod_ai_state/clip_ai_state.)
             ['streamer_overviews', 'overview', 'overview_short'],
         ]) {
             const cols = database.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
@@ -1501,43 +1500,16 @@ function initDb() {
     // Timestamped transcript segments (JSON) — contextual data for the AI system +
     // clickable timestamps in the VOD/clip transcript UI.
     try {
-        for (const [t, col] of [['vods', 'ai_transcript_json'], ['clips', 'ai_transcript_json'], ['stream_memories', 'transcript_json']]) {
+        for (const [t, col] of [['stream_memories', 'transcript_json']]) {   // VOD/clip transcripts: vod_ai_state/clip_ai_state
             const cols = database.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
             if (!cols.includes(col)) database.exec(`ALTER TABLE ${t} ADD COLUMN ${col} TEXT`);
         }
     } catch (e) { console.warn('[DB] transcript-json migration:', e.message); }
 
-    // Transcription reliability: real job-state so an interrupted or failed run is
-    // RETRIED (with a bounded attempt counter) instead of being poisoned to
-    // "permanently silent". transcript_status: NULL/'pending'/'retry' = needs work;
-    // 'processing' = in flight; 'done' = has speech; 'empty' = ran clean, no speech
-    // (terminal); 'failed' = exhausted retries (terminal).
-    try {
-        for (const t of ['vods', 'clips']) {
-            const cols = database.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
-            if (!cols.includes('transcript_status')) database.exec(`ALTER TABLE ${t} ADD COLUMN transcript_status TEXT`);
-            if (!cols.includes('transcript_attempts')) database.exec(`ALTER TABLE ${t} ADD COLUMN transcript_attempts INTEGER DEFAULT 0`);
-            if (!cols.includes('transcript_error')) database.exec(`ALTER TABLE ${t} ADD COLUMN transcript_error TEXT`);
-            // Retry backoff: earliest time a 'retry' row may be attempted again, so a
-            // persistently-unreadable source doesn't burn all its attempts in minutes.
-            if (!cols.includes('transcript_next_at')) database.exec(`ALTER TABLE ${t} ADD COLUMN transcript_next_at DATETIME`);
-            // Seed status from the legacy sentinels so the new queue is consistent:
-            database.exec(`UPDATE ${t} SET transcript_status='done'
-                WHERE transcript_status IS NULL AND ai_transcript IS NOT NULL AND TRIM(ai_transcript) != ''`);
-            // Recover RECENTLY-poisoned items (the abruptly-interrupted VODs the user hit):
-            // clear the ' ' poison so they re-transcribe with the hardened, retrying pipeline.
-            database.exec(`UPDATE ${t} SET transcript_status=NULL, ai_transcript=NULL, ai_transcript_json=NULL
-                WHERE transcript_status IS NULL AND ai_transcript = ' ' AND created_at >= datetime('now','-60 days')`);
-            // Older poisoned items: assume genuinely silent (terminal) so we don't churn the whole archive.
-            database.exec(`UPDATE ${t} SET transcript_status='empty' WHERE transcript_status IS NULL AND ai_transcript = ' '`);
-            // (Legacy local tables — see the vod_ai_state/clip_ai_state recovery below.)
-            database.exec(`UPDATE ${t} SET transcript_status=NULL, transcript_next_at=NULL WHERE transcript_status='processing'`);
-            // Give previously-'failed' rows a fresh chance after a deploy — transient issues
-            // (whisper temporarily missing, storage hiccup, a bad build) shouldn't be permanent.
-            // Reset the attempt counter so the bounded retry ladder starts over.
-            database.exec(`UPDATE ${t} SET transcript_status='retry', transcript_attempts=0, transcript_next_at=NULL WHERE transcript_status='failed'`);
-        }
-    } catch (e) { console.warn('[DB] transcript-status migration:', e.message); }
+    // Transcription job-state (transcript_status/attempts/next_at) lives in vod_ai_state and
+    // clip_ai_state, whose recovery runs near the top of initDb(). This block used to add the same
+    // columns to the frozen legacy vods/clips tables and rewrite their rows on every boot; it is
+    // gone because nothing may write those tables (register C-73).
 
     // Donation goals: optional media (image/video → optimized webm/webp), a 1-hour
     // "reached" celebration window (reached_at), and explicit ordering.
@@ -2187,11 +2159,7 @@ function initDb() {
         // Chat history: filter by channel_user_id / stream_id, ORDER BY timestamp DESC.
         database.exec('CREATE INDEX IF NOT EXISTS idx_chat_channel_user_ts ON chat_messages(channel_user_id, timestamp)');
         database.exec('CREATE INDEX IF NOT EXISTS idx_chat_stream_ts ON chat_messages(stream_id, timestamp)');
-        // VOD/clip listings: filter by owner + visibility, ORDER BY created_at / view_count.
-        database.exec('CREATE INDEX IF NOT EXISTS idx_vods_user_created ON vods(user_id, is_public, created_at)');
-        database.exec('CREATE INDEX IF NOT EXISTS idx_vods_public_created ON vods(is_public, created_at)');
-        database.exec('CREATE INDEX IF NOT EXISTS idx_vods_stream_recording ON vods(stream_id, is_recording)');
-        database.exec('CREATE INDEX IF NOT EXISTS idx_clips_user_created ON clips(user_id, is_public, created_at)');
+        // (The VOD/clip listing indexes went with the listings: VODs and clips are listed by OpenVibe.Media.)
     } catch (e) { console.warn('[DB] performance index migration:', e.message); }
 
     // Second pass of hot-path indexes, found by tracing what the home page and the always-on
@@ -2218,9 +2186,6 @@ function initDb() {
         'CREATE INDEX IF NOT EXISTS idx_anon_ip_created ON anon_ip_mappings(created_at)',
         'CREATE INDEX IF NOT EXISTS idx_goals_active ON donation_goals(is_active)',
         // idx_arena_moments_said: migration 003 (its table is created later, by the arena job).
-        // Boot-time transcript backfill sweeps.
-        'CREATE INDEX IF NOT EXISTS idx_vods_transcript ON vods(transcript_status)',
-        'CREATE INDEX IF NOT EXISTS idx_clips_transcript ON clips(transcript_status)',
         'CREATE INDEX IF NOT EXISTS idx_viewer_samples_at ON viewer_samples(sampled_at)',
         // getRecentlyOnlineStreamers() correlates streams by managed_stream_id inside a
         // json_group_array, and there was no index on that column at all — so the subquery scanned
@@ -2824,11 +2789,11 @@ function getLiveStreams() {
     `);
 }
 
+// The latest ended session per streamer. The VOD fields (vod_id, vod_thumbnail_url, …) come from
+// OpenVibe.Media: media-proxy/lookups.js attachPublicVods.
 function getRecentStreams(limit = 20) {
     return all(`
-        SELECT s.*, COALESCE(NULLIF(s.ai_category, ''), s.category) AS category, s.category AS chosen_category, u.username, u.display_name, u.avatar_url, u.profile_color,
-               v.id AS vod_id, v.is_public AS vod_is_public, v.thumbnail_url AS vod_thumbnail_url,
-               v.duration_seconds AS vod_duration
+        SELECT s.*, COALESCE(NULLIF(s.ai_category, ''), s.category) AS category, s.category AS chosen_category, u.username, u.display_name, u.avatar_url, u.profile_color
         FROM streams s
         JOIN (
             SELECT user_id, MAX(ended_at) AS latest_ended_at
@@ -2837,9 +2802,6 @@ function getRecentStreams(limit = 20) {
             GROUP BY user_id
         ) latest ON latest.user_id = s.user_id AND latest.latest_ended_at = s.ended_at
         JOIN users u ON s.user_id = u.id
-        LEFT JOIN vods v ON v.stream_id = s.id AND COALESCE(v.is_recording, 0) = 0
-            -- a public list: only a public VOD's id and thumbnail ride along (never a private or unlisted one)
-            AND COALESCE(v.visibility, CASE WHEN v.is_public = 1 THEN 'public' ELSE 'private' END) = 'public'
         WHERE s.is_live = 0 AND s.ended_at IS NOT NULL
         ORDER BY s.ended_at DESC
         LIMIT ?
@@ -2922,14 +2884,14 @@ function getStreamsByUserId(userId, limit = 50) {
     `, [userId, limit]);
 }
 
+// A slot's past sessions. Each one's VOD (vod_id, vod_file_path) comes from OpenVibe.Media:
+// media-proxy/lookups.js vodsForManagedStream.
 function getStreamHistoryByManagedStream(managedStreamId, userId, limit = 20) {
     return all(`
         SELECT s.id, s.title, s.started_at, s.ended_at, s.is_live,
                s.peak_viewers, s.viewer_count, s.duration_seconds,
-               s.protocol, s.category,
-               v.id AS vod_id, v.file_path AS vod_file_path
+               s.protocol, s.category
         FROM streams s
-        LEFT JOIN vods v ON v.stream_id = s.id
         WHERE s.managed_stream_id = ? AND s.user_id = ?
         ORDER BY s.started_at DESC
         LIMIT ?
@@ -3202,9 +3164,6 @@ function bumpClipTranscriptAttempt(id) {
     const r = get('SELECT transcript_attempts AS a FROM clip_ai_state WHERE clip_id = ?', [id]);
     return r ? r.a : 0;
 }
-function getPastesNeedingAnalysis(limit = 5) {
-    return all("SELECT * FROM pastes WHERE ai_summary IS NULL AND type IN ('paste','screenshot') ORDER BY created_at DESC LIMIT ?", [limit]);
-}
 // deleteAiMomentTextPastes() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
 // ── One-time cleanup: earlier builds stored raw (often malformed) model JSON like
 // `{"description":"…","tags":[…]}` directly into text columns. Extract just the
@@ -3432,35 +3391,6 @@ function getStreamTranscriptSegments(streamId) {
     return out;
 }
 
-// ── AI "crazy moments" v2: rank whole VODs by their AI overview, then mine the winner's
-// timeline + transcript for its single best moment. ─────────────────────────────────────
-
-// Every public, finished VOD that has an AI overview or a timeline — ordered by an objective
-// popularity prior (views, clips taken, peak viewers) so the AI ranker sees the strongest first
-// and cost stays bounded when there are many VODs.
-function getVodsForMomentRanking(limit = 120) {
-    try {
-        return all(`
-            SELECT v.id AS vod_id, v.stream_id, v.user_id, u.username, v.title,
-                   COALESCE(v.ai_overview, '') AS ai_overview,
-                   COALESCE(v.ai_overview_short, '') AS ai_overview_short,
-                   COALESCE(v.view_count, 0) AS view_count,
-                   COALESCE(NULLIF(v.duration_seconds, 0), v.probe_duration_seconds, 0) AS duration,
-                   COALESCE(s.peak_viewers, 0) AS peak_viewers, v.created_at,
-                   (SELECT COUNT(*) FROM clips c WHERE c.vod_id = v.id OR c.stream_id = v.stream_id) AS clip_count,
-                   (SELECT COUNT(*) FROM stream_memories m WHERE m.stream_id = v.stream_id) AS memory_count
-            FROM vods v
-            JOIN users u ON u.id = v.user_id
-            LEFT JOIN streams s ON s.id = v.stream_id
-            WHERE v.is_public = 1 AND COALESCE(v.is_recording, 0) = 0 AND COALESCE(v.clips_only, 0) = 0
-              AND ( (v.ai_overview IS NOT NULL AND v.ai_overview <> '')
-                    OR EXISTS (SELECT 1 FROM stream_memories m WHERE m.stream_id = v.stream_id) )
-            ORDER BY COALESCE(v.view_count, 0) DESC, clip_count DESC, COALESCE(s.peak_viewers, 0) DESC, v.created_at DESC
-            LIMIT ?
-        `, [Math.max(1, limit)]) || [];
-    } catch { return []; }
-}
-
 // getRecentAutoClips() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
 
 // countAutoClipsSince() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
@@ -3493,36 +3423,6 @@ function getRecentChatText(streamId, sinceSec = 120, limit = 40) {
     } catch { return []; }
 }
 
-// Eligible finished VODs that do NOT yet have an auto-generated clip — the work-list for the
-// historical auto-clip backfill. Requires a timeline (memories) so Stage-2 can find a moment.
-// Best-first by views so the most-watched history gets clipped first. Idempotent.
-function getVodsWithoutAutoClip(limit = 20) {
-    try {
-        return all(`
-            SELECT v.id AS vod_id, v.stream_id, v.user_id, u.username, v.title,
-                   COALESCE(NULLIF(v.duration_seconds, 0), v.probe_duration_seconds, 0) AS duration,
-                   COALESCE(v.ai_overview, '') AS ai_overview, COALESCE(v.ai_overview_short, '') AS ai_overview_short,
-                   COALESCE(v.view_count, 0) AS view_count
-            FROM vods v JOIN users u ON u.id = v.user_id
-            WHERE v.is_public = 1 AND COALESCE(v.is_recording, 0) = 0 AND COALESCE(v.clips_only, 0) = 0
-              AND EXISTS (SELECT 1 FROM stream_memories m WHERE m.stream_id = v.stream_id)
-              AND NOT EXISTS (SELECT 1 FROM clips c WHERE (c.vod_id = v.id OR c.stream_id = v.stream_id)
-                              AND COALESCE(c.auto_generated, 0) = 1)
-            ORDER BY COALESCE(v.view_count, 0) DESC, v.created_at DESC
-            LIMIT ?
-        `, [Math.max(1, limit)]) || [];
-    } catch { return []; }
-}
-
-// Timestamps (seconds into the VOD) that viewers CLIPPED — the strongest "this was a moment"
-// signal we have.
-function getClipStartTimesForStream(streamId, vodId) {
-    try {
-        return (all(`SELECT start_time FROM clips WHERE (stream_id = ? OR vod_id = ?) AND start_time > 0 ORDER BY start_time`,
-            [streamId, vodId || -1]) || []).map(r => Math.floor(r.start_time));
-    } catch { return []; }
-}
-
 // Chat-message spikes: the busiest time-buckets of a stream (offset seconds → message count),
 // a proxy for "everyone reacted here". Offsets are relative to the stream's start.
 function getChatSpikeOffsets(streamId, bucketSec = 30, topN = 8) {
@@ -3538,41 +3438,6 @@ function getChatSpikeOffsets(streamId, bucketSec = 30, topN = 8) {
     } catch { return []; }
 }
 
-// Candidate memories for the daily AI "crazy moments" picker: recent, substantive, and from
-// a stream that has a public VOD (so we can link + extract the moment frame).
-function getAiMomentCandidates(days = 30, limit = 150) {
-    try {
-        // Only mine FINISHED streams (real VOD history) — never the currently-live
-        // stream, so we don't spam the pastes tab with live frames. The picked VOD is the
-        // recording of that same session, so offset_seconds lines up with its timeline;
-        // vod_duration lets the caller drop offsets that fall past the VOD's end.
-        return all(`
-            SELECT m.id AS memory_id, m.stream_id, m.offset_seconds, m.description, m.tags,
-                   m.thumbnail_url, m.user_id, s.title AS stream_title, s.peak_viewers, u.username,
-                   (SELECT v.id FROM vods v WHERE v.stream_id = m.stream_id
-                      AND COALESCE(v.is_public, 1) = 1 AND COALESCE(v.is_recording, 0) = 0
-                      ORDER BY v.id DESC LIMIT 1) AS vod_id,
-                   (SELECT COALESCE(NULLIF(v.duration_seconds, 0), v.probe_duration_seconds, 0)
-                      FROM vods v WHERE v.stream_id = m.stream_id
-                      AND COALESCE(v.is_recording, 0) = 0 ORDER BY v.id DESC LIMIT 1) AS vod_duration,
-                   (SELECT COALESCE(v.view_count, 0) FROM vods v WHERE v.stream_id = m.stream_id
-                      AND COALESCE(v.is_recording, 0) = 0 ORDER BY v.id DESC LIMIT 1) AS vod_views
-            FROM stream_memories m
-            JOIN users u ON u.id = m.user_id
-            JOIN streams s ON s.id = m.stream_id
-            WHERE m.description IS NOT NULL AND length(m.description) > 45
-              AND m.created_at >= datetime('now', ?)
-              AND COALESCE(s.is_live, 0) = 0 AND s.ended_at IS NOT NULL
-            ORDER BY COALESCE(s.peak_viewers, 0) DESC, length(m.description) DESC, m.created_at DESC
-            LIMIT ?
-        `, [`-${Math.max(1, days)} days`, limit]) || [];
-    } catch { return []; }
-}
-// A user's pastes including AI fields (the explorer + overview want ai_summary/ai_tags).
-function getUserPastesForAi(userId, limit = 30) {
-    return all(`SELECT id, slug, type, title, ai_summary, ai_tags, ai_analyzed_at, created_at
-                FROM pastes WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`, [userId, limit]);
-}
 function upsertStreamerOverview(userId, { overview, model = null, sources = null }) {
     return run(`INSERT INTO streamer_overviews (user_id, overview, overview_short, model, sources, generated_at)
                 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -3588,7 +3453,8 @@ function getStreamerOverview(userId) {
 // Assemble the full AI timeline for a streamer from already-generated AI data (no LLM cost):
 // the whole-streamer overview + every session that has an AI overview or captured memories,
 // newest first, each with its VOD (for timestamped links) and its ordered memory moments.
-function assembleStreamerAiTimeline(userId) {
+// vodIdByStream: Map(stream id → public VOD id) from OpenVibe.Media (lookups.publicVodIdsByStream).
+function assembleStreamerAiTimeline(userId, vodIdByStream = null) {
     let overview = null;
     try { overview = get('SELECT overview, overview_short, generated_at FROM streamer_overviews WHERE user_id = ?', [userId]) || null; } catch { /* */ }
 
@@ -3597,8 +3463,6 @@ function assembleStreamerAiTimeline(userId) {
         const streams = all(`
             SELECT s.id, s.title, s.ai_title, s.started_at, s.ended_at, s.created_at, s.duration_seconds,
                    s.ai_overview, s.ai_overview_short, s.thumbnail_url, s.peak_viewers, s.category,
-                   (SELECT v.id FROM vods v WHERE v.stream_id = s.id AND COALESCE(v.is_recording, 0) = 0
-                      ORDER BY COALESCE(v.is_public, 1) DESC, v.id DESC LIMIT 1) AS vod_id,
                    (SELECT COUNT(*) FROM stream_memories m WHERE m.stream_id = s.id) AS memory_count
             FROM streams s
             WHERE s.user_id = ?
@@ -3628,7 +3492,8 @@ function assembleStreamerAiTimeline(userId) {
                 }
                 delete m.transcript_json;
             }
-            return { ...s, memories, word_count: wordCount, has_transcript: hasTranscript };
+            const vodId = vodIdByStream && vodIdByStream.get(Number(s.id));
+            return { ...s, vod_id: vodId || null, memories, word_count: wordCount, has_transcript: hasTranscript };
         });
     } catch { /* */ }
 
@@ -3657,8 +3522,10 @@ function clearAiTimelineCache(userId) {
     try { return run('DELETE FROM ai_timeline_cache WHERE user_id = ?', [userId]); } catch { return null; }
 }
 
-// Lazy, TTL-cached accessor: re-assemble only when the tab is viewed AND the cache is stale.
-function getStreamerAiTimeline(userId, ttlMs = 15 * 60 * 1000) {
+// Lazy, TTL-cached timeline: re-assemble only when the tab is viewed AND the cache is stale.
+// The route (ai/chat-ai-routes.js) reads the cache first, asks Media for the VOD ids only on a
+// miss, then builds; `store: false` skips caching a timeline built while Media was unreachable.
+function readStreamerAiTimelineCache(userId, ttlMs = 15 * 60 * 1000) {
     try {
         const row = get('SELECT payload, generated_at FROM ai_timeline_cache WHERE user_id = ?', [userId]);
         if (row && row.payload) {
@@ -3668,12 +3535,17 @@ function getStreamerAiTimeline(userId, ttlMs = 15 * 60 * 1000) {
             }
         }
     } catch { /* rebuild */ }
-    const fresh = assembleStreamerAiTimeline(userId);
-    try {
-        run(`INSERT INTO ai_timeline_cache (user_id, payload, generated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-             ON CONFLICT(user_id) DO UPDATE SET payload = excluded.payload, generated_at = CURRENT_TIMESTAMP`,
-            [userId, JSON.stringify(fresh)]);
-    } catch { /* cache is best-effort */ }
+    return null;
+}
+function buildStreamerAiTimeline(userId, vodIdByStream = null, { store = true } = {}) {
+    const fresh = assembleStreamerAiTimeline(userId, vodIdByStream);
+    if (store) {
+        try {
+            run(`INSERT INTO ai_timeline_cache (user_id, payload, generated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+                 ON CONFLICT(user_id) DO UPDATE SET payload = excluded.payload, generated_at = CURRENT_TIMESTAMP`,
+                [userId, JSON.stringify(fresh)]);
+        } catch { /* cache is best-effort */ }
+    }
     return { ...fresh, cached: false };
 }
 function getAllStreamerOverviews(limit = 100) {
@@ -3683,17 +3555,15 @@ function getAllStreamerOverviews(limit = 100) {
 }
 // Streamers whose aggregate AI overview is DUE for (re)generation. A "decent"
 // overview (>= decentLen chars) refreshes at most every 12h; a sparse/missing one
-// retries hourly until it fills out. Only streamers with some signal (memories or
-// VODs) are considered, so we never spend calls on users with nothing to summarize.
+// retries hourly until it fills out. Only streamers with stream memories are considered,
+// so we never spend calls on users with nothing to summarize. (VODs used to count too,
+// through Live's frozen vods table, whose rows moved to OpenVibe.Media at the split.)
 function getStreamersNeedingOverview({ decentLen = 220, limit = 4 } = {}) {
     return all(`
         SELECT u.id AS user_id
         FROM users u
         LEFT JOIN streamer_overviews o ON o.user_id = u.id
-        WHERE (
-                EXISTS (SELECT 1 FROM stream_memories m WHERE m.user_id = u.id)
-             OR EXISTS (SELECT 1 FROM vods v WHERE v.user_id = u.id)
-              )
+        WHERE EXISTS (SELECT 1 FROM stream_memories m WHERE m.user_id = u.id)
           AND (
                 o.user_id IS NULL
              OR (LENGTH(TRIM(COALESCE(o.overview,''))) >= ? AND o.generated_at <= datetime('now','-12 hours'))
@@ -3925,7 +3795,8 @@ function getRecentlyOnlineStreamers(limit = 20, offset = 0) {
                        'title', ms2.title,
                        'protocol', ms2.protocol,
                        'last_live_at', (SELECT MAX(s2.ended_at) FROM streams s2 WHERE s2.managed_stream_id = ms2.id AND s2.ended_at IS NOT NULL),
-                       'vod_thumbnail', (SELECT v.thumbnail_url FROM vods v JOIN streams s3 ON v.stream_id = s3.id WHERE s3.managed_stream_id = ms2.id AND COALESCE(v.is_recording, 0) = 0 AND v.is_public = 1 ORDER BY v.created_at DESC LIMIT 1)
+                       -- filled by the route from OpenVibe.Media (GET /vods/latest-thumbs)
+                       'vod_thumbnail', NULL
                    ))
                    FROM managed_streams ms2
                    WHERE ms2.user_id = u.id
@@ -3946,28 +3817,6 @@ function countRecentlyOnlineStreamers() {
         SELECT COUNT(DISTINCT user_id) AS count
         FROM streams
         WHERE is_live = 0 AND ended_at IS NOT NULL
-    `)?.count || 0;
-}
-
-function getRecentVods(limit = 12, offset = 0) {
-    return all(`
-        SELECT v.*, u.username, u.display_name, u.avatar_url, u.profile_color,
-               s.protocol AS stream_protocol, s.peak_viewers AS stream_peak_viewers,
-               ms.slug AS managed_stream_slug, ms.id AS managed_stream_id
-        FROM vods v
-        JOIN users u ON v.user_id = u.id
-        LEFT JOIN streams s ON v.stream_id = s.id
-        LEFT JOIN managed_streams ms ON s.managed_stream_id = ms.id
-        WHERE v.is_public = 1 AND COALESCE(v.is_recording, 0) = 0
-        ORDER BY v.created_at DESC
-        LIMIT ? OFFSET ?
-    `, [limit, offset]);
-}
-
-function countRecentVods() {
-    return get(`
-        SELECT COUNT(*) AS count FROM vods
-        WHERE is_public = 1 AND COALESCE(is_recording, 0) = 0
     `)?.count || 0;
 }
 
@@ -4107,9 +3956,7 @@ const HOME_SERIES = {
     active:      { table: 'chat_messages',     ts: 'timestamp',   agg: "COUNT(DISTINCT COALESCE('u' || user_id, 'a' || anon_id, 'r' || source_platform || '|' || username))", where: 'COALESCE(is_deleted, 0) = 0' },
     sessions:    { table: 'streams',           ts: 'created_at',  agg: 'COUNT(*)' },
     streamers:   { table: 'streams',           ts: 'created_at',  agg: 'COUNT(DISTINCT user_id)' },
-    vods:        { table: 'vods',              ts: 'created_at',  agg: 'COUNT(*)',              where: 'is_public = 1 AND COALESCE(is_recording, 0) = 0' },
-    clips:       { table: 'clips',             ts: 'created_at',  agg: 'COUNT(*)',              where: 'COALESCE(is_public, 1) = 1' },
-    hours:       { table: 'vods',              ts: 'created_at',  agg: 'COALESCE(SUM(duration_seconds), 0) / 3600.0', where: 'COALESCE(is_recording, 0) = 0' },
+    // vods, clips, hours and pastes are OpenVibe.Media's series (home/routes.js MEDIA_SERIES).
     hoursWatched:{ table: 'watch_time',        ts: 'created_at',  agg: 'COALESCE(SUM(minutes_watched), 0) / 60.0' },
     aiMoments:   { table: 'stream_memories',   ts: 'created_at',  agg: 'COUNT(*)' },
     vibes:       { table: 'transactions',      ts: 'created_at',  agg: 'COALESCE(SUM(amount), 0)', where: "type = 'donation'", vibesReset: true },
@@ -4214,8 +4061,6 @@ function _computeHomeStats() {
         const prev = c(`SELECT COUNT(*) AS count FROM ${table} WHERE ${col} >= datetime('now', '-14 days') AND ${col} < datetime('now', '-7 days')${extra ? ' AND ' + extra : ''}`);
         return { d: q('-1 day'), w: q('-7 days'), m: q('-30 days'), pw: prev };
     };
-    const hoursSince = (w) => Math.round(c(`SELECT COALESCE(SUM(duration_seconds), 0) AS count FROM vods WHERE COALESCE(is_recording, 0) = 0 AND created_at >= datetime('now', ?)`, [w]) / 3600);
-    const hoursPrevWeek = () => Math.round(c(`SELECT COALESCE(SUM(duration_seconds), 0) AS count FROM vods WHERE COALESCE(is_recording, 0) = 0 AND created_at >= datetime('now', '-14 days') AND created_at < datetime('now', '-7 days')`) / 3600);
     // Rolling day/week/month SUMS (for value metrics like Vibes tipped).
     const winSum = (table, col, tsCol, extra = '') => {
         const q = (w) => c(`SELECT COALESCE(SUM(${col}), 0) AS count FROM ${table} WHERE ${tsCol} >= datetime('now', ?)${extra ? ' AND ' + extra : ''}`, [w]);
@@ -4250,8 +4095,10 @@ function _computeHomeStats() {
         // Donation goals: currently running + ever reached.
         goalsActive: c(`SELECT COUNT(*) AS count FROM donation_goals WHERE is_active = 1`),
         goalsReached: c(`SELECT COUNT(*) AS count FROM donation_goals WHERE reached_at IS NOT NULL OR current_amount >= target_amount`),
-        vods: c(`SELECT COUNT(*) AS count FROM vods WHERE is_public = 1 AND COALESCE(is_recording, 0) = 0`),
-        clips: c(`SELECT COUNT(*) AS count FROM clips WHERE COALESCE(is_public, 1) = 1`),
+        // VODs, clips, pastes and archived hours are counted by OpenVibe.Media and OpenVibe.Community
+        // (media-proxy/lookups.js withArchiveStats fills these); null until one of them answers.
+        vods: null,
+        clips: null,
         liveSessions: c(`SELECT COUNT(*) AS count FROM streams`),
         streamers: c(`SELECT COUNT(DISTINCT user_id) AS count FROM streams WHERE user_id IS NOT NULL`),
         chatMessages: c(`SELECT COUNT(*) AS count FROM chat_messages`),
@@ -4259,12 +4106,12 @@ function _computeHomeStats() {
         anons: c(`SELECT COUNT(*) AS count FROM anon_ip_mappings`),
         follows: c(`SELECT COUNT(*) AS count FROM follows`),
         emotes: c(`SELECT COUNT(*) AS count FROM emotes`),
-        pastes: c(`SELECT COUNT(*) AS count FROM pastes`),
+        pastes: null,
         aiMemories: c(`SELECT COUNT(*) AS count FROM stream_memories`),
-        pasteImages: c(`SELECT COUNT(*) AS count FROM pastes WHERE type = 'screenshot'`),
-        pasteText: c(`SELECT COUNT(*) AS count FROM pastes WHERE COALESCE(type, 'paste') <> 'screenshot'`),
-        // Total hours of video the platform has archived (VODs, excluding in-progress recordings).
-        streamHours: Math.round(c(`SELECT COALESCE(SUM(duration_seconds), 0) AS count FROM vods WHERE COALESCE(is_recording, 0) = 0`) / 3600),
+        pasteImages: null,
+        pasteText: null,
+        // Total hours of video the platform has archived (OpenVibe.Media's figure).
+        streamHours: null,
         // Active chatters this week across EVERYONE — registered users, anons, and relay chatters.
         weeklyActive: c(`SELECT COUNT(*) AS count FROM (
                             SELECT DISTINCT 'u' || user_id AS id FROM chat_messages
@@ -4298,11 +4145,11 @@ function _computeHomeStats() {
             users: winCount('users', 'created_at', 'COALESCE(is_banned, 0) = 0'),
             anons: winCount('anon_ip_mappings', 'created_at'),
             sessions: winCount('streams', 'created_at'),
-            vods: winCount('vods', 'created_at', 'is_public = 1 AND COALESCE(is_recording, 0) = 0'),
-            clips: winCount('clips', 'created_at', 'COALESCE(is_public, 1) = 1'),
+            vods: null,     // OpenVibe.Media (withArchiveStats)
+            clips: null,
             aiMoments: winCount('stream_memories', 'created_at'),
             messages: winCount('chat_messages', 'timestamp', 'COALESCE(is_deleted, 0) = 0'),
-            hours: { d: hoursSince('-1 day'), w: hoursSince('-7 days'), m: hoursSince('-30 days'), pw: hoursPrevWeek() },
+            hours: null,    // OpenVibe.Media
             streamers: streamersWin(),
             emotes: winCount('emotes', 'created_at'),
             goals: winCount('donation_goals', 'created_at'),
@@ -4320,153 +4167,6 @@ function _computeHomeStats() {
             follows: winCount('follows', 'created_at'),
         },
     };
-}
-
-function getVodsByUserFiltered(userId, { includePrivate = false, managedStreamId = null, orderBy = 'newest', limit = 12, offset = 0 } = {}) {
-    // COALESCE(v.clips_only,0)=0 hides ephemeral clips-only recordings (they're deleted on
-    // stream end; this guards against a rare orphan surviving a crash before cleanup).
-    const conditions = ['v.user_id = ?', 'COALESCE(v.is_recording, 0) = 0', 'COALESCE(v.clips_only, 0) = 0'];
-    const params = [userId];
-
-    if (!includePrivate) {
-        conditions.push('v.is_public = 1');
-    }
-    if (managedStreamId) {
-        conditions.push('s.managed_stream_id = ?');
-        params.push(managedStreamId);
-    }
-
-    const orderClauses = {
-        newest: 'v.created_at DESC',
-        oldest: 'v.created_at ASC',
-        views: 'v.view_count DESC, v.created_at DESC',
-        peak_viewers: 's.peak_viewers DESC, v.created_at DESC',
-    };
-    const order = orderClauses[orderBy] || orderClauses.newest;
-
-    params.push(limit, offset);
-    return all(`
-        SELECT v.*, u.username, u.display_name, u.avatar_url,
-               s.protocol AS stream_protocol, s.peak_viewers AS stream_peak_viewers,
-               ms.slug AS managed_stream_slug, ms.id AS ms_id, ms.title AS ms_title
-        FROM vods v
-        JOIN users u ON v.user_id = u.id
-        LEFT JOIN streams s ON v.stream_id = s.id
-        LEFT JOIN managed_streams ms ON s.managed_stream_id = ms.id
-        WHERE ${conditions.join(' AND ')}
-        ORDER BY ${order}
-        LIMIT ? OFFSET ?
-    `, params);
-}
-
-// Most-popular RECENT VOD/clip for a streamer — highest view_count within the last
-// week, else the last month, else all-time. Powers the offline-screen "explore" cards.
-function getPopularVodForUser(userId) {
-    const base = `SELECT v.*, u.username, u.display_name, u.avatar_url, u.profile_color
-                  FROM vods v JOIN users u ON v.user_id = u.id
-                  WHERE v.user_id = ? AND v.is_public = 1 AND COALESCE(v.is_recording,0)=0`;
-    for (const win of ['-7 days', '-1 month', null]) {
-        const sql = base + (win ? ` AND v.created_at >= datetime('now', ?)` : '') + ` ORDER BY v.view_count DESC, v.created_at DESC LIMIT 1`;
-        const row = get(sql, win ? [userId, win] : [userId]);
-        if (row) return row;
-    }
-    return null;
-}
-function getPopularClipForUser(userId) {
-    // Clips taken OF this streamer's streams (regardless of who clipped them).
-    const base = `SELECT c.*, su.username, su.display_name, su.avatar_url, su.profile_color
-                  FROM clips c
-                  JOIN streams s ON c.stream_id = s.id
-                  JOIN users su ON s.user_id = su.id
-                  WHERE s.user_id = ? AND c.is_public = 1`;
-    for (const win of ['-7 days', '-1 month', null]) {
-        const sql = base + (win ? ` AND c.created_at >= datetime('now', ?)` : '') + ` ORDER BY c.view_count DESC, c.created_at DESC LIMIT 1`;
-        const row = get(sql, win ? [userId, win] : [userId]);
-        if (row) return row;
-    }
-    return null;
-}
-
-// Single most-viewed VOD / clip within a time window (win = "-7 days" | "-1 month" | null=all-time).
-function _topVodForUser(userId, win) {
-    const sql = `SELECT v.*, u.username, u.display_name, u.avatar_url, u.profile_color
-                 FROM vods v JOIN users u ON v.user_id = u.id
-                 WHERE v.user_id = ? AND v.is_public = 1 AND COALESCE(v.is_recording,0)=0 AND COALESCE(v.clips_only,0)=0`
-        + (win ? ` AND v.created_at >= datetime('now', ?)` : '')
-        + ` ORDER BY v.view_count DESC, v.created_at DESC LIMIT 1`;
-    return get(sql, win ? [userId, win] : [userId]) || null;
-}
-function _topClipForUser(userId, win) {
-    const sql = `SELECT c.*, su.username, su.display_name, su.avatar_url, su.profile_color
-                 FROM clips c JOIN streams s ON c.stream_id = s.id JOIN users su ON s.user_id = su.id
-                 WHERE s.user_id = ? AND c.is_public = 1`
-        + (win ? ` AND c.created_at >= datetime('now', ?)` : '')
-        + ` ORDER BY c.view_count DESC, c.created_at DESC LIMIT 1`;
-    return get(sql, win ? [userId, win] : [userId]) || null;
-}
-// Top VOD + top clip for each of week / month / all-time, for the offline-screen cycler.
-function getTopContentRanges(userId) {
-    const out = {};
-    for (const [key, win] of [['week', '-7 days'], ['month', '-1 month'], ['all', null]]) {
-        out[key] = { vod: _topVodForUser(userId, win), clip: _topClipForUser(userId, win) };
-    }
-    return out;
-}
-function countVodsByUserFiltered(userId, { includePrivate = false, managedStreamId = null } = {}) {
-    const conditions = ['v.user_id = ?', 'COALESCE(v.is_recording, 0) = 0', 'COALESCE(v.clips_only, 0) = 0'];
-    const params = [userId];
-    if (!includePrivate) conditions.push('v.is_public = 1');
-    if (managedStreamId) {
-        conditions.push('s.managed_stream_id = ?');
-        params.push(managedStreamId);
-    }
-    return get(`
-        SELECT COUNT(*) AS count
-        FROM vods v
-        LEFT JOIN streams s ON v.stream_id = s.id
-        WHERE ${conditions.join(' AND ')}
-    `, params)?.count || 0;
-}
-
-function getClipsOfUserStreamsPaginated(userId, limit = 12, offset = 0) {
-    return all(`
-        SELECT c.*, u.username AS clip_creator_username, u.display_name AS clip_creator_display_name, u.avatar_url AS clip_creator_avatar,
-               s.title AS stream_title, s.started_at AS stream_started_at, s.protocol AS stream_protocol,
-               su.username AS streamer_username, su.display_name AS streamer_display_name
-        FROM clips c
-        JOIN users u ON c.user_id = u.id
-        JOIN streams s ON c.stream_id = s.id
-        JOIN users su ON s.user_id = su.id
-        WHERE s.user_id = ? AND c.is_public = 1
-        ORDER BY c.created_at DESC
-        LIMIT ? OFFSET ?
-    `, [userId, limit, offset]);
-}
-
-function countClipsOfUserStreams(userId) {
-    return get(`
-        SELECT COUNT(*) AS count
-        FROM clips c
-        JOIN streams s ON c.stream_id = s.id
-        WHERE s.user_id = ? AND c.is_public = 1
-    `, [userId])?.count || 0;
-}
-
-function getClipsByUserPaginated(userId, includePrivate = false, limit = 12, offset = 0) {
-    const publicFilter = includePrivate ? '' : 'AND c.is_public = 1';
-    return all(`
-        SELECT c.*, u.username, u.display_name, u.avatar_url, u.is_owner AS owner_is_owner,
-               s.title AS stream_title, s.started_at AS stream_started_at, s.protocol AS stream_protocol,
-               su.username AS streamer_username, su.display_name AS streamer_display_name, su.avatar_url AS streamer_avatar_url,
-               su.is_owner AS streamer_is_owner
-        FROM clips c
-        JOIN users u ON c.user_id = u.id
-        LEFT JOIN streams s ON c.stream_id = s.id
-        LEFT JOIN users su ON s.user_id = su.id
-        WHERE c.user_id = ? ${publicFilter}
-        ORDER BY c.created_at DESC
-        LIMIT ? OFFSET ?
-    `, [userId, limit, offset]);
 }
 
 // ── Channel helpers ──────────────────────────────────────────
@@ -5357,17 +5057,6 @@ function updateUserAvatar(userId, avatarUrl, pasteId = null) {
 
 // resetAvatarsForPaste() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
 
-// A user's avatar-upload history: the screenshot pastes tagged as avatar uploads.
-function getUserAvatarPastes(userId, limit = 60) {
-    return all(
-        `SELECT id, slug, screenshot_path, title, created_at
-         FROM pastes
-         WHERE user_id = ? AND type = 'screenshot' AND json_extract(metadata, '$.kind') = 'avatar'
-         ORDER BY created_at DESC LIMIT ?`,
-        [userId, limit]
-    );
-}
-
 // ── Follow helpers ───────────────────────────────────────────
 
 function followUser(followerId, streamerId) {
@@ -5558,378 +5247,11 @@ function setSubscriptionStatus(id, status, fields = {}) {
         [status, status === 'active' ? 1 : 0, cape, cpe, id]);
     return get('SELECT * FROM subscriptions WHERE id = ?', [id]);
 }
-// ── VOD helpers ──────────────────────────────────────────────
-
-// createVod() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
-// The legacy vods/clips/pastes tables are read-only here: test/frozen-tables.test.js fails on a new write.
-
-function getVodHealthById(id) {
-    return get(`SELECT * FROM vods WHERE id = ?`, [id]);
-}
-
-function getVodScanCandidates({ userId, since, limit }) {
-    const conditions = ['COALESCE(is_recording, 0) = 0'];
-    const params = [];
-    if (userId) {
-        conditions.push('user_id = ?');
-        params.push(userId);
-    }
-    if (since) {
-        conditions.push('created_at >= datetime(?, ?)');
-        params.push(since, 'localtime');
-    }
-    let sql = `SELECT * FROM vods WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC`;
-    if (limit) {
-        sql += ' LIMIT ?';
-        params.push(limit);
-    }
-    return all(sql, params);
-}
-
-// VODs the periodic health job should scan: finished (not recording), and either never
-// scanned or last scanned longer ago than `staleDays`. Recently-quarantined rows are
-// skipped (they were just assessed). Never-scanned + oldest-scanned first.
-function getVodsNeedingHealthScan({ staleDays = 30, limit = 3 } = {}) {
-    return all(`SELECT * FROM vods
-        WHERE COALESCE(is_recording, 0) = 0
-          AND (health_status IS NULL OR health_status NOT IN ('corrupt','zero_byte','missing_file'))
-          AND (last_health_scan_at IS NULL OR last_health_scan_at <= datetime('now', ?))
-        ORDER BY (last_health_scan_at IS NULL) DESC, last_health_scan_at ASC
-        LIMIT ?`, [`-${Math.max(1, staleDays)} days`, limit]);
-}
-
-// Genuinely-broken VODs quarantined long enough that they should be cleaned up (files
-// freed). Only unrecoverably-dead states — never 'needs_review'/'short_duration', which
-// may still be watchable.
-function getQuarantinedVodsForCleanup({ graceDays = 14, limit = 5 } = {}) {
-    return all(`SELECT * FROM vods
-        WHERE quarantined_at IS NOT NULL
-          AND quarantined_at <= datetime('now', ?)
-          AND health_status IN ('corrupt','zero_byte','missing_file')
-          AND COALESCE(is_recording, 0) = 0
-        ORDER BY quarantined_at ASC
-        LIMIT ?`, [`-${Math.max(1, graceDays)} days`, limit]);
-}
-
-function getVodById(id) {
-    return get(`
-        SELECT v.*, COALESCE(v.duration_seconds, v.probe_duration_seconds, 0) AS duration_seconds,
-               u.username, u.display_name, u.avatar_url,
-               s.title AS stream_title, s.protocol AS stream_protocol
-        FROM vods v
-        JOIN users u ON v.user_id = u.id
-        LEFT JOIN streams s ON v.stream_id = s.id
-        WHERE v.id = ?
-    `, [id]);
-}
-
-function getVodsByUser(userId, includePrivate = false, limit = null, offset = 0) {
-    const clause = includePrivate ? '' : ' AND v.is_public = 1';
-    const usePaging = Number.isFinite(limit);
-    const pagingSql = usePaging ? ' LIMIT ? OFFSET ?' : '';
-    const params = [userId];
-    if (usePaging) params.push(limit, offset);
-    return all(`
-        SELECT v.*, COALESCE(v.duration_seconds, v.probe_duration_seconds, 0) AS duration_seconds,
-               u.username, u.display_name, u.avatar_url, u.is_owner AS owner_is_owner,
-               s.protocol AS stream_protocol
-        FROM vods v JOIN users u ON v.user_id = u.id
-        LEFT JOIN streams s ON v.stream_id = s.id
-        WHERE v.user_id = ?${clause} AND COALESCE(v.is_recording, 0) = 0
-        ORDER BY v.created_at DESC${pagingSql}
-    `, params);
-}
-
-function countVodsByUser(userId, includePrivate = false) {
-    const clause = includePrivate ? '' : ' AND v.is_public = 1';
-    return get(`
-        SELECT COUNT(*) AS count
-        FROM vods v
-        WHERE v.user_id = ?${clause} AND COALESCE(v.is_recording, 0) = 0
-    `, [userId])?.count || 0;
-}
-
-function getPublicVods(limit = 50, offset = 0, { username = null, sort = 'newest' } = {}) {
-    const conditions = ['v.is_public = 1', 'COALESCE(v.is_recording, 0) = 0'];
-    const params = [];
-
-    if (username) {
-        conditions.push('LOWER(u.username) = LOWER(?)');
-        params.push(String(username).trim());
-    }
-
-    const dir = sort === 'oldest' ? 'ASC' : 'DESC';
-    params.push(limit, offset);
-    return all(`
-        SELECT v.*, COALESCE(v.duration_seconds, v.probe_duration_seconds, 0) AS duration_seconds,
-               u.username, u.display_name, u.avatar_url, u.is_owner AS owner_is_owner,
-               s.protocol AS stream_protocol
-        FROM vods v JOIN users u ON v.user_id = u.id
-        LEFT JOIN streams s ON v.stream_id = s.id
-        WHERE ${conditions.join(' AND ')}
-        ORDER BY v.created_at ${dir}
-        LIMIT ? OFFSET ?
-    `, params);
-}
-
-function countPublicVods({ username = null } = {}) {
-    const conditions = ['v.is_public = 1', 'COALESCE(v.is_recording, 0) = 0'];
-    const params = [];
-
-    if (username) {
-        conditions.push('LOWER(u.username) = LOWER(?)');
-        params.push(String(username).trim());
-    }
-
-    return get(`
-        SELECT COUNT(*) AS count
-        FROM vods v
-        JOIN users u ON v.user_id = u.id
-        WHERE ${conditions.join(' AND ')}
-    `, params)?.count || 0;
-}
-
-function listVodStreamers(includeUserId = null) {
-    const params = [];
-    let visibilityClause = 'v.is_public = 1';
-    if (includeUserId) {
-        visibilityClause = '(v.is_public = 1 OR v.user_id = ?)';
-        params.push(includeUserId);
-    }
-
-    return all(`
-        SELECT u.id AS user_id, u.username, u.display_name, COUNT(*) AS vod_count
-        FROM vods v
-        JOIN users u ON v.user_id = u.id
-        WHERE ${visibilityClause}
-          AND COALESCE(v.is_recording, 0) = 0
-        GROUP BY u.id, u.username, u.display_name
-        ORDER BY LOWER(COALESCE(u.display_name, u.username)) ASC
-    `, params);
-}
-
-function getActiveVodByStream(streamId) {
-    return get(`
-        SELECT v.*, u.username, u.display_name, u.avatar_url
-        FROM vods v JOIN users u ON v.user_id = u.id
-        WHERE v.stream_id = ? AND v.is_recording = 1
-        ORDER BY v.created_at DESC LIMIT 1
-    `, [streamId]);
-}
-
-// getOrphanedRecordingVods() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
-
-// ── Clip helpers ─────────────────────────────────────────────
-
-// createClip() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
-
-function getClipById(id) {
-    return get(`
-        SELECT c.*, u.username, u.display_name, u.avatar_url,
-               s.title AS stream_title, s.started_at AS stream_started_at, s.protocol AS stream_protocol
-        FROM clips c
-        JOIN users u ON c.user_id = u.id
-        LEFT JOIN streams s ON c.stream_id = s.id
-        WHERE c.id = ?
-    `, [id]);
-}
-
-function getClipsByUser(userId, includePrivate = false, limit = null, offset = 0) {
-    const publicFilter = includePrivate ? '' : 'AND c.is_public = 1';
-    const usePaging = Number.isFinite(limit);
-    const pagingSql = usePaging ? ' LIMIT ? OFFSET ?' : '';
-    const params = [userId];
-    if (usePaging) params.push(limit, offset);
-    return all(`
-        SELECT c.*, u.username, u.display_name, u.avatar_url,
-               s.title AS stream_title, s.started_at AS stream_started_at, s.protocol AS stream_protocol
-        FROM clips c
-        JOIN users u ON c.user_id = u.id
-        LEFT JOIN streams s ON c.stream_id = s.id
-        WHERE c.user_id = ? ${publicFilter}
-        ORDER BY c.created_at DESC${pagingSql}
-    `, params);
-}
-
-// ── "Clips Taken" tab: clips a user CREATED, of various source streamers ──
-// Each clip's "source streamer" is the owner of the clipped stream (or VOD). Supports
-// sort, filtering by source streamer, and hiding self-clips (of one's own content).
-const _CLIPS_TAKEN_ORDER = {
-    newest: 'c.created_at DESC',
-    oldest: 'c.created_at ASC',
-    views: 'c.view_count DESC, c.created_at DESC',
-};
-function _clipsTakenWhere(userId, { includePrivate = false, sourceStreamerId = null, hideSelf = false }) {
-    const conds = ['c.user_id = ?'];
-    const params = [userId];
-    if (!includePrivate) conds.push('c.is_public = 1');
-    if (sourceStreamerId) { conds.push('COALESCE(s.user_id, v.user_id) = ?'); params.push(sourceStreamerId); }
-    else if (hideSelf) { conds.push('COALESCE(s.user_id, v.user_id) IS NOT NULL'); conds.push('COALESCE(s.user_id, v.user_id) != ?'); params.push(userId); }
-    return { where: conds.join(' AND '), params };
-}
-const _CLIPS_TAKEN_JOINS = `
-    FROM clips c
-    JOIN users u ON c.user_id = u.id
-    LEFT JOIN streams s ON c.stream_id = s.id
-    LEFT JOIN vods v ON c.vod_id = v.id
-    LEFT JOIN users su ON s.user_id = su.id
-    LEFT JOIN users vu ON v.user_id = vu.id`;
-function getClipsTakenByUser(userId, { includePrivate = false, orderBy = 'newest', sourceStreamerId = null, hideSelf = true, limit = 12, offset = 0 } = {}) {
-    const order = _CLIPS_TAKEN_ORDER[orderBy] || _CLIPS_TAKEN_ORDER.newest;
-    const { where, params } = _clipsTakenWhere(userId, { includePrivate, sourceStreamerId, hideSelf });
-    params.push(limit, offset);
-    return all(`
-        SELECT c.*, u.username, u.display_name, u.avatar_url,
-               s.title AS stream_title, s.protocol AS stream_protocol,
-               COALESCE(s.user_id, v.user_id) AS source_streamer_id,
-               COALESCE(su.username, vu.username) AS source_streamer_username,
-               COALESCE(su.display_name, vu.display_name) AS source_streamer_display_name,
-               COALESCE(su.avatar_url, vu.avatar_url) AS source_streamer_avatar
-        ${_CLIPS_TAKEN_JOINS}
-        WHERE ${where}
-        ORDER BY ${order}
-        LIMIT ? OFFSET ?
-    `, params);
-}
-function countClipsTakenByUser(userId, { includePrivate = false, sourceStreamerId = null, hideSelf = true } = {}) {
-    const { where, params } = _clipsTakenWhere(userId, { includePrivate, sourceStreamerId, hideSelf });
-    return get(`SELECT COUNT(*) AS count ${_CLIPS_TAKEN_JOINS} WHERE ${where}`, params)?.count || 0;
-}
-// Facets for the filter badges — every source streamer this user has clipped, with counts.
-function getClipsTakenFacets(userId, { includePrivate = false } = {}) {
-    const publicFilter = includePrivate ? '' : 'AND c.is_public = 1';
-    return all(`
-        SELECT COALESCE(s.user_id, v.user_id) AS streamer_id,
-               COALESCE(su.username, vu.username) AS username,
-               COALESCE(su.display_name, vu.display_name) AS display_name,
-               COALESCE(su.avatar_url, vu.avatar_url) AS avatar_url,
-               COUNT(*) AS count
-        ${_CLIPS_TAKEN_JOINS}
-        WHERE c.user_id = ? ${publicFilter}
-        GROUP BY streamer_id
-        HAVING streamer_id IS NOT NULL
-        ORDER BY count DESC, display_name ASC
-    `, [userId]);
-}
-
-function countClipsByUser(userId, includePrivate = false) {
-    const publicFilter = includePrivate ? '' : 'AND c.is_public = 1';
-    return get(`
-        SELECT COUNT(*) AS count
-        FROM clips c
-        WHERE c.user_id = ? ${publicFilter}
-    `, [userId])?.count || 0;
-}
-
-// setClipPublic() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
-const VALID_VISIBILITY = new Set(['public', 'unlisted', 'private']);
-function _normVisibility(v) { return VALID_VISIBILITY.has(v) ? v : 'public'; }
-// setClipVisibility() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
-// A specific user's pastes for their channel page. Non-owners see public only;
-// the owner/admin also sees their unlisted + private. sort: 'newest' | 'oldest'.
-function getUserPastesForChannel(userId, { includeHidden = false, sort = 'newest', limit = 30, offset = 0 } = {}) {
-    const dir = sort === 'oldest' ? 'ASC' : 'DESC';
-    const visClause = includeHidden ? '' : "AND p.visibility = 'public'";
-    return all(`
-        SELECT p.id, p.slug, p.type, p.title, p.language, p.visibility, p.pinned, p.views, p.copies, p.likes, p.created_at,
-               p.screenshot_path, p.ai_summary, substr(p.content, 1, 300) AS content
-        FROM pastes p
-        WHERE p.user_id = ? ${visClause}
-        ORDER BY p.pinned DESC, p.created_at ${dir}
-        LIMIT ? OFFSET ?
-    `, [userId, limit, offset]);
-}
-function countUserPastesForChannel(userId, { includeHidden = false } = {}) {
-    const visClause = includeHidden ? '' : "AND visibility = 'public'";
-    return get(`SELECT COUNT(*) AS count FROM pastes WHERE user_id = ? ${visClause}`, [userId]).count;
-}
-
-function getPublicClips(limit = 50, offset = 0, { username = null, sort = 'newest' } = {}) {
-    const conditions = ['c.is_public = 1'];
-    const params = [];
-
-    if (username) {
-        conditions.push('LOWER(COALESCE(su.username, u.username)) = LOWER(?)');
-        params.push(String(username).trim());
-    }
-
-    const dir = sort === 'oldest' ? 'ASC' : 'DESC';
-    params.push(limit, offset);
-    return all(`
-        SELECT c.*, u.username, u.display_name, u.avatar_url, u.is_owner AS owner_is_owner,
-               s.title AS stream_title, s.started_at AS stream_started_at, s.protocol AS stream_protocol,
-               su.username AS streamer_username, su.display_name AS streamer_display_name, su.avatar_url AS streamer_avatar_url,
-               su.is_owner AS streamer_is_owner
-        FROM clips c
-        JOIN users u ON c.user_id = u.id
-        LEFT JOIN streams s ON c.stream_id = s.id
-        LEFT JOIN users su ON s.user_id = su.id
-        WHERE ${conditions.join(' AND ')}
-        ORDER BY c.created_at ${dir}
-        LIMIT ? OFFSET ?
-    `, params);
-}
-
-function countPublicClips({ username = null } = {}) {
-    const conditions = ['c.is_public = 1'];
-    const params = [];
-
-    if (username) {
-        conditions.push('LOWER(COALESCE(su.username, u.username)) = LOWER(?)');
-        params.push(String(username).trim());
-    }
-
-    return get(`
-        SELECT COUNT(*) AS count
-        FROM clips c
-        JOIN users u ON c.user_id = u.id
-        LEFT JOIN streams s ON c.stream_id = s.id
-        LEFT JOIN users su ON s.user_id = su.id
-        WHERE ${conditions.join(' AND ')}
-    `, params)?.count || 0;
-}
-
-function listClipStreamers() {
-    return all(`
-        SELECT COALESCE(su.id, u.id) AS user_id,
-               COALESCE(su.username, u.username) AS username,
-               COALESCE(su.display_name, u.display_name) AS display_name,
-               COUNT(*) AS clip_count
-        FROM clips c
-        JOIN users u ON c.user_id = u.id
-        LEFT JOIN streams s ON c.stream_id = s.id
-        LEFT JOIN users su ON s.user_id = su.id
-        WHERE c.is_public = 1
-        GROUP BY COALESCE(su.id, u.id), COALESCE(su.username, u.username), COALESCE(su.display_name, u.display_name)
-        ORDER BY LOWER(COALESCE(COALESCE(su.display_name, u.display_name), COALESCE(su.username, u.username))) ASC
-    `, []);
-}
-
-function getClipsByStream(streamId) {
-    return all(`
-        SELECT c.*, u.username, u.display_name, u.avatar_url,
-               s.title AS stream_title, s.started_at AS stream_started_at, s.protocol AS stream_protocol
-        FROM clips c
-        JOIN users u ON c.user_id = u.id
-        LEFT JOIN streams s ON c.stream_id = s.id
-        WHERE c.stream_id = ? AND c.is_public = 1
-        ORDER BY c.created_at DESC
-    `, [streamId]);
-}
-
-function getClipsOfUserStreams(userId) {
-    return all(`
-        SELECT c.*, u.username, u.display_name, u.avatar_url,
-               s.title AS stream_title, s.started_at AS stream_started_at, s.protocol AS stream_protocol
-        FROM clips c
-        JOIN users u ON c.user_id = u.id
-        JOIN streams s ON c.stream_id = s.id
-        WHERE s.user_id = ?
-        ORDER BY c.created_at DESC
-    `, [userId]);
-}
-
-// findDuplicateClip() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
+// ── VODs and clips ───────────────────────────────────────────
+// They live in OpenVibe.Media. Live asks for them through server/media-client.js and
+// server/media-proxy/lookups.js; Live's own AI state for them is vod_ai_state / clip_ai_state.
+// The legacy local vods/clips tables are frozen and unread: test/frozen-tables.test.js fails on
+// a new write or read (register C-73; the drop procedure is in docs/vods-and-clips.md).
 
 // ── Control helpers ──────────────────────────────────────────
 
@@ -7151,78 +6473,9 @@ function upsertChannelModerationSettings(channelId, fields) {
     return getChannelModerationSettings(channelId);
 }
 
-// ── Paste helpers ────────────────────────────────────────────
-
-// createPaste() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
-
-function getPasteBySlug(slug) {
-    return get(`
-        SELECT p.*, u.username, u.avatar_url, u.display_name
-        FROM pastes p
-        LEFT JOIN users u ON p.user_id = u.id
-        WHERE p.slug = ?
-    `, [slug]);
-}
-
-function getPasteById(id) {
-    return get(`
-        SELECT p.*, u.username, u.avatar_url, u.display_name
-        FROM pastes p
-        LEFT JOIN users u ON p.user_id = u.id
-        WHERE p.id = ?
-    `, [id]);
-}
-
-function listPastes({ visibility = 'public', type, search, limit = 30, offset = 0 } = {}) {
-    let where = 'WHERE p.visibility = ?';
-    const params = [visibility];
-
-    if (type && type !== 'all') {
-        where += ' AND p.type = ?';
-        params.push(type);
-    }
-    if (search) {
-        where += ' AND (p.title LIKE ? OR p.content LIKE ?)';
-        params.push(`%${search}%`, `%${search}%`);
-    }
-
-    const total = get(`SELECT COUNT(*) as c FROM pastes p ${where}`, params).c;
-    const pastes = all(`
-        SELECT p.id, p.slug, p.user_id, p.type, p.title, p.language, p.visibility,
-               p.screenshot_path, p.burn_after_read, p.pinned, p.views, p.copies, p.likes, p.created_at,
-               u.username, u.avatar_url, u.display_name,
-               SUBSTR(p.content, 1, 220) as content
-        FROM pastes p
-        LEFT JOIN users u ON p.user_id = u.id
-        ${where}
-        ORDER BY p.pinned DESC, p.created_at DESC
-        LIMIT ? OFFSET ?
-    `, [...params, limit, offset]);
-
-    return { pastes, total };
-}
-
-function getUserPastes(userId, limit = 50) {
-    return all(`
-        SELECT id, slug, type, title, language, visibility, burn_after_read, pinned, views, copies, likes, created_at
-        FROM pastes WHERE user_id = ? ORDER BY created_at DESC LIMIT ?
-    `, [userId, limit]);
-}
-
-function hasUserLikedPaste(pasteId, userId) {
-    const row = get('SELECT 1 FROM paste_likes WHERE paste_id = ? AND user_id = ?', [pasteId, userId]);
-    return !!row;
-}
-
-function countUserPastesToday(userId, ip) {
-    if (userId) {
-        return get("SELECT COUNT(*) as c FROM pastes WHERE user_id = ? AND created_at > datetime('now', '-1 day')", [userId])?.c || 0;
-    }
-    if (ip) {
-        return get("SELECT COUNT(*) as c FROM pastes WHERE ip_address = ? AND created_at > datetime('now', '-1 day')", [ip])?.c || 0;
-    }
-    return 0;
-}
+// ── Pastes ───────────────────────────────────────────────────
+// They live in OpenVibe.Community (server/pastes-client.js, media-proxy/lookups.js). The legacy
+// local pastes/paste_likes/paste_comments tables are frozen and unread, like vods/clips above.
 
 /**
  * Get a user's total game level (sum of all skill levels).
@@ -7241,71 +6494,6 @@ function getUserTotalGameLevel(userId) {
     } catch {
         return 0; // game_players table may not exist after migration
     }
-}
-
-function getLastPasteTime(userId, ip) {
-    let row;
-    if (userId) {
-        row = get('SELECT created_at FROM pastes WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', [userId]);
-    } else if (ip) {
-        row = get('SELECT created_at FROM pastes WHERE ip_address = ? ORDER BY created_at DESC LIMIT 1', [ip]);
-    }
-    return row ? new Date(row.created_at + (row.created_at.includes('Z') ? '' : 'Z')).getTime() : 0;
-}
-
-function getPasteStats() {
-    const total = get('SELECT COUNT(*) as c FROM pastes')?.c || 0;
-    const textPastes = get("SELECT COUNT(*) as c FROM pastes WHERE type = 'paste'")?.c || 0;
-    const screenshots = get("SELECT COUNT(*) as c FROM pastes WHERE type = 'screenshot'")?.c || 0;
-    const forks = get('SELECT COUNT(*) as c FROM pastes WHERE forked_from IS NOT NULL')?.c || 0;
-    const totalViews = get('SELECT SUM(views) as s FROM pastes')?.s || 0;
-    const totalCopies = get('SELECT SUM(copies) as s FROM pastes')?.s || 0;
-    const totalLikes = get('SELECT SUM(likes) as s FROM pastes')?.s || 0;
-    return { total, textPastes, screenshots, forks, totalViews, totalCopies, totalLikes };
-}
-
-// ── Paste Comment helpers ────────────────────────────────────
-
-function createPasteComment({ paste_id, user_id, parent_id, anon_name, message, ip_address }) {
-    return run(
-        `INSERT INTO paste_comments (paste_id, user_id, parent_id, anon_name, message, ip_address)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [paste_id, user_id || null, parent_id || null, anon_name || null, message, ip_address || null]
-    );
-}
-
-function getPasteComments(pasteId, limit = 50, offset = 0) {
-    return all(`
-        SELECT c.*, u.username, u.display_name, u.avatar_url, u.profile_color, u.role
-        FROM paste_comments c
-        LEFT JOIN users u ON c.user_id = u.id
-        WHERE c.paste_id = ? AND c.is_deleted = 0 AND c.parent_id IS NULL
-        ORDER BY c.created_at DESC
-        LIMIT ? OFFSET ?
-    `, [pasteId, limit, offset]);
-}
-
-function getPasteCommentReplies(parentId) {
-    return all(`
-        SELECT c.*, u.username, u.display_name, u.avatar_url, u.profile_color, u.role
-        FROM paste_comments c
-        LEFT JOIN users u ON c.user_id = u.id
-        WHERE c.parent_id = ? AND c.is_deleted = 0
-        ORDER BY c.created_at ASC
-    `, [parentId]);
-}
-
-function getPasteCommentById(commentId) {
-    return get('SELECT * FROM paste_comments WHERE id = ?', [commentId]);
-}
-
-function getPasteCommentCount(pasteId) {
-    const row = get('SELECT COUNT(*) as count FROM paste_comments WHERE paste_id = ? AND is_deleted = 0', [pasteId]);
-    return row ? row.count : 0;
-}
-
-function deletePasteComment(commentId) {
-    return run('UPDATE paste_comments SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [commentId]);
 }
 
 // ── Anon IP Mapping ─────────────────────────────────
@@ -7375,14 +6563,6 @@ function recordFirstChat(chatterKey, channelUserId) {
         'INSERT OR IGNORE INTO stream_first_chats (chatter_key, channel_user_id) VALUES (?, ?)',
         [chatterKey, channelUserId]
     );
-}
-
-function getRecentPasteCommentsByIp(ip, seconds = 10) {
-    return all(`
-        SELECT * FROM paste_comments
-        WHERE ip_address = ? AND created_at > datetime('now', '-' || ? || ' seconds')
-        ORDER BY created_at DESC
-    `, [ip, seconds]);
 }
 
 // ── Moderation Action Logging ────────────────────────────────
@@ -7958,11 +7138,11 @@ function computeAndCacheStreamAnalytics(streamId) {
     );
     const totalWatchMinutes = watchRow?.total || 0;
 
-    // Clips created during this stream
-    const clipsRow = get(
-        'SELECT COUNT(*) as cnt FROM clips WHERE stream_id = ?', [streamId]
-    );
-    const clipsCreated = clipsRow?.cnt || 0;
+    // Clips created during this stream: they live in OpenVibe.Media. This runs synchronously when a
+    // stream ends, so it keeps the last count it has and asks Media right after (lookups.js
+    // refreshStreamClipCount writes the answer back with setStreamAnalyticsClipCount).
+    const clipsCreated = get('SELECT clips_created FROM stream_analytics WHERE stream_id = ?', [streamId])?.clips_created || 0;
+    setImmediate(() => { try { require('../media-proxy/lookups').refreshStreamClipCount(streamId).catch(() => {}); } catch { /* */ } });
 
     // Coins earned during this stream
     const coinsRow = get(
@@ -8016,6 +7196,11 @@ function computeAndCacheStreamAnalytics(streamId) {
 
 function getStreamAnalytics(streamId) {
     return get('SELECT * FROM stream_analytics WHERE stream_id = ?', [streamId]);
+}
+
+// The clip count OpenVibe.Media reported for a stream (media-proxy/lookups.js refreshStreamClipCount).
+function setStreamAnalyticsClipCount(streamId, count) {
+    return run('UPDATE stream_analytics SET clips_created = ? WHERE stream_id = ?', [Math.max(0, Math.floor(Number(count) || 0)), streamId]);
 }
 
 function getChannelAnalyticsSummary(userId, days) {
@@ -8298,22 +7483,17 @@ module.exports = {
     createStream, endStream, onStreamLifecycle, endOtherLiveStreamsForSlot, updateViewerCount,
     addStreamMemory, getStreamMemories, getLatestStreamMemory, updateStreamAiOverview,
     setVodAiOverview, setClipAiOverview, setVodTranscript, setClipTranscript, getStreamMemoriesInRange,
-    getVodsNeedingOverview, getClipsNeedingOverview, getVodsNeedingTimeline, getVodsNeedingTranscript, getClipsNeedingTranscript, getPastesNeedingAnalysis,
+    getVodsNeedingOverview, getClipsNeedingOverview, getVodsNeedingTimeline, getVodsNeedingTranscript, getClipsNeedingTranscript,
     setVodTranscriptStatus, setClipTranscriptStatus, bumpVodTranscriptAttempt, bumpClipTranscriptAttempt,
     cleanupMalformedAiText, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
-    getStreamMemoriesByUser, countStreamMemoriesByUser, getAiMomentCandidates, getStreamTranscriptSegments, getUserPastesForAi,
+    getStreamMemoriesByUser, countStreamMemoriesByUser, getStreamTranscriptSegments,
     addTimelineEvents, getTimeline, getTimelineText, getTimelineCoverage, linkTimelineToVod, getTimelineByVod, getTimelineVodId,
-    getVodsForMomentRanking, getClipStartTimesForStream, getChatSpikeOffsets,
-     getLiveChatBuckets, getRecentChatText, getVodsWithoutAutoClip, 
+    getChatSpikeOffsets, getLiveChatBuckets, getRecentChatText,
     upsertStreamerOverview, getStreamerOverview, getAllStreamerOverviews, getStreamersNeedingOverview,
-    getStreamerAiTimeline, assembleStreamerAiTimeline, setStreamAiTitle, getUntitledAiSessions, clearAiTimelineCache,
+    readStreamerAiTimelineCache, buildStreamerAiTimeline, assembleStreamerAiTimeline, setStreamAiTitle, getUntitledAiSessions, clearAiTimelineCache,
     // Homepage helpers
     getRecentlyOnlineStreamers, countRecentlyOnlineStreamers,
-    getRecentVods, countRecentVods, getHomeStats,
-    // Filtered VODs/clips
-    getVodsByUserFiltered, countVodsByUserFiltered, getPopularVodForUser, getPopularClipForUser, getTopContentRanges,
-    getClipsOfUserStreamsPaginated, countClipsOfUserStreams,
-    getClipsByUserPaginated,
+    getHomeStats,
     // Channels
     getChannelByUserId, getChannelsByUserIds, getChannelByUsername, createChannel, updateChannel, ensureChannel, setUserBio,
     getChannelPointsConfig, setChannelPointsConfig,
@@ -8346,7 +7526,7 @@ module.exports = {
     recordEasterEggSolve, hasSolvedEasterEgg, countEasterEggSolves,
     getTtsVoiceOverride, setTtsVoiceOverride, deleteTtsVoiceOverride,
     // Profiles
-    getUserProfile, updateUserAvatar,  getUserAvatarPastes,
+    getUserProfile, updateUserAvatar,
     getKickChannelCache, setKickChannelCache,
     getChannelPoints, addChannelPoints, deductChannelPoints,
     // Follows
@@ -8369,13 +7549,6 @@ module.exports = {
     countPendingMediaRequestsForUser, getMediaRequestMaxQueuePosition,
     findActiveMediaRequestByCanonicalUrl, updateMediaRequest,
     renormalizePendingMediaRequestPositions,
-    // VODs
-    getVodById, getVodsByUser, countVodsByUser, getPublicVods, countPublicVods, listVodStreamers, getActiveVodByStream, 
-    getVodHealthById, getVodScanCandidates,
-    getVodsNeedingHealthScan, getQuarantinedVodsForCleanup,
-    // Clips
-    getClipById, getClipsByUser, countClipsByUser, getPublicClips, countPublicClips, listClipStreamers, getClipsByStream,    getClipsOfUserStreams, 
-    getClipsTakenByUser, countClipsTakenByUser, getClipsTakenFacets,
     // Controls
     getStreamControls, createControl, bindStreamToControlConfig,
     // ONVIF Cameras
@@ -8416,14 +7589,7 @@ module.exports = {
     getChannelModerators, getChannelsByModerator,
     // Channel Moderation Settings
     getChannelModerationSettings, upsertChannelModerationSettings,
-    // Pastes
-    getPasteBySlug, getPasteById, listPastes,
-    getUserPastes, getUserPastesForChannel, countUserPastesForChannel,
-    hasUserLikedPaste, countUserPastesToday, getLastPasteTime, getPasteStats, getUserTotalGameLevel,
-    // Paste Comments
-    createPasteComment, getPasteComments, getPasteCommentReplies,
-    getPasteCommentById, getPasteCommentCount, deletePasteComment,
-    getRecentPasteCommentsByIp,
+    getUserTotalGameLevel,
     // Anon IP Mappings
     getOrCreateAnonNum, getAnonFirstSeen, loadAnonMappings,
     // Stream first chats (welcome messages)
@@ -8445,7 +7611,7 @@ module.exports = {
     getLatestIpForUser, getLatestIpForAnon, getIpLog, banAllAccountsOnIp,
     // Stream Analytics
     insertViewerSnapshot, getViewerSnapshots, computeAndCacheStreamAnalytics,
-    getStreamAnalytics, getChannelAnalyticsSummary, getRecentChatActivity,
+    getStreamAnalytics, setStreamAnalyticsClipCount, getChannelAnalyticsSummary, getRecentChatActivity,
     // User Preferences
     getUserPreferences, saveUserPreferences,
     // Chat Log Management

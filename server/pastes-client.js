@@ -53,7 +53,8 @@ async function subjectForLiveUser(liveUserId) {
 
 /**
  * One call to Community's paste API. body: plain object (JSON) or FormData. act: { liveUserId } to act
- * as a person, { origin: 'ai', sourceRef } for derived pastes, {} for Live itself (moderation paths).
+ * as a person, { origin: 'ai', sourceRef } for derived pastes, { staff: true } when Live has already
+ * decided the caller is staff (X-OV-Staff; needs community.paste.moderate), {} for Live itself.
  */
 async function request(method, path, { query, body, act = {}, ip, timeoutMs = 20000, retried = false } = {}) {
     const qs = query ? `?${new URLSearchParams(Object.entries(query).filter(([, v]) => v != null && v !== '').map(([k, v]) => [k, String(v)]))}` : '';
@@ -67,6 +68,7 @@ async function request(method, path, { query, body, act = {}, ip, timeoutMs = 20
         headers['X-OV-Origin'] = 'ai';
         if (act.sourceRef) headers['X-OV-Source-Ref'] = JSON.stringify(act.sourceRef);
     }
+    if (act.staff) headers['X-OV-Staff'] = '1';
     if (ip) headers['X-Forwarded-For'] = ip;
     let payload;
     if (body instanceof FormData) payload = body;

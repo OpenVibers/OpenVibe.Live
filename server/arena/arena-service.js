@@ -399,7 +399,7 @@ function imageUrlFor(row) {
     const base = path.basename(row.image_path);
     return fs.existsSync(path.join(ARENA_DIR, base)) ? `/data/arena/${base}` : null;
 }
-function latestThumbnailFor(userId) { const r = referenceImagesFor(userId); return r.length ? r[0] : null; }
+async function latestThumbnailFor(userId) { const r = await referenceImagesFor(userId); return r.length ? r[0] : null; }
 /**
  * Up to REF_MAX real frames of THIS streamer's streams, newest first: the live thumbnail, AI-moment
  * frames the vision job persisted (data/ai-moments/<streamId>/<offset>.jpg), VOD thumbnails. Local
@@ -407,7 +407,7 @@ function latestThumbnailFor(userId) { const r = referenceImagesFor(userId); retu
  * stream — their setup, their lighting, their gear, their face — not a generic hero.
  */
 const REF_MAX = 3;
-function referenceImagesFor(userId) {
+async function referenceImagesFor(userId) {
     const out = [];
     const push = (p) => { if (p && !out.includes(p) && out.length < REF_MAX) out.push(p); };
     try {
@@ -433,7 +433,16 @@ function referenceImagesFor(userId) {
     // Media-hosted thumbnails of their streams (what prod actually has: https://openvibe.media/t/vod-….jpg).
     try { for (const r of db.all(`SELECT thumbnail_url FROM streams WHERE user_id = ? AND thumbnail_url LIKE 'http%' ORDER BY started_at DESC LIMIT 3`, [userId])) push(r.thumbnail_url); } catch { /* */ }
     try { for (const r of db.all(`SELECT m.thumbnail_url FROM stream_memories m WHERE m.user_id = ? AND m.thumbnail_url LIKE 'http%' AND (LOWER(m.description) LIKE '%person%' OR LOWER(m.description) LIKE '%face%' OR LOWER(m.description) LIKE '%wearing%' OR LOWER(m.description) LIKE '%headphones%') ORDER BY m.id DESC LIMIT 3`, [userId])) push(r.thumbnail_url); } catch { /* */ }
-    try { for (const v of db.all('SELECT thumbnail_url FROM vods WHERE user_id = ? AND thumbnail_url IS NOT NULL AND is_public = 1 ORDER BY created_at DESC LIMIT 3', [userId])) { if (/^https?:\/\//i.test(v.thumbnail_url)) push(v.thumbnail_url); else { const local = path.resolve('.' + v.thumbnail_url); if (fs.existsSync(local)) push(local); } } } catch { /* */ }
+    // Their newest public VODs' thumbnails, from OpenVibe.Media.
+    if (out.length < REF_MAX) {
+        try {
+            const media = require('../media-client');
+            for (const v of await require('../media-proxy/lookups').userVods(userId, { limit: 3 })) {
+                const url = media.publicUrl(v.thumbnail_url);
+                if (url && /^https?:\/\//i.test(url)) push(url);
+            }
+        } catch { /* */ }
+    }
     return out;
 }
 async function loadImageBuffer(src) {
@@ -455,14 +464,15 @@ async function generateImage(userId, { force = false } = {}) {
         const persona = parseJson(row?.persona_json) || (entry ? fallbackPersona(entry) : null);
         if (!persona) return null;
         let scene = '';
-        const thumb = referenceImagesFor(userId).length ? null : latestThumbnailFor(userId);   // scene text only for the no-frames fallback
+        const refSources = await referenceImagesFor(userId);
+        const thumb = refSources.length ? null : await latestThumbnailFor(userId);   // scene text only for the no-frames fallback
         if (thumb) { try { const d = await llm.complete({ role: 'vision', kind: 'arena_scene', source: 'arena', ownerUserId: userId, system: SCENE_SYSTEM, user: 'Describe the scene.', image: thumb, maxTokens: 120, temperature: 0.4, timeoutMs: 30000 }); scene = (d && d.text || '').trim(); } catch { scene = ''; } }
         const color = entry?.user?.profile_color || '#8b5cf6';
         const cs = Array.isArray(persona.custom_stats) ? persona.custom_stats.slice(0, 4).map(x => `${x.name} ${x.value}`).join(', ') : '';
         // Reference frames: the portrait is drawn FROM the streamer's own stream (image edit) whenever we
         // have frames; the text-only generation is the fallback for streamers with no frames yet.
         const refs = [];
-        for (const src of referenceImagesFor(userId)) { const buf = await loadImageBuffer(src); if (buf && buf.length > 4000) refs.push({ src, buf }); }
+        for (const src of refSources) { const buf = await loadImageBuffer(src); if (buf && buf.length > 4000) refs.push({ src, buf }); }
         const prompt = [
             refs.length ? `Turn the attached frames from this streamer's live stream into ONE fighting-game character-select portrait of them as "${persona.fighter_name}" — ${persona.title}. Keep what makes their stream recognisable: their setup, room, gear, lighting, clothing, silhouette, hair, headphones, camera angle, the vibe of the scene — exaggerated into a stylised caricature-hero (like a Street Fighter select screen), never a photo.` : `Fighting-game character-select portrait of an original stylised hero called "${persona.fighter_name}" — ${persona.title}.`,
             `Class: ${persona.class}. Element: ${persona.element}. Signature move: ${persona.signature_move?.name} (${persona.signature_move?.description}).${cs ? ` Their stats: ${cs}.` : ''}`,

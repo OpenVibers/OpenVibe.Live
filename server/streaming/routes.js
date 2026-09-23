@@ -464,10 +464,17 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
         delete publicChannel.vod_recording_enabled;
         delete publicChannel.force_vod_recording_disabled;
 
-        // Counts for tab badges. Owner/mods see hidden ones too.
+        // Counts for tab badges. Owner/mods see hidden ones too. Pastes are counted by
+        // OpenVibe.Community and taken clips by OpenVibe.Media (media-proxy/lookups.js).
         let pasteTotal = 0, clipsTakenTotal = 0, aiEventTotal = 0;
-        try { pasteTotal = pollOnly ? 0 : db.countUserPastesForChannel(channel.user_id, { includeHidden: canSeeHidden }); } catch { /* */ }
-        try { clipsTakenTotal = pollOnly ? 0 : db.countClipsTakenByUser(channel.user_id, { includePrivate: canSeeHidden }); } catch { /* */ }
+        if (!pollOnly) {
+            const lookups = require('../media-proxy/lookups');
+            const owner = db.getUserById(channel.user_id);
+            [pasteTotal, clipsTakenTotal] = await Promise.all([
+                lookups.countUserPastes(owner, { hidden: canSeeHidden ? (isOwner ? 'owner' : 'staff') : false }),
+                lookups.countClipsTaken(channel.user_id, { includePrivate: canSeeHidden }),
+            ]);
+        }
         try { aiEventTotal = pollOnly ? 0 : db.countStreamMemoriesByUser(channel.user_id); } catch { /* */ }
 
         // Tab-hide flags: when a streamer defaults ALL their slots' VODs (or clips) to private,
@@ -537,7 +544,7 @@ router.get('/channel/:username/popular', async (req, res) => {
         try { const r = await media.listVods({ user_id: user.id, order: 'views', limit: 12 }); vods = r?.vods || (Array.isArray(r) ? r : []); } catch { /* */ }
         try { const r = await media.listClips({ channel_user_id: user.id, order: 'views', limit: 12 }); clips = r?.clips || (Array.isArray(r) ? r : []); } catch { /* */ }
         let ranges = null;
-        try { ranges = db.getTopContentRanges(user.id); } catch { /* */ }
+        try { ranges = await require('../media-proxy/lookups').topContentRanges(user); } catch { /* */ }
         res.json({
             // Singular kept for back-compat; arrays let the offline screen fill the space.
             vod: vods[0] || null,
@@ -1131,10 +1138,11 @@ router.get('/mine', requireAuth, (req, res) => {
 });
 
 // ── List Recently Ended Streams ──────────────────────────────
-router.get('/recent', (req, res) => {
+router.get('/recent', async (req, res) => {
     try {
         const limit = Math.min(parseInt(req.query.limit || '20'), 100);
-        const streams = db.getRecentStreams(limit);
+        // Each stream's public VOD (id, thumbnail, duration) comes from OpenVibe.Media.
+        const streams = await require('../media-proxy/lookups').attachPublicVods(db.getRecentStreams(limit));
         const enriched = streams.map(s => {
             const channel = db.getChannelByUserId(s.user_id);
             return publicStream({ ...s, channel: channel || null });
@@ -1455,11 +1463,18 @@ router.get('/channel/:username/resolve/:ref', optionalAuth, (req, res) => {
 // ── Managed Stream CRUD ──────────────────────────────────────
 
 // Get past stream sessions for a managed stream (workspace history panel)
-router.get('/managed/:managedStreamId/history', requireAuth, (req, res) => {
+router.get('/managed/:managedStreamId/history', requireAuth, async (req, res) => {
     const managedStreamId = parseInt(req.params.managedStreamId);
     if (!Number.isFinite(managedStreamId)) return res.status(400).json({ error: 'Invalid ID' });
     try {
         const sessions = db.getStreamHistoryByManagedStream(managedStreamId, req.user.id);
+        // Each session's VOD comes from OpenVibe.Media; only asked when the slot has sessions of this user.
+        const vods = sessions.length ? await require('../media-proxy/lookups').vodsForManagedStream(managedStreamId) : new Map();
+        for (const s of sessions) {
+            const v = vods.get(Number(s.id));
+            s.vod_id = v ? v.id : null;
+            s.vod_file_path = v ? (v.file_path || null) : null;
+        }
         res.json({ sessions });
     } catch (err) {
         console.error('[ManagedStreams] History error:', err.message);
@@ -1544,7 +1559,8 @@ router.get('/setup-progress', requireAuth, async (req, res) => {
     const mods = safe(() => channel.id ? db.get('SELECT COUNT(*) AS n FROM channel_moderators WHERE channel_id = ?', [channel.id]).n : 0, 0);
     const controls = safe(() => db.get('SELECT COUNT(*) AS n FROM control_configs WHERE user_id = ?', [uid]).n, 0);
     const aibot = safe(() => db.get('SELECT COUNT(*) AS n FROM channel_ai_bots WHERE channel_user_id = ?', [uid]).n, 0);
-    const pastes = safe(() => db.get('SELECT COUNT(*) AS n FROM pastes WHERE user_id = ?', [uid]).n, 0);
+    // Pastes live in OpenVibe.Community: the person's own count, unlisted and private included.
+    const pastes = await require('../media-proxy/lookups').countUserPastes(user && user.id ? user : null, { hidden: 'owner' });
     const requests = safe(() => !!db.get('SELECT 1 FROM media_request_settings WHERE user_id = ? LIMIT 1', [uid]), false);
     const modRules = safe(() => channel.id ? !!db.get('SELECT 1 FROM channel_moderation_settings WHERE channel_id = ? LIMIT 1', [channel.id]) : false, false);
     const tasks = [

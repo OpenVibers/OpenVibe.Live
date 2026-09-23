@@ -183,8 +183,8 @@ function _backfillDue() {
     catch { return true; }
 }
 // Historical-backfill candidate pool: most-viewed public VODs from OpenVibe.Media
-// that have stream memories and no auto-clip in the local log yet (shaped like the
-// old getVodsWithoutAutoClip rows). Falls back to legacy local rows if Media is down.
+// that have stream memories and no auto-clip in the local log yet. Media down → an
+// empty pool (the clips are cut by Media anyway).
 async function _backfillPool(limit) {
     try {
         const r = await media.listVods({ limit: limit * 2, order: 'views' });
@@ -208,17 +208,13 @@ async function _backfillPool(limit) {
                     view_count: Number(v.view_count) || 0,
                 }));
         }
-    } catch { /* fall through */ }
-    try { return db.getVodsWithoutAutoClip ? (db.getVodsWithoutAutoClip(limit) || []) : []; } catch { return []; }
+    } catch { /* Media down */ }
+    return [];
 }
 
-// ffmpeg-consumable source for a VOD: legacy local file if still present, else the
-// Media playback URL (ffmpeg range-reads it — no full download).
+// ffmpeg-consumable source for a VOD: the Media playback URL (ffmpeg range-reads it —
+// no full download).
 async function _resolveVodSource(vodId) {
-    try {
-        const vod = db.getVodById ? db.getVodById(vodId) : null;
-        if (vod && vod.file_path && require('node:fs').existsSync(vod.file_path)) return vod.file_path;
-    } catch { /* */ }
     try {
         const meta = await media.getVod(vodId);
         if (meta && meta.playback_url) return media.publicUrl(meta.playback_url);

@@ -242,21 +242,24 @@ router.post('/avatar', requireAuth, avatarUpload.single('avatar'), async (req, r
     }
 });
 
-// The user's avatar upload history (avatar-tagged screenshot pastes).
-router.get('/avatar/history', requireAuth, (req, res) => {
+// The user's avatar upload history (avatar-tagged screenshot pastes, in OpenVibe.Community — or
+// OpenVibe.Media while PASTES_AUTHORITY is unset). Pastes have no metadata filter upstream, so
+// lookups.avatarPastes lists the person's screenshots and keeps the avatar-tagged ones.
+router.get('/avatar/history', requireAuth, async (req, res) => {
     try {
         const me = db.getUserById(req.user.id);
         const activePasteId = me?.avatar_paste_id || null;
-        // TODO(contract): avatar history reads the legacy local pastes rows only —
-        // Media API v1 has no metadata-filtered paste listing yet, so avatars
-        // uploaded after the media split appear once Media exposes such a filter.
-        const rows = db.getUserAvatarPastes(req.user.id).map(r => ({
-            slug: r.slug,
-            title: r.title,
-            created_at: r.created_at,
-            url: r.screenshot_path ? `/data/pastes/screenshots/${path.basename(r.screenshot_path)}` : null,
-            active: r.id === activePasteId,
-        })).filter(r => r.url);
+        const media = require('../media-client');
+        const rows = (await require('../media-proxy/lookups').avatarPastes(me)).map(r => {
+            const url = media.publicUrl(r.screenshot_url) || (r.screenshot_path ? media.screenshotUrl(path.basename(r.screenshot_path)) : null);
+            return {
+                slug: r.slug,
+                title: r.title,
+                created_at: r.created_at,
+                url,
+                active: (activePasteId != null && r.id === activePasteId) || (!!url && url === me.avatar_url),
+            };
+        }).filter(r => r.url);
         res.json({ avatars: rows });
     } catch (err) {
         console.error('[Auth] Avatar history error:', err.message);

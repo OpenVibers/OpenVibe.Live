@@ -221,7 +221,8 @@ async function _homeMeta() {
     try { vods = (await _vodList(12)) || []; } catch { /* */ }
     try { clips = (await _clipList(12)) || []; } catch { /* */ }
     try { pastes = (await _pasteList(12)) || []; } catch { /* */ }
-    try { stats = db.getHomeStats(); } catch { /* */ }
+    // VODs, clips and pastes are counted by the services that hold them (Media, Community), not Live's frozen tables.
+    try { stats = await require('../media-proxy/lookups').withArchiveStats({ ...db.getHomeStats() }); } catch { /* */ }
 
     const liveItems = live.map(s => ({ url: `/@${s.username}`, name: s.title || `${s.display_name || s.username} live`, by: s.display_name || s.username, meta: s.category || 'live' }));
     const vodItems = vods.map(v => ({ url: `/vod/${v.id}`, name: v.title || 'VOD', by: v.display_name || v.username, meta: _fmtDur(v.duration_seconds || v.duration), desc: v.ai_overview_short }));

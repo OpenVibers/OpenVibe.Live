@@ -171,13 +171,19 @@ function _ensureSessionTitles(userId) {
 // Full AI timeline for a streamer's channel page (streamer overview + every session's AI
 // overview + memory moments with VOD timestamps). Lazily assembled + cached (15 min TTL),
 // so it only rebuilds when the tab is actually opened and the cache is stale — no LLM cost.
-router.get('/timeline/:username', (req, res) => {
+router.get('/timeline/:username', async (req, res) => {
     try {
         const uname = String(req.params.username || '').trim();
         const user = db.getUserByUsername ? db.getUserByUsername(uname) : null;
         if (!user) return res.status(404).json({ error: 'Channel not found' });
 
-        const timeline = db.getStreamerAiTimeline(user.id); // full, cached
+        // Full timeline, cached 15 min. On a miss, each session's public VOD comes from OpenVibe.Media;
+        // a timeline built while Media did not answer is served but not cached.
+        let timeline = db.readStreamerAiTimelineCache(user.id);
+        if (!timeline) {
+            const vods = await require('../media-proxy/lookups').publicVodIdsByStream(user.id);
+            timeline = db.buildStreamerAiTimeline(user.id, vods.byStream, { store: vods.complete });
+        }
         const allSessions = timeline.sessions || [];
         const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
         const limit = Math.min(30, Math.max(1, parseInt(req.query.limit, 10) || 12));
@@ -338,16 +344,7 @@ router.get('/transcript/:streamId', async (req, res) => {
             const out = await media.listVods({ stream_id: sid, limit: 1 });
             const rows = out?.vods || (Array.isArray(out) ? out : []);
             vodId = rows[0] ? rows[0].id : null;
-        } catch { /* */ }
-        if (!vodId) {
-            try {
-                // Legacy pre-migration rows; never a private one (Media's list above is public-only too).
-                const v = db.get(`SELECT id FROM vods WHERE stream_id = ? AND COALESCE(is_recording, 0) = 0
-                                  AND COALESCE(visibility, CASE WHEN is_public = 1 THEN 'public' ELSE 'private' END) != 'private'
-                                  ORDER BY COALESCE(is_public,1) DESC, id DESC LIMIT 1`, [sid]);
-                vodId = v ? v.id : null;
-            } catch { /* */ }
-        }
+        } catch { /* Media down: the transcript still loads, without the VOD link */ }
         // Sound events ride alongside the speech segments so the transcript view can show
         // "what was heard" as well as "what was said". Empty for streams captured before
         // the timeline existed, which the frontend treats as speech-only.
