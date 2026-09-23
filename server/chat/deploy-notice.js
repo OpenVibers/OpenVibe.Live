@@ -17,9 +17,10 @@
 //     appending, so reconnects and repeats can never duplicate it.
 //   • The deploy is also a durable OpenVibe.Events event, live.release.deployed
 //     (server/events/release-events.js), queued in the SAME transaction that records the commits
-//     as announced (and, without the Chat service, stores the chat row). The chat notice itself
-//     still goes to OpenVibe.Chat over the bridge (chat-remote deployNotice) until Chat consumes
-//     the event; then that hop can go.
+//     as announced (and, without the Chat service, stores the chat row). OpenVibe.Chat consumes
+//     that event and folds the card by head commit (compatibility register C-84, proven on the
+//     2026-09-23 22:14 UTC deploy), so with Live's outbox on the bridge hop is not used; it stays
+//     only as the fallback while Events publishing is off.
 // ═══════════════════════════════════════════════════════════════
 const { execFile } = require('child_process');
 const path = require('path');
@@ -93,7 +94,7 @@ async function announce({ db, chatServer, log = console }) {
 
     // Live's outbox exists before the transaction (idempotent; null while Events is off).
     let outbox = null;
-    try { outbox = require('../events/stream-events'); outbox.init(); } catch (err) { log.warn('[Deploy notice] Events outbox unavailable:', err.message); outbox = null; }
+    try { outbox = require('../events/stream-events'); if (!outbox.init()) outbox = null; } catch (err) { log.warn('[Deploy notice] Events outbox unavailable:', err.message); outbox = null; }
     let eventId = null;
     // Recording the commits as announced and queueing live.release.deployed are one commit: the
     // event exists if and only if this deploy counts as announced.
@@ -107,9 +108,10 @@ async function announce({ db, chatServer, log = console }) {
     const inTransaction = (fn) => db.getDb().transaction(fn)();
 
     // CHAT_AUTHORITY=chat: Live still decides what shipped; OpenVibe.Chat stores the rolling
-    // message and shows it (its own copy of this module), so hand it the commits.
+    // message and shows it (its own copy of this module). It learns the commits from the
+    // live.release.deployed event; only with Events publishing off are they handed over the bridge.
     if (chatServer && chatServer.remote) {
-        chatServer.deployNotice(commits);
+        if (!outbox) chatServer.deployNotice(commits);
         try { inTransaction(recordDeploy); } catch (err) { log.warn('[Deploy notice] not recorded:', err.message); return { announced: commits.length, event_id: null }; }
         if (outbox) outbox.kick();
         return { announced: commits.length, event_id: eventId };

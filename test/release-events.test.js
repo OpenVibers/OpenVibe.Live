@@ -102,19 +102,30 @@ const stub = http.createServer((req, res) => {
     assert.strictEqual(deployRows().map(x => x.metadata).join('|'), chatBefore, 'the chat row rolled back too');
     assert.strictEqual(outboxRows().length, 1);
 
-    // CHAT_AUTHORITY=chat: the chat notice still goes over the bridge, and the event is queued.
+    // CHAT_AUTHORITY=chat with Events on: Chat learns the deploy from the event alone (C-84); no bridge hop.
     const bridged = [];
     r = await dn.announce({ db, chatServer: { remote: true, deployNotice: (commits) => bridged.push(commits) }, log: quiet });
     assert.ok(r.announced >= 1);
-    assert.strictEqual(bridged.length, 1);
-    assert.strictEqual(bridged[0][0].hash, head);
+    assert.strictEqual(bridged.length, 0, 'the event carries the deploy to Chat');
     assert.strictEqual(db.getSetting(dn.SETTING), head);
     rows = outboxRows();
     assert.strictEqual(rows.length, 2);
     assert.strictEqual(rows[1].event_id, r.event_id);
 
+    // Events publishing off: the bridge is the fallback, so Chat still hears about it.
+    streamEvents._reset();
+    process.env.EVENTS_PUBLISH = 'off';
+    db.setSetting(dn.SETTING, '');
+    r = await dn.announce({ db, chatServer: { remote: true, deployNotice: (commits) => bridged.push(commits) }, log: quiet });
+    delete process.env.EVENTS_PUBLISH;
+    assert.ok(r.announced >= 1);
+    assert.strictEqual(bridged.length, 1, 'without Events the bridge carries it');
+    assert.strictEqual(bridged[0][0].hash, head);
+    assert.strictEqual(r.event_id, null);
+    assert.strictEqual(outboxRows().length, 2, 'nothing queued while Events is off');
+
     streamEvents._reset();
     stub.close();
-    console.log('release events: live.release.deployed queued with the announcement, published, chat notice kept — all checks passed');
+    console.log('release events: live.release.deployed queued with the announcement, published; Chat gets it from the event, the bridge only without Events — all checks passed');
     process.exit(0);
 })().catch((err) => { console.error(err); process.exit(1); });
