@@ -78,6 +78,13 @@ media.createClip = async () => ({ id: 999, status: 'processing' });
 media.updateVod = async () => ({});
 media.updateClip = async () => ({});
 media.deleteClip = async () => ({});
+// Comments are OpenVibe.Community threads: a stub Community (started below) and a stub service token.
+const principal = require('../server/net/network-principal');
+principal.serviceHeaders = async () => ({ Authorization: 'Bearer test-service-token' });
+const { startCommunityStub } = require('./community-stub');
+for (const [id, n] of [[1, 'A'], [3, 'B'], [5, 'C'], [6, 'D'], [7, 'E'], [8, 'F']]) {
+    raw.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', ?, ?)").run(id, String(100 + id), `usr_01JAB2C3D4E5F6G7H8J9K0MNP${n}`);
+}
 const recorder = require('../server/streaming/recorder');
 recorder.getActiveRecording = (sid) => (Number(sid) === streamA ? { vodId: 101, startedAt: Date.now() - 60000 } : null);
 
@@ -130,6 +137,8 @@ async function check(name, fn) {
 
 (async () => {
     await new Promise((r) => server.once('listening', r));
+    const community = await startCommunityStub();
+    process.env.OV_COMMUNITY_INTERNAL_URL = community.url;
 
     await check('VOD detail: private and legacy-private look missing to anonymous and other users', async () => {
         for (const user of [null, 7, 5]) {
@@ -211,9 +220,12 @@ async function check(name, fn) {
         await sameAsMissing('GET', '/api/comments/vod/101', '/api/comments/vod/999', null);
         await sameAsMissing('GET', '/api/comments/clip/201', '/api/comments/clip/999', 7);
         await sameAsMissing('POST', '/api/comments/vod/101', '/api/comments/vod/999', 7, { message: 'hi' });
-        // (/:commentId/replies is shadowed by /:type/:id today and answers 400; either way nothing leaks.)
-        const r = await call('GET', `/api/comments/${posted.json.comment.id}/replies`);
-        assert.ok(r.status >= 400 && !/secret/.test(r.text), 'replies under a private VOD');
+        await sameAsMissing('GET', `/api/comments/${posted.json.comment.id}/replies`, '/api/comments/999999/replies', null);
+        await sameAsMissing('PUT', `/api/comments/${posted.json.comment.id}`, '/api/comments/999999', 7, { message: 'mine now' });
+        await sameAsMissing('DELETE', `/api/comments/${posted.json.comment.id}`, '/api/comments/999999', 7);
+        assert.strictEqual((await call('GET', `/api/comments/${posted.json.comment.id}/replies`, 3)).status, 200, 'the owner reads them');
+        const own = await call('GET', '/api/comments/vod/101', 3);
+        assert.strictEqual(own.json.thread, undefined, 'a private item\'s thread is never linked on Community');
         assert.strictEqual((await call('GET', '/api/comments/vod/101', 6)).status, 200, 'staff read them');
         assert.strictEqual((await call('GET', '/api/comments/vod/100')).status, 200, 'public item comments stay open');
     });
@@ -251,6 +263,7 @@ async function check(name, fn) {
     });
 
     server.close();
+    await community.close();
     for (const ext of ['', '-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
     if (failures) { quiet(`\n${failures} check(s) failed`); process.exit(1); }
     quiet('media privacy: all checks passed');

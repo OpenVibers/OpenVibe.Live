@@ -1531,9 +1531,19 @@ async function loadComments(contentType, contentId, prefix) {
     const countEl = document.getElementById(`${prefix}-comment-count`);
     const listEl = document.getElementById(`${prefix}-comments-list`);
     const formEl = document.getElementById(`${prefix}-comment-form`);
+    if (!listEl) return;
 
     // Show comment form if logged in
     if (formEl) formEl.style.display = currentUser ? '' : 'none';
+    // The same thread on OpenVibe.Community (comments are Community threads; the link is offered for items anyone may see).
+    let elsewhere = document.getElementById(`${prefix}-comments-elsewhere`);
+    if (!elsewhere) {
+        elsewhere = document.createElement('p');
+        elsewhere.id = `${prefix}-comments-elsewhere`;
+        elsewhere.className = 'comments-elsewhere';
+        listEl.after(elsewhere);
+    }
+    elsewhere.replaceChildren();
 
     try {
         const data = await api(`/comments/${contentType}/${contentId}`);
@@ -1541,6 +1551,14 @@ async function loadComments(contentType, contentId, prefix) {
         const total = data.total || 0;
 
         if (countEl) countEl.textContent = total > 0 ? `(${total})` : '';
+        if (data.thread && data.thread.url) {
+            const a = document.createElement('a');
+            a.href = data.thread.url;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            a.textContent = 'View this thread on OpenVibe.Community';
+            elsewhere.append(a);
+        }
 
         if (!comments.length) {
             listEl.innerHTML = '<div class="comments-empty"><i class="fa-solid fa-comment-dots" style="font-size:1.5rem;margin-bottom:8px"></i><p>No comments yet. Be the first!</p></div>';
@@ -1549,24 +1567,42 @@ async function loadComments(contentType, contentId, prefix) {
 
         listEl.innerHTML = comments.map(c => renderComment(c, contentType, contentId)).join('');
     } catch (e) {
-        listEl.innerHTML = '<p class="muted">Failed to load comments</p>';
+        if (countEl) countEl.textContent = '';
+        // Never an empty list that looks real: say what happened.
+        if (formEl && e && e.status === 503) formEl.style.display = 'none';
+        listEl.innerHTML = e && e.status === 503
+            ? '<div class="comments-empty comments-unavailable"><i class="fa-solid fa-plug-circle-exclamation" style="font-size:1.5rem;margin-bottom:8px"></i><p>Comments are unavailable right now. Try again in a moment.</p></div>'
+            : `<p class="muted">${esc((e && e.message) || 'Failed to load comments')}</p>`;
     }
 }
 
 function renderComment(c, contentType, contentId) {
-    const initial = (c.username || '?')[0].toUpperCase();
-    const color = c.profile_color || '#8b5cf6';
+    if (c.deleted) {
+        const replies = c.replies && c.replies.length ? `<div class="comment-replies">${c.replies.map(r => renderComment(r, contentType, contentId)).join('')}</div>` : '';
+        return `
+        <div class="comment-item comment-deleted" id="comment-${c.id}">
+            <div class="comment-avatar" style="background:var(--bg-tertiary, #444)">?</div>
+            <div class="comment-body">
+                <div class="comment-text muted">This comment was deleted.</div>
+                ${replies}
+            </div>
+        </div>`;
+    }
     const name = c.display_name || c.username || 'Unknown';
-    const isOwn = currentUser && (c.user_id === currentUser.id);
-    const isAdmin = currentUser && currentUser.capabilities?.moderate_global;
-    const edited = c.updated_at && c.updated_at !== c.created_at;
+    const initial = (c.username || name || '?')[0].toUpperCase();
+    const color = c.profile_color || '#8b5cf6';
+    const canEdit = c.can_edit ?? (currentUser && c.user_id === currentUser.id);
+    const canDelete = c.can_delete ?? (canEdit || (currentUser && currentUser.capabilities?.moderate_global));
+    const edited = !!c.edited_at || (c.updated_at && c.updated_at !== c.created_at);
 
     let actionsHtml = '';
     if (currentUser) {
         actionsHtml += `<button onclick="showReplyForm(${c.id}, '${contentType}', ${contentId})"><i class="fa-solid fa-reply"></i> Reply</button>`;
     }
-    if (isOwn || isAdmin) {
+    if (canEdit) {
         actionsHtml += `<button onclick="editComment(${c.id}, '${contentType}', ${contentId})"><i class="fa-solid fa-pen"></i> Edit</button>`;
+    }
+    if (canDelete) {
         actionsHtml += `<button onclick="deleteCommentAction(${c.id}, '${contentType}', ${contentId})"><i class="fa-solid fa-trash"></i> Delete</button>`;
     }
 
@@ -1577,7 +1613,7 @@ function renderComment(c, contentType, contentId) {
 
     return `
         <div class="comment-item" id="comment-${c.id}">
-            <div class="comment-avatar" style="background:${esc(color)}">${initial}</div>
+            <div class="comment-avatar" style="background:${esc(color)}">${esc(initial)}</div>
             <div class="comment-body">
                 <div class="comment-meta">
                     <span class="comment-author" style="color:${esc(color)}">${esc(name)}</span>

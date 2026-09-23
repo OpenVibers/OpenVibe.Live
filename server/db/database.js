@@ -6935,54 +6935,10 @@ function renormalizePendingMediaRequestPositions(streamerId) {
     tx(rows);
 }
 
-// ── Comment helpers ──────────────────────────────────────────
-
-function createComment({ content_type, content_id, user_id, parent_id, message }) {
-    return run(
-        `INSERT INTO comments (content_type, content_id, user_id, parent_id, message)
-         VALUES (?, ?, ?, ?, ?)`,
-        [content_type, content_id, user_id, parent_id || null, message]
-    );
-}
-
-function getComments(contentType, contentId, limit = 50, offset = 0) {
-    return all(`
-        SELECT c.*, u.username, u.display_name, u.avatar_url, u.profile_color, u.role
-        FROM comments c
-        JOIN users u ON c.user_id = u.id
-        WHERE c.content_type = ? AND c.content_id = ? AND c.is_deleted = 0 AND c.parent_id IS NULL
-        ORDER BY c.created_at DESC
-        LIMIT ? OFFSET ?
-    `, [contentType, contentId, limit, offset]);
-}
-
-function getCommentReplies(parentId) {
-    return all(`
-        SELECT c.*, u.username, u.display_name, u.avatar_url, u.profile_color, u.role
-        FROM comments c
-        JOIN users u ON c.user_id = u.id
-        WHERE c.parent_id = ? AND c.is_deleted = 0
-        ORDER BY c.created_at ASC
-    `, [parentId]);
-}
-
-function getCommentById(id) {
-    return get('SELECT * FROM comments WHERE id = ?', [id]);
-}
-
-function getCommentCount(contentType, contentId) {
-    const row = get('SELECT COUNT(*) as c FROM comments WHERE content_type = ? AND content_id = ? AND is_deleted = 0',
-        [contentType, contentId]);
-    return row ? row.c : 0;
-}
-
-function deleteComment(id) {
-    return run('UPDATE comments SET is_deleted = 1 WHERE id = ?', [id]);
-}
-
-function updateComment(id, message) {
-    return run('UPDATE comments SET message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [message, id]);
-}
+// ── Comments ─────────────────────────────────────────────────
+// VOD/clip comments are OpenVibe.Community threads (server/comments-client.js). The `comments`
+// table is read-only: the one-time import (OpenVibe.Community scripts/import-live-comments.js)
+// reads it; test/frozen-tables.test.js fails if server code writes it again.
 
 // ── Chat replay helpers ──────────────────────────────────────
 
@@ -8451,9 +8407,6 @@ module.exports = {
     // Verification Keys
     createVerificationKey, getVerificationKeyByKey, getVerificationKeyByUsername,
     getAllVerificationKeys, redeemVerificationKey, revokeVerificationKey, isUsernameReserved,
-    // Comments
-    createComment, getComments, getCommentReplies, getCommentById, getCommentCount,
-    deleteComment, updateComment,
     // Chat Replay
     getChatReplay,
     // Channel lookup

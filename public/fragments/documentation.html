@@ -1163,11 +1163,14 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 <table class="doc-table">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
-<tr><td>GET</td><td>/api/comments/:type/:id</td><td>Opt</td><td>List comments + replies (<code>type</code> = <code>vod|clip</code>)</td></tr>
+<tr><td>GET</td><td>/api/comments/:type/:id</td><td>Opt</td><td>List comments + replies, newest first (<code>type</code> = <code>vod|clip</code>, <code>?limit,offset</code>) &rarr; <code>{ comments, total, thread? }</code>; <code>thread.url</code> is the same thread on OpenVibe.Community (public and unlisted items)</td></tr>
+<tr><td>GET</td><td>/api/comments/:commentId/replies</td><td>Opt</td><td>All replies of a comment</td></tr>
 <tr><td>POST</td><td>/api/comments/:type/:id</td><td>Yes</td><td>Add a comment/reply (<code>message</code>, <code>parent_id?</code>)</td></tr>
-<tr><td>PUT / DELETE</td><td>/api/comments/:commentId</td><td>Author/mod</td><td>Edit / delete</td></tr>
+<tr><td>PUT</td><td>/api/comments/:commentId</td><td>Author</td><td>Edit your own comment</td></tr>
+<tr><td>DELETE</td><td>/api/comments/:commentId</td><td>Author/owner/staff</td><td>Delete (the VOD's or clip's owners and staff may delete any comment on it)</td></tr>
 </tbody>
 </table>
+<p>Comments are <a href="https://openvibe.community">OpenVibe.Community</a> comment threads: the same thread shows on Community's page for it. When Community cannot be reached these routes answer <code>503</code> with <code>code: "comments_unavailable"</code>.</p>
 
 <h3>Pastes — <code>/api/pastes</code></h3>
 <table class="doc-table">

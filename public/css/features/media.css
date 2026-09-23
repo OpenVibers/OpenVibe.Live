@@ -389,3 +389,8 @@
 .media-transcript-segs { display: flex; flex-direction: column; padding: 6px; gap: 1px; }
 .ts-seg:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--text-primary); }
 .ts-text { flex: 1; }
+
+/* Comments are OpenVibe.Community threads: the link to the same thread there, deleted tombstones */
+.comments-elsewhere { margin: 10px 0 0; font-size: .85rem; color: var(--text-muted); }
+.comments-elsewhere:empty { display: none; }
+.comment-item.comment-deleted .comment-text { font-style: italic; }

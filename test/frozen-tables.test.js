@@ -2,7 +2,8 @@
 
 // Live's legacy vods/clips/pastes tables are frozen: Media and Community own that data now
 // (AGENTS.md, Wave 22 register C-73). Live may read them for pre-cutover pages, but no server code
-// may write them. The only writes allowed are the two guarded one-time visibility backfills that
+// may write them. The VOD/clip `comments` table is frozen too: comments are OpenVibe.Community
+// threads (roadmap Wave 5), and the old rows are only read by Community's one-time import. The only writes allowed are the two guarded one-time visibility backfills that
 // run when the column is first added.
 
 const assert = require('assert');
@@ -10,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const WRITE = /\b(INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\s+(vods|clips|pastes|paste_likes)\b/i;
+const WRITE = /\b(INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\s+(vods|clips|pastes|paste_likes|comments)\b/i;
 const ALLOWED = [
     "UPDATE vods SET visibility = CASE WHEN is_public = 1 THEN 'public' ELSE 'private' END",
     "UPDATE clips SET visibility = CASE WHEN is_public = 1 THEN 'public' ELSE 'unlisted' END",

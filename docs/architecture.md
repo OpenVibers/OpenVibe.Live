@@ -12,6 +12,8 @@ OpenVibe.Live is a self-hosted live streaming platform, one of the OpenVibe serv
 - **OpenVibe.Network** — SSO/OAuth2 (RS256 JWTs), OpenCoins wallet, shared browser modules (`openvibe-shared`, a pinned OpenVibe.Shared release served at `/shared/*` from `node_modules`)
 - **OpenVibe.Media** — VODs, clips, pastes, thumbnails and files. Live proxies to it
   (`server/media-client.js`, `server/media-proxy/`); the local `vods`/`clips`/`pastes` tables are frozen, read-only.
+- **OpenVibe.Community** — pastes (`server/pastes-client.js`) and VOD/clip comments: `/api/comments` is an adapter over Community comment threads
+  (`server/comments-client.js`, [vods-and-clips.md](vods-and-clips.md#comments-are-openvibecommunity-threads)); the local `comments` table is frozen, read-only.
 
 ## Authentication
 
