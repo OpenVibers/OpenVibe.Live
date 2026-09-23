@@ -3679,6 +3679,8 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .chat-badge-cmod     { color: #6ea8ff;             background: color-mix(in srgb, #6ea8ff 18%, transparent);             border-color: color-mix(in srgb, #6ea8ff 40%, transparent); }
 .chat-badge-streamer { color: var(--live-red);     background: color-mix(in srgb, var(--live-red) 18%, transparent);     border-color: color-mix(in srgb, var(--live-red) 40%, transparent); }
 .chat-badge-sub      { color: var(--accent-light, var(--accent)); background: color-mix(in srgb, var(--accent) 18%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+/* VIP member badge (OpenVibe.VIP): a short text label, so it is a pill rather than an icon square. */
+.chat-vip-badge      { width: auto; padding: 0 5px; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; color: var(--accent-light, var(--accent)); background: color-mix(in srgb, var(--accent) 22%, transparent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
 /* Relay platform badge — colour driven by --relay-color (per platform). */
 .chat-relay-badge { color: var(--relay-color, #888); background: color-mix(in srgb, var(--relay-color, #888) 20%, transparent); border-color: color-mix(in srgb, var(--relay-color, #888) 45%, transparent); }
 .chat-relay-badge i { font-size: 0.6rem; }

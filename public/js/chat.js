@@ -2965,6 +2965,39 @@ function _updateTranslateHint(lang) {
 }
 
 /* ── Message handling ─────────────────────────────────────────── */
+/* ── VIP member badge ──────────────────────────────────────────
+   OpenVibe.Chat marks a member's messages with the creator's VIP badge ({ creator, perk, name,
+   badge, label }): on the message itself, as metadata.vip_badge on history, or a beat later as
+   { type:'chat_vip_badge', id, vip_badge }. It is plain data, rendered as text only. */
+function _msgVipBadge(msg) {
+    if (!msg) return null;
+    if (msg.vip_badge && typeof msg.vip_badge === 'object') return msg.vip_badge;
+    if (msg.metadata) {
+        try {
+            const m = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : msg.metadata;
+            if (m && m.vip_badge && typeof m.vip_badge === 'object') return m.vip_badge;
+        } catch { /* not JSON */ }
+    }
+    return null;
+}
+function _vipBadgeEl(b) {
+    const el = document.createElement('span');
+    el.className = 'chat-badge chat-vip-badge';
+    el.textContent = String(b.label || b.name || 'Member').slice(0, 24);
+    el.dataset.tip = `${String(b.name || 'VIP member').slice(0, 60)}`;
+    return el;
+}
+function _placeVipBadge(el, b) {
+    if (!el || !b || el.querySelector('.chat-vip-badge')) return;
+    el.querySelectorAll('.chat-badge-sub').forEach((s) => s.remove());   // VIP supersedes Live's own subscriber star
+    const user = el.querySelector('.chat-user');
+    if (user) user.parentNode.insertBefore(_vipBadgeEl(b), user);
+}
+function _applyChatVipBadge(evt) {
+    if (!evt || evt.id == null || !evt.vip_badge) return;
+    document.querySelectorAll(`.chat-msg[data-msg-id="${CSS.escape(String(evt.id))}"]`).forEach((el) => _placeVipBadge(el, evt.vip_badge));
+}
+
 function handleChatMessage(msg) {
     switch (msg.type) {
         case 'vibe-coding':
@@ -2972,6 +3005,9 @@ function handleChatMessage(msg) {
             break;
         case 'chat_translation':
             _applyChatTranslation(msg);
+            break;
+        case 'chat_vip_badge':
+            _applyChatVipBadge(msg);
             break;
         case 'chat':
             addChatMessage(msg);
@@ -3588,6 +3624,7 @@ function buildChatMessageEl(msg, opts = {}) {
     // metadata.translation on history). See server/i18n/translate.js for the direction rules.
     const _tr = _msgTranslation(msg);
     if (_tr) el.appendChild(_translationEl(_tr));
+    if (chatSettings.showBadges) _placeVipBadge(el, _msgVipBadge(msg));
 
     // Reply / translate actions. No per-message listeners: one delegated handler (bottom of this
     // file) reads what it needs from these expandos, so 500 rows cost 0 listeners, not 1,000.

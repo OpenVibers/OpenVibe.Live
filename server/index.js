@@ -576,6 +576,9 @@ app.use('/internal/chat-context', chatLiveContext.contextRouter);
 app.use('/internal/chat-effects', chatLiveContext.effectsRouter);
 // OpenVibe.Tips announces settled tips in the creator's chat here (service token, live.tips_delivery.write).
 app.use('/internal/tips', require('./tips/delivery-routes'));
+// OpenVibe.Network sends go-live notifications from live.stream.started and asks here who follows
+// the channel (service token, live.follower.read).
+app.use('/internal/followers', require('./streaming/followers-internal'));
 app.use('/internal', require('./internal/routes'));
 
 
