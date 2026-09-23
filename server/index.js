@@ -221,6 +221,8 @@ function webrtcStreamHasActiveProducer(streamId) {
 
 function hasActiveLiveFeed(stream) {
     if (!stream) return false;
+    // OpenRe.Stream holds the ingest (a mirrored session it confirmed recently): not stale.
+    if (require('./openre/mirror').hasLiveSession(stream.id)) return true;
     const streamKey = getStreamKey(stream);
     if (stream.protocol === 'rtmp') {
         return !!streamKey && rtmpServer.isReceiving(streamKey);
@@ -545,6 +547,9 @@ app.use('/data/arena', express.static(path.resolve(process.env.ARENA_IMAGE_PATH 
 // OpenVibe.Media → Live webhook (vod.ready / clip.ready …). Mounted BEFORE the
 // /internal router because it authenticates with an HMAC signature, not X-Internal-Key.
 app.post('/internal/media-webhook', require('./media-proxy/webhook'));
+// OpenVibe.Events → Live: OpenRe session lifecycle mirrored into `streams` (signed delivery,
+// OPENRE_EVENTS_SECRET; server/openre/mirror.js). Also before /internal (no X-Internal-Key).
+app.post('/internal/openre-events', require('./openre/mirror').webhookHandler);
 
 // Internal (server-to-server) routes — allow openvibe.network to call into this service
 // Summary numbers for the Network's navigation service (ordering sites by real use).
@@ -652,6 +657,7 @@ app.use('/api/recap', require('./recap/routes'));            // after-show repor
 app.use('/api/comments', commentRoutes);
 app.use('/api/controls', controlRoutes);
 app.use('/api/onvif', onvifRoutes);
+app.use('/api/admin/openre', require('./openre/routes'));
 app.use('/api/admin', adminRoutes);
 app.use('/api/mod', require('./admin/mod-routes'));
 app.use('/api/channels', require('./admin/channel-mod-routes'));
@@ -1155,6 +1161,8 @@ async function start() {
     // 5b. Resume enabled restreams for streams that survived the restart.
     // WHIP/RTMP broadcasters have no browser session to re-start them manually.
     for (const stream of db.getLiveStreams()) {
+        // OpenRe restreams its own sessions; Live must not start a second push for them.
+        if (require('./openre/mirror').ownsStream(stream.id)) continue;
         restreamManager.resumeForStream(stream.id, stream.user_id, {
             protocol: stream.protocol,
             streamKey: stream.managed_stream_key,
@@ -1221,6 +1229,9 @@ async function start() {
 
     // 6e. Start periodic viewer count polling for restream destinations
     restreamManager.startViewerCountPolling();
+
+    // 6g. OpenRe mirror reconcile (only runs when OPENRE_URL is set; idle with nothing mirrored).
+    try { require('./openre/mirror').start(); } catch (e) { console.warn('[OpenRe] mirror reconcile not started:', e.message); }
 
     // 6f. VOD storage/offload is owned by OpenVibe.Media now — nothing to start here.
 

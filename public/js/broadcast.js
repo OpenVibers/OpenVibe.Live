@@ -1791,7 +1791,8 @@ async function showRTMPInstructions(stream) {
         const data = await api(`/streams/${stream.id}/endpoint`);
         const ep = data.endpoint || {};
         const rtmpUrl = ep.rtmpUrl || `rtmp://${location.hostname}:1935/live`;
-        const streamKey = ep.streamKey || data.stream_key || 'N/A';
+        // An OpenRe-ingested slot never returns its key here, only a hint (Regenerate shows a new key once).
+        const streamKey = ep.streamKey || data.stream_key || ep.streamKeyHint || 'N/A';
         document.getElementById('bc-rtmp-url').textContent = rtmpUrl;
         document.getElementById('bc-rtmp-key').textContent = streamKey;
         // Mirror into IRL Pro guide fields

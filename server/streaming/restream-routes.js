@@ -14,6 +14,23 @@ const chatRelayService = require('../integrations/chat-relay-service');
 
 const router = express.Router();
 
+/**
+ * A slot ingested by OpenRe.Stream (ingest_authority = 'openre') restreams from OpenRe: its
+ * destinations are managed there (openre.stream), so Live refuses to edit or run them here rather
+ * than letting two systems push the same stream. Slots on Live's own ingest are unaffected.
+ */
+function refuseIfOpenre(res, managedStreamId) {
+    const openre = require('../openre/authority');
+    if (!openre.slotIsOpenre(managedStreamId)) return false;
+    const slot = openre.slotById(managedStreamId);
+    res.status(409).json({
+        error: 'Restreaming for this stream slot is managed on OpenRe.Stream',
+        managed_by: 'openre',
+        manage_url: require('../openre/openre-client').manageUrl(slot && slot.openre_stream_id),
+    });
+    return true;
+}
+
 const VALID_PLATFORMS = ['youtube', 'twitch', 'kick', 'custom'];
 const VALID_QUALITY_PRESETS = ['auto', 'low', 'medium', 'high', 'ultra', 'source'];
 const VALID_ENCODER_PRESETS = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow'];
@@ -198,6 +215,8 @@ router.post('/destinations', requireAuth, (req, res) => {
             resolvedSlotId = ms.id;
         }
 
+        if (resolvedSlotId && refuseIfOpenre(res, resolvedSlotId)) return;
+
         // Enforce a reasonable limit per slot (or globally if no slot)
         const existing = resolvedSlotId
             ? (db.getRestreamDestinationsByManagedStream(resolvedSlotId) || [])
@@ -256,6 +275,7 @@ router.put('/destinations/:id', requireAuth, (req, res) => {
         if (!dest || dest.user_id !== req.user.id) {
             return res.status(404).json({ error: 'Destination not found' });
         }
+        if (refuseIfOpenre(res, dest.managed_stream_id)) return;
 
         const updates = {};
         if (req.body.name !== undefined) updates.name = req.body.name?.trim() || dest.name;
@@ -296,6 +316,7 @@ router.put('/destinations/:id', requireAuth, (req, res) => {
                 if (!ms || ms.user_id !== req.user.id) {
                     return res.status(403).json({ error: 'Not your stream slot' });
                 }
+                if (refuseIfOpenre(res, ms.id)) return;
                 updates.managed_stream_id = ms.id;
             } else {
                 updates.managed_stream_id = null;
@@ -344,6 +365,7 @@ router.delete('/destinations/:id', requireAuth, (req, res) => {
         if (!dest || dest.user_id !== req.user.id) {
             return res.status(404).json({ error: 'Destination not found' });
         }
+        if (refuseIfOpenre(res, dest.managed_stream_id)) return;
 
         // Stop any active restream for this destination
         const liveStreams = getLiveStreamsForDestination(dest, req.user.id);
@@ -367,6 +389,7 @@ router.post('/destinations/:id/start', requireAuth, async (req, res) => {
         if (!dest || dest.user_id !== req.user.id) {
             return res.status(404).json({ error: 'Destination not found' });
         }
+        if (refuseIfOpenre(res, dest.managed_stream_id)) return;
         if (!dest.server_url || !dest.stream_key) {
             return res.status(400).json({ error: 'Destination is not fully configured (missing server URL or stream key)' });
         }
@@ -423,6 +446,7 @@ router.post('/destinations/:id/stop', requireAuth, (req, res) => {
         if (!dest || dest.user_id !== req.user.id) {
             return res.status(404).json({ error: 'Destination not found' });
         }
+        if (refuseIfOpenre(res, dest.managed_stream_id)) return;
 
         const liveStreams = getLiveStreamsForDestination(dest, req.user.id);
         for (const stream of liveStreams) {

@@ -2704,6 +2704,10 @@ function initDb() {
         database.exec('CREATE INDEX IF NOT EXISTS idx_vibe_events_stream ON vibe_coding_events(stream_id)');
     } catch (e) { console.warn('[DB] vibe_coding migration:', e.message); }
 
+    // OpenRe ingest switch (roadmap Wave 7): managed_streams.ingest_authority ('live' by default)
+    // and the openre_sessions mirror. Additive only; see server/openre/schema.js.
+    try { require('../openre/schema').ensure(database); } catch (e) { console.warn('[DB] openre schema:', e.message); }
+
     // Versioned migrations run last, so none of them can run before the tables they touch exist.
     // A critical (money) migration that fails throws here and stops the boot rather than serving
     // half-converted balances.

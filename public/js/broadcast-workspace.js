@@ -261,6 +261,8 @@ async function _wsLoadProfile(managedStreamId) {
             _wsState.selectedMs = { ..._wsState.selectedMs, ...data.managed_stream };
         }
         _wsState.streamKey = data.stream_key || null;
+        // OpenRe-ingested slot: no key in the profile, only a hint (Regenerate shows a new key once).
+        _wsState.streamKeyHint = data.stream_key_hint || null;
         _wsState.profile = data.broadcast_settings || {};
         _wsState.profile.vibeCoding = _wsNormalizeVibeSettings(_wsReadStoredVibeSettings(_wsState.profile));
         _wsState.whipUrlBase = data.whip_url_base || null;
@@ -270,6 +272,7 @@ async function _wsLoadProfile(managedStreamId) {
     } catch {
         _wsState.profile = {};
         _wsState.streamKey = _wsState.selectedMs?.stream_key || null;
+        _wsState.streamKeyHint = null;
         _wsState.rtmpUrl = null;
     }
     _wsState.dirty = false;
@@ -299,7 +302,7 @@ function _wsRenderPanel() {
     const vibe = _wsGetVibeSettings();
     const isLive = _wsIsManagedStreamLive(ms.id);
     const method = ms.streaming_method || 'browser';
-    const streamKey = _wsState.streamKey || '';
+    const streamKey = _wsState.streamKey || _wsState.streamKeyHint || '';
     const vibePublisherUrl = _wsGetVibePublisherUrl();
     const vibeFeedUrl = _wsGetVibeFeedUrl(ms);
     const vibeSlotRef = ms.slug || ms.id;

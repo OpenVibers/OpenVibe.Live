@@ -28,6 +28,8 @@ const { requireAuth, requireStreamer, optionalAuth } = require('../auth/auth');
 const jsmpegRelay = require('./jsmpeg-relay');
 const webrtcSFU = require('./webrtc-sfu');
 const recorder = require('./recorder');
+const openreAuthority = require('../openre/authority');
+const openreMirror = require('../openre/mirror');
 const i18n = require('../i18n/translate');
 const robotStreamerService = require('../integrations/robotstreamer-service');
 const chatRelayService = require('../integrations/chat-relay-service');
@@ -1467,7 +1469,7 @@ router.get('/managed/:managedStreamId/history', requireAuth, (req, res) => {
 
 // ── Get full managed stream profile (structured fields + broadcast settings blob) ──
 // Returned to the workspace panel for a single round-trip load.
-router.get('/managed/:managedStreamId/profile', requireAuth, (req, res) => {
+router.get('/managed/:managedStreamId/profile', requireAuth, async (req, res) => {
     const managedStreamId = parseInt(req.params.managedStreamId);
     if (!Number.isFinite(managedStreamId)) return res.status(400).json({ error: 'Invalid ID' });
     try {
@@ -1490,7 +1492,7 @@ router.get('/managed/:managedStreamId/profile', requireAuth, (req, res) => {
         })();
         const rtmpUrl = `rtmp://${rtmpHost}:${config.rtmp.port}/live`;
 
-        res.json({
+        const body = {
             managed_stream: msPublic,
             stream_key: streamKey,
             broadcast_settings: broadcastSettings,
@@ -1499,7 +1501,16 @@ router.get('/managed/:managedStreamId/profile', requireAuth, (req, res) => {
             whip_url_warning: whipUrlWarning,
             rtmp_url: rtmpUrl,
             restream_destinations: restreamDestinations,
-        });
+        };
+        // OpenRe ingests this slot: its RTMP server and key come from OpenRe (the key is only
+        // ever shown by Regenerate). Slots on Live's own ingest get exactly the response above.
+        if (openreAuthority.authorityOf(ms) === 'openre') {
+            const subject = require('../auth/identity-sync').subjectOf(ms.user_id);
+            Object.assign(body, { stream_key: null }, await openreAuthority.ingestFor(ms, subject).catch((err) => ({
+                ingest_authority: 'openre', stream_key_managed_by: 'openre', rtmp_url: null, stream_key_hint: `OpenRe is unreachable (${err.message})`,
+            })));
+        }
+        res.json(body);
     } catch (err) {
         console.error('[ManagedStreams] Profile error:', err.message);
         res.status(500).json({ error: 'Could not load profile' });
@@ -1568,7 +1579,7 @@ router.get('/managed', requireAuth, (req, res) => {
     try {
         const managed = db.getManagedStreamsByUserId(req.user.id);
         const limit = db.getManagedStreamLimit(req.user);
-        res.json({ managed_streams: managed, limit });
+        res.json({ managed_streams: managed.map(openreAuthority.serializeSlot), limit });
     } catch (err) {
         console.error('[ManagedStreams] List error:', err.message);
         res.status(500).json({ error: 'Failed to list managed streams' });
@@ -1815,13 +1826,24 @@ router.delete('/managed/:id', requireAuth, (req, res) => {
 });
 
 // Regenerate stream key for a managed stream
-router.post('/managed/:id/regenerate-key', requireAuth, (req, res) => {
+router.post('/managed/:id/regenerate-key', requireAuth, async (req, res) => {
     try {
         const msId = parseInt(req.params.id);
         const ms = db.getManagedStreamById(msId);
         if (!ms) return res.status(404).json({ error: 'Managed stream not found' });
         if (ms.user_id !== req.user.id && req.user.role !== 'admin') {
             return res.status(403).json({ error: 'Not your managed stream' });
+        }
+
+        // OpenRe ingests this slot: OpenRe rotates its key (the old one stops working at once) and
+        // the new one is shown here, once.
+        if (openreAuthority.authorityOf(ms) === 'openre') {
+            try {
+                const subject = require('../auth/identity-sync').subjectOf(ms.user_id);
+                return res.json(await openreAuthority.rotateFor(ms, subject));
+            } catch (err) {
+                return res.status(502).json({ error: `Could not rotate the key on OpenRe: ${err.message}` });
+            }
         }
 
         const crypto = require('crypto');
@@ -2125,7 +2147,7 @@ router.delete('/:id', requireAuth, (req, res) => {
 });
 
 // ── Get Streaming Endpoint Info ──────────────────────────────
-router.get('/:id/endpoint', requireAuth, (req, res) => {
+router.get('/:id/endpoint', requireAuth, async (req, res) => {
     try {
         const stream = db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
@@ -2175,6 +2197,18 @@ router.get('/:id/endpoint', requireAuth, (req, res) => {
                 whipUrlSource,
                 ...(whipUrlWarning ? { whipUrlWarning } : {}),
             };
+        } else if (stream.protocol === 'rtmp' && openreAuthority.slotIsOpenre(stream.managed_stream_id)) {
+            // OpenRe ingests this slot: its server URL, the hint of its key (never the key).
+            const slot = openreAuthority.slotById(stream.managed_stream_id);
+            const ingest = await openreAuthority.ingestFor(slot, require('../auth/identity-sync').subjectOf(slot.user_id)).catch(() => ({}));
+            endpoint = {
+                rtmpUrl: ingest.rtmp_url || null,
+                streamKey: null,
+                streamKeyHint: ingest.stream_key_hint || 'Press Regenerate to get your OpenRe stream key',
+                keyManagedBy: 'openre',
+                flvUrl: `/api/streams/rtmp-proxy/${stream.id}.flv`,
+            };
+            return res.json({ endpoint, stream_key: null });
         } else if (stream.protocol === 'rtmp') {
             const rtmpHost = config.rtmp.host || (() => {
                 try { return new URL(config.baseUrl).hostname; } catch { return hostname; }
@@ -2238,6 +2272,10 @@ router.get('/:id/rtmp-status', requireAuth, (req, res) => {
         }
         if (stream.protocol !== 'rtmp') {
             return res.status(400).json({ error: 'Not an RTMP stream' });
+        }
+        const mirrored = openreMirror.sessionForStream(stream.id);
+        if (mirrored) {
+            return res.json({ receiving: mirrored.state === 'live', connected_at: mirrored.started_at, managed_by: 'openre' });
         }
         const rtmpKey = stream.managed_stream_key || db.getUserById(stream.user_id)?.stream_key;
         const rtmpServer = require('./rtmp-server');
@@ -2402,18 +2440,29 @@ router.get('/:id/call', optionalAuth, (req, res) => {
 // ── RTMP FLV Proxy ───────────────────────────────────────────
 // Proxies HTTP-FLV from the internal NMS server so the browser fetches
 // from the same HTTPS origin, avoiding CSP / mixed-content issues.
-router.get('/rtmp-proxy/:streamId.flv', (req, res) => {
+router.get('/rtmp-proxy/:streamId.flv', async (req, res) => {
     try {
         const stream = db.getStreamById(req.params.streamId);
         if (!stream || !stream.is_live || stream.protocol !== 'rtmp') {
             return res.status(404).end();
         }
-        const flvKey = stream.managed_stream_key || db.getUserById(stream.user_id)?.stream_key;
-        if (!flvKey) return res.status(404).end();
+        let url;
+        const mirrored = openreMirror.sessionForStream(stream.id);
+        if (mirrored) {
+            // An OpenRe session: pull HTTP-FLV from the OpenRe worker that holds it, as named by
+            // OpenRe's playback descriptor (a loopback URL on this host; no key in it).
+            if (mirrored.state !== 'live') return res.status(404).end();
+            const pb = await require('../openre/openre-client').playback(mirrored.session_id).catch(() => null);
+            if (!pb || !pb.flv || !/^http:\/\/127\.0\.0\.1:\d+\/live\/ses_[0-9A-Z]+\.flv$/.test(pb.flv.internal_url)) return res.status(502).end();
+            url = pb.flv.internal_url;
+        } else {
+            const flvKey = stream.managed_stream_key || db.getUserById(stream.user_id)?.stream_key;
+            if (!flvKey) return res.status(404).end();
+            const nmsPort = config.rtmp.port + 8000;
+            url = `http://127.0.0.1:${nmsPort}/live/${flvKey}.flv`;
+        }
 
-        const nmsPort = config.rtmp.port + 8000;
-        const url = `http://127.0.0.1:${nmsPort}/live/${flvKey}.flv`;
-
+        if (req.destroyed) return undefined; // the viewer left while OpenRe was asked
         const http = require('http');
         const upstream = http.get(url, (nmsRes) => {
             if (nmsRes.statusCode !== 200) {
