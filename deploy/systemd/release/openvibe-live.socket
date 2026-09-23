@@ -10,7 +10,9 @@
 # clean HTTP continuity, nothing more — see deploy/README.md.
 [Unit]
 Description=OpenVibe.Live HTTP socket
-PartOf=openvibe-live.service
+# No PartOf=openvibe-live.service: PartOf propagates the service's stop/restart to this unit, so
+# every deploy used to close and reopen the listener (the socket's start time matched each restart)
+# and connections arriving in that gap were refused. The socket must outlive every restart.
 
 [Socket]
 ListenStream=0.0.0.0:3000
