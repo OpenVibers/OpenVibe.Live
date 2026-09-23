@@ -9,8 +9,8 @@
 // Now:
 //   • Only commits that were never announced are announced (site setting `deploy_last_announced`).
 //     A restart with no new code says nothing.
-//   • Consecutive deploys fold into ONE stored message: while the newest global chat row is a deploy
-//     notice (nobody has spoken since) and it is under 12 hours old, that row is updated in place.
+//   • Consecutive deploys fold into ONE stored message: while the newest chat row in ANY room is a
+//     deploy notice (nobody has spoken anywhere since) and it is under 3 hours old, it is updated in place.
 //   • The row stores data, not prose: metadata { kind: 'deploy', commits[], deploys, first_at,
 //     updated_at }. Clients render times from ISO timestamps, so they are always right.
 //   • The live broadcast carries the row id; clients replace the card with that id instead of
@@ -26,7 +26,8 @@ const path = require('path');
 
 const REPO_DIR = path.join(__dirname, '..', '..');
 const SETTING = 'deploy_last_announced';
-const FOLD_WINDOW_MS = 12 * 60 * 60 * 1000;
+// A card covers at most 3 hours of deploys, so its time range stays readable.
+const FOLD_WINDOW_MS = 3 * 60 * 60 * 1000;
 const MAX_COMMITS = 40;
 const ATTEMPTS_MS = [5000, 20000, 45000];        // clients reconnect with backoff after a restart
 
@@ -63,7 +64,9 @@ const plainText = (meta) => `🚀 ${meta.commits.length} update${meta.commits.le
 /** Insert a notice, or fold into the newest row when that row is itself a recent deploy notice. */
 function persist(db, commits) {
     const nowIso = new Date().toISOString();
-    const newest = db.get('SELECT id, message_type, metadata FROM chat_messages WHERE is_global = 1 AND is_deleted = 0 ORDER BY id DESC LIMIT 1');
+    // Newest across EVERY room: the global feed shows stream and channel messages too, so folding
+    // while people chatted in a stream left a card whose time range ran past the messages under it.
+    const newest = db.get('SELECT id, message_type, metadata FROM chat_messages WHERE is_deleted = 0 ORDER BY id DESC LIMIT 1');
     let prev = null;
     if (newest && newest.message_type === 'system' && newest.metadata) {
         try { const m = JSON.parse(newest.metadata); if (m && m.kind === 'deploy' && Date.now() - Date.parse(m.first_at) < FOLD_WINDOW_MS) prev = m; } catch { /* not ours */ }

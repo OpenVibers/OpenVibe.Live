@@ -104,7 +104,7 @@ async function tick() {
                         // screenshot_url is RELATIVE ("/p/<slug>/screenshot") and the file
                         // lives on Media's disk, not ours — so it has to be fetched over
                         // HTTP from Media's public base, not opened as a path.
-                        const img = p.slug ? media.pasteScreenshotUrl(p.slug) : null;
+                        const img = media.publicUrl(p.screenshot_url) || (p.slug ? media.pasteScreenshotUrl(p.slug) : null);   // Community pastes carry their image URL
                         if (img) r = await ai.analyzeImagePaste(img, p.title).catch(() => null);
                     } else {
                         r = await ai.analyzeTextPaste(p.content || '', p.title).catch(() => null);

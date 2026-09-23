@@ -435,7 +435,8 @@ async function tick(opts = {}) {
                 // Post the image paste to OpenVibe.Media. Extra fields (slug/metadata/
                 // ai_summary/ai_tags/stream_id) are inherited-shape extensions the
                 // contract leaves open — Media ignores what it doesn't know.
-                const paste = await require('../pastes-client').createPaste({
+                const pastesClient = require('../pastes-client');
+                const paste = await pastesClient.createPaste({
                     slug, user_id: v.user_id,
                     title: title.slice(0, 80), content, language: 'text', visibility: 'public',
                     stream_id: v.stream_id, metadata,
@@ -448,9 +449,15 @@ async function tick(opts = {}) {
                 }, { origin: 'ai' });
                 if (paste) {
                     pasteSlug = paste.slug || slug;
-                    // Screenshot pastes must use the image endpoint — /raw serves the
-                    // (empty) text content and broke the hero background rotation.
-                    img = media.publicUrl(paste.screenshot_url) || `${media.pasteUrl(pasteSlug)}/screenshot`;
+                    // Screenshot pastes must use the image itself — /raw serves the (empty) text
+                    // content and broke the hero background rotation. Community's create answer has
+                    // no screenshot_url, so read the paste back for it; Media's /p/<slug>/screenshot
+                    // never knew Community pastes (every moment since the move had a broken image).
+                    let shot = paste.screenshot_url || null;
+                    if (!shot && pasteSlug) { try { shot = ((await pastesClient.getPaste(pasteSlug)) || {}).screenshot_url || null; } catch { /* fall back below */ } }
+                    img = media.publicUrl(shot) || (pastesClient.onCommunity()
+                        ? `${(process.env.OV_COMMUNITY_URL || 'https://openvibe.community').replace(/\/+$/, '')}/p/${encodeURIComponent(pasteSlug)}/screenshot`
+                        : `${media.pasteUrl(pasteSlug)}/screenshot`);
                 }
             } catch (e) { console.warn(`[AI-Moments] paste post failed for VOD ${v.vod_id}:`, e.message); }
             try { fs.unlinkSync(screenshotPath); } catch { /* tmp frame */ }
