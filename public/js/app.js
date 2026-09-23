@@ -747,48 +747,7 @@ function onAuthChange() {
     if (currentUser) _enableHandoff(); else if (window.OpenVibeSSO) { try { window.OpenVibeSSO.handoffLinks({ signedIn: false }); } catch { /* */ } }
     // The navbar is the network's shared component; tell it who is here (js/ov-navbar-live.js).
     if (window.LiveNav) window.LiveNav.sync(currentUser || null);
-    const anon = document.getElementById('nav-auth-anon');
-    const user = document.getElementById('nav-auth-user');
-    const admin = document.getElementById('nav-admin');
-
-    // The nav chrome doesn't exist in every document that loads app.js (e.g. the
-    // popout chat window), so guard it — the auth-changed event below must still fire.
-    if (anon && user) {
-        if (currentUser) {
-            anon.style.display = 'none';
-            user.style.display = 'flex';
-            if (admin) admin.style.display = (currentUser.capabilities?.admin_panel || hasCapability('can_access_staff_console')) ? '' : 'none';
-            // Admin Panel link in the user dropdown — admins/owners only (mods can't access it).
-            const ddAdmin = document.getElementById('user-dropdown-admin');
-            if (ddAdmin) ddAdmin.style.display = (currentUser.role === 'admin' || currentUser.capabilities?.is_owner) ? '' : 'none';
-            const navAv = document.getElementById('nav-avatar');
-            if (navAv) navAv.innerHTML = _avatarInner(currentUser.avatar_url, currentUser.username);
-            const navUn = document.getElementById('nav-username');
-            if (navUn) navUn.textContent = currentUser.display_name || currentUser.username;
-            // The account menu opens with the same identity the navbar shows, so it does not need
-            // a second source of truth — it is filled from here.
-            const udAv = document.getElementById('ud-avatar');
-            if (udAv) udAv.innerHTML = _avatarInner(currentUser.avatar_url, currentUser.username);
-            const udName = document.getElementById('ud-name');
-            if (udName) udName.textContent = currentUser.display_name || currentUser.username;
-            const udHandle = document.getElementById('ud-handle');
-            if (udHandle) udHandle.textContent = '@' + (currentUser.username || '');
-            loadBalance();
-        } else {
-            anon.style.display = '';
-            user.style.display = 'none';
-            if (admin) admin.style.display = 'none';
-        }
-    } else if (currentUser) {
-        loadBalance();
-    }
-    // Go Live nav is always visible (logged out → prompts sign-up); its Dashboard
-    // sub-menu + caret only apply when logged in.
-    const goliveMenu = document.getElementById('nav-golive-menu');
-    if (goliveMenu) goliveMenu.style.display = currentUser ? '' : 'none';
-    const goliveCaret = document.querySelector('#nav-golive-dropdown .nav-dd-caret');
-    if (goliveCaret) goliveCaret.style.display = currentUser ? '' : 'none';
-    document.getElementById('user-dropdown')?.classList.remove('show');
+    if (currentUser) loadBalance();
 
     // Sync canvas auth state if canvas page is loaded
     if (typeof syncCanvasAuthState === 'function') syncCanvasAuthState();
@@ -841,25 +800,6 @@ async function updateChannelPointsNav(streamerId) {
 }
 function openChannelRewards() {
     if (typeof toggleRewardsPanel === 'function') toggleRewardsPanel();
-}
-
-function toggleUserMenu() {
-    const dd = document.getElementById('user-dropdown');
-    const open = dd.classList.toggle('show');
-    if (open && !window.OpenVibePanels) closeMobileNav();   // the shared controller does this once it has loaded
-}
-
-function closeMobileNav() {
-    document.querySelector('.nav-links')?.classList.remove('show');
-    document.querySelector('.nav-hamburger')?.classList.remove('open');
-}
-
-function toggleMobileNav() {
-    const navLinks = document.querySelector('.nav-links');
-    const hamburger = document.querySelector('.nav-hamburger');
-    navLinks.classList.toggle('show');
-    hamburger?.classList.toggle('open', navLinks.classList.contains('show'));
-    if (navLinks.classList.contains('show') && !window.OpenVibePanels) document.getElementById('user-dropdown')?.classList.remove('show');
 }
 
 function isModifiedLinkClick(event) {
@@ -920,13 +860,6 @@ function handleLinkClick(event, urlPath, replace = false) {
     return false;
 }
 
-function handleDropdownLinkClick(event, dropdownId) {
-    if (isModifiedLinkClick(event)) return true;
-    event?.preventDefault?.();
-    toggleNavDropdown(dropdownId);
-    return false;
-}
-
 // Go Live nav button — always visible. Logged in → the broadcast workspace;
 // logged out → prompt to sign up ("begin your streaming journey").
 function goLiveNav(event) {
@@ -940,7 +873,6 @@ function goLiveNav(event) {
 function dashNav(event) {
     if (isModifiedLinkClick(event)) return true;
     event?.preventDefault?.();
-    if (typeof closeNavDropdowns === 'function') closeNavDropdowns();
     if (currentUser) navigate('/dashboard');
     else if (typeof showModal === 'function') showModal('register');
     return false;
@@ -1015,7 +947,6 @@ function teardownRoute(nextPath) {
 }
 
 function navigate(urlPath, replace = false) {
-    closeMobileNav();
     teardownRoute(urlPath);
 
     // Normalize path
@@ -1125,7 +1056,6 @@ function routeFromURL() {
     // Hide all pages
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-    document.querySelector('.nav-links')?.classList.remove('show');
 
     window.scrollTo(0, 0);
 
@@ -1419,115 +1349,6 @@ function updateNavHeroTransparency() {
 let _navScrollRaf = 0;
 window.addEventListener('scroll', () => { if (_navScrollRaf) return; _navScrollRaf = requestAnimationFrame(() => { _navScrollRaf = 0; updateNavHeroTransparency(); }); }, { passive: true });
 window.addEventListener('resize', updateNavHeroTransparency, { passive: true });
-
-/* ── Nav Dropdown Helpers ──────────────────────────────────────── */
-function toggleNavDropdown(id) {
-    const dd = document.getElementById(id);
-    if (!dd) return;
-    const wasOpen = dd.classList.contains('open');
-    closeNavDropdowns();
-    if (!wasOpen) dd.classList.add('open');
-}
-
-function closeNavDropdowns() {
-    document.querySelectorAll('.nav-dropdown.open').forEach(d => d.classList.remove('open'));
-}
-
-// Close nav dropdowns when clicking outside
-document.addEventListener('click', (e) => {
-    if (!e.target.closest('.nav-dropdown')) closeNavDropdowns();
-});
-
-/* ── Nav Scroll Overflow Detection ─────────────────────────────── */
-function checkNavOverflow() {
-    const nl = document.querySelector('.nav-links');
-    if (!nl) return;
-    const hasOverflow = nl.scrollWidth > nl.clientWidth + 2;
-    const left = document.getElementById('nav-scroll-left');
-    const right = document.getElementById('nav-scroll-right');
-    const atStart = nl.scrollLeft <= 1;
-    const atEnd = nl.scrollLeft >= nl.scrollWidth - nl.clientWidth - 1;
-    if (left) left.classList.toggle('visible', hasOverflow && !atStart);
-    if (right) right.classList.toggle('visible', hasOverflow && !atEnd);
-}
-
-function scrollNavLinks(dir) {
-    const nl = document.querySelector('.nav-links');
-    if (!nl) return;
-    nl.scrollBy({ left: dir * 160, behavior: 'smooth' });
-    // Poll until scroll settles (smooth scroll can take 300-600ms)
-    let checks = 0;
-    let lastPos = nl.scrollLeft;
-    const poll = setInterval(() => {
-        checkNavOverflow();
-        if (nl.scrollLeft === lastPos || ++checks > 12) clearInterval(poll);
-        lastPos = nl.scrollLeft;
-    }, 60);
-}
-
-// Position fixed dropdown menus below their triggers
-function positionNavDropdownMenu(dropdown) {
-    const menu = dropdown?.querySelector('.nav-dropdown-menu');
-    const trigger = dropdown?.querySelector('.nav-link');
-    if (!menu || !trigger) return;
-    if (getComputedStyle(menu).position !== 'fixed') { menu.style.top = menu.style.left = menu.style.maxHeight = ''; return; }   // inside the mobile drawer it flows inline
-    const rect = trigger.getBoundingClientRect();
-    const vw = document.documentElement.clientWidth, vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-    const width = menu.offsetWidth || 200, pad = 8;
-    // Keep the whole menu on screen: slide left when it would cross the right edge, cap its height to the space below.
-    menu.style.left = `${Math.max(pad, Math.min(rect.left, vw - width - pad))}px`;
-    menu.style.top = `${rect.bottom}px`;
-    menu.style.maxHeight = `${Math.max(120, vh - rect.bottom - pad)}px`;
-}
-
-// Live's menus are coordinated by the network's shared panel controller (openvibe-shared/panels.js, the same
-// one the shared navbar uses on every other site): one panel open at a time, Escape and rotation close them, and
-// <body class="ov-panel-open"> lets the floating chat button step aside. Live keeps its own markup and toggles.
-{
-    const register = () => {
-        const P = window.OpenVibePanels; if (!P) return;
-        const dd = document.getElementById('user-dropdown'); if (dd) P.register({ el: dd, openClass: 'show', id: 'user-menu' });
-        const nl = document.querySelector('.nav-links'); if (nl) P.register({ el: nl, openClass: 'show', id: 'nav-drawer', close: () => closeMobileNav() });
-        document.querySelectorAll('.nav-dropdown').forEach((d, i) => P.register({ el: d, openClass: 'open', id: 'nav-dropdown-' + i }));
-    };
-    const load = () => {
-        if (window.OpenVibePanels) return register();
-        const sc = document.createElement('script'); sc.src = '/shared/panels.js'; sc.async = true; sc.onload = register; document.head.appendChild(sc);
-    };
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load); else load();
-}
-
-/** Close every navbar panel (used when the viewport changes under an open menu). */
-function closeNavPanels() {
-    document.getElementById('user-dropdown')?.classList.remove('show');
-    closeNavDropdowns();
-    closeMobileNav();
-}
-// A rotated phone, a resized window or an opened keyboard invalidates a fixed menu's position: reposition
-// what is open, and close panels on orientation change. Escape closes them too.
-{
-    let raf = 0;
-    const reflow = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => document.querySelectorAll('.nav-dropdown.open, .nav-dropdown:hover').forEach(positionNavDropdownMenu)); };
-    window.addEventListener('resize', reflow, { passive: true });
-    if (window.visualViewport) window.visualViewport.addEventListener('resize', reflow, { passive: true });
-}
-
-// Observe hover/open to position dropdown menus
-document.querySelectorAll('.nav-dropdown').forEach(dd => {
-    dd.addEventListener('mouseenter', () => positionNavDropdownMenu(dd));
-    dd.addEventListener('click', () => positionNavDropdownMenu(dd));
-});
-
-// Listen for scroll and resize to update nav overflow arrows
-{
-    const nl = document.querySelector('.nav-links');
-    if (nl) {
-        nl.addEventListener('scroll', checkNavOverflow, { passive: true });
-        new ResizeObserver(checkNavOverflow).observe(nl);
-    }
-    // Also check on login (new nav items may appear)
-    window.addEventListener('load', () => setTimeout(checkNavOverflow, 500));
-}
 
 /* ── Channel Page (/:username) ────────────────────────────────── */
 let currentChannelUsername = null; // is the current channel's user owner-rank?
@@ -2785,14 +2606,3 @@ window.addEventListener('popstate', () => {
     // If auth hasn't loaded yet, DOMContentLoaded handler will call routeFromURL()
 });
 
-// Intercept link clicks to use SPA navigation
-document.addEventListener('click', (e) => {
-    // Close user dropdown
-    if (!e.target.closest('.nav-avatar-wrap') && !e.target.closest('.user-dropdown')) {
-        document.getElementById('user-dropdown')?.classList.remove('show');
-    }
-
-    if (!e.target.closest('.nav-links') && !e.target.closest('.nav-hamburger')) {
-        closeMobileNav();
-    }
-});

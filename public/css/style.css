@@ -957,19 +957,7 @@ main#app { position: relative; z-index: 1; }
 }
 .nav-brand[data-brand-tooltip]:hover::after { opacity: 1; }
 
-.nav-links-wrap {
-    display: flex; align-items: center; flex: 1; min-width: 0;
-    position: relative;
-}
 
-.nav-links {
-    display: flex; gap: 4px; flex: 1; min-width: 0;
-    overflow-x: auto; overflow-y: visible;
-    align-items: center;
-    scrollbar-width: none;
-    scroll-behavior: smooth;
-}
-.nav-links::-webkit-scrollbar { display: none; }
 .nav-link {
     display: flex; align-items: center; gap: 6px;
     padding: 8px 14px; border-radius: var(--radius);
@@ -990,97 +978,16 @@ main#app { position: relative; z-index: 1; }
     color: var(--accent-light);
 }
 
-/* ── Nav Dropdown (Game → OpenVibeGame / Canvas) ──────────────────── */
-.nav-dropdown {
-    position: relative;
-    flex-shrink: 0;
-}
 
-.nav-dropdown .nav-link {
-    user-select: none;
-}
 
-.nav-dd-caret {
-    font-size: 0.6rem;
-    margin-left: 2px;
-    transition: transform 0.2s;
-}
 
-.nav-dropdown:hover .nav-dd-caret,
-.nav-dropdown.open .nav-dd-caret {
-    transform: rotate(180deg);
-}
 
-.nav-dropdown-menu {
-    display: none;
-    position: fixed;
-    min-width: 180px;
-    background: var(--bg-tertiary, #1a1a2e);
-    border: 1px solid var(--border, rgba(255,255,255,0.08));
-    border-radius: var(--radius, 8px);
-    box-shadow: var(--shadow-lg, 0 12px 28px rgba(0,0,0,0.4));
-    z-index: 1002;
-    overflow: hidden;
-    padding: 4px 0;
-}
 
-/* Open on hover (desktop) or click — JS positions the fixed menu */
-.nav-dropdown:hover .nav-dropdown-menu,
-.nav-dropdown.open .nav-dropdown-menu {
-    display: block;
-}
 
-.nav-dropdown-menu a {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 16px;
-    color: var(--text-primary, #e8e6e3);
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: background 0.15s;
-    white-space: nowrap;
-}
 
-.nav-dropdown-menu a:hover {
-    background: var(--bg-hover, rgba(255,255,255,0.06));
-    color: var(--accent-light, var(--accent-light));
-}
 
-.nav-dropdown-menu a:hover i {
-    color: var(--accent, var(--accent));
-}
 
-.nav-dropdown-menu a i {
-    width: 18px;
-    text-align: center;
-    color: var(--text-secondary, #9a9a9a);
-    transition: color 0.15s;
-}
 
-/* ── Nav Scroll Arrows (visible when nav links overflow) ────── */
-.nav-scroll-btn {
-    display: none;
-    width: 28px;
-    min-width: 28px;
-    height: 28px;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg-tertiary, #1a1a2e);
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 50%;
-    color: var(--text-secondary);
-    font-size: 0.75rem;
-    cursor: pointer;
-    z-index: 10;
-    transition: background 0.15s, color 0.15s;
-    flex-shrink: 0;
-}
-.nav-scroll-btn:hover {
-    background: var(--accent, var(--accent));
-    color: #fff;
-}
-.nav-scroll-btn.visible { display: flex; }
 
 /* Live indicator on Go Live nav link */
 .nav-live-dot {
@@ -1109,12 +1016,6 @@ main#app { position: relative; z-index: 1; }
     display: flex; align-items: center; gap: 12px;
     flex-shrink: 0; white-space: nowrap;
 }
-#nav-auth-anon,
-#nav-auth-user {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
 .nav-balance {
     display: flex; align-items: center; gap: 4px;
     padding: 4px 10px; border-radius: 12px;
@@ -1123,50 +1024,8 @@ main#app { position: relative; z-index: 1; }
     color: var(--accent); font-size: 0.85rem; font-weight: 600;
     cursor: pointer;
 }
-.nav-avatar-wrap {
-    display: flex; align-items: center; gap: 8px;
-    cursor: pointer; position: relative;
-    padding: 4px 8px; border-radius: var(--radius);
-}
-.nav-avatar-wrap:hover { background: var(--bg-hover); }
-.nav-avatar {
-    width: 32px; height: 32px; border-radius: 50%;
-    background: var(--accent); color: #000; font-weight: 700;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0.85rem;
-}
-#nav-username { font-size: 0.9rem; color: var(--text-primary); }
 
-.nav-avatar-wrap { position: relative; }
-.user-dropdown {
-    display: none; position: absolute; top: 100%; right: 0;
-    background: var(--bg-tertiary); border: 1px solid var(--border);
-    border-radius: var(--radius); min-width: 200px;
-    box-shadow: var(--shadow-lg); z-index: 1001;
-    overflow: hidden;
-}
-.user-dropdown.show { display: block; }
-.user-dropdown a {
-    display: flex; align-items: center; gap: 10px;
-    padding: 10px 16px; color: var(--text-primary);
-    font-size: 0.9rem; cursor: pointer;
-}
-.user-dropdown a:hover { background: var(--bg-hover); }
-.user-dropdown hr { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
 
-.nav-hamburger {
-    display: none; background: none; border: none;
-    color: var(--text-primary); font-size: 1.3rem;
-    padding: 8px; cursor: pointer;
-    border-radius: 10px;
-    transition: background 0.15s, color 0.15s;
-    flex-shrink: 0;
-}
-.nav-hamburger:hover { background: rgba(255,255,255,0.06); }
-.nav-hamburger.open {
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-    color: var(--accent);
-}
 
 /* ═══════════════════════════════════════════════════════════════
    BUTTONS
@@ -4913,21 +4772,9 @@ textarea.form-input { resize: vertical; min-height: 60px; }
     .navbar { gap: 12px; padding: 0 12px; }
     .nav-link { padding: 8px 10px; gap: 5px; font-size: 0.85rem; }
     .nav-right { gap: 8px; }
-    #nav-username { display: none; }
-    .nav-avatar-wrap { gap: 4px; padding: 4px; }
     .nav-balance, .nav-coins { padding: 4px 8px; font-size: 0.8rem; }
-    #nav-auth-anon, #nav-auth-user { gap: 8px; }
 }
 
-/* 1024px: Hamburger menu + hide nav links (catches Steam Deck & small laptops) */
-/* Phones and small tablets: the hamburger replaces the link row. Between 820 and 1024px the
-   links fit (or scroll), so showing a menu button there only hid navigation that had room. */
-@media (max-width: 820px) {
-    .nav-links { display: none; }
-    .nav-links-wrap { display: contents; }
-    .nav-links-wrap .nav-scroll-btn { display: none !important; }
-    .nav-hamburger { display: inline-flex; }
-}
 @media (max-width: 1024px) {
     .navbar { gap: 8px; padding: 0 10px; }
     .nav-brand { font-size: 1.1rem; }
@@ -4936,51 +4783,6 @@ textarea.form-input { resize: vertical; min-height: 60px; }
     /* (nav links stay visible here — the row scrolls when it overflows; the hamburger only
        takes over below 820px, see the block right after this one.) */
 
-    /* ── Mobile nav menu ──────────────────────────────────────────────────────
-       This was a full-bleed sheet pinned to both edges of the screen, with the items centred
-       individually so every pill was a different width and the column read as ragged. It is now
-       a panel that belongs to the button that opened it: anchored under the hamburger at the
-       right edge, sized to its content rather than the viewport, and scaled up from its top-right
-       corner so the motion starts where the finger did.
-
-       Glass here is a layered one — a translucent card tint over a blur with a little saturation,
-       a hairline, and an inner top highlight — so it sits above the page instead of washing it
-       out. All of it is theme-derived; nothing is a fixed colour. */
-    .nav-links.show {
-        display: flex; flex-direction: column; align-items: stretch;
-        position: fixed; top: calc(var(--navbar-h) + 7px);
-        right: 8px; left: auto; bottom: auto;
-        width: max-content;
-        min-width: 208px;
-        max-width: min(280px, calc(100vw - 16px));
-        padding: 7px; gap: 3px; z-index: 1001;
-        border-radius: 16px;
-        border: 1px solid color-mix(in srgb, var(--border-light) 85%, transparent);
-        background:
-            linear-gradient(180deg,
-                color-mix(in srgb, var(--bg-card) 88%, transparent),
-                color-mix(in srgb, var(--bg-secondary) 94%, transparent));
-        box-shadow:
-            0 22px 48px rgba(0, 0, 0, 0.45),
-            0 3px 10px rgba(0, 0, 0, 0.28),
-            inset 0 1px 0 rgba(255, 255, 255, 0.07);
-        backdrop-filter: blur(20px) saturate(1.6);
-        -webkit-backdrop-filter: blur(20px) saturate(1.6);
-        overflow-y: auto; overscroll-behavior: contain;
-        max-height: calc(100vh - var(--navbar-h) - 22px);
-        max-height: calc(100dvh - var(--navbar-h) - 22px);
-        transform-origin: top right;
-        animation: nav-drawer-in 0.26s cubic-bezier(.2, 1, .3, 1) both;
-    }
-    /* A small tongue pointing back at the hamburger, so the panel reads as attached to it. */
-    .nav-links.show::before {
-        content: ''; position: absolute; top: -5px; right: 17px;
-        width: 11px; height: 11px; transform: rotate(45deg);
-        background: color-mix(in srgb, var(--bg-card) 88%, transparent);
-        border-left: 1px solid color-mix(in srgb, var(--border-light) 85%, transparent);
-        border-top: 1px solid color-mix(in srgb, var(--border-light) 85%, transparent);
-        border-radius: 2px 0 0 0;
-    }
     @keyframes nav-drawer-in {
         from { opacity: 0; transform: translateY(-8px) scale(0.93); }
         to   { opacity: 1; transform: none; }
@@ -4991,109 +4793,16 @@ textarea.form-input { resize: vertical; min-height: 60px; }
         from { opacity: 0; transform: translateX(7px); }
         to   { opacity: 1; transform: none; }
     }
-    .nav-links.show .nav-link,
-    .nav-links.show .nav-dropdown-menu a {
-        animation: nav-item-in 0.26s ease both;
-        animation-delay: calc(60ms + var(--nav-i, 0) * 26ms);
-    }
-    .nav-links.show > :nth-child(1) { --nav-i: 0; }
-    .nav-links.show > :nth-child(2) { --nav-i: 1; }
-    .nav-links.show > :nth-child(3) { --nav-i: 2; }
-    .nav-links.show > :nth-child(4) { --nav-i: 3; }
-    .nav-links.show > :nth-child(5) { --nav-i: 4; }
-    .nav-links.show > :nth-child(n+6) { --nav-i: 5; }
 
-    /* Restore labels & lay out vertically in dropdown */
-    .nav-links.show .nav-link {
-        flex-shrink: 0;
-        display: flex; align-items: center; justify-content: flex-start; gap: 11px;
-        width: 100%;
-        padding: 10px 12px;
-        border: 1px solid transparent;
-        background: transparent;
-        border-radius: 11px;
-        font-size: 0.92rem; font-weight: 600;
-        white-space: nowrap;
-        transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.12s ease;
-    }
-    /* A fixed icon column so the labels start on one line instead of wherever each glyph ends. */
-    .nav-links.show .nav-link > i,
-    .nav-links.show .nav-dropdown-menu a > i {
-        width: 19px; flex: none; text-align: center; font-size: 0.94rem;
-        color: var(--text-secondary); transition: color 0.16s ease;
-    }
-    .nav-links.show .nav-link span { display: inline; }
-    .nav-links.show .nav-link[data-tooltip]::after { display: none; }
-    .nav-links.show .nav-link:hover,
-    .nav-links.show .nav-dropdown-menu a:hover {
-        background: color-mix(in srgb, var(--accent) 12%, transparent);
-        border-color: color-mix(in srgb, var(--accent) 24%, transparent);
-        color: var(--text-primary);
-    }
-    .nav-links.show .nav-link:hover > i,
-    .nav-links.show .nav-dropdown-menu a:hover > i { color: var(--accent); }
-    .nav-links.show .nav-link:active,
-    .nav-links.show .nav-dropdown-menu a:active { transform: scale(0.982); }
-    .nav-links.show .nav-link.active {
-        background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 20%, transparent), color-mix(in srgb, var(--accent) 9%, transparent));
-        border-color: color-mix(in srgb, var(--accent) 34%, transparent);
-        color: var(--text-primary);
-    }
-    .nav-links.show .nav-link.active > i { color: var(--accent); }
 
-    /* Nav dropdown in mobile: flatten into the same single column as everything else. */
-    .nav-links.show .nav-dropdown {
-        display: flex; flex-direction: column; align-items: stretch; gap: 3px;
-    }
-    .nav-links.show .nav-dropdown .nav-dd-caret { display: none; }
-    .nav-links.show .nav-dropdown-menu {
-        display: flex;
-        flex-direction: column;
-        align-items: stretch;
-        position: static;
-        background: none;
-        border: none;
-        box-shadow: none;
-        padding: 0;
-        gap: 3px;
-        margin-top: 0;
-        width: 100%;
-    }
-    .nav-links.show .nav-dropdown-menu a {
-        display: flex; align-items: center; gap: 11px;
-        padding: 10px 12px;
-        border-radius: 11px;
-        border: 1px solid transparent;
-        background: transparent;
-        font-size: 0.92rem; font-weight: 600;
-        white-space: nowrap;
-        transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.12s ease;
-    }
-    @media (prefers-reduced-motion: reduce) {
-        .nav-links.show,
-        .nav-links.show .nav-link,
-        .nav-links.show .nav-dropdown-menu a { animation: none !important; }
-    }
     /* "Go Live" is the only remaining nav dropdown — keep its trigger visible. */
 
     /* Nav-right stays visible, pushed to end before hamburger */
     .nav-right { margin-left: auto; gap: 6px; }
     /* Compact currency badges */
     .nav-balance, .nav-coins { padding: 4px 7px; font-size: 0.75rem; gap: 3px; border-radius: 10px; }
-    /* Smaller avatar, hide caret */
-    .nav-avatar-wrap { gap: 0; padding: 2px; }
-    .nav-avatar-wrap > .fa-caret-down { display: none; }
-    .nav-avatar { width: 30px; height: 30px; font-size: 0.78rem; }
 
-    /* Wider hamburger tap target + a gap from the avatar so they're not mis-tapped. */
-    .nav-hamburger {
-        padding: 8px 14px; min-width: 48px;
-        justify-content: center;
-        margin-left: 6px;
-    }
 
-    /* User dropdown needs to not overflow right edge */
-    .user-dropdown { right: -8px; min-width: 190px; }
 }
 
 /* 900px: Compact currency, hide brand text (keep "OpenVibe" on mobile) */
@@ -5104,7 +4813,6 @@ textarea.form-input { resize: vertical; min-height: 60px; }
     .nav-balance, .nav-coins { padding: 4px 8px; min-width: 0; font-size: 0.78rem; }
     .nav-right .btn span { display: none; }
     .nav-right .btn { padding: 6px 10px; font-size: 0.85rem; gap: 0; }
-    #nav-auth-anon, #nav-auth-user { gap: 6px; }
 
     /* Chat replay sidebar stacks below video */
 }
@@ -5144,33 +4852,11 @@ textarea.form-input { resize: vertical; min-height: 60px; }
     .nav-brand { gap: 6px; }
     .nav-brand i { font-size: 1.1rem; }
     .brand-text { font-size: 0.92rem; }
-    .nav-hamburger { padding: 6px; font-size: 1.2rem; }
     .nav-right { gap: 4px; }
     .nav-balance, .nav-coins { padding: 3px 6px; font-size: 0.72rem; gap: 2px; }
-    .nav-avatar { width: 28px; height: 28px; font-size: 0.72rem; }
-    .nav-avatar-wrap { padding: 2px; }
 
-    /* Sign in button compact */
-    #nav-auth-anon .btn { padding: 6px 10px; font-size: 0.82rem; }
 
-    /* User dropdown full-width on mobile */
-    /* Anchored under the avatar and sized to itself, like the nav panel — but its own width and
-       its own entrance, because it is its own thing. */
-    .user-dropdown {
-        position: fixed; top: calc(var(--navbar-h) + 7px); left: auto; right: 8px;
-        width: min(300px, calc(100vw - 16px)); min-width: 250px;
-        max-height: calc(100vh - var(--navbar-h) - 22px);
-        max-height: calc(100dvh - var(--navbar-h) - 22px);
-        overflow-y: auto; overscroll-behavior: contain;
-        border-radius: 16px;
-        padding-bottom: env(safe-area-inset-bottom, 0px);
-    }
-    .user-dropdown .ud-group a { padding: 10px 11px; font-size: 0.9rem; }
-    .ud-head { padding: 14px 14px 12px; }
 
-    /* Nav drawer tighter */
-    /* Only the outer inset tightens on a very small screen; row size is set with the panel. */
-    .nav-links.show { right: 6px; max-width: calc(100vw - 12px); }
 
     .hero h1 { font-size: 1.6rem; }
     .hero { padding-left: 16px; padding-right: 16px; }
@@ -5319,13 +5005,8 @@ textarea.form-input { resize: vertical; min-height: 60px; }
     .nav-brand { gap: 5px; }
     .nav-brand i { font-size: 1rem; }
     .brand-text { font-size: 0.88rem; }
-    .nav-hamburger { padding: 6px; font-size: 1.15rem; }
     .nav-balance, .nav-coins { padding: 2px 5px; font-size: 0.68rem; }
-    .nav-avatar { width: 26px; height: 26px; font-size: 0.68rem; }
 
-    /* Sign in button — icon only on tiny screens */
-    #nav-auth-anon .btn span { display: none; }
-    #nav-auth-anon .btn { padding: 6px 10px; font-size: 0.82rem; gap: 0; }
 
     .stream-card { border-radius: 16px; }
     .modal { width: 95%; border-radius: var(--radius); }
@@ -5406,9 +5087,6 @@ textarea.form-input { resize: vertical; min-height: 60px; }
     .brand-text { font-size: 0.82rem; }
     /* Hide currency on tiny screens to save space */
     .nav-balance, .nav-coins { display: none; }
-    .nav-avatar { width: 24px; height: 24px; font-size: 0.65rem; }
-    .nav-hamburger { padding: 5px; font-size: 1.1rem; }
-    #nav-auth-anon .btn { padding: 5px 8px; font-size: 0.78rem; }
 
     .hero h1 { font-size: 1.3rem; }
     .hero p { font-size: 0.85rem; }
@@ -6220,9 +5898,6 @@ body.theme-light .btn-outline {
 }
 body.theme-light .btn-outline:hover {
     background: var(--bg-hover);
-}
-body.theme-light .user-dropdown {
-    border: 1px solid var(--border);
 }
 
 /* ── Page Header ────────────────────────────────────────────── */
@@ -11479,7 +11154,6 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
     .nav-brand .brand-text, .nav-brand > span:not(.brand-mark) { display: none; }
     .nav-right { gap: 6px; min-width: 0; }
     .nav-coins, .nav-balance { max-width: 88px; overflow: hidden; }
-    .nav-avatar-wrap .nav-username { display: none; }
 }
 
 /* ── The stat board's backdrop blur ──────────────────────────────────────────
@@ -11503,7 +11177,6 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
    to its own bell rather than floating over the row, and the username truncates instead of
    pushing. */
 .nav-right { gap: clamp(5px, 1.2vw, 10px); align-items: center; }
-#nav-auth-user { gap: clamp(5px, 1.2vw, 9px); align-items: center; }
 .nav-right .nav-coins,
 .nav-right .nav-balance {
     height: 32px; display: inline-flex; align-items: center; gap: 5px;
@@ -11512,61 +11185,14 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 }
 #openvibe-bell-mount { height: 32px; display: inline-flex; align-items: center; position: relative; }
 #openvibe-bell-mount > * { position: relative; }
-.nav-avatar-wrap {
-    height: 34px; padding: 0 6px 0 3px; gap: 7px; border-radius: 999px;
-    max-width: min(40vw, 190px); min-width: 0;
-}
-.nav-avatar { width: 28px; height: 28px; font-size: 0.78rem; flex: none; }
-#nav-username {
-    font-size: clamp(0.75rem, 1.8vw, 0.9rem); font-weight: 650;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
-}
-/* Size only — whether it shows is decided by the ≤820px block (it was display:inline-flex here,
-   which put a menu button on every desktop navbar next to the full link row). */
-.nav-hamburger { height: 34px; width: 34px; align-items: center; justify-content: center; flex: none; }
 
-/* The menu itself: anchored to the avatar, never wider than the screen, and scrollable rather
-   than running off the bottom on a short screen or a landscape phone. */
-.user-dropdown {
-    top: calc(100% + 7px); right: 0;
-    /* Wide enough for the identity header's name and both wallet chips on one line. */
-    min-width: 262px; max-width: min(312px, calc(100vw - 20px));
-    max-height: calc(100vh - var(--navbar-h) - 20px); overflow-y: auto;
-    border-radius: 16px; padding: 0;
-    box-shadow: 0 22px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
-    overscroll-behavior: contain;
-}
-.user-dropdown a {
-    border-radius: 9px; padding: 9px 11px; gap: 11px;
-    font-size: 0.86rem; line-height: 1.25;
-}
-.user-dropdown a > i:first-child { width: 17px; text-align: center; flex: none; opacity: 0.85; }
-.user-dropdown hr { margin: 5px 7px; border: 0; border-top: 1px solid var(--border); }
 
-@media (max-width: 560px) {
-    /* Anchor to the bar rather than the avatar, so a wide menu can't hang off the right edge. */
-    .user-dropdown { position: fixed; top: calc(var(--navbar-h) + 6px); right: 8px; left: auto; min-width: 0; width: min(290px, calc(100vw - 16px)); }
-}
-@media (max-height: 520px) and (orientation: landscape) {
-    .user-dropdown { max-height: calc(100vh - var(--navbar-h) - 12px); }
-    .user-dropdown a { padding: 7px 10px; font-size: 0.82rem; }
-}
-/* Signed-out: the sign-in button should match the cluster's height, not tower over it. */
-#nav-auth-anon .btn { height: 34px; padding: 0 clamp(10px, 2vw, 15px); font-size: clamp(0.76rem, 1.8vw, 0.88rem); border-radius: 11px; }
 
 
 /* Belt and braces for the About section's cards: whatever happens with animations or deferred
    rendering, a card is never allowed to end up as an empty outline. */
 .home-cta-feature > i, .home-cta-feature > strong, .home-cta-feature > span { opacity: 1; }
 
-/* The user menu at tablet widths: anchored to the avatar it could still reach past the right
-   edge, so the fixed anchoring now covers everything below 900px rather than below 560. */
-@media (max-width: 900px) {
-    .user-dropdown {
-        position: fixed; top: calc(var(--navbar-h) + 6px); right: 8px; left: auto;
-        min-width: 0; width: min(290px, calc(100vw - 16px));
-    }
-}
 
 /* ── About section sub-headings ──────────────────────────────────────────────
    Three sub-sections inside one long panel, all introduced by the same small grey line of caps —
@@ -11684,52 +11310,8 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 
 
 
-/* ═══════════════════════════════════════════════════════════════
-   The account menu.
-
-   The nav menu beside it is a list of places, so it is a compact column of equal rows. This one
-   answers a different question — who am I signed in as, and what am I carrying — so it opens with
-   that and groups everything under it by what the row is for. Same glass family as the nav panel
-   so they belong to the same navbar, but its own shape: a tinted identity header, labelled
-   sections instead of bare rules, and a logout row that reads as the way out.
-   ═══════════════════════════════════════════════════════════════ */
-.user-dropdown {
-    padding: 0;
-    border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border));
-    background:
-        linear-gradient(180deg,
-            color-mix(in srgb, var(--accent) 10%, var(--bg-card)) 0,
-            var(--bg-secondary) 92px),
-        var(--bg-secondary);
-    box-shadow:
-        0 24px 60px rgba(0, 0, 0, 0.5),
-        0 3px 12px rgba(0, 0, 0, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.07);
-    backdrop-filter: blur(22px) saturate(1.6);
-    -webkit-backdrop-filter: blur(22px) saturate(1.6);
-    transform-origin: top right;
-}
-.user-dropdown.show { animation: udIn 0.24s cubic-bezier(.2, 1, .3, 1) both; }
 @keyframes udIn { from { opacity: 0; transform: translateY(-8px) scale(0.95); } to { opacity: 1; transform: none; } }
 
-/* ── Identity header ── */
-.ud-head {
-    display: grid; grid-template-columns: auto 1fr; gap: 3px 11px;
-    align-items: center; padding: 13px 14px 11px;
-    border-bottom: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
-}
-.ud-avatar {
-    grid-row: span 2; width: 40px; height: 40px; border-radius: 50%;
-    display: grid; place-items: center; overflow: hidden;
-    font-weight: 900; font-size: 1rem; color: #fff;
-    background: var(--accent);
-    border: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
-}
-.ud-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.ud-who { min-width: 0; display: grid; gap: 1px; }
-.ud-who b { font-size: 0.94rem; font-weight: 850; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ud-who small { font-size: 0.73rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ud-wallet { grid-column: 2; display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
 .ud-wallet span {
     display: inline-flex; align-items: center; gap: 5px;
@@ -11737,56 +11319,18 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
     font-size: 0.72rem; font-weight: 800; font-variant-numeric: tabular-nums;
     border: 1px solid transparent;
 }
-.ud-coin { color: #f6c945; background: color-mix(in srgb, #f6c945 13%, transparent); border-color: color-mix(in srgb, #f6c945 30%, transparent) !important; }
-.ud-vibe { color: #4ade80; background: color-mix(in srgb, #4ade80 13%, transparent); border-color: color-mix(in srgb, #4ade80 30%, transparent) !important; }
 .ud-wallet i { font-size: 0.86em; opacity: 0.9; }
 
-/* ── Groups ── */
-.ud-group { padding: 6px 5px; }
-.ud-group + .ud-group { border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
 .ud-label {
     display: block; padding: 3px 9px 5px;
     font-size: 0.6rem; font-weight: 800; letter-spacing: 0.13em; text-transform: uppercase;
     color: var(--text-muted);
 }
-.user-dropdown .ud-group a {
-    border-radius: 9px; padding: 8px 9px; gap: 11px;
-    font-size: 0.86rem; font-weight: 600;
-    border: 1px solid transparent;
-    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
-}
-.user-dropdown .ud-group a > i:first-child {
-    width: 18px; flex: none; text-align: center; opacity: 0.8;
-    transition: color 0.15s ease, opacity 0.15s ease;
-}
-.user-dropdown .ud-group a:hover {
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-    border-color: color-mix(in srgb, var(--accent) 24%, transparent);
-    transform: translateX(2px);
-}
-.user-dropdown .ud-group a:hover > i:first-child { color: var(--accent); opacity: 1; }
-.user-dropdown .ud-group a:active { transform: translateX(2px) scale(0.985); }
 
-/* Leaving is a different kind of action from going somewhere. */
-.ud-logout { color: var(--danger, #e74c3c) !important; }
-.user-dropdown .ud-group a.ud-logout:hover {
-    background: color-mix(in srgb, var(--danger, #e74c3c) 14%, transparent);
-    border-color: color-mix(in srgb, var(--danger, #e74c3c) 30%, transparent);
-}
-.user-dropdown .ud-group a.ud-logout:hover > i:first-child { color: var(--danger, #e74c3c); }
 
 /* Rows arrive just behind the panel, capped so a long menu never feels slow. */
 @keyframes udRow { from { opacity: 0; transform: translateX(6px); } to { opacity: 1; transform: none; } }
-.user-dropdown.show .ud-group a { animation: udRow 0.22s ease both; animation-delay: calc(70ms + var(--ud-i, 0) * 18ms); }
-.user-dropdown.show .ud-group:nth-of-type(1) a { --ud-i: 0; }
-.user-dropdown.show .ud-group:nth-of-type(2) a { --ud-i: 1; }
-.user-dropdown.show .ud-group:nth-of-type(3) a { --ud-i: 2; }
-.user-dropdown.show .ud-group:nth-of-type(n+4) a { --ud-i: 3; }
 
-@media (prefers-reduced-motion: reduce) {
-    .user-dropdown.show, .user-dropdown.show .ud-group a { animation: none !important; }
-    .user-dropdown .ud-group a:hover { transform: none; }
-}
 
 /* ═══════════════════════════════════════════════════════════════
    About section ("Streaming the way it should be") — layout pass.
@@ -11848,31 +11392,6 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
     .ov-conn-pill .ov-conn-dot { animation: none !important; }
 }
 
-/* ── Dropdowns never leave the screen ─────────────────────────────────────────
-   One rule for every navbar panel (user menu, nav dropdowns, mobile nav drawer). 100vh on phones
-   includes the strip hidden behind the browser's address bar, which is why the bottom of a long menu
-   used to fall off-screen and could not be scrolled to: dvh is the visible height. The cap also
-   leaves room for the home indicator, and the panel scrolls inside itself without dragging the page. */
-.user-dropdown, .nav-dropdown-menu, .nav-links.show {
-    max-height: calc(100vh - var(--navbar-h) - 16px);
-    max-height: calc(100dvh - var(--navbar-h) - 16px - env(safe-area-inset-bottom, 0px));
-    overflow-y: auto; overflow-x: hidden;
-    overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--accent) 40%, transparent) transparent;
-}
-.user-dropdown { max-width: calc(100vw - 16px); }
-/* Below tablet width the user menu is a sheet pinned under the bar, as wide as the phone allows. */
-@media (max-width: 900px) {
-    .user-dropdown { position: fixed; top: calc(var(--navbar-h) + 6px); right: 8px; left: auto; min-width: 0; width: min(340px, calc(100vw - 16px)); }
-    /* The floating chat button steps aside while a navbar panel is open (body.ov-panel-open), so the menu
-       needs no dead space at its end to clear it. */
-    .user-dropdown > :last-child { padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)); }
-}
-/* Short screens (landscape phones, split view): tighter rows so more of the menu is visible at once. */
-@media (max-height: 560px) {
-    .user-dropdown .ud-group a, .nav-links.show .nav-link { padding-top: 7px; padding-bottom: 7px; font-size: 0.86rem; }
-    .user-dropdown .ud-label { padding-top: 8px; padding-bottom: 2px; }
-}
 
 body.ov-panel-open #floating-chat-fab { opacity: 0; pointer-events: none; transform: scale(.85); transition: opacity .15s, transform .15s; }
 
