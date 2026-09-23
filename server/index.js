@@ -714,6 +714,14 @@ app.get('/api/health', (req, res) => {
  * genuine gate.
  */
 let _bootComplete = false;
+// What this server runs (ADR-016). The shared navbar loads /shared/release-watch.js, which polls
+// this and prompts open tabs after a deploy; it never reloads a tab that is watching, broadcasting
+// or typing.
+{
+    const release = require('openvibe-shared/release').createRelease({ service: 'live', root: path.join(__dirname, '..') });
+    app.get('/release.json', release.handler);
+}
+
 app.get('/api/ready', (req, res) => {
     res.set('Cache-Control', 'no-store');
     const checks = { boot: _bootComplete, db: false };
