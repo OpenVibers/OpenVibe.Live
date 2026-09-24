@@ -148,7 +148,11 @@ class MediaQueue {
                     return await billingActions.chargeMedia({ userId, streamerId, streamId, cost, label, requestId });
                 } catch (e) {
                     const live = billingActions.toLive(e, { insufficient: `Not enough Vibes — this costs ${cost}.` });
-                    throw new Error(live ? live.body.error : (e?.message || `Could not charge ${cost} Vibes.`));
+                    const err = new Error(live ? live.body.error : (e?.message || `Could not charge ${cost} Vibes.`));
+                    // Billing never answered: the request row stays ('unknown') for the staff money
+                    // page, which resolves the billing action keyed live:media_charge:<request id>.
+                    if (e && e.kind === 'unknown') err.outcomeUnknown = true;
+                    throw err;
                 }
             }
             // Vibes have no generic spend: paying a streamer for a request IS a donation
@@ -300,8 +304,9 @@ class MediaQueue {
                 });
             } catch (e) {
                 if (e && e.outcomeUnknown) {
-                    // Kept for reconcileCharges(), which refunds it if the debit did land.
-                    db.updateMediaRequest(requestId, { charge_state: 'unknown', last_error: 'The OpenCoins charge could not be confirmed' });
+                    // Kept, out of the queue: reconcileCharges() settles an OpenCoins one (refunding
+                    // it if the debit did land); a Vibes-on-Billing one waits for the staff money page.
+                    db.updateMediaRequest(requestId, { charge_state: 'unknown', last_error: `The ${this.currencyLabel(currency)} charge could not be confirmed` });
                 } else {
                     // Refused (not enough, unlinked, Billing said no): nothing was taken.
                     db.removeUnchargedMediaRequest(requestId);
