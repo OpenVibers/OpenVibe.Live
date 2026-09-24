@@ -404,3 +404,4 @@
 .clp-ai-attribution a { color: var(--accent); font-weight: 600; text-decoration: none; }
 .clp-ai-attribution a:hover { text-decoration: underline; }
 .clp-ai-how { font-size: 0.8rem; margin-top: 2px; }
+.detail-chip .cat-inferred { opacity: .78; }

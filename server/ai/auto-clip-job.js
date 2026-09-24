@@ -38,6 +38,9 @@ let _timer = null;
 let _busy = false;
 
 function _aiOn() { return !!(ai.isEnabled && ai.isEnabled() && ai.withinBudget && ai.withinBudget()); }
+// A streamer can turn AI Moments off for their channel (channels.ai_derivation_enabled, dashboard
+// Home → AI Moments from my streams): nothing is cut from their streams, live or from VODs.
+function _derivationOn(userId) { try { return db.isAiDerivationEnabled(userId); } catch { return true; } }
 function _clean(t, n) { return String(t || '').replace(/\s+/g, ' ').trim().slice(0, n || 300); }
 
 // ── Auto-clip log (replaces the old clips-table queries) ────
@@ -110,6 +113,7 @@ Return STRICT JSON only: {"clip": true|false, "title": "<specific punchy 3-8 wor
 async function _checkLiveStream(stream) {
     const streamId = stream.id;
     try {
+        if (!_derivationOn(stream.user_id)) return;
         if (db.isStreamClipRecordingEnabled && !db.isStreamClipRecordingEnabled(stream)) return;
         // Hourly cap + min spacing.
         if (_countClipsSince(streamId, 60) >= MAX_PER_HOUR) return;
@@ -196,6 +200,7 @@ async function _backfillPool(limit) {
             for (const c of _clipLog()) { if (c.vod_id) clipped.add(c.vod_id); if (c.stream_id) clipped.add(`s${c.stream_id}`); }
             return rows
                 .filter(v => v.stream_id && !clipped.has(v.id) && !clipped.has(`s${v.stream_id}`))
+                .filter(v => _derivationOn(v.user_id))
                 .filter(v => {
                     try { return (db.get('SELECT COUNT(*) AS c FROM stream_memories WHERE stream_id = ?', [v.stream_id])?.c || 0) > 0; }
                     catch { return false; }
@@ -288,6 +293,7 @@ async function clipVodMoment(o) {
     try {
         const { vod, offset, title, desc } = o || {};
         if (!vod || !(offset >= 0)) return null;
+        if (!_derivationOn(vod.user_id)) return null;   // the channel turned AI Moments off
         if (_isDuplicateAutoClip(vod, offset, desc, title)) {
             console.log(`[AutoClip] skip VOD ${vod.vod_id || vod.id} — duplicate/near-identical auto-clip already exists`);
             return null;
@@ -362,7 +368,7 @@ function stop() {
     if (_flagTimer) { _flagTimer(); _flagTimer = null; }
 }
 
-module.exports = { start, stop, clipVodMoment, backfillVodClips, syncAutoClipFlags, _tick };
+module.exports = { start, stop, clipVodMoment, backfillVodClips, syncAutoClipFlags, _tick, _internals: { checkLiveStream: _checkLiveStream, backfillPool: _backfillPool } };
 
 // CLI: force a historical backfill batch, e.g. `node server/ai/auto-clip-job.js --backfill --limit=4`
 if (require.main === module) {

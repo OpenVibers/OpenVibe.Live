@@ -11,7 +11,7 @@ let activeStreams = [];
    (so the dashboard paints instantly and only does the work you look at). Other
    modules (e.g. moderation) register their loader on window._dashTabLoaders. */
 const _DASH_TAB_CARDS = {
-    home:       ['dash-card-profile', 'dash-card-offline'],
+    home:       ['dash-card-profile', 'dash-card-ai-derivation', 'dash-card-offline'],
     chatai:     ['dash-aibot-card', 'dash-card-overlay', 'dash-card-chatlogs'],
     moderation: [],  // injected by dashboard-moderation.js into #dash-grid-moderation
     controls:   ['dash-card-controls', 'dash-card-cameras', 'dash-card-tokens'],
@@ -95,7 +95,7 @@ window.switchDashTab = switchDashTab;
 
 // Per-tab loaders (guarded so a missing fn never breaks the tab).
 function _call(name) { try { if (typeof window[name] === 'function') window[name](); } catch (e) { console.warn('[dash]', name, e); } }
-window._dashTabLoaders.home = () => { _call('loadSettingsProfile'); _call('loadSettingsOffline'); _call('loadDashFunds'); };
+window._dashTabLoaders.home = () => { _call('loadSettingsProfile'); _call('loadAiDerivationSetting'); _call('loadSettingsOffline'); _call('loadDashFunds'); };
 window._dashTabLoaders.chatai = () => { _call('updateDashObsOverlayUrl'); _call('loadAiViewers'); };
 window._dashTabLoaders.controls = () => { _call('loadDashConfigs'); _call('loadControlSettings'); _call('loadDashboardCameras'); _call('loadDashTokens'); };
 window._dashTabLoaders.money = () => { _call('loadDashFunds'); _call('loadDashGoals'); _call('loadPowerchatStatus'); };
@@ -978,6 +978,31 @@ async function loadDashAiClips() {
     } catch { list.innerHTML = '<p class="muted">Failed to load AI Moments</p>'; }
 }
 function dashAiClipsGoPage(page) { dashAiClipsPage = page; loadDashAiClips(); }
+
+/* ── AI Moments from my streams: the channel's AI derivation switch ──────────
+   channels.ai_derivation_enabled (on by default). Off: the auto-clip, AI moments and caught-live
+   jobs skip this channel and its after-show report is the stats-only one. */
+async function loadAiDerivationSetting() {
+    const box = document.getElementById('dash-ai-derivation');
+    if (!box) return;
+    try {
+        const data = await api('/streams/channel');
+        const ch = (data && data.channel) || data || {};
+        box.checked = ch.ai_derivation_enabled == null || Number(ch.ai_derivation_enabled) !== 0;
+    } catch { /* keep the default */ }
+}
+async function saveAiDerivationSetting(box) {
+    const status = document.getElementById('dash-ai-derivation-status');
+    const on = !!box.checked;
+    try {
+        await api('/streams/channel', { method: 'PUT', body: { ai_derivation_enabled: on ? 1 : 0 } });
+        if (status) status.textContent = on ? 'On: the AI may make Moments from your streams.' : 'Off: the AI makes no new Moments from your streams.';
+        toast(on ? 'AI Moments turned on for your channel' : 'AI Moments turned off for your channel', 'success');
+    } catch (e) {
+        box.checked = !on;
+        toast(e.message || 'Save failed', 'error');
+    }
+}
 
 async function loadClipSettings() {
     const el = document.getElementById('dash-clips-allow-creator-delete');

@@ -474,6 +474,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
                 vod.stream_started_at = stream.started_at;
                 vod.stream_ended_at = stream.ended_at;
                 vod.stream_category = stream.ai_category || stream.category;
+                vod.stream_category_inferred = !!stream.ai_category;   // shown as "inferred" (roadmap 33.4)
                 vod.stream_peak_viewers = stream.peak_viewers;
             }
         }

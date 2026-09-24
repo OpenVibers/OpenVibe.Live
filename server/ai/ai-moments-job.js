@@ -267,7 +267,8 @@ function _dedupePastes() { /* moved to Media — sig-dedup happens pre-post */ }
 async function _momentPool(limit) {
     try {
         const r = await media.listVods({ limit, order: 'views' });
-        const rows = r?.vods || (Array.isArray(r) ? r : []);
+        // A channel that turned AI Moments off (channels.ai_derivation_enabled) is never picked from.
+        const rows = (r?.vods || (Array.isArray(r) ? r : [])).filter((v) => { try { return db.isAiDerivationEnabled(v.user_id); } catch { return true; } });
         if (rows.length) {
             return rows.map((v) => {
                 const state = (db.getVodAiState && db.getVodAiState(v.id)) || {};
@@ -495,7 +496,7 @@ function start() {
     setInterval(() => { tick().catch(() => {}); }, 5 * 60 * 1000);
 }
 
-module.exports = { start, tick, findBestMoment: _findBestMoment, frameTooDark: _frameTooDark, makeSlug: _slug };
+module.exports = { start, tick, findBestMoment: _findBestMoment, frameTooDark: _frameTooDark, makeSlug: _slug, _internals: { momentPool: _momentPool } };
 
 // CLI: force a one-off regeneration, e.g. a whole-dataset "best of all-time" test run:
 //   node server/ai/ai-moments-job.js --fresh --target=6 --perUser=2

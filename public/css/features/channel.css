@@ -1381,3 +1381,6 @@ body.controls-docked .messenger-toggle { z-index: 1100; }
     font-size: 0.68rem; font-weight: 700; letter-spacing: .02em; color: #fff;
     background: linear-gradient(135deg, #6d28d9, #0e7490);
 }
+
+/* An AI-inferred category says so ("Gaming · inferred", roadmap 33.4). */
+.ch-category-badge .cat-inferred { font-weight: 500; opacity: .78; font-size: .9em; }

@@ -185,6 +185,8 @@ const LIVE_PASTE_MIN_GAP_MS = 90 * 60 * 1000;
 async function _maybeLivePaste(stream, image, r, offset) {
     if (!r || !r.worthy || !r.title || !image) return;
     try { if (String(db.getSetting('ai_live_pastes_enabled') ?? 'true') === 'false') return; } catch { /* default on */ }
+    // A channel that turned AI Moments off (channels.ai_derivation_enabled) gets no "caught live" pastes.
+    try { if (!db.isAiDerivationEnabled(stream.user_id)) return; } catch { /* default on */ }
     const registry = require('./moment-registry');
     const last = registry.lastOfKind('paste', { stream_id: stream.id });
     if (last && Date.now() - (last.ts || 0) < LIVE_PASTE_MIN_GAP_MS) return;
@@ -240,4 +242,4 @@ function start() {
     console.log('[AI] Stream memory job started (30s poll; captures at the configured interval when enabled)');
 }
 
-module.exports = { start, tick, captureMemoryNow };
+module.exports = { start, tick, captureMemoryNow, _internals: { maybeLivePaste: _maybeLivePaste } };

@@ -552,6 +552,9 @@ function initDb() {
         // Tri-state preference for the About-tab AI overview: 'auto' (show only when there's no
         // bio/about yet), 'show' (always), 'hide' (never). Migrate old hide flag → 'hide'.
         add('ai_overview_pref', "ai_overview_pref TEXT DEFAULT 'auto'");
+        // Whether OpenVibe's AI may make Moments from this channel's streams (auto-clips, AI moment
+        // pastes, AI-written recaps). On unless the streamer turns it off (roadmap 33.7).
+        add('ai_derivation_enabled', 'ai_derivation_enabled INTEGER DEFAULT 1');
         try { database.exec("UPDATE channels SET ai_overview_pref = 'hide' WHERE hide_ai_overview = 1 AND (ai_overview_pref IS NULL OR ai_overview_pref = 'auto')"); } catch { /* */ }
     } catch (e) { console.warn('[DB] Channel points config migration:', e.message); }
 
@@ -4176,6 +4179,18 @@ function _computeHomeStats() {
 function getChannelByUserId(userId) {
     return get('SELECT * FROM channels WHERE user_id = ?', [userId]);
 }
+/**
+ * Whether OpenVibe's AI may derive Moments (auto-clips, AI moment pastes, AI-written recaps) from
+ * this account's streams: the channel's ai_derivation_enabled, on by default and for an account
+ * with no channel row. Read by every job that makes them (roadmap 33.7).
+ */
+function isAiDerivationEnabled(userId) {
+    if (userId == null || userId === '') return true;
+    try {
+        const row = get('SELECT ai_derivation_enabled FROM channels WHERE user_id = ?', [userId]);
+        return !row || row.ai_derivation_enabled == null || Number(row.ai_derivation_enabled) !== 0;
+    } catch { return true; }
+}
 // Batched lookup → { userId: channelRow }. Avoids the N+1 in the live-streams list
 // (one query for all channels instead of one per stream).
 function getChannelsByUserIds(userIds) {
@@ -4231,7 +4246,7 @@ function updateChannel(userId, fields) {
     const updates = [];
     const params = [];
     for (const [key, val] of Object.entries(fields)) {
-        if (val !== undefined && ['title', 'description', 'category', 'tags', 'protocol', 'is_nsfw', 'force_nsfw', 'auto_record', 'vod_recording_enabled', 'force_vod_recording_disabled', 'offline_banner_url', 'panels', 'emote_sources', 'weather_zip', 'weather_detail', 'weather_show_location', 'control_mode', 'anon_controls_enabled', 'control_rate_limit_ms', 'active_control_config_id', 'video_click_enabled', 'offline_screen_type', 'offline_screen_url', 'offline_html', 'offline_css', 'hide_ai_overview', 'ai_overview_pref', 'chat_language'].includes(key)) {
+        if (val !== undefined && ['title', 'description', 'category', 'tags', 'protocol', 'is_nsfw', 'force_nsfw', 'auto_record', 'vod_recording_enabled', 'force_vod_recording_disabled', 'offline_banner_url', 'panels', 'emote_sources', 'weather_zip', 'weather_detail', 'weather_show_location', 'control_mode', 'anon_controls_enabled', 'control_rate_limit_ms', 'active_control_config_id', 'video_click_enabled', 'offline_screen_type', 'offline_screen_url', 'offline_html', 'offline_css', 'hide_ai_overview', 'ai_overview_pref', 'chat_language', 'ai_derivation_enabled'].includes(key)) {
             updates.push(`${key} = ?`);
             params.push(['tags', 'panels', 'emote_sources'].includes(key) ? (typeof val === 'string' ? val : JSON.stringify(val)) : val);
         }
@@ -7497,7 +7512,7 @@ module.exports = {
     getRecentlyOnlineStreamers, countRecentlyOnlineStreamers,
     getHomeStats,
     // Channels
-    getChannelByUserId, getChannelsByUserIds, getChannelByUsername, createChannel, updateChannel, ensureChannel, setUserBio,
+    getChannelByUserId, getChannelsByUserIds, getChannelByUsername, isAiDerivationEnabled, createChannel, updateChannel, ensureChannel, setUserBio,
     getChannelPointsConfig, setChannelPointsConfig,
     getChannelVodRecordingPolicyByUserId, resolveStreamRecordingMode, resolveStreamVodVisibility, resolveStreamClipVisibility, isStreamClipRecordingEnabled,
     // RobotStreamer integration

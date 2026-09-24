@@ -240,6 +240,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
                 clip.stream_ended_at = stream.ended_at;
                 clip.stream_title = stream.title;
                 clip.stream_category = stream.ai_category || stream.category;
+                clip.stream_category_inferred = !!stream.ai_category;   // shown as "inferred" (roadmap 33.4)
                 clip.stream_peak_viewers = stream.peak_viewers;
                 clip.stream_protocol = stream.protocol;
             }

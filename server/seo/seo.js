@@ -1089,6 +1089,7 @@ function llmsTxt() {
         `- [AI Moments](${b}/moments): auto-clips cut when chat reacted, frames the AI picked from streams, and AI-written after-show recaps. JSON: ${b}/api/content/moments`,
         '- AI Moments pages are noindex; the /moments collection is their indexable form. They are never listed in the sitemap.',
         '- An AI clip says "AI clip · from <streamer>\'s stream"; it is never presented as something the streamer or a viewer clipped.',
+        '- A streamer can turn AI Moments off for their channel; the AI then makes no new ones from their streams.',
         '',
         '## API and docs',
         '',

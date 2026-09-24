@@ -375,7 +375,7 @@
                 <!-- AI Moments of my stream: auto-clips, kept apart from the clips people took (roadmap 33.7) -->
                 <div class="dash-card dash-card-wide" id="dash-card-aimoments">
                     <h3 style="margin:0 0 6px"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Moments of My Stream</h3>
-                    <p class="muted">Clips OpenVibe's AI cut from your streams when chat reacted. Nobody clipped these, so they are not in "My Clips". You can publish, unlist or delete them.</p>
+                    <p class="muted">Clips OpenVibe's AI cut from your streams when chat reacted. Nobody clipped these, so they are not in "My Clips". You can publish, unlist or delete them, and turn the AI off for your channel under Home &rarr; AI Moments from my streams.</p>
                     <div id="dash-ai-clips" class="vod-grid"></div>
                 </div>
 
@@ -493,6 +493,17 @@
                         <button class="btn btn-primary btn-small" onclick="saveSettingsProfile()"><i class="fa-solid fa-floppy-disk"></i> Save Profile</button>
                         <a href="https://openvibe.network" target="_blank" rel="noopener" class="btn btn-outline btn-small" style="text-decoration:none"><i class="fa-solid fa-arrow-up-right-from-square"></i> Manage account on openvibe.network</a>
                     </div>
+                </div>
+
+                <!-- AI Moments from my streams: the channel's AI derivation switch (roadmap 33.7) -->
+                <div class="dash-card dash-card-wide" id="dash-card-ai-derivation">
+                    <h3><i class="fa-solid fa-wand-magic-sparkles"></i> AI Moments from my streams</h3>
+                    <label class="staff-inline-toggle" style="margin-bottom:8px">
+                        <input type="checkbox" id="dash-ai-derivation" checked onchange="saveAiDerivationSetting(this)">
+                        <span>Let OpenVibe's AI make Moments from my streams</span>
+                    </label>
+                    <p class="muted" style="font-size:0.85rem;margin:0">Moments are auto-clips cut when chat reacts, frames the AI picks and posts as notes, and AI-written after-show recaps. They are always labelled as AI-made, never credited to you, and kept out of search. Turned off, the AI makes no new ones from your streams (your after-show report keeps its stats). Moments already made stay until you delete them under Content &rarr; AI Moments.</p>
+                    <span id="dash-ai-derivation-status" class="muted" style="font-size:0.82rem"></span>
                 </div>
 
                 <!-- Offline Screen (migrated from /settings) -->

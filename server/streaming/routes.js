@@ -736,6 +736,10 @@ router.put('/channel', requireAuth, (req, res) => {
             const p = String(req.body.ai_overview_pref || 'auto').trim();
             if (['auto', 'show', 'hide'].includes(p)) fields.ai_overview_pref = p;
         }
+        // Whether OpenVibe's AI may make Moments from this channel's streams (roadmap 33.7).
+        if (hasOwn(req.body, 'ai_derivation_enabled')) {
+            fields.ai_derivation_enabled = cleanBooleanFlag(req.body.ai_derivation_enabled) ? 1 : 0;
+        }
         // Chat/stream language: 'auto' (detect from bio) or an ISO code from i18n.LANG_NAMES.
         if (hasOwn(req.body, 'chat_language')) {
             const l = String(req.body.chat_language || 'auto').trim().toLowerCase();

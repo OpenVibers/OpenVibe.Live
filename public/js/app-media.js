@@ -238,7 +238,7 @@ async function loadVodPlayer(vodId, seekTo) {
         const extraDetails = document.getElementById('vp-extra-details');
         if (extraDetails) {
             let chips = '';
-            if (v.stream_category) chips += `<span class="detail-chip"><i class="fa-solid fa-tag"></i> ${esc(_capTag(v.stream_category))}</span>`;
+            if (v.stream_category) chips += `<span class="detail-chip"${v.stream_category_inferred ? ' title="Category inferred by OpenVibe&#39;s AI from the stream"' : ''}><i class="fa-solid fa-tag"></i> ${esc(_capTag(v.stream_category))}${v.stream_category_inferred ? '<span class="cat-inferred"> · inferred</span>' : ''}</span>`;
             if (v.stream_peak_viewers) chips += `<span class="detail-chip"><i class="fa-solid fa-users"></i> Peak: ${v.stream_peak_viewers}</span>`;
             if (v.stream_started_at) {
                 const streamDate = new Date(v.stream_started_at + 'Z');
@@ -972,7 +972,7 @@ async function loadClipPlayer(clipId) {
         const extraDetails = document.getElementById('clp-extra-details');
         if (extraDetails) {
             let chips = '';
-            if (cl.stream_category) chips += `<span class="detail-chip"><i class="fa-solid fa-tag"></i> ${esc(_capTag(cl.stream_category))}</span>`;
+            if (cl.stream_category) chips += `<span class="detail-chip"${cl.stream_category_inferred ? ' title="Category inferred by OpenVibe&#39;s AI from the stream"' : ''}><i class="fa-solid fa-tag"></i> ${esc(_capTag(cl.stream_category))}${cl.stream_category_inferred ? '<span class="cat-inferred"> · inferred</span>' : ''}</span>`;
             if (cl.stream_peak_viewers) chips += `<span class="detail-chip"><i class="fa-solid fa-users"></i> Peak: ${cl.stream_peak_viewers}</span>`;
             if (cl.stream_started_at) {
                 const streamDate = new Date(cl.stream_started_at + 'Z');

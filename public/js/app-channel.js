@@ -28,6 +28,27 @@ function _updateMicOnlyOverlay(browserMode, streamingMethod) {
     container.appendChild(overlay);
 }
 let _activeChannelIsOwnerRank = false;
+
+/**
+ * The category pill. A category the AI inferred from the stream (ai_category) says so, "Gaming ·
+ * inferred" (roadmap 33.4); one the streamer chose is shown plain. Stream rows carry `category` as
+ * the effective value (ai_category when there is one) and `ai_category` itself.
+ */
+function _isInferredCategory(row) { return !!(row && row.ai_category && row.ai_category === row.category); }
+function _setCategoryBadge(el, value, inferred) {
+    if (!el) return;
+    el.textContent = _capTag(value);
+    el.classList.toggle('is-inferred', !!inferred);
+    if (inferred) {
+        const mark = document.createElement('span');
+        mark.className = 'cat-inferred';
+        mark.textContent = ' · inferred';
+        el.append(mark);
+        el.title = "Category inferred by OpenVibe's AI from the stream";
+    } else {
+        el.removeAttribute('title');
+    }
+}
 const CHANNEL_VODS_PAGE_SIZE = 12;
 const CHANNEL_CLIPS_PAGE_SIZE = 12;
 const channelVodsPageByUser = Object.create(null);
@@ -667,7 +688,9 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             _activeChannelIsOwnerRank = !!ch.is_owner;
             const _chUser = document.getElementById('ch-username');
             if (_chUser) _chUser.style.display = 'none';
-            document.getElementById('ch-category-badge').textContent = _capTag((liveStreams[0] && liveStreams[0].category) || ch.ai_category || ch.category || 'Live');
+            { const _ls0 = liveStreams[0], _liveCat = _ls0 && _ls0.category;
+              _setCategoryBadge(document.getElementById('ch-category-badge'), _liveCat || ch.ai_category || ch.category || 'Live',
+                  _liveCat ? _isInferredCategory(_ls0) : !!ch.ai_category); }
             document.getElementById('ch-follower-count').textContent = `${ch.follower_count || 0} followers`;
             setupFollowBtn(document.getElementById('ch-btn-follow'));
             setupBanBtn(document.getElementById('ch-btn-ban'));
@@ -728,7 +751,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             document.getElementById('ch-username-offline').textContent = '@' + ch.username;
             document.getElementById('ch-description-offline').textContent = ch.description || '';
             document.getElementById('ch-follower-count-offline').textContent = `${ch.follower_count || 0} followers`;
-            document.getElementById('ch-category-badge-offline').textContent = _capTag(ch.ai_category || ch.category || 'Offline');
+            _setCategoryBadge(document.getElementById('ch-category-badge-offline'), ch.ai_category || ch.category || 'Offline', !!ch.ai_category);
             setupFollowBtn(document.getElementById('ch-btn-follow-offline'));
             setupBanBtn(document.getElementById('ch-btn-ban-offline'));
 
@@ -1539,7 +1562,7 @@ function activateChannelStream(stream) {
     setPageTitle(`${stream.title || 'Live'} — ${stream.display_name || stream.username || ''}`.trim());
     // Category pill reflects THIS live slot's category (set in /broadcast), not the
     // channel's stale default.
-    if (stream.category) { const _cb = document.getElementById('ch-category-badge'); if (_cb) _cb.textContent = _capTag(stream.category); }
+    if (stream.category) _setCategoryBadge(document.getElementById('ch-category-badge'), stream.category, _isInferredCategory(stream));
     // Stream-type badge only (Screen Share / Audio Only / Camera). The WEBRTC/RTMP
     // protocol tag was removed from the header — that info now lives in the player's
     // stats overlay, which is more useful than the raw transport for viewers.

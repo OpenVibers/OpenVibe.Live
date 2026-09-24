@@ -165,7 +165,10 @@ async function buildRecap(streamId, { ai = true } = {}) {
     ensureTable();
     const g = await gather(streamId);
     if (!g) return null;
-    let write = ai ? await aiWriteup(g) : null;
+    // A channel that turned AI Moments off gets the stats report only (no model, not an AI Moment).
+    let derivationOn = true;
+    try { derivationOn = db.isAiDerivationEnabled(g.streamer.id); } catch { /* default on */ }
+    let write = ai && derivationOn ? await aiWriteup(g) : null;
     const usedAi = !!write;
     if (!write) write = templateWriteup(g);
     const recap = { ...g, write, ai: usedAi, generated_at: new Date().toISOString() };
