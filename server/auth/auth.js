@@ -213,7 +213,7 @@ const TOKEN_WRITE_SCOPES = [
     ['/api/streams', ['stream']], ['/api/restream', ['stream']], ['/api/robotstreamer', ['stream']], ['/api/thumbnails', ['stream']],
     ['/api/vods', ['stream']], ['/api/clips', ['stream']], ['/api/media', ['stream', 'chat']],
     ['/api/controls', ['control']], ['/api/onvif', ['control']],
-    ['/api/vibe-coding', ['vibe_coding_publish', 'stream']],
+    ['/api/vibe-coding', ['vibe_coding_publish']],   // not the broad `stream` scope
 ];
 function apiTokenAllows(req, scopes) {
     const path = String(req.originalUrl || req.url || '').split('?')[0];

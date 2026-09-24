@@ -68,7 +68,7 @@ curl https://openvibe.live/api/streams \
 
 ### Vibe Coding Publisher
 
-For the OpenVibe.Live VS Code companion or any other coding-feed publisher, use a token with `vibe_coding_publish` scope instead of broader stream control when possible.
+For the OpenVibe.Live VS Code companion or any other coding-feed publisher, use a token with the `vibe_coding_publish` scope. It is the only scope `/ws/vibe-coding/publish` and the `/api/vibe-coding` writes accept; a `stream` token is refused there.
 
 ### WebSocket (Chat)
 

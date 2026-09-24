@@ -45,7 +45,7 @@ Streamers publish live coding activity over a dedicated WebSocket endpoint:
 GET /ws/vibe-coding/publish?token=hbt_xxx&managedStreamId=123&slotSlug=camp-code
 ```
 
-Authentication accepts JWTs or `hbt_` API tokens. API tokens should include the dedicated `vibe_coding_publish` scope. The legacy `stream` scope is still accepted for backward compatibility.
+Authentication accepts JWTs or `hbt_` API tokens. An API token needs the dedicated `vibe_coding_publish` scope (the Dashboard's **GitHub Copilot Companion** preset); the broad `stream` scope is not accepted any more (close code `4403`). The same holds for the REST settings routes under `/api/vibe-coding`.
 
 ### Server messages
 
