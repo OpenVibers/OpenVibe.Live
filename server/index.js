@@ -582,8 +582,7 @@ app.post('/internal/openre-events', require('./openre/mirror').webhookHandler);
 // Summary numbers for the Network's navigation service (ordering sites by real use).
 // Internal key only; returns totals, never rows.
 app.get('/internal/analytics-summary', (req, res) => {
-    const key = req.headers['x-internal-key'];
-    if (req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || !config.internalApiKey || !key || key !== config.internalApiKey) return res.status(401).json({ ok: false });
+    if (!require('./net/internal-key').internalKeyOk(req)) return res.status(401).json({ ok: false });
     try {
         const days = Math.min(parseInt(req.query.days, 10) || 7, 90);
         const st = analytics.getStats({ days }) || {};

@@ -14,12 +14,9 @@
  */
 const { serviceAuth, capabilities, http } = require('openvibe-contracts');
 const { getNetworkPublicKey, getNetworkIssuer } = require('../auth/auth');
+const { viaProxy } = require('./internal-key');
 
 const AUDIENCE = 'openvibe.live';
-
-function viaProxy(req) {
-    return !!(req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.headers['cf-connecting-ip']);
-}
 
 function guard(capability) {
     const registered = !!capabilities.get(capability);

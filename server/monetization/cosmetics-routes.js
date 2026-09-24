@@ -80,16 +80,12 @@ router.post('/deactivate', requireAuth, async (req, res) => {
 
 // ── Internal: auto-unlock cosmetic from openvibe-quest game ──────
 // Called server-to-server when openvibe-quest game awards a hat/cosmetic item.
-// Only the configured internal API key: the legacy X-Internal-Secret is in git history, and the
-// quest game that sent it from this host is gone. Anyone else could unlock paid cosmetics.
-function internalCallerOk(req) {
-    const crypto = require('crypto');
-    const key = String(require('../config').internalApiKey || '');
-    const given = String(req.headers['x-internal-key'] || '');
-    return !!key && given.length === key.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(key));
-}
+// Only the configured internal API key, from loopback: the legacy X-Internal-Secret is in git
+// history, and the quest game that sent it from this host is gone. The key is shared by several
+// services, so it is refused through the public edge (nginx/Cloudflare) like every internal route
+// (server/net/internal-key.js); otherwise anyone holding it could unlock paid cosmetics from outside.
 router.post('/internal-unlock', (req, res) => {
-    if (!internalCallerOk(req)) {
+    if (!require('../net/internal-key').internalKeyOk(req)) {
         return res.status(403).json({ error: 'Forbidden' });
     }
     const { userId, itemId } = req.body;
