@@ -4470,6 +4470,19 @@ function getRestreamDestinationsByManagedStream(managedStreamId) {
     return all('SELECT * FROM restream_destinations WHERE managed_stream_id = ? ORDER BY created_at', [managedStreamId]);
 }
 
+/**
+ * The destinations a stream on this slot may use, and nothing else: a slot gets only the
+ * destinations bound to it; no slot (a legacy session) gets only the owner's unbound rows.
+ * There is no fallback to every destination the account owns: that fallback started one
+ * slot's auto-start destinations when the streamer went live on another slot.
+ */
+function getRestreamDestinationsForSlot(userId, managedStreamId) {
+    if (managedStreamId) {
+        return all('SELECT * FROM restream_destinations WHERE user_id = ? AND managed_stream_id = ? ORDER BY created_at', [userId, managedStreamId]);
+    }
+    return all('SELECT * FROM restream_destinations WHERE user_id = ? AND managed_stream_id IS NULL ORDER BY created_at', [userId]);
+}
+
 // ── Platform OAuth connection helpers ────────────────────────
 
 // ── Per-streamer channel points ("OpenCoins") ──
@@ -7518,7 +7531,7 @@ module.exports = {
     upsertSubscription, getSubscriptionByProviderRef, getActiveSubscription, isActiveSubscriber,
     getSubscriptionsByStreamer, getSubscriptionsBySubscriber, getActiveSubscriberCount, setSubscriptionStatus,
     getSubscriptionsDueRenewal,
-    getRestreamDestinationsByManagedStream,
+    getRestreamDestinationsByManagedStream, getRestreamDestinationsForSlot,
     // Chat
     saveChatMessage, searchChatMessages, getUserChatHistory, getChatSamplesInChannel,
     // Chat AI summaries

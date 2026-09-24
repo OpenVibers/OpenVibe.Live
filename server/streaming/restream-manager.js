@@ -1205,23 +1205,19 @@ class RestreamManager extends EventEmitter {
     }
 
     /**
-     * Get total external viewer count for a user across all active restream destinations.
-     * Returns { total, breakdown: [{ platform, name, count }] }
-     * count is null when the platform is live but viewer count is unavailable.
-     */
-    /**
-     * External (Twitch/Kick/YouTube) viewer counts for a user. When managedStreamId is
-     * provided, only destinations bound to that stream slot are counted — so a channel
-     * running multiple slots doesn't leak one slot's platform viewers onto another.
+     * External (Twitch/Kick/YouTube) viewer counts for one of a user's stream slots:
+     * { total, breakdown: [{ platform, name, count, destId }] }; count is null when the
+     * platform is live but its viewer count is unavailable. Slot-only, like control: a slot
+     * counts only its own destinations and no slot (a legacy session) counts only the
+     * unbound ones, so one slot's platform viewers never show on another.
      */
     getExternalViewerCountsForUser(userId, managedStreamId = null) {
         const db = require('../db/database');
-        const dests = db.getRestreamDestinationsByUserId(userId) || [];
+        const dests = db.getRestreamDestinationsForSlot(userId, managedStreamId || null) || [];
         const breakdown = [];
         let total = 0;
         for (const d of dests) {
             if (!d.enabled) continue;
-            if (managedStreamId != null && d.managed_stream_id !== managedStreamId) continue;
             const count = this.getCachedViewerCount(d.id);
             const platformLive = this.isPlatformLive(d.id);
             if (count != null && count > 0) {
@@ -1813,21 +1809,16 @@ class RestreamManager extends EventEmitter {
         return destination;
     }
 
+    /**
+     * Slot-only: a stream on a slot restreams to that slot's destinations; a legacy stream with
+     * no slot restreams only to the owner's unbound destinations. Merging in every destination
+     * the account owns meant going live on slot B auto-started slot A's destinations.
+     */
     _getDestinationsForStream(streamId, userId) {
         const db = require('../db/database');
         const stream = db.getStreamById(streamId);
         if (!stream) return [];
-
-        const globalDests = db.getRestreamDestinationsByUserId(userId) || [];
-        const slotDests = stream.managed_stream_id
-            ? db.getRestreamDestinationsByManagedStream(stream.managed_stream_id) || []
-            : [];
-
-        // Preserve user-global destinations while allowing slot-specific overrides.
-        const merged = new Map();
-        for (const dest of globalDests) merged.set(dest.id, dest);
-        for (const dest of slotDests) merged.set(dest.id, dest);
-        return Array.from(merged.values());
+        return db.getRestreamDestinationsForSlot(stream.user_id || userId, stream.managed_stream_id || null) || [];
     }
 
     async autoStartForStream(streamId, userId, streamInfo) {

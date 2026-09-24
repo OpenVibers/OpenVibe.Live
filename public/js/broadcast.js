@@ -3112,15 +3112,22 @@ const RESTREAM_PLATFORM_META = {
 let _restreamDestinations = [];
 let _restreamStatusPollInterval = null;
 
+/** The slot the restream panel is showing: the active stream's, else the one picked in the form. */
+function _restreamPanelSlotId() {
+    const activeSS = getActiveStreamState();
+    const selectedManagedStream = document.getElementById('bc-managed-stream')?.value;
+    return activeSS?.streamData?.managed_stream_id || (selectedManagedStream ? parseInt(selectedManagedStream, 10) : null);
+}
+
 /** Load restream destinations from server */
 async function loadRestreamDestinations() {
     try {
-        const activeSS = getActiveStreamState();
-        const selectedManagedStream = document.getElementById('bc-managed-stream')?.value;
-        const managedStreamId = activeSS?.streamData?.managed_stream_id || (selectedManagedStream ? parseInt(selectedManagedStream, 10) : null);
+        // Slot-only, like the server's restream control: a slot lists its own destinations;
+        // no slot lists only the unbound (legacy) ones — never the whole account's.
+        const managedStreamId = _restreamPanelSlotId();
         const url = managedStreamId ? `/restream/destinations?managed_stream_id=${managedStreamId}` : '/restream/destinations';
         const data = await api(url);
-        _restreamDestinations = data.destinations || [];
+        _restreamDestinations = (data.destinations || []).filter(d => (d.managed_stream_id || null) === (managedStreamId || null));
     } catch (err) {
         console.warn('[Restream] Failed to load destinations:', err.message);
     }
@@ -4644,9 +4651,11 @@ function _stopRestreamViewerPoll() {
 async function _pollRestreamViewerCounts() {
     if (!_restreamDestinations || _restreamDestinations.length === 0) return;
 
-    // Fetch all platform viewer counts from server (Kick + Twitch + others)
+    // Platform viewer counts (Kick + Twitch + others) for the slot this panel shows; with no slot,
+    // the server counts the slots that are live now.
     try {
-        const data = await api('/restream/viewer-counts');
+        const slotId = _restreamPanelSlotId();
+        const data = await api(slotId ? `/restream/viewer-counts?managed_stream_id=${slotId}` : '/restream/viewer-counts');
         _platformViewerCount = data?.total || 0;
         _platformViewerBreakdown = data?.breakdown || [];
     } catch {
