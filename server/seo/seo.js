@@ -421,7 +421,14 @@ function _mediaSection(heading, items) {
     }).join('');
     return `<section><h2>${esc(heading)}</h2><ul>${li}</ul></section>`;
 }
-function _fmtDur(sec) { sec = Math.floor(Number(sec) || 0); const m = Math.floor(sec / 60), s = sec % 60; return sec ? `${m}:${String(s).padStart(2, '0')}` : ''; }
+// m:ss, or h:mm:ss from an hour up; '' for nothing.
+function _fmtDur(sec) {
+    sec = Math.floor(Number(sec) || 0);
+    if (!sec) return '';
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    const ss = String(s).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
 
 async function _homeMeta() {
     const title = 'OpenVibe.Live — Open-Source Live Streaming, Community Run';
@@ -1008,6 +1015,19 @@ function _urlTag(loc, lastmod, changefreq, priority) {
 async function buildSitemap() {
     const urls = [];
     const seenChannels = new Set();
+    // Media rows carry Live user ids, not names: a channel is named from Live's accounts (banned
+    // accounts are left out).
+    const names = new Map();
+    const channelOf = (row, id) => {
+        if (row.username) return row.username;
+        if (id == null) return null;
+        if (!names.has(id)) {
+            let u = null;
+            try { u = db.getUserById(Number(id)); } catch { u = null; }
+            names.set(id, u && !(u.is_banned === 1 || u.is_banned === true) ? u.username : null);
+        }
+        return names.get(id);
+    };
     const statics = [['/', 'daily', '1.0'], ['/content', 'hourly', '0.9'], ['/moments', 'hourly', '0.7'], ['/vods', 'hourly', '0.8'], ['/clips', 'hourly', '0.8'], ['/pastes', 'hourly', '0.7'], ['/chat', 'daily', '0.5'], ['/arena', 'hourly', '0.6']];
     // Rendered docs (server/docs/routes.js): /docs is the index (README.md), the rest by file name.
     try {
@@ -1029,7 +1049,8 @@ async function buildSitemap() {
     };
     await page((l, o) => media.listVods({ limit: l, offset: o }).then(r => r?.vods || []), 200, SITEMAP_CAP, (v) => {
         urls.push(_urlTag(`/vod/${v.id}`, isoDate(v.created_at), 'weekly', '0.6'));
-        if (v.username) seenChannels.add(v.username);
+        const ch = channelOf(v, v.user_id);
+        if (ch) seenChannels.add(ch);
     });
     // People's clips only: AI Moments are noindex and never listed (the /moments
     // collection above is their indexable form). The filter is checked again per row, so an
@@ -1037,7 +1058,8 @@ async function buildSitemap() {
     await page((l, o) => media.listClips({ limit: l, offset: o, auto_generated: 0 }).then(r => r?.clips || []), 200, SITEMAP_CAP, (c) => {
         if (isAiClip(c)) return;
         urls.push(_urlTag(`/clip/${c.id}`, isoDate(c.created_at), 'weekly', '0.6'));
-        if (c.username) seenChannels.add(c.username);
+        const ch = channelOf({}, c.channel_user_id != null ? c.channel_user_id : c.user_id);
+        if (ch) seenChannels.add(ch);
     });
     // No /p/ here: pastes are OpenVibe.Community's, and its sitemap lists them under their canonical URL.
     for (const u of seenChannels) if (u) urls.push(_urlTag(`/@${u}`, null, 'daily', '0.6'));

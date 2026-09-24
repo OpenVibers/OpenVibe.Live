@@ -152,6 +152,7 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         assert.ok(b.includes('I stream woodworking.'));
         for (let id = 100; id < 112; id++) assert.ok(b.includes(`https://openvibe.live/vod/${id}"`), `VOD ${id} listed`);
         assert.ok(!b.includes('/vod/112"'), 'page 1 holds 12 videos');
+        assert.ok(b.includes('Build night 100</a> — 1:00:00 · '), 'an hour-long video reads 1:00:00');
         assert.ok(!b.includes('SECRET VOD'), 'no private VOD');
         assert.ok(b.includes('<a rel="next" href="https://openvibe.live/@alice?page=2">Older videos</a>'), 'next page link');
         assert.ok(b.includes('Page 1 of 3'));
@@ -290,6 +291,13 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         assert.deepStrictEqual(hits, [], 'free copy in the home metadata');
         assert.ok(!/"price"\s*:/.test(head(html)), 'no price in the structured data');
         assert.ok(!/\$0\b/.test(meta));
+    });
+
+    await check('the sitemap lists the channel pages, named from Live\'s accounts (Media rows carry ids only)', async () => {
+        const xml = await seo.buildSitemap();
+        assert.ok(xml.includes('<loc>https://openvibe.live/@alice</loc>'), 'the channel with videos');
+        assert.ok(xml.includes('<loc>https://openvibe.live/vod/100</loc>'));
+        assert.ok(!xml.includes('/vod/199<'), 'no private VOD');
     });
 
     await check('server/index.js sends the fallback shell through seo.shellHtml', () => {
