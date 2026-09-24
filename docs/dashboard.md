@@ -33,8 +33,13 @@ Upload custom channel emotes (PNG, GIF, WebP, AVIF, up to 256KB). Toggle emote s
 ## VODs & Clips
 
 - **My Videos** — All your recorded streams. Toggle public/private, bulk delete by age.
-- **My Clips** — Clips you've taken from other streams.
-- **Clips of My Stream** — Clips viewers have taken from your streams. Publish or delete.
+- **My Clips** — Clips you've taken from other streams. Only clips a person made: the AI's clips of your stream are never listed as yours.
+- **Clips of My Stream** — Clips people have taken from your streams. Publish or delete.
+- **AI Moments** — Clips OpenVibe's AI cut from your streams when chat reacted, with a count on the tab. They are labelled "AI clip · from your stream" everywhere, credited to no one, and kept out of search. Publish, unlist or delete them here.
+
+## AI Moments from my streams
+
+On the **Home** tab, *Let OpenVibe's AI make Moments from my streams* (on by default) is the channel's switch for everything the AI derives from your streams and publishes: auto-clips, the frames it posts as AI notes (from VODs and "caught live") and the AI-written after-show report. Turned off, none of those jobs touch your channel and your after-show report is the stats-only one. Moments already made stay until you delete them. The stream's AI overview, captions and the AI chat bot are separate settings. A category the AI inferred for your stream is shown as "Gaming · inferred" on your channel and on VOD and clip pages.
 
 ## Currency System
 
