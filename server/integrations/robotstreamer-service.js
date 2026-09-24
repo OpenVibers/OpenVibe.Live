@@ -185,6 +185,9 @@ class RobotStreamerService {
                 last_validated_at: null,
                 managed_stream_id: null,
                 available_robots: [],
+                // Whether the server relays the video (a property of this server, not of a row):
+                // the broadcast page needs it even before a slot has a RobotStreamer row.
+                passthrough: this._passthroughEnabledFor(null),
                 ...extras,
             };
         }
@@ -220,14 +223,9 @@ class RobotStreamerService {
         } catch { return false; }
     }
 
-    getClientIntegration(userId) {
-        return this.sanitizeIntegration(db.getRobotStreamerIntegrationByUserId(userId));
-    }
-
     /**
-     * Resolve the effective integration for a stream: the slot-specific row
-     * (matching the stream's managed_stream_id) wins, otherwise the
-     * account-level default row is used.
+     * The integration for a stream: its slot's row, or null (no slot, or no row on the slot).
+     * There is no account-level fallback; see db.getRobotStreamerIntegrationForStream.
      */
     getIntegrationForStream(stream) {
         if (!stream?.user_id) return null;
@@ -452,13 +450,8 @@ class RobotStreamerService {
 
     async upsertIntegration(userId, payload = {}, managedStreamId = null) {
         const slotId = managedStreamId || null;
-        const existing = slotId
-            ? db.getRobotStreamerIntegrationBySlot(userId, slotId)
-            : db.getRobotStreamerIntegrationByUserId(userId);
-        // When creating a slot-specific config, allow token/robot to fall back to
-        // the account-level default row so users don't have to re-paste the token
-        // for every slot.
-        const fallback = existing || (slotId ? db.getRobotStreamerIntegrationByUserId(userId) : null);
+        if (!slotId) throw new Error('Choose a stream slot: RobotStreamer is set up per stream slot');
+        const existing = db.getRobotStreamerIntegrationBySlot(userId, slotId);
         const updates = {
             enabled: normalizeBoolean(payload.enabled, existing ? !!existing.enabled : false) ? 1 : 0,
             mirror_chat: normalizeBoolean(payload.mirror_chat, existing ? existing.mirror_chat !== 0 : true) ? 1 : 0,
@@ -474,22 +467,11 @@ class RobotStreamerService {
         let availableRobots = [];
         if (needsValidation) {
             const validated = await this.validateConfiguration({
-                token: providedToken || fallback?.token,
-                robotInput: providedRobot || fallback?.robot_id,
+                token: providedToken || existing?.token,
+                robotInput: providedRobot || existing?.robot_id,
             });
             Object.assign(updates, validated.fields);
             availableRobots = validated.availableRobots;
-        } else if (!existing && fallback) {
-            // Creating a slot row without re-validating — copy config from the default row
-            updates.token = fallback.token;
-            updates.robot_id = fallback.robot_id;
-            updates.owner_id = fallback.owner_id;
-            updates.chat_url = fallback.chat_url;
-            updates.control_url = fallback.control_url;
-            updates.rtc_sfu_url = fallback.rtc_sfu_url;
-            updates.stream_name = fallback.stream_name;
-            updates.owner_name = fallback.owner_name;
-            updates.last_validated_at = fallback.last_validated_at;
         }
 
         const row = db.upsertRobotStreamerIntegration(userId, updates, slotId);
@@ -501,9 +483,8 @@ class RobotStreamerService {
 
     async refreshIntegration(userId, managedStreamId = null) {
         const slotId = managedStreamId || null;
-        const existing = slotId
-            ? db.getRobotStreamerIntegrationBySlot(userId, slotId)
-            : db.getRobotStreamerIntegrationByUserId(userId);
+        if (!slotId) return null;   // per slot only: there is no account-level row to refresh
+        const existing = db.getRobotStreamerIntegrationBySlot(userId, slotId);
         if (!existing?.token || !existing?.robot_id) return existing;
         const validated = await this.validateConfiguration({ token: existing.token, robotInput: existing.robot_id });
         return db.upsertRobotStreamerIntegration(userId, {

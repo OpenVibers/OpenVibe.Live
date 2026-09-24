@@ -3036,7 +3036,7 @@ function _wsShowRestreamForm(existing) {
         // RobotStreamer — saved as a per-slot integration, not an RTMP destination row
         if (plat && plat.isRobotStreamer) {
             const payload = _wsGetSlotRsFormData();
-            if (!payload.token && !_wsSlotRsIntegration?.has_token && !broadcastState?.robotStreamer?.hasToken) {
+            if (!payload.token && !_wsSlotRsIntegration?.has_token) {
                 toast('Paste your RobotStreamer token first', 'error');
                 return;
             }
@@ -3312,11 +3312,10 @@ function _wsRestreamPlatformChanged() {
         const enabledEl = document.getElementById('ws-rs-rs-enabled');
         const mirrorEl = document.getElementById('ws-rs-rs-mirror-chat');
         if (tokenEl) {
+            // Tokens are per slot (there is no account-level token to reuse any more).
             tokenEl.placeholder = rs?.has_token
                 ? 'Token saved for this slot — paste a new one only to replace it'
-                : (broadcastState?.robotStreamer?.hasToken
-                    ? 'Leave empty to reuse your account token, or paste a slot-specific one'
-                    : 'Paste your robotstreamer-token cookie or JWT');
+                : 'Paste your robotstreamer-token cookie or JWT';
         }
         if (robotEl && rs?.robot_id && !robotEl.value) robotEl.value = rs.robot_id;
         if (enabledEl && rs) enabledEl.checked = !!rs.enabled;

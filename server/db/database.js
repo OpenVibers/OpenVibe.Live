@@ -4329,7 +4329,8 @@ function isStreamClipRecordingEnabled(stream) {
 // ── RobotStreamer integration helpers ───────────────────────
 
 function getRobotStreamerIntegrationByUserId(userId) {
-    // Account-level default row (no slot binding)
+    // A legacy account-level row (no slot binding). It applies to no stream any more:
+    // scripts/rs-integrations-to-slots.js moves these onto slots. Read only to report them.
     return get('SELECT * FROM robotstreamer_integrations WHERE user_id = ? AND managed_stream_id IS NULL', [userId]);
 }
 
@@ -4338,10 +4339,28 @@ function getRobotStreamerIntegrationBySlot(userId, managedStreamId) {
     return get('SELECT * FROM robotstreamer_integrations WHERE user_id = ? AND managed_stream_id = ?', [userId, managedStreamId]);
 }
 
+// Users already warned about an unmigrated account-level row (once per process each).
+const _rsAccountRowWarned = new Set();
+
+/**
+ * The RobotStreamer config a stream on this slot uses: the slot's own row, and nothing else.
+ * No slot (a legacy session) or a slot without a row means no RobotStreamer. An account-level
+ * row that has not been moved onto a slot yet is logged and skipped, never used: that fallback
+ * sent every slot without its own row to the same robot.
+ */
 function getRobotStreamerIntegrationForStream(userId, managedStreamId) {
-    // Slot-specific config wins; fall back to the account-level default row
-    return (managedStreamId ? getRobotStreamerIntegrationBySlot(userId, managedStreamId) : null)
-        || getRobotStreamerIntegrationByUserId(userId);
+    const row = managedStreamId ? getRobotStreamerIntegrationBySlot(userId, managedStreamId) : null;
+    if (row) return row;
+    try {
+        if (!_rsAccountRowWarned.has(userId)) {
+            const legacy = getRobotStreamerIntegrationByUserId(userId);
+            if (legacy) {
+                _rsAccountRowWarned.add(userId);
+                console.warn(`[RS] User ${userId} has an account-level RobotStreamer row (${legacy.id}) that applies to no stream; skipped. Bind it to a slot with scripts/rs-integrations-to-slots.js.`);
+            }
+        }
+    } catch { /* reporting only */ }
+    return null;
 }
 
 function deleteRobotStreamerIntegrationForSlot(userId, managedStreamId) {
@@ -4363,10 +4382,10 @@ function upsertRobotStreamerIntegration(userId, fields, managedStreamId = null) 
         'owner_name',
         'last_validated_at',
     ]);
+    // RobotStreamer is configured per stream slot; account-level rows are no longer written.
     const slotId = managedStreamId || null;
-    const existing = slotId
-        ? getRobotStreamerIntegrationBySlot(userId, slotId)
-        : getRobotStreamerIntegrationByUserId(userId);
+    if (!slotId) throw new Error('RobotStreamer settings belong to a stream slot (managed_stream_id is required)');
+    const existing = getRobotStreamerIntegrationBySlot(userId, slotId);
     const filtered = Object.entries(fields || {}).filter(([key, val]) => allowed.has(key) && val !== undefined);
 
     if (!filtered.length) return existing;
@@ -4391,9 +4410,7 @@ function upsertRobotStreamerIntegration(userId, fields, managedStreamId = null) 
         );
     }
 
-    return slotId
-        ? getRobotStreamerIntegrationBySlot(userId, slotId)
-        : getRobotStreamerIntegrationByUserId(userId);
+    return getRobotStreamerIntegrationBySlot(userId, slotId);
 }
 
 // ── Restream Destination helpers ─────────────────────────────

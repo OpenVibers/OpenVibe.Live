@@ -1101,11 +1101,11 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 </table>
 
 <h3>RobotStreamer — <code>/api/robotstreamer</code></h3>
-<p>Publish a server-ingested stream to a RobotStreamer robot and (optionally) mirror its chat. Config is per slot with an account-level default. All <code>requireAuth</code>.</p>
+<p>Publish a server-ingested stream to a RobotStreamer robot and (optionally) mirror its chat. Config is per stream slot only: a slot without its own config does not restream to RobotStreamer, and every call except GET needs <code>managed_stream_id</code>. All <code>requireAuth</code>.</p>
 <table class="doc-table">
 <thead><tr><th>Method</th><th>Path</th><th>Notes</th></tr></thead>
 <tbody>
-<tr><td>GET</td><td>/api/robotstreamer/integration</td><td>Load RS settings + available robots (<code>?managed_stream_id</code>)</td></tr>
+<tr><td>GET</td><td>/api/robotstreamer/integration</td><td>Load a slot's RS settings + available robots (<code>?managed_stream_id</code>; without it only the server's passthrough capability, <code>exists:false</code>)</td></tr>
 <tr><td>POST</td><td>/api/robotstreamer/integration/validate &middot; /login</td><td>Validate token+robot / log in with RS credentials to auto-fetch token+robots</td></tr>
 <tr><td>PUT / DELETE</td><td>/api/robotstreamer/integration</td><td>Save config (starts publish + optional chat bridge on live streams) / remove</td></tr>
 </tbody>

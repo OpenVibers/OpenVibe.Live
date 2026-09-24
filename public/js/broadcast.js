@@ -11,8 +11,8 @@
 /* ── Per-slot RobotStreamer config ───────────────────────────── */
 // Each stream slot (managed stream) can carry its own RobotStreamer
 // token + robot, configured in the slot's Restream Destinations panel.
-// Slots with their own config auto-restream independently; slots without
-// fall back to the account-level config + legacy single-slot reservation.
+// RobotStreamer is per slot only: a slot without its own config does not
+// restream to RobotStreamer (there is no account-level fallback).
 const _rsSlotIntegrationCache = new Map(); // managed_stream_id → { fetchedAt, integration|null }
 
 async function fetchSlotRsIntegration(managedStreamId, { force = false } = {}) {
@@ -297,28 +297,19 @@ function updateRsRestreamSlotUI() {
 
     panel.innerHTML = html;
 }
-/** Conditionally start RS restream — slot-specific config first, legacy account slot second */
+/** Conditionally start RS restream — only from the stream's own slot config */
 async function maybeStartRsRestream(streamId) {
     const ss = getStreamState(streamId);
     const msId = ss?.streamData?.managed_stream_id || null;
     const slotRs = await fetchSlotRsIntegration(msId);
-    if (slotRs) {
-        // This slot has its own RS config — it restreams independently of the
-        // legacy single-slot reservation and of other slots.
-        if (ss) ss._rsSlotIntegration = slotRs;
-        if (rsSlotIntegrationUsable(slotRs)) {
-            startRobotStreamerRestream(streamId).catch(() => {});
-            updateRsRestreamSlotUI();
-        }
-        return;
+    // No slot, or a slot without its own RobotStreamer config: nothing to restream.
+    if (!slotRs) return;
+    // This slot has its own RS config — it restreams independently of other slots.
+    if (ss) ss._rsSlotIntegration = slotRs;
+    if (rsSlotIntegrationUsable(slotRs)) {
+        startRobotStreamerRestream(streamId).catch(() => {});
+        updateRsRestreamSlotUI();
     }
-    // Legacy account-level behavior
-    if (!isRsRestreamAssigned(streamId)) return;
-    // Auto-assign the slot on first live stream
-    const currentSlot = getRsRestreamSlotStreamId();
-    if (!currentSlot) setRsRestreamSlot(streamId);
-    startRobotStreamerRestream(streamId).catch(() => {});
-    updateRsRestreamSlotUI();
 }
 
 function sendBroadcastSignal(ss, msg) {
@@ -703,9 +694,11 @@ function syncRobotStreamerUI() {
         ? 'Saved token on file — paste a new one only if you want to replace it'
         : 'Paste your robotstreamer-token cookie or JWT';
 
-    const summary = rs.ownerName || rs.streamName
-        ? `Configured for ${rs.streamName || `Robot ${rs.robotId}`} as ${rs.ownerName || rs.ownerId || 'unknown owner'}.`
-        : 'RobotStreamer restreaming works with browser WebRTC broadcasting. Paste your RobotStreamer token, validate a robot, then go live.';
+    const summary = !rs.managedStreamId
+        ? 'Pick a stream slot: RobotStreamer is set up per stream slot.'
+        : rs.ownerName || rs.streamName
+            ? `Configured for ${rs.streamName || `Robot ${rs.robotId}`} as ${rs.ownerName || rs.ownerId || 'unknown owner'}.`
+            : 'RobotStreamer restreaming works with browser WebRTC broadcasting. Paste your RobotStreamer token, validate a robot, then go live.';
     setRobotStreamerStatus(summary, rs.hasToken ? 'success' : 'info', 'bc-rsStatus');
 
     // Update live status based on current state
@@ -739,10 +732,14 @@ function syncRobotStreamerUI() {
 async function loadRobotStreamerIntegration() {
     const doLoad = async () => {
         try {
-            const data = await api('/robotstreamer/integration');
+            // The settings here are the RobotStreamer config of the slot this page is on. Without a
+            // slot the server answers only whether it relays the video (passthrough), exists:false.
+            const managedStreamId = _restreamPanelSlotId();
+            const data = await api(managedStreamId ? `/robotstreamer/integration?managed_stream_id=${managedStreamId}` : '/robotstreamer/integration');
             const integration = data.integration || {};
             broadcastState.robotStreamer = {
                 loaded: true,
+                managedStreamId: managedStreamId || null,
                 enabled: !!integration.enabled,
                 mirrorChat: integration.mirror_chat !== false,
                 hasToken: !!integration.has_token,
@@ -772,11 +769,20 @@ function getRobotStreamerFormData() {
         mirror_chat: !!document.getElementById('bc-rsMirrorChat')?.checked,
         token: document.getElementById('bc-rsToken')?.value.trim() || '',
         robot_input: selectRobot || inputRobot,
+        managed_stream_id: _restreamPanelSlotId() || null,
     };
+}
+
+/** RobotStreamer settings belong to a stream slot; say so instead of calling the server without one. */
+function _rsNeedsSlot(payload) {
+    if (payload.managed_stream_id) return false;
+    setRobotStreamerStatus('Pick a stream slot first: RobotStreamer is set up per stream slot.', 'error');
+    return true;
 }
 
 async function validateRobotStreamerIntegration() {
     const payload = getRobotStreamerFormData();
+    if (_rsNeedsSlot(payload)) return;
     setRobotStreamerStatus('Validating RobotStreamer settings…', 'info');
     try {
         const data = await api('/robotstreamer/integration/validate', { method: 'POST', body: payload });
@@ -802,6 +808,7 @@ async function validateRobotStreamerIntegration() {
 
 async function saveRobotStreamerIntegration() {
     const payload = getRobotStreamerFormData();
+    if (_rsNeedsSlot(payload)) return;
     setRobotStreamerStatus('Saving RobotStreamer settings…', 'info');
     try {
         const data = await api('/robotstreamer/integration', { method: 'PUT', body: payload });
@@ -822,9 +829,15 @@ async function saveRobotStreamerIntegration() {
         if (tokenEl) tokenEl.value = '';
         syncRobotStreamerUI();
         setRobotStreamerStatus('RobotStreamer settings saved.', 'success');
+        // The saved config is this slot's: refresh its cache and restart only its streams.
+        _rsSlotIntegrationCache.delete(payload.managed_stream_id);
         const restreamTargets = [...broadcastState.streams.entries()]
-            .filter(([, state]) => state?.localStream)
+            .filter(([, state]) => state?.localStream && state.streamData?.managed_stream_id === payload.managed_stream_id)
             .map(([streamId]) => streamId);
+        for (const streamId of restreamTargets) {
+            const ss = getStreamState(streamId);
+            if (ss) ss._rsSlotIntegration = null;
+        }
         for (const streamId of restreamTargets) {
             if (broadcastState.robotStreamer.enabled && isRsRestreamAssigned(streamId)) {
                 stopRobotStreamerRestream(streamId, { quiet: true })
@@ -3511,21 +3524,18 @@ async function startRobotStreamerRestream(streamId) {
     // Wait for integration settings to load first (fixes race condition on page load)
     await ensureRobotStreamerLoaded();
 
-    // Slot-specific config wins over the account-level integration
+    // Only the stream's own slot config counts: no slot config, no RobotStreamer.
     const slotRs = ss._rsSlotIntegration
         || await fetchSlotRsIntegration(ss.streamData?.managed_stream_id || null);
     if (slotRs) ss._rsSlotIntegration = slotRs;
 
-    if (slotRs) {
-        if (!rsSlotIntegrationUsable(slotRs)) {
-            console.log('[RS Restream] Slot config not usable — enabled:', slotRs.enabled, 'hasToken:', slotRs.has_token, 'robotId:', slotRs.robot_id);
-            if (!slotRs.enabled) setRobotStreamerStatus('RobotStreamer restream is disabled for this stream slot.', 'info', 'bc-rsLiveStatus');
-            return null;
-        }
-    } else if (!canUseRobotStreamerRestream()) {
-        const rs = broadcastState.robotStreamer;
-        console.log('[RS Restream] Cannot start — enabled:', rs.enabled, 'hasToken:', rs.hasToken, 'robotId:', rs.robotId);
-        if (!rs.enabled) setRobotStreamerStatus('RobotStreamer restream is disabled.', 'info', 'bc-rsLiveStatus');
+    if (!slotRs) {
+        console.log('[RS Restream] No RobotStreamer config on this stream slot — skipping');
+        return null;
+    }
+    if (!rsSlotIntegrationUsable(slotRs)) {
+        console.log('[RS Restream] Slot config not usable — enabled:', slotRs.enabled, 'hasToken:', slotRs.has_token, 'robotId:', slotRs.robot_id);
+        if (!slotRs.enabled) setRobotStreamerStatus('RobotStreamer restream is disabled for this stream slot.', 'info', 'bc-rsLiveStatus');
         return null;
     }
     if (ss.robotStreamer?.active) return ss.robotStreamer;
@@ -3533,7 +3543,7 @@ async function startRobotStreamerRestream(streamId) {
     // Server-side RAW passthrough owns this robot — the server forwards our already-encoded
     // stream to RobotStreamer with zero re-encode, so the browser must NOT publish a second
     // (double) encode. Skip the client publish entirely.
-    if (broadcastState.robotStreamer?.passthrough) {
+    if (slotRs.passthrough || broadcastState.robotStreamer?.passthrough) {
         console.log('[RS Restream] Server passthrough active — skipping browser publish for stream', streamId);
         setRobotStreamerStatus('Restreaming to RobotStreamer via server (raw passthrough, no re-encode).', 'success', 'bc-rsLiveStatus');
         return null;
@@ -4609,10 +4619,10 @@ async function _startRsViewerPoll() {
         try { await _robotStreamerIntegrationPromise; } catch {}
     }
     const rs = broadcastState.robotStreamer;
-    if (!rs?.enabled || !rs?.robotId) return;
+    if (!rs?.enabled || !rs?.robotId || !rs.managedStreamId) return;
     const poll = async () => {
         try {
-            const data = await api('/robotstreamer/integration/validate', { method: 'POST', body: { robot_input: rs.robotId } });
+            const data = await api('/robotstreamer/integration/validate', { method: 'POST', body: { robot_input: rs.robotId, managed_stream_id: rs.managedStreamId } });
             const robots = data.integration?.available_robots || [];
             const robot = robots.find(r => String(r.robot_id) === String(rs.robotId));
             _rsViewerCount = robot ? Number(robot.viewers || 0) : 0;
