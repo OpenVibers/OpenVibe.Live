@@ -33,6 +33,7 @@ const CHANNEL_CLIPS_PAGE_SIZE = 12;
 const channelVodsPageByUser = Object.create(null);
 const channelClipsPageByUser = Object.create(null);
 const channelClipsOfPageByUser = Object.create(null);
+const channelAiClipsPageByUser = Object.create(null);
 // Channel VOD filter/sort state
 let currentChannelVodFilter = null;   // numeric managed stream id or null = all
 let currentChannelVodOrder = 'newest'; // newest|oldest|views|peak_viewers
@@ -282,7 +283,7 @@ function renderChannelClipsOfSection(username, clips, meta = {}) {
     const total = meta.total || clips.length;
     const page = Math.floor(offset / pageSize) + 1;
 
-    if (total === 0) { grid.innerHTML = '<p class="muted">No clips yet</p>'; return; }
+    if (total === 0) { grid.innerHTML = '<p class="muted">No one has clipped these streams yet</p>'; return; }
 
     if (clips.length) {
         grid.innerHTML = clips.map(cl => `
@@ -304,6 +305,64 @@ function renderChannelClipsOfSection(username, clips, meta = {}) {
     }
 
     renderVodsPagination('ch-clips-of-pagination', page, total, pageSize, 'setChannelClipsOfPage', 'clips of streams');
+}
+
+// ── AI Moments on the Clips tab: auto-clips of this channel's streams, after people's clips ──
+// Built with DOM nodes (titles come from the AI). Each card says it is an AI clip from this
+// streamer's stream; none is credited to a clipper (roadmap 33.4/33.6).
+function renderChannelAiClipsSection(username, clips, meta = {}) {
+    const section = document.getElementById('ch-ai-clips-section');
+    const grid = document.getElementById('ch-ai-clips-grid');
+    if (!section || !grid) return;
+    const pageSize = meta.limit || CHANNEL_CLIPS_PAGE_SIZE;
+    const offset = meta.offset || 0;
+    const total = meta.total || clips.length;
+    section.hidden = !(total > 0);
+    grid.textContent = '';
+    if (!total) { renderVodsPagination('ch-ai-clips-pagination', 1, 0, pageSize, 'setChannelAiClipsPage', 'AI clips'); return; }
+    for (const cl of clips) {
+        const href = `/clip/${Number(cl.id)}`;
+        const card = document.createElement('a');
+        card.className = 'stream-card';
+        card.href = href;
+        card.addEventListener('click', (event) => handleLinkClick(event, href));
+        const thumb = document.createElement('div');
+        thumb.className = 'stream-card-thumb';
+        thumb.innerHTML = thumbImg(cl.thumbnail_url, 'fa-scissors', cl.title, `/api/thumbnails/generate/clip/${Number(cl.id)}`);
+        const badge = document.createElement('span');
+        badge.className = 'ch-ai-badge';
+        badge.textContent = 'AI clip';
+        const dur = document.createElement('span');
+        dur.className = 'stream-card-viewers';
+        dur.innerHTML = '<i class="fa-solid fa-clock"></i> ';
+        dur.append(formatDuration(cl.duration_seconds));
+        thumb.append(badge, dur);
+        const info = document.createElement('div');
+        info.className = 'stream-card-info';
+        const title = document.createElement('div');
+        title.className = 'stream-card-title';
+        title.textContent = cl.title || 'AI clip';
+        const by = document.createElement('div');
+        by.className = 'stream-card-streamer muted';
+        by.textContent = `from ${cl.source_streamer_display_name || cl.source_streamer_username || username}'s stream · ${formatDateTime(cl.created_at)}`;
+        info.append(title, by);
+        if (cl.ai_overview_short) info.insertAdjacentHTML('beforeend', _cardAiHTML(cl.ai_overview_short, cl.ai_overview));
+        card.append(thumb, info);
+        grid.append(card);
+    }
+    renderVodsPagination('ch-ai-clips-pagination', Math.floor(offset / pageSize) + 1, total, pageSize, 'setChannelAiClipsPage', 'AI clips');
+}
+
+async function setChannelAiClipsPage(page) {
+    if (!currentChannelUsername) return;
+    const safePage = Math.max(1, page | 0);
+    if (safePage === (channelAiClipsPageByUser[currentChannelUsername] || 1)) return;
+    channelAiClipsPageByUser[currentChannelUsername] = safePage;
+    const offset = (safePage - 1) * CHANNEL_CLIPS_PAGE_SIZE;
+    const data = await api(`/streams/channel/${currentChannelUsername}?aiClipsLimit=${CHANNEL_CLIPS_PAGE_SIZE}&aiClipsOffset=${offset}`);
+    renderChannelAiClipsSection(currentChannelUsername, data.aiClips || [], { total: data.aiClipsTotal || 0, limit: CHANNEL_CLIPS_PAGE_SIZE, offset });
+    const top = document.getElementById('ch-ai-clips-section');
+    if (top) top.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function refreshChannelVodsPage(username = currentChannelUsername) {
@@ -706,6 +765,12 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             total: data.clipsOfTotal || clipsOfStreams.length,
             limit: data.clipsOfLimit || CHANNEL_CLIPS_PAGE_SIZE,
             offset: data.clipsOfOffset || 0,
+        });
+        // …then what the AI cut from them, labelled as such
+        renderChannelAiClipsSection(username, data.aiClips || [], {
+            total: data.aiClipsTotal || (data.aiClips || []).length,
+            limit: data.aiClipsLimit || CHANNEL_CLIPS_PAGE_SIZE,
+            offset: data.aiClipsOffset || 0,
         });
 
         // Analytics is loaded lazily when its tab is first opened (see switchChannelTab).
@@ -2041,7 +2106,7 @@ function _applyChannelTabMeta(data) {
         }
     };
     setBadge('ch-tab-badge-videos', data.vodTotal);
-    setBadge('ch-tab-badge-clips', data.clipsOfTotal);
+    setBadge('ch-tab-badge-clips', (Number(data.clipsOfTotal) || 0) + (Number(data.aiClipsTotal) || 0));
     setBadge('ch-tab-badge-clips-taken', data.clipsTakenTotal);
     setBadge('ch-tab-badge-pastes', data.pasteTotal);
     setBadge('ch-tab-badge-ai-timeline', data.aiEventTotal);

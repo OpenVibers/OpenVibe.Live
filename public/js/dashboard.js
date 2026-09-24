@@ -24,6 +24,7 @@ const _DASH_CONTENT_SUBCARDS = {
     videos:      ['dash-my-videos-card'],
     streamclips: ['dash-card-streamclips'],
     myclips:     ['dash-card-myclips'],
+    aimoments:   ['dash-card-aimoments'],
     pastes:      ['dash-card-pastes'],
 };
 window._dashTabLoaders = window._dashTabLoaders || {};
@@ -58,6 +59,7 @@ const _DASH_CONTENT_LOADERS = {
     videos:      () => _call('loadDashVods'),
     streamclips: () => { _call('loadDashStreamClips'); _call('loadClipSettings'); },
     myclips:     () => _call('loadDashMyClips'),
+    aimoments:   () => _call('loadDashAiClips'),
     pastes:      () => _call('loadDashPastes'),
 };
 function switchDashContentTab(sub, btn) {
@@ -98,7 +100,7 @@ window._dashTabLoaders.chatai = () => { _call('updateDashObsOverlayUrl'); _call(
 window._dashTabLoaders.controls = () => { _call('loadDashConfigs'); _call('loadControlSettings'); _call('loadDashboardCameras'); _call('loadDashTokens'); };
 window._dashTabLoaders.money = () => { _call('loadDashFunds'); _call('loadDashGoals'); _call('loadPowerchatStatus'); };
 window._dashTabLoaders.points = () => { _call('loadDashPointsConfig'); _call('loadDashRewards'); _call('loadDashRedemptions'); };
-window._dashTabLoaders.content = () => { switchDashContentTab('videos', document.querySelector('#dash-content-subtabs .ch-tab[data-cdtab="videos"]')); };
+window._dashTabLoaders.content = () => { switchDashContentTab('videos', document.querySelector('#dash-content-subtabs .ch-tab[data-cdtab="videos"]')); _call('loadDashAiMomentsCount'); };
 // moderation loader is registered by dashboard-moderation.js
 
 /**
@@ -711,6 +713,7 @@ function _dashReloadMedia() {
     loadDashVods();
     if (typeof loadDashMyClips === 'function') loadDashMyClips();
     if (typeof loadDashStreamClips === 'function') loadDashStreamClips();
+    if (document.getElementById('dash-ai-clips')?.childElementCount) loadDashAiClips();
 }
 function _dashSelInit() { if (typeof _selSetContext === 'function') _selSetContext(true, _dashReloadMedia); }
 function _dashSelSync() { if (typeof _selSyncAllBtns === 'function') _selSyncAllBtns(); }
@@ -881,7 +884,8 @@ async function loadDashStreamClips() {
     if (!list) return;
     _dashSelInit();
     try {
-        const data = await api(`/clips/my-stream?limit=${DASH_PAGE_SIZE}&offset=${dashStreamClipsPage * DASH_PAGE_SIZE}`);
+        // People's clips only; the AI's are under AI Moments (loadDashAiClips).
+        const data = await api(`/clips/my-stream?auto_generated=0&limit=${DASH_PAGE_SIZE}&offset=${dashStreamClipsPage * DASH_PAGE_SIZE}`);
         const clips = data.clips || [];
         dashStreamClipsTotal = data.total ?? clips.length;
         if (!clips.length && dashStreamClipsPage === 0) {
@@ -916,6 +920,64 @@ async function loadDashStreamClips() {
 }
 
 function dashStreamClipsGoPage(page) { dashStreamClipsPage = page; loadDashStreamClips(); }
+
+/* ── AI Moments of My Stream (auto-clips) ─────────────────────────
+   What the AI cut from my streams. Never in "My Clips" (the streamer did not make them) and never
+   credited to a clipper; the count rides on the sub-tab. Built with DOM nodes: titles come from the AI. */
+let dashAiClipsPage = 0;
+let dashAiClipsTotal = 0;
+function _setDashAiMomentsCount(n) {
+    const el = document.getElementById('dash-ai-moments-count');
+    if (!el) return;
+    const num = Number(n) || 0;
+    el.textContent = num ? String(num) : '';
+    el.hidden = !num;
+}
+async function loadDashAiMomentsCount() {
+    try { const d = await api('/clips/my-stream?auto_generated=1&limit=1'); _setDashAiMomentsCount(d.total); } catch { /* the count is a hint */ }
+}
+async function loadDashAiClips() {
+    const list = document.getElementById('dash-ai-clips');
+    if (!list) return;
+    _dashSelInit();
+    try {
+        const data = await api(`/clips/my-stream?auto_generated=1&limit=${DASH_PAGE_SIZE}&offset=${dashAiClipsPage * DASH_PAGE_SIZE}`);
+        const clips = data.clips || [];
+        dashAiClipsTotal = data.total ?? clips.length;
+        _setDashAiMomentsCount(dashAiClipsTotal);
+        list.textContent = '';
+        if (!clips.length && dashAiClipsPage === 0) {
+            const p = document.createElement('p');
+            p.className = 'muted';
+            p.textContent = 'The AI has not cut any clips from your streams.';
+            list.append(p);
+            _dashSelSync();
+            return;
+        }
+        list.innerHTML = clips.map(cl => _dashWrap('clip', cl.id, `
+            <div class="stream-card" style="display:inline-block;width:240px;margin-right:12px;vertical-align:top">
+                <div class="stream-card-thumb" style="height:135px">
+                    ${typeof thumbImg === 'function' ? thumbImg(cl.thumbnail_url, 'fa-scissors', cl.title) : '<i class="fa-solid fa-scissors"></i>'}
+                    ${_dashVisBadge(cl.visibility, cl.is_public)}
+                    <span class="stream-card-viewers"><i class="fa-solid fa-clock"></i> ${formatDuration(cl.duration_seconds)}</span>
+                </div>
+                <div class="stream-card-info">
+                    <div class="stream-card-title">${esc(cl.title || 'AI clip')}</div>
+                    <div class="muted" style="font-size:0.8rem;margin-bottom:4px"><span class="dash-ai-badge">AI clip</span> ${new Date(cl.created_at).toLocaleDateString()}</div>
+                    <div style="display:flex;gap:6px">
+                        ${!cl.is_public
+                            ? `<button class="btn btn-small btn-success" onclick="dashToggleClipVisibility(${Number(cl.id)}, true, 'ai')"><i class="fa-solid fa-eye"></i> Publish</button>`
+                            : `<button class="btn btn-small btn-outline" onclick="dashToggleClipVisibility(${Number(cl.id)}, false, 'ai')"><i class="fa-solid fa-eye-slash"></i> Unlist</button>`}
+                        <button class="btn btn-small" onclick="navigate('/clip/${Number(cl.id)}')"><i class="fa-solid fa-play"></i></button>
+                        <button class="btn btn-small btn-danger" onclick="dashDeleteClip(${Number(cl.id)}, 'ai')"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </div>
+            </div>
+        `)).join('') + dashPaginationHtml('dashAiClips', dashAiClipsPage, dashAiClipsTotal);
+        _dashSelSync();
+    } catch { list.innerHTML = '<p class="muted">Failed to load AI Moments</p>'; }
+}
+function dashAiClipsGoPage(page) { dashAiClipsPage = page; loadDashAiClips(); }
 
 async function loadClipSettings() {
     const el = document.getElementById('dash-clips-allow-creator-delete');
@@ -956,6 +1018,7 @@ async function dashToggleClipVisibility(clipId, makePublic, source) {
         });
         toast(makePublic ? 'Clip published' : 'Clip unlisted', 'success');
         if (source === 'mine') loadDashMyClips();
+        else if (source === 'ai') loadDashAiClips();
         else loadDashStreamClips();
     } catch (e) { toast(e.message || 'Failed to update visibility', 'error'); }
 }
@@ -966,6 +1029,7 @@ async function dashDeleteClip(clipId, source) {
         await api(`/clips/${clipId}`, { method: 'DELETE' });
         toast('Clip deleted', 'success');
         if (source === 'mine') loadDashMyClips();
+        else if (source === 'ai') loadDashAiClips();
         else loadDashStreamClips();
     } catch (e) { toast(e.message || 'Delete failed', 'error'); }
 }

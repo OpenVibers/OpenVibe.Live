@@ -31,6 +31,9 @@ function refuse(req, res, clip, message) {
     return res.status(403).json({ error: message });
 }
 
+/** An auto-clip: cut by Live's auto-clip job (Media's auto_generated), not by a person. */
+const isAiClip = (c) => !!(c && (c.auto_generated === true || Number(c.auto_generated) === 1));
+
 function mediaErr(res, err, fallback) {
     if (err && err.name === 'MediaApiError' && err.status) {
         return res.status(err.status).json(err.body || { error: err.message });
@@ -121,8 +124,12 @@ router.get('/mine', requireAuth, async (req, res) => {
     try {
         // App-key call: Live already authenticated the owner, and Media only
         // honors include_private for the owning app.
-        const out = await media.listClips({ ...req.query, user_id: req.user.id, include_private: 1 });
-        const raw = (out?.clips || (Array.isArray(out) ? out : [])).map(withUserFields);
+        // "Clips I made" holds people's clips only (roadmap 33.7): the auto-clip job cuts in the
+        // streamer's name, but the streamer did not make those. They are the AI Moments of the
+        // streamer's stream (/my-stream?auto_generated=1). Checked again per row in case Media
+        // ignores the filter.
+        const out = await media.listClips({ ...req.query, user_id: req.user.id, include_private: 1, auto_generated: 0 });
+        const raw = (out?.clips || (Array.isArray(out) ? out : [])).filter((c) => !isAiClip(c)).map(withUserFields);
         const clips = [];
         for (const c of raw) clips.push({ ...c, can_delete: await canActorDeleteClip(req.user, c) });
         res.json({ clips, total: out?.total ?? clips.length, limit: out?.limit ?? clips.length, offset: out?.offset ?? 0 });
@@ -133,9 +140,15 @@ router.get('/mine', requireAuth, async (req, res) => {
 
 router.get('/my-stream', requireAuth, async (req, res) => {
     try {
-        // Clips others took of my streams (channel_user_id filter); app-key call.
-        const out = await media.listClips({ ...req.query, channel_user_id: req.user.id, include_private: 1 });
-        const clips = (out?.clips || (Array.isArray(out) ? out : [])).map(withUserFields).map(c => ({ ...c, can_delete: true }));
+        // Clips of my streams (channel_user_id filter); app-key call. ?auto_generated=0 is the
+        // clips people took, =1 the AI Moments (auto-clips); without it, both.
+        const q = { ...req.query, channel_user_id: req.user.id, include_private: 1 };
+        const want = q.auto_generated === '0' || q.auto_generated === '1' ? Number(q.auto_generated) : null;
+        if (want === null) delete q.auto_generated; else q.auto_generated = want;
+        const out = await media.listClips(q);
+        const clips = (out?.clips || (Array.isArray(out) ? out : []))
+            .filter((c) => want === null || isAiClip(c) === (want === 1))
+            .map(withUserFields).map(c => ({ ...c, can_delete: true, ai_label: isAiClip(c) ? 'AI clip' : null }));
         res.json({ clips, total: out?.total ?? clips.length, limit: out?.limit ?? clips.length, offset: out?.offset ?? 0 });
     } catch (err) {
         mediaErr(res, err, 'Failed to list stream clips');

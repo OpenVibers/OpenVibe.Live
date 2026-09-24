@@ -1373,3 +1373,11 @@ body.controls-docked .messenger-toggle { z-index: 1100; }
     animation: i18nSlideIn 0.4s ease both;
 }
 .ch-about-bio-translated-label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-light); margin-bottom: 4px; }
+
+/* AI Moments on the Clips tab: listed after people's clips, each card labelled (roadmap 33.6). */
+.ch-ai-clips { margin-top: 22px; }
+.ch-ai-badge {
+    position: absolute; top: 8px; left: 8px; z-index: 2; padding: 2px 8px; border-radius: 999px;
+    font-size: 0.68rem; font-weight: 700; letter-spacing: .02em; color: #fff;
+    background: linear-gradient(135deg, #6d28d9, #0e7490);
+}

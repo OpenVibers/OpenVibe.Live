@@ -888,6 +888,44 @@ async function recutClip(clipId) {
     }
 }
 
+/**
+ * The clip page's attribution line, from the clip's own origin (Media's auto_generated):
+ *   a person's clip  → "Clipped by <clipper>"
+ *   an auto-clip     → "AI clip · from <streamer>'s stream" and what made it; never "Clipped by"
+ *                      the streamer the job filed it under.
+ */
+function _renderClipAttribution(el, cl) {
+    el.textContent = '';
+    el.classList.toggle('clp-ai-attribution', !!cl.auto_generated);
+    const icon = (cls) => { const i = document.createElement('i'); i.className = cls; i.setAttribute('aria-hidden', 'true'); return i; };
+    if (!cl.auto_generated) {
+        const who = document.createElement('strong');
+        who.textContent = cl.display_name || cl.username || 'Unknown';
+        el.append(icon('fa-solid fa-scissors'), ' Clipped by ', who);
+        return;
+    }
+    const streamerName = cl.source_streamer_display_name || cl.streamer_display_name || cl.source_streamer_username || cl.streamer_username || cl.display_name || cl.username;
+    const streamerUser = cl.source_streamer_username || cl.streamer_username || cl.username;
+    const badge = document.createElement('span');
+    badge.className = 'ai-badge';
+    badge.textContent = 'AI clip';
+    el.append(icon('fa-solid fa-wand-magic-sparkles'), ' ', badge, ' · from ');
+    if (streamerName && streamerUser) {
+        const a = document.createElement('a');
+        const href = channelPath(streamerUser);
+        a.href = href;
+        a.textContent = streamerName;
+        a.addEventListener('click', (event) => handleLinkClick(event, href));
+        el.append(a, "'s stream");
+    } else {
+        el.append('a live stream');
+    }
+    const how = document.createElement('div');
+    how.className = 'muted clp-ai-how';
+    how.textContent = 'Cut automatically by OpenVibe\'s auto-clip workflow when chat reacted. No one clipped it.';
+    el.append(how);
+}
+
 async function loadClipPlayer(clipId) {
     try {
         // Clean up chat replay
@@ -1044,11 +1082,10 @@ async function loadClipPlayer(clipId) {
             streamerLink.onclick = (event) => handleLinkClick(event, targetUrl);
         }
 
-        // Show "Clipped by" info
+        // Who made it. An auto-clip was cut by OpenVibe's AI when chat reacted, not by the
+        // streamer it is filed under (roadmap 33.4): "AI clip · from <streamer>'s stream".
         const clippedByEl = document.getElementById('clp-clipped-by');
-        if (clippedByEl) {
-            clippedByEl.innerHTML = `<i class="fa-solid fa-scissors"></i> Clipped by <strong>${esc(cl.display_name || cl.username || 'Unknown')}</strong>`;
-        }
+        if (clippedByEl) _renderClipAttribution(clippedByEl, cl);
 
         // Show delete button per the server-authoritative can_delete flag (streamer /
         // channel mod / staff, or the creator only if the channel opted in).
