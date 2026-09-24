@@ -2521,6 +2521,8 @@ function _wsFormatDuration(secs) {
 /* ── Managed stream CRUD helpers ─────────────────────────────── */
 
 function showCreateManagedStreamModal() {
+    // A guest cannot own a slot: show the sign-in gate instead of a form that would only 401.
+    if (!currentUser) { if (typeof _broadcastSignInGate === 'function') _broadcastSignInGate(false); return; }
     showModal('create-managed-stream');
 }
 

@@ -866,8 +866,27 @@ function ensureBroadcastChat(streamId) {
     if (typeof initChat === 'function' && streamId) initChat(streamId);
 }
 
+/* ── Sign-in gate ────────────────────────────────────────────── */
+/**
+ * Going live needs an OpenVibe account. For a guest, /broadcast shows the sign-in gate in place of
+ * the slot workspace and nothing else runs: no slot, restream or RobotStreamer request, and no way
+ * to create anything (the empty workspace used to offer "Create stream slot" and swallow the 401).
+ * Returns whether the page may load.
+ */
+function _broadcastSignInGate(signedIn) {
+    const gate = document.getElementById('bc-signin-gate');
+    const manager = document.getElementById('bc-stream-manager');
+    if (gate) gate.hidden = !!signedIn;
+    if (manager) manager.classList.toggle('bc-guest', !signedIn);
+    return !!signedIn;
+}
+
 /* ── Initialize Broadcast Page ───────────────────────────────── */
 async function loadBroadcastPage() {
+    if (!_broadcastSignInGate(!!currentUser)) {
+        showStreamManager();
+        return;
+    }
     loadBroadcastSettings();
     loadRobotStreamerIntegration().catch(() => {});
     loadRestreamDestinations().catch(() => {});
