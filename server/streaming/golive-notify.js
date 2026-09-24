@@ -16,7 +16,7 @@ const { notifyDiscordGoLive } = require('../integrations/discord-webhook');
 const DEDUPE_MS = 60 * 60 * 1000;
 const _recent = new Map(); // `${userId}:${slot}` → ts
 
-function _channelUrl(streamer) { return `${(config.baseUrl || 'https://openvibe.live').replace(/\/$/, '')}/${streamer.username}`; }
+function _channelUrl(streamer) { return `${(config.baseUrl || 'https://openvibe.live').replace(/\/$/, '')}/@${encodeURIComponent(streamer.username)}`; }
 
 function notifyFollowersGoLive(streamer, stream, { force = false } = {}) {
     if (!streamer || !streamer.id) return;
