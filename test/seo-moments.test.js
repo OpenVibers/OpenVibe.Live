@@ -197,7 +197,7 @@ async function check(name, fn) {
         const xml = await seo.buildSitemap();
         assert.ok(xml.includes('/clip/21<'), "a person's clip is listed");
         assert.ok(!xml.includes('/clip/20<') && !xml.includes('/clip/22<'), 'no auto-clip');
-        assert.ok(!xml.includes('/p/ai-shot<') && !xml.includes('/p/ai-live<'), 'no AI paste');
+        assert.ok(!/<loc>[^<]*\/p\//.test(xml), 'no paste at all: Community is their canonical home');
         assert.ok(xml.includes('/moments<'), 'the Moments collection is the indexable form');
         assert.ok(clipQueries.some((q) => q.auto_generated === 0), 'asked Media for people\'s clips');
     });

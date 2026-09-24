@@ -45,7 +45,7 @@ const _feedList = (feed) => _cached(`feed:${feed}`, async () => {
     const out = await require('../content/feed').page(feed, { limit: 24 });
     const kindLabel = { vod: 'VOD', clip: 'clip', paste: 'paste', recap: 'recap' };
     return (out.items || []).map((it) => ({
-        url: it.href, name: it.title, by: it.channel ? it.channel.display_name : null,
+        url: it.kind === 'paste' && PASTES_BASE ? pasteHref(it.id) : it.href, name: it.title, by: it.channel ? it.channel.display_name : null,
         meta: [kindLabel[it.kind], it.duration_seconds ? _fmtDur(it.duration_seconds) : null].filter(Boolean).join(' · '),
         desc: it.excerpt,
     }));
@@ -70,6 +70,13 @@ function _overlayAiState(row, kind) {
         }
     } catch { /* */ }
 }
+
+// Pastes live on openvibe.community when PASTES_ON_COMMUNITY=1: /p/<slug> is a redirect there
+// (server/web/paste-handover.js, mounted before this middleware), the SPA router sends it there
+// too, and every paste link Live renders points straight at Community, the paste's one canonical
+// page. Live's sitemap never lists /p/ (roadmap 32.2).
+const PASTES_BASE = process.env.PASTES_ON_COMMUNITY === '1' ? (process.env.OV_COMMUNITY_URL || 'https://openvibe.community').replace(/\/$/, '') : '';
+const pasteHref = (slug) => `${PASTES_BASE}/p/${encodeURIComponent(slug)}`;
 
 const SITE_NAME = 'OpenVibe.Live';
 const DEFAULT_OG_IMAGE = '/og-image.png';
@@ -129,7 +136,7 @@ async function _pageMeta(routePath) {
     if (p === '/clips') return _listMeta('clips', 'Clips', 'Watch the best clips from OpenVibe.Live live streams — the moments viewers clipped.', async () => (await _clipList(30) || []).map(c => ({ url: `/clip/${c.id}`, name: c.title || 'Clip', by: c.display_name || c.username || c.streamer_username, meta: _fmtDur(c.duration_seconds || c.duration), desc: c.ai_overview_short })));
     if (p === '/content') return _listMeta('content', 'Content', 'VODs, clips and pastes made by the people of OpenVibe.Live — recorded streams, the moments viewers clipped, and the code, notes and screenshots they shared.', () => _feedList('content'));
     if (p === '/moments') return _listMeta('moments', 'AI Moments', 'AI-made highlights from OpenVibe.Live streams: auto-clips of the moments chat erupted, standout frames the AI picked, and AI-written after-show recaps. Everything listed here is AI-generated.', () => _feedList('moments'));
-    if (p === '/pastes') return _listMeta('pastes', 'Pastes', 'Code, text and screenshot pastes shared on OpenVibe.Live — a Pastebin built into the streaming network, with AI summaries.', async () => (await _pasteList(30) || []).map(x => ({ url: `/p/${x.slug}`, name: x.title || 'Paste', by: x.username || 'anon', meta: x.type === 'screenshot' ? 'image' : (x.language || 'text'), desc: x.ai_summary })));
+    if (p === '/pastes') return _listMeta('pastes', 'Pastes', 'Code, text and screenshot pastes shared on OpenVibe.Live — a Pastebin built into the streaming network, with AI summaries.', async () => (await _pasteList(30) || []).map(x => ({ url: pasteHref(x.slug), name: x.title || 'Paste', by: x.username || 'anon', meta: x.type === 'screenshot' ? 'image' : (x.language || 'text'), desc: x.ai_summary })));
 
     // Detail pages
     let m;
@@ -271,7 +278,7 @@ async function _homeMeta() {
     const liveItems = live.map(s => ({ url: `/@${s.username}`, name: s.title || `${s.display_name || s.username} live`, by: s.display_name || s.username, meta: s.category || 'live' }));
     const vodItems = vods.map(v => ({ url: `/vod/${v.id}`, name: v.title || 'VOD', by: v.display_name || v.username, meta: _fmtDur(v.duration_seconds || v.duration), desc: v.ai_overview_short }));
     const clipItems = clips.map(c => ({ url: `/clip/${c.id}`, name: c.title || 'Clip', by: c.display_name || c.username || c.streamer_username, meta: _fmtDur(c.duration_seconds || c.duration) }));
-    const pasteItems = pastes.map(x => ({ url: `/p/${x.slug}`, name: x.title || 'Paste', by: x.username || 'anon', meta: x.type === 'screenshot' ? 'image' : (x.language || 'text') }));
+    const pasteItems = pastes.map(x => ({ url: pasteHref(x.slug), name: x.title || 'Paste', by: x.username || 'anon', meta: x.type === 'screenshot' ? 'image' : (x.language || 'text') }));
 
     const statLine = stats ? `<p>${SITE_NAME} hosts ${stats.streamers || 0} streamers, ${stats.vods || 0} VODs, ${stats.clips || 0} clips, ${stats.pastes || 0} pastes and ${stats.chatMessages || 0} chat messages.</p>` : '';
     const snapshot =
@@ -610,9 +617,6 @@ function _base() {
     }
     return doc.html;
 }
-// Pastes are moving to openvibe.community; when PASTES_ON_COMMUNITY=1 the SPA router sends
-// /p/<slug> there (server/index.js answers the same URL with a 301 for bots and direct hits).
-const PASTES_BASE = process.env.PASTES_ON_COMMUNITY === '1' ? (process.env.OV_COMMUNITY_URL || 'https://openvibe.community').replace(/\/$/, '') : '';
 
 function _headBlock(meta) {
     const canonical = abs(meta.canonicalPath || '/');
@@ -702,6 +706,9 @@ async function middleware(req, res, next) {
     if (req.method !== 'GET') return next();
     const p = (req.path || '/').replace(/\/+$/, '') || '/';
     if (!SEO_ROUTE_RE.test(p)) return next();
+    // A paste Community owns is never rendered here (the handover answers it first; this keeps it
+    // so if the mount order ever changes).
+    if (PASTES_BASE && p.startsWith('/p/')) return next();
     // Only rewrite HTML navigations, not fetch()/XHR/asset probes.
     if (req.headers.accept && req.headers.accept.indexOf('text/html') === -1) return next();
     try {
@@ -761,7 +768,7 @@ async function buildSitemap() {
         urls.push(_urlTag(`/vod/${v.id}`, isoDate(v.created_at), 'weekly', '0.6'));
         if (v.username) seenChannels.add(v.username);
     });
-    // People's clips and pastes only: AI Moments are noindex and never listed (the /moments
+    // People's clips only: AI Moments are noindex and never listed (the /moments
     // collection above is their indexable form). The filter is checked again per row, so an
     // upstream that ignores it still cannot put an AI item here.
     await page((l, o) => media.listClips({ limit: l, offset: o, auto_generated: 0 }).then(r => r?.clips || []), 200, SITEMAP_CAP, (c) => {
@@ -769,10 +776,7 @@ async function buildSitemap() {
         urls.push(_urlTag(`/clip/${c.id}`, isoDate(c.created_at), 'weekly', '0.6'));
         if (c.username) seenChannels.add(c.username);
     });
-    await page((l, o) => require('../pastes-client').listPastes({ limit: l, offset: o, visibility: 'public', origin: 'user' }).then(r => r?.pastes || []), 200, SITEMAP_CAP, (x) => {
-        if (isAiPaste(x)) return;
-        if (!Number(x.is_nsfw)) urls.push(_urlTag(`/p/${x.slug}`, isoDate(x.created_at), 'monthly', '0.4'));
-    });
+    // No /p/ here: pastes are OpenVibe.Community's, and its sitemap lists them under their canonical URL.
     for (const u of seenChannels) if (u) urls.push(_urlTag(`/@${u}`, null, 'daily', '0.6'));
     return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>`;
 }

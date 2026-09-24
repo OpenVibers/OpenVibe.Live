@@ -527,6 +527,9 @@ app.use('/fragments', assets.versionedStatic('/fragments'), express.static(path.
 // SEO: per-route <head> meta/OG/JSON-LD injection + dynamic sitemap. MUST be before the public
 // static below (so it can intercept "/") and before the SPA catch-all. Only touches the SPA
 // HTML routes (home, vods/clips/pastes lists, vod/clip/paste detail); everything else falls through.
+// Pastes on openvibe.community (PASTES_ON_COMMUNITY=1): /p/<slug> redirects there, and it is mounted
+// before SEO so crawlers and people get the same redirect and Community is the one canonical page.
+require('./web/paste-handover').register(app);
 try { require('./seo/seo').register(app); } catch (e) { console.warn('[SEO] not registered:', e.message); }
 // Standalone HTML pages (popout chat, kiosk, legal, OBS overlays…) go through the same asset rewrite
 // as the SPA shell, so their script and stylesheet URLs can never drift out of date again.
@@ -625,23 +628,6 @@ app.get('/data/pastes/screenshots/:filename', (req, res) => {
     res.set('Cache-Control', 'public, max-age=300');
     res.redirect(302, mediaClient.screenshotUrl(path.basename(req.params.filename)));
 });
-
-// Pastes are moving to openvibe.community (PASTES_ON_COMMUNITY=1): the old Live paste URLs keep
-// working as permanent redirects, so links in chat, search results and clipboards survive.
-// /pastes itself stays here: it is the Content feed with the Pastes filter (public/js/content-feed.js).
-const COMMUNITY_URL = (process.env.OV_COMMUNITY_URL || 'https://openvibe.community').replace(/\/$/, '');
-if (process.env.PASTES_ON_COMMUNITY === '1') {
-    // Someone signed in here should arrive signed in there: they go through Community's silent sign-in
-    // (one quiet round trip; it skips itself when Community already has a valid session and falls back
-    // to the plain page when the Network session is gone). Guests and crawlers get the permanent redirect.
-    const handOver = (req, res, target) => {
-        const signedIn = /(?:^|;\s*)ov_sso_hint=account(?:;|$)/.test(String(req.headers.cookie || ''));
-        if (!signedIn) return res.redirect(301, `${COMMUNITY_URL}${target}`);
-        res.set({ 'Cache-Control': 'private, no-store', Vary: 'Cookie' });
-        res.redirect(302, `${COMMUNITY_URL}/auth/login?silent=1&next=${encodeURIComponent(target)}`);
-    };
-    app.get('/p/:slug', (req, res) => handOver(req, res, `/p/${encodeURIComponent(req.params.slug)}`));
-}
 
 // The SPA renders Media's relative paste URLs (/p/<slug>/screenshot, /raw)
 // against THIS origin — bounce them to the Media public host, where the
