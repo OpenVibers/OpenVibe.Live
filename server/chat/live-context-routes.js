@@ -319,7 +319,7 @@ effectsRouter.post('/ban', (req, res) => {
         const target = db.getUserById(int(b.user_id));
         if (!target) return fail(res, 404, 'User not found');
         // Prevent non-admins from banning admins
-        if (permissions.isGlobalModOrAbove(target) && target.role === 'admin' && actor.role !== 'admin') return fail(res, 403, 'You cannot ban an admin.');
+        if (permissions.isGlobalModOrAbove(target) && target.role === 'admin' && !permissions.isAdmin(actor)) return fail(res, 403, 'You cannot ban an admin.');
         db.run('INSERT INTO bans (stream_id, user_id, reason, banned_by, expires_at) VALUES (?, ?, ?, ?, ?)',
             [streamId, target.id, String(b.reason || 'Banned by moderator').slice(0, 200), actor.id, b.expires_at || null]);
     } else if (b.ip_address) {
@@ -378,7 +378,7 @@ effectsRouter.post('/ensure-channel', (req, res) => {
 // TTS admin settings: admins; credentials only the owner (Live's /api/tts/admin/settings rules).
 effectsRouter.post('/site-settings', (req, res) => {
     const actor = actorOf(int(req.body?.actor_user_id));
-    if (!actor || actor.role !== 'admin') return fail(res, 403, 'Admin access required');
+    if (!permissions.can(actor, 'staff.site.configure')) return fail(res, 403, 'Admin access required');
     const allowed = ['tts_enabled', 'tts_provider', 'tts_google_api_key', 'tts_google_service_account', 'tts_aws_access_key_id', 'tts_aws_secret_access_key', 'tts_aws_region', 'tts_max_length', 'tts_max_queue_per_user', 'tts_max_queue_global', 'tts_default_voice'];
     const secret = new Set(['tts_google_api_key', 'tts_google_service_account', 'tts_aws_access_key_id', 'tts_aws_secret_access_key']);
     const owner = permissions.isOwner(actor);

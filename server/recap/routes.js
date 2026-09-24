@@ -8,6 +8,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db/database');
+const { can } = require('../auth/permissions');
 const recap = require('./recap');
 const { requireAuth, optionalAuth } = require('../auth/auth');
 
@@ -45,7 +46,7 @@ router.post('/:streamId/regenerate', requireAuth, async (req, res) => {
         const id = parseInt(req.params.streamId, 10);
         const stream = db.getStreamById(id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
-        if (stream.user_id !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'Not your stream' });
+        if (stream.user_id !== req.user.id && !can(req.user, 'staff.streams.manage')) return res.status(403).json({ error: 'Not your stream' });
         const r = await recap.buildRecap(id);
         if (!r) return res.status(409).json({ error: 'Stream is live or has no data yet' });
         res.json({ recap: r });

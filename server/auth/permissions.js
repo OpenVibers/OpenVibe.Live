@@ -14,6 +14,7 @@
  */
 
 const db = require('../db/database');
+const { staff } = require('openvibe-contracts');
 
 // ── Role hierarchy (higher = more power) ─────────────────────
 const ROLE_RANK = {
@@ -154,62 +155,62 @@ function getChannelIdForStream(streamId) {
  * Global mods see a subset of tabs (chat logs, bans).
  */
 function canAccessAdminPanel(user) {
-    return isGlobalModOrAbove(user);
+    return can(user, 'staff.console.access');
 }
 
 /**
  * Can this user manage users (role changes, bans, etc.)? (admin only)
  */
 function canManageUsers(user) {
-    return isAdmin(user);
+    return can(user, 'staff.users.manage');
 }
 
 /**
  * Can this user manage (promote/demote) global mods? (admin only)
  */
 function canManageGlobalMods(user) {
-    return isAdmin(user);
+    return can(user, 'staff.roles.assign');
 }
 
 /**
  * Can this user manage site settings? (admin only)
  */
 function canManageSiteSettings(user) {
-    return isAdmin(user);
+    return can(user, 'staff.site.configure');
 }
 
 /** Can this user view/change API keys + other secret settings? (owner only) */
 function canManageSecrets(user) {
-    return isOwner(user);
+    return can(user, 'staff.secrets.manage');
 }
 /** Can this user manage money — payments config, cashouts/payouts, funds? (owner only) */
 function canManageMoney(user) {
-    return isOwner(user);
+    return can(user, 'staff.money.freeze');
 }
 /** Can this user grant/revoke the ADMIN role? (owner only) */
 function canGrantAdmin(user) {
-    return isOwner(user);
+    return can(user, 'staff.roles.grant_admin');
 }
 
 /**
  * Can this user review cashouts? Cashouts move real money out — owner only.
  */
 function canReviewCashouts(user) {
-    return isOwner(user);
+    return can(user, 'staff.money.cashouts');
 }
 
 /**
  * Can this user review VPN queue? (admin only)
  */
 function canReviewVpn(user) {
-    return isAdmin(user);
+    return can(user, 'staff.moderation.vpn');
 }
 
 /**
  * Can this user manage site-wide bans? (admin + global_mod)
  */
 function canManageSiteBans(user) {
-    return isGlobalModOrAbove(user);
+    return can(user, 'staff.moderation.bans');
 }
 
 /**
@@ -219,7 +220,7 @@ function canManageSiteBans(user) {
  */
 function canModerateChannel(user, channelId) {
     if (!user) return false;
-    if (isGlobalModOrAbove(user)) return true;
+    if (can(user, 'staff.moderation.chat')) return true;
     if (isChannelOwner(user, channelId)) return true;
     return isChannelMod(user, channelId);
 }
@@ -231,7 +232,7 @@ function canModerateChannel(user, channelId) {
  */
 function canModerateStream(user, streamId) {
     if (!user) return false;
-    if (isGlobalModOrAbove(user)) return true;
+    if (can(user, 'staff.moderation.chat')) return true;
     if (isStreamOwner(user, streamId)) return true;
     const channelId = getChannelIdForStream(streamId);
     if (channelId && isChannelMod(user, channelId)) return true;
@@ -255,7 +256,7 @@ function canModerateCall(user, streamId) {
  */
 function canViewChatLogs(user, scope = 'own') {
     if (!user) return false;
-    if (isGlobalModOrAbove(user)) return true;
+    if (can(user, 'staff.moderation.logs')) return true;
     return scope === 'own';
 }
 
@@ -263,7 +264,7 @@ function canViewChatLogs(user, scope = 'own') {
  * Can this user view another user's chat logs?
  */
 function canViewOtherUserLogs(user) {
-    return isGlobalModOrAbove(user);
+    return can(user, 'staff.moderation.logs');
 }
 
 /**
@@ -273,7 +274,7 @@ function canViewOtherUserLogs(user) {
  */
 function canAssignChannelMods(user, channelId) {
     if (!user) return false;
-    if (isAdmin(user)) return true;
+    if (can(user, 'staff.roles.assign')) return true;
     return isChannelOwner(user, channelId);
 }
 
@@ -288,7 +289,7 @@ function canManageOwnChannel(user) {
  * Can this user force-end any stream? (admin only)
  */
 function canForceEndStreams(user) {
-    return isAdmin(user);
+    return can(user, 'staff.streams.end');
 }
 
 // ── Capability map (returned to frontend via /api/auth/me) ───
@@ -319,6 +320,7 @@ function getCapabilities(user) {
             view_ip_info: false,
             owned_channel_id: null,
             moderated_channel_ids: [],
+            staff_caps: [],
         };
     }
 
@@ -344,7 +346,7 @@ function getCapabilities(user) {
         can_access_staff_console: isStaffUser,
         can_manage_channels: !!ownedChannel || moderatedChannels.length > 0 || isStaffUser,
         can_moderate_site_chat: isStaffUser,
-        view_ip_info: isStaffUser,
+        view_ip_info: can(user, 'staff.moderation.ip'),
         // Owner-only powers (keys / money / granting admin).
         is_owner: owner,
         manage_secrets: canManageSecrets(user),
@@ -354,6 +356,8 @@ function getCapabilities(user) {
         staff_tier: owner ? 'owner' : (isAdmin(user) ? 'admin' : (isGlobalMod(user) ? 'mod' : null)),
         owned_channel_id: ownedChannel?.id || null,
         moderated_channel_ids: moderatedChannels.map(ch => ch.id),
+        // Every staff capability this person holds (openvibe-contracts staff map), for the UI.
+        staff_caps: staff.capabilitiesOf(staffClaims(user)),
     };
 }
 
@@ -400,7 +404,36 @@ function requireStreamer(req, res, next) {
     next();
 }
 
+// ── Staff capabilities (openvibe-contracts manifests/policy/staff-roles.json, ADR-022) ──────
+// The one question every staff gate asks: can(user, 'staff.<area>.<action>'). Network owns the roles;
+// Live's user row supplies them as the claims the map reads (role, and is_owner for the owner). Issued
+// staff_caps claims win once Network sends them. An unknown capability id throws (a typo is a bug).
+
+/** Live's user row as staff-map claims. */
+function staffClaims(user) {
+    if (!user) return null;
+    const c = { role: user.role, is_owner: isOwner(user) };
+    if (Array.isArray(user.staff_caps)) c.staff_caps = user.staff_caps;
+    return c;
+}
+
+/** Does `user` hold staff capability `capability`? */
+function can(user, capability) {
+    return !!user && staff.can(staffClaims(user), capability);
+}
+
+/** Express guard: 403 unless req.user holds `capability` (requireAuth runs first). */
+function requireCap(capability) {
+    staff.get(capability) || staff.can(null, capability);   // fail at startup on an unknown id
+    return (req, res, next) => (can(req.user, capability) ? next() : res.status(403).json({ error: 'You do not have permission to do that' }));
+}
+
 module.exports = {
+    // Staff capabilities (prefer these to the role helpers below)
+    can,
+    requireCap,
+    staffClaims,
+
     // Role checks
     isAdmin,
     isOwner,

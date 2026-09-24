@@ -13,6 +13,7 @@
 
 const express = require('express');
 const db = require('../db/database');
+const { can } = require('../auth/permissions');
 const { optionalAuth } = require('../auth/auth');
 
 const router = express.Router();
@@ -159,7 +160,7 @@ router.get('/channel/:username/dashboard', optionalAuth, (req, res) => {
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
         // Only the channel owner (or admin) can see the dashboard
-        const isOwner = req.user && (req.user.id === channel.user_id || req.user.role === 'admin');
+        const isOwner = req.user && (req.user.id === channel.user_id || can(req.user, 'staff.streams.manage'));
         if (!isOwner) return res.status(403).json({ error: 'Access denied' });
 
         const days = Math.min(parseInt(req.query.days) || 30, 365);

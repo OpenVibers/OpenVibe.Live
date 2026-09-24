@@ -186,7 +186,7 @@ router.post('/stream/:streamId/chunk', requireAuth, memUpload.single('chunk'), a
         if (!req.file) return res.status(400).json({ error: 'No chunk data' });
         const stream = db.getStreamById(streamId);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
-        if (stream.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (stream.user_id !== req.user.id && !permissions.can(req.user, 'staff.streams.manage')) {
             return res.status(403).json({ error: 'Not your stream' });
         }
         const vodPolicy = db.getChannelVodRecordingPolicyByUserId(stream.user_id, stream.managed_stream_id);
@@ -239,7 +239,7 @@ router.post('/stream/:streamId/finalize', requireAuth, async (req, res) => {
         const streamId = parseInt(req.params.streamId);
         const stream = db.getStreamById(streamId);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
-        if (stream.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (stream.user_id !== req.user.id && !permissions.can(req.user, 'staff.streams.manage')) {
             return res.status(403).json({ error: 'Not your stream' });
         }
         const rec = recorder.getActiveRecording(streamId);
@@ -603,7 +603,7 @@ router.post('/upload', requireAuth, memUpload.single('video'), async (req, res) 
         const { stream_id, title } = req.body;
         if (stream_id) {
             const stream = db.getStreamById(stream_id);
-            if (stream && stream.user_id !== req.user.id && req.user.role !== 'admin') {
+            if (stream && stream.user_id !== req.user.id && !permissions.can(req.user, 'staff.streams.manage')) {
                 return res.status(403).json({ error: 'Not your stream' });
             }
         }

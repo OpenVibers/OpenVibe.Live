@@ -9,7 +9,7 @@
 const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../auth/auth');
-const { isOwner, isSensitiveSettingKey } = require('../auth/permissions');
+const { isOwner, isSensitiveSettingKey, can } = require('../auth/permissions');
 const newsService = require('./news-service');
 
 // Source `config` blobs can hold credentials (e.g. NewsAPI apiKey) that live
@@ -33,7 +33,7 @@ function redactSourceConfig(source) {
 
 // ── Get all news sources + their status (admin) ─────────────
 router.get('/sources', requireAuth, (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    if (!can(req.user, 'staff.site.configure')) return res.status(403).json({ error: 'Admin only' });
     let sources = newsService.getSources();
     if (!isOwner(req.user)) sources = sources.map(redactSourceConfig);
     res.json({ sources });
@@ -41,7 +41,7 @@ router.get('/sources', requireAuth, (req, res) => {
 
 // ── Update a news source config (admin) ─────────────────────
 router.put('/sources/:id', requireAuth, (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    if (!can(req.user, 'staff.site.configure')) return res.status(403).json({ error: 'Admin only' });
     try {
         const { enabled } = req.body;
         let { config } = req.body;

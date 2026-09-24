@@ -348,7 +348,7 @@ router.post('/', requireAuth, emoteUpload.single('image'), (req, res) => {
         }
 
         const animated = req.file.mimetype === 'image/gif' || req.file.mimetype === 'image/webp';
-        const isGlobal = req.body.is_global === 'true' && req.user.role === 'admin';
+        const isGlobal = req.body.is_global === 'true' && permissions.can(req.user, 'staff.assets.manage');
 
         // Per-emote display size (percent), clamped to the channel's configured range.
         let sizeMin = 25, sizeMax = 400;
@@ -417,7 +417,7 @@ router.patch('/:id', requireAuth, (req, res) => {
     try {
         const emote = db.getEmoteById(req.params.id);
         if (!emote) return res.status(404).json({ error: 'Emote not found' });
-        let allowed = emote.user_id === req.user.id || req.user.role === 'admin';
+        let allowed = emote.user_id === req.user.id || permissions.can(req.user, 'staff.assets.manage');
         if (!allowed) {
             const ownerId = emote.channel_owner_id || emote.user_id;
             const channel = db.getChannelByUserId(ownerId);
@@ -475,7 +475,7 @@ router.delete('/:id', requireAuth, (req, res) => {
         const emote = db.getEmoteById(req.params.id);
         if (!emote) return res.status(404).json({ error: 'Emote not found' });
         // Allowed: the uploader, an admin, or a mod/owner of the channel the emote belongs to.
-        let allowed = emote.user_id === req.user.id || req.user.role === 'admin';
+        let allowed = emote.user_id === req.user.id || permissions.can(req.user, 'staff.assets.manage');
         if (!allowed) {
             const ownerId = emote.channel_owner_id || emote.user_id;
             const channel = db.getChannelByUserId(ownerId);

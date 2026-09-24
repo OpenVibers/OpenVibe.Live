@@ -418,8 +418,8 @@ function banRequestUser(req) {
     return req._ovBanUser;
 }
 /** Admins (the site owner) pass IP / network bans — they may live on the same network as a banned person. */
-function isBanExemptAdmin(req) { const u = banRequestUser(req); return !!(u && !u.is_banned && u.role === 'admin'); }
-function isBanExemptAdminUser(u) { return !!(u && !u.is_banned && u.role === 'admin'); }
+function isBanExemptAdmin(req) { const u = banRequestUser(req); return !!(u && !u.is_banned && require('./auth/permissions').can(u, 'staff.limits.exempt')); }
+function isBanExemptAdminUser(u) { return !!(u && !u.is_banned && require('./auth/permissions').can(u, 'staff.limits.exempt')); }
 /** Paths a banned network may still reach: health, the ban page's assets, SSO (so an admin can sign in), WHIP (stream-key auth, checks bans itself). */
 function banPassPath(p) {
     return p === '/api/health' || p.startsWith('/banned') || p.startsWith('/assets/') || p.startsWith('/api/auth/sso') || p === '/api/auth/callback' || p === '/api/auth/logout' || p.startsWith('/whip');

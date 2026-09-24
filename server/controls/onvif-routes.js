@@ -16,6 +16,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const db = require('../db/database');
+const { can } = require('../auth/permissions');
 const { requireAuth } = require('../auth/auth');
 const { OnvifDiscovery, OnvifClient } = require('../core/onvif-client');
 
@@ -67,7 +68,7 @@ function decryptPassword(hash) {
 // Discovery multicasts on the SERVER's network and tries admin/admin on whatever answers. A streamer's
 // cameras are on their own network, never this one, so for anyone but staff this was only a way to
 // scan the hosting provider's LAN. Admin only, with a bounded timeout.
-router.post('/discover', requireAuth, (req, res, next) => (req.user && req.user.role === 'admin' ? next() : res.status(403).json({ error: 'Camera discovery scans the server network and is limited to admins. Add your camera by address instead.' })), async (req, res) => {
+router.post('/discover', requireAuth, (req, res, next) => (can(req.user, 'staff.hardware.manage') ? next() : res.status(403).json({ error: 'Camera discovery scans the server network and is limited to admins. Add your camera by address instead.' })), async (req, res) => {
     try {
         const discovery = new OnvifDiscovery();
         const devices = await discovery.discover(Math.min(Math.max(Number(req.body.timeout) || 3000, 500), 5000));
@@ -144,7 +145,7 @@ router.post('/cameras', requireAuth, async (req, res) => {
             if (!stream) {
                 return res.status(404).json({ error: 'Stream not found' });
             }
-            if (stream.user_id !== req.user.id && req.user.role !== 'admin') {
+            if (stream.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
                 return res.status(403).json({ error: 'Not your stream' });
             }
         }
@@ -215,7 +216,7 @@ router.get('/cameras/:id', requireAuth, async (req, res) => {
             return res.status(404).json({ error: 'Camera not found' });
         }
 
-        if (camera.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (camera.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not your camera' });
         }
 
@@ -268,7 +269,7 @@ router.put('/cameras/:id', requireAuth, async (req, res) => {
             return res.status(404).json({ error: 'Camera not found' });
         }
 
-        if (camera.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (camera.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not your camera' });
         }
 
@@ -329,7 +330,7 @@ router.delete('/cameras/:id', requireAuth, (req, res) => {
             return res.status(404).json({ error: 'Camera not found' });
         }
 
-        if (camera.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (camera.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not your camera' });
         }
 
@@ -354,7 +355,7 @@ router.get('/cameras/:id/presets', requireAuth, (req, res) => {
             return res.status(404).json({ error: 'Camera not found' });
         }
 
-        if (camera.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (camera.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not your camera' });
         }
 
@@ -377,7 +378,7 @@ router.post('/cameras/:id/presets', requireAuth, async (req, res) => {
             return res.status(404).json({ error: 'Camera not found' });
         }
 
-        if (camera.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (camera.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not your camera' });
         }
 
@@ -424,7 +425,7 @@ router.delete('/cameras/:cameraId/presets/:presetId', requireAuth, (req, res) =>
             return res.status(404).json({ error: 'Camera not found' });
         }
 
-        if (camera.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (camera.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not your camera' });
         }
 

@@ -12,6 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const db = require('../db/database');
+const { can } = require('../auth/permissions');
 const media = require('../media-client');
 const access = require('./access');
 const liveThumbs = require('./live-thumbs');
@@ -32,7 +33,7 @@ router.post('/live/:streamId', requireAuth, upload.single('thumbnail'), (req, re
         const streamId = parseInt(req.params.streamId);
         const stream = db.getStreamById(streamId);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
-        if (stream.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (stream.user_id !== req.user.id && !can(req.user, 'staff.streams.manage')) {
             return res.status(403).json({ error: 'Not your stream' });
         }
         if (!stream.is_live) return res.status(400).json({ error: 'Stream is not live' });
@@ -54,7 +55,7 @@ async function generateFor(kind, id, req, res) {
         const notFound = () => res.status(404).json({ error: `${kind === 'vod' ? 'VOD' : 'Clip'} not found` });
         // A private item is missing to anyone who may not see it (a 403 would confirm it exists).
         if (!meta || !access.canView(req.user, meta)) return notFound();
-        const canManage = !!req.user && (meta.user_id === req.user.id || req.user.role === 'admin');
+        const canManage = !!req.user && (meta.user_id === req.user.id || can(req.user, 'staff.streams.manage'));
         const isPublic = meta.visibility ? meta.visibility === 'public' : !!meta.is_public;
         if (!canManage && !isPublic) return res.status(403).json({ error: `Not your ${kind}` });
         const out = await media.generateThumbnail(kind, id);

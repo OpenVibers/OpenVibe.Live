@@ -26,6 +26,7 @@ const express = require('express');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const db = require('../db/database');
+const { can } = require('../auth/permissions');
 const { requireAuth } = require('../auth/auth');
 
 const router = express.Router();
@@ -1019,7 +1020,7 @@ router.get('/configs/:id', requireAuth, (req, res) => {
     try {
         const config = db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
-        if (config.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
         }
         const buttons = db.getConfigButtons(config.id);
@@ -1034,7 +1035,7 @@ router.put('/configs/:id', requireAuth, (req, res) => {
     try {
         const config = db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
-        if (config.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
         }
         const { name, description } = req.body;
@@ -1054,7 +1055,7 @@ router.delete('/configs/:id', requireAuth, (req, res) => {
     try {
         const config = db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
-        if (config.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
         }
         // Clear active config reference if it was active
@@ -1074,7 +1075,7 @@ router.post('/configs/:id/buttons', requireAuth, (req, res) => {
     try {
         const config = db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
-        if (config.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
         }
 
@@ -1124,7 +1125,7 @@ router.put('/configs/:id/buttons/:btnId', requireAuth, (req, res) => {
     try {
         const config = db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
-        if (config.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
         }
 
@@ -1166,7 +1167,7 @@ router.delete('/configs/:id/buttons/:btnId', requireAuth, (req, res) => {
     try {
         const config = db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
-        if (config.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
         }
         const removed = db.deleteConfigButton(parseInt(req.params.btnId), config.id);
@@ -1184,7 +1185,7 @@ router.post('/configs/:id/activate', requireAuth, (req, res) => {
     try {
         const config = db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
-        if (config.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
         }
         db.updateChannel(req.user.id, { active_control_config_id: config.id });
@@ -1209,11 +1210,11 @@ router.post('/configs/:id/apply/:streamId', requireAuth, (req, res) => {
     try {
         const config = db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
-        if (config.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
         }
         const stream = db.getStreamById(req.params.streamId);
-        if (!stream || (stream.user_id !== req.user.id && req.user.role !== 'admin')) {
+        if (!stream || (stream.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage'))) {
             return res.status(403).json({ error: 'Not authorized' });
         }
         const applied = db.applyConfigToStream(config.id, stream.id);
@@ -1392,7 +1393,7 @@ router.get('/configs/:id/bridge-script', requireAuth, (req, res) => {
     try {
         const config = db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
-        if (config.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
         }
 
@@ -1418,7 +1419,7 @@ router.get('/:streamId/config', requireAuth, (req, res) => {
     try {
         const stream = db.getStreamById(req.params.streamId);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
-        if (stream.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (stream.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
         }
         res.json({ control_config_id: stream.control_config_id || null });
@@ -1432,7 +1433,7 @@ router.put('/:streamId/config', requireAuth, (req, res) => {
     try {
         const stream = db.getStreamById(req.params.streamId);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
-        if (stream.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (stream.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
         }
 
@@ -1440,7 +1441,7 @@ router.put('/:streamId/config', requireAuth, (req, res) => {
         if (configId) {
             const config = db.getControlConfig(configId);
             if (!config) return res.status(404).json({ error: 'Config not found' });
-            if (config.user_id !== req.user.id && req.user.role !== 'admin') {
+            if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
                 return res.status(403).json({ error: 'Not authorized' });
             }
             const applied = db.applyConfigToStream(config.id, stream.id);
@@ -1493,7 +1494,7 @@ const { applyCozmoPresets, removeCozmoPresets } = require('../integrations/cozmo
 router.post('/:streamId/presets/cozmo', requireAuth, (req, res) => {
     try {
         const stream = db.getStreamById(req.params.streamId);
-        if (!stream || (stream.user_id !== req.user.id && req.user.role !== 'admin')) {
+        if (!stream || (stream.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage'))) {
             return res.status(403).json({ error: 'Not authorized' });
         }
         const result = applyCozmoPresets(parseInt(req.params.streamId));
@@ -1507,7 +1508,7 @@ router.post('/:streamId/presets/cozmo', requireAuth, (req, res) => {
 router.delete('/:streamId/presets/cozmo', requireAuth, (req, res) => {
     try {
         const stream = db.getStreamById(req.params.streamId);
-        if (!stream || (stream.user_id !== req.user.id && req.user.role !== 'admin')) {
+        if (!stream || (stream.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage'))) {
             return res.status(403).json({ error: 'Not authorized' });
         }
         const removed = removeCozmoPresets(parseInt(req.params.streamId));

@@ -18,6 +18,7 @@
 const express = require('express');
 const multer = require('multer');
 const db = require('../db/database');
+const { can } = require('../auth/permissions');
 const media = require('../media-client');
 const { requireAuth, optionalAuth, requireAdmin } = require('../auth/auth');
 
@@ -268,7 +269,7 @@ function toCommunity(subPath) {
                 if (!sid) return res.status(409).json({ error: 'This account is not linked to an OpenVibe account yet. Sign in again and retry.' });
                 headers['X-OV-Subject'] = sid;
                 // Live staff moderate pastes as staff (Community checks our community.paste.moderate grant).
-                if (req.user.role === 'admin' || req.user.role === 'global_mod') headers['X-OV-Staff'] = '1';
+                if (can(req.user, 'staff.moderation.pastes')) headers['X-OV-Staff'] = '1';
             }
             if (req.ip) headers['X-Forwarded-For'] = req.ip;
             const opts = { method: req.method, headers, redirect: 'manual', signal: AbortSignal.timeout(req.method === 'GET' ? 20000 : 120000) };

@@ -118,7 +118,7 @@ class CallServer {
     _canSeePrivate(ch, viewer) {
         if (!ch.private) return true;
         if (!viewer) return false;
-        if (viewer.role === 'admin' || viewer.role === 'global_mod') return true;
+        if (permissions.can(viewer, 'staff.moderation.calls')) return true;
         return ch.createdBy === viewer.id || !!(ch.invited && ch.invited.has(viewer.id));
     }
     /** A caller invited this user to their call (POST /voice-channels/call-user). */
@@ -198,7 +198,7 @@ class CallServer {
         if (!ch || ch.permanent) return false;
         if (ch.createdBy !== userId) {
             const user = db.getUserById(userId);
-            if (!user || (user.role !== 'admin' && user.role !== 'global_mod')) return false;
+            if (!user || !permissions.can(user, 'staff.moderation.calls')) return false;
         }
         this.endCall(channelId);
         this.channels.delete(channelId);
@@ -296,7 +296,7 @@ class CallServer {
         }
         let fromIp = 0;
         for (const [, info] of room) if (info.ip === ip) fromIp++;
-        if (fromIp >= MAX_SOCKETS_PER_IP && !(user && (user.role === 'admin' || user.role === 'global_mod'))) { ws.send(JSON.stringify({ type: 'error', message: 'Too many connections from your network' })); ws.close(); return; }
+        if (fromIp >= MAX_SOCKETS_PER_IP && !permissions.can(user, 'staff.limits.exempt')) { ws.send(JSON.stringify({ type: 'error', message: 'Too many connections from your network' })); ws.close(); return; }
         const maxP = channel.maxParticipants || MAX_PARTICIPANTS;
         if (room.size >= maxP) { ws.send(JSON.stringify({ type: 'error', message: `Channel full (max ${maxP})` })); ws.close(); return; }
 
@@ -342,7 +342,7 @@ class CallServer {
 
     _canModerate(user, channelId) {
         if (!user) return false;
-        if (user.role === 'admin' || user.role === 'global_mod') return true;
+        if (permissions.can(user, 'staff.moderation.calls')) return true;
         const ch = this.channels.get(channelId);
         if (ch?.createdBy === user.id) return true;
         if (ch?.streamId) return permissions.canModerateCall(user, ch.streamId);
@@ -475,7 +475,7 @@ class CallServer {
             case 'end-call': case 'end-channel': {
                 const c = room.get(peerId); if (!c) break;
                 const ch = this.channels.get(channelId);
-                const canEnd = (ch?.createdBy && c.user?.id === ch.createdBy) || c.isStreamer || (c.user && (c.user.role === 'admin' || c.user.role === 'global_mod'));
+                const canEnd = (ch?.createdBy && c.user?.id === ch.createdBy) || c.isStreamer || permissions.can(c.user, 'staff.moderation.calls');
                 if (canEnd) { this.endCall(channelId); if (ch && !ch.permanent) this.channels.delete(channelId); }
                 break;
             }

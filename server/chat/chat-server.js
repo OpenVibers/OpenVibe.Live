@@ -119,7 +119,7 @@ class ChatServer {
         return anonAge == null ? false : anonAge < DAY;
     }
 
-    _isBanExemptAdmin(client) { return !!(client && client.user && !client.user.is_banned && client.user.role === 'admin'); }
+    _isBanExemptAdmin(client) { return !!(client && client.user && !client.user.is_banned && permissions.can(client.user, 'staff.limits.exempt')); }
 
     getClientIp(req) {
         const raw = req.headers?.['cf-connecting-ip']
@@ -329,7 +329,7 @@ class ChatServer {
         const user = authenticateWs(token);
 
         const perIp = this._ipSockets.get(ip) || 0;
-        if (ip && ip !== 'unknown' && perIp >= MAX_CHAT_SOCKETS_PER_IP && !(user && user.role === 'admin')) {
+        if (ip && ip !== 'unknown' && perIp >= MAX_CHAT_SOCKETS_PER_IP && !permissions.can(user, 'staff.limits.exempt')) {
             ws.close(4029, 'Too many connections');
             return;
         }
@@ -1662,7 +1662,7 @@ class ChatServer {
                 const targetUser = db.getUserByUsername(target);
                 if (targetUser) {
                     // Prevent non-admins from banning admins
-                    if (permissions.isGlobalModOrAbove(targetUser) && targetUser.role === 'admin' && client.user.role !== 'admin') {
+                    if (permissions.isGlobalModOrAbove(targetUser) && targetUser.role === 'admin' && !permissions.isAdmin(client.user)) {
                         this.sendTo(ws, { type: 'system', message: 'You cannot ban an admin.' });
                         return;
                     }

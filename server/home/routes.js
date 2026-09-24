@@ -12,6 +12,7 @@
 'use strict';
 const express = require('express');
 const db = require('../db/database');
+const { can } = require('../auth/permissions');
 const media = require('../media-client');
 
 const router = express.Router();
@@ -548,7 +549,7 @@ router.get('/discover', optionalAuth, async (req, res) => {
 
 // Admin: pick a new Star of OpenVibe right now (the job otherwise rotates daily).
 router.post('/star/rotate', requireAuth, async (req, res) => {
-    if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    if (!req.user || !can(req.user, 'staff.site.configure')) return res.status(403).json({ error: 'Admin only' });
     try {
         const out = await require('./star-job').rotate({ force: true });
         _starCache = { at: 0, key: '', data: null };

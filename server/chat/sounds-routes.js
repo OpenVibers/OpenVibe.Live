@@ -288,7 +288,7 @@ router.delete('/:id', requireAuth, (req, res) => {
     try {
         const sound = db.getChannelSoundById(parseInt(req.params.id));
         if (!sound) return res.status(404).json({ error: 'Sound not found' });
-        let allowed = sound.created_by === req.user.id || req.user.role === 'admin';
+        let allowed = sound.created_by === req.user.id || permissions.can(req.user, 'staff.assets.manage');
         if (!allowed) {
             const channel = db.getChannelByUserId(sound.channel_owner_id);
             if (channel && permissions.canModerateChannel(req.user, channel.id)) allowed = true;
@@ -327,7 +327,7 @@ router.patch('/command', requireAuth, (req, res) => {
         const isMod = permissions.canModerateChannel(req.user, channel.id);
         const isOwnChannel = channelOwnerId === req.user.id;
         const isCreator = group.every((s) => s.created_by === req.user.id);
-        if (!isMod && !isOwnChannel && !isCreator && req.user.role !== 'admin') {
+        if (!isMod && !isOwnChannel && !isCreator && !permissions.can(req.user, 'staff.assets.manage')) {
             return res.status(403).json({ error: `Only the creator of !${command} (or a mod) can edit it.` });
         }
 

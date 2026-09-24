@@ -14,6 +14,7 @@
 const express = require('express');
 const router = express.Router();
 const { requireAuth, optionalAuth } = require('../auth/auth');
+const { can } = require('../auth/permissions');
 const themeService = require('./theme-service');
 
 /* ── List all public themes ────────────────────────────────── */
@@ -146,7 +147,7 @@ router.put('/:id', requireAuth, (req, res) => {
 /* ── Delete community theme ────────────────────────────────── */
 router.delete('/:id', requireAuth, (req, res) => {
     try {
-        const isAdmin = req.user.role === 'admin';
+        const isAdmin = can(req.user, 'staff.assets.manage');
         themeService.deleteTheme(parseInt(req.params.id), req.user.id, isAdmin);
         res.json({ success: true });
     } catch (err) {

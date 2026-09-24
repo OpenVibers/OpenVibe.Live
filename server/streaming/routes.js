@@ -23,6 +23,7 @@
  */
 const express = require('express');
 const db = require('../db/database');
+const { can } = require('../auth/permissions');
 const config = require('../config');
 const { requireAuth, requireStreamer, optionalAuth } = require('../auth/auth');
 const jsmpegRelay = require('./jsmpeg-relay');
@@ -94,7 +95,7 @@ const { publicManagedStream, publicChannel, publicStream } = require('../web/ser
  * going live on a slot, heartbeats, call settings and WHIP publishing stay with the streamer alone.
  */
 function staffMayModerate(actor, ownerUserId) {
-    if (!actor || actor.role !== 'admin') return false;
+    if (!can(actor, 'staff.streams.manage')) return false;
     const target = db.getUserById(ownerUserId);
     return !(target && target.is_owner);
 }
@@ -104,7 +105,7 @@ function ownControlConfigId(req, raw) {
     if (raw === null || raw === undefined || raw === '') return null;
     const id = parseInt(raw);
     const cfg = Number.isFinite(id) ? db.getControlConfig(id) : null;
-    if (!cfg || (cfg.user_id !== req.user.id && req.user.role !== 'admin')) return undefined;
+    if (!cfg || (cfg.user_id !== req.user.id && !can(req.user, 'staff.streams.manage'))) return undefined;
     return id;
 }
 
@@ -251,7 +252,7 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
         // Show hidden (private + unlisted) VODs/clips to the channel owner AND admins;
         // everyone else sees public only.
         const isOwner = req.user && req.user.id === channel.user_id;
-        const canSeeHidden = !!(isOwner || (req.user && (req.user.role === 'admin' || req.user.capabilities?.moderate_global)));
+        const canSeeHidden = !!(isOwner || can(req.user, 'staff.content.view_private'));
         const vodLimit = Math.min(Math.max(parseInt(req.query.vodLimit || '12', 10), 1), 48);
         const vodOffset = Math.max(parseInt(req.query.vodOffset || '0', 10), 0);
         const ALLOWED_VOD_ORDERS = new Set(['newest', 'oldest', 'views', 'peak_viewers']);
@@ -594,7 +595,7 @@ router.get('/channel/:username/clips-taken', optionalAuth, async (req, res) => {
         const user = db.getUserByUsername(req.params.username);
         if (!user) return res.status(404).json({ error: 'Not found' });
         const isOwner = req.user && req.user.id === user.id;
-        const canSeeHidden = !!(isOwner || (req.user && (req.user.role === 'admin' || req.user.capabilities?.moderate_global)));
+        const canSeeHidden = !!(isOwner || can(req.user, 'staff.content.view_private'));
         const ALLOWED_SORT = new Set(['newest', 'oldest', 'views']);
         const orderBy = ALLOWED_SORT.has(req.query.sort) ? req.query.sort : 'newest';
         const sourceStreamerId = parseInt(req.query.of, 10) || null;

@@ -8,6 +8,7 @@
 const express = require('express');
 
 const db = require('../db/database');
+const { can } = require('../auth/permissions');
 const { requireAuth } = require('../auth/auth');
 const restreamManager = require('./restream-manager');
 const chatRelayService = require('../integrations/chat-relay-service');
@@ -495,7 +496,7 @@ router.post('/viewer-counts', requireAuth, (req, res) => {
             if (!Number.isFinite(destId) || (count != null && !Number.isFinite(count))) continue;
             // Only your own destinations: this feeds external viewer totals and PowerChat view counts.
             const dest = db.getRestreamDestinationById(destId);
-            if (!dest || (dest.user_id !== req.user.id && req.user.role !== 'admin')) continue;
+            if (!dest || (dest.user_id !== req.user.id && !can(req.user, 'staff.streams.manage'))) continue;
             restreamManager.setViewerCount(destId, count);
         }
         res.json({ ok: true });
