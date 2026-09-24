@@ -1017,7 +1017,20 @@ app.get('/banned', (req, res) => {
 // paste or stream, or a private item this visitor may not see) gets it with a 404 status, so
 // search engines and monitors see a real 404; the client renders its not-found view either way.
 // API paths still get the JSON 404. See server/web/page-status.js for the page list.
-app.get('*', require('./web/page-status').spaFallback((res, urlPath) => sendDocument(res, 'index.html', urlPath)));
+// The shell comes from server/seo/seo.js shellHtml: a 404 is noindex with no canonical (the shell's
+// own head describes the home page), and no other page claims the home page as its canonical.
+let _shellHtml = null;
+try { _shellHtml = require('./seo/seo').shellHtml; } catch { _shellHtml = null; }
+function sendShell(res, urlPath) {
+    let html = null;
+    try { html = _shellHtml ? _shellHtml(urlPath, res.statusCode) : null; } catch { html = null; }
+    if (!html) return sendDocument(res, 'index.html', urlPath);
+    if (!res.getHeader('Cache-Control')) assets.setNoCache(res);
+    try { res.setHeader('Content-Security-Policy-Report-Only', assets.cspReportOnly(html)); } catch { /* */ }
+    res.type('html').send(html);
+    return true;
+}
+app.get('*', require('./web/page-status').spaFallback((res, urlPath) => sendShell(res, urlPath)));
 
 // ── Global Error Handler ─────────────────────────────────────
 app.use((err, req, res, _next) => {

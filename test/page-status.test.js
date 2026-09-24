@@ -87,13 +87,16 @@ pastesClient.listPastes = async () => ({ pastes: [] });
 const assets = require('../server/web/assets');
 const pageStatus = require('../server/web/page-status');
 const app = express();
-require('../server/seo/seo').register(app);
+const seo = require('../server/seo/seo');
+seo.register(app);
+// As server/index.js sendShell: the shell from seo.shellHtml (a 404 is noindex, no canonical).
 app.get('*', pageStatus.spaFallback((res, urlPath) => {
-    const doc = assets.document('index.html');
-    if (!doc) return false;
-    res.type('html').send(assets.renderRoute(doc.html, urlPath));
+    const html = seo.shellHtml(urlPath, res.statusCode);
+    if (!html) return false;
+    res.type('html').send(html);
     return true;
 }));
+void assets;
 
 let base;
 function get(p, { user, html = false, method = 'GET' } = {}) {
@@ -178,6 +181,11 @@ server.listen(0, '127.0.0.1', async () => {
         const unknown = await get('/no-such-page', { html: true });
         assert.strictEqual(unknown.status, 404);
         assert.ok(unknown.body.includes('/js/app.js'));
+        // …and tells search engines so: noindex, and not the home page's canonical.
+        for (const r of [shell, unknown]) {
+            assert.ok(r.body.includes('<meta name="robots" content="noindex">'), 'noindex');
+            assert.ok(!/<link rel="canonical"/.test(r.body), 'no canonical');
+        }
     });
 
     await check('HEAD matches GET, and API paths keep their JSON 404', async () => {

@@ -77,9 +77,11 @@ const isMissingError = (err) => !!err && (err.status === 404 || err.status === 4
 
 /**
  * The cached answer for `key`, loading it at most once at a time. Resolves within
- * LOOKUP_DEADLINE_MS; a slower load keeps running and fills the cache for the next request.
+ * LOOKUP_DEADLINE_MS, or by `deadlineAt` when the request has already spent part of that budget
+ * (the SEO renderer runs first and sets req.ovLookupDeadlineAt); a slower load keeps running and
+ * fills the cache for the next request.
  */
-function lookup(key, load) {
+function lookup(key, load, deadlineAt = null) {
     const now = Date.now();
     let entry = _cache.get(key);
     if (!entry || (!entry.pending && now - entry.at >= entry.ttl)) {
@@ -99,8 +101,9 @@ function lookup(key, load) {
         if (_cache.size > CACHE_MAX) _cache.delete(_cache.keys().next().value);
     }
     if (!entry.pending) return Promise.resolve(entry.value);
+    const wait = deadlineAt ? Math.max(0, Math.min(LOOKUP_DEADLINE_MS, deadlineAt - Date.now())) : LOOKUP_DEADLINE_MS;
     let timer;
-    const deadline = new Promise((resolve) => { timer = setTimeout(resolve, LOOKUP_DEADLINE_MS, UNKNOWN); });
+    const deadline = new Promise((resolve) => { timer = setTimeout(resolve, wait, UNKNOWN); });
     return Promise.race([entry.pending, deadline]).finally(() => clearTimeout(timer));
 }
 
@@ -115,18 +118,18 @@ async function mediaItemStatus(req, kind, id) {
     if (!ID_RE.test(id)) return NOT_FOUND;
     const row = await lookup(`${kind}:${id}`, async () => slimMediaRow(kind === 'vod'
         ? await media.getVod(id, { timeoutMs: 10_000 })
-        : await media.getClip(id, { timeoutMs: 10_000 })));
+        : await media.getClip(id, { timeoutMs: 10_000 })), req.ovLookupDeadlineAt || null);
     if (row === UNKNOWN) return OK;
     if (row === MISSING) return NOT_FOUND;
     return access.canView(visitor(req), row) ? OK : NOT_FOUND;
 }
 
-async function pasteStatus(slug) {
+async function pasteStatus(req, slug) {
     if (!SLUG_RE.test(slug)) return NOT_FOUND;
     const found = await lookup(`paste:${slug}`, async () => {
         const p = await require('../pastes-client').getPaste(slug);
         return p && typeof p === 'object' ? true : MISSING;
-    });
+    }, req.ovLookupDeadlineAt || null);
     return found === MISSING ? NOT_FOUND : OK;
 }
 
@@ -159,7 +162,7 @@ async function statusFor(req) {
         switch (first) {
             case 'vod': return await mediaItemStatus(req, 'vod', second);
             case 'clip': return await mediaItemStatus(req, 'clip', second);
-            case 'p': return await pasteStatus(second);
+            case 'p': return await pasteStatus(req, second);
             case 'recap':
             case 'stream': return streamStatus(second);
             default: return NOT_FOUND;
@@ -190,7 +193,30 @@ function spaFallback(sendShell) {
     };
 }
 
+/**
+ * Record what another part of the same request just fetched fresh from upstream, so the status
+ * check does not ask again: the SEO renderer (server/seo/seo.js) runs first, and when it passes a
+ * page on (missing, or private to this visitor) the fallback would otherwise repeat its fetch. An
+ * entry that is still fresh, or a lookup in flight, is left alone.
+ */
+function prime(key, value) {
+    const e = _cache.get(key);
+    if (e && (e.pending || Date.now() - e.at < e.ttl)) return;
+    _cache.delete(key);
+    _cache.set(key, { at: Date.now(), ttl: value === MISSING ? MISSING_TTL_MS : FOUND_TTL_MS, value, pending: null });
+    if (_cache.size > CACHE_MAX) _cache.delete(_cache.keys().next().value);
+}
+/** A VOD or clip row (`row` null = Media said it does not exist). Only the visibility fields are kept. */
+function primeMediaItem(kind, id, row) {
+    if ((kind !== 'vod' && kind !== 'clip') || !ID_RE.test(String(id))) return;
+    prime(`${kind}:${id}`, row ? slimMediaRow(row) : MISSING);
+}
+function primePaste(slug, found) {
+    if (!SLUG_RE.test(String(slug))) return;
+    prime(`paste:${slug}`, found ? true : MISSING);
+}
+
 /** Forget cached lookups (tests; or after a change that must show at once). */
 function clearCache() { _cache.clear(); }
 
-module.exports = { statusFor, spaFallback, clearCache, EXACT, PREFIX, LOOKUP_DEADLINE_MS };
+module.exports = { statusFor, spaFallback, clearCache, primeMediaItem, primePaste, EXACT, PREFIX, LOOKUP_DEADLINE_MS };
