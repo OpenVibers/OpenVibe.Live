@@ -72,6 +72,28 @@ function normalizeUrl(raw) {
     } catch { return null; }
 }
 
+const TOOLS_URL = (process.env.OV_TOOLS_INTERNAL_URL || 'http://127.0.0.1:4001').replace(/\/$/, '');
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+const decodeEntities = (s) => s.replace(/&(#x[0-9a-f]{1,6}|#[0-9]{1,7}|[a-z]{2,6});/gi, (m, e) => {
+    if (e[0] !== '#') return ENTITIES[e.toLowerCase()] ?? m;
+    const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+    return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;
+});
+/** { title, url } from Tools' opengraph tool (POST /api/v1/tools/opengraph/run), or null when Tools cannot say. */
+async function titleViaTools(url) {
+    const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
+    try { Object.assign(headers, await require('../net/network-principal').serviceHeaders('openvibe.tools')); } catch { /* no token: the anonymous tier */ }
+    try {
+        const r = await fetch(`${TOOLS_URL}/api/v1/tools/opengraph/run`, { method: 'POST', headers, body: JSON.stringify({ input: { url } }), signal: AbortSignal.timeout(FETCH_TIMEOUT_MS + 1000) });
+        if (r.status === 401) require('../net/network-principal').invalidate('openvibe.tools');
+        if (!r.ok) return null;
+        const d = ((await r.json()).result || {}).data;
+        if (!d) return null;
+        const t = (d.preview && d.preview.title) || (d.tags && (d.tags['og:title'] || d.tags.title)) || '';
+        return { title: decodeEntities(String(t)).replace(/\s+/g, ' ').trim().slice(0, 140), url: d.url || url };
+    } catch { return null; }
+}
+
 // ── GET /api/kiosk/site?url=<input> ──────────────────────────────
 // { reachable, url, title, favicon, host } — reachable=false ⇒ the omnibar searches instead.
 router.get('/site', async (req, res) => {
@@ -86,7 +108,13 @@ router.get('/site', async (req, res) => {
     if (!(await hostIsPublic(u.hostname))) return res.json({ reachable: false });
 
     let title = '', finalUrl = u.href, finalHost = u.hostname;
-    try {
+    // OpenVibe.Tools' Open Graph tool reads the page (its SSRF guard, cache and per-target throttle);
+    // Live asks it first and only fetches itself when Tools does not answer.
+    const viaTools = await titleViaTools(u.href);
+    if (viaTools) {
+        title = viaTools.title;
+        try { const fu = new URL(viaTools.url || u.href); if (fu.protocol === 'https:' || fu.protocol === 'http:') { finalUrl = fu.href; finalHost = fu.hostname; } } catch { /* keep */ }
+    } else try {
         // egress.fetchText re-applies the public-address rule at connect time on every redirect hop.
         // The old fetch({ redirect: 'follow' }) only checked the first host, so a public page that
         // redirected to an internal service had that service's <title> returned to anyone.
@@ -140,3 +168,4 @@ router.get('/favicon', async (req, res) => {
 });
 
 module.exports = router;
+module.exports._titleViaTools = titleViaTools;
