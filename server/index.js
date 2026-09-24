@@ -150,7 +150,16 @@ const app = express();
 const server = http.createServer(app);
 
 // What this server runs (ADR-016): GET /release.json below, and release_info in /metrics.
-const release = require('openvibe-shared/release').createRelease({ service: 'live', root: path.join(__dirname, '..') });
+// In the release layout (/opt/openvibe.live/releases/<time>-<sha8>, a root-owned git worktree) the
+// service user cannot run git there, so the release id also comes from the directory's name.
+const release = require('openvibe-shared/release').createRelease({ service: 'live', root: path.join(__dirname, '..'), env: releaseEnv() });
+function releaseEnv() {
+    if (process.env.RELEASE_COMMIT) return process.env;
+    let dir = path.join(__dirname, '..');
+    try { dir = require('fs').realpathSync(dir); } catch { /* keep */ }
+    const m = /-([0-9a-f]{7,40})$/.exec(path.basename(dir));
+    return m ? { ...process.env, RELEASE_COMMIT: m[1] } : process.env;
+}
 // Metrics first, so every request is counted (by route template, never by raw URL). GET /metrics
 // answers direct loopback callers only; through nginx it is a 404 (server/web/observability.js).
 const observability = require('./web/observability');
