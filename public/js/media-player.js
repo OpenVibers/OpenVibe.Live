@@ -840,7 +840,6 @@ function connectSocket() {
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const url = new URL(`${protocol}//${window.location.host}/ws/chat`);
-    if (mpToken()) url.searchParams.set('token', mpToken());
     url.searchParams.set('stream', mpLiveStream.id);
 
     const socket = new WebSocket(url.toString());

@@ -96,7 +96,7 @@
 
 <h3>Base URL &amp; Auth</h3>
 <p>Base URL: <code>https://openvibe.live</code> (replace with your instance).</p>
-<p>Auth: <code>Authorization: Bearer &lt;JWT&gt;</code> header, or <code>?token=JWT</code> query param on WebSocket URLs.</p>
+<p>Auth: <code>Authorization: Bearer &lt;JWT&gt;</code> header. On WebSockets, the header on the upgrade request or the <code>token</code> of the first <code>join</code> message; a <code>?token=</code> query param still works but is deprecated (URLs are logged).</p>
 <p>API tokens: <code>hbt_</code> prefix, scoped permissions, created from Dashboard → API Tokens.</p>
 </div>
 
@@ -168,7 +168,7 @@ openvibe.network /api/admin/streamer-mod/*  →  OpenVibe.Live /api/mod/*</code>
 <p><strong>All identity is OpenVibe SSO.</strong> There is no local password login on OpenVibe.Live &mdash; <code>POST /api/auth/register</code> and <code>POST /api/auth/login</code> are permanently disabled (return <code>410</code>). Humans sign in through openvibe.network OAuth2; OpenVibe.Live receives an <strong>RS256 JWT</strong> signed by openvibe.network and verifies it locally. For bots and scripts, use a long-lived <strong><code>hbt_</code> API token</strong> (below) &mdash; no browser login needed.</p>
 
 <h3>How auth is sent</h3>
-<p>Every authenticated request carries a token as <code>Authorization: Bearer &lt;token&gt;</code> (also read from the <code>ov_token</code> cookie, or a <code>?token=</code> query param on WebSocket URLs). <code>requireAuth</code> accepts either:</p>
+<p>Every authenticated request carries a token as <code>Authorization: Bearer &lt;token&gt;</code> (also read from the <code>ov_token</code> cookie; on WebSockets also from the first <code>join</code> message, and from a deprecated <code>?token=</code> query param). <code>requireAuth</code> accepts either:</p>
 <ul>
 <li><strong>API token</strong> &mdash; a string starting with <code>hbt_</code>. Best for bots/integrations. Cannot itself create/list/revoke tokens.</li>
 <li><strong>openvibe.network JWT (RS256)</strong> &mdash; from the SSO login flow; auto-links/creates a local account. Roles come from the token.</li>
@@ -491,7 +491,7 @@ while True:
 <table class="doc-table">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
 <tbody>
-<tr><td>POST</td><td>/api/chat/send</td><td>Yes</td><td>Send message via REST (fallback)</td></tr>
+<tr><td>POST</td><td>/api/chat/send</td><td>Yes</td><td>Post a message to global chat (bots; API tokens need the <code>chat</code> scope)</td></tr>
 <tr><td>GET</td><td>/api/chat/:streamId/history</td><td>No</td><td>Chat history for a stream</td></tr>
 <tr><td>GET</td><td>/api/chat/:streamId/users</td><td>No</td><td>Users in a stream's chat</td></tr>
 <tr><td>GET</td><td>/api/chat/user/:username/profile</td><td>No</td><td>User profile card data</td></tr>
@@ -1237,7 +1237,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <table class="doc-table">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
-<tr><td>POST</td><td>/api/chat/send</td><td>Yes</td><td>REST fallback to post a global chat message</td></tr>
+<tr><td>POST</td><td>/api/chat/send</td><td>Yes</td><td>Post a message to global chat (bots; API tokens need the <code>chat</code> scope)</td></tr>
 <tr><td>GET</td><td>/api/chat/:streamId/history</td><td>Opt</td><td>Per-streamer history (all slots + offline unless <code>?scope=stream</code>)</td></tr>
 <tr><td>GET</td><td>/api/chat/global/history</td><td>Opt</td><td>Global chat history</td></tr>
 <tr><td>GET</td><td>/api/chat/:streamId/replay</td><td>Opt</td><td>Chat replay for VOD/clip sync (<code>?from,to</code>)</td></tr>

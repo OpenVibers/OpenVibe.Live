@@ -2629,9 +2629,8 @@ function initChat(streamId, channelUserId = null) {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const token = localStorage.getItem('token');
 
-    // Pass token and stream in URL so the server can authenticate on connect
+    // The stream goes in the URL; the token only in the join message (never in a URL, where proxies log it).
     const params = new URLSearchParams();
-    if (token) params.set('token', token);
     if (streamId) params.set('stream', streamId);
     const wsUrl = `${protocol}://${host}:${port}/ws/chat?${params.toString()}`;
 
@@ -2793,7 +2792,6 @@ function _reconnectChatWs(streamId) {
     const token = localStorage.getItem('token');
 
     const params = new URLSearchParams();
-    if (token) params.set('token', token);
     if (streamId) params.set('stream', streamId);
     const wsUrl = `${protocol}://${host}:${port}/ws/chat?${params.toString()}`;
 
@@ -4286,9 +4284,10 @@ function sendChat(overrideInput = null) {
         return;
     }
 
-    // If WS is down (server restarting, etc.), send to global chat via REST API
+    // WS down (Chat restarting): the message stays in the box until the socket is back. It is never
+    // re-routed to another room (the REST send is a bot API, not a browser fallback).
     if (!chatWs || chatWs.readyState !== WebSocket.OPEN) {
-        _sendChatViaRest(text, input);
+        addSystemMessage('Chat is reconnecting. Your message is still in the box: send it again in a moment.');
         return;
     }
 
@@ -4336,49 +4335,6 @@ function sendChat(overrideInput = null) {
     clearChatReply();
     if (input.id === 'fullscreen-chat-input') markFullscreenChatActivity();
     startSlowModeCooldown();
-}
-
-/**
- * Fallback: send a chat message via REST API when the WebSocket is down.
- * The message goes to global chat so the user isn't silenced during reconnects.
- */
-async function _sendChatViaRest(text, input) {
-    const token = localStorage.getItem('token');
-    if (!token) {
-        addSystemMessage('Chat disconnected — log in to send messages while reconnecting');
-        return;
-    }
-    try {
-        const autoDeleteMinutes = normalizeChatAutoDeleteMinutes(chatSettings.autoDeleteMinutes);
-        const payload = { message: text, reply_to_id: _chatReplyTo?.id || undefined };
-        if (autoDeleteMinutes >= (chatSelfDeletePolicy.minMinutes || CHAT_SELF_DELETE_MINUTES) && canUseViewerAutoDeleteHere()) {
-            payload.auto_delete_minutes = autoDeleteMinutes;
-        }
-
-        const res = await fetch('/api/chat/send', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            addSystemMessage(err.error || 'Failed to send message');
-            return;
-        }
-        // Clear input on success
-        input.value = '';
-        _autoResizeTextarea(input);
-        input.focus();
-        clearChatReply();
-        if (chatStreamId) {
-            addSystemMessage('Sent to global chat (stream chat reconnecting)');
-        }
-    } catch {
-        addSystemMessage('Server unreachable — message not sent');
-    }
 }
 
 /* ── Reply-to helpers ─────────────────────────────────────────── */
@@ -6025,7 +5981,6 @@ function _openGlobalFeed() {
     const token = localStorage.getItem('token');
 
     const params = new URLSearchParams();
-    if (token) params.set('token', token);
     // No stream param = global chat
     const wsUrl = `${protocol}://${host}:${port}/ws/chat?${params.toString()}`;
     const ws = new WebSocket(wsUrl);

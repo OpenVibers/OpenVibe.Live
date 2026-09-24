@@ -6270,7 +6270,6 @@ function _connectMediaPipSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const url = new URL(`${protocol}//${window.location.host}/ws/chat`);
     const token = localStorage.getItem('token');
-    if (token) url.searchParams.set('token', token);
     url.searchParams.set('stream', activeId);
 
     const ws = new WebSocket(url.toString());

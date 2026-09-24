@@ -92,8 +92,10 @@ Body: { "streamId": 123, "fromTime": "2024-01-01T00:00", "toTime": "2024-01-02T0
 
 ### Connect
 ```
-wss://openvibe.live/ws/chat?token=JWT_OR_API_TOKEN&streamId=123
+wss://openvibe.live/ws/chat?stream=123
+Authorization: Bearer JWT_OR_API_TOKEN        (non-browser clients)
 ```
+Browsers send the token in the first `join` message instead (`{ "type": "join", "streamId": 123, "token": "…" }`); the `ov_token`/`token` cookies also authenticate the upgrade on the site's own origin. A `?token=` query parameter still works for older bots but is deprecated (C-05): URLs are logged.
 
 ### Message Types (Client → Server)
 | Type | Fields | Description |

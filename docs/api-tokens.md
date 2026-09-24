@@ -72,13 +72,18 @@ For the OpenVibe.Live VS Code companion or any other coding-feed publisher, use 
 
 ### WebSocket (Chat)
 
-Pass the token as the `token` query parameter:
+Send the token in an `Authorization: Bearer` header on the upgrade request (Node's `ws`, Python's `websockets` and most server libraries can), or as the `token` of your first `join` message (browsers cannot set headers):
 
 ```
-wss://openvibe.live/ws/chat?token=hbt_YOUR_TOKEN_HERE&streamId=123
+wss://openvibe.live/ws/chat?stream=123
+Authorization: Bearer hbt_YOUR_TOKEN_HERE
 ```
 
-The token works everywhere a JWT would — the server auto-detects the `hbt_` prefix and validates accordingly.
+```json
+{ "type": "join", "streamId": 123, "token": "hbt_YOUR_TOKEN_HERE" }
+```
+
+The token works everywhere a JWT would — the server auto-detects the `hbt_` prefix and validates accordingly. A `?token=` query parameter still works but is deprecated (compatibility shim C-05): URLs end up in proxy logs and browser history, so move to the header or the `join` message.
 
 ## Managing Tokens
 
@@ -108,11 +113,12 @@ const WebSocket = require('ws');
 const TOKEN = 'hbt_your_token_here';
 const STREAM_ID = '123';
 
-const ws = new WebSocket(
-  `wss://openvibe.live/ws/chat?token=${TOKEN}&streamId=${STREAM_ID}`
-);
+const ws = new WebSocket(`wss://openvibe.live/ws/chat?stream=${STREAM_ID}`, {
+  headers: { Authorization: `Bearer ${TOKEN}` },
+});
 
 ws.on('open', () => {
+  ws.send(JSON.stringify({ type: 'join', streamId: Number(STREAM_ID) }));
   console.log('Connected to chat');
 });
 
