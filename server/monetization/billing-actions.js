@@ -325,6 +325,32 @@ async function paypalReturn(token) {
 }
 
 // ── Subscriptions and entitlements ───────────────────────────
+// VIP first (roadmap W10, proof flow 3): whether a member is subscribed to a creator, for showing it
+// and for gates, is OpenVibe.VIP's entitlement answer (its projection of Billing's entitlements,
+// through openvibe-sdk/vip with Live's service token, vip.entitlement.check). Billing's own answer
+// stands in only when VIP cannot say (unknown, unreachable, no token), and a purchase decision
+// (subscribe) always asks Billing. LIVE_VIP_ENTITLEMENTS=off asks Billing only.
+let _vip = null;
+function vipClient() {
+    if (_vip) return _vip;
+    const principal = require('../net/network-principal');
+    const { createVipClient } = require('openvibe-sdk/vip');
+    _vip = createVipClient({
+        baseUrl: process.env.OV_VIP_INTERNAL_URL || 'http://127.0.0.1:4620',
+        tokenClient: { authHeaders: () => principal.serviceHeaders('openvibe.vip'), invalidate: () => principal.invalidate('openvibe.vip') },
+        timeoutMs: 2000,
+    });
+    return _vip;
+}
+async function entitlementOf(member, creator) {
+    if (process.env.LIVE_VIP_ENTITLEMENTS !== 'off') {
+        const e = await vipClient().checkEntitlement({ subject: member, creator, product: 'live' });
+        if (e && e.status !== 'unknown') return { active: !!e.active, via: 'vip' };
+    }
+    const e = await api.entitlement(member, creator);
+    return { active: !!(e && e.active), via: 'billing' };
+}
+
 function viewerOrNull(fn) { return fn().catch((e) => { if (e instanceof BillingCallError && e.kind === 'no_subject') return null; throw e; }); }
 
 async function subscribe(req, { streamer, provider, autoRenewRaw }) {
@@ -414,7 +440,7 @@ async function channelState(streamer, viewer) {
     if (!to) return { subscribed: false, subscriberCount: 0 };
     const me = viewer ? await viewerOrNull(() => subjectFor(viewer.id)) : null;
     const [ent, list] = await Promise.all([
-        me ? api.entitlement(me, to) : Promise.resolve(null),
+        me ? entitlementOf(me, to) : Promise.resolve(null),
         api.listSubscriptions({ streamer: to, status: 'active' }),
     ]);
     const now = Date.now();
@@ -455,7 +481,7 @@ function refreshEntitlement(subscriberId, streamerId) {
     const p = (async () => {
         try {
             const [a, b] = await Promise.all([subjectFor(subscriberId), subjectFor(streamerId, { role: 'recipient' })]);
-            const e = await api.entitlement(a, b);
+            const e = await entitlementOf(a, b);
             _ent.set(k, { active: !!(e && e.active), at: Date.now() });
         } catch (err) {
             if (err instanceof BillingCallError && err.kind === 'no_subject') _ent.set(k, { active: false, at: Date.now() });
@@ -516,5 +542,6 @@ module.exports = {
     donate, chargeMedia, linkMediaCharge, refundMedia, requestCashout, recycle, balance, history,
     checkout, paypalReturn, subscribe, mySubscriptions, channelState, cancelSubscription,
     isSubscriberCached, refreshEntitlement, invalidateEntitlement, adminStatus, resolveAction,
-    _reset() { _ent.clear(); _entInflight.clear(); _tablesReady = false; },
+    entitlementOf,
+    _reset() { _ent.clear(); _entInflight.clear(); _tablesReady = false; _vip = null; },
 };

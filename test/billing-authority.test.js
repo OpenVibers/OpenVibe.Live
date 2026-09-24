@@ -260,6 +260,42 @@ async function check(name, fn) {
         assert.strictEqual(db.isActiveSubscriber(4, 3), false);
     });
 
+    await check('VIP first: VIP\'s entitlement answer decides the perk; Billing stands in only when VIP cannot say', async () => {
+        const http = require('http');
+        let vipMode = 'inactive';
+        const vipCalls = [];
+        const vip = http.createServer((req, res) => {
+            let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
+                vipCalls.push({ path: req.url, auth: req.headers.authorization || null, body: JSON.parse(b || '{}') });
+                if (vipMode === 'down') { res.writeHead(503, { 'content-type': 'application/json' }); return res.end('{}'); }
+                res.writeHead(200, { 'content-type': 'application/json' });
+                res.end(JSON.stringify({ status: vipMode, active: vipMode === 'active' }));
+            });
+        });
+        await new Promise((r) => vip.listen(0, '127.0.0.1', r));
+        process.env.OV_VIP_INTERNAL_URL = `http://127.0.0.1:${vip.address().port}`;
+        try {
+            billingActions._reset();
+            assert.strictEqual(await billingActions.refreshEntitlement(2, 3), false, 'VIP says inactive although Billing\'s stub says active');
+            assert.strictEqual(vipCalls[0].path, '/api/v1/entitlements/check');
+            assert.deepStrictEqual(vipCalls[0].body, { subject: SID.ann, creator: vipCalls[0].body.creator, product: 'live' });
+            assert.ok(/^Bearer /.test(vipCalls[0].auth), 'Live\'s service token for openvibe.vip');
+            assert.ok(network.tokens.some((t) => t.aud === 'openvibe.vip'));
+            vipMode = 'down';
+            billingActions._reset();
+            assert.strictEqual(await billingActions.refreshEntitlement(2, 3), true, 'VIP unavailable: Billing\'s answer stands in');
+            process.env.LIVE_VIP_ENTITLEMENTS = 'off';
+            billingActions._reset();
+            const before = vipCalls.length;
+            assert.strictEqual(await billingActions.refreshEntitlement(2, 3), true);
+            assert.strictEqual(vipCalls.length, before, 'switched off: VIP is not asked');
+        } finally {
+            delete process.env.LIVE_VIP_ENTITLEMENTS; delete process.env.OV_VIP_INTERNAL_URL;
+            billingActions._reset();
+            await new Promise((r) => vip.close(r));
+        }
+    });
+
     await check('Buy Vibes via PowerChat → POST /intents (intent.create); the link carries Billing\'s checkout ref', async () => {
         const n = billing.calls.length;
         const r = await call('POST', '/api/payments/bucks/checkout', 2, { provider: 'powerchat', bucks: 500 });
