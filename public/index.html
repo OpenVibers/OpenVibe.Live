@@ -306,6 +306,44 @@
                 <div class="pulse-grid" id="pulse-grid"></div>
             </div>
 
+            <!-- What people made, above the introduction to the site (roadmap 32.7: the home leads with live
+                 content and creators): channels that were just on, their recordings, the clips people took
+                 and their pastes. What the AI made follows it (AI Moments; 33.6: made, then derived). -->
+            <!-- Recently Online -->
+            <div class="section-header" style="--sc:#60a5fa">
+                <h2><i class="fa-solid fa-clock-rotate-left"></i> Recently Online<small class="section-kicker">just missed them</small></h2>
+            </div>
+            <div class="stream-grid" id="stream-grid-recent">
+                <div class="empty-state">
+                    <p class="muted">No recent streams</p>
+                </div>
+            </div>
+            <div id="stream-grid-recent-pagination" class="pastes-pagination" style="display:none"></div>
+
+            <!-- Recent VODs -->
+            <div class="section-header" style="--sc:#a78bfa;display:none" id="home-recent-vods-header">
+                <h2><i class="fa-solid fa-video"></i> Recent VODs<small class="section-kicker">full streams</small></h2>
+                <a href="/content?type=vods" onclick="return handleLinkClick(event, '/content?type=vods')" class="section-action">View all</a>
+            </div>
+            <div class="stream-grid" id="home-recent-vods-grid"></div>
+            <div id="home-recent-vods-pagination" class="pastes-pagination" style="display:none"></div>
+
+            <!-- Recent Clips -->
+            <div class="section-header" style="--sc:#f472b6;display:none" id="home-clips-header">
+                <h2><i class="fa-solid fa-scissors"></i> Recent Clips<small class="section-kicker">the good bits</small></h2>
+                <a href="/content?type=clips" onclick="return handleLinkClick(event, '/content?type=clips')" class="section-action">View all</a>
+            </div>
+            <div class="stream-grid home-clips-grid" id="home-clips-grid"></div>
+            <div id="home-clips-pagination" class="pastes-pagination" style="display:none"></div>
+
+            <!-- Recent Pastes -->
+            <div class="section-header" style="--sc:#2dd4bf;display:none" id="home-pastes-header">
+                <h2><i class="fa-solid fa-paste"></i> Recent Pastes<small class="section-kicker">shots & snippets</small></h2>
+                <a href="/content?type=pastes" onclick="return handleLinkClick(event, '/content?type=pastes')" class="section-action">View all</a>
+            </div>
+            <div class="home-pastes-list" id="home-pastes-list"></div>
+            <div id="home-pastes-pagination" class="pastes-pagination" style="display:none"></div>
+
             <!-- AI Moments showcase -->
             <div class="home-section-lazy" id="home-moments-section" style="display:none">
                 <div class="section-header" style="--sc:#22d3ee">
@@ -459,41 +497,6 @@
         </div>
 
         <div class="container">
-            <!-- Recently Online -->
-            <div class="section-header" style="--sc:#60a5fa">
-                <h2><i class="fa-solid fa-clock-rotate-left"></i> Recently Online<small class="section-kicker">just missed them</small></h2>
-            </div>
-            <div class="stream-grid" id="stream-grid-recent">
-                <div class="empty-state">
-                    <p class="muted">No recent streams</p>
-                </div>
-            </div>
-            <div id="stream-grid-recent-pagination" class="pastes-pagination" style="display:none"></div>
-
-            <!-- Recent VODs -->
-            <div class="section-header" style="--sc:#a78bfa;display:none" id="home-recent-vods-header">
-                <h2><i class="fa-solid fa-video"></i> Recent VODs<small class="section-kicker">full streams</small></h2>
-                <a href="/content?type=vods" onclick="return handleLinkClick(event, '/content?type=vods')" class="section-action">View all</a>
-            </div>
-            <div class="stream-grid" id="home-recent-vods-grid"></div>
-            <div id="home-recent-vods-pagination" class="pastes-pagination" style="display:none"></div>
-
-            <!-- Recent Clips -->
-            <div class="section-header" style="--sc:#f472b6;display:none" id="home-clips-header">
-                <h2><i class="fa-solid fa-scissors"></i> Recent Clips<small class="section-kicker">the good bits</small></h2>
-                <a href="/content?type=clips" onclick="return handleLinkClick(event, '/content?type=clips')" class="section-action">View all</a>
-            </div>
-            <div class="stream-grid home-clips-grid" id="home-clips-grid"></div>
-            <div id="home-clips-pagination" class="pastes-pagination" style="display:none"></div>
-
-            <!-- Recent Pastes -->
-            <div class="section-header" style="--sc:#2dd4bf;display:none" id="home-pastes-header">
-                <h2><i class="fa-solid fa-paste"></i> Recent Pastes<small class="section-kicker">shots & snippets</small></h2>
-                <a href="/content?type=pastes" onclick="return handleLinkClick(event, '/content?type=pastes')" class="section-action">View all</a>
-            </div>
-            <div class="home-pastes-list" id="home-pastes-list"></div>
-            <div id="home-pastes-pagination" class="pastes-pagination" style="display:none"></div>
-
             <!-- Scraplandia Leaderboards -->
             <div class="section-header" style="--sc:#fbbf24;display:none" id="home-quest-header">
                 <h2><i class="fa-solid fa-trophy"></i> Scraplandia Leaderboards<small class="section-kicker">the ladder</small></h2>
