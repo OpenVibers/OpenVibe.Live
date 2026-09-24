@@ -149,7 +149,7 @@ async function networkCoinStats() {
     try {
         const ctl = AbortSignal.timeout ? AbortSignal.timeout(2500) : undefined;
         const res = await fetch(`${NETWORK_INTERNAL_URL}/internal/coins/stats`, {
-            headers: { 'X-Internal-Key': INTERNAL_API_KEY, Accept: 'application/json' },
+            headers: { ...(await principal.headersFor('/internal/coins/stats')), Accept: 'application/json' },
             signal: ctl,
         });
         if (!res.ok) return _statsCache.data;

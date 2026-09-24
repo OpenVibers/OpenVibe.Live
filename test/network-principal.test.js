@@ -64,10 +64,11 @@ const network = http.createServer((req, res) => {
     assert.deepStrictEqual(seen.map((s) => s.auth), ['token', 'token']);
     assert.strictEqual(tokenCalls, 1, 'one token for both calls');
 
-    // 2. Routes Network doesn't guard by capability keep the key.
+    // 2. link-account takes a service token too since Network guards it (identity.subject.resolve, 2026-09-24).
     seen.length = 0;
     await (async () => { notify.reportLinkedAccount({ id: uid, username: 'p' }); await new Promise((x) => setTimeout(x, 150)); })();
-    assert.deepStrictEqual(seen.map((s) => `${s.url}:${s.auth}`), ['/internal/link-account:key']);
+    assert.deepStrictEqual(seen.map((s) => `${s.url}:${s.auth}`), ['/internal/link-account:token']);
+    assert.ok(!principal.TOKEN_PATHS.has('/internal/notifications/mark-read'), 'routes Network does not guard by capability keep the key');
 
     // 3. A refused token is retried once with the key, and the key is used until the pause ends.
     seen.length = 0; mode.coins = 'refuse';

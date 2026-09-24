@@ -38,6 +38,22 @@ function subjectOf(liveUserId) {
     return row ? row.subject_id || null : null;
 }
 
+/** POST to Network with a service token where it accepts one (else the internal key); a refused token falls back once. */
+async function networkPost(path, body) {
+    const principal = require('../net/network-principal');
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const auth = await principal.headersFor(path);
+        const res = await fetch(`${OV_NETWORK_INTERNAL_URL}${path}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...auth },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(15_000),
+        });
+        if (res.status === 401 && auth.Authorization && attempt === 0) { principal.tokenRejected('401'); continue; }
+        return res;
+    }
+}
+
 async function syncLegacyMap() {
     if (!INTERNAL_API_KEY) return { skipped: 'no INTERNAL_API_KEY' };
     const rows = db.getDb().prepare("SELECT user_id, service_user_id FROM linked_accounts WHERE service = 'network' AND service_user_id GLOB '[0-9]*' ORDER BY user_id").all();
@@ -46,12 +62,7 @@ async function syncLegacyMap() {
         const entries = rows.slice(i, i + BATCH).map(r => ({
             network_user_id: Number(r.service_user_id), source_system: 'live', source_type: 'user', source_id: String(r.user_id), verified: true,
         }));
-        const res = await fetch(`${OV_NETWORK_INTERNAL_URL}/internal/identity/legacy-map`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Internal-Key': INTERNAL_API_KEY },
-            body: JSON.stringify({ entries }),
-            signal: AbortSignal.timeout(15_000),
-        });
+        const res = await networkPost('/internal/identity/legacy-map', { entries });
         if (res.status === 404) return { skipped: 'network has no /internal/identity yet' };
         if (!res.ok) throw new Error(`legacy-map ${res.status}`);
         const out = await res.json();
@@ -70,12 +81,7 @@ async function backfillSubjects() {
     const store = db.getDb().prepare("UPDATE linked_accounts SET subject_id = ? WHERE service = 'network' AND user_id = ? AND service_user_id = ? AND subject_id IS NULL");
     for (let i = 0; i < rows.length; i += BATCH) {
         const batch = rows.slice(i, i + BATCH);
-        const res = await fetch(`${OV_NETWORK_INTERNAL_URL}/internal/identity/resolve-batch`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Internal-Key': INTERNAL_API_KEY },
-            body: JSON.stringify({ system: 'network', type: 'user', ids: batch.map(r => String(r.service_user_id)) }),
-            signal: AbortSignal.timeout(15_000),
-        });
+        const res = await networkPost('/internal/identity/resolve-batch', { system: 'network', type: 'user', ids: batch.map(r => String(r.service_user_id)) });
         if (res.status === 404) return { ...total, skipped: 'network has no /internal/identity yet' };
         if (!res.ok) throw new Error(`resolve-batch ${res.status}`);
         const { results = {} } = await res.json();
