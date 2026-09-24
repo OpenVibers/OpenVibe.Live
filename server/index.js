@@ -1107,9 +1107,8 @@ async function start() {
     db.initDb();
     // Initialize cosmetics tables
     cosmeticsModule.ensureTables();
-    // Initialize tags tables
-    const tagsModule = require('./game/tags');
-    tagsModule.ensureTagTables();
+    // Chat tag tables (read-only tags, server/chat/tags.js)
+    require('./chat/tags').ensureTagTables();
     // Initialize DM tables
     const dm = require('./chat/dm');
     dm.ensureTables();
@@ -1573,7 +1572,7 @@ async function start() {
 function startDrill() {
     db.initDb();
     cosmeticsModule.ensureTables();
-    require('./game/tags').ensureTagTables();
+    require('./chat/tags').ensureTagTables();
     require('./chat/dm').ensureTables();
     console.log(`[Drill] Database ready: ${paths.dbPath()}`);
     // Its port taken: stop (the process-wide handler would log EADDRINUSE and keep running unready).

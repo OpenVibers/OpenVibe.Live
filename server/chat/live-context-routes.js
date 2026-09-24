@@ -121,28 +121,9 @@ contextRouter.get('/users/profile', (req, res) => {
             delete profile.openvibe_bucks_balance;
             delete profile.last_seen;
         }
-        try {
-            const game = require('../game/game-engine');
-            const player = game.getPlayer(user.id);
-            if (player) {
-                profile.game = {
-                    total_level: player.total_level,
-                    mining_level: player.mining_level,
-                    fishing_level: player.fishing_level,
-                    woodcut_level: player.woodcut_level,
-                    farming_level: player.farming_level,
-                    combat_level: player.combat_level,
-                    crafting_level: player.crafting_level,
-                    mining_xp: player.mining_xp,
-                    fishing_xp: player.fishing_xp,
-                    woodcut_xp: player.woodcut_xp,
-                    farming_xp: player.farming_xp,
-                    combat_xp: player.combat_xp,
-                    crafting_xp: player.crafting_xp,
-                    total_coins_earned: player.total_coins_earned || 0,
-                };
-            }
-        } catch { /* game not initialized or player doesn't exist */ }
+        // Legacy game skills, read-only (never creates a game_players row)
+        const game = db.getLegacyGameProfile(user.id);
+        if (game) profile.game = game;
         res.json(profile);
     } catch (err) {
         fail(res, 500, 'Failed to get profile');
@@ -216,7 +197,7 @@ contextRouter.post('/decor', (req, res) => {
     const ids = (Array.isArray(req.body?.user_ids) ? req.body.user_ids : []).map(Number).filter(Number.isInteger).slice(0, 500);
     let cosmetics = null, tags = null;
     try { cosmetics = require('../monetization/cosmetics'); } catch { /* */ }
-    try { tags = require('../game/tags'); } catch { /* */ }
+    try { tags = require('./tags'); } catch { /* */ }
     const decor = {};
     for (const id of ids) {
         let cosmetic = {}, tag = null;

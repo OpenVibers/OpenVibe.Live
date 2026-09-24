@@ -6580,6 +6580,33 @@ function getUserTotalGameLevel(userId) {
     }
 }
 
+/**
+ * The legacy HoboQuest skills a user earned while the game ran inside Live, for the chat profile
+ * card: { total_level, <skill>_level, <skill>_xp, total_coins_earned } or null. Read-only: it never
+ * creates a game_players row (the old game engine's getPlayer() inserted one for every profile
+ * viewed). OpenVibe.Games owns the game now and imports these rows from here.
+ */
+function getLegacyGameProfile(userId) {
+    if (!userId) return null;
+    let p;
+    try {
+        p = get('SELECT * FROM game_players WHERE user_id = ?', [userId]);
+    } catch {
+        return null; // no game_players table (a fresh install)
+    }
+    if (!p) return null;
+    const xpToLevel = (xp) => Math.floor(Math.sqrt((xp || 0) / 25)) + 1;
+    const skills = ['mining', 'fishing', 'woodcut', 'farming', 'combat', 'crafting', 'smithing', 'agility'];
+    const out = { total_level: 0, total_coins_earned: p.total_coins_earned || 0 };
+    for (const s of skills) {
+        const xp = p[`${s}_xp`] || 0;
+        out[`${s}_xp`] = xp;
+        out[`${s}_level`] = xpToLevel(xp);
+        out.total_level += out[`${s}_level`];
+    }
+    return out;
+}
+
 // ── Anon IP Mapping ─────────────────────────────────
 
 /**
@@ -7673,7 +7700,7 @@ module.exports = {
     getChannelModerators, getChannelsByModerator,
     // Channel Moderation Settings
     getChannelModerationSettings, upsertChannelModerationSettings,
-    getUserTotalGameLevel,
+    getUserTotalGameLevel, getLegacyGameProfile,
     // Anon IP Mappings
     getOrCreateAnonNum, getAnonFirstSeen, loadAnonMappings,
     // Stream first chats (welcome messages)
