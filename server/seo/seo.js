@@ -40,16 +40,31 @@ const _vodList = (limit, offset = 0) => _cached(`vl:${limit}:${offset}`, async (
 // People's clips and pastes: the AI's are listed on /moments (server/content/feed.js).
 const _clipList = (limit, offset = 0) => _cached(`cl:${limit}:${offset}`, async () => (await media.listClips({ limit, offset, auto_generated: 0 }))?.clips || []);
 const _pasteList = (limit, offset = 0) => _cached(`pl:${limit}:${offset}`, async () => (await require('../pastes-client').listPastes({ limit, offset, visibility: 'public', origin: 'user' }))?.pastes || []);
-/** The first page of the Content or Moments feed, as list-page items. */
-const _feedList = (feed) => _cached(`feed:${feed}`, async () => {
-    const out = await require('../content/feed').page(feed, { limit: 24 });
+/**
+ * Page `page` of the Content or Moments feed, as list-page items: { items, more }. The feed pages by
+ * cursor, so page N follows N-1 `next` cursors (each page cached; at most FEED_MAX_PAGE deep), which
+ * gives crawlers plain ?page=N links (roadmap D44) while the SPA keeps its infinite scroll.
+ */
+const FEED_MAX_PAGE = 20;
+const FEED_PAGE_SIZE = 24;
+const _feedPage = (feed, page = 1) => _cached(`feed:${feed}:${page}`, async () => {
+    const f = require('../content/feed');
+    let cursor = null, out = null;
+    for (let n = 1; n <= page; n++) {
+        out = await f.page(feed, { limit: FEED_PAGE_SIZE, ...(cursor ? { cursor } : {}) });
+        if (n < page) { if (!out.next) return { items: [], more: false }; cursor = out.next; }
+    }
     const kindLabel = { vod: 'VOD', clip: 'clip', paste: 'paste', recap: 'recap' };
-    return (out.items || []).map((it) => ({
-        url: it.kind === 'paste' && PASTES_BASE ? pasteHref(it.id) : it.href, name: it.title, by: it.channel ? it.channel.display_name : null,
-        meta: [kindLabel[it.kind], it.duration_seconds ? _fmtDur(it.duration_seconds) : null].filter(Boolean).join(' · '),
-        desc: it.excerpt,
-    }));
+    return {
+        items: (out.items || []).map((it) => ({
+            url: it.kind === 'paste' && PASTES_BASE ? pasteHref(it.id) : it.href, name: it.title, by: it.channel ? it.channel.display_name : null,
+            meta: [kindLabel[it.kind], it.duration_seconds ? _fmtDur(it.duration_seconds) : null].filter(Boolean).join(' · '),
+            desc: it.excerpt,
+        })),
+        more: Boolean(out.next) && page < FEED_MAX_PAGE,
+    };
 });
+const _feedList = async (feed) => (await _feedPage(feed, 1)).items;
 const { isPrivate } = require('../media-proxy/access');
 const pageStatus = require('../web/page-status');
 
@@ -201,8 +216,8 @@ async function _pageMeta(routePath, { page = 1 } = {}) {
     // List pages (content sourced from OpenVibe.Media, canonical URLs stay on openvibe.live)
     if (p === '/vods') return _listMeta('vods', 'VODs', 'Browse recorded live streams (VODs) on OpenVibe.Live — auto-recorded broadcasts with AI overviews and searchable transcripts.', async () => (await _vodList(30) || []).map(v => ({ url: `/vod/${v.id}`, name: v.title || 'VOD', by: v.display_name || v.username, meta: _fmtDur(v.duration_seconds || v.duration), desc: v.ai_overview_short })));
     if (p === '/clips') return _listMeta('clips', 'Clips', 'Watch the best clips from OpenVibe.Live live streams — the moments viewers clipped.', async () => (await _clipList(30) || []).map(c => ({ url: `/clip/${c.id}`, name: c.title || 'Clip', by: c.display_name || c.username || c.streamer_username, meta: _fmtDur(c.duration_seconds || c.duration), desc: c.ai_overview_short })));
-    if (p === '/content') return _listMeta('content', 'Content', 'VODs, clips and pastes made by the people of OpenVibe.Live — recorded streams, the moments viewers clipped, and the code, notes and screenshots they shared.', () => _feedList('content'));
-    if (p === '/moments') return _listMeta('moments', 'AI Moments', 'AI-made highlights from OpenVibe.Live streams: auto-clips of the moments chat erupted, standout frames the AI picked, and AI-written after-show recaps. Everything listed here is AI-generated.', () => _feedList('moments'));
+    if (p === '/content') return _listMeta('content', 'Content', 'VODs, clips and pastes made by the people of OpenVibe.Live — recorded streams, the moments viewers clipped, and the code, notes and screenshots they shared.', () => _feedPage('content', page), { page });
+    if (p === '/moments') return _listMeta('moments', 'AI Moments', 'AI-made highlights from OpenVibe.Live streams: auto-clips of the moments chat erupted, standout frames the AI picked, and AI-written after-show recaps. Everything listed here is AI-generated.', () => _feedPage('moments', page), { page });
     if (p === '/pastes') return _listMeta('pastes', 'Pastes', 'Code, text and screenshot pastes shared on OpenVibe.Live — a Pastebin built into the streaming network, with AI summaries.', async () => (await _pasteList(30) || []).map(x => ({ url: pasteHref(x.slug), name: x.title || 'Paste', by: x.username || 'anon', meta: x.type === 'screenshot' ? 'image' : (x.language || 'text'), desc: x.ai_summary })));
 
     // Detail pages
@@ -491,24 +506,36 @@ async function _homeMeta() {
     return { title, description, canonicalPath: '/', image: DEFAULT_OG_IMAGE, ogType: 'website', robots: 'index,follow', jsonLd, snapshot, cacheTtlMs: track.partial ? SHORT_CACHE_MS : undefined };
 }
 
-async function _listMeta(slug, label, description, itemsFn) {
-    let items = [];
-    try { items = ((await itemsFn()) || []).slice(0, 24); } catch { /* */ }
-    const canonical = abs('/' + slug);
+/**
+ * A list page. `itemsFn` gives an array, or { items, more } for a paged list (page N of it: ?page=N,
+ * self-canonical, with newer/older links; a page past the end is not rendered here).
+ */
+async function _listMeta(slug, label, description, itemsFn, { page = 1 } = {}) {
+    let items = [], more = null;
+    try {
+        const got = await itemsFn();
+        if (Array.isArray(got)) items = got.slice(0, 24);
+        else if (got) { items = (got.items || []).slice(0, 24); more = Boolean(got.more); }
+    } catch { /* */ }
+    if (page > 1 && !items.length) return null;
+    const basePath = '/' + slug;
+    const selfPath = page > 1 ? `${basePath}?page=${page}` : basePath;
+    const pageLabel = page > 1 ? `, page ${page}` : '';
     const list = {
         '@context': 'https://schema.org', '@type': 'CollectionPage',
-        name: `${label} — ${SITE_NAME}`, url: canonical, description,
+        name: `${label}${pageLabel} — ${SITE_NAME}`, url: abs(selfPath), description,
         mainEntity: {
             '@type': 'ItemList',
-            itemListElement: items.map((it, i) => ({ '@type': 'ListItem', position: i + 1, url: abs(it.url), name: clean(it.name, 110) })),
+            itemListElement: items.map((it, i) => ({ '@type': 'ListItem', position: (page - 1) * 24 + i + 1, url: abs(it.url), name: clean(it.name, 110) })),
         },
     };
-    const snapshot = `<h1>${esc(label)} on ${SITE_NAME}</h1><p>${esc(description)}</p>` +
-        _mediaSection(`Latest ${label.toLowerCase()}`, items);
+    let snapshot = `<h1>${esc(label)} on ${SITE_NAME}${page > 1 ? ` — page ${page}` : ''}</h1><p>${esc(description)}</p>` +
+        _mediaSection(page > 1 ? `${label}, page ${page}` : `Latest ${label.toLowerCase()}`, items);
+    if (more !== null && (page > 1 || more)) snapshot += _pager(basePath, page, null, more, label.toLowerCase());
     return {
-        title: `${label} — ${SITE_NAME}`, description, canonicalPath: '/' + slug,
+        title: `${label}${pageLabel} — ${SITE_NAME}`, description, canonicalPath: selfPath,
         image: DEFAULT_OG_IMAGE, ogType: 'website', robots: 'index,follow',
-        jsonLd: [list, _breadcrumb([{ name: 'Home', url: '/' }, { name: label, url: '/' + slug }])],
+        jsonLd: [list, _breadcrumb([{ name: 'Home', url: '/' }, { name: label, url: basePath }, ...(page > 1 ? [{ name: `Page ${page}`, url: selfPath }] : [])])],
         snapshot,
     };
 }
@@ -957,9 +984,10 @@ const SEO_ROUTE_RE = /^\/(?:$|content$|moments$|vods$|clips$|pastes$|arena$|vod\
 
 /** ?page=N on a channel page (its video list); 1 everywhere else and for anything that is not a number. */
 function _pageParam(p, query) {
-    if (!CHANNEL_PATH_RE.test(p)) return 1;
+    const feed = p === '/content' || p === '/moments';
+    if (!feed && !CHANNEL_PATH_RE.test(p)) return 1;
     const raw = query && typeof query.page === 'string' ? query.page : '';
-    return /^\d{1,4}$/.test(raw) ? Math.min(CHANNEL_MAX_PAGE, Math.max(1, parseInt(raw, 10))) : 1;
+    return /^\d{1,4}$/.test(raw) ? Math.min(feed ? FEED_MAX_PAGE : CHANNEL_MAX_PAGE, Math.max(1, parseInt(raw, 10))) : 1;
 }
 
 async function middleware(req, res, next) {
