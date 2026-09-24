@@ -15,88 +15,12 @@
  *   - `proxy()` is a loopback HTTP proxy for child processes (yt-dlp, and the ffmpeg it drives) that
  *     connects only through `safeLookup`, so the same rule applies to programs we do not control.
  */
-const dns = require('dns');
 const net = require('net');
 const http = require('http');
 const https = require('https');
-
-// ── Address policy ───────────────────────────────────────────────────────────────────────────
-const blocked = new net.BlockList();
-for (const [addr, prefix] of [
-    ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16],
-    ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.0.2.0', 24], ['192.88.99.0', 24], ['192.168.0.0', 16],
-    ['198.18.0.0', 15], ['198.51.100.0', 24], ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4],
-]) blocked.addSubnet(addr, prefix, 'ipv4');
-for (const [addr, prefix] of [
-    ['::', 128], ['::1', 128], ['fe80::', 10], ['fec0::', 10], ['fc00::', 7], ['ff00::', 8],
-    ['100::', 64], ['2001:db8::', 32], ['2001::', 23],
-]) blocked.addSubnet(addr, prefix, 'ipv6');
-
-/** Expand an IPv6 address to 8 numeric groups. */
-function v6Groups(ip) {
-    let s = ip.toLowerCase().split('%')[0];
-    // Trailing dotted IPv4 (::ffff:1.2.3.4) → two hex groups.
-    const dotted = s.match(/(\d+\.\d+\.\d+\.\d+)$/);
-    if (dotted) {
-        const p = dotted[1].split('.').map(Number);
-        s = s.slice(0, -dotted[1].length) + ((p[0] << 8) | p[1]).toString(16) + ':' + ((p[2] << 8) | p[3]).toString(16);
-    }
-    const [head, tail] = s.split('::');
-    const h = head ? head.split(':') : [];
-    const t = tail !== undefined ? (tail ? tail.split(':') : []) : [];
-    const fill = tail !== undefined ? new Array(8 - h.length - t.length).fill('0') : [];
-    return [...h, ...fill, ...t].map((g) => parseInt(g || '0', 16));
-}
-const v4From = (hi, lo) => `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
-
-/**
- * The IPv4 address an IPv6 address really reaches, for the forms that embed one: v4-mapped
- * (::ffff:a.b.c.d), v4-compatible (::a.b.c.d), NAT64 (64:ff9b::/96) and 6to4 (2002:AABB:CCDD::).
- */
-function embeddedV4(ip) {
-    const g = v6Groups(ip);
-    if (g.length !== 8) return null;
-    const zeros = (a, b) => g.slice(a, b).every((x) => x === 0);
-    if (zeros(0, 5) && (g[5] === 0xffff || g[5] === 0) && (g[6] || g[7])) return v4From(g[6], g[7]);
-    if (g[0] === 0x64 && g[1] === 0xff9b && zeros(2, 6)) return v4From(g[6], g[7]);
-    if (g[0] === 0x2002) return v4From(g[1], g[2]);
-    return null;
-}
-
-/** True only for a public unicast address the server may connect to on a user's behalf. */
-function isPublicAddress(ip) {
-    const family = net.isIP(String(ip || ''));
-    if (family === 4) return !blocked.check(ip, 'ipv4');
-    if (family === 6) {
-        const v4 = embeddedV4(ip);
-        if (v4) return isPublicAddress(v4);
-        return !blocked.check(ip.split('%')[0], 'ipv6');
-    }
-    return false;
-}
-
-class EgressDenied extends Error {
-    constructor(message) { super(message); this.name = 'EgressDenied'; this.code = 'EGRESS_DENIED'; }
-}
-
-/** dns.lookup with the address policy applied to every answer. Drop-in for http/net `lookup`. */
-function safeLookup(hostname, options, callback) {
-    if (typeof options === 'function') { callback = options; options = {}; }
-    const opts = typeof options === 'number' ? { family: options } : { ...(options || {}) };
-    const host = String(hostname || '').replace(/^\[|\]$/g, '');
-    const finish = (addrs) => {
-        if (!addrs.length) return callback(new EgressDenied(`no address for ${host}`));
-        const bad = addrs.find((a) => !isPublicAddress(a.address));
-        if (bad) return callback(new EgressDenied(`${host} resolves to a non-public address`));
-        if (opts.all) return callback(null, addrs);
-        return callback(null, addrs[0].address, addrs[0].family);
-    };
-    if (net.isIP(host)) return finish([{ address: host, family: net.isIP(host) }]);
-    dns.lookup(host, { all: true, family: opts.family || 0 }, (err, addrs) => {
-        if (err) return callback(err);
-        finish(addrs || []);
-    });
-}
+// The address policy and the connect-time lookup are openvibe-shared/egress (the one rule Events and
+// Tools use too); this file adds Live's fetches and the child-process proxy on top.
+const { isPublicAddress, embeddedV4, safeLookup, EgressDenied } = require('openvibe-shared/egress');
 
 function lookupAsync(hostname) {
     return new Promise((resolve, reject) => safeLookup(hostname, { all: true }, (e, a) => (e ? reject(e) : resolve(a))));
