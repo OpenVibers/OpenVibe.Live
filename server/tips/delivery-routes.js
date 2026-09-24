@@ -6,7 +6,10 @@
  *
  *   POST /internal/tips/deliveries      capability live.tips_delivery.write (Network service token,
  *                                       audience openvibe.live; loopback-only like every /internal route)
- *   Idempotency-Key: <interaction id>:<effect>   a repeat answers the first result and does nothing
+ *   Idempotency-Key: <interaction id>:<effect>   a repeat answers the first result and does nothing,
+ *                                       across restarts too: keys and their answers are kept in the
+ *                                       tips_deliveries table for 7 days (pruned hourly). A repeat
+ *                                       while the first is still running answers 409 (Tips retries).
  *   body { delivery_id, effect, test, creator: { type, id: usr_… }, supporter: { name, subject? },
  *          interaction: { id, kind, amount, currency, message }, text, tts?: { text, voice },
  *          media?: { url }, highlight_seconds?, target?: { service: 'live', type: 'stream', id } }
@@ -22,8 +25,60 @@ const db = require('../db/database');
 const { guard } = require('../net/service-guard');
 
 const router = express.Router();
-const done = new Map();   // Idempotency-Key → response (Tips retries within minutes; bounded)
 const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
+
+// ── Idempotency store (SQLite, so a Live restart does not forget a delivery) ──────────────
+const KEEP_DAYS = 7;            // Tips retries within minutes; a week is ample and stays small
+const CLAIM_STALE_MS = 120000;  // a claim this old was left by a crash: the next retry takes it over
+const PRUNE_EVERY_MS = 60 * 60 * 1000;
+let tablesReady = false;
+let lastPrune = 0;
+
+function ensureTables() {
+    if (tablesReady) return;
+    db.getDb().exec(`CREATE TABLE IF NOT EXISTS tips_deliveries (
+        idempotency_key TEXT PRIMARY KEY,
+        effect TEXT,
+        state TEXT NOT NULL DEFAULT 'pending',   -- pending (running) | done (response stored)
+        response_json TEXT,
+        claimed_at INTEGER NOT NULL,             -- ms epoch
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+    db.getDb().exec('CREATE INDEX IF NOT EXISTS idx_tips_deliveries_created ON tips_deliveries(created_at)');
+    tablesReady = true;
+}
+
+/** Delete answers older than KEEP_DAYS. Returns how many rows went. */
+function prune({ force = false } = {}) {
+    ensureTables();
+    if (!force && Date.now() - lastPrune < PRUNE_EVERY_MS) return 0;
+    lastPrune = Date.now();
+    return db.getDb().prepare(`DELETE FROM tips_deliveries WHERE created_at < datetime('now', ?)`).run(`-${KEEP_DAYS} days`).changes;
+}
+
+/**
+ * Claim a key before running its effect: { done: response } for a key already answered,
+ * { busy: true } while another request runs it, { claimed: true } when this request may run it.
+ */
+function claim(key, effect) {
+    ensureTables();
+    const d = db.getDb();
+    const now = Date.now();
+    if (d.prepare("INSERT OR IGNORE INTO tips_deliveries (idempotency_key, effect, state, claimed_at) VALUES (?, ?, 'pending', ?)").run(key, effect || null, now).changes) {
+        return { claimed: true };
+    }
+    const row = d.prepare('SELECT * FROM tips_deliveries WHERE idempotency_key = ?').get(key);
+    if (!row) return claim(key, effect);   // pruned or released in between
+    if (row.state === 'done') return { done: JSON.parse(row.response_json || '{}') };
+    if (now - row.claimed_at < CLAIM_STALE_MS) return { busy: true };
+    const took = d.prepare("UPDATE tips_deliveries SET claimed_at = ? WHERE idempotency_key = ? AND state = 'pending' AND claimed_at = ?").run(now, key, row.claimed_at).changes;
+    return took ? { claimed: true } : { busy: true };
+}
+
+/** A failed attempt gives the key back, so Tips' retry runs it again. */
+function release(key) {
+    db.getDb().prepare("DELETE FROM tips_deliveries WHERE idempotency_key = ? AND state = 'pending'").run(key);
+}
 
 function channelUserId(subject) {
     if (!SUBJECT_RE.test(String(subject || ''))) return null;
@@ -41,16 +96,20 @@ function streamIdFor(target, userId) {
 }
 
 function remember(key, out) {
-    done.set(key, out);
-    if (done.size > 5000) done.delete(done.keys().next().value);
+    db.getDb().prepare("UPDATE tips_deliveries SET state = 'done', response_json = ? WHERE idempotency_key = ?").run(JSON.stringify(out), key);
+    try { prune(); } catch (e) { console.warn('[Tips delivery] prune:', e.message); }
     return out;
 }
 
 router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ limit: '32kb' }), async (req, res) => {
     const key = String(req.get('idempotency-key') || '');
     if (!/^[A-Za-z0-9_:.-]{8,200}$/.test(key)) return res.status(400).json({ error: 'Idempotency-Key required' });
-    if (done.has(key)) return res.json(done.get(key));
     const b = req.body || {};
+    const c = claim(key, b.effect);
+    if (c.done) return res.json(c.done);
+    if (c.busy) return res.status(409).json({ error: 'this delivery is already running; retry shortly' });
+    // Every answer but a stored 200 gives the claim back (Tips retries 409 and 5xx).
+    res.on('finish', () => { if (res.statusCode !== 200) { try { release(key); } catch { /* */ } } });
     const i = b.interaction || {};
     const userId = channelUserId(b.creator && b.creator.id);
     if (!userId) return res.status(404).json({ error: 'this creator has no Live channel' });
@@ -106,3 +165,4 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
 });
 
 module.exports = router;
+module.exports.prune = prune;
