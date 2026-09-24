@@ -199,7 +199,9 @@ const pageState = `(() => ({
     if (!ONLY_SIGNED && !ROUTES_ONLY) {
         const { cdp, errors } = await openPage(412);
         const writes = [];
-        cdp.on('Network.requestWillBeSent', (p) => { if (p.request.method !== 'GET' && p.request.method !== 'HEAD' && p.request.url.includes('/api/')) writes.push(`${p.request.method} ${p.request.url.replace(BASE, '')}`); });
+        // Session plumbing (a guest's token refresh) and analytics beacons are not the page acting.
+        const plumbing = /\/api\/(auth\/|analytics)/;
+        cdp.on('Network.requestWillBeSent', (p) => { if (p.request.method !== 'GET' && p.request.method !== 'HEAD' && p.request.url.includes('/api/') && !plumbing.test(p.request.url)) writes.push(`${p.request.method} ${p.request.url.replace(BASE, '')}`); });
         for (const mode of ['direct', 'spa']) {
             errors.length = 0;
             writes.length = 0;
