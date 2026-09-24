@@ -1053,12 +1053,71 @@ async function sitemapHandler(req, res) {
     res.send(_sitemap);
 }
 
-// Register: dynamic sitemap first, then the meta middleware. MUST be mounted BEFORE
+// ── /llms.txt: what this site is, for language models and other automated readers ─────────
+// (llmstxt.org). It names the public pages, the JSON behind them, the API docs, and how people's
+// work is kept apart from what the AI derived from it (roadmap 32.4, 33.8).
+const LLMS_DOCS = [
+    ['whip', 'WHIP ingest API: publish to a channel from a browser or any WHIP client'],
+    ['broadcasting', 'Going live: WebRTC, WHIP, RTMP (OBS) and the JSMPEG/CLI path'],
+    ['api-tokens', 'Bot and integration tokens (hbt_...) for the API'],
+    ['chat-system', 'Chat features and moderation'],
+    ['vods-and-clips', 'How VODs and clips are recorded and cut'],
+    ['architecture', 'System design and how Live fits the OpenVibe network'],
+];
+function llmsTxt() {
+    const b = baseUrl();
+    const docs = LLMS_DOCS.filter(([name]) => { try { return fs.existsSync(path.join(__dirname, '../../docs', `${name}.md`)); } catch { return false; } });
+    return [
+        `# ${SITE_NAME}`,
+        '',
+        '> Open-source, community-run live streaming. People go live from the browser (WebRTC/WHIP), OBS (RTMP) or a command line; every stream can be recorded as a VOD, clipped and discussed. Part of the OpenVibe network: one account across openvibe.network, openvibe.media, openvibe.community, openvibe.tools and the other OpenVibe sites.',
+        '',
+        'People\'s work and AI-made material are kept apart everywhere on this site. The Content pages list what people made; AI Moments list what the platform\'s AI derived from streams. Every AI item is labelled AI-generated, credited to no person, marked noindex,follow and made canonical to the source VOD at the moment it came from (/vod/<id>?t=<seconds>). In the JSON feeds, AI items carry "ai": true and an "ai_label".',
+        '',
+        '## What people made',
+        '',
+        `- [Home](${b}/): who is live now, recent VODs and clips`,
+        `- [Content](${b}/content): VODs, the clips people took, and pastes people wrote. JSON: ${b}/api/content/feed (cursor paging; ?type=vods|clips|pastes, ?sort=new|top)`,
+        `- Channel pages: ${b}/@<username>, with the channel's videos in pages (${b}/@<username>?page=2)`,
+        `- VOD pages: ${b}/vod/<id>; a moment in a VOD: ${b}/vod/<id>?t=<seconds>`,
+        `- Clip pages: ${b}/clip/<id>`,
+        '- Pastes live on OpenVibe.Community: https://openvibe.community/p/<slug> (Live\'s /p/<slug> redirects there)',
+        `- [Chat](${b}/chat) and [the Arena](${b}/arena): mic-judged streamer callouts`,
+        '',
+        '## What the AI made (AI Moments)',
+        '',
+        `- [AI Moments](${b}/moments): auto-clips cut when chat reacted, frames the AI picked from streams, and AI-written after-show recaps. JSON: ${b}/api/content/moments`,
+        '- AI Moments pages are noindex; the /moments collection is their indexable form. They are never listed in the sitemap.',
+        '- An AI clip says "AI clip · from <streamer>\'s stream"; it is never presented as something the streamer or a viewer clipped.',
+        '',
+        '## API and docs',
+        '',
+        `- [API docs](${b}/documentation): every feature has an open API (chat, streams, clips, overlays, robots, sound commands)`,
+        `- [Docs index](${b}/docs)`,
+        ...docs.map(([name, what]) => `- [${name}](${b}/docs/${name}): ${what}`),
+        '- Source code: https://github.com/OpenVibers/OpenVibe.Live',
+        '',
+        '## Discovery',
+        '',
+        `- Sitemap (people's work only): ${b}/sitemap.xml`,
+        `- robots.txt: ${b}/robots.txt`,
+        '- The OpenVibe network\'s platform descriptor: https://openvibe.network/.well-known/openvibe',
+        '',
+    ].join('\n');
+}
+function llmsHandler(req, res) {
+    res.set('Content-Type', 'text/plain; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(llmsTxt());
+}
+
+// Register: dynamic sitemap and llms.txt first, then the meta middleware. MUST be mounted BEFORE
 // express.static (so it can intercept "/") and before the SPA catch-all.
 function register(app) {
     app.get('/sitemap.xml', sitemapHandler);
+    app.get('/llms.txt', llmsHandler);
     app.use(middleware);
-    console.log('[SEO] per-route meta + dynamic sitemap registered');
+    console.log('[SEO] per-route meta + dynamic sitemap + llms.txt registered');
 }
 
-module.exports = { register, middleware, sitemapHandler, buildSitemap, shellHtml, _pageMeta, render };
+module.exports = { register, middleware, sitemapHandler, buildSitemap, shellHtml, llmsTxt, _pageMeta, render };
