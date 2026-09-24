@@ -90,7 +90,7 @@ const noSecret = (lines) => { for (const l of lines) for (const s of [SECRET, CL
     await assert.rejects(run({ env: { ...ENV, OV_OAUTH_CLIENT_SECRET: '' }, fetchImpl: stub().fetchImpl, log: logs() }), /OV_OAUTH_CLIENT_SECRET/);
     await assert.rejects(run({ env: ENV, fetchImpl: stub({ tokenStatus: 401 }).fetchImpl, log: logs() }), /Network refused a token/);
 
-    assert.deepStrictEqual(parseArgs(['--dry-run', '--endpoint', 'http://x/internal/media-events']), { liveEnv: '/etc/openvibe/live.env', endpoint: 'http://x/internal/media-events', action: 'list' });
+    assert.deepStrictEqual(parseArgs(['--dry-run', '--endpoint', 'http://x/internal/media-events']), { liveEnv: '/etc/openvibe/live.env', endpoint: 'http://x/internal/media-events', action: 'list', topics: TOPICS });
     assert.throws(() => parseArgs(['--bogus']), /unknown argument/);
     console.log('subscribe-media-events: all checks passed');
 })().catch((err) => { console.error(err); process.exit(1); });

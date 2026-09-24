@@ -586,6 +586,8 @@ app.use('/data/arena', express.static(paths.dir('ARENA_IMAGE_PATH', 'arena'), {
 app.post('/internal/media-webhook', require('./media-proxy/webhook'));
 //   OpenVibe.Events delivery of media.vod.* / media.clip.* / media.storage.* (MEDIA_EVENTS_SECRET)
 app.post('/internal/media-events', require('./media-proxy/media-events').handler);
+// Network identity events (signed out everywhere, password changed, banned): Live refuses older tokens.
+app.post('/internal/network-events', require('./auth/network-events').handler);
 // OpenVibe.Events → Live: OpenRe session lifecycle mirrored into `streams` (signed delivery,
 // OPENRE_EVENTS_SECRET; server/openre/mirror.js). Also before /internal (no X-Internal-Key).
 app.post('/internal/openre-events', require('./openre/mirror').webhookHandler);

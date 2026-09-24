@@ -59,7 +59,9 @@ function verifyToken(token) {
             algorithms: ['RS256'],
             issuer: getNetworkIssuer(),
         });
-        return isUserSessionClaims(decoded) ? decoded : null;
+        if (!isUserSessionClaims(decoded)) return null;
+        // Signed out everywhere / password changed / banned since this token was issued (WS-B task 4).
+        return require('./revocations').isRevoked(decoded) ? null : decoded;
     } catch {
         return null;
     }
@@ -77,6 +79,7 @@ function verifyTokenWithReason(token) {
             issuer: getNetworkIssuer(),
         });
         if (!isUserSessionClaims(decoded)) return { ok: false, reason: 'not_a_session_token' };
+        if (require('./revocations').isRevoked(decoded)) return { ok: false, reason: 'revoked' };
         return { ok: true, decoded };
     } catch (err) {
         return { ok: false, reason: err.name, message: err.message };
