@@ -21,7 +21,7 @@ BASE=http://127.0.0.1:3000 npm run test:browser  # Browser smoke (running server
 
 **No build step.** Frontend is plain JS served directly — no bundler, no transpiler. Asset URLs are content-hashed at serve time (`server/web/assets.js`) — **never add `?v=` by hand**.
 
-**Deploy:** production path `/opt/openvibe.live`, env `/etc/openvibe/live.env`, unit `openvibe-live.service`. Static-only changes deploy without a restart. See [docs/deploy.md](docs/deploy.md).
+**Deploy:** production runs the release layout (`/opt/openvibe.live/current` → `releases/<time>-<sha>`; deploy with `cd /opt/openvibe.live/current && sudo deploy/scripts/deploy.sh`), env `/etc/openvibe/live.env`, unit `openvibe-live.service`. Static-only changes deploy without a restart. See [docs/deploy.md](docs/deploy.md).
 
 ## Architecture at a Glance
 

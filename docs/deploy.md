@@ -28,10 +28,15 @@ Clients reconnect with jittered backoff and show "OpenVibe is updating" / "Recon
 
 ## Layouts
 
-**Legacy (current production):** `/opt/openvibe.live` is a git checkout. Static-only changes no longer
-restart. A rollback resets the checkout but cannot restore previous `node_modules`.
+**Release layout (production since 2026-09-24 05:51 UTC;** set up once with
+`deploy/scripts/migrate-to-releases.sh`, one restart). Deploy with
+`cd /opt/openvibe.live/current && sudo deploy/scripts/deploy.sh`: the files left in `/opt/openvibe.live`
+from the old checkout are stale, including their copy of this script. The release directories are
+root-owned, so the manifest takes the release id from the directory name (`<time>-<sha8>`), and the
+host inventory runs git for Live as root (`owner: root`, `runAs: ubuntu` for drills).
 
-**Release layout** (set up once with `deploy/scripts/migrate-to-releases.sh`, one restart):
+**Legacy (before 2026-09-24):** `/opt/openvibe.live` was a git checkout. A rollback reset the checkout
+but could not restore previous `node_modules`.
 
 ```
 /opt/openvibe.live/repo                 git clone used to create releases
