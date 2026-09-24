@@ -2498,46 +2498,44 @@ async function doRegenerateKey() {
 
 let _userLoaded = false;
 
-/* ── Updates / Changelog Page ─────────────────────────────────── */
+/**
+ * The network's shared "shipped" views (openvibe-shared shipped.js, served from this site's own
+ * /shared/ pin): what OpenVibe.Live deployed, from the network changelog (openvibe.network
+ * /api/v1/changelog). Loaded once, on demand, with the same marker the shared footer uses, so the
+ * two never load it twice. Resolves the OpenVibeShipped global, or null when it cannot load.
+ */
+let _shippedLoading = null;
+function loadShipped() {
+    if (window.OpenVibeShipped) return Promise.resolve(window.OpenVibeShipped);
+    if (_shippedLoading) return _shippedLoading;
+    _shippedLoading = new Promise((resolve) => {
+        const existing = document.querySelector('script[data-ov-shipped-src]');
+        const done = () => resolve(window.OpenVibeShipped || null);
+        if (existing) { existing.addEventListener('load', done); existing.addEventListener('error', done); setTimeout(done, 8000); return; }
+        const sc = document.createElement('script');
+        sc.src = '/shared/shipped.js';
+        sc.defer = true;
+        sc.setAttribute('data-ov-shipped-src', '');
+        sc.onload = done;
+        sc.onerror = done;
+        document.head.appendChild(sc);
+    });
+    return _shippedLoading;
+}
+
+/* ── Updates page: the network's shared update log (openvibe-shared shipped.js) ───────── */
 async function loadUpdatesPage() {
     const container = document.getElementById('updates-list');
     if (!container) return;
+    if (container.dataset.ovShippedMounted) return;   // already showing; "Load more" keeps its place
     container.innerHTML = '<div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
-
-    try {
-        const data = await api('/updates?limit=50');
-        if (!data.commits || data.commits.length === 0) {
-            container.innerHTML = '<p style="opacity:0.6;text-align:center;padding:32px 0;">No updates found.</p>';
-            return;
-        }
-
-        // Group commits by date
-        const groups = {};
-        for (const c of data.commits) {
-            const day = new Date(c.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-            if (!groups[day]) groups[day] = [];
-            groups[day].push(c);
-        }
-
-        let html = '';
-        for (const [day, commits] of Object.entries(groups)) {
-            html += `<div class="updates-day">
-                <h3 class="updates-day-header">${esc(day)}</h3>
-                <div class="updates-day-commits">`;
-            for (const c of commits) {
-                const time = new Date(c.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                html += `<div class="update-entry">
-                    <a class="update-hash" href="https://github.com/OpenVibers/OpenVibe.Live/commit/${c.hash}" target="_blank" title="View on GitHub">${esc(c.short)}</a>
-                    <span class="update-subject">${esc(c.subject)}</span>
-                    <span class="update-meta">${esc(c.author)} &middot; ${esc(time)}</span>
-                </div>`;
-            }
-            html += '</div></div>';
-        }
-        container.innerHTML = html;
-    } catch (err) {
-        container.innerHTML = `<p style="color:var(--error);text-align:center;padding:32px 0;">Failed to load updates.</p>`;
+    const shipped = await loadShipped();
+    if (!shipped) {
+        container.innerHTML = '<p style="opacity:0.6;text-align:center;padding:32px 0;">The update log could not be loaded. <a href="https://openvibe.network/updates?site=live">See it on openvibe.network</a>.</p>';
+        return;
     }
+    container.dataset.ovShippedMounted = '1';
+    await shipped.log(container, { service: 'live', limit: 50, syncUrl: false });
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

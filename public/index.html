@@ -221,7 +221,7 @@
             </div>
                 <!-- Newest shipped commit — built in the open, receipts included. Sits under the
                      philosophy row so the proof is next to the promise. -->
-                <a class="hero-latest" id="hero-latest" href="/updates" onclick="return handleLinkClick(event, '/updates')" style="display:none"></a>
+                <a class="hero-latest" id="hero-latest" data-ov-shipped="latest" data-service="live" href="/updates" onclick="return handleLinkClick(event, '/updates')" hidden></a>
                 <div class="hero-stats" id="hero-stats" aria-label="Site stats"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div></div></div>
             </div>
         </div>
@@ -725,7 +725,7 @@
         <div class="content-container">
             <div class="page-header">
                 <h1><i class="fa-solid fa-code-commit"></i> Updates</h1>
-                <p class="page-subtitle">Recent changes and patch notes from the <a href="https://github.com/OpenVibers/OpenVibe.Live" target="_blank">GitHub repository</a>.</p>
+                <p class="page-subtitle">Every change deployed to OpenVibe.Live, newest first: each line is a commit from the <a href="https://github.com/OpenVibers/OpenVibe.Live" target="_blank" rel="noopener">OpenVibers repositories</a>, and batches become <a href="https://openvibe.blog/@openvibe" rel="noopener">Patch notes on openvibe.blog</a>. See <a href="https://openvibe.network/updates">the whole network</a>.</p>
             </div>
             <div id="updates-list" class="updates-list">
                 <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>

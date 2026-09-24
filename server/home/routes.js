@@ -39,7 +39,7 @@ const FALLBACK_QUIPS = [
     'Powered by caffeine and spite.',
     'The internet hangout everyone forgot they wanted.',
     'Clip it before it happens.',
-    'Free to start, because gatekeeping is boring.',
+    'Open to everyone, because gatekeeping is boring.',
     'Where the wifi is questionable and the community is not.',
     'Stream from a van. We support that lifestyle.',
     'One account. All of OpenVibe.',
@@ -134,14 +134,17 @@ function _cleanAudience(raw) {
         .trim();
 }
 
+const NO_FREE = /\b(free|no[- ]cost)\b|\$\s?0\b/i;
+
 function heroSlogans() {
     let s = null;
     try {
         s = db.getState('home_hero_slogans');
         if (typeof s === 'string') s = JSON.parse(s);
     } catch { s = null; }
-    const aiAud = (s && Array.isArray(s.audiences)) ? s.audiences.map(_cleanAudience).filter(a => a && a.length <= 60) : [];
-    const aiQuips = (s && Array.isArray(s.quips)) ? s.quips.filter(q => q && String(q).length <= 120) : [];
+    // No "free"/"$0" copy (the owner's rule), even in a batch stored before the slogan job filtered it.
+    const aiAud = (s && Array.isArray(s.audiences)) ? s.audiences.map(_cleanAudience).filter(a => a && a.length <= 60 && !NO_FREE.test(a)) : [];
+    const aiQuips = (s && Array.isArray(s.quips)) ? s.quips.filter(q => q && String(q).length <= 120 && !NO_FREE.test(String(q))) : [];
     const hasAi = aiAud.length >= 4 || aiQuips.length >= 4;
     const updatedAt = (s && Number(s.updated_at)) || 0;
     // The slogan job regenerates every 12h; next_at is when the current batch is due to refresh.

@@ -42,6 +42,7 @@ function _stripAudiencePrefix(s) {
         .trim();
 }
 const _BAD_AUDIENCE = /\b(live\s*-?\s*)?stream(ing|s)?\b|\blivestream/i;
+const _NO_FREE = /\b(free|no[- ]cost)\b|\$\s?0\b/i;
 function _cleanList(arr, maxLen, max) {
     if (!Array.isArray(arr)) return [];
     const seen = new Set(); const out = [];
@@ -123,7 +124,7 @@ async function tick() {
         } catch { /* */ }
 
         const prompt =
-`You write the rotating hero copy for OpenVibe.Live — a scrappy, open-source, community-run live-streaming site at the heart of the OpenVibe network ("Free & Open Live Streaming" — good vibes, no suits). Voice: witty, warm, self-aware, anti-corporate, meme-literate, a little unhinged — but ALWAYS kind, never punching down.
+`You write the rotating hero copy for OpenVibe.Live — a scrappy, open-source, community-run live-streaming site at the heart of the OpenVibe network ("Open Live Streaming" — good vibes, no suits). Never call anything "free", "$0" or "no cost". Voice: witty, warm, self-aware, anti-corporate, meme-literate, a little unhinged — but ALWAYS kind, never punching down.
 
 Everything below is REAL data about THIS community right now. Lean into it hard: reference the actual people, running jokes, recurring topics, and memes so the copy feels like an inside joke the community is in on. Reference usernames by name in good fun (no @), and NEVER mock or embarrass anyone.
 
@@ -155,13 +156,15 @@ Return ONLY the JSON object.`;
         const parsed = _parseJson(text);
         if (!parsed) return;
         let audiences = _cleanList((parsed.audiences || []).map(_stripAudiencePrefix).filter(a => a && !_BAD_AUDIENCE.test(a) && !/^for\b/i.test(a)), 60, TARGET);
-        let quips = _cleanList(parsed.quips || [], 110, TARGET);
+        // The owner's rule: no "free"/"$0" copy anywhere, whatever the model writes.
+        audiences = audiences.filter(a => !_NO_FREE.test(a));
+        let quips = _cleanList((parsed.quips || []).filter(q => !_NO_FREE.test(String(q))), 110, TARGET);
         if (audiences.length < 6 && quips.length < 6) return; // bad batch — keep yesterday's
 
         // Fresh daily batch; top up from the previous batch only if the model returned few.
         const old = _loadPool();
         audiences = _topUp(audiences, old.audiences.map(_stripAudiencePrefix).filter(a => a && !_BAD_AUDIENCE.test(a)), TARGET);
-        quips = _topUp(quips, old.quips, TARGET);
+        quips = _topUp(quips, old.quips.filter(q => !_NO_FREE.test(String(q))), TARGET);
         db.setState('home_hero_slogans', JSON.stringify({ v: SLOGAN_FORMAT, audiences, quips, updated_at: Date.now() }));
         console.log(`[Slogans] Fresh daily batch: ${audiences.length} words, ${quips.length} slogans (from full AI context)`);
     } catch (e) {

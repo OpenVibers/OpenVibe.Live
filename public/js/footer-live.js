@@ -56,7 +56,8 @@
         OpenVibeFooter.init({
             service: 'live',
             brandName: 'OpenVibe.Live',
-            tagline: 'Free, open-source live streaming. Go live from a browser, OBS or a robot, restream everywhere, and keep your chat, emotes and clips in one place.',
+            tagline: 'Open-source live streaming. Go live from a browser, OBS or a robot, restream everywhere, and keep your chat, emotes and clips in one place.',
+            updates: '/updates',   // the footer's "shipped X ago" line and Updates link open this site's log
             legalBase: location.origin,
             variant: variantForPage(),
             links: LINKS,

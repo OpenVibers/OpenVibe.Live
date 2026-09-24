@@ -1249,12 +1249,8 @@ async function loadHomePulse() {
 function _renderHomePulse(p) {
     if (!p) return;
 
-    // Hero one-liner: the newest shipped commit.
-    const latest = document.getElementById('hero-latest');
-    if (latest && p.latestUpdate && p.latestUpdate.subject) {
-        latest.innerHTML = `<i class="fa-solid fa-rocket"></i> shipped ${esc(timeAgo(p.latestUpdate.date))}: <b>${esc(p.latestUpdate.subject)}</b>`;
-        latest.style.display = '';
-    }
+    // The hero one-liner ("shipped 5m ago: …") is the network's shared view (openvibe-shared
+    // shipped.js, data-ov-shipped="latest" on #hero-latest), mounted by loadShipped().
 
     const grid = document.getElementById('pulse-grid');
     const section = document.getElementById('home-pulse-section');
@@ -2013,48 +2009,23 @@ function renderHomePagination(containerId, rail) {
     </button>`;
 }
 
-async function loadHomeChangelog(attempt = 0) {
+/** Home "Recent Changes": Live's deployed changes grouped by day, drawn by the shared view. */
+async function loadHomeChangelog() {
     const container = document.getElementById('home-changelog');
     if (!container) return;
-
+    const shipped = await loadShipped();
+    if (!shipped) { container.innerHTML = '<p style="opacity:0.5;text-align:center;padding:16px 0;">Recent changes are not available right now.</p>'; return; }
+    shipped.scan(document);   // the hero one-liner
     try {
-        const data = await api('/updates?limit=15');
-        if (!data.commits || data.commits.length === 0) {
-            container.innerHTML = '<p style="opacity:0.5;text-align:center;padding:16px 0;">No recent changes.</p>';
-            return;
-        }
-
-        // Group commits by date (same pattern as updates page)
-        const groups = {};
-        for (const c of data.commits) {
-            const day = new Date(c.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-            if (!groups[day]) groups[day] = [];
-            groups[day].push(c);
-        }
-
-        let html = '';
-        for (const [day, commits] of Object.entries(groups)) {
-            html += `<div class="updates-day">
-                <h3 class="updates-day-header">${esc(day)}</h3>
-                <div class="updates-day-commits">`;
-            for (const c of commits) {
-                const time = new Date(c.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                html += `<div class="update-entry">
-                    <a class="update-hash" href="https://github.com/OpenVibers/OpenVibe.Live/commit/${c.hash}" target="_blank" title="View on GitHub">${esc(c.short)}</a>
-                    <span class="update-subject">${esc(c.subject)}</span>
-                    <span class="update-meta">${esc(c.author)} &middot; ${esc(time)}</span>
-                </div>`;
-            }
-            html += '</div></div>';
-        }
-        container.innerHTML = html;
+        const res = await fetch(`${shipped.API}?service=live&limit=15`, { headers: { Accept: 'application/json' }, credentials: 'omit' });
+        const data = res.ok ? await res.json() : null;
+        const entries = data && Array.isArray(data.entries) ? data.entries : [];
+        container.textContent = '';
+        if (!entries.length) { container.innerHTML = '<p style="opacity:0.5;text-align:center;padding:16px 0;">No recent changes.</p>'; return; }
+        container.classList.add('ov-shipped-log');
+        shipped.appendDays(container, entries, false);
     } catch {
-        // Retry up to 2 times with increasing delay (handles Cloudflare challenge timing)
-        if (attempt < 2) {
-            setTimeout(() => loadHomeChangelog(attempt + 1), (attempt + 1) * 3000);
-        } else {
-            container.innerHTML = '<p style="opacity:0.5;text-align:center;padding:16px 0;">Failed to load changelog.</p>';
-        }
+        container.innerHTML = '<p style="opacity:0.5;text-align:center;padding:16px 0;">Recent changes are not available right now.</p>';
     }
 }
 
