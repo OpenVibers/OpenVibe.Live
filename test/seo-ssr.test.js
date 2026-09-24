@@ -283,6 +283,15 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         assert.ok(/max-age=30\b/.test(r.cache), r.cache);
     });
 
+    await check('the home page\'s metadata says no "free" or "$0" (owner copy rule; free speech is fine)', async () => {
+        const html = (await get('/')).body;
+        const meta = head(html) + bodyOf(html);
+        const hits = (meta.match(/[^.<>"]{0,30}\bfree\b[^.<>"]{0,30}/gi) || []).filter((m) => !/free speech/i.test(m));
+        assert.deepStrictEqual(hits, [], 'free copy in the home metadata');
+        assert.ok(!/"price"\s*:/.test(head(html)), 'no price in the structured data');
+        assert.ok(!/\$0\b/.test(meta));
+    });
+
     await check('server/index.js sends the fallback shell through seo.shellHtml', () => {
         const src = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
         assert.ok(src.includes("require('./seo/seo').shellHtml"));

@@ -424,8 +424,8 @@ function _mediaSection(heading, items) {
 function _fmtDur(sec) { sec = Math.floor(Number(sec) || 0); const m = Math.floor(sec / 60), s = sec % 60; return sec ? `${m}:${String(s).padStart(2, '0')}` : ''; }
 
 async function _homeMeta() {
-    const title = 'OpenVibe.Live — Free Open-Source Live Streaming Platform';
-    const description = 'Free, open-source live streaming with sub-second WebRTC, OBS/RTMP & CLI ingest, auto VODs & AI clips, restreaming to Twitch/YouTube/Kick, global chat, viewer-controlled robots, and the whole OpenVibe network behind it.';
+    const title = 'OpenVibe.Live — Open-Source Live Streaming, Community Run';
+    const description = 'Open-source, community-run live streaming with sub-second WebRTC, OBS/RTMP & CLI ingest, auto VODs & AI clips, restreaming to Twitch/YouTube/Kick, global chat, viewer-controlled robots, and the whole OpenVibe network behind it.';
 
     // Pull the actual live content so the source has real, crawlable text.
     let live = [];
@@ -450,7 +450,7 @@ async function _homeMeta() {
 
     const statLine = stats ? `<p>${SITE_NAME} hosts ${stats.streamers || 0} streamers, ${stats.vods || 0} VODs, ${stats.clips || 0} clips, ${stats.pastes || 0} pastes and ${stats.chatMessages || 0} chat messages.</p>` : '';
     const snapshot =
-        `<h1>${SITE_NAME} — free, open-source live streaming</h1>` +
+        `<h1>${SITE_NAME} — open-source live streaming, community run</h1>` +
         `<p>${esc(description)}</p>` + statLine +
         (liveItems.length ? _mediaSection('Live now', liveItems) : '<section><h2>Live now</h2><p>No one is streaming right now — be the first to go live.</p></section>') +
         _mediaSection('Recent VODs', vodItems) +
@@ -469,7 +469,7 @@ async function _homeMeta() {
         {
             '@context': 'https://schema.org', '@type': 'Organization', '@id': `${baseUrl()}/#org`,
             name: 'OpenVibe', url: baseUrl(), logo: DEFAULT_OG_IMAGE,
-            description: 'A free, open-source network of live streaming, media and developer tools, built and run by the people who use it.',
+            description: 'An open-source network of live streaming, media and developer tools, built and run by the people who use it.',
             // sameAs is how a search engine learns these properties are one brand rather than
             // unrelated sites that happen to share a name.
             sameAs: [
