@@ -413,7 +413,8 @@ function _refreshLatestUpdate() {
     if (_updateCache.running) return;
     _updateCache.running = true;
     require('child_process').execFile(
-        'git', ['--no-pager', 'log', '--pretty=format:%h||%s||%aI', '-1'],
+        // -c safe.directory=*: the release layout's worktrees are root-owned; the service user only reads them.
+        'git', ['-c', 'safe.directory=*', '--no-pager', 'log', '--pretty=format:%h||%s||%aI', '-1'],
         { cwd: require('path').join(__dirname, '../..'), encoding: 'utf8', timeout: 4000 },
         (err, stdout) => {
             _updateCache.running = false;

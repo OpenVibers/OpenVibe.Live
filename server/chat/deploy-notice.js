@@ -37,7 +37,8 @@ const REPLAY_MS = 15 * 60 * 1000;
 let _live = null;   // { payload, until, sent: WeakSet }
 
 const git = (args, timeout = 5000) => new Promise((resolve) => {
-    execFile('git', args, { cwd: REPO_DIR, encoding: 'utf8', timeout, maxBuffer: 1024 * 1024 }, (err, out) => resolve(err ? '' : String(out || '')));
+    // -c safe.directory=*: the release layout's worktrees are root-owned and the service user only reads them.
+    execFile('git', ['-c', 'safe.directory=*', ...args], { cwd: REPO_DIR, encoding: 'utf8', timeout, maxBuffer: 1024 * 1024 }, (err, out) => resolve(err ? '' : String(out || '')));
 });
 
 const parseLog = (raw) => raw.trim().split('\n').filter(Boolean).map((line) => {

@@ -815,7 +815,8 @@ function readCommits(limit) {
     // Coalesce: a burst of first-loads after a deploy must not spawn a git process each.
     if (_updatesCache.inflight) return _updatesCache.inflight;
     _updatesCache.inflight = new Promise((resolve) => {
-        execFile('git', ['--no-pager', 'log', '--pretty=format:%H||%h||%s||%an||%aI', `-${limit}`],
+        // -c safe.directory=*: the release layout's worktrees are root-owned; the service user only reads them.
+        execFile('git', ['-c', 'safe.directory=*', '--no-pager', 'log', '--pretty=format:%H||%h||%s||%an||%aI', `-${limit}`],
             { cwd: REPO_DIR, encoding: 'utf8', timeout: 5000, maxBuffer: 1024 * 1024 },
             (err, stdout) => {
                 _updatesCache.inflight = null;
