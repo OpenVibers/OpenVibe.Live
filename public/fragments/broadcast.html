@@ -20,6 +20,16 @@
                     <h2><i class="fa-solid fa-tower-broadcast"></i> Go Live <button type="button" class="btn btn-outline btn-sm glw-open-btn" onclick="openSetupHub()" title="Everything you can set up, step by step"><i class="fa-solid fa-list-check"></i> Streamer setup</button></h2>
                     <p class="bc-page-subtitle">Select a stream slot to configure your profile and go live.</p>
 
+                    <!-- Guests: going live needs an account. broadcast.js shows this in place of the slot
+                         workspace and loads nothing else (_broadcastSignInGate). -->
+                    <div class="bc-signin-gate" id="bc-signin-gate" hidden>
+                        <i class="fa-solid fa-user-lock bc-signin-gate-icon" aria-hidden="true"></i>
+                        <h3>Sign in to go live</h3>
+                        <p>Stream slots, stream keys and restreams belong to your OpenVibe account. Sign in and this page opens your stream slots.</p>
+                        <a class="btn btn-primary" href="/api/auth/sso/login?next=%2Fbroadcast"><i class="fa-solid fa-right-to-bracket"></i> Sign in with OpenVibe</a>
+                        <p class="bc-signin-gate-fine">No account yet? One is made when you sign in.</p>
+                    </div>
+
                     <!-- Top-level tabs — the "Active Streams" tab only appears when a stream is live -->
                     <div class="bc-top-tabs" id="bc-top-tabs" style="display:none">
                         <button class="bc-top-tab" data-bctab="active" style="display:none" onclick="switchBroadcastTopTab('active')">

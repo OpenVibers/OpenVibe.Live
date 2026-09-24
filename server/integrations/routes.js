@@ -28,24 +28,33 @@ function resolveSlotId(req, res) {
 }
 
 /**
- * Live streams whose effective RS config is the given row (slot or default).
- * For a slot row: only streams on that slot. For the default row: only streams
- * that do NOT have their own slot-specific config.
+ * RobotStreamer is configured per stream slot only: the writes (validate, login, save, remove)
+ * need a slot. Returns the slot id, or false with a 400 already sent.
  */
-function liveStreamsForConfig(userId, slotId) {
-    const liveStreams = db.getLiveStreamsByUserId(userId) || [];
-    if (slotId) return liveStreams.filter(s => s.managed_stream_id === slotId);
-    return liveStreams.filter(s => !s.managed_stream_id || !db.getRobotStreamerIntegrationBySlot(userId, s.managed_stream_id));
+function requireSlotId(req, res) {
+    const slotId = resolveSlotId(req, res);
+    if (slotId === false) return false;
+    if (!slotId) {
+        res.status(400).json({ error: 'Choose a stream slot: RobotStreamer is set up per stream slot (managed_stream_id is required)' });
+        return false;
+    }
+    return slotId;
 }
 
+/** Live streams on the slot whose RS config this is (a slot's row applies to that slot only). */
+function liveStreamsForConfig(userId, slotId) {
+    const liveStreams = db.getLiveStreamsByUserId(userId) || [];
+    return liveStreams.filter(s => s.managed_stream_id === slotId);
+}
+
+// GET without a slot answers what does not depend on one (the server passthrough capability),
+// with exists:false — never the legacy account-level row, which applies to no stream.
 router.get('/integration', requireAuth, async (req, res) => {
     try {
         const slotId = resolveSlotId(req, res);
         if (slotId === false) return;
 
-        const row = slotId
-            ? db.getRobotStreamerIntegrationBySlot(req.user.id, slotId)
-            : db.getRobotStreamerIntegrationByUserId(req.user.id);
+        const row = slotId ? db.getRobotStreamerIntegrationBySlot(req.user.id, slotId) : null;
         let availableRobots = [];
 
         // If a saved token + robot exists, re-fetch available robots so the dropdown populates on reload
@@ -69,11 +78,10 @@ router.get('/integration', requireAuth, async (req, res) => {
 
 router.post('/integration/validate', requireAuth, async (req, res) => {
     try {
-        const slotId = resolveSlotId(req, res);
+        const slotId = requireSlotId(req, res);
         if (slotId === false) return;
 
-        const existing = (slotId ? db.getRobotStreamerIntegrationBySlot(req.user.id, slotId) : null)
-            || db.getRobotStreamerIntegrationByUserId(req.user.id);
+        const existing = db.getRobotStreamerIntegrationBySlot(req.user.id, slotId);
         const token = typeof req.body.token === 'string' && req.body.token.trim()
             ? req.body.token.trim()
             : existing?.token;
@@ -106,7 +114,7 @@ router.post('/integration/validate', requireAuth, async (req, res) => {
 // as an easier alternative to pasting the token manually. The password is never stored.
 router.post('/integration/login', requireAuth, async (req, res) => {
     try {
-        const slotId = resolveSlotId(req, res);
+        const slotId = requireSlotId(req, res);
         if (slotId === false) return;
 
         const login = await robotStreamerService.loginWithCredentials(req.body?.user_name, req.body?.password);
@@ -131,9 +139,7 @@ router.post('/integration/login', requireAuth, async (req, res) => {
             }
         }
         if (!integration) {
-            const row = slotId
-                ? db.getRobotStreamerIntegrationBySlot(req.user.id, slotId)
-                : db.getRobotStreamerIntegrationByUserId(req.user.id);
+            const row = db.getRobotStreamerIntegrationBySlot(req.user.id, slotId);
             integration = robotStreamerService.sanitizeIntegration(row, { available_robots: login.robots });
         }
 
@@ -151,7 +157,7 @@ router.post('/integration/login', requireAuth, async (req, res) => {
 
 router.put('/integration', requireAuth, async (req, res) => {
     try {
-        const slotId = resolveSlotId(req, res);
+        const slotId = requireSlotId(req, res);
         if (slotId === false) return;
 
         const result = await robotStreamerService.upsertIntegration(req.user.id, req.body || {}, slotId);
@@ -222,12 +228,11 @@ router.post('/restream/stop', requireAuth, (req, res) => {
     }
 });
 
-// Remove a slot-specific RS config (the slot falls back to the account default)
+// Remove a slot's RS config (the slot then has no RobotStreamer)
 router.delete('/integration', requireAuth, (req, res) => {
     try {
-        const slotId = resolveSlotId(req, res);
+        const slotId = requireSlotId(req, res);
         if (slotId === false) return;
-        if (!slotId) return res.status(400).json({ error: 'managed_stream_id is required' });
 
         for (const stream of liveStreamsForConfig(req.user.id, slotId)) {
             robotStreamerService.stopForStream(stream.id);

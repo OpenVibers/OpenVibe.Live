@@ -12,6 +12,11 @@
  *     (see wallet-client.js); the legacy users.openvibe_coins_balance column is
  *     frozen for the migration script and is never written anymore.
  *
+ * Every channel-points debit and credit carries a deterministic per-event key (ADR-012 rule 5,
+ * db.applyChannelPoints): watch = the watch_time row + minute, chat = the user's minute, follow =
+ * user + streamer, bonus = the claim window, redeem / redeem refund = the redemption id. A retried
+ * or replayed event moves nothing twice.
+ *
  * Channel-point earning rates:
  *   - Watching a live stream: per the streamer's config (default 10 / 5 min)
  *   - Sending a chat message: 5 points (max 1 per minute)
@@ -74,7 +79,9 @@ class OpenCoins {
             coins *= COINS.STREAK_MULTIPLIER;
         }
 
-        const total = db.addChannelPoints(userId, streamerId, coins);
+        const r = db.applyChannelPoints({ userId, streamerId, delta: coins, key: `live:cp:watch:${wt.id}:${wt.minutes_watched}`, reason: 'watch' });
+        if (!r.applied) return null;
+        const total = r.balance;
         _feedPowerchat(streamerId, userId, coins);
         db.createCoinTransaction({
             user_id: userId,
@@ -110,7 +117,11 @@ class OpenCoins {
         if (!streamerId || streamerId === userId) return null;
         chatCooldowns.set(userId, now);
 
-        const total = db.addChannelPoints(userId, streamerId, COINS.CHAT_BONUS);
+        // The cooldown window is the event: after a restart (empty cooldown map) the same minute
+        // still earns once.
+        const r = db.applyChannelPoints({ userId, streamerId, delta: COINS.CHAT_BONUS, key: `live:cp:chat:${userId}:${Math.floor(now / COINS.CHAT_COOLDOWN_MS)}`, reason: 'chat' });
+        if (!r.applied) return null;
+        const total = r.balance;
         _feedPowerchat(streamerId, userId, COINS.CHAT_BONUS);
         db.createCoinTransaction({
             user_id: userId,
@@ -139,7 +150,9 @@ class OpenCoins {
         if (existing) return null;
         if (!streamerId || streamerId === userId) return null;
 
-        const total = db.addChannelPoints(userId, streamerId, COINS.FOLLOW_BONUS);
+        const r = db.applyChannelPoints({ userId, streamerId, delta: COINS.FOLLOW_BONUS, key: `live:cp:follow:${userId}:${streamerId}`, reason: 'follow' });
+        if (!r.applied) return null;
+        const total = r.balance;
         _feedPowerchat(streamerId, userId, COINS.FOLLOW_BONUS);
         db.createCoinTransaction({
             user_id: userId,
@@ -175,46 +188,48 @@ class OpenCoins {
         }
         if (!pointsStreamerId) throw new Error('No channel context for this reward');
 
-        // Check user has enough points for this channel
-        if (!db.deductChannelPoints(userId, pointsStreamerId, reward.cost)) {
-            const cpName = (db.getChannelPointsConfig(pointsStreamerId).name) || 'Channel Points';
-            throw new Error(`Not enough ${cpName}`);
-        }
-
-        // Check per-user cooldown
-        if (reward.cooldown_seconds > 0) {
-            const lastRedemption = db.get(
-                `SELECT created_at FROM coin_redemptions WHERE reward_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 1`,
-                [rewardId, userId]
-            );
-            if (lastRedemption) {
-                const elapsed = (Date.now() - new Date(lastRedemption.created_at.replace(' ', 'T') + 'Z').getTime()) / 1000;
-                if (elapsed < reward.cooldown_seconds) {
-                    db.addChannelPoints(userId, pointsStreamerId, reward.cost); // refund
-                    throw new Error(`Cooldown: wait ${Math.ceil(reward.cooldown_seconds - elapsed)}s`);
+        // The limits are checked, the redemption row created and the points taken in one
+        // transaction, keyed by the redemption id: nothing is taken for a refused redemption
+        // (there is no take-then-refund any more), and a replayed spend moves nothing twice.
+        const result = db.getDb().transaction(() => {
+            // Check per-user cooldown
+            if (reward.cooldown_seconds > 0) {
+                const lastRedemption = db.get(
+                    `SELECT created_at FROM coin_redemptions WHERE reward_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 1`,
+                    [rewardId, userId]
+                );
+                if (lastRedemption) {
+                    const elapsed = (Date.now() - new Date(lastRedemption.created_at.replace(' ', 'T') + 'Z').getTime()) / 1000;
+                    if (elapsed < reward.cooldown_seconds) {
+                        throw new Error(`Cooldown: wait ${Math.ceil(reward.cooldown_seconds - elapsed)}s`);
+                    }
                 }
             }
-        }
 
-        // Check max per stream
-        if (reward.max_per_stream > 0 && streamId) {
-            const count = db.get(
-                `SELECT COUNT(*) as c FROM coin_redemptions WHERE reward_id = ? AND stream_id = ?`,
-                [rewardId, streamId]
-            );
-            if (count && count.c >= reward.max_per_stream) {
-                db.addChannelPoints(userId, pointsStreamerId, reward.cost); // refund
-                throw new Error('Max redemptions reached for this stream');
+            // Check max per stream
+            if (reward.max_per_stream > 0 && streamId) {
+                const count = db.get(
+                    `SELECT COUNT(*) as c FROM coin_redemptions WHERE reward_id = ? AND stream_id = ?`,
+                    [rewardId, streamId]
+                );
+                if (count && count.c >= reward.max_per_stream) {
+                    throw new Error('Max redemptions reached for this stream');
+                }
             }
-        }
 
-        // Create redemption
-        const result = db.createCoinRedemption({
-            reward_id: rewardId,
-            user_id: userId,
-            stream_id: streamId,
-            user_input: userInput,
-        });
+            // Create redemption, then take the points for it (rolled back together if short)
+            const created = db.createCoinRedemption({
+                reward_id: rewardId,
+                user_id: userId,
+                stream_id: streamId,
+                user_input: userInput,
+            });
+            if (!db.deductChannelPoints(userId, pointsStreamerId, reward.cost, `live:cp:redeem:${created.lastInsertRowid}`, `redeem reward ${rewardId}`)) {
+                const cpName = (db.getChannelPointsConfig(pointsStreamerId).name) || 'Channel Points';
+                throw new Error(`Not enough ${cpName}`);
+            }
+            return created;
+        })();
 
         // Log transaction
         db.createCoinTransaction({
@@ -256,7 +271,10 @@ class OpenCoins {
         if (now - (bonusClaims.get(key) || 0) < windowMs) return null;
         bonusClaims.set(key, now);
         const amount = Math.max(1, (cfg.watch_amount || 10) * 3);
-        const total = db.addChannelPoints(userId, streamerId, amount);
+        // One claim per window, also across a restart (the throttle map above is in memory).
+        const r = db.applyChannelPoints({ userId, streamerId, delta: amount, key: `live:cp:bonus:${userId}:${streamerId}:${Math.floor(now / windowMs)}`, reason: 'bonus game' });
+        if (!r.applied) return null;
+        const total = r.balance;
         _feedPowerchat(streamerId, userId, amount);
         db.createCoinTransaction({ user_id: userId, stream_id: streamId, amount, type: 'watch', message: 'Bonus game' });
         return { coins: amount, total, streamerId };
@@ -301,11 +319,37 @@ class OpenCoins {
 
     /**
      * Admin: grant OpenCoins to a user (network wallet credit).
+     *
+     * The grant is recorded locally first and the wallet credit is keyed by that record
+     * (`live:admin_grant:<grant id>`, ADR-012 rule 5), so retrying a grant whose answer was lost
+     * never credits twice. With `clientKey` (the request's Idempotency-Key) a repeated submit is
+     * the same grant: it reuses the record and its key instead of making a second one.
      */
-    async adminGrant(userId, amount, reason) {
-        const key = `live:admin_grant:${userId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
-        const result = await wallet.credit(userId, amount, reason || 'Admin grant', key);
+    async adminGrant(userId, amount, reason, { adminId = null, clientKey = null } = {}) {
+        const d = db.getDb();
+        d.exec(`CREATE TABLE IF NOT EXISTS opencoin_admin_grants (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_key TEXT UNIQUE,
+            admin_id INTEGER,
+            user_id INTEGER NOT NULL,
+            amount INTEGER NOT NULL,
+            reason TEXT,
+            balance INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
+        const ck = clientKey ? `a${adminId || 0}:${clientKey}` : null;
+        let grant = ck ? d.prepare('SELECT * FROM opencoin_admin_grants WHERE client_key = ?').get(ck) : null;
+        if (grant && (grant.user_id !== Number(userId) || grant.amount !== Number(amount))) {
+            throw new Error('That Idempotency-Key was already used for a different grant');
+        }
+        if (!grant) {
+            const id = d.prepare('INSERT INTO opencoin_admin_grants (client_key, admin_id, user_id, amount, reason) VALUES (?, ?, ?, ?, ?)')
+                .run(ck, adminId, Number(userId), Number(amount), reason || null).lastInsertRowid;
+            grant = { id };
+        }
+        const result = await wallet.credit(userId, amount, reason || 'Admin grant', `live:admin_grant:${grant.id}`);
         if (!result) throw new Error('User has no linked OpenVibe.Network account (wallet unavailable)');
+        d.prepare('UPDATE opencoin_admin_grants SET balance = ? WHERE id = ?').run(result.balance ?? null, grant.id);
         return result.balance;
     }
 

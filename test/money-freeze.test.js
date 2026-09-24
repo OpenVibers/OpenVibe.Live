@@ -100,7 +100,7 @@ async function check(name, fn) {
             assert.strictEqual(r.status, 503, `${label} ${p}: ${r.text}`);
             assert.strictEqual(r.json.code, 'money_writes_frozen', `${label} ${p}`);
         }
-        await assert.rejects(mediaQueue.charge({ currency: 'vibes', cost: 10, userId: 2, streamerId: 3, streamId: null, label: 'x' }), /paused/);
+        await assert.rejects(mediaQueue.charge({ currency: 'vibes', cost: 10, userId: 2, streamerId: 3, streamId: null, label: 'x', requestId: 9001 }), /paused/);
     }
 
     await check('only the owner can freeze; every admin can see it', async () => {

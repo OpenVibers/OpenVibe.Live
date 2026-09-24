@@ -5,11 +5,12 @@ const router = express.Router();
 const config = require('../config');
 const db = require('../db/database');
 
+const { internalKeyOk } = require('../net/internal-key');
+
+// Service-to-service only: loopback (nothing that came through nginx) and INTERNAL_API_KEY,
+// compared in constant time (server/net/internal-key.js).
 function requireInternalKey(req, res, next) {
-    const key = req.headers['x-internal-key'];
-    // Service-to-service only: nginx adds X-Forwarded-For to everything from outside, loopback callers never do.
-    const viaProxy = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.headers['cf-connecting-ip'];
-    if (viaProxy || !key || !config.internalApiKey || key !== config.internalApiKey) {
+    if (!internalKeyOk(req)) {
         return res.status(403).json({ error: 'Invalid or missing internal key' });
     }
     next();

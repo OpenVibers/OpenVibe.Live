@@ -582,8 +582,7 @@ app.post('/internal/openre-events', require('./openre/mirror').webhookHandler);
 // Summary numbers for the Network's navigation service (ordering sites by real use).
 // Internal key only; returns totals, never rows.
 app.get('/internal/analytics-summary', (req, res) => {
-    const key = req.headers['x-internal-key'];
-    if (req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || !config.internalApiKey || !key || key !== config.internalApiKey) return res.status(401).json({ ok: false });
+    if (!require('./net/internal-key').internalKeyOk(req)) return res.status(401).json({ ok: false });
     try {
         const days = Math.min(parseInt(req.query.days, 10) || 7, 90);
         const st = analytics.getStats({ days }) || {};
@@ -1108,9 +1107,8 @@ async function start() {
     db.initDb();
     // Initialize cosmetics tables
     cosmeticsModule.ensureTables();
-    // Initialize tags tables
-    const tagsModule = require('./game/tags');
-    tagsModule.ensureTagTables();
+    // Chat tag tables (read-only tags, server/chat/tags.js)
+    require('./chat/tags').ensureTagTables();
     // Initialize DM tables
     const dm = require('./chat/dm');
     dm.ensureTables();
@@ -1539,6 +1537,11 @@ async function start() {
         if (out.deleted) console.log(`[Analytics] pruned ${out.deleted} raw events older than ${out.cutoff}`);
     }, { initialDelayMs: 5 * 60 * 1000, jitterMs: 60 * 1000 });
 
+    // 8b3. Media requests whose OpenCoins charge never got an answer: charged again with the same
+    // key (a replay if it landed) and refunded, so no viewer pays for a request that failed.
+    require('./utils/jobs').every('media-charge-reconcile', 5 * 60 * 1000, () => require('./media/media-queue').reconcileCharges(),
+        { initialDelayMs: 2 * 60 * 1000, jitterMs: 30 * 1000 });
+
     // 8c. Durable events (roadmap Wave 3): stream lifecycle goes to OpenVibe.Events through the
     // transactional outbox (server/events/stream-events.js). Off unless EVENTS_URL is set.
     try { require('./events/stream-events').init(); } catch (err) { console.warn('[Events] not started:', err.message); }
@@ -1569,7 +1572,7 @@ async function start() {
 function startDrill() {
     db.initDb();
     cosmeticsModule.ensureTables();
-    require('./game/tags').ensureTagTables();
+    require('./chat/tags').ensureTagTables();
     require('./chat/dm').ensureTables();
     console.log(`[Drill] Database ready: ${paths.dbPath()}`);
     // Its port taken: stop (the process-wide handler would log EADDRINUSE and keep running unready).

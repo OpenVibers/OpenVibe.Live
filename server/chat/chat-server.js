@@ -862,7 +862,7 @@ class ChatServer {
 
             // Attach equipped tag for chat rendering
             try {
-                const tags = require('../game/tags');
+                const tags = require('./tags');
                 const tagProfile = tags.getTagProfile(client.user.id);
                 if (tagProfile) chatMsg.tag = tagProfile;
             } catch { /* non-critical */ }
@@ -1061,7 +1061,7 @@ class ChatServer {
                 } catch { /* non-critical */ }
 
                 try {
-                    const tags = require('../game/tags');
+                    const tags = require('./tags');
                     const tagProfile = tags.getTagProfile(client.user.id);
                     if (tagProfile) gottiMsg.tag = tagProfile;
                 } catch { /* non-critical */ }
@@ -1358,7 +1358,7 @@ class ChatServer {
                     if (cp.hatFX) soundMsg.hatFX = cp.hatFX;
                 } catch { /* non-critical */ }
                 try {
-                    const tagProfile = require('../game/tags').getTagProfile(client.user.id);
+                    const tagProfile = require('./tags').getTagProfile(client.user.id);
                     if (tagProfile) soundMsg.tag = tagProfile;
                 } catch { /* non-critical */ }
             }

@@ -195,6 +195,37 @@ const pageState = `(() => ({
         cdp.close();
     }
 
+    // 3c. A guest on /broadcast gets the sign-in gate, not the slot workspace, and sends no write.
+    if (!ONLY_SIGNED && !ROUTES_ONLY) {
+        const { cdp, errors } = await openPage(412);
+        const writes = [];
+        // Session plumbing (a guest's token refresh) and analytics beacons are not the page acting.
+        const plumbing = /\/api\/(auth\/|analytics)/;
+        cdp.on('Network.requestWillBeSent', (p) => { if (p.request.method !== 'GET' && p.request.method !== 'HEAD' && p.request.url.includes('/api/') && !plumbing.test(p.request.url)) writes.push(`${p.request.method} ${p.request.url.replace(BASE, '')}`); });
+        for (const mode of ['direct', 'spa']) {
+            errors.length = 0;
+            writes.length = 0;
+            if (mode === 'direct') { await cdp.send('Page.navigate', { url: BASE + '/broadcast' }); await sleep(SETTLE); }
+            else { await cdp.send('Page.navigate', { url: BASE + '/' }); await sleep(SETTLE); await cdp.evaluate('navigate("/broadcast")'); await sleep(SETTLE); }
+            const st = await cdp.evaluate(`(() => {
+                const gate = document.getElementById('bc-signin-gate');
+                const ws = document.getElementById('bc-workspace');
+                return { user: typeof currentUser !== 'undefined' && !!currentUser, gate: !!gate && !gate.hidden && gate.offsetParent !== null,
+                    workspace: !!ws && ws.offsetParent !== null, link: gate && gate.querySelector('a[href^="/api/auth/sso/login"]') ? true : false };
+            })()`);
+            const label = `guest ${mode} /broadcast: sign-in gate`;
+            const problems = [];
+            if (st.user) problems.push('a user is signed in (run without TOKEN in the browser profile)');
+            if (!st.gate) problems.push('gate not visible');
+            if (!st.link) problems.push('gate has no sign-in link');
+            if (st.workspace) problems.push('slot workspace visible to a guest');
+            if (writes.length) problems.push(`writes sent: ${writes.slice(0, 3).join(', ')}`);
+            if (errors.length) problems.push(`errors: ${errors.slice(0, 2).join(' | ')}`);
+            if (problems.length) fail(`${label}: ${problems.join('; ')}`); else pass(label);
+        }
+        cdp.close();
+    }
+
     // 4. Leak check over repeated laps.
     {
         const { cdp, errors } = await openPage(1366);

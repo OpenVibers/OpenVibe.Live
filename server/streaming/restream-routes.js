@@ -106,7 +106,8 @@ function getLiveStreamForDestination(dest, userId, requestedStreamId) {
         return liveStreams.find(s => s.managed_stream_id === dest.managed_stream_id) || null;
     }
     if (requestedStreamId) {
-        return liveStreams.find(s => s.id === parseInt(requestedStreamId, 10)) || null;
+        // Slot-only: an unbound destination may only feed a stream that has no slot either.
+        return liveStreams.find(s => s.id === parseInt(requestedStreamId, 10) && !s.managed_stream_id) || null;
     }
     // Destination has no managed_stream_id (legacy unbound row — DB backfill not yet run).
     // Return null so start/stop returns a clear error rather than silently picking any stream.
@@ -170,7 +171,9 @@ router.get('/presets', requireAuth, (req, res) => {
 });
 
 // ── GET /destinations — list user's restream destinations ────
-// ?managed_stream_id=N — filter by stream slot
+// ?managed_stream_id=N — that stream slot's destinations only.
+// No slot — only the unbound (legacy, slot-less) destinations: the same set a stream with no
+// slot would restream to. ?all=1 lists every destination the account owns, for management.
 router.get('/destinations', requireAuth, (req, res) => {
     try {
         const managedStreamId = req.query.managed_stream_id ? parseInt(req.query.managed_stream_id) : null;
@@ -181,9 +184,11 @@ router.get('/destinations', requireAuth, (req, res) => {
             if (!ms || ms.user_id !== req.user.id) {
                 return res.status(403).json({ error: 'Not your stream slot' });
             }
-            dests = db.getRestreamDestinationsByManagedStream(managedStreamId) || [];
-        } else {
+            dests = db.getRestreamDestinationsForSlot(req.user.id, managedStreamId) || [];
+        } else if (req.query.all === '1' || req.query.all === 'true') {
             dests = db.getRestreamDestinationsByUserId(req.user.id) || [];
+        } else {
+            dests = db.getRestreamDestinationsForSlot(req.user.id, null) || [];
         }
         res.json({ destinations: dests.map(sanitizeDest) });
     } catch (err) {
@@ -499,10 +504,27 @@ router.post('/viewer-counts', requireAuth, (req, res) => {
     }
 });
 
-// ── GET /viewer-counts — get all cached platform viewer counts for the broadcaster
+// ── GET /viewer-counts — cached platform viewer counts for the broadcaster
+// ?managed_stream_id=N — that slot's destinations only. Without it: the slots the broadcaster
+// is live on right now (each live stream counts its own slot; a slot-less stream counts the
+// unbound destinations), never every destination the account owns.
 router.get('/viewer-counts', requireAuth, (req, res) => {
     try {
-        const ext = restreamManager.getExternalViewerCountsForUser(req.user.id);
+        const managedStreamId = req.query.managed_stream_id ? parseInt(req.query.managed_stream_id, 10) : null;
+        let slots;
+        if (managedStreamId) {
+            const ms = db.getManagedStreamById(managedStreamId);
+            if (!ms || ms.user_id !== req.user.id) return res.status(403).json({ error: 'Not your stream slot' });
+            slots = [managedStreamId];
+        } else {
+            slots = [...new Set((db.getLiveStreamsByUserId(req.user.id) || []).map((s) => s.managed_stream_id || null))];
+        }
+        const ext = { total: 0, breakdown: [] };
+        for (const slotId of slots) {
+            const part = restreamManager.getExternalViewerCountsForUser(req.user.id, slotId);
+            ext.total += part.total;
+            ext.breakdown.push(...part.breakdown);
+        }
         res.json({ total: ext.total, breakdown: ext.breakdown });
     } catch (err) {
         res.status(500).json({ error: 'Failed to get viewer counts' });

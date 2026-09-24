@@ -177,12 +177,17 @@ async function donate(req, { toUserId, streamId, amount, message, goalId = null 
     };
 }
 
-/** Media request paid in Vibes: a paid interaction to the streamer. Returns { actionId, transactionId }. */
-async function chargeMedia({ userId, streamerId, streamId, cost, label }) {
+/**
+ * Media request paid in Vibes: a paid interaction to the streamer. Returns { actionId, transactionId }.
+ * Keyed by the request it pays for (`live:media_charge:<request id>`, ADR-012 rule 5), and linked
+ * to it from the start, so a retried charge is replayed rather than taken twice.
+ */
+async function chargeMedia({ userId, streamerId, streamId, cost, label, requestId }) {
+    if (!requestId) throw new Error('chargeMedia needs the media request id (its idempotency key)');
     const from = await subjectFor(userId);
     const to = await subjectFor(streamerId, { role: 'recipient' });
     const body = { from: ref(from), to: ref(to), amount: cost, kind: 'paid_interaction', ...(streamTarget(streamId) ? { target: streamTarget(streamId) } : {}), message: String(label || 'Media request').slice(0, 500), on_behalf_of: ref(from) };
-    const { out, actionId } = await perform({ action: 'media_charge', path: '/transfers', body, key: `live:media_charge:${crypto.randomUUID()}`, liveUserId: userId });
+    const { out, actionId } = await perform({ action: 'media_charge', path: '/transfers', body, key: `live:media_charge:${requestId}`, liveUserId: userId, liveRef: `media_request:${requestId}` });
     return { actionId, transactionId: out.transaction ? out.transaction.id : null };
 }
 

@@ -24,7 +24,7 @@ const router = express.Router();
 function enrichMessagesWithCosmetics(messages) {
     let cosmetics = null, tags = null;
     try { cosmetics = require('../monetization/cosmetics'); } catch { /* */ }
-    try { tags = require('../game/tags'); } catch { /* */ }
+    try { tags = require('./tags'); } catch { /* */ }
     if ((!cosmetics && !tags) || !Array.isArray(messages)) return messages;
     const cache = new Map();
     for (const m of messages) {
@@ -270,7 +270,7 @@ router.post('/send', requireAuth, (req, res) => {
 
         // Attach cosmetics
         try {
-            const cosmetics = require('../game/cosmetics');
+            const cosmetics = require('../monetization/cosmetics');
             const cosmeticProfile = cosmetics.getCosmeticProfile(req.user.id);
             if (cosmeticProfile.nameFX) chatMsg.nameFX = cosmeticProfile.nameFX;
             if (cosmeticProfile.particleFX) chatMsg.particleFX = cosmeticProfile.particleFX;
@@ -280,7 +280,7 @@ router.post('/send', requireAuth, (req, res) => {
 
         // Attach tag
         try {
-            const tags = require('../game/tags');
+            const tags = require('./tags');
             const tagProfile = tags.getTagProfile(req.user.id);
             if (tagProfile) chatMsg.tag = tagProfile;
         } catch { /* non-critical */ }
@@ -375,29 +375,9 @@ router.get('/user/:username/profile', optionalAuth, (req, res) => {
             delete profile.last_seen;
         }
 
-        // Add game stats if available
-        try {
-            const game = require('../game/game-engine');
-            const player = game.getPlayer(user.id);
-            if (player) {
-                profile.game = {
-                    total_level: player.total_level,
-                    mining_level: player.mining_level,
-                    fishing_level: player.fishing_level,
-                    woodcut_level: player.woodcut_level,
-                    farming_level: player.farming_level,
-                    combat_level: player.combat_level,
-                    crafting_level: player.crafting_level,
-                    mining_xp: player.mining_xp,
-                    fishing_xp: player.fishing_xp,
-                    woodcut_xp: player.woodcut_xp,
-                    farming_xp: player.farming_xp,
-                    combat_xp: player.combat_xp,
-                    crafting_xp: player.crafting_xp,
-                    total_coins_earned: player.total_coins_earned || 0,
-                };
-            }
-        } catch { /* game not initialized or player doesn't exist */ }
+        // Legacy game skills, read-only (never creates a game_players row)
+        const game = db.getLegacyGameProfile(user.id);
+        if (game) profile.game = game;
 
         res.json(profile);
     } catch (err) {

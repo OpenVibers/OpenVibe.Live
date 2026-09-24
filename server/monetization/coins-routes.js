@@ -287,15 +287,21 @@ router.post('/redemptions/:id', requireAuth, (req, res) => {
                     const s = db.getStreamById(redemption.stream_id);
                     if (s?.user_id) refundStreamerId = s.user_id;
                 }
-                db.addChannelPoints(redemption.user_id, refundStreamerId, reward.cost);
-                db.createCoinTransaction({
-                    user_id: redemption.user_id,
-                    stream_id: redemption.stream_id || null,
-                    amount: reward.cost,
-                    type: 'refund',
-                    reward_id: redemption.reward_id,
-                    message: `Refunded: ${reward.title} (rejected by streamer)`,
+                // Keyed by the redemption: rejecting it twice refunds once.
+                const refunded = db.applyChannelPoints({
+                    userId: redemption.user_id, streamerId: refundStreamerId, delta: reward.cost,
+                    key: `live:cp:redeem_refund:${redemption.id}`, reason: `refund redemption ${redemption.id}`,
                 });
+                if (refunded.applied) {
+                    db.createCoinTransaction({
+                        user_id: redemption.user_id,
+                        stream_id: redemption.stream_id || null,
+                        amount: reward.cost,
+                        type: 'refund',
+                        reward_id: redemption.reward_id,
+                        message: `Refunded: ${reward.title} (rejected by streamer)`,
+                    });
+                }
             }
         }
 
@@ -312,7 +318,12 @@ router.post('/admin/grant', requireOwner, async (req, res) => {
         const { userId, amount, reason } = req.body;
         if (!userId || !amount) return res.status(400).json({ error: 'userId and amount required' });
 
-        const newBalance = await openvibeCoins.adminGrant(userId, amount, reason);
+        // A client Idempotency-Key makes a repeated submit the same grant (see adminGrant).
+        const clientKey = req.get('Idempotency-Key');
+        const newBalance = await openvibeCoins.adminGrant(userId, amount, reason, {
+            adminId: req.user.id,
+            clientKey: clientKey && /^[A-Za-z0-9._-]{8,100}$/.test(clientKey) ? clientKey : null,
+        });
         res.json({ message: `Granted ${amount} OpenCoins`, balance: newBalance });
     } catch (err) {
         res.status(400).json({ error: err.message });

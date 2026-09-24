@@ -1486,6 +1486,23 @@
     line-height: 1.5;
 }
 
+/* Guests get the sign-in gate and nothing else of the Go Live workspace (broadcast.js). */
+#bc-stream-manager.bc-guest > :not(h2):not(.bc-signin-gate) { display: none !important; }
+.bc-signin-gate {
+    max-width: 520px;
+    margin: 24px auto;
+    padding: 28px 20px;
+    text-align: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg, 12px);
+    background: var(--bg-secondary);
+}
+.bc-signin-gate[hidden] { display: none; }
+.bc-signin-gate-icon { font-size: 2rem; color: var(--accent); margin-bottom: 12px; }
+.bc-signin-gate h3 { margin: 0 0 8px; }
+.bc-signin-gate p { color: var(--text-secondary); line-height: 1.5; margin: 0 0 16px; overflow-wrap: anywhere; }
+.bc-signin-gate .bc-signin-gate-fine { font-size: 0.8rem; color: var(--text-muted); margin: 12px 0 0; }
+
 .bc-step-text {
     display: flex;
     flex-direction: column;

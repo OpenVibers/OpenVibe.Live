@@ -5,7 +5,11 @@ const WebSocket = require('ws');
 const { extractWsToken, authenticateWs } = require('../auth/auth');
 const vibeService = require('./service');
 
-const VIBE_CODING_PUBLISH_SCOPES = new Set(['vibe_coding_publish', 'stream']);
+// Only the narrow publisher scope. The broad `stream` scope (live state, restreams, VODs, clips)
+// used to be accepted too, so any stream-control token could publish a coding feed; a publisher
+// token needs vibe_coding_publish (the Dashboard's "GitHub Copilot Companion" preset has it).
+// Moving publication onto Network project credentials (surfaced in OpenVibe.Codes) is later work.
+const VIBE_CODING_PUBLISH_SCOPES = new Set(['vibe_coding_publish']);
 
 function hasVibeCodingPublishScope(user) {
     return !!(user && Array.isArray(user.scopes) && user.scopes.some((scope) => VIBE_CODING_PUBLISH_SCOPES.has(scope)));
@@ -193,3 +197,4 @@ class VibeCodingPublishServer {
 }
 
 module.exports = VibeCodingPublishServer;
+module.exports.hasVibeCodingPublishScope = hasVibeCodingPublishScope;

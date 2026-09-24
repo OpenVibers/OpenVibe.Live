@@ -298,12 +298,18 @@ async function check(name, fn) {
         db.setSetting('payments_enabled', 'false');
     });
 
-    await check('a Vibes media request is a paid interaction; its refund reverses that exact transfer', async () => {
+    await check('a Vibes media request is a paid interaction keyed by its request; its refund reverses that exact transfer', async () => {
         const mediaQueue = require('../server/media/media-queue');
-        const charge = await mediaQueue.charge({ currency: 'vibes', cost: 40, userId: 2, streamerId: 3, streamId: streamB, label: 'Media request: song' });
-        const c = lastCall();
-        assert.strictEqual(c.path, '/transfers'); assert.strictEqual(c.body.kind, 'paid_interaction'); assert.match(c.key, /^live:media_charge:/);
         const reqId = Number(db.createMediaRequest({ streamer_id: 3, stream_id: streamB, user_id: 2, username: 'ann', input: 'x', canonical_url: 'https://x.test/a', embed_url: null, provider: 'youtube', title: 'song', thumbnail_url: null, duration_seconds: 60, cost: 40, queue_position: 1, currency: 'vibes' }).lastInsertRowid);
+        const charge = await mediaQueue.charge({ currency: 'vibes', cost: 40, userId: 2, streamerId: 3, streamId: streamB, label: 'Media request: song', requestId: reqId });
+        const c = lastCall();
+        assert.strictEqual(c.path, '/transfers'); assert.strictEqual(c.body.kind, 'paid_interaction');
+        assert.strictEqual(c.key, `live:media_charge:${reqId}`, 'the charge is keyed by the request it pays for (ADR-012 rule 5)');
+        // A retried charge for the same request is a replay: Billing is not asked to move money again.
+        const before = billing.calls.length;
+        const again = await mediaQueue.charge({ currency: 'vibes', cost: 40, userId: 2, streamerId: 3, streamId: streamB, label: 'Media request: song', requestId: reqId });
+        assert.strictEqual(billing.calls.length, before, 'a retried charge does not reach Billing twice');
+        assert.strictEqual(again.transactionId, charge.transactionId);
         billingActions.linkMediaCharge(charge.actionId, reqId);
         const refunded = await mediaQueue.refund(reqId);
         assert.strictEqual(refunded, 40);
@@ -312,7 +318,7 @@ async function check(name, fn) {
         assert.strictEqual(r.key, `live:media_refund:${reqId}`);
         assert.strictEqual(db.getMediaRequestById(reqId).refunded, 1);
         assert.strictEqual(await mediaQueue.refund(reqId), 0, 'a second refund is a no-op');
-        await assert.rejects(mediaQueue.charge({ currency: 'vibes', cost: 999999, userId: 2, streamerId: 3, streamId: streamB, label: 'x' }), /Not enough Vibes — this costs 999999/);
+        await assert.rejects(mediaQueue.charge({ currency: 'vibes', cost: 999999, userId: 2, streamerId: 3, streamId: streamB, label: 'x', requestId: reqId + 1000 }), /Not enough Vibes — this costs 999999/);
     });
 
     await check('webhooks moved: PowerChat and card webhooks on Live answer 410 with Billing\'s URL', async () => {

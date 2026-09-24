@@ -1,8 +1,9 @@
 'use strict';
 
 // OpenVibe.Tips → Live (roadmap Wave 9): POST /internal/tips/deliveries announces a settled tip in the
-// creator's chat — service token with live.tips_delivery.write, idempotent per delivery id, the
-// creator found by Network subject, no Live balance touched.
+// creator's chat — service token with live.tips_delivery.write, idempotent per delivery id (kept in
+// SQLite, so a restart between deliveries does not repeat one), the creator found by Network
+// subject, no Live balance touched.
 
 const assert = require('assert');
 const fs = require('fs');
@@ -77,6 +78,43 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     assert.deepStrictEqual(b.json, a.json);
     assert.strictEqual(broadcasts.length, 1);
     assert.strictEqual(d.prepare("SELECT COUNT(*) AS n FROM chat_messages WHERE message_type = 'donation'").get().n, 1);
+
+    // A Live restart between deliveries: the answered key is in SQLite, not in the old process.
+    delete require.cache[require.resolve('../server/tips/delivery-routes')];
+    const app2 = express();
+    app2.use('/internal/tips', require('../server/tips/delivery-routes'));
+    const server2 = await new Promise((r) => { const s = http.createServer(app2); s.listen(0, '127.0.0.1', () => r(s)); });
+    const base2 = `http://127.0.0.1:${server2.address().port}`;
+    const post2 = (body, key) => fetch(`${base2}/internal/tips/deliveries`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token(['live.tips_delivery.write'])}`, 'Idempotency-Key': key }, body: JSON.stringify(body),
+    }).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
+    const afterRestart = await post2(job, 'tint_1:chat_line');
+    assert.strictEqual(afterRestart.status, 200);
+    assert.deepStrictEqual(afterRestart.json, a.json, 'after a restart the same key answers the first result');
+    assert.strictEqual(broadcasts.length, 1, 'and delivers nothing again');
+    assert.strictEqual(d.prepare("SELECT COUNT(*) AS n FROM chat_messages WHERE message_type = 'donation'").get().n, 1);
+
+    // A retry while the first attempt is still running is told to come back; a claim left by a
+    // crash (older than two minutes) is taken over.
+    d.prepare("INSERT INTO tips_deliveries (idempotency_key, effect, state, claimed_at) VALUES ('tint_9:chat_line', 'chat_line', 'pending', ?)").run(Date.now());
+    assert.strictEqual((await post2({ ...job, interaction: { ...job.interaction, id: 'tint_9' } }, 'tint_9:chat_line')).status, 409);
+    assert.strictEqual(broadcasts.length, 1);
+    d.prepare("UPDATE tips_deliveries SET claimed_at = ? WHERE idempotency_key = 'tint_9:chat_line'").run(Date.now() - 5 * 60 * 1000);
+    assert.strictEqual((await post2({ ...job, interaction: { ...job.interaction, id: 'tint_9' } }, 'tint_9:chat_line')).status, 200);
+    assert.strictEqual(broadcasts.length, 2);
+
+    // A refused delivery gives its key back, so Tips' retry runs it.
+    const gone = { ...job, creator: { type: 'user', id: 'usr_01J0000000000000000000000X' } };
+    assert.strictEqual((await post2(gone, 'tint_8:chat_line')).status, 404);
+    assert.strictEqual(d.prepare("SELECT COUNT(*) AS n FROM tips_deliveries WHERE idempotency_key = 'tint_8:chat_line'").get().n, 0);
+
+    // Pruning: answers older than 7 days go, recent ones stay.
+    d.prepare("INSERT INTO tips_deliveries (idempotency_key, effect, state, response_json, claimed_at, created_at) VALUES ('tint_old:chat_line', 'chat_line', 'done', '{}', 0, datetime('now', '-8 days'))").run();
+    const routes2 = require('../server/tips/delivery-routes');
+    assert.strictEqual(routes2.prune({ force: true }), 1);
+    assert.strictEqual(d.prepare("SELECT COUNT(*) AS n FROM tips_deliveries WHERE idempotency_key = 'tint_old:chat_line'").get().n, 0);
+    assert.strictEqual(d.prepare("SELECT state FROM tips_deliveries WHERE idempotency_key = 'tint_1:chat_line'").get().state, 'done');
+    server2.close();
 
     // TTS on the (offline) channel room.
     const t = await post({ ...job, effect: 'tts', tts: { text: 'read me', voice: 'gary' } }, { key: 'tint_1:tts' });
