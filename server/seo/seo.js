@@ -7,6 +7,10 @@
  * care about (home, vods/clips/pastes lists, and vod/clip/paste detail pages), and rewrites the
  * <head> with route-specific machine-readable metadata + drops a <noscript> content snapshot so
  * no-JS scrapers get real content. Everything is cached so it adds ~no per-request DB cost.
+ *
+ * AI Moments (auto-clips, AI moment pastes, AI recaps) are labelled AI-made, credited to no
+ * person, noindex,follow, canonical to their source VOD and left out of the sitemap (see
+ * "AI Moments" below). People's work keeps normal, indexable pages.
  */
 'use strict';
 const fs = require('node:fs');
@@ -202,17 +206,40 @@ function _arenaMeta() {
 }
 
 // After-show report: /recap/:streamId
-function _recapMeta(streamId) {
+// The AI-written report is an AI Moment: labelled, attributed to no person (the streamer did not
+// write it), noindex,follow and canonical to the stream's VOD when there is one. A template report
+// (stats only, no model) is not AI writing and keeps its own indexable page; it has no Person
+// author either, since the streamer did not write that one.
+async function _recapMeta(streamId) {
     let r; try { r = require('../recap/recap').getRecap(streamId); } catch { r = null; }
     if (!r) return null;
+    const ai = r.ai === true || Number(r.ai) === 1;
     const name = r.streamer.display_name || r.streamer.username;
     const title = clean(`${r.write.headline || r.stream.title}`, 90);
-    const desc = clean(r.write.summary || `After-show report for ${name}'s stream "${r.stream.title}" on ${SITE_NAME}.`, 200);
+    const desc = clean(ai
+        ? `AI-written after-show report on ${name}'s stream "${r.stream.title}". ${r.write.summary || ''}`
+        : (r.write.summary || `After-show report for ${name}'s stream "${r.stream.title}" on ${SITE_NAME}.`), 200);
     const image = r.vod && r.vod.thumbnail_url ? media.publicUrl(r.vod.thumbnail_url) : (r.streamer.avatar_url ? abs(r.streamer.avatar_url) : DEFAULT_OG_IMAGE);
-    const canonicalPath = `/recap/${streamId}`;
-    const article = { '@context': 'https://schema.org', '@type': 'Article', headline: title, description: desc, image: [image], datePublished: isoDate(r.stream.ended_at) || undefined, author: _authorLd(name), publisher: { '@type': 'Organization', name: SITE_NAME, url: baseUrl() } };
-    const snapshot = _detailSnapshot({ title: `After-show report: ${r.stream.title}`, byline: `${name} · ${Math.round((r.stream.duration_seconds || 0) / 60)} min · grade ${r.write.grade}`, desc, overview: r.write.summary, transcript: null, canonicalPath, watchLabel: 'Read the report' });
-    return { title: `${title} — ${name}'s stream report | ${SITE_NAME}`, description: desc, canonicalPath, image, ogType: 'article', robots: 'index,follow', jsonLd: [article, _breadcrumb([{ name: 'Home', url: '/' }, { name, url: `/@${r.streamer.username}` }, { name: 'Report', url: canonicalPath }])], snapshot };
+    const selfPath = `/recap/${streamId}`;
+    const source = ai && r.vod ? await _sourceMoment(r.vod.id, 0) : null;
+    const article = {
+        '@context': 'https://schema.org', '@type': 'Article', headline: title, description: desc, image: [image],
+        datePublished: isoDate(r.stream.ended_at) || undefined,
+        keywords: ai ? AI_KEYWORDS : undefined,
+        isBasedOn: source ? abs(source.path) : undefined,
+        publisher: { '@type': 'Organization', name: SITE_NAME, url: baseUrl() },
+    };
+    const byline = `${ai ? 'AI recap · from' : 'Report on'} ${name}'s stream · ${Math.round((r.stream.duration_seconds || 0) / 60)} min · grade ${r.write.grade}`;
+    const extraHtml = (ai ? '<p class="ai-disclosure">Written automatically by OpenVibe\'s after-show report workflow from the stream\'s stats, chat and transcript. The streamer did not write it.</p>' : '')
+        + `<p class="source">${source ? `<a href="${esc(abs(source.path))}">Watch the stream</a> · ` : ''}<a href="${esc(abs(`/@${r.streamer.username}`))}">${esc(name)}'s channel</a></p>`;
+    const snapshot = _detailSnapshot({ title: `After-show report: ${r.stream.title}`, byline, desc, extraHtml, overview: r.write.summary, transcript: null, canonicalPath: selfPath, watchLabel: 'Read the report' });
+    return {
+        title: `${title} — ${ai ? 'AI recap of ' : ''}${name}'s stream${ai ? '' : ' report'} | ${SITE_NAME}`, description: desc,
+        canonicalPath: source ? source.path : selfPath, ogUrlPath: selfPath, image, ogType: 'article',
+        robots: ai ? AI_ROBOTS : 'index,follow',
+        jsonLd: [article, _breadcrumb([{ name: 'Home', url: '/' }, { name, url: `/@${r.streamer.username}` }, { name: ai ? 'AI recap' : 'Report', url: selfPath }])],
+        snapshot,
+    };
 }
 
 // A crawlable <section> listing media items with real detail (title, streamer, meta).
@@ -306,6 +333,44 @@ async function _listMeta(slug, label, description, itemsFn) {
 
 function _authorLd(name) { return name ? { '@type': 'Person', name: clean(name, 80) } : undefined; }
 
+// ── AI Moments (roadmap §33.4, §33.8) ───────────────────────────────────────────────────────
+// What the AI made from a stream (auto-clips, AI moment pastes, AI after-show recaps) is labelled
+// as AI-made, attributed to no person, kept out of search (noindex,follow: the page still passes
+// its links on) and made canonical to its source: the VOD at the moment it came from, when that
+// VOD is known and public. The store decides what is AI (Media's auto_generated, Community's
+// origin, the recap's own ai flag); nothing is inferred here. People's clips and pastes keep their
+// normal, indexable pages.
+const AI_ROBOTS = 'noindex,follow';
+const AI_KEYWORDS = 'AI-generated';
+const VOD_MOMENT_RE = /^\/vod\/(\d+)(?:\?t=(\d+(?:\.\d+)?))?$/;
+
+const isAiClip = (c) => !!c && (c.auto_generated === true || Number(c.auto_generated) === 1);
+const isAiPaste = (p) => !!p && p.origin === 'ai';
+function _json(v) {
+    if (!v) return null;
+    if (typeof v === 'object') return v;
+    try { const o = JSON.parse(v); return o && typeof o === 'object' ? o : null; } catch { return null; }
+}
+/** The Live account a stream-derived item belongs to (the channel, never a viewer). */
+function _channelOwner(userId) {
+    if (userId == null || userId === '') return null;
+    try { return db.getUserById(Number(userId)) || null; } catch { return null; }
+}
+const _nameOf = (u) => (u ? (u.display_name || u.username) : null);
+
+/**
+ * `/vod/<id>?t=<s>` for the moment an item came from, or null when the VOD is unknown, gone or
+ * not public (a canonical must never point at a page that answers 404 to the crawler).
+ */
+async function _sourceMoment(vodId, seconds) {
+    if (vodId == null || !/^\d+$/.test(String(vodId))) return null;
+    let v = null;
+    try { v = await _vodGet(Number(vodId)); } catch { v = null; }
+    if (!v || isPrivate(v) || Number(v.is_public) === 0) return null;
+    const t = Math.max(0, Math.floor(Number(seconds) || 0));
+    return { path: `/vod/${Number(vodId)}${t ? `?t=${t}` : ''}`, vod: v };
+}
+
 async function _vodMeta(id) {
     let v; try { v = await _vodGet(id); } catch { v = null; }
     // Private: fall through exactly like an unknown id. This HTML is cached per id and shared by
@@ -346,8 +411,10 @@ async function _clipMeta(id) {
     if (!c || isPrivate(c)) return null;   // private: same as unknown (see _vodMeta)
     if (c.duration_seconds == null && c.duration != null) c.duration_seconds = c.duration;
     _overlayAiState(c, 'clip');
+    if (isAiClip(c)) return _aiClipMeta(c, id);
     const indexable = Number(c.is_public) === 1 && (!c.visibility || c.visibility === 'public');
-    const creator = c.display_name || c.username;
+    // Media stores ids only: the clipper's name comes from Live's accounts.
+    const creator = c.display_name || c.username || _nameOf(_channelOwner(c.user_id));
     const title = clean(c.title || 'Clip', 80);
     const desc = clean(c.ai_overview_short || c.ai_overview || c.description || `A clip from a live stream on ${SITE_NAME}${creator ? ', clipped by ' + creator : ''}.`, 200);
     const image = c.thumbnail_url ? media.publicUrl(c.thumbnail_url) : media.thumbUrl(`clip-${id}`);
@@ -374,9 +441,48 @@ async function _clipMeta(id) {
     };
 }
 
+/** An auto-clip: "AI clip · from <streamer>'s stream", canonical to the VOD at the moment. */
+async function _aiClipMeta(c, id) {
+    const owner = _channelOwner(c.channel_user_id != null ? c.channel_user_id : c.user_id);
+    const streamer = _nameOf(owner);
+    const from = streamer ? `${streamer}'s stream` : 'a live stream';
+    const title = clean(c.title || 'AI clip', 80);
+    const source = await _sourceMoment(c.vod_id, c.start_time);
+    const desc = clean(`AI-generated clip from ${from} on ${SITE_NAME}. ${c.ai_overview_short || c.ai_overview || c.description || ''}`, 200);
+    const image = c.thumbnail_url ? media.publicUrl(c.thumbnail_url) : media.thumbUrl(`clip-${id}`);
+    const selfPath = `/clip/${id}`;
+    const vo = {
+        '@context': 'https://schema.org', '@type': 'VideoObject',
+        name: title, description: desc, thumbnailUrl: [image],
+        uploadDate: isoDate(c.created_at) || undefined,
+        duration: iso8601Duration(c.duration_seconds),
+        contentUrl: abs(selfPath), embedUrl: abs(selfPath),
+        // No author or creator: a workflow cut this, not a person.
+        keywords: AI_KEYWORDS,
+        isBasedOn: source ? abs(source.path) : undefined,
+        publisher: { '@type': 'Organization', name: SITE_NAME, url: baseUrl() },
+    };
+    const sourceLink = source
+        ? `<p class="source"><a href="${esc(abs(source.path))}">Watch this moment in the full stream</a>${owner ? ` · <a href="${esc(abs(`/@${owner.username}`))}">${esc(streamer)}'s channel</a>` : ''}</p>`
+        : (owner ? `<p class="source"><a href="${esc(abs(`/@${owner.username}`))}">${esc(streamer)}'s channel</a></p>` : '');
+    const snapshot = _detailSnapshot({
+        title, byline: `AI clip · from ${from}`, desc,
+        extraHtml: `<p class="ai-disclosure">Cut automatically by OpenVibe's auto-clip workflow when chat reacted. No person clipped it.</p>${sourceLink}`,
+        overview: c.ai_overview, transcript: c.ai_transcript, canonicalPath: selfPath, watchLabel: 'Watch this AI clip',
+    });
+    return {
+        title: `${title} — AI clip from ${from} | ${SITE_NAME}`, description: desc,
+        canonicalPath: source ? source.path : selfPath, ogUrlPath: selfPath, image, ogType: 'video.other', robots: AI_ROBOTS,
+        video: { duration: Math.floor(Number(c.duration_seconds) || 0) },
+        jsonLd: [vo, _breadcrumb([{ name: 'Home', url: '/' }, { name: 'AI Moments', url: '/moments' }, { name: title, url: selfPath }])],
+        snapshot,
+    };
+}
+
 async function _pasteMeta(slug) {
     let p; try { p = await _pasteGet(slug); } catch { p = null; }
     if (!p) return null;
+    if (isAiPaste(p)) return _aiPasteMeta(p, slug);
     const isScreenshot = p.type === 'screenshot';
     // Only public, non-NSFW, non-burn pastes are indexable.
     const indexable = (p.visibility === 'public' || p.visibility == null) && !Number(p.is_nsfw) && !Number(p.burn_after_read);
@@ -405,16 +511,80 @@ async function _pasteMeta(slug) {
     };
 }
 
+/** The VOD recorded from a stream (the longest public one), for items that know only their stream. */
+const _vodOfStream = (streamId) => _cached(`vs:${streamId}`, async () => {
+    const r = await media.listVods({ stream_id: streamId, limit: 3 });
+    const rows = (r && r.vods) || [];
+    return rows.filter((v) => v && !isPrivate(v) && Number(v.is_public) !== 0)
+        .sort((a, b) => (Number(b.duration_seconds ?? b.duration) || 0) - (Number(a.duration_seconds ?? a.duration) || 0))[0] || null;
+});
+
+/**
+ * An AI moment paste (a frame the AI picked from a VOD, or one it "caught live"):
+ * "AI note · from <stream>", canonical to the VOD at that second when the VOD is known.
+ */
+async function _aiPasteMeta(p, slug) {
+    const meta = _json(p.metadata) || {};
+    const streamId = p.stream_id || meta.stream_id || null;
+    let stream = null;
+    try { stream = streamId ? db.getStreamById(Number(streamId)) : null; } catch { stream = null; }
+    const owner = stream ? _channelOwner(stream.user_id) : (meta.username ? (() => { try { return db.getUserByUsername(String(meta.username)); } catch { return null; } })() : null);
+    const streamer = _nameOf(owner);
+    const streamTitle = stream && stream.title ? clean(stream.title, 90) : null;
+    const from = streamTitle ? `"${streamTitle}"` : (streamer ? `${streamer}'s stream` : 'a live stream');
+    // The source: the VOD link the job recorded, else the VOD of the stream it was caught on.
+    let source = null;
+    const link = typeof meta.vod_link === 'string' ? meta.vod_link.match(VOD_MOMENT_RE) : null;
+    if (link) source = await _sourceMoment(link[1], link[2]);
+    else if (streamId) {
+        let v = null;
+        try { v = await _vodOfStream(Number(streamId)); } catch { v = null; }
+        if (v) source = await _sourceMoment(v.id, meta.offset);
+    }
+    const isScreenshot = p.type === 'screenshot';
+    const title = clean(p.title || 'AI moment', 80);
+    const desc = clean(`AI-generated note from ${from} on ${SITE_NAME}. ${p.ai_summary || ''}`, 200);
+    let image = DEFAULT_OG_IMAGE;
+    if (isScreenshot && p.screenshot_url) image = media.publicUrl(p.screenshot_url);
+    const selfPath = `/p/${slug}`;
+    const ld = {
+        '@context': 'https://schema.org', '@type': isScreenshot ? 'ImageObject' : 'CreativeWork',
+        name: title, description: desc, contentUrl: isScreenshot ? image : undefined,
+        dateCreated: isoDate(p.created_at) || undefined,
+        // No author: the AI wrote it, and it is not a person.
+        keywords: AI_KEYWORDS,
+        isBasedOn: source ? abs(source.path) : undefined,
+        publisher: { '@type': 'Organization', name: SITE_NAME, url: baseUrl() },
+    };
+    const at = meta.offset != null && Number.isFinite(Number(meta.offset)) ? ` at ${_fmtDur(Number(meta.offset)) || '0:00'}` : '';
+    const sourceLink = source
+        ? `<p class="source"><a href="${esc(abs(source.path))}">Watch this moment in the full stream${esc(at)}</a>${owner ? ` · <a href="${esc(abs(`/@${owner.username}`))}">${esc(streamer)}'s channel</a>` : ''}</p>`
+        : (owner ? `<p class="source"><a href="${esc(abs(`/@${owner.username}`))}">${esc(streamer)}'s channel</a></p>` : '');
+    const snapshot = _detailSnapshot({
+        title, byline: `AI note · from ${from}${at}`, desc,
+        extraHtml: `<p class="ai-disclosure">Written automatically by OpenVibe's AI moments workflow${meta.live ? ' while the stream was live' : ' from the recording'}. No person wrote it.</p>${sourceLink}`,
+        overview: null, transcript: null, canonicalPath: selfPath, watchLabel: 'View this AI note',
+    });
+    return {
+        title: `${title} — AI note from ${from} | ${SITE_NAME}`, description: desc,
+        canonicalPath: source ? source.path : selfPath, ogUrlPath: selfPath, image, ogType: 'article', robots: AI_ROBOTS,
+        jsonLd: [ld, _breadcrumb([{ name: 'Home', url: '/' }, { name: 'AI Moments', url: '/moments' }, { name: title, url: selfPath }])],
+        snapshot,
+    };
+}
+
 function _breadcrumb(items) {
     return {
         '@context': 'https://schema.org', '@type': 'BreadcrumbList',
         itemListElement: items.map((it, i) => ({ '@type': 'ListItem', position: i + 1, name: clean(it.name, 90), item: abs(it.url) })),
     };
 }
-function _detailSnapshot({ title, byline, desc, overview, transcript, canonicalPath, watchLabel }) {
+// `extraHtml` is markup the caller built (and escaped) itself.
+function _detailSnapshot({ title, byline, desc, extraHtml, overview, transcript, canonicalPath, watchLabel }) {
     let html = `<article><h1>${esc(title)}</h1>`;
     if (byline) html += `<p class="byline">${esc(byline)}</p>`;
     if (desc) html += `<p>${esc(desc)}</p>`;
+    if (extraHtml) html += extraHtml;
     if (overview && String(overview).trim()) html += `<section><h2>AI overview</h2><p>${esc(clean(overview, 1200))}</p></section>`;
     if (transcript && String(transcript).trim()) html += `<section><h2>Transcript</h2><p>${esc(clean(transcript, 1500))}</p></section>`;
     html += `<p><a href="${esc(abs(canonicalPath))}">${esc(watchLabel || 'Open')}</a> on ${SITE_NAME}.</p></article>`;
@@ -446,6 +616,8 @@ const PASTES_BASE = process.env.PASTES_ON_COMMUNITY === '1' ? (process.env.OV_CO
 
 function _headBlock(meta) {
     const canonical = abs(meta.canonicalPath || '/');
+    // og:url is the page itself: a shared AI clip previews as that clip, while its canonical names the source.
+    const ogUrl = meta.ogUrlPath ? abs(meta.ogUrlPath) : canonical;
     const img = abs(meta.image || DEFAULT_OG_IMAGE);
     const parts = [
         PASTES_BASE ? `<meta name="ov-pastes-base" content="${esc(PASTES_BASE)}">` : '',
@@ -457,7 +629,7 @@ function _headBlock(meta) {
         `<meta property="og:site_name" content="${SITE_NAME}">`,
         `<meta property="og:title" content="${esc(meta.title)}">`,
         `<meta property="og:description" content="${esc(meta.description)}">`,
-        `<meta property="og:url" content="${esc(canonical)}">`,
+        `<meta property="og:url" content="${esc(ogUrl)}">`,
         `<meta property="og:image" content="${esc(img)}">`,
         `<meta property="og:locale" content="en_US">`,
         `<meta name="twitter:card" content="${meta.video ? 'player' : 'summary_large_image'}">`,
@@ -589,11 +761,16 @@ async function buildSitemap() {
         urls.push(_urlTag(`/vod/${v.id}`, isoDate(v.created_at), 'weekly', '0.6'));
         if (v.username) seenChannels.add(v.username);
     });
-    await page((l, o) => media.listClips({ limit: l, offset: o }).then(r => r?.clips || []), 200, SITEMAP_CAP, (c) => {
+    // People's clips and pastes only: AI Moments are noindex and never listed (the /moments
+    // collection above is their indexable form). The filter is checked again per row, so an
+    // upstream that ignores it still cannot put an AI item here.
+    await page((l, o) => media.listClips({ limit: l, offset: o, auto_generated: 0 }).then(r => r?.clips || []), 200, SITEMAP_CAP, (c) => {
+        if (isAiClip(c)) return;
         urls.push(_urlTag(`/clip/${c.id}`, isoDate(c.created_at), 'weekly', '0.6'));
         if (c.username) seenChannels.add(c.username);
     });
-    await page((l, o) => require('../pastes-client').listPastes({ limit: l, offset: o, visibility: 'public' }).then(r => r?.pastes || []), 200, SITEMAP_CAP, (x) => {
+    await page((l, o) => require('../pastes-client').listPastes({ limit: l, offset: o, visibility: 'public', origin: 'user' }).then(r => r?.pastes || []), 200, SITEMAP_CAP, (x) => {
+        if (isAiPaste(x)) return;
         if (!Number(x.is_nsfw)) urls.push(_urlTag(`/p/${x.slug}`, isoDate(x.created_at), 'monthly', '0.4'));
     });
     for (const u of seenChannels) if (u) urls.push(_urlTag(`/@${u}`, null, 'daily', '0.6'));
