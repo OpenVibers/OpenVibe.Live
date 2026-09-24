@@ -88,6 +88,17 @@ const MAX_PANELS_LENGTH = 20000;
 const { pushBulkNotification } = require('../utils/notify');
 const { publicManagedStream, publicChannel, publicStream } = require('../web/serializers');
 
+/**
+ * Staff may moderate someone else's stream or slot (edit, end, delete, read status) but never the site
+ * owner's, and never act AS its streamer: reading or regenerating a stream key, the ingest endpoint,
+ * going live on a slot, heartbeats, call settings and WHIP publishing stay with the streamer alone.
+ */
+function staffMayModerate(actor, ownerUserId) {
+    if (!actor || actor.role !== 'admin') return false;
+    const target = db.getUserById(ownerUserId);
+    return !(target && target.is_owner);
+}
+
 /** A control profile id a slot may point at: one of the caller's own (admins may use anyone's). */
 function ownControlConfigId(req, raw) {
     if (raw === null || raw === undefined || raw === '') return null;
@@ -1684,7 +1695,7 @@ router.put('/managed/:id', requireAuth, (req, res) => {
         const msId = parseInt(req.params.id);
         const ms = db.getManagedStreamById(msId);
         if (!ms) return res.status(404).json({ error: 'Managed stream not found' });
-        if (ms.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (ms.user_id !== req.user.id && !staffMayModerate(req.user, ms.user_id)) {
             return res.status(403).json({ error: 'Not your managed stream' });
         }
 
@@ -1844,7 +1855,7 @@ router.delete('/managed/:id', requireAuth, (req, res) => {
         const msId = parseInt(req.params.id);
         const ms = db.getManagedStreamById(msId);
         if (!ms) return res.status(404).json({ error: 'Managed stream not found' });
-        if (ms.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (ms.user_id !== req.user.id && !staffMayModerate(req.user, ms.user_id)) {
             return res.status(403).json({ error: 'Not your managed stream' });
         }
 
@@ -1869,7 +1880,7 @@ router.post('/managed/:id/regenerate-key', requireAuth, async (req, res) => {
         const msId = parseInt(req.params.id);
         const ms = db.getManagedStreamById(msId);
         if (!ms) return res.status(404).json({ error: 'Managed stream not found' });
-        if (ms.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (ms.user_id !== req.user.id) {
             return res.status(403).json({ error: 'Not your managed stream' });
         }
 
@@ -1952,7 +1963,7 @@ router.post('/', requireAuth, (req, res) => {
         if (managedStreamId) {
             managedStream = db.getManagedStreamById(managedStreamId);
             if (!managedStream) return res.status(404).json({ error: 'Managed stream not found' });
-            if (managedStream.user_id !== req.user.id && req.user.role !== 'admin') {
+            if (managedStream.user_id !== req.user.id) {
                 return res.status(403).json({ error: 'Not your managed stream' });
             }
         } else {
@@ -1996,7 +2007,7 @@ router.post('/', requireAuth, (req, res) => {
             if (!config) {
                 return res.status(404).json({ error: 'Control config not found' });
             }
-            if (config.user_id !== req.user.id && req.user.role !== 'admin') {
+            if (config.user_id !== req.user.id) {
                 return res.status(403).json({ error: 'Not authorized for this control profile' });
             }
         }
@@ -2091,7 +2102,7 @@ router.put('/:id', requireAuth, (req, res) => {
     try {
         const stream = db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
-        if (stream.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (stream.user_id !== req.user.id && !staffMayModerate(req.user, stream.user_id)) {
             return res.status(403).json({ error: 'Not your stream' });
         }
 
@@ -2142,7 +2153,7 @@ router.delete('/:id', requireAuth, (req, res) => {
     try {
         const stream = db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
-        if (stream.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (stream.user_id !== req.user.id && !staffMayModerate(req.user, stream.user_id)) {
             return res.status(403).json({ error: 'Not your stream' });
         }
 
@@ -2189,7 +2200,7 @@ router.get('/:id/endpoint', requireAuth, async (req, res) => {
     try {
         const stream = db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
-        if (stream.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (stream.user_id !== req.user.id) {
             return res.status(403).json({ error: 'Not your stream' });
         }
 
@@ -2287,7 +2298,7 @@ router.post('/:id/heartbeat', requireAuth, (req, res) => {
     try {
         const stream = db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
-        if (stream.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (stream.user_id !== req.user.id) {
             return res.status(403).json({ error: 'Not your stream' });
         }
         if (!stream.is_live) return res.status(400).json({ error: 'Stream is not live' });
@@ -2305,7 +2316,7 @@ router.get('/:id/rtmp-status', requireAuth, (req, res) => {
     try {
         const stream = db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
-        if (stream.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (stream.user_id !== req.user.id && !staffMayModerate(req.user, stream.user_id)) {
             return res.status(403).json({ error: 'Not your stream' });
         }
         if (stream.protocol !== 'rtmp') {
@@ -2422,7 +2433,7 @@ router.put('/:id/call', requireAuth, (req, res) => {
     try {
         const stream = db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
-        if (stream.user_id !== req.user.id && req.user.role !== 'admin') {
+        if (stream.user_id !== req.user.id) {
             return res.status(403).json({ error: 'Not your stream' });
         }
         if (!stream.is_live) {

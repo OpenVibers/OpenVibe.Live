@@ -808,7 +808,7 @@ async function handleWhipPost(req, res) {
             }
             stream = db.getStreamById(streamId);
             if (!stream) return sendWhipError(res, 404, 'stream_not_found', 'Stream not found');
-            if (stream.user_id !== user.id && user.role !== 'admin') {
+            if (stream.user_id !== user.id) {   // only the streamer publishes into their own stream (never staff)
                 return sendWhipError(res, 403, 'not_your_stream', 'Not your stream');
             }
             if (!stream.is_live) return sendWhipError(res, 409, 'stream_not_live', 'Stream is not live — go live first');
