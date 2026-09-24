@@ -17,7 +17,8 @@
  *   /vods /clips /pastes /updates /documentation        exact path (the first three are /content filtered)
  *   /settings /admin /themes                            exact path (the client redirects them)
  *   /dashboard/… /broadcast/… /chat/… /arena/…          any depth: these pages route sub-paths themselves
- *   /@user  /@user/<slot>                               a user that exists
+ *   /@user  /@user/<slot>                               a user that exists; a renamed one's old name
+ *                                                       answers 301 → /@current (never a bare /name)
  *   /vod/:id  /clip/:id                                 a Media item this visitor may see — a private
  *                                                       one is missing to everyone but its owners and
  *                                                       staff (server/media-proxy/access.js)
@@ -184,8 +185,22 @@ function spaFallback(sendShell) {
         if (req.url.startsWith('/api/') || req.url.startsWith('/ws/')) {
             return res.status(404).json({ error: 'Not found' });
         }
-        const status = await statusFor(req);
+        let status = await statusFor(req);
         if (res.headersSent) return;
+        if (status === NOT_FOUND) {
+            // A renamed channel (Network username history): /@old → 301 /@current, and a new name Live
+            // has not seen yet is picked up now. Only /@ paths: a bare /name is never a channel URL.
+            const m = /^\/@+([A-Za-z0-9_]{3,24})(\/[^/]+)?\/?$/.exec(req.path);
+            if (m) {
+                const target = await require('../auth/usernames').resolveUnknownChannel(m[1]).catch(() => null);
+                if (res.headersSent) return;
+                if (target && target.toLowerCase() !== m[1].toLowerCase()) {
+                    const q = req.originalUrl.indexOf('?');
+                    return res.redirect(301, `/@${target}${m[2] || ''}${q >= 0 ? req.originalUrl.slice(q) : ''}`);
+                }
+                if (target) status = OK;
+            }
+        }
         try {
             res.status(status);
             if (!sendShell(res, req.path)) res.status(503).type('text/plain').send('Site shell unavailable');

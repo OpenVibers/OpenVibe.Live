@@ -99,6 +99,11 @@ const _ROLE_RANK = { user: 0, streamer: 1, global_mod: 2, admin: 3 };
 
 function _syncSsoUserFields(user, decoded) {
     if (!user || !decoded) return user;
+    // Renamed on the Network (staff only; the old name stays theirs there): follow it here, and
+    // /@old keeps working as a 301 (server/auth/usernames.js, WS-B task 6).
+    if (typeof decoded.username === 'string' && user.username && decoded.username.toLowerCase() !== String(user.username).toLowerCase()) {
+        try { if (require('./usernames').syncUsername(user.id, decoded.username)) user = db.getUserById(user.id) || user; } catch { /* keep the old name */ }
+    }
     const updates = [];
     const params = [];
     if (decoded.avatar_url && decoded.avatar_url !== user.avatar_url) { updates.push('avatar_url = ?'); params.push(decoded.avatar_url); }
