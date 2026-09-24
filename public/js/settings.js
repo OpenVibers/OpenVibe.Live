@@ -9,7 +9,7 @@ let _offlineChannel = null;
 async function loadSettingsOffline() {
     try {
         const data = await api('/streams/channel');
-        _offlineChannel = data.channel || {};
+        _offlineChannel = (data && data.channel) || data || {};   // GET /streams/channel answers the channel row itself
         const type = _offlineChannel.offline_screen_type || 'none';
         document.getElementById('offline-screen-type').value = ['none', 'image', 'video', 'html'].includes(type) ? (type === 'video' ? 'image' : type) : 'none';
         document.getElementById('offline-html').value = _offlineChannel.offline_html || '';

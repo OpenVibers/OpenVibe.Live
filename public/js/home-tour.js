@@ -29,7 +29,7 @@
     ];
     const FEATURES = [
         ['fa-gauge-high', 'Sub-second WebRTC'], ['fa-face-grin-squint-tears', '7TV / BTTV / FFZ emotes'], ['fa-volume-high', 'Sound commands'],
-        ['fa-gamepad', 'Robot & hardware controls'], ['fa-satellite-dish', 'Free restream, all at once'], ['fa-scissors', 'VODs, clips, AI moments'],
+        ['fa-gamepad', 'Robot & hardware controls'], ['fa-satellite-dish', 'Restream everywhere at once'], ['fa-scissors', 'VODs, clips, AI moments'],
         ['fa-comments', 'One chat from every platform'], ['fa-language', 'Auto-translated chat'], ['fa-microphone-lines', 'The Arena: mic-judged beefs'],
         ['fa-clipboard-list', 'After-show reports'], ['fa-brands fa-github', '100% open source'],
     ];

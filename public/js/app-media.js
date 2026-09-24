@@ -238,7 +238,7 @@ async function loadVodPlayer(vodId, seekTo) {
         const extraDetails = document.getElementById('vp-extra-details');
         if (extraDetails) {
             let chips = '';
-            if (v.stream_category) chips += `<span class="detail-chip"><i class="fa-solid fa-tag"></i> ${esc(_capTag(v.stream_category))}</span>`;
+            if (v.stream_category) chips += `<span class="detail-chip"${v.stream_category_inferred ? ' title="Category inferred by OpenVibe&#39;s AI from the stream"' : ''}><i class="fa-solid fa-tag"></i> ${esc(_capTag(v.stream_category))}${v.stream_category_inferred ? '<span class="cat-inferred"> · inferred</span>' : ''}</span>`;
             if (v.stream_peak_viewers) chips += `<span class="detail-chip"><i class="fa-solid fa-users"></i> Peak: ${v.stream_peak_viewers}</span>`;
             if (v.stream_started_at) {
                 const streamDate = new Date(v.stream_started_at + 'Z');
@@ -888,6 +888,44 @@ async function recutClip(clipId) {
     }
 }
 
+/**
+ * The clip page's attribution line, from the clip's own origin (Media's auto_generated):
+ *   a person's clip  → "Clipped by <clipper>"
+ *   an auto-clip     → "AI clip · from <streamer>'s stream" and what made it; never "Clipped by"
+ *                      the streamer the job filed it under.
+ */
+function _renderClipAttribution(el, cl) {
+    el.textContent = '';
+    el.classList.toggle('clp-ai-attribution', !!cl.auto_generated);
+    const icon = (cls) => { const i = document.createElement('i'); i.className = cls; i.setAttribute('aria-hidden', 'true'); return i; };
+    if (!cl.auto_generated) {
+        const who = document.createElement('strong');
+        who.textContent = cl.display_name || cl.username || 'Unknown';
+        el.append(icon('fa-solid fa-scissors'), ' Clipped by ', who);
+        return;
+    }
+    const streamerName = cl.source_streamer_display_name || cl.streamer_display_name || cl.source_streamer_username || cl.streamer_username || cl.display_name || cl.username;
+    const streamerUser = cl.source_streamer_username || cl.streamer_username || cl.username;
+    const badge = document.createElement('span');
+    badge.className = 'ai-badge';
+    badge.textContent = 'AI clip';
+    el.append(icon('fa-solid fa-wand-magic-sparkles'), ' ', badge, ' · from ');
+    if (streamerName && streamerUser) {
+        const a = document.createElement('a');
+        const href = channelPath(streamerUser);
+        a.href = href;
+        a.textContent = streamerName;
+        a.addEventListener('click', (event) => handleLinkClick(event, href));
+        el.append(a, "'s stream");
+    } else {
+        el.append('a live stream');
+    }
+    const how = document.createElement('div');
+    how.className = 'muted clp-ai-how';
+    how.textContent = 'Cut automatically by OpenVibe\'s auto-clip workflow when chat reacted. No one clipped it.';
+    el.append(how);
+}
+
 async function loadClipPlayer(clipId) {
     try {
         // Clean up chat replay
@@ -934,7 +972,7 @@ async function loadClipPlayer(clipId) {
         const extraDetails = document.getElementById('clp-extra-details');
         if (extraDetails) {
             let chips = '';
-            if (cl.stream_category) chips += `<span class="detail-chip"><i class="fa-solid fa-tag"></i> ${esc(_capTag(cl.stream_category))}</span>`;
+            if (cl.stream_category) chips += `<span class="detail-chip"${cl.stream_category_inferred ? ' title="Category inferred by OpenVibe&#39;s AI from the stream"' : ''}><i class="fa-solid fa-tag"></i> ${esc(_capTag(cl.stream_category))}${cl.stream_category_inferred ? '<span class="cat-inferred"> · inferred</span>' : ''}</span>`;
             if (cl.stream_peak_viewers) chips += `<span class="detail-chip"><i class="fa-solid fa-users"></i> Peak: ${cl.stream_peak_viewers}</span>`;
             if (cl.stream_started_at) {
                 const streamDate = new Date(cl.stream_started_at + 'Z');
@@ -1044,11 +1082,10 @@ async function loadClipPlayer(clipId) {
             streamerLink.onclick = (event) => handleLinkClick(event, targetUrl);
         }
 
-        // Show "Clipped by" info
+        // Who made it. An auto-clip was cut by OpenVibe's AI when chat reacted, not by the
+        // streamer it is filed under (roadmap 33.4): "AI clip · from <streamer>'s stream".
         const clippedByEl = document.getElementById('clp-clipped-by');
-        if (clippedByEl) {
-            clippedByEl.innerHTML = `<i class="fa-solid fa-scissors"></i> Clipped by <strong>${esc(cl.display_name || cl.username || 'Unknown')}</strong>`;
-        }
+        if (clippedByEl) _renderClipAttribution(clippedByEl, cl);
 
         // Show delete button per the server-authoritative can_delete flag (streamer /
         // channel mod / staff, or the creator only if the channel opted in).

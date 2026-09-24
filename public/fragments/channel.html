@@ -372,9 +372,15 @@
 
                 <!-- Clips (clips OF this streamer's streams) -->
                 <div class="ch-tab-panel" id="ch-panel-clips" role="tabpanel">
-                    <p class="ch-panel-hint" id="ch-clips-of-header"><i class="fa-solid fa-scissors"></i> All clips created <b>of</b> this streamer — by anyone who clipped their streams.</p>
+                    <p class="ch-panel-hint" id="ch-clips-of-header"><i class="fa-solid fa-scissors"></i> Clips people took <b>of</b> this streamer's streams.</p>
                     <div class="stream-grid" id="ch-clips-of-grid"><p class="muted">No clips yet</p></div>
                     <div id="ch-clips-of-pagination" class="pastes-pagination" style="display:none"></div>
+                    <!-- What the AI cut from these streams, after what people made (roadmap 33.6). -->
+                    <div class="ch-ai-clips" id="ch-ai-clips-section" hidden>
+                        <p class="ch-panel-hint"><i class="fa-solid fa-wand-magic-sparkles"></i> <b>AI Moments</b> — clips OpenVibe's AI cut automatically when chat reacted. No one clipped these.</p>
+                        <div class="stream-grid" id="ch-ai-clips-grid"></div>
+                        <div id="ch-ai-clips-pagination" class="pastes-pagination" style="display:none"></div>
+                    </div>
                 </div>
 
                 <!-- Clips Taken (clips this streamer made of others) -->

@@ -265,6 +265,8 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
         const clipOffset = Math.max(parseInt(req.query.clipOffset || '0', 10), 0);
         const clipsOfLimit = Math.min(Math.max(parseInt(req.query.clipsOfLimit || '12', 10), 1), 48);
         const clipsOfOffset = Math.max(parseInt(req.query.clipsOfOffset || '0', 10), 0);
+        const aiClipsLimit = Math.min(Math.max(parseInt(req.query.aiClipsLimit || '12', 10), 1), 48);
+        const aiClipsOffset = Math.max(parseInt(req.query.aiClipsOffset || '0', 10), 0);
         // The 15s live/offline status poll passes ?pollOnly=1 — it only reads live streams
         // + viewer counts, so skip the 6 heavy VOD/clip listing+count queries entirely.
         const pollOnly = req.query.pollOnly === '1' || req.query.pollOnly === 'true';
@@ -273,16 +275,22 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
         // channel_user_id/order) follow the inherited query shapes.
         const media = require('../media-client');
         const _rows = (r, k) => (r && r[k]) || (Array.isArray(r) ? r : []);
-        let vods = [], vodTotal = 0, clips = [], clipTotal = 0, clipsOfStreams = [], clipsOfTotal = 0;
+        let vods = [], vodTotal = 0, clips = [], clipTotal = 0, clipsOfStreams = [], clipsOfTotal = 0, aiClips = [], aiClipsTotal = 0;
         if (!pollOnly) {
-            const [vr, cr, cor] = await Promise.all([
+            // People's clips and the AI's are separate lists (roadmap 33.6: made, then derived). The
+            // auto-clip job cuts in the streamer's name, so without auto_generated=0 its clips would
+            // be listed as clips the streamer made. Rows are checked again in case Media ignores it.
+            const isAi = (c) => !!(c && (c.auto_generated === true || Number(c.auto_generated) === 1));
+            const [vr, cr, cor, air] = await Promise.all([
                 media.listVods({ user_id: channel.user_id, include_private: canSeeHidden ? 1 : 0, managed_stream_id: vodManagedStreamId || undefined, order: vodOrderBy, limit: vodLimit, offset: vodOffset }).catch(() => null),
-                media.listClips({ user_id: channel.user_id, include_private: canSeeHidden ? 1 : 0, limit: clipLimit, offset: clipOffset }).catch(() => null),
-                media.listClips({ channel_user_id: channel.user_id, limit: clipsOfLimit, offset: clipsOfOffset }).catch(() => null),
+                media.listClips({ user_id: channel.user_id, include_private: canSeeHidden ? 1 : 0, auto_generated: 0, limit: clipLimit, offset: clipOffset }).catch(() => null),
+                media.listClips({ channel_user_id: channel.user_id, auto_generated: 0, limit: clipsOfLimit, offset: clipsOfOffset }).catch(() => null),
+                media.listClips({ channel_user_id: channel.user_id, auto_generated: 1, limit: aiClipsLimit, offset: aiClipsOffset }).catch(() => null),
             ]);
             vods = _rows(vr, 'vods'); vodTotal = vr?.total ?? vods.length;
-            clips = _rows(cr, 'clips'); clipTotal = cr?.total ?? clips.length;
-            clipsOfStreams = _rows(cor, 'clips'); clipsOfTotal = cor?.total ?? clipsOfStreams.length;
+            clips = _rows(cr, 'clips').filter((c) => !isAi(c)); clipTotal = cr?.total ?? clips.length;
+            clipsOfStreams = _rows(cor, 'clips').filter((c) => !isAi(c)); clipsOfTotal = cor?.total ?? clipsOfStreams.length;
+            aiClips = _rows(air, 'clips').filter(isAi); aiClipsTotal = air?.total ?? aiClips.length;
             // Media only stores our numeric user ids — resolve clip creator names
             // locally so cards don't render "by Unknown".
             const nameClip = (c) => {
@@ -294,6 +302,8 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             };
             clips.forEach(nameClip);
             clipsOfStreams.forEach(nameClip);
+            // An AI clip has no clipper: it is "from <streamer>'s stream".
+            for (const c of aiClips) { c.ai_label = 'AI clip'; c.source_streamer_username = channel.username; c.source_streamer_display_name = channel.display_name || channel.username; }
             // AI overviews are Live-owned (vod_ai_state / clip_ai_state). Attach the
             // full text too — the card expander swaps the short teaser for it.
             const aiShort = (rows, table, col) => {
@@ -309,6 +319,7 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             aiShort(vods, 'vod_ai_state', 'vod_id');
             aiShort(clips, 'clip_ai_state', 'clip_id');
             aiShort(clipsOfStreams, 'clip_ai_state', 'clip_id');
+            aiShort(aiClips, 'clip_ai_state', 'clip_id');
         }
         const followerCount = db.getFollowerCount(channel.user_id);
         const isFollowing = req.user ? db.isFollowing(req.user.id, channel.user_id) : false;
@@ -489,7 +500,7 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             ? _slotClipVis.every(v => v === 'private')
             : ((channel.default_clip_visibility || 'public') === 'private');
         const videos_tab_hidden = !pollOnly && allVodPrivate && vodTotal === 0;
-        const clips_tab_hidden = !pollOnly && allClipPrivate && clipTotal === 0 && clipsOfTotal === 0;
+        const clips_tab_hidden = !pollOnly && allClipPrivate && clipTotal === 0 && clipsOfTotal === 0 && aiClipsTotal === 0;
 
         res.json({
             videos_tab_hidden,
@@ -527,6 +538,12 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             clipsOfLimit,
             clipsOfOffset,
             clipsOfHasMore: clipsOfOffset + clipsOfStreams.length < clipsOfTotal,
+            // AI Moments of this channel: auto-clips, listed after people's clips and labelled.
+            aiClips,
+            aiClipsTotal,
+            aiClipsLimit,
+            aiClipsOffset,
+            aiClipsHasMore: aiClipsOffset + aiClips.length < aiClipsTotal,
         });
     } catch (err) {
         console.error('[Channels] Get error:', err.message);
@@ -581,6 +598,7 @@ router.get('/channel/:username/clips-taken', optionalAuth, async (req, res) => {
         const r = await media.listClips({
             user_id: user.id, include_private: canSeeHidden ? 1 : 0, order: orderBy,
             source_streamer_id: sourceStreamerId || undefined, hide_self: hideSelf ? 1 : 0,
+            auto_generated: 0,   // the auto-clip job cuts in the streamer's name; those clips are not ones they took
             limit, offset,
         }).catch(() => null);
         const clips = (r?.clips || (Array.isArray(r) ? r : [])).map(c => {
@@ -717,6 +735,10 @@ router.put('/channel', requireAuth, (req, res) => {
         if (hasOwn(req.body, 'ai_overview_pref')) {
             const p = String(req.body.ai_overview_pref || 'auto').trim();
             if (['auto', 'show', 'hide'].includes(p)) fields.ai_overview_pref = p;
+        }
+        // Whether OpenVibe's AI may make Moments from this channel's streams (roadmap 33.7).
+        if (hasOwn(req.body, 'ai_derivation_enabled')) {
+            fields.ai_derivation_enabled = cleanBooleanFlag(req.body.ai_derivation_enabled) ? 1 : 0;
         }
         // Chat/stream language: 'auto' (detect from bio) or an ISO code from i18n.LANG_NAMES.
         if (hasOwn(req.body, 'chat_language')) {

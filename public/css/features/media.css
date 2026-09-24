@@ -394,3 +394,14 @@
 .comments-elsewhere { margin: 10px 0 0; font-size: .85rem; color: var(--text-muted); }
 .comments-elsewhere:empty { display: none; }
 .comment-item.comment-deleted .comment-text { font-style: italic; }
+
+/* AI clip attribution on the clip page ("AI clip · from <streamer>'s stream", roadmap 33.4). */
+.ai-badge {
+    display: inline-block; padding: 1px 8px; border-radius: 999px;
+    font-size: 0.72rem; font-weight: 700; letter-spacing: .02em; color: #fff;
+    background: linear-gradient(135deg, #6d28d9, #0e7490);   /* white text at 4.5:1 or better */
+}
+.clp-ai-attribution a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.clp-ai-attribution a:hover { text-decoration: underline; }
+.clp-ai-how { font-size: 0.8rem; margin-top: 2px; }
+.detail-chip .cat-inferred { opacity: .78; }

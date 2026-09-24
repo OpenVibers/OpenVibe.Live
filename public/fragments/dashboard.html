@@ -25,11 +25,13 @@
                     <button class="ch-tab active" data-cdtab="videos" onclick="switchDashContentTab('videos', this)"><i class="fa-solid fa-video"></i> Videos</button>
                     <button class="ch-tab" data-cdtab="streamclips" onclick="switchDashContentTab('streamclips', this)"><i class="fa-solid fa-scissors"></i> Clips of My Stream</button>
                     <button class="ch-tab" data-cdtab="myclips" onclick="switchDashContentTab('myclips', this)"><i class="fa-solid fa-film"></i> My Clips</button>
+                    <button class="ch-tab" data-cdtab="aimoments" onclick="switchDashContentTab('aimoments', this)"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Moments<span class="dash-subtab-count" id="dash-ai-moments-count" hidden></span></button>
                     <button class="ch-tab" data-cdtab="pastes" onclick="switchDashContentTab('pastes', this)"><i class="fa-solid fa-paste"></i> Pastes</button>
                 </div>
                 <div class="dash-subpanel active" id="dash-content-videos"><div class="dash-grid" id="dash-grid-content-videos"></div></div>
                 <div class="dash-subpanel" id="dash-content-streamclips"><div class="dash-grid" id="dash-grid-content-streamclips"></div></div>
                 <div class="dash-subpanel" id="dash-content-myclips"><div class="dash-grid" id="dash-grid-content-myclips"></div></div>
+                <div class="dash-subpanel" id="dash-content-aimoments"><div class="dash-grid" id="dash-grid-content-aimoments"></div></div>
                 <div class="dash-subpanel" id="dash-content-pastes"><div class="dash-grid" id="dash-grid-content-pastes"></div></div>
             </div>
 
@@ -362,12 +364,19 @@
                         <h3 style="margin:0"><i class="fa-solid fa-clapperboard"></i> Clips of My Stream</h3>
                         <button class="btn btn-small btn-outline sel-all-btn" data-sel-container="dash-stream-clips" style="display:none" onclick="_selAllToggle(this.dataset.selContainer)"><i class="fa-solid fa-check-double"></i> <span class="sel-all-label">Select all</span></button>
                     </div>
-                    <p class="muted">Clips viewers have taken from your streams. You can publish or delete them.</p>
+                    <p class="muted">Clips people have taken from your streams. You can publish or delete them. Clips the AI cut are under AI Moments.</p>
                     <label class="staff-inline-toggle" style="margin-bottom:12px">
                         <input type="checkbox" id="dash-clips-allow-creator-delete" onchange="saveClipSettings()">
                         <span>Let clip creators delete their own clips of my channel <span class="muted" style="font-weight:400">(off = only you, your mods, and staff can delete)</span></span>
                     </label>
                     <div id="dash-stream-clips" class="vod-grid"></div>
+                </div>
+
+                <!-- AI Moments of my stream: auto-clips, kept apart from the clips people took (roadmap 33.7) -->
+                <div class="dash-card dash-card-wide" id="dash-card-aimoments">
+                    <h3 style="margin:0 0 6px"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Moments of My Stream</h3>
+                    <p class="muted">Clips OpenVibe's AI cut from your streams when chat reacted. Nobody clipped these, so they are not in "My Clips". You can publish, unlist or delete them, and turn the AI off for your channel under Home &rarr; AI Moments from my streams.</p>
+                    <div id="dash-ai-clips" class="vod-grid"></div>
                 </div>
 
                 <!-- My Pastes -->
@@ -484,6 +493,17 @@
                         <button class="btn btn-primary btn-small" onclick="saveSettingsProfile()"><i class="fa-solid fa-floppy-disk"></i> Save Profile</button>
                         <a href="https://openvibe.network" target="_blank" rel="noopener" class="btn btn-outline btn-small" style="text-decoration:none"><i class="fa-solid fa-arrow-up-right-from-square"></i> Manage account on openvibe.network</a>
                     </div>
+                </div>
+
+                <!-- AI Moments from my streams: the channel's AI derivation switch (roadmap 33.7) -->
+                <div class="dash-card dash-card-wide" id="dash-card-ai-derivation">
+                    <h3><i class="fa-solid fa-wand-magic-sparkles"></i> AI Moments from my streams</h3>
+                    <label class="staff-inline-toggle" style="margin-bottom:8px">
+                        <input type="checkbox" id="dash-ai-derivation" checked onchange="saveAiDerivationSetting(this)">
+                        <span>Let OpenVibe's AI make Moments from my streams</span>
+                    </label>
+                    <p class="muted" style="font-size:0.85rem;margin:0">Moments are auto-clips cut when chat reacts, frames the AI picks and posts as notes, and AI-written after-show recaps. They are always labelled as AI-made, never credited to you, and kept out of search. Turned off, the AI makes no new ones from your streams (your after-show report keeps its stats). Moments already made stay until you delete them under Content &rarr; AI Moments.</p>
+                    <span id="dash-ai-derivation-status" class="muted" style="font-size:0.82rem"></span>
                 </div>
 
                 <!-- Offline Screen (migrated from /settings) -->

@@ -962,7 +962,7 @@ function navigate(urlPath, replace = false) {
     routeFromURL();
 }
 
-const DEFAULT_PAGE_TITLE = 'OpenVibe.Live — Free Open Source Live Streaming Platform';
+const DEFAULT_PAGE_TITLE = 'OpenVibe.Live — Open-Source Live Streaming, Community Run';
 /** Set the browser tab title to the content being viewed (stream/VOD/clip/paste). */
 function setPageTitle(name) {
     document.title = name ? `${String(name).slice(0, 90)} · OpenVibe.Live` : DEFAULT_PAGE_TITLE;

@@ -28,11 +28,33 @@ function _updateMicOnlyOverlay(browserMode, streamingMethod) {
     container.appendChild(overlay);
 }
 let _activeChannelIsOwnerRank = false;
+
+/**
+ * The category pill. A category the AI inferred from the stream (ai_category) says so, "Gaming ·
+ * inferred" (roadmap 33.4); one the streamer chose is shown plain. Stream rows carry `category` as
+ * the effective value (ai_category when there is one) and `ai_category` itself.
+ */
+function _isInferredCategory(row) { return !!(row && row.ai_category && row.ai_category === row.category); }
+function _setCategoryBadge(el, value, inferred) {
+    if (!el) return;
+    el.textContent = _capTag(value);
+    el.classList.toggle('is-inferred', !!inferred);
+    if (inferred) {
+        const mark = document.createElement('span');
+        mark.className = 'cat-inferred';
+        mark.textContent = ' · inferred';
+        el.append(mark);
+        el.title = "Category inferred by OpenVibe's AI from the stream";
+    } else {
+        el.removeAttribute('title');
+    }
+}
 const CHANNEL_VODS_PAGE_SIZE = 12;
 const CHANNEL_CLIPS_PAGE_SIZE = 12;
 const channelVodsPageByUser = Object.create(null);
 const channelClipsPageByUser = Object.create(null);
 const channelClipsOfPageByUser = Object.create(null);
+const channelAiClipsPageByUser = Object.create(null);
 // Channel VOD filter/sort state
 let currentChannelVodFilter = null;   // numeric managed stream id or null = all
 let currentChannelVodOrder = 'newest'; // newest|oldest|views|peak_viewers
@@ -282,7 +304,7 @@ function renderChannelClipsOfSection(username, clips, meta = {}) {
     const total = meta.total || clips.length;
     const page = Math.floor(offset / pageSize) + 1;
 
-    if (total === 0) { grid.innerHTML = '<p class="muted">No clips yet</p>'; return; }
+    if (total === 0) { grid.innerHTML = '<p class="muted">No one has clipped these streams yet</p>'; return; }
 
     if (clips.length) {
         grid.innerHTML = clips.map(cl => `
@@ -304,6 +326,64 @@ function renderChannelClipsOfSection(username, clips, meta = {}) {
     }
 
     renderVodsPagination('ch-clips-of-pagination', page, total, pageSize, 'setChannelClipsOfPage', 'clips of streams');
+}
+
+// ── AI Moments on the Clips tab: auto-clips of this channel's streams, after people's clips ──
+// Built with DOM nodes (titles come from the AI). Each card says it is an AI clip from this
+// streamer's stream; none is credited to a clipper (roadmap 33.4/33.6).
+function renderChannelAiClipsSection(username, clips, meta = {}) {
+    const section = document.getElementById('ch-ai-clips-section');
+    const grid = document.getElementById('ch-ai-clips-grid');
+    if (!section || !grid) return;
+    const pageSize = meta.limit || CHANNEL_CLIPS_PAGE_SIZE;
+    const offset = meta.offset || 0;
+    const total = meta.total || clips.length;
+    section.hidden = !(total > 0);
+    grid.textContent = '';
+    if (!total) { renderVodsPagination('ch-ai-clips-pagination', 1, 0, pageSize, 'setChannelAiClipsPage', 'AI clips'); return; }
+    for (const cl of clips) {
+        const href = `/clip/${Number(cl.id)}`;
+        const card = document.createElement('a');
+        card.className = 'stream-card';
+        card.href = href;
+        card.addEventListener('click', (event) => handleLinkClick(event, href));
+        const thumb = document.createElement('div');
+        thumb.className = 'stream-card-thumb';
+        thumb.innerHTML = thumbImg(cl.thumbnail_url, 'fa-scissors', cl.title, `/api/thumbnails/generate/clip/${Number(cl.id)}`);
+        const badge = document.createElement('span');
+        badge.className = 'ch-ai-badge';
+        badge.textContent = 'AI clip';
+        const dur = document.createElement('span');
+        dur.className = 'stream-card-viewers';
+        dur.innerHTML = '<i class="fa-solid fa-clock"></i> ';
+        dur.append(formatDuration(cl.duration_seconds));
+        thumb.append(badge, dur);
+        const info = document.createElement('div');
+        info.className = 'stream-card-info';
+        const title = document.createElement('div');
+        title.className = 'stream-card-title';
+        title.textContent = cl.title || 'AI clip';
+        const by = document.createElement('div');
+        by.className = 'stream-card-streamer muted';
+        by.textContent = `from ${cl.source_streamer_display_name || cl.source_streamer_username || username}'s stream · ${formatDateTime(cl.created_at)}`;
+        info.append(title, by);
+        if (cl.ai_overview_short) info.insertAdjacentHTML('beforeend', _cardAiHTML(cl.ai_overview_short, cl.ai_overview));
+        card.append(thumb, info);
+        grid.append(card);
+    }
+    renderVodsPagination('ch-ai-clips-pagination', Math.floor(offset / pageSize) + 1, total, pageSize, 'setChannelAiClipsPage', 'AI clips');
+}
+
+async function setChannelAiClipsPage(page) {
+    if (!currentChannelUsername) return;
+    const safePage = Math.max(1, page | 0);
+    if (safePage === (channelAiClipsPageByUser[currentChannelUsername] || 1)) return;
+    channelAiClipsPageByUser[currentChannelUsername] = safePage;
+    const offset = (safePage - 1) * CHANNEL_CLIPS_PAGE_SIZE;
+    const data = await api(`/streams/channel/${currentChannelUsername}?aiClipsLimit=${CHANNEL_CLIPS_PAGE_SIZE}&aiClipsOffset=${offset}`);
+    renderChannelAiClipsSection(currentChannelUsername, data.aiClips || [], { total: data.aiClipsTotal || 0, limit: CHANNEL_CLIPS_PAGE_SIZE, offset });
+    const top = document.getElementById('ch-ai-clips-section');
+    if (top) top.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function refreshChannelVodsPage(username = currentChannelUsername) {
@@ -511,6 +591,9 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
 
         const data = await api(`/streams/channel/${username}?vodLimit=${CHANNEL_VODS_PAGE_SIZE}&vodOffset=${channelVodOffset}&clipLimit=${CHANNEL_CLIPS_PAGE_SIZE}&clipOffset=${channelClipOffset}${initialVodExtra}`);
         const ch = data.channel;
+        // The tab says whose channel this is, as the server-rendered <title> did (a live stream
+        // replaces it with the stream's title in activateChannelStream).
+        if (ch && ch.username) setPageTitle(`${ch.display_name || ch.username} (@${ch.username})`);
         if (typeof applyChatLimits === 'function') applyChatLimits(ch && ch.chat_limits);
         if (typeof setChatLimitsContext === 'function') {
             const _canManageChat = !!(currentUser && ch && (ch.user_id === currentUser.id || currentUser.role === 'admin' || ch.viewer_can_edit_about));
@@ -608,7 +691,9 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             _activeChannelIsOwnerRank = !!ch.is_owner;
             const _chUser = document.getElementById('ch-username');
             if (_chUser) _chUser.style.display = 'none';
-            document.getElementById('ch-category-badge').textContent = _capTag((liveStreams[0] && liveStreams[0].category) || ch.ai_category || ch.category || 'Live');
+            { const _ls0 = liveStreams[0], _liveCat = _ls0 && _ls0.category;
+              _setCategoryBadge(document.getElementById('ch-category-badge'), _liveCat || ch.ai_category || ch.category || 'Live',
+                  _liveCat ? _isInferredCategory(_ls0) : !!ch.ai_category); }
             document.getElementById('ch-follower-count').textContent = `${ch.follower_count || 0} followers`;
             setupFollowBtn(document.getElementById('ch-btn-follow'));
             setupBanBtn(document.getElementById('ch-btn-ban'));
@@ -669,7 +754,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             document.getElementById('ch-username-offline').textContent = '@' + ch.username;
             document.getElementById('ch-description-offline').textContent = ch.description || '';
             document.getElementById('ch-follower-count-offline').textContent = `${ch.follower_count || 0} followers`;
-            document.getElementById('ch-category-badge-offline').textContent = _capTag(ch.ai_category || ch.category || 'Offline');
+            _setCategoryBadge(document.getElementById('ch-category-badge-offline'), ch.ai_category || ch.category || 'Offline', !!ch.ai_category);
             setupFollowBtn(document.getElementById('ch-btn-follow-offline'));
             setupBanBtn(document.getElementById('ch-btn-ban-offline'));
 
@@ -706,6 +791,12 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             total: data.clipsOfTotal || clipsOfStreams.length,
             limit: data.clipsOfLimit || CHANNEL_CLIPS_PAGE_SIZE,
             offset: data.clipsOfOffset || 0,
+        });
+        // …then what the AI cut from them, labelled as such
+        renderChannelAiClipsSection(username, data.aiClips || [], {
+            total: data.aiClipsTotal || (data.aiClips || []).length,
+            limit: data.aiClipsLimit || CHANNEL_CLIPS_PAGE_SIZE,
+            offset: data.aiClipsOffset || 0,
         });
 
         // Analytics is loaded lazily when its tab is first opened (see switchChannelTab).
@@ -1474,7 +1565,7 @@ function activateChannelStream(stream) {
     setPageTitle(`${stream.title || 'Live'} — ${stream.display_name || stream.username || ''}`.trim());
     // Category pill reflects THIS live slot's category (set in /broadcast), not the
     // channel's stale default.
-    if (stream.category) { const _cb = document.getElementById('ch-category-badge'); if (_cb) _cb.textContent = _capTag(stream.category); }
+    if (stream.category) _setCategoryBadge(document.getElementById('ch-category-badge'), stream.category, _isInferredCategory(stream));
     // Stream-type badge only (Screen Share / Audio Only / Camera). The WEBRTC/RTMP
     // protocol tag was removed from the header — that info now lives in the player's
     // stats overlay, which is more useful than the raw transport for viewers.
@@ -2041,7 +2132,7 @@ function _applyChannelTabMeta(data) {
         }
     };
     setBadge('ch-tab-badge-videos', data.vodTotal);
-    setBadge('ch-tab-badge-clips', data.clipsOfTotal);
+    setBadge('ch-tab-badge-clips', (Number(data.clipsOfTotal) || 0) + (Number(data.aiClipsTotal) || 0));
     setBadge('ch-tab-badge-clips-taken', data.clipsTakenTotal);
     setBadge('ch-tab-badge-pastes', data.pasteTotal);
     setBadge('ch-tab-badge-ai-timeline', data.aiEventTotal);

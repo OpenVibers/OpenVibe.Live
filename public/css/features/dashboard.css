@@ -484,3 +484,11 @@
 @media (max-width: 480px) {
     .stream-config-card { padding: 10px; }
 }
+
+/* AI Moments of my stream (auto-clips), kept apart from the clips people took (roadmap 33.7). */
+.dash-ai-badge {
+    display: inline-block; padding: 1px 7px; border-radius: 999px; margin-right: 4px;
+    font-size: 0.68rem; font-weight: 700; color: #fff;
+    background: linear-gradient(135deg, #6d28d9, #0e7490);
+}
+.dash-subtab-count { margin-left: 6px; font-size: 0.72rem; opacity: .8; }
