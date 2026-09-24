@@ -87,4 +87,4 @@ Every file below is also served on the site at `/docs/<name>` (rendered by `serv
 - [docs/performance-audit.md](docs/performance-audit.md) — Measurements and tools
 - [SETUP.md](SETUP.md) — Full deployment guide
 - [SECURITY_AUDIT.md](SECURITY_AUDIT.md) — Security audit findings
-- [hardware/README.md](hardware/README.md) — Raspberry Pi integration
+- [hardware/README.md](hardware/README.md) — Raspberry Pi integration (moved to OpenVibe.Extensions `hardware/`; this is a redirect)
