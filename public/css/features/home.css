@@ -854,6 +854,7 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .star-name a:hover { color: var(--accent-light); }
 .star-name .star-jp { display: block; font-size: 0.55em; font-weight: 600; color: var(--text-secondary); margin-top: 2px; }
 .star-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+.stream-card-tag .cat-inferred, .star-chip .cat-inferred { font-weight: 500; opacity: .78; }
 .star-chip {
     display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px;
     font-size: 0.74rem; font-weight: 700; color: var(--text-primary);

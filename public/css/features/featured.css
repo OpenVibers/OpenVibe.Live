@@ -44,6 +44,7 @@
 .hf-who:hover { color: var(--text-primary); }
 .hf-who b { color: var(--text-primary); }
 .hf-who .muted { margin-left: auto; font-size: 0.74rem; white-space: nowrap; }
+.hf-tag .cat-inferred { opacity: .78; }
 .hf-tag { font-size: 0.68rem; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-light); }
 .hf-now {
     position: relative; padding: 10px 12px 10px 14px; border-radius: 12px; font-size: 0.84rem; line-height: 1.5; color: var(--text-secondary);

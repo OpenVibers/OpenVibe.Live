@@ -361,6 +361,7 @@ router.get('/star', async (req, res) => {
                 avatar_url: user.avatar_url || null, profile_color: user.profile_color || null,
                 bio, bio_en, language: { code, name: i18n.langName(code), flag: i18n.langFlag(code) },
                 ai_overview: channel.ai_overview || null, category: channel.ai_category || channel.category || null,
+                category_inferred: !!channel.ai_category,
                 follower_count, live: liveSafe,
                 last_live_at: live ? null : (last_stream && (last_stream.ended_at || last_stream.started_at)) || null,
                 pick: (() => {

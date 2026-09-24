@@ -24,6 +24,9 @@
 const _SWR_PREFIX = 'ovswr:';
 // Bump when a cached response's shape changes; older records are ignored instead of mis-rendered.
 const _SWR_SCHEMA = 2;
+/** A category the AI inferred (the server's category_inferred, or a stream row whose effective category is its ai_category) says so (roadmap 33.4). */
+function _catInferred(s) { return s && s.category_inferred != null ? !!s.category_inferred : !!(s && s.ai_category && s.ai_category === s.category); }
+
 function _swrKey(path) {
     let uid = 0;
     try { uid = (typeof currentUser !== 'undefined' && currentUser && currentUser.id) || 0; } catch { /* */ }
@@ -1691,7 +1694,7 @@ function streamCardHTML(s, isLive) {
                 ${(isLive && s.description) ? `<div class="stream-card-desc" title="Click to expand" onclick="event.preventDefault();event.stopPropagation();this.classList.toggle('expanded')">${esc(s.description)}</div>` : ''}
                 ${_cardAiHTML(s.ai_overview_short, s.ai_overview)}
                 <div class="stream-card-meta">
-                    ${s.category ? `<span class="stream-card-tag">${esc(_capTag(s.category))}</span>` : ''}
+                    ${s.category ? `<span class="stream-card-tag"${_catInferred(s) ? ' title="Category inferred by OpenVibe&#39;s AI from the stream"' : ''}>${esc(_capTag(s.category))}${_catInferred(s) ? '<span class="cat-inferred"> · inferred</span>' : ''}</span>` : ''}
                     <span class="stream-card-metaright">
                         ${isLive && s.started_at ? `<span class="stream-card-uptime" data-since="${esc(s.started_at)}"><i class="fa-solid fa-clock"></i> ${formatUptime(s.started_at)}</span>` : ''}
                         ${isLive ? `<span class="stream-card-vcount"><i class="fa-solid fa-eye"></i> ${s.total_viewer_count || s.viewer_count || 0}</span>` : ''}
@@ -2115,7 +2118,7 @@ function _renderHomeStar(data) {
     const chips = [
         foreign ? `<span class="star-chip pink">${esc(lang.flag)} Streams in ${esc(lang.name)}</span>` : '',
         foreign ? `<span class="star-chip"><i class="fa-solid fa-language"></i> Chat auto-translated both ways</span>` : '',
-        s.category ? `<span class="star-chip">${esc(_capTag(s.category))}</span>` : '',
+        s.category ? `<span class="star-chip"${_catInferred(s) ? ' title="Category inferred by OpenVibe&#39;s AI from the stream"' : ''}>${esc(_capTag(s.category))}${_catInferred(s) ? '<span class="cat-inferred"> · inferred</span>' : ''}</span>` : '',
         (s.follower_count > 0) ? `<span class="star-chip gold"><i class="fa-solid fa-heart"></i> ${esc(String(s.follower_count))} follower${s.follower_count === 1 ? '' : 's'}</span>` : '',
     ].filter(Boolean).join('');
     const isLive = !!s.live;

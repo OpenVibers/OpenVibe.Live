@@ -135,7 +135,7 @@
                     <a class="hf-who" href="${escText(chan)}" onclick="return handleLinkClick(event, '${escText(chan)}')">
                         ${typeof _avatarSpan === 'function' ? _avatarSpan(s.avatar_url, s.username, s.profile_color) : ''}
                         <b>${escText(s.display_name || s.username)}</b>
-                        ${s.category ? `<span class="hf-tag">${escText(s.category)}</span>` : ''}
+                        ${s.category ? `<span class="hf-tag"${s.ai_category && s.ai_category === s.category ? ' title="Category inferred by OpenVibe&#39;s AI from the stream"' : ''}>${escText(s.category)}${s.ai_category && s.ai_category === s.category ? '<span class="cat-inferred"> · inferred</span>' : ''}</span>` : ''}
                         ${up ? `<span class="muted"><i class="fa-solid fa-clock"></i> ${escText(up)}</span>` : ''}
                     </a>
                     ${m && m.description ? `<div class="hf-now"><div class="hf-now-head"><i class="fa-solid fa-wand-magic-sparkles"></i> Right now <span>${m.captured_at ? escText(typeof timeAgo === 'function' ? timeAgo(m.captured_at) : '') : ''}</span></div>${escText(m.description)}</div>` : ''}
