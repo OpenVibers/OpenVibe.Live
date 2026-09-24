@@ -1539,6 +1539,11 @@ async function start() {
         if (out.deleted) console.log(`[Analytics] pruned ${out.deleted} raw events older than ${out.cutoff}`);
     }, { initialDelayMs: 5 * 60 * 1000, jitterMs: 60 * 1000 });
 
+    // 8b3. Media requests whose OpenCoins charge never got an answer: charged again with the same
+    // key (a replay if it landed) and refunded, so no viewer pays for a request that failed.
+    require('./utils/jobs').every('media-charge-reconcile', 5 * 60 * 1000, () => require('./media/media-queue').reconcileCharges(),
+        { initialDelayMs: 2 * 60 * 1000, jitterMs: 30 * 1000 });
+
     // 8c. Durable events (roadmap Wave 3): stream lifecycle goes to OpenVibe.Events through the
     // transactional outbox (server/events/stream-events.js). Off unless EVENTS_URL is set.
     try { require('./events/stream-events').init(); } catch (err) { console.warn('[Events] not started:', err.message); }

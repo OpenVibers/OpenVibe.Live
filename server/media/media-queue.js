@@ -122,10 +122,16 @@ class MediaQueue {
      * Take `cost` from the viewer in the channel's currency. Throws a message intended to
      * be shown to the viewer verbatim. The viewer was quoted this exact figure by /quote
      * before submitting, so what they agreed to is what gets taken.
+     *
+     * Every charge is keyed by the media request it pays for (ADR-012 rule 5): OpenCoins and
+     * channel points `live:media_req:<request id>`, Vibes on Billing `live:media_charge:<request id>`.
+     * Charging the same request again (a retry, the reconciler) replays; it never takes twice.
+     * An error with `outcomeUnknown` means the wallet did not answer: it may or may not have landed.
      */
-    async charge({ currency, cost, userId, streamerId, streamId, label }) {
+    async charge({ currency, cost, userId, streamerId, streamId, label, requestId }) {
+        if (!requestId) throw new Error('charge() needs the media request id (its idempotency key)');
         if (currency === 'points') {
-            if (!db.deductChannelPoints(userId, streamerId, cost)) {
+            if (!db.deductChannelPoints(userId, streamerId, cost, `live:media_req:${requestId}`, label)) {
                 const have = db.getChannelPoints(userId, streamerId);
                 throw new Error(`Not enough channel points — this costs ${cost}, you have ${have}.`);
             }
@@ -139,7 +145,7 @@ class MediaQueue {
                 // streamer's payable); the returned charge is linked to the request for refunds.
                 const billingActions = require('../monetization/billing-actions');
                 try {
-                    return await billingActions.chargeMedia({ userId, streamerId, streamId, cost, label });
+                    return await billingActions.chargeMedia({ userId, streamerId, streamId, cost, label, requestId });
                 } catch (e) {
                     const live = billingActions.toLive(e, { insufficient: `Not enough Vibes — this costs ${cost}.` });
                     throw new Error(live ? live.body.error : (e?.message || `Could not charge ${cost} Vibes.`));
@@ -157,17 +163,65 @@ class MediaQueue {
             return;
         }
         // opencoins — network wallet
+        const wallet = require('../monetization/wallet-client');
+        const key = `live:media_req:${requestId}`;
+        const noAnswer = (e) => !e || !e.status || e.status >= 500;
+        let debited;
         try {
-            const wallet = require('../monetization/wallet-client');
-            const debited = await wallet.debit(
-                userId, cost, label,
-                `live:media_req:${streamerId}:${userId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
-            );
-            if (!debited) throw new Error('OpenCoins wallet unavailable — link your OpenVibe.Network account first.');
+            debited = await wallet.debit(userId, cost, label, key);
         } catch (e) {
             if (e && e.status === 409) throw new Error(`Not enough OpenCoins — this costs ${cost}.`);
-            throw e;
+            if (!noAnswer(e)) throw e;
+            // No answer (unreachable, 5xx): whether it landed is unknown. The same key makes the
+            // retry safe, so ask once more; reconcileCharges() settles what is still unknown after.
+            try {
+                debited = await wallet.debit(userId, cost, label, key);
+            } catch (e2) {
+                if (e2 && e2.status === 409) throw new Error(`Not enough OpenCoins — this costs ${cost}.`);
+                if (!noAnswer(e2)) throw e2;
+                const err = new Error('Could not reach the OpenCoins wallet — nothing was queued. If you were charged, it is refunded automatically.');
+                err.outcomeUnknown = true;
+                throw err;
+            }
         }
+        if (!debited) throw new Error('OpenCoins wallet unavailable — link your OpenVibe.Network account first.');
+    }
+
+    /**
+     * Settle requests whose OpenCoins charge never got an answer (charge_state 'unknown', or a
+     * 'charging' row left by a crash). The viewer was told it failed, so the request stays failed
+     * and the coins must end where they started: charge again with the same key (a replay if the
+     * first one landed, a new debit if it did not), then refund it (`live:media_refund:<id>`, also
+     * keyed). A 409 on the re-charge means nothing was ever taken. Anything still unanswered waits
+     * for the next run.
+     */
+    async reconcileCharges({ olderThanMs = 60_000, limit = 50 } = {}) {
+        const cutoff = new Date(Date.now() - olderThanMs).toISOString().replace('T', ' ').slice(0, 19);
+        const rows = db.all(`SELECT * FROM media_requests WHERE charge_state IN ('unknown', 'charging') AND currency = 'opencoins'
+                             AND requested_at <= ? ORDER BY id LIMIT ?`, [cutoff, limit]);
+        const wallet = require('../monetization/wallet-client');
+        let settled = 0;
+        for (const r of rows) {
+            const label = `Media request: ${r.title || r.input}`;
+            try {
+                let charged = true;
+                try {
+                    const out = await wallet.debit(r.user_id, r.cost, label, `live:media_req:${r.id}`);
+                    if (!out) charged = false;   // unlinked: nothing can have been taken
+                } catch (e) {
+                    if (e && e.status === 409) charged = false;
+                    else throw e;
+                }
+                if (charged) {
+                    await wallet.credit(r.user_id, r.cost, `Refund: ${r.title || 'media request'}`, `live:media_refund:${r.id}`);
+                }
+                db.updateMediaRequest(r.id, { charge_state: null, refunded: charged ? 1 : 0, status: 'failed', last_error: r.last_error || 'The OpenCoins charge could not be confirmed' });
+                settled++;
+            } catch (e) {
+                console.warn(`[MediaQueue] charge of request ${r.id} still unsettled: ${e.message}`);
+            }
+        }
+        return settled;
     }
 
     /**
@@ -214,15 +268,10 @@ class MediaQueue {
         if (unpriceable) throw new Error(unpriceable);
         // A free channel stores cost 0, so the queue does not display a price nobody paid.
         const cost = currency === 'free' ? 0 : this.calculateCost(settings, normalized.duration_seconds);
-        let billingCharge = null;
-        if (cost > 0) {
-            billingCharge = await this.charge({
-                currency, cost, userId, streamerId, streamId,
-                label: `Media request: ${normalized.title || trimmed}`,
-            });
-        }
 
-        const queuePosition = db.getMediaRequestMaxQueuePosition(streamerId) + 1;
+        // A paid request is written first, out of the queue (status 'failed', charge_state
+        // 'charging'), so its charge is keyed by its id; it joins the queue once paid.
+        const paid = cost > 0;
         const result = db.createMediaRequest({
             streamer_id: streamerId,
             stream_id: streamId,
@@ -237,8 +286,34 @@ class MediaQueue {
             duration_seconds: normalized.duration_seconds,
             cost,
             currency,
-            queue_position: queuePosition,
+            queue_position: paid ? 0 : db.getMediaRequestMaxQueuePosition(streamerId) + 1,
+            status: paid ? 'failed' : 'pending',
+            charge_state: paid ? 'charging' : null,
         });
+        const requestId = Number(result.lastInsertRowid);
+        let billingCharge = null;
+        if (paid) {
+            try {
+                billingCharge = await this.charge({
+                    currency, cost, userId, streamerId, streamId, requestId,
+                    label: `Media request: ${normalized.title || trimmed}`,
+                });
+            } catch (e) {
+                if (e && e.outcomeUnknown) {
+                    // Kept for reconcileCharges(), which refunds it if the debit did land.
+                    db.updateMediaRequest(requestId, { charge_state: 'unknown', last_error: 'The OpenCoins charge could not be confirmed' });
+                } else {
+                    // Refused (not enough, unlinked, Billing said no): nothing was taken.
+                    db.removeUnchargedMediaRequest(requestId);
+                }
+                throw e;
+            }
+            // Paid: join the queue at the back (computed now, after the await).
+            db.updateMediaRequest(requestId, {
+                status: 'pending', charge_state: null,
+                queue_position: db.getMediaRequestMaxQueuePosition(streamerId) + 1,
+            });
+        }
 
         // The coin ledger tracks OpenCoins only — booking a Vibes or channel-points charge
         // here would show up as a phantom coin spend in the viewer's history.
@@ -252,7 +327,7 @@ class MediaQueue {
             });
         }
 
-        const request = db.getMediaRequestById(result.lastInsertRowid);
+        const request = db.getMediaRequestById(requestId);
         if (billingCharge && billingCharge.actionId) require('../monetization/billing-actions').linkMediaCharge(billingCharge.actionId, request.id);
         this.broadcastQueueUpdate(streamerId);
 
@@ -500,7 +575,7 @@ class MediaQueue {
         const label = `Refund: ${request.title || 'media request'}`;
         try {
             if (currency === 'points') {
-                db.addChannelPoints(request.user_id, request.streamer_id, amount);
+                db.addChannelPoints(request.user_id, request.streamer_id, amount, `live:media_refund:${request.id}`, label);
             } else if (currency === 'vibes') {
                 const money = require('../monetization/money-authority');
                 if (money.writeRefusal()) {

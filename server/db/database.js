@@ -771,6 +771,19 @@ function initDb() {
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (user_id, streamer_id)
         )`);
+        // Every channel-points debit and credit, keyed per event (ADR-012 rule 5): a retried award,
+        // spend or refund with the same key is applied once. Keys: live:cp:<event>:<id>, and
+        // live:media_req:<request id> / live:media_refund:<request id> for media requests.
+        database.exec(`CREATE TABLE IF NOT EXISTS channel_points_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            idempotency_key TEXT NOT NULL UNIQUE,
+            user_id INTEGER NOT NULL,
+            streamer_id INTEGER NOT NULL,
+            delta INTEGER NOT NULL,
+            reason TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
+        database.exec('CREATE INDEX IF NOT EXISTS idx_cp_log_user ON channel_points_log(user_id, streamer_id, id)');
     } catch (e) { console.warn('[DB] channel_points migration:', e.message); }
 
     // Kick chatroom-id cache. Kick's v2 API (which exposes the Pusher chatroom id)
@@ -929,6 +942,11 @@ function initDb() {
         // setting — a streamer switching from Vibes to points would otherwise refund the
         // wrong currency to everyone still queued.
         if (!mrCols.includes('currency'))               database.exec("ALTER TABLE media_requests ADD COLUMN currency TEXT DEFAULT 'opencoins'");
+        // A paid request is written before it is charged, so the charge can be keyed by its id
+        // (live:media_req:<id>, ADR-012 rule 5). Until the charge answers it is status 'failed'
+        // with charge_state 'charging' (out of the queue and the history); 'unknown' means the
+        // wallet never answered and mediaQueue.reconcileCharges() settles it. NULL = settled.
+        if (!mrCols.includes('charge_state'))           database.exec('ALTER TABLE media_requests ADD COLUMN charge_state TEXT');
 
         const msCols = database.pragma('table_info(media_request_settings)').map(c => c.name);
         if (!msCols.includes('cost_mode'))              database.exec("ALTER TABLE media_request_settings ADD COLUMN cost_mode TEXT DEFAULT 'flat' CHECK(cost_mode IN ('flat','per_minute'))");
@@ -4508,22 +4526,49 @@ function getChannelPoints(userId, streamerId) {
     const r = get('SELECT balance FROM channel_points WHERE user_id = ? AND streamer_id = ?', [userId, streamerId]);
     return r ? r.balance : 0;
 }
-function addChannelPoints(userId, streamerId, amount) {
-    if (!userId || !streamerId || !amount) return getChannelPoints(userId, streamerId);
-    run(`INSERT INTO channel_points (user_id, streamer_id, balance, updated_at)
-         VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(user_id, streamer_id) DO UPDATE SET
-            balance = balance + excluded.balance, updated_at = CURRENT_TIMESTAMP`,
-        [userId, streamerId, amount]);
-    return getChannelPoints(userId, streamerId);
+/**
+ * Apply one channel-points event, keyed (ADR-012 rule 5): { applied, replayed, balance }.
+ * A key seen before is a replay: nothing moves, and the same key for a different user, channel or
+ * amount is refused. A debit (delta < 0) only happens when the balance covers it; a refused debit
+ * leaves no log row, so the same key can be tried again later.
+ */
+function applyChannelPoints({ userId, streamerId, delta, key, reason = null }) {
+    if (!key || typeof key !== 'string') throw new TypeError('channel points: an idempotency key is required for every debit and credit');
+    if (!userId || !streamerId || !Number.isInteger(delta) || delta === 0) {
+        return { applied: false, replayed: false, balance: getChannelPoints(userId, streamerId) };
+    }
+    return getDb().transaction(() => {
+        const seen = get('SELECT user_id, streamer_id, delta FROM channel_points_log WHERE idempotency_key = ?', [key]);
+        if (seen) {
+            if (seen.user_id !== userId || seen.streamer_id !== streamerId || seen.delta !== delta) {
+                throw new Error(`channel points: idempotency key ${key} was already used for a different event`);
+            }
+            return { applied: false, replayed: true, balance: getChannelPoints(userId, streamerId) };
+        }
+        if (delta < 0) {
+            const res = run(`UPDATE channel_points SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP
+                             WHERE user_id = ? AND streamer_id = ? AND balance >= ?`, [delta, userId, streamerId, -delta]);
+            if (!res.changes) return { applied: false, replayed: false, balance: getChannelPoints(userId, streamerId) };
+        } else {
+            run(`INSERT INTO channel_points (user_id, streamer_id, balance, updated_at)
+                 VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                 ON CONFLICT(user_id, streamer_id) DO UPDATE SET
+                    balance = balance + excluded.balance, updated_at = CURRENT_TIMESTAMP`, [userId, streamerId, delta]);
+        }
+        run('INSERT INTO channel_points_log (idempotency_key, user_id, streamer_id, delta, reason) VALUES (?, ?, ?, ?, ?)',
+            [key, userId, streamerId, delta, reason ? String(reason).slice(0, 200) : null]);
+        return { applied: true, replayed: false, balance: getChannelPoints(userId, streamerId) };
+    })();
 }
-// Atomic spend — returns true only if the viewer had enough for this streamer.
-function deductChannelPoints(userId, streamerId, amount) {
+/** Credit channel points for one event (key required). Returns the new balance. */
+function addChannelPoints(userId, streamerId, amount, key, reason) {
+    return applyChannelPoints({ userId, streamerId, delta: amount, key, reason }).balance;
+}
+/** Atomic spend for one event (key required): true if taken now or already taken under this key. */
+function deductChannelPoints(userId, streamerId, amount, key, reason) {
     if (!userId || !streamerId) return false;
-    const res = run(`UPDATE channel_points SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP
-                     WHERE user_id = ? AND streamer_id = ? AND balance >= ?`,
-        [amount, userId, streamerId, amount]);
-    return (res?.changes || 0) > 0;
+    const r = applyChannelPoints({ userId, streamerId, delta: -amount, key, reason });
+    return r.applied || r.replayed;
 }
 
 // ── Kick chatroom-id cache (survives the Cloudflare-blocked v2 API) ──
@@ -6204,12 +6249,12 @@ function upsertMediaRequestSettings(userId, fields = {}) {
     return getMediaRequestSettingsByUserId(userId);
 }
 
-function createMediaRequest({ streamer_id, stream_id, user_id, username, input, canonical_url, embed_url, provider, title, thumbnail_url, duration_seconds, cost, queue_position, currency }) {
+function createMediaRequest({ streamer_id, stream_id, user_id, username, input, canonical_url, embed_url, provider, title, thumbnail_url, duration_seconds, cost, queue_position, currency, status, charge_state }) {
     return run(
         `INSERT INTO media_requests (
             streamer_id, stream_id, user_id, username, input, canonical_url, embed_url,
-            provider, title, thumbnail_url, duration_seconds, cost, queue_position, currency
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            provider, title, thumbnail_url, duration_seconds, cost, queue_position, currency, status, charge_state
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             streamer_id,
             stream_id || null,
@@ -6225,8 +6270,15 @@ function createMediaRequest({ streamer_id, stream_id, user_id, username, input, 
             cost,
             queue_position ?? 0,
             currency || 'opencoins',
+            status || 'pending',
+            charge_state || null,
         ]
     );
+}
+
+/** Drop a paid request whose charge was refused (nothing was taken); only while it is still 'charging'. */
+function removeUnchargedMediaRequest(id) {
+    return run("DELETE FROM media_requests WHERE id = ? AND charge_state = 'charging'", [id]);
 }
 
 function getMediaRequestById(id) {
@@ -6250,7 +6302,7 @@ function getPendingMediaRequestsByStreamer(streamerId, limit = 50) {
 }
 
 function getRecentMediaRequestsByStreamer(streamerId, limit = 15) {
-    return all(`SELECT * FROM media_requests WHERE streamer_id = ? AND status IN ('played', 'skipped', 'removed', 'failed') ORDER BY COALESCE(ended_at, requested_at) DESC, id DESC LIMIT ?`, [streamerId, limit]);
+    return all(`SELECT * FROM media_requests WHERE streamer_id = ? AND status IN ('played', 'skipped', 'removed', 'failed') AND charge_state IS NOT 'charging' ORDER BY COALESCE(ended_at, requested_at) DESC, id DESC LIMIT ?`, [streamerId, limit]);
 }
 
 function countPendingMediaRequestsForUser(streamerId, userId) {
@@ -7560,7 +7612,7 @@ module.exports = {
     // Profiles
     getUserProfile, updateUserAvatar,
     getKickChannelCache, setKickChannelCache,
-    getChannelPoints, addChannelPoints, deductChannelPoints,
+    getChannelPoints, addChannelPoints, deductChannelPoints, applyChannelPoints,
     // Follows
     followUser, unfollowUser, getFollowerCount, isFollowing, getFollowerIds,
     // Transactions (Vibes)
@@ -7575,7 +7627,7 @@ module.exports = {
     upsertWatchTime, getWatchTime, getTotalWatchTime,
     // Media Requests
     getMediaRequestSettingsByUserId, upsertMediaRequestSettings,
-    createMediaRequest, getMediaRequestById, getMediaRequestByStreamerAndId,
+    createMediaRequest, removeUnchargedMediaRequest, getMediaRequestById, getMediaRequestByStreamerAndId,
     getActiveMediaRequestByStreamer, getNextPendingMediaRequest,
     getPendingMediaRequestsByStreamer, getRecentMediaRequestsByStreamer,
     countPendingMediaRequestsForUser, getMediaRequestMaxQueuePosition,
