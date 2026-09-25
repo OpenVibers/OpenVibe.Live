@@ -290,7 +290,7 @@ app.use(helmet({
             // every queued item renders as a broken image, which is what the media
             // request tab was doing for every YouTube link.
             imgSrc: ["'self'", "data:", "blob:", "image.tmdb.org", "https://openvibe.network", "https://openvibe.media", "cdn.frankerfacez.com", "cdn.betterttv.net", "cdn.7tv.app", "https://files.kick.com", "https://i.ytimg.com", "https://img.youtube.com", "https://i.vimeocdn.com"],
-            connectSrc: ["'self'", "wss:", "https://openvibe.network", "https://openvibe.media", "https://openvibe.games", "https://cdn.jsdelivr.net", "https://esm.sh", "https://static.cloudflareinsights.com", whipConnectSrc],
+            connectSrc: ["'self'", "wss:", "https://openvibe.network", "https://events.openvibe.network", "https://openvibe.media", "https://openvibe.games", "https://cdn.jsdelivr.net", "https://esm.sh", "https://static.cloudflareinsights.com", whipConnectSrc],
             // VODs/clips play from openvibe.media (the /api proxies 302 there), which may
             // itself redirect to presigned B2/R2 object-store URLs — all must be allowed
             // or the browser blocks the media element.

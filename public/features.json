@@ -9,6 +9,7 @@
       ],
       "js": [
         "/js/ov-rail.js",
+        "/js/ov-live-realtime.js",
         "/js/app-home.js",
         "/js/ov-odometer.js",
         "/js/ov-density.js",

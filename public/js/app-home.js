@@ -1910,15 +1910,31 @@ function refreshHomeSections() {
     if (typeof loadHomeLeaderboards === 'function') loadHomeLeaderboards();
 }
 
+// The live grid follows OpenVibe.Events realtime (public/js/ov-live-realtime.js): a stream that
+// starts or ends refreshes it at once. The 12 s poll stays as the fallback, and while realtime is
+// connected it only runs once a minute as a safety net.
+let _homeRtOff = null, _homeRtDebounce = null, _homeLastLiveRefresh = 0;
+function _homeRealtimeRefresh() {
+    clearTimeout(_homeRtDebounce);
+    _homeRtDebounce = setTimeout(() => { _homeLastLiveRefresh = Date.now(); refreshHomeLive(); }, 400);
+}
+function _homeLiveTick() {
+    if (window.OVLiveRealtime && OVLiveRealtime.connected && Date.now() - _homeLastLiveRefresh < 60000) return;
+    _homeLastLiveRefresh = Date.now();
+    refreshHomeLive();
+}
 function startHomeRefresh() {
     stopHomeRefresh();
     _initUptimeTooltip();
-    _homeLiveTimer = setInterval(refreshHomeLive, 12000);
+    _homeLiveTimer = setInterval(_homeLiveTick, 12000);
     _homeSectionsTimer = setInterval(refreshHomeSections, 60000);
+    if (window.OVLiveRealtime) _homeRtOff = OVLiveRealtime.on((kind) => { if (kind !== 'error') _homeRealtimeRefresh(); });
 }
 function stopHomeRefresh() {
     if (_homeLiveTimer) { clearInterval(_homeLiveTimer); _homeLiveTimer = null; }
     if (_homeSectionsTimer) { clearInterval(_homeSectionsTimer); _homeSectionsTimer = null; }
+    if (_homeRtOff) { _homeRtOff(); _homeRtOff = null; }
+    clearTimeout(_homeRtDebounce);
 } // populated on channel load, used for filter bar
 // Homepage pagination state
 // The home page used to open with 46 cards across four list sections, which made it enormous and
