@@ -268,7 +268,7 @@ function _aRenderCams(live) {
 
 function _aMomentRow(m) {
     return `<div class="arena-mic-moment ${m.kind === 'beef_hit' ? 'is-beef' : ''} ${m.quality >= 8 ? 'is-fire' : ''}" data-id="${m.id}">
-        ${_aA(_aFighterLink(m.user), _aPortrait(m, 'xs'))}
+        ${_aA(_aFighterLink(m.user), _aPortrait(m, 'xs'), '', m.fighter_name || (m.user && m.user.username) || 'Fighter')}
         <div class="arena-mic-moment-body">
             <div class="arena-mic-moment-head">${_aA(_aFighterLink(m.user), `<b>${_aEsc(m.fighter_name)}</b>`)}${m.live ? ' <span class="arena-live-pill">LIVE</span>' : ''} ${_aAim(m)} ${_aQ(m.quality)} <small>${_aEsc(_aAgo(m.at))}</small></div>
             <q>${_aEsc(m.text)}</q>
