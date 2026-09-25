@@ -24,7 +24,7 @@ const ROUTES_ONLY = process.argv.includes('--routes-only');
 const SETTLE = Number(process.env.SETTLE || 3500);
 
 const ROUTES = [
-    ['/', 'page-home'], ['/content', 'page-content'], ['/moments', 'page-moments'],
+    ['/', 'page-home'], ['/content', 'page-content'], ['/moments', 'page-moments'], ['/search?q=minecraft', 'page-search'],
     // The old list pages are the Content feed with a filter.
     ['/vods', 'page-content'], ['/clips', 'page-content'], ['/pastes', 'page-content'],
     ['/chat', 'page-chat'], ['/arena', 'page-arena'], ['/broadcast', 'page-broadcast'], ['/documentation', 'page-documentation'],

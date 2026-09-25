@@ -6700,12 +6700,57 @@ function recordFirstChat(chatterKey, channelUserId) {
 /**
  * Log a moderation action for auditing.
  * Used by canvas, chat moderation, bans, etc.
+ *
+ * A staff or channel-moderator action also goes to OpenVibe.Network's moderation audit log as
+ * live.moderation.action (Contracts 0.46.0, ADR-022), written to the outbox in the same transaction
+ * as the row. Someone tidying their own messages (self_*), configuring their own channel, or acting
+ * on themselves is not moderation and stays local.
  */
 function logModerationAction({ scope_type, scope_id, actor_user_id, target_user_id, action_type, details }) {
-    return run(`
-        INSERT INTO moderation_actions (scope_type, scope_id, actor_user_id, target_user_id, action_type, details)
-        VALUES (?, ?, ?, ?, ?, ?)
-    `, [scope_type || 'site', scope_id || null, actor_user_id || null, target_user_id || null, action_type, JSON.stringify(details || {})]);
+    const d = getDb();
+    const row = [scope_type || 'site', scope_id || null, actor_user_id || null, target_user_id || null, action_type, JSON.stringify(details || {})];
+    let announced = false;
+    const info = d.transaction(() => {
+        const r = d.prepare(`
+            INSERT INTO moderation_actions (scope_type, scope_id, actor_user_id, target_user_id, action_type, details)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `).run(...row);
+        announced = _announceModerationAction(Number(r.lastInsertRowid), { scope_type: row[0], scope_id: row[1], actor_user_id: row[2], target_user_id: row[3], action_type, details });
+        return r;
+    })();
+    if (announced) require('../events/stream-events').kick();
+    return info;
+}
+
+function _announceModerationAction(id, a) {
+    const type = String(a.action_type || '');
+    if (!type || type.startsWith('self_') || type === 'channel_settings_update') return false;
+    if (a.actor_user_id != null && a.actor_user_id === a.target_user_id) return false;
+    const events = require('../events/stream-events');
+    if (!events.status().enabled) return false;
+    const subjectOf = (uid) => {
+        if (uid == null) return null;
+        const r = getDb().prepare("SELECT subject_id FROM linked_accounts WHERE service = 'network' AND user_id = ?").get(uid);
+        return r && /^usr_[0-9A-HJKMNP-TV-Z]{26}$/.test(r.subject_id || '') ? r.subject_id : null;
+    };
+    const actorSubject = subjectOf(a.actor_user_id);
+    const int = (v) => (v == null || v === '' || !Number.isSafeInteger(Number(v)) ? null : Number(v));
+    const scopeId = a.scope_id == null || a.scope_id === '' ? null : (Number.isSafeInteger(Number(a.scope_id)) ? Number(a.scope_id) : String(a.scope_id).slice(0, 128));
+    const details = a.details && typeof a.details === 'object' && !Array.isArray(a.details) ? a.details : {};
+    events.enqueue({
+        event_type: 'live.moderation.action',
+        actor: actorSubject ? { type: 'user', id: actorSubject } : { type: 'service', id: 'live' },
+        subject: { type: 'moderation_action', id: String(id) },
+        visibility: 'internal',
+        priority: 'important',
+        payload: {
+            action_id: id, action_type: type.slice(0, 64), scope_type: String(a.scope_type || 'site').slice(0, 32), scope_id: scopeId,
+            actor_user_id: int(a.actor_user_id), actor_subject: actorSubject,
+            target_user_id: int(a.target_user_id), target_subject: subjectOf(a.target_user_id),
+            details,
+        },
+    });
+    return true;
 }
 
 /**
