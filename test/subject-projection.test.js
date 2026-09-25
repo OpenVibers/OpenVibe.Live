@@ -75,6 +75,10 @@ const envelope = (p) => ({ event_id: ids.newId('event'), event_type: 'network.us
         assert.strictEqual(user(3).role, 'global_mod', 'Network makes them staff');
         assert.strictEqual(await deliver(payload(CAM, 30, 3, { username: 'cam', role: 'user', changed: ['role'] })), 204);
         assert.strictEqual(user(3).role, 'streamer', 'staff removed by Network: someone who has streamed keeps streamer');
+        assert.strictEqual(await deliver(payload(CAM, 30, 4, { username: 'cam', display_name: 'CAM', changed: ['display_name'] })), 204);
+        assert.strictEqual(user(3).display_name, 'CAM', 'a re-cased display name follows');
+        assert.strictEqual(await deliver(payload(CAM, 30, 5, { username: 'cam', display_name: 'Someone Else', changed: ['display_name'] })), 204);
+        assert.strictEqual(user(3).display_name, 'CAM', "a display name that is not the username keeps Live's (Live only re-cases)");
 
         assert.strictEqual(await deliver(payload(ALEX, 7, 5, { username: 'alex_new', role: 'streamer', banned: true, changed: ['banned'] })), 204);
         assert.strictEqual(projection.get(ALEX).banned, 1);

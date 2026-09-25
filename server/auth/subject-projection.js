@@ -86,7 +86,10 @@ function apply(p, { notify = () => {} } = {}) {
         const user = localUser(subject, p.network_user_id);
         if (!user) return 'updated';
         const role = nextRole(user, p);
-        const next = { role, avatar_url: str(p.avatar_url, 500) || user.avatar_url, profile_color: str(p.profile_color, 32) || user.profile_color, display_name: str(p.display_name, 120) || user.display_name };
+        // Live's display name only re-cases the username (server/auth/routes.js): Network's is taken when it does.
+        const dn = str(p.display_name, 120);
+        const displayName = dn && dn.toLowerCase() === p.username.toLowerCase() ? dn : user.display_name;
+        const next = { role, avatar_url: str(p.avatar_url, 500) || user.avatar_url, profile_color: str(p.profile_color, 32) || user.profile_color, display_name: displayName };
         const changed = Object.keys(next).filter((k) => next[k] !== user[k]);
         if (changed.length) d.prepare(`UPDATE users SET ${changed.map((k) => `${k} = @${k}`).join(', ')} WHERE id = @id`).run({ ...Object.fromEntries(changed.map((k) => [k, next[k]])), id: user.id });
         let renamed = false;
