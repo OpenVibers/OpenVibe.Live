@@ -49,7 +49,7 @@ const envelope = (p) => ({ event_id: ids.newId('event'), event_type: 'network.us
     };
     const user = (id) => db.getUserById(id);
     try {
-        const p1 = payload(ALEX, 7, 3, { profile_color: '#22c55e', avatar_url: 'https://openvibe.media/avatar/alex' });
+        const p1 = payload(ALEX, 7, 3, { profile_color: '#22c55e', avatar_url: 'https://openvibe.media/avatar/alex', changed: ['role', 'profile_color', 'avatar_url'] });
         assert.ok(validate('network.user.updated@1', p1).valid, 'the payload matches the contract');
         assert.strictEqual(await deliver(p1), 204);
         assert.strictEqual(user(1).role, 'user', 'a downgrade applies (the token sync never downgrades)');
@@ -64,11 +64,23 @@ const envelope = (p) => ({ event_id: ids.newId('event'), event_type: 'network.us
         assert.strictEqual(user(1).role, 'streamer', 'an upgrade applies');
         assert.strictEqual(user(1).username, 'alex_new', 'the rename follows');
 
+        // 'streamer' is Live's own: a Live streamer stays one whatever Network's role says.
+        d.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (3, 'cam', '$sso$z', 'streamer')").run();
+        const CAM = ids.newId('user');
+        d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, service_username, subject_id) VALUES (3, 'network', '30', 'cam', ?)").run(CAM);
+        d.prepare("INSERT INTO streams (user_id, title, is_live) VALUES (3, 'first stream', 0)").run();
+        assert.strictEqual(await deliver(payload(CAM, 30, 1, { username: 'cam', role: 'user', avatar_url: 'https://openvibe.media/avatar/cam', changed: ['avatar_url'] })), 204);
+        assert.strictEqual(user(3).role, 'streamer', 'a profile event never lowers the role');
+        assert.strictEqual(await deliver(payload(CAM, 30, 2, { username: 'cam', role: 'global_mod', changed: ['role'] })), 204);
+        assert.strictEqual(user(3).role, 'global_mod', 'Network makes them staff');
+        assert.strictEqual(await deliver(payload(CAM, 30, 3, { username: 'cam', role: 'user', changed: ['role'] })), 204);
+        assert.strictEqual(user(3).role, 'streamer', 'staff removed by Network: someone who has streamed keeps streamer');
+
         assert.strictEqual(await deliver(payload(ALEX, 7, 5, { username: 'alex_new', role: 'streamer', banned: true, changed: ['banned'] })), 204);
         assert.strictEqual(projection.get(ALEX).banned, 1);
         assert.ok(!user(1).is_banned, "a Network ban never sets Live's own ban");
 
-        assert.strictEqual(await deliver(payload(OWNER, 1, 1, { username: 'boss', role: 'user' })), 204);
+        assert.strictEqual(await deliver(payload(OWNER, 1, 1, { username: 'boss', role: 'user', changed: ['role'] })), 204);
         assert.strictEqual(user(2).role, 'admin', 'the local owner keeps admin');
 
         assert.strictEqual(await deliver(payload(GHOST, 99, 1, { username: 'ghost' })), 204);

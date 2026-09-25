@@ -7,16 +7,32 @@
  *                        colour, role and ban, with Network's profile revision. An event whose revision is
  *                        not newer than the row is ignored (events can arrive out of order or twice).
  *
- * The linked Live account follows the projection in the same step: role both ways (a downgrade too, which
- * the token sync in auth.js never does, and which /internal/user-role pushed before), picture, colour,
- * display name and username (server/auth/usernames.js keeps /@old answering). The local owner keeps admin
- * (is_owner is Live's). A Network ban is recorded here and never touches Live's own users.is_banned: the
+ * The linked Live account follows the projection in the same step: picture, colour, display name and
+ * username (server/auth/usernames.js keeps /@old answering), and the role by these rules:
+ *   - an event whose `changed` includes role is Network changing it: staff roles (global_mod, admin) follow it
+ *     both ways (a downgrade too, which the token sync in auth.js never does; /internal/user-role pushed it
+ *     before), but `streamer` is Live's own (someone with a channel, ensureStreamerRoleOnFeed), so a person
+ *     who has streamed keeps it rather than dropping to user;
+ *   - any other event only ever raises the role, like the token sync;
+ *   - the local owner keeps admin (is_owner is Live's). A Network ban is recorded here and never touches Live's own users.is_banned: the
  * person cannot sign in anyway (Network refuses and revokes their tokens), and unbanning on Network must
  * not lift a ban Live's staff set. Chat drops what it cached about them.
  */
 const db = require('../db/database');
 
 const ROLES = ['user', 'streamer', 'global_mod', 'admin'];
+const RANK = { user: 0, streamer: 1, global_mod: 2, admin: 3 };
+const STAFF_ROLES = new Set(['global_mod', 'admin']);
+
+/** The Live role after a Network event (see the rules above). */
+function nextRole(user, p) {
+    if (user.is_owner) return 'admin';
+    const current = ROLES.includes(user.role) ? user.role : 'user';
+    if (!(Array.isArray(p.changed) && p.changed.includes('role'))) return RANK[p.role] > RANK[current] ? p.role : current;
+    if (STAFF_ROLES.has(p.role)) return p.role;
+    const streamed = !!db.getDb().prepare('SELECT 1 FROM streams WHERE user_id = ? LIMIT 1').get(user.id);
+    return streamed || RANK[p.role] >= RANK.streamer ? 'streamer' : 'user';
+}
 const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
 
 let ready = false;
@@ -69,7 +85,7 @@ function apply(p, { notify = () => {} } = {}) {
                 display_name: str(p.display_name, 120), avatar_url: str(p.avatar_url, 500), profile_color: str(p.profile_color, 32), role: p.role, banned: p.banned ? 1 : 0 });
         const user = localUser(subject, p.network_user_id);
         if (!user) return 'updated';
-        const role = user.is_owner ? 'admin' : p.role;   // the local owner stays admin (is_owner is Live's)
+        const role = nextRole(user, p);
         const next = { role, avatar_url: str(p.avatar_url, 500) || user.avatar_url, profile_color: str(p.profile_color, 32) || user.profile_color, display_name: str(p.display_name, 120) || user.display_name };
         const changed = Object.keys(next).filter((k) => next[k] !== user[k]);
         if (changed.length) d.prepare(`UPDATE users SET ${changed.map((k) => `${k} = @${k}`).join(', ')} WHERE id = @id`).run({ ...Object.fromEntries(changed.map((k) => [k, next[k]])), id: user.id });
