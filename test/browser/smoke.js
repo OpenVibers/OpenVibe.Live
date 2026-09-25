@@ -33,6 +33,18 @@ const ROUTES = [
     ['/no-such-page', 'page-not-found'],
 ];
 const ONLY_SIGNED = process.argv.includes('--signed-in-only');
+// --a11y (or A11Y=1): axe-core on every route at the widest width; serious and critical WCAG 2.1 A/AA
+// violations fail (roadmap WS-T task 3). axe is fetched once from jsDelivr at this pinned version.
+const A11Y = process.argv.includes('--a11y') || process.env.A11Y === '1';
+const AXE_URL = 'https://cdn.jsdelivr.net/npm/axe-core@4.13.0/axe.min.js';
+let axeSource = null;
+async function axeViolations(cdp) {
+    if (!axeSource) { const r = await fetch(AXE_URL); if (!r.ok) throw new Error(`axe-core: ${r.status}`); axeSource = await r.text(); }
+    await cdp.evaluate(`${axeSource};0`);
+    const json = await cdp.evaluate(`axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }, resultTypes: ['violations'] })
+        .then((r) => JSON.stringify(r.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => \`\${v.id} (\${v.impact}) \${v.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(', ')}\`)))`);
+    return JSON.parse(json || '[]');
+}
 const WIDTHS = ONLY_SIGNED ? [] : ROUTES_ONLY ? [1366] : [320, 412, 768, 1440];
 
 // Counters installed before any page script runs.
@@ -106,6 +118,10 @@ const pageState = `(() => ({
             if (errors.length) problems.push(`errors: ${errors.slice(0, 2).join(' | ')}`);
             if (st.hscroll) problems.push(`horizontal overflow (${st.overflowers.join(', ')})`);
             if (st.skeletons) problems.push(`${st.skeletons} skeleton(s) still showing`);
+            if (A11Y && width === Math.max(...WIDTHS)) {
+                const v = await axeViolations(cdp);
+                if (v.length) problems.push(`accessibility: ${v.join(' | ')}`);
+            }
             if (problems.length) fail(`${label}: ${problems.join('; ')}`); else pass(label);
         }
         cdp.close();

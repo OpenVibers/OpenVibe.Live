@@ -16,7 +16,7 @@ npm run seed              # Seed sample data
 node --check <file.js>    # Syntax check (no linter configured)
 npm test                  # All unit/security/migration/deploy tests + size budgets (test/run.js)
 node test/<file>.test.js  # One test
-BASE=http://127.0.0.1:3000 npm run test:browser  # Browser smoke (running server + Chrome)
+BASE=http://127.0.0.1:3000 npm run test:browser  # Browser smoke (running server + Chrome); add -- --a11y for axe (WCAG 2.1 AA)
 ```
 
 **No build step.** Frontend is plain JS served directly — no bundler, no transpiler. Asset URLs are content-hashed at serve time (`server/web/assets.js`) — **never add `?v=` by hand**.

@@ -721,6 +721,7 @@ function renderHeroCollage(media) {
     const cards = [];
     for (let i = 0; i < count; i++) {
         const el = document.createElement('a');
+        el.tabIndex = -1;   // decorative (the collage is aria-hidden): the same items are reachable in the page
         // Depth: z in [-260, 120]. Far cards (negative z) are smaller, dimmer, softly blurred;
         // near cards are bigger, brighter, crisp — with mouse-parallax on the whole scene this
         // reads as real 3D depth.

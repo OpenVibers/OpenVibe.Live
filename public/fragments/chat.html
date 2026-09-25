@@ -101,7 +101,7 @@
                         <p class="muted" id="chat-mode-subtitle">Live messages from all streams and the lobby</p>
                     </div>
                     <div class="chat-header-controls">
-                        <select id="chat-mode-select" class="form-input form-input-sm chat-mode-select" onchange="onChatModeChange(this.value)">
+                        <select id="chat-mode-select" class="form-input form-input-sm chat-mode-select" aria-label="Chat mode" onchange="onChatModeChange(this.value)">
                             <option value="global">Global</option>
                             <option value="voice" id="chat-mode-voice-opt" disabled>Voice Call</option>
                         </select>
@@ -143,7 +143,7 @@
                     <div class="chat-input-row">
                         <textarea id="global-chat-input" class="chat-textarea" placeholder="Send a message..." maxlength="500"
                                   rows="1" autocomplete="off" spellcheck="true" enterkeyhint="send"></textarea>
-                        <button class="chat-send-btn" onclick="sendChat()">
+                        <button class="chat-send-btn" onclick="sendChat()" aria-label="Send message">
                             <i class="fa-solid fa-paper-plane"></i>
                         </button>
                     </div>
