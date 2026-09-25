@@ -402,7 +402,7 @@ function _aFeedLine(e, b) {
     const side = e.side === 'a' ? b.a : b.b;
     const sys = e.kind && !['hit', 'open', 'respond'].includes(e.kind);
     return `<div class="arena-feed-line ${sys ? 'is-system' : `is-${e.side}`}">
-        ${sys ? '' : _aA(_aFighterLink(side.user), _aPortrait(side, 'xs'))}
+        ${sys ? '' : _aA(_aFighterLink(side.user), _aPortrait(side, 'xs'), '', side.fighter_name || (side.user && side.user.username) || 'Fighter')}
         <div class="arena-feed-body">
             ${e.announcer ? `<div class="arena-feed-announcer"><i class="fa-solid fa-bullhorn"></i> ${_aEsc(e.announcer)}</div>` : ''}
             ${e.text ? `<q>${_aEsc(e.text)}</q>` : ''}
@@ -426,7 +426,7 @@ async function _aRenderBeef(root, id) {
             </div>
             <div class="arena-beef-tape">
                 ${['a', 'b'].map(s => { const f = b[s]; return `<div class="arena-beef-tape-side arena-beef-tape-${s}" style="--fc:${_aEsc(f.user.profile_color || (s === 'a' ? '#8b5cf6' : '#e74c3c'))}">
-                    ${_aA(_aFighterLink(f.user), _aPortrait(f, 'md'))}
+                    ${_aA(_aFighterLink(f.user), _aPortrait(f, 'md'), '', f.fighter_name || (f.user && f.user.username) || 'Fighter')}
                     <h2>${_aEsc(f.fighter_name)}${f.live ? ' <span class="arena-live-pill">LIVE</span>' : ''}</h2>
                     <div class="arena-beef-tape-meta">#${f.rank || '–'} · ${_aLevelPill(f.level)}${b.streaks?.[s] >= 2 ? ` · ${b.streaks[s]}-beef streak` : ''}</div>
                     <div class="arena-beef-tape-nums"><span><b>${f.hits}</b><small>hits</small></span><span><b>${f.score}</b><small>quality</small></span><span><b>${f.crowd}</b><small>crowd /${b.rules.crowd_max}</small></span><span><b>${f.total}</b><small>total</small></span></div>
