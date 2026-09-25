@@ -206,6 +206,9 @@ function handle({ via, event, data, eventId = null, subject = null }) {
     }
     stats.applied[via]++;
     if (after) { try { after(); } catch (e) { console.warn('[MediaOutcome] post-commit step failed:', e.message); } }
+    // A VOD or clip that became ready (or failed) changes what OpenVibe.Search should hold for its page.
+    const kind = /^(vod|clip)\.(ready|failed)$/.exec(String(event));
+    if (kind && data && data.id != null) { try { require('../events/search-media-documents').touchLater(kind[1], data.id); } catch { /* search is optional */ } }
     return { applied: true, duplicate: false, outcome: out.result };
 }
 

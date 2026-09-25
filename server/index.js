@@ -676,8 +676,10 @@ app.use('/api/funds', monetizationRoutes);
 app.use('/api/coins', coinsRoutes);
 app.use('/api/payments', require('./monetization/payments-routes'));
 app.use('/api/cosmetics', cosmeticsRoutes);
-app.use('/api/vods', vodRoutes);
-app.use('/api/clips', clipRoutes);
+// Live's VOD and clip pages in OpenVibe.Search follow every change made here (events/search-media-documents.js).
+const searchMedia = require('./events/search-media-documents');
+app.use('/api/vods', searchMedia.afterChange('vod'), vodRoutes);
+app.use('/api/clips', searchMedia.afterChange('clip'), clipRoutes);
 app.use('/api/chat-ai', require('./ai/chat-ai-routes'));
 app.use('/api/easter-egg', require('./ai/easter-egg-routes'));
 app.use('/api/arena', require('./arena/routes'));            // streamer vs streamer (docs/arena.md)
@@ -1558,6 +1560,7 @@ async function start() {
     try { require('./events/stream-events').init(); } catch (err) { console.warn('[Events] not started:', err.message); }
     // Channels in OpenVibe.Search (WS-O task 10): live.index_document.* through the same outbox.
     try { require('./events/search-documents').init(); } catch (err) { console.warn('[Search] channel documents not started:', err.message); }
+    try { require('./events/search-media-documents').init(); } catch (err) { console.warn('[Search] VOD and clip documents not started:', err.message); }
 
     // 8d. User modules on Network (Contracts 0.41.0): live.profile and live.stats, written when they
     // change (server/auth/module-summaries.js). Off without OV_OAUTH_CLIENT_SECRET.
