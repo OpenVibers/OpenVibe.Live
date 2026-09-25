@@ -1541,7 +1541,13 @@ async function loadHomePastes(opts) {
     } catch { rail.filling = false; }
 }
 
+// OpenVibe.Games does not serve /api/game/leaderboard/* or /api/game/canvas/state (the pixel canvas is
+// owner decision O15), so every first visit logged CORS errors for sections that stay hidden. Turn this
+// on when Games serves them (public, CORS for first-party origins) — roadmap WS-M task 7.
+const GAMES_HOME_WIDGETS = false;
+
 async function loadHomeLeaderboards() {
+    if (!GAMES_HOME_WIDGETS) { const h = document.getElementById('home-quest-header'); if (h) h.style.display = 'none'; return; }
     try {
         const boards = ['total_level', 'combat', 'mining', 'fishing'];
         const questUrl = getScraplandiaUrl();
@@ -1608,6 +1614,7 @@ async function fetchServiceJson(url) {
 }
 
 async function loadHomeCanvas() {
+    if (!GAMES_HOME_WIDGETS) { const h = document.getElementById('home-canvas-header'); if (h) h.style.display = 'none'; return; }
     try {
         const header = document.getElementById('home-canvas-header');
         const container = document.getElementById('home-canvas-preview');
