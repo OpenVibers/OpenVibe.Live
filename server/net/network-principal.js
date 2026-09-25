@@ -20,7 +20,9 @@ const PAUSE_MS = 5 * 60 * 1000;
 // Network routes that accept a service token (OpenVibe.Network server/internal/routes.js TOKEN_ROUTES).
 const TOKEN_PATHS = new Set(['/internal/coins/credit', '/internal/coins/debit', '/internal/coins/transfer', '/internal/notifications/push', '/internal/notifications/push-bulk', '/internal/events/stream-live',
     // Network accepts a service token on these since 2026-09-24 (identity.subject.resolve / network.coins.credit).
-    '/internal/link-account', '/internal/identity/legacy-map', '/internal/identity/resolve-batch', '/internal/coins/stats', '/internal/resolve-anon']);
+    '/internal/link-account', '/internal/identity/legacy-map', '/internal/identity/resolve-batch', '/internal/coins/stats', '/internal/resolve-anon',
+    // identity.subject.resolve, which Network already guards it with (WS-B task 3, C-54).
+    '/internal/url-registry/resolved']);
 
 const _clients = new Map();
 /** One cached client-credentials token client per audience (openvibe.network, openvibe.community, ...). */

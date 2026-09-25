@@ -289,17 +289,19 @@ const initialRegistry = resolveRegistryValues(process.env, {}, {}, URL_DEFINITIO
 const config = buildConfig(initialRegistry);
 
 async function refreshRegistry() {
-    if (!config.openvibeToolsInternalUrl || !config.internalApiKey) {
-        console.warn('[Config] Skipping registry refresh: missing internal URL or internal API key');
+    if (!config.openvibeToolsInternalUrl || (!config.internalApiKey && !process.env.OV_OAUTH_CLIENT_SECRET)) {
+        console.warn('[Config] Skipping registry refresh: missing internal URL, or neither a service identity nor an internal API key');
         return config;
     }
 
     try {
         const url = `${config.openvibeToolsInternalUrl.replace(/\/$/, '')}/internal/url-registry/resolved`;
+        // A service token (identity.subject.resolve) where one can be had; the key only as its fallback.
+        const auth = await require('./net/network-principal').headersFor('/internal/url-registry/resolved');
         const res = await fetch(url, {
             method: 'GET',
             headers: {
-                'X-Internal-Key': config.internalApiKey,
+                ...auth,
                 'Accept': 'application/json',
             },
             // Without a deadline this call can hang, and it runs during startup — an unreachable

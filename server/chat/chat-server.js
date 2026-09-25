@@ -164,11 +164,12 @@ class ChatServer {
 
         const promise = (async () => {
             try {
+                const auth = await require('../net/network-principal').headersFor('/internal/resolve-anon');
                 const res = await fetch(`${this._openvibeToolsUrl}/internal/resolve-anon`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-Internal-Key': this._internalKey,
+                        ...auth,
                     },
                     body: JSON.stringify({ ip }),
                 });
