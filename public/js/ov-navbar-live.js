@@ -23,6 +23,7 @@
             // VODs, clips and pastes people made are one feed; what the AI made is the other.
             { id: 'content', page: 'content', label: 'Content', href: '/content', icon: 'fa-photo-film' },
             { id: 'moments', page: 'moments', label: 'Moments', href: '/moments', icon: 'fa-wand-magic-sparkles' },
+            { id: 'search', page: 'search', label: 'Search', href: '/search', icon: 'fa-magnifying-glass' },
             { id: 'chat', page: 'chat', label: 'Chat', href: '/chat', icon: 'fa-comments' },
             { id: 'arena', page: 'arena', label: 'Arena', href: '/arena', icon: 'fa-hand-fist' },
             { id: 'game', page: 'game', label: 'Game', href: 'https://openvibe.games', icon: 'fa-gamepad' },

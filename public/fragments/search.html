@@ -1,0 +1,18 @@
+<div class="ls-wrap">
+    <header class="ls-head">
+        <h1 class="ls-h1"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Search</h1>
+        <p class="ls-sub">Channels, VODs and clips on OpenVibe.Live. <a class="ls-network" href="https://search.openvibe.network/">Search the whole OpenVibe network</a></p>
+    </header>
+    <form class="ls-form" role="search" action="/search" method="get">
+        <label class="ls-box"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input type="search" name="q" maxlength="200" placeholder="Search channels, VODs and clips" aria-label="Search channels, VODs and clips" autocomplete="off"></label>
+        <div class="ls-types" role="group" aria-label="Show">
+            <button type="button" class="ls-type" data-ls-type="" aria-pressed="true">All</button>
+            <button type="button" class="ls-type" data-ls-type="channel" aria-pressed="false">Channels</button>
+            <button type="button" class="ls-type" data-ls-type="vod" aria-pressed="false">VODs</button>
+            <button type="button" class="ls-type" data-ls-type="clip" aria-pressed="false">Clips</button>
+        </div>
+    </form>
+    <p class="ls-status" role="status" aria-live="polite"></p>
+    <ol class="ls-results"></ol>
+    <div class="ls-more-wrap"><button type="button" class="btn btn-outline ls-more" hidden>More results</button></div>
+</div>

@@ -55,7 +55,7 @@ function isStaffUser(user = currentUser) {
 }
 
 // Reserved paths (not usernames)
-const RESERVED = new Set(['content', 'moments', 'vods', 'clips', 'vod', 'clip', 'dashboard', 'settings', 'broadcast', 'admin', 'themes', 'game', 'canvas', 'chat', 'api', 'ws', 'media', 'pastes', 'p', 'updates', 'dmca', 'tos', 'terms', 'arena', 'recap']);
+const RESERVED = new Set(['content', 'moments', 'search', 'vods', 'clips', 'vod', 'clip', 'dashboard', 'settings', 'broadcast', 'admin', 'themes', 'game', 'canvas', 'chat', 'api', 'ws', 'media', 'pastes', 'p', 'updates', 'dmca', 'tos', 'terms', 'arena', 'recap']);
 const CHANNEL_USERNAME_RE = /^[a-zA-Z0-9_]{3,24}$/;
 
 function normalizeChannelUsername(username) {
@@ -1073,6 +1073,10 @@ function routeFromURL() {
         // What the AI made: auto-clips, AI moments, AI recaps.
         showPage('moments');
         whenRouteReady('moments', () => loadMomentsPage());
+    } else if (segments[0] === 'search') {
+        // Channels, VODs and clips through OpenVibe.Search (public/js/app-search.js).
+        showPage('search');
+        whenRouteReady('search', () => loadSearchPage());
     } else if (segments[0] === 'vod' && segments[1]) {
         // VOD player: /vod/:id  (optional ?t=<seconds> to auto-seek, e.g. from a clip link)
         showPage('vod-player');
@@ -1348,7 +1352,7 @@ function showPage(page) {
     }
 
     // Highlight nav link
-    const pageToNav = { home: 'home', content: 'content', moments: 'moments', broadcast: 'broadcast', dashboard: 'dashboard', admin: 'admin', chat: 'chat', game: 'game', canvas: 'game', 'paste-viewer': 'content', arena: 'arena' };
+    const pageToNav = { home: 'home', content: 'content', moments: 'moments', search: 'search', broadcast: 'broadcast', dashboard: 'dashboard', admin: 'admin', chat: 'chat', game: 'game', canvas: 'game', 'paste-viewer': 'content', arena: 'arena' };
     const navPage = pageToNav[page];
     if (navPage) {
         const link = document.querySelector(`.nav-link[data-page="${navPage}"]`);

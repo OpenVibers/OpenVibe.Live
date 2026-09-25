@@ -228,6 +228,8 @@ async function _pageMeta(routePath, { page = 1 } = {}) {
     if ((m = p.match(CHANNEL_PATH_RE))) return _channelMeta(m[1], page);
     if ((m = p.match(/^\/recap\/(\d+)$/))) return _recapMeta(parseInt(m[1], 10));
     if (p === '/arena') return _arenaMeta();
+    // Search results (public/js/app-search.js) are never indexed; the page itself is findable.
+    if (p === '/search') return { title: `Search | ${SITE_NAME}`, description: 'Search channels, VODs and clips on OpenVibe.Live.', canonicalPath: '/search', ogType: 'website', robots: 'noindex,follow', jsonLd: [] };
 
     return null;
     void bu;

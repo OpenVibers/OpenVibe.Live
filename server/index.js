@@ -706,6 +706,7 @@ app.use('/api/game', (req, res) => res.status(410).json({ error: 'Game has moved
 app.use('/api/meta', metaRoutes);
 app.use('/api/pastes', pasteRoutes);
 app.use('/api/content', require('./content/routes'));    // Content (people's work) + Moments (AI) feeds
+app.use('/api/search', require('./search/routes').createSearchRouter());   // /search page → OpenVibe.Search (Live's channels, VODs, clips)
 app.use('/api/home', require('./home/routes'));
 app.use('/api/i18n', require('./i18n/routes'));                 // on-demand translation for viewers (any line → your language)
 app.use('/api/kiosk', require('./kiosk/routes'));

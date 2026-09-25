@@ -138,7 +138,7 @@ server.listen(0, '127.0.0.1', async () => {
     console.log('Page status (soft 404s)');
 
     await check('every real route answers 200', () => expectAll([
-        '/', '/content', '/content/', '/moments', '/vods', '/vods/', '/clips', '/pastes', '/updates', '/documentation', '/settings', '/admin', '/themes',
+        '/', '/content', '/content/', '/moments', '/vods', '/vods/', '/clips', '/pastes', '/updates', '/documentation', '/settings', '/admin', '/themes', '/search',
         '/dashboard', '/dashboard/anything', '/broadcast', '/broadcast/slot-2', '/chat', '/chat/voice/lobby',
         '/arena', '/arena/beef/4', '/arena/alice',
         '/@alice', '/@Alice', '/@alice/', '/@alice/main', '/@bob',
@@ -147,7 +147,7 @@ server.listen(0, '127.0.0.1', async () => {
     ], 200));
 
     await check('unknown paths answer 404', () => expectAll([
-        '/nope', '/search', '/login', '/wp-login.php', '/favicon-missing.ico', '/Vods', '/vods/extra', '/updates/1', '/content/vods', '/moments/1',
+        '/nope', '/find', '/login', '/wp-login.php', '/favicon-missing.ico', '/Vods', '/vods/extra', '/updates/1', '/content/vods', '/moments/1',
         '/@nobody', '/@ab', '/@alice/main/extra', '/@bad.name', '/nobody', '/nobody/main', '/alice/main/extra', '/alice/bad!slot',
         '/vod', '/vod/999', '/vod/abc', '/vod/100/extra', '/clip/999', '/clip/-1',
         '/p/missing', '/p/bad!slug', '/p/abc123/extra',

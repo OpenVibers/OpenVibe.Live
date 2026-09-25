@@ -283,6 +283,15 @@
       "js": [
         "/js/home-featured.js"
       ]
+    },
+    "search": {
+      "fragment": "search",
+      "css": [
+        "/css/features/search.css"
+      ],
+      "js": [
+        "/js/app-search.js"
+      ]
     }
   },
   "routes": [
@@ -302,6 +311,12 @@
       "path": "^/moments/?$",
       "features": [
         "moments"
+      ]
+    },
+    {
+      "path": "^/search/?$",
+      "features": [
+        "search"
       ]
     },
     {

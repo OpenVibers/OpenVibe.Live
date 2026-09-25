@@ -14,6 +14,7 @@
  *
  *   /                                                   home
  *   /content /moments                                   the feeds (people's work, AI's)
+ *   /search                                             Live's channels, VODs and clips through OpenVibe.Search
  *   /vods /clips /pastes /updates /documentation        exact path (the first three are /content filtered)
  *   /settings /admin /themes                            exact path (the client redirects them)
  *   /dashboard/… /broadcast/… /chat/… /arena/…          any depth: these pages route sub-paths themselves
@@ -41,7 +42,7 @@ const OK = 200;
 const NOT_FOUND = 404;
 
 // Pages that exist only at their exact path.
-const EXACT = new Set(['content', 'moments', 'vods', 'clips', 'pastes', 'updates', 'documentation', 'settings', 'admin', 'themes']);
+const EXACT = new Set(['content', 'moments', 'vods', 'clips', 'pastes', 'updates', 'documentation', 'settings', 'admin', 'themes', 'search']);
 // Pages that route their own sub-paths (dashboard tabs, broadcast slots, chat rooms, arena fighters).
 const PREFIX = new Set(['dashboard', 'broadcast', 'chat', 'arena']);
 
