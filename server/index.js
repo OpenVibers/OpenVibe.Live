@@ -1556,6 +1556,8 @@ async function start() {
     // 8c. Durable events (roadmap Wave 3): stream lifecycle goes to OpenVibe.Events through the
     // transactional outbox (server/events/stream-events.js). Off unless EVENTS_URL is set.
     try { require('./events/stream-events').init(); } catch (err) { console.warn('[Events] not started:', err.message); }
+    // Channels in OpenVibe.Search (WS-O task 10): live.index_document.* through the same outbox.
+    try { require('./events/search-documents').init(); } catch (err) { console.warn('[Search] channel documents not started:', err.message); }
 
     // 8d. User modules on Network (Contracts 0.41.0): live.profile and live.stats, written when they
     // change (server/auth/module-summaries.js). Off without OV_OAUTH_CLIENT_SECRET.
