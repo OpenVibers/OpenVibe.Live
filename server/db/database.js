@@ -6722,7 +6722,7 @@ function logModerationAction({ scope_type, scope_id, actor_user_id, target_user_
     return info;
 }
 
-function _announceModerationAction(id, a) {
+function _announceModerationAction(id, a, { at = null } = {}) {
     const type = String(a.action_type || '');
     if (!type || type.startsWith('self_') || type === 'channel_settings_update') return false;
     if (a.actor_user_id != null && a.actor_user_id === a.target_user_id) return false;
@@ -6738,6 +6738,7 @@ function _announceModerationAction(id, a) {
     const scopeId = a.scope_id == null || a.scope_id === '' ? null : (Number.isSafeInteger(Number(a.scope_id)) ? Number(a.scope_id) : String(a.scope_id).slice(0, 128));
     const details = a.details && typeof a.details === 'object' && !Array.isArray(a.details) ? a.details : {};
     events.enqueue({
+        ...(at ? { timestamp: at } : {}),
         event_type: 'live.moderation.action',
         actor: actorSubject ? { type: 'user', id: actorSubject } : { type: 'service', id: 'live' },
         subject: { type: 'moderation_action', id: String(id) },
@@ -7636,7 +7637,7 @@ module.exports = {
     getHomeStatSeries, HOME_SERIES_KEYS, vibesStatsSince, _computeHomeStats,
     getVodAiState, getClipAiState,
     scheduleClipNotifyState, bumpClipNotifyNowState, markClipNotifiedState, getDueClipNotifies,
-    getDb, initDb, run, get, all, close,
+    getDb, initDb, run, get, all, close, announceModerationAction: _announceModerationAction,
     mergeChatMessageMetadata, getTimelineSpeechSince,
     getDonationGoalsForWidget, getAllDonationGoals, getActiveDonationGoals, getDonationGoalById,
     recordViewerSample, getViewerTrend, getReadingSeries, getHomePulse, getActiveGoalsForUsers,

@@ -72,6 +72,11 @@ const stub = http.createServer((req, res) => {
     assert.strictEqual(ban.priority, 'important'); assert.strictEqual(ban.visibility, 'internal');
     assert.strictEqual(end.payload.scope_id, 77);
 
+    // The backfill keeps each action's original time.
+    d.transaction(() => db.announceModerationAction(1, { scope_type: 'site', actor_user_id: 1, target_user_id: 2, action_type: 'site_ban', details: {} }, { at: '2026-04-13T20:56:38.000Z' }))();
+    await outbox.flush();
+    assert.strictEqual(published.at(-1).timestamp, '2026-04-13T20:56:38.000Z');
+
     // A failed insert queues nothing (the event is in its transaction).
     const before = published.length;
     assert.throws(() => db.logModerationAction({ scope_type: 'site', actor_user_id: 1, target_user_id: 2, action_type: null }));
