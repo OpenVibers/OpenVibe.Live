@@ -1145,19 +1145,19 @@ async function start() {
     // 2. Create admin from .env config if none exists (first-time setup only)
     const adminExists = db.get("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
     if (!adminExists) {
-        const bcrypt = require('bcryptjs');
         const { v4: uuidv4 } = require('uuid');
         const adminUser = config.adminUsername || 'admin';
-        const adminPass = config.adminPassword || 'changeme123';
         db.createUser({
             username: adminUser,
             email: null,
-            password_hash: bcrypt.hashSync(adminPass, 10),
+            // Live keeps no passwords (sign-in is the OpenVibe account's): this account signs in through SSO once
+            // an openvibe.network account with its username exists; ADMIN_PASSWORD is not used.
+            password_hash: '$sso$' + require('crypto').randomBytes(32).toString('hex'),
             display_name: adminUser,
             stream_key: uuidv4().replace(/-/g, ''),
         });
         db.run("UPDATE users SET role = 'admin' WHERE username = ?", [adminUser]);
-        console.log(`[Server] Admin user "${adminUser}" created from ADMIN_USERNAME — change password after first login!`);
+        console.log(`[Server] Admin user "${adminUser}" created from ADMIN_USERNAME; sign in with the openvibe.network account of that name`);
     }
 
     // Game & Canvas migrated to openvibe.games — no local init needed

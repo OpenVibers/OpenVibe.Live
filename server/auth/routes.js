@@ -50,11 +50,6 @@ function sanitizeDisplayName(raw) {
     return s;
 }
 
-function isValidEmail(value) {
-    if (!value) return true;
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
 function isAllowedAvatarUrl(value) {
     if (!value) return true;
     if (value.startsWith('/data/avatars/')) return true;
@@ -112,7 +107,6 @@ router.put('/profile', requireAuth, (req, res) => {
         let display_name = cleanOptionalString(req.body.display_name);
         let bio = cleanOptionalString(req.body.bio);
         const avatar_url = cleanOptionalString(req.body.avatar_url);
-        const email = cleanOptionalString(req.body.email);
         const profile_color = cleanOptionalString(req.body.profile_color);
         const updates = [];
         const params = [];
@@ -133,9 +127,6 @@ router.put('/profile', requireAuth, (req, res) => {
         if (bio !== undefined && bio.length > 500) {
             return res.status(400).json({ error: 'Bio must be 500 characters or fewer' });
         }
-        if (email !== undefined && (!isValidEmail(email) || email.length > 254)) {
-            return res.status(400).json({ error: 'Invalid email address' });
-        }
         if (profile_color !== undefined && profile_color !== '' && !/^#[0-9a-fA-F]{6}$/.test(profile_color)) {
             return res.status(400).json({ error: 'Profile color must be a 6-digit hex color' });
         }
@@ -143,7 +134,7 @@ router.put('/profile', requireAuth, (req, res) => {
         if (bio !== undefined) { updates.push('bio = ?'); params.push(bio); }
         // avatar_url is intentionally NOT settable here — avatars change only via the
         // /api/auth/avatar image upload (from /settings), which validates the file.
-        if (email !== undefined) { updates.push('email = ?'); params.push(email); }
+        // email is the OpenVibe account's (openvibe.network/my): Live keeps no copy and ignores one sent here (WS-B task 2).
         if (profile_color !== undefined) { updates.push('profile_color = ?'); params.push(profile_color); }
 
         if (updates.length === 0) {
@@ -383,7 +374,7 @@ function establishNetworkSession(req, res, tokenData) {
         const stream_key = uuidv4().replace(/-/g, '');
         const result = db.createUser({
             username: ssoUser.username,
-            email: ssoUser.email || null,
+            email: null,   // the OpenVibe account keeps it (WS-B task 2)
             password_hash: '$sso$' + require('crypto').randomBytes(32).toString('hex'), // placeholder, can't login with password
             display_name: ssoUser.display_name || ssoUser.username,
             stream_key,

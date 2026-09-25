@@ -89,7 +89,6 @@ async function loadSettingsProfile() {
         const _sv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
         _sv('set-username', u.username || '');
         _sv('set-display-name', u.display_name || '');
-        _sv('set-email', u.email || '');
         _sv('set-bio', u.bio || '');
         _sv('set-profile-color', u.profile_color || '#8b5cf6'); // removed from UI; harmless if absent
     } catch (e) {
@@ -173,7 +172,6 @@ async function saveSettingsProfile() {
     }
     const data = {
         display_name: dname,
-        email: document.getElementById('set-email').value.trim() || null,
         bio: document.getElementById('set-bio').value.trim(),
     };
     // Profile color is managed centrally at openvibe.network now (its SSO sync overrides any

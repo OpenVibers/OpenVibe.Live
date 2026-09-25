@@ -13,7 +13,7 @@
  *   sudo node /opt/openvibe.live/current/scripts/subscribe-media-events.js --disable  # rollback
  *   sudo node /opt/openvibe.live/current/scripts/subscribe-media-events.js --enable   # undo a --disable
  *   sudo node /opt/openvibe.live/current/scripts/subscribe-media-events.js --network  # Network's
- *        network.user.token_valid_after → /internal/network-events (server/auth/network-events.js;
+ *        network.user.token_valid_after and network.user.updated → /internal/network-events (server/auth/network-events.js;
  *        signed with LIVE_EVENTS_SECRET when set, else MEDIA_EVENTS_SECRET); combines with the flags above
  *
  *   [--live-env /etc/openvibe/live.env] [--endpoint http://127.0.0.1:3000/internal/media-events]
@@ -31,7 +31,7 @@ const fs = require('fs');
 
 const TOPICS = ['media.vod.*', 'media.clip.*', 'media.storage.*'];
 const DEFAULT_ENDPOINT = 'http://127.0.0.1:3000/internal/media-events';
-const NETWORK_TOPICS = ['network.user.token_valid_after'];
+const NETWORK_TOPICS = ['network.user.token_valid_after', 'network.user.updated'];
 const NETWORK_ENDPOINT = 'http://127.0.0.1:3000/internal/network-events';
 const DEFAULT_LIVE_ENV = '/etc/openvibe/live.env';
 

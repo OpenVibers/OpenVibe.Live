@@ -185,7 +185,7 @@ openvibe.network /api/admin/streamer-mod/*  →  OpenVibe.Live /api/mod/*</code>
 <tr><td>POST</td><td>/api/auth/logout</td><td>No</td><td>Clear auth cookies</td></tr>
 <tr><td>GET</td><td>/api/auth/sso/status</td><td>No</td><td>SSO enabled flag + login URL</td></tr>
 <tr><td>GET</td><td>/api/auth/me</td><td>Yes</td><td>Current user + capabilities</td></tr>
-<tr><td>PUT</td><td>/api/auth/profile</td><td>Yes</td><td>Update display_name (recase only), bio, email, profile_color</td></tr>
+<tr><td>PUT</td><td>/api/auth/profile</td><td>Yes</td><td>Update display_name (recase only), bio, profile_color (email and password are the OpenVibe account's: openvibe.network/my)</td></tr>
 <tr><td>GET</td><td>/api/auth/user/:username</td><td>No</td><td>Public profile</td></tr>
 <tr><td>POST</td><td>/api/auth/avatar</td><td>Yes</td><td>Upload avatar (multipart <code>avatar</code>, &le;20MB)</td></tr>
 <tr><td>GET / POST</td><td>/api/auth/stream-key[/regenerate]</td><td>Yes</td><td>Get / regenerate personal stream key</td></tr>

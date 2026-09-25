@@ -2765,6 +2765,10 @@ function getUserByStreamKey(key) {
 }
 
 function createUser({ username, email, password_hash, display_name, stream_key }) {
+    // Identity is the OpenVibe account's (WS-B task 2): Live stores no password and no email. A real password
+    // hash here is a bug, refused before it reaches the table; an email address is never stored.
+    if (/^\$(2[abxy]?|argon2|scrypt|pbkdf2)/.test(String(password_hash || ''))) throw new Error('Live stores no passwords: accounts sign in through openvibe.network');
+    email = null;
     return run(
         `INSERT INTO users (username, email, password_hash, display_name, stream_key)
          VALUES (?, ?, ?, ?, ?)`,
