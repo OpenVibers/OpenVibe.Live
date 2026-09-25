@@ -86,8 +86,8 @@ function publish(userId, { now = Date.now() } = {}) {
     const id = String(userId);
     d.transaction(() => {
         streamEvents.enqueue(doc.deleted
-            ? { event_type: 'live.index_document.deleted', actor: { type: 'service', id: 'live' }, subject: { type: 'channel', id, revision }, visibility: 'internal', priority: 'normal', payload: { type: 'channel', id, revision } }
-            : { event_type: 'live.index_document.upserted', actor: { type: 'service', id: 'live' }, subject: { type: 'channel', id, revision }, visibility: 'internal', priority: 'normal',
+            ? { event_type: 'live.index_document.deleted', actor: { type: 'service', id: 'live' }, subject: { type: 'channel', id, revision }, visibility: 'internal', priority: 'low', payload: { type: 'channel', id, revision } }
+            : { event_type: 'live.index_document.upserted', actor: { type: 'service', id: 'live' }, subject: { type: 'channel', id, revision }, visibility: 'internal', priority: 'low',
                 payload: { ...doc, revision, updated_at: new Date(now).toISOString() } });
         d.prepare(`INSERT INTO search_doc_pushes (user_id, hash, revision, deleted, pushed_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
                    ON CONFLICT(user_id) DO UPDATE SET hash = excluded.hash, revision = excluded.revision, deleted = excluded.deleted, pushed_at = excluded.pushed_at`)

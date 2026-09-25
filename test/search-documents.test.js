@@ -25,6 +25,9 @@ const stub = http.createServer((req, res) => {
         if (req.url === '/api/v1/events' && req.method === 'POST') {
             const parsed = JSON.parse(body);
             const list = parsed.events || [parsed];
+            const { validate } = require('openvibe-contracts');
+            const bad = list.find((e) => !validate('events.event-envelope@1', e).valid);
+            if (bad) { res.statusCode = 422; return res.end(JSON.stringify({ code: 'events.invalid_envelope', errors: validate('events.event-envelope@1', bad).errors })); }   // as Events does
             const results = list.map((e) => { published.push(e); return { event_id: e.event_id, seq: published.length, duplicate: false }; });
             return res.end(JSON.stringify(parsed.events ? { results } : results[0]));
         }
