@@ -114,7 +114,8 @@ function pushBulkNotification(userIds, data, { alreadyNetworkIds = false } = {})
     if (unlinked) console.log(`[Notify] ${unlinked} of ${userIds.length} recipient(s) have no linked network account — skipped`);
     if (!ids.length) return;
     const body = { ...data, service: data.service || 'live' };
-    if (body.sender_id != null && !alreadyNetworkIds) body.sender_id = toNetworkId(body.sender_id) || body.sender_id;
+    // A Live id never goes as a Network id: without a mapping there is no sender (a block check on Network would match the wrong person).
+    if (body.sender_id != null && !alreadyNetworkIds) body.sender_id = toNetworkId(body.sender_id) || null;
     for (let i = 0; i < ids.length; i += 1000) {
         const chunk = ids.slice(i, i + 1000);
         _post('/internal/notifications/push-bulk', { ...body, user_ids: chunk })
