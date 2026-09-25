@@ -1,0 +1,15 @@
+{
+  "_about": "Destructive schema statements in server/ that are known and accounted for (roadmap WS-P task 12, expand/migrate/contract). A new DROP TABLE, DROP COLUMN, RENAME COLUMN or RENAME TO of a real table fails test/destructive-migrations.test.js until it is listed here with its contract step: the dated plan entry (section 10) that runs it after a release where nothing reads the old shape, with a backup. Temporary tables (_x, x_new, x_old, x_tmp) are not counted.",
+  "allowed": [
+    { "file": "server/db/database.js", "statement": "DROP TABLE CHAT_MESSAGES", "count": 2, "contract": "pre-ADR table rebuild (copy every column into chat_messages_new, drop, rename); guarded, one-time" },
+    { "file": "server/db/database.js", "statement": "RENAME TO CHAT_MESSAGES", "count": 2, "contract": "the same rebuild" },
+    { "file": "server/db/database.js", "statement": "DROP TABLE ROBOTSTREAMER_INTEGRATIONS", "count": 1, "contract": "pre-ADR table rebuild keeping every row; guarded, one-time" },
+    { "file": "server/db/database.js", "statement": "RENAME TO ROBOTSTREAMER_INTEGRATIONS", "count": 1, "contract": "the same rebuild" },
+    { "file": "server/db/database.js", "statement": "DROP TABLE EMOTES", "count": 1, "contract": "pre-ADR table rebuild keeping every row; guarded, one-time" },
+    { "file": "server/db/database.js", "statement": "RENAME TO EMOTES", "count": 1, "contract": "the same rebuild" },
+    { "file": "server/db/database.js", "statement": "DROP TABLE CHANNEL_SOUNDS", "count": 1, "contract": "pre-ADR table rebuild keeping every row; guarded, one-time" },
+    { "file": "server/db/database.js", "statement": "RENAME TO CHANNEL_SOUNDS", "count": 1, "contract": "the same rebuild" },
+    { "file": "server/db/database.js", "statement": "DROP TABLE STREAM_CONTROLS", "count": 1, "contract": "pre-ADR table rebuild keeping every row; guarded, one-time" },
+    { "file": "server/db/database.js", "statement": "RENAME TO STREAM_CONTROLS", "count": 1, "contract": "the same rebuild" }
+  ]
+}
