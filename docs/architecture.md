@@ -88,7 +88,11 @@ public/js/app-*.js       route code split out of app.js: home, channel, media, c
 - **Voice channels.** `public/js/call.js` + `voice-channels.js` (feature `voice`, chat route): full-mesh
   WebRTC, signalling over `/ws/call` (`server/streaming/call-server.js`). The newcomer offers, existing
   members answer; the server pushes the channel list to every chat socket (`voice-channels` message);
-  TURN credentials come from `server/net/turn.js` (short-lived with `TURN_AUTH_SECRET`).
+  TURN credentials come from `server/net/turn.js` (short-lived with `TURN_AUTH_SECRET`). OpenVibe.Chat
+  runs the same protocol and routes (its `server/calls/`); `CALLS_AUTHORITY=chat`
+  (`server/streaming/calls-authority.js`) plus an nginx include moves calls there, and then go-live,
+  stream end, WHIP teardown and the admin force-end create/remove stream voice channels in Chat
+  (OpenVibe.Chat `docs/calls-cutover.md`).
 - **Budgets.** `scripts/perf/check-budgets.js` (in `npm test`) fails if the home page's HTML, eager
   JavaScript or blocking CSS grow past recorded limits, or if route code returns to the home page.
 

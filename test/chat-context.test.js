@@ -207,6 +207,21 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.strictEqual((await call('POST', '/internal/chat-effects/alert-sound', { token: WRITE, body: { channel_id: channel.id, actor_user_id: streamer, kind: 'donation', url: '/etc/passwd' } })).status, 400, 'files stay in the sounds dir');
         assert.strictEqual((await call('POST', '/internal/chat-effects/alert-sound', { token: WRITE, body: { channel_id: channel.id, actor_user_id: streamer, kind: 'donation', url: snd } })).status, 200);
 
+        // 8b. A ring from Chat's call server (CALLS_AUTHORITY=chat): Live pushes the VC_CALL_INVITE it used to.
+        const notify = require('../server/utils/notify');
+        const pushed = [];
+        const origPush = notify.pushNotification;
+        notify.pushNotification = (p) => pushed.push(p);
+        try {
+            assert.strictEqual((await call('POST', '/internal/chat-effects/notify/call-invite', { token: READ, body: { caller_id: streamer, target_id: viewer, channel_id: 'user-1-x' } })).status, 403, 'an effect');
+            assert.strictEqual((await call('POST', '/internal/chat-effects/notify/call-invite', { token: WRITE, body: { caller_id: streamer, target_id: 999999, channel_id: 'user-1-x' } })).status, 400);
+            assert.strictEqual((await call('POST', '/internal/chat-effects/notify/call-invite', { token: WRITE, body: { caller_id: streamer, target_id: viewer, channel_id: `user-${streamer}-x`, channel_name: 'STREAMER\'s call' } })).status, 200);
+        } finally { notify.pushNotification = origPush; }
+        assert.strictEqual(pushed.length, 1);
+        assert.deepStrictEqual([pushed[0].user_id, pushed[0].type, pushed[0].title, pushed[0].message, pushed[0].sender_id, pushed[0].rich_content.context.caller_username],
+            [viewer, 'VC_CALL_INVITE', 'STREAMER is calling you', 'Join voice channel: STREAMER\'s call', streamer, 'streamer']);
+        assert.ok(pushed[0].url.endsWith(`/?vcInvite=${encodeURIComponent(`user-${streamer}-x`)}`));
+
         // 9. The read mirror: same ids, Chat-only columns ignored, Live-only columns kept.
         const mirror = (changes) => call('POST', '/internal/chat-effects/mirror', { token: MIRROR, body: { changes } });
         assert.strictEqual((await call('POST', '/internal/chat-effects/mirror', { token: WRITE, body: { changes: [] } })).status, 403, 'mirror has its own capability');

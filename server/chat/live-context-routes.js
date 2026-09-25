@@ -24,7 +24,7 @@
  * /internal/chat-effects/*   capability live.chat_effects.write — side effects (CHAT_AUTHORITY=chat only)
  *   anon, ip-log, viewer-counts, viewer-snapshots, user-color, ban, approve-ip, channel-settings,
  *   alert-sound, ensure-channel, site-settings, chat-message, ai/mod-command, arena-command,
- *   media-queue, hardware, paste, translate, notify/dm, notify/dm-read, asset-sync
+ *   media-queue, hardware, paste, translate, notify/dm, notify/dm-read, notify/call-invite, asset-sync
  *   mirror  (capability live.chat_mirror.write) — Chat's changes to its tables, applied to Live's copy
  *
  * Every effect that acts for a person re-checks that person here (moderator, owner, admin) — Chat
@@ -549,6 +549,36 @@ effectsRouter.post('/notify/dm', (req, res) => {
                 ...actorInfo(sender),
             });
         }
+    } catch { /* non-critical */ }
+    res.json({ ok: true });
+});
+
+// A call-user ring from OpenVibe.Chat's call server (CALLS_AUTHORITY=chat): the cross-site
+// notification Live's POST /api/streams/voice-channels/call-user pushed itself.
+effectsRouter.post('/notify/call-invite', (req, res) => {
+    const caller = db.getUserById(int(req.body?.caller_id));
+    const targetId = int(req.body?.target_id);
+    const channelId = String(req.body?.channel_id || '').slice(0, 100);
+    const channelName = String(req.body?.channel_name || 'Voice Channel').slice(0, 100);
+    if (!caller || !targetId || !db.getUserById(targetId) || !channelId) return fail(res, 400, 'caller_id, target_id and channel_id required');
+    try {
+        const { pushNotification, actorInfo } = require('../utils/notify');
+        const callerName = caller.display_name || caller.username || 'Someone';
+        pushNotification({
+            user_id: targetId,
+            type: 'VC_CALL_INVITE',
+            title: `${callerName} is calling you`,
+            message: `Join voice channel: ${channelName}`,
+            url: `${config.baseUrl}/?vcInvite=${encodeURIComponent(channelId)}`,
+            rich_content: {
+                context: {
+                    channel_id: channelId,
+                    channel_name: channelName,
+                    caller_username: caller.username,
+                },
+            },
+            ...actorInfo(caller, callerName),
+        });
     } catch { /* non-critical */ }
     res.json({ ok: true });
 });

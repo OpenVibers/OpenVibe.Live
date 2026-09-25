@@ -35,6 +35,8 @@ const i18n = require('../i18n/translate');
 const robotStreamerService = require('../integrations/robotstreamer-service');
 const chatRelayService = require('../integrations/chat-relay-service');
 const chatServer = require('../chat/chat-server');
+// Stream voice channels: Live's call server, or OpenVibe.Chat's with CALLS_AUTHORITY=chat.
+const callsAuthority = require('./calls-authority');
 const { sanitizeOfflineHtml, sanitizeOfflineCss } = require('./offline-html-sanitize');
 const multer = require('multer');
 const path = require('path');
@@ -2044,7 +2046,7 @@ router.post('/', requireAuth, (req, res) => {
         // Set call mode if provided — create a stream voice channel
         if (callMode) {
             db.run('UPDATE streams SET call_mode = ? WHERE id = ?', [callMode, streamId]);
-            callServer.createStreamChannel(streamId, callMode, req.user.id);
+            callsAuthority.createStreamChannel(streamId, callMode, req.user.id);
         }
 
         let endpoint = {};
@@ -2179,7 +2181,7 @@ router.delete('/:id', requireAuth, (req, res) => {
         }
 
         // End any active group call / remove stream voice channel
-        callServer.removeStreamChannel(stream.id);
+        callsAuthority.removeStreamChannel(stream.id);
 
         robotStreamerService.stopForStream(stream.id);
         chatRelayService.stopForStream(stream.id);

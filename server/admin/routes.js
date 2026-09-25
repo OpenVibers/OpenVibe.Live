@@ -344,7 +344,7 @@ router.delete('/streams/:id', (req, res) => {
         try { require('../integrations/ai-chatbot-service').stopForStream(stream.id); } catch { /* non-critical */ }
         try { require('../streaming/broadcast-server').endStream(stream.id); } catch { /* no room */ }
         try { require('../streaming/webrtc-sfu').closeRoom(`stream-${stream.id}`); } catch { /* no room */ }
-        try { require('../streaming/call-server').removeStreamChannel(stream.id); } catch { /* no channel */ }
+        try { require('../streaming/calls-authority').removeStreamChannel(stream.id); } catch { /* no channel */ }
 
         // Accountability: force-ending someone's live stream is a moderation action
         // and MUST be logged (previously it left no trace at all).

@@ -1184,6 +1184,9 @@ async function start() {
 
     // 4d. Initialize group call signaling server
     callServer.init(server);
+    if (require('./streaming/calls-authority').isChat()) {
+        console.log('[Calls] CALLS_AUTHORITY=chat — stream voice channels are created and removed in OpenVibe.Chat; Live\'s /ws/call stays up, unreached once nginx routes it to Chat');
+    }
 
     for (const stream of db.getLiveStreams()) {
         robotStreamerService.startForStream(stream).catch((err) => {

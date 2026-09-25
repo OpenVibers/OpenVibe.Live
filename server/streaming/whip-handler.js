@@ -203,7 +203,7 @@ function endActiveWhipStream(streamId, reason = 'whip_cleanup') {
     try { require('../integrations/ai-chatbot-service').stopForStream(streamId); } catch (err) { /* ignore */ }
     try { require('./broadcast-server').endStream(streamId); } catch (err) { /* ignore */ }
     try { webrtcSFU.closeRoom(`stream-${streamId}`); } catch (err) { /* ignore */ }
-    try { require('./call-server').removeStreamChannel(streamId); } catch (err) { /* ignore */ }
+    try { require('./calls-authority').removeStreamChannel(streamId); } catch (err) { /* ignore */ }
 }
 
 // ── SDP Parsing Utilities ────────────────────────────────────
