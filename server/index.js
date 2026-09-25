@@ -1557,6 +1557,10 @@ async function start() {
     // transactional outbox (server/events/stream-events.js). Off unless EVENTS_URL is set.
     try { require('./events/stream-events').init(); } catch (err) { console.warn('[Events] not started:', err.message); }
 
+    // 8d. User modules on Network (Contracts 0.41.0): live.profile and live.stats, written when they
+    // change (server/auth/module-summaries.js). Off without OV_OAUTH_CLIENT_SECRET.
+    try { require('./auth/module-summaries').init(); } catch (err) { console.warn('[Modules] summaries not started:', err.message); }
+
     // 9. Periodic registry refresh — re-syncs config with openvibe.network every 5 minutes.
     // This is a safety net: if the startup refresh failed (openvibe.network was temporarily
     // unreachable), subsequent refreshes will fix CORS, issuer, and other URL config.

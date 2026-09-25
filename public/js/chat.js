@@ -277,9 +277,9 @@ function saveChatSettings() {
     _debounceSyncSettingsToServer();
 }
 
-// Portable chat preferences live in OpenVibe.Network (user module chat.preferences), read and written
-// through OpenVibe.Chat at /api/chat/preferences. Only these four settings have fields there (schema v1);
-// the rest of chatSettings stays in Live's /api/auth/preferences. A patch value of null removes the
+// Portable chat preferences live in OpenVibe.Network (user modules chat.preferences and chat.tts_defaults),
+// read and written through OpenVibe.Chat at /api/chat/preferences and /api/chat/tts-settings. Only the
+// settings mapped below have fields there; the rest of chatSettings stays in Live's /api/auth/preferences. A patch value of null removes the
 // field, i.e. "Live's default"; Chat writes nothing when nothing changed.
 const CHAT_PREFS_FONT_SCALE = { small: 0.88, large: 1.18 };
 function _chatPrefsFromSettings(s) {
@@ -300,26 +300,65 @@ function _chatSettingsFromPrefs(p) {
     if (typeof p.font_scale === 'number') out.fontSize = p.font_scale < 0.95 ? 'small' : p.font_scale > 1.05 ? 'large' : 'default';
     return out;
 }
+// Text-to-speech and sounds: the user module chat.tts_defaults (v2), through /api/chat/tts-settings.
+// A field at Live's default is sent as null (removed), so the record only holds what the person changed.
+const TTS_MODULE_SOURCES = { native: 'ttsSrcNative', robotstreamer: 'ttsSrcRS', kick: 'ttsSrcKick', youtube: 'ttsSrcYoutube', twitch: 'ttsSrcTwitch' };
+function _ttsModuleFromSettings(s) {
+    const sources = {};
+    for (const [k, key] of Object.entries(TTS_MODULE_SOURCES)) if (s[key] === false) sources[k] = false;
+    const pct = (v) => (Number.isInteger(v) && v >= 0 && v <= 100 && v !== 80 ? v : null);
+    return {
+        send: s.ttsEnabled === false ? false : null,
+        send_while_live: s.streamingTtsEnabled === false ? false : null,
+        volume: pct(s.ttsVolume),
+        sounds: s.soundsEnabled === false ? false : null,
+        sound_volume: pct(s.soundVolume),
+        sources: Object.keys(sources).length ? sources : null,
+    };
+}
+function _settingsFromTtsModule(t) {
+    const out = {
+        ttsEnabled: t.send !== false,
+        streamingTtsEnabled: t.send_while_live !== false,
+        ttsVolume: Number.isInteger(t.volume) ? t.volume : 80,
+        soundsEnabled: t.sounds !== false,
+        soundVolume: Number.isInteger(t.sound_volume) ? t.sound_volume : 80,
+    };
+    const src = t.sources && typeof t.sources === 'object' ? t.sources : {};
+    for (const [k, key] of Object.entries(TTS_MODULE_SOURCES)) out[key] = src[k] !== false;
+    return out;
+}
+const CHAT_MODULES = [
+    { url: '/api/chat/preferences', key: 'preferences', from: _chatPrefsFromSettings, to: _chatSettingsFromPrefs },
+    { url: '/api/chat/tts-settings', key: 'settings', from: _ttsModuleFromSettings, to: _settingsFromTtsModule },
+];
 function _pushChatPrefs(token) {
-    return fetch('/api/chat/preferences', {
+    return Promise.all(CHAT_MODULES.map((m) => fetch(m.url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ preferences: _chatPrefsFromSettings(chatSettings) }),
-    }).catch(() => { /* Chat or Network unavailable: Live's copy still has them */ });
+        body: JSON.stringify({ [m.key]: m.from(chatSettings) }),
+    }).catch(() => { /* Chat or Network unavailable: Live's copy still has them */ })));
 }
-/** After Live's copy: the Network record wins for its fields; none yet → seed it from this browser. */
+/** After Live's copy: each Network record wins for its fields; none yet → seed it from this browser. */
 function _syncChatPrefsFromChat(token) {
-    fetch('/api/chat/preferences', { headers: { 'Authorization': `Bearer ${token}` } })
-        .then(r => r.ok ? r.json() : null)
-        .then(data => {
-            if (!data || !data.preferences || typeof data.preferences !== 'object') return;
-            if (!data.revision) { _pushChatPrefs(token); return; }
-            chatSettings = { ...chatSettings, ..._chatSettingsFromPrefs(data.preferences) };
-            try { localStorage.setItem(CHAT_SETTINGS_KEY, JSON.stringify(chatSettings)); } catch { }
-            applyChatSettings();
-            syncSettingsPanelUI();
-        })
-        .catch(() => { /* offline — use local */ });
+    for (const m of CHAT_MODULES) {
+        fetch(m.url, { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                const rec = data && data[m.key];
+                if (!rec || typeof rec !== 'object') return;
+                if (!data.revision) {
+                    fetch(m.url, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ [m.key]: m.from(chatSettings) }) }).catch(() => {});
+                    return;
+                }
+                chatSettings = { ...chatSettings, ...m.to(rec) };
+                try { localStorage.setItem(CHAT_SETTINGS_KEY, JSON.stringify(chatSettings)); } catch { }
+                applyChatSettings();
+                syncSettingsPanelUI();
+                if (typeof syncTTSToggleButtons === 'function') syncTTSToggleButtons();
+            })
+            .catch(() => { /* offline — use local */ });
+    }
 }
 
 function _syncSettingsFromServer() {
