@@ -2351,11 +2351,14 @@ router.get('/:id/rtmp-status', requireAuth, (req, res) => {
 });
 
 // ── Follow/Unfollow Streamer ─────────────────────────────────
-router.post('/:id/follow', requireAuth, (req, res) => {
+router.post('/:id/follow', requireAuth, async (req, res) => {
     try {
         const stream = db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
 
+        // ADR-030 step 4: Network first (FOLLOWS_AUTHORITY=network); Live's row only when Network took it.
+        const w = await require('../social/network-follows').writeThrough(req.user.id, stream.user_id, !db.isFollowing(req.user.id, stream.user_id));
+        if (!w.ok) return res.status(503).json({ error: 'Could not update the follow right now; try again in a moment' });
         if (db.isFollowing(req.user.id, stream.user_id)) {
             db.unfollowUser(req.user.id, stream.user_id);
             res.json({ following: false, count: db.getFollowerCount(stream.user_id) });
@@ -2396,11 +2399,14 @@ router.post('/:id/follow', requireAuth, (req, res) => {
 });
 
 // ── Follow/Unfollow by Username ──────────────────────────────
-router.post('/channel/:username/follow', requireAuth, (req, res) => {
+router.post('/channel/:username/follow', requireAuth, async (req, res) => {
     try {
         const user = db.getUserByUsername(req.params.username);
         if (!user) return res.status(404).json({ error: 'User not found' });
 
+        // ADR-030 step 4: Network first (FOLLOWS_AUTHORITY=network); Live's row only when Network took it.
+        const w = await require('../social/network-follows').writeThrough(req.user.id, user.id, !db.isFollowing(req.user.id, user.id));
+        if (!w.ok) return res.status(503).json({ error: 'Could not update the follow right now; try again in a moment' });
         if (db.isFollowing(req.user.id, user.id)) {
             db.unfollowUser(req.user.id, user.id);
             res.json({ following: false, count: db.getFollowerCount(user.id) });

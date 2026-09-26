@@ -31,7 +31,7 @@ const fs = require('fs');
 
 const TOPICS = ['media.vod.*', 'media.clip.*', 'media.storage.*'];
 const DEFAULT_ENDPOINT = 'http://127.0.0.1:3000/internal/media-events';
-const NETWORK_TOPICS = ['network.user.token_valid_after', 'network.user.updated'];
+const NETWORK_TOPICS = ['network.user.token_valid_after', 'network.user.updated', 'network.follow.created', 'network.follow.deleted'];
 const NETWORK_ENDPOINT = 'http://127.0.0.1:3000/internal/network-events';
 const DEFAULT_LIVE_ENV = '/etc/openvibe/live.env';
 
