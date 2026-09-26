@@ -364,6 +364,12 @@
     if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
         fail(new Error('This browser does not support WebRTC publishing.'));
     }
+    // Phones and tablets cannot capture their screen: offer the camera only there.
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+        const screen = els.source.querySelector('option[value="screen"]');
+        if (screen) { screen.disabled = true; screen.textContent += ' (not available in this browser)'; }
+        if (els.source.value === 'screen') els.source.value = 'camera';
+    }
 
     window.OpenVibeWhip = {
         start,

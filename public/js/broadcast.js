@@ -2838,6 +2838,15 @@ async function startMediaCapture(streamId, opts = {}) {
     const res = resMap[s.broadcastRes] || resMap['720'];
     let videoConstraints, audioConstraints;
 
+    // Phones and tablets cannot capture their screen (no getDisplayMedia): a screen-mode slot opened
+    // there broadcasts the camera instead of failing to start. The slot keeps its mode (browser_mode
+    // puts screen sharing back on the next time it goes live from a computer).
+    if (s.screenShare && !navigator.mediaDevices?.getDisplayMedia) {
+        s.screenShare = false;
+        if (typeof _syncScreenShareUI === 'function') _syncScreenShareUI();
+        toast('This browser cannot share its screen, so your camera is broadcast instead', 'warning');
+    }
+
     if (s.screenShare) {
         // Stop any previous composite resources
         _cleanupComposite(ss);
