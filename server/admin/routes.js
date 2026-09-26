@@ -638,7 +638,11 @@ router.post('/ai/streamer/:userId/overview', async (req, res) => {
 });
 
 // ── Update Settings (bulk) ───────────────────────────────────
-router.put('/settings', (req, res) => {
+// Configuration keys are one revision of live.site_settings (server/admin/site-config.js: who, why,
+// history, rollback); keys that are not configuration (job state) are written as before.
+const siteConfig = require('./site-config');
+const configError = (res, err) => (err && err.status && err.code ? res.status(err.status).json({ error: err.message, code: err.code, errors: err.errors || undefined }) : null);
+router.put('/settings', async (req, res) => {
     try {
         const { settings } = req.body;
         if (!settings || typeof settings !== 'object') {
@@ -676,8 +680,15 @@ router.put('/settings', (req, res) => {
         if (Object.keys(rejected).length) {
             return res.status(400).json({ error: `Rejected ${Object.keys(rejected).length} invalid setting(s): ${Object.keys(rejected).join(', ')}`, rejected, saved: [] });
         }
-        db.getDb().transaction(() => { for (const [k, v] of writes) db.setSetting(k, v); })();
-        if (writes.length) console.log(`[Admin] Settings updated by ${req.user?.username || req.user?.id}: ${writes.map(w => w[0]).join(', ')}`);
+        const configWrites = writes.filter(([k]) => siteConfig.isConfigKey(k));
+        const otherWrites = writes.filter(([k]) => !siteConfig.isConfigKey(k));
+        let revision = null;
+        if (configWrites.length) {
+            const snap = await siteConfig.change({ set: Object.fromEntries(configWrites) }, { actor: siteConfig.actorOf(req.user), reason: String(req.body.reason || `admin settings: ${configWrites.map((w) => w[0]).join(', ')}`).slice(0, 300) });
+            revision = snap.revision;
+        }
+        if (otherWrites.length) db.getDb().transaction(() => { for (const [k, v] of otherWrites) db.setSetting(k, v); })();
+        if (writes.length) console.log(`[Admin] Settings updated by ${req.user?.username || req.user?.id}: ${writes.map(w => w[0]).join(', ')}${revision ? ` (revision ${revision})` : ''}`);
         const parts = [`${writes.length} updated`];
         if (unchanged) parts.push(`${unchanged} unchanged`);
         if (blocked) parts.push(`${blocked} owner-only setting${blocked === 1 ? '' : 's'} skipped`);
@@ -685,16 +696,18 @@ router.put('/settings', (req, res) => {
             message: `Settings updated (${parts.join(', ')})`,
             saved: writes.map(w => w[0]),
             rejected,
+            revision,
             settings: permissions.redactSettingsForUser(db.getAllSettings(), req.user),
         });
     } catch (err) {
+        if (configError(res, err)) return;
         console.error('[Admin] Settings update error:', err.message);
         res.status(500).json({ error: 'Failed to update settings' });
     }
 });
 
 // ── Update Single Setting ────────────────────────────────────
-router.put('/settings/:key', (req, res) => {
+router.put('/settings/:key', async (req, res) => {
     try {
         const { value } = req.body;
         if (value === undefined) {
@@ -703,23 +716,53 @@ router.put('/settings/:key', (req, res) => {
         if (permissions.isSensitiveSettingKey(req.params.key) && !permissions.isOwner(req.user)) {
             return res.status(403).json({ error: 'Only the owner can change API keys / money settings' });
         }
-        db.setSetting(req.params.key, value);
+        if (siteConfig.isConfigKey(req.params.key)) {
+            await siteConfig.change({ set: { [req.params.key]: value } }, { actor: siteConfig.actorOf(req.user), reason: String(req.body.reason || `admin setting ${req.params.key}`).slice(0, 300) });
+        } else db.setSetting(req.params.key, value);
         res.json({ message: 'Setting updated', setting: db.getSettingRow(req.params.key) });
     } catch (err) {
+        if (configError(res, err)) return;
         res.status(500).json({ error: 'Failed to update setting' });
     }
 });
 
 // ── Delete Setting ───────────────────────────────────────────
-router.delete('/settings/:key', (req, res) => {
+router.delete('/settings/:key', async (req, res) => {
     try {
         if (permissions.isSensitiveSettingKey(req.params.key) && !permissions.isOwner(req.user)) {
             return res.status(403).json({ error: 'Only the owner can change API keys / money settings' });
         }
-        db.deleteSetting(req.params.key);
+        if (siteConfig.isConfigKey(req.params.key)) {
+            await siteConfig.change({ unset: [req.params.key] }, { actor: siteConfig.actorOf(req.user), reason: String((req.body && req.body.reason) || `admin deleted ${req.params.key}`).slice(0, 300) });
+        } else db.deleteSetting(req.params.key);
         res.json({ message: 'Setting deleted' });
     } catch (err) {
+        if (configError(res, err)) return;
         res.status(500).json({ error: 'Failed to delete setting' });
+    }
+});
+
+// ── Configuration history (openvibe-shared/config, namespace live.site_settings) ──
+// GET /api/admin/config (current revision, values with secrets as fingerprints), GET /config/:namespace,
+// GET /config/:namespace/history, POST /config/:namespace/rollback { to?, reason } — the rollback first
+// records rows changed outside the journal, so it only undoes configuration changes.
+let configRoutes = null;
+const configHandlers = () => configRoutes || (configRoutes = require('openvibe-shared/config').adminRoutes([siteConfig.getStore()], {
+    requireAdmin: (_q, _s, next) => next(), basePath: '/config', actor: (q) => siteConfig.actorOf(q.user),
+}));
+router.get('/config', (req, res, next) => configHandlers().list(req, res, next));
+router.get('/config/:namespace', (req, res, next) => configHandlers().get(req, res, next));
+router.get('/config/:namespace/history', (req, res, next) => configHandlers().history(req, res, next));
+router.post('/config/:namespace/rollback', async (req, res) => {
+    try {
+        if (req.params.namespace !== 'live.site_settings') return res.status(404).json({ error: 'No such configuration namespace' });
+        if (!permissions.isOwner(req.user)) return res.status(403).json({ error: 'Only the owner can roll the site configuration back' });
+        const to = req.body && req.body.to != null ? Number(req.body.to) : undefined;
+        const snap = await siteConfig.rollback({ actor: siteConfig.actorOf(req.user), reason: String((req.body && req.body.reason) || 'rollback').slice(0, 300), to });
+        res.json(snap);
+    } catch (err) {
+        if (configError(res, err)) return;
+        res.status(500).json({ error: 'Failed to roll back' });
     }
 });
 
