@@ -289,7 +289,12 @@ router.get('/:id/live-info', optionalAuth, async (req, res) => {
             duration: vod.duration || vod.duration_seconds || 0,
             fileSize: vod.file_size || 0,
             isRecording: recording,
-            seekable: !!vod.seekable || !recording,
+            // While it records, Media rewrites a fully indexed copy of the growing file about once a
+            // minute (the first pass ~30 s in, which also stores file_size) and serves that copy at
+            // /v/<id>. Its rows carry no `seekable` field, so this was false for every live recording
+            // and the VOD page's tail refresh (public/js/app-media.js) never ran: a viewer stayed at
+            // the length the recording had when they opened it.
+            seekable: !!vod.seekable || !recording || (Number(vod.file_size) || 0) > 0,
         });
     } catch (err) {
         mediaErr(res, err, 'Failed to get live info');
