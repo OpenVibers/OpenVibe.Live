@@ -552,7 +552,10 @@ router.get('/callback', async (req, res) => {
 router.post('/refresh', async (req, res) => {
     const refreshToken = req.cookies?.ov_refresh;
     if (!refreshToken) {
-        return res.status(401).json({ error: 'No refresh token' });
+        // No session at all (a guest): nothing to refresh, which is not an error. Every guest page view
+        // asks this (public/js/app.js tryRefreshToken), and a 401 put a red console line on each one
+        // (browser check, OpenVibe.Host). A refresh cookie that is present but rejected still gets 401.
+        return res.json({ access_token: null, user: null });
     }
     try {
         const tokenData = await new Promise((resolve, reject) => {
