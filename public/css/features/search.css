@@ -22,3 +22,17 @@
 .ls-snippet { margin: 4px 0 0; color: var(--text-secondary); font-size: 0.9rem; overflow-wrap: anywhere; }
 .ls-snippet mark { background: var(--bg-tertiary); color: var(--text-primary); border-radius: 3px; padding: 0 2px; box-shadow: inset 0 -2px 0 var(--accent); }
 .ls-more-wrap { display: flex; justify-content: center; margin-top: 16px; }
+/* Suggestions as you type (a combobox listbox under the box) */
+.ls-combo { position: relative; }
+.ls-suggest { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); max-height: 60vh; overflow-y: auto; }
+.ls-suggest li { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: calc(var(--radius) - 2px); cursor: pointer; color: var(--text-primary); overflow-wrap: anywhere; }
+.ls-suggest li[aria-selected="true"], .ls-suggest li:hover { background: var(--bg-tertiary); }
+.ls-suggest li .ls-kind { flex: none; font-size: 0.75rem; }
+/* Facets: narrow to one category or channel, with counts */
+.ls-facets { display: flex; flex-direction: column; gap: 8px; margin: 0 0 8px; }
+.ls-facet { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 0.8rem; color: var(--text-muted); }
+.ls-facet-label { margin-right: 2px; }
+.ls-facet button { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); font: inherit; cursor: pointer; overflow-wrap: anywhere; max-width: 100%; }
+.ls-facet button[aria-pressed="true"] { border-color: var(--accent); color: var(--text-primary); background: var(--bg-tertiary); }
+.ls-facet button .ls-count { color: var(--text-muted); margin-left: 4px; }
+

@@ -2,7 +2,9 @@
  * The /search page (fragment search.html): Live's channels, VODs and clips through OpenVibe.Search
  * (GET /api/search, server/search/routes.js). The query lives in the URL (?q=&type=), so a search can
  * be linked and Back works. Results are built as DOM nodes; a snippet keeps Search's <mark> and
- * nothing else.
+ * nothing else. The first page's category and channel facets (with counts) narrow the results
+ * (?category=&channel=); a new query starts without them. The box suggests titles as you type
+ * (GET /api/search/suggest; a combobox: arrows, Enter opens, Escape closes).
  */
 (function () {
     'use strict';
@@ -53,20 +55,54 @@
     function readUrl() {
         const sp = new URLSearchParams(location.search);
         const type = ['channel', 'vod', 'clip'].includes(sp.get('type')) ? sp.get('type') : '';
-        return { q: (sp.get('q') || '').trim().slice(0, 200), type };
+        const one = (k) => (sp.get(k) || '').trim().slice(0, 64);
+        return { q: (sp.get('q') || '').trim().slice(0, 200), type, category: one('category'), channel: one('channel') };
     }
 
-    async function run(root, { q, type }, cursor) {
+    // ── Facets ──
+    function renderFacets(root, state, facets) {
+        const box = root.querySelector('.ls-facets');
+        let any = false;
+        for (const group of box.querySelectorAll('.ls-facet')) {
+            const key = group.dataset.lsFacet;
+            const rows = ((facets && facets[key]) || []).slice();
+            if (state[key] && !rows.some((r) => r.value === state[key])) rows.unshift({ value: state[key], count: null });
+            group.replaceChildren();
+            if (!rows.length || (rows.length === 1 && !state[key])) continue;   // one value narrows nothing
+            any = true;
+            group.append(el('span', 'ls-facet-label', key === 'category' ? 'Category:' : 'Channel:'));
+            for (const r of rows) {
+                const b = el('button');
+                b.type = 'button';
+                b.textContent = key === 'channel' ? `@${r.value}` : r.value;
+                if (r.count != null) b.append(el('span', 'ls-count', String(r.count)));
+                const on = state[key] === r.value;
+                b.setAttribute('aria-pressed', String(on));
+                b.addEventListener('click', () => {
+                    const next = { ...readUrl(), [key]: on ? '' : r.value };
+                    setUrl(next);
+                    run(root, next);
+                });
+                group.append(b);
+            }
+        }
+        box.hidden = !any;
+    }
+
+    async function run(root, state, cursor) {
+        const { q, type } = state;
         const status = root.querySelector('.ls-status');
         const list = root.querySelector('.ls-results');
         const more = root.querySelector('.ls-more');
         const mine = ++seq;
         if (!cursor) list.replaceChildren();
         more.hidden = true;
-        if (!q) { status.textContent = 'Type a streamer, a game or something said on stream.'; return; }
+        if (!q) { status.textContent = 'Type a streamer, a game or something said on stream.'; renderFacets(root, {}, null); return; }
         status.textContent = 'Searching…';
         const params = new URLSearchParams({ q });
         if (type) params.set('type', type);
+        if (state.category) params.set('category', state.category);
+        if (state.channel) params.set('channel', state.channel);
         if (cursor) params.set('cursor', cursor);
         let out;
         try {
@@ -78,18 +114,79 @@
             return;
         }
         if (mine !== seq) return;
+        if (!cursor) renderFacets(root, state, out.facets);
         for (const r of out.results || []) list.append(hit(r));
         const n = list.children.length;
         status.textContent = n ? `${n}${out.next_cursor ? '+' : ''} result${n === 1 ? '' : 's'} for “${q}”` : `Nothing public matches “${q}”.`;
-        if (out.next_cursor) { more.hidden = false; more.onclick = () => run(root, { q, type }, out.next_cursor); }
+        if (out.next_cursor) { more.hidden = false; more.onclick = () => run(root, state, out.next_cursor); }
     }
 
     function setUrl(state) {
         const sp = new URLSearchParams();
         if (state.q) sp.set('q', state.q);
         if (state.type) sp.set('type', state.type);
+        if (state.category) sp.set('category', state.category);
+        if (state.channel) sp.set('channel', state.channel);
         const url = `/search${sp.toString() ? `?${sp}` : ''}`;
         if (url !== location.pathname + location.search) history.pushState({}, '', url);
+    }
+
+    // ── Suggestions as you type ──
+    function bindSuggest(root, input) {
+        const list = root.querySelector('.ls-suggest');
+        let items = [], active = -1, timer = null, asked = 0;
+        const close = () => { list.hidden = true; list.replaceChildren(); items = []; active = -1; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); };
+        const open = (s) => {
+            const href = localPath(s.canonical_url);
+            close();
+            if (href.startsWith('/') && typeof navigate === 'function') navigate(href);
+            else location.href = href;
+        };
+        const mark = (i) => {
+            active = i;
+            items.forEach((li, n) => li.setAttribute('aria-selected', String(n === i)));
+            if (i >= 0) { input.setAttribute('aria-activedescendant', items[i].id); items[i].scrollIntoView({ block: 'nearest' }); } else input.removeAttribute('aria-activedescendant');
+        };
+        async function ask() {
+            const q = input.value.trim();
+            const mine = ++asked;
+            if (q.length < 2) return close();
+            const params = new URLSearchParams({ q });
+            const type = readUrl().type;
+            if (type) params.set('type', type);
+            let out = null;
+            try { out = await (await fetch(`/api/search/suggest?${params}`, { headers: { accept: 'application/json' } })).json(); } catch { out = null; }
+            if (mine !== asked || document.activeElement !== input) return;
+            const sugg = (out && out.suggestions) || [];
+            if (!sugg.length) return close();
+            list.replaceChildren();
+            items = sugg.map((sg, n) => {
+                const li = el('li');
+                li.id = `ls-sug-${n}`;
+                li.setAttribute('role', 'option');
+                li.setAttribute('aria-selected', 'false');
+                const [, label] = KIND[sg.type] || ['', sg.type];
+                li.append(el('span', 'ls-kind', label), el('span', null, sg.title));
+                li.addEventListener('mousedown', (e) => e.preventDefault());   // keep focus in the box
+                li.addEventListener('click', () => open(sg));
+                li._s = sg;
+                list.append(li);
+                return li;
+            });
+            active = -1;
+            list.hidden = false;
+            input.setAttribute('aria-expanded', 'true');
+        }
+        input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(ask, 150); });
+        input.addEventListener('keydown', (e) => {
+            if (list.hidden) return;
+            if (e.key === 'ArrowDown') { e.preventDefault(); mark(Math.min(items.length - 1, active + 1)); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); mark(Math.max(-1, active - 1)); }
+            else if (e.key === 'Escape') { e.preventDefault(); close(); }
+            else if (e.key === 'Enter' && active >= 0) { e.preventDefault(); open(items[active]._s); }
+        });
+        input.addEventListener('blur', () => setTimeout(close, 100));
+        return close;
     }
 
     window.loadSearchPage = function loadSearchPage() {
@@ -102,15 +199,18 @@
         for (const b of root.querySelectorAll('.ls-type')) b.setAttribute('aria-pressed', String(b.dataset.lsType === state.type));
         if (!form.dataset.bound) {
             form.dataset.bound = '1';
+            const closeSuggest = bindSuggest(root, input);
             form.addEventListener('submit', (e) => {
                 e.preventDefault();
-                const next = { q: input.value.trim().slice(0, 200), type: readUrl().type };
+                closeSuggest();
+                // A new query starts without the previous one's category and channel.
+                const next = { q: input.value.trim().slice(0, 200), type: readUrl().type, category: '', channel: '' };
                 setUrl(next);
                 run(root, next);
             });
             for (const b of root.querySelectorAll('.ls-type')) {
                 b.addEventListener('click', () => {
-                    const next = { q: input.value.trim().slice(0, 200), type: b.dataset.lsType };
+                    const next = { ...readUrl(), q: input.value.trim().slice(0, 200), type: b.dataset.lsType };
                     for (const o of root.querySelectorAll('.ls-type')) o.setAttribute('aria-pressed', String(o === b));
                     setUrl(next);
                     run(root, next);
