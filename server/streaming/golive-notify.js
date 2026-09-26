@@ -7,6 +7,14 @@
  *
  * Deduped per streamer+slot for 60 minutes: reconnects, deploy restarts and the recorder
  * re-creating a session must not spam followers.
+ *
+ * GOLIVE_NOTIFY=events (compatibility register C-85): leave go-lives to Network's live.stream.started
+ * consumer. Live then makes neither the direct call nor the fallback push; the event (queued with
+ * the streams row by server/events/stream-events.js, retried until Events has it) is the only path,
+ * and Network sends the inbox, push, email and Discord alerts. It applies only while Live publishes
+ * events; otherwise, and by default, the direct call stays. While both run, this call nearly always
+ * claims Network's per-streamer window first, so the consumer can never show a real `notified`:
+ * this switch is how C-85 gets its evidence. Rollback: unset it.
  */
 const config = require('../config');
 const db = require('../db/database');
@@ -18,8 +26,18 @@ const _recent = new Map(); // `${userId}:${slot}` → ts
 
 function _channelUrl(streamer) { return `${(config.baseUrl || 'https://openvibe.live').replace(/\/$/, '')}/@${encodeURIComponent(streamer.username)}`; }
 
+/** GOLIVE_NOTIFY=events and Live's events outbox is on: Network's consumer is the only go-live path. */
+function leftToEvents() {
+    if (String(process.env.GOLIVE_NOTIFY || '').trim().toLowerCase() !== 'events') return false;
+    try { return !!require('../events/stream-events').status().enabled; } catch { return false; }
+}
+
 function notifyFollowersGoLive(streamer, stream, { force = false } = {}) {
     if (!streamer || !streamer.id) return;
+    if (leftToEvents()) {
+        console.log(`[GoLive] ${streamer.username}: left to Network's live.stream.started consumer (GOLIVE_NOTIFY=events)`);
+        return;
+    }
     const slot = (stream && (stream.managed_stream_id || stream.slot_slug)) || 'default';
     // Keyed by STREAMER (not slot): a person flapping between slots is still one person
     // going live. This in-memory guard is only a fast path — openvibe.network enforces the
@@ -96,4 +114,4 @@ function _fallback(streamer, stream, followerNetworkIds) {
     }, { alreadyNetworkIds: true });
 }
 
-module.exports = { notifyFollowersGoLive };
+module.exports = { notifyFollowersGoLive, leftToEvents };
