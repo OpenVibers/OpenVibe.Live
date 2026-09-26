@@ -1,13 +1,13 @@
 {
  "service": "live",
- "release": "4479b66702afefd7905c2020666e51cad7eaefa9",
- "recorded_at": "2026-09-26T14:54:58.331Z",
+ "release": "f9599c631bd977fee05ddb99a0c8b3f3ce2ebd8b",
+ "recorded_at": "2026-09-26T15:19:45.475Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "4479b66702af",
-  "released_at": "2026-09-26T14:54:35.000Z",
-  "booted_at": "2026-09-26T14:54:54.774Z",
+  "release": "f9599c631bd9",
+  "released_at": "2026-09-26T15:19:03.000Z",
+  "booted_at": "2026-09-26T15:19:42.701Z",
   "contracts_version": "0.56.0",
   "packages": {
    "openvibe-shared": "1.22.0",
@@ -18,11 +18,11 @@
   "components": {
    "shell": {
     "kind": "script",
-    "version": "4479b66702af"
+    "version": "f9599c631bd9"
    },
    "server": {
     "kind": "server",
-    "version": "4479b66702af"
+    "version": "f9599c631bd9"
    }
   },
   "assets": {},
@@ -5602,6 +5602,26 @@
   },
   {
    "method": "GET",
+   "path": "/api/streams/channel/n1star/game",
+   "auth": "anon",
+   "status": 204,
+   "kind": "empty",
+   "from": [
+    "public/js/app-channel.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/streams/channel/n1star/game",
+   "auth": "user",
+   "status": 204,
+   "kind": "empty",
+   "from": [
+    "public/js/app-channel.js"
+   ]
+  },
+  {
+   "method": "GET",
    "path": "/api/streams/channel/n1star/popular",
    "auth": "anon",
    "status": 200,
@@ -7432,7 +7452,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/features/channel.css?v=64174155ceda",
+   "path": "/css/features/channel.css?v=dfe3fa1b9949",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7553,7 +7573,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app-channel.js?v=747045747200",
+   "path": "/js/app-channel.js?v=1c0b1a8e0649",
    "auth": "anon",
    "accept": "html",
    "status": 200,
