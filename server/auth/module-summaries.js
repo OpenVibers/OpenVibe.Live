@@ -5,6 +5,8 @@
  *   live.profile  channel_url, followers, is_streamer, last_live_at (public), stream_minutes_30d
  *   live.stats    streams_30d, stream_minutes_30d, peak_viewers_30d (public), avg_viewers_30d,
  *                 new_followers_30d, computed_at
+ *   live.loyalty  channel_points_total, channels (top ten by points), arena_level, arena_xp,
+ *                 computed_at; private (contracts 0.56.0, WS-K task 9). Loyalty, never money.
  *
  * Summaries only: streams and follows stay Live's truth. Written with Live's service token (grants
  * network.modules.read/write on live.profile and live.stats), unconditionally, as the owner.
@@ -78,6 +80,27 @@ function summarize(userId, { now = Date.now() } = {}) {
     };
 }
 
+const LOYALTY_MIN_INTERVAL_MS = 30 * 60 * 1000; // points move while people watch: at most one write per half hour
+
+/** live.loyalty for one account: channel points (top ten channels) and the Arena level, or null when
+ *  there is nothing to say. Once a record was written, an account whose points are gone gets zeros. */
+function loyaltyOf(userId) {
+    const d = db.getDb();
+    const channels = d.prepare(`SELECT u.username AS channel, cp.balance AS points FROM channel_points cp JOIN users u ON u.id = cp.streamer_id
+        WHERE cp.user_id = ? AND cp.balance > 0 ORDER BY cp.balance DESC, u.username LIMIT 10`).all(userId)
+        .map((r) => ({ channel: String(r.channel).slice(0, 64), points: r.points }));
+    const total = d.prepare('SELECT COALESCE(SUM(balance), 0) AS n FROM channel_points WHERE user_id = ? AND balance > 0').get(userId).n;
+    let arena = null;
+    try { arena = d.prepare('SELECT xp, level FROM arena_trash_levels WHERE user_id = ?').get(userId) || null; } catch { /* the arena tables do not exist yet */ }
+    if (!total && !arena) {
+        const had = d.prepare("SELECT 1 FROM module_summary_pushes WHERE user_id = ? AND namespace = 'live.loyalty'").get(userId);
+        return had ? { channel_points_total: 0, channels: [] } : null;
+    }
+    const out = { channel_points_total: total, channels };
+    if (arena) { out.arena_level = Math.max(1, Number(arena.level) || 1); out.arena_xp = Math.max(0, Number(arena.xp) || 0); }
+    return out;
+}
+
 function client() {
     if (modulesClient) return modulesClient;
     const clientSecret = process.env.OV_OAUTH_CLIENT_SECRET || '';
@@ -94,32 +117,40 @@ function client() {
 const hashOf = (data) => crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex').slice(0, 32);
 
 /** Write one person's records where they changed. Returns the namespaces written. */
-async function push(userId, { modules = client(), now = Date.now() } = {}) {
+async function push(userId, { modules = client(), now = Date.now(), force = false } = {}) {
     if (!modules) return [];
     const subject = identity.subjectOf(userId);
     if (!/^usr_[0-9A-HJKMNP-TV-Z]{26}$/.test(subject || '')) return [];
     const sum = summarize(userId, { now });
-    if (!sum) return [];
+    const loyalty = loyaltyOf(userId);
+    const pushes = [];
+    if (sum) pushes.push(['live.profile', sum.profile], ['live.stats', sum.stats]);
+    if (loyalty) pushes.push(['live.loyalty', loyalty]);
     const written = [];
-    const pushes = [['live.profile', sum.profile], ['live.stats', sum.stats]];
     for (const [ns, data] of pushes) {
         const hash = hashOf(data);
-        const last = db.getDb().prepare('SELECT hash FROM module_summary_pushes WHERE user_id = ? AND namespace = ?').get(userId, ns);
+        const last = db.getDb().prepare("SELECT hash, strftime('%s', pushed_at) * 1000 AS at FROM module_summary_pushes WHERE user_id = ? AND namespace = ?").get(userId, ns);
         if (last && last.hash === hash) { stats.unchanged++; continue; }
-        const body = ns === 'live.stats' ? { ...data, computed_at: new Date(now).toISOString() } : data;
+        if (ns === 'live.loyalty' && last && !force && now - Number(last.at) < LOYALTY_MIN_INTERVAL_MS) { stats.unchanged++; continue; }
+        const body = ns === 'live.profile' ? data : { ...data, computed_at: new Date(now).toISOString() };
         try {
             await modules.put(ns, subject, body);
         } catch (err) {
             stats.failed++; stats.lastError = `${ns}: ${err.message}`;
             continue;
         }
-        db.getDb().prepare(`INSERT INTO module_summary_pushes (user_id, namespace, hash, pushed_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(user_id, namespace) DO UPDATE SET hash = excluded.hash, pushed_at = excluded.pushed_at`).run(userId, ns, hash);
+        // pushed_at on the same clock the half-hour loyalty throttle reads (Date.now() in production).
+        db.getDb().prepare(`INSERT INTO module_summary_pushes (user_id, namespace, hash, pushed_at) VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id, namespace) DO UPDATE SET hash = excluded.hash, pushed_at = excluded.pushed_at`).run(userId, ns, hash, new Date(now).toISOString().replace('T', ' ').slice(0, 19));
         stats.written++;
         written.push(ns);
     }
     return written;
 }
+
+const tableExists = (name) => Boolean(db.getDb().prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name));
+const arenaLog = () => tableExists('arena_xp_log');
+const arenaLevels = () => tableExists('arena_trash_levels');
 
 let lastScan = null;
 /** People whose stream ended, or who gained a follower, since the previous scan. */
@@ -129,7 +160,9 @@ async function scan({ modules = client(), now = Date.now() } = {}) {
     const to = new Date(now).toISOString().replace('T', ' ').slice(0, 19);
     const ids = db.getDb().prepare(`SELECT user_id AS id FROM streams WHERE ended_at >= ? AND ended_at < ?
         UNION SELECT streamer_id AS id FROM follows WHERE created_at >= ? AND created_at < ?
-        UNION SELECT user_id AS id FROM streams WHERE started_at >= ? AND started_at < ?`).all(from, to, from, to, from, to).map((r) => r.id);
+        UNION SELECT user_id AS id FROM streams WHERE started_at >= ? AND started_at < ?
+        UNION SELECT user_id AS id FROM channel_points WHERE updated_at >= ? AND updated_at < ?${arenaLog() ? `
+        UNION SELECT user_id AS id FROM arena_xp_log WHERE created_at >= ? AND created_at < ?` : ''}`).all(...Array(arenaLog() ? 5 : 4).fill([from, to]).flat()).map((r) => r.id);
     for (const id of ids) await push(id, { modules, now });
     lastScan = to;
     stats.lastScanAt = new Date(now).toISOString();
@@ -141,8 +174,11 @@ async function refresh({ modules = client(), now = Date.now() } = {}) {
     if (!modules) return 0;
     const since = new Date(now - 31 * DAY_MS).toISOString().replace('T', ' ').slice(0, 19);
     const ids = db.getDb().prepare(`SELECT DISTINCT user_id AS id FROM streams WHERE started_at >= ?
-        UNION SELECT DISTINCT streamer_id AS id FROM follows`).all(since).map((r) => r.id);
-    for (const id of ids) await push(id, { modules, now });
+        UNION SELECT DISTINCT streamer_id AS id FROM follows
+        UNION SELECT DISTINCT user_id AS id FROM channel_points WHERE balance > 0
+        UNION SELECT user_id AS id FROM module_summary_pushes WHERE namespace = 'live.loyalty'${arenaLevels() ? `
+        UNION SELECT user_id AS id FROM arena_trash_levels` : ''}`).all(since).map((r) => r.id);
+    for (const id of ids) await push(id, { modules, now, force: true });
     return ids.length;
 }
 
@@ -158,4 +194,4 @@ function init() {
 function status() { return { ...stats }; }
 function _reset() { modulesClient = null; lastScan = null; Object.assign(stats, { written: 0, unchanged: 0, failed: 0, lastError: null, lastScanAt: null }); }
 
-module.exports = { init, ensureSchema, summarize, push, scan, refresh, status, _reset };
+module.exports = { init, ensureSchema, summarize, loyaltyOf, push, scan, refresh, status, _reset };

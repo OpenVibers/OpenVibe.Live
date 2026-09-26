@@ -84,6 +84,31 @@ d.prepare('INSERT INTO follows (follower_id, streamer_id, created_at) VALUES (2,
     assert.strictEqual(await live.scan({ now: now + 5 * 60000 }), 0, 'the next scan starts where this one ended');
     assert.strictEqual(await live.refresh({ now: now + DAY }), 1, 'the daily refresh visits everyone with recent streams or followers');
 
+    // ── live.loyalty (contracts 0.56.0, WS-K task 9): channel points and the Arena level, private ──
+    d.exec('CREATE TABLE IF NOT EXISTS arena_trash_levels (user_id INTEGER PRIMARY KEY, xp INTEGER DEFAULT 0, level INTEGER DEFAULT 1)');
+    d.prepare("INSERT INTO channel_points (user_id, streamer_id, balance, updated_at) VALUES (3, 1, 300, ?), (3, 2, 50, ?), (3, 3, 0, ?)").run(at(DAY), at(DAY), at(DAY));
+    d.prepare('INSERT INTO arena_trash_levels (user_id, xp, level) VALUES (3, 450, 3)').run();
+    assert.deepStrictEqual(live.loyaltyOf(3), { channel_points_total: 350, channels: [{ channel: 'ann', points: 300 }, { channel: 'bob', points: 50 }], arena_level: 3, arena_xp: 450 });
+    assert.strictEqual(live.loyaltyOf(2), null, 'no points and no Arena: nothing');
+    const before = puts.length;
+    assert.deepStrictEqual(await live.push(3, { now }), ['live.loyalty'], 'a viewer with points gets only the loyalty record');
+    const loyal = puts[before];
+    assert.strictEqual(loyal.ns, 'live.loyalty'); assert.strictEqual(loyal.subject, 'usr_01JAB2C3D4E5F6G7H8J9K0MNPC');
+    assert.ok(modules.validateData('live.loyalty', loyal.data).valid, 'live.loyalty matches its schema');
+    assert.deepStrictEqual(modules.publicView('live.loyalty', loyal.data), {}, 'nothing of it is public');
+    assert.ok(!Object.keys(loyal.data).some((k) => /usd|cents|cash|payout|withdraw|vibes/i.test(k)), 'loyalty is never money');
+    // Points move while people watch: at most one write per half hour, except the daily refresh.
+    d.prepare('UPDATE channel_points SET balance = 310, updated_at = ? WHERE user_id = 3 AND streamer_id = 1').run(at(0));
+    assert.deepStrictEqual(await live.push(3, { now: now + 60000 }), [], 'a change within 30 minutes waits');
+    assert.deepStrictEqual(await live.push(3, { now: now + 60000, force: true }), ['live.loyalty'], 'the refresh writes it');
+    assert.strictEqual(puts[puts.length - 1].data.channel_points_total, 360);
+    // The scan picks up changed points; points gone after a write leave zeros, not a stale record.
+    d.prepare('UPDATE channel_points SET balance = 0, updated_at = ? WHERE user_id = 3').run(at(-10 * 60000)); // after the previous scan's window
+    d.prepare('DELETE FROM arena_trash_levels WHERE user_id = 3').run();
+    assert.deepStrictEqual(live.loyaltyOf(3), { channel_points_total: 0, channels: [] });
+    assert.ok((await live.scan({ now: now + 45 * 60000 })) >= 1, 'the scan finds the changed points');
+    assert.strictEqual(puts[puts.length - 1].data.channel_points_total, 0);
+
     // ── Never under LIVE_DRILL: index.js starts it inside the non-drill boot, like the other jobs ──
     const idx = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
     assert.ok(/require\('\.\/auth\/module-summaries'\)\.init\(\)/.test(idx), 'index.js starts it');
