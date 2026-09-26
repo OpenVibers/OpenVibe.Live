@@ -1050,6 +1050,7 @@ document.addEventListener('DOMContentLoaded', function initOpenVibeNetwork() {
             apiBase: openvibeToolsBase,
             soundBase: '/assets/sounds',
             swPath: '/openvibe-sw.js',
+            realtime: true,   // new notifications over OpenVibe.Events, polling as the fallback (Shared 1.22.0)
         });
         OpenVibeNotifications.__ovNavInit = true;   // the shared navbar mounts (and re-mounts) the bell itself
         if (!mount.childElementCount) mount.appendChild(OpenVibeNotifications.createBell());
