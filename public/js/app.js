@@ -791,7 +791,8 @@ async function loadBalance() {
 let _navPointsStreamerId = null;
 async function updateChannelPointsNav(streamerId) {
     _navPointsStreamerId = (streamerId && (!currentUser || String(streamerId) !== String(currentUser.id))) ? streamerId : null;
-    if (!_navPointsStreamerId) return;
+    // A guest has no points to show, and the API answers 401 (a console error on every channel, VOD and clip page).
+    if (!_navPointsStreamerId || !currentUser) return;
     try {
         const d = await api(`/coins/channel-balance?streamerId=${_navPointsStreamerId}`);
         const bal = (d.balance || 0).toLocaleString();

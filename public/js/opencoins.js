@@ -154,8 +154,8 @@ async function loadRewardsPanel() {
         grids.forEach(g => { g.innerHTML = '<p class="muted" style="padding:8px">Failed to load rewards</p>'; });
     }
 
-    // Update this channel's points balance in all reward panels
-    try {
+    // Update this channel's points balance in all reward panels (signed in only: a guest's request answers 401).
+    if (typeof currentUser !== 'undefined' && currentUser) try {
         const coinData = await api(`/coins/channel-balance?streamerId=${ownerId}`);
         document.querySelectorAll('.rewards-coin-balance').forEach(el => {
             el.textContent = (coinData.balance || 0).toLocaleString();
