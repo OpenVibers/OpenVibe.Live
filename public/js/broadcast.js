@@ -6538,12 +6538,13 @@ function openViewerPreview() {
         _viewerPreviewWindow.focus();
         return;
     }
-    // Use the stream's direct URL (slug from streamData if available, else /watch/:id)
+    // The channel page of this stream's slot, by the slot's slug, else the slot's id: what a viewer
+    // opens. streamData is the stream row, so those are managed_stream_slug / managed_stream_id; it
+    // has no `slug`, and the live stream's own id in the slot position opened another slot or none.
     const ss = streamId ? getStreamState(streamId) : null;
     const streamData = ss?.streamData || null;
-    const slug = streamData?.slug || null;
-    // The channel page for this slot (by slug, else by id); /watch/<id> never existed.
-    const url = currentUser?.username ? channelPath(currentUser.username, streamId ? (slug || streamId) : null) : '/';
+    const slot = streamData?.managed_stream_slug || streamData?.managed_stream_id || null;
+    const url = currentUser?.username ? channelPath(currentUser.username, slot) : '/';
     _viewerPreviewWindow = window.open(
         url,
         'viewer-preview',
