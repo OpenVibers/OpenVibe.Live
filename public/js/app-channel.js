@@ -695,6 +695,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
               _setCategoryBadge(document.getElementById('ch-category-badge'), _liveCat || ch.ai_category || ch.category || 'Live',
                   _liveCat ? _isInferredCategory(_ls0) : !!ch.ai_category); }
             document.getElementById('ch-follower-count').textContent = `${ch.follower_count || 0} followers`;
+            _loadGameBadge(ch.username);
             setupFollowBtn(document.getElementById('ch-btn-follow'));
             setupBanBtn(document.getElementById('ch-btn-ban'));
 
@@ -754,6 +755,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             document.getElementById('ch-username-offline').textContent = '@' + ch.username;
             document.getElementById('ch-description-offline').textContent = ch.description || '';
             document.getElementById('ch-follower-count-offline').textContent = `${ch.follower_count || 0} followers`;
+            _loadGameBadge(ch.username);
             _setCategoryBadge(document.getElementById('ch-category-badge-offline'), ch.ai_category || ch.category || 'Offline', !!ch.ai_category);
             setupFollowBtn(document.getElementById('ch-btn-follow-offline'));
             setupBanBtn(document.getElementById('ch-btn-ban-offline'));
@@ -1676,6 +1678,28 @@ function switchChannelTab(tab, btn) {
     // Media queue changes constantly — reload every time the tab opens.
     if (tab === 'media' && currentChannelUsername) {
         try { loadChannelMedia(currentChannelUsername); } catch {}
+    }
+}
+
+// The owner's public game progress (roadmap WS-M task 2): GET /api/streams/channel/:username/game answers
+// { game, url, level, achievements?, playtime_hours? } or 204. Shown as a small badge next to the followers.
+async function _loadGameBadge(username) {
+    const els = [document.getElementById('ch-game-badge'), document.getElementById('ch-game-badge-offline')].filter(Boolean);
+    els.forEach((el) => { el.hidden = true; el.textContent = ''; });
+    let g = null;
+    try { g = await api(`/streams/channel/${encodeURIComponent(username)}/game`); } catch { return; }
+    if (!g || typeof g.level !== 'number' || username !== currentChannelUsername) return;
+    const bits = [`Lv ${g.level}`];
+    if (g.achievements) bits.push(`${g.achievements} achievement${g.achievements === 1 ? '' : 's'}`);
+    if (g.playtime_hours) bits.push(`${g.playtime_hours} h`);
+    for (const el of els) {
+        const icon = document.createElement('i');
+        icon.className = 'fa-solid fa-gamepad';
+        icon.setAttribute('aria-hidden', 'true');
+        el.append(icon, ` ${g.game} · ${bits.join(' · ')}`);
+        el.title = `${g.game} on OpenVibe.Games`;
+        el.href = g.url || 'https://openvibe.games/';
+        el.hidden = false;
     }
 }
 

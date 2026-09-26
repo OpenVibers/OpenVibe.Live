@@ -1015,6 +1015,17 @@ async function fetchWeather(zip) {
     }
 }
 
+// ── Game summary (roadmap WS-M task 2, PF7) ──────────────────
+// The channel owner's public games.progress.summary (level, achievements, playtime) from Network; 204 when none.
+router.get('/channel/:username/game', async (req, res) => {
+    const channel = db.getChannelByUsername(req.params.username);
+    if (!channel) return res.status(404).json({ error: 'Channel not found' });
+    const summary = await require('../auth/game-summary').forUser(channel.user_id);
+    res.set('Cache-Control', 'public, max-age=300');
+    if (!summary) return res.status(204).end();
+    res.json(summary);
+});
+
 router.get('/channel/:username/weather', async (req, res) => {
     try {
         const channel = db.getChannelByUsername(req.params.username);

@@ -1384,3 +1384,8 @@ body.controls-docked .messenger-toggle { z-index: 1100; }
 
 /* An AI-inferred category says so ("Gaming · inferred", roadmap 33.4). */
 .ch-category-badge .cat-inferred { font-weight: 500; opacity: .78; font-size: .9em; }
+
+/* The owner's public game progress (app-channel.js _loadGameBadge). */
+.ch-game-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 0.75rem; color: var(--text-muted); text-decoration: none; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; white-space: nowrap; }
+.ch-game-badge:hover { color: var(--text-primary); border-color: var(--accent); }
+.ch-game-badge[hidden] { display: none; }
