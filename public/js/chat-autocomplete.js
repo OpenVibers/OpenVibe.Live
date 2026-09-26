@@ -23,10 +23,11 @@ const SLASH_COMMANDS = [
     { name: 'me',      desc: 'Send an action message',   usage: '/me <action>' },
     { name: 'paste',   desc: 'Share a paste in chat',    usage: '/paste <content>' },
     { name: 'slow',    desc: 'Set slow mode (mod)',       usage: '/slow <seconds>' },
+    { name: 'subonly', desc: 'Sub-only chat on/off (mod)', usage: '/subonly [off]' },
     { name: 'ban',     desc: 'Ban a user (mod)',          usage: '/ban <user>' },
     { name: 'unban',   desc: 'Unban a user (mod)',        usage: '/unban <user>' },
     { name: 'timeout', desc: 'Timeout a user (mod)',      usage: '/timeout <user> [s]' },
-    { name: 'clear',   desc: 'Clear chat messages (mod)' },
+    { name: 'clear',   desc: 'Clear chat screens; history stays (mod)' },
 ];
 
 /* ── State ────────────────────────────────────────────────────── */

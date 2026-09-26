@@ -1687,6 +1687,8 @@ function initDb() {
         if (!cols.includes('sounds_mods_only')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN sounds_mods_only INTEGER DEFAULT 0');
         // Allow channel mods to edit the streamer's About/panels (off by default).
         if (!cols.includes('mods_can_edit_about')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN mods_can_edit_about INTEGER DEFAULT 0');
+        // Sub-only chat: only active subscribers of the channel (and its moderators) may chat (OpenVibe.Chat enforces it).
+        if (!cols.includes('sub_only')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN sub_only INTEGER DEFAULT 0');
     } catch (e) { console.warn('[DB] channel_moderation_settings columns migration:', e.message); }
 
     // Migrate: add channel_owner_id to emotes (viewer uploads targeting a channel) + channel_sounds table
@@ -6475,6 +6477,7 @@ function getChannelModerationSettings(channelId) {
             sound_max_speed: 3.0,
             sound_min_pitch_cents: -1200,
             sound_max_pitch_cents: 1200,
+            sub_only: 0,
         };
 }
 
@@ -6578,6 +6581,8 @@ function upsertChannelModerationSettings(channelId, fields) {
     if (fields.tts_max_length !== undefined) {
         try { run('UPDATE channel_moderation_settings SET tts_max_length = ? WHERE channel_id = ?', [Math.min(1000, Math.max(10, Number(fields.tts_max_length) || 200)), channelId]); } catch { /* */ }
     }
+    // sub_only the same way (OpenVibe.Chat's database.js writes it identically once it owns the table).
+    if (fields.sub_only !== undefined) run('UPDATE channel_moderation_settings SET sub_only = ? WHERE channel_id = ?', [fields.sub_only ? 1 : 0, channelId]);
     return getChannelModerationSettings(channelId);
 }
 

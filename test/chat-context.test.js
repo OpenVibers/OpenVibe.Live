@@ -202,6 +202,30 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.strictEqual((await call('POST', '/internal/chat-effects/channel-settings', { token: WRITE, body: { channel_id: channel.id, actor_user_id: viewer, fields: { slow_mode_seconds: 9 } } })).status, 403);
         assert.strictEqual((await call('POST', '/internal/chat-effects/channel-settings', { token: WRITE, body: { channel_id: channel.id, actor_user_id: mod, fields: { slow_mode_seconds: 9 } } })).status, 200);
         assert.strictEqual(db.getChannelModerationSettings(channel.id).slow_mode_seconds, 9);
+        // Sub-only mode is saved the same way (Chat enforces the saved value); a viewer cannot set it.
+        assert.strictEqual(db.getChannelModerationSettings(channel.id).sub_only, 0, 'off by default');
+        assert.strictEqual((await call('POST', '/internal/chat-effects/channel-settings', { token: WRITE, body: { channel_id: channel.id, actor_user_id: viewer, fields: { sub_only: 1 } } })).status, 403);
+        assert.strictEqual((await call('POST', '/internal/chat-effects/channel-settings', { token: WRITE, body: { channel_id: channel.id, actor_user_id: mod, fields: { sub_only: 1 } } })).status, 200);
+        assert.deepStrictEqual([db.getChannelModerationSettings(channel.id).sub_only, db.getChannelModerationSettings(channel.id).slow_mode_seconds], [1, 9], 'sub_only saved, slow mode kept');
+        assert.strictEqual((await call('POST', '/internal/chat-effects/channel-settings', { token: WRITE, body: { channel_id: channel.id, actor_user_id: mod, fields: { sub_only: 0 } } })).status, 200);
+        assert.strictEqual(db.getChannelModerationSettings(channel.id).sub_only, 0);
+        assert.strictEqual((await call('GET', `/internal/chat-context/channels/${channel.id}/policy`, { token: READ })).body.settings.sub_only, 0, 'the policy read carries it');
+
+        // 8a. Sub-only chat asks whether someone holds an ACTIVE subscription to the streamer's channel:
+        // by user id or Network subject; a lapsed period or a cancelled row is not one.
+        const subOf = (q) => call('GET', `/internal/chat-context/subscriber?${q}`, { token: READ });
+        assert.strictEqual((await call('GET', `/internal/chat-context/subscriber?user_id=${viewer}&streamer_id=${streamer}`, { token: WRITE })).status, 403, 'a read capability');
+        assert.strictEqual((await subOf(`streamer_id=${streamer}`)).status, 400);
+        assert.deepStrictEqual((await subOf(`user_id=${viewer}&streamer_id=${streamer}`)).body, { subscriber: false, user_id: viewer, streamer_id: streamer });
+        db.upsertSubscription({ subscriber_id: viewer, streamer_id: streamer, status: 'active', current_period_end: new Date(Date.now() + 86400e3).toISOString() });
+        assert.strictEqual((await subOf(`user_id=${viewer}&streamer_id=${streamer}`)).body.subscriber, true);
+        assert.strictEqual((await subOf(`subject=usr_01J9ZZZZZZZZZZZZZZZZZZZZZZ&streamer_id=${streamer}`)).body.subscriber, true, 'by Network subject');
+        assert.strictEqual((await subOf(`subject=usr_01J9UNKNOWNZZZZZZZZZZZZZZZ&streamer_id=${streamer}`)).body.subscriber, false, 'an unknown subject');
+        assert.strictEqual((await subOf(`user_id=${viewer}&streamer_id=${mod}`)).body.subscriber, false, 'another channel');
+        db.upsertSubscription({ subscriber_id: viewer, streamer_id: streamer, status: 'active', current_period_end: new Date(Date.now() - 60e3).toISOString() });
+        assert.strictEqual((await subOf(`user_id=${viewer}&streamer_id=${streamer}`)).body.subscriber, false, 'the paid period is over');
+        db.upsertSubscription({ subscriber_id: viewer, streamer_id: streamer, status: 'canceled', current_period_end: new Date(Date.now() + 86400e3).toISOString() });
+        assert.strictEqual((await subOf(`user_id=${viewer}&streamer_id=${streamer}`)).body.subscriber, false, 'not active');
         const snd = path.join(tmp, 'sounds', 'alert.mp3'); fs.writeFileSync(snd, 'x');
         assert.strictEqual((await call('POST', '/internal/chat-effects/alert-sound', { token: WRITE, body: { channel_id: channel.id, actor_user_id: mod, kind: 'donation', url: snd } })).status, 403, 'only the channel owner');
         assert.strictEqual((await call('POST', '/internal/chat-effects/alert-sound', { token: WRITE, body: { channel_id: channel.id, actor_user_id: streamer, kind: 'donation', url: '/etc/passwd' } })).status, 400, 'files stay in the sounds dir');

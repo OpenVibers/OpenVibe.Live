@@ -98,7 +98,7 @@ function renderDashModerationChannels(channels) {
                     <div class="dash-mod-section">
                         <h5><i class="fa-solid fa-sliders"></i> Chat Settings</h5>
                         <div class="dash-mod-settings">
-                            <label><span>Slowmode Seconds</span><input type="number" id="dash-mod-slow-${channel.id}" class="form-input" value="${Number(settings.slowmode_seconds || 0)}"></label>
+                            <label><span>Slowmode Seconds</span><input type="number" id="dash-mod-slow-${channel.id}" class="form-input" value="${Number(settings.slow_mode_seconds || 0)}"></label>
                             <label><span>Max Message Length</span><input type="number" min="1" max="${(currentUser?.role === 'admin') ? 6000 : 4000}" id="dash-mod-maxlen-${channel.id}" class="form-input" value="${Number(settings.max_message_length || 500)}"></label>
                             <label><span>Max TTS Length</span><input type="number" min="10" max="1200" id="dash-mod-ttslen-${channel.id}" class="form-input" value="${Number(settings.tts_max_length || 200)}"></label>
                             <label><span>Account Age Gate (hours)</span><input type="number" id="dash-mod-age-${channel.id}" class="form-input" value="${Number(settings.account_age_gate_hours || 0)}"></label>
@@ -128,6 +128,7 @@ function renderDashModerationChannels(channels) {
                                 <textarea id="dash-mod-slur-msg-${channel.id}" class="form-input" rows="2" placeholder="Friendly/funny message shown when blocked">${esc(String(settings.slur_filter_nudge_message || ''))}</textarea>
                             </label>
                             <label class="staff-inline-toggle"><input type="checkbox" id="dash-mod-followers-${channel.id}" ${Number(settings.followers_only || 0) ? 'checked' : ''}> Followers Only</label>
+                            <label class="staff-inline-toggle"><input type="checkbox" id="dash-mod-subonly-${channel.id}" ${Number(settings.sub_only || 0) ? 'checked' : ''}> <span>Sub-only chat (subscribers and mods; also <code>/subonly</code>)</span></label>
                             <label class="staff-inline-toggle"><input type="checkbox" id="dash-mod-soundboard-${channel.id}" ${Number(settings.soundboard_enabled ?? 1) ? 'checked' : ''}> Allow 101soundboards</label>
                             <label class="staff-inline-toggle"><input type="checkbox" id="dash-mod-soundboard-pitch-${channel.id}" ${Number(settings.soundboard_allow_pitch ?? 1) ? 'checked' : ''}> Allow soundboard pitch changes</label>
                             <label class="staff-inline-toggle"><input type="checkbox" id="dash-mod-soundboard-speed-${channel.id}" ${Number(settings.soundboard_allow_speed ?? 1) ? 'checked' : ''}> Allow soundboard speed changes</label>
@@ -291,7 +292,7 @@ window.dashSaveChannelModerationSettings = async function dashSaveChannelModerat
         await api(`/channels/${channelId}/moderation`, {
             method: 'PUT',
             body: {
-                slowmode_seconds: Number(document.getElementById(`dash-mod-slow-${channelId}`)?.value || 0),
+                slow_mode_seconds: Number(document.getElementById(`dash-mod-slow-${channelId}`)?.value || 0),
                 max_message_length: Number(document.getElementById(`dash-mod-maxlen-${channelId}`)?.value || 500),
                 tts_max_length: Number(document.getElementById(`dash-mod-ttslen-${channelId}`)?.value || 200),
                 account_age_gate_hours: Number(document.getElementById(`dash-mod-age-${channelId}`)?.value || 0),
@@ -311,6 +312,7 @@ window.dashSaveChannelModerationSettings = async function dashSaveChannelModerat
                 slur_filter_regexes: String(document.getElementById(`dash-mod-slur-regex-${channelId}`)?.value || ''),
                 slur_filter_nudge_message: String(document.getElementById(`dash-mod-slur-msg-${channelId}`)?.value || ''),
                 followers_only: !!document.getElementById(`dash-mod-followers-${channelId}`)?.checked,
+                sub_only: !!document.getElementById(`dash-mod-subonly-${channelId}`)?.checked,
                 soundboard_enabled: !!document.getElementById(`dash-mod-soundboard-${channelId}`)?.checked,
                 soundboard_allow_pitch: !!document.getElementById(`dash-mod-soundboard-pitch-${channelId}`)?.checked,
                 soundboard_allow_speed: !!document.getElementById(`dash-mod-soundboard-speed-${channelId}`)?.checked,

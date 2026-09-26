@@ -175,12 +175,15 @@ router.put('/:channelId/moderation', requireAuth, requireChannelAccess, async (r
         // The dashboard form sends every field, so for a moderator these are ignored rather than refused.
         if (!isOwnerOrStaff) for (const k of OWNER_POLICY_KEYS) delete req.body[k];
         const settings = await chatTables.write('upsertChannelModerationSettings', req.channel.id, {
-            slow_mode_seconds: req.body.slow_mode_seconds !== undefined
-                ? Math.max(0, parseInt(req.body.slow_mode_seconds) || 0) : undefined,
-            slowmode_seconds: req.body.slowmode_seconds !== undefined
-                ? Math.max(0, parseInt(req.body.slowmode_seconds) || 0) : undefined,
+            // The column is slow_mode_seconds. The dashboard used to send (and read) slowmode_seconds,
+            // which no writer knows, so its slow mode was never saved; a cached dashboard still sends it.
+            slow_mode_seconds: (req.body.slow_mode_seconds ?? req.body.slowmode_seconds) !== undefined
+                ? Math.max(0, parseInt(req.body.slow_mode_seconds ?? req.body.slowmode_seconds) || 0) : undefined,
             followers_only: req.body.followers_only !== undefined
                 ? parseBoolean(req.body.followers_only, false) : undefined,
+            // Sub-only chat (enforced by OpenVibe.Chat): active subscribers and the channel's moderators.
+            sub_only: req.body.sub_only !== undefined
+                ? parseBoolean(req.body.sub_only, false) : undefined,
             emote_only: req.body.emote_only,
             allow_anonymous: req.body.allow_anonymous !== undefined
                 ? parseBoolean(req.body.allow_anonymous, true) : undefined,
@@ -341,13 +344,14 @@ router.post('/:channelId/moderation/messages/:messageId/delete', requireAuth, re
 
         db.deleteChatMessage(messageId, req.user.id);
 
-        // Broadcast deletion to connected clients
-        if (message.stream_id) {
-            chatServer.broadcastToStream(message.stream_id, { type: 'delete-messages', ids: [messageId] });
-            chatServer.forwardToGlobal(message.stream_id, { type: 'delete-messages', ids: [messageId] });
-        } else {
-            chatServer.broadcastGlobal({ type: 'delete-messages', ids: [messageId] });
-        }
+        // Broadcast the deletion to every surface that shows the line: the streamer's whole channel
+        // room (every live slot, the offline room, a channel popout) and the global feed.
+        const delPayload = { type: 'delete-messages', ids: [messageId] };
+        const chanUid = message.channel_user_id || (message.stream_id ? (db.getStreamById(message.stream_id)?.user_id || null) : null);
+        if (chanUid || message.stream_id) chatServer.broadcastToChannelRoom(chanUid, message.stream_id || null, delPayload);
+        if (message.stream_id) chatServer.forwardToGlobal(message.stream_id, delPayload);
+        else if (chanUid) chatServer.forwardToGlobalByChannel(chanUid, delPayload);
+        else chatServer.broadcastGlobal(delPayload);
 
         db.logModerationAction({
             scope_type: 'channel',

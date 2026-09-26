@@ -10,6 +10,7 @@
  *   GET  /users?after_id&limit               → { rows }   users projection (paged by id)
  *   POST /users/lookup {ids?, usernames?}    → { users }
  *   GET  /users/:id/follows                  → { streamer_ids }
+ *   GET  /subscriber?user_id|subject&streamer_id → { subscriber } (an active channel subscription: sub-only chat)
  *   GET  /users/profile?username&viewer_id   → the /api/chat/user/:username/profile card
  *   GET  /streams?after_id&limit, /streams/active, /streams/:id
  *   GET  /managed-streams?after_id&limit, /channels?after_id&limit, /channels/by-user/:userId
@@ -133,6 +134,29 @@ contextRouter.get('/users/profile', (req, res) => {
 
 contextRouter.get('/users/:id/follows', (req, res) => {
     res.json({ streamer_ids: db.all('SELECT streamer_id FROM follows WHERE follower_id = ?', [int(req.params.id)]).map((r) => r.streamer_id) });
+});
+
+// Sub-only chat (OpenVibe.Chat): does this person hold an ACTIVE subscription to this streamer's
+// channel? Live's own rule (db.isActiveSubscriber: status active, current period not over; Billing's
+// entitlement under BILLING_AUTHORITY=billing, read fresh here). Network VIP is not a subscription.
+// The person by Live user id or by Network subject. Chat caches the answer briefly and treats a
+// failed read as "no" for everyone but the room's moderators.
+contextRouter.get('/subscriber', async (req, res) => {
+    const streamerId = int(req.query.streamer_id);
+    let userId = int(req.query.user_id);
+    if (!userId && req.query.subject) {
+        userId = db.get("SELECT user_id FROM linked_accounts WHERE service = 'network' AND subject_id = ? ORDER BY id DESC LIMIT 1", [String(req.query.subject)])?.user_id || 0;
+        if (!userId) return res.json({ subscriber: false, user_id: null, streamer_id: streamerId || null });
+    }
+    if (!userId || !streamerId) return fail(res, 400, 'user_id (or subject) and streamer_id required');
+    try {
+        if (process.env.BILLING_AUTHORITY && require('../monetization/money-authority').onBilling()) {
+            await require('../monetization/billing-actions').refreshEntitlement(userId, streamerId).catch(() => {});
+        }
+        res.json({ subscriber: !!db.isActiveSubscriber(userId, streamerId), user_id: userId, streamer_id: streamerId });
+    } catch (err) {
+        fail(res, 500, 'subscription lookup failed');
+    }
 });
 
 contextRouter.get('/streams', (req, res) => {
@@ -341,13 +365,14 @@ effectsRouter.post('/approve-ip', (req, res) => {
     res.json({ ok: true });
 });
 
-// /slow persists the channel's slow mode.
+// /slow and /subonly persist the channel's slow mode and sub-only mode (Chat enforces the saved values).
 effectsRouter.post('/channel-settings', (req, res) => {
     const channelId = int(req.body?.channel_id);
     const actor = actorOf(int(req.body?.actor_user_id));
     if (!channelId || !actor || !permissions.canModerateChannel(actor, channelId)) return fail(res, 403, 'You do not have permission.');
     const fields = {};
     if (req.body.fields && req.body.fields.slow_mode_seconds !== undefined) fields.slow_mode_seconds = Math.max(0, int(req.body.fields.slow_mode_seconds));
+    if (req.body.fields && req.body.fields.sub_only !== undefined) fields.sub_only = [true, 1, '1', 'true', 'on'].includes(req.body.fields.sub_only) ? 1 : 0;
     if (!Object.keys(fields).length) return fail(res, 400, 'no chat-settable fields');
     chatTables.write('upsertChannelModerationSettings', channelId, fields)
         .then(() => res.json({ ok: true }), (err) => fail(res, err.status || 500, err.message));

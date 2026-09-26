@@ -41,9 +41,17 @@ with the same WebSocket protocol and REST paths. `CHAT_AUTHORITY=chat` switches 
 
 ### Moderation Tools
 - Ban, timeout, unban users
-- Message deletion (individual or bulk time-range purge)
-- Slow mode (configurable cooldown)
-- Subscribers-only mode
+- Message deletion (individual or bulk time-range purge): the lines leave every surface that showed
+  them (the stream, the rest of the channel room and its popouts, the global feed) and cursor reads
+  name them in `deleted_ids`. `/clear` only clears screens; the lines stay in history
+- Slow mode: the channel's saved `slow_mode_seconds` (dashboard, or `/slow N` / `/slow off`), enforced
+  by OpenVibe.Chat and kept across restarts; moderators are exempt
+- Sub-only mode (`sub_only`: dashboard, or `/subonly` / `/subonly off` by the streamer, channel mods
+  and chat staff): only people with an active channel subscription (`subscriptions`, asked through
+  `GET /internal/chat-context/subscriber`), the streamer, channel mods and chat staff may chat; Network
+  VIP does not count, anonymous viewers cannot chat, and when Live cannot be asked the answer is no
+- Blocks: someone who blocked a person on OpenVibe.Network no longer gets that person's lines, live or
+  in history reads (only their own view; moderation logs show everything)
 - Word filtering and opsec filtering
 
 ### Chat Logs & Admin

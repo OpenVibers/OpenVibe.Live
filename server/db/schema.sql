@@ -546,6 +546,7 @@ CREATE TABLE IF NOT EXISTS channel_moderation_settings (
     goal_sound_url TEXT,                       -- optional override sound for goal-reached
     goal_sound_mime TEXT,
     emote_scale INTEGER DEFAULT 100,           -- emote display size in chat, percent (50-300)
+    sub_only INTEGER DEFAULT 0,                -- only active subscribers (and the channel's moderators) may chat
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
 );
