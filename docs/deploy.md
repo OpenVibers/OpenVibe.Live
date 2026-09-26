@@ -66,7 +66,7 @@ but could not restore previous `node_modules`.
 - Content-hashed assets from the previous release are still served under their old hashes, so a page
   rendered before the switch never loads JavaScript from after it.
 - **Release notification.** After a deploy or `--rollback` that went live, the script runs
-  `ovhost announce live` (OpenVibe.Host, WS-P task 9). ovhost publishes `host.deploy.activated` for the
+  `ovhost announce live` (OpenVibe.Host, WS-P task 9). ovhost publishes `host.release.published` for the
   release `/release.json` now reports, once per release, to OpenVibe.Events. Open tabs (openvibe-shared
   1.17.0 release-watch) then check `/release.json` within about 20 s instead of at their next poll. It is
   best effort: skipped when `ovhost` is missing or has no `announce` (set `OVHOST` for another path), 20 s at

@@ -225,7 +225,7 @@ restart_and_verify() {
 }
 
 # ── Release notification (WS-P task 9) ───────────────────────────────────────
-# OpenVibe.Host publishes host.deploy.activated to OpenVibe.Events, so open tabs check /release.json now
+# OpenVibe.Host publishes host.release.published to OpenVibe.Events, so open tabs check /release.json now
 # instead of at their next poll. ovhost announces the release Live's own /release.json reports, once per
 # release. Best effort: skipped when ovhost is missing or has no `announce`, 20 s at most, and it never
 # fails a deploy (see OpenVibe.Host docs/release-notifications.md).
