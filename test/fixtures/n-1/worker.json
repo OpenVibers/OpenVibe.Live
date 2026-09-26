@@ -1,7 +1,7 @@
 {
  "service": "live",
- "release": "13525ebd51a488775929d849bfa103637a2a2e02",
- "recorded_at": "2026-09-26T14:46:25.649Z",
+ "release": "4479b66702afefd7905c2020666e51cad7eaefa9",
+ "recorded_at": "2026-09-26T14:54:58.331Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "user_version": 0,
  "schema": [
@@ -257,21 +257,21 @@
   "schema_migrations": [
    {
     "id": "001_vibes_decimal_to_bits",
-    "applied_at": "2026-09-26 14:46:21",
+    "applied_at": "2026-09-26 14:54:52",
     "mode": "adopted",
     "duration_ms": 1
    },
    {
     "id": "002_pastes_ai_columns",
-    "applied_at": "2026-09-26 14:46:21",
+    "applied_at": "2026-09-26 14:54:52",
     "mode": "applied",
-    "duration_ms": 5
+    "duration_ms": 6
    },
    {
     "id": "004_hot_path_indexes",
-    "applied_at": "2026-09-26 14:46:21",
+    "applied_at": "2026-09-26 14:54:52",
     "mode": "applied",
-    "duration_ms": 0
+    "duration_ms": 1
    }
   ]
  },
@@ -286,6 +286,7 @@
   "CREATE TABLE IF NOT EXISTS comment_thread_refs ( content_type TEXT NOT NULL, content_id INTEGER NOT NULL, thread_id INTEGER NOT NULL, access_id TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (content_type, content_id) )",
   "CREATE TABLE IF NOT EXISTS search_doc_pushes ( user_id INTEGER PRIMARY KEY, hash TEXT NOT NULL, revision INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, pushed_at DATETIME DEFAULT CURRENT_TIMESTAMP )",
   "CREATE TABLE IF NOT EXISTS search_media_pushes ( kind TEXT NOT NULL, media_id INTEGER NOT NULL, hash TEXT NOT NULL, revision INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, pushed_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (kind, media_id) )",
+  "CREATE TABLE IF NOT EXISTS lineage_unresolved ( ref TEXT NOT NULL, reason TEXT NOT NULL, detail TEXT, last_caller TEXT, count INTEGER NOT NULL DEFAULT 1, first_at TEXT NOT NULL, last_at TEXT NOT NULL, PRIMARY KEY (ref, reason) )",
   "CREATE TABLE IF NOT EXISTS billing_actions ( id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, live_user_id INTEGER, live_ref TEXT, method TEXT NOT NULL, path TEXT NOT NULL, request_json TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', http_status INTEGER, billing_ref TEXT, response_json TEXT, error TEXT, attempts INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP )",
   "CREATE TABLE IF NOT EXISTS opencoin_admin_grants ( id INTEGER PRIMARY KEY AUTOINCREMENT, client_key TEXT UNIQUE, admin_id INTEGER, user_id INTEGER NOT NULL, amount INTEGER NOT NULL, reason TEXT, balance INTEGER, created_at DATETIME DEFAULT CURRENT_TIMESTAMP )",
   "CREATE TABLE IF NOT EXISTS tips_deliveries ( idempotency_key TEXT PRIMARY KEY, effect TEXT, state TEXT NOT NULL DEFAULT 'pending', response_json TEXT, claimed_at INTEGER NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP )",
@@ -323,6 +324,7 @@
   "DELETE FROM follows WHERE follower_id = ? AND streamer_id = ?",
   "DELETE FROM hidden_relay_users WHERE id = ?",
   "DELETE FROM hidden_relay_users WHERE platform = ? AND external_username = ? AND channel_id IS ?",
+  "DELETE FROM lineage_unresolved WHERE last_at < ?",
   "DELETE FROM linked_accounts WHERE service = 'hobotools'",
   "DELETE FROM managed_streams WHERE id = ? AND user_id = ?",
   "DELETE FROM media_requests WHERE id = ? AND charge_state = 'charging'",
@@ -398,6 +400,7 @@
   "INSERT INTO emotes (user_id, code, url, animated, width, height, is_global, channel_owner_id, size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
   "INSERT INTO ip_log (user_id, anon_id, ip_address, action, geo_country, geo_region, geo_city, geo_isp, geo_org, geo_ll, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   "INSERT INTO kick_channel_cache (slug, chatroom_id, kick_channel_id, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(slug) DO UPDATE SET chatroom_id = excluded.chatroom_id, kick_channel_id = COALESCE(excluded.kick_channel_id, kick_channel_cache.kick_channel_id), updated_at = CURRENT_TIMESTAMP",
+  "INSERT INTO lineage_unresolved (ref, reason, detail, last_caller, count, first_at, last_at) VALUES (?, ?, ?, ?, 1, ?, ?) ON CONFLICT (ref, reason) DO UPDATE SET detail = excluded.detail, last_caller = excluded.last_caller, count = count + 1, last_at = excluded.last_at",
   "INSERT INTO managed_streams (user_id, channel_id, slug, title, description, category, protocol, streaming_method, stream_key, is_nsfw, control_config_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   "INSERT INTO managed_streams (user_id, channel_id, title, category, protocol, stream_key, is_nsfw) VALUES (?, ?, ?, ?, ?, ?, ?)",
   "INSERT INTO media_request_settings ( user_id, enabled, request_cost, max_per_user, max_duration_seconds, allow_youtube, allow_vimeo, allow_direct_media, auto_advance, cost_mode, cost_per_minute, allow_live, download_mode, currency ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -547,6 +550,8 @@
   "SELECT * FROM emotes WHERE code = ? AND (user_id = ? OR is_global = 1) AND is_approved = 1 ORDER BY is_global ASC LIMIT 1",
   "SELECT * FROM emotes WHERE user_id = ? ORDER BY code",
   "SELECT * FROM kick_channel_cache WHERE slug = ?",
+  "SELECT * FROM lineage_unresolved ORDER BY last_at DESC LIMIT ?",
+  "SELECT * FROM lineage_unresolved WHERE reason = ? ORDER BY last_at DESC LIMIT ?",
   "SELECT * FROM linked_accounts WHERE service = 'network' AND service_user_id = ?",
   "SELECT * FROM media_request_settings WHERE user_id = ?",
   "SELECT * FROM media_requests WHERE charge_state IN ('unknown', 'charging') AND currency = 'opencoins' AND requested_at <= ? ORDER BY id LIMIT ?",
@@ -987,6 +992,7 @@
   "SELECT r.stream_id FROM stream_recaps r JOIN streams s ON s.id = r.stream_id WHERE r.user_id = ? AND s.started_at >= ? ORDER BY r.created_at DESC LIMIT 1",
   "SELECT r.stream_id, r.json, r.created_at, u.username, u.display_name, u.avatar_url, u.profile_color FROM stream_recaps r JOIN users u ON u.id = r.user_id WHERE (? IS NULL OR r.user_id != ?) AND COALESCE(u.is_banned, 0) = 0 ORDER BY r.created_at DESC LIMIT ?",
   "SELECT r.stream_id, r.user_id, r.json, r.created_at FROM stream_recaps r JOIN users u ON u.id = r.user_id WHERE r.ai = 1 AND COALESCE(u.is_banned, 0) = 0 ORDER BY r.created_at DESC, r.stream_id DESC LIMIT ? OFFSET ?",
+  "SELECT reason, COUNT(*) AS refs, SUM(count) AS answers FROM lineage_unresolved GROUP BY reason",
   "SELECT recorded_at AS t, viewer_count AS v, COALESCE(chat_messages_5m, 0) AS c FROM viewer_snapshots WHERE stream_id = ? ORDER BY recorded_at ASC",
   "SELECT revision FROM subject_projection WHERE subject_id = ?",
   "SELECT rowid AS id, * FROM relay_users WHERE platform = ? AND username = ?",
