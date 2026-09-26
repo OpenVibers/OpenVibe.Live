@@ -63,8 +63,10 @@ function canModerateContentOwner(actor, contentOwner) {
     return false;
 }
 
-// Settings whose values are secrets or control money/AI spend — owner-only to view/edit.
-const SENSITIVE_KEY_RE = /(api[_-]?key|secret|token|password|client_id|client_secret|service_account|private[_-]?key)/i;
+// Settings whose values are secrets or control money/AI spend — owner-only to view/edit. A webhook URL
+// carries its own credential (anyone holding a Discord webhook URL can post as it), and an AWS access
+// key id is half of a key pair.
+const SENSITIVE_KEY_RE = /(api[_-]?key|secret|token|password|client_id|client_secret|service_account|private[_-]?key|access[_-]?key|webhook)/i;
 // money_writes_frozen (the Billing-cutover freeze) is owner-only too; every admin can READ it at
 // GET /api/admin/money.
 const SENSITIVE_KEY_PREFIXES = ['ai_', 'stripe_', 'ccbill_', 'crypto_', 'tts_google_', 'money_'];

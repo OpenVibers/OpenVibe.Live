@@ -21,7 +21,8 @@ const config = require('openvibe-shared/config');
 const db = require('../db/database');
 
 const NOT_CONFIG = /^(arena_backfill_cursor_|star_streamer$|deploy_last_announced$|relay_users_backfilled$|bucks_bits_migration_done$|stats_vibes_reset_at$|storage_tier\.|money_writes_frozen)/;
-const SECRET = /(api[_-]?key|secret|token|password|client_secret|service_account|private[_-]?key|salt|access_key)/i;
+// A webhook URL is its own credential (anyone holding it can post), so it is secret-class too.
+const SECRET = /(api[_-]?key|secret|token|password|client_secret|service_account|private[_-]?key|salt|access[_-]?key|webhook)/i;
 const PUBLIC_KEYS = new Set(['site_name', 'site_description', 'motd', 'registration_open', 'require_email', 'nsfw_enabled']);
 const SYSTEM = { type: 'service', id: 'live' };
 
