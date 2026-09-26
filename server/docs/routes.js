@@ -123,7 +123,8 @@ function renderMarkdown(markdown) {
             i++;
             while (i < lines.length && !/^```\s*$/.test(lines[i])) code.push(lines[i++]);
             i++; // closing fence
-            out.push(`<pre${lang ? ` data-lang="${escapeHtml(lang)}"` : ''}><code>${escapeHtml(code.join('\n'))}</code></pre>`);
+            // tabindex: a code block that scrolls sideways must be reachable by keyboard (axe scrollable-region-focusable).
+            out.push(`<pre${lang ? ` data-lang="${escapeHtml(lang)}"` : ''} tabindex="0"><code>${escapeHtml(code.join('\n'))}</code></pre>`);
             continue;
         }
 
@@ -215,6 +216,14 @@ function renderMarkdown(markdown) {
 
 // ── Page shell ───────────────────────────────────────────────
 
+// The public origin for canonical URLs: the configured base URL, never a local one (as server/seo/seo.js).
+let config = null; try { config = require('../config'); } catch { /* */ }
+function publicBase() {
+    let b = (config && config.baseUrl) || 'https://openvibe.live';
+    if (/localhost|127\.0\.0\.1/.test(b)) b = 'https://openvibe.live';
+    return b.replace(/\/+$/, '');
+}
+
 function renderPage({ name, title, html, headings }) {
     const pageTitle = title ? `${title} — OpenVibe.Live Docs` : 'OpenVibe.Live Docs';
     const toc = headings.length
@@ -226,7 +235,8 @@ function renderPage({ name, title, html, headings }) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${escapeHtml(pageTitle)}</title>
-    <link rel="icon" href="/assets/favicon.ico">
+    <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+    <link rel="canonical" href="${escapeHtml(`${publicBase()}/docs${name === 'README' ? '' : `/${name}`}`)}">
     <style>
         :root { --bg: #0d0d0f; --bg-2: #16161a; --bg-3: #1e1e24; --text: #e8e6e3; --text-2: #9a9a9a; --muted: #666;
                 --accent: #8b5cf6; --accent-light: #a78bfa; --border: #2a2a32; }
@@ -250,6 +260,7 @@ function renderPage({ name, title, html, headings }) {
         li { margin: 0.25em 0; }
         code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--bg-3); padding: 1px 5px; border-radius: 4px; }
         pre { background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; overflow-x: auto; position: relative; }
+        pre:focus-visible { outline: 2px solid var(--accent-light); outline-offset: 2px; }
         pre code { background: none; padding: 0; font-size: 0.85rem; line-height: 1.5; }
         pre[data-lang]::before { content: attr(data-lang); position: absolute; top: 6px; right: 12px; font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
         blockquote { border-left: 3px solid var(--accent); background: rgba(139, 92, 246, 0.08); padding: 10px 16px; border-radius: 0 8px 8px 0; }
@@ -309,3 +320,4 @@ module.exports = router;
 module.exports._renderMarkdown = renderMarkdown;
 module.exports._rewriteHref = rewriteHref;
 module.exports._slugify = slugify;
+module.exports._renderPage = renderPage;

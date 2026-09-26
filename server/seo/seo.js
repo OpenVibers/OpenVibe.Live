@@ -230,6 +230,8 @@ async function _pageMeta(routePath, { page = 1 } = {}) {
     if (p === '/arena') return _arenaMeta();
     // Search results (public/js/app-search.js) are never indexed; the page itself is findable.
     if (p === '/search') return { title: `Search | ${SITE_NAME}`, description: 'Search channels, VODs and clips on OpenVibe.Live.', canonicalPath: '/search', ogType: 'website', robots: 'noindex,follow', jsonLd: [] };
+    // The global chat room: its own title and canonical (the shell left it with neither; browser check, WS-Q task 3).
+    if (p === '/chat') return { title: `Chat | ${SITE_NAME}`, description: 'The global chat room of OpenVibe.Live, open to everyone on the network.', canonicalPath: '/chat', ogType: 'website', robots: 'index,follow', jsonLd: [] };
 
     return null;
     void bu;
@@ -481,9 +483,11 @@ async function _homeMeta() {
         _mediaSection('Recent clips', clipItems) +
         _mediaSection('Recent pastes', pasteItems);
 
-    // Rich JSON-LD: WebSite + an ItemList of what's live/recent right now.
-    const listEls = [...liveItems, ...vodItems, ...clipItems].slice(0, 20)
-        .map((it, i) => ({ '@type': 'ListItem', position: i + 1, url: abs(it.url), name: clean(it.name, 110) }));
+    // Rich JSON-LD: WebSite + one ItemList per section of the snapshot, named by that section's visible
+    // heading (structured data names what a visitor sees; the browser check compares them).
+    const itemList = (name, items) => ({ '@context': 'https://schema.org', '@type': 'ItemList', name,
+        itemListElement: items.slice(0, 10).map((it, i) => ({ '@type': 'ListItem', position: i + 1, url: abs(it.url), name: clean(it.name, 110) })) });
+    const lists = [['Live now', liveItems], ['Recent VODs', vodItems], ['Recent clips', clipItems]].filter(([, items]) => items.length).map(([n, items]) => itemList(n, items));
     const jsonLd = [
         {
             '@context': 'https://schema.org', '@type': 'WebSite',
@@ -503,7 +507,7 @@ async function _homeMeta() {
                 'https://openvibe.network',
             ],
         },
-        { '@context': 'https://schema.org', '@type': 'ItemList', name: 'Live & recent on OpenVibe.Live', itemListElement: listEls },
+        ...lists,
     ];
     return { title, description, canonicalPath: '/', image: DEFAULT_OG_IMAGE, ogType: 'website', robots: 'index,follow', jsonLd, snapshot, cacheTtlMs: track.partial ? SHORT_CACHE_MS : undefined };
 }
@@ -982,7 +986,7 @@ function _cacheSet(key, html, ttl = CACHE_TTL_MS) {
     _cache.set(key, { html, at: Date.now(), ttl });
 }
 
-const SEO_ROUTE_RE = /^\/(?:$|content$|moments$|vods$|clips$|pastes$|arena$|vod\/\d+$|clip\/\d+$|recap\/\d+$|p\/[A-Za-z0-9_-]+$|@[A-Za-z0-9_]{3,24}$)/;
+const SEO_ROUTE_RE = /^\/(?:$|content$|moments$|vods$|clips$|pastes$|arena$|chat$|search$|vod\/\d+$|clip\/\d+$|recap\/\d+$|p\/[A-Za-z0-9_-]+$|@[A-Za-z0-9_]{3,24}$)/;
 
 /** ?page=N on a channel page (its video list); 1 everywhere else and for anything that is not a number. */
 function _pageParam(p, query) {

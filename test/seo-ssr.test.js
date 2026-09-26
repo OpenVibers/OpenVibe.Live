@@ -209,6 +209,26 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         }
     });
 
+    await check('/chat and /search have their own title and canonical; search results are noindex (browser check, WS-Q task 3)', async () => {
+        const chat = (await get('/chat')).body;
+        assert.deepStrictEqual(canonicalsOf(chat), ['https://openvibe.live/chat']);
+        assert.strictEqual(titleOf(chat), 'Chat | OpenVibe.Live');
+        const search = (await get('/search?q=minecraft')).body;
+        assert.deepStrictEqual(canonicalsOf(search), ['https://openvibe.live/search'], 'every query is the one search page');
+        assert.ok(/<meta name="robots" content="noindex,follow">/.test(head(search)));
+    });
+
+    await check('the home page\'s JSON-LD lists are named by the snapshot\'s visible headings', async () => {
+        const home = (await get('/')).body;
+        const lists = ldOf(home).filter((n) => n['@type'] === 'ItemList');
+        assert.ok(lists.length >= 1, 'at least one list');
+        for (const l of lists) {
+            assert.ok(['Live now', 'Recent VODs', 'Recent clips'].includes(l.name), l.name);
+            assert.ok(bodyOf(home).includes(`<h2>${l.name}</h2>`), `${l.name} is a visible heading`);
+            assert.ok(l.itemListElement.length && l.itemListElement.length <= 10);
+        }
+    });
+
     await check('no other shell page claims the home page as canonical; a slot names its channel', async () => {
         const dash = (await get('/dashboard')).body;
         assert.deepStrictEqual(canonicalsOf(dash), []);

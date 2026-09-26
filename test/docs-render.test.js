@@ -64,7 +64,7 @@ assert.ok(blocks.html.includes('<blockquote><p>quoted line one quoted line two</
 assert.ok(blocks.html.includes('<th>A</th>') && blocks.html.includes('<td><code>2</code></td>'), 'tables');
 assert.ok(blocks.html.includes('<ol><li>first<br>continued</li><li>second</li></ol>'), 'ordered list with continuation line');
 assert.ok(blocks.html.includes('<ul><li>bullet</li></ul>'));
-assert.ok(blocks.html.includes('<pre data-lang="bash"><code>curl -X POST &quot;&lt;url&gt;&quot;</code></pre>'), 'fenced code is escaped verbatim');
+assert.ok(blocks.html.includes('<pre data-lang="bash" tabindex="0"><code>curl -X POST &quot;&lt;url&gt;&quot;</code></pre>'), 'fenced code is escaped verbatim, and reachable by keyboard when it scrolls');
 console.log('✅ block elements');
 
 // ── Every shipped doc renders cleanly with the anchors people link to ──
@@ -83,5 +83,15 @@ const whip = render(fs.readFileSync(path.join(docsDir, 'whip.md'), 'utf8')).html
 assert.ok(whip.includes('id="publishing-from-a-browser"'), 'the browser-publishing anchor that is linked publicly must exist');
 assert.ok(whip.includes('href="/whip-publisher.html"'), 'link to the hosted publisher resolves on-site');
 console.log('✅ all docs/*.md render without leaking markdown; public anchors present');
+
+// The page shell (the browser check, WS-Q task 3): one canonical URL on the public origin, and an icon
+// that exists (it pointed at /assets/favicon.ico, which 404s).
+const { _renderPage: renderPage } = require('../server/docs/routes');
+const shell = renderPage({ name: 'whip', title: 'WHIP', html: '<p>x</p>', headings: [] });
+assert.deepStrictEqual(shell.match(/<link rel="canonical"[^>]*>/g), ['<link rel="canonical" href="https://openvibe.live/docs/whip">']);
+assert.ok(renderPage({ name: 'README', title: '', html: '', headings: [] }).includes('<link rel="canonical" href="https://openvibe.live/docs">'), 'the index is /docs');
+assert.ok(shell.includes('<link rel="icon" type="image/svg+xml" href="/assets/logo.svg">'));
+assert.ok(fs.existsSync(path.join(__dirname, '..', 'public', 'assets', 'logo.svg')), 'the icon file exists');
+console.log('✅ page shell: canonical and icon');
 
 console.log('\n✅ All docs renderer tests passed');
