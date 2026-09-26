@@ -1307,7 +1307,7 @@ async function start() {
     // identical to run by hand, in dev, or on a box that has not been switched over.
     const socketActivated = process.env.LISTEN_FDS === '1' && Number(process.env.LISTEN_PID) === process.pid;
     if (socketActivated) console.log('[Server] socket-activated: listening on the socket systemd handed us (fd 3)');
-    server.listen(socketActivated ? { fd: 3 } : { port: config.port, host: config.host }, () => {
+    server.listen(socketActivated ? { fd: 3 } : { port: config.port, host: config.listenHost }, () => {
         console.log('');
         console.log(`[Server] HTTP server:  http://${config.host}:${config.port}`);
         console.log(`[Server] WebSocket:    ws://${config.host}:${config.port}/ws/chat`);
@@ -1606,7 +1606,7 @@ function startDrill() {
     // Its port taken: stop (the process-wide handler would log EADDRINUSE and keep running unready).
     server.once('error', (err) => { console.error(`[Drill] HTTP server: ${err.message}`); process.exit(1); });
     // Never fd 3: a drill does not serve on a socket systemd handed over (assertSafe refuses that too).
-    server.listen({ port: config.port, host: config.host }, () => {
+    server.listen({ port: config.port, host: config.listenHost }, () => {
         _bootComplete = true;
         console.log(`[Drill] Ready: http://${config.host}:${config.port} (reads only)`);
     });

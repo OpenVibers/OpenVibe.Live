@@ -154,6 +154,9 @@ function buildConfig(registryValues) {
     return {
         port: parseInt(process.env.PORT || '3000', 10),
         host: process.env.HOST || '0.0.0.0',
+        // What the HTTP server binds when systemd did not hand it a socket (LISTEN_FDS). In production that is
+        // loopback: nginx is the only client, and HOST (0.0.0.0) is for building URLs, not for binding.
+        listenHost: process.env.LISTEN_HOST || (process.env.NODE_ENV === 'production' ? '127.0.0.1' : (process.env.HOST || '0.0.0.0')),
         baseUrl,
         openvibeToolsUrl,   // public-facing URL of the SSO provider (e.g. https://openvibe.network)
         nodeEnv: process.env.NODE_ENV || 'development',

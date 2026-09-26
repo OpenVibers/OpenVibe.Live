@@ -55,6 +55,8 @@ BASE_DIR="${BASE_DIR:-/opt/openvibe.live}"
 SERVICE="${SERVICE:-openvibe-live}"
 SYSTEMD_DIR="${SYSTEMD_DIR:-/etc/systemd/system}"
 SYSTEMCTL="${SYSTEMCTL:-systemctl}"
+SS="${SS:-ss}"
+SOCKET_CHANGED=false
 # Unit files land in /etc: when systemctl is being run through sudo, so is the install.
 SUDO_INSTALL=""; case "$SYSTEMCTL" in sudo*) SUDO_INSTALL="sudo";; esac; [ "$(id -u)" -eq 0 ] && SUDO_INSTALL=""
 SITE_URL="${SITE_URL:-https://openvibe.live}"
@@ -169,7 +171,14 @@ install_units() {
         fi
     }
     install_unit "$unit_dir/${SERVICE}.service" "$SYSTEMD_DIR/${SERVICE}.service"
+    local socket_before=false
+    [ -f "$SYSTEMD_DIR/${SERVICE}.socket" ] && [ -f "$unit_dir/${SERVICE}.socket" ] && ! cmp -s "$unit_dir/${SERVICE}.socket" "$SYSTEMD_DIR/${SERVICE}.socket" && socket_before=true
     install_unit "$unit_dir/${SERVICE}.socket" "$SYSTEMD_DIR/${SERVICE}.socket"
+    # A socket unit changed under a running socket: after daemon-reload systemd may drop its descriptor
+    # ("no socket file descriptors are open ... not functional until restarted"); restart_and_verify then
+    # restarts the socket itself. Left alone, the service binds the port on its own and every later
+    # restart refuses connections (what happened from 2026-09-25 to 2026-09-26).
+    [ "$socket_before" = true ] && SOCKET_CHANGED=true
     install_unit "$unit_dir/${SERVICE}.service.d/socket.conf" "$SYSTEMD_DIR/${SERVICE}.service.d/socket.conf"
     if [ "$changed" = true ]; then
         run $SYSTEMCTL daemon-reload
@@ -205,18 +214,42 @@ backup_db() {
     fi
 }
 
+# Does systemd (pid 1) hold the socket unit's listener? `is-active` is not enough: a socket unit whose
+# descriptor was dropped still reads active while the service binds the port itself.
+socket_held() {
+    local listen port
+    listen=$($SYSTEMCTL show "${SERVICE}.socket" -p Listen --value 2>/dev/null | head -1 | awk '{print $1}')
+    port=${listen##*:}
+    [ -n "$port" ] || return 1
+    $SS -Hltnp "sport = :$port" 2>/dev/null | grep -q '"systemd",pid=1,'
+}
+
 restart_and_verify() {
-    local on_fail="$1"
+    local on_fail="$1" socketed=false
     if $SYSTEMCTL list-unit-files "${SERVICE}.socket" >/dev/null 2>&1 && $SYSTEMCTL is-enabled --quiet "${SERVICE}.socket" 2>/dev/null; then
+        socketed=true
         $SYSTEMCTL is-active --quiet "${SERVICE}.socket" || $SYSTEMCTL start "${SERVICE}.socket" || true
-        say "socket unit active — new HTTP connections queue through the restart"
     fi
-    say "restarting ${SERVICE}…"
     local start; start=$(date +%s)
-    $SYSTEMCTL restart "$SERVICE" 9>&-
+    if [ "$socketed" = true ] && { [ "$SOCKET_CHANGED" = true ] || ! socket_held; }; then
+        # The socket must be rebound: stop the service (it may hold the port itself), restart the
+        # socket, start the service on it. HTTP is refused for that moment, once.
+        say "socket unit $([ "$SOCKET_CHANGED" = true ] && echo changed || echo 'is not holding its listener') — stopping ${SERVICE}, restarting the socket"
+        $SYSTEMCTL stop "$SERVICE" 9>&- || true
+        $SYSTEMCTL restart "${SERVICE}.socket" || say "✗ could not restart ${SERVICE}.socket"
+        $SYSTEMCTL start "$SERVICE" 9>&-
+        SOCKET_CHANGED=false
+    else
+        [ "$socketed" = true ] && say "socket unit holds the listener — new HTTP connections queue through the restart"
+        say "restarting ${SERVICE}…"
+        $SYSTEMCTL restart "$SERVICE" 9>&-
+    fi
     printf '[Deploy] waiting for readiness'
     if wait_ready; then
         printf '\n'; say "ready after $(( $(date +%s) - start ))s"
+        if [ "$socketed" = true ] && ! socket_held; then
+            say "✗ socket activation is not in effect: systemd does not hold the listener, so restarts refuse connections (check journalctl -u ${SERVICE}.socket)"
+        fi
         return 0
     fi
     say "✗ not ready within ${READY_TIMEOUT}s"
