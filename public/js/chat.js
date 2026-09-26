@@ -2364,7 +2364,11 @@ async function hydrateWidgetOnly({ reason = 'open' } = {}) {
         if (_fcwLastId) {
             const d = await api(`/chat/global/history?after_id=${_fcwLastId}&limit=200`);
             if (!d || d.complete === false) await fresh();
-            else if (d.messages && d.messages.length) { feed(d.messages); _fcwCacheAppend(d.messages); }
+            else {
+                if (d.messages && d.messages.length) { feed(d.messages); _fcwCacheAppend(d.messages); }
+                // What was deleted while the widget was away (Chat returns deleted_ids with cursor reads).
+                if (Array.isArray(d.deleted_ids) && d.deleted_ids.length) removeMessagesFromDom(d.deleted_ids);
+            }
         } else {
             await fresh();
         }

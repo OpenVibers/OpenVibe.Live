@@ -190,7 +190,7 @@ contextRouter.get('/bans', (req, res) => {
     if (req.query.version && String(req.query.version) === version) return res.json({ version, unchanged: true });
     res.json({
         version,
-        bans: db.all('SELECT id, stream_id, user_id, ip_address, anon_id, expires_at FROM bans WHERE expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP'),
+        bans: db.all('SELECT id, stream_id, user_id, ip_address, anon_id, expires_at FROM bans WHERE expires_at IS NULL OR datetime(expires_at) > CURRENT_TIMESTAMP'),
     });
 });
 

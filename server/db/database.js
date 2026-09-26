@@ -5546,7 +5546,7 @@ function isUserBanned(userId, streamId) {
         SELECT * FROM bans
         WHERE user_id = ?
         AND (stream_id = ? OR stream_id IS NULL)
-        AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+        AND (expires_at IS NULL OR datetime(expires_at) > CURRENT_TIMESTAMP)
         LIMIT 1
     `, [userId, streamId]);
     return !!ban;
@@ -5566,7 +5566,7 @@ function _normalizeBanIp(ip) {
 }
 function _cidrBanList() {
     if (_cidrBans.list && Date.now() - _cidrBans.at < 15000) return _cidrBans.list;
-    const rows = all(`SELECT * FROM bans WHERE ip_address LIKE '%/%' AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)`);
+    const rows = all(`SELECT * FROM bans WHERE ip_address LIKE '%/%' AND (expires_at IS NULL OR datetime(expires_at) > CURRENT_TIMESTAMP)`);
     const list = [];
     for (const r of rows) {
         const [addr, bitsStr] = String(r.ip_address).split('/');
@@ -5589,7 +5589,7 @@ function getIpBan(ip, streamId) {
         SELECT * FROM bans
         WHERE ip_address IN (?, ?)
         AND (stream_id = ? OR stream_id IS NULL)
-        AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+        AND (expires_at IS NULL OR datetime(expires_at) > CURRENT_TIMESTAMP)
         LIMIT 1
     `, [String(ip), norm, streamId]);
     if (ban) return ban;
