@@ -22,6 +22,7 @@
 const fs = require('fs');
 const db = require('../db/database');
 const aiService = require('./ai-service');
+const egress = require('../net/egress');
 
 const ROLES = ['chat', 'vision', 'director', 'summary', 'legacy'];
 const DEFAULT_TIMEOUT_MS = { chat: 20000, vision: 30000, director: 25000, summary: 30000, legacy: 30000 };
@@ -218,11 +219,22 @@ function _anthropicBody({ p, system, messages, img, json, maxTokens, temperature
 // ── HTTP ─────────────────────────────────────────────────────
 class LlmHttpError extends Error { constructor(status, message, body) { super(message); this.status = status; this.body = body; } }
 
-async function _post(url, headers, body, timeoutMs) {
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
-    const text = await res.text();
+// A streamer's own provider (the AI viewers' BYO base URL, p.shared false) is a URL a user typed, so it
+// goes out through the egress guard like every other user-chosen URL (server/net/egress.js): it
+// could otherwise point at Live's own port or another internal service, and the "test connection"
+// button would hand the answer back. The site's provider (ai_base_url, set by the owner) may be
+// internal and is fetched as before.
+async function _post(url, headers, body, timeoutMs, { userChosen = false } = {}) {
+    let status, text;
+    if (userChosen) {
+        const r = await egress.postJson(url, body, { headers, timeoutMs, maxBytes: 4 * 1024 * 1024 });
+        status = r.status; text = r.text;
+    } else {
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
+        status = res.status; text = await res.text();
+    }
     let j = {}; try { j = text ? JSON.parse(text) : {}; } catch { j = { raw: text }; }
-    if (!res.ok) throw new LlmHttpError(res.status, (j.error && (j.error.message || j.error)) || `HTTP ${res.status}: ${text.slice(0, 200)}`, j);
+    if (!(status >= 200 && status < 300)) throw new LlmHttpError(status, (j.error && (j.error.message || j.error)) || `HTTP ${status}: ${text.slice(0, 200)}`, j);
     return j;
 }
 
@@ -232,7 +244,7 @@ async function _callOpenAI(p, args, timeoutMs) {
     for (let attempt = 0; attempt < 3; attempt++) {
         const body = _openaiBody({ ...args, p, jsonMode });
         try {
-            const j = await _post(`${p.baseUrl}/chat/completions`, headers, body, timeoutMs);
+            const j = await _post(`${p.baseUrl}/chat/completions`, headers, body, timeoutMs, { userChosen: !p.shared });
             const msg = j.choices && j.choices[0] && j.choices[0].message;
             const text = (msg && typeof msg.content === 'string' ? msg.content : '').trim();
             const u = j.usage || {};
@@ -250,7 +262,7 @@ async function _callOpenAI(p, args, timeoutMs) {
 }
 async function _callAnthropic(p, args, timeoutMs) {
     const body = _anthropicBody({ ...args, p });
-    const j = await _post(`${p.baseUrl}/messages`, { 'x-api-key': p.apiKey, 'anthropic-version': '2023-06-01' }, body, timeoutMs);
+    const j = await _post(`${p.baseUrl}/messages`, { 'x-api-key': p.apiKey, 'anthropic-version': '2023-06-01' }, body, timeoutMs, { userChosen: !p.shared });
     const content = j.content || [];
     let text = content.filter(c => c.type === 'text').map(c => c.text).join('').trim();
     let jsonOut = null;

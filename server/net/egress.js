@@ -2,7 +2,8 @@
 /**
  * Outbound requests to URLs that strangers choose.
  *
- * Song requests, the kiosk link preview and chat-relay lookups fetch URLs typed by users. The old
+ * Song requests, the kiosk link preview, chat-relay lookups and a streamer's own AI endpoint (the
+ * AI viewers' "bring your own" base URL) fetch URLs typed by users. The old
  * guard resolved the host, checked the answers, and let the real fetch resolve it again — so a DNS
  * record that answers "public" to the check and "127.0.0.1" to the fetch (rebinding) got through,
  * as did a redirect to an internal address and IPv6 spellings of internal IPv4 addresses such as
@@ -80,6 +81,34 @@ async function fetchBuffer(url, opts = {}) {
 }
 
 /**
+ * POST a JSON body to a URL a user chose (a streamer's own AI endpoint, the "bring your own"
+ * base URL) under the same rule: the address is checked where the connection is made, and a
+ * redirect is not followed (it comes back as the 3xx it is), so the request cannot be steered to
+ * an internal service. Resolves { status, headers, text } with text capped at maxBytes.
+ */
+async function postJson(url, body, { headers = {}, timeoutMs = 20000, maxBytes = 1024 * 1024 } = {}) {
+    const u = await assertPublicUrl(url);
+    if (!literalAllowed(u.hostname)) throw new EgressDenied('That address is not reachable from here');
+    const payload = Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
+    return new Promise((resolve, reject) => {
+        const mod = u.protocol === 'https:' ? https : http;
+        const req = mod.request(u, {
+            method: 'POST', lookup: safeLookup, timeout: timeoutMs,
+            headers: { 'Content-Type': 'application/json', ...headers, 'Content-Length': payload.length },
+        }, (r) => {
+            const chunks = []; let size = 0;
+            r.on('data', (c) => { size += c.length; if (size > maxBytes) { chunks.push(c.subarray(0, c.length - (size - maxBytes))); r.destroy(); } else chunks.push(c); });
+            const done = () => { clearTimeout(timer); resolve({ status: r.statusCode, headers: r.headers, text: Buffer.concat(chunks).toString('utf8') }); };
+            r.on('end', done); r.on('close', done); r.on('error', reject);
+        });
+        const timer = setTimeout(() => req.destroy(Object.assign(new Error('timeout'), { name: 'TimeoutError' })), timeoutMs);
+        req.on('timeout', () => req.destroy(Object.assign(new Error('timeout'), { name: 'TimeoutError' })));
+        req.on('error', (e) => { clearTimeout(timer); reject(e); });
+        req.end(payload);
+    });
+}
+
+/**
  * Node's http and net skip `lookup` entirely when the host is already an IP literal, so a literal
  * has to be checked by hand before connecting. (Found by test: ffmpeg fetched http://127.0.0.1/
  * straight through the proxy.)
@@ -139,4 +168,4 @@ function proxy() {
     return _proxy;
 }
 
-module.exports = { isPublicAddress, embeddedV4, safeLookup, assertPublicUrl, fetchText, fetchBuffer, proxy, EgressDenied };
+module.exports = { isPublicAddress, embeddedV4, safeLookup, assertPublicUrl, fetchText, fetchBuffer, postJson, proxy, EgressDenied };
