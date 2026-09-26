@@ -5795,7 +5795,17 @@ async function createBroadcastClip() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to create clip');
 
-        showToast(`Clip created! "${title}"`, 'success');
+        // The server cuts it (Media's clip.cut job): say when it is ready, even after a reload.
+        const made = data.clip || {};
+        if (made.job_id && made.status === 'processing' && window.OVClipJobs) {
+            showToast(`Clip "${title}" created — cutting it now…`, 'success');
+            window.OVClipJobs.follow(made.id, made.job_id, {
+                onReady: () => showToast(`Clip "${title}" is ready`, 'success'),
+                onFailed: (msg) => showToast(`Clip "${title}" could not be cut: ${msg}`, 'error'),
+            });
+        } else {
+            showToast(`Clip created! "${title}"`, 'success');
+        }
 
         // Reset panel
         const titleInput = document.getElementById('bc-clip-title');

@@ -374,9 +374,37 @@ router.post('/:id/recut', requireAuth, async (req, res) => {
         if (!clip) return res.status(404).json({ error: 'Clip not found' });
         if (!(await canActorDeleteClip(req.user, clip))) return refuse(req, res, clip, 'Not authorized to re-cut this clip');
         const out = await media.recutClip(clip.id);
-        res.json({ message: 'Re-cutting clip', status: out?.status || 'processing' });
+        res.json({ message: 'Re-cutting clip', status: out?.status || 'processing', job_id: out?.job_id || null });
     } catch (err) {
         mediaErr(res, err, 'Failed to re-cut clip');
+    }
+});
+
+/**
+ * The cut of a clip the server makes (Media's clip.cut job, WS-G task 3): what the clip UI follows and
+ * reattaches to after a reload (public/js/ov-clip-jobs.js). Whoever made the clip, or may manage it, sees
+ * its job, and only a clip.cut job of that very clip; anything else is 404.
+ *   GET /api/clips/:id/job?job=<mjob_…>  → { job: { id, status, attempts, max_attempts, error, run_after }, clip: { id, status, title, duration_seconds } }
+ */
+router.get('/:id/job', requireAuth, async (req, res) => {
+    try {
+        const jobId = String(req.query.job || '');
+        if (!/^mjob_[0-9A-Za-z]{10,40}$/.test(jobId)) return res.status(400).json({ error: 'job is required' });
+        let clip;
+        try { clip = await media.getClip(req.params.id); } catch (err) { return mediaErr(res, err, 'Clip not found'); }
+        if (!clip) return res.status(404).json({ error: 'Clip not found' });
+        const mine = clip.user_id != null && String(clip.user_id) === String(req.user.id);
+        if (!mine && !(await canActorDeleteClip(req.user, clip))) return res.status(404).json({ error: 'Clip not found' });
+        let out;
+        try { out = await media.getJob(jobId); } catch (err) { return mediaErr(res, err, 'Job not found'); }
+        const job = out && out.job;
+        if (!job || job.type !== 'clip.cut' || Number(job.params && job.params.clip_id) !== Number(clip.id)) return res.status(404).json({ error: 'Job not found' });
+        res.set('Cache-Control', 'private, no-store').json({
+            job: { id: job.id, status: job.status, attempts: job.attempts, max_attempts: job.max_attempts, error: job.status === 'failed' ? job.error || null : null, run_after: job.run_after || null },
+            clip: { id: clip.id, status: clip.status, title: clip.title, duration_seconds: clip.duration_seconds },
+        });
+    } catch (err) {
+        mediaErr(res, err, 'Failed to read the clip job');
     }
 });
 

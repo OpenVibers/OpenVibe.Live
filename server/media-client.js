@@ -24,6 +24,7 @@ const MEDIA_APP_ID = process.env.MEDIA_APP_ID || 'live';
 const MEDIA_API_KEY = process.env.MEDIA_API_KEY || '';
 
 const API_BASE = `${MEDIA_URL}/api/v1/${MEDIA_APP_ID}`;
+const API_V2_BASE = `${MEDIA_URL}/api/v2/${MEDIA_APP_ID}`;   // media jobs (GET /jobs/:id)
 
 class MediaApiError extends Error {
     constructor(message, status, body) {
@@ -66,8 +67,8 @@ function _qs(query) {
  * Core request helper. `body` may be a plain object (JSON) or FormData (multipart).
  * Returns parsed JSON (or null for empty responses). Throws MediaApiError on !ok.
  */
-async function request(method, apiPath, { body, query, actingUser, headers = {}, timeoutMs = 30000 } = {}) {
-    const url = `${API_BASE}${apiPath}${_qs(query)}`;
+async function request(method, apiPath, { body, query, actingUser, headers = {}, timeoutMs = 30000, base = API_BASE } = {}) {
+    const url = `${base}${apiPath}${_qs(query)}`;
     const opts = {
         method,
         headers: { Accept: 'application/json', ..._authHeader({ actingUser }), ...headers },
@@ -196,6 +197,11 @@ function deleteVod(vodId, opts = {}) {
 // ── Clips ────────────────────────────────────────────────────────────────────
 
 /** POST /clips { vod_id, start_s, end_s, title?, user_id? } → { id, status } */
+/** A media job of this app (e.g. a clip's clip.cut, whose id createClip/recutClip answer) → { job } */
+function getJob(jobId, opts = {}) {
+    return request('GET', `/jobs/${encodeURIComponent(jobId)}`, { ...opts, base: API_V2_BASE });
+}
+
 function createClip({ vod_id, start_s, end_s, title, user_id, ...extra } = {}, opts = {}) {
     return request('POST', '/clips', { body: { vod_id, start_s, end_s, title, user_id, ...extra }, ...opts });
 }
@@ -400,7 +406,7 @@ module.exports = {
     uploadVodChunk, completeVodChunks, finalizeVod,
     getVod, listVods, updateVod, deleteVod,
     // clips
-    createClip, getClip, listClips, updateClip, deleteClip, recutClip,
+    createClip, getClip, listClips, updateClip, deleteClip, recutClip, getJob,
     // pastes
     createPaste, getPaste, listPastes, listPastesNeedingAi, setPasteAi, deletePaste,
     // files + thumbnails

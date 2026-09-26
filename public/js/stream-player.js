@@ -899,6 +899,8 @@ function _applyLoaderThumb(stream) {
 }
 
 function initPlayer(stream) {
+    // Clips this browser asked for before a reload are still being cut: reattach to them.
+    if (window.OVClipJobs && !initPlayer._clipsResumed) { initPlayer._clipsResumed = true; window.OVClipJobs.resume(_clipCutHandlers); }
     destroyPlayer();
     // Camera overlay is a separate viewer session against another slot's live stream;
     // attach it alongside whichever protocol the main stream uses, and let it fail
@@ -3442,10 +3444,17 @@ async function _serverLiveClipAttempt(isRetry) {
             toast(data.error || 'Failed to create clip', 'error');
             return 'handled';
         }
-        const clipId = data.clip && data.clip.id;
-        if (data.deduplicated) toast('That moment is already clipped — opening it', 'info');
-        else toast('Clip created! — Trim & title it', 'success');
-        if (clipId) openClipTrimEditor(clipId);
+        const clip = data.clip || {};
+        const clipId = clip.id;
+        const dedup = data.deduplicated || clip.deduplicated;
+        if (dedup) toast('That moment is already clipped — opening it', 'info');
+        if (clipId && clip.job_id && clip.status === 'processing' && !dedup && window.OVClipJobs) {
+            toast('Clip created — cutting it on the server…', 'success');
+            _followClipCut(clipId, clip.job_id);
+        } else {
+            if (!dedup) toast('Clip created! — Trim & title it', 'success');
+            if (clipId) openClipTrimEditor(clipId);
+        }
         return 'ok';
     } catch (err) {
         clearSlow();
@@ -3453,6 +3462,15 @@ async function _serverLiveClipAttempt(isRetry) {
         return 'handled';
     }
 }
+
+// A clip the server cuts (Media's clip.cut job, WS-G task 3): follow the job, then open the trim editor.
+// A reload reattaches: ov-clip-jobs.js keeps the pending cut and initPlayer resumes it.
+const _clipCutHandlers = {
+    onReady: (clip) => { toast('Your clip is ready — Trim & title it', 'success'); openClipTrimEditor(clip.id); },
+    onFailed: (msg) => toast('The clip could not be cut: ' + msg, 'error'),
+    onRetry: (job) => toast(`Still working on your clip (attempt ${job.attempts + 1} of ${job.max_attempts})…`, 'info'),
+};
+function _followClipCut(clipId, jobId) { window.OVClipJobs.follow(clipId, jobId, _clipCutHandlers); }
 
 /**
  * Show a modal prompt for the user to title their clip after creation.

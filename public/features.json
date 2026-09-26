@@ -51,7 +51,15 @@
         "feeds"
       ]
     },
+    "clipJobs": {
+      "js": [
+        "/js/ov-clip-jobs.js"
+      ]
+    },
     "player": {
+      "deps": [
+        "clipJobs"
+      ],
       "js": [
         "/js/stream-player.js",
         "/js/stream-pip.js"
@@ -192,7 +200,8 @@
       "deps": [
         "chatExtras",
         "guide",
-        "aiViewers"
+        "aiViewers",
+        "clipJobs"
       ],
       "js": [
         "/js/broadcast-state.js",
