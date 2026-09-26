@@ -138,9 +138,10 @@
                         </div>
                     </div>
 
-                    <!-- Live Thumbnail Preview (RTMP/JSMPEG) -->
+                    <!-- Live Thumbnail Preview (RTMP/JSMPEG). Not loading="lazy": the box stays hidden until
+                         the image loads, and a lazy image in a hidden box never loads. -->
                     <div id="bc-rtmp-preview" class="bc-rtmp-preview" style="display:none">
-                        <img id="bc-rtmp-preview-img" alt="Stream preview" loading="lazy">
+                        <img id="bc-rtmp-preview-img" alt="Stream preview">
                         <div class="bc-live-badge" style="position:absolute;top:8px;left:8px;display:flex"><i class="fa-solid fa-circle"></i> LIVE</div>
                     </div>
 

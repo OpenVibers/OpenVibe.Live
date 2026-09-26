@@ -6570,8 +6570,10 @@ function startRtmpPreview(streamId) {
     const el = document.getElementById('bc-rtmp-preview');
     const img = document.getElementById('bc-rtmp-preview-img');
     if (!el || !img) return;
+    // The stream's current live thumbnail (server/media-proxy/thumbnails.js; the server grabs a new
+    // frame about every 2 minutes). /thumbnails/… was never served, so this preview never showed.
     const update = () => {
-        img.src = `/thumbnails/stream-${streamId}-live.jpg?t=${Date.now()}`;
+        img.src = `/api/thumbnails/stream-${streamId}-live.jpg?t=${Date.now()}`;
         img.onerror = () => { el.style.display = 'none'; };
         img.onload = () => { el.style.display = ''; };
     };

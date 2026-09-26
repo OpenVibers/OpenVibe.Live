@@ -87,6 +87,22 @@ router.get('/generate/clip/:id', _generateRedirect('clip'));
 // Live thumbnails come from local disk; everything else 302s to openvibe.media.
 router.get('/:filename', (req, res) => {
     const filename = path.basename(req.params.filename);
+    // stream-<id>-live.jpg: whatever that stream's live thumbnail is now (each capture gets a new
+    // file name). The broadcaster's RTMP/JSMPEG preview polls it (public/js/broadcast.js
+    // startRtmpPreview). Never cached; 404 when there is none, so the preview stays hidden rather
+    // than showing the 1×1 placeholder.
+    const alias = /^stream-(\d+)-live\.jpg$/.exec(filename);
+    if (alias) {
+        const current = liveThumbs.getStreamThumbnailState(Number(alias[1]));
+        if (current.exists) {
+            res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Length': fs.statSync(current.filePath).size, 'Cache-Control': 'no-cache' });
+            return fs.createReadStream(current.filePath).pipe(res);
+        }
+        res.set('Cache-Control', 'no-cache');
+        // The fallback frame for a WebRTC stream is a Media thumbnail URL (server/index.js).
+        if (/^https:\/\//.test(current.thumbUrl || '')) return res.redirect(302, current.thumbUrl);
+        return res.status(404).json({ error: 'No live thumbnail' });
+    }
     const localPath = path.join(liveThumbs.THUMB_DIR, filename);
     if (fs.existsSync(localPath)) {
         const stat = fs.statSync(localPath);

@@ -56,8 +56,11 @@ The broadcast page includes an embedded chat sidebar with:
 - Automatic reconnection with exponential backoff (3s → 30s max)
 - Connection status indicator (protocol name when connected, status when not)
 
-### RTMP/JSMPEG Preview
-When using RTMP or JSMPEG, a live thumbnail preview refreshes every 10 seconds showing your stream output.
+### RTMP Preview
+When using RTMP, the page shows your stream's live thumbnail (`/api/thumbnails/stream-<id>-live.jpg`),
+checked every 10 seconds. Live thumbnails, the ones the live cards show too, are refreshed about every
+2 minutes: the server grabs a frame from RTMP, JSMPEG and WebRTC/WHIP streams, and a browser broadcaster
+with a visible tab posts its own.
 
 ## Multi-Stream
 You can run multiple simultaneous streams (e.g., different cameras). Each gets its own tab in the broadcast page with independent controls and viewer counts.
