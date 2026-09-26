@@ -1128,6 +1128,9 @@ async function start() {
     dm.ensureTables();
     // Back from CHAT_AUTHORITY=chat (rollback): chat writes OpenVibe.Chat never acknowledged land here.
     if (!require('./chat/chat-authority').isRemote()) require('./chat/chat-remote').drainToLocal();
+    // The staged chat tables (C-04): with CHAT_AUTHORITY=chat, Live's changes to the ones it writes
+    // reach OpenVibe.Chat, and the dual read compares (server/chat/chat-tables.js). Nothing otherwise.
+    require('./chat/chat-tables').init();
     // Migrate: add last_heartbeat column if missing
     try { db.run("ALTER TABLE streams ADD COLUMN last_heartbeat DATETIME"); console.log('[DB] Added last_heartbeat column'); } catch { /* already exists */ }
     // Migrate: add theme_id to users table if missing

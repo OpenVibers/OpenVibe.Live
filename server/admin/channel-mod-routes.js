@@ -18,6 +18,8 @@ const db = require('../db/database');
 const { requireAuth } = require('../auth/auth');
 const permissions = require('../auth/permissions');
 const chatServer = require('../chat/chat-server');
+// Moderators and settings are written wherever their table's authority is (Live or OpenVibe.Chat).
+const chatTables = require('../chat/chat-tables');
 
 const router = express.Router({ mergeParams: true });
 
@@ -86,7 +88,7 @@ router.get('/:channelId/mods', requireAuth, (req, res) => {
 });
 
 // ── Add channel mod ──────────────────────────────────────────
-router.post('/:channelId/mods', requireAuth, (req, res) => {
+router.post('/:channelId/mods', requireAuth, async (req, res) => {
     try {
         const channelId = parseInt(req.params.channelId);
         const channel = db.getChannelById(channelId);
@@ -106,7 +108,7 @@ router.post('/:channelId/mods', requireAuth, (req, res) => {
             return res.status(400).json({ error: 'Channel owner is already a moderator' });
         }
 
-        db.addChannelModerator(channelId, targetUser.id, req.user.id);
+        await chatTables.write('addChannelModerator', channelId, targetUser.id, req.user.id);
 
         db.logModerationAction({
             scope_type: 'channel',
@@ -124,7 +126,7 @@ router.post('/:channelId/mods', requireAuth, (req, res) => {
 });
 
 // ── Remove channel mod ───────────────────────────────────────
-router.delete('/:channelId/mods/:userId', requireAuth, (req, res) => {
+router.delete('/:channelId/mods/:userId', requireAuth, async (req, res) => {
     try {
         const channelId = parseInt(req.params.channelId);
         const userId = parseInt(req.params.userId);
@@ -136,7 +138,7 @@ router.delete('/:channelId/mods/:userId', requireAuth, (req, res) => {
         }
 
         const target = db.getUserById(userId);
-        db.removeChannelModerator(channelId, userId);
+        await chatTables.write('removeChannelModerator', channelId, userId);
 
         db.logModerationAction({
             scope_type: 'channel',
@@ -167,12 +169,12 @@ router.get('/:channelId/moderation', requireAuth, requireChannelAccess, (req, re
 // Settings that decide what moderators themselves may do, or who can chat at all, belong to the
 // channel owner. A mod could otherwise grant themselves About-page editing or switch off IP approval.
 const OWNER_POLICY_KEYS = ['mods_can_edit_about', 'ip_approval_mode', 'uploads_mods_only', 'allow_anonymous', 'sounds_mods_only'];
-router.put('/:channelId/moderation', requireAuth, requireChannelAccess, (req, res) => {
+router.put('/:channelId/moderation', requireAuth, requireChannelAccess, async (req, res) => {
     try {
         const isOwnerOrStaff = req.channel.user_id === req.user.id || permissions.isGlobalModOrAbove(req.user);
         // The dashboard form sends every field, so for a moderator these are ignored rather than refused.
         if (!isOwnerOrStaff) for (const k of OWNER_POLICY_KEYS) delete req.body[k];
-        const settings = db.upsertChannelModerationSettings(req.channel.id, {
+        const settings = await chatTables.write('upsertChannelModerationSettings', req.channel.id, {
             slow_mode_seconds: req.body.slow_mode_seconds !== undefined
                 ? Math.max(0, parseInt(req.body.slow_mode_seconds) || 0) : undefined,
             slowmode_seconds: req.body.slowmode_seconds !== undefined

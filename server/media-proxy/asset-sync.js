@@ -76,7 +76,8 @@ async function syncAll() {
                     channel_username: uname(e.channel_owner_id || e.user_id),
                     meta: { animated: !!e.animated, is_global: !!e.is_global },
                 });
-                if (asset) { db.run('UPDATE emotes SET media_url = ?, media_asset_id = ? WHERE id = ?', [asset.url, asset.id, e.id]); synced++; }
+                // emotes is a staged chat table: written where its authority is (chat/chat-tables.js).
+                if (asset) { await require('../chat/chat-tables').write('setEmoteMedia', e.id, asset.url, asset.id); synced++; }
             } catch (err) { failed++; if (failed <= 3) console.warn('[AssetSync] emote', e.code, err.message); }
         }
 

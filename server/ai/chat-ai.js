@@ -20,6 +20,9 @@
 'use strict';
 
 const db = require('../db/database');
+// chat_ai_summaries and chat_timeline_events are staged chat tables: every write goes where the
+// table's authority is — Live's own table, or OpenVibe.Chat (chat/chat-tables.js).
+const chatTables = require('../chat/chat-tables');
 
 // ── Tunables ─────────────────────────────────────────────────────────────────
 const TICK_MS = 45 * 1000;
@@ -186,8 +189,8 @@ ${_fmtMessages(rows, { includeChannel: true, now })}`;
 
     const nowIso = _sqlTime(now);
     // Persist the new moments to the growing timeline log (for the browsable/searchable view).
-    try { db.addChatTimelineEvents('global', 0, _stampAdditions(parsed.timeline, nowIso, now)); } catch { /* */ }
-    db.upsertChatAiSummary({
+    try { await chatTables.write('addChatTimelineEvents', 'global', 0, _stampAdditions(parsed.timeline, nowIso, now)); } catch { /* */ }
+    await chatTables.write('upsertChatAiSummary', {
         scope: 'global', subject_id: 0, window: 'global',
         overview: _clip(parsed.recent_overview || '', 2000),
         memory_json: _clip(parsed.memory || priorMemory, MEMORY_MAX_CHARS),
@@ -250,7 +253,7 @@ ${_fmtMessages(dayRows, { now })}`;
     const _lastRow = dayRows[dayRows.length - 1] || {};
     const activityTs = _lastRow.timestamp || _lastRow.created_at || nowIso;
     // Canonical rolling row: memory + timeline + high-water + both overviews (as JSON).
-    db.upsertChatAiSummary({
+    await chatTables.write('upsertChatAiSummary', {
         scope: 'user', subject_id: uid, window: 'rolling',
         overview: JSON.stringify({
             today: _clip(parsed.overview_24h || '', 1200),
@@ -325,7 +328,7 @@ ${_fmtMessages(dayRows, { now })}`;
     if (!parsed) { console.warn(`[ChatAI] relay ${ru.id}: unparseable model output`); return false; }
 
     const nowIso = _sqlTime(now);
-    db.upsertChatAiSummary({
+    await chatTables.write('upsertChatAiSummary', {
         scope: 'relay', subject_id: ru.id, window: 'rolling',
         overview: JSON.stringify({
             today: _clip(parsed.overview_24h || '', 1200),
@@ -396,7 +399,7 @@ ${_fmtMessages(dayRows, { now })}`;
     if (!parsed) { console.warn(`[ChatAI] anon ${anonId}: unparseable model output`); return false; }
 
     const nowIso = _sqlTime(now);
-    db.upsertChatAiSummary({
+    await chatTables.write('upsertChatAiSummary', {
         scope: 'anon', subject_id: subjectId, window: 'rolling',
         overview: JSON.stringify({
             today: _clip(parsed.overview_24h || '', 1200),
@@ -455,21 +458,21 @@ async function _tick() {
 
 // One-time: backfill the growing timeline log from the existing summary JSON so the browsable
 // view has history immediately (before new moments accumulate).
-function _seedTimelineEvents() {
+async function _seedTimelineEvents() {
     try {
         if ((db.getChatTimelineEvents({ scope: 'global', limit: 1 }) || []).length) return;
         const row = db.getChatAiSummary('global', 0, 'global');
         if (!row) return;
         let tl = []; try { tl = JSON.parse(row.timeline_json || '[]'); } catch { tl = []; }
         const cleaned = _cleanTimeline(tl);
-        if (cleaned.length) { db.addChatTimelineEvents('global', 0, cleaned); console.log(`[ChatAI] Seeded ${cleaned.length} timeline event(s)`); }
+        if (cleaned.length) { await chatTables.write('addChatTimelineEvents', 'global', 0, cleaned); console.log(`[ChatAI] Seeded ${cleaned.length} timeline event(s)`); }
     } catch { /* */ }
 }
 
 function start() {
     if (_running) return;
     _running = true;
-    try { _seedTimelineEvents(); } catch { /* */ }
+    _seedTimelineEvents().catch(() => {});
     _timer = setInterval(() => { _tick().catch(() => {}); }, TICK_MS);
     if (_timer.unref) _timer.unref();
     console.log('[AI] Chat-AI job started (global overview/timeline + per-user insights)');

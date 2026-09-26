@@ -20,6 +20,8 @@ const db = require('../db/database');
 const { requireAuth, optionalAuth } = require('../auth/auth');
 const permissions = require('../auth/permissions');
 const config = require('../config');
+// Emote rows are written wherever the table's authority is (Live or OpenVibe.Chat, chat-tables.js).
+const chatTables = require('../chat/chat-tables');
 
 const router = express.Router();
 
@@ -276,7 +278,7 @@ router.get('/mine', requireAuth, (req, res) => {
 });
 
 // ── Upload a custom emote ────────────────────────────────────
-router.post('/', requireAuth, emoteUpload.single('image'), (req, res) => {
+router.post('/', requireAuth, emoteUpload.single('image'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: 'No image file uploaded' });
 
@@ -361,7 +363,7 @@ router.post('/', requireAuth, emoteUpload.single('image'), (req, res) => {
         }
         const size = Math.min(sizeMax, Math.max(sizeMin, parseInt(req.body.size) || 100));
 
-        const result = db.createEmote({
+        const result = await chatTables.write('createEmote', {
             user_id: req.user.id,
             code,
             url: req.file.path,
@@ -392,6 +394,8 @@ router.post('/', requireAuth, emoteUpload.single('image'), (req, res) => {
         console.error('[Emotes] Upload error:', err);
         if (req.file && fs.existsSync(req.file.path)) { try { fs.unlinkSync(req.file.path); } catch {} }
         if (err && /UNIQUE constraint/i.test(err.message || '')) {
+            // (`code` is the try block's; an async handler must not throw from here)
+            const code = String((req.body && req.body.code) || '').trim();
             return res.status(409).json({ error: `This channel already has an emote named "${code}" — pick a different code for this channel.` });
         }
         res.status(500).json({ error: 'Failed to upload emote' });
@@ -413,7 +417,7 @@ router.use((err, req, res, next) => {
 // ── Delete an emote ──────────────────────────────────────────
 // ── Edit an emote in place (rename code / change display size) ──
 // Same permission model as delete: uploader, admin, or channel mod/owner.
-router.patch('/:id', requireAuth, (req, res) => {
+router.patch('/:id', requireAuth, async (req, res) => {
     try {
         const emote = db.getEmoteById(req.params.id);
         if (!emote) return res.status(404).json({ error: 'Emote not found' });
@@ -456,7 +460,7 @@ router.patch('/:id', requireAuth, (req, res) => {
             return res.status(400).json({ error: 'Nothing to change' });
         }
 
-        db.updateEmote(emote.id, patch);
+        await chatTables.write('updateEmote', emote.id, patch);
         // Sound commands attach this emote by code — carry the rename over.
         if (patch.code && patch.code !== emote.code) {
             try { db.updateChannelSoundEmoteRefs(emote.channel_owner_id || emote.user_id, emote.code, patch.code); } catch { /* */ }
@@ -470,7 +474,7 @@ router.patch('/:id', requireAuth, (req, res) => {
     }
 });
 
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', requireAuth, async (req, res) => {
     try {
         const emote = db.getEmoteById(req.params.id);
         if (!emote) return res.status(404).json({ error: 'Emote not found' });
@@ -485,12 +489,11 @@ router.delete('/:id', requireAuth, (req, res) => {
             return res.status(403).json({ error: 'Not your emote' });
         }
 
-        // Delete file
+        // The row first: if that write fails, the file is still there.
+        await chatTables.write('deleteEmote', emote.id);
         if (emote.url && fs.existsSync(emote.url)) {
             fs.unlinkSync(emote.url);
         }
-
-        db.deleteEmote(req.params.id);
         try { require('../media-proxy/asset-sync').removeAsset(emote.media_asset_id); } catch { /* */ }
         if (emote.channel_owner_id) {
             try { require('../chat/chat-server').broadcastToOwnerStreams(emote.channel_owner_id, { type: 'emotes-updated' }); } catch { /* */ }

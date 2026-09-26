@@ -1576,7 +1576,7 @@ class ChatServer {
                         try {
                             const stream = db.getStreamById(client.streamId);
                             if (stream?.channel_id) {
-                                db.upsertChannelModerationSettings(stream.channel_id, { slow_mode_seconds: seconds });
+                                require('./chat-tables').write('upsertChannelModerationSettings', stream.channel_id, { slow_mode_seconds: seconds }).catch(() => { /* non-critical */ });
                             }
                         } catch { /* non-critical */ }
                     }

@@ -428,7 +428,7 @@ router.post('/alert/:kind', requireAuth, soundUpload.single('sound'), async (req
 
         const ext = path.extname(finalPath).toLowerCase();
         const mime = EXT_TO_MIME[ext] || 'audio/mpeg';
-        db.setChannelAlertSound(channel.id, kind, finalPath, mime);
+        await require('./chat-tables').write('setChannelAlertSound', channel.id, kind, finalPath, mime);
         res.json({ set: true, kind, url: `/api/sounds/file/${path.basename(finalPath)}` });
     } catch (err) {
         if (req.file) fs.unlink(req.file.path, () => {});
@@ -437,7 +437,7 @@ router.post('/alert/:kind', requireAuth, soundUpload.single('sound'), async (req
 });
 
 // Clear an alert sound.
-router.delete('/alert/:kind', requireAuth, (req, res) => {
+router.delete('/alert/:kind', requireAuth, async (req, res) => {
     const kind = _alertKind(req.params.kind);
     try {
         const channel = db.getChannelByUserId(req.user.id);
@@ -445,7 +445,7 @@ router.delete('/alert/:kind', requireAuth, (req, res) => {
             const prev = db.getChannelAlertSoundsByUser(req.user.id) || {};
             const prevPath = kind === 'goal' ? prev.goal_sound_url : prev.donation_sound_url;
             if (prevPath && fs.existsSync(prevPath)) { try { fs.unlinkSync(prevPath); } catch { /* */ } }
-            db.setChannelAlertSound(channel.id, kind, null, null);
+            await require('./chat-tables').write('setChannelAlertSound', channel.id, kind, null, null);
         }
         res.json({ set: false, kind });
     } catch (err) {

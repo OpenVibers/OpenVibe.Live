@@ -38,6 +38,7 @@ const config = require('../config');
 const permissions = require('../auth/permissions');
 const { guard } = require('../net/service-guard');
 const { isRemote } = require('./chat-authority');
+const chatTables = require('./chat-tables');
 
 const contextRouter = express.Router();
 const effectsRouter = express.Router();
@@ -348,8 +349,8 @@ effectsRouter.post('/channel-settings', (req, res) => {
     const fields = {};
     if (req.body.fields && req.body.fields.slow_mode_seconds !== undefined) fields.slow_mode_seconds = Math.max(0, int(req.body.fields.slow_mode_seconds));
     if (!Object.keys(fields).length) return fail(res, 400, 'no chat-settable fields');
-    db.upsertChannelModerationSettings(channelId, fields);
-    res.json({ ok: true });
+    chatTables.write('upsertChannelModerationSettings', channelId, fields)
+        .then(() => res.json({ ok: true }), (err) => fail(res, err.status || 500, err.message));
 });
 
 // Donation / goal alert sounds: the streamer's own channel only, files in the shared sounds dir.
@@ -364,8 +365,8 @@ effectsRouter.post('/alert-sound', (req, res) => {
         try { inside = path.dirname(fs.realpathSync(url)) === fs.realpathSync(path.resolve(config.sounds.path)); } catch { inside = false; }
         if (!inside) return fail(res, 400, 'alert sounds live in the sounds directory');
     }
-    db.setChannelAlertSound(channelId, req.body.kind === 'goal' ? 'goal' : 'donation', url, url ? String(req.body.mime || 'audio/mpeg') : null);
-    res.json({ ok: true });
+    chatTables.write('setChannelAlertSound', channelId, req.body.kind === 'goal' ? 'goal' : 'donation', url, url ? String(req.body.mime || 'audio/mpeg') : null)
+        .then(() => res.json({ ok: true }), (err) => fail(res, err.status || 500, err.message));
 });
 
 effectsRouter.post('/ensure-channel', (req, res) => {
@@ -607,6 +608,10 @@ effectsRouter.post('/asset-sync', (req, res) => {
 // ── The read mirror of Chat's tables ──────────────────────────────
 // Same tables, same ids. Upserts set only the columns Live's table has (Chat's *subject_id
 // columns are skipped; Live-only columns such as channel_sounds.media_asset_id are kept).
+// A staged table (roadmap C-04, chat-tables.js) is mirrored only while Chat writes it or hands it
+// back; while Live writes it, Chat's rows for it are refused. Its rows REPLACE: the authority's row
+// wins over whatever holds its key or one of its unique columns here (both copies have the same
+// columns, so nothing of Live's is lost).
 const MIRROR_TABLES = {
     chat_messages: ['id'],
     dm_conversations: ['id'],
@@ -637,12 +642,16 @@ function applyMirror(changes) {
     try {
         d.transaction(() => {
             for (const c of changes) {
-                const pk = MIRROR_TABLES[c && c.table];
-                if (!pk) { skipped.push({ table: c && c.table, reason: 'not a mirrored table' }); continue; }
+                const staged = !!(c && chatTables.TABLES[c.table]);
+                const pk = MIRROR_TABLES[c && c.table] || (staged && chatTables.acceptsMirror(c.table) ? chatTables.TABLES[c.table] : null);
+                if (!pk) { skipped.push({ table: c && c.table, reason: staged ? 'Live writes this table (chat_table_authority live)' : 'not a mirrored table' }); continue; }
                 const have = liveColumns(c.table);
                 try {
                     if (c.op === 'delete') {
                         d.prepare(`DELETE FROM ${c.table} WHERE ${pk.map((k) => `${k} = ?`).join(' AND ')}`).run(...pk.map((k) => c.pk[k]));
+                    } else if (c.op === 'upsert' && c.row && staged) {
+                        const cols = Object.keys(c.row).filter((k) => have.has(k) && /^[a-z_]+$/.test(k));
+                        d.prepare(`INSERT OR REPLACE INTO ${c.table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...cols.map((k) => c.row[k]));
                     } else if (c.op === 'upsert' && c.row) {
                         const cols = Object.keys(c.row).filter((k) => have.has(k) && /^[a-z_]+$/.test(k));
                         const upd = cols.filter((k) => !pk.includes(k));

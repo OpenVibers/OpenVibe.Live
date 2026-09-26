@@ -5796,6 +5796,11 @@ function updateEmote(id, { code, size }) {
     return run(`UPDATE emotes SET ${sets.join(', ')} WHERE id = ?`, params);
 }
 
+// The emote's copy on OpenVibe.Media (media-proxy/asset-sync.js), through chat-tables.write().
+function setEmoteMedia(id, mediaUrl, mediaAssetId) {
+    return run('UPDATE emotes SET media_url = ?, media_asset_id = ? WHERE id = ?', [mediaUrl || null, mediaAssetId || null, id]);
+}
+
 function getEmoteByCode(code, userId) {
     // Check channel emotes first, then global
     return get(
@@ -7739,7 +7744,7 @@ module.exports = {
     // Bans
     isUserBanned, isIpBanned, getIpBan, invalidateIpBanCache, forgiveBan,
     // Emotes
-    createEmote, getEmoteById, getEmotesByUser, getGlobalEmotes, getChannelEmotes, updateEmote,
+    createEmote, getEmoteById, getEmotesByUser, getGlobalEmotes, getChannelEmotes, updateEmote, setEmoteMedia,
     deleteEmote, getEmoteByCode, countUserEmotes, countChannelEmotes, getChannelEmoteByCode,
     createChannelSound, setChannelSoundEmote, getChannelSounds, getChannelSoundByCommand, getChannelSoundById, renameChannelSoundCommand, updateChannelSoundEmoteRefs,
     countChannelSounds, countChannelSoundsByUploader, deleteChannelSound,
