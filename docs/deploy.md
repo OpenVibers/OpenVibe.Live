@@ -123,3 +123,24 @@ npm test                         # unit, security, migrations, deploy simulation
 BASE=http://127.0.0.1:3000 npm run test:browser   # needs a running server and Chrome
 deploy/scripts/post-deploy-check.sh                # on the host after a deploy
 ```
+
+## N-1: the previous release against this one
+
+For 24 hours after a deploy (ADR-016) open tabs run the previous release's client against the new
+server, and a previous-release process may still be working on the database the new one migrated.
+`test/n-1.test.js` (in `npm test`, so in CI) checks both from fixtures recorded from the release in
+production:
+
+- `test/fixtures/n-1/client.json`: every call the previous release's client code makes, with the
+  status, JSON-ness and the response fields it reads. This checkout boots in the drill sandbox on a
+  database created with the previous schema, answers each call compatibly, and keeps every read field.
+- `test/fixtures/n-1/worker.json`: the previous schema, migration ledger and every SQL statement that
+  release ran or has as a literal. After this release's migrations each must still prepare, and no
+  old INSERT may miss a new NOT NULL column.
+
+After each deploy, record the release now in production as the next release's N-1 and commit it:
+
+```bash
+npm run n-1:record               # from HEAD (the deployed commit)
+npm run n-1:record -- <sha>      # or the release production's /release.json names
+```

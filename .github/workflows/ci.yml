@@ -4,7 +4,8 @@ on:
     branches: [main]
   pull_request:
 jobs:
-  # install, node --check, npm test (with the home page size budgets) and openvibe-contracts-check:
+  # install, node --check, npm test (with the home page size budgets and test/n-1.test.js: the previous
+  # release's client and SQL against this one, from test/fixtures/n-1) and openvibe-contracts-check:
   # the shared test job (Track Q).
   test:
     uses: OpenVibers/OpenVibe.Shared/.github/workflows/test.yml@423fe519b5fe9594cc81b670e5ba5cb9f21f6176

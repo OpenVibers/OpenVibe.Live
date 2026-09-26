@@ -13,7 +13,8 @@
     "test:powerchat": "for f in test/powerchat-*.test.js; do node \"$f\" || exit 1; done",
     "test:browser": "node test/browser/smoke.js",
     "perf:page": "node scripts/perf/measure-page.js",
-    "perf:budget": "node scripts/perf/check-budgets.js"
+    "perf:budget": "node scripts/perf/check-budgets.js",
+    "n-1:record": "node scripts/n-1-record.js"
   },
   "keywords": [
     "streaming",
