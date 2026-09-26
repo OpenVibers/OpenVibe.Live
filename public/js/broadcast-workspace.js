@@ -1325,7 +1325,7 @@ async function _wsEndStream() {
     }
 
     try {
-        await api(`/streams/${liveSessionId}/end`, { method: 'POST' });
+        await api(`/streams/${liveSessionId}`, { method: 'DELETE' });   // DELETE /api/streams/:id ends it (owner or staff)
         if (typeof stopBroadcast === 'function') stopBroadcast();
         toast('Stream ended', 'success');
         updateWorkspaceLiveStatus();
