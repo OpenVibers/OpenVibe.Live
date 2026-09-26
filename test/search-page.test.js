@@ -19,7 +19,7 @@ const { createSearchRouter } = require('../server/search/routes');
         const u = new URL(url);
         if (u.pathname === '/api/v1/suggest') {
             if (mode === 'suggest-down') throw new Error('timeout');
-            return new Response(JSON.stringify({ suggestions: [{ owner: 'live', type: 'channel', id: '7', title: 'Forum builders', canonical_url: 'https://openvibe.live/@forum' }, { owner: 'community', type: 'thread', id: 'x', title: 'Not ours' }] }), { status: 200 });
+            return new Response(JSON.stringify({ suggestions: [{ owner: 'live', type: 'channel', id: '7', title: 'Forum builders', canonical_url: 'https://openvibe.live/@forum' }, { owner: 'community', type: 'thread', id: 'x', title: 'Not ours' }, { owner: 'live', type: 'channel', id: '8', title: 'forum builders', canonical_url: 'https://openvibe.live/@forum2' }] }), { status: 200 });
         }
         const facets = u.searchParams.get('facets') ? { facets: { category: [{ value: 'irl', count: 12 }, { value: 'gaming', count: 3 }], channel: [{ value: 'alex', count: 9 }, { value: 42, count: 1 }], secret: [{ value: 'x', count: 1 }] } } : {};
         return new Response(JSON.stringify({ ...facets, results: [{ owner: 'live', type: 'vod', id: '912', title: 'Building a forum', canonical_url: 'https://openvibe.live/vod/912', facets: { channel: 'alex' }, snippet_html: '<mark>forum</mark>', acl: ['secret'], revision: 3 }], next_cursor: 'c1' }), { status: 200 });

@@ -60,7 +60,17 @@ function createSearchRouter({ fetchImpl = globalThis.fetch, baseUrl = SEARCH_URL
             const r = await fetchImpl(`${baseUrl}/api/v1/suggest?${params}`, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(2000) });
             const body = r.ok ? await r.json().catch(() => null) : null;
             const list = body && Array.isArray(body.suggestions) ? body.suggestions : [];
-            res.json({ suggestions: list.filter((s) => s && TYPES.has(s.type) && s.title).map((s) => ({ type: s.type, id: s.id, title: s.title, canonical_url: s.canonical_url })) });
+            // Many VODs share a title ("<name>'s Stream"): one suggestion per type and title, the best-ranked.
+            const seen = new Set();
+            const out = [];
+            for (const s of list) {
+                if (!s || !TYPES.has(s.type) || !s.title) continue;
+                const key = `${s.type}\u0000${String(s.title).toLowerCase()}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                out.push({ type: s.type, id: s.id, title: s.title, canonical_url: s.canonical_url });
+            }
+            res.json({ suggestions: out });
         } catch {
             res.json({ suggestions: [] });   // typing never shows an error; submitting does
         }
