@@ -1071,7 +1071,7 @@ router.get('/storage', (req, res) => {
 // proxy the Media API; the tiering + media-tools endpoints return a stub note
 // so the admin SPA shows where the controls went instead of erroring.
 const mediaClient = require('../media-client');
-const commentsClient = require('../comments-client');
+const purge = require('../media-proxy/purge');   // what Live drops once Media deleted an item
 
 // ── GET /api/admin/storage/vods — proxied VOD listing ────────
 router.get('/storage/vods', async (req, res) => {
@@ -1109,7 +1109,7 @@ router.delete('/storage/vods/bulk', async (req, res) => {
                 }
                 freed += vod.file_size || 0;
                 await mediaClient.deleteVod(id);
-                commentsClient.hideThreadOf('vod', Number(id));
+                purge.afterDelete('vod', id);
                 deleted++;
             } catch (err) {
                 errors.push(`VOD ${id}: ${err.message}`);
@@ -1141,8 +1141,7 @@ router.delete('/storage/clips/bulk', async (req, res) => {
                     errors.push(`Clip ${id}: protected (owner content)`); continue;
                 }
                 await mediaClient.deleteClip(id);
-                db.run("DELETE FROM content_views WHERE content_type = 'clip' AND content_id = ?", [id]);
-                commentsClient.hideThreadOf('clip', Number(id));   // comments are Community threads; Live's old table is read-only
+                purge.afterDelete('clip', id);
                 deleted++;
             } catch (err) {
                 errors.push(`Clip ${id}: ${err.message}`);

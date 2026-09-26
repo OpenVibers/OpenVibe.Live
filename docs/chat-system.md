@@ -87,14 +87,18 @@ GET /api/chat/admin/logs/export?format=json
 ### Purge Preview
 ```
 POST /api/chat/admin/purge/preview
-Body: { "streamId": 123, "fromTime": "2024-01-01T00:00", "toTime": "2024-01-02T00:00" }
+Body: { "streamId": 123, "from": "2024-01-01T00:00:00Z", "to": "2024-01-02T00:00:00Z" }
 ```
 
 ### Execute Purge
 ```
 DELETE /api/chat/admin/purge
-Body: { "streamId": 123, "fromTime": "2024-01-01T00:00", "toTime": "2024-01-02T00:00" }
+Body: { "streamId": 123, "from": "2024-01-01T00:00:00Z", "to": "2024-01-02T00:00:00Z" }
 ```
+
+`from` and `to` (also on the log filter and `/api/chat/:streamId/replay`) are UTC, as ISO instants
+or SQLite's `YYYY-MM-DD HH:MM:SS`; both bounds are inclusive. The preview, the purge, the log filter
+and VOD chat replay all read them the same way, so a purged range disappears from replay exactly.
 
 ## WebSocket Protocol
 

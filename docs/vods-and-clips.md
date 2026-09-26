@@ -53,6 +53,9 @@ Clips are **unlisted by default** — the stream owner can publish or delete the
 From the dashboard:
 - Toggle VODs between **public** and **private**
 - **Bulk delete** old media by age (e.g., delete VODs older than 30 days)
+- Every delete (one, bulk, by age, or from the admin storage page) ends in `server/media-proxy/purge.js`
+  once Media confirmed it: the comment thread is hidden, Live's own rows about the item go
+  (`vod_ai_state`/`clip_ai_state`, `content_views`) and its Search document is re-read at once
 - **Thumbnails** are auto-generated; broken thumbnails auto-regenerate on load
 
 ## Who sees a private VOD or clip

@@ -3064,6 +3064,16 @@ function getVodAiState(vodId) {
 function getClipAiState(clipId) {
     return get('SELECT * FROM clip_ai_state WHERE clip_id = ?', [clipId]);
 }
+/** A VOD or clip OpenVibe.Media deleted: Live's own rows about it go (server/media-proxy/purge.js). */
+function forgetMediaItem(kind, id) {
+    return getDb().transaction(() => {
+        const ai = kind === 'clip'
+            ? run('DELETE FROM clip_ai_state WHERE clip_id = ?', [id])
+            : run('DELETE FROM vod_ai_state WHERE vod_id = ?', [id]);
+        const views = run('DELETE FROM content_views WHERE content_type = ? AND content_id = ?', [kind === 'clip' ? 'clip' : 'vod', id]);
+        return { ai: ai.changes, views: views.changes };
+    })();
+}
 function setVodAiOverview(vodId, text) {
     _ensureVodAiState(vodId);
     // Store the FULL overview alongside the derived short — the card expander swaps
@@ -6381,8 +6391,9 @@ function getChatReplay(streamId, fromTime, toTime) {
                WHERE cm.stream_id = ? AND cm.is_deleted = 0 AND cm.message_type = 'chat'
                  AND (cm.auto_delete_at IS NULL OR datetime(cm.auto_delete_at) > CURRENT_TIMESTAMP)`;
     const params = [streamId];
-    if (fromTime) { sql += ` AND cm.timestamp >= ?`; params.push(fromTime); }
-    if (toTime) { sql += ` AND cm.timestamp <= ?`; params.push(toTime); }
+    // The same bounds as a purge (see deleteChatMessagesByTimeRange): either timestamp form, as UTC.
+    if (fromTime) { sql += ` AND cm.timestamp >= datetime(?)`; params.push(fromTime); }
+    if (toTime) { sql += ` AND cm.timestamp <= datetime(?)`; params.push(toTime); }
     sql += ` ORDER BY cm.timestamp ASC`;
     return all(sql, params);
 }
@@ -7485,18 +7496,23 @@ function saveUserPreferences(userId, chatSettings) {
 
 /* ── Chat Log Management ──────────────────────────────────── */
 
+// Time ranges (purge, its preview, the log filter, chat replay): the dashboard sends ISO instants
+// ('…T…Z') and rows keep SQLite's 'YYYY-MM-DD HH:MM:SS'. Compared as TEXT, 'T' sorts after ' ', so a
+// range matched nothing on its first day and all of its last: a purge removed lines outside the range
+// the streamer chose and kept the ones inside it (and VOD chat replay showed them). datetime(?) reads
+// both forms as UTC. OpenVibe.Chat, which serves these routes with CHAT_AUTHORITY=chat, does the same.
 function deleteChatMessagesByTimeRange(streamId, fromTime, toTime, deletedBy) {
     if (streamId) {
         return run(
             `UPDATE chat_messages SET is_deleted = 1, deleted_by = ?, deleted_at = CURRENT_TIMESTAMP
-             WHERE stream_id = ? AND timestamp >= ? AND timestamp <= ? AND is_deleted = 0`,
+             WHERE stream_id = ? AND timestamp >= datetime(?) AND timestamp <= datetime(?) AND is_deleted = 0`,
             [deletedBy, streamId, fromTime, toTime]
         );
     }
     // Global chat (is_global = 1)
     return run(
         `UPDATE chat_messages SET is_deleted = 1, deleted_by = ?, deleted_at = CURRENT_TIMESTAMP
-         WHERE is_global = 1 AND timestamp >= ? AND timestamp <= ? AND is_deleted = 0`,
+         WHERE is_global = 1 AND timestamp >= datetime(?) AND timestamp <= datetime(?) AND is_deleted = 0`,
         [deletedBy, fromTime, toTime]
     );
 }
@@ -7506,13 +7522,13 @@ function countChatMessagesByTimeRange(streamId, fromTime, toTime) {
     if (streamId) {
         row = get(
             `SELECT COUNT(*) as cnt FROM chat_messages
-             WHERE stream_id = ? AND timestamp >= ? AND timestamp <= ? AND is_deleted = 0`,
+             WHERE stream_id = ? AND timestamp >= datetime(?) AND timestamp <= datetime(?) AND is_deleted = 0`,
             [streamId, fromTime, toTime]
         );
     } else {
         row = get(
             `SELECT COUNT(*) as cnt FROM chat_messages
-             WHERE is_global = 1 AND timestamp >= ? AND timestamp <= ? AND is_deleted = 0`,
+             WHERE is_global = 1 AND timestamp >= datetime(?) AND timestamp <= datetime(?) AND is_deleted = 0`,
             [fromTime, toTime]
         );
     }
@@ -7526,8 +7542,8 @@ function getChatLogs({ streamId, username, search, from, to, messageType, page =
     if (streamId) { conditions.push('stream_id = ?'); params.push(streamId); }
     if (username) { conditions.push('username LIKE ?'); params.push(`%${username}%`); }
     if (search) { conditions.push('message LIKE ?'); params.push(`%${search}%`); }
-    if (from) { conditions.push('timestamp >= ?'); params.push(from); }
-    if (to) { conditions.push('timestamp <= ?'); params.push(to); }
+    if (from) { conditions.push('timestamp >= datetime(?)'); params.push(from); }
+    if (to) { conditions.push('timestamp <= datetime(?)'); params.push(to); }
     if (messageType) { conditions.push('message_type = ?'); params.push(messageType); }
     if (!includeDeleted) { conditions.push('is_deleted = 0'); }
 
@@ -7645,7 +7661,7 @@ module.exports = {
     publicStream,
     getConcurrencyBaseline,
     getHomeStatSeries, HOME_SERIES_KEYS, vibesStatsSince, _computeHomeStats,
-    getVodAiState, getClipAiState,
+    getVodAiState, getClipAiState, forgetMediaItem,
     scheduleClipNotifyState, bumpClipNotifyNowState, markClipNotifiedState, getDueClipNotifies,
     getDb, initDb, run, get, all, close, announceModerationAction: _announceModerationAction,
     mergeChatMessageMetadata, getTimelineSpeechSince,

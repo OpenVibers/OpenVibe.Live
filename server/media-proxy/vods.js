@@ -16,7 +16,7 @@ const recorder = require('../streaming/recorder');
 const { requireAuth, optionalAuth } = require('../auth/auth');
 const permissions = require('../auth/permissions');
 const access = require('./access');
-const commentsClient = require('../comments-client');
+const purge = require('./purge');
 const { commentCount } = require('./comments');
 
 const router = express.Router();
@@ -357,7 +357,7 @@ router.post('/bulk-delete-old', requireAuth, async (req, res) => {
             const out = await media.listVods({ user_id: req.user.id, include_private: 1, limit: 1000 });
             for (const v of (out?.vods || [])) {
                 if (!tooOld(v) || v.is_recording) continue;
-                if (action === 'delete') { if (await media.deleteVod(v.id).then(() => true, () => false)) commentsClient.hideThreadOf('vod', v.id); }
+                if (action === 'delete') { if (await media.deleteVod(v.id).then(() => true, () => false)) purge.afterDelete('vod', v.id); }
                 else await media.updateVod(v.id, { visibility: action }).catch(() => {});
                 vodCount++;
             }
@@ -366,7 +366,7 @@ router.post('/bulk-delete-old', requireAuth, async (req, res) => {
             const out = await media.listClips({ user_id: req.user.id, include_private: 1, limit: 1000 });
             for (const c of (out?.clips || [])) {
                 if (!tooOld(c)) continue;
-                if (action === 'delete') { if (await media.deleteClip(c.id).then(() => true, () => false)) commentsClient.hideThreadOf('clip', c.id); }
+                if (action === 'delete') { if (await media.deleteClip(c.id).then(() => true, () => false)) purge.afterDelete('clip', c.id); }
                 else await media.updateClip(c.id, { visibility: action }).catch(() => {});
                 clipCount++;
             }
@@ -557,7 +557,7 @@ router.post('/bulk', requireAuth, async (req, res) => {
             if (!owns) owns = permissions.canModerateContentOwner(req.user, vod.user_id ? db.getUserById(vod.user_id) : null);
             if (!owns) { skipped++; continue; }
             try {
-                if (action === 'delete') { await media.deleteVod(id); commentsClient.hideThreadOf('vod', id); }
+                if (action === 'delete') { await media.deleteVod(id); purge.afterDelete('vod', id); }
                 else await media.updateVod(id, { visibility: action });
                 done++;
             } catch { skipped++; }
@@ -573,7 +573,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
     if (!vod) return;
     try {
         await media.deleteVod(req.params.id);
-        commentsClient.hideThreadOf('vod', Number(req.params.id));
+        purge.afterDelete('vod', req.params.id);
         res.json({ message: 'VOD deleted' });
     } catch (err) {
         mediaErr(res, err, 'Failed to delete VOD');

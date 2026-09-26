@@ -11,7 +11,7 @@ const media = require('../media-client');
 const { requireAuth, optionalAuth } = require('../auth/auth');
 const permissions = require('../auth/permissions');
 const access = require('./access');
-const commentsClient = require('../comments-client');
+const purge = require('./purge');
 const { commentCount } = require('./comments');
 const lineage = require('../lineage/resolver');
 
@@ -345,7 +345,7 @@ router.post('/bulk', requireAuth, async (req, res) => {
             const allowed = clip && (action === 'delete' ? await canActorDeleteClip(req.user, clip) : await canActorModerateClip(req.user, clip));
             if (!allowed) { skipped++; continue; }
             try {
-                if (action === 'delete') { await media.deleteClip(id); commentsClient.hideThreadOf('clip', id); }
+                if (action === 'delete') { await media.deleteClip(id); purge.afterDelete('clip', id); }
                 else await media.updateClip(id, { visibility: action });
                 done++;
             } catch { skipped++; }
@@ -363,7 +363,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
         if (!clip) return res.status(404).json({ error: 'Clip not found' });
         if (!(await canActorDeleteClip(req.user, clip))) return refuse(req, res, clip, 'Not authorized to delete this clip');
         await media.deleteClip(clip.id);
-        commentsClient.hideThreadOf('clip', clip.id);
+        purge.afterDelete('clip', clip.id);
         res.json({ message: 'Clip deleted' });
     } catch (err) {
         mediaErr(res, err, 'Failed to delete clip');
