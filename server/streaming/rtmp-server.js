@@ -132,9 +132,14 @@ class RTMPServer extends EventEmitter {
             }
 
             // Create or update stream record
-            // Look for an existing RTMP stream (created via Go Live page) that's waiting for the RTMP client
+            // Look for an existing RTMP stream (created via Go Live page) that's waiting for the RTMP
+            // client: for a slot key, that slot's own; for the account key, one no other encoder feeds.
+            // Any live RTMP stream of the user used to do, so a second slot's encoder took over the first
+            // slot's stream: it got the second slot's controls (below) and ended when that encoder left.
             const existingStreams = db.getLiveStreamsByUserId(resolvedUser.id);
-            const rtmpStream = existingStreams.find(s => s.protocol === 'rtmp');
+            const fed = new Set([...this.activeStreams.values()].map((info) => info.streamId));
+            const rtmpStream = existingStreams.find(s => s.protocol === 'rtmp' && !fed.has(s.id)
+                && (!managedStream || s.managed_stream_id === managedStream.id));
             let streamId;
             if (rtmpStream) {
                 streamId = rtmpStream.id;
