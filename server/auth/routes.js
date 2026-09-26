@@ -289,17 +289,7 @@ function getNetworkRedirectUri() {
  * through /api/auth/sso/login?silent=1&next=https://openvibe.network/sso/fanout?… and must
  * be handed back. Anything else falls back to the home page.
  */
-function safeNext(raw) {
-    const s = String(raw || '');
-    if (!s) return '/';
-    if (s.startsWith('/') && !s.startsWith('//')) return s;
-    try {
-        const u = new URL(s);
-        if (u.protocol !== 'https:' && !(u.protocol === 'http:' && /^(localhost|127\.0\.0\.1)$/.test(u.hostname))) return '/';
-        if (/(^|\.)openvibe\.[a-z]+$/.test(u.hostname) || /(^|\.)openre\.stream$/.test(u.hostname) || /^(localhost|127\.0\.0\.1)$/.test(u.hostname)) return u.toString();
-    } catch { /* not a URL */ }
-    return '/';
-}
+const { safeNext } = require('./safe-next');
 const HINT_COOKIE = { httpOnly: false, path: '/', maxAge: 365 * 24 * 60 * 60 * 1000, sameSite: 'Lax' };
 
 // ── Initiate OAuth Login (redirect to openvibe.network) ───────────
