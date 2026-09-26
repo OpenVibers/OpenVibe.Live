@@ -9,7 +9,9 @@
  *   - a release that never becomes ready is rolled back automatically (exit 3), still serving;
  *   - --rollback returns to the previous release, restarting only if server code differs;
  *   - a lockfile change installs into the NEW release, so rolling back gets the OLD node_modules;
- *   - the legacy in-place layout also skips the restart for public/-only changes.
+ *   - the legacy in-place layout also skips the restart for public/-only changes;
+ *   - every deploy or rollback that went live runs `ovhost announce live` (a fake ovhost records it),
+ *     one that did not go live or changed nothing does not, and a failing or older ovhost never fails a deploy.
  *
  *   node test/deploy-sim.test.js
  */
@@ -89,6 +91,15 @@ esac
 `, { mode: 0o755 });
     fs.writeFileSync(path.join(bin, 'npm'), `#!/usr/bin/env bash\nmkdir -p node_modules && echo "lock-$(node -e 'console.log(require(\"./package-lock.json\").v)')" > node_modules/marker\n`, { mode: 0o755 });
     fs.writeFileSync(path.join(bin, 'journalctl'), '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 });
+    // Fake ovhost: records each call. OVHOST_FAKE_EXIT makes announce fail; OVHOST_FAKE_OLD drops announce from --help.
+    const ovhostLog = path.join(tmp, 'ovhost.log');
+    fs.writeFileSync(path.join(bin, 'ovhost'), `#!/usr/bin/env bash
+if [ "$1" = "--help" ]; then if [ -n "$OVHOST_FAKE_OLD" ]; then echo "  deploy <service>"; else echo "  announce <service> [--release <id>]"; fi; exit 0; fi
+echo "$*" >> "${ovhostLog}"
+echo "[ovhost] release notification sent: $2"
+exit "\${OVHOST_FAKE_EXIT:-0}"
+`, { mode: 0o755 });
+    const announced = () => { try { return fs.readFileSync(ovhostLog, 'utf8').split('\n').filter(Boolean); } catch { return []; } };
 
     // Release layout, as migrate-to-releases.sh leaves it.
     fs.mkdirSync(path.join(base, 'releases'), { recursive: true });
@@ -113,6 +124,8 @@ esac
         const r = deploy();
         assert.strictEqual(r.status, 0, r.stdout + r.stderr);
         assert.match(r.stdout, /without a restart/);
+        assert.deepStrictEqual(announced(), ['announce live'], 'the release notification ran once');
+        assert.match(r.stdout, /release notification sent: live/);
         assert.strictEqual((await get('/static')).body, 'static-2');
         assert.strictEqual(await pid(), before, 'pid changed');
     });
@@ -122,6 +135,7 @@ esac
         write('server/version.txt', 'v2'); commit('server');
         const r = deploy();
         assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+        assert.strictEqual(announced().length, 2);
         await new Promise((res) => setTimeout(res, 300));
         const code = (await get('/code')).body;
         assert.ok(code.startsWith('v2'), code);
@@ -138,8 +152,10 @@ esac
     });
 
     await check('--rollback returns code AND node_modules of the previous release', async () => {
+        const n = announced().length;
         const r = deploy('--rollback');
         assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+        assert.strictEqual(announced().length, n + 1, 'a rollback is announced too');
         await new Promise((res) => setTimeout(res, 500));
         assert.ok((await get('/code')).body.startsWith('v2'));
         assert.strictEqual((await get('/deps')).body.trim(), 'lock-1');
@@ -150,8 +166,10 @@ esac
         write('server/version.txt', 'v4'); commit('v4');
         assert.strictEqual(deploy().status, 0);
         write('server/BROKEN', '1'); write('server/version.txt', 'v5-broken'); commit('broken');
+        const n = announced().length;
         const r = deploy();
         assert.strictEqual(r.status, 3, r.stdout + r.stderr);
+        assert.strictEqual(announced().length, n, 'a release that did not go live is not announced');
         await new Promise((res) => setTimeout(res, 500));
         const code = (await get('/code')).body;
         assert.ok(code.startsWith('v4'), code);
@@ -162,9 +180,29 @@ esac
         // origin still has the broken commit; the deploy would try again, so first fix forward.
         fs.unlinkSync(path.join(work, 'server/BROKEN')); write('server/version.txt', 'v6'); commit('fix');
         assert.strictEqual(deploy().status, 0);
+        const n = announced().length;
         const r = deploy();
         assert.strictEqual(r.status, 0);
         assert.match(r.stdout, /nothing to deploy/);
+        assert.strictEqual(announced().length, n, 'nothing new, nothing announced');
+    });
+
+    await check('a failing release notification, or an ovhost without announce, never fails a deploy', async () => {
+        write('public/x.txt', 'static-3'); commit('static 3');
+        const failing = spawnSync('bash', [DEPLOY], { env: { ...env, OVHOST_FAKE_EXIT: '2' }, encoding: 'utf8' });
+        assert.strictEqual(failing.status, 0, failing.stdout + failing.stderr);
+        assert.match(failing.stdout, /release notification not sent \(the deploy stands\)/);
+        write('public/x.txt', 'static-4'); commit('static 4');
+        const n = announced().length;
+        const old = spawnSync('bash', [DEPLOY], { env: { ...env, OVHOST_FAKE_OLD: '1' }, encoding: 'utf8' });
+        assert.strictEqual(old.status, 0, old.stdout + old.stderr);
+        assert.match(old.stdout, /release notification skipped: this ovhost has no announce/);
+        assert.strictEqual(announced().length, n);
+        write('public/x.txt', 'static-5'); commit('static 5');
+        const none = spawnSync('bash', [DEPLOY], { env: { ...env, OVHOST: path.join(tmp, 'no-such-ovhost') }, encoding: 'utf8' });
+        assert.strictEqual(none.status, 0, none.stdout + none.stderr);
+        assert.strictEqual(announced().length, n, 'no ovhost: nothing to call');
+        assert.doesNotMatch(none.stdout, /release notification/);
     });
 
     await check('old releases are pruned to KEEP_RELEASES', async () => {
@@ -184,9 +222,11 @@ esac
     await check('legacy layout: public/-only change pulls without restarting', async () => {
         const before = await pid();
         write('public/x.txt', 'legacy-static'); commit('legacy static');
+        const n = announced().length;
         const r = spawnSync('bash', [DEPLOY], { env: lenv, encoding: 'utf8' });
         assert.strictEqual(r.status, 0, r.stdout + r.stderr);
         assert.match(r.stdout, /no restart needed/);
+        assert.strictEqual(announced().length, n + 1, 'the legacy layout announces too');
         assert.strictEqual((await get('/static')).body, 'legacy-static', r.stdout + r.stderr + ' ready=' + (await get('/api/ready')).status);
         assert.strictEqual(await pid(), before);
     });

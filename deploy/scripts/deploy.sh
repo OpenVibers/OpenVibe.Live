@@ -21,6 +21,9 @@
 #   deploy/nginx/                  never auto-installed (the live config is generated elsewhere);
 #                                  the script says so
 #
+# After a deploy or rollback that went live: `ovhost announce live` (release notification to open tabs;
+# best effort, skipped without an ovhost that has `announce`, never changes the exit code).
+#
 # Two layouts:
 #   release  /opt/openvibe.live/releases/<id> (code + node_modules), current -> releases/<id>,
 #            shared/data. A deploy builds a new release while the old one serves; switching is an
@@ -221,6 +224,21 @@ restart_and_verify() {
     $on_fail
 }
 
+# ── Release notification (WS-P task 9) ───────────────────────────────────────
+# OpenVibe.Host publishes host.deploy.activated to OpenVibe.Events, so open tabs check /release.json now
+# instead of at their next poll. ovhost announces the release Live's own /release.json reports, once per
+# release. Best effort: skipped when ovhost is missing or has no `announce`, 20 s at most, and it never
+# fails a deploy (see OpenVibe.Host docs/release-notifications.md).
+OVHOST="${OVHOST:-ovhost}"
+announce_release() {
+    [ "$DRY_RUN" = "1" ] && return 0
+    command -v "$OVHOST" >/dev/null 2>&1 || return 0
+    local help
+    help=$("$OVHOST" --help 2>/dev/null || true)
+    case "$help" in *"announce <service>"*) ;; *) say "release notification skipped: this ovhost has no announce"; return 0 ;; esac
+    timeout 20 "$OVHOST" announce live 9>&- 2>&1 | sed 's/^/         /' || say "release notification not sent (the deploy stands)"
+}
+
 # ═══════════════════════════════════════════════════════════════
 # Release layout
 # ═══════════════════════════════════════════════════════════════
@@ -256,6 +274,7 @@ if [ "$LAYOUT" = release ]; then
         # Keep the release we left so it can be re-selected; just move it out of "newest".
         touch -h "$PREV"
         say "rolled back to $(basename "$PREV") ✅"
+        announce_release
         exit 0
     fi
 
@@ -338,6 +357,7 @@ if [ "$LAYOUT" = release ]; then
     done
     git -C "$REPO" worktree prune 2>/dev/null || true
     say "deployed $CUR_ID → $NEW_ID ✅"
+    announce_release
     exit 0
 fi
 
@@ -401,6 +421,7 @@ if [ "$DRY_RUN" = "1" ]; then say "dry run complete — nothing was changed. res
 if [ "$NEEDS_RESTART" != true ]; then
     say "change classes:${CATS} — no restart needed; the server re-reads public/ and docs/ from disk."
     say "deployed ${OLD_HASH:0:8} → ${NEW_HASH:0:8} without interrupting anyone ✅"
+    announce_release
     exit 0
 fi
 
@@ -421,3 +442,4 @@ curl -sf --max-time 5 "${API_URL}/api/health" >/dev/null || die "health endpoint
 say "deployed ${OLD_HASH:0:8} → ${NEW_HASH:0:8} (${COMMIT_COUNT} commit(s))"
 say "note: established WebSocket, WHIP, RTMP and WebRTC sessions were reconnected, not preserved."
 say "done ✅"
+announce_release
