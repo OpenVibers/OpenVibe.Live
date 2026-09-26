@@ -55,6 +55,7 @@
     window.renderClipSourceCard = async function (clip) {
         const host = document.getElementById('clp-stream-source');
         if (!host || !clip) return;
+        if (clip.vod_visible === false) return;                // source VOD gone or hidden: no context to ask for
         const ctx = await fetchContext(clip.vod_id);
         if (!ctx || !ctx.vod) return;                          // keep the plain text fallback
         const total = Math.max(1, ctx.vod.duration_seconds || 0);

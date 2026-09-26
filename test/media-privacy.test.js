@@ -67,6 +67,7 @@ const VODS = {
 const CLIPS = {
     200: { id: 200, user_id: 5, vod_id: 100, title: 'Public clip', visibility: 'public', is_public: 1, status: 'ready' },
     201: { id: 201, user_id: 5, channel_user_id: 3, stream_id: streamA, vod_id: 101, title: 'Secret clip', visibility: 'private', is_public: 0, status: 'ready' },
+    202: { id: 202, user_id: 5, vod_id: 555, title: 'Clip of a deleted VOD', visibility: 'public', is_public: 1, status: 'ready' },   // VOD 555 is gone
 };
 const missing = (what) => new media.MediaApiError(`${what} not found`, 404, { error: `${what} not found` });
 media.getVod = async (id) => { const v = VODS[Number(id)]; if (!v) throw missing('VOD'); return { ...v }; };
@@ -200,6 +201,14 @@ async function check(name, fn) {
         assert.strictEqual(pub.json.clip.vod_available, true);
         const own = await call('GET', '/api/clips/201', 5);
         assert.strictEqual(own.json.clip.vod_available, false, 'the clipper may not see the source VOD, so it is not offered');
+        // vod_visible tells the clip page whether /api/vods/:id/context can answer (it 404s exactly when false).
+        assert.strictEqual(pub.json.clip.vod_visible, true);
+        assert.strictEqual(own.json.clip.vod_visible, false, 'a hidden source VOD is absent: no context request');
+        assert.strictEqual((await call('GET', '/api/vods/101/context', 5)).status, 404);
+        const orphan = await call('GET', '/api/clips/202', null);
+        assert.strictEqual(orphan.status, 200);
+        assert.deepStrictEqual([orphan.json.clip.vod_available, orphan.json.clip.vod_visible], [false, false], 'a deleted source VOD is absent');
+        assert.strictEqual((await call('GET', '/api/vods/555/context', null)).status, 404);
     });
 
     await check('clip writes by strangers: 404 (not 403) for a private clip', async () => {

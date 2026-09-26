@@ -268,11 +268,18 @@ router.get('/:id', optionalAuth, async (req, res) => {
 
         clip.vod_available = false;
         if (clip.vod_id) {
+            // vod_visible: false when the source VOD is gone or hidden from this viewer, which is
+            // exactly when GET /api/vods/:id/context answers 404; the clip page then skips that call
+            // (a 404 logged a console error on the clip page: browser check, /clip/369). Unknown
+            // (Media unreachable) leaves it unset.
             try {
                 const v = await media.getVod(clip.vod_id);
                 const recording = v && (v.status === 'recording' || v.is_recording);
-                if (v && access.canView(req.user, v) && !recording) clip.vod_available = true;
-            } catch { /* */ }
+                clip.vod_visible = !!(v && access.canView(req.user, v));
+                if (clip.vod_visible && !recording) clip.vod_available = true;
+            } catch (err) {
+                if (err && err.status === 404) clip.vod_visible = false;
+            }
         }
 
         res.json({ clip });
