@@ -131,9 +131,11 @@ server, and a previous-release process may still be working on the database the 
 `test/n-1.test.js` (in `npm test`, so in CI) checks both from fixtures recorded from the release in
 production:
 
-- `test/fixtures/n-1/client.json`: every call the previous release's client code makes, with the
-  status, JSON-ness and the response fields it reads. This checkout boots in the drill sandbox on a
-  database created with the previous schema, answers each call compatibly, and keeps every read field.
+- `test/fixtures/n-1/client.json`: every call the previous release's client code makes, and every
+  script, stylesheet and link of the shell and a channel page it served, with the status, JSON-ness
+  and the response fields the client reads. This checkout boots in the drill sandbox (writes let
+  through) on a database created with the previous schema, answers each call compatibly, and keeps
+  every read field. The calls nginx sends to OpenVibe.Chat are Chat's N-1 test.
 - `test/fixtures/n-1/worker.json`: the previous schema, migration ledger and every SQL statement that
   release ran or has as a literal. After this release's migrations each must still prepare, and no
   old INSERT may miss a new NOT NULL column.

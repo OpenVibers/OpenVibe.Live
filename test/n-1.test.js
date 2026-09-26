@@ -99,15 +99,21 @@ async function check(name, fn) {
         const manifest = await (await fetch(`${server.url}/release.json`)).json();
 
         console.log('n-1: the N-1 client against this server');
-        await check(`every call the N-1 client makes is answered compatibly (${client.calls.length} requests, in openvibe-shared's mixed-version matrix)`, async () => {
+        const sockets = client.ws ? `, and ${client.ws.sends.length} socket message types in ${client.ws.sessions.length} sessions` : '';
+        await check(`every call the N-1 client makes is answered compatibly (${client.calls.length} requests${sockets}, in openvibe-shared's mixed-version matrix)`, async () => {
             const broken = [];
             const n1Client = async (url) => {
+                const probe = await h.notFoundProbe(url);
                 for (const rec of client.calls) {
-                    const got = await h.send(url, { method: rec.method, path: rec.path, headers: server.headers(rec.auth), body: rec.method === 'GET' ? undefined : {} });
-                    const problems = h.callProblems(rec, got);
+                    const got = await h.send(url, { method: rec.method, path: h.fillPath(rec.path, server.ids), headers: { ...(rec.accept ? { accept: 'text/html' } : {}), ...server.headers(rec.auth) }, body: rec.method === 'GET' ? undefined : {} });
+                    const problems = h.callProblems(rec, got, probe);
                     if (problems.length) broken.push(`${rec.auth} ${rec.method} ${rec.path} (${rec.from.join(', ')}): ${problems.join('; ')}`);
                 }
-                if (svc.checkExtra && client.extra) broken.push(...await svc.checkExtra({ server, url, extra: client.extra }));
+                for (const session of (client.ws && client.ws.sessions) || []) {
+                    const messages = h.wsMessages(client.ws.sends, { order: svc.ws.order, values: server.wsValues(session.auth) });
+                    const received = await h.wsSession({ url: url.replace(/^http/, 'ws') + client.ws.path, headers: svc.ws.headers, messages });
+                    broken.push(...h.wsProblems(session.received, received).map((p) => `socket ${client.ws.path} (${session.auth}): ${p}`));
+                }
                 if (broken.length) throw new Error(`${broken.length} broken:\n${h.summarize(broken)}`);
             };
             await compat.assertMixedVersion({ releases: [

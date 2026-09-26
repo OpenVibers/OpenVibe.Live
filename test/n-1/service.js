@@ -69,6 +69,9 @@ module.exports = {
     ],
     strip: ['API', 'location.origin', 'window.location.origin'],
     keep: (pathname) => !CHAT_PATHS.test(pathname),
+    /** Pages an open tab may hold: the shell (its scripts, styles and links) and a server-rendered channel. */
+    crawl: ['/', '/@n1star'],
+    origins: ['https://openvibe.live'],
     /** Values for template expressions, first match wins: the seeded streamer, ids of seeded rows. */
     samples: [
         [/id\)*$/i, '1'],

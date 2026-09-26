@@ -94,16 +94,78 @@ function callArgs(src, i) {
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/** src split at every top-level `sep` (outside strings and brackets). */
+function splitTop(src, sep) {
+    const out = [];
+    let depth = 0; let start = 0;
+    for (let j = 0; j < src.length; j++) {
+        const c = src[j];
+        if (c === '\'' || c === '"' || c === '`') { const lit = readLiteral(src, j); if (lit) { j = lit.end - 1; continue; } }
+        if (c === '(' || c === '{' || c === '[') depth++;
+        else if (c === ')' || c === '}' || c === ']') depth--;
+        else if (c === sep && depth === 0) { out.push(src.slice(start, j)); start = j + 1; }
+    }
+    out.push(src.slice(start));
+    return out.map((x) => x.trim());
+}
+
 /**
- * Every call site of the service's request functions with a literal or template path.
+ * The parts of a path expression: a literal, a template, or literals, templates and names joined with
+ * `+` ('/api/x/' + id + '?a=1'); a name in `vars` stands for the path it was assigned. → parts or null
+ */
+function pathParts(expr, vars = new Map()) {
+    const parts = [];
+    for (const piece of splitTop(expr, '+')) {
+        if (!piece) return null;
+        const lit = /^['"`]/.test(piece) ? readLiteral(piece, 0) : null;
+        if (lit && lit.end === piece.length) parts.push(...lit.parts.flatMap((x) => (x.expr && vars.has(unwrap(x.expr)) ? vars.get(unwrap(x.expr)) : [x])));
+        else if (vars.has(piece)) parts.push(...vars.get(piece));
+        else parts.push({ expr: piece });
+    }
+    const merged = [];
+    for (const p of parts) {
+        const last = merged[merged.length - 1];
+        if (p.text != null && last && last.text != null) last.text += p.text; else merged.push({ ...p });
+    }
+    return merged;
+}
+
+/** `esc(base)`, `encodeURIComponent(base)`: the name inside one escaping call. */
+function unwrap(expr) {
+    const m = /^(?:esc|enc|encodeURI|encodeURIComponent|String|escapeHtml|escHtml)\(\s*([A-Za-z_$][\w$]*)\s*\)$/.exec(String(expr).trim());
+    return m ? m[1] : String(expr).trim();
+}
+
+/** `var|let|const name = <path expression>` in a file, for names later calls use as a path base. */
+function pathVars(src) {
+    const vars = new Map();
+    for (const m of src.matchAll(/(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=\s*(?=['"`])/g)) {
+        let depth = 0; let end = src.length;
+        for (let j = m.index + m[0].length; j < src.length; j++) {
+            const c = src[j];
+            if (c === '\'' || c === '"' || c === '`') { const lit = readLiteral(src, j); if (lit) { j = lit.end - 1; continue; } }
+            if (c === '(' || c === '{' || c === '[') depth++;
+            else if (c === ')' || c === '}' || c === ']') { if (depth === 0) { end = j; break; } depth--; } else if (depth === 0 && (c === ';' || c === '\n' || c === ',')) { end = j; break; }
+        }
+        const parts = pathParts(src.slice(m.index + m[0].length, end).trim(), vars);
+        if (parts && parts[0] && parts[0].text && parts[0].text.startsWith('/') && !parts[0].text.startsWith('//')) vars.set(m[1], parts);
+    }
+    return vars;
+}
+
+/**
+ * Every call site of the service's request functions whose path is a literal, a template or a
+ * concatenation starting with one (or with a variable assigned one).
  * callers: [{ name: 'api', prefix: '/api', method?: 'POST', methodArg?: 1 }]
  * strip: template expressions dropped when a path starts with them (e.g. 'API', 'location.origin')
- * → [{ method, template, parts, from: [file] }], plus { dynamic } calls with no literal path
+ * keep(pathname, method, file): whether a call is this server's
+ * → { calls: [{ method, template, parts, from: [file] }], dynamic: calls with a computed path }
  */
-function extractCalls({ files, callers, strip = [], keep = (p) => true }) {
+function extractCalls({ files, callers, strip = [], keep = (p) => true, forms = false }) {
     const found = new Map();
     let dynamic = 0;
     for (const { name: file, text: src } of files) {
+        const vars = pathVars(src);
         for (const caller of callers) {
             const re = new RegExp(`(?<![\\w$.])${esc(caller.name)}\\s*\\(`, 'g');
             let m;
@@ -111,20 +173,33 @@ function extractCalls({ files, callers, strip = [], keep = (p) => true }) {
                 const open = m.index + m[0].length - 1;
                 const args = callArgs(src, open);
                 if (!args || !args.length) continue;
-                const lit = /^['"`]/.test(args[0]) ? readLiteral(args[0], 0) : null;
-                if (!lit || lit.end !== args[0].length) { dynamic++; continue; }
-                let parts = lit.parts.slice();
+                // An SDK-style call: call({ method: 'POST', path: `/api/x/${id}`, … }).
+                let pathExpr = args[0];
+                let objMethod = null;
+                if (caller.object) {
+                    if (!/^\{[\s\S]*\}$/.test(args[0])) continue;   // some other function of that name
+                    const entries = splitTop(args[0].slice(1, -1), ',');
+                    const entry = (k) => { const e = entries.find((x) => new RegExp(`^${k}\\s*:`).test(x)); return e ? e.replace(new RegExp(`^${k}\\s*:\\s*`), '') : null; };
+                    pathExpr = entry('path');
+                    const me = entry('method');
+                    const ml = me && /^['"`]/.test(me) ? readLiteral(me, 0) : null;
+                    if (ml && ml.parts.length === 1 && ml.parts[0].text) objMethod = ml.parts[0].text;
+                    if (!pathExpr) continue;
+                }
+                let parts = pathParts(pathExpr, vars);
+                if (!parts) { dynamic++; continue; }
                 while (parts.length && parts[0].expr && strip.includes(parts[0].expr)) parts.shift();
                 if (!parts.length || !parts[0].text || !parts[0].text.startsWith('/') || parts[0].text.startsWith('//')) {
                     if (parts.length && parts[0].expr) dynamic++;
                     continue;
                 }
                 parts = caller.prefix ? [{ text: caller.prefix }, ...parts] : parts;
+                if (parts[1] && parts[0].text != null && parts[1].text != null) parts = [{ text: parts[0].text + parts[1].text }, ...parts.slice(2)];
                 // `/api${path}`: a wrapper passing a path through, not a call.
                 if (parts.some((p, k) => p.expr && k > 0 && parts[k - 1].text != null && !parts.slice(0, k).some((x) => x.text && x.text.includes('?')) && /[A-Za-z0-9]$/.test(parts[k - 1].text))) { dynamic++; continue; }
                 const template = parts.map((p) => (p.text != null ? p.text : `{${p.expr}}`)).join('').replace(/^([^?#]*)\/\//, '$1/');
-                let method = caller.method || 'GET';
-                if (caller.methodArg != null) {
+                let method = objMethod || caller.method || 'GET';
+                if (caller.object) { /* the method was in the object */ } else if (caller.methodArg != null) {
                     const a = args[caller.methodArg];
                     const ml = a && /^['"`]/.test(a) ? readLiteral(a, 0) : null;
                     if (ml && ml.parts.length === 1 && ml.parts[0].text) method = ml.parts[0].text;
@@ -134,7 +209,29 @@ function extractCalls({ files, callers, strip = [], keep = (p) => true }) {
                     if (mm) method = mm[1];
                 }
                 method = method.toUpperCase();
-                if (!keep(template.split('?')[0], method)) continue;
+                if (!keep(template.split('?')[0], method, file)) continue;
+                const key = `${method} ${template}`;
+                if (!found.has(key)) found.set(key, { method, template, parts, from: new Set() });
+                found.get(key).from.add(file);
+            }
+        }
+    }
+    // Forms the pages post (or get) to: <form action="/x/${id}" method="post"> in markup or a template.
+    if (forms) {
+        for (const { name: file, text: src } of files) {
+            const vars = pathVars(src);
+            for (const m of src.matchAll(/<form\b/gi)) {
+                const end = tagEnd(src, m.index);
+                if (end < 0) continue;
+                const tag = src.slice(m.index, end);
+                const action = attr(tag, 'action');
+                if (!action || action.startsWith('//') || /^[a-z]+:/i.test(action)) continue;
+                const parts = templateParts(action).flatMap((x) => (x.expr && vars.has(unwrap(x.expr)) ? vars.get(unwrap(x.expr)) : [x]));
+                if (!parts.length || parts[0].text == null || !parts[0].text.startsWith('/')) continue;
+                const methodAttr = attr(tag, 'method');
+                const method = /^post$/i.test(methodAttr || '') ? 'POST' : 'GET';
+                const template = parts.map((p) => (p.text != null ? p.text : `{${p.expr}}`)).join('');
+                if (!keep(template.split('?')[0], method, file)) continue;
                 const key = `${method} ${template}`;
                 if (!found.has(key)) found.set(key, { method, template, parts, from: new Set() });
                 found.get(key).from.add(file);
@@ -144,6 +241,54 @@ function extractCalls({ files, callers, strip = [], keep = (p) => true }) {
     const calls = [...found.values()].map((c) => ({ ...c, from: [...c.from].sort() }))
         .sort((a, b) => (a.template < b.template ? -1 : a.template > b.template ? 1 : a.method < b.method ? -1 : 1));
     return { calls, dynamic };
+}
+
+/** Where an HTML tag that starts at src[i] ends ('>' outside quotes and ${…}); -1 if it does not. */
+function tagEnd(src, i) {
+    let q = null;
+    for (let j = i; j < src.length; j++) {
+        const c = src[j];
+        if (c === '$' && src[j + 1] === '{') { const close = skipBalanced(src, j + 1, '{', '}'); if (close < 0) return -1; j = close; continue; }
+        if (q) { if (c === q) q = null; continue; }
+        if (c === '"' || c === '\'') q = c;
+        else if (c === '>') return j + 1;
+    }
+    return -1;
+}
+
+/** An attribute's raw value in a tag (quoted, may hold ${…}). */
+function attr(tag, name) {
+    const m = new RegExp(`\\s${name}\\s*=\\s*(["'])`, 'i').exec(tag);
+    if (!m) return null;
+    const q = m[1];
+    let out = '';
+    for (let j = m.index + m[0].length; j < tag.length; j++) {
+        const c = tag[j];
+        if (c === '$' && tag[j + 1] === '{') { const close = skipBalanced(tag, j + 1, '{', '}'); if (close < 0) return null; out += tag.slice(j, close + 1); j = close; continue; }
+        if (c === q) return out;
+        out += c;
+    }
+    return null;
+}
+
+/** Text with ${expr} holes → parts. */
+function templateParts(text) {
+    const parts = [];
+    let buf = '';
+    for (let j = 0; j < text.length; j++) {
+        if (text[j] === '$' && text[j + 1] === '{') {
+            const close = skipBalanced(text, j + 1, '{', '}');
+            if (close < 0) break;
+            if (buf) parts.push({ text: buf });
+            buf = '';
+            parts.push({ expr: text.slice(j + 2, close).trim() });
+            j = close;
+            continue;
+        }
+        buf += text[j];
+    }
+    if (buf) parts.push({ text: buf.replace(/&amp;/g, '&') });
+    return parts;
 }
 
 /**
@@ -161,10 +306,53 @@ function concretePath(parts, samples = []) {
         const hit = samples.find(([re]) => re.test(p.expr));
         let v = hit ? hit[1] : (inQuery ? '' : '1');
         if (typeof v === 'function') v = v(p.expr, inQuery);
+        // '@name': a value the booted server seeded (a random slug); filled in when the call is sent.
+        if (/^@\w+$/.test(String(v))) { out += `{${v}}`; continue; }
         out += inQuery ? String(v) : encodeURIComponent(String(v)).replace(/%2F/gi, '/');
     }
     out = out.replace(/^([^?#]*)\/\/+/, '$1/').replace(/[?&]+$/, '').replace(/\?&+/, '?');
     return out;
+}
+
+/**
+ * The same-origin URLs a served page makes the browser fetch or offers to follow: src, href, poster,
+ * data-src and form actions (with their method). `origins` are absolute origins that count as this
+ * site (e.g. its public URL). → [{ method, path }]
+ */
+function pageLinks(html, origins = []) {
+    const out = new Map();
+    const add = (method, raw) => {
+        let u = String(raw || '').trim().replace(/&amp;/g, '&');
+        if (!u || /^(#|mailto:|javascript:|data:|tel:|blob:)/i.test(u)) return;
+        const o = origins.find((x) => u.startsWith(`${x}/`) || u === x);
+        if (o) u = u.slice(o.length) || '/';
+        if (!u.startsWith('/') || u.startsWith('//')) return;
+        u = u.split('#')[0];
+        out.set(`${method} ${u}`, { method, path: u });
+    };
+    for (const m of String(html).matchAll(/<([a-zA-Z][\w-]*)\b([^>]*)>/g)) {
+        const tag = m[1].toLowerCase(); const attrs = m[2];
+        const get = (n) => { const a = new RegExp(`\\s${n}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i').exec(attrs); return a ? (a[1] != null ? a[1] : a[2]) : null; };
+        if (tag === 'form') { const a = get('action'); if (a != null) add(/^post$/i.test(get('method') || '') ? 'POST' : 'GET', a); continue; }
+        for (const n of ['src', 'href', 'poster', 'data-src']) { const v = get(n); if (v != null) add('GET', v); }
+    }
+    return [...out.values()];
+}
+
+/** A path with the seeded ids that differ per run (random slugs, keys) put back as {@name} slots. */
+function unfillPath(p, ids = {}) {
+    let out = String(p);
+    for (const [name, v] of Object.entries(ids || {})) {
+        const s = v == null ? '' : String(v);
+        if (s.length < 6 || /^\d+$/.test(s)) continue;
+        out = out.split(encodeURIComponent(s)).join(`{@${name}}`).split(s).join(`{@${name}}`);
+    }
+    return out;
+}
+
+/** A recorded path with its {@name} slots filled from the booted server's seeded ids. */
+function fillPath(p, ids = {}) {
+    return String(p).replace(/\{@(\w+)\}/g, (m, name) => encodeURIComponent(ids[name] == null ? '0' : String(ids[name])));
 }
 
 /** Property names the client code reads: `.name`, `?.name`, `['name']`, 'name' literals, destructured names. */
@@ -304,8 +492,10 @@ async function send(baseUrl, { method, path: p, headers = {}, body }, { timeoutM
         const kind = kindOf(ct, text);
         let json = null;
         if (kind === 'json') { try { json = JSON.parse(text); } catch { json = null; } }
+        const html = kind === 'html' ? text.slice(0, 1 << 20) : null;
         const loc = res.headers.get('location');
-        return { status: res.status, kind, json, location: loc ? loc.replace(/^https?:\/\/[^/]+/, '') : null };
+        // Where a redirect goes, without its query (a sign-in `next` or `state` differs every run).
+        return { status: res.status, kind, json, html, location: loc ? loc.replace(/^https?:\/\/[^/]+/, '').split('?')[0] : null };
     } catch (err) {
         return { status: 0, kind: 'error', json: null, error: err.name === 'AbortError' ? 'timeout' : err.message };
     } finally {
@@ -333,14 +523,148 @@ function requestsFor(calls, samples, { signedIn = true } = {}) {
     return reqs.sort((a, b) => rank(a) - rank(b));
 }
 
-/** The failures of one replayed call against its recorded outcome. */
-function callProblems(rec, got) {
+/**
+ * What the server answers a path nobody routes (per method): an HTML 404 is always "no route"; a
+ * JSON catch-all 404 (`{ error: 'Not found' }`) is recognised by its body. → [{ method, status, kind, json }]
+ */
+async function notFoundProbe(baseUrl, headers = {}) {
+    const out = [];
+    for (const method of ['GET', 'POST']) {
+        for (const p of ['/api/n-1-no-such-route', '/n-1-no-such-page']) {
+            const got = await send(baseUrl, { method, path: p, headers, body: method === 'GET' ? undefined : {} });
+            if (got.status === 404) out.push({ method, status: got.status, kind: got.kind, json: got.json });
+        }
+    }
+    return out;
+}
+
+/** Whether an answer is the server's unknown-path 404 rather than a route's own. */
+function isNoRoute(got, probe = []) {
+    if (got.status !== 404) return false;
+    if (got.kind !== 'json') return true;
+    return probe.some((fp) => fp.kind === 'json' && JSON.stringify(fp.json) === JSON.stringify(got.json));
+}
+
+/** The failures of one replayed call against its recorded outcome (probe: N's unknown-path answers). */
+function callProblems(rec, got, probe = []) {
     const problems = [];
     if (got.status === 0) return [`no answer (${got.error})`];
+    if (isNoRoute(got, probe)) return ['the route is gone (it answers as an unknown path)'];
     if (!statusCompatible(rec.status, got.status)) problems.push(`answered ${got.status}, N-1 answered ${rec.status}`);
     else if (rec.kind === 'json' && got.kind !== 'json' && rec.status < 500) problems.push(`answered ${got.kind}, N-1 answered JSON`);
     if (rec.location && got.location && rec.status >= 300 && rec.status < 400 && got.location.split('?')[0] !== rec.location.split('?')[0]) problems.push(`redirects to ${got.location}, N-1 to ${rec.location}`);
     if (rec.reads && got.json != null && got.status >= 200 && got.status < 300) problems.push(...readProblems(rec.reads, got.json));
+    return problems;
+}
+
+// ── WebSockets ───────────────────────────────────────────────
+
+/**
+ * The messages a client sends over its sockets: `x.send(JSON.stringify({ type: 'join', … }))` and
+ * `helper({ type: … })` for each helper name. → [{ type, keys: [...] }] (keys merged per type)
+ */
+function wsSends(files, helpers = []) {
+    const byType = new Map();
+    const add = (obj) => {
+        const t = obj.trim();
+        if (!t.startsWith('{') || !t.endsWith('}')) return;
+        let type = null; const keys = [];
+        for (const entry of splitTop(t.slice(1, -1), ',')) {
+            if (!entry || entry.startsWith('...')) continue;
+            const kv = /^(?:['"]?)([A-Za-z_$][\w$-]*)(?:['"]?)\s*(?::\s*([\s\S]*))?$/.exec(entry);
+            if (!kv) continue;
+            if (kv[1] === 'type') {
+                const lit = kv[2] && /^['"`]/.test(kv[2].trim()) ? readLiteral(kv[2].trim(), 0) : null;
+                if (lit && lit.parts.length === 1 && lit.parts[0].text) type = lit.parts[0].text;
+            } else keys.push(kv[1]);
+        }
+        if (!type) return;
+        if (!byType.has(type)) byType.set(type, new Set());
+        for (const k of keys) byType.get(type).add(k);
+    };
+    for (const { text } of files) {
+        for (const m of text.matchAll(/\.send\(\s*JSON\.stringify\(/g)) {
+            const args = callArgs(text, m.index + m[0].length - 1);
+            if (args && args[0]) add(args[0]);
+        }
+        for (const name of helpers) {
+            for (const m of text.matchAll(new RegExp(`(?<![\\w$.])${esc(name)}\\s*\\(\\s*(?=\\{)`, 'g'))) {
+                const args = callArgs(text, m.index + m[0].indexOf('('));
+                if (args && args[0]) add(args[0]);
+            }
+        }
+    }
+    return [...byType].map(([type, keys]) => ({ type, keys: [...keys].sort() })).sort((a, b) => (a.type < b.type ? -1 : 1));
+}
+
+/** The message types a client acts on: `case 'x':` and `.type === 'x'`. */
+function wsHandled(files) {
+    const types = new Set();
+    for (const { text } of files) {
+        for (const m of text.matchAll(/\bcase\s+['"]([\w:.-]+)['"]\s*:/g)) types.add(m[1]);
+        for (const m of text.matchAll(/\.type\s*[!=]==?\s*['"]([\w:.-]+)['"]/g)) types.add(m[1]);
+    }
+    return types;
+}
+
+/**
+ * One scripted socket session: connect to `url`, send each message in turn and wait until the server
+ * has been quiet for `quietMs`. → every message received (parsed JSON objects)
+ */
+async function wsSession({ url, headers = {}, messages, quietMs = 250, maxMs = 3000 }) {
+    const WebSocket = require('ws');
+    const ws = new WebSocket(url, { headers });
+    const got = [];
+    let last = Date.now();
+    ws.on('message', (d) => { try { const m = JSON.parse(String(d)); if (m && typeof m === 'object') got.push(m); } catch { /* not JSON */ } last = Date.now(); });
+    await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject); ws.once('unexpected-response', (req, res) => reject(new Error(`upgrade refused: ${res.statusCode}`))); });
+    const settle = async () => {
+        const start = Date.now();
+        last = Date.now();
+        while (Date.now() - last < quietMs && Date.now() - start < maxMs) await new Promise((r) => setTimeout(r, 25));
+    };
+    await settle();
+    for (const m of messages) {
+        if (ws.readyState !== 1) break;
+        ws.send(JSON.stringify(m));
+        await settle();
+    }
+    await new Promise((resolve) => { ws.once('close', resolve); ws.close(); setTimeout(resolve, 500); });
+    return got;
+}
+
+/** The messages to send for a client's sends, in `order` (then the rest), with keys filled from `values`. */
+function wsMessages(sends, { order = [], values = {} } = {}) {
+    const rank = (t) => { const i = order.indexOf(t); return i < 0 ? order.length : i; };
+    return sends.slice().sort((a, b) => rank(a.type) - rank(b.type) || (a.type < b.type ? -1 : 1))
+        .map((s) => {
+            const m = { type: s.type };
+            for (const k of s.keys) if (values[k] !== undefined) m[k] = values[k];
+            return m;
+        });
+}
+
+/** Received messages grouped by type, for the types the client handles → { type: reads } */
+function wsReads(received, handled, ids) {
+    const byType = new Map();
+    for (const m of received) {
+        if (typeof m.type !== 'string' || !handled.has(m.type)) continue;
+        if (!byType.has(m.type)) byType.set(m.type, []);
+        byType.get(m.type).push(m);
+    }
+    const out = {};
+    for (const [t, list] of [...byType].sort((a, b) => (a[0] < b[0] ? -1 : 1))) out[t] = readsOf(list, ids);
+    return out;
+}
+
+/** What `recorded` ({ type: reads }) finds missing in the messages N sent. */
+function wsProblems(recorded, received) {
+    const problems = [];
+    for (const [type, reads] of Object.entries(recorded)) {
+        const list = received.filter((m) => m.type === type);
+        if (!list.length) { problems.push(`no '${type}' message any more`); continue; }
+        problems.push(...readProblems(reads, list).map((p) => `'${type}': ${p.replace(/^\[\]\.?/, '')}`));
+    }
     return problems;
 }
 
@@ -506,6 +830,13 @@ function worktree(root, ref) {
     };
 }
 
+/** Files of another repository at a commit (git show), e.g. Live's chat widget for Chat. → [{ name, text }] */
+function gitFiles(repo, ref, dirs, exts = ['.js']) {
+    const names = execFileSync('git', ['-C', repo, 'ls-tree', '-r', '--name-only', ref, '--', ...dirs], { encoding: 'utf8', maxBuffer: 64 << 20 })
+        .split('\n').filter((n) => n && exts.some((x) => n.endsWith(x)) && !n.includes('node_modules/'));
+    return names.sort().map((n) => ({ name: `${path.basename(repo)}:${n}`, text: execFileSync('git', ['-C', repo, 'show', `${ref}:${n}`], { encoding: 'utf8', maxBuffer: 64 << 20 }) }));
+}
+
 // ── Reporting ────────────────────────────────────────────────
 
 function summarize(problems, max = 40) {
@@ -515,9 +846,10 @@ function summarize(problems, max = 40) {
 }
 
 module.exports = {
-    readLiteral, callArgs, extractCalls, concretePath, clientIdentifiers,
+    readLiteral, callArgs, splitTop, pathParts, extractCalls, concretePath, fillPath, unfillPath, pageLinks, clientIdentifiers,
     flatten, readsOf, readProblems, statusCompatible,
-    send, requestsFor, callProblems,
+    send, requestsFor, notFoundProbe, isNoRoute, callProblems,
+    wsSends, wsHandled, wsSession, wsMessages, wsReads, wsProblems,
     stringLiterals, sqlLiterals, stripSqlComments, normalizeSql, lazyDDL, readTree, schemaDDL, prepareProblems, insertProblems,
-    worktree, summarize,
+    worktree, gitFiles, summarize,
 };

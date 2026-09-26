@@ -1,13 +1,13 @@
 {
  "service": "live",
  "release": "8caa540466f9af86247febdbba1339b68919a42f",
- "recorded_at": "2026-09-26T13:44:31.818Z",
+ "recorded_at": "2026-09-26T14:07:22.139Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
   "release": "8caa540466f9",
   "released_at": "2026-09-26T13:22:32.000Z",
-  "booted_at": "2026-09-26T13:44:29.263Z",
+  "booted_at": "2026-09-26T14:07:19.453Z",
   "contracts_version": "0.56.0",
   "packages": {
    "openvibe-shared": "1.22.0",
@@ -31,7 +31,7 @@
   "contract_ranges": {},
   "metrics_url": "/release-metrics"
  },
- "dynamic_calls": 49,
+ "dynamic_calls": 44,
  "calls": [
   {
    "method": "GET",
@@ -1214,6 +1214,34 @@
   },
   {
    "method": "GET",
+   "path": "/api/chat-ai/timeline",
+   "auth": "anon",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "events": "array",
+    "hasMore": "boolean"
+   },
+   "from": [
+    "public/js/app-chatpage.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/chat-ai/timeline",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "events": "array",
+    "hasMore": "boolean"
+   },
+   "from": [
+    "public/js/app-chatpage.js"
+   ]
+  },
+  {
+   "method": "GET",
    "path": "/api/chat-ai/transcript/1",
    "auth": "anon",
    "status": 200,
@@ -1369,6 +1397,26 @@
    "from": [
     "public/js/app-media.js",
     "public/js/stream-player.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/clips/1/job?job=1",
+   "auth": "anon",
+   "status": 401,
+   "kind": "json",
+   "from": [
+    "public/js/ov-clip-jobs.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/clips/1/job?job=1",
+   "auth": "user",
+   "status": 400,
+   "kind": "json",
+   "from": [
+    "public/js/ov-clip-jobs.js"
    ]
   },
   {
@@ -1606,6 +1654,26 @@
   },
   {
    "method": "GET",
+   "path": "/api/controls/configs/1/bridge-script?type=generic",
+   "auth": "anon",
+   "status": 401,
+   "kind": "json",
+   "from": [
+    "public/js/dashboard.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/controls/configs/1/bridge-script?type=generic",
+   "auth": "user",
+   "status": 404,
+   "kind": "json",
+   "from": [
+    "public/js/dashboard.js"
+   ]
+  },
+  {
+   "method": "GET",
    "path": "/api/controls/presets",
    "auth": "anon",
    "status": 200,
@@ -1628,26 +1696,6 @@
     "controls": "array",
     "settings": "object"
    },
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/presets/1",
-   "auth": "anon",
-   "status": 404,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/presets/1",
-   "auth": "user",
-   "status": 404,
-   "kind": "json",
    "from": [
     "public/js/dashboard.js"
    ]
@@ -6813,6 +6861,705 @@
    "kind": "json",
    "from": [
     "public/js/app-media.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "html",
+   "from": [
+    "page"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/assets/logo.svg",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/manifest.webmanifest",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "name": "string",
+    "description": "string",
+    "scope": "string",
+    "display": "string"
+   },
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/assets/logo-192.png",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/css/style.css?v=a3843ec6bdd6",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "text",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/css/features/home.css?v=52249fa8d30a",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "text",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/css/home-fx.css?v=8f135af68e76",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "text",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/css/home-tour.css?v=3f1293159aff",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "text",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/css/i18n-star.css?v=3a854948d72f",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "text",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/css/vendor/fontawesome-6.5.1.min.css?v=d6c948f648fd",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "text",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/css/chat-shared.css?v=558d74cf2e6a",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "text",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/css/broadcast.css?v=942804f7c8a1",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "text",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/css/cosmetics.css?v=193dbe9046fb",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "text",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/css/messenger.css?v=8d3312c1f857",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "text",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/content",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "html",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/moments",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "html",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/chat",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "html",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/documentation",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "html",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/@n1star",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "html",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/tos",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "html",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/privacy",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "html",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/dmca",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "html",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/updates",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "html",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/content?type=vods",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "html",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/content?type=clips",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "html",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/content?type=pastes",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "html",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/live-notify.js",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/ov-skeleton.js?v=1e6a011f824c",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/ov-loader.js?v=d87608436703",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/shared/navbar.js?v=b50d9f47fc34",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/app.js?v=2b3a4e2cc1c9",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/ov-navbar-live.js?v=54bcbe2d01d1",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/chat-shared.js?v=8fff7cb6e502",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/chat.js?v=a35bbba644ad",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/vibes.js?v=aef505d77f34",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/opencoins.js?v=2e5a908601ff",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/draggable-fab.js?v=fd94fe405afb",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/messenger.js?v=d1d537f2289d",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/shared/footer.js?v=b99e512398d5",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/footer-live.js?v=60c31729accf",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/shared/theme-loader.js?v=d9b9af081efe",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/ov-display-menu.js?v=cb6be0b1998e",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/shared/notification-ui.js?v=a889be53ea64",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/ov-rail.js?v=57c8cd1aca1e",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/ov-live-realtime.js?v=e82b1b7a273a",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/app-home.js?v=d88ec40a35c0",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/ov-odometer.js?v=3f6dee017f2f",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/ov-density.js?v=fc239b8c3986",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/home-fx.js?v=b69411bb61ba",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/home-tour.js?v=a5ded0950973",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/shared/tooltip.js?v=096488cf4948",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/css/features/channel.css?v=64174155ceda",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "text",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/css/context-cards.css?v=60ad33ae3e48",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "text",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/ov-clip-jobs.js?v=b674bd0b77b1",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/stream-player.js?v=cd0a5b166216",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/stream-pip.js?v=11ae18077afa",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/controls.js?v=04c5242890ee",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/context-cards.js?v=6719bbc1c432",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/emotes.js?v=0099deffc3c0",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/gif-picker.js?v=5ee269f4e9c1",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/chat-autocomplete.js?v=b726f226680f",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/channel-uploads.js?v=03eb0f258adf",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/app-channel.js?v=747045747200",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
    ]
   },
   {
