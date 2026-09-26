@@ -105,6 +105,42 @@ const MIGRATIONS = [
     },
 ];
 
+/**
+ * SQL for the ids of Live accounts linked to a Network subject: a linked_accounts row (service 'network') that
+ * names the subject, or whose Network user id subject_projection knows (server/auth/subject-projection.js
+ * resolves a person the same way). An account without one has no Network identity.
+ */
+function networkLinkedUserIds(db) {
+    const viaProjection = tableExists(db, 'subject_projection')
+        ? ' OR EXISTS (SELECT 1 FROM subject_projection sp WHERE sp.network_user_id = CAST(la.service_user_id AS INTEGER))'
+        : '';
+    return `SELECT la.user_id FROM linked_accounts la WHERE la.service = 'network' AND (substr(COALESCE(la.subject_id, ''), 1, 4) = 'usr_'${viaProjection})`;
+}
+
+/**
+ * Operator migrations: contract steps (expand/migrate/contract, ADR-028) that clear data the release before
+ * might still want, so they never run at boot: run() from initDb() walks MIGRATIONS only. An operator script
+ * runs one with runOperator() after taking its own backup; the ledger and the transaction are the same, so it
+ * runs at most once and is recorded like any other. Append only, like MIGRATIONS; ids start with `op_`.
+ */
+const OPERATOR_MIGRATIONS = [
+    {
+        id: 'op_001_identity_columns_contract',
+        // WS-B task 2 step 4 (scripts/identity-columns-contract.js). The OpenVibe account keeps the email and the
+        // password; Live stopped writing them (createUser) and reading them (test/identity-columns.test.js). This
+        // clears what is left: every stored email, and every password value other than the SSO placeholder on an
+        // account linked to a Network subject (that person signs in through openvibe.network). Accounts with no
+        // Network identity keep their legacy hash for a future claim flow. The columns stay (no DROP COLUMN:
+        // SELECT * readers); NOT NULL password_hash gets the same '$sso$' + 64 hex placeholder as new accounts.
+        up: (db) => {
+            if (!tableExists(db, 'users') || !tableExists(db, 'linked_accounts')) return DEFER;
+            db.prepare('UPDATE users SET email = NULL WHERE email IS NOT NULL').run();
+            db.prepare(`UPDATE users SET password_hash = '$sso$' || lower(hex(randomblob(32)))
+                        WHERE substr(password_hash, 1, 5) <> '$sso$' AND id IN (${networkLinkedUserIds(db)})`).run();
+        },
+    },
+];
+
 const failures = new Map(); // id -> message, for this process
 
 function run(db, list = MIGRATIONS) {
@@ -144,4 +180,17 @@ function getStatus(db, list = MIGRATIONS) {
     return list.map((m) => rows.get(m.id) || { id: m.id, mode: failures.has(m.id) ? 'failed' : 'pending', error: failures.get(m.id) || null });
 }
 
-module.exports = { MIGRATIONS, DEFER, run, getStatus };
+/**
+ * Run one operator migration now (never called at boot). → { id, outcome: 'applied' | 'deferred' | 'failed'
+ * | 'already', error?, applied_at? }
+ */
+function runOperator(db, id, list = OPERATOR_MIGRATIONS) {
+    const m = list.find((x) => x.id === id);
+    if (!m) throw new Error(`no operator migration ${id}`);
+    const res = run(db, [m])[0];
+    if (res) return res;
+    const row = db.prepare('SELECT applied_at FROM schema_migrations WHERE id = ?').get(id);
+    return { id, outcome: 'already', applied_at: row ? row.applied_at : null };
+}
+
+module.exports = { MIGRATIONS, OPERATOR_MIGRATIONS, DEFER, run, getStatus, runOperator, networkLinkedUserIds };

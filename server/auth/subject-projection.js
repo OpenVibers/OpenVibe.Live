@@ -7,16 +7,27 @@
  *                        colour, role and ban, with Network's profile revision. An event whose revision is
  *                        not newer than the row is ignored (events can arrive out of order or twice).
  *
+ * Which Live account is the person's: linked_accounts (service 'network'), by subject_id, else by the Network
+ * user id in service_user_id (localUser below). An account with no such row has no Network identity (a legacy
+ * local account, kept for a future claim flow).
+ *
  * The linked Live account follows the projection in the same step: picture, colour, display name and
  * username (server/auth/usernames.js keeps /@old answering), and the role by these rules:
  *   - an event whose `changed` includes role is Network changing it: staff roles (global_mod, admin) follow it
- *     both ways (a downgrade too, which the token sync in auth.js never does; /internal/user-role pushed it
- *     before), but `streamer` is Live's own (someone with a channel, ensureStreamerRoleOnFeed), so a person
- *     who has streamed keeps it rather than dropping to user;
+ *     both ways (a downgrade too, which the token sync in auth.js never does; this is the only path for one
+ *     since the key-only /internal/user-role push was retired), but `streamer` is Live's own (someone with a
+ *     channel, ensureStreamerRoleOnFeed), so a person who has streamed keeps it rather than dropping to user;
  *   - any other event only ever raises the role, like the token sync;
  *   - the local owner keeps admin (is_owner is Live's). A Network ban is recorded here and never touches Live's own users.is_banned: the
  * person cannot sign in anyway (Network refuses and revokes their tokens), and unbanning on Network must
  * not lift a ban Live's staff set. Chat drops what it cached about them.
+ *
+ * users.role is therefore this projection's output: Network's staff roles (the staff map) applied by the
+ * rules above, plus Live's own `streamer` (and a grant from Live's admin panel, until Network next changes
+ * that person's role). Live code reads users.role (through permissions.js) locally, which is reading the
+ * projection; it stays a column. Identity itself stays on the OpenVibe account: Live neither stores nor
+ * reads users.email or users.password_hash (test/identity-columns.test.js), and the operator script
+ * scripts/identity-columns-contract.js clears the legacy values (WS-B task 2 step 4).
  */
 const db = require('../db/database');
 

@@ -72,10 +72,10 @@ router.post('/url-registry/refresh', async (req, res) => {
     }
 });
 
-// Authoritative role push from openvibe.network (the SSO/role authority). Used so a
-// role change propagates to the local user record immediately — instead of
-// waiting on the user's next token (up to 24h) and without letting a stale token
-// downgrade them. Matches by openvibe.network account link first, then username.
+// Roles are no longer pushed here: POST /internal/user-role (key-only, register C-54/C-55) was retired in
+// WS-B task 2. A role change on the Network reaches Live as network.user.updated at POST /internal/network-events
+// (server/auth/subject-projection.js), which also applies downgrades.
+
 // ── The account's avatar changed on the Network (or on another site) ─────────
 // The avatar is a network-wide property (OpenVibe.Network server/profile/avatar.js). Live keeps a copy on its
 // own user row because every stream card, chat line and profile reads it locally.
@@ -100,34 +100,6 @@ router.post('/user-avatar', (req, res) => {
         return res.json({ ok: true, id: user.id, changed: (user.avatar_url || null) !== url });
     } catch (err) {
         console.error('[Internal] user-avatar error:', err.message);
-        return res.status(500).json({ ok: false, error: err.message });
-    }
-});
-
-router.post('/user-role', (req, res) => {
-    try {
-        const { username, openvibenetwork_id, role } = req.body || {};
-        const VALID = ['user', 'streamer', 'global_mod', 'admin'];
-        if (!VALID.includes(role)) return res.status(400).json({ ok: false, error: 'invalid role' });
-
-        let user = null;
-        if (openvibenetwork_id != null) {
-            const linked = db.getDb().prepare(
-                "SELECT user_id FROM linked_accounts WHERE service = 'network' AND service_user_id = ?"
-            ).get(String(openvibenetwork_id));
-            if (linked) user = db.getUserById(linked.user_id);
-        }
-        if (!user && username) user = db.getUserByUsername(username);
-        if (!user) return res.status(404).json({ ok: false, error: 'user not found' });
-
-        // Never strip the owner's admin role via a role push (is_owner is local).
-        const finalRole = (user.is_owner && role !== 'admin') ? 'admin' : role;
-        db.getDb().prepare('UPDATE users SET role = ? WHERE id = ?').run(finalRole, user.id);
-        notifyChat(user.id);
-        console.log(`[Internal] role push: ${user.username} -> ${finalRole}`);
-        return res.json({ ok: true, id: user.id, username: user.username, role: finalRole });
-    } catch (err) {
-        console.error('[Internal] user-role error:', err.message);
         return res.status(500).json({ ok: false, error: err.message });
     }
 });

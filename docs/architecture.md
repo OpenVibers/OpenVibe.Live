@@ -24,6 +24,16 @@ OpenVibe.Live is a self-hosted live streaming platform, one of the OpenVibe serv
   writes need the area's scope, and money/staff/credential routes refuse tokens.
 - WebSockets start anonymous or authenticated; `join` can upgrade an anonymous connection, and a
   change of identity rebuilds the socket (`openvibe-auth-changed` in `public/js/chat.js`).
+- The OpenVibe account is the identity. `network.user.updated` at `POST /internal/network-events`
+  keeps `subject_projection` and the linked account's username, display name, picture, colour and
+  role (`server/auth/subject-projection.js`; `linked_accounts` maps a Live user to its subject).
+  `users.role` is that projection's output (Network's staff roles, plus Live's own `streamer`) and is
+  read locally. The key-only `POST /internal/user-role` push is gone.
+- Live keeps no emails or passwords: nothing writes or reads `users.email` or `users.password_hash`
+  (`test/identity-columns.test.js`). The contract step `scripts/identity-columns-contract.js`
+  (a dry run by default; `--apply` backs up `live.db` first, never runs on deploy) clears the legacy
+  values: every email, and the old hash of every account linked to a Network subject. Accounts with
+  no Network identity keep theirs for a future claim flow. The columns themselves stay.
 
 ## Frontend loading
 

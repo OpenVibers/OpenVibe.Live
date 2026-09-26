@@ -320,7 +320,7 @@ router.post('/cashout/:id/deny', requireOwner, money.guardWrite, (req, res) => {
 router.get('/cashouts/pending', requireOwner, (req, res) => {
     if (money.onBilling()) return cashoutsInBilling(res);
     const pending = db.all(`
-        SELECT t.*, u.username, u.display_name, u.email
+        SELECT t.*, u.username, u.display_name
         FROM transactions t
         JOIN users u ON t.from_user_id = u.id
         WHERE t.type = 'cashout' AND t.status = 'escrow'

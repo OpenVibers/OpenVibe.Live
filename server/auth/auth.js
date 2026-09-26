@@ -111,8 +111,8 @@ function _syncSsoUserFields(user, decoded) {
     // Sync role from the SSO token, but NEVER downgrade based on it. Access tokens
     // live 24h, so a just-promoted admin's older token still carries role:'user'
     // and would otherwise strip their role (and Staff badge) on every connect.
-    // Upgrades apply immediately; downgrades are pushed authoritatively from
-    // openvibe.network via POST /internal/user-role instead of trusting a stale token.
+    // Upgrades apply immediately; downgrades arrive from openvibe.network as
+    // network.user.updated (server/auth/subject-projection.js) instead of trusting a stale token.
     if (decoded.role && _ROLE_RANK[decoded.role] !== undefined && decoded.role !== user.role
         && _ROLE_RANK[decoded.role] > (_ROLE_RANK[user.role] ?? 0)) {
         updates.push('role = ?'); params.push(decoded.role);

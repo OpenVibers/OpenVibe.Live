@@ -124,7 +124,9 @@ router.get('/users', (req, res) => {
         const offset = parseInt(req.query.offset || '0');
         const search = req.query.search || '';
 
-        let sql = `SELECT u.id, u.username, u.display_name, u.email, u.role, u.openvibe_bucks_balance,
+        // No email here: the OpenVibe account keeps it (Network's admin finds people by address), and Live
+        // no longer reads users.email (WS-B task 2). Staff find people by username or display name.
+        let sql = `SELECT u.id, u.username, u.display_name, u.role, u.openvibe_bucks_balance,
                     u.is_banned, u.ban_reason, u.created_at, u.last_seen,
                     COALESCE(c.force_vod_recording_disabled, 0) AS force_vod_recording_disabled
                     FROM users u
@@ -132,14 +134,14 @@ router.get('/users', (req, res) => {
         const params = [];
 
         if (search) {
-            sql += ' WHERE u.username LIKE ? OR u.display_name LIKE ? OR u.email LIKE ?';
-            params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+            sql += ' WHERE u.username LIKE ? OR u.display_name LIKE ?';
+            params.push(`%${search}%`, `%${search}%`);
         }
 
         const countSql = search
-            ? `SELECT COUNT(*) as c FROM users WHERE username LIKE ? OR display_name LIKE ? OR email LIKE ?`
+            ? `SELECT COUNT(*) as c FROM users WHERE username LIKE ? OR display_name LIKE ?`
             : `SELECT COUNT(*) as c FROM users`;
-        const countParams = search ? [`%${search}%`, `%${search}%`, `%${search}%`] : [];
+        const countParams = search ? [`%${search}%`, `%${search}%`] : [];
 
         sql += ' ORDER BY u.created_at DESC LIMIT ? OFFSET ?';
         params.push(limit, offset);
@@ -230,8 +232,8 @@ router.put('/users/:id', (req, res) => {
         }
 
         const user = db.getUserById(req.params.id);
-        // Sanitize — never expose password_hash or stream_key
-        const { password_hash, stream_key, ...safeUser } = user;
+        // Sanitize — never expose password_hash, email (legacy columns, WS-B task 2) or stream_key
+        const { password_hash, email, stream_key, ...safeUser } = user;
 
         // Push real-time update to the affected user's chat connections
         if (updates.length > 0) {
