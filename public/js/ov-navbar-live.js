@@ -71,6 +71,7 @@
             service: 'live', mount: '#navbar-mount', className: 'navbar', auth: 'external', apiBase: 'https://openvibe.network',
             user: user || null, token: (function () { try { return localStorage.getItem('token'); } catch (e) { return null; } })(),
             loginUrl: '/api/auth/sso/login', accounts: false, networkLinks: 0, history: false, silentLogin: false, fedcm: false, recent: false,
+            notificationsRealtime: true,   // the bell hears new notifications over OpenVibe.Events (Shared 1.22.0)
             links: links(user), menu: menu(user),
             chips: [
                 { id: 'coins', icon: 'fa-coins', tone: 'gold', value: '0', valueId: 'nav-coins-amount', title: 'OpenCoins: click to open your inventory', onClick: () => call('openCosmeticsModal') },
