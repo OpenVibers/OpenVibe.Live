@@ -87,6 +87,10 @@ const stub = http.createServer((req, res) => {
     assert.strictEqual(published[1].subject.revision, 2);
     assert.ok('duration_seconds' in published[1].payload);
     require('openvibe-contracts').assertValid('live.stream.ended@1', published[1].payload);
+    // Contracts 0.68.0: the stream's totals ride on the ended event (counts only) for creator analytics on Network.
+    const st = published[1].payload.stats;
+    assert.ok(st && ['peak_viewers', 'avg_viewers', 'unique_chatters', 'messages', 'watch_minutes'].every((k) => typeof st[k] === 'number' && st[k] >= 0), JSON.stringify(st));
+    assert.deepStrictEqual(Object.keys(st).sort(), ['avg_viewers', 'messages', 'peak_viewers', 'unique_chatters', 'watch_minutes'], 'no people in it');
 
     // A rolled-back go-live leaves no event.
     assert.throws(() => d.transaction(() => { db.createStream({ user_id: 501, title: 'rolled back' }); throw new Error('abort'); })());

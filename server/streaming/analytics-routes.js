@@ -20,13 +20,14 @@ const router = express.Router();
 
 // ── Public: Channel summary stats ────────────────────────────
 // Anyone can see aggregate stats for a channel
-router.get('/channel/:username', optionalAuth, (req, res) => {
+router.get('/channel/:username', optionalAuth, async (req, res) => {
     try {
         const channel = db.getChannelByUsername(req.params.username);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
         const days = Math.min(parseInt(req.query.days) || 30, 365);
-        const data = db.getChannelAnalyticsSummary(channel.user_id, days);
+        // WS-E task 6: from Network's creator analytics when ANALYTICS_SOURCE=network, else (or on any failure) Live's tables.
+        const data = (await require('../analytics/network-analytics').summaryFor(channel.user_id, days)) || db.getChannelAnalyticsSummary(channel.user_id, days);
 
         // Public view — return summary + stream list (no revenue data)
         res.json({
@@ -154,7 +155,7 @@ router.get('/stream/:id', (req, res) => {
 
 // ── Streamer-only: Detailed dashboard ────────────────────────
 // Shows extra data like watch minutes, coins, followers over time
-router.get('/channel/:username/dashboard', optionalAuth, (req, res) => {
+router.get('/channel/:username/dashboard', optionalAuth, async (req, res) => {
     try {
         const channel = db.getChannelByUsername(req.params.username);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
@@ -164,7 +165,8 @@ router.get('/channel/:username/dashboard', optionalAuth, (req, res) => {
         if (!isOwner) return res.status(403).json({ error: 'Access denied' });
 
         const days = Math.min(parseInt(req.query.days) || 30, 365);
-        const data = db.getChannelAnalyticsSummary(channel.user_id, days);
+        // WS-E task 6: from Network's creator analytics when ANALYTICS_SOURCE=network, else (or on any failure) Live's tables.
+        const data = (await require('../analytics/network-analytics').summaryFor(channel.user_id, days)) || db.getChannelAnalyticsSummary(channel.user_id, days);
 
         // Add streamer-only data: watch minutes, coins earned, follower growth
         const streams = data.streams.map(s => ({

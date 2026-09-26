@@ -53,6 +53,15 @@ function envelopeFor(kind, streamId) {
     if (kind === 'ended') {
         payload.ended_at = toIso(s.ended_at);
         payload.duration_seconds = s.duration_seconds == null ? null : Number(s.duration_seconds);
+        // Contracts 0.68.0 (WS-E task 6): the stream's totals for creator analytics on Network. Counts only,
+        // computed here in the transaction that ends the row (stream_analytics is refreshed as a side effect).
+        try {
+            const a = db.computeAndCacheStreamAnalytics(s.id);
+            if (a) {
+                const n = (v) => Math.max(0, Math.round(Number(v) || 0));
+                payload.stats = { peak_viewers: n(a.peak_viewers), avg_viewers: Math.max(0, Math.round((Number(a.avg_viewers) || 0) * 10) / 10), unique_chatters: n(a.unique_chatters), messages: n(a.total_messages), watch_minutes: n(a.total_watch_minutes) };
+            }
+        } catch { /* the event goes without stats rather than not at all */ }
     }
     return {
         event_type: `live.stream.${kind}`,
