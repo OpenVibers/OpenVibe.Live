@@ -52,6 +52,13 @@ const router = express.Router();
 router.use(requireAuth, permissions.requireAdmin);
 
 // ── Process diagnostics (event-loop delay, memory, sockets, jobs, queues, migrations) ──
+// Unresolved lineage references (D20: the operator view). ?reason=conflict|source_unavailable|not_found|display_name_only…
+router.get('/lineage/unresolved', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const reason = typeof req.query.reason === 'string' && /^[a-z_]{1,60}$/.test(req.query.reason) ? req.query.reason : null;
+    res.json(require('../lineage/unresolved').list({ reason, limit: req.query.limit }));
+});
+
 router.get('/diagnostics', (req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json(require('../diagnostics').snapshot({

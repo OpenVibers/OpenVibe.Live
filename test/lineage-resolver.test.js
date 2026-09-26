@@ -290,6 +290,17 @@ function checkContract(out, label) {
     assert.deepStrictEqual([res.status, res.json.status, res.json.reason], [200, 'unresolved', 'display_name_only']);
     res = await call('POST', '', { slug: 'mallory', vod_id: '42' });
     assert.deepStrictEqual([res.status, res.json.reason], [200, 'conflict']);
+    await call('GET', 'slug=mallory&vod_id=42');
+    // The operator view (D20 remaining 2): unresolved answers are counted by inputs and reason; resolved ones are not.
+    const ops = require('../server/lineage/unresolved').list();
+    const byRef = Object.fromEntries(ops.unresolved.map((u) => [`${u.ref}|${u.reason}`, u]));
+    assert.deepStrictEqual([byRef['slug=mallory vod_id=42|conflict'].count, byRef['slug=mallory vod_id=42|conflict'].last_caller], [2, 'svc:community'], 'counted per ref and reason, GET and POST alike');
+    assert.ok(byRef['display_name=Alice Wonder|display_name_only'], 'a display name offered alone is kept as offered');
+    assert.ok(!Object.keys(byRef).some((k) => k.startsWith('clip_id=7 network_user_id=57') || k.startsWith('live_user_id=17 slug=alice')), 'resolved answers are not recorded');
+    assert.ok(['conflict', 'display_name_only'].every((r) => ops.by_reason[r] && ops.by_reason[r].refs >= 1), JSON.stringify(ops.by_reason));
+    assert.ok(ops.unresolved.some((u) => u.last_caller === 'live:clip-owner' && u.reason === 'source_unavailable'), "Live's own clip-owner check records too (Media down earlier in this test)");
+    assert.ok(require('../server/lineage/unresolved').list({ reason: 'conflict' }).unresolved.every((u) => u.reason === 'conflict'));
+    assert.strictEqual(require('../server/lineage/unresolved').record({}, { status: 'unresolved', reason: 'no_input' }, 'x'), false, 'no_input is not a reference');
     for (const [q, body] of [['username=alice', null], ['slug=Alice%20Wonder', null], ['', { owner_subject: '17' }], ['', { vod_id: '42', extra: 1 }], ['slug=a&slug=b', null]]) {
         res = await call(body ? 'POST' : 'GET', q, body);
         assert.deepStrictEqual([res.status, res.json.code], [400, 'lineage.invalid_request'], `${q || JSON.stringify(body)} is refused`);

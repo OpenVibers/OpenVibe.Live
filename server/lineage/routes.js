@@ -15,6 +15,7 @@ const express = require('express');
 const { http } = require('openvibe-contracts');
 const { guard } = require('../net/service-guard');
 const resolver = require('./resolver');
+const unresolved = require('./unresolved');
 
 const router = express.Router();
 router.use(guard('live.lineage.resolve'));
@@ -23,7 +24,9 @@ async function answer(req, res, raw, flat) {
     const { input, error } = resolver.normalizeRequest(raw, { flat });
     if (error) return http.sendProblem(res, 400, 'lineage.invalid_request', { detail: error });
     try {
-        res.set('Cache-Control', 'no-store').json(await resolver.resolve(input));
+        const out = await resolver.resolve(input);
+        unresolved.record(input, out, req.principal && req.principal.sub);   // the operator view (D20)
+        res.set('Cache-Control', 'no-store').json(out);
     } catch (err) {
         console.warn('[Lineage] resolve failed:', err.message);
         http.sendProblem(res, 500, 'lineage.failed', { detail: 'the resolver failed' });

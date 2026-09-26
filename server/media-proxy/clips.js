@@ -88,6 +88,7 @@ function withUserFields(clip) {
 async function clipChannelOwnerId(clip) {
     if (!clip || clip.id == null) return null;
     const r = await lineage.resolveOwner({ clip_id: String(clip.id) }, { records: { clip }, rules: ['stream_lookup', 'vod_parent'] });
+    if (r.status !== 'resolved') require('../lineage/unresolved').record({ clip_id: String(clip.id) }, r, 'live:clip-owner');
     return r.status === 'resolved' ? r.userId : null;
 }
 
