@@ -51,8 +51,12 @@ The broadcast page includes an embedded chat sidebar with:
 - Mobile: floating action button to toggle chat overlay
 
 ### Disconnect Handling
-- Visual disconnect alert banner when connection drops
-- **Audible alert** — opt-in audio beep on disconnect (enable in Audio settings → "Disconnect Sound Alert")
+- Visual disconnect alert banner when the connection drops (a browser broadcast's connection, or the
+  encoder's RTMP feed stopping after it was received)
+- **Audible alert** — opt-in audio beep on disconnect (enable in Audio settings → "Disconnect Sound Alert",
+  or Alerts → "Disconnect Audio" in the encoder settings; one preference, kept in this browser)
+- **Low-bitrate alert** — opt-in (Audio settings → "Low Bitrate Alert"): when a browser broadcast's upload
+  stays under 30% of its target bitrate for about 18 seconds, a warning and a lower beep, once until it recovers
 - Automatic reconnection with exponential backoff (3s → 30s max)
 - Connection status indicator (protocol name when connected, status when not)
 

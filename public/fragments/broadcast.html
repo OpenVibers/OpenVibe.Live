@@ -906,6 +906,10 @@ WantedBy=multi-user.target</code>
                                 <span class="bc-setting-label">Disconnect Sound Alert</span>
                                 <div class="bc-setting-control"><label class="bc-toggle"><input type="checkbox" id="bc-disconnectAudio" onchange="_disconnectAudioEnabled = this.checked; try { localStorage.setItem('bc-disconnect-audio', this.checked ? '1' : '0'); } catch{}"><span class="bc-toggle-slider"></span></label></div>
                             </div>
+                            <div class="bc-setting-row" title="Warn (with a lower beep) when your upload stays under 30% of the target bitrate for about 18 seconds">
+                                <span class="bc-setting-label">Low Bitrate Alert</span>
+                                <div class="bc-setting-control"><label class="bc-toggle"><input type="checkbox" id="bc-lowBitrateAudio" onchange="_lowBitrateAlertEnabled = this.checked; try { localStorage.setItem('bc-lowbitrate-audio', this.checked ? '1' : '0'); } catch{}"><span class="bc-toggle-slider"></span></label></div>
+                            </div>
                         </div>
 
                         <!-- Interactive Controls Profile (live) -->

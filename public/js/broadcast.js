@@ -1850,6 +1850,10 @@ async function showRTMPInstructions(stream) {
     startRtmpStatusPoll(stream.id);
 }
 
+// Was the encoder's feed received at the last poll, and has it been lost since? Losing it is a disconnect.
+let _rtmpWasReceiving = false;
+let _rtmpFeedLost = false;
+
 function startRtmpStatusPoll(streamId) {
     stopRtmpStatusPoll();
     setRtmpStatusUI(false);
@@ -1865,9 +1869,17 @@ function startRtmpStatusPoll(streamId) {
 
 function stopRtmpStatusPoll() {
     if (_rtmpStatusPollTimer) { clearInterval(_rtmpStatusPollTimer); _rtmpStatusPollTimer = null; }
+    _rtmpWasReceiving = false;
+    if (_rtmpFeedLost) { _rtmpFeedLost = false; dismissDisconnectAlert(); }
 }
 
 function setRtmpStatusUI(receiving, connectedAt) {
+    // The encoder's feed stopping after it was received is a disconnect: the same banner and the same
+    // opt-in sound as a browser broadcast. Only browser connection states raised it before, so the
+    // encoder settings' "Disconnect Audio" toggle never sounded.
+    if (!receiving && _rtmpWasReceiving) { _rtmpFeedLost = true; showDisconnectAlert('the encoder\'s RTMP feed stopped'); }
+    else if (receiving && _rtmpFeedLost) { _rtmpFeedLost = false; dismissDisconnectAlert(); }
+    _rtmpWasReceiving = !!receiving;
     const wrap = document.getElementById('bc-rtmp-status');
     if (!wrap) return;
     const spinner = document.getElementById('bc-rtmp-status-spinner');
@@ -2120,11 +2132,16 @@ function syncSettingsUI() {
     setCheck('bc-autoGain', s.autoGain); setCheck('bc-echoCancellation', s.echoCancellation);
     setCheck('bc-noiseSuppression', s.noiseSuppression); setCheck('bc-manualGainEnabled', s.manualGainEnabled);
     setCheck('bc-force48kSampleRate', s.force48kSampleRate);
-    // Restore disconnect audio alert from localStorage (not synced to server — local preference)
+    // Restore the opt-in alerts from localStorage (not synced to server — local preferences). Both
+    // disconnect toggles (browser and encoder settings) show the one preference.
     try {
         const discAudio = localStorage.getItem('bc-disconnect-audio') === '1';
         _disconnectAudioEnabled = discAudio;
         setCheck('bc-disconnectAudio', discAudio);
+        setCheck('bc-ext-disconnectAudio', discAudio);
+        const lowBitrate = localStorage.getItem('bc-lowbitrate-audio') === '1';
+        _lowBitrateAlertEnabled = lowBitrate;
+        setCheck('bc-lowBitrateAudio', lowBitrate);
     } catch {}
     setVal('bc-broadcastRes', s.broadcastRes); setVal('bc-broadcastFps', s.broadcastFps);
     setVal('bc-broadcastCodec', s.broadcastCodec); setVal('bc-broadcastBps', s.broadcastBps);
@@ -2487,6 +2504,7 @@ function startGlobalDisplayTimers() {
                 healthEl.textContent = health;
                 healthEl.style.color = color;
             }
+            _checkLowBitrate(ss, hasStats ? bitrateKbps : 0, connState);
         } finally {
             if (ss) ss.statsPollPending = false;
         }
@@ -6589,18 +6607,19 @@ function stopRtmpPreview() {
 
 /* ── Disconnect Alert Banner + Audible Alert ─────────────────── */
 let _disconnectAlertShown = false;
-let _disconnectAudioEnabled = false; // Default off — user must opt in
+/** A stored opt-in (this browser only); off unless the broadcaster turned it on. */
+function _alertOptIn(key) { try { return localStorage.getItem(key) === '1'; } catch { return false; } }
+let _disconnectAudioEnabled = _alertOptIn('bc-disconnect-audio'); // Default off — user must opt in
 
-/** Play an audible alert beep using Web Audio API */
-function _playDisconnectBeep() {
-    if (!_disconnectAudioEnabled) return;
+/** Two short beeps through Web Audio (the pitch tells the alerts apart). */
+function _playAlertBeep(frequency) {
     try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.connect(gain);
         gain.connect(ctx.destination);
-        osc.frequency.value = 800;
+        osc.frequency.value = frequency;
         osc.type = 'square';
         gain.gain.value = 0.3;
         osc.start();
@@ -6614,6 +6633,12 @@ function _playDisconnectBeep() {
     } catch { /* Web Audio not available */ }
 }
 
+/** Play the disconnect beep, if the broadcaster opted in */
+function _playDisconnectBeep() {
+    if (!_disconnectAudioEnabled) return;
+    _playAlertBeep(800);
+}
+
 function showDisconnectAlert(reason) {
     if (_disconnectAlertShown) return;
     _disconnectAlertShown = true;
@@ -6622,12 +6647,39 @@ function showDisconnectAlert(reason) {
         banner = document.createElement('div');
         banner.id = 'bc-disconnect-alert';
         banner.className = 'bc-disconnect-alert';
-        const container = document.querySelector('.bc-video-container') || document.getElementById('bc-live-section');
-        if (container) container.parentElement.insertBefore(banner, container);
     }
+    // Above the browser preview, or above the RTMP feed status when the stream comes from an encoder
+    // (the browser section is hidden then, and a banner inside it was never seen).
+    const browserBox = document.getElementById('bc-browser-broadcast');
+    const anchor = (browserBox && browserBox.style.display !== 'none' && document.querySelector('.bc-video-container'))
+        || document.getElementById('bc-rtmp-status') || document.getElementById('bc-live-section');
+    if (anchor && anchor.previousElementSibling !== banner) anchor.parentElement.insertBefore(banner, anchor);
     banner.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <span>Connection lost — ${reason || 'reconnecting...'}</span><button class="btn btn-small btn-outline" onclick="dismissDisconnectAlert()"><i class="fa-solid fa-xmark"></i></button>`;
     banner.style.display = '';
     _playDisconnectBeep();
+}
+
+/* ── Low-Bitrate Alert (opt-in) ──────────────────────────────── */
+let _lowBitrateAlertEnabled = _alertOptIn('bc-lowbitrate-audio'); // Default off — user must opt in
+const LOW_BITRATE_RATIO = 0.3;       // measured upload under 30% of the target bitrate…
+const LOW_BITRATE_SAMPLES = 3;       // …in three stats samples in a row (6 s apart, so ≈18 s)
+
+/**
+ * Called with every stats sample of the active browser stream. A connected stream whose upload stays
+ * well under its target warns once per episode (toast + a lower beep), and only when the broadcaster
+ * opted in: a still scene can legitimately send little, so this is never on by default.
+ */
+function _checkLowBitrate(ss, bitrateKbps, connState) {
+    if (!ss) return;
+    const targetKbps = getTargetVideoBitrate() / 1000;
+    const connected = connState === 'connected' || connState === 'completed';
+    const low = connected && bitrateKbps > 0 && bitrateKbps < targetKbps * LOW_BITRATE_RATIO;
+    if (!low) { ss._lowBitrateSamples = 0; ss._lowBitrateAlerted = false; return; }
+    ss._lowBitrateSamples = (ss._lowBitrateSamples || 0) + 1;
+    if (ss._lowBitrateSamples < LOW_BITRATE_SAMPLES || ss._lowBitrateAlerted || !_lowBitrateAlertEnabled) return;
+    ss._lowBitrateAlerted = true;
+    toast(`Low bitrate: ${bitrateKbps} kbps of ${Math.round(targetKbps)} kbps — viewers may see stutter or blur`, 'warning');
+    _playAlertBeep(440);
 }
 
 function dismissDisconnectAlert() {
