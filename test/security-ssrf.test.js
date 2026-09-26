@@ -38,6 +38,7 @@ const { PassThrough } = require('stream');
 
 const tmp = path.join(os.tmpdir(), `ov-ssrf-${process.pid}.db`);
 process.env.DB_PATH = tmp;
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-sec-data-'));   // nothing lands in the checkout's data/
 process.env.NODE_ENV = 'test';
 process.env.OV_TOOLS_INTERNAL_URL = 'http://127.0.0.1:9';   // the kiosk asks Tools first; nobody is there
 const quiet = console.log;
@@ -53,11 +54,14 @@ const FAKE = {
     'loop6.example.test': ['::1'],
     'mapped.example.test': ['::ffff:127.0.0.1'],
     'mixed.example.test': [PUBLIC_IP, '127.0.0.1'],
+    'mapped.101soundboards.com': ['::ffff:127.0.0.1'],
+    'cgnat.101soundboards.com': ['100.64.0.1'],
+    'mixed.101soundboards.com': [PUBLIC_IP, '10.0.0.1'],
 };
 let rebindLookups = 0;
 function answersFor(hostname) {
     const h = String(hostname).toLowerCase().replace(/\.$/, '');
-    if (h === 'rebind.example.test') { rebindLookups++; return rebindLookups === 1 ? [PUBLIC_IP] : ['127.0.0.1']; }
+    if (h === 'rebind.example.test' || h === 'rebind.101soundboards.com') { rebindLookups++; return rebindLookups === 1 ? [PUBLIC_IP] : ['127.0.0.1']; }
     return FAKE[h] || null;
 }
 const realLookup = dns.lookup;
@@ -301,6 +305,31 @@ async function check(name, fn) {
         assert.strictEqual(hits, 0);
     });
 
+    await check('soundboard: a 101soundboards audio URL that resolves inward (any spelling, one internal answer, or rebinding at download) is refused', async () => {
+        db.setSetting('soundboard_101_api_key', 'sentinel-not-a-secret-soundboard');
+        const sb = require('../server/chat/soundboard-service');
+        let audioUrl = null;
+        const realFetch = globalThis.fetch;
+        globalThis.fetch = async (url, opts) => (String(url).startsWith('https://www.101soundboards.com/')
+            ? new Response(JSON.stringify({ data: { sound_name: 'Horn', sound_file_url: audioUrl } }), { status: 200, headers: { 'content-type': 'application/json' } })
+            : realFetch(url, opts));
+        const connects = [];
+        const realConnect = net.Socket.prototype.connect;
+        net.Socket.prototype.connect = function (...args) { const o = Array.isArray(args[0]) ? args[0][0] : args[0]; if (o && typeof o === 'object' && o.host) connects.push(String(o.host)); return realConnect.apply(this, args); };
+        try {
+            let id = 5000;
+            for (const host of ['mapped', 'cgnat', 'mixed']) {
+                audioUrl = `https://${host}.101soundboards.com/a.mp3`;
+                await assert.rejects(sb.getSoundboardAudio(String(++id)), /restricted|resolved/, host);
+            }
+            rebindLookups = 0;
+            audioUrl = 'https://rebind.101soundboards.com/a.mp3';
+            await sb.getSoundboardAudio(String(++id)).catch(() => null);
+            assert.ok(rebindLookups >= 2, `the download resolved again (${rebindLookups})`);
+            assert.ok(!connects.some((c) => /^(127\.|::1|::ffff:127|10\.|100\.64\.)/.test(c)), `connected to ${connects.join(', ')}`);
+        } finally { globalThis.fetch = realFetch; net.Socket.prototype.connect = realConnect; }
+    });
+
     console.log('ssrf: who makes outbound requests');
     await check('every file that makes an outbound request itself is on the reviewed list (user-chosen URLs go through server/net/egress.js)', () => {
         // Why each may call fetch/http(s).request/WebSocket directly: its URLs are Live's configured
@@ -334,7 +363,7 @@ async function check(name, fn) {
             'server/ai/ai-provider.js': 'unused network helpers; kept for its URL helpers',
             'server/arena/arena-service.js': 'the site\'s image provider (owner setting) and Live\'s own frame URLs',
             'server/chat/routes.js': 'GIF providers (fixed hosts)',
-            'server/chat/soundboard-service.js': '101soundboards (host allowlist)',
+            'server/chat/soundboard-service.js': '101soundboards (host allowlist; the audio download through safeLookup)',
             'server/chat/tts-engine.js': 'Google / AWS TTS (fixed hosts)',
             'server/emotes/routes.js': 'FFZ / BTTV / 7TV (fixed hosts)',
             'server/meta/routes.js': 'GitHub API (fixed host)',
@@ -375,6 +404,7 @@ async function check(name, fn) {
     server.close();
     internal.close();
     for (const ext of ['', '-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
+    try { fs.rmSync(process.env.DATA_DIR, { recursive: true, force: true }); } catch { /* */ }
     if (failures) { quiet(`\n${failures} failure(s)`); process.exit(1); }
     quiet('\nsecurity-ssrf: all checks passed');
     process.exit(0);

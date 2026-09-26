@@ -23,6 +23,7 @@ const http = require('http');
 
 const tmp = path.join(os.tmpdir(), `ov-private-${process.pid}.db`);
 process.env.DB_PATH = tmp;
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-sec-data-'));   // nothing lands in the checkout's data/
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
@@ -164,6 +165,7 @@ async function outsider(user, id, label) {
 
     server.close();
     for (const ext of ['', '-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
+    try { fs.rmSync(process.env.DATA_DIR, { recursive: true, force: true }); } catch { /* */ }
     if (failures) { quiet(`\n${failures} failure(s)`); process.exit(1); }
     quiet('\nsecurity-private: all checks passed');
     process.exit(0);

@@ -1,6 +1,7 @@
 const https = require('https');
 const http = require('http');
 const dns = require('dns');
+const { isPublicAddress, safeLookup } = require('openvibe-shared/egress');
 const path = require('path');
 const fs = require('fs');
 const db = require('../db/database');
@@ -257,10 +258,13 @@ async function validateAudioUrl(audioUrl) {
     if (!ALLOWED.some((s) => host === s || host.endsWith('.' + s))) {
         throw new Error('Audio URL host is not permitted');
     }
-    const { address } = await dns.promises.lookup(host).catch(() => {
+    // Every answer must be a public address (the platform's rule, openvibe-shared/egress: it also knows
+    // the IPv6 spellings of internal IPv4 addresses, which isPrivateIp does not); the download then
+    // connects through safeLookup, so a second resolution cannot rebind to an internal one.
+    const addrs = await dns.promises.lookup(host, { all: true }).catch(() => {
         throw new Error('Audio URL host could not be resolved');
     });
-    if (isPrivateIp(address)) throw new Error('Audio URL resolved to a restricted IP address');
+    if (!addrs.length || addrs.some((a) => isPrivateIp(a.address) || !isPublicAddress(a.address))) throw new Error('Audio URL resolved to a restricted IP address');
 }
 
 async function fetchJsonWithRetry(url, retries = 2) {
@@ -313,7 +317,7 @@ function fetchSoundTitleHtml(soundId) {
 
 function downloadAudio(audioUrl) {
     return new Promise((resolve) => {
-        const req = https.get(audioUrl, { headers: { 'User-Agent': 'OpenVibe.Live/1.0' } }, (res) => {
+        const req = https.get(audioUrl, { headers: { 'User-Agent': 'OpenVibe.Live/1.0' }, lookup: safeLookup }, (res) => {
             if (res.statusCode !== 200) {
                 res.resume();
                 return resolve(null);
