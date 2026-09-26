@@ -111,6 +111,25 @@ What did **not** improve: layout on the home page is dominated by the page's own
 | server code | restart | restart, readiness-gated, automatic rollback |
 | lockfile | `npm ci` in place; rollback kept new `node_modules` | installed into the new release; rollback returns the old release's `node_modules` |
 
+## Measurement 2026-09-26: after the release-client work (roadmap WS-T task 2)
+
+Shared 1.17 to 1.20 changed `release-watch.js`, which every page loads after first paint. It gained release notifications (one EventSource), session beats every 5 minutes, the `prompted` count and client generations, and stayed under its 5 KB brotli budget (4.94 KB). Production `https://openvibe.live/`, desktop 1366×900 unthrottled, `node scripts/perf/measure-page.js https://openvibe.live/ --runs 3 --settle 8000`, two runs of three, medians:
+
+| Metric | Baseline (above) | 2026-09-26 |
+|---|---|---|
+| HTML | 381 KB raw / 75.5 KB wire | 92.5 KB raw / 23.6 KB wire |
+| Scripts | 44 files, 612 KB wire | 33 files, 438 KB wire |
+| Stylesheets | 12 files, 237 KB wire | 11 files, 194 KB wire |
+| Requests | 101 | 103–104 (the release-watch stream and its manifest read) |
+| DOM nodes | 7 448 | 2 969 |
+| Running animations | 53 | 38 |
+| FCP / LCP | 1 620 / 5 792 ms | 884–908 / 884–908 ms |
+| CLS | 0.086 | 0.073–0.083 |
+| TBT | 807 ms | 217–259 ms |
+| Style / layout | 589 / 1 085 ms | 595–598 / 554–589 ms |
+
+The release client adds one request (the EventSource, which excludes itself from idle-network checks) and no measurable paint or blocking cost. The size budgets in `npm test` (scripts/perf/check-budgets.js) still pass.
+
 ## Budgets
 
 `npm run perf:budget` (scripts/perf/check-budgets.js) fails if the home page's raw HTML, eagerly
