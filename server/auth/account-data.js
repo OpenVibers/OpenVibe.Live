@@ -21,8 +21,8 @@
  * kept rows point at nobody.
  *
  * Never touched: the frozen tables (vods, clips, pastes, paste_likes, paste_comments, comments), which Media and
- * Community own and erase themselves. The staged chat tables (chat-tables.js) are left to Chat, which erases its own
- * copy; Live's rows there follow when a table moves.
+ * Community own and erase themselves. A staged chat table (chat-tables.js) is erased by whichever side writes it now:
+ * here while Live does (the capture relays the change to Chat's copy), by Chat once Chat does (its mirror relays it back).
  *
  * Applied once per export or deletion (account_data_events); a redelivery resends only what did not reach Network.
  */
@@ -137,7 +137,7 @@ function eraseUsers(d, userIds, { now = new Date().toISOString() } = {}) {
             for (const [t, list] of cols) {
                 const where = list.map((c) => `${q(c.col)} = ?`).join(' OR ');
                 if (RETAIN.has(t)) { bump(retained, t, d.prepare(`SELECT COUNT(*) AS n FROM ${q(t)} WHERE ${where}`).get(...list.map(() => uid)).n); continue; }
-                if (stagedTables.has(t)) { bump(retained, 'left_for_chat', d.prepare(`SELECT COUNT(*) AS n FROM ${q(t)} WHERE ${where}`).get(...list.map(() => uid)).n); continue; }
+                if (stagedTables.has(t) && require('../chat/chat-tables').authority(t) !== 'live') { bump(retained, 'left_for_chat', d.prepare(`SELECT COUNT(*) AS n FROM ${q(t)} WHERE ${where}`).get(...list.map(() => uid)).n); continue; }
                 for (const c of list) {
                     if (c.action === 'null') {
                         const info = d.prepare(`PRAGMA table_info(${q(t)})`).all().filter((x) => NAME_COLS.includes(x.name));
