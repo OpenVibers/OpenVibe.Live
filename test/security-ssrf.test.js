@@ -353,6 +353,7 @@ async function check(name, fn) {
             'server/streaming/golive-notify.js': 'OpenVibe.Network (configured)',
             'server/utils/notify.js': 'OpenVibe.Network (configured)',
             'server/auth/identity-sync.js': 'OpenVibe.Network (configured)',
+            'server/auth/account-data.js': 'OpenVibe.Network (configured): export parts and deletion confirmations',
             'server/monetization/billing-client.js': 'OpenVibe.Billing (configured)',
             'server/monetization/wallet-client.js': 'OpenVibe.Network wallet (configured)',
             'server/monetization/payments.js': 'PayPal (fixed host)',
