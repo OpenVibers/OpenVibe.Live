@@ -45,7 +45,8 @@ public/features.json     registry: feature → fragment, stylesheets, scripts, d
                          routes: URL pattern → features
 public/fragments/*.html  page markup for channel, VOD/clip players, dashboard, broadcast, chat, documentation, content, moments
 public/css/features/*.css rules used only by one feature (split out of style.css / broadcast.css / i18n-star.css)
-public/js/ov-loader.js   ov.load(feature), ov.route(path), ov.prefetch(), route generations, scopes, stubs
+public/js/ov-loader.js   configures /shared/web-runtime.js (openvibe-shared): ov.load(feature), ov.route(path), ov.prefetch(),
+                         route generations, scopes, stubs, transactional asset groups, ov.diagnostics()/ov.leaks()
 public/js/app.js         core: router, auth, API helper, shared renderers, connection pill
 public/js/app-*.js       route code split out of app.js: home, channel, media, chatpage, docs
 ```
