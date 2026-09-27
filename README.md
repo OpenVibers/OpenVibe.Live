@@ -118,7 +118,7 @@ Minimum `.env`: `BASE_URL`, `JWT_SECRET`, `OV_NETWORK_URL`, `OV_NETWORK_INTERNAL
 ## Deployment
 
 - Production path `/opt/openvibe.live`, env file `/etc/openvibe/live.env` (0600), unit `openvibe-live.service` (see `deploy/systemd/`).
-- `deploy/scripts/deploy.sh` classifies changes: static-only deploys never restart; server changes restart behind the systemd socket with readiness checks and rollback. Details: [docs/deploy.md](docs/deploy.md).
+- `deploy/scripts/deploy.sh` runs `ovhost deploy live` (OpenVibe.Host, strategy `release-layout`), with `deploy-legacy.sh` (the previous script) as its fallback: static-only deploys never restart; server changes restart behind the systemd socket with readiness checks and rollback. Details: [docs/deploy.md](docs/deploy.md).
 - nginx config at `deploy/nginx/openvibe.live.conf` (`openvibe.live`, `www.openvibe.live`, `ingest.openvibe.live`; certs `/etc/letsencrypt/live/openvibe.live/`).
 
 ---

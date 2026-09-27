@@ -1,5 +1,6 @@
 /**
- * deploy/scripts/deploy.sh against a simulated host.
+ * deploy/scripts/deploy-legacy.sh (the release-layout deploy script from before `ovhost deploy live`;
+ * deploy/scripts/deploy.sh now hands over to ovhost and falls back to it) against a simulated host.
  *
  * A temp directory stands in for /opt/openvibe.live with a real git "origin", the release layout
  * (repo, releases/<id>, current, shared/data), a fake `systemctl` that runs a tiny app, and a fake
@@ -23,7 +24,7 @@ const path = require('path');
 const http = require('http');
 const { execFileSync, spawnSync } = require('child_process');
 
-const DEPLOY = path.join(__dirname, '..', 'deploy', 'scripts', 'deploy.sh');
+const DEPLOY = path.join(__dirname, '..', 'deploy', 'scripts', 'deploy-legacy.sh');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-deploy-sim-'));
 const PORT = 20000 + Math.floor(Math.random() * 20000);
 const sh = (cmd, opts = {}) => execFileSync('bash', ['-c', cmd], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });

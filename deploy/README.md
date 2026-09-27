@@ -2,7 +2,8 @@
 
 How deploys work: [../docs/deploy.md](../docs/deploy.md).
 
-- `scripts/deploy.sh` — classifies a change (static / server / dependencies / schema / units) and does the least disruptive thing; `--wait-idle`, `--rollback`, `DRY_RUN=1`
+- `scripts/deploy.sh` — hands over to `ovhost deploy live` (OpenVibe.Host, strategy `release-layout`): `--wait-idle`, `--restart`, `--rollback` (`ovhost rollback live`), `DRY_RUN=1` (`ovhost plan live`); falls back to `deploy-legacy.sh` when ovhost is missing, too old or does not manage Live
+- `scripts/deploy-legacy.sh` — the previous deploy script, unchanged: classifies a change (static / server / dependencies / schema / units) and does the least disruptive thing
 - `scripts/migrate-to-releases.sh` — one-time move to the release layout (`releases/`, `current`, `shared/data`)
 - `scripts/post-deploy-check.sh` — smoke checks on the host
 - `systemd/openvibe-live.service` + `.socket` — current (git checkout) layout, socket activation

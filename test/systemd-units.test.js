@@ -43,10 +43,17 @@ assert.strictEqual(load({ NODE_ENV: 'production', LISTEN_HOST: '10.0.0.5', BASE_
 assert.strictEqual(load({ NODE_ENV: 'development' }).listenHost, '0.0.0.0', 'development keeps HOST (default 0.0.0.0)');
 assert.strictEqual(load({ NODE_ENV: 'production', HOST: '0.0.0.0', BASE_URL: 'https://openvibe.live' }).host, '0.0.0.0', 'HOST still builds URLs');
 
-// deploy.sh checks that systemd really holds the listener, and restarts a socket unit that changed.
-const deploy = fs.readFileSync(path.join(__dirname, '..', 'deploy', 'scripts', 'deploy.sh'), 'utf8');
-assert.match(deploy, /socket_held\(\)/, 'deploy.sh has the listener check');
-assert.match(deploy, /SOCKET_CHANGED=true/, 'a changed socket unit is noted');
-assert.match(deploy, /\$SYSTEMCTL restart "\$\{SERVICE\}\.socket"/, 'and restarted');
+// Deploys check that systemd really holds the listener, and restart a socket unit that changed. Since
+// WS-N task 11 deploy.sh hands over to `ovhost deploy live` (OpenVibe.Host strategy release-layout:
+// systemd.socketHeld + rebindSocket, test/strategy-release-layout.test.js there) and falls back to
+// deploy-legacy.sh, the previous script, which still does it itself.
+const legacy = fs.readFileSync(path.join(__dirname, '..', 'deploy', 'scripts', 'deploy-legacy.sh'), 'utf8');
+assert.match(legacy, /socket_held\(\)/, 'deploy-legacy.sh has the listener check');
+assert.match(legacy, /SOCKET_CHANGED=true/, 'a changed socket unit is noted');
+assert.match(legacy, /\$SYSTEMCTL restart "\$\{SERVICE\}\.socket"/, 'and restarted');
+const wrapper = fs.readFileSync(path.join(__dirname, '..', 'deploy', 'scripts', 'deploy.sh'), 'utf8');
+assert.match(wrapper, /^STRATEGY=release-layout$/m, 'deploy.sh only hands over to an ovhost that deploys live with release-layout (the socket rule)');
+assert.match(wrapper, /deploy-api/, 'and checks the deploy API version before it does');
+assert.match(wrapper, /exec bash "\$LEGACY"/, 'anything else falls back to deploy-legacy.sh');
 
 console.log('systemd units: all checks passed');

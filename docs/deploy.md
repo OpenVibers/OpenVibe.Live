@@ -1,13 +1,27 @@
 # Deploying OpenVibe.Live
 
-`deploy/scripts/deploy.sh` decides what a change needs and does the least disruptive thing.
+Live deploys with `ovhost deploy live` (OpenVibe.Host, `/usr/local/bin/ovhost`, strategy
+`release-layout`; roadmap WS-N task 11). `deploy/scripts/deploy.sh` is a thin wrapper that maps its old
+flags onto ovhost, so the commands stay the same:
 
 ```bash
-sudo /opt/openvibe.live/deploy/scripts/deploy.sh              # deploy origin/main if it moved
-sudo /opt/openvibe.live/deploy/scripts/deploy.sh --wait-idle  # hold a restart until nobody is live
-sudo /opt/openvibe.live/deploy/scripts/deploy.sh --rollback   # release layout: previous release
-DRY_RUN=1 /opt/openvibe.live/deploy/scripts/deploy.sh         # print the plan only
+cd /opt/openvibe.live/current
+sudo deploy/scripts/deploy.sh              # ovhost deploy live: origin/main if it moved
+sudo deploy/scripts/deploy.sh --wait-idle  # ovhost deploy live --wait-idle: hold a restart until nobody is live
+sudo deploy/scripts/deploy.sh --restart    # ovhost deploy live --restart
+sudo deploy/scripts/deploy.sh --rollback   # ovhost rollback live: the release the current one replaced
+DRY_RUN=1 deploy/scripts/deploy.sh         # ovhost plan live: print the plan only
 ```
+
+The wrapper checks `ovhost capabilities live` first (deploy API 1, strategy `release-layout`, managed).
+When ovhost is missing or too old, or the host inventory does not deploy Live with that strategy, it says
+why and runs `deploy/scripts/deploy-legacy.sh`, the previous script, unchanged and with the same
+arguments. `OVHOST_LEGACY=1` forces the fallback; `OVHOST=<path>` picks another ovhost. `--force`
+meant "discard local tracked changes" in the legacy layout; ovhost's `--force` drops live streams, so the
+wrapper refuses it (run `sudo ovhost deploy live --force` yourself if that is what you mean). Everything
+below is what both do; ovhost also records every attempt in its release log (`ovhost releases live`) and
+refuses a frozen service (`ovhost freeze`, exit 6). What ovhost checks is in OpenVibe.Host
+`docs/deploy-strategies.md` and `test/strategy-release-layout.test.js`.
 
 ## What each kind of change costs
 
@@ -65,16 +79,19 @@ but could not restore previous `node_modules`.
 - The last 5 releases are kept.
 - Content-hashed assets from the previous release are still served under their old hashes, so a page
   rendered before the switch never loads JavaScript from after it.
-- **Release notification.** After a deploy or `--rollback` that went live, the script runs
-  `ovhost announce live` (OpenVibe.Host, WS-P task 9). ovhost publishes `host.release.published` for the
+- **Release notification.** After a deploy or `--rollback` that went live, ovhost announces it (the
+  legacy script runs `ovhost announce live`; OpenVibe.Host, WS-P task 9). ovhost publishes `host.release.published` for the
   release `/release.json` now reports, once per release, to OpenVibe.Events. Open tabs (openvibe-shared
   1.17.0 release-watch) then check `/release.json` within about 20 s instead of at their next poll. It is
   best effort: skipped when `ovhost` is missing or has no `announce` (set `OVHOST` for another path), 20 s at
   most, and it never changes the exit code. A static-only switch keeps the running release, so there is
   nothing new to announce. The credentials and the setup are in OpenVibe.Host `docs/release-notifications.md`.
 
-`test/deploy-sim.test.js` runs the script against a simulated host (real git, fake systemctl) and
-checks each of these behaviours.
+`test/deploy-sim.test.js` runs `deploy-legacy.sh` against a simulated host (real git, fake systemctl)
+and checks each of these behaviours; `test/deploy-wrapper.test.js` checks the wrapper's flag mapping and
+its fallback. ovhost's own tests (OpenVibe.Host `test/strategy-release-layout.test.js`) cover the same
+behaviours for `ovhost deploy live`, plus the socket rule: pid 1 must hold :3000, and the socket unit is
+restarted only when its unit file changed or systemd does not hold the listener.
 
 ## Assets and caching
 
