@@ -152,13 +152,24 @@ const server = http.createServer(app);
 // What this server runs (ADR-016): GET /release.json below, and release_info in /metrics.
 // In the release layout (/opt/openvibe.live/releases/<time>-<sha8>, a root-owned git worktree) the
 // service user cannot run git there, so the release id also comes from the directory's name.
-const release = require('openvibe-shared/release').createRelease({ service: 'live', root: path.join(__dirname, '..'), env: releaseEnv() });
+// Components (server/web/release-components.js): a styles-only release is swapped into open tabs in place; the
+// root is the `current` link (OV_APP_ROOT), and the manifest is rebuilt when files change (recheckMs), so a
+// static-only release switch, which does not restart this process, is reported as the release it is.
+const appRoot = process.env.OV_APP_ROOT || path.join(__dirname, '..');
+const release = require('openvibe-shared/release').createRelease({
+    service: 'live', root: appRoot, env: releaseEnv(), components: require('./web/release-components').componentsFor(appRoot), recheckMs: 30000,
+});
 function releaseEnv() {
     if (process.env.RELEASE_COMMIT) return process.env;
-    let dir = path.join(__dirname, '..');
-    try { dir = require('fs').realpathSync(dir); } catch { /* keep */ }
-    const m = /-([0-9a-f]{7,40})$/.exec(path.basename(dir));
-    return m ? { ...process.env, RELEASE_COMMIT: m[1] } : process.env;
+    // The release id is the directory `current` points at (…/releases/<time>-<sha8>), read at every rebuild.
+    const env = { ...process.env };
+    Object.defineProperty(env, 'RELEASE_COMMIT', { enumerable: true, get() {
+        let dir = appRoot;
+        try { dir = require('fs').realpathSync(appRoot); } catch { /* keep */ }
+        const m = /-([0-9a-f]{7,40})$/.exec(path.basename(dir));
+        return m ? m[1] : undefined;
+    } });
+    return env;
 }
 // Metrics first, so every request is counted (by route template, never by raw URL). GET /metrics
 // answers direct loopback callers only; through nginx it is a 404 (server/web/observability.js).
