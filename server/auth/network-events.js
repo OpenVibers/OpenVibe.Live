@@ -10,6 +10,8 @@
  *   token_valid_after  the person's older tokens are refused (./revocations.js)
  *   updated            the person's profile, role and ban (./subject-projection.js, WS-B task 2)
  *   follow.created/.deleted  Live's follows table as a projection of Network's graph (../social/network-follows.js)
+ *   subject.merged     two accounts became one (ADR-029): the folded-in Live user's follows, channel points and streams
+ *                      move to the survivor's (./subject-merge.js), once per merge
  *
  * Applying is idempotent (a cutoff only ever moves forward; a profile revision only up), so a redelivery
  * is a no-op without an inbox. Anything signed but not ours to act on is acknowledged (204).
@@ -23,9 +25,10 @@ const notifyChat = (userId) => { try { const cs = require('../chat/chat-server')
 
 function secret() { return process.env.LIVE_EVENTS_SECRET || process.env.MEDIA_EVENTS_SECRET || ''; }
 
-/** Apply one envelope; returns 'revoked' | 'unchanged' | 'updated' | 'stale' | 'ignored:<why>'. */
+/** Apply one envelope; returns 'revoked' | 'unchanged' | 'updated' | 'stale' | 'ignored:<why>' (a merge: a promise of 'merged' | 'relinked' | 'nothing' | …). */
 function apply(ev) {
     if (!ev || !EVENT_ID_RE.test(String(ev.event_id || ''))) return 'ignored:envelope';
+    if (ev.event_type === 'network.subject.merged') return ev.source === 'network' ? require('./subject-merge').apply(ev) : 'ignored:source';
     const follow = ev.event_type === 'network.follow.created' || ev.event_type === 'network.follow.deleted';
     if (ev.event_type !== 'network.user.token_valid_after' && ev.event_type !== 'network.user.updated' && !follow) return 'ignored:type';
     if (ev.source !== 'network') return 'ignored:source';
@@ -47,8 +50,13 @@ function handler(req, res) {
     const delivery = parseDelivery(req.rawBody, req.headers, key, { requireV2: true });
     if (!delivery) { stats.refused++; return res.status(401).json({ error: 'bad signature' }); }
     stats.received++;
+    const count = (out) => { if (out === 'revoked') stats.revoked++; else if (out === 'unchanged' || out === 'stale') stats.unchanged++; else if (out === 'updated' || out === 'followed' || out === 'unfollowed' || out === 'merged' || out === 'relinked') stats.profiles++; else stats.ignored++; };
     const out = apply(delivery.event);
-    if (out === 'revoked') stats.revoked++; else if (out === 'unchanged' || out === 'stale') stats.unchanged++; else if (out === 'updated' || out === 'followed' || out === 'unfollowed') stats.profiles++; else stats.ignored++;
+    if (out && typeof out.then === 'function') {
+        // A merge (the one async case): answer after it applied, so a failure is redelivered.
+        return out.then((o) => { count(o); res.status(204).end(); }, (e) => { console.error('[NetworkEvents] merge failed:', e.message); res.status(500).json({ error: 'merge not applied' }); });
+    }
+    count(out);
     res.status(204).end();
 }
 

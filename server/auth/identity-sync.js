@@ -97,4 +97,4 @@ async function backfillSubjects() {
     return total;
 }
 
-module.exports = { noteSubject, subjectOf, syncLegacyMap, backfillSubjects };
+module.exports = { noteSubject, subjectOf, syncLegacyMap, backfillSubjects, networkPost };
