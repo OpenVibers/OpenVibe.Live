@@ -1,16 +1,16 @@
 {
  "service": "live",
- "release": "2e6f546444ef378a6e2126702960623635ac97a2",
- "recorded_at": "2026-09-27T19:07:42.982Z",
+ "release": "f0edbc0384fc9a3cf9c5c6e295863cf3391c7411",
+ "recorded_at": "2026-09-27T20:20:38.345Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "2e6f546444ef",
-  "released_at": "2026-09-26T17:11:09.000Z",
-  "booted_at": "2026-09-27T19:07:39.507Z",
+  "release": "f0edbc0384fc",
+  "released_at": "2026-09-27T19:52:56.000Z",
+  "booted_at": "2026-09-27T20:20:34.950Z",
   "contracts_version": "0.68.0",
   "packages": {
-   "openvibe-shared": "1.22.0",
+   "openvibe-shared": "1.23.0",
    "openvibe-sdk": "0.11.0"
   },
   "min_client_release": null,
@@ -18,11 +18,11 @@
   "components": {
    "shell": {
     "kind": "script",
-    "version": "2e6f546444ef"
+    "version": "f0edbc0384fc"
    },
    "server": {
     "kind": "server",
-    "version": "2e6f546444ef"
+    "version": "f0edbc0384fc"
    }
   },
   "assets": {},
@@ -34,7 +34,7 @@
   "shell": null,
   "metrics_url": "/release-metrics"
  },
- "dynamic_calls": 44,
+ "dynamic_calls": 43,
  "calls": [
   {
    "method": "GET",
@@ -7202,7 +7202,18 @@
   },
   {
    "method": "GET",
-   "path": "/js/ov-loader.js?v=d87608436703",
+   "path": "/shared/web-runtime.js?v=320c4c54617c",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/ov-loader.js?v=50638622cf32",
    "auth": "anon",
    "accept": "html",
    "status": 200,
