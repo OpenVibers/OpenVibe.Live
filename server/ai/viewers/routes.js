@@ -160,6 +160,12 @@ router.put('/config', requireAuth, async (req, res) => {
         const refused = await require('../byo-credentials').applyConfig(req.user.id, db.getChannelAiConfig(req.user.id), body.byo_key === KEY_SENTINEL ? undefined : body.byo_key, fields);
         if (refused) return res.status(refused.status).json({ error: refused.error, code: refused.code });
         db.upsertChannelAiConfig(req.user.id, fields);
+        // The daily budget on the site's AI is also a cap in OpenVibe.AI (viewer-quota.js): kept in step on every save
+        // that touches it; a failure leaves Live's own pre-check in charge until the next save or the sync script.
+        if (fields.use_shared_key !== undefined || fields.daily_budget_cents !== undefined) {
+            const q = await require('../viewer-quota').sync(req.user.id);
+            if (!['set', 'removed', 'none'].includes(q)) console.warn(`[AI viewers] budget cap not synced to OpenVibe.AI for ${req.user.id}: ${q}`);
+        }
         // v3 settings blob (partial merge, validated + clamped in settings.js).
         if (body.settings && typeof body.settings === 'object') settingsMod.updateSettings(req.user.id, body.settings);
         try { engine.applyConfigForUser(req.user.id); } catch { /* */ }
