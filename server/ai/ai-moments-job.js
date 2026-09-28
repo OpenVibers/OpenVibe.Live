@@ -17,6 +17,7 @@ const os = require('node:os');
 const fs = require('node:fs');
 const db = require('../db/database');
 const ai = require('./ai-analysis');
+const aiService = require('./ai-service');
 const media = require('../media-client');
 const registry = require('./moment-registry');
 let cfg = null; try { cfg = require('../config'); } catch { /* */ }
@@ -158,10 +159,6 @@ function _nearestMemory(memories, offset) {
 }
 // flavor: 'paste' → a frame that is striking on its own; 'clip' → a beat that plays out over ~25 s.
 // avoid: offsets (seconds) already turned into something — the picker must stay ≥ 2 min away.
-const FLAVOR_HINT = {
-    paste: 'This moment becomes a SCREENSHOT paste: pick something visually striking in a single frame — a face or reaction, a visual gag, something odd on screen, a scene change. What was said matters less than what is SEEN.',
-    clip: 'This moment becomes a 25-SECOND VIDEO CLIP: pick a beat that plays out over time — a line that lands, a reaction, a sound, chat exploding, something HAPPENING — not a static pretty frame.',
-};
 async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
     const dur = Math.floor(vod.duration || 0);
     const ctx = await _momentContext(vod.stream_id, vod.vod_id);
@@ -171,42 +168,27 @@ async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
     const clamp = (t) => Math.max(1, Math.min(Math.floor(t || 0), dur > 3 ? dur - 2 : (t || 0)));
 
     if (_aiOn()) {
-        const timeline = ctx.memories.map(m => `[${_mmss(m.offset_seconds)}] ${_cleanText(_deJson(m.description), 180)}`).join('\n');
-        const script = ctx.transcript.map(s => `[${_mmss(s.start)}] ${_cleanText(s.text, 160)}`).join('\n');
-        const soundLine = (ctx.sounds || []).map(e => `[${_mmss(e.start_sec || 0)}] ${e.label}`).join('\n');
-        const clipHint = ctx.clipTimes.length ? ctx.clipTimes.slice(0, 12).map(_mmss).join(', ') : 'none';
-        const spikeHint = ctx.spikes.length ? ctx.spikes.slice(0, 6).map(s => _mmss(s.offset)).join(', ') : 'none';
-        const prompt = `Below is a single livestream VOD titled "${_cleanText(vod.title, 80)}", described by its on-screen TIMELINE (visual scene notes) and its AUDIO TRANSCRIPT, each line timestamped [m:ss].
-
-TIMELINE:
-${timeline || '(none)'}
-
-TRANSCRIPT:
-${script || '(none)'}
-
-SOUNDS HEARD (non-speech audio events):
-${soundLine || '(none)'}
-
-Viewers CLIPPED these timestamps (very strong "this was a highlight" signal): ${clipHint}
-Chat activity SPIKED around: ${spikeHint}
-
-${FLAVOR_HINT[flavor] || FLAVOR_HINT.paste}
-${avoidList.length ? `ALREADY USED (a paste or clip exists there) — do NOT pick these or anything within 2 minutes of them: ${avoidList.map(_mmss).join(', ')}. Find a DIFFERENT moment.` : ''}
-
-Find the SINGLE most interesting/funny/dramatic/surprising/striking moment in this VOD with something clearly VISIBLE happening. Prefer moments backed by the clip/chat signals when they line up with something notable. NEVER pick a black/dark/loading/blank screen, an intro/BRB card, or a moment with no visible content or activity. Return STRICT JSON only, nothing else: {"t": <seconds into the vod>, "title": "<specific punchy 3-8 word title, not the stream name, funny, never generic>", "desc": "<one vivid sentence describing the moment>"}`;
+        // The prompt is OpenVibe.AI's versioned template live.moments.pick (WS-O task 2); Live sends what it knows.
+        const secs = (v) => Math.max(0, Number(v) || 0);
+        const input = {
+            title: _cleanText(vod.title, 80) || 'Untitled stream',
+            flavor: flavor === 'clip' ? 'clip' : 'paste',
+            timeline: ctx.memories.map(m => ({ t: secs(m.offset_seconds), text: _cleanText(_deJson(m.description), 180) })).filter(x => x.text).slice(0, 400),
+            transcript: ctx.transcript.map(x => ({ t: secs(x.start), text: _cleanText(x.text, 160) })).filter(x => x.text).slice(0, 1500),
+            sounds: (ctx.sounds || []).map(e => ({ t: secs(e.start_sec), label: _cleanText(e.label, 120) })).filter(x => x.label).slice(0, 500),
+            clipped: ctx.clipTimes.slice(0, 12).map(secs),
+            spikes: ctx.spikes.slice(0, 6).map(sp => secs(sp.offset)),
+            avoid: avoidList.map(secs).slice(0, 500),
+        };
         try {
-            const text = await ai.summarizeText(prompt, 300, 'moment_pick');
-            const m = text && text.match(/\{[\s\S]*\}/);
-            if (m) {
-                const j = JSON.parse(m[0]);
-                let t = Number(j.t);
-                if (!isNaN(t)) {
-                    t = clamp(t);
-                    if (!farFromUsed(t)) { console.log(`[AI-Moments] VOD ${vod.vod_id}: pick at ${_mmss(t)} is next to a used moment — trying the objective signals instead`); throw new Error('near used'); }
-                    const near = _nearestMemory(ctx.memories, t);
-                    const result = { offset: t, title: _cleanTitle(j.title) || _titleFromDesc(j.desc), desc: _cleanText(_deJson(j.desc), 400) || (near && _deJson(near.description)) || '', tags: _memTags(near) };
-                    return _isEmptyScene(result.desc) ? null : result;
-                }
+            const j = await aiService.structured('live.moments.pick', input, { target: { service: 'live', type: 'vod', id: String(vod.vod_id) }, meter: { kind: 'moment_pick', role: 'legacy' } });
+            let t = j ? Number(j.t) : NaN;
+            if (!isNaN(t)) {
+                t = clamp(t);
+                if (!farFromUsed(t)) { console.log(`[AI-Moments] VOD ${vod.vod_id}: pick at ${_mmss(t)} is next to a used moment — trying the objective signals instead`); throw new Error('near used'); }
+                const near = _nearestMemory(ctx.memories, t);
+                const result = { offset: t, title: _cleanTitle(j.title) || _titleFromDesc(j.desc), desc: _cleanText(_deJson(j.desc), 400) || (near && _deJson(near.description)) || '', tags: _memTags(near) };
+                return _isEmptyScene(result.desc) ? null : result;
             }
         } catch { /* fall through to signal-based pick */ }
     }
