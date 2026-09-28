@@ -8,6 +8,7 @@
  */
 const db = require('../../db/database');
 const budget = require('./budget');
+const { viewerRun } = require('./ai-run');
 
 // ── Character archetypes (persona seed, no LLM needed for ambient) ──
 const CHARACTERS = [
@@ -131,15 +132,16 @@ async function createCloneBot(streamerId, src) {
     const samples = _sampleLines(src.samples, 24);
     let identity = overview ? overview.slice(0, 600) : '';
     try {
-        const prompt = [
-            `You are profiling a chat viewer named "${src.displayName || src.ref}" so an AI can role-play as them.`,
-            overview ? `What we know about them: ${overview}` : '',
-            memory ? `Notable memory: ${memory}` : '',
-            samples.length ? `Sample messages they've sent:\n- ${samples.join('\n- ')}` : '',
-            `Write a tight 2-3 sentence character brief capturing their vibe, interests, and how they type (tone, casing, slang, length). Second person ("You are ..."). No preamble.`,
-        ].filter(Boolean).join('\n\n');
-        const brief = await budget.generate(streamerId, { system: '', user: prompt, maxTokens: 160, temperature: 0.7 });
-        if (brief && brief.trim()) identity = brief.trim();
+        // The brief's instructions are OpenVibe.AI's versioned template live.viewers.clone (WS-O task 2); metered to the
+        // streamer on the site's AI or their own key, whichever their viewers use.
+        const st = budget.budgetStatus(streamerId);
+        if (st.active) {
+            const r = await viewerRun('live.viewers.clone', {
+                name: String(src.displayName || src.ref || 'viewer').slice(0, 120), overview: String(overview).slice(0, 2000), memory: String(memory).slice(0, 2000),
+                samples: samples.map(x => String(x).slice(0, 400)).slice(0, 24),
+            }, { provider: st.useShared ? null : (budget.byoProvider(st.cfg) || { none: true }), ownerUserId: streamerId, kind: 'ai_viewers', role: 'chat' });
+            if (r && r.output && r.output.text && r.output.text.trim()) identity = r.output.text.trim();
+        }
     } catch { /* fall back to overview */ }
 
     const persona = {

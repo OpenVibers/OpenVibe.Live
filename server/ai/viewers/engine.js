@@ -192,7 +192,8 @@ class AiViewersEngineV3 {
         if (w.mode === 'replies_only') ms *= 2;
         return ms;
     }
-    _providerFor(w) { return w.cfg.use_shared_key ? null : budget.byoProvider(w.cfg); }
+    // null = the site's AI; else the streamer's own key in AI, or { none } (quiet) — never the site's AI by accident.
+    _providerFor(w) { return w.cfg.use_shared_key ? null : (budget.byoProvider(w.cfg) || { none: true }); }
 
     async _tick(w) {
         if (w.stopped || w.ticking) return;

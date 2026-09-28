@@ -1,7 +1,7 @@
 /**
  * AI Chat Viewers — budget + cost routing.
  *
- * Every bot LLM call goes through generate(), a run on OpenVibe.AI either way:
+ * Every bot line is a run on OpenVibe.AI (viewers/ai-run.js, templates live.viewers.*), either way:
  *   - the site's AI (default), metered + capped per streamer at
  *     channel_ai_config.daily_budget_cents (default 20¢/day). Over the cap → bots
  *     go quiet (returns null). Also respects the admin master switch + global cap.
@@ -46,34 +46,8 @@ function budgetStatus(userId) {
 }
 
 /**
- * Metered chat completion for a bot, routed by the streamer's key choice.
- * @returns {Promise<string|null>} the generated text, or null when the streamer is
- *   quiet (AI disabled / over cap / no usable key / provider error).
- */
-async function generate(userId, { system = '', user = '', image = null, maxTokens = 80, temperature = 1.0 } = {}) {
-    const st = budgetStatus(userId);
-    if (!st.active) return null;
-
-    if (st.useShared) {
-        // The site's AI: metered + attributed inside ai-analysis.viewerComplete.
-        return ai.viewerComplete({ system, user, image, maxTokens, temperature, ownerUserId: userId });
-    }
-
-    // Their own key in OpenVibe.AI — a run with credential { subject }, metered as 'byo' in llm.js.
-    // Never fall through to the site's AI: no usable own key means the streamer's bots stay quiet.
-    const provider = byoProvider(st.cfg);
-    if (!provider || !provider.credentialSubject) return null;
-    const r = await ai.llm.complete({
-        role: 'chat', system, user, image, imageMaxWidth: 768, maxTokens, temperature,
-        kind: 'ai_viewers', source: SOURCE, ownerUserId: userId,
-        provider,
-    });
-    return r && r.text ? r.text.trim() || null : null;
-}
-
-/**
  * The provider for a streamer's own-key settings (column fields + settings_json.byo). A key stored in OpenVibe.AI
- * (byo_in_ai, WS-O task 2) is named by the streamer's subject, for llm.complete; the key itself never comes back
+ * (byo_in_ai, WS-O task 2) is named by the streamer's subject, for viewers/ai-run.js; the key itself never comes back
  * here. Otherwise the typed key, address and models, which only llm.testProvider uses ("test connection" before
  * the key is saved to OpenVibe.AI).
  */
@@ -134,4 +108,4 @@ function status(userId) {
     return { ...st, mode, reason, active: st.active && mode !== 'silent' };
 }
 
-module.exports = { generate, budgetStatus, status, byoUsable, byoProvider, globalViewerSpendToday, SOURCE };
+module.exports = { budgetStatus, status, byoUsable, byoProvider, globalViewerSpendToday, SOURCE };

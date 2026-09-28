@@ -180,4 +180,4 @@ async function complete(o = {}, { toVisionJpeg } = {}) {
     };
 }
 
-module.exports = { enabled, run, structured, complete, usable, imageInput, ownerRef, workflowFor, setRecorder, KIND_TO_WORKFLOW, AUDIENCE };
+module.exports = { enabled, run, structured, complete, usable, meter, imageInput, ownerRef, workflowFor, setRecorder, KIND_TO_WORKFLOW, AUDIENCE };

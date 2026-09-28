@@ -89,17 +89,18 @@ const ai = http.createServer((req, res) => {
 
         // ── The viewers run on AI with the credential ──
         const n = calls.length;
-        const text = await budget.generate(30, { system: 'be a viewer', user: 'say hi', maxTokens: 20 });
-        assert.strictEqual(text, 'hi from the streamer key');
+        const director = require('../server/ai/viewers/director');
+        const reply = await director.quickReply({ stableText: 'roster', situationText: '', bot: { username: 'goosebot' }, streamerLine: 'say hi', provider: budget.byoProvider(db.getChannelAiConfig(30)), ownerUserId: 30 });
+        assert.strictEqual(reply.text, 'hi from the streamer key');
         const runCall = calls.slice(n).find((c) => c.url.startsWith('/api/v1/runs'));
-        assert.deepStrictEqual([runCall.body.workflow, runCall.body.credential], ['live.viewers.line', { subject: SUBJECT }]);
+        assert.deepStrictEqual([runCall.body.workflow, runCall.body.credential], ['live.viewers.reply', { subject: SUBJECT }]);
         assert.ok(!JSON.stringify(runCall.body).includes(LOCAL_KEY), 'the key is not in the run');
         const usage = d.prepare("SELECT provider, owner_user_id FROM ai_usage WHERE source = 'ai_viewers' ORDER BY id DESC LIMIT 1").get();
         assert.deepStrictEqual([usage.provider, usage.owner_user_id], ['byo', 30], 'metered as the streamer\'s own');
         // A key in AI without a subject never falls back to the shared key.
         db.upsertChannelAiConfig(31, { byo_key: '', byo_in_ai: 1 });
         const m = calls.length;
-        assert.strictEqual(await budget.generate(31, { user: 'x' }), null);
+        assert.strictEqual(await director.quickReply({ stableText: 's', situationText: '', bot: { username: 'b' }, streamerLine: 'x', provider: budget.byoProvider(db.getChannelAiConfig(31)) || { none: true }, ownerUserId: 31 }), null);
         assert.strictEqual(calls.length, m, 'nothing was called');
 
         // ── Saving the config ──

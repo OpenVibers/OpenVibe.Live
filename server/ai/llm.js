@@ -182,7 +182,7 @@ async function testProvider(override = null) {
 aiService.setRecorder((r, m) => db.recordAiUsage({
     kind: m.kind || (r.workflow && r.workflow.key) || 'remote', model: (r.provenance && r.provenance.model) || null,
     input_tokens: (r.usage && r.usage.tokens_in) || 0, output_tokens: (r.usage && r.usage.tokens_out) || 0, cached_tokens: 0,
-    cost_usd: (r.usage && r.usage.cost_usd) || 0, owner_user_id: m.ownerUserId || null, source: m.source || null, role: m.role || null, provider: 'openvibe-ai', latency_ms: null,
+    cost_usd: (r.usage && r.usage.cost_usd) || 0, owner_user_id: m.ownerUserId || null, source: m.source || null, role: m.role || null, provider: m.provider || 'openvibe-ai', latency_ms: null,
 }));
 
 module.exports = { complete, testProvider, toVisionJpeg, parseJsonLoose, isEnabled, withinBudget, ROLES };

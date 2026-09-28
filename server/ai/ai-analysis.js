@@ -27,28 +27,12 @@ function transcriptionEnabled() {
 function captureIntervalSec() { return Math.max(30, num('ai_stream_capture_interval_sec', 120)); }
 function withinBudget() { return llm.withinBudget(); }
 
-// The transport lives in ./llm (a run on OpenVibe.AI, uniform metering). These wrappers keep the
-// existing call shapes for the features that still render their own prompt.
+// The transport lives in ./llm (a run on OpenVibe.AI, uniform metering). Every feature's prompt is an OpenVibe.AI
+// template now (roadmap WS-O task 2); this single-prompt call is left for the status probe (testStatus).
 
-/** Core call: legacy single-prompt shape. Returns text or null. */
+/** Core call: one prompt, text back, or null. */
 async function _complete({ prompt, image = null, maxTokens = 400, kind, temperature = null, ownerUserId = null, source = null, role = 'legacy', imageMaxWidth = 1280 }) {
     const r = await llm.complete({ role, user: prompt, image, imageMaxWidth, maxTokens, temperature, kind, ownerUserId, source });
-    return r && r.text ? r.text : null;
-}
-
-/** Generic text completion (chat insights, moments, slogans, …): a passthrough run of the workflow that owns `kind`. */
-async function summarizeText(prompt, maxTokens = 350, kind = 'media_overview') {
-    return _complete({ prompt, maxTokens, kind });
-}
-
-/**
- * Metered completion for the AI Chat Viewers engine on the site's AI (not a streamer's own key).
- * Attributes the spend to a streamer (owner_user_id) under source='ai_viewers' so
- * per-streamer daily budgets work. Returns text, or null if the admin AI is
- * disabled / over the global budget. Supports an optional image (vision) input.
- */
-async function viewerComplete({ system = '', user = '', image = null, maxTokens = 80, temperature = 1.0, ownerUserId = null }) {
-    const r = await llm.complete({ role: 'chat', system, user, image, imageMaxWidth: 768, maxTokens, temperature, kind: 'ai_viewers', source: 'ai_viewers', ownerUserId });
     return r && r.text ? r.text : null;
 }
 
@@ -385,7 +369,7 @@ module.exports = {
     isEnabled, withinBudget, pasteAnalysisEnabled, streamMemoryEnabled, transcriptionEnabled, captureIntervalSec,
     analyzeImagePaste, analyzeTextPaste, analyzeStreamFrame, summarizeStreamMemories,
     generateStreamerOverview, generateVodOverview, generateClipOverview, ensureVodTimeline,
-    generateVodTranscript, generateClipTranscript, summarizeText, testStatus,
-    viewerComplete, sharedKeyReady,
+    generateVodTranscript, generateClipTranscript, testStatus,
+    sharedKeyReady,
     complete: llm.complete, llm,
 };

@@ -139,14 +139,13 @@ async function check(name, fn) {
             assert.strictEqual(await analysis.analyzeStreamFrame(frame), null);
             assert.strictEqual(await analysis.summarizeStreamMemories([{ description: 'Kai solders a board' }], sid), null);
             assert.strictEqual(await analysis.generateStreamerOverview(40), null);
-            assert.strictEqual(await analysis.summarizeText('say something', 50, 'chat_global'), null);
-            assert.strictEqual(await analysis.viewerComplete({ user: 'hi', ownerUserId: 40 }), null);
+            assert.strictEqual(await require('../server/ai/viewers/ai-run').viewerRun('live.viewers.clone', { name: 'x' }, { ownerUserId: 40, kind: 'ai_viewers', role: 'chat' }), null);
             assert.strictEqual(await analysis.generateVodOverview({ id: 1, stream_id: sid }), null);
             assert.strictEqual(await analysis.generateClipOverview({ id: 1, stream_id: sid }), null);
             assert.strictEqual((await analysis.testStatus({ probe: true })).ok, false);
             assert.strictEqual(await translate.translate('みなさんこんにちは', { from: 'ja', to: 'en' }), null);
             assert.deepStrictEqual(await translate.translateLines(['みなさん'], { from: 'ja' }), [null]);
-            assert.strictEqual(await budget.generate(40, { user: 'hi' }), null);
+            assert.strictEqual(await require('../server/ai/viewers/director').quickReply({ stableText: 's', situationText: '', bot: { username: 'b' }, streamerLine: 'hi', provider: null, ownerUserId: 40 }), null);
             const r = await recap.buildRecap(sid);
             assert.ok(r && r.write && r.write.headline, 'the template report still ships');
             assert.strictEqual(r.ai, false);
@@ -219,7 +218,7 @@ async function check(name, fn) {
         // Viewers of a channel whose key never moved to OpenVibe.AI stay quiet.
         db.upsertChannelAiConfig(40, { enabled: 1, use_shared_key: 0, byo_key: 'sk-EXAMPLE-0000', byo_base_url: providerUrl, byo_in_ai: 0 });
         assert.strictEqual(budget.budgetStatus(40).reason, 'no_byo_key');
-        assert.strictEqual(await budget.generate(40, { user: 'hi' }), null);
+        assert.strictEqual(await require('../server/ai/viewers/director').quickReply({ stableText: 's', situationText: '', bot: { username: 'b' }, streamerLine: 'hi', provider: budget.byoProvider(db.getChannelAiConfig(40)), ownerUserId: 40 }), null);
         assert.strictEqual(providerHits, 0);
     });
 

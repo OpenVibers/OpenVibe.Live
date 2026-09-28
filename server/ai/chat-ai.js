@@ -14,8 +14,8 @@
  *   • ADAPTIVE window: the global overview covers however long it takes to gather ~300
  *     messages, clamped to [30 min, 14 days] — busy chat → short window, quiet → wide.
  *   • THROTTLED + CAPPED: min-interval between refreshes, a few subjects per tick, and
- *     everything gated by the shared `ai_enabled` switch + daily USD budget (summarizeText
- *     returns null when disabled/over-budget, so we just skip).
+ *     everything gated by the shared `ai_enabled` switch + daily USD budget (the tick checks both;
+ *     a run that does not answer is null, so we just skip).
  */
 'use strict';
 
