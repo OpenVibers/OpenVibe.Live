@@ -1,0 +1,35 @@
+{
+  "repository": "OpenVibers/OpenVibe.Live",
+  "stage": "stable",
+  "code": true,
+  "runtime": "node 22, express, better-sqlite3, node-media-server, mediasoup; no build step",
+  "port": 3000,
+  "domain": "openvibe.live (www, ingest, whip)",
+  "contracts": "openvibe-contracts v0.71.0",
+  "sdk": "openvibe-sdk v0.12.0",
+  "capabilities": [
+    "live.chat_context.read",
+    "live.chat_effects.write",
+    "live.chat_mirror.write",
+    "live.follower.read",
+    "live.lineage.resolve",
+    "live.tips_delivery.write",
+    "live.channel.read",
+    "live.stream.read",
+    "live.discovery.read",
+    "live.owner.resolve"
+  ],
+  "deployed": true,
+  "deployment": "Production release layout /opt/openvibe.live (current -> releases/<time>-<sha>), unit openvibe-live.service on the systemd socket 127.0.0.1:3000, deployed with `sudo ovhost deploy live --wait-idle`.",
+  "features": [
+    "RTMP, WHIP, WebRTC and JSMPEG ingest; viewer playback; the broadcast page",
+    "channels, go-live, stream keys, managed streams, restreaming (managed ingest on OpenRe.Stream)",
+    "the watch page and its chat surface (messages stored by OpenVibe.Chat), TTS, sounds, emotes, overlays",
+    "VODs and clips recorded and stored by OpenVibe.Media; pastes and comments on OpenVibe.Community",
+    "AI viewers, stream memories, overviews, moments, recaps, translation: every prompt an OpenVibe.AI template; VOD and clip transcripts by window on OpenVibe.AI",
+    "streamers' own AI keys stored encrypted in OpenVibe.AI; per-streamer daily AI budgets as AI quotas",
+    "channel points and Vibes; the Arena (Battle Cam); after-show recaps; the Star of OpenVibe",
+    "per-actor limits on API writes; account export and deletion contributions; follows on OpenVibe.Network"
+  ],
+  "updated": "2026-09-28"
+}

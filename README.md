@@ -1,11 +1,10 @@
 # OpenVibe.Live
 
-**Free & Open Live Streaming** — the streaming front of the OpenVibe network. OpenVibe.Live provides streaming ingest (RTMP / WHIP / WebRTC / JSMPEG), viewer playback, chat, channels, monetization (Vibes tipping + network OpenCoins), moderation, and restreaming.
+**Open Live Streaming**: the streaming front of the OpenVibe network. OpenVibe.Live runs ingest (RTMP, WHIP, WebRTC, JSMPEG), viewer playback, channels, the watch page and its chat surface, streamer tools, moderation, restreaming, Vibes and channel points, and the Arena.
 
-This repository contains the OpenVibe.Live server, browser assets, and runtime configuration. It depends on two sibling services:
+## Purpose
 
-- **OpenVibe.Network** (`openvibe.network`) — SSO/OAuth2 identity provider, RS256 JWT verification, URL registry, notifications, and the network-wide **OpenCoins wallet**.
-- **OpenVibe.Media** (`openvibe.media`) — owns **VODs, clips, pastes, thumbnails, and file storage** (Media API v1). Live proxies its media API surface there and delegates all stream recording to it.
+Live is where people go live and watch. It takes a streamer's video in, plays it to viewers, and gives the channel its page, chat, clips and tools. The pieces other services own well (identity, chat storage, recordings, pastes, comments, AI, money, search) are theirs; Live calls them and keeps the streaming, the watch experience and the streamer's controls.
 
 ---
 
@@ -64,30 +63,61 @@ The media subsystem lives in **OpenVibe.Media**:
 
 ---
 
-## Ownership and dependencies
+## Owns
 
-### OpenVibe.Live owns
+- Streaming ingest and viewer playback: RTMP (`node-media-server`), WHIP and WebRTC (`mediasoup`), JSMPEG, and the broadcast page.
+- Channels and streams: go-live, stream keys, managed streams, heartbeats, channel pages (`/@username`), offline screens, panels and goals.
+- The watch experience: the SPA in `public/`, the chat surface and its effects (TTS, sounds, emotes, overlays), anonymous chat identities.
+- Streamer tools: the dashboard, restreaming (via OpenRe for managed ingest), song requests (watch party), AI viewers (the context Live builds; the runs are OpenVibe.AI's).
+- Channel points, Vibes tipping flows (the ledger moves to OpenVibe.Billing when `BILLING_AUTHORITY=billing`), moderation of Live's own surfaces, the Arena (Battle Cam) and after-show recaps.
+- Live-local state: `data/live.db` (users' Live profiles, streams, channel state, AI state for Media-hosted recordings in `vod_ai_state` / `clip_ai_state`) and `data/analytics.db`.
 
-- streaming ingest and viewer playback.
-- chat, moderation, and anonymous chat support.
-- channels, streamer controls, admin endpoints, restream management.
-- Vibes (PayPal tipping/cashout), channel points, comments.
-- the song-request/watch-party queue.
-- live-stream thumbnails and AI stream memories.
+## Does not own
 
-### OpenVibe.Live depends on OpenVibe.Network for
+- **Identity, sessions, follows, blocks, notifications, OpenCoins**: OpenVibe.Network. Live verifies its RS256 tokens offline and follows `network.user.*`, `network.follow.*` and deletion, export and merge events.
+- **Chat messages and their tables**: OpenVibe.Chat (since 2026-09-23). Live bridges its WebSocket and moves the remaining staged tables one by one (`server/chat/chat-tables.js`).
+- **Recordings, clips, thumbnails, files**: OpenVibe.Media. The local `vods`/`clips`/`pastes` tables are frozen (`test/frozen-tables.test.js`).
+- **Pastes and comments**: OpenVibe.Community.
+- **AI**: OpenVibe.AI. Live calls no model provider itself. Every prompt is an AI template; streamers' own keys are stored there; VOD and clip transcripts run there. Only live-stream captions still use Live's whisper.cpp.
+- **Search, events, tips, VIP, money ledger**: OpenVibe.Search, Events, Tips, VIP and Billing.
 
-- SSO/OAuth2 provider + JWT public key verification.
-- the OpenCoins wallet.
-- internal URL registry overrides (`BASE_URL`, `WEBRTC_PUBLIC_URL`, `WHIP_PUBLIC_URL`, …).
-- notifications and the shared browser assets (`/shared/*`).
+## Depends on
 
-### OpenVibe.Live depends on OpenVibe.Media for
+- **OpenVibe.Network**: sign-in (OAuth2 client `live`), the signing key, service tokens (`server/net/network-principal.js`), follows, notifications, the wallet, the OpenVibe Frame (`openvibe-shared`, served at `/shared/*`).
+- **OpenVibe.Media**: VOD recording, storage (local, B2, R2), playback, clips, thumbnails, signed playback URLs. Outcomes arrive as `media.*` events at `POST /internal/media-events`.
+- **OpenVibe.Chat**, **OpenVibe.Community**, **OpenVibe.AI**, **OpenVibe.Events**, **OpenRe.Stream**, **OpenVibe.Billing**, **OpenVibe.Tips**, **OpenVibe.VIP**, **OpenVibe.Tools**, **OpenVibe.Search**: through their APIs with Live's service token.
+- **Libraries**: `openvibe-contracts` (pinned tag), `openvibe-sdk`, `openvibe-shared`; FFmpeg and whisper.cpp on the host.
 
-- VOD recording, storage, playback, and health.
-- clip cutting (async — completion via webhook).
-- pastes (incl. screenshots/avatars) and VOD/clip thumbnails.
-- B2/R2 storage tiering.
+## Capabilities
+
+Live implements, for other services' tokens (manifest `manifests/services/live.json` in OpenVibe.Contracts): `live.chat_context.read`, `live.chat_effects.write`, `live.chat_mirror.write`, `live.follower.read`, `live.lineage.resolve`, `live.tips_delivery.write`, `live.channel.read`, `live.stream.read`, `live.discovery.read`, `live.owner.resolve`.
+
+Live's own principal (`live`) holds grants to call:
+
+- **Network**: `identity.subject.resolve`, `network.follows.read|write`, `network.modules.read|write`, `network.notifications.push`, `network.coins.credit|debit`, `network.analytics.creator.read`, `network.account.export.contribute`, `network.account.deletion.confirm`.
+- **AI**: `ai.run.create|read` (namespaces `live.*`, `network.site_copy`, `media.analyze`), `ai.credential.manage`, `ai.quota.attribution.manage`.
+- **Chat**: `chat.live_bridge.write`, `chat.message.send`, `chat.presence.read`.
+- **Community**: `community.paste.*`, `community.comment.*`, `community.pulse.write`.
+- **Events**: `events.event.publish|read`, `events.subscription.manage`.
+- **OpenRe**: `openre.stream.*`, `openre.key.rotate`, `openre.session.read`.
+- **Billing**: `billing.*` (intents, transfers, subscriptions, cash-outs, balances, entitlements).
+- **Elsewhere**: `tips.interaction.record`, `vip.entitlement.check`, `tools.tool.run`, `tools.job.read`.
+
+API writes are limited per person (`server/net/actor-limits.js`, `LIVE_LIMITS_MINUTE` / `_HOUR`).
+
+## Acceptance
+
+`npm test` runs every file in `test/` (`test/run.js`), each in its own process against a temp database: 150 files covering auth and revocation, security crawls (stream keys, secrets, SSRF, open redirect, private objects), the frozen tables, chat bridging, AI (every run is an OpenVibe.AI template; nothing calls a provider directly), transcripts by window, per-actor limits, account export and deletion, drill mode, N-1 compatibility fixtures, and the home page's size budgets. The browser smoke is `BASE=http://127.0.0.1:3000 npm run test:browser` (add `-- --a11y` for axe).
+
+## Security
+
+See [SECURITY.md](SECURITY.md) and [SECURITY_AUDIT.md](SECURITY_AUDIT.md). The main rules:
+
+- Tokens are verified offline with the Network key. Sessions end on `network.user.token_valid_after`, and API tokens (`hbt_`) are scoped.
+- Stream keys never leave the owner's own pages; a crawler test checks every GET route as every role.
+- User-chosen URLs are fetched only through `server/net/egress.js`.
+- `/metrics` answers loopback only. Secrets come from `/etc/openvibe/live.env` and are never logged.
+- Private recordings look missing, and IP bans cover CIDR ranges.
 
 ---
 
@@ -97,12 +127,13 @@ The media subsystem lives in **OpenVibe.Media**:
 - `npm start` — start the server.
 - `npm run dev` — start in development mode (`NODE_ENV=development`).
 - `npm run init-db` — initialize the SQLite database schema.
+- `npm test` — every test in `test/` (see Acceptance).
 
 ---
 
 ## Quick start
 
-Requirements: Node.js 18+, npm, FFmpeg, a running OpenVibe.Network, and (for media features) a running OpenVibe.Media. Linux preferred for production.
+Requirements: Node.js 22, npm, FFmpeg, a running OpenVibe.Network, and (for media features) a running OpenVibe.Media. Linux preferred for production.
 
 ```bash
 npm install
@@ -115,11 +146,13 @@ Minimum `.env`: `BASE_URL`, `JWT_SECRET`, `OV_NETWORK_URL`, `OV_NETWORK_INTERNAL
 
 ---
 
-## Deployment
+## Deploy
 
-- Production path `/opt/openvibe.live`, env file `/etc/openvibe/live.env` (0600), unit `openvibe-live.service` (see `deploy/systemd/`).
-- `deploy/scripts/deploy.sh` runs `ovhost deploy live` (OpenVibe.Host, strategy `release-layout`), with `deploy-legacy.sh` (the previous script) as its fallback: static-only deploys never restart; server changes restart behind the systemd socket with readiness checks and rollback. Details: [docs/deploy.md](docs/deploy.md).
-- nginx config at `deploy/nginx/openvibe.live.conf` (`openvibe.live`, `www.openvibe.live`, `ingest.openvibe.live`; certs `/etc/letsencrypt/live/openvibe.live/`).
+- **Production**: release layout under `/opt/openvibe.live` (`current` → `releases/<time>-<sha>`); env `/etc/openvibe/live.env` (0600) plus the unit's `Environment=`; unit `openvibe-live.service` on the systemd socket `127.0.0.1:3000`.
+- **Deploy on the host**: `sudo ovhost deploy live --wait-idle` (OpenVibe.Host, strategy `release-layout`; `deploy/scripts/deploy.sh` wraps it). Static-only changes do not restart; server changes restart behind the socket with readiness checks, and a failed release rolls back to the previous one. `ovhost` also announces the release on Events.
+- **Rollback**: `sudo ovhost rollback live --wait-idle` (the previous release), or `--to <sha>` for a known one. Details: [docs/deploy.md](docs/deploy.md).
+- **nginx**: `deploy/nginx/openvibe.live.conf` (`openvibe.live`, `www.openvibe.live`, `ingest.openvibe.live`, `whip.openvibe.live`).
+- **After a deploy**: `npm run n-1:record` refreshes the N-1 compatibility fixtures from the release in production.
 
 ---
 
