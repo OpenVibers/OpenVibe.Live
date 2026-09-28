@@ -1,13 +1,13 @@
 {
  "service": "live",
- "release": "278cd4047e57f4a4849b2adde497894a4f985445",
- "recorded_at": "2026-09-28T04:07:09.526Z",
+ "release": "6c2d06be8c23190943ef707612ec5860e20cd49e",
+ "recorded_at": "2026-09-28T12:07:23.822Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "278cd4047e57",
-  "released_at": "2026-09-28T04:06:08.000Z",
-  "booted_at": "2026-09-28T04:07:06.288Z",
+  "release": "6c2d06be8c23",
+  "released_at": "2026-09-28T12:07:03.000Z",
+  "booted_at": "2026-09-28T12:07:21.730Z",
   "contracts_version": "0.71.0",
   "packages": {
    "openvibe-shared": "1.25.0",
@@ -18,15 +18,15 @@
   "components": {
    "styles": {
     "kind": "style",
-    "version": "a8f6301f7132"
+    "version": "3541841dcad1"
    },
    "shell": {
     "kind": "script",
-    "version": "993366592027"
+    "version": "9f70e1a08829"
    },
    "server": {
     "kind": "server",
-    "version": "b503b8e604e1"
+    "version": "ba5b0cf52397"
    }
   },
   "assets": {
@@ -91,9 +91,9 @@
     "integrity": "sha384-qxjHx5W7yoUfDcK9M8DcVBKQX2YcR+sHHeGwpKNYrg6zM9tjKFsrcXfB4FvHcuUC"
    },
    "/css/features/home.css": {
-    "url": "/css/features/home.css?v=52249fa8d30a",
+    "url": "/css/features/home.css?v=1ad791c8688e",
     "component": "styles",
-    "integrity": "sha384-a5G7379pPDZ/TQCvTf/MlHZJJeaY7fFs/MCdRfHPrHlqSPZjSmvPWk3C29+WttOB"
+    "integrity": "sha384-uN5rbnwcWjnN9VN9zoHKUSQzbY53XLO+In2cVle2w1wkVDMMVphjAdhSbeNhEM5P"
    },
    "/css/features/media.css": {
     "url": "/css/features/media.css?v=dea567ff26e8",
@@ -7079,7 +7079,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/features/home.css?v=52249fa8d30a",
+   "path": "/css/features/home.css?v=1ad791c8688e",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7222,6 +7222,28 @@
   },
   {
    "method": "GET",
+   "path": "/docs/go-live-in-your-browser",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "html",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/docs/broadcasting",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "html",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
    "path": "/@n1star",
    "auth": "anon",
    "accept": "html",
@@ -7300,6 +7322,17 @@
   {
    "method": "GET",
    "path": "/content?type=pastes",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "html",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/broadcast",
    "auth": "anon",
    "accept": "html",
    "status": 200,
