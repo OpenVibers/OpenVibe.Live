@@ -1,7 +1,7 @@
 {
  "service": "live",
- "release": "b0cc2ef4f8a57c9624b88af64a6aa4bd1e425279",
- "recorded_at": "2026-09-28T03:24:54.229Z",
+ "release": "278cd4047e57f4a4849b2adde497894a4f985445",
+ "recorded_at": "2026-09-28T04:07:09.526Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "user_version": 0,
  "schema": [
@@ -257,19 +257,19 @@
   "schema_migrations": [
    {
     "id": "001_vibes_decimal_to_bits",
-    "applied_at": "2026-09-28 03:24:49",
+    "applied_at": "2026-09-28 04:07:05",
     "mode": "adopted",
     "duration_ms": 0
    },
    {
     "id": "002_pastes_ai_columns",
-    "applied_at": "2026-09-28 03:24:49",
+    "applied_at": "2026-09-28 04:07:05",
     "mode": "applied",
-    "duration_ms": 7
+    "duration_ms": 6
    },
    {
     "id": "004_hot_path_indexes",
-    "applied_at": "2026-09-28 03:24:49",
+    "applied_at": "2026-09-28 04:07:05",
     "mode": "applied",
     "duration_ms": 1
    }
