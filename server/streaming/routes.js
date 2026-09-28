@@ -2377,8 +2377,9 @@ router.post('/:id/follow', requireAuth, async (req, res) => {
                     externalId: 'u' + req.user.id,
                 });
             } catch { /* non-critical */ }
-            // Notify the followed user
-            try {
+            // Notify the followed user. A follow Network took notifies there (its follow graph sends FOLLOW);
+            // only a Live-only follow (FOLLOWS_AUTHORITY unset, or a side with no subject) is pushed from here.
+            if (!w.network) try {
                 const { pushNotification, actorInfo } = require('../utils/notify');
                 const follower = db.getUserById(req.user.id);
                 pushNotification({
@@ -2425,8 +2426,8 @@ router.post('/channel/:username/follow', requireAuth, async (req, res) => {
                     externalId: 'u' + req.user.id,
                 });
             } catch { /* non-critical */ }
-            // Notify the followed user
-            try {
+            // Notify the followed user, unless Network took the follow and notifies (see the route above).
+            if (!w.network) try {
                 const { pushNotification, actorInfo } = require('../utils/notify');
                 const follower = db.getUserById(req.user.id);
                 pushNotification({

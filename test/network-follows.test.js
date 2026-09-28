@@ -69,6 +69,10 @@ link.run(1, '101', ANN); link.run(2, '102', BOB); link.run(3, '103', CAT);
         const body = routes.slice(routes.indexOf(route), routes.indexOf(route) + 1200);
         assert.ok(body.indexOf('writeThrough(') > 0 && body.indexOf('writeThrough(') < body.indexOf('db.followUser('), `${route} writes Network first`);
         assert.match(body, /if \(!w\.ok\) return res\.status\(503\)/);
+        // A follow Network took is notified by Network (FOLLOW from its follow graph); Live pushes only a Live-only one.
+        const whole = routes.slice(routes.indexOf(route), routes.indexOf('\nrouter.', routes.indexOf(route) + 1));
+        assert.match(whole, /if \(!w\.network\) try \{\s*const \{ pushNotification/, `${route} leaves a Network follow's notification to Network`);
+        assert.strictEqual((whole.match(/type: 'FOLLOW'/g) || []).length, 1);
     }
     // Live subscribes to the follow events.
     assert.match(fs.readFileSync(path.join(__dirname, '..', 'scripts', 'subscribe-media-events.js'), 'utf8'), /'network\.follow\.created', 'network\.follow\.deleted'/);
