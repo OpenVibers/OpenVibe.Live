@@ -211,9 +211,30 @@ function _ffprobeHasAudio(src) {
     });
 }
 
+/**
+ * One window of a recording, transcribed by OpenVibe.AI (live.media.transcribe; roadmap WS-O task 2): AI reads the
+ * recording where it lies (range requests, nothing downloaded), loudness-normalises it and runs whisper.cpp with the
+ * same models; low power while streams are live. → { ok, segments, error }
+ */
+async function _aiWindow(src, start, len) {
+    const aiService = require('./ai-service');
+    const r = await aiService.run('live.media.transcribe', {
+        media_url: src, language: 'en', start_sec: start, seconds: Math.max(0, Math.round(len)), low_power: require('./transcribe').isLowPower(),
+    }, { waitMs: 60000, pollMs: 20 * 60000 });
+    const out = aiService.usable(r);
+    if (!out) return { ok: false, segments: [], error: (r && r.error && (r.error.code || r.error.detail)) || 'OpenVibe.AI did not transcribe' };
+    return { ok: true, segments: (out.segments || []).filter(g => g && g.text).map(g => ({ start: Number(g.start) || 0, end: Number(g.end) || 0, text: String(g.text) })), error: null };
+}
+
 async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments = null, onWindow = null } = {}) {
     const transcribe = require('./transcribe');
-    if (!transcribe.available()) return { text: '', segments: [], ok: false, error: 'whisper unavailable' };
+    // Recordings on Media are transcribed by OpenVibe.AI; only a local file (legacy) is still decoded here.
+    const viaAi = /^https?:\/\//i.test(String(src || '')) && require('./ai-service').enabled();
+    if (!viaAi && !transcribe.available()) return { text: '', segments: [], ok: false, error: 'whisper unavailable' };
+    if (viaAi && duration > 0 && duration <= 200) {
+        const w = await _aiWindow(src, 0, 0);
+        return { text: w.segments.map(g => g.text).join(' ').replace(/\s+/g, ' ').trim(), segments: w.segments, ok: w.ok, error: w.error };
+    }
     if (duration > 0 && duration <= 200) {
         return await transcribe.transcribeMediaDetailed(src, { seconds: 0, timeoutMs: 300000 });
     }
@@ -244,8 +265,17 @@ async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments
         windows.length = MAX_WINDOWS;
     }
     for (const start of windows) {
-        const wav = _tmp('wav');
         const len = Math.min(WINDOW_SEC, total - start);
+        if (viaAi) {
+            const w = await _aiWindow(src, start, len);
+            if (w.ok) anyOk = true; else lastErr = w.error || lastErr;
+            if (w.segments.length) segments.push(...w.segments);
+            if (w.ok && typeof onWindow === 'function') {
+                try { await onWindow(Math.min(total, start + len), segments); } catch { /* progress is best-effort */ }
+            }
+            continue;
+        }
+        const wav = _tmp('wav');
         const ffOk = await _runFf('ffmpeg', ['-y', '-ss', String(start), '-i', src, '-t', String(len), '-vn', '-ac', '1', '-ar', '16000', '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-f', 'wav', wav], 180000);
         if (ffOk) {
             const r = await transcribe.transcribeWavDetailed(wav, { timeoutMs: 600000, offsetSec: start });

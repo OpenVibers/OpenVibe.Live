@@ -74,7 +74,7 @@ async function _fetchJson(method, path, body, timeoutMs, retried = false) {
  * Run a workflow and wait for it. Returns the run object (any terminal status) or null.
  * opts: { target, attribution, idempotencyKey, waitMs (default 60s), timeoutMs }
  */
-async function run(workflow, input, { target, attribution, idempotencyKey, waitMs = 60000, credentialSubject = null } = {}) {
+async function run(workflow, input, { target, attribution, idempotencyKey, waitMs = 60000, pollMs = 0, credentialSubject = null } = {}) {
     if (!enabled()) return null;
     const wait = Math.max(0, Math.min(60000, waitMs));
     const created = await _fetchJson('POST', `/api/v1/runs?wait=${wait}`, {
@@ -83,8 +83,9 @@ async function run(workflow, input, { target, attribution, idempotencyKey, waitM
     }, wait + 15000);
     let r = created && created.run;
     if (!r) return null;
-    // Still queued/running after the wait: poll briefly (the service caps a wait at 60 s).
-    const deadline = Date.now() + wait;
+    // Still queued/running after the wait: poll (the service caps a wait at 60 s; pollMs keeps polling longer,
+    // for work like a transcript window that takes minutes).
+    const deadline = Date.now() + Math.max(wait, Math.min(30 * 60000, Number(pollMs) || 0));
     while (!TERMINAL.has(r.status) && Date.now() < deadline) {
         await new Promise(res => setTimeout(res, 1000));
         const again = await _fetchJson('GET', `/api/v1/runs/${encodeURIComponent(r.id)}`, null, 15000);

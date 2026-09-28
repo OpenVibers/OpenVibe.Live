@@ -328,4 +328,6 @@ function describe() {
     };
 }
 
-module.exports = { available, describe, laneStatus, multilingualModel, transcribeWav, transcribeWavDetailed, transcribeMedia, transcribeMediaDetailed, killActive, setLowPower };
+function isLowPower() { return _lowPower; }
+
+module.exports = { available, describe, laneStatus, multilingualModel, transcribeWav, transcribeWavDetailed, transcribeMedia, transcribeMediaDetailed, killActive, setLowPower, isLowPower };
