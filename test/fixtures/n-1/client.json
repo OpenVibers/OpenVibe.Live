@@ -1,16 +1,16 @@
 {
  "service": "live",
- "release": "068d55974b59c1486e0070f67fbff23a9c9eddc2",
- "recorded_at": "2026-09-28T12:16:02.588Z",
+ "release": "a825d8069fabbe79511df77a7f75e3568859ed4d",
+ "recorded_at": "2026-09-28T23:50:44.753Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "068d55974b59",
-  "released_at": "2026-09-28T12:15:25.000Z",
-  "booted_at": "2026-09-28T12:16:00.559Z",
+  "release": "a825d8069fab",
+  "released_at": "2026-09-28T23:50:03.000Z",
+  "booted_at": "2026-09-28T23:50:41.722Z",
   "contracts_version": "0.71.0",
   "packages": {
-   "openvibe-shared": "1.25.0",
+   "openvibe-shared": "1.28.1",
    "openvibe-sdk": "0.16.0"
   },
   "min_client_release": null,
@@ -18,11 +18,11 @@
   "components": {
    "styles": {
     "kind": "style",
-    "version": "3541841dcad1"
+    "version": "10e2fa18ee51"
    },
    "shell": {
     "kind": "script",
-    "version": "8e41550a116c"
+    "version": "5233008c6e24"
    },
    "server": {
     "kind": "server",
@@ -91,9 +91,9 @@
     "integrity": "sha384-qxjHx5W7yoUfDcK9M8DcVBKQX2YcR+sHHeGwpKNYrg6zM9tjKFsrcXfB4FvHcuUC"
    },
    "/css/features/home.css": {
-    "url": "/css/features/home.css?v=1ad791c8688e",
+    "url": "/css/features/home.css?v=c495944b036b",
     "component": "styles",
-    "integrity": "sha384-uN5rbnwcWjnN9VN9zoHKUSQzbY53XLO+In2cVle2w1wkVDMMVphjAdhSbeNhEM5P"
+    "integrity": "sha384-poS2WEg9Kh/pM1fOTTEcqDg2iIeRS1kkdeeX8PKPUq3hpZ6ko0iyhSJY/SA+rf03"
    },
    "/css/features/media.css": {
     "url": "/css/features/media.css?v=dea567ff26e8",
@@ -7079,7 +7079,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/features/home.css?v=1ad791c8688e",
+   "path": "/css/features/home.css?v=c495944b036b",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7387,7 +7387,7 @@
   },
   {
    "method": "GET",
-   "path": "/shared/navbar.js?v=b50d9f47fc34",
+   "path": "/shared/navbar.js?v=b3aef18429d0",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7486,7 +7486,7 @@
   },
   {
    "method": "GET",
-   "path": "/shared/footer.js?v=b99e512398d5",
+   "path": "/shared/footer.js?v=a85ab893be88",
    "auth": "anon",
    "accept": "html",
    "status": 200,
