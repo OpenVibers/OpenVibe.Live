@@ -1,7 +1,7 @@
 {
  "service": "live",
- "release": "06cf38b12faa92ce5ee8bc335ce5f0110b1c6537",
- "recorded_at": "2026-09-27T23:24:15.723Z",
+ "release": "1954db28342bea96c9ccdb70f7b9d9aedcc24f7a",
+ "recorded_at": "2026-09-28T00:40:15.292Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "user_version": 0,
  "schema": [
@@ -27,7 +27,7 @@
   "CREATE TABLE camera_profiles (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    user_id INTEGER NOT NULL,\n    stream_id INTEGER,                      -- NULL = global profile\n    name TEXT NOT NULL,\n    onvif_url TEXT NOT NULL,                -- e.g., http://192.168.1.100:8080\n    username TEXT NOT NULL,\n    password_hash TEXT NOT NULL,            -- bcrypt hashed\n    pan_speed REAL DEFAULT 0.5,             -- 0.0-1.0\n    tilt_speed REAL DEFAULT 0.5,\n    zoom_speed REAL DEFAULT 0.5,\n    is_active INTEGER DEFAULT 1,\n    last_connected DATETIME,\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,\n    FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE CASCADE\n)",
   "CREATE TABLE cameras (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    stream_id INTEGER NOT NULL,\n    camera_index INTEGER DEFAULT 0,\n    label TEXT DEFAULT 'Main',\n    protocol TEXT DEFAULT 'jsmpeg',\n    jsmpeg_video_port INTEGER,\n    jsmpeg_audio_port INTEGER,\n    webrtc_room_id TEXT,\n    is_active INTEGER DEFAULT 1,\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n    FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE CASCADE\n)",
   "CREATE TABLE channel_ai_bots (\n            id INTEGER PRIMARY KEY AUTOINCREMENT,\n            channel_user_id INTEGER NOT NULL,       -- the streamer (owner)\n            username TEXT NOT NULL,\n            display_name TEXT,\n            avatar_color TEXT DEFAULT '#8a8aff',\n            source TEXT DEFAULT 'ambient',          -- 'ambient' | 'clone'\n            cloned_from_kind TEXT,                   -- 'user' | 'relay' | NULL\n            cloned_from_ref TEXT,                    -- user_id (string) or \"platform:username\"\n            persona_json TEXT DEFAULT '{}',          -- character + typing style + identity\n            brain_json TEXT DEFAULT '{}',            -- rolling condensed memory + short timeline\n            is_active INTEGER DEFAULT 1,\n            msg_count INTEGER DEFAULT 0,\n            last_active_at DATETIME,\n            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n            FOREIGN KEY (channel_user_id) REFERENCES users(id) ON DELETE CASCADE\n        )",
-  "CREATE TABLE channel_ai_config (\n            user_id INTEGER PRIMARY KEY,\n            enabled INTEGER DEFAULT 0,\n            num_ambient_bots INTEGER DEFAULT 3,\n            pacing_seconds INTEGER DEFAULT 45,\n            persona TEXT DEFAULT '',\n            transcribe_enabled INTEGER DEFAULT 0,\n            vision_enabled INTEGER DEFAULT 0,\n            use_shared_key INTEGER DEFAULT 1,        -- 1 = OpenVibe.Live shared key (capped), 0 = BYO\n            daily_budget_cents INTEGER DEFAULT 20,   -- shared-key daily cap\n            byo_key TEXT DEFAULT '',\n            byo_base_url TEXT DEFAULT '',\n            byo_model TEXT DEFAULT 'gpt-4o-mini',\n            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, settings_json TEXT DEFAULT '{}',\n            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE\n        )",
+  "CREATE TABLE channel_ai_config (\n            user_id INTEGER PRIMARY KEY,\n            enabled INTEGER DEFAULT 0,\n            num_ambient_bots INTEGER DEFAULT 3,\n            pacing_seconds INTEGER DEFAULT 45,\n            persona TEXT DEFAULT '',\n            transcribe_enabled INTEGER DEFAULT 0,\n            vision_enabled INTEGER DEFAULT 0,\n            use_shared_key INTEGER DEFAULT 1,        -- 1 = OpenVibe.Live shared key (capped), 0 = BYO\n            daily_budget_cents INTEGER DEFAULT 20,   -- shared-key daily cap\n            byo_key TEXT DEFAULT '',\n            byo_base_url TEXT DEFAULT '',\n            byo_model TEXT DEFAULT 'gpt-4o-mini',\n            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, settings_json TEXT DEFAULT '{}', byo_in_ai INTEGER DEFAULT 0,\n            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE\n        )",
   "CREATE TABLE channel_moderation_settings (\n    channel_id INTEGER PRIMARY KEY,\n    slow_mode_seconds INTEGER DEFAULT 0,\n    followers_only INTEGER DEFAULT 0,\n    emote_only INTEGER DEFAULT 0,\n    allow_anonymous INTEGER DEFAULT 1,\n    links_allowed INTEGER DEFAULT 1,\n    gifs_enabled INTEGER DEFAULT 1,\n    account_age_gate_hours INTEGER DEFAULT 0,\n    caps_percentage_limit INTEGER DEFAULT 0,\n    aggressive_filter INTEGER DEFAULT 0,\n    max_message_length INTEGER DEFAULT 500,\n    slur_filter_enabled INTEGER DEFAULT 0,\n    slur_filter_use_builtin INTEGER DEFAULT 1,\n    slur_filter_terms TEXT DEFAULT '',\n    slur_filter_regexes TEXT DEFAULT '',\n    slur_filter_nudge_message TEXT DEFAULT '',\n    slur_filter_disabled_categories TEXT DEFAULT '[]',\n    ip_approval_mode INTEGER DEFAULT 0,\n    soundboard_enabled INTEGER DEFAULT 1,\n    soundboard_allow_pitch INTEGER DEFAULT 1,\n    soundboard_allow_speed INTEGER DEFAULT 1,\n    soundboard_banned_ids TEXT DEFAULT '',\n    viewer_auto_delete_enabled INTEGER DEFAULT 1,\n    viewer_delete_all_enabled INTEGER DEFAULT 1,\n    custom_emotes_enabled INTEGER DEFAULT 1,   -- viewers may upload gif/png emotes for this channel\n    custom_sounds_enabled INTEGER DEFAULT 1,   -- viewers may upload !sound commands for this channel\n    max_sound_seconds INTEGER DEFAULT 10,      -- max duration of an uploaded channel sound\n    uploads_mods_only INTEGER DEFAULT 0,       -- restrict emote/sound uploads to channel mods\n    mods_can_edit_about INTEGER DEFAULT 0,     -- allow channel mods to edit the streamer's About/panels\n    donation_sound_url TEXT,                   -- on-disk path to the streamer's donation alert sound\n    donation_sound_mime TEXT,\n    goal_sound_url TEXT,                       -- optional override sound for goal-reached\n    goal_sound_mime TEXT,\n    emote_scale INTEGER DEFAULT 100,           -- emote display size in chat, percent (50-300)\n    sub_only INTEGER DEFAULT 0,                -- only active subscribers (and the channel's moderators) may chat\n    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, tts_max_length INTEGER DEFAULT 200, sound_min_speed REAL DEFAULT 0.5, sound_max_speed REAL DEFAULT 3.0, sound_min_pitch_cents INTEGER DEFAULT -1200, sound_max_pitch_cents INTEGER DEFAULT 1200, emote_size_min INTEGER DEFAULT 50, emote_size_max INTEGER DEFAULT 200, sounds_mods_only INTEGER DEFAULT 0,\n    FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE\n)",
   "CREATE TABLE channel_moderators (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    channel_id INTEGER NOT NULL,\n    user_id INTEGER NOT NULL,\n    added_by INTEGER NOT NULL,\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n    UNIQUE(channel_id, user_id),\n    FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,\n    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,\n    FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL\n)",
   "CREATE TABLE channel_points (\n            user_id INTEGER NOT NULL,\n            streamer_id INTEGER NOT NULL,\n            balance INTEGER NOT NULL DEFAULT 0,\n            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n            PRIMARY KEY (user_id, streamer_id)\n        )",
@@ -257,19 +257,19 @@
   "schema_migrations": [
    {
     "id": "001_vibes_decimal_to_bits",
-    "applied_at": "2026-09-27 23:24:11",
+    "applied_at": "2026-09-28 00:40:10",
     "mode": "adopted",
     "duration_ms": 0
    },
    {
     "id": "002_pastes_ai_columns",
-    "applied_at": "2026-09-27 23:24:11",
+    "applied_at": "2026-09-28 00:40:10",
     "mode": "applied",
     "duration_ms": 5
    },
    {
     "id": "004_hot_path_indexes",
-    "applied_at": "2026-09-27 23:24:11",
+    "applied_at": "2026-09-28 00:40:10",
     "mode": "applied",
     "duration_ms": 0
    }
@@ -345,6 +345,7 @@
   "DELETE FROM site_settings WHERE key = 'ai_viewers_engine'",
   "DELETE FROM site_settings WHERE key = 'powerchat_site_user_id'",
   "DELETE FROM site_settings WHERE key = ?",
+  "DELETE FROM site_settings WHERE key IN ('ai_api_key', 'ai_provider', 'ai_base_url', 'ai_model', 'ai_model_chat', 'ai_model_vision', 'ai_model_director', 'ai_model_summary', 'ai_pricing_json', 'ai_input_cost_per_mtok', 'ai_output_cost_per_mtok', 'ai_image_enabled', 'ai_image_model', 'ai_image_quality', 'ai_image_cost_usd')",
   "DELETE FROM site_settings WHERE key IN ('auto_clip_backfill','auto_clip_log','daily_easter_egg','home_hero_moments','home_hero_slogans') OR key LIKE 'ai_whole_overview_%'",
   "DELETE FROM stream_controls WHERE stream_id = ? AND (control_type != ? OR control_type IS NULL)",
   "DELETE FROM stream_memories WHERE id NOT IN ( SELECT id FROM ( SELECT id, ROW_NUMBER() OVER ( PARTITION BY stream_id, offset_seconds ORDER BY LENGTH(COALESCE(description,'')) DESC, (transcript_json IS NOT NULL) DESC, id DESC) AS rn FROM stream_memories) WHERE rn = 1)",
@@ -368,8 +369,6 @@
   "INSERT INTO app_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP",
   "INSERT INTO arena_beefs (a_user_id, b_user_id, on_clock, clock_until, ends_at, feed_json, opener_line, rematch, bounty_topic_id, headline) VALUES (?, ?, 'b', ?, ?, '[]', ?, ?, NULL, ?)",
   "INSERT INTO arena_mic_moments (user_id, stream_id, vod_id, sec, kind, target_user_id, beef_id, aimed_at, text, about, quality, announcer, said_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))",
-  "INSERT INTO arena_profiles (user_id, image_error, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET image_error = excluded.image_error, updated_at = CURRENT_TIMESTAMP",
-  "INSERT INTO arena_profiles (user_id, image_path, image_prompt, image_model, image_generated_at, image_error, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET image_path = excluded.image_path, image_prompt = excluded.image_prompt, image_model = excluded.image_model, image_generated_at = CURRENT_TIMESTAMP, image_error = NULL, updated_at = CURRENT_TIMESTAMP",
   "INSERT INTO arena_profiles (user_id, persona_json, persona_model, persona_generated_at, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET persona_json = excluded.persona_json, persona_model = excluded.persona_model, persona_generated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP",
   "INSERT INTO arena_profiles (user_id, quotes_json, quotes_generated_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET quotes_json = excluded.quotes_json, quotes_generated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP",
   "INSERT INTO arena_profiles (user_id, stats_json, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET stats_json = excluded.stats_json, updated_at = CURRENT_TIMESTAMP",
@@ -694,7 +693,7 @@
   "SELECT COALESCE(SUM(cost_usd),0) AS c FROM ai_usage WHERE created_at >= date('now')",
   "SELECT COALESCE(SUM(cost_usd),0) AS c FROM ai_usage WHERE owner_user_id = ? AND created_at >= date('now')",
   "SELECT COALESCE(SUM(cost_usd),0) AS c FROM ai_usage WHERE owner_user_id = ? AND created_at >= date('now') AND source = ?",
-  "SELECT COALESCE(SUM(cost_usd),0) AS c FROM ai_usage WHERE source = ? AND COALESCE(provider,'shared') = 'shared' AND created_at >= date('now')",
+  "SELECT COALESCE(SUM(cost_usd),0) AS c FROM ai_usage WHERE source = ? AND COALESCE(provider,'shared') <> 'byo' AND created_at >= date('now')",
   "SELECT COALESCE(SUM(duration_seconds), 0) AS sec FROM streams WHERE user_id = ? AND duration_seconds > 0 AND id IN (SELECT DISTINCT stream_id FROM stream_timeline_events WHERE user_id = ? AND created_at >= datetime('now', ?))",
   "SELECT COALESCE(SUM(minutes_watched), 0) AS count FROM watch_time",
   "SELECT COALESCE(SUM(openvibe_bucks_balance), 0) as c FROM users",
@@ -918,8 +917,6 @@
   "SELECT id FROM streams WHERE is_live = 1 AND protocol NOT IN ('rtmp', 'jsmpeg')",
   "SELECT id FROM streams WHERE managed_stream_id = ? AND is_live = 1 AND id != ?",
   "SELECT id FROM streams WHERE managed_stream_id = ? AND is_live = 1 LIMIT 1",
-  "SELECT id FROM streams WHERE user_id = ? AND duration_seconds > 0 ORDER BY started_at DESC LIMIT 6",
-  "SELECT id FROM streams WHERE user_id = ? AND is_live = 1 ORDER BY started_at DESC LIMIT 1",
   "SELECT id FROM streams WHERE user_id = ? ORDER BY id DESC LIMIT 1",
   "SELECT id FROM themes WHERE slug = ?",
   "SELECT id FROM user_themes WHERE user_id = ?",
@@ -979,7 +976,6 @@
   "SELECT m.*, u.username, u.display_name, u.avatar_url, u.profile_color FROM dm_messages m JOIN users u ON u.id = m.sender_id WHERE m.conversation_id = ? ORDER BY m.created_at DESC LIMIT ?",
   "SELECT m.id AS msid, m.title, m.slug, m.user_id, s.id AS stream_id, s.is_live FROM managed_streams m LEFT JOIN streams s ON s.managed_stream_id = m.id AND s.is_live = 1 WHERE m.id = ?",
   "SELECT m.text, m.quality, m.said_at, m.aimed_at, u.username, u.display_name FROM arena_mic_moments m JOIN users u ON u.id = m.user_id WHERE m.said_at >= ? AND m.quality >= 7 ORDER BY m.quality DESC, m.said_at DESC LIMIT 3",
-  "SELECT m.thumbnail_url FROM stream_memories m WHERE m.user_id = ? AND m.thumbnail_url LIKE 'http%' AND (LOWER(m.description) LIKE '%person%' OR LOWER(m.description) LIKE '%face%' OR LOWER(m.description) LIKE '%wearing%' OR LOWER(m.description) LIKE '%headphones%') ORDER BY m.id DESC LIMIT 3",
   "SELECT ma.*, actor.username AS actor_username, target.username AS target_username FROM moderation_actions ma LEFT JOIN users actor ON ma.actor_user_id = actor.id LEFT JOIN users target ON ma.target_user_id = target.id WHERE ma.scope_type = ? AND ma.scope_id = ? ORDER BY ma.created_at DESC LIMIT ? OFFSET ?",
   "SELECT media_id FROM search_media_pushes WHERE kind = ? AND deleted = 0",
   "SELECT message FROM chat_messages WHERE stream_id = ? AND COALESCE(is_deleted, 0) = 0 AND message IS NOT NULL AND message <> '' AND timestamp >= datetime('now', ?) ORDER BY timestamp DESC LIMIT ?",
@@ -993,7 +989,6 @@
   "SELECT ns.enabled FROM news_settings ns WHERE ns.scope = 'user' AND ns.scope_id = (SELECT user_id FROM streams WHERE id = ?) AND ns.source_id = '_master'",
   "SELECT o.*, u.username, u.display_name FROM streamer_overviews o JOIN users u ON u.id = o.user_id ORDER BY o.generated_at DESC LIMIT ?",
   "SELECT offset_seconds, description, tags, thumbnail_url, captured_at, transcript_json FROM stream_memories WHERE stream_id = ? ORDER BY offset_seconds ASC LIMIT 400",
-  "SELECT offset_seconds, description, thumbnail_url FROM stream_memories WHERE stream_id = ? ORDER BY CASE WHEN LOWER(description) LIKE '%person%' OR LOWER(description) LIKE '%man %' OR LOWER(description) LIKE '%woman%' OR LOWER(description) LIKE '%face%' OR LOWER(description) LIKE '%wearing%' OR LOWER(description) LIKE '%headphones%' THEN 0 ELSE 1 END, id DESC LIMIT 4",
   "SELECT offset_seconds, transcript_json FROM stream_memories WHERE stream_id = ? AND transcript_json IS NOT NULL ORDER BY offset_seconds ASC",
   "SELECT overview, overview_short, generated_at FROM streamer_overviews WHERE user_id = ?",
   "SELECT payload, generated_at FROM ai_timeline_cache WHERE user_id = ?",
@@ -1062,6 +1057,7 @@
   "SELECT strftime('%s', sampled_at) AS t, viewers, live_streams FROM viewer_samples WHERE sampled_at >= datetime('now', ?) ORDER BY sampled_at ASC",
   "SELECT subject_id FROM linked_accounts WHERE service = 'network' AND user_id = ?",
   "SELECT subject_id FROM linked_accounts WHERE user_id = ? AND service = 'network' AND subject_id IS NOT NULL ORDER BY id DESC LIMIT 1",
+  "SELECT subject_id FROM linked_accounts WHERE user_id = ? AND service = 'network' AND subject_id IS NOT NULL ORDER BY id LIMIT 1",
   "SELECT subject_id, service_user_id FROM linked_accounts WHERE service = 'network' AND user_id = ?",
   "SELECT t.*, fu.username AS from_username, fu.display_name AS from_display, tu.username AS to_username, tu.display_name AS to_display FROM transactions t LEFT JOIN users fu ON t.from_user_id = fu.id LEFT JOIN users tu ON t.to_user_id = tu.id WHERE t.from_user_id = ? OR t.to_user_id = ? ORDER BY t.created_at DESC LIMIT ?",
   "SELECT t.*, u.id as uid, u.username, u.display_name, u.role, u.profile_color, u.avatar_url, u.is_banned, u.ban_reason FROM api_tokens t JOIN users u ON t.user_id = u.id WHERE t.token_hash = ? AND t.is_active = 1",
@@ -1082,7 +1078,6 @@
   "SELECT text, start_sec, vod_id FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' ORDER BY start_sec DESC LIMIT 14",
   "SELECT thread_id, access_id FROM comment_thread_refs WHERE content_type = ? AND content_id = ?",
   "SELECT thumbnail_url FROM streams WHERE id = ?",
-  "SELECT thumbnail_url FROM streams WHERE user_id = ? AND thumbnail_url LIKE 'http%' ORDER BY started_at DESC LIMIT 3",
   "SELECT title, category, is_live, is_nsfw FROM streams WHERE user_id = ? ORDER BY id DESC LIMIT 1",
   "SELECT transcript_attempts AS a FROM clip_ai_state WHERE clip_id = ?",
   "SELECT transcript_attempts AS a FROM vod_ai_state WHERE vod_id = ?",
