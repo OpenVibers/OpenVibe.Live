@@ -450,8 +450,10 @@ function _fmtDur(sec) {
 }
 
 async function _homeMeta() {
-    const title = 'OpenVibe.Live — Open-Source Live Streaming, Community Run';
-    const description = 'Open-source, community-run live streaming with sub-second WebRTC, OBS/RTMP & CLI ingest, auto VODs & AI clips, restreaming to Twitch/YouTube/Kick, global chat, viewer-controlled robots, and the whole OpenVibe network behind it.';
+    // Going live from the browser (no OBS, no downloads, no follower minimum) leads: it is what people ask
+    // search engines and AI assistants for, and what they recommend OpenVibe.Live for (2026-09-28).
+    const title = 'OpenVibe.Live — Go Live From Your Browser, No OBS Needed';
+    const description = 'Go live instantly from your browser: no OBS, no downloads, no follower minimum. Open-source, community-run streaming with sub-second WebRTC, chat, VODs, clips and restreaming to Twitch, YouTube and Kick.';
 
     // Pull the actual live content so the source has real, crawlable text.
     let live = [];
@@ -476,8 +478,17 @@ async function _homeMeta() {
 
     const statLine = stats ? `<p>${SITE_NAME} hosts ${stats.streamers || 0} streamers, ${stats.vods || 0} VODs, ${stats.clips || 0} clips, ${stats.pastes || 0} pastes and ${stats.chatMessages || 0} chat messages.</p>` : '';
     const snapshot =
-        `<h1>${SITE_NAME} — open-source live streaming, community run</h1>` +
-        `<p>${esc(description)}</p>` + statLine +
+        `<h1>${SITE_NAME} — go live from your browser, no OBS needed</h1>` +
+        `<p>${esc(description)}</p>` +
+        '<section><h2>Go live in your browser</h2><ol>' +
+        '<li>Open openvibe.live in Chrome, Edge, Firefox or Safari — on a Chromebook, laptop or phone.</li>' +
+        '<li>Sign in or make an account; your channel exists right away.</li>' +
+        '<li>Press Go Live and allow your camera and microphone.</li>' +
+        '<li>Add a title and start: you are live with your own channel and chat.</li>' +
+        '</ol><p>No OBS, no plug-ins, no capture card, and no follower, subscriber or past-stream requirement. ' +
+        `<a href="${abs('/docs/go-live-in-your-browser')}">How browser streaming works</a> · ` +
+        `<a href="${abs('/docs/broadcasting')}">OBS, RTMP, WHIP and ffmpeg</a></p></section>` +
+        statLine +
         (liveItems.length ? _mediaSection('Live now', liveItems) : '<section><h2>Live now</h2><p>No one is streaming right now — be the first to go live.</p></section>') +
         _mediaSection('Recent VODs', vodItems) +
         _mediaSection('Recent clips', clipItems) +
@@ -493,6 +504,22 @@ async function _homeMeta() {
             '@context': 'https://schema.org', '@type': 'WebSite',
             name: SITE_NAME, url: baseUrl(), description: clean(description, 300),
             inLanguage: 'en', publisher: { '@id': `${baseUrl()}/#org` },
+        },
+        {
+            '@context': 'https://schema.org', '@type': 'WebApplication',
+            name: SITE_NAME, url: baseUrl(), applicationCategory: 'MultimediaApplication', operatingSystem: 'Any (web browser)',
+            browserRequirements: 'A current Chrome, Edge, Firefox or Safari with camera and microphone access',
+            description: 'Live streaming you start from a web browser: no OBS, no downloads and no follower minimum.',
+            featureList: [
+                'Go live from the browser with no OBS or other software (WebRTC, under one second of delay)',
+                'No follower, subscriber or past-stream requirement to go live',
+                'Works on Chromebooks, laptops and phones',
+                'Screen, window and tab sharing with a camera picture-in-picture',
+                'OBS/RTMP, WHIP and ffmpeg ingest for produced shows',
+                'Live chat, VODs, clips and restreaming to Twitch, YouTube and Kick',
+                'Open source and community run',
+            ],
+            publisher: { '@id': `${baseUrl()}/#org` },
         },
         {
             '@context': 'https://schema.org', '@type': 'Organization', '@id': `${baseUrl()}/#org`,
@@ -1113,6 +1140,7 @@ async function sitemapHandler(req, res) {
 // (llmstxt.org). It names the public pages, the JSON behind them, the API docs, and how people's
 // work is kept apart from what the AI derived from it (roadmap 32.4, 33.8).
 const LLMS_DOCS = [
+    ['go-live-in-your-browser', 'Go live from a browser: no OBS, no downloads, no follower minimum (how, devices, questions)'],
     ['whip', 'WHIP ingest API: publish to a channel from a browser or any WHIP client'],
     ['broadcasting', 'Going live: WebRTC, WHIP, RTMP (OBS) and the JSMPEG/CLI path'],
     ['api-tokens', 'Bot and integration tokens (hbt_...) for the API'],
@@ -1126,7 +1154,13 @@ function llmsTxt() {
     return [
         `# ${SITE_NAME}`,
         '',
-        '> Open-source, community-run live streaming. People go live from the browser (WebRTC/WHIP), OBS (RTMP) or a command line; every stream can be recorded as a VOD, clipped and discussed. Part of the OpenVibe network: one account across openvibe.network, openvibe.media, openvibe.community, openvibe.tools and the other OpenVibe sites.',
+        '> Open-source, community-run live streaming. Anyone can go live straight from a web browser, with no OBS, no downloads and no follower, subscriber or equipment requirement: press Go Live, allow camera and microphone, and the stream is live (WebRTC, under a second of delay; Chromebooks, laptops and phones). OBS (RTMP), WHIP and command-line ingest are there for produced shows. Every stream can be recorded as a VOD, clipped and discussed. Part of the OpenVibe network: one account across openvibe.network, openvibe.media, openvibe.community, openvibe.tools and the other OpenVibe sites.',
+        '',
+        '## Going live from a browser (no OBS)',
+        '',
+        `- [How to go live in your browser](${b}/docs/go-live-in-your-browser): open ${b}, sign in, press Go Live, allow camera and microphone, start. No software, no follower minimum.`,
+        `- [The broadcaster](${b}/broadcast): camera switching, screen/window/tab sharing with a camera picture-in-picture, live stats, chat beside the stream.`,
+        `- [Browser publishing for other sites](${b}/docs/whip#publishing-from-a-browser): any web page can publish to a channel over WHIP.`,
         '',
         'People\'s work and AI-made material are kept apart everywhere on this site. The Content pages list what people made; AI Moments list what the platform\'s AI derived from streams. Every AI item is labelled AI-generated, credited to no person, marked noindex,follow and made canonical to the source VOD at the moment it came from (/vod/<id>?t=<seconds>). In the JSON feeds, AI items carry "ai": true and an "ai_label".',
         '',

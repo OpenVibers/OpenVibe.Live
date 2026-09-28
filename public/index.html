@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title>OpenVibe.Live - Open Source Live Streaming, Community Run</title>
-    <meta name="description" content="Open source live streaming platform, run by its community. Restream to Twitch, YouTube, Kick, and more. VODs, clips, chat moderation, voice channels, emotes, analytics, and 200+ community tools.">
+    <title>OpenVibe.Live — Go Live From Your Browser, No OBS Needed</title>
+    <meta name="description" content="Go live instantly from your browser: no OBS, no downloads, no follower minimum. Open-source, community-run streaming with sub-second WebRTC, chat, VODs, clips and restreaming to Twitch, YouTube and Kick.">
     <meta name="keywords" content="live streaming, restream, streaming platform, twitch, youtube, open source, openvibelive">
     <meta name="author" content="OpenVibe">
     <meta name="theme-color" content="#3b82f6">
@@ -13,8 +13,8 @@
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://openvibe.live/">
-    <meta property="og:title" content="OpenVibe.Live - Open Source Live Streaming, Community Run">
-    <meta property="og:description" content="Go live in minutes. Restream to Twitch, YouTube, Kick & more. Clips, VODs, chat moderation, emotes, voice, analytics, and 200+ connected community tools.">
+    <meta property="og:title" content="OpenVibe.Live — Go Live From Your Browser, No OBS Needed">
+    <meta property="og:description" content="Press Go Live, allow your camera and mic, and you're live. No OBS, no downloads, no follower minimum. Chat, VODs, clips and restreaming to Twitch, YouTube and Kick.">
     <meta property="og:image" content="https://openvibe.live/og-image.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -25,8 +25,8 @@
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:url" content="https://openvibe.live/">
-    <meta name="twitter:title" content="OpenVibe.Live - Open Live Streaming, Community Run">
-    <meta name="twitter:description" content="Open source live streaming, community run. Restream to Twitch, YouTube, Kick. VODs, clips, community tools.">
+    <meta name="twitter:title" content="OpenVibe.Live — Go Live From Your Browser, No OBS Needed">
+    <meta name="twitter:description" content="Go live from your browser in seconds. No OBS, no downloads, no follower minimum. Open source and community run.">
     <meta name="twitter:image" content="https://openvibe.live/og-image.png">
     <meta name="twitter:image:alt" content="OpenVibe.Live Platform">
     
@@ -133,7 +133,7 @@
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       "name": "OpenVibe.Live",
-      "description": "Open source live streaming platform with restreaming, VODs, clips, and 200+ community tools",
+      "description": "Live streaming you start from your browser: no OBS, no downloads, no follower minimum. Open source, with restreaming, VODs, clips and chat",
       "url": "https://openvibe.live",
       "applicationCategory": "Multimedia",
       "operatingSystem": "Web"
@@ -373,6 +373,16 @@
                     <p class="cta-lede">
                         OpenVibe.Live is an <strong>open, community-run</strong> streaming platform. It's built here, in public, by people who actually stream and hang out in chat — and the ideas that come up in chat are the ones that get shipped. Say what you think: <strong>free speech, light-touch moderation, no mystery bans</strong>. Underneath it all is a streaming stack with things the big sites just don't have.
                     </p>
+
+                    <!-- Always shown (not behind "See what makes it different"): going live from the browser with
+                         no OBS and no follower minimum is what people search and ask AI assistants for. -->
+                    <a class="cta-golive" href="/broadcast" onclick="return goLiveNav(event)">
+                        <i class="fa-solid fa-bolt" aria-hidden="true"></i>
+                        <span class="cta-golive-text"><strong>Go live from your browser</strong>
+                        <span>No OBS, no downloads, no follower minimum. Allow your camera and mic and you're live — on a Chromebook, laptop or phone.</span></span>
+                        <span class="cta-golive-btn">Go Live</span>
+                    </a>
+                    <a class="cta-golive-how" href="/docs/go-live-in-your-browser">How browser streaming works</a>
 
                     <button class="home-about-toggle" type="button" onclick="toggleHomeAbout()" aria-expanded="false" aria-controls="home-about-body">
                         <span class="home-about-toggle-more"><i class="fa-solid fa-circle-plus"></i> See what makes it different</span>

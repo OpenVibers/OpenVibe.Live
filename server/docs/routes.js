@@ -226,6 +226,10 @@ function publicBase() {
 
 function renderPage({ name, title, html, headings }) {
     const pageTitle = title ? `${title} — OpenVibe.Live Docs` : 'OpenVibe.Live Docs';
+    // The first paragraph is the page's summary for search engines and link previews.
+    const firstP = /<p>([\s\S]*?)<\/p>/.exec(html);
+    const description = firstP ? firstP[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim().slice(0, 300) : '';
+    const canonical = `${publicBase()}/docs${name === 'README' ? '' : `/${name}`}`;
     const toc = headings.length
         ? `<nav class="toc" aria-label="On this page">${headings.map(h => `<a href="#${h.id}">${escapeHtml(h.text)}</a>`).join('')}</nav>`
         : '';
@@ -236,7 +240,13 @@ function renderPage({ name, title, html, headings }) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${escapeHtml(pageTitle)}</title>
     <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
-    <link rel="canonical" href="${escapeHtml(`${publicBase()}/docs${name === 'README' ? '' : `/${name}`}`)}">
+    <link rel="canonical" href="${escapeHtml(canonical)}">${description ? `
+    <meta name="description" content="${escapeHtml(description)}">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="OpenVibe.Live">
+    <meta property="og:title" content="${escapeHtml(title || 'OpenVibe.Live Docs')}">
+    <meta property="og:description" content="${escapeHtml(description)}">
+    <meta property="og:url" content="${escapeHtml(canonical)}">` : ''}
     <style>
         :root { --bg: #0d0d0f; --bg-2: #16161a; --bg-3: #1e1e24; --text: #e8e6e3; --text-2: #9a9a9a; --muted: #666;
                 --accent: #8b5cf6; --accent-light: #a78bfa; --border: #2a2a32; }

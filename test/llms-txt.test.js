@@ -55,6 +55,13 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         }
     });
 
+    await check('leads with going live from a browser: no OBS, no follower minimum', () => {
+        const summary = text.split('\n').find((l) => l.startsWith('> '));
+        assert.match(summary, /straight from a web browser, with no OBS, no downloads and no follower/);
+        assert.ok(text.includes('## Going live from a browser (no OBS)'));
+        assert.ok(text.includes('https://openvibe.live/docs/go-live-in-your-browser)'));
+    });
+
     await check('links the API docs, and every docs page it links exists', () => {
         assert.ok(text.includes('[API docs](https://openvibe.live/documentation)'));
         const linked = [...text.matchAll(/https:\/\/openvibe\.live\/docs\/([a-z-]+)\)/g)].map((m) => m[1]);

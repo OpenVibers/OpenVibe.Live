@@ -90,6 +90,11 @@ const { _renderPage: renderPage } = require('../server/docs/routes');
 const shell = renderPage({ name: 'whip', title: 'WHIP', html: '<p>x</p>', headings: [] });
 assert.deepStrictEqual(shell.match(/<link rel="canonical"[^>]*>/g), ['<link rel="canonical" href="https://openvibe.live/docs/whip">']);
 assert.ok(renderPage({ name: 'README', title: '', html: '', headings: [] }).includes('<link rel="canonical" href="https://openvibe.live/docs">'), 'the index is /docs');
+// The first paragraph is the page's meta description (search results, link previews and AI crawlers).
+const described = renderPage({ name: 'go-live-in-your-browser', title: 'Go live', html: '<h1>Go live</h1>\n<p>Start in your <strong>browser</strong> &amp; go.</p><p>later</p>', headings: [] });
+assert.ok(described.includes('<meta name="description" content="Start in your browser &amp; go.">'), described.slice(0, 900));
+assert.ok(described.includes('<meta property="og:url" content="https://openvibe.live/docs/go-live-in-your-browser">'));
+assert.ok(!renderPage({ name: 'x', title: 'X', html: '<h2>no paragraph</h2>', headings: [] }).includes('name="description"'), 'no paragraph, no description');
 assert.ok(shell.includes('<link rel="icon" type="image/svg+xml" href="/assets/logo.svg">'));
 assert.ok(fs.existsSync(path.join(__dirname, '..', 'public', 'assets', 'logo.svg')), 'the icon file exists');
 console.log('✅ page shell: canonical and icon');
