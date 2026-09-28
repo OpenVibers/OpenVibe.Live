@@ -252,15 +252,8 @@ function buildConfig(registryValues) {
             minCashoutBucks: parseInt(process.env.MIN_CASHOUT_BUCKS || '500', 10), // $5.00
             escrowDays: parseInt(process.env.ESCROW_HOLD_DAYS || '14', 10),
         },
-        vod: {
-            path: paths.dir('VOD_PATH', 'vods'),
-            coldPath: process.env.COLD_STORAGE_PATH || '',
-            clipsPath: paths.dir('CLIPS_PATH', 'clips'),
-            maxSizeMb: parseInt(process.env.MAX_VOD_SIZE_MB || '2048', 10),
-        },
-        thumbnails: {
-            path: paths.dir('THUMBNAILS_PATH', 'thumbnails'),
-        },
+        // VOD, clip and thumbnail files live in OpenVibe.Media; the pre-Media VOD_PATH, CLIPS_PATH, THUMBNAILS_PATH and
+        // COLD_STORAGE_PATH settings are gone (shim C-74). MAX_VOD_SIZE_MB still caps uploads (media-proxy/vods.js).
         emotes: {
             path: paths.dir('EMOTES_PATH', 'emotes'),
             maxSizeKb: parseInt(process.env.MAX_EMOTE_SIZE_KB || '2048', 10),
