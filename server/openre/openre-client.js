@@ -15,10 +15,13 @@
  *   OPENRE_EVENTS_SECRET  the signing secret of Live's OpenVibe.Events subscription to openre.*
  */
 const { createServiceTokenClient } = require('openvibe-sdk/auth');
+const { createClient, OpenVibeError } = require('openvibe-sdk/core');
+const { createOpenReClient } = require('openvibe-sdk/openre');
 
+// The calls themselves are openvibe-sdk/openre (SDK 0.16.0), shared with every product that uses OpenRe; this
+// module keeps Live's configuration (env), its on/off switch and the names the rest of Live calls.
 const TIMEOUT_MS = 5000;
-let tokens = null;
-const cache = new Map(); // playback descriptors, 10 s
+let sdk = null;
 
 function settings() {
     return {
@@ -40,88 +43,67 @@ class OpenReError extends Error {
     constructor(message, status, body) { super(message); this.status = status || 0; this.body = body || null; this.code = body && body.code; }
 }
 
-function tokenClient() {
-    const s = settings();
-    if (!tokens || tokens._for !== `${s.clientId}@${s.networkInternalUrl}`) {
-        tokens = createServiceTokenClient({ tokenUrl: `${s.networkInternalUrl}/oauth/token`, clientId: s.clientId, clientSecret: s.clientSecret, audience: 'openvibe.openre' });
-        tokens._for = `${s.clientId}@${s.networkInternalUrl}`;
-    }
-    return tokens;
-}
-
-async function request(method, path, { body, subject, timeoutMs = TIMEOUT_MS } = {}) {
+/** The SDK client for the current settings (rebuilt when they change: tests and rollbacks flip OPENRE_URL). */
+function openre() {
     if (!enabled()) throw new OpenReError('OpenRe integration is not configured (OPENRE_URL, OV_OAUTH_CLIENT_SECRET)', 0);
     const s = settings();
-    const headers = { Accept: 'application/json', Authorization: `Bearer ${await tokenClient().getToken()}` };
-    if (subject) headers['X-OV-Subject'] = subject;
-    if (body !== undefined) headers['Content-Type'] = 'application/json';
-    let res;
-    let text = '';
-    try {
-        res = await fetch(`${s.url}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
-        text = await res.text().catch(() => '');
-    } catch (err) {
-        throw new OpenReError(`OpenRe unreachable (${method} ${path}): ${err.message}`, 0);
+    const key = `${s.url}|${s.publicUrl}|${s.clientId}@${s.networkInternalUrl}`;
+    if (!sdk || sdk.key !== key) {
+        const tokens = createServiceTokenClient({ tokenUrl: `${s.networkInternalUrl}/oauth/token`, clientId: s.clientId, clientSecret: s.clientSecret, audience: 'openvibe.openre' });
+        const client = createClient({ tokenProvider: tokens, baseUrls: { openre: s.url }, timeoutMs: TIMEOUT_MS, retries: 1 });
+        sdk = { key, api: createOpenReClient(client, { publicUrl: s.publicUrl }), client };
     }
-    let json = null;
-    if (text) { try { json = JSON.parse(text); } catch { json = null; } }
-    if (!res.ok) throw new OpenReError((json && (json.detail || json.error)) || `OpenRe ${res.status} on ${method} ${path}`, res.status, json);
-    return json;
+    return sdk.api;
+}
+
+/** SDK errors keep Live's OpenReError shape (status, body, code) for the routes that answer with them. */
+async function wrap(what, fn) {
+    try { return await fn(); } catch (err) {
+        if (err instanceof OpenReError) throw err;
+        if (err instanceof OpenVibeError || (err && err.name === 'OpenVibeError')) {
+            const body = err.problem || (err.code ? { code: err.code, detail: err.detail || err.message } : null);
+            throw new OpenReError(err.status ? (err.detail || err.message) : `OpenRe unreachable (${what}): ${err.message}`, err.status || 0, body);
+        }
+        throw new OpenReError(`OpenRe unreachable (${what}): ${err.message}`, 0);
+    }
+}
+
+/** A raw call, for anything the SDK client does not name yet. */
+async function request(method, path, { body, subject, timeoutMs = TIMEOUT_MS } = {}) {
+    openre();
+    return wrap(`${method} ${path}`, () => sdk.client.json({ service: 'openre', audience: 'openvibe.openre', method, path, json: body, timeoutMs,
+        headers: subject ? { 'X-OV-Subject': subject } : {} }));
 }
 
 /** The OpenRe stream definition serving a Live slot, or null. */
-async function streamForSlot(managedStreamId) {
-    const r = await request('GET', `/api/v1/streams?external_ref=${encodeURIComponent(`live:managed_stream:${managedStreamId}`)}`);
-    return (r && r.streams && r.streams[0]) || null;
-}
+const streamForSlot = (managedStreamId) => wrap('stream lookup', () => openre().streams.byExternalRef(`live:managed_stream:${managedStreamId}`));
 
 /** Create the definition for a slot, owned by the streamer's canonical subject. The key it
  *  returns is dropped unseen: the streamer gets a usable key by rotating. */
 async function createStreamForSlot(slot, { subject, recordingMode, recordingVisibility }) {
-    const r = await request('POST', '/api/v1/streams', {
-        subject,
-        body: {
-            title: slot.title || 'Stream',
-            recording_mode: recordingMode,
-            recording_visibility: recordingVisibility,
-            mirror_to_live: true,
-            external_refs: [
-                { service: 'live', type: 'managed_stream', id: String(slot.id), label: slot.slug || slot.title || null },
-                { service: 'live', type: 'user', id: String(slot.user_id), label: slot.username || null },
-            ],
-        },
-    });
+    const r = await wrap('stream create', () => openre().streams.create({
+        title: slot.title || 'Stream',
+        recording_mode: recordingMode,
+        recording_visibility: recordingVisibility,
+        mirror_to_live: true,
+        external_refs: [
+            { service: 'live', type: 'managed_stream', id: String(slot.id), label: slot.slug || slot.title || null },
+            { service: 'live', type: 'user', id: String(slot.user_id), label: slot.username || null },
+        ],
+    }, { subject }));
     return r.stream;
 }
 
-async function rotateKey(streamId, { subject, graceSeconds = 0 } = {}) {
-    return request('POST', `/api/v1/streams/${encodeURIComponent(streamId)}/keys/rotate`, { subject, body: { grace_seconds: graceSeconds } });
-}
-
-async function getStream(streamId, { subject } = {}) {
-    const r = await request('GET', `/api/v1/streams/${encodeURIComponent(streamId)}`, { subject });
-    return r.stream;
-}
-
-async function getSession(sessionId) {
-    const r = await request('GET', `/api/v1/sessions/${encodeURIComponent(sessionId)}`);
-    return r.session;
-}
-
-/** Playback descriptor for a session (cached 10 s: the FLV proxy asks on every viewer connect). */
-async function playback(sessionId) {
-    const hit = cache.get(sessionId);
-    if (hit && hit.at > Date.now() - 10000) return hit.value;
-    const r = await request('GET', `/api/v1/sessions/${encodeURIComponent(sessionId)}/playback`);
-    cache.set(sessionId, { at: Date.now(), value: r.playback });
-    if (cache.size > 500) for (const [k, v] of cache) if (v.at < Date.now() - 60000) cache.delete(k);
-    return r.playback;
-}
+const rotateKey = (streamId, { subject, graceSeconds = 0 } = {}) => wrap('key rotate', () => openre().streams.rotateKey(streamId, { subject, graceSeconds }));
+const getStream = (streamId, { subject } = {}) => wrap('stream read', () => openre().streams.get(streamId, { subject }));
+const getSession = (sessionId) => wrap('session read', () => openre().sessions.get(sessionId));
+/** Playback descriptor for a session (the SDK caches it 10 s: the FLV proxy asks on every viewer connect). */
+const playback = (sessionId) => wrap('playback', () => openre().sessions.playback(sessionId));
 
 function manageUrl(streamId) {
     return `${settings().publicUrl}/streams/${encodeURIComponent(streamId || '')}`;
 }
 
-function _reset() { tokens = null; cache.clear(); }
+function _reset() { sdk = null; }
 
 module.exports = { enabled, settings, request, streamForSlot, createStreamForSlot, rotateKey, getStream, getSession, playback, manageUrl, OpenReError, _reset };
