@@ -410,6 +410,8 @@ app.locals.analytics = analytics;
 if (!drill.enabled) app.use(analytics.middleware());
 
 app.use('/api/', apiLimiter);
+// Per-actor limits on writes, by the person behind the token (server/net/actor-limits.js; roadmap WS-R task 4).
+if (!drill.enabled) app.use('/api/', require('./net/actor-limits').createLiveActorLimits({ registry: metricsRegistry }));
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/avatar', uploadLimiter);
