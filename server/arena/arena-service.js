@@ -275,32 +275,6 @@ function gatherContext(userId) {
     return ctx;
 }
 
-const PERSONA_SCHEMA = {
-    name: 'arena_persona',
-    schema: {
-        type: 'object', additionalProperties: false,
-        required: ['fighter_name', 'title', 'class', 'element', 'signature_move', 'special', 'weakness', 'taunt', 'taunts', 'typing_style', 'spoken_as', 'custom_stats', 'lore', 'catchphrase', 'entrance_music', 'stat_quips'],
-        properties: {
-            fighter_name: { type: 'string', description: 'Arena ring name, 2–5 words, based on the streamer' },
-            title: { type: 'string', description: 'Epithet like "The Midnight Menace of Cozy Corner"' },
-            class: { type: 'string', description: 'Fighting-game archetype, e.g. Grappler, Zoner, Rushdown, Summoner, Bard, Tank' },
-            element: { type: 'string', description: 'Single word element/vibe' },
-            signature_move: { type: 'object', additionalProperties: false, required: ['name', 'description'], properties: { name: { type: 'string' }, description: { type: 'string' } } },
-            special: { type: 'object', additionalProperties: false, required: ['name', 'description'], properties: { name: { type: 'string' }, description: { type: 'string' } } },
-            weakness: { type: 'string' }, taunt: { type: 'string', description: 'Their signature ragebait line: one sentence, written EXACTLY the way this person types/talks (their punctuation, caps, slang, emoji habits, typos), aimed at rivals or their chat, designed to make people reply' },
-            taunts: { type: 'array', minItems: 3, maxItems: 3, items: { type: 'string' }, description: 'three more ragebait/troll lines in their own voice: one at a specific rival from the roster, one at their own chat, one about a topic they will not shut up about' },
-            typing_style: { type: 'string', description: '≤ 12 words describing how they TALK on mic (e.g. "mumbles, calls everyone bud, yells at chat every 30 seconds")' },
-            custom_stats: { type: 'array', minItems: 6, maxItems: 6, items: { type: 'object', additionalProperties: false, required: ['name', 'value', 'quip'], properties: { name: { type: 'string', description: '≤ 14 chars, a stat that only makes sense for THIS person — named after their actual bits, habits, subjects, gear, rivals, the way they talk (e.g. "Alt Accounts", "Tent Smell", "Baby Voice", "Reads Chat", "Cope")' }, value: { type: 'integer', minimum: 1, maximum: 99 }, quip: { type: 'string', description: '≤ 8 words, in their own speaking voice' } } }, description: 'six CHARACTERISTICS unique to this streamer for their radar — read from what they SAY ON MIC (things_they_said_on_stream, their_best_shit_talk, who_they_call_out, what_they_rant_at) and their channel (ai_overview, what the camera saw): the bits they run, what they will not shut up about, how they treat chat, their rivals, their gear obsession, their schedule. Names must be specific to THEM (never generic like "Hype" or "Skill"), funny, ragebait-ish; values honestly spread (at least one under 30, at least one over 85) and the quip explains the number in their voice.' },
-            spoken_as: { type: 'array', minItems: 2, maxItems: 6, items: { type: 'string' }, description: 'how OTHER people say or mishear this streamer\'s name out loud, as a speech-to-text engine would write it: nicknames, shortenings, phonetic misspellings, the handle split into words (e.g. "japanese old guy", "matticus", "goose lee", "dan") — lowercase' },
-            lore: { type: 'string', description: '2–3 sentence character-select bio' }, catchphrase: { type: 'string' }, entrance_music: { type: 'string' },
-            stat_quips: { type: 'object', additionalProperties: false, required: STAT_KEYS, properties: Object.fromEntries(STAT_KEYS.map(k => [k, { type: 'string', description: `≤ 8 words explaining their ${k} rating in character` }])) },
-        },
-    },
-};
-const PERSONA_SYSTEM = `You write fighting-game "character select" bios for a live-streaming site's Arena — a battle-cam where streamers talk shit about each other ON MIC and the mic is the only thing that counts. Be savage, profane, petty and funny — roast their habits, their chat, their schedule, their takes, their gimmicks, the way they talk. Trolling energy is welcome; make it quotable.
-VOICE COMES FIRST, AND IT COMES FROM WHAT THEY SAY. The PRIMARY sources are \`things_they_said_on_stream\` (verbatim speech-to-text, newest first — expect noise), \`their_best_shit_talk\` (their judged spiciest lines, with who they were aimed at), \`who_they_call_out\`, \`who_calls_them_out\`, \`what_they_rant_at\` and \`quotes\`. Their streaming profile (\`ai_overview\`, titles, what the camera saw) is SECONDARY flavor. Copy how they actually talk: their rhythm, pet phrases, how they address chat, how they curse, whether they mumble or yell, sentence length. A taunt must read like something THEY would actually say into the mic — not a movie trailer, not a wrestling promo, no invented catchphrases, never repeat a word for effect, no "watch me"/"try to keep up" filler.
-TAUNTS ARE THE MOST IMPORTANT PART. They must be RAGEBAIT in that voice: provocative, trolly, specific, petty — the kind of line that makes a rival pull up on stream or a chat reply instantly. Reference their real recurring subjects, rivals from the roster, the people they keep calling out and their obsessions. stat_quips are ALSO in their voice (≤ 8 words each, how THEY would describe that stat). If there is almost no transcript data, infer the voice from the overview and say so in typing_style.
-This platform does not censor language — offensive and taboo words are allowed. The only hard line: no direct threats of violence, nothing sexual about minors, no doxxing. Everything is Arena lore, not real-life claims. Output only the JSON.`;
 
 async function generatePersona(userId, { force = false } = {}) {
     ensureTables();
@@ -321,11 +295,11 @@ async function generatePersona(userId, { force = false } = {}) {
         their_best_shit_talk: ctx.shit_talk || [], who_they_call_out: ctx.called_out || [], who_calls_them_out: ctx.called_out_by || [], what_they_rant_at: ctx.aimed_at || [], quotes: ctx.quotes || [], mic_style: ctx.mic_style || null,
         roster_rivals: (() => { try { return loadRoster().order.filter(id => id !== userId).slice(0, 8).map(id => { const p = parseJson(profileRow(id)?.persona_json); return `${loadRoster().byId[id].user.username}${p?.fighter_name ? ` (${p.fighter_name})` : ''}`; }); } catch { return []; } })(),
     };
-    const r = await llm.complete({ role: 'summary', kind: 'arena_persona', source: 'arena', ownerUserId: userId, system: PERSONA_SYSTEM, user: `Write the Arena persona for this fighter. Facts (JSON):\n${JSON.stringify(facts)}`, json: PERSONA_SCHEMA, maxTokens: 1200, temperature: 0.95, timeoutMs: 30000 });
-    const persona = r && r.json && r.json.fighter_name ? r.json : null;
+    // The bio's rules and shape are OpenVibe.AI's versioned template live.arena.persona (WS-O task 2); Live sends the facts.
+    const persona = await require('../ai/ai-service').structured('live.arena.persona', { facts }, { meter: { kind: 'arena_persona', role: 'summary', ownerUserId: userId, source: 'arena' } });
     if (!persona) { console.warn(`[Arena] persona generation failed for user ${userId}`); return row ? parseJson(row.persona_json) : null; }
     db.run(`INSERT INTO arena_profiles (user_id, persona_json, persona_model, persona_generated_at, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            ON CONFLICT(user_id) DO UPDATE SET persona_json = excluded.persona_json, persona_model = excluded.persona_model, persona_generated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP`, [userId, JSON.stringify(persona), r.model || null]);
+            ON CONFLICT(user_id) DO UPDATE SET persona_json = excluded.persona_json, persona_model = excluded.persona_model, persona_generated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP`, [userId, JSON.stringify(persona), 'openvibe-ai:live.arena.persona']);
     console.log(`[Arena] persona for ${entry.user.username}: "${persona.fighter_name}" (${persona.class})`);
     return persona;
 }
@@ -358,8 +332,6 @@ function quoteCandidates(userId, limit = 90) {
     for (let i = 0; i < rest.length && picked.length < limit; i += step) picked.push(rest[i]);
     return picked;
 }
-const QUOTES_SCHEMA = { name: 'arena_quotes', schema: { type: 'object', additionalProperties: false, required: ['picks', 'walkout', 'voice_verdict', 'mic_style'], properties: { picks: { type: 'array', minItems: 1, maxItems: 6, items: { type: 'object', additionalProperties: false, required: ['index', 'why'], properties: { index: { type: 'integer' }, why: { type: 'string' } } } }, walkout: { type: 'integer' }, voice_verdict: { type: 'string' }, mic_style: { type: 'string' } } } };
-const QUOTES_SYSTEM = `You pick the most quotable lines a live-streamer actually said, from raw speech-to-text (expect transcription noise). Choose lines that are funny, savage, unhinged, weirdly profound, or perfect trash talk out of context — swearing and disrespect are a plus. Offensive or taboo language is allowed on this platform and is not a reason to skip a line. Skip only direct threats of violence, anything sexual about minors, doxxing, and lines that are pure transcription garbage. Prefer complete sentences. Return indexes into the list you are given. Output only the JSON.`;
 function materializeQuotes(candidates, sel) {
     const pick = (i, why) => { const c = candidates[i]; return c && !isBannedText(c.text) ? { text: c.text, stream_id: c.stream_id, vod_id: c.vod_id, start_sec: Math.max(0, Math.floor(Number(c.start_sec) || 0) - 2), why } : null; };
     const picks = (sel.picks || []).map(p => pick(p.index, p.why)).filter(Boolean);
@@ -374,8 +346,9 @@ async function generateQuotes(userId, { force = false } = {}) {
     let result = null;
     if (aiOn()) {
         try {
-            const r = await llm.complete({ role: 'summary', kind: 'arena_quotes', source: 'arena', ownerUserId: userId, system: QUOTES_SYSTEM, user: `Lines (index: text):\n${candidates.map((c, i) => `${i}: ${c.text}`).join('\n')}`, json: QUOTES_SCHEMA, maxTokens: 500, temperature: 0.7, timeoutMs: 30000 });
-            if (r && r.json && Array.isArray(r.json.picks)) result = materializeQuotes(candidates, r.json);
+            // The picking rules are OpenVibe.AI's versioned template live.arena.quotes (WS-O task 2); Live sends the lines.
+            const sel = await require('../ai/ai-service').structured('live.arena.quotes', { lines: candidates.map(c => String(c.text).slice(0, 400)).slice(0, 120) }, { meter: { kind: 'arena_quotes', role: 'summary', ownerUserId: userId, source: 'arena' } });
+            if (sel && Array.isArray(sel.picks)) result = materializeQuotes(candidates, sel);
         } catch (e) { console.warn('[Arena] quotes:', e.message); }
     }
     if (!result || !result.picks.length) result = materializeQuotes(candidates, { picks: candidates.slice(0, 5).map((c, i) => ({ index: i, why: 'straight from the transcript' })), walkout: 0 });

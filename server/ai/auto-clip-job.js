@@ -16,6 +16,7 @@
  * off (a much stronger chat spike is then required).
  */
 const db = require('../db/database');
+const aiService = require('./ai-service');
 const ai = require('./ai-analysis');
 const media = require('../media-client');
 const recorder = require('../streaming/recorder');
@@ -68,44 +69,25 @@ async function _confirmLiveMoment(stream) {
     const memories = (db.getStreamMemories(stream.id) || []).filter(m => m.description).slice(-5);
     const transcript = (db.getStreamTranscriptSegments(stream.id) || []).slice(-14);
     const chat = db.getRecentChatText(stream.id, WINDOW_SEC, 40) || [];
-    const scene = memories.map(m => `- ${_clean(m.description, 160)}`).join('\n');
-    // Timestamps are now used, not discarded: recent speech is anchored in time so the
-    // model can line up what was said with the sounds and the chat spike.
-    const _mmss = (n) => `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, '0')}`;
-    const script = transcript.map(s => `- [${_mmss(s.start || 0)}] ${_clean(s.text, 140)}`).join('\n');
-    // Sound events are a strong clip signal on their own — a burst of gunfire, an
-    // explosion or laughter is exactly the kind of thing viewers clip, and it is often
-    // the reason chat spiked in the first place.
+    if (!_aiOn()) return { clip: null }; // caller decides via the stricter no-AI threshold
+    // Sound events are a strong clip signal on their own — a burst of gunfire, an explosion or laughter is exactly
+    // the kind of thing viewers clip, and it is often the reason chat spiked in the first place.
     let sounds = [];
     try {
         const since = Math.max(0, ((Date.now() - new Date(stream.started_at + 'Z').getTime()) / 1000) - WINDOW_SEC);
         sounds = (db.getTimeline(stream.id, { kind: 'sound', from: since, limit: 40 }) || [])
             .filter(e => Number(e.confidence || 0) >= 0.4).slice(-12);
     } catch { /* timeline optional */ }
-    const soundBlock = sounds.map(e => `- [${_mmss(e.start_sec || 0)}] ${e.label} (${Number(e.confidence || 0).toFixed(2)})`).join('\n');
-    const chatBlock = chat.slice(-30).map(c => `- ${_clean(c, 100)}`).join('\n');
-    if (!_aiOn()) return { clip: null }; // caller decides via the stricter no-AI threshold
-
-    const prompt = `A live stream just had a spike in chat activity — viewers reacted to something. Decide if this is a genuinely clip-worthy standout moment (funny, dramatic, surprising, hype) worth auto-clipping, or just routine chatter.
-
-ON SCREEN (recent scene notes):
-${scene || '(none)'}
-
-WHAT WAS SAID (recent transcript):
-${script || '(none)'}
-
-WHAT WAS HEARD (non-speech sounds detected):
-${soundBlock || '(none)'}
-
-CHAT (recent messages):
-${chatBlock || '(none)'}
-
-Return STRICT JSON only: {"clip": true|false, "title": "<specific punchy 3-8 word title>", "desc": "<one vivid sentence>"}. Set clip=false if nothing genuinely notable is happening.`;
+    // The decision rules are OpenVibe.AI's versioned template live.clips.confirm (WS-O task 2); Live sends what it saw,
+    // heard and read, with times so the model can line up speech, sounds and the chat spike.
     try {
-        const text = await ai.summarizeText(prompt, 220, 'auto_clip_confirm');
-        const m = text && text.match(/\{[\s\S]*\}/);
-        if (!m) return { clip: false };
-        const j = JSON.parse(m[0]);
+        const j = await aiService.structured('live.clips.confirm', {
+            scene: memories.map(m => _clean(m.description, 160)).filter(Boolean).slice(0, 40),
+            transcript: transcript.map(x => ({ t: Math.max(0, Number(x.start) || 0), text: _clean(x.text, 140) })).filter(x => x.text).slice(-60),
+            sounds: sounds.map(e => ({ t: Math.max(0, Number(e.start_sec) || 0), label: String(e.label || '').slice(0, 120), confidence: Number(e.confidence || 0) })),
+            chat: chat.slice(-30).map(c => _clean(c, 100)).filter(Boolean),
+        }, { target: { service: 'live', type: 'stream', id: String(stream.id) }, meter: { kind: 'auto_clip_confirm', role: 'legacy', ownerUserId: stream.user_id } });
+        if (!j) return { clip: false };
         return { clip: j.clip === true, title: _clean(j.title, 80), desc: _clean(j.desc, 400) };
     } catch { return { clip: false }; }
 }

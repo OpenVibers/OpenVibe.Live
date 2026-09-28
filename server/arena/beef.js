@@ -83,13 +83,14 @@ function mic() { return require('./mic'); }
 function isLive(userId) { return !!db.get('SELECT 1 FROM streams WHERE user_id = ? AND is_live = 1 LIMIT 1', [userId]); }
 function nowIso() { return new Date().toISOString(); }
 function nameOf(userId) { return mic().nameOf(userId); }
-const HEADLINE_SCHEMA = { name: 'arena_headline', schema: { type: 'object', additionalProperties: false, required: ['headline'], properties: { headline: { type: 'string', description: '≤ 100 chars, tabloid, inflammatory but funny, names both fighters' } } } };
 async function headlineFor(kind, ctx) {
     try {
         const llm = require('../ai/llm');
         if (!(llm.isEnabled() && llm.withinBudget())) return null;
-        const r = await llm.complete({ role: 'chat', kind: 'arena_headline', source: 'arena', system: 'You write tabloid headlines for a streaming site\'s trash-talk arena: inflammatory, funny, screenshot-able, names both fighters, ≤ 100 chars. Profanity and disrespect welcome; this platform does not censor language. Hard line: no direct threats of violence, no doxxing. Output only the JSON.', user: JSON.stringify({ kind, ...ctx }), json: HEADLINE_SCHEMA, maxTokens: 80, temperature: 1.0, timeoutMs: 15000 });
-        return r && r.json && r.json.headline ? String(r.json.headline).slice(0, 120) : null;
+        // The headline rules are OpenVibe.AI's versioned template live.arena.headline (WS-O task 2).
+        const event = kind === 'open' || kind === 'forfeit' ? kind : 'score';   // a draw or a points win is a score
+        const out = await require('../ai/ai-service').structured('live.arena.headline', { kind: event, ...ctx }, { meter: { kind: 'arena_headline', role: 'chat', source: 'arena' } });
+        return out && out.headline ? String(out.headline).slice(0, 120) : null;
     } catch { return null; }
 }
 function templateHeadline(kind, ctx) {
