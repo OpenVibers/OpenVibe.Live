@@ -86,6 +86,19 @@ const last = (wf) => runs.filter((r) => r.workflow === wf).pop();
         const pool = JSON.parse(db.getState('home_hero_slogans'));
         assert.ok(pool.audiences.includes('crouton fans 0') && !pool.audiences.some((a) => /free/.test(a)), 'the no-free rule still applies');
         assert.ok(pool.audiences.includes('coders'), '"live streaming for" is stripped');
+        // Chat messages go to live.chat.global / live.chat.profile as data, in the shape AI formats.
+        const now = Date.parse('2026-09-28T01:00:00Z');
+        const data = require('../server/ai/chat-ai')._msgData([
+            { username: 'goosely', is_global: 1, message: '  croutons  ', timestamp: '2026-09-28 00:48:00' },
+            { user_id: 5, channel_username: 'ann', message_type: 'emote', message: 'waves', timestamp: '2026-09-28 00:57:00' },
+            { message: 'hi', stream_id: 3 },
+        ], { includeChannel: true, now });
+        assert.deepStrictEqual(data, [
+            { mins_ago: 12, where: 'global', author: 'goosely', kind: null, text: 'croutons' },
+            { mins_ago: 3, where: '#ann', author: 'user#5', kind: 'emote', text: 'waves' },
+            { mins_ago: null, where: 'stream', author: 'anon', kind: null, text: 'hi' },
+        ]);
+        assert.strictEqual(require('../server/ai/chat-ai')._msgData([{ username: 'x', is_global: 1, message: 'y' }]).pop().where, null, 'no channel tag in a profile');
     } finally {
         network.close(); ai.close();
         fs.rmSync(tmp, { recursive: true, force: true });

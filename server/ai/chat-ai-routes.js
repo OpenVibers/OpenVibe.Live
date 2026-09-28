@@ -131,9 +131,9 @@ function _combinedOverview(userId, streamerOv, chatIns) {
     const ai = require('./ai-analysis');
     if (!_combinedBusy.has(userId) && ai.isEnabled && ai.isEnabled() && ai.withinBudget && ai.withinBudget()) {
         _combinedBusy.add(userId);
-        const prompt = `You are describing a person on a streaming site by fusing two AI summaries about them into ONE cohesive 2-4 sentence overview of who they are overall — both as a STREAMER and as a CHATTER. Be natural, specific, and not repetitive. Output ONLY the overview prose with no label or prefix.\n\nAS A STREAMER:\n${sOv}\n\nAS A CHATTER:\n${cOv}`;
-        Promise.resolve(ai.summarizeText(prompt, 320, 'combined_overview'))
-            .then(text => { if (text) { const clean = String(text).replace(/^\s*(combined\s+overview|overview)\s*[:\-–]\s*/i, '').trim(); try { db.setState(key, JSON.stringify({ text: clean, generated_at: Date.now(), src: srcLen })); } catch { /* */ } } })
+        // The prompt is OpenVibe.AI's versioned template live.person.overview (WS-O task 2).
+        Promise.resolve(require('./ai-service').structured('live.person.overview', { as_streamer: String(sOv).slice(0, 4000), as_chatter: String(cOv).slice(0, 4000) }, { meter: { kind: 'combined_overview', role: 'legacy', ownerUserId: userId } }))
+            .then(out => { const clean = out && out.overview ? String(out.overview).trim() : ''; if (clean) { try { db.setState(key, JSON.stringify({ text: clean, generated_at: Date.now(), src: srcLen })); } catch { /* */ } } })
             .catch(() => { })
             .finally(() => _combinedBusy.delete(userId));
     }
@@ -151,14 +151,13 @@ function _ensureSessionTitles(userId) {
     const pending = db.getUntitledAiSessions(userId, 20);
     if (!pending.length) return;
     _titlingBusy.add(userId);
-    const list = pending.map((p, i) => `${i}. ${String(p.ai_overview_short || p.ai_overview || '').replace(/\s+/g, ' ').slice(0, 200)}`).join('\n');
-    const prompt = `Write a SHORT, catchy stream title for each livestream summary below — the way a real streamer titles a VOD: 3 to 6 words, punchy, no surrounding quotes, no trailing period. Match each stream's vibe.\n\n${list}\n\nReturn STRICT JSON only: [{"index": <number>, "title": "<3-6 word title>"}] for every item.`;
-    Promise.resolve(ai.summarizeText(prompt, 700, 'session_titles'))
-        .then(text => {
-            const m = text && text.match(/\[[\s\S]*\]/);
-            if (!m) return;
+    // The prompt is OpenVibe.AI's versioned template live.stream.titles (WS-O task 2); Live sends the summaries.
+    const summaries = pending.map(p => String(p.ai_overview_short || p.ai_overview || '').replace(/\s+/g, ' ').slice(0, 200) || '(no summary)');
+    Promise.resolve(require('./ai-service').structured('live.stream.titles', { summaries }, { meter: { kind: 'session_titles', role: 'legacy', ownerUserId: userId } }))
+        .then(out => {
+            if (!out || !Array.isArray(out.titles)) return;
             let touched = 0;
-            for (const x of JSON.parse(m[0])) {
+            for (const x of out.titles) {
                 const p = pending[x.index];
                 if (p && x.title) { db.setStreamAiTitle(p.id, String(x.title).replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 80)); touched++; }
             }

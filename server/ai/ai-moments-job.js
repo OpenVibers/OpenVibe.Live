@@ -66,22 +66,14 @@ function _titleFromDesc(desc) {
 // ── Stage 1: rank VODs by their AI overview ─────────────────────────────────────────────
 // Scores one chunk of VODs via a single LLM call; returns [{vod, score, why}] best-first.
 async function _scoreVodChunk(chunk, want) {
-    const list = chunk.map((v, i) => {
-        const ov = _cleanText(v.ai_overview || v.ai_overview_short, 260) || '(no summary)';
-        return `${i}. [${v.view_count || 0} views · ${v.clip_count || 0} clips · peak ${v.peak_viewers || 0}] "${_cleanText(v.title, 70)}" — ${ov}`;
-    }).join('\n');
-    const prompt = `These are livestream VODs with their AI summaries and popularity stats. Rank the MOST interesting/entertaining/memorable ones for a highlights showcase — favor funny, dramatic, surprising, high-energy, or unusual content over routine "just chatting / sitting at a desk" streams. Clips taken and peak viewers are strong signals that something notable happened.
-
-${list}
-
-Return STRICT JSON only, nothing else: [{"index": <n>, "score": <1-100>, "why": "<3-8 words>"}] for the top ${Math.min(chunk.length, Math.max(want, 6))}, best first.`;
+    // The prompt is OpenVibe.AI's versioned template live.moments.rank (WS-O task 2); Live sends the VODs as data.
+    const n = (v) => Math.max(0, Math.round(Number(v) || 0));
+    const vods = chunk.map(v => ({ title: _cleanText(v.title, 70) || 'Untitled', overview: _cleanText(v.ai_overview || v.ai_overview_short, 260), views: n(v.view_count), clips: n(v.clip_count), peak_viewers: n(v.peak_viewers) }));
     try {
-        const text = await ai.summarizeText(prompt, 700, 'moment_vod_rank');
-        const m = text && text.match(/\[[\s\S]*\]/);
-        if (!m) return [];
-        const arr = JSON.parse(m[0]);
+        const out = await aiService.structured('live.moments.rank', { vods, want: Math.max(1, Math.min(25, want || 6)) }, { meter: { kind: 'moment_vod_rank', role: 'legacy' } });
+        if (!out || !Array.isArray(out.ranked)) return [];
         const seen = new Set();
-        return arr.filter(x => chunk[x.index] != null && !seen.has(x.index) && seen.add(x.index))
+        return out.ranked.filter(x => chunk[x.index] != null && !seen.has(x.index) && seen.add(x.index))
             .map(x => ({ vod: chunk[x.index], score: Number(x.score) || 0, why: _cleanText(x.why, 60) }))
             .sort((a, b) => b.score - a.score);
     } catch { return []; }

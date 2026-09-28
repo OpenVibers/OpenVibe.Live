@@ -45,7 +45,6 @@ const MEMORY_MAX_CHARS = 1600;
 const USER_MEMORY_MAX_CHARS = 1200;
 const TIMELINE_MAX = 40;
 const MSG_MAX_CHARS = 220;
-const PROMPT_MSGS_MAX_CHARS = 9000;
 
 let _running = false;
 let _timer = null;
@@ -54,42 +53,28 @@ let _lastUserPass = 0;
 
 // ── Small utils ──────────────────────────────────────────────────────────────
 function _ai() { return require('./ai-analysis'); }
+function _aiService() { return require('./ai-service'); }
 
 // DB timestamps are UTC 'YYYY-MM-DD HH:MM:SS' (CURRENT_TIMESTAMP). Match that format.
 function _sqlTime(d) { return new Date(d).toISOString().slice(0, 19).replace('T', ' '); }
 function _parseSqlTime(s) { return s ? new Date(String(s).replace(' ', 'T') + 'Z').getTime() : 0; }
 
-function _parseJson(text) {
-    if (!text) return null;
-    // Prefer a fenced/object slice; tolerate leading prose from chatty models.
-    const m = text.match(/\{[\s\S]*\}/);
-    if (!m) return null;
-    try { return JSON.parse(m[0]); } catch { /* */ }
-    // Retry after stripping trailing commas.
-    try { return JSON.parse(m[0].replace(/,\s*([}\]])/g, '$1')); } catch { return null; }
-}
 
 function _clip(str, n) { str = (str == null ? '' : String(str)).trim(); return str.length > n ? str.slice(0, n) : str; }
 
-function _fmtMessages(rows, { includeChannel = false, now = 0 } = {}) {
-    const lines = [];
-    for (const r of rows) {
-        const who = r.username || (r.user_id ? `user#${r.user_id}` : 'anon');
-        let ctx = '';
-        if (includeChannel) {
-            if (r.is_global) ctx = '[global] ';
-            else if (r.channel_username) ctx = `[#${r.channel_username}] `;
-            else if (r.stream_id) ctx = `[stream] `;
-        }
-        const kind = (r.message_type && r.message_type !== 'chat') ? `(${r.message_type}) ` : '';
-        // "[Xm ago]" marker so the model can time-stamp notable moments accurately.
-        let when = '';
-        if (now) { const t = _parseSqlTime(r.timestamp || r.created_at); if (t) when = `[${Math.max(0, Math.round((now - t) / 60000))}m ago] `; }
-        lines.push(`${when}${ctx}${who}: ${kind}${_clip(r.message, MSG_MAX_CHARS)}`);
-    }
-    let out = lines.join('\n');
-    if (out.length > PROMPT_MSGS_MAX_CHARS) out = out.slice(out.length - PROMPT_MSGS_MAX_CHARS); // keep the freshest
-    return out;
+
+/** Messages as data for OpenVibe.AI's chat templates (WS-O task 2), which format them "[Xm ago] [#channel] name: text". */
+function _msgData(rows, { includeChannel = false, now = 0 } = {}) {
+    return rows.slice(-MAX_BATCH_MESSAGES).map((r) => {
+        let where = null;
+        if (includeChannel) where = r.is_global ? 'global' : r.channel_username ? `#${r.channel_username}` : r.stream_id ? 'stream' : null;
+        const t = now ? _parseSqlTime(r.timestamp || r.created_at) : 0;
+        return {
+            mins_ago: t ? Math.max(0, Math.round((now - t) / 60000)) : null, where: where ? String(where).slice(0, 80) : null,
+            author: String(r.username || (r.user_id ? `user#${r.user_id}` : 'anon')).slice(0, 80),
+            kind: r.message_type && r.message_type !== 'chat' ? String(r.message_type).slice(0, 40) : null, text: _clip(r.message, MSG_MAX_CHARS),
+        };
+    });
 }
 
 function _windowLabel(ms) {
@@ -161,31 +146,13 @@ async function _refreshGlobal() {
     const priorMemory = prior ? (prior.memory_json || '') : '';
     let priorTl = [];
     try { priorTl = JSON.parse(prior ? (prior.timeline_json || '[]') : '[]'); } catch { priorTl = []; }
-    const recentLabels = priorTl.slice(-8).map(t => `- ${t.label}`).join('\n') || '(none yet)';
-
-    const prompt =
-`You are the community analyst for a live-streaming site's chat. Analyze the RECENT chat below (covers roughly the ${windowLabel}, across the global room and individual streamer channels) and update a rolling picture of the community.
-
-Return ONLY a JSON object, no prose, with exactly these keys:
-{
-  "recent_overview": "2-4 sentences on what the chat is about right now: main topics, mood/energy, who's active, any notable events. Concrete, no fluff.",
-  "memory": "Condensed running notes about this community carried forward: recurring topics, regulars, running jokes, ongoing events/dramas. Update the PRIOR notes with anything new; keep it under ~1400 chars.",
-  "timeline": [ {"label":"short title","detail":"one sentence","mins_ago": <integer: minutes before now this happened, read from the [Xm ago] markers on the messages>} ]  // 0-3 genuinely NOTABLE moments from THIS window (raids, milestones, big drama, memorable bits). Use [] if nothing stands out — do not invent.
-}
-
-PRIOR running notes (may be empty):
-"""${_clip(priorMemory, MEMORY_MAX_CHARS)}"""
-
-Recent timeline entries already recorded (avoid duplicating these):
-${recentLabels}
-
-RECENT CHAT (${rows.length} messages, oldest first):
-${_fmtMessages(rows, { includeChannel: true, now })}`;
-
-    const text = await ai.summarizeText(prompt, 700, 'chat_global');
-    if (!text) return false; // disabled / over budget / call failed
-    const parsed = _parseJson(text);
-    if (!parsed) { console.warn('[ChatAI] global: unparseable model output'); return false; }
+    // The prompt is OpenVibe.AI's versioned template live.chat.global (WS-O task 2); Live sends the chat as data.
+    const parsed = await _aiService().structured('live.chat.global', {
+        window_label: windowLabel, prior_memory: _clip(priorMemory, MEMORY_MAX_CHARS),
+        recent_labels: priorTl.slice(-8).map(t => _clip(t.label, 200)).filter(Boolean),
+        messages: _msgData(rows, { includeChannel: true, now }),
+    }, { meter: { kind: 'chat_global', role: 'legacy' } });
+    if (!parsed) return false; // disabled / over budget / call failed
 
     const nowIso = _sqlTime(now);
     // Persist the new moments to the growing timeline log (for the browsable/searchable view).
@@ -223,27 +190,11 @@ async function _refreshUser(uid, maxId) {
     const priorMemory = prior ? (prior.memory_json || '') : '';
     const totalSeen = (prior ? (prior.message_count || 0) : 0);
 
-    const prompt =
-`You profile an individual chatter ("${uname}") on a live-streaming site, contrasting who they are TODAY vs OVERALL. Base everything only on the evidence below — do not invent.
-
-Return ONLY a JSON object, no prose, with exactly these keys:
-{
-  "overview_24h": "${has24h ? '2-3 sentences on what this user has been chatting about and their mood/energy in the LAST 24 HOURS.' : 'They have not chatted in the last 24h; write 1 sentence noting they have been quiet recently.'}",
-  "overview_alltime": "2-3 sentences on who this user is as a chatter OVERALL: their style, recurring interests, tone, how they interact.",
-  "memory": "Condensed running notes about this user carried forward (interests, catchphrases, who they talk to, patterns). Update the PRIOR notes; keep under ~1000 chars.",
-  "timeline": [ {"label":"short title","detail":"one sentence","mins_ago": <integer: minutes before now this happened, read from the [Xm ago] markers on the messages>} ]  // 0-2 NEW notable moments for this user, or [].
-}
-
-PRIOR running notes (all-time gist so far${totalSeen ? `; ~${totalSeen} messages seen previously` : ''}):
-"""${_clip(priorMemory, USER_MEMORY_MAX_CHARS)}"""
-
-${has24h ? 'MESSAGES FROM THIS USER IN THE LAST 24H' : 'THIS USER\'S MOST RECENT MESSAGES'} (oldest first):
-${_fmtMessages(dayRows, { now })}`;
-
-    const text = await ai.summarizeText(prompt, 600, 'chat_user');
-    if (!text) return false;
-    const parsed = _parseJson(text);
-    if (!parsed) { console.warn(`[ChatAI] user ${uid}: unparseable model output`); return false; }
+    const parsed = await _aiService().structured('live.chat.profile', {
+        subject_kind: 'user', name: _clip(uname, 120), recent_24h: has24h, seen: totalSeen, prior_memory: _clip(priorMemory, USER_MEMORY_MAX_CHARS),
+        messages: _msgData(dayRows, { now }),
+    }, { meter: { kind: 'chat_user', role: 'legacy' } });
+    if (!parsed) return false;
 
     const newCount = db.countChatMessagesSince(prior ? (prior.last_message_id || 0) : 0, uid);
     const nowIso = _sqlTime(now);
@@ -305,27 +256,11 @@ async function _refreshRelayUser(ru) {
     const uname = ru.display_name || ru.username;
     const priorMemory = prior ? (prior.memory_json || '') : '';
 
-    const prompt =
-`You profile an external chatter ("${uname}", bridged in from ${ru.platform}) on a live-streaming site, contrasting who they are TODAY vs OVERALL. Base everything only on the evidence below — do not invent.
-
-Return ONLY a JSON object, no prose, with exactly these keys:
-{
-  "overview_24h": "${has24h ? '2-3 sentences on what this user chatted about and their mood/energy in the LAST 24 HOURS.' : 'They have not chatted in the last 24h; 1 sentence noting they have been quiet recently.'}",
-  "overview_alltime": "2-3 sentences on who this user is as a chatter OVERALL: style, recurring interests, tone.",
-  "memory": "Condensed running notes carried forward (interests, catchphrases, patterns). Update the PRIOR notes; keep under ~1000 chars.",
-  "timeline": [ {"label":"short title","detail":"one sentence","mins_ago": <integer: minutes before now this happened, read from the [Xm ago] markers on the messages>} ]  // 0-2 NEW notable moments, or [].
-}
-
-PRIOR running notes:
-"""${_clip(priorMemory, USER_MEMORY_MAX_CHARS)}"""
-
-${has24h ? 'MESSAGES FROM THIS USER IN THE LAST 24H' : "THIS USER'S MOST RECENT MESSAGES"} (oldest first):
-${_fmtMessages(dayRows, { now })}`;
-
-    const text = await ai.summarizeText(prompt, 600, 'chat_relay');
-    if (!text) return false;
-    const parsed = _parseJson(text);
-    if (!parsed) { console.warn(`[ChatAI] relay ${ru.id}: unparseable model output`); return false; }
+    const parsed = await _aiService().structured('live.chat.profile', {
+        subject_kind: 'relay', name: _clip(uname, 120), platform: _clip(ru.platform, 40), recent_24h: has24h, prior_memory: _clip(priorMemory, USER_MEMORY_MAX_CHARS),
+        messages: _msgData(dayRows, { now }),
+    }, { meter: { kind: 'chat_relay', role: 'legacy' } });
+    if (!parsed) return false;
 
     const nowIso = _sqlTime(now);
     await chatTables.write('upsertChatAiSummary', {
@@ -376,27 +311,11 @@ async function _refreshAnon(anonId) {
     if (!dayRows.length) return false;
 
     const priorMemory = prior ? (prior.memory_json || '') : '';
-    const prompt =
-`You profile an ANONYMOUS chatter ("${anonId}", not logged in) on a live-streaming site, contrasting who they are TODAY vs OVERALL. Base everything only on the evidence below — do not invent.
-
-Return ONLY a JSON object, no prose, with exactly these keys:
-{
-  "overview_24h": "${has24h ? '2-3 sentences on what this anon chatted about and their mood/energy in the LAST 24 HOURS.' : 'They have not chatted in the last 24h; 1 sentence noting they have been quiet recently.'}",
-  "overview_alltime": "2-3 sentences on who this anon is as a chatter OVERALL: style, recurring interests, tone.",
-  "memory": "Condensed running notes carried forward (interests, catchphrases, patterns). Update the PRIOR notes; keep under ~1000 chars.",
-  "timeline": [ {"label":"short title","detail":"one sentence","mins_ago": <integer: minutes before now this happened, read from the [Xm ago] markers on the messages>} ]  // 0-2 NEW notable moments, or [].
-}
-
-PRIOR running notes:
-"""${_clip(priorMemory, USER_MEMORY_MAX_CHARS)}"""
-
-${has24h ? 'MESSAGES FROM THIS ANON IN THE LAST 24H' : "THIS ANON'S MOST RECENT MESSAGES"} (oldest first):
-${_fmtMessages(dayRows, { now })}`;
-
-    const text = await ai.summarizeText(prompt, 600, 'chat_anon');
-    if (!text) return false;
-    const parsed = _parseJson(text);
-    if (!parsed) { console.warn(`[ChatAI] anon ${anonId}: unparseable model output`); return false; }
+    const parsed = await _aiService().structured('live.chat.profile', {
+        subject_kind: 'anon', name: _clip(anonId, 120), recent_24h: has24h, prior_memory: _clip(priorMemory, USER_MEMORY_MAX_CHARS),
+        messages: _msgData(dayRows, { now }),
+    }, { meter: { kind: 'chat_anon', role: 'legacy' } });
+    if (!parsed) return false;
 
     const nowIso = _sqlTime(now);
     await chatTables.write('upsertChatAiSummary', {
@@ -554,4 +473,4 @@ function getAnonInsight(anonId) {
     };
 }
 
-module.exports = { start, stop, getGlobalInsight, getUserInsight, getRelayUserInsight, getAnonInsight, _tick };
+module.exports = { start, stop, getGlobalInsight, getUserInsight, getRelayUserInsight, getAnonInsight, _tick, _msgData };
