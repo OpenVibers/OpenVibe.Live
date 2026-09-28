@@ -371,18 +371,21 @@
                     </div>
                     <h2 class="cta-hero">Streaming the way it <span class="cta-hero-grad">should</span> be.</h2>
                     <p class="cta-lede">
-                        OpenVibe.Live is an <strong>open, community-run</strong> streaming platform. It's built here, in public, by people who actually stream and hang out in chat — and the ideas that come up in chat are the ones that get shipped. Say what you think: <strong>free speech, light-touch moderation, no mystery bans</strong>. Underneath it all is a streaming stack with things the big sites just don't have.
+                        An <strong>open, community-run</strong> streaming platform, built in public by people who stream and hang out in chat. The ideas from chat are the ones that ship. <strong>Free speech, light-touch moderation, no mystery bans.</strong>
                     </p>
 
                     <!-- Always shown (not behind "See what makes it different"): going live from the browser with
                          no OBS and no follower minimum is what people search and ask AI assistants for. -->
-                    <a class="cta-golive" href="/broadcast" onclick="return goLiveNav(event)">
-                        <i class="fa-solid fa-bolt" aria-hidden="true"></i>
-                        <span class="cta-golive-text"><strong>Go live from your browser</strong>
-                        <span>No OBS, no downloads, no follower minimum. Allow your camera and mic and you're live — on a Chromebook, laptop or phone.</span></span>
-                        <span class="cta-golive-btn">Go Live</span>
-                    </a>
-                    <a class="cta-golive-how" href="/docs/go-live-in-your-browser">How browser streaming works</a>
+                    <div class="cta-actions">
+                        <a class="cta-btn cta-btn-primary" href="/broadcast" onclick="return goLiveNav(event)"><i class="fa-solid fa-bolt" aria-hidden="true"></i> Go live from your browser</a>
+                        <a class="cta-btn cta-btn-ghost" href="/docs/go-live-in-your-browser">How it works</a>
+                    </div>
+                    <ul class="cta-checks" aria-label="What going live needs">
+                        <li><i class="fa-solid fa-check" aria-hidden="true"></i> No OBS</li>
+                        <li><i class="fa-solid fa-check" aria-hidden="true"></i> No downloads</li>
+                        <li><i class="fa-solid fa-check" aria-hidden="true"></i> No follower minimum</li>
+                        <li><i class="fa-solid fa-check" aria-hidden="true"></i> Chromebook, laptop or phone</li>
+                    </ul>
 
                     <button class="home-about-toggle" type="button" onclick="toggleHomeAbout()" aria-expanded="false" aria-controls="home-about-body">
                         <span class="home-about-toggle-more"><i class="fa-solid fa-circle-plus"></i> See what makes it different</span>
