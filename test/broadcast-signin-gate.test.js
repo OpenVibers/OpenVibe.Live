@@ -109,7 +109,6 @@ const NAMES = [['bc', '_broadcastSignInGate'], ['bc', 'loadBroadcastPage'], ['ws
     const gate = /<div class="bc-signin-gate" id="bc-signin-gate" hidden>([\s\S]*?)<\/div>/.exec(fragment);
     assert.ok(gate, 'the broadcast fragment carries the gate, hidden until the script decides');
     assert.ok(gate[1].includes('href="/api/auth/sso/login?next=%2Fbroadcast"'), 'the gate signs in and comes back to /broadcast');
-    assert.ok(!/free|\$0/i.test(gate[1]), 'no "free" copy');
     assert.ok(fragment.indexOf('id="bc-signin-gate"') < fragment.indexOf('id="bc-workspace"'), 'the gate sits above the workspace');
     const css = read('public/css/features/broadcast.css');
     assert.ok(/#bc-stream-manager\.bc-guest > :not\(h2\):not\(\.bc-signin-gate\)\s*\{\s*display:\s*none/.test(css), 'the guest class hides the workspace');

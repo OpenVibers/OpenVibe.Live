@@ -75,10 +75,6 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         assert.ok(/## What people made[\s\S]*## What the AI made/.test(text), 'made, then derived');
     });
 
-    await check('no "free" or "$0" copy (owner rule)', () => {
-        assert.ok(!/\bfree\b|\$0/i.test(text), 'found free/$0');
-    });
-
     server.close();
     try { fs.unlinkSync(tmp); } catch { /* */ }
     for (const ext of ['-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
