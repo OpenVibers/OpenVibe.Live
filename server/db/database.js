@@ -1874,6 +1874,8 @@ function initDb() {
     try {
         const cols = database.prepare('PRAGMA table_info(channel_ai_config)').all().map(c => c.name);
         if (!cols.includes('settings_json')) database.exec("ALTER TABLE channel_ai_config ADD COLUMN settings_json TEXT DEFAULT '{}'");
+        // The streamer's own key lives in OpenVibe.AI (WS-O task 2, server/ai/byo-credentials.js); Live keeps only this flag.
+        if (!cols.includes('byo_in_ai')) database.exec('ALTER TABLE channel_ai_config ADD COLUMN byo_in_ai INTEGER DEFAULT 0');
         database.exec(`CREATE TABLE IF NOT EXISTS ai_viewer_threads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             channel_user_id INTEGER NOT NULL,
@@ -5974,6 +5976,7 @@ function upsertChannelAiConfig(userId, fields) {
         byo_key: (v) => String(v || '').trim().slice(0, 400),
         byo_base_url: (v) => String(v || '').trim().slice(0, 500),
         byo_model: (v) => String(v || '').trim().slice(0, 120) || 'gpt-4o-mini',
+        byo_in_ai: (v) => (v ? 1 : 0),
         // Validated/clamped by ai/viewers/settings.js before it gets here; just bound the size.
         settings_json: (v) => { const t = typeof v === 'string' ? v : JSON.stringify(v || {}); return t.length > 40000 ? '{}' : t; },
     };

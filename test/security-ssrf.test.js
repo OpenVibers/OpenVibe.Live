@@ -354,6 +354,7 @@ async function check(name, fn) {
             'server/utils/notify.js': 'OpenVibe.Network (configured)',
             'server/auth/identity-sync.js': 'OpenVibe.Network (configured)',
             'server/auth/account-data.js': 'OpenVibe.Network (configured): export parts and deletion confirmations',
+            'server/ai/byo-credentials.js': 'OpenVibe.AI (configured OV_AI_INTERNAL_URL): a streamer\'s own key stored there',
             'server/monetization/billing-client.js': 'OpenVibe.Billing (configured)',
             'server/monetization/wallet-client.js': 'OpenVibe.Network wallet (configured)',
             'server/monetization/payments.js': 'PayPal (fixed host)',

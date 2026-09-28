@@ -22,6 +22,7 @@ const SOURCE = 'ai_viewers';
 function approxTokens(str) { return Math.ceil((str || '').length / 4); }
 
 function byoUsable(cfg) {
+    if (cfg.byo_in_ai) return true;
     if (cfg.byo_key && String(cfg.byo_key).trim()) return true;
     try { return aiProvider.isSelfHostedBaseUrl(cfg.byo_base_url); } catch { return false; }
 }
@@ -66,16 +67,26 @@ async function generate(userId, { system = '', user = '', image = null, maxToken
 
     // BYO key — same llm.js path as the shared key (real system role, caching, timeouts),
     // metered from the provider's usage report (estimated only when the server omits it).
+    // Never fall through to the shared key: no usable own key means the streamer's bots stay quiet.
+    const provider = byoProvider(st.cfg);
+    if (!provider) return null;
     const r = await ai.llm.complete({
         role: 'chat', system, user, image, imageMaxWidth: 768, maxTokens, temperature,
         kind: 'ai_viewers', source: SOURCE, ownerUserId: userId,
-        provider: byoProvider(st.cfg),
+        provider,
     });
     return r && r.text ? r.text.trim() || null : null;
 }
 
-/** llm.js provider override for a streamer's BYO settings (column fields + settings_json.byo). */
+/**
+ * llm.js provider override for a streamer's BYO settings (column fields + settings_json.byo). A key stored in
+ * OpenVibe.AI (byo_in_ai, WS-O task 2) is named by the streamer's subject; the key itself never comes back here.
+ */
 function byoProvider(cfg) {
+    if (cfg.byo_in_ai) {
+        const subject = require('../byo-credentials').subjectOf(cfg.user_id);
+        return subject ? { credentialSubject: subject } : null;
+    }
     let extra = {};
     try { extra = (JSON.parse(cfg.settings_json || '{}') || {}).byo || {}; } catch { extra = {}; }
     const models = {};

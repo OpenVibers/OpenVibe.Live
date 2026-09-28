@@ -39,8 +39,9 @@ function sanitizeConfig(cfg) {
         daily_budget_cents: cfg.daily_budget_cents ?? 20,
         byo_base_url: cfg.byo_base_url || '',
         byo_model: cfg.byo_model || 'gpt-4o-mini',
-        has_byo_key: !!key,
-        byo_key_masked: key ? KEY_SENTINEL : '',
+        has_byo_key: !!key || !!cfg.byo_in_ai,
+        byo_key_masked: key || cfg.byo_in_ai ? KEY_SENTINEL : '',
+        byo_key_in_ai: !!cfg.byo_in_ai,
     };
 }
 
@@ -125,13 +126,20 @@ router.post('/byo/test', requireAuth, async (req, res) => {
     try {
         const cfg = db.getChannelAiConfig(req.user.id);
         const body = req.body || {};
+        // A stored key lives in OpenVibe.AI: test it there (a one-word run with credential { subject }).
+        const typedKey = body.byo_key && body.byo_key !== KEY_SENTINEL;
+        if (cfg.byo_in_ai && !typedKey) {
+            const started = Date.now();
+            const r = await ai.llm.complete({ role: 'chat', user: 'Reply with the single word: ok', maxTokens: 5, temperature: 0, timeoutMs: 15000, retries: 0, kind: 'status_check', ownerUserId: req.user.id, provider: budget.byoProvider(cfg) });
+            return res.json(r && r.text ? { ok: true, model: r.model, latency_ms: Date.now() - started, via: 'openvibe-ai' } : { ok: false, error: 'your provider did not answer through OpenVibe.AI' });
+        }
         const override = budget.byoProvider({ ...cfg, byo_key: (body.byo_key && body.byo_key !== KEY_SENTINEL) ? body.byo_key : cfg.byo_key, byo_base_url: body.byo_base_url ?? cfg.byo_base_url, byo_model: body.byo_model ?? cfg.byo_model });
         const r = await ai.llm.testProvider(override);
         res.json(r);
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-router.put('/config', requireAuth, (req, res) => {
+router.put('/config', requireAuth, async (req, res) => {
     try {
         const body = req.body || {};
         const fields = {};
@@ -143,10 +151,11 @@ router.put('/config', requireAuth, (req, res) => {
         if (body.daily_budget_cents !== undefined) fields.daily_budget_cents = body.daily_budget_cents;
         if (body.byo_base_url !== undefined) fields.byo_base_url = body.byo_base_url;
         if (body.byo_model !== undefined) fields.byo_model = body.byo_model;
-        // Preserve the stored key unless a real new one is supplied (not blank / not the mask).
-        if (body.byo_key !== undefined && body.byo_key !== '' && body.byo_key !== KEY_SENTINEL) {
-            fields.byo_key = body.byo_key;
-        }
+        // The key goes to OpenVibe.AI, never into Live's database (WS-O task 2, byo-credentials.js). A real new key
+        // (not blank, not the mask) is sent with the address and models; a change of model alone keeps AI's stored key;
+        // byo_key: null removes it.
+        const refused = await require('../byo-credentials').applyConfig(req.user.id, db.getChannelAiConfig(req.user.id), body.byo_key === KEY_SENTINEL ? undefined : body.byo_key, fields);
+        if (refused) return res.status(refused.status).json({ error: refused.error, code: refused.code });
         db.upsertChannelAiConfig(req.user.id, fields);
         // v3 settings blob (partial merge, validated + clamped in settings.js).
         if (body.settings && typeof body.settings === 'object') settingsMod.updateSettings(req.user.id, body.settings);

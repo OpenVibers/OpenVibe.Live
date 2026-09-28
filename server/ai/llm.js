@@ -311,6 +311,21 @@ async function complete(o = {}) {
     // AI_SERVICE=remote: shared-key calls become workflow runs on OpenVibe.AI (a streamer's BYO
     // provider override still goes straight to that provider, below). Usage is still recorded here
     // so per-streamer budgets and the admin cost views keep working unchanged.
+    // A streamer's own key stored in OpenVibe.AI (WS-O task 2, byo-credentials.js): a run with credential { subject };
+    // AI calls their provider with it, within their daily budget. Metered here as 'byo', like the direct path below.
+    if (o.provider && o.provider.credentialSubject) {
+        if (!aiService.enabled()) return null;
+        const r = await aiService.complete({ ...o, role, credentialSubject: o.provider.credentialSubject }, { toVisionJpeg });
+        if (!r) return null;
+        if (o.json && !r.json) r.json = parseJsonLoose(r.text);
+        try {
+            db.recordAiUsage({
+                kind: o.kind || role, model: r.model, input_tokens: r.usage.input, output_tokens: r.usage.output, cached_tokens: r.usage.cached || 0,
+                cost_usd: r.cost || 0, owner_user_id: o.ownerUserId || null, source: o.source || null, role, provider: 'byo', latency_ms: r.latencyMs,
+            });
+        } catch { /* metering is best-effort */ }
+        return r;
+    }
     if (aiService.enabled() && !(o.provider && (o.provider.apiKey || o.provider.baseUrl))) {
         if (!isEnabled() || !withinBudget()) return null;
         const r = await aiService.complete({ ...o, role }, { toVisionJpeg });

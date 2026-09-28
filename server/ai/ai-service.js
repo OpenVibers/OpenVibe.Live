@@ -18,7 +18,9 @@
  * null means "no AI answer" exactly like llm.complete() returning null today (AI off, over
  * budget, provider down): quota refusals (429), failed runs, unreachable service, and SYNTHETIC
  * answers (the AI service's stub provider) all come back as null — synthetic text never reaches
- * a Live page. Streamer BYO providers are not routed here (llm.js keeps calling them directly).
+ * a Live page. A streamer's own key stored in OpenVibe.AI (byo-credentials.js) runs here too, as
+ * complete({ credentialSubject }): the run carries credential { subject }; an older key still in
+ * Live's database is called directly by llm.js until it is moved.
  */
 'use strict';
 const principal = require('../net/network-principal');
@@ -73,11 +75,12 @@ async function _fetchJson(method, path, body, timeoutMs, retried = false) {
  * Run a workflow and wait for it. Returns the run object (any terminal status) or null.
  * opts: { target, attribution, idempotencyKey, waitMs (default 60s), timeoutMs }
  */
-async function run(workflow, input, { target, attribution, idempotencyKey, waitMs = 60000 } = {}) {
+async function run(workflow, input, { target, attribution, idempotencyKey, waitMs = 60000, credentialSubject = null } = {}) {
     if (!enabled()) return null;
     const wait = Math.max(0, Math.min(60000, waitMs));
     const created = await _fetchJson('POST', `/api/v1/runs?wait=${wait}`, {
         workflow, input, target: target || undefined, attribution: attribution || undefined, idempotency_key: idempotencyKey || undefined,
+        credential: credentialSubject ? { subject: credentialSubject } : undefined,
     }, wait + 15000);
     let r = created && created.run;
     if (!r) return null;
@@ -160,7 +163,7 @@ async function complete(o = {}, { toVisionJpeg } = {}) {
     };
     if (!input.user && !input.messages) input.user = '';
     const started = Date.now();
-    const r = await run(workflowFor(o.kind), input, { attribution: ownerRef(o.ownerUserId), waitMs: Math.max(30000, (o.timeoutMs || 30000) * 2) });
+    const r = await run(workflowFor(o.kind), input, { attribution: ownerRef(o.ownerUserId), waitMs: Math.max(30000, (o.timeoutMs || 30000) * 2), credentialSubject: o.credentialSubject || null });
     const out = usable(r);
     if (!out) return null;
     const usage = { input: (r.usage && r.usage.tokens_in) || 0, output: (r.usage && r.usage.tokens_out) || 0, cached: 0 };
@@ -169,8 +172,8 @@ async function complete(o = {}, { toVisionJpeg } = {}) {
         json: out.json || null,
         usage,
         model: (r.provenance && r.provenance.model) || null,
-        provider: 'openvibe-ai',
-        shared: true,
+        provider: o.credentialSubject ? 'byo' : 'openvibe-ai',
+        shared: !o.credentialSubject,
         latencyMs: Date.now() - started,
         cost: (r.usage && r.usage.cost_usd) || 0,
         runId: r.id,
