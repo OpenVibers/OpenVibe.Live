@@ -74,7 +74,7 @@ headerOnly.write('WAVE', 8, 'ascii');
             'a bad segment must not disable detection for every segment that follows');
         console.log('OK B: detection still available after a bad segment');
     } else {
-        console.log('OK B: skipped — no local model to check availability against');
+        console.log('OK B: skipped (no local model to check availability against)');
     }
 
     // ── C: only a model load failure is allowed to be permanent ───────────────────────

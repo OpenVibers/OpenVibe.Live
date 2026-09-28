@@ -85,7 +85,7 @@ manager.sessions.delete('1:9');
 // ── Progress-based live ACK against a real ffmpeg (skipped when none is installed) ──
 (async () => {
     const have = spawnSync('ffmpeg', ['-version']).status === 0;
-    if (!have) { console.log = quiet; console.log('restream-manager lifecycle: checks passed (ffmpeg not installed — ACK test skipped)'); process.exit(0); }
+    if (!have) { console.log = quiet; console.log('restream-manager ACK: skipped (ffmpeg not installed)'); console.log('restream-manager lifecycle: checks passed'); process.exit(0); }
 
     const events = [];
     const session = {

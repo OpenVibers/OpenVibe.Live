@@ -319,6 +319,7 @@ function checkContract(out, label) {
     }
 
     console.log = log;
-    console.log(`lineage resolver: all checks passed (${contractKnown ? `${validated} answers validated against ${RESOLUTION}` : `installed openvibe-contracts ${require('openvibe-contracts/package.json').version} predates ${RESOLUTION}; contract validation skipped`})`);
+    if (!contractKnown) console.log(`lineage contract validation: skipped (installed openvibe-contracts ${require('openvibe-contracts/package.json').version} predates ${RESOLUTION})`);
+    console.log(`lineage resolver: all checks passed${contractKnown ? ` (${validated} answers validated against ${RESOLUTION})` : ''}`);
     process.exit(0);
 })().catch((err) => { console.error(err); process.exit(1); });

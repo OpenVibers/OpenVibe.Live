@@ -163,7 +163,7 @@ async function check(name, fn) {
     await check('media analysis: a recording with speech gets no overview while AI is off, and nothing goes out', async () => {
         const wav = path.join(tmp, 'speech.wav');
         const made = spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'anullsrc=r=16000:cl=mono', '-t', '1', wav], { stdio: 'ignore' });
-        if (made.status !== 0 || !fs.existsSync(wav)) { quiet('    (ffmpeg unavailable: skipped)'); return; }
+        if (made.status !== 0 || !fs.existsSync(wav)) { quiet('media analysis with speech: skipped (ffmpeg unavailable)'); return; }
         const transcribe = require('../server/ai/transcribe');
         transcribe.available = () => true;
         transcribe.transcribeMediaDetailed = async () => ({ text: 'welcome back everyone', segments: [{ start: 0, end: 1, text: 'welcome back everyone' }], ok: true });
