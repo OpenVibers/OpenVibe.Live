@@ -8,6 +8,7 @@
 'use strict';
 const db = require('../db/database');
 const ai = require('./ai-analysis');
+const aiService = require('./ai-service');
 let chatAi = null; try { chatAi = require('./chat-ai'); } catch { /* */ }
 
 const SETTING = 'daily_easter_egg';
@@ -97,25 +98,10 @@ async function _generate() {
     let vibe = '';
     try { const g = chatAi && chatAi.getGlobalInsight && chatAi.getGlobalInsight(); if (g && g.overview) vibe = String(g.overview).slice(0, 400); } catch { /* */ }
     if (ai.isEnabled && ai.isEnabled() && ai.withinBudget && ai.withinBudget()) {
-        const prompt = `Invent today's secret "Konami-style" code for OpenVibe.Live, a hobbyist live-streaming site.${vibe ? `\nToday's community vibe (for flavour only): ${vibe}` : ''}
-Return STRICT JSON only, nothing else:
-{
-  "title": "<punchy name for today's secret, 2-5 words>",
-  "code": [<5 to 7 tokens IN ORDER, each exactly one of: "up","down","left","right", or a single lowercase letter a-z; use at least 2 arrows and at least 1 letter>],
-  "clues": [<EXACTLY one clue per token, same order, each ≤ 90 chars>],
-  "effect": "<one of: confetti, fireworks, matrix, rainbow, shake>",
-  "reward": "<a short, fun congratulatory line shown when a user cracks it>"
-}
-CLUE RULES (this is a game people must actually be able to win):
-- Clue i describes token i and ONLY token i. Never list the token literally, but make it fair: a normal person should get it in one or two guesses.
-- Arrow clues use direction imagery ("where the sun rises" = right, "toward the sky" = up, "the way rain falls" = down, "the side your heart is on" = left).
-- Letter clues MUST quote a common word that starts with that exact letter, in quotes: "the letter that starts 'goose'" = g, "'vibe' begins with it" = v. Double-check the first letter of the quoted word.
-- Keep the flavour playful and on-theme, but clarity beats cleverness.`;
+        // The prompt and its clue rules are OpenVibe.AI's versioned template live.easter_egg (WS-O task 2).
         try {
-            const text = await ai.summarizeText(prompt, 600, 'easter_egg');
-            const m = text && text.match(/\{[\s\S]*\}/);
-            if (m) {
-                const j = JSON.parse(m[0]);
+            const j = await aiService.structured('live.easter_egg', vibe ? { vibe } : {}, { meter: { kind: 'easter_egg', role: 'legacy' } });
+            if (j) {
                 const code = _sanitizeCode(j.code);
                 if (code) {
                     return {
@@ -216,7 +202,7 @@ function start() {
     console.log('[EasterEgg] Daily easter-egg job started');
 }
 
-module.exports = { start, tick, getPublic, checkSolution, noteFail, reveal, revealedFor, REVEAL_AFTER_FAILS };
+module.exports = { start, tick, getPublic, checkSolution, noteFail, reveal, revealedFor, REVEAL_AFTER_FAILS, _generate };
 
 // CLI: force a fresh egg now — `node server/ai/easter-egg-job.js`
 if (require.main === module) {

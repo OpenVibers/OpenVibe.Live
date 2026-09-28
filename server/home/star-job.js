@@ -71,17 +71,11 @@ async function aiPick(cands, exclude, previous) {
         about: String(c.overview || c.bio || '').replace(/\s+/g, ' ').slice(0, 220) || null,
     }));
     if (!list.length) return null;
-    const schema = { name: 'home_star', schema: { type: 'object', additionalProperties: false, required: ['username', 'headline', 'reason'], properties: { username: { type: 'string', description: 'exact username from the candidates' }, headline: { type: 'string', description: '≤ 60 chars' }, reason: { type: 'string', description: '≤ 170 chars, one sentence' } } } };
-    const system = `You pick today's "Star of OpenVibe" — the one streamer OpenVibe.Live (a scrappy, open-source, community-run live-streaming site) rolls out the red carpet for on its home page for the next 24 hours.
-Pick from the candidates ONLY (use the exact username). Spread the love: favour people who showed up and put in real hours, grew, got chat talking, or bring something different (a language, a niche, a robot, a vibe) — not just the biggest number. Small streamers who are consistent deserve their day. Never pick anyone in the "recent stars" list.
-Write a "headline" (≤ 60 chars, punchy, warm, no quotes) and a "reason" (≤ 170 chars, one sentence, second person is fine, reference their real numbers or what they do — no emojis, no hashtags, no sarcasm, never mock). Output only JSON.`;
-    const user = JSON.stringify({ recent_stars: Array.from(exclude), previous_star: previous || null, candidates: list });
-    let r = null;
-    try { r = await llm.complete({ role: 'summary', kind: 'home_star', source: 'home', system, user, json: schema, maxTokens: 300, temperature: 0.9, timeoutMs: 30000 }); } catch (e) { console.warn('[Star] model call failed:', e.message); return null; }
-    if (!r) { console.warn('[Star] model returned nothing — falling back to the score pick'); return null; }
-    let out = null;
-    if (r && typeof r === 'object') out = r.json || r.parsed || (r.text ? llm.parseJsonLoose(r.text) : null) || (r.content ? llm.parseJsonLoose(r.content) : null);
-    else if (typeof r === 'string') out = llm.parseJsonLoose(r);
+    // The picking rules are OpenVibe.AI's versioned template live.home.star (WS-O task 2); Live sends the numbers.
+    const out = await require('../ai/ai-service').structured('live.home.star', {
+        recent_stars: Array.from(exclude).map(s => String(s).slice(0, 64)).slice(0, 40), previous_star: previous ? String(previous).slice(0, 64) : null, candidates: list,
+    }, { meter: { kind: 'home_star', role: 'summary' } });
+    if (!out) { console.warn('[Star] no answer from OpenVibe.AI — falling back to the score pick'); return null; }
     if (!out || !out.username) return null;
     const c = cands.find(x => x.username.toLowerCase() === String(out.username).toLowerCase());
     if (!c || exclude.has(c.username.toLowerCase())) return null;
@@ -132,4 +126,4 @@ function start() {
     console.log('[Star] star-of-OpenVibe picker started (rotates daily, AI-picked)');
 }
 
-module.exports = { start, rotate, loadPick, candidates, ROTATE_MS, STATE_KEY };
+module.exports = { start, rotate, loadPick, candidates, ROTATE_MS, STATE_KEY, _aiPick: aiPick };

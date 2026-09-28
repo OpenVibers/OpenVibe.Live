@@ -11,6 +11,7 @@
  */
 'use strict';
 const db = require('../db/database');
+const aiService = require('./ai-service');
 const ai = require('./ai-analysis');
 let chatAi = null; try { chatAi = require('./chat-ai'); } catch { /* optional */ }
 
@@ -21,14 +22,6 @@ const INTERVAL_MS = 7 * 60 * 60 * 1000;
 const TARGET = 20;                        // ~20 words + ~20 slogans per batch
 let _timer = null, _busy = false;
 
-function _parseJson(text) {
-    if (!text) return null;
-    let t = String(text).trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-    try { return JSON.parse(t); } catch { /* */ }
-    const m = t.match(/\{[\s\S]*\}/);
-    if (m) { try { return JSON.parse(m[0]); } catch { /* */ } }
-    return null;
-}
 // The model has produced every wrong shape at least once: "live streaming for X", "for X",
 // "X live streaming", "X for live streaming". The hero prints "Live streaming for {X}", so X must
 // be the bare noun phrase. Strip the framing at both ends; anything still containing
@@ -91,69 +84,40 @@ async function tick() {
             `) || [];
         } catch { /* */ }
         const usernames = activeRows.map(r => r.username).filter(Boolean);
-        let userCtx = '';
+        // The prompt is OpenVibe.AI's versioned template live.hero.slogans (WS-O task 2); Live sends the real data.
+        const users = [];
         try {
-            const parts = [];
             for (const r of activeRows.slice(0, 8)) {
                 let ins = null;
                 try { ins = chatAi && chatAi.getUserInsight && chatAi.getUserInsight(r.id); } catch { /* */ }
                 const blurb = ins && (ins.overview || ins.memory);
-                if (blurb) parts.push(`- ${r.username}: ${String(blurb).replace(/\s+/g, ' ').slice(0, 180)}`);
+                if (blurb) users.push({ name: String(r.username).slice(0, 120), text: String(blurb).replace(/\s+/g, ' ').slice(0, 180) });
             }
-            userCtx = parts.join('\n').slice(0, 1600);
         } catch { /* */ }
 
         // ── Streamer AI overviews + recent VOD AI overviews ──
-        let streamerCtx = '';
+        let streamers = [];
         try {
             const rows = db.all(`SELECT u.username, COALESCE(so.overview_short, so.overview) AS ov
                 FROM streamer_overviews so JOIN users u ON so.user_id = u.id
                 WHERE COALESCE(u.is_banned,0)=0 AND so.overview IS NOT NULL
                 ORDER BY so.generated_at DESC LIMIT 8`) || [];
-            streamerCtx = rows.map(r => `- ${r.username}: ${String(r.ov || '').replace(/\s+/g, ' ').slice(0, 180)}`).join('\n').slice(0, 1400);
+            streamers = rows.map(r => ({ name: String(r.username).slice(0, 120), text: String(r.ov || '').replace(/\s+/g, ' ').slice(0, 180) }));
         } catch { /* */ }
-        let vodCtx = '';
+        let vods = [];
         try {
             // VODs live in OpenVibe.Media; overviews live in Live's vod_ai_state.
             const media = require('../media-client');
             const out = await media.listVods({ limit: 10 }).catch(() => null);
-            const rows = (out?.vods || (Array.isArray(out) ? out : []))
-                .map(v => ({ title: v.title, ai_overview: (db.getVodAiState && db.getVodAiState(v.id)?.ai_overview_short) || v.ai_overview_short || '' }))
-                .filter(v => v.ai_overview && v.ai_overview.trim().length > 1);
-            vodCtx = rows.map(r => `- ${String(r.title || '').slice(0, 60)}: ${String(r.ai_overview || '').replace(/\s+/g, ' ').slice(0, 140)}`).join('\n').slice(0, 1400);
+            vods = (out?.vods || (Array.isArray(out) ? out : []))
+                .map(v => ({ name: String(v.title || '').slice(0, 60), text: String((db.getVodAiState && db.getVodAiState(v.id)?.ai_overview_short) || v.ai_overview_short || '').replace(/\s+/g, ' ').slice(0, 140) }))
+                .filter(v => v.text.trim().length > 1);
         } catch { /* */ }
 
-        const prompt =
-`You write the rotating hero copy for OpenVibe.Live — a scrappy, open-source, community-run live-streaming site at the heart of the OpenVibe network ("Open Live Streaming" — good vibes, no suits). Never call anything "free", "$0" or "no cost". Voice: witty, warm, self-aware, anti-corporate, meme-literate, a little unhinged — but ALWAYS kind, never punching down.
-
-Everything below is REAL data about THIS community right now. Lean into it hard: reference the actual people, running jokes, recurring topics, and memes so the copy feels like an inside joke the community is in on. Reference usernames by name in good fun (no @), and NEVER mock or embarrass anyone.
-
-=== GLOBAL CHAT VIBE (overview + memory + timeline) ===
-${global || '(quiet)'}
-
-=== PER-USER CHAT ANALYSIS (running jokes / personalities) ===
-${userCtx || '(none yet)'}
-
-=== STREAMERS (what they stream) ===
-${streamerCtx || '(none yet)'}
-
-=== RECENT VODS (what's been on) ===
-${vodCtx || '(none yet)'}
-
-=== ACTIVE USERNAMES you may reference kindly ===
-${usernames.join(', ') || '(none yet)'}
-
-=== TASK ===
-Produce STRICT JSON, exactly this shape and nothing else:
-{
-  "audiences": [ ${TARGET} noun phrases naming WHO the site is for. The page prints the fixed headline "Live streaming for {phrase}" — you supply ONLY {phrase}. The words "live", "streaming", "stream", "streamers" and "for" must NOT appear anywhere in a phrase. Good: "van-dwelling coders", "goosely's loyal 3 viewers", "crouton connoisseurs". Bad: "live streaming for coders", "coders live streaming", "for coders". 1-5 words, lowercase (keep usernames' casing), plural people-nouns, no trailing punctuation. Mix on-theme audiences with community in-jokes drawn from the data. ],
-  "quips": [ ${TARGET} standalone one-liner taglines, punchy, <= 75 chars. Several should be clear references/memes about the real streamers, VODs, running jokes, or usernames above. ]
-}
-Return ONLY the JSON object.`;
-
-        const text = await ai.summarizeText(prompt, 1700, 'hero_slogans');
-        if (!text) return;
-        const parsed = _parseJson(text);
+        const parsed = await aiService.structured('live.hero.slogans', {
+            global: String(global || '').slice(0, 4000), users, streamers, vods,
+            usernames: usernames.map(u => String(u).slice(0, 64)).slice(0, 40), count: TARGET,
+        }, { meter: { kind: 'hero_slogans', role: 'legacy' } });
         if (!parsed) return;
         let audiences = _cleanList((parsed.audiences || []).map(_stripAudiencePrefix).filter(a => a && !_BAD_AUDIENCE.test(a) && !/^for\b/i.test(a)), 60, TARGET);
         // The owner's rule: no "free"/"$0" copy anywhere, whatever the model writes.
