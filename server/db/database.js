@@ -1098,38 +1098,33 @@ function initDb() {
         // could delete, which would have multiplied every balance by 100 again on the next boot.
 
         // AI analysis subsystem (configured in openvibe.network/admin → AI). Master switch
-        // OFF by default so no API calls (or cost) happen until an admin enables it.
+        // OFF by default so no AI runs (or cost) happen until an admin enables it. Every call is a
+        // run on OpenVibe.AI, which holds the provider key, the models and their prices.
         const aiSeeds = [
             ['ai_enabled', 'false', 'Master switch: enable AI analysis (pastes + stream memories)', 'boolean'],
-            ['ai_provider', 'anthropic', 'AI provider: anthropic | openai', 'string'],
-            ['ai_api_key', '', 'AI API key (Anthropic or OpenAI-compatible)', 'string'],
-            ['ai_base_url', '', 'Optional custom base URL (OpenAI-compatible gateway). Blank = provider default', 'string'],
-            ['ai_model', 'claude-sonnet-5', 'Vision-capable model id (e.g. claude-sonnet-5)', 'string'],
             ['ai_paste_analysis_enabled', 'true', 'Analyze image + text pastes (when AI is enabled)', 'boolean'],
             ['ai_stream_memory_enabled', 'false', 'Periodically analyze live-stream thumbnails into timestamped memories', 'boolean'],
             ['ai_stream_capture_interval_sec', '120', 'Seconds between live-stream AI memory captures', 'number'],
             ['ai_transcription_enabled', 'true', 'Transcribe live-stream/clip/VOD audio into memories — FREE, runs locally via whisper.cpp (no API/cost). Requires whisper.cpp installed on the server', 'boolean'],
             ['ai_timeline_enabled', 'false', 'CONTINUOUS audio timeline — transcribes the WHOLE live stream (not a 12s sample every 2min) and detects non-speech sounds, into a searchable timestamped timeline. FREE/local, but uses noticeably more CPU than sampling', 'boolean'],
             ['ai_max_cost_usd_per_day', '0', 'Daily AI spend cap in USD (0 = no cap)', 'number'],
-            ['ai_input_cost_per_mtok', '3.0', 'Estimated input cost per million tokens (for cost breakdown)', 'number'],
-            ['ai_output_cost_per_mtok', '15.0', 'Estimated output cost per million tokens (for cost breakdown)', 'number'],
-            // Per-role model routing (blank = use ai_model). chat = short bot lines, vision = frame/image
-            // analysis (must be vision-capable), director = the AI-viewers planner (structured JSON),
-            // summary = memories/overviews/insight folds.
-            ['ai_model_chat', '', 'Model for short chat-style generations (AI viewers lines). Blank = ai_model', 'string'],
-            ['ai_model_vision', '', 'Model for image/frame analysis (must support vision). Blank = ai_model', 'string'],
-            ['ai_model_director', '', 'Model for the AI-viewers director (plans several lines per call, JSON output). Blank = ai_model', 'string'],
-            ['ai_model_summary', '', 'Model for summaries/overviews/memory folds. Blank = ai_model', 'string'],
-            ['ai_pricing_json', '{"gpt-5-nano":{"in":0.05,"out":0.4,"cached":0.005},"gpt-5-mini":{"in":0.25,"out":2,"cached":0.025},"gpt-5":{"in":1.25,"out":10,"cached":0.125},"gpt-4o-mini":{"in":0.15,"out":0.6,"cached":0.075},"gpt-4.1-mini":{"in":0.4,"out":1.6,"cached":0.1},"claude-haiku":{"in":0.8,"out":4,"cached":0.08},"claude-sonnet":{"in":3,"out":15,"cached":0.3}}', 'USD per 1M tokens by model-id prefix: {"<model>":{"in","out","cached"}}. Longest prefix wins; missing → ai_input/output_cost_per_mtok', 'json'],
             ['ai_viewers_enabled', 'true', 'Kill switch for the AI chat viewers feature (all channels)', 'boolean'],
             ['ai_viewers_max_roster', '12', 'Max AI viewers per channel', 'number'],
             ['ai_viewers_max_lines_per_min', '12', 'Hard ceiling on bot lines per minute per channel', 'number'],
-            ['ai_viewers_global_cap_usd_per_day', '0', 'Daily USD cap for ALL AI-viewer spend on the shared key (0 = none)', 'number'],
+            ['ai_viewers_global_cap_usd_per_day', '0', 'Daily USD cap for ALL AI-viewer spend on the site’s AI, not streamers’ own keys (0 = none)', 'number'],
             ['ai_viewers_default_settings_json', '{}', 'Admin defaults for per-channel AI viewer settings (overrides built-in defaults)', 'json'],
         ];
         const seedAi = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
         for (const [k, v, d, t] of aiSeeds) seedAi.run(k, v, d, t);
         try { database.exec("DELETE FROM site_settings WHERE key = 'ai_viewers_engine'"); } catch { /* */ }
+        // Live's own provider path is gone (roadmap WS-O task 2): drop the shared key and the settings only it read
+        // (provider, base URL, models per role, prices, the Arena's image provider). The admin page lists only rows
+        // that exist, so they leave it too.
+        try {
+            database.exec(`DELETE FROM site_settings WHERE key IN ('ai_api_key', 'ai_provider', 'ai_base_url', 'ai_model', 'ai_model_chat', 'ai_model_vision',
+                'ai_model_director', 'ai_model_summary', 'ai_pricing_json', 'ai_input_cost_per_mtok', 'ai_output_cost_per_mtok',
+                'ai_image_enabled', 'ai_image_model', 'ai_image_quality', 'ai_image_cost_usd')`);
+        } catch { /* */ }
 
         // PowerChat monetization (donations/tips). App-level OAuth client + webhook secret
         // are configured here by the owner; each streamer then connects their own PowerChat

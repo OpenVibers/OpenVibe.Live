@@ -2,24 +2,19 @@
  * OpenVibe.Live — AI analysis
  *
  * Vision + text analysis used for: paste description/tags, paste text overviews,
- * and periodic live-stream "memories". Provider (Anthropic Claude by default, or
- * any OpenAI-compatible endpoint) + key + model are configured in
- * openvibe.network/admin → AI. Everything is gated by the `ai_enabled` master switch and
- * an optional daily USD budget cap. Token usage + estimated cost are recorded to
- * `ai_usage` for the admin cost breakdown.
+ * and periodic live-stream "memories". Every call is a workflow run on OpenVibe.AI
+ * (ai-service.js), which holds the provider key, the models and the prompts of the analyses
+ * here. Everything is gated by the `ai_enabled` master switch and an optional daily USD budget
+ * cap. Token usage + cost are recorded to `ai_usage` for the admin cost breakdown.
  */
-const fs = require('fs');
 const db = require('../db/database');
 
-function s(k) { return (db.getSetting(k) || '').toString().trim(); }
 function b(k) { const v = db.getSetting(k); return v === true || v === 'true' || v === 1 || v === '1'; }
 function num(k, d) { const v = parseFloat(db.getSetting(k)); return Number.isFinite(v) ? v : d; }
 
 const llm = require('./llm');
 const aiService = require('./ai-service');
 function isEnabled() { return llm.isEnabled(); }
-// AI_SERVICE=remote: the analyses below whose prompt moved to OpenVibe.AI run as its workflows.
-const remote = () => aiService.enabled() && isEnabled() && withinBudget();
 function pasteAnalysisEnabled() { return isEnabled() && b('ai_paste_analysis_enabled'); }
 function streamMemoryEnabled() { return isEnabled() && b('ai_stream_memory_enabled'); }
 // Local whisper.cpp transcription (default on when installed). Independent of the
@@ -30,16 +25,10 @@ function transcriptionEnabled() {
     try { return on && require('./transcribe').available(); } catch { return false; }
 }
 function captureIntervalSec() { return Math.max(30, num('ai_stream_capture_interval_sec', 120)); }
-function model() { return llm.defaultModel(); }
 function withinBudget() { return llm.withinBudget(); }
-// Kept for callers that estimate before/without a real usage object (BYO fallbacks).
-function estimateCost(inTok, outTok, cachedTok = 0, modelId = null) {
-    return llm.estimateCost(modelId || model(), { input: inTok, output: outTok, cached: cachedTok });
-}
 
-// Provider transport now lives in ./llm (real system/user roles, prompt caching, per-role
-// models, structured JSON, timeouts + retry, uniform metering). These wrappers keep the
-// existing call shapes for the analysis features below.
+// The transport lives in ./llm (a run on OpenVibe.AI, uniform metering). These wrappers keep the
+// existing call shapes for the features that still render their own prompt.
 
 /** Core call: legacy single-prompt shape. Returns text or null. */
 async function _complete({ prompt, image = null, maxTokens = 400, kind, temperature = null, ownerUserId = null, source = null, role = 'legacy', imageMaxWidth = 1280 }) {
@@ -47,13 +36,13 @@ async function _complete({ prompt, image = null, maxTokens = 400, kind, temperat
     return r && r.text ? r.text : null;
 }
 
-/** Generic text completion (used by media analysis to synthesize overviews). */
+/** Generic text completion (chat insights, moments, slogans, …): a passthrough run of the workflow that owns `kind`. */
 async function summarizeText(prompt, maxTokens = 350, kind = 'media_overview') {
     return _complete({ prompt, maxTokens, kind });
 }
 
 /**
- * Metered completion for the AI Chat Viewers engine on the SHARED (admin) key.
+ * Metered completion for the AI Chat Viewers engine on the site's AI (not a streamer's own key).
  * Attributes the spend to a streamer (owner_user_id) under source='ai_viewers' so
  * per-streamer daily budgets work. Returns text, or null if the admin AI is
  * disabled / over the global budget. Supports an optional image (vision) input.
@@ -63,111 +52,34 @@ async function viewerComplete({ system = '', user = '', image = null, maxTokens 
     return r && r.text ? r.text : null;
 }
 
-/** Is the shared admin AI key usable right now (enabled + within global budget)? */
+/** Is Live's AI usable right now (enabled + within the global budget)? viewers/budget.js asks under this name. */
 function sharedKeyReady() { return isEnabled() && withinBudget(); }
-
-function _parseJson(text) {
-    if (!text) return null;
-    const m = text.match(/\{[\s\S]*\}/);
-    if (!m) return null;
-    let raw = m[0];
-    try { return JSON.parse(raw); } catch { /* try to repair below */ }
-    // Models often emit slightly-broken JSON (a missing closing "]" before "}",
-    // a trailing comma, smart quotes). Repair the common cases before giving up.
-    try {
-        let s = raw
-            .replace(/[“”]/g, '"')   // smart double quotes → "
-            .replace(/[‘’]/g, "'")   // smart single quotes → '
-            .replace(/,\s*([}\]])/g, '$1');    // trailing commas
-        // Balance brackets: an unclosed array right before the object close is the common
-        // case (`..."fight"}` → `..."fight"]}`). Strip a trailing "}", add the missing "]",
-        // then re-add the needed "}" so bracket counts line up.
-        const opensq = (s.match(/\[/g) || []).length, closesq = (s.match(/\]/g) || []).length;
-        if (opensq > closesq) {
-            s = s.replace(/\}\s*$/, '');
-            s += ']'.repeat(opensq - closesq);
-        }
-        const opencb = (s.match(/\{/g) || []).length, closecb = (s.match(/\}/g) || []).length;
-        if (opencb > closecb) s += '}'.repeat(opencb - closecb);
-        return JSON.parse(s);
-    } catch { return null; }
-}
-
-// Robustly pull a plain-text description out of a model reply that was SUPPOSED to be
-// JSON but may be malformed — so we never store a raw `{"description":...}` blob as text.
-function _extractDescription(text, maxLen) {
-    if (!text) return '';
-    const j = _parseJson(text);
-    if (j && j.description) return String(j.description).slice(0, maxLen);
-    // Broken JSON: lift just the description string field.
-    const dm = text.match(/"description"\s*:\s*"((?:[^"\\]|\\.)*)"/i);
-    if (dm) { try { return JSON.parse(`"${dm[1]}"`).slice(0, maxLen); } catch { return dm[1].slice(0, maxLen); } }
-    // Not JSON at all → use as-is; if it merely looks like a JSON blob we couldn't parse, drop it.
-    const t = text.trim();
-    return /^[{[]/.test(t) ? '' : t.slice(0, maxLen);
-}
-function _extractTags(text, maxTags) {
-    const j = _parseJson(text);
-    if (j && Array.isArray(j.tags)) return j.tags.slice(0, maxTags).map(String);
-    const tm = text && text.match(/"tags"\s*:\s*\[([^\]]*)/i);
-    if (tm) return tm[1].split(',').map(s => s.replace(/["'\s]/g, '')).filter(Boolean).slice(0, maxTags);
-    return [];
-}
 
 // ── Public analysis functions ──
 
-/** Re-encode any image (path/data) to a vision-friendly JPEG data URL. Handles
- *  avif/gif/webp/huge images that the vision API otherwise rejects. */
-async function _toVisionJpeg(image, opts = {}) {
-    return (await llm.toVisionJpeg(image, { maxWidth: 1280, quality: 82, ...opts })) || image;
-}
-
 /** Describe an image paste → { description, tags }. */
 async function analyzeImagePaste(image, title, kind = 'paste_image') {
-    if (aiService.enabled()) {
-        if (!remote()) return null;
-        const img = await aiService.imageInput(image, { toVisionJpeg: llm.toVisionJpeg, maxWidth: 1280 });
-        const o = img ? await aiService.structured('live.paste.describe_image', { title: String(title || '').slice(0, 500), image: img }, { meter: { kind, role: 'vision' } }) : null;
-        return o && o.description ? { description: o.description, tags: o.tags || [] } : null;
-    }
-    const prompt = `You are describing an uploaded image/screenshot for a paste titled "${(title || '').slice(0, 120)}".
-Reply ONLY with compact JSON: {"description":"1-2 sentence description of what the image shows","tags":["3-6","short","lowercase","tags"]}.`;
-    const text = await _complete({ prompt, image, maxTokens: 300, kind, role: 'vision', imageMaxWidth: 1280 });
-    if (!text) return null;
-    const description = _extractDescription(text, 600);
-    return description ? { description, tags: _extractTags(text, 8) } : null;
+    if (!sharedKeyReady()) return null;
+    const img = await aiService.imageInput(image, { toVisionJpeg: llm.toVisionJpeg, maxWidth: 1280 });
+    const o = img ? await aiService.structured('live.paste.describe_image', { title: String(title || '').slice(0, 500), image: img }, { meter: { kind, role: 'vision' } }) : null;
+    return o && o.description ? { description: o.description, tags: o.tags || [] } : null;
 }
 
 /** Summarize a text paste → { description }. */
 async function analyzeTextPaste(content, title) {
-    if (aiService.enabled()) {
-        if (!remote() || !String(content || '').trim()) return null;
-        const o = await aiService.structured('live.paste.summarize_text', { title: String(title || '').slice(0, 500), content: String(content || '').slice(0, 200000) }, { meter: { kind: 'paste_text', role: 'legacy' } });
-        return o && o.description ? { description: o.description, tags: [] } : null;
-    }
-    const snippet = String(content || '').slice(0, 6000);
-    const prompt = `Summarize what this pasted text is about in one short sentence (max 200 chars), plainly. Title: "${(title || '').slice(0, 120)}".\n\n---\n${snippet}`;
-    const text = await _complete({ prompt, maxTokens: 120, kind: 'paste_text' });
-    return text ? { description: text.slice(0, 300), tags: [] } : null;
+    if (!sharedKeyReady() || !String(content || '').trim()) return null;
+    const o = await aiService.structured('live.paste.summarize_text', { title: String(title || '').slice(0, 500), content: String(content || '').slice(0, 200000) }, { meter: { kind: 'paste_text', role: 'legacy' } });
+    return o && o.description ? { description: o.description, tags: [] } : null;
 }
 
 /** Analyze a live-stream frame → { description, tags }. */
 async function analyzeStreamFrame(image) {
-    if (aiService.enabled()) {
-        if (!remote()) return null;
-        const img = await aiService.imageInput(image, { toVisionJpeg: llm.toVisionJpeg, maxWidth: 768 });
-        const o = img ? await aiService.structured('live.stream.describe_frame', { image: img }, { meter: { kind: 'stream_memory', role: 'vision' } }) : null;
-        return o && o.description ? { description: o.description, tags: o.tags || [], worthy: o.worthy === true, title: o.worthy === true ? String(o.title || '').slice(0, 80) : '' } : null;
-    }
-    // One vision call does three jobs: the memory description, the tags, and a screenshot-worthiness
+    // One vision run does three jobs: the memory description, the tags, and a screenshot-worthiness
     // verdict + caption (so live pastes need no extra call).
-    const prompt = `This is a frame from a live stream. Reply ONLY with compact JSON: {"description":"one concise sentence describing what is happening on screen right now","tags":["2-5","short","tags"],"worthy":<true only if this exact frame is genuinely screenshot-worthy on its own: a face/reaction, a visual gag, something unusual or funny on screen — false for ordinary gameplay/desktop/chat/talking-head frames>,"title":"<if worthy: a punchy, funny 3-7 word caption for it, else empty>"}.`;
-    const text = await _complete({ prompt, image, maxTokens: 240, kind: 'stream_memory', role: 'vision', imageMaxWidth: 768 });
-    if (!text) return null;
-    const description = _extractDescription(text, 400);
-    if (!description) return null;
-    const j = _parseJson(text) || {};
-    return { description, tags: _extractTags(text, 6), worthy: j.worthy === true, title: j.worthy === true ? String(j.title || '').replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 80) : '' };
+    if (!sharedKeyReady()) return null;
+    const img = await aiService.imageInput(image, { toVisionJpeg: llm.toVisionJpeg, maxWidth: 768 });
+    const o = img ? await aiService.structured('live.stream.describe_frame', { image: img }, { meter: { kind: 'stream_memory', role: 'vision' } }) : null;
+    return o && o.description ? { description: o.description, tags: o.tags || [], worthy: o.worthy === true, title: o.worthy === true ? String(o.title || '').slice(0, 80) : '' } : null;
 }
 
 /** Fixed category taxonomy the AI picks from (matches the go-live selector). */
@@ -178,56 +90,21 @@ function normalizeCategory(c) { const t = String(c || '').toLowerCase().trim(); 
 async function summarizeStreamMemories(memories, streamId = null) {
     // Use observations from across the whole session (capped for token budget) so the
     // overview reflects the entire stream since it started, not just the latest frame.
-    const lines = (memories || []).slice(-80).map(m => `- ${m.description}`).join('\n');
-    if (!lines) return null;
-    if (aiService.enabled()) {
-        if (!remote()) return null;
-        const input = { observations: (memories || []).slice(-80).map(m => String(m.description || '').slice(0, 1000)).filter(Boolean) };
-        if (streamId) {
-            try {
-                input.speech = (db.getTimeline(streamId, { kind: 'speech', limit: 400 }) || []).slice(-200).map(r => ({ start_sec: Number(r.start_sec) || 0, text: String(r.text || '').slice(0, 2000) }));
-                input.sounds = (db.getTimeline(streamId, { kind: 'sound', limit: 120 }) || []).slice(-60).map(r => ({ start_sec: Number(r.start_sec) || 0, label: String(r.label || '').slice(0, 120), confidence: Number(r.confidence || 0) }));
-            } catch { /* timeline optional */ }
-        }
-        const o = await aiService.structured('live.stream.summarize', input, { target: streamId ? { service: 'live', type: 'stream', id: String(streamId) } : undefined, meter: { kind: 'stream_memory', role: 'legacy' } });
-        return o && o.overview ? { overview: o.overview, category: normalizeCategory(o.category), tags: Array.isArray(o.tags) ? o.tags.map(String).slice(0, 6) : [] } : null;
-    }
-
-    // Fold in the audio timeline when one exists. Previously the transcript reached this
-    // prompt only as a 500-char slice embedded inside a memory's description string, with
-    // its timestamps stripped — so the model saw fragments of speech with no idea when
-    // they happened or what they lined up with. Sending the timeline directly gives it
-    // what was SAID and what was HEARD, both anchored in time.
-    let audioBlock = '';
+    const observations = (memories || []).slice(-80).map(m => String(m.description || '').slice(0, 1000)).filter(Boolean);
+    if (!observations.length || !sharedKeyReady()) return null;
+    // The audio timeline, when one exists, goes along with its timestamps: what was SAID and what
+    // was HEARD, both anchored in time.
+    const input = { observations };
     if (streamId) {
         try {
-            const _mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-            const speech = db.getTimeline(streamId, { kind: 'speech', limit: 400 }) || [];
-            const sounds = db.getTimeline(streamId, { kind: 'sound', limit: 120 }) || [];
-            if (speech.length) {
-                const spoken = speech.slice(-200)
-                    .map(r => `[${_mmss(r.start_sec)}] ${String(r.text || '').replace(/\s+/g, ' ').trim().slice(0, 200)}`)
-                    .filter(l => l.length > 8).join('\n');
-                if (spoken) audioBlock += `\n\nWHAT THE STREAMER SAID (timestamped):\n${spoken}`;
-            }
-            if (sounds.length) {
-                const heard = sounds.slice(-60)
-                    .map(r => `[${_mmss(r.start_sec)}] ${r.label} (${Number(r.confidence || 0).toFixed(2)})`)
-                    .join('\n');
-                if (heard) audioBlock += `\n\nNOTABLE SOUNDS HEARD:\n${heard}`;
-            }
+            input.speech = (db.getTimeline(streamId, { kind: 'speech', limit: 400 }) || []).slice(-200).map(r => ({ start_sec: Number(r.start_sec) || 0, text: String(r.text || '').slice(0, 2000) }));
+            input.sounds = (db.getTimeline(streamId, { kind: 'sound', limit: 120 }) || []).slice(-60).map(r => ({ start_sec: Number(r.start_sec) || 0, label: String(r.label || '').slice(0, 120), confidence: Number(r.confidence || 0) }));
         } catch { /* timeline optional */ }
     }
-
-    // The same call also classifies the stream — category is inferred from what is actually on
-    // screen / said, never from the streamer's go-live selector (which used to default to "irl"
-    // and taught every downstream AI that everyone is an IRL streamer).
-    const prompt = `These are timestamped observations from a live stream, in order since it started. Reply ONLY with compact JSON: {"overview":"a thorough overview (2-6 sentences) of what this stream has been about overall — the main activities, topics, and vibe across the whole session (not just the latest moment)","category":"<exactly one of: ${CATEGORIES.join(', ')} — what this stream mostly IS, judged from the observations; desktop = screen/software/coding, gaming = playing games, irl = camera on a person talking/doing things indoors, outdoors/travel = out in the world>","tags":["3-6","short","lowercase","tags"]}\n${lines}${audioBlock}`;
-    const text = await _complete({ prompt, maxTokens: 560, kind: 'stream_memory' });
-    if (!text) return null;
-    const j = _parseJson(text);
-    const overview = j && j.overview ? String(j.overview).slice(0, 2000) : (_extractDescription(text, 2000) || text.slice(0, 2000));
-    return { overview, category: normalizeCategory(j && j.category), tags: j && Array.isArray(j.tags) ? j.tags.map(String).slice(0, 6) : [] };
+    // The same run also classifies the stream: the category is inferred from what is actually on
+    // screen / said, never from the streamer's go-live selector.
+    const o = await aiService.structured('live.stream.summarize', input, { target: streamId ? { service: 'live', type: 'stream', id: String(streamId) } : undefined, meter: { kind: 'stream_memory', role: 'legacy' } });
+    return o && o.overview ? { overview: o.overview, category: normalizeCategory(o.category), tags: Array.isArray(o.tags) ? o.tags.map(String).slice(0, 6) : [] } : null;
 }
 
 /**
@@ -235,50 +112,36 @@ async function summarizeStreamMemories(memories, streamId = null) {
  * their streams (memories), VODs, and pastes. Returns the overview text or null.
  */
 async function generateStreamerOverview(userId) {
-    if (!isEnabled() || !withinBudget()) return null;
+    if (!sharedKeyReady()) return null;
     const user = db.getUserById(userId);
     if (!user) return null;
     const channel = (typeof db.getChannelByUserId === 'function') ? db.getChannelByUserId(userId) : null;
 
     const memories = (db.getStreamMemoriesByUser ? db.getStreamMemoriesByUser(userId, 60) : []) || [];
-    const memLines = memories.slice(0, 40).map(m => `- ${m.description}`).filter(l => l.length > 2);
+    const memLines = memories.slice(0, 40).map(m => String(m.description || '').slice(0, 1000)).filter(Boolean);
 
     // VODs from OpenVibe.Media (public ones) and pastes from OpenVibe.Community (any visibility:
     // this overview is for site staff), both through media-proxy/lookups.js.
     const lookups = require('../media-proxy/lookups');
     const [vods, pastes] = await Promise.all([lookups.userVods(userId, { limit: 20 }), lookups.userPastesForAi(user, 25)]);
-    const vodLines = vods.map(v => `- ${v.title || 'Untitled VOD'}${(v.ai_category || v.category) ? ` [${v.ai_category || v.category}]` : ''}`);
+    const summarized = pastes.filter(p => p.ai_summary);
 
-    const pasteLines = pastes.filter(p => p.ai_summary).map(p => `- "${p.title || 'paste'}": ${p.ai_summary}`);
+    if (!memLines.length && !vods.length && !summarized.length) return null;
 
-    if (!memLines.length && !vodLines.length && !pasteLines.length) return null;
-
-    const ctx = [
-        `Streamer: ${user.display_name || user.username} (@${user.username})`,
-        (channel?.bio || user.bio) ? `Bio: ${(channel?.bio || user.bio).slice(0, 400)}` : '',
-        (channel?.ai_category || channel?.category) ? `Usual category (${channel?.ai_category ? 'inferred by AI from their streams' : 'self-selected'}): ${channel.ai_category || channel.category}` : '',
-        memLines.length ? `\nLive-stream observations (across sessions):\n${memLines.join('\n')}` : '',
-        vodLines.length ? `\nRecent VODs:\n${vodLines.join('\n')}` : '',
-        pasteLines.length ? `\nPaste summaries:\n${pasteLines.join('\n')}` : '',
-    ].filter(Boolean).join('\n');
-
-    const prompt = `You are building an internal profile of a livestreamer for site staff, using aggregated signals across their streams, VODs, and pastes. Write a concise overview (4-8 sentences) covering: what they stream / their content niche, recurring themes or activities, tone/vibe, and anything notable for moderation. Be factual and neutral; do NOT invent specifics that aren't supported by the signals below.\n\n${ctx}`;
-
-    const text = aiService.enabled()
-        ? ((await aiService.structured('live.streamer.overview', {
-            streamer: { username: String(user.username), display_name: String(user.display_name || user.username), bio: String(channel?.bio || user.bio || '').slice(0, 2000), category: (channel?.ai_category || channel?.category) ? String(channel.ai_category || channel.category) : undefined, category_inferred: Boolean(channel?.ai_category) },
-            memories: memories.slice(0, 40).map(m => String(m.description || '').slice(0, 1000)).filter(Boolean),
-            vods: vods.map(v => ({ title: String(v.title || 'Untitled VOD').slice(0, 300), category: (v.ai_category || v.category) ? String(v.ai_category || v.category) : undefined })),
-            pastes: pastes.filter(p => p.ai_summary).map(p => ({ title: String(p.title || 'paste').slice(0, 300), summary: String(p.ai_summary).slice(0, 600) })),
-        }, { target: { service: 'live', type: 'user', id: String(userId) }, meter: { kind: 'streamer_overview', role: 'legacy' } })) || {}).overview || null
-        : await _complete({ prompt, maxTokens: 550, kind: 'streamer_overview' });
+    const o = await aiService.structured('live.streamer.overview', {
+        streamer: { username: String(user.username), display_name: String(user.display_name || user.username), bio: String(channel?.bio || user.bio || '').slice(0, 2000), category: (channel?.ai_category || channel?.category) ? String(channel.ai_category || channel.category) : undefined, category_inferred: Boolean(channel?.ai_category) },
+        memories: memLines,
+        vods: vods.map(v => ({ title: String(v.title || 'Untitled VOD').slice(0, 300), category: (v.ai_category || v.category) ? String(v.ai_category || v.category) : undefined })),
+        pastes: summarized.map(p => ({ title: String(p.title || 'paste').slice(0, 300), summary: String(p.ai_summary).slice(0, 600) })),
+    }, { target: { service: 'live', type: 'user', id: String(userId) }, meter: { kind: 'streamer_overview', role: 'legacy' } });
+    const text = o && o.overview;
     if (!text) return null;
-    const overview = text.slice(0, 4000);
+    const overview = String(text).slice(0, 4000);
     try {
         db.upsertStreamerOverview(userId, {
             overview,
-            model: model(),
-            sources: JSON.stringify({ memories: memories.length, vods: vods.length, pastes: pasteLines.length }),
+            model: 'openvibe-ai',
+            sources: JSON.stringify({ memories: memories.length, vods: vods.length, pastes: summarized.length }),
         });
     } catch (e) { console.warn('[AI] overview store failed:', e.message); }
     return overview;
@@ -499,25 +362,22 @@ async function generateClipOverview(clip) {
     return { overview: r ? r.overview : null, transcript };
 }
 
-/** Report AI config + optionally live-probe the provider. */
+/** Report AI config + optionally probe OpenVibe.AI with a one-word run. */
 async function testStatus({ probe = true } = {}) {
     const cfg = {
         enabled: isEnabled(),
-        provider: s('ai_provider') || 'anthropic',
-        model: model(),
-        has_key: !!s('ai_api_key'),
-        base_url: s('ai_base_url') || null,
+        service: aiService.enabled() ? 'openvibe-ai' : 'off',
         paste_analysis: pasteAnalysisEnabled(),
         stream_memory: streamMemoryEnabled(),
         budget_cap_usd_per_day: num('ai_max_cost_usd_per_day', 0),
         within_budget: withinBudget(),
     };
     try { cfg.cost_today = db.getAiCostToday(); } catch { cfg.cost_today = null; }
-    if (!cfg.enabled) return { ...cfg, ok: false, error: cfg.has_key ? 'AI is disabled (ai_enabled=false)' : 'No API key set' };
+    if (!cfg.enabled) return { ...cfg, ok: false, error: aiService.enabled() ? 'AI is disabled (ai_enabled=false)' : 'AI is off (AI_SERVICE=off)' };
     if (!probe) return { ...cfg, ok: true, probed: false };
     const started = Date.now();
     const reply = await _complete({ prompt: 'Reply with exactly: OK', maxTokens: 8, kind: 'status_check' });
-    return { ...cfg, ok: !!reply, probed: true, reply: reply || null, latency_ms: Date.now() - started, error: reply ? null : 'Provider returned no response (check key/model/base URL)' };
+    return { ...cfg, ok: !!reply, probed: true, reply: reply || null, latency_ms: Date.now() - started, error: reply ? null : 'OpenVibe.AI returned no answer (over budget, or the service or its provider is down)' };
 }
 
 module.exports = {
@@ -526,6 +386,6 @@ module.exports = {
     analyzeImagePaste, analyzeTextPaste, analyzeStreamFrame, summarizeStreamMemories,
     generateStreamerOverview, generateVodOverview, generateClipOverview, ensureVodTimeline,
     generateVodTranscript, generateClipTranscript, summarizeText, testStatus,
-    viewerComplete, sharedKeyReady, estimateCost,
+    viewerComplete, sharedKeyReady,
     complete: llm.complete, llm,
 };

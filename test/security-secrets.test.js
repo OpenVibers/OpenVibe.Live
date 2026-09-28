@@ -66,7 +66,6 @@ const SETTINGS = {
     kick_client_secret: 'sentinel-not-a-secret-kick',
     youtube_api_key: 'sentinel-not-a-secret-youtube',
     soundboard_101_api_key: 'sentinel-not-a-secret-soundboard',
-    ai_api_key: 'sentinel-not-a-secret-ai',
     discord_webhook_url: 'https://discord.example.test/api/webhooks/1/sentinel-not-a-secret-discord',
     ops_alert_webhook_url: 'https://hooks.example.test/sentinel-not-a-secret-ops-setting',
 };

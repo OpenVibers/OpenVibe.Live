@@ -1,8 +1,8 @@
 'use strict';
 
-// AI_SERVICE=remote (roadmap Wave 13): Live's AI goes to OpenVibe.AI as workflow runs with a service
-// token for audience openvibe.ai. Against a stub Network (token endpoint) and a stub AI service:
-// off by default; structured workflows return their output; llm.complete()-shaped calls become
+// Live's AI goes to OpenVibe.AI as workflow runs with a service token for audience openvibe.ai (roadmap
+// Wave 13; the only mode since WS-O task 2). Against a stub Network (token endpoint) and a stub AI service:
+// off only with AI_SERVICE=off; structured workflows return their output; llm.complete()-shaped calls become
 // passthrough runs of the workflow that owns the feature, attributed to the streamer; synthetic
 // (stub-provider) answers, failed runs, quota refusals and an unreachable service are all "no
 // answer" (null); a still-running run is polled; a rejected token is refreshed once.
@@ -14,7 +14,7 @@ const { serviceAuth } = require('openvibe-contracts');
 
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
-delete process.env.AI_SERVICE;
+process.env.AI_SERVICE = 'off';
 
 const keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 let tokenCalls = 0;
@@ -61,11 +61,18 @@ const run = (over = {}) => ({ id: 'run_01JAB2C3D4E5F6G7H8J9K0MNPA', status: 'suc
     const metered = [];
     svc.setRecorder((r, m) => metered.push({ run: r.id, ...m }));
 
-    // 0. Off by default: nothing is sent.
+    // 0. AI_SERVICE=off (any case): nothing is sent, not even a token request. Unset, or the old "remote", is on.
     assert.strictEqual(svc.enabled(), false);
     assert.strictEqual(await svc.structured('live.translate', { text: 'x', to: 'en' }), null);
-    assert.strictEqual(calls.length, 0, 'default behaviour unchanged: no calls to OpenVibe.AI');
+    assert.strictEqual(await svc.complete({ role: 'chat', user: 'x' }), null);
+    process.env.AI_SERVICE = ' Off ';
+    assert.strictEqual(svc.enabled(), false);
+    assert.strictEqual(await svc.run('live.translate', { text: 'x' }), null);
+    assert.strictEqual(calls.length, 0, 'AI off: no calls to OpenVibe.AI');
+    assert.strictEqual(tokenCalls, 0, 'AI off: no token asked for');
 
+    delete process.env.AI_SERVICE;
+    assert.strictEqual(svc.enabled(), true, 'on unless AI_SERVICE=off');
     process.env.AI_SERVICE = 'remote';
     assert.strictEqual(svc.enabled(), true);
 

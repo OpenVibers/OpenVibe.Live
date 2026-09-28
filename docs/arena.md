@@ -32,7 +32,7 @@ The roster is **whoever has been heard**: every streamer with transcribed speech
 
 POWER = weighted sum + a **mouth bonus** (≤ +12: recent XP ÷ 25 + 3 per beef win in 7 days). Audience numbers (viewers, chat volume, followers, clips, tips) do not exist anywhere in the Arena.
 
-**Persona** (`chat` role, 24 h TTL): fighter name, title, class, element, moves, weakness, `taunt` + three `taunts` (ragebait in *their speaking voice*), `typing_style` (how they talk), `spoken_as` (nicknames/mishearings, fed to name detection), six `custom_stats` unique to them and `stat_quips` — written from their transcript lines, their best judged shit talk, who they call out, who calls them out and what they rant at. **Quotes**: AI-picked lines from the transcripts, VOD-linked. **Portraits** (optional, `ai_image_enabled`): drawn from their own stream frames.
+**Persona** (`chat` role, 24 h TTL): fighter name, title, class, element, moves, weakness, `taunt` + three `taunts` (ragebait in *their speaking voice*), `typing_style` (how they talk), `spoken_as` (nicknames/mishearings, fed to name detection), six `custom_stats` unique to them and `stat_quips` — written from their transcript lines, their best judged shit talk, who they call out, who calls them out and what they rant at. **Quotes**: AI-picked lines from the transcripts, VOD-linked. **Portraits**: the ones drawn earlier from their own stream frames stay; no new ones are drawn (the image provider was called with the shared key, and Live calls no model provider itself since roadmap WS-O task 2).
 
 ## The mic ledger (`server/arena/mic.js`)
 
@@ -86,7 +86,7 @@ Old `/arena/topic/*` and `/arena/chatter/*` links show a "this part is gone" not
 |---|---|---|
 | GET | `/status` · `/fighters` · `/fighters/:user` · `/fighters/:user/stat/:stat` · `/live` | roster (`stats`, `stat_meta`, per-fighter `mic`, `last_line`), card (+ `beefs`, `rivalries`, `moments`, `best_lines`, `mic`), drill-down, live cams (`ears`, `last_moment`, `open_beefs`) |
 | GET | `/feed?limit&since` | the shit-talk feed |
-| POST | `/fighters/:user/refresh` | admin — regenerate persona (+ portrait) |
+| POST | `/fighters/:user/refresh` | admin — regenerate persona |
 | GET | `/console/:user` | the ears: listener state, hot mic, level, mic stats, open beefs, recent moments |
 | GET | `/beefs` · `/beefs/:id` · POST `/beefs/:id/hype {side}` | one hype per person per side; anonymous by hashed IP |
 | GET | `/levels` | Trash Level ladder |
@@ -99,7 +99,6 @@ Old `/arena/topic/*` and `/arena/chatter/*` links show a "this part is gone" not
 |---|---|---|
 | `arena_enabled` | `true` | `false` → API 404s |
 | `ai_timeline_enabled` | `false` | the audio transcription the whole Arena runs on — must be on |
-| `ai_image_enabled` / `ai_image_model` / `ai_image_quality` / `ai_image_cost_usd` | `false` / `gpt-image-1` / `low` / `0.011` | portraits |
 | `arena_vote_salt` | `JWT_SECRET` | salt for anonymous hype hashing |
 
 Background job (`server/arena/arena-job.js`): personas/portraits every 20 min (bounded, budget-aware) · listener every 15 s · beef clocks every 60 s.

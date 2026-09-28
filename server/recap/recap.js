@@ -113,14 +113,6 @@ async function gather(streamId) {
 }
 
 // ── The write-up ─────────────────────────────────────────────
-const SCHEMA = { name: 'stream_recap', schema: { type: 'object', additionalProperties: false, required: ['headline', 'summary', 'moment', 'tags', 'grade'], properties: {
-    headline: { type: 'string', description: '≤ 70 chars, like a sports-page headline about this stream, no quotes, no emojis' },
-    summary: { type: 'string', description: '2–3 sentences, ≤ 420 chars, what happened and how it went, concrete, warm, second person is fine' },
-    moment: { type: 'string', description: '≤ 160 chars, the single moment of the night (from the mic lines, chat spike, a clip title or the transcript) — or empty string' },
-    tags: { type: 'array', items: { type: 'string' }, description: '3 short vibe tags, 1–2 words each, lowercase' },
-    grade: { type: 'string', enum: ['S', 'A', 'B', 'C'], description: 'S = legendary night, A = great, B = solid, C = quiet' },
-} } };
-
 function templateWriteup(g) {
     const s = g.stream, name = g.streamer.display_name;
     const bits = [];
@@ -146,17 +138,8 @@ async function aiWriteup(g) {
         mic_lines: g.mic.map(m => m.text), clips: g.clips.map(c => c.title), tips: g.love.tips_total ? `${g.love.tips} tips, ${g.love.tips_total} total` : 'none', new_follows: g.love.follows,
         what_was_said: g.speech.sample || '(no transcript)',
     };
-    const system = `You write the "after-show report" for a live stream on OpenVibe.Live (a scrappy, open-source, community-run streaming site). Voice: sports-page energy, warm, specific, a little funny, never mocking the streamer or the viewers. Use the REAL numbers and names given. Small streams are fine — a 4-viewer night can still be an A if it was fun. Output only JSON.`;
-    let r = null;
-    let out = null;
-    const aiService = require('../ai/ai-service');
-    if (aiService.enabled()) {
-        // AI_SERVICE=remote: the prompt lives in OpenVibe.AI (workflow live.stream.recap).
-        out = await aiService.structured('live.stream.recap', { facts }, { target: { service: 'live', type: 'stream', id: String(g.stream.id) }, meter: { kind: 'stream_recap', role: 'summary', source: 'recap', ownerUserId: g.streamer.id } });
-    } else {
-        try { r = await llm.complete({ role: 'summary', kind: 'stream_recap', source: 'recap', ownerUserId: g.streamer.id, system, user: JSON.stringify(facts), json: SCHEMA, maxTokens: 500, temperature: 0.8, timeoutMs: 40000 }); } catch (e) { console.warn('[Recap] model call failed:', e.message); return null; }
-        out = r && (r.json || (r.text ? llm.parseJsonLoose(r.text) : null));
-    }
+    // The prompt lives in OpenVibe.AI (workflow live.stream.recap).
+    const out = await require('../ai/ai-service').structured('live.stream.recap', { facts }, { target: { service: 'live', type: 'stream', id: String(g.stream.id) }, meter: { kind: 'stream_recap', role: 'summary', source: 'recap', ownerUserId: g.streamer.id } });
     if (!out || !out.headline || !out.summary) return null;
     return { headline: String(out.headline).trim().slice(0, 90), summary: String(out.summary).trim().slice(0, 500), moment: String(out.moment || '').trim().slice(0, 200), tags: (Array.isArray(out.tags) ? out.tags : []).map(t => String(t).trim().toLowerCase()).filter(Boolean).slice(0, 4), grade: ['S', 'A', 'B', 'C'].includes(out.grade) ? out.grade : 'B' };
 }

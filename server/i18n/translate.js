@@ -15,8 +15,9 @@
  *   - an English message in a non-English channel → the channel's language
  *     (so the streamer can read his own chat without anyone typing Japanese)
  *
- * Every call is best-effort and metered through ai/llm.js (shared key, daily budget); when
- * AI is off it all silently returns null and the site behaves exactly as before.
+ * Every translation is a run of OpenVibe.AI's live.translate workflow (ai/ai-service.js), gated on
+ * ai/llm.js's master switch; when AI is off it all silently returns null and the site behaves
+ * exactly as before.
  */
 'use strict';
 const crypto = require('crypto');
@@ -138,7 +139,7 @@ function siteEnabled() {
         return !(String(v) === 'false' || String(v) === '0');
     } catch { return true; }
 }
-function available() { return !!(llm && llm.isEnabled && llm.isEnabled() && siteEnabled()); }
+function available() { return !!(llm && aiService && llm.isEnabled && llm.isEnabled() && siteEnabled()); }
 
 let _tableReady = false;
 function _ensureTable() {
@@ -193,37 +194,11 @@ async function translate(text, { from = 'auto', to = 'en', context = 'chat', max
     const ok = await _slot();
     if (!ok) return null;
     try {
-        if (aiService && aiService.enabled()) {
-            // AI_SERVICE=remote: the prompt lives in OpenVibe.AI (workflow live.translate).
-            const o = await aiService.structured('live.translate', { text: String(text).trim(), from, to, context, max_tokens: maxTokens || undefined });
-            if (o && o.unchanged) { _memSet(key, ''); return null; }
-            const remote = o && typeof o.text === 'string' ? o.text.trim() : '';
-            if (!remote) return null;
-            _memSet(key, remote);
-            try { db.run('INSERT OR REPLACE INTO translations (key, src, dst, text) VALUES (?, ?, ?, ?)', [key, from, to, remote]); } catch { /* */ }
-            return remote;
-        }
-        const src = from === 'auto' ? 'the source language' : langName(from);
-        const kind = context === 'bio' ? 'a streamer\'s profile bio'
-            : context === 'speech' ? 'lines of live-stream speech (a casual gamer talking to his chat)'
-                : 'a live-stream chat message';
-        const system = [
-            `You translate ${kind} from ${src} to ${langName(to)}.`,
-            'Rules: keep the tone, slang, jokes, profanity and emoji as they are; keep names, URLs, :emotes:, !commands and @mentions unchanged;',
-            'never add explanations, notes, quotes or brackets; if it is already in the target language, return it unchanged.',
-            context === 'speech' ? 'Input may contain several lines separated by newlines — return exactly the same number of lines, in order.' : '',
-            'Output ONLY the translation.',
-        ].filter(Boolean).join(' ');
-        const r = await llm.complete({
-            role: 'chat', kind: 'translate', source: `translate:${context}`,
-            system, user: String(text).trim(),
-            maxTokens: Math.max(40, Math.min(maxTokens || 600, Math.round(String(text).length * 2.2) + 60)),
-            temperature: 0.2, timeoutMs: 15000, retries: 0,
-        });
-        const out = r && typeof r.text === 'string' ? r.text.trim().replace(/^["“]|["”]$/g, '') : '';
+        // The prompt lives in OpenVibe.AI (workflow live.translate).
+        const o = await aiService.structured('live.translate', { text: String(text).trim(), from, to, context, max_tokens: maxTokens || undefined });
+        if (o && o.unchanged) { _memSet(key, ''); return null; }
+        const out = o && typeof o.text === 'string' ? o.text.trim() : '';
         if (!out) return null;
-        // A translation identical to the input means it was already in the target language.
-        if (out === String(text).trim()) { _memSet(key, ''); return null; }
         _memSet(key, out);
         try { db.run('INSERT OR REPLACE INTO translations (key, src, dst, text) VALUES (?, ?, ?, ?)', [key, from, to, out]); } catch { /* */ }
         return out;

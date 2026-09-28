@@ -1,31 +1,25 @@
 /**
  * AI Chat Viewers — budget + cost routing.
  *
- * Every bot LLM call goes through generate(), which routes to either:
- *   - the SHARED OpenVibe.Live key (default), metered + capped per streamer at
+ * Every bot LLM call goes through generate(), a run on OpenVibe.AI either way:
+ *   - the site's AI (default), metered + capped per streamer at
  *     channel_ai_config.daily_budget_cents (default 20¢/day). Over the cap → bots
  *     go quiet (returns null). Also respects the admin master switch + global cap.
- *   - the streamer's BYO key (uncapped; their provider bills them). Usage is still
- *     recorded (estimated) for display.
+ *   - the streamer's own key, stored in OpenVibe.AI (byo_in_ai; their provider bills
+ *     them, within the budget they set there). Usage is still recorded for display.
+ *     A key that never moved there is not used: Live calls no provider itself.
  *
  * Spend is attributed to the streamer via ai_usage.owner_user_id with
  * source='ai_viewers', which is the foundation for per-streamer budgets + billing.
  */
 const db = require('../../db/database');
 const ai = require('../ai-analysis');
-const aiProvider = require('../ai-provider');
 
 const SOURCE = 'ai_viewers';
 
-// Rough token estimate from text length (~4 chars/token) — used only for the BYO
-// path (whose provider doesn't report usage) so the dashboard meter has a number.
-function approxTokens(str) { return Math.ceil((str || '').length / 4); }
-
-function byoUsable(cfg) {
-    if (cfg.byo_in_ai) return true;
-    if (cfg.byo_key && String(cfg.byo_key).trim()) return true;
-    try { return aiProvider.isSelfHostedBaseUrl(cfg.byo_base_url); } catch { return false; }
-}
+// Only a key stored in OpenVibe.AI runs; a key (or keyless self-hosted address) left in Live's
+// database would need Live to call the provider itself, which it no longer does.
+function byoUsable(cfg) { return !!cfg.byo_in_ai; }
 
 /**
  * Snapshot of a streamer's AI-viewer budget state.
@@ -61,15 +55,14 @@ async function generate(userId, { system = '', user = '', image = null, maxToken
     if (!st.active) return null;
 
     if (st.useShared) {
-        // Shared admin key: metered + attributed inside ai-analysis.viewerComplete.
+        // The site's AI: metered + attributed inside ai-analysis.viewerComplete.
         return ai.viewerComplete({ system, user, image, maxTokens, temperature, ownerUserId: userId });
     }
 
-    // BYO key — same llm.js path as the shared key (real system role, caching, timeouts),
-    // metered from the provider's usage report (estimated only when the server omits it).
-    // Never fall through to the shared key: no usable own key means the streamer's bots stay quiet.
+    // Their own key in OpenVibe.AI — a run with credential { subject }, metered as 'byo' in llm.js.
+    // Never fall through to the site's AI: no usable own key means the streamer's bots stay quiet.
     const provider = byoProvider(st.cfg);
-    if (!provider) return null;
+    if (!provider || !provider.credentialSubject) return null;
     const r = await ai.llm.complete({
         role: 'chat', system, user, image, imageMaxWidth: 768, maxTokens, temperature,
         kind: 'ai_viewers', source: SOURCE, ownerUserId: userId,
@@ -79,8 +72,10 @@ async function generate(userId, { system = '', user = '', image = null, maxToken
 }
 
 /**
- * llm.js provider override for a streamer's BYO settings (column fields + settings_json.byo). A key stored in
- * OpenVibe.AI (byo_in_ai, WS-O task 2) is named by the streamer's subject; the key itself never comes back here.
+ * The provider for a streamer's own-key settings (column fields + settings_json.byo). A key stored in OpenVibe.AI
+ * (byo_in_ai, WS-O task 2) is named by the streamer's subject, for llm.complete; the key itself never comes back
+ * here. Otherwise the typed key, address and models, which only llm.testProvider uses ("test connection" before
+ * the key is saved to OpenVibe.AI).
  */
 function byoProvider(cfg) {
     if (cfg.byo_in_ai) {
@@ -95,7 +90,7 @@ function byoProvider(cfg) {
         if (m) models[role] = String(m);
     }
     return {
-        baseUrl: cfg.byo_base_url || extra.base_url || aiProvider.DEFAULT_BASE_URL,
+        baseUrl: cfg.byo_base_url || extra.base_url || '',
         apiKey: cfg.byo_key || '',
         model: cfg.byo_model || extra.model || 'gpt-4o-mini',
         models,
@@ -103,9 +98,13 @@ function byoProvider(cfg) {
     };
 }
 
-/** Today's shared-key spend on AI viewers across ALL channels (global viewers cap). */
+/**
+ * Today's spend of the site's AI on AI viewers across ALL channels (global viewers cap): every row but a streamer's
+ * own key. Runs on OpenVibe.AI are recorded as 'openvibe-ai' (the old direct calls were 'shared'), so counting only
+ * 'shared' stopped counting anything once AI_SERVICE=remote went live.
+ */
 function globalViewerSpendToday() {
-    try { return db.get("SELECT COALESCE(SUM(cost_usd),0) AS c FROM ai_usage WHERE source = ? AND COALESCE(provider,'shared') = 'shared' AND created_at >= date('now')", [SOURCE])?.c || 0; } catch { return 0; }
+    try { return db.get("SELECT COALESCE(SUM(cost_usd),0) AS c FROM ai_usage WHERE source = ? AND COALESCE(provider,'shared') <> 'byo' AND created_at >= date('now')", [SOURCE])?.c || 0; } catch { return 0; }
 }
 
 /**

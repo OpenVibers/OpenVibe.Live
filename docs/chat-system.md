@@ -140,7 +140,7 @@ language detected from any non-English line in their bio or name (`server/i18n/t
 and the chat `auth` frame carries `channel_language` so the composer can show the
 "Auto-translated ↔ Japanese" pill.
 
-When AI is enabled (`ai_enabled` + a key; the `chat_translate_enabled` site setting defaults to on),
+When AI is enabled (`ai_enabled`, and `AI_SERVICE` not `off`; the `chat_translate_enabled` site setting defaults to on),
 each chat line is translated a beat after it is broadcast and delivered to the same rooms as
 
 ```json

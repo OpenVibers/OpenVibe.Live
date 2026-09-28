@@ -15,7 +15,7 @@
  *                (recent XP + beef wins).
  *   persona    → AI "character select" bio written from their TRANSCRIPTS, cached 24 h.
  *   quotes     → AI-picked "things they actually said" from the transcripts, VOD-linked.
- *   image      → optional AI character portrait drawn from their own stream frames.
+ *   image      → a character portrait drawn earlier from their own stream frames (no new ones).
  *
  * Nothing here touches the AI unless AI is enabled and within budget (server/ai/llm.js).
  */
@@ -33,7 +33,6 @@ const ACTIVE_DAYS = 45;
 const STATS_WINDOW_DAYS = 90;
 const PERSONA_TTL_MS = 24 * 60 * 60 * 1000;
 const QUOTES_TTL_MS = 24 * 60 * 60 * 1000;
-const IMAGE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const RATING_MIN = 40;
 const MIN_QUOTE_LINES = 20;
 const TALK_BONUS_MAX = 12;
@@ -113,10 +112,7 @@ function boolSetting(key, fallback = false) {
 }
 function arenaEnabled() { return boolSetting('arena_enabled', true); }
 function aiOn() { try { return llm.isEnabled() && llm.withinBudget(); } catch { return false; } }
-function imageGenAvailable() {
-    if (!aiOn() || !boolSetting('ai_image_enabled', false)) return false;
-    try { return llm.resolveProvider('vision').kind === 'openai'; } catch { return false; }
-}
+function imageGenAvailable() { return false; }   // see "Image" below
 
 // ── Raw stats ────────────────────────────────────────────────
 
@@ -388,140 +384,19 @@ async function generateQuotes(userId, { force = false } = {}) {
     return result;
 }
 
-// ── Image (AI, optional) ─────────────────────────────────────
+// ── Image ────────────────────────────────────────────────────
+// Portraits drawn earlier stay on the cards; no new ones are drawn. They came from the site's image
+// provider called with the shared key, and Live calls no model provider itself any more (roadmap
+// WS-O task 2); OpenVibe.AI has no image workflow yet.
 
-function imageIsFresh(row) {
-    if (!row || !row.image_path || !row.image_generated_at) return false;
-    if (!fs.existsSync(path.join(ARENA_DIR, path.basename(row.image_path)))) return false;
-    return Date.now() - Date.parse(row.image_generated_at + 'Z') < IMAGE_TTL_MS;
-}
 function imageUrlFor(row) {
     if (!row || !row.image_path) return null;
     const base = path.basename(row.image_path);
     return fs.existsSync(path.join(ARENA_DIR, base)) ? `/data/arena/${base}` : null;
 }
-async function latestThumbnailFor(userId) { const r = await referenceImagesFor(userId); return r.length ? r[0] : null; }
-/**
- * Up to REF_MAX real frames of THIS streamer's streams, newest first: the live thumbnail, AI-moment
- * frames the vision job persisted (data/ai-moments/<streamId>/<offset>.jpg), VOD thumbnails. Local
- * paths or URLs. These are what the portrait is drawn FROM, so every fighter looks like their own
- * stream — their setup, their lighting, their gear, their face — not a generic hero.
- */
-const REF_MAX = 3;
-async function referenceImagesFor(userId) {
-    const out = [];
-    const push = (p) => { if (p && !out.includes(p) && out.length < REF_MAX) out.push(p); };
-    try {
-        const live = db.get('SELECT id FROM streams WHERE user_id = ? AND is_live = 1 ORDER BY started_at DESC LIMIT 1', [userId]);
-        if (live) {
-            const thumbs = require('../media-proxy/live-thumbs');
-            const url = thumbs.getCurrentLiveThumbnailUrl(live.id);
-            if (url) { const local = paths.data('live-thumbs', path.basename(url)); if (fs.existsSync(local)) push(local); else if (url.startsWith('http')) push(url); }
-        }
-    } catch { /* */ }
-    try {
-        const momentsDir = paths.dir('AI_MOMENTS_PATH', 'ai-moments');
-        const streams = db.all(`SELECT id FROM streams WHERE user_id = ? AND duration_seconds > 0 ORDER BY started_at DESC LIMIT 6`, [userId]);
-        for (const s of streams) {
-            const dir = path.join(momentsDir, String(s.id));
-            if (!fs.existsSync(dir)) continue;
-            // Prefer frames the vision model described as showing a person/face/reaction (they make better portraits).
-            const memRows = db.all(`SELECT offset_seconds, description, thumbnail_url FROM stream_memories WHERE stream_id = ? ORDER BY CASE WHEN LOWER(description) LIKE '%person%' OR LOWER(description) LIKE '%man %' OR LOWER(description) LIKE '%woman%' OR LOWER(description) LIKE '%face%' OR LOWER(description) LIKE '%wearing%' OR LOWER(description) LIKE '%headphones%' THEN 0 ELSE 1 END, id DESC LIMIT 4`, [s.id]);
-            for (const m of memRows) { const f = m.thumbnail_url && m.thumbnail_url.includes('/data/ai-moments/') ? path.join(momentsDir, ...m.thumbnail_url.split('/data/ai-moments/')[1].split('/')) : path.join(dir, `${m.offset_seconds}.jpg`); if (fs.existsSync(f)) push(f); }
-            if (out.length >= REF_MAX) break;
-        }
-    } catch { /* */ }
-    // Media-hosted thumbnails of their streams (what prod actually has: https://openvibe.media/t/vod-….jpg).
-    try { for (const r of db.all(`SELECT thumbnail_url FROM streams WHERE user_id = ? AND thumbnail_url LIKE 'http%' ORDER BY started_at DESC LIMIT 3`, [userId])) push(r.thumbnail_url); } catch { /* */ }
-    try { for (const r of db.all(`SELECT m.thumbnail_url FROM stream_memories m WHERE m.user_id = ? AND m.thumbnail_url LIKE 'http%' AND (LOWER(m.description) LIKE '%person%' OR LOWER(m.description) LIKE '%face%' OR LOWER(m.description) LIKE '%wearing%' OR LOWER(m.description) LIKE '%headphones%') ORDER BY m.id DESC LIMIT 3`, [userId])) push(r.thumbnail_url); } catch { /* */ }
-    // Their newest public VODs' thumbnails, from OpenVibe.Media.
-    if (out.length < REF_MAX) {
-        try {
-            const media = require('../media-client');
-            for (const v of await require('../media-proxy/lookups').userVods(userId, { limit: 3 })) {
-                const url = media.publicUrl(v.thumbnail_url);
-                if (url && /^https?:\/\//i.test(url)) push(url);
-            }
-        } catch { /* */ }
-    }
-    return out;
-}
-async function loadImageBuffer(src) {
-    try {
-        if (/^https?:\/\//i.test(src)) { const r = await fetch(src, { signal: AbortSignal.timeout(15000) }); if (!r.ok) return null; return Buffer.from(await r.arrayBuffer()); }
-        return fs.readFileSync(src);
-    } catch { return null; }
-}
-const SCENE_SYSTEM = 'Describe this stream thumbnail as a SCENE for an illustrator in ≤ 60 words: setting, objects, lighting, colours, mood, what activity is happening. Do NOT describe any person\'s face, body, skin, hair, age, gender or identity — refer to a person only as "the host" if at all. Plain text only.';
-const _imageInFlight = new Map();
-async function generateImage(userId, { force = false } = {}) {
+async function generateImage(userId) {
     ensureTables();
-    const row = profileRow(userId);
-    if (!force && imageIsFresh(row)) return imageUrlFor(row);
-    if (!imageGenAvailable()) return imageUrlFor(row);
-    if (_imageInFlight.has(userId)) return _imageInFlight.get(userId);
-    const task = (async () => {
-        const entry = loadRoster().byId[userId];
-        const persona = parseJson(row?.persona_json) || (entry ? fallbackPersona(entry) : null);
-        if (!persona) return null;
-        let scene = '';
-        const refSources = await referenceImagesFor(userId);
-        const thumb = refSources.length ? null : await latestThumbnailFor(userId);   // scene text only for the no-frames fallback
-        if (thumb) { try { const d = await llm.complete({ role: 'vision', kind: 'arena_scene', source: 'arena', ownerUserId: userId, system: SCENE_SYSTEM, user: 'Describe the scene.', image: thumb, maxTokens: 120, temperature: 0.4, timeoutMs: 30000 }); scene = (d && d.text || '').trim(); } catch { scene = ''; } }
-        const color = entry?.user?.profile_color || '#8b5cf6';
-        const cs = Array.isArray(persona.custom_stats) ? persona.custom_stats.slice(0, 4).map(x => `${x.name} ${x.value}`).join(', ') : '';
-        // Reference frames: the portrait is drawn FROM the streamer's own stream (image edit) whenever we
-        // have frames; the text-only generation is the fallback for streamers with no frames yet.
-        const refs = [];
-        for (const src of refSources) { const buf = await loadImageBuffer(src); if (buf && buf.length > 4000) refs.push({ src, buf }); }
-        const prompt = [
-            refs.length ? `Turn the attached frames from this streamer's live stream into ONE fighting-game character-select portrait of them as "${persona.fighter_name}" — ${persona.title}. Keep what makes their stream recognisable: their setup, room, gear, lighting, clothing, silhouette, hair, headphones, camera angle, the vibe of the scene — exaggerated into a stylised caricature-hero (like a Street Fighter select screen), never a photo.` : `Fighting-game character-select portrait of an original stylised hero called "${persona.fighter_name}" — ${persona.title}.`,
-            `Class: ${persona.class}. Element: ${persona.element}. Signature move: ${persona.signature_move?.name} (${persona.signature_move?.description}).${cs ? ` Their stats: ${cs}.` : ''}`,
-            entry?.raw?.category ? `Costume and props inspired by ${String(entry.raw.category).replace(/[-_]/g, ' ')} streaming.` : '',
-            !refs.length && scene ? `Background inspired by this scene: ${scene}` : (refs.length ? 'Background: their actual streaming environment from the frames, pushed into a dramatic arena lighting.' : 'Background: dark neon arena.'),
-            `Colour palette led by ${color}. Bold comic-book line art, dramatic rim light, dynamic pose, three-quarter view, waist up.`,
-            'No text, no letters, no logos, no watermark, no UI overlays.',
-        ].filter(Boolean).join(' ');
-        const p = llm.resolveProvider('vision');
-        const model = String(setting('ai_image_model', 'gpt-image-1'));
-        const quality = String(setting('ai_image_quality', 'low'));
-        const started = Date.now();
-        let b64 = null;
-        try {
-            let res;
-            if (refs.length && !/^dall-e/i.test(model)) {
-                // images/edits: the model sees the real frames and restyles them.
-                const fd = new FormData();
-                fd.append('model', model); fd.append('prompt', prompt); fd.append('n', '1'); fd.append('size', '1024x1024'); fd.append('quality', quality);
-                for (const r of refs) fd.append('image[]', new Blob([r.buf], { type: 'image/jpeg' }), path.basename(String(r.src)).replace(/[^a-z0-9._-]/gi, '_') || 'frame.jpg');
-                res = await fetch(`${p.baseUrl}/images/edits`, { method: 'POST', headers: { ...(p.apiKey ? { Authorization: `Bearer ${p.apiKey}` } : {}) }, body: fd, signal: AbortSignal.timeout(180000) });
-            } else {
-                const body = { model, prompt, n: 1, size: '1024x1024' };
-                if (/^dall-e/i.test(model)) body.response_format = 'b64_json'; else body.quality = quality;
-                res = await fetch(`${p.baseUrl}/images/generations`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(p.apiKey ? { Authorization: `Bearer ${p.apiKey}` } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(120000) });
-            }
-            const j = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error((j.error && (j.error.message || j.error)) || `HTTP ${res.status}`);
-            const item = j.data && j.data[0];
-            if (item?.b64_json) b64 = item.b64_json;
-            else if (item?.url) { const r2 = await fetch(item.url, { signal: AbortSignal.timeout(60000) }); b64 = Buffer.from(await r2.arrayBuffer()).toString('base64'); }
-            if (!b64) throw new Error('no image in response');
-        } catch (err) {
-            console.warn(`[Arena] image generation failed for user ${userId}:`, err.message);
-            db.run('INSERT INTO arena_profiles (user_id, image_error, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET image_error = excluded.image_error, updated_at = CURRENT_TIMESTAMP', [userId, err.message.slice(0, 300)]);
-            return imageUrlFor(row);
-        }
-        const file = `u${userId}-${Date.now().toString(36)}.png`;
-        fs.writeFileSync(path.join(ARENA_DIR, file), Buffer.from(b64, 'base64'));
-        if (row?.image_path) { try { fs.unlinkSync(path.join(ARENA_DIR, path.basename(row.image_path))); } catch { /* */ } }
-        db.run(`INSERT INTO arena_profiles (user_id, image_path, image_prompt, image_model, image_generated_at, image_error, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP)
-                ON CONFLICT(user_id) DO UPDATE SET image_path = excluded.image_path, image_prompt = excluded.image_prompt, image_model = excluded.image_model, image_generated_at = CURRENT_TIMESTAMP, image_error = NULL, updated_at = CURRENT_TIMESTAMP`, [userId, file, prompt, model]);
-        try { db.recordAiUsage({ kind: 'arena_image', model, cost_usd: Number(setting('ai_image_cost_usd', 0.011)) || 0, owner_user_id: userId, source: 'arena', role: 'image', provider: 'shared', latency_ms: Date.now() - started }); } catch { /* */ }
-        console.log(`[Arena] portrait generated for user ${userId} (${model}, ${refs.length ? `from ${refs.length} of their own frames` : 'text only'}, ${Date.now() - started} ms)`);
-        return `/data/arena/${file}`;
-    })().finally(() => _imageInFlight.delete(userId));
-    _imageInFlight.set(userId, task);
-    return task;
+    return imageUrlFor(profileRow(userId));
 }
 
 // ── Fighter cards ────────────────────────────────────────────
@@ -560,7 +435,7 @@ async function getFighter(usernameOrId, { generate = true } = {}) {
         try { await generatePersona(user.id); } catch (e) { console.warn('[Arena] persona:', e.message); }
     }
     const card = cardFor(user.id, roster, { includeQuotes: true });
-    card.image_pending = !card.image_url && _imageInFlight.has(user.id);
+    card.image_pending = false;
     card.image_generation = imageGenAvailable() ? 'ai' : 'off';
     try { card.beefs = require('./beef').forUser(user.id, 8); } catch { card.beefs = []; }
     return card;
@@ -659,7 +534,7 @@ function status() {
     let beefs = {}, moments = 0;
     try { beefs = db.get(`SELECT SUM(status = 'open') AS open, SUM(status = 'resolved') AS resolved FROM arena_beefs`) || {}; moments = db.get(`SELECT COUNT(*) AS n FROM arena_mic_moments WHERE created_at >= datetime('now', '-1 day')`)?.n || 0; } catch { /* */ }
     return {
-        mode: 'battle-cam', enabled: arenaEnabled(), ai: aiOn(), image_generation: imageGenAvailable(), image_model: imageGenAvailable() ? String(setting('ai_image_model', 'gpt-image-1')) : null,
+        mode: 'battle-cam', enabled: arenaEnabled(), ai: aiOn(), image_generation: imageGenAvailable(), image_model: null,
         roster: roster.order.length, with_voice_data: roster.order.filter(id => roster.byId[id].raw.voice.has_data).length,
         personas: counts.personas || 0, quotes: counts.quotes || 0, images: counts.images || 0,
         beefs_open: beefs.open || 0, beefs_resolved: beefs.resolved || 0, mic_moments_24h: moments, live_fighters: liveFighters().length,

@@ -295,7 +295,7 @@ async function check(name, fn) {
         await call('POST', '/api/ai-viewers/byo/test', { byo_base_url: 'http://public.example.test/v1', byo_key: 'byo-test-key', byo_model: 'm' });
         assert.ok(publicHops.slice(before).includes('POST /v1/chat/completions'), 'a public BYO endpoint is still called, through the guard');
     });
-    await check('AI viewers: a saved internal base URL is refused when the bots run, too (same call path)', async () => {
+    await check('AI viewers: a saved base URL is never called when the bots run (llm.complete refuses a raw key/base URL)', async () => {
         await call('PUT', '/api/ai-viewers/config', { byo_base_url: `http://127.0.0.1:${p}/v1`, byo_key: 'byo-test-key', use_shared_key: 0 });
         const llm = require('../server/ai/llm');
         const budget = require('../server/ai/viewers/budget');
@@ -361,9 +361,7 @@ async function check(name, fn) {
             'server/monetization/cosmetics.js': 'legacy quest API (env)',
             'server/openre/openre-client.js': 'OpenRe.Stream (configured)',
             'server/ai/ai-service.js': 'OpenVibe.AI (configured)',
-            'server/ai/llm.js': 'the site\'s AI provider (owner setting); a streamer\'s BYO base URL goes through egress.postJson; images are Live\'s own frames',
-            'server/ai/ai-provider.js': 'unused network helpers; kept for its URL helpers',
-            'server/arena/arena-service.js': 'the site\'s image provider (owner setting) and Live\'s own frame URLs',
+            'server/ai/llm.js': 'images are Live\'s own frames; a streamer\'s typed provider address (testProvider) goes through egress.postJson',
             'server/chat/routes.js': 'GIF providers (fixed hosts)',
             'server/chat/soundboard-service.js': '101soundboards (host allowlist; the audio download through safeLookup)',
             'server/chat/tts-engine.js': 'Google / AWS TTS (fixed hosts)',

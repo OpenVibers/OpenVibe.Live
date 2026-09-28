@@ -129,11 +129,14 @@ router.post('/byo/test', requireAuth, async (req, res) => {
         // A stored key lives in OpenVibe.AI: test it there (a one-word run with credential { subject }).
         const typedKey = body.byo_key && body.byo_key !== KEY_SENTINEL;
         if (cfg.byo_in_ai && !typedKey) {
+            const provider = budget.byoProvider(cfg);
+            if (!provider) return res.json({ ok: false, error: 'Link a Network account to use your own key' });
             const started = Date.now();
-            const r = await ai.llm.complete({ role: 'chat', user: 'Reply with the single word: ok', maxTokens: 5, temperature: 0, timeoutMs: 15000, retries: 0, kind: 'status_check', ownerUserId: req.user.id, provider: budget.byoProvider(cfg) });
-            return res.json(r && r.text ? { ok: true, model: r.model, latency_ms: Date.now() - started, via: 'openvibe-ai' } : { ok: false, error: 'your provider did not answer through OpenVibe.AI' });
+            const r = await ai.llm.complete({ role: 'chat', user: 'Reply with the single word: ok', maxTokens: 5, temperature: 0, timeoutMs: 15000, kind: 'status_check', ownerUserId: req.user.id, provider });
+            return res.json(r && r.text ? { ok: true, model: r.model, latencyMs: Date.now() - started, via: 'openvibe-ai' } : { ok: false, error: 'your provider did not answer through OpenVibe.AI' });
         }
-        const override = budget.byoProvider({ ...cfg, byo_key: (body.byo_key && body.byo_key !== KEY_SENTINEL) ? body.byo_key : cfg.byo_key, byo_base_url: body.byo_base_url ?? cfg.byo_base_url, byo_model: body.byo_model ?? cfg.byo_model });
+        // A key typed but not saved yet (so not in OpenVibe.AI): llm.testProvider, the one direct provider call left.
+        const override = budget.byoProvider({ ...cfg, byo_in_ai: 0, byo_key: typedKey ? body.byo_key : cfg.byo_key, byo_base_url: body.byo_base_url ?? cfg.byo_base_url, byo_model: body.byo_model ?? cfg.byo_model });
         const r = await ai.llm.testProvider(override);
         res.json(r);
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }

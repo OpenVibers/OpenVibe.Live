@@ -1,26 +1,25 @@
 /**
- * ai-service.js — Live as a CONSUMER of OpenVibe.AI (roadmap Wave 13).
+ * ai-service.js — Live as a CONSUMER of OpenVibe.AI (roadmap Wave 13; the only mode since WS-O task 2).
  *
- * With AI_SERVICE=remote, Live stops calling model providers itself: every shared-key AI call
- * becomes a workflow run on OpenVibe.AI (ai.openvibe.network, internal OV_AI_INTERNAL_URL),
- * authenticated with Live's Network service token for audience openvibe.ai (network-principal).
- * Unset (the default), nothing here is used and Live behaves exactly as before.
+ * Live calls no model provider itself and keeps no shared provider key: every AI call is a workflow
+ * run on OpenVibe.AI (ai.openvibe.network, internal OV_AI_INTERNAL_URL), authenticated with Live's
+ * Network service token for audience openvibe.ai (network-principal). AI_SERVICE=off turns all of it
+ * off (every call answers null); any other value, or none, is on. The old AI_SERVICE=remote still
+ * means on.
  *
  *   structured(workflow, input, opts) -> the run's output object, or null
- *        for workflows whose prompt now lives in OpenVibe.AI (live.translate, live.paste.*,
- *        live.stream.*, live.streamer.overview, live.media.overview, live.stream.recap,
- *        network.site_copy)
+ *        for workflows whose prompt lives in OpenVibe.AI (live.translate, live.paste.*,
+ *        live.stream.*, live.streamer.overview, live.media.overview, live.stream.recap)
  *   complete(o, { toVisionJpeg }) -> the llm.complete() result shape, or null
  *        for every other llm.complete() call: the prompt Live rendered is sent as a passthrough run of
  *        the workflow that owns that feature (KIND_TO_WORKFLOW), so each run is still attributable
  *        to one workflow + model + run
  *
- * null means "no AI answer" exactly like llm.complete() returning null today (AI off, over
- * budget, provider down): quota refusals (429), failed runs, unreachable service, and SYNTHETIC
- * answers (the AI service's stub provider) all come back as null — synthetic text never reaches
- * a Live page. A streamer's own key stored in OpenVibe.AI (byo-credentials.js) runs here too, as
- * complete({ credentialSubject }): the run carries credential { subject }; an older key still in
- * Live's database is called directly by llm.js until it is moved.
+ * null means "no AI answer" (AI off, over budget, provider down): quota refusals (429), failed runs,
+ * an unreachable service, and SYNTHETIC answers (the AI service's stub provider) all come back as
+ * null — synthetic text never reaches a Live page. A streamer's own key stored in OpenVibe.AI
+ * (byo-credentials.js) runs here too, as complete({ credentialSubject }): the run carries
+ * credential { subject }.
  */
 'use strict';
 const principal = require('../net/network-principal');
@@ -38,7 +37,7 @@ const KIND_TO_WORKFLOW = {
 };
 const ROLES = ['chat', 'vision', 'director', 'summary', 'legacy'];
 
-function enabled() { return String(process.env.AI_SERVICE || '').trim().toLowerCase() === 'remote'; }
+function enabled() { return String(process.env.AI_SERVICE || '').trim().toLowerCase() !== 'off'; }
 function baseUrl() { return String(process.env.OV_AI_INTERNAL_URL || 'http://127.0.0.1:4700').replace(/\/+$/, ''); }
 function workflowFor(kind) { return KIND_TO_WORKFLOW[kind] || 'live.complete'; }
 

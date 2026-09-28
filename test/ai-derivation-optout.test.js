@@ -22,7 +22,7 @@ const vm = require('vm');
 const tmp = path.join(os.tmpdir(), `ov-ai-optout-${process.pid}.db`);
 process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
-delete process.env.AI_SERVICE;
+delete process.env.AI_SERVICE;   // on (every AI call is a run on OpenVibe.AI, stubbed below)
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 console.warn = () => {};
@@ -75,7 +75,9 @@ const llm = require('../server/ai/llm');
 const modelCalls = [];
 llm.isEnabled = () => true;
 llm.withinBudget = () => true;
-llm.complete = async (o) => { modelCalls.push(o); return { json: { headline: 'What a night', summary: 'Chat was loud.', moment: '', tags: ['loud'], grade: 'A' } }; };
+llm.complete = async (o) => { modelCalls.push(o); return null; };
+// The after-show report is the live.stream.recap workflow on OpenVibe.AI.
+require('../server/ai/ai-service').structured = async (workflow, input) => { modelCalls.push({ workflow, input }); return { headline: 'What a night', summary: 'Chat was loud.', moment: '', tags: ['loud'], grade: 'A' }; };
 
 const autoClip = require('../server/ai/auto-clip-job');
 const moments = require('../server/ai/ai-moments-job');
