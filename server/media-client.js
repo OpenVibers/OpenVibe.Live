@@ -177,6 +177,14 @@ function getVod(vodId, opts = {}) {
     return request('GET', `/vods/${vodId}`, opts);
 }
 
+/**
+ * GET /vods/:id/signed-url or /clips/:id/signed-url → { url, expires_at }: a short-lived URL of the recording's bytes
+ * that works whatever its visibility, for a reader with no key (OpenVibe.AI transcribing it). ttl in seconds (≤ 6 h).
+ */
+function signedMediaUrl(kind, id, ttlS = 3600, opts = {}) {
+    return request('GET', `/${kind === 'clip' ? 'clips' : 'vods'}/${id}/signed-url`, { query: { ttl: ttlS }, ...opts });
+}
+
 /** GET /vods?limit&offset (+ pass-through filters like username/user_id/stream_id) */
 function listVods(query = {}, opts = {}) {
     return request('GET', '/vods', { query, ...opts });
@@ -398,6 +406,7 @@ function actingUserFrom(req) {
 }
 
 module.exports = {
+    signedMediaUrl,
     MEDIA_URL, MEDIA_PUBLIC_URL, MEDIA_APP_ID,
     MediaApiError,
     request, proxy, actingUserFrom, _formData,

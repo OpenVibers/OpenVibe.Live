@@ -139,6 +139,12 @@ async function _mediaSource(row, kind = 'vod') {
         const media = require('../media-client');
         const id = row && row.id;
         if (!id) return null;
+        // A signed URL reads the recording whatever its visibility: a private VOD is transcribed too (by OpenVibe.AI,
+        // which holds no key) and its frames captured. Six hours covers a long transcript pass, window by window.
+        try {
+            const signed = await media.signedMediaUrl(kind, id, 6 * 3600);
+            if (signed && signed.url) return signed.url;
+        } catch { /* fall back to the public URL */ }
         const meta = kind === 'clip' ? await media.getClip(id) : await media.getVod(id);
         if (meta && meta.playback_url) return media.publicUrl(meta.playback_url);
         return kind === 'clip' ? media.clipUrl(id) : media.vodPlaybackUrl(id);
