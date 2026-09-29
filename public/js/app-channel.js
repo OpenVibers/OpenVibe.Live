@@ -668,6 +668,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             // ── LIVE STATE ──
             document.getElementById('ch-live-area').style.display = '';
             document.getElementById('ch-offline-area').style.display = 'none';
+            _placeBelowFold();
 
             // Populate streamer info bar (below video). Avatar image (letter fallback)
             // + display name both link to the channel; the @handle is dropped.
@@ -747,6 +748,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             // ── OFFLINE STATE ──
             document.getElementById('ch-live-area').style.display = 'none';
             document.getElementById('ch-offline-area').style.display = '';
+            _placeBelowFold();
 
             // Populate offline header
             document.getElementById('ch-avatar-offline').textContent = (ch.username || '?')[0].toUpperCase();
@@ -754,6 +756,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             _activeChannelIsOwnerRank = !!ch.is_owner;
             document.getElementById('ch-username-offline').textContent = '@' + ch.username;
             document.getElementById('ch-description-offline').textContent = ch.description || '';
+            if (window.ChannelSocials) ChannelSocials.pills(document.getElementById('ch-socials-offline'), ch.social_links || []);
             document.getElementById('ch-follower-count-offline').textContent = `${ch.follower_count || 0} followers`;
             _loadGameBadge(ch.username);
             _setCategoryBadge(document.getElementById('ch-category-badge-offline'), ch.ai_category || ch.category || 'Offline', !!ch.ai_category);
@@ -1738,6 +1741,28 @@ function _effAiOverviewShow(ch) {
     return !_channelHasBio(ch); // auto
 }
 
+// Wide screens: the tabs (About, Videos, …) live inside the visible main column, which scrolls next to a full-height
+// chat, so nothing leaves an empty band beside the chat or a gutter around a capped container. Narrow screens keep
+// them after the whole layout (chat before tabs, as the stacked layout reads).
+const _BELOW_FOLD_WIDE = window.matchMedia('(min-width: 1181px)');
+let _belowFoldHome = null;
+function _placeBelowFold() {
+    const fold = document.querySelector('#page-channel .channel-below-fold');
+    if (!fold) return;
+    if (!_belowFoldHome) { _belowFoldHome = document.createComment('channel-below-fold'); fold.parentNode.insertBefore(_belowFoldHome, fold); }
+    const live = document.getElementById('ch-live-area');
+    const area = live && live.style.display !== 'none' ? live : document.getElementById('ch-offline-area');
+    const main = area && area.querySelector('.stream-main');
+    if (_BELOW_FOLD_WIDE.matches && main) {
+        if (fold.parentNode !== main) main.appendChild(fold);
+        fold.classList.add('is-in-main');
+    } else if (fold.previousSibling !== _belowFoldHome) {
+        _belowFoldHome.parentNode.insertBefore(fold, _belowFoldHome.nextSibling);
+        fold.classList.remove('is-in-main');
+    } else fold.classList.remove('is-in-main');
+}
+if (_BELOW_FOLD_WIDE.addEventListener) _BELOW_FOLD_WIDE.addEventListener('change', _placeBelowFold);
+
 // About tab visibility + default open tab depend on whether the streamer has any
 // About content (bio/panels) or weather enabled.
 function _resetChannelTabs(ch) {
@@ -1747,7 +1772,7 @@ function _resetChannelTabs(ch) {
         const bio = (ch.bio || ch.description || '').trim();
         let panels = [];
         try { panels = typeof ch.panels === 'string' ? JSON.parse(ch.panels || '[]') : (ch.panels || []); } catch { panels = []; }
-        hasAbout = !!bio || (Array.isArray(panels) && panels.length > 0);
+        hasAbout = !!bio || (Array.isArray(panels) && panels.length > 0) || (Array.isArray(ch.social_links) && ch.social_links.length > 0);
     }
     // The AI overview at the top of About also counts as About content, so the tab shows
     // even when the streamer hasn't written a bio (per the auto/show/hide preference).
@@ -2188,6 +2213,8 @@ function _applyChannelTabMeta(data) {
 /* ── About tab: inline live panel editor (Twitch/Kick-style under-stream area) ── */
 let _aboutPanels = [];        // working array of panels
 let _aboutBio = '';
+let _aboutSocials = [];      // the channel's social links as viewers see them (server/social/links.js)
+let _aboutCh = null;
 let _aboutIsOwner = false;    // is the viewer the streamer?
 let _aboutCanEdit = false;    // can the viewer edit (streamer, or an allowed mod)?
 let _aboutEditMode = false;
@@ -2221,6 +2248,9 @@ function _renderChannelAbout(ch) {
     _aboutPanels = (Array.isArray(panels) ? panels : []).map(_normalizeAboutPanel);
     _aboutAiOverview = ch.ai_overview || '';
     _aboutAiPref = ch.ai_overview_pref || (ch.hide_ai_overview ? 'hide' : 'auto');
+    _aboutSocials = Array.isArray(ch.social_links) ? ch.social_links : [];
+    _aboutCh = ch;
+    if (window.ChannelSocials) ChannelSocials.reset();
     _aboutEditMode = false;
     _renderAboutView();
 }
@@ -2246,7 +2276,7 @@ function _renderAboutView() {
     const host = document.getElementById('ch-about-content');
     if (!host) return;
     const aiHtml = _aboutAiOverviewHTML();
-    const hasContent = _aboutBio || _aboutPanels.length || aiHtml;
+    const hasContent = _aboutBio || _aboutPanels.length || aiHtml || _aboutSocials.length;
     let html = '';
     if (!hasContent) {
         html += _aboutCanEdit
@@ -2257,8 +2287,10 @@ function _renderAboutView() {
     }
     html += aiHtml; // AI overview card leads the About tab
     if (_aboutBio) html += `<div class="ch-about-bio">${_linkify(esc(_aboutBio))}</div><div class="ch-about-bio-en" id="ch-about-bio-en"></div>`;
+    html += '<section class="ch-socials" id="ch-about-socials" hidden></section>';
     html += '<div class="ch-about-panels">' + _aboutPanels.map((p, i) => _aboutPanelViewHTML(p, i)).join('') + '</div>';
     host.innerHTML = html;
+    if (window.ChannelSocials) ChannelSocials.cards(document.getElementById('ch-about-socials'), _aboutSocials, currentChannelUsername);
     _fillWeatherPanels();
     void _fillBioTranslation();
 }
@@ -2657,9 +2689,11 @@ function _renderAboutEdit() {
             <label class="ch-edit-label">Bio</label>
             <textarea id="ch-about-bio-edit" rows="3" placeholder="Tell viewers about yourself…" oninput="_aboutBio=this.value;_markAboutDirty()">${esc(_aboutBio)}</textarea>
         </div>
+        <div class="ch-about-edit-socials" id="ch-about-socials-edit"></div>
         <div class="ch-about-panels ch-about-panels-edit" id="ch-about-panels-edit">
             ${_aboutPanels.map((p, i) => _aboutPanelEditHTML(p, i)).join('')}
         </div>`;
+    if (window.ChannelSocials && _aboutCh) ChannelSocials.editor(document.getElementById('ch-about-socials-edit'), _aboutCh, _markAboutDirty);
     _wireAboutDrag();
     _updateAboutSaveBtn();
     if (_aboutIsOwner && _aboutChannelId === null) _loadAboutModsSetting();
@@ -2734,7 +2768,7 @@ function addAboutPanel(type) {
     _markAboutDirty();
 }
 function removeAboutPanel(i) { _aboutPanels.splice(i, 1); _renderAboutEdit(); _markAboutDirty(); }
-function cancelAboutEdit() { _aboutEditMode = false; _aboutDirty = false; _renderAboutView(); }
+function cancelAboutEdit() { _aboutEditMode = false; _aboutDirty = false; if (window.ChannelSocials) ChannelSocials.reset(); _renderAboutView(); }
 async function uploadAboutPanelImage(i, input) {
     const file = input.files && input.files[0];
     if (!file) return;
@@ -2753,9 +2787,15 @@ async function saveAboutInline() {
     try {
         // Targets the channel by username, so an allowed mod writes to the STREAMER's
         // channel (not their own). Server enforces the edit permission.
-        await api(`/streams/channel/${encodeURIComponent(currentChannelUsername)}/about`, {
-            method: 'PUT', body: { bio: _aboutBio, panels: JSON.stringify(_aboutPanels), ai_overview_pref: _aboutAiPref, hide_ai_overview: _aboutAiPref === 'hide' ? 1 : 0 },
+        const socials = window.ChannelSocials ? ChannelSocials.payload() : undefined;
+        const saved = await api(`/streams/channel/${encodeURIComponent(currentChannelUsername)}/about`, {
+            method: 'PUT', body: { bio: _aboutBio, panels: JSON.stringify(_aboutPanels), ai_overview_pref: _aboutAiPref, hide_ai_overview: _aboutAiPref === 'hide' ? 1 : 0, ...(socials ? { social_links: socials } : {}) },
         });
+        if (saved && Array.isArray(saved.social_links)) {
+            _aboutSocials = saved.social_links;
+            if (_aboutCh) { _aboutCh.social_links = saved.social_links; if (saved.social_links_editor) _aboutCh.social_links_editor = saved.social_links_editor; }
+            if (window.ChannelSocials) { ChannelSocials.reset(); ChannelSocials.pills(document.getElementById('ch-socials-offline'), _aboutSocials); }
+        }
         if (_aboutIsOwner && currentUser) currentUser.bio = _aboutBio;
         _aboutEditMode = false;
         _renderAboutView();

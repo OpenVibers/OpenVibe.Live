@@ -1162,7 +1162,20 @@ function _watchIntroSighting() {
  * .container on the home page — but the changelog lives in a later one, so "moved to the bottom"
  * actually landed them in the middle of the page, above Recently Online.
  */
+/** The restream tour (public/js/home-tour.js, feature homeTour) sits below the fold: its code loads when the mount nears the viewport. */
+let _homeTourArmed = false;
+function _lazyHomeTour() {
+    const el = document.getElementById('home-tour-mount');
+    if (_homeTourArmed || !el || !window.ov) return;
+    _homeTourArmed = true;
+    const go = () => window.ov.load('homeTour').catch(() => { _homeTourArmed = false; });
+    if (!('IntersectionObserver' in window)) return go();
+    const io = new IntersectionObserver((ents) => { if (ents.some((e) => e.isIntersecting)) { io.disconnect(); go(); } }, { rootMargin: '800px 0px' });
+    io.observe(el);
+}
+
 function demoteHomeIntroSections() {
+    _lazyHomeTour();
     _watchIntroSighting();
     if (_homeIntroSeenCount() < HOME_INTRO_VIEWS_BEFORE_DEMOTING) return;
     const containers = document.querySelectorAll('#page-home > .container, #page-home .container');

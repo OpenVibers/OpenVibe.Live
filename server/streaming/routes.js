@@ -174,6 +174,13 @@ function cleanTags(tags) {
     return cleaned;
 }
 
+/** The social links an About editor sees after saving (server/social/links.js), for the response. */
+function aboutSocials(channel) {
+    if (!channel) return { social_links: [] };
+    const s = require('../social/links').channelSocialLinks(channel, db, { owner: true });
+    return { social_links: s.links, social_links_editor: { connected: s.connected, restreams_without_link: s.restreams_without_link, hidden_auto: s.hidden_auto } };
+}
+
 function cleanPanels(panels) {
     if (panels === undefined) return undefined;
     if (typeof panels === 'string') {
@@ -478,6 +485,13 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
         const viewerIsChannelMod = !!(req.user && db.isChannelModerator(req.user.id, channel.id));
         publicChannel.mods_can_edit_about = modsCanEditAbout;
         publicChannel.viewer_can_edit_about = !!(isOwner || (modsCanEditAbout && viewerIsChannelMod));
+        // Social links (server/social/links.js): saved links plus connected restream platforms. Editors also get
+        // what the editor needs (connected platforms, restreams with no public link yet, hidden ones).
+        try {
+            const socials = require('../social/links').channelSocialLinks(channel, db, { owner: publicChannel.viewer_can_edit_about });
+            publicChannel.social_links = socials.links;
+            if (publicChannel.viewer_can_edit_about) publicChannel.social_links_editor = { connected: socials.connected, restreams_without_link: socials.restreams_without_link, hidden_auto: socials.hidden_auto };
+        } catch { publicChannel.social_links = []; }
         // Streamer AI overview for the top of the About tab (unless the streamer hid it).
         // `hide_ai_overview` rides along on the channel row spread above.
         try {
@@ -829,6 +843,12 @@ router.put('/channel/:username/about', requireAuth, (req, res) => {
             if (panels === null) return res.status(400).json({ error: 'Invalid panels' });
             if (panels !== undefined) db.updateChannel(channel.user_id, { panels });
         }
+        // Social links: { links: [{ kind, url | handle, label, preview }], hidden_auto: ['twitch', …] }.
+        if (hasOwn(req.body, 'social_links')) {
+            const socials = require('../social/links').cleanSocialLinks(req.body.social_links);
+            if (socials === null) return res.status(400).json({ error: 'Invalid social links' });
+            db.updateChannel(channel.user_id, { social_links: socials });
+        }
         // Show/hide the AI overview at the top of the About tab.
         if (hasOwn(req.body, 'hide_ai_overview')) {
             db.updateChannel(channel.user_id, { hide_ai_overview: req.body.hide_ai_overview ? 1 : 0 });
@@ -845,7 +865,7 @@ router.put('/channel/:username/about', requireAuth, (req, res) => {
         // handed every mod the streamer's broadcast key — enough to publish to their channel. The
         // rest of this file already redacts it the same way before sending a channel or stream.
         if (updated) { delete updated.stream_key; delete updated.managed_stream_key; }
-        res.json({ channel: updated, edited_by_mod: !isOwner });
+        res.json({ channel: updated, ...aboutSocials(updated), edited_by_mod: !isOwner });
     } catch (err) {
         console.error('[Channel] about update error:', err.message);
         res.status(500).json({ error: 'Failed to save About section' });

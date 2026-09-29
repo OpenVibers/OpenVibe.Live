@@ -56,13 +56,19 @@
 /* ── Offline channel: discover board — a full-width dashboard grid ── */
 #ch-discover { width: 100%; }
 .dsc { width: 100%; max-width: none; margin: 18px 0 0; padding: 0 clamp(4px, 1.5vw, 12px); box-sizing: border-box; text-align: left;
-    display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr); grid-template-areas: "head head" "live side" "clips side" "people people"; gap: 14px 18px; align-items: start; }
-.dsc-head { grid-area: head; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin: 0; }
+    display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(280px, 1fr); gap: 18px 22px; align-items: start; }
+/* Two independent columns: the main one (live, clips, streamers) and the side (star, reports). They share no rows, so a
+   missing section never leaves a hole the other column's height stretches open. */
+.dsc-main { display: grid; gap: 20px; min-width: 0; align-content: start; }
+.dsc-side { display: grid; gap: 12px; min-width: 0; align-content: start; }
+.dsc--noside, .dsc--sideonly { grid-template-columns: 1fr; }
+.dsc--sideonly .dsc-side { grid-template-columns: minmax(260px, 1fr) minmax(0, 1.4fr); }
+.dsc-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin: 0; }
 .dsc-title { font-size: 1rem; font-weight: 900; color: var(--text-primary); }
 .dsc-title i { color: var(--accent); margin-right: 6px; }
 .dsc-sub { font-size: 0.8rem; color: var(--text-muted); }
 .dsc-sec { margin: 0; min-width: 0; }
-.dsc-sec--live { grid-area: live; } .dsc-sec--clips { grid-area: clips; } .dsc-sec--side { grid-area: side; display: grid; gap: 12px; align-content: start; } .dsc-sec--people { grid-area: people; }
+/* Sections stack inside .dsc-main (no named grid areas: they would place items on implicit lines). */
 .dsc-sec h4 { margin: 0 0 8px; font-size: 0.76rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
 .dsc-sec h4 i { color: var(--accent); }
 .dsc-sec h4 .muted { text-transform: none; letter-spacing: 0; font-weight: 600; }
@@ -102,9 +108,8 @@
 .dsc-person em { grid-column: 2; font-style: normal; font-size: 0.62rem; color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
 .dsc-live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #e0245e; margin-right: 3px; animation: ccMark 1.4s ease-in-out infinite; }
 /* No live streams and no clips to show: let the side column use the full width, two-up. */
-.dsc--noleft { grid-template-columns: 1fr; grid-template-areas: "head" "side" "people"; }
-.dsc--noleft .dsc-sec--side { grid-template-columns: minmax(260px, 1fr) minmax(0, 1.4fr); align-items: start; }
-@media (max-width: 980px) { .dsc { grid-template-columns: 1fr; grid-template-areas: "head" "live" "clips" "side" "people"; } .dsc--noleft { grid-template-areas: "head" "side" "people"; } .dsc--noleft .dsc-sec--side { grid-template-columns: 1fr; } }
+@media (max-width: 980px) { .dsc { grid-template-columns: 1fr; } .dsc--sideonly .dsc-side { grid-template-columns: 1fr; } }
+.dsc-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
 @media (max-width: 640px) { .dsc-live { grid-template-columns: 1fr 1fr; } .dsc-clips { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); } }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -118,17 +123,17 @@
    ═══════════════════════════════════════════════════════════════ */
 .dsc-wrap { width: 100%; margin: 14px 0 0; }
 .dsc-toggle {
-    position: relative; overflow: hidden; isolation: isolate;
-    display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 11px;
-    width: 100%; padding: 10px 13px; cursor: pointer; text-align: left; font: inherit;
-    color: var(--text-primary); border-radius: 14px;
-    border: 1px solid var(--border);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, var(--bg-card)), var(--bg-secondary));
-    transition: border-color .22s, box-shadow .22s, transform .18s;
+    position: relative; isolation: isolate;
+    display: grid; grid-template-columns: auto minmax(0, max-content) 1fr auto auto; align-items: center; gap: 12px;
+    width: 100%; padding: 6px 2px 10px; cursor: pointer; text-align: left; font: inherit; color: var(--text-primary);
+    background: none; border: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+    transition: border-color .22s;
 }
-.dsc-toggle:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); box-shadow: 0 8px 22px rgba(0,0,0,0.26); }
-.dsc-toggle:active { transform: scale(0.995); }
-.dsc-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* A section heading of the offline page (not a card): the rule under it runs the full width. */
+.dsc-toggle::after { content: ''; grid-column: 3; height: 1px; align-self: center;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 40%, transparent), transparent 85%); }
+.dsc-toggle:hover { border-bottom-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.dsc-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 .dsc-toggle-ico {
     width: 32px; height: 32px; flex: none; border-radius: 10px; display: grid; place-items: center;
     font-size: 0.8rem; color: var(--accent);
@@ -136,7 +141,7 @@
     border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
 }
 .dsc-toggle-text { min-width: 0; display: grid; gap: 1px; }
-.dsc-toggle-text b { font-size: 0.88rem; font-weight: 850; letter-spacing: -0.01em; }
+.dsc-toggle-text b { font-size: 1rem; font-weight: 850; letter-spacing: -0.01em; }
 /* One line, clipped — the sub-line is context, never a reason for the row to grow taller. */
 .dsc-toggle-text small { font-size: 0.72rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dsc-toggle-count {
@@ -160,7 +165,8 @@
 .dsc-wrap .dsc { margin-top: 10px; }
 
 @media (max-width: 560px) {
-    .dsc-toggle { gap: 9px; padding: 9px 11px; }
+    .dsc-toggle { gap: 9px; grid-template-columns: auto minmax(0, 1fr) auto auto; }
+    .dsc-toggle::after { display: none; }
     .dsc-toggle-ico { width: 29px; height: 29px; font-size: 0.74rem; }
     .dsc-toggle-text b { font-size: 0.83rem; }
     .dsc-toggle-text small { font-size: 0.68rem; }

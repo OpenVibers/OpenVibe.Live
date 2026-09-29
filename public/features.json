@@ -14,7 +14,6 @@
         "/js/ov-odometer.js",
         "/js/ov-density.js",
         "/js/home-fx.js",
-        "/js/home-tour.js",
         "/shared/tooltip.js"
       ],
       "idle": [
@@ -117,6 +116,7 @@
         "uploads"
       ],
       "js": [
+        "/js/channel-socials.js",
         "/js/app-channel.js"
       ]
     },
@@ -175,6 +175,11 @@
       ],
       "stubs": [
         "aivCloneChatter"
+      ]
+    },
+    "homeTour": {
+      "js": [
+        "/js/home-tour.js"
       ]
     },
     "guide": {

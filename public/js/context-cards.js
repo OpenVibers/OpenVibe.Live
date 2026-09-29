@@ -137,6 +137,7 @@
         if (!d) { host.innerHTML = ''; return; }
         const name = d.channel ? d.channel.display_name : 'this channel';
         const sections = [];
+        let side = '';
         if ((d.live || []).length) {
             sections.push(`<section class="dsc-sec dsc-sec--live"><h4><i class="fa-solid fa-circle live-dot"></i> Live right now</h4><div class="dsc-live">${d.live.slice(0, 3).map(s => `
                 <a class="dsc-live-card" ${go(`/@${s.username}`)}>
@@ -158,14 +159,13 @@
                     <span class="cc-grade" style="--g:${GRADE[r.grade] || GRADE.B}">${esc(r.grade)}</span>
                     <span class="dsc-recap-body"><b>${esc(r.headline || r.title)}</b><small>${esc(r.display_name)} · ${esc(ago(r.ended_at))} · ${durWords(r.duration_seconds)} · peak ${n(r.peak_viewers)}${r.chat_messages ? ` · ${n(r.chat_messages)} chat lines` : ''}</small></span>
                 </a>`).join('')}</div>` : '';
-            sections.push(`<section class="dsc-sec dsc-sec--side">${star}${recaps}</section>`);
+            side = `<aside class="dsc-side">${star}${recaps}</aside>`;
         }
         if ((d.similar || []).length) {
             sections.push(`<section class="dsc-sec dsc-sec--people"><h4><i class="fa-solid fa-people-group"></i> Streamers to check out</h4><div class="dsc-people">${d.similar.slice(0, 6).map(p => `
                 <a class="dsc-person" ${go(`/@${p.username}`)}>${av(p, 44)}<b>${esc(p.display_name || p.username)}</b><small>${p.live ? '<span class="dsc-live-dot"></span> live now' : (p.last_live_at ? `live ${esc(ago(p.last_live_at))}` : '')}${p.followers ? ` · ${n(p.followers)} follower${p.followers === 1 ? '' : 's'}` : ''}</small>${p.same_category && p.category ? `<em>${esc(p.category)}</em>` : ''}</a>`).join('')}</div></section>`);
         }
-        if (!sections.length) { host.innerHTML = ''; return; }
-        const noLeft = !(d.live || []).length && !(d.clips || []).length;
+        if (!sections.length && !side) { host.innerHTML = ''; return; }
 
         // This board is a whole second page of content sitting under an offline channel. Someone
         // who came for this streamer should meet a single line about it, not scroll past six
@@ -189,7 +189,7 @@
                     <span class="dsc-toggle-chev" aria-hidden="true"><i class="fa-solid fa-chevron-down"></i></span>
                 </button>
                 <div class="dsc-body" id="dsc-body"${startOpen ? '' : ' hidden'}>
-                    <div class="dsc${noLeft ? ' dsc--noleft' : ''}">${sections.join('')}</div>
+                    <div class="dsc${side ? '' : ' dsc--noside'}${sections.length ? '' : ' dsc--sideonly'}">${sections.length ? `<div class="dsc-main">${sections.join('')}</div>` : ''}${side}</div>
                 </div>
             </div>`;
 

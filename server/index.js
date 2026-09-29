@@ -698,6 +698,8 @@ app.use('/api/chat-ai', require('./ai/chat-ai-routes'));
 app.use('/api/easter-egg', require('./ai/easter-egg-routes'));
 app.use('/api/arena', require('./arena/routes'));            // streamer vs streamer (docs/arena.md)
 app.use('/api/recap', require('./recap/routes'));            // after-show reports (docs/recap.md)
+app.use('/api/social', require('./social/routes').router);   // channel social links and their previews (server/social/)
+app.get('/embed/x-timeline', require('./social/routes').xTimelinePage);
 app.use('/api/comments', commentRoutes);
 app.use('/api/controls', controlRoutes);
 app.use('/api/onvif', onvifRoutes);
