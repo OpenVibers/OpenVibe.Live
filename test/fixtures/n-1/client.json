@@ -1,13 +1,13 @@
 {
  "service": "live",
- "release": "1a28261a4f98f882596c417f2bb2fdaa51afa768",
- "recorded_at": "2026-09-29T04:23:02.690Z",
+ "release": "660833de2aef557a4652d93aaea914c01d9496e0",
+ "recorded_at": "2026-09-29T11:58:42.445Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "1a28261a4f98",
-  "released_at": "2026-09-29T03:53:40.000Z",
-  "booted_at": "2026-09-29T04:22:58.779Z",
+  "release": "660833de2aef",
+  "released_at": "2026-09-29T11:58:15.000Z",
+  "booted_at": "2026-09-29T11:58:40.431Z",
   "contracts_version": "0.71.0",
   "packages": {
    "openvibe-shared": "1.30.1",
@@ -18,15 +18,15 @@
   "components": {
    "styles": {
     "kind": "style",
-    "version": "b2227930e731"
+    "version": "835d7a90863a"
    },
    "shell": {
     "kind": "script",
-    "version": "28060f9974e5"
+    "version": "8071bf292b89"
    },
    "server": {
     "kind": "server",
-    "version": "16bfd5731308"
+    "version": "b030e671fa56"
    }
   },
   "assets": {
@@ -46,9 +46,9 @@
     "integrity": "sha384-1onIAYDdYHytODnOQ1NtrwgWw4IEBgCclvW5Fy+Rvvfc4Pq+63uuCdAdNnU9SgKu"
    },
    "/css/cosmetics.css": {
-    "url": "/css/cosmetics.css?v=193dbe9046fb",
+    "url": "/css/cosmetics.css?v=73e2adf188e1",
     "component": "styles",
-    "integrity": "sha384-5dCgICmYIqP2d8mqEj/16RJhNUgahGNEAiyb/E4gnUWSvxQWrGssylbv92PUdIhq"
+    "integrity": "sha384-JY2WKT34BDXzoB746LvRQn1fo28LK2El8c6SFRFaS3K9Pe+PAUXFz0zvkw7qdie9"
    },
    "/css/features/arena.css": {
     "url": "/css/features/arena.css?v=6993aaa22df5",
@@ -7250,7 +7250,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/cosmetics.css?v=193dbe9046fb",
+   "path": "/css/cosmetics.css?v=73e2adf188e1",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -8376,26 +8376,6 @@
    "kind": "json",
    "from": [
     "public/js/broadcast.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/cosmetics/activate",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/cosmetics-ui.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/cosmetics/deactivate",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/cosmetics-ui.js"
    ]
   },
   {
