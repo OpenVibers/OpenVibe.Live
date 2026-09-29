@@ -82,7 +82,6 @@ class ChatServer {
 
         // ── Unified anon resolution via openvibe.network internal API ──
         this._openvibeToolsUrl = process.env.OV_NETWORK_INTERNAL_URL || 'http://127.0.0.1:3100';
-        this._internalKey = process.env.INTERNAL_API_KEY || process.env.OV_INTERNAL_KEY || '';
         /** @type {Map<string, Promise<number>>} IP → pending resolve promise (dedup concurrent) */
         this._pendingResolves = new Map();
     }

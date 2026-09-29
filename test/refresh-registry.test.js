@@ -12,10 +12,12 @@ async function withServer(handler) {
 }
 
 (async () => {
-    process.env.INTERNAL_API_KEY = 'test-refresh-key';
+    process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
+    const { tokenReply, sentToken } = require('./helpers/network-token-stub');
 
     const server = http.createServer((req, res) => {
-        if (req.method !== 'GET' || req.url !== '/internal/url-registry/resolved') {
+        if (req.url === '/oauth/token') return tokenReply(res);
+        if (req.method !== 'GET' || req.url !== '/internal/url-registry/resolved' || !sentToken(req)) {
             res.statusCode = 404;
             return res.end('not found');
         }

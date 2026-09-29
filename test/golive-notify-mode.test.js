@@ -11,11 +11,13 @@ const path = require('path');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-golive-mode-'));
 process.env.DB_PATH = path.join(tmp, 'live.db');
-process.env.INTERNAL_API_KEY = 'test-internal-key';
+process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
 process.env.OV_NETWORK_INTERNAL_URL = 'http://127.0.0.1:9';
+const { tokenBody } = require('./helpers/network-token-stub');
 
 const calls = [];
 global.fetch = async (url, init = {}) => {
+    if (String(url).endsWith('/oauth/token')) return new Response(JSON.stringify(tokenBody()), { status: 200, headers: { 'content-type': 'application/json' } });
     calls.push({ url: String(url), method: init.method || 'GET' });
     return new Response(JSON.stringify({ ok: true, notifications: { sent: 0, total: 0 } }), { status: 200, headers: { 'content-type': 'application/json' } });
 };

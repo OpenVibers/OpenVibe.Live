@@ -1,8 +1,8 @@
 'use strict';
 
-// Live as a service principal (roadmap Wave 1): coins and notification pushes go to Network with a
-// client-credentials token; every other internal call keeps the X-Internal-Key; a token that can't be
-// had or is refused falls back to the key without losing the call. Against a stub Network.
+// Live as a service principal (ADR-003): every internal call to Network goes with a client-credentials
+// token; the X-Internal-Key is never sent (plan T2). A refused token is retried once with a fresh one; no
+// token at all fails the call like an unreachable Network. Against a stub Network.
 
 const assert = require('assert');
 const fs = require('fs');
@@ -14,7 +14,6 @@ const { serviceAuth } = require('openvibe-contracts');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-principal-'));
 process.env.DB_PATH = path.join(tmp, 'live.db');
-process.env.INTERNAL_API_KEY = 'legacy-key';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
 
@@ -64,24 +63,28 @@ const network = http.createServer((req, res) => {
     assert.deepStrictEqual(seen.map((s) => s.auth), ['token', 'token']);
     assert.strictEqual(tokenCalls, 1, 'one token for both calls');
 
-    // 2. link-account takes a service token too since Network guards it (identity.subject.resolve, 2026-09-24).
+    // 2. Every other internal call goes with the token too: link-account, the avatar report and mark-read (the last
+    //    two were key-only until Network guarded them, plan T2).
     seen.length = 0;
-    await (async () => { notify.reportLinkedAccount({ id: uid, username: 'p' }); await new Promise((x) => setTimeout(x, 150)); })();
-    assert.deepStrictEqual(seen.map((s) => `${s.url}:${s.auth}`), ['/internal/link-account:token']);
-    assert.ok(!principal.TOKEN_PATHS.has('/internal/notifications/mark-read'), 'routes Network does not guard by capability keep the key');
+    notify.reportLinkedAccount({ id: uid, username: 'p' });
+    notify.reportAvatarChange({ id: uid, avatar_url: 'https://openvibe.media/f/a.png' });
+    notify.markNotificationsRead(uid, 'follow');
+    await new Promise((x) => setTimeout(x, 200));
+    assert.deepStrictEqual(seen.map((s) => `${s.url}:${s.auth}`).sort(), ['/internal/link-account:token', '/internal/notifications/mark-read:token', '/internal/user-avatar:token']);
 
-    // 3. A refused token is retried once with the key, and the key is used until the pause ends.
+    // 3. A refused token is retried once with a fresh token (never the key); refused again, the call fails.
     seen.length = 0; mode.coins = 'refuse';
-    assert.deepStrictEqual(await wallet.credit(uid, 5, 'test', 'idem-3'), { balance: 10 }, 'the call still succeeds');
-    assert.deepStrictEqual(seen.map((s) => s.auth), ['token', 'key']);
-    await wallet.credit(uid, 5, 'test', 'idem-4');
-    assert.strictEqual(seen[2].auth, 'key', 'paused: no token attempt');
+    const before = tokenCalls;
+    await assert.rejects(wallet.credit(uid, 5, 'test', 'idem-3'), (e) => e.status === 401, 'refused twice: the call fails');
+    assert.deepStrictEqual(seen.map((s) => s.auth), ['token', 'token']);
+    assert.strictEqual(tokenCalls, before + 1, 'the retry minted a fresh token');
 
-    // 4. Network that can't issue a token (not upgraded, no grant): quietly use the key.
+    // 4. No token at all (Network cannot issue one): the call fails like an unreachable Network; nothing is sent.
     principal._reset(); mode.coins = 'ok'; mode.token = 'fail'; seen.length = 0;
-    await wallet.debit(uid, 1, 'test', 'idem-5');
-    assert.deepStrictEqual(seen.map((s) => s.auth), ['key']);
+    await assert.rejects(wallet.debit(uid, 1, 'test', 'idem-5'), (e) => e.status === 0);
+    assert.deepStrictEqual(seen, []);
     assert.ok(principal.stats.tokenFailures >= 1);
+    assert.ok(!seen.some((s) => s.auth === 'key'), 'the key is never sent');
 
     network.close();
     fs.rmSync(tmp, { recursive: true, force: true });

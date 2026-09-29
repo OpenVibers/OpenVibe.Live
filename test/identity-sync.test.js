@@ -12,7 +12,8 @@ const http = require('http');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-identity-'));
 process.env.DB_PATH = path.join(tmp, 'live.db');
-process.env.INTERNAL_API_KEY = 'k-test';
+process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
+const { tokenReply, sentToken } = require('./helpers/network-token-stub');
 
 const received = [];
 const resolveCalls = [];
@@ -23,8 +24,9 @@ const network = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => { body += c; });
     req.on('end', () => {
+        if (req.url === '/oauth/token') return tokenReply(res);
         if (mode.old) { res.statusCode = 404; return res.end('{}'); }
-        assert.strictEqual(req.headers['x-internal-key'], 'k-test');
+        assert.ok(sentToken(req), 'Live sends its service token, never the internal key');
         if (req.url === '/internal/identity/resolve-batch') {
             const q = JSON.parse(body);
             resolveCalls.push(q);

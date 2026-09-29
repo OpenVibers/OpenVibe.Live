@@ -6,7 +6,7 @@
  * (users.openvibe_coins_balance) is frozen for the migration script; every earn/
  * spend goes through this client now.
  *
- *   POST /internal/coins/credit|debit|transfer   (X-Internal-Key, server-to-server)
+ *   POST /internal/coins/credit|debit|transfer   (Live's service token, server-to-server)
  *   GET  /api/coins/me, /api/coins/me/history    (Bearer user JWT, read-side)
  *
  * user ids: the wallet is keyed by the NETWORK (SSO) user id, never Live's local
@@ -17,7 +17,6 @@ const db = require('../db/database');
 const principal = require('../net/network-principal');
 
 const NETWORK_INTERNAL_URL = (process.env.OV_NETWORK_INTERNAL_URL || 'http://127.0.0.1:4000').replace(/\/+$/, '');
-const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || process.env.OV_INTERNAL_KEY || '';
 
 class WalletError extends Error {
     constructor(message, status, body) {
@@ -45,7 +44,10 @@ function networkUserId(localUserId) {
 
 async function _post(apiPath, body, retried = false) {
     let res;
-    const auth = await principal.headersFor(apiPath);   // scoped service token, or X-Internal-Key
+    let auth;
+    try { auth = await principal.headersFor(apiPath); } catch (err) {   // Live's scoped service token
+        throw new WalletError(`Network wallet unavailable: no service token (${err.message})`, 0);
+    }
     try {
         res = await fetch(`${NETWORK_INTERNAL_URL}${apiPath}`, {
             method: 'POST',
@@ -56,7 +58,7 @@ async function _post(apiPath, body, retried = false) {
         throw new WalletError(`Network wallet unreachable: ${err.message}`, 0);
     }
     const json = await res.json().catch(() => null);
-    // A rejected token (expired key rotation, revoked grant) is retried once with the internal key.
+    // A rejected token (a key rotation, a revoked grant) is retried once with a freshly minted token.
     // Idempotency keys make the retry safe: a credit that did land is not applied twice.
     if (res.status === 401 && auth.Authorization && !retried) {
         principal.tokenRejected(json && json.code);

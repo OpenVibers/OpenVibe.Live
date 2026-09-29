@@ -1,8 +1,10 @@
 const assert = require('assert');
+process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
 const config = require('../server/config');
+const { tokenBody } = require('./helpers/network-token-stub');
 
 const originalFetch = global.fetch;
-global.fetch = async () => ({
+global.fetch = async (url, init = {}) => String(url).endsWith('/oauth/token') ? new Response(JSON.stringify(tokenBody()), { status: 200, headers: { 'content-type': 'application/json' } }) : ({
     ok: true,
     json: async () => ({
         registry: {
@@ -16,7 +18,6 @@ global.fetch = async () => ({
 });
 
 (async () => {
-    config.internalApiKey = 'test-key';
     config.openvibeToolsInternalUrl = 'http://127.0.0.1:3100';
     await config.refreshRegistry();
     assert.strictEqual(config.baseUrl, 'https://openvibe.live');

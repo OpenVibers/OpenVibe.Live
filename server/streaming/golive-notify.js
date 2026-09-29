@@ -18,7 +18,7 @@
  */
 const config = require('../config');
 const db = require('../db/database');
-const { pushBulkNotification, toNetworkIds, toNetworkId, OV_NETWORK_INTERNAL_URL, INTERNAL_API_KEY } = require('../utils/notify');
+const { pushBulkNotification, toNetworkIds, toNetworkId, OV_NETWORK_INTERNAL_URL } = require('../utils/notify');
 const { notifyDiscordGoLive } = require('../integrations/discord-webhook');
 
 const DEDUPE_MS = 60 * 60 * 1000;
@@ -74,9 +74,9 @@ function notifyFollowersGoLive(streamer, stream, { force = false } = {}) {
         follower_network_ids: followerNetworkIds,
     };
 
-    if (!INTERNAL_API_KEY && !process.env.OV_OAUTH_CLIENT_SECRET) { _fallback(streamer, stream, followerNetworkIds); return; }
-    // Service token (network.notifications.push) when Network grants it, the internal key otherwise.
+    // Live's service token (network.notifications.push).
     const principal = require('../net/network-principal');
+    if (!principal.configured()) { _fallback(streamer, stream, followerNetworkIds); return; }
     principal.headersFor('/internal/events/stream-live').then((auth) => fetch(`${OV_NETWORK_INTERNAL_URL}/internal/events/stream-live`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...auth },

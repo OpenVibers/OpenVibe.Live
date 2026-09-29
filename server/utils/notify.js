@@ -14,7 +14,6 @@
 const config = require('../config');
 
 const OV_NETWORK_INTERNAL_URL = (config.openvibeToolsInternalUrl || process.env.OV_NETWORK_INTERNAL_URL || 'http://127.0.0.1:4000').replace(/\/$/, '');
-const INTERNAL_API_KEY = config.internalApiKey || process.env.INTERNAL_API_KEY || process.env.OV_INTERNAL_KEY || '';
 
 let _db = null;
 function db() { if (!_db) _db = require('../db/database'); return _db; }
@@ -36,15 +35,16 @@ function toNetworkIds(liveUserIds) {
 }
 
 async function _post(path, body, retried = false) {
-    if (!INTERNAL_API_KEY) return null;
-    const auth = await require('../net/network-principal').headersFor(path);  // service token where Network accepts one
+    const principal = require('../net/network-principal');
+    if (!principal.configured()) return null;
+    const auth = await principal.headersFor(path);  // Live's service token (every /internal route Live calls takes one)
     const res = await fetch(`${OV_NETWORK_INTERNAL_URL}${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...auth },
         body: JSON.stringify(body),
     });
     if (res.status === 401 && auth.Authorization && !retried) {
-        require('../net/network-principal').tokenRejected();
+        principal.tokenRejected();
         return _post(path, body, true);
     }
     return res;
@@ -72,7 +72,7 @@ function pushNotification(payload) {
 // appears under their Linked Services. Fire-and-forget + deduped per process.
 const _linkedReported = new Map();   // live user id → what was last reported (so a new avatar or name is sent again)
 function reportLinkedAccount(user) {
-    if (!user?.id || !INTERNAL_API_KEY) return;
+    if (!user?.id || !require('../net/network-principal').configured()) return;
     // The Network adopts this picture and name when the account has none of its own, which is what makes the
     // same face appear on every OpenVibe site. Relative upload paths are made absolute against this site.
     let avatar = user.avatar_url || null;
@@ -97,7 +97,7 @@ function reportLinkedAccount(user) {
  * sign-in report above (which only fills an empty picture), this one replaces whatever the Network had.
  */
 function reportAvatarChange(user) {
-    if (!user?.id || !INTERNAL_API_KEY) return;
+    if (!user?.id || !require('../net/network-principal').configured()) return;
     const networkId = toNetworkId(user.id);
     if (!networkId) return;
     _post('/internal/user-avatar', { user_id: networkId, avatar_url: user.avatar_url || null, origin: 'live' })
@@ -145,4 +145,4 @@ function markNotificationsRead(userId, type, urlPattern) {
         .catch(err => console.warn('[Notify] Mark-read error:', err.message));
 }
 
-module.exports = { reportAvatarChange, pushNotification, pushBulkNotification, actorInfo, markNotificationsRead, reportLinkedAccount, toNetworkId, toNetworkIds, OV_NETWORK_INTERNAL_URL, INTERNAL_API_KEY };
+module.exports = { reportAvatarChange, pushNotification, pushBulkNotification, actorInfo, markNotificationsRead, reportLinkedAccount, toNetworkId, toNetworkIds, OV_NETWORK_INTERNAL_URL };

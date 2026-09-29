@@ -285,7 +285,7 @@ const initialRegistry = resolveRegistryValues(process.env, {}, {}, URL_DEFINITIO
 const config = buildConfig(initialRegistry);
 
 async function refreshRegistry() {
-    if (!config.openvibeToolsInternalUrl || (!config.internalApiKey && !process.env.OV_OAUTH_CLIENT_SECRET)) {
+    if (!config.openvibeToolsInternalUrl || !process.env.OV_OAUTH_CLIENT_SECRET) {
         console.warn('[Config] Skipping registry refresh: missing internal URL, or neither a service identity nor an internal API key');
         return config;
     }

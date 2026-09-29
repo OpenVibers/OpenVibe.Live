@@ -113,7 +113,6 @@ function ownControlConfigId(req, raw) {
 
 const { notifyDiscordGoLive } = require('../integrations/discord-webhook');
 
-const INTERNAL_API_KEY = config.internalApiKey || process.env.INTERNAL_API_KEY || process.env.OV_INTERNAL_KEY || '';
 
 /**
  * Push "X went live" notification via openvibe.network unified event endpoint.
