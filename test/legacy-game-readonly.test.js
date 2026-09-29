@@ -78,7 +78,7 @@ for (const [id, name] of [[1, 'veteran'], [2, 'newcomer']]) {
     // Chat tags: read-only, and still shown.
     const tags = require('../server/chat/tags');
     tags.ensureTagTables();
-    raw.prepare("INSERT INTO user_tags (user_id, tag_id, source) VALUES (1, 'legacy', 'migration')").run();
+    // `user_tags` is OpenVibe.Chat's now (dropped in T3 N+2); only the equipped tag is Live's.
     raw.prepare("INSERT INTO user_equipped_tag (user_id, tag_id) VALUES (1, 'legacy')").run();
     assert.strictEqual(tags.getTagProfile(1).name, 'Legacy');
     assert.strictEqual(tags.getTagProfile(2), null);

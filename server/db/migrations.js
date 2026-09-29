@@ -103,6 +103,34 @@ const MIGRATIONS = [
             if (columns(db, 'streams').includes('created_at')) db.exec('CREATE INDEX IF NOT EXISTS idx_streams_created ON streams(created_at)');
         },
     },
+    {
+        id: '005_drop_chat_staged_tables',
+        // Roadmap T3 N+2. OpenVibe.Chat owns these seven and has since 14:46 UTC; Live's copies are
+        // unread since N+1 (8654ef6, recorded in test/fixtures/n-1/worker.json) and are dropped here.
+        // `emotes` is deliberately left: N-1 still prepares two COUNT(*) against it, so it goes next
+        // release (test/chat-staged-tables.test.js). On a fresh database none of the seven exists and
+        // the migration is adopted.
+        adopt: (db) => ['channel_moderators', 'channel_moderation_settings', 'user_tags',
+            'chat_ai_summaries', 'chat_timeline_events', 'chat_staged_outbox', 'chat_dual_read_stats']
+            .every((t) => !tableExists(db, t)),
+        up: (db) => {
+            db.exec(`
+                DROP INDEX IF EXISTS idx_channel_mods_channel;
+                DROP INDEX IF EXISTS idx_channel_mods_user;
+                DROP INDEX IF EXISTS idx_chat_ai_scope;
+                DROP INDEX IF EXISTS idx_chat_tl_scope_ts;
+                DROP INDEX IF EXISTS idx_chat_tl_dedup;
+                DROP INDEX IF EXISTS idx_user_tags_user;
+                DROP TABLE IF EXISTS channel_moderators;
+                DROP TABLE IF EXISTS channel_moderation_settings;
+                DROP TABLE IF EXISTS user_tags;
+                DROP TABLE IF EXISTS chat_ai_summaries;
+                DROP TABLE IF EXISTS chat_timeline_events;
+                DROP TABLE IF EXISTS chat_staged_outbox;
+                DROP TABLE IF EXISTS chat_dual_read_stats;
+            `);
+        },
+    },
 ];
 
 /**

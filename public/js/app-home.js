@@ -334,7 +334,12 @@ function _renderHeroStats(stats) {
             { icon: 'fa-scissors', num: stats.clips, label: 'Clips', metric: 'clips', title: 'Clips created', recent: R.clips },
             { icon: 'fa-clock', num: stats.streamHours, label: 'Hours', metric: 'hours', title: 'Hours of video archived', recent: R.hours, unit: 'h' },
             { icon: 'fa-brain', num: stats.aiMemories, label: 'AI Moments', metric: 'aiMoments', title: 'Moments the AI remembers across every stream', recent: R.aiMoments },
-            { recent: R.emotes, icon: 'fa-face-grin-squint', num: stats.emotes, label: 'Emotes', metric: 'emotes', title: 'Custom channel emotes uploaded' },
+            // The emotes series is gone (OpenVibe.Chat owns the table; Live stopped reading it in T3
+            // N+2), so the chip and its chart are skipped — `stats.emotes` is null, the same "no series"
+            // signal the OpenCoins chips use. No other markup changes.
+            ...(stats.emotes != null ? [
+                { recent: R.emotes, icon: 'fa-face-grin-squint', num: stats.emotes, label: 'Emotes', metric: 'emotes', title: 'Custom channel emotes uploaded' },
+            ] : []),
             { icon: 'fa-paste', num: stats.pastes, label: 'Pastes', metric: 'pastes', title: `${stats.pasteText || 0} text · ${stats.pasteImages || 0} image pastes`, sub: (stats.pasteText != null && stats.pasteImages != null) ? `${_fmtCount(stats.pasteText)} txt · ${_fmtCount(stats.pasteImages)} img` : '' },
         ],
     });

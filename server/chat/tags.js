@@ -49,26 +49,16 @@ const TAGS = {
 
 function ensureTagTables() {
     db.getDb().exec(`
-        CREATE TABLE IF NOT EXISTS user_tags (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            tag_id TEXT NOT NULL,
-            source TEXT DEFAULT 'shop',
-            granted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_id, tag_id),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        );
         CREATE TABLE IF NOT EXISTS user_equipped_tag (
             user_id INTEGER NOT NULL PRIMARY KEY,
             tag_id TEXT NOT NULL,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
     `);
-    try { db.getDb().exec('CREATE INDEX IF NOT EXISTS idx_user_tags_user ON user_tags(user_id)'); } catch { /* */ }
 }
 
-// getUserTags (the only reader of `user_tags`) went with roadmap T3: OpenVibe.Chat owns that table,
-// which had no production caller in Live. The equipped tag (user_equipped_tag) is not staged and stays.
+// `user_tags` went with roadmap T3: OpenVibe.Chat owns it (Live's copy was dropped in N+2) and no
+// production caller in Live ever read it here. The equipped tag (user_equipped_tag) is not staged and stays.
 
 /** The user's equipped tag, or null. */
 function getEquippedTag(userId) {

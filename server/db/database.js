@@ -1325,42 +1325,6 @@ function initDb() {
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )`);
 
-        // Rolling AI summaries of chat activity — for the global chat overview/timeline
-        // and per-user "today vs all-time" insights. scope='global' uses subject_id=0.
-        // window: 'rolling' (canonical processing state + condensed memory + timeline),
-        // 'recent'/'24h'/'alltime' (rendered overviews). One incremental LLM call folds
-        // new messages into memory + refreshes overviews, so cost stays flat with volume.
-        database.exec(`CREATE TABLE IF NOT EXISTS chat_ai_summaries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            scope TEXT NOT NULL,
-            subject_id INTEGER NOT NULL DEFAULT 0,
-            window TEXT NOT NULL,
-            overview TEXT DEFAULT '',
-            memory_json TEXT DEFAULT '',
-            timeline_json TEXT DEFAULT '[]',
-            message_count INTEGER DEFAULT 0,
-            window_message_count INTEGER DEFAULT 0,
-            last_message_id INTEGER DEFAULT 0,
-            window_label TEXT DEFAULT '',
-            window_start DATETIME,
-            window_end DATETIME,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(scope, subject_id, window)
-        )`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_chat_ai_scope ON chat_ai_summaries(scope, subject_id, window)`);
-        // Growing log of AI timeline "notable moments" (beyond the 40 kept in the summary JSON),
-        // so the global timeline can be browsed/searched/paginated with real history.
-        database.exec(`CREATE TABLE IF NOT EXISTS chat_timeline_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            scope TEXT NOT NULL DEFAULT 'global',
-            subject_id INTEGER NOT NULL DEFAULT 0,
-            ts DATETIME NOT NULL,
-            label TEXT NOT NULL,
-            detail TEXT DEFAULT '',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_chat_tl_scope_ts ON chat_timeline_events(scope, subject_id, ts DESC)`);
-        database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_tl_dedup ON chat_timeline_events(scope, subject_id, ts, label)`);
         // Daily easter-egg solves (one per solver per day).
         database.exec(`CREATE TABLE IF NOT EXISTS easter_egg_solves (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1539,16 +1503,6 @@ function initDb() {
         if (!cols.includes('sort_order')) database.exec('ALTER TABLE donation_goals ADD COLUMN sort_order INTEGER DEFAULT 0');
     } catch (e) { console.warn('[DB] donation_goals media migration:', e.message); }
 
-    // Streamer alert sounds (per channel): a sound played on every donation, plus an
-    // optional override that plays when a donation goal is reached.
-    try {
-        const cols = database.prepare('PRAGMA table_info(channel_moderation_settings)').all().map(c => c.name);
-        if (!cols.includes('donation_sound_url')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN donation_sound_url TEXT');
-        if (!cols.includes('donation_sound_mime')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN donation_sound_mime TEXT');
-        if (!cols.includes('goal_sound_url')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN goal_sound_url TEXT');
-        if (!cols.includes('goal_sound_mime')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN goal_sound_mime TEXT');
-    } catch (e) { console.warn('[DB] alert-sound settings migration:', e.message); }
-
     // chat_messages.metadata — JSON sidecar for rich/animated events (donations + goal
     // reached) so they persist in history WITH their structured payload (image, amount,
     // goal title, animation kind) while `message` stays human-readable.
@@ -1612,79 +1566,6 @@ function initDb() {
             console.log(`[DB] Migrated ${modCount} mod(s) → global_mod`);
         }
     } catch (e) { console.warn('[DB] Role migration:', e.message); }
-
-    // Migrate: create channel_moderators table if missing
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS channel_moderators (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            added_by INTEGER NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(channel_id, user_id),
-            FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL
-        )`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_channel_mods_channel ON channel_moderators(channel_id)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_channel_mods_user ON channel_moderators(user_id)`);
-    } catch (e) { console.warn('[DB] channel_moderators migration:', e.message); }
-
-    // Migrate: create channel_moderation_settings table if missing
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS channel_moderation_settings (
-            channel_id INTEGER PRIMARY KEY,
-            slow_mode_seconds INTEGER DEFAULT 0,
-            followers_only INTEGER DEFAULT 0,
-            emote_only INTEGER DEFAULT 0,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
-        )`);
-    } catch (e) { console.warn('[DB] channel_moderation_settings migration:', e.message); }
-
-    // Migrate: add extended channel moderation settings columns
-    try {
-        const cols = database.pragma('table_info(channel_moderation_settings)').map(c => c.name);
-        if (!cols.includes('allow_anonymous')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN allow_anonymous INTEGER DEFAULT 1');
-        if (!cols.includes('links_allowed')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN links_allowed INTEGER DEFAULT 1');
-        if (!cols.includes('gifs_enabled')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN gifs_enabled INTEGER DEFAULT 1');
-        if (!cols.includes('account_age_gate_hours')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN account_age_gate_hours INTEGER DEFAULT 0');
-        if (!cols.includes('caps_percentage_limit')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN caps_percentage_limit INTEGER DEFAULT 0');
-        if (!cols.includes('aggressive_filter')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN aggressive_filter INTEGER DEFAULT 0');
-        if (!cols.includes('max_message_length')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN max_message_length INTEGER DEFAULT 500');
-        if (!cols.includes('tts_max_length')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN tts_max_length INTEGER DEFAULT 200');
-        if (!cols.includes('slur_filter_enabled')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN slur_filter_enabled INTEGER DEFAULT 0');
-        if (!cols.includes('slur_filter_use_builtin')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN slur_filter_use_builtin INTEGER DEFAULT 1');
-        if (!cols.includes('slur_filter_terms')) database.exec("ALTER TABLE channel_moderation_settings ADD COLUMN slur_filter_terms TEXT DEFAULT ''");
-        if (!cols.includes('slur_filter_regexes')) database.exec("ALTER TABLE channel_moderation_settings ADD COLUMN slur_filter_regexes TEXT DEFAULT ''");
-        if (!cols.includes('slur_filter_nudge_message')) database.exec("ALTER TABLE channel_moderation_settings ADD COLUMN slur_filter_nudge_message TEXT DEFAULT ''");
-        if (!cols.includes('slur_filter_disabled_categories')) database.exec("ALTER TABLE channel_moderation_settings ADD COLUMN slur_filter_disabled_categories TEXT DEFAULT '[]'");
-        if (!cols.includes('soundboard_enabled')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN soundboard_enabled INTEGER DEFAULT 1');
-        if (!cols.includes('soundboard_allow_pitch')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN soundboard_allow_pitch INTEGER DEFAULT 1');
-        if (!cols.includes('soundboard_allow_speed')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN soundboard_allow_speed INTEGER DEFAULT 1');
-        if (!cols.includes('soundboard_banned_ids')) database.exec("ALTER TABLE channel_moderation_settings ADD COLUMN soundboard_banned_ids TEXT DEFAULT ''");
-        if (!cols.includes('viewer_auto_delete_enabled')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN viewer_auto_delete_enabled INTEGER DEFAULT 1');
-        if (!cols.includes('viewer_delete_all_enabled')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN viewer_delete_all_enabled INTEGER DEFAULT 1');
-        if (!cols.includes('custom_emotes_enabled')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN custom_emotes_enabled INTEGER DEFAULT 1');
-        if (!cols.includes('custom_sounds_enabled')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN custom_sounds_enabled INTEGER DEFAULT 1');
-        if (!cols.includes('max_sound_seconds')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN max_sound_seconds INTEGER DEFAULT 10');
-        if (!cols.includes('uploads_mods_only')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN uploads_mods_only INTEGER DEFAULT 0');
-        if (!cols.includes('emote_scale')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN emote_scale INTEGER DEFAULT 100');
-        // Per-channel sound pitch/speed limits (speed as a rate; pitch as cents).
-        if (!cols.includes('sound_min_speed')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN sound_min_speed REAL DEFAULT 0.5');
-        if (!cols.includes('sound_max_speed')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN sound_max_speed REAL DEFAULT 3.0');
-        if (!cols.includes('sound_min_pitch_cents')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN sound_min_pitch_cents INTEGER DEFAULT -1200');
-        if (!cols.includes('sound_max_pitch_cents')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN sound_max_pitch_cents INTEGER DEFAULT 1200');
-        // Per-channel emote size limits (percent of the base emote height, 100 = default).
-        if (!cols.includes('emote_size_min')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN emote_size_min INTEGER DEFAULT 50');
-        if (!cols.includes('emote_size_max')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN emote_size_max INTEGER DEFAULT 200');
-        // Sounds-only "mods can upload" flag (independent of the emote uploads_mods_only).
-        if (!cols.includes('sounds_mods_only')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN sounds_mods_only INTEGER DEFAULT 0');
-        // Allow channel mods to edit the streamer's About/panels (off by default).
-        if (!cols.includes('mods_can_edit_about')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN mods_can_edit_about INTEGER DEFAULT 0');
-        // Sub-only chat: only active subscribers of the channel (and its moderators) may chat (OpenVibe.Chat enforces it).
-        if (!cols.includes('sub_only')) database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN sub_only INTEGER DEFAULT 0');
-    } catch (e) { console.warn('[DB] channel_moderation_settings columns migration:', e.message); }
 
     // Migrate: add channel_owner_id to emotes (viewer uploads targeting a channel) + channel_sounds table
     try {
@@ -2124,14 +2005,6 @@ function initDb() {
         )`);
         database.exec(`CREATE INDEX IF NOT EXISTS idx_hidden_relay_channel ON hidden_relay_users(channel_id, platform)`);
     } catch (e) { console.warn('[DB] hidden_relay_users migration:', e.message); }
-
-    // Migrate: add ip_approval_mode to channel_moderation_settings
-    try {
-        const cols = database.pragma('table_info(channel_moderation_settings)').map(c => c.name);
-        if (!cols.includes('ip_approval_mode')) {
-            database.exec('ALTER TABLE channel_moderation_settings ADD COLUMN ip_approval_mode INTEGER DEFAULT 0');
-        }
-    } catch (e) { console.warn('[DB] ip_approval_mode migration:', e.message); }
 
     // Migrate: add deleted_by and deleted_at to chat_messages for soft-delete attribution
     try {
@@ -3991,7 +3864,8 @@ const HOME_SERIES = {
     points:      { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(SUM(amount), 0)', where: 'amount > 0' },
     pointsSpent: { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(-SUM(amount), 0)', where: 'amount < 0' },
     redemptions: { table: 'coin_redemptions',  ts: 'created_at',  agg: 'COUNT(*)',              where: "status NOT IN ('rejected', 'refunded')" },
-    emotes:      { table: 'emotes',            ts: 'created_at',  agg: 'COUNT(*)' },
+    // No `emotes` series: OpenVibe.Chat owns that table (roadmap T3) and Live's copy is unread
+    // since N+2 (unlike the table itself, which N-1 still prepares against — see schema.sql).
 };
 const HOME_SERIES_KEYS = [...Object.keys(HOME_SERIES), 'liveNow', 'viewersNow'];
 
@@ -4180,7 +4054,9 @@ function _computeHomeStats() {
             messages: winCount('chat_messages', 'timestamp', 'COALESCE(is_deleted, 0) = 0'),
             hours: null,    // OpenVibe.Media
             streamers: streamersWin(),
-            emotes: winCount('emotes', 'created_at'),
+            // Live's `emotes` copy is unread since N+2 (the series is gone; stats.emotes is null), so the
+            // deltas are zero. The key stays for the N-1 client, which reads stats.recent.emotes.
+            emotes: { d: 0, w: 0, m: 0, pw: 0 },
             goals: winCount('donation_goals', 'created_at'),
             // Distinct people who tipped in each window — a headcount, like streamers.
             supporters: (() => {
@@ -4856,8 +4732,7 @@ function recordRelayUser(platform, username) {
 }
 function getRelayUser(platform, username) {
     if (!platform || !username) return null;
-    // rowid is a stable integer id for a relay user (no dedicated id column); used to key
-    // their chat-AI insight in chat_ai_summaries.
+    // rowid is a stable integer id for a relay user (no dedicated id column).
     return get('SELECT rowid AS id, * FROM relay_users WHERE platform = ? AND username = ?',
         [String(platform).toLowerCase(), String(username).toLowerCase()]) || null;
 }

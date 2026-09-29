@@ -1,19 +1,8 @@
 -- OpenVibe.Live Database Schema
 -- SQLite3
 
--- ── Deletion ledger ─────────────────────────────────────────────────────────
--- OpenVibe.Chat owns the six staged chat tables (roadmap T3) and this release deleted Live's
--- staged-table machinery (server/chat/chat-tables*.js, the /internal/chat-tables routes, Live's
--- chat-AI job and the old emote/moderation routes). The tables stay one release for N-1
--- (ADR-016): the previous release's SQL still prepares against them (test/n-1.test.js).
---   channel_moderators            unused since T3 N+1; dropped in the next release.
---   channel_moderation_settings   unused since T3 N+1; dropped in the next release.
---   emotes                        unused since T3 N+1; dropped in the next release.
---   user_tags                     unused since T3 N+1; dropped in the next release.
---   chat_ai_summaries             unused since T3 N+1; dropped in the next release.
---   chat_timeline_events          unused since T3 N+1; dropped in the next release.
---   chat_staged_outbox            unused since T3 N+1; dropped in the next release.
---   chat_dual_read_stats          unused since T3 N+1; dropped in the next release.
+-- emotes: unread since T3 N+2; dropped in the next release (OpenVibe.Chat owns it; N-1 still
+-- prepares two COUNT(*) against it — see test/chat-staged-tables.test.js).
 
 -- Users
 CREATE TABLE IF NOT EXISTS users (
@@ -508,85 +497,6 @@ CREATE INDEX IF NOT EXISTS idx_clips_stream_id ON clips(stream_id);
 CREATE INDEX IF NOT EXISTS idx_clips_user_id ON clips(user_id);
 CREATE INDEX IF NOT EXISTS idx_bans_stream_id ON bans(stream_id);
 CREATE INDEX IF NOT EXISTS idx_cameras_stream_id ON cameras(stream_id);
-
--- Channel Moderators (per-channel mod assignments)
-CREATE TABLE IF NOT EXISTS channel_moderators (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    channel_id INTEGER NOT NULL,
-    user_id INTEGER NOT NULL,
-    added_by INTEGER NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(channel_id, user_id),
-    FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL
-);
-CREATE INDEX IF NOT EXISTS idx_channel_mods_channel ON channel_moderators(channel_id);
-CREATE INDEX IF NOT EXISTS idx_channel_mods_user ON channel_moderators(user_id);
-
--- Per-channel moderation settings (slow mode, etc.)
-CREATE TABLE IF NOT EXISTS channel_moderation_settings (
-    channel_id INTEGER PRIMARY KEY,
-    slow_mode_seconds INTEGER DEFAULT 0,
-    followers_only INTEGER DEFAULT 0,
-    emote_only INTEGER DEFAULT 0,
-    allow_anonymous INTEGER DEFAULT 1,
-    links_allowed INTEGER DEFAULT 1,
-    gifs_enabled INTEGER DEFAULT 1,
-    account_age_gate_hours INTEGER DEFAULT 0,
-    caps_percentage_limit INTEGER DEFAULT 0,
-    aggressive_filter INTEGER DEFAULT 0,
-    max_message_length INTEGER DEFAULT 500,
-    slur_filter_enabled INTEGER DEFAULT 0,
-    slur_filter_use_builtin INTEGER DEFAULT 1,
-    slur_filter_terms TEXT DEFAULT '',
-    slur_filter_regexes TEXT DEFAULT '',
-    slur_filter_nudge_message TEXT DEFAULT '',
-    slur_filter_disabled_categories TEXT DEFAULT '[]',
-    ip_approval_mode INTEGER DEFAULT 0,
-    soundboard_enabled INTEGER DEFAULT 1,
-    soundboard_allow_pitch INTEGER DEFAULT 1,
-    soundboard_allow_speed INTEGER DEFAULT 1,
-    soundboard_banned_ids TEXT DEFAULT '',
-    viewer_auto_delete_enabled INTEGER DEFAULT 1,
-    viewer_delete_all_enabled INTEGER DEFAULT 1,
-    custom_emotes_enabled INTEGER DEFAULT 1,   -- viewers may upload gif/png emotes for this channel
-    custom_sounds_enabled INTEGER DEFAULT 1,   -- viewers may upload !sound commands for this channel
-    max_sound_seconds INTEGER DEFAULT 10,      -- max duration of an uploaded channel sound
-    uploads_mods_only INTEGER DEFAULT 0,       -- restrict emote/sound uploads to channel mods
-    mods_can_edit_about INTEGER DEFAULT 0,     -- allow channel mods to edit the streamer's About/panels
-    donation_sound_url TEXT,                   -- on-disk path to the streamer's donation alert sound
-    donation_sound_mime TEXT,
-    goal_sound_url TEXT,                       -- optional override sound for goal-reached
-    goal_sound_mime TEXT,
-    emote_scale INTEGER DEFAULT 100,           -- emote display size in chat, percent (50-300)
-    sub_only INTEGER DEFAULT 0,                -- only active subscribers (and the channel's moderators) may chat
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
-);
-
--- ── Staged-table bookkeeping, kept one release for N-1 (see the deletion ledger above) ──
--- OpenVibe.Chat owns the six staged chat tables and the machinery that used these two is gone
--- (roadmap T3). The previous release still creates and prepares against them, so they stay here:
--- only their writer was deleted, not the tables (ADR-016).
-CREATE TABLE IF NOT EXISTS chat_staged_outbox (
-    seq INTEGER PRIMARY KEY AUTOINCREMENT,
-    tbl TEXT NOT NULL,
-    op TEXT NOT NULL,
-    pk TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE IF NOT EXISTS chat_dual_read_stats (
-    tbl TEXT PRIMARY KEY,
-    compared INTEGER NOT NULL DEFAULT 0,
-    matched INTEGER NOT NULL DEFAULT 0,
-    mismatched INTEGER NOT NULL DEFAULT 0,
-    inconclusive INTEGER NOT NULL DEFAULT 0,
-    errors INTEGER NOT NULL DEFAULT 0,
-    last_mismatch_at DATETIME,
-    last_mismatch TEXT,
-    since DATETIME DEFAULT CURRENT_TIMESTAMP
-);
 
 -- ═══════════════════════════════════════════════════════════════
 -- Site Settings (key/value store for platform configuration)

@@ -493,13 +493,37 @@ effectsRouter.post('/media-queue', async (req, res) => {
     }
 });
 
-// Cozmo / !say: the robot's control socket is in Live, keyed by the streamer's stream key.
+// Cozmo / !say: the robot's control socket is in Live, keyed by the streamer's stream key. Chat commands pass the
+// same gate as the control panel (control-server.js validateControlPermission): the channel's control mode, its
+// anonymous-control switch and its whitelist, judged on the viewer Chat names (`from_user_id`; none = anonymous),
+// plus a per-viewer cooldown so a chat flood cannot drive a robot faster than a held key.
 const HARDWARE_COMMANDS = new Set(['forward', 'backward', 'turn_left', 'turn_right', 'lift_up', 'lift_down', 'head_up', 'head_down']);
+const HARDWARE_COOLDOWN_MS = 250;
+const hardwareLast = new Map();   // `${streamer}:${viewer}` → last command ms
+function hardwareRefusal(owner, actorId) {
+    const channel = db.getChannelByUserId(owner.id);
+    if (!channel) return null;
+    const mode = channel.control_mode || 'open';
+    if (mode === 'disabled') return 'controls_disabled';
+    if (!actorId && (!channel.anon_controls_enabled || mode === 'whitelist')) return 'login_required';
+    if (mode === 'whitelist' && actorId !== owner.id
+        && !db.get('SELECT 1 FROM control_whitelist WHERE channel_id = ? AND user_id = ?', [channel.id, actorId])) return 'not_whitelisted';
+    return null;
+}
 effectsRouter.post('/hardware', (req, res) => {
     const command = String(req.body?.command || '');
     if (!HARDWARE_COMMANDS.has(command) && !/^say:[\s\S]{1,200}$/.test(command)) return fail(res, 400, 'unknown command');
     const user = db.getUserById(int(req.body.streamer_user_id));
     if (!user) return res.json({ ok: false, reason: 'no_user' });
+    const actorId = int(req.body.from_user_id) || null;
+    const refused = hardwareRefusal(user, actorId);
+    if (refused) return res.json({ ok: false, reason: refused });
+    const who = actorId ? `u${actorId}` : `a:${String(req.body.from_anon || req.body.from_user || '').slice(0, 64)}`;
+    const key = `${user.id}:${who}`;
+    const now = Date.now();
+    if (now - (hardwareLast.get(key) || 0) < HARDWARE_COOLDOWN_MS) return res.json({ ok: false, reason: 'cooldown' });
+    hardwareLast.set(key, now);
+    if (hardwareLast.size > 5000) hardwareLast.delete(hardwareLast.keys().next().value);
     const controlServer = require('../controls/control-server');
     const hwWs = controlServer.hardwareClients.get(user.stream_key);
     if (!hwWs || hwWs.readyState !== 1) return res.json({ ok: false, reason: 'no_hardware' });

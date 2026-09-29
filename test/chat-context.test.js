@@ -107,6 +107,28 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     db.initDb();
     require('../server/chat/dm').ensureTables();
     const d = db.getDb();
+    // Live no longer has the staged chat tables (dropped in T3 N+2); the stub Chat below imitates
+    // Chat's own copy, so the test keeps local copies to seed and read.
+    d.exec(`
+        CREATE TABLE IF NOT EXISTS channel_moderators (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            added_by INTEGER NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(channel_id, user_id)
+        );
+        CREATE TABLE IF NOT EXISTS channel_moderation_settings (
+            channel_id INTEGER PRIMARY KEY,
+            slow_mode_seconds INTEGER DEFAULT 0,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS emotes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            channel_owner_id INTEGER
+        );
+    `);
     const mkUser = (username, role = 'user', extra = {}) => {
         const id = db.createUser({ username, email: `${username}@example.test`, password_hash: '!x', display_name: username.toUpperCase(), stream_key: `key-${username}` }).lastInsertRowid;
         d.prepare('UPDATE users SET role = ?, is_owner = ? WHERE id = ?').run(role, extra.owner ? 1 : 0, id);
@@ -121,7 +143,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     db.createChannel({ user_id: streamer, title: 'Streamer TV' });
     const channel = db.getChannelByUserId(streamer);
     const streamId = Number(db.createStream({ user_id: streamer, channel_id: channel.id, title: 'Live now' }).lastInsertRowid);
-    db.addChannelModerator ? db.addChannelModerator(channel.id, mod, streamer) : d.prepare('INSERT INTO channel_moderators (channel_id, user_id, added_by) VALUES (?, ?, ?)').run(channel.id, mod, streamer);
+    d.prepare('INSERT INTO channel_moderators (channel_id, user_id, added_by) VALUES (?, ?, ?)').run(channel.id, mod, streamer);
     d.prepare('INSERT INTO follows (follower_id, streamer_id) VALUES (?, ?)').run(viewer, streamer);
     db.setSetting('tts_enabled', 'true');
     db.setSetting('stripe_secret_key', 'sk_live_never_shared');
@@ -332,6 +354,32 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.strictEqual(require('../server/chat/chat-remote').drainToLocal({ log() {}, warn() {} }), 1);
         assert.ok(d.prepare("SELECT 1 FROM stream_first_chats WHERE chatter_key = 'user:77'").get());
         assert.strictEqual(d.prepare('SELECT COUNT(*) AS n FROM chat_bridge_outbox').get().n, 0);
+
+        // 11. Robot commands from chat pass the control panel's gate: control mode, anonymous switch, whitelist, cooldown.
+        {
+            const sent = [];
+            require('../server/controls/control-server').hardwareClients.set('key-streamer', { readyState: 1, send: (m) => sent.push(JSON.parse(m)) });
+            const hw = (body) => call('POST', '/internal/chat-effects/hardware', { token: WRITE, body: { streamer_user_id: streamer, command: 'forward', ...body } });
+            const setCh = (mode, anon) => d.prepare('UPDATE channels SET control_mode = ?, anon_controls_enabled = ? WHERE id = ?').run(mode, anon, channel.id);
+            setCh('open', 1);
+            assert.strictEqual((await hw({ from_anon: 'anon1' })).body.ok, true, 'open channel: anyone');
+            assert.strictEqual((await hw({ from_anon: 'anon1' })).body.reason, 'cooldown', 'one command per viewer per 250 ms');
+            assert.strictEqual((await hw({ from_anon: 'anon2' })).body.ok, true, 'the cooldown is per viewer');
+            setCh('open', 0);
+            assert.strictEqual((await hw({ from_anon: 'anon3' })).body.reason, 'login_required');
+            assert.strictEqual((await hw({ from_user_id: viewer })).body.ok, true, 'signed-in viewers still may');
+            setCh('whitelist', 1);
+            assert.strictEqual((await hw({ from_anon: 'anon4' })).body.reason, 'login_required', 'whitelist mode never lets anonymous drive');
+            assert.strictEqual((await hw({ from_user_id: mod })).body.reason, 'not_whitelisted');
+            d.prepare('INSERT INTO control_whitelist (channel_id, user_id) VALUES (?, ?)').run(channel.id, mod);
+            assert.strictEqual((await hw({ from_user_id: mod })).body.ok, true, 'whitelisted');
+            assert.strictEqual((await hw({ from_user_id: streamer })).body.ok, true, 'the owner always may');
+            setCh('disabled', 1);
+            assert.strictEqual((await hw({ from_user_id: streamer, command: 'say:hi' })).body.reason, 'controls_disabled');
+            assert.strictEqual(sent.length, 5, 'only the allowed commands reached the robot');
+            assert.ok(sent.every((m) => m.type === 'command'));
+            require('../server/controls/control-server').hardwareClients.delete('key-streamer');
+        }
 
         quiet('chat context (Live side of OpenVibe.Chat): all checks passed');
     } catch (err) {
