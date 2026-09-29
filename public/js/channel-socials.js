@@ -45,8 +45,9 @@
                 .then((r) => (r.ok ? r.json() : null)).then((p) => fill(card, links[i], p)).catch(() => {});
         };
         const all = host.querySelectorAll('.ch-social-card');
+        if (host._ovIo) host._ovIo.disconnect();   // one observer per host: a re-render replaces it
         if ('IntersectionObserver' in window) {
-            const io = new IntersectionObserver((ents) => { for (const e of ents) if (e.isIntersecting) { io.unobserve(e.target); load(e.target); } }, { rootMargin: '300px' });
+            const io = host._ovIo = new IntersectionObserver((ents) => { for (const e of ents) if (e.isIntersecting) { io.unobserve(e.target); load(e.target); } }, { rootMargin: '300px' });
             all.forEach((c) => io.observe(c));
         } else all.forEach(load);
     }
@@ -74,7 +75,9 @@
             const f = document.createElement('iframe');
             f.className = 'ch-social-embed';
             f.src = p.embed; f.loading = 'lazy'; f.title = `Posts by ${label(link)} on X`;
-            f.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox');
+            // No allow-same-origin: the frame is served from this origin, so that flag would hand X's script our
+            // cookies, storage and DOM. Scripts and popups are all the public timeline needs.
+            f.setAttribute('sandbox', 'allow-scripts allow-popups allow-popups-to-escape-sandbox');
             btn.replaceWith(f);
         });
     }

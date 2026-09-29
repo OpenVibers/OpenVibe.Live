@@ -1212,7 +1212,9 @@
 .ch-panel-bar > .sel-all-btn,
 .ch-panel-bar > .ch-analytics-period-btns { margin-left: auto; }
 .ch-panel-bar:not(:has(> :not([style*="display:none"]):not([style*="display: none"]))) { margin: 0; }
-.ch-panel-hint { margin: 14px 0 12px; color: var(--text-muted); font-size: 0.85rem; display: flex; align-items: center; gap: 7px; line-height: 1.4; }
+/* A sentence, not a flex row: as flex items its words and <b> wrapped into separate columns on phones. */
+.ch-panel-hint { margin: 12px 0; color: var(--text-muted); font-size: 0.85rem; line-height: 1.45; }
+.ch-panel-hint > i:first-child { margin-right: 6px; }
 .ai-tl-overview-card {
     margin: 6px 0 14px; padding: 16px 18px; border-radius: 14px;
     background: linear-gradient(135deg, color-mix(in srgb, var(--accent, #8b5cf6) 14%, transparent), color-mix(in srgb, var(--accent, #8b5cf6) 4%, transparent));
@@ -1463,7 +1465,7 @@ body.controls-docked .messenger-toggle { z-index: 1100; }
 
 /* ── Hide / show the chat (desktop) ─────────────────────────── */
 .chat-header .ch-chat-collapse { margin-right: 2px; }
-@media (min-width: 769px) {
+@media (min-width: 1181px) {
     #page-channel.chat-collapsed .stream-layout > .chat-sidebar { display: none !important; }
     #page-channel.chat-revealing .stream-layout > .chat-sidebar { animation: chChatReveal .32s cubic-bezier(.22,1,.36,1); }
 }
@@ -1479,12 +1481,14 @@ body.controls-docked .messenger-toggle { z-index: 1100; }
 .ch-chat-reopen:hover { color: var(--text-primary); border-color: var(--accent); padding-right: 16px; }
 .ch-chat-reopen .fa-comments { color: var(--accent); }
 .ch-chat-reopen[hidden] { display: none; }
-@media (max-width: 768px) { .ch-chat-collapse, .ch-chat-reopen { display: none !important; } }
+/* Below 1181px the chat is an overlay or a bottom sheet with its own open/close button, so no hide/show here. */
+@media (max-width: 1180px) { .ch-chat-collapse, .ch-chat-reopen { display: none !important; } }
 @media (prefers-reduced-motion: reduce) { #page-channel.chat-revealing .stream-layout > .chat-sidebar { animation: none; } }
 
 /* ── Resizing the chat (public/js/channel-chat-resize.js) ─────
    One grip per chat: on its left edge beside the stream (width), on its top edge as a bottom sheet (height). */
-#page-channel .stream-layout > .chat-sidebar { width: var(--chat-w); }
+/* Not for vertical (9:16) streams: their wider chat column (clamp(340px, 35vw, 500px), above) must win. */
+#page-channel .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar { width: var(--chat-w); }
 @media (max-width: 1180px) and (orientation: landscape) { #page-channel .stream-layout > .chat-sidebar { width: var(--chat-ow, min(420px, 44vw)); } }
 @media (max-width: 1180px) and (orientation: portrait) { #page-channel .stream-layout > .chat-sidebar { width: 100%; height: var(--chat-sheet-h, 55dvh); max-height: 92dvh; } }
 #page-channel.chat-resizing, #page-channel.chat-resizing * { user-select: none; }
@@ -1501,8 +1505,8 @@ body.controls-docked .messenger-toggle { z-index: 1100; }
     .chat-grip:hover::after, .chat-grip.dragging::after, .chat-grip:focus-visible::after { opacity: 1; background: var(--accent); }
 }
 @media (max-width: 1180px) and (orientation: portrait) {
-    .chat-grip { top: 0; left: 0; right: 0; height: 24px; cursor: row-resize; }
-    .chat-grip::after { left: 50%; top: 8px; width: 44px; height: 5px; margin-left: -22px; border-radius: 5px; background: color-mix(in srgb, var(--text-muted) 60%, transparent); }
+    .chat-grip { top: 0; left: 50%; width: 120px; margin-left: -60px; height: 18px; cursor: row-resize; }   /* the handle only: the header buttons stay tappable */
+    .chat-grip::after { left: 50%; top: 7px; width: 44px; height: 5px; margin-left: -22px; border-radius: 5px; background: color-mix(in srgb, var(--text-muted) 60%, transparent); }
     .chat-grip:hover::after, .chat-grip.dragging::after, .chat-grip:focus-visible::after { background: var(--accent); }
     /* The grip draws the sheet's handle now (the header's own pill was only a picture of one). */
     #page-channel .chat-sidebar .chat-header::before { display: none; }

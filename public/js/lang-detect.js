@@ -80,6 +80,8 @@
         if (a >= 2 && a >= b * 2) confidence = 0.9;
         else if (a >= 1 && b === 0 && words.length <= 4) confidence = 0.65;
         else if (a > b) confidence = 0.55;
+        // One Latin word ("gracias", "merci") is too little to call a language: never above the 0.6 threshold.
+        if (words.length === 1) confidence = Math.min(confidence, 0.5);
         return { lang: best, confidence };
     }
     /** The language of `text` when it is confidently not `me` (a 2-letter code), else null. */

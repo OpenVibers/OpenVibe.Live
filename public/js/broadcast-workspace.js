@@ -1936,7 +1936,6 @@ async function _wsSaveAll() {
         const streamFields = {
             title: document.getElementById('bc-title')?.value.trim() || ms.title,
             description: document.getElementById('bc-description')?.value.trim() || '',
-            category: document.getElementById('bc-category')?.value || '',
             is_nsfw: document.getElementById('bc-nsfw')?.checked ? 1 : 0,
             protocol: ms.protocol,
             streaming_method: ms.streaming_method || 'browser',

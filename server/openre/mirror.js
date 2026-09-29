@@ -189,9 +189,12 @@ async function reconcileOnce() {
         if (row && !row.is_live) { db.run("UPDATE openre_sessions SET state = 'detached', updated_at = CURRENT_TIMESTAMP WHERE session_id = ?", [r.session_id]); continue; }
         let s;
         try { s = await client.getSession(r.session_id); } catch (err) {
-            if (err.status === 404) s = { state: 'failed', revision: r.revision + 1, ended_at: null };
+            if (err.status === 404) s = null;
             else continue; // OpenRe unreachable: keep the last known state (bounded by CONFIRM_WINDOW_MIN)
         }
+        // A session OpenRe no longer knows (the SDK answers null for a 404; older clients threw) has failed: without this
+        // the row stayed 'live', ownsStream() stayed true and Live never took its own restream/recording back.
+        if (!s) s = { state: 'failed', revision: r.revision + 1, ended_at: null };
         if (s.state === 'live' || s.state === 'starting') {
             db.run("UPDATE openre_sessions SET confirmed_at = CURRENT_TIMESTAMP WHERE session_id = ?", [r.session_id]);
             if (r.stream_id) db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ? AND is_live = 1', [r.stream_id]);

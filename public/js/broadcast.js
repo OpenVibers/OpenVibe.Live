@@ -928,15 +928,12 @@ function showStreamManager() {
     const info = document.getElementById('bc-info-bar'); if (info) info.style.display = 'none';
 }
 
-/** Pre-fill broadcast form with last-used title/description/category from localStorage */
+/** Pre-fill broadcast form with last-used title/description from localStorage */
 function _restoreLastBroadcastFields() {
     const titleEl = document.getElementById('bc-title');
     if (titleEl && !titleEl.value) titleEl.value = localStorage.getItem('bc-last-title') || '';
     const descEl = document.getElementById('bc-description');
     if (descEl && !descEl.value) descEl.value = localStorage.getItem('bc-last-description') || '';
-    const catEl = document.getElementById('bc-category');
-    const lastCat = localStorage.getItem('bc-last-category');
-    if (catEl && lastCat) catEl.value = lastCat;
     // Populate username in create reassurance text
     const usernameEl = document.getElementById('bc-create-username');
     if (usernameEl && currentUser?.username) usernameEl.textContent = currentUser.username;
@@ -1500,7 +1497,6 @@ async function loadBroadcastControlConfigs() {
 async function createNewStream() {
     const title = document.getElementById('bc-title')?.value.trim();
     const description = document.getElementById('bc-description')?.value.trim() || '';
-    const category = document.getElementById('bc-category')?.value || '';
     const method = broadcastState.selectedMethod;
     if (!title) return toast('Stream title is required', 'error');
 
@@ -1522,7 +1518,6 @@ async function createNewStream() {
     // Persist last-used values so they pre-fill next time
     localStorage.setItem('bc-last-title', title);
     localStorage.setItem('bc-last-description', description);
-    localStorage.setItem('bc-last-category', category);
 
     // Restore existing-streams panel visibility for next time
     const existingEl = document.getElementById('bc-existing-streams');
@@ -1572,7 +1567,6 @@ async function createNewStream() {
                 title,
                 description,
                 protocol: method,
-                category,
                 is_nsfw: document.getElementById('bc-nsfw')?.checked || false,
                 control_config_id: controlConfigId,
                 managed_stream_id: managedStreamId,

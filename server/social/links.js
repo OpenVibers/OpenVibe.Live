@@ -57,6 +57,9 @@ function cleanLink(raw) {
     let kind = String(raw.kind || '').toLowerCase();
     let value = String(raw.url || raw.handle || '').trim().slice(0, 300);
     if (!value) return null;
+    // A federated handle (@user@instance.social) is a Mastodon profile wherever it is typed.
+    const fed = /^@?([A-Za-z0-9_]{1,30})@([A-Za-z0-9.-]+\.[A-Za-z]{2,})$/.exec(value);
+    if (fed && (kind === 'mastodon' || kind === 'custom' || kind === 'website' || !kind)) { kind = 'mastodon'; value = `https://${fed[2].toLowerCase()}/@${fed[1]}`; }
     if (!/^https?:\/\//i.test(value)) {
         const p = PLATFORMS[kind];
         if (!p || !p.url) {

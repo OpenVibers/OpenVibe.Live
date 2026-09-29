@@ -57,11 +57,14 @@ function detectLang(text) {
  * detection says 'en'; per line, the Japanese line wins — which is the right answer for
  * "what language does this streamer live in".
  */
+// A channel's language is inferred only from non-Latin scripts: one French line in an English bio must not make every
+// English chat line a model call. A Latin-script channel language is the streamer's explicit chat_language setting.
+const SCRIPT_LANGS = new Set(['ja', 'ko', 'zh', 'ru', 'uk', 'ar', 'th', 'he', 'el', 'hi']);
 function detectForeignInText(text) {
     const lines = String(text || '').split(/[\n\r]+|(?<=[。！？.!?])\s+/);
     for (const line of lines) {
         const l = detectLang(line);
-        if (l && l !== 'en') return l;
+        if (l && SCRIPT_LANGS.has(l)) return l;
     }
     return null;
 }
@@ -96,7 +99,7 @@ function channelLanguage(userId) {
             // clearly in another script.
             const bioLang = detectForeignInText(u?.bio || '');
             const nameLang = detectLang(`${u?.display_name || ''} ${ch?.title || ''}`);
-            lang = bioLang || ((nameLang && nameLang !== 'en') ? nameLang : 'en');
+            lang = bioLang || ((nameLang && SCRIPT_LANGS.has(nameLang)) ? nameLang : 'en');
         }
     } catch { lang = 'en'; }
     _chanCache.set(id, { lang, at: Date.now() });
@@ -256,12 +259,24 @@ async function translateMany(texts, { to = 'en', context = 'chat' } = {}) {
         need.push({ i, t, from });
     });
     if (!need.length || !available()) return out;
-    const lines = await translateLines(need.map((n) => n.t), { from: 'auto', to, context });
-    need.forEach((n, k) => {
-        if (!lines[k]) return;
-        out[n.i] = { from: n.from, text: lines[k] };
-        remember(n.t, n.from, to, lines[k]);
-    });
+    // One model call per group whose joined text stays under the translate() input cap (1200 chars): a busy chat's
+    // batch of 20 lines used to exceed it, and the whole batch came back untranslated.
+    const groups = [];
+    let cur = [], len = 0;
+    for (const n of need) {
+        const l = n.t.length + 1;
+        if (cur.length && len + l > 1000) { groups.push(cur); cur = []; len = 0; }
+        cur.push(n); len += l;
+    }
+    if (cur.length) groups.push(cur);
+    for (const g of groups) {
+        const lines = await translateLines(g.map((n) => n.t), { from: 'auto', to, context });
+        g.forEach((n, k) => {
+            if (!lines[k]) return;
+            out[n.i] = { from: n.from, text: lines[k] };
+            remember(n.t, n.from, to, lines[k]);
+        });
+    }
     return out;
 }
 

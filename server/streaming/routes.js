@@ -1743,8 +1743,12 @@ router.put('/managed/:id', requireAuth, (req, res) => {
             if (fields.description === null) return res.status(400).json({ error: 'Invalid description' });
         }
         if (hasOwn(req.body, 'category')) {
-            fields.category = cleanText(req.body.category, { maxLength: MAX_CATEGORY_LENGTH });
-            if (fields.category === null) return res.status(400).json({ error: 'Invalid category' });
+            // Empty or null = Auto (the AI decides from the stream; the Go Live page has no picker any more).
+            if (req.body.category == null || String(req.body.category).trim() === '') fields.category = null;
+            else {
+                fields.category = cleanText(req.body.category, { maxLength: MAX_CATEGORY_LENGTH });
+                if (fields.category === null) return res.status(400).json({ error: 'Invalid category' });
+            }
         }
         if (hasOwn(req.body, 'protocol')) {
             fields.protocol = cleanProtocol(req.body.protocol);
