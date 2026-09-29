@@ -6,8 +6,6 @@
  * GET    /api/cosmetics/equipped/:userId - Public: get equipped cosmetics for a user
  * POST   /api/cosmetics/equip           - Equip a cosmetic
  * POST   /api/cosmetics/unequip         - Unequip a slot
- * POST   /api/cosmetics/activate        - Consume game item → unlock cosmetic
- * POST   /api/cosmetics/deactivate      - Revoke cosmetic → return game item
  */
 const express = require('express');
 const { requireAuth } = require('../auth/auth');
@@ -60,43 +58,11 @@ router.post('/unequip', requireAuth, (req, res) => {
     res.json(result);
 });
 
-// ── Activate: consume game item → unlock cosmetic globally ───
-router.post('/activate', requireAuth, async (req, res) => {
-    const { itemId } = req.body;
-    if (!itemId) return res.status(400).json({ error: 'itemId required' });
-    const result = await cosmetics.activateFromGame(req.user.id, itemId);
-    if (result.error) return res.status(400).json(result);
-    res.json(result);
-});
-
-// ── Deactivate: revoke cosmetic → add back to game inventory ─
-router.post('/deactivate', requireAuth, async (req, res) => {
-    const { itemId } = req.body;
-    if (!itemId) return res.status(400).json({ error: 'itemId required' });
-    const result = await cosmetics.deactivateToGame(req.user.id, itemId);
-    if (result.error) return res.status(400).json(result);
-    res.json(result);
-});
-
-// ── Internal: auto-unlock cosmetic from openvibe-quest game ──────
-// Called server-to-server when openvibe-quest game awards a hat/cosmetic item.
-// Only the configured internal API key, from loopback: the legacy X-Internal-Secret is in git
-// history, and the quest game that sent it from this host is gone. The key is shared by several
-// services, so it is refused through the public edge (nginx/Cloudflare) like every internal route
-// (server/net/internal-key.js); otherwise anyone holding it could unlock paid cosmetics from outside.
-router.post('/internal-unlock', (req, res) => {
-    if (!require('../net/internal-key').internalKeyOk(req)) {
-        return res.status(403).json({ error: 'Forbidden' });
-    }
-    const { userId, itemId } = req.body;
-    if (!userId || !itemId) return res.status(400).json({ error: 'userId and itemId required' });
-    try {
-        const result = cosmetics.unlockCosmetic(userId, itemId);
-        res.json(result);
-    } catch (err) {
-        console.error(`[Cosmetics] internal-unlock error for user ${userId}, item ${itemId}:`, err.message);
-        res.status(400).json({ error: 'Failed to unlock — user may not exist on openvibelive' });
-    }
-});
+// The openvibe-quest game-item bridge is gone (plan T2; the quest game runs nowhere, so these always failed). Open
+// tabs of the previous release may still call them for one release (ADR-016 N-1): they answer 410 behind the same
+// auth, then the next release deletes both.
+for (const p of ['/activate', '/deactivate']) {
+    router.post(p, requireAuth, (req, res) => res.status(410).json({ error: 'Game items no longer convert to cosmetics' }));
+}
 
 module.exports = router;

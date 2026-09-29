@@ -418,15 +418,6 @@
     background: #ff4444;
     color: #fff;
 }
-.cosmetic-btn-convert {
-    background: #44aaff22;
-    border-color: #44aaff;
-    color: #44aaff;
-}
-.cosmetic-btn-convert:hover {
-    background: #44aaff;
-    color: #000;
-}
 
 /* Empty state */
 .cosmetics-empty {

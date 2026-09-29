@@ -5,18 +5,12 @@ const router = express.Router();
 const config = require('../config');
 const db = require('../db/database');
 
-const { internalKeyOk } = require('../net/internal-key');
+const { guardOrKey } = require('../net/service-guard');
 
-// Service-to-service only: loopback (nothing that came through nginx) and INTERNAL_API_KEY,
-// compared in constant time (server/net/internal-key.js).
-function requireInternalKey(req, res, next) {
-    if (!internalKeyOk(req)) {
-        return res.status(403).json({ error: 'Invalid or missing internal key' });
-    }
-    next();
-}
-
-router.use(requireInternalKey);
+// Service-to-service only, loopback only (nothing that came through nginx): each route checks the one capability it
+// performs on a Network service token (server/net/service-guard.js). The X-Internal-Key path is kept only while its
+// callers move to tokens (plan T2).
+const chatTablesGuard = guardOrKey('live.chat_mirror.write');   // OpenVibe.Chat's staged-table handoff (T3 deletes)
 
 // CHAT_AUTHORITY=chat: OpenVibe.Chat caches users; a role or avatar pushed here reaches it at once.
 function notifyChat(userId) {
@@ -29,18 +23,18 @@ function notifyChat(userId) {
 // POST /internal/chat-tables/:table   { dual_read?: bool, reset_counters?: bool, authority?: 'live'|'chat',
 //                                       by?: 'who', force?: true (back to 'live' with Chat down) } — the
 //                                       flag, the counters, then the handoff
-router.get('/chat-tables', async (req, res) => {
+router.get('/chat-tables', chatTablesGuard, async (req, res) => {
     try { res.json(await require('../chat/chat-tables').status()); } catch (err) { res.status(500).json({ error: err.message }); }
 });
 // POST /internal/chat-tables/relay { paused: bool } — hold the relay to Chat (the capture goes on) for an import
-router.post('/chat-tables/relay', (req, res) => {
+router.post('/chat-tables/relay', chatTablesGuard, (req, res) => {
     try {
         const sync = require('../chat/chat-tables-sync');
         if (req.body && req.body.paused !== undefined) sync.setPaused(req.body.paused === true || req.body.paused === 'true');
         res.json({ ok: true, relay: sync.relayStats() });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
-router.post('/chat-tables/:table', async (req, res) => {
+router.post('/chat-tables/:table', chatTablesGuard, async (req, res) => {
     const chatTables = require('../chat/chat-tables');
     const table = String(req.params.table);
     const b = req.body || {};
@@ -61,7 +55,7 @@ router.post('/chat-tables/:table', async (req, res) => {
 // Footer site copy is written by OpenVibe.AI for the Network directly (network.site_copy); the
 // /internal/ai/site-copy fallback that used to live here was retired on 2026-09-23.
 
-router.post('/url-registry/refresh', async (req, res) => {
+router.post('/url-registry/refresh', guardOrKey('live.url_registry.refresh'), async (req, res) => {
     try {
         await config.refreshRegistry();
         console.log('[Internal] URL registry refresh requested');
@@ -79,7 +73,7 @@ router.post('/url-registry/refresh', async (req, res) => {
 // ── The account's avatar changed on the Network (or on another site) ─────────
 // The avatar is a network-wide property (OpenVibe.Network server/profile/avatar.js). Live keeps a copy on its
 // own user row because every stream card, chat line and profile reads it locally.
-router.post('/user-avatar', (req, res) => {
+router.post('/user-avatar', guardOrKey('live.avatar.write'), (req, res) => {
     try {
         const { username, openvibenetwork_id, avatar_url } = req.body || {};
         let url = null;

@@ -109,12 +109,10 @@ function renderCosmeticsUI() {
                 if (isEquipped) {
                     actionsHtml = `
                         <button class="cosmetic-btn cosmetic-btn-unequip" onclick="cosmeticUnequip('${cat === 'name_effect' ? 'name_effect' : cat}')">Unequip</button>
-                        <button class="cosmetic-btn cosmetic-btn-convert" onclick="cosmeticDeactivate('${item.itemId}')" title="Send back to game inventory">Return to Game</button>
                     `;
                 } else {
                     actionsHtml = `
                         <button class="cosmetic-btn cosmetic-btn-equip" onclick="cosmeticEquip('${item.itemId}')">Equip</button>
-                        <button class="cosmetic-btn cosmetic-btn-convert" onclick="cosmeticDeactivate('${item.itemId}')" title="Send back to game inventory">Return to Game</button>
                     `;
                 }
             } else if (userIsAdmin) {
@@ -186,39 +184,6 @@ async function cosmeticUnequip(slot) {
         loadCosmeticsInventory();
     } catch (err) {
         toast('Failed to unequip', 'error');
-    }
-}
-
-async function cosmeticActivate(itemId) {
-    try {
-        const res = await fetch('/api/cosmetics/activate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...authHeaders() },
-            body: JSON.stringify({ itemId }),
-        });
-        const data = await res.json();
-        if (data.error) { toast(data.error, 'error'); return; }
-        toast(data.message || 'Unlocked!', 'success');
-        loadCosmeticsInventory();
-    } catch (err) {
-        toast('Failed to activate', 'error');
-    }
-}
-
-async function cosmeticDeactivate(itemId) {
-    if (!confirm('Convert this cosmetic back to a game item? You will lose the global effect.')) return;
-    try {
-        const res = await fetch('/api/cosmetics/deactivate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...authHeaders() },
-            body: JSON.stringify({ itemId }),
-        });
-        const data = await res.json();
-        if (data.error) { toast(data.error, 'error'); return; }
-        toast(data.message || 'Converted back to game item', 'info');
-        loadCosmeticsInventory();
-    } catch (err) {
-        toast('Failed to deactivate', 'error');
     }
 }
 

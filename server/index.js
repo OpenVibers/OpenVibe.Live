@@ -606,9 +606,8 @@ app.post('/internal/openre-events', require('./openre/mirror').webhookHandler);
 
 // Internal (server-to-server) routes — allow openvibe.network to call into this service
 // Summary numbers for the Network's navigation service (ordering sites by real use).
-// Internal key only; returns totals, never rows.
-app.get('/internal/analytics-summary', (req, res) => {
-    if (!require('./net/internal-key').internalKeyOk(req)) return res.status(401).json({ ok: false });
+// A service token with live.analytics.read (loopback only); returns totals, never rows.
+app.get('/internal/analytics-summary', require('./net/service-guard').guardOrKey('live.analytics.read'), (req, res) => {
     try {
         const days = Math.min(parseInt(req.query.days, 10) || 7, 90);
         const st = analytics.getStats({ days }) || {};

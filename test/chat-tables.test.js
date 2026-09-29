@@ -286,8 +286,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.strictEqual((await internal('POST', '/chat-tables/channel_moderation_settings', { reset_counters: true })).body.table.dual_read_stats.compared, 0);
 
         // 6. The status route: loopback + internal key; both sides' view of every table.
-        assert.strictEqual((await call('GET', '/internal/chat-tables')).status, 403);
-        assert.strictEqual((await call('GET', '/internal/chat-tables', { headers: { ...KEY, 'X-Forwarded-For': '203.0.113.1' } })).status, 403);
+        assert.strictEqual((await call('GET', '/internal/chat-tables')).status, 401, 'no credentials');
+        assert.strictEqual((await call('GET', '/internal/chat-tables', { headers: { ...KEY, 'X-Forwarded-For': '203.0.113.1' } })).status, 401, 'the key through the public edge');
         let s = (await internal('GET', '/chat-tables')).body;
         assert.strictEqual(s.chat_authority, 'chat');
         assert.deepStrictEqual([s.tables.emotes.authority, s.tables.emotes.chat_authority, s.tables.emotes.dual_read, s.tables.emotes.outbox_pending], ['live', 'live', true, 0]);

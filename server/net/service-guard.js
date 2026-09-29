@@ -38,4 +38,18 @@ function guard(capability) {
     };
 }
 
-module.exports = { guard, AUDIENCE };
+/**
+ * While X-Internal-Key is retired (plan T2): a request that presents a Bearer is judged on the token alone (never
+ * downgraded to the key); one without a Bearer still passes with the key from loopback. Callers move to tokens, then
+ * every route becomes guard(capability) and the key goes.
+ */
+function guardOrKey(capability) {
+    const tokenGuard = guard(capability);
+    return function liveServiceGuardOrKey(req, res, next) {
+        if (String(req.headers.authorization || '').startsWith('Bearer ')) return tokenGuard(req, res, next);
+        if (require('./internal-key').internalKeyOk(req)) return next();
+        return http.sendProblem(res, 401, 'token.missing', { detail: 'a service token is required', ctx: http.requestContext(req.headers) });
+    };
+}
+
+module.exports = { guard, guardOrKey, AUDIENCE };

@@ -1,26 +1,37 @@
 'use strict';
 
-// POST /api/cosmetics/internal-unlock grants paid cosmetics, so only the configured INTERNAL_API_KEY
-// opens it, and only from loopback. The legacy X-Internal-Secret is in the repository's history:
-// from loopback, without proxy headers, it used to be enough on its own. The key is shared by
-// Network, Live, Media and Tools, so a request that came through the public edge (nginx adds
-// X-Forwarded-For / X-Real-IP, Cloudflare CF-Connecting-IP) is refused even with the right key.
-// The same rule and a constant-time compare cover the other X-Internal-Key routes
-// (server/net/internal-key.js): /internal/* and /internal/analytics-summary.
+// Live's internal (server-to-server) routes, during the X-Internal-Key retirement (plan T2):
+//  - each route checks the one capability it performs on a Network service token (server/net/service-guard.js);
+//  - a request that presents a Bearer is judged on the token alone, never downgraded to the key;
+//  - without a Bearer, the key still passes from loopback while callers move (guardOrKey), compared in constant time;
+//  - nothing that came through nginx or Cloudflare gets in, with a token or the key;
+//  - POST /api/cosmetics/internal-unlock (the openvibe-quest bridge) is gone: the quest game runs nowhere.
 
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const express = require('express');
+const { serviceAuth } = require('openvibe-contracts');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-cosmetics-internal-'));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-internal-'));
+const keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
+fs.writeFileSync(path.join(tmp, 'network.pem'), keys.publicKey);
 process.env.DB_PATH = path.join(tmp, 'live.db');
+process.env.OV_NETWORK_PUBLIC_KEY = path.join(tmp, 'network.pem');
+process.env.OV_NETWORK_URL = 'https://openvibe.network';
 const KEY = 'k'.repeat(40);
 process.env.INTERNAL_API_KEY = KEY;
 console.log = () => {};
 console.warn = () => {};
 console.error = () => {};
+
+const now = () => Math.floor(Date.now() / 1000);
+let jti = 0;
+const token = (cap, { aud = 'openvibe.live', sub = 'svc:network', env } = {}) => serviceAuth.signServiceToken({
+    iss: 'https://openvibe.network', sub, actor_type: 'service', aud: [aud], cap, iat: now(), exp: now() + 300, jti: `tok_test_${String(++jti).padStart(4, '0')}`, ...(env ? { env } : {}),
+}, keys.privateKey);
 
 (async () => {
     require('../server/db/database').initDb();
@@ -32,32 +43,46 @@ console.error = () => {};
     await new Promise((r) => server.once('listening', r));
     const origin = `http://127.0.0.1:${server.address().port}`;
     const post = (p, headers, body = {}) => fetch(origin + p, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
-    const unlock = (headers) => post('/api/cosmetics/internal-unlock', headers);
+    const bearer = (t) => ({ authorization: `Bearer ${t}` });
     try {
-        // ── internal-unlock ──────────────────────────────────────────────────────────
-        assert.strictEqual((await unlock({ 'x-internal-secret': 'openvibe-internal-2026' })).status, 403, 'the legacy secret from loopback no longer opens it');
-        assert.strictEqual((await unlock({})).status, 403);
-        assert.strictEqual((await unlock({ 'x-internal-key': 'wrong' })).status, 403);
-        assert.strictEqual((await unlock({ 'x-internal-key': 'j'.repeat(40) })).status, 403, 'a wrong key of the right length');
-        assert.strictEqual((await unlock({ 'x-internal-key': KEY + 'x' })).status, 403, 'a longer key that starts right');
-        assert.strictEqual((await unlock({ 'x-internal-key': KEY })).status, 400, 'the internal key from loopback gets past the gate (then needs userId/itemId)');
+        // ── the quest bridge is gone ─────────────────────────────────────────────────
+        for (const h of [{ 'x-internal-key': KEY }, { 'x-internal-secret': 'openvibe-internal-2026' }]) {
+            assert.strictEqual((await post('/api/cosmetics/internal-unlock', h, { userId: 1, itemId: 'fx_fire' })).status, 404, 'internal-unlock no longer exists');
+        }
+        // activate/deactivate answer 410 for one release (old tabs, ADR-016), behind the same auth.
+        for (const p of ['/api/cosmetics/activate', '/api/cosmetics/deactivate']) assert.strictEqual((await post(p, {}, { itemId: 'fx_fire' })).status, 401, `${p} still needs a session`);
+
+        // ── /internal/user-avatar: live.avatar.write ─────────────────────────────────
+        const avatar = (headers) => post('/internal/user-avatar', headers, { username: 'nobody-here' });
+        assert.strictEqual((await avatar(bearer(token(['live.avatar.write'])))).status, 404, 'the capability reaches the handler (no such user)');
+        assert.strictEqual((await avatar(bearer(token(['live.url_registry.refresh'])))).status, 403, 'another capability is not enough');
+        assert.strictEqual((await avatar(bearer(token(['live.avatar.write'], { aud: 'openvibe.network' })))).status, 401, 'a token for another audience');
+        assert.strictEqual((await avatar(bearer(token(['live.avatar.write'], { env: 'sandbox' })))).status, 401, 'a sandbox token');
+        assert.strictEqual((await avatar({ ...bearer('not.a.token'), 'x-internal-key': KEY })).status, 401, 'a Bearer is judged on the token alone, never downgraded to the key');
+        assert.strictEqual((await avatar({ ...bearer(token(['live.avatar.write'])), 'x-forwarded-for': '203.0.113.9' })).status, 403, 'a token through the public edge is refused');
+        assert.strictEqual((await avatar({})).status, 401);
+        // The key while callers move: loopback only, constant time.
+        assert.strictEqual((await avatar({ 'x-internal-key': KEY })).status, 404, 'the key from loopback still reaches the handler');
+        assert.strictEqual((await avatar({ 'x-internal-key': 'j'.repeat(40) })).status, 401, 'a wrong key of the right length');
+        assert.strictEqual((await avatar({ 'x-internal-key': KEY + 'x' })).status, 401, 'a longer key that starts right');
         for (const h of ['x-forwarded-for', 'x-real-ip', 'cf-connecting-ip']) {
-            assert.strictEqual((await unlock({ 'x-internal-key': KEY, [h]: '203.0.113.9' })).status, 403, `the right key through the public edge (${h}) is refused`);
+            assert.strictEqual((await avatar({ 'x-internal-key': KEY, [h]: '203.0.113.9' })).status, 401, `the right key through the public edge (${h}) is refused`);
         }
 
-        // ── the other X-Internal-Key routes: same rule ──────────────────────────────
-        const avatar = (headers) => post('/internal/user-avatar', headers, { username: 'nobody-here' });
-        assert.strictEqual((await avatar({ 'x-internal-key': KEY })).status, 404, 'the right key from loopback reaches /internal/*');
-        assert.strictEqual((await avatar({ 'x-internal-key': 'j'.repeat(40) })).status, 403);
-        assert.strictEqual((await avatar({ 'x-internal-key': KEY, 'x-forwarded-for': '203.0.113.9' })).status, 403);
-        assert.strictEqual((await avatar({ 'x-internal-key': KEY, 'cf-connecting-ip': '203.0.113.9' })).status, 403);
+        // ── the other internal routes: each has its own capability ───────────────────
+        assert.strictEqual((await post('/internal/url-registry/refresh', bearer(token(['live.avatar.write'])))).status, 403);
+        assert.notStrictEqual((await post('/internal/url-registry/refresh', bearer(token(['live.url_registry.refresh'])))).status, 403, 'live.url_registry.refresh opens the refresh');
+        const tables = (headers) => fetch(`${origin}/internal/chat-tables`, { headers });
+        assert.strictEqual((await tables(bearer(token(['live.avatar.write'], { sub: 'svc:chat' })))).status, 403);
+        assert.notStrictEqual((await tables(bearer(token(['live.chat_mirror.write'], { sub: 'svc:chat' })))).status, 403, 'Chat opens the staged-table handoff with live.chat_mirror.write');
+        assert.strictEqual((await tables({})).status, 401);
 
         const ik = require('../server/net/internal-key');
         assert.strictEqual(ik.internalKeyMatches(KEY), true);
         assert.strictEqual(ik.internalKeyMatches(''), false);
         assert.strictEqual(ik.internalKeyMatches(KEY.slice(0, 39)), false);
 
-        // No internal-key compare with === / !== is left anywhere in the server.
+        // No internal-key compare with === / !== anywhere in the server.
         const offenders = [];
         const walk = (dir) => {
             for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -71,7 +96,7 @@ console.error = () => {};
         };
         walk(path.join(__dirname, '..', 'server'));
         assert.deepStrictEqual(offenders, [], 'internal keys are compared with internalKeyMatches (constant time)');
-        process.stdout.write('cosmetics internal-unlock: all checks passed\n');
+        process.stdout.write('live internal routes: all checks passed\n');
     } finally {
         server.close();
         fs.rmSync(tmp, { recursive: true, force: true });

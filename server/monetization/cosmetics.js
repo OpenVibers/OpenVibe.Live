@@ -1,16 +1,10 @@
 /**
  * OpenVibe.Live — Cosmetics System
- * Global cosmetic items (name effects, particles, hats, voices)
- * Unlocked via OpenVibeGame items, equipped globally for chat/overlay.
- * Can be converted back to game items for trading.
+ * Global cosmetic items (name effects, particles, hats, voices), equipped globally for chat/overlay.
+ * (The openvibe-quest game-item bridge, activate/return-to-game and its internal unlock route, was deleted with
+ * X-Internal-Key in plan T2: the quest game no longer runs anywhere.)
  */
 const db = require('../db/database');
-const http = require('http');
-
-// openvibe-quest internal API base (server-to-server). The quest game no longer runs on this host
-// (2026-09-23), so the game-item bridge is off unless LEGACY_QUEST_API_URL names one; it
-// authenticates with INTERNAL_API_KEY, never a secret written into the code.
-const LEGACY_QUEST_API = String(process.env.LEGACY_QUEST_API_URL || '').replace(/\/+$/, '');
 
 // ── Cosmetic Catalog (defines all cosmetics and their CSS/rendering data) ───
 const COSMETICS = {
@@ -220,77 +214,6 @@ function unequipSlot(userId, slot) {
     return { success: true, slot };
 }
 
-// ── Helper: call openvibe-quest internal API ─────────────────────
-function questApi(method, path, body) {
-    if (!LEGACY_QUEST_API) return Promise.reject(new Error('the quest game bridge is off (LEGACY_QUEST_API_URL is not set)'));
-    return new Promise((resolve, reject) => {
-        const data = body ? JSON.stringify(body) : null;
-        const req = http.request(`${LEGACY_QUEST_API}${path}`, {
-            method,
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Internal-Key': String(require('../config').internalApiKey || ''),
-                ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}),
-            },
-            timeout: 5000,
-        }, (res) => {
-            let chunks = '';
-            res.on('data', (c) => chunks += c);
-            res.on('end', () => {
-                try { resolve(JSON.parse(chunks)); } catch { resolve({}); }
-            });
-        });
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('openvibe-quest timeout')); });
-        if (data) req.write(data);
-        req.end();
-    });
-}
-
-// ── Activate: consume game item → unlock global cosmetic ─────
-async function activateFromGame(userId, itemId) {
-    const cosmetic = COSMETICS[itemId];
-    if (!cosmetic) return { error: 'This item has no global cosmetic' };
-    if (ownsCosmetic(userId, itemId)) return { error: 'Already unlocked globally' };
-
-    // Ask openvibe-quest to check & consume game inventory item
-    try {
-        const result = await questApi('POST', '/api/internal/inventory/consume', { userId, itemId, quantity: 1 });
-        if (result.error) return { error: result.error };
-    } catch {
-        return { error: 'Game server unavailable — try again later' };
-    }
-
-    // Unlock the cosmetic in openvibelive's DB
-    const d = db.getDb();
-    d.prepare('INSERT OR IGNORE INTO user_cosmetics (user_id, item_id, category) VALUES (?, ?, ?)').run(userId, itemId, cosmetic.category);
-    return { success: true, message: `Unlocked ${cosmetic.name} globally!`, item: cosmetic };
-}
-
-// ── Deactivate: revoke global cosmetic → add back to game inventory ──
-async function deactivateToGame(userId, itemId) {
-    const cosmetic = COSMETICS[itemId];
-    if (!cosmetic) return { error: 'Unknown cosmetic' };
-    if (!ownsCosmetic(userId, itemId)) return { error: 'You don\'t own this cosmetic' };
-
-    // Add item back to openvibe-quest game inventory
-    try {
-        const result = await questApi('POST', '/api/internal/inventory/add', { userId, itemId, quantity: 1 });
-        if (result.error) return { error: result.error };
-    } catch {
-        return { error: 'Game server unavailable — try again later' };
-    }
-
-    const d = db.getDb();
-    // Unequip if equipped
-    const slot = CATEGORY_SLOT[cosmetic.category];
-    d.prepare('DELETE FROM user_equipped WHERE user_id = ? AND slot = ? AND item_id = ?').run(userId, slot, itemId);
-    // Remove from cosmetics
-    d.prepare('DELETE FROM user_cosmetics WHERE user_id = ? AND item_id = ?').run(userId, itemId);
-
-    return { success: true, message: `Converted ${cosmetic.name} back to game item` };
-}
-
 // ── Get full inventory + equipped for UI ─────────────────────
 function getFullInventory(userId) {
     const unlocked = getUnlocked(userId);
@@ -323,7 +246,5 @@ module.exports = {
     revokeCosmetic,
     equipCosmetic,
     unequipSlot,
-    activateFromGame,
-    deactivateToGame,
     getFullInventory,
 };

@@ -7,10 +7,8 @@
  *                        loopback callers never send them. Internal routes refuse such a request.
  *   internalKeyMatches(k) timing-safe comparison with INTERNAL_API_KEY (both sides hashed first, so
  *                        neither the content nor the length leaks through timing).
- *   internalKeyOk(req)   both: loopback and the right X-Internal-Key. Every X-Internal-Key route uses
- *                        this (server/internal/routes.js, /internal/analytics-summary,
- *                        POST /api/cosmetics/internal-unlock); service-token routes use
- *                        server/net/service-guard.js, which applies the same viaProxy rule.
+ *   internalKeyOk(req)   both: loopback and the right X-Internal-Key. Only service-guard.js guardOrKey
+ *                        uses it, for callers still moving to service tokens (plan T2 deletes it).
  */
 const crypto = require('crypto');
 
