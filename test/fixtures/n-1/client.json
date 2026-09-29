@@ -1,16 +1,16 @@
 {
  "service": "live",
- "release": "45429ebfbb9f7ef9531abc7f7ec1a4be11a72dd9",
- "recorded_at": "2026-09-29T00:20:29.197Z",
+ "release": "04eb248a0ac9c7c682609303dd9b381d25f20d6e",
+ "recorded_at": "2026-09-29T00:30:06.351Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "45429ebfbb9f",
-  "released_at": "2026-09-29T00:20:11.000Z",
-  "booted_at": "2026-09-29T00:20:25.684Z",
+  "release": "04eb248a0ac9",
+  "released_at": "2026-09-29T00:29:26.000Z",
+  "booted_at": "2026-09-29T00:30:04.274Z",
   "contracts_version": "0.71.0",
   "packages": {
-   "openvibe-shared": "1.29.1",
+   "openvibe-shared": "1.29.2",
    "openvibe-sdk": "0.16.0"
   },
   "min_client_release": null,
@@ -22,7 +22,7 @@
    },
    "shell": {
     "kind": "script",
-    "version": "f43131c4e2d5"
+    "version": "cd78ce1b0152"
    },
    "server": {
     "kind": "server",
@@ -7481,7 +7481,7 @@
   },
   {
    "method": "GET",
-   "path": "/shared/navbar.js?v=6e398e3b31f5",
+   "path": "/shared/navbar.js?v=b8089ee3bd11",
    "auth": "anon",
    "accept": "html",
    "status": 200,
