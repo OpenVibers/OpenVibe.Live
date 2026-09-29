@@ -1515,7 +1515,7 @@ window._uaiRevealMore = _uaiRevealMore;
 
 async function openUserChatInsight(userId, username) {
     if (!userId) return;
-    return _openChatInsightModal({ title: username || 'User', username: username || '', iconClass: 'fa-user-tag', fetchUrl: `/chat/ai/user/${userId}` });
+    return _openChatInsightModal({ title: username || 'User', username: username || '', iconClass: 'fa-user-tag', fetchUrl: `/chat-ai/user/${userId}` });
 }
 window.openUserChatInsight = openUserChatInsight;
 

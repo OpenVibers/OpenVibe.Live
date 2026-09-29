@@ -129,7 +129,6 @@ const { requireAuth } = require('./auth/auth');
 const permissions = require('./auth/permissions');
 const robotStreamerRoutes = require('./integrations/routes');
 const themeRoutes = require('./themes/routes');
-const emoteRoutes = require('./emotes/routes');
 const metaRoutes = require('./meta/routes');
 const robotStreamerService = require('./integrations/robotstreamer-service');
 const chatRelayService = require('./integrations/chat-relay-service');
@@ -703,14 +702,12 @@ app.use('/api/onvif', onvifRoutes);
 app.use('/api/admin/openre', require('./openre/routes'));
 app.use('/api/admin', adminRoutes);
 app.use('/api/mod', require('./admin/mod-routes'));
-app.use('/api/channels', require('./admin/channel-mod-routes'));
 app.use('/api/robotstreamer', robotStreamerRoutes);
 app.use('/api/restream', restreamRoutes);
 // Stream thumbnails are public pictures other OpenVibe sites show (the network's front door lists who is live), so
 // they may be embedded cross-site; everything else keeps helmet's same-origin resource policy.
 app.use('/api/thumbnails', (req, res, next) => { res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'); next(); }, thumbnailRoutes);
 app.use('/api/themes', themeRoutes);
-app.use('/api/emotes', emoteRoutes);
 app.use('/api/sounds', chatRemote ? chatMoved : require('./chat/sounds-routes'));
 app.use('/api/ai-viewers', require('./ai/viewers/routes'));
 app.use('/api/powerchat', require('./integrations/powerchat-routes'));
@@ -1137,9 +1134,6 @@ async function start() {
     dm.ensureTables();
     // Back from CHAT_AUTHORITY=chat (rollback): chat writes OpenVibe.Chat never acknowledged land here.
     if (!require('./chat/chat-authority').isRemote()) require('./chat/chat-remote').drainToLocal();
-    // The staged chat tables (C-04): with CHAT_AUTHORITY=chat, Live's changes to the ones it writes
-    // reach OpenVibe.Chat, and the dual read compares (server/chat/chat-tables.js). Nothing otherwise.
-    require('./chat/chat-tables').init();
     // Migrate: add last_heartbeat column if missing
     try { db.run("ALTER TABLE streams ADD COLUMN last_heartbeat DATETIME"); console.log('[DB] Added last_heartbeat column'); } catch { /* already exists */ }
     // Migrate: add theme_id to users table if missing
@@ -1366,7 +1360,6 @@ async function start() {
     // AI viewers activity log: keep a week.
     setInterval(() => { try { const n = db.pruneAiViewerLog(7); if (n) console.log(`[AI-Viewers] pruned ${n} log row(s)`); } catch { /* */ } }, 6 * 3600 * 1000);
         try { require('./ai/streamer-overview-job').start(); } catch (e) { console.warn('[AI] streamer-overview job not started:', e.message); }
-        try { require('./ai/chat-ai').start(); } catch (e) { console.warn('[AI] chat-ai job not started:', e.message); }
         try { require('./ai/slogan-job').start(); } catch (e) { console.warn('[AI] slogan job not started:', e.message); }
         try { require('./ai/ai-moments-job').start(); } catch (e) { console.warn('[AI] moments job not started:', e.message); }
         try { require('./ai/auto-clip-job').start(); } catch (e) { console.warn('[AI] auto-clip job not started:', e.message); }

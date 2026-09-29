@@ -13,7 +13,6 @@
 const db = require('../db/database');
 const aiService = require('./ai-service');
 const ai = require('./ai-analysis');
-let chatAi = null; try { chatAi = require('./chat-ai'); } catch { /* optional */ }
 
 // Slogans are driven together with the hero background moments (ai-moments-job triggers a
 // regen every 6h). This is only a FALLBACK cadence — slightly longer than the moments' 6h so
@@ -65,9 +64,11 @@ async function tick() {
     _busy = true;
     try {
         // ── Global chat AI: overview + running memory + timeline ──
+        // The global chat-AI summary is OpenVibe.Chat's (roadmap T3), read through its public API.
+        const insights = require('../chat/insight-client');
         let global = '';
         try {
-            const g = chatAi && chatAi.getGlobalInsight && chatAi.getGlobalInsight();
+            const g = await insights.getGlobal();
             if (g) {
                 const tl = g.timeline ? (typeof g.timeline === 'string' ? g.timeline : JSON.stringify(g.timeline)) : '';
                 global = [g.overview, g.memory, tl && `Timeline: ${tl}`].filter(Boolean).join('\n').slice(0, 1800);
@@ -84,16 +85,14 @@ async function tick() {
             `) || [];
         } catch { /* */ }
         const usernames = activeRows.map(r => r.username).filter(Boolean);
-        // The prompt is OpenVibe.AI's versioned template live.hero.slogans (WS-O task 2); Live sends the real data.
+        // The prompt is OpenVibe.AI's versioned template live.hero.slogans (WS-O task 2); Live sends the
+        // real data. Per-chatter chat-AI blurbs come from OpenVibe.Chat (roadmap T3).
         const users = [];
-        try {
-            for (const r of activeRows.slice(0, 8)) {
-                let ins = null;
-                try { ins = chatAi && chatAi.getUserInsight && chatAi.getUserInsight(r.id); } catch { /* */ }
-                const blurb = ins && (ins.overview || ins.memory);
-                if (blurb) users.push({ name: String(r.username).slice(0, 120), text: String(blurb).replace(/\s+/g, ' ').slice(0, 180) });
-            }
-        } catch { /* */ }
+        for (const r of activeRows.slice(0, 8)) {
+            const ins = await insights.getUser(r.id).catch(() => null);
+            const blurb = ins && (ins.overview || ins.memory);
+            if (blurb) users.push({ name: String(r.username).slice(0, 120), text: String(blurb).replace(/\s+/g, ' ').slice(0, 180) });
+        }
 
         // ── Streamer AI overviews + recent VOD AI overviews ──
         let streamers = [];

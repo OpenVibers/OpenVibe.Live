@@ -60,13 +60,10 @@ const FORWARDED_DB = {
     updateChannelSoundEmoteRefs: 'local',
 };
 
-// Live-owned data Chat caches, written by Live's own routes (dashboard, /api/channels, /api/mod):
-// after the write, Chat is told to reload it instead of waiting for its cache to expire.
+// Live-owned data Chat caches, written by Live's own routes (IP approvals, bans): after the write,
+// Chat is told to reload it instead of waiting for its cache to expire. Channel moderators, channel
+// moderation settings and alert sounds are Chat's own tables since roadmap T3, so nothing here.
 const OBSERVED_DB = {
-    addChannelModerator: (a) => ['channel', a[0]],
-    removeChannelModerator: (a) => ['channel', a[0]],
-    upsertChannelModerationSettings: (a) => ['channel', a[0]],
-    setChannelAlertSound: (a) => ['channel', a[0]],
     approveIp: (a) => ['approvals', a[0]],
     revokeIpApproval: (a) => ['approvals', a[0]],
     forgiveBan: () => ['bans', null],

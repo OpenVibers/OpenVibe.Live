@@ -73,17 +73,23 @@ const chat = http.createServer((req, res) => {
         if (mm) {
             const d2 = require('../server/db/database');
             const channelId = Number(mm[1]);
-            if (mm[2]) { const ch = d2.getChannelById(channelId); return res.end(JSON.stringify({ ok: true, count: ch ? d2.countChannelEmotes(ch.user_id) : 0 })); }
+            // Chat answers these from its own tables (it owns the six staged tables, roadmap T3); the
+            // test reads them directly here to emulate Chat's copy.
+            if (mm[2]) {
+                const ch = d2.getChannelById(channelId);
+                const n = ch ? (d2.get('SELECT COUNT(*) AS n FROM emotes WHERE (channel_owner_id = ?) OR (channel_owner_id IS NULL AND user_id = ?)', [ch.user_id, ch.user_id])?.n || 0) : 0;
+                return res.end(JSON.stringify({ ok: true, count: n }));
+            }
             return res.end(JSON.stringify({
                 ok: true,
-                settings: d2.getChannelModerationSettings(channelId) || {},
+                settings: d2.get('SELECT * FROM channel_moderation_settings WHERE channel_id = ?', [channelId]) || {},
                 moderator_ids: d2.all('SELECT user_id FROM channel_moderators WHERE channel_id = ? ORDER BY id', [channelId]).map((r) => r.user_id),
             }));
         }
         const um = String(req.url).match(/^\/internal\/moderation\/users\/(\d+)\/channels$/);
         if (um) {
             const d2 = require('../server/db/database');
-            const rows = d2.getChannelsByModerator(Number(um[1])) || [];
+            const rows = d2.all('SELECT cm.channel_id AS id, c.title, c.user_id FROM channel_moderators cm JOIN channels c ON cm.channel_id = c.id WHERE cm.user_id = ?', [Number(um[1])]) || [];
             return res.end(JSON.stringify({ ok: true, channels: rows.map((c) => ({ channel_id: c.id, title: c.title, owner_user_id: c.user_id })) }));
         }
         res.statusCode = 404; res.end('{}');
@@ -300,11 +306,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.deepStrictEqual(db.deleteUserChatMessages(mod, {}), [900002]);
         await chatServer.flush();
         assert.deepStrictEqual(bridgeCalls.at(-1).ops[0].args.slice(0, 2), ['deleteUserChatMessages', mod]);
-        // Live's own writes to data Chat caches (dashboard mods, IP approvals) tell Chat to reload it.
-        db.addChannelModerator(channel.id, viewer, streamer);
-        await chatServer.flush();
-        assert.deepStrictEqual(bridgeCalls.at(-1).ops.map((o) => [o.op, ...o.args]), [['invalidate', 'channel', channel.id]]);
-        assert.ok(d.prepare('SELECT 1 FROM channel_moderators WHERE channel_id = ? AND user_id = ?').get(channel.id, viewer), 'the write itself still happens in Live');
+        // Live's own writes to data Chat caches (IP approvals, bans) tell Chat to reload it; the
+        // channel-moderation writes went to Chat with the six staged tables (roadmap T3).
         // The /api/mod global delete loops over chatServer.clients: one pseudo-socket reaches everyone.
         for (const [ws] of chatServer.clients) { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'delete-messages', ids: [1] })); }
         await chatServer.flush();

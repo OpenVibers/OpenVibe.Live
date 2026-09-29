@@ -4,7 +4,7 @@
  * Nothing here runs a new analysis. It reads the stores other jobs keep warm:
  *   stream_timeline_events (live transcript + sounds)   stream_memories (frames)
  *   streams.ai_overview / ai_title                       streamer_overviews
- *   app_state ai_whole_overview_<uid> (combined blurb)    chat_ai_summaries (global/user/relay/anon)
+ *   app_state ai_whole_overview_<uid> (combined blurb)
  *   chat_messages (channel + relayed + bot lines)         follows / subscriptions / stream_first_chats
  *   channels (bio, panels) / managed_streams / streams    channel_ai_bots (personas, memories)
  *   ai_viewer_threads (open conversations)
@@ -22,6 +22,7 @@
 'use strict';
 const crypto = require('crypto');
 const db = require('../../db/database');
+const insightClient = require('../../chat/insight-client');
 
 function clip(str, n) { return (str == null ? '' : String(str)).replace(/\s+/g, ' ').trim().slice(0, n); }
 function clipWords(str, n) { const t = clip(str, n * 8); return t.length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '…' : t; }
@@ -174,23 +175,22 @@ function chatDelta(channelUserId, sinceId, { limit = 40, botNames = new Set() } 
     return { lines, text: text.length > 2500 ? text.slice(-2500) : text, maxId: rows.length ? rows[rows.length - 1].id : sinceId || 0 };
 }
 
+// The global chat-AI overview and each chatter's insight are OpenVibe.Chat's (roadmap T3): read through
+// server/chat/insight-client.js, whose peeks answer what is cached and warm it for the next tick.
 function moodBlock() {
-    try { const g = require('../chat-ai').getGlobalInsight(); return g && g.overview ? clip(g.overview, 250) : ''; } catch { return ''; }
+    const g = insightClient.peekGlobal();
+    return g && g.overview ? clip(g.overview, 250) : '';
 }
 
 function personBlock(line, channelUserId, settings) {
     if (!settings.remember_viewers || line.isBot) return '';
-    const chatAi = require('../chat-ai');
     let ins = null;
-    try {
-        if (line.userId) ins = chatAi.getUserInsight(line.userId);
-        else if (line.anonId) ins = chatAi.getAnonInsight(line.anonId);
-        else if (line.platform && !line.userId) {
-            const m = String(line.username || '').match(/^\[[^\]]+\]\s*(.+)$/);
-            const ru = db.getRelayUser(line.platform, m ? m[1] : line.username);
-            if (ru) ins = chatAi.getRelayUserInsight(ru.id);
-        }
-    } catch { ins = null; }
+    if (line.userId) ins = insightClient.peekUser(line.userId);
+    else if (line.anonId) ins = insightClient.peekAnon(line.anonId);
+    else if (line.platform) {
+        const m = String(line.username || '').match(/^\[[^\]]+\]\s*(.+)$/);
+        ins = insightClient.peekRelay(line.platform, m ? m[1] : line.username);
+    }
     const flags = [];
     try {
         if (line.userId) {

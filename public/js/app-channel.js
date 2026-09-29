@@ -2097,7 +2097,7 @@ async function _aiTlLoadMore() {
     _aiTl.loading = true;
     const track = document.getElementById('ai-tl-track');
     try {
-        const data = await api(`/chat/ai/timeline/${encodeURIComponent(_aiTl.username)}?offset=${_aiTl.offset}&limit=${_aiTl.limit}`);
+        const data = await api(`/chat-ai/timeline/${encodeURIComponent(_aiTl.username)}?offset=${_aiTl.offset}&limit=${_aiTl.limit}`);
         const sessions = data.sessions || [];
         if (track && sessions.length) track.insertAdjacentHTML('beforeend', sessions.map(_aiTimelineSessionHTML).join(''));
         _aiTl.offset += sessions.length;
@@ -2114,7 +2114,7 @@ async function loadChannelAiTimeline(username) {
     wrap.innerHTML = '<div class="loading">Loading AI timeline…</div>';
     _aiTl = { username, offset: 0, limit: 12, hasMore: false, loading: false, moments: {}, vodBySid: {}, index: null, io: null };
     try {
-        const data = await api(`/chat/ai/timeline/${encodeURIComponent(username)}?offset=0&limit=12`);
+        const data = await api(`/chat-ai/timeline/${encodeURIComponent(username)}?offset=0&limit=12`);
         const sessions = data.sessions || [];
         const dn = esc(data.display_name || username);
         const streamerOv = data.overview && (data.overview.overview || data.overview.overview_short);
@@ -2781,7 +2781,7 @@ function _setAboutPanelWidth(i, w, sel) {
 async function _loadAboutModsSetting() {
     if (!currentUser) return;
     try {
-        const data = await api('/channels/moderation/mine');
+        const data = await api('/chat/channels/moderation/mine');
         const mine = (data.channels || []).find(c => c.user_id === currentUser.id) || (data.channels || [])[0];
         if (mine) {
             _aboutChannelId = mine.id;

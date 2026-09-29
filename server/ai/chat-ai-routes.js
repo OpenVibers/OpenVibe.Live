@@ -1,47 +1,30 @@
 /**
- * chat-ai-routes.js — read API for chat AI insight.
- *   GET /api/chat-ai/global        → global chat overview + timeline + memory
- *   GET /api/chat-ai/user/:id       → a user's "today vs all-time" insight + timeline
- * Read-only; the summaries are produced by the chat-ai poller.
+ * chat-ai-routes.js — Live's /api/chat-ai reads.
+ *
+ * The chat-AI summaries (global, anon, relay, the global timeline) are OpenVibe.Chat's with the six chat
+ * tables (roadmap T3): Chat serves them at /api/chat/ai/*. What stays here is Live's own work, which
+ * folds Chat's chatter insight in where it needs it (server/chat/insight-client.js):
+ *   GET /api/chat-ai/user/:id                → { insight (Chat's), streamer (Live's overview + stream memories), user }
+ *   GET /api/chat-ai/timeline/:username      → a channel's AI timeline: the streamer overview, every session's AI
+ *                                              overview and VOD moments, the chatter insight and a combined overview
+ *   GET /api/chat-ai/live-captions/:username → the newest speech rows of the current live stream
+ *   GET /api/chat-ai/vod-transcripts?ids=…   → transcripts for a set of Media VOD ids
+ *   GET /api/chat-ai/transcript/:streamId    → the full transcript of a stream
+ * Read-only.
  */
 'use strict';
 
 const express = require('express');
 const router = express.Router();
 const db = require('../db/database');
-const chatAi = require('./chat-ai');
+const insights = require('../chat/insight-client');
 
-router.get('/global', (req, res) => {
-    try {
-        const insight = chatAi.getGlobalInsight();
-        res.json({ insight: insight || null });
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to load global chat insight' });
-    }
-});
-
-// Browsable/searchable global timeline. Query: before=<ms>, since=<ms>, q=<search>, limit=<n>.
-router.get('/timeline', (req, res) => {
-    try {
-        const num = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : null; };
-        const limit = Math.min(60, Math.max(1, num(req.query.limit) || 25));
-        const events = db.getChatTimelineEvents({
-            scope: 'global', subjectId: 0,
-            before: num(req.query.before), since: num(req.query.since),
-            q: req.query.q || null, limit,
-        });
-        res.json({ events, hasMore: events.length >= limit });
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to load timeline' });
-    }
-});
-
-router.get('/user/:id', (req, res) => {
+router.get('/user/:id', async (req, res) => {
     try {
         const uid = parseInt(req.params.id, 10);
         if (!Number.isFinite(uid)) return res.status(400).json({ error: 'Invalid user id' });
         const user = db.getUserById ? db.getUserById(uid) : null;
-        const insight = chatAi.getUserInsight(uid);
+        const insight = await insights.getUser(uid);
 
         // If this user is a streamer with an AI overview, lead the popover with who they
         // are as a streamer (their overview + recent stream "memories" as context/timeline)
@@ -76,33 +59,6 @@ router.get('/user/:id', (req, res) => {
         });
     } catch (err) {
         res.status(500).json({ error: 'Failed to load user chat insight' });
-    }
-});
-
-// An anonymous chatter's insight, keyed by their stable anon_id ("anon<N>").
-router.get('/anon/:anonId', (req, res) => {
-    try {
-        const anonId = String(req.params.anonId || '');
-        if (!/^anon\d+$/i.test(anonId)) return res.status(400).json({ error: 'Invalid anon id' });
-        const insight = chatAi.getAnonInsight(anonId);
-        res.json({ insight: insight || null, user: { anon_id: anonId, username: anonId } });
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to load anon chat insight' });
-    }
-});
-
-// A bridged external (relay) chatter's insight, keyed by platform + username.
-router.get('/relay/:platform/:username', (req, res) => {
-    try {
-        const ru = db.getRelayUser(req.params.platform, req.params.username);
-        if (!ru) return res.json({ insight: null, user: null });
-        const insight = chatAi.getRelayUserInsight(ru.id);
-        res.json({
-            insight: insight || null,
-            user: { platform: ru.platform, username: ru.display_name || ru.username, message_count: ru.message_count || 0, first_seen: ru.first_seen || null },
-        });
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to load relay chat insight' });
     }
 });
 
@@ -200,7 +156,7 @@ router.get('/timeline/:username', async (req, res) => {
         // "whole person" overview fusing streamer + chatter. Both are best-effort.
         let chatInsight, combinedOverview;
         if (first) {
-            try { chatInsight = chatAi.getUserInsight(user.id) || null; } catch { chatInsight = null; }
+            chatInsight = await insights.getUser(user.id);
             try { combinedOverview = _combinedOverview(user.id, timeline.overview, chatInsight); } catch { combinedOverview = null; }
             try { _ensureSessionTitles(user.id); } catch { /* background titling is best-effort */ }
         }

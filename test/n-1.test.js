@@ -105,6 +105,9 @@ async function check(name, fn) {
             const n1Client = async (url) => {
                 const probe = await h.notFoundProbe(url);
                 for (const rec of client.calls) {
+                    // A path Chat serves now (nginx routes /api/emotes and /api/chat/ there) is not
+                    // this release's to answer; the fixture was recorded before that routing existed.
+                    if (!svc.keep(rec.path.split('?')[0])) continue;
                     const got = await h.send(url, { method: rec.method, path: h.fillPath(rec.path, server.ids), headers: { ...(rec.accept ? { accept: 'text/html' } : {}), ...server.headers(rec.auth) }, body: rec.method === 'GET' ? undefined : {} });
                     const problems = h.callProblems(rec, got, probe);
                     if (problems.length) broken.push(`${rec.auth} ${rec.method} ${rec.path} (${rec.from.join(', ')}): ${problems.join('; ')}`);

@@ -1,6 +1,20 @@
 -- OpenVibe.Live Database Schema
 -- SQLite3
 
+-- ── Deletion ledger ─────────────────────────────────────────────────────────
+-- OpenVibe.Chat owns the six staged chat tables (roadmap T3) and this release deleted Live's
+-- staged-table machinery (server/chat/chat-tables*.js, the /internal/chat-tables routes, Live's
+-- chat-AI job and the old emote/moderation routes). The tables stay one release for N-1
+-- (ADR-016): the previous release's SQL still prepares against them (test/n-1.test.js).
+--   channel_moderators            unused since T3 N+1; dropped in the next release.
+--   channel_moderation_settings   unused since T3 N+1; dropped in the next release.
+--   emotes                        unused since T3 N+1; dropped in the next release.
+--   user_tags                     unused since T3 N+1; dropped in the next release.
+--   chat_ai_summaries             unused since T3 N+1; dropped in the next release.
+--   chat_timeline_events          unused since T3 N+1; dropped in the next release.
+--   chat_staged_outbox            unused since T3 N+1; dropped in the next release.
+--   chat_dual_read_stats          unused since T3 N+1; dropped in the next release.
+
 -- Users
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -549,6 +563,29 @@ CREATE TABLE IF NOT EXISTS channel_moderation_settings (
     sub_only INTEGER DEFAULT 0,                -- only active subscribers (and the channel's moderators) may chat
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
+);
+
+-- ── Staged-table bookkeeping, kept one release for N-1 (see the deletion ledger above) ──
+-- OpenVibe.Chat owns the six staged chat tables and the machinery that used these two is gone
+-- (roadmap T3). The previous release still creates and prepares against them, so they stay here:
+-- only their writer was deleted, not the tables (ADR-016).
+CREATE TABLE IF NOT EXISTS chat_staged_outbox (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    tbl TEXT NOT NULL,
+    op TEXT NOT NULL,
+    pk TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS chat_dual_read_stats (
+    tbl TEXT PRIMARY KEY,
+    compared INTEGER NOT NULL DEFAULT 0,
+    matched INTEGER NOT NULL DEFAULT 0,
+    mismatched INTEGER NOT NULL DEFAULT 0,
+    inconclusive INTEGER NOT NULL DEFAULT 0,
+    errors INTEGER NOT NULL DEFAULT 0,
+    last_mismatch_at DATETIME,
+    last_mismatch TEXT,
+    since DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ═══════════════════════════════════════════════════════════════

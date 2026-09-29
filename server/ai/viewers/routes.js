@@ -15,7 +15,6 @@ const express = require('express');
 const db = require('../../db/database');
 const { requireAuth } = require('../../auth/auth');
 const { isStaff } = require('../../auth/permissions');
-const chatAi = require('../chat-ai');
 const budget = require('./budget');
 const roster = require('./roster');
 const { clearBrain } = require('./fold');
@@ -257,12 +256,13 @@ router.post('/clone', requireAuth, async (req, res) => {
             const u = userId ? db.getUserById(userId) : null;
             if (!u) return res.status(404).json({ error: 'User not found' });
             // Staff may clone anyone; a streamer only from what that person said in their own
-            // channel (the site-wide history and AI insight describe other channels too).
+            // channel (the site-wide history and the chatter's chat-AI insight, which OpenVibe.Chat
+            // keeps, describe other channels too).
             const wide = isStaff(req.user) || userId === req.user.id;
             src = {
                 kind: 'user', ref: String(userId),
                 displayName: u.display_name || u.username,
-                insight: wide ? chatAi.getUserInsight(userId) : null,
+                insight: wide ? await require('../../chat/insight-client').getUser(userId) : null,
                 samples: wide ? (db.getUserChatHistory(userId, 30).messages || [])
                     : db.getChatSamplesInChannel(req.user.id, { userId, limit: 30 }),
             };
@@ -277,7 +277,7 @@ router.post('/clone', requireAuth, async (req, res) => {
             src = {
                 kind: 'relay', ref: `${platform}:${username}`,
                 displayName: username,
-                insight: relay && wide ? chatAi.getRelayUserInsight(relay.id) : null,
+                insight: wide ? await require('../../chat/insight-client').getRelay(platform, username) : null,
                 samples: wide ? (db.getRelayUserChatHistory(platform, username, { limit: 30 }).messages || [])
                     : db.getChatSamplesInChannel(req.user.id, { relay: { platform, rawUsername: username }, limit: 30 }),
             };

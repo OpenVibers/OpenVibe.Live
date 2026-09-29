@@ -575,15 +575,17 @@ while True:
 <h2>AI SYSTEMS</h2>
 <p>OpenVibe.Live runs a background AI layer over community content (chat, streams, VODs) using a shared platform key with a per-streamer daily budget, or a streamer's own BYO key. Two developer-facing surfaces:</p>
 
-<h3>Chat-AI insight (read-only) &mdash; <code>/api/chat-ai</code></h3>
-<p>Rolling LLM summaries produced by the chat-AI poller: a global "community vibe", plus per-user / per-anon / per-relay-user insight (overview + running memory + a short timeline). No auth required to read.</p>
+<h3>Chat-AI insight (read-only) &mdash; <code>/api/chat/ai</code> and <code>/api/chat-ai</code></h3>
+<p>Rolling LLM summaries of the chat, kept by OpenVibe.Chat: a global "community vibe", plus per-user / per-anon / per-relay-user insight (overview + running memory + a short timeline). A channel's AI timeline and a user's streamer side are OpenVibe.Live's and include the chatter insight. No auth required to read.</p>
 <table class="doc-table">
 <thead><tr><th>Method</th><th>Path</th><th>Notes</th></tr></thead>
 <tbody>
-<tr><td>GET</td><td>/api/chat-ai/global</td><td>Site-wide chat overview + timeline + memory</td></tr>
-<tr><td>GET</td><td>/api/chat-ai/user/:id</td><td>A user's "today vs all-time" insight (+ streamer overview if they broadcast)</td></tr>
-<tr><td>GET</td><td>/api/chat-ai/anon/:anonId</td><td>Anon chatter insight (id like <code>anon12345</code>)</td></tr>
-<tr><td>GET</td><td>/api/chat-ai/relay/:platform/:username</td><td>Bridged external (Twitch/Kick/YouTube/RS) chatter insight</td></tr>
+<tr><td>GET</td><td>/api/chat/ai/global</td><td>Site-wide chat overview + timeline + memory</td></tr>
+<tr><td>GET</td><td>/api/chat/ai/timeline</td><td>The global chat timeline: <code>?before=</code>, <code>?since=</code> (ms), <code>?q=</code>, <code>?limit=</code></td></tr>
+<tr><td>GET</td><td>/api/chat-ai/user/:id</td><td>A user's "today vs all-time" chat insight + their streamer overview and stream memories if they broadcast</td></tr>
+<tr><td>GET</td><td>/api/chat/ai/anon/:anonId</td><td>Anon chatter insight (id like <code>anon12345</code>)</td></tr>
+<tr><td>GET</td><td>/api/chat/ai/relay/:platform/:username</td><td>Bridged external (Twitch/Kick/YouTube/RS) chatter insight</td></tr>
+<tr><td>GET</td><td>/api/chat-ai/timeline/:username</td><td>A channel's AI timeline: streamer overview, every session's overview and VOD moments (<code>?offset=</code>, <code>?limit=</code>)</td></tr>
 </tbody>
 </table>
 
@@ -1246,7 +1248,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 </tbody>
 </table>
 
-<h3>Emotes — <code>/api/emotes</code></h3>
+<h3>Emotes — <code>/api/emotes</code> (served by OpenVibe.Chat)</h3>
 <table class="doc-table">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>

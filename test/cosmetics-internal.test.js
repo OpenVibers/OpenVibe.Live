@@ -70,10 +70,6 @@ const token = (cap, { aud = 'openvibe.live', sub = 'svc:network', env } = {}) =>
         // ── the other internal routes: each has its own capability ───────────────────
         assert.strictEqual((await post('/internal/url-registry/refresh', bearer(token(['live.avatar.write'])))).status, 403);
         assert.notStrictEqual((await post('/internal/url-registry/refresh', bearer(token(['live.url_registry.refresh'])))).status, 403, 'live.url_registry.refresh opens the refresh');
-        const tables = (headers) => fetch(`${origin}/internal/chat-tables`, { headers });
-        assert.strictEqual((await tables(bearer(token(['live.avatar.write'], { sub: 'svc:chat' })))).status, 403);
-        assert.notStrictEqual((await tables(bearer(token(['live.chat_mirror.write'], { sub: 'svc:chat' })))).status, 403, 'Chat opens the staged-table handoff with live.chat_mirror.write');
-        assert.strictEqual((await tables({})).status, 401);
 
         // No server file reads or sends the retired key.
         const offenders = [];

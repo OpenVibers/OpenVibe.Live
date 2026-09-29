@@ -9,47 +9,11 @@ const { guard } = require('../net/service-guard');
 
 // Service-to-service only, loopback only (nothing that came through nginx): each route checks the one capability it
 // performs on a Network service token (server/net/service-guard.js); nothing else gets in (X-Internal-Key: plan T2).
-const chatTablesGuard = guard('live.chat_mirror.write');   // OpenVibe.Chat's staged-table handoff (T3 deletes)
 
 // CHAT_AUTHORITY=chat: OpenVibe.Chat caches users; a role or avatar pushed here reaches it at once.
 function notifyChat(userId) {
     try { const cs = require('../chat/chat-server'); if (cs.remote) cs.userChanged(userId); } catch { /* non-critical */ }
 }
-
-// ── The staged chat tables (roadmap C-04, server/chat/chat-tables.js) ─────────────
-// GET  /internal/chat-tables          who writes each table (here and in OpenVibe.Chat), the relay to
-//                                     Chat, the dual-read counts
-// POST /internal/chat-tables/:table   { dual_read?: bool, reset_counters?: bool, authority?: 'live'|'chat',
-//                                       by?: 'who', force?: true (back to 'live' with Chat down) } — the
-//                                       flag, the counters, then the handoff
-router.get('/chat-tables', chatTablesGuard, async (req, res) => {
-    try { res.json(await require('../chat/chat-tables').status()); } catch (err) { res.status(500).json({ error: err.message }); }
-});
-// POST /internal/chat-tables/relay { paused: bool } — hold the relay to Chat (the capture goes on) for an import
-router.post('/chat-tables/relay', chatTablesGuard, (req, res) => {
-    try {
-        const sync = require('../chat/chat-tables-sync');
-        if (req.body && req.body.paused !== undefined) sync.setPaused(req.body.paused === true || req.body.paused === 'true');
-        res.json({ ok: true, relay: sync.relayStats() });
-    } catch (err) { res.status(500).json({ error: err.message }); }
-});
-router.post('/chat-tables/:table', chatTablesGuard, async (req, res) => {
-    const chatTables = require('../chat/chat-tables');
-    const table = String(req.params.table);
-    const b = req.body || {};
-    try {
-        if (!chatTables.TABLES[table]) return res.status(404).json({ error: `${table} is not a staged table` });
-        if (b.dual_read !== undefined) chatTables.setDualRead(table, b.dual_read === true || b.dual_read === 'true' || b.dual_read === 1);
-        if (b.reset_counters) require('../chat/chat-tables-sync').resetDualReadStats(table);
-        let handoff = null;
-        if (b.authority !== undefined) handoff = await chatTables.setAuthority(table, String(b.authority), { by: String(b.by || 'operator').slice(0, 80), force: b.force === true });
-        const st = await chatTables.status();
-        res.json({ ok: true, handoff, table: st.tables[table], chat_error: st.chat_error });
-    } catch (err) {
-        const st = await chatTables.status({ askChat: false }).catch(() => null);
-        res.status(err.status || 500).json({ ok: false, error: err.message, table: st ? st.tables[table] : null });
-    }
-});
 
 // Footer site copy is written by OpenVibe.AI for the Network directly (network.site_copy); the
 // /internal/ai/site-copy fallback that used to live here was retired on 2026-09-23.

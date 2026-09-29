@@ -42,7 +42,7 @@ async function loadGlobalChatAi() {
         if (insight.updated_at) bits.push('updated ' + _aiTimeAgo(insight.updated_at));
         meta.textContent = bits.join(' · ');
     }
-    // The timeline is now a browsable/searchable, infinite-scroll list (fed by /chat-ai/timeline).
+    // The timeline is now a browsable/searchable, infinite-scroll list (fed by /chat/ai/timeline).
     // Initialise once so polling doesn't clobber the user's scroll/search.
     if (document.getElementById('global-ai-timeline') && !_gaiTlInited) { _gaiTlInited = true; _gaiTlInit(); }
     const mem = document.getElementById('global-ai-memory');

@@ -9,7 +9,6 @@
 const db = require('../db/database');
 const ai = require('./ai-analysis');
 const aiService = require('./ai-service');
-let chatAi = null; try { chatAi = require('./chat-ai'); } catch { /* */ }
 
 const SETTING = 'daily_easter_egg';
 const DIRS = ['up', 'down', 'left', 'right'];
@@ -95,8 +94,9 @@ function _alignClues(code, aiClues) {
 }
 
 async function _generate() {
+    // The chat's current vibe: OpenVibe.Chat's global chat-AI overview (roadmap T3).
     let vibe = '';
-    try { const g = chatAi && chatAi.getGlobalInsight && chatAi.getGlobalInsight(); if (g && g.overview) vibe = String(g.overview).slice(0, 400); } catch { /* */ }
+    try { const g = await require('../chat/insight-client').getGlobal(); if (g && g.overview) vibe = String(g.overview).slice(0, 400); } catch { /* */ }
     if (ai.isEnabled && ai.isEnabled() && ai.withinBudget && ai.withinBudget()) {
         // The prompt and its clue rules are OpenVibe.AI's versioned template live.easter_egg (WS-O task 2).
         try {

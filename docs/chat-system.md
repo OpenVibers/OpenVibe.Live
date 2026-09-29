@@ -37,6 +37,9 @@ with the same WebSocket protocol and REST paths. `CHAT_AUTHORITY=chat` switches 
   `LIVE_DRILL`). The dashboard, channel page and upload UI call Chat directly (`/api/chat/channels/:id/…`,
   `/api/emotes`, `/api/chat/ai/…`); alert sounds are Chat's, played on Live's request through the bridge op
   `playAlertSound [streamerId, streamId, kind]` ([server/monetization/alerts.js](../server/monetization/alerts.js)).
+  Live's staged-table machinery (the write relay, dual read and handoff in `chat-tables*.js`), Live's
+  chat-AI summary job and the old emote/channel-moderation routes were deleted in the N+1 release; the
+  six tables (and `chat_staged_outbox`/`chat_dual_read_stats`) stay one release for N-1 (ADR-016).
 
 ## Features
 

@@ -11,7 +11,7 @@
  *   - streams and slots: edit, end, delete, the slot's settings, its stream key regeneration (the
  *     answer would be the new key), the slot's vibe-coding settings;
  *   - restream destinations (each holds a platform stream key): edit, delete, start, stop;
- *   - API tokens, channel emotes, ONVIF cameras and their presets.
+ *   - API tokens, ONVIF cameras and their presets.
  *
  * Every refusal must leave the object exactly as it was (the row, or no call to Media at all) and
  * return nothing of it (no key); each area also has a positive control, so a route that simply
@@ -65,7 +65,6 @@ const streamA = Number(db.createStream({ user_id: ALICE, channel_id: chanA.id, m
 const DEST_KEY = 'restream-idor-key-cdcd';
 const destA = Number(db.createRestreamDestination(ALICE, { platform: 'custom', name: 'Alice mirror', server_url: 'rtmp://ingest.example.test/live', stream_key: DEST_KEY, managed_stream_id: slotA }).lastInsertRowid);
 const tokenA = db.createApiToken(ALICE, 'Alice bot', ['chat', 'read']).id;
-const emoteA = Number(raw.prepare("INSERT INTO emotes (user_id, code, url, channel_owner_id) VALUES (?, 'aliceWave', '/api/emotes/file/none.png', ?)").run(ALICE, ALICE).lastInsertRowid);
 const camA = Number(raw.prepare("INSERT INTO camera_profiles (user_id, stream_id, name, onvif_url, username, password_hash) VALUES (?, ?, 'Alice cam', 'http://camera.example.test', 'admin', 'x')").run(ALICE, streamA).lastInsertRowid);
 const presetA = Number(raw.prepare("INSERT INTO camera_presets (camera_id, name, pan, tilt, zoom) VALUES (?, 'Desk', 0.5, 0.5, 0.5)").run(camA).lastInsertRowid);
 // Bob has his own slot and stream, so "my slot" routes have something of his to compare against.
@@ -106,7 +105,6 @@ app.use('/api/restream', require('../server/streaming/restream-routes'));
 app.use('/api/vods', require('../server/media-proxy/vods'));
 app.use('/api/clips', require('../server/media-proxy/clips'));
 app.use('/api/thumbnails', require('../server/media-proxy/thumbnails'));
-app.use('/api/emotes', require('../server/emotes/routes'));
 app.use('/api/onvif', require('../server/controls/onvif-routes'));
 app.use('/api/vibe-coding', require('../server/vibe-coding/routes'));
 const server = http.createServer(app).listen(0, '127.0.0.1');
@@ -243,12 +241,6 @@ async function check(name, fn) {
         refused(await call('DELETE', `/api/auth/tokens/${tokenA}`, BOB), 'DELETE token');
         assert.strictEqual(row('api_tokens', tokenA).is_active, 1);
     });
-    await check('emotes: Bob cannot rename or delete Alice\'s channel emote', async () => {
-        const before = row('emotes', emoteA);
-        refused(await call('PATCH', `/api/emotes/${emoteA}`, BOB, { code: 'bobPwn' }), 'PATCH emote');
-        refused(await call('DELETE', `/api/emotes/${emoteA}`, BOB), 'DELETE emote');
-        assert.deepStrictEqual(row('emotes', emoteA), before);
-    });
     await check('ONVIF cameras: Bob cannot read, edit or delete Alice\'s camera or its presets', async () => {
         const before = [row('camera_profiles', camA), row('camera_presets', presetA)];
         refused(await call('GET', `/api/onvif/cameras/${camA}`, BOB), 'GET camera');
@@ -259,14 +251,13 @@ async function check(name, fn) {
         refused(await call('DELETE', `/api/onvif/cameras/${camA}`, BOB), 'DELETE camera');
         assert.deepStrictEqual([row('camera_profiles', camA), row('camera_presets', presetA)], before);
     });
-    await check('control: Alice can rename her emote, read her camera and revoke her token', async () => {
-        assert.strictEqual((await call('PATCH', `/api/emotes/${emoteA}`, ALICE, { code: 'aliceWave2' })).status, 200);
+    await check('control: Alice can read her camera and revoke her token', async () => {
         assert.strictEqual((await call('GET', `/api/onvif/cameras/${camA}`, ALICE)).status, 200);
         assert.strictEqual((await call('DELETE', `/api/auth/tokens/${tokenA}`, ALICE)).status, 200);
     });
     await check('anonymous callers get 401 on all of them', async () => {
         for (const [m, p] of [['PUT', '/api/vods/100'], ['DELETE', '/api/clips/200'], ['PUT', `/api/streams/managed/${slotA}`], ['POST', `/api/streams/managed/${slotA}/regenerate-key`],
-            ['DELETE', `/api/restream/destinations/${destA}`], ['DELETE', `/api/auth/tokens/${tokenA}`], ['DELETE', `/api/emotes/${emoteA}`], ['DELETE', `/api/onvif/cameras/${camA}`]]) {
+            ['DELETE', `/api/restream/destinations/${destA}`], ['DELETE', `/api/auth/tokens/${tokenA}`], ['DELETE', `/api/onvif/cameras/${camA}`]]) {
             const r = await call(m, p, null, {}).catch((e) => ({ status: 0, text: e.message }));
             assert.strictEqual(r.status, 401, `${m} ${p}: ${r.status} ${r.text}`);
         }

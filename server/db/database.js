@@ -3113,21 +3113,6 @@ function setClipTranscript(clipId, transcript, segments) {
     _ensureClipAiState(clipId);
     return run('UPDATE clip_ai_state SET ai_transcript_json = ? WHERE clip_id = ?', [_segJson(segments) ?? (transcript ? JSON.stringify([]) : null), clipId]);
 }
-// ── Streamer alert sounds (donation / goal-reached) ──────────
-// Stored on channel_moderation_settings; url is the on-disk path (read server-side and
-// broadcast as base64 to viewers, so it isn't publicly served).
-function setChannelAlertSound(channelId, kind, url, mime) {
-    if (!get('SELECT 1 FROM channel_moderation_settings WHERE channel_id = ?', [channelId])) {
-        run('INSERT INTO channel_moderation_settings (channel_id) VALUES (?)', [channelId]);
-    }
-    const col = kind === 'goal' ? 'goal_sound' : 'donation_sound';
-    return run(`UPDATE channel_moderation_settings SET ${col}_url = ?, ${col}_mime = ? WHERE channel_id = ?`, [url || null, mime || null, channelId]);
-}
-function getChannelAlertSoundsByUser(userId) {
-    const ch = getChannelByUserId(userId);
-    if (!ch) return {};
-    return get('SELECT donation_sound_url, donation_sound_mime, goal_sound_url, goal_sound_mime FROM channel_moderation_settings WHERE channel_id = ?', [ch.id]) || {};
-}
 function getStreamMemoriesInRange(streamId, startSec, endSec) {
     return all('SELECT * FROM stream_memories WHERE stream_id = ? AND offset_seconds BETWEEN ? AND ? ORDER BY offset_seconds ASC', [streamId, startSec, endSec]);
 }
@@ -4815,59 +4800,6 @@ function getChatSamplesInChannel(channelUserId, { userId = null, relay = null, l
         [...params, Math.max(1, Math.min(200, limit))]);
 }
 
-// ── Chat AI summaries (global overview/timeline + per-user insights) ──────────
-// Messages worth analyzing: real chat, exclude system noise + deleted + expired.
-const _CHAT_AI_WHERE = `cm.is_deleted = 0 AND cm.message_type != 'system'
-    AND COALESCE(cm.source_platform,'') != 'ai'
-    AND (cm.auto_delete_at IS NULL OR datetime(cm.auto_delete_at) > CURRENT_TIMESTAMP)`;
-
-function getMaxChatMessageId() {
-    return get('SELECT MAX(id) AS m FROM chat_messages')?.m || 0;
-}
-
-// Count analyzable messages newer than a high-water id (optionally for one user).
-function countChatMessagesSince(afterId, userId = null) {
-    let sql = `SELECT COUNT(*) AS c FROM chat_messages cm WHERE ${_CHAT_AI_WHERE} AND cm.id > ?`;
-    const params = [afterId || 0];
-    if (userId) { sql += ' AND cm.user_id = ?'; params.push(userId); }
-    return get(sql, params)?.c || 0;
-}
-
-// Fetch analyzable messages for AI batching (with the channel/broadcaster label).
-// order 'asc' for chronological batches; 'desc'+limit for "most recent N".
-function getChatMessagesForAi({ afterId = null, sinceTs = null, userId = null, limit = 400, order = 'asc' } = {}) {
-    let sql = `SELECT cm.id, cm.user_id, cm.username, cm.message, cm.message_type, cm.timestamp,
-                      cm.stream_id, cm.channel_user_id, cm.is_global,
-                      ch.username AS channel_username, ch.display_name AS channel_display
-               FROM chat_messages cm
-               LEFT JOIN users ch ON cm.channel_user_id = ch.id
-               WHERE ${_CHAT_AI_WHERE}`;
-    const params = [];
-    if (afterId != null) { sql += ' AND cm.id > ?'; params.push(afterId); }
-    if (sinceTs != null) { sql += ' AND cm.timestamp >= ?'; params.push(sinceTs); }
-    if (userId) { sql += ' AND cm.user_id = ?'; params.push(userId); }
-    sql += ` ORDER BY cm.id ${order === 'desc' ? 'DESC' : 'ASC'} LIMIT ?`;
-    params.push(Math.max(1, Math.min(2000, limit)));
-    const rows = all(sql, params);
-    return order === 'desc' ? rows.reverse() : rows;
-}
-
-// Timestamp of the Nth-most-recent analyzable message — drives the adaptive
-// overview window (busy chat → short window, quiet → wide). Optionally per-user.
-function getNthRecentChatTs(n, userId = null) {
-    let sql = `SELECT cm.timestamp AS ts FROM chat_messages cm WHERE ${_CHAT_AI_WHERE}`;
-    const params = [];
-    if (userId) { sql += ' AND cm.user_id = ?'; params.push(userId); }
-    sql += ' ORDER BY cm.id DESC LIMIT 1 OFFSET ?';
-    params.push(Math.max(0, (n | 0) - 1));
-    return get(sql, params)?.ts || null;
-}
-
-function getChatAiSummary(scope, subjectId, window) {
-    return get('SELECT * FROM chat_ai_summaries WHERE scope = ? AND subject_id = ? AND window = ?',
-        [scope, subjectId || 0, window]) || null;
-}
-// Append AI timeline "notable moments" to the growing log (deduped by scope+ts+label).
 // ── Per-user TTS voice overrides (admin-set) ─────────────────
 function getTtsVoiceOverride(identityKey) {
     try {
@@ -4905,84 +4837,6 @@ function hasSolvedEasterEgg(eggDate, solverKey) {
 }
 function countEasterEggSolves(eggDate) {
     try { return get('SELECT COUNT(*) AS n FROM easter_egg_solves WHERE egg_date = ?', [eggDate])?.n || 0; } catch { return 0; }
-}
-
-function addChatTimelineEvents(scope, subjectId, events) {
-    if (!Array.isArray(events) || !events.length) return 0;
-    let n = 0;
-    for (const e of events) {
-        if (!e || !e.label || !e.ts) continue;
-        try {
-            run('INSERT OR IGNORE INTO chat_timeline_events (scope, subject_id, ts, label, detail) VALUES (?, ?, ?, ?, ?)',
-                [scope || 'global', subjectId || 0, e.ts, String(e.label).slice(0, 120), String(e.detail || '').slice(0, 400)]);
-            n++;
-        } catch { /* */ }
-    }
-    return n;
-}
-// Paginated + searchable timeline browse. `before` = epoch ms (exclusive upper bound); `q`
-// filters label/detail; `since` = epoch ms lower bound (for period jumps). Newest first.
-function getChatTimelineEvents({ scope = 'global', subjectId = 0, before = null, since = null, q = null, limit = 25 } = {}) {
-    const conds = ['scope = ?', 'subject_id = ?'];
-    const params = [scope, subjectId || 0];
-    if (before) { conds.push("ts < datetime(?, 'unixepoch')"); params.push(Math.floor(before / 1000)); }
-    if (since) { conds.push("ts >= datetime(?, 'unixepoch')"); params.push(Math.floor(since / 1000)); }
-    if (q && String(q).trim()) { const like = '%' + String(q).trim().slice(0, 60) + '%'; conds.push('(label LIKE ? OR detail LIKE ?)'); params.push(like, like); }
-    params.push(Math.min(60, Math.max(1, limit)));
-    try {
-        return all(`SELECT id, ts, label, detail FROM chat_timeline_events WHERE ${conds.join(' AND ')} ORDER BY ts DESC, id DESC LIMIT ?`, params) || [];
-    } catch { return []; }
-}
-function getChatAiSummaries(scope, subjectId) {
-    return all('SELECT * FROM chat_ai_summaries WHERE scope = ? AND subject_id = ? ORDER BY window',
-        [scope, subjectId || 0]);
-}
-function upsertChatAiSummary(sfx) {
-    const {
-        scope, subject_id = 0, window, overview = '', memory_json = '', timeline_json = '[]',
-        message_count = 0, window_message_count = 0, last_message_id = 0,
-        window_label = '', window_start = null, window_end = null,
-    } = sfx;
-    return run(
-        `INSERT INTO chat_ai_summaries
-            (scope, subject_id, window, overview, memory_json, timeline_json, message_count,
-             window_message_count, last_message_id, window_label, window_start, window_end, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(scope, subject_id, window) DO UPDATE SET
-            overview = excluded.overview,
-            memory_json = excluded.memory_json,
-            timeline_json = excluded.timeline_json,
-            message_count = excluded.message_count,
-            window_message_count = excluded.window_message_count,
-            last_message_id = excluded.last_message_id,
-            window_label = excluded.window_label,
-            window_start = excluded.window_start,
-            window_end = excluded.window_end,
-            updated_at = CURRENT_TIMESTAMP`,
-        [scope, subject_id || 0, window, overview, memory_json, timeline_json, message_count,
-         window_message_count, last_message_id, window_label, window_start, window_end]
-    );
-}
-
-// Users with enough new chat activity (or a stale summary) to warrant an AI refresh.
-// Bounded to recent messages so the GROUP BY stays cheap; caps rows returned.
-function getUsersNeedingChatAi({ threshold = 15, staleCutoffIso, sinceTs, limit = 3 } = {}) {
-    const sql = `
-        SELECT cm.user_id AS uid,
-               MAX(cm.id) AS max_id,
-               SUM(CASE WHEN cm.id > COALESCE(cs.last_message_id, 0) THEN 1 ELSE 0 END) AS new_msgs,
-               COALESCE(cs.last_message_id, 0) AS hw,
-               cs.updated_at AS last_update
-        FROM chat_messages cm
-        LEFT JOIN chat_ai_summaries cs
-          ON cs.scope = 'user' AND cs.subject_id = cm.user_id AND cs.window = 'rolling'
-        WHERE ${_CHAT_AI_WHERE} AND cm.user_id IS NOT NULL AND cm.timestamp >= ?
-        GROUP BY cm.user_id
-        HAVING new_msgs > 0
-           AND ( new_msgs >= ? OR cs.last_message_id IS NULL OR cs.updated_at IS NULL OR cs.updated_at < ? )
-        ORDER BY (cs.updated_at IS NULL) DESC, new_msgs DESC
-        LIMIT ?`;
-    return all(sql, [sinceTs, threshold, staleCutoffIso, Math.max(1, limit)]);
 }
 
 // Record a chat-relay (external platform) user's activity; keeps the earliest
@@ -5036,40 +4890,9 @@ function getRelayUserChatHistory(platform, rawUsername, { limit = 50, offset = 0
     return { messages: rows, total };
 }
 
-// Relay messages for AI batching (mirrors getChatMessagesForAi).
-function getRelayChatMessagesForAi({ platform, rawUsername, sinceTs = null, limit = 300, order = 'asc' } = {}) {
-    let sql = `SELECT cm.id, cm.username, cm.message, cm.message_type, cm.timestamp, cm.source_platform
-               FROM chat_messages cm
-               WHERE ${_CHAT_AI_WHERE} AND ${_RELAY_MATCH}`;
-    const params = _relayMatchParams(platform, rawUsername);
-    if (sinceTs != null) { sql += ' AND cm.timestamp >= ?'; params.push(sinceTs); }
-    sql += ` ORDER BY cm.id ${order === 'desc' ? 'DESC' : 'ASC'} LIMIT ?`;
-    params.push(Math.max(1, Math.min(2000, limit)));
-    const rows = all(sql, params);
-    return order === 'desc' ? rows.reverse() : rows;
-}
-
-// Relay users with new activity since their last AI summary (or never summarised).
-// last_seen advances on every message (see recordRelayUser), so last_seen > summary
-// updated_at means "chatted since we last analysed them".
-function getRelayUsersNeedingChatAi({ lookbackIso, threshold = 8, limit = 2 } = {}) {
-    return all(`
-        SELECT r.rowid AS id, r.platform, r.username, r.display_name, r.message_count, r.last_seen,
-               cs.updated_at AS last_update
-        FROM relay_users r
-        LEFT JOIN chat_ai_summaries cs
-          ON cs.scope = 'relay' AND cs.window = 'rolling' AND cs.subject_id = r.rowid
-        WHERE r.last_seen >= ?
-          AND r.message_count >= ?
-          AND (cs.updated_at IS NULL OR cs.updated_at < r.last_seen)
-        ORDER BY (cs.updated_at IS NULL) DESC, r.last_seen DESC
-        LIMIT ?`, [lookbackIso, threshold, Math.max(1, limit)]);
-}
-
-// ── Anonymous chatters: chat logs + AI insight (mirror the relay path) ──────────
+// ── Anonymous chatters: chat logs (mirror the relay path) ──────────
 // Anon messages have user_id NULL and a stable anon_id = "anon<N>" (which also equals
-// their username). Their chat-AI insight is keyed in chat_ai_summaries by scope='anon',
-// subject_id = the numeric N.
+// their username).
 function anonSubjectId(anonId) {
     const m = /^anon(\d+)$/i.exec(String(anonId || ''));
     return m ? parseInt(m[1], 10) : 0;
@@ -5113,39 +4936,6 @@ function getAnonChatHistory(anonId, { limit = 50, offset = 0, query = '' } = {})
         [...params, Math.max(1, Math.min(200, limit)), Math.max(0, offset)]
     );
     return { messages: rows, total };
-}
-
-// Anon messages for AI batching (mirrors getChatMessagesForAi / getRelayChatMessagesForAi).
-function getAnonChatMessagesForAi({ anonId, sinceTs = null, limit = 300, order = 'asc' } = {}) {
-    let sql = `SELECT cm.id, cm.username, cm.message, cm.message_type, cm.timestamp
-               FROM chat_messages cm
-               WHERE ${_CHAT_AI_WHERE} AND cm.user_id IS NULL AND cm.anon_id = ?`;
-    const params = [String(anonId)];
-    if (sinceTs != null) { sql += ' AND cm.timestamp >= ?'; params.push(sinceTs); }
-    sql += ` ORDER BY cm.id ${order === 'desc' ? 'DESC' : 'ASC'} LIMIT ?`;
-    params.push(Math.max(1, Math.min(2000, limit)));
-    const rows = all(sql, params);
-    return order === 'desc' ? rows.reverse() : rows;
-}
-
-// Anons with enough new chat activity (or a stale summary) to warrant an AI refresh.
-function getAnonsNeedingChatAi({ threshold = 12, staleCutoffIso, sinceTs, limit = 2 } = {}) {
-    const sql = `
-        SELECT cm.anon_id AS anon_id,
-               MAX(cm.id) AS max_id,
-               SUM(CASE WHEN cm.id > COALESCE(cs.last_message_id, 0) THEN 1 ELSE 0 END) AS new_msgs
-        FROM chat_messages cm
-        LEFT JOIN chat_ai_summaries cs
-          ON cs.scope = 'anon' AND cs.window = 'rolling'
-         AND cs.subject_id = CAST(SUBSTR(cm.anon_id, 5) AS INTEGER)
-        WHERE ${_CHAT_AI_WHERE} AND cm.user_id IS NULL AND cm.anon_id IS NOT NULL
-          AND cm.anon_id LIKE 'anon%' AND cm.timestamp >= ?
-        GROUP BY cm.anon_id
-        HAVING new_msgs > 0
-           AND ( new_msgs >= ? OR cs.last_message_id IS NULL OR cs.updated_at IS NULL OR cs.updated_at < ? )
-        ORDER BY (cs.updated_at IS NULL) DESC, new_msgs DESC
-        LIMIT ?`;
-    return all(sql, [sinceTs, threshold, staleCutoffIso, Math.max(1, limit)]);
 }
 
 function getUserProfile(userId) {
@@ -5743,94 +5533,6 @@ function isUsernameReserved(username) {
     return !!vk;
 }
 
-// ── Emote helpers ────────────────────────────────────────────
-
-function createEmote({ user_id, code, url, animated = false, width = 28, height = 28, is_global = false, channel_owner_id = null, size = 100 }) {
-    return run(
-        `INSERT INTO emotes (user_id, code, url, animated, width, height, is_global, channel_owner_id, size)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [user_id, code, url, animated ? 1 : 0, width, height, is_global ? 1 : 0, channel_owner_id || null, Math.min(400, Math.max(25, parseInt(size) || 100))]
-    );
-}
-
-function getEmoteById(id) {
-    return get('SELECT e.*, u.username FROM emotes e JOIN users u ON e.user_id = u.id WHERE e.id = ?', [id]);
-}
-
-function getEmotesByUser(userId) {
-    return all('SELECT * FROM emotes WHERE user_id = ? ORDER BY code', [userId]);
-}
-
-function getGlobalEmotes() {
-    return all('SELECT e.*, u.username FROM emotes e JOIN users u ON e.user_id = u.id WHERE e.is_global = 1 AND e.is_approved = 1 ORDER BY code');
-}
-
-function getChannelEmotes(userId) {
-    // A channel's emotes are those explicitly targeted at this owner (viewer uploads),
-    // plus legacy emotes the owner uploaded to their own channel (channel_owner_id NULL).
-    return all(
-        `SELECT e.*, u.username, up.username AS uploader_username, up.display_name AS uploader_display_name
-           FROM emotes e
-           JOIN users u ON e.user_id = u.id
-           LEFT JOIN users up ON e.user_id = up.id
-          WHERE ((e.channel_owner_id = ?) OR (e.channel_owner_id IS NULL AND e.user_id = ?))
-            AND e.is_approved = 1
-          ORDER BY code`,
-        [userId, userId]
-    );
-}
-
-function countChannelEmotes(ownerId) {
-    const row = get(
-        'SELECT COUNT(*) as count FROM emotes WHERE (channel_owner_id = ?) OR (channel_owner_id IS NULL AND user_id = ?)',
-        [ownerId, ownerId]
-    );
-    return row ? row.count : 0;
-}
-
-function getChannelEmoteByCode(ownerId, code) {
-    return get(
-        `SELECT * FROM emotes
-          WHERE code = ? AND ((channel_owner_id = ?) OR (channel_owner_id IS NULL AND user_id = ?))
-          LIMIT 1`,
-        [code, ownerId, ownerId]
-    );
-}
-
-function deleteEmote(id) {
-    return run('DELETE FROM emotes WHERE id = ?', [id]);
-}
-
-// Edit an emote in place (rename the code and/or change display size %)
-// so streamers don't have to delete + re-upload.
-function updateEmote(id, { code, size }) {
-    const sets = [];
-    const params = [];
-    if (code !== undefined) { sets.push('code = ?'); params.push(code); }
-    if (size !== undefined) { sets.push('size = ?'); params.push(Math.min(400, Math.max(25, parseInt(size) || 100))); }
-    if (!sets.length) return { changes: 0 };
-    params.push(id);
-    return run(`UPDATE emotes SET ${sets.join(', ')} WHERE id = ?`, params);
-}
-
-// The emote's copy on OpenVibe.Media (media-proxy/asset-sync.js), through chat-tables.write().
-function setEmoteMedia(id, mediaUrl, mediaAssetId) {
-    return run('UPDATE emotes SET media_url = ?, media_asset_id = ? WHERE id = ?', [mediaUrl || null, mediaAssetId || null, id]);
-}
-
-function getEmoteByCode(code, userId) {
-    // Check channel emotes first, then global
-    return get(
-        `SELECT * FROM emotes WHERE code = ? AND (user_id = ? OR is_global = 1) AND is_approved = 1 ORDER BY is_global ASC LIMIT 1`,
-        [code, userId]
-    );
-}
-
-function countUserEmotes(userId) {
-    const row = get('SELECT COUNT(*) as count FROM emotes WHERE user_id = ?', [userId]);
-    return row ? row.count : 0;
-}
-
 // ── Channel sound commands (viewer-uploadable) ───────────────
 function createChannelSound({ channel_owner_id, command, url, mime = 'audio/mpeg', duration_seconds = 0, created_by = null, created_by_name = '', emote_code = '' }) {
     return run(
@@ -6408,199 +6110,6 @@ function getChatReplay(streamId, fromTime, toTime) {
 
 function getChannelById(id) {
     return get('SELECT * FROM channels WHERE id = ?', [id]);
-}
-
-// ── Channel Moderators ───────────────────────────────────────
-
-function isChannelModerator(userId, channelId) {
-    const row = get('SELECT 1 FROM channel_moderators WHERE user_id = ? AND channel_id = ?', [userId, channelId]);
-    return !!row;
-}
-
-function addChannelModerator(channelId, userId, addedBy) {
-    return run(
-        'INSERT OR IGNORE INTO channel_moderators (channel_id, user_id, added_by) VALUES (?, ?, ?)',
-        [channelId, userId, addedBy]
-    );
-}
-
-function removeChannelModerator(channelId, userId) {
-    return run('DELETE FROM channel_moderators WHERE channel_id = ? AND user_id = ?', [channelId, userId]);
-}
-
-function getChannelModerators(channelId) {
-    return all(`
-        SELECT cm.id, cm.user_id, cm.added_by, cm.created_at,
-               u.username, u.display_name, u.avatar_url,
-               a.username as added_by_username
-        FROM channel_moderators cm
-        JOIN users u ON cm.user_id = u.id
-        LEFT JOIN users a ON cm.added_by = a.id
-        WHERE cm.channel_id = ?
-        ORDER BY cm.created_at ASC
-    `, [channelId]);
-}
-
-function getChannelsByModerator(userId) {
-    return all(`
-        SELECT cm.channel_id, c.title, c.user_id, u.username as owner_username
-        FROM channel_moderators cm
-        JOIN channels c ON cm.channel_id = c.id
-        JOIN users u ON c.user_id = u.id
-        WHERE cm.user_id = ?
-    `, [userId]);
-}
-
-// ── Channel Moderation Settings ──────────────────────────────
-
-function getChannelModerationSettings(channelId) {
-    return get('SELECT * FROM channel_moderation_settings WHERE channel_id = ?', [channelId])
-        || {
-            channel_id: channelId,
-            slow_mode_seconds: 0,
-            followers_only: 0,
-            emote_only: 0,
-            allow_anonymous: 1,
-            links_allowed: 1,
-            gifs_enabled: 1,
-            account_age_gate_hours: 0,
-            caps_percentage_limit: 0,
-            aggressive_filter: 0,
-            max_message_length: 500,
-            tts_max_length: 200,
-            slur_filter_enabled: 0,
-            slur_filter_use_builtin: 1,
-            slur_filter_terms: '',
-            slur_filter_regexes: '',
-            slur_filter_nudge_message: '',
-            slur_filter_disabled_categories: '[]',
-            ip_approval_mode: 0,
-            soundboard_enabled: 1,
-            soundboard_allow_pitch: 1,
-            soundboard_allow_speed: 1,
-            soundboard_banned_ids: '',
-            viewer_auto_delete_enabled: 1,
-            viewer_delete_all_enabled: 1,
-            custom_emotes_enabled: 1,
-            custom_sounds_enabled: 1,
-            max_sound_seconds: 10,
-            uploads_mods_only: 0,
-            mods_can_edit_about: 0,
-            emote_scale: 100,
-            emote_size_min: 50,
-            emote_size_max: 200,
-            sounds_mods_only: 0,
-            sound_min_speed: 0.5,
-            sound_max_speed: 3.0,
-            sound_min_pitch_cents: -1200,
-            sound_max_pitch_cents: 1200,
-            sub_only: 0,
-        };
-}
-
-function upsertChannelModerationSettings(channelId, fields) {
-    const existing = get('SELECT 1 FROM channel_moderation_settings WHERE channel_id = ?', [channelId]);
-    if (existing) {
-        const updates = [];
-        const params = [];
-        if (fields.slow_mode_seconds !== undefined) { updates.push('slow_mode_seconds = ?'); params.push(fields.slow_mode_seconds); }
-        if (fields.followers_only !== undefined) { updates.push('followers_only = ?'); params.push(fields.followers_only ? 1 : 0); }
-        if (fields.emote_only !== undefined) { updates.push('emote_only = ?'); params.push(fields.emote_only ? 1 : 0); }
-        if (fields.allow_anonymous !== undefined) { updates.push('allow_anonymous = ?'); params.push(fields.allow_anonymous ? 1 : 0); }
-        if (fields.links_allowed !== undefined) { updates.push('links_allowed = ?'); params.push(fields.links_allowed ? 1 : 0); }
-        if (fields.gifs_enabled !== undefined) { updates.push('gifs_enabled = ?'); params.push(fields.gifs_enabled ? 1 : 0); }
-        if (fields.account_age_gate_hours !== undefined) { updates.push('account_age_gate_hours = ?'); params.push(Number(fields.account_age_gate_hours) || 0); }
-        if (fields.caps_percentage_limit !== undefined) { updates.push('caps_percentage_limit = ?'); params.push(Number(fields.caps_percentage_limit) || 0); }
-        if (fields.aggressive_filter !== undefined) { updates.push('aggressive_filter = ?'); params.push(fields.aggressive_filter ? 1 : 0); }
-        if (fields.max_message_length !== undefined) { updates.push('max_message_length = ?'); params.push(Math.max(50, Number(fields.max_message_length) || 500)); }
-        if (fields.slur_filter_enabled !== undefined) { updates.push('slur_filter_enabled = ?'); params.push(fields.slur_filter_enabled ? 1 : 0); }
-        if (fields.slur_filter_use_builtin !== undefined) { updates.push('slur_filter_use_builtin = ?'); params.push(fields.slur_filter_use_builtin ? 1 : 0); }
-        if (fields.slur_filter_terms !== undefined) { updates.push('slur_filter_terms = ?'); params.push(String(fields.slur_filter_terms || '').slice(0, 4000)); }
-        if (fields.slur_filter_regexes !== undefined) { updates.push('slur_filter_regexes = ?'); params.push(String(fields.slur_filter_regexes || '').slice(0, 8000)); }
-        if (fields.slur_filter_nudge_message !== undefined) { updates.push('slur_filter_nudge_message = ?'); params.push(String(fields.slur_filter_nudge_message || '').slice(0, 800)); }
-        if (fields.slur_filter_disabled_categories !== undefined) { updates.push('slur_filter_disabled_categories = ?'); params.push(String(fields.slur_filter_disabled_categories || '[]').slice(0, 200)); }
-        if (fields.ip_approval_mode !== undefined) { updates.push('ip_approval_mode = ?'); params.push(fields.ip_approval_mode ? 1 : 0); }
-        if (fields.soundboard_enabled !== undefined) { updates.push('soundboard_enabled = ?'); params.push(fields.soundboard_enabled ? 1 : 0); }
-        if (fields.soundboard_allow_pitch !== undefined) { updates.push('soundboard_allow_pitch = ?'); params.push(fields.soundboard_allow_pitch ? 1 : 0); }
-        if (fields.soundboard_allow_speed !== undefined) { updates.push('soundboard_allow_speed = ?'); params.push(fields.soundboard_allow_speed ? 1 : 0); }
-        if (fields.soundboard_banned_ids !== undefined) { updates.push('soundboard_banned_ids = ?'); params.push(String(fields.soundboard_banned_ids || '').slice(0, 4000)); }
-        if (fields.viewer_auto_delete_enabled !== undefined) { updates.push('viewer_auto_delete_enabled = ?'); params.push(fields.viewer_auto_delete_enabled ? 1 : 0); }
-        if (fields.viewer_delete_all_enabled !== undefined) { updates.push('viewer_delete_all_enabled = ?'); params.push(fields.viewer_delete_all_enabled ? 1 : 0); }
-        if (fields.custom_emotes_enabled !== undefined) { updates.push('custom_emotes_enabled = ?'); params.push(fields.custom_emotes_enabled ? 1 : 0); }
-        if (fields.custom_sounds_enabled !== undefined) { updates.push('custom_sounds_enabled = ?'); params.push(fields.custom_sounds_enabled ? 1 : 0); }
-        if (fields.max_sound_seconds !== undefined) { updates.push('max_sound_seconds = ?'); params.push(Math.min(30, Math.max(1, Number(fields.max_sound_seconds) || 10))); }
-        if (fields.uploads_mods_only !== undefined) { updates.push('uploads_mods_only = ?'); params.push(fields.uploads_mods_only ? 1 : 0); }
-        if (fields.mods_can_edit_about !== undefined) { updates.push('mods_can_edit_about = ?'); params.push(fields.mods_can_edit_about ? 1 : 0); }
-        if (fields.emote_scale !== undefined) { updates.push('emote_scale = ?'); params.push(Math.min(300, Math.max(50, Number(fields.emote_scale) || 100))); }
-        if (fields.emote_size_min !== undefined) { updates.push('emote_size_min = ?'); params.push(Math.min(200, Math.max(25, Number(fields.emote_size_min) || 50))); }
-        if (fields.emote_size_max !== undefined) { updates.push('emote_size_max = ?'); params.push(Math.min(400, Math.max(50, Number(fields.emote_size_max) || 200))); }
-        if (fields.sounds_mods_only !== undefined) { updates.push('sounds_mods_only = ?'); params.push(fields.sounds_mods_only ? 1 : 0); }
-        if (fields.sound_min_speed !== undefined) { updates.push('sound_min_speed = ?'); params.push(Math.min(1, Math.max(0.1, Number(fields.sound_min_speed) || 0.5))); }
-        if (fields.sound_max_speed !== undefined) { updates.push('sound_max_speed = ?'); params.push(Math.min(5, Math.max(1, Number(fields.sound_max_speed) || 3.0))); }
-        if (fields.sound_min_pitch_cents !== undefined) { updates.push('sound_min_pitch_cents = ?'); params.push(Math.min(0, Math.max(-2400, Math.round(Number(fields.sound_min_pitch_cents) || -1200)))); }
-        if (fields.sound_max_pitch_cents !== undefined) { updates.push('sound_max_pitch_cents = ?'); params.push(Math.max(0, Math.min(2400, Math.round(Number(fields.sound_max_pitch_cents) || 1200)))); }
-        if (updates.length > 0) {
-            updates.push('updated_at = CURRENT_TIMESTAMP');
-            params.push(channelId);
-            run(`UPDATE channel_moderation_settings SET ${updates.join(', ')} WHERE channel_id = ?`, params);
-        }
-    } else {
-        run(
-            `INSERT INTO channel_moderation_settings (
-                channel_id, slow_mode_seconds, followers_only, emote_only,
-                allow_anonymous, links_allowed, gifs_enabled, account_age_gate_hours,
-                caps_percentage_limit, aggressive_filter, max_message_length,
-                slur_filter_enabled, slur_filter_use_builtin, slur_filter_terms, slur_filter_regexes, slur_filter_nudge_message, slur_filter_disabled_categories,
-                ip_approval_mode, soundboard_enabled, soundboard_allow_pitch, soundboard_allow_speed, soundboard_banned_ids,
-                viewer_auto_delete_enabled, viewer_delete_all_enabled,
-                custom_emotes_enabled, custom_sounds_enabled, max_sound_seconds, uploads_mods_only, emote_scale,
-                emote_size_min, emote_size_max, sounds_mods_only, mods_can_edit_about
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
-            [
-                channelId,
-                fields.slow_mode_seconds || 0,
-                fields.followers_only ? 1 : 0,
-                fields.emote_only ? 1 : 0,
-                fields.allow_anonymous !== undefined ? (fields.allow_anonymous ? 1 : 0) : 1,
-                fields.links_allowed !== undefined ? (fields.links_allowed ? 1 : 0) : 1,
-                fields.gifs_enabled !== undefined ? (fields.gifs_enabled ? 1 : 0) : 1,
-                Number(fields.account_age_gate_hours) || 0,
-                Number(fields.caps_percentage_limit) || 0,
-                fields.aggressive_filter ? 1 : 0,
-                Math.max(50, Number(fields.max_message_length) || 500),
-                fields.slur_filter_enabled ? 1 : 0,
-                fields.slur_filter_use_builtin !== undefined ? (fields.slur_filter_use_builtin ? 1 : 0) : 1,
-                String(fields.slur_filter_terms || '').slice(0, 4000),
-                String(fields.slur_filter_regexes || '').slice(0, 8000),
-                String(fields.slur_filter_nudge_message || '').slice(0, 800),
-                String(fields.slur_filter_disabled_categories || '[]').slice(0, 200),
-                fields.ip_approval_mode ? 1 : 0,
-                fields.soundboard_enabled !== undefined ? (fields.soundboard_enabled ? 1 : 0) : 1,
-                fields.soundboard_allow_pitch !== undefined ? (fields.soundboard_allow_pitch ? 1 : 0) : 1,
-                fields.soundboard_allow_speed !== undefined ? (fields.soundboard_allow_speed ? 1 : 0) : 1,
-                String(fields.soundboard_banned_ids || '').slice(0, 4000),
-                fields.viewer_auto_delete_enabled !== undefined ? (fields.viewer_auto_delete_enabled ? 1 : 0) : 1,
-                fields.viewer_delete_all_enabled !== undefined ? (fields.viewer_delete_all_enabled ? 1 : 0) : 1,
-                fields.custom_emotes_enabled !== undefined ? (fields.custom_emotes_enabled ? 1 : 0) : 1,
-                fields.custom_sounds_enabled !== undefined ? (fields.custom_sounds_enabled ? 1 : 0) : 1,
-                Math.min(30, Math.max(1, Number(fields.max_sound_seconds) || 10)),
-                fields.uploads_mods_only ? 1 : 0,
-                Math.min(300, Math.max(50, Number(fields.emote_scale) || 100)),
-                Math.min(200, Math.max(25, Number(fields.emote_size_min) || 50)),
-                Math.min(400, Math.max(50, Number(fields.emote_size_max) || 200)),
-                fields.sounds_mods_only ? 1 : 0,
-                fields.mods_can_edit_about ? 1 : 0,
-            ]
-        );
-    }
-    // tts_max_length is handled here (covers both the UPDATE and freshly-INSERTed row) so we
-    // don't have to thread it through the positional INSERT.
-    if (fields.tts_max_length !== undefined) {
-        try { run('UPDATE channel_moderation_settings SET tts_max_length = ? WHERE channel_id = ?', [Math.min(1000, Math.max(10, Number(fields.tts_max_length) || 200)), channelId]); } catch { /* */ }
-    }
-    // sub_only the same way (OpenVibe.Chat's database.js writes it identically once it owns the table).
-    if (fields.sub_only !== undefined) run('UPDATE channel_moderation_settings SET sub_only = ? WHERE channel_id = ?', [fields.sub_only ? 1 : 0, channelId]);
-    return getChannelModerationSettings(channelId);
 }
 
 // ── Pastes ───────────────────────────────────────────────────
@@ -7674,7 +7183,6 @@ module.exports = {
     getDonationGoalsForWidget, getAllDonationGoals, getActiveDonationGoals, getDonationGoalById,
     recordViewerSample, getViewerTrend, getReadingSeries, getHomePulse, getActiveGoalsForUsers,
     createDonationGoal, updateDonationGoal, deleteDonationGoal, addToDonationGoal,
-    setChannelAlertSound, getChannelAlertSoundsByUser,
     // Users
     getUserById, getUserByUsername, getUserByStreamKey, createUser, getOrCreateAnonGameUser,
     // Managed Streams
@@ -7727,10 +7235,6 @@ module.exports = {
     getRestreamDestinationsByManagedStream, getRestreamDestinationsForSlot,
     // Chat
     saveChatMessage, searchChatMessages, getUserChatHistory, getChatSamplesInChannel,
-    // Chat AI summaries
-    getMaxChatMessageId, countChatMessagesSince, getChatMessagesForAi, getNthRecentChatTs,
-    getChatAiSummary, getChatAiSummaries, upsertChatAiSummary, getUsersNeedingChatAi,
-    addChatTimelineEvents, getChatTimelineEvents,
     recordEasterEggSolve, hasSolvedEasterEgg, countEasterEggSolves,
     getTtsVoiceOverride, setTtsVoiceOverride, deleteTtsVoiceOverride,
     // Profiles
@@ -7770,9 +7274,6 @@ module.exports = {
     getConfigButtons, createConfigButton, updateConfigButton, deleteConfigButton, applyConfigToStream,
     // Bans
     isUserBanned, isIpBanned, getIpBan, invalidateIpBanCache, forgiveBan,
-    // Emotes
-    createEmote, getEmoteById, getEmotesByUser, getGlobalEmotes, getChannelEmotes, updateEmote, setEmoteMedia,
-    deleteEmote, getEmoteByCode, countUserEmotes, countChannelEmotes, getChannelEmoteByCode,
     createChannelSound, setChannelSoundEmote, getChannelSounds, getChannelSoundByCommand, getChannelSoundById, renameChannelSoundCommand, updateChannelSoundEmoteRefs,
     countChannelSounds, countChannelSoundsByUploader, deleteChannelSound,
     getAiChatbotConfig, upsertAiChatbotConfig,
@@ -7792,11 +7293,6 @@ module.exports = {
     getChatReplay,
     // Channel lookup
     getChannelById,
-    // Channel Moderators
-    isChannelModerator, addChannelModerator, removeChannelModerator,
-    getChannelModerators, getChannelsByModerator,
-    // Channel Moderation Settings
-    getChannelModerationSettings, upsertChannelModerationSettings,
     getUserTotalGameLevel, getLegacyGameProfile,
     // Anon IP Mappings
     getOrCreateAnonNum, getAnonFirstSeen, loadAnonMappings,
@@ -7812,8 +7308,8 @@ module.exports = {
     approveAllFromIp, denyAllFromIp,
     // Hidden Relay Users
     hideRelayUser, isRelayUserHidden, unhideRelayUser, unhideRelayUserByIdentity, getHiddenRelayUsers, recordRelayUser, getRelayUser,
-    getRelayUserByRowid, getRelayUserChatHistory, getRelayChatMessagesForAi, getRelayUsersNeedingChatAi,
-    anonSubjectId, getAnonMeta, getAnonChatHistory, getAnonChatMessagesForAi, getAnonsNeedingChatAi,
+    getRelayUserByRowid, getRelayUserChatHistory,
+    anonSubjectId, getAnonMeta, getAnonChatHistory,
     // IP Tracking
     logIp, getIpsByUser, getUsersByIp, getLinkedAccounts, getLinkedAccountsByAnon,
     getLatestIpForUser, getLatestIpForAnon, getIpLog, banAllAccountsOnIp,
