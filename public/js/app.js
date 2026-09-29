@@ -1273,56 +1273,8 @@ function ovWakeBrandMark() {
     }, BRAND_AWAKE_MS);
 }
 
-/**
- * A thin bar that runs across the top on a route change.
- *
- * Routes here are instant to swap and slow to fill — the shell is already up, the content arrives
- * over the network. Without a signal the page looks broken for that gap. The bar is one element,
- * transform-only, and removes itself.
- */
-let _routeBarTimer = 0;
-function ovRouteProgress() {
-    let reduce = false;
-    try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { /* */ }
-    if (reduce) return;
-    let bar = document.getElementById('ov-routebar');
-    if (!bar) {
-        bar = document.createElement('div');
-        bar.id = 'ov-routebar';
-        bar.setAttribute('aria-hidden', 'true');
-        document.body.appendChild(bar);
-    }
-    clearTimeout(_routeBarTimer);
-    bar.classList.remove('is-run', 'is-done');
-    void bar.offsetWidth;
-    bar.classList.add('is-run');
-    _routeBarTimer = setTimeout(() => {
-        bar.classList.remove('is-run');
-        bar.classList.add('is-done');
-        _routeBarTimer = setTimeout(() => bar.classList.remove('is-done'), 320);
-    }, 620);
-}
-
-/**
- * The incoming page rises into place instead of appearing.
- *
- * Transform and opacity only, so it cannot shift layout, and the class is stripped on a timer —
- * an element whose animation never ran (a route swapped again mid-flight, a hidden ancestor) must
- * not be left holding opacity 0.
- */
-let _pageEnterTimer = 0;
-function ovAnimatePageEnter(el) {
-    if (!el) return;
-    let reduce = false;
-    try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { /* */ }
-    if (reduce) return;
-    clearTimeout(_pageEnterTimer);
-    document.querySelectorAll('.page.is-entering').forEach(p => p.classList.remove('is-entering'));
-    el.classList.remove('is-entering');
-    void el.offsetWidth;
-    el.classList.add('is-entering');
-    _pageEnterTimer = setTimeout(() => el.classList.remove('is-entering'), 700);
-}
+const _PAGE_LABELS = { 'vod-player': 'video', 'clip-player': 'clip', broadcast: 'Go Live', recap: 'recap' };
+function _pageLabel(page) { return _PAGE_LABELS[page] || String(page).replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()); }
 
 function showPage(page) {
     const changed = currentPage !== page;
@@ -1331,7 +1283,9 @@ function showPage(page) {
     if (el) el.classList.add('active');
     // The mark and the page transition are both "you moved" signals, so they fire on a real
     // change only — re-rendering the page you are already on should not restart either.
-    if (changed) { ovWakeBrandMark(); ovRouteProgress(); ovAnimatePageEnter(el); }
+    // A page move: the page stays hidden until its route's styles and code are in (never unstyled), with a progress
+    // bar, a "Loading …" line if it takes a moment, and a fade-in (openvibe-shared web-runtime enter()).
+    if (changed) { ovWakeBrandMark(); if (window.ov && ov.enter && el) ov.enter(el, ov.route(location.pathname), { label: el.dataset.title || _pageLabel(page) }); }
     // A fresh page load is not a "change" — currentPage is already the page being shown — so the
     // mark would never take its first sleep and the SMIL orbits would loop for the whole session.
     // Wake it once on arrival; the same timer puts it to sleep five seconds later.

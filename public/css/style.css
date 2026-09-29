@@ -11311,50 +11311,10 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 #page-home.page { padding-bottom: 10px; }
 
 
-/* ═══════════════════════════════════════════════════════════════
-   Route-change motion (app.js: ovRouteProgress / ovAnimatePageEnter)
-
-   A route swap here is instant in the DOM and slow to fill from the network, so without a signal
-   the page reads as stuck for that gap. The bar is one element with a transform-only sweep; the
-   page rises the last few pixels into place. Neither can shift layout, and both strip themselves
-   on a timer so a swap interrupted mid-flight never leaves content invisible.
-   ═══════════════════════════════════════════════════════════════ */
-#ov-routebar {
-    position: fixed; top: 0; left: 0; right: 0; height: 2px;
-    z-index: 20000; pointer-events: none; opacity: 0;
-    background: linear-gradient(90deg,
-        transparent,
-        color-mix(in srgb, var(--accent) 85%, transparent) 35%,
-        var(--accent-light, var(--accent)) 55%,
-        color-mix(in srgb, var(--accent) 85%, transparent) 75%,
-        transparent);
-    transform: translateX(-100%);
-}
-#ov-routebar.is-run { opacity: 1; animation: ovRouteBar 0.62s cubic-bezier(.3, .8, .2, 1) both; }
-#ov-routebar.is-done { opacity: 0; transform: translateX(0); transition: opacity 0.3s ease; }
-@keyframes ovRouteBar {
-    from { transform: translateX(-100%); }
-    to   { transform: translateX(100%); }
-}
-
-/* Opacity only. A running transform animation makes the element a containing block for its
-   position:fixed descendants, so while a page rose into place its fixed children — the mobile chat
-   sheet on a channel, the broadcast desk's chat button — were positioned against the page box
-   instead of the viewport and visibly jumped (measured: a bottom:0 probe sat 10px below the
-   viewport mid-entry). Opacity does not create a containing block. */
-.page.is-entering { animation: ovPageIn 0.36s cubic-bezier(.22, 1, .36, 1) both; }
-@keyframes ovPageIn {
-    from { opacity: 0; }
-    to   { opacity: 1; }
-}
-
+/* Route changes (the bar, the loading line, the fade-in) are openvibe-shared web-runtime enter() + route-transition.js. */
 @media (prefers-reduced-motion: reduce) {
-    #ov-routebar { display: none; }
-    .page.is-entering { animation: none !important; }
     .brand-mark.is-spin svg, .brand-mark.is-settling svg { animation: none !important; }
 }
-/* Phones do the page rise but skip the bar — it sits under the browser's own chrome anyway. */
-.rs-lite .page.is-entering { animation-duration: 0.32s; }
 
 
 /* ═══════════════════════════════════════════════════════════════
