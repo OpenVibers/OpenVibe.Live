@@ -706,7 +706,9 @@ app.use('/api/mod', require('./admin/mod-routes'));
 app.use('/api/channels', require('./admin/channel-mod-routes'));
 app.use('/api/robotstreamer', robotStreamerRoutes);
 app.use('/api/restream', restreamRoutes);
-app.use('/api/thumbnails', thumbnailRoutes);
+// Stream thumbnails are public pictures other OpenVibe sites show (the network's front door lists who is live), so
+// they may be embedded cross-site; everything else keeps helmet's same-origin resource policy.
+app.use('/api/thumbnails', (req, res, next) => { res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'); next(); }, thumbnailRoutes);
 app.use('/api/themes', themeRoutes);
 app.use('/api/emotes', emoteRoutes);
 app.use('/api/sounds', chatRemote ? chatMoved : require('./chat/sounds-routes'));
