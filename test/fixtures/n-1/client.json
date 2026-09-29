@@ -1,13 +1,13 @@
 {
  "service": "live",
- "release": "65849994c0527fa0e0335b9f7e6a9a5abcb6ac60",
- "recorded_at": "2026-09-29T02:08:45.492Z",
+ "release": "03f15936e3905be8ab16aa098900d60341a78302",
+ "recorded_at": "2026-09-29T03:18:36.908Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "65849994c052",
-  "released_at": "2026-09-29T02:08:14.000Z",
-  "booted_at": "2026-09-29T02:08:32.337Z",
+  "release": "03f15936e390",
+  "released_at": "2026-09-29T03:03:36.000Z",
+  "booted_at": "2026-09-29T03:18:30.299Z",
   "contracts_version": "0.71.0",
   "packages": {
    "openvibe-shared": "1.30.1",
@@ -18,15 +18,15 @@
   "components": {
    "styles": {
     "kind": "style",
-    "version": "cbbe4988c325"
+    "version": "8cecbf7ee385"
    },
    "shell": {
     "kind": "script",
-    "version": "00dfc3ef5815"
+    "version": "ed999912868e"
    },
    "server": {
     "kind": "server",
-    "version": "28dcd148f705"
+    "version": "612adb80b582"
    }
   },
   "assets": {
@@ -61,9 +61,9 @@
     "integrity": "sha384-bBBAa4R6vi7XZrg0pVl3y/RTieFRKBzfqN7N8S2f24xJp0kxufeX13Mlm/3EW9uE"
    },
    "/css/features/channel.css": {
-    "url": "/css/features/channel.css?v=1ea9f5c81461",
+    "url": "/css/features/channel.css?v=63269f14afd5",
     "component": "styles",
-    "integrity": "sha384-XkatlEn44crIlE083/l2BHh4ROE+5afUE+ABX6Uk1iqKhn0Xe2ejo8Sdmjz8dxhh"
+    "integrity": "sha384-jS8cgLWimI0gjaN/MtfZywtJ1U05pcGFtitrSjyRaPVxJgrWFT4s50I3KLb7R+04"
    },
    "/css/features/chatpage.css": {
     "url": "/css/features/chatpage.css?v=c5c63e94503f",
@@ -121,9 +121,9 @@
     "integrity": "sha384-amhdltUcvPHMlKbKgAysH1oVa5LXmXYvie7lrfnBB7+hnqpcSiFHfLUDcwnSznho"
    },
    "/css/i18n-star.css": {
-    "url": "/css/i18n-star.css?v=06f6715edaf0",
+    "url": "/css/i18n-star.css?v=365567ee3c2e",
     "component": "styles",
-    "integrity": "sha384-/W7r8x6i+gt3laNA2pA1/tHpPRoQrQ8srN7ajHwI8Jb5MIbSpgLE1dd35uyvp561"
+    "integrity": "sha384-ywRuEe6z23e3VtwROEu2yNUbrnajlBMv5M3vyZjZ1hfe1Dli6pGYLa8uu3z71Mo0"
    },
    "/css/media-player.css": {
     "url": "/css/media-player.css?v=7b7fdf4b15e5",
@@ -7206,7 +7206,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/i18n-star.css?v=06f6715edaf0",
+   "path": "/css/i18n-star.css?v=365567ee3c2e",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7525,7 +7525,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/lang-detect.js?v=948a4695c0c6",
+   "path": "/js/lang-detect.js?v=40279abb1800",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7723,7 +7723,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/features/channel.css?v=1ea9f5c81461",
+   "path": "/css/features/channel.css?v=63269f14afd5",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7844,7 +7844,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/channel-socials.js?v=3c59ca14bf8b",
+   "path": "/js/channel-socials.js?v=983c9f5760d8",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7866,7 +7866,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app-channel.js?v=97ccaffb0094",
+   "path": "/js/app-channel.js?v=7c6c1787240c",
    "auth": "anon",
    "accept": "html",
    "status": 200,
