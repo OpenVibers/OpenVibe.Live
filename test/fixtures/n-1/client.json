@@ -1,13 +1,13 @@
 {
  "service": "live",
- "release": "6e7ed605cbdcd7e39054e37bab11cbdc9c82e4f8",
- "recorded_at": "2026-09-29T12:51:16.005Z",
+ "release": "8cead3637816b496cbd5657753a8ca8e8555a1e8",
+ "recorded_at": "2026-09-29T16:51:44.167Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "6e7ed605cbdc",
-  "released_at": "2026-09-29T12:50:54.000Z",
-  "booted_at": "2026-09-29T12:51:13.457Z",
+  "release": "8cead3637816",
+  "released_at": "2026-09-29T15:31:20.000Z",
+  "booted_at": "2026-09-29T16:51:37.750Z",
   "contracts_version": "0.71.0",
   "packages": {
    "openvibe-shared": "1.30.1",
@@ -22,11 +22,11 @@
    },
    "shell": {
     "kind": "script",
-    "version": "489455d0aadf"
+    "version": "680853c062b9"
    },
    "server": {
     "kind": "server",
-    "version": "d477dffd900c"
+    "version": "83b6fbd34fe3"
    }
   },
   "assets": {
@@ -1048,9 +1048,7 @@
    "status": 401,
    "kind": "json",
    "from": [
-    "public/js/app-channel.js",
-    "public/js/channel-uploads.js",
-    "public/js/dashboard-moderation.js"
+    "public/js/app-channel.js"
    ]
   },
   {
@@ -1136,78 +1134,7 @@
     "channels[].moderators": "array"
    },
    "from": [
-    "public/js/app-channel.js",
-    "public/js/channel-uploads.js",
-    "public/js/dashboard-moderation.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/channels/1/moderation/chat-search",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard-moderation.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/channels/1/moderation/chat-search",
-   "auth": "user",
-   "status": 500,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard-moderation.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/channels/1/moderation/logs?limit=12",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard-moderation.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/channels/1/moderation/logs?limit=12",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "actions": "array"
-   },
-   "from": [
-    "public/js/dashboard-moderation.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/chat-ai/global",
-   "auth": "anon",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "insight": "null"
-   },
-   "from": [
-    "public/js/app-chatpage.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/chat-ai/global",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "insight": "null"
-   },
-   "from": [
-    "public/js/app-chatpage.js"
+    "public/js/app-channel.js"
    ]
   },
   {
@@ -1248,130 +1175,6 @@
    },
    "from": [
     "public/js/app-channel.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/chat-ai/timeline/n1star?offset=0&limit=5",
-   "auth": "anon",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "username": "string",
-    "display_name": "string",
-    "overview": "null",
-    "chatInsight": "null",
-    "combinedOverview": "null",
-    "sessionCount": "number",
-    "momentCount": "number",
-    "index": "array",
-    "sessions": "array",
-    "offset": "number",
-    "limit": "number",
-    "hasMore": "boolean"
-   },
-   "from": [
-    "public/js/app-channel.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/chat-ai/timeline/n1star?offset=0&limit=5",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "username": "string",
-    "display_name": "string",
-    "overview": "null",
-    "chatInsight": "null",
-    "combinedOverview": "null",
-    "sessionCount": "number",
-    "momentCount": "number",
-    "index": "array",
-    "sessions": "array",
-    "offset": "number",
-    "limit": "number",
-    "hasMore": "boolean"
-   },
-   "from": [
-    "public/js/app-channel.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/chat-ai/timeline/n1star?offset=0&limit=12",
-   "auth": "anon",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "username": "string",
-    "display_name": "string",
-    "overview": "null",
-    "chatInsight": "null",
-    "combinedOverview": "null",
-    "sessionCount": "number",
-    "momentCount": "number",
-    "index": "array",
-    "sessions": "array",
-    "offset": "number",
-    "limit": "number",
-    "hasMore": "boolean"
-   },
-   "from": [
-    "public/js/app-channel.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/chat-ai/timeline/n1star?offset=0&limit=12",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "username": "string",
-    "display_name": "string",
-    "overview": "null",
-    "chatInsight": "null",
-    "combinedOverview": "null",
-    "sessionCount": "number",
-    "momentCount": "number",
-    "index": "array",
-    "sessions": "array",
-    "offset": "number",
-    "limit": "number",
-    "hasMore": "boolean"
-   },
-   "from": [
-    "public/js/app-channel.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/chat-ai/timeline",
-   "auth": "anon",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "events": "array",
-    "hasMore": "boolean"
-   },
-   "from": [
-    "public/js/app-chatpage.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/chat-ai/timeline",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "events": "array",
-    "hasMore": "boolean"
-   },
-   "from": [
-    "public/js/app-chatpage.js"
    ]
   },
   {
@@ -2429,7 +2232,7 @@
     "stats.users": "number",
     "stats.anons": "number",
     "stats.follows": "number",
-    "stats.emotes": "number",
+    "stats.emotes": "null",
     "stats.pastes": "null",
     "stats.aiMemories": "number",
     "stats.pasteImages": "null",
@@ -2578,7 +2381,7 @@
     "stats.users": "number",
     "stats.anons": "number",
     "stats.follows": "number",
-    "stats.emotes": "number",
+    "stats.emotes": "null",
     "stats.pastes": "null",
     "stats.aiMemories": "number",
     "stats.pasteImages": "null",
@@ -7492,7 +7295,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app.js?v=d5e9ad82a98c",
+   "path": "/js/app.js?v=533fb6104669",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7536,7 +7339,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/chat.js?v=3c4e68a87c4e",
+   "path": "/js/chat.js?v=214e3c481b2f",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7833,7 +7636,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/channel-uploads.js?v=03eb0f258adf",
+   "path": "/js/channel-uploads.js?v=5e4c26112cbf",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7866,7 +7669,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app-channel.js?v=7c6c1787240c",
+   "path": "/js/app-channel.js?v=24bb1b7828ce",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -8063,46 +7866,6 @@
    "kind": "json",
    "from": [
     "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "PUT",
-   "path": "/api/channels/1/moderation",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/app-channel.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/channels/1/moderation/messages/1/delete",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard-moderation.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/channels/1/mods",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard-moderation.js"
-   ]
-  },
-  {
-   "method": "DELETE",
-   "path": "/api/channels/1/mods/1",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard-moderation.js"
    ]
   },
   {

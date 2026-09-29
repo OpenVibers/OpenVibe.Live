@@ -1,7 +1,7 @@
 {
  "service": "live",
- "release": "6e7ed605cbdcd7e39054e37bab11cbdc9c82e4f8",
- "recorded_at": "2026-09-29T12:51:16.005Z",
+ "release": "8cead3637816b496cbd5657753a8ca8e8555a1e8",
+ "recorded_at": "2026-09-29T16:51:44.167Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "user_version": 0,
  "schema": [
@@ -257,19 +257,19 @@
   "schema_migrations": [
    {
     "id": "001_vibes_decimal_to_bits",
-    "applied_at": "2026-09-29 12:51:12",
+    "applied_at": "2026-09-29 16:51:35",
     "mode": "adopted",
     "duration_ms": 0
    },
    {
     "id": "002_pastes_ai_columns",
-    "applied_at": "2026-09-29 12:51:12",
+    "applied_at": "2026-09-29 16:51:35",
     "mode": "applied",
-    "duration_ms": 6
+    "duration_ms": 13
    },
    {
     "id": "004_hot_path_indexes",
-    "applied_at": "2026-09-29 12:51:12",
+    "applied_at": "2026-09-29 16:51:35",
     "mode": "applied",
     "duration_ms": 1
    }
@@ -639,7 +639,6 @@
   "SELECT 1 FROM approved_ips WHERE channel_id = ? AND ip_address = ?",
   "SELECT 1 FROM channel_ai_config WHERE user_id = ?",
   "SELECT 1 FROM channel_moderation_settings WHERE channel_id = ?",
-  "SELECT 1 FROM channel_moderation_settings WHERE channel_id = ? LIMIT 1",
   "SELECT 1 FROM channel_moderators WHERE user_id = ? AND channel_id = ?",
   "SELECT 1 FROM channel_points WHERE user_id = ? AND streamer_id = ?",
   "SELECT 1 FROM chat_messages cm JOIN streams s ON cm.stream_id = s.id WHERE s.channel_id = ? AND cm.is_deleted = 0 AND (cm.user_id = ? OR cm.anon_id = ?) LIMIT 1",
@@ -727,7 +726,6 @@
   "SELECT COUNT(*) AS count FROM donation_goals WHERE created_at >= datetime('now', ?)",
   "SELECT COUNT(*) AS count FROM donation_goals WHERE is_active = 1",
   "SELECT COUNT(*) AS count FROM donation_goals WHERE reached_at IS NOT NULL OR current_amount >= target_amount",
-  "SELECT COUNT(*) AS count FROM emotes",
   "SELECT COUNT(*) AS count FROM emotes WHERE created_at >= datetime('now', '-14 days') AND created_at < datetime('now', '-7 days')",
   "SELECT COUNT(*) AS count FROM emotes WHERE created_at >= datetime('now', ?)",
   "SELECT COUNT(*) AS count FROM follows",
@@ -755,7 +753,6 @@
   "SELECT COUNT(*) AS n FROM arena_mic_moments WHERE said_at >= ?",
   "SELECT COUNT(*) AS n FROM arena_mic_moments WHERE stream_id = ?",
   "SELECT COUNT(*) AS n FROM channel_ai_bots WHERE channel_user_id = ?",
-  "SELECT COUNT(*) AS n FROM channel_moderators WHERE channel_id = ?",
   "SELECT COUNT(*) AS n FROM channel_sounds WHERE channel_owner_id = ?",
   "SELECT COUNT(*) AS n FROM chat_messages WHERE stream_id = ? AND message_type = 'soundboard'",
   "SELECT COUNT(*) AS n FROM chat_messages WHERE timestamp >= ? AND COALESCE(is_deleted, 0) = 0",
@@ -764,7 +761,6 @@
   "SELECT COUNT(*) AS n FROM control_configs WHERE user_id = ?",
   "SELECT COUNT(*) AS n FROM donation_goals WHERE user_id = ? AND is_active = 1",
   "SELECT COUNT(*) AS n FROM easter_egg_solves WHERE egg_date = ?",
-  "SELECT COUNT(*) AS n FROM emotes WHERE user_id = ?",
   "SELECT COUNT(*) AS n FROM follows WHERE created_at >= ?",
   "SELECT COUNT(*) AS n FROM follows WHERE streamer_id = ?",
   "SELECT COUNT(*) AS n FROM follows WHERE streamer_id = ? AND created_at >= ?",
@@ -942,7 +938,6 @@
   "SELECT id, stream_id, vod_id, start_sec, text FROM stream_timeline_events WHERE user_id = ? AND kind = 'speech' AND created_at >= datetime('now', ?) AND LENGTH(text) BETWEEN 25 AND 220 ORDER BY created_at DESC LIMIT 1500",
   "SELECT id, title, slug FROM managed_streams WHERE user_id = ? AND (? IS NULL OR id != ?) ORDER BY sort_order ASC, id ASC",
   "SELECT id, title, started_at, viewer_count FROM streams WHERE user_id = ? AND is_live = 1 ORDER BY started_at DESC LIMIT 1",
-  "SELECT id, ts, label, detail FROM chat_timeline_events WHERE scope = ? AND subject_id = ? ORDER BY ts DESC, id DESC LIMIT ?",
   "SELECT id, user_id FROM channels WHERE id = ?",
   "SELECT id, user_id, anon_id, username, message, message_type, source_platform, reply_to_id, timestamp FROM chat_messages WHERE channel_user_id = ? AND id > ? AND is_deleted = 0 AND message_type IN ('chat','donation') AND (auto_delete_at IS NULL OR auto_delete_at > CURRENT_TIMESTAMP) ORDER BY id DESC LIMIT ?",
   "SELECT id, user_id, channel_id, managed_stream_id, title, is_live, started_at, ended_at, created_at FROM streams",
@@ -950,7 +945,7 @@
   "SELECT id, user_id, slug FROM managed_streams WHERE id = ?",
   "SELECT id, user_id, slug, title, protocol, streaming_method, openre_stream_id FROM managed_streams WHERE ingest_authority = 'openre' ORDER BY id",
   "SELECT id, user_id, slug, title, sort_order, created_at FROM managed_streams",
-  "SELECT id, user_id, title FROM channels",
+  "SELECT id, user_id, title, emote_sources FROM channels",
   "SELECT id, username FROM users WHERE id = ?",
   "SELECT id, username FROM users WHERE username = ? COLLATE NOCASE",
   "SELECT id, username, display_name, avatar_url, profile_color FROM users WHERE id != ? AND is_banned = 0 AND id NOT IN (SELECT blocked_id FROM dm_blocks WHERE blocker_id = ?) AND id NOT IN (SELECT blocker_id FROM dm_blocks WHERE blocked_id = ?) AND (username LIKE ? COLLATE NOCASE OR display_name LIKE ? COLLATE NOCASE) LIMIT ?",
@@ -977,7 +972,6 @@
   "SELECT m.*, u.username, u.display_name, u.avatar_url, u.profile_color FROM dm_messages m JOIN users u ON u.id = m.sender_id WHERE m.conversation_id = ? ORDER BY m.created_at DESC LIMIT ?",
   "SELECT m.id AS msid, m.title, m.slug, m.user_id, s.id AS stream_id, s.is_live FROM managed_streams m LEFT JOIN streams s ON s.managed_stream_id = m.id AND s.is_live = 1 WHERE m.id = ?",
   "SELECT m.text, m.quality, m.said_at, m.aimed_at, u.username, u.display_name FROM arena_mic_moments m JOIN users u ON u.id = m.user_id WHERE m.said_at >= ? AND m.quality >= 7 ORDER BY m.quality DESC, m.said_at DESC LIMIT 3",
-  "SELECT ma.*, actor.username AS actor_username, target.username AS target_username FROM moderation_actions ma LEFT JOIN users actor ON ma.actor_user_id = actor.id LEFT JOIN users target ON ma.target_user_id = target.id WHERE ma.scope_type = ? AND ma.scope_id = ? ORDER BY ma.created_at DESC LIMIT ? OFFSET ?",
   "SELECT media_id FROM search_media_pushes WHERE kind = ? AND deleted = 0",
   "SELECT message FROM chat_messages WHERE stream_id = ? AND COALESCE(is_deleted, 0) = 0 AND message IS NOT NULL AND message <> '' AND timestamp >= datetime('now', ?) ORDER BY timestamp DESC LIMIT ?",
   "SELECT metadata FROM chat_messages WHERE id = ?",
@@ -1069,7 +1063,6 @@
   "SELECT t.*, u.username, u.display_name FROM transactions t JOIN users u ON t.from_user_id = u.id WHERE t.type = 'cashout' AND t.status = 'escrow' ORDER BY t.created_at ASC",
   "SELECT t.amount, t.created_at, fu.username AS from_username, fu.display_name AS from_display, tu.username AS to_username, tu.display_name AS to_display FROM transactions t LEFT JOIN users fu ON fu.id = t.from_user_id JOIN users tu ON tu.id = t.to_user_id WHERE t.type = 'donation' ORDER BY t.id DESC LIMIT 1",
   "SELECT tag_id FROM user_equipped_tag WHERE user_id = ?",
-  "SELECT tag_id, source, granted_at FROM user_tags WHERE user_id = ?",
   "SELECT target_user_id, COUNT(*) AS n FROM arena_mic_moments WHERE user_id = ? AND target_user_id IS NOT NULL GROUP BY target_user_id ORDER BY n DESC LIMIT 5",
   "SELECT text FROM arena_mic_moments WHERE user_id = ? AND created_at >= datetime('now', '-6 hours') ORDER BY id DESC LIMIT 40",
   "SELECT text FROM stream_timeline_events WHERE user_id = ? AND kind = 'speech' AND LENGTH(text) BETWEEN 30 AND 160 ORDER BY created_at DESC LIMIT 60",
@@ -1106,7 +1099,6 @@
   "SELECT user_id AS id FROM streams WHERE (started_at >= @from AND started_at < @to) OR (ended_at >= @from AND ended_at < @to) UNION SELECT streamer_id FROM follows WHERE created_at >= @from AND created_at < @to UNION SELECT id FROM users WHERE updated_at >= @from AND updated_at < @to UNION SELECT user_id FROM channels WHERE updated_at >= @from AND updated_at < @to",
   "SELECT user_id AS k, overview AS v FROM streamer_overviews WHERE overview LIKE '{%\"description\"%'",
   "SELECT user_id AS u, balance FROM channel_points WHERE streamer_id = ?",
-  "SELECT user_id FROM channel_moderators WHERE channel_id = ?",
   "SELECT user_id FROM linked_accounts WHERE service = 'network' AND (subject_id = ? OR service_user_id = ?) ORDER BY subject_id = ? DESC LIMIT 1",
   "SELECT user_id FROM linked_accounts WHERE service = 'network' AND service_user_id = ?",
   "SELECT user_id FROM linked_accounts WHERE service = 'network' AND service_user_id = ? ORDER BY id DESC LIMIT 1",
