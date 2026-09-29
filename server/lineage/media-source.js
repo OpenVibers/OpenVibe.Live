@@ -7,8 +7,6 @@
  */
 const media = require('../media-client');
 
-const MEDIA_API_KEY = process.env.MEDIA_API_KEY || '';
-
 function classify(err) {
     const status = err && err.name === 'MediaApiError' ? err.status : 0;
     return [400, 404, 410, 422].includes(status) ? { not_found: true } : { unavailable: true, detail: (err && err.message) || 'Media unavailable' };
@@ -26,8 +24,7 @@ async function read(fn) {
 /** GET /api/v2/<app>/objects/<id>: the canonical object (legacy_ref, kind, owner { subject, user_id }). */
 async function fetchObject(id, { timeoutMs = 10000 } = {}) {
     const url = `${media.MEDIA_URL}/api/v2/${encodeURIComponent(media.MEDIA_APP_ID)}/objects/${encodeURIComponent(id)}`;
-    const headers = { Accept: 'application/json' };
-    if (MEDIA_API_KEY) headers.Authorization = `Bearer ${MEDIA_API_KEY}`;
+    const headers = { Accept: 'application/json', ...(await media._authHeader()) };
     let res;
     let body = null;
     try {

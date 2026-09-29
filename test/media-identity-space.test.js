@@ -26,7 +26,6 @@ for (const f of ['server/media-client.js', 'server/media-proxy/pastes.js',
     assert.ok(!/userTokenFrom/.test(read(f)), `${f} must not forward the caller's token to Media`);
 }
 console.log("OK A: no Media call site forwards the caller's Network JWT any more");
-
 // ── B: the acting user is a Live-local id, taken from the resolved account ───────────
 {
     const media = require('../server/media-client');
@@ -43,14 +42,22 @@ console.log("OK A: no Media call site forwards the caller's Network JWT any more
     console.log('OK B: actingUserFrom yields the resolved Live-local id, or nobody');
 }
 
-// ── C: identity travels beside the app key, never as the caller's credential ─────────
-assert.ok(/Authorization: `Bearer \$\{MEDIA_API_KEY\}`/.test(client),
-    'Media calls must authenticate as this app');
+// ── C: identity travels beside Live's service token, never as the caller's credential ──
+assert.ok(/createServiceTokenClient/.test(client), 'Media calls authenticate with Live\'s Network service token');
+assert.ok(/const MEDIA_AUDIENCE = 'openvibe\.media'/.test(client) && /audience: MEDIA_AUDIENCE/.test(client),
+    'that token is for audience openvibe.media');
+assert.ok(/async function _authHeader/.test(client), '_authHeader is async (the token is fetched)');
+assert.ok(/h\.Authorization = `Bearer \$\{await client\.getToken\(\)\}`/.test(client),
+    'the Authorization header is the fetched service token');
 assert.ok(/h\['X-OV-User-Id'\] = String\(opts\.actingUser\)/.test(client),
     'the acting user must ride along as a header, not be inferred by Media');
 assert.ok(/if \(opts\.actingUser != null\)/.test(client),
     'an anonymous call must not claim to act as anyone');
-console.log('OK C: app key authenticates, X-OV-User-Id names the acting user');
+const mediaSource = read('server/lineage/media-source.js');
+assert.ok(/await media\._authHeader\(\)/.test(mediaSource),
+    'media-source reuses media-client\'s token helper (one client)');
+assert.ok(!/Authorization/.test(mediaSource), 'media-source names no credential of its own');
+console.log('OK C: service token authenticates, X-OV-User-Id names the acting user');
 
 // ── D: the commenter's own address reaches Media ─────────────────────────────────────
 assert.ok(/headers\['X-Forwarded-For'\] = req\.ip/.test(client),

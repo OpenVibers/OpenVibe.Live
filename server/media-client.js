@@ -5,23 +5,30 @@
  * "Media API v1"). All VOD / clip / paste / file / thumbnail storage and processing
  * lives in Media now; Live talks to it via this module.
  *
- * Auth: `Authorization: Bearer <MEDIA_API_KEY>` (per-app server key). For a request
- * made on behalf of a browser user, add `actingUser` (their LIVE-LOCAL user id) — Media
- * then applies that user's ACLs and stores their id. See _authHeader for why the id is
- * sent explicitly rather than left for Media to read out of the caller's Network JWT.
+ * Auth: `Authorization: Bearer <service token>`. Live authenticates to Media with its own
+ * Network service principal (client credentials for audience openvibe.media; grants
+ * media.object.read/list/upload/delete on namespace live), the same construction
+ * server/openre/openre-client.js uses for OpenRe. For a request made on behalf of a browser
+ * user, add `actingUser` (their LIVE-LOCAL user id) — Media then applies that user's ACLs and
+ * stores their id. See _authHeader for why the id is sent explicitly rather than left for
+ * Media to read out of the caller's Network JWT.
  *
  * Env:
- *   MEDIA_URL         internal base URL     (default http://127.0.0.1:4100)
- *   MEDIA_PUBLIC_URL  public serving base   (default https://openvibe.media)
- *   MEDIA_APP_ID      tenant/app id         (default live)
- *   MEDIA_API_KEY     per-app server key
+ *   MEDIA_URL               internal base URL     (default http://127.0.0.1:4100)
+ *   MEDIA_PUBLIC_URL        public serving base   (default https://openvibe.media)
+ *   MEDIA_APP_ID            tenant/app id         (default live)
+ *   OV_NETWORK_INTERNAL_URL token endpoint base   (default http://127.0.0.1:4000)
+ *   OV_OAUTH_CLIENT_ID      OAuth client id       (default live)
+ *   OV_OAUTH_CLIENT_SECRET  OAuth client secret   (unset = no Authorization header)
  */
 'use strict';
+
+const { createServiceTokenClient } = require('openvibe-sdk/auth');
 
 const MEDIA_URL = (process.env.MEDIA_URL || 'http://127.0.0.1:4100').replace(/\/+$/, '');
 const MEDIA_PUBLIC_URL = (process.env.MEDIA_PUBLIC_URL || 'https://openvibe.media').replace(/\/+$/, '');
 const MEDIA_APP_ID = process.env.MEDIA_APP_ID || 'live';
-const MEDIA_API_KEY = process.env.MEDIA_API_KEY || '';
+const MEDIA_AUDIENCE = 'openvibe.media';
 
 const API_BASE = `${MEDIA_URL}/api/v1/${MEDIA_APP_ID}`;
 const API_V2_BASE = `${MEDIA_URL}/api/v2/${MEDIA_APP_ID}`;   // media jobs (GET /jobs/:id)
@@ -44,13 +51,40 @@ class MediaApiError extends Error {
  * coincidence, so a comment posted by Maticus (local 80, network 57) was filed under
  * user 57 and rendered as fakefitz — and the same mismatch decided who could open a
  * private paste or VOD. Sending the local id explicitly keeps one id space end to end.
+ *
+ * The credential is Live's own Network service token (audience openvibe.media), fetched lazily
+ * and cached; when no client secret is configured there is none, and no Authorization is sent.
  */
-function _authHeader(opts = {}) {
-    if (!MEDIA_API_KEY) return {};
-    const h = { Authorization: `Bearer ${MEDIA_API_KEY}` };
+async function _authHeader(opts = {}) {
+    const h = {};
+    const client = serviceTokens();
+    if (client) h.Authorization = `Bearer ${await client.getToken()}`;
     if (opts.actingUser != null) h['X-OV-User-Id'] = String(opts.actingUser);
     return h;
 }
+
+/**
+ * The Network service principal for audience openvibe.media, built once and shared (the SDK caches
+ * one token per audience, refreshed 60 s before expiry). Null when unconfigured, and under
+ * LIVE_DRILL — a restore drill fetches nothing. Nothing is fetched at module load: this is lazy.
+ */
+let tokens = null;
+function serviceTokens() {
+    if (tokens) return tokens;
+    const clientSecret = process.env.OV_OAUTH_CLIENT_SECRET || '';
+    if (!clientSecret || require('./drill').enabled) return null;
+    const networkInternalUrl = String(process.env.OV_NETWORK_INTERNAL_URL || 'http://127.0.0.1:4000').replace(/\/+$/, '');
+    tokens = createServiceTokenClient({
+        tokenUrl: `${networkInternalUrl}/oauth/token`,
+        clientId: process.env.OV_OAUTH_CLIENT_ID || 'live',
+        clientSecret,
+        audience: MEDIA_AUDIENCE,
+    });
+    return tokens;
+}
+
+/** Drop the cached service-token client (tests flip the OAuth env): the next call rebuilds it. */
+function _reset() { tokens = null; }
 
 function _qs(query) {
     if (!query) return '';
@@ -68,10 +102,11 @@ function _qs(query) {
  * Returns parsed JSON (or null for empty responses). Throws MediaApiError on !ok.
  */
 async function request(method, apiPath, { body, query, actingUser, headers = {}, timeoutMs = 30000, base = API_BASE } = {}) {
+    const auth = await _authHeader({ actingUser });
     const url = `${base}${apiPath}${_qs(query)}`;
     const opts = {
         method,
-        headers: { Accept: 'application/json', ..._authHeader({ actingUser }), ...headers },
+        headers: { Accept: 'application/json', ...auth, ...headers },
     };
     if (body !== undefined && body !== null) {
         if (typeof FormData !== 'undefined' && body instanceof FormData) {
@@ -333,7 +368,7 @@ function publicUrl(u) {
 async function proxy(req, res, apiPath, { actingUser, method, query, body } = {}) {
     const m = method || req.method;
     const url = `${API_BASE}${apiPath}${_qs({ ...(req.query || {}), ...(query || {}) })}`;
-    const headers = { Accept: 'application/json', ..._authHeader({ actingUser }) };
+    const headers = { Accept: 'application/json', ...(await _authHeader({ actingUser })) };
     // Media applies per-IP comment cooldowns and stores the address for moderation, and
     // it trusts X-Forwarded-For. Without this every browser request arrived as 127.0.0.1
     // — one shared cooldown bucket for the whole site, and an address column that
@@ -409,7 +444,7 @@ module.exports = {
     signedMediaUrl,
     MEDIA_URL, MEDIA_PUBLIC_URL, MEDIA_APP_ID,
     MediaApiError,
-    request, proxy, actingUserFrom, _formData,
+    request, proxy, actingUserFrom, _formData, _authHeader, _reset, MEDIA_AUDIENCE,
     // vods
     createVod, ingestRtmp, ingestRtpStart, ingestRtpStop,
     uploadVodChunk, completeVodChunks, finalizeVod,

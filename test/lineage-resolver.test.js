@@ -22,7 +22,7 @@ fs.writeFileSync(path.join(tmp, 'network.pem'), keys.publicKey);
 process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.OV_NETWORK_PUBLIC_KEY = path.join(tmp, 'network.pem');
 process.env.OV_NETWORK_URL = 'https://openvibe.network';
-process.env.MEDIA_API_KEY = 'media-key';
+process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.MEDIA_APP_ID = 'live';
 const log = console.log;
 console.log = () => {};
@@ -62,7 +62,7 @@ const mediaState = { down: false, calls: [] };
 const mediaServer = http.createServer((req, res) => {
     const url = decodeURIComponent(req.url.split('?')[0]);
     mediaState.calls.push(url);
-    assert.strictEqual(req.headers.authorization, 'Bearer media-key', 'Live reads Media as its app');
+    assert.strictEqual(req.headers.authorization, 'Bearer svc-live-media-token', 'Live reads Media with its service token');
     const send = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
     if (mediaState.down) return send(503, { error: 'down' });
     let m;
@@ -70,6 +70,24 @@ const mediaServer = http.createServer((req, res) => {
     if ((m = /^\/api\/v1\/live\/clips\/(\d+)$/.exec(url))) return CLIPS[m[1]] ? send(200, CLIPS[m[1]]) : send(404, { error: 'Clip not found' });
     if ((m = /^\/api\/v2\/live\/objects\/(.+)$/.exec(url))) return OBJECTS[m[1]] ? send(200, OBJECTS[m[1]]) : send(404, { code: 'media.object.not_found' });
     send(404, { error: 'no route' });
+});
+
+// Network's client-credentials endpoint: Live exchanges its OV_OAUTH_CLIENT_SECRET for a token for
+// audience openvibe.media, which every Media call above must then carry.
+let tokenRequests = 0;
+const tokenServer = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (c) => { raw += c; });
+    req.on('end', () => {
+        tokenRequests++;
+        const f = new URLSearchParams(raw);
+        assert.strictEqual(req.url, '/oauth/token');
+        assert.strictEqual(f.get('grant_type'), 'client_credentials');
+        assert.strictEqual(f.get('client_id'), 'live');
+        assert.strictEqual(f.get('audience'), 'openvibe.media');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ access_token: 'svc-live-media-token', token_type: 'Bearer', expires_in: 300, scope: 'media.object.read media.object.list' }));
+    });
 });
 
 // Every contract answer is checked against lineage.resolution@1 (openvibe-contracts 0.32.0+, which Live pins).
@@ -87,7 +105,10 @@ function checkContract(out, label) {
 
 (async () => {
     await new Promise((r) => mediaServer.listen(0, '127.0.0.1', r));
+    await new Promise((r) => tokenServer.listen(0, '127.0.0.1', r));
     process.env.MEDIA_URL = `http://127.0.0.1:${mediaServer.address().port}`;
+    process.env.OV_NETWORK_INTERNAL_URL = `http://127.0.0.1:${tokenServer.address().port}`;
+    process.env.OV_OAUTH_CLIENT_SECRET = 'k'.repeat(40);
 
     const db = require('../server/db/database');
     db.initDb();
@@ -318,6 +339,7 @@ function checkContract(out, label) {
         }
     }
 
+    assert.strictEqual(tokenRequests, 1, 'the service token is fetched once and reused for every Media call');
     console.log = log;
     if (!contractKnown) console.log(`lineage contract validation: skipped (installed openvibe-contracts ${require('openvibe-contracts/package.json').version} predates ${RESOLUTION})`);
     console.log(`lineage resolver: all checks passed${contractKnown ? ` (${validated} answers validated against ${RESOLUTION})` : ''}`);

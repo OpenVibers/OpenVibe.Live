@@ -142,7 +142,7 @@ npm run init-db
 npm run dev
 ```
 
-Minimum `.env`: `BASE_URL`, `JWT_SECRET`, `OV_NETWORK_URL`, `OV_NETWORK_INTERNAL_URL`, `OV_OAUTH_CLIENT_ID`, `OV_OAUTH_CLIENT_SECRET`, `OV_NETWORK_PUBLIC_KEY`, `MEDIA_URL`, `MEDIA_PUBLIC_URL`, `MEDIA_API_KEY`, `MEDIA_WEBHOOK_SECRET`.
+Minimum `.env`: `BASE_URL`, `JWT_SECRET`, `OV_NETWORK_URL`, `OV_NETWORK_INTERNAL_URL`, `OV_OAUTH_CLIENT_ID`, `OV_OAUTH_CLIENT_SECRET`, `OV_NETWORK_PUBLIC_KEY`, `MEDIA_URL`, `MEDIA_PUBLIC_URL`, `MEDIA_WEBHOOK_SECRET`. Media calls use Live's service token from that OAuth client (audience `openvibe.media`, namespace `live`, grants `media.object.read`/`list`/`upload`/`delete`).
 
 ---
 

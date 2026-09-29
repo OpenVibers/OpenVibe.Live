@@ -47,7 +47,7 @@ cp .env.example .env
 - `OV_NETWORK_PUBLIC_KEY` — path to the Network RS256 public key (offline JWT verification).
 - `MEDIA_URL` — internal Media API base (default `http://127.0.0.1:4100`).
 - `MEDIA_PUBLIC_URL` — public Media host (default `https://openvibe.media`).
-- `MEDIA_APP_ID` (`live`) and `MEDIA_API_KEY` — Live's Media tenant credentials.
+- `MEDIA_APP_ID` (`live`) — Live's Media tenant. Media calls authenticate with Live's service token (`OV_OAUTH_CLIENT_ID`/`OV_OAUTH_CLIENT_SECRET`, audience `openvibe.media`, namespace `live`), which needs the `media.object.read`, `media.object.list`, `media.object.upload` and `media.object.delete` grants.
 - `MEDIA_WEBHOOK_SECRET` — HMAC secret for Media → Live webhooks.
 
 #### Public key for token verification
@@ -97,7 +97,6 @@ OV_NETWORK_PUBLIC_KEY=./data/keys/openvibe-network-public.pem
 MEDIA_URL=http://127.0.0.1:4100
 MEDIA_PUBLIC_URL=http://127.0.0.1:4100
 MEDIA_APP_ID=live
-MEDIA_API_KEY=dev-live-key
 MEDIA_WEBHOOK_SECRET=dev-webhook-secret
 ```
 
@@ -156,7 +155,7 @@ Completion arrives via the `vod.ready` / `clip.ready` webhooks.
 
 - **Auth fails**: `OV_NETWORK_PUBLIC_KEY` missing/invalid, or Network unreachable.
 - **Invalid redirect_uri**: local callback URIs not registered on the `live` OAuth client in Network.
-- **VOD/clip/paste endpoints return 502**: OpenVibe.Media is down or `MEDIA_URL`/`MEDIA_API_KEY` are wrong.
+- **VOD/clip/paste endpoints return 502**: OpenVibe.Media is down, `MEDIA_URL` is wrong, or Live's service token lacks the `media.object.*` grants.
 - **Webhook 401s in Media logs**: `MEDIA_WEBHOOK_SECRET` mismatch.
 - **OpenCoins balance always 0 / spends fail**: `OV_NETWORK_INTERNAL_URL`/`OV_OAUTH_CLIENT_SECRET` wrong, or the user has no linked Network account.
 - **CORS rejects browser traffic**: `BASE_URL` set to localhost in production.

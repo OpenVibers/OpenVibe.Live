@@ -4,7 +4,7 @@
  *
  * Boots the real server as a restore-drill instance (test/security-crawl.js) with a sentinel value in
  * every secret environment variable Live reads (the Network OAuth client secret, the internal API
- * keys, Media's key and webhook/event secrets, the Events and OpenRe subscription secrets, TURN,
+ * keys, Media's webhook/event secrets, the Events and OpenRe subscription secrets, TURN,
  * PayPal, the admin password, GitHub tokens, the ops webhook) and in every secret site setting an
  * owner can store (GIF, TTS, AI, Twitch/Kick/YouTube, soundboard keys, the Discord and ops
  * webhooks), then requests every GET route Express knows, the pages, the probes (/api/ready,
@@ -31,7 +31,6 @@ const ENV = {
     OV_OAUTH_CLIENT_SECRET: 'sentinel-not-a-secret-oauth-client',
     INTERNAL_API_KEY: 'sentinel-not-a-secret-internal-api-key',
     OV_INTERNAL_KEY: 'sentinel-not-a-secret-ov-internal-key',
-    MEDIA_API_KEY: 'sentinel-not-a-secret-media-api-key',
     MEDIA_WEBHOOK_SECRET: 'sentinel-not-a-secret-media-webhook',
     MEDIA_EVENTS_SECRET: 'sentinel-not-a-secret-media-events',
     LIVE_EVENTS_SECRET: 'sentinel-not-a-secret-live-events',
