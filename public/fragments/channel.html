@@ -1,4 +1,6 @@
 <!-- #page-channel markup, loaded on first visit to the route (public/features.json). The server inlines it for direct visits. -->
+        <!-- Chat hidden (desktop): the stream or offline page takes the full width; this tab at the window edge brings it back. -->
+        <button type="button" class="ch-chat-reopen" id="ch-chat-reopen" onclick="toggleChannelChat(false)" title="Show chat" hidden><i class="fa-solid fa-angles-left"></i><i class="fa-solid fa-comments"></i><span>Chat</span></button>
         <!-- Live Stream Tabs (this channel's concurrent streams) -->
         <div class="live-stream-tabs" id="live-stream-tabs" style="display:none" role="tablist" aria-label="Live streams">
             <div class="live-tabs-scroll" id="live-tabs-scroll"></div>
@@ -144,6 +146,7 @@
                 <!-- Chat Sidebar -->
                 <div class="chat-sidebar" id="chat-sidebar">
                     <div class="chat-header">
+                        <button type="button" class="chat-settings-btn ch-chat-collapse" onclick="toggleChannelChat(true)" title="Hide chat" aria-label="Hide chat"><i class="fa-solid fa-angles-right"></i></button>
                         <span>STREAM CHAT</span>
                         <div class="chat-header-actions">
                             <button class="chat-settings-btn" onclick="toggleChatUsers(this)" title="Users">
@@ -268,6 +271,7 @@
             <!-- Streamer's persistent chat (works while offline) — sidebar, mirrors live layout -->
             <div class="offline-global-chat chat-sidebar" id="offline-global-chat">
                 <div class="chat-header">
+                    <button type="button" class="chat-settings-btn ch-chat-collapse" onclick="toggleChannelChat(true)" title="Hide chat" aria-label="Hide chat"><i class="fa-solid fa-angles-right"></i></button>
                     <span><i class="fa-solid fa-comments"></i> STREAM CHAT</span>
                     <div class="chat-header-actions">
                         <button class="chat-settings-btn" onclick="toggleChatUsers(this)" title="Users">

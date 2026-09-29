@@ -563,7 +563,27 @@ async function setChannelClipsOfPage(page) {
     if (top) top.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+/** Hide or show the channel page's chat column on desktop (the stream or offline page then takes the full width). Remembered per browser. */
+function toggleChannelChat(hide) {
+    const page = document.getElementById('page-channel');
+    if (!page) return;
+    const next = typeof hide === 'boolean' ? hide : !page.classList.contains('chat-collapsed');
+    const was = page.classList.contains('chat-collapsed');
+    page.classList.toggle('chat-collapsed', next);
+    if (was && !next) { page.classList.add('chat-revealing'); setTimeout(() => page.classList.remove('chat-revealing'), 400); }
+    const re = document.getElementById('ch-chat-reopen');
+    if (re) re.hidden = !next;
+    try { localStorage.setItem('ov_ch_chat_hidden', next ? '1' : '0'); } catch { /* private mode */ }
+    if (was !== next) window.dispatchEvent(new Event('resize'));   // the player and the diagrams re-measure
+}
+function _restoreChannelChat() {
+    let hidden = false;
+    try { hidden = localStorage.getItem('ov_ch_chat_hidden') === '1'; } catch { /* */ }
+    toggleChannelChat(hidden);
+}
+
 async function loadChannelPage(username, managedStreamRef = null, legacySessionId = null) {
+    _restoreChannelChat();
     try {
         const isNewChannel = currentChannelUsername !== username;
         currentChannelUsername = username;

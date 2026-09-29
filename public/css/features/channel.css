@@ -73,7 +73,9 @@
     height: calc(100vh - var(--navbar-h) - 44px); /* account for live tabs bar when visible */
 }
 .stream-main {
-    flex: 1; overflow-y: auto;
+    /* min-width 0: at 1181px+ it stops scrolling on its own (overflow visible), and a flex item then refuses to
+       shrink below its content (the one-row tabs), pushing the chat off the right edge. */
+    flex: 1; min-width: 0; overflow-y: auto;
     display: flex; flex-direction: column;
 }
 
@@ -1458,3 +1460,25 @@ body.controls-docked .messenger-toggle { z-index: 1100; }
     .ch-social-row input[data-f=url] { grid-column: 1 / -1; }
     .ch-socials-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Hide / show the chat (desktop) ─────────────────────────── */
+.chat-header .ch-chat-collapse { margin-right: 2px; }
+@media (min-width: 769px) {
+    #page-channel.chat-collapsed .stream-layout > .chat-sidebar,
+    #page-channel.chat-collapsed .chat-resize-handle { display: none !important; }
+    #page-channel.chat-revealing .stream-layout > .chat-sidebar { animation: chChatReveal .32s cubic-bezier(.22,1,.36,1); }
+}
+@keyframes chChatReveal { from { opacity: 0; transform: translateX(36px); } to { opacity: 1; transform: none; } }
+.ch-chat-reopen {
+    position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 60;   /* mid-edge: clear of the header's buttons */
+    display: inline-flex; align-items: center; gap: 7px; padding: 9px 12px 9px 12px;
+    border: 1px solid var(--border); border-right: 0; border-radius: 12px 0 0 12px;
+    background: color-mix(in srgb, var(--bg-card, var(--bg-secondary)) 90%, transparent); backdrop-filter: blur(10px);
+    color: var(--text-secondary); font: 700 0.8rem/1 inherit; cursor: pointer; box-shadow: var(--shadow);
+    transition: color .15s, border-color .15s, padding-right .18s ease;
+}
+.ch-chat-reopen:hover { color: var(--text-primary); border-color: var(--accent); padding-right: 16px; }
+.ch-chat-reopen .fa-comments { color: var(--accent); }
+.ch-chat-reopen[hidden] { display: none; }
+@media (max-width: 768px) { .ch-chat-collapse, .ch-chat-reopen { display: none !important; } }
+@media (prefers-reduced-motion: reduce) { #page-channel.chat-revealing .stream-layout > .chat-sidebar { animation: none; } }
