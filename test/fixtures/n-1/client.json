@@ -1,16 +1,16 @@
 {
  "service": "live",
- "release": "2b5df7c616457bd99d18130870159123b819f993",
- "recorded_at": "2026-09-29T00:50:38.476Z",
+ "release": "65849994c0527fa0e0335b9f7e6a9a5abcb6ac60",
+ "recorded_at": "2026-09-29T02:08:45.492Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "2b5df7c61645",
-  "released_at": "2026-09-29T00:50:07.000Z",
-  "booted_at": "2026-09-29T00:50:35.363Z",
+  "release": "65849994c052",
+  "released_at": "2026-09-29T02:08:14.000Z",
+  "booted_at": "2026-09-29T02:08:32.337Z",
   "contracts_version": "0.71.0",
   "packages": {
-   "openvibe-shared": "1.29.2",
+   "openvibe-shared": "1.30.1",
    "openvibe-sdk": "0.16.0"
   },
   "min_client_release": null,
@@ -18,15 +18,15 @@
   "components": {
    "styles": {
     "kind": "style",
-    "version": "2ac1a7d60628"
+    "version": "cbbe4988c325"
    },
    "shell": {
     "kind": "script",
-    "version": "add7591b5cbd"
+    "version": "00dfc3ef5815"
    },
    "server": {
     "kind": "server",
-    "version": "0a2a64444801"
+    "version": "28dcd148f705"
    }
   },
   "assets": {
@@ -121,9 +121,9 @@
     "integrity": "sha384-amhdltUcvPHMlKbKgAysH1oVa5LXmXYvie7lrfnBB7+hnqpcSiFHfLUDcwnSznho"
    },
    "/css/i18n-star.css": {
-    "url": "/css/i18n-star.css?v=3a854948d72f",
+    "url": "/css/i18n-star.css?v=06f6715edaf0",
     "component": "styles",
-    "integrity": "sha384-/t8NyMvWUsTmPjLVxYRBh7GlOKSe9o07vFfclZa/bO1AXE/yxM0t4yCExEl8NRxk"
+    "integrity": "sha384-/W7r8x6i+gt3laNA2pA1/tHpPRoQrQ8srN7ajHwI8Jb5MIbSpgLE1dd35uyvp561"
    },
    "/css/media-player.css": {
     "url": "/css/media-player.css?v=7b7fdf4b15e5",
@@ -146,9 +146,9 @@
     "integrity": "sha384-iVDuJckwXLQPfhSFXjJKmyIIXM+XbRccOWefcHh1vChYrlfwFWAgWXinI4iihWor"
    },
    "/css/style.css": {
-    "url": "/css/style.css?v=1f904f38377a",
+    "url": "/css/style.css?v=2352265f8a51",
     "component": "styles",
-    "integrity": "sha384-g32EGkh1nfpTvSzuxFsv2OGHkJGfQlngBpVGtYYywRG70oWELYWr14X4PTDkTERi"
+    "integrity": "sha384-lwaEKfztAw8CFsC1Q68NkptYtWB5P7RD7VN57ValoMfdy2EE0SoR/mtLXGVvprmO"
    },
    "/css/vendor/fontawesome-6.5.1.min.css": {
     "url": "/css/vendor/fontawesome-6.5.1.min.css?v=d6c948f648fd",
@@ -7162,7 +7162,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/style.css?v=1f904f38377a",
+   "path": "/css/style.css?v=2352265f8a51",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7206,7 +7206,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/i18n-star.css?v=3a854948d72f",
+   "path": "/css/i18n-star.css?v=06f6715edaf0",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7459,7 +7459,7 @@
   },
   {
    "method": "GET",
-   "path": "/shared/web-runtime.js?v=320c4c54617c",
+   "path": "/shared/web-runtime.js?v=b887705fea9a",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7492,7 +7492,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app.js?v=2b3a4e2cc1c9",
+   "path": "/js/app.js?v=026aa26f82e6",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7525,7 +7525,18 @@
   },
   {
    "method": "GET",
-   "path": "/js/chat.js?v=66cb9f1c60ab",
+   "path": "/js/lang-detect.js?v=948a4695c0c6",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/chat.js?v=3c4e68a87c4e",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -8533,6 +8544,16 @@
   {
    "method": "POST",
    "path": "/api/i18n/translate",
+   "auth": "anon",
+   "status": 503,
+   "kind": "json",
+   "from": [
+    "public/js/chat.js"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/i18n/translate-batch",
    "auth": "anon",
    "status": 503,
    "kind": "json",
