@@ -21,8 +21,9 @@
  * kept rows point at nobody.
  *
  * Never touched: the frozen tables (vods, clips, pastes, paste_likes, paste_comments, comments), which Media and
- * Community own and erase themselves. A staged chat table (chat-tables.js) is erased by whichever side writes it now:
- * here while Live does (the capture relays the change to Chat's copy), by Chat once Chat does (its mirror relays it back).
+ * Community own and erase themselves. The six chat tables (channel_moderators, channel_moderation_settings, emotes,
+ * user_tags, chat_ai_summaries, chat_timeline_events) are OpenVibe.Chat's (roadmap T3) and erased by its eraser
+ * (Chat server/chat/account-data.js), never here.
  *
  * Applied once per export or deletion (account_data_events); a redelivery resends only what did not reach Network.
  */
@@ -44,8 +45,8 @@ const EXTRA = [['channel_points', 'streamer_id'], ['arena_mic_moments', 'target_
 const SECRET_COL = /(^|_)(token|tokens|secret|hash|password|code|key|keys|p256dh|auth|cookie|cookies|credentials)($|_)/i;
 const ROW_LIMIT = 2000;
 const PART_BUDGET = 18 * 1024 * 1024;
-
-function staged() { return new Set(Object.keys(require('../chat/chat-tables').TABLES)); }
+// OpenVibe.Chat owns these and erases them itself (roadmap T3); Live must not touch them.
+const CHAT_TABLES = new Set(['channel_moderators', 'channel_moderation_settings', 'emotes', 'user_tags', 'chat_ai_summaries', 'chat_timeline_events']);
 
 function ensureSchema(d) {
     d.exec(`CREATE TABLE IF NOT EXISTS account_data_events (
@@ -128,7 +129,6 @@ function eraseUsers(d, userIds, { now = new Date().toISOString() } = {}) {
     const erased = {};
     const retained = {};
     const bump = (o, k, n) => { if (n) o[k] = (o[k] || 0) + n; };
-    const stagedTables = staged();
     const cols = personColumns(d);
     const usersCols = d.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
     const onBilling = (() => { try { return require('../monetization/money-authority').onBilling(); } catch { return false; } })();
@@ -137,7 +137,8 @@ function eraseUsers(d, userIds, { now = new Date().toISOString() } = {}) {
             for (const [t, list] of cols) {
                 const where = list.map((c) => `${q(c.col)} = ?`).join(' OR ');
                 if (RETAIN.has(t)) { bump(retained, t, d.prepare(`SELECT COUNT(*) AS n FROM ${q(t)} WHERE ${where}`).get(...list.map(() => uid)).n); continue; }
-                if (stagedTables.has(t) && require('../chat/chat-tables').authority(t) !== 'live') { bump(retained, 'left_for_chat', d.prepare(`SELECT COUNT(*) AS n FROM ${q(t)} WHERE ${where}`).get(...list.map(() => uid)).n); continue; }
+                // OpenVibe.Chat's tables: its own eraser deletes them; Live reports the rows it left for it.
+                if (CHAT_TABLES.has(t)) { bump(retained, 'left_for_chat', d.prepare(`SELECT COUNT(*) AS n FROM ${q(t)} WHERE ${where}`).get(...list.map(() => uid)).n); continue; }
                 for (const c of list) {
                     if (c.action === 'null') {
                         const info = d.prepare(`PRAGMA table_info(${q(t)})`).all().filter((x) => NAME_COLS.includes(x.name));

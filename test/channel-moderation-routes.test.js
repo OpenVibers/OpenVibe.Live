@@ -19,12 +19,42 @@ const http = require('http');
 
 process.env.DB_PATH = path.join(os.tmpdir(), `ov-chanmod-${process.pid}.db`);
 process.env.NODE_ENV = 'test';
+// Live reads channel_moderators through OpenVibe.Chat (roadmap T3), so the routes need a stub Chat
+// (its internal read API) and a stub Network token endpoint. Fixed ports, env set before any require.
+const CHAT_PORT = 45000 + (process.pid % 400);
+const NET_PORT = CHAT_PORT + 1;
+process.env.OV_OAUTH_CLIENT_SECRET = 'chanmod-secret';
+process.env.OV_CHAT_INTERNAL_URL = `http://127.0.0.1:${CHAT_PORT}`;
+process.env.OV_NETWORK_INTERNAL_URL = `http://127.0.0.1:${NET_PORT}`;
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 
 const db = require('../server/db/database');
 db.initDb();
 const raw = db.getDb();
+
+const netStub = http.createServer((req, res) => {
+    let body = ''; req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+        res.setHeader('Content-Type', 'application/json');
+        if (req.url === '/oauth/token') return res.end(JSON.stringify({ access_token: 'stub', expires_in: 300 }));
+        res.statusCode = 404; res.end('{}');
+    });
+});
+const chatStub = http.createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    const mm = String(req.url).match(/^\/internal\/moderation\/channels\/(\d+)$/);
+    if (mm) {
+        const cid = Number(mm[1]);
+        return res.end(JSON.stringify({
+            ok: true,
+            settings: db.getChannelModerationSettings(cid) || {},
+            moderator_ids: raw.prepare('SELECT user_id FROM channel_moderators WHERE channel_id = ? ORDER BY id').all(cid).map((r) => r.user_id),
+        }));
+    }
+    res.statusCode = 404; res.end('{}');
+});
+netStub.listen(NET_PORT); chatStub.listen(CHAT_PORT);
 
 const auth = require('../server/auth/auth');
 auth.requireAuth = (req, res, next) => {
@@ -78,7 +108,9 @@ async function check(name, fn) {
 }
 
 (async () => {
-    await new Promise((r) => server.once('listening', r));
+    const listening = (s) => (s.listening ? Promise.resolve() : new Promise((r) => s.once('listening', r)));
+    await listening(server);
+    await Promise.all([listening(netStub), listening(chatStub)]);
     const settings = () => db.getChannelModerationSettings(channel.id);
 
     await check('the dashboard saves slow mode in slow_mode_seconds (the old slowmode_seconds too)', async () => {

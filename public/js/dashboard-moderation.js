@@ -227,7 +227,7 @@ async function loadDashModeration() {
     body.innerHTML = '<p class="muted">Loading moderation tools...</p>';
 
     try {
-        const data = await api('/channels/moderation/mine');
+        const data = await api('/chat/channels/moderation/mine');
         dashModerationChannels = data.channels || [];
         renderDashModerationChannels(dashModerationChannels);
     } catch (err) {
@@ -244,7 +244,7 @@ async function dashLoadChannelModerationLogs(channelId) {
     if (!target) return;
 
     try {
-        const data = await api(`/channels/${channelId}/moderation/logs?limit=12`);
+        const data = await api(`/chat/channels/${channelId}/moderation/logs?limit=12`);
         const actions = data.actions || [];
         target.innerHTML = actions.length ? actions.map((action) => `
             <div class="dash-mod-log-entry">
@@ -264,7 +264,7 @@ window.dashAddChannelModerator = async function dashAddChannelModerator(channelI
     if (!username) return toast('Enter a username to add.', 'error');
 
     try {
-        await api(`/channels/${channelId}/mods`, {
+        await api(`/chat/channels/${channelId}/mods`, {
             method: 'POST',
             body: { username },
         });
@@ -279,7 +279,7 @@ window.dashRemoveChannelModerator = async function dashRemoveChannelModerator(ch
     if (!confirm(`Remove ${username} as a channel moderator?`)) return;
 
     try {
-        await api(`/channels/${channelId}/mods/${userId}`, { method: 'DELETE' });
+        await api(`/chat/channels/${channelId}/mods/${userId}`, { method: 'DELETE' });
         toast(`${username} removed`, 'success');
         await dashReloadModeration();
     } catch (err) {
@@ -289,7 +289,7 @@ window.dashRemoveChannelModerator = async function dashRemoveChannelModerator(ch
 
 window.dashSaveChannelModerationSettings = async function dashSaveChannelModerationSettings(channelId) {
     try {
-        await api(`/channels/${channelId}/moderation`, {
+        await api(`/chat/channels/${channelId}/moderation`, {
             method: 'PUT',
             body: {
                 slow_mode_seconds: Number(document.getElementById(`dash-mod-slow-${channelId}`)?.value || 0),
@@ -351,7 +351,7 @@ window.dashSearchChannelChat = async function dashSearchChannelChat(channelId) {
         if (query) params.set('q', query);
         if (userId) params.set('user_id', userId);
 
-        const data = await api(`/channels/${channelId}/moderation/chat-search?${params}`);
+        const data = await api(`/chat/channels/${channelId}/moderation/chat-search?${params}`);
         const messages = data.messages || [];
 
         resultTarget.innerHTML = messages.length ? messages.map((message) => `
@@ -373,7 +373,7 @@ window.dashDeleteChannelMessage = async function dashDeleteChannelMessage(channe
     if (!confirm('Delete this chat message?')) return;
 
     try {
-        await api(`/channels/${channelId}/moderation/messages/${messageId}/delete`, { method: 'POST' });
+        await api(`/chat/channels/${channelId}/moderation/messages/${messageId}/delete`, { method: 'POST' });
         toast('Message deleted', 'success');
         await dashLoadChannelModerationLogs(channelId);
         await window.dashSearchChannelChat(channelId);

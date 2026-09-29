@@ -313,7 +313,7 @@ router.post('/', requireAuth, emoteUpload.single('image'), async (req, res) => {
                 return res.status(404).json({ error: 'Channel not found' });
             }
             const settings = db.getChannelModerationSettings(channel.id);
-            const isMod = permissions.canModerateChannel(req.user, channel.id);
+            const isMod = await permissions.canModerateChannel(req.user, channel.id);
             if (!settings.custom_emotes_enabled && !isMod) {
                 fs.unlinkSync(req.file.path);
                 return res.status(403).json({ error: 'This streamer has disabled viewer emote uploads.' });
@@ -425,7 +425,7 @@ router.patch('/:id', requireAuth, async (req, res) => {
         if (!allowed) {
             const ownerId = emote.channel_owner_id || emote.user_id;
             const channel = db.getChannelByUserId(ownerId);
-            if (channel && permissions.canModerateChannel(req.user, channel.id)) allowed = true;
+            if (channel && await permissions.canModerateChannel(req.user, channel.id)) allowed = true;
         }
         if (!allowed) return res.status(403).json({ error: 'Not your emote' });
 
@@ -483,7 +483,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
         if (!allowed) {
             const ownerId = emote.channel_owner_id || emote.user_id;
             const channel = db.getChannelByUserId(ownerId);
-            if (channel && permissions.canModerateChannel(req.user, channel.id)) allowed = true;
+            if (channel && await permissions.canModerateChannel(req.user, channel.id)) allowed = true;
         }
         if (!allowed) {
             return res.status(403).json({ error: 'Not your emote' });

@@ -291,6 +291,8 @@ function create(ChatServer) {
         // ── Pushes to browsers (Chat delivers) ──
         broadcastToStream: send('broadcastToStream'),
         broadcastToChannelRoom: send('broadcastToChannelRoom'),
+        /** A donation / goal alert: Chat resolves the sound from its own settings row and plays it. */
+        playAlertSound: send('playAlertSound'),
         broadcastGlobal: send('broadcastGlobal'),
         broadcastAll: send('broadcastAll'),
         forwardToGlobal: send('forwardToGlobal'),

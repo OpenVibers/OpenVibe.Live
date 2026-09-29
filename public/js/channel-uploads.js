@@ -256,7 +256,7 @@
         body.innerHTML = '<div class="cu-empty">Loading channel settings…</div>';
         let ch = null;
         try {
-            const r = await fetch('/api/channels/moderation/mine', { headers: { Authorization: `Bearer ${token()}` } });
+            const r = await fetch('/api/chat/channels/moderation/mine', { headers: { Authorization: `Bearer ${token()}` } });
             const data = await r.json();
             const list = data.channels || [];
             // Prefer the channel currently being viewed (works offline), else own channel.
@@ -373,7 +373,7 @@
         const btn = g('#cu-set-save');
         btn.disabled = true;
         try {
-            const r = await fetch(`/api/channels/${channelId}/moderation`, {
+            const r = await fetch(`/api/chat/channels/${channelId}/moderation`, {
                 method: 'PUT', headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
             });
             const data = await r.json();

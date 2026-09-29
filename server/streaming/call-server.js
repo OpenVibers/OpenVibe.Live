@@ -345,7 +345,7 @@ class CallServer {
         if (permissions.can(user, 'staff.moderation.calls')) return true;
         const ch = this.channels.get(channelId);
         if (ch?.createdBy === user.id) return true;
-        if (ch?.streamId) return permissions.canModerateCall(user, ch.streamId);
+        if (ch?.streamId) return permissions.canModerateCallSync(user, ch.streamId);
         return false;
     }
 

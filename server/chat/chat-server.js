@@ -17,6 +17,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db/database');
 const { extractWsToken, authenticateWs } = require('../auth/auth');
 const permissions = require('../auth/permissions');
+const moderation = require('./moderation-client');
 const wordFilter = require('./word-filter');
 const cosmetics = require('../monetization/cosmetics');
 const ttsEngine = require('./tts-engine');
@@ -518,7 +519,7 @@ class ChatServer {
     handleSelfDeleteHistory(ws, client) {
         if (!client) return;
 
-        const canBypass = client.streamId ? permissions.canModerateStream(client.user, client.streamId) : false;
+        const canBypass = client.streamId ? permissions.canModerateStreamSync(client.user, client.streamId) : false;
         const chatSettings = this._getChannelChatSettings(client.streamId);
         if (client.streamId && !canBypass && chatSettings.viewer_delete_all_enabled === 0) {
             this.sendTo(ws, { type: 'error', message: 'This streamer has disabled viewer self-delete for this chat.' });
@@ -667,7 +668,7 @@ class ChatServer {
                 const stream = db.getStreamById(client.streamId);
                 const channel = stream?.channel_id ? db.getChannelById(stream.channel_id) : (stream ? db.getChannelByUserId(stream.user_id) : null);
                 if (channel) {
-                    const settings = db.getChannelModerationSettings(channel.id);
+                    const settings = moderation.settingsSync(channel.id);
                     if (settings?.ip_approval_mode) {
                         const isStaffBypass = client.user && permissions.isGlobalModOrAbove(client.user);
                         const isOwner = client.user && stream && stream.user_id === client.user.id;
@@ -716,7 +717,7 @@ class ChatServer {
         if (modStreamId) {
             const chatSettings = this._getChannelChatSettings(modStreamId);
             const isStaff = client.user && permissions.isGlobalModOrAbove(client.user);
-            const canModerateThisStream = permissions.canModerateStream(client.user, modStreamId);
+            const canModerateThisStream = permissions.canModerateStreamSync(client.user, modStreamId);
 
             // Max message length
             const maxLen = Math.max(50, Number(chatSettings.max_message_length || 500));
@@ -822,7 +823,7 @@ class ChatServer {
         const requestedAutoDeleteMinutes = parseInt(msg.auto_delete_minutes, 10);
         const allowViewerAutoDelete = !client.streamId
             || this._getChannelChatSettings(client.streamId).viewer_auto_delete_enabled !== 0
-            || permissions.canModerateStream(client.user, client.streamId);
+            || permissions.canModerateStreamSync(client.user, client.streamId);
         const autoDeleteAt = Number.isFinite(requestedAutoDeleteMinutes)
             && requestedAutoDeleteMinutes >= MIN_CHAT_AUTO_DELETE_MINUTES
             && allowViewerAutoDelete
@@ -964,7 +965,7 @@ class ChatServer {
             // genuine human messages.
             try {
                 let isMod = false;
-                try { isMod = !!(client.user && permissions.canModerateChannel(client.user, client.channelUserId)); } catch { /* */ }
+                try { isMod = !!(client.user && permissions.canModerateChannelSync(client.user, client.channelUserId)); } catch { /* */ }
                 require('../integrations/ai-chatbot-service').onRealChatMessage(client.streamId, {
                     username,
                     message: text,
@@ -1013,7 +1014,7 @@ class ChatServer {
             // channel's current live stream rather than the stale id.
             if (client.channelUserId && pc.channelRelayEnabled(client.channelUserId, client.streamId)) {
                 let isMod = false, isSub = false;
-                try { isMod = !!(client.user && permissions.canModerateChannel(client.user, client.channelUserId)); } catch { /* */ }
+                try { isMod = !!(client.user && permissions.canModerateChannelSync(client.user, client.channelUserId)); } catch { /* */ }
                 try { isSub = !!(client.user && db.isActiveSubscriber(client.user.id, client.channelUserId)); } catch { /* */ }
                 pc.forwardChat(client.channelUserId, {
                     chatterName: username,
@@ -1573,16 +1574,10 @@ class ChatServer {
                         seconds = parseInt(args);
                         if (!Number.isFinite(seconds) || seconds < 0) seconds = 3;
                     }
-                    // Per-stream slow mode (not global)
+                    // Per-stream slow mode (not global). OpenVibe.Chat owns channel_moderation_settings
+                    // (roadmap T3) and persists /slow itself; Live's own chat server only holds it in memory.
                     if (client.streamId) {
                         this.slowModeByStream.set(client.streamId, seconds > 0 ? seconds * 1000 : 0);
-                        // Persist to DB
-                        try {
-                            const stream = db.getStreamById(client.streamId);
-                            if (stream?.channel_id) {
-                                require('./chat-tables').write('upsertChannelModerationSettings', stream.channel_id, { slow_mode_seconds: seconds }).catch(() => { /* non-critical */ });
-                            }
-                        } catch { /* non-critical */ }
                     }
                     // Dedicated slowmode event so clients can show/hide UI
                     this.broadcastToStream(client.streamId, {
@@ -1985,7 +1980,7 @@ class ChatServer {
         if (!client.user) return false;
         // Offline channel chat: the channel's latest stream stands in (see _moderationStreamFor).
         const sid = client.streamId || this._moderationStreamFor(client);
-        return !!sid && permissions.canModerateStream(client.user, sid) || permissions.isGlobalModOrAbove(client.user);
+        return !!sid && permissions.canModerateStreamSync(client.user, sid) || permissions.isGlobalModOrAbove(client.user);
     }
 
     /** @deprecated Use canModerate(client) — kept temporarily for any external callers */
@@ -2439,6 +2434,14 @@ class ChatServer {
     }
 
     /**
+     * Donation / goal alert sounds are OpenVibe.Chat's now (roadmap T3): the mapping lives on
+     * channel_moderation_settings, which Chat owns, and Chat resolves it from its own row and
+     * broadcasts the clip. When Live runs the chat server itself (rollback / dev) there is no Chat to
+     * ask, so this is a no-op; server/monetization/alerts.js calls the chat-remote proxy's op instead.
+     */
+    playAlertSound() { /* Chat plays alerts; see server/monetization/alerts.js */ }
+
+    /**
      * Get channel moderation settings for a stream.
      * Caches the channel lookup to avoid repeated DB queries.
      */
@@ -2478,7 +2481,7 @@ class ChatServer {
             if (!stream) return finalize(defaults);
             const channel = stream.channel_id ? db.getChannelById(stream.channel_id) : db.getChannelByUserId(stream.user_id);
             if (!channel) return finalize(defaults);
-            return finalize({ ...defaults, ...db.getChannelModerationSettings(channel.id) });
+            return finalize({ ...defaults, ...moderation.settingsSync(channel.id) });
         } catch {
             return finalize(defaults);
         }

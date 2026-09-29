@@ -171,8 +171,8 @@ router.post('/', requireAuth, soundUpload.single('sound'), async (req, res) => {
             return res.status(404).json({ error: 'Channel not found' });
         }
 
-        const settings = db.getChannelModerationSettings(channel.id);
-        const isMod = permissions.canModerateChannel(req.user, channel.id);
+        const settings = (await require('./moderation-client').getChannelModeration(channel.id)).settings;
+        const isMod = await permissions.canModerateChannel(req.user, channel.id);
         const isOwnChannel = channelOwnerId === req.user.id;
 
         if (!isMod && !settings.custom_sounds_enabled) {
@@ -284,14 +284,14 @@ router.use((err, req, res, next) => {
 });
 
 // ── Delete a sound ───────────────────────────────────────────
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', requireAuth, async (req, res) => {
     try {
         const sound = db.getChannelSoundById(parseInt(req.params.id));
         if (!sound) return res.status(404).json({ error: 'Sound not found' });
         let allowed = sound.created_by === req.user.id || permissions.can(req.user, 'staff.assets.manage');
         if (!allowed) {
             const channel = db.getChannelByUserId(sound.channel_owner_id);
-            if (channel && permissions.canModerateChannel(req.user, channel.id)) allowed = true;
+            if (channel && await permissions.canModerateChannel(req.user, channel.id)) allowed = true;
         }
         if (!allowed) return res.status(403).json({ error: 'Not your sound' });
 
@@ -310,7 +310,7 @@ router.delete('/:id', requireAuth, (req, res) => {
 // A command may hold several sounds, so edits apply to the whole group.
 // Allowed: channel owner, channel mods, admins, or the creator of every
 // sound in the group (mirrors the add-to-command rule).
-router.patch('/command', requireAuth, (req, res) => {
+router.patch('/command', requireAuth, async (req, res) => {
     try {
         let channelOwnerId = parseInt(req.body.channel_id) || null;
         if (!channelOwnerId && req.body.stream_id) {
@@ -324,7 +324,7 @@ router.patch('/command', requireAuth, (req, res) => {
         const group = (db.getChannelSounds(channelOwnerId) || []).filter((s) => s.command === command);
         if (!group.length) return res.status(404).json({ error: `No sound command !${command} in this channel.` });
 
-        const isMod = permissions.canModerateChannel(req.user, channel.id);
+        const isMod = await permissions.canModerateChannel(req.user, channel.id);
         const isOwnChannel = channelOwnerId === req.user.id;
         const isCreator = group.every((s) => s.created_by === req.user.id);
         if (!isMod && !isOwnChannel && !isCreator && !permissions.can(req.user, 'staff.assets.manage')) {
@@ -384,73 +384,9 @@ router.get('/file/:filename', (req, res) => {
     }
 });
 
-// ── Streamer alert sounds (donation / goal-reached) ──────────────────────
-// Streamer-only. Stored on the channel's moderation settings; the file lives in the
-// sounds dir and is read server-side + broadcast as base64 on donation / goal events.
-function _alertKind(raw) { return raw === 'goal' ? 'goal' : 'donation'; }
-
-// GET which alert sounds are configured (+ a preview URL).
-router.get('/alert/mine', requireAuth, (req, res) => {
-    const s = db.getChannelAlertSoundsByUser(req.user.id) || {};
-    const toUrl = (p) => (p ? `/api/sounds/file/${path.basename(p)}` : null);
-    res.json({
-        donation: { set: !!s.donation_sound_url, url: toUrl(s.donation_sound_url) },
-        goal: { set: !!s.goal_sound_url, url: toUrl(s.goal_sound_url) },
-    });
-});
-
-// Upload/replace an alert sound. kind = 'donation' | 'goal'.
-router.post('/alert/:kind', requireAuth, soundUpload.single('sound'), async (req, res) => {
-    const kind = _alertKind(req.params.kind);
-    try {
-        if (!req.file) return res.status(400).json({ error: 'No sound file' });
-        const channel = db.getChannelByUserId(req.user.id) || db.ensureChannel(req.user.id);
-        if (!channel) { fs.unlink(req.file.path, () => {}); return res.status(400).json({ error: 'No channel' }); }
-
-        // Guard duration (reuse the channel's max-sound limit, capped at 15s for alerts).
-        let duration = 0;
-        try { duration = await probeDuration(req.file.path); } catch { /* */ }
-        if (duration > 15.5) { fs.unlink(req.file.path, () => {}); return res.status(400).json({ error: `Alert sound too long (${duration.toFixed(1)}s). Max 15s.` }); }
-
-        // Normalize to mp3 for universal playback; fall back to the original on failure.
-        let finalPath = req.file.path;
-        try {
-            const mp3 = await convertToMp3(req.file.path);
-            if (mp3) { fs.unlink(req.file.path, () => {}); finalPath = mp3; }
-        } catch { /* keep original */ }
-
-        // Remove the previous alert sound of this kind (best-effort).
-        try {
-            const prev = db.getChannelAlertSoundsByUser(req.user.id) || {};
-            const prevPath = kind === 'goal' ? prev.goal_sound_url : prev.donation_sound_url;
-            if (prevPath && fs.existsSync(prevPath) && path.resolve(prevPath) !== path.resolve(finalPath)) fs.unlink(prevPath, () => {});
-        } catch { /* ignore */ }
-
-        const ext = path.extname(finalPath).toLowerCase();
-        const mime = EXT_TO_MIME[ext] || 'audio/mpeg';
-        await require('./chat-tables').write('setChannelAlertSound', channel.id, kind, finalPath, mime);
-        res.json({ set: true, kind, url: `/api/sounds/file/${path.basename(finalPath)}` });
-    } catch (err) {
-        if (req.file) fs.unlink(req.file.path, () => {});
-        res.status(500).json({ error: 'Failed to save alert sound: ' + err.message });
-    }
-});
-
-// Clear an alert sound.
-router.delete('/alert/:kind', requireAuth, async (req, res) => {
-    const kind = _alertKind(req.params.kind);
-    try {
-        const channel = db.getChannelByUserId(req.user.id);
-        if (channel) {
-            const prev = db.getChannelAlertSoundsByUser(req.user.id) || {};
-            const prevPath = kind === 'goal' ? prev.goal_sound_url : prev.donation_sound_url;
-            if (prevPath && fs.existsSync(prevPath)) { try { fs.unlinkSync(prevPath); } catch { /* */ } }
-            await require('./chat-tables').write('setChannelAlertSound', channel.id, kind, null, null);
-        }
-        res.json({ set: false, kind });
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to clear alert sound' });
-    }
-});
+// Streamer alert sounds (donation / goal-reached) moved to OpenVibe.Chat with the six tables
+// (roadmap T3): they live on channel_moderation_settings, which Chat owns, and nginx routes
+// /api/sounds there. Live's own sounds router keeps only the channel-sound commands above and
+// runs only when Live itself serves chat.
 
 module.exports = router;

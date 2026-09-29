@@ -67,15 +67,8 @@ function ensureTagTables() {
     try { db.getDb().exec('CREATE INDEX IF NOT EXISTS idx_user_tags_user ON user_tags(user_id)'); } catch { /* */ }
 }
 
-/** Every tag a user owns. */
-function getUserTags(userId) {
-    const rows = db.getDb().prepare('SELECT tag_id, source, granted_at FROM user_tags WHERE user_id = ?').all(userId);
-    return rows.map((r) => ({
-        ...r,
-        ...(TAGS[r.tag_id] || { name: r.tag_id, emoji: '🏷️', color: '#999', bgColor: '#333', desc: 'Unknown tag', category: 'special', tier: 0 }),
-        tagId: r.tag_id,
-    }));
-}
+// getUserTags (the only reader of `user_tags`) went with roadmap T3: OpenVibe.Chat owns that table,
+// which had no production caller in Live. The equipped tag (user_equipped_tag) is not staged and stays.
 
 /** The user's equipped tag, or null. */
 function getEquippedTag(userId) {
@@ -95,4 +88,4 @@ function getAllTags() {
     return Object.entries(TAGS).map(([id, t]) => ({ tagId: id, ...t }));
 }
 
-module.exports = { TAGS, ensureTagTables, getUserTags, getEquippedTag, getTagProfile, getAllTags };
+module.exports = { TAGS, ensureTagTables, getEquippedTag, getTagProfile, getAllTags };

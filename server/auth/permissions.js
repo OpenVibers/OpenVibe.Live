@@ -14,6 +14,7 @@
  */
 
 const db = require('../db/database');
+const moderation = require('../chat/moderation-client');
 const { staff } = require('openvibe-contracts');
 
 // ── Role hierarchy (higher = more power) ─────────────────────
@@ -117,10 +118,19 @@ function isStreamer(user) {
 
 /**
  * Is this user a channel moderator for the given channel?
+ * OpenVibe.Chat owns channel_moderators (roadmap T3), so this reads Chat (server/chat/moderation-client.js).
+ * Async: hot paths that cannot await use the cached isChannelModSync().
  */
-function isChannelMod(user, channelId) {
+async function isChannelMod(user, channelId) {
     if (!user?.id || !channelId) return false;
-    return !!db.isChannelModerator(user.id, channelId);
+    const m = await moderation.getChannelModeration(channelId);
+    return m.moderator_ids.includes(Number(user.id));
+}
+/** The same question from the client's 30 s cache; a miss is "not a moderator" and refreshes behind the read. */
+function isChannelModSync(user, channelId) {
+    if (!user?.id || !channelId) return false;
+    const m = moderation.peekChannelModeration(channelId);
+    return !!(m && m.moderator_ids.includes(Number(user.id)));
 }
 
 /**
@@ -220,11 +230,17 @@ function canManageSiteBans(user) {
  *
  * True for: admin, global_mod, channel owner, channel mod
  */
-function canModerateChannel(user, channelId) {
+async function canModerateChannel(user, channelId) {
     if (!user) return false;
     if (can(user, 'staff.moderation.chat')) return true;
     if (isChannelOwner(user, channelId)) return true;
     return isChannelMod(user, channelId);
+}
+function canModerateChannelSync(user, channelId) {
+    if (!user) return false;
+    if (can(user, 'staff.moderation.chat')) return true;
+    if (isChannelOwner(user, channelId)) return true;
+    return isChannelModSync(user, channelId);
 }
 
 /**
@@ -232,12 +248,20 @@ function canModerateChannel(user, channelId) {
  *
  * Resolves stream → channel, then checks channel moderation.
  */
-function canModerateStream(user, streamId) {
+async function canModerateStream(user, streamId) {
     if (!user) return false;
     if (can(user, 'staff.moderation.chat')) return true;
     if (isStreamOwner(user, streamId)) return true;
     const channelId = getChannelIdForStream(streamId);
-    if (channelId && isChannelMod(user, channelId)) return true;
+    if (channelId && await isChannelMod(user, channelId)) return true;
+    return false;
+}
+function canModerateStreamSync(user, streamId) {
+    if (!user) return false;
+    if (can(user, 'staff.moderation.chat')) return true;
+    if (isStreamOwner(user, streamId)) return true;
+    const channelId = getChannelIdForStream(streamId);
+    if (channelId && isChannelModSync(user, channelId)) return true;
     return false;
 }
 
@@ -245,8 +269,11 @@ function canModerateStream(user, streamId) {
  * Can this user moderate a call on a specific stream?
  * Same rules as chat moderation.
  */
-function canModerateCall(user, streamId) {
+async function canModerateCall(user, streamId) {
     return canModerateStream(user, streamId);
+}
+function canModerateCallSync(user, streamId) {
+    return canModerateStreamSync(user, streamId);
 }
 
 /**
@@ -327,7 +354,8 @@ function getCapabilities(user) {
     }
 
     const ownedChannel = db.getChannelByUserId(user.id);
-    const moderatedChannels = db.getChannelsByModerator(user.id) || [];
+    // Chat owns channel_moderators; the cached answer (or [], refreshed behind the load) decides the UI flag.
+    const moderatedChannels = moderation.peekChannelsByModerator(user.id) || [];
     const isStaffUser = isGlobalModOrAbove(user);
     const owner = isOwner(user);
 
@@ -451,6 +479,7 @@ module.exports = {
     canModerateContentOwner,
     requireOwner,
     isChannelMod,
+    isChannelModSync,
     isChannelOwner,
     isStreamOwner,
     roleRank,
@@ -464,8 +493,11 @@ module.exports = {
     canReviewVpn,
     canManageSiteBans,
     canModerateChannel,
+    canModerateChannelSync,
     canModerateStream,
+    canModerateStreamSync,
     canModerateCall,
+    canModerateCallSync,
     canViewChatLogs,
     canViewOtherUserLogs,
     canAssignChannelMods,

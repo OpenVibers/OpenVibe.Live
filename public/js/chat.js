@@ -6397,7 +6397,7 @@ async function saveChatLimits() {
     const maxmsg = Math.min(_msgCap, Math.max(1, parseInt(document.getElementById('clp-maxmsg')?.value, 10) || 500));
     const maxtts = Math.min(1200, Math.max(10, parseInt(document.getElementById('clp-maxtts')?.value, 10) || 200));
     try {
-        await api(`/channels/${_chatLimitsChannelId}/moderation`, { method: 'PUT', body: { max_message_length: maxmsg, tts_max_length: maxtts } });
+        await api(`/chat/channels/${_chatLimitsChannelId}/moderation`, { method: 'PUT', body: { max_message_length: maxmsg, tts_max_length: maxtts } });
         applyChatLimits({ max_message_length: maxmsg, tts_max_length: maxtts });
         toast('Chat limits saved', 'success');
         document.getElementById('chat-limits-popover')?.remove();

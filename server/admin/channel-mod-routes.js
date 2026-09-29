@@ -35,12 +35,12 @@ function parseBoolean(value, fallback) {
 }
 
 /** Middleware: require channel access (owner, channel mod, or staff). */
-function requireChannelAccess(req, res, next) {
+async function requireChannelAccess(req, res, next) {
     const channelId = parseInt(req.params.channelId, 10);
     if (!channelId) return res.status(400).json({ error: 'Invalid channel ID' });
     const channel = db.getChannelById(channelId);
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
-    if (!permissions.canModerateChannel(req.user, channelId)) {
+    if (!(await permissions.canModerateChannel(req.user, channelId))) {
         return res.status(403).json({ error: 'Channel moderation access required' });
     }
     req.channel = channel;

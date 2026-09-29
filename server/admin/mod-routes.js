@@ -194,7 +194,7 @@ router.delete('/users/:id/ban', permissions.requireGlobalMod, (req, res) => {
 
 // ── Stream Ban (any mod with stream moderation powers) ───────
 // Local ban: creates bans entry scoped to a specific stream
-router.post('/stream-ban', (req, res) => {
+router.post('/stream-ban', async (req, res) => {
     try {
         const { user_id, anon_id, stream_id, reason, duration_hours, ip_address } = req.body;
         const streamId = parseInt(stream_id);
@@ -202,7 +202,7 @@ router.post('/stream-ban', (req, res) => {
         if (!user_id && !anon_id) return res.status(400).json({ error: 'user_id or anon_id required' });
 
         // Check moderation permission for this stream
-        if (!permissions.canModerateStream(req.user, streamId)) {
+        if (!(await permissions.canModerateStream(req.user, streamId))) {
             return res.status(403).json({ error: 'You cannot moderate this stream' });
         }
 
@@ -266,7 +266,7 @@ router.post('/stream-ban', (req, res) => {
 });
 
 // ── Unban ────────────────────────────────────────────────────
-router.delete('/ban/:id', (req, res) => {
+router.delete('/ban/:id', async (req, res) => {
     try {
         const ban = db.get('SELECT * FROM bans WHERE id = ?', [req.params.id]);
         if (!ban) return res.status(404).json({ error: 'Ban not found' });
@@ -285,7 +285,7 @@ router.delete('/ban/:id', (req, res) => {
                     [ban.banned_by, '%' + (ban.reason || '') + '%']);
             }
         } else {
-            if (!permissions.canModerateStream(req.user, ban.stream_id)) {
+            if (!(await permissions.canModerateStream(req.user, ban.stream_id))) {
                 return res.status(403).json({ error: 'You cannot moderate this stream' });
             }
         }
@@ -361,7 +361,7 @@ router.get('/chat/user/:userId', permissions.requireGlobalMod, (req, res) => {
 // ══════════════════════════════════════════════════════════════
 
 // ── Delete a single chat message ─────────────────────────────
-router.post('/delete-message', (req, res) => {
+router.post('/delete-message', async (req, res) => {
     try {
         const { message_id, stream_id } = req.body;
         if (!message_id) return res.status(400).json({ error: 'message_id required' });
@@ -377,10 +377,10 @@ router.post('/delete-message', (req, res) => {
         const isGlobal = permissions.isGlobalModOrAbove(req.user);
         if (!isGlobal) {
             let allowed = false;
-            if (message.stream_id) allowed = permissions.canModerateStream(req.user, message.stream_id);
+            if (message.stream_id) allowed = await permissions.canModerateStream(req.user, message.stream_id);
             else if (message.channel_user_id) {
                 const ownerChannel = db.getChannelByUserId(message.channel_user_id);
-                allowed = !!(ownerChannel && permissions.canModerateChannel(req.user, ownerChannel.id));
+                allowed = !!(ownerChannel && await permissions.canModerateChannel(req.user, ownerChannel.id));
             }
             if (!allowed) return res.status(403).json({ error: 'You cannot moderate this stream' });
         }
@@ -416,7 +416,7 @@ router.post('/delete-message', (req, res) => {
 });
 
 // ── Bulk-delete all messages from a user/anon/relay ──────────
-router.post('/delete-user-messages', (req, res) => {
+router.post('/delete-user-messages', async (req, res) => {
     try {
         const { user_id, anon_id, relay_username, stream_id } = req.body;
         if (!user_id && !anon_id && !relay_username) {
@@ -429,7 +429,7 @@ router.post('/delete-user-messages', (req, res) => {
 
         if (!isGlobal) {
             if (!stream_id) return res.status(400).json({ error: 'stream_id required for stream moderators' });
-            if (!permissions.canModerateStream(req.user, stream_id)) {
+            if (!(await permissions.canModerateStream(req.user, stream_id))) {
                 return res.status(403).json({ error: 'You cannot moderate this stream' });
             }
         }
@@ -481,7 +481,7 @@ router.post('/delete-user-messages', (req, res) => {
 // ══════════════════════════════════════════════════════════════
 
 // ── Hide or ban a relayed external user ──────────────────────
-router.post('/relay-user/hide', (req, res) => {
+router.post('/relay-user/hide', async (req, res) => {
     try {
         const { channel_id, platform, external_username, action, reason } = req.body;
         if (!platform || !external_username) {
@@ -496,7 +496,7 @@ router.post('/relay-user/hide', (req, res) => {
             if (!channel_id) return res.status(403).json({ error: 'Only staff can hide relay users site-wide' });
             const channel = db.getChannelById(channel_id);
             if (!channel) return res.status(404).json({ error: 'Channel not found' });
-            if (!permissions.canModerateChannel(req.user, channel.id)) {
+            if (!(await permissions.canModerateChannel(req.user, channel.id))) {
                 return res.status(403).json({ error: 'You cannot moderate this channel' });
             }
         }
@@ -539,13 +539,13 @@ router.post('/relay-user/hide', (req, res) => {
 });
 
 // ── Unhide a relayed user ────────────────────────────────────
-router.delete('/relay-user/:id', (req, res) => {
+router.delete('/relay-user/:id', async (req, res) => {
     try {
         const row = db.get('SELECT id, channel_id FROM hidden_relay_users WHERE id = ?', [parseInt(req.params.id)]);
         if (!row) return res.status(404).json({ error: 'Not found' });
         // Site rows are staff's; a channel row belongs to that channel's moderators. This had no check.
         const allowed = permissions.isGlobalModOrAbove(req.user)
-            || (row.channel_id != null && permissions.canModerateChannel(req.user, row.channel_id));
+            || (row.channel_id != null && await permissions.canModerateChannel(req.user, row.channel_id));
         if (!allowed) return res.status(403).json({ error: 'You cannot moderate this channel' });
         db.unhideRelayUser(row.id);
 
@@ -564,10 +564,10 @@ router.delete('/relay-user/:id', (req, res) => {
 });
 
 // ── List hidden relay users for a channel ────────────────────
-router.get('/relay-users/hidden/:channelId', (req, res) => {
+router.get('/relay-users/hidden/:channelId', async (req, res) => {
     try {
         const channelId = parseInt(req.params.channelId);
-        if (!permissions.canModerateChannel(req.user, channelId)) return res.status(403).json({ error: 'Access denied' });
+        if (!(await permissions.canModerateChannel(req.user, channelId))) return res.status(403).json({ error: 'Access denied' });
         const hidden = db.getHiddenRelayUsers(channelId);
         res.json({ hidden });
     } catch (err) {
@@ -581,12 +581,12 @@ router.get('/relay-users/hidden/:channelId', (req, res) => {
 // ══════════════════════════════════════════════════════════════
 
 // ── Get pending messages for a channel ───────────────────────
-router.get('/ip-approval/:channelId/pending', (req, res) => {
+router.get('/ip-approval/:channelId/pending', async (req, res) => {
     try {
         const channelId = parseInt(req.params.channelId);
         // A channel id, checked as a channel. canModerateStream() was given this id as if it were a
         // stream id, so owning stream #N opened channel #N's queue — IP addresses and locations.
-        if (!permissions.canModerateChannel(req.user, channelId)) {
+        if (!(await permissions.canModerateChannel(req.user, channelId))) {
             return res.status(403).json({ error: 'Access denied' });
         }
         const pending = db.getPendingIpMessages(channelId);

@@ -1,13 +1,14 @@
 /**
- * asset-sync.js — mirror Live's chat assets (emotes + channel sounds) into
- * OpenVibe.Media, their canonical public home (served at /a/:id, browsable on
- * the media index with uploader + channel attribution).
+ * asset-sync.js — mirror Live's channel sounds into OpenVibe.Media, their canonical public home
+ * (served at /a/:id, browsable on the media index with uploader + channel attribution).
  *
- * Local files remain the low-latency working copy (chat playback reads disk);
- * this job uploads anything Media doesn't have yet and records media_url /
- * media_asset_id on the local row, so emote <img> URLs come from Media's
- * long-cached endpoint and deletes propagate. Idempotent: rows are skipped
- * once media_asset_id is set, and Media upserts on (kind, name, channel).
+ * Local files remain the low-latency working copy (chat playback reads disk); this job uploads
+ * anything Media doesn't have yet and records media_url / media_asset_id on the local row, so
+ * sound URLs come from Media's long-cached endpoint and deletes propagate. Idempotent: rows are
+ * skipped once media_asset_id is set, and Media upserts on (kind, name, channel).
+ *
+ * The emote backfill went with roadmap T3: OpenVibe.Chat owns `emotes` and uploads emote bytes to
+ * Media with its own token, so Live no longer has emote rows to sync.
  */
 'use strict';
 
@@ -17,7 +18,6 @@ const db = require('../db/database');
 const media = require('../media-client');
 
 const paths = require('../paths');
-const EMOTE_DIR = paths.dir('EMOTES_PATH', 'emotes');
 const SOUND_DIR = paths.dir('SOUNDS_PATH', 'sounds');
 const MIME_BY_EXT = {
     '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
@@ -27,7 +27,6 @@ const MIME_BY_EXT = {
 
 function _ensureColumns() {
     for (const [table, col, type] of [
-        ['emotes', 'media_url', 'TEXT'], ['emotes', 'media_asset_id', 'INTEGER'],
         ['channel_sounds', 'media_url', 'TEXT'], ['channel_sounds', 'media_asset_id', 'INTEGER'],
     ]) {
         try { db.getDb().exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`); } catch { /* exists */ }
@@ -65,21 +64,6 @@ async function syncAll() {
             return nameCache[id];
         };
         let synced = 0, failed = 0;
-
-        for (const e of db.all('SELECT * FROM emotes WHERE media_asset_id IS NULL')) {
-            const f = _localFile(EMOTE_DIR, e.url);
-            if (!f) continue;
-            try {
-                const asset = await _upload({
-                    kind: 'emote', name: e.code, filePath: f,
-                    user_id: e.user_id, username: uname(e.user_id),
-                    channel_username: uname(e.channel_owner_id || e.user_id),
-                    meta: { animated: !!e.animated, is_global: !!e.is_global },
-                });
-                // emotes is a staged chat table: written where its authority is (chat/chat-tables.js).
-                if (asset) { await require('../chat/chat-tables').write('setEmoteMedia', e.id, asset.url, asset.id); synced++; }
-            } catch (err) { failed++; if (failed <= 3) console.warn('[AssetSync] emote', e.code, err.message); }
-        }
 
         for (const s of db.all('SELECT * FROM channel_sounds WHERE media_asset_id IS NULL')) {
             const f = _localFile(SOUND_DIR, s.url);

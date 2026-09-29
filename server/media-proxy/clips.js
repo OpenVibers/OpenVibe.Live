@@ -97,7 +97,7 @@ async function canActorModerateClip(actor, clip) {
     if (actor.id === clip.user_id) return true;
     const ownerId = await clipChannelOwnerId(clip);
     if (ownerId && actor.id === ownerId) return true;
-    if (ownerId) { const ch = db.getChannelByUserId(ownerId); if (ch && db.isChannelModerator(actor.id, ch.id)) return true; }
+    if (ownerId) { const ch = db.getChannelByUserId(ownerId); if (ch && await permissions.isChannelMod(actor, ch.id)) return true; }
     const clipOwner = clip.user_id ? db.getUserById(clip.user_id) : null;
     const streamOwner = ownerId ? db.getUserById(ownerId) : null;
     return permissions.canModerateContentOwner(actor, clipOwner) &&
@@ -111,7 +111,7 @@ async function canActorDeleteClip(actor, clip) {
     if (!ownerId && actor.id === clip.user_id) return true;
     if (ownerId) {
         const ch = db.getChannelByUserId(ownerId);
-        if (ch && db.isChannelModerator(actor.id, ch.id)) return true;
+        if (ch && await permissions.isChannelMod(actor, ch.id)) return true;
         if (actor.id === clip.user_id && ch && ch.clips_allow_creator_delete) return true;
     }
     const clipOwner = clip.user_id ? db.getUserById(clip.user_id) : null;
@@ -315,7 +315,11 @@ router.put('/:id/visibility', requireAuth, async (req, res) => {
         // Not the clipper: a viewer's clip inherits the channel's default visibility, and whoever made it
         // must not be able to override the streamer's choice. Channel owner, channel mods, staff.
         const ownerId = await clipChannelOwnerId(clip);
-        const canByChannel = ownerId && (req.user.id === ownerId || (() => { const ch = db.getChannelByUserId(ownerId); return !!(ch && db.isChannelModerator(req.user.id, ch.id)); })());
+        let canByChannel = false;
+        if (ownerId) {
+            if (req.user.id === ownerId) canByChannel = true;
+            else { const ch = db.getChannelByUserId(ownerId); if (ch) canByChannel = await permissions.isChannelMod(req.user, ch.id); }
+        }
         const canByStaff = !canByChannel && req.user.id !== clip.user_id && await canActorModerateClip(req.user, clip);
         const ownClipNoChannel = !ownerId && req.user.id === clip.user_id;
         if (!(canByChannel || canByStaff || ownClipNoChannel)) return refuse(req, res, clip, 'Only the streamer can change clip visibility');

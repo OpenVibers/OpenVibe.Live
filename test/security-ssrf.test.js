@@ -348,6 +348,7 @@ async function check(name, fn) {
             'server/comments-client.js': 'OpenVibe.Community (configured)',
             'server/chat/chat-remote.js': 'OpenVibe.Chat (configured)',
             'server/chat/chat-tables.js': 'OpenVibe.Chat (configured)',
+            'server/chat/moderation-client.js': 'OpenVibe.Chat internal read API (configured)',
             'server/chat/chat-server.js': 'OpenVibe.Tools anon resolve (configured)',
             'server/streaming/calls-authority.js': 'OpenVibe.Chat (configured)',
             'server/streaming/golive-notify.js': 'OpenVibe.Network (configured)',

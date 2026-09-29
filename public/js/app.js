@@ -1515,7 +1515,7 @@ window._uaiRevealMore = _uaiRevealMore;
 
 async function openUserChatInsight(userId, username) {
     if (!userId) return;
-    return _openChatInsightModal({ title: username || 'User', username: username || '', iconClass: 'fa-user-tag', fetchUrl: `/chat-ai/user/${userId}` });
+    return _openChatInsightModal({ title: username || 'User', username: username || '', iconClass: 'fa-user-tag', fetchUrl: `/chat/ai/user/${userId}` });
 }
 window.openUserChatInsight = openUserChatInsight;
 
@@ -1526,7 +1526,7 @@ async function openAnonChatInsight(anonId) {
         title: anonId,
         iconClass: 'fa-user-secret',
         subtitle: 'Anonymous chatter — how they chat today vs. overall, from their public messages.',
-        fetchUrl: `/chat-ai/anon/${encodeURIComponent(anonId)}`,
+        fetchUrl: `/chat/ai/anon/${encodeURIComponent(anonId)}`,
     });
 }
 window.openAnonChatInsight = openAnonChatInsight;
@@ -1540,7 +1540,7 @@ async function openRelayUserChatInsight(platform, username, displayPlatform) {
         iconClass: 'fa-link',
         isRelay: true, // no channel page → expand the timeline inline instead of linking out
         subtitle: `Bridged ${plat} chatter — how they chat today vs. overall, from their relayed messages.`,
-        fetchUrl: `/chat-ai/relay/${encodeURIComponent(platform)}/${encodeURIComponent(username)}`,
+        fetchUrl: `/chat/ai/relay/${encodeURIComponent(platform)}/${encodeURIComponent(username)}`,
     });
 }
 window.openRelayUserChatInsight = openRelayUserChatInsight;

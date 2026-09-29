@@ -235,6 +235,25 @@ async function check(name, fn) {
         } finally { delete process.env.PASTES_AUTHORITY; }
     });
 
+    await check('setup hub: the emote count and moderator count come from OpenVibe.Chat', async () => {
+        const moderation = require('../server/chat/moderation-client');
+        const origCount = moderation.getEmoteCount, origMod = moderation.getChannelModeration;
+        moderation.getEmoteCount = async () => 5;
+        moderation.getChannelModeration = async () => ({ settings: { updated_at: '2026-09-01 00:00:00' }, moderator_ids: [7, 2] });
+        try {
+            const r = await call('GET', '/api/streams/setup-progress', 3);
+            assert.strictEqual(r.status, 200);
+            const task = (id) => r.json.tasks.find((t) => t.id === id);
+            assert.deepStrictEqual([task('emote').count, task('emote').done], [5, true]);
+            assert.deepStrictEqual([task('mods').count, task('mods').done], [2, true]);
+            assert.strictEqual(task('moderation').done, true, 'a saved settings row (updated_at) ticks the rules task');
+            moderation.getChannelModeration = async () => ({ settings: {}, moderator_ids: [] });
+            const r2 = await call('GET', '/api/streams/setup-progress', 3);
+            const t2 = (id) => r2.json.tasks.find((t) => t.id === id);
+            assert.strictEqual(t2('moderation').done, false, 'Chat defaults (no row) do not');
+        } finally { moderation.getEmoteCount = origCount; moderation.getChannelModeration = origMod; }
+    });
+
     await check('avatar history: the avatar-tagged screenshots, from Community', async () => {
         process.env.PASTES_AUTHORITY = 'community';
         try {

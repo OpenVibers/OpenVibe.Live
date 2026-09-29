@@ -18,7 +18,7 @@ const BARE = /(?:\}|openvibe\.live)\/\$\{(?:encodeURIComponent\(|esc\()?[\w.?]*(
 const ALLOWED = [
     { file: 'server/integrations/powerchat-checkout.js', contains: 'pcUsername', why: "PowerChat's own tip page (powerchat.live/<user>/tip), not an OpenVibe channel" },
     { file: 'server/integrations/powerchat-routes.js', contains: 'powerchat_username', why: "PowerChat's own tip page" },
-    { file: 'public/js/app.js', contains: '/chat-ai/relay/', why: 'API path /chat-ai/relay/<platform>/<username>' },
+    { file: 'public/js/app.js', contains: '/chat/ai/relay/', why: 'API path /chat/ai/relay/<platform>/<username> (OpenVibe.Chat, roadmap T3)' },
     { file: 'public/js/chat.js', contains: '/chat/relay-user/', why: 'API path /chat/relay-user/<platform>/<username>' },
 ];
 

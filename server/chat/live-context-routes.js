@@ -39,7 +39,6 @@ const config = require('../config');
 const permissions = require('../auth/permissions');
 const { guard } = require('../net/service-guard');
 const { isRemote } = require('./chat-authority');
-const chatTables = require('./chat-tables');
 
 const contextRouter = express.Router();
 const effectsRouter = express.Router();
@@ -55,7 +54,7 @@ const USER_SQL = `SELECT u.id, u.username, u.display_name, u.avatar_url, u.profi
         COALESCE(u.is_owner, 0) AS is_owner, u.created_at, ${SUBJECT_SQL} AS subject_id FROM users u`;
 const STREAM_SQL = 'SELECT id, user_id, channel_id, managed_stream_id, title, is_live, started_at, ended_at, created_at FROM streams';
 const MS_SQL = 'SELECT id, user_id, slug, title, sort_order, created_at FROM managed_streams';
-const CHANNEL_SQL = 'SELECT id, user_id, title FROM channels';
+const CHANNEL_SQL = 'SELECT id, user_id, title, emote_sources FROM channels';
 
 /** The chat projection of a user row (no secrets: no email, password, stream key, balances). */
 function userProjection(user, subjectId) {
@@ -191,16 +190,13 @@ contextRouter.get('/channels/by-user/:userId', (req, res) => {
     res.json({ channel: db.get(`${CHANNEL_SQL} WHERE user_id = ?`, [int(req.params.userId)]) || null });
 });
 contextRouter.get('/channels/:id/policy', (req, res) => {
+    // OpenVibe.Chat owns channel_moderation_settings and channel_moderators (roadmap T3) and reads
+    // them locally; Live answers only the channel row and the language it owns.
     const channelId = int(req.params.id);
     const channel = db.get(`${CHANNEL_SQL} WHERE id = ?`, [channelId]) || null;
     let language = 'en';
     try { if (channel) language = require('../i18n/translate').channelLanguage(channel.user_id) || 'en'; } catch { language = 'en'; }
-    res.json({
-        channel,
-        settings: db.getChannelModerationSettings(channelId),
-        moderator_ids: db.all('SELECT user_id FROM channel_moderators WHERE channel_id = ?', [channelId]).map((r) => r.user_id),
-        language,
-    });
+    res.json({ channel, language });
 });
 contextRouter.get('/channels/:id/approved-ip', (req, res) => {
     res.json({ approved: db.isIpApproved(int(req.params.id), String(req.query.ip || '')) });
@@ -321,17 +317,17 @@ effectsRouter.post('/user-color', (req, res) => {
 
 // /ban, /timeout, /unban from chat. The moderator is checked again: global staff, or a
 // moderator of the stream chat decided on (for an offline channel room, its latest stream).
-effectsRouter.post('/ban', (req, res) => {
+effectsRouter.post('/ban', async (req, res) => {
     const b = req.body || {};
     const actor = actorOf(int(b.actor_user_id));
     const modStream = int(b.moderation_stream_id) || null;
-    const allowed = actor && !actor.is_banned && (permissions.isGlobalModOrAbove(actor) || (modStream && permissions.canModerateStream(actor, modStream)));
+    const allowed = actor && !actor.is_banned && (permissions.isGlobalModOrAbove(actor) || (modStream && await permissions.canModerateStream(actor, modStream)));
     if (!allowed) return fail(res, 403, 'You do not have permission.');
     const streamId = b.stream_id != null ? int(b.stream_id) || null : null;
     // A null stream id is a SITE-WIDE ban (or lifts one): global staff only. A channel moderator
     // acts on the stream they moderate, never on another channel's.
     const staff = permissions.isGlobalModOrAbove(actor);
-    if (!staff && (!streamId || !permissions.canModerateStream(actor, streamId))) return fail(res, 403, 'You do not have permission.');
+    if (!staff && (!streamId || !(await permissions.canModerateStream(actor, streamId)))) return fail(res, 403, 'You do not have permission.');
     if (b.action === 'unban') {
         const userId = int(b.user_id);
         if (!userId) return fail(res, 400, 'user_id required');
@@ -365,33 +361,17 @@ effectsRouter.post('/approve-ip', (req, res) => {
     res.json({ ok: true });
 });
 
-// /slow and /subonly persist the channel's slow mode and sub-only mode (Chat enforces the saved values).
-effectsRouter.post('/channel-settings', (req, res) => {
-    const channelId = int(req.body?.channel_id);
-    const actor = actorOf(int(req.body?.actor_user_id));
-    if (!channelId || !actor || !permissions.canModerateChannel(actor, channelId)) return fail(res, 403, 'You do not have permission.');
-    const fields = {};
-    if (req.body.fields && req.body.fields.slow_mode_seconds !== undefined) fields.slow_mode_seconds = Math.max(0, int(req.body.fields.slow_mode_seconds));
-    if (req.body.fields && req.body.fields.sub_only !== undefined) fields.sub_only = [true, 1, '1', 'true', 'on'].includes(req.body.fields.sub_only) ? 1 : 0;
-    if (!Object.keys(fields).length) return fail(res, 400, 'no chat-settable fields');
-    chatTables.write('upsertChannelModerationSettings', channelId, fields)
-        .then(() => res.json({ ok: true }), (err) => fail(res, err.status || 500, err.message));
-});
-
-// Donation / goal alert sounds: the streamer's own channel only, files in the shared sounds dir.
-effectsRouter.post('/alert-sound', (req, res) => {
-    const channelId = int(req.body?.channel_id);
-    const channel = channelId ? db.getChannelById(channelId) : null;
-    if (!channel || channel.user_id !== int(req.body?.actor_user_id)) return fail(res, 403, 'Not your channel');
-    const url = req.body.url ? path.resolve(String(req.body.url)) : null;
-    if (url) {
-        // Compared through realpath: Chat and Live may reach the shared sounds dir via different symlinks.
-        let inside = false;
-        try { inside = path.dirname(fs.realpathSync(url)) === fs.realpathSync(path.resolve(config.sounds.path)); } catch { inside = false; }
-        if (!inside) return fail(res, 400, 'alert sounds live in the sounds directory');
-    }
-    chatTables.write('setChannelAlertSound', channelId, req.body.kind === 'goal' ? 'goal' : 'donation', url, url ? String(req.body.mime || 'audio/mpeg') : null)
-        .then(() => res.json({ ok: true }), (err) => fail(res, err.status || 500, err.message));
+// The channel's emote-source switches (channels.emote_sources, a Live-owned column): OpenVibe.Chat
+// persists nothing here itself, its PUT /api/emotes/sources asks Live to write the row.
+// (The /channel-settings and /alert-sound effects were retired with roadmap T3: Chat owns
+// channel_moderation_settings and writes it locally now.)
+effectsRouter.post('/channel-emote-sources', (req, res) => {
+    const userId = int(req.body?.user_id);
+    const sources = req.body?.sources;
+    if (!userId || !db.getUserById(userId)) return fail(res, 404, 'User not found');
+    if (!sources || typeof sources !== 'object' || Array.isArray(sources)) return fail(res, 400, 'sources object required');
+    db.updateChannel(userId, { emote_sources: JSON.stringify(sources) });
+    res.json({ ok: true });
 });
 
 effectsRouter.post('/ensure-channel', (req, res) => {
@@ -501,7 +481,7 @@ effectsRouter.post('/media-queue', async (req, res) => {
         if (b.op === 'skip') {
             const actor = actorOf(int(b.actorUserId));
             const streamId = int(b.streamId) || null;
-            const allowed = actor && (actor.id === streamerId || permissions.isGlobalModOrAbove(actor) || (streamId && permissions.canModerateStream(actor, streamId)));
+            const allowed = actor && (actor.id === streamerId || permissions.isGlobalModOrAbove(actor) || (streamId && await permissions.canModerateStream(actor, streamId)));
             if (!allowed) return fail(res, 403, 'Only the streamer or a moderator can skip media.');
             const ended = mediaQueue.finishCurrent(streamerId, 'skipped');
             const next = mediaQueue.startNext(streamerId);
@@ -633,10 +613,8 @@ effectsRouter.post('/asset-sync', (req, res) => {
 // ── The read mirror of Chat's tables ──────────────────────────────
 // Same tables, same ids. Upserts set only the columns Live's table has (Chat's *subject_id
 // columns are skipped; Live-only columns such as channel_sounds.media_asset_id are kept).
-// A staged table (roadmap C-04, chat-tables.js) is mirrored only while Chat writes it or hands it
-// back; while Live writes it, Chat's rows for it are refused. Its rows REPLACE: the authority's row
-// wins over whatever holds its key or one of its unique columns here (both copies have the same
-// columns, so nothing of Live's is lost).
+// The six staged tables (roadmap C-04) are Chat's now and are not mirrored here; only the C-02
+// twelve below still are.
 const MIRROR_TABLES = {
     chat_messages: ['id'],
     dm_conversations: ['id'],
@@ -667,16 +645,12 @@ function applyMirror(changes) {
     try {
         d.transaction(() => {
             for (const c of changes) {
-                const staged = !!(c && chatTables.TABLES[c.table]);
-                const pk = MIRROR_TABLES[c && c.table] || (staged && chatTables.acceptsMirror(c.table) ? chatTables.TABLES[c.table] : null);
-                if (!pk) { skipped.push({ table: c && c.table, reason: staged ? 'Live writes this table (chat_table_authority live)' : 'not a mirrored table' }); continue; }
+                const pk = MIRROR_TABLES[c && c.table];
+                if (!pk) { skipped.push({ table: c && c.table, reason: 'not a mirrored table' }); continue; }
                 const have = liveColumns(c.table);
                 try {
                     if (c.op === 'delete') {
                         d.prepare(`DELETE FROM ${c.table} WHERE ${pk.map((k) => `${k} = ?`).join(' AND ')}`).run(...pk.map((k) => c.pk[k]));
-                    } else if (c.op === 'upsert' && c.row && staged) {
-                        const cols = Object.keys(c.row).filter((k) => have.has(k) && /^[a-z_]+$/.test(k));
-                        d.prepare(`INSERT OR REPLACE INTO ${c.table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...cols.map((k) => c.row[k]));
                     } else if (c.op === 'upsert' && c.row) {
                         const cols = Object.keys(c.row).filter((k) => have.has(k) && /^[a-z_]+$/.test(k));
                         const upd = cols.filter((k) => !pk.includes(k));

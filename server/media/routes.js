@@ -18,7 +18,7 @@ const permissions = require('../auth/permissions');
  *
  * Returns the streamer's user id, or throws an Error whose message is viewer-safe.
  */
-function resolveQueueTarget(req) {
+async function resolveQueueTarget(req) {
     const explicit = cleanInt(req.body?.streamer ?? req.query?.streamer, null);
     const uname = req.body?.channelUsername || req.query?.channelUsername;
 
@@ -28,7 +28,7 @@ function resolveQueueTarget(req) {
     if (streamerId === req.user.id) return streamerId;
 
     const channel = db.getChannelByUserId(streamerId);
-    if (!channel || !permissions.canModerateChannel(req.user, channel.id)) {
+    if (!channel || !(await permissions.canModerateChannel(req.user, channel.id))) {
         const err = new Error('You do not have permission to manage this queue');
         err.status = 403;
         throw err;
@@ -37,11 +37,11 @@ function resolveQueueTarget(req) {
 }
 
 /** Owner-or-mod check for a channel identified by its streamer's user id. */
-function canManageChannel(user, streamerId) {
+async function canManageChannel(user, streamerId) {
     if (!user || !streamerId) return false;
     if (user.id === streamerId) return true;
     const channel = db.getChannelByUserId(streamerId);
-    return !!channel && permissions.canModerateChannel(user, channel.id);
+    return !!channel && await permissions.canModerateChannel(user, channel.id);
 }
 
 function cleanInt(value, fallback) {
@@ -49,7 +49,7 @@ function cleanInt(value, fallback) {
     return Number.isFinite(num) ? num : fallback;
 }
 
-router.get('/channel/:username', optionalAuth, (req, res) => {
+router.get('/channel/:username', optionalAuth, async (req, res) => {
     try {
         const user = db.getUserByUsername(req.params.username);
         if (!user) return res.status(404).json({ error: 'Channel not found' });
@@ -75,7 +75,7 @@ router.get('/channel/:username', optionalAuth, (req, res) => {
             is_owner: !!req.user && req.user.id === user.id,
             // Drives whether the channel's media tab renders queue controls. Mods get the
             // same controls as the streamer; the server re-checks on every action.
-            can_manage: canManageChannel(req.user, user.id),
+            can_manage: await canManageChannel(req.user, user.id),
             pricing: (() => {
                 const st = mediaQueue.getSettings(user.id);
                 const currency = mediaQueue.currencyOf(st);
@@ -255,18 +255,18 @@ router.post('/request', requireAuth, async (req, res) => {
     }
 });
 
-router.post('/start', requireAuth, (req, res) => {
+router.post('/start', requireAuth, async (req, res) => {
     try {
-        const request = mediaQueue.startNext(resolveQueueTarget(req));
+        const request = mediaQueue.startNext(await resolveQueueTarget(req));
         res.json({ request });
     } catch (err) {
         res.status(err.status || 400).json({ error: err.message || 'Failed to start next request' });
     }
 });
 
-router.post('/advance', requireAuth, (req, res) => {
+router.post('/advance', requireAuth, async (req, res) => {
     try {
-        const target = resolveQueueTarget(req);
+        const target = await resolveQueueTarget(req);
         const ended = mediaQueue.finishCurrent(target, req.body.status === 'skipped' ? 'skipped' : 'played');
         const next = mediaQueue.startNext(target);
         res.json({ ended, next });
@@ -275,9 +275,9 @@ router.post('/advance', requireAuth, (req, res) => {
     }
 });
 
-router.post('/queue/:id/play', requireAuth, (req, res) => {
+router.post('/queue/:id/play', requireAuth, async (req, res) => {
     try {
-        const target = resolveQueueTarget(req);
+        const target = await resolveQueueTarget(req);
         if (db.getActiveMediaRequestByStreamer(target)) {
             return res.status(400).json({ error: 'Finish or skip the current item first' });
         }
@@ -292,28 +292,28 @@ router.post('/queue/:id/play', requireAuth, (req, res) => {
     }
 });
 
-router.post('/queue/:id/skip', requireAuth, (req, res) => {
+router.post('/queue/:id/skip', requireAuth, async (req, res) => {
     try {
-        const request = mediaQueue.skip(resolveQueueTarget(req), cleanInt(req.params.id, 0));
+        const request = mediaQueue.skip(await resolveQueueTarget(req), cleanInt(req.params.id, 0));
         res.json({ request });
     } catch (err) {
         res.status(err.status || 400).json({ error: err.message || 'Failed to skip request' });
     }
 });
 
-router.post('/queue/:id/move', requireAuth, (req, res) => {
+router.post('/queue/:id/move', requireAuth, async (req, res) => {
     try {
         const direction = req.body.direction === 'down' ? 'down' : 'up';
-        const request = mediaQueue.move(resolveQueueTarget(req), cleanInt(req.params.id, 0), direction);
+        const request = mediaQueue.move(await resolveQueueTarget(req), cleanInt(req.params.id, 0), direction);
         res.json({ request });
     } catch (err) {
         res.status(err.status || 400).json({ error: err.message || 'Failed to reorder request' });
     }
 });
 
-router.delete('/queue/:id', requireAuth, (req, res) => {
+router.delete('/queue/:id', requireAuth, async (req, res) => {
     try {
-        const request = mediaQueue.skip(resolveQueueTarget(req), cleanInt(req.params.id, 0));
+        const request = mediaQueue.skip(await resolveQueueTarget(req), cleanInt(req.params.id, 0));
         res.json({ request });
     } catch (err) {
         res.status(err.status || 400).json({ error: err.message || 'Failed to remove request' });
@@ -346,7 +346,7 @@ router.get('/queue/:id/stream-url', optionalAuth, async (req, res) => {
                 download_status: 'failed',
                 // Raw yt-dlp output (hosts, ports, HTTP errors) is for the channel's managers; anyone
                 // else gets a generic reason instead of an oracle for probing what the server can reach.
-                last_error: canManageChannel(req.user, request.streamer_id) ? request.last_error : (request.last_error ? 'That link could not be played' : null),
+                last_error: await canManageChannel(req.user, request.streamer_id) ? request.last_error : (request.last_error ? 'That link could not be played' : null),
             });
         }
 
@@ -367,12 +367,12 @@ router.get('/queue/:id/stream-url', optionalAuth, async (req, res) => {
 // ── Playback position save (called periodically by player) ──
 // The player page sends the session cookie (sendBeacon cannot set headers), so the same
 // manager check as /fail applies: nobody else can move a channel's resume point.
-router.post('/queue/:id/position', requireAuth, (req, res) => {
+router.post('/queue/:id/position', requireAuth, async (req, res) => {
     try {
         const requestId = cleanInt(req.params.id, 0);
         const request = db.getMediaRequestById(requestId);
         if (!request) return res.status(404).json({ error: 'Request not found' });
-        if (!canManageChannel(req.user, request.streamer_id)) return res.status(403).json({ error: 'Forbidden' });
+        if (!(await canManageChannel(req.user, request.streamer_id))) return res.status(403).json({ error: 'Forbidden' });
         const position = Number(req.body.position);
         if (!Number.isFinite(position) || position < 0) {
             return res.status(400).json({ error: 'Invalid position' });
@@ -389,7 +389,7 @@ router.post('/queue/:id/refund', requireAuth, async (req, res) => {
     try {
         const request = db.getMediaRequestById(cleanInt(req.params.id, 0));
         if (!request) return res.status(404).json({ error: 'Request not found' });
-        if (!canManageChannel(req.user, request.streamer_id)) {
+        if (!(await canManageChannel(req.user, request.streamer_id))) {
             return res.status(403).json({ error: 'Only the channel owner or its mods can issue refunds' });
         }
         const amount = await mediaQueue.refund(request.id);
@@ -400,11 +400,11 @@ router.post('/queue/:id/refund', requireAuth, async (req, res) => {
 });
 
 // ── Report playback failure (auto-refunds) ──────────────────
-router.post('/queue/:id/fail', requireAuth, (req, res) => {
+router.post('/queue/:id/fail', requireAuth, async (req, res) => {
     try {
         const request = db.getMediaRequestById(cleanInt(req.params.id, 0));
         if (!request) return res.status(404).json({ error: 'Request not found' });
-        if (!canManageChannel(req.user, request.streamer_id)) {
+        if (!(await canManageChannel(req.user, request.streamer_id))) {
             return res.status(403).json({ error: 'Only the channel owner or its mods can report failures' });
         }
         const failed = mediaQueue.failRequest(request.id, req.body.error || 'Playback failed');

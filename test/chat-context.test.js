@@ -68,6 +68,24 @@ const chat = http.createServer((req, res) => {
         if (req.url === '/internal/live/presence') {
             return res.end(JSON.stringify({ total: 7, streams: { 1: 3 }, slow_mode: { 1: 5000 }, users: [{ user_id: 3, ip: '198.51.100.3', stream_id: 1 }], anons: [{ anon_id: 'anon9', ip: '203.0.113.9', stream_id: 1 }] }));
         }
+        // Chat's internal read API (roadmap T3): Live reads the six staged tables through it now.
+        const mm = String(req.url).match(/^\/internal\/moderation\/channels\/(\d+)(\/emote-count)?$/);
+        if (mm) {
+            const d2 = require('../server/db/database');
+            const channelId = Number(mm[1]);
+            if (mm[2]) { const ch = d2.getChannelById(channelId); return res.end(JSON.stringify({ ok: true, count: ch ? d2.countChannelEmotes(ch.user_id) : 0 })); }
+            return res.end(JSON.stringify({
+                ok: true,
+                settings: d2.getChannelModerationSettings(channelId) || {},
+                moderator_ids: d2.all('SELECT user_id FROM channel_moderators WHERE channel_id = ? ORDER BY id', [channelId]).map((r) => r.user_id),
+            }));
+        }
+        const um = String(req.url).match(/^\/internal\/moderation\/users\/(\d+)\/channels$/);
+        if (um) {
+            const d2 = require('../server/db/database');
+            const rows = d2.getChannelsByModerator(Number(um[1])) || [];
+            return res.end(JSON.stringify({ ok: true, channels: rows.map((c) => ({ channel_id: c.id, title: c.title, owner_user_id: c.user_id })) }));
+        }
         res.statusCode = 404; res.end('{}');
     });
 });
@@ -145,7 +163,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.ok(auth.expires_at);
         assert.deepStrictEqual((await call('POST', '/internal/chat-context/auth', { token: READ, body: { token: 'garbage' } })).body, { user: null, reason: 'invalid' });
 
-        // 4. Streams, channel policy (settings + moderators + language), follows, bans with version.
+        // 4. Streams, channel policy (language; settings and moderator ids are Chat's now), follows, bans with version.
         const s = (await call('GET', `/internal/chat-context/streams/${streamId}`, { token: READ })).body;
         assert.strictEqual(s.stream.user_id, streamer);
         assert.strictEqual(s.owner.username, 'streamer');
@@ -154,8 +172,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         const active = (await call('GET', '/internal/chat-context/streams/active', { token: READ })).body.rows;
         assert.ok(active.some((r) => r.id === streamId && r.is_live === 1));
         const policy = (await call('GET', `/internal/chat-context/channels/${channel.id}/policy`, { token: READ })).body;
-        assert.deepStrictEqual(policy.moderator_ids, [mod]);
-        assert.strictEqual(policy.settings.allow_anonymous, 1, 'defaults when the channel has no row');
+        // OpenVibe.Chat owns channel_moderation_settings/channel_moderators (roadmap T3) and reads them
+        // locally; Live answers only the channel row and the language it owns.
+        assert.strictEqual(policy.channel.id, channel.id);
+        assert.strictEqual(policy.language, 'en');
+        assert.ok(!('settings' in policy) && !('moderator_ids' in policy), 'the policy half is Chat-local now');
         assert.deepStrictEqual((await call('GET', `/internal/chat-context/users/${viewer}/follows`, { token: READ })).body.streamer_ids, [streamer]);
         const b1 = (await call('GET', '/internal/chat-context/bans', { token: READ })).body;
         assert.deepStrictEqual(b1.bans, []);
@@ -198,18 +219,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.strictEqual((await put(owner, { tts_google_api_key: 'owner-can' })).body.updated, 1);
         assert.strictEqual(db.getSetting('tts_google_api_key'), 'owner-can');
 
-        // 8. Slow mode persistence and alert sounds: only for people who may.
-        assert.strictEqual((await call('POST', '/internal/chat-effects/channel-settings', { token: WRITE, body: { channel_id: channel.id, actor_user_id: viewer, fields: { slow_mode_seconds: 9 } } })).status, 403);
-        assert.strictEqual((await call('POST', '/internal/chat-effects/channel-settings', { token: WRITE, body: { channel_id: channel.id, actor_user_id: mod, fields: { slow_mode_seconds: 9 } } })).status, 200);
-        assert.strictEqual(db.getChannelModerationSettings(channel.id).slow_mode_seconds, 9);
-        // Sub-only mode is saved the same way (Chat enforces the saved value); a viewer cannot set it.
-        assert.strictEqual(db.getChannelModerationSettings(channel.id).sub_only, 0, 'off by default');
-        assert.strictEqual((await call('POST', '/internal/chat-effects/channel-settings', { token: WRITE, body: { channel_id: channel.id, actor_user_id: viewer, fields: { sub_only: 1 } } })).status, 403);
-        assert.strictEqual((await call('POST', '/internal/chat-effects/channel-settings', { token: WRITE, body: { channel_id: channel.id, actor_user_id: mod, fields: { sub_only: 1 } } })).status, 200);
-        assert.deepStrictEqual([db.getChannelModerationSettings(channel.id).sub_only, db.getChannelModerationSettings(channel.id).slow_mode_seconds], [1, 9], 'sub_only saved, slow mode kept');
-        assert.strictEqual((await call('POST', '/internal/chat-effects/channel-settings', { token: WRITE, body: { channel_id: channel.id, actor_user_id: mod, fields: { sub_only: 0 } } })).status, 200);
-        assert.strictEqual(db.getChannelModerationSettings(channel.id).sub_only, 0);
-        assert.strictEqual((await call('GET', `/internal/chat-context/channels/${channel.id}/policy`, { token: READ })).body.settings.sub_only, 0, 'the policy read carries it');
+        // 8. Slow mode and sub-only persistence moved to Chat with channel_moderation_settings (roadmap
+        // T3); Live now only writes channels.emote_sources for Chat's PUT /api/emotes/sources.
+        assert.strictEqual((await call('POST', '/internal/chat-effects/channel-emote-sources', { token: WRITE, body: { user_id: 999999, sources: { ffz: true } } })).status, 404);
+        assert.strictEqual((await call('POST', '/internal/chat-effects/channel-emote-sources', { token: WRITE, body: { user_id: streamer, sources: { ffz: true, bttv: false } } })).status, 200);
+        assert.strictEqual(db.getChannelByUserId(streamer).emote_sources, JSON.stringify({ ffz: true, bttv: false }));
 
         // 8a. Sub-only chat asks whether someone holds an ACTIVE subscription to the streamer's channel:
         // by user id or Network subject; a lapsed period or a cancelled row is not one.
@@ -226,10 +240,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.strictEqual((await subOf(`user_id=${viewer}&streamer_id=${streamer}`)).body.subscriber, false, 'the paid period is over');
         db.upsertSubscription({ subscriber_id: viewer, streamer_id: streamer, status: 'canceled', current_period_end: new Date(Date.now() + 86400e3).toISOString() });
         assert.strictEqual((await subOf(`user_id=${viewer}&streamer_id=${streamer}`)).body.subscriber, false, 'not active');
-        const snd = path.join(tmp, 'sounds', 'alert.mp3'); fs.writeFileSync(snd, 'x');
-        assert.strictEqual((await call('POST', '/internal/chat-effects/alert-sound', { token: WRITE, body: { channel_id: channel.id, actor_user_id: mod, kind: 'donation', url: snd } })).status, 403, 'only the channel owner');
-        assert.strictEqual((await call('POST', '/internal/chat-effects/alert-sound', { token: WRITE, body: { channel_id: channel.id, actor_user_id: streamer, kind: 'donation', url: '/etc/passwd' } })).status, 400, 'files stay in the sounds dir');
-        assert.strictEqual((await call('POST', '/internal/chat-effects/alert-sound', { token: WRITE, body: { channel_id: channel.id, actor_user_id: streamer, kind: 'donation', url: snd } })).status, 200);
+        // Alert sounds moved to Chat with channel_moderation_settings (roadmap T3): Chat resolves the
+        // sound from its own row and plays it through the bridge op, so Live's effect is gone.
 
         // 8b. A ring from Chat's call server (CALLS_AUTHORITY=chat): Live pushes the VC_CALL_INVITE it used to.
         const notify = require('../server/utils/notify');

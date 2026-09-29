@@ -35,6 +35,8 @@ const i18n = require('../i18n/translate');
 const robotStreamerService = require('../integrations/robotstreamer-service');
 const chatRelayService = require('../integrations/chat-relay-service');
 const chatServer = require('../chat/chat-server');
+// The six chat tables are OpenVibe.Chat's (roadmap T3); the few reads here go through its client.
+const moderation = require('../chat/moderation-client');
 // Stream voice channels: Live's call server, or OpenVibe.Chat's with CALLS_AUTHORITY=chat.
 const callsAuthority = require('./calls-authority');
 const { sanitizeOfflineHtml, sanitizeOfflineCss } = require('./offline-html-sanitize');
@@ -475,13 +477,18 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
         // show the pencil edit button to the right people.
         let modsCanEditAbout = false;
         let _modSettings = {};
-        try { _modSettings = db.getChannelModerationSettings(channel.id) || {}; modsCanEditAbout = !!_modSettings.mods_can_edit_about; } catch { /* default off */ }
+        let viewerIsChannelMod = false;
+        try {
+            const m = await moderation.getChannelModeration(channel.id);
+            _modSettings = m.settings || {};
+            modsCanEditAbout = !!_modSettings.mods_can_edit_about;
+            viewerIsChannelMod = !!(req.user && m.moderator_ids.includes(Number(req.user.id)));
+        } catch { /* default off */ }
         // Public chat limits so the client can cap the input + truncate TTS to the streamer's max.
         publicChannel.chat_limits = {
             max_message_length: Math.max(1, Number(_modSettings.max_message_length) || 500),
             tts_max_length: Math.max(10, Number(_modSettings.tts_max_length) || 200),
         };
-        const viewerIsChannelMod = !!(req.user && db.isChannelModerator(req.user.id, channel.id));
         publicChannel.mods_can_edit_about = modsCanEditAbout;
         publicChannel.viewer_can_edit_about = !!(isOwner || (modsCanEditAbout && viewerIsChannelMod));
         // Social links (server/social/links.js): saved links plus connected restream platforms. Editors also get
@@ -818,15 +825,19 @@ router.get('/channel/:username/bio-en', async (req, res) => {
 // Editable by the channel owner, and by channel moderators when the streamer has
 // enabled `mods_can_edit_about`. Targets the channel by username so a mod writes
 // to the STREAMER's channel, not their own.
-router.put('/channel/:username/about', requireAuth, (req, res) => {
+router.put('/channel/:username/about', requireAuth, async (req, res) => {
     try {
         const channel = db.getChannelByUsername(req.params.username);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
         const isOwner = req.user.id === channel.user_id;
         let modsCanEditAbout = false;
-        try { modsCanEditAbout = !!(db.getChannelModerationSettings(channel.id) || {}).mods_can_edit_about; } catch { /* off */ }
-        const isChannelMod = db.isChannelModerator(req.user.id, channel.id);
+        let isChannelMod = false;
+        try {
+            const m = await moderation.getChannelModeration(channel.id);
+            modsCanEditAbout = !!m.settings.mods_can_edit_about;
+            isChannelMod = m.moderator_ids.includes(Number(req.user.id));
+        } catch { /* off */ }
         if (!isOwner && !(modsCanEditAbout && isChannelMod)) {
             return res.status(403).json({ error: 'You do not have permission to edit this About section' });
         }
@@ -1611,7 +1622,7 @@ router.get('/setup-progress', requireAuth, async (req, res) => {
     const rs = slots.some(sl => safe(() => { const r = db.getRobotStreamerIntegrationBySlot(uid, sl.id); return !!(r && (r.robot_id || r.stream_name)); }, false));
     const user = safe(() => db.getUserById(uid), {}) || {};
     const channel = safe(() => db.getChannelByUserId(uid), {}) || {};
-    const emotes = safe(() => db.get('SELECT COUNT(*) AS n FROM emotes WHERE user_id = ?', [uid]).n, 0);
+    const emotes = await moderation.getEmoteCount(uid).catch(() => 0);
     const sounds = safe(() => db.get('SELECT COUNT(*) AS n FROM channel_sounds WHERE channel_owner_id = ?', [uid]).n, 0);
     const goals = safe(() => db.get('SELECT COUNT(*) AS n FROM donation_goals WHERE user_id = ? AND is_active = 1', [uid]).n, 0);
     const powerchat = safe(() => !!db.get('SELECT 1 FROM powerchat_connections WHERE user_id = ? LIMIT 1', [uid]), false);
@@ -1622,13 +1633,16 @@ router.get('/setup-progress', requireAuth, async (req, res) => {
     // Second wave of tasks. Each one is a real feature with a real table behind it, so nothing on
     // the list can be permanently unreachable — a task that can never be ticked would park every
     // streamer below 100% forever.
-    const mods = safe(() => channel.id ? db.get('SELECT COUNT(*) AS n FROM channel_moderators WHERE channel_id = ?', [channel.id]).n : 0, 0);
+    // Chat owns channel_moderators and channel_moderation_settings (roadmap T3).
+    const channelMod = channel.id ? await moderation.getChannelModeration(channel.id).catch(() => null) : null;
+    const mods = channelMod ? channelMod.moderator_ids.length : 0;
     const controls = safe(() => db.get('SELECT COUNT(*) AS n FROM control_configs WHERE user_id = ?', [uid]).n, 0);
     const aibot = safe(() => db.get('SELECT COUNT(*) AS n FROM channel_ai_bots WHERE channel_user_id = ?', [uid]).n, 0);
     // Pastes live in OpenVibe.Community: the person's own count, unlisted and private included.
     const pastes = await require('../media-proxy/lookups').countUserPastes(user && user.id ? user : null, { hidden: 'owner' });
     const requests = safe(() => !!db.get('SELECT 1 FROM media_request_settings WHERE user_id = ? LIMIT 1', [uid]), false);
-    const modRules = safe(() => channel.id ? !!db.get('SELECT 1 FROM channel_moderation_settings WHERE channel_id = ? LIMIT 1', [channel.id]) : false, false);
+    // A saved settings row carries updated_at; Chat's defaults (no row) do not.
+    const modRules = !!(channelMod && channelMod.settings.updated_at);
     const tasks = [
         { id: 'slot', group: 'Stream', title: 'Create your stream slot', why: 'Your show gets its own key, settings, VODs and restreams.', done: slots.length > 0, count: slots.length },
         { id: 'method', group: 'Stream', title: 'Choose how you stream', why: 'Browser, OBS over RTMP, or OBS over WHIP.', done: methodSet },

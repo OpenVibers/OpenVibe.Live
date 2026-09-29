@@ -4145,7 +4145,11 @@ function _computeHomeStats() {
         users: c(`SELECT COUNT(*) AS count FROM users WHERE COALESCE(is_banned, 0) = 0`),
         anons: c(`SELECT COUNT(*) AS count FROM anon_ip_mappings`),
         follows: c(`SELECT COUNT(*) AS count FROM follows`),
-        emotes: c(`SELECT COUNT(*) AS count FROM emotes`),
+        // No platform-wide emote total: OpenVibe.Chat owns `emotes` (roadmap T3) and exposes counts
+        // per channel only (server/chat/moderation-client.js getEmoteCount), so there is nothing but
+        // the old table to answer a site-wide number. null (as the other external figures above); the
+        // key stays for the mixed-version window (test/n-1.test.js: the old client reads stats.emotes).
+        emotes: null,
         pastes: null,
         aiMemories: c(`SELECT COUNT(*) AS count FROM stream_memories`),
         pasteImages: null,

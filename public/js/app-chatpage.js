@@ -20,7 +20,7 @@ async function loadGlobalChatAi() {
     const panel = document.getElementById('global-ai-panel');
     if (!strip || !panel) return;
     let insight = null;
-    try { insight = (await api('/chat-ai/global')).insight; } catch { /* silent */ }
+    try { insight = (await api('/chat/ai/global')).insight; } catch { /* silent */ }
     if (!insight || !insight.overview) {
         strip.style.display = 'none';
         // Keep the panel only if the user had already opened it.
@@ -93,7 +93,7 @@ async function _gaiTlLoad(reset) {
     if (reset && _gaiTl.periodBefore) p.set('before', String(_gaiTl.periodBefore));
     else if (!reset && _gaiTl.oldestTs) p.set('before', String(_gaiTl.oldestTs));
     let data;
-    try { data = await api('/chat-ai/timeline?' + p.toString()); } catch { _gaiTl.loading = false; return; }
+    try { data = await api('/chat/ai/timeline?' + p.toString()); } catch { _gaiTl.loading = false; return; }
     const el = document.getElementById('global-ai-timeline');
     if (!el) { _gaiTl.loading = false; return; }
     const events = data.events || [];

@@ -30,6 +30,13 @@ with the same WebSocket protocol and REST paths. `CHAT_AUTHORITY=chat` switches 
   unless `CHAT_AUTHORITY=chat`.
 - Live's chat tables become Chat's read mirror (`POST /internal/chat-effects/mirror`): same ids, so home
   stats, recaps, AI context, VOD chat replay and the `/api/mod` queues keep reading them in place.
+- **The six chat tables are Chat's** (roadmap T3): `channel_moderators`, `channel_moderation_settings`,
+  `emotes`, `user_tags`, `chat_ai_summaries` and `chat_timeline_events`. Live keeps no copy and reads them
+  only through [server/chat/moderation-client.js](../server/chat/moderation-client.js) — Chat's internal
+  read API (`GET /internal/moderation/...`, capability `chat.moderation.read`, cached 30 s, off under
+  `LIVE_DRILL`). The dashboard, channel page and upload UI call Chat directly (`/api/chat/channels/:id/…`,
+  `/api/emotes`, `/api/chat/ai/…`); alert sounds are Chat's, played on Live's request through the bridge op
+  `playAlertSound [streamerId, streamId, kind]` ([server/monetization/alerts.js](../server/monetization/alerts.js)).
 
 ## Features
 
