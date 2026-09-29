@@ -19,11 +19,12 @@ const i18n = require('./translate');
 const router = express.Router();
 const MAX_CHARS = 600;
 const _hits = new Map();   // ip → [timestamps]
-function allow(ip, signedIn) {
+function allow(ip, signedIn, weight = 1) {
     const now = Date.now(), win = 60_000, max = signedIn ? 40 : 15;
     const list = (_hits.get(ip) || []).filter(t => now - t < win);
-    if (list.length >= max) { _hits.set(ip, list); return false; }
-    list.push(now); _hits.set(ip, list);
+    if (list.length + weight > max) { _hits.set(ip, list); return false; }
+    for (let i = 0; i < weight; i++) list.push(now);
+    _hits.set(ip, list);
     if (_hits.size > 5000) for (const [k, v] of _hits) if (!v.length || now - v[v.length - 1] > win) _hits.delete(k);
     return true;
 }
@@ -46,6 +47,24 @@ router.post('/translate', optionalAuth, async (req, res) => {
         const out = await i18n.translate(text, { from, to, context: 'chat' });
         res.json({ from, to, text: out || null, from_name: i18n.langName(from), to_name: i18n.langName(to) });
     } catch (err) {
+        res.status(500).json({ error: 'Translation failed' });
+    }
+});
+
+// Auto-translate in chat: up to 20 lines per request, one model call for the ones no one has asked for before
+// (translateMany). The limit counts lines, a quarter each (most come from the cache), so a busy chat cannot
+// out-spend the one-at-a-time button.
+router.post('/translate-batch', optionalAuth, async (req, res) => {
+    try {
+        if (!i18n.available()) return res.status(503).json({ error: 'Translation is off right now' });
+        const to = String(req.body?.to || 'en').trim().toLowerCase();
+        if (!i18n.isAllowedLang(to) || to === 'auto') return res.status(400).json({ error: 'Unknown target language' });
+        const texts = (Array.isArray(req.body?.texts) ? req.body.texts : []).slice(0, 20).map((t) => String(t || '').trim().slice(0, MAX_CHARS));
+        if (!texts.length) return res.status(400).json({ error: 'Nothing to translate' });
+        if (!allow(String(req.ip || ''), !!req.user, Math.ceil(texts.length / 4))) return res.status(429).json({ error: 'Slow down — too many translations' });
+        const results = await i18n.translateMany(texts, { to, context: 'chat' });
+        res.json({ to, to_name: i18n.langName(to), results });
+    } catch {
         res.status(500).json({ error: 'Translation failed' });
     }
 });

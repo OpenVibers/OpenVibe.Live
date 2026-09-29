@@ -202,3 +202,14 @@
 @media (prefers-reduced-motion: reduce) {
     .star-expand, .star-expand i, .star-card.is-compact .star-avatar { transition: none; }
 }
+
+/* ── Chat: "Translate chat" switch (shows once a line in another language arrives; chat.js _autoTrChip) ── */
+.chat-autotr {
+    display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 3px 10px; border-radius: 999px; cursor: pointer;
+    font: 600 0.72rem/1.2 inherit; white-space: nowrap; color: var(--text-secondary);
+    background: transparent; border: 1px solid var(--border); transition: color .15s, border-color .15s, background-color .15s;
+}
+.chat-autotr:hover { color: var(--text-primary); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+.chat-autotr.is-on { color: var(--accent-light, var(--accent)); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.chat-autotr:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chat-translate-hint ~ .chat-autotr { margin-left: 6px; }

@@ -39,36 +39,16 @@ function langName(code) { return LANG_NAMES[code] || code || 'English'; }
 function langFlag(code) { return LANG_FLAGS[code] || '🌐'; }
 function isAllowedLang(code) { return ALLOWED.has(String(code || '')); }
 
-// ── Detection (script-based; no model call) ─────────────────────────────────────
-// Latin script is reported as 'en' — we cannot tell English from Spanish without a model,
-// and for direction-picking "latin vs the channel's script" is what matters.
+// ── Detection (no model call) ──────────────────────────────────────────────────────
+// public/js/lang-detect.js, the same file chat uses in the browser: scripts decide non-Latin text, common words and
+// letters decide Latin-script languages (Spanish, French, German, …). Latin text it cannot place (slang, names, one
+// word) is reported as 'en', as before, so direction-picking stays "Latin vs the channel's script" for it.
+const OVLang = require('../../public/js/lang-detect');
 function detectLang(text) {
-    const s = String(text || '');
-    const count = (re) => (s.match(re) || []).length;
-    const kana = count(/[\u3040-\u30ff\uff66-\uff9f]/g);
-    const han = count(/[\u4e00-\u9fff\u3400-\u4dbf]/g);
-    const hangul = count(/[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f]/g);
-    const cyr = count(/[\u0400-\u04ff]/g);
-    const arab = count(/[\u0600-\u06ff]/g);
-    const thai = count(/[\u0e00-\u0e7f]/g);
-    const heb = count(/[\u0590-\u05ff]/g);
-    const greek = count(/[\u0370-\u03ff]/g);
-    const deva = count(/[\u0900-\u097f]/g);
-    const latin = count(/[A-Za-z\u00c0-\u024f]/g);
-    const nonLatin = kana + han + hangul + cyr + arab + thai + heb + greek + deva;
-    if (!nonLatin && !latin) return null;
-    if (!nonLatin) return 'en';
-    if (nonLatin / (nonLatin + latin) < 0.34) return 'en';   // "lol 草" — mostly English
-    if (kana) return 'ja';
-    if (hangul) return 'ko';
-    if (han) return 'zh';
-    if (cyr) return 'ru';
-    if (arab) return 'ar';
-    if (thai) return 'th';
-    if (heb) return 'he';
-    if (greek) return 'el';
-    if (deva) return 'hi';
-    return 'en';
+    const d = OVLang.detect(text);
+    if (d.lang && d.confidence >= 0.6) return d.lang;
+    if (/[A-Za-z\u00c0-\u024f]/.test(String(text || ''))) return 'en';
+    return d.lang || null;
 }
 
 /**
@@ -159,6 +139,23 @@ const MEM_MAX = 1500;
 function _memGet(k) { const v = _mem.get(k); if (v !== undefined) { _mem.delete(k); _mem.set(k, v); } return v; }
 function _memSet(k, v) { _mem.set(k, v); if (_mem.size > MEM_MAX) _mem.delete(_mem.keys().next().value); }
 function cacheKey(text, from, to) { return crypto.createHash('sha1').update(`${from}|${to}|${String(text).trim()}`).digest('hex'); }
+/** A cached translation: the text, '' when the model said it needs none, undefined when not cached. */
+function cached(text, from, to) {
+    const key = cacheKey(text, from, to);
+    const hit = _memGet(key);
+    if (hit !== undefined) return hit;
+    _ensureTable();
+    try {
+        const row = db.get('SELECT text FROM translations WHERE key = ?', [key]);
+        if (row && row.text) { _memSet(key, row.text); return row.text; }
+    } catch { /* no table yet */ }
+    return undefined;
+}
+function remember(text, from, to, out) {
+    const key = cacheKey(text, from, to);
+    _memSet(key, out || '');
+    if (out) { try { db.run('INSERT OR REPLACE INTO translations (key, src, dst, text) VALUES (?, ?, ?, ?)', [key, from, to, out]); } catch { /* */ } }
+}
 
 let _inflight = 0;
 const MAX_INFLIGHT = 3;
@@ -182,25 +179,18 @@ function _release() {
 async function translate(text, { from = 'auto', to = 'en', context = 'chat', maxTokens } = {}) {
     if (!translatable(text)) return null;
     if (from === to) return null;
-    const key = cacheKey(text, from, to);
-    const hit = _memGet(key);
-    if (hit !== undefined) return hit;
-    _ensureTable();
-    try {
-        const row = db.get('SELECT text FROM translations WHERE key = ?', [key]);
-        if (row && row.text) { _memSet(key, row.text); return row.text; }
-    } catch { /* no table yet */ }
+    const hit = cached(text, from, to);
+    if (hit !== undefined) return hit || null;
     if (!available()) return null;
     const ok = await _slot();
     if (!ok) return null;
     try {
         // The prompt lives in OpenVibe.AI (workflow live.translate).
         const o = await aiService.structured('live.translate', { text: String(text).trim(), from, to, context, max_tokens: maxTokens || undefined });
-        if (o && o.unchanged) { _memSet(key, ''); return null; }
+        if (o && o.unchanged) { remember(text, from, to, ''); return null; }
         const out = o && typeof o.text === 'string' ? o.text.trim() : '';
         if (!out) return null;
-        _memSet(key, out);
-        try { db.run('INSERT OR REPLACE INTO translations (key, src, dst, text) VALUES (?, ?, ?, ?)', [key, from, to, out]); } catch { /* */ }
+        remember(text, from, to, out);
         return out;
     } catch { return null; }
     finally { _release(); }
@@ -214,6 +204,9 @@ async function translateChatMessage(message, channelUserId) {
     if (!available() || !translatable(message)) return null;
     const from = detectLang(message);
     if (!from) return null;
+    // Translating foreign text for everyone spends a model call on every such line, so only when detection is sure
+    // (a lone 草 or a two-word line stays as it is; each viewer's translate button covers those).
+    if (from !== 'en' && OVLang.detect(message).confidence < 0.85) return null;
     const chan = channelLanguage(channelUserId);
     let to = null;
     if (from !== 'en') to = 'en';                 // foreign → English, always
@@ -227,22 +220,52 @@ async function translateChatMessage(message, channelUserId) {
  * Translate an array of speech lines (one LLM call), returning an array aligned to the
  * input (null where a line could not be translated).
  */
-async function translateLines(lines, { from, to = 'en' } = {}) {
+async function translateLines(lines, { from, to = 'en', context = 'speech' } = {}) {
     const src = (lines || []).map(l => String(l || '').trim());
     const out = new Array(src.length).fill(null);
     const idx = src.map((l, i) => translatable(l) ? i : -1).filter(i => i >= 0);
     if (!idx.length || !available()) return out;
     const joined = idx.map(i => src[i].replace(/\s*\n\s*/g, ' ')).join('\n');
-    const t = await translate(joined, { from, to, context: 'speech', maxTokens: 1200 });
+    const t = await translate(joined, { from, to, context, maxTokens: 1200 });
     if (!t) return out;
     const parts = t.split('\n').map(x => x.trim()).filter(Boolean);
     if (parts.length === idx.length) { idx.forEach((i, k) => { out[i] = parts[k]; }); return out; }
     // Line count drifted — fall back to one call per line (bounded).
-    for (const i of idx.slice(0, 8)) out[i] = await translate(src[i], { from, to, context: 'speech' });
+    for (const i of idx.slice(0, 8)) out[i] = await translate(src[i], { from, to, context });
+    return out;
+}
+
+/**
+ * Many chat lines to one language, for a viewer (the batch endpoint behind auto-translate). Each line is checked
+ * before any model call: nothing to translate → null; already in `to` → { same: true }; cached → the cached text.
+ * What is left goes to the model in ONE call (translateLines), and each line is cached on its own, so the next
+ * viewer asking for the same line costs nothing.
+ * @returns {Promise<Array<{from:string,text:string}|{same:true,from:string}|null>>} aligned to `texts`
+ */
+async function translateMany(texts, { to = 'en', context = 'chat' } = {}) {
+    const out = texts.map(() => null);
+    const need = [];
+    texts.forEach((t, i) => {
+        if (!translatable(t)) return;
+        const d = OVLang.detect(t);
+        if (!d.lang) return;   // slang, emote names, one short word: no language to translate from, no call
+        const from = d.confidence >= 0.6 ? d.lang : 'auto';
+        if (from === to) { out[i] = { same: true, from }; return; }
+        const hit = cached(t, from, to);
+        if (hit !== undefined) { out[i] = hit ? { from, text: hit } : { same: true, from }; return; }
+        need.push({ i, t, from });
+    });
+    if (!need.length || !available()) return out;
+    const lines = await translateLines(need.map((n) => n.t), { from: 'auto', to, context });
+    need.forEach((n, k) => {
+        if (!lines[k]) return;
+        out[n.i] = { from: n.from, text: lines[k] };
+        remember(n.t, n.from, to, lines[k]);
+    });
     return out;
 }
 
 module.exports = {
-    detectLang, detectForeignInText, translatable, channelLanguage, channelMeta, invalidateChannel, translate, translateChatMessage, translateLines,
+    detectLang, detectForeignInText, translatable, channelLanguage, channelMeta, invalidateChannel, translate, translateChatMessage, translateLines, translateMany,
     langName, langFlag, isAllowedLang, available, siteEnabled, LANG_NAMES, LANG_FLAGS,
 };

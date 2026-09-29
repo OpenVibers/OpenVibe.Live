@@ -3024,20 +3024,87 @@ function _applyChatTranslation(evt) {
 }
 // The viewer's own language (browser setting, 2-letter), used by the on-demand translate button.
 function _viewerLang() { try { return String(navigator.language || 'en').slice(0, 2).toLowerCase() || 'en'; } catch { return 'en'; } }
+/* ── Translating for this viewer ────────────────────────────────
+   Which lines are in another language is decided here, without a network call (public/js/lang-detect.js, the
+   same rules the server uses): only those get a translate button, and only they are ever sent. Translations are
+   kept for the session (sessionStorage), so a re-render, a room switch back or a reload never asks twice; the
+   server keeps its own cache too, shared by every viewer. Auto-translate (opt-in, remembered) sends the room's
+   foreign lines in batches: one request per ~0.8 s for up to 20 lines, answered from the cache where it can and
+   with one model call for the rest. */
+const _TR_KEY = 'ov_tr_cache_v1';
+const _trCache = (() => { try { return new Map(JSON.parse(sessionStorage.getItem(_TR_KEY) || '[]')); } catch { return new Map(); } })();
+let _trSaveT = 0;
+function _trRemember(to, text, val) {
+    _trCache.set(to + '\u0001' + text, val);
+    if (_trCache.size > 400) _trCache.delete(_trCache.keys().next().value);
+    clearTimeout(_trSaveT);
+    _trSaveT = setTimeout(() => { try { sessionStorage.setItem(_TR_KEY, JSON.stringify([..._trCache].slice(-400))); } catch { /* full */ } }, 800);
+}
+function _trShow(el, d, to) {
+    if (!d || !d.text || el.querySelector(`.chat-translation[data-to="${CSS.escape(to)}"]`)) return;
+    const node = _translationEl({ from: d.from, to, text: d.text });
+    node.dataset.to = to;
+    el.appendChild(node);
+}
 async function _translateForMe(el, text, btn) {
     const to = _viewerLang();
     const existing = el.querySelector(`.chat-translation[data-to="${CSS.escape(to)}"]`);
     if (existing) { existing.hidden = !existing.hidden; return; }
+    const hit = _trCache.get(to + '\u0001' + text);
+    if (hit) { _trShow(el, hit, to); return; }
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>'; }
     try {
         const d = await api('/i18n/translate', { method: 'POST', body: { text, to } });
         if (d && d.same) { toast(`Already in ${_LANG_LABEL[to] || to}`, 'info'); return; }
         if (!d || !d.text) { toast('Translation unavailable right now', 'error'); return; }
-        const node = _translationEl({ from: d.from, to: d.to, text: d.text });
-        node.dataset.to = to;
-        el.appendChild(node);
+        _trRemember(to, text, { from: d.from, text: d.text });
+        _trShow(el, d, to);
     } catch (err) { toast(err?.message || 'Translation failed', 'error'); }
     finally { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-language"></i>'; } }
+}
+const _autoTr = {
+    on: (() => { try { return localStorage.getItem('ov_chat_autotr') === '1'; } catch { return false; } })(),
+    seen: 0, queue: [], timer: 0,
+    add(el, text) {
+        this.seen++;
+        if (this.seen === 1) _autoTrChip();
+        if (!this.on) return;
+        const to = _viewerLang(), hit = _trCache.get(to + '\u0001' + text);
+        if (hit) { if (hit.text) _trShow(el, hit, to); return; }
+        this.queue.push([el, text]);
+        if (this.queue.length > 40) this.queue.splice(0, this.queue.length - 40);   // a history load: the newest lines
+        if (!this.timer) this.timer = setTimeout(() => this.flush(), 800);
+    },
+    async flush() {
+        this.timer = 0;
+        const batch = this.queue.splice(0, 20).filter(([el]) => el.isConnected);
+        if (this.queue.length) this.timer = setTimeout(() => this.flush(), 1500);
+        if (!batch.length) return;
+        const to = _viewerLang(), texts = [...new Set(batch.map(([, t]) => t))];
+        try {
+            const d = await api('/i18n/translate-batch', { method: 'POST', body: { texts, to } });
+            (d && d.results || []).forEach((r, i) => { if (r) _trRemember(to, texts[i], r.text ? { from: r.from, text: r.text } : { same: true }); });
+            for (const [el, t] of batch) { const r = _trCache.get(to + '\u0001' + t); if (r && r.text) _trShow(el, r, to); }
+        } catch { /* off or busy: the button still works */ }
+    },
+    toggle() {
+        this.on = !this.on;
+        try { localStorage.setItem('ov_chat_autotr', this.on ? '1' : '0'); } catch { /* */ }
+        _autoTrChip();
+        if (this.on) document.querySelectorAll('.chat-msg[data-lang]').forEach((el) => { if (el._ovRaw) this.add(el, el._ovRaw); });
+    },
+};
+// The switch shows in the tools row once a line in another language has been seen (a room of one language never shows it).
+function _autoTrChip() {
+    if (!_autoTr.seen) return;
+    document.querySelectorAll('.chat-tools-row').forEach((row) => {
+        let b = row.querySelector('.chat-autotr');
+        if (!b) { b = document.createElement('button'); b.type = 'button'; b.className = 'chat-autotr'; b.addEventListener('click', () => _autoTr.toggle()); row.appendChild(b); }
+        b.classList.toggle('is-on', _autoTr.on);
+        b.setAttribute('aria-pressed', String(_autoTr.on));
+        b.title = _autoTr.on ? `Lines in other languages are translated to ${_LANG_LABEL[_viewerLang()] || 'your language'} as they arrive. Click to stop.` : `Translate lines in other languages to ${_LANG_LABEL[_viewerLang()] || 'your language'} automatically`;
+        b.innerHTML = `<i class="fa-solid fa-language"></i> <span>${_autoTr.on ? 'Translating' : 'Translate chat'}</span>`;
+    });
 }
 // "Auto-translated ↔ Japanese" pill in every chat tools row while in a non-English channel.
 function _updateTranslateHint(lang) {
@@ -3724,14 +3791,18 @@ function buildChatMessageEl(msg, opts = {}) {
         replyBtn.title = 'Reply';
         replyBtn.innerHTML = '<i class="fa-solid fa-reply"></i>';
         el.appendChild(replyBtn);
-        // "Translate to my language" — for every viewer, whatever the channel's language is
-        // (the automatic translations only cover English ↔ the streamer's language).
-        if (/\p{L}{2,}/u.test(rawText || '')) {
+        // "Translate to my language", only on lines confidently in another language than the viewer's (decided
+        // locally, public/js/lang-detect.js) and not already translated into it by the channel's auto-translation.
+        const _me = _viewerLang();
+        const _foreign = window.OVLang ? OVLang.foreignFor(displayRaw || '', _me) : null;
+        if (_foreign && !(_tr && _tr.to === _me)) {
+            el.dataset.lang = _foreign;
             const trBtn = document.createElement('button');
             trBtn.className = 'chat-translate-btn';
-            trBtn.title = `Translate to ${_LANG_LABEL[_viewerLang()] || 'my language'}`;
+            trBtn.title = `Translate from ${_LANG_LABEL[_foreign] || _foreign} to ${_LANG_LABEL[_me] || 'my language'}`;
             trBtn.innerHTML = '<i class="fa-solid fa-language"></i>';
             el.appendChild(trBtn);
+            _autoTr.add(el, displayRaw);
         }
         el.classList.add('chat-msg-hoverable');
     }
