@@ -1,13 +1,13 @@
 {
  "service": "live",
- "release": "8cead3637816b496cbd5657753a8ca8e8555a1e8",
- "recorded_at": "2026-09-29T16:51:44.167Z",
+ "release": "8654ef6b86143d4117ff010ce19aa0124a6bcd57",
+ "recorded_at": "2026-09-29T17:33:21.954Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "8cead3637816",
-  "released_at": "2026-09-29T15:31:20.000Z",
-  "booted_at": "2026-09-29T16:51:37.750Z",
+  "release": "8654ef6b8614",
+  "released_at": "2026-09-29T17:32:19.000Z",
+  "booted_at": "2026-09-29T17:33:19.050Z",
   "contracts_version": "0.71.0",
   "packages": {
    "openvibe-shared": "1.30.1",
@@ -22,11 +22,11 @@
    },
    "shell": {
     "kind": "script",
-    "version": "680853c062b9"
+    "version": "a1a892dca8f8"
    },
    "server": {
     "kind": "server",
-    "version": "83b6fbd34fe3"
+    "version": "ac8c4a25efa6"
    }
   },
   "assets": {
@@ -1043,102 +1043,6 @@
   },
   {
    "method": "GET",
-   "path": "/api/channels/moderation/mine",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/app-channel.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/channels/moderation/mine",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "channels": "array",
-    "channels[]": "object",
-    "channels[].id": "number",
-    "channels[].user_id": "number",
-    "channels[].title": "string",
-    "channels[].description": "string",
-    "channels[].category": "null",
-    "channels[].tags": "string",
-    "channels[].protocol": "string",
-    "channels[].is_nsfw": "number",
-    "channels[].panels": "string",
-    "channels[].default_vod_visibility": "string",
-    "channels[].default_clip_visibility": "string",
-    "channels[].weather_zip": "null",
-    "channels[].weather_detail": "string",
-    "channels[].weather_show_location": "number",
-    "channels[].control_mode": "string",
-    "channels[].anon_controls_enabled": "number",
-    "channels[].control_rate_limit_ms": "number",
-    "channels[].video_click_enabled": "number",
-    "channels[].video_click_rate_limit_ms": "number",
-    "channels[].active_control_config_id": "null",
-    "channels[].created_at": "string",
-    "channels[].updated_at": "string",
-    "channels[].clips_allow_creator_delete": "number",
-    "channels[].hide_ai_overview": "number",
-    "channels[].ai_overview_pref": "string",
-    "channels[].ai_derivation_enabled": "number",
-    "channels[].ai_category": "null",
-    "channels[].offline_screen_type": "string",
-    "channels[].offline_screen_url": "null",
-    "channels[].offline_html": "null",
-    "channels[].offline_css": "null",
-    "channels[].social_links": "null",
-    "channels[].moderation_settings": "object",
-    "channels[].moderation_settings.channel_id": "number",
-    "channels[].moderation_settings.slow_mode_seconds": "number",
-    "channels[].moderation_settings.followers_only": "number",
-    "channels[].moderation_settings.allow_anonymous": "number",
-    "channels[].moderation_settings.links_allowed": "number",
-    "channels[].moderation_settings.gifs_enabled": "number",
-    "channels[].moderation_settings.account_age_gate_hours": "number",
-    "channels[].moderation_settings.caps_percentage_limit": "number",
-    "channels[].moderation_settings.aggressive_filter": "number",
-    "channels[].moderation_settings.max_message_length": "number",
-    "channels[].moderation_settings.tts_max_length": "number",
-    "channels[].moderation_settings.slur_filter_enabled": "number",
-    "channels[].moderation_settings.slur_filter_use_builtin": "number",
-    "channels[].moderation_settings.slur_filter_terms": "string",
-    "channels[].moderation_settings.slur_filter_regexes": "string",
-    "channels[].moderation_settings.slur_filter_nudge_message": "string",
-    "channels[].moderation_settings.slur_filter_disabled_categories": "string",
-    "channels[].moderation_settings.ip_approval_mode": "number",
-    "channels[].moderation_settings.soundboard_enabled": "number",
-    "channels[].moderation_settings.soundboard_allow_pitch": "number",
-    "channels[].moderation_settings.soundboard_allow_speed": "number",
-    "channels[].moderation_settings.soundboard_banned_ids": "string",
-    "channels[].moderation_settings.viewer_auto_delete_enabled": "number",
-    "channels[].moderation_settings.viewer_delete_all_enabled": "number",
-    "channels[].moderation_settings.custom_emotes_enabled": "number",
-    "channels[].moderation_settings.custom_sounds_enabled": "number",
-    "channels[].moderation_settings.max_sound_seconds": "number",
-    "channels[].moderation_settings.uploads_mods_only": "number",
-    "channels[].moderation_settings.mods_can_edit_about": "number",
-    "channels[].moderation_settings.emote_scale": "number",
-    "channels[].moderation_settings.emote_size_min": "number",
-    "channels[].moderation_settings.emote_size_max": "number",
-    "channels[].moderation_settings.sounds_mods_only": "number",
-    "channels[].moderation_settings.sound_min_speed": "number",
-    "channels[].moderation_settings.sound_max_speed": "number",
-    "channels[].moderation_settings.sound_min_pitch_cents": "number",
-    "channels[].moderation_settings.sound_max_pitch_cents": "number",
-    "channels[].moderation_settings.sub_only": "number",
-    "channels[].moderators": "array"
-   },
-   "from": [
-    "public/js/app-channel.js"
-   ]
-  },
-  {
-   "method": "GET",
    "path": "/api/chat-ai/live-captions/n1star?after=0",
    "auth": "anon",
    "status": 200,
@@ -1172,6 +1076,102 @@
     "live": "boolean",
     "stream_id": "number",
     "lines": "array"
+   },
+   "from": [
+    "public/js/app-channel.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/chat-ai/timeline/n1star?offset=0&limit=5",
+   "auth": "anon",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "username": "string",
+    "display_name": "string",
+    "overview": "null",
+    "chatInsight": "null",
+    "combinedOverview": "null",
+    "sessionCount": "number",
+    "momentCount": "number",
+    "index": "array",
+    "sessions": "array",
+    "offset": "number",
+    "limit": "number",
+    "hasMore": "boolean"
+   },
+   "from": [
+    "public/js/app-channel.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/chat-ai/timeline/n1star?offset=0&limit=5",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "username": "string",
+    "display_name": "string",
+    "overview": "null",
+    "chatInsight": "null",
+    "combinedOverview": "null",
+    "sessionCount": "number",
+    "momentCount": "number",
+    "index": "array",
+    "sessions": "array",
+    "offset": "number",
+    "limit": "number",
+    "hasMore": "boolean"
+   },
+   "from": [
+    "public/js/app-channel.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/chat-ai/timeline/n1star?offset=0&limit=12",
+   "auth": "anon",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "username": "string",
+    "display_name": "string",
+    "overview": "null",
+    "chatInsight": "null",
+    "combinedOverview": "null",
+    "sessionCount": "number",
+    "momentCount": "number",
+    "index": "array",
+    "sessions": "array",
+    "offset": "number",
+    "limit": "number",
+    "hasMore": "boolean"
+   },
+   "from": [
+    "public/js/app-channel.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/chat-ai/timeline/n1star?offset=0&limit=12",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "username": "string",
+    "display_name": "string",
+    "overview": "null",
+    "chatInsight": "null",
+    "combinedOverview": "null",
+    "sessionCount": "number",
+    "momentCount": "number",
+    "index": "array",
+    "sessions": "array",
+    "offset": "number",
+    "limit": "number",
+    "hasMore": "boolean"
    },
    "from": [
     "public/js/app-channel.js"
@@ -1907,202 +1907,6 @@
    },
    "from": [
     "public/js/app-home.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/emotes/all/1",
-   "auth": "anon",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "defaults": "array",
-    "defaults[]": "object",
-    "defaults[].id": "string",
-    "defaults[].code": "string",
-    "defaults[].url": "string",
-    "defaults[].source": "string",
-    "defaults[].animated": "boolean",
-    "defaults[].width": "number",
-    "defaults[].height": "number",
-    "channel": "array",
-    "global": "array",
-    "ffz": "array",
-    "bttv": "array",
-    "sources": "object",
-    "sources.defaults": "boolean",
-    "sources.custom": "boolean",
-    "sources.ffz": "boolean",
-    "sources.bttv": "boolean",
-    "emote_scale": "number"
-   },
-   "from": [
-    "public/js/emotes.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/emotes/all/1",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "defaults": "array",
-    "defaults[]": "object",
-    "defaults[].id": "string",
-    "defaults[].code": "string",
-    "defaults[].url": "string",
-    "defaults[].source": "string",
-    "defaults[].animated": "boolean",
-    "defaults[].width": "number",
-    "defaults[].height": "number",
-    "channel": "array",
-    "global": "array",
-    "ffz": "array",
-    "bttv": "array",
-    "sources": "object",
-    "sources.defaults": "boolean",
-    "sources.custom": "boolean",
-    "sources.ffz": "boolean",
-    "sources.bttv": "boolean",
-    "emote_scale": "number"
-   },
-   "from": [
-    "public/js/emotes.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/emotes/all/1?channel=n1star",
-   "auth": "anon",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "defaults": "array",
-    "defaults[]": "object",
-    "defaults[].id": "string",
-    "defaults[].code": "string",
-    "defaults[].url": "string",
-    "defaults[].source": "string",
-    "defaults[].animated": "boolean",
-    "defaults[].width": "number",
-    "defaults[].height": "number",
-    "channel": "array",
-    "global": "array",
-    "ffz": "array",
-    "bttv": "array",
-    "sources": "object",
-    "sources.defaults": "boolean",
-    "sources.custom": "boolean",
-    "sources.ffz": "boolean",
-    "sources.bttv": "boolean",
-    "emote_scale": "number"
-   },
-   "from": [
-    "public/obs/chat.html"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/emotes/all/1?channel=n1star",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "defaults": "array",
-    "defaults[]": "object",
-    "defaults[].id": "string",
-    "defaults[].code": "string",
-    "defaults[].url": "string",
-    "defaults[].source": "string",
-    "defaults[].animated": "boolean",
-    "defaults[].width": "number",
-    "defaults[].height": "number",
-    "channel": "array",
-    "global": "array",
-    "ffz": "array",
-    "bttv": "array",
-    "sources": "object",
-    "sources.defaults": "boolean",
-    "sources.custom": "boolean",
-    "sources.ffz": "boolean",
-    "sources.bttv": "boolean",
-    "emote_scale": "number"
-   },
-   "from": [
-    "public/obs/chat.html"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/emotes/mine",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/emotes.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/emotes/mine",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "emotes": "array",
-    "count": "number",
-    "max": "number"
-   },
-   "from": [
-    "public/js/emotes.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/emotes/search?q=n1",
-   "auth": "anon",
-   "status": 502,
-   "kind": "json",
-   "from": [
-    "public/js/emotes.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/emotes/search?q=n1",
-   "auth": "user",
-   "status": 502,
-   "kind": "json",
-   "from": [
-    "public/js/emotes.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/emotes/sources",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/emotes.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/emotes/sources",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "sources": "object",
-    "sources.defaults": "boolean",
-    "sources.custom": "boolean",
-    "sources.ffz": "boolean",
-    "sources.bttv": "boolean"
-   },
-   "from": [
-    "public/js/emotes.js"
    ]
   },
   {
@@ -7295,7 +7099,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app.js?v=533fb6104669",
+   "path": "/js/app.js?v=4d24e4b46d7b",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7669,7 +7473,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app-channel.js?v=24bb1b7828ce",
+   "path": "/js/app-channel.js?v=c148cdba2aee",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -8179,48 +7983,6 @@
    "kind": "json",
    "from": [
     "public/js/app-home.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/emotes",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/channel-uploads.js",
-    "public/js/emotes.js"
-   ]
-  },
-  {
-   "method": "PUT",
-   "path": "/api/emotes/sources",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/emotes.js"
-   ]
-  },
-  {
-   "method": "DELETE",
-   "path": "/api/emotes/1",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/channel-uploads.js",
-    "public/js/emotes.js"
-   ]
-  },
-  {
-   "method": "PATCH",
-   "path": "/api/emotes/1",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/channel-uploads.js"
    ]
   },
   {
