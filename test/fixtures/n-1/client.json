@@ -1,16 +1,16 @@
 {
  "service": "live",
- "release": "a825d8069fabbe79511df77a7f75e3568859ed4d",
- "recorded_at": "2026-09-28T23:50:44.753Z",
+ "release": "14f16182e7c2eeeb5e4d542306c50467c5eca171",
+ "recorded_at": "2026-09-29T00:16:55.917Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "a825d8069fab",
-  "released_at": "2026-09-28T23:50:03.000Z",
-  "booted_at": "2026-09-28T23:50:41.722Z",
+  "release": "14f16182e7c2",
+  "released_at": "2026-09-29T00:16:18.000Z",
+  "booted_at": "2026-09-29T00:16:53.417Z",
   "contracts_version": "0.71.0",
   "packages": {
-   "openvibe-shared": "1.28.1",
+   "openvibe-shared": "1.29.1",
    "openvibe-sdk": "0.16.0"
   },
   "min_client_release": null,
@@ -18,15 +18,15 @@
   "components": {
    "styles": {
     "kind": "style",
-    "version": "10e2fa18ee51"
+    "version": "16efe97aaa50"
    },
    "shell": {
     "kind": "script",
-    "version": "5233008c6e24"
+    "version": "f43131c4e2d5"
    },
    "server": {
     "kind": "server",
-    "version": "e94fb2f865f1"
+    "version": "0a2a64444801"
    }
   },
   "assets": {
@@ -41,9 +41,9 @@
     "integrity": "sha384-+UNgBYuMRLHmTl0hBPmZI+91u+ud0yHLElwmd/4UrYgHoLHIYVElOwsOQ4G8UdWB"
    },
    "/css/context-cards.css": {
-    "url": "/css/context-cards.css?v=60ad33ae3e48",
+    "url": "/css/context-cards.css?v=997aed9c5db8",
     "component": "styles",
-    "integrity": "sha384-QafukgfMwvBUHfswsJWBwg8bmN1uOmnZxkxgcTcmRSWKV+PIQMCJp8gDNA+KZf4h"
+    "integrity": "sha384-DnA7VkyZvjgI7fzkIQy7nTdyw6vr/hIBeNjkdAgu547ijqfc2CaB6prMbOzR81Jp"
    },
    "/css/cosmetics.css": {
     "url": "/css/cosmetics.css?v=193dbe9046fb",
@@ -61,9 +61,9 @@
     "integrity": "sha384-soU+Q4G+XY0bwjBFTyF4Q2YSOGKmH6joFz+2JFXRg9Fg4J17LYo9DYyoDR/ekWCj"
    },
    "/css/features/channel.css": {
-    "url": "/css/features/channel.css?v=dfe3fa1b9949",
+    "url": "/css/features/channel.css?v=2f0cf7c3ec13",
     "component": "styles",
-    "integrity": "sha384-YALxSITW32gKIdeBKV2ohJL2eQnhJFXoVFhKQyNanfa1IarVcdlIYuB50FMI8V04"
+    "integrity": "sha384-0SIuauQ3Ziaf5eqN/Fzhp1FDRJZzXwFrHgSyVFKcn8n3ZDLwfaB9Hvme8k0qIixZ"
    },
    "/css/features/chatpage.css": {
     "url": "/css/features/chatpage.css?v=c5c63e94503f",
@@ -1093,6 +1093,7 @@
     "channels[].offline_screen_url": "null",
     "channels[].offline_html": "null",
     "channels[].offline_css": "null",
+    "channels[].social_links": "null",
     "channels[].moderation_settings": "object",
     "channels[].moderation_settings.channel_id": "number",
     "channels[].moderation_settings.slow_mode_seconds": "number",
@@ -3822,6 +3823,64 @@
   },
   {
    "method": "GET",
+   "path": "/api/social/catalog",
+   "auth": "anon",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "platforms": "array",
+    "platforms[]": "object",
+    "platforms[].kind": "string",
+    "platforms[].name": "string",
+    "platforms[].icon": "string",
+    "platforms[].color": "string",
+    "platforms[].handle": "boolean"
+   },
+   "from": [
+    "public/js/channel-socials.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/social/catalog",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "platforms": "array",
+    "platforms[]": "object",
+    "platforms[].kind": "string",
+    "platforms[].name": "string",
+    "platforms[].icon": "string",
+    "platforms[].color": "string",
+    "platforms[].handle": "boolean"
+   },
+   "from": [
+    "public/js/channel-socials.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/social/preview/n1star/1",
+   "auth": "anon",
+   "status": 404,
+   "kind": "json",
+   "from": [
+    "public/js/channel-socials.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/social/preview/n1star/1",
+   "auth": "user",
+   "status": 404,
+   "kind": "json",
+   "from": [
+    "public/js/channel-socials.js"
+   ]
+  },
+  {
+   "method": "GET",
    "path": "/api/streams",
    "auth": "anon",
    "status": 200,
@@ -3892,6 +3951,7 @@
     "streams[].channel.offline_screen_url": "null",
     "streams[].channel.offline_html": "null",
     "streams[].channel.offline_css": "null",
+    "streams[].channel.social_links": "null",
     "streams[].external_viewer_count": "number",
     "streams[].total_viewer_count": "number"
    },
@@ -3971,6 +4031,7 @@
     "streams[].channel.offline_screen_url": "null",
     "streams[].channel.offline_html": "null",
     "streams[].channel.offline_css": "null",
+    "streams[].channel.social_links": "null",
     "streams[].external_viewer_count": "number",
     "streams[].total_viewer_count": "number"
    },
@@ -4050,7 +4111,8 @@
     "offline_screen_type": "string",
     "offline_screen_url": "null",
     "offline_html": "null",
-    "offline_css": "null"
+    "offline_css": "null",
+    "social_links": "null"
    },
    "from": [
     "public/js/dashboard.js",
@@ -4100,6 +4162,7 @@
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
     "channel.offline_css": "null",
+    "channel.social_links": "array",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -4288,6 +4351,7 @@
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
     "channel.offline_css": "null",
+    "channel.social_links": "array",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -4302,6 +4366,10 @@
     "channel.chat_limits.tts_max_length": "number",
     "channel.mods_can_edit_about": "boolean",
     "channel.viewer_can_edit_about": "boolean",
+    "channel.social_links_editor": "object",
+    "channel.social_links_editor.connected": "array",
+    "channel.social_links_editor.restreams_without_link": "array",
+    "channel.social_links_editor.hidden_auto": "array",
     "channel.ai_overview": "null",
     "language": "object",
     "language.code": "string",
@@ -4476,6 +4544,7 @@
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
     "channel.offline_css": "null",
+    "channel.social_links": "array",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -4664,6 +4733,7 @@
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
     "channel.offline_css": "null",
+    "channel.social_links": "array",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -4678,6 +4748,10 @@
     "channel.chat_limits.tts_max_length": "number",
     "channel.mods_can_edit_about": "boolean",
     "channel.viewer_can_edit_about": "boolean",
+    "channel.social_links_editor": "object",
+    "channel.social_links_editor.connected": "array",
+    "channel.social_links_editor.restreams_without_link": "array",
+    "channel.social_links_editor.hidden_auto": "array",
     "channel.ai_overview": "null",
     "language": "object",
     "language.code": "string",
@@ -4852,6 +4926,7 @@
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
     "channel.offline_css": "null",
+    "channel.social_links": "array",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -5040,6 +5115,7 @@
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
     "channel.offline_css": "null",
+    "channel.social_links": "array",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -5054,6 +5130,10 @@
     "channel.chat_limits.tts_max_length": "number",
     "channel.mods_can_edit_about": "boolean",
     "channel.viewer_can_edit_about": "boolean",
+    "channel.social_links_editor": "object",
+    "channel.social_links_editor.connected": "array",
+    "channel.social_links_editor.restreams_without_link": "array",
+    "channel.social_links_editor.hidden_auto": "array",
     "channel.ai_overview": "null",
     "language": "object",
     "language.code": "string",
@@ -5328,6 +5408,7 @@
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
     "channel.offline_css": "null",
+    "channel.social_links": "array",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -5516,6 +5597,7 @@
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
     "channel.offline_css": "null",
+    "channel.social_links": "array",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -5530,6 +5612,10 @@
     "channel.chat_limits.tts_max_length": "number",
     "channel.mods_can_edit_about": "boolean",
     "channel.viewer_can_edit_about": "boolean",
+    "channel.social_links_editor": "object",
+    "channel.social_links_editor.connected": "array",
+    "channel.social_links_editor.restreams_without_link": "array",
+    "channel.social_links_editor.hidden_auto": "array",
     "channel.ai_overview": "null",
     "language": "object",
     "language.code": "string",
@@ -5848,6 +5934,7 @@
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
     "channel.offline_css": "null",
+    "channel.social_links": "array",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -6036,6 +6123,7 @@
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
     "channel.offline_css": "null",
+    "channel.social_links": "array",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -6050,6 +6138,10 @@
     "channel.chat_limits.tts_max_length": "number",
     "channel.mods_can_edit_about": "boolean",
     "channel.viewer_can_edit_about": "boolean",
+    "channel.social_links_editor": "object",
+    "channel.social_links_editor.connected": "array",
+    "channel.social_links_editor.restreams_without_link": "array",
+    "channel.social_links_editor.hidden_auto": "array",
     "channel.ai_overview": "null",
     "language": "object",
     "language.code": "string",
@@ -6657,6 +6749,7 @@
     "stream.channel.offline_screen_url": "null",
     "stream.channel.offline_html": "null",
     "stream.channel.offline_css": "null",
+    "stream.channel.social_links": "null",
     "stream.pip_overlay": "null"
    },
    "from": [
@@ -6735,6 +6828,7 @@
     "stream.channel.offline_screen_url": "null",
     "stream.channel.offline_html": "null",
     "stream.channel.offline_css": "null",
+    "stream.channel.social_links": "null",
     "stream.pip_overlay": "null"
    },
    "from": [
@@ -7387,7 +7481,7 @@
   },
   {
    "method": "GET",
-   "path": "/shared/navbar.js?v=b3aef18429d0",
+   "path": "/shared/navbar.js?v=6e398e3b31f5",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7508,7 +7602,7 @@
   },
   {
    "method": "GET",
-   "path": "/shared/theme-loader.js?v=d9b9af081efe",
+   "path": "/shared/theme-loader.js?v=ee4a6754d0f7",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7563,7 +7657,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app-home.js?v=d88ec40a35c0",
+   "path": "/js/app-home.js?v=4bbd63911072",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7607,17 +7701,6 @@
   },
   {
    "method": "GET",
-   "path": "/js/home-tour.js?v=a5ded0950973",
-   "auth": "anon",
-   "accept": "html",
-   "status": 200,
-   "kind": "other",
-   "from": [
-    "page /"
-   ]
-  },
-  {
-   "method": "GET",
    "path": "/shared/tooltip.js?v=096488cf4948",
    "auth": "anon",
    "accept": "html",
@@ -7629,7 +7712,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/features/channel.css?v=dfe3fa1b9949",
+   "path": "/css/features/channel.css?v=2f0cf7c3ec13",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7640,7 +7723,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/context-cards.css?v=60ad33ae3e48",
+   "path": "/css/context-cards.css?v=997aed9c5db8",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7695,7 +7778,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/context-cards.js?v=6719bbc1c432",
+   "path": "/js/context-cards.js?v=edb4f671e62d",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7750,7 +7833,18 @@
   },
   {
    "method": "GET",
-   "path": "/js/app-channel.js?v=1c0b1a8e0649",
+   "path": "/js/channel-socials.js?v=3c59ca14bf8b",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/app-channel.js?v=fb9e1528dba8",
    "auth": "anon",
    "accept": "html",
    "status": 200,

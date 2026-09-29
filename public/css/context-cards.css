@@ -130,7 +130,11 @@
     transition: border-color .22s;
 }
 /* A section heading of the offline page (not a card): the rule under it runs the full width. */
-.dsc-toggle::after { content: ''; grid-column: 3; height: 1px; align-self: center;
+/* Explicit columns: auto-placement put the count into the 1fr rule column (a full-width blue bar) and
+   pushed the rule onto a second row. */
+.dsc-toggle-ico { grid-column: 1; } .dsc-toggle-text { grid-column: 2; }
+.dsc-toggle-count { grid-column: 4; } .dsc-toggle-chev { grid-column: 5; }
+.dsc-toggle::after { content: ''; grid-column: 3; grid-row: 1; height: 1px; align-self: center;
     background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 40%, transparent), transparent 85%); }
 .dsc-toggle:hover { border-bottom-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
 .dsc-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
@@ -146,7 +150,7 @@
 .dsc-toggle-text small { font-size: 0.72rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dsc-toggle-count {
     flex: none; min-width: 26px; padding: 3px 8px; border-radius: 999px;
-    font-size: 0.76rem; font-weight: 900; text-align: center; color: #fff;
+    font-size: 0.76rem; font-weight: 900; text-align: center; color: var(--on-accent, #fff);
     background: var(--accent);
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
 }
@@ -167,6 +171,7 @@
 @media (max-width: 560px) {
     .dsc-toggle { gap: 9px; grid-template-columns: auto minmax(0, 1fr) auto auto; }
     .dsc-toggle::after { display: none; }
+    .dsc-toggle-count { grid-column: 3; } .dsc-toggle-chev { grid-column: 4; }
     .dsc-toggle-ico { width: 29px; height: 29px; font-size: 0.74rem; }
     .dsc-toggle-text b { font-size: 0.83rem; }
     .dsc-toggle-text small { font-size: 0.68rem; }

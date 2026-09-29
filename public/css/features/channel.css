@@ -988,6 +988,8 @@
 .off-cyc-arrow:hover { border-color: var(--accent); color: var(--text-primary); }
 .off-cyc-body { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .off-cyc-body:has(.off-top-card:only-child) { grid-template-columns: minmax(0, 420px); justify-content: center; }
+/* One card: the whole block narrows to it, so the "Most watched" heading sits over the card instead of far to its left. */
+.off-cyc:has(.off-top-card:only-child) { max-width: calc(420px + 2 * clamp(10px, 3vw, 24px)); }
 .off-cyc-fade { animation: offCycFade .32s ease; }
 .off-top-card { display: flex; flex-direction: column; text-align: left; text-decoration: none; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; transition: border-color .15s, transform .15s, box-shadow .15s; }
 .off-top-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow, 0 6px 20px rgba(0,0,0,.3)); }

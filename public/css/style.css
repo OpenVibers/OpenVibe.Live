@@ -5314,13 +5314,15 @@ textarea.form-input { resize: vertical; min-height: 60px; }
 
 /* ── Channel below-fold tabs (Videos / Clips / Pastes / Analytics / About …) ── */
 .ch-tabs {
-    display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+    /* One row that scrolls sideways when it runs out of room, never a second row of one tab. */
+    display: flex; gap: 2px; flex-wrap: nowrap; align-items: center; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
     border-bottom: 1px solid var(--border); margin: 4px 0 18px; padding-bottom: 0;
 }
+.ch-tabs::-webkit-scrollbar { display: none; }
 .ch-tab {
     appearance: none; background: transparent; border: none; cursor: pointer;
     color: var(--text-muted); font-size: 0.9rem; font-weight: 650;
-    padding: 10px 14px; border-radius: 8px 8px 0 0; position: relative;
+    padding: 10px 12px; border-radius: 8px 8px 0 0; position: relative; flex: none; white-space: nowrap;
     display: inline-flex; align-items: center; gap: 7px;
     transition: color 0.15s ease, background 0.15s ease;
 }
@@ -5328,7 +5330,7 @@ textarea.form-input { resize: vertical; min-height: 60px; }
 .ch-tab:hover { color: var(--text-primary); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .ch-tab.active { color: var(--accent); }
 .ch-tab.active::after {
-    content: ''; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2.5px;
+    content: ''; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2.5px;
     background: var(--accent); border-radius: 2px;
 }
 /* Pencil edit affordance riding on the About tab (streamer + allowed mods only). */
