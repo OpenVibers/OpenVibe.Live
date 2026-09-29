@@ -582,8 +582,20 @@ function _restoreChannelChat() {
     toggleChannelChat(hidden);
 }
 
+/** Fade the tab row's right edge while more tabs are hidden past it. */
+function _watchTabsClip() {
+    const t = document.getElementById('ch-tabs');
+    if (!t || t._ovClipWatch) return;
+    t._ovClipWatch = true;
+    const upd = () => t.classList.toggle('is-clipped', t.scrollWidth - t.clientWidth - t.scrollLeft > 4);
+    t.addEventListener('scroll', upd, { passive: true });
+    if ('ResizeObserver' in window) new ResizeObserver(upd).observe(t); else window.addEventListener('resize', upd);
+    upd();
+}
+
 async function loadChannelPage(username, managedStreamRef = null, legacySessionId = null) {
     _restoreChannelChat();
+    _watchTabsClip();
     try {
         const isNewChannel = currentChannelUsername !== username;
         currentChannelUsername = username;
@@ -623,6 +635,9 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
         const vods = data.vods || [];
         const clips = data.clips || [];
         const clipsOfStreams = data.clipsOfStreams || [];
+        // About's "Latest videos" / "Popular clips" rows reuse what this load already fetched.
+        _aboutRecent = { username, vods: vods.slice(0, 8), clips: clipsOfStreams.slice().sort((a, b) => (b.view_count || 0) - (a.view_count || 0)).slice(0, 8) };
+        _renderAboutRecent();
         const managedStreams = data.managed_streams || [];
         const liveStreams = streams.filter(s => s && s.is_live);
         const rsRestream = data.rs_restream || {};
@@ -2283,20 +2298,47 @@ function _aboutAiEffectiveShow() {
     if (_aboutAiPref === 'hide') return false;
     return !(_aboutBio || (_aboutPanels && _aboutPanels.length)); // auto → only when no bio/panels
 }
-// The AI overview card shown at the top of the About tab (view mode).
+// The AI overview in the About tab (view mode): a quiet note under the streamer's own words, not a card.
 function _aboutAiOverviewHTML() {
     if (!_aboutAiEffectiveShow()) return '';
-    return `<div class="ai-tl-overview-card about-ai-overview">
-        <div class="ai-tl-overview-label"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Overview</div>
+    return `<section class="ch-about-sec about-ai-overview" aria-label="AI summary">
+        <h3 class="ch-about-h"><i class="fa-solid fa-wand-magic-sparkles"></i> AI summary <span class="ch-about-h-note">from past streams</span></h3>
         ${_collapsibleOverview(_aboutAiOverview)}
-    </div>`;
+    </section>`;
+}
+
+// "Latest videos" and "Popular clips" rows at the end of About: something to watch on every channel, and no screen of
+// empty space under a one-line bio. Filled from the channel load (_aboutRecent), re-rendered with About.
+let _aboutRecent = { username: null, vods: [], clips: [] };
+function _aboutRowCard(kind, it) {
+    const isVod = kind === 'vod';
+    const href = isVod ? `/vod/${it.id}` : `/clip/${it.id}`;
+    const gen = isVod ? `/api/thumbnails/generate/vod/${it.id}` : `/api/thumbnails/generate/clip/${it.id}`;
+    const views = Number(it.view_count || 0);
+    return `<a class="ch-about-card" href="${href}" onclick="return handleLinkClick(event, '${href}')">
+        <span class="ch-about-card-thumb">${thumbImg(it.thumbnail_url, isVod ? 'fa-video' : 'fa-scissors', it.title, gen)}${it.duration_seconds ? `<span class="ch-about-card-dur">${formatDuration(it.duration_seconds)}</span>` : ''}</span>
+        <span class="ch-about-card-title">${esc(it.title || (isVod ? 'Stream' : 'Clip'))}</span>
+        <span class="ch-about-card-meta">${views.toLocaleString()} view${views === 1 ? '' : 's'} · ${timeAgo(it.created_at)}</span>
+    </a>`;
+}
+function _renderAboutRecent() {
+    const host = document.getElementById('ch-about-recent');
+    if (!host) return;
+    const r = _aboutRecent;
+    if (!r || r.username !== currentChannelUsername) { host.innerHTML = ''; return; }
+    const row = (title, icon, tab, kind, items) => items.length ? `<section class="ch-about-sec">
+        <h3 class="ch-about-h"><i class="fa-solid ${icon}"></i> ${title}<button type="button" class="ch-about-more" onclick="switchChannelTab('${tab}', document.querySelector('.ch-tab[data-tab=${tab}]'))">See all <i class="fa-solid fa-arrow-right"></i></button></h3>
+        <div class="ch-about-row">${items.map((it) => _aboutRowCard(kind, it)).join('')}</div>
+    </section>` : '';
+    host.innerHTML = row('Latest videos', 'fa-video', 'videos', 'vod', r.vods) + row('Popular clips', 'fa-scissors', 'clips', 'clip', r.clips);
 }
 
 function _renderAboutView() {
     const host = document.getElementById('ch-about-content');
     if (!host) return;
     const aiHtml = _aboutAiOverviewHTML();
-    const hasContent = _aboutBio || _aboutPanels.length || aiHtml || _aboutSocials.length;
+    const hasRecent = _aboutRecent.username === currentChannelUsername && (_aboutRecent.vods.length || _aboutRecent.clips.length);
+    const hasContent = _aboutBio || _aboutPanels.length || aiHtml || _aboutSocials.length || hasRecent;
     let html = '';
     if (!hasContent) {
         html += _aboutCanEdit
@@ -2305,11 +2347,14 @@ function _renderAboutView() {
         host.innerHTML = html;
         return;
     }
-    html += aiHtml; // AI overview card leads the About tab
+    // The streamer's own words lead; the AI summary follows as a note; then links, panels, and something to watch.
     if (_aboutBio) html += `<div class="ch-about-bio">${_linkify(esc(_aboutBio))}</div><div class="ch-about-bio-en" id="ch-about-bio-en"></div>`;
+    html += aiHtml;
     html += '<section class="ch-socials" id="ch-about-socials" hidden></section>';
-    html += '<div class="ch-about-panels">' + _aboutPanels.map((p, i) => _aboutPanelViewHTML(p, i)).join('') + '</div>';
+    if (_aboutPanels.length) html += '<div class="ch-about-panels">' + _aboutPanels.map((p, i) => _aboutPanelViewHTML(p, i)).join('') + '</div>';
+    html += '<div id="ch-about-recent"></div>';
     host.innerHTML = html;
+    _renderAboutRecent();
     if (window.ChannelSocials) ChannelSocials.cards(document.getElementById('ch-about-socials'), _aboutSocials, currentChannelUsername);
     _fillWeatherPanels();
     void _fillBioTranslation();

@@ -887,7 +887,7 @@
     cursor: pointer; transition: color 0.15s ease, background 0.15s ease;
 }
 .ch-tab-edit:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 26%, transparent); }
-.ch-about-content { display: flex; flex-direction: column; gap: 14px; }
+.ch-about-content { display: flex; flex-direction: column; gap: 24px; }
 .ch-about-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
 .ch-about-toolbar-left, .ch-about-toolbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ch-about-drag-hint { font-size: 0.8rem; }
@@ -895,10 +895,8 @@
 .ch-about-mods-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--text-secondary); cursor: pointer; margin-right: 4px; }
 .ch-about-mods-toggle input { accent-color: var(--accent); }
 .ch-about-save-btn.is-visible { opacity: 1; transform: none; pointer-events: auto; }
-.ch-about-bio {
-    background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px;
-    padding: 16px 18px; line-height: 1.6; color: var(--text-secondary); white-space: pre-wrap; word-break: break-word;
-}
+/* The streamer's own words lead About: lead text on the page, no box around it. */
+.ch-about-bio { font-size: 1.02rem; line-height: 1.62; color: var(--text-primary); white-space: pre-wrap; word-break: break-word; max-width: 72ch; }
 .ch-about-panels { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; align-items: start; }
 @media (max-width: 560px) { .ch-about-panels { grid-template-columns: 1fr; } }
 .ch-about-panel {
@@ -1260,11 +1258,7 @@
 .ai-tl-ts:hover { text-decoration: underline; }
 .ai-tl-tr-text { color: var(--text-secondary); }
 .ai-tl-sentinel { text-align: center; padding: 20px; color: var(--text-muted); font-size: 0.85rem; }
-.about-ai-overview { margin: 0 0 16px; }
-/* In About the overview is part of the page, not a card: no fill, no frame, a thin accent rule beside it. */
-.ai-tl-overview-card.about-ai-overview { background: transparent; border: none; border-radius: 0; padding: 2px 0 2px 14px;
-    border-left: 2px solid color-mix(in srgb, var(--accent, #8b5cf6) 55%, transparent); }
-.ai-tl-overview-card.about-ai-overview .ai-tl-overview-label { margin-bottom: 5px; }
+
 
 /* Wide screens: the tabs sit in the main column (app-channel.js _placeBelowFold) and use its full width. */
 .channel-below-fold.is-in-main { padding: 4px 0 28px; }
@@ -1513,3 +1507,55 @@ body.controls-docked .messenger-toggle { z-index: 1100; }
     #page-channel .chat-sidebar .chat-header { padding-top: 18px; }
 }
 @media (hover: none) { .chat-sidebar > .chat-grip::after { opacity: .75; } }
+
+/* ── About, one visual language (2026-09-28) ─────────────────────
+   Sections share a small uppercase heading with an accent icon and the same 24px rhythm; nothing is boxed but the
+   things you tap (panels, link cards, video cards). */
+.ch-about-sec { min-width: 0; }
+.ch-about-h { display: flex; align-items: center; gap: 7px; margin: 0 0 10px; font-size: 0.74rem; font-weight: 750; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-muted); }
+.ch-about-h > i { color: var(--accent); font-size: 0.9em; }
+.ch-about-h-note { font-weight: 500; letter-spacing: 0; text-transform: none; opacity: 0.8; }
+.ch-about-more { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 4px 2px; border: 0; background: none; cursor: pointer;
+    color: var(--accent-light, var(--accent)); font: 600 0.78rem/1 inherit; letter-spacing: 0; text-transform: none; }
+.ch-about-more:hover { color: var(--text-primary); }
+.ch-about-more i { font-size: 0.72rem; transition: transform .18s ease; }
+.ch-about-more:hover i { transform: translateX(2px); }
+.about-ai-overview { color: var(--text-secondary); font-size: 0.95rem; line-height: 1.6; max-width: 72ch; }
+/* Latest videos / Popular clips: a snap-scrolling row of cards. */
+.ch-about-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(196px, 236px); gap: 14px; overflow-x: auto;
+    scroll-snap-type: x proximity; padding: 2px 2px 8px; margin: 0 -2px; scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--accent) 30%, transparent) transparent; overscroll-behavior-x: contain; }
+.ch-about-card { scroll-snap-align: start; display: flex; flex-direction: column; gap: 6px; min-width: 0; color: inherit; text-decoration: none; }
+.ch-about-card-thumb { position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden;
+    background: var(--bg-tertiary); border: 1px solid var(--border); transition: transform .2s cubic-bezier(.22,1,.36,1), box-shadow .2s, border-color .2s; }
+.ch-about-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ch-about-card:hover .ch-about-card-thumb, .ch-about-card:focus-visible .ch-about-card-thumb { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 16%, rgba(0,0,0,.35)); }
+.ch-about-card-dur { position: absolute; right: 6px; bottom: 6px; padding: 2px 6px; border-radius: 6px; font-size: 0.68rem; font-weight: 700; color: #fff; background: rgba(0,0,0,.72); }
+.ch-about-card-title { font-size: 0.88rem; font-weight: 650; line-height: 1.3; color: var(--text-primary);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ch-about-card-meta { font-size: 0.75rem; color: var(--text-muted); }
+@media (prefers-reduced-motion: reduce) { .ch-about-card-thumb, .ch-about-more i { transition: none; } }
+
+/* The channel page ends where its content ends: a full-viewport minimum left a screen of empty space above the footer
+   whenever the open tab was short. */
+#page-channel.page { min-height: 0; }
+
+/* The offline area: one gutter for everything in its main column (the discover board sat flush with the edge). */
+.ch-offline-area .stream-main > #ch-discover { padding: 0 14px; box-sizing: border-box; }
+
+/* A custom offline image with the "most watched" card over it: when the column is narrow the card no longer fits over
+   the image (it was clipped), so the image becomes a banner and the card follows it in the page. */
+.ch-offline-area .stream-main { container: chmain / inline-size; }
+@container chmain (max-width: 720px) {
+    .ch-offline-screen:has(> .ch-offline-overlay) { aspect-ratio: auto; max-height: none; display: block; overflow: visible; background: transparent; border: 0; border-radius: 0; }
+    .ch-offline-screen:has(> .ch-offline-overlay) > .ch-offline-media { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 12px; border: 1px solid var(--border); }
+    .ch-offline-screen > .ch-offline-overlay { position: static; inset: auto; display: flex !important; background: none; padding: 16px 0 0; pointer-events: auto; }
+    .ch-offline-overlay-close, .ch-offline-reopen { display: none !important; }
+    .ch-offline-overlay .off-cyc { padding: 0; }
+    .ch-offline-overlay .off-cyc-title { color: var(--text-primary); }
+}
+
+/* Tabs that run past the edge fade out there, so it reads as "scroll for more" (class set by app-channel.js). */
+.ch-tabs.is-clipped { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); }
