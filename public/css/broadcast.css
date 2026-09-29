@@ -1067,8 +1067,9 @@
 .bc-method-card.selected,
 .bc-method-card-sm.selected {
     border-color: var(--accent);
-    background: rgba(241, 196, 15, 0.08);
-    box-shadow: 0 0 0 1px var(--accent);
+    /* The theme's accent (a fixed yellow tint read brown on dark themes). */
+    background: color-mix(in srgb, var(--accent) 12%, var(--bg-tertiary));
+    box-shadow: 0 0 0 1px var(--accent), 0 6px 18px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .bc-method-card i {

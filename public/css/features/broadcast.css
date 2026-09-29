@@ -2373,3 +2373,82 @@
     font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
     color: var(--text-secondary); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
 }
+
+/* ═══ Go Live workspace layout (2026-09-28) ═══════════════════════════════════
+   No box around the page: while the slot manager shows, the main column is transparent and is the one scroll
+   (a thin themed scrollbar at the window edge, not one in the middle of the page). The slot list and the panel
+   are two cards side by side: the list is as tall as its slots and stays in view while the panel scrolls. */
+.broadcast-main:has(> #bc-stream-manager:not([style*="display: none"])) {
+    background: transparent; border: 0; border-radius: 0; box-shadow: none;
+}
+.broadcast-main { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--accent) 38%, transparent) transparent; }
+.broadcast-main::-webkit-scrollbar { width: 8px; }
+.broadcast-main::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--accent) 38%, transparent); border-radius: 8px; }
+.broadcast-main::-webkit-scrollbar-track { background: transparent; }
+#bc-stream-manager { max-width: 1480px; padding: 4px clamp(0px, 1vw, 12px) 28px; flex: none; min-height: auto; overflow: visible; }
+#bc-stream-manager > h2 { margin: 0 0 2px; font-size: 1.22rem; flex-wrap: wrap; row-gap: 6px; }
+#bc-stream-manager > h2 .glw-open-btn { margin-left: 6px; }
+#bc-stream-manager > .bc-page-subtitle { margin: 0 0 10px; font-size: 0.86rem; }
+.bc-workspace { flex: none; border: 0; border-radius: 0; background: transparent; overflow: visible; gap: 14px; align-items: flex-start; margin-top: 6px; }
+.bc-ws-sidebar, .bc-ws-main {
+    border: 1px solid var(--border); border-radius: 14px;
+    background: color-mix(in srgb, var(--bg-card, var(--surface)) 92%, transparent);
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--text-primary) 4%, transparent) inset;
+}
+.bc-ws-sidebar { width: clamp(200px, 17vw, 264px); border-right: 1px solid var(--border); overflow: hidden; }
+.bc-ws-sidebar-hd { padding: 10px 10px 10px 14px; }
+.bc-ws-list { padding: 4px; flex: none; }
+.bc-ws-item { border-radius: 10px; padding: 9px 10px; }
+.bc-ws-item.selected { box-shadow: inset 3px 0 0 var(--accent); }
+.bc-ws-main { min-height: 0; }
+.bc-ws-panel { overflow: visible; }
+@media (min-width: 681px) {
+    .bc-ws-sidebar { position: sticky; top: 0; align-self: flex-start; max-height: calc(100dvh - var(--navbar-h, 56px) - 40px); }
+    .bc-ws-list { overflow-y: auto; flex: 1 1 auto; }
+}
+@media (max-width: 680px) {
+    .bc-workspace { gap: 10px; }
+    .bc-ws-sidebar { width: 100%; border-bottom: 1px solid var(--border); }
+    .bc-ws-main { width: 100%; }
+}
+
+/* NSFW: a themed switch with what it does, instead of a bare checkbox floating beside a select. */
+.bc-switch { display: flex; align-items: flex-start; gap: 12px; margin: 2px 0 16px; padding: 10px 12px; cursor: pointer;
+    border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--bg-input, var(--bg)) 70%, transparent);
+    transition: border-color .18s, background-color .18s; }
+.bc-switch:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.bc-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.bc-switch-track { flex: none; position: relative; width: 38px; height: 22px; margin-top: 1px; border-radius: 999px;
+    background: color-mix(in srgb, var(--text-muted) 35%, transparent); border: 1px solid var(--border); transition: background-color .2s, border-color .2s; }
+.bc-switch-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--text-primary);
+    box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform .22s cubic-bezier(.22,1,.36,1), background-color .2s; }
+.bc-switch input:checked + .bc-switch-track { background: var(--danger, #ef4444); border-color: var(--danger, #ef4444); }
+.bc-switch input:checked + .bc-switch-track .bc-switch-thumb { transform: translateX(16px); background: #fff; }
+.bc-switch input:focus-visible + .bc-switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bc-switch:has(input:checked) { border-color: color-mix(in srgb, var(--danger, #ef4444) 45%, var(--border)); background: color-mix(in srgb, var(--danger, #ef4444) 7%, transparent); }
+.bc-switch-text { display: grid; gap: 2px; min-width: 0; }
+.bc-switch-text b { font-size: 0.88rem; font-weight: 700; color: var(--text-primary); }
+.bc-switch-text b i { color: var(--danger, #ef4444); margin-right: 3px; }
+.bc-switch-text small { font-size: 0.76rem; color: var(--text-muted); line-height: 1.4; }
+
+/* Video quality: reads as a row that opens (chevron, current values), not a static label. */
+.bc-ws-quality { padding: 0; border-radius: 12px; overflow: hidden; }
+.bc-ws-quality > summary { display: flex; align-items: center; gap: 8px; padding: 11px 12px; cursor: pointer; list-style: none; user-select: none;
+    font-size: 0.86rem; font-weight: 650; color: var(--text-primary); transition: background-color .15s; }
+.bc-ws-quality > summary::-webkit-details-marker { display: none; }
+.bc-ws-quality > summary:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.bc-ws-quality > summary > i:first-child { color: var(--accent); margin: 0; }
+.bc-sum-val { margin-left: auto; font-size: 0.76rem; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
+.bc-sum-chev { color: var(--text-muted); font-size: 0.75rem; transition: transform .22s ease; }
+.bc-ws-quality[open] .bc-sum-chev { transform: rotate(180deg); color: var(--accent); }
+.bc-ws-quality[open] > summary { border-bottom: 1px solid var(--border); }
+.bc-ws-quality .bc-ws-quality-inner { margin: 0; padding: 12px; }
+@media (prefers-reduced-motion: reduce) { .bc-switch-thumb, .bc-sum-chev { transition: none; } }
+
+/* Wide panels: details on the left, how you stream on the right, so fields are not a thousand pixels wide. */
+.bc-ws-main { container-type: inline-size; container-name: bcws; }
+@container bcws (min-width: 960px) {
+    .bc-ws-profile-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 8px 28px; align-items: start; }
+    .bc-ws-profile-split > .bc-ws-col--method .bc-method-picker-sm { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .bc-ws-profile-split > .bc-ws-col--details .bc-switch { margin-bottom: 14px; }
+}

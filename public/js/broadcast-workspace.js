@@ -403,7 +403,8 @@ function _wsRenderPanel() {
 
         <!-- ═══ TAB: Stream Profile ═══ -->
         <div class="bc-ws-tab-panel active" data-wstabpanel="profile">
-            <div class="bc-ws-profile-section">
+            <div class="bc-ws-profile-section bc-ws-profile-split">
+            <div class="bc-ws-col bc-ws-col--details">
 
                 <div class="form-group">
                     <label>Title</label>
@@ -420,22 +421,12 @@ function _wsRenderPanel() {
                         oninput="_wsMarkDirty()">${esc(ms.description || '')}</textarea>
                 </div>
 
-                <div class="bc-ws-row">
-                    <div class="form-group" style="flex:2">
-                        <label>Category</label>
-                        <select id="bc-category" class="form-input" onchange="_wsMarkDirty()">
-                            ${_wsRenderCategoryOptions(ms.category || '')}
-                        </select>
-                    </div>
-                    <div class="form-group" style="flex:1">
-                        <label>&nbsp;</label>
-                        <label class="bc-toggle-label">
-                            <input type="checkbox" id="bc-nsfw" ${ms.is_nsfw ? 'checked' : ''}
-                                onchange="_wsMarkDirty()">
-                            <i class="fa-solid fa-triangle-exclamation" style="color:var(--danger)"></i> NSFW
-                        </label>
-                    </div>
-                </div>
+                <!-- No category picker: the AI decides it from the stream itself (streams.ai_category wins everywhere). -->
+                <label class="bc-switch">
+                    <input type="checkbox" id="bc-nsfw" ${ms.is_nsfw ? 'checked' : ''} onchange="_wsMarkDirty()">
+                    <span class="bc-switch-track" aria-hidden="true"><span class="bc-switch-thumb"></span></span>
+                    <span class="bc-switch-text"><b><i class="fa-solid fa-triangle-exclamation"></i> Mature content (NSFW)</b><small>Viewers confirm their age before the stream plays. The category is set automatically from what is on stream.</small></span>
+                </label>
 
                 <!-- URL Slug -->
                 <div class="form-group">
@@ -448,6 +439,8 @@ function _wsRenderPanel() {
                     </div>
                 </div>
 
+            </div>
+            <div class="bc-ws-col bc-ws-col--method">
                 <!-- ═══ Streaming Method ═══ -->
                 <div class="form-group">
                     <label>Streaming Method</label>
@@ -604,7 +597,7 @@ function _wsRenderPanel() {
                 <!-- Video quality defaults (Class A blob, browser method only) -->
                 <div id="bc-ws-quality-wrap" style="${method === 'browser' ? '' : 'display:none'}">
                 <details class="bc-ws-quality">
-                    <summary><i class="fa-solid fa-film"></i> Video Quality Defaults</summary>
+                    <summary><i class="fa-solid fa-film"></i><span class="bc-sum-title">Video quality</span><small class="bc-sum-val">${esc(p.resolution || '720')}p · ${esc(p.fps || '30')} fps · ${esc(p.bitrate || 2500)} kbps</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
                     <div class="bc-ws-quality-inner bc-ws-row">
                         <div class="form-group" style="margin:0;flex:1">
                             <label style="font-size:0.82rem">Resolution</label>
@@ -629,6 +622,8 @@ function _wsRenderPanel() {
                     </div>
                 </details>
                 </div>
+
+            </div>
 
                 <!-- Control profile lives under Settings; createNewStream() and the save
                      payload both read #bc-control-config, which is rendered there. -->
@@ -1339,21 +1334,13 @@ async function _wsEndStream() {
 function _wsOpenPopoutChat() {
     const ms = _wsState.selectedMs;
     if (!ms) return;
-
-    // Use the managed stream's live session ID if live, otherwise open global chat for the channel
-    const liveSessionId = _wsGetLiveSessionId(ms.id);
-    if (liveSessionId && typeof popoutChat === 'function') {
-        popoutChat('stream', liveSessionId, (typeof currentUser !== 'undefined' && currentUser && currentUser.username) || null);
-    } else {
-        // Even when not live, open a popout chat scoped to the channel
-        if (typeof popoutChat === 'function') {
-            popoutChat('global');
-        } else {
-            const params = new URLSearchParams({ popout: '1', mode: 'global' });
-            window.open(`/popout-chat.html?${params.toString()}`, `openvibe-chat-global`,
-                'width=400,height=600,menubar=no,toolbar=no,resizable=yes');
-        }
-    }
+    // The channel's own chat: /popout/<username>[/<live session>] follows the channel's live state, so it is the
+    // right window before going live too (never global chat).
+    const liveSessionId = _wsGetLiveSessionId(ms.id) || null;
+    const username = (typeof currentUser !== 'undefined' && currentUser && currentUser.username) || null;
+    if (typeof popoutChat === 'function' && (username || liveSessionId)) { popoutChat('stream', liveSessionId, username); return; }
+    if (!username) return;
+    window.open(`/popout/${encodeURIComponent(username)}`, `openvibe_chat_chan-${username}`, 'width=400,height=600,menubar=no,toolbar=no,resizable=yes');
 }
 
 /* ── Method cards ────────────────────────────────────────────── */
@@ -1388,20 +1375,6 @@ function _wsRenderBrowserModeCards(selected) {
             <strong>${m.label}</strong>
             <span class="bc-card-sm-hint">${m.hint}</span>
         </div>`).join('');
-}
-
-/* ── Category options ────────────────────────────────────────── */
-
-function _wsRenderCategoryOptions(selected) {
-    const cats = [
-        ['', 'Auto — the AI decides from the stream'],
-        ['outdoors', 'Outdoors'], ['travel', 'Travel'], ['building', 'Building/Craft'],
-        ['music', 'Music'], ['gaming', 'Gaming'], ['robot', 'Robot'],
-        ['desktop', 'Desktop'], ['irl', 'IRL'], ['other', 'Other'],
-    ];
-    return cats.map(([v, l]) =>
-        `<option value="${v}"${v === selected ? ' selected' : ''}>${l}</option>`
-    ).join('');
 }
 
 /* ── Method-specific endpoint info ───────────────────────────── */
