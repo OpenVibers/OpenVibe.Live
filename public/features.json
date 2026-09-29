@@ -117,6 +117,7 @@
       ],
       "js": [
         "/js/channel-socials.js",
+        "/js/channel-chat-resize.js",
         "/js/app-channel.js"
       ]
     },

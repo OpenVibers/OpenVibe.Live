@@ -3952,8 +3952,9 @@ function _deployCss() {
     if (document.getElementById('chat-deploy-css')) return;
     const st = document.createElement('style'); st.id = 'chat-deploy-css';
     st.textContent = `.chat-msg.system.chat-deploy,.chat-msg.system.chat-deploy *{font-style:normal}
-.chat-deploy{margin:8px 0;padding:10px 12px;border-radius:12px;border:1px solid color-mix(in srgb,var(--accent,#3b82f6) 28%,transparent);background:color-mix(in srgb,var(--accent,#3b82f6) 6%,transparent);color:var(--text-secondary,#a8b3c4);font-size:.84rem;line-height:1.45;container-type:inline-size}
-.chat-deploy-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;color:var(--text-primary,#e6edf7)}.chat-deploy-h b{font-weight:700}.chat-deploy-t{font-size:.76rem;color:var(--text-muted,#7d8aa0)}
+.chat-deploy{margin:6px 0;padding:7px 10px;border-radius:12px;border:1px solid color-mix(in srgb,var(--accent,#3b82f6) 28%,transparent);background:color-mix(in srgb,var(--accent,#3b82f6) 6%,transparent);color:var(--text-secondary,#a8b3c4);font-size:.84rem;line-height:1.45;container-type:inline-size}
+.chat-deploy-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;width:100%;margin:0;padding:0;border:0;background:none;font:inherit;text-align:left;cursor:pointer;color:var(--text-primary,#e6edf7)}.chat-deploy-h::after{content:'▾';margin-left:auto;align-self:center;font-size:.7rem;color:var(--text-muted,#7d8aa0);transition:transform .2s}.chat-deploy:not(.is-collapsed) .chat-deploy-h::after{transform:rotate(180deg)}.chat-deploy-h:focus-visible{outline:2px solid var(--accent,#3b82f6);outline-offset:3px;border-radius:6px}
+.chat-deploy.is-collapsed ul,.chat-deploy.is-collapsed .chat-deploy-more,.chat-deploy.is-collapsed .chat-deploy-f a{display:none}.chat-deploy.is-collapsed .chat-deploy-f{margin-top:6px;padding-top:0;border-top:0}.chat-deploy.is-collapsed .chat-deploy-f:not(:has(.chat-deploy-reload)){display:none}.chat-deploy-h b{font-weight:700}.chat-deploy-t{font-size:.76rem;color:var(--text-muted,#7d8aa0)}
 .chat-deploy ul{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:4px}
 .chat-deploy li{display:grid;grid-template-columns:4.6em minmax(0,1fr);gap:8px;align-items:baseline}.chat-deploy li.is-hidden{display:none}.chat-deploy.is-open li.is-hidden{display:grid}
 .chat-deploy li a{font-family:ui-monospace,Menlo,monospace;font-size:.72rem;color:var(--accent-light,var(--accent,#60a5fa));text-decoration:none}
@@ -3986,14 +3987,19 @@ function renderDeployCard(data, opts = {}) {
     const id = data.id != null ? String(data.id) : '';
     let el = id ? container.querySelector('.chat-deploy[data-deploy-id="' + id.replace(/[^\w-]/g, '') + '"]') : null;
     const wasOpen = el && el.classList.contains('is-open');
+    // One line until opened: a run of deploys is context, not the conversation (the list and notes are a tap away).
+    const wasExpanded = el && !el.classList.contains('is-collapsed');
     if (!el) { el = document.createElement('div'); el.className = 'chat-msg system chat-deploy'; if (id) el.dataset.deployId = id.replace(/[^\w-]/g, ''); }
     const range = first.getTime() === last.getTime() || Math.abs(last - first) < 60000 ? _deployTime(last) : _deployTime(first, first.toDateString() !== last.toDateString()) + ' – ' + _deployTime(last, first.toDateString() !== last.toDateString());
     const deploys = Number(data.deploys) || 1;
     const rest = commits.length - SHOW;
-    el.innerHTML = `<div class="chat-deploy-h"><b>🚀 ${commits.length} update${commits.length === 1 ? '' : 's'} shipped</b><span class="chat-deploy-t" title="${esc(last.toLocaleString())}">${esc(range)}${deploys > 1 ? ' · ' + deploys + ' deploys' : ''}</span></div>
+    el.innerHTML = `<button type="button" class="chat-deploy-h" aria-expanded="${wasExpanded ? 'true' : 'false'}"><b>🚀 ${commits.length} update${commits.length === 1 ? '' : 's'} shipped</b><span class="chat-deploy-t" title="${esc(last.toLocaleString())}">${esc(range)}${deploys > 1 ? ' · ' + deploys + ' deploys' : ''}</span></button>
         <ul>${commits.map((c, i) => `<li class="${i >= SHOW ? 'is-hidden' : ''}${fresh.has(c.hash) ? ' is-fresh' : ''}">${c.hash ? `<a href="https://github.com/OpenVibers/OpenVibe.Live/commit/${esc(c.hash)}" target="_blank" rel="noopener">${esc(c.short || String(c.hash).slice(0, 7))}</a>` : '<i></i>'}<span>${esc(c.subject)}</span></li>`).join('')}</ul>
         <div class="chat-deploy-f">${rest > 0 ? `<button type="button" class="chat-deploy-more" aria-expanded="${wasOpen ? 'true' : 'false'}">${wasOpen ? 'Show fewer' : `Show ${rest} more`}</button>` : ''}<span class="chat-deploy-a"><a href="/updates" target="_blank" rel="noopener">Patch notes</a>${opts.live ? '<button type="button" class="chat-deploy-reload" title="Load the new version">Reload to update</button>' : ''}</span></div>`;
     if (wasOpen) el.classList.add('is-open');
+    el.classList.toggle('is-collapsed', !wasExpanded);
+    const head = el.querySelector('.chat-deploy-h');
+    head.addEventListener('click', () => { const open = el.classList.toggle('is-collapsed') === false; head.setAttribute('aria-expanded', String(open)); });
     const more = el.querySelector('.chat-deploy-more');
     if (more) more.addEventListener('click', () => { const open = el.classList.toggle('is-open'); more.textContent = open ? 'Show fewer' : `Show ${rest} more`; more.setAttribute('aria-expanded', String(open)); });
     const reload = el.querySelector('.chat-deploy-reload');
@@ -7436,10 +7442,9 @@ function _fcwStopResize() {
 }
 
 // Page markup that arrives later (ov-loader.js fragments) gets the same one-time setup the
-// boot-time markup got: font-size classes and scroll containment, the resize handle, GIF buttons.
+// boot-time markup got: font-size classes and scroll containment, GIF buttons.
 document.addEventListener('ov:fragment', () => {
     try { applyChatSettings(); } catch { /* */ }
-    try { initChatResize(); } catch { /* */ }
     if (typeof initGifPickers === 'function') { try { initGifPickers(); } catch { /* */ } }
 });
 
@@ -7670,60 +7675,7 @@ function closeChatUsersPanel(btn) {
    (window.handleChatLinkClick / showLinkContextMenu / OpenVibeChat.linkify),
    shared with the /kiosk page. */
 
-/* ══════════════════════════════════════════════════════════════
-   CHAT RESIZE HANDLE — drag to change chat sidebar width
-   ══════════════════════════════════════════════════════════════ */
-function initChatResize() {
-    const handle = document.getElementById('chat-resize-handle');
-    const sidebar = document.getElementById('chat-sidebar');
-    if (!handle || !sidebar || handle._ovResizeBound) return;
-    handle._ovResizeBound = true;
-
-    const MIN_W = 250;
-    const MAX_RATIO = 0.5; // max 50% of viewport
-
-    // Restore saved width
-    const saved = localStorage.getItem('openvibe_chat_width');
-    if (saved) {
-        const w = parseInt(saved, 10);
-        if (w >= MIN_W && w <= window.innerWidth * MAX_RATIO) {
-            sidebar.style.width = w + 'px';
-        }
-    }
-
-    let dragging = false;
-    let startX = 0;
-    let startW = 0;
-
-    handle.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        dragging = true;
-        startX = e.clientX;
-        startW = sidebar.offsetWidth;
-        handle.classList.add('dragging');
-        document.body.style.cursor = 'col-resize';
-        document.body.style.userSelect = 'none';
-    });
-
-    document.addEventListener('mousemove', (e) => {
-        if (!dragging) return;
-        // Chat is on the right, so dragging left increases width
-        const diff = startX - e.clientX;
-        const maxW = window.innerWidth * MAX_RATIO;
-        const newW = Math.max(MIN_W, Math.min(maxW, startW + diff));
-        sidebar.style.width = newW + 'px';
-    });
-
-    document.addEventListener('mouseup', () => {
-        if (!dragging) return;
-        dragging = false;
-        handle.classList.remove('dragging');
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-        localStorage.setItem('openvibe_chat_width', sidebar.offsetWidth);
-    });
-}
-initChatResize();
+/* Resizing the channel page's chat (every layout, mouse and touch): public/js/channel-chat-resize.js. */
 
 // Reply / translate buttons and folded Friendly-chat groups, for every chat surface: one listener.
 (function _wireChatRowActions() {

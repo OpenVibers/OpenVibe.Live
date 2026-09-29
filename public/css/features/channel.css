@@ -1464,8 +1464,7 @@ body.controls-docked .messenger-toggle { z-index: 1100; }
 /* ── Hide / show the chat (desktop) ─────────────────────────── */
 .chat-header .ch-chat-collapse { margin-right: 2px; }
 @media (min-width: 769px) {
-    #page-channel.chat-collapsed .stream-layout > .chat-sidebar,
-    #page-channel.chat-collapsed .chat-resize-handle { display: none !important; }
+    #page-channel.chat-collapsed .stream-layout > .chat-sidebar { display: none !important; }
     #page-channel.chat-revealing .stream-layout > .chat-sidebar { animation: chChatReveal .32s cubic-bezier(.22,1,.36,1); }
 }
 @keyframes chChatReveal { from { opacity: 0; transform: translateX(36px); } to { opacity: 1; transform: none; } }
@@ -1482,3 +1481,31 @@ body.controls-docked .messenger-toggle { z-index: 1100; }
 .ch-chat-reopen[hidden] { display: none; }
 @media (max-width: 768px) { .ch-chat-collapse, .ch-chat-reopen { display: none !important; } }
 @media (prefers-reduced-motion: reduce) { #page-channel.chat-revealing .stream-layout > .chat-sidebar { animation: none; } }
+
+/* ── Resizing the chat (public/js/channel-chat-resize.js) ─────
+   One grip per chat: on its left edge beside the stream (width), on its top edge as a bottom sheet (height). */
+#page-channel .stream-layout > .chat-sidebar { width: var(--chat-w); }
+@media (max-width: 1180px) and (orientation: landscape) { #page-channel .stream-layout > .chat-sidebar { width: var(--chat-ow, min(420px, 44vw)); } }
+@media (max-width: 1180px) and (orientation: portrait) { #page-channel .stream-layout > .chat-sidebar { width: 100%; height: var(--chat-sheet-h, 55dvh); max-height: 92dvh; } }
+#page-channel.chat-resizing, #page-channel.chat-resizing * { user-select: none; }
+#page-channel.chat-resizing .chat-sidebar { transition: none !important; }
+#page-channel.chat-resizing iframe, #page-channel.chat-resizing video { pointer-events: none; }
+.chat-grip { position: absolute; z-index: 30; touch-action: none; outline: none; }
+.chat-grip::before, .chat-grip::after { content: ''; position: absolute; pointer-events: none; transition: opacity .15s, background-color .15s; }
+@media (min-width: 1181px), (max-width: 1180px) and (orientation: landscape) {
+    .chat-grip { top: 0; bottom: 0; left: -6px; width: 12px; cursor: col-resize; }
+    .chat-grip::before { left: 5px; top: 0; bottom: 0; width: 2px; background: var(--accent); opacity: 0; }
+    .chat-grip::after { left: 4px; top: 50%; width: 4px; height: 44px; margin-top: -22px; border-radius: 4px; background: color-mix(in srgb, var(--text-muted) 60%, transparent); opacity: 0; }
+    .chat-sidebar:hover > .chat-grip::after { opacity: .75; }
+    .chat-grip:hover::before, .chat-grip.dragging::before, .chat-grip:focus-visible::before { opacity: .55; }
+    .chat-grip:hover::after, .chat-grip.dragging::after, .chat-grip:focus-visible::after { opacity: 1; background: var(--accent); }
+}
+@media (max-width: 1180px) and (orientation: portrait) {
+    .chat-grip { top: 0; left: 0; right: 0; height: 24px; cursor: row-resize; }
+    .chat-grip::after { left: 50%; top: 8px; width: 44px; height: 5px; margin-left: -22px; border-radius: 5px; background: color-mix(in srgb, var(--text-muted) 60%, transparent); }
+    .chat-grip:hover::after, .chat-grip.dragging::after, .chat-grip:focus-visible::after { background: var(--accent); }
+    /* The grip draws the sheet's handle now (the header's own pill was only a picture of one). */
+    #page-channel .chat-sidebar .chat-header::before { display: none; }
+    #page-channel .chat-sidebar .chat-header { padding-top: 18px; }
+}
+@media (hover: none) { .chat-sidebar > .chat-grip::after { opacity: .75; } }
