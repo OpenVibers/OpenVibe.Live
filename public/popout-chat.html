@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
     <title>Chat — OpenVibe.Live</title>
     <!-- Keep these in step with index.html — the popout renders the same chat
          components (cosmetics.css positions particle effects; without it they sit
@@ -123,6 +123,30 @@
         }
         .pc-conn-dot.connected { background: var(--success, #55e090); }
         .pc-conn-dot.error { background: var(--danger, #e05555); }
+
+        /* ── Phones (2026-09-28): the input stayed under the browser's bottom bar (100% height includes it) ── */
+        /* Phone-proof sizing: the dynamic viewport (browser bars excluded) and the home-indicator inset. */
+        html, body { height: 100%; height: 100dvh; }
+        body { padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); box-sizing: border-box; }
+        .pc-header { min-height: 46px; padding: 5px 6px 5px 12px; gap: 8px; background: color-mix(in srgb, var(--bg-secondary, #1a1a2e) 92%, var(--accent, #3b82f6)); }
+        .pc-header-left { min-width: 0; gap: 8px; font-size: 0.9rem; }
+        .pc-header-left > i { color: var(--accent, #3b82f6); }
+        #pc-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pc-hbtn { width: 38px; height: 38px; display: inline-grid; place-items: center; border-radius: 10px; font-size: 0.95rem; }
+        .pc-conn-dot { box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 0%, transparent); }
+        .pc-conn-dot.connected { box-shadow: 0 0 0 3px color-mix(in srgb, var(--success, #22c55e) 25%, transparent); }
+        .pc-body { position: relative; }
+        .pc-messages { padding: 8px 10px 10px; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--accent, #3b82f6) 35%, transparent) transparent; overscroll-behavior: contain; }
+        .pc-input-area { padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); }
+        /* Deploy notices: a thin line in a popout, not a stack of cards. */
+        .pc-messages .chat-deploy { margin: 3px 0; padding: 5px 9px; border-radius: 9px; font-size: 0.78rem; background: color-mix(in srgb, var(--accent, #3b82f6) 5%, transparent); border-color: color-mix(in srgb, var(--accent, #3b82f6) 16%, transparent); }
+        .pc-messages .chat-deploy-t { font-size: 0.72rem; }
+        /* Phones: the viewer list and settings slide over the chat instead of squeezing it. */
+        @media (max-width: 560px) {
+          .pc-panel { position: absolute; right: 0; top: 0; bottom: 0; width: min(300px, 86vw); z-index: 30; box-shadow: -16px 0 36px rgba(0,0,0,.45); border-radius: 14px 0 0 14px; }
+          .pc-messages { font-size: 0.92rem; }
+          .pc-messages .chat-deploy-t { display: none; }
+        }
     </style>
 </head>
 <body>

@@ -213,3 +213,8 @@
 .chat-autotr.is-on { color: var(--accent-light, var(--accent)); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .chat-autotr:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chat-translate-hint ~ .chat-autotr { margin-left: 6px; }
+@media (max-width: 480px) {
+    /* Narrow chat: the switch is its icon (the title says what it does), so it stays on the tools row. */
+    .chat-autotr { padding: 4px 8px; }
+    .chat-autotr span { display: none; }
+}
