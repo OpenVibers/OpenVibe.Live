@@ -28,7 +28,6 @@ process.env.OV_NETWORK_PUBLIC_KEY = path.join(tmp, 'network.pem');
 process.env.OV_NETWORK_URL = 'https://openvibe.network';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
-process.env.INTERNAL_API_KEY = 'internal-test-key';
 process.env.CHAT_AUTHORITY = 'chat';
 const quiet = console.log;
 console.log = () => {};
@@ -183,8 +182,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         let json = null; try { json = JSON.parse(text); } catch { /* */ }
         return { status: res.status, body: json, text };
     };
-    const KEY = { 'X-Internal-Key': 'internal-test-key' };
-    const internal = (method, p, body) => call(method, `/internal${p}`, { body, headers: KEY });
+    // OpenVibe.Chat's token for the staged-table handoff (live.chat_mirror.write); X-Internal-Key is gone (plan T2).
+    const CHAT = () => ({ Authorization: `Bearer ${serviceAuth.signServiceToken({ iss: ISS, sub: 'svc:chat', actor_type: 'service', aud: ['openvibe.live'], cap: ['live.chat_mirror.write'], iat: now(), exp: now() + 300, jti: `tok_test_${++jti}` }, keys.privateKey)}` });
+    const internal = (method, p, body) => call(method, `/internal${p}`, { body, headers: CHAT() });
     const MIRROR = serviceToken(['live.chat_mirror.write'], 'openvibe.live');
     const mirror = (changes) => call('POST', '/internal/chat-effects/mirror', { body: { changes }, headers: { Authorization: `Bearer ${MIRROR}` } });
 
@@ -285,9 +285,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.strictEqual(stats('channel_moderation_settings').compared, 2);
         assert.strictEqual((await internal('POST', '/chat-tables/channel_moderation_settings', { reset_counters: true })).body.table.dual_read_stats.compared, 0);
 
-        // 6. The status route: loopback + internal key; both sides' view of every table.
+        // 6. The status route: loopback + a service token (live.chat_mirror.write); both sides' view of every table.
         assert.strictEqual((await call('GET', '/internal/chat-tables')).status, 401, 'no credentials');
-        assert.strictEqual((await call('GET', '/internal/chat-tables', { headers: { ...KEY, 'X-Forwarded-For': '203.0.113.1' } })).status, 401, 'the key through the public edge');
+        assert.strictEqual((await call('GET', '/internal/chat-tables', { headers: { ...CHAT(), 'X-Forwarded-For': '203.0.113.1' } })).status, 403, 'a token through the public edge');
+        assert.strictEqual((await call('GET', '/internal/chat-tables', { headers: { 'X-Internal-Key': 'k'.repeat(40) } })).status, 401, 'the retired key opens nothing');
         let s = (await internal('GET', '/chat-tables')).body;
         assert.strictEqual(s.chat_authority, 'chat');
         assert.deepStrictEqual([s.tables.emotes.authority, s.tables.emotes.chat_authority, s.tables.emotes.dual_read, s.tables.emotes.outbox_pending], ['live', 'live', true, 0]);

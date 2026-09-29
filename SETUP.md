@@ -6,7 +6,7 @@ This document describes the OpenVibe.Live runtime setup, local development, and 
 
 OpenVibe.Live (port **3000**) is the streaming front — ingest (RTMP / WHIP / WebRTC / JSMPEG), chat, channels, monetization (Vibes), moderation, and the SPA. Two sibling services do heavy lifting:
 
-- **OpenVibe.Network** (`openvibe.network`, port **4000**) — SSO/OAuth2 identity provider (client id `live`), RS256 JWTs, URL registry, notifications, and the network-wide **OpenCoins wallet**. Live calls the wallet server-to-server via `OV_NETWORK_INTERNAL_URL` with `X-Internal-Key`.
+- **OpenVibe.Network** (`openvibe.network`, port **4000**) — SSO/OAuth2 identity provider (client id `live`), RS256 JWTs, URL registry, notifications, and the network-wide **OpenCoins wallet**. Live calls the wallet server-to-server via `OV_NETWORK_INTERNAL_URL` with its service token (client credentials).
 - **OpenVibe.Media** (`openvibe.media`, port **4100**) — owns **VODs, clips, pastes, thumbnails, and file storage** (Media API v1). Live records streams by pointing Media at its ingest (RTMP pull / RTP ports 12000-12199), proxies the SPA's `/api/vods`, `/api/clips`, `/api/pastes`, `/api/thumbnails` calls to it (`server/media-client.js`), 302-redirects file payloads to `MEDIA_PUBLIC_URL`, and receives `vod.ready` / `clip.ready` webhooks at `POST /internal/media-webhook`.
 
 Live keeps locally: live.db (users/streams/chat/channel state), Vibes (PayPal tipping/cashout), channel points, comments, stream memories + AI state for Media-hosted vods/clips (`vod_ai_state` / `clip_ai_state`), ephemeral live thumbnails, and the song-request queue.
@@ -43,8 +43,7 @@ cp .env.example .env
 - `JWT_SECRET` — app-specific secret for Live's own JWT operations.
 - `OV_NETWORK_URL` — public SSO issuer (default `https://openvibe.network`).
 - `OV_NETWORK_INTERNAL_URL` — internal Network base (default `http://127.0.0.1:4000`).
-- `INTERNAL_API_KEY` — key for Network's `/internal/*` endpoints (header `X-Internal-Key`).
-- `OV_OAUTH_CLIENT_ID` / `OV_OAUTH_CLIENT_SECRET` — OAuth client (`live`).
+- `OV_OAUTH_CLIENT_ID` / `OV_OAUTH_CLIENT_SECRET` — OAuth client (`live`). The same client mints Live's service tokens for Network's `/internal/*` endpoints (client credentials; the shared `INTERNAL_API_KEY` is retired).
 - `OV_NETWORK_PUBLIC_KEY` — path to the Network RS256 public key (offline JWT verification).
 - `MEDIA_URL` — internal Media API base (default `http://127.0.0.1:4100`).
 - `MEDIA_PUBLIC_URL` — public Media host (default `https://openvibe.media`).
@@ -94,7 +93,6 @@ NODE_ENV=development
 BASE_URL=http://localhost:3000
 OV_NETWORK_URL=http://localhost:4000
 OV_NETWORK_INTERNAL_URL=http://127.0.0.1:4000
-INTERNAL_API_KEY=your-shared-secret
 OV_NETWORK_PUBLIC_KEY=./data/keys/openvibe-network-public.pem
 MEDIA_URL=http://127.0.0.1:4100
 MEDIA_PUBLIC_URL=http://127.0.0.1:4100
@@ -111,7 +109,7 @@ Network's `local-dev` bootstrap seeds the `live` OAuth client with `http://local
 
 On startup, the server:
 
-- refreshes URL registry values from OpenVibe.Network (needs `OV_NETWORK_INTERNAL_URL` + `INTERNAL_API_KEY`).
+- refreshes URL registry values from OpenVibe.Network (needs `OV_NETWORK_INTERNAL_URL` + `OV_OAUTH_CLIENT_SECRET`).
 - initializes the database and schema.
 - seeds/refreshes built-in themes (default theme slug: `vibe`).
 - creates an admin user from `ADMIN_USERNAME` / `ADMIN_PASSWORD` if no admin exists (dev defaults `admin` / `changeme123`).
@@ -160,7 +158,7 @@ Completion arrives via the `vod.ready` / `clip.ready` webhooks.
 - **Invalid redirect_uri**: local callback URIs not registered on the `live` OAuth client in Network.
 - **VOD/clip/paste endpoints return 502**: OpenVibe.Media is down or `MEDIA_URL`/`MEDIA_API_KEY` are wrong.
 - **Webhook 401s in Media logs**: `MEDIA_WEBHOOK_SECRET` mismatch.
-- **OpenCoins balance always 0 / spends fail**: `OV_NETWORK_INTERNAL_URL`/`INTERNAL_API_KEY` wrong, or the user has no linked Network account.
+- **OpenCoins balance always 0 / spends fail**: `OV_NETWORK_INTERNAL_URL`/`OV_OAUTH_CLIENT_SECRET` wrong, or the user has no linked Network account.
 - **CORS rejects browser traffic**: `BASE_URL` set to localhost in production.
 - **WebRTC fails**: `mediasoup` could not initialize or TURN is not configured.
 - **RTMP fails to start**: port conflict on `RTMP_PORT`.

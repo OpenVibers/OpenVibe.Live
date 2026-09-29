@@ -156,7 +156,7 @@
 <pre><code>openvibe.network /api/admin/streamer/*  →  OpenVibe.Live /api/admin/*
 openvibe.network /api/admin/streamer-tts/*  →  OpenVibe.Live /api/tts/*
 openvibe.network /api/admin/streamer-mod/*  →  OpenVibe.Live /api/mod/*</code></pre>
-<p>Protected by X-Internal-Key header for server-to-server calls.</p>
+<p>Server-to-server calls carry a short-lived service token from openvibe.network, scoped to the one capability each route performs.</p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════ -->
@@ -1073,7 +1073,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 </table>
 
 <h3>Internal Events API (server-to-server)</h3>
-<p>OpenVibe.Live emits events to openvibe.network via internal API. Protected by X-Internal-Key header.</p>
+<p>OpenVibe.Live emits events to openvibe.network through its internal API, with a service token scoped to the capability of each call.</p>
 <table class="doc-table">
 <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
 <tbody>

@@ -5,12 +5,11 @@ const router = express.Router();
 const config = require('../config');
 const db = require('../db/database');
 
-const { guardOrKey } = require('../net/service-guard');
+const { guard } = require('../net/service-guard');
 
 // Service-to-service only, loopback only (nothing that came through nginx): each route checks the one capability it
-// performs on a Network service token (server/net/service-guard.js). The X-Internal-Key path is kept only while its
-// callers move to tokens (plan T2).
-const chatTablesGuard = guardOrKey('live.chat_mirror.write');   // OpenVibe.Chat's staged-table handoff (T3 deletes)
+// performs on a Network service token (server/net/service-guard.js); nothing else gets in (X-Internal-Key: plan T2).
+const chatTablesGuard = guard('live.chat_mirror.write');   // OpenVibe.Chat's staged-table handoff (T3 deletes)
 
 // CHAT_AUTHORITY=chat: OpenVibe.Chat caches users; a role or avatar pushed here reaches it at once.
 function notifyChat(userId) {
@@ -55,7 +54,7 @@ router.post('/chat-tables/:table', chatTablesGuard, async (req, res) => {
 // Footer site copy is written by OpenVibe.AI for the Network directly (network.site_copy); the
 // /internal/ai/site-copy fallback that used to live here was retired on 2026-09-23.
 
-router.post('/url-registry/refresh', guardOrKey('live.url_registry.refresh'), async (req, res) => {
+router.post('/url-registry/refresh', guard('live.url_registry.refresh'), async (req, res) => {
     try {
         await config.refreshRegistry();
         console.log('[Internal] URL registry refresh requested');
@@ -73,7 +72,7 @@ router.post('/url-registry/refresh', guardOrKey('live.url_registry.refresh'), as
 // ── The account's avatar changed on the Network (or on another site) ─────────
 // The avatar is a network-wide property (OpenVibe.Network server/profile/avatar.js). Live keeps a copy on its
 // own user row because every stream card, chat line and profile reads it locally.
-router.post('/user-avatar', guardOrKey('live.avatar.write'), (req, res) => {
+router.post('/user-avatar', guard('live.avatar.write'), (req, res) => {
     try {
         const { username, openvibenetwork_id, avatar_url } = req.body || {};
         let url = null;

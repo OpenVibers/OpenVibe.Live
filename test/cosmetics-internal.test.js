@@ -1,11 +1,11 @@
 'use strict';
 
-// Live's internal (server-to-server) routes, during the X-Internal-Key retirement (plan T2):
+// Live's internal (server-to-server) routes after the X-Internal-Key retirement (plan T2):
 //  - each route checks the one capability it performs on a Network service token (server/net/service-guard.js);
-//  - a request that presents a Bearer is judged on the token alone, never downgraded to the key;
-//  - without a Bearer, the key still passes from loopback while callers move (guardOrKey), compared in constant time;
-//  - nothing that came through nginx or Cloudflare gets in, with a token or the key;
-//  - POST /api/cosmetics/internal-unlock (the openvibe-quest bridge) is gone: the quest game runs nowhere.
+//  - the retired key opens nothing, alone or next to a bad token;
+//  - nothing that came through nginx or Cloudflare gets in;
+//  - POST /api/cosmetics/internal-unlock (the openvibe-quest bridge) is gone: the quest game runs nowhere;
+//  - no server file reads INTERNAL_API_KEY any more.
 
 const assert = require('assert');
 const crypto = require('crypto');
@@ -21,7 +21,7 @@ fs.writeFileSync(path.join(tmp, 'network.pem'), keys.publicKey);
 process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.OV_NETWORK_PUBLIC_KEY = path.join(tmp, 'network.pem');
 process.env.OV_NETWORK_URL = 'https://openvibe.network';
-const KEY = 'k'.repeat(40);
+const KEY = 'k'.repeat(40);   // what an old caller would send: it must open nothing
 process.env.INTERNAL_API_KEY = KEY;
 console.log = () => {};
 console.warn = () => {};
@@ -58,15 +58,13 @@ const token = (cap, { aud = 'openvibe.live', sub = 'svc:network', env } = {}) =>
         assert.strictEqual((await avatar(bearer(token(['live.url_registry.refresh'])))).status, 403, 'another capability is not enough');
         assert.strictEqual((await avatar(bearer(token(['live.avatar.write'], { aud: 'openvibe.network' })))).status, 401, 'a token for another audience');
         assert.strictEqual((await avatar(bearer(token(['live.avatar.write'], { env: 'sandbox' })))).status, 401, 'a sandbox token');
-        assert.strictEqual((await avatar({ ...bearer('not.a.token'), 'x-internal-key': KEY })).status, 401, 'a Bearer is judged on the token alone, never downgraded to the key');
+        assert.strictEqual((await avatar({ ...bearer('not.a.token'), 'x-internal-key': KEY })).status, 401, 'a bad token is not rescued by the key');
         assert.strictEqual((await avatar({ ...bearer(token(['live.avatar.write'])), 'x-forwarded-for': '203.0.113.9' })).status, 403, 'a token through the public edge is refused');
         assert.strictEqual((await avatar({})).status, 401);
-        // The key while callers move: loopback only, constant time.
-        assert.strictEqual((await avatar({ 'x-internal-key': KEY })).status, 404, 'the key from loopback still reaches the handler');
-        assert.strictEqual((await avatar({ 'x-internal-key': 'j'.repeat(40) })).status, 401, 'a wrong key of the right length');
-        assert.strictEqual((await avatar({ 'x-internal-key': KEY + 'x' })).status, 401, 'a longer key that starts right');
+        // The retired key opens nothing.
+        assert.strictEqual((await avatar({ 'x-internal-key': KEY })).status, 401, 'the key alone is refused');
         for (const h of ['x-forwarded-for', 'x-real-ip', 'cf-connecting-ip']) {
-            assert.strictEqual((await avatar({ 'x-internal-key': KEY, [h]: '203.0.113.9' })).status, 401, `the right key through the public edge (${h}) is refused`);
+            assert.strictEqual((await avatar({ ...bearer(token(['live.avatar.write'])), [h]: '203.0.113.9' })).status, 403, `a token through the public edge (${h}) is refused`);
         }
 
         // ── the other internal routes: each has its own capability ───────────────────
@@ -77,25 +75,20 @@ const token = (cap, { aud = 'openvibe.live', sub = 'svc:network', env } = {}) =>
         assert.notStrictEqual((await tables(bearer(token(['live.chat_mirror.write'], { sub: 'svc:chat' })))).status, 403, 'Chat opens the staged-table handoff with live.chat_mirror.write');
         assert.strictEqual((await tables({})).status, 401);
 
-        const ik = require('../server/net/internal-key');
-        assert.strictEqual(ik.internalKeyMatches(KEY), true);
-        assert.strictEqual(ik.internalKeyMatches(''), false);
-        assert.strictEqual(ik.internalKeyMatches(KEY.slice(0, 39)), false);
-
-        // No internal-key compare with === / !== anywhere in the server.
+        // No server file reads or sends the retired key.
         const offenders = [];
         const walk = (dir) => {
             for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
                 const p = path.join(dir, e.name);
                 if (e.isDirectory()) walk(p);
                 else if (e.name.endsWith('.js')) {
-                    const src = fs.readFileSync(p, 'utf8');
-                    if (/[!=]==\s*(config\.internalApiKey|INTERNAL_API_KEY)\b|\b(config\.internalApiKey|INTERNAL_API_KEY)\s*[!=]==/.test(src)) offenders.push(path.relative(path.join(__dirname, '..'), p));
+                    const src = fs.readFileSync(p, 'utf8').replace(/^\s*(\/\/|\*).*$/gm, '');   // code, not comments
+                    if (/INTERNAL_API_KEY|OV_INTERNAL_KEY|internalApiKey|x-internal-key/i.test(src)) offenders.push(path.relative(path.join(__dirname, '..'), p));
                 }
             }
         };
         walk(path.join(__dirname, '..', 'server'));
-        assert.deepStrictEqual(offenders, [], 'internal keys are compared with internalKeyMatches (constant time)');
+        assert.deepStrictEqual(offenders, [], 'no server file reads or sends X-Internal-Key');
         process.stdout.write('live internal routes: all checks passed\n');
     } finally {
         server.close();

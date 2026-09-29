@@ -160,7 +160,6 @@ function buildConfig(registryValues) {
         baseUrl,
         openvibeToolsUrl,   // public-facing URL of the SSO provider (e.g. https://openvibe.network)
         nodeEnv: process.env.NODE_ENV || 'development',
-        internalApiKey: process.env.INTERNAL_API_KEY || process.env.OV_INTERNAL_KEY || '',
         webrtc: {
             publicUrl: webRtcPublicUrl,
         },

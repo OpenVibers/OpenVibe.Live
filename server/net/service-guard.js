@@ -9,12 +9,18 @@
  *
  * The capability ids are registered in openvibe-contracts (checked with capabilities.check()); an
  * id the pinned registry does not know yet is checked as a plain grant with capabilities.grants()
- * until the pin moves. Like X-Internal-Key routes, these are loopback-only: anything that came
- * through nginx is refused.
+ * until the pin moves. Loopback only: anything that came through nginx is refused. X-Internal-Key is
+ * gone (plan T2): every internal route is guard(capability).
  */
 const { serviceAuth, capabilities, http } = require('openvibe-contracts');
 const { getNetworkPublicKey, getNetworkIssuer } = require('../auth/auth');
-const { viaProxy } = require('./internal-key');
+
+/** The request came through nginx or Cloudflare: nginx adds X-Forwarded-For / X-Real-IP to everything from outside
+ *  (Cloudflare adds CF-Connecting-IP), and loopback callers never send them. Internal routes refuse such a request. */
+function viaProxy(req) {
+    const h = (req && req.headers) || {};
+    return !!(h['x-forwarded-for'] || h['x-real-ip'] || h['cf-connecting-ip']);
+}
 
 const AUDIENCE = 'openvibe.live';
 
@@ -38,18 +44,4 @@ function guard(capability) {
     };
 }
 
-/**
- * While X-Internal-Key is retired (plan T2): a request that presents a Bearer is judged on the token alone (never
- * downgraded to the key); one without a Bearer still passes with the key from loopback. Callers move to tokens, then
- * every route becomes guard(capability) and the key goes.
- */
-function guardOrKey(capability) {
-    const tokenGuard = guard(capability);
-    return function liveServiceGuardOrKey(req, res, next) {
-        if (String(req.headers.authorization || '').startsWith('Bearer ')) return tokenGuard(req, res, next);
-        if (require('./internal-key').internalKeyOk(req)) return next();
-        return http.sendProblem(res, 401, 'token.missing', { detail: 'a service token is required', ctx: http.requestContext(req.headers) });
-    };
-}
-
-module.exports = { guard, guardOrKey, AUDIENCE };
+module.exports = { guard, viaProxy, AUDIENCE };
