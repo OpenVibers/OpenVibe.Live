@@ -116,7 +116,8 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
     const chatServer = require('../chat/chat-server');
     const streamId = streamIdFor(b.target, userId);
     const name = String((b.supporter && b.supporter.name) || 'Someone').slice(0, 80);
-    const amount = Math.max(0, Math.round(Number(i.amount) || 0));
+    // null = the supporter hid the amount (Tips privacy.hide_amount): it stays null all the way to the chat line.
+    const amount = i.amount == null ? null : Math.max(0, Math.round(Number(i.amount) || 0));
     const message = String(i.message || '').slice(0, 500);
     try {
         if (b.effect === 'chat_line' || b.effect === 'paid_message') {
@@ -128,7 +129,7 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
             try { chatServer.broadcastGlobal({ ...event, global: true, channel_user_id: userId }); } catch { /* non-critical */ }
             const saved = db.saveChatMessage({
                 stream_id: streamId, channel_user_id: userId, user_id: null, username: name,
-                message: String(b.text || `${name} tipped ${amount.toLocaleString()} Vibes${message ? ': ' + message : ''}`).slice(0, 1000),
+                message: String(b.text || `${name} ${amount == null ? 'sent a tip' : `tipped ${amount.toLocaleString()} Vibes`}${message ? ': ' + message : ''}`).slice(0, 1000),
                 message_type: 'donation',
                 metadata: { kind: 'donation', amount, message, username: name, source: 'tips', interaction_id: i.id || null, paid_message: event.paid_message, highlight_seconds: event.highlight_seconds, test: !!b.test },
             });

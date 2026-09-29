@@ -122,6 +122,14 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     assert.strictEqual(tts[0][2], 'read me');
     assert.strictEqual(tts[0][6], 501);
 
+    // A hidden amount (Tips privacy.hide_amount sends null) stays hidden: no "0 Vibes" anywhere.
+    const h = await post({ ...job, text: undefined, interaction: { ...job.interaction, id: 'tint_h', amount: null, message: 'hi' } }, { key: 'tint_h:chat_line' });
+    assert.strictEqual(h.status, 200);
+    assert.strictEqual(broadcasts[broadcasts.length - 1].ev.amount, null);
+    const hs = d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(h.json.ref.chat_message_id);
+    assert.strictEqual(hs.message, 'Viewer sent a tip: hi');
+    assert.strictEqual(JSON.parse(hs.metadata).amount, null);
+
     // Unknown creator: permanent refusal.
     const u = await post({ ...job, creator: { type: 'user', id: 'usr_01J0000000000000000000000Y' } }, { key: 'tint_2:chat_line' });
     assert.strictEqual(u.status, 404);

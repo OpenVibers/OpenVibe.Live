@@ -4119,24 +4119,26 @@ function addDonationMessage(msg) {
     el.className = 'chat-msg donation';
 
     const donorName = esc(msg.username || msg.from || 'Anonymous');
-    const amount = Math.round(msg.amount || 0);
-    const amtStr = amount.toLocaleString();
+    // A supporter can hide the amount (Tips privacy.hide_amount): the amount arrives as null and the line says "sent a tip".
+    const hidden = msg.amount == null;
+    const amount = hidden ? 0 : Math.round(msg.amount || 0);
+    const did = hidden ? 'sent a tip' : `donated <strong>${amount.toLocaleString()} Vibes</strong>`;
     const rawDonText = msg.message || '';
     const text = rawDonText ? `: ${(typeof parseEmotes === 'function') ? parseEmotes(rawDonText) : esc(rawDonText)}` : '';
 
-    el.innerHTML = `<i class="fa-solid fa-coins" style="color:var(--accent)"></i> <strong>${donorName}</strong> donated <strong>${amtStr} Vibes</strong>${text}`;
+    el.innerHTML = `<i class="fa-solid fa-coins" style="color:var(--accent)"></i> <strong>${donorName}</strong> ${did}${text}`;
 
     container.appendChild(el);
     scrollChat();
     if (_chatUserScrolledUp) _onNewChatMessageWhileScrolledUp();
     queueFullscreenChatEntry({
         kind: 'donation',
-        html: `<div class="fullscreen-chat-meta"><span class="fullscreen-chat-user" style="color:var(--accent)"><i class="fa-solid fa-coins"></i> ${donorName}</span></div><div class="fullscreen-chat-text">donated <strong>${amtStr} Vibes</strong>${text}</div>`,
+        html: `<div class="fullscreen-chat-meta"><span class="fullscreen-chat-user" style="color:var(--accent)"><i class="fa-solid fa-coins"></i> ${donorName}</span></div><div class="fullscreen-chat-text">${did}${text}</div>`,
     });
 
     // TTS for donations
     if (document.getElementById('tts-checkbox')?.checked) {
-        speakTTS(`${donorName} donated ${amount} Vibes. ${msg.message || ''}`);
+        speakTTS(`${donorName} ${hidden ? 'sent a tip' : `donated ${amount} Vibes`}. ${msg.message || ''}`);
     }
 }
 
