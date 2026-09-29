@@ -58,7 +58,7 @@ check('nothing was removed', () => {
     for (const id of ['home-featured', 'stream-grid-live', 'home-digest', 'home-star-section', 'hero-egg', 'home-pulse-section',
         'stream-grid-recent', 'stream-grid-recent-pagination', 'home-recent-vods-header', 'home-recent-vods-grid', 'home-clips-header',
         'home-clips-grid', 'home-pastes-header', 'home-pastes-list', 'home-moments-section', 'home-tour-mount', 'home-cta-banner',
-        'home-about-body', 'home-quest-header', 'home-leaderboards', 'home-canvas-header', 'home-canvas-preview']) {
+        'home-about-body']) {
         at(`id="${id}"`);
     }
     assert.ok(home.includes('class="network-hub"'));

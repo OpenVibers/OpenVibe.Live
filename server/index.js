@@ -143,8 +143,6 @@ const analyticsModule = require('openvibe-shared/analytics'); // ADR-021: no IP/
 // WHIP (WebRTC-HTTP Ingestion Protocol)
 const whipHandler = require('./streaming/whip-handler');
 
-// Game & Canvas — migrated to openvibe.games (game/canvas code removed)
-
 // ── Express App ──────────────────────────────────────────────
 const app = express();
 const server = http.createServer(app);
@@ -715,10 +713,6 @@ app.use('/api/emotes', emoteRoutes);
 app.use('/api/sounds', chatRemote ? chatMoved : require('./chat/sounds-routes'));
 app.use('/api/ai-viewers', require('./ai/viewers/routes'));
 app.use('/api/powerchat', require('./integrations/powerchat-routes'));
-// Game & Canvas — migrated to openvibe.games
-app.get('/game', (req, res) => res.redirect(301, 'https://openvibe.games/game'));
-app.get('/canvas', (req, res) => res.redirect(301, 'https://openvibe.games/canvas'));
-app.use('/api/game', (req, res) => res.status(410).json({ error: 'Game has moved to https://openvibe.games/game' }));
 app.use('/api/meta', metaRoutes);
 app.use('/api/pastes', pasteRoutes);
 app.use('/api/content', require('./content/routes'));    // Content (people's work) + Moments (AI) feeds
@@ -1107,8 +1101,6 @@ server.on('upgrade', (req, socket, head) => {
         controlServer.handleUpgrade(req, socket, head);
     } else if (url.startsWith('/ws/call')) {
         callServer.handleUpgrade(req, socket, head);
-    } else if (url.startsWith('/ws/game') || url.startsWith('/ws/canvas')) {
-        socket.destroy(); // migrated to openvibe.games
     } else if (url.startsWith('/ws/robotstreamer-publish')) {
         robotStreamerService.handleUpgrade(req, socket, head);
     } else {
@@ -1182,8 +1174,6 @@ async function start() {
         console.log(`[Server] Admin user "${adminUser}" created from ADMIN_USERNAME; sign in with the openvibe.network account of that name`);
     }
 
-    // Game & Canvas migrated to openvibe.games — no local init needed
-
     // 3. Initialize chat server
     chatServer.init(server);
     vibeCodingPublishServer.init(server);
@@ -1198,8 +1188,6 @@ async function start() {
 
     // 4b. Initialize broadcast server
     broadcastServer.init(server);
-
-    // Game & Canvas WebSocket servers migrated to openvibe.games
 
     // 4d. Initialize group call signaling server
     callServer.init(server);
@@ -1329,7 +1317,6 @@ async function start() {
         console.log(`[Server] WebSocket:    ws://${config.host}:${config.port}/ws/broadcast`);
         console.log(`[Server] WebSocket:    ws://${config.host}:${config.port}/ws/control`);
         console.log(`[Server] WebSocket:    ws://${config.host}:${config.port}/ws/call`);
-        console.log(`[Server] Game/Canvas:  migrated to openvibe.games`);
         console.log(`[Server] Environment:  ${config.nodeEnv}`);
         console.log(`[Server] BASE_URL:     ${config.baseUrl}`);
         console.log(`[Server] WHIP_PUBLIC_URL: ${config.whip?.publicUrl}`);
@@ -1676,7 +1663,6 @@ function shutdown() {
         restreamManager.stopViewerCountPolling();
         restreamManager.stopAll();
         try { recorder.stopAll(); } catch {}
-        // canvasServer + gameServer migrated to openvibe.games
         callServer.close();
         chatServer.close();
         controlServer.close();

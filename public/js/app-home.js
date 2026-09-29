@@ -1248,10 +1248,6 @@ async function loadHome() {
     loadHomeClips();
     // Load recent pastes
     loadHomePastes();
-    // Load Scraplandia leaderboards
-    loadHomeLeaderboards();
-    // Load Canvas preview
-    loadHomeCanvas();
 
     startHomeRefresh(); // live grid + sections auto-update in real time
 }
@@ -1555,129 +1551,6 @@ async function loadHomePastes(opts) {
     } catch { rail.filling = false; }
 }
 
-// OpenVibe.Games does not serve /api/game/leaderboard/* or /api/game/canvas/state (the pixel canvas is
-// owner decision O15), so every first visit logged CORS errors for sections that stay hidden. Turn this
-// on when Games serves them (public, CORS for first-party origins) — roadmap WS-M task 7.
-const GAMES_HOME_WIDGETS = false;
-
-async function loadHomeLeaderboards() {
-    if (!GAMES_HOME_WIDGETS) { const h = document.getElementById('home-quest-header'); if (h) h.style.display = 'none'; return; }
-    try {
-        const boards = ['total_level', 'combat', 'mining', 'fishing'];
-        const questUrl = getScraplandiaUrl();
-        // One probe first: if the service is not answering, the other three would fail the same way.
-        const first = await fetchServiceJson(`${questUrl}/api/game/leaderboard/${boards[0]}`);
-        const rest = first ? await Promise.all(boards.slice(1).map(b => fetchServiceJson(`${questUrl}/api/game/leaderboard/${b}`))) : [];
-        const results = [first, ...rest].map(r => r || { entries: [] });
-        while (results.length < boards.length) results.push({ entries: [] });
-        const header = document.getElementById('home-quest-header');
-        const container = document.getElementById('home-leaderboards');
-        const hasData = results.some(r => r.entries && r.entries.length);
-        if (!hasData) { if (header) header.style.display = 'none'; return; }
-        if (header) header.style.display = '';
-
-        const labels = { total_level: 'Total Level', combat: 'Combat', mining: 'Mining', fishing: 'Fishing' };
-        const icons = { total_level: 'fa-star', combat: 'fa-sword', mining: 'fa-gem', fishing: 'fa-fish' };
-        container.innerHTML = boards.map((board, i) => {
-            const entries = (results[i].entries || []).slice(0, 5);
-            if (!entries.length) return '';
-            return `
-            <div class="home-lb-card">
-                <div class="home-lb-title"><i class="fa-solid ${icons[board] || 'fa-trophy'}"></i> ${labels[board]}</div>
-                <div class="home-lb-entries">
-                    ${entries.map((e, rank) => `
-                        <div class="home-lb-row">
-                            <span class="home-lb-rank">${rank + 1}</span>
-                            <span class="home-lb-name">${esc(e.display_name || e.username || 'Unknown')}</span>
-                            <span class="home-lb-score">${typeof e.score === 'number' ? e.score.toLocaleString() : e.score}</span>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>`;
-        }).join('');
-    } catch { /* silent */ }
-}
-
-/**
- * Fetch JSON from another OpenVibe service, remembering when it is not there.
- *
- * The home page asks OpenVibe.Games for leaderboards and canvas state. Those endpoints currently
- * answer with the Games SPA's HTML and no CORS headers, so from openvibe.live all five requests
- * fail — on every single home page view. Failing is fine; failing five times per visit forever is
- * not. A miss is remembered for a few hours per browser, so the page stops asking a service that
- * is not answering and starts again on its own once the window lapses. A response that is not
- * JSON counts as a miss instead of throwing inside .json().
- */
-const _XSVC_MISS_KEY = 'ov_xsvc_miss_v1';
-const _XSVC_MISS_MS = 6 * 60 * 60 * 1000;
-function _xsvcMisses() { try { return JSON.parse(localStorage.getItem(_XSVC_MISS_KEY) || '{}'); } catch { return {}; } }
-async function fetchServiceJson(url) {
-    // Keyed per URL, not per service prefix: one board that 404s must not switch off every other
-    // endpoint on the same service for six hours.
-    const misses = _xsvcMisses();
-    if (misses[url] && Date.now() - misses[url] < _XSVC_MISS_MS) return null;
-    const remember = () => { try { misses[url] = Date.now(); localStorage.setItem(_XSVC_MISS_KEY, JSON.stringify(misses)); } catch { /* */ } };
-    let r;
-    try { r = await fetch(url, { credentials: 'omit' }); }
-    catch { remember(); return null; }                 // network / CORS: the service is not answering
-    const type = r.headers.get('content-type') || '';
-    if (!/json/i.test(type)) { remember(); return null; }   // an HTML page where an API should be
-    // A JSON error means the service is there and answered — do not remember it as absent.
-    if (!r.ok) return null;
-    try { return await r.json(); } catch { return null; }
-}
-
-async function loadHomeCanvas() {
-    if (!GAMES_HOME_WIDGETS) { const h = document.getElementById('home-canvas-header'); if (h) h.style.display = 'none'; return; }
-    try {
-        const header = document.getElementById('home-canvas-header');
-        const container = document.getElementById('home-canvas-preview');
-        const data = await fetchServiceJson(`${getScraplandiaUrl()}/api/game/canvas/state`);
-        if (!data || !data.board) { if (header) header.style.display = 'none'; return; }
-        if (header) header.style.display = '';
-
-        const tiles = data.tiles || [];
-        const recentActions = data.recent_actions || [];
-        const uniqueArtists = new Set(tiles.map(t => t.user_id).filter(Boolean)).size;
-        const width = data.board.width || 64;
-        const height = data.board.height || 64;
-        const palette = data.board.palette || ['#000000'];
-
-        // Render a mini canvas preview
-        const scale = 4;
-        container.innerHTML = `
-            <div class="home-canvas-wrap">
-                <canvas id="home-canvas-mini" width="${width * scale}" height="${height * scale}" style="image-rendering:pixelated;border-radius:var(--radius);border:1px solid var(--border);max-width:100%;"></canvas>
-                <div class="home-canvas-stats">
-                    <div class="home-canvas-stat"><strong>${tiles.length.toLocaleString()}</strong> <span>pixels placed</span></div>
-                    <div class="home-canvas-stat"><strong>${uniqueArtists.toLocaleString()}</strong> <span>artists</span></div>
-                    <div class="home-canvas-stat"><strong>${width}×${height}</strong> <span>board size</span></div>
-                    <div class="home-canvas-stat"><strong>${recentActions.length}</strong> <span>recent actions</span></div>
-                </div>
-                <a href="${getScraplandiaUrl()}/canvas" class="btn btn-outline" style="margin-top:12px;">
-                    <i class="fa-solid fa-palette"></i> Open Canvas
-                </a>
-            </div>
-        `;
-
-        // Draw tiles on the mini canvas
-        const canvas = document.getElementById('home-canvas-mini');
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = palette[0] || '#000';
-            ctx.fillRect(0, 0, width * scale, height * scale);
-            for (const tile of tiles) {
-                const color = palette[tile.color_index] || '#fff';
-                ctx.fillStyle = color;
-                ctx.fillRect(tile.x * scale, tile.y * scale, scale, scale);
-            }
-        }
-    } catch {
-        const header = document.getElementById('home-canvas-header');
-        if (header) header.style.display = 'none';
-    }
-}
-
 // Markup for a single stream card (live or recent). Extracted so the home page
 // can reconcile the live grid in place for real-time updates.
 function streamCardHTML(s, isLive) {
@@ -1928,7 +1801,6 @@ function refreshHomeSections() {
     if (untouched('vods') && typeof loadHomeRecentVods === 'function') loadHomeRecentVods();
     if (untouched('clips') && typeof loadHomeClips === 'function') loadHomeClips();
     if (untouched('pastes') && typeof loadHomePastes === 'function') loadHomePastes();
-    if (typeof loadHomeLeaderboards === 'function') loadHomeLeaderboards();
 }
 
 // The live grid follows OpenVibe.Events realtime (public/js/ov-live-realtime.js): a stream that

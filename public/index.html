@@ -194,7 +194,7 @@
                 <div class="hero-cta" data-fx-viewport>
                     <button style="--i:0" class="hb hb-stream" onclick="currentUser ? navigate('/broadcast') : showModal('register')"><span class="hb-ico"><i class="fa-solid fa-broadcast-tower"></i></span><span class="hb-label">Stream</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></button>
                     <a href="https://openvibe.tools" style="--i:1" class="hb hb-tools"><span class="hb-ico"><i class="fa-solid fa-screwdriver-wrench"></i></span><span class="hb-label">Tools</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
-                    <a href="https://openvibe.games/game" style="--i:2" class="hb hb-game"><span class="hb-ico"><i class="fa-solid fa-gamepad"></i></span><span class="hb-label">Game</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                    <a href="https://openvibe.games" style="--i:2" class="hb hb-game"><span class="hb-ico"><i class="fa-solid fa-gamepad"></i></span><span class="hb-label">Game</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
                     <a href="https://github.com/OpenVibers/OpenVibe.Live" target="_blank" style="--i:3" class="hb hb-github" rel="noopener"><span class="hb-ico"><i class="fa-brands fa-github"></i></span><span class="hb-label">GitHub</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
                     <a href="https://discord.gg/M6MuRUaeJj" target="_blank" style="--i:4" class="hb hb-discord" rel="noopener noreferrer"><span class="hb-ico"><i class="fa-brands fa-discord"></i></span><span class="hb-label">Discord</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
                     <a href="/documentation" onclick="return handleLinkClick(event, '/documentation')" style="--i:5" class="hb hb-vibe"
@@ -505,20 +505,6 @@
         </div>
 
         <div class="container">
-            <!-- Scraplandia Leaderboards -->
-            <div class="section-header" style="--sc:#fbbf24;display:none" id="home-quest-header">
-                <h2><i class="fa-solid fa-trophy"></i> Scraplandia Leaderboards<small class="section-kicker">the ladder</small></h2>
-                <a href="https://openvibe.games/game" class="section-action">Play game</a>
-            </div>
-            <div class="home-leaderboards" id="home-leaderboards"></div>
-
-            <!-- Canvas Preview -->
-            <div class="section-header" style="--sc:#4ade80;display:none" id="home-canvas-header">
-                <h2><i class="fa-solid fa-palette"></i> Community Canvas<small class="section-kicker">drawn together</small></h2>
-                <a href="https://openvibe.games/canvas" class="section-action">Open canvas</a>
-            </div>
-            <div class="home-canvas-preview" id="home-canvas-preview"></div>
-
             <div class="network-hub">
                 <div class="network-hub-header">
                     <i class="fa-solid fa-network-wired"></i>
@@ -557,14 +543,6 @@
                         <div class="network-card-info">
                             <strong>Scraplandia</strong>
                             <span>Browser RPG &amp; community games</span>
-                        </div>
-                        <i class="fa-solid fa-arrow-right network-card-arrow"></i>
-                    </a>
-                    <a href="https://openvibe.games/canvas" class="network-card">
-                        <div class="network-card-icon" style="--card-accent:#3498db"><i class="fa-solid fa-palette"></i></div>
-                        <div class="network-card-info">
-                            <strong>Canvas</strong>
-                            <span>Collaborative pixel art</span>
                         </div>
                         <i class="fa-solid fa-arrow-right network-card-arrow"></i>
                     </a>
@@ -729,8 +707,6 @@
     <!-- ── THEME DIRECTORY ───────────────────────────── -->
     <!-- (page-themes removed: /themes redirects to openvibe.network in routeFromURL, so this
          section was unreachable markup with five dead inline handlers.) -->
-
-<!-- Game & Canvas migrated to openvibe.games -->
 
     <!-- ═══════════════════════════════════════════════════════════ -->
     <!--  UPDATES / CHANGELOG                                        -->

@@ -11,7 +11,7 @@
  */
 (function () {
     'use strict';
-    const COMPACT_PAGES = ['channel', 'vod-player', 'clip-player', 'broadcast', 'game', 'canvas', 'chat', 'arena', 'recap'];
+    const COMPACT_PAGES = ['channel', 'vod-player', 'clip-player', 'broadcast', 'chat', 'arena', 'recap'];
     const LINKS = [
         {
             heading: 'Watch',

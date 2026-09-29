@@ -2512,29 +2512,6 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   HOME — OPENVIBEGAMES LEADERBOARDS
-   ═══════════════════════════════════════════════════════════════ */
-.home-lb-title i { color: var(--accent); font-size: 0.85rem; }
-.home-lb-row:nth-child(1) .home-lb-rank { color: #ffd700; }
-.home-lb-row:nth-child(2) .home-lb-rank { color: #c0c0c0; }
-.home-lb-row:nth-child(3) .home-lb-rank { color: #cd7f32; }
-.home-lb-name {
-    flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    color: var(--text-primary);
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   HOME — CANVAS PREVIEW
-   ═══════════════════════════════════════════════════════════════ */
-.home-canvas-stat strong {
-    font-size: 1.3rem; color: var(--accent); line-height: 1.2;
-}
-.home-canvas-stat span {
-    font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-/* ═══════════════════════════════════════════════════════════════
    STREAM VIEWER LAYOUT
    ═══════════════════════════════════════════════════════════════ */
 .stream-layout {

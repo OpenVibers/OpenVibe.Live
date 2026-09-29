@@ -17,7 +17,6 @@ function getDefaultOpenVibeNetworkUrls() {
     const isTopenvibeAlias = ['topenvibe.tools', 'topenvibe.live', 'topenvibe.quest'].includes(host);
     return {
         tools: isLocalHost ? 'http://localhost:3100' : (isTopenvibeAlias ? 'https://topenvibe.tools' : 'https://openvibe.network'),
-        quest: isLocalHost ? 'http://localhost:3200' : (isTopenvibeAlias ? 'https://topenvibe.quest' : 'https://openvibe.games'),
     };
 }
 
@@ -28,10 +27,6 @@ function getOpenVibeNetworkUrl(service) {
 
 function getOpenVibeToolsUrl() {
     return getOpenVibeNetworkUrl('tools');
-}
-
-function getScraplandiaUrl() {
-    return getOpenVibeNetworkUrl('quest');
 }
 /** Cached external viewer count (Kick/Twitch/RS) — updated by cumulative viewer poll */
 let _cachedExternalViewerCount = 0;
@@ -587,7 +582,7 @@ function _ssoHint() {
 // What the signed-in account watches/opens here shows up in its network-wide History and the
 // "Recently used" rows of the shared navbar on every other site. Recorded after the route
 // rendered and its title settled; never for guests, and only for the pages worth remembering.
-const _HISTORY_PAGES = { channel: 'stream', 'vod-player': 'vod', 'clip-player': 'clip', 'paste-viewer': 'paste', pastes: null, game: 'game', arena: 'page' };
+const _HISTORY_PAGES = { channel: 'stream', 'vod-player': 'vod', 'clip-player': 'clip', 'paste-viewer': 'paste', pastes: null, arena: 'page' };
 let _historyTimer = null;
 function _recordHistory(pageId) {
     const type = _HISTORY_PAGES[pageId];
@@ -748,9 +743,6 @@ function onAuthChange() {
     // The navbar is the network's shared component; tell it who is here (js/ov-navbar-live.js).
     if (window.LiveNav) window.LiveNav.sync(currentUser || null);
     if (currentUser) loadBalance();
-
-    // Sync canvas auth state if canvas page is loaded
-    if (typeof syncCanvasAuthState === 'function') syncCanvasAuthState();
 
     try {
         window.dispatchEvent(new CustomEvent('openvibe-auth-changed', {
@@ -1108,12 +1100,6 @@ function routeFromURL() {
     } else if (segments[0] === 'chat') {
         showPage('chat');
         whenRouteReady('chat', () => loadChatPage());
-    } else if (segments[0] === 'game') {
-        window.location.href = `${getScraplandiaUrl()}/game`;
-        return;
-    } else if (segments[0] === 'canvas') {
-        window.location.href = `${getScraplandiaUrl()}/canvas`;
-        return;
     } else if (segments[0] === 'pastes') {
         // The Content feed's Pastes filter; ?edit=<slug> (from a paste's Edit button) opens the editor over it.
         showPage('content');
@@ -1294,20 +1280,15 @@ function showPage(page) {
     // of each attaching MutationObservers to every section's class attribute.
     try { document.dispatchEvent(new CustomEvent('ov:page', { detail: { page, changed } })); } catch { /* */ }
 
-    // Game/Canvas: hide footer only, keep navbar visible; other pages restore both
+    // Nothing hides the footer or blocks scrolling any more; a page that once did has to undo it.
     const navbar = document.querySelector('.navbar');
     const footer = document.querySelector('.footer');
-    if (page === 'game' || page === 'canvas') {
-        if (footer) footer.style.display = 'none';
-        document.body.style.overflow = 'hidden';
-    } else {
-        if (navbar) navbar.style.display = '';
-        if (footer) footer.style.display = '';
-        document.body.style.overflow = '';
-    }
+    if (navbar) navbar.style.display = '';
+    if (footer) footer.style.display = '';
+    document.body.style.overflow = '';
 
     // Highlight nav link
-    const pageToNav = { home: 'home', content: 'content', moments: 'moments', search: 'search', broadcast: 'broadcast', dashboard: 'dashboard', admin: 'admin', chat: 'chat', game: 'game', canvas: 'game', 'paste-viewer': 'content', arena: 'arena' };
+    const pageToNav = { home: 'home', content: 'content', moments: 'moments', search: 'search', broadcast: 'broadcast', dashboard: 'dashboard', admin: 'admin', chat: 'chat', 'paste-viewer': 'content', arena: 'arena' };
     const navPage = pageToNav[page];
     if (navPage) {
         const link = document.querySelector(`.nav-link[data-page="${navPage}"]`);
