@@ -1,13 +1,13 @@
 {
  "service": "live",
- "release": "14f16182e7c2eeeb5e4d542306c50467c5eca171",
- "recorded_at": "2026-09-29T00:16:55.917Z",
+ "release": "45429ebfbb9f7ef9531abc7f7ec1a4be11a72dd9",
+ "recorded_at": "2026-09-29T00:20:29.197Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "14f16182e7c2",
-  "released_at": "2026-09-29T00:16:18.000Z",
-  "booted_at": "2026-09-29T00:16:53.417Z",
+  "release": "45429ebfbb9f",
+  "released_at": "2026-09-29T00:20:11.000Z",
+  "booted_at": "2026-09-29T00:20:25.684Z",
   "contracts_version": "0.71.0",
   "packages": {
    "openvibe-shared": "1.29.1",
@@ -18,7 +18,7 @@
   "components": {
    "styles": {
     "kind": "style",
-    "version": "16efe97aaa50"
+    "version": "a8e3eb53ed3f"
    },
    "shell": {
     "kind": "script",
@@ -41,9 +41,9 @@
     "integrity": "sha384-+UNgBYuMRLHmTl0hBPmZI+91u+ud0yHLElwmd/4UrYgHoLHIYVElOwsOQ4G8UdWB"
    },
    "/css/context-cards.css": {
-    "url": "/css/context-cards.css?v=997aed9c5db8",
+    "url": "/css/context-cards.css?v=f2468014839c",
     "component": "styles",
-    "integrity": "sha384-DnA7VkyZvjgI7fzkIQy7nTdyw6vr/hIBeNjkdAgu547ijqfc2CaB6prMbOzR81Jp"
+    "integrity": "sha384-1onIAYDdYHytODnOQ1NtrwgWw4IEBgCclvW5Fy+Rvvfc4Pq+63uuCdAdNnU9SgKu"
    },
    "/css/cosmetics.css": {
     "url": "/css/cosmetics.css?v=193dbe9046fb",
@@ -61,9 +61,9 @@
     "integrity": "sha384-soU+Q4G+XY0bwjBFTyF4Q2YSOGKmH6joFz+2JFXRg9Fg4J17LYo9DYyoDR/ekWCj"
    },
    "/css/features/channel.css": {
-    "url": "/css/features/channel.css?v=2f0cf7c3ec13",
+    "url": "/css/features/channel.css?v=9e10af6a7bcd",
     "component": "styles",
-    "integrity": "sha384-0SIuauQ3Ziaf5eqN/Fzhp1FDRJZzXwFrHgSyVFKcn8n3ZDLwfaB9Hvme8k0qIixZ"
+    "integrity": "sha384-2sgUYc8jlmXn7Ot9C0h3QZYLFGJf1dKIT3BFfV0oenugA0knflSizuQ3EB/zJm1l"
    },
    "/css/features/chatpage.css": {
     "url": "/css/features/chatpage.css?v=c5c63e94503f",
@@ -146,9 +146,9 @@
     "integrity": "sha384-iVDuJckwXLQPfhSFXjJKmyIIXM+XbRccOWefcHh1vChYrlfwFWAgWXinI4iihWor"
    },
    "/css/style.css": {
-    "url": "/css/style.css?v=a3843ec6bdd6",
+    "url": "/css/style.css?v=1f904f38377a",
     "component": "styles",
-    "integrity": "sha384-TTgsUgnTu8mZ4WLNGRY2cT3qxM34lqxhC/uSH7I3lV3UnZq5fIaR38aoFRZ6xjM3"
+    "integrity": "sha384-g32EGkh1nfpTvSzuxFsv2OGHkJGfQlngBpVGtYYywRG70oWELYWr14X4PTDkTERi"
    },
    "/css/vendor/fontawesome-6.5.1.min.css": {
     "url": "/css/vendor/fontawesome-6.5.1.min.css?v=d6c948f648fd",
@@ -7162,7 +7162,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/style.css?v=a3843ec6bdd6",
+   "path": "/css/style.css?v=1f904f38377a",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7712,7 +7712,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/features/channel.css?v=2f0cf7c3ec13",
+   "path": "/css/features/channel.css?v=9e10af6a7bcd",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7723,7 +7723,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/context-cards.css?v=997aed9c5db8",
+   "path": "/css/context-cards.css?v=f2468014839c",
    "auth": "anon",
    "accept": "html",
    "status": 200,
