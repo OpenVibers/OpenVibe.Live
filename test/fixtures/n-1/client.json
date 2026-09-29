@@ -1,13 +1,13 @@
 {
  "service": "live",
- "release": "03f15936e3905be8ab16aa098900d60341a78302",
- "recorded_at": "2026-09-29T03:18:36.908Z",
+ "release": "1a28261a4f98f882596c417f2bb2fdaa51afa768",
+ "recorded_at": "2026-09-29T04:23:02.690Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "03f15936e390",
-  "released_at": "2026-09-29T03:03:36.000Z",
-  "booted_at": "2026-09-29T03:18:30.299Z",
+  "release": "1a28261a4f98",
+  "released_at": "2026-09-29T03:53:40.000Z",
+  "booted_at": "2026-09-29T04:22:58.779Z",
   "contracts_version": "0.71.0",
   "packages": {
    "openvibe-shared": "1.30.1",
@@ -18,15 +18,15 @@
   "components": {
    "styles": {
     "kind": "style",
-    "version": "8cecbf7ee385"
+    "version": "b2227930e731"
    },
    "shell": {
     "kind": "script",
-    "version": "ed999912868e"
+    "version": "28060f9974e5"
    },
    "server": {
     "kind": "server",
-    "version": "612adb80b582"
+    "version": "16bfd5731308"
    }
   },
   "assets": {
@@ -91,9 +91,9 @@
     "integrity": "sha384-qxjHx5W7yoUfDcK9M8DcVBKQX2YcR+sHHeGwpKNYrg6zM9tjKFsrcXfB4FvHcuUC"
    },
    "/css/features/home.css": {
-    "url": "/css/features/home.css?v=c495944b036b",
+    "url": "/css/features/home.css?v=1da8ab368854",
     "component": "styles",
-    "integrity": "sha384-poS2WEg9Kh/pM1fOTTEcqDg2iIeRS1kkdeeX8PKPUq3hpZ6ko0iyhSJY/SA+rf03"
+    "integrity": "sha384-BcVmXyr+pzzoReBggf3M/VzsHepfNVJG9ImV8+IbOx7EcPPNOixHFwzk2mRZ2e0/"
    },
    "/css/features/media.css": {
     "url": "/css/features/media.css?v=dea567ff26e8",
@@ -146,9 +146,9 @@
     "integrity": "sha384-iVDuJckwXLQPfhSFXjJKmyIIXM+XbRccOWefcHh1vChYrlfwFWAgWXinI4iihWor"
    },
    "/css/style.css": {
-    "url": "/css/style.css?v=2352265f8a51",
+    "url": "/css/style.css?v=57784f84656e",
     "component": "styles",
-    "integrity": "sha384-lwaEKfztAw8CFsC1Q68NkptYtWB5P7RD7VN57ValoMfdy2EE0SoR/mtLXGVvprmO"
+    "integrity": "sha384-2pazK2Qkcku6o4h6cZfkVZ8BiU3xw4wzvR0bVbXr7teT/+VuJoub8kY8OKTSkaBb"
    },
    "/css/vendor/fontawesome-6.5.1.min.css": {
     "url": "/css/vendor/fontawesome-6.5.1.min.css?v=d6c948f648fd",
@@ -164,7 +164,7 @@
   "shell": null,
   "metrics_url": "/release-metrics"
  },
- "dynamic_calls": 43,
+ "dynamic_calls": 42,
  "calls": [
   {
    "method": "GET",
@@ -7162,7 +7162,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/style.css?v=2352265f8a51",
+   "path": "/css/style.css?v=57784f84656e",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7173,7 +7173,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/features/home.css?v=c495944b036b",
+   "path": "/css/features/home.css?v=1da8ab368854",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7492,7 +7492,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app.js?v=026aa26f82e6",
+   "path": "/js/app.js?v=d5e9ad82a98c",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7503,7 +7503,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/ov-navbar-live.js?v=5ec4306ded30",
+   "path": "/js/ov-navbar-live.js?v=67c0ab5cc8f1",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7602,7 +7602,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/footer-live.js?v=60c31729accf",
+   "path": "/js/footer-live.js?v=a10429d40713",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7668,7 +7668,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app-home.js?v=4bbd63911072",
+   "path": "/js/app-home.js?v=a0db64b33480",
    "auth": "anon",
    "accept": "html",
    "status": 200,
