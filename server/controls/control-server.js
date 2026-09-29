@@ -157,17 +157,22 @@ class ControlServer {
             ws.send(JSON.stringify({ type: 'hardware_status', connected: hardwareConnected }));
         }
 
-        ws.on('message', (data) => {
+        ws.on('message', async (data) => {
+            let msg;
+            try { msg = JSON.parse(data.toString()); } catch { return; }   // malformed frame: ignore
             try {
-                const msg = JSON.parse(data.toString());
                 if (msg.type === 'command') {
-                    this.handleCommand(ws, msg);
+                    // Awaited: handleCommand is async, so without this a rejection (a bad camera row,
+                    // a closed socket) escaped the try as an unhandled rejection nobody could see.
+                    await this.handleCommand(ws, msg);
                 } else if (msg.type === 'key_down' || msg.type === 'key_up') {
                     this.handleKeyEvent(ws, msg);
                 } else if (msg.type === 'video_click') {
                     this.handleVideoClick(ws, msg);
                 }
-            } catch { /* ignore */ }
+            } catch (err) {
+                console.warn('[Control] Message handling failed:', err && err.message);
+            }
         });
 
         ws.on('close', () => {

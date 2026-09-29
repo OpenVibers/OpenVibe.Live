@@ -269,7 +269,7 @@ function create(ChatServer) {
             ensureOutbox();
             replayOutbox();
             schedule();
-            pollPresence();
+            pollPresence();   // floating-ok: pollPresence catches and keeps the last snapshot
             presenceTimer = setInterval(pollPresence, PRESENCE_MS);
             if (presenceTimer.unref) presenceTimer.unref();
             console.log(`[Chat] CHAT_AUTHORITY=chat — chat runs in OpenVibe.Chat (${CHAT_URL}); Live forwards to it`);

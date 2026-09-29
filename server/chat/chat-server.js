@@ -943,6 +943,7 @@ class ChatServer {
             // Trigger server-side TTS synthesis (async, non-blocking).
             // identityKey uses the immutable login handle (or anon id) so the
             // per-user voice is stable even if the display name changes.
+            // floating-ok: synthesizeAndBroadcastTTS catches and logs its own errors (never rejects)
             this.synthesizeAndBroadcastTTS(
                 client.streamId,
                 username,
@@ -955,6 +956,7 @@ class ChatServer {
             );
 
             // Check for 101soundboards links in the message (async, non-blocking)
+            // floating-ok: processSoundboard catches and logs its own errors (never rejects)
             this.processSoundboard(ws, client, text);
 
             // Let AI chat viewers react to REAL typed chat (streamer or viewers).
@@ -984,6 +986,7 @@ class ChatServer {
             // synthesize TTS so their "TTS on my channel even when offline" option has
             // audio to play (client-side settings + the one-speaking-tab lock decide
             // whether it's actually audible). Owner absent = skip the synth cost.
+            // floating-ok: synthesizeAndBroadcastTTS catches and logs its own errors (never rejects)
             this.synthesizeAndBroadcastTTS(
                 null,
                 username,
@@ -1095,6 +1098,7 @@ class ChatServer {
                 this.sendTo(ws, { type: 'system', message: 'Usage: !sb <sound-id or 101soundboards URL> [100p|-100p] [0.5-3 speed]' });
                 return;
             }
+            // floating-ok: processSoundboard catches and logs its own errors (never rejects)
             this.processSoundboard(ws, client, text);
             return;
         }
@@ -1457,6 +1461,7 @@ class ChatServer {
                     this.broadcastToStream(client.streamId, ttsMsg);
 
                     // Also synthesize server-side TTS for site-wide mode
+                    // floating-ok: synthesizeAndBroadcastTTS catches and logs its own errors (never rejects)
                     this.synthesizeAndBroadcastTTS(
                         client.streamId,
                         ttsMsg.username,

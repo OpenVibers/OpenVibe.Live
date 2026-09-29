@@ -179,10 +179,12 @@ class ChatRelayService {
                 this._connectTwitch(bridge);
                 break;
             case 'kick':
-                this._connectKick(bridge);
+                // Fire-and-forget by design (the stream is already live; the relay must not block
+                // go-live), but a rejection is logged rather than left as an unhandled rejection.
+                this._connectKick(bridge).catch((err) => console.warn(`[ChatRelay] Kick bridge failed for stream ${bridge.streamId}:`, err && err.message));
                 break;
             case 'youtube':
-                this._connectYouTube(bridge);
+                this._connectYouTube(bridge).catch((err) => console.warn(`[ChatRelay] YouTube bridge failed for stream ${bridge.streamId}:`, err && err.message));
                 break;
             default:
                 console.warn(`[ChatRelay] Unsupported platform: ${parsed.platform}`);
@@ -892,7 +894,7 @@ class ChatRelayService {
                 if (!bridge.stopped) bridge.pollTimer = setTimeout(poll, 6000);
             }
         };
-        poll();
+        poll();   // floating-ok: the poll loop catches its own errors and reschedules itself
         return true;
     }
 
@@ -975,7 +977,7 @@ class ChatRelayService {
             bridge._ytFailures = 0; // Reset on successful connection
 
             // Start polling
-            this._pollYouTubeChat(bridge, continuationToken);
+            this._pollYouTubeChat(bridge, continuationToken);   // floating-ok: _pollYouTubeChat catches its own errors and reconnects
 
         } catch (err) {
             bridge._ytFailures = (bridge._ytFailures || 0) + 1;

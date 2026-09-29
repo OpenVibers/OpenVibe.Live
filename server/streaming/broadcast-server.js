@@ -448,25 +448,25 @@ class BroadcastServer extends EventEmitter {
             case 'sfu-get-capabilities':
                 if (client.role === 'broadcaster') {
                     console.log(`[SFU Signaling] stream ${client.streamId}: get-capabilities`);
-                    this._handleSfuGetCapabilities(ws, client);
+                    this._handleSfuGetCapabilities(ws, client);   // floating-ok: the handler catches and reports its own errors (never rejects)
                 }
                 break;
             case 'sfu-create-transport':
                 if (client.role === 'broadcaster') {
                     console.log(`[SFU Signaling] stream ${client.streamId}: create-transport`);
-                    this._handleSfuCreateTransport(ws, client);
+                    this._handleSfuCreateTransport(ws, client);   // floating-ok: the handler catches and reports its own errors (never rejects)
                 }
                 break;
             case 'sfu-connect-transport':
                 if (client.role === 'broadcaster') {
                     console.log(`[SFU Signaling] stream ${client.streamId}: connect-transport`);
-                    this._handleSfuConnectTransport(ws, client, msg);
+                    this._handleSfuConnectTransport(ws, client, msg);   // floating-ok: the handler catches and reports its own errors (never rejects)
                 }
                 break;
             case 'sfu-produce':
                 if (client.role === 'broadcaster') {
                     console.log(`[SFU Signaling] stream ${client.streamId}: produce (${msg.kind})`);
-                    this._handleSfuProduce(ws, client, msg);
+                    this._handleSfuProduce(ws, client, msg);   // floating-ok: the handler catches and reports its own errors (never rejects)
                 }
                 break;
             case 'sfu-stop-produce':

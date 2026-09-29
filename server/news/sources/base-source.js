@@ -26,6 +26,7 @@ class BaseNewsSource {
     start(onNews) {
         this._onNews = onNews;
         this._timer = setInterval(() => this._doPoll(), this.pollIntervalMs);
+        // floating-ok: _doPoll catches and logs its own errors (never rejects)
         this._doPoll(); // initial fetch
     }
 
