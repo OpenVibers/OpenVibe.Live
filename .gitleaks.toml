@@ -1,0 +1,29 @@
+# gitleaks configuration, used by the shared security workflow
+# (OpenVibers/OpenVibe.Shared/.github/workflows/security.yml). The default rules stay on; every
+# allowlist below is one proven false positive, matched on path AND value so nothing else is hidden.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "A made-up Stripe secret in the site-config test that proves a secret never leaves the admin API (real keys are longer and mixed-case)"
+condition = "AND"
+paths = ['''^test/site-config\.test\.js$''']
+regexes = ['''^sk_live_[a-z]{10}$''']
+
+[[allowlists]]
+description = "Placeholder JWT and API tokens in the API documentation"
+condition = "AND"
+paths = ['''^docs/api-tokens\.md$''']
+regexes = ['''^YOUR_JWT$''', '''^hbt_YOUR_TOKEN_HERE$''', '''^hbt_a1b2c3d4e5f6\.\.\.$''']
+
+[[allowlists]]
+description = "Stream key in the initial Cozmo bridge example, rotated on 2026-09-23; the current file has a placeholder"
+condition = "AND"
+paths = ['''^control-bridge-example-cozmo\.py$''']
+commits = ["ac0d6a47f8d4e7f86bb2a9323bd7d3047da9c821"]
+
+[[allowlists]]
+description = "RFC 6455 sample WebSocket key in the drill-mode test"
+condition = "AND"
+paths = ['''^test/drill-mode\.test\.js$''']
+regexes = ['''^dGhlIHNhbXBsZSBub25jZQ==$''']
