@@ -61,6 +61,7 @@ assert.deepStrictEqual(manager._getCustomOverrides({ custom_encoder_preset: 'pla
 const fe = Manager.friendlyFfmpegError;
 assert.match(fe('rtmp://x: Server error: NetStream.Publish.BadName', 'twitch'), /Twitch rejected the stream key/);
 assert.match(fe('tcp://x: Connection refused', 'kick'), /Could not connect to Kick/);
+assert.match(fe('tcp://x: Connection refused', 'custom'), /Could not connect to the destination/);
 assert.match(fe('Failed to resolve hostname live.example: Name or service not known', 'custom'), /resolve the ingest host/);
 assert.match(fe('gnutls: The TLS connection was non-properly terminated', 'youtube'), /TLS handshake/);
 assert.match(fe('av_interleaved_write_frame(): Broken pipe | End of file', 'twitch'), /closed the connection/);
@@ -112,11 +113,7 @@ manager.sessions.delete('1:9');
     manager._spawnFFmpeg(bad, ['-hide_banner', '-loglevel', 'warning', '-f', 'lavfi', '-i', 'testsrc=duration=1:size=64x64:rate=10', '-c:v', 'libx264', '-preset', 'ultrafast', '-f', 'flv', 'rtmp://127.0.0.1:1/live/k']);
     await new Promise((r) => bad.process.on('close', () => setTimeout(r, 50)));
     assert.strictEqual(bad.status, 'error');
-    // The exact wording depends on how the environment fails the connection: a plain refused loopback
-    // connect reads "Could not connect to the destination's ingest server", while a sandboxed/offline
-    // run can surface an RTMP-level rejection for the same unreachable output. Both are friendly,
-    // destination-scoped messages for an output that would not open — the strict refused-connection
-    // mapping is asserted above (friendlyFfmpegError, 'Connection refused' → Kick).
+    // FFmpeg can report either a refused connection or an RTMP rejection in restricted environments.
     assert.match(bad.lastError, /Could not connect to the destination|the destination rejected the stream key/, bad.lastError);
     assert.ok(bad.restartTimer, 'restart scheduled');
     assert.ok(bad.nextRestartAt > Date.now(), 'dashboard can count down to the retry');

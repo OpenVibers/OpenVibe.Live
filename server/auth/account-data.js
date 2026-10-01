@@ -21,7 +21,7 @@
  * kept rows point at nobody.
  *
  * Never touched: the frozen tables (vods, clips, pastes, paste_likes, paste_comments, comments), which Media and
- * Community own and erase themselves. The six chat tables (channel_moderators, channel_moderation_settings, emotes,
+ * Community own and erase themselves. The five chat tables (channel_moderators, channel_moderation_settings,
  * user_tags, chat_ai_summaries, chat_timeline_events) are OpenVibe.Chat's (roadmap T3) and erased by its eraser
  * (Chat server/chat/account-data.js), never here.
  *
