@@ -21,7 +21,7 @@
  * kept rows point at nobody.
  *
  * Never touched: the frozen tables (vods, clips, pastes, paste_likes, paste_comments, comments), which Media and
- * Community own and erase themselves. The six chat tables (channel_moderators, channel_moderation_settings, emotes,
+ * Community own and erase themselves. The five chat tables (channel_moderators, channel_moderation_settings,
  * user_tags, chat_ai_summaries, chat_timeline_events) are OpenVibe.Chat's (roadmap T3) and erased by its eraser
  * (Chat server/chat/account-data.js), never here.
  *
@@ -46,7 +46,7 @@ const SECRET_COL = /(^|_)(token|tokens|secret|hash|password|code|key|keys|p256dh
 const ROW_LIMIT = 2000;
 const PART_BUDGET = 18 * 1024 * 1024;
 // OpenVibe.Chat owns these and erases them itself (roadmap T3); Live must not touch them.
-const CHAT_TABLES = new Set(['channel_moderators', 'channel_moderation_settings', 'emotes', 'user_tags', 'chat_ai_summaries', 'chat_timeline_events']);
+const CHAT_TABLES = new Set(['channel_moderators', 'channel_moderation_settings', 'user_tags', 'chat_ai_summaries', 'chat_timeline_events']);
 
 function ensureSchema(d) {
     d.exec(`CREATE TABLE IF NOT EXISTS account_data_events (

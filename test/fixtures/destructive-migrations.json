@@ -5,8 +5,6 @@
     { "file": "server/db/database.js", "statement": "RENAME TO CHAT_MESSAGES", "count": 2, "contract": "the same rebuild" },
     { "file": "server/db/database.js", "statement": "DROP TABLE ROBOTSTREAMER_INTEGRATIONS", "count": 1, "contract": "pre-ADR table rebuild keeping every row; guarded, one-time" },
     { "file": "server/db/database.js", "statement": "RENAME TO ROBOTSTREAMER_INTEGRATIONS", "count": 1, "contract": "the same rebuild" },
-    { "file": "server/db/database.js", "statement": "DROP TABLE EMOTES", "count": 1, "contract": "pre-ADR table rebuild keeping every row; guarded, one-time" },
-    { "file": "server/db/database.js", "statement": "RENAME TO EMOTES", "count": 1, "contract": "the same rebuild" },
     { "file": "server/db/database.js", "statement": "DROP TABLE CHANNEL_SOUNDS", "count": 1, "contract": "pre-ADR table rebuild keeping every row; guarded, one-time" },
     { "file": "server/db/database.js", "statement": "RENAME TO CHANNEL_SOUNDS", "count": 1, "contract": "the same rebuild" },
     { "file": "server/db/database.js", "statement": "DROP TABLE STREAM_CONTROLS", "count": 1, "contract": "pre-ADR table rebuild keeping every row; guarded, one-time" },
@@ -17,6 +15,7 @@
     { "file": "server/db/migrations.js", "statement": "DROP TABLE IF EXISTS CHAT_AI_SUMMARIES", "count": 1, "contract": "roadmap T3 N+2 (005_drop_chat_staged_tables): OpenVibe.Chat owns the table and N-1 (8654ef6) no longer reads it (test/n-1.test.js); backups kept operator-side" },
     { "file": "server/db/migrations.js", "statement": "DROP TABLE IF EXISTS CHAT_TIMELINE_EVENTS", "count": 1, "contract": "roadmap T3 N+2 (005_drop_chat_staged_tables): OpenVibe.Chat owns the table and N-1 (8654ef6) no longer reads it (test/n-1.test.js); backups kept operator-side" },
     { "file": "server/db/migrations.js", "statement": "DROP TABLE IF EXISTS CHAT_STAGED_OUTBOX", "count": 1, "contract": "roadmap T3 N+2 (005_drop_chat_staged_tables): the staged-table relay was deleted in N+1 and N-1 (8654ef6) no longer uses it; backups kept operator-side" },
-    { "file": "server/db/migrations.js", "statement": "DROP TABLE IF EXISTS CHAT_DUAL_READ_STATS", "count": 1, "contract": "roadmap T3 N+2 (005_drop_chat_staged_tables): the dual-read machinery was deleted in N+1 and N-1 (8654ef6) no longer uses it; backups kept operator-side" }
+    { "file": "server/db/migrations.js", "statement": "DROP TABLE IF EXISTS CHAT_DUAL_READ_STATS", "count": 1, "contract": "roadmap T3 N+2 (005_drop_chat_staged_tables): the dual-read machinery was deleted in N+1 and N-1 (8654ef6) no longer uses it; backups kept operator-side" },
+    { "file": "server/db/migrations.js", "statement": "DROP TABLE IF EXISTS EMOTES", "count": 1, "contract": "roadmap T3 N+3 (006_drop_emotes): Chat owns emotes; N-1 fb3957f does not read its Live copy; backups kept operator-side" }
   ]
 }

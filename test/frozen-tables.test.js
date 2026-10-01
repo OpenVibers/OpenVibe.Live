@@ -21,6 +21,8 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const FROZEN = ['vods', 'clips', 'pastes', 'paste_likes', 'paste_comments'];
+assert.ok(!/\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?emotes\b/i.test(fs.readFileSync(path.join(ROOT, 'server', 'db', 'schema.sql'), 'utf8')),
+    'Chat-owned emotes must not return to Live schema');
 const T = FROZEN.join('|');
 
 // ── writes ──────────────────────────────────────────────────────────────────

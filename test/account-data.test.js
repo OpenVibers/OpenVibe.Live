@@ -67,6 +67,11 @@ const ulid = () => ids.ulid();
         assert.ok(NETWORK_TOPICS.includes('network.account.export_requested') && NETWORK_TOPICS.includes('network.account.deleted'), 'the subscription asks for both');
         const cols = accountData.personColumns(d);
         for (const t of accountData.FROZEN) assert.ok(!cols.has(t), `${t} is never touched`);
+        const existing = new Set(d.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name));
+        for (const t of cols.keys()) assert.ok(existing.has(t), `account export/deletion references missing table ${t}`);
+        assert.ok(!existing.has('emotes'), 'Live has dropped its emotes table');
+        assert.ok(!fs.readFileSync(path.join(__dirname, '..', 'server', 'auth', 'account-data.js'), 'utf8').match(/CHAT_TABLES\s*=\s*new Set\([^)]*['"]emotes['"]/s),
+            'account deletion must not list the dropped emotes table');
 
         // ── Export ──
         const exp = envelope('network.account.export_requested', { export_id: `exp_${ulid()}`, subject: DANA, requested_at: new Date().toISOString(), deadline: new Date(Date.now() + 1800000).toISOString() });
@@ -76,6 +81,10 @@ const ulid = () => ids.ulid();
         const part = sent[0].body;
         assert.ok(validate('network.account-export-part@1', part).valid, JSON.stringify(validate('network.account-export-part@1', part).errors));
         const byName = Object.fromEntries(part.files.map((f) => [f.name, f.content]));
+        const exportTables = new Set(d.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name));
+        for (const name of Object.keys(byName)) if (name !== 'profile.json' && name !== 'other.json') {
+            assert.ok(exportTables.has(name.replace(/\.json$/, '')), `account export references missing table ${name}`);
+        }
         assert.strictEqual(byName['profile.json'].username, 'dana');
         assert.deepStrictEqual(byName['follows.json'].map((f) => [f.follower_id, f.streamer_id]).sort(), [[20, 21], [22, 20]]);
         assert.ok(byName['transactions.json'] && byName['payment_orders.json'], 'money history is theirs to see');

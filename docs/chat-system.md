@@ -39,7 +39,7 @@ with the same WebSocket protocol and REST paths. `CHAT_AUTHORITY=chat` switches 
   `playAlertSound [streamerId, streamId, kind]` ([server/monetization/alerts.js](../server/monetization/alerts.js)).
   Live's staged-table machinery (the write relay, dual read and handoff in `chat-tables*.js`), Live's
   chat-AI summary job and the old emote/channel-moderation routes were deleted in the N+1 release; Live's
-  copies of the seven supporting tables were dropped in N+2, and `emotes` is unread and dropped next (ADR-016).
+  copies of the seven supporting tables were dropped in N+2, and the unread `emotes` copy in N+3 (ADR-016).
 
 ## Features
 
