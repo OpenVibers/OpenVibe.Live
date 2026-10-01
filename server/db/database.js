@@ -1567,56 +1567,6 @@ function initDb() {
         }
     } catch (e) { console.warn('[DB] Role migration:', e.message); }
 
-    // Migrate: add channel_owner_id to emotes (viewer uploads targeting a channel) + channel_sounds table
-    try {
-        const emoteCols = database.prepare('PRAGMA table_info(emotes)').all().map((c) => c.name);
-        if (!emoteCols.includes('channel_owner_id')) {
-            database.exec('ALTER TABLE emotes ADD COLUMN channel_owner_id INTEGER');
-            database.exec('CREATE INDEX IF NOT EXISTS idx_emotes_channel_owner ON emotes(channel_owner_id)');
-        }
-        // Per-emote display size (percent of base, 100 = default). Clamped to the channel's min/max.
-        if (!emoteCols.includes('size')) database.exec('ALTER TABLE emotes ADD COLUMN size INTEGER DEFAULT 100');
-    } catch (e) { console.warn('[DB] emotes size/channel_owner_id migration:', e.message); }
-
-    // Migrate: emote code uniqueness is PER-CHANNEL, not per-user. The old UNIQUE(user_id, code)
-    // wrongly blocked a user from reusing a code on a different channel. Rebuild the table without
-    // that constraint and enforce uniqueness on (effective channel, code) via an index, where the
-    // effective channel = channel_owner_id (viewer upload) or the user's own id (own channel).
-    try {
-        const tbl = get("SELECT sql FROM sqlite_master WHERE type='table' AND name='emotes'");
-        if (tbl && /UNIQUE\s*\(\s*user_id\s*,\s*code\s*\)/i.test(tbl.sql)) {
-            const rebuild = database.transaction(() => {
-                database.exec(`CREATE TABLE emotes_new (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    code TEXT NOT NULL,
-                    url TEXT NOT NULL,
-                    animated INTEGER DEFAULT 0,
-                    width INTEGER DEFAULT 28,
-                    height INTEGER DEFAULT 28,
-                    is_global INTEGER DEFAULT 0,
-                    is_approved INTEGER DEFAULT 1,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    channel_owner_id INTEGER,
-                    size INTEGER DEFAULT 100,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-                )`);
-                database.exec(`INSERT INTO emotes_new (id, user_id, code, url, animated, width, height, is_global, is_approved, created_at, channel_owner_id, size)
-                    SELECT id, user_id, code, url, animated, width, height, is_global, is_approved, created_at, channel_owner_id, size FROM emotes`);
-                database.exec('DROP TABLE emotes');
-                database.exec('ALTER TABLE emotes_new RENAME TO emotes');
-                database.exec('CREATE INDEX idx_emotes_user ON emotes(user_id)');
-                database.exec('CREATE INDEX idx_emotes_global ON emotes(is_global)');
-                database.exec('CREATE INDEX idx_emotes_code ON emotes(code)');
-                database.exec('CREATE INDEX idx_emotes_channel_owner ON emotes(channel_owner_id)');
-                // Per-channel code uniqueness (channel = channel_owner_id, else the owner's own id).
-                database.exec('CREATE UNIQUE INDEX idx_emotes_channel_code ON emotes(COALESCE(channel_owner_id, user_id), code)');
-            });
-            rebuild();
-            console.log('[DB] Rebuilt emotes table: code uniqueness is now per-channel');
-        }
-    } catch (e) { console.warn('[DB] emotes per-channel uniqueness migration:', e.message); }
-
     try {
         database.exec(`CREATE TABLE IF NOT EXISTS channel_sounds (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3864,7 +3814,7 @@ const HOME_SERIES = {
     points:      { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(SUM(amount), 0)', where: 'amount > 0' },
     pointsSpent: { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(-SUM(amount), 0)', where: 'amount < 0' },
     redemptions: { table: 'coin_redemptions',  ts: 'created_at',  agg: 'COUNT(*)',              where: "status NOT IN ('rejected', 'refunded')" },
-    // No `emotes` series: OpenVibe.Chat owns that table (roadmap T3) and Live's copy is unread
+    // No `emotes` series: OpenVibe.Chat owns that table (roadmap T3) and Live's copy is dropped
     // since N+2 (unlike the table itself, which N-1 still prepares against — see schema.sql).
 };
 const HOME_SERIES_KEYS = [...Object.keys(HOME_SERIES), 'liveNow', 'viewersNow'];
@@ -4054,7 +4004,7 @@ function _computeHomeStats() {
             messages: winCount('chat_messages', 'timestamp', 'COALESCE(is_deleted, 0) = 0'),
             hours: null,    // OpenVibe.Media
             streamers: streamersWin(),
-            // Live's `emotes` copy is unread since N+2 (the series is gone; stats.emotes is null), so the
+            // Live's `emotes` copy was unread since N+2 and is now dropped, so the
             // deltas are zero. The key stays for the N-1 client, which reads stats.recent.emotes.
             emotes: { d: 0, w: 0, m: 0, pw: 0 },
             goals: winCount('donation_goals', 'created_at'),

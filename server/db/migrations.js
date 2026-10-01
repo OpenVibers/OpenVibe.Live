@@ -106,10 +106,8 @@ const MIGRATIONS = [
     {
         id: '005_drop_chat_staged_tables',
         // Roadmap T3 N+2. OpenVibe.Chat owns these seven and has since 14:46 UTC; Live's copies are
-        // unread since N+1 (8654ef6, recorded in test/fixtures/n-1/worker.json) and are dropped here.
-        // `emotes` is deliberately left: N-1 still prepares two COUNT(*) against it, so it goes next
-        // release (test/chat-staged-tables.test.js). On a fresh database none of the seven exists and
-        // the migration is adopted.
+        // unread since N+1 (8654ef6) and are dropped here.
+        // On a fresh database none of the seven exists and the migration is adopted.
         adopt: (db) => ['channel_moderators', 'channel_moderation_settings', 'user_tags',
             'chat_ai_summaries', 'chat_timeline_events', 'chat_staged_outbox', 'chat_dual_read_stats']
             .every((t) => !tableExists(db, t)),
@@ -130,6 +128,12 @@ const MIGRATIONS = [
                 DROP TABLE IF EXISTS chat_dual_read_stats;
             `);
         },
+    },
+    {
+        id: '006_drop_emotes',
+        // T3 N+3: Chat owns emotes. The production N-1 release fb3957f no longer reads Live's copy.
+        adopt: (db) => !tableExists(db, 'emotes'),
+        up: (db) => db.exec('DROP TABLE IF EXISTS emotes'),
     },
 ];
 

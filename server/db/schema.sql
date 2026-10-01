@@ -1,9 +1,6 @@
 -- OpenVibe.Live Database Schema
 -- SQLite3
 
--- emotes: unread since T3 N+2; dropped in the next release (OpenVibe.Chat owns it; N-1 still
--- prepares two COUNT(*) against it — see test/chat-staged-tables.test.js).
-
 -- Users
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -546,28 +543,6 @@ CREATE TABLE IF NOT EXISTS comments (
 CREATE INDEX IF NOT EXISTS idx_comments_content ON comments(content_type, content_id);
 CREATE INDEX IF NOT EXISTS idx_comments_user ON comments(user_id);
 CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_id);
-
--- Custom emotes (per-channel or global)
-CREATE TABLE IF NOT EXISTS emotes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,              -- owner / uploader
-    code TEXT NOT NULL,                     -- trigger word, e.g. 'openvibeWave'
-    url TEXT NOT NULL,                      -- served path or external URL
-    animated INTEGER DEFAULT 0,
-    width INTEGER DEFAULT 28,
-    height INTEGER DEFAULT 28,
-    is_global INTEGER DEFAULT 0,            -- admin-uploaded global emotes
-    is_approved INTEGER DEFAULT 1,
-    channel_owner_id INTEGER,               -- streamer whose channel this emote belongs to (NULL = uploader's own channel)
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, code),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_emotes_user ON emotes(user_id);
-CREATE INDEX IF NOT EXISTS idx_emotes_global ON emotes(is_global);
-CREATE INDEX IF NOT EXISTS idx_emotes_code ON emotes(code);
--- NOTE: idx_emotes_channel_owner is created by the runtime migration in database.js,
--- after the channel_owner_id column is ALTER-added on pre-existing databases.
 
 -- Per-channel viewer-uploadable sound commands (triggered by !name in chat)
 CREATE TABLE IF NOT EXISTS channel_sounds (
