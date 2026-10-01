@@ -137,7 +137,7 @@ const vibeCodingRoutes = require('./vibe-coding/routes');
 // Restream
 const restreamRoutes = require('./streaming/restream-routes');
 const restreamManager = require('./streaming/restream-manager');
-const analyticsModule = require('openvibe-shared/analytics'); // ADR-021: no IP/user id, route templates, 30-day raw retention; Sec-GPC/DNT not recorded
+// ADR-021 analytics: no IP/user id, route templates, 30-day raw retention; Sec-GPC/DNT not recorded.
 
 // WHIP (WebRTC-HTTP Ingestion Protocol)
 const whipHandler = require('./streaming/whip-handler');
@@ -395,14 +395,8 @@ const uploadLimiter = rateLimit({
     message: { error: 'Too many upload requests, please slow down' },
 });
 // ── Analytics Tracking ────────────────────────────────────────
-const BetterSqlite3 = require('better-sqlite3');
-// <data dir>/analytics.db (ANALYTICS_DB_PATH overrides it outside a drill; server/paths.js).
-const analyticsDbPath = paths.analyticsDbPath();
-fs.mkdirSync(path.dirname(analyticsDbPath), { recursive: true });
-const analyticsDb = new BetterSqlite3(analyticsDbPath);
-analyticsDb.pragma('journal_mode = WAL');
-// A drill records no page views and runs no flush/aggregate timers (its analytics.db is its own, empty).
-const analytics = new analyticsModule.AnalyticsTracker(analyticsDb, 'live', { retention: false, timers: !drill.enabled }); // prune: job 8b2 below
+const analyticsStore = require('./analytics/store').createAnalyticsStore({ drill: drill.enabled });
+const analytics = analyticsStore.tracker;
 app.locals.analytics = analytics;
 if (!drill.enabled) app.use(analytics.middleware());
 
@@ -606,10 +600,10 @@ app.post('/internal/openre-events', require('./openre/mirror').webhookHandler);
 // Internal (server-to-server) routes — allow openvibe.network to call into this service
 // Summary numbers for the Network's navigation service (ordering sites by real use).
 // A service token with live.analytics.read (loopback only); returns totals, never rows.
-app.get('/internal/analytics-summary', require('./net/service-guard').guard('live.analytics.read'), (req, res) => {
+app.get('/internal/analytics-summary', require('./net/service-guard').guard('live.analytics.read'), async (req, res) => {
     try {
         const days = Math.min(parseInt(req.query.days, 10) || 7, 90);
-        const st = analytics.getStats({ days }) || {};
+        const st = await analytics.getStats({ days }) || {};
         res.json({ ok: true, summary: st.summary || {} });
     } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
@@ -736,19 +730,19 @@ app.use('/api/news', newsRoutes);
 
 // ── Internal Analytics API ───────────────────────────────────
 // Called by openvibe-tools admin panel to fetch this service's analytics
-app.get('/api/admin/analytics', requireAuth, permissions.requireAdmin, (req, res) => {
+app.get('/api/admin/analytics', requireAuth, permissions.requireAdmin, async (req, res) => {
     try {
         const days = Math.min(parseInt(req.query.days) || 30, 365);
         const hours = req.query.hours ? Math.min(parseInt(req.query.hours), 8760) : null;
-        res.json({ ok: true, analytics: analytics.getStats({ days, hours }) });
+        res.json({ ok: true, analytics: await analytics.getStats({ days, hours }) });
     } catch (err) {
         res.status(500).json({ ok: false, error: err.message });
     }
 });
-app.get('/api/admin/analytics/bots', requireAuth, permissions.requireAdmin, (req, res) => {
+app.get('/api/admin/analytics/bots', requireAuth, permissions.requireAdmin, async (req, res) => {
     try {
         const days = Math.min(parseInt(req.query.days) || 30, 365);
-        res.json({ ok: true, bots: analytics.getBotAnalysis(days) });
+        res.json({ ok: true, bots: await analytics.getBotAnalysis(days) });
     } catch (err) {
         res.status(500).json({ ok: false, error: err.message });
     }
@@ -1125,6 +1119,7 @@ async function start() {
 
     // 1. Initialize database
     db.initDb();
+    await analyticsStore.ready();
     // Initialize cosmetics tables
     cosmeticsModule.ensureTables();
     // Chat tag tables (read-only tags, server/chat/tags.js)
@@ -1550,8 +1545,9 @@ async function start() {
     // 8b2. Raw analytics retention (ADR-021): events older than 30 days go, in bounded batches;
     // hourly/daily rollups stay. Nightly, first run a few minutes after boot.
     require('./utils/jobs').every('analytics-prune', 24 * 60 * 60 * 1000, async () => {
-        const out = await analyticsModule.retention.pruneRawEvents(analyticsDb, { days: analyticsModule.retention.MAX_DAYS });
-        if (out.deleted) console.log(`[Analytics] pruned ${out.deleted} raw events older than ${out.cutoff}`);
+        const out = await analyticsStore.prune();
+        const deleted = out.deleted || out.removed;
+        if (deleted) console.log(`[Analytics] pruned ${deleted} raw events older than ${out.cutoff}`);
     }, { initialDelayMs: 5 * 60 * 1000, jitterMs: 60 * 1000 });
 
     // 8b3. Media requests whose OpenCoins charge never got an answer: charged again with the same
@@ -1614,7 +1610,7 @@ function shutdown() {
         // Nothing was started but the HTTP server and the two databases.
         console.log('[Drill] Shutting down');
         _bootComplete = false;
-        try { analytics.destroy(); analyticsDb.close(); } catch { /* */ }
+        analyticsStore.close().catch(() => {});
         server.close(() => { try { db.close(); } catch { /* */ } process.exit(0); });
         try { server.closeAllConnections(); } catch { /* */ }
         setTimeout(() => process.exit(0), 3000).unref();
@@ -1653,7 +1649,7 @@ function shutdown() {
     try { require('./streaming/live-events').closeAll(); } catch { /* */ }
 
     // Small delay to let the message reach clients before closing sockets
-    setTimeout(() => {
+    setTimeout(async () => {
         restreamManager.stopViewerCountPolling();
         restreamManager.stopAll();
         try { recorder.stopAll(); } catch {}
@@ -1664,8 +1660,7 @@ function shutdown() {
         jsmpegRelay.closeAll();
         webrtcSFU.closeAll();
         rtmpServer.stop();
-        analytics.destroy();
-        analyticsDb.close();
+        try { await analyticsStore.close(); } catch (err) { console.error('[Analytics] Shutdown:', err); }
         db.close();
 
         server.close(() => {

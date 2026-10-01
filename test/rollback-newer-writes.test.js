@@ -6,15 +6,17 @@
  * release of seven days ago: that release's initDb runs over the newer schema without an error, reads
  * what it knows (users, streams, follows, settings) and writes (a user, a stream, a follow).
  *
- * The older release is checked out into a temporary git worktree (it shares this checkout's
- * node_modules). Each release runs in its own process. Without git history (a shallow CI clone) the
- * test says so and passes; ROLLBACK_REF=<commit> picks another release.
+ * The older release is checked out next to this one (it shares this checkout's node_modules) by
+ * test/helpers/old-release.js, which also keeps a concurrently running test file off the same git
+ * worktree metadata. Each release runs in its own process. Without git history (a shallow CI clone)
+ * the test says so and passes; ROLLBACK_REF=<commit> picks another release.
  */
 const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
+const { oldRelease } = require('./helpers/old-release');
 
 const ROOT = path.join(__dirname, '..');
 const git = (...a) => { try { return execFileSync('git', ['-C', ROOT, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return ''; } };
@@ -23,9 +25,9 @@ if (!old) { console.log('rollback with newer writes: skipped (no git history to 
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-rollback-'));
 const dbPath = path.join(tmp, 'live.db');
-const oldDir = path.join(tmp, 'old');
+let release = null;
 const cleanup = () => {
-    try { execFileSync('git', ['-C', ROOT, 'worktree', 'remove', '--force', oldDir], { stdio: 'ignore' }); } catch { /* not created */ }
+    if (release) release.remove();
     fs.rmSync(tmp, { recursive: true, force: true });
 };
 
@@ -59,9 +61,8 @@ try {
     assert.strictEqual(now.code, 0, `the current release could not prepare the database:\n${now.stderr}`);
 
     // 2. The release of a week ago, on that database.
-    execFileSync('git', ['-C', ROOT, 'worktree', 'add', '--detach', oldDir, old], { stdio: 'ignore' });
-    fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(oldDir, 'node_modules'), 'dir');
-    const back = runIn(oldDir, `
+    release = oldRelease(ROOT, old);
+    const back = runIn(release.dir, `
         console.log = () => {}; console.warn = () => {};
         const errors = [];
         const origError = console.error; console.error = (...a) => errors.push(a.join(' ').slice(0, 300));
