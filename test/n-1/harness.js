@@ -22,9 +22,9 @@
  * server code that prepares on its own schema. The N-1 schema is its sqlite_master after the replay.
  */
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { oldRelease } = require('../helpers/old-release');
 
 // ── Client calls: static extraction ──────────────────────────
 
@@ -814,20 +814,9 @@ function insertProblems(db, statements) {
 
 // ── Git ──────────────────────────────────────────────────────
 
-/** A detached worktree of `ref` in a temp directory sharing root's node_modules → { dir, sha, remove() }. */
+/** A detached checkout of `ref` sharing root's node_modules → { dir, sha, remove() }. test/helpers/old-release.js. */
 function worktree(root, ref) {
-    const sha = execFileSync('git', ['-C', root, 'rev-parse', '--verify', `${ref}^{commit}`], { encoding: 'utf8' }).trim();
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-n-1-'));
-    const dir = path.join(tmp, 'release');
-    execFileSync('git', ['-C', root, 'worktree', 'add', '--detach', dir, sha], { stdio: 'ignore' });
-    fs.symlinkSync(path.join(root, 'node_modules'), path.join(dir, 'node_modules'), 'dir');
-    return {
-        dir, sha,
-        remove() {
-            try { execFileSync('git', ['-C', root, 'worktree', 'remove', '--force', dir], { stdio: 'ignore' }); } catch { /* */ }
-            fs.rmSync(tmp, { recursive: true, force: true });
-        },
-    };
+    return oldRelease(root, ref);
 }
 
 /** Files of another repository at a commit (git show), e.g. Live's chat widget for Chat. → [{ name, text }] */
