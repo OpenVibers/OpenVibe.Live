@@ -56,10 +56,10 @@ function signed(event, secret, { now } = {}) {
     return { raw, headers: signDeliveryHeaders(raw, secret, { now }), v1: { 'X-OpenVibe-Signature': signDelivery(raw, secret) } };
 }
 
-/** POST a delivery: all three signature headers by default; `v1Only` sends only X-OpenVibe-Signature; `now` backdates the v2 timestamp. */
+/** POST a delivery (never on a kept-alive socket: the server may drop an idle one between slow steps, which surfaced as ECONNRESET under load): all three signature headers by default; `v1Only` sends only X-OpenVibe-Signature; `now` backdates the v2 timestamp. */
 async function deliver(base, event, { secret = 'whsec_test', headers, v1Only = false, now } = {}) {
     const s = signed(event, secret, { now });
-    const res = await fetch(`${base}/internal/openre-events`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(headers || (v1Only ? s.v1 : s.headers)) }, body: s.raw });
+    const res = await fetch(`${base}/internal/openre-events`, { method: 'POST', headers: { 'Content-Type': 'application/json', Connection: 'close', ...(headers || (v1Only ? s.v1 : s.headers)) }, body: s.raw });
     return res.status;
 }
 

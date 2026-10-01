@@ -19,8 +19,20 @@ const { execFileSync, spawnSync } = require('child_process');
 const { oldRelease } = require('./helpers/old-release');
 
 const ROOT = path.join(__dirname, '..');
-const git = (...a) => { try { return execFileSync('git', ['-C', ROOT, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return ''; } };
-const old = process.env.ROLLBACK_REF || git('log', '-1', '--before=7 days ago', '--format=%H');
+// Only a clone with no commit older than a week (a shallow CI clone) may skip: a failing git (missing
+// binary, not a repository, locked metadata) is a broken environment, not a reason to pass silently.
+let old = process.env.ROLLBACK_REF;
+if (!old) {
+    let probe;
+    try {
+        probe = execFileSync('git', ['-C', ROOT, 'log', '-1', '--before=7 days ago', '--format=%H'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) {
+        console.error('rollback with newer writes: git could not find a release older than 7 days:');
+        console.error(String(e.stderr || e.message || e).trim());
+        process.exit(1);
+    }
+    old = String(probe).trim();
+}
 if (!old) { console.log('rollback with newer writes: skipped (no git history to take the older release from)'); process.exit(0); }
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-rollback-'));
