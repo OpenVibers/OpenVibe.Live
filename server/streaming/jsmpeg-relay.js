@@ -23,9 +23,8 @@ function matchesStreamPath(url, streamKey) {
 }
 
 /**
- * OpenRe.Stream ingests this key's slot (or, for a personal key, one of the owner's slots): refuse the
- * publisher like an unknown key (404), so one stream is never ingested twice. Resolved from the key on
- * every publish, never cached, so a switch is seen by the next POST. See server/openre/authority.js.
+ * Consult the per-protocol ingest authority for each publish. OpenRe currently ingests RTMP
+ * only, so JSMPEG continues to publish through Live after an RTMP switch.
  */
 function refusedByOpenre(streamKey) {
     try {

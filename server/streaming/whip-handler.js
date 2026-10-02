@@ -120,9 +120,8 @@ function sendWhipError(res, status, code, message) {
 }
 
 /**
- * OpenRe.Stream ingests this slot (managed_streams.ingest_authority = 'openre'): Live refuses the
- * publisher so one stream is never ingested twice. Reads the slot fresh each time, so a check after
- * an await sees a switch that happened meanwhile. Slot-less publishers are checked by owner.
+ * Consult the per-protocol ingest authority before accepting a publisher. OpenRe currently
+ * ingests RTMP only, so WHIP continues to publish through Live after an RTMP switch.
  */
 function refusedByOpenre(slotId, userId) {
     const managedStream = slotId ? db.getManagedStreamById(slotId) : null;
@@ -871,7 +870,7 @@ async function handleWhipPost(req, res) {
 
         const roomId = `stream-${streamId}`;
         const room = await webrtcSFU.getOrCreateRoom(roomId);
-        // A switch to OpenRe may have landed while the room was created: nothing is registered yet.
+        // Check authority again after room creation in case supported ingest protocols change.
         if (refusedByOpenre(stream.managed_stream_id, userId)) {
             return sendWhipError(res, 401, 'invalid_stream_key', 'Stream key not recognized');
         }
