@@ -22,7 +22,6 @@ const path = require('path');
 const tmp = path.join(os.tmpdir(), `ov-seo-moments-${process.pid}.db`);
 process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
-delete process.env.PASTES_ON_COMMUNITY;
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 console.warn = () => {};

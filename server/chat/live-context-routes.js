@@ -536,7 +536,7 @@ effectsRouter.post('/hardware', (req, res) => {
     res.json({ ok: true });
 });
 
-// /paste from chat, through Live's pastes client (Community or Media per PASTES_AUTHORITY).
+// /paste from chat, through Live's pastes client (OpenVibe.Community).
 effectsRouter.post('/paste', async (req, res) => {
     const b = req.body || {};
     try {

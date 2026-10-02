@@ -269,9 +269,8 @@ const SOURCES = {
     },
 };
 
-/** People's or AI pastes from OpenVibe.Community. Pastes are only listed once Community owns them. */
+/** People's or AI pastes from OpenVibe.Community. */
 async function communityPastes(origin, offset, n, { sort, since }) {
-    if (!pastesClient.onCommunity()) { const e = new Error('pastes are listed from OpenVibe.Community only'); e.unavailable = true; throw e; }
     const r = await pastesClient.request('GET', '', {
         query: { origin, limit: n, offset, sort: sort === 'top' ? 'top' : 'newest', since: since || undefined, pinned_first: 0 },
         timeoutMs: SOURCE_TIMEOUT_MS,

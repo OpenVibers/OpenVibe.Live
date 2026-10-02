@@ -2,20 +2,15 @@
 /**
  * Where Live's pastes live (roadmap Wave 5).
  *
- * PASTES_AUTHORITY=community: OpenVibe.Community owns pastes. Live calls its /api/pastes with a
- * service token (community.paste.create/write/moderate) and names the person it acts for in
- * X-OV-Subject (their canonical usr_ id). AI-made pastes are sent as X-OV-Origin: ai and are never
- * filed under a person (roadmap 33); the stream they came from rides along as X-OV-Source-Ref.
- * Anything else (default): the old path through OpenVibe.Media's app API (media-client).
- *
- * Same function shapes as media-client's paste helpers, so call sites only swap the require.
+ * OpenVibe.Community owns pastes. Live calls its /api/pastes with a service token
+ * (community.paste.create/write/moderate) and names the person it acts for in X-OV-Subject (their
+ * canonical usr_ id). AI-made pastes are sent as X-OV-Origin: ai and are never filed under a person
+ * (roadmap 33); the stream they came from rides along as X-OV-Source-Ref.
  */
-const media = require('./media-client');
 const principal = require('./net/network-principal');
 
 const COMMUNITY_URL = (process.env.OV_COMMUNITY_INTERNAL_URL || 'http://127.0.0.1:4200').replace(/\/+$/, '');
 const AUDIENCE = 'openvibe.community';
-const onCommunity = () => process.env.PASTES_AUTHORITY === 'community';
 
 class CommunityApiError extends Error {
     constructor(status, body) {
@@ -83,9 +78,8 @@ async function request(method, path, { query, body, act = {}, ip, timeoutMs = 20
     return out;
 }
 
-/** media-client-compatible createPaste: user_id -> acting person; opts.origin 'ai' -> ownerless. */
+/** createPaste: user_id -> acting person; opts.origin 'ai' -> ownerless. */
 async function createPaste({ screenshot, user_id, ...fields } = {}, opts = {}) {
-    if (!onCommunity()) return media.createPaste({ screenshot, user_id, ...fields }, opts);
     const act = opts.origin === 'ai'
         ? { origin: 'ai', sourceRef: fields.stream_id ? { service: 'live', type: 'stream', id: String(fields.stream_id) } : undefined }
         : { liveUserId: user_id };
@@ -100,24 +94,20 @@ async function createPaste({ screenshot, user_id, ...fields } = {}, opts = {}) {
 }
 
 async function getPaste(slug) {
-    if (!onCommunity()) return media.getPaste(slug);
     const out = await request('GET', `/${encodeURIComponent(slug)}`, { query: { no_view: 1 } });
     return (out && out.paste) || out;
 }
 
 function listPastes(query = {}) {
-    if (!onCommunity()) return media.listPastes(query);
     return request('GET', '', { query });
 }
 
 function listPastesNeedingAi(limit = 5) {
-    if (!onCommunity()) return media.listPastesNeedingAi(limit);
     return request('GET', '', { query: { needs_ai: 1, limit } });
 }
 
 function setPasteAi(slug, { ai_summary, ai_tags } = {}) {
-    if (!onCommunity()) return media.setPasteAi(slug, { ai_summary, ai_tags });
     return request('POST', `/${encodeURIComponent(slug)}/ai`, { body: { ai_summary, ai_tags } });
 }
 
-module.exports = { onCommunity, request, createPaste, getPaste, listPastes, listPastesNeedingAi, setPasteAi, subjectForLiveUser, COMMUNITY_URL, CommunityApiError };
+module.exports = { request, createPaste, getPaste, listPastes, listPastesNeedingAi, setPasteAi, subjectForLiveUser, COMMUNITY_URL, CommunityApiError };

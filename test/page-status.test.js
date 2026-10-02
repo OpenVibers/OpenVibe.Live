@@ -22,7 +22,6 @@ const http = require('http');
 const tmp = path.join(os.tmpdir(), `ov-page-status-${process.pid}.db`);
 process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
-delete process.env.PASTES_ON_COMMUNITY;
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 console.warn = () => {};
@@ -77,7 +76,6 @@ media.getVod = async (id) => { calls.vod++; await upstream(); const v = VODS[Num
 media.getClip = async (id) => { calls.clip++; await upstream(); const c = CLIPS[Number(id)]; if (!c) throw missing('Clip'); return { ...c }; };
 media.listVods = async () => ({ vods: [] });
 media.listClips = async () => ({ clips: [] });
-media.listPastes = async () => ({ pastes: [] });
 media.request = async () => { throw new media.MediaApiError('stubbed', 0, null); };
 const pastesClient = require('../server/pastes-client');
 pastesClient.getPaste = async (slug) => { calls.paste++; const p = PASTES[slug]; if (!p) throw missing('Paste'); return { ...p }; };

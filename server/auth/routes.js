@@ -233,8 +233,8 @@ router.post('/avatar', requireAuth, avatarUpload.single('avatar'), async (req, r
     }
 });
 
-// The user's avatar upload history (avatar-tagged screenshot pastes, in OpenVibe.Community — or
-// OpenVibe.Media while PASTES_AUTHORITY is unset). Pastes have no metadata filter upstream, so
+// The user's avatar upload history (avatar-tagged screenshot pastes, in OpenVibe.Community).
+// Pastes have no metadata filter upstream, so
 // lookups.avatarPastes lists the person's screenshots and keeps the avatar-tagged ones.
 router.get('/avatar/history', requireAuth, async (req, res) => {
     try {

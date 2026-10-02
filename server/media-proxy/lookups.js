@@ -265,19 +265,14 @@ async function topContentRanges(user) {
     };
 }
 
-// ── Pastes (OpenVibe.Community; OpenVibe.Media while PASTES_AUTHORITY is unset) ──────────────
+// ── Pastes (OpenVibe.Community) ─────────────────────────────────────────────────────────────
 
 /** Throws when the upstream fails (so a count cache never keeps a failure as zero). */
 async function _listUserPastes(user, { limit = 30, type, hidden = false }) {
-    let out;
-    if (pastesClient.onCommunity()) {
-        // Community lists one person's pastes by username. Hidden ones only for the owner (act as
-        // them) or staff (X-OV-Staff): Live says which, after its own check of the caller.
-        const act = hidden === 'owner' ? { liveUserId: user.id } : (hidden === 'staff' ? { staff: true } : {});
-        out = await pastesClient.request('GET', '', { query: { username: user.username, include_unlisted: hidden ? 1 : undefined, type, limit }, act, timeoutMs: TIMEOUT_MS });
-    } else {
-        out = await media.listPastes({ user_id: user.id, include_unlisted: hidden ? 1 : undefined, type, limit }, { timeoutMs: TIMEOUT_MS });
-    }
+    // Community lists one person's pastes by username. Hidden ones only for the owner (act as them)
+    // or staff (X-OV-Staff): Live says which, after its own check of the caller.
+    const act = hidden === 'owner' ? { liveUserId: user.id } : (hidden === 'staff' ? { staff: true } : {});
+    const out = await pastesClient.request('GET', '', { query: { username: user.username, include_unlisted: hidden ? 1 : undefined, type, limit }, act, timeoutMs: TIMEOUT_MS });
     let pastes = rowsOf(out, 'pastes');
     if (!hidden) pastes = pastes.filter((p) => p && p.visibility === 'public');
     return { pastes, total: totalOf(out, pastes) };
@@ -341,11 +336,10 @@ async function siteMediaStats() {
 
 let _pasteStats = { at: 0, data: null };
 /**
- * Paste totals from the service that owns pastes: Community's counts under PASTES_AUTHORITY=community
- * ({ pastes, pasteText, pasteImages }), else null (Media's /stats already carries them).
+ * Paste totals from OpenVibe.Community ({ pastes, pasteText, pasteImages }), or null while it is
+ * unreachable. Cached five minutes; retried 30 s after a failure.
  */
 async function sitePasteStats() {
-    if (!pastesClient.onCommunity()) return null;
     if (Date.now() - _pasteStats.at < SITE_STATS_TTL_MS) return _pasteStats.data;
     try {
         const out = await pastesClient.request('GET', '/admin/stats', { act: { staff: true }, timeoutMs: TIMEOUT_MS });

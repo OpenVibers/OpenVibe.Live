@@ -1025,6 +1025,12 @@ function whenRouteReady(pageId, render) {
     });
 }
 
+/** A paste's page on openvibe.community (the shell's ov-pastes-base meta names it). */
+function pasteHref(slug) {
+    const meta = document.querySelector('meta[name="ov-pastes-base"]');
+    return `${meta ? meta.content : ''}/p/${encodeURIComponent(slug)}`;
+}
+
 /** Pastes live on openvibe.community. A signed-in user goes through its silent sign-in so they arrive
  *  signed in; guests go straight to the page. */
 function _pasteHandOver(target) {

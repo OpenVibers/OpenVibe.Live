@@ -22,7 +22,6 @@ const http = require('http');
 const tmp = path.join(os.tmpdir(), `ov-content-feed-${process.pid}.db`);
 process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
-process.env.PASTES_AUTHORITY = 'community';
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 console.warn = () => {};
@@ -313,17 +312,6 @@ server.on('listening', async () => {
         assert.deepStrictEqual(none.json.items, []);
         assert.strictEqual(none.json.partial, true);
         assert.ok(none.json.next, 'the client may try again');
-    });
-
-    await check('pastes are listed only when Community owns them', async () => {
-        process.env.PASTES_AUTHORITY = '';
-        try {
-            const r = await get('/api/content/feed?limit=30');
-            assert.strictEqual(r.json.sources.pastes, 'unavailable');
-            assert.strictEqual(r.json.partial, false, 'not a failure to retry');
-            assert.ok(!r.json.items.some((i) => i.kind === 'paste'));
-            assert.strictEqual(communityCalls.length, 0);
-        } finally { process.env.PASTES_AUTHORITY = 'community'; }
     });
 
     await check('an upstream that answers no rows but claims more cannot keep the feed paging forever', async () => {

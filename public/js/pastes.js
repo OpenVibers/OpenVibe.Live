@@ -72,7 +72,7 @@ function renderPasteCard(p) {
     const nsfwBlur = p.is_nsfw ? ' paste-card-nsfw-blur' : '';
 
     const _cardInner = `
-        <a class="paste-card${nsfwBlur}" href="/p/${p.slug}" onclick="return handleLinkClick(event, '/p/${p.slug}')">
+        <a class="paste-card${nsfwBlur}" href="${escapeHtml(pasteHref(p.slug))}">
             ${thumb}
             <div class="paste-card-info">
                 <div class="paste-card-title">${pinBadge}${nsfwBadge}${escapeHtml(p.title)}${burnBadge}</div>

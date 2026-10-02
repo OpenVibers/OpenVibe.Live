@@ -271,43 +271,6 @@ function recutClip(clipId, opts = {}) {
     return request('POST', `/clips/${clipId}/recut`, opts);
 }
 
-// ── Pastes ───────────────────────────────────────────────────────────────────
-
-/**
- * POST /pastes { title?, content?, language?, user_id?, visibility?, screenshot (multipart)? }
- * → { id, slug, url }. Pass `screenshot` as Buffer or {buffer, filename, contentType}.
- */
-function createPaste({ screenshot, ...fields } = {}, opts = {}) {
-    if (screenshot) {
-        const fd = _formData(fields, screenshot, 'screenshot');
-        return request('POST', '/pastes', { body: fd, timeoutMs: 60000, ...opts });
-    }
-    return request('POST', '/pastes', { body: fields, ...opts });
-}
-
-async function getPaste(slug, opts = {}) {
-    const out = await request('GET', `/pastes/${encodeURIComponent(slug)}`, opts);
-    return (out && out.paste) || out;   // Media wraps single pastes as { paste }
-}
-
-function listPastes(query = {}, opts = {}) {
-    return request('GET', '/pastes', { query, ...opts });
-}
-
-/** Pastes awaiting AI analysis (app-key only on Media). */
-function listPastesNeedingAi(limit = 5, opts = {}) {
-    return request('GET', '/pastes', { query: { needs_ai: 1, limit }, ...opts });
-}
-
-/** Write AI results back to a paste. */
-function setPasteAi(slug, { ai_summary, ai_tags } = {}, opts = {}) {
-    return request('POST', `/pastes/${encodeURIComponent(slug)}/ai`, { body: { ai_summary, ai_tags }, ...opts });
-}
-
-function deletePaste(slug, opts = {}) {
-    return request('DELETE', `/pastes/${encodeURIComponent(slug)}`, opts);
-}
-
 // ── Files ────────────────────────────────────────────────────────────────────
 
 /** POST /files (multipart) → { key, url, size, mime } */
@@ -451,8 +414,6 @@ module.exports = {
     getVod, listVods, updateVod, deleteVod,
     // clips
     createClip, getClip, listClips, updateClip, deleteClip, recutClip, getJob,
-    // pastes
-    createPaste, getPaste, listPastes, listPastesNeedingAi, setPasteAi, deletePaste,
     // files + thumbnails
     uploadFile, getFileMeta, deleteFile,
     uploadThumbnail, generateThumbnail,

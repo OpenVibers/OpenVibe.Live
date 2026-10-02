@@ -1,6 +1,6 @@
 'use strict';
 
-// PASTES_AUTHORITY=community (roadmap Wave 5): Live writes and reads pastes through OpenVibe.Community with
+// Community is the only paste authority (roadmap Wave 5): Live writes and reads pastes through OpenVibe.Community with
 // a service token. AI pastes are ownerless (origin ai + source stream), a person is named by subject, the
 // SPA's /api/pastes forwards anonymously when nobody is signed in, and staff routes keep requireAdmin.
 
@@ -18,7 +18,6 @@ process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.INTERNAL_API_KEY = 'legacy-key';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
-process.env.PASTES_AUTHORITY = 'community';
 
 const keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 const SID = 'usr_01JAB2C3D4E5F6G7H8J9K0MNPA';
@@ -51,6 +50,7 @@ const community = http.createServer((req, res) => {
         const claims = serviceAuth.verifyServiceToken(auth.slice(7), { publicKey: keys.publicKey, audience: 'openvibe.community' });
         seen.push({ method: req.method, url: req.url, subject: req.headers['x-ov-subject'] || null, origin: req.headers['x-ov-origin'] || null, sourceRef: req.headers['x-ov-source-ref'] || null, xff: req.headers['x-forwarded-for'] || null, type: req.headers['content-type'] || '', body: Buffer.concat(chunks).toString('latin1'), tokenOk: claims.ok });
         res.setHeader('Content-Type', 'application/json');
+        if (req.url.startsWith('/api/pastes/by-user/failing')) { res.statusCode = 503; return res.end('{}'); }
         if (req.method === 'POST') { res.statusCode = 201; return res.end(JSON.stringify({ id: 9, slug: 'new-slug-1', url: '/p/new-slug-1', paste: { slug: 'new-slug-1', origin: req.headers['x-ov-origin'] || 'user' } })); }
         res.end(JSON.stringify({ pastes: [], total: 0 }));
     });
@@ -120,9 +120,27 @@ const community = http.createServer((req, res) => {
     assert.strictEqual(r.status, 302);
     assert.ok(r.headers.get('location').endsWith('/p/some-slug/raw'));
 
-    // Default mode goes to Media exactly as before.
-    process.env.PASTES_AUTHORITY = '';
-    assert.strictEqual(client.onCommunity(), false);
+    // Writes that need a person are refused here, before Community.
+    const before = seen.length;
+    for (const [method, p] of [['PUT', '/some-slug'], ['DELETE', '/some-slug'], ['POST', '/some-slug/like'], ['DELETE', '/some-slug/comments/1']]) {
+        r = await fetch(`${base}${p}`, { method, headers: { 'content-type': 'application/json' }, body: method === 'DELETE' ? undefined : '{}' });
+        assert.strictEqual(r.status, 401, `anonymous ${method} ${p}`);
+    }
+    assert.strictEqual(seen.length, before, 'none of them reached Community');
+    // A person's paste list is forwarded, and reads as empty (not an error) while Community fails.
+    r = await fetch(`${base}/by-user/ann?limit=30`);
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(seen.pop().url, '/api/pastes/by-user/ann?limit=30');
+    r = await fetch(`${base}/by-user/failing?limit=30`);
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(await r.json(), { pastes: [], total: 0, username: 'failing' });
+
+    // Community is the only mode: no switch, no Media fallback, no Media router.
+    assert.strictEqual(client.onCommunity, undefined, 'the paste-authority switch is gone');
+    assert.strictEqual(require('../server/media-proxy/pastes'), require('../server/media-proxy/pastes').communityRouter, '/api/pastes is the Community router');
+    assert.strictEqual(require('../server/media-proxy/pastes').mediaRouter, undefined, 'the Media router is gone');
+    const clientSrc = fs.readFileSync(path.join(__dirname, '../server/pastes-client.js'), 'utf8');
+    assert.ok(!/media-client/.test(clientSrc) && !clientSrc.includes('PASTES_' + 'AUTHORITY'), 'the pastes client never falls back to Media');
 
     srv.close(); net.close(); community.close();
     fs.rmSync(tmp, { recursive: true, force: true });

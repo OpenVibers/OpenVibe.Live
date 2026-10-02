@@ -76,7 +76,6 @@ media.request = async (method, p) => {
     if (p === '/stats') return { vods: 11, clips: 22, pastes: 33, pasteImages: 3, pasteText: 30, durationSeconds: 7200, recent: { vods: { d: 1, w: 2, m: 3 } } };
     throw new media.MediaApiError('unexpected', 500);
 };
-media.listPastes = async (q = {}) => { asked.push({ kind: 'media-pastes', ...q }); return { pastes: [{ slug: 'm1', visibility: 'public' }, { slug: 'm2', visibility: 'private' }], total: 2 }; };
 
 // ── OpenVibe.Community stand-in (pastes-client.request) ──
 const pastesClient = require('../server/pastes-client');
@@ -194,45 +193,33 @@ async function check(name, fn) {
     });
 
     await check('channel badges: pastes from Community, taken clips from Media; hidden ones for owner/staff only', async () => {
-        process.env.PASTES_AUTHORITY = 'community';
-        try {
-            const anon = await call('GET', '/api/streams/channel/alice');
-            assert.strictEqual(anon.status, 200, anon.text.slice(0, 200));
-            assert.strictEqual(anon.json.pasteTotal, 2);
-            assert.strictEqual(anon.json.clipsTakenTotal, 1);
-            lookups._resetCaches();
-            const owner = await call('GET', '/api/streams/channel/alice', 3);
-            assert.strictEqual(owner.json.pasteTotal, 4);
-            assert.strictEqual(owner.json.clipsTakenTotal, 2);
-            assert.ok(communityCalls.some((c) => c.act.liveUserId === 3 && c.query.include_unlisted === 1), 'the owner is asked as themselves');
-            lookups._resetCaches();
-            const staff = await call('GET', '/api/streams/channel/alice', 1);
-            assert.strictEqual(staff.json.pasteTotal, 4);
-            assert.ok(communityCalls.some((c) => c.act.staff && c.query.include_unlisted === 1), 'staff are vouched for with X-OV-Staff');
-            lookups._resetCaches();
-            communityCalls.length = 0;
-            await call('GET', '/api/streams/channel/alice', 7);
-            assert.ok(communityCalls.every((c) => !c.query.include_unlisted && !c.act.staff && !c.act.liveUserId), 'anyone else: public only');
-            const poll = await call('GET', '/api/streams/channel/alice?pollOnly=1');
-            assert.strictEqual(poll.json.pasteTotal, 0, 'the status poll asks nobody');
-        } finally { delete process.env.PASTES_AUTHORITY; }
-    });
-
-    await check('pastes while Media still holds them (PASTES_AUTHORITY unset): Media list, public filter', async () => {
-        const out = await lookups.userPastes(db.getUserById(3));
-        assert.deepStrictEqual(out.pastes.map((p) => p.slug), ['m1']);
-        assert.ok(asked.some((q) => q.kind === 'media-pastes' && q.user_id === 3 && q.include_unlisted === undefined));
+        const anon = await call('GET', '/api/streams/channel/alice');
+        assert.strictEqual(anon.status, 200, anon.text.slice(0, 200));
+        assert.strictEqual(anon.json.pasteTotal, 2);
+        assert.strictEqual(anon.json.clipsTakenTotal, 1);
+        lookups._resetCaches();
+        const owner = await call('GET', '/api/streams/channel/alice', 3);
+        assert.strictEqual(owner.json.pasteTotal, 4);
+        assert.strictEqual(owner.json.clipsTakenTotal, 2);
+        assert.ok(communityCalls.some((c) => c.act.liveUserId === 3 && c.query.include_unlisted === 1), 'the owner is asked as themselves');
+        lookups._resetCaches();
+        const staff = await call('GET', '/api/streams/channel/alice', 1);
+        assert.strictEqual(staff.json.pasteTotal, 4);
+        assert.ok(communityCalls.some((c) => c.act.staff && c.query.include_unlisted === 1), 'staff are vouched for with X-OV-Staff');
+        lookups._resetCaches();
+        communityCalls.length = 0;
+        await call('GET', '/api/streams/channel/alice', 7);
+        assert.ok(communityCalls.every((c) => !c.query.include_unlisted && !c.act.staff && !c.act.liveUserId), 'anyone else: public only');
+        const poll = await call('GET', '/api/streams/channel/alice?pollOnly=1');
+        assert.strictEqual(poll.json.pasteTotal, 0, 'the status poll asks nobody');
     });
 
     await check('setup hub: the paste task counts the person\'s own pastes', async () => {
-        process.env.PASTES_AUTHORITY = 'community';
-        try {
-            const r = await call('GET', '/api/streams/setup-progress', 3);
-            assert.strictEqual(r.status, 200);
-            const task = r.json.tasks.find((t) => t.id === 'paste');
-            assert.strictEqual(task.count, 4);
-            assert.strictEqual(task.done, true);
-        } finally { delete process.env.PASTES_AUTHORITY; }
+        const r = await call('GET', '/api/streams/setup-progress', 3);
+        assert.strictEqual(r.status, 200);
+        const task = r.json.tasks.find((t) => t.id === 'paste');
+        assert.strictEqual(task.count, 4);
+        assert.strictEqual(task.done, true);
     });
 
     await check('setup hub: the emote count and moderator count come from OpenVibe.Chat', async () => {
@@ -255,14 +242,11 @@ async function check(name, fn) {
     });
 
     await check('avatar history: the avatar-tagged screenshots, from Community', async () => {
-        process.env.PASTES_AUTHORITY = 'community';
-        try {
-            raw.prepare("UPDATE users SET avatar_url = 'https://media.test/f/a.png' WHERE id = 3").run();
-            const r = await call('GET', '/api/auth/avatar/history', 3);
-            assert.strictEqual(r.status, 200, r.text);
-            assert.deepStrictEqual(r.json.avatars.map((a) => [a.slug, a.url, a.active]), [['ava', 'https://media.test/f/a.png', true]]);
-            assert.ok(communityCalls.every((c) => c.query.type === 'screenshot' && c.act.liveUserId === 3));
-        } finally { delete process.env.PASTES_AUTHORITY; }
+        raw.prepare("UPDATE users SET avatar_url = 'https://media.test/f/a.png' WHERE id = 3").run();
+        const r = await call('GET', '/api/auth/avatar/history', 3);
+        assert.strictEqual(r.status, 200, r.text);
+        assert.deepStrictEqual(r.json.avatars.map((a) => [a.slug, a.url, a.active]), [['ava', 'https://media.test/f/a.png', true]]);
+        assert.ok(communityCalls.every((c) => c.query.type === 'screenshot' && c.act.liveUserId === 3));
     });
 
     await check('offline-screen ranges: most-viewed public VOD and clip per window', async () => {
@@ -295,36 +279,30 @@ async function check(name, fn) {
     });
 
     await check('admin: VOD counts from Media; AI explorer pastes from Community and VODs/clips from Media', async () => {
-        process.env.PASTES_AUTHORITY = 'community';
-        try {
-            raw.prepare('INSERT INTO vod_ai_state (vod_id, ai_overview, ai_transcript_json) VALUES (11, ?, ?)').run('private overview', JSON.stringify([{ start: 0, text: 'hello' }, { start: 2, text: 'there' }]));
-            const st = await call('GET', '/api/admin/stats', 1);
-            assert.strictEqual(st.status, 200, st.text.slice(0, 200));
-            assert.deepStrictEqual(st.json.vods, { total: 4, public: 2 });
-            const ex = await call('GET', '/api/admin/ai/explorer/3', 1);
-            assert.strictEqual(ex.status, 200, ex.text.slice(0, 200));
-            assert.deepStrictEqual(ex.json.pastes.map((p) => p.slug), ['pub', 'hid', 'ava', 'shot'], 'staff see every visibility');
-            const v11 = ex.json.vods.find((v) => v.id === 11);
-            assert.strictEqual(v11.ai_overview, 'private overview');
-            assert.strictEqual(v11.ai_transcript, 'hello there');
-            assert.strictEqual(ex.json.counts.clips, 3);
-            assert.strictEqual((await call('GET', '/api/admin/stats', 7)).status, 403, 'still admin-only');
-        } finally { delete process.env.PASTES_AUTHORITY; }
+        raw.prepare('INSERT INTO vod_ai_state (vod_id, ai_overview, ai_transcript_json) VALUES (11, ?, ?)').run('private overview', JSON.stringify([{ start: 0, text: 'hello' }, { start: 2, text: 'there' }]));
+        const st = await call('GET', '/api/admin/stats', 1);
+        assert.strictEqual(st.status, 200, st.text.slice(0, 200));
+        assert.deepStrictEqual(st.json.vods, { total: 4, public: 2 });
+        const ex = await call('GET', '/api/admin/ai/explorer/3', 1);
+        assert.strictEqual(ex.status, 200, ex.text.slice(0, 200));
+        assert.deepStrictEqual(ex.json.pastes.map((p) => p.slug), ['pub', 'hid', 'ava', 'shot'], 'staff see every visibility');
+        const v11 = ex.json.vods.find((v) => v.id === 11);
+        assert.strictEqual(v11.ai_overview, 'private overview');
+        assert.strictEqual(v11.ai_transcript, 'hello there');
+        assert.strictEqual(ex.json.counts.clips, 3);
+        assert.strictEqual((await call('GET', '/api/admin/stats', 7)).status, 403, 'still admin-only');
     });
 
     await check('home stats: Live counts none of the archive itself; Media and Community fill it in', async () => {
         const local = db._computeHomeStats();
         for (const k of ['vods', 'clips', 'pastes', 'pasteImages', 'pasteText', 'streamHours']) assert.strictEqual(local[k], null, k);
         assert.strictEqual(db.getHomeStatSeries('vods'), null, 'the vods series is Media\'s');
-        process.env.PASTES_AUTHORITY = 'community';
-        try {
-            const s = await lookups.withArchiveStats({ ...local });
-            assert.strictEqual(s.vods, 11);
-            assert.strictEqual(s.streamHours, 2);
-            assert.strictEqual(s.pastes, 44, 'Community owns the paste count');
-            assert.strictEqual(s.pasteImages, 4);
-            assert.strictEqual(s.recent.vods.w, 2);
-        } finally { delete process.env.PASTES_AUTHORITY; }
+        const s = await lookups.withArchiveStats({ ...local });
+        assert.strictEqual(s.vods, 11);
+        assert.strictEqual(s.streamHours, 2);
+        assert.strictEqual(s.pastes, 44, 'Community owns the paste count');
+        assert.strictEqual(s.pasteImages, 4);
+        assert.strictEqual(s.recent.vods.w, 2);
     });
 
     await check('streamer overview job: memories are the signal', async () => {
