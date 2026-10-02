@@ -13,6 +13,7 @@ const express = require('express');
 const db = require('../db/database');
 const { channelSocialLinks, catalog } = require('./links');
 const { preview } = require('./preview');
+const cache = require('openvibe-shared/cache-policy');
 
 const router = express.Router();
 
@@ -47,7 +48,7 @@ function xTimelinePage(req, res) {
     const h = String(req.query.h || '');
     if (!/^[A-Za-z0-9_]{1,15}$/.test(h)) return res.status(400).type('text/plain').send('bad handle');
     res.set('Content-Security-Policy', "default-src 'none'; script-src https://platform.twitter.com; frame-src https://platform.twitter.com https://syndication.twitter.com; img-src https: data:; style-src 'unsafe-inline' https://platform.twitter.com; frame-ancestors 'self'");
-    res.set('Cache-Control', 'public, max-age=3600');
+    res.set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 }));
     res.type('html').send(`<!doctype html><html><head><meta charset="utf-8"><meta name="robots" content="noindex"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>html,body{margin:0;background:transparent;color:#e7e9ea;font:14px system-ui,sans-serif}a{color:#1d9bf0}</style></head>
 <body><a class="twitter-timeline" data-theme="dark" data-chrome="noheader nofooter noborders transparent" data-height="520" href="https://twitter.com/${h}">Posts by @${h}</a>

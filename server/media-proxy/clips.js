@@ -14,6 +14,7 @@ const access = require('./access');
 const purge = require('./purge');
 const { commentCount } = require('./comments');
 const lineage = require('../lineage/resolver');
+const cache = require('openvibe-shared/cache-policy');
 
 const router = express.Router();
 
@@ -221,7 +222,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
             return mediaErr(res, err, 'Failed to get clip');
         }
         if (!clip || !access.canView(req.user, clip)) return clipNotFound(res);
-        if (access.isPrivate(clip)) res.set('Cache-Control', 'private, no-store');
+        if (access.isPrivate(clip)) res.set('Cache-Control', cache.htmlHeaders({ private: true }));
         withUserFields(clip);
 
         // Unique-view tracking (content_views stays in live.db).
@@ -411,7 +412,7 @@ router.get('/:id/job', requireAuth, async (req, res) => {
         try { out = await media.getJob(jobId); } catch (err) { return mediaErr(res, err, 'Job not found'); }
         const job = out && out.job;
         if (!job || job.type !== 'clip.cut' || Number(job.params && job.params.clip_id) !== Number(clip.id)) return res.status(404).json({ error: 'Job not found' });
-        res.set('Cache-Control', 'private, no-store').json({
+        res.set('Cache-Control', cache.htmlHeaders({ private: true })).json({
             job: { id: job.id, status: job.status, attempts: job.attempts, max_attempts: job.max_attempts, error: job.status === 'failed' ? job.error || null : null, run_after: job.run_after || null },
             clip: { id: clip.id, status: clip.status, title: clip.title, duration_seconds: clip.duration_seconds },
         });

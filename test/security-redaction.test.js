@@ -255,7 +255,7 @@ const ok = (name) => { pass++; console.log('  ok -', name); };
     const cacheAt = h[0].indexOf('_ctxCache.get(id)');
     assert(checkAt > 0 && cacheAt > 0, 'both the visibility check and the cache read should be present');
     assert(checkAt < cacheAt, 'the visibility check must run before the cache is read');
-    assert(/private, no-store/.test(h[0]), 'a private VOD context must not be sent with a shareable Cache-Control');
+    assert(/cache\.htmlHeaders\(\{ private: true \}\)/.test(h[0]) && require('openvibe-shared/cache-policy').htmlHeaders({ private: true }) === 'private, no-store', 'a private VOD context must not be sent with a shareable Cache-Control');
     ok('private VOD context is authorised before the cache, and never shareable');
 }
 

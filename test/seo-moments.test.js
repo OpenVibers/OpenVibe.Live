@@ -1,5 +1,5 @@
 /**
- * AI Moments pages (server/seo/seo.js, roadmap §33.4 and §33.8): what the AI made from a stream is
+ * AI Moments pages (server/seo/pages.js, roadmap §33.4 and §33.8): what the AI made from a stream is
  * labelled as AI-made, credited to no person, kept out of search and pointed at its source.
  *
  *   - An auto-clip (Media auto_generated), an AI moment paste (Community origin 'ai') and an
@@ -81,7 +81,7 @@ const recapJson = (sid, ai, vod) => JSON.stringify({
 raw.prepare('INSERT INTO stream_recaps (stream_id, user_id, json, ai) VALUES (?, 3, ?, 1)').run(streamId, recapJson(streamId, true, { id: 10, thumbnail_url: null }));
 raw.prepare('INSERT INTO stream_recaps (stream_id, user_id, json, ai) VALUES (?, 3, ?, 0)').run(quietStream, recapJson(quietStream, false, null));
 
-const seo = require('../server/seo/seo');
+const seo = require('../server/seo');
 
 /** Every node of a JSON-LD graph, depth first. */
 function nodes(value, out = []) {

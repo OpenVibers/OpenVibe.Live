@@ -9,7 +9,7 @@
  * not-found view (showNotFound in public/js/app.js).
  *
  * The pages, mirroring routeFromURL() in public/js/app.js and the routes in public/features.json
- * (server/seo/seo.js renders the crawlable ones first and hands anything it cannot find to the
+ * (server/seo/pages.js renders the crawlable ones first and hands anything it cannot find to the
  * fallback):
  *
  *   /                                                   home
@@ -211,7 +211,7 @@ function spaFallback(sendShell) {
 
 /**
  * Record what another part of the same request just fetched fresh from upstream, so the status
- * check does not ask again: the SEO renderer (server/seo/seo.js) runs first, and when it passes a
+ * check does not ask again: the SEO renderer (server/seo/pages.js) runs first, and when it passes a
  * page on (missing, or private to this visitor) the fallback would otherwise repeat its fetch. An
  * entry that is still fresh, or a lookup in flight, is left alone.
  */

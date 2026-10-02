@@ -1,6 +1,7 @@
 /**
- * SEO for the SPA — per-route server-side meta / Open Graph / Twitter / JSON-LD injection,
- * a no-JS crawlable content snapshot, and a dynamic sitemap. Cached throughout.
+ * SEO for the SPA — per-route server-side meta / Open Graph / Twitter / JSON-LD injection (tags
+ * built with openvibe-shared/seo) and a no-JS crawlable content snapshot. Cached throughout.
+ * The sitemap, robots.txt and llms files are in ./discovery.js.
  *
  * The app is a client-rendered SPA (server/index.js serves public/index.html for every route),
  * so crawlers/AI scrapers see an empty shell. This middleware intercepts the HTML routes we
@@ -13,8 +14,10 @@
  * "AI Moments" below). People's work keeps normal, indexable pages.
  */
 'use strict';
-const fs = require('node:fs');
 const path = require('node:path');
+const seo = require('openvibe-shared/seo');
+const cache = require('openvibe-shared/cache-policy');
+const { esc } = seo;
 const db = require('../db/database');
 const media = require('../media-client');
 let config = null; try { config = require('../config'); } catch { /* */ }
@@ -174,12 +177,6 @@ function abs(url) {
     if (/^https?:\/\//i.test(url)) return url;
     return baseUrl() + (url.startsWith('/') ? url : '/' + url);
 }
-// HTML-escape for text nodes / attribute values.
-function esc(s) {
-    return String(s == null ? '' : s)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
 // Collapse to a clean single-line meta-description-safe string.
 function clean(s, max) {
     let t = String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
@@ -198,10 +195,6 @@ function iso8601Duration(sec) {
     sec = Math.max(0, Math.floor(Number(sec) || 0));
     const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
     return 'PT' + (h ? h + 'H' : '') + (m ? m + 'M' : '') + (s || (!h && !m) ? s + 'S' : '');
-}
-function jsonLd(obj) {
-    // Escape "<" so a value can never break out of the <script> block.
-    return `<script type="application/ld+json">${JSON.stringify(obj).replace(/</g, '\\u003c')}</script>`;
 }
 
 // ── Build the per-route metadata object ────────────────────────────────────────────────────
@@ -306,7 +299,7 @@ async function _channelMeta(username, page = 1) {
         description: desc,
         interactionStatistic: followers ? { '@type': 'InteractionCounter', interactionType: 'https://schema.org/FollowAction', userInteractionCount: followers } : undefined,
     };
-    const profile = { '@context': 'https://schema.org', '@type': 'ProfilePage', name: `${name} (${handle})`, url: abs(canonicalPath), mainEntity: person };
+    const profile = { ...seo.jsonLd.webPage({ type: 'ProfilePage', name: `${name} (${handle})`, url: abs(canonicalPath) }), mainEntity: person };
     const ld = [profile];
     if (vods.length) {
         ld.push({
@@ -375,7 +368,7 @@ function _arenaMeta() {
     const names = fighters.slice(0, 8).map(nameOf).filter(Boolean);
     const title = 'The Arena — Mic-Judged Trash Talk Between Streamers';
     const desc = clean(`Every callout streamers make on mic, judged and ranked. ${names.length ? 'Fighters right now: ' + names.slice(0, 5).join(', ') + '. ' : ''}Chat can hype a beef but never write one.`, 200);
-    const items = moments.slice(0, 10).map((mo, i) => ({ '@type': 'ListItem', position: i + 1, name: clean(mo.text || 'Mic moment', 110) }));
+    const items = moments.slice(0, 10).map((mo) => ({ name: clean(mo.text || 'Mic moment', 110) }));
     const snapshot = _detailSnapshot({
         title: 'The Arena', byline: names.length ? `Fighters: ${names.join(', ')}` : null,
         desc, overview: moments.slice(0, 8).map(mo => mo.text).filter(Boolean).join(' · ') || null,
@@ -385,8 +378,8 @@ function _arenaMeta() {
         title: `${title} | ${SITE_NAME}`, description: desc, canonicalPath: '/arena',
         image: DEFAULT_OG_IMAGE, ogType: 'website', robots: 'index,follow',
         jsonLd: [
-            { '@context': 'https://schema.org', '@type': 'CollectionPage', name: title, url: abs('/arena'), description: desc },
-            ...(items.length ? [{ '@context': 'https://schema.org', '@type': 'ItemList', name: 'Latest mic moments', itemListElement: items }] : []),
+            seo.jsonLd.webPage({ type: 'CollectionPage', name: title, url: abs('/arena'), description: desc }),
+            ...(items.length ? [seo.jsonLd.itemList('Latest mic moments', items)] : []),
             _breadcrumb([{ name: 'Home', url: '/' }, { name: 'The Arena', url: '/arena' }]),
         ],
         snapshot,
@@ -411,8 +404,7 @@ async function _recapMeta(streamId) {
     const selfPath = `/recap/${streamId}`;
     const source = ai && r.vod ? await _sourceMoment(r.vod.id, 0) : null;
     const article = {
-        '@context': 'https://schema.org', '@type': 'Article', headline: title, description: desc, image: [image],
-        datePublished: isoDate(r.stream.ended_at) || undefined,
+        ...seo.jsonLd.article({ headline: title, url: abs(selfPath), description: desc, image: [image], datePublished: isoDate(r.stream.ended_at) || undefined }),
         keywords: ai ? AI_KEYWORDS : undefined,
         isBasedOn: source ? abs(source.path) : undefined,
         publisher: { '@type': 'Organization', name: SITE_NAME, url: baseUrl() },
@@ -497,20 +489,14 @@ async function _homeMeta() {
 
     // Rich JSON-LD: WebSite + one ItemList per section of the snapshot, named by that section's visible
     // heading (structured data names what a visitor sees; the browser check compares them).
-    const itemList = (name, items) => ({ '@context': 'https://schema.org', '@type': 'ItemList', name,
-        itemListElement: items.slice(0, 10).map((it, i) => ({ '@type': 'ListItem', position: i + 1, url: abs(it.url), name: clean(it.name, 110) })) });
+    const itemList = (name, items) => seo.jsonLd.itemList(name, items.slice(0, 10).map((it) => ({ url: abs(it.url), name: clean(it.name, 110) })));
     const lists = [['Live now', liveItems], ['Recent VODs', vodItems], ['Recent clips', clipItems]].filter(([, items]) => items.length).map(([n, items]) => itemList(n, items));
     const jsonLd = [
+        seo.jsonLd.website({ name: SITE_NAME, url: baseUrl(), description: clean(description, 300) }),
         {
-            '@context': 'https://schema.org', '@type': 'WebSite',
-            name: SITE_NAME, url: baseUrl(), description: clean(description, 300),
-            inLanguage: 'en', publisher: { '@id': `${baseUrl()}/#org` },
-        },
-        {
-            '@context': 'https://schema.org', '@type': 'WebApplication',
-            name: SITE_NAME, url: baseUrl(), applicationCategory: 'MultimediaApplication', operatingSystem: 'Any (web browser)',
+            ...seo.jsonLd.softwareApp({ name: SITE_NAME, url: baseUrl(), category: 'MultimediaApplication',
+                description: 'Live streaming you start from a web browser: no OBS, no downloads and no follower minimum.' }),
             browserRequirements: 'A current Chrome, Edge, Firefox or Safari with camera and microphone access',
-            description: 'Live streaming you start from a web browser: no OBS, no downloads and no follower minimum.',
             featureList: [
                 'Go live from the browser with no OBS or other software (WebRTC, under one second of delay)',
                 'No follower, subscriber or past-stream requirement to go live',
@@ -520,21 +506,13 @@ async function _homeMeta() {
                 'Live chat, VODs, clips and restreaming to Twitch, YouTube and Kick',
                 'Open source and community run',
             ],
-            publisher: { '@id': `${baseUrl()}/#org` },
         },
-        {
-            '@context': 'https://schema.org', '@type': 'Organization', '@id': `${baseUrl()}/#org`,
-            name: 'OpenVibe', url: baseUrl(), logo: DEFAULT_OG_IMAGE,
+        // The OpenVibe organisation every site names (openvibe-shared/seo); sameAs is how a search
+        // engine learns these properties are one brand rather than unrelated sites sharing a name.
+        seo.jsonLd.organization({
             description: 'An open-source network of live streaming, media and developer tools, built and run by the people who use it.',
-            // sameAs is how a search engine learns these properties are one brand rather than
-            // unrelated sites that happen to share a name.
-            sameAs: [
-                'https://github.com/OpenVibers',
-                'https://discord.gg/M6MuRUaeJj',
-                'https://openvibe.tools',
-                'https://openvibe.network',
-            ],
-        },
+            sameAs: ['https://github.com/OpenVibers', 'https://discord.gg/M6MuRUaeJj', 'https://openvibe.tools', 'https://openvibe.network', baseUrl()],
+        }),
         ...lists,
     ];
     return { title, description, canonicalPath: '/', image: DEFAULT_OG_IMAGE, ogType: 'website', robots: 'index,follow', jsonLd, snapshot, cacheTtlMs: track.partial ? SHORT_CACHE_MS : undefined };
@@ -556,8 +534,7 @@ async function _listMeta(slug, label, description, itemsFn, { page = 1 } = {}) {
     const selfPath = page > 1 ? `${basePath}?page=${page}` : basePath;
     const pageLabel = page > 1 ? `, page ${page}` : '';
     const list = {
-        '@context': 'https://schema.org', '@type': 'CollectionPage',
-        name: `${label}${pageLabel} — ${SITE_NAME}`, url: abs(selfPath), description,
+        ...seo.jsonLd.webPage({ type: 'CollectionPage', name: `${label}${pageLabel} — ${SITE_NAME}`, url: abs(selfPath), description }),
         mainEntity: {
             '@type': 'ItemList',
             itemListElement: items.map((it, i) => ({ '@type': 'ListItem', position: (page - 1) * 24 + i + 1, url: abs(it.url), name: clean(it.name, 110) })),
@@ -642,11 +619,11 @@ async function _vodMeta(id) {
         url: abs(`/vod/${id}?t=${at(c)}`),
     }));
     const vo = {
-        '@context': 'https://schema.org', '@type': 'VideoObject',
-        name: title, description: desc, thumbnailUrl: [image],
-        uploadDate: isoDate(v.created_at) || undefined,
-        duration: iso8601Duration(v.duration_seconds),
-        contentUrl: abs(canonicalPath), embedUrl: abs(canonicalPath),
+        ...seo.jsonLd.video({
+            name: title, url: abs(canonicalPath), description: desc, thumbnailUrl: [image],
+            uploadDate: isoDate(v.created_at) || undefined, duration: iso8601Duration(v.duration_seconds),
+            contentUrl: abs(canonicalPath), embedUrl: abs(canonicalPath),
+        }),
         interactionStatistic: { '@type': 'InteractionCounter', interactionType: 'https://schema.org/WatchAction', userInteractionCount: Number(v.view_count) || 0 },
         author: _authorLd(author), publisher: { '@type': 'Organization', name: SITE_NAME, url: baseUrl() },
         hasPart: parts.length ? parts : undefined,
@@ -687,11 +664,11 @@ async function _clipMeta(id) {
     const image = c.thumbnail_url ? media.publicUrl(c.thumbnail_url) : media.thumbUrl(`clip-${id}`);
     const canonicalPath = `/clip/${id}`;
     const vo = {
-        '@context': 'https://schema.org', '@type': 'VideoObject',
-        name: title, description: desc, thumbnailUrl: [image],
-        uploadDate: isoDate(c.created_at) || undefined,
-        duration: iso8601Duration(c.duration_seconds),
-        contentUrl: abs(canonicalPath), embedUrl: abs(canonicalPath),
+        ...seo.jsonLd.video({
+            name: title, url: abs(canonicalPath), description: desc, thumbnailUrl: [image],
+            uploadDate: isoDate(c.created_at) || undefined, duration: iso8601Duration(c.duration_seconds),
+            contentUrl: abs(canonicalPath), embedUrl: abs(canonicalPath),
+        }),
         interactionStatistic: { '@type': 'InteractionCounter', interactionType: 'https://schema.org/WatchAction', userInteractionCount: Number(c.view_count) || 0 },
         author: _authorLd(creator), publisher: { '@type': 'Organization', name: SITE_NAME, url: baseUrl() },
     };
@@ -723,11 +700,11 @@ async function _aiClipMeta(c, id) {
     const image = c.thumbnail_url ? media.publicUrl(c.thumbnail_url) : media.thumbUrl(`clip-${id}`);
     const selfPath = `/clip/${id}`;
     const vo = {
-        '@context': 'https://schema.org', '@type': 'VideoObject',
-        name: title, description: desc, thumbnailUrl: [image],
-        uploadDate: isoDate(c.created_at) || undefined,
-        duration: iso8601Duration(c.duration_seconds),
-        contentUrl: abs(selfPath), embedUrl: abs(selfPath),
+        ...seo.jsonLd.video({
+            name: title, url: abs(selfPath), description: desc, thumbnailUrl: [image],
+            uploadDate: isoDate(c.created_at) || undefined, duration: iso8601Duration(c.duration_seconds),
+            contentUrl: abs(selfPath), embedUrl: abs(selfPath),
+        }),
         // No author or creator: a workflow cut this, not a person.
         keywords: AI_KEYWORDS,
         isBasedOn: source ? abs(source.path) : undefined,
@@ -845,10 +822,7 @@ async function _aiPasteMeta(p, slug) {
 }
 
 function _breadcrumb(items) {
-    return {
-        '@context': 'https://schema.org', '@type': 'BreadcrumbList',
-        itemListElement: items.map((it, i) => ({ '@type': 'ListItem', position: i + 1, name: clean(it.name, 90), item: abs(it.url) })),
-    };
+    return seo.jsonLd.breadcrumbs(items.map((it) => ({ name: clean(it.name, 90), url: abs(it.url) })));
 }
 // `extraHtml` is markup the caller built (and escaped) itself.
 function _detailSnapshot({ title, byline, desc, extraHtml, overview, transcript, canonicalPath, watchLabel }) {
@@ -884,32 +858,20 @@ function _base() {
 
 function _headBlock(meta) {
     const canonical = abs(meta.canonicalPath || '/');
+    let tags = seo.headTags({
+        title: meta.title, description: meta.description, canonical,
+        // One English page per URL (the SPA translates in place): the page is its own en and x-default.
+        alternates: [{ hreflang: 'en', href: canonical }, { hreflang: 'x-default', href: canonical }],
+        image: abs(meta.image || DEFAULT_OG_IMAGE), type: meta.ogType || 'website', siteName: SITE_NAME,
+        robots: meta.robots || 'index,follow', jsonLd: meta.jsonLd || [],
+    });
     // og:url is the page itself: a shared AI clip previews as that clip, while its canonical names the source.
-    const ogUrl = meta.ogUrlPath ? abs(meta.ogUrlPath) : canonical;
-    const img = abs(meta.image || DEFAULT_OG_IMAGE);
-    const parts = [
-        PASTES_META,
-        `<title>${esc(meta.title)}</title>`,
-        `<meta name="description" content="${esc(meta.description)}">`,
-        `<meta name="robots" content="${esc(meta.robots || 'index,follow')}">`,
-        `<link rel="canonical" href="${esc(canonical)}">`,
-        `<meta property="og:type" content="${esc(meta.ogType || 'website')}">`,
-        `<meta property="og:site_name" content="${SITE_NAME}">`,
-        `<meta property="og:title" content="${esc(meta.title)}">`,
-        `<meta property="og:description" content="${esc(meta.description)}">`,
-        `<meta property="og:url" content="${esc(ogUrl)}">`,
-        `<meta property="og:image" content="${esc(img)}">`,
-        `<meta property="og:locale" content="en_US">`,
-        `<meta name="twitter:card" content="${meta.video ? 'player' : 'summary_large_image'}">`,
-        `<meta name="twitter:title" content="${esc(meta.title)}">`,
-        `<meta name="twitter:description" content="${esc(meta.description)}">`,
-        `<meta name="twitter:image" content="${esc(img)}">`,
-    ];
+    if (meta.ogUrlPath) tags = tags.replace(`<meta property="og:url" content="${esc(canonical)}">`, `<meta property="og:url" content="${esc(abs(meta.ogUrlPath))}">`);
+    const parts = [PASTES_META, ...tags.split('\n')];
     if (meta.video && meta.video.duration) {
         parts.push(`<meta property="og:video:duration" content="${meta.video.duration}">`);
         parts.push(`<meta property="video:duration" content="${meta.video.duration}">`);
     }
-    for (const l of (meta.jsonLd || [])) parts.push(jsonLd(l));
     if (meta.snapshot) parts.push(NOJS_STYLE);
     return '\n' + parts.map(x => '    ' + x).join('\n') + '\n';
 }
@@ -922,6 +884,11 @@ const NOJS_STYLE = '<noscript><style>#seo-prerender{position:static!important;wi
 const NOJS_NAV = `<nav aria-label="${SITE_NAME}"><a href="/">${SITE_NAME}</a> · <a href="/content">Content</a> · <a href="/moments">AI Moments</a> · <a href="/chat">Chat</a> · <a href="/documentation">API docs</a></nav>`;
 function _prerender(html, snapshot) {
     return html.replace(/(<body[^>]*>)/i, `$1\n<div id="seo-prerender" style="${PRERENDER_STYLE}">${NOJS_NAV}${snapshot}</div>`);
+}
+// The page's one-paragraph summary (openvibe-shared/seo pageSummary): a hidden, machine-readable
+// <section data-ov-summary> after the snapshot, the same on every OpenVibe site.
+function _summary(meta) {
+    return seo.pageSummary({ title: meta.title, summary: meta.description, url: abs(meta.ogUrlPath || meta.canonicalPath || '/') }).html;
 }
 function render(meta, urlPath) {
     let html = _base();
@@ -958,7 +925,7 @@ function render(meta, urlPath) {
     // extractors read it — unlike <noscript>, which many strip), but visually-hidden so users
     // never see a flash, and the SPA removes #seo-prerender on boot (see app.js). Not cloaking:
     // it summarises the same content the SPA renders.
-    if (meta.snapshot) html = _prerender(html, meta.snapshot);
+    if (meta.snapshot) html = _prerender(html, meta.snapshot + _summary(meta));
     return html;
 }
 
@@ -1040,7 +1007,7 @@ async function middleware(req, res, next) {
     // This renderer and the SPA fallback's status check share one wait on upstreams (page-status.js).
     req.ovLookupDeadlineAt = Date.now() + pageStatus.LOOKUP_DEADLINE_MS;
     const send = (html, ttl) => {
-        res.set('Cache-Control', `public, max-age=${Math.max(0, Math.round(ttl / 1000))}`);
+        res.set('Cache-Control', cache.htmlHeaders({ maxAge: Math.max(0, Math.round(ttl / 1000)) }));
         res.set('Content-Security-Policy-Report-Only', assets.cspReportOnly(html));
         res.type('html');
         return res.send(html);
@@ -1064,152 +1031,4 @@ async function middleware(req, res, next) {
     }
 }
 
-// ── Dynamic sitemap.xml (cached ~1h) ────────────────────────────────────────────────────────
-let _sitemap = null, _sitemapAt = 0;
-const SITEMAP_TTL_MS = 60 * 60 * 1000;
-const SITEMAP_CAP = 5000; // per content type
-function _urlTag(loc, lastmod, changefreq, priority) {
-    return `<url><loc>${esc(abs(loc))}</loc>` +
-        (lastmod ? `<lastmod>${esc(lastmod)}</lastmod>` : '') +
-        (changefreq ? `<changefreq>${changefreq}</changefreq>` : '') +
-        (priority ? `<priority>${priority}</priority>` : '') + `</url>`;
-}
-async function buildSitemap() {
-    const urls = [];
-    const seenChannels = new Set();
-    // Media rows carry Live user ids, not names: a channel is named from Live's accounts (banned
-    // accounts are left out).
-    const names = new Map();
-    const channelOf = (row, id) => {
-        if (row.username) return row.username;
-        if (id == null) return null;
-        if (!names.has(id)) {
-            let u = null;
-            try { u = db.getUserById(Number(id)); } catch { u = null; }
-            names.set(id, u && !(u.is_banned === 1 || u.is_banned === true) ? u.username : null);
-        }
-        return names.get(id);
-    };
-    const statics = [['/', 'daily', '1.0'], ['/content', 'hourly', '0.9'], ['/moments', 'hourly', '0.7'], ['/vods', 'hourly', '0.8'], ['/clips', 'hourly', '0.8'], ['/pastes', 'hourly', '0.7'], ['/chat', 'daily', '0.5'], ['/arena', 'hourly', '0.6']];
-    // Rendered docs (server/docs/routes.js): /docs is the index (README.md), the rest by file name.
-    try {
-        for (const f of require('fs').readdirSync(require('path').join(__dirname, '../../docs'))) {
-            if (!f.endsWith('.md')) continue;
-            statics.push([f === 'README.md' ? '/docs' : `/docs/${f.slice(0, -3)}`, 'weekly', '0.5']);
-        }
-    } catch { /* docs folder absent in some deploys */ }
-    for (const [u, cf, pr] of statics) urls.push(_urlTag(u, null, cf, pr));
-    const page = async (fetch, per, cap, emit) => {
-        let off = 0;
-        while (off < cap) {
-            let rows = [];
-            try { rows = (await fetch(per, off)) || []; } catch { break; }
-            for (const r of rows) emit(r);
-            if (rows.length < per) break;
-            off += per;
-        }
-    };
-    await page((l, o) => media.listVods({ limit: l, offset: o }).then(r => r?.vods || []), 200, SITEMAP_CAP, (v) => {
-        urls.push(_urlTag(`/vod/${v.id}`, isoDate(v.created_at), 'weekly', '0.6'));
-        const ch = channelOf(v, v.user_id);
-        if (ch) seenChannels.add(ch);
-    });
-    // People's clips only: AI Moments are noindex and never listed (the /moments
-    // collection above is their indexable form). The filter is checked again per row, so an
-    // upstream that ignores it still cannot put an AI item here.
-    await page((l, o) => media.listClips({ limit: l, offset: o, auto_generated: 0 }).then(r => r?.clips || []), 200, SITEMAP_CAP, (c) => {
-        if (isAiClip(c)) return;
-        urls.push(_urlTag(`/clip/${c.id}`, isoDate(c.created_at), 'weekly', '0.6'));
-        const ch = channelOf({}, c.channel_user_id != null ? c.channel_user_id : c.user_id);
-        if (ch) seenChannels.add(ch);
-    });
-    // No /p/ here: pastes are OpenVibe.Community's, and its sitemap lists them under their canonical URL.
-    for (const u of seenChannels) if (u) urls.push(_urlTag(`/@${u}`, null, 'daily', '0.6'));
-    return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>`;
-}
-async function sitemapHandler(req, res) {
-    if (!_sitemap || (Date.now() - _sitemapAt) > SITEMAP_TTL_MS) {
-        try { _sitemap = await buildSitemap(); _sitemapAt = Date.now(); }
-        catch (e) { console.warn('[SEO] sitemap build failed:', e.message); if (!_sitemap) return res.status(500).end(); }
-    }
-    res.set('Content-Type', 'application/xml; charset=utf-8');
-    res.set('Cache-Control', 'public, max-age=3600');
-    res.send(_sitemap);
-}
-
-// ── /llms.txt: what this site is, for language models and other automated readers ─────────
-// (llmstxt.org). It names the public pages, the JSON behind them, the API docs, and how people's
-// work is kept apart from what the AI derived from it (roadmap 32.4, 33.8).
-const LLMS_DOCS = [
-    ['go-live-in-your-browser', 'Go live from a browser: no OBS, no downloads, no follower minimum (how, devices, questions)'],
-    ['whip', 'WHIP ingest API: publish to a channel from a browser or any WHIP client'],
-    ['broadcasting', 'Going live: WebRTC, WHIP, RTMP (OBS) and the JSMPEG/CLI path'],
-    ['api-tokens', 'Bot and integration tokens (hbt_...) for the API'],
-    ['chat-system', 'Chat features and moderation'],
-    ['vods-and-clips', 'How VODs and clips are recorded and cut'],
-    ['architecture', 'System design and how Live fits the OpenVibe network'],
-];
-function llmsTxt() {
-    const b = baseUrl();
-    const docs = LLMS_DOCS.filter(([name]) => { try { return fs.existsSync(path.join(__dirname, '../../docs', `${name}.md`)); } catch { return false; } });
-    return [
-        `# ${SITE_NAME}`,
-        '',
-        '> Open-source, community-run live streaming. Anyone can go live straight from a web browser, with no OBS, no downloads and no follower, subscriber or equipment requirement: press Go Live, allow camera and microphone, and the stream is live (WebRTC, under a second of delay; Chromebooks, laptops and phones). OBS (RTMP), WHIP and command-line ingest are there for produced shows. Every stream can be recorded as a VOD, clipped and discussed. Part of the OpenVibe network: one account across openvibe.network, openvibe.media, openvibe.community, openvibe.tools and the other OpenVibe sites.',
-        '',
-        '## Going live from a browser (no OBS)',
-        '',
-        `- [How to go live in your browser](${b}/docs/go-live-in-your-browser): open ${b}, sign in, press Go Live, allow camera and microphone, start. No software, no follower minimum.`,
-        `- [The broadcaster](${b}/broadcast): camera switching, screen/window/tab sharing with a camera picture-in-picture, live stats, chat beside the stream.`,
-        `- [Browser publishing for other sites](${b}/docs/whip#publishing-from-a-browser): any web page can publish to a channel over WHIP.`,
-        '',
-        'People\'s work and AI-made material are kept apart everywhere on this site. The Content pages list what people made; AI Moments list what the platform\'s AI derived from streams. Every AI item is labelled AI-generated, credited to no person, marked noindex,follow and made canonical to the source VOD at the moment it came from (/vod/<id>?t=<seconds>). In the JSON feeds, AI items carry "ai": true and an "ai_label".',
-        '',
-        '## What people made',
-        '',
-        `- [Home](${b}/): who is live now, recent VODs and clips`,
-        `- [Content](${b}/content): VODs, the clips people took, and pastes people wrote. JSON: ${b}/api/content/feed (cursor paging; ?type=vods|clips|pastes, ?sort=new|top)`,
-        `- Channel pages: ${b}/@<username>, with the channel's videos in pages (${b}/@<username>?page=2)`,
-        `- VOD pages: ${b}/vod/<id>; a moment in a VOD: ${b}/vod/<id>?t=<seconds>`,
-        `- Clip pages: ${b}/clip/<id>`,
-        '- Pastes live on OpenVibe.Community: https://openvibe.community/p/<slug> (Live\'s /p/<slug> redirects there)',
-        `- [Chat](${b}/chat) and [the Arena](${b}/arena): mic-judged streamer callouts`,
-        '',
-        '## What the AI made (AI Moments)',
-        '',
-        `- [AI Moments](${b}/moments): auto-clips cut when chat reacted, frames the AI picked from streams, and AI-written after-show recaps. JSON: ${b}/api/content/moments`,
-        '- AI Moments pages are noindex; the /moments collection is their indexable form. They are never listed in the sitemap.',
-        '- An AI clip says "AI clip · from <streamer>\'s stream"; it is never presented as something the streamer or a viewer clipped.',
-        '- A streamer can turn AI Moments off for their channel; the AI then makes no new ones from their streams.',
-        '',
-        '## API and docs',
-        '',
-        `- [API docs](${b}/documentation): every feature has an open API (chat, streams, clips, overlays, robots, sound commands)`,
-        `- [Docs index](${b}/docs)`,
-        ...docs.map(([name, what]) => `- [${name}](${b}/docs/${name}): ${what}`),
-        '- Source code: https://github.com/OpenVibers/OpenVibe.Live',
-        '',
-        '## Discovery',
-        '',
-        `- Sitemap (people's work only): ${b}/sitemap.xml`,
-        `- robots.txt: ${b}/robots.txt`,
-        '- The OpenVibe network\'s platform descriptor: https://openvibe.network/.well-known/openvibe',
-        '',
-    ].join('\n');
-}
-function llmsHandler(req, res) {
-    res.set('Content-Type', 'text/plain; charset=utf-8');
-    res.set('Cache-Control', 'public, max-age=3600');
-    res.send(llmsTxt());
-}
-
-// Register: dynamic sitemap and llms.txt first, then the meta middleware. MUST be mounted BEFORE
-// express.static (so it can intercept "/") and before the SPA catch-all.
-function register(app) {
-    app.get('/sitemap.xml', sitemapHandler);
-    app.get('/llms.txt', llmsHandler);
-    app.use(middleware);
-    console.log('[SEO] per-route meta + dynamic sitemap + llms.txt registered');
-}
-
-module.exports = { register, middleware, sitemapHandler, buildSitemap, shellHtml, llmsTxt, _pageMeta, render };
+module.exports = { middleware, shellHtml, _pageMeta, render, SITE_NAME, baseUrl, isAiClip, isoDate };

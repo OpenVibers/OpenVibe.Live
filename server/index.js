@@ -69,6 +69,7 @@ const cookieParser = require('cookie-parser');
 const rateLimit = drill.enabled ? () => (req, res, next) => next() : require('express-rate-limit');
 const config = require('./config');
 const assets = require('./web/assets');
+const cache = require('openvibe-shared/cache-policy');
 // Starts the event-loop delay histogram at boot so the first diagnostics window is complete.
 require('./diagnostics');
 
@@ -506,8 +507,9 @@ console.log(`[Server] /shared: serving ${SHARED_BROWSER_FILES.length} browser fi
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
         // Same deal as /js and /css: only a ?v= that matches the file's content hash is immutable.
-        if (req.query.v && req.query.v === assets.hashOf('/shared/' + fileName)) assets.setImmutable(res);
-        else res.setHeader('Cache-Control', 'public, max-age=300');
+        const hashed = Boolean(req.query.v) && req.query.v === assets.hashOf('/shared/' + fileName);
+        res.setHeader('Cache-Control', cache.assetHeaders(req.originalUrl, { hashed }));
+        if (hashed) res.setHeader('CDN-Cache-Control', cache.IMMUTABLE);
         res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
         res.sendFile(filePath, (err) => {
             if (err && !res.headersSent) {
@@ -544,7 +546,7 @@ app.use('/fragments', assets.versionedStatic('/fragments'), express.static(path.
 // Pastes live on openvibe.community: /p/<slug> 301s there, and it is mounted
 // before SEO so crawlers and people get the same redirect and Community is the one canonical page.
 require('./web/paste-handover').register(app);
-try { require('./seo/seo').register(app); } catch (e) { console.warn('[SEO] not registered:', e.message); }
+try { require('./seo').register(app); } catch (e) { console.warn('[SEO] not registered:', e.message); }
 // Standalone HTML pages (popout chat, kiosk, legal, OBS overlays…) go through the same asset rewrite
 // as the SPA shell, so their script and stylesheet URLs can never drift out of date again.
 app.use((req, res, next) => {
@@ -1032,10 +1034,10 @@ app.get('/banned', (req, res) => {
 // paste or stream, or a private item this visitor may not see) gets it with a 404 status, so
 // search engines and monitors see a real 404; the client renders its not-found view either way.
 // API paths still get the JSON 404. See server/web/page-status.js for the page list.
-// The shell comes from server/seo/seo.js shellHtml: a 404 is noindex with no canonical (the shell's
+// The shell comes from server/seo/pages.js shellHtml: a 404 is noindex with no canonical (the shell's
 // own head describes the home page), and no other page claims the home page as its canonical.
 let _shellHtml = null;
-try { _shellHtml = require('./seo/seo').shellHtml; } catch { _shellHtml = null; }
+try { _shellHtml = require('./seo').shellHtml; } catch { _shellHtml = null; }
 function sendShell(res, urlPath) {
     let html = null;
     try { html = _shellHtml ? _shellHtml(urlPath, res.statusCode) : null; } catch { html = null; }

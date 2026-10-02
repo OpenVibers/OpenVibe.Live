@@ -11,7 +11,7 @@ Every stream that ran at least 8 minutes gets a report a couple of minutes after
 - **The room, minute by minute** — viewer curve with chat bars, peak marker.
 - Announced in the channel's chat room when it lands. Stored in `stream_recaps` (one JSON row per
   stream). Owner/admin can rebuild it (`POST /api/recap/:id/regenerate`).
-- Crawlable: `/recap/:id` gets OG/Twitter meta + Article JSON-LD (`server/seo/seo.js`), so a
+- Crawlable: `/recap/:id` gets OG/Twitter meta + Article JSON-LD (`server/seo/pages.js`), so a
   shared link previews with the headline and the VOD thumbnail.
 
 API: `GET /api/recap/:streamId` (builds on first view if missing), `GET /api/recap/channel/:username`.

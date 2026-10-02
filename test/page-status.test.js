@@ -85,7 +85,7 @@ pastesClient.listPastes = async () => ({ pastes: [] });
 const assets = require('../server/web/assets');
 const pageStatus = require('../server/web/page-status');
 const app = express();
-const seo = require('../server/seo/seo');
+const seo = require('../server/seo');
 seo.register(app);
 // As server/index.js sendShell: the shell from seo.shellHtml (a 404 is noindex, no canonical).
 app.get('*', pageStatus.spaFallback((res, urlPath) => {

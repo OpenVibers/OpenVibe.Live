@@ -247,7 +247,7 @@ async function check(name, fn) {
     });
 
     await check('server-rendered /vod/:id and /clip/:id: private is the unknown-id fall-through', async () => {
-        const seo = require('../server/seo/seo');
+        const seo = require('../server/seo');
         assert.strictEqual(await seo._pageMeta('/vod/101'), null);
         assert.strictEqual(await seo._pageMeta('/vod/102'), null);
         assert.strictEqual(await seo._pageMeta('/clip/201'), null);

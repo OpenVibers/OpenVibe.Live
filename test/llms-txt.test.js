@@ -1,5 +1,5 @@
 /**
- * /llms.txt (server/seo/seo.js, roadmap 32.4/33.8): plain text that tells language models and other
+ * /llms.txt (server/seo/discovery.js, roadmap 32.4/33.8): plain text that tells language models and other
  * automated readers what OpenVibe.Live is, where its public pages and their JSON are, where the API
  * docs are, and how people's work is kept apart from what the AI derived. Every docs page it links
  * must exist, and it must answer before the SPA fallback (never the HTML shell).
@@ -23,7 +23,7 @@ console.error = () => {};
 
 require('../server/db/database').initDb();
 const express = require('express');
-const seo = require('../server/seo/seo');
+const seo = require('../server/seo');
 const app = express();
 seo.register(app);
 app.get('*', (req, res) => res.status(404).type('html').send('<html>shell</html>'));

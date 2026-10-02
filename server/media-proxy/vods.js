@@ -18,6 +18,7 @@ const permissions = require('../auth/permissions');
 const access = require('./access');
 const purge = require('./purge');
 const { commentCount } = require('./comments');
+const cache = require('openvibe-shared/cache-policy');
 
 const router = express.Router();
 
@@ -417,7 +418,7 @@ router.get('/:id/context', optionalAuth, async (req, res) => {
         const isPrivate = access.isPrivate(vod);
         if (!access.canView(req.user, vod)) return vodNotFound(res);
         // A private VOD's context must not sit in a shared cache anywhere on the way back either.
-        const cacheHeader = isPrivate ? 'private, no-store' : 'public, max-age=60';
+        const cacheHeader = isPrivate ? cache.htmlHeaders({ private: true }) : 'public, max-age=60';
 
         const hit = _ctxCache.get(id);
         if (hit && Date.now() - hit.at < 120000) { res.set('Cache-Control', cacheHeader); return res.json(hit.data); }
@@ -469,7 +470,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
         // carrying the title and username, which is what anonymous callers used to get.
         const vod = await loadVisibleVod(req, res, req.params.id);
         if (!vod) return;
-        if (access.isPrivate(vod)) res.set('Cache-Control', 'private, no-store');
+        if (access.isPrivate(vod)) res.set('Cache-Control', cache.htmlHeaders({ private: true }));
         withUserFields(vod);
 
         // Enrich with local stream details for chat replay.

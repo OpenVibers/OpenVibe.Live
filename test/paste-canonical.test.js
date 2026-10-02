@@ -5,7 +5,7 @@
  * The handover used to be mounted after the SEO middleware, so an HTML navigation (every crawler)
  * got Live's own rendered copy with a canonical on openvibe.live, and only a non-HTML client got
  * the 301: two self-canonical pages and a different answer for people and machines. Checked here:
- *   - server/index.js mounts server/web/paste-handover.js before server/seo/seo.js;
+ *   - server/index.js mounts server/web/paste-handover.js before server/seo/pages.js;
  *   - /p/<slug> answers 301 to Community whatever the Accept header or cookie, and /p/<slug>/raw
  *     302s to Community's raw text (not Media's);
  *   - Live's sitemap lists no /p/ URL, and the paste links Live renders, server-side and in the
@@ -44,7 +44,7 @@ pastesClient.listPastes = async (q = {}) => ({ pastes: (Number(q.offset) || 0) ?
 const express = require('express');
 const app = express();
 require('../server/web/paste-handover').register(app);
-const seo = require('../server/seo/seo');
+const seo = require('../server/seo');
 seo.register(app);
 app.get('*', (req, res) => res.status(200).type('html').send('<html>shell</html>'));
 
@@ -74,7 +74,7 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
     await check('server/index.js mounts the paste handover before the SEO middleware', () => {
         const src = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
         const handover = src.indexOf("require('./web/paste-handover').register(app)");
-        const seoAt = src.indexOf("require('./seo/seo').register(app)");
+        const seoAt = src.indexOf("require('./seo').register(app)");
         assert.ok(handover > 0, 'the handover is mounted');
         assert.ok(seoAt > 0, 'SEO is mounted');
         assert.ok(handover < seoAt, 'handover first');

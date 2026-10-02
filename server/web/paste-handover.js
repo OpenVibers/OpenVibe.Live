@@ -4,7 +4,7 @@
  * so links in chat, search results and clipboards survive. Every paste link Live renders already
  * points at Community, so this only answers old links.
  *
- * Mounted BEFORE the SEO middleware (server/seo/seo.js). It used to be mounted after it, so every
+ * Mounted BEFORE the SEO middleware (server/seo/pages.js). It used to be mounted after it, so every
  * HTML navigation, crawlers included, got Live's own server-rendered copy of the paste, with a
  * canonical on openvibe.live, while only non-HTML clients got the redirect: two indexable pages,
  * each naming itself canonical, and a different answer for people and machines. Now every client
