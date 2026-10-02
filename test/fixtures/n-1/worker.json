@@ -1,7 +1,7 @@
 {
  "service": "live",
- "release": "9437263f09b5f742aa4f8a5f0a5741029752d744",
- "recorded_at": "2026-10-02T16:12:35.016Z",
+ "release": "500863f529030becf0ebe6adcb593a70eb877f4c",
+ "recorded_at": "2026-10-02T23:10:41.484Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "user_version": 0,
  "schema": [
@@ -240,31 +240,31 @@
   "schema_migrations": [
    {
     "id": "001_vibes_decimal_to_bits",
-    "applied_at": "2026-10-02 16:12:28",
+    "applied_at": "2026-10-02 23:10:37",
     "mode": "adopted",
-    "duration_ms": 1
+    "duration_ms": 0
    },
    {
     "id": "002_pastes_ai_columns",
-    "applied_at": "2026-10-02 16:12:28",
+    "applied_at": "2026-10-02 23:10:37",
     "mode": "applied",
-    "duration_ms": 8
+    "duration_ms": 6
    },
    {
     "id": "004_hot_path_indexes",
-    "applied_at": "2026-10-02 16:12:28",
+    "applied_at": "2026-10-02 23:10:37",
     "mode": "applied",
-    "duration_ms": 1
+    "duration_ms": 0
    },
    {
     "id": "005_drop_chat_staged_tables",
-    "applied_at": "2026-10-02 16:12:28",
+    "applied_at": "2026-10-02 23:10:37",
     "mode": "adopted",
     "duration_ms": 1
    },
    {
     "id": "006_drop_emotes",
-    "applied_at": "2026-10-02 16:12:28",
+    "applied_at": "2026-10-02 23:10:37",
     "mode": "adopted",
     "duration_ms": 0
    }
