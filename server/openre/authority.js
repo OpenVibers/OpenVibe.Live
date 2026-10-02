@@ -5,8 +5,7 @@
  * 'openre' means OpenRe.Stream ingests this slot's RTMP: Live's RTMP server refuses the slot's
  * key (so a stream can never be ingested twice), the Go Live UI shows OpenRe's ingest URL and
  * rotates OpenRe's key, and the slot's sessions reach `streams` through the mirror (mirror.js).
- * Only RTMP moves (OPENRE_PROTOCOLS); WHIP, browser/WebRTC and JSMPEG stay on Live until
- * OpenRe carries them.
+ * Only RTMP moves (OPENRE_PROTOCOLS). WHIP and JSMPEG still publish through Live.
  *
  * Switch off = zero behaviour change: every helper here returns what Live did before unless the
  * slot says 'openre' AND OpenRe is configured (openre-client enabled()).
@@ -33,9 +32,9 @@ function slotIsOpenre(id) {
 }
 
 /**
- * Live's RTMP publish handler asks this before accepting a key. A slot key is refused when its slot
- * is on OpenRe; a personal key (users.stream_key, no slot) is refused when any of the user's slots is,
- * because Live would attach it to the user's live rows and push the user's destinations twice.
+ * Live's publish handlers ask this before accepting a key. Only RTMP is refused when its slot
+ * is on OpenRe; an RTMP personal key (users.stream_key, no slot) is refused when any of the user's
+ * slots is on OpenRe, because Live would attach it to the user's live rows and push destinations twice.
  */
 function refusesLiveIngest({ managedStream, user = null, protocol = 'rtmp' }) {
     try {

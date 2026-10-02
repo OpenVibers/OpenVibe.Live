@@ -6,6 +6,7 @@
 // Events deliveries, applied once, in revision order) become ordinary `streams` rows.
 
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -149,7 +150,15 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     assert.strictEqual(switched.ingest_authority, 'openre');
     assert.strictEqual(db.getManagedStreamByStreamKey('livekey701aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), undefined, "Live's old key is rotated away");
     assert.strictEqual(authority.refusesLiveIngest({ managedStream: switched }), true, "Live's RTMP refuses the slot");
-    assert.strictEqual(authority.refusesLiveIngest({ managedStream: switched, protocol: 'whip' }), false, 'only RTMP moved');
+    assert.strictEqual(authority.refusesLiveIngest({ managedStream: switched, protocol: 'whip' }), false, 'only the protocols OpenRe carries are refused');
+    assert.deepStrictEqual([...authority.OPENRE_PROTOCOLS], ['rtmp']);
+    for (const protocol of ['rtmp', 'webrtc', 'jsmpeg']) {
+        const refused = protocol === 'rtmp';
+        assert.strictEqual(authority.refusesLiveIngest({ managedStream: switched, protocol }), refused, `${protocol}: slot refusal matches OpenRe support`);
+        assert.strictEqual(authority.refusesLiveIngest({ managedStream: null, user: { id: 601 }, protocol }), refused, `${protocol}: personal key refusal matches OpenRe support`);
+        assert.strictEqual(authority.refusesLiveIngest({ managedStream: db.getManagedStreamById(703), protocol }), false, `${protocol}: a live slot is admitted`);
+        assert.strictEqual(authority.refusesLiveIngest({ managedStream: null, user: { id: 602 }, protocol }), false, `${protocol}: a personal key without an OpenRe slot is admitted`);
+    }
     assert.strictEqual(authority.refusesLiveIngest({ managedStream: null, user: { id: 602 } }), false, 'personal keys of users without an OpenRe slot stay on Live');
     assert.strictEqual(authority.refusesLiveIngest({ managedStream: null, user: { id: 601 } }), true, 'a personal key cannot double-ingest a switched channel');
     const shown = authority.serializeSlot(switched);
@@ -217,6 +226,84 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     delete noId.event_id;
     assert.strictEqual(await deliver(base, noId), 204);
 
+    // ── WHIP and JSMPEG publishers ───────────────────────────
+    d.prepare("INSERT INTO users (id, username, display_name, password_hash, stream_key) VALUES (603, 'browsercaster', 'BrowserCaster', 'x', 'personalkey603')").run();
+    const whipKey = () => {
+        let key;
+        do { key = crypto.randomBytes(16).toString('hex'); } while (!/[a-f]/.test(key));
+        return key;
+    };
+    const openReWhipKey = whipKey();
+    const liveWhipKey = whipKey();
+    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key, ingest_authority) VALUES (704, 603, 'WHIP on OpenRe', 'webrtc', ?, 'openre')").run(openReWhipKey);
+    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key) VALUES (705, 602, 'WHIP on Live', 'webrtc', ?)").run(liveWhipKey);
+    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key, ingest_authority) VALUES (706, 603, 'JSMPEG on OpenRe', 'jsmpeg', 'jsmpegopenre706', 'openre')").run();
+    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key) VALUES (707, 602, 'JSMPEG on Live', 'jsmpeg', 'jsmpeglive707')").run();
+    process.env.OPENRE_URL = stubUrl;
+    require('../server/openre/openre-client')._reset();
+    const whip = require('../server/streaming/whip-handler');
+    const publish = async (id, { bearer, key } = {}) => {
+        const out = {};
+        const res = { status(c) { out.status = c; return this; }, set(k, v) { out[String(k).toLowerCase()] = v; return this; }, json(b) { out.body = b; return this; } };
+        const req = { params: { streamId: String(id) }, headers: bearer ? { authorization: `Bearer ${bearer}` } : {}, query: key ? { key } : {}, body: 'v=0\r\n' };
+        await whip.handleWhipPost(req, res);
+        return out;
+    };
+    for (const [label, call] of [
+        ['key in the path', () => publish(openReWhipKey)],
+        ['slot id + key', () => publish(704, { key: openReWhipKey })],
+    ]) {
+        const r = await call();
+        assert.ok([200, 201, 503].includes(r.status), `WHIP ${label} stays on Live: ${r.status}`);
+    }
+    const admitted = await publish(liveWhipKey);
+    assert.notStrictEqual(admitted.status, 401, 'a Live slot is still admitted (here it reaches the SFU check)');
+    for (const r of [admitted, await publish(705, { key: liveWhipKey })]) assert.ok([200, 201, 503].includes(r.status), `live slot: ${r.status}`);
+    // Switching RTMP authority leaves an existing WHIP slot on Live.
+    d.prepare("UPDATE managed_streams SET ingest_authority = 'openre' WHERE id = 705").run();
+    assert.ok([200, 201, 503].includes((await publish(liveWhipKey)).status), 'WHIP stays on Live after the switch');
+    d.prepare("UPDATE managed_streams SET ingest_authority = 'live' WHERE id = 705").run();
+
+    const relay = require('../server/streaming/jsmpeg-relay');
+    relay.nextVideoPort = 29710 + (process.pid % 1000) * 4;
+    relay.nextAudioPort = relay.nextVideoPort + 1;
+    const post = (port, key) => new Promise((resolve, reject) => {
+        const r = http.request({ host: '127.0.0.1', port, method: 'POST', path: `/${key}`, agent: false }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
+        r.on('error', reject);
+        r.end(Buffer.from('mpeg'));
+    });
+    const openreCh = relay.createChannel('jsmpegopenre706');
+    const liveCh = relay.createChannel('jsmpeglive707');
+    const personalCh = relay.createChannel('personalkey601');
+    await new Promise(r => setTimeout(r, 200));
+    assert.strictEqual(await post(openreCh.videoPort, 'jsmpegopenre706'), 200, 'JSMPEG video stays on Live');
+    assert.strictEqual(await post(openreCh.audioPort, 'jsmpegopenre706'), 200, 'JSMPEG audio stays on Live');
+    assert.strictEqual(await post(personalCh.videoPort, 'personalkey601'), 200, "JSMPEG: the owner's personal key stays on Live");
+    assert.strictEqual(await post(liveCh.videoPort, 'jsmpeglive707'), 200, 'JSMPEG: a Live slot is admitted');
+    assert.strictEqual(await post(liveCh.audioPort, 'jsmpeglive707'), 200);
+    relay.closeAll();
+
+    // OPENRE_URL unset: nothing is refused, for any protocol.
+    delete process.env.OPENRE_URL;
+    for (const protocol of ['rtmp', 'webrtc', 'jsmpeg']) {
+        assert.strictEqual(authority.refusesLiveIngest({ managedStream: db.getManagedStreamById(704), protocol }), false);
+        assert.strictEqual(authority.refusesLiveIngest({ managedStream: null, user: { id: 603 }, protocol }), false);
+    }
+    assert.notStrictEqual((await publish(openReWhipKey)).status, 401, 'without OPENRE_URL the WHIP slot is admitted again');
+    process.env.OPENRE_URL = stubUrl;
+    require('../server/openre/openre-client')._reset();
+
+    // The admin status lists the protocols OpenRe carries.
+    const statusApp = express();
+    // routes.js takes requireAdmin at load: admit the test caller before the router is first required.
+    require('../server/auth/auth').requireAdmin = (req, res, next) => { req.user = { id: 1, username: 'admin', role: 'admin' }; next(); };
+    statusApp.use('/api/admin/openre', require('../server/openre/routes'));
+    const statusServer = await new Promise(r => { const s = statusApp.listen(0, '127.0.0.1', () => r(s)); });
+    const statusRes = await fetch(`http://127.0.0.1:${statusServer.address().port}/api/admin/openre/status`);
+    if (statusRes.status === 200) assert.deepStrictEqual((await statusRes.json()).protocols, ['rtmp']);
+    else assert.fail(`status route answered ${statusRes.status}`);
+    statusServer.close();
+
     // ── Rollback ─────────────────────────────────────────────
     assert.strictEqual((await authority.setAuthority(701, 'live')).status, 200);
     const back = db.getManagedStreamById(701);
@@ -230,5 +317,5 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     mirror._reset();
     server.close();
     stub.close();
-    console.log('✅ openre switch: off = unchanged, switch/rotation, RTMP refusal, signed mirror (once, ordered), reconcile, rollback');
+    console.log('✅ openre switch: off = unchanged, switch/rotation, RTMP refusal, WHIP/JSMPEG stay on Live, signed mirror (once, ordered), reconcile, rollback');
 })().catch((err) => { console.error(err); process.exit(1); });

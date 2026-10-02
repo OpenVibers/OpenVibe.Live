@@ -22,6 +22,24 @@ function matchesStreamPath(url, streamKey) {
     }
 }
 
+/**
+ * Consult the per-protocol ingest authority for each publish. OpenRe currently ingests RTMP
+ * only, so JSMPEG continues to publish through Live after an RTMP switch.
+ */
+function refusedByOpenre(streamKey) {
+    try {
+        const db = require('../db/database');
+        const user = db.getUserByStreamKey(streamKey);
+        const managedStream = user ? null : db.getManagedStreamByStreamKey(streamKey);
+        if (!user && !managedStream) return false;
+        if (!require('../openre/authority').refusesLiveIngest({ managedStream, user, protocol: 'jsmpeg' })) return false;
+        console.log(`[JSMPEG] Rejected: ${managedStream ? `slot ${managedStream.id}` : `personal key of ${user.username}`} is ingested by OpenRe`);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 class JSMPEGRelay {
     constructor() {
         /** @type {Map<string, { videoWss: WebSocket.Server, audioWss: WebSocket.Server, videoServer: http.Server, audioServer: http.Server }>} */
@@ -54,7 +72,7 @@ class JSMPEGRelay {
         const videoServer = http.createServer((req, res) => {
             // FFmpeg sends MPEG1 data via HTTP POST
             req.socket.setNoDelay(true);
-            if (req.method === 'POST' && matchesStreamPath(req.url, streamKey)) {
+            if (req.method === 'POST' && matchesStreamPath(req.url, streamKey) && !refusedByOpenre(streamKey)) {
                 req.on('data', (chunk) => {
                     // Broadcast to WebSocket viewers
                     if (videoWss.clients.size > 0) {
@@ -99,7 +117,7 @@ class JSMPEGRelay {
         const audioWss = new WebSocket.Server({ noServer: true, perMessageDeflate: false, maxPayload: 64 * 1024 });
         const audioServer = http.createServer((req, res) => {
             req.socket.setNoDelay(true);
-            if (req.method === 'POST' && matchesStreamPath(req.url, streamKey)) {
+            if (req.method === 'POST' && matchesStreamPath(req.url, streamKey) && !refusedByOpenre(streamKey)) {
                 req.on('data', (chunk) => {
                     // Broadcast to WebSocket viewers
                     if (audioWss.clients.size > 0) {

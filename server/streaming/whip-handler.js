@@ -119,6 +119,18 @@ function sendWhipError(res, status, code, message) {
         .json({ error: message, error_code: code });
 }
 
+/**
+ * Consult the per-protocol ingest authority before accepting a publisher. OpenRe currently
+ * ingests RTMP only, so WHIP continues to publish through Live after an RTMP switch.
+ */
+function refusedByOpenre(slotId, userId) {
+    const managedStream = slotId ? db.getManagedStreamById(slotId) : null;
+    const user = managedStream || !userId ? null : db.getUserById(userId);
+    if (!require('../openre/authority').refusesLiveIngest({ managedStream, user, protocol: 'webrtc' })) return false;
+    console.log(`[WHIP] Rejected: ${managedStream ? `slot ${managedStream.id}` : `personal key of user ${userId}`} is ingested by OpenRe`);
+    return true;
+}
+
 function logWhipStage(stage, streamId, info = {}) {
     const details = Object.entries(info)
         .filter(([, value]) => value !== undefined && value !== null)
@@ -670,6 +682,11 @@ async function handleWhipPost(req, res) {
                 return sendWhipError(res, 401, 'bearer_mismatch', 'Bearer token does not match stream key');
             }
 
+            if (refusedByOpenre(managedStream.id, managedStream.user_id)) {
+                logWhipStage('auth_key_fail', pathParam, { reason: 'stream_key_not_found' });
+                return sendWhipError(res, 401, 'invalid_stream_key', 'Stream key not recognized');
+            }
+
             userId = managedStream.user_id;
             logWhipStage('auth_key', pathParam, { user_id: userId, managed_stream_id: managedStream.id });
 
@@ -736,6 +753,9 @@ async function handleWhipPost(req, res) {
                             logWhipStage('auth_slot_fail', pathParam, { reason: 'not_slot_owner', user_id: user.id, slot_id: slotId });
                             return sendWhipError(res, 403, 'not_slot_owner', 'This stream slot belongs to another account');
                         }
+                        if (refusedByOpenre(managedStream.id, user.id)) {
+                            return sendWhipError(res, 401, 'invalid_key', 'Stream key or token does not match');
+                        }
                         userId = user.id;
                         // Find live session for this slot owned by this user
                         const liveSessions = db.getLiveStreamsByUserId(user.id) || [];
@@ -758,6 +778,9 @@ async function handleWhipPost(req, res) {
             }
 
             if (!stream) {
+                if (refusedByOpenre(managedStream.id, managedStream.user_id)) {
+                    return sendWhipError(res, 401, 'invalid_key', 'Stream key does not match this slot');
+                }
                 userId = managedStream.user_id;
                 logWhipStage('auth_slot_key', pathParam, { user_id: userId, slot_id: slotId });
 
@@ -813,6 +836,9 @@ async function handleWhipPost(req, res) {
             }
             if (!stream.is_live) return sendWhipError(res, 409, 'stream_not_live', 'Stream is not live — go live first');
             if (stream.protocol !== 'webrtc') return sendWhipError(res, 409, 'wrong_protocol', 'Stream protocol must be webrtc for WHIP');
+            if (refusedByOpenre(stream.managed_stream_id, user.id)) {
+                return sendWhipError(res, 401, 'invalid_token', 'Invalid or expired token');
+            }
             logWhipStage('auth_jwt', pathParam, { user_id: userId });
         }
 
@@ -844,6 +870,10 @@ async function handleWhipPost(req, res) {
 
         const roomId = `stream-${streamId}`;
         const room = await webrtcSFU.getOrCreateRoom(roomId);
+        // Check authority again after room creation in case supported ingest protocols change.
+        if (refusedByOpenre(stream.managed_stream_id, userId)) {
+            return sendWhipError(res, 401, 'invalid_stream_key', 'Stream key not recognized');
+        }
         logWhipStage('room_creation', streamId, { roomId });
 
         const resourceId = generateResourceId();
@@ -897,6 +927,10 @@ async function handleWhipPost(req, res) {
             return sendWhipError(res, 502, 'dtls_negotiation_failed', 'DTLS negotiation failed');
         }
         logWhipStage('dtls_connect', streamId, { transportId: transportInfo.id });
+        if (refusedByOpenre(stream.managed_stream_id, userId)) {
+            cleanupSession(resourceId);
+            return sendWhipError(res, 401, 'invalid_stream_key', 'Stream key not recognized');
+        }
 
         const routerCaps = room.router.rtpCapabilities;
         const producersByKind = {};
