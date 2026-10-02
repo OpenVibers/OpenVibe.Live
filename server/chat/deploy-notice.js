@@ -19,8 +19,8 @@
 //     (server/events/release-events.js), queued in the SAME transaction that records the commits
 //     as announced (and, without the Chat service, stores the chat row). OpenVibe.Chat consumes
 //     that event and folds the card by head commit (compatibility register C-84, proven on the
-//     2026-09-23 22:14 UTC deploy), so with Live's outbox on the bridge hop is not used; it stays
-//     only as the fallback while Events publishing is off.
+//     2026-09-23 22:14 UTC deploy), so Live hands Chat nothing
+//     directly.
 // ═══════════════════════════════════════════════════════════════
 const { execFile } = require('child_process');
 const path = require('path');
@@ -110,9 +110,8 @@ async function announce({ db, chatServer, log = console }) {
 
     // CHAT_AUTHORITY=chat: Live still decides what shipped; OpenVibe.Chat stores the rolling
     // message and shows it (its own copy of this module). It learns the commits from the
-    // live.release.deployed event; only with Events publishing off are they handed over the bridge.
+    // live.release.deployed event.
     if (chatServer && chatServer.remote) {
-        if (!outbox) chatServer.deployNotice(commits);
         try { inTransaction(recordDeploy); } catch (err) { log.warn('[Deploy notice] not recorded:', err.message); return { announced: commits.length, event_id: null }; }
         if (outbox) outbox.kick();
         return { announced: commits.length, event_id: eventId };

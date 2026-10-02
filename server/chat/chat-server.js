@@ -2437,7 +2437,7 @@ class ChatServer {
      * Donation / goal alert sounds are OpenVibe.Chat's now (roadmap T3): the mapping lives on
      * channel_moderation_settings, which Chat owns, and Chat resolves it from its own row and
      * broadcasts the clip. When Live runs the chat server itself (rollback / dev) there is no Chat to
-     * ask, so this is a no-op; server/monetization/alerts.js calls the chat-remote proxy's op instead.
+     * ask, so this is a no-op; Chat plays them itself.
      */
     playAlertSound() { /* Chat plays alerts; see server/monetization/alerts.js */ }
 
@@ -2509,6 +2509,37 @@ class ChatServer {
     }
 }
 
-// CHAT_AUTHORITY=chat: OpenVibe.Chat runs the chat server; Live's modules get a proxy with the same
-// methods that hands every call to it (chat-remote.js). Default: Live runs chat itself.
-module.exports = require('./chat-authority').isRemote() ? require('./chat-remote').create(ChatServer) : new ChatServer();
+/**
+ * CHAT_AUTHORITY=chat: OpenVibe.Chat runs the chat server. Live's modules still call this object, so it
+ * keeps every method but never listens, serves or sends anything to Chat: its sockets set is empty, so
+ * pushes reach no one, and a /ws/chat upgrade that still lands here is told to retry.
+ */
+class RemoteChatServer extends ChatServer {
+    constructor() {
+        super();
+        this.remote = true;
+    }
+
+    init() {
+        console.log('[Chat] CHAT_AUTHORITY=chat — chat runs in OpenVibe.Chat');
+        return null;
+    }
+
+    handleUpgrade(req, socket) {
+        // nginx sends /ws/chat to Chat; a socket that still lands here is told to retry.
+        try { socket.write('HTTP/1.1 503 Service Unavailable\r\nRetry-After: 2\r\nConnection: close\r\n\r\n'); } catch { /* */ }
+        try { socket.destroy(); } catch { /* */ }
+        return true;
+    }
+
+    close() { /* nothing was started */ }
+
+    /** The anon number for an address (Network's unified resolve, else Live's table) — for Chat. */
+    async resolveAnon(ip) {
+        const key = this.normalizeIp(ip);
+        const num = await this._resolveUnifiedAnonNum(key);
+        return { anon_number: num, first_seen: db.getAnonFirstSeen(key) };
+    }
+}
+
+module.exports = require('./chat-authority').isRemote() ? new RemoteChatServer() : new ChatServer();

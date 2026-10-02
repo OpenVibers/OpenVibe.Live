@@ -303,57 +303,37 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.strictEqual(db.getChatMessageById(900001), undefined);
         assert.ok(db.getUserById(viewer), 'users are never touched');
 
-        // 10. The proxy Live's modules get: ordered bridge calls, placeholders, presence.
+        // 10. The server Live's modules get in this mode is inert: nothing goes to Chat.
         const chatServer = require('../server/chat/chat-server');
         assert.strictEqual(chatServer.remote, true);
-        chatServer.init();
+        assert.strictEqual(chatServer.init(), null);
         const before = d.prepare('SELECT COUNT(*) AS n FROM chat_messages').get().n;
         const saved = db.saveChatMessage({ stream_id: streamId, user_id: null, username: 'Bot', message: 'beep', message_type: 'chat', source_platform: 'ai' });
-        assert.ok(saved.lastInsertRowid <= -(2 ** 40), 'a placeholder id');
-        assert.strictEqual(d.prepare('SELECT COUNT(*) AS n FROM chat_messages').get().n, before, 'inserts happen in Chat, not here');
-        assert.strictEqual(d.prepare('SELECT COUNT(*) AS n FROM chat_bridge_outbox').get().n, 1, 'kept until Chat acknowledges');
+        assert.ok(saved.lastInsertRowid > 0, 'a plain local insert, not a placeholder');
+        assert.strictEqual(d.prepare('SELECT COUNT(*) AS n FROM chat_messages').get().n, before + 1);
         chatServer.broadcastToStream(streamId, { type: 'chat', id: saved.lastInsertRowid, message: 'beep' });
-        chatServer.synthesizeAndBroadcastTTS(streamId, 'Bot', 'beep', null, null, 'aibot:bot', null, `m${saved.lastInsertRowid}`);
-        await chatServer.flush();
         await sleep(100);
-        const ops = bridgeCalls.flatMap((c) => c.ops);
-        assert.deepStrictEqual(ops.map((o) => o.op), ['db', 'broadcastToStream', 'synthesizeAndBroadcastTTS']);
-        assert.strictEqual(ops[0].args[0], 'saveChatMessage');
-        assert.strictEqual(ops[0].ref, saved.lastInsertRowid);
-        assert.ok(/^live:\d+$/.test(ops[0].key), 'forwarded writes carry an idempotency key');
-        assert.strictEqual(ops[1].args[1].id, saved.lastInsertRowid);
-        assert.strictEqual(d.prepare('SELECT COUNT(*) AS n FROM chat_bridge_outbox').get().n, 0, 'acknowledged writes leave the outbox');
-        // Deletes run on the mirror at once (their ids are returned) and are forwarded too.
-        d.prepare("INSERT INTO chat_messages (id, user_id, username, message) VALUES (900002, ?, 'MODDY', 'x')").run(mod);
-        assert.deepStrictEqual(db.deleteUserChatMessages(mod, {}), [900002]);
-        await chatServer.flush();
-        assert.deepStrictEqual(bridgeCalls.at(-1).ops[0].args.slice(0, 2), ['deleteUserChatMessages', mod]);
-        // Live's own writes to data Chat caches (IP approvals, bans) tell Chat to reload it; the
-        // channel-moderation writes went to Chat with the six staged tables (roadmap T3).
-        // The /api/mod global delete loops over chatServer.clients: one pseudo-socket reaches everyone.
-        for (const [ws] of chatServer.clients) { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'delete-messages', ids: [1] })); }
-        await chatServer.flush();
-        assert.strictEqual(bridgeCalls.at(-1).ops[0].op, 'broadcastAllRaw');
-        // Synchronous reads come from Chat's presence snapshot.
-        await sleep(200);
-        assert.strictEqual(chatServer.getTotalConnections(), 7);
-        assert.strictEqual(chatServer.getStreamViewerCount(1), 3);
-        assert.strictEqual(chatServer.slowModeByStream.get(1), 5000);
-        assert.strictEqual(chatServer.getConnectedUserIp(3), '198.51.100.3');
-        assert.strictEqual(chatServer.findClientByAnonId('anon9', 1).ip, '203.0.113.9');
-        assert.strictEqual(chatServer.findClientByAnonId('anon9', 2), null);
+        assert.strictEqual(bridgeCalls.length, 0, 'Live makes no POST /internal/live/calls');
+        assert.strictEqual(chatServer.getTotalConnections(), 0, 'and polls no presence');
+        assert.ok(!d.prepare("SELECT 1 FROM sqlite_master WHERE name = 'chat_bridge_outbox'").get(), 'the outbox table is gone');
         // A /ws/chat upgrade that still lands on Live is refused, not served from the mirror.
         let written = '';
         chatServer.handleUpgrade({}, { write: (x) => { written += x; }, destroy() {} });
         assert.match(written, /^HTTP\/1\.1 503/);
+        assert.strictEqual(typeof chatServer.resolveAnon, 'function', 'Chat\'s /internal/chat-effects/anon still has its method');
         chatServer.close();
 
-        // Rollback: writes Chat never acknowledged are applied to Live's own tables.
-        d.prepare("INSERT INTO chat_bridge_outbox (boot, ref, op, args) VALUES ('old', -1, 'db', ?)").run(JSON.stringify(['recordFirstChat', 'user:77', streamer]));
-        chatServer._restoreDb();
-        assert.strictEqual(require('../server/chat/chat-remote').drainToLocal({ log() {}, warn() {} }), 1);
-        assert.ok(d.prepare("SELECT 1 FROM stream_first_chats WHERE chatter_key = 'user:77'").get());
-        assert.strictEqual(d.prepare('SELECT COUNT(*) AS n FROM chat_bridge_outbox').get().n, 0);
+        // The outbox drop refuses while Chat has unacknowledged writes in it, then drops once drained.
+        {
+            const migrations = require('../server/db/migrations');
+            d.exec('CREATE TABLE chat_bridge_outbox (id INTEGER PRIMARY KEY, boot TEXT, ref INTEGER, op TEXT, args TEXT)');
+            d.prepare("INSERT INTO chat_bridge_outbox (boot, ref, op, args) VALUES ('b', 1, 'db', '[]')").run();
+            assert.strictEqual(migrations.runOperator(d, 'op_002_drop_chat_bridge_outbox').outcome, 'failed');
+            assert.ok(d.prepare("SELECT 1 FROM sqlite_master WHERE name = 'chat_bridge_outbox'").get(), 'the table stays');
+            d.prepare('DELETE FROM chat_bridge_outbox').run();
+            assert.strictEqual(migrations.runOperator(d, 'op_002_drop_chat_bridge_outbox').outcome, 'applied');
+            assert.ok(!d.prepare("SELECT 1 FROM sqlite_master WHERE name = 'chat_bridge_outbox'").get());
+        }
 
         // 11. Robot commands from chat pass the control panel's gate: control mode, anonymous switch, whitelist, cooldown.
         {

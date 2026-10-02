@@ -112,20 +112,19 @@ const stub = http.createServer((req, res) => {
     assert.strictEqual(rows.length, 2);
     assert.strictEqual(rows[1].event_id, r.event_id);
 
-    // Events publishing off: the bridge is the fallback, so Chat still hears about it.
+    // Events publishing off: the bridge is gone, so nothing is handed to Chat directly.
     streamEvents._reset();
     process.env.EVENTS_PUBLISH = 'off';
     db.setSetting(dn.SETTING, '');
     r = await dn.announce({ db, chatServer: { remote: true, deployNotice: (commits) => bridged.push(commits) }, log: quiet });
     delete process.env.EVENTS_PUBLISH;
     assert.ok(r.announced >= 1);
-    assert.strictEqual(bridged.length, 1, 'without Events the bridge carries it');
-    assert.strictEqual(bridged[0][0].hash, head);
+    assert.strictEqual(bridged.length, 0, 'there is no bridge to carry it');
     assert.strictEqual(r.event_id, null);
     assert.strictEqual(outboxRows().length, 2, 'nothing queued while Events is off');
 
     streamEvents._reset();
     stub.close();
-    console.log('release events: live.release.deployed queued with the announcement, published; Chat gets it from the event, the bridge only without Events — all checks passed');
+    console.log('release events: live.release.deployed queued with the announcement, published; Chat gets it from the event and nothing else — all checks passed');
     process.exit(0);
 })().catch((err) => { console.error(err); process.exit(1); });
