@@ -476,7 +476,7 @@ function _channelPasteCardHTML(p, canManage) {
     const thumb = (isShot && p.screenshot_url)
         ? `<div class="ch-paste-thumb"><img src="${esc(p.screenshot_url)}" alt="" loading="lazy"></div>`
         : `<div class="ch-paste-thumb ch-paste-thumb-icon"><i class="fa-solid ${isShot ? 'fa-image' : 'fa-code'}"></i></div>`;
-    return `<a class="ch-paste-card" href="/p/${esc(p.slug)}" onclick="return handleLinkClick(event, '/p/${esc(p.slug)}')">
+    return `<a class="ch-paste-card" href="${esc(pasteHref(p.slug))}">
         ${thumb}
         <div class="ch-paste-info">
             <div class="ch-paste-title">${esc(p.title || 'Untitled')} ${vis}</div>

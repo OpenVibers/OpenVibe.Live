@@ -425,9 +425,8 @@ async function tick(opts = {}) {
                     // never knew Community pastes (every moment since the move had a broken image).
                     let shot = paste.screenshot_url || null;
                     if (!shot && pasteSlug) { try { shot = ((await pastesClient.getPaste(pasteSlug)) || {}).screenshot_url || null; } catch { /* fall back below */ } }
-                    img = media.publicUrl(shot) || (pastesClient.onCommunity()
-                        ? `${(process.env.OV_COMMUNITY_URL || 'https://openvibe.community').replace(/\/+$/, '')}/p/${encodeURIComponent(pasteSlug)}/screenshot`
-                        : `${media.pasteUrl(pasteSlug)}/screenshot`);
+                    img = media.publicUrl(shot)
+                        || `${(process.env.OV_COMMUNITY_URL || 'https://openvibe.community').replace(/\/+$/, '')}/p/${encodeURIComponent(pasteSlug)}/screenshot`;
                 }
             } catch (e) { console.warn(`[AI-Moments] paste post failed for VOD ${v.vod_id}:`, e.message); }
             try { fs.unlinkSync(screenshotPath); } catch { /* tmp frame */ }

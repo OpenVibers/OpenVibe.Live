@@ -64,28 +64,19 @@ assert.ok(/headers\['X-Forwarded-For'\] = req\.ip/.test(client),
     "Media's per-IP comment cooldown and its stored address both need the real client IP");
 console.log('OK D: proxied requests carry the client IP, not this process\'s loopback');
 
-// ── E: every forwarding route resolves identity first ────────────────────────────────
+// ── E: every paste route resolves identity before it reaches Community ───────────────
 {
-    // A forward() route sends whatever actingUserFrom finds on req — so a route with no
-    // auth middleware silently posts as nobody.
-    const lines = pastes.split('\n').filter(l => /^router\.(get|post|put|delete)\(/.test(l.trim()));
-    const needsIdentity = lines.filter(l => /forward\(|forwardEnriched\(/.test(l) && !/forwardAsApp\(/.test(l));
-    assert.ok(needsIdentity.length >= 8, `expected the forwarding routes, found ${needsIdentity.length}`);
-    for (const line of needsIdentity) {
-        if (/'\/config'/.test(line)) continue;   // static config, no caller identity
+    // toCommunity() names whoever optionalAuth/requireAuth resolved, so a route with no auth
+    // middleware silently forwards as nobody.
+    const lines = pastes.split('\n').filter(l => /^communityRouter\.(get|post|put|delete|all)\(/.test(l.trim()));
+    assert.ok(lines.length >= 6, `expected the forwarding routes, found ${lines.length}`);
+    for (const line of lines) {
+        if (/'\/:slug\/raw'/.test(line)) continue;   // a plain redirect, no caller identity
         assert.ok(/optionalAuth|requireAuth|requireAdmin/.test(line),
             `route must resolve the caller before forwarding: ${line.trim()}`);
     }
-    console.log(`OK E: all ${needsIdentity.length - 1} identity-bearing paste routes resolve the caller first`);
-}
-
-// ── F: the owner gate compares one id space ──────────────────────────────────────────
-{
-    const gate = pastes.slice(pastes.indexOf('const viewingSelf'), pastes.indexOf('const mine ='));
-    assert.ok(/String\(req\.user\.id\) === String\(user\.id\)/.test(gate), 'owner check must compare local ids');
-    assert.ok(!/networkId/.test(gate),
-        'matching the viewed user\'s NETWORK id let whoever holds that number locally read their unlisted pastes');
-    console.log('OK F: unlisted-paste owner gate compares local ids only');
+    assert.ok(!/^router\./m.test(pastes) && !/mediaRouter/.test(pastes), 'the Media paste router is gone');
+    console.log(`OK E: all ${lines.length - 1} identity-bearing paste routes resolve the caller first`);
 }
 
 console.log('✅ media identity space test passed');

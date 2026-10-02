@@ -57,7 +57,7 @@ const _feedPage = (feed, page = 1) => _cached(`feed:${feed}:${page}`, async () =
     const kindLabel = { vod: 'VOD', clip: 'clip', paste: 'paste', recap: 'recap' };
     return {
         items: (out.items || []).map((it) => ({
-            url: it.kind === 'paste' && PASTES_BASE ? pasteHref(it.id) : it.href, name: it.title, by: it.channel ? it.channel.display_name : null,
+            url: it.kind === 'paste' ? pasteHref(it.id) : it.href, name: it.title, by: it.channel ? it.channel.display_name : null,
             meta: [kindLabel[it.kind], it.duration_seconds ? _fmtDur(it.duration_seconds) : null].filter(Boolean).join(' · '),
             desc: it.excerpt,
         })),
@@ -153,11 +153,12 @@ function _overlayAiState(row, kind) {
     } catch { /* */ }
 }
 
-// Pastes live on openvibe.community when PASTES_ON_COMMUNITY=1: /p/<slug> is a redirect there
-// (server/web/paste-handover.js, mounted before this middleware), the SPA router sends it there
-// too, and every paste link Live renders points straight at Community, the paste's one canonical
-// page. Live's sitemap never lists /p/ (roadmap 32.2).
-const PASTES_BASE = process.env.PASTES_ON_COMMUNITY === '1' ? (process.env.OV_COMMUNITY_URL || 'https://openvibe.community').replace(/\/$/, '') : '';
+// Pastes live on openvibe.community: /p/<slug> is a redirect there (server/web/paste-handover.js,
+// mounted before this middleware), and every paste link Live renders, here and in the SPA (which
+// reads the base from the ov-pastes-base meta on every shell), points straight at Community, the
+// paste's one canonical page. Live's sitemap never lists /p/ (roadmap 32.2).
+const PASTES_BASE = (process.env.OV_COMMUNITY_URL || 'https://openvibe.community').replace(/\/$/, '');
+const PASTES_META = `<meta name="ov-pastes-base" content="${esc(PASTES_BASE)}">`;
 const pasteHref = (slug) => `${PASTES_BASE}/p/${encodeURIComponent(slug)}`;
 
 const SITE_NAME = 'OpenVibe.Live';
@@ -887,7 +888,7 @@ function _headBlock(meta) {
     const ogUrl = meta.ogUrlPath ? abs(meta.ogUrlPath) : canonical;
     const img = abs(meta.image || DEFAULT_OG_IMAGE);
     const parts = [
-        PASTES_BASE ? `<meta name="ov-pastes-base" content="${esc(PASTES_BASE)}">` : '',
+        PASTES_META,
         `<title>${esc(meta.title)}</title>`,
         `<meta name="description" content="${esc(meta.description)}">`,
         `<meta name="robots" content="${esc(meta.robots || 'index,follow')}">`,
@@ -973,7 +974,7 @@ function shellHtml(urlPath, status) {
     let html = _base();
     if (!html) return null;
     const p = String(urlPath || '/');
-    html = assets.renderRoute(html, p);
+    html = assets.renderRoute(html, p).replace(/<\/head>/i, `${PASTES_META}</head>`);
     if (p === '/' && status !== 404) return html;
     const headEnd = html.search(/<\/head>/i);
     if (headEnd === -1) return html;
@@ -1029,7 +1030,7 @@ async function middleware(req, res, next) {
     if (!SEO_ROUTE_RE.test(p)) return next();
     // A paste Community owns is never rendered here (the handover answers it first; this keeps it
     // so if the mount order ever changes).
-    if (PASTES_BASE && p.startsWith('/p/')) return next();
+    if (p.startsWith('/p/')) return next();
     // Every client gets the same page, whatever it sends as Accept: browsers, crawlers, curl and
     // monitors. (It used to be skipped unless Accept named text/html, so a crawler or tool that sent
     // */* got the home page's title and canonical for every channel, VOD and clip.) Nothing fetches

@@ -100,7 +100,7 @@ Everything reads the effective value: listing queries return `COALESCE(ai_catego
 
 Live's local `vods`, `clips`, `pastes`, `paste_likes` and `paste_comments` tables stopped at the Media
 split: nothing recorded, clipped or pasted since then was ever in them, and OpenVibe.Media (VODs and clips,
-same ids) and OpenVibe.Community (pastes, by `legacy_media_id` or slug) hold the old rows too. Since
+same ids) and OpenVibe.Community (pastes, by slug) hold the old rows too. Since
 register item C-73 step 2, no Live code reads them. `test/frozen-tables.test.js` fails on any write or read
 of these tables in `server/` or `scripts/` (SQL text, split over lines too, and `table: '…'` registries). Its
 allow-list of kept reads is empty. A read that has to stay goes into that list with a reason, and into this
@@ -119,7 +119,7 @@ What used to read them, and what answers now (most of it in `server/media-proxy/
 | Settings: avatar history | Community, as the person (screenshots tagged `metadata.kind = 'avatar'`) | the person's own |
 | AI timeline (channel AI tab): each session's VOD link | Media by user, public only; not cached while Media is down | never |
 | Transcript view: the stream's VOD | Media (the old local fallback is gone) | never |
-| Home hero, kiosk, SEO snapshot: VOD, clip, hour and paste counts | Media `/stats`; pastes from Community `/api/pastes/admin/stats` when it owns them | counts only |
+| Home hero, kiosk, SEO snapshot: VOD, clip, hour and paste counts | Media `/stats`; pastes from Community `/api/pastes/admin/stats` | counts only |
 | Home "over time" charts for VODs, clips, hours | Media `/stats/series/*` (the route already did) | counts only |
 | Admin dashboard: VOD totals | Media list totals (null when Media is down) | staff |
 | Admin AI explorer and the streamer overview job: VODs, clips, pastes | Media and Community | staff: any visibility (the overview job reads public VODs) |
@@ -221,7 +221,7 @@ SELECT 'vods missing in Media' AS t, COUNT(*) AS n FROM main.vods v
 SELECT 'clips missing in Media' AS t, COUNT(*) AS n FROM main.clips k
   WHERE NOT EXISTS (SELECT 1 FROM m.clips x WHERE x.id = k.id AND x.app_id = 'live');
 SELECT 'pastes missing in Community' AS t, COUNT(*) AS n FROM main.pastes p
-  WHERE NOT EXISTS (SELECT 1 FROM c.pastes x WHERE x.legacy_media_id = p.id OR x.slug = p.slug);
+  WHERE NOT EXISTS (SELECT 1 FROM c.pastes x WHERE x.slug = p.slug);
 SELECT 'paste_likes missing in Media' AS t, COUNT(*) AS n FROM main.paste_likes l
   WHERE NOT EXISTS (SELECT 1 FROM m.paste_likes x WHERE x.paste_id = l.paste_id AND x.user_id = l.user_id);
 SELECT 'paste_comments missing in Media' AS t, COUNT(*) AS n FROM main.paste_comments pc

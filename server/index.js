@@ -541,7 +541,7 @@ app.use('/fragments', assets.versionedStatic('/fragments'), express.static(path.
 // SEO: per-route <head> meta/OG/JSON-LD injection + dynamic sitemap. MUST be before the public
 // static below (so it can intercept "/") and before the SPA catch-all. Only touches the SPA
 // HTML routes (home, vods/clips/pastes lists, vod/clip/paste detail); everything else falls through.
-// Pastes on openvibe.community (PASTES_ON_COMMUNITY=1): /p/<slug> redirects there, and it is mounted
+// Pastes live on openvibe.community: /p/<slug> 301s there, and it is mounted
 // before SEO so crawlers and people get the same redirect and Community is the one canonical page.
 require('./web/paste-handover').register(app);
 try { require('./seo/seo').register(app); } catch (e) { console.warn('[SEO] not registered:', e.message); }
@@ -643,15 +643,14 @@ app.get('/data/pastes/screenshots/:filename', (req, res) => {
     res.redirect(302, mediaClient.screenshotUrl(path.basename(req.params.filename)));
 });
 
-// The SPA renders Media's relative paste URLs (/p/<slug>/screenshot, /raw)
-// against THIS origin — bounce them to the Media public host, where the
-// canonical paste page lives.
+// Old relative paste URLs on THIS origin: screenshot bytes still live on the Media public host;
+// raw text is served by OpenVibe.Community, the paste's home.
 app.get('/p/:slug/screenshot', (req, res) => {
     res.set('Cache-Control', 'public, max-age=300');
     res.redirect(302, `${mediaClient.MEDIA_PUBLIC_URL}/p/${encodeURIComponent(req.params.slug)}/screenshot`);
 });
 app.get('/p/:slug/raw', (req, res) => {
-    res.redirect(302, mediaClient.pasteRawUrl(req.params.slug));
+    res.redirect(302, `${require('./web/paste-handover').communityUrl()}/p/${encodeURIComponent(req.params.slug)}/raw`);
 });
 
 // Offline-screen assets (channel offline background: webp images + transcoded webm)

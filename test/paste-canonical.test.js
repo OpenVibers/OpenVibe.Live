@@ -1,14 +1,15 @@
 /**
- * One canonical page per paste (roadmap 32.2): with PASTES_ON_COMMUNITY=1, /p/<slug> on Live is a
- * redirect to openvibe.community for every client, crawlers and browsers alike.
+ * One canonical page per paste (roadmap 32.2): /p/<slug> on Live is a permanent redirect to
+ * openvibe.community for every client, crawlers, browsers and signed-in visitors alike.
  *
  * The handover used to be mounted after the SEO middleware, so an HTML navigation (every crawler)
  * got Live's own rendered copy with a canonical on openvibe.live, and only a non-HTML client got
  * the 301: two self-canonical pages and a different answer for people and machines. Checked here:
  *   - server/index.js mounts server/web/paste-handover.js before server/seo/seo.js;
- *   - /p/<slug> answers 301 to Community whatever the Accept header, and a signed-in visitor goes
- *     through Community's silent sign-in (302);
- *   - Live's sitemap lists no /p/ URL, and the paste links Live renders point at Community.
+ *   - /p/<slug> answers 301 to Community whatever the Accept header or cookie, and /p/<slug>/raw
+ *     302s to Community's raw text (not Media's);
+ *   - Live's sitemap lists no /p/ URL, and the paste links Live renders, server-side and in the
+ *     SPA, are absolute Community URLs (no relative /p/ href left to bounce through Live).
  *
  *   node test/paste-canonical.test.js
  */
@@ -22,7 +23,6 @@ const http = require('http');
 const tmp = path.join(os.tmpdir(), `ov-paste-canonical-${process.pid}.db`);
 process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
-process.env.PASTES_ON_COMMUNITY = '1';
 process.env.OV_COMMUNITY_URL = 'https://openvibe.community';
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
@@ -90,10 +90,18 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         assert.strictEqual(pasteReads, 0, 'Live never rendered its own copy');
     });
 
-    await check('a signed-in visitor goes through Community\'s silent sign-in', async () => {
+    await check('a signed-in visitor gets the same plain 301 (no silent sign-in hop)', async () => {
         const r = await get('/p/abc123', { accept: 'text/html', cookie: 'ov_sso_hint=account' });
-        assert.strictEqual(r.status, 302);
-        assert.strictEqual(r.location, 'https://openvibe.community/auth/login?silent=1&next=%2Fp%2Fabc123');
+        assert.strictEqual(r.status, 301);
+        assert.strictEqual(r.location, 'https://openvibe.community/p/abc123');
+    });
+
+    await check('server/index.js sends /p/<slug>/raw to Community, screenshots to Media', () => {
+        const src = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
+        const raw = src.slice(src.indexOf("app.get('/p/:slug/raw'"), src.indexOf("app.get('/p/:slug/raw'") + 300);
+        assert.ok(/paste-handover'\)\.communityUrl\(\)\}\/p\/\$\{encodeURIComponent\(req\.params\.slug\)\}\/raw/.test(raw), raw);
+        assert.ok(!/pasteRawUrl/.test(raw), 'raw no longer goes through Media');
+        assert.ok(/MEDIA_PUBLIC_URL\}\/p\/\$\{encodeURIComponent\(req\.params\.slug\)\}\/screenshot/.test(src), 'screenshot bytes still on Media');
     });
 
     await check('Live\'s sitemap lists no paste', async () => {
@@ -106,6 +114,21 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         const m = await seo._pageMeta('/pastes');
         assert.ok(m.snapshot.includes('href="https://openvibe.community/p/abc123"'), m.snapshot.slice(0, 400));
         assert.ok(!m.snapshot.includes('https://openvibe.live/p/'), 'no Live paste link');
+    });
+
+    await check('the SPA renders absolute Community paste hrefs from the shell\'s ov-pastes-base', async () => {
+        for (const f of ['pastes.js', 'app-home.js', 'app-channel.js']) {
+            const src = fs.readFileSync(path.join(__dirname, '../public/js', f), 'utf8');
+            assert.ok(!/href="\/p\//.test(src), `${f} renders a relative /p/ href`);
+            assert.ok(/href="\$\{(?:esc|escapeHtml)\(pasteHref\(p\.slug\)\)\}"/.test(src), `${f} links through pasteHref()`);
+        }
+        const app = fs.readFileSync(path.join(__dirname, '../public/js/app.js'), 'utf8');
+        assert.ok(/function pasteHref\(slug\)[\s\S]{0,200}meta\[name="ov-pastes-base"\]/.test(app), 'pasteHref reads the shell meta');
+        const meta = '<meta name="ov-pastes-base" content="https://openvibe.community">';
+        assert.ok(seo.render(await seo._pageMeta('/pastes'), '/pastes').includes(meta), 'SEO pages name the Community base');
+        for (const [p, status] of [['/dashboard', 200], ['/no-such-page', 404]]) {
+            assert.ok(String(seo.shellHtml(p, status)).includes(meta), `${p} shell names the Community base`);
+        }
     });
 
     server.close();

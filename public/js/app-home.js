@@ -1533,7 +1533,7 @@ async function loadHomePastes(opts) {
                     ? `<div class="home-paste-media"><img src="${esc(p.screenshot_url)}" alt="${esc(p.title || 'Screenshot paste')}" loading="lazy"><span class="home-paste-type">Image</span></div>`
                     : `<div class="home-paste-media"><div class="home-paste-snippet">${preview || esc(p.title || 'Untitled paste')}</div><div class="home-paste-icon"><i class="fa-solid ${icon}"></i></div><span class="home-paste-type">${p.language && p.language !== 'plaintext' ? esc(p.language) : 'Text'}</span></div>`;
                 return `
-                <a class="home-paste-card" href="/p/${esc(p.slug)}" onclick="return handleLinkClick(event, '/p/${esc(p.slug)}')">
+                <a class="home-paste-card" href="${esc(pasteHref(p.slug))}">
                     ${media}
                     <div class="home-paste-body">
                     <div class="home-paste-info">
