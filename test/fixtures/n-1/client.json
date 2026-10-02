@@ -1,16 +1,16 @@
 {
  "service": "live",
- "release": "fb3957f3ca2b54b65f3e51aa70eff606a47c5928",
- "recorded_at": "2026-09-29T18:32:58.308Z",
+ "release": "9437263f09b5f742aa4f8a5f0a5741029752d744",
+ "recorded_at": "2026-10-02T16:12:35.016Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "fb3957f3ca2b",
-  "released_at": "2026-09-29T18:32:06.000Z",
-  "booted_at": "2026-09-29T18:32:56.084Z",
-  "contracts_version": "0.71.0",
+  "release": "9437263f09b5",
+  "released_at": "2026-10-02T16:01:38.000Z",
+  "booted_at": "2026-10-02T16:12:30.723Z",
+  "contracts_version": "0.83.0",
   "packages": {
-   "openvibe-shared": "1.30.1",
+   "openvibe-shared": "2.4.0",
    "openvibe-sdk": "0.16.0"
   },
   "min_client_release": null,
@@ -22,11 +22,11 @@
    },
    "shell": {
     "kind": "script",
-    "version": "a6dd3b98e643"
+    "version": "60a3f0a39211"
    },
    "server": {
     "kind": "server",
-    "version": "521d6d204d65"
+    "version": "b6aaf8e6e88d"
    }
   },
   "assets": {
@@ -2956,7 +2956,7 @@
    "method": "GET",
    "path": "/api/pastes/config",
    "auth": "anon",
-   "status": 504,
+   "status": 502,
    "kind": "json",
    "from": [
     "public/js/pastes.js"
@@ -2966,7 +2966,7 @@
    "method": "GET",
    "path": "/api/pastes/config",
    "auth": "user",
-   "status": 504,
+   "status": 502,
    "kind": "json",
    "from": [
     "public/js/pastes.js"
@@ -7088,7 +7088,7 @@
   },
   {
    "method": "GET",
-   "path": "/shared/navbar.js?v=b8089ee3bd11",
+   "path": "/shared/navbar.js?v=017a740747b4",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7099,7 +7099,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app.js?v=4d24e4b46d7b",
+   "path": "/js/app.js?v=0fd06344b140",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7275,7 +7275,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app-home.js?v=f3884800e9a3",
+   "path": "/js/app-home.js?v=1dc431184ccc",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7473,7 +7473,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app-channel.js?v=c148cdba2aee",
+   "path": "/js/app-channel.js?v=7734c5c60717",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -8357,7 +8357,7 @@
    "method": "POST",
    "path": "/api/pastes",
    "auth": "anon",
-   "status": 504,
+   "status": 502,
    "kind": "json",
    "from": [
     "public/js/pastes.js"
@@ -8397,7 +8397,7 @@
    "method": "POST",
    "path": "/api/pastes/n1star/comments",
    "auth": "anon",
-   "status": 504,
+   "status": 502,
    "kind": "json",
    "from": [
     "public/js/pastes.js"
@@ -8417,7 +8417,7 @@
    "method": "POST",
    "path": "/api/pastes/n1star/copy",
    "auth": "anon",
-   "status": 504,
+   "status": 502,
    "kind": "json",
    "from": [
     "public/js/pastes.js"
@@ -8427,7 +8427,7 @@
    "method": "POST",
    "path": "/api/pastes/n1star/fork",
    "auth": "anon",
-   "status": 504,
+   "status": 502,
    "kind": "json",
    "from": [
     "public/js/pastes.js"
