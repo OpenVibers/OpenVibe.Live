@@ -1,5 +1,5 @@
 /**
- * Server-rendered channel, VOD and clip pages (server/seo/seo.js, roadmap 32.1/32.2): each has its
+ * Server-rendered channel, VOD and clip pages (server/seo/pages.js, roadmap 32.1/32.2): each has its
  * own title, description, canonical, Open Graph and JSON-LD, and a real HTML body that crawlers and
  * readers without JavaScript can use, whatever Accept header the client sends.
  *
@@ -86,7 +86,7 @@ pastesClient.getPaste = async () => { throw missing(); };
 
 // ── The app, mounted as server/index.js mounts it ──
 const express = require('express');
-const seo = require('../server/seo/seo');
+const seo = require('../server/seo');
 const pageStatus = require('../server/web/page-status');
 const app = express();
 seo.register(app);
@@ -143,6 +143,14 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
             assert.deepStrictEqual(robotsOf(r.body), ['index,follow'], c.name);
             assert.ok(ldOf(r.body).some((n) => n['@type'] === 'ProfilePage' && n.mainEntity.name === 'Alice'), c.name);
         }
+    });
+
+    await check('/@alice: openvibe-shared/seo head (hreflang alternates, cache policy) and page summary', async () => {
+        const r = await get('/@alice');
+        assert.ok(head(r.body).includes('<link rel="alternate" hreflang="en" href="https://openvibe.live/@alice">'));
+        assert.ok(head(r.body).includes('<link rel="alternate" hreflang="x-default" href="https://openvibe.live/@alice">'));
+        assert.ok(/<section data-ov-summary hidden><h2>Alice \(@alice\) — OpenVibe\.Live<\/h2>/.test(r.body), 'shared page summary in the snapshot');
+        assert.match(r.cache, /^public, max-age=\d+, must-revalidate$/);
     });
 
     await check('/@alice: a real body with its videos, ?page=N links, clips and AI Moments apart', async () => {
@@ -241,6 +249,7 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         for (const c of CLIENTS) {
             const r = await get('/vod/100', c.headers);
             assert.strictEqual(r.status, 200, c.name);
+            assert.match(r.cache, /^public, max-age=\d+, must-revalidate$/, c.name);
             assert.deepStrictEqual(canonicalsOf(r.body), ['https://openvibe.live/vod/100'], c.name);
             assert.ok(/^Build night 100 — Alice \| OpenVibe\.Live$/.test(titleOf(r.body)), titleOf(r.body));
         }
@@ -266,6 +275,7 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         for (const c of CLIENTS) {
             const r = await get('/clip/200', c.headers);
             assert.strictEqual(r.status, 200, c.name);
+            assert.match(r.cache, /^public, max-age=\d+, must-revalidate$/, c.name);
             assert.deepStrictEqual(canonicalsOf(r.body), ['https://openvibe.live/clip/200'], c.name);
             assert.deepStrictEqual(robotsOf(r.body), ['index,follow'], c.name);
         }
@@ -312,7 +322,7 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
 
     await check('server/index.js sends the fallback shell through seo.shellHtml', () => {
         const src = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
-        assert.ok(src.includes("require('./seo/seo').shellHtml"));
+        assert.ok(src.includes("require('./seo').shellHtml"));
         assert.ok(src.includes("app.get('*', require('./web/page-status').spaFallback((res, urlPath) => sendShell(res, urlPath)));"));
     });
 

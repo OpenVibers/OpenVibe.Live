@@ -368,7 +368,7 @@ async function check(name, fn) {
             'server/chat/soundboard-service.js': '101soundboards (host allowlist; the audio download through safeLookup)',
             'server/chat/tts-engine.js': 'Google / AWS TTS (fixed hosts)',
             'server/meta/routes.js': 'GitHub API (fixed host)',
-            'server/seo/seo.js': 'a local function named fetch (no request)',
+            'server/seo/discovery.js': 'a local function named fetch (no request)',
             'server/news/sources/newsapi-source.js': 'NewsAPI (fixed host)',
             'server/news/sources/reddit-source.js': 'Reddit (fixed host)',
             'server/news/sources/rss-source.js': 'feeds the site owner configures',

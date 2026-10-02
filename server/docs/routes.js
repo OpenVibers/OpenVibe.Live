@@ -15,6 +15,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const cache = require('openvibe-shared/cache-policy');
 
 const router = express.Router();
 // Through OV_APP_ROOT (the `current` release symlink) when set, so doc edits go live without a restart.
@@ -216,7 +217,7 @@ function renderMarkdown(markdown) {
 
 // ── Page shell ───────────────────────────────────────────────
 
-// The public origin for canonical URLs: the configured base URL, never a local one (as server/seo/seo.js).
+// The public origin for canonical URLs: the configured base URL, never a local one (as server/seo/pages.js).
 let config = null; try { config = require('../config'); } catch { /* */ }
 function publicBase() {
     let b = (config && config.baseUrl) || 'https://openvibe.live';
@@ -318,7 +319,7 @@ function sendDoc(req, res, name) {
     const markdown = loadDoc(name);
     if (markdown === null) return res.status(404).type('text/plain').send('No such doc');
     const rendered = renderMarkdown(markdown);
-    res.set('Cache-Control', 'public, max-age=300');
+    res.set('Cache-Control', cache.htmlHeaders({ maxAge: 300 }));
     res.type('html').send(renderPage({ name, ...rendered }));
 }
 

@@ -21,6 +21,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const cache = require('openvibe-shared/cache-policy');
 
 // Where static files are read from on every request. By default the public/ next to this file. In the
 // release layout (deploy/scripts/deploy.sh) the unit sets OV_APP_ROOT=/opt/openvibe.live/current: the
@@ -349,7 +350,7 @@ function cspReportOnly(html) {
     return policy;
 }
 
-const IMMUTABLE = 'public, max-age=31536000, immutable';
+const IMMUTABLE = cache.IMMUTABLE;
 function setImmutable(res) { res.setHeader('Cache-Control', IMMUTABLE); res.setHeader('CDN-Cache-Control', IMMUTABLE); }
 function setNoCache(res) { res.setHeader('Cache-Control', 'no-cache'); res.setHeader('CDN-Cache-Control', 'no-store'); }
 

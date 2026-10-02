@@ -124,6 +124,7 @@ const { notifyDiscordGoLive } = require('../integrations/discord-webhook');
 // Go-live fan-out lives in ./golive-notify (shared with the RTMP and WHIP ingest paths,
 // which never notified anyone before), with follower-id translation + 60-min dedupe.
 const { notifyFollowersGoLive } = require('./golive-notify');
+const cache = require('openvibe-shared/cache-policy');
 
 function hasOwn(obj, key) {
     return Object.prototype.hasOwnProperty.call(obj || {}, key);
@@ -1667,7 +1668,7 @@ router.get('/setup-progress', requireAuth, async (req, res) => {
     ];
     const done = tasks.filter(t => t.done).length;
     const next = tasks.find(t => !t.done) || null;
-    res.set('Cache-Control', 'private, no-store');
+    res.set('Cache-Control', cache.htmlHeaders({ private: true }));
     res.json({ tasks, done, total: tasks.length, next, username: user.username });
 });
 

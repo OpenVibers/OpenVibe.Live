@@ -17,7 +17,7 @@ feed.page = async (name, q) => {
     const items = n <= 3 ? Array.from({ length: 24 }, (_, i) => ({ kind: 'clip', id: n * 100 + i, href: `/clip/${n * 100 + i}`, title: `Clip ${n}-${i}`, channel: { display_name: 'Goosely' }, excerpt: 'x' })) : [];
     return { items, next: n < 3 ? `c${n + 1}` : null };
 };
-const seo = require('../server/seo/seo');
+const seo = require('../server/seo');
 
 (async () => {
     const p1 = await seo._pageMeta('/content', { page: 1 });
