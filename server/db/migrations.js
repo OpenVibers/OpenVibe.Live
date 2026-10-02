@@ -135,13 +135,6 @@ const MIGRATIONS = [
         adopt: (db) => !tableExists(db, 'emotes'),
         up: (db) => db.exec('DROP TABLE IF EXISTS emotes'),
     },
-    {
-        id: '007_drop_chat_bridge_outbox',
-        // T3 J2: Live no longer forwards chat writes or pushes to Chat, so the outbox of unacknowledged
-        // writes has no reader or writer.
-        adopt: (db) => !tableExists(db, 'chat_bridge_outbox'),
-        up: (db) => db.exec('DROP TABLE IF EXISTS chat_bridge_outbox'),
-    },
 ];
 
 /**
@@ -177,6 +170,14 @@ const OPERATOR_MIGRATIONS = [
             db.prepare(`UPDATE users SET password_hash = '$sso$' || lower(hex(randomblob(32)))
                         WHERE substr(password_hash, 1, 5) <> '$sso$' AND id IN (${networkLinkedUserIds(db)})`).run();
         },
+    },
+    {
+        id: 'op_002_drop_chat_bridge_outbox',
+        // T3 J2: this release no longer forwards chat writes or pushes to Chat, so the outbox of
+        // unacknowledged writes has no reader or writer. The release before (9437263) still prepares
+        // statements on the table, so the drop is a contract step an operator runs once that release is
+        // out of rollback range (expand first, contract a release later: ADR-028).
+        up: (db) => db.exec('DROP TABLE IF EXISTS chat_bridge_outbox'),
     },
 ];
 

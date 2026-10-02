@@ -18,7 +18,7 @@ with the same WebSocket protocol and REST paths. `CHAT_AUTHORITY=chat` switches 
   them with 503 if one still arrives, and `/ws/chat` upgrades are refused.
 - `require('./chat/chat-server')` returns an inert `RemoteChatServer`: the same methods, but nothing is
   forwarded to Chat (no `POST /internal/live/calls`, no `GET /internal/live/presence`); counts read 0.
-  The `chat_bridge_outbox` table is dropped by migration `007_drop_chat_bridge_outbox`.
+  The `chat_bridge_outbox` table is dropped by the operator migration `op_002_drop_chat_bridge_outbox`, run once the release before this one is out of rollback range.
 - Chat reads Live data and asks for side effects on `/internal/chat-context/*` and
   `/internal/chat-effects/*` (`server/chat/live-context-routes.js`), with Network service tokens
   (`live.chat_context.read`, `live.chat_effects.write`, `live.chat_mirror.write`,
