@@ -12,7 +12,7 @@ async function main() {
     }
 
     const { createDb } = require('openvibe-sdk/db');
-    const admin = createDb({ url: directUrl, service: 'live-analytics-test-admin' });
+    const admin = createDb({ url: directUrl, service: 'live-analytics-test-admin', queryTimeoutMs: 60000 });
     const healthy = await admin.ready();
     if (!healthy.ok) {
         await admin.close();
@@ -78,7 +78,13 @@ async function main() {
     } finally {
         if (store) await store.close();
         if (owner) await owner.close();
-        if (created) await admin.query(`DROP DATABASE ${name} WITH (FORCE)`);
+        if (created) {
+            try {
+                await admin.query(`DROP DATABASE ${name} WITH (FORCE)`);
+            } catch (err) {
+                console.warn(`analytics PostgreSQL: could not drop ${name}: ${err.message}`);
+            }
+        }
         await admin.close();
     }
 }
