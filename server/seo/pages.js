@@ -16,7 +16,6 @@
 'use strict';
 const path = require('node:path');
 const seo = require('openvibe-shared/seo');
-const cache = require('openvibe-shared/cache-policy');
 const { esc } = seo;
 const db = require('../db/database');
 const media = require('../media-client');
@@ -1007,7 +1006,7 @@ async function middleware(req, res, next) {
     // This renderer and the SPA fallback's status check share one wait on upstreams (page-status.js).
     req.ovLookupDeadlineAt = Date.now() + pageStatus.LOOKUP_DEADLINE_MS;
     const send = (html, ttl) => {
-        res.set('Cache-Control', cache.htmlHeaders({ maxAge: Math.max(0, Math.round(ttl / 1000)) }));
+        res.set('Cache-Control', `public, max-age=${Math.max(0, Math.round(ttl / 1000))}, must-revalidate`);
         res.set('Content-Security-Policy-Report-Only', assets.cspReportOnly(html));
         res.type('html');
         return res.send(html);

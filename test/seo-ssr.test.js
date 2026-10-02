@@ -150,7 +150,7 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         assert.ok(head(r.body).includes('<link rel="alternate" hreflang="en" href="https://openvibe.live/@alice">'));
         assert.ok(head(r.body).includes('<link rel="alternate" hreflang="x-default" href="https://openvibe.live/@alice">'));
         assert.ok(/<section data-ov-summary hidden><h2>Alice \(@alice\) — OpenVibe\.Live<\/h2>/.test(r.body), 'shared page summary in the snapshot');
-        assert.match(r.cache, /^public, max-age=\d+, stale-while-revalidate=3600$/);
+        assert.match(r.cache, /^public, max-age=\d+, must-revalidate$/);
     });
 
     await check('/@alice: a real body with its videos, ?page=N links, clips and AI Moments apart', async () => {
@@ -249,6 +249,7 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         for (const c of CLIENTS) {
             const r = await get('/vod/100', c.headers);
             assert.strictEqual(r.status, 200, c.name);
+            assert.match(r.cache, /^public, max-age=\d+, must-revalidate$/, c.name);
             assert.deepStrictEqual(canonicalsOf(r.body), ['https://openvibe.live/vod/100'], c.name);
             assert.ok(/^Build night 100 — Alice \| OpenVibe\.Live$/.test(titleOf(r.body)), titleOf(r.body));
         }
@@ -274,6 +275,7 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         for (const c of CLIENTS) {
             const r = await get('/clip/200', c.headers);
             assert.strictEqual(r.status, 200, c.name);
+            assert.match(r.cache, /^public, max-age=\d+, must-revalidate$/, c.name);
             assert.deepStrictEqual(canonicalsOf(r.body), ['https://openvibe.live/clip/200'], c.name);
             assert.deepStrictEqual(robotsOf(r.body), ['index,follow'], c.name);
         }
