@@ -23,7 +23,6 @@ const revocations = require('./revocations');
 const EVENT_ID_RE = /^evt_[0-9A-HJKMNP-TV-Z]{26}$/;
 const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
 const stats = { received: 0, revoked: 0, unchanged: 0, profiles: 0, ignored: 0, refused: 0 };
-const notifyChat = (userId) => { try { const cs = require('../chat/chat-server'); if (cs.remote) cs.userChanged(userId); } catch { /* non-critical */ } };
 
 function secret() { return process.env.LIVE_EVENTS_SECRET || process.env.MEDIA_EVENTS_SECRET || ''; }
 
@@ -38,7 +37,7 @@ function apply(ev) {
     // The follow graph is Network's (ADR-030); Live's follows table is its projection.
     if (follow) return require('../social/network-follows').apply(ev);
     const p = ev.payload && typeof ev.payload === 'object' ? ev.payload : {};
-    if (ev.event_type === 'network.user.updated') return require('./subject-projection').apply(p, { notify: notifyChat });
+    if (ev.event_type === 'network.user.updated') return require('./subject-projection').apply(p);
     const subject = p.subject && p.subject.id;
     const ms = Date.parse(p.valid_after);
     if (!SUBJECT_RE.test(String(subject || '')) || !Number.isFinite(ms)) return 'ignored:payload';

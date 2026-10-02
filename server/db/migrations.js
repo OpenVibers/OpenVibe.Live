@@ -135,6 +135,13 @@ const MIGRATIONS = [
         adopt: (db) => !tableExists(db, 'emotes'),
         up: (db) => db.exec('DROP TABLE IF EXISTS emotes'),
     },
+    {
+        id: '007_drop_chat_bridge_outbox',
+        // T3 J2: Live no longer forwards chat writes or pushes to Chat, so the outbox of unacknowledged
+        // writes has no reader or writer.
+        adopt: (db) => !tableExists(db, 'chat_bridge_outbox'),
+        up: (db) => db.exec('DROP TABLE IF EXISTS chat_bridge_outbox'),
+    },
 ];
 
 /**

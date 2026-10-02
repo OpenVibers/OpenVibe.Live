@@ -16,6 +16,7 @@
     { "file": "server/db/migrations.js", "statement": "DROP TABLE IF EXISTS CHAT_TIMELINE_EVENTS", "count": 1, "contract": "roadmap T3 N+2 (005_drop_chat_staged_tables): OpenVibe.Chat owns the table and N-1 (8654ef6) no longer reads it (test/n-1.test.js); backups kept operator-side" },
     { "file": "server/db/migrations.js", "statement": "DROP TABLE IF EXISTS CHAT_STAGED_OUTBOX", "count": 1, "contract": "roadmap T3 N+2 (005_drop_chat_staged_tables): the staged-table relay was deleted in N+1 and N-1 (8654ef6) no longer uses it; backups kept operator-side" },
     { "file": "server/db/migrations.js", "statement": "DROP TABLE IF EXISTS CHAT_DUAL_READ_STATS", "count": 1, "contract": "roadmap T3 N+2 (005_drop_chat_staged_tables): the dual-read machinery was deleted in N+1 and N-1 (8654ef6) no longer uses it; backups kept operator-side" },
-    { "file": "server/db/migrations.js", "statement": "DROP TABLE IF EXISTS EMOTES", "count": 1, "contract": "roadmap T3 N+3 (006_drop_emotes): Chat owns emotes; N-1 fb3957f does not read its Live copy; backups kept operator-side" }
+    { "file": "server/db/migrations.js", "statement": "DROP TABLE IF EXISTS EMOTES", "count": 1, "contract": "roadmap T3 N+3 (006_drop_emotes): Chat owns emotes; N-1 fb3957f does not read its Live copy; backups kept operator-side" },
+    { "file": "server/db/migrations.js", "statement": "DROP TABLE IF EXISTS CHAT_BRIDGE_OUTBOX", "count": 1, "contract": "roadmap T3 J2 (007_drop_chat_bridge_outbox): the chat bridge writers were deleted in this release; N-1 (9437263) only reads or writes the table after its own CREATE TABLE IF NOT EXISTS, so a rollback recreates it empty; backups kept operator-side" }
   ]
 }

@@ -16,13 +16,9 @@ with the same WebSocket protocol and REST paths. `CHAT_AUTHORITY=chat` switches 
 
 - nginx sends `/ws/chat`, `/api/chat/`, `/api/dm/`, `/api/tts/` and `/api/sounds` to Chat; Live answers
   them with 503 if one still arrives, and `/ws/chat` upgrades are refused.
-- `require('./chat/chat-server')` returns `chat-remote.js`: the same methods, forwarded in order to
-  Chat's `POST /internal/live/calls` (broadcasts, DMs, TTS, channel sounds, disconnects, user updates).
-  Chat-table writes Live's other modules make (AI viewers, relays, donations, `/api/mod`) are forwarded
-  too; inserts return a placeholder id (≤ -2^40) Chat maps to the real one. Unacknowledged writes wait
-  in `chat_bridge_outbox` (and are applied here if Live boots without the flag again — rollback).
-- Synchronous reads (`getTotalConnections`, viewer counts, slow modes, a connected user's IP) come from
-  Chat's presence snapshot, polled every 3 s.
+- `require('./chat/chat-server')` returns an inert `RemoteChatServer`: the same methods, but nothing is
+  forwarded to Chat (no `POST /internal/live/calls`, no `GET /internal/live/presence`); counts read 0.
+  The `chat_bridge_outbox` table is dropped by migration `007_drop_chat_bridge_outbox`.
 - Chat reads Live data and asks for side effects on `/internal/chat-context/*` and
   `/internal/chat-effects/*` (`server/chat/live-context-routes.js`), with Network service tokens
   (`live.chat_context.read`, `live.chat_effects.write`, `live.chat_mirror.write`,

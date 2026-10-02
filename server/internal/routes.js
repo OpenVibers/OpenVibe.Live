@@ -10,11 +10,6 @@ const { guard } = require('../net/service-guard');
 // Service-to-service only, loopback only (nothing that came through nginx): each route checks the one capability it
 // performs on a Network service token (server/net/service-guard.js); nothing else gets in (X-Internal-Key: plan T2).
 
-// CHAT_AUTHORITY=chat: OpenVibe.Chat caches users; a role or avatar pushed here reaches it at once.
-function notifyChat(userId) {
-    try { const cs = require('../chat/chat-server'); if (cs.remote) cs.userChanged(userId); } catch { /* non-critical */ }
-}
-
 // Footer site copy is written by OpenVibe.AI for the Network directly (network.site_copy); the
 // /internal/ai/site-copy fallback that used to live here was retired on 2026-09-23.
 
@@ -53,7 +48,6 @@ router.post('/user-avatar', guard('live.avatar.write'), (req, res) => {
         if (!user && username) user = db.getUserByUsername(username);
         if (!user) return res.status(404).json({ ok: false, error: 'user not found' });
         if ((user.avatar_url || null) !== url) db.updateUserAvatar(user.id, url, null);
-        notifyChat(user.id);
         return res.json({ ok: true, id: user.id, changed: (user.avatar_url || null) !== url });
     } catch (err) {
         console.error('[Internal] user-avatar error:', err.message);

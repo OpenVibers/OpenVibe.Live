@@ -3,11 +3,10 @@
  *
  * The sound mapping lives on channel_moderation_settings, which OpenVibe.Chat owns and reads locally
  * (roadmap T3), so Live no longer reads the file or broadcasts base64 itself. It asks Chat to play the
- * alert through the chat bridge — op `playAlertSound [streamerId, streamId, kind]` — and Chat resolves
- * the sound from its own settings row, reads the shared sounds file and broadcasts the
- * `soundboard-audio` message to the channel room. In production CHAT_AUTHORITY=chat, so `chatServer`
- * is the chat-remote proxy (server/chat/chat-remote.js) and the call is queued to Chat like every
- * other push. A goal-reached event is `kind: 'goal'` (Chat falls back to the donation sound).
+ * alert, and Chat resolves the sound from its own settings row, reads the shared sounds file and
+ * broadcasts the `soundboard-audio` message to the channel room. Live's chat server no longer reaches
+ * Chat (the bridge is gone), so the call is a no-op until Chat takes alerts from an event.
+ * A goal-reached event is `kind: 'goal'` (Chat falls back to the donation sound).
  */
 'use strict';
 
