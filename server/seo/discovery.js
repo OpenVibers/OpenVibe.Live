@@ -11,7 +11,7 @@ const db = require('../db/database');
 const media = require('../media-client');
 const { SITE_NAME, baseUrl, isAiClip, isoDate } = require('./pages');
 
-const DOCS_DIR = path.join(__dirname, '../../docs');
+const DOCS_DIR = process.env.OV_APP_ROOT ? path.join(process.env.OV_APP_ROOT, 'docs') : path.join(__dirname, '../../docs');
 const DISCOVERY_MAX_AGE = 3600;   // seconds, for every file here
 
 // ── Dynamic sitemap.xml (cached ~1h) ────────────────────────────────────────────────────────
