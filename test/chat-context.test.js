@@ -320,7 +320,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         let written = '';
         chatServer.handleUpgrade({}, { write: (x) => { written += x; }, destroy() {} });
         assert.match(written, /^HTTP\/1\.1 503/);
+        assert.strictEqual(typeof chatServer.resolveAnon, 'function', 'Chat\'s /internal/chat-effects/anon still has its method');
         chatServer.close();
+
+        // The outbox drop refuses while Chat has unacknowledged writes in it, then drops once drained.
+        {
+            const migrations = require('../server/db/migrations');
+            d.exec('CREATE TABLE chat_bridge_outbox (id INTEGER PRIMARY KEY, boot TEXT, ref INTEGER, op TEXT, args TEXT)');
+            d.prepare("INSERT INTO chat_bridge_outbox (boot, ref, op, args) VALUES ('b', 1, 'db', '[]')").run();
+            assert.strictEqual(migrations.runOperator(d, 'op_002_drop_chat_bridge_outbox').outcome, 'failed');
+            assert.ok(d.prepare("SELECT 1 FROM sqlite_master WHERE name = 'chat_bridge_outbox'").get(), 'the table stays');
+            d.prepare('DELETE FROM chat_bridge_outbox').run();
+            assert.strictEqual(migrations.runOperator(d, 'op_002_drop_chat_bridge_outbox').outcome, 'applied');
+            assert.ok(!d.prepare("SELECT 1 FROM sqlite_master WHERE name = 'chat_bridge_outbox'").get());
+        }
 
         // 11. Robot commands from chat pass the control panel's gate: control mode, anonymous switch, whitelist, cooldown.
         {

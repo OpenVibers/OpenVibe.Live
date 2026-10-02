@@ -177,7 +177,16 @@ const OPERATOR_MIGRATIONS = [
         // unacknowledged writes has no reader or writer. The release before (9437263) still prepares
         // statements on the table, so the drop is a contract step an operator runs once that release is
         // out of rollback range (expand first, contract a release later: ADR-028).
-        up: (db) => db.exec('DROP TABLE IF EXISTS chat_bridge_outbox'),
+        // Chat writes the old release forwarded and Chat never acknowledged sit here as op = 'db' rows; this
+        // release has no drain for them, so the drop refuses while any remain (the operator lets the old
+        // release's bridge deliver them, or applies them by hand, then reruns). Unsent pushes are expendable.
+        up: (db) => {
+            if (tableExists(db, 'chat_bridge_outbox')) {
+                const pending = db.prepare("SELECT COUNT(*) AS n FROM chat_bridge_outbox WHERE op = 'db'").get().n;
+                if (pending > 0) throw new Error(`chat_bridge_outbox holds ${pending} chat write(s) OpenVibe.Chat has not acknowledged; drain them before dropping the table`);
+            }
+            db.exec('DROP TABLE IF EXISTS chat_bridge_outbox');
+        },
     },
 ];
 

@@ -18,7 +18,7 @@ with the same WebSocket protocol and REST paths. `CHAT_AUTHORITY=chat` switches 
   them with 503 if one still arrives, and `/ws/chat` upgrades are refused.
 - `require('./chat/chat-server')` returns an inert `RemoteChatServer`: the same methods, but nothing is
   forwarded to Chat (no `POST /internal/live/calls`, no `GET /internal/live/presence`); counts read 0.
-  The `chat_bridge_outbox` table is dropped by the operator migration `op_002_drop_chat_bridge_outbox`, run once the release before this one is out of rollback range.
+  The `chat_bridge_outbox` table is dropped by the operator migration `op_002_drop_chat_bridge_outbox`, run once the release before this one is out of rollback range. It refuses while the table holds chat writes (`op = 'db'`) Chat never acknowledged: let the old release's bridge deliver them (or apply them by hand) and rerun.
 - Chat reads Live data and asks for side effects on `/internal/chat-context/*` and
   `/internal/chat-effects/*` (`server/chat/live-context-routes.js`), with Network service tokens
   (`live.chat_context.read`, `live.chat_effects.write`, `live.chat_mirror.write`,
@@ -31,8 +31,7 @@ with the same WebSocket protocol and REST paths. `CHAT_AUTHORITY=chat` switches 
   only through [server/chat/moderation-client.js](../server/chat/moderation-client.js) — Chat's internal
   read API (`GET /internal/moderation/...`, capability `chat.moderation.read`, cached 30 s, off under
   `LIVE_DRILL`). The dashboard, channel page and upload UI call Chat directly (`/api/chat/channels/:id/…`,
-  `/api/emotes`, `/api/chat/ai/…`); alert sounds are Chat's, played on Live's request through the bridge op
-  `playAlertSound [streamerId, streamId, kind]` ([server/monetization/alerts.js](../server/monetization/alerts.js)).
+  `/api/emotes`, `/api/chat/ai/…`); alert sounds are Chat's, played on Live's request ([server/monetization/alerts.js](../server/monetization/alerts.js), a no-op until Chat takes alerts from an event).
   Live's staged-table machinery (the write relay, dual read and handoff in `chat-tables*.js`), Live's
   chat-AI summary job and the old emote/channel-moderation routes were deleted in the N+1 release; Live's
   copies of the seven supporting tables were dropped in N+2, and the unread `emotes` copy in N+3 (ADR-016).

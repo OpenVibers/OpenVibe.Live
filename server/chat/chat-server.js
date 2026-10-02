@@ -2533,6 +2533,13 @@ class RemoteChatServer extends ChatServer {
     }
 
     close() { /* nothing was started */ }
+
+    /** The anon number for an address (Network's unified resolve, else Live's table) — for Chat. */
+    async resolveAnon(ip) {
+        const key = this.normalizeIp(ip);
+        const num = await this._resolveUnifiedAnonNum(key);
+        return { anon_number: num, first_seen: db.getAnonFirstSeen(key) };
+    }
 }
 
 module.exports = require('./chat-authority').isRemote() ? new RemoteChatServer() : new ChatServer();
