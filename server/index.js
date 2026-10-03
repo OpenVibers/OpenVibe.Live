@@ -6,7 +6,7 @@
  * ╚═══════════════════════════════════════════════════════════╝
  *
  * Streaming: JSMPEG + WebRTC (Mediasoup) + RTMP
- * Media (VODs/clips/pastes/thumbnails): OpenVibe.Media (openvibe.media)
+ * Media (VODs/clips/thumbnails): OpenVibe.Media (openvibe.media); pastes: OpenVibe.Community
  * Identity/SSO + OpenCoins wallet: OpenVibe.Network (openvibe.network)
  * Chat: WebSocket with anon handling + word filter
  * Currencies: Vibes (tips/cashout, local) + OpenCoins (network wallet)
@@ -113,8 +113,8 @@ const monetizationRoutes = require('./monetization/routes');
 const coinsRoutes = require('./monetization/coins-routes');
 const cosmeticsRoutes = require('./monetization/cosmetics-routes');
 const cosmeticsModule = require('./monetization/cosmetics');
-// Media subsystem (VODs/clips/pastes/thumbnails) lives in OpenVibe.Media now —
-// these thin proxy routers preserve the public API paths the SPA calls.
+// Media subsystem (VODs/clips/thumbnails) lives in OpenVibe.Media now, and pastes in
+// OpenVibe.Community — these thin proxy routers preserve the public API paths the SPA calls.
 const mediaClient = require('./media-client');
 const vodRoutes = require('./media-proxy/vods');
 const clipRoutes = require('./media-proxy/clips');
