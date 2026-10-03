@@ -5,6 +5,10 @@
  * call there with Live's service token; the person is named by their canonical subject (never by a
  * Live id), anonymous callers stay anonymous, and staff routes still pass Live's requireAdmin first.
  *
+ * Live does not call Media's read-only paste API (`/api/v1/:app/pastes`, plan T10 step 2 — being
+ * retired); every paste read and write here goes to Community. Media's public paste URLs
+ * (/p/:slug[/raw|/screenshot]) are built in media-client.js for legacy rows only.
+ *
  * Live-local exception:
  *   - POST /:slug/set-avatar  → updates users.avatar_url in live.db
  */
