@@ -297,7 +297,7 @@ function checkContract(out, label) {
         return { status: res.status, json: await res.json().catch(() => null), cache: res.headers.get('cache-control') };
     };
     assert.strictEqual((await fetch(`${base}?slug=alice`)).status, 401, 'no token');
-    assert.strictEqual((await call('GET', 'slug=alice', null, { cap: ['live.follower.read'] })).status, 403, 'needs live.lineage.resolve');
+    assert.strictEqual((await call('GET', 'slug=alice', null, { cap: ['live.chat_context.read'] })).status, 403, 'needs live.lineage.resolve');
     assert.strictEqual((await call('GET', 'slug=alice', null, { headers: { 'X-Forwarded-For': '1.2.3.4' } })).status, 403, 'loopback only');
     let res = await call('GET', 'slug=alice&vod_id=42&live_user_id=17');
     assert.strictEqual(res.status, 200);

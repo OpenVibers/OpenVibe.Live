@@ -46,7 +46,7 @@ const SEED = `
     db.ensureChannel(star); db.ensureChannel(fan);
     d.prepare("INSERT INTO streams (user_id, title, category, protocol, is_live, viewer_count, started_at, last_heartbeat) VALUES (?, 'N-1 live stream', 'tech', 'webrtc', 1, 2, datetime('now', '-10 minutes'), datetime('now'))").run(star);
     d.prepare("INSERT INTO streams (user_id, title, category, protocol, is_live, started_at, ended_at) VALUES (?, 'N-1 past stream', 'irl', 'webrtc', 0, datetime('now', '-2 days'), datetime('now', '-2 days', '+1 hour'))").run(star);
-    db.followUser(fan, star);
+    d.prepare('INSERT INTO follows (follower_id, streamer_id) VALUES (?, ?)').run(fan, star);
     d.prepare("INSERT INTO chat_messages (stream_id, user_id, username, message) VALUES (1, ?, 'n1fan', 'hello from N-1')").run(fan);
     db.close();
 `;
