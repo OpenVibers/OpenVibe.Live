@@ -265,7 +265,7 @@ async function _channelMeta(username, page = 1) {
     let ov = null;
     try { ov = db.getStreamerOverview ? db.getStreamerOverview(acct.userId) : null; } catch { /* */ }
     let followers = 0;
-    try { followers = db.getFollowerCount ? (db.getFollowerCount(acct.userId) || 0) : 0; } catch { /* */ }
+    try { followers = (await require('../social/network-follows').followerCount(acct.userId)) || 0; } catch { /* */ }
     let live = [];
     try { live = acct.banned ? [] : (db.getLiveStreamsByUserId(acct.userId) || []); } catch { live = []; }
     const bio = clean(acct.bio || '', 300);

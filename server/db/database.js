@@ -4786,18 +4786,7 @@ function updateUserAvatar(userId, avatarUrl, pasteId = null) {
 // resetAvatarsForPaste() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
 
 // ── Follow helpers ───────────────────────────────────────────
-
-function followUser(followerId, streamerId) {
-    return run(
-        `INSERT OR IGNORE INTO follows (follower_id, streamer_id) VALUES (?, ?)`,
-        [followerId, streamerId]
-    );
-}
-
-function unfollowUser(followerId, streamerId) {
-    return run(`DELETE FROM follows WHERE follower_id = ? AND streamer_id = ?`,
-        [followerId, streamerId]);
-}
+// Reads of the projection of Network's follow graph; only server/social/network-follows.js writes it.
 
 function getFollowerCount(streamerId) {
     const row = get('SELECT COUNT(*) as count FROM follows WHERE streamer_id = ?', [streamerId]);
@@ -7067,7 +7056,7 @@ module.exports = {
     getKickChannelCache, setKickChannelCache,
     getChannelPoints, addChannelPoints, deductChannelPoints, applyChannelPoints,
     // Follows
-    followUser, unfollowUser, getFollowerCount, isFollowing, getFollowerIds,
+    getFollowerCount, isFollowing, getFollowerIds,
     // Transactions (Vibes)
     createTransaction, addVibes, deductVibes, addVibesCashout, deductVibesCashout,
     // OpenCoins

@@ -344,8 +344,10 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             aiShort(clipsOfStreams, 'clip_ai_state', 'clip_id');
             aiShort(aiClips, 'clip_ai_state', 'clip_id');
         }
-        const followerCount = db.getFollowerCount(channel.user_id);
-        const isFollowing = req.user ? db.isFollowing(req.user.id, channel.user_id) : false;
+        // Follows are Network's (ADR-030): its count, and the viewer's follow as Network last answered it.
+        const networkFollows = require('../social/network-follows');
+        const followerCount = await networkFollows.followerCount(channel.user_id);
+        const isFollowing = req.user ? networkFollows.isFollowing(req.user.id, channel.user_id) : false;
         // Managed streams for this channel
         const managedStreams = db.getManagedStreamsByUserId(channel.user_id) || [];
 
@@ -1627,7 +1629,7 @@ router.get('/setup-progress', requireAuth, async (req, res) => {
     const sounds = safe(() => db.get('SELECT COUNT(*) AS n FROM channel_sounds WHERE channel_owner_id = ?', [uid]).n, 0);
     const goals = safe(() => db.get('SELECT COUNT(*) AS n FROM donation_goals WHERE user_id = ? AND is_active = 1', [uid]).n, 0);
     const powerchat = safe(() => !!db.get('SELECT 1 FROM powerchat_connections WHERE user_id = ? LIMIT 1', [uid]), false);
-    const followers = safe(() => db.getFollowerCount(uid), 0);
+    const followers = await require('../social/network-follows').followerCount(uid).catch(() => 0);
     let panels = 0; try { const p = channel.panels ? JSON.parse(channel.panels) : []; panels = Array.isArray(p) ? p.length : 0; } catch { panels = 0; }
     const offline = !!(channel.offline_screen_type && channel.offline_screen_type !== 'none');
     const methodSet = slots.some(sl => !!sl.streaming_method);
@@ -1958,7 +1960,7 @@ router.post('/managed/:id/regenerate-key', requireAuth, async (req, res) => {
 });
 
 // ── Get Stream Details ───────────────────────────────────────
-router.get('/:id', optionalAuth, (req, res) => {
+router.get('/:id', optionalAuth, async (req, res) => {
     try {
         const stream = db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
@@ -1995,8 +1997,9 @@ router.get('/:id', optionalAuth, (req, res) => {
             ? db.getPipOverlayForManagedStream(stream.managed_stream_id)
             : null;
 
-        if (req.user) stream.isFollowing = db.isFollowing(req.user.id, stream.user_id);
-        stream.follower_count = db.getFollowerCount(stream.user_id);
+        const networkFollows = require('../social/network-follows');
+        if (req.user) stream.isFollowing = networkFollows.isFollowing(req.user.id, stream.user_id);
+        stream.follower_count = await networkFollows.followerCount(stream.user_id);
 
         res.json({ stream });
     } catch (err) {
@@ -2389,48 +2392,39 @@ router.get('/:id/rtmp-status', requireAuth, (req, res) => {
 });
 
 // ── Follow/Unfollow Streamer ─────────────────────────────────
+// Network owns follows (ADR-030, plan T2): a click follows or unfollows there, and the answer (following, the
+// follower count) is Network's. Network sends the FOLLOW notification; Live adds the OpenCoins and the PowerChat
+// alert for a follow Network says this click started (never for a repeat of a follow Network already had).
+async function toggleFollow(req, res, streamerId) {
+    const follows = require('../social/network-follows');
+    const w = await follows.set(req.user.id, streamerId, !follows.isFollowing(req.user.id, streamerId));
+    if (!w.ok) {
+        if (w.detail) console.warn('[Streaming] follow:', w.detail);
+        return res.status(w.status).json({ error: w.error });
+    }
+    if (w.started) {
+        // Award OpenCoins for following
+        try {
+            const openvibeCoins = require('../monetization/opencoins');
+            openvibeCoins.awardFollow(req.user.id, streamerId);
+        } catch { /* non-critical */ }
+        // Fire a PowerChat follow alert for the streamer (follows:write).
+        try {
+            const follower = db.getUserById(req.user.id);
+            require('../integrations/powerchat-platform').forwardFollow(streamerId, {
+                followerName: follower?.display_name || follower?.username || 'Someone',
+                externalId: 'u' + req.user.id,
+            });
+        } catch { /* non-critical */ }
+    }
+    res.json({ following: w.following, count: w.count });
+}
+
 router.post('/:id/follow', requireAuth, async (req, res) => {
     try {
         const stream = db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
-
-        // ADR-030 step 4: Network first (FOLLOWS_AUTHORITY=network); Live's row only when Network took it.
-        const w = await require('../social/network-follows').writeThrough(req.user.id, stream.user_id, !db.isFollowing(req.user.id, stream.user_id));
-        if (!w.ok) return res.status(503).json({ error: 'Could not update the follow right now; try again in a moment' });
-        if (db.isFollowing(req.user.id, stream.user_id)) {
-            db.unfollowUser(req.user.id, stream.user_id);
-            res.json({ following: false, count: db.getFollowerCount(stream.user_id) });
-        } else {
-            db.followUser(req.user.id, stream.user_id);
-            // Award OpenCoins for following
-            try {
-                const openvibeCoins = require('../monetization/opencoins');
-                openvibeCoins.awardFollow(req.user.id, stream.user_id);
-            } catch { /* non-critical */ }
-            // Fire a PowerChat follow alert for the streamer (follows:write).
-            try {
-                const follower = db.getUserById(req.user.id);
-                require('../integrations/powerchat-platform').forwardFollow(stream.user_id, {
-                    followerName: follower?.display_name || follower?.username || 'Someone',
-                    externalId: 'u' + req.user.id,
-                });
-            } catch { /* non-critical */ }
-            // Notify the followed user. A follow Network took notifies there (its follow graph sends FOLLOW);
-            // only a Live-only follow (FOLLOWS_AUTHORITY unset, or a side with no subject) is pushed from here.
-            if (!w.network) try {
-                const { pushNotification, actorInfo } = require('../utils/notify');
-                const follower = db.getUserById(req.user.id);
-                pushNotification({
-                    user_id: stream.user_id,
-                    type: 'FOLLOW',
-                    title: 'New Follower',
-                    message: `${follower?.display_name || follower?.username || 'Someone'} followed you`,
-                    url: follower?.username ? `${config.baseUrl}/@${encodeURIComponent(follower.username)}` : config.baseUrl,
-                    ...actorInfo(follower),
-                });
-            } catch { /* non-critical */ }
-            res.json({ following: true, count: db.getFollowerCount(stream.user_id) });
-        }
+        await toggleFollow(req, res, stream.user_id);
     } catch (err) {
         console.error('[Streaming]', err.message);
         res.status(500).json({ error: 'Failed to follow/unfollow' });
@@ -2442,43 +2436,7 @@ router.post('/channel/:username/follow', requireAuth, async (req, res) => {
     try {
         const user = db.getUserByUsername(req.params.username);
         if (!user) return res.status(404).json({ error: 'User not found' });
-
-        // ADR-030 step 4: Network first (FOLLOWS_AUTHORITY=network); Live's row only when Network took it.
-        const w = await require('../social/network-follows').writeThrough(req.user.id, user.id, !db.isFollowing(req.user.id, user.id));
-        if (!w.ok) return res.status(503).json({ error: 'Could not update the follow right now; try again in a moment' });
-        if (db.isFollowing(req.user.id, user.id)) {
-            db.unfollowUser(req.user.id, user.id);
-            res.json({ following: false, count: db.getFollowerCount(user.id) });
-        } else {
-            db.followUser(req.user.id, user.id);
-            // Award OpenCoins for following
-            try {
-                const openvibeCoins = require('../monetization/opencoins');
-                openvibeCoins.awardFollow(req.user.id, user.id);
-            } catch { /* non-critical */ }
-            // Fire a PowerChat follow alert for the streamer (follows:write).
-            try {
-                const f = db.getUserById(req.user.id);
-                require('../integrations/powerchat-platform').forwardFollow(user.id, {
-                    followerName: f?.display_name || f?.username || 'Someone',
-                    externalId: 'u' + req.user.id,
-                });
-            } catch { /* non-critical */ }
-            // Notify the followed user, unless Network took the follow and notifies (see the route above).
-            if (!w.network) try {
-                const { pushNotification, actorInfo } = require('../utils/notify');
-                const follower = db.getUserById(req.user.id);
-                pushNotification({
-                    user_id: user.id,
-                    type: 'FOLLOW',
-                    title: 'New Follower',
-                    message: `${follower?.display_name || follower?.username || 'Someone'} followed you`,
-                    url: follower?.username ? `${config.baseUrl}/@${encodeURIComponent(follower.username)}` : config.baseUrl,
-                    ...actorInfo(follower),
-                });
-            } catch { /* non-critical */ }
-            res.json({ following: true, count: db.getFollowerCount(user.id) });
-        }
+        await toggleFollow(req, res, user.id);
     } catch (err) {
         console.error('[Streaming]', err.message);
         res.status(500).json({ error: 'Failed to follow/unfollow' });
