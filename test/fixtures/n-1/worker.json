@@ -1,7 +1,7 @@
 {
  "service": "live",
- "release": "0e9b8e4e0ce718bf411585593c4b6eb75d9cd2e0",
- "recorded_at": "2026-10-03T07:37:52.485Z",
+ "release": "913876f186255398e3b82e5751ce25773ad55796",
+ "recorded_at": "2026-10-03T08:14:38.702Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "user_version": 0,
  "schema": [
@@ -240,31 +240,31 @@
   "schema_migrations": [
    {
     "id": "001_vibes_decimal_to_bits",
-    "applied_at": "2026-10-03 07:37:37",
+    "applied_at": "2026-10-03 08:14:32",
     "mode": "adopted",
-    "duration_ms": 1
+    "duration_ms": 0
    },
    {
     "id": "002_pastes_ai_columns",
-    "applied_at": "2026-10-03 07:37:37",
+    "applied_at": "2026-10-03 08:14:32",
     "mode": "applied",
-    "duration_ms": 8
+    "duration_ms": 7
    },
    {
     "id": "004_hot_path_indexes",
-    "applied_at": "2026-10-03 07:37:37",
+    "applied_at": "2026-10-03 08:14:32",
     "mode": "applied",
     "duration_ms": 1
    },
    {
     "id": "005_drop_chat_staged_tables",
-    "applied_at": "2026-10-03 07:37:37",
+    "applied_at": "2026-10-03 08:14:32",
     "mode": "adopted",
     "duration_ms": 1
    },
    {
     "id": "006_drop_emotes",
-    "applied_at": "2026-10-03 07:37:37",
+    "applied_at": "2026-10-03 08:14:32",
     "mode": "adopted",
     "duration_ms": 0
    }
@@ -855,7 +855,6 @@
   "SELECT enabled FROM news_settings WHERE scope = 'global' AND source_id = '_master'",
   "SELECT enabled FROM news_settings WHERE scope = 'user' AND scope_id = ? AND source_id = '_master'",
   "SELECT f.created_at, fu.username AS follower_username, fu.display_name AS follower_display, su.username AS streamer_username, su.display_name AS streamer_display FROM follows f JOIN users fu ON fu.id = f.follower_id JOIN users su ON su.id = f.streamer_id ORDER BY f.id DESC LIMIT 1",
-  "SELECT f.id, la.subject_id, la.service_user_id FROM follows f LEFT JOIN linked_accounts la ON la.service = 'network' AND la.user_id = f.follower_id WHERE f.streamer_id = ? AND f.id > ? ORDER BY f.id LIMIT ?",
   "SELECT follower_id FROM follows WHERE streamer_id = ?",
   "SELECT from_user_id, u.username, u.display_name, u.avatar_url, SUM(amount) as total_donated FROM transactions t JOIN users u ON t.from_user_id = u.id WHERE t.stream_id = ? AND t.type = 'donation' AND t.status = 'completed' GROUP BY from_user_id ORDER BY total_donated DESC LIMIT ?",
   "SELECT g.id, g.title, g.current_amount, g.target_amount, g.image_url, u.username, u.display_name FROM donation_goals g JOIN users u ON u.id = g.user_id WHERE g.is_active = 1 AND g.target_amount > 0 ORDER BY (CAST(g.current_amount AS REAL) / g.target_amount) DESC, g.current_amount DESC LIMIT 3",
