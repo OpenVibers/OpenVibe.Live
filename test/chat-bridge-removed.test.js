@@ -77,6 +77,24 @@ assert.ok(migrations.OPERATOR_MIGRATIONS.some((m) => m.id === drop.ID), 'an oper
     assert.deepStrictEqual(r.refused, [3], 'a refused row is left for the operator');
     assert.deepStrictEqual(drop.counts(db), { exists: true, total: 1, writes: 0, byOp: { deployNotice: 1 }, boots: 1 });
 
+    // 5b. A whole batch refused (400) is retried row by row; an unparseable row is reported once.
+    const db2 = new Database(':memory:');
+    db2.exec(`CREATE TABLE chat_bridge_outbox (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, boot TEXT NOT NULL, ref INTEGER, op TEXT NOT NULL, args TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+    const put2 = db2.prepare('INSERT INTO chat_bridge_outbox (boot, ref, op, args) VALUES (?, ?, ?, ?)');
+    put2.run('boot-c', null, 'db', '{not json');
+    put2.run('boot-c', null, 'db', JSON.stringify(['recordFirstChat', 'user:1', 1]));
+    put2.run('boot-c', null, 'db', JSON.stringify(['recordFirstChat', 'user:2', 1]));
+    const picky = async (p, body) => {
+        if (body.ops.length > 1) { const err = new Error('too big'); err.status = 413; throw err; }
+        return { ok: true, results: body.ops.map((o) => ({ seq: o.seq, ok: true })) };
+    };
+    r = await drop.deliver(db2, picky);
+    assert.strictEqual(r.delivered, 2);
+    assert.deepStrictEqual(r.refused, [1], 'each refused id appears once');
+    db2.close();
+
     // 6. No chat write left: the drop applies once.
     res = migrations.runOperator(db, drop.ID);
     assert.strictEqual(res.outcome, 'applied');

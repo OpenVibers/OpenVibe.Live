@@ -75,6 +75,8 @@ function report(c, log) {
  */
 async function deliver(db, post, log = () => {}) {
     const out = { delivered: 0, refused: [], error: null };
+    // A batch Chat refuses whole is rebuilt row by row, so the same unparseable row can be seen twice.
+    const refused = new Set();
     if (!hasTable(db)) return out;
     const rows = db.prepare(`SELECT id, boot, ref, op, args FROM ${TABLE} ORDER BY id`).all();
     const del = db.prepare(`DELETE FROM ${TABLE} WHERE id = ?`);
@@ -88,7 +90,7 @@ async function deliver(db, post, log = () => {}) {
         for (const r of batch) {
             let args;
             try { args = JSON.parse(r.args); } catch { args = null; }
-            if (!Array.isArray(args)) { out.refused.push(r.id); continue; }
+            if (!Array.isArray(args)) { refused.add(r.id); continue; }
             ops.push({ seq: r.id, op: r.op, args, ref: r.ref, key: `live:${r.id}` });
         }
         try {
@@ -96,7 +98,7 @@ async function deliver(db, post, log = () => {}) {
             const refusedSeq = new Set(((res && res.results) || []).filter((x) => !x.ok).map((x) => x.seq));
             db.transaction(() => {
                 for (const o of ops) {
-                    if (refusedSeq.has(o.seq)) { out.refused.push(o.seq); continue; }
+                    if (refusedSeq.has(o.seq)) { refused.add(o.seq); continue; }
                     del.run(o.seq);
                     out.delivered++;
                 }
@@ -105,12 +107,13 @@ async function deliver(db, post, log = () => {}) {
             limit = BATCH;
         } catch (err) {
             if ((err.status === 400 || err.status === 413) && batch.length > 1) { limit = 1; continue; }
-            if (err.status === 400 || err.status === 413) { out.refused.push(batch[0].id); i += 1; continue; }
+            if (err.status === 400 || err.status === 413) { refused.add(batch[0].id); i += 1; continue; }
             out.error = err.message;
             log(`stopped: ${err.message} (rerun --deliver later)`);
             break;
         }
     }
+    out.refused = [...refused];
     return out;
 }
 
