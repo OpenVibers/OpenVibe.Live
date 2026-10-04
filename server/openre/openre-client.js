@@ -80,9 +80,10 @@ const streamForSlot = (managedStreamId) => wrap('stream lookup', () => openre().
 
 /** Create the definition for a slot, owned by the streamer's canonical subject. The key it
  *  returns is dropped unseen: the streamer gets a usable key by rotating. */
-async function createStreamForSlot(slot, { subject, recordingMode, recordingVisibility }) {
+async function createStreamForSlot(slot, { subject, protocols, recordingMode, recordingVisibility }) {
     const r = await wrap('stream create', () => openre().streams.create({
         title: slot.title || 'Stream',
+        ...(protocols ? { protocols } : {}),
         recording_mode: recordingMode,
         recording_visibility: recordingVisibility,
         mirror_to_live: true,
@@ -95,6 +96,7 @@ async function createStreamForSlot(slot, { subject, recordingMode, recordingVisi
 }
 
 const rotateKey = (streamId, { subject, graceSeconds = 0 } = {}) => wrap('key rotate', () => openre().streams.rotateKey(streamId, { subject, graceSeconds }));
+const updateStream = (streamId, patch, { subject } = {}) => wrap('stream update', () => openre().streams.update(streamId, patch, { subject }));
 const getStream = (streamId, { subject } = {}) => wrap('stream read', () => openre().streams.get(streamId, { subject }));
 const getSession = (sessionId) => wrap('session read', () => openre().sessions.get(sessionId));
 /** Playback descriptor for a session (the SDK caches it 10 s: the FLV proxy asks on every viewer connect). */
@@ -106,4 +108,4 @@ function manageUrl(streamId) {
 
 function _reset() { sdk = null; }
 
-module.exports = { enabled, settings, request, streamForSlot, createStreamForSlot, rotateKey, getStream, getSession, playback, manageUrl, OpenReError, _reset };
+module.exports = { enabled, settings, request, streamForSlot, createStreamForSlot, updateStream, rotateKey, getStream, getSession, playback, manageUrl, OpenReError, _reset };

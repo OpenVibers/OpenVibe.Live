@@ -2270,6 +2270,24 @@ router.get('/:id/endpoint', requireAuth, async (req, res) => {
 
         const hostname = config.host === '0.0.0.0' ? req.hostname : config.host;
 
+        if (openreAuthority.OPENRE_PROTOCOLS.has(stream.protocol) && openreAuthority.slotIsOpenre(stream.managed_stream_id)) {
+            // OpenRe ingests this slot: its server URL for the slot's protocol, the hint of its key
+            // (never the key). No Live relay channel, room or recorder is set up for it.
+            const slot = openreAuthority.slotById(stream.managed_stream_id);
+            const ingest = await openreAuthority.ingestFor(slot, require('../auth/identity-sync').subjectOf(slot.user_id)).catch(() => ({}));
+            const serverUrl = stream.protocol === 'webrtc' ? { whipUrl: ingest.whip_url || null }
+                : stream.protocol === 'jsmpeg' ? { jsmpegUrl: ingest.jsmpeg_url || null }
+                    : { rtmpUrl: ingest.rtmp_url || null };
+            endpoint = {
+                ...serverUrl,
+                streamKey: null,
+                streamKeyHint: ingest.stream_key_hint || 'Press Regenerate to get your OpenRe stream key',
+                keyManagedBy: 'openre',
+                ...(stream.protocol === 'rtmp' ? { flvUrl: `/api/streams/rtmp-proxy/${stream.id}.flv` } : {}),
+            };
+            return res.json({ endpoint, stream_key: null });
+        }
+
         if (stream.protocol === 'jsmpeg') {
             endpoint = jsmpegRelay.getChannelInfo(msKey) || jsmpegRelay.createChannel(msKey);
 
@@ -2305,18 +2323,6 @@ router.get('/:id/endpoint', requireAuth, async (req, res) => {
                 whipUrlSource,
                 ...(whipUrlWarning ? { whipUrlWarning } : {}),
             };
-        } else if (stream.protocol === 'rtmp' && openreAuthority.slotIsOpenre(stream.managed_stream_id)) {
-            // OpenRe ingests this slot: its server URL, the hint of its key (never the key).
-            const slot = openreAuthority.slotById(stream.managed_stream_id);
-            const ingest = await openreAuthority.ingestFor(slot, require('../auth/identity-sync').subjectOf(slot.user_id)).catch(() => ({}));
-            endpoint = {
-                rtmpUrl: ingest.rtmp_url || null,
-                streamKey: null,
-                streamKeyHint: ingest.stream_key_hint || 'Press Regenerate to get your OpenRe stream key',
-                keyManagedBy: 'openre',
-                flvUrl: `/api/streams/rtmp-proxy/${stream.id}.flv`,
-            };
-            return res.json({ endpoint, stream_key: null });
         } else if (stream.protocol === 'rtmp') {
             const rtmpHost = config.rtmp.host || (() => {
                 try { return new URL(config.baseUrl).hostname; } catch { return hostname; }
