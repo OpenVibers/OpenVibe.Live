@@ -23,6 +23,13 @@ with the same WebSocket protocol and REST paths. `CHAT_AUTHORITY=chat` switches 
   in `chat_bridge_outbox` (and are applied here if Live boots without the flag again — rollback).
 - Synchronous reads (`getTotalConnections`, viewer counts, slow modes, a connected user's IP) come from
   Chat's presence snapshot, polled every 3 s.
+- **The bridge writers stay** (T3 J2 deferred). Live still generates the messages Chat delivers —
+  AI viewer replies, relays, donations, `/api/mod` deletes, deploy notices — and alert sounds are
+  requested from Live (`playAlertSound`). Chat does not yet consume those from an event or generate
+  them itself, so `chat-remote.js` and its `chat_bridge_outbox` must keep forwarding them: removing
+  the writers first sends nothing to Chat and viewers lose the messages (review 2026-10-02, PR #12).
+  Retire them only once Chat owns each path, and drop the outbox only after any unacknowledged
+  `op = 'db'` rows are delivered (`test/chat-context.test.js` locks the paths).
 - Chat reads Live data and asks for side effects on `/internal/chat-context/*` and
   `/internal/chat-effects/*` (`server/chat/live-context-routes.js`), with Network service tokens
   (`live.chat_context.read`, `live.chat_effects.write`, `live.chat_mirror.write`,

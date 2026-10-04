@@ -17,6 +17,12 @@
  *     loses none;
  *   - synchronous reads (connection counts, viewer counts, slow modes, a connected user's address)
  *     come from a presence snapshot polled from Chat's GET /internal/live/presence every few seconds.
+ *
+ * Do NOT remove these writers (T3 J2) yet: Live still generates the messages Chat delivers (AI viewer
+ * replies, relays, donations, /api/mod deletes, deploy notices) and requests its alert sounds, and Chat
+ * does not yet consume or generate them on its own, so dropping this forwarding sends nothing to Chat and
+ * viewers lose them. Retire a path only once Chat owns it; drop chat_bridge_outbox only after its
+ * unacknowledged op = 'db' rows have been delivered. Covered by test/chat-context.test.js.
  */
 const crypto = require('crypto');
 const db = require('../db/database');
