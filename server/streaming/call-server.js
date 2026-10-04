@@ -138,7 +138,7 @@ class CallServer {
         if (this._notifyTimer) return;
         this._notifyTimer = setTimeout(() => {
             this._notifyTimer = null;
-            try { chatServer.broadcastAll({ type: 'voice-channels', channels: this.listChannels(null) }); } catch { /* */ }
+            try { require('../chat/chat-delivery').event({ kind: 'all' }, { type: 'voice-channels', channels: this.listChannels(null) }); } catch { /* */ }
         }, 400);
     }
 

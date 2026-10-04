@@ -112,7 +112,12 @@ async function announce({ db, chatServer, log = console }) {
     // message and shows it (its own copy of this module). It learns the commits from the
     // live.release.deployed event; only with Events publishing off are they handed over the bridge.
     if (chatServer && chatServer.remote) {
-        if (!outbox) chatServer.deployNotice(commits);
+        if (!outbox) {
+            // Chat's ingress has no deploy endpoint: without Events the commits stay unannounced and the
+            // next boot tries again (LIVE_CHAT_INGRESS, docs: OpenVibe.Chat docs/chat-ingress.md).
+            if (require('./chat-delivery').ingress()) { log.warn('[Deploy notice] Events outbox unavailable; left unannounced for the next boot'); return { announced: 0 }; }
+            chatServer.deployNotice(commits);
+        }
         try { inTransaction(recordDeploy); } catch (err) { log.warn('[Deploy notice] not recorded:', err.message); return { announced: commits.length, event_id: null }; }
         if (outbox) outbox.kick();
         return { announced: commits.length, event_id: eventId };

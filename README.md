@@ -96,12 +96,20 @@ Live's own principal (`live`) holds grants to call:
 
 - **Network**: `identity.subject.resolve`, `network.follows.read|write`, `network.modules.read|write`, `network.notifications.push`, `network.coins.credit|debit`, `network.analytics.creator.read`, `network.account.export.contribute`, `network.account.deletion.confirm`.
 - **AI**: `ai.run.create|read` (namespaces `live.*`, `network.site_copy`, `media.analyze`), `ai.credential.manage`, `ai.quota.attribution.manage`.
-- **Chat**: `chat.live_bridge.write`, `chat.message.send`, `chat.presence.read`.
+- **Chat**: `chat.live_bridge.write`, `chat.message.send`, `chat.presence.read`; with `LIVE_CHAT_INGRESS=1` also `chat.event.publish`, `chat.moderation.write`, `chat.cache.invalidate`.
 - **Community**: `community.paste.*`, `community.comment.*`, `community.pulse.write`.
 - **Events**: `events.event.publish|read`, `events.subscription.manage`.
 - **OpenRe**: `openre.stream.*`, `openre.key.rotate`, `openre.session.read`.
 - **Billing**: `billing.*` (intents, transfers, subscriptions, cash-outs, balances, entitlements).
 - **Elsewhere**: `tips.interaction.record`, `vip.entitlement.check`, `tools.tool.run`, `tools.job.read`.
+
+**Chat ingress (`LIVE_CHAT_INGRESS`, off by default).** With `CHAT_AUTHORITY=chat` and `LIVE_CHAT_INGRESS=1`, every chat producer in Live goes through one seam, `server/chat/chat-delivery.js`, to OpenVibe.Chat's typed service-token ingress (`server/chat/chat-client.js`: `POST /internal/chat/messages|events|moderation|invalidate`, `GET /internal/chat/presence`) instead of the `chat-remote.js` bridge. Each operation carries one idempotency key, reused on every retry. A Chat 4xx is logged, counted and dropped; a 5xx or timeout is retried with the same key past Chat's five-minute delivery lease, then logged, counted and dropped. Neither is thrown into the caller, and neither falls back to the bridge (that would deliver twice). Turn it on in this order:
+
+1. Network grants Live `chat.event.publish`, `chat.moderation.write` and `chat.cache.invalidate` (audience `openvibe.chat`).
+2. Chat's ingress is deployed.
+3. Set `LIVE_CHAT_INGRESS=1` and restart Live.
+4. Watch `chat_bridge_outbox` stop growing.
+5. Then the removal PR (the bridge writers and the outbox drop) and Chat's J3.
 
 API writes are limited per person (`server/net/actor-limits.js`, `LIVE_LIMITS_MINUTE` / `_HOUR`).
 

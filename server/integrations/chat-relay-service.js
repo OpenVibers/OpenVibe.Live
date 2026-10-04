@@ -395,6 +395,9 @@ class ChatRelayService {
             }
         } catch { /* non-critical — allow message through on error */ }
 
+        const delivery = require('../chat/chat-delivery');
+        if (delivery.ingress()) return this._deliverToChat(delivery, bridge, username, prefixedUsername, color, extras, String(message || ''));
+
         // Record this relay user's activity; their first message becomes a join date.
         try { db.recordRelayUser(bridge.platform, username); } catch { /* non-critical */ }
 
@@ -428,13 +431,7 @@ class ChatRelayService {
         } catch {}
 
         chatServer.broadcastToStream(bridge.streamId, chatMsg);
-        // AI viewers see relayed chat too (they used to only see native chat).
-        try {
-            require('./ai-chatbot-service').onRealChatMessage(bridge.streamId, {
-                username: prefixedUsername, message: chatMsg.message, userId: null, anonId: null,
-                platform: bridge.platform, relayUsername: username, isStreamer: false, isMod: false, msgId: chatMsg.id || null,
-            });
-        } catch { /* non-critical */ }
+        this._relayFollowUps(bridge, username, prefixedUsername, chatMsg.message, extras, chatMsg.id || null, 'ai');
         // Also surface on the global / username-only overlay (tags stream_channel)
         try { chatServer.forwardToGlobal(bridge.streamId, chatMsg); } catch { /* non-critical */ }
         // And to viewers of the streamer's other live slots (cross-slot chat)
@@ -445,25 +442,7 @@ class ChatRelayService {
             chatServer.synthesizeAndBroadcastTTS(bridge.streamId, prefixedUsername, chatMsg.message, null, bridge.platform, `${bridge.platform}:${prefixedUsername}`, null, chatMsg.id ? `m${chatMsg.id}` : null);
         } catch { /* non-critical */ }
 
-        // Merge relayed chat into the streamer's PowerChat unified overlay too. Only
-        // native OpenVibe messages were forwarded before, so a streamer whose audience
-        // mostly chats on Twitch/Kick saw an empty overlay.
-        try {
-            const pc = require('./powerchat-platform');
-            const stream = db.getStreamById(bridge.streamId);
-            if (stream?.user_id && pc.destRelayEnabled(bridge.destId) && pc.slotRelayEnabled(bridge.streamId)) {
-                pc.forwardChat(stream.user_id, {
-                    chatterName: prefixedUsername,
-                    externalChatterId: `${bridge.platform}:${username}`,
-                    message: chatMsg.message,
-                    messageId: chatMsg.id ? `ov-${chatMsg.id}` : undefined,
-                    avatarUrl: extras.avatar_url || undefined,
-                    // Placeholder letter from the REAL name — "[Twitch] name" would
-                    // otherwise render "[" for every relayed chatter.
-                    avatarFallback: [...String(username || '')][0] || undefined,
-                });
-            }
-        } catch { /* non-critical */ }
+        this._relayFollowUps(bridge, username, prefixedUsername, chatMsg.message, extras, chatMsg.id || null, 'powerchat');
 
         // Welcome first-time external chatters in this streamer's channel
         try {
@@ -480,6 +459,65 @@ class ChatRelayService {
                 }
             }
         } catch { /* non-critical */ }
+    }
+
+    /** What follows a relayed line once it has an id: AI viewers hear it, PowerChat's overlay shows it. */
+    _relayFollowUps(bridge, username, prefixedUsername, message, extras, id, which = 'all') {
+        if (which !== 'powerchat') {
+            // AI viewers see relayed chat too (they used to only see native chat).
+            try {
+                require('./ai-chatbot-service').onRealChatMessage(bridge.streamId, {
+                    username: prefixedUsername, message, userId: null, anonId: null,
+                    platform: bridge.platform, relayUsername: username, isStreamer: false, isMod: false, msgId: id,
+                });
+            } catch { /* non-critical */ }
+        }
+        if (which === 'ai') return;
+        // Merge relayed chat into the streamer's PowerChat unified overlay too. Only
+        // native OpenVibe messages were forwarded before, so a streamer whose audience
+        // mostly chats on Twitch/Kick saw an empty overlay.
+        try {
+            const pc = require('./powerchat-platform');
+            const stream = db.getStreamById(bridge.streamId);
+            if (stream?.user_id && pc.destRelayEnabled(bridge.destId) && pc.slotRelayEnabled(bridge.streamId)) {
+                pc.forwardChat(stream.user_id, {
+                    chatterName: prefixedUsername,
+                    externalChatterId: `${bridge.platform}:${username}`,
+                    message: message,
+                    messageId: id ? `ov-${id}` : undefined,
+                    avatarUrl: extras.avatar_url || undefined,
+                    // Placeholder letter from the REAL name — "[Twitch] name" would
+                    // otherwise render "[" for every relayed chatter.
+                    avatarFallback: [...String(username || '')][0] || undefined,
+                });
+            }
+        } catch { /* non-critical */ }
+    }
+
+    /** LIVE_CHAT_INGRESS: Chat persists, broadcasts, mirrors, reads aloud and records the first chat in one call. */
+    _deliverToChat(delivery, bridge, username, prefixedUsername, color, extras, message) {
+        let first = false;
+        try {
+            const stream = db.getStreamById(bridge.streamId);
+            first = !!(stream?.user_id && db.isFirstChatInChannel(`ext:${prefixedUsername}`, stream.user_id));
+        } catch { /* non-critical */ }
+        delivery.mirror('recordRelayUser', bridge.platform, username);
+        delivery.moderate('relay-record', { platform: bridge.platform, username });
+        delivery.after(delivery.message({
+            stream_id: bridge.streamId, username: prefixedUsername, message, message_type: 'chat', is_global: false,
+            source_platform: bridge.platform, mirror: true,
+            frame: { role: 'external', profile_color: color, avatar_url: extras.avatar_url || undefined },
+            tts: { identity_key: `${bridge.platform}:${prefixedUsername}` },
+        }), (id) => this._relayFollowUps(bridge, username, prefixedUsername, message, extras, id));
+        if (first) {
+            // Chat records the first chat in its copy; Live's copy decides the next welcome.
+            try { delivery.mirror('recordFirstChat', `ext:${prefixedUsername}`, db.getStreamById(bridge.streamId).user_id); } catch { /* */ }
+            delivery.event({ kind: 'stream', id: bridge.streamId }, {
+                type: 'system',
+                message: `Welcome ${username} from ${PLATFORM_LABELS[bridge.platform] || bridge.platform}! 👋`,
+                timestamp: new Date().toISOString(),
+            });
+        }
     }
 
     // ── Twitch IRC ────────────────────────────────────────────

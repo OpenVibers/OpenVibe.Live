@@ -23,7 +23,13 @@ const revocations = require('./revocations');
 const EVENT_ID_RE = /^evt_[0-9A-HJKMNP-TV-Z]{26}$/;
 const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
 const stats = { received: 0, revoked: 0, unchanged: 0, profiles: 0, ignored: 0, refused: 0 };
-const notifyChat = (userId) => { try { const cs = require('../chat/chat-server'); if (cs.remote) cs.userChanged(userId); } catch { /* non-critical */ } };
+const notifyChat = (userId) => {
+    try {
+        const delivery = require('../chat/chat-delivery');
+        if (delivery.ingress()) { delivery.invalidate({ user: Number(userId) }); return; }
+        const cs = require('../chat/chat-server'); if (cs.remote) cs.userChanged(userId);
+    } catch { /* non-critical */ }
+};
 
 function secret() { return process.env.LIVE_EVENTS_SECRET || process.env.MEDIA_EVENTS_SECRET || ''; }
 

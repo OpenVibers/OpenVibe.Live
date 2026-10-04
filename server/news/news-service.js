@@ -14,6 +14,7 @@
 'use strict';
 
 const db = require('../db/database');
+const delivery = require('../chat/chat-delivery');
 const NewsApiSource = require('./sources/newsapi-source');
 const RedditSource = require('./sources/reddit-source');
 const RssSource = require('./sources/rss-source');
@@ -244,7 +245,7 @@ class NewsService {
             if (now - lastInject < MIN_INJECT_INTERVAL_MS) continue;
             if (!this.isEnabledForStream(streamId)) continue;
 
-            this._chatServer.broadcastToStream(streamId, {
+            delivery.event({ kind: 'stream', id: streamId }, {
                 type: 'chat',
                 message_type: 'news',
                 username: '📰 Breaking News',
@@ -254,7 +255,7 @@ class NewsService {
                 timestamp: new Date().toISOString(),
                 source_platform: 'news',
                 system: true,
-            });
+            }, { key: `news:${streamId}:${now}` });
 
             this._lastInjectPerStream.set(streamId, now);
         }

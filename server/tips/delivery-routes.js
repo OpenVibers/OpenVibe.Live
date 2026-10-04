@@ -22,6 +22,7 @@
  */
 const express = require('express');
 const db = require('../db/database');
+const delivery = require('../chat/chat-delivery');
 const { guard } = require('../net/service-guard');
 
 const router = express.Router();
@@ -125,20 +126,36 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
                 type: 'donation', username: name, user_id: null, avatar_url: null, amount, message, timestamp: new Date().toISOString(),
                 source: 'tips', paid_message: b.effect === 'paid_message', highlight_seconds: Number(b.highlight_seconds) || 0,
             };
-            chatServer.broadcastToChannelRoom(userId, streamId, event);
-            try { chatServer.broadcastGlobal({ ...event, global: true, channel_user_id: userId }); } catch { /* non-critical */ }
-            const saved = db.saveChatMessage({
+            const line = {
                 stream_id: streamId, channel_user_id: userId, user_id: null, username: name,
                 message: String(b.text || `${name} ${amount == null ? 'sent a tip' : `tipped ${amount.toLocaleString()} Vibes`}${message ? ': ' + message : ''}`).slice(0, 1000),
                 message_type: 'donation',
                 metadata: { kind: 'donation', amount, message, username: name, source: 'tips', interaction_id: i.id || null, paid_message: event.paid_message, highlight_seconds: event.highlight_seconds, test: !!b.test },
-            });
+            };
+            let chatMessageId = null;
+            if (delivery.ingress()) {
+                // Chat persists the line and shows it in the channel and global chat; Tips' key is the operation's key.
+                chatMessageId = await delivery.message({ ...line, mirror: true, key: `tips:${key}` });
+            } else {
+                chatServer.broadcastToChannelRoom(userId, streamId, event);
+                try { chatServer.broadcastGlobal({ ...event, global: true, channel_user_id: userId }); } catch { /* non-critical */ }
+                const saved = db.saveChatMessage(line);
+                chatMessageId = saved && saved.lastInsertRowid != null ? Number(saved.lastInsertRowid) : null;
+            }
             require('../monetization/alerts').playAlertSound(chatServer, userId, streamId, 'donation');
-            return res.json(remember(key, { ok: true, ref: { chat_message_id: saved && saved.lastInsertRowid != null ? Number(saved.lastInsertRowid) : null } }));
+            return res.json(remember(key, { ok: true, ref: { chat_message_id: chatMessageId } }));
         }
         if (b.effect === 'tts') {
             const text = String((b.tts && b.tts.text) || '').slice(0, 1200);
             if (!text) return res.status(422).json({ error: 'no text' });
+            if (delivery.ingress()) {
+                // Chat's ingress speaks a persisted line: a `tts` line in the channel, read aloud under the same keys.
+                const id = await delivery.message({
+                    stream_id: streamId, channel_user_id: userId, username: name, message: text, message_type: 'tts', source_platform: 'tips',
+                    tts: { identity_key: `tips:${i.id}`, key: `tips-${i.id}` }, key: `tips:${key}`,
+                });
+                return res.json(remember(key, { ok: true, ref: { stream_id: streamId, chat_message_id: id } }));
+            }
             await chatServer.synthesizeAndBroadcastTTS(streamId, name, text, null, 'tips', `tips:${i.id}`, userId, `tips-${i.id}`);
             return res.json(remember(key, { ok: true, ref: { stream_id: streamId } }));
         }

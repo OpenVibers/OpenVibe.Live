@@ -844,7 +844,7 @@ app.post('/api/admin/broadcast', requireAuth, permissions.requireAdmin, (req, re
     try {
         const { type = 'system', message, summary, url } = req.body;
         if (!message && !summary) return res.status(400).json({ error: 'message or summary required' });
-        chatServer.broadcastAll({
+        require('./chat/chat-delivery').event({ kind: 'all' }, {
             type,
             message: message || summary,
             summary,
@@ -990,7 +990,7 @@ app.post('/banned/continue', (req, res) => {
     let lifted = [];
     try {
         lifted = db.forgiveBan(subject.id);
-        db.logModerationAction({ scope_type: 'site', target_user_id: subject.id, action_type: 'unban', details: { via: 'ban-page-continue', ip: req.ip, lifted: lifted.map(r => r.ip_address || 'account') } });
+        require('./chat/chat-delivery').logModeration({ scope_type: 'site', target_user_id: subject.id, action_type: 'unban', details: { via: 'ban-page-continue', ip: req.ip, lifted: lifted.map(r => r.ip_address || 'account') } });
         console.log(`[Ban] ${subject.username} (id ${subject.id}) pressed Continue on the ban page from ${req.ip} — ${lifted.length} ban row(s) lifted`);
     } catch (e) {
         console.error('[Ban] continue failed:', e.message);
@@ -1609,7 +1609,7 @@ function shutdown() {
 
     // Notify all chat clients before closing connections
     try {
-        chatServer.broadcastAll({
+        require('./chat/chat-delivery').event({ kind: 'all' }, {
             type: 'server_restart',
             message: '⚙️ Chat server restarting — you will be reconnected automatically.',
             timestamp: new Date().toISOString(),
