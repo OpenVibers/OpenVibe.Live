@@ -286,6 +286,12 @@ if (drill.enabled) app.use(drill.readOnly);
 // the env default, not the registry's. A duplicate 'self' is a valid no-op when unset.
 const whipConnectSrc = () => (config.whip?.enabled && normalizeOrigin(config.whip?.publicUrl)) || "'self'";
 
+// The channel page embeds the bound Bot robot's panel from the Bot origin (server/bot/embed.js), a
+// different origin than the page, so frame-src must name it or the browser refuses the iframe. The
+// flag and origin are process-level, and an unused origin never widens the policy when the flag is off.
+const botEmbed = require('./bot/embed');
+const botFrameSrc = botEmbed.enabled() ? [botEmbed.botOrigin()] : [];
+
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
@@ -306,7 +312,7 @@ app.use(helmet({
             // data: — the mod TTS voice preview plays a data:audio/… URL; without it the browser
             // rejects the element ("no supported source") even though the backend returned audio.
             mediaSrc: ["'self'", "blob:", "data:", "https://openvibe.media", "https://s3.us-west-004.backblazeb2.com", "https://*.backblazeb2.com", "https://*.r2.cloudflarestorage.com"],
-            frameSrc: ["'self'", "https://openvibe.network", "https://www.youtube.com", "https://www.youtube-nocookie.com", "https://player.vimeo.com"],
+            frameSrc: ["'self'", "https://openvibe.network", "https://www.youtube.com", "https://www.youtube-nocookie.com", "https://player.vimeo.com", ...botFrameSrc],
             workerSrc: ["'self'", "blob:"],
             scriptSrcAttr: ["'unsafe-inline'"],
         },
