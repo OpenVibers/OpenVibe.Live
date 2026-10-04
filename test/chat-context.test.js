@@ -2,8 +2,8 @@
 
 // Chat moved to OpenVibe.Chat (roadmap Wave 6). What Live answers it on /internal/chat-context/*
 // and /internal/chat-effects/* (service tokens, capabilities, re-checked moderators, the read
-// mirror), and the chat-server proxy Live's own modules get with CHAT_AUTHORITY=chat (ordered
-// bridge calls, placeholder ids for forwarded inserts, presence reads). Against stub Network and
+// mirror), and the chat server Live's own modules get with CHAT_AUTHORITY=chat (presence reads,
+// cache hints and pushes over Chat's typed ingress; no bridge, no outbox). Against stub Network and
 // Chat servers.
 
 const assert = require('assert');
@@ -40,8 +40,8 @@ const READ = serviceToken(['live.chat_context.read']);
 const WRITE = serviceToken(['live.chat_effects.write']);
 const MIRROR = serviceToken(['live.chat_mirror.write']);
 
-// Stub Network (Live's own service token for audience openvibe.chat) and stub Chat (the bridge).
-const bridgeCalls = [];
+// Stub Network (Live's own service token for audience openvibe.chat) and stub Chat (its typed ingress).
+const ingressCalls = [];
 const network = http.createServer((req, res) => {
     let raw = '';
     req.on('data', (c) => { raw += c; });
@@ -49,7 +49,7 @@ const network = http.createServer((req, res) => {
         res.setHeader('Content-Type', 'application/json');
         if (req.url === '/oauth/token') {
             const f = new URLSearchParams(raw);
-            return res.end(JSON.stringify({ access_token: serviceToken(['chat.live_bridge.write', 'chat.presence.read'], { aud: f.get('audience'), sub: 'svc:live' }), expires_in: 300 }));
+            return res.end(JSON.stringify({ access_token: serviceToken(['chat.message.send', 'chat.event.publish', 'chat.moderation.write', 'chat.cache.invalidate', 'chat.presence.read'], { aud: f.get('audience'), sub: 'svc:live' }), expires_in: 300 }));
         }
         res.statusCode = 404; res.end('{}');
     });
@@ -60,12 +60,13 @@ const chat = http.createServer((req, res) => {
     req.on('end', () => {
         res.setHeader('Content-Type', 'application/json');
         assert.ok(String(req.headers.authorization || '').startsWith('Bearer '), 'Live calls Chat with a service token');
-        if (req.url === '/internal/live/calls') {
-            const body = JSON.parse(raw);
-            bridgeCalls.push(body);
-            return res.end(JSON.stringify({ ok: true, results: body.ops.map((o) => ({ seq: o.seq, ok: true })) }));
+        assert.ok(!String(req.url).startsWith('/internal/live/'), 'nothing goes over the old bridge');
+        const im = String(req.url).match(/^\/internal\/chat\/(messages|events|moderation|invalidate)$/);
+        if (im) {
+            ingressCalls.push({ family: im[1], body: JSON.parse(raw || '{}') });
+            return res.end(JSON.stringify({ ok: true }));
         }
-        if (req.url === '/internal/live/presence') {
+        if (req.url === '/internal/chat/presence') {
             return res.end(JSON.stringify({ total: 7, streams: { 1: 3 }, slow_mode: { 1: 5000 }, users: [{ user_id: 3, ip: '198.51.100.3', stream_id: 1 }], anons: [{ anon_id: 'anon9', ip: '203.0.113.9', stream_id: 1 }] }));
         }
         // Chat's internal read API (roadmap T3): Live reads the six staged tables through it now.
@@ -269,7 +270,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         db.upsertSubscription({ subscriber_id: viewer, streamer_id: streamer, status: 'canceled', current_period_end: new Date(Date.now() + 86400e3).toISOString() });
         assert.strictEqual((await subOf(`user_id=${viewer}&streamer_id=${streamer}`)).body.subscriber, false, 'not active');
         // Alert sounds moved to Chat with channel_moderation_settings (roadmap T3): Chat resolves the
-        // sound from its own row and plays it through the bridge op, so Live's effect is gone.
+        // sound from its own row and plays it on an `alert` event (test/chat-ingress.test.js), so Live's effect is gone.
 
         // 8b. A ring from Chat's call server (CALLS_AUTHORITY=chat): Live pushes the VC_CALL_INVITE it used to.
         const notify = require('../server/utils/notify');
@@ -303,68 +304,38 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.strictEqual(db.getChatMessageById(900001), undefined);
         assert.ok(db.getUserById(viewer), 'users are never touched');
 
-        // 10. The proxy Live's modules get: ordered bridge calls, placeholders, presence.
+        // 10. The chat server Live's modules get (T3 J2: the bridge and its outbox are gone).
         const chatServer = require('../server/chat/chat-server');
         assert.strictEqual(chatServer.remote, true);
         chatServer.init();
-        const before = d.prepare('SELECT COUNT(*) AS n FROM chat_messages').get().n;
-        const saved = db.saveChatMessage({ stream_id: streamId, user_id: null, username: 'Bot', message: 'beep', message_type: 'chat', source_platform: 'ai' });
-        assert.ok(saved.lastInsertRowid <= -(2 ** 40), 'a placeholder id');
-        assert.strictEqual(d.prepare('SELECT COUNT(*) AS n FROM chat_messages').get().n, before, 'inserts happen in Chat, not here');
-        assert.strictEqual(d.prepare('SELECT COUNT(*) AS n FROM chat_bridge_outbox').get().n, 1, 'kept until Chat acknowledges');
-        chatServer.broadcastToStream(streamId, { type: 'chat', id: saved.lastInsertRowid, message: 'beep' });
-        chatServer.synthesizeAndBroadcastTTS(streamId, 'Bot', 'beep', null, null, 'aibot:bot', null, `m${saved.lastInsertRowid}`);
-        await chatServer.flush();
-        await sleep(100);
-        const ops = bridgeCalls.flatMap((c) => c.ops);
-        assert.deepStrictEqual(ops.map((o) => o.op), ['db', 'broadcastToStream', 'synthesizeAndBroadcastTTS']);
-        assert.strictEqual(ops[0].args[0], 'saveChatMessage');
-        assert.strictEqual(ops[0].ref, saved.lastInsertRowid);
-        assert.ok(/^live:\d+$/.test(ops[0].key), 'forwarded writes carry an idempotency key');
-        assert.strictEqual(ops[1].args[1].id, saved.lastInsertRowid);
-        assert.strictEqual(d.prepare('SELECT COUNT(*) AS n FROM chat_bridge_outbox').get().n, 0, 'acknowledged writes leave the outbox');
-        // Deletes run on the mirror at once (their ids are returned) and are forwarded too.
-        d.prepare("INSERT INTO chat_messages (id, user_id, username, message) VALUES (900002, ?, 'MODDY', 'x')").run(mod);
-        assert.deepStrictEqual(db.deleteUserChatMessages(mod, {}), [900002]);
-        await chatServer.flush();
-        assert.deepStrictEqual(bridgeCalls.at(-1).ops[0].args.slice(0, 2), ['deleteUserChatMessages', mod]);
-        // Live's own writes to data Chat caches (IP approvals, bans) tell Chat to reload it; the
-        // channel-moderation writes went to Chat with the six staged tables (roadmap T3).
-        // The /api/mod global delete loops over chatServer.clients: one pseudo-socket reaches everyone.
-        for (const [ws] of chatServer.clients) { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'delete-messages', ids: [1] })); }
-        await chatServer.flush();
-        assert.strictEqual(bridgeCalls.at(-1).ops[0].op, 'broadcastAllRaw');
-        // Every viewer-facing path Chat does not yet own itself must keep reaching it over the bridge
-        // (review 2026-10-02, PR #12): alert sounds, the /api/mod per-socket reply, deploy notices and
-        // user-change invalidations. A durable write waits in the outbox until Chat acknowledges it.
-        chatServer.playAlertSound(streamer, streamId, 'donation');
-        chatServer.sendToConn({ remote: true }, { type: 'mod-action' });
-        chatServer.deployNotice([{ hash: 'deadbeef' }]);
-        chatServer.userChanged(viewer);
-        assert.strictEqual(d.prepare('SELECT COUNT(*) AS n FROM chat_bridge_outbox').get().n, 1, 'a durable write waits in the outbox');
-        await chatServer.flush();
-        assert.deepStrictEqual(bridgeCalls.at(-1).ops.map((o) => o.op), ['playAlertSound', 'sendToConn', 'deployNotice', 'userChanged']);
-        assert.strictEqual(d.prepare('SELECT COUNT(*) AS n FROM chat_bridge_outbox').get().n, 0, 'Chat acknowledged it');
+        assert.ok(!d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_bridge_outbox'").get(), 'no outbox');
+        // Live's own writes to data Chat caches (IP approvals, bans) send Chat a cache hint.
+        db.approveIp(channel.id, '203.0.113.7', streamer, 'manual');
+        db.forgiveBan(viewer);
+        for (let i = 0; i < 100 && ingressCalls.filter((c) => c.family === 'invalidate').length < 2; i++) await sleep(20);
+        assert.deepStrictEqual(ingressCalls.filter((c) => c.family === 'invalidate').map((c) => (c.body.bans ? 'bans' : c.body.approvals)), [channel.id, 'bans']);
         // Synchronous reads come from Chat's presence snapshot.
-        await sleep(200);
+        for (let i = 0; i < 100 && chatServer.getTotalConnections() !== 7; i++) await sleep(20);
         assert.strictEqual(chatServer.getTotalConnections(), 7);
         assert.strictEqual(chatServer.getStreamViewerCount(1), 3);
         assert.strictEqual(chatServer.slowModeByStream.get(1), 5000);
         assert.strictEqual(chatServer.getConnectedUserIp(3), '198.51.100.3');
         assert.strictEqual(chatServer.findClientByAnonId('anon9', 1).ip, '203.0.113.9');
         assert.strictEqual(chatServer.findClientByAnonId('anon9', 2), null);
+        assert.strictEqual(chatServer.getAnonIdForConnection('203.0.113.9', 1), 'anon9');
+        // Chat asks Live for anon numbers; Live answers from its own helpers.
+        assert.strictEqual(typeof (await chatServer.resolveAnon('203.0.113.9')).anon_number, 'number');
+        // !arena answers the sender in the response, after its own lookup (review 2026-10-02, PR #12).
+        const arenaCmd = await call('POST', '/internal/chat-effects/arena-command', { token: WRITE, body: { cmd: '!arena', parts: ['!arena', 'nobody_here_at_all'], client: { conn_id: 'c1', streamId, ip: '203.0.113.30' } } });
+        assert.strictEqual(arenaCmd.status, 200);
+        assert.strictEqual(arenaCmd.body.handled, true);
+        assert.strictEqual(arenaCmd.body.replies.length, 1, 'the reply made after the lookup is in the answer');
+        assert.strictEqual(arenaCmd.body.replies[0].type, 'system');
         // A /ws/chat upgrade that still lands on Live is refused, not served from the mirror.
         let written = '';
         chatServer.handleUpgrade({}, { write: (x) => { written += x; }, destroy() {} });
         assert.match(written, /^HTTP\/1\.1 503/);
         chatServer.close();
-
-        // Rollback: writes Chat never acknowledged are applied to Live's own tables.
-        d.prepare("INSERT INTO chat_bridge_outbox (boot, ref, op, args) VALUES ('old', -1, 'db', ?)").run(JSON.stringify(['recordFirstChat', 'user:77', streamer]));
-        chatServer._restoreDb();
-        assert.strictEqual(require('../server/chat/chat-remote').drainToLocal({ log() {}, warn() {} }), 1);
-        assert.ok(d.prepare("SELECT 1 FROM stream_first_chats WHERE chatter_key = 'user:77'").get());
-        assert.strictEqual(d.prepare('SELECT COUNT(*) AS n FROM chat_bridge_outbox').get().n, 0);
 
         // 11. Robot commands from chat pass the control panel's gate: control mode, anonymous switch, whitelist, cooldown.
         {

@@ -16,20 +16,27 @@ with the same WebSocket protocol and REST paths. `CHAT_AUTHORITY=chat` switches 
 
 - nginx sends `/ws/chat`, `/api/chat/`, `/api/dm/`, `/api/tts/` and `/api/sounds` to Chat; Live answers
   them with 503 if one still arrives, and `/ws/chat` upgrades are refused.
-- `require('./chat/chat-server')` returns `chat-remote.js`: the same methods, forwarded in order to
-  Chat's `POST /internal/live/calls` (broadcasts, DMs, TTS, channel sounds, disconnects, user updates).
-  Chat-table writes Live's other modules make (AI viewers, relays, donations, `/api/mod`) are forwarded
-  too; inserts return a placeholder id (≤ -2^40) Chat maps to the real one. Unacknowledged writes wait
-  in `chat_bridge_outbox` (and are applied here if Live boots without the flag again — rollback).
-- Synchronous reads (`getTotalConnections`, viewer counts, slow modes, a connected user's IP) come from
-  Chat's presence snapshot, polled every 3 s.
-- **The bridge writers stay** (T3 J2 deferred). Live still generates the messages Chat delivers —
-  AI viewer replies, relays, donations, `/api/mod` deletes, deploy notices — and alert sounds are
-  requested from Live (`playAlertSound`). Chat does not yet consume those from an event or generate
-  them itself, so `chat-remote.js` and its `chat_bridge_outbox` must keep forwarding them: removing
-  the writers first sends nothing to Chat and viewers lose the messages (review 2026-10-02, PR #12).
-  Retire them only once Chat owns each path, and drop the outbox only after any unacknowledged
-  `op = 'db'` rows are delivered (`test/chat-context.test.js` locks the paths).
+- Live's chat producers (AI viewer lines, relayed and RobotStreamer chat, donations and alert sounds,
+  cards, `/api/mod` deletes and moderation, cache hints) go through one seam,
+  [server/chat/chat-delivery.js](../server/chat/chat-delivery.js), to Chat's typed service-token ingress
+  ([server/chat/chat-client.js](../server/chat/chat-client.js): `POST /internal/chat/messages|events|moderation|invalidate`,
+  `GET /internal/chat/presence`). Chat persists, broadcasts, mirrors and speaks (`tts`) in one call per
+  operation; each carries one idempotency key reused on every retry. A Chat 4xx is logged and dropped; a 5xx
+  or timeout is retried past Chat's five-minute delivery lease, then logged and dropped; neither is thrown.
+- `require('./chat/chat-server')` returns a `RemoteChatServer` that never listens: synchronous reads
+  (`getTotalConnections`, viewer counts, slow modes, a connected user's IP) come from Chat's presence
+  snapshot, polled every 3 s; Live's IP-approval and ban writes send Chat a cache hint; a push a module still
+  makes on it goes to the same ingress, and TTS is never synthesised in Live. The arena commands
+  (`/internal/chat-effects/arena-command`) answer the sender in the response's `replies`.
+- Deploy notices reach Chat only as the `live.release.deployed` event: with Events publishing off the commits
+  stay unannounced and the next boot tries again.
+- **The old ordered-calls bridge is gone** (T3 J2): no `chat-remote.js`, no `POST /internal/live/calls`, no
+  placeholder ids, and nothing under `server/` reads or writes `chat_bridge_outbox`
+  (`test/chat-bridge-removed.test.js`). The table is dropped by the operator migration
+  `op_002_drop_chat_bridge_outbox` through `scripts/chat-bridge-outbox-drop.js`, once the release before is
+  out of rollback range: `--deliver` first hands Chat (its bridge receiver, until Chat's J3) every chat write
+  that release queued and Chat never acknowledged, then `--apply` takes a backup and drops the table; the drop
+  refuses while any `op = 'db'` row remains.
 - Chat reads Live data and asks for side effects on `/internal/chat-context/*` and
   `/internal/chat-effects/*` (`server/chat/live-context-routes.js`), with Network service tokens
   (`live.chat_context.read`, `live.chat_effects.write`, `live.chat_mirror.write`,
@@ -42,8 +49,8 @@ with the same WebSocket protocol and REST paths. `CHAT_AUTHORITY=chat` switches 
   only through [server/chat/moderation-client.js](../server/chat/moderation-client.js) — Chat's internal
   read API (`GET /internal/moderation/...`, capability `chat.moderation.read`, cached 30 s, off under
   `LIVE_DRILL`). The dashboard, channel page and upload UI call Chat directly (`/api/chat/channels/:id/…`,
-  `/api/emotes`, `/api/chat/ai/…`); alert sounds are Chat's, played on Live's request through the bridge op
-  `playAlertSound [streamerId, streamId, kind]` ([server/monetization/alerts.js](../server/monetization/alerts.js)).
+  `/api/emotes`, `/api/chat/ai/…`); alert sounds are Chat's, played on Live's request as an `alert`
+  event `{ streamerId, streamId, kind }` on Chat's ingress ([server/monetization/alerts.js](../server/monetization/alerts.js)).
   Live's staged-table machinery (the write relay, dual read and handoff in `chat-tables*.js`), Live's
   chat-AI summary job and the old emote/channel-moderation routes were deleted in the N+1 release; Live's
   copies of the seven supporting tables were dropped in N+2, and the unread `emotes` copy in N+3 (ADR-016).

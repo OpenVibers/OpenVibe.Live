@@ -14,8 +14,7 @@ const { guard } = require('../net/service-guard');
 function notifyChat(userId) {
     try {
         const delivery = require('../chat/chat-delivery');
-        if (delivery.ingress()) { delivery.invalidate({ user: Number(userId) }); return; }
-        const cs = require('../chat/chat-server'); if (cs.remote) cs.userChanged(userId);
+        if (delivery.ingress()) delivery.invalidate({ user: Number(userId) });
     } catch { /* non-critical */ }
 }
 

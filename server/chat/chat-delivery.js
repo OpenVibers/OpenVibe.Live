@@ -1,31 +1,30 @@
 'use strict';
 /**
- * The one seam Live's chat producers call (T3 J2, first half).
+ * The one seam Live's chat producers call (T3 J2).
  *
- * LIVE_CHAT_INGRESS=1 (with CHAT_AUTHORITY=chat): OpenVibe.Chat's typed ingress (chat-client.js) — Chat persists,
- * broadcasts, mirrors, speaks and moderates in one call per operation, and nothing goes through the bridge.
- * Otherwise (the default): the existing path — require('./chat-server'), which is the chat-remote.js bridge under
- * CHAT_AUTHORITY=chat and Live's own ChatServer without it.
+ * CHAT_AUTHORITY=chat: OpenVibe.Chat's typed ingress (chat-client.js) — Chat persists, broadcasts, mirrors,
+ * speaks and moderates in one call per operation. This is the only path to Chat: the old ordered-calls bridge
+ * and its outbox are gone.
+ * Otherwise (rollback / dev): Live's own ChatServer — require('./chat-server').
  *
- * With the flag on, a Chat 4xx/5xx is logged and counted by chat-client.js and never thrown into the caller; the
- * operation is not handed to the bridge (it would deliver twice once Chat owns delivery). Every function here
- * returns a promise in ingress mode and the legacy call's own value otherwise.
+ * A Chat 4xx/5xx is logged and counted by chat-client.js and never thrown into the caller. Every function
+ * here returns a promise in ingress mode and the local call's own value otherwise.
  *
- *   ingress()                      which path is active
+ *   ingress()                      which path is active (CHAT_AUTHORITY=chat)
  *   message(body)                  ingress only: a chat line (Chat's /messages body) → Promise<real id | null>
  *   event(target, frame, opts)     a transient frame; target { kind: stream|channel|global|all|user, id, stream }
  *   moderate(action, fields)       ingress only: Chat's /moderation actions → Promise<Chat's answer | null>
  *   logModeration(entry)           a moderation-log row (db.logModerationAction shape)
  *   disconnect({ userId, ip, streamId })
  *   invalidate(hint, legacy)       a cache hint ({ user, user_data, approvals, bans, channel })
- *   mirror(fn, ...args)            ingress only: keep Live's own copy of a bridge 'local' write (pending IP rows,
- *                                  hidden relay users, first chats, TTS overrides) that Live still reads
+ *   mirror(fn, ...args)            ingress only: keep Live's own copy of a write Chat also applies (pending IP
+ *                                  rows, hidden relay users, first chats, TTS overrides) that Live still reads
  *   after(value, fn)               fn(value) now for a plain value, after it resolves for a promise
  */
 const chatAuthority = require('./chat-authority');
 const client = require('./chat-client');
 
-function ingress() { return process.env.LIVE_CHAT_INGRESS === '1' && chatAuthority.isRemote(); }
+function ingress() { return chatAuthority.isRemote(); }
 // Lazy: chat-server pulls in most of Live, and several producers are required by it.
 function chatServer() { return require('./chat-server'); }
 
@@ -84,18 +83,29 @@ function disconnect({ userId, ip, streamId } = {}) {
     return moderate('disconnect', { user_id: userId || undefined, ip: ip || undefined, stream_id: streamId || undefined });
 }
 
-/** legacy: what to run without the flag (cache hints had no single legacy call). */
+/** legacy: what to run when Live is the chat authority (cache hints had no single local call). */
 function invalidate(hint, legacy) {
     if (ingress()) return client.invalidate(defined(hint));
     return legacy ? legacy() : undefined;
 }
 
+// The writes Live keeps on its own read-mirror copy as well (Chat applies them too and mirrors back).
+const MIRROR_WRITES = new Set([
+    'mergeChatMessageMetadata', 'deleteChatMessage', 'deleteUserChatMessages', 'deleteAnonChatMessages',
+    'deleteRelayUserMessages', 'deleteChatMessagesByTimeRange', 'reviewPendingIpMessage', 'approveAllFromIp',
+    'denyAllFromIp', 'recordRelayUser', 'unhideRelayUser', 'unhideRelayUserByIdentity', 'recordFirstChat',
+    'setTtsVoiceOverride', 'deleteTtsVoiceOverride',
+]);
+
 function mirror(fn, ...args) {
-    try { return require('./chat-remote').localWrite(fn, ...args); } catch (err) { console.warn(`[ChatIngress] local ${fn}: ${err.message}`); return undefined; }
+    try {
+        if (!MIRROR_WRITES.has(fn)) throw new Error('not a mirror write');
+        return require('../db/database')[fn](...args);
+    } catch (err) { console.warn(`[ChatIngress] local ${fn}: ${err.message}`); return undefined; }
 }
 
 function after(value, fn) {
     return value && typeof value.then === 'function' ? value.then(fn) : fn(value);
 }
 
-module.exports = { ingress, message, event, moderate, logModeration, disconnect, invalidate, mirror, after, client };
+module.exports = { ingress, message, event, moderate, logModeration, disconnect, invalidate, mirror, after, client, MIRROR_WRITES };

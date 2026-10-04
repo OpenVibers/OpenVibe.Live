@@ -346,7 +346,6 @@ async function check(name, fn) {
             'server/lineage/media-source.js': 'OpenVibe.Media (configured)',
             'server/pastes-client.js': 'OpenVibe.Community (configured)',
             'server/comments-client.js': 'OpenVibe.Community (configured)',
-            'server/chat/chat-remote.js': 'OpenVibe.Chat (configured)',
             'server/chat/moderation-client.js': 'OpenVibe.Chat internal read API (configured)',
             'server/chat/insight-client.js': 'OpenVibe.Chat public chat-AI reads (configured OV_CHAT_INTERNAL_URL, fixed paths, ids validated)',
             'server/chat/chat-client.js': 'OpenVibe.Chat typed ingress (configured OV_CHAT_INTERNAL_URL, fixed /internal/chat/* paths)',

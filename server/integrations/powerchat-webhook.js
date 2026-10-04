@@ -91,7 +91,7 @@ function _testFulfillmentAllowed() {
 }
 
 // ── Donation handling — mirrors POST /api/funds/donate ───────────────────────
-// A persisted chat line plus its live card: one Chat ingress call under LIVE_CHAT_INGRESS (Chat persists and
+// A persisted chat line plus its live card: one Chat ingress call with CHAT_AUTHORITY=chat (Chat persists and
 // shows it; `mirror` also puts it in global chat), else the legacy card broadcast(s) and a local save.
 function _chatLine(chatServer, { frame, line, mirror = false, key }) {
     if (delivery.ingress()) { delivery.message({ ...line, mirror, key }); return; }

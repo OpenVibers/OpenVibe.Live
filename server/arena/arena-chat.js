@@ -49,7 +49,8 @@ function handle(chat, ws, client, cmd, parts) {
     const stream = client.streamId ? db.getStreamById(client.streamId) : null;
     const streamer = stream ? db.getUserById(stream.user_id) : null;
 
-    (async () => {
+    // A caller that answers once (Chat's /internal/chat-effects/arena-command) waits for the replies via chat.track.
+    const work = (async () => {
         try {
             if (cmd === '!hype') {
                 if (!streamer) return reply("!hype works inside a streamer's chat.");
@@ -86,6 +87,7 @@ function handle(chat, ws, client, cmd, parts) {
             reply(`Arena: ${err.message}`);
         }
     })();
+    if (typeof chat.track === 'function') chat.track(work);
     return true;
 }
 
