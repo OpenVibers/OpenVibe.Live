@@ -670,6 +670,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
         _applyChannelLanguage(data.language, ch, liveStreams.length > 0);
         _resetChannelTabs(ch);
         _applyChannelTabMeta(data);
+        _applyBotEmbed(data.bot_embed);
         _applyChannelHashTab(); // deep-link: #ai-timeline / #about / #videos … opens that tab
         // Reveal the Media Request tab if the streamer has it enabled (non-blocking).
         _initMediaRequestTab(username);
@@ -2196,6 +2197,23 @@ async function loadChannelAiTimeline(username) {
     } catch (err) {
         wrap.innerHTML = `<div class="ai-tl-empty"><i class="fa-solid fa-triangle-exclamation"></i><p>Couldn't load the AI timeline.</p><button class="btn btn-small btn-outline" onclick="loadChannelAiTimeline('${esc(username)}')">Retry</button></div>`;
     }
+}
+
+// The channel's OpenVibe.Bot robot panel (roadmap T15 R9). `bot_embed` is only in the channel JSON with
+// LIVE_BOT_EMBED on, and public/js/bot-embed.js (feature "botEmbed") only loads for a bound channel, so with
+// the flag off this does nothing. The frame goes when the route ends, closing its socket to Bot.
+function _applyBotEmbed(botEmbed) {
+    const box = document.getElementById('ch-bot-container');
+    if (!box) return;
+    const show = () => {
+        if (typeof BotEmbed === 'undefined') return;
+        BotEmbed.mount(box, botEmbed);
+        if (window.ov) ov.scope().onDispose(() => BotEmbed.mount(box, null));
+    };
+    if (typeof BotEmbed !== 'undefined') return show();
+    if (!(botEmbed && botEmbed.url) || !window.ov) return;
+    const gen = ov.gen();
+    ov.load('botEmbed').then(() => { if (ov.isCurrent(gen)) show(); }, (e) => console.warn('[BotEmbed] load failed', e));
 }
 
 // Apply per-channel tab metadata from the channel response: count badges on the

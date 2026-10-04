@@ -195,6 +195,19 @@
                     <div id="dash-chatlog-pagination" style="display:flex;gap:8px;justify-content:center;margin-top:8px"></div>
                 </div>
 
+                <!-- OpenVibe.Bot robot shown on the channel page (LIVE_BOT_EMBED; shown by loadBotEmbedSetting when the flag is on) -->
+                <div class="dash-card" id="dash-card-bot-embed" style="display:none">
+                    <h3><i class="fa-solid fa-robot"></i> Bot robot</h3>
+                    <div class="settings-row">
+                        <label class="settings-row-label" for="dash-bot-robot-id">Bot robot id</label>
+                        <div class="settings-row-content">
+                            <input type="text" id="dash-bot-robot-id" placeholder="rob_…" autocomplete="off" spellcheck="false">
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-small" onclick="saveBotEmbedSetting()"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+                    <span id="dash-bot-robot-status" class="muted" style="font-size:0.82rem" role="status"></span>
+                </div>
+
                 <!-- ONVIF Camera Controls -->
                 <div class="dash-card" id="dash-card-cameras">
                     <h3><i class="fa-solid fa-video"></i> Camera Controls (ONVIF PTZ)</h3>

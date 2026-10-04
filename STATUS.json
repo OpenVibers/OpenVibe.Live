@@ -29,7 +29,7 @@
     "streamers' own AI keys stored encrypted in OpenVibe.AI; per-streamer daily AI budgets as AI quotas",
     "channel points and Vibes; the Arena (Battle Cam); after-show recaps; the Star of OpenVibe",
     "per-actor limits on API writes; account export and deletion contributions; follows on OpenVibe.Network",
-    "channel ↔ OpenVibe.Bot robot binding and the bot_embed panel URL behind LIVE_BOT_EMBED (off by default)"
+    "channel ↔ OpenVibe.Bot robot binding, its dashboard field and the Bot panel iframe on the channel page behind LIVE_BOT_EMBED (off by default)"
   ],
   "updated": "2026-10-04"
 }
