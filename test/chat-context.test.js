@@ -334,6 +334,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         for (const [ws] of chatServer.clients) { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'delete-messages', ids: [1] })); }
         await chatServer.flush();
         assert.strictEqual(bridgeCalls.at(-1).ops[0].op, 'broadcastAllRaw');
+        // Every viewer-facing path Chat does not yet own itself must keep reaching it over the bridge
+        // (review 2026-10-02, PR #12): alert sounds, the /api/mod per-socket reply, deploy notices and
+        // user-change invalidations. A durable write waits in the outbox until Chat acknowledges it.
+        chatServer.playAlertSound(streamer, streamId, 'donation');
+        chatServer.sendToConn({ remote: true }, { type: 'mod-action' });
+        chatServer.deployNotice([{ hash: 'deadbeef' }]);
+        chatServer.userChanged(viewer);
+        assert.strictEqual(d.prepare('SELECT COUNT(*) AS n FROM chat_bridge_outbox').get().n, 1, 'a durable write waits in the outbox');
+        await chatServer.flush();
+        assert.deepStrictEqual(bridgeCalls.at(-1).ops.map((o) => o.op), ['playAlertSound', 'sendToConn', 'deployNotice', 'userChanged']);
+        assert.strictEqual(d.prepare('SELECT COUNT(*) AS n FROM chat_bridge_outbox').get().n, 0, 'Chat acknowledged it');
         // Synchronous reads come from Chat's presence snapshot.
         await sleep(200);
         assert.strictEqual(chatServer.getTotalConnections(), 7);
