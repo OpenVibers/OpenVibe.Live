@@ -1,7 +1,7 @@
 {
  "service": "live",
- "release": "366dcfe9f4c15b5deb9ce5fdae504c3b84cc091f",
- "recorded_at": "2026-10-04T21:39:55.845Z",
+ "release": "c1bd342ca513683782f9d88ab5521baaf1c3b9be",
+ "recorded_at": "2026-10-04T21:52:02.944Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "user_version": 0,
  "schema": [
@@ -240,31 +240,31 @@
   "schema_migrations": [
    {
     "id": "001_vibes_decimal_to_bits",
-    "applied_at": "2026-10-04 21:39:51",
+    "applied_at": "2026-10-04 21:51:59",
     "mode": "adopted",
-    "duration_ms": 1
+    "duration_ms": 0
    },
    {
     "id": "002_pastes_ai_columns",
-    "applied_at": "2026-10-04 21:39:51",
+    "applied_at": "2026-10-04 21:51:59",
     "mode": "applied",
     "duration_ms": 4
    },
    {
     "id": "004_hot_path_indexes",
-    "applied_at": "2026-10-04 21:39:51",
+    "applied_at": "2026-10-04 21:51:59",
     "mode": "applied",
     "duration_ms": 1
    },
    {
     "id": "005_drop_chat_staged_tables",
-    "applied_at": "2026-10-04 21:39:51",
+    "applied_at": "2026-10-04 21:51:59",
     "mode": "adopted",
     "duration_ms": 0
    },
    {
     "id": "006_drop_emotes",
-    "applied_at": "2026-10-04 21:39:51",
+    "applied_at": "2026-10-04 21:51:59",
     "mode": "adopted",
     "duration_ms": 0
    }
@@ -277,7 +277,6 @@
   "CREATE TABLE IF NOT EXISTS subject_merges ( merge_id TEXT PRIMARY KEY, from_subject TEXT NOT NULL, into_subject TEXT NOT NULL, from_user_id INTEGER, into_user_id INTEGER, outcome TEXT NOT NULL, applied_at DATETIME DEFAULT CURRENT_TIMESTAMP )",
   "CREATE TABLE IF NOT EXISTS subject_projection ( subject_id TEXT PRIMARY KEY, network_user_id INTEGER, revision INTEGER NOT NULL, username TEXT NOT NULL, display_name TEXT, avatar_url TEXT, profile_color TEXT, role TEXT NOT NULL, banned INTEGER NOT NULL DEFAULT 0, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP )",
   "CREATE TABLE IF NOT EXISTS username_history ( id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, old_username TEXT NOT NULL, new_username TEXT NOT NULL, changed_at DATETIME DEFAULT CURRENT_TIMESTAMP )",
-  "CREATE TABLE IF NOT EXISTS chat_bridge_outbox ( id INTEGER PRIMARY KEY AUTOINCREMENT, boot TEXT NOT NULL, ref INTEGER, op TEXT NOT NULL, args TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP )",
   "CREATE TABLE IF NOT EXISTS comment_thread_refs ( content_type TEXT NOT NULL, content_id INTEGER NOT NULL, thread_id INTEGER NOT NULL, access_id TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (content_type, content_id) )",
   "CREATE TABLE IF NOT EXISTS search_doc_pushes ( user_id INTEGER PRIMARY KEY, hash TEXT NOT NULL, revision INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, pushed_at DATETIME DEFAULT CURRENT_TIMESTAMP )",
   "CREATE TABLE IF NOT EXISTS search_media_pushes ( kind TEXT NOT NULL, media_id INTEGER NOT NULL, hash TEXT NOT NULL, revision INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, pushed_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (kind, media_id) )",
@@ -306,8 +305,6 @@
   "DELETE FROM channel_ai_bots WHERE id = ?",
   "DELETE FROM channel_points WHERE user_id = ? AND streamer_id = ?",
   "DELETE FROM channel_sounds WHERE id = ?",
-  "DELETE FROM chat_bridge_outbox",
-  "DELETE FROM chat_bridge_outbox WHERE id = ?",
   "DELETE FROM clip_ai_state WHERE clip_id = ?",
   "DELETE FROM coin_rewards WHERE id = ?",
   "DELETE FROM content_views WHERE content_type = ? AND content_id = ?",
@@ -382,7 +379,6 @@
   "INSERT INTO channel_points (user_id, streamer_id, balance, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id, streamer_id) DO UPDATE SET balance = balance + excluded.balance, updated_at = CURRENT_TIMESTAMP",
   "INSERT INTO channel_points_log (idempotency_key, user_id, streamer_id, delta, reason) VALUES (?, ?, ?, ?, ?)",
   "INSERT INTO channel_sounds (channel_owner_id, command, url, mime, duration_seconds, created_by, created_by_name, emote_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-  "INSERT INTO chat_bridge_outbox (boot, ref, op, args) VALUES (?, ?, ?, ?)",
   "INSERT INTO chat_messages (stream_id, channel_user_id, user_id, anon_id, username, message, message_type, is_global, reply_to_id, source_platform, auto_delete_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   "INSERT INTO coin_redemptions (reward_id, user_id, stream_id, user_input) VALUES (?, ?, ?, ?)",
   "INSERT INTO coin_rewards (streamer_id, title, description, cost, icon, color, cooldown_seconds, max_per_stream, requires_input, is_global, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -631,7 +627,6 @@
   "SELECT 1 FROM powerchat_connections WHERE user_id = ? LIMIT 1",
   "SELECT 1 FROM site_settings WHERE key = 'bucks_bits_migration_done'",
   "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?",
-  "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_bridge_outbox'",
   "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
   "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
   "SELECT 1 FROM stream_first_chats WHERE chatter_key = ? AND channel_user_id = ?",
@@ -883,8 +878,6 @@
   "SELECT id, action, idempotency_key, live_user_id, live_ref, status, error, attempts, created_at, updated_at FROM billing_actions WHERE status IN ('unknown', 'pending') ORDER BY id DESC LIMIT 50",
   "SELECT id, ai_overview_short, ai_overview, title FROM streams WHERE user_id = ? AND (ai_title IS NULL OR ai_title = '') AND (ai_overview_short IS NOT NULL OR ai_overview IS NOT NULL) ORDER BY COALESCE(started_at, created_at) DESC LIMIT ?",
   "SELECT id, applied_at, mode, duration_ms FROM schema_migrations",
-  "SELECT id, args FROM chat_bridge_outbox WHERE op = 'db' ORDER BY id",
-  "SELECT id, boot, ref, op, args FROM chat_bridge_outbox ORDER BY id",
   "SELECT id, channel_id FROM hidden_relay_users WHERE id = ?",
   "SELECT id, created_at FROM api_tokens WHERE token_hash = ?",
   "SELECT id, ip_address, stream_id, reason FROM bans WHERE user_id = ? AND stream_id IS NULL",
