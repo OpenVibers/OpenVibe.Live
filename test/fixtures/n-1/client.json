@@ -1,13 +1,13 @@
 {
  "service": "live",
- "release": "307b40100b97ba0b2d81dbfccf878ebcc5c66f1f",
- "recorded_at": "2026-10-04T06:44:59.267Z",
+ "release": "587d1c9e42b2669cc1fe20aefe1cb958f927de94",
+ "recorded_at": "2026-10-04T21:19:41.060Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "307b40100b97",
-  "released_at": "2026-10-04T06:44:34.000Z",
-  "booted_at": "2026-10-04T06:44:54.524Z",
+  "release": "587d1c9e42b2",
+  "released_at": "2026-10-04T21:19:16.000Z",
+  "booted_at": "2026-10-04T21:19:37.680Z",
   "contracts_version": "0.83.0",
   "packages": {
    "openvibe-shared": "2.5.0",
@@ -22,11 +22,11 @@
    },
    "shell": {
     "kind": "script",
-    "version": "d08654f89ccd"
+    "version": "eb0dbd20688a"
    },
    "server": {
     "kind": "server",
-    "version": "91b21a39fb50"
+    "version": "0eebecae418d"
    }
   },
   "assets": {

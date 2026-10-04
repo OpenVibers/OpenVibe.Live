@@ -28,7 +28,8 @@
     "AI viewers, stream memories, overviews, moments, recaps, translation: every prompt an OpenVibe.AI template; VOD and clip transcripts by window on OpenVibe.AI",
     "streamers' own AI keys stored encrypted in OpenVibe.AI; per-streamer daily AI budgets as AI quotas",
     "channel points and Vibes; the Arena (Battle Cam); after-show recaps; the Star of OpenVibe",
-    "per-actor limits on API writes; account export and deletion contributions; follows on OpenVibe.Network"
+    "per-actor limits on API writes; account export and deletion contributions; follows on OpenVibe.Network",
+    "channel ↔ OpenVibe.Bot robot binding and the bot_embed panel URL behind LIVE_BOT_EMBED (off by default)"
   ],
-  "updated": "2026-09-28"
+  "updated": "2026-10-04"
 }

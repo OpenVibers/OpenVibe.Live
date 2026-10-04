@@ -107,6 +107,13 @@ Live's own principal (`live`) holds grants to call:
 
 API writes are limited per person (`server/net/actor-limits.js`, `LIVE_LIMITS_MINUTE` / `_HOUR`).
 
+**Bot panel embed (`LIVE_BOT_EMBED`, off by default).** A channel can show its OpenVibe.Bot robot's embeddable panel (`<LIVE_BOT_URL>/panel/<robot id>/embed`). With `LIVE_BOT_EMBED=1` the channel owner (not mods, not staff) binds a robot with `PUT /api/streams/channel/:username/bot` `{ "robot_id": "rob_…" | null }` (null or `""` unbinds; stored in `channels.bot_robot_id`; limited per person as `live.bot.bind`), and `GET /api/streams/channel/:username` carries `bot_embed: { enabled: true, robot_id, url }`. Live never calls Bot to bind: the robot owner's `embed_public` toggle in Bot is the gate, so binding someone else's robot shows nothing until its owner makes it public. With the flag off the route answers 404 and the channel JSON has no `bot_embed` key (the stored id is kept). Turn it on in this order: Bot deployed with `GET /panel/:id/embed` and its `BOT_EMBED_ORIGINS` including this site's origins → set `LIVE_BOT_EMBED=1` → bind a channel.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `LIVE_BOT_EMBED` | off | `1` turns on the channel ↔ Bot robot binding and `bot_embed` on the channel JSON (`server/bot/`) |
+| `LIVE_BOT_URL` | `https://openvibe.bot` | Bot's origin for the embed URL; a bare https origin (http://localhost* outside production), else the default with a warning |
+
 ## Acceptance
 
 `npm test` runs every file in `test/` (`test/run.js`), each in its own process against a temp database: 150 files covering auth and revocation, security crawls (stream keys, secrets, SSRF, open redirect, private objects), the frozen tables, chat bridging, AI (every run is an OpenVibe.AI template; nothing calls a provider directly), transcripts by window, per-actor limits, account export and deletion, drill mode, N-1 compatibility fixtures, and the home page's size budgets. The browser smoke is `BASE=http://127.0.0.1:3000 npm run test:browser` (add `-- --a11y` for axe).

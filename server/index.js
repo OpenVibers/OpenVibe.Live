@@ -664,6 +664,8 @@ app.use('/data/offline', express.static(paths.data('offline'), {
 
 // ── API Routes ───────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
+// Channel ↔ OpenVibe.Bot robot binding (LIVE_BOT_EMBED, off by default: the route answers 404).
+app.use('/api/streams', require('./bot/routes'));
 app.use('/api/streams', streamRoutes);
 // Cross-site "streamer went live" SSE feed (consumed by /live-notify.js everywhere).
 const liveEvents = require('./streaming/live-events');
