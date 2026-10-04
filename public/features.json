@@ -181,6 +181,11 @@
         "aivCloneChatter"
       ]
     },
+    "botEmbed": {
+      "js": [
+        "/js/bot-embed.js"
+      ]
+    },
     "homeTour": {
       "js": [
         "/js/home-tour.js"

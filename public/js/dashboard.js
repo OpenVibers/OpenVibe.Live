@@ -14,7 +14,7 @@ const _DASH_TAB_CARDS = {
     home:       ['dash-card-profile', 'dash-card-ai-derivation', 'dash-card-offline'],
     chatai:     ['dash-aibot-card', 'dash-card-overlay', 'dash-card-chatlogs'],
     moderation: [],  // injected by dashboard-moderation.js into #dash-grid-moderation
-    controls:   ['dash-card-controls', 'dash-card-cameras', 'dash-card-tokens'],
+    controls:   ['dash-card-controls', 'dash-card-bot-embed', 'dash-card-cameras', 'dash-card-tokens'],
     money:      ['dash-card-bucks', 'dash-card-goals', 'dash-powerchat-card'],
     points:     ['dash-card-points-config', 'dash-card-rewards', 'dash-card-redemptions'],
     content:    [],  // content cards go into sub-grids (see _DASH_CONTENT_SUBCARDS)
@@ -97,7 +97,7 @@ window.switchDashTab = switchDashTab;
 function _call(name) { try { if (typeof window[name] === 'function') window[name](); } catch (e) { console.warn('[dash]', name, e); } }
 window._dashTabLoaders.home = () => { _call('loadSettingsProfile'); _call('loadAiDerivationSetting'); _call('loadSettingsOffline'); _call('loadDashFunds'); };
 window._dashTabLoaders.chatai = () => { _call('updateDashObsOverlayUrl'); _call('loadAiViewers'); };
-window._dashTabLoaders.controls = () => { _call('loadDashConfigs'); _call('loadControlSettings'); _call('loadDashboardCameras'); _call('loadDashTokens'); };
+window._dashTabLoaders.controls = () => { _call('loadDashConfigs'); _call('loadBotEmbedSetting'); _call('loadControlSettings'); _call('loadDashboardCameras'); _call('loadDashTokens'); };
 window._dashTabLoaders.money = () => { _call('loadDashFunds'); _call('loadDashGoals'); _call('loadPowerchatStatus'); };
 window._dashTabLoaders.points = () => { _call('loadDashPointsConfig'); _call('loadDashRewards'); _call('loadDashRedemptions'); };
 window._dashTabLoaders.content = () => { switchDashContentTab('videos', document.querySelector('#dash-content-subtabs .ch-tab[data-cdtab="videos"]')); _call('loadDashAiMomentsCount'); };
@@ -1001,6 +1001,34 @@ async function saveAiDerivationSetting(box) {
     } catch (e) {
         box.checked = !on;
         toast(e.message || 'Save failed', 'error');
+    }
+}
+
+/* ── Bot robot on the channel page (roadmap T15 R9) ──────────────────────────
+   The card shows only when the channel JSON carries bot_embed (LIVE_BOT_EMBED on). Saving PUTs
+   /api/streams/channel/<me>/bot; an empty id unbinds. */
+async function loadBotEmbedSetting() {
+    const card = document.getElementById('dash-card-bot-embed');
+    if (!card || !currentUser) return;
+    try {
+        const data = await api(`/streams/channel/${encodeURIComponent(currentUser.username)}?pollOnly=1`);
+        const be = data && data.bot_embed;
+        if (!be || !be.enabled) { card.style.display = 'none'; return; }
+        document.getElementById('dash-bot-robot-id').value = be.robot_id || '';
+        card.style.display = '';
+    } catch { card.style.display = 'none'; }
+}
+async function saveBotEmbedSetting() {
+    const input = document.getElementById('dash-bot-robot-id');
+    const status = document.getElementById('dash-bot-robot-status');
+    if (!input || !currentUser) return;
+    const id = input.value.trim();
+    try {
+        const data = await api(`/streams/channel/${encodeURIComponent(currentUser.username)}/bot`, { method: 'PUT', body: { robot_id: id || null } });
+        const bound = data && data.bot_embed && data.bot_embed.robot_id;
+        if (status) status.textContent = bound ? `Bound to ${bound}` : 'No robot bound';
+    } catch (e) {
+        if (status) status.textContent = e.message || 'Save failed';
     }
 }
 
