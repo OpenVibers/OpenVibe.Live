@@ -146,6 +146,74 @@ const whipHandler = require('./streaming/whip-handler');
 const app = express();
 const server = http.createServer(app);
 
+// ── Graceful stop (openvibe-sdk/service) ─────────────────────
+// SIGTERM/SIGINT (non-drill) run this once: stop steps, beforeDrain (sockets and child processes stop while the
+// HTTP server still takes connections), a 4 s drain, then the close steps; past 5 s the process exits 1.
+// signals: false: shutdown() below installs the handlers, because a drill stops its own way.
+const { gracefulStop } = require('openvibe-sdk/service');
+const stopper = gracefulStop({
+    name: 'Live',
+    server,
+    signals: false,
+    drainMs: 4000,
+    deadlineMs: 5000,
+    deadlineExitCode: 1,
+    stop: [
+        () => {
+            console.log('\n[Server] Shutting down...');
+            // Stop advertising readiness immediately: from here on this process is draining, and anything
+            // gating on /api/ready should see that before the socket actually closes.
+            _bootComplete = false;
+        },
+        () => {
+            // Notify all chat clients before closing connections
+            try {
+                require('./chat/chat-delivery').event({ kind: 'all' }, {
+                    type: 'server_restart',
+                    message: '⚙️ Chat server restarting — you will be reconnected automatically.',
+                    timestamp: new Date().toISOString(),
+                });
+            } catch { /* non-critical */ }
+        },
+        // Kill any in-flight whisper/ffmpeg transcription children so they don't orphan
+        // (and so their temp files get cleaned by the close handlers). The interrupted VOD
+        // is left in 'processing' → re-queued to 'pending' on next boot (crash recovery).
+        () => { const n = require('./ai/transcribe').killActive(); if (n) console.log(`[Server] Killed ${n} transcription child(ren)`); },
+        () => { const n = require('./ai/timeline-job').stopAll(); if (n) console.log(`[Server] Stopped ${n} continuous audio capture(s)`); },
+        () => { require('./ai/media-analysis').killActive(); },
+        // Cleanly END RobotStreamer passthrough streams FIRST (before the exit races the reconnect).
+        // This closes our protoo peers so RS's SFU closes the producers now and tells its viewers,
+        // instead of leaving stale producers that black out RS video (audio still playing) on the next
+        // go-live until viewers refresh. Done up-front so RS has the whole shutdown window to propagate.
+        () => { const n = require('./integrations/rs-passthrough-relay').stopAll(); if (n) console.log(`[Server] Closed ${n} RobotStreamer passthrough(s)`); },
+        // No new background runs from here on (the jobs helper's loops); and end SSE streams so
+        // the drain can actually complete instead of always hitting the deadline.
+        () => { require('./utils/jobs').stopAll(); },
+        () => { require('./streaming/live-events').closeAll(); },
+    ],
+    beforeDrain: async () => {
+        // Small delay to let the message reach clients before closing sockets
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        try { restreamManager.stopViewerCountPolling(); } catch { /* */ }
+        try { restreamManager.stopAll(); } catch { /* */ }
+        try { recorder.stopAll(); } catch { /* */ }
+        try { callServer.close(); } catch { /* */ }
+        try { chatServer.close(); } catch { /* */ }
+        try { controlServer.close(); } catch { /* */ }
+        try { broadcastServer.close(); } catch { /* */ }
+        try { jsmpegRelay.closeAll(); } catch { /* */ }
+        try { webrtcSFU.closeAll(); } catch { /* */ }
+        try { rtmpServer.stop(); } catch { /* */ }
+    },
+    close: [
+        async () => { try { await analyticsStore.close(); } catch (err) { console.error('[Analytics] Shutdown:', err); } },
+        () => {
+            db.close();
+            console.log('[Server] Goodbye — keep the vibe alive.');
+        },
+    ],
+});
+
 // What this server runs (ADR-016): GET /release.json below, and release_info in /metrics.
 // In the release layout (/opt/openvibe.live/releases/<time>-<sha8>, a root-owned git worktree) the
 // service user cannot run git there, so the release id also comes from the directory's name.
@@ -1600,7 +1668,7 @@ function startDrill() {
 }
 
 // ── Graceful Shutdown ────────────────────────────────────────
-function shutdown() {
+function shutdown(signal) {
     if (drill.enabled) {
         // Nothing was started but the HTTP server and the two databases.
         console.log('[Drill] Shutting down');
@@ -1611,61 +1679,7 @@ function shutdown() {
         setTimeout(() => process.exit(0), 3000).unref();
         return;
     }
-    console.log('\n[Server] Shutting down...');
-
-    // Notify all chat clients before closing connections
-    try {
-        require('./chat/chat-delivery').event({ kind: 'all' }, {
-            type: 'server_restart',
-            message: '⚙️ Chat server restarting — you will be reconnected automatically.',
-            timestamp: new Date().toISOString(),
-        });
-    } catch { /* non-critical */ }
-
-    // Kill any in-flight whisper/ffmpeg transcription children so they don't orphan
-    // (and so their temp files get cleaned by the close handlers). The interrupted VOD
-    // is left in 'processing' → re-queued to 'pending' on next boot (crash recovery).
-    try { const n = require('./ai/transcribe').killActive(); if (n) console.log(`[Server] Killed ${n} transcription child(ren)`); } catch { /* */ }
-    try { const n = require('./ai/timeline-job').stopAll(); if (n) console.log(`[Server] Stopped ${n} continuous audio capture(s)`); } catch { /* */ }
-    try { require('./ai/media-analysis').killActive(); } catch { /* */ }
-
-    // Cleanly END RobotStreamer passthrough streams FIRST (before the exit races the reconnect).
-    // This closes our protoo peers so RS's SFU closes the producers now and tells its viewers,
-    // instead of leaving stale producers that black out RS video (audio still playing) on the next
-    // go-live until viewers refresh. Done up-front so RS has the whole shutdown window to propagate.
-    try { const n = require('./integrations/rs-passthrough-relay').stopAll(); if (n) console.log(`[Server] Closed ${n} RobotStreamer passthrough(s)`); } catch { /* */ }
-
-    // Stop advertising readiness immediately: from here on this process is draining, and anything
-    // gating on /api/ready should see that before the socket actually closes.
-    _bootComplete = false;
-    // No new background runs from here on (the jobs helper's loops); and end SSE streams so
-    // server.close() can actually complete instead of always hitting the forced exit.
-    try { require('./utils/jobs').stopAll(); } catch { /* */ }
-    try { require('./streaming/live-events').closeAll(); } catch { /* */ }
-
-    // Small delay to let the message reach clients before closing sockets
-    setTimeout(async () => {
-        restreamManager.stopViewerCountPolling();
-        restreamManager.stopAll();
-        try { recorder.stopAll(); } catch {}
-        callServer.close();
-        chatServer.close();
-        controlServer.close();
-        broadcastServer.close();
-        jsmpegRelay.closeAll();
-        webrtcSFU.closeAll();
-        rtmpServer.stop();
-        try { await analyticsStore.close(); } catch (err) { console.error('[Analytics] Shutdown:', err); }
-        db.close();
-
-        server.close(() => {
-            console.log('[Server] Goodbye — keep the vibe alive.');
-            process.exit(0);
-        });
-
-        // Force exit after 5s
-        setTimeout(() => process.exit(1), 5000);
-    }, 300);
+    stopper.stop(signal); // floating-ok: stop() never rejects
 }
 
 process.on('SIGTERM', shutdown);
