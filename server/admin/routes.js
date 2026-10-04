@@ -246,7 +246,7 @@ router.put('/users/:id', (req, res) => {
         // Push real-time update to the affected user's chat connections
         if (updates.length > 0) {
             const id = parseInt(req.params.id);
-            // LIVE_CHAT_INGRESS: a typed account hint; Chat updates the sockets and stored message names.
+            // Chat ingress: a typed account hint; Chat updates the sockets and stored message names.
             delivery.invalidate({
                 user: id,
                 user_data: { id, username: safeUser.username, display_name: safeUser.display_name || null, role: safeUser.role || null, avatar_url: safeUser.avatar_url || null, profile_color: safeUser.profile_color || null },

@@ -494,7 +494,7 @@ class ChatRelayService {
         } catch { /* non-critical */ }
     }
 
-    /** LIVE_CHAT_INGRESS: Chat persists, broadcasts, mirrors, reads aloud and records the first chat in one call. */
+    /** Chat ingress: Chat persists, broadcasts, mirrors, reads aloud and records the first chat in one call. */
     _deliverToChat(delivery, bridge, username, prefixedUsername, color, extras, message) {
         let first = false;
         try {

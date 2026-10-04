@@ -1,6 +1,6 @@
 'use strict';
 /**
- * OpenVibe.Chat's typed service-token ingress (T3 J2), the replacement for the chat-remote.js bridge.
+ * OpenVibe.Chat's typed service-token ingress (T3 J2): Live's only delivery path to Chat.
  *
  *   message(body)   POST /internal/chat/messages    chat.message.send       persist + broadcast a line (or a DM)
  *   event(body)     POST /internal/chat/events      chat.event.publish      a transient card, alert, sound, notice
@@ -15,7 +15,7 @@
  * Errors are logged and counted (`stats`), never thrown into the caller: every POST resolves to Chat's answer or
  * null. A 4xx is final (Chat refused the body; retrying cannot help). A 5xx, a timeout or Chat being unreachable
  * is retried with the same key on a back-off that outlasts Chat's five-minute delivery lease, then dropped. There
- * is deliberately no fallback to the bridge: once Chat owns delivery, a second path would deliver twice.
+ * is deliberately no second path: it would deliver twice.
  * Retries live in memory only (a Live restart drops the ones still waiting). Off under LIVE_DRILL.
  */
 const crypto = require('crypto');

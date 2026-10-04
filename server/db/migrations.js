@@ -171,6 +171,22 @@ const OPERATOR_MIGRATIONS = [
                         WHERE substr(password_hash, 1, 5) <> '$sso$' AND id IN (${networkLinkedUserIds(db)})`).run();
         },
     },
+    {
+        id: 'op_002_drop_chat_bridge_outbox',
+        // T3 J2 (scripts/chat-bridge-outbox-drop.js). Live delivers to OpenVibe.Chat through its typed ingress
+        // only; nothing under server/ reads or writes the old bridge's outbox any more (test/chat-bridge-removed.
+        // test.js). The release before still writes it, so this contract step runs once that release is out of
+        // rollback range (ADR-028), never at boot. Chat writes that release forwarded and Chat never acknowledged
+        // sit here as op = 'db' rows: the script delivers them to Chat first, and the drop refuses while any
+        // remain, so none is lost.
+        up: (db) => {
+            if (tableExists(db, 'chat_bridge_outbox')) {
+                const pending = db.prepare("SELECT COUNT(*) AS n FROM chat_bridge_outbox WHERE op = 'db'").get().n;
+                if (pending > 0) throw new Error(`chat_bridge_outbox holds ${pending} chat write(s) OpenVibe.Chat has not acknowledged; deliver them first (scripts/chat-bridge-outbox-drop.js --deliver)`);
+            }
+            db.exec('DROP TABLE IF EXISTS chat_bridge_outbox');
+        },
+    },
 ];
 
 const failures = new Map(); // id -> message, for this process

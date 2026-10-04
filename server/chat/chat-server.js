@@ -2437,7 +2437,7 @@ class ChatServer {
      * Donation / goal alert sounds are OpenVibe.Chat's now (roadmap T3): the mapping lives on
      * channel_moderation_settings, which Chat owns, and Chat resolves it from its own row and
      * broadcasts the clip. When Live runs the chat server itself (rollback / dev) there is no Chat to
-     * ask, so this is a no-op; server/monetization/alerts.js calls the chat-remote proxy's op instead.
+     * ask, so this is a no-op; with CHAT_AUTHORITY=chat server/monetization/alerts.js sends Chat an `alert` event.
      */
     playAlertSound() { /* Chat plays alerts; see server/monetization/alerts.js */ }
 
@@ -2509,6 +2509,140 @@ class ChatServer {
     }
 }
 
-// CHAT_AUTHORITY=chat: OpenVibe.Chat runs the chat server; Live's modules get a proxy with the same
-// methods that hands every call to it (chat-remote.js). Default: Live runs chat itself.
-module.exports = require('./chat-authority').isRemote() ? require('./chat-remote').create(ChatServer) : new ChatServer();
+// Live-owned data Chat caches, written by Live's own routes (IP approvals, bans): after the write Chat is told
+// to reload it instead of waiting for its cache to expire.
+const OBSERVED_DB = {
+    approveIp: (a) => ({ approvals: Number(a[0]) || undefined }),
+    revokeIpApproval: (a) => ({ approvals: Number(a[0]) || undefined }),
+    forgiveBan: () => ({ bans: true }),
+};
+const PRESENCE_MS = 3000;
+
+/**
+ * CHAT_AUTHORITY=chat: OpenVibe.Chat runs the chat server. Live's producers reach it through
+ * chat-delivery.js (Chat's typed ingress); this object keeps the rest of the ChatServer surface Live's
+ * modules use, without listening or serving:
+ *   - synchronous reads (connection and viewer counts, slow modes, a connected user's address) come from
+ *     Chat's presence snapshot (GET /internal/chat/presence), polled every few seconds;
+ *   - Live's own address / anon-number helpers (call-server, Chat's /internal/chat-effects/anon);
+ *   - Live's writes to data Chat caches (IP approvals, bans) send Chat a cache hint;
+ *   - a push a module still makes directly goes to the same ingress (stream, channel, global, all, DM,
+ *     disconnect, user change); one with no ingress target is dropped and logged, never synthesised or sent
+ *     to sockets Live does not have (TTS is spoken by Chat from the message's `tts` field).
+ * A /ws/chat upgrade that still lands here is told to retry.
+ */
+class RemoteChatServer extends ChatServer {
+    constructor() {
+        super();
+        this.remote = true;
+        this._presence = { total: 0, streams: {}, slow_mode: {}, users: [], anons: [], at: null };
+        this._presenceTimer = null;
+        this._dropped = new Set();
+        this._observeDb();
+    }
+
+    _delivery() { return require('./chat-delivery'); }
+
+    _observeDb() {
+        for (const [fn, hint] of Object.entries(OBSERVED_DB)) {
+            const orig = db[fn];
+            if (typeof orig !== 'function' || orig._chatObserved) continue;
+            const observed = (...args) => {
+                const result = orig(...args);
+                try { this._delivery().invalidate(hint(args)); } catch { /* non-critical */ }
+                return result;
+            };
+            observed._chatObserved = true;
+            db[fn] = observed;
+        }
+    }
+
+    async _pollPresence() {
+        try {
+            const p = await this._delivery().client.presence();
+            if (!p) return;
+            this._presence = p;
+            this.slowModeByStream.clear();
+            for (const [k, v] of Object.entries(p.slow_mode || {})) this.slowModeByStream.set(Number(k), Number(v) || 0);
+        } catch { /* keep the last snapshot */ }
+    }
+
+    init() {
+        if (this._presenceTimer) return null;
+        this._pollPresence();   // floating-ok: _pollPresence catches and keeps the last snapshot
+        this._presenceTimer = setInterval(() => this._pollPresence(), PRESENCE_MS);
+        if (this._presenceTimer.unref) this._presenceTimer.unref();
+        console.log('[Chat] CHAT_AUTHORITY=chat — chat runs in OpenVibe.Chat; Live delivers through its ingress');
+        return null;
+    }
+
+    handleUpgrade(req, socket) {
+        // nginx sends /ws/chat to Chat; a socket that still lands here is told to retry.
+        try { socket.write('HTTP/1.1 503 Service Unavailable\r\nRetry-After: 2\r\nConnection: close\r\n\r\n'); } catch { /* */ }
+        try { socket.destroy(); } catch { /* */ }
+        return true;
+    }
+
+    close() {
+        if (this._presenceTimer) clearInterval(this._presenceTimer);
+        this._presenceTimer = null;
+    }
+
+    // ── Pushes: Chat's ingress, or dropped and logged ──
+    _drop(name) {
+        if (this._dropped.has(name)) return;
+        this._dropped.add(name);
+        console.warn(`[Chat] ${name} has no Chat ingress target and was dropped; deliver through chat-delivery.js`);
+    }
+
+    // Guarded so a flipped CHAT_AUTHORITY can never bounce a push between this object and the seam.
+    _push(name, fn) { const d = this._delivery(); return d.ingress() ? fn(d) : this._drop(name); }
+    broadcastToStream(streamId, data) { return this._push('broadcastToStream', (d) => d.event({ kind: 'stream', id: streamId }, data)); }
+    broadcastToChannelRoom(channelUserId, streamId, data) { return this._push('broadcastToChannelRoom', (d) => d.event({ kind: 'channel', id: channelUserId }, data)); }
+    broadcastGlobal(data) { return this._push('broadcastGlobal', (d) => d.event({ kind: 'global' }, data)); }
+    broadcastAll(data) { return this._push('broadcastAll', (d) => d.event({ kind: 'all' }, data)); }
+    sendDm(userId, data) { return this._push('sendDm', (d) => d.event({ kind: 'user', id: userId }, data)); }
+    disconnectUser(opts) { return this._push('disconnectUser', (d) => d.disconnect(opts)); }
+    sendUserUpdate(userId, u) {
+        const id = Number(userId) || undefined;
+        const userData = u ? { id, username: u.username, display_name: u.display_name || null, role: u.role || null, avatar_url: u.avatar_url || null, profile_color: u.profile_color || null } : undefined;
+        return this._push('sendUserUpdate', (d) => d.invalidate({ user: id, user_data: userData }));
+    }
+    forwardToGlobal() { this._drop('forwardToGlobal'); }
+    forwardToGlobalByChannel() { this._drop('forwardToGlobalByChannel'); }
+    forwardToStreamerRooms() { this._drop('forwardToStreamerRooms'); }
+    broadcastToOwnerStreams() { this._drop('broadcastToOwnerStreams'); }
+    triggerChannelSound() { this._drop('triggerChannelSound'); }
+    sendToConn() { this._drop('sendToConn'); }
+    synthesizeAndBroadcastTTS() { this._drop('synthesizeAndBroadcastTTS'); return Promise.resolve(); }
+    broadcastUserCount() { /* Chat's */ }
+    broadcastUsersList() { /* Chat's */ }
+
+    // ── Synchronous reads (presence snapshot) ──
+    getTotalConnections() { return Number(this._presence.total) || 0; }
+    getStreamViewerCount(streamId) { return Number((this._presence.streams || {})[streamId]) || 0; }
+    getConnectedUserIp(userId) {
+        const hit = (this._presence.users || []).find((u) => u.user_id === userId);
+        return hit ? hit.ip : null;
+    }
+    findClientByAnonId(anonId, streamId) {
+        // Same match as ChatServer.findClientByAnonId: the socket's stream must equal streamId.
+        const hit = (this._presence.anons || []).find((a) => a.anon_id === anonId && (a.stream_id ?? null) === streamId);
+        return hit ? { anonId: hit.anon_id, ip: hit.ip, streamId: hit.stream_id || null, user: null } : null;
+    }
+    getUserList() { return { logged: [], anonCount: 0 }; }
+    getAnonIdForConnection(ip, streamId = null) {
+        const key = this.normalizeIp(ip);
+        const hit = (this._presence.anons || []).find((a) => a.ip === key && (streamId == null || (a.stream_id || null) === streamId));
+        return hit ? hit.anon_id : this.getAnonIdForIp(key);
+    }
+
+    /** The anon number for an address (Network's unified resolve, else Live's table) — for Chat. */
+    async resolveAnon(ip) {
+        const key = this.normalizeIp(ip);
+        const num = await this._resolveUnifiedAnonNum(key);
+        return { anon_number: num, first_seen: db.getAnonFirstSeen(key) };
+    }
+}
+
+module.exports = require('./chat-authority').isRemote() ? new RemoteChatServer() : new ChatServer();

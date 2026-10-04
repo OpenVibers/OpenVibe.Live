@@ -11,8 +11,8 @@
  *   of the local call server:
  *       POST   /internal/calls/stream-channel { stream_id, mode, user_id }
  *       DELETE /internal/calls/stream-channel/:streamId
- *   with Live's service token for audience openvibe.chat — the same principal and grant
- *   (chat.live_bridge.write) Live's chat bridge uses (../chat/chat-remote.js). Fire-and-forget for the
+ *   with Live's service token for audience openvibe.chat (grant chat.live_bridge.write, which these
+ *   calls still use now that Live's chat bridge is gone). Fire-and-forget for the
  *   caller: a network error or a 5xx is retried after 1 s, 5 s and 15 s, unless a later call for the
  *   same stream superseded it (a stream that ended while its go-live was being retried is not
  *   given a channel afterwards); a 4xx is logged and dropped. Live's /ws/call and voice-channel

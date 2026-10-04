@@ -386,7 +386,7 @@ router.post('/delete-message', async (req, res) => {
             if (!allowed) return res.status(403).json({ error: 'You cannot moderate this stream' });
         }
 
-        // LIVE_CHAT_INGRESS: Chat deletes the row and broadcasts the delete to every surface it reached.
+        // Chat ingress: Chat deletes the row and broadcasts the delete to every surface it reached.
         if (delivery.ingress()) {
             delivery.mirror('deleteChatMessage', parseInt(message_id), req.user.id);
             await delivery.moderate('delete-message', { id: parseInt(message_id), deleted_by: req.user.id }, { key: `delete:${message_id}` });
@@ -649,7 +649,7 @@ router.post('/ip-approval/:channelId/approve', async (req, res) => {
             [channelId, ip]
         );
 
-        // LIVE_CHAT_INGRESS: Chat approves its held rows; re-showing them live is Chat's (it holds them).
+        // Chat ingress: Chat approves its held rows; re-showing them live is Chat's (it holds them).
         if (delivery.ingress()) {
             delivery.mirror('approveAllFromIp', channelId, ip, req.user.id);
             await delivery.moderate('approve-ip-messages', { channel_id: parseInt(channelId), ip, reviewed_by: req.user.id });

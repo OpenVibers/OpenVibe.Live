@@ -1,11 +1,10 @@
 'use strict';
 
-// LIVE_CHAT_INGRESS=1 (T3 J2, first half): Live's chat producers call OpenVibe.Chat's typed
-// service-token ingress (/internal/chat/messages|events|moderation|invalidate, presence) through
-// server/chat/chat-delivery.js instead of the chat-remote.js bridge. Each producer family reaches
-// its endpoint with a bearer token and a stable idempotency key, nothing lands in
-// chat_bridge_outbox, and a Chat 5xx is logged and counted, never thrown and never bridged.
-// Against stub Network and Chat servers. The flag-off bridge path is test/chat-context.test.js.
+// CHAT_AUTHORITY=chat (T3 J2): Live's chat producers call OpenVibe.Chat's typed service-token
+// ingress (/internal/chat/messages|events|moderation|invalidate, presence) through
+// server/chat/chat-delivery.js — the only path; the old bridge (/internal/live/calls) and its outbox
+// are gone. Each producer family reaches its endpoint with a bearer token and a stable idempotency
+// key, and a Chat 5xx is logged and counted, never thrown. Against stub Network and Chat servers.
 
 const assert = require('assert');
 const fs = require('fs');
@@ -26,7 +25,6 @@ process.env.OV_NETWORK_URL = 'https://openvibe.network';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
 process.env.CHAT_AUTHORITY = 'chat';
-process.env.LIVE_CHAT_INGRESS = '1';
 const quiet = console.log;
 console.log = () => {};
 console.warn = () => {};
@@ -109,12 +107,11 @@ function assertSigned(c, what) {
     db.createChannel({ user_id: streamer, title: 'Streamer TV' });
     const channel = db.getChannelByUserId(streamer);
     const streamId = Number(db.createStream({ user_id: streamer, channel_id: channel.id, title: 'Live now' }).lastInsertRowid);
-    const outbox = () => d.prepare('SELECT COUNT(*) AS n FROM chat_bridge_outbox').get().n;
 
     const delivery = require('../server/chat/chat-delivery');
     const chatServer = require('../server/chat/chat-server');
     assert.strictEqual(chatServer.remote, true);
-    assert.strictEqual(delivery.ingress(), true, 'LIVE_CHAT_INGRESS=1 with CHAT_AUTHORITY=chat');
+    assert.strictEqual(delivery.ingress(), true, 'CHAT_AUTHORITY=chat is ingress, with no flag');
     chatServer.init();
     delivery.client._setRetryMs([20, 20]);
 
@@ -124,7 +121,7 @@ function assertSigned(c, what) {
         // 1. AI viewer line: one /messages call (persist + mirror + TTS); the caller gets no placeholder id.
         const poster = require('../server/ai/viewers/poster');
         const ret = poster.post({ streamId, userId: streamer, settings: { powerchat_forward: false } }, { id: 1, username: 'Botty', persona_json: '{}' }, 'hello from a bot');
-        assert.strictEqual(ret, null, 'no placeholder id with the flag on');
+        assert.strictEqual(ret, null, 'no placeholder id');
         const ai = await waitFor(() => find('messages', (b) => b.source_platform === 'ai'), 'AI line');
         assertSigned(ai, 'AI line');
         assert.deepStrictEqual([ai.body.stream_id, ai.body.channel_user_id, ai.body.username, ai.body.mirror, ai.body.is_global, ai.body.frame.is_ai, ai.body.tts.identity_key],
@@ -235,21 +232,38 @@ function assertSigned(c, what) {
         assert.strictEqual(await delivery.moderate('log', { action_type: 'x' }), null, 'a 4xx resolves null');
         assert.strictEqual(calls.filter((c) => c.family === 'moderation' && c.body.action_type === 'x').length, 1, 'a 4xx is not retried');
 
-        // 10. Nothing went over the bridge.
-        await chatServer.flush();
-        assert.strictEqual(outbox(), 0, 'nothing written to chat_bridge_outbox');
-        assert.deepStrictEqual(bridgeCalls.flatMap((c) => c.ops || []).map((o) => o.op), [], 'no bridge calls');
+        // 10. Nothing went over the bridge, and Live keeps no outbox.
+        assert.deepStrictEqual(bridgeCalls, [], 'no bridge calls');
+        assert.ok(!d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_bridge_outbox'").get(), 'no outbox table');
 
-        // 11. Flag off: the same seam is the legacy path again.
-        process.env.LIVE_CHAT_INGRESS = '';
+        // 11. A push a module still makes on the chat server goes to the ingress too (review 2026-10-02, PR #12);
+        // one with no ingress target is dropped, and TTS is never synthesised here (Chat speaks `tts` lines).
+        const tts = require('../server/chat/tts-engine');
+        const synth = Object.keys(tts).filter((k) => typeof tts[k] === 'function');
+        const touched = [];
+        const saved = {};
+        for (const k of synth) { saved[k] = tts[k]; tts[k] = (...a) => { touched.push(k); return saved[k](...a); }; }
+        const n = calls.length;
+        chatServer.broadcastToStream(streamId, { type: 'system', message: 'direct' });
+        chatServer.sendDm(viewer, { type: 'dm-notice' });
+        chatServer.disconnectUser({ userId: viewer, streamId });
+        chatServer.sendUserUpdate(viewer, { username: 'viewer', display_name: 'VIEWER', password_hash: 'never' });
+        chatServer.forwardToGlobal(streamId, { type: 'chat', message: 'no target' });
+        await chatServer.synthesizeAndBroadcastTTS(streamId, 'Bot', 'beep', null, null, 'aibot:bot', null, 'm1');
+        for (const k of synth) tts[k] = saved[k];
+        assert.deepStrictEqual(touched, [], 'no TTS synthesis in Live');
+        await waitFor(() => calls.length >= n + 4, 'direct pushes');
+        const direct = calls.slice(n).map((c) => [c.family, (c.body.target && c.body.target.kind) || c.body.action || (c.body.user != null ? 'user' : null)]);
+        assert.deepStrictEqual(direct.sort(), [['events', 'stream'], ['events', 'user'], ['invalidate', 'user'], ['moderation', 'disconnect']].sort());
+        assert.ok(!JSON.stringify(calls.slice(n)).includes('never'), 'only the public account fields');
+        // CHAT_AUTHORITY unset under a RemoteChatServer (a test or a bad env edit): dropped, never bounced back.
+        process.env.CHAT_AUTHORITY = '';
         assert.strictEqual(delivery.ingress(), false);
-        chatServer.broadcastToStream(streamId, { type: 'system', message: 'x' });
-        delivery.event({ kind: 'stream', id: streamId }, { type: 'system', message: 'legacy' });
-        await chatServer.flush();
-        assert.deepStrictEqual(bridgeCalls.flatMap((c) => c.ops || []).map((o) => o.op), ['broadcastToStream', 'broadcastToStream']);
+        assert.strictEqual(chatServer.broadcastToStream(streamId, { type: 'system', message: 'x' }), undefined);
+        process.env.CHAT_AUTHORITY = 'chat';
         chatServer.close();
 
-        quiet('chat ingress (LIVE_CHAT_INGRESS=1): all checks passed');
+        quiet('chat ingress (CHAT_AUTHORITY=chat): all checks passed');
     } catch (err) {
         console.error(err);
         exit = 1;

@@ -2,12 +2,11 @@
  * alerts.js — streamer alert sounds for donations / donation-goal-reached events.
  *
  * The sound mapping lives on channel_moderation_settings, which OpenVibe.Chat owns and reads locally
- * (roadmap T3), so Live no longer reads the file or broadcasts base64 itself. It asks Chat to play the
- * alert through the chat bridge — op `playAlertSound [streamerId, streamId, kind]` — and Chat resolves
- * the sound from its own settings row, reads the shared sounds file and broadcasts the
- * `soundboard-audio` message to the channel room. In production CHAT_AUTHORITY=chat, so `chatServer`
- * is the chat-remote proxy (server/chat/chat-remote.js) and the call is queued to Chat like every
- * other push. A goal-reached event is `kind: 'goal'` (Chat falls back to the donation sound).
+ * (roadmap T3), so Live no longer reads the file or broadcasts base64 itself. With CHAT_AUTHORITY=chat it
+ * asks Chat to play the alert with an `alert` event on Chat's typed ingress (server/chat/chat-delivery.js),
+ * and Chat resolves the sound from its own settings row, reads the shared sounds file and broadcasts the
+ * `soundboard-audio` message to the channel room. A goal-reached event is `kind: 'goal'` (Chat falls back
+ * to the donation sound).
  */
 'use strict';
 
@@ -20,7 +19,7 @@ function playAlertSound(chatServer, streamerId, streamId, kind) {
     try {
         const delivery = require('../chat/chat-delivery');
         if (delivery.ingress()) {
-            // LIVE_CHAT_INGRESS: the same request as an `alert` event on Chat's typed ingress.
+            // An `alert` event on Chat's typed ingress.
             delivery.event({ kind: 'channel', id: streamerId }, { type: 'alert', streamerId: Number(streamerId), streamId: streamId ? Number(streamId) : null, kind: kind === 'goal' ? 'goal' : 'donation' });
             return;
         }

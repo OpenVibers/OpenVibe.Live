@@ -19,8 +19,8 @@
 //     (server/events/release-events.js), queued in the SAME transaction that records the commits
 //     as announced (and, without the Chat service, stores the chat row). OpenVibe.Chat consumes
 //     that event and folds the card by head commit (compatibility register C-84, proven on the
-//     2026-09-23 22:14 UTC deploy), so with Live's outbox on the bridge hop is not used; it stays
-//     only as the fallback while Events publishing is off.
+//     2026-09-23 22:14 UTC deploy). With Events publishing off there is no other way to Chat (its
+//     ingress has no deploy endpoint), so the commits stay unannounced and the next boot tries again.
 // ═══════════════════════════════════════════════════════════════
 const { execFile } = require('child_process');
 const path = require('path');
@@ -110,14 +110,10 @@ async function announce({ db, chatServer, log = console }) {
 
     // CHAT_AUTHORITY=chat: Live still decides what shipped; OpenVibe.Chat stores the rolling
     // message and shows it (its own copy of this module). It learns the commits from the
-    // live.release.deployed event; only with Events publishing off are they handed over the bridge.
-    if (chatServer && chatServer.remote) {
-        if (!outbox) {
-            // Chat's ingress has no deploy endpoint: without Events the commits stay unannounced and the
-            // next boot tries again (LIVE_CHAT_INGRESS, docs: OpenVibe.Chat docs/chat-ingress.md).
-            if (require('./chat-delivery').ingress()) { log.warn('[Deploy notice] Events outbox unavailable; left unannounced for the next boot'); return { announced: 0 }; }
-            chatServer.deployNotice(commits);
-        }
+    // live.release.deployed event only. Chat's ingress has no deploy endpoint: with Events publishing off
+    // the commits are not recorded as announced and the next boot tries again (OpenVibe.Chat docs/chat-ingress.md).
+    if (require('./chat-delivery').ingress()) {
+        if (!outbox) { log.warn('[Deploy notice] Events outbox unavailable; left unannounced for the next boot'); return { announced: 0 }; }
         try { inTransaction(recordDeploy); } catch (err) { log.warn('[Deploy notice] not recorded:', err.message); return { announced: commits.length, event_id: null }; }
         if (outbox) outbox.kick();
         return { announced: commits.length, event_id: eventId };
