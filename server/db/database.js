@@ -2083,6 +2083,11 @@ function initDb() {
             database.exec('ALTER TABLE channels ADD COLUMN control_rate_limit_ms INTEGER DEFAULT 100');
             console.log('[DB] Added control_rate_limit_ms column to channels');
         }
+        // The OpenVibe.Bot robot whose panel the channel page embeds (server/bot/embed.js, LIVE_BOT_EMBED).
+        if (!cols.includes('bot_robot_id')) {
+            database.exec('ALTER TABLE channels ADD COLUMN bot_robot_id TEXT');
+            console.log('[DB] Added bot_robot_id column to channels');
+        }
         if (!cols.includes('video_click_rate_limit_ms')) {
             database.exec('ALTER TABLE channels ADD COLUMN video_click_rate_limit_ms INTEGER DEFAULT 0');
             console.log('[DB] Added video_click_rate_limit_ms column to channels');
@@ -4096,7 +4101,7 @@ function updateChannel(userId, fields) {
     const updates = [];
     const params = [];
     for (const [key, val] of Object.entries(fields)) {
-        if (val !== undefined && ['title', 'description', 'category', 'tags', 'protocol', 'is_nsfw', 'force_nsfw', 'auto_record', 'vod_recording_enabled', 'force_vod_recording_disabled', 'offline_banner_url', 'panels', 'emote_sources', 'weather_zip', 'weather_detail', 'weather_show_location', 'control_mode', 'anon_controls_enabled', 'control_rate_limit_ms', 'active_control_config_id', 'video_click_enabled', 'offline_screen_type', 'offline_screen_url', 'offline_html', 'offline_css', 'hide_ai_overview', 'ai_overview_pref', 'chat_language', 'ai_derivation_enabled', 'social_links'].includes(key)) {
+        if (val !== undefined && ['title', 'description', 'category', 'tags', 'protocol', 'is_nsfw', 'force_nsfw', 'auto_record', 'vod_recording_enabled', 'force_vod_recording_disabled', 'offline_banner_url', 'panels', 'emote_sources', 'weather_zip', 'weather_detail', 'weather_show_location', 'control_mode', 'anon_controls_enabled', 'control_rate_limit_ms', 'active_control_config_id', 'video_click_enabled', 'offline_screen_type', 'offline_screen_url', 'offline_html', 'offline_css', 'hide_ai_overview', 'ai_overview_pref', 'chat_language', 'ai_derivation_enabled', 'social_links', 'bot_robot_id'].includes(key)) {
             updates.push(`${key} = ?`);
             params.push(['tags', 'panels', 'emote_sources'].includes(key) ? (typeof val === 'string' ? val : JSON.stringify(val)) : val);
         }

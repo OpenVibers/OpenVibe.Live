@@ -511,6 +511,9 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
         delete publicChannel.stream_key;
         delete publicChannel.vod_recording_enabled;
         delete publicChannel.force_vod_recording_disabled;
+        // The binding is only shown through `bot_embed` below, and only with LIVE_BOT_EMBED on.
+        delete publicChannel.bot_robot_id;
+        const botEmbed = require('../bot/embed').channelEmbed(channel);
 
         // Counts for tab badges. Owner/mods see hidden ones too. Pastes are counted by
         // OpenVibe.Community and taken clips by OpenVibe.Media (media-proxy/lookups.js).
@@ -581,6 +584,7 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             aiClipsLimit,
             aiClipsOffset,
             aiClipsHasMore: aiClipsOffset + aiClips.length < aiClipsTotal,
+            ...(botEmbed !== undefined ? { bot_embed: botEmbed } : {}),
         });
     } catch (err) {
         console.error('[Channels] Get error:', err.message);

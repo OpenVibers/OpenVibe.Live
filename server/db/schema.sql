@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS channels (
     video_click_enabled INTEGER DEFAULT 0,
     video_click_rate_limit_ms INTEGER DEFAULT 0,
     active_control_config_id INTEGER,
+    bot_robot_id TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

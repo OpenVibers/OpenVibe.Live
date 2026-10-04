@@ -38,7 +38,7 @@ function publicManagedStream(ms) {
 /** A channel row as anyone may see it. `weather_enabled` replaces the ZIP it is derived from. */
 function publicChannel(ch) {
     if (!ch || typeof ch !== 'object') return ch;
-    const out = omit(ch, [...ALWAYS_SECRET, 'weather_zip', 'vod_recording_enabled', 'force_vod_recording_disabled']);
+    const out = omit(ch, [...ALWAYS_SECRET, 'weather_zip', 'vod_recording_enabled', 'force_vod_recording_disabled', 'bot_robot_id']);
     if (!('weather_enabled' in out)) out.weather_enabled = !!(ch.weather_zip && ch.weather_detail && ch.weather_detail !== 'off');
     return out;
 }
