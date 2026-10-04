@@ -1,7 +1,7 @@
 {
  "service": "live",
- "release": "516ac2adeb914cc5daea78f835ee6f3552a01a14",
- "recorded_at": "2026-10-04T01:54:24.849Z",
+ "release": "307b40100b97ba0b2d81dbfccf878ebcc5c66f1f",
+ "recorded_at": "2026-10-04T06:44:59.267Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "user_version": 0,
  "schema": [
@@ -240,31 +240,31 @@
   "schema_migrations": [
    {
     "id": "001_vibes_decimal_to_bits",
-    "applied_at": "2026-10-04 01:54:20",
+    "applied_at": "2026-10-04 06:44:52",
     "mode": "adopted",
-    "duration_ms": 1
-   },
-   {
-    "id": "002_pastes_ai_columns",
-    "applied_at": "2026-10-04 01:54:20",
-    "mode": "applied",
-    "duration_ms": 5
-   },
-   {
-    "id": "004_hot_path_indexes",
-    "applied_at": "2026-10-04 01:54:20",
-    "mode": "applied",
     "duration_ms": 0
    },
    {
-    "id": "005_drop_chat_staged_tables",
-    "applied_at": "2026-10-04 01:54:20",
-    "mode": "adopted",
+    "id": "002_pastes_ai_columns",
+    "applied_at": "2026-10-04 06:44:52",
+    "mode": "applied",
+    "duration_ms": 4
+   },
+   {
+    "id": "004_hot_path_indexes",
+    "applied_at": "2026-10-04 06:44:52",
+    "mode": "applied",
     "duration_ms": 1
    },
    {
+    "id": "005_drop_chat_staged_tables",
+    "applied_at": "2026-10-04 06:44:52",
+    "mode": "adopted",
+    "duration_ms": 0
+   },
+   {
     "id": "006_drop_emotes",
-    "applied_at": "2026-10-04 01:54:20",
+    "applied_at": "2026-10-04 06:44:52",
     "mode": "adopted",
     "duration_ms": 0
    }
