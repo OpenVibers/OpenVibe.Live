@@ -23,8 +23,8 @@ function matchesStreamPath(url, streamKey) {
 }
 
 /**
- * Consult the per-protocol ingest authority for each publish. OpenRe currently ingests RTMP
- * only, so JSMPEG continues to publish through Live after an RTMP switch.
+ * Consult the per-protocol ingest authority for each publish: a slot (or personal key)
+ * ingested by OpenRe publishes JSMPEG to OpenRe, never to Live's relay.
  */
 function refusedByOpenre(streamKey) {
     try {

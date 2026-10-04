@@ -380,6 +380,25 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     else assert.fail(`status route answered ${statusRes.status}`);
     statusServer.close();
 
+    // The Go Live profile and endpoint of an OpenRe WHIP/JSMPEG slot point at OpenRe, never at Live's
+    // WHIP base or relay (Live refuses those publishes).
+    require('../server/auth/auth').requireAuth = (req, res, next) => { req.user = db.getUserById(601); next(); };
+    const streamsApp = express();
+    streamsApp.use('/api/streams', require('../server/streaming/routes'));
+    const streamsServer = await new Promise(r => { const s = streamsApp.listen(0, '127.0.0.1', () => r(s)); });
+    const streamsBase = `http://127.0.0.1:${streamsServer.address().port}/api/streams`;
+    const whipProfile = await (await fetch(`${streamsBase}/managed/708/profile`)).json();
+    assert.deepStrictEqual([whipProfile.stream_key, whipProfile.whip_url_base, whipProfile.whip_url], [null, null, 'https://ingest.openre.stream/whip'], JSON.stringify(whipProfile));
+    const jsmpegProfile = await (await fetch(`${streamsBase}/managed/709/profile`)).json();
+    assert.deepStrictEqual([jsmpegProfile.stream_key, jsmpegProfile.whip_url_base, jsmpegProfile.jsmpeg_url], [null, null, 'http://ingest.openre.stream:8081'], JSON.stringify(jsmpegProfile));
+    const whipStreamId = Number(db.createStream({ user_id: 601, managed_stream_id: 708, title: 'w', protocol: 'webrtc' }).lastInsertRowid);
+    const jsmpegStreamId = Number(db.createStream({ user_id: 601, managed_stream_id: 709, title: 'j', protocol: 'jsmpeg' }).lastInsertRowid);
+    const whipEndpoint = await (await fetch(`${streamsBase}/${whipStreamId}/endpoint`)).json();
+    assert.deepStrictEqual([whipEndpoint.stream_key, whipEndpoint.endpoint.whipUrl, whipEndpoint.endpoint.whipUrlBase], [null, 'https://ingest.openre.stream/whip', undefined], JSON.stringify(whipEndpoint));
+    const jsmpegEndpoint = await (await fetch(`${streamsBase}/${jsmpegStreamId}/endpoint`)).json();
+    assert.deepStrictEqual([jsmpegEndpoint.stream_key, jsmpegEndpoint.endpoint.jsmpegUrl, jsmpegEndpoint.endpoint.videoPort], [null, 'http://ingest.openre.stream:8081', undefined], JSON.stringify(jsmpegEndpoint));
+    streamsServer.close();
+
     // ── Rollback ─────────────────────────────────────────────
     assert.strictEqual((await authority.setAuthority(701, 'live')).status, 200);
     const back = db.getManagedStreamById(701);

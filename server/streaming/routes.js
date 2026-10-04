@@ -1601,12 +1601,13 @@ router.get('/managed/:managedStreamId/profile', requireAuth, async (req, res) =>
             rtmp_url: rtmpUrl,
             restream_destinations: restreamDestinations,
         };
-        // OpenRe ingests this slot: its RTMP server and key come from OpenRe (the key is only
-        // ever shown by Regenerate). Slots on Live's own ingest get exactly the response above.
+        // OpenRe ingests this slot: its RTMP/WHIP/JSMPEG servers and key come from OpenRe (the key
+        // is only ever shown by Regenerate), and Live's WHIP base is withheld: Live refuses that
+        // publish. Slots on Live's own ingest get exactly the response above.
         if (openreAuthority.authorityOf(ms) === 'openre') {
             const subject = require('../auth/identity-sync').subjectOf(ms.user_id);
-            Object.assign(body, { stream_key: null }, await openreAuthority.ingestFor(ms, subject).catch((err) => ({
-                ingest_authority: 'openre', stream_key_managed_by: 'openre', rtmp_url: null, stream_key_hint: `OpenRe is unreachable (${err.message})`,
+            Object.assign(body, { stream_key: null, whip_url_base: null, whip_url_source: null, whip_url_warning: null }, await openreAuthority.ingestFor(ms, subject).catch((err) => ({
+                ingest_authority: 'openre', stream_key_managed_by: 'openre', rtmp_url: null, whip_url: null, jsmpeg_url: null, stream_key_hint: `OpenRe is unreachable (${err.message})`,
             })));
         }
         res.json(body);

@@ -120,8 +120,8 @@ function sendWhipError(res, status, code, message) {
 }
 
 /**
- * Consult the per-protocol ingest authority before accepting a publisher. OpenRe currently
- * ingests RTMP only, so WHIP continues to publish through Live after an RTMP switch.
+ * Consult the per-protocol ingest authority before accepting a publisher: a slot (or personal
+ * key) ingested by OpenRe publishes WHIP to OpenRe, never to Live.
  */
 function refusedByOpenre(slotId, userId) {
     const managedStream = slotId ? db.getManagedStreamById(slotId) : null;

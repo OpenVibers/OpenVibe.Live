@@ -269,11 +269,16 @@ async function _wsLoadProfile(managedStreamId) {
         _wsState.whipUrlSource = data.whip_url_source || null;
         _wsState.whipUrlWarning = data.whip_url_warning || null;
         _wsState.rtmpUrl = data.rtmp_url || null;
+        // OpenRe-ingested slot: OpenRe's WHIP and JSMPEG servers (the key goes after each).
+        _wsState.openreWhipUrl = data.whip_url || null;
+        _wsState.openreJsmpegUrl = data.jsmpeg_url || null;
     } catch {
         _wsState.profile = {};
         _wsState.streamKey = _wsState.selectedMs?.stream_key || null;
         _wsState.streamKeyHint = null;
         _wsState.rtmpUrl = null;
+        _wsState.openreWhipUrl = null;
+        _wsState.openreJsmpegUrl = null;
     }
     _wsState.dirty = false;
 }
@@ -1379,9 +1384,17 @@ function _wsRenderBrowserModeCards(selected) {
 
 /* ── Method-specific endpoint info ───────────────────────────── */
 
+// Live's WHIP takes the slot id in the path (key as Bearer token); OpenRe's takes the key itself.
+function _wsWhipUrl(managedStreamId, streamKey) {
+    if (_wsState.openreWhipUrl) return `${_wsState.openreWhipUrl.replace(/\/$/, '')}/${streamKey}`;
+    const whipBaseUrl = (_wsState.whipUrlBase || window.location.origin).replace(/\/$/, '');
+    return `${whipBaseUrl}/whip/${managedStreamId || streamKey}`;
+}
+
 function _wsRenderMethodEndpoint(method, streamKey, managedStreamId) {
     if (!streamKey) return '';
     const rtmpServer = _wsState.rtmpUrl || 'rtmp://openvibe.live/live';
+    const jsmpegServer = (_wsState.openreJsmpegUrl || 'http://openvibe.live:PORT').replace(/\/$/, '');
 
     if (method === 'rtmp') {
         return `
@@ -1421,8 +1434,7 @@ function _wsRenderMethodEndpoint(method, streamKey, managedStreamId) {
     }
 
     if (method === 'whip') {
-        const whipBaseUrl = (_wsState.whipUrlBase || window.location.origin).replace(/\/$/, '');
-        const whipUrl = `${whipBaseUrl}/whip/${managedStreamId || streamKey}`;
+        const whipUrl = _wsWhipUrl(managedStreamId, streamKey);
         return `
         <div class="bc-ws-method-info">
             <div class="bc-ws-method-info-row">
@@ -1446,8 +1458,7 @@ function _wsRenderMethodEndpoint(method, streamKey, managedStreamId) {
     }
 
     if (method === 'cli') {
-        const whipBaseUrl = (_wsState.whipUrlBase || window.location.origin).replace(/\/$/, '');
-        const whipUrl = `${whipBaseUrl}/whip/${managedStreamId || streamKey}`;
+        const whipUrl = _wsWhipUrl(managedStreamId, streamKey);
         return `
         <div class="bc-ws-method-info">
             <h4 style="margin:8px 0 4px"><i class="fa-solid fa-terminal"></i> CLI / FFmpeg Streaming</h4>
@@ -1472,20 +1483,20 @@ function _wsRenderMethodEndpoint(method, streamKey, managedStreamId) {
   -f alsa -i default \\
   -f mpegts -codec:v mpeg1video -s 640x480 -b:v 350k \\
   -codec:a mp2 -b:a 96k -ar 44100 \\
-  http://openvibe.live:PORT/${esc(streamKey)}/640/480/</pre>
+  ${esc(jsmpegServer)}/${esc(streamKey)}/640/480/</pre>
 
                 <h5><i class="fa-solid fa-display"></i> Screen Capture (Linux X11)</h5>
                 <pre class="bc-ws-cli-code">ffmpeg -f x11grab -s 1280x720 -r 24 -i :0.0 \\
   -f pulse -i default \\
   -f mpegts -codec:v mpeg1video -s 640x480 -b:v 400k \\
   -codec:a mp2 -b:a 96k -ar 44100 \\
-  http://openvibe.live:PORT/${esc(streamKey)}/640/480/</pre>
+  ${esc(jsmpegServer)}/${esc(streamKey)}/640/480/</pre>
 
                 <h5><i class="fa-solid fa-film"></i> MP4 / File Loop</h5>
                 <pre class="bc-ws-cli-code">ffmpeg -re -stream_loop -1 -i video.mp4 \\
   -f mpegts -codec:v mpeg1video -s 640x480 -b:v 400k \\
   -codec:a mp2 -b:a 96k -ar 44100 \\
-  http://openvibe.live:PORT/${esc(streamKey)}/640/480/</pre>
+  ${esc(jsmpegServer)}/${esc(streamKey)}/640/480/</pre>
 
                 <h5><i class="fa-solid fa-microchip"></i> Raspberry Pi Camera</h5>
                 <pre class="bc-ws-cli-code"># Pi Camera v2 / libcamera &rarr; JSMPEG
@@ -1493,13 +1504,13 @@ rpicam-vid -t 0 --width 640 --height 480 --framerate 24 \\
   --codec yuv420 -o - | \\
   ffmpeg -f rawvideo -pix_fmt yuv420p -s 640x480 -r 24 -i - \\
   -f mpegts -codec:v mpeg1video -b:v 350k \\
-  http://openvibe.live:PORT/${esc(streamKey)}/640/480/</pre>
+  ${esc(jsmpegServer)}/${esc(streamKey)}/640/480/</pre>
 
                 <h5><i class="fa-solid fa-camera-cctv"></i> RTSP / IP Camera</h5>
                 <pre class="bc-ws-cli-code">ffmpeg -rtsp_transport tcp -i rtsp://user:pass@192.168.1.100:554/stream \\
   -f mpegts -codec:v mpeg1video -s 640x480 -b:v 400k \\
   -codec:a mp2 -b:a 96k -ar 44100 \\
-  http://openvibe.live:PORT/${esc(streamKey)}/640/480/</pre>
+  ${esc(jsmpegServer)}/${esc(streamKey)}/640/480/</pre>
 
                 <details class="bc-ws-cli-note">
                     <summary>About JSMPEG</summary>
@@ -1865,6 +1876,12 @@ async function _wsRegenerateKey(managedStreamId) {
     try {
         const data = await api(`/streams/managed/${managedStreamId}/regenerate-key`, { method: 'POST' });
         _wsState.streamKey = data.stream_key;
+        // OpenRe's rotation answers with its ingest servers too.
+        if (data.stream_key_managed_by === 'openre') {
+            _wsState.rtmpUrl = data.rtmp_url || _wsState.rtmpUrl;
+            _wsState.openreWhipUrl = data.whip_url || _wsState.openreWhipUrl;
+            _wsState.openreJsmpegUrl = data.jsmpeg_url || _wsState.openreJsmpegUrl;
+        }
         const input = document.getElementById('bc-ws-stream-key');
         if (input) input.value = data.stream_key;
         const methodEl = document.getElementById('bc-ws-method-endpoint');
