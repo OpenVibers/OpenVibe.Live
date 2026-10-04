@@ -39,6 +39,8 @@ const ROUTES = [
     ['live.clip.create', /^POST$/, /^\/(vods\/clips|clips)(\/[^/]+\/trim)?$/, { minute: 10, hour: 100 }],
     // A paste stores content on Community (anonymous pastes keep their own address limit in pastes.js).
     ['live.paste.create', /^POST$/, /^\/pastes\/?$/, { minute: 30, hour: 600 }],
+    // Binding a channel to a Bot robot (server/bot/routes.js): set once, rarely changed.
+    ['live.bot.bind', /^PUT$/, /^\/streams\/channel\/[^/]+\/bot$/, { minute: 10, hour: 60 }],
     ['live.follow', /^(POST|DELETE)$/, /^\/streams\/(channel\/[^/]+|[^/]+)\/follow$/, { minute: 60, hour: 600 }],
     // A new stream key invalidates the old one; nobody needs it more than a few times.
     ['live.stream.key', /^POST$/, /^\/streams\/managed\/[^/]+\/regenerate-key$/, { minute: 5, hour: 20 }],
