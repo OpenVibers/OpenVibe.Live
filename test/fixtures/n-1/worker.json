@@ -1,7 +1,7 @@
 {
  "service": "live",
- "release": "193c64c44db3f52e479a946b38d2a01343bc88b0",
- "recorded_at": "2026-10-04T20:38:19.866Z",
+ "release": "587d1c9e42b2669cc1fe20aefe1cb958f927de94",
+ "recorded_at": "2026-10-04T21:19:41.060Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "user_version": 0,
  "schema": [
@@ -31,7 +31,7 @@
   "CREATE TABLE channel_points (\n            user_id INTEGER NOT NULL,\n            streamer_id INTEGER NOT NULL,\n            balance INTEGER NOT NULL DEFAULT 0,\n            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n            PRIMARY KEY (user_id, streamer_id)\n        )",
   "CREATE TABLE channel_points_log (\n            id INTEGER PRIMARY KEY AUTOINCREMENT,\n            idempotency_key TEXT NOT NULL UNIQUE,\n            user_id INTEGER NOT NULL,\n            streamer_id INTEGER NOT NULL,\n            delta INTEGER NOT NULL,\n            reason TEXT,\n            created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n        )",
   "CREATE TABLE channel_sounds (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    channel_owner_id INTEGER NOT NULL,      -- streamer whose channel this sound belongs to\n    command TEXT NOT NULL,                   -- trigger word (without leading '!'), lowercased\n    url TEXT NOT NULL,                       -- served path of the audio file on disk\n    mime TEXT DEFAULT 'audio/mpeg',\n    duration_seconds REAL DEFAULT 0,\n    created_by INTEGER,                      -- uploader user id (NULL if removed user)\n    created_by_name TEXT DEFAULT '',\n    is_approved INTEGER DEFAULT 1,\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP, emote_code TEXT DEFAULT '',\n    -- Multiple sounds may share a command; playback picks one at random.\n    FOREIGN KEY (channel_owner_id) REFERENCES users(id) ON DELETE CASCADE\n)",
-  "CREATE TABLE channels (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    user_id INTEGER NOT NULL UNIQUE,\n    title TEXT DEFAULT 'Untitled Channel',\n    description TEXT DEFAULT '',\n    category TEXT DEFAULT 'irl',\n    tags TEXT DEFAULT '[]',\n    protocol TEXT DEFAULT 'webrtc' CHECK(protocol IN ('jsmpeg', 'webrtc', 'rtmp')),\n    is_nsfw INTEGER DEFAULT 0,\n    auto_record INTEGER DEFAULT 0,\n    offline_banner_url TEXT,\n    panels TEXT DEFAULT '[]',              -- JSON array of info panels\n    emote_sources TEXT DEFAULT '{\"defaults\":true,\"custom\":true,\"ffz\":true,\"bttv\":true,\"7tv\":true}',\n    default_vod_visibility TEXT DEFAULT 'public' CHECK(default_vod_visibility IN ('public', 'unlisted', 'private')),\n    default_clip_visibility TEXT DEFAULT 'public' CHECK(default_clip_visibility IN ('public', 'unlisted', 'private')),\n    vod_recording_enabled INTEGER DEFAULT 1,\n    force_vod_recording_disabled INTEGER DEFAULT 0,\n    weather_zip TEXT DEFAULT NULL,\n    weather_detail TEXT DEFAULT 'basic' CHECK(weather_detail IN ('off', 'basic', 'hourly', 'detailed')),\n    weather_show_location INTEGER DEFAULT 0,\n    control_mode TEXT DEFAULT 'open' CHECK(control_mode IN ('open','whitelist','disabled')),\n    anon_controls_enabled INTEGER DEFAULT 1,\n    control_rate_limit_ms INTEGER DEFAULT 100,\n    video_click_enabled INTEGER DEFAULT 0,\n    video_click_rate_limit_ms INTEGER DEFAULT 0,\n    active_control_config_id INTEGER,\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, chat_language TEXT DEFAULT 'auto', cp_name TEXT DEFAULT 'Channel Points', cp_icon TEXT DEFAULT 'fa-coins', cp_watch_interval_min INTEGER DEFAULT 5, cp_watch_amount INTEGER DEFAULT 10, cp_game_interval_min INTEGER DEFAULT 0, clips_allow_creator_delete INTEGER DEFAULT 0, hide_ai_overview INTEGER DEFAULT 0, ai_overview_pref TEXT DEFAULT 'auto', ai_derivation_enabled INTEGER DEFAULT 1, ai_category TEXT, force_nsfw INTEGER DEFAULT 0, offline_screen_type TEXT DEFAULT 'none', offline_screen_url TEXT, offline_html TEXT, offline_css TEXT, social_links TEXT,\n    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE\n)",
+  "CREATE TABLE channels (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    user_id INTEGER NOT NULL UNIQUE,\n    title TEXT DEFAULT 'Untitled Channel',\n    description TEXT DEFAULT '',\n    category TEXT DEFAULT 'irl',\n    tags TEXT DEFAULT '[]',\n    protocol TEXT DEFAULT 'webrtc' CHECK(protocol IN ('jsmpeg', 'webrtc', 'rtmp')),\n    is_nsfw INTEGER DEFAULT 0,\n    auto_record INTEGER DEFAULT 0,\n    offline_banner_url TEXT,\n    panels TEXT DEFAULT '[]',              -- JSON array of info panels\n    emote_sources TEXT DEFAULT '{\"defaults\":true,\"custom\":true,\"ffz\":true,\"bttv\":true,\"7tv\":true}',\n    default_vod_visibility TEXT DEFAULT 'public' CHECK(default_vod_visibility IN ('public', 'unlisted', 'private')),\n    default_clip_visibility TEXT DEFAULT 'public' CHECK(default_clip_visibility IN ('public', 'unlisted', 'private')),\n    vod_recording_enabled INTEGER DEFAULT 1,\n    force_vod_recording_disabled INTEGER DEFAULT 0,\n    weather_zip TEXT DEFAULT NULL,\n    weather_detail TEXT DEFAULT 'basic' CHECK(weather_detail IN ('off', 'basic', 'hourly', 'detailed')),\n    weather_show_location INTEGER DEFAULT 0,\n    control_mode TEXT DEFAULT 'open' CHECK(control_mode IN ('open','whitelist','disabled')),\n    anon_controls_enabled INTEGER DEFAULT 1,\n    control_rate_limit_ms INTEGER DEFAULT 100,\n    video_click_enabled INTEGER DEFAULT 0,\n    video_click_rate_limit_ms INTEGER DEFAULT 0,\n    active_control_config_id INTEGER,\n    bot_robot_id TEXT,\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, chat_language TEXT DEFAULT 'auto', cp_name TEXT DEFAULT 'Channel Points', cp_icon TEXT DEFAULT 'fa-coins', cp_watch_interval_min INTEGER DEFAULT 5, cp_watch_amount INTEGER DEFAULT 10, cp_game_interval_min INTEGER DEFAULT 0, clips_allow_creator_delete INTEGER DEFAULT 0, hide_ai_overview INTEGER DEFAULT 0, ai_overview_pref TEXT DEFAULT 'auto', ai_derivation_enabled INTEGER DEFAULT 1, ai_category TEXT, force_nsfw INTEGER DEFAULT 0, offline_screen_type TEXT DEFAULT 'none', offline_screen_url TEXT, offline_html TEXT, offline_css TEXT, social_links TEXT,\n    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE\n)",
   "CREATE TABLE \"chat_messages\" (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    stream_id INTEGER,\n    user_id INTEGER,                       -- NULL for anon\n    anon_id TEXT,                          -- 'anon12345' format\n    username TEXT,\n    message TEXT NOT NULL,\n    message_type TEXT DEFAULT 'chat' CHECK(message_type IN ('chat', 'system', 'donation', 'command', 'tts', 'channel-sound', 'soundboard', 'clip')),\n    metadata TEXT,                         -- JSON sidecar for rich events (donation/goal-reached)\n    is_global INTEGER DEFAULT 0,\n    is_deleted INTEGER DEFAULT 0,\n    is_filtered INTEGER DEFAULT 0,\n    reply_to_id INTEGER REFERENCES chat_messages(id) ON DELETE SET NULL,\n    source_platform TEXT,\n    deleted_by INTEGER,\n    deleted_at DATETIME,\n    auto_delete_at DATETIME,\n    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, channel_user_id INTEGER,\n    FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE CASCADE,\n    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL\n)",
   "CREATE TABLE clip_ai_state (\n        clip_id INTEGER PRIMARY KEY,\n        ai_overview_short TEXT,\n        ai_transcript_json TEXT,\n        transcript_status TEXT,\n        transcript_attempts INTEGER DEFAULT 0,\n        transcript_error TEXT,\n        transcript_next_at DATETIME,\n        clip_notified INTEGER DEFAULT 0,\n        clip_notify_at DATETIME\n    , ai_overview TEXT, transcript_partial_json TEXT, transcript_progress_sec INTEGER DEFAULT 0)",
   "CREATE TABLE clips (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    vod_id INTEGER,\n    stream_id INTEGER,\n    user_id INTEGER NOT NULL,\n    title TEXT DEFAULT 'Untitled Clip',\n    description TEXT DEFAULT '',\n    file_path TEXT,\n    thumbnail_url TEXT,\n    start_time REAL NOT NULL DEFAULT 0,\n    end_time REAL NOT NULL DEFAULT 0,\n    duration_seconds REAL DEFAULT 0,\n    is_public INTEGER DEFAULT 1,\n    view_count INTEGER DEFAULT 0,\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP, storage_provider TEXT DEFAULT 'local', storage_key TEXT, ai_overview TEXT, ai_transcript TEXT, ai_analyzed_at DATETIME, clip_notified INTEGER DEFAULT 0, clip_notify_at DATETIME, visibility TEXT DEFAULT 'public', auto_generated INTEGER DEFAULT 0,\n    FOREIGN KEY (vod_id) REFERENCES vods(id) ON DELETE SET NULL,\n    FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE SET NULL,\n    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE\n)",
@@ -240,33 +240,33 @@
   "schema_migrations": [
    {
     "id": "001_vibes_decimal_to_bits",
-    "applied_at": "2026-10-04 20:38:15",
+    "applied_at": "2026-10-04 21:19:35",
     "mode": "adopted",
     "duration_ms": 0
    },
    {
     "id": "002_pastes_ai_columns",
-    "applied_at": "2026-10-04 20:38:15",
+    "applied_at": "2026-10-04 21:19:35",
     "mode": "applied",
     "duration_ms": 5
    },
    {
     "id": "004_hot_path_indexes",
-    "applied_at": "2026-10-04 20:38:15",
+    "applied_at": "2026-10-04 21:19:35",
     "mode": "applied",
-    "duration_ms": 1
-   },
-   {
-    "id": "005_drop_chat_staged_tables",
-    "applied_at": "2026-10-04 20:38:15",
-    "mode": "adopted",
     "duration_ms": 0
    },
    {
-    "id": "006_drop_emotes",
-    "applied_at": "2026-10-04 20:38:15",
+    "id": "005_drop_chat_staged_tables",
+    "applied_at": "2026-10-04 21:19:35",
     "mode": "adopted",
     "duration_ms": 1
+   },
+   {
+    "id": "006_drop_emotes",
+    "applied_at": "2026-10-04 21:19:35",
+    "mode": "adopted",
+    "duration_ms": 0
    }
   ]
  },
