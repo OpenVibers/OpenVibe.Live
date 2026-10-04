@@ -20,8 +20,8 @@ PostgreSQL. The script has three modes:
   old bridge wrote them, each with idempotency key `live:<row id>` so Chat applies a write at most once.
   Acknowledged rows are deleted; a row Chat refuses is left for the operator; a transport error stops the run
   to be rerun later.
-- **`--apply`** — takes an online backup of `live.db`, then runs `op_002`, which **refuses while any
-  unacknowledged chat write (`op = 'db'`) is still queued**, so a write the old release queued is never lost.
+- **`--apply`** — takes an online backup of `live.db`, then runs `op_002`, which
+  **refuses while any unacknowledged chat write (`op = 'db'`) is still queued**, so a write the old release queued is never lost.
 
 ## Order
 
@@ -52,12 +52,12 @@ PostgreSQL. The script has three modes:
 - **Drop applied.** `--apply` prints `op_002_drop_chat_bridge_outbox: applied`, and the read-only check on the
   host prints nothing for the table and `applied` for the ledger row:
 
-  ```sh
-  sqlite3 -readonly <Live's data dir>/live.db \
-    "SELECT name FROM sqlite_master WHERE name = 'chat_bridge_outbox'"        # → nothing
-  sqlite3 -readonly <Live's data dir>/live.db \
-    "SELECT id, mode FROM schema_migrations WHERE id = 'op_002_drop_chat_bridge_outbox'"  # → op_002_…|applied
-  ```
+```sh
+sqlite3 -readonly <Live's data dir>/live.db \
+  "SELECT name FROM sqlite_master WHERE name = 'chat_bridge_outbox'"        # → nothing
+sqlite3 -readonly <Live's data dir>/live.db \
+  "SELECT id, mode FROM schema_migrations WHERE id = 'op_002_drop_chat_bridge_outbox'"  # → op_002_…|applied
+```
 
 - **Nothing else broke.** `ov access run openvibe-ovh health live` answers `ready`; restarting Live does not
   print the migration again, and its logs contain no `no such table: chat_bridge_outbox`. Live's chat still
