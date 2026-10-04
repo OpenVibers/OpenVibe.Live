@@ -57,7 +57,6 @@ app.use(express.json());
 app.use('/api/mod', require('../server/admin/mod-routes'));
 app.use('/api/controls', require('../server/controls/routes'));
 app.use('/api/admin', require('../server/admin/routes'));
-app.use('/api/dm', require('../server/chat/dm-routes'));
 app.use('/api/media', require('../server/media/routes'));
 app.use('/api/ai-viewers', require('../server/ai/viewers/routes'));
 app.use('/api/payments', require('../server/monetization/payments-routes'));
@@ -144,16 +143,6 @@ async function check(name, fn) {
         raw.prepare('INSERT INTO streams (id, user_id, channel_id, title, protocol) VALUES (?, 3, ?, ?, ?)').run(x, chanA.id, 'x', 'webrtc');
         const r = await call('GET', `/api/mod/ip-approval/${x}/pending`, 3);
         assert.strictEqual(r.status, 403, r.text);
-    });
-
-    await check('DM: a private 1:1 cannot have a third person added', async () => {
-        const dm = require('../server/chat/dm');
-        dm.ensureTables();
-        const conv = dm.createConversation(3, [3, 4]);
-        const convId = typeof conv === 'object' ? (conv.id || conv.lastInsertRowid) : conv;
-        const r = await call('POST', `/api/dm/conversations/${convId}/participants`, 3, { user_id: 5 });
-        assert.strictEqual(r.status, 400, r.text);
-        assert.ok(!dm.isParticipant(convId, 5));
     });
 
     await check('media refund: no credit when the streamer no longer holds the Vibes', () => {

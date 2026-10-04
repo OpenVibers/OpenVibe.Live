@@ -108,7 +108,6 @@ const VibeCodingPublishServer = require('./vibe-coding/publish-server');
 // Routes
 const authRoutes = require('./auth/routes');
 const streamRoutes = require('./streaming/routes');
-const chatRoutes = require('./chat/routes');
 const monetizationRoutes = require('./monetization/routes');
 const coinsRoutes = require('./monetization/coins-routes');
 const cosmeticsRoutes = require('./monetization/cosmetics-routes');
@@ -669,11 +668,8 @@ app.use('/api/streams', streamRoutes);
 // Cross-site "streamer went live" SSE feed (consumed by /live-notify.js everywhere).
 const liveEvents = require('./streaming/live-events');
 app.get('/api/live-events', (req, res) => liveEvents.subscribe(req, res));
-// CHAT_AUTHORITY=chat: OpenVibe.Chat serves the chat REST routes (nginx sends /api/chat/, /api/dm/,
-// /api/tts/, /api/sounds there). One that still reaches Live must not write to the mirror.
-const chatRemote = require('./chat/chat-authority').isRemote();
-const chatMoved = (req, res) => res.status(503).set('Retry-After', '2').json({ error: 'Chat is served by OpenVibe.Chat' });
-app.use('/api/chat', chatRemote ? chatMoved : chatRoutes);
+// OpenVibe.Chat owns the chat REST routes (/api/chat/, /api/dm/, /api/tts/, /api/sounds); nginx
+// sends them there, so Live mounts none of them and keeps no CHAT_AUTHORITY rollback.
 app.use('/api/funds', monetizationRoutes);
 app.use('/api/coins', coinsRoutes);
 app.use('/api/payments', require('./monetization/payments-routes'));
@@ -700,7 +696,6 @@ app.use('/api/restream', restreamRoutes);
 // they may be embedded cross-site; everything else keeps helmet's same-origin resource policy.
 app.use('/api/thumbnails', (req, res, next) => { res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'); next(); }, thumbnailRoutes);
 app.use('/api/themes', themeRoutes);
-app.use('/api/sounds', chatRemote ? chatMoved : require('./chat/sounds-routes'));
 app.use('/api/ai-viewers', require('./ai/viewers/routes'));
 app.use('/api/powerchat', require('./integrations/powerchat-routes'));
 app.use('/api/meta', metaRoutes);
@@ -717,10 +712,6 @@ app.use('/api/media', require('./media/routes'));
 // viewer's IP/UA never reaches a host a streamer chose. SSRF-guarded, image-only, cache-forever.
 app.use('/api/img-proxy', require('./media/external-image-proxy'));
 app.use('/api/vibe-coding', vibeCodingRoutes);
-const ttsRoutes = require('./chat/tts-routes');
-app.use('/api/tts', chatRemote ? chatMoved : ttsRoutes);
-const dmRoutes = require('./chat/dm-routes');
-app.use('/api/dm', chatRemote ? chatMoved : dmRoutes);
 const analyticsRoutes = require('./streaming/analytics-routes');
 app.use('/api/analytics', analyticsRoutes);
 const newsRoutes = require('./news/news-routes');

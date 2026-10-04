@@ -364,7 +364,6 @@ async function check(name, fn) {
             'server/openre/openre-client.js': 'OpenRe.Stream (configured)',
             'server/ai/ai-service.js': 'OpenVibe.AI (configured)',
             'server/ai/llm.js': 'images are Live\'s own frames; a streamer\'s typed provider address (testProvider) goes through egress.postJson',
-            'server/chat/routes.js': 'GIF providers (fixed hosts)',
             'server/chat/soundboard-service.js': '101soundboards (host allowlist; the audio download through safeLookup)',
             'server/chat/tts-engine.js': 'Google / AWS TTS (fixed hosts)',
             'server/meta/routes.js': 'GitHub API (fixed host)',

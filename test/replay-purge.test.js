@@ -1,18 +1,15 @@
 /**
- * Legacy parity (roadmap D20): purging chat and deleting replays stays consistent.
+ * Legacy parity (roadmap D20): deleting a VOD or clip keeps Live's rows, its comment thread and its
+ * Search document consistent.
  *
- * 1. Chat purge ↔ VOD chat replay. The dashboard's "Purge Range" (and its preview and log filter)
- *    sends ISO instants ('2026-09-20T10:00:00.000Z'); chat_messages keeps SQLite's
- *    '2026-09-20 10:00:00'. Compared as TEXT ('T' sorts after ' '), a range matched nothing on its
- *    first day and ALL of its last day: the purge removed lines outside the chosen range, kept the ones
- *    inside it, and VOD chat replay went on showing them. Live's local routes (CHAT_AUTHORITY=live, and
- *    the mirror Live keeps under CHAT_AUTHORITY=chat) now read both forms as UTC, as OpenVibe.Chat does.
+ * Media deletes the item; Live used to only hide the comment thread, and kept its own rows: the AI
+ * state the backfill takes newest-first (a deleted VOD's row sat at the head of the overview queue
+ * for good) and the unique views. The admin storage page and the "older than" action also left the
+ * item's Search document until the daily refresh. Every delete path now goes through
+ * server/media-proxy/purge.js.
  *
- * 2. Deleting a VOD or clip. Media deletes the item; Live used to only hide the comment thread, and
- *    kept its own rows: the AI state the backfill takes newest-first (a deleted VOD's row sat at the
- *    head of the overview queue for good) and the unique views. The admin storage page and the
- *    "older than" action also left the item's Search document until the daily refresh. Every delete
- *    path now goes through server/media-proxy/purge.js.
+ * (The chat purge ↔ VOD chat replay half moved with Live's /api/chat routes: OpenVibe.Chat serves
+ * them and covers that consistency in its own suite.)
  *
  *   node test/replay-purge.test.js
  */
@@ -57,29 +54,6 @@ const streamA = Number(db.createStream({ user_id: 3, channel_id: db.getChannelBy
 raw.prepare("UPDATE streams SET started_at = '2026-09-20 09:00:00', ended_at = '2026-09-21 03:00:00', is_live = 0 WHERE id = ?").run(streamA);
 Number(db.createStream({ user_id: 7, channel_id: db.getChannelByUserId(7).id, title: 'M', protocol: 'webrtc' }).lastInsertRowid);
 
-// Alice's chat during her stream, as Live stores it (UTC, SQLite form).
-const LINES = [
-    ['2026-09-20 09:59:59', 'before'],
-    ['2026-09-20 10:00:00', 'first in range'],
-    ['2026-09-20 10:30:00', 'middle'],
-    ['2026-09-20 11:00:00', 'last in range'],
-    ['2026-09-20 11:00:01', 'just after'],
-    ['2026-09-20 23:30:00', 'late that evening'],
-    ['2026-09-21 01:00:00', 'after midnight'],
-    ['2026-09-21 02:30:00', 'next morning'],
-];
-for (const [ts, text] of LINES) {
-    raw.prepare(`INSERT INTO chat_messages (stream_id, channel_user_id, user_id, username, message, message_type, timestamp)
-        VALUES (?, 3, 7, 'mallory', ?, 'chat', ?)`).run(streamA, text, ts);
-}
-
-// ── the chat server the purge route announces to ──
-const announced = [];
-require.cache[require.resolve('../server/chat/chat-server')] = {
-    id: 'chat-server-stub', filename: 'chat-server-stub', loaded: true,
-    exports: { broadcastToStream: (sid, p) => announced.push([sid, p]), broadcastGlobal: (p) => announced.push(['global', p]) },
-};
-
 // ── Media, Community and Search stubs for the delete paths ──
 const media = require('../server/media-client');
 const VODS = {
@@ -114,7 +88,6 @@ raw.prepare("INSERT INTO content_views (content_type, content_id, ip) VALUES ('c
 const express = require('express');
 const app = express();
 app.use(express.json());
-app.use('/api/chat', require('../server/chat/routes'));
 app.use('/api/vods', require('../server/media-proxy/vods'));
 app.use('/api/clips', require('../server/media-proxy/clips'));
 const server = http.createServer(app).listen(0);
@@ -135,7 +108,6 @@ function call(method, p, user, body) {
         req.end();
     });
 }
-const replayTexts = async () => (await call('GET', `/api/chat/${streamA}/replay?from=${encodeURIComponent('2026-09-20 09:00:00')}&to=${encodeURIComponent('2026-09-21 03:00:00')}`)).json.messages.map((m) => m.message);
 const aiRow = (id) => raw.prepare('SELECT 1 FROM vod_ai_state WHERE vod_id = ?').get(id);
 const views = (type, id) => raw.prepare('SELECT COUNT(*) AS n FROM content_views WHERE content_type = ? AND content_id = ?').get(type, id).n;
 
@@ -146,53 +118,8 @@ async function check(name, fn) {
 
 (async () => {
     await new Promise((r) => server.once('listening', r));
-    const all = LINES.map(([, t]) => t);
 
-    await check('chat replay covers the whole stream before any purge', async () => {
-        assert.deepStrictEqual(await replayTexts(), all);
-    });
-
-    // What the dashboard sends for 10:00–11:00 UTC (new Date(input).toISOString()).
-    const range = { from: '2026-09-20T10:00:00.000Z', to: '2026-09-20T11:00:00.000Z' };
-
-    await check('the log filter, the purge preview and the purge agree on an ISO range', async () => {
-        const q = new URLSearchParams(range).toString();
-        const logs = await call('GET', `/api/chat/admin/logs?${q}`, 3);
-        assert.strictEqual(logs.status, 200);
-        assert.deepStrictEqual(logs.json.rows.map((r) => r.message).sort(), ['first in range', 'last in range', 'middle']);
-        const preview = await call('POST', '/api/chat/admin/purge/preview', 3, range);
-        assert.deepStrictEqual(preview.json, { count: 3 }, 'the preview counts exactly the lines in the range');
-        const purge = await call('DELETE', '/api/chat/admin/purge', 3, range);
-        assert.deepStrictEqual(purge.json, { deleted: 3 }, 'and the purge removes exactly those');
-        assert.deepStrictEqual(announced.pop(), [streamA, { type: 'purge', streamId: streamA, ...range, by: 'alice' }], 'live chat is told');
-    });
-
-    await check('VOD chat replay no longer shows the purged lines, and still shows every other one', async () => {
-        assert.deepStrictEqual(await replayTexts(), ['before', 'just after', 'late that evening', 'after midnight', 'next morning']);
-    });
-
-    await check('a range across midnight purges only its own hours, not the whole last day', async () => {
-        const overnight = { from: '2026-09-20T23:00:00.000Z', to: '2026-09-21T01:30:00.000Z' };
-        assert.deepStrictEqual((await call('POST', '/api/chat/admin/purge/preview', 3, overnight)).json, { count: 2 });
-        assert.deepStrictEqual((await call('DELETE', '/api/chat/admin/purge', 3, overnight)).json, { deleted: 2 });
-        assert.deepStrictEqual(await replayTexts(), ['before', 'just after', 'next morning'], '02:30 the next morning is kept');
-    });
-
-    await check('a clip\'s replay window (SQLite form) still works, and staff see purged lines only on request', async () => {
-        const r = await call('GET', `/api/chat/${streamA}/replay?from=${encodeURIComponent('2026-09-20 09:59:00')}&to=${encodeURIComponent('2026-09-20 11:00:05')}`);
-        assert.deepStrictEqual(r.json.messages.map((m) => m.message), ['before', 'just after']);
-        const staff = await call('GET', `/api/chat/admin/logs?streamId=${streamA}&includeDeleted=true&limit=50`, 1);
-        assert.strictEqual(staff.json.total, LINES.length, 'the purge is a soft delete an admin can still audit');
-        const owner = await call('GET', `/api/chat/admin/logs?streamId=${streamA}&includeDeleted=true&limit=50`, 3);
-        assert.strictEqual(owner.json.total, 3, 'the streamer sees only what is left');
-    });
-
-    await check('nobody purges someone else\'s stream', async () => {
-        const r = await call('DELETE', '/api/chat/admin/purge', 7, { streamId: streamA, from: '2026-09-20T00:00:00Z', to: '2026-09-22T00:00:00Z' });
-        assert.strictEqual(r.status, 403);
-        assert.deepStrictEqual(await replayTexts(), ['before', 'just after', 'next morning']);
-    });
-
+    // Deleting replays: Live's rows about each item, its comment thread and its Search document.
     const before = db.getVodsNeedingOverview(6).map((r) => r.id);
     await check('deleting a VOD drops Live\'s rows about it, hides its thread and re-reads its Search document', async () => {
         assert.ok(before.includes(100), 'the VOD was queued for an AI overview');
