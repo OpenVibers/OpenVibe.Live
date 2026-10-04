@@ -28,6 +28,9 @@ const crypto = require('crypto');
 const db = require('../db/database');
 const principal = require('../net/network-principal');
 const { CHAT_URL } = require('./chat-authority');
+// LIVE_CHAT_INGRESS=1: Live's producers call Chat's typed ingress through chat-delivery.js; this proxy then reads
+// presence from /internal/chat/presence and sends its cache hints there too. Queued outbox rows still drain here.
+const delivery = require('./chat-delivery');
 
 const AUDIENCE = 'openvibe.chat';
 const BOOT = crypto.randomUUID();
@@ -74,6 +77,15 @@ const OBSERVED_DB = {
     revokeIpApproval: (a) => ['approvals', a[0]],
     forgiveBan: () => ['bans', null],
 };
+
+// db functions before forwarding wrapped them (module-wide: installed once per process).
+const originals = {};
+
+/** Apply a 'local'-mode write to Live's own mirror only, without the bridge (LIVE_CHAT_INGRESS sends it to Chat). */
+function localWrite(fn, ...args) {
+    if (FORWARDED_DB[fn] !== 'local') throw new Error(`${fn} is not a local mirror write`);
+    return (originals[fn] || db[fn])(...args);
+}
 
 function create(ChatServer) {
     // A local ChatServer that never listens: its address and anon-number helpers are Live's own
@@ -198,7 +210,8 @@ function create(ChatServer) {
 
     async function pollPresence() {
         try {
-            const p = await post('/internal/live/presence');
+            const p = delivery.ingress() ? await delivery.client.presence() : await post('/internal/live/presence');
+            if (!p) return;
             presence = p;
             slowModeByStream.clear();
             for (const [k, v] of Object.entries(p.slow_mode || {})) slowModeByStream.set(Number(k), Number(v) || 0);
@@ -206,7 +219,6 @@ function create(ChatServer) {
     }
 
     // ── Forwarded database writes ───────────────────────────────
-    const originals = {};
     function installDbForwarding() {
         for (const [fn, mode] of Object.entries(FORWARDED_DB)) {
             if (typeof db[fn] !== 'function' || originals[fn]) continue;
@@ -231,7 +243,11 @@ function create(ChatServer) {
             originals[fn] = db[fn];
             db[fn] = function observedLiveWrite(...args) {
                 const result = originals[fn](...args);
-                try { const [kind, id] = target(args); enqueue('invalidate', [kind, id]); } catch { /* */ }
+                try {
+                    const [kind, id] = target(args);
+                    if (delivery.ingress()) delivery.invalidate(kind === 'bans' ? { bans: true } : { [kind]: Number(id) || undefined });
+                    else enqueue('invalidate', [kind, id]);
+                } catch { /* */ }
                 return result;
             };
         }
@@ -376,4 +392,4 @@ function drainToLocal(log = console) {
     } catch (err) { log.warn('[ChatRemote] drain:', err.message); return 0; }
 }
 
-module.exports = { create, drainToLocal, FORWARDED_DB, OBSERVED_DB, REF_BASE, AUDIENCE };
+module.exports = { create, drainToLocal, localWrite, FORWARDED_DB, OBSERVED_DB, REF_BASE, AUDIENCE };

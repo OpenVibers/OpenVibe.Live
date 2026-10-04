@@ -15,6 +15,7 @@
 
 const crypto = require('crypto');
 const db = require('../db/database');
+const delivery = require('../chat/chat-delivery');
 const powerchatOAuth = require('./powerchat-oauth');
 
 const MAX_SKEW_MS = 15 * 60 * 1000;
@@ -90,6 +91,15 @@ function _testFulfillmentAllowed() {
 }
 
 // ── Donation handling — mirrors POST /api/funds/donate ───────────────────────
+// A persisted chat line plus its live card: one Chat ingress call under LIVE_CHAT_INGRESS (Chat persists and
+// shows it; `mirror` also puts it in global chat), else the legacy card broadcast(s) and a local save.
+function _chatLine(chatServer, { frame, line, mirror = false, key }) {
+    if (delivery.ingress()) { delivery.message({ ...line, mirror, key }); return; }
+    chatServer.broadcastToChannelRoom(line.channel_user_id, line.stream_id, frame);
+    if (mirror) { try { chatServer.broadcastGlobal({ ...frame, global: true, channel_user_id: line.channel_user_id }); } catch { /* */ } }
+    db.saveChatMessage(line);
+}
+
 function _handleDonation(userId, data) {
     const chatServer = require('../chat/chat-server');
     const alerts = require('../monetization/alerts');
@@ -117,14 +127,16 @@ function _handleDonation(userId, data) {
         type: 'donation', username: donor, user_id: null, avatar_url: null,
         amount, message, source: 'powerchat', timestamp: ts,
     };
-    chatServer.broadcastToChannelRoom(userId, streamId, donationEvent);
-    try { chatServer.broadcastGlobal({ ...donationEvent, global: true, channel_user_id: userId }); } catch { /* */ }
+    const eventKey = data.eventId ? `powerchat:${data.eventId}` : undefined;
     try {
-        db.saveChatMessage({
-            stream_id: streamId, channel_user_id: userId, user_id: null, username: donor,
-            message: `${donor} tipped ${amount.toLocaleString()} Vibes${message ? ': ' + message : ''} (PowerChat)`,
-            message_type: 'donation',
-            metadata: { kind: 'donation', amount, message, username: donor, source: 'powerchat' },
+        _chatLine(chatServer, {
+            frame: donationEvent, mirror: true, key: eventKey,
+            line: {
+                stream_id: streamId, channel_user_id: userId, user_id: null, username: donor,
+                message: `${donor} tipped ${amount.toLocaleString()} Vibes${message ? ': ' + message : ''} (PowerChat)`,
+                message_type: 'donation',
+                metadata: { kind: 'donation', amount, message, username: donor, source: 'powerchat' },
+            },
         });
     } catch { /* */ }
 
@@ -133,17 +145,20 @@ function _handleDonation(userId, data) {
 
     // 3) Goal progress + 4) goal reached.
     if (goalResult && goalResult.goal) {
-        chatServer.broadcastToChannelRoom(userId, streamId, { type: 'goal-update', goal: publicGoal(goalResult.goal) });
+        delivery.event({ kind: 'channel', id: userId, stream: streamId }, { type: 'goal-update', goal: publicGoal(goalResult.goal) });
     }
     if (goalResult && goalResult.reached) {
         const g = goalResult.goal;
-        chatServer.broadcastToChannelRoom(userId, streamId, { type: 'goal-reached', goal: publicGoal(g), by: donor, timestamp: ts });
         try {
-            db.saveChatMessage({
-                stream_id: streamId, channel_user_id: userId, user_id: null, username: 'Donation Goal',
-                message: `🎉 Goal reached: ${g.title} (${Number(g.target_amount || 0).toLocaleString()} HB)`,
-                message_type: 'donation',
-                metadata: { kind: 'goal-reached', goal_id: g.id, title: g.title, target: g.target_amount, image: g.image_url || null, media_type: g.media_type || null, by: donor },
+            _chatLine(chatServer, {
+                frame: { type: 'goal-reached', goal: publicGoal(g), by: donor, timestamp: ts },
+                key: eventKey && `${eventKey}:goal`,
+                line: {
+                    stream_id: streamId, channel_user_id: userId, user_id: null, username: 'Donation Goal',
+                    message: `🎉 Goal reached: ${g.title} (${Number(g.target_amount || 0).toLocaleString()} HB)`,
+                    message_type: 'donation',
+                    metadata: { kind: 'goal-reached', goal_id: g.id, title: g.title, target: g.target_amount, image: g.image_url || null, media_type: g.media_type || null, by: donor },
+                },
             });
         } catch { /* */ }
         try { alerts.playAlertSound(chatServer, userId, streamId, 'goal'); } catch { /* */ }
@@ -157,12 +172,15 @@ function _handleSubscription(userId, data) {
     const chatServer = require('../chat/chat-server');
     const name = String(data.subscriberName || data.donorName || 'Someone').slice(0, 80);
     const ts = new Date().toISOString();
-    chatServer.broadcastToChannelRoom(userId, null, { type: 'donation', username: name, amount: 0, message: 'subscribed via PowerChat', source: 'powerchat-sub', timestamp: ts });
     try {
-        db.saveChatMessage({
-            stream_id: null, channel_user_id: userId, user_id: null, username: name,
-            message: `${name} subscribed (PowerChat)`, message_type: 'donation',
-            metadata: { kind: 'donation', amount: 0, username: name, source: 'powerchat-sub' },
+        _chatLine(chatServer, {
+            frame: { type: 'donation', username: name, amount: 0, message: 'subscribed via PowerChat', source: 'powerchat-sub', timestamp: ts },
+            key: data.eventId ? `powerchat:${data.eventId}` : undefined,
+            line: {
+                stream_id: null, channel_user_id: userId, user_id: null, username: name,
+                message: `${name} subscribed (PowerChat)`, message_type: 'donation',
+                metadata: { kind: 'donation', amount: 0, username: name, source: 'powerchat-sub' },
+            },
         });
     } catch { /* */ }
 }
@@ -172,10 +190,12 @@ function _handleNotice(userId, message, kind) {
     try {
         const chatServer = require('../chat/chat-server');
         const ts = new Date().toISOString();
-        chatServer.broadcastToChannelRoom(userId, null, { type: 'system', message, source: 'powerchat', kind, timestamp: ts });
-        db.saveChatMessage({
-            stream_id: null, channel_user_id: userId, user_id: null, username: 'PowerChat',
-            message, message_type: 'system', metadata: { kind: kind || 'powerchat', source: 'powerchat' },
+        _chatLine(chatServer, {
+            frame: { type: 'system', message, source: 'powerchat', kind, timestamp: ts },
+            line: {
+                stream_id: null, channel_user_id: userId, user_id: null, username: 'PowerChat',
+                message, message_type: 'system', metadata: { kind: kind || 'powerchat', source: 'powerchat' },
+            },
         });
     } catch { /* */ }
 }
@@ -279,18 +299,20 @@ function simulateDonation(userId, { amountUsd = 5, donor = 'Test Tipper', messag
         type: 'donation', username: donor, user_id: null, avatar_url: null,
         amount, message, source: 'powerchat-test', timestamp: ts,
     };
-    chatServer.broadcastToChannelRoom(userId, streamId, testEvent);
     // Not to global chat: a test tip is the streamer's own preview, and any signed-in user could
     // otherwise announce a fake 99,900-Vibe donation site-wide.
     // Persist it, exactly like a real tip. A test that vanishes on reload does not
     // actually test what the streamer is checking — that the alert lands in chat AND
     // survives a refresh. This was the only donation path that broadcast without saving.
     try {
-        db.saveChatMessage({
-            stream_id: streamId, channel_user_id: userId, user_id: null, username: donor,
-            message: `${donor} donated ${amount.toLocaleString()} Vibes${message ? ': ' + message : ''}`,
-            message_type: 'donation',
-            metadata: { kind: 'donation', amount, message, username: donor, source: 'powerchat-test' },
+        _chatLine(chatServer, {
+            frame: testEvent,
+            line: {
+                stream_id: streamId, channel_user_id: userId, user_id: null, username: donor,
+                message: `${donor} donated ${amount.toLocaleString()} Vibes${message ? ': ' + message : ''}`,
+                message_type: 'donation',
+                metadata: { kind: 'donation', amount, message, username: donor, source: 'powerchat-test' },
+            },
         });
     } catch (e) { console.warn('[PowerChat] test tip not saved to history:', e.message); }
     try { alerts.playAlertSound(chatServer, userId, streamId, 'donation'); } catch { /* */ }
@@ -301,7 +323,7 @@ function simulateDonation(userId, { amountUsd = 5, donor = 'Test Tipper', messag
         if (active.length === 1) {
             const g = active[0];
             const preview = { ...g, current_amount: Math.min((g.current_amount || 0) + amount, g.target_amount) };
-            chatServer.broadcastToChannelRoom(userId, streamId, { type: 'goal-update', goal: publicGoal(preview), preview: true });
+            delivery.event({ kind: 'channel', id: userId, stream: streamId }, { type: 'goal-update', goal: publicGoal(preview), preview: true });
         }
     } catch { /* */ }
     return { amount, live: !!streamId };

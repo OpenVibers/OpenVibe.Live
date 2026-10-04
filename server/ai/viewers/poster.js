@@ -43,6 +43,20 @@ function post(worker, bot, message, { threadId = null, replyToId = null } = {}) 
     const streamId = worker.streamId;
     const persona = botPersona(bot);
     const color = botColor(bot);
+    const ttsOn = worker.settings.tts_enabled !== false && persona.tts !== false;
+    const delivery = require('../../chat/chat-delivery');
+    if (delivery.ingress()) {
+        // Chat persists, broadcasts, mirrors to global and reads it aloud in one call; the real id arrives later.
+        delivery.after(delivery.message({
+            stream_id: streamId, channel_user_id: worker.userId || undefined, username: bot.username, message,
+            message_type: 'chat', is_global: false, reply_to_id: replyToId || undefined, source_platform: 'ai',
+            metadata: { bot: 1, bot_id: bot.id, source: bot.source, thread_id: threadId || undefined },
+            mirror: true, frame: { role: 'user', profile_color: color, is_ai: true, filtered: false },
+            tts: ttsOn ? { identity_key: `aibot:${bot.username.toLowerCase()}` } : undefined,
+        }), (id) => forwardToPowerChat(worker, bot, message, id));
+        try { db.touchChannelAiBot(bot.id); } catch { /* */ }
+        return null;
+    }
     let id = null;
     try {
         const res = db.saveChatMessage({
@@ -74,10 +88,16 @@ function post(worker, bot, message, { threadId = null, replyToId = null } = {}) 
         const chatServer = require('../../chat/chat-server');
         chatServer.broadcastToStream(streamId, chatMsg);
         chatServer.forwardToGlobal(streamId, chatMsg);
-        const ttsOn = worker.settings.tts_enabled !== false && persona.tts !== false;
         if (ttsOn) chatServer.synthesizeAndBroadcastTTS(streamId, bot.username, message, null, null, `aibot:${bot.username.toLowerCase()}`, null, id ? `m${id}` : null);
     } catch (e) { console.warn('[AI-Viewers] broadcast failed:', e.message); }
 
+    forwardToPowerChat(worker, bot, message, id);
+    try { db.touchChannelAiBot(bot.id); } catch { /* */ }
+    return id;
+}
+
+function forwardToPowerChat(worker, bot, message, id) {
+    const streamId = worker.streamId;
     if (worker.settings.powerchat_forward !== false) {
         try {
             const pc = require('../../integrations/powerchat-platform');
@@ -92,8 +112,6 @@ function post(worker, bot, message, { threadId = null, replyToId = null } = {}) 
             }
         } catch { /* non-critical */ }
     }
-    try { db.touchChannelAiBot(bot.id); } catch { /* */ }
-    return id;
 }
 
 /** Append a row to ai_viewer_log (best-effort). */

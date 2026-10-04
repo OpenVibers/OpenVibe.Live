@@ -4,11 +4,41 @@ const WebSocket = require('ws');
 
 const db = require('../db/database');
 const chatServer = require('../chat/chat-server');
+const delivery = require('../chat/chat-delivery');
 const { authenticateWs } = require('../auth/auth');
 
 const API_HOST = 'api.robotstreamer.com';
 const API_PORT = 443;
 const RS_ORIGIN = 'https://robotstreamer.com';
+
+/** What follows a mirrored RobotStreamer line once it has an id: AI viewers hear it, PowerChat's overlay shows it. */
+function rsFollowUps(stream, username, rawUsername, message, avatar, id, which = 'all') {
+    if (which !== 'powerchat') {
+        try {
+            require('./ai-chatbot-service').onRealChatMessage(stream.id, {
+                username, message, userId: null, anonId: null,
+                platform: 'rs', relayUsername: username, isStreamer: false, isMod: false, msgId: id,
+            });
+        } catch { /* non-critical */ }
+    }
+    if (which === 'ai') return;
+    // ...and into the streamer's PowerChat overlay (relayed chat was never forwarded).
+    try {
+        const pc = require('./powerchat-platform');
+        if (stream.user_id && pc.slotRelayEnabled(stream.id)) {
+            pc.forwardChat(stream.user_id, {
+                chatterName: username,
+                externalChatterId: `rs:${username}`,
+                message,
+                messageId: id ? `ov-${id}` : undefined,
+                avatarUrl: avatar || undefined,
+                // Placeholder letter from the REAL name — "[RS] name"
+                // would otherwise render "[" for every RS chatter.
+                avatarFallback: [...String(rawUsername || '')][0] || undefined,
+            });
+        }
+    } catch { /* non-critical */ }
+}
 
 function safeJsonParse(value, fallback = null) {
     try {
@@ -588,7 +618,7 @@ class RobotStreamerService {
                     robot_id: bridge.robotId,
                     owner_id: bridge.ownerId,
                 }));
-                chatServer.broadcastToStream(stream.id, {
+                delivery.event({ kind: 'stream', id: stream.id }, {
                     type: 'system',
                     message: 'RobotStreamer chat mirror connected',
                     timestamp: new Date().toISOString(),
@@ -602,7 +632,7 @@ class RobotStreamerService {
                 if (data.type === 'history' || data.type === 'privileges') return;
 
                 if (data.username === '[RS BOT]') {
-                    chatServer.broadcastToStream(stream.id, {
+                    delivery.event({ kind: 'stream', id: stream.id }, {
                         type: 'system',
                         message: `[RS BOT] ${data.message}`,
                         timestamp: new Date().toISOString(),
@@ -636,7 +666,8 @@ class RobotStreamerService {
 
                 // Record this relay user (first message = join date) so RobotStreamer
                 // chatters get the same chat logs + AI insight as other relay users.
-                try { db.recordRelayUser('rs', rawUsername); } catch { /* non-critical */ }
+                if (delivery.ingress()) { delivery.mirror('recordRelayUser', 'rs', rawUsername); delivery.moderate('relay-record', { platform: 'rs', username: rawUsername }); }
+                else { try { db.recordRelayUser('rs', rawUsername); } catch { /* non-critical */ } }
 
                 // Let RobotStreamer viewers trigger channel !sound commands too. If the
                 // message is a registered !sound, play it (attributed to the RS user) and
@@ -646,6 +677,13 @@ class RobotStreamerService {
                     const parts = trimmed.split(/\s+/);
                     const scmd = parts[0].slice(1).toLowerCase();
                     if (scmd && db.getChannelSoundByCommand(stream.user_id, scmd)) {
+                        if (delivery.ingress()) {
+                            delivery.event({ kind: 'stream', id: stream.id }, {
+                                type: 'channel-sound', streamId: stream.id, command: scmd, args: parts.slice(1).map((a) => a.slice(0, 120)).slice(0, 20),
+                                relay: { username, role: 'external', profile_color: '#7dd3fc', avatar_url: data.avatar || null, sourcePlatform: 'rs' },
+                            });
+                            return;
+                        }
                         try {
                             chatServer.triggerChannelSound(
                                 null,
@@ -673,6 +711,16 @@ class RobotStreamerService {
                     source_platform: 'rs',
                 };
 
+                if (delivery.ingress()) {
+                    // Chat persists, broadcasts, mirrors and reads it aloud in one call.
+                    delivery.after(delivery.message({
+                        stream_id: stream.id, username, message: msgText, message_type: 'chat', is_global: false,
+                        source_platform: 'rs', mirror: true,
+                        frame: { role: 'external', profile_color: '#7dd3fc', avatar_url: data.avatar || undefined },
+                        tts: { identity_key: `rs:${username}` },
+                    }), (id) => rsFollowUps(stream, username, rawUsername, msgText, data.avatar, id));
+                    return;
+                }
                 try {
                     const result = db.saveChatMessage({
                         stream_id: stream.id,
@@ -688,12 +736,7 @@ class RobotStreamerService {
                 } catch {}
 
                 chatServer.broadcastToStream(stream.id, mirrored);
-                try {
-                    require('./ai-chatbot-service').onRealChatMessage(stream.id, {
-                        username, message: mirrored.message, userId: null, anonId: null,
-                        platform: 'rs', relayUsername: username, isStreamer: false, isMod: false, msgId: mirrored.id || null,
-                    });
-                } catch { /* non-critical */ }
+                rsFollowUps(stream, username, rawUsername, mirrored.message, data.avatar, mirrored.id || null, 'ai');
                 // Also surface on the global / username-only overlay (tags stream_channel)
                 try { chatServer.forwardToGlobal(stream.id, mirrored); } catch { /* non-critical */ }
                 // And to viewers of the streamer's other live slots (cross-slot chat)
@@ -704,27 +747,12 @@ class RobotStreamerService {
                     chatServer.synthesizeAndBroadcastTTS(stream.id, username, mirrored.message, null, 'rs', `rs:${username}`, null, mirrored.id ? `m${mirrored.id}` : null);
                 } catch { /* non-critical */ }
 
-                // ...and into the streamer's PowerChat overlay (relayed chat was never forwarded).
-                try {
-                    const pc = require('./powerchat-platform');
-                    if (stream.user_id && pc.slotRelayEnabled(stream.id)) {
-                        pc.forwardChat(stream.user_id, {
-                            chatterName: username,
-                            externalChatterId: `rs:${username}`,
-                            message: mirrored.message,
-                            messageId: mirrored.id ? `ov-${mirrored.id}` : undefined,
-                            avatarUrl: data.avatar || undefined,
-                            // Placeholder letter from the REAL name — "[RS] name"
-                            // would otherwise render "[" for every RS chatter.
-                            avatarFallback: [...String(rawUsername || '')][0] || undefined,
-                        });
-                    }
-                } catch { /* non-critical */ }
+                rsFollowUps(stream, username, rawUsername, mirrored.message, data.avatar, mirrored.id || null, 'powerchat');
             });
 
             bridge.ws.on('close', () => {
                 if (bridge.stopped) return;
-                chatServer.broadcastToStream(stream.id, {
+                delivery.event({ kind: 'stream', id: stream.id }, {
                     type: 'system',
                     message: 'RobotStreamer chat mirror disconnected — retrying',
                     timestamp: new Date().toISOString(),

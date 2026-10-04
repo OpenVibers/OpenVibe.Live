@@ -199,11 +199,16 @@ function pending() {
 
 function announce(recap) {
     try {
-        const chat = require('../chat/chat-server');
-        const server = chat.chatServer || chat.default || chat;
-        if (!server || typeof server.broadcastToChannelRoom !== 'function') return false;
+        const delivery = require('../chat/chat-delivery');
         const g = recap.write.grade;
-        server.broadcastToChannelRoom(recap.streamer.id, recap.stream.id, { type: 'system', message: `📋 After-show report for "${recap.stream.title}" is in — grade ${g}: ${recap.write.headline}. Read it: /recap/${recap.stream.id}` });
+        const frame = { type: 'system', message: `📋 After-show report for "${recap.stream.title}" is in — grade ${g}: ${recap.write.headline}. Read it: /recap/${recap.stream.id}` };
+        if (delivery.ingress()) delivery.event({ kind: 'channel', id: recap.streamer.id }, frame, { key: `recap:${recap.stream.id}` });
+        else {
+            const chat = require('../chat/chat-server');
+            const server = chat.chatServer || chat.default || chat;
+            if (!server || typeof server.broadcastToChannelRoom !== 'function') return false;
+            server.broadcastToChannelRoom(recap.streamer.id, recap.stream.id, frame);
+        }
         db.run('UPDATE stream_recaps SET announced_at = CURRENT_TIMESTAMP WHERE stream_id = ?', [recap.stream.id]);
         return true;
     } catch (e) { console.warn('[Recap] announce:', e.message); return false; }

@@ -43,6 +43,7 @@ const { execSync } = require('child_process');
 const db = require('../db/database');
 const { requireAuth } = require('../auth/auth');
 const chatServer = require('../chat/chat-server');
+const delivery = require('../chat/chat-delivery');
 const permissions = require('../auth/permissions');
 const money = require('../monetization/money-authority');
 
@@ -244,7 +245,12 @@ router.put('/users/:id', (req, res) => {
 
         // Push real-time update to the affected user's chat connections
         if (updates.length > 0) {
-            chatServer.sendUserUpdate(parseInt(req.params.id), safeUser);
+            const id = parseInt(req.params.id);
+            // LIVE_CHAT_INGRESS: a typed account hint; Chat updates the sockets and stored message names.
+            delivery.invalidate({
+                user: id,
+                user_data: { id, username: safeUser.username, display_name: safeUser.display_name || null, role: safeUser.role || null, avatar_url: safeUser.avatar_url || null, profile_color: safeUser.profile_color || null },
+            }, () => chatServer.sendUserUpdate(id, safeUser));
         }
 
         res.json({ user: safeUser });
@@ -277,7 +283,7 @@ router.post('/users/:id/ban', (req, res) => {
             [req.params.id, reason || 'Banned by admin', req.user.id, expires]
         );
 
-        db.logModerationAction({
+        delivery.logModeration({
             scope_type: 'site',
             actor_user_id: req.user.id,
             target_user_id: Number(req.params.id),
@@ -297,7 +303,7 @@ router.delete('/users/:id/ban', (req, res) => {
         db.run('UPDATE users SET is_banned = 0, ban_reason = NULL WHERE id = ?', [req.params.id]);
         db.run('DELETE FROM bans WHERE user_id = ?', [req.params.id]);
 
-        db.logModerationAction({
+        delivery.logModeration({
             scope_type: 'site',
             actor_user_id: req.user.id,
             target_user_id: Number(req.params.id),
@@ -358,7 +364,7 @@ router.delete('/streams/:id', (req, res) => {
         // Accountability: force-ending someone's live stream is a moderation action
         // and MUST be logged (previously it left no trace at all).
         try {
-            db.logModerationAction({
+            delivery.logModeration({
                 scope_type: 'stream',
                 scope_id: stream.id,
                 actor_user_id: req.user.id,
@@ -804,7 +810,7 @@ router.post('/moderators', (req, res) => {
 
         db.run("UPDATE users SET role = 'global_mod' WHERE id = ?", [user.id]);
 
-        db.logModerationAction({
+        delivery.logModeration({
             scope_type: 'site',
             actor_user_id: req.user.id,
             target_user_id: user.id,
@@ -827,7 +833,7 @@ router.delete('/moderators/:id', (req, res) => {
 
         db.run("UPDATE users SET role = 'user' WHERE id = ?", [user.id]);
 
-        db.logModerationAction({
+        delivery.logModeration({
             scope_type: 'site',
             actor_user_id: req.user.id,
             target_user_id: user.id,
@@ -863,7 +869,7 @@ router.post('/admins', permissions.requireOwner, (req, res) => {
         if (!user) return res.status(404).json({ error: 'User not found' });
         if (user.role === 'admin') return res.status(400).json({ error: 'User is already an admin' });
         db.run("UPDATE users SET role = 'admin' WHERE id = ?", [user.id]);
-        db.logModerationAction({
+        delivery.logModeration({
             scope_type: 'site', actor_user_id: req.user.id, target_user_id: user.id,
             action_type: 'admin_promote', details: { username: user.username },
         });
@@ -881,7 +887,7 @@ router.delete('/admins/:id', permissions.requireOwner, (req, res) => {
         if (user.role !== 'admin') return res.status(400).json({ error: 'User is not an admin' });
         if (user.is_owner) return res.status(400).json({ error: 'Cannot demote an owner' });
         db.run("UPDATE users SET role = 'user' WHERE id = ?", [user.id]);
-        db.logModerationAction({
+        delivery.logModeration({
             scope_type: 'site', actor_user_id: req.user.id, target_user_id: user.id,
             action_type: 'admin_demote', details: { username: user.username },
         });

@@ -18,6 +18,12 @@
  */
 function playAlertSound(chatServer, streamerId, streamId, kind) {
     try {
+        const delivery = require('../chat/chat-delivery');
+        if (delivery.ingress()) {
+            // LIVE_CHAT_INGRESS: the same request as an `alert` event on Chat's typed ingress.
+            delivery.event({ kind: 'channel', id: streamerId }, { type: 'alert', streamerId: Number(streamerId), streamId: streamId ? Number(streamId) : null, kind: kind === 'goal' ? 'goal' : 'donation' });
+            return;
+        }
         if (!chatServer || typeof chatServer.playAlertSound !== 'function') return;
         chatServer.playAlertSound(streamerId, streamId, kind === 'goal' ? 'goal' : 'donation');
     } catch { /* non-critical */ }

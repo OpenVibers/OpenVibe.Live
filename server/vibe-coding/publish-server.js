@@ -171,13 +171,13 @@ class VibeCodingPublishServer {
         const settings = vibeService.getManagedStreamVibeCodingSettings(client.managedStreamId);
         const projected = vibeService.projectViewerEvent(event, settings);
         if (projected && liveStream?.id) {
-            this.chatServer.broadcastToStream(liveStream.id, {
+            require('../chat/chat-delivery').event({ kind: 'stream', id: liveStream.id }, {
                 type: 'vibe-coding',
                 managed_stream_id: client.managedStreamId,
                 slot_slug: client.slotSlug,
                 delay_ms: settings.delay_ms,
                 event: projected,
-            });
+            }, { key: event.eventId ? `vibe:${client.managedStreamId}:${event.eventId}` : undefined });
         }
 
         this.sendTo(ws, {

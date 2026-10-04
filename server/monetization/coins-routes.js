@@ -220,9 +220,8 @@ router.post('/redeem', requireAuth, (req, res) => {
 
         // Broadcast redemption to chat so streamer sees it
         try {
-            const chatServer = require('../chat/chat-server');
             const reward = result.redemption.reward;
-            chatServer.broadcastToStream(streamId, {
+            require('../chat/chat-delivery').event({ kind: 'stream', id: streamId }, {
                 type: 'redemption',
                 username: req.user.display_name || req.user.username,
                 reward_title: reward.title,
@@ -231,7 +230,7 @@ router.post('/redeem', requireAuth, (req, res) => {
                 cost: reward.cost,
                 user_input: userInput || '',
                 timestamp: new Date().toISOString(),
-            });
+            }, { key: `redemption:${result.redemption.id}` });
         } catch { /* chat broadcast optional */ }
 
         // Feed the redemption into PowerChat as a virtual-currency event (alerts + leaderboard).

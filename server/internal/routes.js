@@ -12,7 +12,11 @@ const { guard } = require('../net/service-guard');
 
 // CHAT_AUTHORITY=chat: OpenVibe.Chat caches users; a role or avatar pushed here reaches it at once.
 function notifyChat(userId) {
-    try { const cs = require('../chat/chat-server'); if (cs.remote) cs.userChanged(userId); } catch { /* non-critical */ }
+    try {
+        const delivery = require('../chat/chat-delivery');
+        if (delivery.ingress()) { delivery.invalidate({ user: Number(userId) }); return; }
+        const cs = require('../chat/chat-server'); if (cs.remote) cs.userChanged(userId);
+    } catch { /* non-critical */ }
 }
 
 // Footer site copy is written by OpenVibe.AI for the Network directly (network.site_copy); the

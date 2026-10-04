@@ -456,14 +456,20 @@ effectsRouter.post('/ai/mod-command', (req, res) => {
 // !hype / !beef / !arena: arena-chat answers the sender through Chat (sendToConn).
 effectsRouter.post('/arena-command', (req, res) => {
     const client = req.body?.client || {};
-    const cs = chatServer();
-    const shim = {
-        sendTo: (_ws, payload) => cs.sendToConn(client.conn_id, payload),
-        broadcastToStream: (streamId, payload) => cs.broadcastToStream(streamId, payload),
+    const delivery = require('./chat-delivery');
+    // LIVE_CHAT_INGRESS: room lines go to Chat's typed events; the sender-only replies come back in this
+    // response as `replies` (Chat has no per-connection ingress; it reads them from here at J4b).
+    const replies = [];
+    const shim = delivery.ingress() ? {
+        sendTo: (_ws, payload) => { replies.push(payload); },
+        broadcastToStream: (streamId, payload) => delivery.event({ kind: 'stream', id: streamId }, payload),
+    } : {
+        sendTo: (_ws, payload) => chatServer().sendToConn(client.conn_id, payload),
+        broadcastToStream: (streamId, payload) => chatServer().broadcastToStream(streamId, payload),
     };
     let handled = false;
     try { handled = require('../arena/arena-chat').handle(shim, null, client, String(req.body.cmd || ''), Array.isArray(req.body.parts) ? req.body.parts : []); } catch (e) { console.warn('[Arena] chat command:', e.message); }
-    res.json({ handled: !!handled });
+    res.json(replies.length ? { handled: !!handled, replies } : { handled: !!handled });
 });
 
 // !sr / !queue / !np / !skip — the media queue is Live's.

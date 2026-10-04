@@ -1406,7 +1406,7 @@ router.post('/voice-channels/call-user', requireAuth, (req, res) => {
         };
 
         // Real-time invite for online users via existing chat WS connections.
-        chatServer.sendDm(targetUser.id, payload);
+        require('../chat/chat-delivery').event({ kind: 'user', id: targetUser.id }, payload);
 
         // Persistent cross-site notification for offline users / later join.
         pushNotification({
@@ -1450,7 +1450,7 @@ router.post('/voice-channels/call-user/respond', requireAuth, (req, res) => {
         if (!ch || ch.createdBy !== callerUserId || !callServer.hasInvite(channelId, req.user.id)) return res.status(403).json({ error: 'No such invite' });
 
         const fromDisplayName = req.user.display_name || req.user.username || 'Someone';
-        chatServer.sendDm(callerUserId, {
+        require('../chat/chat-delivery').event({ kind: 'user', id: callerUserId }, {
             type: 'vc-call-response',
             status,
             channelId,

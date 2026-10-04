@@ -67,16 +67,24 @@ async function _sendOne(clipId) {
         clip: meta,
         timestamp: new Date().toISOString(),
     };
+    const line = {
+        stream_id: streamId,
+        channel_user_id: ownerId,
+        user_id: null,
+        username: creatorName,
+        message: `clipped: ${title}`,
+        message_type: 'clip',
+        metadata: meta,
+    };
     try {
-        const saved = db.saveChatMessage({
-            stream_id: streamId,
-            channel_user_id: ownerId,
-            user_id: null,
-            username: creatorName,
-            message: `clipped: ${title}`,
-            message_type: 'clip',
-            metadata: meta,
-        });
+        const delivery = require('../chat/chat-delivery');
+        if (delivery.ingress()) {
+            // Chat persists and shows the line (one key per clip, so a re-announce cannot post twice).
+            await delivery.message({ ...line, key: `clip:${clipId}` });
+            db.markClipNotifiedState(clipId);
+            return;
+        }
+        const saved = db.saveChatMessage(line);
         payload.id = saved && saved.lastInsertRowid;
         require('../chat/chat-server').broadcastToChannelRoom(ownerId, streamId, payload);
     } catch (e) {

@@ -15,6 +15,7 @@ const { requireAuth, requireAdmin } = require('../auth/auth');
 const { requireOwner } = require('../auth/permissions');
 const openvibeBucks = require('./vibes');
 const db = require('../db/database');
+const delivery = require('../chat/chat-delivery');
 // BILLING_AUTHORITY=billing: every money action below goes to OpenVibe.Billing instead of Live's
 // columns (billing-actions.js); money_writes_frozen refuses them in both modes.
 const money = require('./money-authority');
@@ -100,19 +101,23 @@ router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
             avatar_url: donorUser?.avatar_url || null,
             amount: result.amount, message: message || '', timestamp: ts,
         };
-        chatServer.broadcastToChannelRoom(streamer_id, stream_id || null, donationEvent);
-        // Tips are a site-wide event worth celebrating, so mirror them into global chat
-        // instead of confining them to the channel that received them.
-        try { chatServer.broadcastGlobal({ ...donationEvent, global: true, channel_user_id: streamer_id }); } catch { /* */ }
-        try {
-            db.saveChatMessage({
-                stream_id: stream_id || null, channel_user_id: streamer_id, user_id: req.user.id,
-                username: donor,
-                message: `${donor} donated ${result.amount.toLocaleString()} Vibes${message ? ': ' + message : ''}`,
-                message_type: 'donation',
-                metadata: { kind: 'donation', amount: result.amount, message: message || '', username: donor, user_id: req.user.id, avatar_url: donorUser?.avatar_url || null },
-            });
-        } catch { /* non-critical */ }
+        const donationLine = {
+            stream_id: stream_id || null, channel_user_id: streamer_id, user_id: req.user.id,
+            username: donor,
+            message: `${donor} donated ${result.amount.toLocaleString()} Vibes${message ? ': ' + message : ''}`,
+            message_type: 'donation',
+            metadata: { kind: 'donation', amount: result.amount, message: message || '', username: donor, user_id: req.user.id, avatar_url: donorUser?.avatar_url || null },
+        };
+        if (delivery.ingress()) {
+            // Chat persists the line and shows it in the channel and (mirror) global chat in one call.
+            delivery.message({ ...donationLine, mirror: true, key: result.transactionId ? `donation:${result.transactionId}` : undefined });
+        } else {
+            chatServer.broadcastToChannelRoom(streamer_id, stream_id || null, donationEvent);
+            // Tips are a site-wide event worth celebrating, so mirror them into global chat
+            // instead of confining them to the channel that received them.
+            try { chatServer.broadcastGlobal({ ...donationEvent, global: true, channel_user_id: streamer_id }); } catch { /* */ }
+            try { db.saveChatMessage(donationLine); } catch { /* non-critical */ }
+        }
 
         // 2) Donation sound (streamer-configured).
         alerts.playAlertSound(chatServer, streamer_id, stream_id, 'donation');
@@ -132,24 +137,26 @@ router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
 
         // 3) Live goal progress → widget.
         if (result.goal) {
-            chatServer.broadcastToChannelRoom(streamer_id, stream_id || null, { type: 'goal-update', goal: publicGoal(result.goal) });
+            delivery.event({ kind: 'channel', id: streamer_id, stream: stream_id || null }, { type: 'goal-update', goal: publicGoal(result.goal) });
         }
 
         // 4) Goal reached → flashy animated chat event (persisted) + goal sound.
         if (result.goalReached) {
             const g = result.goalReached;
-            chatServer.broadcastToChannelRoom(streamer_id, stream_id || null, {
-                type: 'goal-reached', goal: publicGoal(g), by: donor, timestamp: ts,
-            });
-            try {
-                db.saveChatMessage({
-                    stream_id: stream_id || null, channel_user_id: streamer_id, user_id: null,
-                    username: 'Donation Goal',
-                    message: `🎉 Goal reached: ${g.title} (${(g.target_amount || 0).toLocaleString()} Vibes)`,
-                    message_type: 'donation',
-                    metadata: { kind: 'goal-reached', goal_id: g.id, title: g.title, target: g.target_amount, image: g.image_url || null, media_type: g.media_type || null, by: donor },
+            const goalLine = {
+                stream_id: stream_id || null, channel_user_id: streamer_id, user_id: null,
+                username: 'Donation Goal',
+                message: `🎉 Goal reached: ${g.title} (${(g.target_amount || 0).toLocaleString()} Vibes)`,
+                message_type: 'donation',
+                metadata: { kind: 'goal-reached', goal_id: g.id, title: g.title, target: g.target_amount, image: g.image_url || null, media_type: g.media_type || null, by: donor },
+            };
+            if (delivery.ingress()) delivery.message({ ...goalLine, key: result.transactionId ? `goal:${result.transactionId}` : undefined });
+            else {
+                chatServer.broadcastToChannelRoom(streamer_id, stream_id || null, {
+                    type: 'goal-reached', goal: publicGoal(g), by: donor, timestamp: ts,
                 });
-            } catch { /* non-critical */ }
+                try { db.saveChatMessage(goalLine); } catch { /* non-critical */ }
+            }
             alerts.playAlertSound(chatServer, streamer_id, stream_id, 'goal');
         }
 
@@ -262,7 +269,7 @@ router.put('/goals/:id', requireAuth, (req, res) => {
         // same as a donation does (a plain goal-update — no celebration).
         if (req.body.current_amount !== undefined && g) {
             try {
-                require('../chat/chat-server').broadcastToChannelRoom(req.user.id, null, { type: 'goal-update', goal: publicGoal(g) });
+                delivery.event({ kind: 'channel', id: req.user.id }, { type: 'goal-update', goal: publicGoal(g) });
             } catch { /* live update is best-effort */ }
         }
         res.json({ goals: openvibeBucks.getManageGoals(req.user.id).map(publicGoal) });
