@@ -5,7 +5,7 @@ The OpenVibe.Live chat system provides real-time messaging, moderation, and exte
 ## Architecture
 
 - **WebSocket server**: `server/chat/chat-server.js` — manages connections, rooms, and message routing
-- **REST API**: `server/chat/routes.js` — moderation endpoints, message search, admin tools
+- **REST API**: OpenVibe.Chat (nginx sends `/api/chat`, `/api/dm`, `/api/tts`, `/api/sounds` there) — moderation endpoints, message search, admin tools. Live's local `server/chat/routes.js` is retired.
 - **Client**: `public/js/chat.js` — rendering, emotes, TTS, settings sync
 
 ### OpenVibe.Chat (roadmap Wave 6)

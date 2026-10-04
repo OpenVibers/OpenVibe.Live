@@ -54,26 +54,10 @@ for (const [id, name] of [[1, 'veteran'], [2, 'newcomer']]) {
     assert.strictEqual(g.total_level, 11 + 3 + 6, 'eight skills summed, like the old getPlayer()');
     assert.strictEqual(g.total_coins_earned, 42);
 
-    // The chat profile card (Live's route and the one OpenVibe.Chat reads) never adds a row.
-    const express = require('express');
-    const app = express();
-    app.use('/api/chat', require('../server/chat/routes'));
-    const server = http.createServer(app).listen(0);
-    const get = (p) => new Promise((resolve, reject) => {
-        http.get({ port: server.address().port, path: p }, (res) => {
-            let text = '';
-            res.on('data', (c) => { text += c; });
-            res.on('end', () => resolve({ status: res.statusCode, json: JSON.parse(text || 'null') }));
-        }).on('error', reject);
-    });
-    let r = await get('/api/chat/user/newcomer/profile');
-    assert.strictEqual(r.status, 200);
-    assert.strictEqual(r.json.game, undefined, 'no legacy game block for someone who never played');
-    assert.strictEqual(count(), 1, 'and viewing their profile created no game_players row');
-    r = await get('/api/chat/user/veteran/profile');
-    assert.strictEqual(r.json.game.total_level, 20, 'a legacy player still shows their skills');
-    assert.strictEqual(count(), 1);
-    server.close();
+    // The profile-card reader (what Live's removed route and OpenVibe.Chat both called) never adds a row.
+    assert.strictEqual(db.getLegacyGameProfile(2), null, 'no legacy game block for someone who never played');
+    assert.strictEqual(g.total_level, 20, 'a legacy player still shows their skills');
+    assert.strictEqual(count(), 1, 'reading a profile created no game_players row');
 
     // Chat tags: read-only, and still shown.
     const tags = require('../server/chat/tags');

@@ -154,7 +154,7 @@ and refills history on reconnect.
 | Log redaction | `server/utils/redact.js` | stream keys and credentials in log lines |
 | Database | `server/db/database.js` | queries and inline table setup |
 | Migrations | `server/db/migrations.js` | versioned, transactional migrations with a ledger (`schema_migrations`) |
-| Chat | `server/chat/chat-server.js`, `server/chat/routes.js` | WebSocket chat, history, moderation |
+| Chat | `server/chat/chat-server.js` | WebSocket chat, history, moderation (REST: OpenVibe.Chat) |
 | Streams | `server/streaming/routes.js` | stream and slot CRUD, channel pages |
 | Media proxy | `server/media-proxy/*.js` | VODs, clips, pastes, thumbnails via OpenVibe.Media |
 | Auth | `server/auth/auth.js`, `server/auth/permissions.js` | JWT/API tokens, scopes, role ranks |
