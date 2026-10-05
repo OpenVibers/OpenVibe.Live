@@ -678,9 +678,9 @@ class RobotStreamerService {
                 if (trimmed.startsWith('!')) {
                     const parts = trimmed.split(/\s+/);
                     const scmd = parts[0].slice(1).toLowerCase();
-                    // Chat owns channel_sounds but its internal read API offers only a count and the
-                    // pending-asset list, no lookup by command, so this stays on Live's mirror table.
-                    if (scmd && db.getChannelSoundByCommand(stream.user_id, scmd)) {
+                    // Chat owns channel_sounds; ask its by-command read (a cached peek), which falls
+                    // back to Live's own table while Chat is unreachable.
+                    if (scmd && chatReads.soundByCommandPeek(stream.user_id, scmd)) {
                         if (delivery.ingress()) {
                             delivery.event({ kind: 'stream', id: stream.id }, {
                                 type: 'channel-sound', streamId: stream.id, command: scmd, args: parts.slice(1).map((a) => a.slice(0, 120)).slice(0, 20),
