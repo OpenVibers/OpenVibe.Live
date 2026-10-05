@@ -133,6 +133,8 @@ function withUserFields(row) {
     // Media returns its own paths relative — absolutize onto MEDIA_PUBLIC_URL
     // so the SPA doesn't resolve them against Live's origin.
     row.playback_url = media.publicUrl(row.playback_url) || media.vodPlaybackUrl(row.id);
+    // Media's timeline playlist (absent until the VOD has one): the player prefers it to the file.
+    if (row.hls_url) row.hls_url = media.publicUrl(row.hls_url);
     if (row.thumbnail_url) row.thumbnail_url = media.publicUrl(row.thumbnail_url);
     // AI overview is Live-owned (vod_ai_state) — overlay short + full for the cards
     // (the expander swaps the short teaser for the full text).

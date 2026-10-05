@@ -69,6 +69,7 @@ function withUserFields(clip) {
     }
     // Absolutize Media-relative URLs so the SPA doesn't resolve them against Live.
     clip.playback_url = media.publicUrl(clip.playback_url) || media.clipUrl(clip.id);
+    if (clip.hls_url) clip.hls_url = media.publicUrl(clip.hls_url);
     if (clip.thumbnail_url) clip.thumbnail_url = media.publicUrl(clip.thumbnail_url);
     // AI overview is Live-owned (clip_ai_state) — overlay short + full for the cards
     // (the expander swaps the short teaser for the full text).
