@@ -204,6 +204,9 @@ function personBlock(line, channelUserId, settings) {
             }
         }
         const key = line.userId ? `user:${line.username}` : (line.anonId ? `anon:${line.anonId}` : `ext:${line.username}`);
+        // stream_first_chats is Chat's (a read-mirror table) and Chat's internal read API has no
+        // first-chat route, so this stays on Live's copy — which Chat no longer fills for registered
+        // users, making the flag best-effort. Drop it when Chat offers the read.
         if (line.userId !== channelUserId && settings.greet_first_timers && db.isFirstChatInChannel && db.isFirstChatInChannel(key, channelUserId)) flags.push('first time chatting here');
     } catch { /* */ }
     const insight = ins ? clip([ins.overview_24h || ins.overview_alltime, ins.memory].filter(Boolean).join(' — '), 220) : '';

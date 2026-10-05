@@ -13,6 +13,7 @@
  */
 'use strict';
 const db = require('../db/database');
+const chatReads = require('../chat/chat-reads');
 
 const ROTATE_MS = 24 * 60 * 60 * 1000;      // a new star every day
 const CHECK_MS = 30 * 60 * 1000;            // how often the job looks at the clock
@@ -29,7 +30,8 @@ function loadPick() {
 function pinned() { try { return String(db.getSetting('star_streamer_pinned') || '').trim(); } catch { return ''; } }
 
 /** Everyone who streamed recently, with the numbers the picker looks at. */
-function candidates() {
+async function candidates() {
+    const sinceMs = Date.now() - CANDIDATE_DAYS * 86400000;
     const rows = db.all(`
         SELECT u.id, u.username, u.display_name, u.bio,
                COUNT(s.id) AS sessions,
@@ -37,7 +39,6 @@ function candidates() {
                MAX(COALESCE(s.peak_viewers, 0)) AS peak_viewers,
                ROUND(AVG(COALESCE(s.peak_viewers, 0)), 1) AS avg_peak,
                MAX(s.started_at) AS last_live_at,
-               (SELECT COUNT(*) FROM chat_messages c WHERE c.stream_id IN (SELECT id FROM streams x WHERE x.user_id = u.id AND x.started_at >= datetime('now', ?)) AND COALESCE(c.is_deleted, 0) = 0) AS chat_lines,
                (SELECT COUNT(*) FROM follows f WHERE f.streamer_id = u.id AND f.created_at >= datetime('now', ?)) AS new_followers,
                (SELECT COUNT(*) FROM follows f WHERE f.streamer_id = u.id) AS followers,
                (SELECT COUNT(*) FROM arena_mic_moments m WHERE m.user_id = u.id AND m.said_at >= datetime('now', ?)) AS mic_moments,
@@ -46,7 +47,13 @@ function candidates() {
         FROM users u JOIN streams s ON s.user_id = u.id
         WHERE s.started_at >= datetime('now', ?) AND COALESCE(u.is_banned, 0) = 0
         GROUP BY u.id
-        ORDER BY hours DESC LIMIT 40`, [`-${CANDIDATE_DAYS} days`, `-${CANDIDATE_DAYS} days`, `-${CANDIDATE_DAYS} days`, `-${CANDIDATE_DAYS} days`]) || [];
+        ORDER BY hours DESC LIMIT 40`, [`-${CANDIDATE_DAYS} days`, `-${CANDIDATE_DAYS} days`, `-${CANDIDATE_DAYS} days`]) || [];
+    // Chat lines per streamer over the window, from OpenVibe.Chat (Live's own tables when Live runs
+    // chat). One read per candidate; the star pick is a daily background job, so the fan-out is cheap.
+    await Promise.all(rows.map(async (r) => {
+        try { const s = await chatReads.windowStats({ channelUserId: r.id, since: sinceMs }); r.chat_lines = (s && s.messages) || 0; }
+        catch { r.chat_lines = 0; }
+    }));
     let i18n = null; try { i18n = require('../i18n/translate'); } catch { i18n = null; }
     for (const r of rows) {
         r.language = i18n ? (() => { try { return i18n.channelLanguage(r.id); } catch { return 'en'; } })() : 'en';
@@ -91,7 +98,7 @@ async function rotate({ force = false } = {}) {
     if (!force && cur && cur.next_at && now < Number(cur.next_at)) return { current: cur.username, next_at: cur.next_at };
     _busy = true;
     try {
-        const cands = candidates();
+        const cands = await candidates();
         if (!cands.length) return { none: true };
         // Recent stars (and whatever the setting / env currently holds) are ineligible.
         const history = Array.isArray(cur && cur.history) ? cur.history.slice() : [];

@@ -13,6 +13,7 @@
 
 const express = require('express');
 const db = require('../db/database');
+const chatReads = require('../chat/chat-reads');
 const { can } = require('../auth/permissions');
 const { optionalAuth } = require('../auth/auth');
 
@@ -176,18 +177,13 @@ router.get('/channel/:username/dashboard', optionalAuth, async (req, res) => {
             new_followers: s.new_followers,
         }));
 
-        // Top chatters for the period
+        // Top chatters for the period, from OpenVibe.Chat (Live's own tables when Live runs chat).
+        // Chat groups by user/anon/relay; the dashboard wants registered chatters, hence the filter.
         const cutoff = new Date(Date.now() - days * 86400000).toISOString();
-        const topChatters = db.all(`
-            SELECT cm.user_id, cm.username, COUNT(*) as message_count
-            FROM chat_messages cm
-            JOIN streams s ON cm.stream_id = s.id
-            WHERE s.user_id = ? AND cm.timestamp >= ? AND cm.is_deleted = 0
-              AND cm.is_global = 0 AND cm.message_type = 'chat' AND cm.user_id IS NOT NULL
-            GROUP BY cm.user_id
-            ORDER BY message_count DESC
-            LIMIT 20
-        `, [channel.user_id, cutoff]);
+        const topChatters = ((await chatReads.topChatters({ channelUserId: channel.user_id, since: Date.parse(cutoff), limit: 20 })) || [])
+            .filter(r => r.user_id != null)
+            .slice(0, 20)
+            .map(r => ({ user_id: r.user_id, username: r.username, message_count: Number(r.count) }));
 
         // Top watchers by watch time
         const topWatchers = db.all(`

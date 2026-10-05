@@ -11,6 +11,7 @@
 const express = require('express');
 const multer = require('multer');
 const db = require('../db/database');
+const chatReads = require('../chat/chat-reads');
 const media = require('../media-client');
 const recorder = require('../streaming/recorder');
 const { requireAuth, optionalAuth } = require('../auth/auth');
@@ -430,16 +431,22 @@ router.get('/:id/context', optionalAuth, async (req, res) => {
         let stats = null;
         if (stream) {
             const start = String(stream.started_at || ''), end = String(stream.ended_at || new Date().toISOString().replace('T', ' ').slice(0, 19));
-            const chat = safe(() => db.get('SELECT COUNT(*) AS n, COUNT(DISTINCT COALESCE(user_id, anon_id, username)) AS c FROM chat_messages WHERE stream_id = ? AND COALESCE(is_deleted, 0) = 0', [stream.id]), { n: 0, c: 0 });
+            // Chat totals, the sound count and the top chatters come from OpenVibe.Chat (Live's own
+            // tables when Live runs chat); a Chat outage answers a cached or zero value, never a 500.
+            const chatStats = (await chatReads.streamStats(stream.id)) || { messages: 0, chatters: 0, sounds: 0 };
+            const topChatters = ((await chatReads.topChatters({ streamId: stream.id, limit: 3 })) || [])
+                .filter(r => r.username && (r.user_id == null || Number(r.user_id) !== Number(stream.user_id)))
+                .slice(0, 3)
+                .map(r => ({ username: r.username, display_name: r.display_name || r.username, avatar_url: r.avatar_url || null, profile_color: r.profile_color || null, n: Number(r.count) }));
             const avg = safe(() => db.get('SELECT ROUND(AVG(viewer_count), 1) AS a, COUNT(*) AS k FROM viewer_snapshots WHERE stream_id = ?', [stream.id]), { a: null, k: 0 });
             stats = {
-                chat_messages: Number(chat.n) || 0, chatters: Number(chat.c) || 0,
+                chat_messages: Number(chatStats.messages) || 0, chatters: Number(chatStats.chatters) || 0,
                 peak_viewers: Number(stream.peak_viewers) || 0, avg_viewers: avg.k ? Number(avg.a) : null,
-                sound_commands: safe(() => db.get("SELECT COUNT(*) AS n FROM chat_messages WHERE stream_id = ? AND message_type = 'soundboard'", [stream.id]).n, 0),
+                sound_commands: Number(chatStats.sounds) || 0,
                 mic_moments: safe(() => db.get('SELECT COUNT(*) AS n FROM arena_mic_moments WHERE stream_id = ?', [stream.id]).n, 0),
                 follows_gained: safe(() => db.get('SELECT COUNT(*) AS n FROM follows WHERE streamer_id = ? AND created_at BETWEEN ? AND ?', [stream.user_id, start, end]).n, 0),
                 tips: safe(() => db.get("SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS t FROM transactions WHERE type = 'donation' AND (stream_id = ? OR (to_user_id = ? AND created_at BETWEEN ? AND ?))", [stream.id, stream.user_id, start, end]), { n: 0, t: 0 }),
-                top_chatters: safe(() => db.all('SELECT c.username, u.display_name, u.avatar_url, u.profile_color, COUNT(*) AS n FROM chat_messages c LEFT JOIN users u ON u.id = c.user_id WHERE c.stream_id = ? AND COALESCE(c.is_deleted, 0) = 0 AND c.username IS NOT NULL AND (c.user_id IS NULL OR c.user_id != ?) GROUP BY COALESCE(c.user_id, c.username) ORDER BY n DESC LIMIT 3', [stream.id, stream.user_id]), []),
+                top_chatters: topChatters,
             };
         }
         let clips = [];

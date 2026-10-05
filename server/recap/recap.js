@@ -14,6 +14,7 @@
 'use strict';
 
 const db = require('../db/database');
+const chatReads = require('../chat/chat-reads');
 
 const MIN_DURATION_SEC = 8 * 60;          // shorter streams don't get a report
 const LOOKBACK_HOURS = 12;                // job only looks at streams that ended this recently
@@ -58,14 +59,12 @@ async function gather(streamId) {
     const viewersAvg = curve.length ? Math.round(curve.reduce((n, p) => n + Number(p.v || 0), 0) / curve.length * 10) / 10 : null;
     const peakAt = curve.length ? curve.reduce((best, p) => (Number(p.v) > Number(best.v) ? p : best), curve[0]) : null;
 
-    // Chat.
-    const chat = safe(() => db.get(`SELECT COUNT(*) AS n, COUNT(DISTINCT COALESCE(user_id, anon_id, username)) AS chatters FROM chat_messages WHERE stream_id = ? AND COALESCE(is_deleted, 0) = 0`, [streamId]), { n: 0, chatters: 0 });
-    const topChatters = safe(() => db.all(`SELECT c.username, u.display_name, u.avatar_url, u.profile_color, COUNT(*) AS n
-        FROM chat_messages c LEFT JOIN users u ON u.id = c.user_id
-        WHERE c.stream_id = ? AND COALESCE(c.is_deleted, 0) = 0 AND c.username IS NOT NULL AND (c.user_id IS NULL OR c.user_id != ?)
-        GROUP BY COALESCE(c.user_id, c.username) ORDER BY n DESC LIMIT 5`, [streamId, stream.user_id]), []);
+    // Chat: totals and top chatters from OpenVibe.Chat (Live's own tables when Live runs chat).
+    const chat = (await chatReads.streamStats(streamId)) || { messages: 0, chatters: 0, sounds: 0 };
+    const topChatters = ((await chatReads.topChatters({ streamId, limit: 5 })) || [])
+        .filter(r => r.username && (r.user_id == null || Number(r.user_id) !== Number(stream.user_id)))
+        .slice(0, 5);
     const busiest = curve.length ? curve.reduce((best, p) => (Number(p.c) > Number(best.c) ? p : best), curve[0]) : null;
-    const sounds = safe(() => db.get(`SELECT COUNT(*) AS n FROM chat_messages WHERE stream_id = ? AND message_type = 'soundboard'`, [streamId]).n, 0);
 
     // Arena mic lines said on this stream.
     const micLines = safe(() => db.all(`SELECT text, quality, kind, aimed_at, sec, vod_id FROM arena_mic_moments WHERE stream_id = ? ORDER BY quality DESC, said_at ASC LIMIT 4`, [streamId]), []);
@@ -104,7 +103,7 @@ async function gather(streamId) {
         stream: { id: stream.id, title: stream.title || 'Untitled stream', category: stream.ai_category || stream.category || null, protocol: stream.protocol || null, started_at: stream.started_at, ended_at: stream.ended_at || end, duration_seconds: durationSec, peak_viewers: Math.max(Number(stream.peak_viewers) || 0, peakAt ? Number(peakAt.v) || 0 : 0), ai_overview: stream.ai_overview_short || stream.ai_overview || null },
         streamer: { id: user.id, username: user.username, display_name: user.display_name || user.username, avatar_url: user.avatar_url || null, profile_color: user.profile_color || null },
         viewers: { avg: viewersAvg, peak_at: peakAt ? peakAt.t : null, curve: curve.map(p => [p.t, Number(p.v) || 0, Number(p.c) || 0]) },
-        chat: { messages: Number(chat.n) || 0, chatters: Number(chat.chatters) || 0, top: topChatters.map(r => ({ username: r.username, display_name: r.display_name || r.username, avatar_url: r.avatar_url || null, profile_color: r.profile_color || null, n: Number(r.n) })), busiest_at: busiest && Number(busiest.c) > 0 ? busiest.t : null, busiest_n: busiest ? Number(busiest.c) : 0, sounds },
+        chat: { messages: Number(chat.messages) || 0, chatters: Number(chat.chatters) || 0, top: topChatters.map(r => ({ username: r.username, display_name: r.display_name || r.username, avatar_url: r.avatar_url || null, profile_color: r.profile_color || null, n: Number(r.count) })), busiest_at: busiest && Number(busiest.c) > 0 ? busiest.t : null, busiest_n: busiest ? Number(busiest.c) : 0, sounds: Number(chat.sounds) || 0 },
         mic: micLines.map(m => ({ text: m.text, quality: m.quality, kind: m.kind, aimed_at: m.aimed_at || null, sec: m.sec, vod_id: m.vod_id || null })),
         love: { tips: Number(tips.n) || 0, tips_total: Number(tips.total) || 0, top_tipper: topTipper ? { username: topTipper.username, display_name: topTipper.display_name || topTipper.username, total: Number(topTipper.total) } : null, follows, followers_now: followersNow },
         speech: { lines: speech.length, sample: speechSample },

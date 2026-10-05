@@ -462,7 +462,9 @@
                 </div>`;
         }
         const coins = p.openvibe_coins_balance || 0;
-        const msgs = p.messageCount || 0;
+        // Chat answers the message count; a cold cache leaves it null and the card omits the stat
+        // rather than showing a stale mirror number as real.
+        const msgs = p.messageCount == null ? null : Number(p.messageCount);
         let modBtns = '';
         if (canMod || isGlobalMod) {
             if (d.msgId) modBtns += `<button class="ctx-btn ctx-btn-warn" onclick="ctxDeleteMessage('${esc(String(d.msgId))}')"><i class="fa-solid fa-trash"></i> Delete Message</button>`;
@@ -478,7 +480,7 @@
             </div>
             <div class="ctx-stats">
                 <div class="ctx-stat"><i class="fa-solid fa-coins"></i> ${numf(coins)}</div>
-                <div class="ctx-stat"><i class="fa-solid fa-message"></i> ${numf(msgs)}</div>
+                ${msgs == null ? '' : `<div class="ctx-stat"><i class="fa-solid fa-message"></i> ${numf(msgs)}</div>`}
                 <div class="ctx-stat"><i class="fa-solid fa-heart"></i> ${numf(p.followerCount || 0)}</div>
             </div>
             ${gameHtml}

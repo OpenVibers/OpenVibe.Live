@@ -10,6 +10,7 @@
  */
 'use strict';
 const db = require('../../db/database');
+const chatReads = require('../../chat/chat-reads');
 const settingsMod = require('./settings');
 const roster = require('./roster');
 const budget = require('./budget');
@@ -56,7 +57,7 @@ class AiViewersEngineV3 {
             const worker = {
                 streamId: stream.id, userId: stream.user_id, stream: full, cfg, settings, bots,
                 stable: null,                       // cached stable prefix {text,hash,at}
-                lastChatId: db.getMaxChatMessageIdForChannel(stream.user_id),
+                lastChatId: chatReads.channelMaxIdPeek(stream.user_id),   // Chat's cursor, so the first tick does not replay old lines
                 lastTickAt: 0, nextTickAt: 0, tickTimer: null, foldTimer: null, ticking: false,
                 lastRealInputAt: 0, lastStreamerReplyAt: 0, lastSkipLogAt: 0, lastVolatileHash: null,
                 intents: [],                        // [{ kind:'streamer'|'mention'|'sound'|'scene', text, bots:[], at }]
@@ -73,6 +74,9 @@ class AiViewersEngineV3 {
                 dropped: (line, why) => poster.log(worker, { event: 'skip', bot_username: line.bot, text: line.text, reason: why }),
             });
             this.workers.set(stream.id, worker);
+            // The peek above may have answered Live's mirror while Chat's cache was cold; refresh the
+            // cursor from Chat before the first tick (4 s away) so it cannot replay lines from earlier.
+            chatReads.channelMaxId(stream.user_id).then((id) => { if (!worker.stopped) worker.lastChatId = Math.max(worker.lastChatId || 0, id); }).catch(() => {});
             poster.log(worker, { event: 'info', reason: `engine v3 started — ${bots.length} viewer(s), ${settings.activity} activity, director every ${settings.director_interval_sec}s` });
             console.log(`[AI-Viewers v3] started for stream ${stream.id} (user ${stream.user_id}, ${bots.length} bots)`);
             this._scheduleTick(worker, 4000);
@@ -413,8 +417,11 @@ class AiViewersEngineV3 {
             if (!live.length) return { error: 'Go live first — the preview runs on your real stream context.' };
             const cfg = db.getChannelAiConfig(userId); const settings = settingsMod.getSettings(userId, cfg);
             const bots = roster.ensureRoster(userId, settings.roster_size || 3);
-            w = { streamId: live[0].id, userId, stream: db.getStreamById(live[0].id) || live[0], cfg, settings, bots, lastChatId: Math.max(0, db.getMaxChatMessageIdForChannel(userId) - 40), intents: [], scheduler: { botShare: () => 0 } };
+            w = { streamId: live[0].id, userId, stream: db.getStreamById(live[0].id) || live[0], cfg, settings, bots, lastChatId: Math.max(0, chatReads.channelMaxIdPeek(userId) - 40), intents: [], scheduler: { botShare: () => 0 } };
             temp = true;
+            // The peek above may answer Live's mirror on a cold cache; await Chat's cursor so the
+            // preview never replays lines from before the window it means to show.
+            try { w.lastChatId = Math.max(0, (await chatReads.channelMaxId(userId)) - 40); } catch { /* keep the peek */ }
         }
         const s = w.settings;
         const stable = context.stablePrefix({ userId: w.userId, stream: w.stream, bots: w.bots, settings: s, cacheHolder: temp ? null : w });
