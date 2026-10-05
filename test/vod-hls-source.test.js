@@ -11,8 +11,10 @@ const js = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app-media
 const between = (startMark, endMark) => { const a = js.indexOf(startMark); const b = js.indexOf(endMark, a); assert.ok(a >= 0 && b > a, startMark); return js.slice(a, b); };
 const helpers = between('let _vodHls = null;', 'async function loadVodPlayer(');
 
-assert.match(js, /attachVodSource\(video, v\.is_recording \? null : v\.hls_url, `\/api\/vods\/file\/\$\{filename\}\?t=\$\{Date\.now\(\)\}`\)/, 'a finished VOD prefers its playlist; a recording keeps the file');
-assert.match(js, /attachVodSource\(video, cl\.hls_url, `\/api\/vods\/file\/\$\{filename\}`\)/, 'a clip prefers its playlist');
+assert.match(js, /attachVodSource\(video, v\.is_recording \? null : v\.hls_url, `\/api\/vods\/file\/\$\{filename\}\?t=\$\{Date\.now\(\)\}`, routeGen\)/, 'a finished VOD prefers its playlist; a recording keeps the file');
+assert.match(js, /attachVodSource\(video, cl\.hls_url, `\/api\/vods\/file\/\$\{filename\}`, routeGen\)/, 'a clip prefers its playlist');
+const appJs = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app.js'), 'utf8');
+assert.match(appJs, /stop\('vodDropHls'\);/, 'leaving the page drops the hls.js instance');
 assert.match(js, /\(video\.dataset\.fileUrl \|\| video\.src\)\.split\('\/'\)/, 'the clip preview cuts from the file, not a blob: URL');
 assert.match(js, /if \(vodFallBackToFile\(video\)\) return;/, "the clip player's error message waits for the file fallback");
 
@@ -34,8 +36,11 @@ function sandbox({ hlsSupported = true } = {}) {
         destroy() { this.destroyed = true; }
     }
     Hls.Events = { ERROR: 'hlsError' };
-    const ctx = { Hls, document: { createElement() { throw new Error('the script is already loaded'); }, head: {} } };
-    vm.runInNewContext(`${helpers}; this.attachVodSource = attachVodSource; this.vodFallBackToFile = vodFallBackToFile;`, ctx);
+    const route = { gen: 1 };
+    const ov = { gen: () => route.gen, isCurrent: (g) => g === route.gen };
+    const ctx = { Hls, ov, document: { createElement() { throw new Error('the script is already loaded'); }, head: {} } };
+    vm.runInNewContext(`${helpers}; this.attachVodSource = attachVodSource; this.vodFallBackToFile = vodFallBackToFile; this.vodDropHls = vodDropHls;`, ctx);
+    ctx.route = route;
     return { ctx, made };
 }
 
@@ -90,6 +95,18 @@ function sandbox({ hlsSupported = true } = {}) {
         await ctx.attachVodSource(v, 'https://openvibe.media/o/b/master.m3u8', '/f/b');
         assert.strictEqual(made[0].destroyed, true);
         assert.strictEqual(made[1].url, 'https://openvibe.media/o/b/master.m3u8');
+    }
+    {   // leaving the page drops the instance; a load that finishes after leaving attaches nothing
+        const { ctx, made } = sandbox();
+        const v = new FakeVideo();
+        await ctx.attachVodSource(v, 'https://openvibe.media/o/x/master.m3u8', '/f/x', 1);
+        ctx.vodDropHls();
+        assert.strictEqual(made[0].destroyed, true, 'teardown destroys the instance');
+        ctx.route.gen = 2;   // the person navigated away while a load was in flight
+        const w = new FakeVideo();
+        assert.strictEqual(await ctx.attachVodSource(w, 'https://openvibe.media/o/y/master.m3u8', '/f/y', 1), 'stale');
+        assert.strictEqual(made.length, 1, 'no new hls.js instance for a page that is gone');
+        assert.strictEqual(w.src, '');
     }
     // The media proxies keep Media's playlist URL on VOD and clip rows.
     for (const f of ['vods.js', 'clips.js']) {

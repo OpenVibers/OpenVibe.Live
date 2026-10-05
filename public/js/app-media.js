@@ -208,8 +208,14 @@ function vodLoadHlsScript() {
 function vodDropHls() {
     if (_vodHls) { try { _vodHls.destroy(); } catch { /* already gone */ } _vodHls = null; }
 }
-/** Point `video` at the playlist (or the file); remembers the file URL for the fallback and the clip preview. */
-async function attachVodSource(video, hlsUrl, fileUrl) {
+/**
+ * Point `video` at the playlist (or the file); remembers the file URL for the fallback and the clip preview.
+ * `routeGen` is the router generation the caller started under: a load that finishes after the person left the
+ * page attaches nothing (no hls.js instance outlives the route).
+ */
+async function attachVodSource(video, hlsUrl, fileUrl, routeGen = null) {
+    const stale = () => routeGen != null && typeof ov !== 'undefined' && ov && typeof ov.isCurrent === 'function' && !ov.isCurrent(routeGen);
+    if (stale()) return 'stale';
     vodDropHls();
     video.dataset.fileUrl = fileUrl;
     video.dataset.source = 'file';
@@ -219,7 +225,8 @@ async function attachVodSource(video, hlsUrl, fileUrl) {
         video.src = hlsUrl;
         return 'hls';
     }
-    try { await vodLoadHlsScript(); } catch { video.src = fileUrl; return 'file'; }
+    try { await vodLoadHlsScript(); } catch { if (!stale()) video.src = fileUrl; return 'file'; }
+    if (stale()) return 'stale';
     if (typeof Hls === 'undefined' || !Hls.isSupported()) { video.src = fileUrl; return 'file'; }
     const hls = new Hls({ enableWorker: true, backBufferLength: 60 });
     _vodHls = hls;
@@ -243,6 +250,7 @@ function vodFallBackToFile(video) {
 }
 
 async function loadVodPlayer(vodId, seekTo) {
+    const routeGen = typeof ov !== 'undefined' && ov && typeof ov.gen === 'function' ? ov.gen() : null;
     try {
         // Clean up any previous live VOD poll
         if (window._liveVodPollTimer) {
@@ -347,7 +355,7 @@ async function loadVodPlayer(vodId, seekTo) {
                 video.dataset.hlsFallbackBound = '1';
                 video.addEventListener('error', () => { vodFallBackToFile(video); });
             }
-            attachVodSource(video, v.is_recording ? null : v.hls_url, `/api/vods/file/${filename}?t=${Date.now()}`);
+            attachVodSource(video, v.is_recording ? null : v.hls_url, `/api/vods/file/${filename}?t=${Date.now()}`, routeGen);
             video.style.display = 'block';
 
             if (v.is_recording) {
@@ -990,6 +998,7 @@ function _renderClipAttribution(el, cl) {
 }
 
 async function loadClipPlayer(clipId) {
+    const routeGen = typeof ov !== 'undefined' && ov && typeof ov.gen === 'function' ? ov.gen() : null;
     try {
         // Clean up chat replay
         if (window._chatReplayTimer) {
@@ -1129,7 +1138,7 @@ async function loadClipPlayer(clipId) {
                         </div>`;
                 }
             };
-            attachVodSource(video, cl.hls_url, `/api/vods/file/${filename}`);
+            attachVodSource(video, cl.hls_url, `/api/vods/file/${filename}`, routeGen);
             video.style.display = 'block';
             setupCustomVideoControls('clp');
 
