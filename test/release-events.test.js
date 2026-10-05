@@ -58,7 +58,7 @@ const stub = http.createServer((req, res) => {
     assert.throws(() => releaseEvents.envelopeFor({ head: 'nope' }), /full commit sha/);
 
     // Events off: the notice works exactly as before and nothing is queued.
-    let r = await dn.announce({ db, chatServer: { remote: false, clients: new Map() }, log: quiet });
+    let r = await dn.announce({ db, log: quiet });
     assert.ok(r.announced >= 1);
     assert.strictEqual(r.event_id, null);
     assert.strictEqual(db.getSetting(dn.SETTING), head);
@@ -68,7 +68,7 @@ const stub = http.createServer((req, res) => {
     const outbox = streamEvents.init({ eventsUrl: base, clientSecret: 's3cret', intervalMs: 50 });
     assert.ok(outbox);
     db.setSetting(dn.SETTING, '');
-    r = await dn.announce({ db, chatServer: { remote: false, clients: new Map() }, log: quiet });
+    r = await dn.announce({ db, log: quiet });
     assert.ok(r.announced >= 1);
     assert.match(r.event_id, /^evt_[0-9A-HJKMNP-TV-Z]{26}$/);
     let rows = outboxRows();
@@ -86,7 +86,7 @@ const stub = http.createServer((req, res) => {
     assert.strictEqual(sent.event_type, 'live.release.deployed');
 
     // A restart with no new code: no notice, no event.
-    r = await dn.announce({ db, chatServer: { remote: false, clients: new Map() }, log: quiet });
+    r = await dn.announce({ db, log: quiet });
     assert.strictEqual(r.announced, 0);
     assert.strictEqual(outboxRows().length, 1);
 
@@ -95,7 +95,7 @@ const stub = http.createServer((req, res) => {
     db.setSetting(dn.SETTING, '');
     const chatBefore = deployRows().map(x => x.metadata).join('|');
     raw.exec("CREATE TEMP TRIGGER outbox_boom BEFORE INSERT ON event_outbox BEGIN SELECT RAISE(ABORT, 'outbox insert failed'); END");
-    r = await dn.announce({ db, chatServer: { remote: false, clients: new Map() }, log: quiet });
+    r = await dn.announce({ db, log: quiet });
     raw.exec('DROP TRIGGER temp.outbox_boom');
     assert.strictEqual(r.announced, 0);
     assert.strictEqual(db.getSetting(dn.SETTING), '');
@@ -104,7 +104,7 @@ const stub = http.createServer((req, res) => {
 
     // CHAT_AUTHORITY=chat with Events on: Chat learns the deploy from the event alone (C-84).
     process.env.CHAT_AUTHORITY = 'chat';
-    r = await dn.announce({ db, chatServer: { remote: true }, log: quiet });
+    r = await dn.announce({ db, log: quiet });
     assert.ok(r.announced >= 1);
     assert.strictEqual(db.getSetting(dn.SETTING), head);
     rows = outboxRows();
@@ -116,7 +116,7 @@ const stub = http.createServer((req, res) => {
     streamEvents._reset();
     process.env.EVENTS_PUBLISH = 'off';
     db.setSetting(dn.SETTING, '');
-    r = await dn.announce({ db, chatServer: { remote: true }, log: quiet });
+    r = await dn.announce({ db, log: quiet });
     delete process.env.EVENTS_PUBLISH;
     delete process.env.CHAT_AUTHORITY;
     assert.strictEqual(r.announced, 0);

@@ -82,10 +82,9 @@ const wrap = (d) => ({
                 JOIN users u ON shared.user_id = u.id WHERE mine.user_id = ? GROUP BY shared.user_id`).all(uid, uid),
             logModerationAction: () => {},
         };
-        const chatServer = { getConnectedUserIp: () => '203.0.113.7', disconnectUser: () => {} };
-        const delivery = { disconnect: () => {}, logModeration: () => {} };
+        const delivery = { getConnectedUserIp: () => '203.0.113.7', disconnect: () => {}, logModeration: () => {} };
         // eslint-disable-next-line no-new-func
-        const fn = new Function('db', 'chatServer', 'delivery', 'permissions', 'console', `${m[0]}; return performGlobalBan;`)(db, chatServer, delivery, permissions, { log() {} });
+        const fn = new Function('db', 'delivery', 'permissions', 'console', `${m[0]}; return performGlobalBan;`)(db, delivery, permissions, { log() {} });
         let status = 200, body = null;
         const res = { status(c) { status = c; return this; }, json(b) { body = b; return this; } };
         const actor = db.getUserById(actorId);

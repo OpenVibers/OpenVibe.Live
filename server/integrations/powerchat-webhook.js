@@ -93,15 +93,14 @@ function _testFulfillmentAllowed() {
 // ── Donation handling — mirrors POST /api/funds/donate ───────────────────────
 // A persisted chat line plus its live card: one Chat ingress call with CHAT_AUTHORITY=chat (Chat persists and
 // shows it; `mirror` also puts it in global chat), else the legacy card broadcast(s) and a local save.
-function _chatLine(chatServer, { frame, line, mirror = false, key }) {
+function _chatLine({ frame, line, mirror = false, key }) {
     if (delivery.ingress()) { delivery.message({ ...line, mirror, key }); return; }
-    chatServer.broadcastToChannelRoom(line.channel_user_id, line.stream_id, frame);
-    if (mirror) { try { chatServer.broadcastGlobal({ ...frame, global: true, channel_user_id: line.channel_user_id }); } catch { /* */ } }
+    delivery.broadcastToChannelRoom(line.channel_user_id, line.stream_id, frame);
+    if (mirror) { try { delivery.broadcastGlobal({ ...frame, global: true, channel_user_id: line.channel_user_id }); } catch { /* */ } }
     db.saveChatMessage(line);
 }
 
 function _handleDonation(userId, data) {
-    const chatServer = require('../chat/chat-server');
     const alerts = require('../monetization/alerts');
     const openvibeBucks = require('../monetization/vibes');
 
@@ -129,7 +128,7 @@ function _handleDonation(userId, data) {
     };
     const eventKey = data.eventId ? `powerchat:${data.eventId}` : undefined;
     try {
-        _chatLine(chatServer, {
+        _chatLine({
             frame: donationEvent, mirror: true, key: eventKey,
             line: {
                 stream_id: streamId, channel_user_id: userId, user_id: null, username: donor,
@@ -141,7 +140,7 @@ function _handleDonation(userId, data) {
     } catch { /* */ }
 
     // 2) Donation sound.
-    try { alerts.playAlertSound(chatServer, userId, streamId, 'donation'); } catch { /* */ }
+    try { alerts.playAlertSound(userId, streamId, 'donation'); } catch { /* */ }
 
     // 3) Goal progress + 4) goal reached.
     if (goalResult && goalResult.goal) {
@@ -150,7 +149,7 @@ function _handleDonation(userId, data) {
     if (goalResult && goalResult.reached) {
         const g = goalResult.goal;
         try {
-            _chatLine(chatServer, {
+            _chatLine({
                 frame: { type: 'goal-reached', goal: publicGoal(g), by: donor, timestamp: ts },
                 key: eventKey && `${eventKey}:goal`,
                 line: {
@@ -161,7 +160,7 @@ function _handleDonation(userId, data) {
                 },
             });
         } catch { /* */ }
-        try { alerts.playAlertSound(chatServer, userId, streamId, 'goal'); } catch { /* */ }
+        try { alerts.playAlertSound(userId, streamId, 'goal'); } catch { /* */ }
     }
 
     console.log(`[PowerChat] Donation: ${amount} bucks to user ${userId} from ${donor}${goalResult && goalResult.reached ? ' (goal reached!)' : ''}`);
@@ -169,11 +168,10 @@ function _handleDonation(userId, data) {
 
 // A membership/sub — surface as a chat event (no OpenVibe.Live sub system to credit).
 function _handleSubscription(userId, data) {
-    const chatServer = require('../chat/chat-server');
     const name = String(data.subscriberName || data.donorName || 'Someone').slice(0, 80);
     const ts = new Date().toISOString();
     try {
-        _chatLine(chatServer, {
+        _chatLine({
             frame: { type: 'donation', username: name, amount: 0, message: 'subscribed via PowerChat', source: 'powerchat-sub', timestamp: ts },
             key: data.eventId ? `powerchat:${data.eventId}` : undefined,
             line: {
@@ -188,9 +186,8 @@ function _handleSubscription(userId, data) {
 // A lightweight chat notice for non-money events (follow / host / points redeem).
 function _handleNotice(userId, message, kind) {
     try {
-        const chatServer = require('../chat/chat-server');
-        const ts = new Date().toISOString();
-        _chatLine(chatServer, {
+            const ts = new Date().toISOString();
+        _chatLine({
             frame: { type: 'system', message, source: 'powerchat', kind, timestamp: ts },
             line: {
                 stream_id: null, channel_user_id: userId, user_id: null, username: 'PowerChat',
@@ -287,7 +284,6 @@ function processEvent(envelope) {
 // permanently crediting a goal. Broadcasts the donation chat event + plays the alert sound;
 // if there's an active goal it also sends a transient goal-update preview (not persisted).
 function simulateDonation(userId, { amountUsd = 5, donor = 'Test Tipper', message = 'Test tip ✨' } = {}) {
-    const chatServer = require('../chat/chat-server');
     const alerts = require('../monetization/alerts');
     // Vibes are bit-style: $1 = 100 bucks, so the test dollar amount → bucks ×100.
     const amount = Math.max(1, Math.round(amountUsd * 100));
@@ -305,7 +301,7 @@ function simulateDonation(userId, { amountUsd = 5, donor = 'Test Tipper', messag
     // actually test what the streamer is checking — that the alert lands in chat AND
     // survives a refresh. This was the only donation path that broadcast without saving.
     try {
-        _chatLine(chatServer, {
+        _chatLine({
             frame: testEvent,
             line: {
                 stream_id: streamId, channel_user_id: userId, user_id: null, username: donor,
@@ -315,7 +311,7 @@ function simulateDonation(userId, { amountUsd = 5, donor = 'Test Tipper', messag
             },
         });
     } catch (e) { console.warn('[PowerChat] test tip not saved to history:', e.message); }
-    try { alerts.playAlertSound(chatServer, userId, streamId, 'donation'); } catch { /* */ }
+    try { alerts.playAlertSound(userId, streamId, 'donation'); } catch { /* */ }
 
     // Transient goal-progress preview (does NOT persist — reload restores the real number).
     try {

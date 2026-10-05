@@ -4,18 +4,19 @@ The OpenVibe.Live chat system provides real-time messaging, moderation, and exte
 
 ## Architecture
 
-- **WebSocket server**: `server/chat/chat-server.js` — manages connections, rooms, and message routing
+- **WebSocket server**: OpenVibe.Chat (nginx sends `/ws/chat` there) — Live runs no chat server of its own
 - **REST API**: OpenVibe.Chat (nginx sends `/api/chat`, `/api/dm`, `/api/tts`, `/api/sounds` there) — moderation endpoints, message search, admin tools. Live's local `server/chat/routes.js` is retired.
 - **Client**: `public/js/chat.js` — rendering, emotes, TTS, settings sync
 
-### OpenVibe.Chat (roadmap Wave 6)
+### OpenVibe.Chat (roadmap Wave 6; live since 2026-09-23)
 
-Chat is moving to [OpenVibe.Chat](https://github.com/OpenVibers/OpenVibe.Chat) (127.0.0.1:4400)
-with the same WebSocket protocol and REST paths. `CHAT_AUTHORITY=chat` switches it on
-(`server/chat/chat-authority.js`); without it nothing here changes.
+Chat runs in [OpenVibe.Chat](https://github.com/OpenVibers/OpenVibe.Chat) (127.0.0.1:4400) with the
+same WebSocket protocol and REST paths. Live runs no chat server in any mode (`CHAT_AUTHORITY=chat`
+in production, `server/chat/chat-authority.js`); the local `ChatServer` and its `/ws/chat` upgrade
+path are deleted.
 
-- nginx sends `/ws/chat`, `/api/chat/`, `/api/dm/`, `/api/tts/` and `/api/sounds` to Chat; Live answers
-  them with 503 if one still arrives, and `/ws/chat` upgrades are refused.
+- nginx sends `/ws/chat`, `/api/chat/`, `/api/dm/`, `/api/tts/` and `/api/sounds` to Chat; Live mounts
+  none of them, and a `/ws/chat` upgrade that still lands on Live is destroyed.
 - Live's chat producers (AI viewer lines, relayed and RobotStreamer chat, donations and alert sounds,
   cards, `/api/mod` deletes and moderation, cache hints) go through one seam,
   [server/chat/chat-delivery.js](../server/chat/chat-delivery.js), to Chat's typed service-token ingress
@@ -23,11 +24,13 @@ with the same WebSocket protocol and REST paths. `CHAT_AUTHORITY=chat` switches 
   `GET /internal/chat/presence`). Chat persists, broadcasts and speaks (`tts`) in one call per
   operation; each carries one idempotency key reused on every retry. A Chat 4xx is logged and dropped; a 5xx
   or timeout is retried past Chat's five-minute delivery lease, then logged and dropped; neither is thrown.
-- `require('./chat/chat-server')` returns a `RemoteChatServer` that never listens: synchronous reads
-  (`getTotalConnections`, viewer counts, slow modes, a connected user's IP) come from Chat's presence
-  snapshot, polled every 3 s; Live's IP-approval and ban writes send Chat a cache hint; a push a module still
-  makes on it goes to the same ingress, and TTS is never synthesised in Live. The arena commands
-  (`/internal/chat-effects/arena-command`) answer the sender in the response's `replies`.
+- `server/chat/chat-delivery.js` also carries the surface Live's remaining modules used on the old
+  chat server: the push names (`broadcastToStream`, `broadcastToChannelRoom`, `sendDm`, …) go to the
+  same ingress; synchronous reads (`getTotalConnections`, viewer counts, slow modes, a connected user's
+  IP, anon ids) come from Chat's presence snapshot, polled every 3 s by `init()`; Live's IP-approval and
+  ban writes send Chat a cache hint; a push with no ingress target (`forwardToGlobal`,
+  `synthesizeAndBroadcastTTS`, …) is dropped and logged once, and TTS is never synthesised in Live. The
+  arena commands (`/internal/chat-effects/arena-command`) answer the sender in the response's `replies`.
 - Deploy notices reach Chat only as the `live.release.deployed` event: with Events publishing off the commits
   stay unannounced and the next boot tries again.
 - **The old ordered-calls bridge is gone** (T3 J2): no `chat-remote.js`, no `POST /internal/live/calls`, no

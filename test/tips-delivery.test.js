@@ -38,12 +38,12 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     d.prepare("INSERT INTO users (id, username, display_name, password_hash, openvibe_bucks_balance, openvibe_bucks_cashout_balance) VALUES (501, 'alex', 'Alex', 'x', 0, 0)").run();
     d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (501, 'network', '77', ?)").run(SUBJECT);
 
-    const chatServer = require('../server/chat/chat-server');
+    const delivery = require('../server/chat/chat-delivery');
     const broadcasts = [];
-    chatServer.broadcastToChannelRoom = (uid, sid, ev) => broadcasts.push({ uid, sid, ev });
-    chatServer.broadcastGlobal = () => {};
+    delivery.broadcastToChannelRoom = (uid, sid, ev) => broadcasts.push({ uid, sid, ev });
+    delivery.broadcastGlobal = () => {};
     const tts = [];
-    chatServer.synthesizeAndBroadcastTTS = async (...a) => { tts.push(a); };
+    delivery.synthesizeAndBroadcastTTS = async (...a) => { tts.push(a); };
 
     const app = express();
     app.use('/internal/tips', require('../server/tips/delivery-routes'));

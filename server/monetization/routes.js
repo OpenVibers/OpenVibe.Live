@@ -88,7 +88,6 @@ router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
         // A request the browser repeated with the same Idempotency-Key: already celebrated.
         if (result.replayed) return res.json({ success: true, amount: result.amount, balance: result.balance, goal_reached: false });
 
-        const chatServer = require('../chat/chat-server');
         const alerts = require('./alerts');
         const donorUser = db.getUserById(req.user.id);
         const donor = donorUser?.display_name || donorUser?.username || 'Someone';
@@ -112,15 +111,15 @@ router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
             // Chat persists the line and shows it in the channel and (mirror) global chat in one call.
             delivery.message({ ...donationLine, mirror: true, key: result.transactionId ? `donation:${result.transactionId}` : undefined });
         } else {
-            chatServer.broadcastToChannelRoom(streamer_id, stream_id || null, donationEvent);
+            delivery.broadcastToChannelRoom(streamer_id, stream_id || null, donationEvent);
             // Tips are a site-wide event worth celebrating, so mirror them into global chat
             // instead of confining them to the channel that received them.
-            try { chatServer.broadcastGlobal({ ...donationEvent, global: true, channel_user_id: streamer_id }); } catch { /* */ }
+            try { delivery.broadcastGlobal({ ...donationEvent, global: true, channel_user_id: streamer_id }); } catch { /* */ }
             try { db.saveChatMessage(donationLine); } catch { /* non-critical */ }
         }
 
         // 2) Donation sound (streamer-configured).
-        alerts.playAlertSound(chatServer, streamer_id, stream_id, 'donation');
+        alerts.playAlertSound(streamer_id, stream_id, 'donation');
 
         // Mirror the donation onto the streamer's PowerChat overlay as a monetary tip
         // (tips:write). Vibes ARE the declared currency units (100 = $1); PowerChat
@@ -152,12 +151,12 @@ router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
             };
             if (delivery.ingress()) delivery.message({ ...goalLine, key: result.transactionId ? `goal:${result.transactionId}` : undefined });
             else {
-                chatServer.broadcastToChannelRoom(streamer_id, stream_id || null, {
+                delivery.broadcastToChannelRoom(streamer_id, stream_id || null, {
                     type: 'goal-reached', goal: publicGoal(g), by: donor, timestamp: ts,
                 });
                 try { db.saveChatMessage(goalLine); } catch { /* non-critical */ }
             }
-            alerts.playAlertSound(chatServer, streamer_id, stream_id, 'goal');
+            alerts.playAlertSound(streamer_id, stream_id, 'goal');
         }
 
         const balance = money.onBilling() ? result.balance : db.getUserById(req.user.id).openvibe_bucks_balance;

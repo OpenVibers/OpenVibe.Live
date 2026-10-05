@@ -99,7 +99,7 @@ const webrtcSFU = require('./streaming/webrtc-sfu');
 const rtmpServer = require('./streaming/rtmp-server');
 
 // Real-time
-const chatServer = require('./chat/chat-server');
+const chatDelivery = require('./chat/chat-delivery');
 const controlServer = require('./controls/control-server');
 const broadcastServer = require('./streaming/broadcast-server');
 const callServer = require('./streaming/call-server');
@@ -198,7 +198,7 @@ const stopper = gracefulStop({
         try { restreamManager.stopAll(); } catch { /* */ }
         try { recorder.stopAll(); } catch { /* */ }
         try { callServer.close(); } catch { /* */ }
-        try { chatServer.close(); } catch { /* */ }
+        try { chatDelivery.close(); } catch { /* */ }
         try { controlServer.close(); } catch { /* */ }
         try { broadcastServer.close(); } catch { /* */ }
         try { jsmpegRelay.closeAll(); } catch { /* */ }
@@ -240,7 +240,7 @@ function releaseEnv() {
 // answers direct loopback callers only; through nginx it is a 404 (server/web/observability.js).
 const observability = require('./web/observability');
 const { registry: metricsRegistry } = observability.mountMetrics(app, { release });
-const vibeCodingPublishServer = new VibeCodingPublishServer(chatServer, db);
+const vibeCodingPublishServer = new VibeCodingPublishServer(db);
 
 function normalizeOrigin(origin) {
     if (!origin || typeof origin !== 'string') return null;
@@ -820,7 +820,7 @@ app.get('/api/health', (req, res) => {
         name: 'OpenVibe.Live',
         version: '1.0.0',
         uptime: process.uptime(),
-        chat_connections: chatServer.getTotalConnections(),
+        chat_connections: chatDelivery.getTotalConnections(),
     });
 });
 
@@ -859,7 +859,7 @@ app.get('/api/ready', readiness.handler);
 
 observability.registerDomainGauges(metricsRegistry, {
     liveStreams: () => db.getLiveStreams().length,
-    wsServers: { chat: chatServer, broadcast: broadcastServer, control: controlServer, call: callServer },
+    wsServers: { broadcast: broadcastServer, control: controlServer, call: callServer },
     outboxStatus: () => require('./events/stream-events').status(),
 });
 
@@ -927,7 +927,7 @@ app.post('/api/admin/broadcast', requireAuth, permissions.requireAdmin, (req, re
             url,
             timestamp: new Date().toISOString(),
         });
-        res.json({ ok: true, clients: chatServer.getTotalConnections() });
+        res.json({ ok: true, clients: chatDelivery.getTotalConnections() });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -1139,7 +1139,7 @@ server.on('upgrade', (req, socket, head) => {
 
     // Block banned IPs from WebSocket connections
     try {
-        const wsIp = chatServer.getClientIp(req);
+        const wsIp = chatDelivery.getClientIp(req);
         if (db.isIpBanned(wsIp, null)) {
             // Admins pass network bans (shared home network) — see isBanExemptAdmin.
             let exempt = false;
@@ -1148,9 +1148,8 @@ server.on('upgrade', (req, socket, head) => {
         }
     } catch (e) { /* non-critical — allow through on DB error */ }
 
-    if (url.startsWith('/ws/chat')) {
-        chatServer.handleUpgrade(req, socket, head);
-    } else if (url.startsWith('/ws/vibe-coding/publish')) {
+    // /ws/chat is OpenVibe.Chat's (nginx routes it to 127.0.0.1:4400); Live mounts no chat server.
+    if (url.startsWith('/ws/vibe-coding/publish')) {
         vibeCodingPublishServer.handleUpgrade(req, socket, head);
     } else if (url.startsWith('/ws/broadcast')) {
         broadcastServer.handleUpgrade(req, socket, head);
@@ -1228,12 +1227,12 @@ async function start() {
     }
 
     // 3. Initialize chat server
-    chatServer.init(server);
+    chatDelivery.init();
     vibeCodingPublishServer.init(server);
 
     // 3b. Initialize breaking news service
     const newsService = require('./news/news-service');
-    newsService.setChatServer(chatServer);
+    newsService.setChatServer(chatDelivery);
     newsService.start();
 
     // 4. Initialize control server
@@ -1461,7 +1460,7 @@ async function start() {
 
         // Deploy notice in chat: only commits not announced before, folded into one rolling message
         // (server/chat/deploy-notice.js). A restart with no new code says nothing.
-        require('./chat/deploy-notice').announce({ db, chatServer }).catch((err) => console.warn('[Deploy notice] failed:', err.message));
+        require('./chat/deploy-notice').announce({ db }).catch((err) => console.warn('[Deploy notice] failed:', err.message));
     });
 
     // 8. Start stale stream heartbeat cleanup (every 60 seconds)

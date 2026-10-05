@@ -49,7 +49,6 @@ Each feature lives in its own `server/<feature>/` directory with `routes.js` + s
 - **Files and restore drills:** every file location comes from [server/paths.js](server/paths.js) (`DATA_DIR`, `DB_PATH`), never a literal `./data`. Anything started at boot or at module load (timers, listeners, sockets, jobs, outbound calls) must stay off under `LIVE_DRILL` ([server/drill.js](server/drill.js)); `test/drill-mode.test.js` fails on any new one.
 - **WebSocket servers:** Each has `init(server)` and `handleUpgrade(req, socket, head)` methods.
 - **Frontend globals:** `currentUser`, `api()`, `navigate()`, `handleLinkClick()`. Cross-component sync via `CustomEvent` (e.g., `openvibe-auth-changed`).
-- **ChatServer:** Singleton — `chat-server.js` exports `new ChatServer()`, not the class.
 
 ## Key Pitfalls
 
@@ -64,7 +63,7 @@ Each feature lives in its own `server/<feature>/` directory with `routes.js` + s
 
 ## WebSocket Endpoints
 
-`/ws/chat`, `/ws/broadcast`, `/ws/control`, `/ws/call`, `/ws/robotstreamer-publish` — all upgraded via handler in `server/index.js` with origin checks and IP bans.
+`/ws/broadcast`, `/ws/control`, `/ws/call`, `/ws/robotstreamer-publish` — upgraded via the handler in `server/index.js` with origin checks and IP bans. `/ws/chat` is OpenVibe.Chat's (nginx routes it to 127.0.0.1:4400); Live runs no chat WebSocket server.
 
 ## Testing
 

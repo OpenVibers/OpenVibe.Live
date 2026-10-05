@@ -23,7 +23,6 @@ function stub(modPath, exportsObj) {
 
 stub(path.join(__dirname, '../server/db/database'), {});
 stub(path.join(__dirname, '../server/auth/auth'), { authenticateWs: () => null, extractWsToken: () => null });
-stub(path.join(__dirname, '../server/chat/chat-server'), { _broadcastMessage: () => {} });
 
 const controlServer = require('../server/controls/control-server');
 const chatRelay = require('../server/integrations/chat-relay-service');

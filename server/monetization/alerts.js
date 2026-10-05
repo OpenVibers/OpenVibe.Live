@@ -12,19 +12,13 @@
 
 /**
  * Ask Chat to play a streamer's alert sound to their viewers (channel-wide, so it reaches every slot
- * plus the offline room). kind: 'donation' | 'goal'. No-op if Chat is not the authority or nothing is
- * configured. Chat answers `played:false` (never an error) when the channel has no sound.
+ * plus the offline room). kind: 'donation' | 'goal'. Chat answers `played:false` (never an error) when
+ * the channel has no sound; outside chat mode the event is dropped and logged by chat-delivery.js.
  */
-function playAlertSound(chatServer, streamerId, streamId, kind) {
+function playAlertSound(streamerId, streamId, kind) {
     try {
-        const delivery = require('../chat/chat-delivery');
-        if (delivery.ingress()) {
-            // An `alert` event on Chat's typed ingress.
-            delivery.event({ kind: 'channel', id: streamerId }, { type: 'alert', streamerId: Number(streamerId), streamId: streamId ? Number(streamId) : null, kind: kind === 'goal' ? 'goal' : 'donation' });
-            return;
-        }
-        if (!chatServer || typeof chatServer.playAlertSound !== 'function') return;
-        chatServer.playAlertSound(streamerId, streamId, kind === 'goal' ? 'goal' : 'donation');
+        // An `alert` event on Chat's typed ingress.
+        require('../chat/chat-delivery').event({ kind: 'channel', id: streamerId }, { type: 'alert', streamerId: Number(streamerId), streamId: streamId ? Number(streamId) : null, kind: kind === 'goal' ? 'goal' : 'donation' });
     } catch { /* non-critical */ }
 }
 

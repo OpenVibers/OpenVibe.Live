@@ -3,7 +3,6 @@ const crypto = require('crypto');
 const WebSocket = require('ws');
 
 const db = require('../db/database');
-const chatServer = require('../chat/chat-server');
 const chatReads = require('../chat/chat-reads');
 const delivery = require('../chat/chat-delivery');
 const { authenticateWs } = require('../auth/auth');
@@ -689,7 +688,7 @@ class RobotStreamerService {
                             return;
                         }
                         try {
-                            chatServer.triggerChannelSound(
+                            delivery.triggerChannelSound(
                                 null,
                                 { streamId: stream.id, user: null, anonId: null, ip: null },
                                 stream, scmd, parts.slice(1),
@@ -739,16 +738,16 @@ class RobotStreamerService {
                     if (result?.lastInsertRowid) mirrored.id = Number(result.lastInsertRowid);
                 } catch {}
 
-                chatServer.broadcastToStream(stream.id, mirrored);
+                delivery.broadcastToStream(stream.id, mirrored);
                 rsFollowUps(stream, username, rawUsername, mirrored.message, data.avatar, mirrored.id || null, 'ai');
                 // Also surface on the global / username-only overlay (tags stream_channel)
-                try { chatServer.forwardToGlobal(stream.id, mirrored); } catch { /* non-critical */ }
+                try { delivery.forwardToGlobal(stream.id, mirrored); } catch { /* non-critical */ }
                 // And to viewers of the streamer's other live slots (cross-slot chat)
-                try { chatServer.forwardToStreamerRooms(stream.id, mirrored); } catch { /* non-critical */ }
+                try { delivery.forwardToStreamerRooms(stream.id, mirrored); } catch { /* non-critical */ }
 
                 // Feed relayed RS chat into server-side TTS (same path as native chat)
                 try {
-                    chatServer.synthesizeAndBroadcastTTS(stream.id, username, mirrored.message, null, 'rs', `rs:${username}`, null, mirrored.id ? `m${mirrored.id}` : null);
+                    delivery.synthesizeAndBroadcastTTS(stream.id, username, mirrored.message, null, 'rs', `rs:${username}`, null, mirrored.id ? `m${mirrored.id}` : null);
                 } catch { /* non-critical */ }
 
                 rsFollowUps(stream, username, rawUsername, mirrored.message, data.avatar, mirrored.id || null, 'powerchat');

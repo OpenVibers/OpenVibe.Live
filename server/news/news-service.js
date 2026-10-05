@@ -6,7 +6,7 @@
  * 
  * Architecture:
  *   news-service (this) ←→ sources (reddit, newsapi, rss, ...)
- *                       → chatServer.broadcastToStream() / broadcastGlobal()
+ *                       → chat-delivery.js event() (Chat's ingress)
  * 
  * Settings stored in SQLite: news_settings table (per-user/global).
  * Headline dedup via in-memory Set (cleared on restart, bounded to 500).

@@ -298,7 +298,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.strictEqual((await call('POST', '/internal/chat-effects/user-color', { token: WRITE, body: { user_id: viewer, color: '#ff00ff' } })).status, 200);
         assert.strictEqual(db.getUserById(viewer).profile_color, '#ff00ff');
 
-        // 6. Bans: Live re-checks the moderator; the rows are exactly chat-server's.
+        // 6. Bans: Live re-checks the moderator; the rows are exactly Live's own bans table's.
         const ban = (body) => call('POST', '/internal/chat-effects/ban', { token: WRITE, body });
         assert.strictEqual((await ban({ action: 'ban', actor_user_id: viewer, moderation_stream_id: streamId, stream_id: streamId, user_id: mod })).status, 403, 'a viewer cannot ban');
         assert.strictEqual((await ban({ action: 'ban', actor_user_id: mod, moderation_stream_id: streamId, stream_id: streamId, user_id: owner })).status, 403, 'a channel mod cannot ban an admin');
@@ -383,10 +383,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.strictEqual(db.getChatMessageById(900001), undefined);
         assert.ok(db.getUserById(viewer), 'users are never touched');
 
-        // 10. The chat server Live's modules get (T3 J2: the bridge and its outbox are gone).
-        const chatServer = require('../server/chat/chat-server');
-        assert.strictEqual(chatServer.remote, true);
-        chatServer.init();
+        // 10. The chat seam Live's modules get (T3 J2: Live runs no chat server — the bridge, its
+        // outbox and the local ChatServer are gone; chat-delivery carries the push/presence surface).
+        const chatDelivery = require('../server/chat/chat-delivery');
+        chatDelivery.init();
         assert.ok(!d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_bridge_outbox'").get(), 'no outbox');
         // Live's own writes to data Chat caches (IP approvals, bans) send Chat a cache hint.
         db.approveIp(channel.id, '203.0.113.7', streamer, 'manual');
@@ -394,27 +394,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         for (let i = 0; i < 100 && ingressCalls.filter((c) => c.family === 'invalidate').length < 2; i++) await sleep(20);
         assert.deepStrictEqual(ingressCalls.filter((c) => c.family === 'invalidate').map((c) => (c.body.bans ? 'bans' : c.body.approvals)), [channel.id, 'bans']);
         // Synchronous reads come from Chat's presence snapshot.
-        for (let i = 0; i < 100 && chatServer.getTotalConnections() !== 7; i++) await sleep(20);
-        assert.strictEqual(chatServer.getTotalConnections(), 7);
-        assert.strictEqual(chatServer.getStreamViewerCount(1), 3);
-        assert.strictEqual(chatServer.slowModeByStream.get(1), 5000);
-        assert.strictEqual(chatServer.getConnectedUserIp(3), '198.51.100.3');
-        assert.strictEqual(chatServer.findClientByAnonId('anon9', 1).ip, '203.0.113.9');
-        assert.strictEqual(chatServer.findClientByAnonId('anon9', 2), null);
-        assert.strictEqual(chatServer.getAnonIdForConnection('203.0.113.9', 1), 'anon9');
+        for (let i = 0; i < 100 && chatDelivery.getTotalConnections() !== 7; i++) await sleep(20);
+        assert.strictEqual(chatDelivery.getTotalConnections(), 7);
+        assert.strictEqual(chatDelivery.getStreamViewerCount(1), 3);
+        assert.strictEqual(chatDelivery.slowModeByStream.get(1), 5000);
+        assert.strictEqual(chatDelivery.getConnectedUserIp(3), '198.51.100.3');
+        assert.strictEqual(chatDelivery.findClientByAnonId('anon9', 1).ip, '203.0.113.9');
+        assert.strictEqual(chatDelivery.findClientByAnonId('anon9', 2), null);
+        assert.strictEqual(chatDelivery.getAnonIdForConnection('203.0.113.9', 1), 'anon9');
         // Chat asks Live for anon numbers; Live answers from its own helpers.
-        assert.strictEqual(typeof (await chatServer.resolveAnon('203.0.113.9')).anon_number, 'number');
+        assert.strictEqual(typeof (await chatDelivery.resolveAnon('203.0.113.9')).anon_number, 'number');
         // !arena answers the sender in the response, after its own lookup (review 2026-10-02, PR #12).
         const arenaCmd = await call('POST', '/internal/chat-effects/arena-command', { token: WRITE, body: { cmd: '!arena', parts: ['!arena', 'nobody_here_at_all'], client: { conn_id: 'c1', streamId, ip: '203.0.113.30' } } });
         assert.strictEqual(arenaCmd.status, 200);
         assert.strictEqual(arenaCmd.body.handled, true);
         assert.strictEqual(arenaCmd.body.replies.length, 1, 'the reply made after the lookup is in the answer');
         assert.strictEqual(arenaCmd.body.replies[0].type, 'system');
-        // A /ws/chat upgrade that still lands on Live is refused, not served from the mirror.
-        let written = '';
-        chatServer.handleUpgrade({}, { write: (x) => { written += x; }, destroy() {} });
-        assert.match(written, /^HTTP\/1\.1 503/);
-        chatServer.close();
+        // /ws/chat is OpenVibe.Chat's (nginx routes it to 127.0.0.1:4400); Live mounts no chat server.
+        chatDelivery.close();
 
         // 11. Live's chat reads (roadmap T3 J4b): stats, queues and history come from Chat's read
         // API through server/chat/chat-reads.js, with the caching and failure rules the moderation

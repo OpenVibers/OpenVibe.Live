@@ -85,10 +85,9 @@ function post(worker, bot, message, { threadId = null, replyToId = null } = {}) 
         filtered: false, timestamp: new Date().toISOString(),
     };
     try {
-        const chatServer = require('../../chat/chat-server');
-        chatServer.broadcastToStream(streamId, chatMsg);
-        chatServer.forwardToGlobal(streamId, chatMsg);
-        if (ttsOn) chatServer.synthesizeAndBroadcastTTS(streamId, bot.username, message, null, null, `aibot:${bot.username.toLowerCase()}`, null, id ? `m${id}` : null);
+        delivery.broadcastToStream(streamId, chatMsg);
+        delivery.forwardToGlobal(streamId, chatMsg);
+        if (ttsOn) delivery.synthesizeAndBroadcastTTS(streamId, bot.username, message, null, null, `aibot:${bot.username.toLowerCase()}`, null, id ? `m${id}` : null);
     } catch (e) { console.warn('[AI-Viewers] broadcast failed:', e.message); }
 
     forwardToPowerChat(worker, bot, message, id);

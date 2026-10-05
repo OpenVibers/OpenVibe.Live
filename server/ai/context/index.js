@@ -227,7 +227,7 @@ function threadsBlock(channelUserId, limit) {
 }
 
 function viewerCountOf(stream) {
-    try { const cs = require('../../chat/chat-server'); if (cs && typeof cs.getStreamViewerCount === 'function') return cs.getStreamViewerCount(stream.id); } catch { /* */ }
+    try { const cs = require('../../chat/chat-delivery'); if (cs && typeof cs.getStreamViewerCount === 'function') return cs.getStreamViewerCount(stream.id); } catch { /* */ }
     return stream && stream.viewer_count != null ? stream.viewer_count : null;
 }
 

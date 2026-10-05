@@ -1,18 +1,17 @@
 'use strict';
 /**
- * The one seam Live's chat producers call (T3 J2).
+ * The one seam Live's chat producers call (T3 J2; Live's own ChatServer is deleted).
  *
  * CHAT_AUTHORITY=chat: OpenVibe.Chat's typed ingress (chat-client.js) — Chat persists, broadcasts, mirrors,
  * speaks and moderates in one call per operation. This is the only path to Chat: the old ordered-calls bridge
- * and its outbox are gone.
- * Otherwise (rollback / dev): Live's own ChatServer — require('./chat-server').
+ * and its outbox are gone, and Live no longer runs a chat server in any mode. This module also carries the
+ * ChatServer surface Live's remaining modules still use.
  *
- * A Chat 4xx/5xx is logged and counted by chat-client.js and never thrown into the caller. Every function
- * here returns a promise in ingress mode and the local call's own value otherwise.
+ * A Chat 4xx/5xx is logged and counted by chat-client.js and never thrown into the caller.
  *
  *   ingress()                      which path is active (CHAT_AUTHORITY=chat)
  *   message(body)                  ingress only: a chat line (Chat's /messages body) → Promise<real id | null>
- *   event(target, frame, opts)     a transient frame; target { kind: stream|channel|global|all|user, id, stream }
+ *   event(target, frame, opts)     a transient frame; target { kind: stream|channel|global|all|user | Chat's own kinds }
  *   moderate(action, fields)       ingress only: Chat's /moderation actions → Promise<Chat's answer | null>
  *   logModeration(entry)           a moderation-log row (db.logModerationAction shape)
  *   disconnect({ userId, ip, streamId })
@@ -20,13 +19,24 @@
  *   mirror(fn, ...args)            ingress only: keep Live's own copy of a write Chat also applies (pending IP
  *                                  rows, hidden relay users, first chats, TTS overrides) that Live still reads
  *   after(value, fn)               fn(value) now for a plain value, after it resolves for a promise
+ *
+ * The pushes Live's modules used to make on the chat server keep their names here — broadcastToStream,
+ * broadcastToChannelRoom, broadcastGlobal, broadcastAll, sendDm, sendUserUpdate, disconnectUser — and go
+ * to the same ingress. A push Chat's ingress has no target for (forwardToGlobal, forwardToStreamerRooms,
+ * triggerChannelSound, synthesizeAndBroadcastTTS — Chat speaks a message's `tts` field and plays channel
+ * sounds from its own settings) is dropped and logged once, exactly as the old RemoteChatServer did.
+ *
+ * Synchronous reads came from Chat's presence snapshot (GET /internal/chat/presence), polled every few
+ * seconds by init()/close() (called from server/index.js at boot and drain): connection and viewer counts,
+ * slow modes, a connected user's address. Live's own address/anon helpers live here too (call-server,
+ * Chat's /internal/chat-effects/anon), along with Live's writes to data Chat caches (IP approvals, bans)
+ * which send Chat a cache hint instead of waiting for its cache to expire.
  */
+const db = require('../db/database');
 const chatAuthority = require('./chat-authority');
 const client = require('./chat-client');
 
 function ingress() { return chatAuthority.isRemote(); }
-// Lazy: chat-server pulls in most of Live, and several producers are required by it.
-function chatServer() { return require('./chat-server'); }
 
 function defined(o) {
     const out = {};
@@ -50,19 +60,19 @@ function message(body) {
     return client.message(b).then((r) => (r && r.id != null ? Number(r.id) : null));
 }
 
+// Pushes with no Chat ingress target: logged once per name, never synthesised.
+const _dropped = new Set();
+function dropped(name, why = 'has no Chat ingress target and was dropped') {
+    if (_dropped.has(name)) return;
+    _dropped.add(name);
+    console.warn(`[Chat] ${name} ${why}`);
+}
+
 function event(target, frame, { key } = {}) {
-    if (ingress()) {
-        const t = { kind: target.kind };
-        if (target.id != null) t.id = Number(target.id);
-        return client.event({ key: key ? client.key('events', key) : undefined, target: t, frame: defined(frame) });
-    }
-    const cs = chatServer();
-    if (target.kind === 'stream') return cs.broadcastToStream(target.id, frame);
-    if (target.kind === 'channel') return cs.broadcastToChannelRoom(target.id, target.stream || null, frame);
-    if (target.kind === 'global') return cs.broadcastGlobal(frame);
-    if (target.kind === 'all') return cs.broadcastAll(frame);
-    if (target.kind === 'user') return cs.sendDm(target.id, frame);
-    throw new Error(`unknown chat target ${target.kind}`);
+    if (!ingress()) { dropped(`event(${target.kind})`, 'dropped — Live runs no chat server (CHAT_AUTHORITY is not chat)'); return undefined; }
+    const t = { kind: target.kind };
+    if (target.id != null) t.id = Number(target.id);
+    return client.event({ key: key ? client.key('events', key) : undefined, target: t, frame: defined(frame) });
 }
 
 function moderate(action, fields, { key } = {}) {
@@ -71,7 +81,7 @@ function moderate(action, fields, { key } = {}) {
 
 const LOG_FIELDS = ['scope_type', 'scope_id', 'actor_user_id', 'target_user_id', 'action_type', 'details'];
 function logModeration(entry) {
-    if (!ingress()) return require('../db/database').logModerationAction(entry);
+    if (!ingress()) return db.logModerationAction(entry);
     const fields = {};
     for (const k of LOG_FIELDS) if (entry[k] != null) fields[k] = entry[k];
     if (typeof fields.scope_id === 'string' && fields.scope_type !== 'room' && /^\d+$/.test(fields.scope_id)) fields.scope_id = Number(fields.scope_id);
@@ -79,9 +89,10 @@ function logModeration(entry) {
 }
 
 function disconnect({ userId, ip, streamId } = {}) {
-    if (!ingress()) return chatServer().disconnectUser(defined({ userId, ip, streamId }));
+    if (!ingress()) { dropped('disconnectUser', 'dropped — Live runs no chat server (CHAT_AUTHORITY is not chat)'); return undefined; }
     return moderate('disconnect', { user_id: userId || undefined, ip: ip || undefined, stream_id: streamId || undefined });
 }
+const disconnectUser = disconnect;
 
 /** legacy: what to run when Live is the chat authority (cache hints had no single local call). */
 function invalidate(hint, legacy) {
@@ -100,7 +111,7 @@ const MIRROR_WRITES = new Set([
 function mirror(fn, ...args) {
     try {
         if (!MIRROR_WRITES.has(fn)) throw new Error('not a mirror write');
-        return require('../db/database')[fn](...args);
+        return db[fn](...args);
     } catch (err) { console.warn(`[ChatIngress] local ${fn}: ${err.message}`); return undefined; }
 }
 
@@ -108,4 +119,214 @@ function after(value, fn) {
     return value && typeof value.then === 'function' ? value.then(fn) : fn(value);
 }
 
-module.exports = { ingress, message, event, moderate, logModeration, disconnect, invalidate, mirror, after, client, MIRROR_WRITES };
+// ── The pushes modules still make on the chat server (names kept from ChatServer) ─────────────
+function broadcastToStream(streamId, frame) { return event({ kind: 'stream', id: streamId }, frame); }
+function broadcastToChannelRoom(channelUserId, streamId, frame) { return event({ kind: 'channel', id: channelUserId }, frame); }
+function broadcastGlobal(frame) { return event({ kind: 'global' }, frame); }
+function broadcastAll(frame) { return event({ kind: 'all' }, frame); }
+function sendDm(userId, frame) { return event({ kind: 'user', id: userId }, frame); }
+function sendUserUpdate(userId, u) {
+    const id = Number(userId) || undefined;
+    const userData = u ? { id, username: u.username, display_name: u.display_name || null, role: u.role || null, avatar_url: u.avatar_url || null, profile_color: u.profile_color || null } : undefined;
+    return invalidate({ user: id, user_data: userData });
+}
+// No ingress target — the old ChatServer forwarded these to Live's own other rooms/slots; Chat fans a
+// channel event out to the channel's rooms itself, and speaks/sounds from the message's own fields.
+function forwardToGlobal() { dropped('forwardToGlobal'); }
+function forwardToStreamerRooms() { dropped('forwardToStreamerRooms'); }
+function triggerChannelSound() { dropped('triggerChannelSound'); }
+function synthesizeAndBroadcastTTS() { dropped('synthesizeAndBroadcastTTS'); return Promise.resolve(); }
+
+// ── Presence: Chat's snapshot, polled (the synchronous reads health, diagnostics and moderation use) ──
+const OBSERVED_DB = {
+    approveIp: (a) => ({ approvals: Number(a[0]) || undefined }),
+    revokeIpApproval: (a) => ({ approvals: Number(a[0]) || undefined }),
+    forgiveBan: () => ({ bans: true }),
+};
+const PRESENCE_MS = 3000;
+const slowModeByStream = new Map();
+let _presence = { total: 0, streams: {}, slow_mode: {}, users: [], anons: [], at: null };
+let _presenceTimer = null;
+let _dbObserved = false;
+
+// Live-owned data Chat caches, written by Live's own routes (IP approvals, bans): after the write Chat is
+// told to reload it instead of waiting for its cache to expire.
+function _observeDb() {
+    for (const [fn, hint] of Object.entries(OBSERVED_DB)) {
+        const orig = db[fn];
+        if (typeof orig !== 'function' || orig._chatObserved) continue;
+        const observed = (...args) => {
+            const result = orig(...args);
+            try { invalidate(hint(args)); } catch { /* non-critical */ }
+            return result;
+        };
+        observed._chatObserved = true;
+        db[fn] = observed;
+    }
+}
+
+async function _pollPresence() {
+    try {
+        const p = await client.presence();
+        if (!p) return;
+        _presence = p;
+        slowModeByStream.clear();
+        for (const [k, v] of Object.entries(p.slow_mode || {})) slowModeByStream.set(Number(k), Number(v) || 0);
+    } catch { /* keep the last snapshot */ }
+}
+
+/** Start the presence poll (and the cache-hint observers). Called once at startup; no-op outside chat mode. */
+function init() {
+    if (!ingress()) return null;
+    if (!_dbObserved) { _dbObserved = true; _observeDb(); }
+    if (_presenceTimer) return null;
+    _pollPresence();   // floating-ok: _pollPresence catches and keeps the last snapshot
+    _presenceTimer = setInterval(() => _pollPresence(), PRESENCE_MS);
+    if (_presenceTimer.unref) _presenceTimer.unref();
+    console.log('[Chat] CHAT_AUTHORITY=chat — chat runs in OpenVibe.Chat; Live delivers through its ingress');
+    return null;
+}
+
+function close() {
+    if (_presenceTimer) clearInterval(_presenceTimer);
+    _presenceTimer = null;
+}
+
+function getTotalConnections() { return Number(_presence.total) || 0; }
+function getStreamViewerCount(streamId) { return Number((_presence.streams || {})[streamId]) || 0; }
+function getConnectedUserIp(userId) {
+    const hit = (_presence.users || []).find((u) => u.user_id === userId);
+    return hit ? hit.ip : null;
+}
+function findClientByAnonId(anonId, streamId) {
+    // Same match as the old ChatServer.findClientByAnonId: the socket's stream must equal streamId.
+    const hit = (_presence.anons || []).find((a) => a.anon_id === anonId && (a.stream_id ?? null) === streamId);
+    return hit ? { anonId: hit.anon_id, ip: hit.ip, streamId: hit.stream_id || null, user: null } : null;
+}
+
+// ── Live's own address / anon helpers (Chat's /internal/chat-effects/anon, call-server) ──
+const _openvibeToolsUrl = process.env.OV_NETWORK_INTERNAL_URL || 'http://127.0.0.1:3100';
+const anonMap = new Map();          // IP → number
+const pendingResolves = new Map();  // IP → pending resolve promise (dedup concurrent)
+let nextAnonId = 1;
+let _anonDbLoaded = false;
+
+function normalizeIp(ip) {
+    let normalized = String(ip || 'unknown').trim();
+    if (!normalized) normalized = 'unknown';
+    if (normalized === '::1') return '127.0.0.1';
+    if (normalized.startsWith('::ffff:')) return normalized.slice(7);
+    return normalized;
+}
+
+/**
+ * Extract the real client IP from Express/WS request.
+ * Prefers CF-Connecting-IP (set by Cloudflare, unforgeable through proxy),
+ * then X-Forwarded-For first entry, then socket remote address.
+ */
+function getClientIp(req) {
+    const raw = req.headers?.['cf-connecting-ip']
+        || req.headers?.['x-forwarded-for']?.split(',')[0]?.trim()
+        || req.socket?.remoteAddress
+        || req.connection?.remoteAddress
+        || 'unknown';
+    return normalizeIp(raw);
+}
+
+/** Warm the in-memory anonMap from DB on first use, so anon numbers survive server restarts. */
+function _loadAnonMappings() {
+    if (_anonDbLoaded) return;
+    _anonDbLoaded = true;
+    try {
+        const { maxNum, mappings } = db.loadAnonMappings();
+        for (const [ip, num] of mappings) anonMap.set(ip, num);
+        nextAnonId = maxNum + 1;
+        if (mappings.size > 0) {
+            console.log(`[Chat] Loaded ${mappings.size} persistent anon mappings (next: anon${nextAnonId})`);
+        }
+    } catch (e) {
+        console.warn('[Chat] Failed to load anon mappings from DB:', e.message);
+    }
+}
+
+/** Resolve anon number from openvibe.network unified API. Returns a Promise<number>; falls back to local DB. */
+async function _resolveUnifiedAnonNum(ip) {
+    if (anonMap.has(ip)) return anonMap.get(ip);
+    if (pendingResolves.has(ip)) return pendingResolves.get(ip);
+
+    const promise = (async () => {
+        try {
+            const auth = await require('../net/network-principal').headersFor('/internal/resolve-anon');
+            const res = await fetch(`${_openvibeToolsUrl}/internal/resolve-anon`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...auth },
+                body: JSON.stringify({ ip }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const num = data.anon_number;
+                anonMap.set(ip, num);
+                if (num >= nextAnonId) nextAnonId = num + 1;
+                try { db.getOrCreateAnonNum(ip); } catch { /* ok */ }   // warmup cache
+                return num;
+            }
+            throw new Error(`HTTP ${res.status}`);
+        } catch (e) {
+            console.warn(`[Chat] Unified anon resolve failed for ${ip}, falling back to local:`, e.message);
+            try {
+                const num = db.getOrCreateAnonNum(ip);
+                anonMap.set(ip, num);
+                if (num >= nextAnonId) nextAnonId = num + 1;
+                return num;
+            } catch {
+                const num = nextAnonId++;
+                anonMap.set(ip, num);
+                return num;
+            }
+        } finally {
+            pendingResolves.delete(ip);
+        }
+    })();
+
+    pendingResolves.set(ip, promise);
+    return promise;
+}
+
+function getAnonIdForIp(ip) {
+    _loadAnonMappings();
+    const anonKey = normalizeIp(ip);
+    if (anonMap.has(anonKey)) return `anon${anonMap.get(anonKey)}`;
+    // Synchronous fallback for immediate use — kick off the unified resolve in the background.
+    _resolveUnifiedAnonNum(anonKey).catch(() => {});
+    try {
+        const num = db.getOrCreateAnonNum(anonKey);
+        anonMap.set(anonKey, num);
+        if (num >= nextAnonId) nextAnonId = num + 1;
+        return `anon${num}`;
+    } catch {
+        const num = nextAnonId++;
+        anonMap.set(anonKey, num);
+        return `anon${num}`;
+    }
+}
+
+function getAnonIdForConnection(ip, streamId = null) {
+    const key = normalizeIp(ip);
+    const hit = (_presence.anons || []).find((a) => a.ip === key && (streamId == null || (a.stream_id || null) === streamId));
+    return hit ? hit.anon_id : getAnonIdForIp(key);
+}
+
+/** The anon number for an address (Network's unified resolve, else Live's table) — for Chat. */
+async function resolveAnon(ip) {
+    const key = normalizeIp(ip);
+    const num = await _resolveUnifiedAnonNum(key);
+    return { anon_number: num, first_seen: db.getAnonFirstSeen(key) };
+}
+
+module.exports = {
+    ingress, message, event, moderate, logModeration, disconnect, disconnectUser, invalidate, mirror, after, client, MIRROR_WRITES,
+    broadcastToStream, broadcastToChannelRoom, broadcastGlobal, broadcastAll, sendDm, sendUserUpdate,
+    forwardToGlobal, forwardToStreamerRooms, triggerChannelSound, synthesizeAndBroadcastTTS,
+    init, close, slowModeByStream, getTotalConnections, getStreamViewerCount, getConnectedUserIp, findClientByAnonId,
+    normalizeIp, getClientIp, getAnonIdForIp, getAnonIdForConnection, resolveAnon,
+};

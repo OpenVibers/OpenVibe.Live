@@ -231,21 +231,6 @@ const ok = (name) => { pass++; console.log('  ok -', name); };
     ok('media quote refuses internal addresses (all IPv6 spellings) and non-http schemes');
 }
 
-// ── A ban has to stop commands too, not just plain messages ──────────────────
-{
-    const src = fs.readFileSync(path.join(ROOT, 'server/chat/chat-server.js'), 'utf8');
-    const fnStart = src.indexOf('handleChatMessage(ws, client, msg) {');
-    assert(fnStart > 0, 'handleChatMessage should exist');
-    const body = src.slice(fnStart, fnStart + 3000);
-    const banAt = body.indexOf('db.isUserBanned(client.user.id, modStreamId)');
-    const bangAt = body.indexOf("text.startsWith('!')");
-    const slashAt = body.indexOf("text.startsWith('/')");
-    assert(banAt > 0 && bangAt > 0 && slashAt > 0, 'all three branches should be present');
-    assert(banAt < bangAt && banAt < slashAt,
-        'the ban check must run before the "!" and "/" command dispatch, which both return early');
-    ok('banned users cannot run ! or / chat commands');
-}
-
 // ── A private VOD's context must be authorised before the cache is consulted ──
 {
     const src = fs.readFileSync(path.join(ROOT, 'server/media-proxy/vods.js'), 'utf8');
