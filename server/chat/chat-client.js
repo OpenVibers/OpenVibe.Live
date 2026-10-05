@@ -176,16 +176,17 @@ const readRelayUser = (id) => read('relay-user', `/internal/chat/moderation/rela
 const readTtsOverride = (params) => read('tts-override', `/internal/chat/moderation/tts-override${qs(params)}`);
 const readSounds = (params) => read('sounds', `/internal/chat/sounds${qs(params)}`);
 /**
- * GET /internal/chat/sounds/by-command — the approved sound a !command plays. Chat answers 404 for a
- * definitive "no such sound", so that is surfaced as `{ sound: null }`; null instead means Chat was
- * unreachable (a 5xx, a malformed body or an exception), which the caller answers from Live's table.
+ * GET /internal/chat/sounds/by-command — the approved sound a !command plays. Chat answers its own 404 body
+ * `{ ok: false, error: 'Sound not found' }` for a definitive "no such sound", surfaced as `{ sound: null }`; any
+ * other 404 (an older Chat without the route, a proxy page) and every other failure answer null, so the caller
+ * falls back to Live's table rather than silencing every !sound.
  */
 async function readSoundByCommand(params) {
     if (drill() || !principal.configured()) return null;
     try {
         const { status, data } = await request('GET', `/internal/chat/sounds/by-command${qs(params)}`);
         if (status === 200 && data && data.ok !== false && data.sound) return data;
-        if (status === 404) return { sound: null };
+        if (status === 404 && data && data.ok === false && data.error === 'Sound not found') return { sound: null };
         note(`sound-by-command: Chat answered ${status}${data && data.error ? ` (${data.error})` : ''}`);
     } catch (err) { note(`sound-by-command: ${err.message}`); }
     return null;

@@ -144,6 +144,8 @@ function readReply(req, res, raw) {
     }
     if (path === '/internal/chat/sounds/by-command') {
         const cmd = String(q.get('command') || '').trim().toLowerCase().replace(/^!+/, '');
+        // A 404 that is not Chat's own "no such sound" (an older Chat, a proxy page).
+        if (cmd === 'bare404') { res.statusCode = 404; res.setHeader('content-type', 'text/html'); res.end('<html>Not Found</html>'); return true; }
         const r = d2.get('SELECT * FROM channel_sounds WHERE channel_owner_id = ? AND command = ? AND is_approved = 1 ORDER BY RANDOM() LIMIT 1', [Number(q.get('channel_id')), cmd]);
         if (!r) { res.statusCode = 404; res.end(JSON.stringify({ ok: false, error: 'Sound not found' })); return true; }
         return ok({ sound: r });
@@ -906,6 +908,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
             readState.down = true;
             assert.ok(chatReads.soundByCommandPeek(streamer, 'honk'), 'a cold + down peek falls back to Live\'s own table');
             readState.down = false;
+            chatReads._reset();
+            d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 'bare404', '/sounds/b.mp3', ?)", [streamer, streamer]);
+            const bare = await chatReads.soundByCommand(streamer, 'bare404');
+            assert.ok(bare && bare.command === 'bare404', 'a 404 without Chat\'s own body is not "no such sound": Live\'s table answers');
             chatReads._reset();
         }
 
