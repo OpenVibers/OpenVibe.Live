@@ -231,15 +231,8 @@ router.put('/users/:id', (req, res) => {
             db.run(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
         }
 
-        // If display_name or username changed, update denormalized chat_messages.username
-        // (chat_messages.username stores display_name at message creation time)
-        if (display_name || username) {
-            const freshUser = db.getUserById(req.params.id);
-            if (freshUser) {
-                const newChatName = freshUser.display_name || freshUser.username;
-                db.run('UPDATE chat_messages SET username = ? WHERE user_id = ?', [newChatName, req.params.id]);
-            }
-        }
+        // No chat-name update here: OpenVibe.Chat owns the chat rows and keeps stored message
+        // names current via ctx_users; the delivery.invalidate() below tells it this user changed.
 
         const user = db.getUserById(req.params.id);
         // Sanitize — never expose password_hash, email (legacy columns, WS-B task 2) or stream_key

@@ -91,13 +91,10 @@ function _testFulfillmentAllowed() {
 }
 
 // ── Donation handling — mirrors POST /api/funds/donate ───────────────────────
-// A persisted chat line plus its live card: one Chat ingress call with CHAT_AUTHORITY=chat (Chat persists and
-// shows it; `mirror` also puts it in global chat), else the legacy card broadcast(s) and a local save.
-function _chatLine({ frame, line, mirror = false, key }) {
-    if (delivery.ingress()) { delivery.message({ ...line, mirror, key }); return; }
-    delivery.broadcastToChannelRoom(line.channel_user_id, line.stream_id, frame);
-    if (mirror) { try { delivery.broadcastGlobal({ ...frame, global: true, channel_user_id: line.channel_user_id }); } catch { /* */ } }
-    db.saveChatMessage(line);
+// A persisted chat line: one Chat ingress call (Chat persists and shows it; `mirror` also puts it
+// in global chat). Live keeps no chat table.
+function _chatLine({ line, mirror = false, key }) {
+    delivery.message({ ...line, mirror, key });
 }
 
 function _handleDonation(userId, data) {
@@ -111,7 +108,6 @@ function _handleDonation(userId, data) {
     const donor = String(data.donorName || 'Someone').slice(0, 80);
     const message = String(data.message || '').slice(0, 500);
     const goalId = _goalIdFromDonation(data);
-    const ts = new Date().toISOString();
 
     // If the streamer is live, attach to the live session so it lands in that slot too.
     let streamId = null;
@@ -121,15 +117,11 @@ function _handleDonation(userId, data) {
     let goalResult = null;
     try { goalResult = openvibeBucks.applyDonationToGoal(userId, amount, goalId); } catch { /* */ }
 
-    // 1) Donation chat event — live + persisted to channel history.
-    const donationEvent = {
-        type: 'donation', username: donor, user_id: null, avatar_url: null,
-        amount, message, source: 'powerchat', timestamp: ts,
-    };
+    // 1) Donation chat event — persisted to channel history (and mirrored to global chat).
     const eventKey = data.eventId ? `powerchat:${data.eventId}` : undefined;
     try {
         _chatLine({
-            frame: donationEvent, mirror: true, key: eventKey,
+            mirror: true, key: eventKey,
             line: {
                 stream_id: streamId, channel_user_id: userId, user_id: null, username: donor,
                 message: `${donor} tipped ${amount.toLocaleString()} Vibes${message ? ': ' + message : ''} (PowerChat)`,
@@ -150,7 +142,6 @@ function _handleDonation(userId, data) {
         const g = goalResult.goal;
         try {
             _chatLine({
-                frame: { type: 'goal-reached', goal: publicGoal(g), by: donor, timestamp: ts },
                 key: eventKey && `${eventKey}:goal`,
                 line: {
                     stream_id: streamId, channel_user_id: userId, user_id: null, username: 'Donation Goal',
@@ -169,10 +160,8 @@ function _handleDonation(userId, data) {
 // A membership/sub — surface as a chat event (no OpenVibe.Live sub system to credit).
 function _handleSubscription(userId, data) {
     const name = String(data.subscriberName || data.donorName || 'Someone').slice(0, 80);
-    const ts = new Date().toISOString();
     try {
         _chatLine({
-            frame: { type: 'donation', username: name, amount: 0, message: 'subscribed via PowerChat', source: 'powerchat-sub', timestamp: ts },
             key: data.eventId ? `powerchat:${data.eventId}` : undefined,
             line: {
                 stream_id: null, channel_user_id: userId, user_id: null, username: name,
@@ -186,9 +175,7 @@ function _handleSubscription(userId, data) {
 // A lightweight chat notice for non-money events (follow / host / points redeem).
 function _handleNotice(userId, message, kind) {
     try {
-            const ts = new Date().toISOString();
         _chatLine({
-            frame: { type: 'system', message, source: 'powerchat', kind, timestamp: ts },
             line: {
                 stream_id: null, channel_user_id: userId, user_id: null, username: 'PowerChat',
                 message, message_type: 'system', metadata: { kind: kind || 'powerchat', source: 'powerchat' },
@@ -291,18 +278,13 @@ function simulateDonation(userId, { amountUsd = 5, donor = 'Test Tipper', messag
     let streamId = null;
     try { const live = db.getLiveStreamsByUserId(userId) || []; if (live.length) streamId = live[0].id; } catch { /* */ }
 
-    const testEvent = {
-        type: 'donation', username: donor, user_id: null, avatar_url: null,
-        amount, message, source: 'powerchat-test', timestamp: ts,
-    };
     // Not to global chat: a test tip is the streamer's own preview, and any signed-in user could
     // otherwise announce a fake 99,900-Vibe donation site-wide.
     // Persist it, exactly like a real tip. A test that vanishes on reload does not
     // actually test what the streamer is checking — that the alert lands in chat AND
-    // survives a refresh. This was the only donation path that broadcast without saving.
+    // survives a refresh.
     try {
         _chatLine({
-            frame: testEvent,
             line: {
                 stream_id: streamId, channel_user_id: userId, user_id: null, username: donor,
                 message: `${donor} donated ${amount.toLocaleString()} Vibes${message ? ': ' + message : ''}`,

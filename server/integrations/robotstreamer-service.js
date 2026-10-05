@@ -648,15 +648,11 @@ class RobotStreamerService {
                 // Drop RS protocol/meta messages (e.g. {"user_name":"Goosely"})
                 if (/^\s*\{.*\}\s*$/.test(msgText)) return;
 
-                const timestamp = Number.isFinite(Number(data.timestamp))
-                    ? new Date(Number(data.timestamp)).toISOString()
-                    : new Date().toISOString();
                 const rawUsername = String(data.username || 'anon');
                 const username = `[RS] ${rawUsername}`;
 
-                // Check if this relay user is hidden/banned: Chat's queue in chat mode (a cached
-                // peek — fresh list, else the last good one; a cold cache fails open), Live's own
-                // table only when Live is not in chat mode.
+                // Check if this relay user is hidden/banned: Chat's queue (a cached peek — fresh
+                // list, else the last good one; a cold cache fails open). Live keeps no local copy.
                 try {
                     const channel = stream.channel_id
                         ? db.getChannelById(stream.channel_id)
@@ -668,8 +664,7 @@ class RobotStreamerService {
 
                 // Record this relay user (first message = join date) so RobotStreamer
                 // chatters get the same chat logs + AI insight as other relay users.
-                if (delivery.ingress()) { delivery.moderate('relay-record', { platform: 'rs', username: rawUsername }); }
-                else { try { db.recordRelayUser('rs', rawUsername); } catch { /* non-critical */ } }
+                delivery.moderate('relay-record', { platform: 'rs', username: rawUsername });
 
                 // Let RobotStreamer viewers trigger channel !sound commands too. If the
                 // message is a registered !sound, play it (attributed to the RS user) and
@@ -681,77 +676,22 @@ class RobotStreamerService {
                     // Chat owns channel_sounds; ask its by-command read (a cached peek). Live's own
                     // frozen table is never a fallback — null means no sound (or Chat unreachable).
                     if (scmd && chatReads.soundByCommandPeek(stream.user_id, scmd)) {
-                        if (delivery.ingress()) {
-                            delivery.event({ kind: 'stream', id: stream.id }, {
-                                type: 'channel-sound', streamId: stream.id, command: scmd, args: parts.slice(1).map((a) => a.slice(0, 120)).slice(0, 20),
-                                relay: { username, role: 'external', profile_color: '#7dd3fc', avatar_url: data.avatar || null, sourcePlatform: 'rs' },
-                            });
-                            return;
-                        }
-                        try {
-                            delivery.triggerChannelSound(
-                                null,
-                                { streamId: stream.id, user: null, anonId: null, ip: null },
-                                stream, scmd, parts.slice(1),
-                                { username, role: 'external', profile_color: '#7dd3fc', avatar_url: data.avatar || null, sourcePlatform: 'rs' }
-                            );
-                        } catch { /* non-critical */ }
+                        // Chat plays the sound (it owns channel_sounds); Live sends the trigger.
+                        delivery.event({ kind: 'stream', id: stream.id }, {
+                            type: 'channel-sound', streamId: stream.id, command: scmd, args: parts.slice(1).map((a) => a.slice(0, 120)).slice(0, 20),
+                            relay: { username, role: 'external', profile_color: '#7dd3fc', avatar_url: data.avatar || null, sourcePlatform: 'rs' },
+                        });
                         return;
                     }
                 }
 
-                const mirrored = {
-                    type: 'chat',
-                    username,
-                    user_id: null,
-                    anon_id: null,
-                    role: 'external',
-                    message: msgText,
-                    stream_id: stream.id,
-                    is_global: false,
-                    avatar_url: data.avatar || null,
-                    profile_color: '#7dd3fc',
-                    timestamp,
-                    source_platform: 'rs',
-                };
-
-                if (delivery.ingress()) {
-                    // Chat persists, broadcasts, mirrors and reads it aloud in one call.
-                    delivery.after(delivery.message({
-                        stream_id: stream.id, username, message: msgText, message_type: 'chat', is_global: false,
-                        source_platform: 'rs', mirror: true,
-                        frame: { role: 'external', profile_color: '#7dd3fc', avatar_url: data.avatar || undefined },
-                        tts: { identity_key: `rs:${username}` },
-                    }), (id) => rsFollowUps(stream, username, rawUsername, msgText, data.avatar, id));
-                    return;
-                }
-                try {
-                    const result = db.saveChatMessage({
-                        stream_id: stream.id,
-                        user_id: null,
-                        anon_id: null,
-                        username,
-                        message: mirrored.message,
-                        message_type: 'chat',
-                        is_global: 0,
-                        source_platform: 'rs',
-                    });
-                    if (result?.lastInsertRowid) mirrored.id = Number(result.lastInsertRowid);
-                } catch {}
-
-                delivery.broadcastToStream(stream.id, mirrored);
-                rsFollowUps(stream, username, rawUsername, mirrored.message, data.avatar, mirrored.id || null, 'ai');
-                // Also surface on the global / username-only overlay (tags stream_channel)
-                try { delivery.forwardToGlobal(stream.id, mirrored); } catch { /* non-critical */ }
-                // And to viewers of the streamer's other live slots (cross-slot chat)
-                try { delivery.forwardToStreamerRooms(stream.id, mirrored); } catch { /* non-critical */ }
-
-                // Feed relayed RS chat into server-side TTS (same path as native chat)
-                try {
-                    delivery.synthesizeAndBroadcastTTS(stream.id, username, mirrored.message, null, 'rs', `rs:${username}`, null, mirrored.id ? `m${mirrored.id}` : null);
-                } catch { /* non-critical */ }
-
-                rsFollowUps(stream, username, rawUsername, mirrored.message, data.avatar, mirrored.id || null, 'powerchat');
+                // Chat persists, broadcasts, mirrors and reads it aloud in one call.
+                delivery.after(delivery.message({
+                    stream_id: stream.id, username, message: msgText, message_type: 'chat', is_global: false,
+                    source_platform: 'rs', mirror: true,
+                    frame: { role: 'external', profile_color: '#7dd3fc', avatar_url: data.avatar || undefined },
+                    tts: { identity_key: `rs:${username}` },
+                }), (id) => rsFollowUps(stream, username, rawUsername, msgText, data.avatar, id));
             });
 
             bridge.ws.on('close', () => {

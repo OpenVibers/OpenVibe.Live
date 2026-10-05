@@ -623,8 +623,7 @@ effectsRouter.post('/notify/dm-read', (req, res) => {
 });
 
 // Channel sound files are mirrored to OpenVibe.Media from Chat's channel_sounds (Chat owns the
-// rows since T3). Chat sends the Media asset id it holds on `asset_id`; Live's own channel_sounds
-// copy is a frozen pre-retirement snapshot and is never read for it.
+// rows since T3, and Live keeps no copy). Chat sends the Media asset id it holds on `asset_id`.
 effectsRouter.post('/asset-sync', (req, res) => {
     try {
         const sync = require('../media-proxy/asset-sync');

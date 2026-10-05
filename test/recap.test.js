@@ -14,9 +14,11 @@ const ts = (minsAgo) => new Date(Date.now() - minsAgo * 60000).toISOString().rep
 db.run("INSERT INTO streams (user_id, title, category, protocol, is_live, started_at, ended_at, duration_seconds, peak_viewers) VALUES (?,?,?,?,0,?,?,?,?)", [host, 'Late night tinkering', 'irl', 'webrtc', ts(70), ts(10), 3600, 9]);
 const sid = db.get('SELECT id FROM streams ORDER BY id DESC LIMIT 1').id;
 for (let i = 0; i < 12; i++) db.run('INSERT INTO viewer_snapshots (stream_id, viewer_count, chat_messages_5m, recorded_at) VALUES (?,?,?,?)', [sid, 2 + Math.round(7 * Math.sin(i / 11 * Math.PI)), i === 6 ? 14 : 3, ts(70 - i * 5)]);
-for (let i = 0; i < 9; i++) db.run("INSERT INTO chat_messages (stream_id, user_id, username, message, timestamp) VALUES (?,?,?,?,?)", [sid, fan, 'fan1', `msg ${i}`, ts(60 - i)]);
-for (let i = 0; i < 4; i++) db.run("INSERT INTO chat_messages (stream_id, user_id, username, message, timestamp) VALUES (?,?,?,?,?)", [sid, fan2, 'fan2', `yo ${i}`, ts(50 - i)]);
-db.run("INSERT INTO chat_messages (stream_id, user_id, username, message, timestamp) VALUES (?,?,?,?,?)", [sid, host, 'hostess', 'hi chat', ts(55)]);
+// Chat owns chat history now (Live keeps no copy): the 9 fan1 + 4 fan2 lines and the host's one
+// are what Chat's stats/top read answers, stubbed here. The host is excluded from the top list.
+const chatReads = require('../server/chat/chat-reads');
+chatReads.streamStats = async () => ({ messages: 14, chatters: 3, sounds: 0 });
+chatReads.topChatters = async () => [{ username: 'fan1', display_name: 'Fan1', count: 9 }, { username: 'fan2', display_name: 'Fan2', count: 4 }];
 db.run("INSERT INTO follows (follower_id, streamer_id, created_at) VALUES (?,?,?)", [fan2, host, ts(30)]);
 db.run("INSERT INTO arena_mic_moments (user_id, stream_id, kind, text, about, quality, announcer, sec, said_at) VALUES (?,?,?,?,?,?,?,?,?)", [host, sid, 'trash', 'my soldering iron has more rizz than your whole setup', 'setup', 8, '', 1200, ts(40)]);
 db.run("INSERT INTO transactions (from_user_id, to_user_id, stream_id, amount, type, status) VALUES (?,?,?,?,?,?)", [fan, host, sid, 5, 'donation', 'completed']);

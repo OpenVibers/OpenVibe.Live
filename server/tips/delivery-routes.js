@@ -131,16 +131,8 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
                 message_type: 'donation',
                 metadata: { kind: 'donation', amount, message, username: name, source: 'tips', interaction_id: i.id || null, paid_message: event.paid_message, highlight_seconds: event.highlight_seconds, test: !!b.test },
             };
-            let chatMessageId = null;
-            if (delivery.ingress()) {
-                // Chat persists the line and shows it in the channel and global chat; Tips' key is the operation's key.
-                chatMessageId = await delivery.message({ ...line, mirror: true, key: `tips:${key}` });
-            } else {
-                delivery.broadcastToChannelRoom(userId, streamId, event);
-                try { delivery.broadcastGlobal({ ...event, global: true, channel_user_id: userId }); } catch { /* non-critical */ }
-                const saved = db.saveChatMessage(line);
-                chatMessageId = saved && saved.lastInsertRowid != null ? Number(saved.lastInsertRowid) : null;
-            }
+            // Chat persists the line and shows it in the channel and global chat; Tips' key is the operation's key.
+            const chatMessageId = await delivery.message({ ...line, mirror: true, key: `tips:${key}` });
             require('../monetization/alerts').playAlertSound(userId, streamId, 'donation');
             return res.json(remember(key, { ok: true, ref: { chat_message_id: chatMessageId } }));
         }

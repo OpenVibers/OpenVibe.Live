@@ -1,11 +1,12 @@
 /**
- * asset-sync.js — mirror Live's channel sounds into OpenVibe.Media, their canonical public home
- * (served at /a/:id, browsable on the media index with uploader + channel attribution).
+ * asset-sync.js — mirror OpenVibe.Chat's channel sounds into OpenVibe.Media, their canonical public
+ * home (served at /a/:id, browsable on the media index with uploader + channel attribution).
  *
- * Local files remain the low-latency working copy (chat playback reads disk); this job uploads
- * anything Media doesn't have yet and records media_url / media_asset_id on the local row, so
- * sound URLs come from Media's long-cached endpoint and deletes propagate. Idempotent: rows are
- * skipped once media_asset_id is set, and Media upserts on (kind, name, channel).
+ * Chat owns the channel_sounds rows; this job asks its pending-asset read for anything Media
+ * doesn't have yet, uploads the local file, and records media_url / media_asset_id back through
+ * Chat's sound-asset write, so sound URLs come from Media's long-cached endpoint and deletes
+ * propagate. Idempotent: rows are skipped once media_asset_id is set, and Media upserts on
+ * (kind, name, channel).
  *
  * The emote backfill went with roadmap T3: OpenVibe.Chat owns `emotes` and uploads emote bytes to
  * Media with its own token, so Live no longer has emote rows to sync.
@@ -25,14 +26,6 @@ const MIME_BY_EXT = {
     '.webp': 'image/webp', '.avif': 'image/avif',
     '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.webm': 'audio/webm',
 };
-
-function _ensureColumns() {
-    for (const [table, col, type] of [
-        ['channel_sounds', 'media_url', 'TEXT'], ['channel_sounds', 'media_asset_id', 'INTEGER'],
-    ]) {
-        try { db.getDb().exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`); } catch { /* exists */ }
-    }
-}
 
 function _localFile(dir, urlOrPath) {
     if (!urlOrPath) return null;
@@ -57,7 +50,6 @@ async function syncAll() {
     if (_running) return;
     _running = true;
     try {
-        _ensureColumns();
         const nameCache = {};
         const uname = (id) => {
             if (!id) return '';
@@ -66,9 +58,9 @@ async function syncAll() {
         };
         let synced = 0, failed = 0;
 
-        // The work list is Chat's (channel_sounds is Chat's table); Live's own rows when Live runs
-        // chat. Page by id until a short page: sounds with no local file stay pending and would
-        // otherwise fill the first window forever, starving every later sound.
+        // The work list is Chat's (it owns channel_sounds). Page by id until a short page: sounds
+        // with no local file stay pending and would otherwise fill the first window forever,
+        // starving every later sound.
         const PAGE = 100;
         let afterId = 0;
         for (;;) {

@@ -38,10 +38,13 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     d.prepare("INSERT INTO users (id, username, display_name, password_hash, openvibe_bucks_balance, openvibe_bucks_cashout_balance) VALUES (501, 'alex', 'Alex', 'x', 0, 0)").run();
     d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (501, 'network', '77', ?)").run(SUBJECT);
 
+    // Chat persists and shows the line (Live keeps no chat table): stub the ingress call and record
+    // what Live sends, and keep stubbing TTS synthesis (Chat speaks tts lines; the delivery seam is
+    // Live's only path).
     const delivery = require('../server/chat/chat-delivery');
-    const broadcasts = [];
-    delivery.broadcastToChannelRoom = (uid, sid, ev) => broadcasts.push({ uid, sid, ev });
-    delivery.broadcastGlobal = () => {};
+    const sent = [];
+    let nextId = 700;
+    delivery.message = async (body) => { sent.push(body); return nextId++; };
     const tts = [];
     delivery.synthesizeAndBroadcastTTS = async (...a) => { tts.push(a); };
 
@@ -65,19 +68,16 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     const a = await post(job);
     assert.strictEqual(a.status, 200);
     assert.ok(a.json.ref.chat_message_id > 0);
-    assert.strictEqual(broadcasts.length, 1);
-    assert.strictEqual(broadcasts[0].uid, 501);
-    assert.strictEqual(broadcasts[0].ev.type, 'donation');
-    assert.strictEqual(broadcasts[0].ev.amount, 250);
-    const saved = d.prepare("SELECT * FROM chat_messages WHERE message_type = 'donation'").get();
-    assert.strictEqual(saved.message, 'Viewer tipped 250 Vibes: gg');
-    assert.strictEqual(JSON.parse(saved.metadata).source, 'tips');
+    assert.strictEqual(sent.length, 1);
+    assert.deepStrictEqual([sent[0].channel_user_id, sent[0].message_type, sent[0].mirror], [501, 'donation', true]);
+    assert.strictEqual(sent[0].message, 'Viewer tipped 250 Vibes: gg');
+    assert.strictEqual(sent[0].metadata.source, 'tips');
+    assert.strictEqual(sent[0].metadata.amount, 250);
 
     // A retry of the same delivery changes nothing.
     const b = await post(job);
     assert.deepStrictEqual(b.json, a.json);
-    assert.strictEqual(broadcasts.length, 1);
-    assert.strictEqual(d.prepare("SELECT COUNT(*) AS n FROM chat_messages WHERE message_type = 'donation'").get().n, 1);
+    assert.strictEqual(sent.length, 1, 'the retry posts nothing to Chat');
 
     // A Live restart between deliveries: the answered key is in SQLite, not in the old process.
     delete require.cache[require.resolve('../server/tips/delivery-routes')];
@@ -91,17 +91,16 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     const afterRestart = await post2(job, 'tint_1:chat_line');
     assert.strictEqual(afterRestart.status, 200);
     assert.deepStrictEqual(afterRestart.json, a.json, 'after a restart the same key answers the first result');
-    assert.strictEqual(broadcasts.length, 1, 'and delivers nothing again');
-    assert.strictEqual(d.prepare("SELECT COUNT(*) AS n FROM chat_messages WHERE message_type = 'donation'").get().n, 1);
+    assert.strictEqual(sent.length, 1, 'and delivers nothing again');
 
     // A retry while the first attempt is still running is told to come back; a claim left by a
     // crash (older than two minutes) is taken over.
     d.prepare("INSERT INTO tips_deliveries (idempotency_key, effect, state, claimed_at) VALUES ('tint_9:chat_line', 'chat_line', 'pending', ?)").run(Date.now());
     assert.strictEqual((await post2({ ...job, interaction: { ...job.interaction, id: 'tint_9' } }, 'tint_9:chat_line')).status, 409);
-    assert.strictEqual(broadcasts.length, 1);
+    assert.strictEqual(sent.length, 1);
     d.prepare("UPDATE tips_deliveries SET claimed_at = ? WHERE idempotency_key = 'tint_9:chat_line'").run(Date.now() - 5 * 60 * 1000);
     assert.strictEqual((await post2({ ...job, interaction: { ...job.interaction, id: 'tint_9' } }, 'tint_9:chat_line')).status, 200);
-    assert.strictEqual(broadcasts.length, 2);
+    assert.strictEqual(sent.length, 2);
 
     // A refused delivery gives its key back, so Tips' retry runs it.
     const gone = { ...job, creator: { type: 'user', id: 'usr_01J0000000000000000000000X' } };
@@ -125,10 +124,8 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     // A hidden amount (Tips privacy.hide_amount sends null) stays hidden: no "0 Vibes" anywhere.
     const h = await post({ ...job, text: undefined, interaction: { ...job.interaction, id: 'tint_h', amount: null, message: 'hi' } }, { key: 'tint_h:chat_line' });
     assert.strictEqual(h.status, 200);
-    assert.strictEqual(broadcasts[broadcasts.length - 1].ev.amount, null);
-    const hs = d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(h.json.ref.chat_message_id);
-    assert.strictEqual(hs.message, 'Viewer sent a tip: hi');
-    assert.strictEqual(JSON.parse(hs.metadata).amount, null);
+    assert.strictEqual(sent[sent.length - 1].message, 'Viewer sent a tip: hi');
+    assert.strictEqual(sent[sent.length - 1].metadata.amount, null);
 
     // Unknown creator: permanent refusal.
     const u = await post({ ...job, creator: { type: 'user', id: 'usr_01J0000000000000000000000Y' } }, { key: 'tint_2:chat_line' });

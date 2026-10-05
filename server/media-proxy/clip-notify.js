@@ -55,18 +55,6 @@ async function _sendOne(clipId) {
         creator_color: (creator && creator.profile_color) || null,
         auto: !!clip.auto_generated,
     };
-    const payload = {
-        type: 'chat',
-        message_type: 'clip',
-        username: creatorName,
-        user_id: null,
-        message: `clipped: ${title}`,
-        stream_id: streamId,
-        channel_user_id: ownerId,
-        is_global: false,
-        clip: meta,
-        timestamp: new Date().toISOString(),
-    };
     const line = {
         stream_id: streamId,
         channel_user_id: ownerId,
@@ -78,15 +66,8 @@ async function _sendOne(clipId) {
     };
     try {
         const delivery = require('../chat/chat-delivery');
-        if (delivery.ingress()) {
-            // Chat persists and shows the line (one key per clip, so a re-announce cannot post twice).
-            await delivery.message({ ...line, key: `clip:${clipId}` });
-            db.markClipNotifiedState(clipId);
-            return;
-        }
-        const saved = db.saveChatMessage(line);
-        payload.id = saved && saved.lastInsertRowid;
-        delivery.broadcastToChannelRoom(ownerId, streamId, payload);
+        // Chat persists and shows the line (one key per clip, so a re-announce cannot post twice).
+        await delivery.message({ ...line, key: `clip:${clipId}` });
     } catch (e) {
         console.warn('[ClipNotify] send failed:', e.message);
     }

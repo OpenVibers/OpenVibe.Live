@@ -5,7 +5,7 @@
  *   stream_timeline_events (live transcript + sounds)   stream_memories (frames)
  *   streams.ai_overview / ai_title                       streamer_overviews
  *   app_state ai_whole_overview_<uid> (combined blurb)
- *   chat_messages (channel + relayed + bot lines)         follows / subscriptions / stream_first_chats
+ *   chat (channel + relayed + bot lines, via Chat)        follows / subscriptions / first-chat state
  *   channels (bio, panels) / managed_streams / streams    channel_ai_bots (personas, memories)
  *   ai_viewer_threads (open conversations)
  *
@@ -205,8 +205,7 @@ function personBlock(line, channelUserId, settings) {
         }
         // stream_first_chats is Chat's; a registered identity is `user:<user_id>` (never the
         // username), a relay one `ext:<prefixed username>`. The welcome flag reads Chat's first-chat
-        // read through a sync peek; a cold cache or a Chat outage answers "not first" and never
-        // Live's own frozen copy.
+        // read through a sync peek; a cold cache or a Chat outage answers "not first".
         const identity = line.userId ? `user:${line.userId}` : (line.anonId ? `anon:${line.anonId}` : `ext:${line.username}`);
         if (line.userId !== channelUserId && settings.greet_first_timers && chatReads.firstChatPeek(channelUserId, identity)) flags.push('first time chatting here');
     } catch { /* */ }

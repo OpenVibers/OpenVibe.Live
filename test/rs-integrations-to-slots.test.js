@@ -54,14 +54,20 @@ addUser(5, 'dests');
 const e1 = slot(5, 'x'), e2 = slot(5, 'y');
 const r5 = rsRow(5, null, { robot_id: '11' });
 // Its streams on slot y carried mirrored RobotStreamer chat: the account-level row was serving y.
+// The script reads mirrored chat as evidence only when a legacy database still carries the table
+// (OpenVibe.Chat owns chat_messages and Live no longer creates it), so the fixture recreates it.
+raw.exec(`CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, stream_id INTEGER, user_id INTEGER, username TEXT,
+    message TEXT, source_platform TEXT, is_deleted INTEGER DEFAULT 0, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+const chat = (streamId, username, message, platform = null) => raw.prepare('INSERT INTO chat_messages (stream_id, username, message, source_platform) VALUES (?, ?, ?, ?)').run(streamId, username, message, platform);
 const e2stream = Number(db.createStream({ user_id: 5, managed_stream_id: e2, title: 'y', protocol: 'webrtc' }).lastInsertRowid);
 db.endStream(e2stream);
-db.saveChatMessage({ stream_id: e2stream, username: '[RS] fan', message: 'hi', source_platform: 'rs' });
-db.saveChatMessage({ stream_id: e2stream, username: '[RS] fan', message: 'again', source_platform: 'rs' });
+chat(e2stream, '[RS] fan', 'hi', 'rs');
+chat(e2stream, '[RS] fan', 'again', 'rs');
 // User 3's slot "one" was live with native chat only: that is no RobotStreamer evidence.
 const s1 = Number(db.createStream({ user_id: 3, managed_stream_id: c1, title: 'c1', protocol: 'webrtc' }).lastInsertRowid);
 db.endStream(s1);
-db.saveChatMessage({ stream_id: s1, username: 'viewer', message: 'native chat is no evidence' });
+chat(s1, 'viewer', 'native chat is no evidence');
 
 const script = require('../scripts/rs-integrations-to-slots');
 const out = [];

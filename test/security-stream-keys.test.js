@@ -88,7 +88,6 @@ const SEED = `
     ins('INSERT INTO api_tokens (user_id, token_hash, label, scopes) VALUES (?, ?, ?, ?)', [owner, K.apiTokenHash, 'Bot', '["chat","read"]']);
     const cam = Number(ins('INSERT INTO camera_profiles (user_id, stream_id, name, onvif_url, username, password_hash) VALUES (?, ?, ?, ?, ?, ?)', [owner, live, 'Desk cam', 'http://camera.example.test', 'admin', K.cameraPasswordHash]).lastInsertRowid);
     db.run('INSERT INTO follows (follower_id, streamer_id) VALUES (?, ?)', [fan, owner]);
-    db.run("INSERT INTO chat_messages (stream_id, user_id, username, message) VALUES (?, ?, 'keyfan', 'hello')", [live, fan]);
 
     // What Live sends out about the stream, built from these rows the way production builds it.
     (async () => {

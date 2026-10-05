@@ -13,7 +13,7 @@
  *   message(body)                  ingress only: a chat line (Chat's /messages body) → Promise<real id | null>
  *   event(target, frame, opts)     a transient frame; target { kind: stream|channel|global|all|user | Chat's own kinds }
  *   moderate(action, fields)       ingress only: Chat's /moderation actions → Promise<Chat's answer | null>
- *   logModeration(entry)           a moderation-log row (db.logModerationAction shape)
+ *   logModeration(entry)           a moderation-log row (Chat's moderation_actions shape)
  *   disconnect({ userId, ip, streamId })
  *   invalidate(hint, legacy)       a cache hint ({ user, user_data, approvals, bans, channel })
  *   after(value, fn)               fn(value) now for a plain value, after it resolves for a promise
@@ -78,8 +78,9 @@ function moderate(action, fields, { key } = {}) {
 }
 
 const LOG_FIELDS = ['scope_type', 'scope_id', 'actor_user_id', 'target_user_id', 'action_type', 'details'];
+// Chat owns the moderation log (its moderation_actions; Live keeps no copy), so this always goes
+// through Chat's ingress — in every mode, like every other moderation write.
 function logModeration(entry) {
-    if (!ingress()) return db.logModerationAction(entry);
     const fields = {};
     for (const k of LOG_FIELDS) if (entry[k] != null) fields[k] = entry[k];
     if (typeof fields.scope_id === 'string' && fields.scope_type !== 'room' && /^\d+$/.test(fields.scope_id)) fields.scope_id = Number(fields.scope_id);

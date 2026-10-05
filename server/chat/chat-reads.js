@@ -4,13 +4,13 @@
  * "Read Live's chat stats, queues and history from Chat"). Chat owns chat_messages, channel_sounds,
  * pending_ip_messages, hidden_relay_users, tts_voice_overrides and dm_blocks, so Live's home stats,
  * recaps, AI context, admin console, mod queues and the call-invite gate read them through Chat's
- * internal read API (server/chat/chat-client.js). Chat's read mirror was retired on 2026-10-05
- * (Chat #25 removed the sender, Live dropped the receiver), so Live's own copies of the tables Chat
- * owns are frozen and NO remote answer falls back to them.
+ * internal read API (server/chat/chat-client.js). Live keeps no copy of any of them since 2026-10-05
+ * (the read mirror was retired on both sides; the tables themselves are dropped by migration
+ * op_003_drop_chat_tables), so outside chat mode every one of these answers null / empty.
  *
  * Mode-aware: when CHAT_AUTHORITY=chat, every answer comes from Chat; otherwise (dev, drills) the
- * same call answers from Live's own tables — the caller never has to know which. Unsetting
- * CHAT_AUTHORITY is not a rollback lever: Live runs no chat server any more either way.
+ * same call answers null / empty — the caller never has to know which. Unsetting CHAT_AUTHORITY is
+ * not a rollback lever: Live runs no chat server any more either way.
  *
  * Caching: an answer is fresh for CACHE_TTL_MS. An async read past that asks Chat again; a peek
  * (for a caller that cannot await) answers the last good value while that refresh runs, so a peek
@@ -41,10 +41,9 @@ let lastLog = null;
 function drill() { try { return require('../drill').enabled; } catch { return false; } }
 function remote() { return isRemote() && !drill(); }
 function local() { return require('../db/database'); }
-/** Run a local (Live-table) read for a synchronous caller, answering `dflt` if it throws. */
+/** Run a Live-table read for a synchronous caller, answering `dflt` if it throws. Still used for
+ *  the non-chat home metrics (users, follows, …), which Live owns. */
 function safeLocal(fn, dflt) { try { const v = fn(); return v == null ? dflt : v; } catch { return dflt; } }
-/** Epoch ms → the UTC 'YYYY-MM-DD HH:MM:SS' text chat_messages.timestamp stores. */
-const sqlTime = (ms) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
 
 function note(what, err) {
     const m = `Chat read ${what}: ${(err && err.message) || err}`;
@@ -94,9 +93,9 @@ function rememberFailure(key) {
 }
 
 /**
- * Async answer: Chat (remote) or Live's own tables (local), cached. A failure answers the last
- * good value, else null; with `strict` it throws `Chat unavailable` instead (the moderation
- * console). `ttl: 0` always reads live and never caches. An error carrying a `status` (a
+ * Async answer: Chat when it is the authority, else the (empty) local answer, cached. A failure
+ * answers the last good value, else null; with `strict` it throws `Chat unavailable` instead (the
+ * moderation console). `ttl: 0` always reads live and never caches. An error carrying a `status` (a
  * deliberate "not supported") is handed to the caller as it is.
  */
 function load(key, remoteFn, localFn, { ttl = CACHE_TTL_MS, strict = false, ttlFor = null } = {}) {
@@ -144,13 +143,9 @@ function peek(key, remoteFn, localFn, opts) {
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
-function localSiteStats() {
-    const db = local();
-    const r = db.get(`SELECT COUNT(*) AS messages,
-        COUNT(DISTINCT COALESCE('u:' || user_id, 'a:' || anon_id, source_platform || ':' || username)) AS chatters
-        FROM chat_messages WHERE is_deleted = 0`) || {};
-    return { messages: Number(r.messages) || 0, chatters: Number(r.chatters) || 0 };
-}
+// Live keeps no chat_messages: outside chat mode these reads answer zero/empty. The named local*
+// functions stay so load()/peek() keep one shape and the answers are explicit, not absent.
+function localSiteStats() { return { messages: 0, chatters: 0 }; }
 async function remoteSiteStats() {
     const out = await client.readStats({ kind: 'site' });
     if (!out) throw unavailable('site stats');
@@ -158,16 +153,8 @@ async function remoteSiteStats() {
 }
 /** { messages, chatters } across the whole site. */
 function siteStats() { return load('site', remoteSiteStats, localSiteStats); }
-/**
- * The home-stats snapshot answers with `messages` only, so its local (rollback / dev) answer is a
- * plain COUNT(*): the distinct-chatter scan `siteStats()` runs is a full scan this synchronous peek
- * would otherwise force on every home-stats compute. In chat mode it answers Chat's cached value.
- */
-function localSiteStatsMessages() {
-    const db = local();
-    const r = db.get('SELECT COUNT(*) AS messages FROM chat_messages WHERE is_deleted = 0') || {};
-    return { messages: Number(r.messages) || 0 };
-}
+/** The home-stats snapshot's shape: outside chat mode there is no count to answer. */
+function localSiteStatsMessages() { return { messages: 0 }; }
 function siteStatsPeek() { return peek('site', remoteSiteStats, localSiteStatsMessages); }
 
 // ── Home daily series (the hero charts) ──────────────────────────────────────
@@ -202,7 +189,11 @@ async function remoteHomeSeries(metric, days) {
     return { metric, kind: 'count', days, points, total, peak: Math.max(0, ...points.map((p) => p.value)), before: pick(beforeOut), prev_total: pick(prevOut) };
 }
 
-/** The daily series behind a hero stat, from Chat (remote) or Live's own tables (local), cached. */
+/**
+ * The daily series behind a hero stat, from Chat (remote) or Live's own tables (local), cached.
+ * Only the two chat metrics come through here; outside chat mode they answer null (Live keeps no
+ * chat_messages — homeSeriesLocal has no entry for them).
+ */
 function homeSeries(metric, days) {
     const d = clampSeriesDays(days);
     const key = `hs:${metric}:${d}:${utcDayStart(Date.now())}`;
@@ -210,9 +201,9 @@ function homeSeries(metric, days) {
     return load(key, () => remoteHomeSeries(metric, d), localFn).then((v) => v || safeLocal(localFn, null));
 }
 /**
- * The same for the synchronous home-stats series route: the last good answer (or, on a cold cache,
- * Live's mirror-filled tables) while Chat refreshes in the background — never zeros just because
- * Chat has not answered yet.
+ * The same for the synchronous home-stats series route: the last good answer while Chat refreshes
+ * in the background — never zeros just because Chat has not answered yet. Outside chat mode there
+ * is nothing to answer from: null.
  */
 function homeSeriesPeek(metric, days) {
     const d = clampSeriesDays(days);
@@ -220,8 +211,8 @@ function homeSeriesPeek(metric, days) {
     const localFn = () => local().homeSeriesLocal(metric, d);
     const v = peek(key, () => remoteHomeSeries(metric, d), localFn);
     if (v) return v;
-    if (!remote()) return null;          // the peek already answered from Live's own tables
-    return safeLocal(localFn, null);     // cold / Chat unreachable: Live's mirror-filled tables
+    if (!remote()) return null;          // outside chat mode Live keeps no chat series
+    return safeLocal(localFn, null);     // cold / Chat unreachable
 }
 
 /** The busiest chatters of a room (or the site, when neither stream nor channel is given), newest window first. */
@@ -231,41 +222,16 @@ function topChatters({ since, streamId, channelUserId, limit = 10 } = {}) {
         const out = await client.readStats({ kind: 'channel-top', since, stream_id: streamId, channel_user_id: channelUserId, limit });
         if (!out || !Array.isArray(out.top_chatters)) throw unavailable('top chatters');
         return out.top_chatters;
-    }, () => {
-        const db = local();
-        const where = ['c.is_deleted = 0', "c.message_type <> 'system'", 'COALESCE(u.is_banned, 0) = 0'];
-        const params = [];
-        if (since) { where.push('c.timestamp >= ?'); params.push(new Date(since).toISOString().slice(0, 19).replace('T', ' ')); }
-        if (streamId) { where.push('c.stream_id = ?'); params.push(streamId); }
-        if (channelUserId) { where.push('c.channel_user_id = ?'); params.push(channelUserId); }
-        params.push(limit);
-        return db.all(`SELECT c.user_id, MAX(c.username) AS username, u.display_name, u.avatar_url, u.profile_color, COUNT(*) AS count
-            FROM chat_messages c LEFT JOIN users u ON u.id = c.user_id
-            WHERE ${where.join(' AND ')}
-            GROUP BY c.user_id, CASE WHEN c.user_id IS NULL THEN c.username END
-            ORDER BY count DESC LIMIT ?`, params) || [];
-    });
+    }, () => []);
 }
 
 // ── Stats over a window / one room ───────────────────────────────────────────
 // Chat's stats read takes since/until plus at most one of stream_id / channel_user_id and answers
 // { messages, chatters } for that window (kind 'stream' also answers the soundboard count). The
 // home-stats snapshot and the digest ask site-wide, the recap and stream analytics ask per stream,
-// the star picker per channel. The local (rollback / dev) answer is the same SQL Live's own chat
-// runs; a peek answers the last good value while Chat refreshes in the background.
-function localWindowStats({ since, until, streamId, channelUserId } = {}) {
-    const db = local();
-    const where = ['is_deleted = 0'];
-    const params = [];
-    if (since != null) { where.push('timestamp >= ?'); params.push(sqlTime(since)); }
-    if (until != null) { where.push('timestamp < ?'); params.push(sqlTime(until)); }
-    if (streamId != null) { where.push('stream_id = ?'); params.push(Number(streamId)); }
-    if (channelUserId != null) { where.push('channel_user_id = ?'); params.push(Number(channelUserId)); }
-    const r = db.get(`SELECT COUNT(*) AS messages,
-        COUNT(DISTINCT COALESCE('u:' || user_id, 'a:' || anon_id, source_platform || ':' || username)) AS chatters
-        FROM chat_messages WHERE ${where.join(' AND ')}`, params) || {};
-    return { messages: Number(r.messages) || 0, chatters: Number(r.chatters) || 0 };
-}
+// the star picker per channel. Outside chat mode the answer is zero (Live keeps no chat table); a
+// peek answers the last good value while Chat refreshes in the background.
+function localWindowStats() { return { messages: 0, chatters: 0 }; }
 async function remoteWindowStats({ since, until, streamId, channelUserId } = {}) {
     const out = await client.readStats({ kind: 'site', since, until, stream_id: streamId, channel_user_id: channelUserId });
     if (!out) throw unavailable('window stats');
@@ -276,7 +242,7 @@ const HOUR_BUCKET_MS = 60 * 60_000;        // a 7/14/30-day window snaps to the 
 /**
  * Snap a window's since/until to a stable bucket BEFORE both the cache key and the request use them.
  * Callers build these from Date.now(), which changes on every compute, so an exact key is cold on
- * every call: Chat is never actually consulted (the peek answers a mirror scan instead), each call
+ * every call: Chat is never actually consulted (the peek answers a stale value instead), each call
  * mints a new cache entry, and the request it sends is thrown away. A minute — or an hour once the
  * window spans a day or more — is far finer than these coarse counts need and keeps the key stable
  * well past CACHE_TTL_MS. The request is sent with the bucketed values so it matches its own key.
@@ -296,7 +262,7 @@ function windowStats(o = {}) {
 }
 /**
  * The same, for a caller that cannot await (the home-stats snapshot, the digest). Answers the last
- * good value, else null — never a synchronous mirror scan, so the hero never presents Live's stale
+ * good value, else null — never a synchronous local scan, so the hero never presents a local
  * count as Chat's; the caller decides what an unknown window means.
  */
 function windowStatsPeek(o = {}) {
@@ -304,14 +270,7 @@ function windowStatsPeek(o = {}) {
     return peek(windowKey(b), () => remoteWindowStats(b), () => localWindowStats(b));
 }
 
-function localStreamStats(streamId) {
-    const db = local();
-    const r = db.get(`SELECT COUNT(*) AS messages,
-        COUNT(DISTINCT COALESCE(user_id, anon_id, username)) AS chatters,
-        SUM(CASE WHEN message_type = 'soundboard' THEN 1 ELSE 0 END) AS sounds
-        FROM chat_messages WHERE stream_id = ? AND COALESCE(is_deleted, 0) = 0`, [Number(streamId)]) || {};
-    return { messages: Number(r.messages) || 0, chatters: Number(r.chatters) || 0, sounds: Number(r.sounds) || 0 };
-}
+function localStreamStats() { return { messages: 0, chatters: 0, sounds: 0 }; }
 async function remoteStreamStats(streamId) {
     const out = await client.readStats({ kind: 'stream', stream_id: Number(streamId) });
     if (!out) throw unavailable('stream stats');
@@ -341,28 +300,22 @@ async function remoteChannelMaxId(channelUserId) {
 /**
  * The newest chat id in a channel — Chat's id, so the AI context delta (channelMessagesPeek reads
  * Chat's ids) stays aligned. `channelMaxId` awaits Chat (and warms the peek); `channelMaxIdPeek` is
- * for the caller that cannot await and answers the last good id, else Live's own table.
+ * for the caller that cannot await and answers the last good id, else 0 (Live keeps no table).
  */
 function channelMaxId(channelUserId) {
     const id = Number(channelUserId) || 0;
     if (!id) return Promise.resolve(0);
-    return load(`cmid:${id}`, () => remoteChannelMaxId(id), () => local().getMaxChatMessageIdForChannel(id))
-        .then((v) => (v != null ? Number(v) || 0 : safeLocal(() => local().getMaxChatMessageIdForChannel(id), 0)));
+    return load(`cmid:${id}`, () => remoteChannelMaxId(id), () => 0)
+        .then((v) => (v != null ? Number(v) || 0 : 0));
 }
 function channelMaxIdPeek(channelUserId) {
     const id = Number(channelUserId) || 0;
     if (!id) return 0;
-    const v = peek(`cmid:${id}`, () => remoteChannelMaxId(id), () => local().getMaxChatMessageIdForChannel(id));
-    if (v != null) return Number(v) || 0;
-    return safeLocal(() => local().getMaxChatMessageIdForChannel(id), 0);
+    const v = peek(`cmid:${id}`, () => remoteChannelMaxId(id), () => 0);
+    return v != null ? Number(v) || 0 : 0;
 }
 
-function localUserMessageCount(userId) {
-    const r = local().get(`SELECT COUNT(*) AS c FROM chat_messages
-        WHERE user_id = ? AND is_deleted = 0
-          AND (auto_delete_at IS NULL OR datetime(auto_delete_at) > CURRENT_TIMESTAMP)`, [Number(userId)]);
-    return Number(r && r.c) || 0;
-}
+function localUserMessageCount() { return 0; }
 async function remoteUserMessageCount(userId) {
     const out = await client.readStats({ kind: 'user', user_id: Number(userId) });
     if (!out) throw unavailable('user message count');
@@ -370,8 +323,8 @@ async function remoteUserMessageCount(userId) {
 }
 /**
  * A user's non-deleted chat total, for a caller that cannot await (the profile card). Answers the
- * last good value, else null when neither Chat nor (in dev / rollback) Live's table answered — the
- * card omits the count then rather than presenting a cold mirror number as real.
+ * last good value, else null when Chat did not answer — the card omits the count then rather than
+ * presenting a cold zero as real.
  */
 function userMessageCountPeek(userId) {
     const id = Number(userId) || 0;
@@ -412,7 +365,7 @@ function searchMessages({ query = '', userId = null, anonId = null, username = n
         if (query) { const q = String(query).toLowerCase(); rows = rows.filter((m) => String(m.message || '').toLowerCase().includes(q)); }
         const page = offset ? rows.slice(offset, offset + limit) : rows.slice(0, limit);
         return { messages: page, total: rows.length + offset };
-    }, () => local().searchChatMessages({ query, userId, anonId, username, streamId, limit, offset }), { strict: true });
+    }, () => ({ messages: [], total: 0 }), { strict: true });
 }
 
 /** One message by id (the moderation delete path checks the row it is about). Live, never cached. */
@@ -422,7 +375,7 @@ function messageById(id) {
         const out = await client.readMessages({ id: Number(id) });
         if (!out || !Array.isArray(out.messages)) throw unavailable('message');
         return out.messages[0] || null;
-    }, () => local().getChatMessageById(Number(id)) || null, { ttl: 0, strict: true });
+    }, () => null, { ttl: 0, strict: true });
 }
 
 /** Newest `limit` messages of a channel, oldest→newest (the AI persona's chat delta reads the cache). */
@@ -434,7 +387,7 @@ function channelMessages(channelUserId, limit = 40) {
         const out = await client.readMessages({ channel_user_id: id, limit, types: ['chat', 'donation'] });
         if (!out || !Array.isArray(out.messages)) throw unavailable('channel messages');
         return out.messages.slice().reverse();   // Chat answers newest-first; the caller wants oldest-first
-    }, () => local().getChannelChatSince(id, 0, limit) || []);
+    }, () => []);
 }
 function channelMessagesPeek(channelUserId, limit = 40) {
     const id = Number(channelUserId) || 0;
@@ -443,7 +396,7 @@ function channelMessagesPeek(channelUserId, limit = 40) {
         const out = await client.readMessages({ channel_user_id: id, limit, types: ['chat', 'donation'] });
         if (!out || !Array.isArray(out.messages)) throw unavailable('channel messages');
         return out.messages.slice().reverse();
-    }, () => local().getChannelChatSince(id, 0, limit) || []) || [];
+    }, () => []) || [];
 }
 
 /** A user's chat history page (admin console): { messages, total }. */
@@ -458,7 +411,7 @@ function userHistory(userId, { limit = 50, offset = 0 } = {}) {
         const rows = offset ? out.messages.slice(offset, offset + limit) : out.messages.slice(0, limit);
         // Chat's read API answers a page, not a count; a lower bound keeps "load more" honest.
         return { messages: rows, total: rows.length + offset };
-    }, () => local().getUserChatHistory(id, limit, offset), { strict: true });
+    }, () => ({ messages: [], total: 0 }), { strict: true });
 }
 
 // A relay row's username is stored prefixed: "[Label] name". The labels are the ones the relay
@@ -480,7 +433,7 @@ function relayHistory(platform, username, { limit = 50, offset = 0, query = '' }
         const rows = out.messages.filter((m) => (m.source_platform || '') === String(platform).toLowerCase());
         const page = offset ? rows.slice(offset, offset + limit) : rows.slice(0, limit);
         return { messages: page, total: rows.length + offset };
-    }, () => local().getRelayUserChatHistory(platform, username, { limit, offset, query }));
+    }, () => ({ messages: [], total: 0 }));
 }
 
 /** A chatter's recent messages in ONE channel (an AI-viewer clone source); relay matches by handle. */
@@ -497,7 +450,7 @@ function channelSamples(channelUserId, { userId = null, relay = null, limit = 30
         const out = await client.readMessages({ user_id: Number(userId), limit: Math.min(500, limit * 4) });
         if (!out || !Array.isArray(out.messages)) throw unavailable('channel samples');
         return out.messages.filter((m) => Number(m.channel_user_id) === Number(channelUserId)).slice(0, limit);
-    }, () => local().getChatSamplesInChannel(channelUserId, { userId, relay, limit }));
+    }, () => []);
 }
 
 /** A channel's chat volume over the last `windowSec`, in `bucketSec` buckets: [{ count, tsEpoch }]. */
@@ -510,7 +463,7 @@ function liveChatBuckets(streamId, windowSec = 150, bucketSec = 15) {
         const out = await client.readTimeline({ stream_id: id, since, bucket_ms: bucketSec * 1000 });
         if (!out || !Array.isArray(out.buckets)) throw unavailable('timeline');
         return out.buckets.map((b) => ({ count: Number(b.count) || 0, tsEpoch: Math.round(Number(b.t) / 1000) }));
-    }, () => local().getLiveChatBuckets(id, windowSec, bucketSec) || []);
+    }, () => []);
 }
 
 /** The message texts of a stream in the last `sinceSec` seconds (AI clip confirmation), oldest→newest. */
@@ -526,7 +479,7 @@ function recentChatText(streamId, sinceSec = 120, limit = 40) {
             .filter((m) => m.message && Date.parse(String(m.timestamp).replace(' ', 'T') + 'Z') >= floor)
             .map((m) => String(m.message))
             .reverse();
-    }, () => local().getRecentChatText(id, sinceSec, limit) || []);
+    }, () => []);
 }
 
 /** The busiest `bucketSec` time-buckets of a stream, as offsets from `sinceMs`: [{ offset, count }]. */
@@ -542,21 +495,18 @@ function spikeOffsets(streamId, bucketSec = 30, topN = 8, sinceMs) {
             .map((b) => ({ offset: Math.max(0, Math.round((Number(b.t) - base) / 1000 / bucketSec) * bucketSec), count: Number(b.count) || 0 }))
             .sort((a, b) => b.count - a.count || a.offset - b.offset)
             .slice(0, topN);
-    }, () => local().getChatSpikeOffsets(id, bucketSec, topN) || []);
+    }, () => []);
 }
 
 // ── First chat (the welcome check) ───────────────────────────────────────────
 // Chat owns stream_first_chats; the AI context's "first time chatting here" flag and the relay
 // welcome ask Chat's first-chat read. A false answer (they have chatted here) is stable and cached
 // longer; a true answer flips the moment they chat, so it is cached only briefly. The sync caller
-// uses firstChatPeek. In chat mode a cold cache or a Chat outage answers false — Live's own copy is
-// a frozen pre-retirement snapshot and is never consulted; it answers only when Live runs chat.
+// uses firstChatPeek. A cold cache or a Chat outage answers false — Live keeps no copy of the table.
 const FIRST_CHAT_TTL_FALSE = 5 * 60_000;   // has chatted here: stable
 const FIRST_CHAT_TTL_TRUE = CACHE_TTL_MS;  // first time: flips as soon as they chat
 
-function firstChatLocal(identity, channelUserId) {
-    return safeLocal(() => local().isFirstChatInChannel(identity, channelUserId), false);
-}
+function firstChatLocal() { return false; }
 function firstChatRemote(channelUserId, identity) {
     return async () => {
         const out = await client.readFirstChat({ channel_id: channelUserId, identity });
@@ -569,23 +519,23 @@ function firstChat(channelUserId, identity) {
     const channelId = Number(channelUserId) || 0;
     const key = String(identity || '');
     if (!channelId || !key) return Promise.resolve(false);
-    return load(`fc:${channelId}:${key}`, firstChatRemote(channelId, key), () => firstChatLocal(key, channelId), {
+    return load(`fc:${channelId}:${key}`, firstChatRemote(channelId, key), () => firstChatLocal(), {
         ttl: FIRST_CHAT_TTL_TRUE, ttlFor: (v) => (v === false ? FIRST_CHAT_TTL_FALSE : FIRST_CHAT_TTL_TRUE),
     }).then((v) => {
         if (v === true || v === false) return v;
-        return remote() ? false : firstChatLocal(key, channelId);   // Chat unreachable: not first, never Live's frozen copy
+        return false;   // Chat unreachable: not first (Live keeps no stream_first_chats)
     });
 }
-/** The synchronous form (the AI persona prompt): the cached Chat answer, else Live's own table when Live runs chat. */
+/** The synchronous form (the AI persona prompt): the cached Chat answer, else false. */
 function firstChatPeek(channelUserId, identity) {
     const channelId = Number(channelUserId) || 0;
     const key = String(identity || '');
     if (!channelId || !key) return false;
-    const v = peek(`fc:${channelId}:${key}`, firstChatRemote(channelId, key), () => firstChatLocal(key, channelId), {
+    const v = peek(`fc:${channelId}:${key}`, firstChatRemote(channelId, key), () => firstChatLocal(), {
         ttl: FIRST_CHAT_TTL_TRUE, ttlFor: (x) => (x === false ? FIRST_CHAT_TTL_FALSE : FIRST_CHAT_TTL_TRUE),
     });
     if (v === true || v === false) return v;
-    return remote() ? false : firstChatLocal(key, channelId);       // Chat unreachable: not first, never Live's frozen copy
+    return false;   // Chat unreachable: not first (Live keeps no stream_first_chats)
 }
 
 // ── Moderation queues ─────────────────────────────────────────────────────────
@@ -601,7 +551,7 @@ function pendingIp(channelId, { limit = 50 } = {}) {
         const out = await client.readPendingIp({ channel_id: id, limit });
         if (!out || !Array.isArray(out.pending_ip)) throw unavailable('pending IP queue');
         return out.pending_ip;
-    }, () => local().getPendingIpMessages(id, { limit }) || [], { ttl: 0, strict: true });
+    }, () => [], { ttl: 0, strict: true });
 }
 
 /** The hidden relay users of a channel (plus the site-wide rows): [{ … }]. */
@@ -612,7 +562,7 @@ function relayUsers(channelId, { limit = 100 } = {}) {
         const out = await client.readRelayUsers({ channel_id: id || undefined, limit });
         if (!out || !Array.isArray(out.relay_users)) throw unavailable('hidden relay users');
         return out.relay_users;
-    }, () => local().getHiddenRelayUsers(id, { limit }) || [], { ttl: 0, strict: true });
+    }, () => [], { ttl: 0, strict: true });
 }
 
 /** One hidden relay user by id: { id, channel_id, … } | null. */
@@ -623,26 +573,20 @@ function relayUser(id) {
         const out = await client.readRelayUser(rid);
         if (!out) throw unavailable('hidden relay user');
         return out.relay_user || null;
-    }, () => {
-        const r = local().get('SELECT id, channel_id FROM hidden_relay_users WHERE id = ?', [rid]);
-        return r || null;
-    }, { ttl: 0, strict: true });
+    }, () => null, { ttl: 0, strict: true });
 }
 
 /**
  * Is this relay identity hidden (banned) in this channel or site-wide? Synchronous: the relay
  * path can carry a message per second and must not wait on an HTTP call.
  *
- * Chat owns hidden_relay_users, so in chat mode Chat's list is the only truth: the fresh answer
- * when there is one, else the last good list while a refresh runs in the background. A cold cache
- * (Chat has never answered) fails OPEN — never drop a relayed line on a Chat outage — and Live's
- * own copy (frozen since the mirror's retirement) is never consulted. A Live-route hide/unhide
- * invalidates the cached list, so the next check re-asks Chat. Live's own table answers only when
- * Live is not in chat mode.
+ * Chat owns hidden_relay_users, so Chat's list is the only truth: the fresh answer when there is
+ * one, else the last good list while a refresh runs in the background. A cold cache (Chat has never
+ * answered) fails OPEN — never drop a relayed line on a Chat outage. A Live-route hide/unhide
+ * invalidates the cached list, so the next check re-asks Chat. Outside chat mode: false.
  */
 function isRelayUserHidden(channelId, platform, username) {
-    const localHidden = () => { try { return !!local().isRelayUserHidden(channelId, platform, username); } catch { return false; } };
-    if (!remote()) return localHidden();
+    if (!remote()) return false;   // Live keeps no hidden_relay_users
     const key = `hru:${Number(channelId) || 0}`;
     const matches = (list) => list.some((r) => String(r.platform) === String(platform) && String(r.external_username) === String(username));
     const read = async () => {
@@ -658,7 +602,7 @@ function isRelayUserHidden(channelId, platform, username) {
         return matches(last.value);   // the last good list, while the refresh runs
     }
     load(key, read, () => []).catch(() => { /* warms the cache for the next check */ });
-    return false;                     // never answered: fail open, never Live's frozen table
+    return false;                     // never answered: fail open
 }
 
 /** A user's TTS voice override: { voice, pitch, speed, gap } | null. Live, never cached. */
@@ -669,12 +613,11 @@ function ttsOverride(identityKey) {
         const out = await client.readTtsOverride({ identity_key: k });
         if (!out) throw unavailable('tts override');
         return out.tts_override || null;
-    }, () => local().getTtsVoiceOverride(k), { ttl: 0, strict: true });
+    }, () => null, { ttl: 0, strict: true });
 }
 /**
  * The TTS engine's synchronous read: the last good override while Chat refreshes in the background.
- * In chat mode a cache miss or a Chat failure answers null (the auto voice) — Live's own copy is a
- * frozen pre-retirement snapshot and is never consulted; it answers only when Live runs chat.
+ * A cache miss or a Chat failure answers null (the auto voice) — Live keeps no copy of the table.
  */
 function ttsOverridePeek(identityKey) {
     const k = String(identityKey || '').trim().toLowerCase();
@@ -683,7 +626,7 @@ function ttsOverridePeek(identityKey) {
         const out = await client.readTtsOverride({ identity_key: k });
         if (!out) throw unavailable('tts override');
         return out.tts_override || null;
-    }, () => local().getTtsVoiceOverride(k));
+    }, () => null);
 }
 
 // ── Channel sounds ────────────────────────────────────────────────────────────
@@ -695,10 +638,7 @@ function soundCount(ownerId) {
         const out = await client.readSounds({ channel_owner_id: id });
         if (!out || out.count == null) throw unavailable('sound count');
         return Number(out.count);
-    }, () => {
-        const r = local().get('SELECT COUNT(*) AS count FROM channel_sounds WHERE channel_owner_id = ?', [id]);
-        return Number(r && r.count) || 0;
-    });
+    }, () => 0);
 }
 
 const normalizeCommand = (command) => String(command || '').trim().toLowerCase().replace(/^!+/, '');
@@ -707,21 +647,20 @@ async function remoteSoundByCommand(ownerId, command) {
     if (out == null) throw unavailable('sound by command');   // unreachable: keep the last good answer
     return out.sound || false;                                 // the sound, or Chat's definitive none
 }
-/** The approved sound a !command plays (or null). Chat owns the row in chat mode; Live's own table answers only when Live runs chat. */
+/** The approved sound a !command plays (or null). Chat owns the row; Live keeps no copy. */
 function soundByCommand(ownerId, command) {
     const id = Number(ownerId) || 0;
     const cmd = normalizeCommand(command);
     if (!id || !cmd) return Promise.resolve(null);
-    const localFn = () => local().getChannelSoundByCommand(id, cmd) || null;
-    return load(`sbc:${id}:${cmd}`, () => remoteSoundByCommand(id, cmd), localFn)
-        .then((v) => (v && v !== false ? v : null));   // false / null: Chat's none, or unreachable — never Live's frozen row
+    return load(`sbc:${id}:${cmd}`, () => remoteSoundByCommand(id, cmd), () => null)
+        .then((v) => (v && v !== false ? v : null));   // false / null: Chat's none, or unreachable
 }
 /** The synchronous form (the RobotStreamer !sound lookup): the cached Chat answer, else null. */
 function soundByCommandPeek(ownerId, command) {
     const id = Number(ownerId) || 0;
     const cmd = normalizeCommand(command);
     if (!id || !cmd) return null;
-    const v = peek(`sbc:${id}:${cmd}`, () => remoteSoundByCommand(id, cmd), () => local().getChannelSoundByCommand(id, cmd) || null);
+    const v = peek(`sbc:${id}:${cmd}`, () => remoteSoundByCommand(id, cmd), () => null);
     return v && v !== false ? v : null;
 }
 
@@ -730,9 +669,9 @@ const DM_BLOCK_TTL_FALSE = 30_000;   // not blocked: blocks are rare, 30 s is pl
 const DM_BLOCK_TTL_TRUE = 5_000;     // blocked: an unblock should lift a ring quickly
 /**
  * Has either of these users blocked the other? Chat owns dm_blocks, so chat mode asks Chat's
- * block-state read (chat.messages.read); Live's own dm.js table answers only when Live is not in
- * chat mode. Cached briefly (30 s when not blocked, 5 s when blocked; nothing invalidates it —
- * blocks are rare).
+ * block-state read (chat.messages.read); outside chat mode there is no local table and the answer
+ * is null. Cached briefly (30 s when not blocked, 5 s when blocked; nothing invalidates it — blocks
+ * are rare).
  *
  * `strict`: past the cache and with Chat unreachable the answer is null, never the last good
  * value, and the call-invite route fails closed on it — refusing a ring is far better than ringing
@@ -747,7 +686,7 @@ function dmBlocked(a, b) {
         const out = await client.readDmBlockState({ a: x, b: y });
         if (!out || typeof out.blocked !== 'boolean') throw unavailable('dm block state');
         return out.blocked;
-    }, () => safeLocal(() => require('./dm').isBlockedEither(x, y), null), {
+    }, () => null, {   // Live keeps no dm_blocks; outside chat mode the gate fails closed
         strict: true,
         ttlFor: (v) => (v === true ? DM_BLOCK_TTL_TRUE : DM_BLOCK_TTL_FALSE),
     }).catch((err) => {
@@ -766,23 +705,13 @@ function pendingSounds({ channelOwnerId, afterId, limit = 100 } = {}) {
         const out = await client.readSounds({ pending_asset: true, channel_owner_id: channelOwnerId || undefined, after_id: afterId || undefined, limit });
         if (!out || !Array.isArray(out.sounds)) throw unavailable('pending sounds');
         return out.sounds;
-    }, () => {
-        const db = local();
-        const params = [];
-        let sql = 'SELECT * FROM channel_sounds WHERE media_asset_id IS NULL';
-        if (channelOwnerId) { sql += ' AND channel_owner_id = ?'; params.push(Number(channelOwnerId)); }
-        if (afterId) { sql += ' AND id > ?'; params.push(Number(afterId)); }
-        params.push(limit);
-        return db.all(`${sql} ORDER BY id LIMIT ?`, params) || [];
-    }, { ttl: 0 });
+    }, () => [], { ttl: 0 });
 }
 
 /** Record where the asset sync put a channel sound (Chat owns the row; a repeat is a no-op). */
 async function recordSoundAsset(id, mediaUrl, mediaAssetId) {
     if (!(Number(id) > 0) || !(Number(mediaAssetId) > 0) || !mediaUrl) return null;
-    if (!remote()) {
-        try { local().run('UPDATE channel_sounds SET media_url = ?, media_asset_id = ? WHERE id = ?', [mediaUrl, mediaAssetId, id]); return {}; } catch { return null; }
-    }
+    if (!remote()) return null;   // Live keeps no channel_sounds; nothing to record on
     return client.soundAsset({ id: Number(id), media_url: String(mediaUrl), media_asset_id: Number(mediaAssetId) });
 }
 

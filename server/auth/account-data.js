@@ -21,9 +21,9 @@
  * kept rows point at nobody.
  *
  * Never touched: the frozen tables (vods, clips, pastes, paste_likes, paste_comments, comments), which Media and
- * Community own and erase themselves. The five chat tables (channel_moderators, channel_moderation_settings,
- * user_tags, chat_ai_summaries, chat_timeline_events) are OpenVibe.Chat's (roadmap T3) and erased by its eraser
- * (Chat server/chat/account-data.js), never here.
+ * Community own and erase themselves, and every OpenVibe.Chat table (chat_messages, the moderation, DM, sound,
+ * relay, TTS overrides and first-chat tables of roadmap T3): Chat's eraser (Chat server/chat/account-data.js)
+ * deletes the person's rows there, never this one. Live keeps no copy of any of them since 2026-10-05.
  *
  * Applied once per export or deletion (account_data_events); a redelivery resends only what did not reach Network.
  */
@@ -35,8 +35,8 @@ const DELETION_RE = /^del_[0-9A-HJKMNP-TV-Z]{26}$/;
 const FROZEN = new Set(['vods', 'clips', 'pastes', 'paste_likes', 'paste_comments', 'comments']);
 const RETAIN = new Set(['payment_orders', 'subscriptions', 'transactions', 'coin_transactions', 'channel_points_log', 'moderation_actions', 'bans',
     'token_revocations', 'verification_keys', 'subject_merges', 'account_data_events']);
-// Rows the schema keeps without the person (SET NULL) that are theirs to erase all the same: their own chat lines,
-// sign-in IPs and VPN requests.
+// Rows the schema keeps without the person (SET NULL) that are theirs to erase all the same: sign-in IPs, VPN
+// requests, and their lines in the legacy chat_messages copy while it still exists (see LEGACY_CHAT_COPIES).
 const OVERRIDE_DELETE = new Set(['chat_messages.user_id', 'ip_log.user_id', 'vpn_approvals.user_id']);
 // Copies of the person's name kept beside a person column: cleared wherever the row stays.
 const NAME_COLS = ['username', 'display_name', 'user_name', 'sender_name', 'sender_username', 'author_name', 'author_username', 'avatar_url', 'user_avatar'];
@@ -45,8 +45,13 @@ const EXTRA = [['channel_points', 'streamer_id'], ['arena_mic_moments', 'target_
 const SECRET_COL = /(^|_)(token|tokens|secret|hash|password|code|key|keys|p256dh|auth|cookie|cookies|credentials)($|_)/i;
 const ROW_LIMIT = 2000;
 const PART_BUDGET = 18 * 1024 * 1024;
-// OpenVibe.Chat owns these and erases them itself (roadmap T3); Live must not touch them.
+// OpenVibe.Chat owns these and erases them itself (roadmap T3); Live must not touch them (dropped in N+2/N+3).
 const CHAT_TABLES = new Set(['channel_moderators', 'channel_moderation_settings', 'user_tags', 'chat_ai_summaries', 'chat_timeline_events']);
+// Live's legacy copies of the twelve OpenVibe.Chat tables (a read mirror until 2026-10-05; dropped by
+// op_003_drop_chat_tables). Never exported (Chat contributes the chat part), but while a copy still exists here a
+// deletion erases the person from it exactly as before, so a stale copy never outlives their erasure.
+const LEGACY_CHAT_COPIES = new Set(['chat_messages', 'dm_conversations', 'dm_participants', 'dm_messages', 'dm_blocks',
+    'tts_voice_overrides', 'channel_sounds', 'relay_users', 'hidden_relay_users', 'pending_ip_messages', 'stream_first_chats', 'moderation_actions']);
 
 function ensureSchema(d) {
     d.exec(`CREATE TABLE IF NOT EXISTS account_data_events (
@@ -104,6 +109,7 @@ function exportPart(d, userId) {
     bytes += JSON.stringify(profile).length;
     const other = {};
     for (const [t, cols] of personColumns(d)) {
+        if (CHAT_TABLES.has(t) || LEGACY_CHAT_COPIES.has(t)) continue;   // Chat's rows: Chat contributes them to the chat part of the export
         const keep = d.prepare(`PRAGMA table_info(${q(t)})`).all().map((c) => c.name).filter((c) => !SECRET_COL.test(c));
         if (!keep.length) continue;
         const where = cols.map((c) => `${q(c.col)} = ?`).join(' OR ');

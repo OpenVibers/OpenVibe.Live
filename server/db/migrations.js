@@ -187,6 +187,57 @@ const OPERATOR_MIGRATIONS = [
             db.exec('DROP TABLE IF EXISTS chat_bridge_outbox');
         },
     },
+    {
+        id: 'op_003_drop_chat_tables',
+        // T3 final step. OpenVibe.Chat owns these twelve tables and has been their only writer since
+        // the 2026-09-23 02:03 UTC cutover (it imported them from Live with ids kept); Live's readers
+        // and writers are gone (PRs #28–#32 and the release that carries this migration), and this
+        // release no longer creates them. The N-1 release still runs SQL over them
+        // (test/n-1.test.js shows it), so the contract step is operator-run: once N-1 is out of
+        // rollback range, scripts/chat-tables-drop.js --apply takes an online backup and runs this.
+        // Dropping a table removes its own indexes; the explicit DROP INDEX lines also clear index
+        // names older rebuilds left behind. dm_participants/dm_messages go before dm_conversations
+        // (their FK parent). No trigger was ever created on any of the twelve.
+        up: (db) => {
+            db.exec(`
+                DROP INDEX IF EXISTS idx_chat_stream_id;
+                DROP INDEX IF EXISTS idx_chat_timestamp;
+                DROP INDEX IF EXISTS idx_chat_user_id;
+                DROP INDEX IF EXISTS idx_chat_stream;
+                DROP INDEX IF EXISTS idx_chat_user;
+                DROP INDEX IF EXISTS idx_chat_channel_user_ts;
+                DROP INDEX IF EXISTS idx_chat_stream_ts;
+                DROP INDEX IF EXISTS idx_chat_autodelete;
+                DROP INDEX IF EXISTS idx_chat_ts_deleted;
+                DROP INDEX IF EXISTS idx_channel_sounds_owner;
+                DROP INDEX IF EXISTS idx_channel_sounds_cmd;
+                DROP INDEX IF EXISTS idx_mod_actions_created;
+                DROP INDEX IF EXISTS idx_mod_actions_actor;
+                DROP INDEX IF EXISTS idx_mod_actions_scope;
+                DROP INDEX IF EXISTS idx_pending_ip_channel;
+                DROP INDEX IF EXISTS idx_hidden_relay_channel;
+                DROP INDEX IF EXISTS idx_sfc_channel;
+                DROP INDEX IF EXISTS idx_dm_participants_conv;
+                DROP INDEX IF EXISTS idx_dm_participants_user;
+                DROP INDEX IF EXISTS idx_dm_messages_conv;
+                DROP INDEX IF EXISTS idx_dm_messages_sender;
+                DROP INDEX IF EXISTS idx_dm_blocks_blocker;
+                DROP INDEX IF EXISTS idx_dm_blocks_blocked;
+                DROP TABLE IF EXISTS dm_participants;
+                DROP TABLE IF EXISTS dm_messages;
+                DROP TABLE IF EXISTS dm_conversations;
+                DROP TABLE IF EXISTS dm_blocks;
+                DROP TABLE IF EXISTS chat_messages;
+                DROP TABLE IF EXISTS tts_voice_overrides;
+                DROP TABLE IF EXISTS channel_sounds;
+                DROP TABLE IF EXISTS relay_users;
+                DROP TABLE IF EXISTS hidden_relay_users;
+                DROP TABLE IF EXISTS pending_ip_messages;
+                DROP TABLE IF EXISTS stream_first_chats;
+                DROP TABLE IF EXISTS moderation_actions;
+            `);
+        },
+    },
 ];
 
 const failures = new Map(); // id -> message, for this process

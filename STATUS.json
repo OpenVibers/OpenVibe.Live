@@ -30,5 +30,5 @@
     "per-actor limits on API writes; account export and deletion contributions; follows on OpenVibe.Network",
     "channel ↔ OpenVibe.Bot robot binding, its dashboard field and the Bot panel iframe on the channel page behind LIVE_BOT_EMBED (off by default)"
   ],
-  "updated": "2026-10-04"
+  "updated": "2026-10-05"
 }

@@ -133,13 +133,12 @@ const safe = { DB_PATH, DATA_DIR, HOST: '127.0.0.1', PORT: '13000' };
         db.run("INSERT INTO streams (user_id, title, protocol, is_live, viewer_count, started_at, last_heartbeat) VALUES (?, 'Restored stream', 'webrtc', 1, 3, datetime('now'), datetime('now'))", [star]);
         db.run("INSERT INTO streams (user_id, title, protocol, is_live, started_at, ended_at) VALUES (?, 'Old stream', 'webrtc', 0, datetime('now', '-2 days'), datetime('now', '-2 days', '+1 hour'))", [star]);
         db.run('INSERT INTO follows (follower_id, streamer_id) VALUES (?, ?)', [fan, star]);
-        db.run("INSERT INTO chat_messages (stream_id, user_id, username, message) VALUES (1, ?, 'drillfan', 'hello from the backup')", [fan]);
         db.initDb();   // production booted since these rows were written (its backfills already ran on them)
         db.close();
     `], { cwd: REPO, encoding: 'utf8', env: { ...process.env, DB_PATH, DATA_DIR, NODE_ENV: 'test' } });
     assert.strictEqual(seed.status, 0, `seeding the copy failed:\n${seed.stdout}\n${seed.stderr}`);
     const Database = require('better-sqlite3');
-    const COUNTED = ['users', 'channels', 'managed_streams', 'streams', 'follows', 'chat_messages'];
+    const COUNTED = ['users', 'channels', 'managed_streams', 'streams', 'follows'];
     const counts = () => { const d = new Database(DB_PATH, { readonly: true }); try { return Object.fromEntries(COUNTED.map((t) => [t, d.prepare(`SELECT count(*) AS n FROM ${t}`).get().n])); } finally { d.close(); } };
     const countsBefore = counts();
 
@@ -248,7 +247,7 @@ const safe = { DB_PATH, DATA_DIR, HOST: '127.0.0.1', PORT: '13000' };
         }
         const stats = await request('GET', '/api/home/stats-live');
         assert.strictEqual(stats.json.liveNow === undefined ? 1 : stats.json.liveNow, 1);
-        assert.strictEqual(stats.json.chatMessages, 1);
+        assert.strictEqual(stats.json.chatMessages, 0, 'no local chat count: OpenVibe.Chat owns the chat table');
     });
     await check('a route that asks Media answers as if Media were down: the call is refused, not sent', async () => {
         const r = await request('GET', '/api/streams/channel/drillstar');

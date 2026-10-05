@@ -1188,9 +1188,7 @@ async function start() {
     cosmeticsModule.ensureTables();
     // Chat tag tables (read-only tags, server/chat/tags.js)
     require('./chat/tags').ensureTagTables();
-    // Initialize DM tables
-    const dm = require('./chat/dm');
-    dm.ensureTables();
+    // (Live used to create DM tables here; OpenVibe.Chat owns them, and Live keeps no copy.)
     // Migrate: add last_heartbeat column if missing
     try { db.run("ALTER TABLE streams ADD COLUMN last_heartbeat DATETIME"); console.log('[DB] Added last_heartbeat column'); } catch { /* already exists */ }
     // Migrate: add theme_id to users table if missing
@@ -1655,7 +1653,6 @@ function startDrill() {
     db.initDb();
     cosmeticsModule.ensureTables();
     require('./chat/tags').ensureTagTables();
-    require('./chat/dm').ensureTables();
     console.log(`[Drill] Database ready: ${paths.dbPath()}`);
     // Its port taken: stop (the process-wide handler would log EADDRINUSE and keep running unready).
     server.once('error', (err) => { console.error(`[Drill] HTTP server: ${err.message}`); process.exit(1); });

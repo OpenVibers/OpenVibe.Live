@@ -225,9 +225,8 @@ transaction as the change it describes.
 | `live.stream.started` / `live.stream.ended` | a `streams` row goes live / ends | `stream <id>` |
 | `live.release.deployed` | the first boot that runs new commits ([server/events/release-events.js](../server/events/release-events.js)), queued with the `deploy_last_announced` update; payload: `service`, `release`, `commit`, `previous`, `commit_count`, `commits[]` (≤ 40), `deployed_at`, `notes_url` | `release <head sha>` |
 
-The chat deploy notice itself is unchanged: stored in `chat_messages` (local chat) or handed to
-OpenVibe.Chat over the bridge (`CHAT_AUTHORITY=chat`). Once Chat consumes `live.release.deployed`, the
-bridge's `deployNotice` hop can be deleted.
+The chat deploy notice is Chat's: Live queues `live.release.deployed` and OpenVibe.Chat folds and
+stores the rolling card (C-84). Live keeps no chat table of its own.
 
 Live consumes, each on its own endpoint with its own subscription secret, signature v2 only, applied once
 through the SDK inbox (`idempotency_receipts`):
