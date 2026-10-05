@@ -2,7 +2,7 @@
 /**
  * Live's chat history reads come from OpenVibe.Chat (roadmap T3 J4b: Read Live's chat stats,
  * queues and history from Chat). Live's own history store — the page/delta reads over its copy of
- * chat_messages — went with the read mirror, and the table itself is dropped (op_003), so nothing
+ * chat_messages — went with the read mirror, and the table itself is dropped (007_drop_chat_tables), so nothing
  * keeps a second answer to "what happened in this room?". These checks guard that the dead module
  * stays deleted, and that outside chat mode (dev, drills — Live runs no chat server either way) the
  * read seam answers empty/null rather than any local value.

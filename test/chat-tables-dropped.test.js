@@ -1,13 +1,11 @@
 'use strict';
 
 // The twelve OpenVibe.Chat-owned chat tables (roadmap T3, final step). Live's readers and writers
-// are gone (#28–#32 and the release that carries this file), it no longer creates them, and
-// op_003_drop_chat_tables (scripts/chat-tables-drop.js) drops them. The drop is an operator
-// contract step, not a boot migration: the release before this one still runs SQL over them
-// (test/n-1.test.js), so it may only run once that release is out of rollback range (ADR-028).
-// This guard: nothing under server/ names any of the twelve (the drop migration's own statements
-// are the one exception), a freshly migrated database has none, and the operator migration drops
-// legacy copies and is idempotent.
+// are gone (#28-#32 and the release that carries this file, #33), it no longer creates them, and
+// since #33 is the production release its N-1 fixtures no longer run SQL over them (test/n-1.test.js),
+// so boot migration 007_drop_chat_tables drops them (ADR-028). This guard: nothing under server/
+// names any of the twelve (the drop migration's own DROP statements are the one exception), a fresh
+// schema creates none, a boot drops legacy copies that are there and is adopted when none exist.
 
 const assert = require('assert');
 const fs = require('fs');
@@ -16,6 +14,7 @@ const path = require('path');
 const Database = require('better-sqlite3');
 
 const ROOT = path.join(__dirname, '..');
+const DROP_ID = '007_drop_chat_tables';
 
 const TABLES = [
     'chat_messages', 'dm_conversations', 'dm_participants', 'dm_messages', 'dm_blocks',
@@ -27,7 +26,7 @@ const T = TABLES.join('|');
 const READ_SQL = new RegExp(`\\b(FROM|JOIN)\\s+[\`"']?(?:main\\.)?(${T})\\b`, 'gi');
 const WRITE_SQL = new RegExp(`\\b(INSERT(?:\\s+OR\\s+\\w+)?\\s+INTO|UPDATE|DELETE\\s+FROM|REPLACE\\s+INTO)\\s+(?:main\\.)?(${T})\\b`, 'i');
 const SCHEMA_SQL = new RegExp(`\\b(CREATE\\s+(?:TABLE|INDEX|TRIGGER)\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?|ALTER\\s+TABLE\\s+|PRAGMA\\s+(?:table_info|table_xinfo|index_list|foreign_key_list)\\s*\\(\\s*[\`"']?)(${T})\\b`, 'i');
-// The operator drop (server/db/migrations.js) is the one place allowed to name them.
+// The boot drop (server/db/migrations.js) is the one place allowed to name them.
 const DROP_STMT = new RegExp(`^\\s*DROP\\s+(?:TABLE|INDEX|TRIGGER)\\s+IF\\s+EXISTS\\s+(?:${T})\\s*;\\s*$`, 'i');
 
 function walk(dir, out = []) {
@@ -40,7 +39,7 @@ function walk(dir, out = []) {
 }
 const isCommentLine = (line) => /^\s*(\/\/|\*|\/\*|--)/.test(line);
 
-/** Every read matching one of `regexes` in a file's text → [{ line, text }]. */
+/** Every read matching one of `regexes` in a file's text -> [{ line, text }]. */
 function findReads(src, regexes) {
     const lines = src.split('\n');
     const hits = [];
@@ -72,7 +71,7 @@ for (const file of walk(path.join(ROOT, 'server'))) {
         if (WRITE_SQL.test(line) || SCHEMA_SQL.test(line)) offenders.push(`${rel}:${i + 1}: ${line.trim().slice(0, 120)}`);
     });
 }
-assert.deepStrictEqual(offenders, [], `server/ still names OpenVibe.Chat's chat tables (read and write them through Chat's API; the operator drop is the only exception):\n${offenders.join('\n')}`);
+assert.deepStrictEqual(offenders, [], `server/ still names OpenVibe.Chat's chat tables (read and write them through Chat's API; the boot drop is the only exception):\n${offenders.join('\n')}`);
 
 // 2. A database created by the schema has none of them.
 const fresh = new Database(':memory:');
@@ -82,7 +81,11 @@ for (const t of TABLES) {
 }
 fresh.close();
 
-// 3. A boot neither creates nor drops them (the drop is the operator step), and op_003 drops them.
+const migrations = require('../server/db/migrations');
+assert.ok(migrations.MIGRATIONS.some((m) => m.id === DROP_ID), `${DROP_ID} is a boot migration`);
+assert.ok(migrations.OPERATOR_MIGRATIONS.every((m) => m.id !== 'op_003_drop_chat_tables'), 'the superseded operator step is gone');
+
+// 3. The boot migration drops them on a database that has them.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-chat-tables-dropped-'));
 process.env.DB_PATH = path.join(tmp, 'live.db');
 const legacy = new Database(process.env.DB_PATH);
@@ -93,17 +96,17 @@ const db = require('../server/db/database');
 db.initDb();
 const d = db.getDb();
 const exists = (t) => !!d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
-for (const t of TABLES) assert.ok(exists(t), `${t} must survive a boot: dropping it is the operator step, not a boot migration`);
-assert.ok(!d.prepare("SELECT 1 FROM schema_migrations WHERE id = 'op_003_drop_chat_tables'").get(), 'op_003 is not a boot migration');
-
-const migrations = require('../server/db/migrations');
-assert.ok(!migrations.MIGRATIONS.some((m) => m.id === 'op_003_drop_chat_tables'), 'op_003 is not in the boot list');
-assert.ok(migrations.OPERATOR_MIGRATIONS.some((m) => m.id === 'op_003_drop_chat_tables'), 'op_003 is an operator migration');
-assert.strictEqual(migrations.runOperator(d, 'op_003_drop_chat_tables').outcome, 'applied', 'the operator drop applies');
-for (const t of TABLES) assert.ok(!exists(t), `${t} must be gone after op_003`);
-assert.strictEqual(migrations.runOperator(d, 'op_003_drop_chat_tables').outcome, 'already', 'the operator drop is idempotent');
+for (const t of TABLES) assert.ok(!exists(t), `${t} must be gone after a boot with the drop migration`);
+assert.strictEqual(d.prepare('SELECT mode FROM schema_migrations WHERE id = ?').get(DROP_ID).mode, 'applied', 'the drop is applied, not adopted, when the tables are present');
+assert.strictEqual(migrations.run(d, migrations.MIGRATIONS.filter((m) => m.id === DROP_ID)).length, 0, 'the drop runs at most once');
 db.close();
 fs.rmSync(tmp, { recursive: true, force: true });
 
-console.log(`chat tables dropped: no server/ code names the ${TABLES.length}; fresh schema none; op_003 drops legacy copies (idempotent)`);
+// 4. On a fresh database none of the twelve exists and the migration is adopted.
+const mem = new Database(':memory:');
+const res = migrations.run(mem, migrations.MIGRATIONS.filter((m) => m.id === DROP_ID));
+assert.strictEqual(res[0].outcome, 'adopted', 'a fresh database adopts the drop');
+mem.close();
+
+console.log(`chat tables dropped: no server/ code names the ${TABLES.length} outside ${DROP_ID}; fresh schema none; a boot drops legacy copies and adopts a fresh database`);
 process.exit(0);
