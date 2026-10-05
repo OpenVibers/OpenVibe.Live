@@ -16,6 +16,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const db = require('../db/database');
+const chatReads = require('./chat-reads');
 
 // ── Voice Catalog ─────────────────────────────────────────────
 // Every voice available on the platform — combines RS-Companion's
@@ -208,8 +209,9 @@ function autoUserVoiceParams(identityKey) {
 }
 function deriveUserVoiceParams(identityKey) {
     const key = String(identityKey || 'anon').trim().toLowerCase() || 'anon';
-    // An admin-set override wins over the auto-assigned voice.
-    try { const ov = db.getTtsVoiceOverride(key); if (ov && ov.voice) return _clampVoiceParams(ov); } catch { /* fall through to auto */ }
+    // An admin-set override (Chat's, or Live's own when Live runs chat) wins over the auto-assigned
+    // voice. A synchronous read: the cache, else the auto voice, then Chat warms for the next call.
+    try { const ov = chatReads.ttsOverridePeek(key); if (ov && ov.voice) return _clampVoiceParams(ov); } catch { /* fall through to auto */ }
     return autoUserVoiceParams(key);
 }
 

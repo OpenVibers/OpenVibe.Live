@@ -23,10 +23,9 @@
  *   GET  /tts-audio/:file                    → a clip from the arena voice cache
  *
  * /internal/chat-effects/*   capability live.chat_effects.write — side effects (CHAT_AUTHORITY=chat only)
- *   anon, ip-log, viewer-counts, viewer-snapshots, user-color, ban, approve-ip, channel-settings,
- *   alert-sound, ensure-channel, site-settings, chat-message, ai/mod-command, arena-command,
+ *   anon, ip-log, viewer-counts, viewer-snapshots, user-color, ban, approve-ip, channel-emote-sources,
+ *   ensure-channel, site-settings, chat-message, ai/mod-command, arena-command,
  *   media-queue, hardware, paste, translate, notify/dm, notify/dm-read, notify/call-invite, asset-sync
- *   mirror  (capability live.chat_mirror.write) — Chat's changes to its tables, applied to Live's copy
  *
  * Every effect that acts for a person re-checks that person here (moderator, owner, admin) — Chat
  * checked first; Live does not take its word for it.
@@ -258,11 +257,7 @@ contextRouter.get('/tts-audio/:file', (req, res) => {
 
 // ── Effects ────────────────────────────────────────────────────
 
-effectsRouter.post('/mirror', guard('live.chat_mirror.write'), (req, res, next) => next());
-effectsRouter.use((req, res, next) => {
-    if (req.path === '/mirror') return next();
-    return guard('live.chat_effects.write')(req, res, next);
-});
+effectsRouter.use(guard('live.chat_effects.write'));
 // Live only takes Chat's writes while Chat is the authority — a rehearsal Chat pointed at
 // production Live can never award coins, post to AI viewers or overwrite chat tables.
 effectsRouter.use((req, res, next) => {
@@ -640,71 +635,4 @@ effectsRouter.post('/asset-sync', (req, res) => {
     res.json({ ok: true });
 });
 
-// ── The read mirror of Chat's tables ──────────────────────────────
-// Same tables, same ids. Upserts set only the columns Live's table has (Chat's *subject_id
-// columns are skipped; Live-only columns such as channel_sounds.media_asset_id are kept).
-// The six staged tables (roadmap C-04) are Chat's now and are not mirrored here; only the C-02
-// twelve below still are.
-const MIRROR_TABLES = {
-    chat_messages: ['id'],
-    dm_conversations: ['id'],
-    dm_participants: ['id'],
-    dm_messages: ['id'],
-    dm_blocks: ['id'],
-    tts_voice_overrides: ['identity_key'],
-    channel_sounds: ['id'],
-    relay_users: ['platform', 'username'],
-    hidden_relay_users: ['id'],
-    pending_ip_messages: ['id'],
-    stream_first_chats: ['chatter_key', 'channel_user_id'],
-    moderation_actions: ['id'],
-};
-const _cols = new Map();
-function liveColumns(table) {
-    if (!_cols.has(table)) _cols.set(table, new Set(db.getDb().prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name)));
-    return _cols.get(table);
-}
-
-function applyMirror(changes) {
-    const d = db.getDb();
-    let applied = 0;
-    const skipped = [];
-    // A copy of the authority's rows: foreign keys are the authority's business. Synchronous, so
-    // nothing else runs while they are off.
-    d.pragma('foreign_keys = OFF');
-    try {
-        d.transaction(() => {
-            for (const c of changes) {
-                const pk = MIRROR_TABLES[c && c.table];
-                if (!pk) { skipped.push({ table: c && c.table, reason: 'not a mirrored table' }); continue; }
-                const have = liveColumns(c.table);
-                try {
-                    if (c.op === 'delete') {
-                        d.prepare(`DELETE FROM ${c.table} WHERE ${pk.map((k) => `${k} = ?`).join(' AND ')}`).run(...pk.map((k) => c.pk[k]));
-                    } else if (c.op === 'upsert' && c.row) {
-                        const cols = Object.keys(c.row).filter((k) => have.has(k) && /^[a-z_]+$/.test(k));
-                        const upd = cols.filter((k) => !pk.includes(k));
-                        d.prepare(`INSERT INTO ${c.table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})
-                            ON CONFLICT(${pk.join(', ')}) DO ${upd.length ? `UPDATE SET ${upd.map((k) => `${k} = excluded.${k}`).join(', ')}` : 'NOTHING'}`)
-                            .run(...cols.map((k) => c.row[k]));
-                    } else { skipped.push({ table: c.table, reason: 'bad change' }); continue; }
-                    applied++;
-                } catch (err) {
-                    skipped.push({ table: c.table, pk: c.pk || (c.row && pk.map((k) => c.row[k])), reason: err.message });
-                }
-            }
-        })();
-    } finally {
-        d.pragma('foreign_keys = ON');
-    }
-    return { applied, skipped };
-}
-
-effectsRouter.post('/mirror', (req, res) => {
-    const changes = Array.isArray(req.body?.changes) ? req.body.changes.slice(0, 1000) : [];
-    const out = applyMirror(changes);
-    if (out.skipped.length) console.warn(`[ChatMirror] ${out.skipped.length} change(s) not applied:`, JSON.stringify(out.skipped.slice(0, 3)));
-    res.json({ ok: true, ...out });
-});
-
-module.exports = { contextRouter, effectsRouter, applyMirror, userProjection, MIRROR_TABLES };
+module.exports = { contextRouter, effectsRouter, userProjection };

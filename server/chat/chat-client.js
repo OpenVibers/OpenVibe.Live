@@ -7,6 +7,18 @@
  *   moderation(body) POST /internal/chat/moderation chat.moderation.write   deletes, IP reviews, relay hides, log, disconnect
  *   invalidate(body) POST /internal/chat/invalidate chat.cache.invalidate   a cache hint (user, approvals, bans)
  *   presence()      GET  /internal/chat/presence    chat.presence.read      the connection snapshot
+ *   soundAsset(body) POST /internal/chat/sounds/asset chat.sounds.write     record where Live's asset sync put a channel sound
+ *
+ * Reads (Read Live's chat stats, queues and history from Chat — server/chat/chat-reads.js is the mode-aware
+ * layer the callers use; these are the raw asks):
+ *   readStats(body)   POST /internal/chat/stats                  chat.stats.read             counts, or top chatters
+ *   readMessages(q)   GET  /internal/chat/messages               chat.messages.read          a page of messages
+ *   readTimeline(q)   GET  /internal/chat/timeline               chat.analysis.read          time-bucketed message counts
+ *   readPendingIp(q)  GET  /internal/chat/moderation/pending-ip  chat.moderation.queue.read  held IP-approval messages
+ *   readRelayUsers(q) GET  /internal/chat/moderation/relay-users chat.moderation.queue.read  hidden relay users
+ *   readRelayUser(id) GET  /internal/chat/moderation/relay-users/:id chat.moderation.queue.read one hidden relay user
+ *   readTtsOverride(q) GET /internal/chat/moderation/tts-override chat.moderation.queue.read a voice override
+ *   readSounds(q)     GET  /internal/chat/sounds                 chat.sounds.read            a channel's sound count, or its pending assets
  *
  * Auth: Live's Network service principal (client_credentials, audience openvibe.chat, server/net/network-principal.js).
  * Every POST carries one idempotency `key` made when the operation is created and reused on every retry, so Chat
@@ -70,7 +82,7 @@ async function request(method, path, body, retried = false) {
 const sleep = (ms) => new Promise((resolve) => { const t = setTimeout(resolve, ms); if (t.unref) t.unref(); });
 
 /** POST one operation to /internal/chat/<family>, retrying 5xx/unreachable with the same key. Never rejects. */
-async function send(family, body) {
+async function send(family, body, path = `/internal/chat/${family}`) {
     if (drill()) return null;
     if (!principal.configured()) { count(family, 'dropped'); note(`${family}: not configured (OV_OAUTH_CLIENT_SECRET unset); dropped`); return null; }
     const payload = { ...body, key: body.key || key(family) };
@@ -82,7 +94,7 @@ async function send(family, body) {
             let data = null;
             let why;
             try {
-                ({ status, data } = await request('POST', `/internal/chat/${family}`, payload));
+                ({ status, data } = await request('POST', path, payload));
                 why = `answered ${status}${data && data.error ? ` (${data.error})` : ''}`;
             } catch (err) { why = err.message; }
             if (status >= 200 && status < 300) { count(family, 'sent'); lastLog = null; return data || { ok: true }; }
@@ -114,6 +126,64 @@ async function presence() {
     return null;
 }
 
+// ── Reads (Chat's internal read API; see the header) ─────────────────────────
+// All of these degrade like presence(): Chat's answer, or null plus one logged warning. A caller
+// that can only show the data answers with its own cached or empty value — never a 500.
+
+/** Query string for a GET read; arrays become Chat's comma lists, booleans its 1/0 flags. */
+function qs(params) {
+    const u = new URLSearchParams();
+    for (const [k, v] of Object.entries(params || {})) {
+        if (v == null || v === '') continue;
+        if (Array.isArray(v)) u.set(k, v.join(','));
+        else if (typeof v === 'boolean') u.set(k, v ? '1' : '0');
+        else u.set(k, String(v));
+    }
+    const s = u.toString();
+    return s ? `?${s}` : '';
+}
+
+/** GET one Chat read; its JSON body or null. Ordinary failures are logged and answered null. */
+async function read(name, path) {
+    if (drill() || !principal.configured()) return null;
+    try {
+        const { status, data } = await request('GET', path);
+        if (status === 200 && data && data.ok !== false) return data;
+        note(`${name}: Chat answered ${status}${data && data.error ? ` (${data.error})` : ''}`);
+    } catch (err) { note(`${name}: ${err.message}`); }
+    return null;
+}
+
+/** POST /internal/chat/stats — message/chatter counts, or the top chatters of a room. */
+async function readStats(body) {
+    if (drill() || !principal.configured()) return null;
+    try {
+        const { status, data } = await request('POST', '/internal/chat/stats', body || {});
+        if (status === 200 && data && data.ok !== false) return data;
+        note(`stats: Chat answered ${status}${data && data.error ? ` (${data.error})` : ''}`);
+    } catch (err) { note(`stats: ${err.message}`); }
+    return null;
+}
+
+const readMessages = (params) => read('messages', `/internal/chat/messages${qs(params)}`);
+const readTimeline = (params) => read('timeline', `/internal/chat/timeline${qs(params)}`);
+const readPendingIp = (params) => read('pending-ip', `/internal/chat/moderation/pending-ip${qs(params)}`);
+const readRelayUsers = (params) => read('relay-users', `/internal/chat/moderation/relay-users${qs(params)}`);
+const readRelayUser = (id) => read('relay-user', `/internal/chat/moderation/relay-users/${Number(id)}`);
+const readTtsOverride = (params) => read('tts-override', `/internal/chat/moderation/tts-override${qs(params)}`);
+const readSounds = (params) => read('sounds', `/internal/chat/sounds${qs(params)}`);
+/** Record where Live's asset sync uploaded a channel sound (idempotent; Chat applies the same write once). */
+async function soundAsset(body) {
+    if (drill() || !principal.configured()) return null;
+    try {
+        // Chat's /sounds/asset takes exactly { id, media_url, media_asset_id } — no idempotency key.
+        const { status, data } = await request('POST', '/internal/chat/sounds/asset', body);
+        if (status === 200 && data && data.ok !== false) return data;
+        note(`sounds-asset: Chat answered ${status}${data && data.error ? ` (${data.error})` : ''}`);
+    } catch (err) { note(`sounds-asset: ${err.message}`); }
+    return null;
+}
+
 module.exports = {
     AUDIENCE,
     key,
@@ -123,5 +193,6 @@ module.exports = {
     moderation: (body) => send('moderation', body),
     invalidate: (body) => send('invalidate', body),
     presence,
+    readStats, readMessages, readTimeline, readPendingIp, readRelayUsers, readRelayUser, readTtsOverride, readSounds, soundAsset,
     _setRetryMs(ms) { retryMs = ms || RETRY_MS; },
 };

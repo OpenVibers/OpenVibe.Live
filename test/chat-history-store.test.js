@@ -1,17 +1,25 @@
 'use strict';
 /**
- * Chat history reads through one store: a page is the newest rows oldest→newest, a delta is only
- * what a client with a cursor has not seen, and a gap wider than the cap says so instead of
- * silently handing back a slice the client would splice in the wrong place.
+ * Live's chat history reads now come from OpenVibe.Chat (roadmap T3 J4b: Read Live's chat stats,
+ * queues and history from Chat). Live's own history store — the page/delta reads over its copy of
+ * chat_messages — is gone with the read mirror, so nothing keeps a second answer to "what happened
+ * in this room?". These checks guard that the dead module stays deleted, and that the replacement
+ * (server/chat/chat-reads.js) answers history from Live's own tables while Live runs chat itself
+ * (the rollback / dev path) with the same rules: deleted and auto-expired rows never come back.
  */
 const assert = require('assert');
+const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+const ROOT = path.join(__dirname, '..');
+assert.ok(!fs.existsSync(path.join(ROOT, 'server', 'chat', 'history-store.js')), 'history-store.js is deleted — history is Chat\'s now');
+
 process.env.DB_PATH = path.join(os.tmpdir(), `ov-chat-history-${Date.now()}.db`);
+delete process.env.CHAT_AUTHORITY;   // Live runs chat itself: chat-reads answers from Live's tables
 const db = require('../server/db/database');
 db.initDb();
-const store = require('../server/chat/history-store');
+const reads = require('../server/chat/chat-reads');
 
 const u = db.run(`INSERT INTO users (username, password_hash, email) VALUES ('alice', 'x', 'a@example.com')`).lastInsertRowid;
 const bob = db.run(`INSERT INTO users (username, password_hash, email) VALUES ('bob', 'x', 'b@example.com')`).lastInsertRowid;
@@ -24,44 +32,29 @@ for (let i = 1; i <= 12; i++) {
 // One deleted and one auto-expired row must never come back through either read.
 db.run(`UPDATE chat_messages SET is_deleted = 1 WHERE id = ?`, [ids[5]]);
 db.run(`UPDATE chat_messages SET auto_delete_at = datetime('now', '-1 minute') WHERE id = ?`, [ids[6]]);
-// The global feed is every public room with a source badge, so a channel row belongs in it too.
+// A channel room row (channel_user_id set) belongs to its channel's history.
 const chanId = Number(db.saveChatMessage({ user_id: bob, username: 'bob', message: 'channel only', stream_id: null, channel_user_id: bob, message_type: 'chat' }).lastInsertRowid);
 
-// ── page ──────────────────────────────────────────────────────────────────────────────────────
-const page = store.page('global', { limit: 5 });
-assert.equal(page.messages.length, 5, 'a page is capped by limit');
-assert.deepEqual(page.messages.map((m) => m.message), ['m9', 'm10', 'm11', 'm12', 'channel only'], 'newest rows, oldest → newest, all rooms');
-assert.equal(page.latest_id, chanId, 'latest_id is the cursor of the newest row');
+(async () => {
+    // A user's site-wide history (deleted and auto-expired rows never come back). The rows share a
+    // timestamp here, so compare as a set.
+    const hist = await reads.userHistory(u, { limit: 50 });
+    assert.deepStrictEqual(hist.messages.map((m) => m.message).sort(), ['m1', 'm10', 'm11', 'm12', 'm2', 'm3', 'm4', 'm5', 'm8', 'm9'], 'user history, no deleted/expired rows');
+    assert.ok(hist.total >= hist.messages.length, 'a total is reported for paging');
 
-// ── delta ─────────────────────────────────────────────────────────────────────────────────────
-const d = store.delta('global', { afterId: ids[3], limit: 200 });
-assert.deepEqual(d.messages.map((m) => m.message), ['m5', 'm8', 'm9', 'm10', 'm11', 'm12', 'channel only'], 'only rows after the cursor; deleted and expired rows skipped');
-assert.equal(d.complete, true);
-assert.equal(d.latest_id, chanId);
+    // A channel's recent lines, oldest→newest — what an AI viewer's prompt sees.
+    const ch = await reads.channelMessages(bob, 10);
+    assert.deepEqual(ch.map((m) => m.message), ['channel only'], 'only the channel room, oldest → newest');
+    assert.strictEqual(ch[ch.length - 1].id, chanId);
 
-const none = store.delta('global', { afterId: chanId, limit: 200 });
-assert.equal(none.messages.length, 0, 'nothing new → empty delta');
-assert.equal(none.latest_id, chanId, 'the cursor is handed back unchanged when nothing is new');
+    // A chat search by user id (the admin console), same rows.
+    const search = await reads.searchMessages({ userId: u, limit: 50 });
+    assert.strictEqual(search.messages.length, hist.messages.length, 'search by user id matches the history');
 
-const wide = store.delta('global', { afterId: 0, limit: 3 });
-assert.equal(wide.complete, false, 'a gap wider than the cap is reported, not silently truncated');
-assert.equal(wide.messages.length, 3);
+    // One message by id (the moderation delete path).
+    const one = await reads.messageById(ids[0]);
+    assert.strictEqual(one.message, 'm1');
+    assert.strictEqual(await reads.messageById(10 ** 9), null, 'an unknown id is null');
 
-// ── decorate gets copies, memo stays correct across writes ────────────────────────────────────
-const seen = [];
-store.page('global', { limit: 5, decorate: (rows) => { rows.forEach((r) => { r.touched = true; seen.push(r.id); }); return rows; } });
-const again = store.page('global', { limit: 5 });
-assert.ok(!again.messages.some((m) => m.touched), 'decorators work on copies; memoised rows are pristine');
-db.saveChatMessage({ user_id: u, username: 'alice', message: 'm13', stream_id: null, is_global: 1, message_type: 'chat' });
-const after = store.page('global', { limit: 5 });
-assert.equal(after.messages[after.messages.length - 1].message, 'm13', 'a new row invalidates the memoised page at once');
-
-// ── channel room ──────────────────────────────────────────────────────────────────────────────
-const ch = store.page(`channel:${bob}`, { limit: 10 });
-assert.deepEqual(ch.messages.map((m) => m.message), ['channel only']);
-const chDelta = store.delta(`channel:${bob}`, { afterId: ch.latest_id, limit: 50 });
-assert.equal(chDelta.messages.length, 0);
-
-assert.throws(() => store.page('nope', {}), /unknown room/);
-
-console.log('chat-history-store: ok');
+    console.log('chat-history-store: ok — Live\'s store is deleted; chat-reads answers history in local mode');
+})().catch((e) => { console.error(e); process.exit(1); });

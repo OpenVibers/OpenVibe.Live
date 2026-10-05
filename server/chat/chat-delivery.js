@@ -17,8 +17,6 @@
  *   logModeration(entry)           a moderation-log row (db.logModerationAction shape)
  *   disconnect({ userId, ip, streamId })
  *   invalidate(hint, legacy)       a cache hint ({ user, user_data, approvals, bans, channel })
- *   mirror(fn, ...args)            ingress only: keep Live's own copy of a write Chat also applies (pending IP
- *                                  rows, hidden relay users, first chats, TTS overrides) that Live still reads
  *   after(value, fn)               fn(value) now for a plain value, after it resolves for a promise
  */
 const chatAuthority = require('./chat-authority');
@@ -89,23 +87,8 @@ function invalidate(hint, legacy) {
     return legacy ? legacy() : undefined;
 }
 
-// The writes Live keeps on its own read-mirror copy as well (Chat applies them too and mirrors back).
-const MIRROR_WRITES = new Set([
-    'mergeChatMessageMetadata', 'deleteChatMessage', 'deleteUserChatMessages', 'deleteAnonChatMessages',
-    'deleteRelayUserMessages', 'deleteChatMessagesByTimeRange', 'reviewPendingIpMessage', 'approveAllFromIp',
-    'denyAllFromIp', 'recordRelayUser', 'unhideRelayUser', 'unhideRelayUserByIdentity', 'recordFirstChat',
-    'setTtsVoiceOverride', 'deleteTtsVoiceOverride',
-]);
-
-function mirror(fn, ...args) {
-    try {
-        if (!MIRROR_WRITES.has(fn)) throw new Error('not a mirror write');
-        return require('../db/database')[fn](...args);
-    } catch (err) { console.warn(`[ChatIngress] local ${fn}: ${err.message}`); return undefined; }
-}
-
 function after(value, fn) {
     return value && typeof value.then === 'function' ? value.then(fn) : fn(value);
 }
 
-module.exports = { ingress, message, event, moderate, logModeration, disconnect, invalidate, mirror, after, client, MIRROR_WRITES };
+module.exports = { ingress, message, event, moderate, logModeration, disconnect, invalidate, after, client };

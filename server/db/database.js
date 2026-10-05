@@ -1460,23 +1460,6 @@ function initDb() {
             message_count INTEGER DEFAULT 0,
             PRIMARY KEY (platform, username)
         )`);
-        // One-time backfill: earlier relay sources (notably RobotStreamer) didn't record
-        // relay_users, so their existing chatters had no row to hang chat-logs/AI insight
-        // off. Seed relay_users from the historical "[Label] name" relay messages. Idempotent
-        // (INSERT OR IGNORE keyed on platform+username), guarded so it runs at most once.
-        const _relayDone = database.prepare("SELECT value FROM site_settings WHERE key='relay_users_backfilled'").get();
-        if (!_relayDone) {
-            database.exec(`INSERT OR IGNORE INTO relay_users (platform, username, display_name, first_seen, last_seen, message_count)
-                SELECT source_platform,
-                       LOWER(TRIM(SUBSTR(username, INSTR(username, '] ') + 2))),
-                       TRIM(SUBSTR(username, INSTR(username, '] ') + 2)),
-                       MIN(timestamp), MAX(timestamp), COUNT(*)
-                FROM chat_messages
-                WHERE user_id IS NULL AND source_platform IS NOT NULL
-                      AND username LIKE '[%] %' AND INSTR(username, '] ') > 0
-                GROUP BY source_platform, LOWER(TRIM(SUBSTR(username, INSTR(username, '] ') + 2)))`);
-            database.prepare("INSERT OR REPLACE INTO site_settings (key, value, type) VALUES ('relay_users_backfilled','1','string')").run();
-        }
     } catch (e) { console.warn('[DB] relay_users migration:', e.message); }
 
     // Timestamped transcript segments (JSON) — contextual data for the AI system +
@@ -3955,7 +3938,10 @@ function _computeHomeStats() {
         clips: null,
         liveSessions: c(`SELECT COUNT(*) AS count FROM streams`),
         streamers: c(`SELECT COUNT(DISTINCT user_id) AS count FROM streams WHERE user_id IS NOT NULL`),
-        chatMessages: c(`SELECT COUNT(*) AS count FROM chat_messages`),
+        // OpenVibe.Chat owns chat_messages (roadmap T3); the total comes from Chat's read API when
+        // it is the authority, from Live's own table when Live runs chat itself. A Chat outage
+        // answers the cache, else null — never a 500 for the home page.
+        chatMessages: (() => { try { const s = require('../chat/chat-reads').siteStatsPeek(); return s && s.messages != null ? s.messages : null; } catch { return null; } })(),
         users: c(`SELECT COUNT(*) AS count FROM users WHERE COALESCE(is_banned, 0) = 0`),
         anons: c(`SELECT COUNT(*) AS count FROM anon_ip_mappings`),
         follows: c(`SELECT COUNT(*) AS count FROM follows`),

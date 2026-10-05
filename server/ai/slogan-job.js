@@ -11,6 +11,7 @@
  */
 'use strict';
 const db = require('../db/database');
+const chatReads = require('../chat/chat-reads');
 const aiService = require('./ai-service');
 const ai = require('./ai-analysis');
 
@@ -76,13 +77,17 @@ async function tick() {
         } catch { /* */ }
 
         // ── Active chatters (ids) → per-USER chat analysis (running jokes / personalities) ──
+        // Chat's top-chatters stat (site-wide, the same 14-day window), then Live drops banned
+        // accounts from its own user table before asking Chat for each one's insight.
         let activeRows = [];
         try {
-            activeRows = db.all(`
-                SELECT u.id, u.username FROM chat_messages c JOIN users u ON c.user_id = u.id
-                WHERE c.timestamp >= datetime('now','-14 days') AND COALESCE(u.is_banned,0)=0 AND COALESCE(c.is_deleted,0)=0
-                GROUP BY u.id ORDER BY COUNT(*) DESC LIMIT 12
-            `) || [];
+            const top = await chatReads.topChatters({ since: Date.now() - 14 * 86400e3, limit: 12 });
+            activeRows = (top || [])
+                .map((r) => ({ id: Number(r.user_id) || 0, username: r.username }))
+                .filter((r) => {
+                    if (!r.id) return false;
+                    try { const u = db.getUserById(r.id); return !!(u && !u.is_banned); } catch { return false; }
+                });
         } catch { /* */ }
         const usernames = activeRows.map(r => r.username).filter(Boolean);
         // The prompt is OpenVibe.AI's versioned template live.hero.slogans (WS-O task 2); Live sends the

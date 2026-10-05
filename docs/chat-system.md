@@ -20,7 +20,7 @@ with the same WebSocket protocol and REST paths. `CHAT_AUTHORITY=chat` switches 
   cards, `/api/mod` deletes and moderation, cache hints) go through one seam,
   [server/chat/chat-delivery.js](../server/chat/chat-delivery.js), to Chat's typed service-token ingress
   ([server/chat/chat-client.js](../server/chat/chat-client.js): `POST /internal/chat/messages|events|moderation|invalidate`,
-  `GET /internal/chat/presence`). Chat persists, broadcasts, mirrors and speaks (`tts`) in one call per
+  `GET /internal/chat/presence`). Chat persists, broadcasts and speaks (`tts`) in one call per
   operation; each carries one idempotency key reused on every retry. A Chat 4xx is logged and dropped; a 5xx
   or timeout is retried past Chat's five-minute delivery lease, then logged and dropped; neither is thrown.
 - `require('./chat/chat-server')` returns a `RemoteChatServer` that never listens: synchronous reads
@@ -39,11 +39,16 @@ with the same WebSocket protocol and REST paths. `CHAT_AUTHORITY=chat` switches 
   refuses while any `op = 'db'` row remains.
 - Chat reads Live data and asks for side effects on `/internal/chat-context/*` and
   `/internal/chat-effects/*` (`server/chat/live-context-routes.js`), with Network service tokens
-  (`live.chat_context.read`, `live.chat_effects.write`, `live.chat_mirror.write`,
+  (`live.chat_context.read`, `live.chat_effects.write`,
   `server/net/service-guard.js`). Effects re-check the acting moderator/owner/admin and are refused
   unless `CHAT_AUTHORITY=chat`.
-- Live's chat tables become Chat's read mirror (`POST /internal/chat-effects/mirror`): same ids, so home
-  stats, recaps, AI context, VOD chat replay and the `/api/mod` queues keep reading them in place.
+- Live reads chat stats, queues and history from Chat's internal read API —
+  `POST /internal/chat/stats`, `GET /internal/chat/messages`, `/timeline`,
+  `/moderation/pending-ip`, `/moderation/relay-users`, `/moderation/tts-override`, `/sounds` — through
+  [server/chat/chat-reads.js](../server/chat/chat-reads.js), in place of the read mirror
+  (`POST /internal/chat-effects/mirror`) home stats, recaps, AI context, VOD chat replay and the
+  `/api/mod` queues used to read. A Chat outage answers a cached or empty value, never a 500. Live's
+  chat tables stay until T3 J4c drops them.
 - **The six chat tables are Chat's** (roadmap T3): `channel_moderators`, `channel_moderation_settings`,
   `emotes`, `user_tags`, `chat_ai_summaries` and `chat_timeline_events`. Live keeps no copy and reads them
   only through [server/chat/moderation-client.js](../server/chat/moderation-client.js) — Chat's internal

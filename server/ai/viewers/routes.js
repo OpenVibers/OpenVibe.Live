@@ -13,6 +13,7 @@
 'use strict';
 const express = require('express');
 const db = require('../../db/database');
+const chatReads = require('../../chat/chat-reads');
 const { requireAuth } = require('../../auth/auth');
 const { isStaff } = require('../../auth/permissions');
 const budget = require('./budget');
@@ -263,8 +264,8 @@ router.post('/clone', requireAuth, async (req, res) => {
                 kind: 'user', ref: String(userId),
                 displayName: u.display_name || u.username,
                 insight: wide ? await require('../../chat/insight-client').getUser(userId) : null,
-                samples: wide ? (db.getUserChatHistory(userId, 30).messages || [])
-                    : db.getChatSamplesInChannel(req.user.id, { userId, limit: 30 }),
+                samples: wide ? ((await chatReads.userHistory(userId, { limit: 30 }))?.messages || [])
+                    : (await chatReads.channelSamples(req.user.id, { userId, limit: 30 })) || [],
             };
         } else if (kind === 'relay') {
             // ref = "platform:username"
@@ -278,8 +279,8 @@ router.post('/clone', requireAuth, async (req, res) => {
                 kind: 'relay', ref: `${platform}:${username}`,
                 displayName: username,
                 insight: wide ? await require('../../chat/insight-client').getRelay(platform, username) : null,
-                samples: wide ? (db.getRelayUserChatHistory(platform, username, { limit: 30 }).messages || [])
-                    : db.getChatSamplesInChannel(req.user.id, { relay: { platform, rawUsername: username }, limit: 30 }),
+                samples: wide ? ((await chatReads.relayHistory(platform, username, { limit: 30 }))?.messages || [])
+                    : (await chatReads.channelSamples(req.user.id, { relay: { platform, rawUsername: username }, limit: 30 })) || [],
             };
         } else {
             return res.status(400).json({ error: 'kind must be user or relay' });

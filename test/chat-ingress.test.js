@@ -60,10 +60,18 @@ const chat = http.createServer((req, res) => {
             if (req.url === '/internal/live/calls') bridgeCalls.push(JSON.parse(raw));
             return res.end(JSON.stringify({ ok: true, results: [] }));
         }
-        const m = req.url.match(/^\/internal\/chat\/(messages|events|moderation|invalidate|presence)$/);
+        const m = req.url.match(/^\/internal\/chat\/(messages|events|moderation|invalidate|presence)(?:\?|$)/);
         if (!m) { res.statusCode = 404; return res.end('{}'); }
         const family = m[1];
         if (family === 'presence') return res.end(JSON.stringify({ total: 4, streams: { 1: 2 }, slow_mode: {}, users: [{ user_id: 99, ip: '198.51.100.9', stream_id: 1 }], anons: [] }));
+        // Chat's message READ (Chat holds the rows now; Live reads them through it): answer the
+        // row Live's own copy carries, so the moderation path's permission check sees it.
+        if (family === 'messages' && req.method === 'GET') {
+            const d3 = require('../server/db/database');
+            const id = Number(new URL(req.url, 'http://x').searchParams.get('id'));
+            const row = d3.getChatMessageById(id);
+            return res.end(JSON.stringify({ ok: true, messages: row ? [row] : [], max_id: row ? id : null }));
+        }
         const body = JSON.parse(raw || '{}');
         calls.push({ family, auth, body });
         const f = fail[family];
@@ -176,7 +184,7 @@ function assertSigned(c, what) {
         const del = find('moderation', (b) => b.action === 'delete-message');
         assertSigned(del, 'message delete');
         assert.deepStrictEqual([del.body.id, del.body.deleted_by, del.body.key], [900010, admin, 'live:moderation:delete:900010']);
-        assert.strictEqual(db.getChatMessageById(900010).is_deleted, 1, "Live's copy is deleted too");
+        assert.strictEqual(db.getChatMessageById(900010).is_deleted || 0, 0, 'Chat holds the row now — Live no longer mirrors the delete');
         assertSigned(await waitFor(() => find('moderation', (b) => b.action === 'log' && b.action_type === 'message_delete'), 'delete log'), 'delete log');
         const ban = await mod(`/users/${viewer}/ban`, { reason: 'spam' });
         assert.ok(ban.status < 300, `ban answered ${ban.status}`);

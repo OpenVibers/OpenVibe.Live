@@ -22,6 +22,7 @@
 'use strict';
 const crypto = require('crypto');
 const db = require('../../db/database');
+const chatReads = require('../../chat/chat-reads');
 const insightClient = require('../../chat/insight-client');
 
 function clip(str, n) { return (str == null ? '' : String(str)).replace(/\s+/g, ' ').trim().slice(0, n); }
@@ -165,7 +166,9 @@ function seenBlock(stream) {
 
 function chatDelta(channelUserId, sinceId, { limit = 40, botNames = new Set() } = {}) {
     let rows = [];
-    try { rows = db.getChannelChatSince(channelUserId, sinceId || 0, limit) || []; } catch { rows = []; }
+    // The last `limit` lines of the channel come from Chat (or Live's own table when Live runs
+    // chat); a synchronous peek answers the cached page, else empty, and warms for the next tick.
+    try { rows = (chatReads.channelMessagesPeek(channelUserId, limit) || []).filter((r) => Number(r.id) > (sinceId || 0)); } catch { rows = []; }
     const lines = rows.map(r => {
         const isBot = r.source_platform === 'ai' || botNames.has(String(r.username || '').toLowerCase());
         const tag = isBot ? ' (AI viewer)' : (r.source_platform && r.source_platform !== 'ai' ? '' : '');

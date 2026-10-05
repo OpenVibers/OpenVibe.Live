@@ -16,6 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../db/database');
 const media = require('../media-client');
+const chatReads = require('../chat/chat-reads');
 
 const paths = require('../paths');
 const SOUND_DIR = paths.dir('SOUNDS_PATH', 'sounds');
@@ -65,7 +66,8 @@ async function syncAll() {
         };
         let synced = 0, failed = 0;
 
-        for (const s of db.all('SELECT * FROM channel_sounds WHERE media_asset_id IS NULL')) {
+        // The work list is Chat's (channel_sounds is Chat's table); Live's own rows when Live runs chat.
+        for (const s of (await chatReads.pendingSounds()) || []) {
             const f = _localFile(SOUND_DIR, s.url);
             if (!f) continue;
             try {
@@ -75,7 +77,7 @@ async function syncAll() {
                     channel_username: uname(s.channel_owner_id),
                     duration_seconds: s.duration_seconds || 0,
                 });
-                if (asset) { db.run('UPDATE channel_sounds SET media_url = ?, media_asset_id = ? WHERE id = ?', [asset.url, asset.id, s.id]); synced++; }
+                if (asset) { await chatReads.recordSoundAsset(s.id, asset.url, asset.id); synced++; }
             } catch (err) { failed++; if (failed <= 3) console.warn('[AssetSync] sound', s.command, err.message); }
         }
 
