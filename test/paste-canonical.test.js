@@ -104,6 +104,16 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         assert.ok(/MEDIA_PUBLIC_URL\}\/p\/\$\{encodeURIComponent\(req\.params\.slug\)\}\/screenshot/.test(src), 'screenshot bytes still on Media');
     });
 
+    await check('screenshot fallbacks use Media\'s screenshot URL, not the /raw hop', () => {
+        assert.strictEqual(typeof media.pasteRawUrl, 'undefined', 'the /raw URL builder is gone');
+        assert.strictEqual(media.pasteScreenshotUrl('a b'), `${media.MEDIA_PUBLIC_URL}/p/a%20b/screenshot`);
+        for (const rel of ['server/home/routes.js', 'server/auth/routes.js']) {
+            const src = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
+            assert.ok(/pasteScreenshotUrl\(/.test(src), `${rel} falls back to the screenshot URL`);
+            assert.ok(!/pasteRawUrl/.test(src), `${rel} no longer takes the /raw hop`);
+        }
+    });
+
     await check('Live\'s sitemap lists no paste', async () => {
         const xml = await seo.buildSitemap();
         assert.ok(!/<loc>[^<]*\/p\//.test(xml), 'a /p/ URL in the sitemap');

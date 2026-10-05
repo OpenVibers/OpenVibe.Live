@@ -67,7 +67,7 @@ async function _mediaContent() {
 
 function _pasteThumb(p) {
     if (p.screenshot_url) return media.publicUrl(p.screenshot_url);
-    if (p.type === 'screenshot' && p.slug) return media.pasteRawUrl(p.slug);
+    if (p.type === 'screenshot' && p.slug) return media.pasteScreenshotUrl(p.slug);
     return null;
 }
 

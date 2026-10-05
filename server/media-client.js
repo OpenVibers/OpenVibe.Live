@@ -305,7 +305,6 @@ function generateThumbnail(kind, id, opts = {}) {
 function vodPlaybackUrl(id) { return `${MEDIA_PUBLIC_URL}/v/${id}`; }
 function clipUrl(id) { return `${MEDIA_PUBLIC_URL}/c/${id}`; }
 function pasteScreenshotUrl(slug) { return `${MEDIA_PUBLIC_URL}/p/${encodeURIComponent(slug)}/screenshot`; }
-function pasteRawUrl(slug) { return `${MEDIA_PUBLIC_URL}/p/${encodeURIComponent(slug)}/raw`; }
 function thumbUrl(id) { return `${MEDIA_PUBLIC_URL}/t/${id}`; }
 function fileUrl(key) { return `${MEDIA_PUBLIC_URL}/f/${key}`; }
 // TODO(contract): paste screenshots have no explicit public route in the contract;
@@ -417,5 +416,5 @@ module.exports = {
     uploadFile, getFileMeta, deleteFile,
     uploadThumbnail, generateThumbnail,
     // URL builders
-    vodPlaybackUrl, clipUrl, pasteScreenshotUrl, pasteRawUrl, thumbUrl, fileUrl, screenshotUrl, publicUrl,
+    vodPlaybackUrl, clipUrl, pasteScreenshotUrl, thumbUrl, fileUrl, screenshotUrl, publicUrl,
 };
