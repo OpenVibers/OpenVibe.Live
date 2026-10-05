@@ -46,20 +46,23 @@ path are deleted.
   `server/net/service-guard.js`). Effects re-check the acting moderator/owner/admin and are refused
   unless `CHAT_AUTHORITY=chat`.
 - Live reads chat stats, queues and history from Chat's internal read API —
-  `POST /internal/chat/stats`, `GET /internal/chat/messages`, `/timeline`,
-  `/moderation/pending-ip`, `/moderation/relay-users`, `/moderation/tts-override`, `/sounds` — through
+  `POST /internal/chat/stats` (`site`, `user`, `stream`, `channel-top` and `site-daily`),
+  `GET /internal/chat/messages`, `/timeline`, `/first-chat`, `/sounds`, `/sounds/by-command`,
+  `/moderation/pending-ip`, `/moderation/relay-users`, `/moderation/tts-override` — through
   [server/chat/chat-reads.js](../server/chat/chat-reads.js), in place of the read mirror
   (`POST /internal/chat-effects/mirror`) home stats, recaps, AI context, VOD chat replay and the
-  `/api/mod` queues used to read. A Chat outage answers a cached or empty value, never a 500. Live's
-  chat tables stay until T3 J4c drops them.
-- **What still reads the mirror.** Under `CHAT_AUTHORITY=chat` the readers above answer from Chat;
-  three still read Live's mirror tables and are why the mirror stays until T3 J4c drops it: the two
-  HOME_SERIES charts `messages` and `active` (Chat exposes no site-wide per-day message/chatter
-  series), the AI context's "first time chatting here" flag (`stream_first_chats`; Chat exposes no
-  first-chat read), and the RobotStreamer `!sound` lookup (`channel_sounds` by command; Chat's sounds
-  read answers only a count and the pending-asset list). The other mirror readers are on the
-  Live-runs-chat path `CHAT_AUTHORITY=chat` leaves unmounted — `dm_*` (no `/api/dm`), Live's chat
-  server, the deploy notice, the admin chat log and the leftover dev/rollback fallbacks.
+  `/api/mod` queues used to read. A Chat outage answers a cached value or Live's own table, never a 500.
+- **What reads the mirror.** Nothing in chat mode any more: the two HOME_SERIES charts `messages`
+  and `active` read Chat's site-daily series, the AI context's "first time chatting here" flag reads
+  Chat's first-chat read, and the RobotStreamer `!sound` lookup reads Chat's sounds-by-command read —
+  each through [server/chat/chat-reads.js](../server/chat/chat-reads.js), falling back to Live's own
+  table only while Chat is unreachable. The mirror (`POST /internal/chat-effects/mirror`) therefore
+  has no chat-mode reader left and is removed in the remaining step: Chat stops its `LIVE_MIRROR`
+  writer, then Live deletes the receiver (`live-context-routes.js` `effectsRouter`'s mirror route and
+  its `live.chat_mirror.write` capability) and the mirror-kept chat tables. The readers that still
+  answer from Live's tables are on the Live-runs-chat path `CHAT_AUTHORITY=chat` leaves unmounted —
+  `dm_*` (no `/api/dm`), Live's chat server, the deploy notice, the admin chat log and the leftover
+  dev/rollback fallbacks.
 - **The six chat tables are Chat's** (roadmap T3): `channel_moderators`, `channel_moderation_settings`,
   `emotes`, `user_tags`, `chat_ai_summaries` and `chat_timeline_events`. Live keeps no copy and reads them
   only through [server/chat/moderation-client.js](../server/chat/moderation-client.js) — Chat's internal

@@ -3805,9 +3805,10 @@ const HOME_SERIES = {
     anons:       { table: 'anon_ip_mappings',  ts: 'created_at',  agg: 'COUNT(*)' },
     visitors:    { table: 'anon_ip_mappings',  ts: 'created_at',  agg: 'COUNT(*)' },
     follows:     { table: 'follows',           ts: 'created_at',  agg: 'COUNT(*)' },
-    // OpenVibe.Chat exposes no site-wide per-day message/chatter series — its timeline read buckets
-    // one channel or stream only, never the whole site — so these two charts still read Live's
-    // mirror-filled chat_messages table. Every other series and the hero counters come from Chat.
+    // Chat's site-wide per-day message/chatter series: in chat mode getHomeStatSeries answers them
+    // from Chat's `site-daily` stats read (chat-reads.homeSeriesPeek); this local SQL stays the
+    // dev / rollback / Chat-unreachable answer. `messages` maps to Chat's messages series, `active`
+    // to its chatters series.
     messages:    { table: 'chat_messages',     ts: 'timestamp',   agg: 'COUNT(*)',              where: 'COALESCE(is_deleted, 0) = 0' },
     active:      { table: 'chat_messages',     ts: 'timestamp',   agg: "COUNT(DISTINCT COALESCE('u' || user_id, 'a' || anon_id, 'r' || source_platform || '|' || username))", where: 'COALESCE(is_deleted, 0) = 0' },
     sessions:    { table: 'streams',           ts: 'created_at',  agg: 'COUNT(*)' },
@@ -3827,7 +3828,11 @@ const HOME_SERIES = {
 };
 const HOME_SERIES_KEYS = [...Object.keys(HOME_SERIES), 'liveNow', 'viewersNow'];
 
-function getHomeStatSeries(metric, days = 30) {
+/**
+ * The local (Live-table) daily series for one metric — the dev, rollback and Chat-unreachable
+ * answer. getHomeStatSeries routes the two chat metrics through Chat first.
+ */
+function homeSeriesLocal(metric, days = 30) {
     const def = HOME_SERIES[metric];
     if (!def) return null;
     days = Math.max(1, Math.min(365, parseInt(days, 10) || 30));
@@ -3855,6 +3860,22 @@ function getHomeStatSeries(metric, days = 30) {
     const prevTotal = scalar(`${def.ts} >= datetime('now', ?) AND ${def.ts} < datetime('now', ?)`, [`-${2 * days - 1} days`, `-${days - 1} days`]);
     return { metric, kind: 'count', days, points, total, peak: Math.max(0, ...points.map(p => p.value)),
         before: Number(before.toFixed(2)), prev_total: Number(prevTotal.toFixed(2)) };
+}
+
+/**
+ * The daily series behind a hero stat. With CHAT_AUTHORITY=chat the two chat metrics (`messages`,
+ * `active`) answer from Chat's site-wide per-day read (chat-reads.homeSeriesPeek — a cached
+ * stale-while-revalidate peek that falls back to Live's own tables when Chat is unreachable);
+ * every other metric is Live's own.
+ */
+function getHomeStatSeries(metric, days = 30) {
+    if (metric === 'messages' || metric === 'active') {
+        try {
+            const s = require('../chat/chat-reads').homeSeriesPeek(metric, days);
+            if (s) return s;
+        } catch { /* fall through to Live's own tables */ }
+    }
+    return homeSeriesLocal(metric, days);
 }
 
 /**
@@ -6995,7 +7016,7 @@ module.exports = {
     adoptOrphanedTimelineRows: () => _adoptOrphanedTimelineRows(getDb()),
     publicStream,
     getConcurrencyBaseline,
-    getHomeStatSeries, HOME_SERIES_KEYS, vibesStatsSince, _computeHomeStats,
+    getHomeStatSeries, homeSeriesLocal, HOME_SERIES_KEYS, vibesStatsSince, _computeHomeStats,
     getVodAiState, getClipAiState, forgetMediaItem,
     scheduleClipNotifyState, bumpClipNotifyNowState, markClipNotifiedState, getDueClipNotifies,
     getDb, initDb, run, get, all, close, announceModerationAction: _announceModerationAction,

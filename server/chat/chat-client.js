@@ -14,11 +14,13 @@
  *   readStats(body)   POST /internal/chat/stats                  chat.stats.read             counts, or top chatters
  *   readMessages(q)   GET  /internal/chat/messages               chat.messages.read          a page of messages
  *   readTimeline(q)   GET  /internal/chat/timeline               chat.analysis.read          time-bucketed message counts
+ *   readFirstChat(q)  GET  /internal/chat/first-chat             chat.analysis.read          has this identity ever chatted here
  *   readPendingIp(q)  GET  /internal/chat/moderation/pending-ip  chat.moderation.queue.read  held IP-approval messages
  *   readRelayUsers(q) GET  /internal/chat/moderation/relay-users chat.moderation.queue.read  hidden relay users
  *   readRelayUser(id) GET  /internal/chat/moderation/relay-users/:id chat.moderation.queue.read one hidden relay user
  *   readTtsOverride(q) GET /internal/chat/moderation/tts-override chat.moderation.queue.read a voice override
  *   readSounds(q)     GET  /internal/chat/sounds                 chat.sounds.read            a channel's sound count, or its pending assets
+ *   readSoundByCommand(q) GET /internal/chat/sounds/by-command   chat.sounds.read            the approved sound a !command plays
  *
  * Auth: Live's Network service principal (client_credentials, audience openvibe.chat, server/net/network-principal.js).
  * Every POST carries one idempotency `key` made when the operation is created and reused on every retry, so Chat
@@ -167,11 +169,28 @@ async function readStats(body) {
 
 const readMessages = (params) => read('messages', `/internal/chat/messages${qs(params)}`);
 const readTimeline = (params) => read('timeline', `/internal/chat/timeline${qs(params)}`);
+const readFirstChat = (params) => read('first-chat', `/internal/chat/first-chat${qs(params)}`);
 const readPendingIp = (params) => read('pending-ip', `/internal/chat/moderation/pending-ip${qs(params)}`);
 const readRelayUsers = (params) => read('relay-users', `/internal/chat/moderation/relay-users${qs(params)}`);
 const readRelayUser = (id) => read('relay-user', `/internal/chat/moderation/relay-users/${Number(id)}`);
 const readTtsOverride = (params) => read('tts-override', `/internal/chat/moderation/tts-override${qs(params)}`);
 const readSounds = (params) => read('sounds', `/internal/chat/sounds${qs(params)}`);
+/**
+ * GET /internal/chat/sounds/by-command — the approved sound a !command plays. Chat answers its own 404 body
+ * `{ ok: false, error: 'Sound not found' }` for a definitive "no such sound", surfaced as `{ sound: null }`; any
+ * other 404 (an older Chat without the route, a proxy page) and every other failure answer null, so the caller
+ * falls back to Live's table rather than silencing every !sound.
+ */
+async function readSoundByCommand(params) {
+    if (drill() || !principal.configured()) return null;
+    try {
+        const { status, data } = await request('GET', `/internal/chat/sounds/by-command${qs(params)}`);
+        if (status === 200 && data && data.ok !== false && data.sound) return data;
+        if (status === 404 && data && data.ok === false && data.error === 'Sound not found') return { sound: null };
+        note(`sound-by-command: Chat answered ${status}${data && data.error ? ` (${data.error})` : ''}`);
+    } catch (err) { note(`sound-by-command: ${err.message}`); }
+    return null;
+}
 /** Record where Live's asset sync uploaded a channel sound (idempotent; Chat applies the same write once). */
 async function soundAsset(body) {
     if (drill() || !principal.configured()) return null;
@@ -193,6 +212,7 @@ module.exports = {
     moderation: (body) => send('moderation', body),
     invalidate: (body) => send('invalidate', body),
     presence,
-    readStats, readMessages, readTimeline, readPendingIp, readRelayUsers, readRelayUser, readTtsOverride, readSounds, soundAsset,
+    readStats, readMessages, readTimeline, readFirstChat, readPendingIp, readRelayUsers, readRelayUser, readTtsOverride,
+    readSounds, readSoundByCommand, soundAsset,
     _setRetryMs(ms) { retryMs = ms || RETRY_MS; },
 };

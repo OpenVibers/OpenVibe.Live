@@ -203,11 +203,11 @@ function personBlock(line, channelUserId, settings) {
                 else if (db.isFollowing(line.userId, channelUserId)) flags.push('follower');
             }
         }
-        const key = line.userId ? `user:${line.username}` : (line.anonId ? `anon:${line.anonId}` : `ext:${line.username}`);
-        // stream_first_chats is Chat's (a read-mirror table) and Chat's internal read API has no
-        // first-chat route, so this stays on Live's copy — which Chat no longer fills for registered
-        // users, making the flag best-effort. Drop it when Chat offers the read.
-        if (line.userId !== channelUserId && settings.greet_first_timers && db.isFirstChatInChannel && db.isFirstChatInChannel(key, channelUserId)) flags.push('first time chatting here');
+        // stream_first_chats is Chat's; a registered identity is `user:<user_id>` (never the
+        // username), a relay one `ext:<prefixed username>`. The welcome flag reads Chat's first-chat
+        // read through a sync peek that falls back to Live's own mirror-kept table while Chat is down.
+        const identity = line.userId ? `user:${line.userId}` : (line.anonId ? `anon:${line.anonId}` : `ext:${line.username}`);
+        if (line.userId !== channelUserId && settings.greet_first_timers && chatReads.firstChatPeek(channelUserId, identity)) flags.push('first time chatting here');
     } catch { /* */ }
     const insight = ins ? clip([ins.overview_24h || ins.overview_alltime, ins.memory].filter(Boolean).join(' — '), 220) : '';
     if (!insight && !flags.length) return '';

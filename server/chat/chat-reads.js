@@ -65,7 +65,8 @@ function unsupported(message, status = 501) {
     return err;
 }
 
-function fresh(key) { const h = cache.get(key); return h && !h.failed && Date.now() - h.at < CACHE_TTL_MS ? h : null; }
+/** A fresh entry: within its own ttl when it set one (first-chat caches false longer than true), else the default. */
+function fresh(key) { const h = cache.get(key); if (!h || h.failed) return null; const ttl = h.ttl != null ? h.ttl : CACHE_TTL_MS; return Date.now() - h.at < ttl ? h : null; }
 function kept(key) { const h = cache.get(key); return h && !h.failed && Date.now() - h.at < CACHE_KEEP_MS ? h : null; }
 function cooling(key) { const h = cache.get(key); const at = h && (h.failedAt || (h.failed && h.at)); return !!at && Date.now() - at < FAIL_TTL_MS; }
 /** Keep the cache bounded: drop entries past the keep window first, then the oldest. */
@@ -74,8 +75,10 @@ function evict() {
     for (const [k, h] of cache) if (Date.now() - h.at >= CACHE_KEEP_MS) cache.delete(k);
     while (cache.size > cacheMax) cache.delete(cache.keys().next().value);
 }
-function remember(key, value) {
-    cache.set(key, { at: Date.now(), value });
+function remember(key, value, ttl) {
+    const h = { at: Date.now(), value };
+    if (ttl != null) h.ttl = ttl;
+    cache.set(key, h);
     evict();
 }
 
@@ -95,7 +98,7 @@ function rememberFailure(key) {
  * console). `ttl: 0` always reads live and never caches. An error carrying a `status` (a
  * deliberate "not supported") is handed to the caller as it is.
  */
-function load(key, remoteFn, localFn, { ttl = CACHE_TTL_MS, strict = false } = {}) {
+function load(key, remoteFn, localFn, { ttl = CACHE_TTL_MS, strict = false, ttlFor = null } = {}) {
     if (!remote()) {
         return Promise.resolve().then(async () => { try { return await localFn(); } catch (err) { note(key, err); return null; } });
     }
@@ -122,7 +125,7 @@ function load(key, remoteFn, localFn, { ttl = CACHE_TTL_MS, strict = false } = {
             return last ? last.value : null;
         }
         lastLog = null;
-        if (ttl > 0) remember(key, value);
+        if (ttl > 0) remember(key, value, ttlFor ? ttlFor(value) : undefined);
         return value;
     })().finally(() => inflight.delete(key));
     if (ttl > 0) inflight.set(key, p);
@@ -130,11 +133,11 @@ function load(key, remoteFn, localFn, { ttl = CACHE_TTL_MS, strict = false } = {
 }
 
 /** Sync answer for a caller that cannot await: fresh value, else the last good value + a background refresh, else null. */
-function peek(key, remoteFn, localFn) {
+function peek(key, remoteFn, localFn, opts) {
     if (!remote()) { try { return localFn(); } catch (err) { note(key, err); return null; } }
     const hit = fresh(key);
     if (hit) return hit.value;
-    load(key, remoteFn, localFn).catch(() => { /* logged in load() */ });   // floating-ok: refreshes for the next peek
+    load(key, remoteFn, localFn, opts).catch(() => { /* logged in load() */ });   // floating-ok: refreshes for the next peek
     const last = kept(key);
     return last ? last.value : null;
 }
@@ -165,6 +168,60 @@ function localSiteStatsMessages() {
     return { messages: Number(r.messages) || 0 };
 }
 function siteStatsPeek() { return peek('site', remoteSiteStats, localSiteStatsMessages); }
+
+// ── Home daily series (the hero charts) ──────────────────────────────────────
+// Live's home `messages`/`active` charts are Chat's site-wide per-day series. One peek serves the
+// whole envelope getHomeStatSeries returns: the per-day counts come from Chat's site-daily read, and
+// `before`/`prev_total` keep Live's window-wide semantics (a COUNT / COUNT(DISTINCT) over the whole
+// range), so they are Chat's `site` stats over [epoch, window start) and over the window just before
+// it. The peek key is coarse (per UTC day) so every compute within a day hits the same cached answer.
+const DAY_MS = 86_400_000;
+const utcDayStart = (t) => Math.floor(t / DAY_MS) * DAY_MS;
+const clampSeriesDays = (days) => Math.max(1, Math.min(365, parseInt(days, 10) || 30));
+
+async function remoteHomeSeries(metric, days) {
+    const until = utcDayStart(Date.now()) + DAY_MS;   // exclusive: tomorrow 00:00 UTC
+    const since = until - days * DAY_MS;
+    const out = await client.readStats({ kind: 'site-daily', since, until });
+    if (!out || !Array.isArray(out.days)) throw unavailable('home series');
+    const field = metric === 'active' ? 'chatters' : 'messages';
+    const byDay = new Map(out.days.map((d) => [String(d.day), Number(d[field]) || 0]));
+    const points = [];
+    for (let i = days - 1; i >= 0; i--) {
+        const day = new Date(until - (i + 1) * DAY_MS).toISOString().slice(0, 10);
+        points.push({ day, value: Number((byDay.get(day) || 0).toFixed(2)) });
+    }
+    const total = Number(points.reduce((a, p) => a + p.value, 0).toFixed(2));
+    const [beforeOut, prevOut] = await Promise.all([
+        client.readStats({ kind: 'site', until: since }),
+        client.readStats({ kind: 'site', since: since - days * DAY_MS, until: since }),
+    ]);
+    if (!beforeOut || !prevOut) throw unavailable('home series totals');
+    const pick = (o) => Number(metric === 'active' ? o.chatters : o.messages) || 0;
+    return { metric, kind: 'count', days, points, total, peak: Math.max(0, ...points.map((p) => p.value)), before: pick(beforeOut), prev_total: pick(prevOut) };
+}
+
+/** The daily series behind a hero stat, from Chat (remote) or Live's own tables (local), cached. */
+function homeSeries(metric, days) {
+    const d = clampSeriesDays(days);
+    const key = `hs:${metric}:${d}:${utcDayStart(Date.now())}`;
+    const localFn = () => local().homeSeriesLocal(metric, d);
+    return load(key, () => remoteHomeSeries(metric, d), localFn).then((v) => v || safeLocal(localFn, null));
+}
+/**
+ * The same for the synchronous home-stats series route: the last good answer (or, on a cold cache,
+ * Live's mirror-filled tables) while Chat refreshes in the background — never zeros just because
+ * Chat has not answered yet.
+ */
+function homeSeriesPeek(metric, days) {
+    const d = clampSeriesDays(days);
+    const key = `hs:${metric}:${d}:${utcDayStart(Date.now())}`;
+    const localFn = () => local().homeSeriesLocal(metric, d);
+    const v = peek(key, () => remoteHomeSeries(metric, d), localFn);
+    if (v) return v;
+    if (!remote()) return null;          // the peek already answered from Live's own tables
+    return safeLocal(localFn, null);     // cold / Chat unreachable: Live's mirror-filled tables
+}
 
 /** The busiest chatters of a room (or the site, when neither stream nor channel is given), newest window first. */
 function topChatters({ since, streamId, channelUserId, limit = 10 } = {}) {
@@ -487,6 +544,44 @@ function spikeOffsets(streamId, bucketSec = 30, topN = 8, sinceMs) {
     }, () => local().getChatSpikeOffsets(id, bucketSec, topN) || []);
 }
 
+// ── First chat (the welcome check) ───────────────────────────────────────────
+// Chat owns stream_first_chats; the AI context's "first time chatting here" flag asks Chat's
+// first-chat read. A false answer (they have chatted here) is stable and cached longer; a true
+// answer flips the moment they chat, so it is cached only briefly. The sync caller uses
+// firstChatPeek; on a cold cache or a Chat outage it answers Live's own (mirror-kept) table.
+const FIRST_CHAT_TTL_FALSE = 5 * 60_000;   // has chatted here: stable
+const FIRST_CHAT_TTL_TRUE = CACHE_TTL_MS;  // first time: flips as soon as they chat
+
+function firstChatLocal(identity, channelUserId) {
+    return safeLocal(() => local().isFirstChatInChannel(identity, channelUserId), false);
+}
+function firstChatRemote(channelUserId, identity) {
+    return async () => {
+        const out = await client.readFirstChat({ channel_id: channelUserId, identity });
+        if (!out || typeof out.first !== 'boolean') throw unavailable('first-chat');
+        return out.first;
+    };
+}
+/** Has this identity (`user:<id>` | `anon:<anonId>` | `ext:<prefixed username>`) ever chatted here? */
+function firstChat(channelUserId, identity) {
+    const channelId = Number(channelUserId) || 0;
+    const key = String(identity || '');
+    if (!channelId || !key) return Promise.resolve(false);
+    return load(`fc:${channelId}:${key}`, firstChatRemote(channelId, key), () => firstChatLocal(key, channelId), {
+        ttl: FIRST_CHAT_TTL_TRUE, ttlFor: (v) => (v === false ? FIRST_CHAT_TTL_FALSE : FIRST_CHAT_TTL_TRUE),
+    }).then((v) => (v == null ? firstChatLocal(key, channelId) : v === true));
+}
+/** The synchronous form (the AI persona prompt): the cached answer, else Live's own table. */
+function firstChatPeek(channelUserId, identity) {
+    const channelId = Number(channelUserId) || 0;
+    const key = String(identity || '');
+    if (!channelId || !key) return false;
+    const v = peek(`fc:${channelId}:${key}`, firstChatRemote(channelId, key), () => firstChatLocal(key, channelId), {
+        ttl: FIRST_CHAT_TTL_TRUE, ttlFor: (x) => (x === false ? FIRST_CHAT_TTL_FALSE : FIRST_CHAT_TTL_TRUE),
+    });
+    return (v === true || v === false) ? v : firstChatLocal(key, channelId);
+}
+
 // ── Moderation queues ─────────────────────────────────────────────────────────
 // These answer the console's own actions, so they are live (ttl: 0) and strict: a Chat failure is
 // a 503, never a stale or empty queue (it could hide a ban the moderator just set).
@@ -605,6 +700,37 @@ function soundCount(ownerId) {
     });
 }
 
+const normalizeCommand = (command) => String(command || '').trim().toLowerCase().replace(/^!+/, '');
+async function remoteSoundByCommand(ownerId, command) {
+    const out = await client.readSoundByCommand({ channel_id: ownerId, command });
+    if (out == null) throw unavailable('sound by command');   // unreachable: keep / fall back
+    return out.sound || false;                                 // the sound, or Chat's definitive none
+}
+/** The approved sound a !command plays (or null); Chat owns the row, Live's table is the fallback. */
+function soundByCommand(ownerId, command) {
+    const id = Number(ownerId) || 0;
+    const cmd = normalizeCommand(command);
+    if (!id || !cmd) return Promise.resolve(null);
+    const localFn = () => local().getChannelSoundByCommand(id, cmd) || null;
+    return load(`sbc:${id}:${cmd}`, () => remoteSoundByCommand(id, cmd), localFn).then((v) => {
+        if (v === false) return null;     // Chat answered: no such sound
+        if (v) return v;
+        return safeLocal(localFn, null);  // cold / outage: Live's own table
+    });
+}
+/** The synchronous form (the RobotStreamer !sound lookup): cached answer, else Live's own table. */
+function soundByCommandPeek(ownerId, command) {
+    const id = Number(ownerId) || 0;
+    const cmd = normalizeCommand(command);
+    if (!id || !cmd) return null;
+    const localFn = () => local().getChannelSoundByCommand(id, cmd) || null;
+    const v = peek(`sbc:${id}:${cmd}`, () => remoteSoundByCommand(id, cmd), localFn);
+    if (v) return v;
+    if (v === false) return null;         // Chat answered: no such sound
+    if (!remote()) return null;           // the peek already answered from Live's own table
+    return safeLocal(localFn, null);      // cold / Chat unreachable: Live's mirror-filled table
+}
+
 /**
  * Channel sounds not yet uploaded to Media (asset-sync's work list), oldest first, paged by id.
  * Never cached: the sync must see the upload it just recorded, or it uploads the same sound twice.
@@ -652,11 +778,11 @@ function _size() { return cache.size; }
 function _cacheMax(n) { if (n != null && Number(n) > 0) cacheMax = Number(n); return cacheMax; }
 
 module.exports = {
-    siteStats, siteStatsPeek, topChatters,
+    siteStats, siteStatsPeek, topChatters, homeSeries, homeSeriesPeek,
     windowStats, windowStatsPeek, streamStats, streamStatsPeek, channelMaxId, channelMaxIdPeek, userMessageCountPeek,
     messageById, channelMessages, channelMessagesPeek, userHistory, relayHistory, channelSamples, searchMessages,
-    liveChatBuckets, recentChatText, spikeOffsets,
+    liveChatBuckets, recentChatText, spikeOffsets, firstChat, firstChatPeek,
     pendingIp, relayUsers, relayUser, ttsOverride, ttsOverridePeek, isRelayUserHidden,
-    soundCount, pendingSounds, recordSoundAsset, invalidate,
+    soundCount, soundByCommand, soundByCommandPeek, pendingSounds, recordSoundAsset, invalidate,
     _reset, _age, _size, _cacheMax, CACHE_TTL_MS, CACHE_KEEP_MS,
 };

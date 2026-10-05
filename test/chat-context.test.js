@@ -56,13 +56,14 @@ const network = http.createServer((req, res) => {
 // Chat's internal read API (roadmap T3 J4b): Live reads stats, queues, history and sounds through
 // these. The stub answers from Live's own tables (emulating Chat's copy) so the seeds apply, and
 // `readState.down` fails every read the way a Chat outage does.
-const readState = { down: false, soundAssetDown: false, relayOnly: [], msgById: 0 };
+const readState = { down: false, soundAssetDown: false, relayOnly: [], msgById: 0, firstChatCalls: 0 };
 function readReply(req, res, raw) {
     const url = String(req.url);
     const path = url.split('?')[0];
     const q = new URLSearchParams(url.split('?')[1] || '');
-    const isRead = path === '/internal/chat/stats' || path === '/internal/chat/messages'
-        || path.startsWith('/internal/chat/moderation/') || path === '/internal/chat/sounds' || path === '/internal/chat/sounds/asset';
+    const isRead = path === '/internal/chat/stats' || path === '/internal/chat/messages' || path === '/internal/chat/first-chat'
+        || path.startsWith('/internal/chat/moderation/') || path === '/internal/chat/sounds'
+        || path === '/internal/chat/sounds/by-command' || path === '/internal/chat/sounds/asset';
     if (!isRead) return false;
     if (readState.down) { res.statusCode = 503; res.end(JSON.stringify({ ok: false, error: 'Chat read unavailable' })); return true; }
     if (path === '/internal/chat/sounds/asset' && readState.soundAssetDown) { res.statusCode = 503; res.end(JSON.stringify({ ok: false, error: 'Chat sound write unavailable' })); return true; }
@@ -71,12 +72,39 @@ function readReply(req, res, raw) {
     const param = (col, v) => (['channel_user_id', 'stream_id', 'user_id', 'id'].includes(col) ? Number(v) : String(v));
     if (path === '/internal/chat/stats') {
         const b = JSON.parse(raw || '{}');
+        const sqlTime = (t) => new Date(t).toISOString().slice(0, 19).replace('T', ' ');
+        const CHATTER = "COALESCE('u:' || user_id, 'a:' || anon_id, source_platform || ':' || username)";
         if (b.kind === 'channel-top') {
             const t = d2.all(`SELECT user_id, MAX(username) AS username, COUNT(*) AS count FROM chat_messages WHERE is_deleted = 0 AND message_type <> 'system' GROUP BY user_id ORDER BY count DESC LIMIT ?`, [b.limit || 10]);
             return ok({ top_chatters: t.map((r) => ({ user_id: r.user_id, username: r.username, count: Number(r.count) })) });
         }
-        const r = d2.get('SELECT COUNT(*) AS messages FROM chat_messages WHERE is_deleted = 0');
-        return ok({ messages: Number(r.messages), chatters: 2 });
+        if (b.kind === 'site-daily') {
+            const DAY = 86400000;
+            const dayStart = (t) => Math.floor(t / DAY) * DAY;
+            const rows = d2.all(`SELECT substr(timestamp, 1, 10) AS day, COUNT(*) AS messages, COUNT(DISTINCT ${CHATTER}) AS chatters
+                FROM chat_messages WHERE COALESCE(is_deleted, 0) = 0 AND timestamp >= ? AND timestamp < ? GROUP BY day`,
+                [sqlTime(b.since), sqlTime(b.until)]);
+            const by = new Map(rows.map((r) => [String(r.day), r]));
+            const days = [];
+            for (let t = dayStart(b.since), last = dayStart(b.until - 1); t <= last; t += DAY) {
+                const day = new Date(t).toISOString().slice(0, 10);
+                const r = by.get(day);
+                days.push({ day, messages: r ? Number(r.messages) : 0, chatters: r ? Number(r.chatters) : 0 });
+            }
+            return ok({ days });
+        }
+        const where = ['is_deleted = 0'];
+        const params = [];
+        if (b.since != null) { where.push('timestamp >= ?'); params.push(sqlTime(b.since)); }
+        if (b.until != null) { where.push('timestamp < ?'); params.push(sqlTime(b.until)); }
+        if (b.kind === 'user' && b.user_id != null) { where.push('user_id = ?'); params.push(Number(b.user_id)); }
+        const r = d2.get(`SELECT COUNT(*) AS messages, COUNT(DISTINCT ${CHATTER}) AS chatters FROM chat_messages WHERE ${where.join(' AND ')}`, params);
+        return ok({ messages: Number(r.messages), chatters: Number(r.chatters) });
+    }
+    if (path === '/internal/chat/first-chat') {
+        readState.firstChatCalls++;
+        const r = d2.get('SELECT 1 AS present FROM stream_first_chats WHERE chatter_key = ? AND channel_user_id = ?', [String(q.get('identity')), Number(q.get('channel_id'))]);
+        return ok({ first: !r });
     }
     if (path === '/internal/chat/messages') {
         if (q.get('id') != null) readState.msgById++;
@@ -114,6 +142,14 @@ function readReply(req, res, raw) {
         d2.run('UPDATE channel_sounds SET media_url = ?, media_asset_id = ? WHERE id = ?', [b.media_url, b.media_asset_id, b.id]);
         return ok({});
     }
+    if (path === '/internal/chat/sounds/by-command') {
+        const cmd = String(q.get('command') || '').trim().toLowerCase().replace(/^!+/, '');
+        // A 404 that is not Chat's own "no such sound" (an older Chat, a proxy page).
+        if (cmd === 'bare404') { res.statusCode = 404; res.setHeader('content-type', 'text/html'); res.end('<html>Not Found</html>'); return true; }
+        const r = d2.get('SELECT * FROM channel_sounds WHERE channel_owner_id = ? AND command = ? AND is_approved = 1 ORDER BY RANDOM() LIMIT 1', [Number(q.get('channel_id')), cmd]);
+        if (!r) { res.statusCode = 404; res.end(JSON.stringify({ ok: false, error: 'Sound not found' })); return true; }
+        return ok({ sound: r });
+    }
     if (path === '/internal/chat/sounds') {
         if (q.get('pending_asset') === '1') {
             const where = ['media_asset_id IS NULL'];
@@ -134,7 +170,7 @@ const chat = http.createServer((req, res) => {
     req.on('data', (c) => { raw += c; });
     req.on('end', () => {
         res.setHeader('Content-Type', 'application/json');
-        assert.ok(String(req.headers.authorization || '').startsWith('Bearer '), 'Live calls Chat with a service token');
+        assert.ok(!String(req.url).startsWith('/internal/') || String(req.headers.authorization || '').startsWith('Bearer '), 'Live calls Chat with a service token');
         assert.ok(!String(req.url).startsWith('/internal/live/'), 'nothing goes over the old bridge');
         const im = String(req.url).match(/^\/internal\/chat\/(messages|events|moderation|invalidate)$/);
         if (im) {
@@ -754,6 +790,127 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
                     chatReads._reset();
                 }
             }
+        }
+
+        // 11b. The last three mirror readers read Chat now (roadmap T3 J4c): the home daily series,
+        // the AI context's first-chat flag and the RobotStreamer !sound lookup.
+        {
+            const chatReads = require('../server/chat/chat-reads');
+            const d2 = require('../server/db/database');
+            const DAY = 86400000;
+            const sqlNow = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+            // ── Home daily series: Chat's site-daily read, mapped per metric; a cold cache during a
+            // Chat outage answers Live's own series (never zeros). ──
+            d2.run('DELETE FROM chat_messages');
+            chatReads._reset();
+            const atDay = (back) => new Date(Date.now() - back * DAY).toISOString().slice(0, 10) + ' 12:00:00';
+            d2.run("INSERT INTO chat_messages (user_id, username, message, message_type, timestamp) VALUES (?, 'viewer', 'a', 'chat', ?), (?, 'viewer', 'b', 'chat', ?), (?, 'moddy', 'c', 'chat', ?)",
+                [viewer, atDay(2), viewer, atDay(2), mod, atDay(2)]);
+            d2.run("INSERT INTO chat_messages (user_id, username, message, message_type, timestamp) VALUES (?, 'viewer', 'd', 'chat', ?), (?, 'moddy', 'e', 'chat', ?)",
+                [viewer, atDay(1), mod, atDay(1)]);
+            const series = chatReads.homeSeriesPeek('messages', 7);
+            assert.ok(series && Array.isArray(series.points), 'the chat series peek answers in chat mode');
+            assert.strictEqual(series.days, 7);
+            assert.strictEqual(series.points.length, 7, 'one zero-filled point per day');
+            assert.strictEqual(series.points[4].value, 3, 'two days ago: three messages (Chat)');
+            assert.strictEqual(series.points[5].value, 2, 'yesterday: two messages (Chat)');
+            assert.strictEqual(series.points[6].value, 0, 'today: none');
+            assert.strictEqual(series.total, 5);
+            assert.strictEqual(series.prev_total, 0, 'the window before the 7 days is empty');
+            assert.strictEqual(series.before, 0, 'nothing before the window');
+            const activeSeries = chatReads.homeSeriesPeek('active', 7);
+            assert.strictEqual(activeSeries.points[4].value, 2, 'two days ago: two distinct chatters');
+            assert.strictEqual(activeSeries.points[5].value, 2, 'yesterday: two distinct chatters');
+            // getHomeStatSeries routes the two chat metrics through the chat series.
+            const realSeriesPeek = chatReads.homeSeriesPeek;
+            chatReads.homeSeriesPeek = () => ({ metric: 'messages', sentinel: true });
+            try { assert.strictEqual(d2.getHomeStatSeries('messages', 7).sentinel, true, 'getHomeStatSeries reads the chat series in chat mode'); }
+            finally { chatReads.homeSeriesPeek = realSeriesPeek; }
+            // A cold cache during a Chat outage answers Live's own table, not zeros.
+            chatReads._reset();
+            readState.down = true;
+            const fallbackSeries = chatReads.homeSeriesPeek('messages', 7);
+            assert.ok(fallbackSeries && fallbackSeries.points.length === 7, 'a cold + down peek answers Live\'s own series');
+            assert.strictEqual(fallbackSeries.total, 5, 'the fallback is Live\'s own series, not zeros');
+            readState.down = false;
+            chatReads._reset();
+
+            // ── First chat: `user:<user_id>` (never the username); a false answer is cached longer
+            // than a true one; a cold/down peek falls to Live's own table. ──
+            d2.run('DELETE FROM stream_first_chats');
+            chatReads._reset();
+            assert.strictEqual(await chatReads.firstChat(streamer, `user:${viewer}`), true, 'a new identity is first');
+            d2.run('INSERT INTO stream_first_chats (chatter_key, channel_user_id) VALUES (?, ?)', [`user:${viewer}`, streamer]);
+            chatReads._reset();
+            assert.strictEqual(await chatReads.firstChat(streamer, `user:${viewer}`), false, 'after a recorded first chat, not first');
+            chatReads._reset();
+            readState.firstChatCalls = 0;
+            await chatReads.firstChat(streamer, `user:${viewer}`);
+            chatReads._age(chatReads.CACHE_TTL_MS + 1000, 'fc:');
+            readState.firstChatCalls = 0;
+            await chatReads.firstChat(streamer, `user:${viewer}`);
+            assert.strictEqual(readState.firstChatCalls, 0, 'a false answer is not re-asked past the true TTL');
+            // The same holds through the sync peek the AI context uses.
+            chatReads._reset();
+            readState.firstChatCalls = 0;
+            assert.strictEqual(chatReads.firstChatPeek(streamer, `user:${viewer}`), false);
+            await sleep(30);
+            chatReads._age(chatReads.CACHE_TTL_MS + 1000, 'fc:');
+            readState.firstChatCalls = 0;
+            assert.strictEqual(chatReads.firstChatPeek(streamer, `user:${viewer}`), false, 'the peek keeps a false answer past the true TTL');
+            assert.strictEqual(readState.firstChatCalls, 0, 'the peek does not re-ask Chat for the cached false answer');
+            d2.run('DELETE FROM stream_first_chats WHERE chatter_key = ?', [`user:${viewer}`]);
+            chatReads._reset();
+            readState.firstChatCalls = 0;
+            await chatReads.firstChat(streamer, `user:${viewer}`);
+            chatReads._age(chatReads.CACHE_TTL_MS + 1000, 'fc:');
+            readState.firstChatCalls = 0;
+            await chatReads.firstChat(streamer, `user:${viewer}`);
+            assert.strictEqual(readState.firstChatCalls, 1, 'a true answer is re-asked after the short TTL');
+            chatReads._reset();
+            d2.run('INSERT INTO stream_first_chats (chatter_key, channel_user_id) VALUES (?, ?)', [`user:${viewer}`, streamer]);
+            readState.down = true;
+            assert.strictEqual(chatReads.firstChatPeek(streamer, `user:${viewer}`), false, 'a cold + down peek falls to Live\'s own table');
+            readState.down = false;
+            chatReads._reset();
+
+            // The AI context passes `user:<user_id>`, never the username: a row keyed by the numeric id
+            // suppresses the welcome flag, where the old `user:<username>` key would have missed it.
+            d2.run("INSERT INTO chat_messages (user_id, username, message, message_type, channel_user_id, timestamp) VALUES (?, 'viewer', 'hi there', 'chat', ?, ?)", [viewer, streamer, sqlNow()]);
+            await chatReads.channelMessages(streamer, 40);
+            const context = require('../server/ai/context');
+            const ctxStream = db.getStreamById(streamId);
+            const greet = { remember_viewers: true, greet_first_timers: true, max_open_threads: 3, hear_enabled: false };
+            chatReads.invalidate('fc:');
+            let tail = context.volatileTail({ userId: streamer, stream: ctxStream, settings: greet, sinceChatId: 0, botNames: new Set() });
+            assert.ok(!/first time chatting here/.test(tail.text), 'a user with a recorded first chat is not greeted again');
+            d2.run('DELETE FROM stream_first_chats WHERE chatter_key = ?', [`user:${viewer}`]);
+            chatReads.invalidate('fc:');
+            tail = context.volatileTail({ userId: streamer, stream: ctxStream, settings: greet, sinceChatId: 0, botNames: new Set() });
+            assert.ok(/first time chatting here/.test(tail.text), 'a new user is flagged first time (user:<id> identity)');
+            chatReads._reset();
+
+            // ── Sounds by command: Chat owns the row; a 404 is authoritative; a cold/down peek falls
+            // to Live's own table. ──
+            d2.run('DELETE FROM channel_sounds WHERE channel_owner_id = ?', [streamer]);
+            d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 'honk', '/sounds/h.mp3', ?)", [streamer, streamer]);
+            chatReads._reset();
+            const honk = chatReads.soundByCommandPeek(streamer, 'honk');
+            assert.ok(honk && honk.command === 'honk', 'Chat answers the sound by command');
+            assert.strictEqual(chatReads.soundByCommandPeek(streamer, '!HONK').command, 'honk', 'the command is normalized');
+            assert.strictEqual(await chatReads.soundByCommand(streamer, 'nope'), null, 'Chat: no such sound');
+            d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 'nope', '/sounds/n.mp3', ?)", [streamer, streamer]);
+            assert.strictEqual(chatReads.soundByCommandPeek(streamer, 'nope'), null, 'a Chat 404 is cached: Live\'s own row is not used');
+            chatReads._reset();
+            readState.down = true;
+            assert.ok(chatReads.soundByCommandPeek(streamer, 'honk'), 'a cold + down peek falls back to Live\'s own table');
+            readState.down = false;
+            chatReads._reset();
+            d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 'bare404', '/sounds/b.mp3', ?)", [streamer, streamer]);
+            const bare = await chatReads.soundByCommand(streamer, 'bare404');
+            assert.ok(bare && bare.command === 'bare404', 'a 404 without Chat\'s own body is not "no such sound": Live\'s table answers');
+            chatReads._reset();
         }
 
         // 12. Robot commands from chat pass the control panel's gate: control mode, anonymous switch, whitelist, cooldown.
