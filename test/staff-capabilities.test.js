@@ -62,7 +62,6 @@ assert.deepStrictEqual(p.getCapabilities(null).staff_caps, []);
 const TARGET_RANK = [
     ['internal/routes.js', "user.is_owner && role !== 'admin'"],
     ['chat/live-context-routes.js', "target.role === 'admin'"],
-    ['chat/chat-server.js', "targetUser.role === 'admin'"],
     ['admin/routes.js', "target.role === 'admin'"],
     ['admin/routes.js', "banTarget.role === 'admin'"],
     ['admin/routes.js', "if (user.role === 'admin') return res.status(400)"],

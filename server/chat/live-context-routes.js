@@ -270,13 +270,13 @@ effectsRouter.use((req, res, next) => {
     next();
 });
 
-const chatServer = () => require('./chat-server');
+const chatDelivery = () => require('./chat-delivery');
 const actorOf = (id) => (id ? db.getUserById(id) : null);
 
 effectsRouter.post('/anon', async (req, res) => {
     const ip = String(req.body?.ip || '');
     if (!ip) return fail(res, 400, 'ip required');
-    try { res.json(await chatServer().resolveAnon(ip)); } catch (err) { fail(res, 500, err.message); }
+    try { res.json(await chatDelivery().resolveAnon(ip)); } catch (err) { fail(res, 500, err.message); }
 });
 
 effectsRouter.post('/ip-log', (req, res) => {

@@ -21,7 +21,7 @@ const WebSocket = require('ws');
 const db = require('../db/database');
 const { extractWsToken, authenticateWs } = require('../auth/auth');
 const permissions = require('../auth/permissions');
-const chatServer = require('../chat/chat-server');
+const chatDelivery = require('../chat/chat-delivery');
 const cosmetics = require('../monetization/cosmetics');
 
 const WS_HEARTBEAT_MS = 30000;
@@ -239,7 +239,7 @@ class CallServer {
         const url = new URL(req.url, 'http://localhost');
         const channelId = url.searchParams.get('channelId') || url.searchParams.get('streamId');
         const token = extractWsToken(req);
-        const ip = chatServer.normalizeIp(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress);
+        const ip = chatDelivery.normalizeIp(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress);
 
         ws.isAlive = true;
         ws.on('pong', () => { ws.isAlive = true; });
@@ -263,7 +263,7 @@ class CallServer {
         if (channel.private && !this._canSeePrivate(channel, user)) { ws.send(JSON.stringify({ type: 'error', message: 'This is a private call' })); ws.close(); return; }
 
         const peerId = this._generatePeerId();
-        const anonId = user ? null : chatServer.getAnonIdForConnection(ip, resolvedId);
+        const anonId = user ? null : chatDelivery.getAnonIdForConnection(ip, resolvedId);
         const identity = user ? `u:${user.id}` : (anonId ? `a:${anonId}` : `ip:${ip}`);
         const cooled = this.kickCooldown.get(`${resolvedId}:${identity}`);
         if (cooled && cooled > Date.now()) { ws.send(JSON.stringify({ type: 'error', message: 'You were removed from this channel; try again in a minute' })); ws.close(); return; }
@@ -401,7 +401,7 @@ class CallServer {
                     if (c.ws.readyState === WebSocket.OPEN) { c.ws.send(JSON.stringify({ type: 'error', message: 'Banned' })); c.ws.close(); } break;
                 }
                 const ch = this.channels.get(channelId);
-                c.user = user; c.anonId = user ? null : chatServer.getAnonIdForConnection(c.ip, channelId);
+                c.user = user; c.anonId = user ? null : chatDelivery.getAnonIdForConnection(c.ip, channelId);
                 c.isChannelCreator = !!(user && ch?.createdBy === user.id);
                 c.isStreamer = ch?.streamId ? !!(user && db.getStreamById(ch.streamId)?.user_id === user.id) : false;
                 const pInfo = this._buildParticipantInfo(peerId, c);

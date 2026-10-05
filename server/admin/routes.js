@@ -42,7 +42,6 @@ const path = require('path');
 const { execSync } = require('child_process');
 const db = require('../db/database');
 const { requireAuth } = require('../auth/auth');
-const chatServer = require('../chat/chat-server');
 const delivery = require('../chat/chat-delivery');
 const chatReads = require('../chat/chat-reads');
 const permissions = require('../auth/permissions');
@@ -65,7 +64,7 @@ router.get('/diagnostics', (req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json(require('../diagnostics').snapshot({
         db,
-        chatServer: require('../chat/chat-server'),
+        chatDelivery: require('../chat/chat-delivery'),
         broadcastServer: require('../streaming/broadcast-server'),
         callServer: (() => { try { return require('../streaming/call-server'); } catch { return null; } })(),
         restreamManager: (() => { try { return require('../streaming/restream-manager'); } catch { return null; } })(),
@@ -253,7 +252,7 @@ router.put('/users/:id', (req, res) => {
             delivery.invalidate({
                 user: id,
                 user_data: { id, username: safeUser.username, display_name: safeUser.display_name || null, role: safeUser.role || null, avatar_url: safeUser.avatar_url || null, profile_color: safeUser.profile_color || null },
-            }, () => chatServer.sendUserUpdate(id, safeUser));
+            });
         }
 
         res.json({ user: safeUser });

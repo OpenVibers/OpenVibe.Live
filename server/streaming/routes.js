@@ -34,7 +34,6 @@ const openreMirror = require('../openre/mirror');
 const i18n = require('../i18n/translate');
 const robotStreamerService = require('../integrations/robotstreamer-service');
 const chatRelayService = require('../integrations/chat-relay-service');
-const chatServer = require('../chat/chat-server');
 // The six chat tables are OpenVibe.Chat's (roadmap T3); the few reads here go through its client.
 const moderation = require('../chat/moderation-client');
 const chatReads = require('../chat/chat-reads');

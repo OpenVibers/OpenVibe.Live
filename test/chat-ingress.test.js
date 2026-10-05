@@ -117,10 +117,8 @@ function assertSigned(c, what) {
     const streamId = Number(db.createStream({ user_id: streamer, channel_id: channel.id, title: 'Live now' }).lastInsertRowid);
 
     const delivery = require('../server/chat/chat-delivery');
-    const chatServer = require('../server/chat/chat-server');
-    assert.strictEqual(chatServer.remote, true);
     assert.strictEqual(delivery.ingress(), true, 'CHAT_AUTHORITY=chat is ingress, with no flag');
-    chatServer.init();
+    delivery.init();
     delivery.client._setRetryMs([20, 20]);
 
     let exit = 0;
@@ -206,7 +204,7 @@ function assertSigned(c, what) {
 
         // 5b. A news headline: one keyed /events card to the stream.
         const news = require('../server/news/news-service');
-        news._chatServer = chatServer;
+        news._chatServer = delivery;
         news._getActiveStreamIds = () => [streamId];
         news.isEnabledForStream = () => true;
         news._pendingQueue.push({ headline: 'Big news', sourceId: 'test' });
@@ -218,7 +216,7 @@ function assertSigned(c, what) {
 
         // 6. Deploy notice: no ingress endpoint, Events off → left unannounced (next boot retries), never bridged.
         const before = db.getSetting('deploy_last_announced');
-        const dn = await require('../server/chat/deploy-notice').announce({ db, chatServer, log: { warn() {}, log() {}, info() {} } });
+        const dn = await require('../server/chat/deploy-notice').announce({ db, log: { warn() {}, log() {}, info() {} } });
         assert.strictEqual(dn.announced, 0);
         assert.strictEqual(db.getSetting('deploy_last_announced'), before, 'not recorded as announced');
 
@@ -229,8 +227,8 @@ function assertSigned(c, what) {
         assertSigned(await waitFor(() => find('invalidate', (b) => b.user === viewer), 'user hint'), 'user hint');
 
         // 8. Presence comes from /internal/chat/presence.
-        await waitFor(() => chatServer.getTotalConnections() === 4, 'presence snapshot');
-        assert.strictEqual(chatServer.getConnectedUserIp(99), '198.51.100.9');
+        await waitFor(() => delivery.getTotalConnections() === 4, 'presence snapshot');
+        assert.strictEqual(delivery.getConnectedUserIp(99), '198.51.100.9');
 
         // 9. A Chat 5xx: retried with the same key, then given up; never thrown, never bridged.
         fail.events = { status: 503, times: 1 };
@@ -264,12 +262,12 @@ function assertSigned(c, what) {
         const saved = {};
         for (const k of synth) { saved[k] = tts[k]; tts[k] = (...a) => { touched.push(k); return saved[k](...a); }; }
         const n = calls.length;
-        chatServer.broadcastToStream(streamId, { type: 'system', message: 'direct' });
-        chatServer.sendDm(viewer, { type: 'dm-notice' });
-        chatServer.disconnectUser({ userId: viewer, streamId });
-        chatServer.sendUserUpdate(viewer, { username: 'viewer', display_name: 'VIEWER', password_hash: 'never' });
-        chatServer.forwardToGlobal(streamId, { type: 'chat', message: 'no target' });
-        await chatServer.synthesizeAndBroadcastTTS(streamId, 'Bot', 'beep', null, null, 'aibot:bot', null, 'm1');
+        delivery.broadcastToStream(streamId, { type: 'system', message: 'direct' });
+        delivery.sendDm(viewer, { type: 'dm-notice' });
+        delivery.disconnectUser({ userId: viewer, streamId });
+        delivery.sendUserUpdate(viewer, { username: 'viewer', display_name: 'VIEWER', password_hash: 'never' });
+        delivery.forwardToGlobal(streamId, { type: 'chat', message: 'no target' });
+        await delivery.synthesizeAndBroadcastTTS(streamId, 'Bot', 'beep', null, null, 'aibot:bot', null, 'm1');
         for (const k of synth) tts[k] = saved[k];
         assert.deepStrictEqual(touched, [], 'no TTS synthesis in Live');
         await waitFor(() => calls.length >= n + 4, 'direct pushes');
@@ -279,9 +277,9 @@ function assertSigned(c, what) {
         // CHAT_AUTHORITY unset under a RemoteChatServer (a test or a bad env edit): dropped, never bounced back.
         process.env.CHAT_AUTHORITY = '';
         assert.strictEqual(delivery.ingress(), false);
-        assert.strictEqual(chatServer.broadcastToStream(streamId, { type: 'system', message: 'x' }), undefined);
+        assert.strictEqual(delivery.broadcastToStream(streamId, { type: 'system', message: 'x' }), undefined);
         process.env.CHAT_AUTHORITY = 'chat';
-        chatServer.close();
+        delivery.close();
 
         quiet('chat ingress (CHAT_AUTHORITY=chat): all checks passed');
     } catch (err) {

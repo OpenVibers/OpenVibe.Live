@@ -54,7 +54,7 @@ function connect(port, token) {
     assert.strictEqual(hasVibeCodingPublishScope({ scopes: ['read', 'stream', 'control'] }), false, 'the broad stream scope is not a publisher scope');
 
     // The real WebSocket endpoint with real hbt_ tokens.
-    const pub = new VibeCodingPublishServer({ broadcastToStream() {} }, db);
+    const pub = new VibeCodingPublishServer(db);
     const server = http.createServer();
     pub.init(server);
     server.on('upgrade', (req, socket, head) => { if (!pub.handleUpgrade(req, socket, head)) socket.destroy(); });

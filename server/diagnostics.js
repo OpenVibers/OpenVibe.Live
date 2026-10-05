@@ -46,7 +46,7 @@ function snapshot(services = {}) {
         memoryMb: { rss: mb(mem.rss), heapUsed: mb(mem.heapUsed), heapTotal: mb(mem.heapTotal), external: mb(mem.external) },
         eventLoop: { lastMinute: lastWindow },
         connections: {
-            chat: safe(() => services.chatServer.getTotalConnections()),
+            chat: safe(() => services.chatDelivery.getTotalConnections()),
             broadcast: safe(() => services.broadcastServer.clients.size),
             call: safe(() => services.callServer.clients.size),
             liveEventStreams: safe(() => require('./streaming/live-events').clientCount()),

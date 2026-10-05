@@ -134,11 +134,13 @@ Recording, VODs and clips are produced by OpenVibe.Media from the live session
 
 ## Chat
 ```
-Client WS → chat-server.js → SQLite (saveChatMessage) → room broadcast (stream / channel / global)
+Client WS → OpenVibe.Chat (127.0.0.1:4400; nginx routes /ws/chat, /api/chat/, /api/dm/, /api/tts/, /api/sounds there)
 ```
-The room is derived from the stream the client joined; offline channel chat applies the channel's
-bans and chat rules. Reconnects are jittered; a `server_restart` notice shows "OpenVibe is updating"
-and refills history on reconnect.
+Live runs no chat WebSocket server or chat REST routes: it delivers to Chat's typed ingress through
+`server/chat/chat-delivery.js` (producer pushes, moderation, cache hints) and reads Chat's snapshot for
+presence. The room is derived from the stream the client joined; offline channel chat applies the
+channel's bans and chat rules. Reconnects are jittered; a `server_restart` notice shows "OpenVibe is
+updating" and refills history on reconnect. See [chat-system.md](chat-system.md).
 
 ## Server runtime
 
@@ -154,7 +156,7 @@ and refills history on reconnect.
 | Log redaction | `server/utils/redact.js` | stream keys and credentials in log lines |
 | Database | `server/db/database.js` | queries and inline table setup |
 | Migrations | `server/db/migrations.js` | versioned, transactional migrations with a ledger (`schema_migrations`) |
-| Chat | `server/chat/chat-server.js` | WebSocket chat, history, moderation (REST: OpenVibe.Chat) |
+| Chat delivery | `server/chat/chat-delivery.js` | Live's one seam to OpenVibe.Chat (pushes, moderation, cache hints, presence) |
 | Streams | `server/streaming/routes.js` | stream and slot CRUD, channel pages |
 | Media proxy | `server/media-proxy/*.js` | VODs, clips, pastes, thumbnails via OpenVibe.Media |
 | Auth | `server/auth/auth.js`, `server/auth/permissions.js` | JWT/API tokens, scopes, role ranks |

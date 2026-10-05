@@ -30,7 +30,6 @@ const express = require('express');
 const db = require('../db/database');
 const { requireAuth } = require('../auth/auth');
 const permissions = require('../auth/permissions');
-const chatServer = require('../chat/chat-server');
 const delivery = require('../chat/chat-delivery');
 const chatReads = require('../chat/chat-reads');
 const ipUtils = require('./ip-utils');
@@ -110,7 +109,7 @@ function performGlobalBan(req, res, { userId, reason, durationHours, ipAddress }
         : null;
 
     // Auto-detect IP from connected WebSocket clients, then fall back to IP log
-    let resolvedIp = ipAddress || chatServer.getConnectedUserIp(targetUser.id);
+    let resolvedIp = ipAddress || delivery.getConnectedUserIp(targetUser.id);
     if (!resolvedIp) {
         const latest = db.getLatestIpForUser(targetUser.id);
         if (latest) resolvedIp = latest.ip_address;
@@ -234,7 +233,7 @@ router.post('/stream-ban', async (req, res) => {
             if (!targetUser) return res.status(404).json({ error: 'User not found' });
 
             // Auto-detect IP from connected clients if not provided
-            const resolvedIp = ip_address || chatServer.getConnectedUserIp(targetUser.id);
+            const resolvedIp = ip_address || delivery.getConnectedUserIp(targetUser.id);
 
             db.run(
                 `INSERT INTO bans (stream_id, user_id, ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -256,7 +255,7 @@ router.post('/stream-ban', async (req, res) => {
             res.json({ message: `${targetUser.username} banned from stream` });
         } else {
             // Anon ban — look up IP from connected anon client
-            const anonClient = chatServer.findClientByAnonId(anon_id, streamId);
+            const anonClient = delivery.findClientByAnonId(anon_id, streamId);
             const resolvedIp = ip_address || anonClient?.ip || null;
 
             db.run(
@@ -418,11 +417,11 @@ router.post('/delete-message', async (req, res) => {
         const delPayload = { type: 'delete-messages', ids: [parseInt(message_id)] };
         const chanUid = message.channel_user_id || (message.stream_id ? (db.getStreamById(message.stream_id)?.user_id || null) : null);
         if (delivery.ingress()) { /* broadcast by Chat */ } else if (chanUid || message.stream_id) {
-            chatServer.broadcastToChannelRoom(chanUid, message.stream_id, delPayload);
-            if (message.stream_id) chatServer.forwardToGlobal(message.stream_id, delPayload);
-            else chatServer.broadcastGlobal(delPayload);
+            delivery.broadcastToChannelRoom(chanUid, message.stream_id, delPayload);
+            if (message.stream_id) delivery.forwardToGlobal(message.stream_id, delPayload);
+            else delivery.broadcastGlobal(delPayload);
         } else {
-            chatServer.broadcastGlobal(delPayload);
+            delivery.broadcastGlobal(delPayload);
         }
 
         delivery.logModeration({
@@ -486,14 +485,11 @@ router.post('/delete-user-messages', async (req, res) => {
             const deleteMsg = { type: 'delete-messages', ids };
             if (scopedStreamId) {
                 const chanUid = db.getStreamById(scopedStreamId)?.user_id || null;
-                chatServer.broadcastToChannelRoom(chanUid, scopedStreamId, deleteMsg);
-                chatServer.forwardToGlobal(scopedStreamId, deleteMsg);
+                delivery.broadcastToChannelRoom(chanUid, scopedStreamId, deleteMsg);
+                delivery.forwardToGlobal(scopedStreamId, deleteMsg);
             } else {
-                // Global deletion — broadcast to every connected client
-                const msg = JSON.stringify(deleteMsg);
-                for (const [ws] of chatServer.clients) {
-                    if (ws.readyState === 1) ws.send(msg);
-                }
+                // Global deletion — Chat fans it out to the clients it holds; Live has none.
+                delivery.broadcastGlobal(deleteMsg);
             }
         }
 
@@ -701,8 +697,8 @@ router.post('/ip-approval/:channelId/approve', async (req, res) => {
                     timestamp: msg.created_at,
                     was_held: true,
                 };
-                chatServer.broadcastToStream(msg.stream_id, chatMsg);
-                chatServer.forwardToGlobal(msg.stream_id, chatMsg);
+                delivery.broadcastToStream(msg.stream_id, chatMsg);
+                delivery.forwardToGlobal(msg.stream_id, chatMsg);
             }
         }
 
@@ -802,7 +798,7 @@ router.get('/ip/user/:userId', permissions.requireGlobalMod, (req, res) => {
         const linked = db.getLinkedAccounts(userId);
 
         // Also check if the user is currently connected and get their live IP
-        const liveIp = chatServer.getConnectedUserIp(userId);
+        const liveIp = delivery.getConnectedUserIp(userId);
 
         res.json({
             user: { id: user.id, username: user.username, display_name: user.display_name, role: user.role, is_banned: user.is_banned, ban_reason: user.ban_reason, created_at: user.created_at },
@@ -824,7 +820,7 @@ router.get('/ip/anon/:anonId', permissions.requireGlobalMod, (req, res) => {
         const linked = db.getLinkedAccountsByAnon(anonId);
 
         // Try to find their live IP from connected clients
-        const anonClient = chatServer.findClientByAnonId(anonId);
+        const anonClient = delivery.findClientByAnonId(anonId);
         const liveIp = anonClient?.ip || null;
         const currentIp = liveIp || latest?.ip_address || null;
 

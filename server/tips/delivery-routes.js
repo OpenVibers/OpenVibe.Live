@@ -114,7 +114,6 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
     const i = b.interaction || {};
     const userId = channelUserId(b.creator && b.creator.id);
     if (!userId) return res.status(404).json({ error: 'this creator has no Live channel' });
-    const chatServer = require('../chat/chat-server');
     const streamId = streamIdFor(b.target, userId);
     const name = String((b.supporter && b.supporter.name) || 'Someone').slice(0, 80);
     // null = the supporter hid the amount (Tips privacy.hide_amount): it stays null all the way to the chat line.
@@ -137,12 +136,12 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
                 // Chat persists the line and shows it in the channel and global chat; Tips' key is the operation's key.
                 chatMessageId = await delivery.message({ ...line, mirror: true, key: `tips:${key}` });
             } else {
-                chatServer.broadcastToChannelRoom(userId, streamId, event);
-                try { chatServer.broadcastGlobal({ ...event, global: true, channel_user_id: userId }); } catch { /* non-critical */ }
+                delivery.broadcastToChannelRoom(userId, streamId, event);
+                try { delivery.broadcastGlobal({ ...event, global: true, channel_user_id: userId }); } catch { /* non-critical */ }
                 const saved = db.saveChatMessage(line);
                 chatMessageId = saved && saved.lastInsertRowid != null ? Number(saved.lastInsertRowid) : null;
             }
-            require('../monetization/alerts').playAlertSound(chatServer, userId, streamId, 'donation');
+            require('../monetization/alerts').playAlertSound(userId, streamId, 'donation');
             return res.json(remember(key, { ok: true, ref: { chat_message_id: chatMessageId } }));
         }
         if (b.effect === 'tts') {
@@ -156,7 +155,7 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
                 });
                 return res.json(remember(key, { ok: true, ref: { stream_id: streamId, chat_message_id: id } }));
             }
-            await chatServer.synthesizeAndBroadcastTTS(streamId, name, text, null, 'tips', `tips:${i.id}`, userId, `tips-${i.id}`);
+            await delivery.synthesizeAndBroadcastTTS(streamId, name, text, null, 'tips', `tips:${i.id}`, userId, `tips-${i.id}`);
             return res.json(remember(key, { ok: true, ref: { stream_id: streamId } }));
         }
         if (b.effect === 'media_request') {

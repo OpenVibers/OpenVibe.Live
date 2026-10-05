@@ -1,7 +1,7 @@
 /**
  * voice.js — "hear it in their voice": Arena lines (taunts, quotes, headlines, ringside calls) read
  * out in the streamer's own OpenVibe chat TTS voice — the cosmetic voice they equipped, else the
- * per-identity auto voice chat already gives them (same `user:<username>` key as chat-server).
+ * per-identity auto voice chat already gives them (same `user:<username>` key OpenVibe.Chat uses).
  *
  * Every (voice, text) pair is synthesized ONCE and kept on disk (`data/tts-cache/<hash>.<ext>`),
  * served with a week-long HTTP cache — repeat clicks cost nothing, and a changed voice simply

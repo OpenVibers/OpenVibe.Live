@@ -349,7 +349,7 @@ async function check(name, fn) {
             'server/chat/moderation-client.js': 'OpenVibe.Chat internal read API (configured)',
             'server/chat/insight-client.js': 'OpenVibe.Chat public chat-AI reads (configured OV_CHAT_INTERNAL_URL, fixed paths, ids validated)',
             'server/chat/chat-client.js': 'OpenVibe.Chat typed ingress (configured OV_CHAT_INTERNAL_URL, fixed /internal/chat/* paths)',
-            'server/chat/chat-server.js': 'OpenVibe.Tools anon resolve (configured)',
+            'server/chat/chat-delivery.js': 'OpenVibe.Tools anon resolve (configured)',
             'server/streaming/calls-authority.js': 'OpenVibe.Chat (configured)',
             'server/streaming/golive-notify.js': 'OpenVibe.Network (configured)',
             'server/utils/notify.js': 'OpenVibe.Network (configured)',

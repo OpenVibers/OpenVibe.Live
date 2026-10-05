@@ -86,7 +86,7 @@ async function _sendOne(clipId) {
         }
         const saved = db.saveChatMessage(line);
         payload.id = saved && saved.lastInsertRowid;
-        require('../chat/chat-server').broadcastToChannelRoom(ownerId, streamId, payload);
+        delivery.broadcastToChannelRoom(ownerId, streamId, payload);
     } catch (e) {
         console.warn('[ClipNotify] send failed:', e.message);
     }

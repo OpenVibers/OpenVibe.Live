@@ -16,8 +16,7 @@ function hasVibeCodingPublishScope(user) {
 }
 
 class VibeCodingPublishServer {
-    constructor(chatServer, db) {
-        this.chatServer = chatServer;
+    constructor(db) {
         this.db = db;
         this.wss = null;
         this.clients = new Map();

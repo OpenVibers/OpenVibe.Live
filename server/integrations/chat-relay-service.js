@@ -19,7 +19,6 @@ const https = require('https');
 const http = require('http');
 
 const db = require('../db/database');
-const chatServer = require('../chat/chat-server');
 const chatReads = require('../chat/chat-reads');
 
 const RECONNECT_BASE_MS = 5000;
@@ -433,16 +432,16 @@ class ChatRelayService {
             if (result?.lastInsertRowid) chatMsg.id = Number(result.lastInsertRowid);
         } catch {}
 
-        chatServer.broadcastToStream(bridge.streamId, chatMsg);
+        delivery.broadcastToStream(bridge.streamId, chatMsg);
         this._relayFollowUps(bridge, username, prefixedUsername, chatMsg.message, extras, chatMsg.id || null, 'ai');
         // Also surface on the global / username-only overlay (tags stream_channel)
-        try { chatServer.forwardToGlobal(bridge.streamId, chatMsg); } catch { /* non-critical */ }
+        try { delivery.forwardToGlobal(bridge.streamId, chatMsg); } catch { /* non-critical */ }
         // And to viewers of the streamer's other live slots (cross-slot chat)
-        try { chatServer.forwardToStreamerRooms(bridge.streamId, chatMsg); } catch { /* non-critical */ }
+        try { delivery.forwardToStreamerRooms(bridge.streamId, chatMsg); } catch { /* non-critical */ }
 
         // Feed relayed platform chat (Kick/Twitch/YouTube) into server-side TTS
         try {
-            chatServer.synthesizeAndBroadcastTTS(bridge.streamId, prefixedUsername, chatMsg.message, null, bridge.platform, `${bridge.platform}:${prefixedUsername}`, null, chatMsg.id ? `m${chatMsg.id}` : null);
+            delivery.synthesizeAndBroadcastTTS(bridge.streamId, prefixedUsername, chatMsg.message, null, bridge.platform, `${bridge.platform}:${prefixedUsername}`, null, chatMsg.id ? `m${chatMsg.id}` : null);
         } catch { /* non-critical */ }
 
         this._relayFollowUps(bridge, username, prefixedUsername, chatMsg.message, extras, chatMsg.id || null, 'powerchat');
@@ -454,7 +453,7 @@ class ChatRelayService {
                 const chatterKey = `ext:${prefixedUsername}`;
                 if (db.isFirstChatInChannel(chatterKey, stream.user_id)) {
                     db.recordFirstChat(chatterKey, stream.user_id);
-                    chatServer.broadcastToStream(bridge.streamId, {
+                    delivery.broadcastToStream(bridge.streamId, {
                         type: 'system',
                         message: `Welcome ${username} from ${PLATFORM_LABELS[bridge.platform] || bridge.platform}! 👋`,
                         timestamp: new Date().toISOString(),

@@ -1,3 +1,8 @@
+'use strict';
+// Live no longer runs a chat server: DM delivery is OpenVibe.Chat's (chat-delivery.js only carries
+// the seam). server/chat/dm.js stays for its tables and the participant/block helpers Live's own
+// routes still use — server/index.js ensureTables() and server/streaming/routes.js (call blocking by
+// isBlockedEither). This checks those helpers.
 const assert = require('assert');
 const os = require('os');
 const path = require('path');
@@ -8,7 +13,6 @@ process.env.DB_PATH = tempDbPath;
 
 const db = require('../server/db/database');
 const dm = require('../server/chat/dm');
-const chatServer = require('../server/chat/chat-server');
 
 async function run() {
     try {
@@ -28,36 +32,16 @@ async function run() {
         assert(dm.isParticipant(convId, userC), 'userC should be participant');
         assert(!dm.isParticipant(convId, userD), 'userD should not be a participant');
 
-        const sent = [];
-        const makeWs = (label, userId) => ({
-            readyState: 1,
-            bufferedAmount: 0,
-            send(payload) {
-                sent.push({ label, payload, userId });
-            },
-        });
+        // The call routes use these to refuse a ring between users either of whom blocked the other.
+        assert.strictEqual(dm.isBlockedEither(userA, userD), false);
+        dm.blockUser(userD, userA);
+        assert(dm.isBlockedEither(userA, userD), 'a block in either direction counts');
+        assert(dm.hasBlocked(userD, userA));
+        assert(!dm.hasBlocked(userA, userD), 'blocking stays one-directional in the row');
+        dm.unblockUser(userD, userA);
+        assert.strictEqual(dm.isBlockedEither(userA, userD), false);
 
-        const wsA1 = makeWs('A1', userA);
-        const wsA2 = makeWs('A2', userA);
-        const wsB = makeWs('B', userB);
-        const wsD = makeWs('D', userD);
-
-        chatServer.clients.set(wsA1, { user: { id: userA, username: 'accountA' } });
-        chatServer.clients.set(wsA2, { user: { id: userA, username: 'accountA' } });
-        chatServer.clients.set(wsB, { user: { id: userB, username: 'accountB' } });
-        chatServer.clients.set(wsD, { user: { id: userD, username: 'accountD' } });
-
-        chatServer.sendDm(userA, { type: 'dm', conversation_id: convId, message: { id: 1, text: 'hello A' } });
-        assert.strictEqual(sent.filter(x => x.label.startsWith('A')).length, 2, 'userA sockets should receive DM');
-
-        chatServer.sendDm(userB, { type: 'dm', conversation_id: convId, message: { id: 2, text: 'hello B' } });
-        assert.strictEqual(sent.filter(x => x.label === 'B').length, 1, 'userB should receive DM');
-
-        const beforeCount = sent.length;
-        chatServer.sendDm(userD, { type: 'dm', conversation_id: convId, message: { id: 3, text: 'should not deliver' } });
-        assert.strictEqual(sent.length, beforeCount, 'non-participant should not receive DM');
-
-        console.log('✅ DM delivery regression test passed');
+        console.log('✅ DM helpers (participants, blocks) regression test passed');
     } finally {
         try { db.close(); } catch {};
         try { fs.unlinkSync(tempDbPath); } catch {};
@@ -65,6 +49,6 @@ async function run() {
 }
 
 run().catch((err) => {
-    console.error('DM delivery test failed:', err);
+    console.error('DM helpers test failed:', err);
     process.exit(1);
 });
