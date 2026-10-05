@@ -76,10 +76,10 @@ path are deleted.
   `dm_conversations`, `dm_participants`, `dm_messages`, `dm_blocks`, `tts_voice_overrides`,
   `channel_sounds`, `relay_users`, `hidden_relay_users`, `pending_ip_messages`, `stream_first_chats`
   and `moderation_actions`. Chat imported them with ids kept at the cutover and has been their only
-  writer since; Live's readers and writers are gone (#28–#32 and this release), and it no longer creates
-  them. The drop itself is the operator migration `op_003_drop_chat_tables` via
-  [scripts/chat-tables-drop.js](../scripts/chat-tables-drop.js) (dry run, then `--apply`: backup, drop),
-  run once the release before is out of rollback range (ADR-028) — see
+  writer since; Live's readers and writers are gone (#28–#32 and the release that carries this, #33)
+  and it no longer creates them. #33 is in production and its N-1 fixtures no longer run SQL over the
+  tables ([test/n-1.test.js](../test/n-1.test.js)), so the drop is boot migration `007_drop_chat_tables`
+  ([server/db/migrations.js](../server/db/migrations.js)) (ADR-028) — see
   [docs/cutover-chat-tables-003.md](cutover-chat-tables-003.md). The deployment notice is Chat's too: Live
   queues `live.release.deployed` and Chat folds and stores the rolling card. `test/chat-tables-dropped.test.js`
   guards that nothing under `server/` names them.

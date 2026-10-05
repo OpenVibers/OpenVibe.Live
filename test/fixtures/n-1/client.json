@@ -1,13 +1,13 @@
 {
  "service": "live",
- "release": "2d0fa0edd39bab4304e0ae7c06d132a357c5d9f3",
- "recorded_at": "2026-10-05T00:02:56.030Z",
+ "release": "1d49484e3a364f7c39f413582fe24321dc1cb64f",
+ "recorded_at": "2026-10-05T22:52:29.288Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "2d0fa0edd39b",
-  "released_at": "2026-10-05T00:01:56.000Z",
-  "booted_at": "2026-10-05T00:02:53.746Z",
+  "release": "1d49484e3a36",
+  "released_at": "2026-10-05T22:50:37.000Z",
+  "booted_at": "2026-10-05T22:52:27.146Z",
   "contracts_version": "0.83.0",
   "packages": {
    "openvibe-shared": "2.5.0",
@@ -22,11 +22,11 @@
    },
    "shell": {
     "kind": "script",
-    "version": "4fc32670c70b"
+    "version": "0f5806ad688f"
    },
    "server": {
     "kind": "server",
-    "version": "27aac0b16594"
+    "version": "f0efd244faa6"
    }
   },
   "assets": {
@@ -7099,7 +7099,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app.js?v=0fd06344b140",
+   "path": "/js/app.js?v=a34333556690",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7121,7 +7121,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/chat-shared.js?v=8fff7cb6e502",
+   "path": "/js/chat-shared.js?v=bd4b18592b1a",
    "auth": "anon",
    "accept": "html",
    "status": 200,

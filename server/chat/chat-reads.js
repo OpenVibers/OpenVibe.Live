@@ -5,8 +5,8 @@
  * pending_ip_messages, hidden_relay_users, tts_voice_overrides and dm_blocks, so Live's home stats,
  * recaps, AI context, admin console, mod queues and the call-invite gate read them through Chat's
  * internal read API (server/chat/chat-client.js). Live keeps no copy of any of them since 2026-10-05
- * (the read mirror was retired on both sides; the tables themselves are dropped by migration
- * op_003_drop_chat_tables), so outside chat mode every one of these answers null / empty.
+ * (the read mirror was retired on both sides; the tables themselves are dropped at boot by
+ * migration 007_drop_chat_tables), so outside chat mode every one of these answers null / empty.
  *
  * Mode-aware: when CHAT_AUTHORITY=chat, every answer comes from Chat; otherwise (dev, drills) the
  * same call answers null / empty — the caller never has to know which. Unsetting CHAT_AUTHORITY is

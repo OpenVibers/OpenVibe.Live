@@ -229,7 +229,7 @@ const waitFor = async (pred, what, ms = 3000) => {
     db.initDb();
     const d = db.getDb();
     // Live no longer has any of OpenVibe.Chat's tables (the staged ones dropped in T3 N+2; the
-    // twelve chat tables dropped by op_003). The stub Chat below imitates Chat's own copy, so the
+    // twelve chat tables dropped by 007_drop_chat_tables). The stub Chat below imitates Chat's own copy, so the
     // test keeps local stand-in tables to seed and read.
     d.exec(`
         CREATE TABLE IF NOT EXISTS channel_moderators (
