@@ -37,6 +37,7 @@ function serviceToken(cap, { aud = 'openvibe.live', sub = 'svc:chat' } = {}) {
 }
 const READ = serviceToken(['live.chat_context.read']);
 const WRITE = serviceToken(['live.chat_effects.write']);
+const MIRROR = serviceToken(['live.chat_mirror.write']);
 
 // Stub Network (Live's own service token for audience openvibe.chat) and stub Chat (its typed ingress).
 const ingressCalls = [];
@@ -52,6 +53,80 @@ const network = http.createServer((req, res) => {
         res.statusCode = 404; res.end('{}');
     });
 });
+// Chat's internal read API (roadmap T3 J4b): Live reads stats, queues, history and sounds through
+// these. The stub answers from Live's own tables (emulating Chat's copy) so the seeds apply, and
+// `readState.down` fails every read the way a Chat outage does.
+const readState = { down: false, relayOnly: [] };
+function readReply(req, res, raw) {
+    const url = String(req.url);
+    const path = url.split('?')[0];
+    const q = new URLSearchParams(url.split('?')[1] || '');
+    const isRead = path === '/internal/chat/stats' || path === '/internal/chat/messages'
+        || path.startsWith('/internal/chat/moderation/') || path === '/internal/chat/sounds' || path === '/internal/chat/sounds/asset';
+    if (!isRead) return false;
+    if (readState.down) { res.statusCode = 503; res.end(JSON.stringify({ ok: false, error: 'Chat read unavailable' })); return true; }
+    const d2 = require('../server/db/database');
+    const ok = (o) => { res.end(JSON.stringify({ ok: true, ...o })); return true; };
+    const param = (col, v) => (['channel_user_id', 'stream_id', 'user_id', 'id'].includes(col) ? Number(v) : String(v));
+    if (path === '/internal/chat/stats') {
+        const b = JSON.parse(raw || '{}');
+        if (b.kind === 'channel-top') {
+            const t = d2.all(`SELECT user_id, MAX(username) AS username, COUNT(*) AS count FROM chat_messages WHERE is_deleted = 0 AND message_type <> 'system' GROUP BY user_id ORDER BY count DESC LIMIT ?`, [b.limit || 10]);
+            return ok({ top_chatters: t.map((r) => ({ user_id: r.user_id, username: r.username, count: Number(r.count) })) });
+        }
+        const r = d2.get('SELECT COUNT(*) AS messages FROM chat_messages WHERE is_deleted = 0');
+        return ok({ messages: Number(r.messages), chatters: 2 });
+    }
+    if (path === '/internal/chat/messages') {
+        const filters = ['channel_user_id', 'stream_id', 'user_id', 'anon_id', 'username', 'id'].filter((k) => q.get(k) != null);
+        if (filters.length !== 1) { res.statusCode = 400; res.end(JSON.stringify({ ok: false, error: 'Give exactly one filter' })); return true; }
+        const col = filters[0];
+        const where = [`${col} = ?`, 'is_deleted = 0'];
+        const params = [param(col, q.get(col))];
+        if (q.get('types')) { const types = q.get('types').split(','); where.push(`message_type IN (${types.map(() => '?').join(',')})`); params.push(...types); }
+        const rows = d2.all(`SELECT id, user_id, anon_id, username, message, message_type, is_global, stream_id, channel_user_id, source_platform, timestamp
+            FROM chat_messages WHERE ${where.join(' AND ')} ORDER BY id DESC LIMIT ?`, [...params, Number(q.get('limit') || 100)]);
+        return ok({ messages: rows, max_id: rows.length ? Number(rows[0].id) : null });
+    }
+    if (path === '/internal/chat/moderation/pending-ip') {
+        const rows = d2.all("SELECT * FROM pending_ip_messages WHERE channel_id = ? AND status = 'pending' ORDER BY id LIMIT ?", [Number(q.get('channel_id')), Number(q.get('limit') || 50)]);
+        return ok({ pending_ip: rows });
+    }
+    if (path === '/internal/chat/moderation/relay-users') {
+        const rows = d2.all(`SELECT h.*, u.username AS created_by_username FROM hidden_relay_users h LEFT JOIN users u ON u.id = h.created_by
+            WHERE h.channel_id = ? OR h.channel_id IS NULL ORDER BY h.id DESC LIMIT ?`, [Number(q.get('channel_id')), Number(q.get('limit') || 100)]);
+        return ok({ relay_users: rows.concat(readState.relayOnly) });
+    }
+    if (/^\/internal\/chat\/moderation\/relay-users\/\d+$/.test(path)) {
+        const rid = Number(path.split('/').pop());
+        const r = readState.relayOnly.find((x) => x.id === rid)
+            || d2.get('SELECT h.*, u.username AS created_by_username FROM hidden_relay_users h LEFT JOIN users u ON u.id = h.created_by WHERE h.id = ?', [rid]) || null;
+        return ok({ relay_user: r });
+    }
+    if (path === '/internal/chat/moderation/tts-override') {
+        const r = d2.get('SELECT * FROM tts_voice_overrides WHERE identity_key = ?', [String(q.get('identity_key'))]) || null;
+        return ok({ tts_override: r });
+    }
+    if (path === '/internal/chat/sounds/asset') {
+        const b = JSON.parse(raw || '{}');
+        d2.run('UPDATE channel_sounds SET media_url = ?, media_asset_id = ? WHERE id = ?', [b.media_url, b.media_asset_id, b.id]);
+        return ok({});
+    }
+    if (path === '/internal/chat/sounds') {
+        if (q.get('pending_asset') === '1') {
+            const where = ['media_asset_id IS NULL'];
+            const params = [];
+            if (q.get('channel_owner_id') != null) { where.push('channel_owner_id = ?'); params.push(Number(q.get('channel_owner_id'))); }
+            if (q.get('after_id') != null) { where.push('id > ?'); params.push(Number(q.get('after_id'))); }
+            const rows = d2.all(`SELECT * FROM channel_sounds WHERE ${where.join(' AND ')} ORDER BY id LIMIT ?`, [...params, Number(q.get('limit') || 100)]);
+            return ok({ sounds: rows });
+        }
+        const r = d2.get('SELECT COUNT(*) AS n FROM channel_sounds WHERE channel_owner_id = ?', [Number(q.get('channel_owner_id'))]);
+        return ok({ count: Number(r.n) });
+    }
+    return false;
+}
+
 const chat = http.createServer((req, res) => {
     let raw = '';
     req.on('data', (c) => { raw += c; });
@@ -67,6 +142,7 @@ const chat = http.createServer((req, res) => {
         if (req.url === '/internal/chat/presence') {
             return res.end(JSON.stringify({ total: 7, streams: { 1: 3 }, slow_mode: { 1: 5000 }, users: [{ user_id: 3, ip: '198.51.100.3', stream_id: 1 }], anons: [{ anon_id: 'anon9', ip: '203.0.113.9', stream_id: 1 }] }));
         }
+        if (readReply(req, res, raw)) return;
         // Chat's internal read API (roadmap T3): Live reads the six staged tables through it now.
         const mm = String(req.url).match(/^\/internal\/moderation\/channels\/(\d+)(\/emote-count)?$/);
         if (mm) {
@@ -153,6 +229,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     app.use(express.json());
     app.use('/internal/chat-context', routes.contextRouter);
     app.use('/internal/chat-effects', routes.effectsRouter);
+    app.use('/api/mod', require('../server/admin/mod-routes'));
     const port = await listen(http.createServer(app));
     const call = async (method, p, { token, body, headers = {} } = {}) => {
         const res = await fetch(`http://127.0.0.1:${port}${p}`, {
@@ -285,7 +362,26 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
             [viewer, 'VC_CALL_INVITE', 'STREAMER is calling you', 'Join voice channel: STREAMER\'s call', streamer, 'streamer']);
         assert.ok(pushed[0].url.endsWith(`/?vcInvite=${encodeURIComponent(`user-${streamer}-x`)}`));
 
-        // 9. The chat server Live's modules get (T3 J2: the bridge and its outbox are gone).
+        // 9. The read mirror: same ids, Chat-only columns ignored, Live-only columns kept. Chat's
+        // LIVE_MIRROR is on in production, so the tables it keeps current stay Live's until the
+        // later step that removes both the mirror and its remaining readers.
+        const mirror = (changes) => call('POST', '/internal/chat-effects/mirror', { token: MIRROR, body: { changes } });
+        assert.strictEqual((await call('POST', '/internal/chat-effects/mirror', { token: WRITE, body: { changes: [] } })).status, 403, 'mirror has its own capability');
+        let m = await mirror([{ table: 'chat_messages', op: 'upsert', row: { id: 900001, stream_id: streamId, channel_user_id: streamer, user_id: viewer, username: 'VIEWER', message: 'hi from chat', message_type: 'chat', is_global: 0, is_deleted: 0, timestamp: '2026-09-22 10:00:00', subject_id: 'usr_01J9ZZZZZZZZZZZZZZZZZZZZZZ' } }]);
+        assert.strictEqual(m.body.applied, 1);
+        assert.strictEqual(db.getChatMessageById(900001).message, 'hi from chat');
+        // Columns only Live's copy has (media-proxy/asset-sync adds them at start).
+        for (const c of ['media_url TEXT', 'media_asset_id INTEGER']) { try { d.exec(`ALTER TABLE channel_sounds ADD COLUMN ${c}`); } catch { /* present */ } }
+        d.prepare("INSERT INTO channel_sounds (id, channel_owner_id, command, url, media_asset_id) VALUES (77, ?, 'honk', '/x.mp3', 555)").run(streamer);
+        m = await mirror([{ table: 'channel_sounds', op: 'upsert', row: { id: 77, channel_owner_id: streamer, command: 'honk2', url: '/x.mp3', created_by_subject_id: null } }, { table: 'chat_messages', op: 'delete', pk: { id: 900001 } }, { table: 'users', op: 'delete', pk: { id: viewer } }]);
+        assert.strictEqual(m.body.applied, 2);
+        assert.strictEqual(m.body.skipped.length, 1, 'only chat tables are mirrored');
+        const s77 = d.prepare('SELECT command, media_asset_id FROM channel_sounds WHERE id = 77').get();
+        assert.deepStrictEqual(s77, { command: 'honk2', media_asset_id: 555 });
+        assert.strictEqual(db.getChatMessageById(900001), undefined);
+        assert.ok(db.getUserById(viewer), 'users are never touched');
+
+        // 10. The chat server Live's modules get (T3 J2: the bridge and its outbox are gone).
         const chatServer = require('../server/chat/chat-server');
         assert.strictEqual(chatServer.remote, true);
         chatServer.init();
@@ -318,7 +414,155 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.match(written, /^HTTP\/1\.1 503/);
         chatServer.close();
 
-        // 11. Robot commands from chat pass the control panel's gate: control mode, anonymous switch, whitelist, cooldown.
+        // 11. Live's chat reads (roadmap T3 J4b): stats, queues and history come from Chat's read
+        // API through server/chat/chat-reads.js, with the caching and failure rules the moderation
+        // console depends on.
+        {
+            const chatReads = require('../server/chat/chat-reads');
+            const d2 = require('../server/db/database');
+            chatReads._reset();
+            for (const c of ['media_url TEXT', 'media_asset_id INTEGER']) { try { d.exec(`ALTER TABLE channel_sounds ADD COLUMN ${c}`); } catch { /* present */ } }
+
+            // Chat's copy (the stub reads Live's tables): two lines by the same user, a held IP
+            // message, a hidden relay user, a TTS override, two pending sounds and a relayed line.
+            const m1 = Number(d2.saveChatMessage({ user_id: viewer, username: 'viewer', message: 'hello', channel_user_id: streamer, message_type: 'chat' }).lastInsertRowid);
+            d2.saveChatMessage({ user_id: viewer, username: 'viewer', message: 'again', channel_user_id: streamer, message_type: 'chat' });
+            d2.run("INSERT INTO pending_ip_messages (channel_id, ip_address, user_id, username, message, status) VALUES (?, '203.0.113.9', ?, 'viewer', 'held', 'pending')", [channel.id, viewer]);
+            d2.run("INSERT INTO hidden_relay_users (channel_id, platform, external_username, action, created_by) VALUES (?, 'twitch', 'alice', 'hide', ?)", [channel.id, streamer]);
+            d2.run("INSERT INTO tts_voice_overrides (identity_key, voice, pitch, speed, gap, set_by) VALUES ('user:viewer', 'en+f3', 99, 200, 0, ?)", [admin]);
+            d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 'honk', '/sounds/a.mp3', ?), (?, 'beep', '/sounds/b.mp3', ?)", [streamer, streamer, streamer, streamer]);
+            d2.saveChatMessage({ username: '[Twitch] alice', message: 'hi from twitch', source_platform: 'twitch', channel_user_id: streamer, message_type: 'chat' });
+
+            // (2)(3) A peek answers the last good value after its TTL passed, and a failure answers
+            // that value too — a failure never overwrites it with null.
+            assert.ok((await chatReads.siteStats()).messages >= 3);
+            chatReads._age(chatReads.CACHE_TTL_MS + 1000, 'site');
+            readState.down = true;
+            assert.ok(chatReads.siteStatsPeek(), 'a peek keeps the last good value past its TTL');
+            assert.ok(await chatReads.siteStats(), 'a failed read answers the last good value, never null');
+            chatReads._reset();
+            assert.strictEqual(chatReads.siteStatsPeek(), null, 'a cold peek is null and warms in the background');
+            readState.down = false;
+            for (let i = 0; i < 300 && !chatReads.siteStatsPeek(); i++) await sleep(10);
+            assert.ok(chatReads.siteStatsPeek(), 'the background warm-up answered');
+
+            // (2) A TTS override survives a TTL and a Chat outage (the engine reads it synchronously).
+            assert.strictEqual(chatReads.ttsOverridePeek('user:viewer'), null, 'cold override peek');
+            for (let i = 0; i < 300 && !chatReads.ttsOverridePeek('user:viewer'); i++) await sleep(10);
+            assert.strictEqual(chatReads.ttsOverridePeek('user:viewer').voice, 'en+f3');
+            chatReads._age(chatReads.CACHE_TTL_MS + 1000, 'ttsp:');
+            readState.down = true;
+            assert.strictEqual(chatReads.ttsOverridePeek('user:viewer').voice, 'en+f3', 'an override never reverts on a TTL + outage');
+            readState.down = false;
+
+            // (2) The AI persona's chat delta keeps its last page over a TTL + outage, not an empty one.
+            for (let i = 0; i < 300 && !chatReads.channelMessagesPeek(streamer, 10).length; i++) await sleep(10);
+            assert.ok(chatReads.channelMessagesPeek(streamer, 10).length >= 2, 'the channel page warmed');
+            chatReads._age(chatReads.CACHE_TTL_MS + 1000, 'ch:');
+            readState.down = true;
+            assert.ok(chatReads.channelMessagesPeek(streamer, 10).length >= 2, 'the delta answers its last page, never empty');
+            readState.down = false;
+
+            // (5) Queue reads are live: a change in Chat shows on the very next read.
+            const pending = await chatReads.pendingIp(channel.id, { limit: 5 });
+            assert.strictEqual(pending.length, 1);
+            assert.strictEqual(pending[0].message, 'held');
+            d2.run("UPDATE pending_ip_messages SET status = 'approved' WHERE channel_id = ?", [channel.id]);
+            assert.deepStrictEqual(await chatReads.pendingIp(channel.id, { limit: 5 }), [], 'the queue is never served stale');
+
+            // (3)(4) Moderation reads fail closed: Chat unavailable throws, never empty data or a 404.
+            readState.down = true;
+            chatReads._reset();
+            await assert.rejects(chatReads.pendingIp(channel.id, { limit: 5 }), (e) => e.unavailable === true);
+            await assert.rejects(chatReads.messageById(m1), (e) => e.unavailable === true);
+            readState.down = false;
+            chatReads._reset();
+
+            // (8) A user's history total is a page lower bound, not the highest message id.
+            const hist = await chatReads.userHistory(viewer, { limit: 1, offset: 0 });
+            assert.strictEqual(hist.messages.length, 1);
+            assert.strictEqual(hist.total, 1, 'total counts the page, not a message id');
+            const hist2 = await chatReads.userHistory(viewer, { limit: 1, offset: 1 });
+            assert.strictEqual(hist2.messages.length, 1, 'the second page comes from Chat');
+            assert.strictEqual(hist2.total, 2);
+
+            // (7) Relay history searches the stored "[Label] name", not the raw handle.
+            const rh = await chatReads.relayHistory('twitch', 'alice', { limit: 10 });
+            assert.strictEqual(rh.messages.length, 1, 'relay history finds [Twitch] alice');
+            assert.strictEqual(rh.messages[0].message, 'hi from twitch');
+            const cs = await chatReads.channelSamples(streamer, { relay: { platform: 'twitch', rawUsername: 'alice' }, limit: 10 });
+            assert.strictEqual(cs.length, 1, 'a relay clone sample finds the prefixed row');
+
+            // (1) Hidden relay users: Live's mirror row hides at once; Chat's queue hides even when
+            // the mirror has not seen it; a Chat outage fails open to Live's own table.
+            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'twitch', 'alice'), true, 'the mirror row hides at once');
+            readState.relayOnly = [{ id: 999999, channel_id: channel.id, platform: 'youtube', external_username: 'ghost' }];
+            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'youtube', 'ghost'), false, 'the first check warms Chat in the background');
+            for (let i = 0; i < 300 && !chatReads.isRelayUserHidden(channel.id, 'youtube', 'ghost'); i++) await sleep(10);
+            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'youtube', 'ghost'), true, "Chat's queue hides a user Live's mirror has not seen");
+            readState.down = true;
+            chatReads._age(chatReads.CACHE_TTL_MS + 1000, 'hru:');
+            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'youtube', 'ghost'), false, "Chat unreachable fails open to Live's own table");
+            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'twitch', 'alice'), true, "Live's own hidden row still applies");
+            readState.down = false;
+            readState.relayOnly = [];
+            chatReads._reset();
+
+            // (10) The asset-sync work list pages by id and is never a cached list of what was just uploaded.
+            const first = await chatReads.pendingSounds({ limit: 1 });
+            assert.strictEqual(first[0].command, 'honk');
+            const second = await chatReads.pendingSounds({ afterId: first[0].id, limit: 1 });
+            assert.strictEqual(second[0].command, 'beep', 'afterId pages past the first window');
+            await chatReads.recordSoundAsset(first[0].id, 'https://media.example/a/1', 4242);
+            const after = await chatReads.pendingSounds({ afterId: 0, limit: 10 });
+            assert.deepStrictEqual(after.map((s) => s.command), ['beep'], 'the work list is read live, not served from a cache');
+
+            // The sync itself walks the whole list: 119 fileless sounds first, then the one with a
+            // local file — a single 100-wide window would never see it.
+            fs.writeFileSync(path.join(tmp, 'sounds', 's120.mp3'), 'not really audio');
+            const values = [];
+            const soundParams = [];
+            for (let i = 1; i <= 120; i++) { values.push('(?, ?, ?, ?)'); soundParams.push(streamer, `s${i}`, `/sounds/s${i}.mp3`, streamer); }
+            d2.run(`INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES ${values.join(', ')}`, soundParams);
+            const media = require('../server/media-client');
+            const realRequest = media.request;
+            const uploaded = [];
+            media.request = async (method, p) => {
+                if (method === 'POST' && p === '/assets') { uploaded.push(1); return { asset: { id: 9000 + uploaded.length, url: `https://media.example/a/${9000 + uploaded.length}` } }; }
+                return { ok: true };
+            };
+            try { await require('../server/media-proxy/asset-sync').syncAll(); } finally { media.request = realRequest; }
+            assert.strictEqual(uploaded.length, 1, 'the sync pages past the first window to the sound with a local file');
+            const s120 = d2.get("SELECT media_asset_id FROM channel_sounds WHERE command = 's120'");
+            assert.ok(s120.media_asset_id, 'the paged sound was recorded as uploaded');
+
+            // (4)(6) The console routes: a text-only search says 501 and usernames match exactly; a
+            // Chat outage answers 503 from every queue route, never an empty page or a 404.
+            const adminToken = jwt.sign({ sub: String(admin), username: 'admin2', role: 'admin' }, keys.privateKey, { algorithm: 'RS256', issuer: ISS, expiresIn: 300 });
+            const modGet = (path) => call('GET', `/api/mod${path}`, { token: adminToken });
+            const textOnly = await modGet('/chat/search?q=hello');
+            assert.strictEqual(textOnly.status, 501);
+            assert.match(textOnly.body.error, /Text search/);
+            const byUser = await modGet(`/chat/search?user_id=${viewer}`);
+            assert.strictEqual(byUser.status, 200);
+            assert.strictEqual(byUser.body.messages.length, 2);
+            const byName = await modGet('/chat/search?user_id=viewer');
+            assert.strictEqual(byName.body.messages.length, 2, 'an exact username finds the rows');
+            assert.strictEqual((await modGet('/chat/search?user_id=view')).body.messages.length, 0, 'username search is exact');
+            readState.down = true;
+            chatReads._reset();
+            assert.strictEqual((await modGet(`/chat/search?user_id=${viewer}`)).status, 503);
+            assert.strictEqual((await modGet(`/chat/user/${viewer}`)).status, 503);
+            assert.strictEqual((await modGet(`/ip-approval/${channel.id}/pending`)).status, 503);
+            assert.strictEqual((await modGet(`/relay-users/hidden/${channel.id}`)).status, 503);
+            assert.strictEqual((await modGet('/tts-voice/user/viewer')).status, 503);
+            assert.strictEqual((await call('POST', '/api/mod/delete-message', { token: adminToken, body: { message_id: m1 } })).status, 503);
+            assert.strictEqual((await call('DELETE', '/api/mod/relay-user/999999', { token: adminToken })).status, 503);
+            readState.down = false;
+            chatReads._reset();
+        }
+
+        // 12. Robot commands from chat pass the control panel's gate: control mode, anonymous switch, whitelist, cooldown.
         {
             const sent = [];
             require('../server/controls/control-server').hardwareClients.set('key-streamer', { readyState: 1, send: (m) => sent.push(JSON.parse(m)) });

@@ -37,6 +37,13 @@ const ipUtils = require('./ip-utils');
 
 const router = express.Router();
 
+/** A read the console acts on failed against Chat: answer 503 (or the read's own status), never empty data. */
+function chatReadError(res, err) {
+    if (err && err.status) { res.status(err.status).json({ error: err.message }); return true; }
+    if (err && err.unavailable) { res.status(503).json({ error: 'Chat unavailable' }); return true; }
+    return false;
+}
+
 // All mod routes require auth (individual routes check specific permissions)
 router.use(requireAuth);
 
@@ -340,6 +347,7 @@ router.get('/chat/search', permissions.requireGlobalMod, async (req, res) => {
         const result = await chatReads.searchMessages({ query, userId, anonId, username, streamId, limit, offset });
         res.json(result || { messages: [], total: 0 });
     } catch (err) {
+        if (chatReadError(res, err)) return;
         res.status(500).json({ error: 'Search failed' });
     }
 });
@@ -354,6 +362,7 @@ router.get('/chat/user/:userId', permissions.requireGlobalMod, async (req, res) 
         const result = await chatReads.userHistory(userId, { limit, offset });
         res.json(result || { messages: [], total: 0 });
     } catch (err) {
+        if (chatReadError(res, err)) return;
         res.status(500).json({ error: 'Failed to get chat history' });
     }
 });
@@ -387,8 +396,10 @@ router.post('/delete-message', async (req, res) => {
             if (!allowed) return res.status(403).json({ error: 'You cannot moderate this stream' });
         }
 
-        // Chat ingress: Chat deletes the row and broadcasts the delete to every surface it reached.
+        // Chat ingress: Chat deletes the row and broadcasts the delete to every surface it reached;
+        // the mirror keeps Live's own copy in step for its remaining readers.
         if (delivery.ingress()) {
+            delivery.mirror('deleteChatMessage', parseInt(message_id), req.user.id);
             await delivery.moderate('delete-message', { id: parseInt(message_id), deleted_by: req.user.id }, { key: `delete:${message_id}` });
         }
         else db.deleteChatMessage(parseInt(message_id), req.user.id);
@@ -416,6 +427,7 @@ router.post('/delete-message', async (req, res) => {
 
         res.json({ message: 'Message deleted', ids: [parseInt(message_id)] });
     } catch (err) {
+        if (chatReadError(res, err)) return;
         console.error('[Mod] Delete message error:', err.message);
         res.status(500).json({ error: 'Failed to delete message' });
     }
@@ -445,6 +457,10 @@ router.post('/delete-user-messages', async (req, res) => {
             // Chat deletes the rows and broadcasts the deletes (also the site-wide one) itself.
             const [action, subject] = user_id ? ['delete-user-messages', { user_id: parseInt(user_id) }]
                 : anon_id ? ['delete-anon-messages', { anon_id: String(anon_id) }] : ['delete-relay-messages', { username: String(relay_username) }];
+            const opts = { streamId: scopedStreamId, deletedBy: req.user.id };
+            if (user_id) delivery.mirror('deleteUserChatMessages', parseInt(user_id), opts);
+            else if (anon_id) delivery.mirror('deleteAnonChatMessages', anon_id, opts);
+            else delivery.mirror('deleteRelayUserMessages', relay_username, opts);
             const scoped = { stream_id: scopedStreamId ? parseInt(scopedStreamId) : undefined, deleted_by: req.user.id };
             const r = await delivery.moderate(action, { ...subject, ...scoped });
             ids = (r && Array.isArray(r.ids)) ? r.ids : [];
@@ -517,6 +533,7 @@ router.post('/relay-user/hide', async (req, res) => {
         // Unban / unhide — remove the ban for this exact relay identity only.
         if (action === 'unban' || action === 'unhide') {
             if (delivery.ingress()) {
+                delivery.mirror('unhideRelayUserByIdentity', channel_id || null, platform, external_username);
                 await delivery.moderate('relay-unhide', { channel_id: channel_id || undefined, platform, external_username });
             }
             else db.unhideRelayUserByIdentity(channel_id || null, platform, external_username);
@@ -565,7 +582,7 @@ router.delete('/relay-user/:id', async (req, res) => {
         const allowed = permissions.isGlobalModOrAbove(req.user)
             || (row.channel_id != null && await permissions.canModerateChannel(req.user, row.channel_id));
         if (!allowed) return res.status(403).json({ error: 'You cannot moderate this channel' });
-        if (delivery.ingress()) { await delivery.moderate('relay-unhide', { id: row.id }); }
+        if (delivery.ingress()) { delivery.mirror('unhideRelayUser', row.id); await delivery.moderate('relay-unhide', { id: row.id }); }
         else db.unhideRelayUser(row.id);
 
         delivery.logModeration({
@@ -577,6 +594,7 @@ router.delete('/relay-user/:id', async (req, res) => {
 
         res.json({ message: 'Relay user unhidden' });
     } catch (err) {
+        if (chatReadError(res, err)) return;
         console.error('[Mod] Relay user unhide error:', err.message);
         res.status(500).json({ error: 'Failed to unhide relay user' });
     }
@@ -587,9 +605,10 @@ router.get('/relay-users/hidden/:channelId', async (req, res) => {
     try {
         const channelId = parseInt(req.params.channelId);
         if (!(await permissions.canModerateChannel(req.user, channelId))) return res.status(403).json({ error: 'Access denied' });
-        const hidden = (await chatReads.relayUsers(channelId)) || [];
+        const hidden = await chatReads.relayUsers(channelId);
         res.json({ hidden });
     } catch (err) {
+        if (chatReadError(res, err)) return;
         console.error('[Mod] List hidden relay users error:', err.message);
         res.status(500).json({ error: 'Failed to list hidden relay users' });
     }
@@ -608,7 +627,7 @@ router.get('/ip-approval/:channelId/pending', async (req, res) => {
         if (!(await permissions.canModerateChannel(req.user, channelId))) {
             return res.status(403).json({ error: 'Access denied' });
         }
-        const pending = (await chatReads.pendingIp(channelId)) || [];
+        const pending = await chatReads.pendingIp(channelId);
 
         // Add geo data
         const enriched = pending.map(msg => {
@@ -621,6 +640,7 @@ router.get('/ip-approval/:channelId/pending', async (req, res) => {
 
         res.json({ pending: enriched });
     } catch (err) {
+        if (chatReadError(res, err)) return;
         console.error('[Mod] IP approval pending error:', err.message);
         res.status(500).json({ error: 'Failed to get pending messages' });
     }
@@ -643,11 +663,12 @@ router.post('/ip-approval/:channelId/approve', async (req, res) => {
         // copy), else Live's own queue. In Chat mode they are not re-broadcast here: Chat releases
         // them and broadcasts; Live only needs the count for its answer and log.
         const pendingMsgs = delivery.ingress()
-            ? ((await chatReads.pendingIp(channelId, { limit: 500 })) || []).filter((m) => m.ip_address === ip)
+            ? (await chatReads.pendingIp(channelId, { limit: 500 })).filter((m) => m.ip_address === ip)
             : db.all("SELECT * FROM pending_ip_messages WHERE channel_id = ? AND ip_address = ? AND status = 'pending'", [channelId, ip]);
 
         // Chat ingress: Chat approves its held rows; re-showing them live is Chat's (it holds them).
         if (delivery.ingress()) {
+            delivery.mirror('approveAllFromIp', channelId, ip, req.user.id);
             await delivery.moderate('approve-ip-messages', { channel_id: parseInt(channelId), ip, reviewed_by: req.user.id });
         }
         else db.approveAllFromIp(channelId, ip, req.user.id);
@@ -683,6 +704,7 @@ router.post('/ip-approval/:channelId/approve', async (req, res) => {
 
         res.json({ message: `IP ${ip} approved — ${pendingMsgs.length} held message(s) released`, count: pendingMsgs.length });
     } catch (err) {
+        if (chatReadError(res, err)) return;
         console.error('[Mod] IP approve error:', err.message);
         res.status(500).json({ error: 'Failed to approve IP' });
     }
@@ -702,6 +724,7 @@ router.post('/ip-approval/:channelId/deny', async (req, res) => {
         }
 
         if (delivery.ingress()) {
+            delivery.mirror('denyAllFromIp', channelId, ip, req.user.id);
             await delivery.moderate('deny-ip-messages', { channel_id: parseInt(channelId), ip, reviewed_by: req.user.id });
         }
         else db.denyAllFromIp(channelId, ip, req.user.id);
@@ -737,6 +760,7 @@ router.post('/ip-approval/:channelId/review', async (req, res) => {
         }
 
         if (delivery.ingress()) {
+            delivery.mirror('reviewPendingIpMessage', parseInt(message_id), { status, reviewedBy: req.user.id, channelId });
             await delivery.moderate('review-pending-ip', { id: parseInt(message_id), status, reviewed_by: req.user.id, channel_id: parseInt(channelId) });
         } else db.reviewPendingIpMessage(parseInt(message_id), {
             status,
@@ -930,6 +954,7 @@ router.get('/tts-voice/:kind/:id', permissions.requireGlobalMod, async (req, res
             presets: TTS_VOICE_PRESETS,
         });
     } catch (err) {
+        if (chatReadError(res, err)) return;
         console.error('[Mod] tts-voice get error:', err.message);
         res.status(500).json({ error: 'Failed to load voice' });
     }
@@ -940,7 +965,7 @@ router.put('/tts-voice/:kind/:id', permissions.requireGlobalMod, (req, res) => {
     try {
         const identityKey = _ttsIdentityKey(req.params.kind, req.params.id);
         if (req.body?.reset) {
-            if (delivery.ingress()) { delivery.moderate('tts-voice-override', { identity_key: identityKey }); }
+            if (delivery.ingress()) { delivery.mirror('deleteTtsVoiceOverride', identityKey); delivery.moderate('tts-voice-override', { identity_key: identityKey }); }
             else db.deleteTtsVoiceOverride(identityKey);
             return res.json({ isOverride: false, params: ttsEngine.autoUserVoiceParams(identityKey) });
         }
@@ -958,7 +983,7 @@ router.put('/tts-voice/:kind/:id', permissions.requireGlobalMod, (req, res) => {
             params = { voice: req.body?.voice, pitch: req.body?.pitch, speed: req.body?.speed, gap: req.body?.gap };
         }
         const clamped = ttsEngine.clampVoiceParams(params);
-        if (delivery.ingress()) { delivery.moderate('tts-voice-override', { identity_key: identityKey, params: clamped, set_by: req.user.id }); }
+        if (delivery.ingress()) { delivery.mirror('setTtsVoiceOverride', identityKey, clamped, req.user.id); delivery.moderate('tts-voice-override', { identity_key: identityKey, params: clamped, set_by: req.user.id }); }
         else db.setTtsVoiceOverride(identityKey, clamped, req.user.id);
         res.json({ isOverride: true, params: clamped });
     } catch (err) {

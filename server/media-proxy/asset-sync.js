@@ -66,19 +66,29 @@ async function syncAll() {
         };
         let synced = 0, failed = 0;
 
-        // The work list is Chat's (channel_sounds is Chat's table); Live's own rows when Live runs chat.
-        for (const s of (await chatReads.pendingSounds()) || []) {
-            const f = _localFile(SOUND_DIR, s.url);
-            if (!f) continue;
-            try {
-                const asset = await _upload({
-                    kind: 'sound', name: s.command, filePath: f,
-                    user_id: s.created_by, username: s.created_by_name || uname(s.created_by),
-                    channel_username: uname(s.channel_owner_id),
-                    duration_seconds: s.duration_seconds || 0,
-                });
-                if (asset) { await chatReads.recordSoundAsset(s.id, asset.url, asset.id); synced++; }
-            } catch (err) { failed++; if (failed <= 3) console.warn('[AssetSync] sound', s.command, err.message); }
+        // The work list is Chat's (channel_sounds is Chat's table); Live's own rows when Live runs
+        // chat. Page by id until a short page: sounds with no local file stay pending and would
+        // otherwise fill the first window forever, starving every later sound.
+        const PAGE = 100;
+        let afterId = 0;
+        for (;;) {
+            const batch = (await chatReads.pendingSounds({ afterId, limit: PAGE })) || [];
+            for (const s of batch) {
+                const f = _localFile(SOUND_DIR, s.url);
+                if (!f) continue;
+                try {
+                    const asset = await _upload({
+                        kind: 'sound', name: s.command, filePath: f,
+                        user_id: s.created_by, username: s.created_by_name || uname(s.created_by),
+                        channel_username: uname(s.channel_owner_id),
+                        duration_seconds: s.duration_seconds || 0,
+                    });
+                    if (asset) { await chatReads.recordSoundAsset(s.id, asset.url, asset.id); synced++; }
+                } catch (err) { failed++; if (failed <= 3) console.warn('[AssetSync] sound', s.command, err.message); }
+            }
+            if (batch.length < PAGE) break;
+            afterId = Number(batch[batch.length - 1].id) || 0;
+            if (!afterId) break;
         }
 
         if (synced || failed) console.log(`[AssetSync] Synced ${synced} chat assets to Media${failed ? ` (${failed} failed — will retry next pass)` : ''}`);

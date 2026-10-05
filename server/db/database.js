@@ -1460,6 +1460,23 @@ function initDb() {
             message_count INTEGER DEFAULT 0,
             PRIMARY KEY (platform, username)
         )`);
+        // One-time backfill: earlier relay sources (notably RobotStreamer) didn't record
+        // relay_users, so their existing chatters had no row to hang chat-logs/AI insight
+        // off. Seed relay_users from the historical "[Label] name" relay messages. Idempotent
+        // (INSERT OR IGNORE keyed on platform+username), guarded so it runs at most once.
+        const _relayDone = database.prepare("SELECT value FROM site_settings WHERE key='relay_users_backfilled'").get();
+        if (!_relayDone) {
+            database.exec(`INSERT OR IGNORE INTO relay_users (platform, username, display_name, first_seen, last_seen, message_count)
+                SELECT source_platform,
+                       LOWER(TRIM(SUBSTR(username, INSTR(username, '] ') + 2))),
+                       TRIM(SUBSTR(username, INSTR(username, '] ') + 2)),
+                       MIN(timestamp), MAX(timestamp), COUNT(*)
+                FROM chat_messages
+                WHERE user_id IS NULL AND source_platform IS NOT NULL
+                      AND username LIKE '[%] %' AND INSTR(username, '] ') > 0
+                GROUP BY source_platform, LOWER(TRIM(SUBSTR(username, INSTR(username, '] ') + 2)))`);
+            database.prepare("INSERT OR REPLACE INTO site_settings (key, value, type) VALUES ('relay_users_backfilled','1','string')").run();
+        }
     } catch (e) { console.warn('[DB] relay_users migration:', e.message); }
 
     // Timestamped transcript segments (JSON) — contextual data for the AI system +

@@ -20,6 +20,7 @@ const http = require('http');
 
 const db = require('../db/database');
 const chatServer = require('../chat/chat-server');
+const chatReads = require('../chat/chat-reads');
 
 const RECONNECT_BASE_MS = 5000;
 const RECONNECT_MAX_MS = 60000;
@@ -386,11 +387,13 @@ class ChatRelayService {
         const color = PLATFORM_COLORS[bridge.platform] || '#888';
         const prefixedUsername = `[${label}] ${username}`;
 
-        // Check if this relay user is hidden/banned
+        // Check if this relay user is hidden/banned. Chat's queue answers in chat mode (a cached
+        // peek — this path must not wait on an HTTP call), Live's own mirror-fed table otherwise;
+        // Chat unreachable falls back to that table, so a Chat outage never un-hides anyone.
         try {
             const stream = db.getStreamById(bridge.streamId);
             const channel = stream?.channel_id ? db.getChannelById(stream.channel_id) : (stream ? db.getChannelByUserId(stream.user_id) : null);
-            if (channel && db.isRelayUserHidden(channel.id, bridge.platform, username)) {
+            if (channel && chatReads.isRelayUserHidden(channel.id, bridge.platform, username)) {
                 return; // Silently drop messages from hidden relay users
             }
         } catch { /* non-critical — allow message through on error */ }
@@ -494,15 +497,14 @@ class ChatRelayService {
         } catch { /* non-critical */ }
     }
 
-    /** Chat ingress: Chat persists, broadcasts and reads the line aloud in one call. */
+    /** Chat ingress: Chat persists, broadcasts, mirrors, reads aloud and records the first chat in one call. */
     _deliverToChat(delivery, bridge, username, prefixedUsername, color, extras, message) {
-        // The relay welcome stays Live's own: stream_first_chats is still Live's table until T3 J4c
-        // drops it, and only this service writes the `ext:` keys it reads, so no mirror is involved.
         let first = false;
         try {
             const stream = db.getStreamById(bridge.streamId);
             first = !!(stream?.user_id && db.isFirstChatInChannel(`ext:${prefixedUsername}`, stream.user_id));
         } catch { /* non-critical */ }
+        delivery.mirror('recordRelayUser', bridge.platform, username);
         delivery.moderate('relay-record', { platform: bridge.platform, username });
         delivery.after(delivery.message({
             stream_id: bridge.streamId, username: prefixedUsername, message, message_type: 'chat', is_global: false,
@@ -511,7 +513,8 @@ class ChatRelayService {
             tts: { identity_key: `${bridge.platform}:${prefixedUsername}` },
         }), (id) => this._relayFollowUps(bridge, username, prefixedUsername, message, extras, id));
         if (first) {
-            try { db.recordFirstChat(`ext:${prefixedUsername}`, db.getStreamById(bridge.streamId).user_id); } catch { /* */ }
+            // Chat records the first chat in its copy; Live's copy decides the next welcome.
+            try { delivery.mirror('recordFirstChat', `ext:${prefixedUsername}`, db.getStreamById(bridge.streamId).user_id); } catch { /* */ }
             delivery.event({ kind: 'stream', id: bridge.streamId }, {
                 type: 'system',
                 message: `Welcome ${username} from ${PLATFORM_LABELS[bridge.platform] || bridge.platform}! 👋`,
