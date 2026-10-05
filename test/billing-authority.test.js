@@ -136,9 +136,8 @@ async function check(name, fn) {
         assert.strictEqual(billing.payable[SID.bob], 150);
         const row = raw.prepare("SELECT * FROM billing_actions WHERE idempotency_key = ?").get(c[0].key);
         assert.strictEqual(row.status, 'done'); assert.match(row.billing_ref, /^txn_/);
-        // The chat celebration (display) is still Live's.
-        const msg = raw.prepare("SELECT * FROM chat_messages WHERE message_type = 'donation' ORDER BY id DESC LIMIT 1").get();
-        assert.ok(msg && /donated 150 Vibes/.test(msg.message));
+        // The chat celebration is OpenVibe.Chat's now: Live sends it the line through the delivery
+        // seam and keeps no copy (test/tips-delivery.test.js covers the payload).
     });
 
     await check('a browser retry with the same Idempotency-Key is one donation', async () => {

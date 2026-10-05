@@ -1,9 +1,9 @@
 'use strict';
 
 // Deploys as events (roadmap Wave 3 exit): the deploy notice queues live.release.deployed in the
-// same transaction that records the commits as announced (and stores the chat row), publishes it
-// through Live's outbox, keeps the chat notice working (local row, or the Chat bridge), says
-// nothing on a restart without new code, and rolls the notice back if the event cannot be queued.
+// same transaction that records the commits as announced, publishes it through Live's outbox (Chat
+// folds the rolling card from that event alone — Live keeps no chat table), says nothing on a
+// restart without new code, and rolls the announcement back if the event cannot be queued.
 
 const assert = require('assert');
 const fs = require('fs');
@@ -45,7 +45,6 @@ const stub = http.createServer((req, res) => {
     const streamEvents = require('../server/events/stream-events');
     const quiet = { log() {}, warn() {} };
     const outboxRows = () => raw.prepare('SELECT event_id, envelope FROM event_outbox ORDER BY id').all().map(r => JSON.parse(r.envelope)).filter(e => e.event_type === releaseEvents.EVENT_TYPE);
-    const deployRows = () => raw.prepare("SELECT id, metadata FROM chat_messages WHERE message_type = 'system' AND metadata LIKE '%\"kind\":\"deploy\"%'").all();
 
     // The envelope is a valid event-envelope@1.
     const head = (await new Promise(r => require('child_process').execFile('git', ['rev-parse', 'HEAD'], { cwd: path.join(__dirname, '..') }, (e, o) => r(String(o).trim()))));
@@ -57,12 +56,12 @@ const stub = http.createServer((req, res) => {
     assert.strictEqual(sample.payload.release, head.slice(0, 7));
     assert.throws(() => releaseEvents.envelopeFor({ head: 'nope' }), /full commit sha/);
 
-    // Events off: the notice works exactly as before and nothing is queued.
+    // Events off: Chat has no other way to hear about a deploy (its ingress has no deploy endpoint),
+    // so nothing is announced or recorded — the next boot tries again.
     let r = await dn.announce({ db, log: quiet });
-    assert.ok(r.announced >= 1);
+    assert.strictEqual(r.announced, 0);
     assert.strictEqual(r.event_id, null);
-    assert.strictEqual(db.getSetting(dn.SETTING), head);
-    assert.strictEqual(deployRows().length, 1);
+    assert.ok(!db.getSetting(dn.SETTING), 'not recorded as announced');
 
     // Events on: a new deploy (the setting points elsewhere) queues and publishes the event.
     const outbox = streamEvents.init({ eventsUrl: base, clientSecret: 's3cret', intervalMs: 50 });
@@ -90,20 +89,17 @@ const stub = http.createServer((req, res) => {
     assert.strictEqual(r.announced, 0);
     assert.strictEqual(outboxRows().length, 1);
 
-    // The event cannot be queued: nothing is recorded (no chat row, setting unchanged), so the next
-    // boot announces again — never a notice without its event.
+    // The event cannot be queued: nothing is recorded (setting unchanged), so the next boot
+    // announces again — never an announcement without its event.
     db.setSetting(dn.SETTING, '');
-    const chatBefore = deployRows().map(x => x.metadata).join('|');
     raw.exec("CREATE TEMP TRIGGER outbox_boom BEFORE INSERT ON event_outbox BEGIN SELECT RAISE(ABORT, 'outbox insert failed'); END");
     r = await dn.announce({ db, log: quiet });
     raw.exec('DROP TRIGGER temp.outbox_boom');
     assert.strictEqual(r.announced, 0);
     assert.strictEqual(db.getSetting(dn.SETTING), '');
-    assert.strictEqual(deployRows().map(x => x.metadata).join('|'), chatBefore, 'the chat row rolled back too');
     assert.strictEqual(outboxRows().length, 1);
 
-    // CHAT_AUTHORITY=chat with Events on: Chat learns the deploy from the event alone (C-84).
-    process.env.CHAT_AUTHORITY = 'chat';
+    // With Events on: Chat learns the deploy from the event alone (C-84).
     r = await dn.announce({ db, log: quiet });
     assert.ok(r.announced >= 1);
     assert.strictEqual(db.getSetting(dn.SETTING), head);
@@ -118,7 +114,6 @@ const stub = http.createServer((req, res) => {
     db.setSetting(dn.SETTING, '');
     r = await dn.announce({ db, log: quiet });
     delete process.env.EVENTS_PUBLISH;
-    delete process.env.CHAT_AUTHORITY;
     assert.strictEqual(r.announced, 0);
     assert.strictEqual(db.getSetting(dn.SETTING), '', 'not recorded as announced');
     assert.strictEqual(outboxRows().length, 2, 'nothing queued while Events is off');

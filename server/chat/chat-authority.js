@@ -11,7 +11,8 @@
  *     runs no chat server in any mode;
  *   - reads chat stats, queues and history from Chat's internal read API
  *     (server/chat/chat-reads.js → chat-client.js); the read mirror Chat used to write back was
- *     retired on 2026-10-05 and Live keeps its chat tables only until a later change drops them;
+ *     retired on 2026-10-05, Live keeps no copy of Chat's tables, and its twelve are dropped by the
+ *     operator migration op_003_drop_chat_tables (scripts/chat-tables-drop.js);
  *   - answers Chat's reads and side effects on /internal/chat-context/* and /internal/chat-effects/*.
  * Anything else (default): Live runs no chat server any more (chat-server.js is gone), so chat is inert: every push
  * is dropped and logged once by chat-delivery.js. Unsetting CHAT_AUTHORITY is therefore no rollback lever.

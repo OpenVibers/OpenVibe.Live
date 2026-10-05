@@ -137,7 +137,7 @@ async function _momentContext(streamId, vodId) {
     const clipTimes = await require('../media-proxy/lookups').clipStartTimes(streamId, vodId);
     // Chat's own buckets since the stream began (offsets are relative to started_at, as before).
     const started = (() => { try { const r = db.get('SELECT started_at FROM streams WHERE id = ?', [streamId]); return r && r.started_at ? Date.parse(String(r.started_at).replace(' ', 'T') + 'Z') : 0; } catch { return 0; } })();
-    const spikes = started > 0 ? (await chatReads.spikeOffsets(streamId, 30, 8, started) || []) : (db.getChatSpikeOffsets(streamId, 30, 8) || []);
+    const spikes = started > 0 ? (await chatReads.spikeOffsets(streamId, 30, 8, started) || []) : [];
     // Non-speech sounds are strong moment candidates — an explosion or a burst of
     // laughter marks a highlight as reliably as anything said out loud.
     let sounds = [];

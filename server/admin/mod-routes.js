@@ -404,23 +404,8 @@ router.post('/delete-message', async (req, res) => {
             if (!allowed) return res.status(403).json({ error: 'You cannot moderate this stream' });
         }
 
-        // Chat ingress: Chat deletes the row and broadcasts the delete to every surface it reached.
-        if (delivery.ingress()) {
-            await delivery.moderate('delete-message', { id: parseInt(message_id), deleted_by: req.user.id }, { key: `delete:${message_id}` });
-        }
-        else db.deleteChatMessage(parseInt(message_id), req.user.id);
-
-        // Broadcast deletion to connected clients — reach the streamer's whole
-        // channel room (all slots + offline viewers), plus the global feed.
-        const delPayload = { type: 'delete-messages', ids: [parseInt(message_id)] };
-        const chanUid = message.channel_user_id || (message.stream_id ? (db.getStreamById(message.stream_id)?.user_id || null) : null);
-        if (delivery.ingress()) { /* broadcast by Chat */ } else if (chanUid || message.stream_id) {
-            delivery.broadcastToChannelRoom(chanUid, message.stream_id, delPayload);
-            if (message.stream_id) delivery.forwardToGlobal(message.stream_id, delPayload);
-            else delivery.broadcastGlobal(delPayload);
-        } else {
-            delivery.broadcastGlobal(delPayload);
-        }
+        // Chat deletes the row and broadcasts the delete to every surface it reached.
+        await delivery.moderate('delete-message', { id: parseInt(message_id), deleted_by: req.user.id }, { key: `delete:${message_id}` });
 
         delivery.logModeration({
             scope_type: message.stream_id ? 'stream' : 'site',
@@ -458,34 +443,12 @@ router.post('/delete-user-messages', async (req, res) => {
             }
         }
 
-        let ids = [];
-        if (delivery.ingress()) {
-            // Chat deletes the rows and broadcasts the deletes (also the site-wide one) itself.
-            const [action, subject] = user_id ? ['delete-user-messages', { user_id: parseInt(user_id) }]
-                : anon_id ? ['delete-anon-messages', { anon_id: String(anon_id) }] : ['delete-relay-messages', { username: String(relay_username) }];
-            const scoped = { stream_id: scopedStreamId ? parseInt(scopedStreamId) : undefined, deleted_by: req.user.id };
-            const r = await delivery.moderate(action, { ...subject, ...scoped });
-            ids = (r && Array.isArray(r.ids)) ? r.ids : [];
-        } else if (user_id) {
-            ids = db.deleteUserChatMessages(parseInt(user_id), { streamId: scopedStreamId, deletedBy: req.user.id });
-        } else if (anon_id) {
-            ids = db.deleteAnonChatMessages(anon_id, { streamId: scopedStreamId, deletedBy: req.user.id });
-        } else if (relay_username) {
-            ids = db.deleteRelayUserMessages(relay_username, { streamId: scopedStreamId, deletedBy: req.user.id });
-        }
-
-        // Broadcast deletions to connected clients
-        if (ids.length > 0 && !delivery.ingress()) {
-            const deleteMsg = { type: 'delete-messages', ids };
-            if (scopedStreamId) {
-                const chanUid = db.getStreamById(scopedStreamId)?.user_id || null;
-                delivery.broadcastToChannelRoom(chanUid, scopedStreamId, deleteMsg);
-                delivery.forwardToGlobal(scopedStreamId, deleteMsg);
-            } else {
-                // Global deletion — Chat fans it out to the clients it holds; Live has none.
-                delivery.broadcastGlobal(deleteMsg);
-            }
-        }
+        // Chat deletes the rows and broadcasts the deletes (also the site-wide one) itself.
+        const [action, subject] = user_id ? ['delete-user-messages', { user_id: parseInt(user_id) }]
+            : anon_id ? ['delete-anon-messages', { anon_id: String(anon_id) }] : ['delete-relay-messages', { username: String(relay_username) }];
+        const scoped = { stream_id: scopedStreamId ? parseInt(scopedStreamId) : undefined, deleted_by: req.user.id };
+        const r = await delivery.moderate(action, { ...subject, ...scoped });
+        const ids = (r && Array.isArray(r.ids)) ? r.ids : [];
 
         const target = user_id ? `user ${user_id}` : anon_id ? `anon ${anon_id}` : `relay ${relay_username}`;
         delivery.logModeration({
@@ -531,10 +494,7 @@ router.post('/relay-user/hide', async (req, res) => {
 
         // Unban / unhide — remove the ban for this exact relay identity only.
         if (action === 'unban' || action === 'unhide') {
-            if (delivery.ingress()) {
-                await delivery.moderate('relay-unhide', { channel_id: channel_id || undefined, platform, external_username });
-            }
-            else db.unhideRelayUserByIdentity(channel_id || null, platform, external_username);
+            await delivery.moderate('relay-unhide', { channel_id: channel_id || undefined, platform, external_username });
             invalidateRelayHidden(channel_id || null);
             delivery.logModeration({
                 scope_type: channel_id ? 'channel' : 'site',
@@ -546,16 +506,7 @@ router.post('/relay-user/hide', async (req, res) => {
             return res.json({ message: `[${platform}] ${external_username} unbanned` });
         }
 
-        if (delivery.ingress()) {
-            await delivery.moderate('relay-hide', { channel_id: channel_id || undefined, platform, external_username, mode: action || 'hide', reason: reason || undefined, created_by: req.user.id });
-        } else db.hideRelayUser({
-            channelId: channel_id || null,
-            platform,
-            externalUsername: external_username,
-            action: action || 'hide',
-            reason,
-            createdBy: req.user.id,
-        });
+        await delivery.moderate('relay-hide', { channel_id: channel_id || undefined, platform, external_username, mode: action || 'hide', reason: reason || undefined, created_by: req.user.id });
         invalidateRelayHidden(channel_id || null);
 
         delivery.logModeration({
@@ -582,8 +533,7 @@ router.delete('/relay-user/:id', async (req, res) => {
         const allowed = permissions.isGlobalModOrAbove(req.user)
             || (row.channel_id != null && await permissions.canModerateChannel(req.user, row.channel_id));
         if (!allowed) return res.status(403).json({ error: 'You cannot moderate this channel' });
-        if (delivery.ingress()) { await delivery.moderate('relay-unhide', { id: row.id }); }
-        else db.unhideRelayUser(row.id);
+        await delivery.moderate('relay-unhide', { id: row.id });
         invalidateRelayHidden(row.channel_id);
 
         delivery.logModeration({
@@ -660,39 +610,11 @@ router.post('/ip-approval/:channelId/approve', async (req, res) => {
             return res.status(403).json({ error: 'Access denied' });
         }
 
-        // The held rows this IP is about — from Chat when Chat is the authority (Live holds no
-        // copy), else Live's own queue. In Chat mode they are not re-broadcast here: Chat releases
-        // them and broadcasts; Live only needs the count for its answer and log.
-        const pendingMsgs = delivery.ingress()
-            ? (await chatReads.pendingIp(channelId, { limit: 500 })).filter((m) => m.ip_address === ip)
-            : db.all("SELECT * FROM pending_ip_messages WHERE channel_id = ? AND ip_address = ? AND status = 'pending'", [channelId, ip]);
+        // The held rows this IP is about — Chat holds them; Live keeps no queue. Live only needs
+        // the count for its answer and log: Chat releases them and broadcasts.
+        const pendingMsgs = (await chatReads.pendingIp(channelId, { limit: 500 })).filter((m) => m.ip_address === ip);
 
-        // Chat ingress: Chat approves its held rows; re-showing them live is Chat's (it holds them).
-        if (delivery.ingress()) {
-            await delivery.moderate('approve-ip-messages', { channel_id: parseInt(channelId), ip, reviewed_by: req.user.id });
-        }
-        else db.approveAllFromIp(channelId, ip, req.user.id);
-
-        // Broadcast previously-held messages as real chat messages
-        for (const msg of delivery.ingress() ? [] : pendingMsgs) {
-            if (msg.stream_id) {
-                const chatMsg = {
-                    type: 'chat',
-                    username: msg.username,
-                    user_id: msg.user_id || null,
-                    anon_id: msg.anon_id || null,
-                    role: msg.user_id ? 'user' : 'anon',
-                    message: msg.message,
-                    stream_id: msg.stream_id,
-                    is_global: false,
-                    profile_color: '#999',
-                    timestamp: msg.created_at,
-                    was_held: true,
-                };
-                delivery.broadcastToStream(msg.stream_id, chatMsg);
-                delivery.forwardToGlobal(msg.stream_id, chatMsg);
-            }
-        }
+        await delivery.moderate('approve-ip-messages', { channel_id: parseInt(channelId), ip, reviewed_by: req.user.id });
 
         delivery.logModeration({
             scope_type: 'channel',
@@ -723,10 +645,7 @@ router.post('/ip-approval/:channelId/deny', async (req, res) => {
             return res.status(403).json({ error: 'Access denied' });
         }
 
-        if (delivery.ingress()) {
-            await delivery.moderate('deny-ip-messages', { channel_id: parseInt(channelId), ip, reviewed_by: req.user.id });
-        }
-        else db.denyAllFromIp(channelId, ip, req.user.id);
+        await delivery.moderate('deny-ip-messages', { channel_id: parseInt(channelId), ip, reviewed_by: req.user.id });
 
         delivery.logModeration({
             scope_type: 'channel',
@@ -758,13 +677,7 @@ router.post('/ip-approval/:channelId/review', async (req, res) => {
             return res.status(403).json({ error: 'Access denied' });
         }
 
-        if (delivery.ingress()) {
-            await delivery.moderate('review-pending-ip', { id: parseInt(message_id), status, reviewed_by: req.user.id, channel_id: parseInt(channelId) });
-        } else db.reviewPendingIpMessage(parseInt(message_id), {
-            status,
-            reviewedBy: req.user.id,
-            channelId,
-        });
+        await delivery.moderate('review-pending-ip', { id: parseInt(message_id), status, reviewed_by: req.user.id, channel_id: parseInt(channelId) });
 
         res.json({ message: `Message ${status}` });
     } catch (err) {
@@ -963,8 +876,7 @@ router.put('/tts-voice/:kind/:id', permissions.requireGlobalMod, (req, res) => {
     try {
         const identityKey = _ttsIdentityKey(req.params.kind, req.params.id);
         if (req.body?.reset) {
-            if (delivery.ingress()) { delivery.moderate('tts-voice-override', { identity_key: identityKey }); }
-            else db.deleteTtsVoiceOverride(identityKey);
+            delivery.moderate('tts-voice-override', { identity_key: identityKey });
             return res.json({ isOverride: false, params: ttsEngine.autoUserVoiceParams(identityKey) });
         }
         let params;
@@ -981,8 +893,7 @@ router.put('/tts-voice/:kind/:id', permissions.requireGlobalMod, (req, res) => {
             params = { voice: req.body?.voice, pitch: req.body?.pitch, speed: req.body?.speed, gap: req.body?.gap };
         }
         const clamped = ttsEngine.clampVoiceParams(params);
-        if (delivery.ingress()) { delivery.moderate('tts-voice-override', { identity_key: identityKey, params: clamped, set_by: req.user.id }); }
-        else db.setTtsVoiceOverride(identityKey, clamped, req.user.id);
+        delivery.moderate('tts-voice-override', { identity_key: identityKey, params: clamped, set_by: req.user.id });
         res.json({ isOverride: true, params: clamped });
     } catch (err) {
         console.error('[Mod] tts-voice set error:', err.message);

@@ -54,7 +54,7 @@ The media subsystem lives in **OpenVibe.Media**:
 
 ### Data storage
 
-- `data/live.db` — primary SQLite database (users, streams, chat, channel state, AI state).
+- `data/live.db` — primary SQLite database (users, streams, channel state, AI state). Chat storage is OpenVibe.Chat's.
 - `data/live-thumbs` — ephemeral live-stream thumbnails.
 - `data/emotes`, `data/avatars`, `data/offline` — Live-local assets.
 - `data/media/cache` — song-request (watch-party) downloads.
@@ -75,7 +75,7 @@ The media subsystem lives in **OpenVibe.Media**:
 ## Does not own
 
 - **Identity, sessions, follows, blocks, notifications, OpenCoins**: OpenVibe.Network. Live verifies its RS256 tokens offline and follows `network.user.*`, `network.follow.*` and deletion, export and merge events.
-- **Chat messages and their tables**: OpenVibe.Chat (since 2026-09-23). Live bridges its WebSocket and moves the remaining staged tables one by one (`server/chat/chat-tables.js`).
+- **Chat, its messages and every chat table**: OpenVibe.Chat (since 2026-09-23). Live keeps no copy: reads and writes go through `server/chat/chat-reads.js` and `chat-delivery.js`, and the twelve tables Live still held are dropped by the operator migration `op_003_drop_chat_tables` (`scripts/chat-tables-drop.js`).
 - **Recordings, clips, thumbnails, files**: OpenVibe.Media. The local `vods`/`clips`/`pastes` tables are frozen (`test/frozen-tables.test.js`).
 - **Pastes and comments**: OpenVibe.Community.
 - **AI**: OpenVibe.AI. Live calls no model provider itself. Every prompt is an AI template; streamers' own keys are stored there; VOD and clip transcripts run there. Only live-stream captions still use Live's whisper.cpp.

@@ -227,10 +227,10 @@ const waitFor = async (pred, what, ms = 3000) => {
 
     const db = require('../server/db/database');
     db.initDb();
-    require('../server/chat/dm').ensureTables();
     const d = db.getDb();
-    // Live no longer has the staged chat tables (dropped in T3 N+2); the stub Chat below imitates
-    // Chat's own copy, so the test keeps local copies to seed and read.
+    // Live no longer has any of OpenVibe.Chat's tables (the staged ones dropped in T3 N+2; the
+    // twelve chat tables dropped by op_003). The stub Chat below imitates Chat's own copy, so the
+    // test keeps local stand-in tables to seed and read.
     d.exec(`
         CREATE TABLE IF NOT EXISTS channel_moderators (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -249,6 +249,38 @@ const waitFor = async (pred, what, ms = 3000) => {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             channel_owner_id INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            stream_id INTEGER, channel_user_id INTEGER, user_id INTEGER, anon_id TEXT, username TEXT,
+            message TEXT, message_type TEXT DEFAULT 'chat', is_global INTEGER DEFAULT 0,
+            is_deleted INTEGER DEFAULT 0, source_platform TEXT, metadata TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, auto_delete_at DATETIME
+        );
+        CREATE TABLE IF NOT EXISTS stream_first_chats (
+            chatter_key TEXT NOT NULL, channel_user_id INTEGER NOT NULL,
+            first_chat_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (chatter_key, channel_user_id)
+        );
+        CREATE TABLE IF NOT EXISTS hidden_relay_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id INTEGER, platform TEXT NOT NULL,
+            external_username TEXT NOT NULL, action TEXT DEFAULT 'hide', reason TEXT, created_by INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS tts_voice_overrides (
+            identity_key TEXT PRIMARY KEY, voice TEXT, pitch INTEGER, speed INTEGER, gap INTEGER DEFAULT 0,
+            set_by INTEGER, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS channel_sounds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, channel_owner_id INTEGER NOT NULL, command TEXT NOT NULL,
+            url TEXT NOT NULL, mime TEXT DEFAULT 'audio/mpeg', duration_seconds REAL DEFAULT 0,
+            created_by INTEGER, created_by_name TEXT DEFAULT '', is_approved INTEGER DEFAULT 1,
+            emote_code TEXT DEFAULT '', media_url TEXT, media_asset_id INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS pending_ip_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id INTEGER NOT NULL, stream_id INTEGER,
+            ip_address TEXT NOT NULL, user_id INTEGER, anon_id TEXT, username TEXT, message TEXT NOT NULL,
+            status TEXT DEFAULT 'pending', reviewed_by INTEGER, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
     `);
     const mkUser = (username, role = 'user', extra = {}) => {
@@ -448,17 +480,18 @@ const waitFor = async (pred, what, ms = 3000) => {
             const chatReads = require('../server/chat/chat-reads');
             const d2 = require('../server/db/database');
             chatReads._reset();
-            for (const c of ['media_url TEXT', 'media_asset_id INTEGER']) { try { d.exec(`ALTER TABLE channel_sounds ADD COLUMN ${c}`); } catch { /* present */ } }
 
-            // Chat's copy (the stub reads Live's tables): two lines by the same user, a held IP
+            // Chat's copy (the stub reads the stand-in tables): two lines by the same user, a held IP
             // message, a hidden relay user, a TTS override, two pending sounds and a relayed line.
-            const m1 = Number(d2.saveChatMessage({ user_id: viewer, username: 'viewer', message: 'hello', channel_user_id: streamer, message_type: 'chat' }).lastInsertRowid);
-            d2.saveChatMessage({ user_id: viewer, username: 'viewer', message: 'again', channel_user_id: streamer, message_type: 'chat' });
+            const chatMsg = (fields) => Number(d.prepare(`INSERT INTO chat_messages (user_id, username, message, channel_user_id, source_platform, message_type)
+                VALUES (@user_id, @username, @message, @channel_user_id, @source_platform, @message_type)`).run({ user_id: null, channel_user_id: null, source_platform: null, message_type: 'chat', ...fields }).lastInsertRowid);
+            const m1 = chatMsg({ user_id: viewer, username: 'viewer', message: 'hello', channel_user_id: streamer });
+            chatMsg({ user_id: viewer, username: 'viewer', message: 'again', channel_user_id: streamer });
             d2.run("INSERT INTO pending_ip_messages (channel_id, ip_address, user_id, username, message, status) VALUES (?, '203.0.113.9', ?, 'viewer', 'held', 'pending')", [channel.id, viewer]);
             d2.run("INSERT INTO hidden_relay_users (channel_id, platform, external_username, action, created_by) VALUES (?, 'twitch', 'alice', 'hide', ?)", [channel.id, streamer]);
             d2.run("INSERT INTO tts_voice_overrides (identity_key, voice, pitch, speed, gap, set_by) VALUES ('user:viewer', 'en+f3', 99, 200, 0, ?)", [admin]);
             d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 'honk', '/sounds/a.mp3', ?), (?, 'beep', '/sounds/b.mp3', ?)", [streamer, streamer, streamer, streamer]);
-            d2.saveChatMessage({ username: '[Twitch] alice', message: 'hi from twitch', source_platform: 'twitch', channel_user_id: streamer, message_type: 'chat' });
+            chatMsg({ username: '[Twitch] alice', message: 'hi from twitch', source_platform: 'twitch', channel_user_id: streamer });
 
             // (2)(3) A peek answers the last good value after its TTL passed, and a failure answers
             // that value too — a failure never overwrites it with null.
@@ -627,15 +660,16 @@ const waitFor = async (pred, what, ms = 3000) => {
             readState.down = false;
             chatReads._reset();
 
-            // (5) The home-stats peek's local (rollback) answer is a messages-only count.
+            // (5) The home-stats peek outside chat mode: a messages-only zero (Live keeps no
+            // chat_messages since the drop, so there is nothing local to count).
             process.env.CHAT_AUTHORITY = '';
             try {
                 chatReads._reset();
                 const peeked = chatReads.siteStatsPeek();
                 assert.strictEqual(peeked.chatters, undefined, 'the peek does not run the distinct-chatter scan');
-                assert.ok(peeked.messages >= 2, 'the peek still counts the messages');
+                assert.strictEqual(peeked.messages, 0, 'no local messages to count');
                 const full = await chatReads.siteStats();
-                assert.ok(full.chatters >= 1, 'the full stats read still counts chatters');
+                assert.strictEqual(full.messages, 0, 'the full local read is zero too');
             } finally {
                 process.env.CHAT_AUTHORITY = 'chat';
                 chatReads._reset();
@@ -735,8 +769,8 @@ const waitFor = async (pred, what, ms = 3000) => {
                 chatReads._reset();
             }
 
-            // (3) Live's own hidden copy is frozen and dead weight in chat mode: a stale local hide
-            // that Chat's list does not carry must not hide anyone (the mirror no longer keeps it in step).
+            // (3) A stale local row is dead weight in chat mode: a hide Chat's list does not carry
+            // must not hide anyone (the stand-in row is never read).
             {
                 const chatClient = require('../server/chat/chat-client');
                 const realReadRelayUsers = chatClient.readRelayUsers;
@@ -746,10 +780,8 @@ const waitFor = async (pred, what, ms = 3000) => {
                 chatClient.readRelayUsers = async () => ({ relay_users: [] });   // Chat's list holds nothing
                 chatReads._reset();
                 try {
-                    assert.strictEqual(d2.isRelayUserHidden(freshCh, 'twitch', 'localonly'), false, 'no local row yet');
+                    assert.strictEqual(chatReads.isRelayUserHidden(freshCh, 'twitch', 'localonly'), false, 'a cold cache fails open');
                     d2.run("INSERT INTO hidden_relay_users (channel_id, platform, external_username, action, created_by) VALUES (?, 'twitch', 'localonly', 'hide', ?)", [freshCh, streamer]);
-                    assert.strictEqual(d2.isRelayUserHidden(freshCh, 'twitch', 'localonly'), true, "Live's own row is there");
-                    assert.strictEqual(chatReads.isRelayUserHidden(freshCh, 'twitch', 'localonly'), false, 'a cold cache fails open, never Live\'s row');
                     for (let i = 0; i < 300 && chatReads._size() === 0; i++) await sleep(10);
                     assert.ok(chatReads._size() > 0, 'the background read warmed the cache');
                     assert.strictEqual(chatReads.isRelayUserHidden(freshCh, 'twitch', 'localonly'), false, "Live's stale local hide is ignored — Chat's list is the truth");
@@ -805,6 +837,7 @@ const waitFor = async (pred, what, ms = 3000) => {
                 [viewer, atDay(2), viewer, atDay(2), mod, atDay(2)]);
             d2.run("INSERT INTO chat_messages (user_id, username, message, message_type, timestamp) VALUES (?, 'viewer', 'd', 'chat', ?), (?, 'moddy', 'e', 'chat', ?)",
                 [viewer, atDay(1), mod, atDay(1)]);
+            await chatReads.homeSeries('messages', 7);   // warm Chat's answer; the peek cannot await
             const series = chatReads.homeSeriesPeek('messages', 7);
             assert.ok(series && Array.isArray(series.points), 'the chat series peek answers in chat mode');
             assert.strictEqual(series.days, 7);
@@ -815,6 +848,7 @@ const waitFor = async (pred, what, ms = 3000) => {
             assert.strictEqual(series.total, 5);
             assert.strictEqual(series.prev_total, 0, 'the window before the 7 days is empty');
             assert.strictEqual(series.before, 0, 'nothing before the window');
+            await chatReads.homeSeries('active', 7);   // warm Chat's answer
             const activeSeries = chatReads.homeSeriesPeek('active', 7);
             assert.strictEqual(activeSeries.points[4].value, 2, 'two days ago: two distinct chatters');
             assert.strictEqual(activeSeries.points[5].value, 2, 'yesterday: two distinct chatters');
@@ -823,12 +857,10 @@ const waitFor = async (pred, what, ms = 3000) => {
             chatReads.homeSeriesPeek = () => ({ metric: 'messages', sentinel: true });
             try { assert.strictEqual(d2.getHomeStatSeries('messages', 7).sentinel, true, 'getHomeStatSeries reads the chat series in chat mode'); }
             finally { chatReads.homeSeriesPeek = realSeriesPeek; }
-            // A cold cache during a Chat outage answers Live's own table, not zeros.
+            // A cold cache during a Chat outage answers null (Live keeps no chat series to fall back to).
             chatReads._reset();
             readState.down = true;
-            const fallbackSeries = chatReads.homeSeriesPeek('messages', 7);
-            assert.ok(fallbackSeries && fallbackSeries.points.length === 7, 'a cold + down peek answers Live\'s own series');
-            assert.strictEqual(fallbackSeries.total, 5, 'the fallback is Live\'s own series, not zeros');
+            assert.strictEqual(chatReads.homeSeriesPeek('messages', 7), null, 'a cold + down peek answers null');
             readState.down = false;
             chatReads._reset();
 
@@ -866,9 +898,8 @@ const waitFor = async (pred, what, ms = 3000) => {
             assert.strictEqual(readState.firstChatCalls, 1, 'a true answer is re-asked after the short TTL');
             chatReads._reset();
             d2.run('DELETE FROM stream_first_chats WHERE chatter_key = ?', [`user:${viewer}`]);
-            assert.strictEqual(d2.isFirstChatInChannel(`user:${viewer}`, streamer), true, 'Live\'s frozen table would say first');
             readState.down = true;
-            assert.strictEqual(chatReads.firstChatPeek(streamer, `user:${viewer}`), false, 'a cold + down peek answers not-first, never Live\'s frozen table');
+            assert.strictEqual(chatReads.firstChatPeek(streamer, `user:${viewer}`), false, 'a cold + down peek answers not-first (Live keeps no first-chat table)');
             readState.down = false;
             chatReads._reset();
 

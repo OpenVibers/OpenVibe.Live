@@ -50,8 +50,9 @@ path are deleted.
   `GET /internal/chat/messages`, `/timeline`, `/first-chat`, `/sounds`, `/sounds/by-command`,
   `/moderation/pending-ip`, `/moderation/relay-users`, `/moderation/tts-override` — through
   [server/chat/chat-reads.js](../server/chat/chat-reads.js), replacing the read mirror for home stats,
-  recaps, AI context, VOD chat replay and the `/api/mod` queues. A Chat outage answers a cached value
-  or Live's own table, never a 500.
+  recaps, AI context, VOD chat replay and the `/api/mod` queues. A Chat outage answers a cached value,
+  never a 500; outside chat mode (dev, drills) the same reads answer null/empty — Live keeps no copy of
+  Chat's tables (below).
 - **The read mirror is retired** (2026-10-05): OpenVibe.Chat #25 removed the sender (its `LIVE_MIRROR`
   writer and the capture triggers), and this change removed Live's receiver — the
   `POST /internal/chat-effects/mirror` route in `live-context-routes.js`, its
@@ -59,20 +60,29 @@ path are deleted.
   read it any more: the two HOME_SERIES charts `messages` and `active` read Chat's site-daily series,
   the AI context's "first time chatting here" flag reads Chat's first-chat read, and the
   RobotStreamer `!sound` lookup reads Chat's sounds-by-command read — each through
-  [server/chat/chat-reads.js](../server/chat/chat-reads.js), falling back to Live's own table only
-  while Chat is unreachable. Live's own chat tables stay until a later change drops them; the readers
-  that still answer from them are on the Live-runs-chat path `CHAT_AUTHORITY=chat` leaves unmounted —
-  `dm_*` (no `/api/dm`), the deploy notice, the admin chat log and the leftover dev/rollback fallbacks.
-- **The six chat tables are Chat's** (roadmap T3): `channel_moderators`, `channel_moderation_settings`,
-  `emotes`, `user_tags`, `chat_ai_summaries` and `chat_timeline_events`. Live keeps no copy and reads them
-  only through [server/chat/moderation-client.js](../server/chat/moderation-client.js) — Chat's internal
-  read API (`GET /internal/moderation/...`, capability `chat.moderation.read`, cached 30 s, off under
-  `LIVE_DRILL`). The dashboard, channel page and upload UI call Chat directly (`/api/chat/channels/:id/…`,
-  `/api/emotes`, `/api/chat/ai/…`); alert sounds are Chat's, played on Live's request as an `alert`
-  event `{ streamerId, streamId, kind }` on Chat's ingress ([server/monetization/alerts.js](../server/monetization/alerts.js)).
-  Live's staged-table machinery (the write relay, dual read and handoff in `chat-tables*.js`), Live's
-  chat-AI summary job and the old emote/channel-moderation routes were deleted in the N+1 release; Live's
-  copies of the seven supporting tables were dropped in N+2, and the unread `emotes` copy in N+3 (ADR-016).
+  [server/chat/chat-reads.js](../server/chat/chat-reads.js); an unreachable Chat answers a cached value,
+  else null/empty, never a Live copy.
+- **Every chat table is Chat's** (roadmap T3). The staged set — `channel_moderators`,
+  `channel_moderation_settings`, `emotes`, `user_tags`, `chat_ai_summaries` and `chat_timeline_events` —
+  is read only through [server/chat/moderation-client.js](../server/chat/moderation-client.js) (Chat's
+  internal read API, `GET /internal/moderation/...`, capability `chat.moderation.read`, cached 30 s, off
+  under `LIVE_DRILL`); the dashboard, channel page and upload UI call Chat directly
+  (`/api/chat/channels/:id/…`, `/api/emotes`, `/api/chat/ai/…`); alert sounds are Chat's, played on
+  Live's request as an `alert` event `{ streamerId, streamId, kind }` on Chat's ingress
+  ([server/monetization/alerts.js](../server/monetization/alerts.js)). Live's staged-table machinery, its
+  chat-AI summary job and the old emote/channel-moderation routes were deleted in N+1; the seven
+  supporting tables were dropped in N+2 and the unread `emotes` copy in N+3 (ADR-016).
+- **The twelve chat tables are dropped** (T3 final step, 2026-10-05): `chat_messages`,
+  `dm_conversations`, `dm_participants`, `dm_messages`, `dm_blocks`, `tts_voice_overrides`,
+  `channel_sounds`, `relay_users`, `hidden_relay_users`, `pending_ip_messages`, `stream_first_chats`
+  and `moderation_actions`. Chat imported them with ids kept at the cutover and has been their only
+  writer since; Live's readers and writers are gone (#28–#32 and this release), and it no longer creates
+  them. The drop itself is the operator migration `op_003_drop_chat_tables` via
+  [scripts/chat-tables-drop.js](../scripts/chat-tables-drop.js) (dry run, then `--apply`: backup, drop),
+  run once the release before is out of rollback range (ADR-028) — see
+  [docs/cutover-chat-tables-003.md](cutover-chat-tables-003.md). The deployment notice is Chat's too: Live
+  queues `live.release.deployed` and Chat folds and stores the rolling card. `test/chat-tables-dropped.test.js`
+  guards that nothing under `server/` names them.
 
 ## Features
 
@@ -193,8 +203,8 @@ each chat line is translated a beat after it is broadcast and delivered to the s
 Direction rules: any non-English message → English; an English message in a non-English
 channel → the channel's language (so a Japanese streamer reads his chat without anyone typing
 Japanese). Emote-only / command / link-only lines are skipped. Translations are cached by
-content hash in the `translations` table and persisted into `chat_messages.metadata.translation`,
-so history renders them too. Calls go through `ai/llm.js` (metered, budgeted, max 3 in flight;
+content hash in the `translations` table and persisted by Chat into the message's
+`metadata.translation`, so history renders them too. Calls go through `ai/llm.js` (metered, budgeted, max 3 in flight;
 overflow lines simply stay untranslated).
 
 **Any line, your language.** Every chat message also has a hover 🌐 button that asks `POST /api/i18n/translate { text, to }` for the line in the viewer's browser language (rate-limited per IP: 15/min anonymous, 40/min signed in; cached like the automatic translations). This is the third direction — a Korean viewer reading a Japanese streamer, a Japanese viewer on an English stream — so nobody is left out, English users included.

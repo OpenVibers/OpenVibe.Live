@@ -2,9 +2,10 @@
 // Account export and deletion → Live (roadmap WS-B task 7, ADR-033): through POST /internal/network-events (signed),
 // network.account.export_requested sends Live's part to Network (the profile and the person's rows per table, no
 // stream keys or token hashes; an empty part for someone with no Live account), and network.account.deleted erases the
-// person's rows (follows and channel points both ways, streams with what is inside them, their own chat lines,
-// managed streams, tokens), keeps money and moderation rows pointing at a tombstone (the donation message cleared),
-// keeps shared rows without them, releases the username, and confirms with counts. A redelivery sends nothing twice;
+// person's rows (follows and channel points both ways, streams with what is inside them, managed streams, tokens),
+// keeps money rows pointing at a tombstone (the donation message cleared), keeps shared rows without them, releases
+// the username, and confirms with counts. (The chat tables are OpenVibe.Chat's and erased by its own eraser.)
+// A redelivery sends nothing twice;
 // a failed confirmation is retried without erasing again. The subscription asks for both topics.
 //   node test/account-data.test.js
 const assert = require('assert');
@@ -37,13 +38,10 @@ d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, servi
 d.prepare('INSERT INTO follows (follower_id, streamer_id) VALUES (20, 21), (22, 20), (22, 21)').run();
 d.prepare('INSERT INTO channel_points (user_id, streamer_id, balance) VALUES (20, 21, 30), (22, 20, 7), (22, 21, 5)').run();
 d.prepare("INSERT INTO streams (id, user_id, title) VALUES (1, 20, 'dana live'), (2, 21, 'xena live')").run();
-// yuri chats in dana's stream (goes with the stream); dana chats in xena's (her own line goes); yuri in xena's stays.
-d.prepare("INSERT INTO chat_messages (stream_id, user_id, username, message) VALUES (1, 22, 'yuri', 'hey dana'), (2, 20, 'dana', 'hey xena'), (2, 22, 'yuri', 'yo')").run();
 d.prepare("INSERT INTO managed_streams (user_id, stream_key) VALUES (20, 'sk_live_secret_dana')").run();
 d.prepare("INSERT INTO api_tokens (user_id, token_hash) VALUES (20, 'hash-secret-dana')").run();
 d.prepare("INSERT INTO transactions (from_user_id, to_user_id, amount, type, message) VALUES (20, 21, 5, 'donation', 'love you xena'), (22, 20, 3, 'donation', 'for dana')").run();
 d.prepare("INSERT INTO payment_orders (user_id, provider, provider_ref, kind, amount_cents, currency, bucks, status) VALUES (20, 'paypal', 'PO-1', 'bucks', 500, 'USD', 5, 'completed')").run();
-d.prepare("INSERT INTO moderation_actions (action_type, actor_user_id, target_user_id) VALUES ('timeout', 21, 20)").run();
 
 const envelope = (type, payload) => {
     assert.ok(validate(`${type}@1`, payload).valid, JSON.stringify(validate(`${type}@1`, payload).errors));
@@ -105,12 +103,9 @@ const ulid = () => ids.ulid();
         assert.strictEqual(n('SELECT COUNT(*) AS n FROM channel_points WHERE user_id = 20 OR streamer_id = 20'), 0, 'channel points both ways');
         assert.strictEqual(n('SELECT COUNT(*) AS n FROM follows'), 1, "others' follows stay");
         assert.strictEqual(n('SELECT COUNT(*) AS n FROM streams WHERE user_id = 20'), 0);
-        assert.deepStrictEqual(d.prepare('SELECT stream_id, user_id, message FROM chat_messages ORDER BY id').all(), [{ stream_id: 2, user_id: 22, message: 'yo' }],
-            'the stream took its chat with it; her own line elsewhere went; others stay');
         assert.strictEqual(n('SELECT COUNT(*) AS n FROM managed_streams WHERE user_id = 20') + n('SELECT COUNT(*) AS n FROM api_tokens WHERE user_id = 20') + n("SELECT COUNT(*) AS n FROM linked_accounts WHERE user_id = 20"), 0);
         assert.deepStrictEqual(d.prepare('SELECT from_user_id AS f, message FROM transactions ORDER BY id').all(), [{ f: 20, message: null }, { f: 22, message: 'for dana' }], 'money kept; her own message cleared');
         assert.strictEqual(n("SELECT COUNT(*) AS n FROM payment_orders WHERE user_id = 20"), 1, 'payment orders kept');
-        assert.strictEqual(n('SELECT COUNT(*) AS n FROM moderation_actions WHERE target_user_id = 20'), 1, 'moderation records kept');
         const tomb = d.prepare('SELECT username, email, bio, deleted_at FROM users WHERE id = 20').get();
         assert.deepStrictEqual([tomb.username, tomb.email, tomb.bio, !!tomb.deleted_at], ['deleted-20', null, null, true]);
         d.prepare("INSERT INTO users (username, password_hash) VALUES ('dana', '$sso$')").run();
@@ -119,7 +114,7 @@ const ulid = () => ids.ulid();
         assert.strictEqual(conf.path, `/internal/account-deletions/${del.payload.deletion_id}/confirmations`);
         assert.ok(validate('network.account-deletion-confirmation@1', conf.body).valid, JSON.stringify(validate('network.account-deletion-confirmation@1', conf.body).errors));
         assert.ok(conf.body.erased.follows >= 2 && conf.body.erased.streams === 1 && conf.body.erased.accounts === 1, JSON.stringify(conf.body.erased));
-        assert.ok(conf.body.retained.transactions === 2 && conf.body.retained.payment_orders === 1 && conf.body.retained.moderation_actions === 1, JSON.stringify(conf.body.retained));
+        assert.ok(conf.body.retained.transactions === 2 && conf.body.retained.payment_orders === 1, JSON.stringify(conf.body.retained));
         assert.strictEqual(await accountData.apply(del, { send }), 'unchanged');
         assert.strictEqual(sent.length, 3);
 

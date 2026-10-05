@@ -413,81 +413,6 @@ function initDb() {
         database.exec(`CREATE INDEX IF NOT EXISTS idx_linked_user ON linked_accounts(user_id)`);
     } catch (e) { console.warn('[DB] linked_accounts migration:', e.message); }
 
-    // Migrate: make chat_messages.stream_id nullable (was NOT NULL, broke global chat saves)
-    try {
-        const cmCols = database.prepare("PRAGMA table_info('chat_messages')").all();
-        const streamIdCol = cmCols.find(c => c.name === 'stream_id');
-        if (streamIdCol && streamIdCol.notnull === 1) {
-            database.exec(`
-                CREATE TABLE chat_messages_new (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    stream_id INTEGER,
-                    user_id INTEGER,
-                    anon_id TEXT,
-                    username TEXT,
-                    message TEXT NOT NULL,
-                    message_type TEXT DEFAULT 'chat' CHECK(message_type IN ('chat', 'system', 'donation', 'command', 'tts')),
-                    is_global INTEGER DEFAULT 0,
-                    is_deleted INTEGER DEFAULT 0,
-                    is_filtered INTEGER DEFAULT 0,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE CASCADE,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
-                );
-                INSERT INTO chat_messages_new SELECT * FROM chat_messages;
-                DROP TABLE chat_messages;
-                ALTER TABLE chat_messages_new RENAME TO chat_messages;
-                CREATE INDEX IF NOT EXISTS idx_chat_stream ON chat_messages(stream_id);
-                CREATE INDEX IF NOT EXISTS idx_chat_user ON chat_messages(user_id);
-                CREATE INDEX IF NOT EXISTS idx_chat_timestamp ON chat_messages(timestamp);
-            `);
-            console.log('[DB] Migrated chat_messages.stream_id to nullable');
-        }
-    } catch (e) { console.warn('[DB] chat_messages migration:', e.message); }
-
-    // Migrate: add reply_to_id column to chat_messages for threaded replies
-    try {
-        const cmCols2 = database.prepare("PRAGMA table_info('chat_messages')").all().map(c => c.name);
-        if (!cmCols2.includes('reply_to_id')) {
-            database.exec(`ALTER TABLE chat_messages ADD COLUMN reply_to_id INTEGER REFERENCES chat_messages(id) ON DELETE SET NULL`);
-            console.log('[DB] Added reply_to_id column to chat_messages');
-        }
-    } catch (e) { console.warn('[DB] chat_messages reply_to_id migration:', e.message); }
-
-    // Migrate: widen the message_type CHECK so sound announces ('channel-sound',
-    // 'soundboard') persist to history. SQLite can't alter a CHECK — rebuild the
-    // table from its CURRENT definition (columns have grown over time).
-    try {
-        const tbl = database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='chat_messages'").get();
-        const REQUIRED_TYPES = ['channel-sound', 'soundboard', 'clip'];
-        if (tbl && /message_type IN \([^)]*\)/.test(tbl.sql) && REQUIRED_TYPES.some(t => !tbl.sql.includes(`'${t}'`))) {
-            const newSql = tbl.sql
-                .replace(/CREATE TABLE ["']?chat_messages["']?/, 'CREATE TABLE chat_messages_new')
-                .replace(/message_type IN \([^)]*\)/,
-                    "message_type IN ('chat', 'system', 'donation', 'command', 'tts', 'channel-sound', 'soundboard', 'clip')");
-            const cols = database.prepare("PRAGMA table_info('chat_messages')").all().map(c => `"${c.name}"`).join(', ');
-            const indexes = database.prepare(
-                "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='chat_messages' AND sql IS NOT NULL"
-            ).all().map(r => r.sql);
-            database.pragma('foreign_keys = OFF');
-            try {
-                database.exec('BEGIN');
-                database.exec(newSql);
-                database.exec(`INSERT INTO chat_messages_new (${cols}) SELECT ${cols} FROM chat_messages`);
-                database.exec('DROP TABLE chat_messages');
-                database.exec('ALTER TABLE chat_messages_new RENAME TO chat_messages');
-                for (const sql of indexes) { try { database.exec(sql); } catch { /* index name may survive */ } }
-                database.exec('COMMIT');
-                console.log('[DB] Widened chat_messages.message_type CHECK for sound announces');
-            } catch (e2) {
-                try { database.exec('ROLLBACK'); } catch { /* no open tx */ }
-                throw e2;
-            } finally {
-                database.pragma('foreign_keys = ON');
-            }
-        }
-    } catch (e) { console.warn('[DB] chat_messages message_type migration:', e.message); }
-
     // Migrate: add default_vod_visibility / default_clip_visibility to channels
     try {
         const chanCols = database.prepare("PRAGMA table_info('channels')").all().map(c => c.name);
@@ -1336,18 +1261,6 @@ function initDb() {
         )`);
         database.exec(`CREATE INDEX IF NOT EXISTS idx_egg_solves_date ON easter_egg_solves(egg_date)`);
 
-        // Admin-set per-user TTS voice overrides (keyed by the same identity key used at
-        // synthesis: "user:<username>" / "anon:<id>"). Overrides the auto-assigned voice.
-        database.exec(`CREATE TABLE IF NOT EXISTS tts_voice_overrides (
-            identity_key TEXT PRIMARY KEY,
-            voice TEXT,
-            pitch INTEGER,
-            speed INTEGER,
-            gap INTEGER DEFAULT 0,
-            set_by INTEGER,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
-
         // `pastes` is created several hundred lines below this point, so on a brand-new database
         // this PRAGMA throws — and because it shares a try block with the migrations that follow,
         // it took them down with it: streams.ai_overview, vods.ai_overview, clips.ai_overview and
@@ -1448,37 +1361,6 @@ function initDb() {
         }
     } catch (e) { console.warn('[DB] short-overview migration:', e.message); }
 
-    // Chat-relay users (external Twitch/Kick/YouTube handles): record their first
-    // message as a "join date" + last-seen + message count, for the context menu.
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS relay_users (
-            platform TEXT NOT NULL,
-            username TEXT NOT NULL,
-            display_name TEXT,
-            first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
-            last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
-            message_count INTEGER DEFAULT 0,
-            PRIMARY KEY (platform, username)
-        )`);
-        // One-time backfill: earlier relay sources (notably RobotStreamer) didn't record
-        // relay_users, so their existing chatters had no row to hang chat-logs/AI insight
-        // off. Seed relay_users from the historical "[Label] name" relay messages. Idempotent
-        // (INSERT OR IGNORE keyed on platform+username), guarded so it runs at most once.
-        const _relayDone = database.prepare("SELECT value FROM site_settings WHERE key='relay_users_backfilled'").get();
-        if (!_relayDone) {
-            database.exec(`INSERT OR IGNORE INTO relay_users (platform, username, display_name, first_seen, last_seen, message_count)
-                SELECT source_platform,
-                       LOWER(TRIM(SUBSTR(username, INSTR(username, '] ') + 2))),
-                       TRIM(SUBSTR(username, INSTR(username, '] ') + 2)),
-                       MIN(timestamp), MAX(timestamp), COUNT(*)
-                FROM chat_messages
-                WHERE user_id IS NULL AND source_platform IS NOT NULL
-                      AND username LIKE '[%] %' AND INSTR(username, '] ') > 0
-                GROUP BY source_platform, LOWER(TRIM(SUBSTR(username, INSTR(username, '] ') + 2)))`);
-            database.prepare("INSERT OR REPLACE INTO site_settings (key, value, type) VALUES ('relay_users_backfilled','1','string')").run();
-        }
-    } catch (e) { console.warn('[DB] relay_users migration:', e.message); }
-
     // Timestamped transcript segments (JSON) — contextual data for the AI system +
     // clickable timestamps in the VOD/clip transcript UI.
     try {
@@ -1502,14 +1384,6 @@ function initDb() {
         if (!cols.includes('reached_at')) database.exec('ALTER TABLE donation_goals ADD COLUMN reached_at DATETIME');
         if (!cols.includes('sort_order')) database.exec('ALTER TABLE donation_goals ADD COLUMN sort_order INTEGER DEFAULT 0');
     } catch (e) { console.warn('[DB] donation_goals media migration:', e.message); }
-
-    // chat_messages.metadata — JSON sidecar for rich/animated events (donations + goal
-    // reached) so they persist in history WITH their structured payload (image, amount,
-    // goal title, animation kind) while `message` stays human-readable.
-    try {
-        const cols = database.prepare('PRAGMA table_info(chat_messages)').all().map(c => c.name);
-        if (!cols.includes('metadata')) database.exec('ALTER TABLE chat_messages ADD COLUMN metadata TEXT');
-    } catch (e) { console.warn('[DB] chat metadata migration:', e.message); }
 
     // Migrate: extend the subscriptions table for real recurring billing.
     try {
@@ -1566,67 +1440,6 @@ function initDb() {
             console.log(`[DB] Migrated ${modCount} mod(s) → global_mod`);
         }
     } catch (e) { console.warn('[DB] Role migration:', e.message); }
-
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS channel_sounds (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_owner_id INTEGER NOT NULL,
-            command TEXT NOT NULL,
-            url TEXT NOT NULL,
-            mime TEXT DEFAULT 'audio/mpeg',
-            duration_seconds REAL DEFAULT 0,
-            created_by INTEGER,
-            created_by_name TEXT DEFAULT '',
-            is_approved INTEGER DEFAULT 1,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (channel_owner_id) REFERENCES users(id) ON DELETE CASCADE
-        )`);
-        database.exec('CREATE INDEX IF NOT EXISTS idx_channel_sounds_owner ON channel_sounds(channel_owner_id)');
-    } catch (e) { console.warn('[DB] channel_sounds migration:', e.message); }
-
-    // Migrate: allow MULTIPLE sounds per command (random pick on playback).
-    // Older DBs created channel_sounds with UNIQUE(channel_owner_id, command);
-    // rebuild the table without it. Idempotent — only fires while the constraint exists.
-    try {
-        const row = database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='channel_sounds'").get();
-        if (row && /UNIQUE\s*\(\s*channel_owner_id\s*,\s*command\s*\)/i.test(row.sql)) {
-            database.exec('PRAGMA foreign_keys=OFF');
-            const tx = database.transaction(() => {
-                database.exec(`CREATE TABLE channel_sounds_new (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    channel_owner_id INTEGER NOT NULL,
-                    command TEXT NOT NULL,
-                    url TEXT NOT NULL,
-                    mime TEXT DEFAULT 'audio/mpeg',
-                    duration_seconds REAL DEFAULT 0,
-                    created_by INTEGER,
-                    created_by_name TEXT DEFAULT '',
-                    is_approved INTEGER DEFAULT 1,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (channel_owner_id) REFERENCES users(id) ON DELETE CASCADE
-                )`);
-                database.exec(`INSERT INTO channel_sounds_new
-                    (id, channel_owner_id, command, url, mime, duration_seconds, created_by, created_by_name, is_approved, created_at)
-                    SELECT id, channel_owner_id, command, url, mime, duration_seconds, created_by, created_by_name, is_approved, created_at
-                    FROM channel_sounds`);
-                database.exec('DROP TABLE channel_sounds');
-                database.exec('ALTER TABLE channel_sounds_new RENAME TO channel_sounds');
-                database.exec('CREATE INDEX IF NOT EXISTS idx_channel_sounds_owner ON channel_sounds(channel_owner_id)');
-                database.exec('CREATE INDEX IF NOT EXISTS idx_channel_sounds_cmd ON channel_sounds(channel_owner_id, command)');
-            });
-            tx();
-            database.exec('PRAGMA foreign_keys=ON');
-            console.log('[DB] Rebuilt channel_sounds without UNIQUE(command) — multiple sounds per command enabled');
-        } else {
-            database.exec('CREATE INDEX IF NOT EXISTS idx_channel_sounds_cmd ON channel_sounds(channel_owner_id, command)');
-        }
-    } catch (e) { console.warn('[DB] channel_sounds multi-sound migration:', e.message); }
-
-    // Migrate: optional emote attached to a sound command (shows the emote + "!" in chat).
-    try {
-        const cols = database.prepare('PRAGMA table_info(channel_sounds)').all().map(c => c.name);
-        if (!cols.includes('emote_code')) database.exec("ALTER TABLE channel_sounds ADD COLUMN emote_code TEXT DEFAULT ''");
-    } catch (e) { console.warn('[DB] channel_sounds emote_code migration:', e.message); }
 
     // Migrate: AI chatbot ("fake viewers") config, one row per streamer (user)
     try {
@@ -1747,25 +1560,6 @@ function initDb() {
         }
     } catch (e) { console.warn('[DB] channel_ai_config migration:', e.message); }
 
-    // Migrate: create moderation_actions table for audit logging
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS moderation_actions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            scope_type TEXT NOT NULL DEFAULT 'site',
-            scope_id INTEGER,
-            actor_user_id INTEGER,
-            target_user_id INTEGER,
-            action_type TEXT NOT NULL,
-            details TEXT DEFAULT '{}',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL,
-            FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE SET NULL
-        )`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_mod_actions_created ON moderation_actions(created_at DESC)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_mod_actions_actor ON moderation_actions(actor_user_id)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_mod_actions_scope ON moderation_actions(scope_type, scope_id)`);
-    } catch (e) { console.warn('[DB] moderation_actions migration:', e.message); }
-
     // Migrate: create pastes table if missing
     try {
         database.exec(`CREATE TABLE IF NOT EXISTS pastes (
@@ -1867,17 +1661,6 @@ function initDb() {
         for (const [k, v, d, t] of commentSettings) seedComment.run(k, v, d, t);
     } catch (e) { console.warn('[DB] paste_comments migration:', e.message); }
 
-    // Migrate: stream_first_chats — tracks first-time chatters per streamer (for welcome messages)
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS stream_first_chats (
-            chatter_key TEXT NOT NULL,
-            channel_user_id INTEGER NOT NULL,
-            first_chat_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (chatter_key, channel_user_id)
-        )`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_sfc_channel ON stream_first_chats(channel_user_id)`);
-    } catch (e) { console.warn('[DB] stream_first_chats migration:', e.message); }
-
     // Migrate: ip_log — tracks IP addresses used by users and anons
     try {
         database.exec(`CREATE TABLE IF NOT EXISTS ip_log (
@@ -1919,94 +1702,6 @@ function initDb() {
         database.exec(`CREATE INDEX IF NOT EXISTS idx_approved_ips_ip ON approved_ips(ip_address)`);
     } catch (e) { console.warn('[DB] approved_ips migration:', e.message); }
 
-    // Migrate: pending_ip_messages — messages held for IP approval when anti-VPN mode is on
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS pending_ip_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_id INTEGER NOT NULL,
-            stream_id INTEGER,
-            ip_address TEXT NOT NULL,
-            user_id INTEGER,
-            anon_id TEXT,
-            username TEXT,
-            message TEXT NOT NULL,
-            status TEXT DEFAULT 'pending' CHECK(status IN ('pending','approved','denied')),
-            reviewed_by INTEGER,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
-            FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
-        )`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_pending_ip_channel ON pending_ip_messages(channel_id, status)`);
-    } catch (e) { console.warn('[DB] pending_ip_messages migration:', e.message); }
-
-    // Migrate: hidden_relay_users — relayed external users banned/hidden by streamer or admin
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS hidden_relay_users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_id INTEGER,
-            platform TEXT NOT NULL,
-            external_username TEXT NOT NULL,
-            action TEXT DEFAULT 'hide' CHECK(action IN ('hide','ban')),
-            reason TEXT,
-            created_by INTEGER,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
-            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
-        )`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_hidden_relay_channel ON hidden_relay_users(channel_id, platform)`);
-    } catch (e) { console.warn('[DB] hidden_relay_users migration:', e.message); }
-
-    // Migrate: add deleted_by and deleted_at to chat_messages for soft-delete attribution
-    try {
-        const cols = database.pragma('table_info(chat_messages)').map(c => c.name);
-        if (!cols.includes('deleted_by')) {
-            database.exec('ALTER TABLE chat_messages ADD COLUMN deleted_by INTEGER');
-        }
-        if (!cols.includes('deleted_at')) {
-            database.exec("ALTER TABLE chat_messages ADD COLUMN deleted_at DATETIME");
-        }
-    } catch (e) { console.warn('[DB] chat_messages delete attribution migration:', e.message); }
-
-    // Migrate: add source_platform column to chat_messages for filtering relayed messages
-    try {
-        const cols = database.pragma('table_info(chat_messages)').map(c => c.name);
-        if (!cols.includes('source_platform')) {
-            database.exec("ALTER TABLE chat_messages ADD COLUMN source_platform TEXT");
-        }
-    } catch (e) { console.warn('[DB] chat_messages source_platform migration:', e.message); }
-
-    // Migrate: add auto_delete_at to chat_messages for viewer-controlled history cleanup
-    try {
-        const cols = database.pragma('table_info(chat_messages)').map(c => c.name);
-        if (!cols.includes('auto_delete_at')) {
-            database.exec("ALTER TABLE chat_messages ADD COLUMN auto_delete_at DATETIME");
-        }
-    } catch (e) { console.warn('[DB] chat_messages auto_delete_at migration:', e.message); }
-
-    // Migrate: add channel_user_id to chat_messages — the broadcaster's user id, so
-    // a streamer's chat is one persistent room across live slots AND offline periods
-    // (history no longer depends on the live-session stream row surviving). Backfill
-    // existing rows from their stream's owner.
-    try {
-        const cols = database.pragma('table_info(chat_messages)').map(c => c.name);
-        if (!cols.includes('channel_user_id')) {
-            database.exec("ALTER TABLE chat_messages ADD COLUMN channel_user_id INTEGER");
-            database.exec("UPDATE chat_messages SET channel_user_id = (SELECT s.user_id FROM streams s WHERE s.id = chat_messages.stream_id) WHERE stream_id IS NOT NULL AND channel_user_id IS NULL");
-            console.log('[DB] Added channel_user_id to chat_messages + backfilled');
-        }
-    } catch (e) { console.warn('[DB] chat_messages channel_user_id migration:', e.message); }
-
-    // Performance indexes — runs EVERY boot (CREATE INDEX IF NOT EXISTS is idempotent), so
-    // it also fixes the previously-broken chat index (it referenced a non-existent
-    // `created_at` column, so it never got created) and covers hot listing queries whose
-    // WHERE + ORDER BY (created_at / view_count) previously did full scans + filesorts.
-    try {
-        // Chat history: filter by channel_user_id / stream_id, ORDER BY timestamp DESC.
-        database.exec('CREATE INDEX IF NOT EXISTS idx_chat_channel_user_ts ON chat_messages(channel_user_id, timestamp)');
-        database.exec('CREATE INDEX IF NOT EXISTS idx_chat_stream_ts ON chat_messages(stream_id, timestamp)');
-        // (The VOD/clip listing indexes went with the listings: VODs and clips are listed by OpenVibe.Media.)
-    } catch (e) { console.warn('[DB] performance index migration:', e.message); }
-
     // Second pass of hot-path indexes, found by tracing what the home page and the always-on
     // middleware actually execute. Each one replaces a recurring full table scan. They are created
     // individually so a table that does not exist in some deployment cannot stop the rest.
@@ -2016,8 +1711,6 @@ function initDb() {
         'CREATE INDEX IF NOT EXISTS idx_bans_ip ON bans(ip_address)',
         // Looked up once per live stream on /api/streams, which every open home tab polls.
         'CREATE INDEX IF NOT EXISTS idx_restream_dest_user ON restream_destinations(user_id)',
-        // The chat auto-delete sweep runs every 30s and scanned + sorted the largest table.
-        'CREATE INDEX IF NOT EXISTS idx_chat_autodelete ON chat_messages(auto_delete_at)',
         // Home digest, per signed-in load.
         'CREATE INDEX IF NOT EXISTS idx_follows_follower ON follows(follower_id)',
         'CREATE INDEX IF NOT EXISTS idx_stream_recaps_user ON stream_recaps(user_id, created_at)',
@@ -2037,10 +1730,6 @@ function initDb() {
         // the whole streams table once per managed stream, per row. Measured on a production-scale
         // database: 463ms -> 18ms at limit=20, and 1533ms -> 24ms at limit=100.
         'CREATE INDEX IF NOT EXISTS idx_streams_managed_ended ON streams(managed_stream_id, ended_at)',
-        // The hero stat board's heaviest queries count chat_messages over a time window with
-        // COALESCE(is_deleted,0)=0, which forced a row fetch for every row in the window even
-        // though the timestamp index was being used. These make those counts covering.
-        'CREATE INDEX IF NOT EXISTS idx_chat_ts_deleted ON chat_messages(timestamp, is_deleted)',
         'CREATE INDEX IF NOT EXISTS idx_ai_viewer_log_created ON ai_viewer_log(created_at)',
     ]) {
         try { database.exec(ix); } catch { /* table not present in this deployment */ }
@@ -3248,49 +2937,6 @@ function getStreamTranscriptSegments(streamId) {
 
 // countAutoClipsSince() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
 
-// Live chat-velocity window: message-count buckets over the last `windowSec`, each with a
-// representative epoch timestamp — used to detect a "everyone reacted" spike and locate WHEN.
-function getLiveChatBuckets(streamId, windowSec = 150, bucketSec = 15) {
-    try {
-        const rows = all(`
-            SELECT CAST(strftime('%s', cm.timestamp) / ? AS INT) AS b,
-                   COUNT(*) AS n,
-                   MIN(CAST(strftime('%s', cm.timestamp) AS INT)) AS ts
-            FROM chat_messages cm
-            WHERE cm.stream_id = ? AND COALESCE(cm.is_deleted, 0) = 0
-              AND cm.timestamp >= datetime('now', ?)
-            GROUP BY b ORDER BY ts ASC`, [bucketSec, streamId, `-${windowSec} seconds`]) || [];
-        return rows.map(r => ({ count: r.n, tsEpoch: r.ts }));
-    } catch { return []; }
-}
-
-// Recent chat message texts for a stream (AI context for the live auto-clipper — what people
-// were actually saying/reacting to around a spike).
-function getRecentChatText(streamId, sinceSec = 120, limit = 40) {
-    try {
-        const rows = all(`SELECT message FROM chat_messages
-            WHERE stream_id = ? AND COALESCE(is_deleted, 0) = 0 AND message IS NOT NULL AND message <> ''
-              AND timestamp >= datetime('now', ?)
-            ORDER BY timestamp DESC LIMIT ?`, [streamId, `-${Math.max(1, sinceSec)} seconds`, Math.max(1, limit)]) || [];
-        return rows.map(r => String(r.message)).reverse();
-    } catch { return []; }
-}
-
-// Chat-message spikes: the busiest time-buckets of a stream (offset seconds → message count),
-// a proxy for "everyone reacted here". Offsets are relative to the stream's start.
-function getChatSpikeOffsets(streamId, bucketSec = 30, topN = 8) {
-    try {
-        const rows = all(`
-            SELECT CAST((julianday(cm.timestamp) - julianday(s.started_at)) * 86400 / ? AS INT) AS bucket,
-                   COUNT(*) AS n
-            FROM chat_messages cm JOIN streams s ON s.id = cm.stream_id
-            WHERE cm.stream_id = ? AND s.started_at IS NOT NULL AND cm.timestamp >= s.started_at
-              AND COALESCE(cm.is_deleted, 0) = 0
-            GROUP BY bucket HAVING bucket >= 0 ORDER BY n DESC LIMIT ?`, [bucketSec, streamId, topN]) || [];
-        return rows.map(r => ({ offset: r.bucket * bucketSec, count: r.n }));
-    } catch { return []; }
-}
-
 function upsertStreamerOverview(userId, { overview, model = null, sources = null }) {
     return run(`INSERT INTO streamer_overviews (user_id, overview, overview_short, model, sources, generated_at)
                 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -3805,12 +3451,9 @@ const HOME_SERIES = {
     anons:       { table: 'anon_ip_mappings',  ts: 'created_at',  agg: 'COUNT(*)' },
     visitors:    { table: 'anon_ip_mappings',  ts: 'created_at',  agg: 'COUNT(*)' },
     follows:     { table: 'follows',           ts: 'created_at',  agg: 'COUNT(*)' },
-    // Chat's site-wide per-day message/chatter series: in chat mode getHomeStatSeries answers them
-    // from Chat's `site-daily` stats read (chat-reads.homeSeriesPeek); this local SQL stays the
-    // dev / rollback / Chat-unreachable answer. `messages` maps to Chat's messages series, `active`
-    // to its chatters series.
-    messages:    { table: 'chat_messages',     ts: 'timestamp',   agg: 'COUNT(*)',              where: 'COALESCE(is_deleted, 0) = 0' },
-    active:      { table: 'chat_messages',     ts: 'timestamp',   agg: "COUNT(DISTINCT COALESCE('u' || user_id, 'a' || anon_id, 'r' || source_platform || '|' || username))", where: 'COALESCE(is_deleted, 0) = 0' },
+    // No chat series here: OpenVibe.Chat owns chat_messages. `messages` and `active` are answered by
+    // getHomeStatSeries from Chat's `site-daily` stats read; there is no Live-table fallback any more
+    // (since 2026-10-05 Live keeps no copy of Chat's tables), so outside chat mode they answer null.
     sessions:    { table: 'streams',           ts: 'created_at',  agg: 'COUNT(*)' },
     streamers:   { table: 'streams',           ts: 'created_at',  agg: 'COUNT(DISTINCT user_id)' },
     // vods, clips, hours and pastes are OpenVibe.Media's series (home/routes.js MEDIA_SERIES).
@@ -3826,11 +3469,12 @@ const HOME_SERIES = {
     // No `emotes` series: OpenVibe.Chat owns that table (roadmap T3) and Live's copy is dropped
     // since N+2 (unlike the table itself, which N-1 still prepares against — see schema.sql).
 };
-const HOME_SERIES_KEYS = [...Object.keys(HOME_SERIES), 'liveNow', 'viewersNow'];
+const HOME_SERIES_KEYS = [...Object.keys(HOME_SERIES), 'messages', 'active', 'liveNow', 'viewersNow'];
 
 /**
- * The local (Live-table) daily series for one metric — the dev, rollback and Chat-unreachable
- * answer. getHomeStatSeries routes the two chat metrics through Chat first.
+ * The daily series for one metric from Live's own tables. The two chat metrics (`messages`,
+ * `active`) have no entry here: OpenVibe.Chat owns chat_messages, so getHomeStatSeries answers
+ * them from Chat, and with Chat unreachable they answer null rather than a Live-table number.
  */
 function homeSeriesLocal(metric, days = 30) {
     const def = HOME_SERIES[metric];
@@ -3980,9 +3624,8 @@ function _computeHomeStats() {
         clips: null,
         liveSessions: c(`SELECT COUNT(*) AS count FROM streams`),
         streamers: c(`SELECT COUNT(DISTINCT user_id) AS count FROM streams WHERE user_id IS NOT NULL`),
-        // OpenVibe.Chat owns chat_messages (roadmap T3); the total comes from Chat's read API when
-        // it is the authority, from Live's own table when Live runs chat itself. A Chat outage
-        // answers the cache, else null — never a 500 for the home page.
+        // OpenVibe.Chat owns chat_messages (roadmap T3): the total comes from Chat's read API.
+        // A Chat outage answers the cache, else null — never a 500 for the home page.
         chatMessages: (() => { try { const s = require('../chat/chat-reads').siteStatsPeek(); return s && s.messages != null ? s.messages : null; } catch { return null; } })(),
         users: c(`SELECT COUNT(*) AS count FROM users WHERE COALESCE(is_banned, 0) = 0`),
         anons: c(`SELECT COUNT(*) AS count FROM anon_ip_mappings`),
@@ -4568,115 +4211,6 @@ function cleanupPowerchatDeliveries(days = 3) {
     catch { return null; }
 }
 
-// ── Chat helpers ─────────────────────────────────────────────
-
-function saveChatMessage({ stream_id, channel_user_id, user_id, anon_id, username, message, message_type, is_global, reply_to_id, source_platform, auto_delete_at, metadata }) {
-    // channel_user_id = the broadcaster's user id — set for all channel/stream
-    // messages so a streamer's chat history survives across sessions AND offline
-    // periods (independent of the live-session stream row's lifetime).
-    let chanUid = channel_user_id || null;
-    if (!chanUid && stream_id) { try { chanUid = getStreamById(stream_id)?.user_id || null; } catch { /* ignore */ } }
-    const metaStr = metadata == null ? null : (typeof metadata === 'string' ? metadata : JSON.stringify(metadata));
-    return run(
-        `INSERT INTO chat_messages (stream_id, channel_user_id, user_id, anon_id, username, message, message_type, is_global, reply_to_id, source_platform, auto_delete_at, metadata)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [stream_id, chanUid, user_id || null, anon_id || null, username, message, message_type || 'chat', is_global ? 1 : 0, reply_to_id || null, source_platform || null, auto_delete_at || null, metaStr]
-    );
-}
-
-function searchChatMessages({ query, userId, anonId, username, streamId, limit = 50, offset = 0 }) {
-    let sql = `SELECT cm.*, u.display_name, u.username as u_username, u.role, u.avatar_url, u.profile_color
-               FROM chat_messages cm
-               LEFT JOIN users u ON cm.user_id = u.id
-               WHERE cm.is_deleted = 0
-                 AND (cm.auto_delete_at IS NULL OR datetime(cm.auto_delete_at) > CURRENT_TIMESTAMP)`;
-    const params = [];
-
-    if (query) {
-        sql += ` AND cm.message LIKE ?`;
-        params.push(`%${query}%`);
-    }
-    if (userId) {
-        sql += ` AND cm.user_id = ?`;
-        params.push(userId);
-    }
-    if (anonId) {
-        sql += ` AND cm.anon_id = ?`;
-        params.push(anonId);
-    }
-    if (username) {
-        sql += ` AND LOWER(u.username) LIKE ?`;
-        params.push(`%${username.toLowerCase()}%`);
-    }
-    if (streamId) {
-        sql += ` AND cm.stream_id = ?`;
-        params.push(streamId);
-    }
-
-    const countSql = sql.replace(/SELECT cm\.\*.*FROM/, 'SELECT COUNT(*) as c FROM');
-    const total = get(countSql, params)?.c || 0;
-
-    sql += ` ORDER BY cm.timestamp DESC LIMIT ? OFFSET ?`;
-    params.push(limit, offset);
-
-    return { messages: all(sql, params), total };
-}
-
-function getUserChatHistory(userId, limit = 50, offset = 0) {
-    const sql = `SELECT cm.*, s.title as stream_title
-                 FROM chat_messages cm
-                 LEFT JOIN streams s ON cm.stream_id = s.id
-                 WHERE cm.user_id = ? AND cm.is_deleted = 0
-                   AND (cm.auto_delete_at IS NULL OR datetime(cm.auto_delete_at) > CURRENT_TIMESTAMP)
-                 ORDER BY cm.timestamp DESC LIMIT ? OFFSET ?`;
-    const messages = all(sql, [userId, limit, offset]);
-    const total = get(
-        `SELECT COUNT(*) as c FROM chat_messages
-         WHERE user_id = ? AND is_deleted = 0
-           AND (auto_delete_at IS NULL OR datetime(auto_delete_at) > CURRENT_TIMESTAMP)`,
-        [userId]
-    )?.c || 0;
-    return { messages, total };
-}
-
-// A chatter's recent messages in ONE channel (clone source for that channel's AI viewers).
-// relay = { platform, rawUsername } matches relayed chatters instead of a user id.
-function getChatSamplesInChannel(channelUserId, { userId = null, relay = null, limit = 30 } = {}) {
-    let where = `cm.is_deleted = 0 AND cm.message_type != 'system'
-        AND (cm.auto_delete_at IS NULL OR datetime(cm.auto_delete_at) > CURRENT_TIMESTAMP)
-        AND COALESCE(cm.channel_user_id, (SELECT s.user_id FROM streams s WHERE s.id = cm.stream_id)) = ?`;
-    const params = [channelUserId];
-    if (relay) { where += ` AND ${_RELAY_MATCH}`; params.push(..._relayMatchParams(relay.platform, relay.rawUsername)); }
-    else { where += ' AND cm.user_id = ?'; params.push(userId); }
-    return all(`SELECT cm.id, cm.username, cm.message, cm.message_type, cm.timestamp, cm.stream_id
-                FROM chat_messages cm WHERE ${where} ORDER BY cm.timestamp DESC LIMIT ?`,
-        [...params, Math.max(1, Math.min(200, limit))]);
-}
-
-// ── Per-user TTS voice overrides (admin-set) ─────────────────
-function getTtsVoiceOverride(identityKey) {
-    try {
-        const k = String(identityKey || '').trim().toLowerCase();
-        if (!k) return null;
-        const r = get('SELECT voice, pitch, speed, gap FROM tts_voice_overrides WHERE identity_key = ?', [k]);
-        if (!r) return null;
-        return { voice: r.voice, pitch: r.pitch, speed: r.speed, gap: r.gap || 0 };
-    } catch { return null; }
-}
-function setTtsVoiceOverride(identityKey, params, setBy) {
-    const k = String(identityKey || '').trim().toLowerCase();
-    if (!k) return false;
-    run(`INSERT INTO tts_voice_overrides (identity_key, voice, pitch, speed, gap, set_by, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(identity_key) DO UPDATE SET voice=excluded.voice, pitch=excluded.pitch,
-             speed=excluded.speed, gap=excluded.gap, set_by=excluded.set_by, updated_at=CURRENT_TIMESTAMP`,
-        [k, params.voice, params.pitch, params.speed, params.gap || 0, setBy || null]);
-    return true;
-}
-function deleteTtsVoiceOverride(identityKey) {
-    try { run('DELETE FROM tts_voice_overrides WHERE identity_key = ?', [String(identityKey || '').trim().toLowerCase()]); return true; } catch { return false; }
-}
-
 // ── Daily easter egg solves ──────────────────────────────────
 function recordEasterEggSolve(eggDate, solverKey, userId) {
     try {
@@ -4692,106 +4226,13 @@ function countEasterEggSolves(eggDate) {
     try { return get('SELECT COUNT(*) AS n FROM easter_egg_solves WHERE egg_date = ?', [eggDate])?.n || 0; } catch { return 0; }
 }
 
-// Record a chat-relay (external platform) user's activity; keeps the earliest
-// first_seen as their "join date". Keyed case-insensitively by platform+username.
-function recordRelayUser(platform, username) {
-    if (!platform || !username) return;
-    const key = String(username).toLowerCase();
-    try {
-        run(`INSERT INTO relay_users (platform, username, display_name, first_seen, last_seen, message_count)
-             VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1)
-             ON CONFLICT(platform, username) DO UPDATE SET
-                last_seen = CURRENT_TIMESTAMP,
-                message_count = message_count + 1,
-                display_name = excluded.display_name`,
-            [String(platform).toLowerCase(), key, String(username)]);
-    } catch { /* non-critical */ }
-}
-function getRelayUserByRowid(id) {
-    return get('SELECT rowid AS id, * FROM relay_users WHERE rowid = ?', [id]) || null;
-}
-
-// Relay chat messages are stored with a "[Label] name" username + source_platform and a
-// NULL user_id. Match a specific relay user by the trailing "] name" (LIKE is
-// case-insensitive for ASCII in SQLite), scoped to their platform.
-function _likeEscape(s) { return String(s).replace(/[\\%_]/g, '\\$&'); }
-const _RELAY_MATCH = `cm.user_id IS NULL AND cm.source_platform = ? AND cm.username LIKE ? ESCAPE '\\'`;
-function _relayMatchParams(platform, rawUsername) {
-    return [String(platform).toLowerCase(), '%] ' + _likeEscape(String(rawUsername))];
-}
-
-// A relay user's message history (for the "Chat Logs" viewer).
-function getRelayUserChatHistory(platform, rawUsername, { limit = 50, offset = 0, query = '' } = {}) {
-    let where = `${_RELAY_MATCH} AND cm.is_deleted = 0`;
-    const params = _relayMatchParams(platform, rawUsername);
-    if (query) { where += ' AND cm.message LIKE ?'; params.push('%' + query + '%'); }
-    const total = get(`SELECT COUNT(*) AS c FROM chat_messages cm WHERE ${where}`, params)?.c || 0;
-    const rows = all(
-        `SELECT cm.id, cm.username, cm.message, cm.message_type, cm.timestamp, cm.stream_id,
-                cm.source_platform, s.title AS stream_title
-         FROM chat_messages cm LEFT JOIN streams s ON cm.stream_id = s.id
-         WHERE ${where} ORDER BY cm.timestamp DESC LIMIT ? OFFSET ?`,
-        [...params, Math.max(1, Math.min(200, limit)), Math.max(0, offset)]
-    );
-    return { messages: rows, total };
-}
-
-// ── Anonymous chatters: chat logs (mirror the relay path) ──────────
-// Anon messages have user_id NULL and a stable anon_id = "anon<N>" (which also equals
-// their username).
-function anonSubjectId(anonId) {
-    const m = /^anon(\d+)$/i.exec(String(anonId || ''));
-    return m ? parseInt(m[1], 10) : 0;
-}
-
-// Anon meta for the context menu: first-seen (when their anon number was assigned)
-// and first-chat (their earliest chat message), plus total message count.
-function getAnonMeta(anonId) {
-    const num = anonSubjectId(anonId);
-    const map = num ? get('SELECT created_at FROM anon_ip_mappings WHERE anon_num = ?', [num]) : null;
-    const firstChat = get(
-        `SELECT MIN(timestamp) AS t FROM chat_messages
-         WHERE anon_id = ? AND user_id IS NULL AND is_deleted = 0`, [String(anonId)]
-    )?.t || null;
-    const count = get(
-        `SELECT COUNT(*) AS c FROM chat_messages
-         WHERE anon_id = ? AND user_id IS NULL AND is_deleted = 0
-           AND (auto_delete_at IS NULL OR datetime(auto_delete_at) > CURRENT_TIMESTAMP)`, [String(anonId)]
-    )?.c || 0;
-    return {
-        anon_id: anonId,
-        anon_num: num || null,
-        first_seen: (map && map.created_at) || firstChat, // fall back to first chat for legacy rows
-        first_chat: firstChat,
-        message_count: count,
-    };
-}
-
-// An anon's message history (for the "Chat Logs" viewer).
-function getAnonChatHistory(anonId, { limit = 50, offset = 0, query = '' } = {}) {
-    let where = `cm.anon_id = ? AND cm.user_id IS NULL AND cm.is_deleted = 0
-                 AND (cm.auto_delete_at IS NULL OR datetime(cm.auto_delete_at) > CURRENT_TIMESTAMP)`;
-    const params = [String(anonId)];
-    if (query) { where += ' AND cm.message LIKE ?'; params.push('%' + query + '%'); }
-    const total = get(`SELECT COUNT(*) AS c FROM chat_messages cm WHERE ${where}`, params)?.c || 0;
-    const rows = all(
-        `SELECT cm.id, cm.username, cm.anon_id, cm.message, cm.message_type, cm.timestamp, cm.stream_id,
-                s.title AS stream_title
-         FROM chat_messages cm LEFT JOIN streams s ON cm.stream_id = s.id
-         WHERE ${where} ORDER BY cm.timestamp DESC LIMIT ? OFFSET ?`,
-        [...params, Math.max(1, Math.min(200, limit)), Math.max(0, offset)]
-    );
-    return { messages: rows, total };
-}
-
 function getUserProfile(userId) {
     const user = get(`SELECT id, username, display_name, avatar_url, profile_color, role,
                       openvibe_bucks_balance, openvibe_coins_balance, created_at, last_seen
                       FROM users WHERE id = ?`, [userId]);
     if (!user) return null;
-    // The user's chat total is OpenVibe.Chat's (Live's own tables when Live runs chat); a synchronous
-    // peek answers the last good count, else null while Chat refreshes in the background. The profile
-    // card omits the count when it is null rather than showing a cold mirror number as real.
+    // The user's chat total is OpenVibe.Chat's; a synchronous peek answers the last good count, else
+    // null while Chat refreshes in the background. The profile card omits the count when it is null.
     user.messageCount = (() => { try { return require('../chat/chat-reads').userMessageCountPeek(userId); } catch { return null; } })();
     user.followerCount = get('SELECT COUNT(*) as c FROM follows WHERE streamer_id = ?', [userId])?.c || 0;
     user.followingCount = get('SELECT COUNT(*) as c FROM follows WHERE follower_id = ?', [userId])?.c || 0;
@@ -5366,66 +4807,6 @@ function isUsernameReserved(username) {
     return !!vk;
 }
 
-// ── Channel sound commands (viewer-uploadable) ───────────────
-function createChannelSound({ channel_owner_id, command, url, mime = 'audio/mpeg', duration_seconds = 0, created_by = null, created_by_name = '', emote_code = '' }) {
-    return run(
-        `INSERT INTO channel_sounds (channel_owner_id, command, url, mime, duration_seconds, created_by, created_by_name, emote_code)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [channel_owner_id, command, url, mime, duration_seconds, created_by, created_by_name, emote_code || '']
-    );
-}
-// Update the shared emote_code for all sounds under a command (an emote is per-command).
-function setChannelSoundEmote(ownerId, command, emoteCode) {
-    return run('UPDATE channel_sounds SET emote_code = ? WHERE channel_owner_id = ? AND command = ?',
-        [emoteCode || '', ownerId, String(command || '').toLowerCase()]);
-}
-
-function getChannelSounds(ownerId) {
-    return all(
-        'SELECT * FROM channel_sounds WHERE channel_owner_id = ? AND is_approved = 1 ORDER BY command',
-        [ownerId]
-    );
-}
-
-function getChannelSoundByCommand(ownerId, command) {
-    // A command may have multiple uploaded sounds — pick one at random each play.
-    return get(
-        'SELECT * FROM channel_sounds WHERE channel_owner_id = ? AND command = ? AND is_approved = 1 ORDER BY RANDOM() LIMIT 1',
-        [ownerId, String(command || '').toLowerCase()]
-    );
-}
-
-function getChannelSoundById(id) {
-    return get('SELECT * FROM channel_sounds WHERE id = ?', [id]);
-}
-
-function countChannelSounds(ownerId) {
-    const row = get('SELECT COUNT(*) as count FROM channel_sounds WHERE channel_owner_id = ?', [ownerId]);
-    return row ? row.count : 0;
-}
-
-function countChannelSoundsByUploader(ownerId, uploaderId) {
-    const row = get('SELECT COUNT(*) as count FROM channel_sounds WHERE channel_owner_id = ? AND created_by = ?', [ownerId, uploaderId]);
-    return row ? row.count : 0;
-}
-
-function deleteChannelSound(id) {
-    return run('DELETE FROM channel_sounds WHERE id = ?', [id]);
-}
-
-// Rename a whole !command group (a command may hold several sounds).
-function renameChannelSoundCommand(ownerId, oldCommand, newCommand) {
-    return run('UPDATE channel_sounds SET command = ? WHERE channel_owner_id = ? AND command = ?',
-        [String(newCommand || '').toLowerCase(), ownerId, String(oldCommand || '').toLowerCase()]);
-}
-
-// Sounds attach emotes BY CODE — keep those references alive when an emote
-// is renamed so the streamer's emote+sound combos don't silently break.
-function updateChannelSoundEmoteRefs(ownerId, oldCode, newCode) {
-    return run('UPDATE channel_sounds SET emote_code = ? WHERE channel_owner_id = ? AND emote_code = ?',
-        [newCode || '', ownerId, oldCode]);
-}
-
 // ── AI chatbot config (per streamer) ─────────────────────────
 const AI_CHATBOT_DEFAULTS = {
     enabled: 0,
@@ -5613,17 +4994,6 @@ function getAiViewerLogStats(channelUserId, sinceMin = 60) {
         SUM(CASE WHEN event = 'skip' THEN 1 ELSE 0 END) AS skips, COALESCE(SUM(cost_usd),0) AS cost_usd, COALESCE(SUM(tokens_in),0) AS tokens_in, COALESCE(SUM(tokens_cached),0) AS tokens_cached
         FROM ai_viewer_log WHERE channel_user_id = ? AND created_at > datetime('now', ?)`, [channelUserId, `-${sinceMin} minutes`]);
 }
-// Channel chat (all surfaces: native, relayed, bot lines) newer than an id — what the bots "see".
-function getChannelChatSince(channelUserId, afterId = 0, limit = 60) {
-    return all(`SELECT id, user_id, anon_id, username, message, message_type, source_platform, reply_to_id, timestamp
-        FROM chat_messages WHERE channel_user_id = ? AND id > ? AND is_deleted = 0 AND message_type IN ('chat','donation')
-          AND (auto_delete_at IS NULL OR auto_delete_at > CURRENT_TIMESTAMP)
-        ORDER BY id DESC LIMIT ?`, [channelUserId, afterId, Math.max(1, Math.min(200, limit))]).reverse();
-}
-function getMaxChatMessageIdForChannel(channelUserId) {
-    return get('SELECT COALESCE(MAX(id),0) AS m FROM chat_messages WHERE channel_user_id = ?', [channelUserId])?.m || 0;
-}
-
 function getChannelAiBots(channelUserId, { activeOnly = false } = {}) {
     let sql = 'SELECT * FROM channel_ai_bots WHERE channel_user_id = ?';
     if (activeOnly) sql += ' AND is_active = 1';
@@ -5923,22 +5293,6 @@ function renormalizePendingMediaRequestPositions(streamerId) {
 // table is read-only: the one-time import (OpenVibe.Community scripts/import-live-comments.js)
 // reads it; test/frozen-tables.test.js fails if server code writes it again.
 
-// ── Chat replay helpers ──────────────────────────────────────
-
-function getChatReplay(streamId, fromTime, toTime) {
-    let sql = `SELECT cm.*, u.avatar_url, u.profile_color, u.role, u.display_name
-               FROM chat_messages cm
-               LEFT JOIN users u ON cm.user_id = u.id
-               WHERE cm.stream_id = ? AND cm.is_deleted = 0 AND cm.message_type = 'chat'
-                 AND (cm.auto_delete_at IS NULL OR datetime(cm.auto_delete_at) > CURRENT_TIMESTAMP)`;
-    const params = [streamId];
-    // The same bounds as a purge (see deleteChatMessagesByTimeRange): either timestamp form, as UTC.
-    if (fromTime) { sql += ` AND cm.timestamp >= datetime(?)`; params.push(fromTime); }
-    if (toTime) { sql += ` AND cm.timestamp <= datetime(?)`; params.push(toTime); }
-    sql += ` ORDER BY cm.timestamp ASC`;
-    return all(sql, params);
-}
-
 // ── Channel lookup by ID ─────────────────────────────────────
 
 function getChannelById(id) {
@@ -6038,230 +5392,6 @@ function loadAnonMappings() {
     return { maxNum, mappings };
 }
 
-// ── Stream First Chats (Welcome Messages) ────────────────────
-
-/**
- * Check if a chatter has ever chatted in this streamer's channel.
- * @param {string} chatterKey - e.g. "user:42" or "anon:anon3" or "ext:[Twitch] foo"
- * @param {number} channelUserId - the streamer's user ID
- * @returns {boolean} true if this is their first time
- */
-function isFirstChatInChannel(chatterKey, channelUserId) {
-    const row = get(
-        'SELECT 1 FROM stream_first_chats WHERE chatter_key = ? AND channel_user_id = ?',
-        [chatterKey, channelUserId]
-    );
-    return !row;
-}
-
-/**
- * Record that a chatter has chatted in a streamer's channel.
- */
-function recordFirstChat(chatterKey, channelUserId) {
-    run(
-        'INSERT OR IGNORE INTO stream_first_chats (chatter_key, channel_user_id) VALUES (?, ?)',
-        [chatterKey, channelUserId]
-    );
-}
-
-// ── Moderation Action Logging ────────────────────────────────
-
-/**
- * Log a moderation action for auditing.
- * Used by canvas, chat moderation, bans, etc.
- *
- * A staff or channel-moderator action also goes to OpenVibe.Network's moderation audit log as
- * live.moderation.action (Contracts 0.46.0, ADR-022), written to the outbox in the same transaction
- * as the row. Someone tidying their own messages (self_*), configuring their own channel, or acting
- * on themselves is not moderation and stays local.
- */
-function logModerationAction({ scope_type, scope_id, actor_user_id, target_user_id, action_type, details }) {
-    const d = getDb();
-    const row = [scope_type || 'site', scope_id || null, actor_user_id || null, target_user_id || null, action_type, JSON.stringify(details || {})];
-    let announced = false;
-    const info = d.transaction(() => {
-        const r = d.prepare(`
-            INSERT INTO moderation_actions (scope_type, scope_id, actor_user_id, target_user_id, action_type, details)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `).run(...row);
-        announced = _announceModerationAction(Number(r.lastInsertRowid), { scope_type: row[0], scope_id: row[1], actor_user_id: row[2], target_user_id: row[3], action_type, details });
-        return r;
-    })();
-    if (announced) require('../events/stream-events').kick();
-    return info;
-}
-
-function _announceModerationAction(id, a, { at = null } = {}) {
-    const type = String(a.action_type || '');
-    if (!type || type.startsWith('self_') || type === 'channel_settings_update') return false;
-    if (a.actor_user_id != null && a.actor_user_id === a.target_user_id) return false;
-    const events = require('../events/stream-events');
-    if (!events.status().enabled) return false;
-    const subjectOf = (uid) => {
-        if (uid == null) return null;
-        const r = getDb().prepare("SELECT subject_id FROM linked_accounts WHERE service = 'network' AND user_id = ?").get(uid);
-        return r && /^usr_[0-9A-HJKMNP-TV-Z]{26}$/.test(r.subject_id || '') ? r.subject_id : null;
-    };
-    const actorSubject = subjectOf(a.actor_user_id);
-    const int = (v) => (v == null || v === '' || !Number.isSafeInteger(Number(v)) ? null : Number(v));
-    const scopeId = a.scope_id == null || a.scope_id === '' ? null : (Number.isSafeInteger(Number(a.scope_id)) ? Number(a.scope_id) : String(a.scope_id).slice(0, 128));
-    const details = a.details && typeof a.details === 'object' && !Array.isArray(a.details) ? a.details : {};
-    events.enqueue({
-        ...(at ? { timestamp: at } : {}),
-        event_type: 'live.moderation.action',
-        actor: actorSubject ? { type: 'user', id: actorSubject } : { type: 'service', id: 'live' },
-        subject: { type: 'moderation_action', id: String(id) },
-        visibility: 'internal',
-        priority: 'important',
-        payload: {
-            action_id: id, action_type: type.slice(0, 64), scope_type: String(a.scope_type || 'site').slice(0, 32), scope_id: scopeId,
-            actor_user_id: int(a.actor_user_id), actor_subject: actorSubject,
-            target_user_id: int(a.target_user_id), target_subject: subjectOf(a.target_user_id),
-            details,
-        },
-    });
-    return true;
-}
-
-/**
- * Get moderation actions with optional filters.
- */
-function getModerationActions({ scopeType, scope_type, scopeId, scope_id, actor_user_id, target_user_id, limit = 50, offset = 0 } = {}) {
-    const conditions = [];
-    const params = [];
-    const st = scopeType || scope_type;
-    const si = scopeId || scope_id;
-    if (st) { conditions.push('ma.scope_type = ?'); params.push(st); }
-    if (si) { conditions.push('ma.scope_id = ?'); params.push(si); }
-    if (actor_user_id) { conditions.push('ma.actor_user_id = ?'); params.push(actor_user_id); }
-    if (target_user_id) { conditions.push('ma.target_user_id = ?'); params.push(target_user_id); }
-    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-    params.push(limit, offset);
-    return all(`
-        SELECT ma.*, actor.username AS actor_username, target.username AS target_username
-        FROM moderation_actions ma
-        LEFT JOIN users actor ON ma.actor_user_id = actor.id
-        LEFT JOIN users target ON ma.target_user_id = target.id
-        ${where}
-        ORDER BY ma.created_at DESC
-        LIMIT ? OFFSET ?
-    `, params);
-}
-
-/**
- * Get a single chat message by ID.
- */
-function getChatMessageById(id) {
-    return get('SELECT * FROM chat_messages WHERE id = ?', [id]);
-}
-
-/** Shallow-merge a JSON patch into chat_messages.metadata (e.g. an async translation). */
-function mergeChatMessageMetadata(id, patch) {
-    if (!id || !patch || typeof patch !== 'object') return;
-    const row = get('SELECT metadata FROM chat_messages WHERE id = ?', [id]);
-    if (!row) return;
-    let meta = {};
-    try { meta = row.metadata ? JSON.parse(row.metadata) : {}; } catch { meta = {}; }
-    if (!meta || typeof meta !== 'object' || Array.isArray(meta)) meta = {};
-    return run('UPDATE chat_messages SET metadata = ? WHERE id = ?', [JSON.stringify({ ...meta, ...patch }), id]);
-}
-
-/**
- * Soft-delete a chat message by ID. Sets is_deleted=1 and records who deleted it.
- */
-function deleteChatMessage(id, deletedBy = null) {
-    return run(
-        'UPDATE chat_messages SET is_deleted = 1, deleted_by = ?, deleted_at = CURRENT_TIMESTAMP WHERE id = ?',
-        [deletedBy, id]
-    );
-}
-
-/**
- * Soft-delete ALL chat messages from a specific user, optionally scoped to a stream.
- * Returns the list of deleted message IDs for real-time broadcast.
- */
-function deleteUserChatMessages(userId, { streamId = null, deletedBy = null } = {}) {
-    const condition = streamId
-        ? 'user_id = ? AND stream_id = ? AND is_deleted = 0'
-        : 'user_id = ? AND is_deleted = 0';
-    const params = streamId ? [userId, streamId] : [userId];
-    const messages = all(`SELECT id FROM chat_messages WHERE ${condition}`, params);
-    const ids = messages.map(m => m.id);
-    if (ids.length === 0) return [];
-    const placeholders = ids.map(() => '?').join(',');
-    run(
-        `UPDATE chat_messages SET is_deleted = 1, deleted_by = ?, deleted_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`,
-        [deletedBy, ...ids]
-    );
-    return ids;
-}
-
-/**
- * Soft-delete ALL chat messages from a specific anon_id, optionally scoped to stream.
- */
-function deleteAnonChatMessages(anonId, { streamId = null, deletedBy = null } = {}) {
-    const condition = streamId
-        ? 'anon_id = ? AND stream_id = ? AND is_deleted = 0'
-        : 'anon_id = ? AND is_deleted = 0';
-    const params = streamId ? [anonId, streamId] : [anonId];
-    const messages = all(`SELECT id FROM chat_messages WHERE ${condition}`, params);
-    const ids = messages.map(m => m.id);
-    if (ids.length === 0) return [];
-    const placeholders = ids.map(() => '?').join(',');
-    run(
-        `UPDATE chat_messages SET is_deleted = 1, deleted_by = ?, deleted_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`,
-        [deletedBy, ...ids]
-    );
-    return ids;
-}
-
-/**
- * Soft-delete ALL messages from a relayed external username (e.g. "[Twitch] foobar")
- */
-function deleteRelayUserMessages(username, { streamId = null, deletedBy = null } = {}) {
-    const condition = streamId
-        ? 'username = ? AND stream_id = ? AND is_deleted = 0'
-        : 'username = ? AND is_deleted = 0';
-    const params = streamId ? [username, streamId] : [username];
-    const messages = all(`SELECT id FROM chat_messages WHERE ${condition}`, params);
-    const ids = messages.map(m => m.id);
-    if (ids.length === 0) return [];
-    const placeholders = ids.map(() => '?').join(',');
-    run(
-        `UPDATE chat_messages SET is_deleted = 1, deleted_by = ?, deleted_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`,
-        [deletedBy, ...ids]
-    );
-    return ids;
-}
-
-function deleteExpiredChatMessages(limit = 500) {
-    const rows = all(
-        `SELECT id, stream_id
-         FROM chat_messages
-         WHERE is_deleted = 0
-           AND auto_delete_at IS NOT NULL
-           -- Compared raw, not through datetime(): wrapping the column in a function makes the
-           -- index on auto_delete_at unusable, and this sweep runs every 30 seconds against the
-           -- biggest table on the site. Values are stored in the same 'YYYY-MM-DD HH:MM:SS' shape
-           -- CURRENT_TIMESTAMP produces, so a string comparison sorts identically.
-           AND auto_delete_at <= CURRENT_TIMESTAMP
-         ORDER BY auto_delete_at ASC
-         LIMIT ?`,
-        [Math.max(1, Number(limit) || 500)]
-    );
-    if (!rows.length) return [];
-
-    const ids = rows.map(row => row.id);
-    const placeholders = ids.map(() => '?').join(',');
-    run(
-        `UPDATE chat_messages
-         SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP
-         WHERE id IN (${placeholders})`,
-        ids
-    );
-    return rows;
-}
-
 // ── Approved IPs (Anti-VPN Mode) ─────────────────────────────
 
 /**
@@ -6298,153 +5428,6 @@ function getApprovedIps(channelId, { limit = 100, offset = 0 } = {}) {
          WHERE ai.channel_id = ? ORDER BY ai.created_at DESC LIMIT ? OFFSET ?`,
         [channelId, limit, offset]
     );
-}
-
-/**
- * Hold a message for IP approval.
- */
-function holdMessageForApproval({ channelId, streamId, ip, userId, anonId, username, message }) {
-    return run(
-        `INSERT INTO pending_ip_messages (channel_id, stream_id, ip_address, user_id, anon_id, username, message)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [channelId, streamId, ip, userId || null, anonId || null, username, message]
-    );
-}
-
-/**
- * Get pending messages for a channel.
- */
-function getPendingIpMessages(channelId, { limit = 50 } = {}) {
-    return all(
-        `SELECT * FROM pending_ip_messages WHERE channel_id = ? AND status = 'pending' ORDER BY created_at ASC LIMIT ?`,
-        [channelId, limit]
-    );
-}
-
-/**
- * Approve or deny a pending IP message. If approved, auto-approve the IP too.
- */
-function reviewPendingIpMessage(id, { status, reviewedBy, channelId }) {
-    // Scoped to the channel the caller was authorised for, so a message id from another channel's
-    // queue matches nothing.
-    const scoped = channelId != null;
-    const res = scoped
-        ? run('UPDATE pending_ip_messages SET status = ?, reviewed_by = ? WHERE id = ? AND channel_id = ?', [status, reviewedBy, id, channelId])
-        : run('UPDATE pending_ip_messages SET status = ?, reviewed_by = ? WHERE id = ?', [status, reviewedBy, id]);
-    if (!res.changes) return;
-    if (status === 'approved') {
-        const msg = get('SELECT * FROM pending_ip_messages WHERE id = ?', [id]);
-        if (msg) approveIp(channelId || msg.channel_id, msg.ip_address, reviewedBy, 'manual');
-    }
-}
-
-/**
- * Bulk-approve all pending messages from a specific IP in a channel.
- */
-function approveAllFromIp(channelId, ip, reviewedBy) {
-    approveIp(channelId, ip, reviewedBy, 'manual');
-    return run(
-        "UPDATE pending_ip_messages SET status = 'approved', reviewed_by = ? WHERE channel_id = ? AND ip_address = ? AND status = 'pending'",
-        [reviewedBy, channelId, ip]
-    );
-}
-
-/**
- * Deny all pending messages from a specific IP in a channel.
- */
-function denyAllFromIp(channelId, ip, reviewedBy) {
-    return run(
-        "UPDATE pending_ip_messages SET status = 'denied', reviewed_by = ? WHERE channel_id = ? AND ip_address = ? AND status = 'pending'",
-        [reviewedBy, channelId, ip]
-    );
-}
-
-// ── Hidden Relay Users ───────────────────────────────────────
-
-/**
- * Hide or ban a relayed external user.
- */
-function hideRelayUser({ channelId, platform, externalUsername, action = 'hide', reason, createdBy }) {
-    return run(
-        `INSERT OR REPLACE INTO hidden_relay_users (channel_id, platform, external_username, action, reason, created_by)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [channelId || null, platform, externalUsername, action, reason || null, createdBy]
-    );
-}
-
-/**
- * Check if a relayed user is hidden/banned.
- * Checks both channel-scoped and site-wide entries (channel_id IS NULL).
- */
-function isRelayUserHidden(channelId, platform, externalUsername) {
-    return !!get(
-        `SELECT 1 FROM hidden_relay_users
-         WHERE platform = ? AND external_username = ? AND (channel_id = ? OR channel_id IS NULL)`,
-        [platform, externalUsername, channelId]
-    );
-}
-
-/**
- * Unhide/unban a relayed external user.
- */
-function unhideRelayUser(id) {
-    return run('DELETE FROM hidden_relay_users WHERE id = ?', [id]);
-}
-
-/**
- * Unhide/unban a relayed external user by identity (platform + external username +
- * channel). Scoped to a single relay identity — never touches a registered
- * openvibelive account of the same name. `channel_id IS ?` matches NULL safely.
- */
-function unhideRelayUserByIdentity(channelId, platform, externalUsername) {
-    return run(
-        'DELETE FROM hidden_relay_users WHERE platform = ? AND external_username = ? AND channel_id IS ?',
-        [platform, externalUsername, channelId || null]
-    );
-}
-
-/**
- * Get hidden relay users for a channel (includes site-wide).
- */
-function getHiddenRelayUsers(channelId, { limit = 100 } = {}) {
-    return all(
-        `SELECT hru.*, u.username as created_by_username
-         FROM hidden_relay_users hru LEFT JOIN users u ON hru.created_by = u.id
-         WHERE hru.channel_id = ? OR hru.channel_id IS NULL
-         ORDER BY hru.created_at DESC LIMIT ?`,
-        [channelId, limit]
-    );
-}
-
-/**
- * Search chat messages within a specific channel's streams.
- */
-function searchChannelChatMessages(channelId, { query, userId, limit = 50, offset = 0 } = {}) {
-    const conditions = [
-        'cm.stream_id IN (SELECT id FROM streams WHERE channel_id = ?)',
-        'cm.is_deleted = 0',
-        '(cm.auto_delete_at IS NULL OR datetime(cm.auto_delete_at) > CURRENT_TIMESTAMP)',
-    ];
-    const params = [channelId];
-    if (query) {
-        conditions.push('cm.message LIKE ?');
-        params.push(`%${query}%`);
-    }
-    if (userId) {
-        conditions.push('cm.user_id = ?');
-        params.push(userId);
-    }
-    params.push(limit, offset);
-    return {
-        messages: all(`
-            SELECT cm.*, u.username, u.display_name, u.avatar_url
-            FROM chat_messages cm
-            LEFT JOIN users u ON cm.user_id = u.id
-            WHERE ${conditions.join(' AND ')}
-            ORDER BY cm.created_at DESC
-            LIMIT ? OFFSET ?
-        `, params),
-    };
 }
 
 // ── IP Tracking ──────────────────────────────────────────────
@@ -6822,16 +5805,6 @@ function getChannelAnalyticsSummary(userId, days) {
     };
 }
 
-function getRecentChatActivity(streamId, minutes) {
-    const cutoff = new Date(Date.now() - minutes * 60 * 1000).toISOString();
-    const row = get(
-        `SELECT COUNT(*) as cnt FROM chat_messages
-         WHERE stream_id = ? AND timestamp >= ? AND is_deleted = 0 AND is_global = 0 AND message_type = 'chat'`,
-        [streamId, cutoff]
-    );
-    return row?.cnt || 0;
-}
-
 /* ── User Preferences (server-side settings sync) ─────────── */
 
 function getUserPreferences(userId) {
@@ -6848,72 +5821,6 @@ function saveUserPreferences(userId, chatSettings) {
          ON CONFLICT(user_id) DO UPDATE SET chat_settings = excluded.chat_settings, updated_at = CURRENT_TIMESTAMP`,
         [userId, json]
     );
-}
-
-/* ── Chat Log Management ──────────────────────────────────── */
-
-// Time ranges (purge, its preview, the log filter, chat replay): the dashboard sends ISO instants
-// ('…T…Z') and rows keep SQLite's 'YYYY-MM-DD HH:MM:SS'. Compared as TEXT, 'T' sorts after ' ', so a
-// range matched nothing on its first day and all of its last: a purge removed lines outside the range
-// the streamer chose and kept the ones inside it (and VOD chat replay showed them). datetime(?) reads
-// both forms as UTC. OpenVibe.Chat, which serves these routes with CHAT_AUTHORITY=chat, does the same.
-function deleteChatMessagesByTimeRange(streamId, fromTime, toTime, deletedBy) {
-    if (streamId) {
-        return run(
-            `UPDATE chat_messages SET is_deleted = 1, deleted_by = ?, deleted_at = CURRENT_TIMESTAMP
-             WHERE stream_id = ? AND timestamp >= datetime(?) AND timestamp <= datetime(?) AND is_deleted = 0`,
-            [deletedBy, streamId, fromTime, toTime]
-        );
-    }
-    // Global chat (is_global = 1)
-    return run(
-        `UPDATE chat_messages SET is_deleted = 1, deleted_by = ?, deleted_at = CURRENT_TIMESTAMP
-         WHERE is_global = 1 AND timestamp >= datetime(?) AND timestamp <= datetime(?) AND is_deleted = 0`,
-        [deletedBy, fromTime, toTime]
-    );
-}
-
-function countChatMessagesByTimeRange(streamId, fromTime, toTime) {
-    let row;
-    if (streamId) {
-        row = get(
-            `SELECT COUNT(*) as cnt FROM chat_messages
-             WHERE stream_id = ? AND timestamp >= datetime(?) AND timestamp <= datetime(?) AND is_deleted = 0`,
-            [streamId, fromTime, toTime]
-        );
-    } else {
-        row = get(
-            `SELECT COUNT(*) as cnt FROM chat_messages
-             WHERE is_global = 1 AND timestamp >= datetime(?) AND timestamp <= datetime(?) AND is_deleted = 0`,
-            [fromTime, toTime]
-        );
-    }
-    return row?.cnt || 0;
-}
-
-function getChatLogs({ streamId, username, search, from, to, messageType, page = 1, limit = 50, includeDeleted = false } = {}) {
-    const conditions = [];
-    const params = [];
-
-    if (streamId) { conditions.push('stream_id = ?'); params.push(streamId); }
-    if (username) { conditions.push('username LIKE ?'); params.push(`%${username}%`); }
-    if (search) { conditions.push('message LIKE ?'); params.push(`%${search}%`); }
-    if (from) { conditions.push('timestamp >= datetime(?)'); params.push(from); }
-    if (to) { conditions.push('timestamp <= datetime(?)'); params.push(to); }
-    if (messageType) { conditions.push('message_type = ?'); params.push(messageType); }
-    if (!includeDeleted) { conditions.push('is_deleted = 0'); }
-
-    const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
-    const offset = (page - 1) * limit;
-
-    const countRow = get(`SELECT COUNT(*) as total FROM chat_messages ${where}`, params);
-    const total = countRow?.total || 0;
-    const rows = all(
-        `SELECT * FROM chat_messages ${where} ORDER BY timestamp DESC LIMIT ? OFFSET ?`,
-        [...params, limit, offset]
-    );
-
-    return { rows, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
 /* ── API Tokens (Bot / Integration auth) ──────────────────── */
@@ -7019,8 +5926,8 @@ module.exports = {
     getHomeStatSeries, homeSeriesLocal, HOME_SERIES_KEYS, vibesStatsSince, _computeHomeStats,
     getVodAiState, getClipAiState, forgetMediaItem,
     scheduleClipNotifyState, bumpClipNotifyNowState, markClipNotifiedState, getDueClipNotifies,
-    getDb, initDb, run, get, all, close, announceModerationAction: _announceModerationAction,
-    mergeChatMessageMetadata, getTimelineSpeechSince,
+    getDb, initDb, run, get, all, close,
+    getTimelineSpeechSince,
     getDonationGoalsForWidget, getAllDonationGoals, getActiveDonationGoals, getDonationGoalById,
     recordViewerSample, getViewerTrend, getReadingSeries, getHomePulse, getActiveGoalsForUsers,
     createDonationGoal, updateDonationGoal, deleteDonationGoal, addToDonationGoal,
@@ -7045,7 +5952,6 @@ module.exports = {
     cleanupMalformedAiText, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
     getStreamMemoriesByUser, countStreamMemoriesByUser, getStreamTranscriptSegments,
     addTimelineEvents, getTimeline, getTimelineText, getTimelineCoverage, linkTimelineToVod, getTimelineByVod, getTimelineVodId,
-    getChatSpikeOffsets, getLiveChatBuckets, getRecentChatText,
     upsertStreamerOverview, getStreamerOverview, getAllStreamerOverviews, getStreamersNeedingOverview,
     readStreamerAiTimelineCache, buildStreamerAiTimeline, assembleStreamerAiTimeline, setStreamAiTitle, getUntitledAiSessions, clearAiTimelineCache,
     // Homepage helpers
@@ -7074,10 +5980,7 @@ module.exports = {
     getSubscriptionsByStreamer, getSubscriptionsBySubscriber, getActiveSubscriberCount, setSubscriptionStatus,
     getSubscriptionsDueRenewal,
     getRestreamDestinationsByManagedStream, getRestreamDestinationsForSlot,
-    // Chat
-    saveChatMessage, searchChatMessages, getUserChatHistory, getChatSamplesInChannel,
     recordEasterEggSolve, hasSolvedEasterEgg, countEasterEggSolves,
-    getTtsVoiceOverride, setTtsVoiceOverride, deleteTtsVoiceOverride,
     // Profiles
     getUserProfile, updateUserAvatar,
     getKickChannelCache, setKickChannelCache,
@@ -7115,8 +6018,6 @@ module.exports = {
     getConfigButtons, createConfigButton, updateConfigButton, deleteConfigButton, applyConfigToStream,
     // Bans
     isUserBanned, isIpBanned, getIpBan, invalidateIpBanCache, forgiveBan,
-    createChannelSound, setChannelSoundEmote, getChannelSounds, getChannelSoundByCommand, getChannelSoundById, renameChannelSoundCommand, updateChannelSoundEmoteRefs,
-    countChannelSounds, countChannelSoundsByUploader, deleteChannelSound,
     getAiChatbotConfig, upsertAiChatbotConfig,
     getChannelAiConfig, upsertChannelAiConfig,
     createChannelAiBot, getChannelAiBot, getChannelAiBots, getChannelAiBotByUsername,
@@ -7125,42 +6026,26 @@ module.exports = {
     getSetting, getSettingRow, getAllSettings, setSetting, deleteSetting,
     saveVodTranscriptProgress, getVodTranscriptProgress,
     createAiViewerThread, getOpenAiViewerThreads, getRecentClosedAiViewerThreads, touchAiViewerThread, closeAiViewerThread, closeStaleAiViewerThreads, closeAllAiViewerThreads,
-    addAiViewerLog, getAiViewerLog, pruneAiViewerLog, getAiViewerLogStats, getChannelChatSince, getMaxChatMessageIdForChannel,
+    addAiViewerLog, getAiViewerLog, pruneAiViewerLog, getAiViewerLogStats,
     getState, setState, deleteState,
     // Verification Keys
     createVerificationKey, getVerificationKeyByKey, getVerificationKeyByUsername,
     getAllVerificationKeys, redeemVerificationKey, revokeVerificationKey, isUsernameReserved,
-    // Chat Replay
-    getChatReplay,
     // Channel lookup
     getChannelById,
     getUserTotalGameLevel, getLegacyGameProfile,
     // Anon IP Mappings
     getOrCreateAnonNum, getAnonFirstSeen, loadAnonMappings,
-    // Stream first chats (welcome messages)
-    isFirstChatInChannel, recordFirstChat,
-    // Moderation Action Logging
-    logModerationAction, getModerationActions,
-    getChatMessageById, deleteChatMessage, searchChannelChatMessages,
-    deleteUserChatMessages, deleteAnonChatMessages, deleteRelayUserMessages, deleteExpiredChatMessages,
     // Approved IPs (Anti-VPN)
     isIpApproved, approveIp, revokeIpApproval, getApprovedIps,
-    holdMessageForApproval, getPendingIpMessages, reviewPendingIpMessage,
-    approveAllFromIp, denyAllFromIp,
-    // Hidden Relay Users
-    hideRelayUser, isRelayUserHidden, unhideRelayUser, unhideRelayUserByIdentity, getHiddenRelayUsers, recordRelayUser,
-    getRelayUserByRowid, getRelayUserChatHistory,
-    anonSubjectId, getAnonMeta, getAnonChatHistory,
     // IP Tracking
     logIp, getIpsByUser, getUsersByIp, getLinkedAccounts, getLinkedAccountsByAnon,
     getLatestIpForUser, getLatestIpForAnon, getIpLog, banAllAccountsOnIp,
     // Stream Analytics
     insertViewerSnapshot, getViewerSnapshots, computeAndCacheStreamAnalytics,
-    getStreamAnalytics, setStreamAnalyticsClipCount, setStreamAnalyticsChatTotals, getChannelAnalyticsSummary, getRecentChatActivity,
+    getStreamAnalytics, setStreamAnalyticsClipCount, setStreamAnalyticsChatTotals, getChannelAnalyticsSummary,
     // User Preferences
     getUserPreferences, saveUserPreferences,
-    // Chat Log Management
-    deleteChatMessagesByTimeRange, countChatMessagesByTimeRange, getChatLogs,
     // API Tokens
     createApiToken, listApiTokens, revokeApiToken, validateApiToken,
 };

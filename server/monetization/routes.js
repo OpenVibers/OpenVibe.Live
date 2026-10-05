@@ -91,15 +91,9 @@ router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
         const alerts = require('./alerts');
         const donorUser = db.getUserById(req.user.id);
         const donor = donorUser?.display_name || donorUser?.username || 'Someone';
-        const ts = new Date().toISOString();
 
-        // 1) Donation chat message — broadcast live AND persist to channel history so
-        //    late-joiners see it. Channel-room broadcast reaches all slots + offline.
-        const donationEvent = {
-            type: 'donation', username: donor, user_id: req.user.id,
-            avatar_url: donorUser?.avatar_url || null,
-            amount: result.amount, message: message || '', timestamp: ts,
-        };
+        // 1) Donation chat message — Chat persists it to channel history so late-joiners see
+        //    it, and mirrors it into global chat.
         const donationLine = {
             stream_id: stream_id || null, channel_user_id: streamer_id, user_id: req.user.id,
             username: donor,
@@ -107,16 +101,8 @@ router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
             message_type: 'donation',
             metadata: { kind: 'donation', amount: result.amount, message: message || '', username: donor, user_id: req.user.id, avatar_url: donorUser?.avatar_url || null },
         };
-        if (delivery.ingress()) {
-            // Chat persists the line and shows it in the channel and (mirror) global chat in one call.
-            delivery.message({ ...donationLine, mirror: true, key: result.transactionId ? `donation:${result.transactionId}` : undefined });
-        } else {
-            delivery.broadcastToChannelRoom(streamer_id, stream_id || null, donationEvent);
-            // Tips are a site-wide event worth celebrating, so mirror them into global chat
-            // instead of confining them to the channel that received them.
-            try { delivery.broadcastGlobal({ ...donationEvent, global: true, channel_user_id: streamer_id }); } catch { /* */ }
-            try { db.saveChatMessage(donationLine); } catch { /* non-critical */ }
-        }
+        // Chat persists the line and shows it in the channel and (mirror) global chat in one call.
+        delivery.message({ ...donationLine, mirror: true, key: result.transactionId ? `donation:${result.transactionId}` : undefined });
 
         // 2) Donation sound (streamer-configured).
         alerts.playAlertSound(streamer_id, stream_id, 'donation');
@@ -149,13 +135,7 @@ router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
                 message_type: 'donation',
                 metadata: { kind: 'goal-reached', goal_id: g.id, title: g.title, target: g.target_amount, image: g.image_url || null, media_type: g.media_type || null, by: donor },
             };
-            if (delivery.ingress()) delivery.message({ ...goalLine, key: result.transactionId ? `goal:${result.transactionId}` : undefined });
-            else {
-                delivery.broadcastToChannelRoom(streamer_id, stream_id || null, {
-                    type: 'goal-reached', goal: publicGoal(g), by: donor, timestamp: ts,
-                });
-                try { db.saveChatMessage(goalLine); } catch { /* non-critical */ }
-            }
+            delivery.message({ ...goalLine, key: result.transactionId ? `goal:${result.transactionId}` : undefined });
             alerts.playAlertSound(streamer_id, stream_id, 'goal');
         }
 

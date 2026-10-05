@@ -45,54 +45,17 @@ function post(worker, bot, message, { threadId = null, replyToId = null } = {}) 
     const color = botColor(bot);
     const ttsOn = worker.settings.tts_enabled !== false && persona.tts !== false;
     const delivery = require('../../chat/chat-delivery');
-    if (delivery.ingress()) {
-        // Chat persists, broadcasts, mirrors to global and reads it aloud in one call; the real id arrives later.
-        delivery.after(delivery.message({
-            stream_id: streamId, channel_user_id: worker.userId || undefined, username: bot.username, message,
-            message_type: 'chat', is_global: false, reply_to_id: replyToId || undefined, source_platform: 'ai',
-            metadata: { bot: 1, bot_id: bot.id, source: bot.source, thread_id: threadId || undefined },
-            mirror: true, frame: { role: 'user', profile_color: color, is_ai: true, filtered: false },
-            tts: ttsOn ? { identity_key: `aibot:${bot.username.toLowerCase()}` } : undefined,
-        }), (id) => forwardToPowerChat(worker, bot, message, id));
-        try { db.touchChannelAiBot(bot.id); } catch { /* */ }
-        return null;
-    }
-    let id = null;
-    try {
-        const res = db.saveChatMessage({
-            stream_id: streamId,
-            channel_user_id: worker.userId,
-            user_id: null,
-            username: bot.username,
-            message,
-            message_type: 'chat',
-            is_global: false,
-            reply_to_id: replyToId || null,
-            source_platform: 'ai',                 // marker → excluded from chat-AI feeds
-            metadata: { bot: 1, bot_id: bot.id, source: bot.source, thread_id: threadId || undefined },
-        });
-        id = res && res.lastInsertRowid ? Number(res.lastInsertRowid) : null;
-    } catch (e) { console.warn('[AI-Viewers] saveChatMessage failed:', e.message); }
-
-    const chatMsg = {
-        type: 'chat', id: id || undefined,
-        username: bot.username, core_username: null,
-        user_id: null, anon_id: null, role: 'user',
-        message, stream_id: streamId, is_global: false,
-        reply_to_id: replyToId || null,
-        avatar_url: null, profile_color: color,
-        is_ai: true, source_platform: 'ai',
-        filtered: false, timestamp: new Date().toISOString(),
-    };
-    try {
-        delivery.broadcastToStream(streamId, chatMsg);
-        delivery.forwardToGlobal(streamId, chatMsg);
-        if (ttsOn) delivery.synthesizeAndBroadcastTTS(streamId, bot.username, message, null, null, `aibot:${bot.username.toLowerCase()}`, null, id ? `m${id}` : null);
-    } catch (e) { console.warn('[AI-Viewers] broadcast failed:', e.message); }
-
-    forwardToPowerChat(worker, bot, message, id);
+    // Chat persists, broadcasts, mirrors to global and reads it aloud in one call; the real id
+    // arrives later. Live keeps no chat table, so there is no local id to return.
+    delivery.after(delivery.message({
+        stream_id: streamId, channel_user_id: worker.userId || undefined, username: bot.username, message,
+        message_type: 'chat', is_global: false, reply_to_id: replyToId || undefined, source_platform: 'ai',
+        metadata: { bot: 1, bot_id: bot.id, source: bot.source, thread_id: threadId || undefined },
+        mirror: true, frame: { role: 'user', profile_color: color, is_ai: true, filtered: false },
+        tts: ttsOn ? { identity_key: `aibot:${bot.username.toLowerCase()}` } : undefined,
+    }), (id) => forwardToPowerChat(worker, bot, message, id));
     try { db.touchChannelAiBot(bot.id); } catch { /* */ }
-    return id;
+    return null;
 }
 
 function forwardToPowerChat(worker, bot, message, id) {

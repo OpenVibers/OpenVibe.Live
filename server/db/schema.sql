@@ -145,29 +145,6 @@ CREATE TABLE IF NOT EXISTS cameras (
     FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE CASCADE
 );
 
--- Chat messages (stored for moderation / VOD replay)
-CREATE TABLE IF NOT EXISTS chat_messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    stream_id INTEGER,
-    user_id INTEGER,                       -- NULL for anon
-    anon_id TEXT,                          -- 'anon12345' format
-    username TEXT,
-    message TEXT NOT NULL,
-    message_type TEXT DEFAULT 'chat' CHECK(message_type IN ('chat', 'system', 'donation', 'command', 'tts')),
-    metadata TEXT,                         -- JSON sidecar for rich events (donation/goal-reached)
-    is_global INTEGER DEFAULT 0,
-    is_deleted INTEGER DEFAULT 0,
-    is_filtered INTEGER DEFAULT 0,
-    reply_to_id INTEGER REFERENCES chat_messages(id) ON DELETE SET NULL,
-    source_platform TEXT,
-    deleted_by INTEGER,
-    deleted_at DATETIME,
-    auto_delete_at DATETIME,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
-);
-
 CREATE TABLE IF NOT EXISTS vibe_coding_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     managed_stream_id INTEGER NOT NULL,
@@ -485,9 +462,6 @@ CREATE INDEX IF NOT EXISTS idx_streams_user_id ON streams(user_id);
 CREATE INDEX IF NOT EXISTS idx_streams_is_live ON streams(is_live);
 CREATE INDEX IF NOT EXISTS idx_streams_channel_id ON streams(channel_id);
 CREATE INDEX IF NOT EXISTS idx_channels_user_id ON channels(user_id);
-CREATE INDEX IF NOT EXISTS idx_chat_stream_id ON chat_messages(stream_id);
-CREATE INDEX IF NOT EXISTS idx_chat_timestamp ON chat_messages(timestamp);
-CREATE INDEX IF NOT EXISTS idx_chat_user_id ON chat_messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_follows_streamer ON follows(streamer_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_to_user ON transactions(to_user_id);
 CREATE INDEX IF NOT EXISTS idx_vods_user_id ON vods(user_id);
@@ -544,24 +518,6 @@ CREATE TABLE IF NOT EXISTS comments (
 CREATE INDEX IF NOT EXISTS idx_comments_content ON comments(content_type, content_id);
 CREATE INDEX IF NOT EXISTS idx_comments_user ON comments(user_id);
 CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_id);
-
--- Per-channel viewer-uploadable sound commands (triggered by !name in chat)
-CREATE TABLE IF NOT EXISTS channel_sounds (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    channel_owner_id INTEGER NOT NULL,      -- streamer whose channel this sound belongs to
-    command TEXT NOT NULL,                   -- trigger word (without leading '!'), lowercased
-    url TEXT NOT NULL,                       -- served path of the audio file on disk
-    mime TEXT DEFAULT 'audio/mpeg',
-    duration_seconds REAL DEFAULT 0,
-    created_by INTEGER,                      -- uploader user id (NULL if removed user)
-    created_by_name TEXT DEFAULT '',
-    is_approved INTEGER DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    -- Multiple sounds may share a command; playback picks one at random.
-    FOREIGN KEY (channel_owner_id) REFERENCES users(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_channel_sounds_owner ON channel_sounds(channel_owner_id);
-CREATE INDEX IF NOT EXISTS idx_channel_sounds_cmd ON channel_sounds(channel_owner_id, command);
 
 -- ═══════════════════════════════════════════════════════════════
 -- OpenCoins (Channel Points — free loyalty currency)

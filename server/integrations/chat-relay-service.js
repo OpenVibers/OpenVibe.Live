@@ -391,10 +391,9 @@ class ChatRelayService {
         const color = PLATFORM_COLORS[bridge.platform] || '#888';
         const prefixedUsername = `[${label}] ${username}`;
 
-        // Check if this relay user is hidden/banned. Chat's queue answers in chat mode (a cached
-        // peek — this path must not wait on an HTTP call): the fresh list, else the last good one.
-        // A cold cache fails open, so a Chat outage never drops relayed lines; Live's own frozen
-        // table is consulted only when Live is not in chat mode.
+        // Check if this relay user is hidden/banned. Chat's queue answers (a cached peek — this
+        // path must not wait on an HTTP call): the fresh list, else the last good one. A cold cache
+        // fails open, so a Chat outage never drops relayed lines; Live keeps no local copy.
         try {
             const stream = db.getStreamById(bridge.streamId);
             const channel = stream?.channel_id ? db.getChannelById(stream.channel_id) : (stream ? db.getChannelByUserId(stream.user_id) : null);
@@ -403,74 +402,11 @@ class ChatRelayService {
             }
         } catch { /* non-critical — allow message through on error */ }
 
+        // Chat persists, broadcasts, records the first chat and reads it aloud in one call.
+        // Not awaited: the relay socket hands lines in sequence, and the welcome check ahead of
+        // the send must not stall it. The catch keeps a surprise rejection off the process.
         const delivery = require('../chat/chat-delivery');
-        if (delivery.ingress()) {
-            // Not awaited: the relay socket hands lines in sequence, and the welcome check ahead of
-            // the send must not stall it. The catch keeps a surprise rejection off the process.
-            return this._deliverToChat(delivery, bridge, username, prefixedUsername, color, extras, String(message || '')).catch(() => { /* logged in chat-reads / chat-client */ });
-        }
-
-        // Record this relay user's activity; their first message becomes a join date.
-        try { db.recordRelayUser(bridge.platform, username); } catch { /* non-critical */ }
-
-        const chatMsg = {
-            type: 'chat',
-            username: prefixedUsername,
-            user_id: null,
-            anon_id: null,
-            role: 'external',
-            message: String(message || ''),
-            stream_id: bridge.streamId,
-            is_global: false,
-            avatar_url: extras.avatar_url || null,
-            profile_color: color,
-            timestamp: extras.timestamp || new Date().toISOString(),
-            source_platform: bridge.platform,
-        };
-
-        try {
-            const result = db.saveChatMessage({
-                stream_id: bridge.streamId,
-                user_id: null,
-                anon_id: null,
-                username: prefixedUsername,
-                message: chatMsg.message,
-                message_type: 'chat',
-                is_global: 0,
-                source_platform: bridge.platform,
-            });
-            if (result?.lastInsertRowid) chatMsg.id = Number(result.lastInsertRowid);
-        } catch {}
-
-        delivery.broadcastToStream(bridge.streamId, chatMsg);
-        this._relayFollowUps(bridge, username, prefixedUsername, chatMsg.message, extras, chatMsg.id || null, 'ai');
-        // Also surface on the global / username-only overlay (tags stream_channel)
-        try { delivery.forwardToGlobal(bridge.streamId, chatMsg); } catch { /* non-critical */ }
-        // And to viewers of the streamer's other live slots (cross-slot chat)
-        try { delivery.forwardToStreamerRooms(bridge.streamId, chatMsg); } catch { /* non-critical */ }
-
-        // Feed relayed platform chat (Kick/Twitch/YouTube) into server-side TTS
-        try {
-            delivery.synthesizeAndBroadcastTTS(bridge.streamId, prefixedUsername, chatMsg.message, null, bridge.platform, `${bridge.platform}:${prefixedUsername}`, null, chatMsg.id ? `m${chatMsg.id}` : null);
-        } catch { /* non-critical */ }
-
-        this._relayFollowUps(bridge, username, prefixedUsername, chatMsg.message, extras, chatMsg.id || null, 'powerchat');
-
-        // Welcome first-time external chatters in this streamer's channel
-        try {
-            const stream = db.getStreamById(bridge.streamId);
-            if (stream?.user_id) {
-                const chatterKey = `ext:${prefixedUsername}`;
-                if (db.isFirstChatInChannel(chatterKey, stream.user_id)) {
-                    db.recordFirstChat(chatterKey, stream.user_id);
-                    delivery.broadcastToStream(bridge.streamId, {
-                        type: 'system',
-                        message: `Welcome ${username} from ${PLATFORM_LABELS[bridge.platform] || bridge.platform}! 👋`,
-                        timestamp: new Date().toISOString(),
-                    });
-                }
-            }
-        } catch { /* non-critical */ }
+        return this._deliverToChat(delivery, bridge, username, prefixedUsername, color, extras, String(message || '')).catch(() => { /* logged in chat-reads / chat-client */ });
     }
 
     /** What follows a relayed line once it has an id: AI viewers hear it, PowerChat's overlay shows it. */

@@ -66,7 +66,7 @@ try {
         // Tables the newer release added, filled the way it fills them.
         try { require('./server/events/search-documents').ensureSchema(); d.prepare("INSERT INTO search_doc_pushes (user_id, hash, revision) VALUES (?, 'h', 1)").run(u.id); } catch (e) {}
         try { require('./server/events/search-media-documents').ensureSchema(); d.prepare("INSERT INTO search_media_pushes (kind, media_id, hash, revision) VALUES ('vod', 1, 'h', 1)").run(); } catch (e) {}
-        db.logModerationAction({ scope_type: 'site', actor_user_id: u.id, target_user_id: null, action_type: 'probe', details: {} });
+        db.recordEasterEggSolve('2026-01-01', 'rollback-probe', u.id);
         const tables = d.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table'").get().n;
         process.stdout.write(JSON.stringify({ ok: true, user: u.id, tables }) + '\\n');
     `);

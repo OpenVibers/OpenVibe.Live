@@ -2,33 +2,20 @@
 // ═══════════════════════════════════════════════════════════════
 // Deploy notices in chat — one tidy, rolling message instead of a line per restart.
 //
-// What went wrong before: every boot inserted a chat row holding the latest three commit subjects
-// (which overlap from one restart to the next) with a relative time baked into the text ("2m ago"
-// forever). Fourteen deploys made fourteen rows repeating each other.
-//
-// Now:
-//   • Only commits that were never announced are announced (site setting `deploy_last_announced`).
-//     A restart with no new code says nothing.
-//   • Consecutive deploys fold into ONE stored message: while the newest chat row in ANY room is a
-//     deploy notice (nobody has spoken anywhere since) and it is under 3 hours old, it is updated in place.
-//   • The row stores data, not prose: metadata { kind: 'deploy', commits[], deploys, first_at,
-//     updated_at }. Clients render times from ISO timestamps, so they are always right.
-//   • The live broadcast carries the row id; clients replace the card with that id instead of
-//     appending, so reconnects and repeats can never duplicate it.
-//   • The deploy is also a durable OpenVibe.Events event, live.release.deployed
-//     (server/events/release-events.js), queued in the SAME transaction that records the commits
-//     as announced (and, without the Chat service, stores the chat row). OpenVibe.Chat consumes
-//     that event and folds the card by head commit (compatibility register C-84, proven on the
-//     2026-09-23 22:14 UTC deploy). With Events publishing off there is no other way to Chat (its
-//     ingress has no deploy endpoint), so the commits stay unannounced and the next boot tries again.
+// Only commits that were never announced are announced (site setting `deploy_last_announced`); a
+// restart with no new code says nothing. The deploy is a durable OpenVibe.Events event,
+// live.release.deployed (server/events/release-events.js), queued in the SAME transaction that
+// records the commits as announced. OpenVibe.Chat consumes that event, stores the rolling message
+// (folding consecutive deploys into ONE row by head commit — compatibility register C-84, proven on
+// the 2026-09-23 22:14 UTC deploy) and broadcasts the card. With Events publishing off there is no
+// other way to Chat (its ingress has no deploy endpoint), so the commits stay unannounced and the
+// next boot tries again.
 // ═══════════════════════════════════════════════════════════════
 const { execFile } = require('child_process');
 const path = require('path');
 
 const REPO_DIR = path.join(__dirname, '..', '..');
 const SETTING = 'deploy_last_announced';
-// A card covers at most 3 hours of deploys, so its time range stays readable.
-const FOLD_WINDOW_MS = 3 * 60 * 60 * 1000;
 const MAX_COMMITS = 40;
 
 const git = (args, timeout = 5000) => new Promise((resolve) => {
@@ -56,30 +43,6 @@ async function newCommits(db) {
     return { head, previous, commits: parseLog(raw) };
 }
 
-const plainText = (meta) => `🚀 ${meta.commits.length} update${meta.commits.length === 1 ? '' : 's'} shipped: ${meta.commits.slice(0, 3).map(c => c.subject).join(' · ')}${meta.commits.length > 3 ? ` · and ${meta.commits.length - 3} more` : ''}`;
-
-/** Insert a notice, or fold into the newest row when that row is itself a recent deploy notice. */
-function persist(db, commits) {
-    const nowIso = new Date().toISOString();
-    // Newest across EVERY room: the global feed shows stream and channel messages too, so folding
-    // while people chatted in a stream left a card whose time range ran past the messages under it.
-    const newest = db.get('SELECT id, message_type, metadata FROM chat_messages WHERE is_deleted = 0 ORDER BY id DESC LIMIT 1');
-    let prev = null;
-    if (newest && newest.message_type === 'system' && newest.metadata) {
-        try { const m = JSON.parse(newest.metadata); if (m && m.kind === 'deploy' && Date.now() - Date.parse(m.first_at) < FOLD_WINDOW_MS) prev = m; } catch { /* not ours */ }
-    }
-    if (prev) {
-        const seen = new Set(commits.map(c => c.hash));
-        const merged = commits.concat((prev.commits || []).filter(c => !seen.has(c.hash))).slice(0, MAX_COMMITS);
-        const meta = { kind: 'deploy', commits: merged, deploys: (prev.deploys || 1) + 1, first_at: prev.first_at, updated_at: nowIso };
-        db.run('UPDATE chat_messages SET message = ?, metadata = ? WHERE id = ?', [plainText(meta), JSON.stringify(meta), newest.id]);
-        return { id: newest.id, meta };
-    }
-    const meta = { kind: 'deploy', commits: commits.slice(0, MAX_COMMITS), deploys: 1, first_at: nowIso, updated_at: nowIso };
-    const res = db.saveChatMessage({ stream_id: null, user_id: null, anon_id: null, username: 'OpenVibe.Live', message: plainText(meta), message_type: 'system', is_global: true, metadata: meta });
-    return { id: res && (res.lastInsertRowid || res.lastID || res.id) || null, meta };
-}
-
 /**
  * Announce this boot's new commits. Safe to call once after boot.
  * @returns {Promise<{ announced: number, event_id?: string|null }>}
@@ -103,23 +66,14 @@ async function announce({ db, log = console }) {
     };
     const inTransaction = (fn) => db.getDb().transaction(fn)();
 
-    // CHAT_AUTHORITY=chat: Live still decides what shipped; OpenVibe.Chat stores the rolling
-    // message and shows it (its own copy of this module). It learns the commits from the
-    // live.release.deployed event only. Chat's ingress has no deploy endpoint: with Events publishing off
-    // the commits are not recorded as announced and the next boot tries again (OpenVibe.Chat docs/chat-ingress.md).
-    if (require('./chat-delivery').ingress()) {
-        if (!outbox) { log.warn('[Deploy notice] Events outbox unavailable; left unannounced for the next boot'); return { announced: 0 }; }
-        try { inTransaction(recordDeploy); } catch (err) { log.warn('[Deploy notice] not recorded:', err.message); return { announced: commits.length, event_id: null }; }
-        if (outbox) outbox.kick();
-        return { announced: commits.length, event_id: eventId };
-    }
-
-    let saved;
-    try { saved = inTransaction(() => { const s = persist(db, commits); recordDeploy(); return s; }); }
-    catch (err) { log.warn('[Deploy notice] not saved:', err.message); return { announced: 0 }; }
-    if (outbox) outbox.kick();
-
+    // Live still decides what shipped; OpenVibe.Chat stores the rolling message and shows it (its
+    // own copy of this module). It learns the commits from the live.release.deployed event only.
+    // Chat's ingress has no deploy endpoint: with Events publishing off the commits are not
+    // recorded as announced and the next boot tries again (OpenVibe.Chat docs/chat-ingress.md).
+    if (!outbox) { log.warn('[Deploy notice] Events outbox unavailable; left unannounced for the next boot'); return { announced: 0, event_id: null }; }
+    try { inTransaction(recordDeploy); } catch (err) { log.warn('[Deploy notice] not recorded:', err.message); return { announced: 0, event_id: null }; }
+    outbox.kick();
     return { announced: commits.length, event_id: eventId };
 }
 
-module.exports = { announce, newCommits, persist, plainText, parseLog, SETTING };
+module.exports = { announce, newCommits, parseLog, SETTING };

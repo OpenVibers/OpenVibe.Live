@@ -49,7 +49,19 @@ for (const id of [3, 4]) db.ensureChannel(id);
 const chanA = db.getChannelByUserId(3), chanB = db.getChannelByUserId(4);
 const streamA = db.createStream({ user_id: 3, channel_id: chanA.id, title: 'A', protocol: 'webrtc' }).lastInsertRowid;
 const streamB = db.createStream({ user_id: 4, channel_id: chanB.id, title: 'B', protocol: 'webrtc' }).lastInsertRowid;
-const msgB = db.saveChatMessage({ stream_id: streamB, channel_user_id: 4, user_id: 5, username: 'carol', message: 'hello bob' }).lastInsertRowid;
+
+// OpenVibe.Chat owns the chat tables now (Live keeps no copy), so the permission checks that used
+// to read a local row go through the seam: stub Chat's message/relay reads and the moderation
+// write, and keep everything else production code.
+const MSG_B = 900100;
+let RELAY_ROW = null;
+const moderated = [];
+const chatReads = require('../server/chat/chat-reads');
+const delivery = require('../server/chat/chat-delivery');
+chatReads.messageById = async (id) => (Number(id) === MSG_B ? { id: MSG_B, stream_id: Number(streamB), channel_user_id: 4, user_id: 5 } : null);
+chatReads.channelSamples = async (channelUserId, { userId } = {}) => (Number(channelUserId) === 4 && Number(userId) === 5 ? [{ id: 1, username: 'carol', message: 'only in bob' }] : []);
+chatReads.relayUser = async (id) => (RELAY_ROW && Number(id) === RELAY_ROW.id ? RELAY_ROW : null);
+delivery.moderate = async (action, fields) => { moderated.push({ action, fields }); return { ids: fields && fields.id ? [Number(fields.id)] : [] }; };
 
 const express = require('express');
 const app = express();
@@ -86,13 +98,14 @@ async function check(name, fn) {
     await new Promise((r) => server.once('listening', r));
 
     await check('chat: owning stream A does not let you delete a message in stream B', async () => {
-        const r = await call('POST', '/api/mod/delete-message', 3, { message_id: msgB, stream_id: streamA });
+        const r = await call('POST', '/api/mod/delete-message', 3, { message_id: MSG_B, stream_id: streamA });
         assert.strictEqual(r.status, 403, r.text);
-        assert.strictEqual(db.getChatMessageById(msgB).is_deleted, 0);
+        assert.ok(!moderated.some((m) => m.action === 'delete-message'), 'nothing reached Chat');
     });
     await check('chat: the owner of stream B can delete it', async () => {
-        const r = await call('POST', '/api/mod/delete-message', 4, { message_id: msgB });
+        const r = await call('POST', '/api/mod/delete-message', 4, { message_id: MSG_B });
         assert.strictEqual(r.status, 200, r.text);
+        assert.ok(moderated.some((m) => m.action === 'delete-message' && m.fields.id === MSG_B), 'Chat is asked to delete it');
     });
 
     await check('controls: a button id from someone else\'s profile cannot be edited or deleted through yours', async () => {
@@ -129,10 +142,9 @@ async function check(name, fn) {
 
     await check('relay users: a plain user cannot hide site-wide or remove another channel\'s hide', async () => {
         assert.strictEqual((await call('POST', '/api/mod/relay-user/hide', 5, { platform: 'twitch', external_username: 'x' })).status, 403);
-        db.hideRelayUser({ channelId: chanB.id, platform: 'twitch', externalUsername: 'troll', action: 'ban', createdBy: 4 });
-        const row = raw.prepare('SELECT id FROM hidden_relay_users WHERE channel_id = ?').get(chanB.id);
-        assert.strictEqual((await call('DELETE', `/api/mod/relay-user/${row.id}`, 3)).status, 403);
-        assert.strictEqual((await call('DELETE', `/api/mod/relay-user/${row.id}`, 4)).status, 200);
+        RELAY_ROW = { id: 900200, channel_id: chanB.id, platform: 'twitch', external_username: 'troll' };
+        assert.strictEqual((await call('DELETE', `/api/mod/relay-user/${RELAY_ROW.id}`, 3)).status, 403);
+        assert.strictEqual((await call('DELETE', `/api/mod/relay-user/${RELAY_ROW.id}`, 4)).status, 200);
     });
 
     await check('IP approval: owning stream #N does not open channel #N\'s queue', async () => {
@@ -167,9 +179,10 @@ async function check(name, fn) {
     });
 
     await check("AI viewer clone: a streamer cannot copy someone's chat from other channels", async () => {
-        db.saveChatMessage({ stream_id: streamB, channel_user_id: 4, user_id: 5, username: 'carol', message: 'only in bob' });
-        assert.strictEqual(db.getChatSamplesInChannel(4, { userId: 5 }).length, 1);
-        assert.strictEqual(db.getChatSamplesInChannel(3, { userId: 5 }).length, 0);
+        // Chat scopes the samples to the asking streamer's channel (stubbed): bob's channel has
+        // carol's line, alice's has none, so alice's clone finds nothing to copy.
+        assert.strictEqual((await chatReads.channelSamples(4, { userId: 5 })).length, 1);
+        assert.strictEqual((await chatReads.channelSamples(3, { userId: 5 })).length, 0);
         const r = await call('POST', '/api/ai-viewers/clone', 3, { kind: 'user', ref: 5 });
         assert.strictEqual(r.status, 404, r.text);
     });
