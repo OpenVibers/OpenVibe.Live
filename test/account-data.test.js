@@ -42,6 +42,12 @@ d.prepare("INSERT INTO managed_streams (user_id, stream_key) VALUES (20, 'sk_liv
 d.prepare("INSERT INTO api_tokens (user_id, token_hash) VALUES (20, 'hash-secret-dana')").run();
 d.prepare("INSERT INTO transactions (from_user_id, to_user_id, amount, type, message) VALUES (20, 21, 5, 'donation', 'love you xena'), (22, 20, 3, 'donation', 'for dana')").run();
 d.prepare("INSERT INTO payment_orders (user_id, provider, provider_ref, kind, amount_cents, currency, bucks, status) VALUES (20, 'paypal', 'PO-1', 'bucks', 500, 'USD', 5, 'completed')").run();
+// A database migrated before op_003 still holds Live's legacy copies of Chat's tables (a fresh schema creates none):
+// a deletion must erase the person from them while they exist.
+d.exec(`CREATE TABLE IF NOT EXISTS chat_messages (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, username TEXT, message TEXT);
+        CREATE TABLE IF NOT EXISTS pending_ip_messages (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE, ip TEXT, message TEXT);`);
+d.prepare("INSERT INTO chat_messages (user_id, username, message) VALUES (20, 'dana', 'hello from dana'), (21, 'xena', 'hi')").run();
+d.prepare("INSERT INTO pending_ip_messages (user_id, ip, message) VALUES (20, '203.0.113.20', 'held line')").run();
 
 const envelope = (type, payload) => {
     assert.ok(validate(`${type}@1`, payload).valid, JSON.stringify(validate(`${type}@1`, payload).errors));
@@ -106,6 +112,9 @@ const ulid = () => ids.ulid();
         assert.strictEqual(n('SELECT COUNT(*) AS n FROM managed_streams WHERE user_id = 20') + n('SELECT COUNT(*) AS n FROM api_tokens WHERE user_id = 20') + n("SELECT COUNT(*) AS n FROM linked_accounts WHERE user_id = 20"), 0);
         assert.deepStrictEqual(d.prepare('SELECT from_user_id AS f, message FROM transactions ORDER BY id').all(), [{ f: 20, message: null }, { f: 22, message: 'for dana' }], 'money kept; her own message cleared');
         assert.strictEqual(n("SELECT COUNT(*) AS n FROM payment_orders WHERE user_id = 20"), 1, 'payment orders kept');
+        assert.strictEqual(n('SELECT COUNT(*) AS n FROM chat_messages WHERE user_id = 20 OR username = \'dana\''), 0, 'her lines are erased from the legacy chat copy');
+        assert.strictEqual(n('SELECT COUNT(*) AS n FROM pending_ip_messages WHERE user_id = 20'), 0, 'and her held line with its IP');
+        assert.strictEqual(n('SELECT COUNT(*) AS n FROM chat_messages WHERE user_id = 21'), 1, "others' lines stay");
         const tomb = d.prepare('SELECT username, email, bio, deleted_at FROM users WHERE id = 20').get();
         assert.deepStrictEqual([tomb.username, tomb.email, tomb.bio, !!tomb.deleted_at], ['deleted-20', null, null, true]);
         d.prepare("INSERT INTO users (username, password_hash) VALUES ('dana', '$sso$')").run();
