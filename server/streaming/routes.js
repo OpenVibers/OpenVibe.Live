@@ -37,6 +37,7 @@ const chatRelayService = require('../integrations/chat-relay-service');
 const chatServer = require('../chat/chat-server');
 // The six chat tables are OpenVibe.Chat's (roadmap T3); the few reads here go through its client.
 const moderation = require('../chat/moderation-client');
+const chatReads = require('../chat/chat-reads');
 // Stream voice channels: Live's call server, or OpenVibe.Chat's with CALLS_AUTHORITY=chat.
 const callsAuthority = require('./calls-authority');
 const { sanitizeOfflineHtml, sanitizeOfflineCss } = require('./offline-html-sanitize');
@@ -1631,7 +1632,7 @@ router.get('/setup-progress', requireAuth, async (req, res) => {
     const user = safe(() => db.getUserById(uid), {}) || {};
     const channel = safe(() => db.getChannelByUserId(uid), {}) || {};
     const emotes = await moderation.getEmoteCount(uid).catch(() => 0);
-    const sounds = safe(() => db.get('SELECT COUNT(*) AS n FROM channel_sounds WHERE channel_owner_id = ?', [uid]).n, 0);
+    const sounds = (await chatReads.soundCount(uid).catch(() => 0)) || 0;
     const goals = safe(() => db.get('SELECT COUNT(*) AS n FROM donation_goals WHERE user_id = ? AND is_active = 1', [uid]).n, 0);
     const powerchat = safe(() => !!db.get('SELECT 1 FROM powerchat_connections WHERE user_id = ? LIMIT 1', [uid]), false);
     const followers = await require('../social/network-follows').followerCount(uid).catch(() => 0);

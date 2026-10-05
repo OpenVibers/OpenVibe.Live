@@ -16,6 +16,7 @@
  * off (a much stronger chat spike is then required).
  */
 const db = require('../db/database');
+const chatReads = require('../chat/chat-reads');
 const aiService = require('./ai-service');
 const ai = require('./ai-analysis');
 const media = require('../media-client');
@@ -68,7 +69,7 @@ function _countClipsSince(streamId, minutes) {
 async function _confirmLiveMoment(stream) {
     const memories = (db.getStreamMemories(stream.id) || []).filter(m => m.description).slice(-5);
     const transcript = (db.getStreamTranscriptSegments(stream.id) || []).slice(-14);
-    const chat = db.getRecentChatText(stream.id, WINDOW_SEC, 40) || [];
+    const chat = await chatReads.recentChatText(stream.id, WINDOW_SEC, 40) || [];
     if (!_aiOn()) return { clip: null }; // caller decides via the stricter no-AI threshold
     // Sound events are a strong clip signal on their own — a burst of gunfire, an explosion or laughter is exactly
     // the kind of thing viewers clip, and it is often the reason chat spiked in the first place.
@@ -106,7 +107,7 @@ async function _checkLiveStream(stream) {
         if (!rec || !rec.vodId) return;
 
         // Detect a clear chat spike in the recent chunk.
-        const buckets = db.getLiveChatBuckets(streamId, WINDOW_SEC, BUCKET_SEC);
+        const buckets = (await chatReads.liveChatBuckets(streamId, WINDOW_SEC, BUCKET_SEC)) || [];
         if (buckets.length < 3) return;
         const counts = buckets.map(b => b.count);
         const avg = counts.reduce((a, b) => a + b, 0) / counts.length;

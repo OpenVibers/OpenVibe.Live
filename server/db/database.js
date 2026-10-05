@@ -3955,7 +3955,10 @@ function _computeHomeStats() {
         clips: null,
         liveSessions: c(`SELECT COUNT(*) AS count FROM streams`),
         streamers: c(`SELECT COUNT(DISTINCT user_id) AS count FROM streams WHERE user_id IS NOT NULL`),
-        chatMessages: c(`SELECT COUNT(*) AS count FROM chat_messages`),
+        // OpenVibe.Chat owns chat_messages (roadmap T3); the total comes from Chat's read API when
+        // it is the authority, from Live's own table when Live runs chat itself. A Chat outage
+        // answers the cache, else null — never a 500 for the home page.
+        chatMessages: (() => { try { const s = require('../chat/chat-reads').siteStatsPeek(); return s && s.messages != null ? s.messages : null; } catch { return null; } })(),
         users: c(`SELECT COUNT(*) AS count FROM users WHERE COALESCE(is_banned, 0) = 0`),
         anons: c(`SELECT COUNT(*) AS count FROM anon_ip_mappings`),
         follows: c(`SELECT COUNT(*) AS count FROM follows`),

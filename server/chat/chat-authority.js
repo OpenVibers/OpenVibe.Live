@@ -8,9 +8,10 @@
  *   - delivers every chat call its other modules make through Chat's typed ingress
  *     (server/chat/chat-delivery.js → chat-client.js); require('./chat/chat-server') returns a
  *     RemoteChatServer that reads Chat's presence and never listens;
- *   - keeps its chat tables as a read mirror that Chat writes (POST /internal/chat-effects/mirror)
- *     so its own readers (home stats, recaps, AI context, /api/mod queues) keep working and a
- *     rollback loses nothing;
+ *   - reads chat stats, queues and history from Chat's internal read API
+ *     (server/chat/chat-reads.js → chat-client.js), and still keeps its chat tables as a read
+ *     mirror Chat writes (POST /internal/chat-effects/mirror) so the readers that have not moved
+ *     yet keep working and a rollback loses nothing;
  *   - answers Chat's reads and side effects on /internal/chat-context/* and /internal/chat-effects/*.
  * Anything else (default): Live runs chat itself, exactly as before.
  */

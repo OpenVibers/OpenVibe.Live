@@ -4,6 +4,7 @@ const WebSocket = require('ws');
 
 const db = require('../db/database');
 const chatServer = require('../chat/chat-server');
+const chatReads = require('../chat/chat-reads');
 const delivery = require('../chat/chat-delivery');
 const { authenticateWs } = require('../auth/auth');
 
@@ -654,12 +655,13 @@ class RobotStreamerService {
                 const rawUsername = String(data.username || 'anon');
                 const username = `[RS] ${rawUsername}`;
 
-                // Check if this relay user is hidden/banned
+                // Check if this relay user is hidden/banned: Chat's queue in chat mode (a cached
+                // peek), Live's own mirror-fed table otherwise; Chat unreachable falls back to it.
                 try {
                     const channel = stream.channel_id
                         ? db.getChannelById(stream.channel_id)
                         : db.getChannelByUserId(stream.user_id);
-                    if (channel && db.isRelayUserHidden(channel.id, 'rs', rawUsername)) {
+                    if (channel && chatReads.isRelayUserHidden(channel.id, 'rs', rawUsername)) {
                         return; // Silently drop messages from hidden/banned relay users
                     }
                 } catch { /* non-critical — allow message through on error */ }

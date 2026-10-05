@@ -44,6 +44,7 @@ const db = require('../db/database');
 const { requireAuth } = require('../auth/auth');
 const chatServer = require('../chat/chat-server');
 const delivery = require('../chat/chat-delivery');
+const chatReads = require('../chat/chat-reads');
 const permissions = require('../auth/permissions');
 const money = require('../monetization/money-authority');
 
@@ -76,6 +77,8 @@ router.get('/stats', async (req, res) => {
     try {
         // VODs live in OpenVibe.Media (null when it does not answer); Live's vods table is frozen.
         const vodCounts = await require('../media-proxy/lookups').vodCounts();
+        // Chat's message total comes from OpenVibe.Chat (Live holds no chat copy in Chat mode).
+        const chatStats = await chatReads.siteStats();
         const stats = {
             users: {
                 total: db.get('SELECT COUNT(*) as c FROM users').c,
@@ -102,7 +105,7 @@ router.get('/stats', async (req, res) => {
                 public: vodCounts.public,
             },
             chat: {
-                totalMessages: db.get('SELECT COUNT(*) as c FROM chat_messages').c,
+                totalMessages: chatStats ? chatStats.messages : null,
             },
         };
 

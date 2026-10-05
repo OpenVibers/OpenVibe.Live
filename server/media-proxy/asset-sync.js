@@ -16,6 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../db/database');
 const media = require('../media-client');
+const chatReads = require('../chat/chat-reads');
 
 const paths = require('../paths');
 const SOUND_DIR = paths.dir('SOUNDS_PATH', 'sounds');
@@ -65,18 +66,34 @@ async function syncAll() {
         };
         let synced = 0, failed = 0;
 
-        for (const s of db.all('SELECT * FROM channel_sounds WHERE media_asset_id IS NULL')) {
-            const f = _localFile(SOUND_DIR, s.url);
-            if (!f) continue;
-            try {
-                const asset = await _upload({
-                    kind: 'sound', name: s.command, filePath: f,
-                    user_id: s.created_by, username: s.created_by_name || uname(s.created_by),
-                    channel_username: uname(s.channel_owner_id),
-                    duration_seconds: s.duration_seconds || 0,
-                });
-                if (asset) { db.run('UPDATE channel_sounds SET media_url = ?, media_asset_id = ? WHERE id = ?', [asset.url, asset.id, s.id]); synced++; }
-            } catch (err) { failed++; if (failed <= 3) console.warn('[AssetSync] sound', s.command, err.message); }
+        // The work list is Chat's (channel_sounds is Chat's table); Live's own rows when Live runs
+        // chat. Page by id until a short page: sounds with no local file stay pending and would
+        // otherwise fill the first window forever, starving every later sound.
+        const PAGE = 100;
+        let afterId = 0;
+        for (;;) {
+            const batch = (await chatReads.pendingSounds({ afterId, limit: PAGE })) || [];
+            for (const s of batch) {
+                const f = _localFile(SOUND_DIR, s.url);
+                if (!f) continue;
+                try {
+                    const asset = await _upload({
+                        kind: 'sound', name: s.command, filePath: f,
+                        user_id: s.created_by, username: s.created_by_name || uname(s.created_by),
+                        channel_username: uname(s.channel_owner_id),
+                        duration_seconds: s.duration_seconds || 0,
+                    });
+                    if (asset) {
+                        // Chat owns the row: a null answer means the record did not land, so the
+                        // sound stays pending and must be counted failed, not synced.
+                        const recorded = await chatReads.recordSoundAsset(s.id, asset.url, asset.id);
+                        if (recorded) synced++; else failed++;
+                    }
+                } catch (err) { failed++; if (failed <= 3) console.warn('[AssetSync] sound', s.command, err.message); }
+            }
+            if (batch.length < PAGE) break;
+            afterId = Number(batch[batch.length - 1].id) || 0;
+            if (!afterId) break;
         }
 
         if (synced || failed) console.log(`[AssetSync] Synced ${synced} chat assets to Media${failed ? ` (${failed} failed — will retry next pass)` : ''}`);

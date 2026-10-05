@@ -32,9 +32,26 @@ const { requireAuth } = require('../auth/auth');
 const permissions = require('../auth/permissions');
 const chatServer = require('../chat/chat-server');
 const delivery = require('../chat/chat-delivery');
+const chatReads = require('../chat/chat-reads');
 const ipUtils = require('./ip-utils');
 
 const router = express.Router();
+
+/** A read the console acts on failed against Chat: answer 503 (or the read's own status), never empty data. */
+function chatReadError(res, err) {
+    if (err && err.status) { res.status(err.status).json({ error: err.message }); return true; }
+    if (err && err.unavailable) { res.status(503).json({ error: 'Chat unavailable' }); return true; }
+    return false;
+}
+
+/**
+ * A relay hide or unhide just changed Chat's hidden-user list: drop the cached per-channel list so
+ * the next relay line sees it at once instead of waiting out the peek's TTL. A site-wide row
+ * (channel_id null) changes every channel's list, so all `hru:` answers are dropped.
+ */
+function invalidateRelayHidden(channelId) {
+    chatReads.invalidate(channelId ? `hru:${Number(channelId)}` : 'hru:');
+}
 
 // All mod routes require auth (individual routes check specific permissions)
 router.use(requireAuth);
@@ -313,7 +330,7 @@ router.delete('/ban/:id', async (req, res) => {
 // Unscoped: searches every channel's chat, by user or by text. Every other route in this file
 // checks a permission in its body; these two had none, so requireAuth alone let any signed-in
 // account read anyone's chat history site-wide. Their only caller is the staff console.
-router.get('/chat/search', permissions.requireGlobalMod, (req, res) => {
+router.get('/chat/search', permissions.requireGlobalMod, async (req, res) => {
     try {
         const limit = Math.min(parseInt(req.query.limit || '50'), 200);
         const offset = parseInt(req.query.offset || '0');
@@ -336,23 +353,25 @@ router.get('/chat/search', permissions.requireGlobalMod, (req, res) => {
             }
         }
 
-        const result = db.searchChatMessages({ query, userId, anonId, username, streamId, limit, offset });
-        res.json(result);
+        const result = await chatReads.searchMessages({ query, userId, anonId, username, streamId, limit, offset });
+        res.json(result || { messages: [], total: 0 });
     } catch (err) {
+        if (chatReadError(res, err)) return;
         res.status(500).json({ error: 'Search failed' });
     }
 });
 
 // ── View a user's chat history ───────────────────────────────
-router.get('/chat/user/:userId', permissions.requireGlobalMod, (req, res) => {
+router.get('/chat/user/:userId', permissions.requireGlobalMod, async (req, res) => {
     try {
         const userId = parseInt(req.params.userId);
         const limit = Math.min(parseInt(req.query.limit || '50'), 200);
         const offset = parseInt(req.query.offset || '0');
 
-        const result = db.getUserChatHistory(userId, limit, offset);
-        res.json(result);
+        const result = await chatReads.userHistory(userId, { limit, offset });
+        res.json(result || { messages: [], total: 0 });
     } catch (err) {
+        if (chatReadError(res, err)) return;
         res.status(500).json({ error: 'Failed to get chat history' });
     }
 });
@@ -367,7 +386,7 @@ router.post('/delete-message', async (req, res) => {
         const { message_id, stream_id } = req.body;
         if (!message_id) return res.status(400).json({ error: 'message_id required' });
 
-        const message = db.getChatMessageById(parseInt(message_id));
+        const message = await chatReads.messageById(parseInt(message_id));
         if (!message) return res.status(404).json({ error: 'Message not found' });
 
         // Permission: stream mod can delete messages in their stream, global mod can delete anything.
@@ -386,7 +405,8 @@ router.post('/delete-message', async (req, res) => {
             if (!allowed) return res.status(403).json({ error: 'You cannot moderate this stream' });
         }
 
-        // Chat ingress: Chat deletes the row and broadcasts the delete to every surface it reached.
+        // Chat ingress: Chat deletes the row and broadcasts the delete to every surface it reached;
+        // the mirror keeps Live's own copy in step for its remaining readers.
         if (delivery.ingress()) {
             delivery.mirror('deleteChatMessage', parseInt(message_id), req.user.id);
             await delivery.moderate('delete-message', { id: parseInt(message_id), deleted_by: req.user.id }, { key: `delete:${message_id}` });
@@ -416,6 +436,7 @@ router.post('/delete-message', async (req, res) => {
 
         res.json({ message: 'Message deleted', ids: [parseInt(message_id)] });
     } catch (err) {
+        if (chatReadError(res, err)) return;
         console.error('[Mod] Delete message error:', err.message);
         res.status(500).json({ error: 'Failed to delete message' });
     }
@@ -449,7 +470,8 @@ router.post('/delete-user-messages', async (req, res) => {
             if (user_id) delivery.mirror('deleteUserChatMessages', parseInt(user_id), opts);
             else if (anon_id) delivery.mirror('deleteAnonChatMessages', anon_id, opts);
             else delivery.mirror('deleteRelayUserMessages', relay_username, opts);
-            const r = await delivery.moderate(action, { ...subject, stream_id: scopedStreamId ? parseInt(scopedStreamId) : undefined, deleted_by: req.user.id });
+            const scoped = { stream_id: scopedStreamId ? parseInt(scopedStreamId) : undefined, deleted_by: req.user.id };
+            const r = await delivery.moderate(action, { ...subject, ...scoped });
             ids = (r && Array.isArray(r.ids)) ? r.ids : [];
         } else if (user_id) {
             ids = db.deleteUserChatMessages(parseInt(user_id), { streamId: scopedStreamId, deletedBy: req.user.id });
@@ -524,6 +546,7 @@ router.post('/relay-user/hide', async (req, res) => {
                 await delivery.moderate('relay-unhide', { channel_id: channel_id || undefined, platform, external_username });
             }
             else db.unhideRelayUserByIdentity(channel_id || null, platform, external_username);
+            invalidateRelayHidden(channel_id || null);
             delivery.logModeration({
                 scope_type: channel_id ? 'channel' : 'site',
                 scope_id: channel_id || undefined,
@@ -544,6 +567,7 @@ router.post('/relay-user/hide', async (req, res) => {
             reason,
             createdBy: req.user.id,
         });
+        invalidateRelayHidden(channel_id || null);
 
         delivery.logModeration({
             scope_type: channel_id ? 'channel' : 'site',
@@ -563,7 +587,7 @@ router.post('/relay-user/hide', async (req, res) => {
 // ── Unhide a relayed user ────────────────────────────────────
 router.delete('/relay-user/:id', async (req, res) => {
     try {
-        const row = db.get('SELECT id, channel_id FROM hidden_relay_users WHERE id = ?', [parseInt(req.params.id)]);
+        const row = await chatReads.relayUser(parseInt(req.params.id));
         if (!row) return res.status(404).json({ error: 'Not found' });
         // Site rows are staff's; a channel row belongs to that channel's moderators. This had no check.
         const allowed = permissions.isGlobalModOrAbove(req.user)
@@ -571,6 +595,7 @@ router.delete('/relay-user/:id', async (req, res) => {
         if (!allowed) return res.status(403).json({ error: 'You cannot moderate this channel' });
         if (delivery.ingress()) { delivery.mirror('unhideRelayUser', row.id); await delivery.moderate('relay-unhide', { id: row.id }); }
         else db.unhideRelayUser(row.id);
+        invalidateRelayHidden(row.channel_id);
 
         delivery.logModeration({
             scope_type: 'site',
@@ -581,6 +606,7 @@ router.delete('/relay-user/:id', async (req, res) => {
 
         res.json({ message: 'Relay user unhidden' });
     } catch (err) {
+        if (chatReadError(res, err)) return;
         console.error('[Mod] Relay user unhide error:', err.message);
         res.status(500).json({ error: 'Failed to unhide relay user' });
     }
@@ -591,9 +617,10 @@ router.get('/relay-users/hidden/:channelId', async (req, res) => {
     try {
         const channelId = parseInt(req.params.channelId);
         if (!(await permissions.canModerateChannel(req.user, channelId))) return res.status(403).json({ error: 'Access denied' });
-        const hidden = db.getHiddenRelayUsers(channelId);
+        const hidden = await chatReads.relayUsers(channelId);
         res.json({ hidden });
     } catch (err) {
+        if (chatReadError(res, err)) return;
         console.error('[Mod] List hidden relay users error:', err.message);
         res.status(500).json({ error: 'Failed to list hidden relay users' });
     }
@@ -612,7 +639,7 @@ router.get('/ip-approval/:channelId/pending', async (req, res) => {
         if (!(await permissions.canModerateChannel(req.user, channelId))) {
             return res.status(403).json({ error: 'Access denied' });
         }
-        const pending = db.getPendingIpMessages(channelId);
+        const pending = await chatReads.pendingIp(channelId);
 
         // Add geo data
         const enriched = pending.map(msg => {
@@ -625,6 +652,7 @@ router.get('/ip-approval/:channelId/pending', async (req, res) => {
 
         res.json({ pending: enriched });
     } catch (err) {
+        if (chatReadError(res, err)) return;
         console.error('[Mod] IP approval pending error:', err.message);
         res.status(500).json({ error: 'Failed to get pending messages' });
     }
@@ -643,11 +671,12 @@ router.post('/ip-approval/:channelId/approve', async (req, res) => {
             return res.status(403).json({ error: 'Access denied' });
         }
 
-        // Get pending messages that will be approved (to broadcast them as real chat)
-        const pendingMsgs = db.all(
-            "SELECT * FROM pending_ip_messages WHERE channel_id = ? AND ip_address = ? AND status = 'pending'",
-            [channelId, ip]
-        );
+        // The held rows this IP is about — from Chat when Chat is the authority (Live holds no
+        // copy), else Live's own queue. In Chat mode they are not re-broadcast here: Chat releases
+        // them and broadcasts; Live only needs the count for its answer and log.
+        const pendingMsgs = delivery.ingress()
+            ? (await chatReads.pendingIp(channelId, { limit: 500 })).filter((m) => m.ip_address === ip)
+            : db.all("SELECT * FROM pending_ip_messages WHERE channel_id = ? AND ip_address = ? AND status = 'pending'", [channelId, ip]);
 
         // Chat ingress: Chat approves its held rows; re-showing them live is Chat's (it holds them).
         if (delivery.ingress()) {
@@ -687,6 +716,7 @@ router.post('/ip-approval/:channelId/approve', async (req, res) => {
 
         res.json({ message: `IP ${ip} approved — ${pendingMsgs.length} held message(s) released`, count: pendingMsgs.length });
     } catch (err) {
+        if (chatReadError(res, err)) return;
         console.error('[Mod] IP approve error:', err.message);
         res.status(500).json({ error: 'Failed to approve IP' });
     }
@@ -921,10 +951,10 @@ function _ttsIdentityKey(kind, id) {
 }
 
 // GET current voice (override or auto-assigned) + editing metadata.
-router.get('/tts-voice/:kind/:id', permissions.requireGlobalMod, (req, res) => {
+router.get('/tts-voice/:kind/:id', permissions.requireGlobalMod, async (req, res) => {
     try {
         const identityKey = _ttsIdentityKey(req.params.kind, req.params.id);
-        const override = db.getTtsVoiceOverride(identityKey);
+        const override = await chatReads.ttsOverride(identityKey);
         const auto = ttsEngine.autoUserVoiceParams(identityKey);
         res.json({
             identityKey,
@@ -936,6 +966,7 @@ router.get('/tts-voice/:kind/:id', permissions.requireGlobalMod, (req, res) => {
             presets: TTS_VOICE_PRESETS,
         });
     } catch (err) {
+        if (chatReadError(res, err)) return;
         console.error('[Mod] tts-voice get error:', err.message);
         res.status(500).json({ error: 'Failed to load voice' });
     }
