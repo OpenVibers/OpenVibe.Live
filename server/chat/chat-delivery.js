@@ -16,8 +16,6 @@
  *   logModeration(entry)           a moderation-log row (db.logModerationAction shape)
  *   disconnect({ userId, ip, streamId })
  *   invalidate(hint, legacy)       a cache hint ({ user, user_data, approvals, bans, channel })
- *   mirror(fn, ...args)            ingress only: keep Live's own copy of a write Chat also applies (pending IP
- *                                  rows, hidden relay users, first chats, TTS overrides) that Live still reads
  *   after(value, fn)               fn(value) now for a plain value, after it resolves for a promise
  *
  * The pushes Live's modules used to make on the chat server keep their names here — broadcastToStream,
@@ -98,21 +96,6 @@ const disconnectUser = disconnect;
 function invalidate(hint, legacy) {
     if (ingress()) return client.invalidate(defined(hint));
     return legacy ? legacy() : undefined;
-}
-
-// The writes Live keeps on its own read-mirror copy as well (Chat applies them too and mirrors back).
-const MIRROR_WRITES = new Set([
-    'mergeChatMessageMetadata', 'deleteChatMessage', 'deleteUserChatMessages', 'deleteAnonChatMessages',
-    'deleteRelayUserMessages', 'deleteChatMessagesByTimeRange', 'reviewPendingIpMessage', 'approveAllFromIp',
-    'denyAllFromIp', 'recordRelayUser', 'unhideRelayUser', 'unhideRelayUserByIdentity', 'recordFirstChat',
-    'setTtsVoiceOverride', 'deleteTtsVoiceOverride',
-]);
-
-function mirror(fn, ...args) {
-    try {
-        if (!MIRROR_WRITES.has(fn)) throw new Error('not a mirror write');
-        return db[fn](...args);
-    } catch (err) { console.warn(`[ChatIngress] local ${fn}: ${err.message}`); return undefined; }
 }
 
 function after(value, fn) {
@@ -325,7 +308,7 @@ async function resolveAnon(ip) {
 }
 
 module.exports = {
-    ingress, message, event, moderate, logModeration, disconnect, disconnectUser, invalidate, mirror, after, client, MIRROR_WRITES,
+    ingress, message, event, moderate, logModeration, disconnect, disconnectUser, invalidate, after, client,
     broadcastToStream, broadcastToChannelRoom, broadcastGlobal, broadcastAll, sendDm, sendUserUpdate,
     forwardToGlobal, forwardToStreamerRooms, triggerChannelSound, synthesizeAndBroadcastTTS,
     init, close, slowModeByStream, getTotalConnections, getStreamViewerCount, getConnectedUserIp, findClientByAnonId,

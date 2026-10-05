@@ -37,7 +37,6 @@ function serviceToken(cap, { aud = 'openvibe.live', sub = 'svc:chat' } = {}) {
 }
 const READ = serviceToken(['live.chat_context.read']);
 const WRITE = serviceToken(['live.chat_effects.write']);
-const MIRROR = serviceToken(['live.chat_mirror.write']);
 
 // Stub Network (Live's own service token for audience openvibe.chat) and stub Chat (its typed ingress).
 const ingressCalls = [];
@@ -399,25 +398,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.deepStrictEqual([pushed[0].user_id, pushed[0].type, pushed[0].title, pushed[0].message, pushed[0].sender_id, pushed[0].rich_content.context.caller_username],
             [viewer, 'VC_CALL_INVITE', 'STREAMER is calling you', 'Join voice channel: STREAMER\'s call', streamer, 'streamer']);
         assert.ok(pushed[0].url.endsWith(`/?vcInvite=${encodeURIComponent(`user-${streamer}-x`)}`));
-
-        // 9. The read mirror: same ids, Chat-only columns ignored, Live-only columns kept. Chat's
-        // LIVE_MIRROR is on in production, so the tables it keeps current stay Live's until the
-        // later step that removes both the mirror and its remaining readers.
-        const mirror = (changes) => call('POST', '/internal/chat-effects/mirror', { token: MIRROR, body: { changes } });
-        assert.strictEqual((await call('POST', '/internal/chat-effects/mirror', { token: WRITE, body: { changes: [] } })).status, 403, 'mirror has its own capability');
-        let m = await mirror([{ table: 'chat_messages', op: 'upsert', row: { id: 900001, stream_id: streamId, channel_user_id: streamer, user_id: viewer, username: 'VIEWER', message: 'hi from chat', message_type: 'chat', is_global: 0, is_deleted: 0, timestamp: '2026-09-22 10:00:00', subject_id: 'usr_01J9ZZZZZZZZZZZZZZZZZZZZZZ' } }]);
-        assert.strictEqual(m.body.applied, 1);
-        assert.strictEqual(db.getChatMessageById(900001).message, 'hi from chat');
-        // Columns only Live's copy has (media-proxy/asset-sync adds them at start).
-        for (const c of ['media_url TEXT', 'media_asset_id INTEGER']) { try { d.exec(`ALTER TABLE channel_sounds ADD COLUMN ${c}`); } catch { /* present */ } }
-        d.prepare("INSERT INTO channel_sounds (id, channel_owner_id, command, url, media_asset_id) VALUES (77, ?, 'honk', '/x.mp3', 555)").run(streamer);
-        m = await mirror([{ table: 'channel_sounds', op: 'upsert', row: { id: 77, channel_owner_id: streamer, command: 'honk2', url: '/x.mp3', created_by_subject_id: null } }, { table: 'chat_messages', op: 'delete', pk: { id: 900001 } }, { table: 'users', op: 'delete', pk: { id: viewer } }]);
-        assert.strictEqual(m.body.applied, 2);
-        assert.strictEqual(m.body.skipped.length, 1, 'only chat tables are mirrored');
-        const s77 = d.prepare('SELECT command, media_asset_id FROM channel_sounds WHERE id = 77').get();
-        assert.deepStrictEqual(s77, { command: 'honk2', media_asset_id: 555 });
-        assert.strictEqual(db.getChatMessageById(900001), undefined);
-        assert.ok(db.getUserById(viewer), 'users are never touched');
 
         // 10. The chat seam Live's modules get (T3 J2: Live runs no chat server — the bridge, its
         // outbox and the local ChatServer are gone; chat-delivery carries the push/presence surface).

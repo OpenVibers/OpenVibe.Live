@@ -10,7 +10,6 @@
   "capabilities": [
     "live.chat_context.read",
     "live.chat_effects.write",
-    "live.chat_mirror.write",
     "live.lineage.resolve",
     "live.tips_delivery.write",
     "live.channel.read",

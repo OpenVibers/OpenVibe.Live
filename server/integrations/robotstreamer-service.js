@@ -667,7 +667,7 @@ class RobotStreamerService {
 
                 // Record this relay user (first message = join date) so RobotStreamer
                 // chatters get the same chat logs + AI insight as other relay users.
-                if (delivery.ingress()) { delivery.mirror('recordRelayUser', 'rs', rawUsername); delivery.moderate('relay-record', { platform: 'rs', username: rawUsername }); }
+                if (delivery.ingress()) { delivery.moderate('relay-record', { platform: 'rs', username: rawUsername }); }
                 else { try { db.recordRelayUser('rs', rawUsername); } catch { /* non-critical */ } }
 
                 // Let RobotStreamer viewers trigger channel !sound commands too. If the

@@ -194,7 +194,7 @@ function assertSigned(c, what) {
         const del = find('moderation', (b) => b.action === 'delete-message');
         assertSigned(del, 'message delete');
         assert.deepStrictEqual([del.body.id, del.body.deleted_by, del.body.key], [900010, admin, 'live:moderation:delete:900010']);
-        assert.strictEqual(db.getChatMessageById(900010).is_deleted, 1, "Live's copy is deleted too (the read mirror is on in production)");
+        assert.strictEqual(db.getChatMessageById(900010).is_deleted, 0, "Live's own copy is untouched: Chat owns the delete (the read mirror is retired)");
         assertSigned(await waitFor(() => find('moderation', (b) => b.action === 'log' && b.action_type === 'message_delete'), 'delete log'), 'delete log');
         const ban = await mod(`/users/${viewer}/ban`, { reason: 'spam' });
         assert.ok(ban.status < 300, `ban answered ${ban.status}`);

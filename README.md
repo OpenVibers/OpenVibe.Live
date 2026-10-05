@@ -90,7 +90,7 @@ The media subsystem lives in **OpenVibe.Media**:
 
 ## Capabilities
 
-Live implements, for other services' tokens (manifest `manifests/services/live.json` in OpenVibe.Contracts): `live.chat_context.read`, `live.chat_effects.write`, `live.chat_mirror.write`, `live.lineage.resolve`, `live.tips_delivery.write`, `live.channel.read`, `live.stream.read`, `live.discovery.read`, `live.owner.resolve`.
+Live implements, for other services' tokens (manifest `manifests/services/live.json` in OpenVibe.Contracts): `live.chat_context.read`, `live.chat_effects.write`, `live.lineage.resolve`, `live.tips_delivery.write`, `live.channel.read`, `live.stream.read`, `live.discovery.read`, `live.owner.resolve`.
 
 Live's own principal (`live`) holds grants to call:
 

@@ -496,14 +496,13 @@ class ChatRelayService {
         } catch { /* non-critical */ }
     }
 
-    /** Chat ingress: Chat persists, broadcasts, mirrors, reads aloud and records the first chat in one call. */
+    /** Chat ingress: Chat persists, broadcasts, reads aloud and records the first chat in one call. */
     _deliverToChat(delivery, bridge, username, prefixedUsername, color, extras, message) {
         let first = false;
         try {
             const stream = db.getStreamById(bridge.streamId);
             first = !!(stream?.user_id && db.isFirstChatInChannel(`ext:${prefixedUsername}`, stream.user_id));
         } catch { /* non-critical */ }
-        delivery.mirror('recordRelayUser', bridge.platform, username);
         delivery.moderate('relay-record', { platform: bridge.platform, username });
         delivery.after(delivery.message({
             stream_id: bridge.streamId, username: prefixedUsername, message, message_type: 'chat', is_global: false,
@@ -512,8 +511,9 @@ class ChatRelayService {
             tts: { identity_key: `${bridge.platform}:${prefixedUsername}` },
         }), (id) => this._relayFollowUps(bridge, username, prefixedUsername, message, extras, id));
         if (first) {
-            // Chat records the first chat in its copy; Live's copy decides the next welcome.
-            try { delivery.mirror('recordFirstChat', `ext:${prefixedUsername}`, db.getStreamById(bridge.streamId).user_id); } catch { /* */ }
+            // Live keeps its own first-chat record (the tables stay until a later step drops them) so
+            // the next relayed line from this user is not welcomed again.
+            try { db.recordFirstChat(`ext:${prefixedUsername}`, db.getStreamById(bridge.streamId).user_id); } catch { /* */ }
             delivery.event({ kind: 'stream', id: bridge.streamId }, {
                 type: 'system',
                 message: `Welcome ${username} from ${PLATFORM_LABELS[bridge.platform] || bridge.platform}! 👋`,
