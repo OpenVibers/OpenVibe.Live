@@ -213,17 +213,37 @@ async function remoteWindowStats({ since, until, streamId, channelUserId } = {})
     if (!out) throw unavailable('window stats');
     return { messages: Number(out.messages) || 0, chatters: Number(out.chatters) || 0 };
 }
+const MIN_BUCKET_MS = 60_000;              // sub-day windows snap to the minute
+const HOUR_BUCKET_MS = 60 * 60_000;        // a 7/14/30-day window snaps to the hour
+/**
+ * Snap a window's since/until to a stable bucket BEFORE both the cache key and the request use them.
+ * Callers build these from Date.now(), which changes on every compute, so an exact key is cold on
+ * every call: Chat is never actually consulted (the peek answers a mirror scan instead), each call
+ * mints a new cache entry, and the request it sends is thrown away. A minute — or an hour once the
+ * window spans a day or more — is far finer than these coarse counts need and keeps the key stable
+ * well past CACHE_TTL_MS. The request is sent with the bucketed values so it matches its own key.
+ */
+function bucketWindow({ since, until, streamId, channelUserId } = {}) {
+    const span = (until != null ? Number(until) : Date.now()) - (since != null ? Number(since) : 0);
+    const g = span >= 24 * 60 * 60_000 ? HOUR_BUCKET_MS : MIN_BUCKET_MS;
+    const snap = (t) => (t == null ? undefined : Math.floor(Number(t) / g) * g);
+    return { since: snap(since), until: snap(until), streamId, channelUserId };
+}
 const windowKey = (o) => `win:${o.since || 0}:${o.until || 0}:${o.streamId || 0}:${o.channelUserId || 0}`;
 /** Message/chatter counts over [since, until), site-wide or scoped to one stream/channel (async). */
 function windowStats(o = {}) {
-    return load(windowKey(o), () => remoteWindowStats(o), () => localWindowStats(o))
-        .then((v) => v || safeLocal(() => localWindowStats(o), { messages: 0, chatters: 0 }));
+    const b = bucketWindow(o);
+    return load(windowKey(b), () => remoteWindowStats(b), () => localWindowStats(b))
+        .then((v) => v || safeLocal(() => localWindowStats(b), { messages: 0, chatters: 0 }));
 }
-/** The same, for a caller that cannot await (the home-stats snapshot, the digest). */
+/**
+ * The same, for a caller that cannot await (the home-stats snapshot, the digest). Answers the last
+ * good value, else null — never a synchronous mirror scan, so the hero never presents Live's stale
+ * count as Chat's; the caller decides what an unknown window means.
+ */
 function windowStatsPeek(o = {}) {
-    const v = peek(windowKey(o), () => remoteWindowStats(o), () => localWindowStats(o));
-    if (v) return v;
-    return safeLocal(() => localWindowStats(o), null);
+    const b = bucketWindow(o);
+    return peek(windowKey(b), () => remoteWindowStats(b), () => localWindowStats(b));
 }
 
 function localStreamStats(streamId) {
@@ -246,7 +266,7 @@ function streamStats(streamId) {
     return load(`st:${id}`, () => remoteStreamStats(id), () => localStreamStats(id))
         .then((v) => v || safeLocal(() => localStreamStats(id), { messages: 0, chatters: 0, sounds: 0 }));
 }
-/** The same, for a caller that cannot await (stream analytics run at stream end). */
+/** The same, for a caller that cannot await. */
 function streamStatsPeek(streamId) {
     const id = Number(streamId) || 0;
     if (!id) return { messages: 0, chatters: 0, sounds: 0 };
@@ -290,13 +310,16 @@ async function remoteUserMessageCount(userId) {
     if (!out) throw unavailable('user message count');
     return Number(out.messages) || 0;
 }
-/** A user's non-deleted chat total, for a caller that cannot await (the profile card). */
+/**
+ * A user's non-deleted chat total, for a caller that cannot await (the profile card). Answers the
+ * last good value, else null when neither Chat nor (in dev / rollback) Live's table answered — the
+ * card omits the count then rather than presenting a cold mirror number as real.
+ */
 function userMessageCountPeek(userId) {
     const id = Number(userId) || 0;
-    if (!id) return 0;
+    if (!id) return null;
     const v = peek(`um:${id}`, () => remoteUserMessageCount(id), () => localUserMessageCount(id));
-    if (v != null) return Number(v) || 0;
-    return safeLocal(() => localUserMessageCount(id), 0);
+    return v == null ? null : Number(v) || 0;
 }
 
 // ── Messages / history ────────────────────────────────────────────────────────
@@ -509,28 +532,32 @@ function relayUser(id) {
  * Is this relay identity hidden (banned) in this channel or site-wide? Synchronous: the relay
  * path can carry a message per second and must not wait on an HTTP call.
  *
- * In chat mode a fresh Chat list is the authority (a cached peek, at most CACHE_TTL_MS old), so a
- * hide or unhide takes effect on the next message. Until Chat has answered (cold cache) or while it
- * is unreachable, Live's own table answers: fail OPEN, never drop a relayed line on a Chat outage.
+ * Live's own table OR Chat's list (the #28 rule): a hide the mirror applied wins at once even when a
+ * cached Chat list fetched just before it lacks the row, and a Chat row hides even before the mirror
+ * catches up. A Live-route hide/unhide invalidates the cached list; a cold cache or a Chat outage
+ * falls to Live's own table and fails OPEN, never dropping a relayed line.
  */
 function isRelayUserHidden(channelId, platform, username) {
-    if (!remote()) {
-        try { return !!local().isRelayUserHidden(channelId, platform, username); } catch { return false; }
-    }
-    // Chat owns hidden_relay_users, so a fresh Chat list is the authority: a hide Live's mirror has
-    // not applied yet (or an unhide it has not removed yet) must not win. Live's own table answers only
-    // when Chat has no fresh list, and then it fails OPEN — never drop a relayed line on a Chat outage.
+    const localHidden = () => { try { return !!local().isRelayUserHidden(channelId, platform, username); } catch { return false; } };
+    if (!remote()) return localHidden();
+    // Live's own table OR Chat's fresh list — the rule agreed with #28. A fresh Chat list alone
+    // would hide a local hide the mirror applied from any other writer (another Live instance, or a
+    // write straight in Chat) for up to CACHE_TTL_MS. A Live-route unhide stays immediate: mod-routes
+    // drops the `hru:` entry on every hide/unhide, so the next check re-asks Chat. Until Chat has
+    // answered (cold cache) or while it is unreachable, Live's own table answers and fails OPEN —
+    // never drop a relayed line on a Chat outage.
     const key = `hru:${Number(channelId) || 0}`;
     const hit = fresh(key);
     if (hit && Array.isArray(hit.value)) {
-        return hit.value.some((r) => String(r.platform) === String(platform) && String(r.external_username) === String(username));
+        if (hit.value.some((r) => String(r.platform) === String(platform) && String(r.external_username) === String(username))) return true;
+        return localHidden();   // no fresh Chat match: a local hide still applies
     }
     load(key, async () => {
         const out = await client.readRelayUsers({ channel_id: Number(channelId) || undefined, limit: 500 });
         if (!out || !Array.isArray(out.relay_users)) throw unavailable('hidden relay users');
         return out.relay_users;
     }, () => []).catch(() => { /* warms the cache for the next check */ });
-    try { return !!local().isRelayUserHidden(channelId, platform, username); } catch { return false; }
+    return localHidden();
 }
 
 /** A user's TTS voice override: { voice, pitch, speed, gap } | null. Live, never cached. */

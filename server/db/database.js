@@ -3979,15 +3979,16 @@ function _computeHomeStats() {
         streamHours: null,
         // Active chatters this week across EVERYONE — registered users, anons, and relay chatters.
         // OpenVibe.Chat counts them (stats kind 'site' over the window); Live's own tables when Live
-        // runs chat. A Chat outage answers the last good count, else 0 — never a 500 for the hero.
-        weeklyActive: (() => { try { const s = require('../chat/chat-reads').windowStatsPeek({ since: nowMs - 7 * 86400000 }); return s ? s.chatters : 0; } catch { return 0; } })(),
+        // runs chat. The peek answers the last good count or null (never a mirror scan or a 500);
+        // the hero treats null as unknown.
+        weeklyActive: (() => { try { const s = require('../chat/chat-reads').windowStatsPeek({ since: nowMs - 7 * 86400000 }); return s && s.chatters != null ? s.chatters : null; } catch { return null; } })(),
         // New unique visitors this week (first-seen anon fingerprints) — a proxy for people who
         // showed up, not just those who chatted.
         weeklyVisitors: c(`SELECT COUNT(*) AS count FROM anon_ip_mappings WHERE created_at >= datetime('now', '-7 days')`),
         // The same two windows again, shifted back a week, so the hero can say whether this week
         // beat last week rather than just how big it was.
         prevWeeklyVisitors: c(`SELECT COUNT(*) AS count FROM anon_ip_mappings WHERE created_at >= datetime('now', '-14 days') AND created_at < datetime('now', '-7 days')`),
-        prevWeeklyActive: (() => { try { const s = require('../chat/chat-reads').windowStatsPeek({ since: nowMs - 14 * 86400000, until: nowMs - 7 * 86400000 }); return s ? s.chatters : 0; } catch { return 0; } })(),
+        prevWeeklyActive: (() => { try { const s = require('../chat/chat-reads').windowStatsPeek({ since: nowMs - 14 * 86400000, until: nowMs - 7 * 86400000 }); return s && s.chatters != null ? s.chatters : null; } catch { return null; } })(),
         liveNow: c(`SELECT COUNT(*) AS count FROM streams WHERE is_live = 1`),
         // Rolling last-day / week / month deltas ({ d, w, m }) for the hero stat tooltips + subs.
         recent: {
@@ -3999,7 +4000,7 @@ function _computeHomeStats() {
             aiMoments: winCount('stream_memories', 'created_at'),
             // OpenVibe.Chat's message counts over each window (Live's own tables when Live runs chat).
             messages: (() => {
-                const w = (o) => { try { const s = require('../chat/chat-reads').windowStatsPeek(o); return s ? s.messages : 0; } catch { return 0; } };
+                const w = (o) => { try { const s = require('../chat/chat-reads').windowStatsPeek(o); return s && s.messages != null ? s.messages : null; } catch { return null; } };
                 return {
                     d: w({ since: nowMs - 86400000 }),
                     w: w({ since: nowMs - 7 * 86400000 }),
@@ -4685,12 +4686,6 @@ function recordRelayUser(platform, username) {
             [String(platform).toLowerCase(), key, String(username)]);
     } catch { /* non-critical */ }
 }
-function getRelayUser(platform, username) {
-    if (!platform || !username) return null;
-    // rowid is a stable integer id for a relay user (no dedicated id column).
-    return get('SELECT rowid AS id, * FROM relay_users WHERE platform = ? AND username = ?',
-        [String(platform).toLowerCase(), String(username).toLowerCase()]) || null;
-}
 function getRelayUserByRowid(id) {
     return get('SELECT rowid AS id, * FROM relay_users WHERE rowid = ?', [id]) || null;
 }
@@ -4774,8 +4769,9 @@ function getUserProfile(userId) {
                       FROM users WHERE id = ?`, [userId]);
     if (!user) return null;
     // The user's chat total is OpenVibe.Chat's (Live's own tables when Live runs chat); a synchronous
-    // peek answers the last good count while Chat refreshes in the background.
-    user.messageCount = (() => { try { return require('../chat/chat-reads').userMessageCountPeek(userId); } catch { return 0; } })();
+    // peek answers the last good count, else null while Chat refreshes in the background. The profile
+    // card omits the count when it is null rather than showing a cold mirror number as real.
+    user.messageCount = (() => { try { return require('../chat/chat-reads').userMessageCountPeek(userId); } catch { return null; } })();
     user.followerCount = get('SELECT COUNT(*) as c FROM follows WHERE streamer_id = ?', [userId])?.c || 0;
     user.followingCount = get('SELECT COUNT(*) as c FROM follows WHERE follower_id = ?', [userId])?.c || 0;
     return user;
@@ -6646,11 +6642,20 @@ function computeAndCacheStreamAnalytics(streamId) {
 
     // Unique chatters + total messages come from OpenVibe.Chat (Live's own tables when Live runs
     // chat). Chat's stream stats count every message type — Live used to keep only message_type='chat'
-    // and is_global=0 — and its numbers are the authority now. A synchronous peek answers the last good
-    // totals, so the stream-end write never blocks on Chat.
-    const chatTotals = (() => { try { return require('../chat/chat-reads').streamStatsPeek(streamId); } catch { return null; } })();
-    const uniqueChatters = chatTotals ? chatTotals.chatters : 0;
-    const totalMessages = chatTotals ? chatTotals.messages : 0;
+    // and is_global=0 — and its numbers are the authority now. This runs synchronously at stream end,
+    // when `st:<id>` is still cold, so a peek would answer the mirror (or 0 on a throw): it keeps the
+    // totals already stored and asks Chat right after (setStreamAnalyticsChatTotals writes them back),
+    // the same pattern as the clip count below.
+    const prior = get('SELECT unique_chatters, total_messages FROM stream_analytics WHERE stream_id = ?', [streamId]) || {};
+    const uniqueChatters = Number(prior.unique_chatters) || 0;
+    const totalMessages = Number(prior.total_messages) || 0;
+    setImmediate(() => {
+        try {
+            require('../chat/chat-reads').streamStats(streamId)
+                .then((t) => { if (t) setStreamAnalyticsChatTotals(streamId, t.chatters, t.messages); })
+                .catch(() => {});
+        } catch { /* */ }
+    });
 
     // Total watch minutes
     const watchRow = get(
@@ -6721,6 +6726,13 @@ function getStreamAnalytics(streamId) {
 // The clip count OpenVibe.Media reported for a stream (media-proxy/lookups.js refreshStreamClipCount).
 function setStreamAnalyticsClipCount(streamId, count) {
     return run('UPDATE stream_analytics SET clips_created = ? WHERE stream_id = ?', [Math.max(0, Math.floor(Number(count) || 0)), streamId]);
+}
+
+// The chat totals OpenVibe.Chat reported for a stream (the setImmediate refresh in
+// computeAndCacheStreamAnalytics).
+function setStreamAnalyticsChatTotals(streamId, chatters, messages) {
+    return run('UPDATE stream_analytics SET unique_chatters = ?, total_messages = ? WHERE stream_id = ?',
+        [Math.max(0, Math.floor(Number(chatters) || 0)), Math.max(0, Math.floor(Number(messages) || 0)), streamId]);
 }
 
 function getChannelAnalyticsSummary(userId, days) {
@@ -7115,7 +7127,7 @@ module.exports = {
     holdMessageForApproval, getPendingIpMessages, reviewPendingIpMessage,
     approveAllFromIp, denyAllFromIp,
     // Hidden Relay Users
-    hideRelayUser, isRelayUserHidden, unhideRelayUser, unhideRelayUserByIdentity, getHiddenRelayUsers, recordRelayUser, getRelayUser,
+    hideRelayUser, isRelayUserHidden, unhideRelayUser, unhideRelayUserByIdentity, getHiddenRelayUsers, recordRelayUser,
     getRelayUserByRowid, getRelayUserChatHistory,
     anonSubjectId, getAnonMeta, getAnonChatHistory,
     // IP Tracking
@@ -7123,7 +7135,7 @@ module.exports = {
     getLatestIpForUser, getLatestIpForAnon, getIpLog, banAllAccountsOnIp,
     // Stream Analytics
     insertViewerSnapshot, getViewerSnapshots, computeAndCacheStreamAnalytics,
-    getStreamAnalytics, setStreamAnalyticsClipCount, getChannelAnalyticsSummary, getRecentChatActivity,
+    getStreamAnalytics, setStreamAnalyticsClipCount, setStreamAnalyticsChatTotals, getChannelAnalyticsSummary, getRecentChatActivity,
     // User Preferences
     getUserPreferences, saveUserPreferences,
     // Chat Log Management

@@ -419,6 +419,9 @@ class AiViewersEngineV3 {
             const bots = roster.ensureRoster(userId, settings.roster_size || 3);
             w = { streamId: live[0].id, userId, stream: db.getStreamById(live[0].id) || live[0], cfg, settings, bots, lastChatId: Math.max(0, chatReads.channelMaxIdPeek(userId) - 40), intents: [], scheduler: { botShare: () => 0 } };
             temp = true;
+            // The peek above may answer Live's mirror on a cold cache; await Chat's cursor so the
+            // preview never replays lines from before the window it means to show.
+            try { w.lastChatId = Math.max(0, (await chatReads.channelMaxId(userId)) - 40); } catch { /* keep the peek */ }
         }
         const s = w.settings;
         const stable = context.stablePrefix({ userId: w.userId, stream: w.stream, bots: w.bots, settings: s, cacheHolder: temp ? null : w });

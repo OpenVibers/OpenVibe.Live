@@ -669,6 +669,93 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
             const qUpper = await chatReads.searchMessages({ userId: viewer, query: 'HELLO', limit: 10 });
             assert.strictEqual(qUpper.messages.length, 1, 'q matches regardless of case');
             assert.strictEqual(qUpper.messages[0].message, 'hello');
+
+            // ── Third review round ───────────────────────────────────────────
+
+            // (1) A window's since/until is bucketed before the cache key, so a home-stats compute
+            // whose clock moved a few seconds still hits the warm entry, and a cold hero peek answers
+            // null rather than a synchronous mirror scan.
+            {
+                const hour = 3600000;
+                const w7 = Math.floor(Date.now() / hour) * hour - 7 * 86400000;   // hour-aligned, 7 days back
+                chatReads._reset();
+                const warm = await chatReads.windowStats({ since: w7 });
+                chatReads._age(chatReads.CACHE_TTL_MS + 1000, 'win:');
+                readState.down = true;
+                try {
+                    const peeked = chatReads.windowStatsPeek({ since: w7 + 3000 });
+                    assert.ok(peeked && peeked.messages === warm.messages, 'a since a few seconds later buckets to the same warm key');
+                } finally { readState.down = false; }
+                chatReads._reset();
+                readState.down = true;
+                try {
+                    assert.strictEqual(chatReads.windowStatsPeek({ since: Date.now() - 7 * 86400000 }), null, 'a cold hero peek is null, never a mirror scan');
+                } finally { readState.down = false; chatReads._reset(); }
+            }
+
+            // (2) The stream-end analytics write keeps the totals it has and re-upserts Chat's right
+            // after (the clip-count pattern) instead of persisting a cold mirror (or zero).
+            {
+                chatReads._reset();
+                d2.run('DELETE FROM stream_analytics WHERE stream_id = ?', [streamId]);
+                const computed = d2.computeAndCacheStreamAnalytics(streamId);
+                assert.strictEqual(computed.total_messages, 0, 'the synchronous compute writes its prior totals, not a cold scan');
+                for (let i = 0; i < 300; i++) { await sleep(10); const a = d2.getStreamAnalytics(streamId); if (a && a.total_messages > 0) break; }
+                const sa = d2.getStreamAnalytics(streamId);
+                assert.ok(sa.total_messages >= 3, "the setImmediate refresh wrote Chat's totals");
+                assert.strictEqual(sa.unique_chatters, 2, "and Chat's chatter count");
+                chatReads._reset();
+            }
+
+            // (3) Live's own hidden row OR Chat's fresh list — a local hide the mirror applied still
+            // hides even when a fresh Chat list lacks it (the #28 rule, restored).
+            {
+                const chatClient = require('../server/chat/chat-client');
+                const realReadRelayUsers = chatClient.readRelayUsers;
+                const relOwner = mkUser('relch');
+                db.createChannel({ user_id: relOwner, title: 'Relay channel' });
+                const freshCh = db.getChannelByUserId(relOwner).id;   // no hidden rows yet
+                chatClient.readRelayUsers = async () => ({ relay_users: [] });   // Chat's list holds nothing
+                chatReads._reset();
+                try {
+                    d2.run('DELETE FROM hidden_relay_users WHERE channel_id = ?', [freshCh]);
+                    chatReads.isRelayUserHidden(freshCh, 'twitch', 'nobody');   // warm Chat's fresh (empty) list
+                    for (let i = 0; i < 100; i++) await sleep(10);
+                    d2.run("INSERT INTO hidden_relay_users (channel_id, platform, external_username, action, created_by) VALUES (?, 'twitch', 'localonly', 'hide', ?)", [freshCh, streamer]);
+                    assert.strictEqual(chatReads.isRelayUserHidden(freshCh, 'twitch', 'localonly'), true, "Live's own hidden row wins over a fresh Chat list that lacks it");
+                } finally {
+                    chatClient.readRelayUsers = realReadRelayUsers;
+                    d2.run('DELETE FROM hidden_relay_users WHERE channel_id = ?', [freshCh]);
+                    chatReads._reset();
+                }
+            }
+
+            // (4) A cold profile count is null (the card omits it), never a mirror number passed off
+            // as Chat's.
+            {
+                chatReads._reset();
+                readState.down = true;
+                try {
+                    assert.strictEqual(chatReads.userMessageCountPeek(viewer), null, 'a cold count is null, not a mirror number');
+                    assert.strictEqual(d2.getUserProfile(viewer).messageCount, null, 'the profile carries the null through');
+                } finally { readState.down = false; chatReads._reset(); }
+            }
+
+            // (5) channelMaxId — the preview path's awaited read — warms the peek's key, so the
+            // cursor is Chat's id rather than the mirror once it has answered.
+            {
+                const chatClient = require('../server/chat/chat-client');
+                const realReadMessages = chatClient.readMessages;
+                chatClient.readMessages = async (o) => (o && o.tail ? { max_id: 777777, messages: [] } : realReadMessages(o));
+                chatReads._reset();
+                try {
+                    await chatReads.channelMaxId(streamer);
+                    assert.strictEqual(chatReads.channelMaxIdPeek(streamer), 777777, "the peek answers Chat's id after the awaited read");
+                } finally {
+                    chatClient.readMessages = realReadMessages;
+                    chatReads._reset();
+                }
+            }
         }
 
         // 12. Robot commands from chat pass the control panel's gate: control mode, anonymous switch, whitelist, cooldown.
