@@ -14,7 +14,8 @@
  *     mirror Chat writes (POST /internal/chat-effects/mirror) so the readers that have not moved
  *     yet keep working and a rollback loses nothing;
  *   - answers Chat's reads and side effects on /internal/chat-context/* and /internal/chat-effects/*.
- * Anything else (default): Live runs chat itself, exactly as before.
+ * Anything else (default): Live runs no chat server any more (chat-server.js is gone), so chat is inert: every push
+ * is dropped and logged once by chat-delivery.js. Unsetting CHAT_AUTHORITY is therefore no rollback lever.
  */
 
 const CHAT_URL = (process.env.OV_CHAT_INTERNAL_URL || 'http://127.0.0.1:4400').replace(/\/+$/, '');

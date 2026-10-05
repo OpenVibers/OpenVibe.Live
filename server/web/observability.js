@@ -46,7 +46,7 @@ function mountMetrics(app, { release }) {
 /**
  * Domain gauges, read at scrape time. A source that throws is left out of that scrape.
  *   liveStreams()    -> number of live streams (the rows /api/streams lists)
- *   wsServers        -> { chat, broadcast, control, call } objects with a `wss` (ws.Server) once initialised
+ *   wsServers        -> { broadcast, control, call } objects with a `wss` (ws.Server) once initialised (chat is OpenVibe.Chat's)
  *   outboxStatus()   -> server/events/stream-events.js status()
  */
 function registerDomainGauges(registry, { liveStreams, wsServers = {}, outboxStatus }) {

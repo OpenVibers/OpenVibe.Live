@@ -199,8 +199,9 @@ function getConnectedUserIp(userId) {
     return hit ? hit.ip : null;
 }
 function findClientByAnonId(anonId, streamId) {
-    // Same match as the old ChatServer.findClientByAnonId: the socket's stream must equal streamId.
-    const hit = (_presence.anons || []).find((a) => a.anon_id === anonId && (a.stream_id ?? null) === streamId);
+    // The socket's stream must equal streamId; with no streamId given (a moderator looking an anon up by id alone),
+    // any of that anon's sockets answers.
+    const hit = (_presence.anons || []).find((a) => a.anon_id === anonId && (streamId === undefined || (a.stream_id ?? null) === streamId));
     return hit ? { anonId: hit.anon_id, ip: hit.ip, streamId: hit.stream_id || null, user: null } : null;
 }
 

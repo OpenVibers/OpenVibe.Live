@@ -401,6 +401,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.strictEqual(chatDelivery.getConnectedUserIp(3), '198.51.100.3');
         assert.strictEqual(chatDelivery.findClientByAnonId('anon9', 1).ip, '203.0.113.9');
         assert.strictEqual(chatDelivery.findClientByAnonId('anon9', 2), null);
+        assert.strictEqual(chatDelivery.findClientByAnonId('anon9').ip, '203.0.113.9', 'no stream given: any of that anon\'s sockets');
         assert.strictEqual(chatDelivery.getAnonIdForConnection('203.0.113.9', 1), 'anon9');
         // Chat asks Live for anon numbers; Live answers from its own helpers.
         assert.strictEqual(typeof (await chatDelivery.resolveAnon('203.0.113.9')).anon_number, 'number');
