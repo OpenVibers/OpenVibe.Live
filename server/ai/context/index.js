@@ -205,7 +205,8 @@ function personBlock(line, channelUserId, settings) {
         }
         // stream_first_chats is Chat's; a registered identity is `user:<user_id>` (never the
         // username), a relay one `ext:<prefixed username>`. The welcome flag reads Chat's first-chat
-        // read through a sync peek that falls back to Live's own mirror-kept table while Chat is down.
+        // read through a sync peek; a cold cache or a Chat outage answers "not first" and never
+        // Live's own frozen copy.
         const identity = line.userId ? `user:${line.userId}` : (line.anonId ? `anon:${line.anonId}` : `ext:${line.username}`);
         if (line.userId !== channelUserId && settings.greet_first_timers && chatReads.firstChatPeek(channelUserId, identity)) flags.push('first time chatting here');
     } catch { /* */ }

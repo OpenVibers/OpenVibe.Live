@@ -404,10 +404,8 @@ router.post('/delete-message', async (req, res) => {
             if (!allowed) return res.status(403).json({ error: 'You cannot moderate this stream' });
         }
 
-        // Chat ingress: Chat deletes the row and broadcasts the delete to every surface it reached;
-        // the mirror keeps Live's own copy in step for its remaining readers.
+        // Chat ingress: Chat deletes the row and broadcasts the delete to every surface it reached.
         if (delivery.ingress()) {
-            delivery.mirror('deleteChatMessage', parseInt(message_id), req.user.id);
             await delivery.moderate('delete-message', { id: parseInt(message_id), deleted_by: req.user.id }, { key: `delete:${message_id}` });
         }
         else db.deleteChatMessage(parseInt(message_id), req.user.id);
@@ -465,10 +463,6 @@ router.post('/delete-user-messages', async (req, res) => {
             // Chat deletes the rows and broadcasts the deletes (also the site-wide one) itself.
             const [action, subject] = user_id ? ['delete-user-messages', { user_id: parseInt(user_id) }]
                 : anon_id ? ['delete-anon-messages', { anon_id: String(anon_id) }] : ['delete-relay-messages', { username: String(relay_username) }];
-            const opts = { streamId: scopedStreamId, deletedBy: req.user.id };
-            if (user_id) delivery.mirror('deleteUserChatMessages', parseInt(user_id), opts);
-            else if (anon_id) delivery.mirror('deleteAnonChatMessages', anon_id, opts);
-            else delivery.mirror('deleteRelayUserMessages', relay_username, opts);
             const scoped = { stream_id: scopedStreamId ? parseInt(scopedStreamId) : undefined, deleted_by: req.user.id };
             const r = await delivery.moderate(action, { ...subject, ...scoped });
             ids = (r && Array.isArray(r.ids)) ? r.ids : [];
@@ -538,7 +532,6 @@ router.post('/relay-user/hide', async (req, res) => {
         // Unban / unhide — remove the ban for this exact relay identity only.
         if (action === 'unban' || action === 'unhide') {
             if (delivery.ingress()) {
-                delivery.mirror('unhideRelayUserByIdentity', channel_id || null, platform, external_username);
                 await delivery.moderate('relay-unhide', { channel_id: channel_id || undefined, platform, external_username });
             }
             else db.unhideRelayUserByIdentity(channel_id || null, platform, external_username);
@@ -589,7 +582,7 @@ router.delete('/relay-user/:id', async (req, res) => {
         const allowed = permissions.isGlobalModOrAbove(req.user)
             || (row.channel_id != null && await permissions.canModerateChannel(req.user, row.channel_id));
         if (!allowed) return res.status(403).json({ error: 'You cannot moderate this channel' });
-        if (delivery.ingress()) { delivery.mirror('unhideRelayUser', row.id); await delivery.moderate('relay-unhide', { id: row.id }); }
+        if (delivery.ingress()) { await delivery.moderate('relay-unhide', { id: row.id }); }
         else db.unhideRelayUser(row.id);
         invalidateRelayHidden(row.channel_id);
 
@@ -676,7 +669,6 @@ router.post('/ip-approval/:channelId/approve', async (req, res) => {
 
         // Chat ingress: Chat approves its held rows; re-showing them live is Chat's (it holds them).
         if (delivery.ingress()) {
-            delivery.mirror('approveAllFromIp', channelId, ip, req.user.id);
             await delivery.moderate('approve-ip-messages', { channel_id: parseInt(channelId), ip, reviewed_by: req.user.id });
         }
         else db.approveAllFromIp(channelId, ip, req.user.id);
@@ -732,7 +724,6 @@ router.post('/ip-approval/:channelId/deny', async (req, res) => {
         }
 
         if (delivery.ingress()) {
-            delivery.mirror('denyAllFromIp', channelId, ip, req.user.id);
             await delivery.moderate('deny-ip-messages', { channel_id: parseInt(channelId), ip, reviewed_by: req.user.id });
         }
         else db.denyAllFromIp(channelId, ip, req.user.id);
@@ -768,7 +759,6 @@ router.post('/ip-approval/:channelId/review', async (req, res) => {
         }
 
         if (delivery.ingress()) {
-            delivery.mirror('reviewPendingIpMessage', parseInt(message_id), { status, reviewedBy: req.user.id, channelId });
             await delivery.moderate('review-pending-ip', { id: parseInt(message_id), status, reviewed_by: req.user.id, channel_id: parseInt(channelId) });
         } else db.reviewPendingIpMessage(parseInt(message_id), {
             status,
@@ -973,7 +963,7 @@ router.put('/tts-voice/:kind/:id', permissions.requireGlobalMod, (req, res) => {
     try {
         const identityKey = _ttsIdentityKey(req.params.kind, req.params.id);
         if (req.body?.reset) {
-            if (delivery.ingress()) { delivery.mirror('deleteTtsVoiceOverride', identityKey); delivery.moderate('tts-voice-override', { identity_key: identityKey }); }
+            if (delivery.ingress()) { delivery.moderate('tts-voice-override', { identity_key: identityKey }); }
             else db.deleteTtsVoiceOverride(identityKey);
             return res.json({ isOverride: false, params: ttsEngine.autoUserVoiceParams(identityKey) });
         }
@@ -991,7 +981,7 @@ router.put('/tts-voice/:kind/:id', permissions.requireGlobalMod, (req, res) => {
             params = { voice: req.body?.voice, pitch: req.body?.pitch, speed: req.body?.speed, gap: req.body?.gap };
         }
         const clamped = ttsEngine.clampVoiceParams(params);
-        if (delivery.ingress()) { delivery.mirror('setTtsVoiceOverride', identityKey, clamped, req.user.id); delivery.moderate('tts-voice-override', { identity_key: identityKey, params: clamped, set_by: req.user.id }); }
+        if (delivery.ingress()) { delivery.moderate('tts-voice-override', { identity_key: identityKey, params: clamped, set_by: req.user.id }); }
         else db.setTtsVoiceOverride(identityKey, clamped, req.user.id);
         res.json({ isOverride: true, params: clamped });
     } catch (err) {

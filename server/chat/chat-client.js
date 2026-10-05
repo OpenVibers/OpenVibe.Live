@@ -21,6 +21,7 @@
  *   readTtsOverride(q) GET /internal/chat/moderation/tts-override chat.moderation.queue.read a voice override
  *   readSounds(q)     GET  /internal/chat/sounds                 chat.sounds.read            a channel's sound count, or its pending assets
  *   readSoundByCommand(q) GET /internal/chat/sounds/by-command   chat.sounds.read            the approved sound a !command plays
+ *   readDmBlockState(q) GET /internal/chat/dm/block-state        chat.messages.read          has either user blocked the other (either direction)
  *
  * Auth: Live's Network service principal (client_credentials, audience openvibe.chat, server/net/network-principal.js).
  * Every POST carries one idempotency `key` made when the operation is created and reused on every retry, so Chat
@@ -175,6 +176,7 @@ const readRelayUsers = (params) => read('relay-users', `/internal/chat/moderatio
 const readRelayUser = (id) => read('relay-user', `/internal/chat/moderation/relay-users/${Number(id)}`);
 const readTtsOverride = (params) => read('tts-override', `/internal/chat/moderation/tts-override${qs(params)}`);
 const readSounds = (params) => read('sounds', `/internal/chat/sounds${qs(params)}`);
+const readDmBlockState = (params) => read('dm-block-state', `/internal/chat/dm/block-state${qs(params)}`);
 /**
  * GET /internal/chat/sounds/by-command — the approved sound a !command plays. Chat answers its own 404 body
  * `{ ok: false, error: 'Sound not found' }` for a definitive "no such sound", surfaced as `{ sound: null }`; any
@@ -213,6 +215,6 @@ module.exports = {
     invalidate: (body) => send('invalidate', body),
     presence,
     readStats, readMessages, readTimeline, readFirstChat, readPendingIp, readRelayUsers, readRelayUser, readTtsOverride,
-    readSounds, readSoundByCommand, soundAsset,
+    readSounds, readSoundByCommand, readDmBlockState, soundAsset,
     _setRetryMs(ms) { retryMs = ms || RETRY_MS; },
 };

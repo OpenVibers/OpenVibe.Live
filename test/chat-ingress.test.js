@@ -45,11 +45,13 @@ const network = http.createServer((req, res) => {
     });
 });
 
-// Stub Chat: records every ingress call; `fail` answers chosen families with a status.
+// Stub Chat: records every ingress call; `fail` answers chosen families with a status. Its first-chat
+// and hidden-relay-user reads answer from Live's own tables (emulating Chat's copy).
 const calls = [];
 const bridgeCalls = [];
 const fail = {};
 let nextId = 5000;
+let firstChatReads = 0;
 const chat = http.createServer((req, res) => {
     let raw = '';
     req.on('data', (c) => { raw += c; });
@@ -59,6 +61,18 @@ const chat = http.createServer((req, res) => {
         if (req.url.startsWith('/internal/live/')) {
             if (req.url === '/internal/live/calls') bridgeCalls.push(JSON.parse(raw));
             return res.end(JSON.stringify({ ok: true, results: [] }));
+        }
+        if (String(req.url).startsWith('/internal/chat/first-chat')) {
+            firstChatReads++;
+            const q = new URL(req.url, 'http://x').searchParams;
+            const d3 = require('../server/db/database');
+            const row = d3.get('SELECT 1 AS present FROM stream_first_chats WHERE chatter_key = ? AND channel_user_id = ?', [String(q.get('identity')), Number(q.get('channel_id'))]);
+            return res.end(JSON.stringify({ ok: true, first: !row }));
+        }
+        if (String(req.url).startsWith('/internal/chat/moderation/relay-users')) {
+            const q = new URL(req.url, 'http://x').searchParams;
+            const rows = require('../server/db/database').all('SELECT * FROM hidden_relay_users WHERE channel_id = ? OR channel_id IS NULL LIMIT ?', [Number(q.get('channel_id')), Number(q.get('limit') || 100)]);
+            return res.end(JSON.stringify({ ok: true, relay_users: rows }));
         }
         const m = req.url.match(/^\/internal\/chat\/(messages|events|moderation|invalidate|presence)(?:\?|$)/);
         if (!m) { res.statusCode = 404; return res.end('{}'); }
@@ -151,17 +165,27 @@ function assertSigned(c, what) {
         assert.deepStrictEqual([rl.body.username, rl.body.frame.role, rl.body.mirror, rl.body.tts.identity_key], ['[Twitch] alice', 'external', true, 'twitch:[Twitch] alice']);
         assertSigned(await waitFor(() => find('moderation', (b) => b.action === 'relay-record' && b.username === 'alice'), 'relay record'), 'relay record');
         assertSigned(await waitFor(() => find('events', (b) => b.frame.type === 'system' && /Welcome alice/.test(b.frame.message)), 'welcome'), 'welcome');
-        assert.ok(d.prepare("SELECT 1 FROM stream_first_chats WHERE chatter_key = '[Twitch] alice' OR chatter_key = 'ext:[Twitch] alice'").get(), 'Live keeps its first-chat copy');
+        assert.ok(firstChatReads >= 1, "the welcome decision asked Chat's first-chat read");
+        assert.ok(!d.prepare("SELECT 1 FROM stream_first_chats WHERE chatter_key = '[Twitch] alice' OR chatter_key = 'ext:[Twitch] alice'").get(), 'Live writes no first-chat copy of its own in chat mode');
+        const welcomeCount = () => calls.filter((c) => c.family === 'events' && c.body.frame && /Welcome alice/.test(String(c.body.frame.message || ''))).length;
+        relay._broadcastMessage({ platform: 'twitch', streamId }, 'alice', 'second line', {});
+        await waitFor(() => find('messages', (b) => b.source_platform === 'twitch' && b.message === 'second line'), 'the second relay line');
+        await sleep(80);
+        assert.strictEqual(welcomeCount(), 1, 'a second line within the first-chat cache window is not welcomed twice');
 
         // 3b. A hidden relay user is dropped before any call to Chat; unhiding resumes relaying.
         const relayLines = (message) => calls.filter((c) => c.family === 'messages' && c.body.username === '[Twitch] alice' && (!message || c.body.message === message)).length;
+        const chatReads = require('../server/chat/chat-reads');
         d.prepare("INSERT INTO hidden_relay_users (channel_id, platform, external_username, action, created_by) VALUES (?, 'twitch', 'alice', 'hide', ?)").run(channel.id, admin);
+        chatReads.invalidate('hru:');   // the mod route's hide drops the cached list; the test writes the row directly
+        await waitFor(() => chatReads.isRelayUserHidden(channel.id, 'twitch', 'alice'), "Chat's hidden list to warm");
         const beforeHidden = relayLines();
         relay._broadcastMessage({ platform: 'twitch', streamId }, 'alice', 'should not relay', {});
         await sleep(80);
         assert.strictEqual(relayLines(), beforeHidden, 'a hidden relay user is dropped before Chat');
         assert.strictEqual(relayLines('should not relay'), 0);
         d.prepare("DELETE FROM hidden_relay_users WHERE platform = 'twitch' AND external_username = 'alice'").run();
+        chatReads.invalidate('hru:');   // as the unhide route does
         relay._broadcastMessage({ platform: 'twitch', streamId }, 'alice', 'relayed again', {});
         assertSigned(await waitFor(() => find('messages', (b) => b.source_platform === 'twitch' && b.message === 'relayed again'), 'the unhidden relay line'), 'relay line after unhide');
 
@@ -194,7 +218,7 @@ function assertSigned(c, what) {
         const del = find('moderation', (b) => b.action === 'delete-message');
         assertSigned(del, 'message delete');
         assert.deepStrictEqual([del.body.id, del.body.deleted_by, del.body.key], [900010, admin, 'live:moderation:delete:900010']);
-        assert.strictEqual(db.getChatMessageById(900010).is_deleted, 1, "Live's copy is deleted too (the read mirror is on in production)");
+        assert.strictEqual(db.getChatMessageById(900010).is_deleted, 0, "Live's own copy is untouched: Chat owns the delete (the read mirror is retired)");
         assertSigned(await waitFor(() => find('moderation', (b) => b.action === 'log' && b.action_type === 'message_delete'), 'delete log'), 'delete log');
         const ban = await mod(`/users/${viewer}/ban`, { reason: 'spam' });
         assert.ok(ban.status < 300, `ban answered ${ban.status}`);

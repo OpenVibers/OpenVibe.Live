@@ -655,7 +655,8 @@ class RobotStreamerService {
                 const username = `[RS] ${rawUsername}`;
 
                 // Check if this relay user is hidden/banned: Chat's queue in chat mode (a cached
-                // peek), Live's own mirror-fed table otherwise; Chat unreachable falls back to it.
+                // peek — fresh list, else the last good one; a cold cache fails open), Live's own
+                // table only when Live is not in chat mode.
                 try {
                     const channel = stream.channel_id
                         ? db.getChannelById(stream.channel_id)
@@ -667,7 +668,7 @@ class RobotStreamerService {
 
                 // Record this relay user (first message = join date) so RobotStreamer
                 // chatters get the same chat logs + AI insight as other relay users.
-                if (delivery.ingress()) { delivery.mirror('recordRelayUser', 'rs', rawUsername); delivery.moderate('relay-record', { platform: 'rs', username: rawUsername }); }
+                if (delivery.ingress()) { delivery.moderate('relay-record', { platform: 'rs', username: rawUsername }); }
                 else { try { db.recordRelayUser('rs', rawUsername); } catch { /* non-critical */ } }
 
                 // Let RobotStreamer viewers trigger channel !sound commands too. If the
@@ -677,8 +678,8 @@ class RobotStreamerService {
                 if (trimmed.startsWith('!')) {
                     const parts = trimmed.split(/\s+/);
                     const scmd = parts[0].slice(1).toLowerCase();
-                    // Chat owns channel_sounds; ask its by-command read (a cached peek), which falls
-                    // back to Live's own table while Chat is unreachable.
+                    // Chat owns channel_sounds; ask its by-command read (a cached peek). Live's own
+                    // frozen table is never a fallback — null means no sound (or Chat unreachable).
                     if (scmd && chatReads.soundByCommandPeek(stream.user_id, scmd)) {
                         if (delivery.ingress()) {
                             delivery.event({ kind: 'stream', id: stream.id }, {

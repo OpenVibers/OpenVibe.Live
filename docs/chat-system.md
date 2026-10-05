@@ -49,20 +49,20 @@ path are deleted.
   `POST /internal/chat/stats` (`site`, `user`, `stream`, `channel-top` and `site-daily`),
   `GET /internal/chat/messages`, `/timeline`, `/first-chat`, `/sounds`, `/sounds/by-command`,
   `/moderation/pending-ip`, `/moderation/relay-users`, `/moderation/tts-override` — through
-  [server/chat/chat-reads.js](../server/chat/chat-reads.js), in place of the read mirror
-  (`POST /internal/chat-effects/mirror`) home stats, recaps, AI context, VOD chat replay and the
-  `/api/mod` queues used to read. A Chat outage answers a cached value or Live's own table, never a 500.
-- **What reads the mirror.** Nothing in chat mode any more: the two HOME_SERIES charts `messages`
-  and `active` read Chat's site-daily series, the AI context's "first time chatting here" flag reads
-  Chat's first-chat read, and the RobotStreamer `!sound` lookup reads Chat's sounds-by-command read —
-  each through [server/chat/chat-reads.js](../server/chat/chat-reads.js), falling back to Live's own
-  table only while Chat is unreachable. The mirror (`POST /internal/chat-effects/mirror`) therefore
-  has no chat-mode reader left and is removed in the remaining step: Chat stops its `LIVE_MIRROR`
-  writer, then Live deletes the receiver (`live-context-routes.js` `effectsRouter`'s mirror route and
-  its `live.chat_mirror.write` capability) and the mirror-kept chat tables. The readers that still
-  answer from Live's tables are on the Live-runs-chat path `CHAT_AUTHORITY=chat` leaves unmounted —
-  `dm_*` (no `/api/dm`), Live's chat server, the deploy notice, the admin chat log and the leftover
-  dev/rollback fallbacks.
+  [server/chat/chat-reads.js](../server/chat/chat-reads.js), replacing the read mirror for home stats,
+  recaps, AI context, VOD chat replay and the `/api/mod` queues. A Chat outage answers a cached value
+  or Live's own table, never a 500.
+- **The read mirror is retired** (2026-10-05): OpenVibe.Chat #25 removed the sender (its `LIVE_MIRROR`
+  writer and the capture triggers), and this change removed Live's receiver — the
+  `POST /internal/chat-effects/mirror` route in `live-context-routes.js`, its
+  `live.chat_mirror.write` capability and the `chat-delivery.js` mirror helper. Nothing in chat mode
+  read it any more: the two HOME_SERIES charts `messages` and `active` read Chat's site-daily series,
+  the AI context's "first time chatting here" flag reads Chat's first-chat read, and the
+  RobotStreamer `!sound` lookup reads Chat's sounds-by-command read — each through
+  [server/chat/chat-reads.js](../server/chat/chat-reads.js), falling back to Live's own table only
+  while Chat is unreachable. Live's own chat tables stay until a later change drops them; the readers
+  that still answer from them are on the Live-runs-chat path `CHAT_AUTHORITY=chat` leaves unmounted —
+  `dm_*` (no `/api/dm`), the deploy notice, the admin chat log and the leftover dev/rollback fallbacks.
 - **The six chat tables are Chat's** (roadmap T3): `channel_moderators`, `channel_moderation_settings`,
   `emotes`, `user_tags`, `chat_ai_summaries` and `chat_timeline_events`. Live keeps no copy and reads them
   only through [server/chat/moderation-client.js](../server/chat/moderation-client.js) — Chat's internal
