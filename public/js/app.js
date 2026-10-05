@@ -913,6 +913,8 @@ function teardownRoute(nextPath) {
     // Hardware controls: the socket and its reconnect loop outlived the channel, and the global
     // key handler kept sending bound keys to the last channel's device from any page.
     stop('destroyControlWs');
+    // A VOD or clip playing Media's playlist: its hls.js instance, worker and loaders end with the page.
+    stop('vodDropHls');
     try { currentStreamId = null; } catch { /* */ }
     // The VOD/clip chat replay re-arms itself every animation frame; nothing stopped it.
     if (window._chatReplayTimer) { cancelAnimationFrame(window._chatReplayTimer); window._chatReplayTimer = null; }

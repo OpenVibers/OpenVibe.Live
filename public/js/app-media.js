@@ -185,7 +185,72 @@ function _attachVodProgressTracking(video, vodId) {
     }, { once: true });
 }
 /* ── VOD Player ───────────────────────────────────────────────── */
+// ── Playback source: Media's timeline playlist when there is one, the file otherwise ──────────────────────
+// A finished VOD or clip with a Media timeline (hls_url) plays its HLS playlist, so a seek reads only the segments
+// it needs (packed chunks included). A recording, a VOD without a timeline, or a browser that cannot play HLS keeps
+// the file URL, and a playlist that fails falls back to the file once.
+let _vodHls = null;
+let _vodHlsScript = null;
+function vodLoadHlsScript() {
+    if (typeof Hls !== 'undefined') return Promise.resolve();
+    if (!_vodHlsScript) {
+        _vodHlsScript = new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js';
+            s.async = true;
+            s.onload = () => resolve();
+            s.onerror = () => { _vodHlsScript = null; reject(new Error('hls.js did not load')); };
+            document.head.appendChild(s);
+        });
+    }
+    return _vodHlsScript;
+}
+function vodDropHls() {
+    if (_vodHls) { try { _vodHls.destroy(); } catch { /* already gone */ } _vodHls = null; }
+}
+/**
+ * Point `video` at the playlist (or the file); remembers the file URL for the fallback and the clip preview.
+ * `routeGen` is the router generation the caller started under: a load that finishes after the person left the
+ * page attaches nothing (no hls.js instance outlives the route).
+ */
+async function attachVodSource(video, hlsUrl, fileUrl, routeGen = null) {
+    const stale = () => routeGen != null && typeof ov !== 'undefined' && ov && typeof ov.isCurrent === 'function' && !ov.isCurrent(routeGen);
+    if (stale()) return 'stale';
+    vodDropHls();
+    video.dataset.fileUrl = fileUrl;
+    video.dataset.source = 'file';
+    if (!hlsUrl) { video.src = fileUrl; return 'file'; }
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.dataset.source = 'hls';
+        video.src = hlsUrl;
+        return 'hls';
+    }
+    try { await vodLoadHlsScript(); } catch { if (!stale()) video.src = fileUrl; return 'file'; }
+    if (stale()) return 'stale';
+    if (typeof Hls === 'undefined' || !Hls.isSupported()) { video.src = fileUrl; return 'file'; }
+    const hls = new Hls({ enableWorker: true, backBufferLength: 60 });
+    _vodHls = hls;
+    video.dataset.source = 'hls';
+    hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (data && data.fatal && _vodHls === hls) vodFallBackToFile(video);
+    });
+    hls.loadSource(hlsUrl);
+    hls.attachMedia(video);
+    return 'hls';
+}
+/** A playlist that failed: play the file instead, once. Returns true when it switched (callers then ignore the error). */
+function vodFallBackToFile(video) {
+    if (video.dataset.source !== 'hls' || !video.dataset.fileUrl) return false;
+    const at = video.currentTime || 0;
+    vodDropHls();
+    video.dataset.source = 'file';
+    video.src = video.dataset.fileUrl;
+    if (at > 0) video.addEventListener('loadedmetadata', function _resume() { video.removeEventListener('loadedmetadata', _resume); try { video.currentTime = at; } catch { /* */ } });
+    return true;
+}
+
 async function loadVodPlayer(vodId, seekTo) {
+    const routeGen = typeof ov !== 'undefined' && ov && typeof ov.gen === 'function' ? ov.gen() : null;
     try {
         // Clean up any previous live VOD poll
         if (window._liveVodPollTimer) {
@@ -285,7 +350,12 @@ async function loadVodPlayer(vodId, seekTo) {
             // to this when the browser mis-reports the WebM container duration.
             const serverDur = Number(v.duration_seconds || v.duration || 0);
             video.dataset.serverDuration = (serverDur > 0 && !v.is_recording) ? String(serverDur) : '';
-            video.src = `/api/vods/file/${filename}?t=${Date.now()}`;
+            // A recording keeps the growing file; a finished VOD with a timeline plays its playlist.
+            if (!video.dataset.hlsFallbackBound) {
+                video.dataset.hlsFallbackBound = '1';
+                video.addEventListener('error', () => { vodFallBackToFile(video); });
+            }
+            attachVodSource(video, v.is_recording ? null : v.hls_url, `/api/vods/file/${filename}?t=${Date.now()}`, routeGen);
             video.style.display = 'block';
 
             if (v.is_recording) {
@@ -490,7 +560,8 @@ function openClipCreator() {
     // Setup preview video
     const preview = document.getElementById('clip-preview-video');
     if (preview) {
-        const filename = video.src.split('/').pop().split('?')[0];
+        // The main player may be on the HLS playlist (a blob: URL): the preview cuts from the file.
+        const filename = (video.dataset.fileUrl || video.src).split('/').pop().split('?')[0];
         preview.src = `/api/vods/file/${filename}`;
         preview.currentTime = _vpClipStart;
         preview.muted = true;
@@ -927,6 +998,7 @@ function _renderClipAttribution(el, cl) {
 }
 
 async function loadClipPlayer(clipId) {
+    const routeGen = typeof ov !== 'undefined' && ov && typeof ov.gen === 'function' ? ov.gen() : null;
     try {
         // Clean up chat replay
         if (window._chatReplayTimer) {
@@ -1055,6 +1127,7 @@ async function loadClipPlayer(clipId) {
             const filename = cl.file_path.split('/').pop();
             // Handle video load errors (corrupt files, codec issues)
             video.onerror = () => {
+                if (vodFallBackToFile(video)) return;   // the playlist failed: the file gets its chance first
                 const container = document.getElementById('clp-container');
                 if (container) {
                     container.innerHTML = `
@@ -1065,7 +1138,7 @@ async function loadClipPlayer(clipId) {
                         </div>`;
                 }
             };
-            video.src = `/api/vods/file/${filename}`;
+            attachVodSource(video, cl.hls_url, `/api/vods/file/${filename}`, routeGen);
             video.style.display = 'block';
             setupCustomVideoControls('clp');
 
