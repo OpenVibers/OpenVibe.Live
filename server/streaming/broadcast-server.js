@@ -235,6 +235,15 @@ class BroadcastServer extends EventEmitter {
                 ws.close(4003, 'Not your stream');
                 return;
             }
+            // OpenRe.Stream ingests this slot (or, for a slot-less stream, one of the owner's slots):
+            // Live's SFU never takes a second publisher for it. See server/openre/authority.js.
+            const openre = require('../openre/authority');
+            const managedStream = openre.slotById(stream.managed_stream_id);
+            if (openre.refusesLiveIngest({ managedStream, user: managedStream ? null : user, protocol: 'webrtc' })) {
+                console.warn(`[Broadcast] Broadcaster refused for stream ${streamId}: ${managedStream ? `slot ${managedStream.id}` : `personal stream of ${user.username}`} is ingested by OpenRe`);
+                ws.close(4003, 'Stream key not recognized');
+                return;
+            }
         }
 
         // Viewers: only for a stream that exists and is live, and only a handful of sockets per address.

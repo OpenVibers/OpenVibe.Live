@@ -1966,9 +1966,13 @@ async function showJSMPEGInstructions(stream) {
         const data = await api(`/streams/${stream.id}/endpoint`);
         const ep = data.endpoint || {};
         const host = location.hostname;
-        const baseUrl = `http://${host}:${ep.videoPort || 9710}/${data.stream_key}/640/480/`;
-        const audioUrl = `http://${host}:${ep.audioPort || 9711}/${data.stream_key}/`;
-        const hdUrl = `http://${host}:${ep.videoPort || 9710}/${data.stream_key}/1280/720/`;
+        // An OpenRe-ingested slot: OpenRe's JSMPEG server (video and audio share it) and only a key hint.
+        const videoServer = ep.jsmpegUrl ? ep.jsmpegUrl.replace(/\/$/, '') : `http://${host}:${ep.videoPort || 9710}`;
+        const audioServer = ep.jsmpegUrl ? videoServer : `http://${host}:${ep.audioPort || 9711}`;
+        const key = data.stream_key || ep.streamKeyHint || 'N/A';
+        const baseUrl = `${videoServer}/${key}/640/480/`;
+        const audioUrl = `${audioServer}/${key}/`;
+        const hdUrl = `${videoServer}/${key}/1280/720/`;
 
         // Video + Audio
         document.getElementById('bc-jsmpeg-cmd').textContent = ep.ffmpegCommand || `ffmpeg -f v4l2 -i /dev/video0 -f alsa -i default -f mpegts -codec:v mpeg1video -s 640x480 -b:v 350k -bf 0 -codec:a mp2 -b:a 128k -ar 44100 -ac 1 -muxdelay 0.001 ${baseUrl}`;
@@ -2017,8 +2021,11 @@ async function showWHIPInstructions(stream) {
     loadLiveControlsStatus(stream.id).catch(() => {});
     const isLocalHost = /^(localhost|127\.|\[::1\])$/.test(location.hostname);
     let whipBaseUrl = null;
+    let openreWhip = null;
     try {
         const data = await api(`/streams/${stream.id}/endpoint`);
+        // An OpenRe-ingested slot: OpenRe's WHIP URL takes the key (only its hint is known here).
+        if (data.endpoint?.whipUrl) openreWhip = `${data.endpoint.whipUrl.replace(/\/$/, '')}/${data.endpoint.streamKeyHint || 'N/A'}`;
         whipBaseUrl = data.endpoint?.whipUrlBase || null;
         if (data.endpoint?.whipUrlSource === 'request_host') {
             console.warn('[WHIP] Server did not provide a configured WHIP URL. Request-host fallback is being used; please configure WHIP_PUBLIC_URL or WEBRTC_PUBLIC_URL to avoid incorrect client endpoints.');
@@ -2026,14 +2033,15 @@ async function showWHIPInstructions(stream) {
     } catch (err) {
         console.warn('[WHIP] Failed to load canonical WHIP endpoint from server:', err.message);
     }
-    if (!whipBaseUrl) {
+    if (!whipBaseUrl && !openreWhip) {
         whipBaseUrl = location.origin;
         if (!isLocalHost) {
             console.warn('[WHIP] Falling back to the current page origin for WHIP URL outside of localhost. This is only safe for local development. Configure WHIP_PUBLIC_URL or WEBRTC_PUBLIC_URL in the registry to fix this.');
         }
     }
-    document.getElementById('bc-whip-url').textContent = `${whipBaseUrl}/whip/${stream.id}`;
-    const token = getStoredAuthToken() || 'N/A';
+    document.getElementById('bc-whip-url').textContent = openreWhip || `${whipBaseUrl}/whip/${stream.id}`;
+    // Live's sign-in token is never offered as the Bearer for OpenRe's WHIP.
+    const token = (!openreWhip && getStoredAuthToken()) || 'N/A';
     const tokenEl = document.getElementById('bc-whip-token');
     if (tokenEl) {
         tokenEl.dataset.value = token;
