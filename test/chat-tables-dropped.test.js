@@ -108,5 +108,22 @@ const res = migrations.run(mem, migrations.MIGRATIONS.filter((m) => m.id === DRO
 assert.strictEqual(res[0].outcome, 'adopted', 'a fresh database adopts the drop');
 mem.close();
 
+// 5. Fast on a large table: chat_messages references itself (reply_to_id ON DELETE SET NULL, no index), so a drop
+// with foreign_keys ON scans the table once per row. The migration runs with enforcement off, and turns it back on.
+const big = new Database(':memory:');
+big.pragma('foreign_keys = ON');
+big.exec(`CREATE TABLE chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, message TEXT NOT NULL,
+    reply_to_id INTEGER REFERENCES chat_messages(id) ON DELETE SET NULL)`);
+const ins = big.prepare('INSERT INTO chat_messages (message, reply_to_id) VALUES (?, ?)');
+big.transaction(() => { for (let i = 1; i <= 30000; i++) ins.run('line', i > 1 ? i - 1 : null); })();
+const t0 = Date.now();
+const out = migrations.run(big, migrations.MIGRATIONS.filter((m) => m.id === DROP_ID));
+const took = Date.now() - t0;
+assert.strictEqual(out[0].outcome, 'applied', JSON.stringify(out));
+assert.ok(took < 3000, `30,000 self-referencing rows drop in well under the boot budget (took ${took} ms)`);
+assert.strictEqual(big.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'chat_messages'").get().n, 0);
+assert.strictEqual(big.pragma('foreign_keys', { simple: true }), 1, 'foreign keys are back on after the migration');
+big.close();
+
 console.log(`chat tables dropped: no server/ code names the ${TABLES.length} outside ${DROP_ID}; fresh schema none; a boot drops legacy copies and adopts a fresh database`);
 process.exit(0);

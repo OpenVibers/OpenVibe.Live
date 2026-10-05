@@ -137,6 +137,11 @@ const MIGRATIONS = [
     },
     {
         id: '007_drop_chat_tables',
+        // With foreign_keys ON, a table drop first runs an implicit DELETE of every row, and chat_messages' unindexed
+        // self-reference (reply_to_id ON DELETE SET NULL) makes that a full scan per deleted row: quadratic, minutes
+        // of CPU on production's table (the first deploy of this migration never became ready). Dropping with
+        // enforcement off just frees the pages; nothing outside the twelve references them.
+        foreignKeys: false,
         // T3 final step (2026-10-05). OpenVibe.Chat owns these twelve tables and has been their only
         // writer since the 2026-09-23 02:03 UTC cutover (it imported them from Live with ids kept);
         // Live's readers and writers are gone (#28-#32 and the release that carries this migration,
@@ -256,11 +261,19 @@ function run(db, list = MIGRATIONS) {
         try {
             let adopted = false;
             let deferred = false;
-            db.transaction(() => {
-                if (m.adopt && m.adopt(db)) { adopted = true; }
-                else if (m.up(db) === DEFER) { deferred = true; return; }
-                record.run(m.id, adopted ? 'adopted' : 'applied', Date.now() - started);
-            })();
+            // `foreignKeys: false` runs the migration with enforcement off (SQLite only changes the pragma outside a
+            // transaction): for drops of large tables, whose implicit per-row DELETE would otherwise run first.
+            const fkOff = m.foreignKeys === false;
+            if (fkOff) db.pragma('foreign_keys = OFF');
+            try {
+                db.transaction(() => {
+                    if (m.adopt && m.adopt(db)) { adopted = true; }
+                    else if (m.up(db) === DEFER) { deferred = true; return; }
+                    record.run(m.id, adopted ? 'adopted' : 'applied', Date.now() - started);
+                })();
+            } finally {
+                if (fkOff) db.pragma('foreign_keys = ON');
+            }
             failures.delete(m.id);
             const outcome = deferred ? 'deferred' : adopted ? 'adopted' : 'applied';
             results.push({ id: m.id, outcome });
