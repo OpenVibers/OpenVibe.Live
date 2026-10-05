@@ -273,7 +273,9 @@ router.post('/clone', requireAuth, async (req, res) => {
             const platform = idx > 0 ? ref.slice(0, idx) : '';
             const username = idx > 0 ? ref.slice(idx + 1) : '';
             if (!platform || !username) return res.status(400).json({ error: 'Bad relay ref' });
-            const relay = db.getRelayUser(platform, username);
+            // Chat owns relay_users and exposes no relay-identity read (only the hidden-relay
+            // moderation list and message history, both read below), so there is nothing to look up
+            // here; the clone uses the handle.
             const wide = isStaff(req.user);
             src = {
                 kind: 'relay', ref: `${platform}:${username}`,

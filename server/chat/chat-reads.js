@@ -40,6 +40,10 @@ let lastLog = null;
 function drill() { try { return require('../drill').enabled; } catch { return false; } }
 function remote() { return isRemote() && !drill(); }
 function local() { return require('../db/database'); }
+/** Run a local (Live-table) read for a synchronous caller, answering `dflt` if it throws. */
+function safeLocal(fn, dflt) { try { const v = fn(); return v == null ? dflt : v; } catch { return dflt; } }
+/** Epoch ms → the UTC 'YYYY-MM-DD HH:MM:SS' text chat_messages.timestamp stores. */
+const sqlTime = (ms) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
 
 function note(what, err) {
     const m = `Chat read ${what}: ${(err && err.message) || err}`;
@@ -183,6 +187,116 @@ function topChatters({ since, streamId, channelUserId, limit = 10 } = {}) {
             GROUP BY c.user_id, CASE WHEN c.user_id IS NULL THEN c.username END
             ORDER BY count DESC LIMIT ?`, params) || [];
     });
+}
+
+// ── Stats over a window / one room ───────────────────────────────────────────
+// Chat's stats read takes since/until plus at most one of stream_id / channel_user_id and answers
+// { messages, chatters } for that window (kind 'stream' also answers the soundboard count). The
+// home-stats snapshot and the digest ask site-wide, the recap and stream analytics ask per stream,
+// the star picker per channel. The local (rollback / dev) answer is the same SQL Live's own chat
+// runs; a peek answers the last good value while Chat refreshes in the background.
+function localWindowStats({ since, until, streamId, channelUserId } = {}) {
+    const db = local();
+    const where = ['is_deleted = 0'];
+    const params = [];
+    if (since != null) { where.push('timestamp >= ?'); params.push(sqlTime(since)); }
+    if (until != null) { where.push('timestamp < ?'); params.push(sqlTime(until)); }
+    if (streamId != null) { where.push('stream_id = ?'); params.push(Number(streamId)); }
+    if (channelUserId != null) { where.push('channel_user_id = ?'); params.push(Number(channelUserId)); }
+    const r = db.get(`SELECT COUNT(*) AS messages,
+        COUNT(DISTINCT COALESCE('u:' || user_id, 'a:' || anon_id, source_platform || ':' || username)) AS chatters
+        FROM chat_messages WHERE ${where.join(' AND ')}`, params) || {};
+    return { messages: Number(r.messages) || 0, chatters: Number(r.chatters) || 0 };
+}
+async function remoteWindowStats({ since, until, streamId, channelUserId } = {}) {
+    const out = await client.readStats({ kind: 'site', since, until, stream_id: streamId, channel_user_id: channelUserId });
+    if (!out) throw unavailable('window stats');
+    return { messages: Number(out.messages) || 0, chatters: Number(out.chatters) || 0 };
+}
+const windowKey = (o) => `win:${o.since || 0}:${o.until || 0}:${o.streamId || 0}:${o.channelUserId || 0}`;
+/** Message/chatter counts over [since, until), site-wide or scoped to one stream/channel (async). */
+function windowStats(o = {}) {
+    return load(windowKey(o), () => remoteWindowStats(o), () => localWindowStats(o))
+        .then((v) => v || safeLocal(() => localWindowStats(o), { messages: 0, chatters: 0 }));
+}
+/** The same, for a caller that cannot await (the home-stats snapshot, the digest). */
+function windowStatsPeek(o = {}) {
+    const v = peek(windowKey(o), () => remoteWindowStats(o), () => localWindowStats(o));
+    if (v) return v;
+    return safeLocal(() => localWindowStats(o), null);
+}
+
+function localStreamStats(streamId) {
+    const db = local();
+    const r = db.get(`SELECT COUNT(*) AS messages,
+        COUNT(DISTINCT COALESCE(user_id, anon_id, username)) AS chatters,
+        SUM(CASE WHEN message_type = 'soundboard' THEN 1 ELSE 0 END) AS sounds
+        FROM chat_messages WHERE stream_id = ? AND COALESCE(is_deleted, 0) = 0`, [Number(streamId)]) || {};
+    return { messages: Number(r.messages) || 0, chatters: Number(r.chatters) || 0, sounds: Number(r.sounds) || 0 };
+}
+async function remoteStreamStats(streamId) {
+    const out = await client.readStats({ kind: 'stream', stream_id: Number(streamId) });
+    if (!out) throw unavailable('stream stats');
+    return { messages: Number(out.messages) || 0, chatters: Number(out.chatters) || 0, sounds: Number(out.sounds) || 0 };
+}
+/** One stream's chat totals: { messages, chatters, sounds } (the recap, stream analytics). */
+function streamStats(streamId) {
+    const id = Number(streamId) || 0;
+    if (!id) return Promise.resolve({ messages: 0, chatters: 0, sounds: 0 });
+    return load(`st:${id}`, () => remoteStreamStats(id), () => localStreamStats(id))
+        .then((v) => v || safeLocal(() => localStreamStats(id), { messages: 0, chatters: 0, sounds: 0 }));
+}
+/** The same, for a caller that cannot await (stream analytics run at stream end). */
+function streamStatsPeek(streamId) {
+    const id = Number(streamId) || 0;
+    if (!id) return { messages: 0, chatters: 0, sounds: 0 };
+    const v = peek(`st:${id}`, () => remoteStreamStats(id), () => localStreamStats(id));
+    if (v) return v;
+    return safeLocal(() => localStreamStats(id), { messages: 0, chatters: 0, sounds: 0 });
+}
+
+async function remoteChannelMaxId(channelUserId) {
+    const out = await client.readMessages({ channel_user_id: channelUserId, tail: true });
+    if (!out) throw unavailable('channel max id');
+    return Number(out.max_id) || 0;
+}
+/**
+ * The newest chat id in a channel — Chat's id, so the AI context delta (channelMessagesPeek reads
+ * Chat's ids) stays aligned. `channelMaxId` awaits Chat (and warms the peek); `channelMaxIdPeek` is
+ * for the caller that cannot await and answers the last good id, else Live's own table.
+ */
+function channelMaxId(channelUserId) {
+    const id = Number(channelUserId) || 0;
+    if (!id) return Promise.resolve(0);
+    return load(`cmid:${id}`, () => remoteChannelMaxId(id), () => local().getMaxChatMessageIdForChannel(id))
+        .then((v) => (v != null ? Number(v) || 0 : safeLocal(() => local().getMaxChatMessageIdForChannel(id), 0)));
+}
+function channelMaxIdPeek(channelUserId) {
+    const id = Number(channelUserId) || 0;
+    if (!id) return 0;
+    const v = peek(`cmid:${id}`, () => remoteChannelMaxId(id), () => local().getMaxChatMessageIdForChannel(id));
+    if (v != null) return Number(v) || 0;
+    return safeLocal(() => local().getMaxChatMessageIdForChannel(id), 0);
+}
+
+function localUserMessageCount(userId) {
+    const r = local().get(`SELECT COUNT(*) AS c FROM chat_messages
+        WHERE user_id = ? AND is_deleted = 0
+          AND (auto_delete_at IS NULL OR datetime(auto_delete_at) > CURRENT_TIMESTAMP)`, [Number(userId)]);
+    return Number(r && r.c) || 0;
+}
+async function remoteUserMessageCount(userId) {
+    const out = await client.readStats({ kind: 'user', user_id: Number(userId) });
+    if (!out) throw unavailable('user message count');
+    return Number(out.messages) || 0;
+}
+/** A user's non-deleted chat total, for a caller that cannot await (the profile card). */
+function userMessageCountPeek(userId) {
+    const id = Number(userId) || 0;
+    if (!id) return 0;
+    const v = peek(`um:${id}`, () => remoteUserMessageCount(id), () => localUserMessageCount(id));
+    if (v != null) return Number(v) || 0;
+    return safeLocal(() => localUserMessageCount(id), 0);
 }
 
 // ── Messages / history ────────────────────────────────────────────────────────
@@ -395,18 +509,19 @@ function relayUser(id) {
  * Is this relay identity hidden (banned) in this channel or site-wide? Synchronous: the relay
  * path can carry a message per second and must not wait on an HTTP call.
  *
- * Live's own table answers first — Chat's mirror keeps it current, so a hide takes effect on the
- * very next message. In chat mode Chat's queue (a cached peek, at most CACHE_TTL_MS old) is also
- * consulted. Chat unreachable, or not cached yet, answers from Live's own table: fail OPEN, never
- * drop a relayed line on a Chat outage.
+ * In chat mode a fresh Chat list is the authority (a cached peek, at most CACHE_TTL_MS old), so a
+ * hide or unhide takes effect on the next message. Until Chat has answered (cold cache) or while it
+ * is unreachable, Live's own table answers: fail OPEN, never drop a relayed line on a Chat outage.
  */
 function isRelayUserHidden(channelId, platform, username) {
-    let localHidden = false;
-    try { localHidden = !!local().isRelayUserHidden(channelId, platform, username); } catch { /* not hidden */ }
-    if (localHidden) return true;
-    if (!remote()) return false;
+    if (!remote()) {
+        try { return !!local().isRelayUserHidden(channelId, platform, username); } catch { return false; }
+    }
+    // Chat owns hidden_relay_users, so a fresh Chat list is the authority: a hide Live's mirror has
+    // not applied yet (or an unhide it has not removed yet) must not win. Live's own table answers only
+    // when Chat has no fresh list, and then it fails OPEN — never drop a relayed line on a Chat outage.
     const key = `hru:${Number(channelId) || 0}`;
-    const hit = fresh(key);   // only a fresh answer is used: an unhide must not leave an old list in force
+    const hit = fresh(key);
     if (hit && Array.isArray(hit.value)) {
         return hit.value.some((r) => String(r.platform) === String(platform) && String(r.external_username) === String(username));
     }
@@ -415,7 +530,7 @@ function isRelayUserHidden(channelId, platform, username) {
         if (!out || !Array.isArray(out.relay_users)) throw unavailable('hidden relay users');
         return out.relay_users;
     }, () => []).catch(() => { /* warms the cache for the next check */ });
-    return false;
+    try { return !!local().isRelayUserHidden(channelId, platform, username); } catch { return false; }
 }
 
 /** A user's TTS voice override: { voice, pitch, speed, gap } | null. Live, never cached. */
@@ -511,6 +626,7 @@ function _cacheMax(n) { if (n != null && Number(n) > 0) cacheMax = Number(n); re
 
 module.exports = {
     siteStats, siteStatsPeek, topChatters,
+    windowStats, windowStatsPeek, streamStats, streamStatsPeek, channelMaxId, channelMaxIdPeek, userMessageCountPeek,
     messageById, channelMessages, channelMessagesPeek, userHistory, relayHistory, channelSamples, searchMessages,
     liveChatBuckets, recentChatText, spikeOffsets,
     pendingIp, relayUsers, relayUser, ttsOverride, ttsOverridePeek, isRelayUserHidden,

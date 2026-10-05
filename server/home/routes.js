@@ -468,7 +468,9 @@ router.get('/digest', optionalAuth, (req, res) => {
         const stats = {
             streams: Number((one('SELECT COUNT(*) AS n FROM streams WHERE started_at >= ?', [sinceSql]) || {}).n || 0),
             hours: Number((one(`SELECT ROUND(SUM(COALESCE(duration_seconds, CASE WHEN ended_at IS NOT NULL THEN (julianday(ended_at) - julianday(started_at)) * 86400 ELSE (julianday('now') - julianday(started_at)) * 86400 END)) / 3600.0, 1) AS h FROM streams WHERE started_at >= ?`, [sinceSql]) || {}).h || 0),
-            chat_lines: Number((one("SELECT COUNT(*) AS n FROM chat_messages WHERE timestamp >= ? AND COALESCE(is_deleted, 0) = 0", [sinceSql]) || {}).n || 0),
+            // OpenVibe.Chat's message count since the window opened (Live's own tables in dev /
+            // rollback); a synchronous peek answers the last good count while Chat refreshes.
+            chat_lines: (() => { try { const s = require('../chat/chat-reads').windowStatsPeek({ since: sinceMs }); return s ? s.messages : 0; } catch { return 0; } })(),
             new_follows: Number((one('SELECT COUNT(*) AS n FROM follows WHERE created_at >= ?', [sinceSql]) || {}).n || 0),
             new_members: Number((one('SELECT COUNT(*) AS n FROM users WHERE created_at >= ?', [sinceSql]) || {}).n || 0),
             mic_moments: Number((one('SELECT COUNT(*) AS n FROM arena_mic_moments WHERE said_at >= ?', [sinceSql]) || {}).n || 0),

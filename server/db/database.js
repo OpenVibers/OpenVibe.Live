@@ -3805,6 +3805,9 @@ const HOME_SERIES = {
     anons:       { table: 'anon_ip_mappings',  ts: 'created_at',  agg: 'COUNT(*)' },
     visitors:    { table: 'anon_ip_mappings',  ts: 'created_at',  agg: 'COUNT(*)' },
     follows:     { table: 'follows',           ts: 'created_at',  agg: 'COUNT(*)' },
+    // OpenVibe.Chat exposes no site-wide per-day message/chatter series — its timeline read buckets
+    // one channel or stream only, never the whole site — so these two charts still read Live's
+    // mirror-filled chat_messages table. Every other series and the hero counters come from Chat.
     messages:    { table: 'chat_messages',     ts: 'timestamp',   agg: 'COUNT(*)',              where: 'COALESCE(is_deleted, 0) = 0' },
     active:      { table: 'chat_messages',     ts: 'timestamp',   agg: "COUNT(DISTINCT COALESCE('u' || user_id, 'a' || anon_id, 'r' || source_platform || '|' || username))", where: 'COALESCE(is_deleted, 0) = 0' },
     sessions:    { table: 'streams',           ts: 'created_at',  agg: 'COUNT(*)' },
@@ -3903,6 +3906,7 @@ function getHomeStats() {
 function _computeHomeStats() {
     // Each stat is isolated so a missing table / column can never blank the whole hero.
     const c = (sql, p = []) => { try { return get(sql, p)?.count || 0; } catch { return 0; } };
+    const nowMs = Date.now();   // the home-stats snapshot's windows are relative to this instant
     // Vibes tipped before this instant were test money (site setting `stats_vibes_reset_at`,
     // ISO timestamp). Everything Vibes-related on the hero starts counting from it.
     const vibesSince = vibesStatsSince();
@@ -3974,32 +3978,16 @@ function _computeHomeStats() {
         // Total hours of video the platform has archived (OpenVibe.Media's figure).
         streamHours: null,
         // Active chatters this week across EVERYONE — registered users, anons, and relay chatters.
-        weeklyActive: c(`SELECT COUNT(*) AS count FROM (
-                            SELECT DISTINCT 'u' || user_id AS id FROM chat_messages
-                              WHERE user_id IS NOT NULL AND COALESCE(is_deleted, 0) = 0 AND timestamp >= datetime('now', '-7 days')
-                            UNION
-                            SELECT DISTINCT 'a' || anon_id FROM chat_messages
-                              WHERE anon_id IS NOT NULL AND COALESCE(is_deleted, 0) = 0 AND timestamp >= datetime('now', '-7 days')
-                            UNION
-                            SELECT DISTINCT 'r' || source_platform || '|' || username FROM chat_messages
-                              WHERE source_platform IS NOT NULL AND source_platform <> '' AND COALESCE(is_deleted, 0) = 0 AND timestamp >= datetime('now', '-7 days')
-                         )`),
+        // OpenVibe.Chat counts them (stats kind 'site' over the window); Live's own tables when Live
+        // runs chat. A Chat outage answers the last good count, else 0 — never a 500 for the hero.
+        weeklyActive: (() => { try { const s = require('../chat/chat-reads').windowStatsPeek({ since: nowMs - 7 * 86400000 }); return s ? s.chatters : 0; } catch { return 0; } })(),
         // New unique visitors this week (first-seen anon fingerprints) — a proxy for people who
         // showed up, not just those who chatted.
         weeklyVisitors: c(`SELECT COUNT(*) AS count FROM anon_ip_mappings WHERE created_at >= datetime('now', '-7 days')`),
         // The same two windows again, shifted back a week, so the hero can say whether this week
         // beat last week rather than just how big it was.
         prevWeeklyVisitors: c(`SELECT COUNT(*) AS count FROM anon_ip_mappings WHERE created_at >= datetime('now', '-14 days') AND created_at < datetime('now', '-7 days')`),
-        prevWeeklyActive: c(`SELECT COUNT(*) AS count FROM (
-                            SELECT DISTINCT 'u' || user_id AS id FROM chat_messages
-                              WHERE user_id IS NOT NULL AND COALESCE(is_deleted, 0) = 0 AND timestamp >= datetime('now', '-14 days') AND timestamp < datetime('now', '-7 days')
-                            UNION
-                            SELECT DISTINCT 'a' || anon_id FROM chat_messages
-                              WHERE anon_id IS NOT NULL AND COALESCE(is_deleted, 0) = 0 AND timestamp >= datetime('now', '-14 days') AND timestamp < datetime('now', '-7 days')
-                            UNION
-                            SELECT DISTINCT 'r' || source_platform || '|' || username FROM chat_messages
-                              WHERE source_platform IS NOT NULL AND source_platform <> '' AND COALESCE(is_deleted, 0) = 0 AND timestamp >= datetime('now', '-14 days') AND timestamp < datetime('now', '-7 days')
-                         )`),
+        prevWeeklyActive: (() => { try { const s = require('../chat/chat-reads').windowStatsPeek({ since: nowMs - 14 * 86400000, until: nowMs - 7 * 86400000 }); return s ? s.chatters : 0; } catch { return 0; } })(),
         liveNow: c(`SELECT COUNT(*) AS count FROM streams WHERE is_live = 1`),
         // Rolling last-day / week / month deltas ({ d, w, m }) for the hero stat tooltips + subs.
         recent: {
@@ -4009,7 +3997,16 @@ function _computeHomeStats() {
             vods: null,     // OpenVibe.Media (withArchiveStats)
             clips: null,
             aiMoments: winCount('stream_memories', 'created_at'),
-            messages: winCount('chat_messages', 'timestamp', 'COALESCE(is_deleted, 0) = 0'),
+            // OpenVibe.Chat's message counts over each window (Live's own tables when Live runs chat).
+            messages: (() => {
+                const w = (o) => { try { const s = require('../chat/chat-reads').windowStatsPeek(o); return s ? s.messages : 0; } catch { return 0; } };
+                return {
+                    d: w({ since: nowMs - 86400000 }),
+                    w: w({ since: nowMs - 7 * 86400000 }),
+                    m: w({ since: nowMs - 30 * 86400000 }),
+                    pw: w({ since: nowMs - 14 * 86400000, until: nowMs - 7 * 86400000 }),
+                };
+            })(),
             hours: null,    // OpenVibe.Media
             streamers: streamersWin(),
             // Live's `emotes` copy was unread since N+2 and is now dropped, so the
@@ -4776,12 +4773,9 @@ function getUserProfile(userId) {
                       openvibe_bucks_balance, openvibe_coins_balance, created_at, last_seen
                       FROM users WHERE id = ?`, [userId]);
     if (!user) return null;
-    user.messageCount = get(
-        `SELECT COUNT(*) as c FROM chat_messages
-         WHERE user_id = ? AND is_deleted = 0
-           AND (auto_delete_at IS NULL OR datetime(auto_delete_at) > CURRENT_TIMESTAMP)`,
-        [userId]
-    )?.c || 0;
+    // The user's chat total is OpenVibe.Chat's (Live's own tables when Live runs chat); a synchronous
+    // peek answers the last good count while Chat refreshes in the background.
+    user.messageCount = (() => { try { return require('../chat/chat-reads').userMessageCountPeek(userId); } catch { return 0; } })();
     user.followerCount = get('SELECT COUNT(*) as c FROM follows WHERE streamer_id = ?', [userId])?.c || 0;
     user.followingCount = get('SELECT COUNT(*) as c FROM follows WHERE follower_id = ?', [userId])?.c || 0;
     return user;
@@ -6650,21 +6644,13 @@ function computeAndCacheStreamAnalytics(streamId) {
     );
     const avgViewers = avgRow?.avg_vc || 0;
 
-    // Unique chatters
-    const chattersRow = get(
-        `SELECT COUNT(DISTINCT COALESCE(user_id, anon_id)) as cnt
-         FROM chat_messages WHERE stream_id = ? AND is_deleted = 0 AND is_global = 0`,
-        [streamId]
-    );
-    const uniqueChatters = chattersRow?.cnt || 0;
-
-    // Total messages
-    const msgsRow = get(
-        `SELECT COUNT(*) as cnt FROM chat_messages
-         WHERE stream_id = ? AND is_deleted = 0 AND is_global = 0 AND message_type = 'chat'`,
-        [streamId]
-    );
-    const totalMessages = msgsRow?.cnt || 0;
+    // Unique chatters + total messages come from OpenVibe.Chat (Live's own tables when Live runs
+    // chat). Chat's stream stats count every message type — Live used to keep only message_type='chat'
+    // and is_global=0 — and its numbers are the authority now. A synchronous peek answers the last good
+    // totals, so the stream-end write never blocks on Chat.
+    const chatTotals = (() => { try { return require('../chat/chat-reads').streamStatsPeek(streamId); } catch { return null; } })();
+    const uniqueChatters = chatTotals ? chatTotals.chatters : 0;
+    const totalMessages = chatTotals ? chatTotals.messages : 0;
 
     // Total watch minutes
     const watchRow = get(

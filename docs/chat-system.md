@@ -49,6 +49,14 @@ with the same WebSocket protocol and REST paths. `CHAT_AUTHORITY=chat` switches 
   (`POST /internal/chat-effects/mirror`) home stats, recaps, AI context, VOD chat replay and the
   `/api/mod` queues used to read. A Chat outage answers a cached or empty value, never a 500. Live's
   chat tables stay until T3 J4c drops them.
+- **What still reads the mirror.** Under `CHAT_AUTHORITY=chat` the readers above answer from Chat;
+  three still read Live's mirror tables and are why the mirror stays until T3 J4c drops it: the two
+  HOME_SERIES charts `messages` and `active` (Chat exposes no site-wide per-day message/chatter
+  series), the AI context's "first time chatting here" flag (`stream_first_chats`; Chat exposes no
+  first-chat read), and the RobotStreamer `!sound` lookup (`channel_sounds` by command; Chat's sounds
+  read answers only a count and the pending-asset list). The other mirror readers are on the
+  Live-runs-chat path `CHAT_AUTHORITY=chat` leaves unmounted — `dm_*` (no `/api/dm`), Live's chat
+  server, the deploy notice, the admin chat log and the leftover dev/rollback fallbacks.
 - **The six chat tables are Chat's** (roadmap T3): `channel_moderators`, `channel_moderation_settings`,
   `emotes`, `user_tags`, `chat_ai_summaries` and `chat_timeline_events`. Live keeps no copy and reads them
   only through [server/chat/moderation-client.js](../server/chat/moderation-client.js) — Chat's internal

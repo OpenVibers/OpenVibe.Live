@@ -678,6 +678,8 @@ class RobotStreamerService {
                 if (trimmed.startsWith('!')) {
                     const parts = trimmed.split(/\s+/);
                     const scmd = parts[0].slice(1).toLowerCase();
+                    // Chat owns channel_sounds but its internal read API offers only a count and the
+                    // pending-asset list, no lookup by command, so this stays on Live's mirror table.
                     if (scmd && db.getChannelSoundByCommand(stream.user_id, scmd)) {
                         if (delivery.ingress()) {
                             delivery.event({ kind: 'stream', id: stream.id }, {
