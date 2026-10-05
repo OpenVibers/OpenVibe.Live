@@ -2,14 +2,15 @@
 /**
  * The chat reads Live's own features still make, answered from OpenVibe.Chat (plan T3 J4b:
  * "Read Live's chat stats, queues and history from Chat"). Chat owns chat_messages, channel_sounds,
- * pending_ip_messages, hidden_relay_users and tts_voice_overrides, so Live's home stats, recaps,
- * AI context, admin console and mod queues read them through Chat's internal read API
- * (server/chat/chat-client.js). Live's own tables remain as Chat's read mirror until a later step
- * drops them, so the rollback path and the readers that have not moved yet keep working.
+ * pending_ip_messages, hidden_relay_users, tts_voice_overrides and dm_blocks, so Live's home stats,
+ * recaps, AI context, admin console, mod queues and the call-invite gate read them through Chat's
+ * internal read API (server/chat/chat-client.js). Chat's read mirror was retired on 2026-10-05
+ * (Chat #25 removed the sender, Live dropped the receiver), so Live's own copies of the tables Chat
+ * owns are frozen and NO remote answer falls back to them.
  *
- * Mode-aware: when CHAT_AUTHORITY=chat, every answer comes from Chat; otherwise Live runs chat
- * itself and the same call answers from Live's own tables (the rollback / dev path) — the caller
- * never has to know which.
+ * Mode-aware: when CHAT_AUTHORITY=chat, every answer comes from Chat; otherwise (dev, drills) the
+ * same call answers from Live's own tables — the caller never has to know which. Unsetting
+ * CHAT_AUTHORITY is not a rollback lever: Live runs no chat server any more either way.
  *
  * Caching: an answer is fresh for CACHE_TTL_MS. An async read past that asks Chat again; a peek
  * (for a caller that cannot await) answers the last good value while that refresh runs, so a peek
@@ -545,10 +546,11 @@ function spikeOffsets(streamId, bucketSec = 30, topN = 8, sinceMs) {
 }
 
 // ── First chat (the welcome check) ───────────────────────────────────────────
-// Chat owns stream_first_chats; the AI context's "first time chatting here" flag asks Chat's
-// first-chat read. A false answer (they have chatted here) is stable and cached longer; a true
-// answer flips the moment they chat, so it is cached only briefly. The sync caller uses
-// firstChatPeek; on a cold cache or a Chat outage it answers Live's own (mirror-kept) table.
+// Chat owns stream_first_chats; the AI context's "first time chatting here" flag and the relay
+// welcome ask Chat's first-chat read. A false answer (they have chatted here) is stable and cached
+// longer; a true answer flips the moment they chat, so it is cached only briefly. The sync caller
+// uses firstChatPeek. In chat mode a cold cache or a Chat outage answers false — Live's own copy is
+// a frozen pre-retirement snapshot and is never consulted; it answers only when Live runs chat.
 const FIRST_CHAT_TTL_FALSE = 5 * 60_000;   // has chatted here: stable
 const FIRST_CHAT_TTL_TRUE = CACHE_TTL_MS;  // first time: flips as soon as they chat
 
@@ -569,9 +571,12 @@ function firstChat(channelUserId, identity) {
     if (!channelId || !key) return Promise.resolve(false);
     return load(`fc:${channelId}:${key}`, firstChatRemote(channelId, key), () => firstChatLocal(key, channelId), {
         ttl: FIRST_CHAT_TTL_TRUE, ttlFor: (v) => (v === false ? FIRST_CHAT_TTL_FALSE : FIRST_CHAT_TTL_TRUE),
-    }).then((v) => (v == null ? firstChatLocal(key, channelId) : v === true));
+    }).then((v) => {
+        if (v === true || v === false) return v;
+        return remote() ? false : firstChatLocal(key, channelId);   // Chat unreachable: not first, never Live's frozen copy
+    });
 }
-/** The synchronous form (the AI persona prompt): the cached answer, else Live's own table. */
+/** The synchronous form (the AI persona prompt): the cached Chat answer, else Live's own table when Live runs chat. */
 function firstChatPeek(channelUserId, identity) {
     const channelId = Number(channelUserId) || 0;
     const key = String(identity || '');
@@ -579,7 +584,8 @@ function firstChatPeek(channelUserId, identity) {
     const v = peek(`fc:${channelId}:${key}`, firstChatRemote(channelId, key), () => firstChatLocal(key, channelId), {
         ttl: FIRST_CHAT_TTL_TRUE, ttlFor: (x) => (x === false ? FIRST_CHAT_TTL_FALSE : FIRST_CHAT_TTL_TRUE),
     });
-    return (v === true || v === false) ? v : firstChatLocal(key, channelId);
+    if (v === true || v === false) return v;
+    return remote() ? false : firstChatLocal(key, channelId);       // Chat unreachable: not first, never Live's frozen copy
 }
 
 // ── Moderation queues ─────────────────────────────────────────────────────────
@@ -627,32 +633,32 @@ function relayUser(id) {
  * Is this relay identity hidden (banned) in this channel or site-wide? Synchronous: the relay
  * path can carry a message per second and must not wait on an HTTP call.
  *
- * Live's own table OR Chat's list (the #28 rule): a hide the mirror applied wins at once even when a
- * cached Chat list fetched just before it lacks the row, and a Chat row hides even before the mirror
- * catches up. A Live-route hide/unhide invalidates the cached list; a cold cache or a Chat outage
- * falls to Live's own table and fails OPEN, never dropping a relayed line.
+ * Chat owns hidden_relay_users, so in chat mode Chat's list is the only truth: the fresh answer
+ * when there is one, else the last good list while a refresh runs in the background. A cold cache
+ * (Chat has never answered) fails OPEN — never drop a relayed line on a Chat outage — and Live's
+ * own copy (frozen since the mirror's retirement) is never consulted. A Live-route hide/unhide
+ * invalidates the cached list, so the next check re-asks Chat. Live's own table answers only when
+ * Live is not in chat mode.
  */
 function isRelayUserHidden(channelId, platform, username) {
     const localHidden = () => { try { return !!local().isRelayUserHidden(channelId, platform, username); } catch { return false; } };
     if (!remote()) return localHidden();
-    // Live's own table OR Chat's fresh list — the rule agreed with #28. A fresh Chat list alone
-    // would hide a local hide the mirror applied from any other writer (another Live instance, or a
-    // write straight in Chat) for up to CACHE_TTL_MS. A Live-route unhide stays immediate: mod-routes
-    // drops the `hru:` entry on every hide/unhide, so the next check re-asks Chat. Until Chat has
-    // answered (cold cache) or while it is unreachable, Live's own table answers and fails OPEN —
-    // never drop a relayed line on a Chat outage.
     const key = `hru:${Number(channelId) || 0}`;
-    const hit = fresh(key);
-    if (hit && Array.isArray(hit.value)) {
-        if (hit.value.some((r) => String(r.platform) === String(platform) && String(r.external_username) === String(username))) return true;
-        return localHidden();   // no fresh Chat match: a local hide still applies
-    }
-    load(key, async () => {
+    const matches = (list) => list.some((r) => String(r.platform) === String(platform) && String(r.external_username) === String(username));
+    const read = async () => {
         const out = await client.readRelayUsers({ channel_id: Number(channelId) || undefined, limit: 500 });
         if (!out || !Array.isArray(out.relay_users)) throw unavailable('hidden relay users');
         return out.relay_users;
-    }, () => []).catch(() => { /* warms the cache for the next check */ });
-    return localHidden();
+    };
+    const hit = fresh(key);
+    if (hit && Array.isArray(hit.value)) return matches(hit.value);
+    const last = kept(key);
+    if (last && Array.isArray(last.value)) {
+        load(key, read, () => []).catch(() => { /* refresh for the next check */ });
+        return matches(last.value);   // the last good list, while the refresh runs
+    }
+    load(key, read, () => []).catch(() => { /* warms the cache for the next check */ });
+    return false;                     // never answered: fail open, never Live's frozen table
 }
 
 /** A user's TTS voice override: { voice, pitch, speed, gap } | null. Live, never cached. */
@@ -667,22 +673,17 @@ function ttsOverride(identityKey) {
 }
 /**
  * The TTS engine's synchronous read: the last good override while Chat refreshes in the background.
- * On a cache miss or a Chat failure it answers Live's own mirror table (which Chat keeps current),
- * so the first line after a restart, an eviction or during a Chat outage is still spoken with the
- * override rather than the auto voice — the same fallback `isRelayUserHidden` uses.
+ * In chat mode a cache miss or a Chat failure answers null (the auto voice) — Live's own copy is a
+ * frozen pre-retirement snapshot and is never consulted; it answers only when Live runs chat.
  */
 function ttsOverridePeek(identityKey) {
     const k = String(identityKey || '').trim().toLowerCase();
     if (!k) return null;
-    const localOverride = () => local().getTtsVoiceOverride(k);
-    const got = peek(`ttsp:${k}`, async () => {
+    return peek(`ttsp:${k}`, async () => {
         const out = await client.readTtsOverride({ identity_key: k });
         if (!out) throw unavailable('tts override');
         return out.tts_override || null;
-    }, localOverride);
-    if (got) return got;
-    if (!remote()) return null;   // peek already answered from Live's own table
-    try { return localOverride(); } catch { return null; }
+    }, () => local().getTtsVoiceOverride(k));
 }
 
 // ── Channel sounds ────────────────────────────────────────────────────────────
@@ -703,32 +704,56 @@ function soundCount(ownerId) {
 const normalizeCommand = (command) => String(command || '').trim().toLowerCase().replace(/^!+/, '');
 async function remoteSoundByCommand(ownerId, command) {
     const out = await client.readSoundByCommand({ channel_id: ownerId, command });
-    if (out == null) throw unavailable('sound by command');   // unreachable: keep / fall back
+    if (out == null) throw unavailable('sound by command');   // unreachable: keep the last good answer
     return out.sound || false;                                 // the sound, or Chat's definitive none
 }
-/** The approved sound a !command plays (or null); Chat owns the row, Live's table is the fallback. */
+/** The approved sound a !command plays (or null). Chat owns the row in chat mode; Live's own table answers only when Live runs chat. */
 function soundByCommand(ownerId, command) {
     const id = Number(ownerId) || 0;
     const cmd = normalizeCommand(command);
     if (!id || !cmd) return Promise.resolve(null);
     const localFn = () => local().getChannelSoundByCommand(id, cmd) || null;
-    return load(`sbc:${id}:${cmd}`, () => remoteSoundByCommand(id, cmd), localFn).then((v) => {
-        if (v === false) return null;     // Chat answered: no such sound
-        if (v) return v;
-        return safeLocal(localFn, null);  // cold / outage: Live's own table
-    });
+    return load(`sbc:${id}:${cmd}`, () => remoteSoundByCommand(id, cmd), localFn)
+        .then((v) => (v && v !== false ? v : null));   // false / null: Chat's none, or unreachable — never Live's frozen row
 }
-/** The synchronous form (the RobotStreamer !sound lookup): cached answer, else Live's own table. */
+/** The synchronous form (the RobotStreamer !sound lookup): the cached Chat answer, else null. */
 function soundByCommandPeek(ownerId, command) {
     const id = Number(ownerId) || 0;
     const cmd = normalizeCommand(command);
     if (!id || !cmd) return null;
-    const localFn = () => local().getChannelSoundByCommand(id, cmd) || null;
-    const v = peek(`sbc:${id}:${cmd}`, () => remoteSoundByCommand(id, cmd), localFn);
-    if (v) return v;
-    if (v === false) return null;         // Chat answered: no such sound
-    if (!remote()) return null;           // the peek already answered from Live's own table
-    return safeLocal(localFn, null);      // cold / Chat unreachable: Live's mirror-filled table
+    const v = peek(`sbc:${id}:${cmd}`, () => remoteSoundByCommand(id, cmd), () => local().getChannelSoundByCommand(id, cmd) || null);
+    return v && v !== false ? v : null;
+}
+
+// ── DM blocks (the call-invite gate) ─────────────────────────────────────────
+const DM_BLOCK_TTL_FALSE = 30_000;   // not blocked: blocks are rare, 30 s is plenty
+const DM_BLOCK_TTL_TRUE = 5_000;     // blocked: an unblock should lift a ring quickly
+/**
+ * Has either of these users blocked the other? Chat owns dm_blocks, so chat mode asks Chat's
+ * block-state read (chat.messages.read); Live's own dm.js table answers only when Live is not in
+ * chat mode. Cached briefly (30 s when not blocked, 5 s when blocked; nothing invalidates it —
+ * blocks are rare).
+ *
+ * `strict`: past the cache and with Chat unreachable the answer is null, never the last good
+ * value, and the call-invite route fails closed on it — refusing a ring is far better than ringing
+ * someone who blocked the caller.
+ */
+function dmBlocked(a, b) {
+    const x = Number(a) || 0;
+    const y = Number(b) || 0;
+    if (!x || !y) return Promise.resolve(null);
+    const key = `dmb:${Math.min(x, y)}:${Math.max(x, y)}`;
+    return load(key, async () => {
+        const out = await client.readDmBlockState({ a: x, b: y });
+        if (!out || typeof out.blocked !== 'boolean') throw unavailable('dm block state');
+        return out.blocked;
+    }, () => safeLocal(() => require('./dm').isBlockedEither(x, y), null), {
+        strict: true,
+        ttlFor: (v) => (v === true ? DM_BLOCK_TTL_TRUE : DM_BLOCK_TTL_FALSE),
+    }).catch((err) => {
+        if (err && err.unavailable) return null;
+        throw err;
+    });
 }
 
 /**
@@ -783,6 +808,6 @@ module.exports = {
     messageById, channelMessages, channelMessagesPeek, userHistory, relayHistory, channelSamples, searchMessages,
     liveChatBuckets, recentChatText, spikeOffsets, firstChat, firstChatPeek,
     pendingIp, relayUsers, relayUser, ttsOverride, ttsOverridePeek, isRelayUserHidden,
-    soundCount, soundByCommand, soundByCommandPeek, pendingSounds, recordSoundAsset, invalidate,
+    soundCount, soundByCommand, soundByCommandPeek, dmBlocked, pendingSounds, recordSoundAsset, invalidate,
     _reset, _age, _size, _cacheMax, CACHE_TTL_MS, CACHE_KEEP_MS,
 };

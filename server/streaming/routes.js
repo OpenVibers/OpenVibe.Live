@@ -1368,7 +1368,7 @@ router.delete('/voice-channels/:channelId', requireAuth, (req, res) => {
 });
 
 const _callUserRate = new Map(); // userId → [timestamps]
-router.post('/voice-channels/call-user', requireAuth, (req, res) => {
+router.post('/voice-channels/call-user', requireAuth, async (req, res) => {
     try {
         // Six calls a minute per account: a ring is a notification on someone else's screen.
         const now = Date.now();
@@ -1383,7 +1383,15 @@ router.post('/voice-channels/call-user', requireAuth, (req, res) => {
         if (!targetUser && targetUsername) targetUser = db.getUserByUsername(targetUsername);
         if (!targetUser) return res.status(404).json({ error: 'User not found' });
         if (targetUser.id === req.user.id) return res.status(400).json({ error: 'You cannot call yourself' });
-        try { const dm = require('../chat/dm'); if (dm.isBlockedEither && dm.isBlockedEither(req.user.id, targetUser.id)) return res.status(403).json({ error: 'You cannot call this user' }); } catch { /* */ }
+        // Blocks live in Chat (dm_blocks is Chat's table), so the check goes through chat-reads. On an
+        // unverifiable answer — a stale cache with Chat unreachable — the ring is REFUSED: ringing
+        // someone who blocked the caller is the worse failure, and 'try again shortly' is honest.
+        const blocked = await chatReads.dmBlocked(req.user.id, targetUser.id).catch(() => null);
+        if (blocked !== false) {
+            return blocked === true
+                ? res.status(403).json({ error: 'You cannot call this user' })
+                : res.status(503).json({ error: 'Could not check the block list — try again shortly' });
+        }
 
         // Reuse caller's existing temp channel if present; otherwise create a private one — a
         // 1:1 call is not something the whole site should see listed and be able to walk into.

@@ -24,6 +24,11 @@ const chatReads = require('../chat/chat-reads');
 const RECONNECT_BASE_MS = 5000;
 const RECONNECT_MAX_MS = 60000;
 
+// Chatters this process has already welcomed (`<channel user id>:ext:<prefixed username>`), so a
+// second line arriving before Chat's first-chat answer reflects the first is not welcomed twice.
+const welcomedRelayUsers = new Set();
+const WELCOMED_MAX = 5000;
+
 // Platform-specific colors for chat display
 const PLATFORM_COLORS = {
     twitch: '#9146ff',
@@ -387,8 +392,9 @@ class ChatRelayService {
         const prefixedUsername = `[${label}] ${username}`;
 
         // Check if this relay user is hidden/banned. Chat's queue answers in chat mode (a cached
-        // peek — this path must not wait on an HTTP call), Live's own mirror-fed table otherwise;
-        // Chat unreachable falls back to that table, so a Chat outage never un-hides anyone.
+        // peek — this path must not wait on an HTTP call): the fresh list, else the last good one.
+        // A cold cache fails open, so a Chat outage never drops relayed lines; Live's own frozen
+        // table is consulted only when Live is not in chat mode.
         try {
             const stream = db.getStreamById(bridge.streamId);
             const channel = stream?.channel_id ? db.getChannelById(stream.channel_id) : (stream ? db.getChannelByUserId(stream.user_id) : null);
@@ -398,7 +404,11 @@ class ChatRelayService {
         } catch { /* non-critical — allow message through on error */ }
 
         const delivery = require('../chat/chat-delivery');
-        if (delivery.ingress()) return this._deliverToChat(delivery, bridge, username, prefixedUsername, color, extras, String(message || ''));
+        if (delivery.ingress()) {
+            // Not awaited: the relay socket hands lines in sequence, and the welcome check ahead of
+            // the send must not stall it. The catch keeps a surprise rejection off the process.
+            return this._deliverToChat(delivery, bridge, username, prefixedUsername, color, extras, String(message || '')).catch(() => { /* logged in chat-reads / chat-client */ });
+        }
 
         // Record this relay user's activity; their first message becomes a join date.
         try { db.recordRelayUser(bridge.platform, username); } catch { /* non-critical */ }
@@ -496,13 +506,25 @@ class ChatRelayService {
         } catch { /* non-critical */ }
     }
 
-    /** Chat ingress: Chat persists, broadcasts, reads aloud and records the first chat in one call. */
-    _deliverToChat(delivery, bridge, username, prefixedUsername, color, extras, message) {
+    /**
+     * Chat ingress: Chat persists, broadcasts, reads aloud and records the first chat in one call.
+     * The welcome decision asks Chat's first-chat read BEFORE the message send — Chat records the
+     * first chat on that call, so a decision after it would never see `first` — and never Live's
+     * own pre-retirement copy. A second line within Chat's short "first" cache window is deduped
+     * in-process; the cached answer is dropped after the send so the next check sees Chat's record.
+     */
+    async _deliverToChat(delivery, bridge, username, prefixedUsername, color, extras, message) {
         let first = false;
+        let welcomeKey = null;
         try {
             const stream = db.getStreamById(bridge.streamId);
-            first = !!(stream?.user_id && db.isFirstChatInChannel(`ext:${prefixedUsername}`, stream.user_id));
-        } catch { /* non-critical */ }
+            const chatterKey = `ext:${prefixedUsername}`;
+            if (stream?.user_id) {
+                welcomeKey = `${stream.user_id}:${chatterKey}`;
+                first = await chatReads.firstChat(stream.user_id, chatterKey);
+                if (first && welcomedRelayUsers.has(welcomeKey)) first = false;
+            }
+        } catch { /* non-critical — no welcome rather than a wrong one */ }
         delivery.moderate('relay-record', { platform: bridge.platform, username });
         delivery.after(delivery.message({
             stream_id: bridge.streamId, username: prefixedUsername, message, message_type: 'chat', is_global: false,
@@ -511,9 +533,9 @@ class ChatRelayService {
             tts: { identity_key: `${bridge.platform}:${prefixedUsername}` },
         }), (id) => this._relayFollowUps(bridge, username, prefixedUsername, message, extras, id));
         if (first) {
-            // Live keeps its own first-chat record (the tables stay until a later step drops them) so
-            // the next relayed line from this user is not welcomed again.
-            try { db.recordFirstChat(`ext:${prefixedUsername}`, db.getStreamById(bridge.streamId).user_id); } catch { /* */ }
+            if (welcomedRelayUsers.size >= WELCOMED_MAX) welcomedRelayUsers.clear();
+            welcomedRelayUsers.add(welcomeKey);
+            chatReads.invalidate(`fc:${welcomeKey}`);   // Chat's cached `first` answer is about to be stale
             delivery.event({ kind: 'stream', id: bridge.streamId }, {
                 type: 'system',
                 message: `Welcome ${username} from ${PLATFORM_LABELS[bridge.platform] || bridge.platform}! 👋`,

@@ -47,7 +47,7 @@ const network = http.createServer((req, res) => {
         res.setHeader('Content-Type', 'application/json');
         if (req.url === '/oauth/token') {
             const f = new URLSearchParams(raw);
-            return res.end(JSON.stringify({ access_token: serviceToken(['chat.message.send', 'chat.event.publish', 'chat.moderation.write', 'chat.cache.invalidate', 'chat.presence.read'], { aud: f.get('audience'), sub: 'svc:live' }), expires_in: 300 }));
+            return res.end(JSON.stringify({ access_token: serviceToken(['chat.message.send', 'chat.event.publish', 'chat.moderation.write', 'chat.cache.invalidate', 'chat.presence.read', 'chat.messages.read'], { aud: f.get('audience'), sub: 'svc:live' }), expires_in: 300 }));
         }
         res.statusCode = 404; res.end('{}');
     });
@@ -55,14 +55,15 @@ const network = http.createServer((req, res) => {
 // Chat's internal read API (roadmap T3 J4b): Live reads stats, queues, history and sounds through
 // these. The stub answers from Live's own tables (emulating Chat's copy) so the seeds apply, and
 // `readState.down` fails every read the way a Chat outage does.
-const readState = { down: false, soundAssetDown: false, relayOnly: [], msgById: 0, firstChatCalls: 0 };
+const readState = { down: false, soundAssetDown: false, relayOnly: [], msgById: 0, firstChatCalls: 0, dmBlocked: false, blockStateDown: false };
 function readReply(req, res, raw) {
     const url = String(req.url);
     const path = url.split('?')[0];
     const q = new URLSearchParams(url.split('?')[1] || '');
     const isRead = path === '/internal/chat/stats' || path === '/internal/chat/messages' || path === '/internal/chat/first-chat'
         || path.startsWith('/internal/chat/moderation/') || path === '/internal/chat/sounds'
-        || path === '/internal/chat/sounds/by-command' || path === '/internal/chat/sounds/asset';
+        || path === '/internal/chat/sounds/by-command' || path === '/internal/chat/sounds/asset'
+        || path === '/internal/chat/dm/block-state';
     if (!isRead) return false;
     if (readState.down) { res.statusCode = 503; res.end(JSON.stringify({ ok: false, error: 'Chat read unavailable' })); return true; }
     if (path === '/internal/chat/sounds/asset' && readState.soundAssetDown) { res.statusCode = 503; res.end(JSON.stringify({ ok: false, error: 'Chat sound write unavailable' })); return true; }
@@ -99,6 +100,10 @@ function readReply(req, res, raw) {
         if (b.kind === 'user' && b.user_id != null) { where.push('user_id = ?'); params.push(Number(b.user_id)); }
         const r = d2.get(`SELECT COUNT(*) AS messages, COUNT(DISTINCT ${CHATTER}) AS chatters FROM chat_messages WHERE ${where.join(' AND ')}`, params);
         return ok({ messages: Number(r.messages), chatters: Number(r.chatters) });
+    }
+    if (path === '/internal/chat/dm/block-state') {
+        if (readState.blockStateDown) { res.statusCode = 503; res.end(JSON.stringify({ ok: false, error: 'Chat read unavailable' })); return true; }
+        return ok({ blocked: !!readState.dmBlocked });
     }
     if (path === '/internal/chat/first-chat') {
         readState.firstChatCalls++;
@@ -210,6 +215,11 @@ const chat = http.createServer((req, res) => {
 
 const listen = (s) => new Promise((r) => s.listen(0, '127.0.0.1', () => r(s.address().port)));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const waitFor = async (pred, what, ms = 3000) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end) { const v = pred(); if (v) return v; await sleep(10); }
+    throw new Error(`timed out waiting for ${what}`);
+};
 
 (async () => {
     process.env.OV_NETWORK_INTERNAL_URL = `http://127.0.0.1:${await listen(network)}`;
@@ -267,6 +277,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     app.use('/internal/chat-context', routes.contextRouter);
     app.use('/internal/chat-effects', routes.effectsRouter);
     app.use('/api/mod', require('../server/admin/mod-routes'));
+    app.use('/api/streams', require('../server/streaming/routes'));
     const port = await listen(http.createServer(app));
     const call = async (method, p, { token, body, headers = {} } = {}) => {
         const res = await fetch(`http://127.0.0.1:${port}${p}`, {
@@ -463,8 +474,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
             assert.ok(chatReads.siteStatsPeek(), 'the background warm-up answered');
 
             // (2)(4) A TTS override survives a TTL and a Chat outage (the engine reads it
-            // synchronously); a cold peek answers Live's own mirror table, not the auto voice.
-            assert.strictEqual(chatReads.ttsOverridePeek('user:viewer').voice, 'en+f3', 'a cold peek falls back to Live\'s own table');
+            // synchronously); in chat mode a cold peek answers null, never Live's frozen copy.
+            assert.strictEqual(chatReads.ttsOverridePeek('user:viewer'), null, 'a cold peek answers null, never Live\'s frozen table');
             for (let i = 0; i < 300 && !chatReads.ttsOverridePeek('user:viewer'); i++) await sleep(10);
             assert.strictEqual(chatReads.ttsOverridePeek('user:viewer').voice, 'en+f3');
             chatReads._age(chatReads.CACHE_TTL_MS + 1000, 'ttsp:');
@@ -510,17 +521,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
             const cs = await chatReads.channelSamples(streamer, { relay: { platform: 'twitch', rawUsername: 'alice' }, limit: 10 });
             assert.strictEqual(cs.length, 1, 'a relay clone sample finds the prefixed row');
 
-            // (1) Hidden relay users: Live's mirror row hides at once; Chat's queue hides even when
-            // the mirror has not seen it; a Chat outage fails open to Live's own table.
-            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'twitch', 'alice'), true, 'the mirror row hides at once');
+            // (1) Hidden relay users come from Chat's list only in chat mode: a cold cache fails
+            // open and warms in the background, and a Chat outage answers the last good list.
+            chatReads._reset();
+            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'twitch', 'alice'), false, 'a cold cache fails open');
             readState.relayOnly = [{ id: 999999, channel_id: channel.id, platform: 'youtube', external_username: 'ghost' }];
             assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'youtube', 'ghost'), false, 'the first check warms Chat in the background');
             for (let i = 0; i < 300 && !chatReads.isRelayUserHidden(channel.id, 'youtube', 'ghost'); i++) await sleep(10);
-            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'youtube', 'ghost'), true, "Chat's queue hides a user Live's mirror has not seen");
+            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'youtube', 'ghost'), true, "Chat's queue hides a user");
+            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'twitch', 'alice'), true, "Chat's copy carries alice (the stub reads the same table)");
             readState.down = true;
             chatReads._age(chatReads.CACHE_TTL_MS + 1000, 'hru:');
-            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'youtube', 'ghost'), false, "Chat unreachable fails open to Live's own table");
-            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'twitch', 'alice'), true, "Live's own hidden row still applies");
+            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'youtube', 'ghost'), true, 'Chat unreachable answers the last good list');
+            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'twitch', 'nobody'), false, 'a name no list carries stays unhidden');
             readState.down = false;
             readState.relayOnly = [];
             chatReads._reset();
@@ -607,9 +620,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
                 chatReads._reset();
             }
 
-            // (4) A cold or outage peek answers Live's own override table, not the auto voice.
+            // (4) In chat mode a cold or outage peek answers null, never Live's frozen override table.
+            chatReads._reset();
             readState.down = true;
-            assert.strictEqual(chatReads.ttsOverridePeek('user:viewer').voice, 'en+f3', 'a peek falls back to Live\'s own table');
+            assert.strictEqual(chatReads.ttsOverridePeek('user:viewer'), null, 'a peek answers null, never Live\'s frozen table');
             readState.down = false;
             chatReads._reset();
 
@@ -721,8 +735,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
                 chatReads._reset();
             }
 
-            // (3) Live's own hidden row OR Chat's fresh list — a local hide the mirror applied still
-            // hides even when a fresh Chat list lacks it (the #28 rule, restored).
+            // (3) Live's own hidden copy is frozen and dead weight in chat mode: a stale local hide
+            // that Chat's list does not carry must not hide anyone (the mirror no longer keeps it in step).
             {
                 const chatClient = require('../server/chat/chat-client');
                 const realReadRelayUsers = chatClient.readRelayUsers;
@@ -732,11 +746,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
                 chatClient.readRelayUsers = async () => ({ relay_users: [] });   // Chat's list holds nothing
                 chatReads._reset();
                 try {
-                    d2.run('DELETE FROM hidden_relay_users WHERE channel_id = ?', [freshCh]);
-                    chatReads.isRelayUserHidden(freshCh, 'twitch', 'nobody');   // warm Chat's fresh (empty) list
-                    for (let i = 0; i < 100; i++) await sleep(10);
+                    assert.strictEqual(d2.isRelayUserHidden(freshCh, 'twitch', 'localonly'), false, 'no local row yet');
                     d2.run("INSERT INTO hidden_relay_users (channel_id, platform, external_username, action, created_by) VALUES (?, 'twitch', 'localonly', 'hide', ?)", [freshCh, streamer]);
-                    assert.strictEqual(chatReads.isRelayUserHidden(freshCh, 'twitch', 'localonly'), true, "Live's own hidden row wins over a fresh Chat list that lacks it");
+                    assert.strictEqual(d2.isRelayUserHidden(freshCh, 'twitch', 'localonly'), true, "Live's own row is there");
+                    assert.strictEqual(chatReads.isRelayUserHidden(freshCh, 'twitch', 'localonly'), false, 'a cold cache fails open, never Live\'s row');
+                    for (let i = 0; i < 300 && chatReads._size() === 0; i++) await sleep(10);
+                    assert.ok(chatReads._size() > 0, 'the background read warmed the cache');
+                    assert.strictEqual(chatReads.isRelayUserHidden(freshCh, 'twitch', 'localonly'), false, "Live's stale local hide is ignored — Chat's list is the truth");
                 } finally {
                     chatClient.readRelayUsers = realReadRelayUsers;
                     d2.run('DELETE FROM hidden_relay_users WHERE channel_id = ?', [freshCh]);
@@ -849,48 +865,166 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
             await chatReads.firstChat(streamer, `user:${viewer}`);
             assert.strictEqual(readState.firstChatCalls, 1, 'a true answer is re-asked after the short TTL');
             chatReads._reset();
-            d2.run('INSERT INTO stream_first_chats (chatter_key, channel_user_id) VALUES (?, ?)', [`user:${viewer}`, streamer]);
+            d2.run('DELETE FROM stream_first_chats WHERE chatter_key = ?', [`user:${viewer}`]);
+            assert.strictEqual(d2.isFirstChatInChannel(`user:${viewer}`, streamer), true, 'Live\'s frozen table would say first');
             readState.down = true;
-            assert.strictEqual(chatReads.firstChatPeek(streamer, `user:${viewer}`), false, 'a cold + down peek falls to Live\'s own table');
+            assert.strictEqual(chatReads.firstChatPeek(streamer, `user:${viewer}`), false, 'a cold + down peek answers not-first, never Live\'s frozen table');
             readState.down = false;
             chatReads._reset();
 
             // The AI context passes `user:<user_id>`, never the username: a row keyed by the numeric id
             // suppresses the welcome flag, where the old `user:<username>` key would have missed it.
+            // Its peek is synchronous, so each case warms Chat's answer first.
             d2.run("INSERT INTO chat_messages (user_id, username, message, message_type, channel_user_id, timestamp) VALUES (?, 'viewer', 'hi there', 'chat', ?, ?)", [viewer, streamer, sqlNow()]);
             await chatReads.channelMessages(streamer, 40);
             const context = require('../server/ai/context');
             const ctxStream = db.getStreamById(streamId);
             const greet = { remember_viewers: true, greet_first_timers: true, max_open_threads: 3, hear_enabled: false };
+            d2.run('INSERT INTO stream_first_chats (chatter_key, channel_user_id) VALUES (?, ?)', [`user:${viewer}`, streamer]);
             chatReads.invalidate('fc:');
+            await chatReads.firstChat(streamer, `user:${viewer}`);   // warm: the context's peek cannot await
             let tail = context.volatileTail({ userId: streamer, stream: ctxStream, settings: greet, sinceChatId: 0, botNames: new Set() });
             assert.ok(!/first time chatting here/.test(tail.text), 'a user with a recorded first chat is not greeted again');
             d2.run('DELETE FROM stream_first_chats WHERE chatter_key = ?', [`user:${viewer}`]);
             chatReads.invalidate('fc:');
+            await chatReads.firstChat(streamer, `user:${viewer}`);
             tail = context.volatileTail({ userId: streamer, stream: ctxStream, settings: greet, sinceChatId: 0, botNames: new Set() });
             assert.ok(/first time chatting here/.test(tail.text), 'a new user is flagged first time (user:<id> identity)');
             chatReads._reset();
 
-            // ── Sounds by command: Chat owns the row; a 404 is authoritative; a cold/down peek falls
-            // to Live's own table. ──
+            // ── Sounds by command: Chat owns the row; a 404 is authoritative; a cold/down peek
+            // answers null, never Live's own frozen table. ──
             d2.run('DELETE FROM channel_sounds WHERE channel_owner_id = ?', [streamer]);
             d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 'honk', '/sounds/h.mp3', ?)", [streamer, streamer]);
             chatReads._reset();
+            assert.strictEqual(chatReads.soundByCommandPeek(streamer, 'honk'), null, 'a cold peek answers null, never Live\'s frozen table');
+            for (let i = 0; i < 300 && !chatReads.soundByCommandPeek(streamer, 'honk'); i++) await sleep(10);
             const honk = chatReads.soundByCommandPeek(streamer, 'honk');
-            assert.ok(honk && honk.command === 'honk', 'Chat answers the sound by command');
+            assert.ok(honk && honk.command === 'honk', 'the warmed peek answers Chat\'s sound by command');
             assert.strictEqual(chatReads.soundByCommandPeek(streamer, '!HONK').command, 'honk', 'the command is normalized');
             assert.strictEqual(await chatReads.soundByCommand(streamer, 'nope'), null, 'Chat: no such sound');
             d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 'nope', '/sounds/n.mp3', ?)", [streamer, streamer]);
             assert.strictEqual(chatReads.soundByCommandPeek(streamer, 'nope'), null, 'a Chat 404 is cached: Live\'s own row is not used');
             chatReads._reset();
             readState.down = true;
-            assert.ok(chatReads.soundByCommandPeek(streamer, 'honk'), 'a cold + down peek falls back to Live\'s own table');
+            assert.strictEqual(chatReads.soundByCommandPeek(streamer, 'honk'), null, 'a cold + down peek answers null, never Live\'s frozen table');
             readState.down = false;
             chatReads._reset();
             d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 'bare404', '/sounds/b.mp3', ?)", [streamer, streamer]);
             const bare = await chatReads.soundByCommand(streamer, 'bare404');
-            assert.ok(bare && bare.command === 'bare404', 'a 404 without Chat\'s own body is not "no such sound": Live\'s table answers');
+            assert.strictEqual(bare, null, 'a 404 without Chat\'s own body is not "no such sound": null, never Live\'s table');
             chatReads._reset();
+        }
+
+        // 11c. The mirror's retirement, checked where it would bite: a stale local row must not
+        // answer a chat-mode read, the relay welcome asks Chat's first-chat, an asset removal uses
+        // the Media id Chat sent, and a call invite fails closed when the block state is unknown.
+        {
+            const chatReads = require('../server/chat/chat-reads');
+            const chatClient = require('../server/chat/chat-client');
+            const d2 = require('../server/db/database');
+
+            // (1) ttsOverridePeek ignores Live's stale override: Chat says "none".
+            {
+                const realReadTts = chatClient.readTtsOverride;
+                chatClient.readTtsOverride = async () => ({ tts_override: null });
+                chatReads._reset();
+                d2.run("INSERT OR REPLACE INTO tts_voice_overrides (identity_key, voice, pitch, speed, gap, set_by) VALUES ('user:stale', 'en+m7', 99, 200, 0, ?)", [admin]);
+                try {
+                    assert.strictEqual(chatReads.ttsOverridePeek('user:stale'), null, "Chat's 'no override' wins over Live's stale row");
+                    assert.strictEqual(chatReads.ttsOverridePeek('user:stale'), null, 'and stays null from the cache');
+                } finally {
+                    chatClient.readTtsOverride = realReadTts;
+                    d2.run("DELETE FROM tts_voice_overrides WHERE identity_key = 'user:stale'");
+                    chatReads._reset();
+                }
+            }
+
+            // (2) The relay welcome asks Chat's first-chat read before the message send; Live's own
+            // frozen stream_first_chats neither welcomes nor suppresses.
+            {
+                const relay = require('../server/integrations/chat-relay-service');
+                const realReadFirstChat = chatClient.readFirstChat;
+                const realFollowUps = relay._relayFollowUps;
+                const welcomes = (name) => ingressCalls.filter((c) => c.family === 'events' && c.body.frame && c.body.frame.type === 'system' && new RegExp(`Welcome ${name}\\b`).test(String(c.body.frame.message)));
+                const relayed = (name) => ingressCalls.filter((c) => c.family === 'messages' && c.body.username === `[Twitch] ${name}`);
+                relay._relayFollowUps = () => {};   // the welcome decision is what this checks
+                chatReads._reset();
+                try {
+                    // Chat: not first, and Live's copy has no row either — nothing to welcome.
+                    d2.run('DELETE FROM stream_first_chats WHERE chatter_key = ?', ['ext:[Twitch] carol']);
+                    chatClient.readFirstChat = async () => ({ first: false });
+                    await relay._broadcastMessage({ platform: 'twitch', streamId }, 'carol', 'hello from twitch', {});
+                    await waitFor(() => relayed('carol').length, 'the relayed line');
+                    await sleep(50);
+                    assert.strictEqual(welcomes('carol').length, 0, "Chat's not-first answer suppresses the welcome");
+
+                    // Chat: first, even though Live's frozen copy has a row (it used to suppress it).
+                    d2.run('INSERT INTO stream_first_chats (chatter_key, channel_user_id) VALUES (?, ?)', ['ext:[Twitch] dave', streamer]);
+                    chatClient.readFirstChat = async () => ({ first: true });
+                    await relay._broadcastMessage({ platform: 'twitch', streamId }, 'dave', 'first line', {});
+                    await waitFor(() => welcomes('dave').length, "dave's welcome");
+                    // A second line within Chat's short "first" cache window is not welcomed twice.
+                    await relay._broadcastMessage({ platform: 'twitch', streamId }, 'dave', 'second line', {});
+                    await waitFor(() => relayed('dave').length >= 2, 'the second relayed line');
+                    await sleep(80);
+                    assert.strictEqual(welcomes('dave').length, 1, "Chat's first-chat answer welcomes once, deduped in-process");
+                } finally {
+                    chatClient.readFirstChat = realReadFirstChat;
+                    relay._relayFollowUps = realFollowUps;
+                    d2.run("DELETE FROM stream_first_chats WHERE chatter_key IN ('ext:[Twitch] carol', 'ext:[Twitch] dave')");
+                    chatReads._reset();
+                }
+            }
+
+            // (3) /asset-sync remove-sound deletes the Media asset id Chat sent, never the one on
+            // Live's frozen channel_sounds row.
+            {
+                const media = require('../server/media-client');
+                const realRequest = media.request;
+                const deleted = [];
+                media.request = async (method, p) => { if (method === 'DELETE') deleted.push(p); return { ok: true }; };
+                try {
+                    d2.run("INSERT OR REPLACE INTO channel_sounds (id, channel_owner_id, command, url, created_by, media_asset_id) VALUES (777001, ?, 'given', '/sounds/given.mp3', ?, 424242)", [streamer, streamer]);
+                    const out = await call('POST', '/internal/chat-effects/asset-sync', { token: WRITE, body: { op: 'remove-sound', asset_id: 555111 } });
+                    assert.strictEqual(out.status, 200);
+                    await sleep(20);
+                } finally {
+                    media.request = realRequest;
+                    d2.run('DELETE FROM channel_sounds WHERE id = 777001');
+                }
+                assert.deepStrictEqual(deleted, ['/assets/555111'], 'the Media asset id in the request is the one deleted');
+            }
+
+            // (4) The call invite asks Chat for the block state: blocked refuses, an unknown state
+            // (Chat down past the cache) refuses too, never rings through.
+            {
+                const callerToken = jwt.sign({ sub: String(streamer), username: 'streamer', role: 'streamer' }, keys.privateKey, { algorithm: 'RS256', issuer: ISS, expiresIn: 300 });
+                const callUser = (body) => call('POST', '/api/streams/voice-channels/call-user', { token: callerToken, body });
+                chatReads._reset();
+                readState.dmBlocked = true;
+                try {
+                    const blocked = await callUser({ user_id: viewer });
+                    assert.strictEqual(blocked.status, 403, 'a blocked pair cannot ring');
+                    assert.match(blocked.body.error, /cannot call this user/i);
+
+                    readState.dmBlocked = false;
+                    chatReads._reset();
+                    const allowed = await callUser({ user_id: viewer });
+                    assert.strictEqual(allowed.status, 200, `an unblocked pair rings (${allowed.text})`);
+                    assert.strictEqual(allowed.body.invited, true);
+
+                    readState.down = true;
+                    chatReads._reset();
+                    const unknown = await callUser({ user_id: viewer });
+                    assert.strictEqual(unknown.status, 503, 'an unverifiable block state refuses the ring');
+                    assert.match(unknown.body.error, /try again shortly/i);
+                } finally {
+                    readState.dmBlocked = false;
+                    readState.down = false;
+                    chatReads._reset();
+                }
+            }
         }
 
         // 12. Robot commands from chat pass the control panel's gate: control mode, anonymous switch, whitelist, cooldown.
