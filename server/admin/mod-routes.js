@@ -44,6 +44,15 @@ function chatReadError(res, err) {
     return false;
 }
 
+/**
+ * A relay hide or unhide just changed Chat's hidden-user list: drop the cached per-channel list so
+ * the next relay line sees it at once instead of waiting out the peek's TTL. A site-wide row
+ * (channel_id null) changes every channel's list, so all `hru:` answers are dropped.
+ */
+function invalidateRelayHidden(channelId) {
+    chatReads.invalidate(channelId ? `hru:${Number(channelId)}` : 'hru:');
+}
+
 // All mod routes require auth (individual routes check specific permissions)
 router.use(requireAuth);
 
@@ -537,6 +546,7 @@ router.post('/relay-user/hide', async (req, res) => {
                 await delivery.moderate('relay-unhide', { channel_id: channel_id || undefined, platform, external_username });
             }
             else db.unhideRelayUserByIdentity(channel_id || null, platform, external_username);
+            invalidateRelayHidden(channel_id || null);
             delivery.logModeration({
                 scope_type: channel_id ? 'channel' : 'site',
                 scope_id: channel_id || undefined,
@@ -557,6 +567,7 @@ router.post('/relay-user/hide', async (req, res) => {
             reason,
             createdBy: req.user.id,
         });
+        invalidateRelayHidden(channel_id || null);
 
         delivery.logModeration({
             scope_type: channel_id ? 'channel' : 'site',
@@ -584,6 +595,7 @@ router.delete('/relay-user/:id', async (req, res) => {
         if (!allowed) return res.status(403).json({ error: 'You cannot moderate this channel' });
         if (delivery.ingress()) { delivery.mirror('unhideRelayUser', row.id); await delivery.moderate('relay-unhide', { id: row.id }); }
         else db.unhideRelayUser(row.id);
+        invalidateRelayHidden(row.channel_id);
 
         delivery.logModeration({
             scope_type: 'site',

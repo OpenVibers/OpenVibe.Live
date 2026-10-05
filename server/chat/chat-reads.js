@@ -16,9 +16,11 @@
  * never drops a known answer just because its TTL passed. A good value is kept for CACHE_KEEP_MS,
  * so a Chat failure answers the last good value, else null — a failure never overwrites a good
  * answer, and it sets a FAIL_TTL_MS backoff so a Chat outage cannot turn a hot reader (a relay
- * line, a peek per tick) into a retry per call. Reads the moderation console acts on (queues, one message, a voice override) are never
- * cached (ttl: 0) and throw a `Chat unavailable` error (`.unavailable`) on a Chat failure, so those
- * routes answer 503 instead of stale or empty queue data. Off under LIVE_DRILL.
+ * line, a peek per tick) into a retry per call. That backoff is only for cached reads: a read the
+ * moderation console acts on (queues, one message, a voice override) is never cached (ttl: 0), is
+ * never short-circuited by a cooling failure and never shares another read's in-flight request, and
+ * throws a `Chat unavailable` error (`.unavailable`) on a Chat failure, so those routes answer 503
+ * instead of stale or empty queue data. Off under LIVE_DRILL.
  *
  * Callers that can await use the async function; the few that cannot (the AI persona prompt, the
  * home-stats snapshot, the TTS engine) use the matching peek*().
@@ -32,6 +34,7 @@ const FAIL_TTL_MS = 2_000;          // how long a failure is not retried (it nev
 
 const cache = new Map();     // key -> { at, value, failed?, failedAt? }
 const inflight = new Map();  // key -> Promise
+let cacheMax = 2000;         // test hook; the cap remember()/rememberFailure() evict down to
 let lastLog = null;
 
 function drill() { try { return require('../drill').enabled; } catch { return false; } }
@@ -61,19 +64,25 @@ function unsupported(message, status = 501) {
 function fresh(key) { const h = cache.get(key); return h && !h.failed && Date.now() - h.at < CACHE_TTL_MS ? h : null; }
 function kept(key) { const h = cache.get(key); return h && !h.failed && Date.now() - h.at < CACHE_KEEP_MS ? h : null; }
 function cooling(key) { const h = cache.get(key); const at = h && (h.failedAt || (h.failed && h.at)); return !!at && Date.now() - at < FAIL_TTL_MS; }
+/** Keep the cache bounded: drop entries past the keep window first, then the oldest. */
+function evict() {
+    if (cache.size <= cacheMax) return;
+    for (const [k, h] of cache) if (Date.now() - h.at >= CACHE_KEEP_MS) cache.delete(k);
+    while (cache.size > cacheMax) cache.delete(cache.keys().next().value);
+}
 function remember(key, value) {
     cache.set(key, { at: Date.now(), value });
-    if (cache.size > 2000) {
-        for (const [k, h] of cache) if (Date.now() - h.at >= CACHE_KEEP_MS) cache.delete(k);
-        while (cache.size > 2000) cache.delete(cache.keys().next().value);
-    }
+    evict();
 }
 
 /** Record that this key just failed without overwriting its last good value. */
 function rememberFailure(key) {
     const h = cache.get(key);
     if (h && !h.failed) { h.failedAt = Date.now(); return; }
+    // Same bounded insert as a good value: a Chat outage fails per-chatter, per-message and
+    // per-query keys, and must not grow the cache past the cap.
     cache.set(key, { at: Date.now(), value: null, failed: true });
+    evict();
 }
 
 /**
@@ -87,12 +96,16 @@ function load(key, remoteFn, localFn, { ttl = CACHE_TTL_MS, strict = false } = {
         return Promise.resolve().then(async () => { try { return await localFn(); } catch (err) { note(key, err); return null; } });
     }
     if (ttl > 0) { const hit = fresh(key); if (hit) return Promise.resolve(hit.value); }
-    if (cooling(key)) {   // a read just failed: answer what we have, don't retry every call
-        if (strict) return Promise.reject(unavailable(key));
+    // The backoff only short-circuits a cached, non-strict read. A read the console acts on
+    // (ttl 0 / strict) always reaches Chat, so one blip cannot answer the moderator's retry with an
+    // instant 503 from the failure that is still cooling.
+    if (ttl > 0 && !strict && cooling(key)) {
         const last = kept(key);
         return Promise.resolve(last ? last.value : null);
     }
-    if (inflight.has(key)) return inflight.get(key);
+    // Only cached reads share an in-flight request. A live (ttl 0) read must not join a read that
+    // started before the write it follows (an approve, a delete, an unhide).
+    if (ttl > 0 && inflight.has(key)) return inflight.get(key);
     const p = (async () => {
         let value;
         try { value = await remoteFn(); }
@@ -108,7 +121,7 @@ function load(key, remoteFn, localFn, { ttl = CACHE_TTL_MS, strict = false } = {
         if (ttl > 0) remember(key, value);
         return value;
     })().finally(() => inflight.delete(key));
-    inflight.set(key, p);
+    if (ttl > 0) inflight.set(key, p);
     return p;
 }
 
@@ -137,7 +150,17 @@ async function remoteSiteStats() {
 }
 /** { messages, chatters } across the whole site. */
 function siteStats() { return load('site', remoteSiteStats, localSiteStats); }
-function siteStatsPeek() { return peek('site', remoteSiteStats, localSiteStats); }
+/**
+ * The home-stats snapshot answers with `messages` only, so its local (rollback / dev) answer is a
+ * plain COUNT(*): the distinct-chatter scan `siteStats()` runs is a full scan this synchronous peek
+ * would otherwise force on every home-stats compute. In chat mode it answers Chat's cached value.
+ */
+function localSiteStatsMessages() {
+    const db = local();
+    const r = db.get('SELECT COUNT(*) AS messages FROM chat_messages WHERE is_deleted = 0') || {};
+    return { messages: Number(r.messages) || 0 };
+}
+function siteStatsPeek() { return peek('site', remoteSiteStats, localSiteStatsMessages); }
 
 /** The busiest chatters of a room (or the site, when neither stream nor channel is given), newest window first. */
 function topChatters({ since, streamId, channelUserId, limit = 10 } = {}) {
@@ -169,6 +192,10 @@ function topChatters({ since, streamId, channelUserId, limit = 10 } = {}) {
  * the rest are applied as a local post-filter. A username is matched EXACTLY (Chat's filter; it
  * used to be a substring) — searching "bob" finds bob, not bob2. Chat offers no free-text search,
  * so a search with only `query` answers 501 with a clear message rather than an empty page.
+ *
+ * A `query` combined with a filter is a local post-filter (case-insensitive `includes`) over the
+ * newest `limit + offset` rows Chat returned, not a scan of the whole table: a match older than
+ * that window is missed. (Full text search lands when Chat offers it.)
  */
 function searchMessages({ query = '', userId = null, anonId = null, username = null, streamId = null, limit = 50, offset = 0 } = {}) {
     const key = `search:${userId || ''}:${anonId || ''}:${username || ''}:${streamId || ''}:${query}:${limit}:${offset}`;
@@ -187,7 +214,7 @@ function searchMessages({ query = '', userId = null, anonId = null, username = n
         if (streamId) rows = rows.filter((m) => Number(m.stream_id) === Number(streamId));
         if (anonId) rows = rows.filter((m) => String(m.anon_id) === String(anonId));
         if (username) rows = rows.filter((m) => String(m.username || '').toLowerCase() === String(username).toLowerCase());
-        if (query) rows = rows.filter((m) => String(m.message || '').includes(query));
+        if (query) { const q = String(query).toLowerCase(); rows = rows.filter((m) => String(m.message || '').toLowerCase().includes(q)); }
         const page = offset ? rows.slice(offset, offset + limit) : rows.slice(0, limit);
         return { messages: page, total: rows.length + offset };
     }, () => local().searchChatMessages({ query, userId, anonId, username, streamId, limit, offset }), { strict: true });
@@ -401,15 +428,24 @@ function ttsOverride(identityKey) {
         return out.tts_override || null;
     }, () => local().getTtsVoiceOverride(k), { ttl: 0, strict: true });
 }
-/** The TTS engine's synchronous read: the last good override while Chat refreshes in the background. */
+/**
+ * The TTS engine's synchronous read: the last good override while Chat refreshes in the background.
+ * On a cache miss or a Chat failure it answers Live's own mirror table (which Chat keeps current),
+ * so the first line after a restart, an eviction or during a Chat outage is still spoken with the
+ * override rather than the auto voice — the same fallback `isRelayUserHidden` uses.
+ */
 function ttsOverridePeek(identityKey) {
     const k = String(identityKey || '').trim().toLowerCase();
     if (!k) return null;
-    return peek(`ttsp:${k}`, async () => {
+    const localOverride = () => local().getTtsVoiceOverride(k);
+    const got = peek(`ttsp:${k}`, async () => {
         const out = await client.readTtsOverride({ identity_key: k });
         if (!out) throw unavailable('tts override');
         return out.tts_override || null;
-    }, () => local().getTtsVoiceOverride(k));
+    }, localOverride);
+    if (got) return got;
+    if (!remote()) return null;   // peek already answered from Live's own table
+    try { return localOverride(); } catch { return null; }
 }
 
 // ── Channel sounds ────────────────────────────────────────────────────────────
@@ -457,16 +493,27 @@ async function recordSoundAsset(id, mediaUrl, mediaAssetId) {
     return client.soundAsset({ id: Number(id), media_url: String(mediaUrl), media_asset_id: Number(mediaAssetId) });
 }
 
+/**
+ * Drop every cached answer whose key starts with `prefix`. A moderation write (a relay hide or
+ * unhide) calls this so the next read re-asks Chat instead of serving the list from before it.
+ */
+function invalidate(prefix) {
+    for (const k of cache.keys()) if (k.startsWith(prefix)) cache.delete(k);
+}
+
 /** Drop every cached answer (tests and env flips). */
 function _reset() { cache.clear(); inflight.clear(); lastLog = null; }
 /** Test hook: age every cached answer by `ms` (fresh → stale, or stale → dropped when it passes the keep window). */
 function _age(ms, prefix = '') { for (const [k, h] of cache) if (k.startsWith(prefix)) h.at -= ms; }
+/** Test hooks: the current entry count, and the eviction cap (set to a small value to exercise it). */
+function _size() { return cache.size; }
+function _cacheMax(n) { if (n != null && Number(n) > 0) cacheMax = Number(n); return cacheMax; }
 
 module.exports = {
     siteStats, siteStatsPeek, topChatters,
     messageById, channelMessages, channelMessagesPeek, userHistory, relayHistory, channelSamples, searchMessages,
     liveChatBuckets, recentChatText, spikeOffsets,
     pendingIp, relayUsers, relayUser, ttsOverride, ttsOverridePeek, isRelayUserHidden,
-    soundCount, pendingSounds, recordSoundAsset,
-    _reset, _age, CACHE_TTL_MS, CACHE_KEEP_MS,
+    soundCount, pendingSounds, recordSoundAsset, invalidate,
+    _reset, _age, _size, _cacheMax, CACHE_TTL_MS, CACHE_KEEP_MS,
 };

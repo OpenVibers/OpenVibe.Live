@@ -83,7 +83,12 @@ async function syncAll() {
                         channel_username: uname(s.channel_owner_id),
                         duration_seconds: s.duration_seconds || 0,
                     });
-                    if (asset) { await chatReads.recordSoundAsset(s.id, asset.url, asset.id); synced++; }
+                    if (asset) {
+                        // Chat owns the row: a null answer means the record did not land, so the
+                        // sound stays pending and must be counted failed, not synced.
+                        const recorded = await chatReads.recordSoundAsset(s.id, asset.url, asset.id);
+                        if (recorded) synced++; else failed++;
+                    }
                 } catch (err) { failed++; if (failed <= 3) console.warn('[AssetSync] sound', s.command, err.message); }
             }
             if (batch.length < PAGE) break;

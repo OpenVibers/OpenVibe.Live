@@ -56,7 +56,7 @@ const network = http.createServer((req, res) => {
 // Chat's internal read API (roadmap T3 J4b): Live reads stats, queues, history and sounds through
 // these. The stub answers from Live's own tables (emulating Chat's copy) so the seeds apply, and
 // `readState.down` fails every read the way a Chat outage does.
-const readState = { down: false, relayOnly: [] };
+const readState = { down: false, soundAssetDown: false, relayOnly: [], msgById: 0 };
 function readReply(req, res, raw) {
     const url = String(req.url);
     const path = url.split('?')[0];
@@ -65,6 +65,7 @@ function readReply(req, res, raw) {
         || path.startsWith('/internal/chat/moderation/') || path === '/internal/chat/sounds' || path === '/internal/chat/sounds/asset';
     if (!isRead) return false;
     if (readState.down) { res.statusCode = 503; res.end(JSON.stringify({ ok: false, error: 'Chat read unavailable' })); return true; }
+    if (path === '/internal/chat/sounds/asset' && readState.soundAssetDown) { res.statusCode = 503; res.end(JSON.stringify({ ok: false, error: 'Chat sound write unavailable' })); return true; }
     const d2 = require('../server/db/database');
     const ok = (o) => { res.end(JSON.stringify({ ok: true, ...o })); return true; };
     const param = (col, v) => (['channel_user_id', 'stream_id', 'user_id', 'id'].includes(col) ? Number(v) : String(v));
@@ -78,6 +79,7 @@ function readReply(req, res, raw) {
         return ok({ messages: Number(r.messages), chatters: 2 });
     }
     if (path === '/internal/chat/messages') {
+        if (q.get('id') != null) readState.msgById++;
         const filters = ['channel_user_id', 'stream_id', 'user_id', 'anon_id', 'username', 'id'].filter((k) => q.get(k) != null);
         if (filters.length !== 1) { res.statusCode = 400; res.end(JSON.stringify({ ok: false, error: 'Give exactly one filter' })); return true; }
         const col = filters[0];
@@ -446,8 +448,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
             for (let i = 0; i < 300 && !chatReads.siteStatsPeek(); i++) await sleep(10);
             assert.ok(chatReads.siteStatsPeek(), 'the background warm-up answered');
 
-            // (2) A TTS override survives a TTL and a Chat outage (the engine reads it synchronously).
-            assert.strictEqual(chatReads.ttsOverridePeek('user:viewer'), null, 'cold override peek');
+            // (2)(4) A TTS override survives a TTL and a Chat outage (the engine reads it
+            // synchronously); a cold peek answers Live's own mirror table, not the auto voice.
+            assert.strictEqual(chatReads.ttsOverridePeek('user:viewer').voice, 'en+f3', 'a cold peek falls back to Live\'s own table');
             for (let i = 0; i < 300 && !chatReads.ttsOverridePeek('user:viewer'); i++) await sleep(10);
             assert.strictEqual(chatReads.ttsOverridePeek('user:viewer').voice, 'en+f3');
             chatReads._age(chatReads.CACHE_TTL_MS + 1000, 'ttsp:');
@@ -560,6 +563,112 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
             assert.strictEqual((await call('DELETE', '/api/mod/relay-user/999999', { token: adminToken })).status, 503);
             readState.down = false;
             chatReads._reset();
+
+            // ── Second review round ──────────────────────────────────────────
+
+            // (1) A Chat blip must not block the moderator's very next live read with the 2 s
+            // backoff: a ttl:0 / strict read always reaches Chat.
+            readState.down = true;
+            chatReads._reset();
+            await assert.rejects(chatReads.messageById(m1), (e) => e.unavailable === true, 'a live read 503s while Chat is down');
+            readState.down = false;
+            assert.ok(await chatReads.messageById(m1), 'the next live read reaches Chat, not a cooling 503');
+
+            // (2) A live (ttl 0) read never shares another read's in-flight request.
+            readState.msgById = 0;
+            await Promise.all([chatReads.messageById(m1), chatReads.messageById(m1)]);
+            assert.strictEqual(readState.msgById, 2, 'two concurrent ttl:0 reads both reach Chat');
+
+            // (3) A Chat failure is remembered through the same bounded setter as a good value.
+            chatReads._reset();
+            const realCap = chatReads._cacheMax();
+            chatReads._cacheMax(5);
+            readState.down = true;
+            try {
+                for (let i = 0; i < 12; i++) await chatReads.userHistory(viewer, { limit: i + 1 }).catch(() => {});
+                assert.ok(chatReads._size() <= 5, 'failed reads are evicted, never grow the cache past the cap');
+            } finally {
+                readState.down = false;
+                chatReads._cacheMax(realCap);
+                chatReads._reset();
+            }
+
+            // (4) A cold or outage peek answers Live's own override table, not the auto voice.
+            readState.down = true;
+            assert.strictEqual(chatReads.ttsOverridePeek('user:viewer').voice, 'en+f3', 'a peek falls back to Live\'s own table');
+            readState.down = false;
+            chatReads._reset();
+
+            // (5) The home-stats peek's local (rollback) answer is a messages-only count.
+            process.env.CHAT_AUTHORITY = '';
+            try {
+                chatReads._reset();
+                const peeked = chatReads.siteStatsPeek();
+                assert.strictEqual(peeked.chatters, undefined, 'the peek does not run the distinct-chatter scan');
+                assert.ok(peeked.messages >= 2, 'the peek still counts the messages');
+                const full = await chatReads.siteStats();
+                assert.ok(full.chatters >= 1, 'the full stats read still counts chatters');
+            } finally {
+                process.env.CHAT_AUTHORITY = 'chat';
+                chatReads._reset();
+            }
+
+            // (6) A sound whose Chat record fails is counted failed, not synced, and stays pending.
+            fs.writeFileSync(path.join(tmp, 'sounds', 's201.mp3'), 'audio');
+            d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 's201', '/sounds/s201.mp3', ?)", [streamer, streamer]);
+            readState.soundAssetDown = true;
+            {
+                const logs = [];
+                const origLog = console.log;
+                const mediaSync = require('../server/media-client');
+                const realReq = mediaSync.request;
+                mediaSync.request = async (method, p2) => (method === 'POST' && p2 === '/assets' ? { asset: { id: 9100, url: 'https://media.example/a/9100' } } : { ok: true });
+                console.log = (...a) => logs.push(a.join(' '));
+                try { await require('../server/media-proxy/asset-sync').syncAll(); }
+                finally { mediaSync.request = realReq; console.log = origLog; readState.soundAssetDown = false; }
+                assert.ok(logs.some((l) => /\(1 failed/.test(l)), 'a failed Chat record is counted failed, not synced');
+                assert.strictEqual(d2.get("SELECT media_asset_id FROM channel_sounds WHERE command = 's201'").media_asset_id, null, 'the sound stays pending for the next pass');
+            }
+
+            // (7) A relay hide or unhide through the console drops the cached hidden list at once.
+            chatReads._reset();
+            readState.relayOnly = [{ id: 999998, channel_id: channel.id, platform: 'twitch', external_username: 'marker1' }];
+            for (let i = 0; i < 300 && !chatReads.isRelayUserHidden(channel.id, 'twitch', 'marker1'); i++) await sleep(10);
+            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'twitch', 'marker1'), true, 'warm: the marker is in the cached list');
+            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'youtube', 'ghost3'), false, 'warm: ghost3 is not hidden');
+            readState.relayOnly = [
+                { id: 999998, channel_id: channel.id, platform: 'twitch', external_username: 'marker1' },
+                { id: 999997, channel_id: channel.id, platform: 'youtube', external_username: 'ghost3' },
+            ];
+            const hideRes = await call('POST', '/api/mod/relay-user/hide', { token: adminToken, body: { channel_id: channel.id, platform: 'youtube', external_username: 'ghost3' } });
+            assert.strictEqual(hideRes.status, 200, 'the hide route ran');
+            for (let i = 0; i < 300 && !chatReads.isRelayUserHidden(channel.id, 'youtube', 'ghost3'); i++) await sleep(10);
+            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'youtube', 'ghost3'), true, 'the hide dropped the cached list at once');
+            readState.relayOnly = [];
+            const unhideRes = await call('POST', '/api/mod/relay-user/hide', { token: adminToken, body: { channel_id: channel.id, platform: 'youtube', external_username: 'ghost3', action: 'unhide' } });
+            assert.strictEqual(unhideRes.status, 200, 'the unhide route ran');
+            for (let i = 0; i < 300 && chatReads.isRelayUserHidden(channel.id, 'youtube', 'ghost3'); i++) await sleep(10);
+            assert.strictEqual(chatReads.isRelayUserHidden(channel.id, 'youtube', 'ghost3'), false, 'the unhide dropped the cached list at once');
+            // A site-wide row (channel_id null) invalidates every channel's cached list.
+            chatReads._reset();
+            readState.relayOnly = [{ id: 999996, channel_id: null, platform: 'twitch', external_username: 'marker2' }];
+            for (let i = 0; i < 300 && !chatReads.isRelayUserHidden(424242, 'twitch', 'marker2'); i++) await sleep(10);
+            assert.strictEqual(chatReads.isRelayUserHidden(424242, 'twitch', 'marker2'), true, 'warm: another channel sees the site-wide marker');
+            readState.relayOnly = [
+                { id: 999996, channel_id: null, platform: 'twitch', external_username: 'marker2' },
+                { id: 999995, channel_id: null, platform: 'youtube', external_username: 'siteghost' },
+            ];
+            const siteHide = await call('POST', '/api/mod/relay-user/hide', { token: adminToken, body: { platform: 'youtube', external_username: 'siteghost' } });
+            assert.strictEqual(siteHide.status, 200, 'the site-wide hide ran');
+            for (let i = 0; i < 300 && !chatReads.isRelayUserHidden(424242, 'youtube', 'siteghost'); i++) await sleep(10);
+            assert.strictEqual(chatReads.isRelayUserHidden(424242, 'youtube', 'siteghost'), true, 'a site-wide hide clears every cached list');
+            readState.relayOnly = [];
+            chatReads._reset();
+
+            // (8) A `q` combined with a filter matches case-insensitively.
+            const qUpper = await chatReads.searchMessages({ userId: viewer, query: 'HELLO', limit: 10 });
+            assert.strictEqual(qUpper.messages.length, 1, 'q matches regardless of case');
+            assert.strictEqual(qUpper.messages[0].message, 'hello');
         }
 
         // 12. Robot commands from chat pass the control panel's gate: control mode, anonymous switch, whitelist, cooldown.
