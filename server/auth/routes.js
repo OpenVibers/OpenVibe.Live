@@ -220,7 +220,7 @@ router.post('/avatar', requireAuth, avatarUpload.single('avatar'), async (req, r
                 contentType: req.file.mimetype || 'image/png',
             },
         });
-        const screenshotUrl = media.publicUrl(paste.screenshot_url) || media.pasteRawUrl(paste.slug);
+        const screenshotUrl = media.publicUrl(paste.screenshot_url) || media.pasteScreenshotUrl(paste.slug);
         db.updateUserAvatar(req.user.id, screenshotUrl, paste.id || null);
 
         const updated = db.getUserById(req.user.id);
