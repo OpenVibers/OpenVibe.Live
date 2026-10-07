@@ -86,13 +86,9 @@ function buildConfig(registryValues) {
     const rtmpEntry = getRegistryEntry('RTMP_HOST');
     const turnEntry = getRegistryEntry('TURN_URL');
     const turnUrl = normalizeTurnUrl(turnEntry.value || process.env.TURN_URL || DEFAULTS.TURN_URL);
-    const allowP2pFallback = normalizeValue(process.env.ALLOW_P2P_FALLBACK, 'boolean') === true;
 
     if (turnEntry.source !== 'default' && !turnUrl) {
         console.warn('[Config] Invalid TURN_URL configured; ICE metadata will be skipped. Expected a turn: or turns: URL with hostname and optional port/path.');
-    }
-    if (allowP2pFallback) {
-        console.warn('[Config] ALLOW_P2P_FALLBACK is enabled. Legacy peer-to-peer viewer relays may expose client IP addresses and should be used only for emergency rollback.');
     }
 
     const baseUrl = baseEntry.source !== 'default' ? baseEntry.value : DEFAULTS.BASE_URL;
@@ -185,7 +181,6 @@ function buildConfig(registryValues) {
             username: process.env.TURN_USERNAME || '',
             credential: process.env.TURN_CREDENTIAL || '',
         },
-        allowP2pFallback,
         mediasoup: {
             listenIp: process.env.MEDIASOUP_LISTEN_IP || '0.0.0.0',
             announcedIp: mediasoupAnnouncedIp,

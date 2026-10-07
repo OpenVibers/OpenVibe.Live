@@ -7,9 +7,9 @@
  *   1. Broadcaster connects with JWT token + streamId
  *   2. Broadcaster auto-publishes audio/video into the Mediasoup SFU
  *   3. Viewer connects, sends 'watch', and is either queued or attached to the SFU
- *   4. Legacy P2P relay messages are ignored unless ALLOW_P2P_FALLBACK is enabled
  *
- * Each stream has ONE broadcaster and MANY viewers.
+ * Each stream has ONE broadcaster and MANY viewers. The SFU (mediasoup) is the
+ * only media path — there is no direct peer-to-peer viewer relay.
  * The server primarily orchestrates SFU transports and viewer queueing.
  */
 const { EventEmitter } = require('events');
@@ -101,7 +101,6 @@ class BroadcastServer extends EventEmitter {
             type: 'watch-queued',
             reason,
             detail,
-            allowP2pFallback: !!config.allowP2pFallback,
         });
         this._logMetric('viewer.queued', {
             streamId: client.streamId,
@@ -327,7 +326,6 @@ class BroadcastServer extends EventEmitter {
             streamId,
             viewerCount: room.viewers.size,
             iceServers: this._getIceServers(),
-            allowP2pFallback: !!config.allowP2pFallback,
         });
 
         // Broadcast viewer count
@@ -361,24 +359,6 @@ class BroadcastServer extends EventEmitter {
         if (!room) return;
 
         switch (msg.type) {
-            case 'offer':
-            case 'answer':
-            case 'ice-candidate':
-                if (!config.allowP2pFallback) {
-                    this._logMetric('p2p.relay.attempt', {
-                        streamId: client.streamId,
-                        peerId: client.peerId,
-                        type: msg.type,
-                        outcome: 'ignored',
-                    });
-                    console.warn(`[Broadcast] Ignoring legacy ${msg.type} for stream ${client.streamId} — SFU-only mode is active`);
-                    break;
-                }
-                // For SFU viewers, ignore direct P2P signaling — mediasoup handles everything.
-                if (client._sfuViewerTransportId) break;
-                this.relaySignaling(ws, client, room, msg);
-                break;
-
             case 'watch':
                 // Viewer requests to watch
                 if (client.role === 'viewer') {
@@ -407,20 +387,6 @@ class BroadcastServer extends EventEmitter {
                         }
                     }).catch(err => {
                         console.error(`[Broadcast] SFU viewer error for ${client.peerId}:`, err.message);
-                        if (config.allowP2pFallback && room.broadcaster && room.broadcaster.readyState === WebSocket.OPEN) {
-                            this._logMetric('p2p.relay.attempt', {
-                                streamId: client.streamId,
-                                peerId: client.peerId,
-                                type: 'viewer-joined',
-                                outcome: 'fallback',
-                            });
-                            this.safeSend(room.broadcaster, {
-                                type: 'viewer-joined',
-                                peerId: client.peerId,
-                            });
-                            return;
-                        }
-
                         if (room.broadcaster && room.broadcaster.readyState === WebSocket.OPEN) {
                             this._requestSfuProduceWarmup(room, client.streamId);
                         }
@@ -525,46 +491,6 @@ class BroadcastServer extends EventEmitter {
         }
     }
 
-    relaySignaling(ws, client, room, msg) {
-        this._logMetric('p2p.relay.attempt', {
-            streamId: client.streamId,
-            peerId: client.peerId,
-            type: msg.type,
-            outcome: 'relayed',
-        });
-        if (client.role === 'broadcaster') {
-            // Broadcaster sending to a specific viewer
-            const targetPeerId = msg.targetPeerId;
-            if (targetPeerId && room.viewers.has(targetPeerId)) {
-                const viewerWs = room.viewers.get(targetPeerId);
-                if (viewerWs.readyState === WebSocket.OPEN) {
-                    this.safeSend(viewerWs, {
-                        type: msg.type,
-                        sdp: msg.sdp,
-                        candidate: msg.candidate,
-                        fromPeerId: 'broadcaster',
-                    });
-                } else {
-                    console.warn(`[Broadcast] Cannot relay ${msg.type} to ${targetPeerId} — viewer WS not open (state: ${viewerWs.readyState})`);
-                }
-            } else if (targetPeerId) {
-                console.warn(`[Broadcast] Cannot relay ${msg.type} — viewer ${targetPeerId} not found in room (stream ${client.streamId})`);
-            }
-        } else {
-            // Viewer sending to broadcaster
-            if (room.broadcaster && room.broadcaster.readyState === WebSocket.OPEN) {
-                this.safeSend(room.broadcaster, {
-                    type: msg.type,
-                    sdp: msg.sdp,
-                    candidate: msg.candidate,
-                    fromPeerId: client.peerId,
-                });
-            } else {
-                console.warn(`[Broadcast] Cannot relay ${msg.type} from viewer ${client.peerId} — broadcaster not connected (stream ${client.streamId})`);
-            }
-        }
-    }
-
     handleDisconnect(ws) {
         const client = this.clients.get(ws);
         if (!client) return;
@@ -617,14 +543,6 @@ class BroadcastServer extends EventEmitter {
                 this._cleanupSfuViewerTransport(client);
 
                 console.log(`[Broadcast] Viewer disconnected: stream ${client.streamId} (${client.peerId})`);
-
-                // Notify broadcaster only when legacy P2P fallback is explicitly enabled.
-                if (config.allowP2pFallback && room.broadcaster && room.broadcaster.readyState === WebSocket.OPEN) {
-                    this.safeSend(room.broadcaster, {
-                        type: 'viewer-left',
-                        peerId: client.peerId,
-                    });
-                }
             }
 
             this.broadcastViewerCount(client.streamId);
@@ -885,9 +803,9 @@ class BroadcastServer extends EventEmitter {
                 // True stale: ICE never connected or has definitively failed.
                 console.log(`[Broadcast] All ${allProducers.length} producer(s) are stale for stream ${client.streamId} — sending source-unavailable to ${client.peerId}`);
                 this.safeSend(ws, { type: 'sfu-source-unavailable', reason: 'ingest_stale' });
-                return true; // handled — do not fall through to P2P offer path
+                return true; // handled — source-unavailable already sent
             }
-            console.log(`[Broadcast] No live producers for stream ${client.streamId} (${allProducers.length} total, all dead/disconnected) — falling back to P2P`);
+            console.log(`[Broadcast] No live SFU producers for stream ${client.streamId} (${allProducers.length} total, all dead/disconnected) — viewer will be queued`);
             return false;
         }
 

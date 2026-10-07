@@ -130,7 +130,7 @@ Completion arrives via the `vod.ready` / `clip.ready` webhooks.
 
 - `MEDIASOUP_LISTEN_IP`, `MEDIASOUP_ANNOUNCED_IP`, `MEDIASOUP_MIN_PORT` / `MEDIASOUP_MAX_PORT`, `WEBRTC_PORT`.
 - `TURN_URL` / `TURN_USERNAME` / `TURN_CREDENTIAL` — required in production for reliable NAT traversal (default `turn:turn.openvibe.live`).
-- `ALLOW_P2P_FALLBACK` — emergency rollback flag; leave `false` (legacy P2P relays can expose viewer IPs).
+- Viewer media is SFU-only (mediasoup); there is no peer-to-peer fallback.
 
 ### WHIP
 

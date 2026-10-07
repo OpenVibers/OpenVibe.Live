@@ -4,7 +4,7 @@
  *
  * Every consumer of the broadcast audio binds to a track ONCE and keeps its own
  * reference — MediaRecorder snapshots its tracks at construction, mediasoup Producers
- * wrap a specific track, viewer RTCPeerConnection senders hold theirs. So the old
+ * wrap a specific track, the RobotStreamer relay holds its own. So the old
  * removeTrack/addTrack dance on ss.localStream changed nothing for anyone: toggling the
  * mic mid-stream left viewers hearing the previous track and the VOD recording it,
  * silently, for the rest of the session.
@@ -51,12 +51,11 @@ const republish = bc.slice(bc.indexOf('function _republishAudioTrack('));
 for (const [what, re] of [
     ['the local SFU producer', /audioProducer\?\.replaceTrack\(\{ track \}\)/],
     ['the RobotStreamer producer', /robotStreamer\?\.audioProducer\?\.replaceTrack/],
-    ['viewer peer connections', /getSenders\?\.\(\)[\s\S]{0,120}replaceTrack\(track\)/],
     ['the VOD recorder', /uploadVodRecording\(streamId, \{ finalizeStream: false \}\)[\s\S]{0,120}startVodRecording\(streamId\)/],
 ]) {
     assert.ok(re.test(republish), `_republishAudioTrack must update ${what}`);
 }
-console.log('OK D: SFU, RobotStreamer, viewer PCs and the VOD segment are all updated on a real track change');
+console.log('OK D: the SFU, RobotStreamer and the VOD segment are all updated on a real track change');
 
 // ── E: the mixer is torn down with the capture ───────────────────────────────────────
 assert.ok(/_teardownAudioMixer\(ss\)/.test(bc), 'the mixer must be closed when capture stops');
