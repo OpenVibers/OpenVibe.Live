@@ -373,7 +373,7 @@ app.use(helmet({
             // request tab was doing for every YouTube link.
             imgSrc: ["'self'", "data:", "blob:", "image.tmdb.org", "https://openvibe.network", "https://openvibe.media", "cdn.frankerfacez.com", "cdn.betterttv.net", "cdn.7tv.app", "https://files.kick.com", "https://i.ytimg.com", "https://img.youtube.com", "https://i.vimeocdn.com"],
             // https://cloudflareinsights.com is where Cloudflare Web Analytics' beacon (script-src static.cloudflareinsights.com) reports.
-            connectSrc: ["'self'", "wss:", "https://openvibe.network", "https://events.openvibe.network", "https://openvibe.media", "https://openvibe.games", "https://cdn.jsdelivr.net", "https://esm.sh", "https://static.cloudflareinsights.com", "https://cloudflareinsights.com", whipConnectSrc],
+            connectSrc: ["'self'", "wss:", "https://openvibe.network", "https://openvibe.events", "https://openvibe.media", "https://openvibe.games", "https://cdn.jsdelivr.net", "https://esm.sh", "https://static.cloudflareinsights.com", "https://cloudflareinsights.com", whipConnectSrc],
             // VODs/clips play from openvibe.media (the /api proxies 302 there), which may
             // itself redirect to presigned B2/R2 object-store URLs — all must be allowed
             // or the browser blocks the media element.

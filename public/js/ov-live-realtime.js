@@ -1,6 +1,6 @@
 /**
  * Live's stream lifecycle over OpenVibe.Events realtime (roadmap WS-F task 1): the public
- * live.stream.started / live.stream.ended events on events.openvibe.network/realtime/stream (SSE).
+ * live.stream.started / live.stream.ended events on openvibe.events/realtime/stream (SSE).
  * The home page's live grid refreshes the moment a stream starts or ends, and polls only as a
  * safety net while this is connected (public/js/app-home.js startHomeRefresh).
  *
@@ -13,7 +13,7 @@
  */
 (function () {
     'use strict';
-    const URL_ = 'https://events.openvibe.network/realtime/stream?topics=live.stream.started,live.stream.ended';
+    const URL_ = 'https://openvibe.events/realtime/stream?topics=live.stream.started,live.stream.ended';
     const listeners = new Set();
     let es = null;
     let connected = false;
