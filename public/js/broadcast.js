@@ -327,27 +327,6 @@ function _ensureSfuBroadcastReady(streamId, reason = 'startup') {
     });
 }
 
-function clearViewerReconnectTimer(ss, viewerPeerId) {
-    const timer = ss?.viewerReconnectTimers?.get(viewerPeerId);
-    if (timer) clearTimeout(timer);
-    ss?.viewerReconnectTimers?.delete(viewerPeerId);
-}
-
-function scheduleViewerReconnect(streamId, viewerPeerId, delay = 2000) {
-    const ss = getStreamState(streamId);
-    if (!ss || !viewerPeerId || !ss._allowP2pFallback) return;
-    clearViewerReconnectTimer(ss, viewerPeerId);
-    ss.viewerReconnectTimers.set(viewerPeerId, setTimeout(() => {
-        clearViewerReconnectTimer(ss, viewerPeerId);
-        if (!broadcastState.streams.has(streamId)) return;
-        if (!ss.localStream) return;
-        if (!ss.signalingWs || ss.signalingWs.readyState !== WebSocket.OPEN) return;
-        createViewerConnection(streamId, viewerPeerId).catch((err) => {
-            console.warn(`[Broadcast] Viewer reconnect failed for ${viewerPeerId}:`, err.message);
-        });
-    }, delay));
-}
-
 /**
  * Attach diagnostic logging to track/stream events.
  *
@@ -2307,12 +2286,6 @@ function cleanupStream(streamId) {
     // Clear RS restream slot if this stream had it
     if (getRsRestreamSlotStreamId() === streamId) setRsRestreamSlot(null);
 
-    // Close viewer connections
-    for (const [, pc] of ss.viewerConnections) { try { pc.close(); } catch {} }
-    ss.viewerConnections.clear();
-    for (const [, timer] of ss.viewerReconnectTimers) clearTimeout(timer);
-    ss.viewerReconnectTimers.clear();
-
     // Close signaling WS
     ss.signalingIntentionalClose = true;
     ss.signalingReconnectDelay = 3000;
@@ -2416,7 +2389,7 @@ function startGlobalDisplayTimers() {
 
             // Primary source: the SFU produce transport — this IS the broadcaster's
             // real ingest uplink, so its byte counter and connection state are the
-            // authoritative numbers to show. (Viewer PCs are only P2P-fallback downlinks.)
+            // authoritative numbers to show.
             const sfuState = _sfuProduceStates.get(ss.streamData?.id);
             if (sfuState?.transport) {
                 try {
@@ -2424,20 +2397,6 @@ function startGlobalDisplayTimers() {
                     totalBytesSent = extractStats(await sfuState.transport.getStats());
                     hasStats = totalBytesSent > 0;
                 } catch {}
-            }
-
-            // Fallback: direct P2P viewer connections. Pick the healthiest one
-            // (most bytes sent) rather than blindly sampling the first — the first
-            // entry may be a still-negotiating or failed peer.
-            if (!hasStats && ss.viewerConnections.size > 0) {
-                for (const [, pc] of ss.viewerConnections) {
-                    try {
-                        const s = pc.iceConnectionState;
-                        const bytes = extractStats(await pc.getStats());
-                        if (bytes > totalBytesSent) { totalBytesSent = bytes; connState = s; }
-                    } catch {}
-                }
-                hasStats = totalBytesSent > 0;
             }
 
             // Fallback: local stream settings (when no WebRTC stats available yet).
@@ -4023,96 +3982,6 @@ function connectSignaling(streamId) {
     };
 }
 
-async function createViewerConnection(streamId, viewerPeerId) {
-    const ss = getStreamState(streamId);
-    if (!ss) return;
-    if (!ss._allowP2pFallback) {
-        console.warn(`[Broadcast] Ignoring createViewerConnection(${streamId}, ${viewerPeerId}) — SFU-only mode is active`);
-        return;
-    }
-    if (ss.viewerConnections.has(viewerPeerId)) closeViewerConnection(streamId, viewerPeerId);
-    const s = broadcastState.settings;
-    const maxBitrate = getTargetVideoBitrate();
-    const maxFrameRate = getBroadcastFrameRate();
-    const scaleDownBy = getSuggestedScaleDown(s);
-    // Use server-provided ICE servers (with TURN support) if available
-    const iceServers = (ss._serverIceServers && ss._serverIceServers.length > 0)
-        ? ss._serverIceServers
-        : [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }];
-    const pc = new RTCPeerConnection({ iceServers });
-    ss.viewerConnections.set(viewerPeerId, pc);
-    ss.localStream.getTracks().forEach(track => {
-        try {
-            track.contentHint = track.kind === 'audio' ? 'speech' : (s.screenShare ? 'detail' : 'motion');
-        } catch {}
-        pc.addTrack(track, ss.localStream);
-    });
-
-    pc.getTransceivers().forEach(t => {
-        if (t.sender?.track?.kind === 'video') {
-            try { t.direction = 'sendonly'; } catch {}
-            try { t.setCodecPreferences?.((RTCRtpReceiver.getCapabilities('video')?.codecs || []).filter(Boolean)); } catch {}
-        }
-    });
-
-    const codec = s.broadcastCodec || 'auto';
-    if (codec !== 'auto' && pc.getTransceivers) {
-        const vt = pc.getTransceivers().find(t => t.sender?.track?.kind === 'video');
-        if (vt && typeof vt.setCodecPreferences === 'function') {
-            try {
-                const codecs = RTCRtpReceiver.getCapabilities('video')?.codecs || [];
-                const mimeMap = { vp8: 'video/VP8', vp9: 'video/VP9', h264: 'video/H264' };
-                const pref = codecs.filter(c => c.mimeType === mimeMap[codec]);
-                const rest = codecs.filter(c => c.mimeType !== mimeMap[codec]);
-                if (pref.length) vt.setCodecPreferences([...pref, ...rest]);
-            } catch {}
-        }
-    }
-
-    pc.getSenders().forEach(sender => {
-        if (sender.track?.kind === 'video') {
-            const params = sender.getParameters(); if (!params.encodings) params.encodings = [{}];
-            params.encodings[0].maxBitrate = maxBitrate;
-            params.encodings[0].maxFramerate = maxFrameRate;
-            params.encodings[0].scaleResolutionDownBy = scaleDownBy;
-            params.encodings[0].priority = 'high';
-            const minBps = parseInt(s.broadcastBpsMin); if (minBps > 50) params.encodings[0].minBitrate = minBps * 1000;
-            params.degradationPreference = s.screenShare ? 'maintain-resolution' : 'balanced';
-            sender.setParameters(params).catch(() => {});
-        } else if (sender.track?.kind === 'audio') {
-            const params = sender.getParameters();
-            if (!params.encodings) params.encodings = [{}];
-            params.encodings[0].priority = 'high';
-            sender.setParameters(params).catch(() => {});
-        }
-    });
-
-    pc.onicecandidate = (e) => { if (e.candidate) sendBroadcastSignal(ss, { type: 'ice-candidate', candidate: e.candidate, targetPeerId: viewerPeerId }); };
-    pc.oniceconnectionstatechange = () => {
-        const iceState = pc.iceConnectionState;
-        console.log(`[Broadcast] Stream ${streamId} viewer ${viewerPeerId} ICE state: ${iceState}`);
-        if (iceState === 'connected' || iceState === 'completed') clearViewerReconnectTimer(ss, viewerPeerId);
-        if (iceState === 'failed' || iceState === 'disconnected') {
-            scheduleViewerReconnect(streamId, viewerPeerId, iceState === 'failed' ? 1500 : 4000);
-        }
-        if (iceState === 'closed') {
-            closeViewerConnection(streamId, viewerPeerId);
-        }
-        if (broadcastState.activeStreamId === streamId) updateBroadcastStatusFromConnections(streamId);
-    };
-
-    const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
-    sendBroadcastSignal(ss, { type: 'offer', sdp: pc.localDescription, targetPeerId: viewerPeerId });
-}
-
-function closeViewerConnection(streamId, viewerPeerId) {
-    const ss = getStreamState(streamId);
-    if (!ss) return;
-    clearViewerReconnectTimer(ss, viewerPeerId);
-    const pc = ss.viewerConnections.get(viewerPeerId);
-    if (pc) { try { pc.close(); } catch {} ss.viewerConnections.delete(viewerPeerId); }
-}
-
 function updateBroadcastStatusFromConnections(streamId) {
     const ss = getStreamState(streamId);
     if (!ss) return;
@@ -4124,19 +3993,6 @@ function updateBroadcastStatusFromConnections(streamId) {
 
     if (hasHealthySfu) {
         updateBroadcastStatus('connected');
-        return;
-    }
-
-    if (ss._allowP2pFallback && ss.viewerConnections.size > 0) {
-        let hasConnectedP2p = false;
-        for (const [, pc] of ss.viewerConnections) {
-            const state = pc.iceConnectionState;
-            if (state === 'connected' || state === 'completed') {
-                hasConnectedP2p = true;
-                break;
-            }
-        }
-        updateBroadcastStatus(hasConnectedP2p ? 'connected' : (signalingOpen ? 'checking' : 'disconnected'));
         return;
     }
 
@@ -4512,43 +4368,6 @@ async function handleSignalingMessage(streamId, msg) {
     const ss = getStreamState(streamId);
     if (!ss) return;
     switch (msg.type) {
-        case 'viewer-joined':
-            if (!ss._allowP2pFallback) {
-                console.warn(`[Broadcast] Ignoring legacy viewer-joined for stream ${streamId} — SFU-only mode is active`);
-                break;
-            }
-            if (msg.peerId && ss.localStream) {
-                // Skip re-negotiation if the existing peer connection is still healthy
-                const existingPc = ss.viewerConnections.get(msg.peerId);
-                if (existingPc) {
-                    const state = existingPc.iceConnectionState;
-                    if (state === 'connected' || state === 'completed') {
-                        console.log(`[Broadcast] Stream ${streamId} viewer ${msg.peerId} already connected (ICE: ${state}), skipping re-negotiate`);
-                        break;
-                    }
-                }
-                await createViewerConnection(streamId, msg.peerId);
-            }
-            break;
-        case 'viewer-left':
-            if (ss._allowP2pFallback && msg.peerId) closeViewerConnection(streamId, msg.peerId);
-            break;
-        case 'answer':
-            if (ss._allowP2pFallback) {
-                const pc = ss.viewerConnections.get(msg.fromPeerId);
-                if (pc && msg.sdp) await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-            } else {
-                console.warn(`[Broadcast] Ignoring legacy answer for stream ${streamId} — SFU-only mode is active`);
-            }
-            break;
-        case 'ice-candidate':
-            if (ss._allowP2pFallback) {
-                const pc = ss.viewerConnections.get(msg.fromPeerId);
-                if (pc && msg.candidate) await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
-            } else {
-                console.warn(`[Broadcast] Ignoring legacy ice-candidate for stream ${streamId} — SFU-only mode is active`);
-            }
-            break;
         case 'viewer-count':
             _perStreamViewerCounts.set(streamId, msg.count || 0);
             _updateTabViewerCount(streamId, msg.count || 0);
@@ -4560,7 +4379,6 @@ async function handleSignalingMessage(streamId, msg) {
             if (msg.iceServers && Array.isArray(msg.iceServers)) {
                 ss._serverIceServers = msg.iceServers;
             }
-            ss._allowP2pFallback = !!msg.allowP2pFallback;
             break;
         case 'error': toast(msg.message || 'Broadcast error', 'error'); break;
 
@@ -4989,10 +4807,6 @@ async function _switchActiveCamera(cameraId) {
 
         const newTrack = newStream.getVideoTracks()[0];
         ss.localStream.addTrack(newTrack);
-        for (const [, pc] of ss.viewerConnections) {
-            const sender = pc.getSenders().find(s => s.track === null || s.track?.kind === 'video');
-            if (sender) sender.replaceTrack(newTrack);
-        }
         syncRobotStreamerTracks(broadcastState.activeStreamId).catch(() => {});
         _syncSfuProducerTracks(broadcastState.activeStreamId).catch(() => {});
         const preview = document.getElementById('bc-video-preview'); if (preview) preview.srcObject = ss.localStream;
@@ -5014,10 +4828,6 @@ async function _switchActiveCamera(cameraId) {
             const recovery = await _getUserMediaWithTimeout({ video: { deviceId: oldDeviceId ? { ideal: oldDeviceId } : undefined, facingMode: { ideal: oldSettings.facingMode || 'user' }, width: { ideal: trackWidth }, height: { ideal: trackHeight }, frameRate: { ideal: trackFrameRate } } });
             const recoveryTrack = recovery.getVideoTracks()[0];
             ss.localStream.addTrack(recoveryTrack);
-            for (const [, pc] of ss.viewerConnections) {
-                const sender = pc.getSenders().find(s => s.track === null || s.track?.kind === 'video');
-                if (sender) sender.replaceTrack(recoveryTrack);
-            }
             syncRobotStreamerTracks(broadcastState.activeStreamId).catch(() => {});
             _syncSfuProducerTracks(broadcastState.activeStreamId).catch(() => {});
             const preview = document.getElementById('bc-video-preview'); if (preview) preview.srcObject = ss.localStream;
@@ -5111,20 +4921,10 @@ async function toggleCameraOverlay() {
     }
 }
 
-/** Replace live tracks across all active outputs (legacy P2P only when enabled, RobotStreamer, and SFU producers). */
+/** Replace live tracks across all active outputs (RobotStreamer and SFU producers). */
 function _replaceAllViewerTracks(streamId) {
     const ss = getStreamState(streamId);
     if (!ss || !ss.localStream) return;
-    const nvt = ss.localStream.getVideoTracks()[0];
-    const nat = ss.localStream.getAudioTracks()[0];
-    if (ss._allowP2pFallback) {
-        for (const [, pc] of ss.viewerConnections) {
-            const vs = pc.getSenders().find(s => s.track?.kind === 'video' || s.track === null);
-            if (vs && nvt) vs.replaceTrack(nvt);
-            const as = pc.getSenders().find(s => s.track?.kind === 'audio');
-            if (as && nat) as.replaceTrack(nat);
-        }
-    }
     syncRobotStreamerTracks(streamId).catch(() => {});
     // Also update the local SFU mediasoup producers so server-side consumers get the new tracks
     _syncSfuProducerTracks(streamId).catch(() => {});
@@ -5365,14 +5165,6 @@ function _republishAudioTrack(streamId, track) {
     // RobotStreamer producer
     try {
         ss.robotStreamer?.audioProducer?.replaceTrack({ track }).catch((e) => console.warn('[RS Restream] audio replaceTrack failed:', e.message));
-    } catch { /* */ }
-
-    // Direct viewer peer connections
-    try {
-        ss.viewerConnections?.forEach((pc) => {
-            const sender = pc.getSenders?.().find(x => x.track && x.track.kind === 'audio');
-            sender?.replaceTrack(track).catch(() => {});
-        });
     } catch { /* */ }
 
     // VOD: MediaRecorder is bound to the tracks it was constructed with, so roll the

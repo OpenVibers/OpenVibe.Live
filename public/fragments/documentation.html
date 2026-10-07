@@ -321,7 +321,7 @@ console.log(endpoint.whipUrlBase); // POST your SDP offer here (see WebRTC tab)
 <table class="doc-table">
 <thead><tr><th>Type</th><th>Dir</th><th>Key Fields</th><th>Description</th></tr></thead>
 <tbody>
-<tr><td>welcome</td><td>S→C</td><td>peerId, role, streamId, viewerCount, iceServers, allowP2pFallback</td><td>Sent immediately on connect</td></tr>
+<tr><td>welcome</td><td>S→C</td><td>peerId, role, streamId, viewerCount, iceServers</td><td>Sent immediately on connect</td></tr>
 <tr><td>watch</td><td>C→S</td><td>—</td><td>Viewer requests to start watching (triggers SFU consumer)</td></tr>
 <tr><td>broadcaster-ready</td><td>S→Viewer</td><td>peerId</td><td>Broadcaster or SFU source is live, safe to send/refresh <code>watch</code></td></tr>
 <tr><td>watch-queued</td><td>S→Viewer</td><td>reason, detail</td><td>Viewer is queued while the live source warms up or reconnects</td></tr>
@@ -342,7 +342,7 @@ console.log(endpoint.whipUrlBase); // POST your SDP offer here (see WebRTC tab)
 <tr><td>stream-ended</td><td>S→Viewers</td><td>—</td><td>Stream has ended</td></tr>
 </tbody>
 </table>
-<p class="muted" style="margin-top:10px">Legacy <code>offer</code> / <code>answer</code> / <code>ice-candidate</code> relay messages are disabled by default. They are only honored when <code>ALLOW_P2P_FALLBACK=true</code> is explicitly set for emergency rollback.</p>
+<p class="muted" style="margin-top:10px">Viewer media is delivered exclusively through the Mediasoup SFU. There is no direct peer-to-peer relay: legacy <code>offer</code> / <code>answer</code> / <code>ice-candidate</code> messages are not supported.</p>
 
 <h3>RTMP Ingest (OBS)</h3>
 <pre><code>Server: rtmp://openvibe.live/live

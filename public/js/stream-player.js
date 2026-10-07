@@ -253,7 +253,6 @@ function _collectPlayerRuntimeSnapshot() {
         videoSize: video ? `${video.videoWidth || 0}x${video.videoHeight || 0}` : 'n/a',
         signalingWs: player?.ws ? player.ws.readyState : 'n/a',
         sfuTransport: player?._sfuRecvTransport?.connectionState || 'n/a',
-        legacyPc: player?.pc?.iceConnectionState || 'n/a',
         trackSummary: tracks.length
             ? tracks.map((track) => `${track.kind}:${track.readyState}:muted=${track.muted}:enabled=${track.enabled}`).join(', ')
             : 'none',
@@ -283,7 +282,6 @@ function _buildPlayerDiagnosticsText() {
         `video_size=${snapshot.videoSize}`,
         `signaling_ws=${snapshot.signalingWs}`,
         `sfu_transport=${snapshot.sfuTransport}`,
-        `legacy_pc=${snapshot.legacyPc}`,
         `tracks=${snapshot.trackSummary}`,
         `network_hint=${snapshot.networkHint}`,
         `user_agent=${navigator.userAgent}`,
@@ -1115,7 +1113,7 @@ function startJSMPEG(wsUrl, canvas, placeholder, bufferProfile = getJsmpegBuffer
 async function initWebRTC(stream) {
     const video = document.getElementById('video-element');
     const placeholder = document.querySelector('.video-placeholder');
-    streamRef = stream; // set module-level ref for clip recording in handleViewerOffer
+    streamRef = stream; // set module-level ref for clip recording
 
     try {
         video.playsInline = true;
@@ -1152,7 +1150,7 @@ async function initWebRTC(stream) {
         const wsUrl = `${protocol}://${host}${portSuffix}/ws/broadcast?streamId=${streamRef.id}&role=viewer&token=${token}`;
 
         const ws = new WebSocket(wsUrl);
-        player = { ws, video, pc: null, myPeerId: null, watchSent: false, _wsUrl: wsUrl, _serverIceServers: null };
+        player = { ws, video, myPeerId: null, watchSent: false, _wsUrl: wsUrl, _serverIceServers: null };
         const _myGen = _playerGen; // this session's generation; stale once destroyPlayer bumps it
         let _broadcasterDisconnectTimer = null;
         let _viewerReconnectTimer = null;
@@ -1212,9 +1210,6 @@ async function initWebRTC(stream) {
             }, delay);
         };
 
-        // Expose startWatchOfferTimeout on player so handleViewerOffer's triggerRewatch can use it
-        player._startWatchOfferTimeout = startWatchOfferTimeout;
-
         ws.onopen = () => {
             console.log('[Player] Broadcast signaling connected');
             _updateStatus('Looking for the live feed', {
@@ -1224,8 +1219,8 @@ async function initWebRTC(stream) {
                 showDiagnostics: true,
             });
             _viewerReconnectDelay = 3000; // reset backoff on successful connect
-            const pcState = player?.pc?.iceConnectionState;
-            if (!player.watchSent || pcState === 'failed' || pcState === 'disconnected' || pcState === 'closed') {
+            const sfuState = player?._sfuRecvTransport?.connectionState;
+            if (!player.watchSent || sfuState === 'failed' || sfuState === 'disconnected' || sfuState === 'closed') {
                 scheduleViewerRewatch(250);
             }
         };
@@ -1240,7 +1235,6 @@ async function initWebRTC(stream) {
                         if (msg.iceServers && Array.isArray(msg.iceServers)) {
                             player._serverIceServers = msg.iceServers;
                         }
-                        player._allowP2pFallback = !!msg.allowP2pFallback;
                         console.log('[Player] Welcome, peerId:', msg.peerId, 'iceServers:', (player._serverIceServers || []).length);
                         _updateStatus('Waiting for the live feed', {
                             phase: 'queue',
@@ -1270,13 +1264,6 @@ async function initWebRTC(stream) {
                         // Hide reconnecting indicator if shown
                         _hideReconnectingIndicator();
                         // Skip re-negotiation if the existing media path is still healthy.
-                        if (player.pc) {
-                            const state = player.pc.iceConnectionState;
-                            if (state === 'connected' || state === 'completed') {
-                                console.log(`[Player] Peer connection still healthy (ICE: ${state}), skipping re-negotiate`);
-                                break;
-                            }
-                        }
                         if (player._sfuRecvTransport) {
                             const state = player._sfuRecvTransport.connectionState;
                             if (state === 'connected') {
@@ -1289,28 +1276,6 @@ async function initWebRTC(stream) {
                         sendPlayerSignal({ type: 'watch' });
                         player.watchSent = true;
                         startWatchOfferTimeout();
-                        break;
-                    case 'offer':
-                        if (!player._allowP2pFallback) {
-                            console.warn('[Player] Ignoring legacy P2P offer — SFU-only mode is active');
-                            _pushPlayerDiagnostic('p2p.offer.ignored', 'Received unexpected offer while SFU-only mode was active');
-                            break;
-                        }
-                        // Broadcaster sent us an offer (legacy P2P rollback path) — create answer
-                        console.log('[Player] Received offer from broadcaster');
-                        _updateStatus('Switching to the fallback path', {
-                            phase: 'transport',
-                            detail: 'Emergency P2P fallback is enabled for this session. Negotiating direct media.',
-                            hint: 'This path should normally stay disabled. Copy the log if you were not expecting it.',
-                            showDiagnostics: true,
-                        });
-                        // Clear the watch-to-offer timeout — offer received successfully
-                        if (_watchOfferTimer) { clearTimeout(_watchOfferTimer); _watchOfferTimer = null; }
-                        _rewatchCount = 0; // reset retry count on successful offer
-                        _hideReconnectingIndicator();
-                        // Clear any stale error overlay — we got a valid offer
-                        _clearStreamError();
-                        await handleViewerOffer(msg, player.ws, video);
                         break;
                     case 'sfu-viewer-ready':
                         // Server has SFU producers — use mediasoup-client RecvTransport
@@ -1337,16 +1302,6 @@ async function initWebRTC(stream) {
                             _sfuViewerSetupInProgress = false;
                         }
                         break;
-                    case 'ice-candidate':
-                        if (!player._allowP2pFallback) {
-                            console.warn('[Player] Ignoring legacy P2P ICE candidate — SFU-only mode is active');
-                            break;
-                        }
-                        // ICE candidate from broadcaster
-                        if (player.pc && msg.candidate) {
-                            await player.pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
-                        }
-                        break;
                     case 'broadcaster-disconnected':
                         console.log('[Player] Broadcaster signaling disconnected — media may still be active');
                         _pushPlayerDiagnostic('signal.disconnect', 'Broadcaster signaling disconnected while viewer session remained open');
@@ -1358,14 +1313,14 @@ async function initWebRTC(stream) {
                         if (_broadcasterDisconnectTimer) clearTimeout(_broadcasterDisconnectTimer);
                         _broadcasterDisconnectTimer = setTimeout(() => {
                             _broadcasterDisconnectTimer = null;
-                            // Check if PeerConnection is still delivering media
-                            const pcState = player?.pc?.iceConnectionState;
-                            if (pcState === 'connected' || pcState === 'completed') {
-                                // PC still working — don't show "ended", just log
-                                console.log('[Player] Broadcaster signaling gone but PC still connected, waiting...');
+                            // Check if the SFU receive transport is still delivering media
+                            const sfuState = player?._sfuRecvTransport?.connectionState;
+                            if (sfuState === 'connected') {
+                                // Transport still working — don't show "ended", just log
+                                console.log('[Player] Broadcaster signaling gone but SFU transport still connected, waiting...');
                                 return;
                             }
-                            console.log('[Player] Broadcaster did not reconnect and PC is dead, stream ended');
+                            console.log('[Player] Broadcaster did not reconnect and SFU transport is dead, stream ended');
                             _hideReconnectingIndicator();
                             showStreamEnded();
                         }, 60000);
@@ -1402,7 +1357,7 @@ async function initWebRTC(stream) {
                         _showReconnectingIndicator();
                         // Clear the SFU frozen checker — a new one will start after recovery
                         if (player._sfuFrozenInterval) { clearInterval(player._sfuFrozenInterval); player._sfuFrozenInterval = null; }
-                        // Gentle poll: send watch every 10 s WITHOUT starting the P2P offer timeout.
+                        // Gentle poll: send watch every 10 s WITHOUT starting the watch-response timeout.
                         // The server will respond with sfu-viewer-ready, sfu-source-unavailable, or watch-queued.
                         _viewerRewatchTimer = setTimeout(() => {
                             _viewerRewatchTimer = null;
@@ -1490,308 +1445,9 @@ async function initWebRTC(stream) {
     }
 }
 
-async function handleViewerOffer(msg, ws, video) {
-    // Safety: player must be set by initWebRTC before we get here
-    if (!player) {
-        console.warn('[Player] handleViewerOffer called but player is null');
-        return;
-    }
-    // Close existing PC if re-negotiating — detach handlers first to prevent
-    // the old PC's 'closed' state from triggering a cascading re-watch loop
-    if (player.pc) {
-        const oldPc = player.pc;
-        oldPc.oniceconnectionstatechange = null;
-        oldPc.ontrack = null;
-        oldPc.onicecandidate = null;
-        try { oldPc.close(); } catch (ignored) {}
-    }
-    // Clear any pending stall/ICE timers from the previous connection
-    if (player._iceTimeout) { clearTimeout(player._iceTimeout); player._iceTimeout = null; }
-    if (player._stallTimer) { clearTimeout(player._stallTimer); player._stallTimer = null; }
-    if (player._playRetryTimer) { clearTimeout(player._playRetryTimer); player._playRetryTimer = null; }
-
-    // Use server-provided ICE servers (with TURN support) if available, else fallback to STUN-only
-    const iceServers = (player._serverIceServers && player._serverIceServers.length > 0)
-        ? player._serverIceServers
-        : [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' },
-        ];
-
-    const pc = new RTCPeerConnection({ iceServers });
-    player.pc = pc;
-    let _iceConnected = false;
-    let _hasVideoFrames = false;
-    let _playPending = false; // debounce play() across multiple ontrack events
-
-    // Schedules a re-watch if the current PC is still ours
-    const triggerRewatch = (reason) => {
-        if (!player || player.pc !== pc) return;
-        // Track ICE failures separately — these never reset (prevents infinite loop)
-        if (reason.includes('ICE') || reason.includes('stall') || reason.includes('SDP')) {
-            _totalIceFailures++;
-            console.log(`[Player] Re-watching: ${reason} (ICE failures: ${_totalIceFailures}/${MAX_ICE_FAILURES})`);
-            if (_totalIceFailures >= MAX_ICE_FAILURES) {
-                console.error('[Player] Too many ICE/connection failures — giving up');
-                showStreamError('Could not establish media connection. Your network may be blocking WebRTC traffic. Try a different network or refresh the page.');
-                return;
-            }
-        } else {
-            console.log(`[Player] Re-watching: ${reason}`);
-        }
-        player.watchSent = false;
-        sendPlayerSignal({ type: 'watch' });
-        player.watchSent = true;
-        // Start watch-to-offer timeout for this re-watch too
-        if (player._startWatchOfferTimeout) player._startWatchOfferTimeout();
-    };
-
-    // Debounced play() — always starts muted (guaranteed autoplay), then unmutes if allowed.
-    // Previous approach tried unmuted first, hit NotAllowedError, then retried muted — but the
-    // muted retry could also fail with AbortError if the first play() was still settling,
-    // leading to "Playback failed even muted" and no frames ever rendering.
-    const tryPlay = () => {
-        if (_playPending || !player || player.pc !== pc) return;
-        // Viewer deliberately paused — don't force playback on a reconnect.
-        if (viewerWantsPaused()) { try { video.pause(); } catch {} return; }
-        _playPending = true;
-        if (player._playRetryTimer) { clearTimeout(player._playRetryTimer); player._playRetryTimer = null; }
-
-        // Always start muted — this is the only way to guarantee autoplay across all browsers.
-        // We unmute after playback starts if the user hasn't muted.
-        video.muted = true;
-        video.volume = 1;
-
-        video.play().then(() => {
-            _playPending = false;
-            console.log('[Player] Playback started (muted autoplay)');
-
-            // Now try to unmute based on user prefs
-            const audioPrefs = getSavedPlayerAudioState();
-            if (!audioPrefs.muted) {
-                video.volume = Math.max(0.01, audioPrefs.volume);
-                video.muted = false;
-                // If unmuting fails (autoplay policy), show overlay
-                // Some browsers will pause on unmute — re-play muted if needed
-                const playPromise = video.play();
-                if (playPromise) {
-                    playPromise.catch(() => {
-                        video.muted = true;
-                        video.play().catch(() => {});
-                        showUnmuteOverlay(video);
-                    });
-                }
-            } else {
-                video.muted = true;
-                video.volume = 0;
-                // Already muted — remove stale overlay if present
-                document.getElementById('unmute-overlay')?.remove();
-            }
-        }).catch((err) => {
-            _playPending = false;
-            if (err.name === 'AbortError') {
-                // play() interrupted — retry after a tick (second ontrack can cause this)
-                console.log('[Player] play() interrupted, retrying in 300ms');
-                player._playRetryTimer = setTimeout(() => {
-                    player._playRetryTimer = null;
-                    _playPending = false;
-                    tryPlay();
-                }, 300);
-            } else {
-                console.warn('[Player] Muted play() failed:', err.name, err.message);
-                // Retry once after short delay — video element may not have enough data yet
-                player._playRetryTimer = setTimeout(() => {
-                    player._playRetryTimer = null;
-                    _playPending = false;
-                    tryPlay();
-                }, 1000);
-            }
-        });
-    };
-
-    let _trackCount = 0; // count received tracks — only tryPlay after both video+audio arrive
-
-    pc.ontrack = (e) => {
-        _trackCount++;
-        console.log('[Player] Got remote track:', e.track.kind, `(${_trackCount} total)`);
-        if (e.streams && e.streams[0]) {
-            video.srcObject = e.streams[0];
-            startClipRecordingIfNeeded(e.streams[0], streamRef?.id);
-        } else {
-            let mediaStream = video.srcObject;
-            if (!mediaStream) {
-                mediaStream = new MediaStream();
-                video.srcObject = mediaStream;
-            }
-            mediaStream.addTrack(e.track);
-            startClipRecordingIfNeeded(mediaStream, streamRef?.id);
-        }
-
-        // Monitor remote track health — if it ends or mutes, trigger re-watch
-        const track = e.track;
-        track.addEventListener('ended', () => {
-            if (player?.pc !== pc) return;
-            console.warn(`[Player] Remote ${track.kind} track ended`);
-            triggerRewatch(`remote ${track.kind} track ended`);
-        }, { once: true });
-        track.addEventListener('mute', () => {
-            if (player?.pc !== pc) return;
-            console.warn(`[Player] Remote ${track.kind} track muted`);
-            // Give muted tracks a grace period — they may unmute on their own (e.g. track replacement)
-            setTimeout(() => {
-                if (player?.pc !== pc || !track.muted) return;
-                triggerRewatch(`remote ${track.kind} track stayed muted`);
-            }, 5000);
-        }, { once: true });
-
-        // Show the video element now that we have tracks
-        video.style.display = 'block';
-
-        // Register the playing event listener for EACH new PC (fresh _hasVideoFrames each time)
-        if (_trackCount === 1) {
-            const onPlaying = () => {
-                video.removeEventListener('playing', onPlaying);
-                _hasVideoFrames = true;
-                if (player._stallTimer) { clearTimeout(player._stallTimer); player._stallTimer = null; }
-                _hidePlayerPlaceholder();
-                // Only remove unmute overlay if video is actually playing with audio
-                if (!video.muted) {
-                    document.getElementById('unmute-overlay')?.remove();
-                }
-            };
-            video.addEventListener('playing', onPlaying);
-        }
-
-        // Video stall detection — if no frames render within 8s of getting tracks, re-watch
-        if (!player._stallTimer && !_hasVideoFrames) {
-            player._stallTimer = setTimeout(() => {
-                player._stallTimer = null;
-                if (player?.pc !== pc || _hasVideoFrames) return;
-                // Check if video element is actually rendering
-                if (video.videoWidth === 0 || video.paused || video.readyState < 2) {
-                    console.warn('[Player] Video stall detected — no frames after 8s');
-                    triggerRewatch('video stall — no frames rendered');
-                }
-            }, 8000);
-        }
-
-        // Delay tryPlay until we have at least 2 tracks (video + audio) or 500ms
-        // after first track (handles audio-only/video-only streams).
-        // This prevents the first tryPlay() from racing with the second ontrack
-        // which causes AbortError on the first play() call.
-        if (_trackCount >= 2) {
-            tryPlay();
-        } else if (_trackCount === 1) {
-            player._playRetryTimer = setTimeout(() => {
-                player._playRetryTimer = null;
-                _playPending = false;
-                tryPlay();
-            }, 500);
-        }
-    };
-
-    pc.onicecandidate = (e) => {
-        // Use player.ws (not the passed ws param) so this works after WS reconnection
-        if (e.candidate) {
-            sendPlayerSignal({
-                type: 'ice-candidate',
-                candidate: e.candidate,
-            });
-        }
-    };
-
-    pc.oniceconnectionstatechange = () => {
-        // Ignore state changes from a stale (replaced) PC
-        if (!player || player.pc !== pc) return;
-        console.log('[Player] ICE state:', pc.iceConnectionState);
-        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-            _iceConnected = true;
-            if (player._iceTimeout) { clearTimeout(player._iceTimeout); player._iceTimeout = null; }
-            // If the stall timer is already running and no frames yet, restart it from ICE-connected
-            // time — ICE negotiation itself can take several seconds, so the 8s clock should start
-            // from when media can actually flow, not from when ontrack fired.
-            if (player._stallTimer && !_hasVideoFrames) {
-                clearTimeout(player._stallTimer);
-                player._stallTimer = setTimeout(() => {
-                    player._stallTimer = null;
-                    if (player?.pc !== pc || _hasVideoFrames) return;
-                    if (video.videoWidth === 0 || video.paused || video.readyState < 2) {
-                        console.warn('[Player] Video stall detected — no frames after ICE connected + 8s');
-                        triggerRewatch('video stall — no frames after ICE connect');
-                    }
-                }, 8000);
-            }
-            return;
-        }
-        if (pc.iceConnectionState === 'failed') {
-            if (player._iceTimeout) { clearTimeout(player._iceTimeout); player._iceTimeout = null; }
-            triggerRewatch('ICE failed');
-            return;
-        }
-        if (pc.iceConnectionState === 'disconnected') {
-            setTimeout(() => {
-                if (!player?.pc || player.pc !== pc) return;
-                const state = pc.iceConnectionState;
-                if (state === 'disconnected' || state === 'failed') {
-                    triggerRewatch('ICE disconnected/failed after grace period');
-                }
-            }, 2500);
-        }
-        // 'disconnected' is transient and often recovers on its own — don't show error
-        // 'closed' is handled by detaching handlers before close — no cascading re-watch
-    };
-
-    // Wrap SDP operations in try/catch — retry on failure instead of silent black screen
-    try {
-        await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-
-        // Use player.ws (not the passed ws param) so this works after WS reconnection
-        sendPlayerSignal({
-            type: 'answer',
-            sdp: answer,
-        });
-        console.log('[Player] Sent answer to broadcaster');
-    } catch (sdpErr) {
-        console.error('[Player] SDP negotiation failed:', sdpErr);
-        // Close the failed PC and retry after a short delay
-        pc.oniceconnectionstatechange = null;
-        pc.ontrack = null;
-        try { pc.close(); } catch {}
-        if (player.pc === pc) player.pc = null;
-        setTimeout(() => triggerRewatch('SDP negotiation failed'), 2000);
-        return;
-    }
-
-    // ICE connection timeout — if not connected within 10s, something is stuck
-    player._iceTimeout = setTimeout(() => {
-        player._iceTimeout = null;
-        if (!player || player.pc !== pc || _iceConnected) return;
-        const state = pc.iceConnectionState;
-        if (state !== 'connected' && state !== 'completed') {
-            console.warn(`[Player] ICE timeout after 10s (state: ${state})`);
-            triggerRewatch('ICE connection timeout');
-        }
-    }, 10000);
-}
-
-/* ── SFU Viewer via mediasoup-client (replaces hand-built SDP) ── */
 async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatch) {
     if (!player) return;
 
-    // Clean up old PC if any (from P2P fallback or previous SFU attempt)
-    if (player.pc) {
-        const oldPc = player.pc;
-        oldPc.oniceconnectionstatechange = null;
-        oldPc.ontrack = null;
-        oldPc.onicecandidate = null;
-        try { oldPc.close(); } catch {}
-        player.pc = null;
-    }
     if (player._iceTimeout) { clearTimeout(player._iceTimeout); player._iceTimeout = null; }
     if (player._stallTimer) { clearTimeout(player._stallTimer); player._stallTimer = null; }
     if (player._playRetryTimer) { clearTimeout(player._playRetryTimer); player._playRetryTimer = null; }
@@ -2989,7 +2645,7 @@ function setupVideoControls() {
     const audioPrefs = getSavedPlayerAudioState();
     const savedVol = Math.round(audioPrefs.volume * 100);
     volSlider.value = savedVol;
-    // For WebRTC, tryPlay() in handleViewerOffer sets volume + handles autoplay policy.
+    // For WebRTC (SFU), the player start path sets volume + handles autoplay policy.
     // For JSMPEG, onSourceEstablished handles it. For HLS, set it here.
     if (playerType === 'hls') {
         setVolume(savedVol / 100, { muted: audioPrefs.muted });
@@ -3757,7 +3413,6 @@ function destroyPlayer() {
     if (player) {
         if (playerType === 'jsmpeg' && player.destroy) player.destroy();
         if (playerType === 'webrtc') {
-            if (player.pc) player.pc.close();
             if (player.ws) player.ws.close();
         }
         if (playerType === 'hls') {
@@ -3921,9 +3576,8 @@ function toggleStreamStats(force) {
 }
 
 function _getStatsSource() {
-    // Both RTCPeerConnection (legacy) and the mediasoup recv Transport expose getStats()
+    // The mediasoup recv Transport exposes getStats()
     if (typeof player !== 'undefined' && player) {
-        if (player.pc && typeof player.pc.getStats === 'function') return player.pc;
         if (player._sfuRecvTransport && typeof player._sfuRecvTransport.getStats === 'function') return player._sfuRecvTransport;
     }
     return null;

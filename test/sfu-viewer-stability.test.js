@@ -11,9 +11,9 @@
  *   E. Client-side: 15s transport connect timeout + null-before-close cascade guard
  *   F. WHIP ICE disconnect: grace timer + explicit producer-removed emit in cleanupSession
  *   G. Broadcast-server: ICE-state filter + stale-source path + watch-queued message
- *   H. Client: sfu-source-unavailable and watch-queued handled without P2P offer timeout
+ *   H. Client: sfu-source-unavailable and watch-queued handled without the watch-response timeout
  *   I. Client: frozen-video detector starts after play, escalates keyframe -> rebuild
- *   J. Broadcaster auto-publishes into SFU and legacy P2P is explicitly gated
+ *   J. Broadcaster auto-publishes into SFU (the SFU is the only media path)
  *   K. Server startup logs TURN / announced-IP diagnostics for SFU viewers
  */
 
@@ -159,8 +159,8 @@ assert.ok(
     'broadcast-server.js must send watch-queued when viewer is added to pending queue'
 );
 assert.ok(
-    bcastSrc.includes('config.allowP2pFallback') && bcastSrc.includes('p2p.relay.attempt'),
-    'broadcast-server.js must gate legacy P2P relay behind config.allowP2pFallback and log relay attempts'
+    !bcastSrc.includes('allowP2pFallback') && !bcastSrc.includes('p2p.relay.attempt') && !bcastSrc.includes('relaySignaling'),
+    'broadcast-server.js must carry no legacy P2P relay path — the SFU is the only media path'
 );
 assert.ok(
     bcastSrc.includes('viewer.queued') && bcastSrc.includes('viewer.notified'),
@@ -234,24 +234,20 @@ assert.ok(
 );
 console.log('OK I: frozen-video detector nudges with a keyframe, then rebuilds the transport');
 
-// ── J: broadcaster auto-publishes into SFU, P2P rollback gated ──
+// ── J: broadcaster auto-publishes into SFU (SFU is the only media path) ──
 assert.ok(
     broadcastClientSrc.includes("_ensureSfuBroadcastReady(streamId, 'signaling-open')"),
     'broadcast.js must auto-start SFU publishing when broadcaster signaling opens'
 );
 assert.ok(
-    broadcastClientSrc.includes('ss._allowP2pFallback = !!msg.allowP2pFallback'),
-    'broadcast.js must track whether legacy P2P rollback is enabled'
+    !broadcastClientSrc.includes('_allowP2pFallback') && !broadcastClientSrc.includes('createViewerConnection'),
+    'broadcast.js must carry no legacy P2P viewer-connection path — SFU-only'
 );
 assert.ok(
-    broadcastClientSrc.includes('SFU-only mode is active'),
-    'broadcast.js must ignore legacy P2P viewer signaling while SFU-only mode is active'
+    !configSrc.includes('ALLOW_P2P_FALLBACK') && !configSrc.includes('allowP2pFallback'),
+    'server/config.js must not expose the removed ALLOW_P2P_FALLBACK flag'
 );
-assert.ok(
-    configSrc.includes('ALLOW_P2P_FALLBACK') && configSrc.includes('allowP2pFallback'),
-    'server/config.js must expose the ALLOW_P2P_FALLBACK feature flag'
-);
-console.log('OK J: broadcaster auto-publishes into SFU and P2P rollback is explicitly gated');
+console.log('OK J: broadcaster auto-publishes into SFU — the SFU is the only media path');
 
 // ── K: server startup TURN / announced-IP diagnostics ───────────
 assert.ok(
