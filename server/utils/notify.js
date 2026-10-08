@@ -45,7 +45,7 @@ async function _post(path, body, retried = false) {
     });
     if (res.status === 401 && auth.Authorization && !retried) {
         principal.tokenRejected();
-        return _post(path, body, true);
+        return await _post(path, body, true);
     }
     return res;
 }

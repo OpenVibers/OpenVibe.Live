@@ -77,7 +77,7 @@ async function fetchText(url, opts = {}) {
 
 /** GET a URL as a raw Buffer (images, fonts, anything binary). Resolves { status, url, headers, body }. */
 async function fetchBuffer(url, opts = {}) {
-    return fetchRaw(url, opts);
+    return await fetchRaw(url, opts);
 }
 
 /**

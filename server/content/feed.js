@@ -82,16 +82,16 @@ function parseJson(v) {
 }
 
 const _users = new Map();   // per page build: id/username → row (or null)
-function userById(id) {
+async function userById(id) {
     if (id == null || id === '') return null;
     const key = `i:${id}`;
-    if (!_users.has(key)) { let u = null; try { u = db.getUserById(Number(id)) || null; } catch { /* */ } _users.set(key, u); }
+    if (!_users.has(key)) { let u = null; try { u = await db.getUserById(Number(id)) || null; } catch { /* */ } _users.set(key, u); }
     return _users.get(key);
 }
-function userByName(name) {
+async function userByName(name) {
     if (!name) return null;
     const key = `n:${String(name).toLowerCase()}`;
-    if (!_users.has(key)) { let u = null; try { u = db.getUserByUsername(String(name)) || null; } catch { /* */ } _users.set(key, u); }
+    if (!_users.has(key)) { let u = null; try { u = await db.getUserByUsername(String(name)) || null; } catch { /* */ } _users.set(key, u); }
     return _users.get(key);
 }
 const banned = (u) => !!(u && (u.is_banned === 1 || u.is_banned === true));
@@ -116,9 +116,9 @@ function unplayableVod(v) {
     return Date.now() - ts(v.created_at) > 10 * 60 * 1000;
 }
 
-function vodItem(v) {
+async function vodItem(v) {
     if (!lookups.isPublic(v) || unplayableVod(v)) return null;
-    const owner = userById(v.user_id);
+    const owner = await userById(v.user_id);
     if (banned(owner)) return null;
     // Content is what people made: the card carries no AI overview (the VOD page still has it).
     return {
@@ -132,16 +132,16 @@ function vodItem(v) {
     };
 }
 
-function clipItem(c, { ai }) {
+async function clipItem(c, { ai }) {
     if (!lookups.isPublic(c)) return null;
     if (c.status && c.status !== 'ready') return null;
     if (!!c.auto_generated !== ai) return null;   // an upstream that ignored the filter never mixes the feeds
-    const channelOwner = userById(c.channel_user_id != null ? c.channel_user_id : c.user_id);
-    const creator = userById(c.user_id);
+    const channelOwner = await userById(c.channel_user_id != null ? c.channel_user_id : c.user_id);
+    const creator = await userById(c.user_id);
     if (banned(channelOwner) || banned(creator)) return null;
     // An AI clip's card says what the AI saw; a person's clip carries only what they wrote.
     let summary = null;
-    if (ai) { try { const s = db.getClipAiState(c.id); summary = s && (s.ai_overview_short || s.ai_overview); } catch { /* */ } }
+    if (ai) { try { const s = await db.getClipAiState(c.id); summary = s && (s.ai_overview_short || s.ai_overview); } catch { /* */ } }
     const by = !ai && creator && channelOwner && creator.id !== channelOwner.id ? person(creator) : null;
     return {
         kind: 'clip', id: Number(c.id), href: `/clip/${Number(c.id)}`,
@@ -157,7 +157,7 @@ function clipItem(c, { ai }) {
 }
 
 const VOD_LINK_RE = /^\/vod\/\d+(\?t=\d+(\.\d+)?)?$/;
-function pasteItem(p, { ai }) {
+async function pasteItem(p, { ai }) {
     if (!p || p.visibility !== 'public' || p.burn_after_read) return null;
     if ((p.origin === 'ai') !== ai) return null;
     const meta = parseJson(p.metadata) || {};
@@ -165,14 +165,14 @@ function pasteItem(p, { ai }) {
     if (ai) {
         // AI pastes have no author; they belong to the stream they came from.
         let stream = null;
-        try { stream = p.stream_id ? db.getStreamById(Number(p.stream_id)) : null; } catch { /* */ }
-        const owner = stream ? userById(stream.user_id) : userByName(meta.username);
+        try { stream = p.stream_id ? await db.getStreamById(Number(p.stream_id)) : null; } catch { /* */ }
+        const owner = stream ? await userById(stream.user_id) : await userByName(meta.username);
         if (banned(owner)) return null;
         channel = person(owner);
     } else {
         // The author is a network account: their Live channel when they have one, else just the name.
         // Community's avatar is used only as an absolute https URL (it may be relative to Community).
-        const local = userByName(p.username);
+        const local = await userByName(p.username);
         if (banned(local)) return null;
         const theirAvatar = typeof p.avatar_url === 'string' && /^https:\/\//i.test(p.avatar_url) ? p.avatar_url : null;
         channel = local ? person(local)
@@ -197,10 +197,10 @@ function pasteItem(p, { ai }) {
     };
 }
 
-function recapItem(r) {
+async function recapItem(r) {
     const j = parseJson(r.json);
     if (!j || !j.write || !j.stream) return null;
-    const owner = userById(r.user_id);
+    const owner = await userById(r.user_id);
     if (!owner || banned(owner)) return null;
     return {
         kind: 'recap', id: Number(r.stream_id), href: `/recap/${Number(r.stream_id)}`,
@@ -229,7 +229,7 @@ const SOURCES = {
             const r = await media.listClips({ limit: n, offset, order: sort === 'top' ? 'views' : 'newest', since: since || undefined, auto_generated: 0, status: 'ready' }, { timeoutMs: SOURCE_TIMEOUT_MS });
             return { rows: mediaRows(r, 'clips'), total: mediaTotal(r) };
         },
-        item: (c) => clipItem(c, { ai: false }),
+        item: async (c) => await clipItem(c, { ai: false }),
         score: (it) => it.views,
     },
     aiclips: {
@@ -237,17 +237,17 @@ const SOURCES = {
             const r = await media.listClips({ limit: n, offset, order: sort === 'top' ? 'views' : 'newest', since: since || undefined, auto_generated: 1, status: 'ready' }, { timeoutMs: SOURCE_TIMEOUT_MS });
             return { rows: mediaRows(r, 'clips'), total: mediaTotal(r) };
         },
-        item: (c) => clipItem(c, { ai: true }),
+        item: async (c) => await clipItem(c, { ai: true }),
         score: (it) => it.views,
     },
     pastes: {
-        load: (offset, n, opts) => communityPastes('user', offset, n, opts),
-        item: (p) => pasteItem(p, { ai: false }),
+        load: async (offset, n, opts) => await communityPastes('user', offset, n, opts),
+        item: async (p) => await pasteItem(p, { ai: false }),
         score: (it) => it.views + 5 * it.likes,
     },
     aipastes: {
-        load: (offset, n, opts) => communityPastes('ai', offset, n, opts),
-        item: (p) => pasteItem(p, { ai: true }),
+        load: async (offset, n, opts) => await communityPastes('ai', offset, n, opts),
+        item: async (p) => await pasteItem(p, { ai: true }),
         score: (it) => it.views + 5 * it.likes,
     },
     recaps: {
@@ -260,8 +260,8 @@ const SOURCES = {
                 ? "COALESCE(json_extract(r.json, '$.stream.peak_viewers'), 0) DESC, r.created_at DESC, r.stream_id DESC"
                 : 'r.created_at DESC, r.stream_id DESC';
             const from = `FROM stream_recaps r JOIN users u ON u.id = r.user_id WHERE ${where.join(' AND ')}`;
-            const rows = db.all(`SELECT r.stream_id, r.user_id, r.json, r.created_at ${from} ORDER BY ${order} LIMIT ? OFFSET ?`, [...params, n, offset]) || [];
-            const total = (db.get(`SELECT COUNT(*) AS n ${from}`, params) || {}).n || 0;
+            const rows = await db.all(`SELECT r.stream_id, r.user_id, r.json, r.created_at ${from} ORDER BY ${order} LIMIT ? OFFSET ?`, [...params, n, offset]) || [];
+            const total = (await db.get(`SELECT COUNT(*) AS n ${from}`, params) || {}).n || 0;
             return { rows, total };
         },
         item: recapItem,

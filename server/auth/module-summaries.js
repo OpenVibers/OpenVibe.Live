@@ -48,19 +48,19 @@ function toIso(v) {
 }
 
 /** { profile, stats } for one account, or null when it has neither streams nor followers. */
-function summarize(userId, { now = Date.now() } = {}) {
+async function summarize(userId, { now = Date.now() } = {}) {
     const d = db.getDb();
-    const user = d.prepare('SELECT id, username FROM users WHERE id = ?').get(userId);
+    const user = await d.prepare('SELECT id, username FROM users WHERE id = ?').get(userId);
     if (!user) return null;
     const since = new Date(now - 30 * DAY_MS).toISOString().replace('T', ' ').slice(0, 19);
-    const followers = d.prepare('SELECT COUNT(*) AS n FROM follows WHERE streamer_id = ?').get(userId).n;
-    const ever = d.prepare('SELECT COUNT(*) AS n, MAX(started_at) AS last FROM streams WHERE user_id = ?').get(userId);
+    const followers = (await d.prepare('SELECT COUNT(*) AS n FROM follows WHERE streamer_id = ?').get(userId)).n;
+    const ever = await d.prepare('SELECT COUNT(*) AS n, MAX(started_at) AS last FROM streams WHERE user_id = ?').get(userId);
     if (!ever.n && !followers) return null;
-    const recent = d.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(s.duration_seconds), 0) AS secs, COALESCE(MAX(s.peak_viewers), 0) AS peak,
+    const recent = await d.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(s.duration_seconds), 0) AS secs, COALESCE(MAX(s.peak_viewers), 0) AS peak,
             AVG(a.avg_viewers) AS avg
         FROM streams s LEFT JOIN stream_analytics a ON a.stream_id = s.id
         WHERE s.user_id = ? AND s.started_at >= ? AND s.is_live = 0`).get(userId, since);
-    const newFollowers = d.prepare('SELECT COUNT(*) AS n FROM follows WHERE streamer_id = ? AND created_at >= ?').get(userId, since).n;
+    const newFollowers = (await d.prepare('SELECT COUNT(*) AS n FROM follows WHERE streamer_id = ? AND created_at >= ?').get(userId, since)).n;
     const minutes = Math.round(Number(recent.secs) / 60);
     return {
         profile: {
@@ -84,16 +84,16 @@ const LOYALTY_MIN_INTERVAL_MS = 30 * 60 * 1000; // points move while people watc
 
 /** live.loyalty for one account: channel points (top ten channels) and the Arena level, or null when
  *  there is nothing to say. Once a record was written, an account whose points are gone gets zeros. */
-function loyaltyOf(userId) {
+async function loyaltyOf(userId) {
     const d = db.getDb();
-    const channels = d.prepare(`SELECT u.username AS channel, cp.balance AS points FROM channel_points cp JOIN users u ON u.id = cp.streamer_id
-        WHERE cp.user_id = ? AND cp.balance > 0 ORDER BY cp.balance DESC, u.username LIMIT 10`).all(userId)
+    const channels = (await d.prepare(`SELECT u.username AS channel, cp.balance AS points FROM channel_points cp JOIN users u ON u.id = cp.streamer_id
+        WHERE cp.user_id = ? AND cp.balance > 0 ORDER BY cp.balance DESC, u.username LIMIT 10`).all(userId))
         .map((r) => ({ channel: String(r.channel).slice(0, 64), points: r.points }));
-    const total = d.prepare('SELECT COALESCE(SUM(balance), 0) AS n FROM channel_points WHERE user_id = ? AND balance > 0').get(userId).n;
+    const total = (await d.prepare('SELECT COALESCE(SUM(balance), 0) AS n FROM channel_points WHERE user_id = ? AND balance > 0').get(userId)).n;
     let arena = null;
-    try { arena = d.prepare('SELECT xp, level FROM arena_trash_levels WHERE user_id = ?').get(userId) || null; } catch { /* the arena tables do not exist yet */ }
+    try { arena = await d.prepare('SELECT xp, level FROM arena_trash_levels WHERE user_id = ?').get(userId) || null; } catch { /* the arena tables do not exist yet */ }
     if (!total && !arena) {
-        const had = d.prepare("SELECT 1 FROM module_summary_pushes WHERE user_id = ? AND namespace = 'live.loyalty'").get(userId);
+        const had = await d.prepare("SELECT 1 FROM module_summary_pushes WHERE user_id = ? AND namespace = 'live.loyalty'").get(userId);
         return had ? { channel_points_total: 0, channels: [] } : null;
     }
     const out = { channel_points_total: total, channels };
@@ -119,17 +119,17 @@ const hashOf = (data) => crypto.createHash('sha256').update(JSON.stringify(data)
 /** Write one person's records where they changed. Returns the namespaces written. */
 async function push(userId, { modules = client(), now = Date.now(), force = false } = {}) {
     if (!modules) return [];
-    const subject = identity.subjectOf(userId);
+    const subject = await identity.subjectOf(userId);
     if (!/^usr_[0-9A-HJKMNP-TV-Z]{26}$/.test(subject || '')) return [];
-    const sum = summarize(userId, { now });
-    const loyalty = loyaltyOf(userId);
+    const sum = await summarize(userId, { now });
+    const loyalty = await loyaltyOf(userId);
     const pushes = [];
     if (sum) pushes.push(['live.profile', sum.profile], ['live.stats', sum.stats]);
     if (loyalty) pushes.push(['live.loyalty', loyalty]);
     const written = [];
     for (const [ns, data] of pushes) {
         const hash = hashOf(data);
-        const last = db.getDb().prepare("SELECT hash, strftime('%s', pushed_at) * 1000 AS at FROM module_summary_pushes WHERE user_id = ? AND namespace = ?").get(userId, ns);
+        const last = await db.getDb().prepare("SELECT hash, strftime('%s', pushed_at) * 1000 AS at FROM module_summary_pushes WHERE user_id = ? AND namespace = ?").get(userId, ns);
         if (last && last.hash === hash) { stats.unchanged++; continue; }
         if (ns === 'live.loyalty' && last && !force && now - Number(last.at) < LOYALTY_MIN_INTERVAL_MS) { stats.unchanged++; continue; }
         const body = ns === 'live.profile' ? data : { ...data, computed_at: new Date(now).toISOString() };
@@ -140,7 +140,7 @@ async function push(userId, { modules = client(), now = Date.now(), force = fals
             continue;
         }
         // pushed_at on the same clock the half-hour loyalty throttle reads (Date.now() in production).
-        db.getDb().prepare(`INSERT INTO module_summary_pushes (user_id, namespace, hash, pushed_at) VALUES (?, ?, ?, ?)
+        await db.getDb().prepare(`INSERT INTO module_summary_pushes (user_id, namespace, hash, pushed_at) VALUES (?, ?, ?, ?)
             ON CONFLICT(user_id, namespace) DO UPDATE SET hash = excluded.hash, pushed_at = excluded.pushed_at`).run(userId, ns, hash, new Date(now).toISOString().replace('T', ' ').slice(0, 19));
         stats.written++;
         written.push(ns);
@@ -148,9 +148,9 @@ async function push(userId, { modules = client(), now = Date.now(), force = fals
     return written;
 }
 
-const tableExists = (name) => Boolean(db.getDb().prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(name));
-const arenaLog = () => tableExists('arena_xp_log');
-const arenaLevels = () => tableExists('arena_trash_levels');
+const tableExists = async (name) => Boolean(await db.getDb().prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(name));
+const arenaLog = async () => await tableExists('arena_xp_log');
+const arenaLevels = async () => await tableExists('arena_trash_levels');
 
 let lastScan = null;
 /** People whose stream ended, or who gained a follower, since the previous scan. */
@@ -158,11 +158,11 @@ async function scan({ modules = client(), now = Date.now() } = {}) {
     if (!modules) return 0;
     const from = lastScan || new Date(now - 10 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
     const to = new Date(now).toISOString().replace('T', ' ').slice(0, 19);
-    const ids = db.getDb().prepare(`SELECT user_id AS id FROM streams WHERE ended_at >= ? AND ended_at < ?
+    const ids = (await db.getDb().prepare(`SELECT user_id AS id FROM streams WHERE ended_at >= ? AND ended_at < ?
         UNION SELECT streamer_id AS id FROM follows WHERE created_at >= ? AND created_at < ?
         UNION SELECT user_id AS id FROM streams WHERE started_at >= ? AND started_at < ?
-        UNION SELECT user_id AS id FROM channel_points WHERE updated_at >= ? AND updated_at < ?${arenaLog() ? `
-        UNION SELECT user_id AS id FROM arena_xp_log WHERE created_at >= ? AND created_at < ?` : ''}`).all(...Array(arenaLog() ? 5 : 4).fill([from, to]).flat()).map((r) => r.id);
+        UNION SELECT user_id AS id FROM channel_points WHERE updated_at >= ? AND updated_at < ?${await arenaLog() ? `
+        UNION SELECT user_id AS id FROM arena_xp_log WHERE created_at >= ? AND created_at < ?` : ''}`).all(...Array(await arenaLog() ? 5 : 4).fill([from, to]).flat())).map((r) => r.id);
     for (const id of ids) await push(id, { modules, now });
     lastScan = to;
     stats.lastScanAt = new Date(now).toISOString();
@@ -173,11 +173,11 @@ async function scan({ modules = client(), now = Date.now() } = {}) {
 async function refresh({ modules = client(), now = Date.now() } = {}) {
     if (!modules) return 0;
     const since = new Date(now - 31 * DAY_MS).toISOString().replace('T', ' ').slice(0, 19);
-    const ids = db.getDb().prepare(`SELECT DISTINCT user_id AS id FROM streams WHERE started_at >= ?
+    const ids = (await db.getDb().prepare(`SELECT DISTINCT user_id AS id FROM streams WHERE started_at >= ?
         UNION SELECT DISTINCT streamer_id AS id FROM follows
         UNION SELECT DISTINCT user_id AS id FROM channel_points WHERE balance > 0
-        UNION SELECT user_id AS id FROM module_summary_pushes WHERE namespace = 'live.loyalty'${arenaLevels() ? `
-        UNION SELECT user_id AS id FROM arena_trash_levels` : ''}`).all(since).map((r) => r.id);
+        UNION SELECT user_id AS id FROM module_summary_pushes WHERE namespace = 'live.loyalty'${await arenaLevels() ? `
+        UNION SELECT user_id AS id FROM arena_trash_levels` : ''}`).all(since)).map((r) => r.id);
     for (const id of ids) await push(id, { modules, now, force: true });
     return ids.length;
 }

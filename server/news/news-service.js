@@ -43,9 +43,9 @@ class NewsService {
         this._ensureSchema();
     }
 
-    _ensureSchema() {
+    async _ensureSchema() {
         try {
-            db.run(`CREATE TABLE IF NOT EXISTS news_settings (
+            await db.run(`CREATE TABLE IF NOT EXISTS news_settings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 scope TEXT NOT NULL DEFAULT 'global',
                 scope_id INTEGER,
@@ -113,7 +113,7 @@ class NewsService {
     }
 
     /** Update a source's configuration */
-    updateSource(sourceId, { enabled, config } = {}) {
+    async updateSource(sourceId, { enabled, config } = {}) {
         const source = this._sources.get(sourceId);
         if (!source) throw new Error(`Unknown source: ${sourceId}`);
 
@@ -123,7 +123,7 @@ class NewsService {
         // Persist to DB
         const configJson = JSON.stringify(source.config);
         try {
-            db.run(
+            await db.run(
                 `INSERT INTO news_settings (scope, scope_id, source_id, enabled, config)
                  VALUES ('global', NULL, ?, ?, ?)
                  ON CONFLICT(scope, scope_id, source_id)
@@ -144,16 +144,16 @@ class NewsService {
     }
 
     /** Check if news is enabled for a specific stream's owner */
-    isEnabledForStream(streamId) {
+    async isEnabledForStream(streamId) {
         try {
-            const row = db.get(
+            const row = await db.get(
                 `SELECT ns.enabled FROM news_settings ns WHERE ns.scope = 'user'
                  AND ns.scope_id = (SELECT user_id FROM streams WHERE id = ?) AND ns.source_id = '_master'`,
                 [streamId]
             );
             // If no user-level setting, check global
             if (!row) {
-                const global = db.get(`SELECT enabled FROM news_settings WHERE scope = 'global' AND source_id = '_master'`);
+                const global = await db.get(`SELECT enabled FROM news_settings WHERE scope = 'global' AND source_id = '_master'`);
                 return global ? !!global.enabled : false;
             }
             return !!row.enabled;
@@ -163,9 +163,9 @@ class NewsService {
     }
 
     /** Set per-user master enable/disable */
-    setUserEnabled(userId, enabled) {
+    async setUserEnabled(userId, enabled) {
         try {
-            db.run(
+            await db.run(
                 `INSERT INTO news_settings (scope, scope_id, source_id, enabled, config)
                  VALUES ('user', ?, '_master', ?, '{}')
                  ON CONFLICT(scope, scope_id, source_id)
@@ -178,9 +178,9 @@ class NewsService {
     }
 
     /** Get per-user enabled state (null = inherit from global) */
-    getUserEnabled(userId) {
+    async getUserEnabled(userId) {
         try {
-            const row = db.get(
+            const row = await db.get(
                 `SELECT enabled FROM news_settings WHERE scope = 'user' AND scope_id = ? AND source_id = '_master'`,
                 [userId]
             );
@@ -192,9 +192,9 @@ class NewsService {
 
     // ── Internal ──────────────────────────────────────────────
 
-    _loadSettings() {
+    async _loadSettings() {
         try {
-            const rows = db.all(`SELECT * FROM news_settings WHERE scope = 'global' AND source_id != '_master'`) || [];
+            const rows = await db.all(`SELECT * FROM news_settings WHERE scope = 'global' AND source_id != '_master'`) || [];
             for (const row of rows) {
                 const source = this._sources.get(row.source_id);
                 if (!source) continue;
@@ -202,7 +202,7 @@ class NewsService {
                 try { source.config = JSON.parse(row.config || '{}'); } catch { source.config = {}; }
             }
             // Load global master switch
-            const master = db.get(`SELECT enabled FROM news_settings WHERE scope = 'global' AND source_id = '_master'`);
+            const master = await db.get(`SELECT enabled FROM news_settings WHERE scope = 'global' AND source_id = '_master'`);
             if (master && !master.enabled) {
                 // Global kill switch — disable everything
                 for (const source of this._sources.values()) source.enabled = false;
@@ -229,7 +229,7 @@ class NewsService {
         }
     }
 
-    _processQueue() {
+    async _processQueue() {
         if (!this._chatServer || !this._pendingQueue.length) return;
 
         const now = Date.now();
@@ -245,7 +245,7 @@ class NewsService {
             if (now - lastInject < MIN_INJECT_INTERVAL_MS) continue;
             if (!this.isEnabledForStream(streamId)) continue;
 
-            delivery.event({ kind: 'stream', id: streamId }, {
+            await delivery.event({ kind: 'stream', id: streamId }, {
                 type: 'chat',
                 message_type: 'news',
                 username: '📰 Breaking News',
@@ -263,11 +263,11 @@ class NewsService {
         this._lastGlobalInject = now;
     }
 
-    _getActiveStreamIds() {
+    async _getActiveStreamIds() {
         try {
             // streams has no `status` column; the query threw, the catch returned [], and no headline
             // was ever delivered while the sources kept polling.
-            const rows = db.all('SELECT id FROM streams WHERE is_live = 1') || [];
+            const rows = await db.all('SELECT id FROM streams WHERE is_live = 1') || [];
             return rows.map(r => r.id);
         } catch {
             return [];

@@ -45,7 +45,7 @@ async function tick() {
         // to low-power (fewer whisper threads) and a smaller batch so we never starve
         // the live encoders.
         let anyLive = false;
-        try { anyLive = ((db.getLiveStreams && db.getLiveStreams()) || []).length > 0; } catch { /* */ }
+        try { anyLive = ((db.getLiveStreams && await db.getLiveStreams()) || []).length > 0; } catch { /* */ }
         // When the continuous timeline is running it is already decoding live audio
         // constantly, and VOD backfill does NOT share its serialisation — so both would
         // run whisper at once, on top of the live encoder. Measured effect on this 4-core
@@ -60,7 +60,7 @@ async function tick() {
         const headroom = load1 < cores * 1.25;
         if (!headroom) {
             if (!_loadWarnedAt || Date.now() - _loadWarnedAt > 600000) { _loadWarnedAt = Date.now(); console.log(`[AI backfill] load ${load1.toFixed(1)} on ${cores} cores — deferring batch transcription`); }
-        } else if (ai.transcriptionEnabled && ai.transcriptionEnabled()) {
+        } else if (ai.transcriptionEnabled && await ai.transcriptionEnabled()) {
             try { require('./transcribe').setLowPower(anyLive); } catch { /* */ }
             const batch = anyLive ? 1 : 2;   // throttle while live, catch up faster when idle
             // Take several candidates and process the first `batch` that resolve: a row whose
@@ -68,7 +68,7 @@ async function tick() {
             // whole LIMIT every minute and block every row behind it.
             try {
                 let done = 0;
-                for (const row of db.getVodsNeedingTranscript(batch + 6)) {
+                for (const row of await db.getVodsNeedingTranscript(batch + 6)) {
                     if (done >= batch) break;
                     const vod = await _vodMeta(row);
                     if (!vod) continue;
@@ -78,7 +78,7 @@ async function tick() {
             } catch (e) { console.warn('[AI backfill] vod transcript:', e.message); }
             try {
                 let done = 0;
-                for (const row of db.getClipsNeedingTranscript(batch + 6)) {
+                for (const row of await db.getClipsNeedingTranscript(batch + 6)) {
                     if (done >= batch) break;
                     const clip = await _clipMeta(row);
                     if (!clip) continue;
@@ -88,13 +88,13 @@ async function tick() {
             } catch (e) { console.warn('[AI backfill] clip transcript:', e.message); }
         }
 
-        if (!ai.isEnabled()) return;
+        if (!await ai.isEnabled()) return;
 
         // Paste summaries. Pastes moved to Media at the migration, but the analysis job
         // kept querying this service's OWN pastes table — which no longer receives rows —
         // so every paste created since had no AI at all. Media has no LLM, so it hands us
         // a work queue and we post results back.
-        if (ai.pasteAnalysisEnabled && ai.pasteAnalysisEnabled()) {
+        if (ai.pasteAnalysisEnabled && await ai.pasteAnalysisEnabled()) {
             try {
                 const out = await require('../pastes-client').listPastesNeedingAi(anyLive ? 1 : 3).catch(() => null);
                 for (const p of (out?.pastes || [])) {
@@ -123,7 +123,7 @@ async function tick() {
         try {
             // Take a few candidates and process the first usable one: the newest row is
             // often a VOD still recording (skipped), and with LIMIT 1 it blocked the queue.
-            for (const row of db.getVodsNeedingOverview(6)) {
+            for (const row of await db.getVodsNeedingOverview(6)) {
                 const vod = await _vodMeta(row);
                 if (!vod) continue;
                 await ai.generateVodOverview(vod);
@@ -141,7 +141,7 @@ async function tick() {
 
         // Clip overviews + local transcripts (frames + audio; self-marks).
         try {
-            for (const row of db.getClipsNeedingOverview(6)) {
+            for (const row of await db.getClipsNeedingOverview(6)) {
                 const clip = await _clipMeta(row);
                 if (!clip) continue;
                 await ai.generateClipOverview(clip);
@@ -153,10 +153,10 @@ async function tick() {
     }
 }
 
-function start() {
+async function start() {
     if (_timer) return;
     // One-time repair of any raw-JSON descriptions stored by earlier builds.
-    try { if (db.cleanupMalformedAiText) db.cleanupMalformedAiText(); } catch (e) { console.warn('[AI] cleanup:', e.message); }
+    try { if (db.cleanupMalformedAiText) await db.cleanupMalformedAiText(); } catch (e) { console.warn('[AI] cleanup:', e.message); }
     _timer = setInterval(tick, 60_000);
     console.log('[AI] Backfill job started (VOD/clip overviews + transcripts via vod_ai_state/clip_ai_state)');
 }

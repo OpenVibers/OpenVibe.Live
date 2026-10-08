@@ -15,12 +15,12 @@ const authority = require('./authority');
 
 const router = express.Router();
 
-router.get('/status', requireAdmin, (req, res) => {
+router.get('/status', requireAdmin, async (req, res) => {
     let slots = [];
     let live = [];
     try {
-        slots = db.all("SELECT id, user_id, slug, title, protocol, streaming_method, openre_stream_id FROM managed_streams WHERE ingest_authority = 'openre' ORDER BY id");
-        live = db.all("SELECT session_id, managed_stream_id, stream_id, state, confirmed_at FROM openre_sessions WHERE state = 'live'");
+        slots = await db.all("SELECT id, user_id, slug, title, protocol, streaming_method, openre_stream_id FROM managed_streams WHERE ingest_authority = 'openre' ORDER BY id");
+        live = await db.all("SELECT session_id, managed_stream_id, stream_id, state, confirmed_at FROM openre_sessions WHERE state = 'live'");
     } catch { /* schema not ready */ }
     res.json({
         enabled: client.enabled(),

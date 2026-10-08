@@ -383,9 +383,9 @@ class RsPassthroughRelay {
      * that keeps its peer open (or keeps restarting) after the streamer stopped shows RS viewers
      * a live robot with a black picture. Injectable for tests.
      */
-    _sourceLive(streamId) {
+    async _sourceLive(streamId) {
         if (this._sourceLiveOverride) return this._sourceLiveOverride(streamId);
-        try { return !!require('../db/database').getStreamById(streamId)?.is_live; } catch { return true; }
+        try { return !!(await require('../db/database').getStreamById(streamId))?.is_live; } catch { return true; }
     }
 
     /**

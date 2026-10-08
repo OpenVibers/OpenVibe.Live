@@ -26,15 +26,15 @@ function byoUsable(cfg) { return !!cfg.byo_in_ai; }
  * @returns {{ useShared:boolean, active:boolean, reason:string|null,
  *             spentToday:number, capUsd:number, cfg:object }}
  */
-function budgetStatus(userId) {
-    const cfg = db.getChannelAiConfig(userId);
+async function budgetStatus(userId) {
+    const cfg = await db.getChannelAiConfig(userId);
     const useShared = !!cfg.use_shared_key;
-    const spentToday = db.getAiCostTodayForUser(userId, SOURCE);
+    const spentToday = await db.getAiCostTodayForUser(userId, SOURCE);
     const capUsd = (cfg.daily_budget_cents || 0) / 100;
     let active = false;
     let reason = null;
     if (useShared) {
-        if (!ai.sharedKeyReady()) reason = 'shared_ai_disabled';
+        if (!await ai.sharedKeyReady()) reason = 'shared_ai_disabled';
         else if (capUsd > 0 && spentToday >= capUsd) reason = 'over_daily_cap';
         else active = true;
     } else if (byoUsable(cfg)) {
@@ -51,9 +51,9 @@ function budgetStatus(userId) {
  * here. Otherwise the typed key, address and models, which only llm.testProvider uses ("test connection" before
  * the key is saved to OpenVibe.AI).
  */
-function byoProvider(cfg) {
+async function byoProvider(cfg) {
     if (cfg.byo_in_ai) {
-        const subject = require('../byo-credentials').subjectOf(cfg.user_id);
+        const subject = await require('../byo-credentials').subjectOf(cfg.user_id);
         return subject ? { credentialSubject: subject } : null;
     }
     let extra = {};
@@ -77,8 +77,8 @@ function byoProvider(cfg) {
  * own key. Runs on OpenVibe.AI are recorded as 'openvibe-ai' (the old direct calls were 'shared'), so counting only
  * 'shared' stopped counting anything once AI_SERVICE=remote went live.
  */
-function globalViewerSpendToday() {
-    try { return db.get("SELECT COALESCE(SUM(cost_usd),0) AS c FROM ai_usage WHERE source = ? AND COALESCE(provider,'shared') <> 'byo' AND created_at >= date('now')", [SOURCE])?.c || 0; } catch { return 0; }
+async function globalViewerSpendToday() {
+    try { return (await db.get("SELECT COALESCE(SUM(cost_usd),0) AS c FROM ai_usage WHERE source = ? AND COALESCE(provider,'shared') <> 'byo' AND created_at >= date('now')", [SOURCE]))?.c || 0; } catch { return 0; }
 }
 
 /**
@@ -89,16 +89,16 @@ function globalViewerSpendToday() {
  *   streamer_only 95–100%  (only the streamer fast path)
  *   silent        cap reached, AI disabled, kill switch, or global viewers cap reached
  */
-function status(userId) {
-    const st = budgetStatus(userId);
-    const kill = (() => { const v = db.getSetting('ai_viewers_enabled'); return v === false || v === 'false' || v === 0 || v === '0'; })();
+async function status(userId) {
+    const st = await budgetStatus(userId);
+    const kill = (async () => { const v = await db.getSetting('ai_viewers_enabled'); return v === false || v === 'false' || v === 0 || v === '0'; })();
     let mode = 'normal';
     let reason = st.reason;
     if (kill) { mode = 'silent'; reason = 'kill_switch'; }
     else if (!st.active) mode = 'silent';
     else if (st.useShared) {
-        const gcap = parseFloat(db.getSetting('ai_viewers_global_cap_usd_per_day')) || 0;
-        if (gcap > 0 && globalViewerSpendToday() >= gcap) { mode = 'silent'; reason = 'global_viewers_cap'; }
+        const gcap = parseFloat(await db.getSetting('ai_viewers_global_cap_usd_per_day')) || 0;
+        if (gcap > 0 && await globalViewerSpendToday() >= gcap) { mode = 'silent'; reason = 'global_viewers_cap'; }
         else if (st.capUsd > 0) {
             const ratio = st.spentToday / st.capUsd;
             mode = ratio >= 1 ? 'silent' : ratio >= 0.95 ? 'streamer_only' : ratio >= 0.8 ? 'replies_only' : ratio >= 0.6 ? 'economy' : 'normal';

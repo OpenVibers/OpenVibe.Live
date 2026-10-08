@@ -30,18 +30,18 @@ const isConfigKey = (key) => typeof key === 'string' && key.length > 0 && key.le
 const classify = (key) => (SECRET.test(key) ? 'secret' : PUBLIC_KEYS.has(key) ? 'public' : 'internal');
 
 /** The configuration rows as they are now: key → the stored string. */
-function rowsNow() {
+async function rowsNow() {
     const out = {};
-    for (const r of db.getAllSettings()) if (isConfigKey(r.key)) out[r.key] = r.value == null ? '' : String(r.value);
+    for (const r of await db.getAllSettings()) if (isConfigKey(r.key)) out[r.key] = r.value == null ? '' : String(r.value);
     return out;
 }
 
 /** Write the revision's values to the rows: set what differs, delete what the revision no longer has. */
-function writeRows(target) {
-    const now = rowsNow();
-    db.getDb().tx(() => {
-        for (const [k, v] of Object.entries(target)) if (isConfigKey(k) && now[k] !== String(v)) db.setSetting(k, String(v));
-        for (const k of Object.keys(now)) if (!(k in target)) db.deleteSetting(k);
+async function writeRows(target) {
+    const now = await rowsNow();
+    await db.getDb().tx(async () => {
+        for (const [k, v] of Object.entries(target)) if (isConfigKey(k) && now[k] !== String(v)) await db.setSetting(k, String(v));
+        for (const k of Object.keys(now)) if (!(k in target)) await db.deleteSetting(k);
     });
 }
 
@@ -51,8 +51,8 @@ function getStore() {
     store = config.createConfigStore({
         db: db.getDb(), service: 'live', namespace: 'live.site_settings',
         classify,
-        legacy: () => rowsNow(),
-        onActivate: async (values) => writeRows(values),
+        legacy: async () => await rowsNow(),
+        onActivate: async (values) => await writeRows(values),
         log: { info: (m) => console.log(`[Config] ${m}`), warn: (m) => console.warn(`[Config] ${m}`), error: (m) => console.error(`[Config] ${m}`) },
     });
     return store;
@@ -63,7 +63,7 @@ const canonical = (o) => JSON.stringify(Object.keys(o).sort().map((k) => [k, o[k
 /** Record rows written around the journal as a revision of their own. → the sync snapshot, or null */
 async function sync() {
     const s = getStore();
-    const now = rowsNow();
+    const now = await rowsNow();
     if (canonical({ ...s.get() }) === canonical(now)) return null;
     return s.apply(now, { actor: SYSTEM, reason: 'sync: site_settings changed outside the configuration journal' });
 }

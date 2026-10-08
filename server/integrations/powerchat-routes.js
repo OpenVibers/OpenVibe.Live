@@ -85,8 +85,8 @@ p{color:#aaa;margin:0;max-width:340px;line-height:1.5}
 // ── GET /status ──────────────────────────────────────────────────────────────
 router.get('/status', requireAuth, async (req, res) => {
     try {
-        const cfg = oauth.getConfig();
-        let conn = db.getPowerchatConnection(req.user.id);
+        const cfg = await oauth.getConfig();
+        let conn = await db.getPowerchatConnection(req.user.id);
         const connected = !!(conn && conn.access_token);
         // Distinguish a real OAuth app connection (mints refresh tokens) from a
         // sandbox self-connect (no tokens) so the card can say which it is.
@@ -112,7 +112,7 @@ router.get('/status', requireAuth, async (req, res) => {
                     if (live.username && conn.powerchat_username && live.username.toLowerCase() !== String(conn.powerchat_username).toLowerCase()) {
                         diagnosis.push({ level: 'warn', code: 'identity_mismatch', message: `This token belongs to PowerChat user "${live.username}", but the connection was saved as "${conn.powerchat_username}". Reconnect to fix.` });
                     }
-                    if (Object.keys(patch).length) conn = db.upsertPowerchatConnection(req.user.id, patch) || conn;
+                    if (Object.keys(patch).length) conn = await db.upsertPowerchatConnection(req.user.id, patch) || conn;
                 }
             } catch (e) {
                 live_error = { status: e.status || null, message: e.message };
@@ -142,13 +142,13 @@ router.get('/status', requireAuth, async (req, res) => {
         }
         // Fixed-price checkouts: are intents available on this PowerChat deployment?
         try {
-            const intents = require('./powerchat-checkout').checkoutIntentSupport();
+            const intents = await require('./powerchat-checkout').checkoutIntentSupport();
             if (intents.state === 'unsupported') diagnosis.push({ level: 'info', code: 'intents_unsupported', message: 'Fixed-price checkout intents are not deployed on this PowerChat yet — subscriptions and Vibes packs use canonical pinned links (amount still enforced by our webhook checks).' });
         } catch { /* optional */ }
         // Chat relay: accepted (202) vs actually displayed, from the /chat/history read-back.
         let chat_relay = null;
         try {
-            chat_relay = require('./powerchat-platform').chatRelayStats(req.user.id);
+            chat_relay = await require('./powerchat-platform').chatRelayStats(req.user.id);
             if (chat_relay.dropped > 0) diagnosis.push({ level: 'warn', code: 'chat_dropped', message: `${chat_relay.dropped} relayed chat message(s) were accepted by PowerChat but never displayed (moderation block, AI/profanity drop, or duplicate id) — check your PowerChat moderation settings. Last: ${chat_relay.lastDroppedAt || 'n/a'}.` });
             else if (connected && !chat_relay.verifiable && chat_relay.accepted > 0) diagnosis.push({ level: 'info', code: 'chat_unverified', message: 'Relayed chat is accepted by PowerChat but cannot be verified as displayed until you reconnect with the chat:read permission.' });
         } catch { /* optional */ }
@@ -156,7 +156,7 @@ router.get('/status', requireAuth, async (req, res) => {
 
         res.json({
             enabled: cfg.enabled,
-            configured: oauth.isConfigured(),
+            configured: await oauth.isConfigured(),
             connected,
             connection_kind,
             username: conn ? conn.powerchat_username : null,
@@ -179,15 +179,15 @@ router.get('/status', requireAuth, async (req, res) => {
 });
 
 // ── GET /oauth/start ─────────────────────────────────────────────────────────
-router.get('/oauth/start', requireAuth, (req, res) => {
+router.get('/oauth/start', requireAuth, async (req, res) => {
     try {
-        const cfg = oauth.getConfig();
+        const cfg = await oauth.getConfig();
         if (!cfg.enabled) return res.status(400).send(resultPage({ ok: false, error: 'PowerChat is not enabled by the site admin yet.' }));
-        if (!oauth.isConfigured()) return res.status(400).send(resultPage({ ok: false, error: 'PowerChat app credentials are not configured yet.' }));
+        if (!await oauth.isConfigured()) return res.status(400).send(resultPage({ ok: false, error: 'PowerChat app credentials are not configured yet.' }));
         // The streamer's PowerChat username (their :username segment). Defaults to the
         // sandbox username so the app owner can test before approval.
         const username = String(req.query.username || cfg.sandboxUsername || '').trim();
-        const { url, stateToken } = oauth.buildAuthorize({ userId: req.user.id, username });
+        const { url, stateToken } = await oauth.buildAuthorize({ userId: req.user.id, username });
         res.cookie(STATE_COOKIE, stateToken, cookieOpts());
         res.redirect(url);
     } catch (err) {
@@ -237,10 +237,10 @@ h2{color:${ok ? '#53fc18' : '#f0a742'};margin-bottom:6px}p{color:#aaa;max-width:
         const ident = (tokens.streamer && (tokens.streamer.username || tokens.streamer.id))
             ? { username: tokens.streamer.username || null, id: tokens.streamer.id != null ? String(tokens.streamer.id) : null }
             : oauth.identityFromToken(tokens.access_token);
-        let username = ident.username || stateData.username || oauth.getConfig().sandboxUsername;
+        let username = ident.username || stateData.username || (await oauth.getConfig()).sandboxUsername;
 
         // Store the grant first (so getValidAccessToken works), then confirm via profile.
-        db.upsertPowerchatConnection(userId, {
+        await db.upsertPowerchatConnection(userId, {
             powerchat_username: username,
             powerchat_user_id: ident.id || null,
             access_token: tokens.access_token,
@@ -255,7 +255,7 @@ h2{color:${ok ? '#53fc18' : '#f0a742'};margin-bottom:6px}p{color:#aaa;max-width:
             const prof = await oauth.fetchProfile(userId, username);
             // Every 2xx REST body is wrapped as { data: <payload> }.
             const p = (prof && prof.data) || prof.profile || prof;
-            db.upsertPowerchatConnection(userId, {
+            await db.upsertPowerchatConnection(userId, {
                 powerchat_username: p.username || username,
                 powerchat_user_id: (p.id != null ? String(p.id) : ident.id) || null,
                 tip_page_url: p.tipPageUrl || p.tip_page_url || null,
@@ -274,11 +274,11 @@ h2{color:${ok ? '#53fc18' : '#f0a742'};margin-bottom:6px}p{color:#aaa;max-width:
 // ── DELETE /oauth/connection ─────────────────────────────────────────────────
 router.delete('/oauth/connection', requireAuth, async (req, res) => {
     try {
-        const conn = db.getPowerchatConnection(req.user.id);
+        const conn = await db.getPowerchatConnection(req.user.id);
         if (conn) {
             if (conn.refresh_token) await oauth.revokeToken(conn.refresh_token);
             else if (conn.access_token) await oauth.revokeToken(conn.access_token);
-            db.deletePowerchatConnection(req.user.id);
+            await db.deletePowerchatConnection(req.user.id);
         }
         res.json({ ok: true });
     } catch (err) {
@@ -288,10 +288,10 @@ router.delete('/oauth/connection', requireAuth, async (req, res) => {
 
 // ── GET /tip-link — attribution deep link into the streamer's tip page ────────
 // ?ref=<opaque>  or  ?goal_id=<id>  → app_ref="goal:<id>" so donation webhooks echo it.
-router.get('/tip-link', requireAuth, (req, res) => {
+router.get('/tip-link', requireAuth, async (req, res) => {
     try {
-        const cfg = oauth.getConfig();
-        const conn = db.getPowerchatConnection(req.user.id);
+        const cfg = await oauth.getConfig();
+        const conn = await db.getPowerchatConnection(req.user.id);
         if (!conn || !conn.powerchat_username) return res.status(404).json({ error: 'PowerChat not connected' });
         let ref = req.query.ref ? String(req.query.ref) : '';
         if (!ref && req.query.goal_id) ref = `goal:${parseInt(req.query.goal_id, 10)}`;
@@ -310,22 +310,22 @@ router.get('/tip-link', requireAuth, (req, res) => {
 // webhook fires the celebration, the site never mints anything. Streamers without
 // PowerChat 404 here: viewers buy Vibes instead (Buy Vibes modal, any channel) and
 // donate from their balance.
-router.get('/donate-link', optionalAuth, (req, res) => {
+router.get('/donate-link', optionalAuth, async (req, res) => {
     try {
         const streamer = req.query.streamer_id
-            ? db.getUserById(parseInt(req.query.streamer_id, 10))
-            : db.getUserByUsername(String(req.query.streamer || ''));
+            ? await db.getUserById(parseInt(req.query.streamer_id, 10))
+            : await db.getUserByUsername(String(req.query.streamer || ''));
         if (!streamer) return res.status(404).json({ error: 'Streamer not found' });
 
         // Optional goal pick — rides in app_purpose ("goal:<id>") so the streamer's
         // webhook credits that exact goal.
         let goalId = null;
         if (req.query.goal_id) {
-            const g = db.getDonationGoalById(parseInt(req.query.goal_id, 10));
+            const g = await db.getDonationGoalById(parseInt(req.query.goal_id, 10));
             if (g && Number(g.user_id) === Number(streamer.id) && g.is_active) goalId = g.id;
         }
 
-        const direct = require('./powerchat-checkout').buildDonateLink(streamer.id, req.user ? req.user.id : null, { goalId });
+        const direct = await require('./powerchat-checkout').buildDonateLink(streamer.id, req.user ? req.user.id : null, { goalId });
         if (!direct) return res.status(404).json({ error: 'This channel does not take PowerChat tips directly', direct: false });
         res.json({ url: direct.url, mode: 'direct', goal_id: goalId });
     } catch (err) {
@@ -351,7 +351,7 @@ router.post('/test-tip', requireAuth, async (req, res) => {
     try {
         const amount = Math.max(1, Math.min(999, parseInt(req.body.amount, 10) || 5));
         const donor = req.user.display_name || req.user.username || 'Test Tipper';
-        const r = webhook.simulateDonation(req.user.id, { amountUsd: amount, donor, message: 'Test tip — this is what a real PowerChat tip looks like ✨' });
+        const r = await webhook.simulateDonation(req.user.id, { amountUsd: amount, donor, message: 'Test tip — this is what a real PowerChat tip looks like ✨' });
         // Also render it on the streamer's actual PowerChat overlay (display-only custom
         // alert) when connected, so the test shows up on PowerChat too — not just here.
         let powerchat = false;
@@ -406,7 +406,7 @@ router.post('/test-alert', requireAuth, async (req, res) => {
             // Push the real live count when there is one, so the chip shows the truth;
             // 42 is the recognizable stand-in when testing while offline.
             let live = [];
-            try { live = db.getLiveStreamsByUserId(req.user.id) || []; } catch { /* */ }
+            try { live = await db.getLiveStreamsByUserId(req.user.id) || []; } catch { /* */ }
             const count = live.length ? live.reduce((a, s) => a + (s.viewer_count || 0), 0) : 42;
             await oauth.apiRequest(req.user.id, { method: 'POST', path: '/view-count', body: { count } });
         } else {
@@ -439,7 +439,7 @@ router.get('/authorize-url', requireAuth, (req, res) => {
 
 // ── POST /webhook — signed event receiver ────────────────────────────────────
 // No auth middleware: authenticity is the HMAC signature. Ack fast, process async.
-router.post('/webhook', (req, res) => {
+router.post('/webhook', async (req, res) => {
     // BILLING_AUTHORITY=billing: PowerChat money settles in OpenVibe.Billing, and this receiver
     // must not process anything. 410 names where the webhook lives now (the PowerChat dashboard
     // is re-pointed by hand — docs/live-cutover.md in OpenVibe.Billing).
@@ -451,7 +451,7 @@ router.post('/webhook', (req, res) => {
     }
     try {
         const raw = req.rawBody || (req.body ? Buffer.from(JSON.stringify(req.body)) : Buffer.alloc(0));
-        const check = webhook.verifySignature(raw, req.headers);
+        const check = await webhook.verifySignature(raw, req.headers);
         if (!check.ok) {
             console.warn('[PowerChat] webhook rejected:', check.reason);
             return res.status(401).json({ error: 'invalid signature' });
@@ -460,14 +460,14 @@ router.post('/webhook', (req, res) => {
         const eventType = req.headers['x-powerchat-event-type'] || (req.body && req.body.type) || null;
 
         // Dedupe at-least-once deliveries.
-        if (deliveryId && !db.powerchatDeliveryIsNew(deliveryId, eventType)) {
+        if (deliveryId && !await db.powerchatDeliveryIsNew(deliveryId, eventType)) {
             return res.status(200).json({ ok: true, deduped: true });
         }
 
         // Ack immediately; process off the response path.
         res.status(200).json({ ok: true });
         const envelope = req.body && typeof req.body === 'object' ? req.body : (() => { try { return JSON.parse(raw.toString('utf8')); } catch { return null; } })();
-        setImmediate(() => { try { if (envelope) webhook.processEvent(envelope); } catch (e) { console.warn('[PowerChat] webhook process error:', e.message); } });
+        setImmediate(async () => { try { if (envelope) await webhook.processEvent(envelope); } catch (e) { console.warn('[PowerChat] webhook process error:', e.message); } });
     } catch (err) {
         if (!res.headersSent) res.status(500).json({ error: 'webhook error' });
     }

@@ -20,9 +20,9 @@ function tmpJpg(streamId) {
     return path.join(os.tmpdir(), `openvibe-aisee-${streamId}-${Date.now()}.jpg`);
 }
 
-function resolveStreamKey(stream) {
+async function resolveStreamKey(stream) {
     if (stream.managed_stream_key) return stream.managed_stream_key;
-    try { return db.getUserById(stream.user_id)?.stream_key || null; } catch { return null; }
+    try { return (await db.getUserById(stream.user_id))?.stream_key || null; } catch { return null; }
 }
 
 function runFfmpeg(args, killMs) {
@@ -53,7 +53,7 @@ function formatFmtp(params) {
 }
 
 async function captureRtmp(stream) {
-    const streamKey = resolveStreamKey(stream);
+    const streamKey = await resolveStreamKey(stream);
     if (!streamKey) return null;
     const out = tmpJpg(stream.id);
     const url = `http://127.0.0.1:${FLV_PORT}/live/${streamKey}.flv`;

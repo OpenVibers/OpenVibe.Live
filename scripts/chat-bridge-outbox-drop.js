@@ -49,15 +49,15 @@ function parseArgs(argv) {
     return opts;
 }
 
-const hasTable = (db) => !!db.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(TABLE);
+const hasTable = async (db) => !!await db.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(TABLE);
 
 /** What is still queued: { exists, total, writes, byOp: { op: n }, boots }. Reads only. */
-function counts(db) {
-    if (!hasTable(db)) return { exists: false, total: 0, writes: 0, byOp: {}, boots: 0 };
+async function counts(db) {
+    if (!await hasTable(db)) return { exists: false, total: 0, writes: 0, byOp: {}, boots: 0 };
     const byOp = {};
-    for (const r of db.prepare(`SELECT op, COUNT(*) AS n FROM ${TABLE} GROUP BY op`).all()) byOp[r.op] = r.n;
+    for (const r of await db.prepare(`SELECT op, COUNT(*) AS n FROM ${TABLE} GROUP BY op`).all()) byOp[r.op] = r.n;
     const total = Object.values(byOp).reduce((a, b) => a + b, 0);
-    const boots = db.prepare(`SELECT COUNT(DISTINCT boot) AS n FROM ${TABLE}`).get().n;
+    const boots = (await db.prepare(`SELECT COUNT(DISTINCT boot) AS n FROM ${TABLE}`).get()).n;
     return { exists: true, total, writes: byOp.db || 0, byOp, boots };
 }
 
@@ -77,8 +77,8 @@ async function deliver(db, post, log = () => {}) {
     const out = { delivered: 0, refused: [], error: null };
     // A batch Chat refuses whole is rebuilt row by row, so the same unparseable row can be seen twice.
     const refused = new Set();
-    if (!hasTable(db)) return out;
-    const rows = db.prepare(`SELECT id, boot, ref, op, args FROM ${TABLE} ORDER BY id`).all();
+    if (!await hasTable(db)) return out;
+    const rows = await db.prepare(`SELECT id, boot, ref, op, args FROM ${TABLE} ORDER BY id`).all();
     const del = db.prepare(`DELETE FROM ${TABLE} WHERE id = ?`);
     let i = 0;
     let limit = BATCH;
@@ -96,10 +96,10 @@ async function deliver(db, post, log = () => {}) {
         try {
             const res = ops.length ? await post('/internal/live/calls', { boot, ops }) : { results: [] };
             const refusedSeq = new Set(((res && res.results) || []).filter((x) => !x.ok).map((x) => x.seq));
-            db.tx(() => {
+            await db.tx(async () => {
                 for (const o of ops) {
                     if (refusedSeq.has(o.seq)) { refused.add(o.seq); continue; }
-                    del.run(o.seq);
+                    await del.run(o.seq);
                     out.delivered++;
                 }
             });
@@ -128,7 +128,7 @@ function chatPost() {
             body: JSON.stringify(body),
             signal: AbortSignal.timeout(15000),
         });
-        if (res.status === 401 && !retried) { principal.invalidate('openvibe.chat'); return post(p, body, true); }
+        if (res.status === 401 && !retried) { principal.invalidate('openvibe.chat'); return await post(p, body, true); }
         if (!res.ok) { const err = new Error(`Chat ${res.status}`); err.status = res.status; throw err; }
         return res.json();
     };
@@ -149,17 +149,17 @@ async function main(argv = process.argv.slice(2), log = console.log) {
     const DB_PATH = path.resolve(opts.db || require('../server/paths').dbPath());
     const db = new Database(DB_PATH, { readonly: opts.mode === 'dry', fileMustExist: true });
     try {
-        report(counts(db), log);
+        report(await counts(db), log);
         if (opts.mode === 'dry') return 0;
         if (opts.mode === 'deliver') {
             const r = await deliver(db, chatPost(), log);
             log(`delivered ${r.delivered}; refused by Chat (left in place): ${r.refused.length ? r.refused.join(', ') : 'none'}`);
-            report(counts(db), log);
+            report(await counts(db), log);
             return r.error ? 1 : 0;
         }
         const file = opts.backup || path.join(path.dirname(DB_PATH), 'backups', `live-pre-chat-bridge-drop-${new Date().toISOString().replace(/[:.]/g, '-')}.db`);
         log(`backup: ${await backup(db, file)}`);
-        const res = require('../server/db/migrations').runOperator(db, ID);
+        const res = await require('../server/db/migrations').runOperator(db, ID);
         log(`${ID}: ${res.outcome}${res.error ? ` (${res.error})` : ''}`);
         return res.outcome === 'failed' ? 1 : 0;
     } finally { db.close(); }

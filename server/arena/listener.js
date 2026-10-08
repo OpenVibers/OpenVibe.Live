@@ -35,7 +35,7 @@ const BUFFER_MAX_CHARS = 1400;
 
 const state = new Map();   // streamId → { userId, lastOffset, lastJudgeAt, focus, mic: { lines } }
 
-function aiOn() { try { return llm.isEnabled() && llm.withinBudget(); } catch { return false; } }
+async function aiOn() { try { return await llm.isEnabled() && await llm.withinBudget(); } catch { return false; } }
 function arena() { return require('./arena-service'); }
 function beef() { return require('./beef'); }
 function mic() { return require('./mic'); }
@@ -55,7 +55,7 @@ const names = require('./names');
 let _aliasCache = { at: 0, list: [] };
 function aliases(roster) {
     if (Date.now() - _aliasCache.at < 60 * 1000) return _aliasCache.list;
-    const list = names.rosterEntries(roster, (id) => { const persona = parseJson(db.get('SELECT persona_json FROM arena_profiles WHERE user_id = ?', [id])?.persona_json); return [persona?.fighter_name, ...(Array.isArray(persona?.spoken_as) ? persona.spoken_as : [])]; });
+    const list = names.rosterEntries(roster, async (id) => { const persona = parseJson((await db.get('SELECT persona_json FROM arena_profiles WHERE user_id = ?', [id]))?.persona_json); return [persona?.fighter_name, ...(Array.isArray(persona?.spoken_as) ? persona.spoken_as : [])]; });
     _aliasCache = { at: Date.now(), list };
     return list;
 }
@@ -95,10 +95,10 @@ function heuristicMic(text) {
 async function judgeBeef(speakerId, targetId, text, roster, { context = null, named = true, how = 'exact' } = {}) {
     if (arena()._isBannedText(text)) return { about_target: false, aimed_at_target: false, quality: 0, best_line: '', about: 'voided', announcer: '', flagged: true };
     const tf = roster.byId[targetId];
-    const targetNames = [tf.user.username, tf.user.display_name, (parseJson(db.get('SELECT persona_json FROM arena_profiles WHERE user_id = ?', [targetId])?.persona_json) || {}).fighter_name].filter(Boolean);
+    const targetNames = [tf.user.username, tf.user.display_name, (parseJson((await db.get('SELECT persona_json FROM arena_profiles WHERE user_id = ?', [targetId]))?.persona_json) || {}).fighter_name].filter(Boolean);
     const spokenForms = [...new Set(targetNames.flatMap(n => names.variants(n)))].slice(0, 8);
     let j = null;
-    if (aiOn()) {
+    if (await aiOn()) {
         try {
             const r = await aiService.structured('live.arena.judge_beef', {
                 target_names: targetNames.map((n) => String(n).slice(0, 120)).slice(0, 8), target_as_transcribed: spokenForms.map((n) => String(n).slice(0, 120)),
@@ -119,7 +119,7 @@ async function judgeBeef(speakerId, targetId, text, roster, { context = null, na
 async function judgeMic(speakerId, text) {
     if (arena()._isBannedText(text)) return { is_trash_talk: false, quality: 0, best_line: '', about: 'voided', aimed_at: '', announcer: '', flagged: true };
     let j = null;
-    if (aiOn()) {
+    if (await aiOn()) {
         try {
             const r = await aiService.structured('live.arena.judge_mic', { speech: String(text).slice(0, 6000) }, { meter: { kind: 'arena_mic_judge', role: 'chat', ownerUserId: speakerId, source: 'arena' } });
             if (r && typeof r.quality === 'number') j = r;
@@ -133,8 +133,8 @@ async function judgeMic(speakerId, text) {
 
 // ── Tick ─────────────────────────────────────────────────────
 
-function liveTranscribedStreams(roster) {
-    return db.all(`SELECT s.id, s.user_id, s.started_at FROM streams s WHERE s.is_live = 1 AND EXISTS (SELECT 1 FROM stream_timeline_events e WHERE e.stream_id = s.id AND e.kind = 'speech' AND e.created_at >= datetime('now', '-30 minutes'))`)
+async function liveTranscribedStreams(roster) {
+    return (await db.all(`SELECT s.id, s.user_id, s.started_at FROM streams s WHERE s.is_live = 1 AND EXISTS (SELECT 1 FROM stream_timeline_events e WHERE e.stream_id = s.id AND e.kind = 'speech' AND e.created_at >= datetime('now', '-30 minutes'))`))
         .filter(s => roster.byId[s.user_id]);
 }
 function streamOffsetNow(stream) {
@@ -173,7 +173,7 @@ async function judgeFocus(stream, roster, st, events, { reason }) {
     const minQ = f.hits > 0 ? 3 : (f.how === 'exact' ? 3 : 5);
     if (j.aimed_at_target && j.quality >= minQ) {
         const ref = lineRefFor(lines, j.best_line);
-        const res = beef().recordHit(stream.user_id, f.targetId, { quality: j.quality, best_line: j.best_line, about: j.about, announcer: j.announcer, vod_id: ref.vod_id, sec: ref.sec, stream_id: stream.id });
+        const res = await beef().recordHit(stream.user_id, f.targetId, { quality: j.quality, best_line: j.best_line, about: j.about, announcer: j.announcer, vod_id: ref.vod_id, sec: ref.sec, stream_id: stream.id });
         f.hits++; f.misses = 0; f.lockUntil = Math.min(now + FOCUS_EXTEND_MS, f.namedAt + FOCUS_MAX_MS);
         f.context = `${f.context ? f.context + ' | ' : ''}${j.about}${j.best_line ? ` ("${j.best_line.slice(0, 120)}")` : ''}`.slice(-600);
         st.lastBeefJudgement = { at: new Date().toISOString(), target_id: f.targetId, ...j, opened: res?.opened, named, reason };
@@ -203,23 +203,23 @@ async function judgeFreeTalk(stream, roster, st, events) {
     st.lastMicJudgement = { at: new Date().toISOString(), ...j };
     if (!j.is_trash_talk || j.quality < MIC_MIN_QUALITY) { events.push({ kind: 'mic_miss', streamId: stream.id, speakerId: stream.user_id, about: j.about }); return; }
     const ref = lineRefFor(lines, j.best_line);
-    if (mic().isDuplicate(stream.user_id, j.best_line)) { events.push({ kind: 'mic_dupe', streamId: stream.id, speakerId: stream.user_id }); return; }
+    if (await mic().isDuplicate(stream.user_id, j.best_line)) { events.push({ kind: 'mic_dupe', streamId: stream.id, speakerId: stream.user_id }); return; }
     // "aimed_at" that resolves to a roster fighter = a callout → it feeds a beef exactly like a name-drop.
     const target = j.aimed_at ? mentionsDetailed(j.aimed_at, stream.user_id, roster)[0] : null;
     if (target && j.quality >= CALLOUT_MIN_QUALITY) {
-        const res = beef().recordHit(stream.user_id, target.userId, { quality: j.quality, best_line: j.best_line, about: j.about, announcer: j.announcer, vod_id: ref.vod_id, sec: ref.sec, stream_id: stream.id });
+        const res = await beef().recordHit(stream.user_id, target.userId, { quality: j.quality, best_line: j.best_line, about: j.about, announcer: j.announcer, vod_id: ref.vod_id, sec: ref.sec, stream_id: stream.id });
         st.lastMicJudgement.target_id = target.userId; st.lastMicJudgement.opened = res?.opened;
         events.push({ kind: 'beef_hit', streamId: stream.id, speakerId: stream.user_id, targetId: target.userId, opened: res?.opened, quality: j.quality, line: j.best_line, named: false, callout: true });
         return;
     }
-    const m = mic().addMoment({ userId: stream.user_id, streamId: stream.id, vodId: ref.vod_id, sec: ref.sec, kind: 'trash', aimedAt: j.aimed_at || null, text: j.best_line || text.slice(0, 220), about: j.about, quality: j.quality, announcer: j.announcer });
+    const m = await mic().addMoment({ userId: stream.user_id, streamId: stream.id, vodId: ref.vod_id, sec: ref.sec, kind: 'trash', aimedAt: j.aimed_at || null, text: j.best_line || text.slice(0, 220), about: j.about, quality: j.quality, announcer: j.announcer });
     if (m) events.push({ kind: 'mic_hit', streamId: stream.id, speakerId: stream.user_id, quality: j.quality, line: j.best_line, aimedAt: j.aimed_at, momentId: m.id });
 }
 
 async function tickStream(stream, roster, events) {
     let st = state.get(stream.id);
     if (!st) { st = { userId: stream.user_id, lastOffset: streamOffsetNow(stream) - 20, lastJudgeAt: 0, focus: null, mic: { lines: [] } }; state.set(stream.id, st); }
-    const rows = db.all(`SELECT text, start_sec, vod_id FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND start_sec > ? ORDER BY start_sec ASC LIMIT 100`, [stream.id, st.lastOffset]);
+    const rows = await db.all(`SELECT text, start_sec, vod_id FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND start_sec > ? ORDER BY start_sec ASC LIMIT 100`, [stream.id, st.lastOffset]);
     if (rows.length) st.lastOffset = rows[rows.length - 1].start_sec;
     const now = Date.now();
     if (st.focus && now > st.focus.lockUntil) {
@@ -265,11 +265,11 @@ async function tick() {
     _busy = true;
     const events = [];
     try {
-        const roster = arena().loadRoster();
-        const streams = liveTranscribedStreams(roster);
+        const roster = await arena().loadRoster();
+        const streams = await liveTranscribedStreams(roster);
         for (const s of streams) { try { await tickStream(s, roster, events); } catch (e) { console.warn(`[Arena] listener stream ${s.id}:`, e.message); } }
         for (const id of [...state.keys()]) if (!streams.find(s => s.id === id)) state.delete(id);
-        try { beef().tick(); } catch (e) { console.warn('[Arena] beef tick:', e.message); }
+        try { await beef().tick(); } catch (e) { console.warn('[Arena] beef tick:', e.message); }
     } finally { _busy = false; }
     return events;
 }
@@ -279,7 +279,7 @@ function consoleState(userId) {
         const f = st.focus;
         return {
             stream_id: streamId, listening: true,
-            focus: f ? { target_id: f.targetId, target: (() => { try { return mic().nameOf(f.targetId); } catch { return null; } })(), how: f.how, since: new Date(f.since).toISOString(), lock_seconds_left: Math.max(0, Math.round((f.lockUntil - Date.now()) / 1000)), hits: f.hits, misses: f.misses, pending_words: f.lines.reduce((n, l) => n + words(l.t), 0), context: f.context } : null,
+            focus: f ? { target_id: f.targetId, target: (async () => { try { return await mic().nameOf(f.targetId); } catch { return null; } })(), how: f.how, since: new Date(f.since).toISOString(), lock_seconds_left: Math.max(0, Math.round((f.lockUntil - Date.now()) / 1000)), hits: f.hits, misses: f.misses, pending_words: f.lines.reduce((n, l) => n + words(l.t), 0), context: f.context } : null,
             pending_mic_words: st.mic.lines.reduce((n, l) => n + words(l.t), 0),
             last_mic_judgement: st.lastMicJudgement || null, last_beef_judgement: st.lastBeefJudgement || null, last_judge_at: st.lastJudgeAt ? new Date(st.lastJudgeAt).toISOString() : null,
         };

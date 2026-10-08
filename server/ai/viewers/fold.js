@@ -24,7 +24,7 @@ async function foldAll(worker, { provider = null } = {}) {
     }
     if (!entries.length) return null;
     let channelMemory = '';
-    try { channelMemory = (JSON.parse(db.getChannelAiConfig(worker.userId).settings_json || '{}') || {}).channel_memory || ''; } catch { /* */ }
+    try { channelMemory = (JSON.parse((await db.getChannelAiConfig(worker.userId)).settings_json || '{}') || {}).channel_memory || ''; } catch { /* */ }
 
     // The fold instructions and schema are OpenVibe.AI's versioned template live.viewers.fold (WS-O task 2).
     const r = await viewerRun('live.viewers.fold', {
@@ -42,25 +42,25 @@ async function foldAll(worker, { provider = null } = {}) {
         brain.memory = clip(m.memory, 900);
         brain.timeline = (brain.timeline || []).slice(-8);
         brain.timeline.push({ n: e.bot.msg_count || 0, note: clip(e.lines[e.lines.length - 1], 80) });
-        try { db.updateChannelAiBot(e.bot.id, { brain_json: brain }); worker.botLines.set(e.bot.id, []); updated++; } catch { /* */ }
+        try { await db.updateChannelAiBot(e.bot.id, { brain_json: brain }); worker.botLines.set(e.bot.id, []); updated++; } catch { /* */ }
     }
     if (out.channel_memory && String(out.channel_memory).trim()) {
         try {
-            const cfg = db.getChannelAiConfig(worker.userId);
+            const cfg = await db.getChannelAiConfig(worker.userId);
             let sj = {}; try { sj = JSON.parse(cfg.settings_json || '{}') || {}; } catch { /* */ }
             sj.channel_memory = clip(out.channel_memory, 600);
-            db.upsertChannelAiConfig(worker.userId, { settings_json: JSON.stringify(sj) });
+            await db.upsertChannelAiConfig(worker.userId, { settings_json: JSON.stringify(sj) });
         } catch { /* */ }
     }
     return { updated, cost: r.cost || 0, usage: r.usage, model: r.model };
 }
 
 /** Clear a bot's rolling memory (keeps its identity/persona). */
-function clearBrain(botId) {
-    const bot = db.getChannelAiBot(botId);
+async function clearBrain(botId) {
+    const bot = await db.getChannelAiBot(botId);
     if (!bot) return false;
     let persona = {}; try { persona = JSON.parse(bot.persona_json || '{}'); } catch { /* */ }
-    db.updateChannelAiBot(botId, { brain_json: { memory: '', timeline: [], identity: persona.identity || '' } });
+    await db.updateChannelAiBot(botId, { brain_json: { memory: '', timeline: [], identity: persona.identity || '' } });
     return true;
 }
 

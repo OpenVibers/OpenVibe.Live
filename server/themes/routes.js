@@ -18,10 +18,10 @@ const { can } = require('../auth/permissions');
 const themeService = require('./theme-service');
 
 /* ── List all public themes ────────────────────────────────── */
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
     try {
         const { mode, search, sort, limit, offset } = req.query;
-        const themes = themeService.getAllThemes({
+        const themes = await themeService.getAllThemes({
             mode,
             search,
             sort: sort || 'name',
@@ -44,15 +44,15 @@ router.get('/', (req, res) => {
 });
 
 /* ── Get current user's theme preference ───────────────────── */
-router.get('/me', requireAuth, (req, res) => {
+router.get('/me', requireAuth, async (req, res) => {
     try {
-        const pref = themeService.getUserTheme(req.user.id);
+        const pref = await themeService.getUserTheme(req.user.id);
         if (!pref) {
             return res.json({ theme: null, custom_variables: {}, is_custom: false });
         }
         let themeData = null;
         if (pref.theme_id) {
-            themeData = themeService.getThemeById(pref.theme_id);
+            themeData = await themeService.getThemeById(pref.theme_id);
             if (themeData) {
                 themeData.variables = JSON.parse(themeData.variables || '{}');
                 themeData.preview_colors = JSON.parse(themeData.preview_colors || '{}');
@@ -71,10 +71,10 @@ router.get('/me', requireAuth, (req, res) => {
 });
 
 /* ── Set user's active theme ───────────────────────────────── */
-router.put('/me', requireAuth, (req, res) => {
+router.put('/me', requireAuth, async (req, res) => {
     try {
         const { theme_id, custom_variables, is_custom } = req.body;
-        themeService.setUserTheme(req.user.id, {
+        await themeService.setUserTheme(req.user.id, {
             theme_id: theme_id || null,
             custom_variables: custom_variables || {},
             is_custom: !!is_custom,
@@ -86,12 +86,12 @@ router.put('/me', requireAuth, (req, res) => {
 });
 
 /* ── Get theme by ID or slug ───────────────────────────────── */
-router.get('/:idOrSlug', (req, res) => {
+router.get('/:idOrSlug', async (req, res) => {
     try {
         const param = req.params.idOrSlug;
         let theme = /^\d+$/.test(param)
-            ? themeService.getThemeById(parseInt(param))
-            : themeService.getThemeBySlug(param);
+            ? await themeService.getThemeById(parseInt(param))
+            : await themeService.getThemeBySlug(param);
 
         if (!theme) return res.status(404).json({ error: 'Theme not found' });
 
@@ -106,7 +106,7 @@ router.get('/:idOrSlug', (req, res) => {
 });
 
 /* ── Submit community theme ────────────────────────────────── */
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, async (req, res) => {
     try {
         const { name, description, mode, variables, tags } = req.body;
         if (!name || !variables) {
@@ -116,7 +116,7 @@ router.post('/', requireAuth, (req, res) => {
             return res.status(400).json({ error: 'Name must be 50 characters or less' });
         }
 
-        const result = themeService.createTheme({
+        const result = await themeService.createTheme({
             name,
             author_id: req.user.id,
             description: description || '',
@@ -132,10 +132,10 @@ router.post('/', requireAuth, (req, res) => {
 });
 
 /* ── Update community theme ────────────────────────────────── */
-router.put('/:id', requireAuth, (req, res) => {
+router.put('/:id', requireAuth, async (req, res) => {
     try {
         const { name, description, mode, variables, tags } = req.body;
-        themeService.updateTheme(parseInt(req.params.id), req.user.id, {
+        await themeService.updateTheme(parseInt(req.params.id), req.user.id, {
             name, description, mode, variables, tags,
         });
         res.json({ success: true });
@@ -145,10 +145,10 @@ router.put('/:id', requireAuth, (req, res) => {
 });
 
 /* ── Delete community theme ────────────────────────────────── */
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', requireAuth, async (req, res) => {
     try {
         const isAdmin = can(req.user, 'staff.assets.manage');
-        themeService.deleteTheme(parseInt(req.params.id), req.user.id, isAdmin);
+        await themeService.deleteTheme(parseInt(req.params.id), req.user.id, isAdmin);
         res.json({ success: true });
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -156,9 +156,9 @@ router.delete('/:id', requireAuth, (req, res) => {
 });
 
 /* ── Download (increment counter) ──────────────────────────── */
-router.post('/:id/download', (req, res) => {
+router.post('/:id/download', async (req, res) => {
     try {
-        themeService.downloadTheme(parseInt(req.params.id));
+        await themeService.downloadTheme(parseInt(req.params.id));
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });

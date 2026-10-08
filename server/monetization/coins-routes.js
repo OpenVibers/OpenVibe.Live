@@ -43,13 +43,13 @@ router.get('/rates', (req, res) => {
 // (channel-point events) is appended so the page still shows both currencies.
 router.get('/history', requireAuth, async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit || '50'), 200);
-    const local = db.getCoinTransactions(req.user.id, limit) || [];
+    const local = await db.getCoinTransactions(req.user.id, limit) || [];
     const walletHistory = await require('./wallet-client').historyForToken(extractToken(req), limit) || [];
     res.json({ transactions: [...walletHistory, ...local].slice(0, limit), wallet: walletHistory.length > 0 });
 });
 
 // ── Watch Heartbeat (earn coins passively) ───────────────────
-router.post('/heartbeat', requireAuth, (req, res) => {
+router.post('/heartbeat', requireAuth, async (req, res) => {
     try {
         const { streamId } = req.body;
         if (!streamId) return res.status(400).json({ error: 'streamId required' });
@@ -59,7 +59,7 @@ router.post('/heartbeat', requireAuth, (req, res) => {
             return res.json({ earned: result.coins, balance: result.total, streamerId: result.streamerId });
         }
         // No points earned this tick (not on a 5-min boundary) — return this channel's balance.
-        const streamerId = db.getStreamById(parseInt(streamId))?.user_id || null;
+        const streamerId = (await db.getStreamById(parseInt(streamId)))?.user_id || null;
         res.json({ earned: 0, balance: streamerId ? openvibeCoins.getBalance(req.user.id, streamerId) : 0, streamerId });
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -80,19 +80,19 @@ router.post('/bonus', requireAuth, (req, res) => {
 });
 
 // ── Get Available Rewards + this channel's points config ─────
-router.get('/rewards/:userId', (req, res) => {
+router.get('/rewards/:userId', async (req, res) => {
     const streamerId = parseInt(req.params.userId);
     const rewards = openvibeCoins.getRewards(streamerId);
-    res.json({ rewards, config: db.getChannelPointsConfig(streamerId) });
+    res.json({ rewards, config: await db.getChannelPointsConfig(streamerId) });
 });
 
 // Public: a streamer's Channel Points branding/config (name, icon, earn rates).
-router.get('/config/:userId', (req, res) => {
-    res.json({ config: db.getChannelPointsConfig(parseInt(req.params.userId)) });
+router.get('/config/:userId', async (req, res) => {
+    res.json({ config: await db.getChannelPointsConfig(parseInt(req.params.userId)) });
 });
 
 // A streamer configures their own Channel Points.
-router.put('/config', requireAuth, (req, res) => {
+router.put('/config', requireAuth, async (req, res) => {
     try {
         const b = req.body || {};
         const fields = {};
@@ -105,15 +105,15 @@ router.put('/config', requireAuth, (req, res) => {
         if (b.watch_interval_min !== undefined) fields.watch_interval_min = Math.max(1, Math.min(120, parseInt(b.watch_interval_min, 10) || 5));
         if (b.watch_amount !== undefined) fields.watch_amount = Math.max(0, Math.min(100000, parseInt(b.watch_amount, 10) || 0));
         if (b.game_interval_min !== undefined) fields.game_interval_min = Math.max(0, Math.min(1440, parseInt(b.game_interval_min, 10) || 0));
-        db.setChannelPointsConfig(req.user.id, fields);
-        res.json({ config: db.getChannelPointsConfig(req.user.id) });
+        await db.setChannelPointsConfig(req.user.id, fields);
+        res.json({ config: await db.getChannelPointsConfig(req.user.id) });
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
 });
 
 // ── Create Reward (Streamer) ─────────────────────────────────
-router.post('/rewards', requireAuth, (req, res) => {
+router.post('/rewards', requireAuth, async (req, res) => {
     try {
         const { title, description, icon, color, cooldown_seconds, max_per_stream } = req.body;
         const cost = parseInt(req.body.cost, 10);
@@ -131,7 +131,7 @@ router.post('/rewards', requireAuth, (req, res) => {
             return res.status(400).json({ error: 'Color must be a 6-digit hex color' });
         }
 
-        db.createCoinReward({
+        await db.createCoinReward({
             streamer_id: req.user.id,
             title,
             description,
@@ -151,9 +151,9 @@ router.post('/rewards', requireAuth, (req, res) => {
 });
 
 // ── Update Reward ────────────────────────────────────────────
-router.put('/rewards/:id', requireAuth, (req, res) => {
+router.put('/rewards/:id', requireAuth, async (req, res) => {
     try {
-        const reward = db.getCoinRewardById(req.params.id);
+        const reward = await db.getCoinRewardById(req.params.id);
         if (!reward || reward.streamer_id !== req.user.id) {
             return res.status(403).json({ error: 'Not your reward' });
         }
@@ -181,7 +181,7 @@ router.put('/rewards/:id', requireAuth, (req, res) => {
             return res.status(400).json({ error: 'Color must be a 6-digit hex color' });
         }
 
-        db.updateCoinReward(req.params.id, fields);
+        await db.updateCoinReward(req.params.id, fields);
         const rewards = openvibeCoins.getRewards(req.user.id);
         res.json({ rewards });
     } catch (err) {
@@ -190,13 +190,13 @@ router.put('/rewards/:id', requireAuth, (req, res) => {
 });
 
 // ── Delete Reward ────────────────────────────────────────────
-router.delete('/rewards/:id', requireAuth, (req, res) => {
+router.delete('/rewards/:id', requireAuth, async (req, res) => {
     try {
-        const reward = db.getCoinRewardById(req.params.id);
+        const reward = await db.getCoinRewardById(req.params.id);
         if (!reward || reward.streamer_id !== req.user.id) {
             return res.status(403).json({ error: 'Not your reward' });
         }
-        db.deleteCoinReward(req.params.id);
+        await db.deleteCoinReward(req.params.id);
         res.json({ message: 'Reward deleted' });
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -204,15 +204,15 @@ router.delete('/rewards/:id', requireAuth, (req, res) => {
 });
 
 // ── Redeem Reward (Viewer) ───────────────────────────────────
-router.post('/redeem', requireAuth, (req, res) => {
+router.post('/redeem', requireAuth, async (req, res) => {
     try {
         const { rewardId, streamId, userInput } = req.body;
         if (!rewardId) return res.status(400).json({ error: 'rewardId required' });
         // A channel's own reward can only be announced in that channel's chat. Any stream id was
         // accepted, which put the viewer's text into someone else's chat past their filters.
-        const rewardRow = db.getCoinRewardById(rewardId);
+        const rewardRow = await db.getCoinRewardById(rewardId);
         if (rewardRow && !rewardRow.is_global && streamId) {
-            const target = db.getStreamById(streamId);
+            const target = await db.getStreamById(streamId);
             if (!target || target.user_id !== rewardRow.streamer_id) return res.status(400).json({ error: 'That reward belongs to a different channel' });
         }
 
@@ -221,7 +221,7 @@ router.post('/redeem', requireAuth, (req, res) => {
         // Broadcast redemption to chat so streamer sees it
         try {
             const reward = result.redemption.reward;
-            require('../chat/chat-delivery').event({ kind: 'stream', id: streamId }, {
+            await require('../chat/chat-delivery').event({ kind: 'stream', id: streamId }, {
                 type: 'redemption',
                 username: req.user.display_name || req.user.username,
                 reward_title: reward.title,
@@ -236,7 +236,7 @@ router.post('/redeem', requireAuth, (req, res) => {
         // Feed the redemption into PowerChat as a virtual-currency event (alerts + leaderboard).
         try {
             const reward = result.redemption.reward;
-            require('../integrations/powerchat-platform').sendCurrencyRedemption(result.streamerId, {
+            await require('../integrations/powerchat-platform').sendCurrencyRedemption(result.streamerId, {
                 amount: reward.cost,
                 redeemerName: req.user.display_name || req.user.username,
                 rewardName: reward.title,
@@ -257,13 +257,13 @@ router.post('/redeem', requireAuth, (req, res) => {
 });
 
 // ── Get Pending Redemptions (Streamer Queue) ─────────────────
-router.get('/redemptions', requireAuth, (req, res) => {
-    const pending = db.getPendingRedemptions(req.user.id);
+router.get('/redemptions', requireAuth, async (req, res) => {
+    const pending = await db.getPendingRedemptions(req.user.id);
     res.json({ redemptions: pending });
 });
 
 // ── Resolve Redemption (Streamer) ────────────────────────────
-router.post('/redemptions/:id', requireAuth, (req, res) => {
+router.post('/redemptions/:id', requireAuth, async (req, res) => {
     try {
         const { status } = req.body; // 'fulfilled' or 'rejected'
         if (!['fulfilled', 'rejected'].includes(status)) {
@@ -271,7 +271,7 @@ router.post('/redemptions/:id', requireAuth, (req, res) => {
         }
 
         // Verify this redemption belongs to one of the streamer's rewards
-        const redemption = db.get('SELECT r.*, cr.streamer_id FROM coin_redemptions r JOIN coin_rewards cr ON r.reward_id = cr.id WHERE r.id = ?',
+        const redemption = await db.get('SELECT r.*, cr.streamer_id FROM coin_redemptions r JOIN coin_rewards cr ON r.reward_id = cr.id WHERE r.id = ?',
             [req.params.id]);
         if (!redemption || redemption.streamer_id !== req.user.id) {
             return res.status(403).json({ error: 'Not your redemption' });
@@ -279,20 +279,20 @@ router.post('/redemptions/:id', requireAuth, (req, res) => {
 
         // If rejected, refund the channel points to the channel they were spent on.
         if (status === 'rejected') {
-            const reward = db.getCoinRewardById(redemption.reward_id);
+            const reward = await db.getCoinRewardById(redemption.reward_id);
             if (reward) {
                 let refundStreamerId = redemption.streamer_id;
                 if (reward.is_global && redemption.stream_id) {
-                    const s = db.getStreamById(redemption.stream_id);
+                    const s = await db.getStreamById(redemption.stream_id);
                     if (s?.user_id) refundStreamerId = s.user_id;
                 }
                 // Keyed by the redemption: rejecting it twice refunds once.
-                const refunded = db.applyChannelPoints({
+                const refunded = await db.applyChannelPoints({
                     userId: redemption.user_id, streamerId: refundStreamerId, delta: reward.cost,
                     key: `live:cp:redeem_refund:${redemption.id}`, reason: `refund redemption ${redemption.id}`,
                 });
                 if (refunded.applied) {
-                    db.createCoinTransaction({
+                    await db.createCoinTransaction({
                         user_id: redemption.user_id,
                         stream_id: redemption.stream_id || null,
                         amount: reward.cost,
@@ -304,7 +304,7 @@ router.post('/redemptions/:id', requireAuth, (req, res) => {
             }
         }
 
-        db.resolveRedemption(req.params.id, status);
+        await db.resolveRedemption(req.params.id, status);
         res.json({ message: `Redemption ${status}` });
     } catch (err) {
         res.status(400).json({ error: err.message });

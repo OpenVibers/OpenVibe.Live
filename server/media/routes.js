@@ -23,11 +23,11 @@ async function resolveQueueTarget(req) {
     const uname = req.body?.channelUsername || req.query?.channelUsername;
 
     let streamerId = explicit;
-    if (!streamerId && uname) streamerId = db.getUserByUsername(String(uname))?.id || null;
+    if (!streamerId && uname) streamerId = (await db.getUserByUsername(String(uname)))?.id || null;
     if (!streamerId) return req.user.id;                 // own queue
     if (streamerId === req.user.id) return streamerId;
 
-    const channel = db.getChannelByUserId(streamerId);
+    const channel = await db.getChannelByUserId(streamerId);
     if (!channel || !(await permissions.canModerateChannel(req.user, channel.id))) {
         const err = new Error('You do not have permission to manage this queue');
         err.status = 403;
@@ -40,7 +40,7 @@ async function resolveQueueTarget(req) {
 async function canManageChannel(user, streamerId) {
     if (!user || !streamerId) return false;
     if (user.id === streamerId) return true;
-    const channel = db.getChannelByUserId(streamerId);
+    const channel = await db.getChannelByUserId(streamerId);
     return !!channel && await permissions.canModerateChannel(user, channel.id);
 }
 
@@ -51,11 +51,11 @@ function cleanInt(value, fallback) {
 
 router.get('/channel/:username', optionalAuth, async (req, res) => {
     try {
-        const user = db.getUserByUsername(req.params.username);
+        const user = await db.getUserByUsername(req.params.username);
         if (!user) return res.status(404).json({ error: 'Channel not found' });
 
-        const channel = db.getChannelByUserId(user.id) || db.ensureChannel(user.id);
-        const streams = db.getLiveStreamsByUserId(user.id) || [];
+        const channel = await db.getChannelByUserId(user.id) || await db.ensureChannel(user.id);
+        const streams = await db.getLiveStreamsByUserId(user.id) || [];
         const state = mediaQueue.getState(user.id);
 
         res.json({
@@ -166,7 +166,7 @@ router.post('/quote', optionalAuth, async (req, res) => {
     try {
         let streamerId = cleanInt(req.body.streamerId, null);
         if (!streamerId && req.body.username) {
-            streamerId = db.getUserByUsername(String(req.body.username))?.id || null;
+            streamerId = (await db.getUserByUsername(String(req.body.username)))?.id || null;
         }
         if (!streamerId) return res.status(400).json({ error: 'streamerId or username required' });
 
@@ -187,12 +187,12 @@ router.post('/quote', optionalAuth, async (req, res) => {
 
         // What the viewer can actually pay right now, so the UI can say "you have X".
         let balance = null;
-        if (req.user && currency === 'points') balance = db.getChannelPoints(req.user.id, streamerId);
+        if (req.user && currency === 'points') balance = await db.getChannelPoints(req.user.id, streamerId);
         else if (req.user && currency === 'vibes') {
             if (require('../monetization/money-authority').onBilling()) {
                 // Billing holds Vibes; unknown (null) when it cannot answer — never the legacy column.
                 try { balance = (await require('../monetization/billing-actions').balance(req.user.id, req.headers)).balance; } catch { balance = null; }
-            } else balance = db.getUserById(req.user.id)?.openvibe_bucks_balance ?? null;
+            } else balance = (await db.getUserById(req.user.id))?.openvibe_bucks_balance ?? null;
         }
 
         res.json({
@@ -225,16 +225,16 @@ router.post('/request', requireAuth, async (req, res) => {
         let streamId = cleanInt(req.body.streamId, null);
 
         if (!streamerId && req.body.username) {
-            const streamer = db.getUserByUsername(String(req.body.username));
+            const streamer = await db.getUserByUsername(String(req.body.username));
             streamerId = streamer?.id || null;
         }
         if (!streamerId && streamId) {
-            const stream = db.getStreamById(streamId);
+            const stream = await db.getStreamById(streamId);
             streamerId = stream?.user_id || null;
         }
         if (!streamerId) return res.status(400).json({ error: 'streamerId or username required' });
         if (!streamId) {
-            const live = db.getLiveStreamsByUserId(streamerId) || [];
+            const live = await db.getLiveStreamsByUserId(streamerId) || [];
             streamId = live[0]?.id || null;
         }
 
@@ -278,13 +278,13 @@ router.post('/advance', requireAuth, async (req, res) => {
 router.post('/queue/:id/play', requireAuth, async (req, res) => {
     try {
         const target = await resolveQueueTarget(req);
-        if (db.getActiveMediaRequestByStreamer(target)) {
+        if (await db.getActiveMediaRequestByStreamer(target)) {
             return res.status(400).json({ error: 'Finish or skip the current item first' });
         }
-        const request = db.getMediaRequestByStreamerAndId(target, req.params.id);
+        const request = await db.getMediaRequestByStreamerAndId(target, req.params.id);
         if (!request || request.status !== 'pending') return res.status(404).json({ error: 'Pending request not found' });
-        db.updateMediaRequest(request.id, { queue_position: 0 });
-        db.renormalizePendingMediaRequestPositions(target);
+        await db.updateMediaRequest(request.id, { queue_position: 0 });
+        await db.renormalizePendingMediaRequestPositions(target);
         const started = mediaQueue.startNext(target);
         res.json({ request: started });
     } catch (err) {
@@ -324,7 +324,7 @@ router.delete('/queue/:id', requireAuth, async (req, res) => {
 // Client calls this to get a direct playable URL for the current/specific request
 router.get('/queue/:id/stream-url', optionalAuth, async (req, res) => {
     try {
-        const request = db.getMediaRequestById(cleanInt(req.params.id, 0));
+        const request = await db.getMediaRequestById(cleanInt(req.params.id, 0));
         if (!request) return res.status(404).json({ error: 'Request not found' });
 
         // If already extracted (or marked ready for embed), return immediately
@@ -352,7 +352,7 @@ router.get('/queue/:id/stream-url', optionalAuth, async (req, res) => {
 
         // Kick off extraction and return status
         mediaQueue.extractStreamUrlForRequest(request.id).catch(() => {});
-        const updated = db.getMediaRequestById(request.id);
+        const updated = await db.getMediaRequestById(request.id);
         res.json({
             stream_url: updated?.stream_url || null,
             embed_url: updated?.embed_url || null,
@@ -370,7 +370,7 @@ router.get('/queue/:id/stream-url', optionalAuth, async (req, res) => {
 router.post('/queue/:id/position', requireAuth, async (req, res) => {
     try {
         const requestId = cleanInt(req.params.id, 0);
-        const request = db.getMediaRequestById(requestId);
+        const request = await db.getMediaRequestById(requestId);
         if (!request) return res.status(404).json({ error: 'Request not found' });
         if (!(await canManageChannel(req.user, request.streamer_id))) return res.status(403).json({ error: 'Forbidden' });
         const position = Number(req.body.position);
@@ -387,13 +387,13 @@ router.post('/queue/:id/position', requireAuth, async (req, res) => {
 // ── Manual refund by streamer ──────────────────────────────
 router.post('/queue/:id/refund', requireAuth, async (req, res) => {
     try {
-        const request = db.getMediaRequestById(cleanInt(req.params.id, 0));
+        const request = await db.getMediaRequestById(cleanInt(req.params.id, 0));
         if (!request) return res.status(404).json({ error: 'Request not found' });
         if (!(await canManageChannel(req.user, request.streamer_id))) {
             return res.status(403).json({ error: 'Only the channel owner or its mods can issue refunds' });
         }
         const amount = await mediaQueue.refund(request.id);
-        res.json({ refunded: amount, request: db.getMediaRequestById(request.id) });
+        res.json({ refunded: amount, request: await db.getMediaRequestById(request.id) });
     } catch (err) {
         res.status(400).json({ error: err.message || 'Failed to refund' });
     }
@@ -402,7 +402,7 @@ router.post('/queue/:id/refund', requireAuth, async (req, res) => {
 // ── Report playback failure (auto-refunds) ──────────────────
 router.post('/queue/:id/fail', requireAuth, async (req, res) => {
     try {
-        const request = db.getMediaRequestById(cleanInt(req.params.id, 0));
+        const request = await db.getMediaRequestById(cleanInt(req.params.id, 0));
         if (!request) return res.status(404).json({ error: 'Request not found' });
         if (!(await canManageChannel(req.user, request.streamer_id))) {
             return res.status(403).json({ error: 'Only the channel owner or its mods can report failures' });

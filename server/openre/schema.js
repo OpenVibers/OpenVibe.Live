@@ -10,8 +10,8 @@
  *
  * With every slot on 'live' (the default) nothing reads these columns differently from before.
  */
-function ensure(db) {
-    const cols = db.prepare('PRAGMA table_info(managed_streams)').all().map(c => c.name);
+async function ensure(db) {
+    const cols = (await db.prepare('PRAGMA table_info(managed_streams)').all()).map(c => c.name);
     if (cols.length && !cols.includes('ingest_authority')) {
         db.exec("ALTER TABLE managed_streams ADD COLUMN ingest_authority TEXT NOT NULL DEFAULT 'live'");
     }

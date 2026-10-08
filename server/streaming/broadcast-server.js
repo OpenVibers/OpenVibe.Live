@@ -192,7 +192,7 @@ class BroadcastServer extends EventEmitter {
         return false;
     }
 
-    handleConnection(ws, req) {
+    async handleConnection(ws, req) {
         const url = new URL(req.url, 'http://localhost');
         const token = extractWsToken(req);
         const streamId = parseInt(url.searchParams.get('streamId'));
@@ -219,7 +219,7 @@ class BroadcastServer extends EventEmitter {
         try { ws._socket?.setNoDelay(true); } catch {}
 
         // Authenticate
-        const user = authenticateWs(token);
+        const user = await authenticateWs(token);
 
         // Broadcaster must be authenticated and own the stream
         if (role === 'broadcaster') {
@@ -228,7 +228,7 @@ class BroadcastServer extends EventEmitter {
                 ws.close(4002, 'Authentication required for broadcasting');
                 return;
             }
-            const stream = db.getStreamById(streamId);
+            const stream = await db.getStreamById(streamId);
             if (!stream || stream.user_id !== user.id) {
                 console.warn(`[Broadcast] Broadcaster ownership check failed for stream ${streamId}: user=${user.username} (${user.id}), stream.user_id=${stream?.user_id}`);
                 ws.close(4003, 'Not your stream');
@@ -237,8 +237,8 @@ class BroadcastServer extends EventEmitter {
             // OpenRe.Stream ingests this slot (or, for a slot-less stream, one of the owner's slots):
             // Live's SFU never takes a second publisher for it. See server/openre/authority.js.
             const openre = require('../openre/authority');
-            const managedStream = openre.slotById(stream.managed_stream_id);
-            if (openre.refusesLiveIngest({ managedStream, user: managedStream ? null : user, protocol: 'webrtc' })) {
+            const managedStream = await openre.slotById(stream.managed_stream_id);
+            if (await openre.refusesLiveIngest({ managedStream, user: managedStream ? null : user, protocol: 'webrtc' })) {
                 console.warn(`[Broadcast] Broadcaster refused for stream ${streamId}: ${managedStream ? `slot ${managedStream.id}` : `personal stream of ${user.username}`} is ingested by OpenRe`);
                 ws.close(4003, 'Stream key not recognized');
                 return;
@@ -252,7 +252,7 @@ class BroadcastServer extends EventEmitter {
         const ip = String(req.headers['cf-connecting-ip'] || (req.socket && req.socket.remoteAddress) || '');
         if (role === 'viewer') {
             let stream = null;
-            try { stream = db.getStreamById(streamId); } catch { stream = null; }
+            try { stream = await db.getStreamById(streamId); } catch { stream = null; }
             if (!stream || !stream.is_live) {
                 ws.close(4004, 'Stream not live');
                 return;
@@ -504,13 +504,13 @@ class BroadcastServer extends EventEmitter {
 
                 // Start a grace timer — if broadcaster doesn't reconnect, end the stream cleanly
                 if (room._disconnectTimer) clearTimeout(room._disconnectTimer);
-                room._disconnectTimer = setTimeout(() => {
+                room._disconnectTimer = setTimeout(async () => {
                     // Check if broadcaster reconnected
                     const currentRoom = this.rooms.get(client.streamId);
                     if (currentRoom && !currentRoom.broadcaster) {
                         console.log(`[Broadcast] Broadcaster did not reconnect, ending stream ${client.streamId}`);
                         try {
-                            db.endStream(client.streamId);
+                            await db.endStream(client.streamId);
                             require('./recorder').finalizeStream(client.streamId).catch((err) => {
                                 console.warn(`[Broadcast] Failed to finalize VOD for stale stream ${client.streamId}:`, err.message);
                             });
@@ -668,7 +668,7 @@ class BroadcastServer extends EventEmitter {
 
             // Promote to streamer role on first real feed ingest
             if (client.userId) {
-                db.ensureStreamerRoleOnFeed(client.userId);
+                await db.ensureStreamerRoleOnFeed(client.userId);
             }
         } catch (err) {
             console.error('[Broadcast] SFU produce error:', err.message);

@@ -33,8 +33,8 @@ const router = express.Router();
 function base() { return config.baseUrl.replace(/\/+$/, ''); }
 
 // ── Public config (which providers are live + pricing) ───────
-router.get('/config', (req, res) => {
-    res.json(pay.publicConfig());
+router.get('/config', async (req, res) => {
+    res.json(await pay.publicConfig());
 });
 
 // ── Buy Vibes ───────────────────────────────────────────
@@ -42,12 +42,12 @@ router.post('/bucks/checkout', requireAuth, money.guardWrite, async (req, res) =
     const provider = String(req.body.provider || '').toLowerCase();
     // PowerChat purchases run on their own enablement (powerchat_enabled + site tips
     // account) — the master payments switch only gates the card/PayPal/crypto rails.
-    if (!pay.isEnabled() && provider !== 'powerchat') return res.status(403).json({ error: 'Payments are not enabled' });
+    if (!await pay.isEnabled() && provider !== 'powerchat') return res.status(403).json({ error: 'Payments are not enabled' });
     // The client picks a Vibes amount (bit-style); the USD price is derived from the
     // volume-discount tiers so bigger buys are cheaper per buck and the platform keeps the spread.
     let bucks;
     try { bucks = openvibeBucks.normalizeBucks(req.body.bucks); } catch (e) { return res.status(400).json({ error: e.message }); }
-    const minBucks = pay._num('bucks_min_purchase_bucks', 100);
+    const minBucks = await pay._num('bucks_min_purchase_bucks', 100);
     if (bucks < minBucks) return res.status(400).json({ error: `Minimum purchase is ${minBucks.toLocaleString()} Vibes` });
     if (bucks > 1_000_000) return res.status(400).json({ error: 'Amount too large' });
 
@@ -64,7 +64,7 @@ router.post('/bucks/checkout', requireAuth, money.guardWrite, async (req, res) =
     }
 
     const amountUsd = openvibeBucks.priceUsdForBucks(bucks);
-    const order = db.createPaymentOrder({
+    const order = await db.createPaymentOrder({
         user_id: req.user.id, provider, kind: 'bucks',
         amount_cents: Math.round(amountUsd * 100), bucks,
     });
@@ -82,7 +82,7 @@ router.post('/bucks/checkout', requireAuth, money.guardWrite, async (req, res) =
             return res.json({ url: r.url });
         }
         if (provider === 'ccbill') {
-            return res.json({ url: pay.ccbillUrl({ order, amountUsd }) });
+            return res.json({ url: await pay.ccbillUrl({ order, amountUsd }) });
         }
         if (provider === 'crypto') {
             const r = await pay.cryptoCreateInvoice({ order, amountUsd, description: name });
@@ -93,7 +93,7 @@ router.post('/bucks/checkout', requireAuth, money.guardWrite, async (req, res) =
             // price (a server-minted intent locks the tip page's amount) and the
             // donation.completed webhook credits the buyer once it confirms.
             const link = await require('../integrations/powerchat-checkout').buildPurchaseLink(order);
-            if (!link) { db.updatePaymentOrder(order.id, { status: 'failed' }); return res.status(400).json({ error: 'PowerChat purchases are not available right now' }); }
+            if (!link) { await db.updatePaymentOrder(order.id, { status: 'failed' }); return res.status(400).json({ error: 'PowerChat purchases are not available right now' }); }
             return res.json({
                 url: link.url, powerchat: true, amountUsd, pinned: !!link.minted, expires_at: link.expiresAt || null,
                 note: `Complete the $${amountUsd.toFixed(2)} tip on PowerChat — your Vibes are credited automatically once it confirms.`,
@@ -102,7 +102,7 @@ router.post('/bucks/checkout', requireAuth, money.guardWrite, async (req, res) =
         return res.status(400).json({ error: 'Unknown payment provider' });
     } catch (err) {
         console.error('[Payments] checkout error:', err.message);
-        db.updatePaymentOrder(order.id, { status: 'failed' });
+        await db.updatePaymentOrder(order.id, { status: 'failed' });
         return res.status(502).json({ error: 'Payment provider error. Try again.' });
     }
 });
@@ -115,14 +115,14 @@ router.get('/paypal/return', async (req, res) => {
         catch (err) { console.error('[Payments] billing paypal return:', err.detail || err.message); return res.redirect('/?purchase=error'); }
     }
     try {
-        const order = db.getPaymentOrderById(parseInt(req.query.order, 10));
+        const order = await db.getPaymentOrderById(parseInt(req.query.order, 10));
         if (!order || order.provider !== 'paypal' || !order.provider_ref) return res.redirect('/?purchase=error');
         const cap = await pay.paypalCaptureOrder(order.provider_ref);
         const captured = cap.purchase_units?.[0]?.payments?.captures?.[0]?.amount?.value;
         const ok = cap.status === 'COMPLETED' && pay.paidAmountCovers(order, captured) !== false;
         if (ok) {
-            if (order.kind === 'subscription') pay.fulfillSubscriptionOrder(order);
-            else pay.fulfillBucksOrder(order);
+            if (order.kind === 'subscription') await pay.fulfillSubscriptionOrder(order);
+            else await pay.fulfillBucksOrder(order);
             return res.redirect('/?purchase=success');
         }
         return res.redirect('/?purchase=error');
@@ -138,8 +138,8 @@ router.post('/subscribe', requireAuth, money.guardWrite, async (req, res) => {
     // PowerChat subs run on PowerChat's own enablement; the payments master switch only
     // gates the card/PayPal/Vibes-purchase rails.
     const viaPowerchat = provider === 'powerchat' || provider === 'powerchat_site';
-    if (!pay.isEnabled() && !viaPowerchat && provider !== 'bucks') return res.status(403).json({ error: 'Payments are not enabled' });
-    const streamer = db.getUserByUsername(String(req.body.streamer || ''));
+    if (!await pay.isEnabled() && !viaPowerchat && provider !== 'bucks') return res.status(403).json({ error: 'Payments are not enabled' });
+    const streamer = await db.getUserByUsername(String(req.body.streamer || ''));
     if (!streamer) return res.status(404).json({ error: 'Streamer not found' });
     if (streamer.id === req.user.id) return res.status(400).json({ error: 'You cannot subscribe to yourself' });
     if (money.onBilling()) {
@@ -152,22 +152,22 @@ router.post('/subscribe', requireAuth, money.guardWrite, async (req, res) => {
             return res.status(502).json({ error: 'Payment provider error. Try again.' });
         }
     }
-    if (db.isActiveSubscriber(req.user.id, streamer.id)) return res.status(409).json({ error: 'Already subscribed' });
+    if (await db.isActiveSubscriber(req.user.id, streamer.id)) return res.status(409).json({ error: 'Already subscribed' });
 
-    const priceUsd = pay._num('sub_price_usd', 4.99);
+    const priceUsd = await pay._num('sub_price_usd', 4.99);
     const amountCents = Math.round(priceUsd * 100);
 
     // Pay with Vibes — instant 30-day sub; auto-renews from the Vibes balance unless
     // the subscriber opted out.
     if (provider === 'bucks') {
         const autoRenew = req.body.auto_renew === undefined ? 1 : (req.body.auto_renew ? 1 : 0);
-        const cost = pay.bucksForUsd(priceUsd);
-        if (!db.deductVibes(req.user.id, cost)) return res.status(402).json({ error: `Not enough Vibes (need ${cost})` });
-        const order = db.createPaymentOrder({
+        const cost = await pay.bucksForUsd(priceUsd);
+        if (!await db.deductVibes(req.user.id, cost)) return res.status(402).json({ error: `Not enough Vibes (need ${cost})` });
+        const order = await db.createPaymentOrder({
             user_id: req.user.id, provider: 'bucks', kind: 'subscription',
             amount_cents: amountCents, streamer_id: streamer.id, status: 'paid',
         });
-        const sub = pay.fulfillSubscriptionOrder(order, { autoRenew });
+        const sub = await pay.fulfillSubscriptionOrder(order, { autoRenew });
         return res.json({ ok: true, subscription: { streamer: streamer.username, current_period_end: sub.current_period_end, auto_renew: !!autoRenew } });
     }
 
@@ -179,22 +179,22 @@ router.post('/subscribe', requireAuth, money.guardWrite, async (req, res) => {
     if (viaPowerchat) {
         const autoRenew = req.body.auto_renew ? 1 : 0;
         const checkout = require('../integrations/powerchat-checkout');
-        const routes = checkout.subscribeRoutes(streamer.id);
+        const routes = await checkout.subscribeRoutes(streamer.id);
         // 'powerchat' = the streamer's own PowerChat (no fee). 'powerchat_site' = OpenVibe's
         // PowerChat account with the platform routing fee on top. A plain 'powerchat'
         // request for a streamer without PowerChat falls back to the site route (+fee) so
         // older clients keep working — the new UI always asks explicitly.
         const wantSite = provider === 'powerchat_site' || !routes.direct;
         if (wantSite && !routes.site) return res.status(400).json({ error: 'PowerChat payments are not available right now' });
-        const feePct = wantSite ? pay._num('sub_site_route_fee_pct', 10) : 0;
+        const feePct = wantSite ? await pay._num('sub_site_route_fee_pct', 10) : 0;
         const feeCents = wantSite ? Math.round(amountCents * feePct / 100) : 0;
         const totalCents = amountCents + feeCents;
-        const order = db.createPaymentOrder({
+        const order = await db.createPaymentOrder({
             user_id: req.user.id, provider: 'powerchat', kind: 'subscription',
             amount_cents: totalCents, streamer_id: streamer.id,
         });
         const link = await checkout.buildSubscribeLink(order, streamer.id, { autoRenew, route: wantSite ? 'site' : 'direct', feeCents });
-        if (!link) { db.updatePaymentOrder(order.id, { status: 'failed' }); return res.status(400).json({ error: 'PowerChat payments are not available right now' }); }
+        if (!link) { await db.updatePaymentOrder(order.id, { status: 'failed' }); return res.status(400).json({ error: 'PowerChat payments are not available right now' }); }
         const totalUsd = totalCents / 100;
         return res.json({
             url: link.url, powerchat: true, route: link.mode, amountUsd: totalUsd, feeUsd: feeCents / 100,
@@ -207,7 +207,7 @@ router.post('/subscribe', requireAuth, money.guardWrite, async (req, res) => {
 
     // Stripe recurring subscription (auto-renew monthly).
     if (provider === 'stripe') {
-        const order = db.createPaymentOrder({
+        const order = await db.createPaymentOrder({
             user_id: req.user.id, provider: 'stripe', kind: 'subscription',
             amount_cents: amountCents, streamer_id: streamer.id,
         });
@@ -220,7 +220,7 @@ router.post('/subscribe', requireAuth, money.guardWrite, async (req, res) => {
             return res.json({ url: r.url });
         } catch (err) {
             console.error('[Payments] stripe sub:', err.message);
-            db.updatePaymentOrder(order.id, { status: 'failed' });
+            await db.updatePaymentOrder(order.id, { status: 'failed' });
             return res.status(502).json({ error: 'Stripe error. Try again.' });
         }
     }
@@ -236,25 +236,25 @@ router.get('/subscriptions/mine', requireAuth, async (req, res) => {
             return res.status(503).json({ error: 'Subscriptions unavailable right now', unavailable: true });
         }
     }
-    res.json({ subscriptions: db.getSubscriptionsBySubscriber(req.user.id) });
+    res.json({ subscriptions: await db.getSubscriptionsBySubscriber(req.user.id) });
 });
 
 // Am I subscribed to this channel? + subscriber count
 router.get('/channel/:username', optionalAuth, async (req, res) => {
-    const streamer = db.getUserByUsername(req.params.username);
+    const streamer = await db.getUserByUsername(req.params.username);
     if (!streamer) return res.status(404).json({ error: 'Not found' });
     let subscribed = false, subscriberCount = null, billingUnavailable = false;
     if (money.onBilling()) {
         try { ({ subscribed, subscriberCount } = await billingActions.channelState(streamer, req.user || null)); }
         catch { billingUnavailable = true; }
     } else {
-        subscribed = req.user ? db.isActiveSubscriber(req.user.id, streamer.id) : false;
-        subscriberCount = db.getActiveSubscriberCount(streamer.id);
+        subscribed = req.user ? await db.isActiveSubscriber(req.user.id, streamer.id) : false;
+        subscriberCount = await db.getActiveSubscriberCount(streamer.id);
     }
-    const priceUsd = pay._num('sub_price_usd', 4.99);
+    const priceUsd = await pay._num('sub_price_usd', 4.99);
     let powerchat = { direct: false, site: false };
-    try { powerchat = require('../integrations/powerchat-checkout').subscribeRoutes(streamer.id); } catch { /* */ }
-    const feePct = pay._num('sub_site_route_fee_pct', 10);
+    try { powerchat = await require('../integrations/powerchat-checkout').subscribeRoutes(streamer.id); } catch { /* */ }
+    const feePct = await pay._num('sub_site_route_fee_pct', 10);
     const siteFeeUsd = Math.round(priceUsd * 100 * feePct / 100) / 100;
     res.json({
         subscribed, subscriberCount, priceUsd, ...(billingUnavailable ? { unavailable: true } : {}),
@@ -273,11 +273,11 @@ router.post('/subscriptions/:id/cancel', requireAuth, money.guardWrite, async (r
             return res.status(502).json({ error: 'Could not cancel right now. Try again.' });
         }
     }
-    const sub = db.getActiveSubscription(req.user.id, parseInt(req.body.streamerId, 10)) ||
-        (db.getSubscriptionsBySubscriber(req.user.id) || []).find(x => String(x.id) === String(req.params.id));
+    const sub = await db.getActiveSubscription(req.user.id, parseInt(req.body.streamerId, 10)) ||
+        (await db.getSubscriptionsBySubscriber(req.user.id) || []).find(x => String(x.id) === String(req.params.id));
     if (!sub || sub.subscriber_id !== req.user.id) return res.status(404).json({ error: 'Subscription not found' });
     // Stripe subs auto-renew; mark cancel-at-period-end (provider stops billing via dashboard/API).
-    db.setSubscriptionStatus(sub.id, sub.provider === 'stripe' ? 'active' : 'canceled', { cancel_at_period_end: true, current_period_end: sub.current_period_end });
+    await db.setSubscriptionStatus(sub.id, sub.provider === 'stripe' ? 'active' : 'canceled', { cancel_at_period_end: true, current_period_end: sub.current_period_end });
     res.json({ ok: true });
 });
 
@@ -297,30 +297,30 @@ function payable(order, provider, paidUsd) {
 }
 
 // Stripe
-router.post('/webhook/stripe', webhookMovedToBilling('stripe'), (req, res) => {
-    const event = pay.stripeVerify(rawBody(req), req.headers['stripe-signature']);
+router.post('/webhook/stripe', webhookMovedToBilling('stripe'), async (req, res) => {
+    const event = await pay.stripeVerify(rawBody(req), req.headers['stripe-signature']);
     if (!event) return res.status(400).send('bad signature');
     try {
         const obj = event.data && event.data.object;
         const orderId = obj && ((obj.metadata && obj.metadata.order_id) || obj.client_reference_id);
         if (event.type === 'checkout.session.completed' && orderId) {
-            const order = db.getPaymentOrderById(parseInt(orderId, 10));
+            const order = await db.getPaymentOrderById(parseInt(orderId, 10));
             const paid = Number.isFinite(obj.amount_total) ? obj.amount_total / 100 : null;
             if (payable(order, 'stripe', paid)) {
-                if (order.kind === 'subscription') pay.fulfillSubscriptionOrder(order, { providerRef: obj.subscription });
-                else pay.fulfillBucksOrder(order);
+                if (order.kind === 'subscription') await pay.fulfillSubscriptionOrder(order, { providerRef: obj.subscription });
+                else await pay.fulfillBucksOrder(order);
             }
         } else if (event.type === 'invoice.paid') {
             // Recurring renewal — extend the sub by ~1 month.
             const subRef = obj.subscription;
-            const existing = subRef && db.getSubscriptionByProviderRef('stripe', subRef);
+            const existing = subRef && await db.getSubscriptionByProviderRef('stripe', subRef);
             if (existing) {
                 const end = new Date(Date.now() + 31 * 24 * 3600 * 1000).toISOString();
-                db.setSubscriptionStatus(existing.id, 'active', { current_period_end: end });
+                await db.setSubscriptionStatus(existing.id, 'active', { current_period_end: end });
             }
         } else if (event.type === 'customer.subscription.deleted') {
-            const existing = db.getSubscriptionByProviderRef('stripe', obj.id);
-            if (existing) db.setSubscriptionStatus(existing.id, 'canceled');
+            const existing = await db.getSubscriptionByProviderRef('stripe', obj.id);
+            if (existing) await db.setSubscriptionStatus(existing.id, 'canceled');
         }
     } catch (err) { console.error('[Payments] stripe webhook:', err.message); }
     res.json({ received: true });
@@ -335,21 +335,21 @@ router.post('/webhook/paypal', webhookMovedToBilling('paypal'), async (req, res)
         const rsrc = event.resource || {};
         if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED') {
             const orderId = rsrc.custom_id || (rsrc.supplementary_data && rsrc.supplementary_data.related_ids && rsrc.supplementary_data.related_ids.order_id);
-            const order = orderId && db.getPaymentOrderById(parseInt(orderId, 10));
+            const order = orderId && await db.getPaymentOrderById(parseInt(orderId, 10));
             const paid = rsrc.amount && rsrc.amount.currency_code === 'USD' ? rsrc.amount.value : null;
-            if (payable(order, 'paypal', paid)) (order.kind === 'subscription' ? pay.fulfillSubscriptionOrder(order) : pay.fulfillBucksOrder(order));
+            if (payable(order, 'paypal', paid)) (order.kind === 'subscription' ? await pay.fulfillSubscriptionOrder(order) : await pay.fulfillBucksOrder(order));
         }
     } catch (err) { console.error('[Payments] paypal webhook:', err.message); }
     res.json({ received: true });
 });
 
 // CCBill (FlexForms datalink / webhook). Verified via shared secret in query.
-router.all('/webhook/ccbill', webhookMovedToBilling('ccbill'), (req, res) => {
-    if (!pay.ccbillVerify(req.query)) return res.status(403).send('forbidden');
+router.all('/webhook/ccbill', webhookMovedToBilling('ccbill'), async (req, res) => {
+    if (!await pay.ccbillVerify(req.query)) return res.status(403).send('forbidden');
     try {
         const p = { ...req.query, ...req.body };
         const orderId = p['X-order'] || p.order;
-        const order = orderId && db.getPaymentOrderById(parseInt(orderId, 10));
+        const order = orderId && await db.getPaymentOrderById(parseInt(orderId, 10));
         const success = String(p.eventType || p.transactionType || '').toLowerCase().includes('success')
             || p.accountingAmount || p.priceInfo || p.eventType === 'NewSaleSuccess';
         // X-order rides in the buyer-editable form URL (the digest covers only the price), so
@@ -357,20 +357,20 @@ router.all('/webhook/ccbill', webhookMovedToBilling('ccbill'), (req, res) => {
         const paid = [p.billedInitialPrice, p.subscriptionInitialPrice, p.accountingInitialPrice, p.initialPrice, p.accountingAmount]
             .find((v) => v != null && v !== '' && Number.isFinite(Number(v)));
         if (order && success && paid == null) console.warn(`[Payments] ccbill webhook for order ${order.id} carried no price — not credited`);
-        else if (success && payable(order, 'ccbill', paid)) (order.kind === 'subscription' ? pay.fulfillSubscriptionOrder(order) : pay.fulfillBucksOrder(order));
+        else if (success && payable(order, 'ccbill', paid)) (order.kind === 'subscription' ? await pay.fulfillSubscriptionOrder(order) : await pay.fulfillBucksOrder(order));
     } catch (err) { console.error('[Payments] ccbill webhook:', err.message); }
     res.status(200).send('OK');
 });
 
 // Crypto (NOWPayments IPN)
-router.post('/webhook/crypto', webhookMovedToBilling('crypto'), (req, res) => {
-    const body = pay.cryptoVerify(rawBody(req), req.headers['x-nowpayments-sig']);
+router.post('/webhook/crypto', webhookMovedToBilling('crypto'), async (req, res) => {
+    const body = await pay.cryptoVerify(rawBody(req), req.headers['x-nowpayments-sig']);
     if (!body) return res.status(400).send('bad signature');
     try {
         if (['finished', 'confirmed', 'sending'].includes(String(body.payment_status))) {
-            const order = db.getPaymentOrderById(parseInt(body.order_id, 10));
+            const order = await db.getPaymentOrderById(parseInt(body.order_id, 10));
             const paid = String(body.price_currency || 'usd').toLowerCase() === 'usd' ? body.price_amount : null;
-            if (payable(order, 'crypto', paid)) (order.kind === 'subscription' ? pay.fulfillSubscriptionOrder(order) : pay.fulfillBucksOrder(order));
+            if (payable(order, 'crypto', paid)) (order.kind === 'subscription' ? await pay.fulfillSubscriptionOrder(order) : await pay.fulfillBucksOrder(order));
         }
     } catch (err) { console.error('[Payments] crypto webhook:', err.message); }
     res.json({ received: true });

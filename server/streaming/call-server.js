@@ -136,9 +136,9 @@ class CallServer {
     /** Debounced "the list changed" for every chat socket (the sidebar used to poll every 4 s). */
     _notifyChannelsChanged() {
         if (this._notifyTimer) return;
-        this._notifyTimer = setTimeout(() => {
+        this._notifyTimer = setTimeout(async () => {
             this._notifyTimer = null;
-            try { require('../chat/chat-delivery').event({ kind: 'all' }, { type: 'voice-channels', channels: this.listChannels(null) }); } catch { /* */ }
+            try { await require('../chat/chat-delivery').event({ kind: 'all' }, { type: 'voice-channels', channels: this.listChannels(null) }); } catch { /* */ }
         }, 400);
     }
 
@@ -172,11 +172,11 @@ class CallServer {
         return this._publicChannel(ch);
     }
 
-    createStreamChannel(streamId, mode, streamerId) {
+    async createStreamChannel(streamId, mode, streamerId) {
         const id = `stream-${streamId}`;
         const existing = this.channels.get(id);
         if (existing) { const old = existing.mode; existing.mode = mode; if (old !== mode) this.endCall(id); return existing; }
-        const stream = db.getStreamById(streamId);
+        const stream = await db.getStreamById(streamId);
         const ch = {
             id, name: stream ? (stream.title || `Stream ${streamId}`) : `Stream ${streamId}`,
             mode: ['mic', 'mic+cam', 'cam+mic'].includes(mode) ? mode : 'mic',
@@ -193,11 +193,11 @@ class CallServer {
         this.callBans.delete(id);
     }
 
-    deleteChannel(channelId, userId) {
+    async deleteChannel(channelId, userId) {
         const ch = this.channels.get(channelId);
         if (!ch || ch.permanent) return false;
         if (ch.createdBy !== userId) {
-            const user = db.getUserById(userId);
+            const user = await db.getUserById(userId);
             if (!user || !permissions.can(user, 'staff.moderation.calls')) return false;
         }
         this.endCall(channelId);
@@ -211,13 +211,13 @@ class CallServer {
 
     _generatePeerId() { return `call-peer-${this._nextPeerId++}-${Date.now().toString(36)}`; }
 
-    _buildParticipantInfo(peerId, info) {
+    async _buildParticipantInfo(peerId, info) {
         let cosmeticProfile = {};
         if (info.user?.id) {
             // One query per participant per minute, not one per participant per list request.
             const c = this._cosmeticCache.get(info.user.id);
             if (c && Date.now() - c.at < COSMETIC_TTL_MS) cosmeticProfile = c.profile;
-            else { try { cosmeticProfile = cosmetics.getCosmeticProfile(info.user.id) || {}; } catch {} this._cosmeticCache.set(info.user.id, { at: Date.now(), profile: cosmeticProfile }); }
+            else { try { cosmeticProfile = await cosmetics.getCosmeticProfile(info.user.id) || {}; } catch {} this._cosmeticCache.set(info.user.id, { at: Date.now(), profile: cosmeticProfile }); }
         }
         return {
             peerId, username: info.user ? info.user.username : null,
@@ -235,7 +235,7 @@ class CallServer {
         };
     }
 
-    _handleConnection(ws, req) {
+    async _handleConnection(ws, req) {
         const url = new URL(req.url, 'http://localhost');
         const channelId = url.searchParams.get('channelId') || url.searchParams.get('streamId');
         const token = extractWsToken(req);
@@ -255,20 +255,20 @@ class CallServer {
 
         // If stream-linked, verify stream is live
         if (channel.streamId) {
-            const stream = db.getStreamById(channel.streamId);
+            const stream = await db.getStreamById(channel.streamId);
             if (!stream || !stream.is_live) { ws.send(JSON.stringify({ type: 'error', message: 'Stream not live' })); ws.close(); return; }
         }
 
-        const user = authenticateWs(token);
+        const user = await authenticateWs(token);
         if (channel.private && !this._canSeePrivate(channel, user)) { ws.send(JSON.stringify({ type: 'error', message: 'This is a private call' })); ws.close(); return; }
 
         const peerId = this._generatePeerId();
-        const anonId = user ? null : chatDelivery.getAnonIdForConnection(ip, resolvedId);
+        const anonId = user ? null : await chatDelivery.getAnonIdForConnection(ip, resolvedId);
         const identity = user ? `u:${user.id}` : (anonId ? `a:${anonId}` : `ip:${ip}`);
         const cooled = this.kickCooldown.get(`${resolvedId}:${identity}`);
         if (cooled && cooled > Date.now()) { ws.send(JSON.stringify({ type: 'error', message: 'You were removed from this channel; try again in a minute' })); ws.close(); return; }
         const isChannelCreator = user && channel.createdBy === user.id;
-        const isStreamer = channel.streamId ? (user && db.getStreamById(channel.streamId)?.user_id === user.id) : false;
+        const isStreamer = channel.streamId ? (user && (await db.getStreamById(channel.streamId))?.user_id === user.id) : false;
         const canModerate = this._canModerate(user, resolvedId);
 
         const bans = this.callBans.get(resolvedId);
@@ -340,16 +340,16 @@ class CallServer {
         ws.on('error', () => this._handleDisconnect(ws, resolvedId, peerId));
     }
 
-    _canModerate(user, channelId) {
+    async _canModerate(user, channelId) {
         if (!user) return false;
         if (permissions.can(user, 'staff.moderation.calls')) return true;
         const ch = this.channels.get(channelId);
         if (ch?.createdBy === user.id) return true;
-        if (ch?.streamId) return permissions.canModerateCallSync(user, ch.streamId);
+        if (ch?.streamId) return await permissions.canModerateCallSync(user, ch.streamId);
         return false;
     }
 
-    _handleMessage(ws, msg, channelId, peerId) {
+    async _handleMessage(ws, msg, channelId, peerId) {
         const room = this.rooms.get(channelId);
         if (!room) return;
 
@@ -388,7 +388,7 @@ class CallServer {
                 const c = room.get(peerId); if (!c) break;
                 let user = c.user || null;
                 if (typeof msg.token === 'string' && msg.token.trim()) {
-                    const nextUser = authenticateWs(msg.token);
+                    const nextUser = await authenticateWs(msg.token);
                     if (!nextUser) {
                         console.warn('[Call] auth-update rejected for peer', peerId, '(invalid or expired token)');
                     } else if (user && user.id !== nextUser.id) {
@@ -401,9 +401,9 @@ class CallServer {
                     if (c.ws.readyState === WebSocket.OPEN) { c.ws.send(JSON.stringify({ type: 'error', message: 'Banned' })); c.ws.close(); } break;
                 }
                 const ch = this.channels.get(channelId);
-                c.user = user; c.anonId = user ? null : chatDelivery.getAnonIdForConnection(c.ip, channelId);
+                c.user = user; c.anonId = user ? null : await chatDelivery.getAnonIdForConnection(c.ip, channelId);
                 c.isChannelCreator = !!(user && ch?.createdBy === user.id);
-                c.isStreamer = ch?.streamId ? !!(user && db.getStreamById(ch.streamId)?.user_id === user.id) : false;
+                c.isStreamer = ch?.streamId ? !!(user && (await db.getStreamById(ch.streamId))?.user_id === user.id) : false;
                 const pInfo = this._buildParticipantInfo(peerId, c);
                 if (c.ws.readyState === WebSocket.OPEN) c.ws.send(JSON.stringify({
                     type: 'self-updated',

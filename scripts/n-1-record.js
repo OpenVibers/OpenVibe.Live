@@ -103,7 +103,7 @@ const OUT = path.join(ROOT, 'test', 'fixtures', 'n-1');
         const schema = h.schemaDDL(db);
         const ledger = {};
         for (const t of svc.ledgerTables || []) {
-            try { ledger[t] = db.prepare(`SELECT * FROM "${t}"`).all(); } catch { /* not there */ }
+            try { ledger[t] = await db.prepare(`SELECT * FROM "${t}"`).all(); } catch { /* not there */ }
         }
         const userVersion = db.pragma('user_version', { simple: true });
         const serverFiles = h.readTree(wt.dir, svc.sqlDirs);

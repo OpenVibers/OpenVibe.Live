@@ -37,7 +37,7 @@ function clock(b) {
 }
 function beefLine(b) { return `${b.a.fighter_name} ${b.share_a}% — ${100 - b.share_a}% ${b.b.fighter_name}${clock(b)} → ${base()}/arena/beef/${b.id}`; }
 
-function handle(chat, ws, client, cmd, parts) {
+async function handle(chat, ws, client, cmd, parts) {
     if (!COMMANDS.includes(cmd)) return false;
     const reply = (message) => chat.sendTo(ws, { type: 'system', message });
     const room = (message) => client.streamId && chat.broadcastToStream(client.streamId, { type: 'system', message });
@@ -46,8 +46,8 @@ function handle(chat, ws, client, cmd, parts) {
     if (!arena.arenaEnabled()) { reply('The Arena is closed right now.'); return true; }
     const key = voterKey(client);
     if (limited(_last, key, RATE_MS)) { reply('Easy — one Arena command every few seconds.'); return true; }
-    const stream = client.streamId ? db.getStreamById(client.streamId) : null;
-    const streamer = stream ? db.getUserById(stream.user_id) : null;
+    const stream = client.streamId ? await db.getStreamById(client.streamId) : null;
+    const streamer = stream ? await db.getUserById(stream.user_id) : null;
 
     // A caller that answers once (Chat's /internal/chat-effects/arena-command) waits for the replies via chat.track.
     const work = (async () => {
@@ -76,7 +76,7 @@ function handle(chat, ws, client, cmd, parts) {
                 return reply(open.map(b => `🥊 ${b.headline || `${b.a.fighter_name} vs ${b.b.fighter_name}`}: ${beefLine(b)}`).join('  ·  '));
             }
             if (cmd === '!arena') {
-                const target = parts[1] ? db.getUserByUsername(String(parts[1]).replace(/^@/, '')) : streamer;
+                const target = parts[1] ? await db.getUserByUsername(String(parts[1]).replace(/^@/, '')) : streamer;
                 if (!target) return reply('Usage: !arena <username>');
                 const card = await arena.getFighter(target.id, { generate: false });
                 if (!card || card.not_on_roster) return reply(`${target.display_name || target.username} isn't on the Arena roster yet — it takes mic time on a transcribed stream.`);

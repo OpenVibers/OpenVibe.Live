@@ -77,7 +77,7 @@ async function call(method, path, { body, act = {}, ip = null, timeoutMs = 5000,
     const out = await res.json().catch(() => null);
     if (res.status === 401 && !retried && !(out && out.code === 'auth.required')) {   // our token was refused: fetch a fresh one once
         principal.invalidate(AUDIENCE);
-        return call(method, path, { body, act, ip, timeoutMs, retried: true });
+        return await call(method, path, { body, act, ip, timeoutMs, retried: true });
     }
     if (res.status >= 500 || (res.status === 401 && retried)) {
         console.warn(`[Comments] Community answered ${res.status} (${method} ${path})${out && out.code ? ` ${out.code}` : ''}`);
@@ -95,25 +95,25 @@ async function call(method, path, { body, act = {}, ip = null, timeoutMs = 5000,
 async function threadFor(type, id, label, { timeoutMs, ip } = {}) {
     if (!TYPES.includes(type)) throw new CommentsError(400, 'Invalid content type');
     ensureTables();
-    const known = db.getDb().prepare('SELECT thread_id, access_id FROM comment_thread_refs WHERE content_type = ? AND content_id = ?').get(type, Number(id));
+    const known = await db.getDb().prepare('SELECT thread_id, access_id FROM comment_thread_refs WHERE content_type = ? AND content_id = ?').get(type, Number(id));
     if (known) return { id: known.thread_id, access_id: known.access_id };
     const ref = { service: 'live', type, id: String(id) };
     if (label) ref.label = String(label).slice(0, 200);
     const out = await call('POST', '/threads/resolve', { body: { ref }, timeoutMs, ip });
     const t = out && out.thread;
     if (!t || !Number.isInteger(t.id) || !t.access_id) throw unavailable('resolve');
-    db.getDb().prepare('INSERT INTO comment_thread_refs (content_type, content_id, thread_id, access_id) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING').run(type, Number(id), t.id, t.access_id);
+    await db.getDb().prepare('INSERT INTO comment_thread_refs (content_type, content_id, thread_id, access_id) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING').run(type, Number(id), t.id, t.access_id);
     return { id: t.id, access_id: t.access_id };
 }
 
 /** Read a thread page (as the viewer, if signed in). q: { sort, after, limit, parent } */
-function readThread(threadId, { subject = null, timeoutMs, ip, ...q } = {}) {
+async function readThread(threadId, { subject = null, timeoutMs, ip, ...q } = {}) {
     const qs = new URLSearchParams(Object.entries(q).filter(([, v]) => v != null && v !== '').map(([k, v]) => [k, String(v)])).toString();
-    return call('GET', `/threads/${encodeURIComponent(threadId)}${qs ? `?${qs}` : ''}`, { act: { subject }, timeoutMs, ip });
+    return await call('GET', `/threads/${encodeURIComponent(threadId)}${qs ? `?${qs}` : ''}`, { act: { subject }, timeoutMs, ip });
 }
 
-function addComment(threadId, subject, { message, parentId = null }, { ip } = {}) {
-    return call('POST', `/threads/${encodeURIComponent(threadId)}/comments`, { act: { subject }, ip, body: { message, ...(parentId ? { parent_id: parentId } : {}) } });
+async function addComment(threadId, subject, { message, parentId = null }, { ip } = {}) {
+    return await call('POST', `/threads/${encodeURIComponent(threadId)}/comments`, { act: { subject }, ip, body: { message, ...(parentId ? { parent_id: parentId } : {}) } });
 }
 
 /** One comment and its thread (with the ref). null when Community has no such (visible) comment. */
@@ -123,14 +123,14 @@ async function getComment(commentId, subject = null, { ip } = {}) {
     catch (err) { if (err.status === 404) return null; throw err; }
 }
 
-function editComment(commentId, subject, message, { ip } = {}) {
-    return call('PATCH', `/${encodeURIComponent(commentId)}`, { act: { subject }, ip, body: { message } });
+async function editComment(commentId, subject, message, { ip } = {}) {
+    return await call('PATCH', `/${encodeURIComponent(commentId)}`, { act: { subject }, ip, body: { message } });
 }
 
 /** as: 'author' (the person), 'staff' (the person, vouched as staff), 'owner' (Live itself, moderating for the content's owner). */
-function deleteComment(commentId, { subject = null, as = 'author', ip = null } = {}) {
+async function deleteComment(commentId, { subject = null, as = 'author', ip = null } = {}) {
     const act = as === 'owner' ? {} : { subject, staff: as === 'staff' };
-    return call('DELETE', `/${encodeURIComponent(commentId)}`, { act, ip });
+    return await call('DELETE', `/${encodeURIComponent(commentId)}`, { act, ip });
 }
 
 // Hiding threads of deleted content runs one at a time in the background, paced under Community's
@@ -153,10 +153,10 @@ function hideThreadOf(type, id) {
 }
 
 /** Live user id for a Network subject, when that person has a Live account linked. */
-function liveUserForSubject(subject) {
+async function liveUserForSubject(subject) {
     if (!subject) return null;
     try {
-        const row = db.getDb().prepare("SELECT user_id FROM linked_accounts WHERE service = 'network' AND subject_id = ? ORDER BY id LIMIT 1").get(subject);
+        const row = await db.getDb().prepare("SELECT user_id FROM linked_accounts WHERE service = 'network' AND subject_id = ? ORDER BY id LIMIT 1").get(subject);
         return row ? row.user_id : null;
     } catch { return null; }
 }

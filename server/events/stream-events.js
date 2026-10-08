@@ -33,12 +33,12 @@ let outbox = null;
 const stats = { queued: 0, lastError: null };
 
 /** The envelope for one lifecycle change, read inside the caller's transaction. */
-function envelopeFor(kind, streamId) {
-    const s = db.getDb().prepare(`SELECT s.id, s.user_id, s.title, s.category, s.protocol, s.is_nsfw, s.started_at, s.ended_at,
+async function envelopeFor(kind, streamId) {
+    const s = await db.getDb().prepare(`SELECT s.id, s.user_id, s.title, s.category, s.protocol, s.is_nsfw, s.started_at, s.ended_at,
             s.duration_seconds, s.managed_stream_id, u.username, u.display_name
         FROM streams s JOIN users u ON u.id = s.user_id WHERE s.id = ?`).get(streamId);
     if (!s) return null;
-    const subjectId = identity.subjectOf(s.user_id);
+    const subjectId = await identity.subjectOf(s.user_id);
     const channel = { username: s.username, display_name: s.display_name || s.username, url: `https://openvibe.live/@${encodeURIComponent(s.username)}` };
     if (subjectId) channel.subject = { type: 'user', id: subjectId };
     const payload = {
@@ -56,7 +56,7 @@ function envelopeFor(kind, streamId) {
         // Contracts 0.68.0 (WS-E task 6): the stream's totals for creator analytics on Network. Counts only,
         // computed here in the transaction that ends the row (stream_analytics is refreshed as a side effect).
         try {
-            const a = db.computeAndCacheStreamAnalytics(s.id);
+            const a = await db.computeAndCacheStreamAnalytics(s.id);
             if (a) {
                 const n = (v) => Math.max(0, Math.round(Number(v) || 0));
                 payload.stats = { peak_viewers: n(a.peak_viewers), avg_viewers: Math.max(0, Math.round((Number(a.avg_viewers) || 0) * 10) / 10), unique_chatters: n(a.unique_chatters), messages: n(a.total_messages), watch_minutes: n(a.total_watch_minutes) };
@@ -98,8 +98,8 @@ function init({ eventsUrl = EVENTS_URL, clientSecret = CLIENT_SECRET, fetchImpl,
         },
     });
     outbox.ensureSchema();
-    db.onStreamLifecycle((kind, streamId) => {
-        const env = envelopeFor(kind, streamId);
+    db.onStreamLifecycle(async (kind, streamId) => {
+        const env = await envelopeFor(kind, streamId);
         if (!env) return;
         outbox.enqueue(env);
         stats.queued++;

@@ -49,19 +49,19 @@ function refOf(input) {
 }
 
 /** Count one unresolved answer. result: { status, reason, detail }; caller: 'svc:media', 'live:clip-owner'… */
-function record(input, result, caller, { now = Date.now() } = {}) {
+async function record(input, result, caller, { now = Date.now() } = {}) {
     try {
         if (!result || result.status === 'resolved' || !result.reason || result.reason === 'no_input') return false;
         const ref = refOf(input);
         if (!ref) return false;
         ensureTable();
         const at = new Date(now).toISOString();
-        db.run(`INSERT INTO lineage_unresolved (ref, reason, detail, last_caller, count, first_at, last_at) VALUES (?, ?, ?, ?, 1, ?, ?)
+        await db.run(`INSERT INTO lineage_unresolved (ref, reason, detail, last_caller, count, first_at, last_at) VALUES (?, ?, ?, ?, 1, ?, ?)
                 ON CONFLICT (ref, reason) DO UPDATE SET detail = excluded.detail, last_caller = excluded.last_caller, count = lineage_unresolved.count + 1, last_at = excluded.last_at`,
         [ref, String(result.reason).slice(0, 60), result.detail ? String(result.detail).slice(0, 500) : null, caller ? String(caller).slice(0, 60) : null, at, at]);
         if (now - lastPrune > PRUNE_EVERY_MS) {
             lastPrune = now;
-            db.run('DELETE FROM lineage_unresolved WHERE last_at < ?', [new Date(now - KEEP_DAYS * 86400000).toISOString()]);
+            await db.run('DELETE FROM lineage_unresolved WHERE last_at < ?', [new Date(now - KEEP_DAYS * 86400000).toISOString()]);
         }
         return true;
     } catch (err) {
@@ -71,14 +71,14 @@ function record(input, result, caller, { now = Date.now() } = {}) {
 }
 
 /** For staff: the newest first, optionally one reason; plus counts per reason. */
-function list({ reason = null, limit = 100 } = {}) {
+async function list({ reason = null, limit = 100 } = {}) {
     ensureTable();
     const n = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 500);
     const rows = reason
-        ? db.all('SELECT * FROM lineage_unresolved WHERE reason = ? ORDER BY last_at DESC LIMIT ?', [reason, n])
-        : db.all('SELECT * FROM lineage_unresolved ORDER BY last_at DESC LIMIT ?', [n]);
+        ? await db.all('SELECT * FROM lineage_unresolved WHERE reason = ? ORDER BY last_at DESC LIMIT ?', [reason, n])
+        : await db.all('SELECT * FROM lineage_unresolved ORDER BY last_at DESC LIMIT ?', [n]);
     const byReason = {};
-    for (const r of db.all('SELECT reason, COUNT(*) AS refs, SUM(count) AS answers FROM lineage_unresolved GROUP BY reason')) byReason[r.reason] = { refs: r.refs, answers: r.answers };
+    for (const r of await db.all('SELECT reason, COUNT(*) AS refs, SUM(count) AS answers FROM lineage_unresolved GROUP BY reason')) byReason[r.reason] = { refs: r.refs, answers: r.answers };
     return { unresolved: rows, by_reason: byReason, keep_days: KEEP_DAYS };
 }
 

@@ -9,23 +9,23 @@
  */
 const db = require('../db/database');
 
-function b(k) { const v = db.getSetting(k); return v === true || v === 'true' || v === 1 || v === '1'; }
-function num(k, d) { const v = parseFloat(db.getSetting(k)); return Number.isFinite(v) ? v : d; }
+async function b(k) { const v = await db.getSetting(k); return v === true || v === 'true' || v === 1 || v === '1'; }
+async function num(k, d) { const v = parseFloat(await db.getSetting(k)); return Number.isFinite(v) ? v : d; }
 
 const llm = require('./llm');
 const aiService = require('./ai-service');
-function isEnabled() { return llm.isEnabled(); }
-function pasteAnalysisEnabled() { return isEnabled() && b('ai_paste_analysis_enabled'); }
-function streamMemoryEnabled() { return isEnabled() && b('ai_stream_memory_enabled'); }
+async function isEnabled() { return await llm.isEnabled(); }
+async function pasteAnalysisEnabled() { return await isEnabled() && await b('ai_paste_analysis_enabled'); }
+async function streamMemoryEnabled() { return await isEnabled() && await b('ai_stream_memory_enabled'); }
 // Local whisper.cpp transcription (default on when installed). Independent of the
 // LLM being enabled — it's free/local — but we only bother while capturing memories.
-function transcriptionEnabled() {
-    const setting = db.getSetting('ai_transcription_enabled');
+async function transcriptionEnabled() {
+    const setting = await db.getSetting('ai_transcription_enabled');
     const on = (setting === undefined || setting === null || setting === '') ? true : (setting === true || setting === 'true' || setting === 1 || setting === '1');
     try { return on && require('./transcribe').available(); } catch { return false; }
 }
-function captureIntervalSec() { return Math.max(30, num('ai_stream_capture_interval_sec', 120)); }
-function withinBudget() { return llm.withinBudget(); }
+async function captureIntervalSec() { return Math.max(30, await num('ai_stream_capture_interval_sec', 120)); }
+async function withinBudget() { return await llm.withinBudget(); }
 
 // The transport lives in ./llm (a run on OpenVibe.AI, uniform metering). Every feature's prompt is an OpenVibe.AI
 // template now (roadmap WS-O task 2); this single-prompt call is left for the status probe (testStatus).
@@ -37,13 +37,13 @@ async function _complete({ prompt, image = null, maxTokens = 400, kind, temperat
 }
 
 /** Is Live's AI usable right now (enabled + within the global budget)? viewers/budget.js asks under this name. */
-function sharedKeyReady() { return isEnabled() && withinBudget(); }
+async function sharedKeyReady() { return await isEnabled() && await withinBudget(); }
 
 // ── Public analysis functions ──
 
 /** Describe an image paste → { description, tags }. */
 async function analyzeImagePaste(image, title, kind = 'paste_image') {
-    if (!sharedKeyReady()) return null;
+    if (!await sharedKeyReady()) return null;
     const img = await aiService.imageInput(image, { toVisionJpeg: llm.toVisionJpeg, maxWidth: 1280 });
     const o = img ? await aiService.structured('live.paste.describe_image', { title: String(title || '').slice(0, 500), image: img }, { meter: { kind, role: 'vision' } }) : null;
     return o && o.description ? { description: o.description, tags: o.tags || [] } : null;
@@ -51,7 +51,7 @@ async function analyzeImagePaste(image, title, kind = 'paste_image') {
 
 /** Summarize a text paste → { description }. */
 async function analyzeTextPaste(content, title) {
-    if (!sharedKeyReady() || !String(content || '').trim()) return null;
+    if (!await sharedKeyReady() || !String(content || '').trim()) return null;
     const o = await aiService.structured('live.paste.summarize_text', { title: String(title || '').slice(0, 500), content: String(content || '').slice(0, 200000) }, { meter: { kind: 'paste_text', role: 'legacy' } });
     return o && o.description ? { description: o.description, tags: [] } : null;
 }
@@ -60,7 +60,7 @@ async function analyzeTextPaste(content, title) {
 async function analyzeStreamFrame(image) {
     // One vision run does three jobs: the memory description, the tags, and a screenshot-worthiness
     // verdict + caption (so live pastes need no extra call).
-    if (!sharedKeyReady()) return null;
+    if (!await sharedKeyReady()) return null;
     const img = await aiService.imageInput(image, { toVisionJpeg: llm.toVisionJpeg, maxWidth: 768 });
     const o = img ? await aiService.structured('live.stream.describe_frame', { image: img }, { meter: { kind: 'stream_memory', role: 'vision' } }) : null;
     return o && o.description ? { description: o.description, tags: o.tags || [], worthy: o.worthy === true, title: o.worthy === true ? String(o.title || '').slice(0, 80) : '' } : null;
@@ -75,14 +75,14 @@ async function summarizeStreamMemories(memories, streamId = null) {
     // Use observations from across the whole session (capped for token budget) so the
     // overview reflects the entire stream since it started, not just the latest frame.
     const observations = (memories || []).slice(-80).map(m => String(m.description || '').slice(0, 1000)).filter(Boolean);
-    if (!observations.length || !sharedKeyReady()) return null;
+    if (!observations.length || !await sharedKeyReady()) return null;
     // The audio timeline, when one exists, goes along with its timestamps: what was SAID and what
     // was HEARD, both anchored in time.
     const input = { observations };
     if (streamId) {
         try {
-            input.speech = (db.getTimeline(streamId, { kind: 'speech', limit: 400 }) || []).slice(-200).map(r => ({ start_sec: Number(r.start_sec) || 0, text: String(r.text || '').slice(0, 2000) }));
-            input.sounds = (db.getTimeline(streamId, { kind: 'sound', limit: 120 }) || []).slice(-60).map(r => ({ start_sec: Number(r.start_sec) || 0, label: String(r.label || '').slice(0, 120), confidence: Number(r.confidence || 0) }));
+            input.speech = (await db.getTimeline(streamId, { kind: 'speech', limit: 400 }) || []).slice(-200).map(r => ({ start_sec: Number(r.start_sec) || 0, text: String(r.text || '').slice(0, 2000) }));
+            input.sounds = (await db.getTimeline(streamId, { kind: 'sound', limit: 120 }) || []).slice(-60).map(r => ({ start_sec: Number(r.start_sec) || 0, label: String(r.label || '').slice(0, 120), confidence: Number(r.confidence || 0) }));
         } catch { /* timeline optional */ }
     }
     // The same run also classifies the stream: the category is inferred from what is actually on
@@ -96,12 +96,12 @@ async function summarizeStreamMemories(memories, streamId = null) {
  * their streams (memories), VODs, and pastes. Returns the overview text or null.
  */
 async function generateStreamerOverview(userId) {
-    if (!sharedKeyReady()) return null;
-    const user = db.getUserById(userId);
+    if (!await sharedKeyReady()) return null;
+    const user = await db.getUserById(userId);
     if (!user) return null;
-    const channel = (typeof db.getChannelByUserId === 'function') ? db.getChannelByUserId(userId) : null;
+    const channel = (typeof db.getChannelByUserId === 'function') ? await db.getChannelByUserId(userId) : null;
 
-    const memories = (db.getStreamMemoriesByUser ? db.getStreamMemoriesByUser(userId, 60) : []) || [];
+    const memories = (db.getStreamMemoriesByUser ? await db.getStreamMemoriesByUser(userId, 60) : []) || [];
     const memLines = memories.slice(0, 40).map(m => String(m.description || '').slice(0, 1000)).filter(Boolean);
 
     // VODs from OpenVibe.Media (public ones) and pastes from OpenVibe.Community (any visibility:
@@ -122,7 +122,7 @@ async function generateStreamerOverview(userId) {
     if (!text) return null;
     const overview = String(text).slice(0, 4000);
     try {
-        db.upsertStreamerOverview(userId, {
+        await db.upsertStreamerOverview(userId, {
             overview,
             model: 'openvibe-ai',
             sources: JSON.stringify({ memories: memories.length, vods: vods.length, pastes: summarized.length }),
@@ -160,7 +160,7 @@ async function _mediaSource(row, kind = 'vod') {
 const _overviewInFlight = new Set();
 async function generateVodOverview(vod) {
     if (!vod) return null;
-    if (!isEnabled() || !withinBudget()) return null;
+    if (!await isEnabled() || !await withinBudget()) return null;
     // Guard against the on-finalize trigger and the backfill poller processing the same
     // VOD at once (that would double-extract frames + duplicate timeline memories).
     if (_overviewInFlight.has(vod.id)) return null;
@@ -182,7 +182,7 @@ async function _generateVodOverviewInner(vod) {
         try { await ensureVodTimeline(vod); } catch { /* */ }
     }
 
-    const existing = vod.stream_id ? (db.getStreamMemories(vod.stream_id) || []) : [];
+    const existing = vod.stream_id ? (await db.getStreamMemories(vod.stream_id) || []) : [];
     if (existing.length >= 2) {
         // `stream` never existed in this scope — the parameter is `vod` — so this threw
         // ReferenceError for every stream-backed VOD with >=2 memories, i.e. the common
@@ -190,23 +190,23 @@ async function _generateVodOverviewInner(vod) {
         // backfill logged "[AI backfill] vod: stream is not defined" once a minute
         // forever. That is why ai_overview was null on every recent VOD.
         const overview = await summarizeStreamMemories(existing, vod.stream_id || null);
-        if (overview) { try { db.setVodAiOverview(vod.id, overview); } catch { /* */ } }
+        if (overview) { try { await db.setVodAiOverview(vod.id, overview); } catch { /* */ } }
         return overview;
     }
     // No stream_id (or still sparse) — analyze the media directly (smart frame selection).
     const src = await _mediaSource(vod);
-    if (!src) { try { db.setVodAiOverview(vod.id, ' '); } catch { /* */ } return null; } // unprocessable — mark done
+    if (!src) { try { await db.setVodAiOverview(vod.id, ' '); } catch { /* */ } return null; } // unprocessable — mark done
     const r = await ma.analyzeMedia(src, {
         streamId: vod.stream_id || null, userId: vod.user_id || null,
         storeMemories: !!vod.stream_id, offsetBase: 0,
     });
     const overview = r && r.overview ? r.overview : ' '; // ' ' = tried, nothing to say
-    try { db.setVodAiOverview(vod.id, overview); } catch { /* */ }
+    try { await db.setVodAiOverview(vod.id, overview); } catch { /* */ }
     // Persist the whisper transcript (+ timestamped segments) for the VOD page, and mark
     // the transcript job done so the transcript poller doesn't re-run whisper on this VOD.
     try {
         const t = r ? r.transcript : '';
-        if (t && t.trim()) { db.setVodTranscript(vod.id, t, r ? r.segments : null); db.setVodTranscriptStatus(vod.id, 'done'); }
+        if (t && t.trim()) { await db.setVodTranscript(vod.id, t, r ? r.segments : null); await db.setVodTranscriptStatus(vod.id, 'done'); }
     } catch { /* */ }
     return r ? r.overview : null;
 }
@@ -218,13 +218,13 @@ async function _generateVodOverviewInner(vod) {
  */
 async function ensureVodTimeline(vod) {
     if (!vod || !vod.stream_id) return;
-    if (!isEnabled() || !withinBudget()) return;
+    if (!await isEnabled() || !await withinBudget()) return;
     const ma = require('./media-analysis');
     const src = await _mediaSource(vod);
     if (!src) return;
     const duration = await ma.probeDuration(src);
     if (!duration || duration < 2) return;
-    const existingOffsets = (db.getStreamMemories(vod.stream_id) || []).map((m) => m.offset_seconds);
+    const existingOffsets = (await db.getStreamMemories(vod.stream_id) || []).map((m) => m.offset_seconds);
     const times = await ma.pickFrameTimes(src, duration, { existingOffsets });
     if (!times.length) return;
     await ma.captureFrameMemories(src, times, { streamId: vod.stream_id, userId: vod.user_id, offsetBase: 0, store: true });
@@ -252,9 +252,9 @@ function _txRun(fn) {
 // Drop whisper to low-power (fewer threads) whenever any stream is live, so VOD
 // transcription keeps progressing without starving the live encoders — applied on
 // EVERY transcription path (backfill poller + the on-finalize trigger).
-function _applyTxLowPower() {
+async function _applyTxLowPower() {
     try {
-        const anyLive = ((db.getLiveStreams && db.getLiveStreams()) || []).length > 0;
+        const anyLive = ((db.getLiveStreams && await db.getLiveStreams()) || []).length > 0;
         require('./transcribe').setLowPower(anyLive);
     } catch { /* */ }
 }
@@ -265,36 +265,36 @@ function _applyTxLowPower() {
  * a clean silent run is marked terminal — so an interrupted run is never lost.
  */
 async function generateVodTranscript(vod) {
-    if (!vod || !transcriptionEnabled()) return null;
+    if (!vod || !await transcriptionEnabled()) return null;
     return _txRun(async () => {
-        _applyTxLowPower();
+        await _applyTxLowPower();
         const src = await _mediaSource(vod);
         if (!src) {
-            const n = db.bumpVodTranscriptAttempt(vod.id);
-            db.setVodTranscriptStatus(vod.id, n >= MAX_TX_ATTEMPTS ? 'failed' : 'retry', 'no media source', _txBackoffMin(n));
+            const n = await db.bumpVodTranscriptAttempt(vod.id);
+            await db.setVodTranscriptStatus(vod.id, n >= MAX_TX_ATTEMPTS ? 'failed' : 'retry', 'no media source', _txBackoffMin(n));
             return null;
         }
-        db.setVodTranscriptStatus(vod.id, 'processing');
+        await db.setVodTranscriptStatus(vod.id, 'processing');
         let r = { text: '', segments: [], ok: false, error: 'unknown' };
         try {
             // Continue from the last finished 5-minute window (persisted per window), so
             // the frequent deploy restarts no longer discard an hour of decoding.
-            const prog = db.getVodTranscriptProgress ? db.getVodTranscriptProgress(vod.id) : { progressSec: 0, segments: [] };
+            const prog = db.getVodTranscriptProgress ? await db.getVodTranscriptProgress(vod.id) : { progressSec: 0, segments: [] };
             r = await require('./media-analysis').transcribeOnly(src, {
                 resumeFromSec: prog.progressSec,
                 priorSegments: prog.segments,
-                onWindow: (sec, segs) => db.saveVodTranscriptProgress(vod.id, sec, segs),
+                onWindow: async (sec, segs) => await db.saveVodTranscriptProgress(vod.id, sec, segs),
             });
         } catch (e) { r = { text: '', segments: [], ok: false, error: e.message }; }
         if (r.text) {                                            // got speech → store it (+segments)
-            try { db.setVodTranscript(vod.id, r.text, r.segments || []); } catch { /* */ }
-            db.setVodTranscriptStatus(vod.id, 'done');
+            try { await db.setVodTranscript(vod.id, r.text, r.segments || []); } catch { /* */ }
+            await db.setVodTranscriptStatus(vod.id, 'done');
         } else if (r.ok) {                                       // ran clean, genuinely no speech → terminal
-            try { db.setVodTranscript(vod.id, ' ', []); } catch { /* */ }
-            db.setVodTranscriptStatus(vod.id, 'empty', r.noAudio ? 'no audio stream' : null);
+            try { await db.setVodTranscript(vod.id, ' ', []); } catch { /* */ }
+            await db.setVodTranscriptStatus(vod.id, 'empty', r.noAudio ? 'no audio stream' : null);
         } else {                                                 // failure → retry (bounded + backoff), never poison
-            const n = db.bumpVodTranscriptAttempt(vod.id);
-            db.setVodTranscriptStatus(vod.id, n >= MAX_TX_ATTEMPTS ? 'failed' : 'retry', r.error || 'transcription failed', _txBackoffMin(n));
+            const n = await db.bumpVodTranscriptAttempt(vod.id);
+            await db.setVodTranscriptStatus(vod.id, n >= MAX_TX_ATTEMPTS ? 'failed' : 'retry', r.error || 'transcription failed', _txBackoffMin(n));
         }
         return r.text;
     });
@@ -302,27 +302,27 @@ async function generateVodTranscript(vod) {
 
 /** Transcript-only pass for a clip — FREE local whisper (see generateVodTranscript). */
 async function generateClipTranscript(clip) {
-    if (!clip || !transcriptionEnabled()) return null;
+    if (!clip || !await transcriptionEnabled()) return null;
     return _txRun(async () => {
-        _applyTxLowPower();
+        await _applyTxLowPower();
         const src = await _mediaSource(clip, 'clip');
         if (!src) {
-            const n = db.bumpClipTranscriptAttempt(clip.id);
-            db.setClipTranscriptStatus(clip.id, n >= MAX_TX_ATTEMPTS ? 'failed' : 'retry', 'no media source', _txBackoffMin(n));
+            const n = await db.bumpClipTranscriptAttempt(clip.id);
+            await db.setClipTranscriptStatus(clip.id, n >= MAX_TX_ATTEMPTS ? 'failed' : 'retry', 'no media source', _txBackoffMin(n));
             return null;
         }
-        db.setClipTranscriptStatus(clip.id, 'processing');
+        await db.setClipTranscriptStatus(clip.id, 'processing');
         let r = { text: '', segments: [], ok: false, error: 'unknown' };
         try { r = await require('./media-analysis').transcribeOnly(src); } catch (e) { r = { text: '', segments: [], ok: false, error: e.message }; }
         if (r.text) {
-            try { db.setClipTranscript(clip.id, r.text, r.segments || []); } catch { /* */ }
-            db.setClipTranscriptStatus(clip.id, 'done');
+            try { await db.setClipTranscript(clip.id, r.text, r.segments || []); } catch { /* */ }
+            await db.setClipTranscriptStatus(clip.id, 'done');
         } else if (r.ok) {
-            try { db.setClipTranscript(clip.id, ' ', []); } catch { /* */ }
-            db.setClipTranscriptStatus(clip.id, 'empty', r.noAudio ? 'no audio stream' : null);
+            try { await db.setClipTranscript(clip.id, ' ', []); } catch { /* */ }
+            await db.setClipTranscriptStatus(clip.id, 'empty', r.noAudio ? 'no audio stream' : null);
         } else {
-            const n = db.bumpClipTranscriptAttempt(clip.id);
-            db.setClipTranscriptStatus(clip.id, n >= MAX_TX_ATTEMPTS ? 'failed' : 'retry', r.error || 'transcription failed', _txBackoffMin(n));
+            const n = await db.bumpClipTranscriptAttempt(clip.id);
+            await db.setClipTranscriptStatus(clip.id, n >= MAX_TX_ATTEMPTS ? 'failed' : 'retry', r.error || 'transcription failed', _txBackoffMin(n));
         }
         return r.text;
     });
@@ -335,34 +335,34 @@ async function generateClipTranscript(clip) {
  */
 async function generateClipOverview(clip) {
     if (!clip) return null;
-    if (!isEnabled() || !withinBudget()) return null;
+    if (!await isEnabled() || !await withinBudget()) return null;
     const src = await _mediaSource(clip, 'clip');
-    if (!src) { try { db.setClipAiOverview(clip.id, { overview: ' ', transcript: null }); } catch { /* */ } return null; }
+    if (!src) { try { await db.setClipAiOverview(clip.id, { overview: ' ', transcript: null }); } catch { /* */ } return null; }
     const r = await require('./media-analysis').analyzeMedia(src, {
         streamId: clip.stream_id || null, userId: clip.user_id || null,
         numFrames: 3, storeMemories: !!clip.stream_id, offsetBase: clip.start_time || 0,
     });
     const overview = (r && r.overview) ? r.overview : ' ';
     const transcript = r ? r.transcript : '';
-    try { db.setClipAiOverview(clip.id, { overview, transcript: transcript || null, segments: r ? r.segments : null }); } catch { /* */ }
+    try { await db.setClipAiOverview(clip.id, { overview, transcript: transcript || null, segments: r ? r.segments : null }); } catch { /* */ }
     // The overview pass already ran whisper — record it as done so the transcript poller
     // doesn't re-transcribe the same clip. (Only when we actually got speech; a blank
     // result is left for the dedicated, retrying transcript path to handle properly.)
-    try { if (transcript && transcript.trim()) db.setClipTranscriptStatus(clip.id, 'done'); } catch { /* */ }
+    try { if (transcript && transcript.trim()) await db.setClipTranscriptStatus(clip.id, 'done'); } catch { /* */ }
     return { overview: r ? r.overview : null, transcript };
 }
 
 /** Report AI config + optionally probe OpenVibe.AI with a one-word run. */
 async function testStatus({ probe = true } = {}) {
     const cfg = {
-        enabled: isEnabled(),
+        enabled: await isEnabled(),
         service: aiService.enabled() ? 'openvibe-ai' : 'off',
-        paste_analysis: pasteAnalysisEnabled(),
-        stream_memory: streamMemoryEnabled(),
-        budget_cap_usd_per_day: num('ai_max_cost_usd_per_day', 0),
-        within_budget: withinBudget(),
+        paste_analysis: await pasteAnalysisEnabled(),
+        stream_memory: await streamMemoryEnabled(),
+        budget_cap_usd_per_day: await num('ai_max_cost_usd_per_day', 0),
+        within_budget: await withinBudget(),
     };
-    try { cfg.cost_today = db.getAiCostToday(); } catch { cfg.cost_today = null; }
+    try { cfg.cost_today = await db.getAiCostToday(); } catch { cfg.cost_today = null; }
     if (!cfg.enabled) return { ...cfg, ok: false, error: aiService.enabled() ? 'AI is disabled (ai_enabled=false)' : 'AI is off (AI_SERVICE=off)' };
     if (!probe) return { ...cfg, ok: true, probed: false };
     const started = Date.now();

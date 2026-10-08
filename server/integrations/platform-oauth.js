@@ -67,11 +67,11 @@ function redirectUri(platform) {
 }
 
 /** Resolve client id/secret from admin settings; reports whether configured. */
-function getClientConfig(platform) {
+async function getClientConfig(platform) {
     const p = PLATFORMS[platform];
     if (!p) return { configured: false };
-    const clientId = (db.getSetting(p.clientIdKey) || '').trim();
-    const clientSecret = (db.getSetting(p.clientSecretKey) || '').trim();
+    const clientId = (await db.getSetting(p.clientIdKey) || '').trim();
+    const clientSecret = (await db.getSetting(p.clientSecretKey) || '').trim();
     return {
         clientId,
         clientSecret,
@@ -112,9 +112,9 @@ function verifyState(token) {
  * Returns { url, stateToken } — stateToken must be stored in a short-lived
  * signed cookie and validated on callback.
  */
-function buildAuthorize(platform, { userId, managedStreamId }) {
+async function buildAuthorize(platform, { userId, managedStreamId }) {
     const p = PLATFORMS[platform];
-    const cfg = getClientConfig(platform);
+    const cfg = await getClientConfig(platform);
     if (!cfg.configured) throw new Error(`${p.name} OAuth is not configured (missing client id/secret in admin settings)`);
 
     const nonce = crypto.randomBytes(16).toString('base64url');
@@ -157,7 +157,7 @@ async function postForm(url, formObj, headers = {}) {
 /** Exchange an authorization code for tokens. */
 async function exchangeCode(platform, code, codeVerifier) {
     const p = PLATFORMS[platform];
-    const cfg = getClientConfig(platform);
+    const cfg = await getClientConfig(platform);
     const form = {
         grant_type: 'authorization_code',
         code,
@@ -173,7 +173,7 @@ async function exchangeCode(platform, code, codeVerifier) {
 /** Refresh an access token. Returns normalized token (may omit refresh_token). */
 async function refreshAccessToken(platform, refreshToken) {
     const p = PLATFORMS[platform];
-    const cfg = getClientConfig(platform);
+    const cfg = await getClientConfig(platform);
     const tok = await postForm(p.tokenUrl, {
         grant_type: 'refresh_token',
         refresh_token: refreshToken,
@@ -212,14 +212,14 @@ async function getJson(url, headers) {
  *     server_url|null, stream_key|null, needsManualKey }
  */
 async function fetchConnection(platform, accessToken) {
-    if (platform === 'twitch') return fetchTwitch(accessToken);
-    if (platform === 'youtube') return fetchYouTube(accessToken);
-    if (platform === 'kick') return fetchKick(accessToken);
+    if (platform === 'twitch') return await fetchTwitch(accessToken);
+    if (platform === 'youtube') return await fetchYouTube(accessToken);
+    if (platform === 'kick') return await fetchKick(accessToken);
     throw new Error(`Unknown platform ${platform}`);
 }
 
 async function fetchTwitch(accessToken) {
-    const cfg = getClientConfig('twitch');
+    const cfg = await getClientConfig('twitch');
     const headers = { Authorization: `Bearer ${accessToken}`, 'Client-Id': cfg.clientId };
     const users = await getJson('https://api.twitch.tv/helix/users', headers);
     const u = users.data && users.data[0];
@@ -339,7 +339,7 @@ async function getValidAccessToken(connection) {
     if (!connection.refresh_token) return connection.access_token || null; // may be non-expiring
     try {
         const tok = await refreshAccessToken(connection.platform, connection.refresh_token);
-        db.updatePlatformConnectionTokens(connection.id, {
+        await db.updatePlatformConnectionTokens(connection.id, {
             access_token: tok.accessToken, refresh_token: tok.refreshToken,
             token_expires_at: tok.expiresAt, scope: tok.scope,
         });
@@ -360,7 +360,7 @@ async function resolveIngestForConnection(connection, { title } = {}) {
     const token = await getValidAccessToken(connection);
     if (!token) return null;
     if (connection.platform === 'twitch') {
-        const cfg = getClientConfig('twitch');
+        const cfg = await getClientConfig('twitch');
         const headers = { Authorization: `Bearer ${token}`, 'Client-Id': cfg.clientId };
         const users = await getJson('https://api.twitch.tv/helix/users', headers);
         const u = users.data && users.data[0];
@@ -370,7 +370,7 @@ async function resolveIngestForConnection(connection, { title } = {}) {
         return key ? { server_url: 'rtmps://live.twitch.tv/app', stream_key: key } : null;
     }
     if (connection.platform === 'youtube') {
-        return youtubeGoLive(token, title, connection);
+        return await youtubeGoLive(token, title, connection);
     }
     if (connection.platform === 'kick') {
         // With streamkey:read, /channels returns the current RTMP ingest + key.

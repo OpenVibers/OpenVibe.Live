@@ -14,18 +14,18 @@ function clampLimit(value, fallback = 20) {
     return Math.min(100, Math.max(1, parsed));
 }
 
-router.get('/channel/:username/:slotIdOrSlug/events', optionalAuth, (req, res) => {
+router.get('/channel/:username/:slotIdOrSlug/events', optionalAuth, async (req, res) => {
     try {
         const username = String(req.params.username || '').replace(/^@/, '').trim();
-        const channel = db.getChannelByUsername(username);
+        const channel = await db.getChannelByUsername(username);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
-        const managed = db.getManagedStreamByIdOrSlug(channel.user_id, req.params.slotIdOrSlug);
+        const managed = await db.getManagedStreamByIdOrSlug(channel.user_id, req.params.slotIdOrSlug);
         if (!managed) return res.status(404).json({ error: 'Managed stream not found' });
 
         const limit = clampLimit(req.query.limit, 18);
-        const feed = vibeService.getProjectedViewerFeed(managed.id, limit);
-        const liveStream = vibeService.getLiveStreamByManagedStreamId(managed.id);
+        const feed = await vibeService.getProjectedViewerFeed(managed.id, limit);
+        const liveStream = await vibeService.getLiveStreamByManagedStreamId(managed.id);
 
         res.json({
             managed_stream: {
@@ -44,18 +44,18 @@ router.get('/channel/:username/:slotIdOrSlug/events', optionalAuth, (req, res) =
     }
 });
 
-router.get('/managed/:managedStreamId/events', requireAuth, (req, res) => {
+router.get('/managed/:managedStreamId/events', requireAuth, async (req, res) => {
     try {
         const managedStreamId = parseInt(req.params.managedStreamId, 10);
-        const managed = db.getManagedStreamById(managedStreamId);
+        const managed = await db.getManagedStreamById(managedStreamId);
         if (!managed || managed.user_id !== req.user.id) {
             return res.status(404).json({ error: 'Managed stream not found' });
         }
 
         const limit = clampLimit(req.query.limit, 50);
-        const rawEvents = vibeService.getStoredEventsForManagedStream(managedStreamId, limit);
-        const feed = vibeService.getProjectedViewerFeed(managedStreamId, limit);
-        const liveStream = vibeService.getLiveStreamByManagedStreamId(managedStreamId);
+        const rawEvents = await vibeService.getStoredEventsForManagedStream(managedStreamId, limit);
+        const feed = await vibeService.getProjectedViewerFeed(managedStreamId, limit);
+        const liveStream = await vibeService.getLiveStreamByManagedStreamId(managedStreamId);
 
         res.json({
             managed_stream_id: managedStreamId,
@@ -71,16 +71,16 @@ router.get('/managed/:managedStreamId/events', requireAuth, (req, res) => {
     }
 });
 
-router.get('/managed/:managedStreamId/settings', requireAuth, (req, res) => {
+router.get('/managed/:managedStreamId/settings', requireAuth, async (req, res) => {
     try {
         const managedStreamId = parseInt(req.params.managedStreamId, 10);
-        const managed = db.getManagedStreamById(managedStreamId);
+        const managed = await db.getManagedStreamById(managedStreamId);
         if (!managed || managed.user_id !== req.user.id) {
             return res.status(404).json({ error: 'Managed stream not found' });
         }
         res.json({
             managed_stream_id: managedStreamId,
-            settings: vibeService.getManagedStreamVibeCodingSettings(managedStreamId),
+            settings: await vibeService.getManagedStreamVibeCodingSettings(managedStreamId),
         });
     } catch (err) {
         console.error('[VibeCoding] Settings read error:', err.message);
@@ -88,14 +88,14 @@ router.get('/managed/:managedStreamId/settings', requireAuth, (req, res) => {
     }
 });
 
-router.put('/managed/:managedStreamId/settings', requireAuth, (req, res) => {
+router.put('/managed/:managedStreamId/settings', requireAuth, async (req, res) => {
     try {
         const managedStreamId = parseInt(req.params.managedStreamId, 10);
-        const managed = db.getManagedStreamById(managedStreamId);
+        const managed = await db.getManagedStreamById(managedStreamId);
         if (!managed || managed.user_id !== req.user.id) {
             return res.status(404).json({ error: 'Managed stream not found' });
         }
-        const settings = vibeService.updateManagedStreamVibeCodingSettings(managedStreamId, req.user.id, req.body?.settings || {});
+        const settings = await vibeService.updateManagedStreamVibeCodingSettings(managedStreamId, req.user.id, req.body?.settings || {});
         res.json({ managed_stream_id: managedStreamId, settings });
     } catch (err) {
         console.error('[VibeCoding] Settings save error:', err.message);

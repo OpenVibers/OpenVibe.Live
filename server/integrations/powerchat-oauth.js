@@ -24,18 +24,18 @@ const config = require('../config');
 const JWT_SECRET = process.env.JWT_SECRET || 'openvibelive-dev-secret';
 const STATE_TTL_MS = 10 * 60 * 1000;
 
-function s(k) { return String(db.getSetting(k) || '').trim(); }
-function b(k) { const v = db.getSetting(k); return v === true || v === 'true' || v === 1 || v === '1'; }
+async function s(k) { return String(await db.getSetting(k) || '').trim(); }
+async function b(k) { const v = await db.getSetting(k); return v === true || v === 'true' || v === 1 || v === '1'; }
 
 // ── App-level config (from admin site_settings) ──────────────────────────────
-function getConfig() {
-    const baseUrl = (s('powerchat_base_url') || 'https://powerchatlive.dev').replace(/\/+$/, '');
+async function getConfig() {
+    const baseUrl = (await s('powerchat_base_url') || 'https://powerchatlive.dev').replace(/\/+$/, '');
     return {
-        enabled: b('powerchat_enabled'),
+        enabled: await b('powerchat_enabled'),
         baseUrl,
-        clientId: s('powerchat_client_id'),
-        clientSecret: s('powerchat_client_secret'),
-        webhookSecret: s('powerchat_webhook_secret'),
+        clientId: await s('powerchat_client_id'),
+        clientSecret: await s('powerchat_client_secret'),
+        webhookSecret: await s('powerchat_webhook_secret'),
         // Request the integration scopes AND the platform scopes we actually use
         // (chat:write / viewcount:write / subscriptions:write / follows:write /
         // currency:write / tips:write), so the grant carries them — otherwise every
@@ -45,8 +45,8 @@ function getConfig() {
         // confirm a 202-accepted message was actually displayed.
         // Widening the list requires the streamer to reconnect (re-consent) to re-mint
         // tokens with the wider set.
-        scopes: s('powerchat_scopes') || 'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write tips:write chat:read',
-        sandboxUsername: s('powerchat_sandbox_username') || 'alex',
+        scopes: await s('powerchat_scopes') || 'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write tips:write chat:read',
+        sandboxUsername: await s('powerchat_sandbox_username') || 'alex',
         authorizeUrl: `${baseUrl}/oauth/authorize`,
         tokenUrl: `${baseUrl}/oauth/token`,
         revokeUrl: `${baseUrl}/oauth/revoke`,
@@ -55,8 +55,8 @@ function getConfig() {
 }
 // True once the owner has entered the client id + secret (webhook secret optional but
 // required for webhooks to be accepted).
-function isConfigured() {
-    const c = getConfig();
+async function isConfigured() {
+    const c = await getConfig();
     return !!(c.clientId && c.clientSecret);
 }
 function redirectUri() {
@@ -92,8 +92,8 @@ function verifyState(token) {
 // ── Authorize URL ────────────────────────────────────────────────────────────
 // Returns { url, stateToken } — stateToken goes in the httpOnly cookie; the URL `state`
 // param is just the nonce (double-submit check on callback).
-function buildAuthorize({ userId, username }) {
-    const c = getConfig();
+async function buildAuthorize({ userId, username }) {
+    const c = await getConfig();
     const nonce = crypto.randomBytes(16).toString('base64url');
     const { codeVerifier, codeChallenge } = generatePkce();
     const params = new URLSearchParams({
@@ -143,7 +143,7 @@ function identityFromToken(accessToken) {
 }
 
 async function _postToken(form) {
-    const c = getConfig();
+    const c = await getConfig();
     let res;
     try {
         res = await fetch(c.tokenUrl, {
@@ -181,7 +181,7 @@ async function _postToken(form) {
 }
 
 async function exchangeCode(code, codeVerifier) {
-    const c = getConfig();
+    const c = await getConfig();
     return normalizeToken(await _postToken({
         grant_type: 'authorization_code',
         code,
@@ -193,7 +193,7 @@ async function exchangeCode(code, codeVerifier) {
 }
 
 async function refreshToken(refresh_token) {
-    const c = getConfig();
+    const c = await getConfig();
     return normalizeToken(await _postToken({
         grant_type: 'refresh_token',
         refresh_token,
@@ -203,7 +203,7 @@ async function refreshToken(refresh_token) {
 }
 
 async function revokeToken(token) {
-    const c = getConfig();
+    const c = await getConfig();
     try {
         await fetch(c.revokeUrl, {
             method: 'POST',
@@ -218,7 +218,7 @@ async function revokeToken(token) {
 // pair when near expiry. On a reuse/invalid_grant failure the family is dead → we clear
 // the tokens so the streamer is prompted to re-authorize. Throws on unrecoverable states.
 async function getValidAccessToken(userId, { force = false } = {}) {
-    const conn = db.getPowerchatConnection(userId);
+    const conn = await db.getPowerchatConnection(userId);
     if (!conn || !conn.access_token) throw new Error('PowerChat not connected');
     // Normally reuse the stored token until it's near expiry. `force` (used after a 401)
     // refreshes regardless — the stored token may be valid by our clock yet rejected as
@@ -234,8 +234,8 @@ async function getValidAccessToken(userId, { force = false } = {}) {
         // invalid_grant almost always means the refresh token was already rotated/revoked
         // (family killed) or the streamer revoked consent → force a reconnect.
         if (err.oauthError === 'invalid_grant' || err.status === 400 || err.status === 401) {
-            db.setPowerchatConnectionError(userId, `Reconnect needed: ${err.oauthError || err.message}`);
-            db.updatePowerchatTokens(userId, { access_token: null, refresh_token: null, token_expires_at: null, scope: conn.scope });
+            await db.setPowerchatConnectionError(userId, `Reconnect needed: ${err.oauthError || err.message}`);
+            await db.updatePowerchatTokens(userId, { access_token: null, refresh_token: null, token_expires_at: null, scope: conn.scope });
         }
         throw err;
     }
@@ -243,7 +243,7 @@ async function getValidAccessToken(userId, { force = false } = {}) {
     // token on every use, but defend against a response that omits it — writing null
     // would strand the connection with no way to refresh.
     if (!t.refresh_token) t.refresh_token = conn.refresh_token;
-    db.updatePowerchatTokens(userId, t);
+    await db.updatePowerchatTokens(userId, t);
     return t.access_token;
 }
 
@@ -260,8 +260,8 @@ async function getValidAccessToken(userId, { force = false } = {}) {
 const retryPolicy = require('./powerchat-retry');
 const _rateWarned = new Map(); // `${userId}:${path}` → last warn (1/min so a burst logs once)
 async function apiRequest(userId, { method = 'GET', path, username, body, query, root = false, idempotent = true, retry = true } = {}) {
-    const c = getConfig();
-    const conn = db.getPowerchatConnection(userId);
+    const c = await getConfig();
+    const conn = await db.getPowerchatConnection(userId);
     const uname = username || (conn && conn.powerchat_username) || c.sandboxUsername;
     let url = root ? `${c.apiBase}${path}` : `${c.apiBase}/streamers/${encodeURIComponent(uname)}${path}`;
     if (query) {
@@ -303,7 +303,7 @@ async function apiRequest(userId, { method = 'GET', path, username, body, query,
         return json;
     };
 
-    return retryPolicy.withRetry(once, {
+    return await retryPolicy.withRetry(once, {
         attempts: retry ? retryPolicy.DEFAULTS.attempts : 1,
         idempotent,
         onRetry: ({ attempt: n, status, delay }) => {
@@ -318,7 +318,7 @@ async function apiRequest(userId, { method = 'GET', path, username, body, query,
 
 // Public profile + live status + tipPageUrl (scope profile:read).
 async function fetchProfile(userId, username) {
-    return apiRequest(userId, { method: 'GET', path: '/profile', username });
+    return await apiRequest(userId, { method: 'GET', path: '/profile', username });
 }
 
 // ── Self-diagnosis: GET /me ──────────────────────────────────────────────────

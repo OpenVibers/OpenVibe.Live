@@ -110,9 +110,9 @@ function lookup(key, load, deadlineAt = null) {
 }
 
 /** The signed-in visitor, or null. Only asked when a private item is at stake. */
-function visitor(req) {
+async function visitor(req) {
     if (req.user !== undefined) return req.user || null;
-    try { require('../auth/auth').optionalAuth(req, null, () => {}); } catch { /* treat as anonymous */ }
+    try { await require('../auth/auth').optionalAuth(req, null, () => {}); } catch { /* treat as anonymous */ }
     return req.user || null;
 }
 
@@ -123,7 +123,7 @@ async function mediaItemStatus(req, kind, id) {
         : await media.getClip(id, { timeoutMs: 10_000 })), req.ovLookupDeadlineAt || null);
     if (row === UNKNOWN) return OK;
     if (row === MISSING) return NOT_FOUND;
-    return access.canView(visitor(req), row) ? OK : NOT_FOUND;
+    return await access.canView(await visitor(req), row) ? OK : NOT_FOUND;
 }
 
 async function pasteStatus(req, slug) {
@@ -135,17 +135,17 @@ async function pasteStatus(req, slug) {
     return found === MISSING ? NOT_FOUND : OK;
 }
 
-function channelStatus(segment) {
+async function channelStatus(segment) {
     const m = CHANNEL_RE.exec(segment);
     if (!m) return NOT_FOUND;
     try {
-        return (db.getChannelByUsername(m[1]) || db.getUserByUsername(m[1])) ? OK : NOT_FOUND;
+        return (await db.getChannelByUsername(m[1]) || await db.getUserByUsername(m[1])) ? OK : NOT_FOUND;
     } catch { return OK; }
 }
 
-function streamStatus(id) {
+async function streamStatus(id) {
     if (!ID_RE.test(id)) return NOT_FOUND;
-    try { return db.getStreamById(Number(id)) ? OK : NOT_FOUND; } catch { return OK; }
+    try { return await db.getStreamById(Number(id)) ? OK : NOT_FOUND; } catch { return OK; }
 }
 
 /**
@@ -159,14 +159,14 @@ async function statusFor(req) {
         const [first, second] = segs;
         if (segs.length === 1 && EXACT.has(first)) return OK;
         if (PREFIX.has(first)) return OK;
-        if (first.startsWith('@')) return segs.length <= 2 ? channelStatus(first) : NOT_FOUND;
+        if (first.startsWith('@')) return segs.length <= 2 ? await channelStatus(first) : NOT_FOUND;
         if (segs.length !== 2) return NOT_FOUND;
         switch (first) {
             case 'vod': return await mediaItemStatus(req, 'vod', second);
             case 'clip': return await mediaItemStatus(req, 'clip', second);
             case 'p': return await pasteStatus(req, second);
             case 'recap':
-            case 'stream': return streamStatus(second);
+            case 'stream': return await streamStatus(second);
             default: return NOT_FOUND;
         }
     } catch (err) {

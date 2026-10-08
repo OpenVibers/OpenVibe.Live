@@ -73,10 +73,10 @@ class Vibes {
      * @param {number} amount - Number of Vibes to purchase
      * @param {string} paypalTxId - PayPal transaction ID
      */
-    purchase(userId, amount, paypalTxId) {
+    async purchase(userId, amount, paypalTxId) {
         amount = normalizeBucks(amount);
         const txId = normalizeText(paypalTxId, 128);
-        const tx = db.createTransaction({
+        const tx = await db.createTransaction({
             from_user_id: null,
             to_user_id: userId,
             amount,
@@ -87,11 +87,11 @@ class Vibes {
 
         // Update PayPal reference
         if (txId) {
-            db.run('UPDATE transactions SET paypal_transaction_id = ? WHERE id = ?',
+            await db.run('UPDATE transactions SET paypal_transaction_id = ? WHERE id = ?',
             [txId, tx.lastInsertRowid]);
         }
 
-        db.addVibes(userId, amount);
+        await db.addVibes(userId, amount);
         return tx;
     }
 
@@ -103,21 +103,21 @@ class Vibes {
      * @param {number} amount - Vibes to donate
      * @param {string} message - Donation message
      */
-    donate(fromUserId, toUserId, streamId, amount, message, goalId = null) {
+    async donate(fromUserId, toUserId, streamId, amount, message, goalId = null) {
         amount = normalizeBucks(amount);
         message = normalizeText(message, 300);
 
         // Deduct from donor
-        if (!db.deductVibes(fromUserId, amount)) {
+        if (!await db.deductVibes(fromUserId, amount)) {
             throw new Error('Insufficient Vibes');
         }
 
         // Credit the streamer's CASHOUT balance (received bucks are the only cashout-able
         // ones; their spendable balance is for bucks they bought).
-        db.addVibesCashout(toUserId, amount);
+        await db.addVibesCashout(toUserId, amount);
 
         // Record transaction
-        const txn = db.createTransaction({
+        const txn = await db.createTransaction({
             from_user_id: fromUserId,
             to_user_id: toUserId,
             stream_id: streamId,
@@ -144,25 +144,25 @@ class Vibes {
      * otherwise the streamer's sole active goal (if exactly one). Returns
      * { goal, reached } for the goal that advanced, or null if none applied.
      */
-    applyDonationToGoal(userId, amount, goalId = null) {
+    async applyDonationToGoal(userId, amount, goalId = null) {
         const uid = Number(userId);
         let target = null;
         if (goalId) {
-            const g = db.getDonationGoalById(goalId);
+            const g = await db.getDonationGoalById(goalId);
             if (g && Number(g.user_id) === uid && g.is_active) target = g;
         }
         if (!target) {
-            const active = db.getActiveDonationGoals(uid);
+            const active = await db.getActiveDonationGoals(uid);
             if (active.length === 1) target = active[0];
         }
         if (!target) return null;
-        return db.addToDonationGoal(target.id, amount);
+        return await db.addToDonationGoal(target.id, amount);
     }
 
     /**
      * Request cashout (goes to escrow for admin review)
      */
-    requestCashout(userId, amount, paypalEmail) {
+    async requestCashout(userId, amount, paypalEmail) {
         amount = normalizeBucks(amount);
         paypalEmail = validatePaypalEmail(paypalEmail);
         const minBucks = config.openvibeBucks.minCashoutBucks;
@@ -171,11 +171,11 @@ class Vibes {
         }
 
         // Only the cashout balance (received donations) can be cashed out.
-        if (!db.deductVibesCashout(userId, amount)) {
+        if (!await db.deductVibesCashout(userId, amount)) {
             throw new Error('Insufficient cashout balance — only Vibes sent to you can be cashed out');
         }
 
-        const tx = db.createTransaction({
+        const tx = await db.createTransaction({
             from_user_id: userId,
             to_user_id: null,
             amount,
@@ -196,26 +196,26 @@ class Vibes {
     /**
      * Admin: Approve a cashout (release from escrow)
      */
-    approveCashout(transactionId) {
-        const tx = db.get('SELECT * FROM transactions WHERE id = ? AND status = ?',
+    async approveCashout(transactionId) {
+        const tx = await db.get('SELECT * FROM transactions WHERE id = ? AND status = ?',
             [transactionId, 'escrow']);
         if (!tx) throw new Error('Transaction not found or not in escrow');
 
-        db.run('UPDATE transactions SET status = ? WHERE id = ?', ['completed', transactionId]);
+        await db.run('UPDATE transactions SET status = ? WHERE id = ?', ['completed', transactionId]);
         return tx;
     }
 
     /**
      * Admin: Deny a cashout (refund to user)
      */
-    denyCashout(transactionId, reason) {
-        const tx = db.get('SELECT * FROM transactions WHERE id = ? AND status = ?',
+    async denyCashout(transactionId, reason) {
+        const tx = await db.get('SELECT * FROM transactions WHERE id = ? AND status = ?',
             [transactionId, 'escrow']);
         if (!tx) throw new Error('Transaction not found or not in escrow');
 
         // Refund back to the cashout balance it came from.
-        db.addVibesCashout(tx.from_user_id, tx.amount);
-        db.run('UPDATE transactions SET status = ? WHERE id = ?', ['refunded', transactionId]);
+        await db.addVibesCashout(tx.from_user_id, tx.amount);
+        await db.run('UPDATE transactions SET status = ? WHERE id = ?', ['refunded', transactionId]);
 
         return tx;
     }
@@ -224,13 +224,13 @@ class Vibes {
      * Recycle: move Vibes from the streamer's cashout balance into their spendable
      * balance, so they can re-donate / give back to the community instead of cashing out.
      */
-    recycleCashout(userId, amount) {
+    async recycleCashout(userId, amount) {
         amount = normalizeBucks(amount);
-        if (!db.deductVibesCashout(userId, amount)) {
+        if (!await db.deductVibesCashout(userId, amount)) {
             throw new Error('Insufficient cashout balance');
         }
-        db.addVibes(userId, amount);
-        db.createTransaction({
+        await db.addVibes(userId, amount);
+        await db.createTransaction({
             from_user_id: userId,
             to_user_id: userId,
             amount,
@@ -238,7 +238,7 @@ class Vibes {
             status: 'completed',
             message: 'Moved cashout balance to spendable Vibes',
         });
-        const user = db.getUserById(userId);
+        const user = await db.getUserById(userId);
         return {
             success: true,
             amount,
@@ -250,8 +250,8 @@ class Vibes {
     /**
      * Get user's transaction history
      */
-    getHistory(userId, limit = 50) {
-        return db.all(`
+    async getHistory(userId, limit = 50) {
+        return await db.all(`
             SELECT t.*,
                    fu.username AS from_username, fu.display_name AS from_display,
                    tu.username AS to_username, tu.display_name AS to_display
@@ -266,8 +266,8 @@ class Vibes {
     /**
      * Get donation leaderboard for a stream
      */
-    getLeaderboard(streamId, limit = 10) {
-        return db.all(`
+    async getLeaderboard(streamId, limit = 10) {
+        return await db.all(`
             SELECT from_user_id, u.username, u.display_name, u.avatar_url,
                    SUM(amount) as total_donated
             FROM transactions t
@@ -283,30 +283,30 @@ class Vibes {
      * Goals shown to viewers in the on-stream widget: active goals + any reached in the
      * last hour (so a completed goal celebrates, then auto-clears).
      */
-    getGoals(userId) {
-        return db.getDonationGoalsForWidget(userId, 1);
+    async getGoals(userId) {
+        return await db.getDonationGoalsForWidget(userId, 1);
     }
 
     /** All of a streamer's goals (active + completed) for the dashboard manager. */
-    getManageGoals(userId) {
-        return db.getAllDonationGoals(userId);
+    async getManageGoals(userId) {
+        return await db.getAllDonationGoals(userId);
     }
 
     /**
      * Create a donation goal (optionally with an uploaded image/video already
      * transcoded to a served URL).
      */
-    createGoal(userId, { title, target_amount, image_url = null, media_type = null } = {}) {
+    async createGoal(userId, { title, target_amount, image_url = null, media_type = null } = {}) {
         const safeTitle = normalizeText(title, 120);
         const safeAmount = Math.round(normalizeBucks(target_amount));
         if (!safeTitle) throw new Error('Title is required');
         const mt = ['image', 'video'].includes(media_type) ? media_type : null;
-        return db.createDonationGoal(userId, { title: safeTitle, target_amount: safeAmount, image_url: image_url || null, media_type: mt });
+        return await db.createDonationGoal(userId, { title: safeTitle, target_amount: safeAmount, image_url: image_url || null, media_type: mt });
     }
 
     /** Update a goal the user owns. */
-    updateGoal(id, userId, patch = {}) {
-        const g = db.getDonationGoalById(id);
+    async updateGoal(id, userId, patch = {}) {
+        const g = await db.getDonationGoalById(id);
         if (!g || Number(g.user_id) !== Number(userId)) throw new Error('Goal not found');
         const fields = {};
         if (patch.title !== undefined) { const t = normalizeText(patch.title, 120); if (!t) throw new Error('Title is required'); fields.title = t; }
@@ -338,15 +338,15 @@ class Vibes {
                 fields.reached_at = new Date().toISOString().slice(0, 19).replace('T', ' ');
             }
         }
-        db.updateDonationGoal(id, userId, fields);
-        return db.getDonationGoalById(id);
+        await db.updateDonationGoal(id, userId, fields);
+        return await db.getDonationGoalById(id);
     }
 
     /** Delete a goal the user owns; returns the removed row (for media cleanup). */
-    deleteGoal(id, userId) {
-        const g = db.getDonationGoalById(id);
+    async deleteGoal(id, userId) {
+        const g = await db.getDonationGoalById(id);
         if (!g || Number(g.user_id) !== Number(userId)) throw new Error('Goal not found');
-        db.deleteDonationGoal(id, userId);
+        await db.deleteDonationGoal(id, userId);
         return g;
     }
 }

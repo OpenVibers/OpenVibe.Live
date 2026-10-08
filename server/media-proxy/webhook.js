@@ -39,7 +39,7 @@ function verifySignature(req) {
     }
 }
 
-function handler(req, res) {
+async function handler(req, res) {
     if (!verifySignature(req)) return res.status(401).json({ error: 'Invalid signature' });
     const { event, data } = req.body || {};
     if (!event) return res.status(400).json({ error: 'Missing event' });
@@ -52,7 +52,7 @@ function handler(req, res) {
     }
     let result = null;
     try {
-        result = outcomes.handle({ via: 'webhook', event, data, eventId });
+        result = await outcomes.handle({ via: 'webhook', event, data, eventId });
     } catch (e) {
         console.warn('[MediaWebhook] handler error:', e.message);
     }

@@ -40,9 +40,9 @@ class VibeCodingPublishServer {
         return true;
     }
 
-    handleConnection(ws, req) {
+    async handleConnection(ws, req) {
         const token = extractWsToken(req);
-        const user = authenticateWs(token);
+        const user = await authenticateWs(token);
         if (!user) {
             ws.close(4401, 'Authentication required');
             return;
@@ -68,8 +68,8 @@ class VibeCodingPublishServer {
         };
         this.clients.set(ws, client);
 
-        const feed = vibeService.getProjectedViewerFeed(managedStreamId, 1);
-        const liveStream = vibeService.getLiveStreamByManagedStreamId(managedStreamId);
+        const feed = await vibeService.getProjectedViewerFeed(managedStreamId, 1);
+        const liveStream = await vibeService.getLiveStreamByManagedStreamId(managedStreamId);
         this.sendTo(ws, {
             type: 'vibe-coding.ready',
             ok: true,
@@ -84,15 +84,15 @@ class VibeCodingPublishServer {
             this.handleMessage(ws, data);
         });
 
-        ws.on('close', () => {
+        ws.on('close', async () => {
             if (client.sessionKey) {
-                vibeService.markSessionEnded(client.managedStreamId, client.sessionKey);
+                await vibeService.markSessionEnded(client.managedStreamId, client.sessionKey);
             }
             this.clients.delete(ws);
         });
     }
 
-    handleMessage(ws, data) {
+    async handleMessage(ws, data) {
         const client = this.clients.get(ws);
         if (!client) return;
 
@@ -116,7 +116,7 @@ class VibeCodingPublishServer {
                     this.sendTo(ws, { type: 'vibe-coding.error', error: 'sessionKey is required' });
                     return;
                 }
-                vibeService.upsertVibeCodingSession({
+                await vibeService.upsertVibeCodingSession({
                     managedStreamId: client.managedStreamId,
                     userId: client.user.id,
                     slotSlug: client.slotSlug,
@@ -153,24 +153,24 @@ class VibeCodingPublishServer {
         }
     }
 
-    processEvent(ws, client, event) {
+    async processEvent(ws, client, event) {
         if (!event.eventId || !event.eventType) {
             this.sendTo(ws, { type: 'vibe-coding.error', error: 'eventId and eventType are required' });
             return;
         }
 
-        const liveStream = vibeService.getLiveStreamByManagedStreamId(client.managedStreamId);
-        vibeService.storeVibeCodingEvent({
+        const liveStream = await vibeService.getLiveStreamByManagedStreamId(client.managedStreamId);
+        await vibeService.storeVibeCodingEvent({
             managedStreamId: client.managedStreamId,
             userId: client.user.id,
             streamId: liveStream?.id || null,
             event,
         });
 
-        const settings = vibeService.getManagedStreamVibeCodingSettings(client.managedStreamId);
+        const settings = await vibeService.getManagedStreamVibeCodingSettings(client.managedStreamId);
         const projected = vibeService.projectViewerEvent(event, settings);
         if (projected && liveStream?.id) {
-            require('../chat/chat-delivery').event({ kind: 'stream', id: liveStream.id }, {
+            await require('../chat/chat-delivery').event({ kind: 'stream', id: liveStream.id }, {
                 type: 'vibe-coding',
                 managed_stream_id: client.managedStreamId,
                 slot_slug: client.slotSlug,

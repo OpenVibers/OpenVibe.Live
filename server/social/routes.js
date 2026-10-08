@@ -24,7 +24,7 @@ router.get('/catalog', (req, res) => {
 
 router.get('/preview/:username/:index', async (req, res) => {
     try {
-        const channel = db.getChannelByUsername(String(req.params.username || ''));
+        const channel = await db.getChannelByUsername(String(req.params.username || ''));
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
         const i = Number.parseInt(req.params.index, 10);
         const { links } = channelSocialLinks(channel, db);

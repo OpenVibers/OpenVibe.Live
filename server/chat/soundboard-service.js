@@ -341,7 +341,7 @@ function downloadAudio(audioUrl) {
 }
 
 async function fetchSoundboardMeta(soundId) {
-    const apiKey = String(db.getSetting('soundboard_101_api_key') || '').trim();
+    const apiKey = String(await db.getSetting('soundboard_101_api_key') || '').trim();
     if (!apiKey) throw new Error('101soundboards API key is not configured');
 
     const payload = await fetchJsonWithRetry(`${SOUND_URL_PREFIX}${soundId}/streamers?key=${encodeURIComponent(apiKey)}`);
@@ -395,8 +395,8 @@ async function getSoundboardAudio(soundId) {
     return downloadPromise;
 }
 
-function isConfigured() {
-    return !!String(db.getSetting('soundboard_101_api_key') || '').trim();
+async function isConfigured() {
+    return !!String(await db.getSetting('soundboard_101_api_key') || '').trim();
 }
 
 async function cleanupCache() {

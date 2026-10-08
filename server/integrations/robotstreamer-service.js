@@ -12,7 +12,7 @@ const API_PORT = 443;
 const RS_ORIGIN = 'https://robotstreamer.com';
 
 /** What follows a mirrored RobotStreamer line once it has an id: AI viewers hear it, PowerChat's overlay shows it. */
-function rsFollowUps(stream, username, rawUsername, message, avatar, id, which = 'all') {
+async function rsFollowUps(stream, username, rawUsername, message, avatar, id, which = 'all') {
     if (which !== 'powerchat') {
         try {
             require('./ai-chatbot-service').onRealChatMessage(stream.id, {
@@ -25,8 +25,8 @@ function rsFollowUps(stream, username, rawUsername, message, avatar, id, which =
     // ...and into the streamer's PowerChat overlay (relayed chat was never forwarded).
     try {
         const pc = require('./powerchat-platform');
-        if (stream.user_id && pc.slotRelayEnabled(stream.id)) {
-            pc.forwardChat(stream.user_id, {
+        if (stream.user_id && await pc.slotRelayEnabled(stream.id)) {
+            await pc.forwardChat(stream.user_id, {
                 chatterName: username,
                 externalChatterId: `rs:${username}`,
                 message,
@@ -257,9 +257,9 @@ class RobotStreamerService {
      * The integration for a stream: its slot's row, or null (no slot, or no row on the slot).
      * There is no account-level fallback; see db.getRobotStreamerIntegrationForStream.
      */
-    getIntegrationForStream(stream) {
+    async getIntegrationForStream(stream) {
         if (!stream?.user_id) return null;
-        return db.getRobotStreamerIntegrationForStream(stream.user_id, stream.managed_stream_id || null);
+        return await db.getRobotStreamerIntegrationForStream(stream.user_id, stream.managed_stream_id || null);
     }
 
     normalizeRobotInput(input) {
@@ -481,7 +481,7 @@ class RobotStreamerService {
     async upsertIntegration(userId, payload = {}, managedStreamId = null) {
         const slotId = managedStreamId || null;
         if (!slotId) throw new Error('Choose a stream slot: RobotStreamer is set up per stream slot');
-        const existing = db.getRobotStreamerIntegrationBySlot(userId, slotId);
+        const existing = await db.getRobotStreamerIntegrationBySlot(userId, slotId);
         const updates = {
             enabled: normalizeBoolean(payload.enabled, existing ? !!existing.enabled : false) ? 1 : 0,
             mirror_chat: normalizeBoolean(payload.mirror_chat, existing ? existing.mirror_chat !== 0 : true) ? 1 : 0,
@@ -504,7 +504,7 @@ class RobotStreamerService {
             availableRobots = validated.availableRobots;
         }
 
-        const row = db.upsertRobotStreamerIntegration(userId, updates, slotId);
+        const row = await db.upsertRobotStreamerIntegration(userId, updates, slotId);
         return {
             row,
             integration: this.sanitizeIntegration(row, { available_robots: availableRobots }),
@@ -514,10 +514,10 @@ class RobotStreamerService {
     async refreshIntegration(userId, managedStreamId = null) {
         const slotId = managedStreamId || null;
         if (!slotId) return null;   // per slot only: there is no account-level row to refresh
-        const existing = db.getRobotStreamerIntegrationBySlot(userId, slotId);
+        const existing = await db.getRobotStreamerIntegrationBySlot(userId, slotId);
         if (!existing?.token || !existing?.robot_id) return existing;
         const validated = await this.validateConfiguration({ token: existing.token, robotInput: existing.robot_id });
-        return db.upsertRobotStreamerIntegration(userId, {
+        return await db.upsertRobotStreamerIntegration(userId, {
             ...validated.fields,
             enabled: existing.enabled,
             mirror_chat: existing.mirror_chat,
@@ -609,7 +609,7 @@ class RobotStreamerService {
                 headers: { Origin: RS_ORIGIN },
             });
 
-            bridge.ws.on('open', () => {
+            bridge.ws.on('open', async () => {
                 bridge.reconnectDelay = 3000;
                 bridge.ws.send(JSON.stringify({
                     type: 'connect',
@@ -618,21 +618,21 @@ class RobotStreamerService {
                     robot_id: bridge.robotId,
                     owner_id: bridge.ownerId,
                 }));
-                delivery.event({ kind: 'stream', id: stream.id }, {
+                await delivery.event({ kind: 'stream', id: stream.id }, {
                     type: 'system',
                     message: 'RobotStreamer chat mirror connected',
                     timestamp: new Date().toISOString(),
                 });
             });
 
-            bridge.ws.on('message', (raw) => {
+            bridge.ws.on('message', async (raw) => {
                 const data = safeJsonParse(raw.toString());
                 if (!data) return;
 
                 if (data.type === 'history' || data.type === 'privileges') return;
 
                 if (data.username === '[RS BOT]') {
-                    delivery.event({ kind: 'stream', id: stream.id }, {
+                    await delivery.event({ kind: 'stream', id: stream.id }, {
                         type: 'system',
                         message: `[RS BOT] ${data.message}`,
                         timestamp: new Date().toISOString(),
@@ -655,8 +655,8 @@ class RobotStreamerService {
                 // list, else the last good one; a cold cache fails open). Live keeps no local copy.
                 try {
                     const channel = stream.channel_id
-                        ? db.getChannelById(stream.channel_id)
-                        : db.getChannelByUserId(stream.user_id);
+                        ? await db.getChannelById(stream.channel_id)
+                        : await db.getChannelByUserId(stream.user_id);
                     if (channel && chatReads.isRelayUserHidden(channel.id, 'rs', rawUsername)) {
                         return; // Silently drop messages from hidden/banned relay users
                     }
@@ -664,7 +664,7 @@ class RobotStreamerService {
 
                 // Record this relay user (first message = join date) so RobotStreamer
                 // chatters get the same chat logs + AI insight as other relay users.
-                delivery.moderate('relay-record', { platform: 'rs', username: rawUsername });
+                await delivery.moderate('relay-record', { platform: 'rs', username: rawUsername });
 
                 // Let RobotStreamer viewers trigger channel !sound commands too. If the
                 // message is a registered !sound, play it (attributed to the RS user) and
@@ -675,9 +675,9 @@ class RobotStreamerService {
                     const scmd = parts[0].slice(1).toLowerCase();
                     // Chat owns channel_sounds; ask its by-command read (a cached peek). Live's own
                     // frozen table is never a fallback — null means no sound (or Chat unreachable).
-                    if (scmd && chatReads.soundByCommandPeek(stream.user_id, scmd)) {
+                    if (scmd && await chatReads.soundByCommandPeek(stream.user_id, scmd)) {
                         // Chat plays the sound (it owns channel_sounds); Live sends the trigger.
-                        delivery.event({ kind: 'stream', id: stream.id }, {
+                        await delivery.event({ kind: 'stream', id: stream.id }, {
                             type: 'channel-sound', streamId: stream.id, command: scmd, args: parts.slice(1).map((a) => a.slice(0, 120)).slice(0, 20),
                             relay: { username, role: 'external', profile_color: '#7dd3fc', avatar_url: data.avatar || null, sourcePlatform: 'rs' },
                         });
@@ -691,12 +691,12 @@ class RobotStreamerService {
                     source_platform: 'rs', mirror: true,
                     frame: { role: 'external', profile_color: '#7dd3fc', avatar_url: data.avatar || undefined },
                     tts: { identity_key: `rs:${username}` },
-                }), (id) => rsFollowUps(stream, username, rawUsername, msgText, data.avatar, id));
+                }), async (id) => await rsFollowUps(stream, username, rawUsername, msgText, data.avatar, id));
             });
 
-            bridge.ws.on('close', () => {
+            bridge.ws.on('close', async () => {
                 if (bridge.stopped) return;
-                delivery.event({ kind: 'stream', id: stream.id }, {
+                await delivery.event({ kind: 'stream', id: stream.id }, {
                     type: 'system',
                     message: 'RobotStreamer chat mirror disconnected — retrying',
                     timestamp: new Date().toISOString(),
@@ -757,14 +757,14 @@ class RobotStreamerService {
         }
     }
 
-    handleUpgrade(req, socket, head) {
+    async handleUpgrade(req, socket, head) {
         if (!req.url.startsWith('/ws/robotstreamer-publish')) return false;
 
         const params = new URL(req.url, 'http://localhost').searchParams;
         const authToken = params.get('token');
         const streamId = parseInt(params.get('streamId') || '', 10);
-        const user = authenticateWs(authToken);
-        const stream = Number.isFinite(streamId) ? db.getStreamById(streamId) : null;
+        const user = await authenticateWs(authToken);
+        const stream = Number.isFinite(streamId) ? await db.getStreamById(streamId) : null;
 
         if (!user || !stream || stream.user_id !== user.id) {
             socket.destroy();

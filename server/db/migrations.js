@@ -31,9 +31,9 @@ const LEDGER_SQL = `CREATE TABLE IF NOT EXISTS schema_migrations (
     duration_ms INTEGER DEFAULT 0
 )`;
 
-const tableExists = (db, name) => !!db.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(name);
-const columns = (db, table) => db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
-const indexExists = (db, name) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?").get(name);
+const tableExists = async (db, name) => !!await db.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(name);
+const columns = async (db, table) => (await db.prepare(`PRAGMA table_info(${table})`).all()).map((c) => c.name);
+const indexExists = async (db, name) => !!await db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?").get(name);
 
 const DEFER = Symbol('defer');
 
@@ -49,9 +49,9 @@ const MIGRATIONS = [
         // Evidence the conversion already happened: the old guard row EXISTS (its value does not
         // matter — the old code tested presence, and production's row reads 'false' after being
         // toggled as a boolean in the admin panel), or the rate was already flipped to 100.
-        adopt: (db) => !!db.prepare("SELECT 1 FROM site_settings WHERE key = 'bucks_bits_migration_done'").get()
-            || String((db.prepare("SELECT value FROM site_settings WHERE key = 'bucks_per_usd'").get() || {}).value) === '100',
-        up: (db) => {
+        adopt: async (db) => !!await db.prepare("SELECT 1 FROM site_settings WHERE key = 'bucks_bits_migration_done'").get()
+            || String((await db.prepare("SELECT value FROM site_settings WHERE key = 'bucks_per_usd'").get() || {}).value) === '100',
+        up: async (db) => {
             db.exec(`
                 UPDATE users SET
                     openvibe_bucks_balance = ROUND(COALESCE(openvibe_bucks_balance,0) * 100),
@@ -61,18 +61,18 @@ const MIGRATIONS = [
                     current_amount = ROUND(COALESCE(current_amount,0) * 100);
                 UPDATE transactions SET amount = ROUND(COALESCE(amount,0) * 100);
             `);
-            db.prepare("UPDATE site_settings SET value = '100' WHERE key = 'bucks_per_usd'").run();
+            await db.prepare("UPDATE site_settings SET value = '100' WHERE key = 'bucks_per_usd'").run();
             // Kept for anything that still reads the old flag; the ledger is what guards the migration.
-            db.prepare("INSERT OR REPLACE INTO site_settings (key, value, description, type) VALUES ('bucks_bits_migration_done', '1', 'Internal: decimal→bit Vibes migration applied (see schema_migrations)', 'boolean')").run();
+            await db.prepare("INSERT OR REPLACE INTO site_settings (key, value, description, type) VALUES ('bucks_bits_migration_done', '1', 'Internal: decimal→bit Vibes migration applied (see schema_migrations)', 'boolean')").run();
         },
     },
     {
         id: '002_pastes_ai_columns',
         // Legacy local pastes table (content moved to OpenVibe.Media). Column adds only.
-        adopt: (db) => tableExists(db, 'pastes') && ['ai_summary', 'ai_tags', 'ai_analyzed_at'].every((c) => columns(db, 'pastes').includes(c)),
-        up: (db) => {
-            if (!tableExists(db, 'pastes')) return DEFER;
-            const have = columns(db, 'pastes');
+        adopt: async (db) => await tableExists(db, 'pastes') && ['ai_summary', 'ai_tags', 'ai_analyzed_at'].every((c) => columns(db, 'pastes').includes(c)),
+        up: async (db) => {
+            if (!await tableExists(db, 'pastes')) return DEFER;
+            const have = await columns(db, 'pastes');
             if (!have.includes('ai_summary')) db.exec('ALTER TABLE pastes ADD COLUMN ai_summary TEXT');
             if (!have.includes('ai_tags')) db.exec('ALTER TABLE pastes ADD COLUMN ai_tags TEXT');
             if (!have.includes('ai_analyzed_at')) db.exec('ALTER TABLE pastes ADD COLUMN ai_analyzed_at DATETIME');
@@ -81,9 +81,9 @@ const MIGRATIONS = [
     {
         id: '003_idx_arena_moments_said',
         // arena_mic_moments is created by the arena job after boot; wait for it.
-        adopt: (db) => indexExists(db, 'idx_arena_moments_said'),
-        up: (db) => {
-            if (!tableExists(db, 'arena_mic_moments')) return DEFER;
+        adopt: async (db) => await indexExists(db, 'idx_arena_moments_said'),
+        up: async (db) => {
+            if (!await tableExists(db, 'arena_mic_moments')) return DEFER;
             db.exec('CREATE INDEX IF NOT EXISTS idx_arena_moments_said ON arena_mic_moments(said_at)');
         },
     },
@@ -94,13 +94,13 @@ const MIGRATIONS = [
         //   lookup lower(uses), which the plain unique index cannot serve;
         //   bans by user_id is checked on every chat message;
         //   arena per-fighter stats filter timeline events by user and kind.
-        up: (db) => {
+        up: async (db) => {
             db.exec('CREATE INDEX IF NOT EXISTS idx_users_username_nocase ON users(lower(username))');
             db.exec('CREATE INDEX IF NOT EXISTS idx_bans_user ON bans(user_id)');
-            if (tableExists(db, 'stream_timeline_events') && ['user_id', 'kind', 'created_at'].every((c) => columns(db, 'stream_timeline_events').includes(c))) {
+            if (await tableExists(db, 'stream_timeline_events') && ['user_id', 'kind', 'created_at'].every((c) => columns(db, 'stream_timeline_events').includes(c))) {
                 db.exec('CREATE INDEX IF NOT EXISTS idx_timeline_user_kind_created ON stream_timeline_events(user_id, kind, created_at)');
             }
-            if (columns(db, 'streams').includes('created_at')) db.exec('CREATE INDEX IF NOT EXISTS idx_streams_created ON streams(created_at)');
+            if ((await columns(db, 'streams')).includes('created_at')) db.exec('CREATE INDEX IF NOT EXISTS idx_streams_created ON streams(created_at)');
         },
     },
     {
@@ -132,7 +132,7 @@ const MIGRATIONS = [
     {
         id: '006_drop_emotes',
         // T3 N+3: Chat owns emotes. The production N-1 release fb3957f no longer reads Live's copy.
-        adopt: (db) => !tableExists(db, 'emotes'),
+        adopt: async (db) => !await tableExists(db, 'emotes'),
         up: (db) => db.exec('DROP TABLE IF EXISTS emotes'),
     },
     {
@@ -201,8 +201,8 @@ const MIGRATIONS = [
  * names the subject, or whose Network user id subject_projection knows (server/auth/subject-projection.js
  * resolves a person the same way). An account without one has no Network identity.
  */
-function networkLinkedUserIds(db) {
-    const viaProjection = tableExists(db, 'subject_projection')
+async function networkLinkedUserIds(db) {
+    const viaProjection = await tableExists(db, 'subject_projection')
         ? ' OR EXISTS (SELECT 1 FROM subject_projection sp WHERE sp.network_user_id = CAST(la.service_user_id AS INTEGER))'
         : '';
     return `SELECT la.user_id FROM linked_accounts la WHERE la.service = 'network' AND (substr(COALESCE(la.subject_id, ''), 1, 4) = 'usr_'${viaProjection})`;
@@ -223,11 +223,11 @@ const OPERATOR_MIGRATIONS = [
         // account linked to a Network subject (that person signs in through openvibe.network). Accounts with no
         // Network identity keep their legacy hash for a future claim flow. The columns stay (no DROP COLUMN:
         // SELECT * readers); NOT NULL password_hash gets the same '$sso$' + 64 hex placeholder as new accounts.
-        up: (db) => {
-            if (!tableExists(db, 'users') || !tableExists(db, 'linked_accounts')) return DEFER;
-            db.prepare('UPDATE users SET email = NULL WHERE email IS NOT NULL').run();
-            db.prepare(`UPDATE users SET password_hash = '$sso$' || lower(hex(randomblob(32)))
-                        WHERE substr(password_hash, 1, 5) <> '$sso$' AND id IN (${networkLinkedUserIds(db)})`).run();
+        up: async (db) => {
+            if (!await tableExists(db, 'users') || !await tableExists(db, 'linked_accounts')) return DEFER;
+            await db.prepare('UPDATE users SET email = NULL WHERE email IS NOT NULL').run();
+            await db.prepare(`UPDATE users SET password_hash = '$sso$' || lower(hex(randomblob(32)))
+                        WHERE substr(password_hash, 1, 5) <> '$sso$' AND id IN (${await networkLinkedUserIds(db)})`).run();
         },
     },
     {
@@ -238,9 +238,9 @@ const OPERATOR_MIGRATIONS = [
         // rollback range (ADR-028), never at boot. Chat writes that release forwarded and Chat never acknowledged
         // sit here as op = 'db' rows: the script delivers them to Chat first, and the drop refuses while any
         // remain, so none is lost.
-        up: (db) => {
-            if (tableExists(db, 'chat_bridge_outbox')) {
-                const pending = db.prepare("SELECT COUNT(*) AS n FROM chat_bridge_outbox WHERE op = 'db'").get().n;
+        up: async (db) => {
+            if (await tableExists(db, 'chat_bridge_outbox')) {
+                const pending = (await db.prepare("SELECT COUNT(*) AS n FROM chat_bridge_outbox WHERE op = 'db'").get()).n;
                 if (pending > 0) throw new Error(`chat_bridge_outbox holds ${pending} chat write(s) OpenVibe.Chat has not acknowledged; deliver them first (scripts/chat-bridge-outbox-drop.js --deliver)`);
             }
             db.exec('DROP TABLE IF EXISTS chat_bridge_outbox');
@@ -250,9 +250,9 @@ const OPERATOR_MIGRATIONS = [
 
 const failures = new Map(); // id -> message, for this process
 
-function run(db, list = MIGRATIONS) {
+async function run(db, list = MIGRATIONS) {
     db.exec(LEDGER_SQL);
-    const done = new Set(db.prepare('SELECT id FROM schema_migrations').all().map((r) => r.id));
+    const done = new Set((await db.prepare('SELECT id FROM schema_migrations').all()).map((r) => r.id));
     const record = db.prepare('INSERT INTO schema_migrations (id, mode, duration_ms) VALUES (?, ?, ?)');
     const results = [];
     for (const m of list) {
@@ -266,10 +266,10 @@ function run(db, list = MIGRATIONS) {
             const fkOff = m.foreignKeys === false;
             if (fkOff) db.pragma('foreign_keys = OFF');
             try {
-                db.tx(() => {
+                await db.tx(async () => {
                     if (m.adopt && m.adopt(db)) { adopted = true; }
                     else if (m.up(db) === DEFER) { deferred = true; return; }
-                    record.run(m.id, adopted ? 'adopted' : 'applied', Date.now() - started);
+                    await record.run(m.id, adopted ? 'adopted' : 'applied', Date.now() - started);
                 });
             } finally {
                 if (fkOff) db.pragma('foreign_keys = ON');
@@ -289,9 +289,9 @@ function run(db, list = MIGRATIONS) {
 }
 
 /** Ledger rows plus anything pending or failed in this process. */
-function getStatus(db, list = MIGRATIONS) {
+async function getStatus(db, list = MIGRATIONS) {
     db.exec(LEDGER_SQL);
-    const rows = new Map(db.prepare('SELECT id, applied_at, mode, duration_ms FROM schema_migrations').all().map((r) => [r.id, r]));
+    const rows = new Map((await db.prepare('SELECT id, applied_at, mode, duration_ms FROM schema_migrations').all()).map((r) => [r.id, r]));
     return list.map((m) => rows.get(m.id) || { id: m.id, mode: failures.has(m.id) ? 'failed' : 'pending', error: failures.get(m.id) || null });
 }
 
@@ -299,12 +299,12 @@ function getStatus(db, list = MIGRATIONS) {
  * Run one operator migration now (never called at boot). → { id, outcome: 'applied' | 'deferred' | 'failed'
  * | 'already', error?, applied_at? }
  */
-function runOperator(db, id, list = OPERATOR_MIGRATIONS) {
+async function runOperator(db, id, list = OPERATOR_MIGRATIONS) {
     const m = list.find((x) => x.id === id);
     if (!m) throw new Error(`no operator migration ${id}`);
-    const res = run(db, [m])[0];
+    const res = (await run(db, [m]))[0];
     if (res) return res;
-    const row = db.prepare('SELECT applied_at FROM schema_migrations WHERE id = ?').get(id);
+    const row = await db.prepare('SELECT applied_at FROM schema_migrations WHERE id = ?').get(id);
     return { id, outcome: 'already', applied_at: row ? row.applied_at : null };
 }
 

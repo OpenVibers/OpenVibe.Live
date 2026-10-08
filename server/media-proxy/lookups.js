@@ -207,8 +207,8 @@ async function countClipsTaken(userId, { includePrivate = false } = {}) {
 /** Every clip of one stream (by the stream or by its VOD), any visibility. An internal signal, never listed. */
 async function streamClips(streamId, vodId) {
     const asks = [];
-    if (streamId) asks.push(media.listClips({ stream_id: streamId, include_private: 1, limit: 500 }, { timeoutMs: TIMEOUT_MS }));
-    if (vodId) asks.push(media.listClips({ vod_id: vodId, include_private: 1, limit: 500 }, { timeoutMs: TIMEOUT_MS }));
+    if (streamId) asks.push(await media.listClips({ stream_id: streamId, include_private: 1, limit: 500 }, { timeoutMs: TIMEOUT_MS }));
+    if (vodId) asks.push(await media.listClips({ vod_id: vodId, include_private: 1, limit: 500 }, { timeoutMs: TIMEOUT_MS }));
     const byId = new Map();
     for (const r of await Promise.all(asks.map((p) => p.catch(() => null)))) {
         for (const c of rowsOf(r, 'clips')) if (c && c.id != null) byId.set(c.id, c);
@@ -230,7 +230,7 @@ async function refreshStreamClipCount(streamId) {
     try {
         const r = await media.listClips({ stream_id: streamId, include_private: 1, limit: 1 }, { timeoutMs: TIMEOUT_MS });
         const n = totalOf(r, rowsOf(r, 'clips'));
-        db.setStreamAnalyticsClipCount(streamId, n);
+        await db.setStreamAnalyticsClipCount(streamId, n);
         return n;
     } catch { return null; }
 }

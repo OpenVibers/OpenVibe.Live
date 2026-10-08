@@ -64,14 +64,14 @@ async function announce({ db, log = console }) {
             eventId = env ? env.event_id : null;
         }
     };
-    const inTransaction = (fn) => db.getDb().tx(fn);
+    const inTransaction = async (fn) => await db.getDb().tx(fn);
 
     // Live still decides what shipped; OpenVibe.Chat stores the rolling message and shows it (its
     // own copy of this module). It learns the commits from the live.release.deployed event only.
     // Chat's ingress has no deploy endpoint: with Events publishing off the commits are not
     // recorded as announced and the next boot tries again (OpenVibe.Chat docs/chat-ingress.md).
     if (!outbox) { log.warn('[Deploy notice] Events outbox unavailable; left unannounced for the next boot'); return { announced: 0, event_id: null }; }
-    try { inTransaction(recordDeploy); } catch (err) { log.warn('[Deploy notice] not recorded:', err.message); return { announced: 0, event_id: null }; }
+    try { await inTransaction(recordDeploy); } catch (err) { log.warn('[Deploy notice] not recorded:', err.message); return { announced: 0, event_id: null }; }
     outbox.kick();
     return { announced: commits.length, event_id: eventId };
 }

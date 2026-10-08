@@ -145,24 +145,24 @@ let _settingsCache = null;
 let _settingsCacheTime = 0;
 const SETTINGS_CACHE_TTL = 30_000; // 30s
 
-function getTTSSettings() {
+async function getTTSSettings() {
     const now = Date.now();
     if (_settingsCache && (now - _settingsCacheTime) < SETTINGS_CACHE_TTL) return _settingsCache;
     _settingsCache = {
-        enabled:               db.getSetting('tts_enabled') !== false,
-        provider:              db.getSetting('tts_provider') || 'espeak-ng',
-        googleApiKey:          db.getSetting('tts_google_api_key') || '',
-        googleServiceAccount:  db.getSetting('tts_google_service_account') || '',
-        awsAccessKeyId:        db.getSetting('tts_aws_access_key_id') || '',
-        awsSecretAccessKey:    db.getSetting('tts_aws_secret_access_key') || '',
-        awsRegion:             db.getSetting('tts_aws_region') || 'us-east-1',
-        maxLength:             db.getSetting('tts_max_length') || 200,
-        maxQueuePerUser:       db.getSetting('tts_max_queue_per_user') || 3,
-        maxQueueGlobal:        db.getSetting('tts_max_queue_global') || 20,
-        defaultVoice:          db.getSetting('tts_default_voice') || 'gary',
+        enabled:               await db.getSetting('tts_enabled') !== false,
+        provider:              await db.getSetting('tts_provider') || 'espeak-ng',
+        googleApiKey:          await db.getSetting('tts_google_api_key') || '',
+        googleServiceAccount:  await db.getSetting('tts_google_service_account') || '',
+        awsAccessKeyId:        await db.getSetting('tts_aws_access_key_id') || '',
+        awsSecretAccessKey:    await db.getSetting('tts_aws_secret_access_key') || '',
+        awsRegion:             await db.getSetting('tts_aws_region') || 'us-east-1',
+        maxLength:             await db.getSetting('tts_max_length') || 200,
+        maxQueuePerUser:       await db.getSetting('tts_max_queue_per_user') || 3,
+        maxQueueGlobal:        await db.getSetting('tts_max_queue_global') || 20,
+        defaultVoice:          await db.getSetting('tts_default_voice') || 'gary',
         // When true (default), chatters without an equipped voice cosmetic get a
         // stable per-username espeak voice so the streamer can tell who is who.
-        perUserVoices:         db.getSetting('tts_per_user_voices') !== false,
+        perUserVoices:         await db.getSetting('tts_per_user_voices') !== false,
     };
     _settingsCacheTime = now;
     return _settingsCache;
@@ -207,11 +207,11 @@ function autoUserVoiceParams(identityKey) {
     const gap = h[3] % 4;             // 0..3    (subtle cadence variation)
     return { voice, pitch, speed, gap };
 }
-function deriveUserVoiceParams(identityKey) {
+async function deriveUserVoiceParams(identityKey) {
     const key = String(identityKey || 'anon').trim().toLowerCase() || 'anon';
     // An admin-set override (Chat's, or Live's own when Live runs chat) wins over the auto-assigned
     // voice. A synchronous read: the cache, else the auto voice, then Chat warms for the next call.
-    try { const ov = chatReads.ttsOverridePeek(key); if (ov && ov.voice) return _clampVoiceParams(ov); } catch { /* fall through to auto */ }
+    try { const ov = await chatReads.ttsOverridePeek(key); if (ov && ov.voice) return _clampVoiceParams(ov); } catch { /* fall through to auto */ }
     return autoUserVoiceParams(key);
 }
 
@@ -220,16 +220,16 @@ function deriveUserVoiceParams(identityKey) {
  * @returns Promise resolving to the same shape as synthesize(), or null.
  */
 async function synthesizeUserVoice(text, identityKey, username, maxLengthOverride) {
-    const settings = getTTSSettings();
+    const settings = await getTTSSettings();
     if (!settings.enabled) return null;
     // A channel may raise its TTS length above the site default (hard-capped at 1200).
     const effMax = Math.min(1200, Math.max(1, Number(maxLengthOverride) || settings.maxLength));
     const cleanText = sanitize(text, effMax, username);
     if (!cleanText) return null;
-    const params = deriveUserVoiceParams(identityKey);
+    const params = await deriveUserVoiceParams(identityKey);
     const voiceDef = { engine: 'espeak-ng', params, name: `Voice-${params.voice}` };
     // Use a synthetic voiceId so the client can distinguish auto voices if needed.
-    return _synthesizeWithDef(cleanText, voiceDef, `auto:${params.voice}`);
+    return await _synthesizeWithDef(cleanText, voiceDef, `auto:${params.voice}`);
 }
 
 /** Invalidate settings cache (call after admin updates) */
@@ -313,7 +313,7 @@ function _getGoogleAccessToken(sa) {
 
 function synthesizeGoogleCloud(text, voiceDef) {
     return new Promise(async (resolve, reject) => {
-        const settings = getTTSSettings();
+        const settings = await getTTSSettings();
         const sa = _getGoogleServiceAccount(settings);
         const apiKey = settings.googleApiKey;
         if (!sa && !apiKey) return reject(new Error('Google Cloud TTS not configured'));
@@ -357,8 +357,8 @@ function synthesizeGoogleCloud(text, voiceDef) {
 }
 
 // ── Amazon Polly ──────────────────────────────────────────────
-function _awsSign({ method, service, region, path: urlPath, body, headers: extraHeaders }) {
-    const settings = getTTSSettings();
+async function _awsSign({ method, service, region, path: urlPath, body, headers: extraHeaders }) {
+    const settings = await getTTSSettings();
     const accessKey = settings.awsAccessKeyId;
     const secretKey = settings.awsSecretAccessKey;
     if (!accessKey || !secretKey) throw new Error('AWS credentials not configured');
@@ -393,8 +393,8 @@ function _awsSign({ method, service, region, path: urlPath, body, headers: extra
 }
 
 function synthesizePolly(text, voiceDef) {
-    return new Promise((resolve, reject) => {
-        const settings = getTTSSettings();
+    return new Promise(async (resolve, reject) => {
+        const settings = await getTTSSettings();
         const pv = voiceDef.pollyVoice;
 
         let bodyObj = {
@@ -409,7 +409,7 @@ function synthesizePolly(text, voiceDef) {
 
         let signed;
         try {
-            signed = _awsSign({
+            signed = await _awsSign({
                 method: 'POST', service: 'polly', region: settings.awsRegion,
                 path: '/v1/speech', body,
             });
@@ -528,7 +528,7 @@ function sanitize(text, maxLen, username) {
  *   Returns null if TTS is disabled or voice is browser-only
  */
 async function synthesize(text, voiceId, username, maxLengthOverride) {
-    const settings = getTTSSettings();
+    const settings = await getTTSSettings();
     if (!settings.enabled) return null;
 
     // A channel may raise its TTS length above the site default (hard-capped at 1200).
@@ -541,14 +541,14 @@ async function synthesize(text, voiceId, username, maxLengthOverride) {
     if (!voiceDef) {
         // Fallback to default
         const fallback = VOICE_CATALOG[settings.defaultVoice] || VOICE_CATALOG.gary;
-        return _synthesizeWithDef(cleanText, fallback, settings.defaultVoice);
+        return await _synthesizeWithDef(cleanText, fallback, settings.defaultVoice);
     }
 
-    return _synthesizeWithDef(cleanText, voiceDef, vid);
+    return await _synthesizeWithDef(cleanText, voiceDef, vid);
 }
 
 async function _synthesizeWithDef(text, voiceDef, voiceId) {
-    const settings = getTTSSettings();
+    const settings = await getTTSSettings();
 
     // "Browser" voices were designed for client-side Web Speech synthesis, but this
     // pipeline renders TTS server-side and broadcasts the audio — so a browser voice
@@ -611,8 +611,8 @@ function _espeakFallback(text, voiceId) {
 // ── Queue System (per-stream) ─────────────────────────────────
 // TTS queue is managed per-stream in the chat server.
 // This module just provides the max limits.
-function getQueueLimits() {
-    const settings = getTTSSettings();
+async function getQueueLimits() {
+    const settings = await getTTSSettings();
     return {
         maxGlobal: settings.maxQueueGlobal,
         maxPerUser: settings.maxQueuePerUser,
@@ -621,8 +621,8 @@ function getQueueLimits() {
 }
 
 // ── Available voices for a given configuration ────────────────
-function getAvailableVoices() {
-    const settings = getTTSSettings();
+async function getAvailableVoices() {
+    const settings = await getTTSSettings();
     const voices = [];
     for (const [id, v] of Object.entries(VOICE_CATALOG)) {
         let available = true;
@@ -645,7 +645,7 @@ function getAvailableVoices() {
 async function synthesizeWithParams(text, params) {
     const p = _clampVoiceParams(params || {});
     const voiceDef = { engine: 'espeak-ng', params: p, name: `Voice-${p.voice}` };
-    return _synthesizeWithDef(sanitize(text, getTTSSettings().maxLength, null), voiceDef, `preview:${p.voice}`);
+    return await _synthesizeWithDef(sanitize(text, (await getTTSSettings()).maxLength, null), voiceDef, `preview:${p.voice}`);
 }
 
 module.exports = {

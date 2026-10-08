@@ -22,24 +22,24 @@ function isPrivate(row) {
     return !row.is_public || row.is_public === '0';
 }
 
-function ownerIds(row) {
+async function ownerIds(row) {
     const ids = [row.user_id, row.channel_user_id];
     if (row.stream_id) {
-        try { const s = db.getStreamById(row.stream_id); if (s) ids.push(s.user_id); } catch { /* no stream */ }
+        try { const s = await db.getStreamById(row.stream_id); if (s) ids.push(s.user_id); } catch { /* no stream */ }
     }
     return ids.filter((x) => x != null).map(Number);
 }
 
 /** Owner or staff — may see the item whatever its visibility. */
-function canSeePrivate(user, row) {
+async function canSeePrivate(user, row) {
     if (!user || !row) return false;
     if (permissions.isStaff(user)) return true;
-    return ownerIds(row).includes(Number(user.id));
+    return (await ownerIds(row)).includes(Number(user.id));
 }
 
 /** May this caller (req.user, or null) see this row at all? */
-function canView(user, row) {
-    return !!row && (!isPrivate(row) || canSeePrivate(user, row));
+async function canView(user, row) {
+    return !!row && (!isPrivate(row) || await canSeePrivate(user, row));
 }
 
 module.exports = { isPrivate, canSeePrivate, canView, ownerIds };

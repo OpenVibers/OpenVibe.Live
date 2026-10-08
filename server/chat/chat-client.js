@@ -76,7 +76,7 @@ async function request(method, path, body, retried = false) {
         body: body ? JSON.stringify(body) : undefined,
         signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (res.status === 401 && !retried) { principal.invalidate(AUDIENCE); return request(method, path, body, true); }
+    if (res.status === 401 && !retried) { principal.invalidate(AUDIENCE); return await request(method, path, body, true); }
     let data = null;
     try { data = await res.json(); } catch { /* not JSON */ }
     return { status: res.status, data };
@@ -168,15 +168,15 @@ async function readStats(body) {
     return null;
 }
 
-const readMessages = (params) => read('messages', `/internal/chat/messages${qs(params)}`);
-const readTimeline = (params) => read('timeline', `/internal/chat/timeline${qs(params)}`);
-const readFirstChat = (params) => read('first-chat', `/internal/chat/first-chat${qs(params)}`);
-const readPendingIp = (params) => read('pending-ip', `/internal/chat/moderation/pending-ip${qs(params)}`);
-const readRelayUsers = (params) => read('relay-users', `/internal/chat/moderation/relay-users${qs(params)}`);
-const readRelayUser = (id) => read('relay-user', `/internal/chat/moderation/relay-users/${Number(id)}`);
-const readTtsOverride = (params) => read('tts-override', `/internal/chat/moderation/tts-override${qs(params)}`);
-const readSounds = (params) => read('sounds', `/internal/chat/sounds${qs(params)}`);
-const readDmBlockState = (params) => read('dm-block-state', `/internal/chat/dm/block-state${qs(params)}`);
+const readMessages = async (params) => await read('messages', `/internal/chat/messages${qs(params)}`);
+const readTimeline = async (params) => await read('timeline', `/internal/chat/timeline${qs(params)}`);
+const readFirstChat = async (params) => await read('first-chat', `/internal/chat/first-chat${qs(params)}`);
+const readPendingIp = async (params) => await read('pending-ip', `/internal/chat/moderation/pending-ip${qs(params)}`);
+const readRelayUsers = async (params) => await read('relay-users', `/internal/chat/moderation/relay-users${qs(params)}`);
+const readRelayUser = async (id) => await read('relay-user', `/internal/chat/moderation/relay-users/${Number(id)}`);
+const readTtsOverride = async (params) => await read('tts-override', `/internal/chat/moderation/tts-override${qs(params)}`);
+const readSounds = async (params) => await read('sounds', `/internal/chat/sounds${qs(params)}`);
+const readDmBlockState = async (params) => await read('dm-block-state', `/internal/chat/dm/block-state${qs(params)}`);
 /**
  * GET /internal/chat/sounds/by-command — the approved sound a !command plays. Chat answers its own 404 body
  * `{ ok: false, error: 'Sound not found' }` for a definitive "no such sound", surfaced as `{ sound: null }`; any
@@ -209,10 +209,10 @@ module.exports = {
     AUDIENCE,
     key,
     stats,
-    message: (body) => send('messages', body),
-    event: (body) => send('events', body),
-    moderation: (body) => send('moderation', body),
-    invalidate: (body) => send('invalidate', body),
+    message: async (body) => await send('messages', body),
+    event: async (body) => await send('events', body),
+    moderation: async (body) => await send('moderation', body),
+    invalidate: async (body) => await send('invalidate', body),
     presence,
     readStats, readMessages, readTimeline, readFirstChat, readPendingIp, readRelayUsers, readRelayUser, readTtsOverride,
     readSounds, readSoundByCommand, readDmBlockState, soundAsset,

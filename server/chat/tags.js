@@ -61,16 +61,16 @@ function ensureTagTables() {
 // production caller in Live ever read it here. The equipped tag (user_equipped_tag) is not staged and stays.
 
 /** The user's equipped tag, or null. */
-function getEquippedTag(userId) {
-    const row = db.getDb().prepare('SELECT tag_id FROM user_equipped_tag WHERE user_id = ?').get(userId);
+async function getEquippedTag(userId) {
+    const row = await db.getDb().prepare('SELECT tag_id FROM user_equipped_tag WHERE user_id = ?').get(userId);
     if (!row) return null;
     const tag = TAGS[row.tag_id];
     return tag ? { tagId: row.tag_id, ...tag } : null;
 }
 
 /** What a chat line carries: { tagId, name, emoji, color, bgColor, … } or null. */
-function getTagProfile(userId) {
-    return getEquippedTag(userId);
+async function getTagProfile(userId) {
+    return await getEquippedTag(userId);
 }
 
 /** The whole catalog. */

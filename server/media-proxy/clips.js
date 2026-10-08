@@ -27,8 +27,8 @@ function clipNotFound(res) {
  * A refusal on a clip the caller may not act on: 403 when they can see it anyway, the
  * missing-clip 404 when it is private to them (a 403 would confirm that it exists).
  */
-function refuse(req, res, clip, message) {
-    if (!access.canView(req.user, clip)) return clipNotFound(res);
+async function refuse(req, res, clip, message) {
+    if (!await access.canView(req.user, clip)) return clipNotFound(res);
     return res.status(403).json({ error: message });
 }
 
@@ -45,10 +45,10 @@ function mediaErr(res, err, fallback) {
 
 // Overlay Live-owned user fields onto Media clip rows: creator (username/…) and
 // the clipped channel's streamer (source_streamer_* via channel_user_id).
-function withUserFields(clip) {
+async function withUserFields(clip) {
     if (!clip) return clip;
     if (clip.user_id != null) {
-        const u = db.getUserById(clip.user_id);
+        const u = await db.getUserById(clip.user_id);
         if (u) {
             clip.username = clip.username || u.username;
             clip.display_name = clip.display_name || u.display_name;
@@ -57,7 +57,7 @@ function withUserFields(clip) {
         }
     }
     if (clip.channel_user_id != null) {
-        const s = db.getUserById(clip.channel_user_id);
+        const s = await db.getUserById(clip.channel_user_id);
         if (s) {
             clip.source_streamer_id = clip.channel_user_id;
             clip.source_streamer_username = s.username;
@@ -75,7 +75,7 @@ function withUserFields(clip) {
     // (the expander swaps the short teaser for the full text).
     if (clip.id != null && (!clip.ai_overview_short || !clip.ai_overview)) {
         try {
-            const s = db.get('SELECT ai_overview_short, ai_overview FROM clip_ai_state WHERE clip_id = ?', [clip.id]);
+            const s = await db.get('SELECT ai_overview_short, ai_overview FROM clip_ai_state WHERE clip_id = ?', [clip.id]);
             if (s && s.ai_overview_short && !clip.ai_overview_short) clip.ai_overview_short = s.ai_overview_short;
             if (s && s.ai_overview && !clip.ai_overview) clip.ai_overview = s.ai_overview;
         } catch { /* best-effort */ }
@@ -90,7 +90,7 @@ function withUserFields(clip) {
 async function clipChannelOwnerId(clip) {
     if (!clip || clip.id == null) return null;
     const r = await lineage.resolveOwner({ clip_id: String(clip.id) }, { records: { clip }, rules: ['stream_lookup', 'vod_parent'] });
-    if (r.status !== 'resolved') require('../lineage/unresolved').record({ clip_id: String(clip.id) }, r, 'live:clip-owner');
+    if (r.status !== 'resolved') await require('../lineage/unresolved').record({ clip_id: String(clip.id) }, r, 'live:clip-owner');
     return r.status === 'resolved' ? r.userId : null;
 }
 
@@ -99,9 +99,9 @@ async function canActorModerateClip(actor, clip) {
     if (actor.id === clip.user_id) return true;
     const ownerId = await clipChannelOwnerId(clip);
     if (ownerId && actor.id === ownerId) return true;
-    if (ownerId) { const ch = db.getChannelByUserId(ownerId); if (ch && await permissions.isChannelMod(actor, ch.id)) return true; }
-    const clipOwner = clip.user_id ? db.getUserById(clip.user_id) : null;
-    const streamOwner = ownerId ? db.getUserById(ownerId) : null;
+    if (ownerId) { const ch = await db.getChannelByUserId(ownerId); if (ch && await permissions.isChannelMod(actor, ch.id)) return true; }
+    const clipOwner = clip.user_id ? await db.getUserById(clip.user_id) : null;
+    const streamOwner = ownerId ? await db.getUserById(ownerId) : null;
     return permissions.canModerateContentOwner(actor, clipOwner) &&
            permissions.canModerateContentOwner(actor, streamOwner);
 }
@@ -112,12 +112,12 @@ async function canActorDeleteClip(actor, clip) {
     if (ownerId && actor.id === ownerId) return true;
     if (!ownerId && actor.id === clip.user_id) return true;
     if (ownerId) {
-        const ch = db.getChannelByUserId(ownerId);
+        const ch = await db.getChannelByUserId(ownerId);
         if (ch && await permissions.isChannelMod(actor, ch.id)) return true;
         if (actor.id === clip.user_id && ch && ch.clips_allow_creator_delete) return true;
     }
-    const clipOwner = clip.user_id ? db.getUserById(clip.user_id) : null;
-    const streamOwner = ownerId ? db.getUserById(ownerId) : null;
+    const clipOwner = clip.user_id ? await db.getUserById(clip.user_id) : null;
+    const streamOwner = ownerId ? await db.getUserById(ownerId) : null;
     return permissions.canModerateContentOwner(actor, clipOwner) &&
            permissions.canModerateContentOwner(actor, streamOwner);
 }
@@ -132,7 +132,7 @@ router.get('/mine', requireAuth, async (req, res) => {
         // streamer's stream (/my-stream?auto_generated=1). Checked again per row in case Media
         // ignores the filter.
         const out = await media.listClips({ ...req.query, user_id: req.user.id, include_private: 1, auto_generated: 0 });
-        const raw = (out?.clips || (Array.isArray(out) ? out : [])).filter((c) => !isAiClip(c)).map(withUserFields);
+        const raw = (await Promise.all((out?.clips || (Array.isArray(out) ? out : [])).filter((c) => !isAiClip(c)).map(withUserFields)));
         const clips = [];
         for (const c of raw) clips.push({ ...c, can_delete: await canActorDeleteClip(req.user, c) });
         res.json({ clips, total: out?.total ?? clips.length, limit: out?.limit ?? clips.length, offset: out?.offset ?? 0 });
@@ -149,9 +149,9 @@ router.get('/my-stream', requireAuth, async (req, res) => {
         const want = q.auto_generated === '0' || q.auto_generated === '1' ? Number(q.auto_generated) : null;
         if (want === null) delete q.auto_generated; else q.auto_generated = want;
         const out = await media.listClips(q);
-        const clips = (out?.clips || (Array.isArray(out) ? out : []))
+        const clips = (await Promise.all((out?.clips || (Array.isArray(out) ? out : []))
             .filter((c) => want === null || isAiClip(c) === (want === 1))
-            .map(withUserFields).map(c => ({ ...c, can_delete: true, ai_label: isAiClip(c) ? 'AI clip' : null }));
+            .map(withUserFields))).map(c => ({ ...c, can_delete: true, ai_label: isAiClip(c) ? 'AI clip' : null }));
         res.json({ clips, total: out?.total ?? clips.length, limit: out?.limit ?? clips.length, offset: out?.offset ?? 0 });
     } catch (err) {
         mediaErr(res, err, 'Failed to list stream clips');
@@ -159,21 +159,21 @@ router.get('/my-stream', requireAuth, async (req, res) => {
 });
 
 // ── Channel clip settings (Live-local) ───────────────────────
-router.get('/settings/channel', requireAuth, (req, res) => {
+router.get('/settings/channel', requireAuth, async (req, res) => {
     try {
-        const ch = db.getChannelByUserId(req.user.id);
+        const ch = await db.getChannelByUserId(req.user.id);
         res.json({ clips_allow_creator_delete: !!(ch && ch.clips_allow_creator_delete) });
     } catch {
         res.status(500).json({ error: 'Failed to load clip settings' });
     }
 });
 
-router.put('/settings/channel', requireAuth, (req, res) => {
+router.put('/settings/channel', requireAuth, async (req, res) => {
     try {
-        const ch = db.getChannelByUserId(req.user.id);
+        const ch = await db.getChannelByUserId(req.user.id);
         if (!ch) return res.status(404).json({ error: 'Channel not found' });
         const val = req.body.clips_allow_creator_delete ? 1 : 0;
-        db.run('UPDATE channels SET clips_allow_creator_delete = ? WHERE id = ?', [val, ch.id]);
+        await db.run('UPDATE channels SET clips_allow_creator_delete = ? WHERE id = ?', [val, ch.id]);
         res.json({ clips_allow_creator_delete: !!val });
     } catch {
         res.status(500).json({ error: 'Failed to save clip settings' });
@@ -190,11 +190,11 @@ router.get('/', async (req, res) => {
         const username = String(q.username || '').trim();
         delete q.username;
         if (username) {
-            const u = db.getUserByUsername(username);
+            const u = await db.getUserByUsername(username);
             q.channel_user_id = u ? u.id : -1;
         }
         const out = await media.listClips(q);
-        const clips = (out?.clips || (Array.isArray(out) ? out : [])).map(withUserFields);
+        const clips = (await Promise.all((out?.clips || (Array.isArray(out) ? out : [])).map(withUserFields)));
         res.json({
             clips,
             total: out?.total ?? clips.length,
@@ -222,22 +222,22 @@ router.get('/:id', optionalAuth, async (req, res) => {
             if (err && err.name === 'MediaApiError' && err.status === 404) return clipNotFound(res);
             return mediaErr(res, err, 'Failed to get clip');
         }
-        if (!clip || !access.canView(req.user, clip)) return clipNotFound(res);
+        if (!clip || !await access.canView(req.user, clip)) return clipNotFound(res);
         if (access.isPrivate(clip)) res.set('Cache-Control', cache.htmlHeaders({ private: true }));
-        withUserFields(clip);
+        await withUserFields(clip);
 
         // Unique-view tracking (content_views stays in live.db).
         try {
             const ip = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || 'unknown';
-            const inserted = db.run('INSERT INTO content_views (content_type, content_id, ip) VALUES (?, ?, ?) ON CONFLICT DO NOTHING', ['clip', clip.id, ip]);
+            const inserted = await db.run('INSERT INTO content_views (content_type, content_id, ip) VALUES (?, ?, ?) ON CONFLICT DO NOTHING', ['clip', clip.id, ip]);
             if (inserted.changes > 0) {
-                const count = db.get('SELECT COUNT(*) as c FROM content_views WHERE content_type = ? AND content_id = ?', ['clip', clip.id]);
+                const count = await db.get('SELECT COUNT(*) as c FROM content_views WHERE content_type = ? AND content_id = ?', ['clip', clip.id]);
                 clip.view_count = Math.max(Number(clip.view_count) || 0, count.c);
             }
         } catch { /* */ }
 
         if (clip.stream_id) {
-            const stream = db.getStreamById(clip.stream_id);
+            const stream = await db.getStreamById(clip.stream_id);
             if (stream) {
                 clip.stream_started_at = stream.started_at;
                 clip.stream_ended_at = stream.ended_at;
@@ -254,7 +254,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
 
         // Overlay Live-owned AI state (overview + transcript live in clip_ai_state).
         try {
-            const st = db.getClipAiState(clip.id);
+            const st = await db.getClipAiState(clip.id);
             if (st) {
                 if (st.ai_overview_short) { clip.ai_overview_short = st.ai_overview_short; clip.ai_overview = st.ai_overview || clip.ai_overview || st.ai_overview_short; }
                 if (st.ai_transcript_json) {
@@ -278,7 +278,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
             try {
                 const v = await media.getVod(clip.vod_id);
                 const recording = v && (v.status === 'recording' || v.is_recording);
-                clip.vod_visible = !!(v && access.canView(req.user, v));
+                clip.vod_visible = !!(v && await access.canView(req.user, v));
                 if (clip.vod_visible && !recording) clip.vod_available = true;
             } catch (err) {
                 if (err && err.status === 404) clip.vod_visible = false;
@@ -297,12 +297,12 @@ router.put('/:id/title', requireAuth, async (req, res) => {
         let clip;
         try { clip = await media.getClip(req.params.id); } catch (err) { return mediaErr(res, err, 'Clip not found'); }
         if (!clip) return res.status(404).json({ error: 'Clip not found' });
-        if (!(await canActorModerateClip(req.user, clip))) return refuse(req, res, clip, 'Not authorized to edit this clip');
+        if (!(await canActorModerateClip(req.user, clip))) return await refuse(req, res, clip, 'Not authorized to edit this clip');
         const title = (req.body.title || '').trim();
         if (!title || title.length > 200) return res.status(400).json({ error: 'Title must be 1-200 characters' });
         await media.updateClip(clip.id, { title });
         // If the clip's chat announcement is still pending, fire it now with this title.
-        try { require('./clip-notify').bumpClipNotifyNow(clip.id); } catch { /* */ }
+        try { await require('./clip-notify').bumpClipNotifyNow(clip.id); } catch { /* */ }
         res.json({ message: 'Clip title updated', title });
     } catch (err) {
         mediaErr(res, err, 'Failed to update clip title');
@@ -320,11 +320,11 @@ router.put('/:id/visibility', requireAuth, async (req, res) => {
         let canByChannel = false;
         if (ownerId) {
             if (req.user.id === ownerId) canByChannel = true;
-            else { const ch = db.getChannelByUserId(ownerId); if (ch) canByChannel = await permissions.isChannelMod(req.user, ch.id); }
+            else { const ch = await db.getChannelByUserId(ownerId); if (ch) canByChannel = await permissions.isChannelMod(req.user, ch.id); }
         }
         const canByStaff = !canByChannel && req.user.id !== clip.user_id && await canActorModerateClip(req.user, clip);
         const ownClipNoChannel = !ownerId && req.user.id === clip.user_id;
-        if (!(canByChannel || canByStaff || ownClipNoChannel)) return refuse(req, res, clip, 'Only the streamer can change clip visibility');
+        if (!(canByChannel || canByStaff || ownClipNoChannel)) return await refuse(req, res, clip, 'Only the streamer can change clip visibility');
         if (req.body.visibility !== undefined) {
             await media.updateClip(clip.id, { visibility: req.body.visibility });
             return res.json({ message: `Clip is now ${req.body.visibility}`, visibility: req.body.visibility, is_public: req.body.visibility === 'public' ? 1 : 0 });
@@ -351,7 +351,7 @@ router.post('/bulk', requireAuth, async (req, res) => {
             const allowed = clip && (action === 'delete' ? await canActorDeleteClip(req.user, clip) : await canActorModerateClip(req.user, clip));
             if (!allowed) { skipped++; continue; }
             try {
-                if (action === 'delete') { await media.deleteClip(id); purge.afterDelete('clip', id); }
+                if (action === 'delete') { await media.deleteClip(id); await purge.afterDelete('clip', id); }
                 else await media.updateClip(id, { visibility: action });
                 done++;
             } catch { skipped++; }
@@ -367,9 +367,9 @@ router.delete('/:id', requireAuth, async (req, res) => {
         let clip;
         try { clip = await media.getClip(req.params.id); } catch (err) { return mediaErr(res, err, 'Clip not found'); }
         if (!clip) return res.status(404).json({ error: 'Clip not found' });
-        if (!(await canActorDeleteClip(req.user, clip))) return refuse(req, res, clip, 'Not authorized to delete this clip');
+        if (!(await canActorDeleteClip(req.user, clip))) return await refuse(req, res, clip, 'Not authorized to delete this clip');
         await media.deleteClip(clip.id);
-        purge.afterDelete('clip', clip.id);
+        await purge.afterDelete('clip', clip.id);
         res.json({ message: 'Clip deleted' });
     } catch (err) {
         mediaErr(res, err, 'Failed to delete clip');
@@ -386,7 +386,7 @@ router.post('/:id/recut', requireAuth, async (req, res) => {
         let clip;
         try { clip = await media.getClip(req.params.id); } catch (err) { return mediaErr(res, err, 'Clip not found'); }
         if (!clip) return res.status(404).json({ error: 'Clip not found' });
-        if (!(await canActorDeleteClip(req.user, clip))) return refuse(req, res, clip, 'Not authorized to re-cut this clip');
+        if (!(await canActorDeleteClip(req.user, clip))) return await refuse(req, res, clip, 'Not authorized to re-cut this clip');
         const out = await media.recutClip(clip.id);
         res.json({ message: 'Re-cutting clip', status: out?.status || 'processing', job_id: out?.job_id || null });
     } catch (err) {

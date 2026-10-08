@@ -280,7 +280,7 @@ class RestreamManager extends EventEmitter {
         // A manual /start (forceIgnoreCooldown) overrides this so users can retry after fixing it.
         try {
             const db = require('../db/database');
-            const fresh = db.getRestreamDestinationById(destination.id) || destination;
+            const fresh = await db.getRestreamDestinationById(destination.id) || destination;
             const coolMs = db.restreamDestinationCooldownMs ? db.restreamDestinationCooldownMs(fresh) : 0;
             if (coolMs > 0 && !(streamInfo && streamInfo.forceIgnoreCooldown)) {
                 console.warn(`[Restream] Dest ${destination.id} (${destination.platform}) in cooldown after repeated failures — skipping for ~${Math.ceil(coolMs / 60000)}m`);
@@ -862,7 +862,7 @@ class RestreamManager extends EventEmitter {
         let stderrBuf = '';
         let liveConfirmed = false;
 
-        const confirmLive = () => {
+        const confirmLive = async () => {
             if (liveConfirmed) return;
             if (session.process !== proc || session.status !== 'starting') return;
             liveConfirmed = true;
@@ -872,7 +872,7 @@ class RestreamManager extends EventEmitter {
             // A confirmed-live restream is definitively healthy — lift any stale failure cooldown
             // immediately (don't wait for the stable timer), so a brief earlier blip can't leave a
             // working destination showing "paused / failed".
-            try { require('../db/database').clearRestreamDestinationCooldown(session.destId); } catch { /* */ }
+            try { await require('../db/database').clearRestreamDestinationCooldown(session.destId); } catch { /* */ }
 
             session.status = 'live';
             session.liveAt = Date.now();
@@ -882,13 +882,13 @@ class RestreamManager extends EventEmitter {
             });
 
             // Reset backoff after stable period
-            session.stableTimer = setTimeout(() => {
+            session.stableTimer = setTimeout(async () => {
                 if (session.process === proc && session.status === 'live') {
                     session.restartAttempts = 0;
                     session.restartDelay = RESTART_BASE_DELAY;
                     session.rapidCrashCount = 0;
                     // Successfully stayed live → destination is healthy again; lift any cooldown.
-                    try { require('../db/database').clearRestreamDestinationCooldown(session.destId); } catch { /* */ }
+                    try { await require('../db/database').clearRestreamDestinationCooldown(session.destId); } catch { /* */ }
                     console.log(`[Restream] Session ${session.key} stable — reset backoff`);
                 }
             }, STABLE_THRESHOLD_MS);
@@ -903,7 +903,7 @@ class RestreamManager extends EventEmitter {
         // Progress blocks: one key=value per line, terminated by `progress=continue|end`.
         let progressBuf = '';
         let progressSeenAt = 0;
-        proc.stdout.on('data', (data) => {
+        proc.stdout.on('data', async (data) => {
             progressBuf += data.toString();
             if (progressBuf.length > 8192) progressBuf = progressBuf.slice(-8192);
             let nl;
@@ -923,7 +923,7 @@ class RestreamManager extends EventEmitter {
                     cur.at = progressSeenAt;
                     session.progress = cur;
                     // Frames (or, for a codec copy, output time) advancing means the ingest is taking data.
-                    if (!liveConfirmed && ((cur.frame || 0) > 0 || (cur.out_ms || 0) > 0)) confirmLive();
+                    if (!liveConfirmed && ((cur.frame || 0) > 0 || (cur.out_ms || 0) > 0)) await confirmLive();
                 }
             }
         });
@@ -970,9 +970,9 @@ class RestreamManager extends EventEmitter {
         // accepts the TCP connection and then sits on the handshake, a key that is silently
         // ignored): kill this run so the restart/back-off machinery — and the dashboard — see a
         // real error instead of a "Starting…" that never ends.
-        setTimeout(() => {
+        setTimeout(async () => {
             if (liveConfirmed || session.process !== proc || session.status !== 'starting') return;
-            if (progressSeenAt) { confirmLive(); return; }      // progress arrived but no frames yet: treat as connected
+            if (progressSeenAt) { await confirmLive(); return; }      // progress arrived but no frames yet: treat as connected
             session.lastErrorRaw = stderrBuf.split('\n').filter(Boolean).slice(-3).join(' | ') || 'no output progress';
             session.lastError = `No response from the ingest within ${LIVE_ACK_TIMEOUT_MS / 1000}s — ${RestreamManager.friendlyFfmpegError(session.lastErrorRaw, session.destination?.platform)}`;
             console.warn(`[Restream] ${session.key}: ${session.lastError}`);
@@ -983,17 +983,17 @@ class RestreamManager extends EventEmitter {
     /**
      * Schedule a restart with exponential backoff.
      */
-    _scheduleRestart(session) {
+    async _scheduleRestart(session) {
         if (session.status === 'stopped') return;
 
         // Stop this session. Only persist a destination-level cooldown when the destination is
         // genuinely dead (never once accepted our stream this session) — otherwise a healthy but
         // flappy restream would get falsely "paused".
-        const _circuitBreak = (reason, { cooldown } = {}) => {
+        const _circuitBreak = async (reason, { cooldown } = {}) => {
             session.status = 'failed';
             let cooldownMinutes = null;
             if (cooldown) {
-                try { cooldownMinutes = require('../db/database').markRestreamDestinationFailure(session.destId, session.lastError || reason)?.cooldownMinutes; } catch { /* */ }
+                try { cooldownMinutes = (await require('../db/database').markRestreamDestinationFailure(session.destId, session.lastError || reason))?.cooldownMinutes; } catch { /* */ }
             }
             this.emit('status-change', { streamId: session.streamId, destId: session.destId, status: 'failed', error: session.lastError || reason, cooldownMinutes });
             console.warn(`[Restream] ${session.key} stopped (${reason})${cooldownMinutes ? ` — cooling down destination ${cooldownMinutes}m` : ''}`);
@@ -1001,7 +1001,7 @@ class RestreamManager extends EventEmitter {
 
         if (session.restartAttempts >= MAX_RESTART_ATTEMPTS) {
             // Cool the destination down only if it never worked this session (a dead endpoint).
-            _circuitBreak(`max restart attempts (${MAX_RESTART_ATTEMPTS})`, { cooldown: !session.everLive });
+            await _circuitBreak(`max restart attempts (${MAX_RESTART_ATTEMPTS})`, { cooldown: !session.everLive });
             return;
         }
 
@@ -1020,7 +1020,7 @@ class RestreamManager extends EventEmitter {
         // platform strike, ingest rejecting us). Cool it down across future go-lives so we stop
         // hammering it. Guarded by !everLive so a destination that has worked is never cooled down.
         if ((session.rapidCrashCount || 0) >= RAPID_CRASH_GIVEUP && !session.everLive) {
-            _circuitBreak(`${session.rapidCrashCount} rapid crashes without ever going live`, { cooldown: true });
+            await _circuitBreak(`${session.rapidCrashCount} rapid crashes without ever going live`, { cooldown: true });
             return;
         }
 
@@ -1031,7 +1031,7 @@ class RestreamManager extends EventEmitter {
         console.log(`[Restream] Scheduling restart for ${session.key} in ${(delay / 1000).toFixed(1)}s (attempt ${session.restartAttempts}/${MAX_RESTART_ATTEMPTS}, ran ${(runtime / 1000).toFixed(1)}s)`);
         session.nextRestartAt = Date.now() + delay;
 
-        session.restartTimer = setTimeout(() => {
+        session.restartTimer = setTimeout(async () => {
             session.restartTimer = null;
             session.nextRestartAt = null;
             if (session.status === 'stopped') return;
@@ -1040,7 +1040,7 @@ class RestreamManager extends EventEmitter {
             const db = require('../db/database');
 
             // Re-check destination still exists and is enabled
-            const dest = db.getRestreamDestinationById(session.destId);
+            const dest = await db.getRestreamDestinationById(session.destId);
             if (!dest || !dest.enabled) {
                 console.log(`[Restream] Destination ${session.destId} disabled/deleted — not restarting`);
                 this._cleanup(session.key);
@@ -1048,7 +1048,7 @@ class RestreamManager extends EventEmitter {
             }
 
             // Re-check stream is still live
-            const stream = db.getStreamById(session.streamId);
+            const stream = await db.getStreamById(session.streamId);
             if (!stream?.is_live) {
                 console.log(`[Restream] Stream ${session.streamId} no longer live — not restarting`);
                 this._cleanup(session.key);
@@ -1211,9 +1211,9 @@ class RestreamManager extends EventEmitter {
      * counts only its own destinations and no slot (a legacy session) counts only the
      * unbound ones, so one slot's platform viewers never show on another.
      */
-    getExternalViewerCountsForUser(userId, managedStreamId = null) {
+    async getExternalViewerCountsForUser(userId, managedStreamId = null) {
         const db = require('../db/database');
-        const dests = db.getRestreamDestinationsForSlot(userId, managedStreamId || null) || [];
+        const dests = await db.getRestreamDestinationsForSlot(userId, managedStreamId || null) || [];
         const breakdown = [];
         let total = 0;
         for (const d of dests) {
@@ -1231,10 +1231,10 @@ class RestreamManager extends EventEmitter {
         return { total, breakdown };
     }
 
-    getViewerPollingConfig() {
+    async getViewerPollingConfig() {
         const db = require('../db/database');
-        const hasKickApi = !!(db.getSetting('kick_client_id') && db.getSetting('kick_client_secret'));
-        const hasYoutubeApi = !!db.getSetting('youtube_api_key');
+        const hasKickApi = !!(await db.getSetting('kick_client_id') && await db.getSetting('kick_client_secret'));
+        const hasYoutubeApi = !!await db.getSetting('youtube_api_key');
         return {
             kick: {
                 serverFetchEnabled: hasKickApi,
@@ -1277,7 +1277,7 @@ class RestreamManager extends EventEmitter {
                 // Self-heal: a destination with a currently-live restream must never show a failure
                 // cooldown. Clears any stale "paused" state left by an earlier transient blip.
                 if (session.status === 'live') {
-                    try { db.clearRestreamDestinationCooldown(session.destId); } catch { /* */ }
+                    try { await db.clearRestreamDestinationCooldown(session.destId); } catch { /* */ }
                 }
             }
         }
@@ -1287,7 +1287,7 @@ class RestreamManager extends EventEmitter {
         // Get destination details from DB
         for (const destId of activeDests) {
             try {
-                const dest = db.getRestreamDestinationById(destId);
+                const dest = await db.getRestreamDestinationById(destId);
                 if (!dest?.channel_url) continue;
 
                 let count = null;
@@ -1368,8 +1368,8 @@ class RestreamManager extends EventEmitter {
      */
     async _getKickToken() {
         const db = require('../db/database');
-        const clientId = db.getSetting('kick_client_id');
-        const clientSecret = db.getSetting('kick_client_secret');
+        const clientId = await db.getSetting('kick_client_id');
+        const clientSecret = await db.getSetting('kick_client_secret');
         if (!clientId || !clientSecret) return null;
 
         // Return cached token if still valid (5 min buffer)
@@ -1475,8 +1475,8 @@ class RestreamManager extends EventEmitter {
      */
     async _getTwitchToken() {
         const db = require('../db/database');
-        const clientId = db.getSetting('twitch_client_id');
-        const clientSecret = db.getSetting('twitch_client_secret');
+        const clientId = await db.getSetting('twitch_client_id');
+        const clientSecret = await db.getSetting('twitch_client_secret');
         if (!clientId || !clientSecret) return null;
 
         // Return cached token if still valid (5 min buffer)
@@ -1581,7 +1581,7 @@ class RestreamManager extends EventEmitter {
     async _fetchYouTubeViewerCount(channelUrl) {
         const db = require('../db/database');
         try {
-            const apiKey = db.getSetting('youtube_api_key');
+            const apiKey = await db.getSetting('youtube_api_key');
             if (!apiKey) return null;
 
             // Extract channel identifier from URL
@@ -1775,7 +1775,7 @@ class RestreamManager extends EventEmitter {
     async _refreshDestFromConnection(destination, streamId) {
         if (!destination || !['twitch', 'youtube', 'kick'].includes(destination.platform)) return destination;
         const db = require('../db/database');
-        const conn = db.getPlatformConnection(destination.user_id, destination.platform);
+        const conn = await db.getPlatformConnection(destination.user_id, destination.platform);
         if (!conn) return destination;
         // Only refresh the ingest/broadcast ONCE per go-live. For YouTube this creates+
         // binds a live broadcast (costly on the YouTube Data API quota); re-running it on
@@ -1793,11 +1793,11 @@ class RestreamManager extends EventEmitter {
         }
         try {
             const platformOAuth = require('../integrations/platform-oauth');
-            const stream = streamId ? db.getStreamById(streamId) : null;
+            const stream = streamId ? await db.getStreamById(streamId) : null;
             const title = (stream && stream.title) || destination.name || 'OpenVibe.Live';
             const ingest = await platformOAuth.resolveIngestForConnection(conn, { title });
             if (ingest && ingest.stream_key) {
-                db.updateRestreamDestination(destination.id, {
+                await db.updateRestreamDestination(destination.id, {
                     server_url: ingest.server_url, stream_key: ingest.stream_key, connection_id: conn.id,
                 });
                 console.log(`[Restream] Refreshed ${destination.platform} ingest from linked account for dest ${destination.id}`);
@@ -1814,11 +1814,11 @@ class RestreamManager extends EventEmitter {
      * no slot restreams only to the owner's unbound destinations. Merging in every destination
      * the account owns meant going live on slot B auto-started slot A's destinations.
      */
-    _getDestinationsForStream(streamId, userId) {
+    async _getDestinationsForStream(streamId, userId) {
         const db = require('../db/database');
-        const stream = db.getStreamById(streamId);
+        const stream = await db.getStreamById(streamId);
         if (!stream) return [];
-        return db.getRestreamDestinationsForSlot(stream.user_id || userId, stream.managed_stream_id || null) || [];
+        return await db.getRestreamDestinationsForSlot(stream.user_id || userId, stream.managed_stream_id || null) || [];
     }
 
     async autoStartForStream(streamId, userId, streamInfo) {

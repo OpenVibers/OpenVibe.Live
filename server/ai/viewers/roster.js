@@ -74,8 +74,8 @@ function makeAmbientPersona(salt) {
  * Ensure the channel has `targetAmbient` active ambient bots (create missing ones).
  * Returns the full active roster (ambient + clones) for this channel.
  */
-function ensureRoster(streamerId, targetAmbient) {
-    const all = db.getChannelAiBots(streamerId, { activeOnly: true });
+async function ensureRoster(streamerId, targetAmbient) {
+    const all = await db.getChannelAiBots(streamerId, { activeOnly: true });
     const ambient = all.filter(b => b.source === 'ambient');
     const existing = new Set(all.map(b => (b.username || '').toLowerCase()));
     let created = 0;
@@ -84,7 +84,7 @@ function ensureRoster(streamerId, targetAmbient) {
         const persona = makeAmbientPersona(salt);
         const username = makeUsername(existing, salt);
         try {
-            db.createChannelAiBot({
+            await db.createChannelAiBot({
                 channel_user_id: streamerId,
                 username,
                 display_name: username,
@@ -98,7 +98,7 @@ function ensureRoster(streamerId, targetAmbient) {
     }
     if (created) console.log(`[AI-Viewers] Created ${created} ambient bot(s) for streamer ${streamerId}`);
     // Return the (possibly grown) active roster, capping ambient to target.
-    const fresh = db.getChannelAiBots(streamerId, { activeOnly: true });
+    const fresh = await db.getChannelAiBots(streamerId, { activeOnly: true });
     const clones = fresh.filter(b => b.source === 'clone');
     const activeAmbient = fresh.filter(b => b.source === 'ambient').slice(0, targetAmbient);
     return [...activeAmbient, ...clones];
@@ -119,7 +119,7 @@ function _sampleLines(rows, n = 20) {
  * @returns {Promise<object>} the created bot row
  */
 async function createCloneBot(streamerId, src) {
-    const existing = new Set(db.getChannelAiBots(streamerId).map(b => (b.username || '').toLowerCase()));
+    const existing = new Set((await db.getChannelAiBots(streamerId)).map(b => (b.username || '').toLowerCase()));
     const baseName = (src.displayName || src.ref || 'clone').toString().replace(/[^a-zA-Z0-9_]/g, '').slice(0, 18) || 'clone';
     let username = baseName;
     let n = 1;
@@ -134,12 +134,12 @@ async function createCloneBot(streamerId, src) {
     try {
         // The brief's instructions are OpenVibe.AI's versioned template live.viewers.clone (WS-O task 2); metered to the
         // streamer on the site's AI or their own key, whichever their viewers use.
-        const st = budget.budgetStatus(streamerId);
+        const st = await budget.budgetStatus(streamerId);
         if (st.active) {
             const r = await viewerRun('live.viewers.clone', {
                 name: String(src.displayName || src.ref || 'viewer').slice(0, 120), overview: String(overview).slice(0, 2000), memory: String(memory).slice(0, 2000),
                 samples: samples.map(x => String(x).slice(0, 400)).slice(0, 24),
-            }, { provider: st.useShared ? null : (budget.byoProvider(st.cfg) || { none: true }), ownerUserId: streamerId, kind: 'ai_viewers', role: 'chat' });
+            }, { provider: st.useShared ? null : (await budget.byoProvider(st.cfg) || { none: true }), ownerUserId: streamerId, kind: 'ai_viewers', role: 'chat' });
             if (r && r.output && r.output.text && r.output.text.trim()) identity = r.output.text.trim();
         }
     } catch { /* fall back to overview */ }
@@ -156,7 +156,7 @@ async function createCloneBot(streamerId, src) {
         identity,
         samples: samples.slice(0, 10),
     };
-    return db.createChannelAiBot({
+    return await db.createChannelAiBot({
         channel_user_id: streamerId,
         username,
         display_name: src.displayName || username,

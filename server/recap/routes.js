@@ -12,21 +12,21 @@ const { can } = require('../auth/permissions');
 const recap = require('./recap');
 const { requireAuth, optionalAuth } = require('../auth/auth');
 
-router.get('/channel/:username', (req, res) => {
-    const user = db.getUserByUsername(String(req.params.username || ''));
+router.get('/channel/:username', async (req, res) => {
+    const user = await db.getUserByUsername(String(req.params.username || ''));
     if (!user) return res.status(404).json({ error: 'Channel not found' });
     res.set('Cache-Control', 'public, max-age=60');
-    res.json({ recaps: recap.listRecaps(user.id, Math.min(12, parseInt(req.query.limit || '6', 10) || 6)) });
+    res.json({ recaps: await recap.listRecaps(user.id, Math.min(12, parseInt(req.query.limit || '6', 10) || 6)) });
 });
 
 router.get('/:streamId', optionalAuth, async (req, res) => {
     try {
         if (!/^\d+$/.test(String(req.params.streamId))) return res.status(404).json({ error: 'Not found' });
         const id = parseInt(req.params.streamId, 10);
-        const stream = db.getStreamById(id);
+        const stream = await db.getStreamById(id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
         if (stream.is_live) return res.status(409).json({ error: 'Still live — the report comes after the stream ends', live: true });
-        let r = recap.getRecap(id);
+        let r = await recap.getRecap(id);
         if (!r) {
             const dur = Number(stream.duration_seconds) || 0;
             if (dur && dur < recap.MIN_DURATION_SEC) return res.status(404).json({ error: 'Too short for a report', min_seconds: recap.MIN_DURATION_SEC });
@@ -34,7 +34,7 @@ router.get('/:streamId', optionalAuth, async (req, res) => {
         }
         if (!r) return res.status(404).json({ error: 'No report for this stream' });
         res.set('Cache-Control', 'public, max-age=120');
-        res.json({ recap: r, more: recap.listRecaps(r.streamer.id, 6).filter(x => x.stream_id !== id) });
+        res.json({ recap: r, more: (await recap.listRecaps(r.streamer.id, 6)).filter(x => x.stream_id !== id) });
     } catch (err) {
         console.error('[Recap] route:', err.message);
         res.status(500).json({ error: 'Failed to build the report' });
@@ -44,7 +44,7 @@ router.get('/:streamId', optionalAuth, async (req, res) => {
 router.post('/:streamId/regenerate', requireAuth, async (req, res) => {
     try {
         const id = parseInt(req.params.streamId, 10);
-        const stream = db.getStreamById(id);
+        const stream = await db.getStreamById(id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
         if (stream.user_id !== req.user.id && !can(req.user, 'staff.streams.manage')) return res.status(403).json({ error: 'Not your stream' });
         const r = await recap.buildRecap(id);

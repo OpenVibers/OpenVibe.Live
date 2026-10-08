@@ -16,8 +16,8 @@ const db = require('../db/database');
 
 function baseUrl() { return String(process.env.OV_AI_INTERNAL_URL || 'http://127.0.0.1:4700').replace(/\/+$/, ''); }
 
-function subjectOf(userId) {
-    const r = db.getDb().prepare("SELECT subject_id FROM linked_accounts WHERE user_id = ? AND service = 'network' AND subject_id IS NOT NULL ORDER BY id LIMIT 1").get(userId);
+async function subjectOf(userId) {
+    const r = await db.getDb().prepare("SELECT subject_id FROM linked_accounts WHERE user_id = ? AND service = 'network' AND subject_id IS NOT NULL ORDER BY id LIMIT 1").get(userId);
     return r ? r.subject_id : null;
 }
 
@@ -73,18 +73,18 @@ async function call(method, subject, body) {
  * budget change). → { ok, status, body } (body: ai.credential@1, or a problem with `code`).
  */
 async function store(userId, cfg, { apiKey = null } = {}) {
-    const subject = subjectOf(userId);
+    const subject = await subjectOf(userId);
     if (!subject) return { ok: false, status: 409, body: { code: 'credentials.no_subject', detail: 'this channel has no Network account linked' } };
     const provider = providerOf(cfg);
     const put = { provider, base_url: addressOf(cfg, provider), models: modelsOf(cfg) };
     if (apiKey) put.api_key = String(apiKey);
-    return call('PUT', subject, put);
+    return await call('PUT', subject, put);
 }
 
 async function remove(userId) {
-    const subject = subjectOf(userId);
+    const subject = await subjectOf(userId);
     if (!subject) return { ok: true, status: 204, body: {} };
-    return call('DELETE', subject);
+    return await call('DELETE', subject);
 }
 
 /**
@@ -113,12 +113,12 @@ async function applyConfig(userId, before, byoKey, fields) {
 
 /** Move a key still stored in Live to AI; on success the local key is erased. → 'moved' | 'none' | '<code>' */
 async function moveLocal(userId) {
-    const cfg = db.getChannelAiConfig(userId);
+    const cfg = await db.getChannelAiConfig(userId);
     const key = String(cfg.byo_key || '').trim();
     if (!key) return 'none';
     const r = await store(userId, cfg, { apiKey: key });
     if (!r.ok) return (r.body && (r.body.code || r.body.error)) || `http_${r.status}`;
-    db.upsertChannelAiConfig(userId, { byo_key: '', byo_in_ai: 1 });
+    await db.upsertChannelAiConfig(userId, { byo_key: '', byo_in_ai: 1 });
     return 'moved';
 }
 

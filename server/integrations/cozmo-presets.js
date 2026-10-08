@@ -29,8 +29,8 @@ const COZMO_PRESETS = [
  * @param {number} streamId
  * @returns {{ added: number, skipped: number }}
  */
-function applyCozmoPresets(streamId) {
-    const existing = db.getStreamControls(streamId);
+async function applyCozmoPresets(streamId) {
+    const existing = await db.getStreamControls(streamId);
     const existingCmds = new Set(existing.map(c => c.command));
 
     let added = 0, skipped = 0;
@@ -41,7 +41,7 @@ function applyCozmoPresets(streamId) {
             skipped++;
             continue;
         }
-        db.createControl({
+        await db.createControl({
             stream_id: streamId,
             label: preset.label,
             command: preset.command,
@@ -61,10 +61,10 @@ function applyCozmoPresets(streamId) {
  * @param {number} streamId
  * @returns {number} Number of controls removed.
  */
-function removeCozmoPresets(streamId) {
+async function removeCozmoPresets(streamId) {
     const cmds = COZMO_PRESETS.map(p => p.command);
     const placeholders = cmds.map(() => '?').join(',');
-    const result = db.run(
+    const result = await db.run(
         `DELETE FROM stream_controls WHERE stream_id = ? AND command IN (${placeholders})`,
         [streamId, ...cmds]
     );

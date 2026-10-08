@@ -19,7 +19,7 @@ const enabled = () => process.env.ANALYTICS_SOURCE === 'network';
 
 async function summaryFor(userId, days, { fetchImpl = globalThis.fetch } = {}) {
     if (!enabled()) return null;
-    const r0 = db.getDb().prepare("SELECT subject_id FROM linked_accounts WHERE service = 'network' AND user_id = ?").get(userId);
+    const r0 = await db.getDb().prepare("SELECT subject_id FROM linked_accounts WHERE service = 'network' AND user_id = ?").get(userId);
     const subject = r0 && SUBJECT_RE.test(String(r0.subject_id || '')) ? r0.subject_id : null;
     if (!subject) { stats.fallback++; return null; }
     let body;
@@ -34,7 +34,7 @@ async function summaryFor(userId, days, { fetchImpl = globalThis.fetch } = {}) {
     if (!body || !body.full || !Array.isArray(body.streams)) { stats.fallback++; return null; }
     const local = new Map();
     const q = db.getDb().prepare('SELECT stream_id, new_followers, clips_created, coins_earned FROM stream_analytics WHERE stream_id = ?');
-    for (const s of body.streams) { const row = q.get(s.stream_id); if (row) local.set(s.stream_id, row); }
+    for (const s of body.streams) { const row = await q.get(s.stream_id); if (row) local.set(s.stream_id, row); }
     const streams = body.streams.map((s) => {
         const l = local.get(s.stream_id) || {};
         return {
@@ -46,7 +46,7 @@ async function summaryFor(userId, days, { fetchImpl = globalThis.fetch } = {}) {
     });
     const sum = (k) => streams.reduce((n, s) => n + (Number(s[k]) || 0), 0);
     const t = body.totals || {};
-    const base = db.getChannelAnalyticsSummary(userId, days);   // all_time and follower count stay Live's
+    const base = await db.getChannelAnalyticsSummary(userId, days);   // all_time and follower count stay Live's
     stats.network++;
     return {
         ...base,

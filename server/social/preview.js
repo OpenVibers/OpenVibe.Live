@@ -137,7 +137,7 @@ async function preview(l) {
     if (hit && Date.now() - hit.at < hit.ttl) return hit.value;
     let value;
     try {
-        const fn = ADAPTERS[l.kind] || (async (x) => openGraph(x.url));
+        const fn = ADAPTERS[l.kind] || (async (x) => await openGraph(x.url));
         const needsHandle = ['bluesky', 'github', 'twitch', 'kick', 'mastodon', 'x'].includes(l.kind);
         value = needsHandle && !l.handle ? await openGraph(l.url) : await fn(l);
         value = { kind: l.kind, url: l.url, items: [], ...value };

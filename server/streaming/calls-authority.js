@@ -39,7 +39,7 @@ async function send(method, path, body, retried = false) {
         body: body ? JSON.stringify(body) : undefined,
         signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (res.status === 401 && !retried) { principal.invalidate(AUDIENCE); return send(method, path, body, true); }
+    if (res.status === 401 && !retried) { principal.invalidate(AUDIENCE); return await send(method, path, body, true); }
     const data = await res.json().catch(() => null);
     if (!res.ok) {
         const err = new Error(`Chat ${res.status}${data && data.error ? `: ${data.error}` : ''}`);
@@ -54,7 +54,7 @@ let seq = 0;
 const stats = { sent: 0, retried: 0, superseded: 0, failed: 0, lastError: null };
 
 /** Send one hook to Chat, retrying as above. Resolves (never rejects) with Chat's answer or null. */
-function deliver(streamId, method, path, body) {
+async function deliver(streamId, method, path, body) {
     const mine = ++seq;
     latest.set(streamId, mine);
     const attempt = async (n) => {
@@ -76,22 +76,22 @@ function deliver(streamId, method, path, body) {
             stats.retried++;
             console.warn(`[Calls] ${method} ${path} failed (${err.message}); retrying in ${RETRY_MS[n] / 1000}s`);
             await new Promise((r) => { const t = setTimeout(r, RETRY_MS[n]); if (t.unref) t.unref(); });
-            return attempt(n + 1);
+            return await attempt(n + 1);
         }
     };
-    return attempt(0);
+    return await attempt(0);
 }
 
 /** Go-live with a call mode, or the mode changed: the stream's voice channel. */
-function createStreamChannel(streamId, mode, userId) {
+async function createStreamChannel(streamId, mode, userId) {
     if (!isChat()) return local().createStreamChannel(streamId, mode, userId);
-    return deliver(Number(streamId), 'POST', '/internal/calls/stream-channel', { stream_id: Number(streamId), mode, user_id: Number(userId) });
+    return await deliver(Number(streamId), 'POST', '/internal/calls/stream-channel', { stream_id: Number(streamId), mode, user_id: Number(userId) });
 }
 
 /** The stream ended (or was force-ended): its call ends and its voice channel goes. */
-function removeStreamChannel(streamId) {
+async function removeStreamChannel(streamId) {
     if (!isChat()) return local().removeStreamChannel(streamId);
-    return deliver(Number(streamId), 'DELETE', `/internal/calls/stream-channel/${Number(streamId)}`);
+    return await deliver(Number(streamId), 'DELETE', `/internal/calls/stream-channel/${Number(streamId)}`);
 }
 
 module.exports = { authority, isChat, createStreamChannel, removeStreamChannel, stats, RETRY_MS, AUDIENCE };

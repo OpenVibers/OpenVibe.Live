@@ -165,10 +165,10 @@ const stopper = gracefulStop({
             // gating on /api/ready should see that before the socket actually closes.
             _bootComplete = false;
         },
-        () => {
+        async () => {
             // Notify all chat clients before closing connections
             try {
-                require('./chat/chat-delivery').event({ kind: 'all' }, {
+                await require('./chat/chat-delivery').event({ kind: 'all' }, {
                     type: 'server_restart',
                     message: '⚙️ Chat server restarting — you will be reconnected automatically.',
                     timestamp: new Date().toISOString(),
@@ -207,8 +207,8 @@ const stopper = gracefulStop({
     },
     close: [
         async () => { try { await analyticsStore.close(); } catch (err) { console.error('[Analytics] Shutdown:', err); } },
-        () => {
-            db.close();
+        async () => {
+            await db.close();
             console.log('[Server] Goodbye — keep the vibe alive.');
         },
     ],
@@ -308,8 +308,8 @@ function getAllowedOrigins() {
 
 let allowedOrigins = getAllowedOrigins();
 
-function getStreamKey(stream) {
-    return stream.managed_stream_key || db.getUserById(stream.user_id)?.stream_key;
+async function getStreamKey(stream) {
+    return stream.managed_stream_key || (await db.getUserById(stream.user_id))?.stream_key;
 }
 
 function webrtcStreamHasActiveProducer(streamId) {
@@ -321,11 +321,11 @@ function webrtcStreamHasActiveProducer(streamId) {
     });
 }
 
-function hasActiveLiveFeed(stream) {
+async function hasActiveLiveFeed(stream) {
     if (!stream) return false;
     // OpenRe.Stream holds the ingest (a mirrored session it confirmed recently): not stale.
-    if (require('./openre/mirror').hasLiveSession(stream.id)) return true;
-    const streamKey = getStreamKey(stream);
+    if (await require('./openre/mirror').hasLiveSession(stream.id)) return true;
+    const streamKey = await getStreamKey(stream);
     if (stream.protocol === 'rtmp') {
         return !!streamKey && rtmpServer.isReceiving(streamKey);
     }
@@ -494,26 +494,26 @@ app.use('/api/vods/clips', uploadLimiter);
 const escBanHtml = (t) => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const DEFAULT_BAN_REASON = 'Repeated disrespect toward the owner of this site. Permanent.';
 /** Resolve the signed-in user for an HTTP request (token cookie / Bearer / API token), cached per request. */
-function banRequestUser(req) {
+async function banRequestUser(req) {
     if (req._ovBanUser !== undefined) return req._ovBanUser;
     let user = null;
     try {
         const { extractToken, verifyToken, resolveNetworkUser, authenticateApiToken } = require('./auth/auth');
         const token = extractToken(req);
-        if (token) user = authenticateApiToken(token) || (() => { const d = verifyToken(token); return d ? resolveNetworkUser(d) : null; })();
+        if (token) user = await authenticateApiToken(token) || (async () => { const d = await verifyToken(token); return d ? await resolveNetworkUser(d) : null; })();
     } catch { user = null; }
     req._ovBanUser = user || null;
     return req._ovBanUser;
 }
 /** Admins (the site owner) pass IP / network bans — they may live on the same network as a banned person. */
-function isBanExemptAdmin(req) { const u = banRequestUser(req); return !!(u && !u.is_banned && require('./auth/permissions').can(u, 'staff.limits.exempt')); }
+async function isBanExemptAdmin(req) { const u = await banRequestUser(req); return !!(u && !u.is_banned && require('./auth/permissions').can(u, 'staff.limits.exempt')); }
 function isBanExemptAdminUser(u) { return !!(u && !u.is_banned && require('./auth/permissions').can(u, 'staff.limits.exempt')); }
 /** Paths a banned network may still reach: health, the ban page's assets, SSO (so an admin can sign in), WHIP (stream-key auth, checks bans itself). */
 function banPassPath(p) {
     return p === '/api/health' || p.startsWith('/banned') || p.startsWith('/assets/') || p.startsWith('/api/auth/sso') || p === '/api/auth/callback' || p === '/api/auth/logout' || p.startsWith('/whip');
 }
-function banNameFor(ban) {
-    try { if (ban && ban.user_id) { const u = db.getUserById(ban.user_id); if (u) return u.display_name || u.username; } } catch { /* */ }
+async function banNameFor(ban) {
+    try { if (ban && ban.user_id) { const u = await db.getUserById(ban.user_id); if (u) return u.display_name || u.username; } } catch { /* */ }
     return null;
 }
 function renderBannedPage(req, res, { name, reason } = {}) {
@@ -525,7 +525,7 @@ function renderBannedPage(req, res, { name, reason } = {}) {
     res.status(403).set('Cache-Control', 'no-store').type('html').send(html);
 }
 
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
     // Skip health check so monitoring still works
     if (req.url === '/api/health') return next();
     // Banned network (single address or a whole home / carrier block). The site owner and admins
@@ -533,18 +533,18 @@ app.use((req, res, next) => {
     // admin passes; SSO + assets pass so an admin can sign in from a banned network and the ban
     // page can render. Everyone else on that network gets the ban screen (API: 403).
     try {
-        const ipBan = db.getIpBan(req.ip, null);
-        if (ipBan && !banPassPath(req.path) && !isBanExemptAdmin(req)) {
+        const ipBan = await db.getIpBan(req.ip, null);
+        if (ipBan && !banPassPath(req.path) && !await isBanExemptAdmin(req)) {
             if (req.path.startsWith('/api/') || req.path.startsWith('/ws/')) {
                 return res.status(403).json({ error: 'Access denied' });
             }
-            return renderBannedPage(req, res, { name: banNameFor(ipBan), reason: ipBan.reason });
+            return renderBannedPage(req, res, { name: await banNameFor(ipBan), reason: ipBan.reason });
         }
     } catch (e) { /* DB error — let request through rather than block everyone */ }
     // A browser that has been shown the ban screen keeps seeing it (cookie set by GET /banned),
     // signed in or not. Assets still load so the page itself can render.
     if (req.cookies && req.cookies.ov_banned === '1' && !req.path.startsWith('/banned') && !banPassPath(req.path)) {
-        if (isBanExemptAdmin(req)) { res.clearCookie('ov_banned'); res.clearCookie('ov_banned_name'); return next(); }
+        if (await isBanExemptAdmin(req)) { res.clearCookie('ov_banned'); res.clearCookie('ov_banned_name'); return next(); }
         if (req.path.startsWith('/api/') || req.path.startsWith('/ws/')) return res.status(403).json({ error: 'Account is banned' });
         return res.redirect(302, '/banned');
     }
@@ -848,7 +848,7 @@ release.mount(app, { registry: metricsRegistry });
 const readiness = observability.createLiveReadiness({
     release,
     bootComplete: () => _bootComplete,
-    dbQuery: () => db.get('SELECT 1 AS ok'),
+    dbQuery: async () => await db.get('SELECT 1 AS ok'),
     sfuReady: () => webrtcSFU.ready === true && !!webrtcSFU.worker,
     // A drill asks no other service anything, Media's health included.
     mediaUrl: drill.enabled ? null : mediaClient.MEDIA_URL,
@@ -858,7 +858,7 @@ const readiness = observability.createLiveReadiness({
 app.get('/api/ready', readiness.handler);
 
 observability.registerDomainGauges(metricsRegistry, {
-    liveStreams: () => db.getLiveStreams().length,
+    liveStreams: async () => (await db.getLiveStreams()).length,
     wsServers: { broadcast: broadcastServer, control: controlServer, call: callServer },
     outboxStatus: () => require('./events/stream-events').status(),
 });
@@ -916,11 +916,11 @@ app.get('/api/updates', async (req, res) => {
  * POST /api/admin/broadcast — admin sends a message to all chat clients.
  * Body: { type: 'system'|'server_restart'|'update', message, summary, url }
  */
-app.post('/api/admin/broadcast', requireAuth, permissions.requireAdmin, (req, res) => {
+app.post('/api/admin/broadcast', requireAuth, permissions.requireAdmin, async (req, res) => {
     try {
         const { type = 'system', message, summary, url } = req.body;
         if (!message && !summary) return res.status(400).json({ error: 'message or summary required' });
-        require('./chat/chat-delivery').event({ kind: 'all' }, {
+        await require('./chat/chat-delivery').event({ kind: 'all' }, {
             type,
             message: message || summary,
             summary,
@@ -1045,18 +1045,18 @@ function verifyBannedUidCookie(value) {
     const a = Buffer.from(m[2]), b = Buffer.from(expected);
     return a.length === b.length && require('crypto').timingSafeEqual(a, b) ? Number(m[1]) : null;
 }
-app.post('/banned/continue', (req, res) => {
-    const user = banRequestUser(req);
-    const ipBan = (() => { try { return db.getIpBan(req.ip, null); } catch { return null; } })();
+app.post('/banned/continue', async (req, res) => {
+    const user = await banRequestUser(req);
+    const ipBan = (async () => { try { return await db.getIpBan(req.ip, null); } catch { return null; } })();
     let subject = null;
-    if (user && user.is_banned) subject = db.getUserById(user.id);
-    else if (ipBan && ipBan.user_id) subject = db.getUserById(ipBan.user_id);
+    if (user && user.is_banned) subject = await db.getUserById(user.id);
+    else if (ipBan && ipBan.user_id) subject = await db.getUserById(ipBan.user_id);
     else {
         // A browser that was signed in as the banned account when it saw the ban page carries a
         // signed id. It used to be the display name in plain text, looked up as a username, so
         // anyone could lift any account's ban by sending a made-up cookie.
         const uid = verifyBannedUidCookie(req.cookies && req.cookies.ov_banned_uid);
-        if (uid) subject = db.getUserById(uid) || null;
+        if (uid) subject = await db.getUserById(uid) || null;
     }
     res.clearCookie('ov_banned'); res.clearCookie('ov_banned_name'); res.clearCookie('ov_banned_uid');
     if (!subject) {
@@ -1065,8 +1065,8 @@ app.post('/banned/continue', (req, res) => {
     }
     let lifted = [];
     try {
-        lifted = db.forgiveBan(subject.id);
-        require('./chat/chat-delivery').logModeration({ scope_type: 'site', target_user_id: subject.id, action_type: 'unban', details: { via: 'ban-page-continue', ip: req.ip, lifted: lifted.map(r => r.ip_address || 'account') } });
+        lifted = await db.forgiveBan(subject.id);
+        await require('./chat/chat-delivery').logModeration({ scope_type: 'site', target_user_id: subject.id, action_type: 'unban', details: { via: 'ban-page-continue', ip: req.ip, lifted: lifted.map(r => r.ip_address || 'account') } });
         console.log(`[Ban] ${subject.username} (id ${subject.id}) pressed Continue on the ban page from ${req.ip} — ${lifted.length} ban row(s) lifted`);
     } catch (e) {
         console.error('[Ban] continue failed:', e.message);
@@ -1075,9 +1075,9 @@ app.post('/banned/continue', (req, res) => {
     res.json({ ok: true, name: subject.display_name || subject.username, lifted: lifted.length });
 });
 
-app.get('/banned', (req, res) => {
-    const user = banRequestUser(req);
-    const ipBan = (() => { try { return db.getIpBan(req.ip, null); } catch { return null; } })();
+app.get('/banned', async (req, res) => {
+    const user = await banRequestUser(req);
+    const ipBan = (async () => { try { return await db.getIpBan(req.ip, null); } catch { return null; } })();
     if (user && !user.is_banned && (!ipBan || isBanExemptAdminUser(user))) { res.clearCookie('ov_banned'); res.clearCookie('ov_banned_name'); return res.redirect('/'); }
     // Make the ban stick to this browser: from now on every visit — signed in or not — lands here.
     const isSecure = String(config.baseUrl || '').startsWith('https');
@@ -1088,7 +1088,7 @@ app.get('/banned', (req, res) => {
         res.cookie('ov_banned_uid', signBannedUid(user.id), { httpOnly: true, maxAge: tenYears, sameSite: 'Lax', secure: isSecure });
     }
     const name = (user && user.is_banned) ? (user.display_name || user.username)
-        : (req.cookies && req.cookies.ov_banned_name ? String(req.cookies.ov_banned_name) : banNameFor(ipBan));
+        : (req.cookies && req.cookies.ov_banned_name ? String(req.cookies.ov_banned_name) : await banNameFor(ipBan));
     const reason = (user && user.is_banned && user.ban_reason) || (ipBan && ipBan.reason) || DEFAULT_BAN_REASON;
     renderBannedPage(req, res, { name, reason });
 });
@@ -1124,7 +1124,7 @@ app.use((err, req, res, _next) => {
 });
 
 // ── WebSocket Upgrade Handler ────────────────────────────────
-server.on('upgrade', (req, socket, head) => {
+server.on('upgrade', async (req, socket, head) => {
     // A restore-drill instance has no WebSocket servers: chat, broadcast, calls and controls are live
     // traffic, and a drill only answers reads.
     if (drill.enabled) return drill.refuseUpgrade(socket);
@@ -1140,10 +1140,10 @@ server.on('upgrade', (req, socket, head) => {
     // Block banned IPs from WebSocket connections
     try {
         const wsIp = chatDelivery.getClientIp(req);
-        if (db.isIpBanned(wsIp, null)) {
+        if (await db.isIpBanned(wsIp, null)) {
             // Admins pass network bans (shared home network) — see isBanExemptAdmin.
             let exempt = false;
-            try { const { extractWsToken, authenticateWs } = require('./auth/auth'); exempt = isBanExemptAdminUser(authenticateWs(extractWsToken(req))); } catch { exempt = false; }
+            try { const { extractWsToken, authenticateWs } = require('./auth/auth'); exempt = isBanExemptAdminUser(await authenticateWs(extractWsToken(req))); } catch { exempt = false; }
             if (!exempt) { socket.destroy(); return; }
         }
     } catch (e) { /* non-critical — allow through on DB error */ }
@@ -1173,7 +1173,7 @@ async function start() {
     console.log('  ╚══════════════════════════════════════════╝');
     console.log('');
 
-    if (drill.enabled) return startDrill();
+    if (drill.enabled) return await startDrill();
 
     await config.refreshRegistry();
     allowedOrigins = getAllowedOrigins();
@@ -1182,7 +1182,7 @@ async function start() {
     console.log('[Server] Allowed CORS/WebSocket origins:', [...allowedOrigins].join(', '));
 
     // 1. Initialize database
-    db.initDb();
+    await db.initDb();
     await analyticsStore.ready();
     // Initialize cosmetics tables
     cosmeticsModule.ensureTables();
@@ -1190,28 +1190,28 @@ async function start() {
     require('./chat/tags').ensureTagTables();
     // (Live used to create DM tables here; OpenVibe.Chat owns them, and Live keeps no copy.)
     // Migrate: add last_heartbeat column if missing
-    try { db.run("ALTER TABLE streams ADD COLUMN last_heartbeat DATETIME"); console.log('[DB] Added last_heartbeat column'); } catch { /* already exists */ }
+    try { await db.run("ALTER TABLE streams ADD COLUMN last_heartbeat DATETIME"); console.log('[DB] Added last_heartbeat column'); } catch { /* already exists */ }
     // Migrate: add theme_id to users table if missing
-    try { db.run("ALTER TABLE users ADD COLUMN theme_id INTEGER"); console.log('[DB] Added theme_id column'); } catch { /* already exists */ }
+    try { await db.run("ALTER TABLE users ADD COLUMN theme_id INTEGER"); console.log('[DB] Added theme_id column'); } catch { /* already exists */ }
     // Migrate: add call_mode column to streams table for group calls
-    try { db.run("ALTER TABLE streams ADD COLUMN call_mode TEXT DEFAULT NULL"); console.log('[DB] Added streams.call_mode column'); } catch { /* already exists */ }
+    try { await db.run("ALTER TABLE streams ADD COLUMN call_mode TEXT DEFAULT NULL"); console.log('[DB] Added streams.call_mode column'); } catch { /* already exists */ }
     console.log('[Server] Database ready');
 
     // Seed/refresh built-in themes on every start (upserts by slug, so re-tuned
     // palettes always take effect; IDs stay stable).
     try {
-        require('./themes/theme-service').seedBuiltinThemes();
+        await require('./themes/theme-service').seedBuiltinThemes();
         console.log('[Themes] Built-in themes seeded/refreshed');
     } catch (err) {
         console.warn('[Themes] Seed error:', err.message);
     }
 
     // 2. Create admin from .env config if none exists (first-time setup only)
-    const adminExists = db.get("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
+    const adminExists = await db.get("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
     if (!adminExists) {
         const { v4: uuidv4 } = require('uuid');
         const adminUser = config.adminUsername || 'admin';
-        db.createUser({
+        await db.createUser({
             username: adminUser,
             email: null,
             // Live keeps no passwords (sign-in is the OpenVibe account's): this account signs in through SSO once
@@ -1220,12 +1220,12 @@ async function start() {
             display_name: adminUser,
             stream_key: uuidv4().replace(/-/g, ''),
         });
-        db.run("UPDATE users SET role = 'admin' WHERE username = ?", [adminUser]);
+        await db.run("UPDATE users SET role = 'admin' WHERE username = ?", [adminUser]);
         console.log(`[Server] Admin user "${adminUser}" created from ADMIN_USERNAME; sign in with the openvibe.network account of that name`);
     }
 
     // 3. Initialize chat server
-    chatDelivery.init();
+    await chatDelivery.init();
     vibeCodingPublishServer.init(server);
 
     // 3b. Initialize breaking news service
@@ -1245,7 +1245,7 @@ async function start() {
         console.log('[Calls] CALLS_AUTHORITY=chat — stream voice channels are created and removed in OpenVibe.Chat; Live\'s /ws/call stays up, unreached once nginx routes it to Chat');
     }
 
-    for (const stream of db.getLiveStreams()) {
+    for (const stream of await db.getLiveStreams()) {
         robotStreamerService.startForStream(stream).catch((err) => {
             console.warn(`[RS] Restore failed for stream ${stream.id}:`, err.message);
         });
@@ -1260,9 +1260,9 @@ async function start() {
     // the server went down. Without this, the stale-stream cleanup (every 60s) would
     // kill them before the broadcaster's client can reconnect and resume heartbeating.
     // This gives broadcasters a fresh 5-minute window to reconnect.
-    const survivingStreams = db.all('SELECT id FROM streams WHERE is_live = 1');
+    const survivingStreams = await db.all('SELECT id FROM streams WHERE is_live = 1');
     if (survivingStreams.length > 0) {
-        db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE is_live = 1');
+        await db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE is_live = 1');
         console.log(`[Server] Refreshed heartbeats for ${survivingStreams.length} surviving stream(s) — broadcasters have 5 min to reconnect`);
     }
 
@@ -1275,9 +1275,9 @@ async function start() {
 
     // 5b. Resume enabled restreams for streams that survived the restart.
     // WHIP/RTMP broadcasters have no browser session to re-start them manually.
-    for (const stream of db.getLiveStreams()) {
+    for (const stream of await db.getLiveStreams()) {
         // OpenRe restreams its own sessions; Live must not start a second push for them.
-        if (require('./openre/mirror').ownsStream(stream.id)) continue;
+        if (await require('./openre/mirror').ownsStream(stream.id)) continue;
         restreamManager.resumeForStream(stream.id, stream.user_id, {
             protocol: stream.protocol,
             streamKey: stream.managed_stream_key,
@@ -1319,12 +1319,12 @@ async function start() {
     // 6c. Hook WebRTC SFU events for auto-start restreams
     // When a broadcaster produces into the SFU (triggered by restream request),
     // the first video producer signals that media is available for restreaming.
-    webrtcSFU.on('producer-added', ({ roomId, kind }) => {
+    webrtcSFU.on('producer-added', async ({ roomId, kind }) => {
         if (kind !== 'video') return; // Only trigger on video producer
         const match = roomId.match(/^stream-(\d+)$/);
         if (!match) return;
         const streamId = parseInt(match[1]);
-        const stream = db.getStreamById(streamId);
+        const stream = await db.getStreamById(streamId);
         if (!stream?.is_live || stream.protocol !== 'webrtc') return;
         restreamManager.autoStartForStream(streamId, stream.user_id, { protocol: 'webrtc' }).catch(err => {
             console.warn(`[Restream] WebRTC auto-start error for stream ${streamId}:`, err.message);
@@ -1334,8 +1334,8 @@ async function start() {
     // 6d. Hook broadcaster connection for WebRTC restream resume
     // When a broadcaster connects (or reconnects after server restart), resume ALL enabled
     // restreams — not just auto_start ones. If the stream is live, all restreams should run.
-    broadcastServer.on('broadcaster-connected', ({ streamId, userId }) => {
-        const stream = db.getStreamById(streamId);
+    broadcastServer.on('broadcaster-connected', async ({ streamId, userId }) => {
+        const stream = await db.getStreamById(streamId);
         if (!stream?.is_live || stream.protocol !== 'webrtc') return;
         restreamManager.resumeForStream(streamId, userId, { protocol: 'webrtc' }).catch(err => {
             console.warn(`[Restream] Broadcaster-connect resume error for stream ${streamId}:`, err.message);
@@ -1360,7 +1360,7 @@ async function start() {
     // identical to run by hand, in dev, or on a box that has not been switched over.
     const socketActivated = process.env.LISTEN_FDS === '1' && Number(process.env.LISTEN_PID) === process.pid;
     if (socketActivated) console.log('[Server] socket-activated: listening on the socket systemd handed us (fd 3)');
-    server.listen(socketActivated ? { fd: 3 } : { port: config.port, host: config.listenHost }, () => {
+    server.listen(socketActivated ? { fd: 3 } : { port: config.port, host: config.listenHost }, async () => {
         console.log('');
         console.log(`[Server] HTTP server:  http://${config.host}:${config.port}`);
         console.log(`[Server] WebSocket:    ws://${config.host}:${config.port}/ws/chat`);
@@ -1413,7 +1413,7 @@ async function start() {
         try { (() => { try { const d = require('./ai/transcribe').describe(); console.log(`[AI] whisper ${d.available ? 'available' : 'UNAVAILABLE'} — bin=${d.bin} model=${d.model}${d.modelExists ? '' : ' (MISSING)'} live=${d.modelLive}${d.modelLiveExists ? '' : ' (MISSING)'} vad=${d.vadModel || 'off'} threads=${d.threads}`); } catch (e) { console.warn('[AI] whisper probe failed:', e.message); } })();
     require('./ai/backfill-job').start(); } catch (e) { console.warn('[AI] backfill job not started:', e.message); }
     // AI viewers activity log: keep a week.
-    setInterval(() => { try { const n = db.pruneAiViewerLog(7); if (n) console.log(`[AI-Viewers] pruned ${n} log row(s)`); } catch { /* */ } }, 6 * 3600 * 1000);
+    setInterval(async () => { try { const n = await db.pruneAiViewerLog(7); if (n) console.log(`[AI-Viewers] pruned ${n} log row(s)`); } catch { /* */ } }, 6 * 3600 * 1000);
         try { require('./ai/streamer-overview-job').start(); } catch (e) { console.warn('[AI] streamer-overview job not started:', e.message); }
         try { require('./ai/slogan-job').start(); } catch (e) { console.warn('[AI] slogan job not started:', e.message); }
         try { require('./ai/ai-moments-job').start(); } catch (e) { console.warn('[AI] moments job not started:', e.message); }
@@ -1445,13 +1445,13 @@ async function start() {
         // Backfill checkout orders whose donation.completed webhook never arrived (/paid-messages).
         try { require('./integrations/powerchat-reconcile').startReconciler(); } catch (e) { console.warn('[PowerChat] reconciler not started:', e.message); }
         // Auto-renew lapsed channel subs (Vibes-balance renewal; Stripe renews natively).
-        try { require('./monetization/payments').startRenewalSweeper(); } catch (e) { console.warn('[Payments] renewal sweeper not started:', e.message); }
+        try { await require('./monetization/payments').startRenewalSweeper(); } catch (e) { console.warn('[Payments] renewal sweeper not started:', e.message); }
         // 5-minute live-viewer samples → the home hero's 24h sparkline.
-        try { require('./home/routes').startViewerSampler(); } catch (e) { console.warn('[Home] viewer sampler not started:', e.message); }
+        try { await require('./home/routes').startViewerSampler(); } catch (e) { console.warn('[Home] viewer sampler not started:', e.message); }
         try { require('./home/star-job').start(); } catch (e) { console.warn('[Home] star picker not started:', e.message); }
         // PowerChat: prune the webhook-dedupe log daily so it can't grow unbounded.
         try {
-            const _pcClean = () => { try { db.cleanupPowerchatDeliveries(3); } catch { /* */ } };
+            const _pcClean = async () => { try { await db.cleanupPowerchatDeliveries(3); } catch { /* */ } };
             setTimeout(_pcClean, 120000);
             const _pcT = setInterval(_pcClean, 24 * 60 * 60 * 1000); if (_pcT.unref) _pcT.unref();
         } catch { /* */ }
@@ -1468,7 +1468,7 @@ async function start() {
         if (heartbeatCleanupRunning) return;
         heartbeatCleanupRunning = true;
         try {
-            const staleStreams = db.all(
+            const staleStreams = await db.all(
                 `SELECT id, user_id, protocol FROM streams
                  WHERE is_live = 1
                  AND (
@@ -1477,13 +1477,13 @@ async function start() {
                  )`
             );
             for (const stream of staleStreams) {
-                if (hasActiveLiveFeed(stream)) {
+                if (await hasActiveLiveFeed(stream)) {
                     console.log(`[Heartbeat] Skipping stale cleanup for stream ${stream.id} because active ingest feed exists (${stream.protocol})`);
                     continue;
                 }
                 console.log(`[Heartbeat] Ending stale stream ${stream.id} (no heartbeat for 5+ minutes)`);
-                db.endStream(stream.id);
-                try { db.computeAndCacheStreamAnalytics(stream.id); } catch {}
+                await db.endStream(stream.id);
+                try { await db.computeAndCacheStreamAnalytics(stream.id); } catch {}
                 // Auto-finalize any active VOD recording for this stream (via OpenVibe.Media)
                 if (!recorder.isFinalizingStream(stream.id)) {
                     recorder.finalizeStream(stream.id).catch(err => {
@@ -1500,7 +1500,7 @@ async function start() {
                 restreamManager.stopAllForStream(stream.id);
                 // Close signaling room and notify viewers
                 broadcastServer.endStream(stream.id);
-                const user = db.getUserById(stream.user_id);
+                const user = await db.getUserById(stream.user_id);
                 if (stream.protocol === 'jsmpeg' && user) {
                     jsmpegRelay.destroyChannel(user.stream_key);
                 } else if (stream.protocol === 'webrtc') {
@@ -1511,7 +1511,7 @@ async function start() {
             // Also finalize recordings whose stream already ended (finalize was never called)
             try {
                 for (const [sid] of recorder.activeRecordings) {
-                    const s = db.getStreamById(sid);
+                    const s = await db.getStreamById(sid);
                     if (s && s.is_live) continue;
                     if (recorder.isFinalizingStream(sid)) continue;
                     console.log(`[VOD] Finalizing orphaned recording for ended stream ${sid}`);
@@ -1528,7 +1528,7 @@ async function start() {
             // A managed-slot "Go Live" publishes under the SLOT's stream key, so prefer
             // managed_streams.stream_key over the personal users.stream_key — the RTMP
             // server's activeStreams map (and the HTTP-FLV URL) are keyed by the publish key.
-            const rtmpStreams = db.all(
+            const rtmpStreams = await db.all(
                 `SELECT s.id, COALESCE(ms.stream_key, u.stream_key) AS stream_key FROM streams s
                  JOIN users u ON s.user_id = u.id
                  LEFT JOIN managed_streams ms ON s.managed_stream_id = ms.id
@@ -1536,18 +1536,18 @@ async function start() {
             );
             for (const rs of rtmpStreams) {
                 if (!rs.stream_key || !rtmpServer.isReceiving(rs.stream_key)) continue;
-                if (!liveThumbs.shouldRefreshLiveThumbnail(rs.id, 120000)) continue;
+                if (!await liveThumbs.shouldRefreshLiveThumbnail(rs.id, 120000)) continue;
                 liveThumbs.generateLiveStreamThumbnail(rs.id, rs.stream_key, { minAgeMs: 120000 }).catch(() => {});
             }
 
             // Generate server-side thumbnails for JSMPEG streams (broadcaster uses FFmpeg, no browser preview)
-            const jsmpegStreams = db.all(
+            const jsmpegStreams = await db.all(
                 `SELECT s.id, u.stream_key FROM streams s
                  JOIN users u ON s.user_id = u.id
                  WHERE s.is_live = 1 AND s.protocol = 'jsmpeg'`
             );
             for (const js of jsmpegStreams) {
-                if (!liveThumbs.shouldRefreshLiveThumbnail(js.id, 120000)) continue;
+                if (!await liveThumbs.shouldRefreshLiveThumbnail(js.id, 120000)) continue;
                 const channelInfo = jsmpegRelay.getChannelInfo(js.stream_key);
                 if (channelInfo && channelInfo.videoPort) {
                     liveThumbs.generateJSMPEGThumbnail(js.id, channelInfo.videoPort).catch(() => {});
@@ -1559,11 +1559,11 @@ async function start() {
             // publishers (OBS) and hidden tabs send nothing. Fallback: have Media extract
             // a frame from the in-progress recording (fragmented mp4 — readable while
             // growing) and use that as both the live card and RECORDING-card thumbnail.
-            const webrtcStreams = db.all(
+            const webrtcStreams = await db.all(
                 `SELECT id FROM streams WHERE is_live = 1 AND protocol NOT IN ('rtmp', 'jsmpeg')`
             );
             for (const wsStream of webrtcStreams) {
-                if (liveThumbs.shouldRefreshLiveThumbnail(wsStream.id, 120000)) {
+                if (await liveThumbs.shouldRefreshLiveThumbnail(wsStream.id, 120000)) {
                     const lastGen = liveVodThumbGeneratedAt.get(wsStream.id) || 0;
                     if (Date.now() - lastGen < 120000) continue;
                     liveVodThumbGeneratedAt.set(wsStream.id, Date.now());
@@ -1574,9 +1574,9 @@ async function start() {
                     const rec = recorder.activeRecordings.get(wsStream.id);
                     if (!rec || !rec.vodId) continue;
                     mediaClient.generateThumbnail('vod', rec.vodId)
-                        .then((out) => {
+                        .then(async (out) => {
                             const url = mediaClient.publicUrl(out?.url);
-                            if (url) db.run('UPDATE streams SET thumbnail_url = ? WHERE id = ?', [url, wsStream.id]);
+                            if (url) await db.run('UPDATE streams SET thumbnail_url = ? WHERE id = ?', [url, wsStream.id]);
                         })
                         .catch(() => {});
                 }
@@ -1649,8 +1649,8 @@ async function start() {
  * no registry refresh (config comes from the env), no seeding, no chat drain, no socket servers, no
  * RTMP/SFU/JSMPEG, no restream or relay resume, no heartbeat refresh, no jobs of any kind.
  */
-function startDrill() {
-    db.initDb();
+async function startDrill() {
+    await db.initDb();
     cosmeticsModule.ensureTables();
     require('./chat/tags').ensureTagTables();
     console.log(`[Drill] Database ready: ${paths.dbPath()}`);
@@ -1670,7 +1670,7 @@ function shutdown(signal) {
         console.log('[Drill] Shutting down');
         _bootComplete = false;
         analyticsStore.close().catch(() => {});
-        server.close(() => { try { db.close(); } catch { /* */ } process.exit(0); });
+        server.close(async () => { try { await db.close(); } catch { /* */ } process.exit(0); });
         try { server.closeAllConnections(); } catch { /* */ }
         setTimeout(() => process.exit(0), 3000).unref();
         return;

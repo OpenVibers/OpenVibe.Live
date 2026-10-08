@@ -19,8 +19,8 @@ const CACHE_DIR = require('../paths').dir('TTS_CACHE_PATH', 'tts-cache');
 const MAX_TEXT = 240;
 const MAX_CACHE_MB = 300;
 const MAX_AGE_MS = 60 * 24 * 3600_000;
-const DAILY_MAX = () => Number(db.getSetting('arena_voice_daily_max') || 2000);
-const ANNOUNCER_VOICE = () => String(db.getSetting('arena_announcer_voice') || db.getSetting('tts_default_voice') || 'gary');
+const DAILY_MAX = async () => Number(await db.getSetting('arena_voice_daily_max') || 2000);
+const ANNOUNCER_VOICE = async () => String(await db.getSetting('arena_announcer_voice') || await db.getSetting('tts_default_voice') || 'gary');
 const CLOUD_COST_PER_CHAR = { google: 16 / 1_000_000, polly: 16 / 1_000_000 };
 
 let _tts = null;
@@ -31,11 +31,11 @@ function ensureDir() { try { fs.mkdirSync(CACHE_DIR, { recursive: true }); } cat
 function cleanText(text) { return String(text || '').replace(/\s+/g, ' ').replace(/[<>]/g, '').trim().slice(0, MAX_TEXT); }
 
 /** How this person sounds in chat: equipped cosmetic voice, else the derived auto voice. */
-function voiceFor(user) {
-    if (!user) return { kind: 'announcer', voiceId: ANNOUNCER_VOICE(), sig: `announcer:${ANNOUNCER_VOICE()}` };
+async function voiceFor(user) {
+    if (!user) return { kind: 'announcer', voiceId: await ANNOUNCER_VOICE(), sig: `announcer:${await ANNOUNCER_VOICE()}` };
     try {
         const cosmetics = require('../monetization/cosmetics');
-        const prof = cosmetics.getCosmeticProfile(user.id);
+        const prof = await cosmetics.getCosmeticProfile(user.id);
         const itemId = prof && prof.voiceFX && prof.voiceFX.itemId;
         if (itemId && tts().VOICE_CATALOG && tts().VOICE_CATALOG[itemId]) return { kind: 'equipped', voiceId: itemId, sig: `equipped:${itemId}` };
     } catch { /* cosmetics optional */ }
@@ -51,7 +51,7 @@ function cachedFile(key) {
     return null;
 }
 
-function todayCount() { try { return db.get(`SELECT COUNT(*) AS n FROM ai_usage WHERE kind = 'tts' AND created_at >= date('now')`)?.n || 0; } catch { return 0; } }
+async function todayCount() { try { return (await db.get(`SELECT COUNT(*) AS n FROM ai_usage WHERE kind = 'tts' AND created_at >= date('now')`))?.n || 0; } catch { return 0; } }
 
 async function synth(voice, text, username) {
     if (_synthOverride) return _synthOverride(voice, text, username);
@@ -68,11 +68,11 @@ async function speak({ user = null, text }) {
     ensureDir();
     const clean = cleanText(text);
     if (clean.length < 2) throw new Error('Nothing to say');
-    const voice = voiceFor(user);
+    const voice = await voiceFor(user);
     const key = cacheKey(voice.sig, clean);
     const hit = cachedFile(key);
     if (hit) { try { fs.utimesSync(hit.path, new Date(), new Date()); } catch { /* */ } return { ...hit, cached: true, voice: voice.sig }; }
-    if (todayCount() >= DAILY_MAX()) throw new Error('The announcer is hoarse — daily voice budget reached, try tomorrow');
+    if (await todayCount() >= await DAILY_MAX()) throw new Error('The announcer is hoarse — daily voice budget reached, try tomorrow');
     const started = Date.now();
     const out = await synth(voice, clean, user?.username);
     if (!out || !out.audio) throw new Error('Voice engine unavailable');
@@ -83,7 +83,7 @@ async function speak({ user = null, text }) {
     fs.renameSync(tmp, file);
     const engine = String(out.engine || '').toLowerCase();
     const cloud = /google/.test(engine) ? 'google' : /polly|aws|amazon/.test(engine) ? 'polly' : null;
-    try { db.recordAiUsage({ kind: 'tts', model: `${engine || 'espeak'}:${out.voiceId || voice.voiceId || 'auto'}`, input_tokens: clean.length, output_tokens: 0, cost_usd: cloud ? clean.length * CLOUD_COST_PER_CHAR[cloud] : 0, owner_user_id: user?.id || null, source: 'arena', role: 'tts', provider: engine || 'espeak', latency_ms: Date.now() - started }); } catch { /* */ }
+    try { await db.recordAiUsage({ kind: 'tts', model: `${engine || 'espeak'}:${out.voiceId || voice.voiceId || 'auto'}`, input_tokens: clean.length, output_tokens: 0, cost_usd: cloud ? clean.length * CLOUD_COST_PER_CHAR[cloud] : 0, owner_user_id: user?.id || null, source: 'arena', role: 'tts', provider: engine || 'espeak', latency_ms: Date.now() - started }); } catch { /* */ }
     purge();
     return { path: file, mimeType: ext === 'wav' ? 'audio/wav' : 'audio/mpeg', cached: false, voice: voice.sig, engine };
 }

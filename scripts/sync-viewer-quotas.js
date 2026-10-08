@@ -13,7 +13,7 @@ const db = require('../server/db/database');
 const quota = require('../server/ai/viewer-quota');
 
 (async () => {
-    const rows = db.getDb().prepare('SELECT user_id FROM channel_ai_config ORDER BY user_id').all();
+    const rows = await db.getDb().prepare('SELECT user_id FROM channel_ai_config ORDER BY user_id').all();
     let failed = 0;
     for (const { user_id: userId } of rows) {
         const out = await quota.sync(userId);

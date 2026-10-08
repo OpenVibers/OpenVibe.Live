@@ -48,25 +48,25 @@ function parseArgs(argv) {
     return opts;
 }
 
-const hasTable = (db, name) => !!db.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(name);
+const hasTable = async (db, name) => !!await db.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(name);
 
 /** What is stored now, as counts. Reads only. */
-function counts(db) {
+async function counts(db) {
     const { networkLinkedUserIds } = require('../server/db/migrations');
-    const links = hasTable(db, 'linked_accounts');
-    const linked = links ? networkLinkedUserIds(db) : 'SELECT NULL WHERE 0';
+    const links = await hasTable(db, 'linked_accounts');
+    const linked = links ? await networkLinkedUserIds(db) : 'SELECT NULL WHERE 0';
     const anyLink = links ? "SELECT user_id FROM linked_accounts WHERE service = 'network'" : 'SELECT NULL WHERE 0';
-    const n = (where) => db.prepare(`SELECT COUNT(*) AS n FROM users WHERE ${where}`).get().n;
+    const n = async (where) => (await db.prepare(`SELECT COUNT(*) AS n FROM users WHERE ${where}`).get()).n;
     const noIdentity = `${SSO} AND id NOT IN (${anyLink})`;
     return {
-        users: n('1'),
-        emails: n('email IS NOT NULL'),
-        passwords: n(SSO),
-        passwords_linked: n(`${SSO} AND id IN (${linked})`),
-        passwords_link_without_subject: n(`${SSO} AND id IN (${anyLink}) AND id NOT IN (${linked})`),
-        passwords_no_identity: n(noIdentity),
-        no_identity_hashes: n(`${noIdentity} AND (password_hash ILIKE '$2%' OR password_hash ILIKE '$argon2%' OR password_hash ILIKE '$scrypt%' OR password_hash ILIKE '$pbkdf2%')`),
-        no_identity_anon_game: n(`${noIdentity} AND password_hash ILIKE '!anon-game:%'`),
+        users: await n('1'),
+        emails: await n('email IS NOT NULL'),
+        passwords: await n(SSO),
+        passwords_linked: await n(`${SSO} AND id IN (${linked})`),
+        passwords_link_without_subject: await n(`${SSO} AND id IN (${anyLink}) AND id NOT IN (${linked})`),
+        passwords_no_identity: await n(noIdentity),
+        no_identity_hashes: await n(`${noIdentity} AND (password_hash ILIKE '$2%' OR password_hash ILIKE '$argon2%' OR password_hash ILIKE '$scrypt%' OR password_hash ILIKE '$pbkdf2%')`),
+        no_identity_anon_game: await n(`${noIdentity} AND password_hash ILIKE '!anon-game:%'`),
     };
 }
 
@@ -100,11 +100,11 @@ async function main(argv, log = console.log) {
     const db = new Database(dbPath, { readonly: !opts.apply, fileMustExist: true });
     db.pragma('busy_timeout = 5000');
     try {
-        if (!hasTable(db, 'users')) { log('no users table; nothing to do'); return 0; }
-        const done = hasTable(db, 'schema_migrations') ? db.prepare('SELECT applied_at FROM schema_migrations WHERE id = ?').get(ID) : null;
+        if (!await hasTable(db, 'users')) { log('no users table; nothing to do'); return 0; }
+        const done = await hasTable(db, 'schema_migrations') ? await db.prepare('SELECT applied_at FROM schema_migrations WHERE id = ?').get(ID) : null;
         log(`database: ${dbPath}`);
         log(`${ID}: ${done ? `applied at ${done.applied_at} UTC` : 'not run yet'}`);
-        const before = counts(db);
+        const before = await counts(db);
         report(before, log, { after: !!done });
         if (done) { log('already applied: nothing to do'); return 0; }
         if (!opts.apply) { log('dry run: nothing changed (add --apply to back up the database and apply)'); return 0; }
@@ -114,12 +114,12 @@ async function main(argv, log = console.log) {
         fs.chmodSync(backupPath, 0o600);   // it holds the emails and hashes this clears
         log(`backup: ${backupPath}`);
 
-        const res = require('../server/db/migrations').runOperator(db, ID);
+        const res = await require('../server/db/migrations').runOperator(db, ID);
         if (res.outcome === 'deferred') { log('users or linked_accounts is missing: nothing changed'); return 1; }
         if (res.outcome !== 'applied') throw new Error(`${ID} ${res.outcome}${res.error ? `: ${res.error}` : ''}`);
         log(`${ID}: applied`);
         log('now:');
-        report(counts(db), log, { after: true });
+        report(await counts(db), log, { after: true });
         log(`restore (service stopped): copy ${backupPath} over ${dbPath}, remove any -wal/-shm beside it`);
         return 0;
     } finally {

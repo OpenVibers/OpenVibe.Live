@@ -61,15 +61,15 @@ function createLiveActorLimits({ env = process.env, registry = null, now } = {})
     }
     const auth = require('../auth/auth');
     /** The person behind the request's token, without failing it (requireAuth still decides later). */
-    function actor(req) {
+    async function actor(req) {
         const token = auth.extractToken(req);
         if (!token) return null;
         try {
             if (String(token).startsWith('hbt_')) {
-                const u = auth.authenticateApiToken(token);
+                const u = await auth.authenticateApiToken(token);
                 return u ? `user:${u.subject_id || u.id}` : null;
             }
-            const d = auth.verifyToken(token);
+            const d = await auth.verifyToken(token);
             if (!d) return null;
             const subject = d.subject_id || d.sub_subject || (typeof d.sub === 'string' && d.sub.startsWith('usr_') ? d.sub : null);
             return subject ? `user:${subject}` : (d.sub != null ? `user:${d.sub}` : null);

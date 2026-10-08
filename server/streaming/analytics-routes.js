@@ -23,12 +23,12 @@ const router = express.Router();
 // Anyone can see aggregate stats for a channel
 router.get('/channel/:username', optionalAuth, async (req, res) => {
     try {
-        const channel = db.getChannelByUsername(req.params.username);
+        const channel = await db.getChannelByUsername(req.params.username);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
         const days = Math.min(parseInt(req.query.days) || 30, 365);
         // WS-E task 6: from Network's creator analytics when ANALYTICS_SOURCE=network, else (or on any failure) Live's tables.
-        const data = (await require('../analytics/network-analytics').summaryFor(channel.user_id, days)) || db.getChannelAnalyticsSummary(channel.user_id, days);
+        const data = (await require('../analytics/network-analytics').summaryFor(channel.user_id, days)) || await db.getChannelAnalyticsSummary(channel.user_id, days);
 
         // Public view — return summary + stream list (no revenue data)
         res.json({
@@ -57,16 +57,16 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
 });
 
 // ── Public: Stream history with stats ────────────────────────
-router.get('/channel/:username/streams', (req, res) => {
+router.get('/channel/:username/streams', async (req, res) => {
     try {
-        const channel = db.getChannelByUsername(req.params.username);
+        const channel = await db.getChannelByUsername(req.params.username);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
         const offset = (page - 1) * limit;
 
-        const streams = db.all(`
+        const streams = await db.all(`
             SELECT s.id, s.title, s.category, s.started_at, s.ended_at, s.duration_seconds,
                    s.peak_viewers, s.viewer_count, s.thumbnail_url,
                    sa.avg_viewers, sa.unique_chatters, sa.total_messages, sa.clips_created
@@ -77,7 +77,7 @@ router.get('/channel/:username/streams', (req, res) => {
             LIMIT ? OFFSET ?
         `, [channel.user_id, limit, offset]);
 
-        const countRow = db.get(
+        const countRow = await db.get(
             'SELECT COUNT(*) as cnt FROM streams WHERE user_id = ? AND duration_seconds > 0',
             [channel.user_id]
         );
@@ -96,26 +96,26 @@ router.get('/channel/:username/streams', (req, res) => {
 });
 
 // ── Public: Single stream analytics with viewer chart ────────
-router.get('/stream/:id', (req, res) => {
+router.get('/stream/:id', async (req, res) => {
     try {
         const streamId = parseInt(req.params.id);
         if (!streamId) return res.status(400).json({ error: 'Invalid stream ID' });
 
-        const stream = db.getStreamById(streamId);
+        const stream = await db.getStreamById(streamId);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
 
         // Get or compute analytics
-        let analytics = db.getStreamAnalytics(streamId);
+        let analytics = await db.getStreamAnalytics(streamId);
         if (!analytics && !stream.is_live) {
             // Compute on demand for old streams without cached analytics
-            analytics = db.computeAndCacheStreamAnalytics(streamId);
+            analytics = await db.computeAndCacheStreamAnalytics(streamId);
         }
 
         // Get viewer snapshots for the chart
-        const snapshots = db.getViewerSnapshots(streamId);
+        const snapshots = await db.getViewerSnapshots(streamId);
 
         // Get the user info for display
-        const user = db.getUserById(stream.user_id);
+        const user = await db.getUserById(stream.user_id);
 
         res.json({
             stream: {
@@ -158,7 +158,7 @@ router.get('/stream/:id', (req, res) => {
 // Shows extra data like watch minutes, coins, followers over time
 router.get('/channel/:username/dashboard', optionalAuth, async (req, res) => {
     try {
-        const channel = db.getChannelByUsername(req.params.username);
+        const channel = await db.getChannelByUsername(req.params.username);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
         // Only the channel owner (or admin) can see the dashboard
@@ -167,7 +167,7 @@ router.get('/channel/:username/dashboard', optionalAuth, async (req, res) => {
 
         const days = Math.min(parseInt(req.query.days) || 30, 365);
         // WS-E task 6: from Network's creator analytics when ANALYTICS_SOURCE=network, else (or on any failure) Live's tables.
-        const data = (await require('../analytics/network-analytics').summaryFor(channel.user_id, days)) || db.getChannelAnalyticsSummary(channel.user_id, days);
+        const data = (await require('../analytics/network-analytics').summaryFor(channel.user_id, days)) || await db.getChannelAnalyticsSummary(channel.user_id, days);
 
         // Add streamer-only data: watch minutes, coins earned, follower growth
         const streams = data.streams.map(s => ({
@@ -186,7 +186,7 @@ router.get('/channel/:username/dashboard', optionalAuth, async (req, res) => {
             .map(r => ({ user_id: r.user_id, username: r.username, message_count: Number(r.count) }));
 
         // Top watchers by watch time
-        const topWatchers = db.all(`
+        const topWatchers = await db.all(`
             SELECT wt.user_id, u.username, u.display_name, SUM(wt.minutes_watched) as total_minutes
             FROM watch_time wt
             JOIN users u ON u.id = wt.user_id

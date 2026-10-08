@@ -52,8 +52,8 @@ const iso = (v) => {
 const clean = (s, n) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, n);
 const isAiClip = (c) => c.auto_generated === true || Number(c.auto_generated) === 1;
 
-function aiState(kind, id) {
-    const st = kind === 'clip' ? db.getClipAiState(id) : db.getVodAiState(id);
+async function aiState(kind, id) {
+    const st = kind === 'clip' ? await db.getClipAiState(id) : await db.getVodAiState(id);
     if (!st) return {};
     let transcript = '';
     try { transcript = (JSON.parse(st.ai_transcript_json || '[]') || []).map((s) => s && s.text).filter(Boolean).join(' '); } catch { /* unreadable: none */ }
@@ -72,16 +72,16 @@ function isListable(kind, row) {
 }
 
 /** The document for one Media item, or `{ deleted: true }` when Search must not hold it. */
-function documentFor(kind, row) {
+async function documentFor(kind, row) {
     if (!isListable(kind, row)) return { deleted: true };
     const d = db.getDb();
     const ownerId = kind === 'clip' ? (row.channel_user_id || row.user_id) : row.user_id;
-    const owner = ownerId != null ? d.prepare('SELECT id, username, display_name, is_banned FROM users WHERE id = ?').get(Number(ownerId)) : null;
+    const owner = ownerId != null ? await d.prepare('SELECT id, username, display_name, is_banned FROM users WHERE id = ?').get(Number(ownerId)) : null;
     if (owner && owner.is_banned) return { deleted: true };
-    const stream = row.stream_id != null ? d.prepare('SELECT category, is_nsfw FROM streams WHERE id = ?').get(Number(row.stream_id)) : null;
-    const ch = owner ? d.prepare('SELECT chat_language FROM channels WHERE user_id = ?').get(owner.id) : null;
+    const stream = row.stream_id != null ? await d.prepare('SELECT category, is_nsfw FROM streams WHERE id = ?').get(Number(row.stream_id)) : null;
+    const ch = owner ? await d.prepare('SELECT chat_language FROM channels WHERE user_id = ?').get(owner.id) : null;
     const name = owner ? (owner.display_name || owner.username) : null;
-    const ai = aiState(kind, row.id);
+    const ai = await aiState(kind, row.id);
     const aiClip = kind === 'clip' && isAiClip(row);
     const fallbackTitle = kind === 'vod' ? `${name ? `${name}'s ` : ''}stream VOD` : (aiClip ? 'AI clip' : 'Clip');
     const summary = clean(ai.short || ai.overview || row.description, 4000)
@@ -108,25 +108,25 @@ function documentFor(kind, row) {
 const hashOf = (doc) => crypto.createHash('sha256').update(JSON.stringify(doc)).digest('hex').slice(0, 32);
 
 /** Send one item's document or tombstone when it changed. `row` null: gone. → 'sent' | 'tombstone' | 'unchanged' | 'skipped' */
-function publish(kind, id, row, { now = Date.now() } = {}) {
+async function publish(kind, id, row, { now = Date.now() } = {}) {
     ensureSchema();
     if (!streamEvents.status().enabled || !KINDS.includes(kind)) return 'skipped';
     const mediaId = Number(id);
     if (!Number.isSafeInteger(mediaId) || mediaId < 1) return 'skipped';
-    const doc = row ? documentFor(kind, row) : { deleted: true };
+    const doc = row ? await documentFor(kind, row) : { deleted: true };
     const d = db.getDb();
-    const prev = d.prepare('SELECT hash, revision, deleted FROM search_media_pushes WHERE kind = ? AND media_id = ?').get(kind, mediaId);
+    const prev = await d.prepare('SELECT hash, revision, deleted FROM search_media_pushes WHERE kind = ? AND media_id = ?').get(kind, mediaId);
     if (doc.deleted && (!prev || prev.deleted)) { stats.unchanged++; return 'unchanged'; }   // never sent, or already gone
     const hash = doc.deleted ? 'deleted' : hashOf(doc);
     if (prev && prev.hash === hash) { stats.unchanged++; return 'unchanged'; }
     const revision = (prev ? prev.revision : 0) + 1;
     const sid = String(mediaId);
-    d.tx(() => {
+    await d.tx(async () => {
         streamEvents.enqueue(doc.deleted
             ? { event_type: 'live.index_document.deleted', actor: { type: 'service', id: 'live' }, subject: { type: kind, id: sid, revision }, visibility: 'internal', priority: 'low', payload: { type: kind, id: sid, revision } }
             : { event_type: 'live.index_document.upserted', actor: { type: 'service', id: 'live' }, subject: { type: kind, id: sid, revision }, visibility: 'internal', priority: 'low',
                 payload: { ...doc, revision, updated_at: new Date(now).toISOString() } });
-        d.prepare(`INSERT INTO search_media_pushes (kind, media_id, hash, revision, deleted, pushed_at) VALUES (?, ?, ?, ?, ?, ov_now())
+        await d.prepare(`INSERT INTO search_media_pushes (kind, media_id, hash, revision, deleted, pushed_at) VALUES (?, ?, ?, ?, ?, ov_now())
                    ON CONFLICT(kind, media_id) DO UPDATE SET hash = excluded.hash, revision = excluded.revision, deleted = excluded.deleted, pushed_at = excluded.pushed_at`)
             .run(kind, mediaId, hash, revision, doc.deleted ? 1 : 0);
     });
@@ -150,7 +150,7 @@ async function touch(kind, id, { media = mediaClient(), now = Date.now() } = {})
         if (err && err.status === 404) row = null;
         else { stats.lastError = `${kind} ${id}: ${err && err.message}`; return 'skipped'; }
     }
-    return publish(kind, id, row && (row.vod || row.clip || row), { now });
+    return await publish(kind, id, row && (row.vod || row.clip || row), { now });
 }
 
 /** Fire-and-forget touch for route and event hooks: never throws, never delays the caller. */
@@ -175,7 +175,7 @@ async function scan({ media = mediaClient(), now = Date.now(), limit = 50 } = {}
     for (const kind of KINDS) {
         try {
             const { rows } = await listPage(kind, 0, media, limit);
-            for (const row of rows) { publish(kind, row.id, row, { now }); n++; }
+            for (const row of rows) { await publish(kind, row.id, row, { now }); n++; }
         } catch (err) { stats.lastError = `${kind} scan: ${err.message}`; }
     }
     return n;
@@ -192,12 +192,12 @@ async function refresh({ media = mediaClient(), now = Date.now(), maxPages = 100
         try {
             for (let page = 0, offset = 0; page < maxPages; page++, offset += PAGE) {
                 const { rows, hasMore } = await listPage(kind, offset, media);
-                for (const row of rows) { seen.add(Number(row.id)); publish(kind, row.id, row, { now }); n++; }
+                for (const row of rows) { seen.add(Number(row.id)); await publish(kind, row.id, row, { now }); n++; }
                 if (!hasMore || !rows.length) { complete = true; break; }
             }
         } catch (err) { stats.lastError = `${kind} refresh: ${err.message}`; }
         if (!complete) continue;   // a partial listing never removes anything
-        const held = db.getDb().prepare('SELECT media_id FROM search_media_pushes WHERE kind = ? AND deleted = 0').all(kind).map((r) => r.media_id);
+        const held = (await db.getDb().prepare('SELECT media_id FROM search_media_pushes WHERE kind = ? AND deleted = 0').all(kind)).map((r) => r.media_id);
         for (const id of held) if (!seen.has(id)) await touch(kind, id, { media, now });
     }
     return n;

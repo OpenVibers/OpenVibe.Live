@@ -34,8 +34,8 @@ function listener() { return require('./listener'); }
 function mic() { return require('./mic'); }
 function words(t) { return String(t || '').split(/\s+/).filter(Boolean).length; }
 function cursorKey(uid) { return `arena_backfill_cursor_${uid}`; }
-function getCursor(uid) { const v = parseInt(db.getSetting(cursorKey(uid)), 10); return Number.isFinite(v) ? v : 0; }
-function setCursor(uid, id) { try { db.setSetting(cursorKey(uid), String(id)); } catch { /* */ } }
+async function getCursor(uid) { const v = parseInt(await db.getSetting(cursorKey(uid)), 10); return Number.isFinite(v) ? v : 0; }
+async function setCursor(uid, id) { try { await db.setSetting(cursorKey(uid), String(id)); } catch { /* */ } }
 function sqlToIso(ts) { return ts ? String(ts).replace(' ', 'T') + (String(ts).endsWith('Z') ? '' : 'Z') : null; }
 
 /** Cut a fighter's speech rows into judge-sized chunks. */
@@ -66,14 +66,14 @@ function saidAtFor(c, sec) {
 async function backfillFighter(uid, roster, budget) {
     const L = listener();
     const since = `-${DAYS} days`;
-    const rows = db.all(`SELECT e.id, e.stream_id, e.vod_id, e.start_sec, e.end_sec, e.text, s.started_at
+    const rows = await db.all(`SELECT e.id, e.stream_id, e.vod_id, e.start_sec, e.end_sec, e.text, s.started_at
                          FROM stream_timeline_events e LEFT JOIN streams s ON s.id = e.stream_id
                          WHERE e.user_id = ? AND e.kind = 'speech' AND e.id > ? AND e.created_at >= datetime('now', ?)
                            AND NOT EXISTS (SELECT 1 FROM streams l WHERE l.id = e.stream_id AND l.is_live = 1)
-                         ORDER BY e.stream_id, e.start_sec LIMIT 4000`, [uid, getCursor(uid), since]);
+                         ORDER BY e.stream_id, e.start_sec LIMIT 4000`, [uid, await getCursor(uid), since]);
     if (!rows.length) return { judged: 0, moments: 0, skipped: 0 };
     const chunks = chunk(rows).slice(0, MAX_CHUNKS_PER_FIGHTER);
-    let judged = 0, moments = 0, skipped = 0, lastId = getCursor(uid);
+    let judged = 0, moments = 0, skipped = 0, lastId = await getCursor(uid);
     for (const c of chunks) {
         if (budget.calls >= MAX_CALLS_PER_RUN) break;
         const text = c.lines.map(l => l.t).join(' ').replace(/\s+/g, ' ').slice(-1400);
@@ -89,20 +89,20 @@ async function backfillFighter(uid, roster, budget) {
                 const j = await L._judgeBeef(uid, m.userId, text, roster, { context: null, named: true, how: m.how });
                 if (j.aimed_at_target && j.quality >= (m.how === 'exact' ? 3 : 5)) {
                     const r = ref(j.best_line);
-                    if (mic().addMoment({ userId: uid, streamId: c.stream_id, vodId: r.vod_id, sec: r.sec, kind: 'callout', targetUserId: m.userId, aimedAt: mic().nameOf(m.userId), text: j.best_line || text.slice(0, 220), about: j.about, quality: j.quality, announcer: j.announcer, saidAt: saidAtFor(c, r.sec) })) moments++;
+                    if (await mic().addMoment({ userId: uid, streamId: c.stream_id, vodId: r.vod_id, sec: r.sec, kind: 'callout', targetUserId: m.userId, aimedAt: await mic().nameOf(m.userId), text: j.best_line || text.slice(0, 220), about: j.about, quality: j.quality, announcer: j.announcer, saidAt: saidAtFor(c, r.sec) })) moments++;
                     continue;
                 }
                 if (j.about_target) continue;   // neutral mention — not shit talk, and not free talk either
             }
             const j = await L._judgeMic(uid, text);
-            if (j.is_trash_talk && j.quality >= L.MIC_MIN_QUALITY && !mic().isDuplicate(uid, j.best_line)) {
+            if (j.is_trash_talk && j.quality >= L.MIC_MIN_QUALITY && !await mic().isDuplicate(uid, j.best_line)) {
                 const r = ref(j.best_line);
                 const target = j.aimed_at ? L._mentionsDetailed(j.aimed_at, uid, roster)[0] : null;
-                if (mic().addMoment({ userId: uid, streamId: c.stream_id, vodId: r.vod_id, sec: r.sec, kind: target ? 'callout' : 'trash', targetUserId: target ? target.userId : null, aimedAt: target ? mic().nameOf(target.userId) : (j.aimed_at || null), text: j.best_line || text.slice(0, 220), about: j.about, quality: j.quality, announcer: j.announcer, saidAt: saidAtFor(c, r.sec) })) moments++;
+                if (await mic().addMoment({ userId: uid, streamId: c.stream_id, vodId: r.vod_id, sec: r.sec, kind: target ? 'callout' : 'trash', targetUserId: target ? target.userId : null, aimedAt: target ? await mic().nameOf(target.userId) : (j.aimed_at || null), text: j.best_line || text.slice(0, 220), about: j.about, quality: j.quality, announcer: j.announcer, saidAt: saidAtFor(c, r.sec) })) moments++;
             }
         } catch (e) { console.warn(`[Arena] backfill judge (user ${uid}):`, e.message); }
     }
-    setCursor(uid, lastId);
+    await setCursor(uid, lastId);
     return { judged, moments, skipped, chunks: chunks.length };
 }
 
@@ -110,13 +110,13 @@ let _busy = false;
 /** Judge un-judged past speech for every roster fighter. Bounded; safe to call often. */
 async function run({ force = false } = {}) {
     if (_busy) return { busy: true };
-    if (!arena().arenaEnabled()) return { disabled: true };
+    if (!await arena().arenaEnabled()) return { disabled: true };
     _busy = true;
     const started = Date.now();
     const budget = { calls: 0 };
     const out = { fighters: 0, judged: 0, moments: 0, skipped: 0, calls: 0 };
     try {
-        const roster = arena().loadRoster(force);
+        const roster = await arena().loadRoster(force);
         for (const uid of roster.order) {
             if (budget.calls >= MAX_CALLS_PER_RUN) break;
             const r = await backfillFighter(uid, roster, budget);
@@ -124,7 +124,7 @@ async function run({ force = false } = {}) {
         }
         out.calls = budget.calls;
         if (out.judged || out.moments) console.log(`[Arena] backfill: ${out.moments} moment(s) from ${out.judged} judged chunk(s) across ${out.fighters} fighter(s) (${out.skipped} skipped as not spicy, ${Math.round((Date.now() - started) / 1000)} s)`);
-        if (out.moments) { try { arena().loadRoster(true); } catch { /* */ } }
+        if (out.moments) { try { await arena().loadRoster(true); } catch { /* */ } }
         return out;
     } finally { _busy = false; }
 }

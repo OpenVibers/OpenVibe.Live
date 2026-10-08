@@ -19,8 +19,8 @@ let _busy = false;
 
 // Local date key (server-local) — one egg per calendar day.
 function _today() { return new Date().toISOString().slice(0, 10); }
-function _load() { try { return JSON.parse(db.getState(SETTING) || '{}') || {}; } catch { return {}; } }
-function _due() { const p = _load(); return !p.date || p.date !== _today() || !Array.isArray(p.code) || !p.code.length; }
+async function _load() { try { return JSON.parse(await db.getState(SETTING) || '{}') || {}; } catch { return {}; } }
+async function _due() { const p = await _load(); return !p.date || p.date !== _today() || !Array.isArray(p.code) || !p.code.length; }
 
 // Deterministic daily fallback (no AI): a seeded 7-token sequence + generic hints.
 function _seededCode() {
@@ -97,7 +97,7 @@ async function _generate() {
     // The chat's current vibe: OpenVibe.Chat's global chat-AI overview (roadmap T3).
     let vibe = '';
     try { const g = await require('../chat/insight-client').getGlobal(); if (g && g.overview) vibe = String(g.overview).slice(0, 400); } catch { /* */ }
-    if (ai.isEnabled && ai.isEnabled() && ai.withinBudget && ai.withinBudget()) {
+    if (ai.isEnabled && await ai.isEnabled() && ai.withinBudget && await ai.withinBudget()) {
         // The prompt and its clue rules are OpenVibe.AI's versioned template live.easter_egg (WS-O task 2).
         try {
             const j = await aiService.structured('live.easter_egg', vibe ? { vibe } : {}, { meter: { kind: 'easter_egg', role: 'legacy' } });
@@ -129,11 +129,11 @@ async function _generate() {
 }
 
 async function tick(opts = {}) {
-    if (_busy || (!opts.force && !_due())) return;
+    if (_busy || (!opts.force && !await _due())) return;
     _busy = true;
     try {
         const egg = await _generate();
-        db.setState(SETTING, JSON.stringify({ date: _today(), ...egg, updated_at: Date.now() }));
+        await db.setState(SETTING, JSON.stringify({ date: _today(), ...egg, updated_at: Date.now() }));
         console.log(`[EasterEgg] New daily egg "${egg.title}" (${egg.code.length} keys, ${egg.ai ? 'AI' : 'fallback'})`);
     } catch (e) {
         console.warn('[EasterEgg] tick error:', e.message);
@@ -141,8 +141,8 @@ async function tick(opts = {}) {
 }
 
 // Public (safe) view — never leaks the code, only its length + hints.
-function getPublic() {
-    const p = _load();
+async function getPublic() {
+    const p = await _load();
     if (!p.code || p.date !== _today()) return null;
     const now = new Date();
     const nextReset = new Date(now); nextReset.setHours(24, 0, 0, 0);
@@ -171,8 +171,8 @@ function _rec(solverKey) {
 }
 function noteFail(solverKey) { const r = _rec(solverKey); r.n++; return r.n; }
 const REVEAL_AFTER_FAILS = 2;
-function reveal(solverKey, index) {
-    const p = _load();
+async function reveal(solverKey, index) {
+    const p = await _load();
     if (!p.code || p.date !== _today()) return { error: 'No secret today' };
     const r = _rec(solverKey);
     const i = Number.isInteger(index) ? index : [...Array(p.code.length).keys()].find(k => !r.revealed.has(k));
@@ -182,11 +182,11 @@ function reveal(solverKey, index) {
     r.revealed.add(i);
     return { index: i, token: p.code[i], revealed: [...r.revealed].sort((a, b) => a - b).map(k => ({ index: k, token: p.code[k] })) };
 }
-function revealedFor(solverKey) { const p = _load(); const r = _fails.get(solverKey); if (!p.code || !r || r.date !== _today()) return { fails: r ? r.n : 0, revealed: [] }; return { fails: r.n, revealed: [...r.revealed].sort((a, b) => a - b).map(k => ({ index: k, token: p.code[k] })) }; }
+async function revealedFor(solverKey) { const p = await _load(); const r = _fails.get(solverKey); if (!p.code || !r || r.date !== _today()) return { fails: r ? r.n : 0, revealed: [] }; return { fails: r.n, revealed: [...r.revealed].sort((a, b) => a - b).map(k => ({ index: k, token: p.code[k] })) }; }
 
 // Validate an attempt against today's secret code (server-side only).
-function checkSolution(sequence) {
-    const p = _load();
+async function checkSolution(sequence) {
+    const p = await _load();
     if (!p.code || p.date !== _today() || !Array.isArray(sequence)) return null;
     const norm = sequence.map(t => String(t || '').toLowerCase().trim()).filter(Boolean);
     // Match if the tail of the attempt equals the code (so trailing extra keys are fine).
@@ -206,5 +206,5 @@ module.exports = { start, tick, getPublic, checkSolution, noteFail, reveal, reve
 
 // CLI: force a fresh egg now — `node server/ai/easter-egg-job.js`
 if (require.main === module) {
-    tick({ force: true }).then(() => { const p = _load(); console.log('Egg:', JSON.stringify({ title: p.title, code: p.code, clues: p.clues, effect: p.effect, ai: p.ai })); process.exit(0); }).catch(e => { console.error(e); process.exit(1); });
+    tick({ force: true }).then(async () => { const p = await _load(); console.log('Egg:', JSON.stringify({ title: p.title, code: p.code, clues: p.clues, effect: p.effect, ai: p.ai })); process.exit(0); }).catch(e => { console.error(e); process.exit(1); });
 }

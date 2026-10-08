@@ -23,7 +23,7 @@ router.get('/user/:id', async (req, res) => {
     try {
         const uid = parseInt(req.params.id, 10);
         if (!Number.isFinite(uid)) return res.status(400).json({ error: 'Invalid user id' });
-        const user = db.getUserById ? db.getUserById(uid) : null;
+        const user = db.getUserById ? await db.getUserById(uid) : null;
         const insight = await insights.getUser(uid);
 
         // If this user is a streamer with an AI overview, lead the popover with who they
@@ -31,13 +31,13 @@ router.get('/user/:id', async (req, res) => {
         // before the chat-behavior insight.
         let streamer = null;
         try {
-            const ov = db.getStreamerOverview(uid);
+            const ov = await db.getStreamerOverview(uid);
             if (ov && (ov.overview || ov.overview_short)) {
                 // 8 was hardcoded, and duplicates meant a viewer saw ~4 distinct moments —
                 // the "memories don't include everything" complaint. Allow a caller to ask
                 // for more, and default high enough to read as a real timeline.
                 const memLimit = Math.min(200, Math.max(1, parseInt(req.query.memories, 10) || 40));
-                const mems = (db.getStreamMemoriesByUser(uid, memLimit) || []).map(m => ({
+                const mems = (await db.getStreamMemoriesByUser(uid, memLimit) || []).map(m => ({
                     description: m.description || '',
                     created_at: m.created_at,
                     stream_id: m.stream_id,
@@ -67,7 +67,7 @@ router.get('/user/:id', async (req, res) => {
 // NOW and regenerates the AI synthesis in the background for next time (≤1 cheap LLM call
 // per user per day, only when the tab is viewed). Falls back to concatenation with no AI.
 const _combinedBusy = new Set();
-function _combinedOverview(userId, streamerOv, chatIns) {
+async function _combinedOverview(userId, streamerOv, chatIns) {
     const sOv = (streamerOv && (streamerOv.overview || streamerOv.overview_short)) || '';
     const cOv = (chatIns && (chatIns.overview_alltime || chatIns.overview_24h)) || '';
     if (!sOv && !cOv) return null;
@@ -78,18 +78,18 @@ function _combinedOverview(userId, streamerOv, chatIns) {
     const srcLen = sOv.length + '|' + cOv.length; // cheap change-detector
     let cachedText = null, fresh = false;
     try {
-        const raw = db.getState(key);
+        const raw = await db.getState(key);
         if (raw) { const j = JSON.parse(raw); cachedText = j.text ? String(j.text).replace(/^\s*(combined\s+overview|overview)\s*[:\-–]\s*/i, '').trim() : null; fresh = j.src === srcLen && (Date.now() - (j.generated_at || 0) < 24 * 60 * 60 * 1000); }
     } catch { /* rebuild */ }
     if (cachedText && fresh) return cachedText;
 
     // Regenerate in the background (best-effort) so the request never blocks on the LLM.
     const ai = require('./ai-analysis');
-    if (!_combinedBusy.has(userId) && ai.isEnabled && ai.isEnabled() && ai.withinBudget && ai.withinBudget()) {
+    if (!_combinedBusy.has(userId) && ai.isEnabled && await ai.isEnabled() && ai.withinBudget && await ai.withinBudget()) {
         _combinedBusy.add(userId);
         // The prompt is OpenVibe.AI's versioned template live.person.overview (WS-O task 2).
         Promise.resolve(require('./ai-service').structured('live.person.overview', { as_streamer: String(sOv).slice(0, 4000), as_chatter: String(cOv).slice(0, 4000) }, { meter: { kind: 'combined_overview', role: 'legacy', ownerUserId: userId } }))
-            .then(out => { const clean = out && out.overview ? String(out.overview).trim() : ''; if (clean) { try { db.setState(key, JSON.stringify({ text: clean, generated_at: Date.now(), src: srcLen })); } catch { /* */ } } })
+            .then(async out => { const clean = out && out.overview ? String(out.overview).trim() : ''; if (clean) { try { await db.setState(key, JSON.stringify({ text: clean, generated_at: Date.now(), src: srcLen })); } catch { /* */ } } })
             .catch(() => { })
             .finally(() => _combinedBusy.delete(userId));
     }
@@ -101,23 +101,23 @@ function _combinedOverview(userId, streamerOv, chatIns) {
 // and the raw overview is far too long for a title). Batches untitled sessions into one cheap
 // LLM call, stores streams.ai_title, and busts the timeline cache so they appear next load.
 const _titlingBusy = new Set();
-function _ensureSessionTitles(userId) {
+async function _ensureSessionTitles(userId) {
     const ai = require('./ai-analysis');
-    if (_titlingBusy.has(userId) || !(ai.isEnabled && ai.isEnabled() && ai.withinBudget && ai.withinBudget())) return;
-    const pending = db.getUntitledAiSessions(userId, 20);
+    if (_titlingBusy.has(userId) || !(ai.isEnabled && await ai.isEnabled() && ai.withinBudget && await ai.withinBudget())) return;
+    const pending = await db.getUntitledAiSessions(userId, 20);
     if (!pending.length) return;
     _titlingBusy.add(userId);
     // The prompt is OpenVibe.AI's versioned template live.stream.titles (WS-O task 2); Live sends the summaries.
     const summaries = pending.map(p => String(p.ai_overview_short || p.ai_overview || '').replace(/\s+/g, ' ').slice(0, 200) || '(no summary)');
     Promise.resolve(require('./ai-service').structured('live.stream.titles', { summaries }, { meter: { kind: 'session_titles', role: 'legacy', ownerUserId: userId } }))
-        .then(out => {
+        .then(async out => {
             if (!out || !Array.isArray(out.titles)) return;
             let touched = 0;
             for (const x of out.titles) {
                 const p = pending[x.index];
-                if (p && x.title) { db.setStreamAiTitle(p.id, String(x.title).replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 80)); touched++; }
+                if (p && x.title) { await db.setStreamAiTitle(p.id, String(x.title).replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 80)); touched++; }
             }
-            if (touched) db.clearAiTimelineCache(userId);
+            if (touched) await db.clearAiTimelineCache(userId);
         })
         .catch(() => { })
         .finally(() => _titlingBusy.delete(userId));
@@ -129,15 +129,15 @@ function _ensureSessionTitles(userId) {
 router.get('/timeline/:username', async (req, res) => {
     try {
         const uname = String(req.params.username || '').trim();
-        const user = db.getUserByUsername ? db.getUserByUsername(uname) : null;
+        const user = db.getUserByUsername ? await db.getUserByUsername(uname) : null;
         if (!user) return res.status(404).json({ error: 'Channel not found' });
 
         // Full timeline, cached 15 min. On a miss, each session's public VOD comes from OpenVibe.Media;
         // a timeline built while Media did not answer is served but not cached.
-        let timeline = db.readStreamerAiTimelineCache(user.id);
+        let timeline = await db.readStreamerAiTimelineCache(user.id);
         if (!timeline) {
             const vods = await require('../media-proxy/lookups').publicVodIdsByStream(user.id);
-            timeline = db.buildStreamerAiTimeline(user.id, vods.byStream, { store: vods.complete });
+            timeline = await db.buildStreamerAiTimeline(user.id, vods.byStream, { store: vods.complete });
         }
         const allSessions = timeline.sessions || [];
         const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
@@ -157,8 +157,8 @@ router.get('/timeline/:username', async (req, res) => {
         let chatInsight, combinedOverview;
         if (first) {
             chatInsight = await insights.getUser(user.id);
-            try { combinedOverview = _combinedOverview(user.id, timeline.overview, chatInsight); } catch { combinedOverview = null; }
-            try { _ensureSessionTitles(user.id); } catch { /* background titling is best-effort */ }
+            try { combinedOverview = await _combinedOverview(user.id, timeline.overview, chatInsight); } catch { combinedOverview = null; }
+            try { await _ensureSessionTitles(user.id); } catch { /* background titling is best-effort */ }
         }
 
         res.json({
@@ -188,21 +188,21 @@ router.get('/timeline/:username', async (req, res) => {
  * channel has no multilingual model — the client hides the panel rather than showing an
  * empty one.
  */
-router.get('/live-captions/:username', (req, res) => {
+router.get('/live-captions/:username', async (req, res) => {
     try {
-        const user = db.getUserByUsername(String(req.params.username || '').trim());
+        const user = await db.getUserByUsername(String(req.params.username || '').trim());
         if (!user) return res.status(404).json({ error: 'Channel not found' });
         const i18n = require('../i18n/translate');
         const transcribe = require('./transcribe');
-        const code = i18n.channelLanguage(user.id);
+        const code = await i18n.channelLanguage(user.id);
         let timelineOn = false;
-        try { const v = db.getSetting('ai_timeline_enabled'); timelineOn = String(v) === 'true' || String(v) === '1'; } catch { /* */ }
+        try { const v = await db.getSetting('ai_timeline_enabled'); timelineOn = String(v) === 'true' || String(v) === '1'; } catch { /* */ }
         let whisperOk = false, multi = false;
         try { whisperOk = transcribe.available(); multi = !!transcribe.multilingualModel(); } catch { /* */ }
         const available = timelineOn && whisperOk && (code === 'en' || multi);
-        const live = (db.getLiveStreamsByUserId(user.id) || [])[0] || null;
+        const live = (await db.getLiveStreamsByUserId(user.id) || [])[0] || null;
         const after = Math.max(0, parseInt(req.query.after, 10) || 0);
-        const lines = (live && available) ? db.getTimelineSpeechSince(live.id, after, 40).map(l => ({
+        const lines = (live && available) ? (await db.getTimelineSpeechSince(live.id, after, 40)).map(l => ({
             id: l.id, t: l.start_sec, text: l.text, text_en: l.text_en || null, lang: l.lang || 'en', at: l.created_at,
         })) : [];
         res.set('Cache-Control', 'no-store');
@@ -244,7 +244,7 @@ router.get('/vod-transcripts', async (req, res) => {
             let events = [];
             // Prefer the timeline: it covers the whole stream and carries sound events.
             try {
-                const rows = db.getTimelineByVod(vodId);
+                const rows = await db.getTimelineByVod(vodId);
                 for (const r of rows) {
                     if (r.kind === 'speech') segments.push({ start: r.start_sec, end: r.end_sec, text: r.text });
                     else events.push({ start: r.start_sec, end: r.end_sec, label: r.label, confidence: r.confidence });
@@ -258,7 +258,7 @@ router.get('/vod-transcripts', async (req, res) => {
             // full 3548. Sound events only exist on the timeline, so they are kept either way.
             let blob = [];
             try {
-                const st = db.getVodAiState(vodId);
+                const st = await db.getVodAiState(vodId);
                 if (st && st.ai_transcript_json) {
                     const parsed = JSON.parse(st.ai_transcript_json);
                     if (Array.isArray(parsed)) blob = parsed;
@@ -268,7 +268,7 @@ router.get('/vod-transcripts', async (req, res) => {
             if (spoken(blob) > spoken(segments)) segments = blob;
             segments.sort((a, b) => (Number(a.start) || 0) - (Number(b.start) || 0));
             let overviewShort = null;
-            try { overviewShort = (db.getVodAiState(vodId) || {}).ai_overview_short || null; } catch { /* */ }
+            try { overviewShort = (await db.getVodAiState(vodId) || {}).ai_overview_short || null; } catch { /* */ }
             // `segments` may be [] for a VOD whose audio had no speech; that is a real
             // answer, not a missing one, so transcript stays null and segments stays [].
 
@@ -291,7 +291,7 @@ router.get('/transcript/:streamId', async (req, res) => {
     try {
         const sid = parseInt(req.params.streamId, 10);
         if (!Number.isFinite(sid)) return res.status(400).json({ error: 'Invalid stream id' });
-        const segments = db.getStreamTranscriptSegments(sid) || [];
+        const segments = await db.getStreamTranscriptSegments(sid) || [];
         let vodId = null;
         try {
             // VODs live in OpenVibe.Media now — resolve the stream's VOD from there.
@@ -304,9 +304,9 @@ router.get('/transcript/:streamId', async (req, res) => {
         // "what was heard" as well as "what was said". Empty for streams captured before
         // the timeline existed, which the frontend treats as speech-only.
         let events = [];
-        try { events = db.getTimeline(sid, { kind: 'sound', limit: 2000 }) || []; } catch { /* */ }
+        try { events = await db.getTimeline(sid, { kind: 'sound', limit: 2000 }) || []; } catch { /* */ }
         let coverageSec = 0;
-        try { coverageSec = db.getTimelineCoverage(sid) || 0; } catch { /* */ }
+        try { coverageSec = await db.getTimelineCoverage(sid) || 0; } catch { /* */ }
         res.json({ streamId: sid, vodId, segments, events, coverageSec });
     } catch (err) {
         res.status(500).json({ error: 'Failed to load transcript' });

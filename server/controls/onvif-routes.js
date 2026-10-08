@@ -141,7 +141,7 @@ router.post('/cameras', requireAuth, async (req, res) => {
 
         // Check stream ownership if stream_id provided
         if (stream_id) {
-            const stream = db.getStreamById(stream_id);
+            const stream = await db.getStreamById(stream_id);
             if (!stream) {
                 return res.status(404).json({ error: 'Stream not found' });
             }
@@ -150,7 +150,7 @@ router.post('/cameras', requireAuth, async (req, res) => {
             }
         }
 
-        const result = db.createCameraProfile({
+        const result = await db.createCameraProfile({
             user_id: req.user.id,
             stream_id: stream_id || null,
             name,
@@ -180,9 +180,9 @@ router.post('/cameras', requireAuth, async (req, res) => {
  * GET /api/onvif/cameras
  * List all cameras for authenticated user
  */
-router.get('/cameras', requireAuth, (req, res) => {
+router.get('/cameras', requireAuth, async (req, res) => {
     try {
-        const cameras = db.getCameraProfilesByUser(req.user.id);
+        const cameras = await db.getCameraProfilesByUser(req.user.id);
         
         // Strip password hashes for safety
         const safe = cameras.map(cam => ({
@@ -210,7 +210,7 @@ router.get('/cameras', requireAuth, (req, res) => {
  */
 router.get('/cameras/:id', requireAuth, async (req, res) => {
     try {
-        const camera = db.getCameraProfile(req.params.id);
+        const camera = await db.getCameraProfile(req.params.id);
         
         if (!camera) {
             return res.status(404).json({ error: 'Camera not found' });
@@ -263,7 +263,7 @@ router.get('/cameras/:id', requireAuth, async (req, res) => {
  */
 router.put('/cameras/:id', requireAuth, async (req, res) => {
     try {
-        const camera = db.getCameraProfile(req.params.id);
+        const camera = await db.getCameraProfile(req.params.id);
 
         if (!camera) {
             return res.status(404).json({ error: 'Camera not found' });
@@ -299,7 +299,7 @@ router.put('/cameras/:id', requireAuth, async (req, res) => {
             }
         }
 
-        db.updateCameraProfile(camera.id, {
+        await db.updateCameraProfile(camera.id, {
             name: name || camera.name,
             onvif_url: onvif_url || camera.onvif_url,
             username: username || camera.username,
@@ -322,9 +322,9 @@ router.put('/cameras/:id', requireAuth, async (req, res) => {
  * DELETE /api/onvif/cameras/:id
  * Delete camera profile (cascades to presets and control assignments)
  */
-router.delete('/cameras/:id', requireAuth, (req, res) => {
+router.delete('/cameras/:id', requireAuth, async (req, res) => {
     try {
-        const camera = db.getCameraProfile(req.params.id);
+        const camera = await db.getCameraProfile(req.params.id);
 
         if (!camera) {
             return res.status(404).json({ error: 'Camera not found' });
@@ -334,7 +334,7 @@ router.delete('/cameras/:id', requireAuth, (req, res) => {
             return res.status(403).json({ error: 'Not your camera' });
         }
 
-        db.deleteCameraProfile(camera.id);
+        await db.deleteCameraProfile(camera.id);
         clientCache.delete(camera.id);
 
         res.json({ message: 'Camera deleted' });
@@ -347,9 +347,9 @@ router.delete('/cameras/:id', requireAuth, (req, res) => {
  * GET /api/onvif/cameras/:id/presets
  * List presets for a camera
  */
-router.get('/cameras/:id/presets', requireAuth, (req, res) => {
+router.get('/cameras/:id/presets', requireAuth, async (req, res) => {
     try {
-        const camera = db.getCameraProfile(req.params.id);
+        const camera = await db.getCameraProfile(req.params.id);
 
         if (!camera) {
             return res.status(404).json({ error: 'Camera not found' });
@@ -359,7 +359,7 @@ router.get('/cameras/:id/presets', requireAuth, (req, res) => {
             return res.status(403).json({ error: 'Not your camera' });
         }
 
-        const presets = db.getCameraPresetsByCamera(camera.id);
+        const presets = await db.getCameraPresetsByCamera(camera.id);
         res.json({ presets });
     } catch (err) {
         res.status(500).json({ error: 'Failed to list presets' });
@@ -372,7 +372,7 @@ router.get('/cameras/:id/presets', requireAuth, (req, res) => {
  */
 router.post('/cameras/:id/presets', requireAuth, async (req, res) => {
     try {
-        const camera = db.getCameraProfile(req.params.id);
+        const camera = await db.getCameraProfile(req.params.id);
 
         if (!camera) {
             return res.status(404).json({ error: 'Camera not found' });
@@ -393,7 +393,7 @@ router.post('/cameras/:id/presets', requireAuth, async (req, res) => {
         const clampedTilt = Math.max(0, Math.min(1, parseFloat(tilt)));
         const clampedZoom = Math.max(0, Math.min(1, parseFloat(zoom)));
 
-        const result = db.createCameraPreset({
+        const result = await db.createCameraPreset({
             camera_id: camera.id,
             name,
             pan: clampedPan,
@@ -417,9 +417,9 @@ router.post('/cameras/:id/presets', requireAuth, async (req, res) => {
  * DELETE /api/onvif/cameras/:cameraId/presets/:presetId
  * Delete a preset
  */
-router.delete('/cameras/:cameraId/presets/:presetId', requireAuth, (req, res) => {
+router.delete('/cameras/:cameraId/presets/:presetId', requireAuth, async (req, res) => {
     try {
-        const camera = db.getCameraProfile(req.params.cameraId);
+        const camera = await db.getCameraProfile(req.params.cameraId);
 
         if (!camera) {
             return res.status(404).json({ error: 'Camera not found' });
@@ -429,12 +429,12 @@ router.delete('/cameras/:cameraId/presets/:presetId', requireAuth, (req, res) =>
             return res.status(403).json({ error: 'Not your camera' });
         }
 
-        const preset = db.getCameraPreset(req.params.presetId);
+        const preset = await db.getCameraPreset(req.params.presetId);
         if (!preset || preset.camera_id !== camera.id) {
             return res.status(404).json({ error: 'Preset not found' });
         }
 
-        db.deleteCameraPreset(preset.id);
+        await db.deleteCameraPreset(preset.id);
         res.json({ message: 'Preset deleted' });
     } catch (err) {
         res.status(500).json({ error: 'Failed to delete preset' });

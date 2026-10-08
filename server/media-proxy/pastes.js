@@ -83,7 +83,7 @@ communityRouter.post('/:slug/set-avatar', requireAuth, async (req, res) => {
         if (!paste) return res.status(404).json({ error: 'Paste not found' });
         if (paste.type !== 'screenshot' || !paste.screenshot_url) return res.status(400).json({ error: 'That paste is not an image' });
         const avatarUrl = media.publicUrl(paste.screenshot_url) || paste.screenshot_url;
-        db.updateUserAvatar(req.user.id, avatarUrl, null);
+        await db.updateUserAvatar(req.user.id, avatarUrl, null);
         try { require('../utils/notify').reportAvatarChange({ id: req.user.id, avatar_url: avatarUrl }); } catch { /* next sign-in */ }
         res.json({ success: true, avatar_url: avatarUrl });
     } catch (err) {

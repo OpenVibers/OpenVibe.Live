@@ -63,7 +63,7 @@ async function _fetchJson(method, path, body, timeoutMs, retried = false) {
     const json = await res.json().catch(() => null);
     if (res.status === 401 && !retried) {                     // stale/rotated token: fetch a new one once
         principal.invalidate(AUDIENCE);
-        return _fetchJson(method, path, body, timeoutMs, true);
+        return await _fetchJson(method, path, body, timeoutMs, true);
     }
     if (res.status === 429) { warn(`quota: ${(json && json.detail) || 'refused'} (retry after ${res.headers.get('retry-after') || '?'}s)`); return null; }
     if (!res.ok && res.status !== 202) { warn(`${method} ${path} -> ${res.status} ${(json && (json.code || json.detail)) || ''}`); return null; }

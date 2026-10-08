@@ -83,18 +83,18 @@ function translatable(text) {
 
 // ── Channel language ─────────────────────────────────────────────────────────────
 const _chanCache = new Map(); // userId → { lang, at }
-function channelLanguage(userId) {
+async function channelLanguage(userId) {
     const id = parseInt(userId, 10);
     if (!id) return 'en';
     const hit = _chanCache.get(id);
     if (hit && Date.now() - hit.at < 5 * 60_000) return hit.lang;
     let lang = 'en';
     try {
-        const ch = db.getChannelByUserId(id);
+        const ch = await db.getChannelByUserId(id);
         const explicit = String(ch?.chat_language || 'auto').toLowerCase();
         if (explicit !== 'auto' && ALLOWED.has(explicit)) lang = explicit;
         else {
-            const u = db.getUserById(id);
+            const u = await db.getUserById(id);
             // Bio wins (it is where "I don't speak English" lives); a name/title only if it is
             // clearly in another script.
             const bioLang = detectForeignInText(u?.bio || '');
@@ -107,22 +107,22 @@ function channelLanguage(userId) {
 }
 function invalidateChannel(userId) { _chanCache.delete(parseInt(userId, 10)); }
 /** { code, name, flag, explicit } for API responses. */
-function channelMeta(userId) {
-    const code = channelLanguage(userId);
+async function channelMeta(userId) {
+    const code = await channelLanguage(userId);
     let explicit = false;
-    try { const ch = db.getChannelByUserId(parseInt(userId, 10)); explicit = !!(ch && ch.chat_language && ch.chat_language !== 'auto'); } catch { /* */ }
-    return { code, name: langName(code), flag: langFlag(code), explicit, translate: available() };
+    try { const ch = await db.getChannelByUserId(parseInt(userId, 10)); explicit = !!(ch && ch.chat_language && ch.chat_language !== 'auto'); } catch { /* */ }
+    return { code, name: langName(code), flag: langFlag(code), explicit, translate: await available() };
 }
 
 // ── Translation (LLM, cached) ────────────────────────────────────────────────────
-function siteEnabled() {
+async function siteEnabled() {
     try {
-        const v = db.getSetting('chat_translate_enabled');
+        const v = await db.getSetting('chat_translate_enabled');
         if (v === undefined || v === null || v === '') return true;   // default ON
         return !(String(v) === 'false' || String(v) === '0');
     } catch { return true; }
 }
-function available() { return !!(llm && aiService && llm.isEnabled && llm.isEnabled() && siteEnabled()); }
+async function available() { return !!(llm && aiService && llm.isEnabled && llm.isEnabled() && await siteEnabled()); }
 
 let _tableReady = false;
 function _ensureTable() {
@@ -143,21 +143,21 @@ function _memGet(k) { const v = _mem.get(k); if (v !== undefined) { _mem.delete(
 function _memSet(k, v) { _mem.set(k, v); if (_mem.size > MEM_MAX) _mem.delete(_mem.keys().next().value); }
 function cacheKey(text, from, to) { return crypto.createHash('sha1').update(`${from}|${to}|${String(text).trim()}`).digest('hex'); }
 /** A cached translation: the text, '' when the model said it needs none, undefined when not cached. */
-function cached(text, from, to) {
+async function cached(text, from, to) {
     const key = cacheKey(text, from, to);
     const hit = _memGet(key);
     if (hit !== undefined) return hit;
     _ensureTable();
     try {
-        const row = db.get('SELECT text FROM translations WHERE key = ?', [key]);
+        const row = await db.get('SELECT text FROM translations WHERE key = ?', [key]);
         if (row && row.text) { _memSet(key, row.text); return row.text; }
     } catch { /* no table yet */ }
     return undefined;
 }
-function remember(text, from, to, out) {
+async function remember(text, from, to, out) {
     const key = cacheKey(text, from, to);
     _memSet(key, out || '');
-    if (out) { try { db.run('INSERT OR REPLACE INTO translations (key, src, dst, text) VALUES (?, ?, ?, ?)', [key, from, to, out]); } catch { /* */ } }
+    if (out) { try { await db.run('INSERT OR REPLACE INTO translations (key, src, dst, text) VALUES (?, ?, ?, ?)', [key, from, to, out]); } catch { /* */ } }
 }
 
 let _inflight = 0;
@@ -182,18 +182,18 @@ function _release() {
 async function translate(text, { from = 'auto', to = 'en', context = 'chat', maxTokens } = {}) {
     if (!translatable(text)) return null;
     if (from === to) return null;
-    const hit = cached(text, from, to);
+    const hit = await cached(text, from, to);
     if (hit !== undefined) return hit || null;
-    if (!available()) return null;
+    if (!await available()) return null;
     const ok = await _slot();
     if (!ok) return null;
     try {
         // The prompt lives in OpenVibe.AI (workflow live.translate).
         const o = await aiService.structured('live.translate', { text: String(text).trim(), from, to, context, max_tokens: maxTokens || undefined });
-        if (o && o.unchanged) { remember(text, from, to, ''); return null; }
+        if (o && o.unchanged) { await remember(text, from, to, ''); return null; }
         const out = o && typeof o.text === 'string' ? o.text.trim() : '';
         if (!out) return null;
-        remember(text, from, to, out);
+        await remember(text, from, to, out);
         return out;
     } catch { return null; }
     finally { _release(); }
@@ -204,13 +204,13 @@ async function translate(text, { from = 'auto', to = 'en', context = 'chat', max
  * @returns {Promise<{from:string,to:string,text:string}|null>}
  */
 async function translateChatMessage(message, channelUserId) {
-    if (!available() || !translatable(message)) return null;
+    if (!await available() || !translatable(message)) return null;
     const from = detectLang(message);
     if (!from) return null;
     // Translating foreign text for everyone spends a model call on every such line, so only when detection is sure
     // (a lone 草 or a two-word line stays as it is; each viewer's translate button covers those).
     if (from !== 'en' && OVLang.detect(message).confidence < 0.85) return null;
-    const chan = channelLanguage(channelUserId);
+    const chan = await channelLanguage(channelUserId);
     let to = null;
     if (from !== 'en') to = 'en';                 // foreign → English, always
     else if (chan !== 'en') to = chan;            // English in a Japanese channel → Japanese
@@ -227,7 +227,7 @@ async function translateLines(lines, { from, to = 'en', context = 'speech' } = {
     const src = (lines || []).map(l => String(l || '').trim());
     const out = new Array(src.length).fill(null);
     const idx = src.map((l, i) => translatable(l) ? i : -1).filter(i => i >= 0);
-    if (!idx.length || !available()) return out;
+    if (!idx.length || !await available()) return out;
     const joined = idx.map(i => src[i].replace(/\s*\n\s*/g, ' ')).join('\n');
     const t = await translate(joined, { from, to, context, maxTokens: 1200 });
     if (!t) return out;
@@ -258,7 +258,7 @@ async function translateMany(texts, { to = 'en', context = 'chat' } = {}) {
         if (hit !== undefined) { out[i] = hit ? { from, text: hit } : { same: true, from }; return; }
         need.push({ i, t, from });
     });
-    if (!need.length || !available()) return out;
+    if (!need.length || !await available()) return out;
     // One model call per group whose joined text stays under the translate() input cap (1200 chars): a busy chat's
     // batch of 20 lines used to exceed it, and the whole batch came back untranslated.
     const groups = [];

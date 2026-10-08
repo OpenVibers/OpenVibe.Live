@@ -66,36 +66,36 @@ function dropped(name, why = 'has no Chat ingress target and was dropped') {
     console.warn(`[Chat] ${name} ${why}`);
 }
 
-function event(target, frame, { key } = {}) {
+async function event(target, frame, { key } = {}) {
     if (!ingress()) { dropped(`event(${target.kind})`, 'dropped — Live runs no chat server (CHAT_AUTHORITY is not chat)'); return undefined; }
     const t = { kind: target.kind };
     if (target.id != null) t.id = Number(target.id);
-    return client.event({ key: key ? client.key('events', key) : undefined, target: t, frame: defined(frame) });
+    return await client.event({ key: key ? client.key('events', key) : undefined, target: t, frame: defined(frame) });
 }
 
-function moderate(action, fields, { key } = {}) {
-    return client.moderation(ints({ ...defined(fields), action, key: key ? client.key('moderation', key) : undefined }));
+async function moderate(action, fields, { key } = {}) {
+    return await client.moderation(ints({ ...defined(fields), action, key: key ? client.key('moderation', key) : undefined }));
 }
 
 const LOG_FIELDS = ['scope_type', 'scope_id', 'actor_user_id', 'target_user_id', 'action_type', 'details'];
 // Chat owns the moderation log (its moderation_actions; Live keeps no copy), so this always goes
 // through Chat's ingress — in every mode, like every other moderation write.
-function logModeration(entry) {
+async function logModeration(entry) {
     const fields = {};
     for (const k of LOG_FIELDS) if (entry[k] != null) fields[k] = entry[k];
     if (typeof fields.scope_id === 'string' && fields.scope_type !== 'room' && /^\d+$/.test(fields.scope_id)) fields.scope_id = Number(fields.scope_id);
-    return moderate('log', fields);
+    return await moderate('log', fields);
 }
 
-function disconnect({ userId, ip, streamId } = {}) {
+async function disconnect({ userId, ip, streamId } = {}) {
     if (!ingress()) { dropped('disconnectUser', 'dropped — Live runs no chat server (CHAT_AUTHORITY is not chat)'); return undefined; }
-    return moderate('disconnect', { user_id: userId || undefined, ip: ip || undefined, stream_id: streamId || undefined });
+    return await moderate('disconnect', { user_id: userId || undefined, ip: ip || undefined, stream_id: streamId || undefined });
 }
 const disconnectUser = disconnect;
 
 /** legacy: what to run when Live is the chat authority (cache hints had no single local call). */
-function invalidate(hint, legacy) {
-    if (ingress()) return client.invalidate(defined(hint));
+async function invalidate(hint, legacy) {
+    if (ingress()) return await client.invalidate(defined(hint));
     return legacy ? legacy() : undefined;
 }
 
@@ -104,15 +104,15 @@ function after(value, fn) {
 }
 
 // ── The pushes modules still make on the chat server (names kept from ChatServer) ─────────────
-function broadcastToStream(streamId, frame) { return event({ kind: 'stream', id: streamId }, frame); }
-function broadcastToChannelRoom(channelUserId, streamId, frame) { return event({ kind: 'channel', id: channelUserId }, frame); }
-function broadcastGlobal(frame) { return event({ kind: 'global' }, frame); }
-function broadcastAll(frame) { return event({ kind: 'all' }, frame); }
-function sendDm(userId, frame) { return event({ kind: 'user', id: userId }, frame); }
-function sendUserUpdate(userId, u) {
+async function broadcastToStream(streamId, frame) { return await event({ kind: 'stream', id: streamId }, frame); }
+async function broadcastToChannelRoom(channelUserId, streamId, frame) { return await event({ kind: 'channel', id: channelUserId }, frame); }
+async function broadcastGlobal(frame) { return await event({ kind: 'global' }, frame); }
+async function broadcastAll(frame) { return await event({ kind: 'all' }, frame); }
+async function sendDm(userId, frame) { return await event({ kind: 'user', id: userId }, frame); }
+async function sendUserUpdate(userId, u) {
     const id = Number(userId) || undefined;
     const userData = u ? { id, username: u.username, display_name: u.display_name || null, role: u.role || null, avatar_url: u.avatar_url || null, profile_color: u.profile_color || null } : undefined;
-    return invalidate({ user: id, user_data: userData });
+    return await invalidate({ user: id, user_data: userData });
 }
 // No ingress target — the old ChatServer forwarded these to Live's own other rooms/slots; Chat fans a
 // channel event out to the channel's rooms itself, and speaks/sounds from the message's own fields.
@@ -139,9 +139,9 @@ function _observeDb() {
     for (const [fn, hint] of Object.entries(OBSERVED_DB)) {
         const orig = db[fn];
         if (typeof orig !== 'function' || orig._chatObserved) continue;
-        const observed = (...args) => {
+        const observed = async (...args) => {
             const result = orig(...args);
-            try { invalidate(hint(args)); } catch { /* non-critical */ }
+            try { await invalidate(hint(args)); } catch { /* non-critical */ }
             return result;
         };
         observed._chatObserved = true;
@@ -160,12 +160,12 @@ async function _pollPresence() {
 }
 
 /** Start the presence poll (and the cache-hint observers). Called once at startup; no-op outside chat mode. */
-function init() {
+async function init() {
     if (!ingress()) return null;
     if (!_dbObserved) { _dbObserved = true; _observeDb(); }
     if (_presenceTimer) return null;
     _pollPresence();   // floating-ok: _pollPresence catches and keeps the last snapshot
-    _presenceTimer = setInterval(() => _pollPresence(), PRESENCE_MS);
+    _presenceTimer = setInterval(async () => await _pollPresence(), PRESENCE_MS);
     if (_presenceTimer.unref) _presenceTimer.unref();
     console.log('[Chat] CHAT_AUTHORITY=chat — chat runs in OpenVibe.Chat; Live delivers through its ingress');
     return null;
@@ -219,11 +219,11 @@ function getClientIp(req) {
 }
 
 /** Warm the in-memory anonMap from DB on first use, so anon numbers survive server restarts. */
-function _loadAnonMappings() {
+async function _loadAnonMappings() {
     if (_anonDbLoaded) return;
     _anonDbLoaded = true;
     try {
-        const { maxNum, mappings } = db.loadAnonMappings();
+        const { maxNum, mappings } = await db.loadAnonMappings();
         for (const [ip, num] of mappings) anonMap.set(ip, num);
         nextAnonId = maxNum + 1;
         if (mappings.size > 0) {
@@ -252,14 +252,14 @@ async function _resolveUnifiedAnonNum(ip) {
                 const num = data.anon_number;
                 anonMap.set(ip, num);
                 if (num >= nextAnonId) nextAnonId = num + 1;
-                try { db.getOrCreateAnonNum(ip); } catch { /* ok */ }   // warmup cache
+                try { await db.getOrCreateAnonNum(ip); } catch { /* ok */ }   // warmup cache
                 return num;
             }
             throw new Error(`HTTP ${res.status}`);
         } catch (e) {
             console.warn(`[Chat] Unified anon resolve failed for ${ip}, falling back to local:`, e.message);
             try {
-                const num = db.getOrCreateAnonNum(ip);
+                const num = await db.getOrCreateAnonNum(ip);
                 anonMap.set(ip, num);
                 if (num >= nextAnonId) nextAnonId = num + 1;
                 return num;
@@ -277,14 +277,14 @@ async function _resolveUnifiedAnonNum(ip) {
     return promise;
 }
 
-function getAnonIdForIp(ip) {
-    _loadAnonMappings();
+async function getAnonIdForIp(ip) {
+    await _loadAnonMappings();
     const anonKey = normalizeIp(ip);
     if (anonMap.has(anonKey)) return `anon${anonMap.get(anonKey)}`;
     // Synchronous fallback for immediate use — kick off the unified resolve in the background.
     _resolveUnifiedAnonNum(anonKey).catch(() => {});
     try {
-        const num = db.getOrCreateAnonNum(anonKey);
+        const num = await db.getOrCreateAnonNum(anonKey);
         anonMap.set(anonKey, num);
         if (num >= nextAnonId) nextAnonId = num + 1;
         return `anon${num}`;
@@ -295,17 +295,17 @@ function getAnonIdForIp(ip) {
     }
 }
 
-function getAnonIdForConnection(ip, streamId = null) {
+async function getAnonIdForConnection(ip, streamId = null) {
     const key = normalizeIp(ip);
     const hit = (_presence.anons || []).find((a) => a.ip === key && (streamId == null || (a.stream_id || null) === streamId));
-    return hit ? hit.anon_id : getAnonIdForIp(key);
+    return hit ? hit.anon_id : await getAnonIdForIp(key);
 }
 
 /** The anon number for an address (Network's unified resolve, else Live's table) — for Chat. */
 async function resolveAnon(ip) {
     const key = normalizeIp(ip);
     const num = await _resolveUnifiedAnonNum(key);
-    return { anon_number: num, first_seen: db.getAnonFirstSeen(key) };
+    return { anon_number: num, first_seen: await db.getAnonFirstSeen(key) };
 }
 
 module.exports = {

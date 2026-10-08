@@ -13,7 +13,7 @@ const DEFAULT_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes
  */
 async function notifyDiscordGoLive(streamer, stream) {
     try {
-        const webhookUrl = db.getSetting('discord_webhook_url');
+        const webhookUrl = await db.getSetting('discord_webhook_url');
         if (!webhookUrl) return;
 
         // Validate URL format
@@ -23,7 +23,7 @@ async function notifyDiscordGoLive(streamer, stream) {
         }
 
         // Cooldown check per stream
-        const cooldownMs = (db.getSetting('discord_webhook_cooldown') || 15) * 60 * 1000;
+        const cooldownMs = (await db.getSetting('discord_webhook_cooldown') || 15) * 60 * 1000;
         const lastNotify = _cooldowns.get(stream.id);
         if (lastNotify && (Date.now() - lastNotify) < cooldownMs) return;
 
@@ -45,7 +45,7 @@ async function notifyDiscordGoLive(streamer, stream) {
         }
 
         // Custom message template support
-        const customContent = db.getSetting('discord_webhook_message') || null;
+        const customContent = await db.getSetting('discord_webhook_message') || null;
 
         const body = {
             embeds: [embed],

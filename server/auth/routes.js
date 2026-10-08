@@ -94,15 +94,15 @@ router.post('/login', (_req, res) => {
 });
 
 // ── Get Current User ─────────────────────────────────────────
-router.get('/me', requireAuth, (req, res) => {
+router.get('/me', requireAuth, async (req, res) => {
     res.json({
-        user: sanitizeUser(req.user),
-        capabilities: permissions.getCapabilities(req.user),
+        user: await sanitizeUser(req.user),
+        capabilities: await permissions.getCapabilities(req.user),
     });
 });
 
 // ── Update Profile ───────────────────────────────────────────
-router.put('/profile', requireAuth, (req, res) => {
+router.put('/profile', requireAuth, async (req, res) => {
     try {
         let display_name = cleanOptionalString(req.body.display_name);
         let bio = cleanOptionalString(req.body.bio);
@@ -144,9 +144,9 @@ router.put('/profile', requireAuth, (req, res) => {
         updates.push('updated_at = ov_now()');
         params.push(req.user.id);
 
-        db.run(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
-        const updated = db.getUserById(req.user.id);
-        res.json({ user: sanitizeUser(updated) });
+        await db.run(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
+        const updated = await db.getUserById(req.user.id);
+        res.json({ user: await sanitizeUser(updated) });
     } catch (err) {
         console.error('[Auth] Profile update error:', err.message);
         res.status(500).json({ error: 'Profile update failed' });
@@ -164,19 +164,19 @@ router.get('/stream-key', requireAuth, (req, res) => {
 });
 
 // ── Regenerate Stream Key ────────────────────────────────────
-router.post('/stream-key/regenerate', requireAuth, (req, res) => {
+router.post('/stream-key/regenerate', requireAuth, async (req, res) => {
     const newKey = uuidv4().replace(/-/g, '');
-    db.run('UPDATE users SET stream_key = ? WHERE id = ?', [newKey, req.user.id]);
+    await db.run('UPDATE users SET stream_key = ? WHERE id = ?', [newKey, req.user.id]);
     res.json({ stream_key: newKey });
 });
 
 // ── Get User Profile (public) ────────────────────────────────
-router.get('/user/:username', (req, res) => {
-    const user = db.getUserByUsername(req.params.username);
+router.get('/user/:username', async (req, res) => {
+    const user = await db.getUserByUsername(req.params.username);
     if (!user) {
         return res.status(404).json({ error: 'User not found' });
     }
-    res.json({ user: sanitizeUser(user, true) });
+    res.json({ user: await sanitizeUser(user, true) });
 });
 
 // ── Upload Avatar ────────────────────────────────────────────
@@ -221,11 +221,11 @@ router.post('/avatar', requireAuth, avatarUpload.single('avatar'), async (req, r
             },
         });
         const screenshotUrl = media.publicUrl(paste.screenshot_url) || media.pasteScreenshotUrl(paste.slug);
-        db.updateUserAvatar(req.user.id, screenshotUrl, paste.id || null);
+        await db.updateUserAvatar(req.user.id, screenshotUrl, paste.id || null);
 
-        const updated = db.getUserById(req.user.id);
+        const updated = await db.getUserById(req.user.id);
         try { require('../utils/notify').reportAvatarChange(updated); } catch { /* the Network learns the new picture on the next sign-in */ }
-        res.json({ user: sanitizeUser(updated), avatar_url: screenshotUrl });
+        res.json({ user: await sanitizeUser(updated), avatar_url: screenshotUrl });
     } catch (err) {
         if (req.file) try { fs.unlinkSync(req.file.path); } catch { }
         console.error('[Auth] Avatar upload error:', err.message);
@@ -238,7 +238,7 @@ router.post('/avatar', requireAuth, avatarUpload.single('avatar'), async (req, r
 // lookups.avatarPastes lists the person's screenshots and keeps the avatar-tagged ones.
 router.get('/avatar/history', requireAuth, async (req, res) => {
     try {
-        const me = db.getUserById(req.user.id);
+        const me = await db.getUserById(req.user.id);
         const activePasteId = me?.avatar_paste_id || null;
         const media = require('../media-client');
         const rows = (await require('../media-proxy/lookups').avatarPastes(me)).map(r => {
@@ -293,7 +293,7 @@ const { safeNext } = require('./safe-next');
 const HINT_COOKIE = { httpOnly: false, path: '/', maxAge: 365 * 24 * 60 * 60 * 1000, sameSite: 'Lax' };
 
 // ── Initiate OAuth Login (redirect to openvibe.network) ───────────
-router.get('/sso/login', (req, res) => {
+router.get('/sso/login', async (req, res) => {
     const state = require('crypto').randomBytes(16).toString('hex');
     // Store state in a short-lived cookie for CSRF protection
     const isSecure = config.baseUrl.startsWith('https');
@@ -305,7 +305,7 @@ router.get('/sso/login', (req, res) => {
     if (req.query.silent) {
         try {
             const have = req.cookies?.token || req.cookies?.ov_token;
-            if (have && require('./auth').verifyToken(have)) return res.redirect(next);
+            if (have && await require('./auth').verifyToken(have)) return res.redirect(next);
         } catch { /* fall through to the network */ }
     }
     if (next !== '/') res.cookie('oauth_next', next, { httpOnly: true, maxAge: 5 * 60 * 1000, sameSite: 'Lax', secure: isSecure });
@@ -329,7 +329,7 @@ router.get('/sso/login', (req, res) => {
  * the local account linked to that network user, set the cookies, return what the page needs.
  * Shared by the OAuth callback and the FedCM sign-in. Throws { status, message } on bad input.
  */
-function establishNetworkSession(req, res, tokenData) {
+async function establishNetworkSession(req, res, tokenData) {
     const ssoUser = tokenData.user;
     if (!ssoUser) {
         throw Object.assign(new Error('No user data in token response'), { status: 400 });
@@ -340,20 +340,20 @@ function establishNetworkSession(req, res, tokenData) {
 
     // Check linked_accounts first
     let localUser = null;
-    const linked = db.getDb().prepare(
+    const linked = await db.getDb().prepare(
         "SELECT user_id FROM linked_accounts WHERE service = 'network' AND service_user_id = ?"
     ).get(openvibeToolsId);
 
     if (linked) {
-        localUser = db.getUserById(linked.user_id);
+        localUser = await db.getUserById(linked.user_id);
     }
 
     // Try matching by username
     if (!localUser) {
-        localUser = db.getUserByUsername(ssoUser.username);
+        localUser = await db.getUserByUsername(ssoUser.username);
         if (localUser) {
             // Auto-link
-            db.getDb().prepare(
+            await db.getDb().prepare(
                 "INSERT INTO linked_accounts (user_id, service, service_user_id, service_username) VALUES (?, 'network', ?, ?) ON CONFLICT DO NOTHING"
             ).run(localUser.id, openvibeToolsId, ssoUser.username);
         }
@@ -362,29 +362,29 @@ function establishNetworkSession(req, res, tokenData) {
     // Create new local user if none found
     if (!localUser) {
         const stream_key = uuidv4().replace(/-/g, '');
-        const result = db.createUser({
+        const result = await db.createUser({
             username: ssoUser.username,
             email: null,   // the OpenVibe account keeps it (WS-B task 2)
             password_hash: '$sso$' + require('crypto').randomBytes(32).toString('hex'), // placeholder, can't login with password
             display_name: ssoUser.display_name || ssoUser.username,
             stream_key,
         });
-        localUser = db.getUserById(result.lastInsertRowid);
+        localUser = await db.getUserById(result.lastInsertRowid);
 
         // Sync optional fields from openvibe.network
-        if (ssoUser.avatar_url) db.updateUserAvatar(localUser.id, ssoUser.avatar_url);
-        if (ssoUser.bio) db.getDb().prepare('UPDATE users SET bio = ? WHERE id = ?').run(ssoUser.bio, localUser.id);
+        if (ssoUser.avatar_url) await db.updateUserAvatar(localUser.id, ssoUser.avatar_url);
+        if (ssoUser.bio) await db.getDb().prepare('UPDATE users SET bio = ? WHERE id = ?').run(ssoUser.bio, localUser.id);
         if (ssoUser.role && ['user', 'streamer', 'global_mod', 'admin'].includes(ssoUser.role)) {
-            db.getDb().prepare('UPDATE users SET role = ? WHERE id = ?').run(ssoUser.role, localUser.id);
+            await db.getDb().prepare('UPDATE users SET role = ? WHERE id = ?').run(ssoUser.role, localUser.id);
         }
-        if (ssoUser.profile_color) db.getDb().prepare('UPDATE users SET profile_color = ? WHERE id = ?').run(ssoUser.profile_color, localUser.id);
+        if (ssoUser.profile_color) await db.getDb().prepare('UPDATE users SET profile_color = ? WHERE id = ?').run(ssoUser.profile_color, localUser.id);
 
         // Link to openvibe.network
-        db.getDb().prepare(
+        await db.getDb().prepare(
             "INSERT INTO linked_accounts (user_id, service, service_user_id, service_username) VALUES (?, 'network', ?, ?) ON CONFLICT DO NOTHING"
         ).run(localUser.id, openvibeToolsId, ssoUser.username);
 
-        localUser = db.getUserById(localUser.id); // re-fetch
+        localUser = await db.getUserById(localUser.id); // re-fetch
         console.log(`[Auth/SSO] New local account created for openvibe.network user ${ssoUser.username} (openvibe-tools id:${openvibeToolsId}, local id:${localUser.id})`);
     }
 
@@ -459,7 +459,7 @@ router.post('/fedcm', express.json({ limit: '8kb' }), async (req, res) => {
             assertion: token, client_id: OV_CLIENT_ID, client_secret: OV_CLIENT_SECRET,
         });
         if (tokenData.error) return res.status(401).json({ error: tokenData.error, error_description: tokenData.error_description || null });
-        const { localUser } = establishNetworkSession(req, res, tokenData);
+        const { localUser } = await establishNetworkSession(req, res, tokenData);
         res.set('Cache-Control', 'no-store');
         res.json({ ok: true, user: { id: localUser.id, username: localUser.username, display_name: localUser.display_name || localUser.username, avatar_url: localUser.avatar_url || null } });
     } catch (err) {
@@ -511,7 +511,7 @@ router.get('/callback', async (req, res) => {
             return res.status(400).send(`OAuth error: ${tokenData.error_description || tokenData.error}`);
         }
 
-        const { localUser, openvibeToolsToken, openvibeRefreshToken } = establishNetworkSession(req, res, tokenData);
+        const { localUser, openvibeToolsToken, openvibeRefreshToken } = await establishNetworkSession(req, res, tokenData);
 
         const userJson = JSON.stringify({ id: localUser.id, username: localUser.username, display_name: localUser.display_name || localUser.username, avatar_url: localUser.avatar_url || null });
         res.send(`<!DOCTYPE html>
@@ -638,7 +638,7 @@ router.use((err, req, res, next) => {
 });
 
 // ── Helper ───────────────────────────────────────────────────
-function sanitizeUser(user, publicOnly = false) {
+async function sanitizeUser(user, publicOnly = false) {
     const safe = {
         id: user.id,
         username: user.username,
@@ -648,7 +648,7 @@ function sanitizeUser(user, publicOnly = false) {
         role: user.role,
         profile_color: user.profile_color,
         created_at: user.created_at,
-        capabilities: permissions.getCapabilities(user),
+        capabilities: await permissions.getCapabilities(user),
     };
     if (!publicOnly) {
         // Balances are real money (Vibes) and the user's own business, like the key. No email: the OpenVibe
@@ -663,9 +663,9 @@ function sanitizeUser(user, publicOnly = false) {
 }
 
 // ── User Preferences (server-side chat settings sync) ────────────────────────
-router.get('/preferences', requireAuth, (req, res) => {
+router.get('/preferences', requireAuth, async (req, res) => {
     try {
-        const prefs = db.getUserPreferences(req.user.id);
+        const prefs = await db.getUserPreferences(req.user.id);
         res.json({ chatSettings: prefs });
     } catch (e) {
         console.error('[Auth] Error loading preferences:', e.message);
@@ -673,7 +673,7 @@ router.get('/preferences', requireAuth, (req, res) => {
     }
 });
 
-router.put('/preferences', requireAuth, (req, res) => {
+router.put('/preferences', requireAuth, async (req, res) => {
     try {
         const { chatSettings } = req.body;
         if (!chatSettings || typeof chatSettings !== 'object') {
@@ -684,7 +684,7 @@ router.put('/preferences', requireAuth, (req, res) => {
         if (json.length > 16384) {
             return res.status(400).json({ error: 'Settings too large' });
         }
-        db.saveUserPreferences(req.user.id, chatSettings);
+        await db.saveUserPreferences(req.user.id, chatSettings);
         res.json({ ok: true });
     } catch (e) {
         console.error('[Auth] Error saving preferences:', e.message);
@@ -805,7 +805,7 @@ function serializeApiToken(token) {
     };
 }
 
-router.post('/tokens', requireAuth, (req, res) => {
+router.post('/tokens', requireAuth, async (req, res) => {
     try {
         // API tokens can't create other API tokens
         if (req.authSource === 'api_token') {
@@ -822,11 +822,11 @@ router.post('/tokens', requireAuth, (req, res) => {
             return res.status(400).json({ error: expiryResult.error });
         }
         // Limit to 10 active tokens per user
-        const existing = db.listApiTokens(req.user.id).filter(t => t.is_active);
+        const existing = (await db.listApiTokens(req.user.id)).filter(t => t.is_active);
         if (existing.length >= MAX_ACTIVE_API_TOKENS) {
             return res.status(400).json({ error: `Maximum ${MAX_ACTIVE_API_TOKENS} active tokens per account` });
         }
-        const result = db.createApiToken(req.user.id, label, scopeResult.scopes, expiryResult.expiresAt);
+        const result = await db.createApiToken(req.user.id, label, scopeResult.scopes, expiryResult.expiresAt);
         console.log(`[Auth] API token created: user=${req.user.username} label=${label} scopes=${scopeResult.scopes.join(',')}`);
         res.json({
             id: result.id,
@@ -843,12 +843,12 @@ router.post('/tokens', requireAuth, (req, res) => {
     }
 });
 
-router.get('/tokens', requireAuth, (req, res) => {
+router.get('/tokens', requireAuth, async (req, res) => {
     try {
         if (req.authSource === 'api_token') {
             return res.status(403).json({ error: 'Cannot list tokens using an API token' });
         }
-        const tokens = db.listApiTokens(req.user.id).map(serializeApiToken);
+        const tokens = (await db.listApiTokens(req.user.id)).map(serializeApiToken);
         res.json({
             tokens,
             valid_scopes: VALID_TOKEN_SCOPES,
@@ -863,12 +863,12 @@ router.get('/tokens', requireAuth, (req, res) => {
     }
 });
 
-router.delete('/tokens/:id', requireAuth, (req, res) => {
+router.delete('/tokens/:id', requireAuth, async (req, res) => {
     try {
         if (req.authSource === 'api_token') {
             return res.status(403).json({ error: 'Cannot revoke tokens using an API token' });
         }
-        const result = db.revokeApiToken(parseInt(req.params.id), req.user.id);
+        const result = await db.revokeApiToken(parseInt(req.params.id), req.user.id);
         if (!result?.changes) {
             return res.status(404).json({ error: 'Token not found or not yours' });
         }

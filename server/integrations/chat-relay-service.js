@@ -118,10 +118,10 @@ class ChatRelayService {
         // falling back to all user destinations if stream has no slot
         let destinations;
         if (stream.managed_stream_id) {
-            destinations = db.getRestreamDestinationsByManagedStream(stream.managed_stream_id) || [];
+            destinations = await db.getRestreamDestinationsByManagedStream(stream.managed_stream_id) || [];
         } else {
             // Legacy: un-slotted destinations only
-            const all = db.getRestreamDestinationsByUserId(stream.user_id) || [];
+            const all = await db.getRestreamDestinationsByUserId(stream.user_id) || [];
             destinations = all.filter(d => !d.managed_stream_id);
         }
         for (const dest of destinations) {
@@ -224,8 +224,8 @@ class ChatRelayService {
     /**
      * Stop all bridges for a user's streams.
      */
-    stopForUser(userId) {
-        const streams = db.getLiveStreamsByUserId(userId) || [];
+    async stopForUser(userId) {
+        const streams = await db.getLiveStreamsByUserId(userId) || [];
         for (const stream of streams) {
             this.stopForStream(stream.id);
         }
@@ -243,11 +243,11 @@ class ChatRelayService {
      * Stops bridges for destinations that no longer have relay enabled,
      * starts bridges for newly enabled ones on matching live streams.
      */
-    syncForUser(userId) {
-        const liveStreams = db.getLiveStreamsByUserId(userId) || [];
+    async syncForUser(userId) {
+        const liveStreams = await db.getLiveStreamsByUserId(userId) || [];
         if (!liveStreams.length) return;
 
-        const allDests = db.getRestreamDestinationsByUserId(userId) || [];
+        const allDests = await db.getRestreamDestinationsByUserId(userId) || [];
 
         for (const stream of liveStreams) {
             // Filter destinations to those matching this stream's slot
@@ -386,7 +386,7 @@ class ChatRelayService {
         } catch { /* restream manager not available — non-critical */ }
     }
 
-    _broadcastMessage(bridge, username, message, extras = {}) {
+    async _broadcastMessage(bridge, username, message, extras = {}) {
         const label = PLATFORM_LABELS[bridge.platform] || bridge.platform;
         const color = PLATFORM_COLORS[bridge.platform] || '#888';
         const prefixedUsername = `[${label}] ${username}`;
@@ -395,8 +395,8 @@ class ChatRelayService {
         // path must not wait on an HTTP call): the fresh list, else the last good one. A cold cache
         // fails open, so a Chat outage never drops relayed lines; Live keeps no local copy.
         try {
-            const stream = db.getStreamById(bridge.streamId);
-            const channel = stream?.channel_id ? db.getChannelById(stream.channel_id) : (stream ? db.getChannelByUserId(stream.user_id) : null);
+            const stream = await db.getStreamById(bridge.streamId);
+            const channel = stream?.channel_id ? await db.getChannelById(stream.channel_id) : (stream ? await db.getChannelByUserId(stream.user_id) : null);
             if (channel && chatReads.isRelayUserHidden(channel.id, bridge.platform, username)) {
                 return; // Silently drop messages from hidden relay users
             }
@@ -410,7 +410,7 @@ class ChatRelayService {
     }
 
     /** What follows a relayed line once it has an id: AI viewers hear it, PowerChat's overlay shows it. */
-    _relayFollowUps(bridge, username, prefixedUsername, message, extras, id, which = 'all') {
+    async _relayFollowUps(bridge, username, prefixedUsername, message, extras, id, which = 'all') {
         if (which !== 'powerchat') {
             // AI viewers see relayed chat too (they used to only see native chat).
             try {
@@ -426,9 +426,9 @@ class ChatRelayService {
         // mostly chats on Twitch/Kick saw an empty overlay.
         try {
             const pc = require('./powerchat-platform');
-            const stream = db.getStreamById(bridge.streamId);
-            if (stream?.user_id && pc.destRelayEnabled(bridge.destId) && pc.slotRelayEnabled(bridge.streamId)) {
-                pc.forwardChat(stream.user_id, {
+            const stream = await db.getStreamById(bridge.streamId);
+            if (stream?.user_id && await pc.destRelayEnabled(bridge.destId) && await pc.slotRelayEnabled(bridge.streamId)) {
+                await pc.forwardChat(stream.user_id, {
                     chatterName: prefixedUsername,
                     externalChatterId: `${bridge.platform}:${username}`,
                     message: message,
@@ -453,7 +453,7 @@ class ChatRelayService {
         let first = false;
         let welcomeKey = null;
         try {
-            const stream = db.getStreamById(bridge.streamId);
+            const stream = await db.getStreamById(bridge.streamId);
             const chatterKey = `ext:${prefixedUsername}`;
             if (stream?.user_id) {
                 welcomeKey = `${stream.user_id}:${chatterKey}`;
@@ -461,7 +461,7 @@ class ChatRelayService {
                 if (first && welcomedRelayUsers.has(welcomeKey)) first = false;
             }
         } catch { /* non-critical — no welcome rather than a wrong one */ }
-        delivery.moderate('relay-record', { platform: bridge.platform, username });
+        await delivery.moderate('relay-record', { platform: bridge.platform, username });
         delivery.after(delivery.message({
             stream_id: bridge.streamId, username: prefixedUsername, message, message_type: 'chat', is_global: false,
             source_platform: bridge.platform, mirror: true,
@@ -472,7 +472,7 @@ class ChatRelayService {
             if (welcomedRelayUsers.size >= WELCOMED_MAX) welcomedRelayUsers.clear();
             welcomedRelayUsers.add(welcomeKey);
             chatReads.invalidate(`fc:${welcomeKey}`);   // Chat's cached `first` answer is about to be stale
-            delivery.event({ kind: 'stream', id: bridge.streamId }, {
+            await delivery.event({ kind: 'stream', id: bridge.streamId }, {
                 type: 'system',
                 message: `Welcome ${username} from ${PLATFORM_LABELS[bridge.platform] || bridge.platform}! 👋`,
                 timestamp: new Date().toISOString(),
@@ -735,13 +735,13 @@ class ChatRelayService {
                 req.on('timeout', () => req.destroy(new Error('Kick API request timed out')));
             });
             // Persist so future go-lives reuse it even when Kick's API is blocked.
-            try { db.setKickChannelCache(slug, info.chatroomId, info.kickChannelId); } catch { /* */ }
+            try { await db.setKickChannelCache(slug, info.chatroomId, info.kickChannelId); } catch { /* */ }
             return info;
         } catch (err) {
             // Cloudflare-blocked / transient failure — reuse a previously-resolved id
             // (the chatroom id is stable per channel, so a cached hit is authoritative).
             try {
-                const cached = db.getKickChannelCache(slug);
+                const cached = await db.getKickChannelCache(slug);
                 if (cached?.chatroom_id) {
                     console.log(`[ChatRelay] Kick: Using cached chatroom id ${cached.chatroom_id} for ${slug} (live API failed: ${err.message})`);
                     return { chatroomId: cached.chatroom_id, kickChannelId: cached.kick_channel_id || null };
@@ -761,9 +761,9 @@ class ChatRelayService {
     async _connectYouTubeApi(bridge) {
         if (bridge.stopped) return false;
         let userId = null;
-        try { const s = db.getStreamById(bridge.streamId); userId = s && s.user_id; } catch { /* */ }
+        try { const s = await db.getStreamById(bridge.streamId); userId = s && s.user_id; } catch { /* */ }
         if (!userId) return false;
-        const conn = db.getPlatformConnection(userId, 'youtube');
+        const conn = await db.getPlatformConnection(userId, 'youtube');
         if (!conn || !conn.access_token) return false;
 
         const platformOAuth = require('./platform-oauth');

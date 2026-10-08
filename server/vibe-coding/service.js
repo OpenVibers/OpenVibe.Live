@@ -186,8 +186,8 @@ function setStoredVibeCodingSettings(broadcastSettings, settings) {
     broadcastSettings.vibeCoding = settings;
 }
 
-function getManagedStreamRow(managedStreamId) {
-    return db.get(
+async function getManagedStreamRow(managedStreamId) {
+    return await db.get(
         `SELECT ms.*, u.username, u.display_name, u.avatar_url, u.profile_color
          FROM managed_streams ms
          JOIN users u ON ms.user_id = u.id
@@ -196,15 +196,15 @@ function getManagedStreamRow(managedStreamId) {
     );
 }
 
-function getManagedStreamVibeCodingSettings(managedStreamId) {
-    const row = getManagedStreamRow(managedStreamId);
+async function getManagedStreamVibeCodingSettings(managedStreamId) {
+    const row = await getManagedStreamRow(managedStreamId);
     if (!row) return normalizeVibeCodingSettings();
     const broadcastSettings = parseBroadcastSettings(row.broadcast_settings);
     return normalizeVibeCodingSettings(getStoredVibeCodingSettings(broadcastSettings));
 }
 
-function updateManagedStreamVibeCodingSettings(managedStreamId, userId, partialSettings) {
-    const row = db.get('SELECT broadcast_settings FROM managed_streams WHERE id = ? AND user_id = ?', [managedStreamId, userId]);
+async function updateManagedStreamVibeCodingSettings(managedStreamId, userId, partialSettings) {
+    const row = await db.get('SELECT broadcast_settings FROM managed_streams WHERE id = ? AND user_id = ?', [managedStreamId, userId]);
     if (!row) return null;
     const broadcastSettings = parseBroadcastSettings(row.broadcast_settings);
     const nextSettings = normalizeVibeCodingSettings({
@@ -212,12 +212,12 @@ function updateManagedStreamVibeCodingSettings(managedStreamId, userId, partialS
         ...(partialSettings || {}),
     });
     setStoredVibeCodingSettings(broadcastSettings, nextSettings);
-    db.updateManagedStreamBroadcastSettings(managedStreamId, userId, broadcastSettings);
+    await db.updateManagedStreamBroadcastSettings(managedStreamId, userId, broadcastSettings);
     return nextSettings;
 }
 
-function getLiveStreamByManagedStreamId(managedStreamId) {
-    return db.get(
+async function getLiveStreamByManagedStreamId(managedStreamId) {
+    return await db.get(
         `SELECT s.*, ms.slug AS managed_stream_slug
          FROM streams s
          LEFT JOIN managed_streams ms ON s.managed_stream_id = ms.id
@@ -228,9 +228,9 @@ function getLiveStreamByManagedStreamId(managedStreamId) {
     );
 }
 
-function upsertVibeCodingSession({ managedStreamId, userId, slotSlug, helloMessage }) {
+async function upsertVibeCodingSession({ managedStreamId, userId, slotSlug, helloMessage }) {
     const publisher = normalizePublisherDescriptor(helloMessage?.publisher);
-    db.run(
+    await db.run(
         `INSERT INTO vibe_coding_sessions (
             managed_stream_id, user_id, session_key, slot_slug, workspace_name,
             machine_name, extension_version, publisher_id, publisher_label,
@@ -274,8 +274,8 @@ function upsertVibeCodingSession({ managedStreamId, userId, slotSlug, helloMessa
     );
 }
 
-function getLatestPublisherForManagedStream(managedStreamId) {
-    const row = db.get(
+async function getLatestPublisherForManagedStream(managedStreamId) {
+    const row = await db.get(
         `SELECT workspace_name, machine_name, extension_version, publisher_id,
                 publisher_label, publisher_vendor, publisher_client_type,
                 publisher_client_name, publisher_client_version,
@@ -301,8 +301,8 @@ function getLatestPublisherForManagedStream(managedStreamId) {
     });
 }
 
-function markSessionEnded(managedStreamId, sessionKey) {
-    db.run(
+async function markSessionEnded(managedStreamId, sessionKey) {
+    await db.run(
         `UPDATE vibe_coding_sessions
          SET status = 'ended', ended_at = ov_now(), last_event_at = ov_now()
          WHERE managed_stream_id = ? AND session_key = ?`,
@@ -310,8 +310,8 @@ function markSessionEnded(managedStreamId, sessionKey) {
     );
 }
 
-function storeVibeCodingEvent({ managedStreamId, userId, streamId, event }) {
-    db.run(
+async function storeVibeCodingEvent({ managedStreamId, userId, streamId, event }) {
+    await db.run(
         `INSERT INTO vibe_coding_events (
             managed_stream_id, user_id, stream_id, session_key, event_id,
             sequence_num, event_type, visibility, depth, summary, payload_json
@@ -339,7 +339,7 @@ function storeVibeCodingEvent({ managedStreamId, userId, streamId, event }) {
             JSON.stringify(event),
         ]
     );
-    db.run(
+    await db.run(
         `UPDATE vibe_coding_sessions
          SET last_event_at = ov_now()
          WHERE managed_stream_id = ? AND session_key = ?`,
@@ -347,8 +347,8 @@ function storeVibeCodingEvent({ managedStreamId, userId, streamId, event }) {
     );
 }
 
-function getStoredEventsForManagedStream(managedStreamId, limit = DEFAULT_VIBE_CODING_SETTINGS.max_events) {
-    const rows = db.all(
+async function getStoredEventsForManagedStream(managedStreamId, limit = DEFAULT_VIBE_CODING_SETTINGS.max_events) {
+    const rows = await db.all(
         `SELECT payload_json, created_at
          FROM vibe_coding_events
          WHERE managed_stream_id = ?
@@ -477,14 +477,14 @@ function projectViewerEvent(event, settings) {
     return null;
 }
 
-function getProjectedViewerFeed(managedStreamId, limit) {
-    const settings = getManagedStreamVibeCodingSettings(managedStreamId);
-    const events = getStoredEventsForManagedStream(managedStreamId, limit || settings.max_events)
+async function getProjectedViewerFeed(managedStreamId, limit) {
+    const settings = await getManagedStreamVibeCodingSettings(managedStreamId);
+    const events = (await getStoredEventsForManagedStream(managedStreamId, limit || settings.max_events))
         .map((event) => projectViewerEvent(event, settings))
         .filter(Boolean);
     return {
         settings,
-        publisher: getLatestPublisherForManagedStream(managedStreamId),
+        publisher: await getLatestPublisherForManagedStream(managedStreamId),
         events,
     };
 }

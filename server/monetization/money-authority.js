@@ -51,57 +51,57 @@ function assertLiveLedger(what) {
 // ── Freeze (money_writes_frozen) ─────────────────────────────
 const db = () => require('../db/database');   // lazy: database.js requires this module
 
-function isFrozen() {
+async function isFrozen() {
     try {
-        const v = db().getSetting('money_writes_frozen');
+        const v = await db().getSetting('money_writes_frozen');
         return v === true || v === 'true' || v === 1 || v === '1';
     } catch { return false; }
 }
 
-function freezeState() {
+async function freezeState() {
     let meta = null;
-    try { meta = db().getSetting('money_writes_frozen_meta'); } catch { /* */ }
+    try { meta = await db().getSetting('money_writes_frozen_meta'); } catch { /* */ }
     if (typeof meta === 'string') { try { meta = JSON.parse(meta); } catch { meta = null; } }
-    const frozen = isFrozen();
+    const frozen = await isFrozen();
     return { frozen, reason: frozen && meta ? meta.reason || null : null, since: frozen && meta ? meta.at || null : null, by: frozen && meta ? meta.by || null : null };
 }
 
-function setFrozen(on, { reason = null, by = null } = {}) {
+async function setFrozen(on, { reason = null, by = null } = {}) {
     const d = db();
-    d.getDb().tx(() => {
-        d.setSetting('money_writes_frozen', on ? 'true' : 'false');
-        d.setSetting('money_writes_frozen_meta', JSON.stringify(on ? { reason: reason ? String(reason).slice(0, 300) : null, by, at: new Date().toISOString() } : {}));
+    await d.getDb().tx(async () => {
+        await d.setSetting('money_writes_frozen', on ? 'true' : 'false');
+        await d.setSetting('money_writes_frozen_meta', JSON.stringify(on ? { reason: reason ? String(reason).slice(0, 300) : null, by, at: new Date().toISOString() } : {}));
     });
     console.warn(`[Money] Live money writes ${on ? 'FROZEN' : 'unfrozen'} by ${by || 'unknown'}${reason ? ` (${reason})` : ''}`);
-    return freezeState();
+    return await freezeState();
 }
 
 /**
  * Why a money write must be refused right now, or null. The shape matches Live's usual
  * `{ error }` bodies plus a stable `code`.
  */
-function writeRefusal() {
+async function writeRefusal() {
     const mode = authority();
     if (mode === 'invalid') {
         return { status: 503, body: { error: 'Payments are unavailable: the server\'s billing configuration is invalid.', code: 'billing_misconfigured' } };
     }
-    if (isFrozen()) {
-        const st = freezeState();
+    if (await isFrozen()) {
+        const st = await freezeState();
         return { status: 503, body: { error: 'Payments, donations and cashouts are paused for maintenance. Nothing was charged — please try again later.', code: 'money_writes_frozen', reason: st.reason || undefined } };
     }
     return null;
 }
 
 /** Express middleware for every route that starts a money action. */
-function guardWrite(req, res, next) {
-    const r = writeRefusal();
+async function guardWrite(req, res, next) {
+    const r = await writeRefusal();
     if (r) return res.status(r.status).json(r.body);
     return next();
 }
 
 /** For code paths that are not routes (media requests, sweeps): throws the refusal as an Error. */
-function assertWritable() {
-    const r = writeRefusal();
+async function assertWritable() {
+    const r = await writeRefusal();
     if (r) {
         const e = new Error(r.body.error);
         e.status = r.status;
