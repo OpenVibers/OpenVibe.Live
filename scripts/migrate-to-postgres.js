@@ -7,7 +7,7 @@
  *   node scripts/migrate-to-postgres.js --sqlite <live.db> [--analytics <analytics.db>] [--pglite] [--json]
  *
  *   --sqlite     Live's main database (production: /opt/openvibe.live/shared/data/live.db). Opened read-only.
- *   --analytics  the page-analytics database (default: analytics.db under DATA_DIR, when it exists): its analytics_*
+ *   --analytics  the page-analytics database (default: analytics.db under DATA_DIR, else production's shared/data): its analytics_*
  *                tables go into the same PostgreSQL database (migrations/0001_analytics.sql). Opened read-only.
  *   --pglite     a dry run in an in-memory PostgreSQL: migrations applied, every table imported and verified.
  *   --json       the report as JSON.
@@ -77,8 +77,12 @@ async function main(argv = process.argv.slice(2), out = console.log) {
     // OpenVibe.Host's `ovhost data switch live` passes only --sqlite (its backup copy of live.db); the analytics file is
     // read where it is, under the unit's DATA_DIR, while the service is stopped.
     const fs = require('fs');
-    const defaultAnalytics = path.join(path.resolve(process.env.DATA_DIR || 'data'), 'analytics.db');
-    const analytics = opt('analytics') ? path.resolve(opt('analytics')) : (fs.existsSync(defaultAnalytics) ? defaultAnalytics : null);
+    // The unit sets no DATA_DIR (Live's data is ./data in its release, a link to shared/data), and the switch runs this
+    // from a fresh clone: look under DATA_DIR, then where production keeps it.
+    const candidates = [process.env.DATA_DIR && path.join(path.resolve(process.env.DATA_DIR), 'analytics.db'),
+        '/opt/openvibe.live/shared/data/analytics.db', path.resolve('data', 'analytics.db')].filter(Boolean);
+    const analytics = opt('analytics') ? path.resolve(opt('analytics')) : (candidates.find((f) => fs.existsSync(f)) || null);
+    if (!analytics) console.warn('migrate-to-postgres: no analytics.db found; page analytics start empty');
     const quiet = { log() {}, warn: console.warn, error: console.error };
     let owner;
     if (flag('pglite')) owner = createDb({ pglite: true, service: 'live-import', log: quiet });
