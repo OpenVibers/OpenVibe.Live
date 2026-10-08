@@ -17,9 +17,6 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
-
-process.env.DB_PATH = path.join(os.tmpdir(), `ov-rs-chat-${Date.now()}.db`);
 
 const svc = require('../server/integrations/robotstreamer-service');
 
@@ -78,8 +75,6 @@ const svc = require('../server/integrations/robotstreamer-service');
         assert.ok(guardIdx > 0 && guardIdx < setIdx, 'the guard must sit before the set()');
         console.log('OK E: registration discards a duplicate instead of leaking the previous websocket');
 
-        try { fs.unlinkSync(process.env.DB_PATH); } catch { /* */ }
-        for (const ext of ['-wal', '-shm']) { try { fs.unlinkSync(process.env.DB_PATH + ext); } catch { /* */ } }
         console.log('✅ RS chat bridge single-flight test passed');
         process.exit(0);
     })().catch((e) => { console.error('FAIL', e.message); process.exit(1); });

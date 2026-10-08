@@ -467,7 +467,9 @@ router.post('/webhook', async (req, res) => {
         // Ack immediately; process off the response path.
         res.status(200).json({ ok: true });
         const envelope = req.body && typeof req.body === 'object' ? req.body : (() => { try { return JSON.parse(raw.toString('utf8')); } catch { return null; } })();
-        setImmediate(async () => { try { if (envelope) await webhook.processEvent(envelope); } catch (e) { console.warn('[PowerChat] webhook process error:', e.message); } });
+        db.getDb().afterCommit(() => {
+            if (envelope) webhook.processEvent(envelope).catch((e) => console.warn('[PowerChat] webhook process error:', e.message));
+        });
     } catch (err) {
         if (!res.headersSent) res.status(500).json({ error: 'webhook error' });
     }

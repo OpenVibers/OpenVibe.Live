@@ -93,8 +93,8 @@ async function _testFulfillmentAllowed() {
 // ── Donation handling — mirrors POST /api/funds/donate ───────────────────────
 // A persisted chat line: one Chat ingress call (Chat persists and shows it; `mirror` also puts it
 // in global chat). Live keeps no chat table.
-function _chatLine({ line, mirror = false, key }) {
-    delivery.message({ ...line, mirror, key });
+async function _chatLine({ line, mirror = false, key }) {
+    return await delivery.message({ ...line, mirror, key });
 }
 
 async function _handleDonation(userId, data) {
@@ -115,12 +115,12 @@ async function _handleDonation(userId, data) {
 
     // Credit a goal (donor's chosen one via app_ref, else the sole active goal).
     let goalResult = null;
-    try { goalResult = openvibeBucks.applyDonationToGoal(userId, amount, goalId); } catch { /* */ }
+    try { goalResult = await openvibeBucks.applyDonationToGoal(userId, amount, goalId); } catch { /* */ }
 
     // 1) Donation chat event — persisted to channel history (and mirrored to global chat).
     const eventKey = data.eventId ? `powerchat:${data.eventId}` : undefined;
     try {
-        _chatLine({
+        await _chatLine({
             mirror: true, key: eventKey,
             line: {
                 stream_id: streamId, channel_user_id: userId, user_id: null, username: donor,
@@ -141,7 +141,7 @@ async function _handleDonation(userId, data) {
     if (goalResult && goalResult.reached) {
         const g = goalResult.goal;
         try {
-            _chatLine({
+            await _chatLine({
                 key: eventKey && `${eventKey}:goal`,
                 line: {
                     stream_id: streamId, channel_user_id: userId, user_id: null, username: 'Donation Goal',
@@ -158,10 +158,10 @@ async function _handleDonation(userId, data) {
 }
 
 // A membership/sub — surface as a chat event (no OpenVibe.Live sub system to credit).
-function _handleSubscription(userId, data) {
+async function _handleSubscription(userId, data) {
     const name = String(data.subscriberName || data.donorName || 'Someone').slice(0, 80);
     try {
-        _chatLine({
+        await _chatLine({
             key: data.eventId ? `powerchat:${data.eventId}` : undefined,
             line: {
                 stream_id: null, channel_user_id: userId, user_id: null, username: name,
@@ -173,9 +173,9 @@ function _handleSubscription(userId, data) {
 }
 
 // A lightweight chat notice for non-money events (follow / host / points redeem).
-function _handleNotice(userId, message, kind) {
+async function _handleNotice(userId, message, kind) {
     try {
-        _chatLine({
+        await _chatLine({
             line: {
                 stream_id: null, channel_user_id: userId, user_id: null, username: 'PowerChat',
                 message, message_type: 'system', metadata: { kind: kind || 'powerchat', source: 'powerchat' },
@@ -244,16 +244,16 @@ async function processEvent(envelope) {
                 await _handleDonation(userId, data);
                 break;
             case 'subscription.created':
-                _handleSubscription(userId, data);
+                await _handleSubscription(userId, data);
                 break;
             case 'follow.created':
-                _handleNotice(userId, `${String(data.followerName || 'Someone').slice(0, 80)} followed on PowerChat`, 'follow');
+                await _handleNotice(userId, `${String(data.followerName || 'Someone').slice(0, 80)} followed on PowerChat`, 'follow');
                 break;
             case 'host.received':
-                _handleNotice(userId, `${String(data.hostChannel || 'Someone').slice(0, 80)} hosted with ${data.viewers || 0} viewers (PowerChat)`, 'host');
+                await _handleNotice(userId, `${String(data.hostChannel || 'Someone').slice(0, 80)} hosted with ${data.viewers || 0} viewers (PowerChat)`, 'host');
                 break;
             case 'channel_points.redeemed':
-                _handleNotice(userId, `${String(data.redeemerName || 'Someone').slice(0, 80)} redeemed ${String(data.rewardName || 'a reward').slice(0, 80)} (PowerChat)`, 'points');
+                await _handleNotice(userId, `${String(data.redeemerName || 'Someone').slice(0, 80)} redeemed ${String(data.rewardName || 'a reward').slice(0, 80)} (PowerChat)`, 'points');
                 break;
             // paid_message.created → display twin of donation.completed (ignored to avoid
             // double-counting). goal.updated/completed reflect PowerChat's own goals;
@@ -284,7 +284,7 @@ async function simulateDonation(userId, { amountUsd = 5, donor = 'Test Tipper', 
     // actually test what the streamer is checking — that the alert lands in chat AND
     // survives a refresh.
     try {
-        _chatLine({
+        await _chatLine({
             line: {
                 stream_id: streamId, channel_user_id: userId, user_id: null, username: donor,
                 message: `${donor} donated ${amount.toLocaleString()} Vibes${message ? ': ' + message : ''}`,

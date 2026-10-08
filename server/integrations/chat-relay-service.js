@@ -522,7 +522,7 @@ class ChatRelayService {
                         if (dnMatch && dnMatch[1]) displayName = dnMatch[1];
                     }
 
-                    this._broadcastMessage(bridge, displayName, message);
+                    this._broadcastMessage(bridge, displayName, message).catch(e => console.warn('[ChatRelay] Twitch message:', e.message));
                 }
             }
         });
@@ -636,7 +636,7 @@ class ChatRelayService {
                     const payload = safeJsonParse(msg.data);
                     if (!payload?.sender?.username || !payload?.content) break;
 
-                    this._broadcastMessage(bridge, payload.sender.username, payload.content);
+                    this._broadcastMessage(bridge, payload.sender.username, payload.content).catch(e => console.warn('[ChatRelay] Kick message:', e.message));
                     break;
                 }
 
@@ -866,7 +866,7 @@ class ChatRelayService {
                         if (!bridge.stopped) bridge.reconnectTimer = setTimeout(() => this._connectYouTubeApi(bridge).catch(() => {}), 20000);
                         return;
                     }
-                    if (!bridge.stopped) bridge.pollTimer = setTimeout(poll, 5000);
+                    if (!bridge.stopped) bridge.pollTimer = setTimeout(() => poll().catch(e => console.warn('[ChatRelay] YouTube poll:', e.message)), 5000);
                     return;
                 }
                 const j = await r.json();
@@ -876,7 +876,7 @@ class ChatRelayService {
                         const name = it.authorDetails && it.authorDetails.displayName;
                         const sn = it.snippet || {};
                         const text = sn.displayMessage || (sn.textMessageDetails && sn.textMessageDetails.messageText);
-                        if (name && text) this._broadcastMessage(bridge, name, text);
+                        if (name && text) await this._broadcastMessage(bridge, name, text);
                     }
                 }
                 bridge._ytFirstPoll = false;
@@ -887,12 +887,12 @@ class ChatRelayService {
                 const floor = pr >= 0.85 ? 20000 : pr >= 0.6 ? 12000 : 2500;
                 const cap = pr >= 0.6 ? 30000 : 15000;
                 const interval = Math.max(floor, Math.min(cap, j.pollingIntervalMillis || 5000));
-                if (!bridge.stopped) bridge.pollTimer = setTimeout(poll, interval);
+                if (!bridge.stopped) bridge.pollTimer = setTimeout(() => poll().catch(e => console.warn('[ChatRelay] YouTube poll:', e.message)), interval);
             } catch (e) {
-                if (!bridge.stopped) bridge.pollTimer = setTimeout(poll, 6000);
+                if (!bridge.stopped) bridge.pollTimer = setTimeout(() => poll().catch(e => console.warn('[ChatRelay] YouTube poll:', e.message)), 6000);
             }
         };
-        poll();   // floating-ok: the poll loop catches its own errors and reschedules itself
+        poll().catch(e => console.warn('[ChatRelay] YouTube poll:', e.message));
         return true;
     }
 
@@ -975,7 +975,7 @@ class ChatRelayService {
             bridge._ytFailures = 0; // Reset on successful connection
 
             // Start polling
-            this._pollYouTubeChat(bridge, continuationToken);   // floating-ok: _pollYouTubeChat catches its own errors and reconnects
+            this._pollYouTubeChat(bridge, continuationToken).catch(e => console.warn('[ChatRelay] YouTube chat:', e.message));
 
         } catch (err) {
             bridge._ytFailures = (bridge._ytFailures || 0) + 1;
@@ -1006,7 +1006,7 @@ class ChatRelayService {
                 const username = renderer.authorName?.simpleText || 'YouTube User';
                 const messageParts = renderer.message?.runs?.map(r => r.text || '').join('') || '';
                 if (messageParts) {
-                    this._broadcastMessage(bridge, username, messageParts);
+                    await this._broadcastMessage(bridge, username, messageParts);
                 }
             }
 
@@ -1017,7 +1017,7 @@ class ChatRelayService {
             const timeoutMs = nextCont?.timedContinuationData?.timeoutMs || 6000;
 
             if (nextToken && !bridge.stopped) {
-                bridge.pollTimer = setTimeout(() => this._pollYouTubeChat(bridge, nextToken), timeoutMs);
+                bridge.pollTimer = setTimeout(() => this._pollYouTubeChat(bridge, nextToken).catch(e => console.warn('[ChatRelay] YouTube chat:', e.message)), timeoutMs);
             } else if (!bridge.stopped) {
                 console.warn(`[ChatRelay] YouTube: Lost continuation token — reconnecting`);
                 this._scheduleReconnect(bridge, (b) => this._connectYouTube(b));

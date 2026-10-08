@@ -30,32 +30,6 @@ const config = require('../config');
 const billing = require('./billing-client');
 const { BillingCallError, subjectFor, ref, api } = billing;
 
-let _tablesReady = false;
-function ensureTables() {
-    if (_tablesReady) return;
-    db.getDb().exec(`CREATE TABLE IF NOT EXISTS billing_actions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        action TEXT NOT NULL,
-        idempotency_key TEXT NOT NULL UNIQUE,
-        live_user_id INTEGER,
-        live_ref TEXT,
-        method TEXT NOT NULL,
-        path TEXT NOT NULL,
-        request_json TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pending',
-        http_status INTEGER,
-        billing_ref TEXT,
-        response_json TEXT,
-        error TEXT,
-        attempts INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL DEFAULT ov_now(),
-        updated_at TEXT NOT NULL DEFAULT ov_now()
-    );
-    CREATE INDEX IF NOT EXISTS idx_billing_actions_ref ON billing_actions(action, live_ref);
-    CREATE INDEX IF NOT EXISTS idx_billing_actions_status ON billing_actions(status, created_at);`);
-    _tablesReady = true;
-}
-
 const base = () => config.baseUrl.replace(/\/+$/, '');
 
 /** The key for one Live action. */
@@ -76,7 +50,6 @@ function refOf(out) {
  * calling Billing; a key already used with another body is refused; anything else is (re)sent.
  */
 async function perform({ action, method = 'POST', path, body, key, liveUserId = null, liveRef = null, trace }) {
-    ensureTables();
     const d = db.getDb();
     const requestJson = JSON.stringify(body || {});
     const row = await d.prepare('SELECT * FROM billing_actions WHERE idempotency_key = ?').get(key);
@@ -169,7 +142,7 @@ async function donate(req, { toUserId, streamId, amount, message, goalId = null 
     const body = { from: ref(from), to: ref(to), amount: amt, kind: 'donation', ...(streamTarget(streamId) ? { target: streamTarget(streamId) } : {}), ...(msg ? { message: msg } : {}), on_behalf_of: ref(from) };
     const { out, replayed } = await perform({ action: 'donation', path: '/transfers', body, key: actionKey('donation', req), liveUserId: req.user.id, liveRef: streamId ? `stream:${streamId}` : null, trace: req.headers });
     // The goal bar is a Live display counter (not money); a replayed request must not advance it twice.
-    const goalResult = replayed ? null : vibes.applyDonationToGoal(toUserId, amt, goalId);
+    const goalResult = replayed ? null : await vibes.applyDonationToGoal(toUserId, amt, goalId);
     return {
         success: true, amount: amt, transactionId: out.transaction ? out.transaction.id : null,
         goal: goalResult ? goalResult.goal : null, goalReached: goalResult && goalResult.reached ? goalResult.goal : null,
@@ -193,13 +166,11 @@ async function chargeMedia({ userId, streamerId, streamId, cost, label, requestI
 
 /** Tie a media charge to the request it paid for, so a refund can find the Billing transfer. */
 async function linkMediaCharge(actionId, requestId) {
-    ensureTables();
     await db.getDb().prepare("UPDATE billing_actions SET live_ref = ?, updated_at = ov_now() WHERE id = ? AND action = 'media_charge'").run(`media_request:${requestId}`, actionId);
 }
 
 /** Refund a Vibes-paid media request through Billing. Resolves the refunded amount, or 0. */
 async function refundMedia(request) {
-    ensureTables();
     const charge = await db.getDb().prepare("SELECT * FROM billing_actions WHERE action = 'media_charge' AND live_ref = ? AND status = 'done' ORDER BY id DESC LIMIT 1").get(`media_request:${request.id}`);
     if (!charge || !charge.billing_ref) {
         console.warn(`[MediaQueue] refund of request ${request.id} skipped: no Billing charge on record for it`);
@@ -289,7 +260,7 @@ const PROVIDER = { crypto: 'nowpayments' };
 async function checkout(req, { provider, bucks }) {
     const sid = await subjectFor(req.user.id);
     const pc = provider === 'powerchat' ? require('../integrations/powerchat-checkout') : null;
-    if (pc && !pc.isAvailable()) return { status: 400, body: { error: 'PowerChat purchases are not available right now' } };
+    if (pc && !await pc.isAvailable()) return { status: 400, body: { error: 'PowerChat purchases are not available right now' } };
     const body = {
         provider: PROVIDER[provider] || provider, kind: 'purchase', subject: ref(sid), bits: bucks,
         success_url: provider === 'paypal' ? `${base()}/api/payments/paypal/return` : `${base()}/?purchase=success`,
@@ -315,9 +286,8 @@ async function checkout(req, { provider, bucks }) {
 
 /** PayPal sends the buyer back with ?token=<PayPal order id>: capture that intent through Billing. */
 async function paypalReturn(token) {
-    ensureTables();
     const row = await db.getDb().prepare(`SELECT * FROM billing_actions WHERE action IN ('checkout', 'subscribe_intent') AND status = 'done'
-        AND json_extract(response_json, '$.intent.provider') = 'paypal' AND json_extract(response_json, '$.intent.provider_ref') = ? ORDER BY id DESC LIMIT 1`).get(String(token || ''));
+        AND (response_json::jsonb -> 'intent' ->> 'provider') = 'paypal' AND (response_json::jsonb -> 'intent' ->> 'provider_ref') = ? ORDER BY id DESC LIMIT 1`).get(String(token || ''));
     if (!row) return false;
     const intentId = JSON.parse(row.response_json).intent.id;
     const { out } = await perform({ action: 'paypal_capture', path: `/intents/${encodeURIComponent(intentId)}/capture`, body: {}, key: `live:paypal_capture:${intentId}`, liveUserId: row.live_user_id });
@@ -501,7 +471,6 @@ function isSubscriberCached(subscriberId, streamerId) {
 
 // ── Operator view ────────────────────────────────────────────
 async function adminStatus() {
-    ensureTables();
     const d = db.getDb();
     const counts = Object.fromEntries((await d.prepare('SELECT status, COUNT(*) AS n FROM billing_actions GROUP BY status').all()).map((r) => [r.status, r.n]));
     const attention = await d.prepare("SELECT id, action, idempotency_key, live_user_id, live_ref, status, error, attempts, created_at, updated_at FROM billing_actions WHERE status IN ('unknown', 'pending') ORDER BY id DESC LIMIT 50").all();
@@ -529,7 +498,6 @@ async function adminStatus() {
 
 /** Owner: re-send an action whose outcome is unknown (same key, same body) to learn it. */
 async function resolveAction(id) {
-    ensureTables();
     const row = await db.getDb().prepare('SELECT * FROM billing_actions WHERE id = ?').get(id);
     if (!row) return { status: 404, body: { error: 'No such action' } };
     if (row.status === 'done') return { status: 200, body: { action: row.action, status: 'done', billing_ref: row.billing_ref } };
@@ -538,10 +506,10 @@ async function resolveAction(id) {
 }
 
 module.exports = {
-    ensureTables, actionKey, perform, toLive, sendError,
+    actionKey, perform, toLive, sendError,
     donate, chargeMedia, linkMediaCharge, refundMedia, requestCashout, recycle, balance, history,
     checkout, paypalReturn, subscribe, mySubscriptions, channelState, cancelSubscription,
     isSubscriberCached, refreshEntitlement, invalidateEntitlement, adminStatus, resolveAction,
     entitlementOf,
-    _reset() { _ent.clear(); _entInflight.clear(); _tablesReady = false; _vip = null; },
+    _reset() { _ent.clear(); _entInflight.clear(); _vip = null; },
 };

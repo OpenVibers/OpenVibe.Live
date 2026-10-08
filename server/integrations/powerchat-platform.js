@@ -436,7 +436,7 @@ function startViewerCountSweeper() {
                 if (!s.user_id) continue;
                 liveOwners.set(s.user_id, (liveOwners.get(s.user_id) || 0) + await totalViewersForStream(s));
             }
-            for (const [userId, count] of liveOwners) { seenLive.add(userId); sendViewCount(userId, count); }   // floating-ok: sendViewCount catches and notes its own errors
+            for (const [userId, count] of liveOwners) { seenLive.add(userId); await sendViewCount(userId, count); }
             // Owners that were live last tick but aren't now → send null (stream ended).
             for (const userId of Array.from(seenLive)) {
                 if (!liveOwners.has(userId)) {

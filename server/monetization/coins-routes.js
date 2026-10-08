@@ -28,9 +28,9 @@ router.get('/balance', requireAuth, async (req, res) => {
 });
 
 // ── Get channel-points balance for a specific streamer ──────
-router.get('/channel-balance', requireAuth, (req, res) => {
+router.get('/channel-balance', requireAuth, async (req, res) => {
     const streamerId = parseInt(req.query.streamerId) || null;
-    res.json({ balance: streamerId ? openvibeCoins.getBalance(req.user.id, streamerId) : 0, streamerId });
+    res.json({ balance: streamerId ? await openvibeCoins.getBalance(req.user.id, streamerId) : 0, streamerId });
 });
 
 // ── Get Earning Rates ────────────────────────────────────────
@@ -54,24 +54,24 @@ router.post('/heartbeat', requireAuth, async (req, res) => {
         const { streamId } = req.body;
         if (!streamId) return res.status(400).json({ error: 'streamId required' });
 
-        const result = openvibeCoins.awardWatch(req.user.id, streamId);
+        const result = await openvibeCoins.awardWatch(req.user.id, streamId);
         if (result) {
             return res.json({ earned: result.coins, balance: result.total, streamerId: result.streamerId });
         }
         // No points earned this tick (not on a 5-min boundary) — return this channel's balance.
         const streamerId = (await db.getStreamById(parseInt(streamId)))?.user_id || null;
-        res.json({ earned: 0, balance: streamerId ? openvibeCoins.getBalance(req.user.id, streamerId) : 0, streamerId });
+        res.json({ earned: 0, balance: streamerId ? await openvibeCoins.getBalance(req.user.id, streamerId) : 0, streamerId });
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
 });
 
 // Claim the clickable bonus game (extra channel points, throttled per channel).
-router.post('/bonus', requireAuth, (req, res) => {
+router.post('/bonus', requireAuth, async (req, res) => {
     try {
         const { streamId } = req.body;
         if (!streamId) return res.status(400).json({ error: 'streamId required' });
-        const r = openvibeCoins.awardBonusGame(req.user.id, streamId);
+        const r = await openvibeCoins.awardBonusGame(req.user.id, streamId);
         if (!r) return res.status(429).json({ error: 'Bonus not available right now' });
         res.json({ earned: r.coins, balance: r.total, streamerId: r.streamerId });
     } catch (err) {
@@ -82,7 +82,7 @@ router.post('/bonus', requireAuth, (req, res) => {
 // ── Get Available Rewards + this channel's points config ─────
 router.get('/rewards/:userId', async (req, res) => {
     const streamerId = parseInt(req.params.userId);
-    const rewards = openvibeCoins.getRewards(streamerId);
+    const rewards = await openvibeCoins.getRewards(streamerId);
     res.json({ rewards, config: await db.getChannelPointsConfig(streamerId) });
 });
 
@@ -143,7 +143,7 @@ router.post('/rewards', requireAuth, async (req, res) => {
             requires_input,
         });
 
-        const rewards = openvibeCoins.getRewards(req.user.id);
+        const rewards = await openvibeCoins.getRewards(req.user.id);
         res.status(201).json({ rewards });
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -182,7 +182,7 @@ router.put('/rewards/:id', requireAuth, async (req, res) => {
         }
 
         await db.updateCoinReward(req.params.id, fields);
-        const rewards = openvibeCoins.getRewards(req.user.id);
+        const rewards = await openvibeCoins.getRewards(req.user.id);
         res.json({ rewards });
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -216,7 +216,7 @@ router.post('/redeem', requireAuth, async (req, res) => {
             if (!target || target.user_id !== rewardRow.streamer_id) return res.status(400).json({ error: 'That reward belongs to a different channel' });
         }
 
-        const result = openvibeCoins.redeem(req.user.id, rewardId, streamId, userInput);
+        const result = await openvibeCoins.redeem(req.user.id, rewardId, streamId, userInput);
 
         // Broadcast redemption to chat so streamer sees it
         try {

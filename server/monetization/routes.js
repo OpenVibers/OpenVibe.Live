@@ -84,7 +84,7 @@ router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
 
         const result = money.onBilling()
             ? await billingActions.donate(req, { toUserId: streamer_id, streamId: stream_id, amount, message, goalId: goal_id || null })
-            : openvibeBucks.donate(req.user.id, streamer_id, stream_id, amount, message, goal_id || null);
+            : await openvibeBucks.donate(req.user.id, streamer_id, stream_id, amount, message, goal_id || null);
         // A request the browser repeated with the same Idempotency-Key: already celebrated.
         if (result.replayed) return res.json({ success: true, amount: result.amount, balance: result.balance, goal_reached: false });
 
@@ -157,7 +157,7 @@ router.post('/cashout', requireAuth, money.guardWrite, async (req, res) => {
 
         const result = money.onBilling()
             ? await billingActions.requestCashout(req, { amount, paypalEmail: paypal_email })
-            : openvibeBucks.requestCashout(req.user.id, amount, paypal_email);
+            : await openvibeBucks.requestCashout(req.user.id, amount, paypal_email);
         res.json(result);
     } catch (err) {
         if (billingActions.sendError(res, err, { insufficient: 'Insufficient cashout balance — only Vibes sent to you can be cashed out' })) return;
@@ -193,7 +193,7 @@ router.post('/recycle', requireAuth, money.guardWrite, async (req, res) => {
     try {
         const result = money.onBilling()
             ? await billingActions.recycle(req, req.body.amount)
-            : openvibeBucks.recycleCashout(req.user.id, req.body.amount);
+            : await openvibeBucks.recycleCashout(req.user.id, req.body.amount);
         res.json(result);
     } catch (err) {
         if (billingActions.sendError(res, err, { insufficient: 'Insufficient cashout balance' })) return;
@@ -211,30 +211,30 @@ router.get('/history', requireAuth, async (req, res) => {
             return res.status(503).json({ error: 'Vibes history unavailable right now', unavailable: true });
         }
     }
-    const history = openvibeBucks.getHistory(req.user.id, limit);
+    const history = await openvibeBucks.getHistory(req.user.id, limit);
     res.json({ transactions: history });
 });
 
 // ── Stream Donation Leaderboard ──────────────────────────────
-router.get('/leaderboard/:streamId', (req, res) => {
-    const leaderboard = openvibeBucks.getLeaderboard(req.params.streamId);
+router.get('/leaderboard/:streamId', async (req, res) => {
+    const leaderboard = await openvibeBucks.getLeaderboard(req.params.streamId);
     res.json({ leaderboard });
 });
 
 // ── Manage own goals (dashboard) — all goals incl. completed ──
-router.get('/goals/manage/mine', requireAuth, (req, res) => {
-    res.json({ goals: openvibeBucks.getManageGoals(req.user.id).map(publicGoal) });
+router.get('/goals/manage/mine', requireAuth, async (req, res) => {
+    res.json({ goals: (await openvibeBucks.getManageGoals(req.user.id)).map(publicGoal) });
 });
 
 // ── Create Donation Goal ─────────────────────────────────────
-router.post('/goals', requireAuth, (req, res) => {
+router.post('/goals', requireAuth, async (req, res) => {
     try {
         const { title, target_amount, image_url, media_type } = req.body;
         if (!title || !target_amount) {
             return res.status(400).json({ error: 'Title and target amount required' });
         }
-        openvibeBucks.createGoal(req.user.id, { title, target_amount, image_url, media_type });
-        res.status(201).json({ goals: openvibeBucks.getManageGoals(req.user.id).map(publicGoal) });
+        await openvibeBucks.createGoal(req.user.id, { title, target_amount, image_url, media_type });
+        res.status(201).json({ goals: (await openvibeBucks.getManageGoals(req.user.id)).map(publicGoal) });
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
@@ -243,7 +243,7 @@ router.post('/goals', requireAuth, (req, res) => {
 // ── Update a Donation Goal ───────────────────────────────────
 router.put('/goals/:id', requireAuth, async (req, res) => {
     try {
-        const g = openvibeBucks.updateGoal(parseInt(req.params.id, 10), req.user.id, req.body);
+        const g = await openvibeBucks.updateGoal(parseInt(req.params.id, 10), req.user.id, req.body);
         // A manual progress correction should show up on open goal widgets right away,
         // same as a donation does (a plain goal-update — no celebration).
         if (req.body.current_amount !== undefined && g) {
@@ -251,16 +251,16 @@ router.put('/goals/:id', requireAuth, async (req, res) => {
                 await delivery.event({ kind: 'channel', id: req.user.id }, { type: 'goal-update', goal: publicGoal(g) });
             } catch { /* live update is best-effort */ }
         }
-        res.json({ goals: openvibeBucks.getManageGoals(req.user.id).map(publicGoal) });
+        res.json({ goals: (await openvibeBucks.getManageGoals(req.user.id)).map(publicGoal) });
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
 });
 
 // ── Delete a Donation Goal (+ best-effort media cleanup) ─────
-router.delete('/goals/:id', requireAuth, (req, res) => {
+router.delete('/goals/:id', requireAuth, async (req, res) => {
     try {
-        const g = openvibeBucks.deleteGoal(parseInt(req.params.id, 10), req.user.id);
+        const g = await openvibeBucks.deleteGoal(parseInt(req.params.id, 10), req.user.id);
         if (g && g.image_url && /^\/data\/offline\//.test(g.image_url)) {
             try {
                 const fs = require('fs'); const path = require('path');
@@ -268,23 +268,23 @@ router.delete('/goals/:id', requireAuth, (req, res) => {
                 if (fs.existsSync(p)) fs.unlinkSync(p);
             } catch { /* orphan is harmless */ }
         }
-        res.json({ goals: openvibeBucks.getManageGoals(req.user.id).map(publicGoal) });
+        res.json({ goals: (await openvibeBucks.getManageGoals(req.user.id)).map(publicGoal) });
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
 });
 
 // ── Get User Goals (public widget set: active + recently reached) ──
-router.get('/goals/:userId', (req, res) => {
-    const goals = openvibeBucks.getGoals(req.params.userId).map(publicGoal);
+router.get('/goals/:userId', async (req, res) => {
+    const goals = (await openvibeBucks.getGoals(req.params.userId)).map(publicGoal);
     res.json({ goals });
 });
 
 // ── Admin: Approve Cashout ───────────────────────────────────
-router.post('/cashout/:id/approve', requireOwner, money.guardWrite, (req, res) => {
+router.post('/cashout/:id/approve', requireOwner, money.guardWrite, async (req, res) => {
     if (money.onBilling()) return cashoutsInBilling(res);
     try {
-        openvibeBucks.approveCashout(req.params.id);
+        await openvibeBucks.approveCashout(req.params.id);
         res.json({ message: 'Cashout approved' });
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -292,10 +292,10 @@ router.post('/cashout/:id/approve', requireOwner, money.guardWrite, (req, res) =
 });
 
 // ── Admin: Deny Cashout ──────────────────────────────────────
-router.post('/cashout/:id/deny', requireOwner, money.guardWrite, (req, res) => {
+router.post('/cashout/:id/deny', requireOwner, money.guardWrite, async (req, res) => {
     if (money.onBilling()) return cashoutsInBilling(res);
     try {
-        openvibeBucks.denyCashout(req.params.id, req.body.reason);
+        await openvibeBucks.denyCashout(req.params.id, req.body.reason);
         res.json({ message: 'Cashout denied, funds refunded' });
     } catch (err) {
         res.status(400).json({ error: err.message });

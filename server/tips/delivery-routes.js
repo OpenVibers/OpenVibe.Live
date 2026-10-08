@@ -28,30 +28,14 @@ const { guard } = require('../net/service-guard');
 const router = express.Router();
 const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
 
-// ── Idempotency store (SQLite, so a Live restart does not forget a delivery) ──────────────
+// ── Idempotency store (a Live restart does not forget a delivery) ──────────────
 const KEEP_DAYS = 7;            // Tips retries within minutes; a week is ample and stays small
 const CLAIM_STALE_MS = 120000;  // a claim this old was left by a crash: the next retry takes it over
 const PRUNE_EVERY_MS = 60 * 60 * 1000;
-let tablesReady = false;
 let lastPrune = 0;
-
-function ensureTables() {
-    if (tablesReady) return;
-    db.getDb().exec(`CREATE TABLE IF NOT EXISTS tips_deliveries (
-        idempotency_key TEXT PRIMARY KEY,
-        effect TEXT,
-        state TEXT NOT NULL DEFAULT 'pending',   -- pending (running) | done (response stored)
-        response_json TEXT,
-        claimed_at INTEGER NOT NULL,             -- ms epoch
-        created_at DATETIME DEFAULT ov_now()
-    )`);
-    db.getDb().exec('CREATE INDEX IF NOT EXISTS idx_tips_deliveries_created ON tips_deliveries(created_at)');
-    tablesReady = true;
-}
 
 /** Delete answers older than KEEP_DAYS. Returns how many rows went. */
 async function prune({ force = false } = {}) {
-    ensureTables();
     if (!force && Date.now() - lastPrune < PRUNE_EVERY_MS) return 0;
     lastPrune = Date.now();
     return (await db.getDb().prepare(`DELETE FROM tips_deliveries WHERE created_at < datetime('now', ?)`).run(`-${KEEP_DAYS} days`)).changes;
@@ -62,7 +46,6 @@ async function prune({ force = false } = {}) {
  * { busy: true } while another request runs it, { claimed: true } when this request may run it.
  */
 async function claim(key, effect) {
-    ensureTables();
     const d = db.getDb();
     const now = Date.now();
     if ((await d.prepare("INSERT INTO tips_deliveries (idempotency_key, effect, state, claimed_at) VALUES (?, ?, 'pending', ?) ON CONFLICT DO NOTHING").run(key, effect || null, now)).changes) {
@@ -110,7 +93,7 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
     if (c.done) return res.json(c.done);
     if (c.busy) return res.status(409).json({ error: 'this delivery is already running; retry shortly' });
     // Every answer but a stored 200 gives the claim back (Tips retries 409 and 5xx).
-    res.on('finish', async () => { if (res.statusCode !== 200) { try { await release(key); } catch { /* */ } } });
+    res.on('finish', () => { if (res.statusCode !== 200) release(key).catch((e) => console.warn('[Tips delivery] release:', e.message)); });
     const i = b.interaction || {};
     const userId = await channelUserId(b.creator && b.creator.id);
     if (!userId) return res.status(404).json({ error: 'this creator has no Live channel' });
@@ -152,18 +135,21 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
         }
         if (b.effect === 'media_request') {
             const mq = require('../media/media-queue');
-            const settings = mq.getSettings(userId);
+            const settings = await mq.getSettings(userId);
             const normalized = await mq.normalizeInput(String((b.media && b.media.url) || ''), settings);
             const max = Number(settings.max_duration_seconds) || 600;
             if (Number.isFinite(normalized.duration_seconds) && normalized.duration_seconds > max) return res.status(422).json({ error: `longer than ${max} seconds` });
-            const r = await db.createMediaRequest({
-                streamer_id: userId, stream_id: streamId, user_id: null, username: name, input: String(b.media.url),
-                canonical_url: normalized.canonical_url, embed_url: normalized.embed_url, provider: normalized.provider, title: normalized.title,
-                thumbnail_url: normalized.thumbnail_url, duration_seconds: normalized.duration_seconds,
-                // Paid through OpenVibe.Billing and recorded by OpenVibe.Tips: Live charges nothing here.
-                cost: 0, currency: 'free', queue_position: await db.getMediaRequestMaxQueuePosition(userId) + 1,
-            });
-            mq.broadcastQueueUpdate(userId);
+            // Paid through OpenVibe.Billing and recorded by OpenVibe.Tips: Live charges nothing here.
+            const r = await db.run(`INSERT INTO media_requests
+                (streamer_id, stream_id, user_id, username, input, canonical_url, embed_url, provider,
+                 title, thumbnail_url, duration_seconds, cost, queue_position, currency, status, charge_state)
+                VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'free', 'pending', NULL) RETURNING id`, [
+                userId, streamId || null, name, String(b.media.url), normalized.canonical_url,
+                normalized.embed_url || null, normalized.provider, normalized.title,
+                normalized.thumbnail_url || null, normalized.duration_seconds ?? null,
+                (await db.getMediaRequestMaxQueuePosition(userId)) + 1,
+            ]);
+            await mq.broadcastQueueUpdate(userId);
             return res.json(await remember(key, { ok: true, ref: { media_request_id: Number(r.lastInsertRowid) } }));
         }
         return res.status(422).json({ error: `unknown effect ${b.effect}` });

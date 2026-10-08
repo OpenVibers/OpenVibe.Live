@@ -18,38 +18,36 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-loyalty-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
 console.log = () => {};
 console.warn = () => {};
 
 const db = require('../server/db/database');
-db.initDb();
+ (async () => {
+await db.initDb();
 const raw = db.getDb();
 const auth = require('../server/auth/auth');
-const signIn = (req) => {
+const signIn = async (req) => {
     const id = Number(req.headers['x-test-user'] || 0);
-    const u = id ? db.getUserById(id) : null;
+    const u = id ? await db.getUserById(id) : null;
     if (u) req.user = u;
     return u;
 };
-auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
+auth.requireAuth = (req, res, next) => { signIn(req).then((u) => u ? next() : res.status(401).json({ error: 'Authentication required' })).catch(next); };
 
-const addUser = (id, name, role = 'streamer', owner = 0) => raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner) OVERRIDING SYSTEM VALUE VALUES (?, ?, ?, ?, 'x', ?, ?)`).run(id, name, name, `${name}@x`, role, owner);
-addUser(1, 'owner', 'admin', 1);
-addUser(2, 'viewer');
-addUser(3, 'streamer');
-db.ensureChannel(3);
-const chan = db.getChannelByUserId(3);
-const streamId = Number(db.createStream({ user_id: 3, channel_id: chan.id, title: 'live', protocol: 'webrtc' }).lastInsertRowid);
+const addUser = async (id, name, role = 'streamer', owner = 0) => await raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner) OVERRIDING SYSTEM VALUE VALUES (?, ?, ?, ?, 'x', ?, ?)`).run(id, name, name, `${name}@x`, role, owner);
+await addUser(1, 'owner', 'admin', 1);
+await addUser(2, 'viewer');
+await addUser(3, 'streamer');
+await db.ensureChannel(3);
+const chan = await db.getChannelByUserId(3);
+const streamId = Number((await db.createStream({ user_id: 3, channel_id: chan.id, title: 'live', protocol: 'webrtc' })).lastInsertRowid);
 const cp = () => db.getChannelPoints(2, 3);
-const logRows = (key) => raw.prepare('SELECT * FROM channel_points_log WHERE idempotency_key = ?').all(key);
+const logRows = async (key) => await raw.prepare('SELECT * FROM channel_points_log WHERE idempotency_key = ?').all(key);
 
 // A Network wallet that behaves like the real one: one effect per idempotency key.
 const wallet = require('../server/monetization/wallet-client');
@@ -74,59 +72,59 @@ wallet.credit = walletOp('credit');
 
 (async () => {
     // ── 1. The keyed channel-points log ──────────────────────────────────────────────
-    assert.throws(() => db.addChannelPoints(2, 3, 10), /idempotency key is required/, 'no unkeyed credit');
-    assert.throws(() => db.deductChannelPoints(2, 3, 10), /idempotency key is required/, 'no unkeyed debit');
-    assert.strictEqual(db.addChannelPoints(2, 3, 100, 'live:cp:test:credit:1'), 100);
-    assert.strictEqual(db.addChannelPoints(2, 3, 100, 'live:cp:test:credit:1'), 100, 'a retried credit is applied once');
-    assert.strictEqual(db.deductChannelPoints(2, 3, 30, 'live:cp:test:debit:1'), true);
-    assert.strictEqual(db.deductChannelPoints(2, 3, 30, 'live:cp:test:debit:1'), true, 'a retried debit answers as taken…');
-    assert.strictEqual(cp(), 70, '…but takes once');
-    assert.throws(() => db.addChannelPoints(2, 3, 5, 'live:cp:test:credit:1'), /already used for a different event/, 'a key reused for another amount is refused');
-    assert.strictEqual(db.deductChannelPoints(2, 3, 500, 'live:cp:test:debit:big'), false, 'not enough: refused');
-    assert.strictEqual(logRows('live:cp:test:debit:big').length, 0, 'a refused debit leaves no log row');
-    db.addChannelPoints(2, 3, 500, 'live:cp:test:topup');
-    assert.strictEqual(db.deductChannelPoints(2, 3, 500, 'live:cp:test:debit:big'), true, 'so the same key can be tried again once the balance covers it');
-    assert.strictEqual(cp(), 70);
+    await assert.rejects(db.addChannelPoints(2, 3, 10), /idempotency key is required/, 'no unkeyed credit');
+    await assert.rejects(db.deductChannelPoints(2, 3, 10), /idempotency key is required/, 'no unkeyed debit');
+    assert.strictEqual(await db.addChannelPoints(2, 3, 100, 'live:cp:test:credit:1'), 100);
+    assert.strictEqual(await db.addChannelPoints(2, 3, 100, 'live:cp:test:credit:1'), 100, 'a retried credit is applied once');
+    assert.strictEqual(await db.deductChannelPoints(2, 3, 30, 'live:cp:test:debit:1'), true);
+    assert.strictEqual(await db.deductChannelPoints(2, 3, 30, 'live:cp:test:debit:1'), true, 'a retried debit answers as taken…');
+    assert.strictEqual(await cp(), 70, '…but takes once');
+    await assert.rejects(db.addChannelPoints(2, 3, 5, 'live:cp:test:credit:1'), /already used for a different event/, 'a key reused for another amount is refused');
+    assert.strictEqual(await db.deductChannelPoints(2, 3, 500, 'live:cp:test:debit:big'), false, 'not enough: refused');
+    assert.strictEqual((await logRows('live:cp:test:debit:big')).length, 0, 'a refused debit leaves no log row');
+    await db.addChannelPoints(2, 3, 500, 'live:cp:test:topup');
+    assert.strictEqual(await db.deductChannelPoints(2, 3, 500, 'live:cp:test:debit:big'), true, 'so the same key can be tried again once the balance covers it');
+    assert.strictEqual(await cp(), 70);
 
     // ── 2. Earning: follow, chat (across a "restart"), watch ───────────────────────
     let coins = require('../server/monetization/opencoins');
-    assert.ok(coins.awardFollow(2, 3));
-    raw.prepare("DELETE FROM coin_transactions WHERE type = 'follow_bonus'").run();   // even without the old ILIKE check…
-    assert.strictEqual(coins.awardFollow(2, 3), null, '…a second follow bonus is refused by its key');
-    assert.strictEqual(logRows('live:cp:follow:2:3').length, 1);
-    const afterFollow = cp();
-    assert.ok(coins.awardChat(2, streamId));
+    assert.ok(await coins.awardFollow(2, 3));
+    await raw.prepare("DELETE FROM coin_transactions WHERE type = 'follow_bonus'").run();   // even without the old ILIKE check…
+    assert.strictEqual(await coins.awardFollow(2, 3), null, '…a second follow bonus is refused by its key');
+    assert.strictEqual((await logRows('live:cp:follow:2:3')).length, 1);
+    const afterFollow = await cp();
+    assert.ok(await coins.awardChat(2, streamId));
     delete require.cache[require.resolve('../server/monetization/opencoins')];
     coins = require('../server/monetization/opencoins');   // a restart: the in-memory chat cooldown is gone
     const minute = Math.floor(Date.now() / 60_000);
-    const secondChat = coins.awardChat(2, streamId);
+    const secondChat = await coins.awardChat(2, streamId);
     if (Math.floor(Date.now() / 60_000) === minute) assert.strictEqual(secondChat, null, 'the same chat minute earns once, even after a restart');
-    assert.strictEqual(cp(), afterFollow + 5 + (secondChat ? 5 : 0));
-    raw.prepare('INSERT INTO watch_time (user_id, stream_id, minutes_watched) VALUES (2, ?, 4)').run(streamId);
-    const watched = coins.awardWatch(2, streamId);   // minute 5 of the default 5-minute interval
+    assert.strictEqual(await cp(), afterFollow + 5 + (secondChat ? 5 : 0));
+    await raw.prepare('INSERT INTO watch_time (user_id, stream_id, minutes_watched) VALUES (2, ?, 4)').run(streamId);
+    const watched = await coins.awardWatch(2, streamId);   // minute 5 of the default 5-minute interval
     assert.ok(watched && watched.coins === 10);
-    const wt = db.getWatchTime(2, streamId);
-    assert.strictEqual(logRows(`live:cp:watch:${wt.id}:5`).length, 1, 'the watch award is keyed by the watch row and minute');
-    assert.strictEqual(db.applyChannelPoints({ userId: 2, streamerId: 3, delta: 10, key: `live:cp:watch:${wt.id}:5` }).replayed, true, 'replaying that minute moves nothing');
+    const wt = await db.getWatchTime(2, streamId);
+    assert.strictEqual((await logRows(`live:cp:watch:${wt.id}:5`)).length, 1, 'the watch award is keyed by the watch row and minute');
+    assert.strictEqual((await db.applyChannelPoints({ userId: 2, streamerId: 3, delta: 10, key: `live:cp:watch:${wt.id}:5` })).replayed, true, 'replaying that minute moves nothing');
 
     // ── 3. Redemptions: limits before the spend, keyed by redemption, reject refunds once ──
-    const rewardId = Number(db.createCoinReward({ streamer_id: 3, title: 'Hydrate', cost: 40, cooldown_seconds: 3600 }).lastInsertRowid);
-    const beforeRedeem = cp();
-    const red = coins.redeem(2, rewardId, streamId, 'drink');
-    assert.strictEqual(cp(), beforeRedeem - 40);
-    assert.strictEqual(logRows(`live:cp:redeem:${red.redemption.id}`).length, 1, 'the spend is keyed by the redemption id');
-    const redemptions = raw.prepare('SELECT COUNT(*) AS n FROM coin_redemptions').get().n;
-    assert.throws(() => coins.redeem(2, rewardId, streamId, 'again'), /Cooldown/);
-    assert.strictEqual(cp(), beforeRedeem - 40, 'a refused redemption takes nothing (no take-then-refund)');
-    assert.strictEqual(raw.prepare('SELECT COUNT(*) AS n FROM coin_redemptions').get().n, redemptions, 'and leaves no redemption row');
-    const pricey = Number(db.createCoinReward({ streamer_id: 3, title: 'Big', cost: 1_000_000 }).lastInsertRowid);
-    assert.throws(() => coins.redeem(2, pricey, streamId, ''), /Not enough/);
-    assert.strictEqual(raw.prepare('SELECT COUNT(*) AS n FROM coin_redemptions').get().n, redemptions, 'not enough points: the redemption row is rolled back');
+    const rewardId = Number((await db.run("INSERT INTO coin_rewards (streamer_id, title, cost, cooldown_seconds) VALUES (3, 'Hydrate', 40, 3600) RETURNING id")).lastInsertRowid);
+    const beforeRedeem = await cp();
+    const red = await coins.redeem(2, rewardId, streamId, 'drink');
+    assert.strictEqual(await cp(), beforeRedeem - 40);
+    assert.strictEqual((await logRows(`live:cp:redeem:${red.redemption.id}`)).length, 1, 'the spend is keyed by the redemption id');
+    const redemptions = (await raw.prepare('SELECT COUNT(*) AS n FROM coin_redemptions').get()).n;
+    await assert.rejects(coins.redeem(2, rewardId, streamId, 'again'), /Cooldown/);
+    assert.strictEqual(await cp(), beforeRedeem - 40, 'a refused redemption takes nothing (no take-then-refund)');
+    assert.strictEqual((await raw.prepare('SELECT COUNT(*) AS n FROM coin_redemptions').get()).n, redemptions, 'and leaves no redemption row');
+    const pricey = Number((await db.run("INSERT INTO coin_rewards (streamer_id, title, cost) VALUES (3, 'Big', 1000000) RETURNING id")).lastInsertRowid);
+    await assert.rejects(coins.redeem(2, pricey, streamId, ''), /Not enough/);
+    assert.strictEqual((await raw.prepare('SELECT COUNT(*) AS n FROM coin_redemptions').get()).n, redemptions, 'not enough points: the redemption row is rolled back');
 
     const express = require('express');
     const app = express();
     app.use(express.json());
-    app.use((req, res, next) => { signIn(req); next(); });
+    app.use((req, res, next) => { signIn(req).then(() => next()).catch(next); });
     app.use('/api/coins', require('../server/monetization/coins-routes'));
     const server = http.createServer(app).listen(0);
     const call = (method, p, user, body, headers = {}) => new Promise((resolve, reject) => {
@@ -138,11 +136,11 @@ wallet.credit = walletOp('credit');
         req.on('error', reject);
         req.end(body ? JSON.stringify(body) : undefined);
     });
-    const beforeReject = cp();
+    const beforeReject = await cp();
     assert.strictEqual((await call('POST', `/api/coins/redemptions/${red.redemption.id}`, 3, { status: 'rejected' })).status, 200);
     assert.strictEqual((await call('POST', `/api/coins/redemptions/${red.redemption.id}`, 3, { status: 'rejected' })).status, 200);
-    assert.strictEqual(cp(), beforeReject + 40, 'rejecting the same redemption twice refunds once');
-    assert.strictEqual(logRows(`live:cp:redeem_refund:${red.redemption.id}`).length, 1);
+    assert.strictEqual(await cp(), beforeReject + 40, 'rejecting the same redemption twice refunds once');
+    assert.strictEqual((await logRows(`live:cp:redeem_refund:${red.redemption.id}`)).length, 1);
 
     // ── 4. Media requests ───────────────────────────────────────────────────────────
     const mq = require('../server/media/media-queue');
@@ -150,7 +148,7 @@ wallet.credit = walletOp('credit');
     mq.normalizeInput = async () => { n++; return { canonical_url: `https://media.example/${n}.mp4`, embed_url: null, provider: 'video', title: `clip ${n}`, thumbnail_url: null, duration_seconds: 30, isLive: false }; };
     mq.extractStreamUrlForRequest = async () => null;
     mq.broadcastQueueUpdate = () => {};
-    db.upsertMediaRequestSettings(3, { enabled: 1, request_cost: 25, currency: 'opencoins', max_per_user: 10 });
+    await db.upsertMediaRequestSettings(3, { enabled: 1, request_cost: 25, currency: 'opencoins', max_per_user: 10 });
 
     const start = ledger.balance;
     const req1 = await mq.addRequest({ streamerId: 3, streamId, userId: 2, username: 'viewer', input: 'https://media.example/a.mp4' });
@@ -160,27 +158,27 @@ wallet.credit = walletOp('credit');
     // A retry of that charge (same request) is a replay at the wallet: nothing more is taken.
     await mq.charge({ currency: 'opencoins', cost: 25, userId: 2, streamerId: 3, streamId, label: 'retry', requestId: req1.id });
     assert.strictEqual(ledger.balance, start - 25, 'retrying the charge does not spend twice');
-    assert.ok(db.getMediaRequestById(req1.id).queue_position >= 1, 'a paid request joins the queue');
+    assert.ok((await db.getMediaRequestById(req1.id)).queue_position >= 1, 'a paid request joins the queue');
 
     // The wallet times out after the debit landed, twice: the viewer is told it failed and the
     // request waits, out of the queue, for the reconciler.
     ledger.failNext = 2; ledger.landBeforeFailing = true;
-    const queueBefore = db.all("SELECT id FROM media_requests WHERE status = 'pending'").length;
+    const queueBefore = (await db.all("SELECT id FROM media_requests WHERE status = 'pending'")).length;
     await assert.rejects(mq.addRequest({ streamerId: 3, streamId, userId: 2, username: 'viewer', input: 'https://media.example/b.mp4' }), /Could not reach the OpenCoins wallet/);
     ledger.landBeforeFailing = false;
-    const unknown = raw.prepare("SELECT * FROM media_requests WHERE charge_state = 'unknown'").get();
+    const unknown = await raw.prepare("SELECT * FROM media_requests WHERE charge_state = 'unknown'").get();
     assert.ok(unknown, 'the request is kept with its charge unknown');
     assert.strictEqual(unknown.status, 'failed');
-    assert.strictEqual(db.all("SELECT id FROM media_requests WHERE status = 'pending'").length, queueBefore, 'and is not in the queue');
+    assert.strictEqual((await db.all("SELECT id FROM media_requests WHERE status = 'pending'")).length, queueBefore, 'and is not in the queue');
     assert.strictEqual(ledger.balance, start - 50, 'the debit did land');
     assert.strictEqual(await mq.reconcileCharges({ olderThanMs: -60_000 }), 1);
     assert.strictEqual(ledger.balance, start - 25, 'the reconciler re-charged with the same key (a replay) and refunded');
     assert.deepStrictEqual(ledger.calls.filter((c) => c.key === `live:media_req:${unknown.id}`).map((c) => c.kind), ['debit', 'debit', 'debit'], 'every attempt used the one key');
-    const settled = db.getMediaRequestById(unknown.id);
+    const settled = await db.getMediaRequestById(unknown.id);
     assert.strictEqual(settled.charge_state, null);
     assert.strictEqual(settled.refunded, 1);
     assert.strictEqual(await mq.reconcileCharges({ olderThanMs: -60_000 }), 0, 'nothing left to settle');
-    assert.strictEqual(mq.refund(unknown.id), 0, 'and it is not refunded a second time');
+    assert.strictEqual(await mq.refund(unknown.id), 0, 'and it is not refunded a second time');
 
     // A wallet that never answered and never took anything: the re-charge takes it, the refund gives it back.
     ledger.failNext = 2;
@@ -189,24 +187,24 @@ wallet.credit = walletOp('credit');
     assert.strictEqual(ledger.balance, start - 25, 'net zero either way');
 
     // Not enough OpenCoins: nothing taken, no row left behind.
-    const rows = raw.prepare('SELECT COUNT(*) AS n FROM media_requests').get().n;
+    const rows = (await raw.prepare('SELECT COUNT(*) AS n FROM media_requests').get()).n;
     ledger.balance = 10;
     await assert.rejects(mq.addRequest({ streamerId: 3, streamId, userId: 2, username: 'viewer', input: 'https://media.example/d.mp4' }), /Not enough OpenCoins/);
-    assert.strictEqual(raw.prepare('SELECT COUNT(*) AS n FROM media_requests').get().n, rows, 'a refused charge leaves no request row');
+    assert.strictEqual((await raw.prepare('SELECT COUNT(*) AS n FROM media_requests').get()).n, rows, 'a refused charge leaves no request row');
     assert.strictEqual(ledger.balance, 10);
 
     // Channel points: spend keyed by the request, refund keyed by the request, once.
-    db.upsertMediaRequestSettings(3, { currency: 'points' });
-    const pts = cp();
+    await db.upsertMediaRequestSettings(3, { currency: 'points' });
+    const pts = await cp();
     const req2 = await mq.addRequest({ streamerId: 3, streamId, userId: 2, username: 'viewer', input: 'https://media.example/e.mp4' });
-    assert.strictEqual(cp(), pts - 25);
-    assert.strictEqual(logRows(`live:media_req:${req2.id}`).length, 1);
-    assert.strictEqual(db.deductChannelPoints(2, 3, 25, `live:media_req:${req2.id}`), true, 'a retried points charge is a replay');
-    assert.strictEqual(cp(), pts - 25);
-    assert.strictEqual(mq.refund(req2.id), 25);
-    db.updateMediaRequest(req2.id, { refunded: 0 });   // even if the refunded flag were lost…
-    mq.refund(req2.id);
-    assert.strictEqual(cp(), pts, '…the refund key credits once');
+    assert.strictEqual(await cp(), pts - 25);
+    assert.strictEqual((await logRows(`live:media_req:${req2.id}`)).length, 1);
+    assert.strictEqual(await db.deductChannelPoints(2, 3, 25, `live:media_req:${req2.id}`), true, 'a retried points charge is a replay');
+    assert.strictEqual(await cp(), pts - 25);
+    assert.strictEqual(await mq.refund(req2.id), 25);
+    await db.updateMediaRequest(req2.id, { refunded: 0 });   // even if the refunded flag were lost…
+    await mq.refund(req2.id);
+    assert.strictEqual(await cp(), pts, '…the refund key credits once');
 
     // ── 5. Admin OpenCoins grants ─────────────────────────────────────────────────
     const g0 = ledger.balance;
@@ -233,10 +231,10 @@ wallet.credit = walletOp('credit');
     assert.ok(/key: `live:media_charge:\$\{requestId\}`/.test(ba), 'the Billing media charge is keyed by the request id');
 
     server.close();
-    fs.rmSync(tmp, { recursive: true, force: true });
     quiet('loyalty-keys: ok');
     process.exit(0);
 })().catch((err) => {
     quiet(err);
     process.exit(1);
 });
+})().catch((err) => { quiet(err); process.exit(1); });

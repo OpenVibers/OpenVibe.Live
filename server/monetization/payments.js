@@ -37,7 +37,7 @@ async function bucksForUsd(usd) {
 /** Public provider availability + pricing for the client. */
 async function publicConfig() {
     const hb = require('./vibes');
-    const powerchatAvailable = (async () => { try { return await require('../integrations/powerchat-checkout').isAvailable(); } catch { return false; } })();
+    const powerchatAvailable = await (async () => { try { return await require('../integrations/powerchat-checkout').isAvailable(); } catch { return false; } })();
     return {
         // "Something can be bought here": the card/PayPal master switch OR PowerChat.
         // (The old flag hid the subscribe modal entirely whenever the master switch was
@@ -387,7 +387,7 @@ async function startRenewalSweeper() {
     if (_renewTimer) return;
     if (money.onBilling()) { console.log('[Payments] renewal sweeper not started: OpenVibe.Billing renews subscriptions (BILLING_AUTHORITY=billing)'); return; }
     await _sweepRenewals(); // catch up immediately on boot
-    _renewTimer = setInterval(_sweepRenewals, 60 * 60 * 1000);
+    _renewTimer = setInterval(() => _sweepRenewals().catch((e) => console.warn('[Payments] renewal sweep:', e.message)), 60 * 60 * 1000);
     if (_renewTimer.unref) _renewTimer.unref();
     console.log('[Payments] subscription renewal sweeper started (hourly)');
 }

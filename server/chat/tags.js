@@ -47,16 +47,6 @@ const TAGS = {
     survivor:       { name: 'Survivor',      emoji: '💪', color: '#4ade80', bgColor: '#052e16', desc: 'Won 100 PvP battles',                               category: 'achievement', tier: 4 },
 };
 
-function ensureTagTables() {
-    db.getDb().exec(`
-        CREATE TABLE IF NOT EXISTS user_equipped_tag (
-            user_id INTEGER NOT NULL PRIMARY KEY,
-            tag_id TEXT NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        );
-    `);
-}
-
 // `user_tags` went with roadmap T3: OpenVibe.Chat owns it (Live's copy was dropped in N+2) and no
 // production caller in Live ever read it here. The equipped tag (user_equipped_tag) is not staged and stays.
 
@@ -78,4 +68,4 @@ function getAllTags() {
     return Object.entries(TAGS).map(([id, t]) => ({ tagId: id, ...t }));
 }
 
-module.exports = { TAGS, ensureTagTables, getEquippedTag, getTagProfile, getAllTags };
+module.exports = { TAGS, getEquippedTag, getTagProfile, getAllTags };

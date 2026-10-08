@@ -10,45 +10,41 @@
  */
 'use strict';
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const http = require('http');
 
-const tmp = path.join(os.tmpdir(), `ov-authz-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 
+(async () => {
 const db = require('../server/db/database');
-db.initDb();
+await db.initDb();
 const raw = db.getDb();
 
 // Stub sign-in before any router captures requireAuth.
 const auth = require('../server/auth/auth');
-const signIn = (req) => {
+const signIn = async (req) => {
     const id = Number(req.headers['x-test-user'] || 0);
-    const u = id ? db.getUserById(id) : null;
+    const u = id ? await db.getUserById(id) : null;
     if (u) { req.user = u; req.authSource = 'network'; }
     return u;
 };
-auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
-auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
+auth.requireAuth = (req, res, next) => { signIn(req).then((u) => u ? next() : res.status(401).json({ error: 'Authentication required' })).catch(next); };
+auth.optionalAuth = (req, res, next) => { signIn(req).then(() => next()).catch(next); };
 
 // Accounts: an owner-admin, a second admin, two streamers, a bystander.
-const addUser = (id, username, role, extra = {}) => raw.prepare(
+const addUser = async (id, username, role, extra = {}) => await raw.prepare(
     `INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner, openvibe_bucks_balance, openvibe_bucks_cashout_balance) OVERRIDING SYSTEM VALUE
      VALUES (?, ?, ?, ?, 'x', ?, ?, ?, ?)`).run(id, username, username, `${username}@x`, role, extra.is_owner ? 1 : 0, extra.bucks || 0, extra.cashout || 0);
-addUser(1, 'owner', 'admin', { is_owner: 1 });
-addUser(2, 'admin2', 'admin');
-addUser(3, 'alice', 'streamer', { cashout: 0 });
-addUser(4, 'bob', 'streamer');
-addUser(5, 'carol', 'user', { bucks: 0 });
-for (const id of [3, 4]) db.ensureChannel(id);
-const chanA = db.getChannelByUserId(3), chanB = db.getChannelByUserId(4);
-const streamA = db.createStream({ user_id: 3, channel_id: chanA.id, title: 'A', protocol: 'webrtc' }).lastInsertRowid;
-const streamB = db.createStream({ user_id: 4, channel_id: chanB.id, title: 'B', protocol: 'webrtc' }).lastInsertRowid;
+await addUser(1, 'owner', 'admin', { is_owner: 1 });
+await addUser(2, 'admin2', 'admin');
+await addUser(3, 'alice', 'streamer', { cashout: 0 });
+await addUser(4, 'bob', 'streamer');
+await addUser(5, 'carol', 'user', { bucks: 0 });
+for (const id of [3, 4]) await db.ensureChannel(id);
+const chanA = await db.getChannelByUserId(3), chanB = await db.getChannelByUserId(4);
+const streamA = (await db.createStream({ user_id: 3, channel_id: chanA.id, title: 'A', protocol: 'webrtc' })).lastInsertRowid;
+const streamB = (await db.createStream({ user_id: 4, channel_id: chanB.id, title: 'B', protocol: 'webrtc' })).lastInsertRowid;
 
 // OpenVibe.Chat owns the chat tables now (Live keeps no copy), so the permission checks that used
 // to read a local row go through the seam: stub Chat's message/relay reads and the moderation
@@ -109,14 +105,14 @@ async function check(name, fn) {
     });
 
     await check('controls: a button id from someone else\'s profile cannot be edited or deleted through yours', async () => {
-        const cfgA = db.createControlConfig({ user_id: 3, name: 'A' }).lastInsertRowid;
-        const cfgB = db.createControlConfig({ user_id: 4, name: 'B' }).lastInsertRowid;
-        const btnB = db.createConfigButton({ config_id: cfgB, label: 'Fire', command: 'fire' }).lastInsertRowid;
+        const cfgA = (await db.run("INSERT INTO control_configs (user_id, name, description) VALUES (3, 'A', '') RETURNING id")).lastInsertRowid;
+        const cfgB = (await db.run("INSERT INTO control_configs (user_id, name, description) VALUES (4, 'B', '') RETURNING id")).lastInsertRowid;
+        const btnB = (await db.run("INSERT INTO control_config_buttons (config_id, label, command) VALUES (?, 'Fire', 'fire') RETURNING id", [cfgB])).lastInsertRowid;
         const put = await call('PUT', `/api/controls/configs/${cfgA}/buttons/${btnB}`, 3, { command: 'self_destruct' });
         assert.strictEqual(put.status, 404, put.text);
         const del = await call('DELETE', `/api/controls/configs/${cfgA}/buttons/${btnB}`, 3);
         assert.strictEqual(del.status, 404, del.text);
-        const row = raw.prepare('SELECT command FROM control_config_buttons WHERE id = ?').get(btnB);
+        const row = await raw.prepare('SELECT command FROM control_config_buttons WHERE id = ?').get(btnB);
         assert.strictEqual(row && row.command, 'fire');
     });
 
@@ -124,13 +120,13 @@ async function check(name, fn) {
         assert.strictEqual((await call('PUT', '/api/admin/users/1', 2, { role: 'user' })).status, 403);
         assert.strictEqual((await call('PUT', '/api/admin/users/5', 2, { role: 'admin' })).status, 403);
         assert.strictEqual((await call('POST', '/api/admin/users/1/ban', 2, { reason: 'x' })).status, 403);
-        assert.strictEqual(db.getUserById(1).role, 'admin');
-        assert.strictEqual(db.getUserById(5).role, 'user');
-        assert.strictEqual(db.getUserById(1).is_banned, 0);
+        assert.strictEqual((await db.getUserById(1)).role, 'admin');
+        assert.strictEqual((await db.getUserById(5)).role, 'user');
+        assert.strictEqual((await db.getUserById(1)).is_banned, 0);
     });
     await check('admin: the owner can still grant admin', async () => {
         assert.strictEqual((await call('PUT', '/api/admin/users/5', 1, { role: 'admin' })).status, 200);
-        raw.prepare("UPDATE users SET role = 'user' WHERE id = 5").run();
+        await raw.prepare("UPDATE users SET role = 'user' WHERE id = 5").run();
     });
 
     await check('admin: yt-dlp extra args are owner-only and allow-listed', async () => {
@@ -149,33 +145,33 @@ async function check(name, fn) {
 
     await check('IP approval: owning stream #N does not open channel #N\'s queue', async () => {
         // A victim channel whose id equals the id of a stream alice owns.
-        const x = raw.prepare('SELECT MAX(id) m FROM streams').get().m + 50;
-        raw.prepare("INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (6, 'dave', 'dave', 'd@x', 'x', 'streamer')").run();
-        raw.prepare('INSERT INTO channels (id, user_id, title) OVERRIDING SYSTEM VALUE VALUES (?, 6, ?)').run(x, 'dave');
-        raw.prepare('INSERT INTO streams (id, user_id, channel_id, title, protocol) OVERRIDING SYSTEM VALUE VALUES (?, 3, ?, ?, ?)').run(x, chanA.id, 'x', 'webrtc');
+        const x = (await raw.prepare('SELECT MAX(id) m FROM streams').get()).m + 50;
+        await raw.prepare("INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (6, 'dave', 'dave', 'd@x', 'x', 'streamer')").run();
+        await raw.prepare('INSERT INTO channels (id, user_id, title) OVERRIDING SYSTEM VALUE VALUES (?, 6, ?)').run(x, 'dave');
+        await raw.prepare('INSERT INTO streams (id, user_id, channel_id, title, protocol) OVERRIDING SYSTEM VALUE VALUES (?, 3, ?, ?, ?)').run(x, chanA.id, 'x', 'webrtc');
         const r = await call('GET', `/api/mod/ip-approval/${x}/pending`, 3);
         assert.strictEqual(r.status, 403, r.text);
     });
 
-    await check('media refund: no credit when the streamer no longer holds the Vibes', () => {
+    await check('media refund: no credit when the streamer no longer holds the Vibes', async () => {
         const mq = require('../server/media/media-queue');
-        const reqRow = raw.prepare(`INSERT INTO media_requests (streamer_id, user_id, username, title, cost, currency, status, provider, input, canonical_url)
-            VALUES (3, 5, 'carol', 't', 1000, 'vibes', 'pending', 'video', 'https://x', 'https://x')`).run();
-        const before = db.getUserById(5).openvibe_bucks_balance;
-        const refunded = mq.refund(reqRow.lastInsertRowid);
+        const reqRow = await raw.prepare(`INSERT INTO media_requests (streamer_id, user_id, username, title, cost, currency, status, provider, input, canonical_url)
+            VALUES (3, 5, 'carol', 't', 1000, 'vibes', 'pending', 'video', 'https://x', 'https://x') RETURNING id`).run();
+        const before = (await db.getUserById(5)).openvibe_bucks_balance;
+        const refunded = await mq.refund(reqRow.lastInsertRowid);
         assert.strictEqual(refunded, 0);
-        assert.strictEqual(db.getUserById(5).openvibe_bucks_balance, before);
+        assert.strictEqual((await db.getUserById(5)).openvibe_bucks_balance, before);
     });
 
     await check('media playback position: only channel managers can move it', async () => {
-        const reqRow = raw.prepare(`INSERT INTO media_requests (streamer_id, user_id, username, title, cost, currency, status, provider, input, canonical_url)
-            VALUES (3, 5, 'carol', 't', 0, 'vibes', 'playing', 'video', 'https://x', 'https://x')`).run();
+        const reqRow = await raw.prepare(`INSERT INTO media_requests (streamer_id, user_id, username, title, cost, currency, status, provider, input, canonical_url)
+            VALUES (3, 5, 'carol', 't', 0, 'vibes', 'playing', 'video', 'https://x', 'https://x') RETURNING id`).run();
         const id = reqRow.lastInsertRowid;
         assert.strictEqual((await call('POST', `/api/media/queue/${id}/position`, null, { position: 99 })).status, 401);
         assert.strictEqual((await call('POST', `/api/media/queue/${id}/position`, 5, { position: 99 })).status, 403);
         assert.strictEqual((await call('POST', `/api/media/queue/${id}/position`, 4, { position: 99 })).status, 403);
         assert.strictEqual((await call('POST', `/api/media/queue/${id}/position`, 3, { position: 42 })).status, 200);
-        assert.strictEqual(db.getMediaRequestById(id).playback_position, 42);
+        assert.strictEqual((await db.getMediaRequestById(id)).playback_position, 42);
     });
 
     await check("AI viewer clone: a streamer cannot copy someone's chat from other channels", async () => {
@@ -188,25 +184,25 @@ async function check(name, fn) {
     });
 
     await check('payments: a CCBill sale cannot be pointed at a larger order, and replays credit once', async () => {
-        db.setSetting('ccbill_webhook_secret', 'sek');
+        await db.setSetting('ccbill_webhook_secret', 'sek');
         const pay = require('../server/monetization/payments');
-        const big = db.createPaymentOrder({ user_id: 5, provider: 'ccbill', kind: 'bucks', amount_cents: 10000, bucks: 10000 });
-        const other = db.createPaymentOrder({ user_id: 5, provider: 'paypal', kind: 'bucks', amount_cents: 100, bucks: 100 });
-        const bal = () => db.getUserById(5).openvibe_bucks_balance;
-        const start = bal();
+        const big = await db.createPaymentOrder({ user_id: 5, provider: 'ccbill', kind: 'bucks', amount_cents: 10000, bucks: 10000 });
+        const other = await db.createPaymentOrder({ user_id: 5, provider: 'paypal', kind: 'bucks', amount_cents: 100, bucks: 100 });
+        const bal = async () => (await db.getUserById(5)).openvibe_bucks_balance;
+        const start = await bal();
         const hook = (q) => call('POST', `/api/payments/webhook/ccbill?secret=sek&${new URLSearchParams(q)}`, null, {});
         await hook({ 'X-order': big.id, eventType: 'NewSaleSuccess', billedInitialPrice: '1.00' });
         await hook({ 'X-order': big.id, eventType: 'NewSaleSuccess' });
         await hook({ 'X-order': other.id, eventType: 'NewSaleSuccess', billedInitialPrice: '1.00' });
-        assert.strictEqual(bal(), start, 'underpaid, unpriced or wrong-provider sale credited');
+        assert.strictEqual(await bal(), start, 'underpaid, unpriced or wrong-provider sale credited');
         await hook({ 'X-order': big.id, eventType: 'NewSaleSuccess', billedInitialPrice: '100.00' });
         await hook({ 'X-order': big.id, eventType: 'NewSaleSuccess', billedInitialPrice: '100.00' });
-        assert.strictEqual(bal(), start + 10000);
+        assert.strictEqual(await bal(), start + 10000);
         // A stale copy read before an await (PayPal return vs. webhook) must not credit again.
-        const stale = db.getPaymentOrderById(other.id);
-        assert.strictEqual(pay.fulfillBucksOrder(db.getPaymentOrderById(other.id)), true);
-        assert.strictEqual(pay.fulfillBucksOrder(stale), false);
-        assert.strictEqual(bal(), start + 10100);
+        const stale = await db.getPaymentOrderById(other.id);
+        assert.strictEqual(await pay.fulfillBucksOrder(await db.getPaymentOrderById(other.id)), true);
+        assert.strictEqual(await pay.fulfillBucksOrder(stale), false);
+        assert.strictEqual(await bal(), start + 10100);
     });
 
     await check('API tokens: scopes gate writes; money, staff and credential routes refuse tokens', () => {
@@ -222,8 +218,8 @@ async function check(name, fn) {
     });
 
     server.close();
-    for (const ext of ['', '-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
     if (failures) { quiet(`\n${failures} failure(s)`); process.exit(1); }
     quiet('\nauthorization: all checks passed');
     process.exit(0);
+})().catch((e) => { quiet(e); process.exit(1); });
 })().catch((e) => { quiet(e); process.exit(1); });

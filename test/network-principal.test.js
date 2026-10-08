@@ -5,15 +5,10 @@
 // token at all fails the call like an unreachable Network. Against a stub Network.
 
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
 const { serviceAuth } = require('openvibe-contracts');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-principal-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
 
@@ -49,10 +44,10 @@ const network = http.createServer((req, res) => {
     process.env.OV_NETWORK_INTERNAL_URL = `http://127.0.0.1:${network.address().port}`;
 
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const d = db.getDb();
-    const uid = d.prepare("INSERT INTO users (username, password_hash, stream_key) VALUES ('p', 'x', 'k1')").run().lastInsertRowid;
-    d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id) VALUES (?, 'network', '41')").run(uid);
+    const uid = (await d.prepare("INSERT INTO users (username, password_hash, stream_key) VALUES ('p', 'x', 'k1') RETURNING id").run()).lastInsertRowid;
+    await d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id) VALUES (?, 'network', '41')").run(uid);
     const wallet = require('../server/monetization/wallet-client');
     const principal = require('../server/net/network-principal');
     const notify = require('../server/utils/notify');
@@ -87,7 +82,6 @@ const network = http.createServer((req, res) => {
     assert.ok(!seen.some((s) => s.auth === 'key'), 'the key is never sent');
 
     network.close();
-    fs.rmSync(tmp, { recursive: true, force: true });
     console.log('network principal: all checks passed');
     process.exit(0);
 })().catch((err) => { console.error(err); process.exit(1); });

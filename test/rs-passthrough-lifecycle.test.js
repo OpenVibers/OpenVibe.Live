@@ -54,7 +54,7 @@ const tick = (ms = 5) => new Promise((r) => setTimeout(r, ms));
     // 3. The source ends while a restart is pending → the timer fires into stop().
     relay._sourceLiveOverride = () => false;
     clearTimeout(session.restartTimer); session.restartTimer = null;
-    relay._scheduleRestart(session, 'second failure');
+    await relay._scheduleRestart(session, 'second failure');
     await tick();
     assert.strictEqual(relay.isActive(stream.id), false, 'a restart attempt after the source ended stops the session');
 
@@ -65,7 +65,7 @@ const tick = (ms = 5) => new Promise((r) => setTimeout(r, ms));
     const s2 = relay.sessions.get(stream.id);
     clearTimeout(s2.restartTimer); s2.restartTimer = null;
     s2.restarts = 12;
-    relay._scheduleRestart(s2, 'werift connectionState=failed');
+    await relay._scheduleRestart(s2, 'werift connectionState=failed');
     st = relay.status(stream.id);
     assert.strictEqual(st.state, 'failed');
     assert.strictEqual(st.active, false);
@@ -83,7 +83,7 @@ const tick = (ms = 5) => new Promise((r) => setTimeout(r, ms));
     const s3 = relay.sessions.get(stream.id);
     clearTimeout(s3.restartTimer); s3.restartTimer = null;
     s3.restarts = 5;
-    relay._scheduleRestart(s3, 'x');
+    await relay._scheduleRestart(s3, 'x');
     const delay6 = s3.nextRestartAt - Date.now();
     assert.ok(delay6 > 25000 && delay6 <= 30000, `6th retry is capped at 30s (got ${delay6}ms)`);
 

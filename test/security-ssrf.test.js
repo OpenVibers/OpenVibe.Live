@@ -36,8 +36,6 @@ const path = require('path');
 const { EventEmitter } = require('events');
 const { PassThrough } = require('stream');
 
-const tmp = path.join(os.tmpdir(), `ov-ssrf-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-sec-data-'));   // nothing lands in the checkout's data/
 process.env.NODE_ENV = 'test';
 process.env.OV_TOOLS_INTERNAL_URL = 'http://127.0.0.1:9';   // the kiosk asks Tools first; nobody is there
@@ -210,14 +208,14 @@ async function check(name, fn) {
 
     // ── The features, through their real routes ──
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const rawDb = db.getDb();
-    rawDb.prepare("INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (7, 'ssrfer', 'ssrfer', 'ssrfer@example.test', 'x', 'streamer')").run();
-    db.ensureChannel(7);
+    await rawDb.prepare("INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (7, 'ssrfer', 'ssrfer', 'ssrfer@example.test', 'x', 'streamer')").run();
+    await db.ensureChannel(7);
     const auth = require('../server/auth/auth');
-    const signIn = (req) => { const u = req.headers['x-test-user'] ? db.getUserById(Number(req.headers['x-test-user'])) : null; if (u) { req.user = u; req.authSource = 'network'; } return u; };
-    auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
-    auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
+    const signIn = async (req) => { const u = req.headers['x-test-user'] ? await db.getUserById(Number(req.headers['x-test-user'])) : null; if (u) { req.user = u; req.authSource = 'network'; } return u; };
+    auth.requireAuth = (req, res, next) => { signIn(req).then((u) => u ? next() : res.status(401).json({ error: 'Authentication required' })).catch(next); };
+    auth.optionalAuth = (req, res, next) => { signIn(req).then(() => next()).catch(next); };
     const express = require('express');
     const app = express();
     app.use(express.json());
@@ -299,14 +297,14 @@ async function check(name, fn) {
         await call('PUT', '/api/ai-viewers/config', { byo_base_url: `http://127.0.0.1:${p}/v1`, byo_key: 'byo-test-key', use_shared_key: 0 });
         const llm = require('../server/ai/llm');
         const budget = require('../server/ai/viewers/budget');
-        const override = budget.byoProvider(db.getChannelAiConfig(7));
+        const override = budget.byoProvider(await db.getChannelAiConfig(7));
         const r = await llm.complete({ role: 'chat', user: 'hi', maxTokens: 5, retries: 0, provider: override, skipGate: true }).catch((e) => ({ error: e.message }));
         assert.ok(!JSON.stringify(r || {}).includes('internal-admin-page'));
         assert.strictEqual(hits, 0);
     });
 
     await check('soundboard: a 101soundboards audio URL that resolves inward (any spelling, one internal answer, or rebinding at download) is refused', async () => {
-        db.setSetting('soundboard_101_api_key', 'sentinel-not-a-secret-soundboard');
+        await db.setSetting('soundboard_101_api_key', 'sentinel-not-a-secret-soundboard');
         const sb = require('../server/chat/soundboard-service');
         let audioUrl = null;
         const realFetch = globalThis.fetch;
@@ -403,7 +401,6 @@ async function check(name, fn) {
 
     server.close();
     internal.close();
-    for (const ext of ['', '-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
     try { fs.rmSync(process.env.DATA_DIR, { recursive: true, force: true }); } catch { /* */ }
     if (failures) { quiet(`\n${failures} failure(s)`); process.exit(1); }
     quiet('\nsecurity-ssrf: all checks passed');

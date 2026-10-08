@@ -7,6 +7,7 @@
  */
 const db = require('../db/database');
 const config = require('../config');
+const { assertLiveLedger } = require('./money-authority');
 
 class CommunityFunds {
     /**
@@ -16,14 +17,9 @@ class CommunityFunds {
      * @param {string} paypalTxId - PayPal transaction ID
      */
     async purchase(userId, amount, paypalTxId) {
-        const tx = await db.createTransaction({
-            from_user_id: null,
-            to_user_id: userId,
-            amount,
-            type: 'purchase',
-            status: 'completed',
-            message: `Purchased ${amount} Vibes`,
-        });
+        assertLiveLedger('transactions insert');
+        const tx = await db.run(`INSERT INTO transactions (from_user_id, to_user_id, amount, type, status, message)
+            VALUES (NULL, ?, ?, 'purchase', 'completed', ?) RETURNING id`, [userId, amount, `Purchased ${amount} Vibes`]);
 
         // Update PayPal reference
         if (paypalTxId) {
@@ -66,7 +62,7 @@ class CommunityFunds {
         });
 
         // Update donation goals
-        this.updateGoals(toUserId, amount);
+        await this.updateGoals(toUserId, amount);
 
         return { success: true, amount };
     }
@@ -95,6 +91,7 @@ class CommunityFunds {
      * Request cashout (goes to escrow for admin review)
      */
     async requestCashout(userId, amount, paypalEmail) {
+        assertLiveLedger('transactions insert');
         if (amount < config.openvibeBucks.minCashoutBucks) {
             throw new Error(`Minimum cashout is ${config.openvibeBucks.minCashoutBucks.toLocaleString()} Vibes`);
         }
@@ -103,14 +100,8 @@ class CommunityFunds {
             throw new Error('Insufficient Vibes');
         }
 
-        const tx = await db.createTransaction({
-            from_user_id: userId,
-            to_user_id: null,
-            amount,
-            type: 'cashout',
-            status: 'escrow',
-            message: `Cashout to PayPal: ${paypalEmail}`,
-        });
+        const tx = await db.run(`INSERT INTO transactions (from_user_id, to_user_id, amount, type, status, message)
+            VALUES (?, NULL, ?, 'cashout', 'escrow', ?) RETURNING id`, [userId, amount, `Cashout to PayPal: ${paypalEmail}`]);
 
         return {
             transaction_id: tx.lastInsertRowid,
@@ -165,11 +156,11 @@ class CommunityFunds {
     async getLeaderboard(streamId, limit = 10) {
         return await db.all(`
             SELECT from_user_id, u.username, u.display_name, u.avatar_url,
-                   SUM(amount) as total_donated
+                   SUM(amount)::bigint as total_donated
             FROM transactions t
             JOIN users u ON t.from_user_id = u.id
             WHERE t.stream_id = ? AND t.type = 'donation' AND t.status = 'completed'
-            GROUP BY from_user_id
+            GROUP BY from_user_id, u.id
             ORDER BY total_donated DESC
             LIMIT ?
         `, [streamId, limit]);

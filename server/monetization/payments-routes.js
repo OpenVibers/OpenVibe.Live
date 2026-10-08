@@ -273,7 +273,7 @@ router.post('/subscriptions/:id/cancel', requireAuth, money.guardWrite, async (r
             return res.status(502).json({ error: 'Could not cancel right now. Try again.' });
         }
     }
-    const sub = await db.getActiveSubscription(req.user.id, parseInt(req.body.streamerId, 10)) ||
+    const sub = await db.getActiveSubscription(req.user.id, parseInt(req.body.streamerId, 10) || null) ||
         (await db.getSubscriptionsBySubscriber(req.user.id) || []).find(x => String(x.id) === String(req.params.id));
     if (!sub || sub.subscriber_id !== req.user.id) return res.status(404).json({ error: 'Subscription not found' });
     // Stripe subs auto-renew; mark cancel-at-period-end (provider stops billing via dashboard/API).

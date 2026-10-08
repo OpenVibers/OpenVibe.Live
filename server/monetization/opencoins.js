@@ -218,12 +218,10 @@ class OpenCoins {
             }
 
             // Create redemption, then take the points for it (rolled back together if short)
-            const created = await db.createCoinRedemption({
-                reward_id: rewardId,
-                user_id: userId,
-                stream_id: streamId,
-                user_input: userInput,
-            });
+            const created = await db.run(
+                'INSERT INTO coin_redemptions (reward_id, user_id, stream_id, user_input) VALUES (?, ?, ?, ?) RETURNING id',
+                [rewardId, userId, streamId || null, userInput || null]
+            );
             if (!await db.deductChannelPoints(userId, pointsStreamerId, reward.cost, `live:cp:redeem:${created.lastInsertRowid}`, `redeem reward ${rewardId}`)) {
                 const cpName = ((await db.getChannelPointsConfig(pointsStreamerId)).name) || 'Channel Points';
                 throw new Error(`Not enough ${cpName}`);
@@ -327,23 +325,13 @@ class OpenCoins {
      */
     async adminGrant(userId, amount, reason, { adminId = null, clientKey = null } = {}) {
         const d = db.getDb();
-        d.exec(`CREATE TABLE IF NOT EXISTS opencoin_admin_grants (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            client_key TEXT UNIQUE,
-            admin_id INTEGER,
-            user_id INTEGER NOT NULL,
-            amount INTEGER NOT NULL,
-            reason TEXT,
-            balance INTEGER,
-            created_at DATETIME DEFAULT ov_now()
-        )`);
         const ck = clientKey ? `a${adminId || 0}:${clientKey}` : null;
         let grant = ck ? await d.prepare('SELECT * FROM opencoin_admin_grants WHERE client_key = ?').get(ck) : null;
         if (grant && (grant.user_id !== Number(userId) || grant.amount !== Number(amount))) {
             throw new Error('That Idempotency-Key was already used for a different grant');
         }
         if (!grant) {
-            const id = (await d.prepare('INSERT INTO opencoin_admin_grants (client_key, admin_id, user_id, amount, reason) VALUES (?, ?, ?, ?, ?)')
+            const id = (await d.prepare('INSERT INTO opencoin_admin_grants (client_key, admin_id, user_id, amount, reason) VALUES (?, ?, ?, ?, ?) RETURNING id')
                 .run(ck, adminId, Number(userId), Number(amount), reason || null)).lastInsertRowid;
             grant = { id };
         }

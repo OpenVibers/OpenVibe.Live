@@ -50,7 +50,7 @@ const mint = (opts) => checkout.mintCheckoutLink('alex', 'pcsub:42', { purpose: 
     assert.strictEqual(q.username, 'alex');
     assert.strictEqual(q.userId, 1, 'minted with the host account token');
     assert.deepStrictEqual(q.query, { ref: 'pcsub:42', redirect_uri: 'https://openvibe.live/api/powerchat/oauth/callback', purpose: 'subscription', amount_cents: '500', item_name: 'goosely — 1 month subscription' });
-    assert.deepStrictEqual(checkout.checkoutIntentSupport(), { state: 'supported' });
+    assert.deepStrictEqual(await checkout.checkoutIntentSupport(), { state: 'supported' });
     assert.ok(!/app_amount_cents|app_ref/.test(r.url), 'terms never ride in the URL');
 
     // ── envelope tolerance: bare { url } (older deployment) ──
@@ -80,7 +80,7 @@ const mint = (opts) => checkout.mintCheckoutLink('alex', 'pcsub:42', { purpose: 
     assert.strictEqual(u.searchParams.get('app_purpose'), 'subscription');
     assert.strictEqual(u.searchParams.get('app_redirect_uri'), 'https://openvibe.live/api/powerchat/oauth/callback');
     assert.strictEqual(api.calls.length, 1, '403 with a label is not retried (only 400 is)');
-    assert.strictEqual(checkout.checkoutIntentSupport().state, 'supported', 'a 403 is per-grant, not a deployment gate');
+    assert.strictEqual((await checkout.checkoutIntentSupport()).state, 'supported', 'a 403 is per-grant, not a deployment gate');
     api.script.length = 0;
 
     // ── 404 (endpoint not deployed) → canonical fallback AND no re-probe for a while ──
@@ -89,7 +89,7 @@ const mint = (opts) => checkout.mintCheckoutLink('alex', 'pcsub:42', { purpose: 
     r = await mint();
     assert.strictEqual(r.minted, false);
     assert.match(new URL(r.url).searchParams.get('app_amount_cents'), /^500$/);
-    assert.strictEqual(checkout.checkoutIntentSupport().state, 'unsupported');
+    assert.strictEqual((await checkout.checkoutIntentSupport()).state, 'unsupported');
     r = await mint();                                     // second order: no API call at all
     assert.strictEqual(r.minted, false);
     assert.match(r.reason, /unsupported/);

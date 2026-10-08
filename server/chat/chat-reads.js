@@ -133,8 +133,8 @@ function load(key, remoteFn, localFn, { ttl = CACHE_TTL_MS, strict = false, ttlF
 }
 
 /** Sync answer for a caller that cannot await: fresh value, else the last good value + a background refresh, else null. */
-async function peek(key, remoteFn, localFn, opts) {
-    if (!remote()) { try { return await localFn(); } catch (err) { note(key, err); return null; } }
+function peek(key, remoteFn, localFn, opts) {
+    if (!remote()) { try { return localFn(); } catch (err) { note(key, err); return null; } }
     const hit = fresh(key);
     if (hit) return hit.value;
     load(key, remoteFn, localFn, opts).catch(() => { /* logged in load() */ });   // floating-ok: refreshes for the next peek
@@ -155,7 +155,7 @@ async function remoteSiteStats() {
 function siteStats() { return load('site', remoteSiteStats, localSiteStats); }
 /** The home-stats snapshot's shape: outside chat mode there is no count to answer. */
 function localSiteStatsMessages() { return { messages: 0 }; }
-async function siteStatsPeek() { return await peek('site', remoteSiteStats, localSiteStatsMessages); }
+function siteStatsPeek() { return peek('site', remoteSiteStats, localSiteStatsMessages); }
 
 // ── Home daily series (the hero charts) ──────────────────────────────────────
 // Live's home `messages`/`active` charts are Chat's site-wide per-day series. One peek serves the
@@ -205,14 +205,12 @@ function homeSeries(metric, days) {
  * in the background — never zeros just because Chat has not answered yet. Outside chat mode there
  * is nothing to answer from: null.
  */
-async function homeSeriesPeek(metric, days) {
+function homeSeriesPeek(metric, days) {
     const d = clampSeriesDays(days);
     const key = `hs:${metric}:${d}:${utcDayStart(Date.now())}`;
-    const localFn = async () => await local().homeSeriesLocal(metric, d);
-    const v = await peek(key, async () => await remoteHomeSeries(metric, d), localFn);
-    if (v) return v;
-    if (!remote()) return null;          // outside chat mode Live keeps no chat series
-    return safeLocal(localFn, null);     // cold / Chat unreachable
+    // Live keeps no chat series: outside chat mode, cold, or Chat unreachable, the answer is null
+    // (homeSeriesLocal has no entry for the two chat metrics). Never a zero-filled stand-in.
+    return peek(key, () => remoteHomeSeries(metric, d), () => null) || null;
 }
 
 /** The busiest chatters of a room (or the site, when neither stream nor channel is given), newest window first. */
@@ -265,9 +263,9 @@ function windowStats(o = {}) {
  * good value, else null — never a synchronous local scan, so the hero never presents a local
  * count as Chat's; the caller decides what an unknown window means.
  */
-async function windowStatsPeek(o = {}) {
+function windowStatsPeek(o = {}) {
     const b = bucketWindow(o);
-    return await peek(windowKey(b), async () => await remoteWindowStats(b), () => localWindowStats(b));
+    return peek(windowKey(b), () => remoteWindowStats(b), () => localWindowStats(b));
 }
 
 function localStreamStats() { return { messages: 0, chatters: 0, sounds: 0 }; }
@@ -284,10 +282,10 @@ function streamStats(streamId) {
         .then((v) => v || safeLocal(() => localStreamStats(id), { messages: 0, chatters: 0, sounds: 0 }));
 }
 /** The same, for a caller that cannot await. */
-async function streamStatsPeek(streamId) {
+function streamStatsPeek(streamId) {
     const id = Number(streamId) || 0;
     if (!id) return { messages: 0, chatters: 0, sounds: 0 };
-    const v = await peek(`st:${id}`, async () => await remoteStreamStats(id), () => localStreamStats(id));
+    const v = peek(`st:${id}`, () => remoteStreamStats(id), () => localStreamStats(id));
     if (v) return v;
     return safeLocal(() => localStreamStats(id), { messages: 0, chatters: 0, sounds: 0 });
 }
@@ -308,10 +306,10 @@ function channelMaxId(channelUserId) {
     return load(`cmid:${id}`, async () => await remoteChannelMaxId(id), () => 0)
         .then((v) => (v != null ? Number(v) || 0 : 0));
 }
-async function channelMaxIdPeek(channelUserId) {
+function channelMaxIdPeek(channelUserId) {
     const id = Number(channelUserId) || 0;
     if (!id) return 0;
-    const v = await peek(`cmid:${id}`, async () => await remoteChannelMaxId(id), () => 0);
+    const v = peek(`cmid:${id}`, () => remoteChannelMaxId(id), () => 0);
     return v != null ? Number(v) || 0 : 0;
 }
 
@@ -326,10 +324,10 @@ async function remoteUserMessageCount(userId) {
  * last good value, else null when Chat did not answer — the card omits the count then rather than
  * presenting a cold zero as real.
  */
-async function userMessageCountPeek(userId) {
+function userMessageCountPeek(userId) {
     const id = Number(userId) || 0;
     if (!id) return null;
-    const v = await peek(`um:${id}`, async () => await remoteUserMessageCount(id), () => localUserMessageCount(id));
+    const v = peek(`um:${id}`, () => remoteUserMessageCount(id), () => localUserMessageCount(id));
     return v == null ? null : Number(v) || 0;
 }
 
@@ -389,10 +387,10 @@ function channelMessages(channelUserId, limit = 40) {
         return out.messages.slice().reverse();   // Chat answers newest-first; the caller wants oldest-first
     }, () => []);
 }
-async function channelMessagesPeek(channelUserId, limit = 40) {
+function channelMessagesPeek(channelUserId, limit = 40) {
     const id = Number(channelUserId) || 0;
     if (!id) return [];
-    return await peek(`ch:${id}:${limit}`, async () => {
+    return peek(`ch:${id}:${limit}`, async () => {
         const out = await client.readMessages({ channel_user_id: id, limit, types: ['chat', 'donation'] });
         if (!out || !Array.isArray(out.messages)) throw unavailable('channel messages');
         return out.messages.slice().reverse();
@@ -527,11 +525,11 @@ function firstChat(channelUserId, identity) {
     });
 }
 /** The synchronous form (the AI persona prompt): the cached Chat answer, else false. */
-async function firstChatPeek(channelUserId, identity) {
+function firstChatPeek(channelUserId, identity) {
     const channelId = Number(channelUserId) || 0;
     const key = String(identity || '');
     if (!channelId || !key) return false;
-    const v = await peek(`fc:${channelId}:${key}`, firstChatRemote(channelId, key), () => firstChatLocal(), {
+    const v = peek(`fc:${channelId}:${key}`, firstChatRemote(channelId, key), () => firstChatLocal(), {
         ttl: FIRST_CHAT_TTL_TRUE, ttlFor: (x) => (x === false ? FIRST_CHAT_TTL_FALSE : FIRST_CHAT_TTL_TRUE),
     });
     if (v === true || v === false) return v;
@@ -619,10 +617,10 @@ function ttsOverride(identityKey) {
  * The TTS engine's synchronous read: the last good override while Chat refreshes in the background.
  * A cache miss or a Chat failure answers null (the auto voice) — Live keeps no copy of the table.
  */
-async function ttsOverridePeek(identityKey) {
+function ttsOverridePeek(identityKey) {
     const k = String(identityKey || '').trim().toLowerCase();
     if (!k) return null;
-    return await peek(`ttsp:${k}`, async () => {
+    return peek(`ttsp:${k}`, async () => {
         const out = await client.readTtsOverride({ identity_key: k });
         if (!out) throw unavailable('tts override');
         return out.tts_override || null;
@@ -656,11 +654,11 @@ function soundByCommand(ownerId, command) {
         .then((v) => (v && v !== false ? v : null));   // false / null: Chat's none, or unreachable
 }
 /** The synchronous form (the RobotStreamer !sound lookup): the cached Chat answer, else null. */
-async function soundByCommandPeek(ownerId, command) {
+function soundByCommandPeek(ownerId, command) {
     const id = Number(ownerId) || 0;
     const cmd = normalizeCommand(command);
     if (!id || !cmd) return null;
-    const v = await peek(`sbc:${id}:${cmd}`, async () => await remoteSoundByCommand(id, cmd), () => null);
+    const v = peek(`sbc:${id}:${cmd}`, () => remoteSoundByCommand(id, cmd), () => null);
     return v && v !== false ? v : null;
 }
 

@@ -18,7 +18,6 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-chatctx-'));
 const keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
 fs.writeFileSync(path.join(tmp, 'network.pem'), keys.publicKey);
 fs.mkdirSync(path.join(tmp, 'sounds'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.OV_NETWORK_PUBLIC_KEY = path.join(tmp, 'network.pem');
 process.env.OV_NETWORK_URL = 'https://openvibe.network';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
@@ -56,7 +55,7 @@ const network = http.createServer((req, res) => {
 // these. The stub answers from Live's own tables (emulating Chat's copy) so the seeds apply, and
 // `readState.down` fails every read the way a Chat outage does.
 const readState = { down: false, soundAssetDown: false, relayOnly: [], msgById: 0, firstChatCalls: 0, dmBlocked: false, blockStateDown: false };
-function readReply(req, res, raw) {
+async function readReply(req, res, raw) {
     const url = String(req.url);
     const path = url.split('?')[0];
     const q = new URLSearchParams(url.split('?')[1] || '');
@@ -75,14 +74,14 @@ function readReply(req, res, raw) {
         const sqlTime = (t) => new Date(t).toISOString().slice(0, 19).replace('T', ' ');
         const CHATTER = "COALESCE('u:' || user_id, 'a:' || anon_id, source_platform || ':' || username)";
         if (b.kind === 'channel-top') {
-            const t = d2.all(`SELECT user_id, MAX(username) AS username, COUNT(*) AS count FROM chat_messages WHERE is_deleted = 0 AND message_type <> 'system' GROUP BY user_id ORDER BY count DESC LIMIT ?`, [b.limit || 10]);
+            const t = await d2.all(`SELECT user_id, MAX(username) AS username, COUNT(*) AS count FROM chat_messages WHERE is_deleted = 0 AND message_type <> 'system' GROUP BY user_id ORDER BY count DESC LIMIT ?`, [b.limit || 10]);
             return ok({ top_chatters: t.map((r) => ({ user_id: r.user_id, username: r.username, count: Number(r.count) })) });
         }
         if (b.kind === 'site-daily') {
             const DAY = 86400000;
             const dayStart = (t) => Math.floor(t / DAY) * DAY;
-            const rows = d2.all(`SELECT substr(timestamp, 1, 10) AS day, COUNT(*) AS messages, COUNT(DISTINCT ${CHATTER}) AS chatters
-                FROM chat_messages WHERE COALESCE(is_deleted, 0) = 0 AND timestamp >= ? AND timestamp < ? GROUP BY day`,
+            const rows = await d2.all(`SELECT substr(timestamp, 1, 10) AS day, COUNT(*) AS messages, COUNT(DISTINCT ${CHATTER}) AS chatters
+                FROM chat_messages WHERE COALESCE(is_deleted, 0) = 0 AND timestamp >= ? AND timestamp < ? GROUP BY substr(timestamp, 1, 10)`,
                 [sqlTime(b.since), sqlTime(b.until)]);
             const by = new Map(rows.map((r) => [String(r.day), r]));
             const days = [];
@@ -98,7 +97,7 @@ function readReply(req, res, raw) {
         if (b.since != null) { where.push('timestamp >= ?'); params.push(sqlTime(b.since)); }
         if (b.until != null) { where.push('timestamp < ?'); params.push(sqlTime(b.until)); }
         if (b.kind === 'user' && b.user_id != null) { where.push('user_id = ?'); params.push(Number(b.user_id)); }
-        const r = d2.get(`SELECT COUNT(*) AS messages, COUNT(DISTINCT ${CHATTER}) AS chatters FROM chat_messages WHERE ${where.join(' AND ')}`, params);
+        const r = await d2.get(`SELECT COUNT(*) AS messages, COUNT(DISTINCT ${CHATTER}) AS chatters FROM chat_messages WHERE ${where.join(' AND ')}`, params);
         return ok({ messages: Number(r.messages), chatters: Number(r.chatters) });
     }
     if (path === '/internal/chat/dm/block-state') {
@@ -107,7 +106,7 @@ function readReply(req, res, raw) {
     }
     if (path === '/internal/chat/first-chat') {
         readState.firstChatCalls++;
-        const r = d2.get('SELECT 1 AS present FROM stream_first_chats WHERE chatter_key = ? AND channel_user_id = ?', [String(q.get('identity')), Number(q.get('channel_id'))]);
+        const r = await d2.get('SELECT 1 AS present FROM stream_first_chats WHERE chatter_key = ? AND channel_user_id = ?', [String(q.get('identity')), Number(q.get('channel_id'))]);
         return ok({ first: !r });
     }
     if (path === '/internal/chat/messages') {
@@ -118,39 +117,39 @@ function readReply(req, res, raw) {
         const where = [`${col} = ?`, 'is_deleted = 0'];
         const params = [param(col, q.get(col))];
         if (q.get('types')) { const types = q.get('types').split(','); where.push(`message_type IN (${types.map(() => '?').join(',')})`); params.push(...types); }
-        const rows = d2.all(`SELECT id, user_id, anon_id, username, message, message_type, is_global, stream_id, channel_user_id, source_platform, timestamp
+        const rows = await d2.all(`SELECT id, user_id, anon_id, username, message, message_type, is_global, stream_id, channel_user_id, source_platform, timestamp
             FROM chat_messages WHERE ${where.join(' AND ')} ORDER BY id DESC LIMIT ?`, [...params, Number(q.get('limit') || 100)]);
         return ok({ messages: rows, max_id: rows.length ? Number(rows[0].id) : null });
     }
     if (path === '/internal/chat/moderation/pending-ip') {
-        const rows = d2.all("SELECT * FROM pending_ip_messages WHERE channel_id = ? AND status = 'pending' ORDER BY id LIMIT ?", [Number(q.get('channel_id')), Number(q.get('limit') || 50)]);
+        const rows = await d2.all("SELECT * FROM pending_ip_messages WHERE channel_id = ? AND status = 'pending' ORDER BY id LIMIT ?", [Number(q.get('channel_id')), Number(q.get('limit') || 50)]);
         return ok({ pending_ip: rows });
     }
     if (path === '/internal/chat/moderation/relay-users') {
-        const rows = d2.all(`SELECT h.*, u.username AS created_by_username FROM hidden_relay_users h LEFT JOIN users u ON u.id = h.created_by
+        const rows = await d2.all(`SELECT h.*, u.username AS created_by_username FROM hidden_relay_users h LEFT JOIN users u ON u.id = h.created_by
             WHERE h.channel_id = ? OR h.channel_id IS NULL ORDER BY h.id DESC LIMIT ?`, [Number(q.get('channel_id')), Number(q.get('limit') || 100)]);
         return ok({ relay_users: rows.concat(readState.relayOnly) });
     }
     if (/^\/internal\/chat\/moderation\/relay-users\/\d+$/.test(path)) {
         const rid = Number(path.split('/').pop());
         const r = readState.relayOnly.find((x) => x.id === rid)
-            || d2.get('SELECT h.*, u.username AS created_by_username FROM hidden_relay_users h LEFT JOIN users u ON u.id = h.created_by WHERE h.id = ?', [rid]) || null;
+            || await d2.get('SELECT h.*, u.username AS created_by_username FROM hidden_relay_users h LEFT JOIN users u ON u.id = h.created_by WHERE h.id = ?', [rid]) || null;
         return ok({ relay_user: r });
     }
     if (path === '/internal/chat/moderation/tts-override') {
-        const r = d2.get('SELECT * FROM tts_voice_overrides WHERE identity_key = ?', [String(q.get('identity_key'))]) || null;
+        const r = await d2.get('SELECT * FROM tts_voice_overrides WHERE identity_key = ?', [String(q.get('identity_key'))]) || null;
         return ok({ tts_override: r });
     }
     if (path === '/internal/chat/sounds/asset') {
         const b = JSON.parse(raw || '{}');
-        d2.run('UPDATE channel_sounds SET media_url = ?, media_asset_id = ? WHERE id = ?', [b.media_url, b.media_asset_id, b.id]);
+        await d2.run('UPDATE channel_sounds SET media_url = ?, media_asset_id = ? WHERE id = ?', [b.media_url, b.media_asset_id, b.id]);
         return ok({});
     }
     if (path === '/internal/chat/sounds/by-command') {
         const cmd = String(q.get('command') || '').trim().toLowerCase().replace(/^!+/, '');
         // A 404 that is not Chat's own "no such sound" (an older Chat, a proxy page).
         if (cmd === 'bare404') { res.statusCode = 404; res.setHeader('content-type', 'text/html'); res.end('<html>Not Found</html>'); return true; }
-        const r = d2.get('SELECT * FROM channel_sounds WHERE channel_owner_id = ? AND command = ? AND is_approved = 1 ORDER BY RANDOM() LIMIT 1', [Number(q.get('channel_id')), cmd]);
+        const r = await d2.get('SELECT * FROM channel_sounds WHERE channel_owner_id = ? AND command = ? AND is_approved = 1 ORDER BY RANDOM() LIMIT 1', [Number(q.get('channel_id')), cmd]);
         if (!r) { res.statusCode = 404; res.end(JSON.stringify({ ok: false, error: 'Sound not found' })); return true; }
         return ok({ sound: r });
     }
@@ -160,10 +159,10 @@ function readReply(req, res, raw) {
             const params = [];
             if (q.get('channel_owner_id') != null) { where.push('channel_owner_id = ?'); params.push(Number(q.get('channel_owner_id'))); }
             if (q.get('after_id') != null) { where.push('id > ?'); params.push(Number(q.get('after_id'))); }
-            const rows = d2.all(`SELECT * FROM channel_sounds WHERE ${where.join(' AND ')} ORDER BY id LIMIT ?`, [...params, Number(q.get('limit') || 100)]);
+            const rows = await d2.all(`SELECT * FROM channel_sounds WHERE ${where.join(' AND ')} ORDER BY id LIMIT ?`, [...params, Number(q.get('limit') || 100)]);
             return ok({ sounds: rows });
         }
-        const r = d2.get('SELECT COUNT(*) AS n FROM channel_sounds WHERE channel_owner_id = ?', [Number(q.get('channel_owner_id'))]);
+        const r = await d2.get('SELECT COUNT(*) AS n FROM channel_sounds WHERE channel_owner_id = ?', [Number(q.get('channel_owner_id'))]);
         return ok({ count: Number(r.n) });
     }
     return false;
@@ -172,7 +171,7 @@ function readReply(req, res, raw) {
 const chat = http.createServer((req, res) => {
     let raw = '';
     req.on('data', (c) => { raw += c; });
-    req.on('end', () => {
+    req.on('end', () => { (async () => {
         res.setHeader('Content-Type', 'application/json');
         assert.ok(!String(req.url).startsWith('/internal/') || String(req.headers.authorization || '').startsWith('Bearer '), 'Live calls Chat with a service token');
         assert.ok(!String(req.url).startsWith('/internal/live/'), 'nothing goes over the old bridge');
@@ -184,7 +183,7 @@ const chat = http.createServer((req, res) => {
         if (req.url === '/internal/chat/presence') {
             return res.end(JSON.stringify({ total: 7, streams: { 1: 3 }, slow_mode: { 1: 5000 }, users: [{ user_id: 3, ip: '198.51.100.3', stream_id: 1 }], anons: [{ anon_id: 'anon9', ip: '203.0.113.9', stream_id: 1 }] }));
         }
-        if (readReply(req, res, raw)) return;
+        if (await readReply(req, res, raw)) return;
         // Chat's internal read API (roadmap T3): Live reads the six staged tables through it now.
         const mm = String(req.url).match(/^\/internal\/moderation\/channels\/(\d+)(\/emote-count)?$/);
         if (mm) {
@@ -193,24 +192,24 @@ const chat = http.createServer((req, res) => {
             // Chat answers these from its own tables (it owns the six staged tables, roadmap T3); the
             // test reads them directly here to emulate Chat's copy.
             if (mm[2]) {
-                const ch = d2.getChannelById(channelId);
-                const n = ch ? (d2.get('SELECT COUNT(*) AS n FROM emotes WHERE (channel_owner_id = ?) OR (channel_owner_id IS NULL AND user_id = ?)', [ch.user_id, ch.user_id])?.n || 0) : 0;
+                const ch = await d2.getChannelById(channelId);
+                const n = ch ? ((await d2.get('SELECT COUNT(*) AS n FROM emotes WHERE (channel_owner_id = ?) OR (channel_owner_id IS NULL AND user_id = ?)', [ch.user_id, ch.user_id]))?.n || 0) : 0;
                 return res.end(JSON.stringify({ ok: true, count: n }));
             }
             return res.end(JSON.stringify({
                 ok: true,
-                settings: d2.get('SELECT * FROM channel_moderation_settings WHERE channel_id = ?', [channelId]) || {},
-                moderator_ids: d2.all('SELECT user_id FROM channel_moderators WHERE channel_id = ? ORDER BY id', [channelId]).map((r) => r.user_id),
+                settings: await d2.get('SELECT * FROM channel_moderation_settings WHERE channel_id = ?', [channelId]) || {},
+                moderator_ids: (await d2.all('SELECT user_id FROM channel_moderators WHERE channel_id = ? ORDER BY id', [channelId])).map((r) => r.user_id),
             }));
         }
         const um = String(req.url).match(/^\/internal\/moderation\/users\/(\d+)\/channels$/);
         if (um) {
             const d2 = require('../server/db/database');
-            const rows = d2.all('SELECT cm.channel_id AS id, c.title, c.user_id FROM channel_moderators cm JOIN channels c ON cm.channel_id = c.id WHERE cm.user_id = ?', [Number(um[1])]) || [];
+            const rows = await d2.all('SELECT cm.channel_id AS id, c.title, c.user_id FROM channel_moderators cm JOIN channels c ON cm.channel_id = c.id WHERE cm.user_id = ?', [Number(um[1])]) || [];
             return res.end(JSON.stringify({ ok: true, channels: rows.map((c) => ({ channel_id: c.id, title: c.title, owner_user_id: c.user_id })) }));
         }
         res.statusCode = 404; res.end('{}');
-    });
+    })().catch((e) => { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })); }); });
 });
 
 const listen = (s) => new Promise((r) => s.listen(0, '127.0.0.1', () => r(s.address().port)));
@@ -226,14 +225,14 @@ const waitFor = async (pred, what, ms = 3000) => {
     process.env.OV_CHAT_INTERNAL_URL = `http://127.0.0.1:${await listen(chat)}`;
 
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const d = db.getDb();
     // Live no longer has any of OpenVibe.Chat's tables (the staged ones dropped in T3 N+2; the
     // twelve chat tables dropped by 007_drop_chat_tables). The stub Chat below imitates Chat's own copy, so the
     // test keeps local stand-in tables to seed and read.
-    d.exec(`
+    await globalThis.__ovLiveDdl(`
         CREATE TABLE IF NOT EXISTS channel_moderators (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             channel_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
             added_by INTEGER NOT NULL,
@@ -246,12 +245,12 @@ const waitFor = async (pred, what, ms = 3000) => {
             updated_at DATETIME DEFAULT ov_now()
         );
         CREATE TABLE IF NOT EXISTS emotes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             user_id INTEGER NOT NULL,
             channel_owner_id INTEGER
         );
         CREATE TABLE IF NOT EXISTS chat_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             stream_id INTEGER, channel_user_id INTEGER, user_id INTEGER, anon_id TEXT, username TEXT,
             message TEXT, message_type TEXT DEFAULT 'chat', is_global INTEGER DEFAULT 0,
             is_deleted INTEGER DEFAULT 0, source_platform TEXT, metadata TEXT,
@@ -262,7 +261,7 @@ const waitFor = async (pred, what, ms = 3000) => {
             first_chat_at DATETIME DEFAULT ov_now(), PRIMARY KEY (chatter_key, channel_user_id)
         );
         CREATE TABLE IF NOT EXISTS hidden_relay_users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id INTEGER, platform TEXT NOT NULL,
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, channel_id bigint, platform TEXT NOT NULL,
             external_username TEXT NOT NULL, action TEXT DEFAULT 'hide', reason TEXT, created_by INTEGER,
             created_at DATETIME DEFAULT ov_now()
         );
@@ -271,36 +270,37 @@ const waitFor = async (pred, what, ms = 3000) => {
             set_by INTEGER, updated_at DATETIME DEFAULT ov_now()
         );
         CREATE TABLE IF NOT EXISTS channel_sounds (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, channel_owner_id INTEGER NOT NULL, command TEXT NOT NULL,
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, channel_owner_id bigint NOT NULL, command TEXT NOT NULL,
             url TEXT NOT NULL, mime TEXT DEFAULT 'audio/mpeg', duration_seconds REAL DEFAULT 0,
             created_by INTEGER, created_by_name TEXT DEFAULT '', is_approved INTEGER DEFAULT 1,
             emote_code TEXT DEFAULT '', media_url TEXT, media_asset_id INTEGER,
             created_at DATETIME DEFAULT ov_now()
         );
         CREATE TABLE IF NOT EXISTS pending_ip_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id INTEGER NOT NULL, stream_id INTEGER,
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, channel_id bigint NOT NULL, stream_id bigint,
             ip_address TEXT NOT NULL, user_id INTEGER, anon_id TEXT, username TEXT, message TEXT NOT NULL,
             status TEXT DEFAULT 'pending', reviewed_by INTEGER, created_at DATETIME DEFAULT ov_now()
         );
-    `);
-    const mkUser = (username, role = 'user', extra = {}) => {
-        const id = db.createUser({ username, email: `${username}@example.test`, password_hash: '!x', display_name: username.toUpperCase(), stream_key: `key-${username}` }).lastInsertRowid;
-        d.prepare('UPDATE users SET role = ?, is_owner = ? WHERE id = ?').run(role, extra.owner ? 1 : 0, id);
+    `.replace(/DATETIME/g, 'text').replace(/REAL/g, 'double precision'));
+    const mkUser = async (username, role = 'user', extra = {}) => {
+        const id = (await db.run('INSERT INTO users (username, email, password_hash, display_name, stream_key) VALUES (?, NULL, ?, ?, ?) RETURNING id',
+            [username, '!x', username.toUpperCase(), `key-${username}`])).lastInsertRowid;
+        await d.prepare('UPDATE users SET role = ?, is_owner = ? WHERE id = ?').run(role, extra.owner ? 1 : 0, id);
         return Number(id);
     };
-    const owner = mkUser('owner', 'admin', { owner: true });
-    const admin = mkUser('admin2', 'admin');
-    const streamer = mkUser('streamer', 'streamer');
-    const mod = mkUser('moddy');
-    const viewer = mkUser('viewer');
-    d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', '501', 'usr_01J9ZZZZZZZZZZZZZZZZZZZZZZ')").run(viewer);
-    db.createChannel({ user_id: streamer, title: 'Streamer TV' });
-    const channel = db.getChannelByUserId(streamer);
-    const streamId = Number(db.createStream({ user_id: streamer, channel_id: channel.id, title: 'Live now' }).lastInsertRowid);
-    d.prepare('INSERT INTO channel_moderators (channel_id, user_id, added_by) VALUES (?, ?, ?)').run(channel.id, mod, streamer);
-    d.prepare('INSERT INTO follows (follower_id, streamer_id) VALUES (?, ?)').run(viewer, streamer);
-    db.setSetting('tts_enabled', 'true');
-    db.setSetting('stripe_secret_key', 'sk_live_never_shared');
+    const owner = await mkUser('owner', 'admin', { owner: true });
+    const admin = await mkUser('admin2', 'admin');
+    const streamer = await mkUser('streamer', 'streamer');
+    const mod = await mkUser('moddy');
+    const viewer = await mkUser('viewer');
+    await d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', '501', 'usr_01J9ZZZZZZZZZZZZZZZZZZZZZZ')").run(viewer);
+    await db.createChannel({ user_id: streamer, title: 'Streamer TV' });
+    const channel = await db.getChannelByUserId(streamer);
+    const streamId = Number((await db.createStream({ user_id: streamer, channel_id: channel.id, title: 'Live now' })).lastInsertRowid);
+    await d.prepare('INSERT INTO channel_moderators (channel_id, user_id, added_by) VALUES (?, ?, ?)').run(channel.id, mod, streamer);
+    await d.prepare('INSERT INTO follows (follower_id, streamer_id) VALUES (?, ?)').run(viewer, streamer);
+    await db.setSetting('tts_enabled', 'true');
+    await db.setSetting('stripe_secret_key', 'sk_live_never_shared');
 
     const express = require('express');
     const routes = require('../server/chat/live-context-routes');
@@ -366,7 +366,7 @@ const waitFor = async (pred, what, ms = 3000) => {
         assert.deepStrictEqual(b1.bans, []);
         assert.strictEqual((await call('GET', `/internal/chat-context/bans?version=${encodeURIComponent(b1.version)}`, { token: READ })).body.unchanged, true);
         const settings = (await call('GET', '/internal/chat-context/settings', { token: READ })).body.settings;
-        assert.strictEqual(settings.tts_enabled, db.getSetting('tts_enabled'), 'typed like Live\'s getSetting');
+        assert.strictEqual(settings.tts_enabled, await db.getSetting('tts_enabled'), 'typed like Live\'s getSetting');
         assert.ok(!('stripe_secret_key' in settings), 'only chat settings leave Live');
 
         // 5. Effects need CHAT_AUTHORITY=chat.
@@ -374,40 +374,40 @@ const waitFor = async (pred, what, ms = 3000) => {
         assert.strictEqual((await call('POST', '/internal/chat-effects/user-color', { token: WRITE, body: { user_id: viewer, color: '#ff00ff' } })).status, 409);
         process.env.CHAT_AUTHORITY = 'chat';
         assert.strictEqual((await call('POST', '/internal/chat-effects/user-color', { token: WRITE, body: { user_id: viewer, color: '#ff00ff' } })).status, 200);
-        assert.strictEqual(db.getUserById(viewer).profile_color, '#ff00ff');
+        assert.strictEqual((await db.getUserById(viewer)).profile_color, '#ff00ff');
 
         // 6. Bans: Live re-checks the moderator; the rows are exactly Live's own bans table's.
         const ban = (body) => call('POST', '/internal/chat-effects/ban', { token: WRITE, body });
         assert.strictEqual((await ban({ action: 'ban', actor_user_id: viewer, moderation_stream_id: streamId, stream_id: streamId, user_id: mod })).status, 403, 'a viewer cannot ban');
         assert.strictEqual((await ban({ action: 'ban', actor_user_id: mod, moderation_stream_id: streamId, stream_id: streamId, user_id: owner })).status, 403, 'a channel mod cannot ban an admin');
         assert.strictEqual((await ban({ action: 'ban', actor_user_id: mod, moderation_stream_id: streamId, stream_id: streamId, user_id: viewer, reason: 'Banned by moderator', banned_by: mod })).status, 200);
-        assert.ok(db.isUserBanned(viewer, streamId));
+        assert.ok(await db.isUserBanned(viewer, streamId));
         const b2 = (await call('GET', `/internal/chat-context/bans?version=${encodeURIComponent(b1.version)}`, { token: READ })).body;
         assert.strictEqual(b2.bans.length, 1, 'the version moved with the table');
         assert.strictEqual((await ban({ action: 'unban', actor_user_id: mod, moderation_stream_id: streamId, stream_id: streamId, user_id: viewer })).status, 200);
-        assert.ok(!db.isUserBanned(viewer, streamId));
+        assert.ok(!await db.isUserBanned(viewer, streamId));
         // A null stream id is a site-wide ban: global staff only, and a channel unban never lifts one.
         assert.strictEqual((await ban({ action: 'ban', actor_user_id: mod, moderation_stream_id: streamId, stream_id: null, user_id: viewer })).status, 403, 'a channel mod cannot ban site-wide');
         assert.strictEqual((await ban({ action: 'ban', actor_user_id: admin, stream_id: null, user_id: viewer, reason: 'site' })).status, 200);
         assert.strictEqual((await ban({ action: 'unban', actor_user_id: mod, moderation_stream_id: streamId, stream_id: null, user_id: viewer })).status, 403, 'a channel mod cannot lift a site-wide ban');
         assert.strictEqual((await ban({ action: 'unban', actor_user_id: mod, moderation_stream_id: streamId, stream_id: streamId, user_id: viewer })).status, 200);
-        assert.ok(db.get('SELECT 1 FROM bans WHERE user_id = ? AND stream_id IS NULL', [viewer]), 'the channel unban left the site-wide row');
+        assert.ok(await db.get('SELECT 1 FROM bans WHERE user_id = ? AND stream_id IS NULL', [viewer]), 'the channel unban left the site-wide row');
         assert.strictEqual((await ban({ action: 'unban', actor_user_id: admin, stream_id: null, user_id: viewer })).status, 200);
-        assert.ok(!db.get('SELECT 1 FROM bans WHERE user_id = ?', [viewer]));
+        assert.ok(!await db.get('SELECT 1 FROM bans WHERE user_id = ?', [viewer]));
 
         // 7. TTS settings: admins; credentials only the owner.
         const put = (actor, settingsBody) => call('POST', '/internal/chat-effects/site-settings', { token: WRITE, body: { actor_user_id: actor, settings: settingsBody } });
         assert.strictEqual((await put(viewer, { tts_enabled: 'false' })).status, 403);
         assert.strictEqual((await put(admin, { tts_max_length: 300, tts_google_api_key: 'admin-cannot' })).body.updated, 1);
-        assert.notStrictEqual(db.getSetting('tts_google_api_key'), 'admin-cannot', 'an admin cannot set a credential');
+        assert.notStrictEqual(await db.getSetting('tts_google_api_key'), 'admin-cannot', 'an admin cannot set a credential');
         assert.strictEqual((await put(owner, { tts_google_api_key: 'owner-can' })).body.updated, 1);
-        assert.strictEqual(db.getSetting('tts_google_api_key'), 'owner-can');
+        assert.strictEqual(await db.getSetting('tts_google_api_key'), 'owner-can');
 
         // 8. Slow mode and sub-only persistence moved to Chat with channel_moderation_settings (roadmap
         // T3); Live now only writes channels.emote_sources for Chat's PUT /api/emotes/sources.
         assert.strictEqual((await call('POST', '/internal/chat-effects/channel-emote-sources', { token: WRITE, body: { user_id: 999999, sources: { ffz: true } } })).status, 404);
         assert.strictEqual((await call('POST', '/internal/chat-effects/channel-emote-sources', { token: WRITE, body: { user_id: streamer, sources: { ffz: true, bttv: false } } })).status, 200);
-        assert.strictEqual(db.getChannelByUserId(streamer).emote_sources, JSON.stringify({ ffz: true, bttv: false }));
+        assert.strictEqual((await db.getChannelByUserId(streamer)).emote_sources, JSON.stringify({ ffz: true, bttv: false }));
 
         // 8a. Sub-only chat asks whether someone holds an ACTIVE subscription to the streamer's channel:
         // by user id or Network subject; a lapsed period or a cancelled row is not one.
@@ -415,14 +415,14 @@ const waitFor = async (pred, what, ms = 3000) => {
         assert.strictEqual((await call('GET', `/internal/chat-context/subscriber?user_id=${viewer}&streamer_id=${streamer}`, { token: WRITE })).status, 403, 'a read capability');
         assert.strictEqual((await subOf(`streamer_id=${streamer}`)).status, 400);
         assert.deepStrictEqual((await subOf(`user_id=${viewer}&streamer_id=${streamer}`)).body, { subscriber: false, user_id: viewer, streamer_id: streamer });
-        db.upsertSubscription({ subscriber_id: viewer, streamer_id: streamer, status: 'active', current_period_end: new Date(Date.now() + 86400e3).toISOString() });
+        await db.upsertSubscription({ subscriber_id: viewer, streamer_id: streamer, status: 'active', current_period_end: new Date(Date.now() + 86400e3).toISOString() });
         assert.strictEqual((await subOf(`user_id=${viewer}&streamer_id=${streamer}`)).body.subscriber, true);
         assert.strictEqual((await subOf(`subject=usr_01J9ZZZZZZZZZZZZZZZZZZZZZZ&streamer_id=${streamer}`)).body.subscriber, true, 'by Network subject');
         assert.strictEqual((await subOf(`subject=usr_01J9UNKNOWNZZZZZZZZZZZZZZZ&streamer_id=${streamer}`)).body.subscriber, false, 'an unknown subject');
         assert.strictEqual((await subOf(`user_id=${viewer}&streamer_id=${mod}`)).body.subscriber, false, 'another channel');
-        db.upsertSubscription({ subscriber_id: viewer, streamer_id: streamer, status: 'active', current_period_end: new Date(Date.now() - 60e3).toISOString() });
+        await db.upsertSubscription({ subscriber_id: viewer, streamer_id: streamer, status: 'active', current_period_end: new Date(Date.now() - 60e3).toISOString() });
         assert.strictEqual((await subOf(`user_id=${viewer}&streamer_id=${streamer}`)).body.subscriber, false, 'the paid period is over');
-        db.upsertSubscription({ subscriber_id: viewer, streamer_id: streamer, status: 'canceled', current_period_end: new Date(Date.now() + 86400e3).toISOString() });
+        await db.upsertSubscription({ subscriber_id: viewer, streamer_id: streamer, status: 'canceled', current_period_end: new Date(Date.now() + 86400e3).toISOString() });
         assert.strictEqual((await subOf(`user_id=${viewer}&streamer_id=${streamer}`)).body.subscriber, false, 'not active');
         // Alert sounds moved to Chat with channel_moderation_settings (roadmap T3): Chat resolves the
         // sound from its own row and plays it on an `alert` event (test/chat-ingress.test.js), so Live's effect is gone.
@@ -446,10 +446,10 @@ const waitFor = async (pred, what, ms = 3000) => {
         // outbox and the local ChatServer are gone; chat-delivery carries the push/presence surface).
         const chatDelivery = require('../server/chat/chat-delivery');
         chatDelivery.init();
-        assert.ok(!d.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'chat_bridge_outbox'").get(), 'no outbox');
+        assert.ok(!await d.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'chat_bridge_outbox'").get(), 'no outbox');
         // Live's own writes to data Chat caches (IP approvals, bans) send Chat a cache hint.
-        db.approveIp(channel.id, '203.0.113.7', streamer, 'manual');
-        db.forgiveBan(viewer);
+        await db.approveIp(channel.id, '203.0.113.7', streamer, 'manual');
+        await db.forgiveBan(viewer);
         for (let i = 0; i < 100 && ingressCalls.filter((c) => c.family === 'invalidate').length < 2; i++) await sleep(20);
         assert.deepStrictEqual(ingressCalls.filter((c) => c.family === 'invalidate').map((c) => (c.body.bans ? 'bans' : c.body.approvals)), [channel.id, 'bans']);
         // Synchronous reads come from Chat's presence snapshot.
@@ -461,7 +461,7 @@ const waitFor = async (pred, what, ms = 3000) => {
         assert.strictEqual(chatDelivery.findClientByAnonId('anon9', 1).ip, '203.0.113.9');
         assert.strictEqual(chatDelivery.findClientByAnonId('anon9', 2), null);
         assert.strictEqual(chatDelivery.findClientByAnonId('anon9').ip, '203.0.113.9', 'no stream given: any of that anon\'s sockets');
-        assert.strictEqual(chatDelivery.getAnonIdForConnection('203.0.113.9', 1), 'anon9');
+        assert.strictEqual(await chatDelivery.getAnonIdForConnection('203.0.113.9', 1), 'anon9');
         // Chat asks Live for anon numbers; Live answers from its own helpers.
         assert.strictEqual(typeof (await chatDelivery.resolveAnon('203.0.113.9')).anon_number, 'number');
         // !arena answers the sender in the response, after its own lookup (review 2026-10-02, PR #12).
@@ -483,15 +483,15 @@ const waitFor = async (pred, what, ms = 3000) => {
 
             // Chat's copy (the stub reads the stand-in tables): two lines by the same user, a held IP
             // message, a hidden relay user, a TTS override, two pending sounds and a relayed line.
-            const chatMsg = (fields) => Number(d.prepare(`INSERT INTO chat_messages (user_id, username, message, channel_user_id, source_platform, message_type)
-                VALUES (@user_id, @username, @message, @channel_user_id, @source_platform, @message_type)`).run({ user_id: null, channel_user_id: null, source_platform: null, message_type: 'chat', ...fields }).lastInsertRowid);
-            const m1 = chatMsg({ user_id: viewer, username: 'viewer', message: 'hello', channel_user_id: streamer });
-            chatMsg({ user_id: viewer, username: 'viewer', message: 'again', channel_user_id: streamer });
-            d2.run("INSERT INTO pending_ip_messages (channel_id, ip_address, user_id, username, message, status) VALUES (?, '203.0.113.9', ?, 'viewer', 'held', 'pending')", [channel.id, viewer]);
-            d2.run("INSERT INTO hidden_relay_users (channel_id, platform, external_username, action, created_by) VALUES (?, 'twitch', 'alice', 'hide', ?)", [channel.id, streamer]);
-            d2.run("INSERT INTO tts_voice_overrides (identity_key, voice, pitch, speed, gap, set_by) VALUES ('user:viewer', 'en+f3', 99, 200, 0, ?)", [admin]);
-            d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 'honk', '/sounds/a.mp3', ?), (?, 'beep', '/sounds/b.mp3', ?)", [streamer, streamer, streamer, streamer]);
-            chatMsg({ username: '[Twitch] alice', message: 'hi from twitch', source_platform: 'twitch', channel_user_id: streamer });
+            const chatMsg = async (fields) => Number((await d.prepare(`INSERT INTO chat_messages (user_id, username, message, channel_user_id, source_platform, message_type)
+                VALUES (@user_id, @username, @message, @channel_user_id, @source_platform, @message_type) RETURNING id`).run({ user_id: null, channel_user_id: null, source_platform: null, message_type: 'chat', ...fields })).lastInsertRowid);
+            const m1 = await chatMsg({ user_id: viewer, username: 'viewer', message: 'hello', channel_user_id: streamer });
+            await chatMsg({ user_id: viewer, username: 'viewer', message: 'again', channel_user_id: streamer });
+            await d2.run("INSERT INTO pending_ip_messages (channel_id, ip_address, user_id, username, message, status) VALUES (?, '203.0.113.9', ?, 'viewer', 'held', 'pending')", [channel.id, viewer]);
+            await d2.run("INSERT INTO hidden_relay_users (channel_id, platform, external_username, action, created_by) VALUES (?, 'twitch', 'alice', 'hide', ?)", [channel.id, streamer]);
+            await d2.run("INSERT INTO tts_voice_overrides (identity_key, voice, pitch, speed, gap, set_by) VALUES ('user:viewer', 'en+f3', 99, 200, 0, ?)", [admin]);
+            await d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 'honk', '/sounds/a.mp3', ?), (?, 'beep', '/sounds/b.mp3', ?)", [streamer, streamer, streamer, streamer]);
+            await chatMsg({ username: '[Twitch] alice', message: 'hi from twitch', source_platform: 'twitch', channel_user_id: streamer });
 
             // (2)(3) A peek answers the last good value after its TTL passed, and a failure answers
             // that value too — a failure never overwrites it with null.
@@ -528,7 +528,7 @@ const waitFor = async (pred, what, ms = 3000) => {
             const pending = await chatReads.pendingIp(channel.id, { limit: 5 });
             assert.strictEqual(pending.length, 1);
             assert.strictEqual(pending[0].message, 'held');
-            d2.run("UPDATE pending_ip_messages SET status = 'approved' WHERE channel_id = ?", [channel.id]);
+            await d2.run("UPDATE pending_ip_messages SET status = 'approved' WHERE channel_id = ?", [channel.id]);
             assert.deepStrictEqual(await chatReads.pendingIp(channel.id, { limit: 5 }), [], 'the queue is never served stale');
 
             // (3)(4) Moderation reads fail closed: Chat unavailable throws, never empty data or a 404.
@@ -586,7 +586,7 @@ const waitFor = async (pred, what, ms = 3000) => {
             const values = [];
             const soundParams = [];
             for (let i = 1; i <= 120; i++) { values.push('(?, ?, ?, ?)'); soundParams.push(streamer, `s${i}`, `/sounds/s${i}.mp3`, streamer); }
-            d2.run(`INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES ${values.join(', ')}`, soundParams);
+            await d2.run(`INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES ${values.join(', ')}`, soundParams);
             const media = require('../server/media-client');
             const realRequest = media.request;
             const uploaded = [];
@@ -596,7 +596,7 @@ const waitFor = async (pred, what, ms = 3000) => {
             };
             try { await require('../server/media-proxy/asset-sync').syncAll(); } finally { media.request = realRequest; }
             assert.strictEqual(uploaded.length, 1, 'the sync pages past the first window to the sound with a local file');
-            const s120 = d2.get("SELECT media_asset_id FROM channel_sounds WHERE command = 's120'");
+            const s120 = await d2.get("SELECT media_asset_id FROM channel_sounds WHERE command = 's120'");
             assert.ok(s120.media_asset_id, 'the paged sound was recorded as uploaded');
 
             // (4)(6) The console routes: a text-only search says 501 and usernames match exactly; a
@@ -677,7 +677,7 @@ const waitFor = async (pred, what, ms = 3000) => {
 
             // (6) A sound whose Chat record fails is counted failed, not synced, and stays pending.
             fs.writeFileSync(path.join(tmp, 'sounds', 's201.mp3'), 'audio');
-            d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 's201', '/sounds/s201.mp3', ?)", [streamer, streamer]);
+            await d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 's201', '/sounds/s201.mp3', ?)", [streamer, streamer]);
             readState.soundAssetDown = true;
             {
                 const logs = [];
@@ -689,7 +689,7 @@ const waitFor = async (pred, what, ms = 3000) => {
                 try { await require('../server/media-proxy/asset-sync').syncAll(); }
                 finally { mediaSync.request = realReq; console.log = origLog; readState.soundAssetDown = false; }
                 assert.ok(logs.some((l) => /\(1 failed/.test(l)), 'a failed Chat record is counted failed, not synced');
-                assert.strictEqual(d2.get("SELECT media_asset_id FROM channel_sounds WHERE command = 's201'").media_asset_id, null, 'the sound stays pending for the next pass');
+                assert.strictEqual((await d2.get("SELECT media_asset_id FROM channel_sounds WHERE command = 's201'")).media_asset_id, null, 'the sound stays pending for the next pass');
             }
 
             // (7) A relay hide or unhide through the console drops the cached hidden list at once.
@@ -759,11 +759,11 @@ const waitFor = async (pred, what, ms = 3000) => {
             // after (the clip-count pattern) instead of persisting a cold mirror (or zero).
             {
                 chatReads._reset();
-                d2.run('DELETE FROM stream_analytics WHERE stream_id = ?', [streamId]);
-                const computed = d2.computeAndCacheStreamAnalytics(streamId);
+                await d2.run('DELETE FROM stream_analytics WHERE stream_id = ?', [streamId]);
+                const computed = await d2.computeAndCacheStreamAnalytics(streamId);
                 assert.strictEqual(computed.total_messages, 0, 'the synchronous compute writes its prior totals, not a cold scan');
-                for (let i = 0; i < 300; i++) { await sleep(10); const a = d2.getStreamAnalytics(streamId); if (a && a.total_messages > 0) break; }
-                const sa = d2.getStreamAnalytics(streamId);
+                for (let i = 0; i < 300; i++) { await sleep(10); const a = await d2.getStreamAnalytics(streamId); if (a && a.total_messages > 0) break; }
+                const sa = await d2.getStreamAnalytics(streamId);
                 assert.ok(sa.total_messages >= 3, "the setImmediate refresh wrote Chat's totals");
                 assert.strictEqual(sa.unique_chatters, 2, "and Chat's chatter count");
                 chatReads._reset();
@@ -774,20 +774,20 @@ const waitFor = async (pred, what, ms = 3000) => {
             {
                 const chatClient = require('../server/chat/chat-client');
                 const realReadRelayUsers = chatClient.readRelayUsers;
-                const relOwner = mkUser('relch');
-                db.createChannel({ user_id: relOwner, title: 'Relay channel' });
-                const freshCh = db.getChannelByUserId(relOwner).id;   // no hidden rows yet
+                const relOwner = await mkUser('relch');
+                await db.createChannel({ user_id: relOwner, title: 'Relay channel' });
+                const freshCh = (await db.getChannelByUserId(relOwner)).id;   // no hidden rows yet
                 chatClient.readRelayUsers = async () => ({ relay_users: [] });   // Chat's list holds nothing
                 chatReads._reset();
                 try {
                     assert.strictEqual(chatReads.isRelayUserHidden(freshCh, 'twitch', 'localonly'), false, 'a cold cache fails open');
-                    d2.run("INSERT INTO hidden_relay_users (channel_id, platform, external_username, action, created_by) VALUES (?, 'twitch', 'localonly', 'hide', ?)", [freshCh, streamer]);
+                    await d2.run("INSERT INTO hidden_relay_users (channel_id, platform, external_username, action, created_by) VALUES (?, 'twitch', 'localonly', 'hide', ?)", [freshCh, streamer]);
                     for (let i = 0; i < 300 && chatReads._size() === 0; i++) await sleep(10);
                     assert.ok(chatReads._size() > 0, 'the background read warmed the cache');
                     assert.strictEqual(chatReads.isRelayUserHidden(freshCh, 'twitch', 'localonly'), false, "Live's stale local hide is ignored — Chat's list is the truth");
                 } finally {
                     chatClient.readRelayUsers = realReadRelayUsers;
-                    d2.run('DELETE FROM hidden_relay_users WHERE channel_id = ?', [freshCh]);
+                    await d2.run('DELETE FROM hidden_relay_users WHERE channel_id = ?', [freshCh]);
                     chatReads._reset();
                 }
             }
@@ -799,7 +799,7 @@ const waitFor = async (pred, what, ms = 3000) => {
                 readState.down = true;
                 try {
                     assert.strictEqual(chatReads.userMessageCountPeek(viewer), null, 'a cold count is null, not a mirror number');
-                    assert.strictEqual(d2.getUserProfile(viewer).messageCount, null, 'the profile carries the null through');
+                    assert.strictEqual((await d2.getUserProfile(viewer)).messageCount, null, 'the profile carries the null through');
                 } finally { readState.down = false; chatReads._reset(); }
             }
 
@@ -830,12 +830,12 @@ const waitFor = async (pred, what, ms = 3000) => {
 
             // ── Home daily series: Chat's site-daily read, mapped per metric; a cold cache during a
             // Chat outage answers Live's own series (never zeros). ──
-            d2.run('DELETE FROM chat_messages');
+            await d2.run('DELETE FROM chat_messages');
             chatReads._reset();
             const atDay = (back) => new Date(Date.now() - back * DAY).toISOString().slice(0, 10) + ' 12:00:00';
-            d2.run("INSERT INTO chat_messages (user_id, username, message, message_type, timestamp) VALUES (?, 'viewer', 'a', 'chat', ?), (?, 'viewer', 'b', 'chat', ?), (?, 'moddy', 'c', 'chat', ?)",
+            await d2.run("INSERT INTO chat_messages (user_id, username, message, message_type, timestamp) VALUES (?, 'viewer', 'a', 'chat', ?), (?, 'viewer', 'b', 'chat', ?), (?, 'moddy', 'c', 'chat', ?)",
                 [viewer, atDay(2), viewer, atDay(2), mod, atDay(2)]);
-            d2.run("INSERT INTO chat_messages (user_id, username, message, message_type, timestamp) VALUES (?, 'viewer', 'd', 'chat', ?), (?, 'moddy', 'e', 'chat', ?)",
+            await d2.run("INSERT INTO chat_messages (user_id, username, message, message_type, timestamp) VALUES (?, 'viewer', 'd', 'chat', ?), (?, 'moddy', 'e', 'chat', ?)",
                 [viewer, atDay(1), mod, atDay(1)]);
             await chatReads.homeSeries('messages', 7);   // warm Chat's answer; the peek cannot await
             const series = chatReads.homeSeriesPeek('messages', 7);
@@ -855,7 +855,7 @@ const waitFor = async (pred, what, ms = 3000) => {
             // getHomeStatSeries routes the two chat metrics through the chat series.
             const realSeriesPeek = chatReads.homeSeriesPeek;
             chatReads.homeSeriesPeek = () => ({ metric: 'messages', sentinel: true });
-            try { assert.strictEqual(d2.getHomeStatSeries('messages', 7).sentinel, true, 'getHomeStatSeries reads the chat series in chat mode'); }
+            try { assert.strictEqual((await d2.getHomeStatSeries('messages', 7)).sentinel, true, 'getHomeStatSeries reads the chat series in chat mode'); }
             finally { chatReads.homeSeriesPeek = realSeriesPeek; }
             // A cold cache during a Chat outage answers null (Live keeps no chat series to fall back to).
             chatReads._reset();
@@ -866,10 +866,10 @@ const waitFor = async (pred, what, ms = 3000) => {
 
             // ── First chat: `user:<user_id>` (never the username); a false answer is cached longer
             // than a true one; a cold/down peek falls to Live's own table. ──
-            d2.run('DELETE FROM stream_first_chats');
+            await d2.run('DELETE FROM stream_first_chats');
             chatReads._reset();
             assert.strictEqual(await chatReads.firstChat(streamer, `user:${viewer}`), true, 'a new identity is first');
-            d2.run('INSERT INTO stream_first_chats (chatter_key, channel_user_id) VALUES (?, ?)', [`user:${viewer}`, streamer]);
+            await d2.run('INSERT INTO stream_first_chats (chatter_key, channel_user_id) VALUES (?, ?)', [`user:${viewer}`, streamer]);
             chatReads._reset();
             assert.strictEqual(await chatReads.firstChat(streamer, `user:${viewer}`), false, 'after a recorded first chat, not first');
             chatReads._reset();
@@ -888,7 +888,7 @@ const waitFor = async (pred, what, ms = 3000) => {
             readState.firstChatCalls = 0;
             assert.strictEqual(chatReads.firstChatPeek(streamer, `user:${viewer}`), false, 'the peek keeps a false answer past the true TTL');
             assert.strictEqual(readState.firstChatCalls, 0, 'the peek does not re-ask Chat for the cached false answer');
-            d2.run('DELETE FROM stream_first_chats WHERE chatter_key = ?', [`user:${viewer}`]);
+            await d2.run('DELETE FROM stream_first_chats WHERE chatter_key = ?', [`user:${viewer}`]);
             chatReads._reset();
             readState.firstChatCalls = 0;
             await chatReads.firstChat(streamer, `user:${viewer}`);
@@ -897,7 +897,7 @@ const waitFor = async (pred, what, ms = 3000) => {
             await chatReads.firstChat(streamer, `user:${viewer}`);
             assert.strictEqual(readState.firstChatCalls, 1, 'a true answer is re-asked after the short TTL');
             chatReads._reset();
-            d2.run('DELETE FROM stream_first_chats WHERE chatter_key = ?', [`user:${viewer}`]);
+            await d2.run('DELETE FROM stream_first_chats WHERE chatter_key = ?', [`user:${viewer}`]);
             readState.down = true;
             assert.strictEqual(chatReads.firstChatPeek(streamer, `user:${viewer}`), false, 'a cold + down peek answers not-first (Live keeps no first-chat table)');
             readState.down = false;
@@ -906,27 +906,27 @@ const waitFor = async (pred, what, ms = 3000) => {
             // The AI context passes `user:<user_id>`, never the username: a row keyed by the numeric id
             // suppresses the welcome flag, where the old `user:<username>` key would have missed it.
             // Its peek is synchronous, so each case warms Chat's answer first.
-            d2.run("INSERT INTO chat_messages (user_id, username, message, message_type, channel_user_id, timestamp) VALUES (?, 'viewer', 'hi there', 'chat', ?, ?)", [viewer, streamer, sqlNow()]);
+            await d2.run("INSERT INTO chat_messages (user_id, username, message, message_type, channel_user_id, timestamp) VALUES (?, 'viewer', 'hi there', 'chat', ?, ?)", [viewer, streamer, sqlNow()]);
             await chatReads.channelMessages(streamer, 40);
             const context = require('../server/ai/context');
-            const ctxStream = db.getStreamById(streamId);
+            const ctxStream = await db.getStreamById(streamId);
             const greet = { remember_viewers: true, greet_first_timers: true, max_open_threads: 3, hear_enabled: false };
-            d2.run('INSERT INTO stream_first_chats (chatter_key, channel_user_id) VALUES (?, ?)', [`user:${viewer}`, streamer]);
+            await d2.run('INSERT INTO stream_first_chats (chatter_key, channel_user_id) VALUES (?, ?)', [`user:${viewer}`, streamer]);
             chatReads.invalidate('fc:');
             await chatReads.firstChat(streamer, `user:${viewer}`);   // warm: the context's peek cannot await
-            let tail = context.volatileTail({ userId: streamer, stream: ctxStream, settings: greet, sinceChatId: 0, botNames: new Set() });
+            let tail = await context.volatileTail({ userId: streamer, stream: ctxStream, settings: greet, sinceChatId: 0, botNames: new Set() });
             assert.ok(!/first time chatting here/.test(tail.text), 'a user with a recorded first chat is not greeted again');
-            d2.run('DELETE FROM stream_first_chats WHERE chatter_key = ?', [`user:${viewer}`]);
+            await d2.run('DELETE FROM stream_first_chats WHERE chatter_key = ?', [`user:${viewer}`]);
             chatReads.invalidate('fc:');
             await chatReads.firstChat(streamer, `user:${viewer}`);
-            tail = context.volatileTail({ userId: streamer, stream: ctxStream, settings: greet, sinceChatId: 0, botNames: new Set() });
+            tail = await context.volatileTail({ userId: streamer, stream: ctxStream, settings: greet, sinceChatId: 0, botNames: new Set() });
             assert.ok(/first time chatting here/.test(tail.text), 'a new user is flagged first time (user:<id> identity)');
             chatReads._reset();
 
             // ── Sounds by command: Chat owns the row; a 404 is authoritative; a cold/down peek
             // answers null, never Live's own frozen table. ──
-            d2.run('DELETE FROM channel_sounds WHERE channel_owner_id = ?', [streamer]);
-            d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 'honk', '/sounds/h.mp3', ?)", [streamer, streamer]);
+            await d2.run('DELETE FROM channel_sounds WHERE channel_owner_id = ?', [streamer]);
+            await d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 'honk', '/sounds/h.mp3', ?)", [streamer, streamer]);
             chatReads._reset();
             assert.strictEqual(chatReads.soundByCommandPeek(streamer, 'honk'), null, 'a cold peek answers null, never Live\'s frozen table');
             for (let i = 0; i < 300 && !chatReads.soundByCommandPeek(streamer, 'honk'); i++) await sleep(10);
@@ -934,14 +934,14 @@ const waitFor = async (pred, what, ms = 3000) => {
             assert.ok(honk && honk.command === 'honk', 'the warmed peek answers Chat\'s sound by command');
             assert.strictEqual(chatReads.soundByCommandPeek(streamer, '!HONK').command, 'honk', 'the command is normalized');
             assert.strictEqual(await chatReads.soundByCommand(streamer, 'nope'), null, 'Chat: no such sound');
-            d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 'nope', '/sounds/n.mp3', ?)", [streamer, streamer]);
+            await d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 'nope', '/sounds/n.mp3', ?)", [streamer, streamer]);
             assert.strictEqual(chatReads.soundByCommandPeek(streamer, 'nope'), null, 'a Chat 404 is cached: Live\'s own row is not used');
             chatReads._reset();
             readState.down = true;
             assert.strictEqual(chatReads.soundByCommandPeek(streamer, 'honk'), null, 'a cold + down peek answers null, never Live\'s frozen table');
             readState.down = false;
             chatReads._reset();
-            d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 'bare404', '/sounds/b.mp3', ?)", [streamer, streamer]);
+            await d2.run("INSERT INTO channel_sounds (channel_owner_id, command, url, created_by) VALUES (?, 'bare404', '/sounds/b.mp3', ?)", [streamer, streamer]);
             const bare = await chatReads.soundByCommand(streamer, 'bare404');
             assert.strictEqual(bare, null, 'a 404 without Chat\'s own body is not "no such sound": null, never Live\'s table');
             chatReads._reset();
@@ -960,13 +960,13 @@ const waitFor = async (pred, what, ms = 3000) => {
                 const realReadTts = chatClient.readTtsOverride;
                 chatClient.readTtsOverride = async () => ({ tts_override: null });
                 chatReads._reset();
-                d2.run("INSERT OR REPLACE INTO tts_voice_overrides (identity_key, voice, pitch, speed, gap, set_by) VALUES ('user:stale', 'en+m7', 99, 200, 0, ?)", [admin]);
+                await d2.run("INSERT INTO tts_voice_overrides (identity_key, voice, pitch, speed, gap, set_by) VALUES ('user:stale', 'en+m7', 99, 200, 0, ?) ON CONFLICT (identity_key) DO UPDATE SET voice = excluded.voice, pitch = excluded.pitch, speed = excluded.speed, gap = excluded.gap, set_by = excluded.set_by", [admin]);
                 try {
                     assert.strictEqual(chatReads.ttsOverridePeek('user:stale'), null, "Chat's 'no override' wins over Live's stale row");
                     assert.strictEqual(chatReads.ttsOverridePeek('user:stale'), null, 'and stays null from the cache');
                 } finally {
                     chatClient.readTtsOverride = realReadTts;
-                    d2.run("DELETE FROM tts_voice_overrides WHERE identity_key = 'user:stale'");
+                    await d2.run("DELETE FROM tts_voice_overrides WHERE identity_key = 'user:stale'");
                     chatReads._reset();
                 }
             }
@@ -983,7 +983,7 @@ const waitFor = async (pred, what, ms = 3000) => {
                 chatReads._reset();
                 try {
                     // Chat: not first, and Live's copy has no row either — nothing to welcome.
-                    d2.run('DELETE FROM stream_first_chats WHERE chatter_key = ?', ['ext:[Twitch] carol']);
+                    await d2.run('DELETE FROM stream_first_chats WHERE chatter_key = ?', ['ext:[Twitch] carol']);
                     chatClient.readFirstChat = async () => ({ first: false });
                     await relay._broadcastMessage({ platform: 'twitch', streamId }, 'carol', 'hello from twitch', {});
                     await waitFor(() => relayed('carol').length, 'the relayed line');
@@ -991,7 +991,7 @@ const waitFor = async (pred, what, ms = 3000) => {
                     assert.strictEqual(welcomes('carol').length, 0, "Chat's not-first answer suppresses the welcome");
 
                     // Chat: first, even though Live's frozen copy has a row (it used to suppress it).
-                    d2.run('INSERT INTO stream_first_chats (chatter_key, channel_user_id) VALUES (?, ?)', ['ext:[Twitch] dave', streamer]);
+                    await d2.run('INSERT INTO stream_first_chats (chatter_key, channel_user_id) VALUES (?, ?)', ['ext:[Twitch] dave', streamer]);
                     chatClient.readFirstChat = async () => ({ first: true });
                     await relay._broadcastMessage({ platform: 'twitch', streamId }, 'dave', 'first line', {});
                     await waitFor(() => welcomes('dave').length, "dave's welcome");
@@ -1003,7 +1003,7 @@ const waitFor = async (pred, what, ms = 3000) => {
                 } finally {
                     chatClient.readFirstChat = realReadFirstChat;
                     relay._relayFollowUps = realFollowUps;
-                    d2.run("DELETE FROM stream_first_chats WHERE chatter_key IN ('ext:[Twitch] carol', 'ext:[Twitch] dave')");
+                    await d2.run("DELETE FROM stream_first_chats WHERE chatter_key IN ('ext:[Twitch] carol', 'ext:[Twitch] dave')");
                     chatReads._reset();
                 }
             }
@@ -1016,13 +1016,13 @@ const waitFor = async (pred, what, ms = 3000) => {
                 const deleted = [];
                 media.request = async (method, p) => { if (method === 'DELETE') deleted.push(p); return { ok: true }; };
                 try {
-                    d2.run("INSERT OR REPLACE INTO channel_sounds (id, channel_owner_id, command, url, created_by, media_asset_id) VALUES (777001, ?, 'given', '/sounds/given.mp3', ?, 424242)", [streamer, streamer]);
+                    await d2.run("INSERT INTO channel_sounds (id, channel_owner_id, command, url, created_by, media_asset_id) OVERRIDING SYSTEM VALUE VALUES (777001, ?, 'given', '/sounds/given.mp3', ?, 424242) ON CONFLICT (id) DO UPDATE SET channel_owner_id = excluded.channel_owner_id, command = excluded.command, url = excluded.url, created_by = excluded.created_by, media_asset_id = excluded.media_asset_id", [streamer, streamer]);
                     const out = await call('POST', '/internal/chat-effects/asset-sync', { token: WRITE, body: { op: 'remove-sound', asset_id: 555111 } });
                     assert.strictEqual(out.status, 200);
                     await sleep(20);
                 } finally {
                     media.request = realRequest;
-                    d2.run('DELETE FROM channel_sounds WHERE id = 777001');
+                    await d2.run('DELETE FROM channel_sounds WHERE id = 777001');
                 }
                 assert.deepStrictEqual(deleted, ['/assets/555111'], 'the Media asset id in the request is the one deleted');
             }
@@ -1063,21 +1063,21 @@ const waitFor = async (pred, what, ms = 3000) => {
             const sent = [];
             require('../server/controls/control-server').hardwareClients.set('key-streamer', { readyState: 1, send: (m) => sent.push(JSON.parse(m)) });
             const hw = (body) => call('POST', '/internal/chat-effects/hardware', { token: WRITE, body: { streamer_user_id: streamer, command: 'forward', ...body } });
-            const setCh = (mode, anon) => d.prepare('UPDATE channels SET control_mode = ?, anon_controls_enabled = ? WHERE id = ?').run(mode, anon, channel.id);
-            setCh('open', 1);
+            const setCh = async (mode, anon) => await d.prepare('UPDATE channels SET control_mode = ?, anon_controls_enabled = ? WHERE id = ?').run(mode, anon, channel.id);
+            await setCh('open', 1);
             assert.strictEqual((await hw({ from_anon: 'anon1' })).body.ok, true, 'open channel: anyone');
             assert.strictEqual((await hw({ from_anon: 'anon1' })).body.reason, 'cooldown', 'one command per viewer per 250 ms');
             assert.strictEqual((await hw({ from_anon: 'anon2' })).body.ok, true, 'the cooldown is per viewer');
-            setCh('open', 0);
+            await setCh('open', 0);
             assert.strictEqual((await hw({ from_anon: 'anon3' })).body.reason, 'login_required');
             assert.strictEqual((await hw({ from_user_id: viewer })).body.ok, true, 'signed-in viewers still may');
-            setCh('whitelist', 1);
+            await setCh('whitelist', 1);
             assert.strictEqual((await hw({ from_anon: 'anon4' })).body.reason, 'login_required', 'whitelist mode never lets anonymous drive');
             assert.strictEqual((await hw({ from_user_id: mod })).body.reason, 'not_whitelisted');
-            d.prepare('INSERT INTO control_whitelist (channel_id, user_id) VALUES (?, ?)').run(channel.id, mod);
+            await d.prepare('INSERT INTO control_whitelist (channel_id, user_id) VALUES (?, ?)').run(channel.id, mod);
             assert.strictEqual((await hw({ from_user_id: mod })).body.ok, true, 'whitelisted');
             assert.strictEqual((await hw({ from_user_id: streamer })).body.ok, true, 'the owner always may');
-            setCh('disabled', 1);
+            await setCh('disabled', 1);
             assert.strictEqual((await hw({ from_user_id: streamer, command: 'say:hi' })).body.reason, 'controls_disabled');
             assert.strictEqual(sent.length, 5, 'only the allowed commands reached the robot');
             assert.ok(sent.every((m) => m.type === 'command'));
@@ -1089,7 +1089,7 @@ const waitFor = async (pred, what, ms = 3000) => {
         console.error(err);
         exit = 1;
     } finally {
-        try { db.close(); } catch { /* */ }
+        try { await db.close(); } catch { /* */ }
         fs.rmSync(tmp, { recursive: true, force: true });
         process.exit(exit);
     }

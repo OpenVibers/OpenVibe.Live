@@ -11,14 +11,9 @@
  * x-test-user header like authorization.test.js. Everything after that is the production code.
  */
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const http = require('http');
 const { startNetwork, startBilling } = require('./billing-stub');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-billing-authority-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.NODE_ENV = 'test';
 process.env.BILLING_AUTHORITY = 'billing';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
@@ -50,43 +45,43 @@ async function check(name, fn) {
     network.legacy['5'] = SID.dan;          // dan: only Network's identity map knows him
 
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const raw = db.getDb();
-    const addUser = (id, username, role, extra = {}) => raw.prepare(
+    const addUser = async (id, username, role, extra = {}) => await raw.prepare(
         `INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner, openvibe_bucks_balance, openvibe_bucks_cashout_balance) OVERRIDING SYSTEM VALUE
          VALUES (?, ?, ?, ?, 'x', ?, ?, ?, ?)`).run(id, username, username, `${username}@x`, role, extra.is_owner ? 1 : 0, extra.bucks || 0, extra.cashout || 0);
-    addUser(1, 'owner', 'admin', { is_owner: 1 });
-    addUser(2, 'ann', 'user', { bucks: 1000 });            // legacy columns carry values: they must never move
-    addUser(3, 'bob', 'streamer', { cashout: 2000 });
-    addUser(4, 'cat', 'user', { bucks: 5000 });            // no subject anywhere
-    addUser(5, 'dan', 'user');
-    addUser(6, 'eve', 'streamer');                          // streamer with no subject
-    addUser(7, 'admin2', 'admin');                          // an admin who is not the owner
-    const link = (uid, sid) => raw.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', ?, ?)").run(uid, String(100 + uid), sid);
-    link(2, SID.ann); link(3, SID.bob);
-    db.ensureChannel(3);
-    const streamB = Number(db.createStream({ user_id: 3, channel_id: db.getChannelByUserId(3).id, title: 'B', protocol: 'webrtc' }).lastInsertRowid);
-    db.setSetting('powerchat_enabled', 'true');
-    db.setSetting('powerchat_client_id', 'pca_test');
-    db.setSetting('powerchat_site_tip_username', 'sitepc');
+    await addUser(1, 'owner', 'admin', { is_owner: 1 });
+    await addUser(2, 'ann', 'user', { bucks: 1000 });            // legacy columns carry values: they must never move
+    await addUser(3, 'bob', 'streamer', { cashout: 2000 });
+    await addUser(4, 'cat', 'user', { bucks: 5000 });            // no subject anywhere
+    await addUser(5, 'dan', 'user');
+    await addUser(6, 'eve', 'streamer');                          // streamer with no subject
+    await addUser(7, 'admin2', 'admin');                          // an admin who is not the owner
+    const link = async (uid, sid) => await raw.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', ?, ?)").run(uid, String(100 + uid), sid);
+    await link(2, SID.ann); await link(3, SID.bob);
+    await db.ensureChannel(3);
+    const streamB = Number((await db.createStream({ user_id: 3, channel_id: (await db.getChannelByUserId(3)).id, title: 'B', protocol: 'webrtc' })).lastInsertRowid);
+    await db.setSetting('powerchat_enabled', 'true');
+    await db.setSetting('powerchat_client_id', 'pca_test');
+    await db.setSetting('powerchat_site_tip_username', 'sitepc');
 
-    const ledger = () => ({
-        users: raw.prepare('SELECT id, openvibe_bucks_balance AS b, openvibe_bucks_cashout_balance AS c FROM users ORDER BY id').all(),
-        transactions: raw.prepare('SELECT COUNT(*) AS n FROM transactions').get().n,
-        payment_orders: raw.prepare('SELECT COUNT(*) AS n FROM payment_orders').get().n,
-        subscriptions: raw.prepare('SELECT COUNT(*) AS n, COALESCE(MAX(updated_at), \'\') AS u FROM subscriptions').get(),
+    const ledger = async () => ({
+        users: await raw.prepare('SELECT id, openvibe_bucks_balance AS b, openvibe_bucks_cashout_balance AS c FROM users ORDER BY id').all(),
+        transactions: (await raw.prepare('SELECT COUNT(*) AS n FROM transactions').get()).n,
+        payment_orders: (await raw.prepare('SELECT COUNT(*) AS n FROM payment_orders').get()).n,
+        subscriptions: await raw.prepare('SELECT COUNT(*) AS n, COALESCE(MAX(updated_at), \'\') AS u FROM subscriptions').get(),
     });
-    const before = ledger();
+    const before = await ledger();
 
     const auth = require('../server/auth/auth');
-    const signIn = (req) => { const id = Number(req.headers['x-test-user'] || 0); const u = id ? db.getUserById(id) : null; if (u) req.user = u; return u; };
-    auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
-    auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
+    const signIn = async (req) => { const id = Number(req.headers['x-test-user'] || 0); const u = id ? await db.getUserById(id) : null; if (u) req.user = u; return u; };
+    auth.requireAuth = (req, res, next) => { signIn(req).then((u) => u ? next() : res.status(401).json({ error: 'Authentication required' })).catch(next); };
+    auth.optionalAuth = (req, res, next) => { signIn(req).then(() => next()).catch(next); };
 
     const express = require('express');
     const app = express();
     app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
-    app.use((req, res, next) => { signIn(req); next(); });
+    app.use((req, res, next) => { signIn(req).then(() => next()).catch(next); });
     app.use('/api/funds', require('../server/monetization/routes'));
     app.use('/api/payments', require('../server/monetization/payments-routes'));
     app.use('/api/admin', require('../server/admin/routes'));
@@ -134,7 +129,7 @@ async function check(name, fn) {
         assert.ok(!JSON.stringify(c[0].body).includes('"user_id"'), 'no Live user id reaches Billing');
         assert.ok(c[0].traceparent, 'trace context propagated');
         assert.strictEqual(billing.payable[SID.bob], 150);
-        const row = raw.prepare("SELECT * FROM billing_actions WHERE idempotency_key = ?").get(c[0].key);
+        const row = await raw.prepare("SELECT * FROM billing_actions WHERE idempotency_key = ?").get(c[0].key);
         assert.strictEqual(row.status, 'done'); assert.match(row.billing_ref, /^txn_/);
         // The chat celebration is OpenVibe.Chat's now: Live sends it the line through the delivery
         // seam and keeps no copy (test/tips-delivery.test.js covers the payload).
@@ -252,11 +247,11 @@ async function check(name, fn) {
 
     await check('subscriber perks follow Billing\'s entitlement (cached, refreshed)', async () => {
         billingActions._reset();
-        assert.strictEqual(db.isActiveSubscriber(2, 3), false, 'unknown until checked');
+        assert.strictEqual(await db.isActiveSubscriber(2, 3), false, 'unknown until checked');
         assert.strictEqual(await billingActions.refreshEntitlement(2, 3), true);
-        assert.strictEqual(db.isActiveSubscriber(2, 3), true);
+        assert.strictEqual(await db.isActiveSubscriber(2, 3), true);
         assert.strictEqual(lastCall().cap, 'billing.entitlement.check');
-        assert.strictEqual(db.isActiveSubscriber(4, 3), false);
+        assert.strictEqual(await db.isActiveSubscriber(4, 3), false);
     });
 
     await check('VIP first: VIP\'s entitlement answer decides the perk; Billing stands in only when VIP cannot say', async () => {
@@ -324,18 +319,18 @@ async function check(name, fn) {
         const n = billing.calls.length;
         let r = await call('POST', '/api/payments/bucks/checkout', 2, { provider: 'stripe', bucks: 500 });
         assert.strictEqual(r.status, 403); assert.strictEqual(callsSince(n).length, 0);
-        db.setSetting('payments_enabled', 'true');
+        await db.setSetting('payments_enabled', 'true');
         r = await call('POST', '/api/payments/bucks/checkout', 2, { provider: 'stripe', bucks: 500 });
         assert.strictEqual(r.status, 200, r.text);
         assert.match(r.json.url, /^https:\/\/checkout\.test\/pi_/);
         r = await call('POST', '/api/payments/bucks/checkout', 2, { provider: 'crypto', bucks: 500 });
         assert.strictEqual(lastCall().body.provider, 'nowpayments');
-        db.setSetting('payments_enabled', 'false');
+        await db.setSetting('payments_enabled', 'false');
     });
 
     await check('a Vibes media request is a paid interaction keyed by its request; its refund reverses that exact transfer', async () => {
         const mediaQueue = require('../server/media/media-queue');
-        const reqId = Number(db.createMediaRequest({ streamer_id: 3, stream_id: streamB, user_id: 2, username: 'ann', input: 'x', canonical_url: 'https://x.test/a', embed_url: null, provider: 'youtube', title: 'song', thumbnail_url: null, duration_seconds: 60, cost: 40, queue_position: 1, currency: 'vibes' }).lastInsertRowid);
+        const reqId = Number((await db.run("INSERT INTO media_requests (streamer_id, stream_id, user_id, username, input, canonical_url, provider, title, duration_seconds, cost, queue_position, currency) VALUES (3, ?, 2, 'ann', 'x', 'https://x.test/a', 'youtube', 'song', 60, 40, 1, 'vibes') RETURNING id", [streamB])).lastInsertRowid);
         const charge = await mediaQueue.charge({ currency: 'vibes', cost: 40, userId: 2, streamerId: 3, streamId: streamB, label: 'Media request: song', requestId: reqId });
         const c = lastCall();
         assert.strictEqual(c.path, '/transfers'); assert.strictEqual(c.body.kind, 'paid_interaction');
@@ -351,7 +346,7 @@ async function check(name, fn) {
         const r = lastCall();
         assert.strictEqual(r.path, `/transfers/${charge.transactionId}/refund`); assert.strictEqual(r.cap, 'billing.transfer.create');
         assert.strictEqual(r.key, `live:media_refund:${reqId}`);
-        assert.strictEqual(db.getMediaRequestById(reqId).refunded, 1);
+        assert.strictEqual((await db.getMediaRequestById(reqId)).refunded, 1);
         assert.strictEqual(await mediaQueue.refund(reqId), 0, 'a second refund is a no-op');
         await assert.rejects(mediaQueue.charge({ currency: 'vibes', cost: 999999, userId: 2, streamerId: 3, streamId: streamB, label: 'x', requestId: reqId + 1000 }), /Not enough Vibes — this costs 999999/);
     });
@@ -383,7 +378,7 @@ async function check(name, fn) {
         const r = await call('POST', '/api/funds/donate', 2, { streamer_id: 3, amount: 7 });
         billing.state.delayMs = 0;
         assert.strictEqual(r.status, 504, r.text); assert.strictEqual(r.json.code, 'billing_outcome_unknown');
-        const row = raw.prepare("SELECT * FROM billing_actions WHERE action = 'donation' ORDER BY id DESC LIMIT 1").get();
+        const row = await raw.prepare("SELECT * FROM billing_actions WHERE action = 'donation' ORDER BY id DESC LIMIT 1").get();
         assert.strictEqual(row.status, 'unknown');
         await new Promise((res) => setTimeout(res, 1200));        // the slow request lands on the stub
         const payableBefore = billing.payable[SID.bob];
@@ -412,11 +407,11 @@ async function check(name, fn) {
     });
 
     await check('the tripwire: Live\'s money columns cannot be written under billing', async () => {
-        assert.throws(() => db.addVibes(2, 5), /read-only/);
-        assert.throws(() => db.addVibesCashout(3, 5), /read-only/);
-        assert.throws(() => db.createPaymentOrder({ user_id: 2, provider: 'powerchat' }), /read-only/);
-        assert.throws(() => db.upsertSubscription({ subscriber_id: 2, streamer_id: 3 }), /read-only/);
-        assert.throws(() => db.createTransaction({ to_user_id: 2, amount: 1, type: 'purchase' }), /read-only/);
+        await assert.rejects(db.addVibes(2, 5), /read-only/);
+        await assert.rejects(db.addVibesCashout(3, 5), /read-only/);
+        await assert.rejects(db.createPaymentOrder({ user_id: 2, provider: 'powerchat' }), /read-only/);
+        await assert.rejects(db.upsertSubscription({ subscriber_id: 2, streamer_id: 3 }), /read-only/);
+        await assert.rejects(db.createTransaction({ to_user_id: 2, amount: 1, type: 'purchase' }), /read-only/);
     });
 
     await check('legacy balances are not shown as live (admin stats, admin user list)', async () => {
@@ -427,7 +422,7 @@ async function check(name, fn) {
     });
 
     await check('after everything: Live\'s money columns and tables are exactly as before', async () => {
-        assert.deepStrictEqual(ledger(), before);
+        assert.deepStrictEqual(await ledger(), before);
     });
 
     server.close();

@@ -12,6 +12,7 @@
  */
 const db = require('../db/database');
 const config = require('../config');
+const { assertLiveLedger } = require('./money-authority');
 
 // Vibes are integer "bit"-style units: 100 bucks = $1.00 streamer cashout.
 const CASHOUT_BUCKS_PER_USD = 100;
@@ -75,15 +76,10 @@ class Vibes {
      */
     async purchase(userId, amount, paypalTxId) {
         amount = normalizeBucks(amount);
+        assertLiveLedger('transactions insert');
         const txId = normalizeText(paypalTxId, 128);
-        const tx = await db.createTransaction({
-            from_user_id: null,
-            to_user_id: userId,
-            amount,
-            type: 'purchase',
-            status: 'completed',
-            message: `Purchased ${amount} Vibes`,
-        });
+        const tx = await db.run(`INSERT INTO transactions (from_user_id, to_user_id, amount, type, status, message)
+            VALUES (NULL, ?, ?, 'purchase', 'completed', ?) RETURNING id`, [userId, amount, `Purchased ${amount} Vibes`]);
 
         // Update PayPal reference
         if (txId) {
@@ -105,6 +101,7 @@ class Vibes {
      */
     async donate(fromUserId, toUserId, streamId, amount, message, goalId = null) {
         amount = normalizeBucks(amount);
+        assertLiveLedger('transactions insert');
         message = normalizeText(message, 300);
 
         // Deduct from donor
@@ -117,18 +114,11 @@ class Vibes {
         await db.addVibesCashout(toUserId, amount);
 
         // Record transaction
-        const txn = await db.createTransaction({
-            from_user_id: fromUserId,
-            to_user_id: toUserId,
-            stream_id: streamId,
-            amount,
-            type: 'donation',
-            status: 'completed',
-            message: message || null,
-        });
+        const txn = await db.run(`INSERT INTO transactions (from_user_id, to_user_id, stream_id, amount, type, status, message)
+            VALUES (?, ?, ?, ?, 'donation', 'completed', ?) RETURNING id`, [fromUserId, toUserId, streamId || null, amount, message || null]);
 
         // Apply toward a donation goal (the donor's pick, else the sole active goal).
-        const goalResult = this.applyDonationToGoal(toUserId, amount, goalId);
+        const goalResult = await this.applyDonationToGoal(toUserId, amount, goalId);
 
         return {
             success: true,
@@ -164,6 +154,7 @@ class Vibes {
      */
     async requestCashout(userId, amount, paypalEmail) {
         amount = normalizeBucks(amount);
+        assertLiveLedger('transactions insert');
         paypalEmail = validatePaypalEmail(paypalEmail);
         const minBucks = config.openvibeBucks.minCashoutBucks;
         if (amount < minBucks) {
@@ -175,14 +166,8 @@ class Vibes {
             throw new Error('Insufficient cashout balance — only Vibes sent to you can be cashed out');
         }
 
-        const tx = await db.createTransaction({
-            from_user_id: userId,
-            to_user_id: null,
-            amount,
-            type: 'cashout',
-            status: 'escrow',
-            message: `Cashout to PayPal: ${paypalEmail}`,
-        });
+        const tx = await db.run(`INSERT INTO transactions (from_user_id, to_user_id, amount, type, status, message)
+            VALUES (?, NULL, ?, 'cashout', 'escrow', ?) RETURNING id`, [userId, amount, `Cashout to PayPal: ${paypalEmail}`]);
 
         return {
             transaction_id: tx.lastInsertRowid,
@@ -269,11 +254,11 @@ class Vibes {
     async getLeaderboard(streamId, limit = 10) {
         return await db.all(`
             SELECT from_user_id, u.username, u.display_name, u.avatar_url,
-                   SUM(amount) as total_donated
+                   SUM(amount)::bigint as total_donated
             FROM transactions t
             JOIN users u ON t.from_user_id = u.id
             WHERE t.stream_id = ? AND t.type = 'donation' AND t.status = 'completed'
-            GROUP BY from_user_id
+            GROUP BY from_user_id, u.id
             ORDER BY total_donated DESC
             LIMIT ?
         `, [streamId, limit]);

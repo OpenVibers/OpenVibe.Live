@@ -101,8 +101,8 @@ contextRouter.post('/users/lookup', async (req, res) => {
     const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter(Number.isInteger).slice(0, 500);
     const names = (Array.isArray(req.body?.usernames) ? req.body.usernames : []).map(String).slice(0, 100);
     const rows = [];
-    if (ids.length) rows.push(...await db.all(`${USER_SQL} WHERE u.id IN (${ids.map(() => '?').join(',')})`, ids));
-    for (const n of names) { const r = await db.get(`${USER_SQL} WHERE u.username = ? COLLATE NOCASE`, [n]); if (r) rows.push(r); }
+    if (ids.length) rows.push(...await db.all(`${USER_SQL} WHERE u.id = ANY(?)`, [ids]));
+    if (names.length) rows.push(...await db.all(`${USER_SQL} WHERE lower(u.username) = ANY(?)`, [names.map((n) => n.toLowerCase())]));
     res.json({ users: rows });
 });
 
@@ -111,7 +111,7 @@ contextRouter.get('/users/profile', async (req, res) => {
     try {
         const name = String(req.query.username || '');
         let user = await db.getUserByUsername(name);
-        if (!user) user = await db.get('SELECT * FROM users WHERE display_name = ? COLLATE NOCASE', [name]);
+        if (!user) user = await db.get('SELECT * FROM users WHERE lower(display_name) = lower(?)', [name]);
         if (!user) return fail(res, 404, 'User not found');
         const profile = await db.getUserProfile(user.id);
         if (!profile) return fail(res, 404, 'Profile not found');
@@ -204,7 +204,7 @@ contextRouter.get('/channels/:id/approved-ip', async (req, res) => {
 // Active bans (user, IP and CIDR rows). `version` changes whenever the table does, so an
 // unchanged table is one small answer.
 contextRouter.get('/bans', async (req, res) => {
-    const v = await db.get('SELECT COUNT(*) AS c, COALESCE(MAX(id), 0) AS m, COALESCE(SUM(id * 7 + COALESCE(stream_id, 0) + LENGTH(COALESCE(expires_at, \'\'))), 0) AS s FROM bans');
+    const v = await db.get('SELECT COUNT(*) AS c, COALESCE(MAX(id), 0) AS m, COALESCE(SUM(id * 7 + COALESCE(stream_id, 0) + LENGTH(COALESCE(expires_at, \'\'))), 0)::bigint AS s FROM bans');
     const version = `${v.c}:${v.m}:${v.s}`;
     if (req.query.version && String(req.query.version) === version) return res.json({ version, unchanged: true });
     res.json({
@@ -213,7 +213,7 @@ contextRouter.get('/bans', async (req, res) => {
     });
 });
 
-contextRouter.post('/decor', (req, res) => {
+contextRouter.post('/decor', async (req, res) => {
     const ids = (Array.isArray(req.body?.user_ids) ? req.body.user_ids : []).map(Number).filter(Number.isInteger).slice(0, 500);
     let cosmetics = null, tags = null;
     try { cosmetics = require('../monetization/cosmetics'); } catch { /* */ }
@@ -221,8 +221,8 @@ contextRouter.post('/decor', (req, res) => {
     const decor = {};
     for (const id of ids) {
         let cosmetic = {}, tag = null;
-        try { if (cosmetics) cosmetic = cosmetics.getCosmeticProfile(id) || {}; } catch { cosmetic = {}; }
-        try { if (tags) tag = tags.getTagProfile(id) || null; } catch { tag = null; }
+        try { if (cosmetics) cosmetic = await cosmetics.getCosmeticProfile(id) || {}; } catch { cosmetic = {}; }
+        try { if (tags) tag = await tags.getTagProfile(id) || null; } catch { tag = null; }
         decor[id] = { cosmetic, tag };
     }
     res.json({ decor });
@@ -400,11 +400,11 @@ effectsRouter.post('/chat-message', async (req, res) => {
     const b = req.body || {};
     let coin = null;
     if (b.award && b.user_id && b.stream_id) {
-        try { coin = require('../monetization/opencoins').awardChat(int(b.user_id), int(b.stream_id)); } catch { coin = null; }
+        try { coin = await require('../monetization/opencoins').awardChat(int(b.user_id), int(b.stream_id)); } catch { coin = null; }
     }
     if (b.ai && b.stream_id) {
         try {
-            require('../integrations/ai-chatbot-service').onRealChatMessage(int(b.stream_id), {
+            await require('../integrations/ai-chatbot-service').onRealChatMessage(int(b.stream_id), {
                 username: b.username,
                 message: b.message,
                 userId: b.user_id || null,
@@ -438,11 +438,11 @@ effectsRouter.post('/chat-message', async (req, res) => {
     res.json({ coin });
 });
 
-effectsRouter.post('/ai/mod-command', (req, res) => {
+effectsRouter.post('/ai/mod-command', async (req, res) => {
     try {
         const engine = require('../integrations/ai-chatbot-service');
         const reply = engine.onModCommand
-            ? engine.onModCommand(req.body.channel_user_id || null, req.body.stream_id || null, Array.isArray(req.body.args) ? req.body.args : [], { by: req.body.by })
+            ? await engine.onModCommand(req.body.channel_user_id || null, req.body.stream_id || null, Array.isArray(req.body.args) ? req.body.args : [], { by: req.body.by })
             : 'AI viewers: command not supported by this engine.';
         res.json({ reply: reply || null });
     } catch (err) { fail(res, 400, err.message); }
@@ -478,14 +478,14 @@ effectsRouter.post('/media-queue', async (req, res) => {
             const request = await mediaQueue.addRequest({ streamerId, streamId: int(b.streamId) || null, userId: int(b.userId), username: String(b.username || ''), input: String(b.input || '') });
             return res.json({ request });
         }
-        if (b.op === 'state') return res.json({ state: mediaQueue.getState(streamerId) });
+        if (b.op === 'state') return res.json({ state: await mediaQueue.getState(streamerId) });
         if (b.op === 'skip') {
             const actor = await actorOf(int(b.actorUserId));
             const streamId = int(b.streamId) || null;
             const allowed = actor && (actor.id === streamerId || permissions.isGlobalModOrAbove(actor) || (streamId && await permissions.canModerateStream(actor, streamId)));
             if (!allowed) return fail(res, 403, 'Only the streamer or a moderator can skip media.');
-            const ended = mediaQueue.finishCurrent(streamerId, 'skipped');
-            const next = mediaQueue.startNext(streamerId);
+            const ended = await mediaQueue.finishCurrent(streamerId, 'skipped');
+            const next = await mediaQueue.startNext(streamerId);
             return res.json({ ended: ended || null, next: next || null });
         }
         fail(res, 400, 'unknown op');

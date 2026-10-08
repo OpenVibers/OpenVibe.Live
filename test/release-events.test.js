@@ -7,12 +7,8 @@
 
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
-
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-release-events-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 
 const published = [];
 const stub = http.createServer((req, res) => {
@@ -38,13 +34,13 @@ const stub = http.createServer((req, res) => {
 
     const contracts = require('openvibe-contracts');
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const raw = db.getDb();
     const dn = require('../server/chat/deploy-notice');
     const releaseEvents = require('../server/events/release-events');
     const streamEvents = require('../server/events/stream-events');
     const quiet = { log() {}, warn() {} };
-    const outboxRows = () => raw.prepare('SELECT event_id, envelope FROM event_outbox ORDER BY id').all().map(r => (typeof r.envelope === 'string' ? JSON.parse(r.envelope) : r.envelope)).filter(e => e.event_type === releaseEvents.EVENT_TYPE);
+    const outboxRows = async () => (await raw.prepare('SELECT event_id, envelope FROM event_outbox ORDER BY id').all()).map(r => (typeof r.envelope === 'string' ? JSON.parse(r.envelope) : r.envelope)).filter(e => e.event_type === releaseEvents.EVENT_TYPE);
 
     // The envelope is a valid event-envelope@1.
     const head = (await new Promise(r => require('child_process').execFile('git', ['rev-parse', 'HEAD'], { cwd: path.join(__dirname, '..') }, (e, o) => r(String(o).trim()))));
@@ -61,16 +57,16 @@ const stub = http.createServer((req, res) => {
     let r = await dn.announce({ db, log: quiet });
     assert.strictEqual(r.announced, 0);
     assert.strictEqual(r.event_id, null);
-    assert.ok(!db.getSetting(dn.SETTING), 'not recorded as announced');
+    assert.ok(!await db.getSetting(dn.SETTING), 'not recorded as announced');
 
     // Events on: a new deploy (the setting points elsewhere) queues and publishes the event.
     const outbox = streamEvents.init({ eventsUrl: base, clientSecret: 's3cret', intervalMs: 50 });
     assert.ok(outbox);
-    db.setSetting(dn.SETTING, '');
+    await db.setSetting(dn.SETTING, '');
     r = await dn.announce({ db, log: quiet });
     assert.ok(r.announced >= 1);
     assert.match(r.event_id, /^evt_[0-9A-HJKMNP-TV-Z]{26}$/);
-    let rows = outboxRows();
+    let rows = await outboxRows();
     assert.strictEqual(rows.length, 1);
     assert.strictEqual(rows[0].event_id, r.event_id);
     assert.deepStrictEqual(rows[0].subject, { type: 'release', id: head });
@@ -87,23 +83,23 @@ const stub = http.createServer((req, res) => {
     // A restart with no new code: no notice, no event.
     r = await dn.announce({ db, log: quiet });
     assert.strictEqual(r.announced, 0);
-    assert.strictEqual(outboxRows().length, 1);
+    assert.strictEqual((await outboxRows()).length, 1);
 
     // The event cannot be queued: nothing is recorded (setting unchanged), so the next boot
     // announces again — never an announcement without its event.
-    db.setSetting(dn.SETTING, '');
-    raw.exec("CREATE TEMP TRIGGER outbox_boom BEFORE INSERT ON event_outbox BEGIN SELECT RAISE(ABORT, 'outbox insert failed'); END");
+    await db.setSetting(dn.SETTING, '');
+    await globalThis.__ovLiveDdl('ALTER TABLE event_outbox ADD CONSTRAINT outbox_boom CHECK (false) NOT VALID');
     r = await dn.announce({ db, log: quiet });
-    raw.exec('DROP TRIGGER temp.outbox_boom');
+    await globalThis.__ovLiveDdl('ALTER TABLE event_outbox DROP CONSTRAINT outbox_boom');
     assert.strictEqual(r.announced, 0);
-    assert.strictEqual(db.getSetting(dn.SETTING), '');
-    assert.strictEqual(outboxRows().length, 1);
+    assert.strictEqual(await db.getSetting(dn.SETTING), '');
+    assert.strictEqual((await outboxRows()).length, 1);
 
     // With Events on: Chat learns the deploy from the event alone (C-84).
     r = await dn.announce({ db, log: quiet });
     assert.ok(r.announced >= 1);
-    assert.strictEqual(db.getSetting(dn.SETTING), head);
-    rows = outboxRows();
+    assert.strictEqual(await db.getSetting(dn.SETTING), head);
+    rows = await outboxRows();
     assert.strictEqual(rows.length, 2);
     assert.strictEqual(rows[1].event_id, r.event_id);
 
@@ -111,12 +107,12 @@ const stub = http.createServer((req, res) => {
     // the commits stay unannounced and the next boot tries again (review 2026-10-02, PR #12).
     streamEvents._reset();
     process.env.EVENTS_PUBLISH = 'off';
-    db.setSetting(dn.SETTING, '');
+    await db.setSetting(dn.SETTING, '');
     r = await dn.announce({ db, log: quiet });
     delete process.env.EVENTS_PUBLISH;
     assert.strictEqual(r.announced, 0);
-    assert.strictEqual(db.getSetting(dn.SETTING), '', 'not recorded as announced');
-    assert.strictEqual(outboxRows().length, 2, 'nothing queued while Events is off');
+    assert.strictEqual(await db.getSetting(dn.SETTING), '', 'not recorded as announced');
+    assert.strictEqual((await outboxRows()).length, 2, 'nothing queued while Events is off');
 
     streamEvents._reset();
     stub.close();

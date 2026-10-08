@@ -98,29 +98,6 @@ const CATEGORY_SLOT = {
     voice: 'voice',
 };
 
-// ── Ensure tables exist (called at startup) ──────────────────
-function ensureTables() {
-    const d = db.getDb();
-    d.exec(`
-        CREATE TABLE IF NOT EXISTS user_cosmetics (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            item_id TEXT NOT NULL,
-            category TEXT NOT NULL,
-            unlocked_at DATETIME DEFAULT ov_now(),
-            UNIQUE(user_id, item_id),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        );
-        CREATE TABLE IF NOT EXISTS user_equipped (
-            user_id INTEGER NOT NULL,
-            slot TEXT NOT NULL,
-            item_id TEXT NOT NULL,
-            PRIMARY KEY (user_id, slot),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        );
-    `);
-}
-
 // ── Get all unlocked cosmetics for a user ────────────────────
 async function getUnlocked(userId) {
     const d = db.getDb();
@@ -202,7 +179,7 @@ async function equipCosmetic(userId, itemId, { isAdmin = false } = {}) {
     }
     const slot = CATEGORY_SLOT[cosmetic.category];
     const d = db.getDb();
-    await d.prepare('INSERT OR REPLACE INTO user_equipped (user_id, slot, item_id) VALUES (?, ?, ?)').run(userId, slot, itemId);
+    await d.prepare('INSERT INTO user_equipped (user_id, slot, item_id) VALUES (?, ?, ?) ON CONFLICT (user_id, slot) DO UPDATE SET item_id = excluded.item_id').run(userId, slot, itemId);
     return { success: true, slot, item: cosmetic };
 }
 
@@ -237,7 +214,6 @@ async function getFullInventory(userId) {
 
 module.exports = {
     COSMETICS,
-    ensureTables,
     getUnlocked,
     getEquipped,
     getCosmeticProfile,

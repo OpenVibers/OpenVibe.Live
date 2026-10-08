@@ -140,7 +140,7 @@ function _observeDb() {
         const orig = db[fn];
         if (typeof orig !== 'function' || orig._chatObserved) continue;
         const observed = async (...args) => {
-            const result = orig(...args);
+            const result = await orig(...args);
             try { await invalidate(hint(args)); } catch { /* non-critical */ }
             return result;
         };
@@ -164,8 +164,8 @@ async function init() {
     if (!ingress()) return null;
     if (!_dbObserved) { _dbObserved = true; _observeDb(); }
     if (_presenceTimer) return null;
-    _pollPresence();   // floating-ok: _pollPresence catches and keeps the last snapshot
-    _presenceTimer = setInterval(async () => await _pollPresence(), PRESENCE_MS);
+    _pollPresence().catch((e) => console.warn('[Chat] presence:', e.message));
+    _presenceTimer = setInterval(() => _pollPresence().catch((e) => console.warn('[Chat] presence:', e.message)), PRESENCE_MS);
     if (_presenceTimer.unref) _presenceTimer.unref();
     console.log('[Chat] CHAT_AUTHORITY=chat — chat runs in OpenVibe.Chat; Live delivers through its ingress');
     return null;

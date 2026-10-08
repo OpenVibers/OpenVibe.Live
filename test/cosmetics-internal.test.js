@@ -18,7 +18,6 @@ const { serviceAuth } = require('openvibe-contracts');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-internal-'));
 const keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
 fs.writeFileSync(path.join(tmp, 'network.pem'), keys.publicKey);
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.OV_NETWORK_PUBLIC_KEY = path.join(tmp, 'network.pem');
 process.env.OV_NETWORK_URL = 'https://openvibe.network';
 const KEY = 'k'.repeat(40);   // what an old caller would send: it must open nothing
@@ -34,7 +33,7 @@ const token = (cap, { aud = 'openvibe.live', sub = 'svc:network', env } = {}) =>
 }, keys.privateKey);
 
 (async () => {
-    require('../server/db/database').initDb();
+    await require('../server/db/database').initDb();
     const app = express();
     app.use(express.json());
     app.use('/api/cosmetics', require('../server/monetization/cosmetics-routes'));
