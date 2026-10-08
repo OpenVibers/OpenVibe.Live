@@ -1102,15 +1102,7 @@ app.get('/banned', async (req, res) => {
 // own head describes the home page), and no other page claims the home page as its canonical.
 let _shellHtml = null;
 try { _shellHtml = require('./seo').shellHtml; } catch { _shellHtml = null; }
-function sendShell(res, urlPath) {
-    let html = null;
-    try { html = _shellHtml ? _shellHtml(urlPath, res.statusCode) : null; } catch { html = null; }
-    if (!html) return sendDocument(res, 'index.html', urlPath);
-    if (!res.getHeader('Cache-Control')) assets.setNoCache(res);
-    try { res.setHeader('Content-Security-Policy-Report-Only', assets.cspReportOnly(html)); } catch { /* */ }
-    res.type('html').send(html);
-    return true;
-}
+const sendShell = require('./web/shell').createSendShell({ shellHtml: _shellHtml, sendDocument, assets });
 app.get('*', require('./web/page-status').spaFallback((res, urlPath) => sendShell(res, urlPath)));
 
 // ── Global Error Handler ─────────────────────────────────────
