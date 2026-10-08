@@ -35,6 +35,20 @@
 
     function reset(mode) { write(MODES[mode].key, 0); setSize(mode, 0); settle(); }
 
+    // A focusable separator is a value control (WAI-ARIA): it says its orientation and the size it sets, in pixels,
+    // kept current through every drag, key, reset and layout change.
+    function sync(g, sidebar) {
+        if (!g || !sidebar) return;
+        const mode = modeOf(); const m = MODES[mode]; const r = sidebar.getBoundingClientRect();
+        const now = Math.round(m.axis === 'x' ? r.width : r.height);
+        g.setAttribute('aria-orientation', m.axis === 'x' ? 'vertical' : 'horizontal');
+        g.setAttribute('aria-valuemin', String(m.min));
+        g.setAttribute('aria-valuemax', String(Math.round(Math.max(m.min, m.max()))));
+        g.setAttribute('aria-valuenow', String(clamp(now, m.min, Math.max(m.min, m.max()))));
+        g.setAttribute('aria-valuetext', `Chat ${now} pixels ${m.axis === 'x' ? 'wide' : 'tall'}`);
+    }
+    function syncAll() { document.querySelectorAll('#page-channel .stream-layout > .chat-sidebar').forEach((s) => sync(s._ovGrip, s)); }
+
     function bind(sidebar) {
         if (!sidebar || sidebar._ovGrip) return;
         const g = document.createElement('div');
@@ -45,6 +59,7 @@
         g.title = 'Drag to resize the chat · double-click for the default size';
         sidebar.prepend(g);
         sidebar._ovGrip = g;
+        sync(g, sidebar);
 
         let drag = null, lastTap = 0;
         g.addEventListener('pointerdown', (e) => {
@@ -64,6 +79,7 @@
             // The sheet may go below its minimum while dragging: letting go there closes it.
             drag.cur = Math.round(Math.max(drag.mode === 'sheet' ? 60 : m.min, Math.min(m.max(), drag.from + delta)));
             const p = page(); if (p) p.style.setProperty(m.prop, `${drag.cur}px`);
+            sync(g, sidebar);
         });
         const end = (e) => {
             if (!drag || (e && e.pointerId !== drag.id)) return;
@@ -85,31 +101,34 @@
             }
             write(m.key, clamp(d.cur, m.min, m.max()));
             settle();
+            sync(g, sidebar);
         };
         g.addEventListener('pointerup', end);
         g.addEventListener('pointercancel', end);
         g.addEventListener('lostpointercapture', end);
-        g.addEventListener('dblclick', () => reset(modeOf()));
+        g.addEventListener('dblclick', () => { reset(modeOf()); sync(g, sidebar); });
         g.addEventListener('keydown', (e) => {
             const mode = modeOf(); const m = MODES[mode];
-            if (e.key === 'Enter') { e.preventDefault(); reset(mode); return; }
+            if (e.key === 'Enter') { e.preventDefault(); reset(mode); sync(g, sidebar); return; }
             const grow = m.axis === 'x' ? { ArrowLeft: 1, ArrowRight: -1 } : { ArrowUp: 1, ArrowDown: -1 };
             if (!(e.key in grow)) return;
             e.preventDefault();
             const r = sidebar.getBoundingClientRect();
             const v = clamp((m.axis === 'x' ? r.width : r.height) + grow[e.key] * 24, m.min, m.max());
             setSize(mode, v); write(m.key, v); settle();
+            sync(g, sidebar);
         });
     }
 
     function init() {
         applySaved();
         document.querySelectorAll('#page-channel .stream-layout > .chat-sidebar').forEach(bind);
+        syncAll();
     }
     init();
     document.addEventListener('ov:fragment', init);
     // A size saved on a wide window can be too wide for a smaller one: re-clamp when the window changes.
     let t = 0;
-    window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(applySaved, 150); });
+    window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(() => { applySaved(); syncAll(); }, 150); });
     window.ChannelChatResize = { init, reset: () => reset(modeOf()) };
 })();
