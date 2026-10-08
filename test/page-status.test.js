@@ -68,8 +68,10 @@ async function expectAll(paths, want, opts) {
     const wrong = [];
     for (const p of paths) {
         for (const html of [false, true]) {
-            const s = await statusOf(p, { ...opts, html });
-            if (s !== want) wrong.push(`${p}${html ? ' (html)' : ''} → ${s}`);
+            const r = await get(p, { ...opts, html });
+            if (r.status !== want) wrong.push(`${p}${html ? ' (html)' : ''} → ${r.status}`);
+            // Every page answer is the HTML shell (a 404 too): never JSON, never a serialized Promise (`{}`).
+            else if (!/^<!doctype html/i.test(r.body.trimStart()) || !/text\/html/.test(r.type)) wrong.push(`${p}${html ? ' (html)' : ''} → ${r.status} but not the HTML shell: ${JSON.stringify(r.body.slice(0, 40))}`);
         }
     }
     assert.deepStrictEqual(wrong, [], `expected ${want}: ${wrong.join(', ')}`);
@@ -121,14 +123,10 @@ async function main() {
     // ── The app: the SEO middleware, then the real SPA fallback (as server/index.js mounts them) ──
     const app = express();
     seo.register(app);
-    // As server/index.js sendShell: the shell from seo.shellHtml (a 404 is noindex, no canonical).
-    app.get('*', pageStatus.spaFallback(async (res, urlPath) => {
-        const html = await seo.shellHtml(urlPath, res.statusCode);
-        if (!html) return false;
-        res.type('html').send(html);
-        return true;
-    }));
-    void assets;
+    // server/index.js's own sendShell (server/web/shell.js) over the real seo.shellHtml: a page without an SEO renderer
+    // (a channel, /updates, /documentation) must get the HTML shell, never a serialized Promise (`{}`, 2026-10-08).
+    const sendShell = require('../server/web/shell').createSendShell({ shellHtml: seo.shellHtml, sendDocument: () => false, assets });
+    app.get('*', pageStatus.spaFallback(sendShell));
 
     const server = http.createServer(app);
     await new Promise((r) => server.listen(0, '127.0.0.1', r));
