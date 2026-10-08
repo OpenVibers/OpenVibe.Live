@@ -168,17 +168,28 @@
         return el('article', { class: `cf-card cf-card--paste${it.ai ? ' cf-card--ai' : ''}` }, media, body);
     }
 
+    // A recap is a report about a stream, not a video: a short report band (the grade, "AI recap", the stream's numbers)
+    // over the stream's thumbnail, blurred and tinted, instead of a 16:9 player frame with a duration pill.
     function recapCard(it) {
-        const media = spa(it.href, { class: 'cf-media cf-media--recap', 'aria-label': `Read the recap: ${it.title}` },
-            it.thumbnail_url ? thumb(it.thumbnail_url, 'fa-clipboard-list') : el('span', { class: 'cf-thumb cf-thumb--ph' }, icon('fa-clipboard-list')),
-            aiBadge());
-        if (it.grade) media.append(el('span', { class: `cf-grade cf-grade--${it.grade.toLowerCase()}`, title: `Grade ${it.grade}`, text: it.grade }));
-        if (it.duration_seconds) media.append(el('span', { class: 'cf-pill cf-dur', text: duration(it.duration_seconds) }));
+        const band = spa(it.href, { class: 'cf-recap-band', 'aria-label': `Read the recap: ${it.title}` });
+        if (it.thumbnail_url) {
+            const bg = el('img', { class: 'cf-recap-bg', src: it.thumbnail_url, alt: '', loading: 'lazy', decoding: 'async' });
+            bg.addEventListener('error', () => bg.remove(), { once: true });
+            band.append(bg);
+        }
+        band.append(it.grade
+            ? el('span', { class: `cf-recap-grade cf-grade--${it.grade.toLowerCase()}`, title: `Grade ${it.grade}`, text: it.grade })
+            : el('span', { class: 'cf-recap-grade cf-recap-grade--none' }, icon('fa-clipboard-list')));
+        const stats = el('span', { class: 'cf-recap-stats' });
+        if (it.duration_seconds) stats.append(el('span', null, el('b', { text: duration(it.duration_seconds) }), ' live'));
+        if (it.views) stats.append(el('span', null, el('b', { text: compact(it.views) }), ' peak'));
+        band.append(el('span', { class: 'cf-recap-head' }, el('span', { class: 'cf-recap-label' }, icon('fa-wand-magic-sparkles'), ' AI recap'), el('span', { class: 'cf-recap-sub', text: 'After-show report' }), stats));
         const body = el('div', { class: 'cf-body' }, spa(it.href, { class: 'cf-title', text: it.title }));
         if (it.stream_title && it.stream_title !== it.title) body.append(el('div', { class: 'cf-streamtitle', text: it.stream_title }));
         body.append(meta(it));
-        if (it.excerpt) body.append(el('p', { class: 'cf-excerpt', text: it.excerpt }));
-        return el('article', { class: 'cf-card cf-card--recap cf-card--ai' }, media, body);
+        if (it.excerpt) body.append(el('p', { class: 'cf-excerpt cf-excerpt--recap', text: it.excerpt }));
+        body.append(spa(it.href, { class: 'cf-recap-read' }, 'Read the recap ', icon('fa-arrow-right')));
+        return el('article', { class: 'cf-card cf-card--recap cf-card--ai' }, band, body);
     }
 
     const BUILD = { vod: vodCard, clip: clipCard, paste: pasteCard, recap: recapCard };

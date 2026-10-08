@@ -387,6 +387,51 @@ a.cf-chan:hover .cf-name { color: var(--text-primary); text-decoration: underlin
 .cf-grade--b { color: #60a5fa; }
 .cf-grade--c { color: #94a3b8; }
 
+/* ── AI recap: a report card, not a video card (content-feed.js recapCard) ── */
+.cf-card--recap { background: linear-gradient(180deg, color-mix(in srgb, var(--cf-ai) 7%, var(--bg-card)), var(--bg-card) 55%); }
+.cf-recap-band {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 104px;
+    padding: 16px;
+    overflow: hidden;
+    color: inherit;
+    text-decoration: none;
+    isolation: isolate;
+    border-bottom: 1px dashed color-mix(in srgb, var(--cf-ai) 35%, var(--border));
+    background:
+        radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--cf-ai) 34%, transparent), transparent 62%),
+        radial-gradient(90% 120% at 100% 100%, color-mix(in srgb, var(--cf-ai-2) 22%, transparent), transparent 60%),
+        var(--bg-secondary);
+}
+.cf-recap-bg { position: absolute; inset: -12px; width: calc(100% + 24px); height: calc(100% + 24px); object-fit: cover; filter: blur(14px) saturate(1.2); opacity: .28; z-index: -1; }
+.cf-recap-grade {
+    flex: 0 0 auto;
+    width: 64px;
+    height: 64px;
+    display: grid;
+    place-items: center;
+    border-radius: 18px;
+    font-weight: 900;
+    font-size: 2rem;
+    line-height: 1;
+    background: rgba(8, 12, 22, 0.72);
+    border: 2px solid currentColor;
+    box-shadow: 0 8px 24px color-mix(in srgb, currentColor 22%, transparent);
+}
+.cf-recap-grade--none { color: var(--cf-ai); font-size: 1.5rem; }
+.cf-recap-head { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cf-recap-label { font-size: .78rem; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: var(--cf-ai); }
+.cf-recap-sub { font-size: .92rem; font-weight: 700; color: var(--text-primary); }
+.cf-recap-stats { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .82rem; color: var(--text-secondary); }
+.cf-recap-stats b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+a.cf-recap-band:hover .cf-recap-sub { text-decoration: underline; text-underline-offset: 3px; }
+.cf-excerpt--recap { border-left: 2px solid color-mix(in srgb, var(--cf-ai) 45%, transparent); padding-left: 10px; font-style: italic; }
+.cf-recap-read { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: .84rem; font-weight: 700; color: var(--cf-ai); text-decoration: none; }
+.cf-recap-read:hover { text-decoration: underline; }
+
 /* staff bulk-select wrapper (app.js _selWrap) around a feed card */
 .cf-col > .sel-card-wrap { position: relative; }
 .cf-col > .sel-card-wrap > .sel-card-check { z-index: 4; }
