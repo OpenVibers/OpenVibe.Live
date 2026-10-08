@@ -63,7 +63,7 @@ async function _fetchJson(method, path, body, timeoutMs, retried = false) {
     const json = await res.json().catch(() => null);
     if (res.status === 401 && !retried) {                     // stale/rotated token: fetch a new one once
         principal.invalidate(AUDIENCE);
-        return _fetchJson(method, path, body, timeoutMs, true);
+        return await _fetchJson(method, path, body, timeoutMs, true);
     }
     if (res.status === 429) { warn(`quota: ${(json && json.detail) || 'refused'} (retry after ${res.headers.get('retry-after') || '?'}s)`); return null; }
     if (!res.ok && res.status !== 202) { warn(`${method} ${path} -> ${res.status} ${(json && (json.code || json.detail)) || ''}`); return null; }
@@ -106,15 +106,16 @@ function usable(r) {
 // llm.js installs the recorder so this module stays free of the database.
 let _recorder = null;
 function setRecorder(fn) { _recorder = typeof fn === 'function' ? fn : null; }
-function meter(r, m) {
+/** Records the run (best-effort: never throws, never rejects); await it so the row is there before the caller goes on. */
+async function meter(r, m) {
     if (!_recorder || !m || !r || r.status !== 'succeeded' || r.synthetic) return;
-    try { _recorder(r, m); } catch { /* metering is best-effort */ }
+    try { await _recorder(r, m); } catch { /* metering is best-effort */ }
 }
 
 /** opts: run() options plus meter: { kind, role, ownerUserId, source } for Live's ai_usage row. */
 async function structured(workflow, input, opts = {}) {
     const r = await run(workflow, input, { ...opts, attribution: opts.attribution || ownerRef(opts.meter && opts.meter.ownerUserId) });
-    meter(r, opts.meter);
+    await meter(r, opts.meter);
     return usable(r);
 }
 

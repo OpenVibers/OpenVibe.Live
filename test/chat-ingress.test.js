@@ -19,7 +19,6 @@ const { serviceAuth } = require('openvibe-contracts');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-chatingress-'));
 const keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
 fs.writeFileSync(path.join(tmp, 'network.pem'), keys.publicKey);
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.OV_NETWORK_PUBLIC_KEY = path.join(tmp, 'network.pem');
 process.env.OV_NETWORK_URL = 'https://openvibe.network';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
@@ -119,23 +118,23 @@ function assertSigned(c, what) {
     process.env.OV_CHAT_INTERNAL_URL = `http://127.0.0.1:${await listen(chat)}`;
 
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const d = db.getDb();
-    const mkUser = (username, role = 'user') => {
-        const id = Number(db.createUser({ username, email: `${username}@example.test`, password_hash: '!x', display_name: username.toUpperCase(), stream_key: `key-${username}` }).lastInsertRowid);
-        d.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
+    const mkUser = async (username, role = 'user') => {
+        const id = Number((await d.prepare('INSERT INTO users (username, email, password_hash, display_name, stream_key) VALUES (?, NULL, ?, ?, ?) RETURNING id').run(username, '!x', username.toUpperCase(), `key-${username}`)).lastInsertRowid);
+        await d.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
         return id;
     };
-    const admin = mkUser('admin2', 'admin');
-    const streamer = mkUser('streamer', 'streamer');
-    const viewer = mkUser('viewer');
-    db.createChannel({ user_id: streamer, title: 'Streamer TV' });
-    const channel = db.getChannelByUserId(streamer);
-    const streamId = Number(db.createStream({ user_id: streamer, channel_id: channel.id, title: 'Live now' }).lastInsertRowid);
+    const admin = await mkUser('admin2', 'admin');
+    const streamer = await mkUser('streamer', 'streamer');
+    const viewer = await mkUser('viewer');
+    await db.createChannel({ user_id: streamer, title: 'Streamer TV' });
+    const channel = await db.getChannelByUserId(streamer);
+    const streamId = Number((await db.createStream({ user_id: streamer, channel_id: channel.id, title: 'Live now' })).lastInsertRowid);
 
     const delivery = require('../server/chat/chat-delivery');
     assert.strictEqual(delivery.ingress(), true, 'CHAT_AUTHORITY=chat is ingress, with no flag');
-    delivery.init();
+    await delivery.init();
     delivery.client._setRetryMs([20, 20]);
 
     let exit = 0;
@@ -143,7 +142,7 @@ function assertSigned(c, what) {
     try {
         // 1. AI viewer line: one /messages call (persist + mirror + TTS); the caller gets no placeholder id.
         const poster = require('../server/ai/viewers/poster');
-        const ret = poster.post({ streamId, userId: streamer, settings: { powerchat_forward: false } }, { id: 1, username: 'Botty', persona_json: '{}' }, 'hello from a bot');
+        const ret = await poster.post({ streamId, userId: streamer, settings: { powerchat_forward: false } }, { id: 1, username: 'Botty', persona_json: '{}' }, 'hello from a bot');
         assert.strictEqual(ret, null, 'no placeholder id');
         const ai = await waitFor(() => find('messages', (b) => b.source_platform === 'ai'), 'AI line');
         assertSigned(ai, 'AI line');
@@ -151,7 +150,7 @@ function assertSigned(c, what) {
             [streamId, streamer, 'Botty', true, false, true, 'aibot:botty']);
 
         // 2. Donation line + alert sound (PowerChat test tip) and a direct alert.
-        require('../server/integrations/powerchat-webhook').simulateDonation(streamer, { amountUsd: 2, donor: 'Tipper', message: 'gg' });
+        await require('../server/integrations/powerchat-webhook').simulateDonation(streamer, { amountUsd: 2, donor: 'Tipper', message: 'gg' });
         const tip = await waitFor(() => find('messages', (b) => b.message_type === 'donation' && b.username === 'Tipper'), 'donation line');
         assertSigned(tip, 'donation line');
         assert.strictEqual(tip.body.metadata.amount, 200);
@@ -162,16 +161,16 @@ function assertSigned(c, what) {
 
         // 3. Relayed chat (Twitch): the line, the relay-user record, the welcome card; Live's own first-chat copy is kept.
         const relay = require('../server/integrations/chat-relay-service');
-        relay._broadcastMessage({ platform: 'twitch', streamId }, 'alice', 'hi from twitch', {});
+        await relay._broadcastMessage({ platform: 'twitch', streamId }, 'alice', 'hi from twitch', {});
         const rl = await waitFor(() => find('messages', (b) => b.source_platform === 'twitch'), 'relay line');
         assertSigned(rl, 'relay line');
         assert.deepStrictEqual([rl.body.username, rl.body.frame.role, rl.body.mirror, rl.body.tts.identity_key], ['[Twitch] alice', 'external', true, 'twitch:[Twitch] alice']);
         assertSigned(await waitFor(() => find('moderation', (b) => b.action === 'relay-record' && b.username === 'alice'), 'relay record'), 'relay record');
         assertSigned(await waitFor(() => find('events', (b) => b.frame.type === 'system' && /Welcome alice/.test(b.frame.message)), 'welcome'), 'welcome');
         assert.ok(firstChatReads >= 1, "the welcome decision asked Chat's first-chat read");
-        assert.ok(!d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'stream_first_chats'").get(), 'Live has no first-chat copy of its own');
+        assert.ok(!await d.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'stream_first_chats'").get(), 'Live has no first-chat copy of its own');
         const welcomeCount = () => calls.filter((c) => c.family === 'events' && c.body.frame && /Welcome alice/.test(String(c.body.frame.message || ''))).length;
-        relay._broadcastMessage({ platform: 'twitch', streamId }, 'alice', 'second line', {});
+        await relay._broadcastMessage({ platform: 'twitch', streamId }, 'alice', 'second line', {});
         await waitFor(() => find('messages', (b) => b.source_platform === 'twitch' && b.message === 'second line'), 'the second relay line');
         await sleep(80);
         assert.strictEqual(welcomeCount(), 1, 'a second line within the first-chat cache window is not welcomed twice');
@@ -183,13 +182,13 @@ function assertSigned(c, what) {
         chatReads.invalidate('hru:');   // the mod route's hide drops the cached list; the test writes Chat's row directly
         await waitFor(() => chatReads.isRelayUserHidden(channel.id, 'twitch', 'alice'), "Chat's hidden list to warm");
         const beforeHidden = relayLines();
-        relay._broadcastMessage({ platform: 'twitch', streamId }, 'alice', 'should not relay', {});
+        await relay._broadcastMessage({ platform: 'twitch', streamId }, 'alice', 'should not relay', {});
         await sleep(80);
         assert.strictEqual(relayLines(), beforeHidden, 'a hidden relay user is dropped before Chat');
         assert.strictEqual(relayLines('should not relay'), 0);
         chatState.relayHidden.length = 0;
         chatReads.invalidate('hru:');   // as the unhide route does
-        relay._broadcastMessage({ platform: 'twitch', streamId }, 'alice', 'relayed again', {});
+        await relay._broadcastMessage({ platform: 'twitch', streamId }, 'alice', 'relayed again', {});
         assertSigned(await waitFor(() => find('messages', (b) => b.source_platform === 'twitch' && b.message === 'relayed again'), 'the unhidden relay line'), 'relay line after unhide');
 
         // 4. RobotStreamer mirror: a stub RS chat socket sends one line.
@@ -221,7 +220,7 @@ function assertSigned(c, what) {
         const del = find('moderation', (b) => b.action === 'delete-message');
         assertSigned(del, 'message delete');
         assert.deepStrictEqual([del.body.id, del.body.deleted_by, del.body.key], [900010, admin, 'live:moderation:delete:900010']);
-        assert.ok(!d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_messages'").get(), 'Live has no chat table to update: Chat owns the delete');
+        assert.ok(!await d.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'chat_messages'").get(), 'Live has no chat table to update: Chat owns the delete');
         assertSigned(await waitFor(() => find('moderation', (b) => b.action === 'log' && b.action_type === 'message_delete'), 'delete log'), 'delete log');
         const ban = await mod(`/users/${viewer}/ban`, { reason: 'spam' });
         assert.ok(ban.status < 300, `ban answered ${ban.status}`);
@@ -242,15 +241,15 @@ function assertSigned(c, what) {
         assert.ok(/^live:events:news:\d+:\d+$/.test(nw.body.key), `news key ${nw.body.key}`);
 
         // 6. Deploy notice: no ingress endpoint, Events off → left unannounced (next boot retries), never bridged.
-        const before = db.getSetting('deploy_last_announced');
+        const before = await db.getSetting('deploy_last_announced');
         const dn = await require('../server/chat/deploy-notice').announce({ db, log: { warn() {}, log() {}, info() {} } });
         assert.strictEqual(dn.announced, 0);
-        assert.strictEqual(db.getSetting('deploy_last_announced'), before, 'not recorded as announced');
+        assert.strictEqual(await db.getSetting('deploy_last_announced'), before, 'not recorded as announced');
 
         // 7. Cache hints: an IP approval Live wrote, and an account change pushed by Network.
-        db.approveIp(channel.id, '203.0.113.5', admin, 'manual');
+        await db.approveIp(channel.id, '203.0.113.5', admin, 'manual');
         assertSigned(await waitFor(() => find('invalidate', (b) => b.approvals === channel.id), 'approvals hint'), 'approvals hint');
-        delivery.invalidate({ user: viewer });
+        await delivery.invalidate({ user: viewer });
         assertSigned(await waitFor(() => find('invalidate', (b) => b.user === viewer), 'user hint'), 'user hint');
 
         // 8. Presence comes from /internal/chat/presence.
@@ -266,7 +265,7 @@ function assertSigned(c, what) {
         fail.messages = { status: 500, times: 99 };
         const failedBefore = delivery.client.stats.failed;
         let threw = null;
-        try { require('../server/integrations/powerchat-webhook').simulateDonation(streamer, { donor: 'Unlucky' }); } catch (err) { threw = err; }
+        try { await require('../server/integrations/powerchat-webhook').simulateDonation(streamer, { donor: 'Unlucky' }); } catch (err) { threw = err; }
         assert.strictEqual(threw, null, 'a Chat 5xx is not thrown into the caller');
         await waitFor(() => delivery.client.stats.failed > failedBefore, 'the failure to be counted');
         const lost = calls.filter((c) => c.family === 'messages' && c.body.username === 'Unlucky');
@@ -279,7 +278,7 @@ function assertSigned(c, what) {
 
         // 10. Nothing went over the bridge, and Live keeps no outbox.
         assert.deepStrictEqual(bridgeCalls, [], 'no bridge calls');
-        assert.ok(!d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_bridge_outbox'").get(), 'no outbox table');
+        assert.ok(!await d.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'chat_bridge_outbox'").get(), 'no outbox table');
 
         // 11. A push a module still makes on the chat server goes to the ingress too (review 2026-10-02, PR #12);
         // one with no ingress target is dropped, and TTS is never synthesised here (Chat speaks `tts` lines).
@@ -289,10 +288,10 @@ function assertSigned(c, what) {
         const saved = {};
         for (const k of synth) { saved[k] = tts[k]; tts[k] = (...a) => { touched.push(k); return saved[k](...a); }; }
         const n = calls.length;
-        delivery.broadcastToStream(streamId, { type: 'system', message: 'direct' });
-        delivery.sendDm(viewer, { type: 'dm-notice' });
-        delivery.disconnectUser({ userId: viewer, streamId });
-        delivery.sendUserUpdate(viewer, { username: 'viewer', display_name: 'VIEWER', password_hash: 'never' });
+        await delivery.broadcastToStream(streamId, { type: 'system', message: 'direct' });
+        await delivery.sendDm(viewer, { type: 'dm-notice' });
+        await delivery.disconnectUser({ userId: viewer, streamId });
+        await delivery.sendUserUpdate(viewer, { username: 'viewer', display_name: 'VIEWER', password_hash: 'never' });
         delivery.forwardToGlobal(streamId, { type: 'chat', message: 'no target' });
         await delivery.synthesizeAndBroadcastTTS(streamId, 'Bot', 'beep', null, null, 'aibot:bot', null, 'm1');
         for (const k of synth) tts[k] = saved[k];
@@ -304,7 +303,7 @@ function assertSigned(c, what) {
         // CHAT_AUTHORITY unset under a RemoteChatServer (a test or a bad env edit): dropped, never bounced back.
         process.env.CHAT_AUTHORITY = '';
         assert.strictEqual(delivery.ingress(), false);
-        assert.strictEqual(delivery.broadcastToStream(streamId, { type: 'system', message: 'x' }), undefined);
+        assert.strictEqual(await delivery.broadcastToStream(streamId, { type: 'system', message: 'x' }), undefined);
         process.env.CHAT_AUTHORITY = 'chat';
         delivery.close();
 
@@ -314,7 +313,7 @@ function assertSigned(c, what) {
         exit = 1;
     } finally {
         try { if (rs) rs.stopChatBridge(streamId); } catch { /* */ }
-        try { db.close(); } catch { /* */ }
+        try { await db.close(); } catch { /* */ }
         fs.rmSync(tmp, { recursive: true, force: true });
         process.exit(exit);
     }

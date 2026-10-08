@@ -8,12 +8,8 @@
 
 const assert = require('assert');
 const crypto = require('crypto');
-const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-media-events-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.MEDIA_WEBHOOK_SECRET = 'w'.repeat(40);
 process.env.MEDIA_EVENTS_SECRET = 'e'.repeat(64);
 process.env.MEDIA_APP_ID = 'live';
@@ -32,7 +28,7 @@ const newEventId = () => {
 (async () => {
     const express = require('express');
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const outcomes = require('../server/media-proxy/outcomes');
     const { signDelivery, signDeliveryHeaders } = require('openvibe-sdk/events');
 
@@ -79,14 +75,14 @@ const newEventId = () => {
         const res = await fetch(`${base}/internal/media-events`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: raw });
         return { status: res.status };
     };
-    const receipts = () => db.getDb().prepare('SELECT event_id FROM idempotency_receipts WHERE consumer = ?').all(outcomes.CONSUMER).map(r => r.event_id);
+    const receipts = async () => (await db.getDb().prepare('SELECT event_id FROM idempotency_receipts WHERE consumer = ?').all(outcomes.CONSUMER)).map(r => r.event_id);
 
     // ── authority=webhook (default): the webhook acts; Events deliveries are acknowledged, dropped.
     assert.strictEqual(outcomes.authority(), 'webhook');
     const a = outcome('vod.ready', { id: 101, stream_id: null, duration: 60 });
     assert.deepStrictEqual((await postWebhook(a.webhook)).body, { ok: true });
     assert.deepStrictEqual(calls.vod, [[101, 'pending']]);
-    assert.deepStrictEqual(receipts(), [`media:vod:101:${a.eventId}`], 'the webhook claims the receipt');
+    assert.deepStrictEqual(await receipts(), [`media:vod:101:${a.eventId}`], 'the webhook claims the receipt');
     assert.strictEqual((await postEvent(a.envelope)).status, 204);
     const b = outcome('vod.ready', { id: 102 });
     assert.strictEqual((await postEvent(b.envelope)).status, 204);
@@ -126,7 +122,7 @@ const newEventId = () => {
     assert.strictEqual((await postEvent(s.envelope)).status, 204);
     assert.strictEqual(storageLines.length, 1);
     assert.match(storageLines[0], /disk_critical/);
-    assert.ok(receipts().includes(`media:storage:disk_critical:${s.eventId}`));
+    assert.ok((await receipts()).includes(`media:storage:disk_critical:${s.eventId}`));
 
     // ── What Live ignores (acknowledged, never applied, never retried).
     const before = JSON.stringify(calls);

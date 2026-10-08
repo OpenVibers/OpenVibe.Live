@@ -57,7 +57,7 @@ async function capture(fn) {
         send: () => {},
         close: () => {},
     };
-    controlServer.handleViewerConnection(ws, null, new URLSearchParams(''));
+    await controlServer.handleViewerConnection(ws, null, new URLSearchParams(''));
     assert.strictEqual(listeners.length, 1, 'the viewer control socket registers exactly one message handler');
 
     const realHandleCommand = controlServer.handleCommand;

@@ -15,13 +15,8 @@
  */
 'use strict';
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const http = require('http');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-rs-slot-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
 const warnings = [];
@@ -29,48 +24,49 @@ console.log = () => {};
 console.warn = (...a) => { warnings.push(a.join(' ')); };
 
 const db = require('../server/db/database');
-db.initDb();
+(async () => {
+await db.initDb();
 const raw = db.getDb();
 
 const auth = require('../server/auth/auth');
-const signIn = (req) => {
+const signIn = async (req) => {
     const id = Number(req.headers['x-test-user'] || 0);
-    const u = id ? db.getUserById(id) : null;
+    const u = id ? await db.getUserById(id) : null;
     if (u) { req.user = u; req.authSource = 'network'; }
     return u;
 };
-auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
+auth.requireAuth = (req, res, next) => { signIn(req).then((u) => u ? next() : res.status(401).json({ error: 'Authentication required' })).catch(next); };
 
-const addUser = (id, name) => raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) VALUES (?, ?, ?, ?, 'x', 'streamer')`).run(id, name, name, `${name}@x`);
-const slot = (userId, slug) => Number(db.createManagedStream({ user_id: userId, slug, title: slug, stream_key: `key-${userId}-${slug}` }).lastInsertRowid);
-const rsRow = (userId, slotId, fields = {}) => Number(raw.prepare(
+const addUser = async (id, name) => await raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (?, ?, ?, ?, 'x', 'streamer')`).run(id, name, name, `${name}@x`);
+const slot = async (userId, slug) => Number((await raw.prepare('INSERT INTO managed_streams (user_id, slug, title, stream_key) VALUES (?, ?, ?, ?) RETURNING id').run(userId, slug, slug, `key-${userId}-${slug}`)).lastInsertRowid);
+const rsRow = async (userId, slotId, fields = {}) => Number((await raw.prepare(
     `INSERT INTO robotstreamer_integrations (user_id, managed_stream_id, enabled, token, robot_id, stream_name, chat_url)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`).run(userId, slotId, fields.enabled ?? 1, fields.token ?? 'tok', fields.robot_id ?? null, fields.stream_name ?? null, 'wss://chat.example').lastInsertRowid);
-const accountRow = (userId) => raw.prepare('SELECT * FROM robotstreamer_integrations WHERE user_id = ? AND managed_stream_id IS NULL').get(userId);
+     VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`).run(userId, slotId, fields.enabled ?? 1, fields.token ?? 'tok', fields.robot_id ?? null, fields.stream_name ?? null, 'wss://chat.example')).lastInsertRowid);
+const accountRow = async (userId) => await raw.prepare('SELECT * FROM robotstreamer_integrations WHERE user_id = ? AND managed_stream_id IS NULL').get(userId);
 
 // User 1 has three slots (like production's user 1: slots 1/60/85), an enabled account-level row
 // and robot 777 configured on slot "second" only.
-addUser(1, 'alex');
-const a1 = slot(1, 'main'), a2 = slot(1, 'second'), a3 = slot(1, 'third');
-const r1 = rsRow(1, null, { robot_id: '777', stream_name: 'Robot' });
-const r1slot = rsRow(1, a2, { robot_id: '777' });
+await addUser(1, 'alex');
+const a1 = await slot(1, 'main'), a2 = await slot(1, 'second'), a3 = await slot(1, 'third');
+const r1 = await rsRow(1, null, { robot_id: '777', stream_name: 'Robot' });
+const r1slot = await rsRow(1, a2, { robot_id: '777' });
 // User 2 owns slot b1 (for the ownership check).
-addUser(2, 'solo');
-const b1 = slot(2, 'only');
+await addUser(2, 'solo');
+const b1 = await slot(2, 'only');
 
 let server;
 (async () => {
     // ── Runtime: slot-only, account rows skipped (not crashing) ──────────────────────
     const rs = require('../server/integrations/robotstreamer-service');
-    assert.strictEqual(db.getRobotStreamerIntegrationForStream(1, a2).id, r1slot, 'a slot uses its own row');
-    assert.strictEqual(db.getRobotStreamerIntegrationForStream(1, a1), null, 'a slot without a row does NOT fall back to the account-level row');
-    assert.strictEqual(db.getRobotStreamerIntegrationForStream(1, null), null, 'a slot-less stream gets no RobotStreamer');
+    assert.strictEqual((await db.getRobotStreamerIntegrationForStream(1, a2)).id, r1slot, 'a slot uses its own row');
+    assert.strictEqual(await db.getRobotStreamerIntegrationForStream(1, a1), null, 'a slot without a row does NOT fall back to the account-level row');
+    assert.strictEqual(await db.getRobotStreamerIntegrationForStream(1, null), null, 'a slot-less stream gets no RobotStreamer');
     assert.strictEqual(warnings.filter((w) => /account-level RobotStreamer row/.test(w)).length, 1, 'the unmigrated row is logged once per user');
     assert.ok(warnings.some((w) => w.includes(`(${r1})`) && w.includes('rs-integrations-to-slots')), 'the log names the row and the script');
-    assert.strictEqual(rs.getIntegrationForStream({ id: 1, user_id: 1, managed_stream_id: a3 }), null);
+    assert.strictEqual(await rs.getIntegrationForStream({ id: 1, user_id: 1, managed_stream_id: a3 }), null);
     assert.strictEqual(await rs.startForStream({ id: 99, user_id: 1, managed_stream_id: a1, protocol: 'webrtc' }), null, 'going live on a slot without a row starts nothing');
     assert.strictEqual(await rs.refreshIntegration(1, null), null, 'no account-level refresh');
-    assert.throws(() => db.upsertRobotStreamerIntegration(1, { enabled: 1 }, null), /stream slot/, 'no account-level row is written');
+    await assert.rejects(db.upsertRobotStreamerIntegration(1, { enabled: 1 }, null), /stream slot/, 'no account-level row is written');
     await assert.rejects(rs.upsertIntegration(1, { enabled: 1 }, null), /stream slot/);
 
     // ── Routes ───────────────────────────────────────────────────────────────────────
@@ -122,13 +118,12 @@ let server;
     assert.strictEqual(r.json.integration.managed_stream_id, a2);
     r = await call('PUT', '/api/robotstreamer/integration', 1, { enabled: true, token: 'fresh', robot_input: '888', managed_stream_id: a1 });
     assert.strictEqual(r.status, 200);
-    assert.strictEqual(db.getRobotStreamerIntegrationBySlot(1, a1).robot_id, '888', 'saving with a slot writes that slot\'s row');
-    assert.strictEqual(accountRow(1).robot_id, '777', 'and leaves the account-level row alone');
+    assert.strictEqual((await db.getRobotStreamerIntegrationBySlot(1, a1)).robot_id, '888', 'saving with a slot writes that slot\'s row');
+    assert.strictEqual((await accountRow(1)).robot_id, '777', 'and leaves the account-level row alone');
     r = await call('PUT', '/api/robotstreamer/integration', 1, { enabled: true, robot_input: '1', managed_stream_id: b1 });
     assert.strictEqual(r.status, 403, 'another user\'s slot is refused');
     server.close();
 
-    fs.rmSync(tmp, { recursive: true, force: true });
     quiet('rs-slot-only: ok');
     process.exit(0);
 })().catch((err) => {
@@ -136,3 +131,4 @@ let server;
     try { server && server.close(); } catch { /* */ }
     process.exit(1);
 });
+})().catch((err) => { quiet(err); process.exit(1); });

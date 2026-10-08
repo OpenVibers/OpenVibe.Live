@@ -20,51 +20,51 @@ const config = require('../config');
 const money = require('./money-authority');
 
 function baseUrl() { return config.baseUrl.replace(/\/+$/, ''); }
-function s(key) { return (db.getSetting(key) || '').toString().trim(); }
-function b(key) { const v = db.getSetting(key); return v === true || v === 'true' || v === 1 || v === '1'; }
-function n(key, dflt) { const v = parseFloat(db.getSetting(key)); return Number.isFinite(v) ? v : dflt; }
+async function s(key) { return (await db.getSetting(key) || '').toString().trim(); }
+async function b(key) { const v = await db.getSetting(key); return v === true || v === 'true' || v === 1 || v === '1'; }
+async function n(key, dflt) { const v = parseFloat(await db.getSetting(key)); return Number.isFinite(v) ? v : dflt; }
 
-function isEnabled() { return b('payments_enabled'); }
+async function isEnabled() { return await b('payments_enabled'); }
 
 /** USD (dollars) → whole Vibes at the VALUE rate (100 bucks = $1). Used for
  *  converting real income (sub share, external tips) into bucks — NOT for purchase
  *  pricing (buying adds a margin; see vibes.js priceUsdForBucks). */
-function bucksForUsd(usd) {
-    const rate = n('bucks_per_usd', 100);
+async function bucksForUsd(usd) {
+    const rate = await n('bucks_per_usd', 100);
     return Math.max(0, Math.round(usd * rate));
 }
 
 /** Public provider availability + pricing for the client. */
-function publicConfig() {
+async function publicConfig() {
     const hb = require('./vibes');
-    const powerchatAvailable = (() => { try { return require('../integrations/powerchat-checkout').isAvailable(); } catch { return false; } })();
+    const powerchatAvailable = await (async () => { try { return await require('../integrations/powerchat-checkout').isAvailable(); } catch { return false; } })();
     return {
         // "Something can be bought here": the card/PayPal master switch OR PowerChat.
         // (The old flag hid the subscribe modal entirely whenever the master switch was
         // off — even for streamers with PowerChat fully set up.)
-        enabled: isEnabled() || powerchatAvailable,
-        paymentsMaster: isEnabled(),
-        subSiteRouteFeePct: n('sub_site_route_fee_pct', 10),
+        enabled: await isEnabled() || powerchatAvailable,
+        paymentsMaster: await isEnabled(),
+        subSiteRouteFeePct: await n('sub_site_route_fee_pct', 10),
         // Bit-style: 100 bucks = $1 cashout. Buy packages carry a per-buck premium.
         cashoutBucksPerUsd: hb.CASHOUT_BUCKS_PER_USD,
         packages: hb.BUCKS_PACKAGES,
-        minPurchaseBucks: n('bucks_min_purchase_bucks', 100),
-        subPriceUsd: n('sub_price_usd', 4.99),
+        minPurchaseBucks: await n('bucks_min_purchase_bucks', 100),
+        subPriceUsd: await n('sub_price_usd', 4.99),
         providers: {
-            paypal: isEnabled() && b('paypal_enabled') && !!s('paypal_client_id'),
-            stripe: isEnabled() && b('stripe_enabled') && !!s('stripe_secret_key'),
-            ccbill: isEnabled() && b('ccbill_enabled') && !!s('ccbill_flexform_id'),
-            crypto: isEnabled() && b('crypto_enabled') && !!s('crypto_api_key'),
+            paypal: await isEnabled() && await b('paypal_enabled') && !!await s('paypal_client_id'),
+            stripe: await isEnabled() && await b('stripe_enabled') && !!await s('stripe_secret_key'),
+            ccbill: await isEnabled() && await b('ccbill_enabled') && !!await s('ccbill_flexform_id'),
+            crypto: await isEnabled() && await b('crypto_enabled') && !!await s('crypto_api_key'),
             // PowerChat tips as a money entry point. Deliberately INDEPENDENT of the
             // payments master switch — it has its own enablement (powerchat_enabled +
             // the site tips account), so Vibes can be bought via PowerChat even while
             // the card/PayPal rails are off. Lazy require: circular with this module.
             powerchat: powerchatAvailable,
         },
-        stripePublishableKey: s('stripe_publishable_key'),
+        stripePublishableKey: await s('stripe_publishable_key'),
         // Who holds the money (BILLING_AUTHORITY) and whether money actions are paused.
         authority: money.authority(),
-        moneyFrozen: money.isFrozen(),
+        moneyFrozen: await money.isFrozen(),
     };
 }
 
@@ -82,8 +82,8 @@ async function httpJson(url, { method = 'GET', headers = {}, body } = {}) {
 
 // ══════════════════════════════════════════ STRIPE ══════════
 const STRIPE_API = 'https://api.stripe.com/v1';
-function stripeHeaders() {
-    return { Authorization: `Bearer ${s('stripe_secret_key')}`, 'Content-Type': 'application/x-www-form-urlencoded' };
+async function stripeHeaders() {
+    return { Authorization: `Bearer ${await s('stripe_secret_key')}`, 'Content-Type': 'application/x-www-form-urlencoded' };
 }
 /** Create a Stripe Checkout Session. kind: 'bucks' (one-time) | 'subscription'. */
 async function stripeCheckout({ order, name, amountCents, kind, successUrl, cancelUrl }) {
@@ -103,13 +103,13 @@ async function stripeCheckout({ order, name, amountCents, kind, successUrl, canc
     } else {
         p.set('mode', 'payment');
     }
-    const session = await httpJson(`${STRIPE_API}/checkout/sessions`, { method: 'POST', headers: stripeHeaders(), body: p.toString() });
-    db.updatePaymentOrder(order.id, { provider_ref: session.id });
+    const session = await httpJson(`${STRIPE_API}/checkout/sessions`, { method: 'POST', headers: await stripeHeaders(), body: p.toString() });
+    await db.updatePaymentOrder(order.id, { provider_ref: session.id });
     return { url: session.url, ref: session.id };
 }
 /** Verify a Stripe webhook signature (t=..,v1=..) against the raw body. */
-function stripeVerify(rawBody, sigHeader) {
-    const secret = s('stripe_webhook_secret');
+async function stripeVerify(rawBody, sigHeader) {
+    const secret = await s('stripe_webhook_secret');
     if (!secret || !sigHeader) return null;
     const parts = Object.fromEntries(sigHeader.split(',').map(kv => kv.split('=')));
     if (!parts.t || !parts.v1) return null;
@@ -121,10 +121,10 @@ function stripeVerify(rawBody, sigHeader) {
 }
 
 // ══════════════════════════════════════════ PAYPAL ══════════
-function paypalBase() { return s('paypal_mode') === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com'; }
+async function paypalBase() { return await s('paypal_mode') === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com'; }
 async function paypalToken() {
-    const auth = Buffer.from(`${s('paypal_client_id')}:${s('paypal_client_secret')}`).toString('base64');
-    const j = await httpJson(`${paypalBase()}/v1/oauth2/token`, {
+    const auth = Buffer.from(`${await s('paypal_client_id')}:${await s('paypal_client_secret')}`).toString('base64');
+    const j = await httpJson(`${await paypalBase()}/v1/oauth2/token`, {
         method: 'POST',
         headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'grant_type=client_credentials',
@@ -133,7 +133,7 @@ async function paypalToken() {
 }
 async function paypalCreateOrder({ order, amountUsd, description }) {
     const token = await paypalToken();
-    const j = await httpJson(`${paypalBase()}/v2/checkout/orders`, {
+    const j = await httpJson(`${await paypalBase()}/v2/checkout/orders`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -150,22 +150,22 @@ async function paypalCreateOrder({ order, amountUsd, description }) {
             },
         }),
     });
-    db.updatePaymentOrder(order.id, { provider_ref: j.id });
+    await db.updatePaymentOrder(order.id, { provider_ref: j.id });
     const approve = (j.links || []).find(l => l.rel === 'approve');
     return { url: approve ? approve.href : null, ref: j.id };
 }
 async function paypalCaptureOrder(paypalOrderId) {
     const token = await paypalToken();
-    return httpJson(`${paypalBase()}/v2/checkout/orders/${paypalOrderId}/capture`, {
+    return await httpJson(`${await paypalBase()}/v2/checkout/orders/${paypalOrderId}/capture`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{}',
     });
 }
 /** Verify a PayPal webhook via the verify-webhook-signature API. */
 async function paypalVerify(headers, rawBody) {
-    const webhookId = s('paypal_webhook_id');
+    const webhookId = await s('paypal_webhook_id');
     if (!webhookId) return false;
     const token = await paypalToken();
-    const j = await httpJson(`${paypalBase()}/v1/notifications/verify-webhook-signature`, {
+    const j = await httpJson(`${await paypalBase()}/v1/notifications/verify-webhook-signature`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
             auth_algo: headers['paypal-auth-algo'],
@@ -182,17 +182,17 @@ async function paypalVerify(headers, rawBody) {
 
 // ══════════════════════════════════════════ CCBILL ══════════
 /** Build a CCBill FlexForms hosted-payment URL for a one-time charge. */
-function ccbillUrl({ order, amountUsd }) {
-    const formId = s('ccbill_flexform_id');
-    const salt = s('ccbill_salt');
+async function ccbillUrl({ order, amountUsd }) {
+    const formId = await s('ccbill_flexform_id');
+    const salt = await s('ccbill_salt');
     const price = amountUsd.toFixed(2);
     const currency = '840'; // USD
     // FlexForms digest: md5(price + period + currencyCode + salt) for a single charge
     const period = '2'; // days is unused for single charge but required; FlexForms uses formDigest
     const digest = crypto.createHash('md5').update(`${price}${period}${currency}${salt}`).digest('hex');
     const qs = new URLSearchParams({
-        clientAccnum: s('ccbill_client_account'),
-        clientSubacc: s('ccbill_subaccount'),
+        clientAccnum: await s('ccbill_client_account'),
+        clientSubacc: await s('ccbill_subaccount'),
         initialPrice: price,
         initialPeriod: period,
         currencyCode: currency,
@@ -202,8 +202,8 @@ function ccbillUrl({ order, amountUsd }) {
     return `https://api.ccbill.com/wap-frontflex/flexforms/${formId}?${qs.toString()}`;
 }
 /** CCBill webhook auth: we require a shared secret in the query (?secret=...). */
-function ccbillVerify(query) {
-    const secret = s('ccbill_webhook_secret');
+async function ccbillVerify(query) {
+    const secret = await s('ccbill_webhook_secret');
     if (!secret) return false;
     // Constant-time: compare SHA-256 digests so neither length nor content leaks through timing.
     const a = crypto.createHash('sha256').update(String(query.secret || '')).digest();
@@ -215,7 +215,7 @@ function ccbillVerify(query) {
 async function cryptoCreateInvoice({ order, amountUsd, description }) {
     const j = await httpJson('https://api.nowpayments.io/v1/invoice', {
         method: 'POST',
-        headers: { 'x-api-key': s('crypto_api_key'), 'Content-Type': 'application/json' },
+        headers: { 'x-api-key': await s('crypto_api_key'), 'Content-Type': 'application/json' },
         body: JSON.stringify({
             price_amount: amountUsd, price_currency: 'usd',
             order_id: String(order.id), order_description: description,
@@ -223,12 +223,12 @@ async function cryptoCreateInvoice({ order, amountUsd, description }) {
             success_url: `${baseUrl()}/?purchase=success`, cancel_url: `${baseUrl()}/?purchase=cancel`,
         }),
     });
-    db.updatePaymentOrder(order.id, { provider_ref: String(j.id || j.invoice_id || '') });
+    await db.updatePaymentOrder(order.id, { provider_ref: String(j.id || j.invoice_id || '') });
     return { url: j.invoice_url, ref: String(j.id || j.invoice_id || '') };
 }
 /** Verify a NOWPayments IPN via HMAC-SHA512 of the sorted JSON body. */
-function cryptoVerify(rawBody, sigHeader) {
-    const secret = s('crypto_ipn_secret');
+async function cryptoVerify(rawBody, sigHeader) {
+    const secret = await s('crypto_ipn_secret');
     if (!secret || !sigHeader) return null;
     let obj; try { obj = JSON.parse(rawBody); } catch { return null; }
     const sorted = JSON.stringify(sortObject(obj));
@@ -249,8 +249,8 @@ function sortObject(o) {
 
 /** The caller's copy of an order can predate an await (the PayPal return captures while the
  *  webhook credits); crediting that stale 'pending' copy would pay twice. Read it again. */
-function _freshOrder(order) {
-    return order && order.id ? (db.getPaymentOrderById(order.id) || order) : order;
+async function _freshOrder(order) {
+    return order && order.id ? (await db.getPaymentOrderById(order.id) || order) : order;
 }
 
 /** Does a provider-reported amount (USD) cover the order? Unknown amounts return null. */
@@ -261,19 +261,19 @@ function paidAmountCovers(order, paidUsd) {
 }
 
 /** Credit a paid bucks order exactly once. Returns true if newly credited. */
-function fulfillBucksOrder(order) {
-    order = _freshOrder(order);
+async function fulfillBucksOrder(order) {
+    order = await _freshOrder(order);
     if (!order || order.status === 'credited') return false;
-    const bucks = order.bucks || bucksForUsd(order.amount_cents / 100);
-    db.addVibes(order.user_id, bucks);
+    const bucks = order.bucks || await bucksForUsd(order.amount_cents / 100);
+    await db.addVibes(order.user_id, bucks);
     try {
-        db.createTransaction({
+        await db.createTransaction({
             from_user_id: null, to_user_id: order.user_id, amount: bucks, // ledger is in bucks
             type: 'purchase', status: 'completed',
             message: `Purchased ${bucks.toLocaleString()} Vibes via ${order.provider}`,
         });
     } catch { /* ledger is best-effort */ }
-    db.updatePaymentOrder(order.id, { status: 'credited', bucks });
+    await db.updatePaymentOrder(order.id, { status: 'credited', bucks });
     return true;
 }
 
@@ -281,19 +281,19 @@ function fulfillBucksOrder(order) {
  *  creditShare=false: the streamer already received the money directly (e.g. a
  *  PowerChat tip on their own page) — activate the sub without minting their
  *  cashout-Vibes share on top. autoRenew: null leaves the sub's flag untouched. */
-function fulfillSubscriptionOrder(order, { providerRef = null, periodEnd = null, creditShare = true, autoRenew = null, shareBaseCents = null } = {}) {
-    order = _freshOrder(order);
+async function fulfillSubscriptionOrder(order, { providerRef = null, periodEnd = null, creditShare = true, autoRenew = null, shareBaseCents = null } = {}) {
+    order = await _freshOrder(order);
     if (!order || !order.streamer_id) return null;
     if (order.status === 'credited') {
         // A replayed webhook must not push the period out again or re-pay the streamer.
-        try { const existing = db.getActiveSubscription(order.user_id, order.streamer_id); if (existing) return existing; } catch { /* */ }
+        try { const existing = await db.getActiveSubscription(order.user_id, order.streamer_id); if (existing) return existing; } catch { /* */ }
     }
     const end = periodEnd || new Date(Date.now() + 31 * 24 * 3600 * 1000).toISOString();
     // Note BEFORE the upsert whether this subscriber already had a sub row — that makes
     // a renewal a resub for the PowerChat alert below.
     let isResub = false;
-    try { isResub = !!db.getActiveSubscription(order.user_id, order.streamer_id); } catch { /* */ }
-    const sub = db.upsertSubscription({
+    try { isResub = !!await db.getActiveSubscription(order.user_id, order.streamer_id); } catch { /* */ }
+    const sub = await db.upsertSubscription({
         subscriber_id: order.user_id, streamer_id: order.streamer_id, tier: 1,
         provider: order.provider, provider_ref: providerRef || order.provider_ref,
         price_cents: order.amount_cents, currency: order.currency || 'usd',
@@ -302,19 +302,19 @@ function fulfillSubscriptionOrder(order, { providerRef = null, periodEnd = null,
     if (order.status !== 'credited') {
         // Pay the streamer their share as Vibes — this is income they received, so
         // it lands in their cashout balance (the only cashout-able balance).
-        const sharePct = n('sub_streamer_share_pct', 70);
+        const sharePct = await n('sub_streamer_share_pct', 70);
         // shareBaseCents: the sub price EXCLUDING any platform routing fee the subscriber
         // paid on top (site-routed PowerChat subs) — the fee is the site's, not shareable.
         const baseCents = shareBaseCents != null ? shareBaseCents : order.amount_cents;
-        const streamerBucks = creditShare ? bucksForUsd((baseCents / 100) * (sharePct / 100)) : 0;
-        if (streamerBucks > 0) db.addVibesCashout(order.streamer_id, streamerBucks);
-        db.updatePaymentOrder(order.id, { status: 'credited' });
+        const streamerBucks = creditShare ? await bucksForUsd((baseCents / 100) * (sharePct / 100)) : 0;
+        if (streamerBucks > 0) await db.addVibesCashout(order.streamer_id, streamerBucks);
+        await db.updatePaymentOrder(order.id, { status: 'credited' });
         // Fire the sub on the streamer's PowerChat overlay (subscriptions:write) —
         // alerts + sub-goal/subathon credit. Keyed by the order id so a replayed
         // fulfillment can't double-alert. Only on first credit, never on re-runs.
         try {
-            const subscriber = db.getUserById(order.user_id);
-            require('../integrations/powerchat-platform').forwardSubscription(order.streamer_id, {
+            const subscriber = await db.getUserById(order.user_id);
+            await require('../integrations/powerchat-platform').forwardSubscription(order.streamer_id, {
                 subscriberName: subscriber?.display_name || subscriber?.username || 'Someone',
                 externalId: `sub-order:${order.id}`,
                 tier: '1',
@@ -334,47 +334,47 @@ function fulfillSubscriptionOrder(order, { providerRef = null, periodEnd = null,
 //     balance — the universal wallet every method can top up. Insufficient balance
 //     (or auto_renew off / cancel-at-period-end) → the sub expires with a notification.
 const STRIPE_GRACE_MS = 3 * 24 * 3600 * 1000;
-function _sweepRenewals() {
+async function _sweepRenewals() {
     // OpenVibe.Billing renews its own subscriptions; a freeze pauses renewals until it lifts.
-    if (money.authority() !== 'live' || money.isFrozen()) return;
+    if (money.authority() !== 'live' || await money.isFrozen()) return;
     // Runs from an hourly timer; an uncaught throw there exits the whole server.
     let due = [];
-    try { due = db.getSubscriptionsDueRenewal(50) || []; }
+    try { due = await db.getSubscriptionsDueRenewal(50) || []; }
     catch (e) { console.warn('[Payments] renewal sweep skipped:', e.message); return; }
     for (const sub of due) {
         try {
             const endMs = Date.parse(sub.current_period_end) || 0;
             if (sub.provider === 'stripe') {
                 if (Date.now() - endMs < STRIPE_GRACE_MS) continue; // let Stripe's invoice.paid land
-                db.setSubscriptionStatus(sub.id, 'expired');
-                _renewNotify(sub, 'Your card subscription was not renewed by Stripe and has ended.');
+                await db.setSubscriptionStatus(sub.id, 'expired');
+                await _renewNotify(sub, 'Your card subscription was not renewed by Stripe and has ended.');
                 continue;
             }
             if (sub.cancel_at_period_end || !sub.auto_renew) {
-                db.setSubscriptionStatus(sub.id, sub.cancel_at_period_end ? 'canceled' : 'expired');
-                if (!sub.cancel_at_period_end) _renewNotify(sub, 'Your channel subscription has ended. Resubscribe any time!');
+                await db.setSubscriptionStatus(sub.id, sub.cancel_at_period_end ? 'canceled' : 'expired');
+                if (!sub.cancel_at_period_end) await _renewNotify(sub, 'Your channel subscription has ended. Resubscribe any time!');
                 continue;
             }
-            const priceCents = sub.price_cents || Math.round(n('sub_price_usd', 4.99) * 100);
-            const cost = bucksForUsd(priceCents / 100);
-            if (!db.deductVibes(sub.subscriber_id, cost)) {
-                db.setSubscriptionStatus(sub.id, 'expired');
-                _renewNotify(sub, `Your subscription could not auto-renew (${cost.toLocaleString()} Vibes needed). Top up and resubscribe!`);
+            const priceCents = sub.price_cents || Math.round(await n('sub_price_usd', 4.99) * 100);
+            const cost = await bucksForUsd(priceCents / 100);
+            if (!await db.deductVibes(sub.subscriber_id, cost)) {
+                await db.setSubscriptionStatus(sub.id, 'expired');
+                await _renewNotify(sub, `Your subscription could not auto-renew (${cost.toLocaleString()} Vibes needed). Top up and resubscribe!`);
                 continue;
             }
-            const order = db.createPaymentOrder({
+            const order = await db.createPaymentOrder({
                 user_id: sub.subscriber_id, provider: 'bucks', kind: 'subscription',
                 amount_cents: priceCents, streamer_id: sub.streamer_id, status: 'paid',
             });
-            fulfillSubscriptionOrder(order, { autoRenew: 1 });
+            await fulfillSubscriptionOrder(order, { autoRenew: 1 });
             console.log(`[Payments] auto-renewed sub ${sub.id} (user ${sub.subscriber_id} → streamer ${sub.streamer_id}) from Vibes balance`);
         } catch (e) { console.warn(`[Payments] renewal sweep sub ${sub.id}:`, e.message); }
     }
 }
-function _renewNotify(sub, message) {
+async function _renewNotify(sub, message) {
     try {
         const { pushNotification } = require('../utils/notify');
-        const streamer = db.getUserById(sub.streamer_id);
+        const streamer = await db.getUserById(sub.streamer_id);
         pushNotification({
             user_id: sub.subscriber_id, type: 'PAYMENT', title: 'Subscription update',
             message: `${streamer ? (streamer.display_name || streamer.username) + ': ' : ''}${message}`,
@@ -383,11 +383,11 @@ function _renewNotify(sub, message) {
     } catch { /* optional */ }
 }
 let _renewTimer = null;
-function startRenewalSweeper() {
+async function startRenewalSweeper() {
     if (_renewTimer) return;
     if (money.onBilling()) { console.log('[Payments] renewal sweeper not started: OpenVibe.Billing renews subscriptions (BILLING_AUTHORITY=billing)'); return; }
-    _sweepRenewals(); // catch up immediately on boot
-    _renewTimer = setInterval(_sweepRenewals, 60 * 60 * 1000);
+    await _sweepRenewals(); // catch up immediately on boot
+    _renewTimer = setInterval(() => _sweepRenewals().catch((e) => console.warn('[Payments] renewal sweep:', e.message)), 60 * 60 * 1000);
     if (_renewTimer.unref) _renewTimer.unref();
     console.log('[Payments] subscription renewal sweeper started (hourly)');
 }

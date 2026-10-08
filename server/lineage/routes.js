@@ -25,7 +25,7 @@ async function answer(req, res, raw, flat) {
     if (error) return http.sendProblem(res, 400, 'lineage.invalid_request', { detail: error });
     try {
         const out = await resolver.resolve(input);
-        unresolved.record(input, out, req.principal && req.principal.sub);   // the operator view (D20)
+        await unresolved.record(input, out, req.principal && req.principal.sub);   // the operator view (D20)
         res.set('Cache-Control', 'no-store').json(out);
     } catch (err) {
         console.warn('[Lineage] resolve failed:', err.message);
@@ -33,7 +33,7 @@ async function answer(req, res, raw, flat) {
     }
 }
 
-router.get('/resolve', (req, res) => answer(req, res, req.query, true));
-router.post('/resolve', express.json({ limit: '16kb' }), (req, res) => answer(req, res, req.body, false));
+router.get('/resolve', async (req, res) => await answer(req, res, req.query, true));
+router.post('/resolve', express.json({ limit: '16kb' }), async (req, res) => await answer(req, res, req.body, false));
 
 module.exports = router;

@@ -34,23 +34,23 @@ const oauth = require('./powerchat-oauth');
 // signed webhook, so no tokens are needed on our side. The only external
 // requirement: that PowerChat account must have the app connected on PowerChat
 // (Connect card / OAuth consent) so webhooks fire and refs echo back for it.
-function getSiteAccount() {
+async function getSiteAccount() {
     try {
-        const c = oauth.getConfig();
+        const c = await oauth.getConfig();
         if (!c.enabled || !c.clientId) return null;
-        const username = String(db.getSetting('powerchat_site_tip_username') || '').trim();
+        const username = String(await db.getSetting('powerchat_site_tip_username') || '').trim();
         return username ? { username } : null;
     } catch { return null; }
 }
-function isAvailable() { return !!getSiteAccount(); }
+async function isAvailable() { return !!await getSiteAccount(); }
 
 // A streamer-direct checkout host = connected via app OAuth AND granted
 // checkout:attribute (attribution refs only echo back for grants carrying the scope).
-function _checkoutConn(userId) {
+async function _checkoutConn(userId) {
     if (!userId) return null;
     try {
-        if (!oauth.getConfig().enabled) return null;
-        const conn = db.getPowerchatConnection(userId);
+        if (!(await oauth.getConfig()).enabled) return null;
+        const conn = await db.getPowerchatConnection(userId);
         if (!conn || !conn.access_token || !conn.refresh_token || !conn.powerchat_username) return null;
         if (conn.scope && !String(conn.scope).split(/\s+/).includes('checkout:attribute')) return null;
         return conn;
@@ -67,8 +67,8 @@ function _checkoutConn(userId) {
 //  returnTo    → app_redirect_uri: send the viewer back to our REGISTERED redirect URI
 //                after checkout (UX + correlation only — the webhook stays the ONLY
 //                authoritative confirmation).
-function tipLinkFor(pcUsername, ref, { purpose = null, amountCents = null, returnTo = false } = {}) {
-    const c = oauth.getConfig();
+async function tipLinkFor(pcUsername, ref, { purpose = null, amountCents = null, returnTo = false } = {}) {
+    const c = await oauth.getConfig();
     const params = new URLSearchParams({ app_client_id: c.clientId });
     if (ref) params.set('app_ref', ref);
     if (purpose) params.set('app_purpose', String(purpose).slice(0, 64));
@@ -103,17 +103,17 @@ function tipLinkFor(pcUsername, ref, { purpose = null, amountCents = null, retur
 // the fixed amount still lands.
 const INTENT_UNSUPPORTED_MS = 15 * 60 * 1000;
 const _intentSupport = new Map(); // apiBase → { unsupportedUntil, reason }
-function checkoutIntentSupport() {
-    const key = oauth.getConfig().apiBase;
+async function checkoutIntentSupport() {
+    const key = (await oauth.getConfig()).apiBase;
     const st = _intentSupport.get(key);
     if (!st) return { state: 'unknown' };
     if (st.unsupportedUntil > Date.now()) return { state: 'unsupported', reason: st.reason, until: st.unsupportedUntil };
     if (st.supported) return { state: 'supported' };
     return { state: 'unknown' };
 }
-function _mintHostConn(pcUsername) {
+async function _mintHostConn(pcUsername) {
     try {
-        const conn = db.getPowerchatConnectionByUsername(pcUsername);
+        const conn = await db.getPowerchatConnectionByUsername(pcUsername);
         if (!conn || !conn.access_token || !conn.refresh_token) return null;
         if (conn.scope && !String(conn.scope).split(/\s+/).includes('checkout:attribute')) return null;
         return conn;
@@ -127,12 +127,12 @@ function _mintWarn(key, msg) {
     console.warn(`[PowerChat] checkout intent for @${key} not minted — using canonical link: ${msg}`);
 }
 async function mintCheckoutLink(pcUsername, ref, { purpose = null, amountCents = null, itemName = null, returnTo = true } = {}) {
-    const fallback = (reason) => ({ url: tipLinkFor(pcUsername, ref, { purpose, amountCents, returnTo }), minted: false, expiresAt: null, reason });
-    const apiBase = oauth.getConfig().apiBase;
+    const fallback = async (reason) => ({ url: await tipLinkFor(pcUsername, ref, { purpose, amountCents, returnTo }), minted: false, expiresAt: null, reason });
+    const apiBase = (await oauth.getConfig()).apiBase;
     const sup = _intentSupport.get(apiBase);
-    if (sup && sup.unsupportedUntil > Date.now()) return fallback('intents unsupported: ' + sup.reason);
-    const conn = _mintHostConn(pcUsername);
-    if (!conn) { _mintWarn(pcUsername, 'no connected account with checkout:attribute for that username'); return fallback('no host token'); }
+    if (sup && sup.unsupportedUntil > Date.now()) return await fallback('intents unsupported: ' + sup.reason);
+    const conn = await _mintHostConn(pcUsername);
+    if (!conn) { _mintWarn(pcUsername, 'no connected account with checkout:attribute for that username'); return await fallback('no host token'); }
     const cents = Math.round(Number(amountCents) || 0);
     const base = { ref: String(ref).slice(0, 128) };
     if (returnTo) base.redirect_uri = oauth.redirectUri();
@@ -151,7 +151,7 @@ async function mintCheckoutLink(pcUsername, ref, { purpose = null, amountCents =
         // reach the one we're configured with — the intent token is what matters, so
         // re-home the link onto our baseUrl and keep path + query intact.
         try {
-            const u = new URL(out), b = new URL(oauth.getConfig().baseUrl);
+            const u = new URL(out), b = new URL((await oauth.getConfig()).baseUrl);
             if (u.host !== b.host) { u.protocol = b.protocol; u.host = b.host; }
             out = u.toString();
         } catch { /* keep as-is */ }
@@ -176,7 +176,7 @@ async function mintCheckoutLink(pcUsername, ref, { purpose = null, amountCents =
         } else {
             _mintWarn(pcUsername, `${e1.status || ''} ${e1.message}`.trim());
         }
-        return fallback(`${e1.status || 'error'}: ${e1.message}`);
+        return await fallback(`${e1.status || 'error'}: ${e1.message}`);
     }
 }
 
@@ -184,7 +184,7 @@ async function mintCheckoutLink(pcUsername, ref, { purpose = null, amountCents =
 // Buy Vibes: always the site account (the site must receive the money it mints
 // against). The checkout is PINNED to the package price and categorized "vibes".
 async function buildPurchaseLink(order) {
-    const site = getSiteAccount();
+    const site = await getSiteAccount();
     if (!site) return null;
     const bucks = Number(order.bucks) || 0;
     const link = await mintCheckoutLink(site.username, `pcorder:${order.id}`, {
@@ -205,23 +205,23 @@ async function buildPurchaseLink(order) {
 // provider_ref persists the decision: "direct[:renew]" | "site[:fee=<cents>][:renew]".
 async function buildSubscribeLink(order, streamerUserId, { autoRenew = 0, route = 'auto', feeCents = 0 } = {}) {
     const suffix = autoRenew ? ':renew' : '';
-    const streamer = db.getUserById(streamerUserId);
+    const streamer = await db.getUserById(streamerUserId);
     const who = streamer ? (streamer.display_name || streamer.username) : 'channel';
     const opts = {
         purpose: 'subscription', amountCents: order.amount_cents, returnTo: true,
         itemName: `${who} — 1 month subscription${autoRenew ? ' (auto-renew)' : ''}`,
     };
-    const direct = route !== 'site' ? _checkoutConn(streamerUserId) : null;
+    const direct = route !== 'site' ? await _checkoutConn(streamerUserId) : null;
     if (direct) {
-        db.updatePaymentOrder(order.id, { provider_ref: `direct${suffix}` });
+        await db.updatePaymentOrder(order.id, { provider_ref: `direct${suffix}` });
         const link = await mintCheckoutLink(direct.powerchat_username, `pcsub:${order.id}`, opts);
         return { url: link.url, mode: 'direct', minted: link.minted, expiresAt: link.expiresAt };
     }
     if (route === 'direct') return null;   // caller asked for the streamer's page and they have none
-    const site = getSiteAccount();
+    const site = await getSiteAccount();
     if (!site) return null;
     const fee = Math.max(0, Math.round(Number(feeCents) || 0));
-    db.updatePaymentOrder(order.id, { provider_ref: `site${fee ? `:fee=${fee}` : ''}${suffix}` });
+    await db.updatePaymentOrder(order.id, { provider_ref: `site${fee ? `:fee=${fee}` : ''}${suffix}` });
     const link = await mintCheckoutLink(site.username, `pcsub:${order.id}`, opts);
     return { url: link.url, mode: 'site', feeCents: fee, minted: link.minted, expiresAt: link.expiresAt };
 }
@@ -232,7 +232,7 @@ async function buildSubscribeLink(order, streamerUserId, { autoRenew = 0, route 
 // own checkout_ref ("pcorder:pi_…" / "pcsub:pi_…"): PowerChat echoes it to Billing's webhook, which
 // settles it. Nothing here touches payment_orders.
 async function buildBillingPurchaseLink(intent) {
-    const site = getSiteAccount();
+    const site = await getSiteAccount();
     if (!site || !intent || !intent.checkout_ref) return null;
     const bits = Number(intent.bits) || 0;
     const link = await mintCheckoutLink(site.username, intent.checkout_ref, {
@@ -244,27 +244,27 @@ async function buildBillingPurchaseLink(intent) {
 
 async function buildBillingSubscribeLink(intent, streamerUserId) {
     if (!intent || !intent.checkout_ref) return null;
-    const streamer = db.getUserById(streamerUserId);
+    const streamer = await db.getUserById(streamerUserId);
     const who = streamer ? (streamer.display_name || streamer.username) : 'channel';
     const opts = {
         purpose: 'subscription', amountCents: intent.amount_cents, returnTo: true,
         itemName: `${who} — 1 month subscription${intent.auto_renew ? ' (auto-renew)' : ''}`,
     };
     if (intent.route === 'direct') {
-        const direct = _checkoutConn(streamerUserId);
+        const direct = await _checkoutConn(streamerUserId);
         if (!direct) return null;
         const link = await mintCheckoutLink(direct.powerchat_username, intent.checkout_ref, opts);
         return { url: link.url, mode: 'direct', minted: link.minted, expiresAt: link.expiresAt };
     }
-    const site = getSiteAccount();
+    const site = await getSiteAccount();
     if (!site) return null;
     const link = await mintCheckoutLink(site.username, intent.checkout_ref, opts);
     return { url: link.url, mode: 'site', feeCents: intent.fee_cents || 0, minted: link.minted, expiresAt: link.expiresAt };
 }
 
 /** Which PowerChat subscription routes a streamer currently supports (for the UI). */
-function subscribeRoutes(streamerUserId) {
-    return { direct: !!_checkoutConn(streamerUserId), site: !!getSiteAccount() };
+async function subscribeRoutes(streamerUserId) {
+    return { direct: !!await _checkoutConn(streamerUserId), site: !!await getSiteAccount() };
 }
 
 // Donation: streamer's own page when they have PowerChat (the normal
@@ -272,7 +272,7 @@ function subscribeRoutes(streamerUserId) {
 // When the viewer picked a donation goal before heading over, the goal rides in
 // app_purpose ("goal:<id>") and the webhook credits that exact goal. Amount stays
 // the viewer's free choice — donations are never pinned.
-function buildDonateLink(streamerUserId, donorUserId, { goalId = null } = {}) {
+async function buildDonateLink(streamerUserId, donorUserId, { goalId = null } = {}) {
     const purpose = goalId ? `goal:${goalId}` : 'donation';
     // returnTo: donors get auto-redirected back to our confirmation page after the
     // checkout too — without app_redirect_uri PowerChat only offers a plain
@@ -287,10 +287,10 @@ function buildDonateLink(streamerUserId, donorUserId, { goalId = null } = {}) {
     // the goal pick travels) only echo back for tips through our checkout link, and a
     // ref-less link may not count as one. "dontip:" refs fall through to the normal
     // donation pipeline on the webhook side.
-    const direct = _checkoutConn(streamerUserId);
+    const direct = await _checkoutConn(streamerUserId);
     if (direct) {
         const ref = `dontip:${streamerUserId}:${donorUserId || 0}`;
-        return { url: tipLinkFor(direct.powerchat_username, ref, opts), mode: 'direct' };
+        return { url: await tipLinkFor(direct.powerchat_username, ref, opts), mode: 'direct' };
     }
     return null;
 }
@@ -306,7 +306,7 @@ function buildDonateLink(streamerUserId, donorUserId, { goalId = null } = {}) {
 // the subscribed streamer's own account. Anything else (a streamer tipping their own PowerChat
 // with `pcdon:<self>`, a viewer tipping themselves with `pcsub:<x>`) is an ordinary tip to the
 // receiving account and falls through to normal handling.
-function handleAttributedDonation(receivingUserId, data, { viaSiteAccount = receivingUserId == null } = {}) {
+async function handleAttributedDonation(receivingUserId, data, { viaSiteAccount = receivingUserId == null } = {}) {
     const ref = String(data.appExternalRef || '');
     const usdCents = Math.max(0, Math.round(Number(data.amountUsdCents || 0)));
     try {
@@ -317,16 +317,16 @@ function handleAttributedDonation(receivingUserId, data, { viaSiteAccount = rece
             return false;
         }
         if (m) {
-            const order = db.getPaymentOrderById(Number(m[1]));
+            const order = await db.getPaymentOrderById(Number(m[1]));
             if (!order || order.kind !== 'bucks') return true; // ours but unusable — never double-handle
             if (order.status === 'credited') return true;      // at-least-once redelivery
             if (usdCents < 1) return true;
             // Credit what was ACTUALLY paid (intents pin the amount; the canonical
             // fallback link can't) — never the package price on faith.
             const pay = require('../monetization/payments');
-            const bucks = pay.bucksForUsd(usdCents / 100);
-            db.updatePaymentOrder(order.id, { amount_cents: usdCents, bucks, status: 'paid' });
-            pay.fulfillBucksOrder(db.getPaymentOrderById(order.id));
+            const bucks = await pay.bucksForUsd(usdCents / 100);
+            await db.updatePaymentOrder(order.id, { amount_cents: usdCents, bucks, status: 'paid' });
+            await pay.fulfillBucksOrder(await db.getPaymentOrderById(order.id));
             _notify(order.user_id, 'Vibes credited 🎉', `Your PowerChat tip of ${_usd(usdCents)} was confirmed — ${bucks.toLocaleString()} Vibes added to your balance.`);
             console.log(`[PowerChat] purchase order ${order.id}: ${_usd(usdCents)} → ${bucks} Vibes for user ${order.user_id}`);
             return true;
@@ -334,7 +334,7 @@ function handleAttributedDonation(receivingUserId, data, { viaSiteAccount = rece
         // Subscription ------------------------------------------------------
         m = ref.match(/^pcsub:(\d+)$/);
         if (m) {
-            const order = db.getPaymentOrderById(Number(m[1]));
+            const order = await db.getPaymentOrderById(Number(m[1]));
             if (!order || order.kind !== 'subscription' || !order.streamer_id) return true;
             if (order.status === 'credited') return true;
             // Underpaid (canonical-link fallback can't enforce amounts; minted intents
@@ -354,14 +354,14 @@ function handleAttributedDonation(receivingUserId, data, { viaSiteAccount = rece
             const feeCents = Number((String(order.provider_ref || '').match(/:fee=(\d+)/) || [])[1] || 0);
             if (usdCents + 1 < (order.amount_cents || 0)) {
                 console.warn(`[PowerChat] sub order ${order.id} underpaid (${_usd(usdCents)} < ${_usd(order.amount_cents)}) — treating as a donation`);
-                if (mode === 'site') { _creditSiteRoutedDonation(order.streamer_id, order.user_id, data); return true; }
+                if (mode === 'site') { await _creditSiteRoutedDonation(order.streamer_id, order.user_id, data); return true; }
                 return false;
             }
             const pay = require('../monetization/payments');
-            db.updatePaymentOrder(order.id, { status: 'paid' });
+            await db.updatePaymentOrder(order.id, { status: 'paid' });
             // Streamer-direct: they already hold the cash — no cashout-Vibes share.
             // Site route: the streamer's share is computed on the sub price, not on the fee.
-            pay.fulfillSubscriptionOrder(db.getPaymentOrderById(order.id), { creditShare: mode !== 'direct', autoRenew, shareBaseCents: Math.max(0, (order.amount_cents || 0) - feeCents) });
+            await pay.fulfillSubscriptionOrder(await db.getPaymentOrderById(order.id), { creditShare: mode !== 'direct', autoRenew, shareBaseCents: Math.max(0, (order.amount_cents || 0) - feeCents) });
             _notify(order.user_id, 'Subscribed! ⭐', 'Your PowerChat tip was confirmed — your channel subscription is active.');
             console.log(`[PowerChat] sub order ${order.id} activated via PowerChat (${order.provider_ref}) for user ${order.user_id}`);
             return true;
@@ -373,7 +373,7 @@ function handleAttributedDonation(receivingUserId, data, { viaSiteAccount = rece
             return false;
         }
         if (m) {
-            _creditSiteRoutedDonation(Number(m[1]), Number(m[2]) || null, data);
+            await _creditSiteRoutedDonation(Number(m[1]), Number(m[2]) || null, data);
             return true;
         }
     } catch (e) {
@@ -386,20 +386,20 @@ function handleAttributedDonation(receivingUserId, data, { viaSiteAccount = rece
 // A tip that landed on the SITE account on behalf of a PowerChat-less streamer:
 // full amount becomes the streamer's cashout-able Vibes (the site holds the cash),
 // plus the normal on-site donation celebration/goal credit.
-function _creditSiteRoutedDonation(streamerUserId, donorUserId, data) {
+async function _creditSiteRoutedDonation(streamerUserId, donorUserId, data) {
     const usdCents = Math.max(0, Math.round(Number(data.amountUsdCents || 0)));
     if (!streamerUserId || usdCents < 1) return;
-    if (!db.getUserById(streamerUserId)) { console.warn(`[PowerChat] pcdon for unknown streamer ${streamerUserId}`); return; }
-    db.addVibesCashout(streamerUserId, usdCents); // 1¢ = 1 Vibe, same rate as on-site donations
+    if (!await db.getUserById(streamerUserId)) { console.warn(`[PowerChat] pcdon for unknown streamer ${streamerUserId}`); return; }
+    await db.addVibesCashout(streamerUserId, usdCents); // 1¢ = 1 Vibe, same rate as on-site donations
     try {
-        db.createTransaction({
+        await db.createTransaction({
             from_user_id: donorUserId || null, to_user_id: streamerUserId, amount: usdCents,
             type: 'donation', status: 'completed',
             message: `PowerChat tip via site account (${_usd(usdCents)})`,
         });
     } catch { /* ledger best-effort */ }
     // Same celebration pipeline a direct-connected streamer gets from their own webhook.
-    try { require('./powerchat-webhook').creditDonationPipeline(streamerUserId, data); } catch (e) { console.warn('[PowerChat] pcdon pipeline:', e.message); }
+    try { await require('./powerchat-webhook').creditDonationPipeline(streamerUserId, data); } catch (e) { console.warn('[PowerChat] pcdon pipeline:', e.message); }
     console.log(`[PowerChat] site-routed donation: ${_usd(usdCents)} → ${usdCents} cashout Vibes for streamer ${streamerUserId}`);
 }
 

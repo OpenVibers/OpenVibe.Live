@@ -6,10 +6,12 @@
  * a restored copy of the database on a spare loopback port, and compares its public reads with
  * production's. That instance must serve reads from the copy and do nothing else. With LIVE_DRILL:
  *
- *   - assertSafe(): Live refuses to start unless DB_PATH and DATA_DIR are set and lie outside the
- *     checkout and outside /opt/openvibe.live (so neither can be production's), PORT is set and is not
- *     production's 3000, HOST is loopback, and no socket was handed over by systemd. It runs before
- *     anything opens a file. All of Live's files go under DATA_DIR (server/paths.js).
+ *   - assertSafe(): Live refuses to start unless DATA_DIR is set and lies outside the checkout and outside
+ *     /opt/openvibe.live, the database is not production's (DATABASE_URL and DATABASE_DIRECT_URL name the
+ *     restored copy — OpenVibe.Host's PostgreSQL drill restores into a scratch ov_live_drill_<stamp> — never
+ *     ov_live; without DATABASE_URL Live opens an embedded PGlite database under DATA_DIR), PORT is set and
+ *     is not production's 3000, HOST is loopback, and no socket was handed over by systemd. It runs before
+ *     anything opens a file or a connection. All of Live's files go under DATA_DIR (server/paths.js).
  *   - installGuards(): no outbound connection (net.Socket#connect, fetch), no program other than git
  *     (child_process; git only reads the checkout, for /release.json and the updates list), no UDP
  *     socket, and nothing listens except the drill's own HTTP port. To Live's code every other service
@@ -41,6 +43,7 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 /** Where production runs (OpenVibe.Host inventory: repo /opt/openvibe.live, database data/live.db). */
 const PRODUCTION_ROOT = '/opt/openvibe.live';
 const PRODUCTION_PORT = 3000;
+const PRODUCTION_DATABASE = 'ov_live';   // OpenVibe.Host roles/data add-service.sh live
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1']);
 
 function isLoopbackHost(host) {
@@ -73,19 +76,22 @@ function inside(p, root) {
 function problems(env = process.env, { repoRoot = REPO_ROOT, cwd = process.cwd(), pid = process.pid } = {}) {
     const out = [];
     const roots = [...new Set([repoRoot, realish(repoRoot), PRODUCTION_ROOT])];
-    const productionDb = new Set([path.join(PRODUCTION_ROOT, 'data', 'live.db'), path.join(repoRoot, 'data', 'live.db'), path.join(cwd, 'data', 'live.db')]);
     const checkPath = (name, value) => {
         const abs = path.resolve(cwd, value);
         const real = realish(abs);
-        if (name === 'DB_PATH' && (productionDb.has(abs) || productionDb.has(real))) {
-            out.push(`DB_PATH (${abs}) is production's database; point it at the restored copy`);
-            return;
-        }
         const root = roots.find((r) => inside(abs, r) || inside(real, r));
         if (root) out.push(`${name} (${abs}${real !== abs ? ` → ${real}` : ''}) is inside ${root}; a drill writes nothing in the checkout or in production's data`);
     };
-    if (!env.DB_PATH) out.push('DB_PATH is not set; it must name the restored copy of the database');
-    else checkPath('DB_PATH', env.DB_PATH);
+    // The database: the restored copy, never production's. Boot migrates through DATABASE_DIRECT_URL, so it must name
+    // the copy too whenever DATABASE_URL does.
+    for (const name of ['DATABASE_URL', 'DATABASE_DIRECT_URL']) {
+        if (!env[name]) continue;
+        let dbName = '';
+        try { dbName = decodeURIComponent(new URL(env[name]).pathname.replace(/^\//, '')); } catch { out.push(`${name} is not a database URL`); continue; }
+        if (!dbName || dbName === PRODUCTION_DATABASE) out.push(`${name} names production's database (${dbName || 'the default one'}); point it at the restored copy`);
+    }
+    if (env.DATABASE_URL && !env.DATABASE_DIRECT_URL) out.push('DATABASE_DIRECT_URL is not set; boot migrates through it, so it must name the restored copy too');
+    if (!env.DATABASE_URL && env.DATABASE_DIRECT_URL) out.push('DATABASE_URL is not set while DATABASE_DIRECT_URL is; name the restored copy in both');
     if (!env.DATA_DIR) out.push('DATA_DIR is not set; it must name the drill\'s own data directory (Live writes all its files there)');
     else checkPath('DATA_DIR', env.DATA_DIR);
     if (!isLoopbackHost(env.HOST)) out.push(`HOST (${env.HOST || 'unset, i.e. 0.0.0.0'}) is not loopback; a drill binds 127.0.0.1 only`);

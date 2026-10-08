@@ -26,9 +26,9 @@ const _inflight = new Map(); // streamId → Promise
  * overview rollup). Used by the AI viewers so a "look at the screen" is never a private,
  * throwaway vision call — the result is cached for every consumer.
  */
-function captureMemoryNow(stream, { allowFfmpeg = true, reason = 'manual' } = {}) {
+async function captureMemoryNow(stream, { allowFfmpeg = true, reason = 'manual' } = {}) {
     if (!stream || !stream.id) return Promise.resolve(false);
-    if (!ai.streamMemoryEnabled()) return Promise.resolve(false);
+    if (!await ai.streamMemoryEnabled()) return Promise.resolve(false);
     const existing = _inflight.get(stream.id);
     if (existing) return existing;
     const p = _analyzeOne(stream, { allowFfmpeg, reason }).then(() => true).catch(() => false).finally(() => _inflight.delete(stream.id));
@@ -82,7 +82,7 @@ async function _analyzeOne(stream, { allowFfmpeg = true, reason = 'periodic' } =
         // Fall back to the freshest thumbnail file on disk.
         try {
             const thumbSvc = require('../media-proxy/live-thumbs');
-            const st = thumbSvc.getStreamThumbnailState && thumbSvc.getStreamThumbnailState(stream.id);
+            const st = thumbSvc.getStreamThumbnailState && await thumbSvc.getStreamThumbnailState(stream.id);
             if (st && st.filePath) image = st.filePath;
         } catch { /* */ }
     }
@@ -107,18 +107,18 @@ async function _analyzeOne(stream, { allowFfmpeg = true, reason = 'periodic' } =
         // second PlainRTP consumer on the same producer, which is what made this path start
         // capturing digital silence (-91dB) once continuous capture was switched on.
         // Read the timeline instead: strictly more speech, and free.
-        const _timeline = (() => { try { return require('./timeline-job').timelineEnabled(); } catch { return false; } })();
+        const _timeline = await (async () => { try { return await require('./timeline-job').timelineEnabled(); } catch { return false; } })();
         if (_timeline) {
             try {
-                const from = Math.max(0, offset - ai.captureIntervalSec());
-                const rows = db.getTimeline(stream.id, { kind: 'speech', from, to: offset, limit: 200 }) || [];
+                const from = Math.max(0, offset - await ai.captureIntervalSec());
+                const rows = await db.getTimeline(stream.id, { kind: 'speech', from, to: offset, limit: 200 }) || [];
                 heard = rows.map(r => String(r.text || '').trim()).filter(Boolean).join(' ');
                 heardSegments = rows.length
                     ? rows.map(r => ({ start: r.start_sec, end: r.end_sec, text: r.text }))
                     : null;
             } catch { /* fall through to empty */ }
             console.log(`[AI-Hear] stream ${stream.id}: from timeline transcript=${JSON.stringify((heard || '').slice(0, 100))}`);
-        } else if (ai.transcriptionEnabled && ai.transcriptionEnabled()) {
+        } else if (ai.transcriptionEnabled && await ai.transcriptionEnabled()) {
             const audio = require('./stream-audio').captureAudioChunk ? await require('./stream-audio').captureAudioChunk(stream, CHUNK_SEC) : null;
             if (audio) {
                 const tx = await require('./transcribe').transcribeWavDetailed(audio, { offsetSec: Math.max(0, offset - CHUNK_SEC) });
@@ -128,7 +128,7 @@ async function _analyzeOne(stream, { allowFfmpeg = true, reason = 'periodic' } =
             }
             console.log(`[AI-Hear] stream ${stream.id}: audio=${audio ? 'captured' : 'null'} transcript=${JSON.stringify((heard || '').slice(0, 100))}`);
         } else {
-            console.log(`[AI-Hear] stream ${stream.id}: transcription disabled (enabled=${ai.transcriptionEnabled && ai.transcriptionEnabled()})`);
+            console.log(`[AI-Hear] stream ${stream.id}: transcription disabled (enabled=${ai.transcriptionEnabled && await ai.transcriptionEnabled()})`);
         }
     } catch (e) { console.warn(`[AI-Hear] stream ${stream.id}: transcription error`, e.message); }
     // Only fold in the "heard" part when the transcript is actual speech. Whisper emits
@@ -145,7 +145,7 @@ async function _analyzeOne(stream, { allowFfmpeg = true, reason = 'periodic' } =
     const memDesc = hasSpeech ? `${r.description} — heard: "${heardClean.slice(0, 500)}"` : r.description;
 
     try {
-        db.addStreamMemory({
+        await db.addStreamMemory({
             stream_id: stream.id, user_id: stream.user_id, offset_seconds: offset,
             description: memDesc, tags: r.tags, thumbnail_url: await _persistMomentFrame(image, stream.id, offset) || _stableThumb(stream.thumbnail_url),
             transcript_json: heardSegments,
@@ -156,7 +156,7 @@ async function _analyzeOne(stream, { allowFfmpeg = true, reason = 'periodic' } =
         // summarizer API calls ~2-3x. Between rollups the existing overview is kept
         // (better than overwriting it with a single-frame description).
         try {
-            const memories = db.getStreamMemories(stream.id) || [];
+            const memories = await db.getStreamMemories(stream.id) || [];
             const now = Date.now();
             const last = _lastSummary.get(stream.id) || { count: 0, at: 0 };
             const grew = (memories.length - last.count) >= SUMMARY_MIN_NEW;
@@ -164,13 +164,13 @@ async function _analyzeOne(stream, { allowFfmpeg = true, reason = 'periodic' } =
             if (memories.length > 1 && (!last.at || grew || stale)) {
                 const summary = await ai.summarizeStreamMemories(memories, stream.id);
                 if (summary && summary.overview) {
-                    db.updateStreamAiOverview(stream.id, summary.overview);
-                    if (summary.category) db.setStreamAiCategory(stream.id, summary.category, summary.tags);
+                    await db.updateStreamAiOverview(stream.id, summary.overview);
+                    if (summary.category) await db.setStreamAiCategory(stream.id, summary.category, summary.tags);
                     _lastSummary.set(stream.id, { count: memories.length, at: now });
                 }
             } else if (!stream.ai_overview) {
                 // Nothing summarized yet — seed the card with the latest observation.
-                db.updateStreamAiOverview(stream.id, r.description);
+                await db.updateStreamAiOverview(stream.id, r.description);
             }
         } catch { /* keep existing overview */ }
     } catch (e) { console.warn('[AI] memory store failed:', e.message); }
@@ -184,20 +184,20 @@ async function _analyzeOne(stream, { allowFfmpeg = true, reason = 'periodic' } =
 const LIVE_PASTE_MIN_GAP_MS = 90 * 60 * 1000;
 async function _maybeLivePaste(stream, image, r, offset) {
     if (!r || !r.worthy || !r.title || !image) return;
-    try { if (String(db.getSetting('ai_live_pastes_enabled') ?? 'true') === 'false') return; } catch { /* default on */ }
+    try { if (String(await db.getSetting('ai_live_pastes_enabled') ?? 'true') === 'false') return; } catch { /* default on */ }
     // A channel that turned AI Moments off (channels.ai_derivation_enabled) gets no "caught live" pastes.
-    try { if (!db.isAiDerivationEnabled(stream.user_id)) return; } catch { /* default on */ }
+    try { if (!await db.isAiDerivationEnabled(stream.user_id)) return; } catch { /* default on */ }
     const registry = require('./moment-registry');
-    const last = registry.lastOfKind('paste', { stream_id: stream.id });
+    const last = await registry.lastOfKind('paste', { stream_id: stream.id });
     if (last && Date.now() - (last.ts || 0) < LIVE_PASTE_MIN_GAP_MS) return;
-    const why = registry.usedReason({ stream_id: stream.id, offset, desc: r.description, title: r.title });
+    const why = await registry.usedReason({ stream_id: stream.id, offset, desc: r.description, title: r.title });
     if (why) return;
     const moments = require('./ai-moments-job');
     if (typeof image === 'string' && !image.startsWith('data:') && moments.frameTooDark && await moments.frameTooDark(image)) return;
     let buffer = null;
     try { buffer = Buffer.isBuffer(image) ? image : (typeof image === 'string' && image.startsWith('data:') ? Buffer.from(image.split(',')[1] || '', 'base64') : require('fs').readFileSync(image)); } catch { return; }
     if (!buffer || buffer.length < 2000) return;
-    const username = stream.username || (db.getUserById(stream.user_id) || {}).username || 'someone';
+    const username = stream.username || (await db.getUserById(stream.user_id) || {}).username || 'someone';
     let base = 'https://openvibe.live'; try { const c = require('../config'); base = String(c.baseUrl || c.publicUrl || base).replace(/\/$/, ''); } catch { /* */ }
     // AI output is never filed under a person (roadmap 33): origin 'ai', the stream rides along as its source.
     const paste = await require('../pastes-client').createPaste({
@@ -208,7 +208,7 @@ async function _maybeLivePaste(stream, image, r, offset) {
         screenshot: { buffer, filename: `live-${stream.id}-${offset}.jpg`, contentType: 'image/jpeg' },
     }, { origin: 'ai' });
     if (paste) {
-        registry.record({ kind: 'paste', stream_id: stream.id, offset, desc: r.description, title: r.title });
+        await registry.record({ kind: 'paste', stream_id: stream.id, offset, desc: r.description, title: r.title });
         console.log(`[AI-Moments] live paste for stream ${stream.id} at ${offset}s: "${r.title}"`);
     }
 }
@@ -216,10 +216,10 @@ async function _maybeLivePaste(stream, image, r, offset) {
 const _captures = require('../utils/limit')('stream-memory-capture', 2);
 
 async function tick() {
-    if (!ai.streamMemoryEnabled()) return;
+    if (!await ai.streamMemoryEnabled()) return;
     let streams = [];
-    try { streams = db.getLiveStreams() || []; } catch { return; }
-    const intervalMs = ai.captureIntervalSec() * 1000;
+    try { streams = await db.getLiveStreams() || []; } catch { return; }
+    const intervalMs = await ai.captureIntervalSec() * 1000;
     const now = Date.now();
     for (const stream of streams) {
         if (now - (_last.get(stream.id) || 0) < intervalMs) continue;
@@ -227,7 +227,7 @@ async function tick() {
         if (_inflight.has(stream.id)) continue;
         // Two at a time across all live streams: each is an ffmpeg frame grab plus a vision call, and
         // with several streams live they all came due in the same 30s tick.
-        _captures.run(() => captureMemoryNow(stream, { allowFfmpeg: true, reason: 'periodic' }), { maxQueue: 20 }).catch(() => {});
+        _captures.run(async () => await captureMemoryNow(stream, { allowFfmpeg: true, reason: 'periodic' }), { maxQueue: 20 }).catch(() => {});
     }
     // GC entries for streams no longer live.
     if (_last.size > 300 || _lastSummary.size > 300) {

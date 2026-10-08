@@ -6,17 +6,17 @@
  */
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
-process.env.DB_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'live-staff-')), 'test.db');
 process.env.NODE_ENV = 'test';
 const log = console.log;
 console.log = () => {};
 const { staff } = require('openvibe-contracts');
 const db = require('../server/db/database');
-if (db.initDb) db.initDb();
 const p = require('../server/auth/permissions');
+
+async function main() {
+await db.initDb();
 
 const people = {
     anonymous: null,
@@ -53,10 +53,10 @@ p.requireCap('staff.hardware.manage')({ user: people.admin }, res(), () => { pas
 assert.strictEqual(passed, true);
 
 // The UI gets the same answers.
-const caps = p.getCapabilities(people.global_mod);
+const caps = await p.getCapabilities(people.global_mod);
 assert.deepStrictEqual(caps.staff_caps, staff.capabilitiesOf('global_mod'));
 assert.strictEqual(caps.view_ip_info, true);
-assert.deepStrictEqual(p.getCapabilities(null).staff_caps, []);
+assert.deepStrictEqual((await p.getCapabilities(null)).staff_caps, []);
 
 // No raw actor-role comparisons in server code. What is left compares a target's rank or maps role data.
 const TARGET_RANK = [
@@ -89,4 +89,6 @@ const offenders = [];
 assert.deepStrictEqual(offenders, [], `raw role checks; use permissions.can(user, 'staff.…'):\n${offenders.join('\n')}`);
 
 log('staff capabilities: all checks passed');
-process.exit(0);
+}
+
+main().catch((err) => { log(err); process.exitCode = 1; });

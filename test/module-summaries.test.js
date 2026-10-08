@@ -6,45 +6,43 @@
 // and new followers; the job is never started under LIVE_DRILL.
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-modsum-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 console.warn = () => {};
 
 const db = require('../server/db/database');
-db.initDb();
-const sums = require('../server/auth/module-summaries');
-sums.ensureSchema();
 
 const ANN = 'usr_01JAB2C3D4E5F6G7H8J9K0MNPA';
-const d = db.getDb();
-const now = Date.parse('2026-09-25T12:00:00Z');
-const at = (msAgo) => new Date(now - msAgo).toISOString().replace('T', ' ').slice(0, 19);
-const H = 3600000, DAY = 24 * H;
-d.prepare("INSERT INTO users (id, username, email, password_hash) VALUES (1, 'ann', 'a@x', 'x'), (2, 'bob', 'b@x', 'x'), (3, 'cat', 'c@x', 'x')").run();
-d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (1, 'network', '11', ?), (3, 'network', '33', 'usr_01JAB2C3D4E5F6G7H8J9K0MNPC')").run(ANN);
-const stream = (user, startedAgo, secs, peak, avg) => {
-    const id = d.prepare('INSERT INTO streams (user_id, is_live, peak_viewers, started_at, ended_at, duration_seconds) VALUES (?, 0, ?, ?, ?, ?)')
-        .run(user, peak, at(startedAgo), at(startedAgo - secs * 1000), secs).lastInsertRowid;
-    if (avg != null) d.prepare('INSERT INTO stream_analytics (stream_id, avg_viewers) VALUES (?, ?)').run(id, avg);
-};
-stream(1, 2 * DAY, 3600, 12, 8);
-stream(1, 5 * DAY, 1800, 30, 11);
-stream(1, 45 * DAY, 7200, 99, 50);        // outside the 30-day window
-d.prepare('INSERT INTO follows (follower_id, streamer_id, created_at) VALUES (2, 1, ?), (3, 1, ?)').run(at(3 * DAY), at(60 * DAY));
 
 (async () => {
+    await db.initDb();
+    const sums = require('../server/auth/module-summaries');
+
+    const d = db.getDb();
+    const now = Date.parse('2026-09-25T12:00:00Z');
+    const at = (msAgo) => new Date(now - msAgo).toISOString().replace('T', ' ').slice(0, 19);
+    const H = 3600000, DAY = 24 * H;
+    await d.prepare("INSERT INTO users (id, username, email, password_hash) OVERRIDING SYSTEM VALUE VALUES (1, 'ann', 'a@x', 'x'), (2, 'bob', 'b@x', 'x'), (3, 'cat', 'c@x', 'x')").run();
+    await d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (1, 'network', '11', ?), (3, 'network', '33', 'usr_01JAB2C3D4E5F6G7H8J9K0MNPC')").run(ANN);
+    const stream = async (user, startedAgo, secs, peak, avg) => {
+        const id = (await d.prepare('INSERT INTO streams (user_id, is_live, peak_viewers, started_at, ended_at, duration_seconds) VALUES (?, 0, ?, ?, ?, ?) RETURNING id')
+            .run(user, peak, at(startedAgo), at(startedAgo - secs * 1000), secs)).lastInsertRowid;
+        if (avg != null) await d.prepare('INSERT INTO stream_analytics (stream_id, avg_viewers) VALUES (?, ?)').run(id, avg);
+    };
+    await stream(1, 2 * DAY, 3600, 12, 8);
+    await stream(1, 5 * DAY, 1800, 30, 11);
+    await stream(1, 45 * DAY, 7200, 99, 50);        // outside the 30-day window
+    await d.prepare('INSERT INTO follows (follower_id, streamer_id, created_at) VALUES (2, 1, ?), (3, 1, ?)').run(at(3 * DAY), at(60 * DAY));
+
     // ── The summary ──
-    const s = sums.summarize(1, { now });
+    const s = await sums.summarize(1, { now });
     assert.deepStrictEqual(s.profile, { channel_url: 'https://openvibe.live/@ann', followers: 2, is_streamer: true, last_live_at: new Date(now - 2 * DAY).toISOString(), stream_minutes_30d: 90 });
     assert.deepStrictEqual(s.stats, { streams_30d: 2, stream_minutes_30d: 90, peak_viewers_30d: 30, avg_viewers_30d: 9.5, new_followers_30d: 1 });
-    assert.strictEqual(sums.summarize(3, { now }), null, 'no streams and no followers: nothing to say');
+    assert.strictEqual(await sums.summarize(3, { now }), null, 'no streams and no followers: nothing to say');
 
     // ── Writes through a stub Network (the real SDK client, Live's service token) ──
     const puts = [];
@@ -77,7 +75,7 @@ d.prepare('INSERT INTO follows (follower_id, streamer_id, created_at) VALUES (2,
     assert.deepStrictEqual(await live.push(2, { now }), [], 'no Network subject: skipped');
 
     // ── The scan: a stream that just ended ──
-    d.prepare('INSERT INTO streams (user_id, is_live, peak_viewers, started_at, ended_at, duration_seconds) VALUES (1, 0, 40, ?, ?, 600)').run(at(20 * 60000), at(8 * 60000));
+    await d.prepare('INSERT INTO streams (user_id, is_live, peak_viewers, started_at, ended_at, duration_seconds) VALUES (1, 0, 40, ?, ?, 600)').run(at(20 * 60000), at(8 * 60000));
     assert.strictEqual(await live.scan({ now }), 1);
     assert.strictEqual(puts.length, 4, 'both records changed');
     assert.strictEqual(puts[3].data.peak_viewers_30d, 40);
@@ -85,11 +83,10 @@ d.prepare('INSERT INTO follows (follower_id, streamer_id, created_at) VALUES (2,
     assert.strictEqual(await live.refresh({ now: now + DAY }), 1, 'the daily refresh visits everyone with recent streams or followers');
 
     // ── live.loyalty (contracts 0.56.0, WS-K task 9): channel points and the Arena level, private ──
-    d.exec('CREATE TABLE IF NOT EXISTS arena_trash_levels (user_id INTEGER PRIMARY KEY, xp INTEGER DEFAULT 0, level INTEGER DEFAULT 1)');
-    d.prepare("INSERT INTO channel_points (user_id, streamer_id, balance, updated_at) VALUES (3, 1, 300, ?), (3, 2, 50, ?), (3, 3, 0, ?)").run(at(DAY), at(DAY), at(DAY));
-    d.prepare('INSERT INTO arena_trash_levels (user_id, xp, level) VALUES (3, 450, 3)').run();
-    assert.deepStrictEqual(live.loyaltyOf(3), { channel_points_total: 350, channels: [{ channel: 'ann', points: 300 }, { channel: 'bob', points: 50 }], arena_level: 3, arena_xp: 450 });
-    assert.strictEqual(live.loyaltyOf(2), null, 'no points and no Arena: nothing');
+    await d.prepare("INSERT INTO channel_points (user_id, streamer_id, balance, updated_at) VALUES (3, 1, 300, ?), (3, 2, 50, ?), (3, 3, 0, ?)").run(at(DAY), at(DAY), at(DAY));
+    await d.prepare('INSERT INTO arena_trash_levels (user_id, xp, level) VALUES (3, 450, 3)').run();
+    assert.deepStrictEqual(await live.loyaltyOf(3), { channel_points_total: 350, channels: [{ channel: 'ann', points: 300 }, { channel: 'bob', points: 50 }], arena_level: 3, arena_xp: 450 });
+    assert.strictEqual(await live.loyaltyOf(2), null, 'no points and no Arena: nothing');
     const before = puts.length;
     assert.deepStrictEqual(await live.push(3, { now }), ['live.loyalty'], 'a viewer with points gets only the loyalty record');
     const loyal = puts[before];
@@ -98,14 +95,14 @@ d.prepare('INSERT INTO follows (follower_id, streamer_id, created_at) VALUES (2,
     assert.deepStrictEqual(modules.publicView('live.loyalty', loyal.data), {}, 'nothing of it is public');
     assert.ok(!Object.keys(loyal.data).some((k) => /usd|cents|cash|payout|withdraw|vibes/i.test(k)), 'loyalty is never money');
     // Points move while people watch: at most one write per half hour, except the daily refresh.
-    d.prepare('UPDATE channel_points SET balance = 310, updated_at = ? WHERE user_id = 3 AND streamer_id = 1').run(at(0));
+    await d.prepare('UPDATE channel_points SET balance = 310, updated_at = ? WHERE user_id = 3 AND streamer_id = 1').run(at(0));
     assert.deepStrictEqual(await live.push(3, { now: now + 60000 }), [], 'a change within 30 minutes waits');
     assert.deepStrictEqual(await live.push(3, { now: now + 60000, force: true }), ['live.loyalty'], 'the refresh writes it');
     assert.strictEqual(puts[puts.length - 1].data.channel_points_total, 360);
     // The scan picks up changed points; points gone after a write leave zeros, not a stale record.
-    d.prepare('UPDATE channel_points SET balance = 0, updated_at = ? WHERE user_id = 3').run(at(-10 * 60000)); // after the previous scan's window
-    d.prepare('DELETE FROM arena_trash_levels WHERE user_id = 3').run();
-    assert.deepStrictEqual(live.loyaltyOf(3), { channel_points_total: 0, channels: [] });
+    await d.prepare('UPDATE channel_points SET balance = 0, updated_at = ? WHERE user_id = 3').run(at(-10 * 60000)); // after the previous scan's window
+    await d.prepare('DELETE FROM arena_trash_levels WHERE user_id = 3').run();
+    assert.deepStrictEqual(await live.loyaltyOf(3), { channel_points_total: 0, channels: [] });
     assert.ok((await live.scan({ now: now + 45 * 60000 })) >= 1, 'the scan finds the changed points');
     assert.strictEqual(puts[puts.length - 1].data.channel_points_total, 0);
 
@@ -114,6 +111,5 @@ d.prepare('INSERT INTO follows (follower_id, streamer_id, created_at) VALUES (2,
     assert.ok(/require\('\.\/auth\/module-summaries'\)\.init\(\)/.test(idx), 'index.js starts it');
 
     server.close();
-    fs.rmSync(tmp, { recursive: true, force: true });
     quiet('module summaries: all checks passed');
 })().catch((err) => { console.error(err); process.exit(1); });

@@ -127,16 +127,16 @@ function normalizeRequest(raw, { flat = false } = {}) {
 
 // ── Live rows ────────────────────────────────────────────────
 
-const userById = (id) => db.get('SELECT id, username FROM users WHERE id = ?', [id]);
-const userBySlug = (slug) => db.get('SELECT id, username FROM users WHERE username = ? COLLATE NOCASE', [slug]);
-const streamById = (id) => db.get(`SELECT s.id, s.user_id, s.managed_stream_id, ms.slug AS slot_slug
+const userById = async (id) => await db.get('SELECT id, username FROM users WHERE id = ?', [id]);
+const userBySlug = async (slug) => await db.get('SELECT id, username FROM users WHERE lower(username) = lower(?)', [slug]);
+const streamById = async (id) => await db.get(`SELECT s.id, s.user_id, s.managed_stream_id, ms.slug AS slot_slug
     FROM streams s LEFT JOIN managed_streams ms ON ms.id = s.managed_stream_id WHERE s.id = ?`, [id]);
-const slotById = (id) => db.get('SELECT id, user_id, slug FROM managed_streams WHERE id = ?', [id]);
+const slotById = async (id) => await db.get('SELECT id, user_id, slug FROM managed_streams WHERE id = ?', [id]);
 const streamRecord = (s) => ({ id: String(s.id), slot_id: str(s.managed_stream_id), slot_slug: s.slot_slug || null });
 const slotRecord = (m) => ({ id: null, slot_id: String(m.id), slot_slug: m.slug || null });
 
-function subjectOwners(subject) {
-    return db.all("SELECT DISTINCT user_id FROM linked_accounts WHERE service = 'network' AND subject_id = ?", [subject]).map(r => r.user_id);
+async function subjectOwners(subject) {
+    return (await db.all("SELECT DISTINCT user_id FROM linked_accounts WHERE service = 'network' AND subject_id = ?", [subject])).map(r => r.user_id);
 }
 
 // ── Outcomes ─────────────────────────────────────────────────
@@ -166,16 +166,16 @@ function parseLegacyRef(ref) {
 }
 
 /** A VOD's lineage: its stream, its slot when the stream row is gone, the owner recorded on it. */
-function vodLineage(vod, allow = ALL) {
+async function vodLineage(vod, allow = ALL) {
     const via = [`vod:${vod.id}`];
     const records = { vod: { id: String(vod.id), stream_id: str(vod.stream_id), slot_id: str(vod.managed_stream_id) } };
     if (vod.stream_id != null && allow('stream_lookup')) {
-        const s = int(vod.stream_id) && streamById(int(vod.stream_id));
+        const s = int(vod.stream_id) && await streamById(int(vod.stream_id));
         if (s) return owner(s.user_id, 'stream_lookup', 'derived', [...via, `stream:${s.id}`], { ...records, stream: streamRecord(s) });
         records.stream = { id: String(vod.stream_id), slot_id: str(vod.managed_stream_id), slot_slug: null, missing: true };
     }
     if (vod.managed_stream_id != null && allow('stream_lookup')) {
-        const m = int(vod.managed_stream_id) && slotById(int(vod.managed_stream_id));
+        const m = int(vod.managed_stream_id) && await slotById(int(vod.managed_stream_id));
         if (m) {
             records.stream = records.stream ? { ...records.stream, slot_slug: m.slug || null } : slotRecord(m);
             return owner(m.user_id, 'stream_lookup', 'derived', [...via, `slot:${m.id}`], records);
@@ -190,7 +190,7 @@ async function clipLineage(ctx, clip, allow = ALL) {
     const via = [`clip:${clip.id}`];
     const records = { clip: { id: String(clip.id), vod_id: str(clip.vod_id), stream_id: str(clip.stream_id) } };
     if (clip.stream_id != null && allow('stream_lookup')) {
-        const s = int(clip.stream_id) && streamById(int(clip.stream_id));
+        const s = int(clip.stream_id) && await streamById(int(clip.stream_id));
         if (s) return owner(s.user_id, 'stream_lookup', 'derived', [...via, `stream:${s.id}`], { ...records, stream: streamRecord(s) });
         records.stream = { id: String(clip.stream_id), slot_id: null, slot_slug: null, missing: true };
     }
@@ -198,7 +198,7 @@ async function clipLineage(ctx, clip, allow = ALL) {
         const v = await readVod(ctx, clip.vod_id);
         if (v.unavailable) return unavailable(v.detail);
         if (v.value) {
-            const r = vodLineage(v.value);
+            const r = await vodLineage(v.value);
             if (r.kind === 'owner') {
                 return { ...r, rule: 'vod_parent', via: [...via, ...r.via], records: { ...records, ...r.records, stream: r.records.stream || records.stream } };
             }
@@ -213,11 +213,11 @@ async function legacyRecordLineage(ctx, ref) {
     const read = ref.kind === 'vod' ? await readVod(ctx, ref.id) : await readClip(ctx, ref.id);
     if (read.unavailable) return unavailable(read.detail);
     if (!read.value) return notFound(`no ${ref.kind} ${ref.id}`);
-    return ref.kind === 'vod' ? vodLineage(read.value) : clipLineage(ctx, read.value);
+    return ref.kind === 'vod' ? await vodLineage(read.value) : await clipLineage(ctx, read.value);
 }
 
-function subjectOutcome(subject, confidence, via) {
-    const ids = subjectOwners(subject);
+async function subjectOutcome(subject, confidence, via) {
+    const ids = await subjectOwners(subject);
     if (!ids.length) return notFound(`no Live account is linked to ${subject}`);
     if (ids.length > 1) return { kind: 'ambiguous', userIds: ids, detail: `${subject} is linked to ${ids.length} Live accounts` };
     return owner(ids[0], 'owner_subject', confidence, via);
@@ -249,7 +249,7 @@ async function objectLineage(ctx, id, allow = ALL) {
     }
     const subject = String((obj.owner && obj.owner.subject) || '').replace(/^user:/, '');
     if (SUBJECT_RE.test(subject) && allow('owner_subject')) {
-        const r = subjectOutcome(subject, base, [...via, `subject:${subject}`]);
+        const r = await subjectOutcome(subject, base, [...via, `subject:${subject}`]);
         if (r.kind !== 'not_found') return r.kind === 'owner' ? { ...r, records } : r;
     }
     const recorded = int(obj.owner && obj.owner.user_id);
@@ -276,53 +276,53 @@ function units(input) {
 }
 
 async function evaluate(ctx, u, allow) {
-    const gate = (rule, fn) => (allow(rule) ? fn() : notFound(`${rule} is not accepted here`));
+    const gate = async (rule, fn) => (allow(rule) ? await fn() : notFound(`${rule} is not accepted here`));
     switch (u.input) {
         case 'slug':
         case 'parent_slug':
-            return gate(u.rule, () => {
-                const user = userBySlug(u.channel);
+            return await gate(u.rule, async () => {
+                const user = await userBySlug(u.channel);
                 if (!user) return notFound(`no channel @${u.channel}`);
                 if (!u.slot) return owner(user.id, u.rule, 'exact', []);
-                const m = db.getManagedStreamByIdOrSlug(user.id, u.slot);
+                const m = await db.getManagedStreamByIdOrSlug(user.id, u.slot);
                 if (!m) return notFound(`@${u.channel} has no slot ${u.slot}`);
                 return owner(user.id, u.rule, 'exact', [`slot:${m.id}`], { stream: slotRecord(m) });
             });
         case 'channel_id':
-            return gate('channel_id', () => {
-                const ch = int(u.value) && db.get('SELECT id, user_id FROM channels WHERE id = ?', [int(u.value)]);
+            return await gate('channel_id', async () => {
+                const ch = int(u.value) && await db.get('SELECT id, user_id FROM channels WHERE id = ?', [int(u.value)]);
                 return ch ? owner(ch.user_id, 'channel_id', 'exact', [`channel:${ch.id}`]) : notFound(`no channel ${u.value}`);
             });
         case 'stream_id':
-            return gate('stream_lookup', () => {
-                const s = int(u.value) && streamById(int(u.value));
+            return await gate('stream_lookup', async () => {
+                const s = int(u.value) && await streamById(int(u.value));
                 return s ? owner(s.user_id, 'stream_lookup', 'exact', [`stream:${s.id}`], { stream: streamRecord(s) }) : notFound(`no stream ${u.value}`);
             });
         case 'slot_id':
-            return gate('stream_lookup', () => {
-                const m = int(u.value) && slotById(int(u.value));
+            return await gate('stream_lookup', async () => {
+                const m = int(u.value) && await slotById(int(u.value));
                 return m ? owner(m.user_id, 'stream_lookup', 'exact', [`slot:${m.id}`], { stream: slotRecord(m) }) : notFound(`no slot ${u.value}`);
             });
         case 'clip_id': {
             const read = await readClip(ctx, u.value);
             if (read.unavailable) return unavailable(read.detail);
-            return read.value ? clipLineage(ctx, read.value, allow) : notFound(`Media has no clip ${u.value}`);
+            return read.value ? await clipLineage(ctx, read.value, allow) : notFound(`Media has no clip ${u.value}`);
         }
         case 'vod_id': {
             const read = await readVod(ctx, u.value);
             if (read.unavailable) return unavailable(read.detail);
-            return read.value ? vodLineage(read.value, allow) : notFound(`Media has no VOD ${u.value}`);
+            return read.value ? await vodLineage(read.value, allow) : notFound(`Media has no VOD ${u.value}`);
         }
         case 'media_object_id':
-            return objectLineage(ctx, u.value, allow);
+            return await objectLineage(ctx, u.value, allow);
         case 'owner_subject':
-            return gate('owner_subject', () => subjectOutcome(u.value, 'exact', [`subject:${u.value}`]));
+            return await gate('owner_subject', async () => await subjectOutcome(u.value, 'exact', [`subject:${u.value}`]));
         case 'legacy_ids':
-            return gate('legacy_map', () => {
+            return await gate('legacy_map', async () => {
                 if (u.legacy === 'live_user_id') {
-                    return userById(u.value) ? owner(u.value, 'legacy_map', 'legacy_map', []) : notFound(`no Live user ${u.value}`);
+                    return await userById(u.value) ? owner(u.value, 'legacy_map', 'legacy_map', []) : notFound(`no Live user ${u.value}`);
                 }
-                const row = db.get("SELECT user_id FROM linked_accounts WHERE service = 'network' AND service_user_id = ?", [String(u.value)]);
+                const row = await db.get("SELECT user_id FROM linked_accounts WHERE service = 'network' AND service_user_id = ?", [String(u.value)]);
                 return row ? owner(row.user_id, 'legacy_map', 'legacy_map', [`network_user:${u.value}`]) : notFound(`no Live account for Network user ${u.value}`);
             });
         default:
@@ -413,21 +413,21 @@ async function resolveOwner(raw, opts = {}) {
 async function resolve(raw, opts = {}) {
     const r = await resolveOwner(raw, opts);
     const slugs = new Map();
-    const slugOf = (id) => { if (!slugs.has(id)) slugs.set(id, (userById(id) || {}).username || null); return slugs.get(id); };
-    const checked = r.checked.map(({ input, outcome, userId }) => {
+    const slugOf = async (id) => { if (!slugs.has(id)) slugs.set(id, (await userById(id) || {}).username || null); return slugs.get(id); };
+    const checked = (await Promise.all(r.checked.map(async ({ input, outcome, userId }) => {
         const c = { input, outcome };
-        const slug = userId != null ? slugOf(userId) : null;
+        const slug = userId != null ? await slugOf(userId) : null;
         if (slug) c.channel_slug = slug;
         return c;
-    });
+    })));
     const unresolved = (reason, detail) => ({ status: 'unresolved', reason, ...(detail ? { detail: String(detail).slice(0, 500) } : {}), checked });
     if (r.status !== 'resolved') return unresolved(r.reason, r.detail);
 
-    const user = userById(r.userId);
+    const user = await userById(r.userId);
     if (!user) return unresolved('not_found', `the owner ${r.resolved_by} names no longer has a Live account`);
-    const ch = db.get('SELECT id FROM channels WHERE user_id = ?', [user.id]);
+    const ch = await db.get('SELECT id FROM channels WHERE user_id = ?', [user.id]);
     if (!ch) return unresolved('not_found', `@${user.username} has no channel yet`);
-    const link = db.get("SELECT subject_id, service_user_id FROM linked_accounts WHERE service = 'network' AND user_id = ?", [user.id]);
+    const link = await db.get("SELECT subject_id, service_user_id FROM linked_accounts WHERE service = 'network' AND user_id = ?", [user.id]);
     const legacy_ids = { live_user_id: user.id };
     if (link && int(link.service_user_id)) legacy_ids.network_user_id = int(link.service_user_id);
     const out = {

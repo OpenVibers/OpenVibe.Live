@@ -15,20 +15,19 @@
 const assert = require('assert');
 const fs = require('fs');
 const http = require('http');
-const os = require('os');
 const path = require('path');
 const express = require('express');
-const Database = require('better-sqlite3');
+const db = require('../server/db/database');
 const observability = require('../server/web/observability');
 
-const tmpDb = path.join(os.tmpdir(), `openvibe-observability-test-${process.pid}-${Date.now()}.db`);
-
 (async () => {
-    const sqlite = new Database(tmpDb);
-    sqlite.exec('CREATE TABLE streams (id INTEGER PRIMARY KEY, is_live INTEGER)');
-    sqlite.prepare('INSERT INTO streams (is_live) VALUES (1), (1), (0)').run();
+    await db.initDb();
+    await db.getDb().prepare("INSERT INTO users (id, username, password_hash) OVERRIDING SYSTEM VALUE VALUES (1, 'obs', '$sso$')").run();
+    await db.getDb().prepare('INSERT INTO streams (user_id, is_live) VALUES (1, 1), (1, 1), (1, 0)').run();
     let dbBroken = false;
-    const dbQuery = () => { if (dbBroken) throw new Error('SQLITE_IOERR: disk I/O error'); return sqlite.prepare('SELECT 1 AS ok').get(); };
+    // A real query against the migrated database; when it must "fail", run one against a table that does
+    // not exist, which PostgreSQL refuses (code 42P01).
+    const dbQuery = async () => (dbBroken ? await db.getDb().prepare('SELECT 1 FROM ov_no_such_table').get() : await db.getDb().prepare('SELECT 1 AS ok').get());
 
     // Fake Media: /healthz answers 200 or 502.
     let mediaUp = true; let mediaHits = 0;
@@ -52,7 +51,7 @@ const tmpDb = path.join(os.tmpdir(), `openvibe-observability-test-${process.pid}
     });
     app.get('/api/ready', readiness.handler);
     observability.registerDomainGauges(registry, {
-        liveStreams: () => sqlite.prepare('SELECT COUNT(*) AS n FROM streams WHERE is_live = 1').get().n,
+        liveStreams: async () => (await db.getDb().prepare('SELECT COUNT(*) AS n FROM streams WHERE is_live = 1').get()).n,
         wsServers: { chat: fakeWss(12), broadcast: fakeWss(2), control: fakeWss(0), call: { wss: null } },
         outboxStatus: () => outbox,
     });
@@ -118,7 +117,7 @@ const tmpDb = path.join(os.tmpdir(), `openvibe-observability-test-${process.pid}
     body = JSON.parse(r.body);
     assert.strictEqual(r.status, 503);
     assert.deepStrictEqual(body.failed, ['db']);
-    assert.match(body.checks.db.error, /SQLITE_IOERR/);
+    assert.match(body.checks.db.error, /does not exist/);
     dbBroken = false;
 
     // A fresh readiness with Media down reports it degraded.
@@ -193,12 +192,10 @@ const tmpDb = path.join(os.tmpdir(), `openvibe-observability-test-${process.pid}
     assert.ok(/release\.mount\(app, \{ registry: metricsRegistry \}\)/.test(src), '/release.json and /release-metrics are mounted with the metrics registry');
     assert.ok(src.indexOf('release.mount(app') > src.indexOf('app.use(express.json('), 'after the JSON parser, as tested above');
 
-    server.close(); media.close(); sqlite.close();
-    for (const f of [tmpDb, `${tmpDb}-wal`, `${tmpDb}-shm`]) { try { fs.unlinkSync(f); } catch { /* */ } }
+    server.close(); media.close();
     console.log('observability: all checks passed');
     process.exit(0);
 })().catch((err) => {
     console.error(err);
-    for (const f of [tmpDb, `${tmpDb}-wal`, `${tmpDb}-shm`]) { try { fs.unlinkSync(f); } catch { /* */ } }
     process.exit(1);
 });

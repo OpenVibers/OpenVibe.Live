@@ -56,13 +56,13 @@ function invalidateRelayHidden(channelId) {
 router.use(requireAuth);
 
 // ── List bans ────────────────────────────────────────────────
-router.get('/bans', permissions.requireGlobalMod, (req, res) => {
+router.get('/bans', permissions.requireGlobalMod, async (req, res) => {
     try {
         const limit = Math.min(parseInt(req.query.limit || '100'), 500);
         const streamId = req.query.stream_id ? parseInt(req.query.stream_id) : null;
         const where = streamId ? 'WHERE b.stream_id = ?' : '';
         const params = streamId ? [streamId, limit] : [limit];
-        const bans = db.all(`
+        const bans = await db.all(`
             SELECT b.*, u.username as banned_username, m.username as banned_by_username,
                    s.title as stream_title
             FROM bans b
@@ -95,8 +95,8 @@ router.get('/bans', permissions.requireGlobalMod, (req, res) => {
  * Staff are now never swept up by the cascade, nobody can ban themselves by association, and a
  * moderator cannot ban someone of equal or higher rank directly either.
  */
-function performGlobalBan(req, res, { userId, reason, durationHours, ipAddress }) {
-    const targetUser = db.getUserById(parseInt(userId));
+async function performGlobalBan(req, res, { userId, reason, durationHours, ipAddress }) {
+    const targetUser = await db.getUserById(parseInt(userId));
     if (!targetUser) return res.status(404).json({ error: 'User not found' });
     if (targetUser.id === req.user.id) return res.status(400).json({ error: 'You cannot ban yourself' });
     if (permissions.isStaff(targetUser) && permissions.roleRank(targetUser.role) >= permissions.roleRank(req.user.role)) {
@@ -111,13 +111,13 @@ function performGlobalBan(req, res, { userId, reason, durationHours, ipAddress }
     // Auto-detect IP from connected WebSocket clients, then fall back to IP log
     let resolvedIp = ipAddress || delivery.getConnectedUserIp(targetUser.id);
     if (!resolvedIp) {
-        const latest = db.getLatestIpForUser(targetUser.id);
+        const latest = await db.getLatestIpForUser(targetUser.id);
         if (latest) resolvedIp = latest.ip_address;
     }
 
     // Set the site-wide is_banned flag
-    db.run('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ?', [banReason, targetUser.id]);
-    db.run(
+    await db.run('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ?', [banReason, targetUser.id]);
+    await db.run(
         `INSERT INTO bans (user_id, ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?, ?)`,
         [targetUser.id, resolvedIp, banReason, req.user.id, expires]
     );
@@ -125,20 +125,20 @@ function performGlobalBan(req, res, { userId, reason, durationHours, ipAddress }
     let cascadeBanned = 0, cascadeSkippedStaff = 0;
     if (resolvedIp) {
         // Standalone IP ban (catches future visits and new alts)
-        db.run(
+        await db.run(
             `INSERT INTO bans (ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?)`,
             [resolvedIp, banReason + ` (IP of ${targetUser.username})`, req.user.id, expires]
         );
         // Cascade: ban the other accounts that have used this IP — except staff and the moderator
         // doing the banning.
-        for (const alt of db.getLinkedAccounts(targetUser.id)) {
+        for (const alt of await db.getLinkedAccounts(targetUser.id)) {
             if (alt.is_banned) continue;
             if (alt.id === req.user.id || permissions.isStaff(alt)) { cascadeSkippedStaff++; continue; }
-            db.run('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ?',
+            await db.run('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ?',
                 [banReason + ` (alt of ${targetUser.username})`, alt.id]);
-            db.run(`INSERT INTO bans (user_id, reason, banned_by, expires_at) VALUES (?, ?, ?, ?)`,
+            await db.run(`INSERT INTO bans (user_id, reason, banned_by, expires_at) VALUES (?, ?, ?, ?)`,
                 [alt.id, banReason + ` (alt of ${targetUser.username})`, req.user.id, expires]);
-            delivery.disconnect({ userId: alt.id });
+            await delivery.disconnect({ userId: alt.id });
             cascadeBanned++;
         }
         if (cascadeBanned || cascadeSkippedStaff) {
@@ -147,9 +147,9 @@ function performGlobalBan(req, res, { userId, reason, durationHours, ipAddress }
     }
 
     // Immediately disconnect the user from chat
-    delivery.disconnect({ userId: targetUser.id, ip: resolvedIp });
+    await delivery.disconnect({ userId: targetUser.id, ip: resolvedIp });
 
-    delivery.logModeration({
+    await delivery.logModeration({
         scope_type: 'site',
         actor_user_id: req.user.id,
         target_user_id: targetUser.id,
@@ -160,11 +160,11 @@ function performGlobalBan(req, res, { userId, reason, durationHours, ipAddress }
     return res.json({ message: `${targetUser.username} globally banned` });
 }
 
-router.post('/global-ban', permissions.requireGlobalMod, (req, res) => {
+router.post('/global-ban', permissions.requireGlobalMod, async (req, res) => {
     try {
         const { user_id, reason, duration_hours, ip_address } = req.body;
         if (!user_id) return res.status(400).json({ error: 'user_id required' });
-        return performGlobalBan(req, res, { userId: user_id, reason, durationHours: duration_hours, ipAddress: ip_address });
+        return await performGlobalBan(req, res, { userId: user_id, reason, durationHours: duration_hours, ipAddress: ip_address });
     } catch (err) {
         console.error('[Mod] Global ban error:', err.message);
         res.status(500).json({ error: 'Failed to ban user' });
@@ -173,28 +173,28 @@ router.post('/global-ban', permissions.requireGlobalMod, (req, res) => {
 
 // ── Per-User Ban/Unban (staff console) ───────────────────────
 // Same ban, addressed by URL; both routes share performGlobalBan so they cannot drift apart again.
-router.post('/users/:id/ban', permissions.requireGlobalMod, (req, res) => {
+router.post('/users/:id/ban', permissions.requireGlobalMod, async (req, res) => {
     try {
         const { reason, duration_hours } = req.body;
-        return performGlobalBan(req, res, { userId: req.params.id, reason, durationHours: duration_hours });
+        return await performGlobalBan(req, res, { userId: req.params.id, reason, durationHours: duration_hours });
     } catch (err) {
         console.error('[Mod] User ban error:', err.message);
         res.status(500).json({ error: 'Failed to ban user' });
     }
 });
 
-router.delete('/users/:id/ban', permissions.requireGlobalMod, (req, res) => {
+router.delete('/users/:id/ban', permissions.requireGlobalMod, async (req, res) => {
     try {
         const userId = parseInt(req.params.id);
-        const targetUser = db.getUserById(userId);
+        const targetUser = await db.getUserById(userId);
         if (!targetUser) return res.status(404).json({ error: 'User not found' });
 
-        db.run('UPDATE users SET is_banned = 0, ban_reason = NULL WHERE id = ?', [userId]);
-        db.run('DELETE FROM bans WHERE user_id = ? AND stream_id IS NULL', [userId]);
+        await db.run('UPDATE users SET is_banned = 0, ban_reason = NULL WHERE id = ?', [userId]);
+        await db.run('DELETE FROM bans WHERE user_id = ? AND stream_id IS NULL', [userId]);
 
-        delivery.disconnect({ userId });
+        await delivery.disconnect({ userId });
 
-        delivery.logModeration({
+        await delivery.logModeration({
             scope_type: 'site',
             actor_user_id: req.user.id,
             target_user_id: userId,
@@ -229,21 +229,21 @@ router.post('/stream-ban', async (req, res) => {
             : null;
 
         if (user_id) {
-            const targetUser = db.getUserById(parseInt(user_id));
+            const targetUser = await db.getUserById(parseInt(user_id));
             if (!targetUser) return res.status(404).json({ error: 'User not found' });
 
             // Auto-detect IP from connected clients if not provided
             const resolvedIp = ip_address || delivery.getConnectedUserIp(targetUser.id);
 
-            db.run(
+            await db.run(
                 `INSERT INTO bans (stream_id, user_id, ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
                 [streamId, targetUser.id, resolvedIp, banReason, req.user.id, expires]
             );
 
             // Disconnect from this stream's chat
-            delivery.disconnect({ userId: targetUser.id, ip: resolvedIp, streamId });
+            await delivery.disconnect({ userId: targetUser.id, ip: resolvedIp, streamId });
 
-            delivery.logModeration({
+            await delivery.logModeration({
                 scope_type: 'stream',
                 scope_id: streamId,
                 actor_user_id: req.user.id,
@@ -258,15 +258,15 @@ router.post('/stream-ban', async (req, res) => {
             const anonClient = delivery.findClientByAnonId(anon_id, streamId);
             const resolvedIp = ip_address || anonClient?.ip || null;
 
-            db.run(
+            await db.run(
                 `INSERT INTO bans (stream_id, ip_address, anon_id, reason, banned_by, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
                 [streamId, resolvedIp, anon_id, banReason, req.user.id, expires]
             );
 
             // Disconnect the anon user
-            if (resolvedIp) delivery.disconnect({ ip: resolvedIp, streamId });
+            if (resolvedIp) await delivery.disconnect({ ip: resolvedIp, streamId });
 
-            delivery.logModeration({
+            await delivery.logModeration({
                 scope_type: 'stream',
                 scope_id: streamId,
                 actor_user_id: req.user.id,
@@ -285,7 +285,7 @@ router.post('/stream-ban', async (req, res) => {
 // ── Unban ────────────────────────────────────────────────────
 router.delete('/ban/:id', async (req, res) => {
     try {
-        const ban = db.get('SELECT * FROM bans WHERE id = ?', [req.params.id]);
+        const ban = await db.get('SELECT * FROM bans WHERE id = ?', [req.params.id]);
         if (!ban) return res.status(404).json({ error: 'Ban not found' });
 
         // Permission check: global bans require global_mod+, stream bans require stream mod
@@ -295,10 +295,10 @@ router.delete('/ban/:id', async (req, res) => {
             }
             // Clear is_banned flag if this was a global user ban
             if (ban.user_id) {
-                db.run('UPDATE users SET is_banned = 0, ban_reason = NULL WHERE id = ?', [ban.user_id]);
+                await db.run('UPDATE users SET is_banned = 0, ban_reason = NULL WHERE id = ?', [ban.user_id]);
                 // Remove ALL global bans for this user (user + IP entries)
-                db.run('DELETE FROM bans WHERE user_id = ? AND stream_id IS NULL', [ban.user_id]);
-                db.run('DELETE FROM bans WHERE ip_address IS NOT NULL AND banned_by = ? AND stream_id IS NULL AND reason LIKE ?',
+                await db.run('DELETE FROM bans WHERE user_id = ? AND stream_id IS NULL', [ban.user_id]);
+                await db.run('DELETE FROM bans WHERE ip_address IS NOT NULL AND banned_by = ? AND stream_id IS NULL AND reason ILIKE ?',
                     [ban.banned_by, '%' + (ban.reason || '') + '%']);
             }
         } else {
@@ -307,9 +307,9 @@ router.delete('/ban/:id', async (req, res) => {
             }
         }
 
-        db.run('DELETE FROM bans WHERE id = ?', [req.params.id]);
+        await db.run('DELETE FROM bans WHERE id = ?', [req.params.id]);
 
-        delivery.logModeration({
+        await delivery.logModeration({
             scope_type: ban.stream_id ? 'stream' : 'site',
             scope_id: ban.stream_id || undefined,
             actor_user_id: req.user.id,
@@ -398,7 +398,7 @@ router.post('/delete-message', async (req, res) => {
             let allowed = false;
             if (message.stream_id) allowed = await permissions.canModerateStream(req.user, message.stream_id);
             else if (message.channel_user_id) {
-                const ownerChannel = db.getChannelByUserId(message.channel_user_id);
+                const ownerChannel = await db.getChannelByUserId(message.channel_user_id);
                 allowed = !!(ownerChannel && await permissions.canModerateChannel(req.user, ownerChannel.id));
             }
             if (!allowed) return res.status(403).json({ error: 'You cannot moderate this stream' });
@@ -407,7 +407,7 @@ router.post('/delete-message', async (req, res) => {
         // Chat deletes the row and broadcasts the delete to every surface it reached.
         await delivery.moderate('delete-message', { id: parseInt(message_id), deleted_by: req.user.id }, { key: `delete:${message_id}` });
 
-        delivery.logModeration({
+        await delivery.logModeration({
             scope_type: message.stream_id ? 'stream' : 'site',
             scope_id: message.stream_id || undefined,
             actor_user_id: req.user.id,
@@ -451,7 +451,7 @@ router.post('/delete-user-messages', async (req, res) => {
         const ids = (r && Array.isArray(r.ids)) ? r.ids : [];
 
         const target = user_id ? `user ${user_id}` : anon_id ? `anon ${anon_id}` : `relay ${relay_username}`;
-        delivery.logModeration({
+        await delivery.logModeration({
             scope_type: scopedStreamId ? 'stream' : 'site',
             scope_id: scopedStreamId || undefined,
             actor_user_id: req.user.id,
@@ -485,7 +485,7 @@ router.post('/relay-user/hide', async (req, res) => {
         // their mods act on their own channel. (Leaving channel_id out used to skip the check.)
         if (!isGlobal) {
             if (!channel_id) return res.status(403).json({ error: 'Only staff can hide relay users site-wide' });
-            const channel = db.getChannelById(channel_id);
+            const channel = await db.getChannelById(channel_id);
             if (!channel) return res.status(404).json({ error: 'Channel not found' });
             if (!(await permissions.canModerateChannel(req.user, channel.id))) {
                 return res.status(403).json({ error: 'You cannot moderate this channel' });
@@ -496,7 +496,7 @@ router.post('/relay-user/hide', async (req, res) => {
         if (action === 'unban' || action === 'unhide') {
             await delivery.moderate('relay-unhide', { channel_id: channel_id || undefined, platform, external_username });
             invalidateRelayHidden(channel_id || null);
-            delivery.logModeration({
+            await delivery.logModeration({
                 scope_type: channel_id ? 'channel' : 'site',
                 scope_id: channel_id || undefined,
                 actor_user_id: req.user.id,
@@ -509,7 +509,7 @@ router.post('/relay-user/hide', async (req, res) => {
         await delivery.moderate('relay-hide', { channel_id: channel_id || undefined, platform, external_username, mode: action || 'hide', reason: reason || undefined, created_by: req.user.id });
         invalidateRelayHidden(channel_id || null);
 
-        delivery.logModeration({
+        await delivery.logModeration({
             scope_type: channel_id ? 'channel' : 'site',
             scope_id: channel_id || undefined,
             actor_user_id: req.user.id,
@@ -536,7 +536,7 @@ router.delete('/relay-user/:id', async (req, res) => {
         await delivery.moderate('relay-unhide', { id: row.id });
         invalidateRelayHidden(row.channel_id);
 
-        delivery.logModeration({
+        await delivery.logModeration({
             scope_type: 'site',
             actor_user_id: req.user.id,
             action_type: 'relay_user_unhide',
@@ -604,7 +604,7 @@ router.post('/ip-approval/:channelId/approve', async (req, res) => {
         const { ip } = req.body;
         if (!ip) return res.status(400).json({ error: 'ip required' });
 
-        const channel = db.getChannelById(channelId);
+        const channel = await db.getChannelById(channelId);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
         if (channel.user_id !== req.user.id && !permissions.isGlobalModOrAbove(req.user)) {
             return res.status(403).json({ error: 'Access denied' });
@@ -616,7 +616,7 @@ router.post('/ip-approval/:channelId/approve', async (req, res) => {
 
         await delivery.moderate('approve-ip-messages', { channel_id: parseInt(channelId), ip, reviewed_by: req.user.id });
 
-        delivery.logModeration({
+        await delivery.logModeration({
             scope_type: 'channel',
             scope_id: channelId,
             actor_user_id: req.user.id,
@@ -639,7 +639,7 @@ router.post('/ip-approval/:channelId/deny', async (req, res) => {
         const { ip } = req.body;
         if (!ip) return res.status(400).json({ error: 'ip required' });
 
-        const channel = db.getChannelById(channelId);
+        const channel = await db.getChannelById(channelId);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
         if (channel.user_id !== req.user.id && !permissions.isGlobalModOrAbove(req.user)) {
             return res.status(403).json({ error: 'Access denied' });
@@ -647,7 +647,7 @@ router.post('/ip-approval/:channelId/deny', async (req, res) => {
 
         await delivery.moderate('deny-ip-messages', { channel_id: parseInt(channelId), ip, reviewed_by: req.user.id });
 
-        delivery.logModeration({
+        await delivery.logModeration({
             scope_type: 'channel',
             scope_id: channelId,
             actor_user_id: req.user.id,
@@ -671,7 +671,7 @@ router.post('/ip-approval/:channelId/review', async (req, res) => {
             return res.status(400).json({ error: 'message_id and status (approved/denied) required' });
         }
 
-        const channel = db.getChannelById(channelId);
+        const channel = await db.getChannelById(channelId);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
         if (channel.user_id !== req.user.id && !permissions.isGlobalModOrAbove(req.user)) {
             return res.status(403).json({ error: 'Access denied' });
@@ -691,14 +691,14 @@ router.post('/ip-approval/:channelId/review', async (req, res) => {
 // ══════════════════════════════════════════════════════════════
 
 // ── Get all IPs used by a user ───────────────────────────────
-router.get('/ip/user/:userId', permissions.requireGlobalMod, (req, res) => {
+router.get('/ip/user/:userId', permissions.requireGlobalMod, async (req, res) => {
     try {
         const userId = parseInt(req.params.userId);
-        const user = db.getUserById(userId);
+        const user = await db.getUserById(userId);
         if (!user) return res.status(404).json({ error: 'User not found' });
 
-        const ips = db.getIpsByUser(userId);
-        const linked = db.getLinkedAccounts(userId);
+        const ips = await db.getIpsByUser(userId);
+        const linked = await db.getLinkedAccounts(userId);
 
         // Also check if the user is currently connected and get their live IP
         const liveIp = delivery.getConnectedUserIp(userId);
@@ -716,11 +716,11 @@ router.get('/ip/user/:userId', permissions.requireGlobalMod, (req, res) => {
 });
 
 // ── Get IP info for an anon ──────────────────────────────────
-router.get('/ip/anon/:anonId', permissions.requireGlobalMod, (req, res) => {
+router.get('/ip/anon/:anonId', permissions.requireGlobalMod, async (req, res) => {
     try {
         const anonId = req.params.anonId;
-        const latest = db.getLatestIpForAnon(anonId);
-        const linked = db.getLinkedAccountsByAnon(anonId);
+        const latest = await db.getLatestIpForAnon(anonId);
+        const linked = await db.getLinkedAccountsByAnon(anonId);
 
         // Try to find their live IP from connected clients
         const anonClient = delivery.findClientByAnonId(anonId);
@@ -747,12 +747,12 @@ router.get('/ip/anon/:anonId', permissions.requireGlobalMod, (req, res) => {
 });
 
 // ── Lookup all accounts on a specific IP ─────────────────────
-router.get('/ip/lookup/:ip', permissions.requireGlobalMod, (req, res) => {
+router.get('/ip/lookup/:ip', permissions.requireGlobalMod, async (req, res) => {
     try {
         const ip = req.params.ip;
-        const users = db.getUsersByIp(ip);
+        const users = await db.getUsersByIp(ip);
         const geo = ipUtils.lookupIp(ip);
-        const isBanned = db.isIpBanned(ip, null);
+        const isBanned = await db.isIpBanned(ip, null);
 
         res.json({ ip, geo, is_banned: isBanned, accounts: users });
     } catch (err) {
@@ -762,10 +762,10 @@ router.get('/ip/lookup/:ip', permissions.requireGlobalMod, (req, res) => {
 });
 
 // ── Get linked accounts (alt detection) ──────────────────────
-router.get('/ip/alts/:userId', permissions.requireGlobalMod, (req, res) => {
+router.get('/ip/alts/:userId', permissions.requireGlobalMod, async (req, res) => {
     try {
         const userId = parseInt(req.params.userId);
-        const linked = db.getLinkedAccounts(userId);
+        const linked = await db.getLinkedAccounts(userId);
         res.json({ user_id: userId, linked_accounts: linked });
     } catch (err) {
         console.error('[Mod] Alt detection error:', err.message);
@@ -774,7 +774,7 @@ router.get('/ip/alts/:userId', permissions.requireGlobalMod, (req, res) => {
 });
 
 // ── Ban all accounts on an IP ────────────────────────────────
-router.post('/ip/ban-all', permissions.requireGlobalMod, (req, res) => {
+router.post('/ip/ban-all', permissions.requireGlobalMod, async (req, res) => {
     try {
         const { ip, reason, duration_hours } = req.body;
         if (!ip) return res.status(400).json({ error: 'ip required' });
@@ -784,17 +784,17 @@ router.post('/ip/ban-all', permissions.requireGlobalMod, (req, res) => {
             ? new Date(Date.now() + parseInt(duration_hours) * 3600000).toISOString()
             : null;
 
-        const bannedIds = db.banAllAccountsOnIp(ip, {
+        const bannedIds = await db.banAllAccountsOnIp(ip, {
             reason: banReason,
             bannedBy: req.user.id,
             expires,
         });
 
         // Disconnect all clients on this IP
-        delivery.disconnect({ ip });
+        await delivery.disconnect({ ip });
 
         // Log the action
-        delivery.logModeration({
+        await delivery.logModeration({
             scope_type: 'site',
             actor_user_id: req.user.id,
             action_type: 'ip_ban_all',
@@ -814,7 +814,7 @@ router.post('/ip/ban-all', permissions.requireGlobalMod, (req, res) => {
 });
 
 // ── Search IP history log ────────────────────────────────────
-router.get('/ip/log', permissions.requireGlobalMod, (req, res) => {
+router.get('/ip/log', permissions.requireGlobalMod, async (req, res) => {
     try {
         const filters = {};
         if (req.query.user_id) filters.userId = parseInt(req.query.user_id);
@@ -824,7 +824,7 @@ router.get('/ip/log', permissions.requireGlobalMod, (req, res) => {
         filters.limit = Math.min(parseInt(req.query.limit || '100'), 500);
         filters.offset = parseInt(req.query.offset || '0');
 
-        const log = db.getIpLog(filters);
+        const log = await db.getIpLog(filters);
         res.json({ log });
     } catch (err) {
         console.error('[Mod] IP log error:', err.message);
@@ -872,11 +872,11 @@ router.get('/tts-voice/:kind/:id', permissions.requireGlobalMod, async (req, res
 });
 
 // PUT: set explicit params, or {reset:true} (back to auto), or {reroll:true} (new random voice).
-router.put('/tts-voice/:kind/:id', permissions.requireGlobalMod, (req, res) => {
+router.put('/tts-voice/:kind/:id', permissions.requireGlobalMod, async (req, res) => {
     try {
         const identityKey = _ttsIdentityKey(req.params.kind, req.params.id);
         if (req.body?.reset) {
-            delivery.moderate('tts-voice-override', { identity_key: identityKey });
+            await delivery.moderate('tts-voice-override', { identity_key: identityKey });
             return res.json({ isOverride: false, params: ttsEngine.autoUserVoiceParams(identityKey) });
         }
         let params;
@@ -893,7 +893,7 @@ router.put('/tts-voice/:kind/:id', permissions.requireGlobalMod, (req, res) => {
             params = { voice: req.body?.voice, pitch: req.body?.pitch, speed: req.body?.speed, gap: req.body?.gap };
         }
         const clamped = ttsEngine.clampVoiceParams(params);
-        delivery.moderate('tts-voice-override', { identity_key: identityKey, params: clamped, set_by: req.user.id });
+        await delivery.moderate('tts-voice-override', { identity_key: identityKey, params: clamped, set_by: req.user.id });
         res.json({ isOverride: true, params: clamped });
     } catch (err) {
         console.error('[Mod] tts-voice set error:', err.message);

@@ -28,10 +28,10 @@ const PIXEL = Buffer.from(
 );
 
 // ── Live stream thumbnail upload (from broadcaster client) ───
-router.post('/live/:streamId', requireAuth, upload.single('thumbnail'), (req, res) => {
+router.post('/live/:streamId', requireAuth, upload.single('thumbnail'), async (req, res) => {
     try {
         const streamId = parseInt(req.params.streamId);
-        const stream = db.getStreamById(streamId);
+        const stream = await db.getStreamById(streamId);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
         if (stream.user_id !== req.user.id && !can(req.user, 'staff.streams.manage')) {
             return res.status(403).json({ error: 'Not your stream' });
@@ -39,7 +39,7 @@ router.post('/live/:streamId', requireAuth, upload.single('thumbnail'), (req, re
         if (!stream.is_live) return res.status(400).json({ error: 'Stream is not live' });
         const imageData = req.file ? req.file.buffer : (req.body && req.body.image);
         if (!imageData) return res.status(400).json({ error: 'No image data provided' });
-        const thumbUrl = liveThumbs.saveLiveThumbnail(streamId, imageData);
+        const thumbUrl = await liveThumbs.saveLiveThumbnail(streamId, imageData);
         if (thumbUrl) res.json({ thumbnail_url: thumbUrl });
         else res.status(400).json({ error: 'Invalid image data' });
     } catch (err) {
@@ -54,7 +54,7 @@ async function generateFor(kind, id, req, res) {
         const meta = kind === 'vod' ? await media.getVod(id) : await media.getClip(id);
         const notFound = () => res.status(404).json({ error: `${kind === 'vod' ? 'VOD' : 'Clip'} not found` });
         // A private item is missing to anyone who may not see it (a 403 would confirm it exists).
-        if (!meta || !access.canView(req.user, meta)) return notFound();
+        if (!meta || !await access.canView(req.user, meta)) return notFound();
         const canManage = !!req.user && (meta.user_id === req.user.id || can(req.user, 'staff.streams.manage'));
         const isPublic = meta.visibility ? meta.visibility === 'public' : !!meta.is_public;
         if (!canManage && !isPublic) return res.status(403).json({ error: `Not your ${kind}` });
@@ -67,8 +67,8 @@ async function generateFor(kind, id, req, res) {
         res.status(502).json({ error: 'Media service unavailable' });
     }
 }
-router.post('/generate/vod/:id', optionalAuth, (req, res) => generateFor('vod', req.params.id, req, res));
-router.post('/generate/clip/:id', optionalAuth, (req, res) => generateFor('clip', req.params.id, req, res));
+router.post('/generate/vod/:id', optionalAuth, async (req, res) => await generateFor('vod', req.params.id, req, res));
+router.post('/generate/clip/:id', optionalAuth, async (req, res) => await generateFor('clip', req.params.id, req, res));
 // GET variants: <img> onerror fallbacks point here. Media's legacy
 // /api/thumbnails/<kind>-<id>-<ts>.jpg route resolves the CURRENT thumbnail for
 // that id (names drift on regeneration), so bounce through it with a fake ts.
@@ -85,7 +85,7 @@ router.get('/generate/clip/:id', _generateRedirect('clip'));
 
 // ── Serve a thumbnail ────────────────────────────────────────
 // Live thumbnails come from local disk; everything else 302s to openvibe.media.
-router.get('/:filename', (req, res) => {
+router.get('/:filename', async (req, res) => {
     const filename = path.basename(req.params.filename);
     // stream-<id>-live.jpg: whatever that stream's live thumbnail is now (each capture gets a new
     // file name). The broadcaster's RTMP/JSMPEG preview polls it (public/js/broadcast.js
@@ -93,7 +93,7 @@ router.get('/:filename', (req, res) => {
     // than showing the 1×1 placeholder.
     const alias = /^stream-(\d+)-live\.jpg$/.exec(filename);
     if (alias) {
-        const current = liveThumbs.getStreamThumbnailState(Number(alias[1]));
+        const current = await liveThumbs.getStreamThumbnailState(Number(alias[1]));
         if (current.exists) {
             res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Length': fs.statSync(current.filePath).size, 'Cache-Control': 'no-cache' });
             return fs.createReadStream(current.filePath).pipe(res);

@@ -11,10 +11,10 @@ const { guard } = require('../net/service-guard');
 // performs on a Network service token (server/net/service-guard.js); nothing else gets in (X-Internal-Key: plan T2).
 
 // CHAT_AUTHORITY=chat: OpenVibe.Chat caches users; a role or avatar pushed here reaches it at once.
-function notifyChat(userId) {
+async function notifyChat(userId) {
     try {
         const delivery = require('../chat/chat-delivery');
-        if (delivery.ingress()) delivery.invalidate({ user: Number(userId) });
+        if (delivery.ingress()) await delivery.invalidate({ user: Number(userId) });
     } catch { /* non-critical */ }
 }
 
@@ -39,7 +39,7 @@ router.post('/url-registry/refresh', guard('live.url_registry.refresh'), async (
 // ── The account's avatar changed on the Network (or on another site) ─────────
 // The avatar is a network-wide property (OpenVibe.Network server/profile/avatar.js). Live keeps a copy on its
 // own user row because every stream card, chat line and profile reads it locally.
-router.post('/user-avatar', guard('live.avatar.write'), (req, res) => {
+router.post('/user-avatar', guard('live.avatar.write'), async (req, res) => {
     try {
         const { username, openvibenetwork_id, avatar_url } = req.body || {};
         let url = null;
@@ -50,13 +50,13 @@ router.post('/user-avatar', guard('live.avatar.write'), (req, res) => {
         }
         let user = null;
         if (openvibenetwork_id != null) {
-            const linked = db.getDb().prepare("SELECT user_id FROM linked_accounts WHERE service = 'network' AND service_user_id = ?").get(String(openvibenetwork_id));
-            if (linked) user = db.getUserById(linked.user_id);
+            const linked = await db.getDb().prepare("SELECT user_id FROM linked_accounts WHERE service = 'network' AND service_user_id = ?").get(String(openvibenetwork_id));
+            if (linked) user = await db.getUserById(linked.user_id);
         }
-        if (!user && username) user = db.getUserByUsername(username);
+        if (!user && username) user = await db.getUserByUsername(username);
         if (!user) return res.status(404).json({ ok: false, error: 'user not found' });
-        if ((user.avatar_url || null) !== url) db.updateUserAvatar(user.id, url, null);
-        notifyChat(user.id);
+        if ((user.avatar_url || null) !== url) await db.updateUserAvatar(user.id, url, null);
+        await notifyChat(user.id);
         return res.json({ ok: true, id: user.id, changed: (user.avatar_url || null) !== url });
     } catch (err) {
         console.error('[Internal] user-avatar error:', err.message);

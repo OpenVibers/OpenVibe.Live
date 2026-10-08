@@ -52,68 +52,72 @@ const K = {
     admin: 'a7'.repeat(16),
 };
 
-const SEED = `
+const SEED = `(async () => {
     const db = require('./server/db/database');
-    db.initDb();
+    await db.initDb();
     const K = JSON.parse(process.env.SENTINELS);
-    const mk = (u, role, key) => {
-        const id = db.createUser({ username: u, password_hash: 'x', display_name: u, email: u + '@example.test', stream_key: key }).lastInsertRowid;
-        db.run('UPDATE users SET role = ? WHERE id = ?', [role, id]);
-        db.ensureChannel(id);
-        db.getDb().prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, service_username) VALUES (?, 'network', ?, ?)").run(id, String(9000 + Number(id)), u);
+    const mk = async (u, role, key) => {
+        const id = (await db.createUser({ username: u, password_hash: 'x', display_name: u, email: u + '@example.test', stream_key: key })).lastInsertRowid;
+        await db.run('UPDATE users SET role = ? WHERE id = ?', [role, id]);
+        await db.ensureChannel(id);
+        await db.getDb().prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, service_username) VALUES (?, 'network', ?, ?)").run(id, String(9000 + Number(id)), u);
         return Number(id);
     };
-    const owner = mk('keyowner', 'streamer', K.account);
-    const fan = mk('keyfan', 'user', K.fan);
-    const peer = mk('keypeer', 'streamer', K.peer);
-    const mod = mk('keymod', 'global_mod', K.mod);
-    const admin = mk('keyadmin', 'admin', K.admin);
-    const ch = db.getChannelByUserId(owner);
-    const slot = Number(db.createManagedStream({ user_id: owner, channel_id: ch.id, slug: 'main', title: 'Main slot', protocol: 'rtmp', stream_key: K.slotMain }).lastInsertRowid);
-    const slot2 = Number(db.createManagedStream({ user_id: owner, channel_id: ch.id, slug: 'relay', title: 'OpenRe slot', protocol: 'rtmp', stream_key: K.slotOpenre }).lastInsertRowid);
-    const cols = db.all('PRAGMA table_info(managed_streams)').map((c) => c.name);
-    if (cols.includes('ingest_authority')) db.run("UPDATE managed_streams SET ingest_authority = 'openre', openre_stream_id = 'std_sentinel' WHERE id = ?", [slot2]);
-    const live = Number(db.createStream({ user_id: owner, channel_id: ch.id, managed_stream_id: slot, title: 'Live now', protocol: 'rtmp' }).lastInsertRowid);
-    const ended = Number(db.createStream({ user_id: owner, channel_id: ch.id, managed_stream_id: slot2, title: 'Earlier', protocol: 'rtmp' }).lastInsertRowid);
-    db.endStream(ended);
-    db.run("UPDATE streams SET last_heartbeat = datetime('now'), viewer_count = 3 WHERE id = ?", [live]);
-    db.createRestreamDestination(owner, { platform: 'custom', name: 'Mirror', server_url: 'srt://ingest.example.test:9000', stream_key: K.restreamKey, srt_passphrase: K.srtPassphrase, managed_stream_id: slot });
+    const owner = await mk('keyowner', 'streamer', K.account);
+    const fan = await mk('keyfan', 'user', K.fan);
+    const peer = await mk('keypeer', 'streamer', K.peer);
+    const mod = await mk('keymod', 'global_mod', K.mod);
+    const admin = await mk('keyadmin', 'admin', K.admin);
+    const ch = await db.getChannelByUserId(owner);
+    const slot = Number((await db.createManagedStream({ user_id: owner, channel_id: ch.id, slug: 'main', title: 'Main slot', protocol: 'rtmp', stream_key: K.slotMain })).lastInsertRowid);
+    const slot2 = Number((await db.createManagedStream({ user_id: owner, channel_id: ch.id, slug: 'relay', title: 'OpenRe slot', protocol: 'rtmp', stream_key: K.slotOpenre })).lastInsertRowid);
+    await db.run("UPDATE managed_streams SET ingest_authority = 'openre', openre_stream_id = 'std_sentinel' WHERE id = ?", [slot2]);
+    const live = Number((await db.createStream({ user_id: owner, channel_id: ch.id, managed_stream_id: slot, title: 'Live now', protocol: 'rtmp' })).lastInsertRowid);
+    const ended = Number((await db.createStream({ user_id: owner, channel_id: ch.id, managed_stream_id: slot2, title: 'Earlier', protocol: 'rtmp' })).lastInsertRowid);
+    await db.endStream(ended);
+    await db.run("UPDATE streams SET last_heartbeat = ov_now(), viewer_count = 3 WHERE id = ?", [live]);
+    await db.createRestreamDestination(owner, { platform: 'custom', name: 'Mirror', server_url: 'srt://ingest.example.test:9000', stream_key: K.restreamKey, srt_passphrase: K.srtPassphrase, managed_stream_id: slot });
     const ins = (sql, args) => db.getDb().prepare(sql).run(...args);
-    ins('INSERT INTO robotstreamer_integrations (user_id, enabled, token, robot_id, owner_id, stream_name, owner_name) VALUES (?, 1, ?, ?, ?, ?, ?)', [owner, K.rsToken, 'r1', 'o1', 'keyowner', 'keyowner']);
-    ins("INSERT INTO platform_connections (user_id, platform, platform_user_id, platform_username, access_token, refresh_token) VALUES (?, 'twitch', 't1', 'keyowner', ?, ?)", [owner, K.platformAccess, K.platformRefresh]);
-    ins('INSERT INTO powerchat_connections (user_id, powerchat_username, powerchat_user_id, access_token, refresh_token) VALUES (?, ?, ?, ?, ?)', [owner, 'keyowner', 'p1', K.powerchatAccess, K.powerchatRefresh]);
-    ins('INSERT INTO ai_chatbot_configs (user_id, enabled, api_token) VALUES (?, 1, ?)', [owner, K.aiBotToken]);
-    ins('INSERT INTO channel_ai_config (user_id, enabled, use_shared_key, byo_key) VALUES (?, 1, 0, ?)', [owner, K.byoKey]);
-    ins('INSERT INTO api_keys (user_id, key_hash, label) VALUES (?, ?, ?)', [owner, K.controlKeyHash, 'Robot']);
-    ins('INSERT INTO api_tokens (user_id, token_hash, label, scopes) VALUES (?, ?, ?, ?)', [owner, K.apiTokenHash, 'Bot', '["chat","read"]']);
-    const cam = Number(ins('INSERT INTO camera_profiles (user_id, stream_id, name, onvif_url, username, password_hash) VALUES (?, ?, ?, ?, ?, ?)', [owner, live, 'Desk cam', 'http://camera.example.test', 'admin', K.cameraPasswordHash]).lastInsertRowid);
-    db.run('INSERT INTO follows (follower_id, streamer_id) VALUES (?, ?)', [fan, owner]);
+    await ins('INSERT INTO robotstreamer_integrations (user_id, enabled, token, robot_id, owner_id, stream_name, owner_name) VALUES (?, 1, ?, ?, ?, ?, ?)', [owner, K.rsToken, 'r1', 'o1', 'keyowner', 'keyowner']);
+    await ins("INSERT INTO platform_connections (user_id, platform, platform_user_id, platform_username, access_token, refresh_token) VALUES (?, 'twitch', 't1', 'keyowner', ?, ?)", [owner, K.platformAccess, K.platformRefresh]);
+    await ins('INSERT INTO powerchat_connections (user_id, powerchat_username, powerchat_user_id, access_token, refresh_token) VALUES (?, ?, ?, ?, ?)', [owner, 'keyowner', 'p1', K.powerchatAccess, K.powerchatRefresh]);
+    await ins('INSERT INTO ai_chatbot_configs (user_id, enabled, api_token) VALUES (?, 1, ?)', [owner, K.aiBotToken]);
+    await ins('INSERT INTO channel_ai_config (user_id, enabled, use_shared_key, byo_key) VALUES (?, 1, 0, ?)', [owner, K.byoKey]);
+    await ins('INSERT INTO api_keys (user_id, key_hash, label) VALUES (?, ?, ?)', [owner, K.controlKeyHash, 'Robot']);
+    await ins('INSERT INTO api_tokens (user_id, token_hash, label, scopes) VALUES (?, ?, ?, ?)', [owner, K.apiTokenHash, 'Bot', '["chat","read"]']);
+    const cam = Number((await ins('INSERT INTO camera_profiles (user_id, stream_id, name, onvif_url, username, password_hash) VALUES (?, ?, ?, ?, ?, ?) RETURNING id', [owner, live, 'Desk cam', 'http://camera.example.test', 'admin', K.cameraPasswordHash])).lastInsertRowid);
+    await db.run('INSERT INTO follows (follower_id, streamer_id) VALUES (?, ?)', [fan, owner]);
 
     // What Live sends out about the stream, built from these rows the way production builds it.
-    (async () => {
-        const out = {};
-        const ev = require('./server/events/stream-events');
-        out.started = ev.envelopeFor('started', live);
-        out.ended = ev.envelopeFor('ended', ended);
-        try { out.searchDocument = require('./server/events/search-documents').documentFor(owner); } catch (e) { out.searchDocumentError = e.message; }
-        const raw = db.get('SELECT s.*, ms.stream_key AS managed_stream_key, ms.slug AS managed_stream_slug FROM streams s LEFT JOIN managed_streams ms ON ms.id = s.managed_stream_id WHERE s.id = ?', [live]);
-        const streamer = db.getUserById(owner);
-        const writes = [];
-        const le = require('./server/streaming/live-events');
-        le.subscribe({ on() {} }, { writeHead() {}, write(s) { writes.push(String(s)); } });
-        le.announceGoLive(raw, streamer);
-        out.sse = writes.join('');
-        const posted = [];
-        global.fetch = async (url, opts = {}) => { posted.push(String(opts.body || '')); return { ok: true, status: 200, json: async () => ({}) }; };
-        require('./server/streaming/golive-notify').notifyFollowersGoLive(streamer, raw, { force: true });
-        await new Promise((r) => setTimeout(r, 300));
-        out.goLive = posted;
-        out.rawHadKey = raw.managed_stream_key === K.slotMain && streamer.stream_key === K.account;
-        db.close();
-        console.log(JSON.stringify({ ids: { owner, fan, peer, mod, admin, channel: ch.id, slot, slot2, live, ended, cam }, out }));
-        process.exit(0);
-    })().catch((e) => { console.error(e); process.exit(1); });
-`;
+    const out = {};
+    const ev = require('./server/events/stream-events');
+    out.started = await ev.envelopeFor('started', live);
+    out.ended = await ev.envelopeFor('ended', ended);
+    try { out.searchDocument = await require('./server/events/search-documents').documentFor(owner); } catch (e) { out.searchDocumentError = e.message; }
+    const raw = await db.get('SELECT s.*, ms.stream_key AS managed_stream_key, ms.slug AS managed_stream_slug FROM streams s LEFT JOIN managed_streams ms ON ms.id = s.managed_stream_id WHERE s.id = ?', [live]);
+    const streamer = await db.getUserById(owner);
+    const writes = [];
+    const le = require('./server/streaming/live-events');
+    le.subscribe({ on() {} }, { writeHead() {}, write(s) { writes.push(String(s)); } });
+    await le.announceGoLive(raw, streamer);
+    out.sse = writes.join('');
+    const posted = [];
+    const realFetch = global.fetch;
+    // Network mints Live's service token, then takes the go-live call; only calls to Network's internal API are kept
+    // (anything else this process sends meanwhile, a Media read from a background job, is not the go-live call).
+    global.fetch = async (url, opts = {}) => {
+        if (String(url).endsWith('/oauth/token')) return { ok: true, status: 200, json: async () => ({ access_token: 'golive-service-token', expires_in: 300, token_type: 'Bearer' }) };
+        if (String(url).startsWith('http://127.0.0.1:9/internal/')) posted.push(String(opts.body || ''));
+        return { ok: true, status: 200, json: async () => ({}) };
+    };
+    try {
+        await require('./server/streaming/golive-notify').notifyFollowersGoLive(streamer, raw, { force: true });
+        for (let i = 0; i < 50 && !posted.length; i++) await new Promise((r) => setTimeout(r, 100));
+    } finally { global.fetch = realFetch; }
+    out.goLive = posted;
+    out.rawHadKey = raw.managed_stream_key === K.slotMain && streamer.stream_key === K.account;
+    return { ids: { owner, fan, peer, mod, admin, channel: ch.id, slot, slot2, live, ended, cam }, out };
+})()`;
 
 function hits(text, needles) {
     return Object.entries(needles).filter(([, v]) => v && String(text).includes(v)).map(([k]) => k);
@@ -121,7 +125,7 @@ function hits(text, needles) {
 
 (async () => {
     const tmp = crawl.tempEnv('stream-keys');
-    const seeded = crawl.seed(tmp, SEED, { SENTINELS: JSON.stringify(K), INTERNAL_API_KEY: 'internal-sentinel-for-golive', OV_NETWORK_INTERNAL_URL: 'http://127.0.0.1:9' });
+    const seeded = await crawl.seed(tmp, SEED, { SENTINELS: JSON.stringify(K), OV_OAUTH_CLIENT_SECRET: 'golive-client-secret', OV_NETWORK_INTERNAL_URL: 'http://127.0.0.1:9' });
     assert.ok(seeded && seeded.ids, 'seed printed its ids');
     const { ids, out } = seeded;
 

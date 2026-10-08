@@ -59,7 +59,7 @@ async function getCommentTarget(contentType, contentId) {
  */
 async function visibleTarget(user, contentType, contentId) {
     const target = await getCommentTarget(contentType, contentId);
-    return target && access.canView(user, target.row) ? target : null;
+    return target && await access.canView(user, target.row) ? target : null;
 }
 
 function sendError(res, err, fallback) {
@@ -75,11 +75,11 @@ function sendError(res, err, fallback) {
 const viewerSubject = async (user) => (user ? comments.subjectForLiveUser(user.id) : null);
 
 /** How this viewer may delete a comment on this target: 'author' | 'staff' | 'owner' | null. */
-function deleteRight(user, subject, c, target) {
+async function deleteRight(user, subject, c, target) {
     if (!user || c.deleted) return null;
     if (subject && c.author && c.author.subject === subject) return 'author';
     if (permissions.isStaff(user)) return 'staff';
-    if (target && access.ownerIds(target.row).includes(Number(user.id))) return 'owner';
+    if (target && (await access.ownerIds(target.row)).includes(Number(user.id))) return 'owner';
     return null;
 }
 
@@ -87,10 +87,10 @@ function deleteRight(user, subject, c, target) {
  * A Community comment in the shape /api/comments always returned (the old row plus the author's
  * Live profile), with the Community fields the SPA can use on top.
  */
-function shape(c, ctx) {
+async function shape(c, ctx) {
     const a = c.author || null;
-    const liveUserId = a && a.subject ? comments.liveUserForSubject(a.subject) : null;
-    const u = liveUserId ? db.getUserById(liveUserId) : null;
+    const liveUserId = a && a.subject ? await comments.liveUserForSubject(a.subject) : null;
+    const u = liveUserId ? await db.getUserById(liveUserId) : null;
     const edited = c.edited_at || null;
     const out = {
         id: c.id,
@@ -113,9 +113,9 @@ function shape(c, ctx) {
         is_ai: !!(a && a.is_ai),
         reply_count: c.reply_count || 0,
         can_edit: !!(ctx.subject && a && a.subject === ctx.subject && !c.deleted),
-        can_delete: !!deleteRight(ctx.user, ctx.subject, c, ctx.target),
+        can_delete: !!await deleteRight(ctx.user, ctx.subject, c, ctx.target),
     };
-    if (c.replies) out.replies = c.replies.map((r) => shape(r, ctx));
+    if (c.replies) out.replies = (await Promise.all(c.replies.map(async (r) => await shape(r, ctx))));
     return out;
 }
 
@@ -152,7 +152,7 @@ router.get('/:commentId/replies', optionalAuth, async (req, res) => {
         // Replies nest one level: a reply has none of its own.
         const c = found.comment;
         const replies = c.parent_id ? [] : await allReplies(found.thread.id, { id: c.id, replies: [], reply_count: c.reply_count || 0 }, subject, req.ip);
-        res.json({ replies: replies.map((r) => shape(r, ctx)) });
+        res.json({ replies: (await Promise.all(replies.map(async (r) => await shape(r, ctx)))) });
     } catch (err) {
         sendError(res, err, 'Failed to get replies');
     }
@@ -195,7 +195,7 @@ router.get('/:type/:id', optionalAuth, async (req, res) => {
         for (const c of picked) {
             if ((c.reply_count || 0) > (c.replies || []).length) c.replies = await allReplies(thread.id, c, subject, req.ip);
         }
-        const out = { comments: picked.map((c) => shape(c, ctx)), total };
+        const out = { comments: (await Promise.all(picked.map(async (c) => await shape(c, ctx)))), total };
         // The same thread on Community's own page — offered for items anyone may see (the access id
         // is all it takes to read it there).
         if (!access.isPrivate(target.row)) out.thread = { id: thread.access_id, url: comments.threadUrl(thread.access_id) };
@@ -234,7 +234,7 @@ router.post('/:type/:id', requireAuth, async (req, res) => {
         }
 
         const out = await comments.addComment(thread.id, subject, { message, parentId }, { ip: req.ip });
-        const comment = shape(out.comment, { type: contentType, id: contentId, user: req.user, subject, target });
+        const comment = await shape(out.comment, { type: contentType, id: contentId, user: req.user, subject, target });
 
         const actor = notificationActor(req.user);
         const recipients = new Map();
@@ -257,7 +257,7 @@ router.post('/:type/:id', requireAuth, async (req, res) => {
             });
         }
         const parentAuthor = parent && parent.comment.author && parent.comment.author.subject
-            ? comments.liveUserForSubject(parent.comment.author.subject) : null;
+            ? await comments.liveUserForSubject(parent.comment.author.subject) : null;
         if (parentAuthor && parentAuthor !== req.user.id) {
             recipients.set(parentAuthor, {
                 user_id: parentAuthor,
@@ -319,7 +319,7 @@ router.delete('/:commentId', requireAuth, async (req, res) => {
         const subject = await viewerSubject(req.user);
         const hit = await commentForCaller(req, subject);
         if (!hit) return res.status(404).json({ error: 'Comment not found' });
-        let right = deleteRight(req.user, subject, hit.found.comment, hit.target);
+        let right = await deleteRight(req.user, subject, hit.found.comment, hit.target);
         if (!right) return res.status(403).json({ error: 'Not authorized' });
         if (right === 'staff' && !subject) right = 'owner';   // staff without a linked subject: Live moderates for them
         await comments.deleteComment(hit.found.comment.id, { subject, as: right, ip: req.ip });

@@ -75,7 +75,7 @@ function withAiState(row, state) {
     }
     return out;
 }
-const aiState = (fn, id) => { try { return fn(id) || null; } catch { return null; } };
+const aiState = async (fn, id) => { try { return (await fn(id)) || null; } catch { return null; } };
 
 // ── VODs ─────────────────────────────────────────────────────────────────────
 
@@ -173,7 +173,8 @@ async function userVods(userId, { includePrivate = false, limit = 20 } = {}) {
     let rows;
     try { rows = rowsOf(await media.listVods({ user_id: userId, include_private: includePrivate ? 1 : undefined, limit }, { timeoutMs: TIMEOUT_MS }), 'vods'); }
     catch { return []; }
-    return rows.filter((v) => finished(v) && (includePrivate || isPublic(v))).map((v) => withAiState(v, aiState(db.getVodAiState, v.id)));
+    const keep = rows.filter((v) => finished(v) && (includePrivate || isPublic(v)));
+    return Promise.all(keep.map(async (v) => withAiState(v, await aiState(db.getVodAiState, v.id))));
 }
 
 /** Every finished VOD, and the public ones (the admin dashboard). null when Media did not answer. */
@@ -193,7 +194,8 @@ async function userClips(userId, { includePrivate = false, limit = 20 } = {}) {
     let rows;
     try { rows = rowsOf(await media.listClips({ user_id: userId, include_private: includePrivate ? 1 : undefined, limit }, { timeoutMs: TIMEOUT_MS }), 'clips'); }
     catch { return []; }
-    return rows.filter((c) => includePrivate || isPublic(c)).map((c) => withAiState(c, aiState(db.getClipAiState, c.id)));
+    const keep = rows.filter((c) => includePrivate || isPublic(c));
+    return Promise.all(keep.map(async (c) => withAiState(c, await aiState(db.getClipAiState, c.id))));
 }
 
 /** Clips this user took of other streamers: the Clips Taken tab badge, counted like the tab lists them. */
@@ -230,7 +232,7 @@ async function refreshStreamClipCount(streamId) {
     try {
         const r = await media.listClips({ stream_id: streamId, include_private: 1, limit: 1 }, { timeoutMs: TIMEOUT_MS });
         const n = totalOf(r, rowsOf(r, 'clips'));
-        db.setStreamAnalyticsClipCount(streamId, n);
+        await db.setStreamAnalyticsClipCount(streamId, n);
         return n;
     } catch { return null; }
 }

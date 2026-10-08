@@ -19,7 +19,7 @@
  */
 const { createClient } = require('openvibe-sdk/core');
 const { createServiceTokenClient } = require('openvibe-sdk/auth');
-const { createEventsClient, createOutbox } = require('openvibe-sdk/events');
+const { createEventsClient, createPgOutbox } = require('openvibe-sdk/events');
 const db = require('../db/database');
 const identity = require('../auth/identity-sync');
 
@@ -33,12 +33,12 @@ let outbox = null;
 const stats = { queued: 0, lastError: null };
 
 /** The envelope for one lifecycle change, read inside the caller's transaction. */
-function envelopeFor(kind, streamId) {
-    const s = db.getDb().prepare(`SELECT s.id, s.user_id, s.title, s.category, s.protocol, s.is_nsfw, s.started_at, s.ended_at,
+async function envelopeFor(kind, streamId) {
+    const s = await db.getDb().prepare(`SELECT s.id, s.user_id, s.title, s.category, s.protocol, s.is_nsfw, s.started_at, s.ended_at,
             s.duration_seconds, s.managed_stream_id, u.username, u.display_name
         FROM streams s JOIN users u ON u.id = s.user_id WHERE s.id = ?`).get(streamId);
     if (!s) return null;
-    const subjectId = identity.subjectOf(s.user_id);
+    const subjectId = await identity.subjectOf(s.user_id);
     const channel = { username: s.username, display_name: s.display_name || s.username, url: `https://openvibe.live/@${encodeURIComponent(s.username)}` };
     if (subjectId) channel.subject = { type: 'user', id: subjectId };
     const payload = {
@@ -56,7 +56,7 @@ function envelopeFor(kind, streamId) {
         // Contracts 0.68.0 (WS-E task 6): the stream's totals for creator analytics on Network. Counts only,
         // computed here in the transaction that ends the row (stream_analytics is refreshed as a side effect).
         try {
-            const a = db.computeAndCacheStreamAnalytics(s.id);
+            const a = await db.computeAndCacheStreamAnalytics(s.id);
             if (a) {
                 const n = (v) => Math.max(0, Math.round(Number(v) || 0));
                 payload.stats = { peak_viewers: n(a.peak_viewers), avg_viewers: Math.max(0, Math.round((Number(a.avg_viewers) || 0) * 10) / 10), unique_chatters: n(a.unique_chatters), messages: n(a.total_messages), watch_minutes: n(a.total_watch_minutes) };
@@ -73,7 +73,7 @@ function envelopeFor(kind, streamId) {
     };
 }
 
-// SQLite CURRENT_TIMESTAMP is UTC without a zone ('2026-09-23 01:30:00').
+// SQLite ov_now() is UTC without a zone ('2026-09-23 01:30:00').
 function toIso(v) {
     if (!v) return null;
     const d = new Date(String(v).includes('T') ? v : `${String(v).replace(' ', 'T')}Z`);
@@ -88,7 +88,9 @@ function init({ eventsUrl = EVENTS_URL, clientSecret = CLIENT_SECRET, fetchImpl,
     const tokens = createServiceTokenClient({ tokenUrl: `${NETWORK_INTERNAL_URL}/oauth/token`, clientId: CLIENT_ID, clientSecret, fetch: fetchImpl });
     const client = createClient({ baseUrls: { events: eventsUrl }, tokenProvider: tokens, fetch: fetchImpl, retries: 0 });
     const events = createEventsClient(client, { source: 'live' });
-    outbox = createOutbox(db.getDb(), {
+    // The PostgreSQL outbox (migrations/0002_live.sql event_outbox): rows are claimed with a lease, so a second
+    // process never double-sends.
+    outbox = createPgOutbox(db.getDb(), {
         events,
         intervalMs: intervalMs || 2000,
         onError: (err) => {
@@ -97,18 +99,17 @@ function init({ eventsUrl = EVENTS_URL, clientSecret = CLIENT_SECRET, fetchImpl,
             stats.lastError = msg;
         },
     });
-    outbox.ensureSchema();
-    db.onStreamLifecycle((kind, streamId) => {
-        const env = envelopeFor(kind, streamId);
+    db.onStreamLifecycle(async (kind, streamId) => {
+        const env = await envelopeFor(kind, streamId);
         if (!env) return;
-        outbox.enqueue(env);
+        await outbox.enqueue(db.getDb(), env);
         stats.queued++;
-        setImmediate(() => outbox && outbox.kick());
+        db.getDb().afterCommit(() => { if (outbox) Promise.resolve(outbox.kick()).catch((err) => { stats.lastError = err.message; }); });
     });
     outbox.start();
-    const prune = setInterval(() => { try { outbox.prune(); } catch { /* next time */ } }, PRUNE_EVERY_MS);
+    const prune = setInterval(() => { if (outbox) outbox.prune().catch(() => { /* next time */ }); }, PRUNE_EVERY_MS);
     if (prune.unref) prune.unref();
-    console.log(`[Events] stream lifecycle → ${eventsUrl} (${outbox.pending()} pending)`);
+    outbox.pending().then((n) => console.log(`[Events] stream lifecycle → ${eventsUrl} (${n} pending)`), () => {});
     return outbox;
 }
 
@@ -118,21 +119,29 @@ function init({ eventsUrl = EVENTS_URL, clientSecret = CLIENT_SECRET, fetchImpl,
  * back with it. Returns the envelope, or null while publishing is off. Call init() before the
  * transaction (it is idempotent), and kick() after the commit.
  */
-function enqueue(envelope) {
+async function enqueue(envelope) {
     if (!outbox) return null;
-    const env = outbox.enqueue(envelope);
+    // The process-wide handle joins the caller's ambient db.tx(), so the event commits or rolls back with the change.
+    const env = await outbox.enqueue(db.getDb(), envelope);
     stats.queued++;
     return env;
 }
 
 /** Wake the relay once the transaction that queued an event has committed. */
-function kick() { if (outbox) setImmediate(() => outbox && outbox.kick()); }
+function kick() { if (outbox) db.getDb().afterCommit(() => { if (outbox) Promise.resolve(outbox.kick()).catch((err) => { stats.lastError = err.message; }); }); }
 
+/** Whether publishing is on, and this process's counters (synchronous: callers branch on `enabled`). */
 function status() {
     if (!outbox) return { enabled: false };
-    return { enabled: true, pending: outbox.pending(), rejected: outbox.rejected(), queued_since_boot: stats.queued, last_error: stats.lastError };
+    return { enabled: true, queued_since_boot: stats.queued, last_error: stats.lastError };
+}
+
+/** status() plus the outbox's pending and rejected counts (queries). */
+async function counts() {
+    if (!outbox) return { enabled: false };
+    return { ...status(), pending: Number(await outbox.pending()), rejected: Number(await outbox.rejected()) };
 }
 
 function _reset() { if (outbox) outbox.stop(); outbox = null; db.onStreamLifecycle(null); stats.queued = 0; stats.lastError = null; }
 
-module.exports = { init, enqueue, kick, status, envelopeFor, _reset };
+module.exports = { init, enqueue, kick, status, counts, envelopeFor, _reset };

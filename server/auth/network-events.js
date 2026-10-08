@@ -23,35 +23,35 @@ const revocations = require('./revocations');
 const EVENT_ID_RE = /^evt_[0-9A-HJKMNP-TV-Z]{26}$/;
 const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
 const stats = { received: 0, revoked: 0, unchanged: 0, profiles: 0, ignored: 0, refused: 0 };
-const notifyChat = (userId) => {
+const notifyChat = async (userId) => {
     try {
         const delivery = require('../chat/chat-delivery');
-        if (delivery.ingress()) delivery.invalidate({ user: Number(userId) });
+        if (delivery.ingress()) await delivery.invalidate({ user: Number(userId) });
     } catch { /* non-critical */ }
 };
 
 function secret() { return process.env.LIVE_EVENTS_SECRET || process.env.MEDIA_EVENTS_SECRET || ''; }
 
 /** Apply one envelope; returns 'revoked' | 'unchanged' | 'updated' | 'stale' | 'ignored:<why>' (a merge, export or deletion: a promise). */
-function apply(ev) {
+async function apply(ev) {
     if (!ev || !EVENT_ID_RE.test(String(ev.event_id || ''))) return 'ignored:envelope';
-    if (ev.event_type === 'network.subject.merged') return ev.source === 'network' ? require('./subject-merge').apply(ev) : 'ignored:source';
-    if (ev.event_type === 'network.account.export_requested' || ev.event_type === 'network.account.deleted') return ev.source === 'network' ? require('./account-data').apply(ev) : 'ignored:source';
+    if (ev.event_type === 'network.subject.merged') return ev.source === 'network' ? await require('./subject-merge').apply(ev) : 'ignored:source';
+    if (ev.event_type === 'network.account.export_requested' || ev.event_type === 'network.account.deleted') return ev.source === 'network' ? await require('./account-data').apply(ev) : 'ignored:source';
     const follow = ev.event_type === 'network.follow.created' || ev.event_type === 'network.follow.deleted';
     if (ev.event_type !== 'network.user.token_valid_after' && ev.event_type !== 'network.user.updated' && !follow) return 'ignored:type';
     if (ev.source !== 'network') return 'ignored:source';
     // The follow graph is Network's (ADR-030); Live's follows table is its projection.
-    if (follow) return require('../social/network-follows').apply(ev);
+    if (follow) return await require('../social/network-follows').apply(ev);
     const p = ev.payload && typeof ev.payload === 'object' ? ev.payload : {};
-    if (ev.event_type === 'network.user.updated') return require('./subject-projection').apply(p, { notify: notifyChat });
+    if (ev.event_type === 'network.user.updated') return await require('./subject-projection').apply(p, { notify: notifyChat });
     const subject = p.subject && p.subject.id;
     const ms = Date.parse(p.valid_after);
     if (!SUBJECT_RE.test(String(subject || '')) || !Number.isFinite(ms)) return 'ignored:payload';
-    return revocations.record(subject, ms, typeof p.reason === 'string' ? p.reason.slice(0, 40) : null) ? 'revoked' : 'unchanged';
+    return await revocations.record(subject, ms, typeof p.reason === 'string' ? p.reason.slice(0, 40) : null) ? 'revoked' : 'unchanged';
 }
 
 /** Express handler (needs req.rawBody from the express.json verify hook). */
-function handler(req, res) {
+async function handler(req, res) {
     const key = secret();
     if (key.length < 32) return res.status(503).json({ error: 'LIVE_EVENTS_SECRET is not set' });
     const { parseDelivery } = require('openvibe-sdk/events');
@@ -59,7 +59,7 @@ function handler(req, res) {
     if (!delivery) { stats.refused++; return res.status(401).json({ error: 'bad signature' }); }
     stats.received++;
     const count = (out) => { if (out === 'revoked') stats.revoked++; else if (out === 'unchanged' || out === 'stale') stats.unchanged++; else if (out === 'updated' || out === 'followed' || out === 'unfollowed' || out === 'merged' || out === 'relinked' || out === 'exported' || out === 'erased' || out === 'confirmed') stats.profiles++; else stats.ignored++; };
-    const out = apply(delivery.event);
+    const out = await apply(delivery.event);
     if (out && typeof out.then === 'function') {
         // A merge, export or deletion: answer after it applied, so a failure is redelivered.
         return out.then((o) => { count(o); res.status(204).end(); }, (e) => { console.error(`[NetworkEvents] ${delivery.event.event_type} failed:`, e.message); res.status(500).json({ error: 'not applied' }); });

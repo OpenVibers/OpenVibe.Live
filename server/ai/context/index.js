@@ -43,17 +43,17 @@ function scrubSpeech(text) {
 function hasWords(t) { return /[a-z0-9]{2,}/i.test(t || ''); }
 
 // ── Stable prefix blocks ──────────────────────────────────────
-function streamerBlock(userId) {
+async function streamerBlock(userId) {
     const parts = [];
-    try { const ov = db.getStreamerOverview(userId); if (ov && (ov.overview_short || ov.overview)) parts.push(clip(ov.overview_short || ov.overview, 700)); } catch { /* */ }
+    try { const ov = await db.getStreamerOverview(userId); if (ov && (ov.overview_short || ov.overview)) parts.push(clip(ov.overview_short || ov.overview, 700)); } catch { /* */ }
     try {
-        let w = db.getState(`ai_whole_overview_${userId}`);
+        let w = await db.getState(`ai_whole_overview_${userId}`);
         if (typeof w === 'string' && /^\s*\{/.test(w)) { try { w = JSON.parse(w); } catch { /* keep string */ } }
         const t = w && typeof w === 'object' ? w.text : w;
         if (t && typeof t === 'string') parts.push(clip(t, 400));
     } catch { /* */ }
     try {
-        const ch = db.getChannelByUserId(userId);
+        const ch = await db.getChannelByUserId(userId);
         if (ch) {
             if (ch.description) parts.push(`Channel bio: ${clip(ch.description, 240)}`);
             let panels = []; try { panels = JSON.parse(ch.panels || '[]'); } catch { /* */ }
@@ -100,9 +100,9 @@ function rulesBlock(settings) {
     parts.push(`Lines are at most ${settings.max_words || 18} words.`);
     return parts.join('\n');
 }
-function runningBitsBlock(userId) {
+async function runningBitsBlock(userId) {
     try {
-        const closed = db.getRecentClosedAiViewerThreads(userId, 3);
+        const closed = await db.getRecentClosedAiViewerThreads(userId, 3);
         if (!closed.length) return '';
         return 'Running bits from earlier streams: ' + closed.map(t => clip(t.topic, 80)).join(' · ');
     } catch { return ''; }
@@ -112,13 +112,13 @@ function runningBitsBlock(userId) {
  * Build (or reuse) the stable prefix. Returns { text, hash, at }.
  * Cached on `cacheHolder.stable` until its inputs' hash changes or maxAgeMs elapses.
  */
-function stablePrefix({ userId, stream, bots, settings, cacheHolder = null, maxAgeMs = 10 * 60 * 1000 }) {
+async function stablePrefix({ userId, stream, bots, settings, cacheHolder = null, maxAgeMs = 10 * 60 * 1000 }) {
     const text = [
-        streamerBlock(userId),
+        await streamerBlock(userId),
         sessionBlock(stream),
         `The AI viewers in this chat (${bots.length}):\n${rosterBlock(bots, settings)}`,
         rulesBlock(settings),
-        runningBitsBlock(userId),
+        await runningBitsBlock(userId),
     ].filter(Boolean).join('\n\n');
     const h = hash(text);
     if (cacheHolder && cacheHolder.stable && cacheHolder.stable.hash === h && Date.now() - cacheHolder.stable.at < maxAgeMs) return cacheHolder.stable;
@@ -133,12 +133,12 @@ function streamOffsetSec(stream) {
     return started ? Math.max(0, Math.round((Date.now() - started) / 1000)) : 0;
 }
 
-function heardBlock(stream, settings) {
+async function heardBlock(stream, settings) {
     if (!settings.hear_enabled || !stream) return { text: '', ageMs: null, count: 0, sounds: [] };
     const off = streamOffsetSec(stream);
     const from = Math.max(0, off - (settings.hear_window_sec || 90));
     let rows = [];
-    try { rows = db.getTimeline(stream.id, { from, to: off + 5, limit: 80 }) || []; } catch { rows = []; }
+    try { rows = await db.getTimeline(stream.id, { from, to: off + 5, limit: 80 }) || []; } catch { rows = []; }
     const speech = []; const sounds = [];
     let lastEnd = null;
     for (const r of rows) {
@@ -152,10 +152,10 @@ function heardBlock(stream, settings) {
     return { text, ageMs, count: speech.length, sounds: uniqSounds, latestSound: sounds.length ? sounds[sounds.length - 1] : null };
 }
 
-function seenBlock(stream) {
+async function seenBlock(stream) {
     if (!stream) return { text: '', ageMs: null, memoryId: null, tags: [] };
     let m = null;
-    try { m = db.getLatestStreamMemory(stream.id); } catch { m = null; }
+    try { m = await db.getLatestStreamMemory(stream.id); } catch { m = null; }
     if (!m) return { text: '', ageMs: null, memoryId: null, tags: [] };
     const desc = String(m.description || '').replace(/\s+—\s+heard:.*$/s, '').trim();
     let tags = []; try { tags = JSON.parse(m.tags || '[]'); } catch { tags = []; }
@@ -164,11 +164,11 @@ function seenBlock(stream) {
     return { text: clip(desc, 300), ageMs, memoryId: m.id, tags: Array.isArray(tags) ? tags.slice(0, 6) : [] };
 }
 
-function chatDelta(channelUserId, sinceId, { limit = 40, botNames = new Set() } = {}) {
+async function chatDelta(channelUserId, sinceId, { limit = 40, botNames = new Set() } = {}) {
     let rows = [];
     // The last `limit` lines of the channel come from Chat (or Live's own table when Live runs
     // chat); a synchronous peek answers the cached page, else empty, and warms for the next tick.
-    try { rows = (chatReads.channelMessagesPeek(channelUserId, limit) || []).filter((r) => Number(r.id) > (sinceId || 0)); } catch { rows = []; }
+    try { rows = (await chatReads.channelMessagesPeek(channelUserId, limit) || []).filter((r) => Number(r.id) > (sinceId || 0)); } catch { rows = []; }
     const lines = rows.map(r => {
         const isBot = r.source_platform === 'ai' || botNames.has(String(r.username || '').toLowerCase());
         const tag = isBot ? ' (AI viewer)' : (r.source_platform && r.source_platform !== 'ai' ? '' : '');
@@ -185,7 +185,7 @@ function moodBlock() {
     return g && g.overview ? clip(g.overview, 250) : '';
 }
 
-function personBlock(line, channelUserId, settings) {
+async function personBlock(line, channelUserId, settings) {
     if (!settings.remember_viewers || line.isBot) return '';
     let ins = null;
     if (line.userId) ins = insightClient.peekUser(line.userId);
@@ -199,24 +199,24 @@ function personBlock(line, channelUserId, settings) {
         if (line.userId) {
             if (line.userId === channelUserId) flags.push('THE STREAMER');
             else {
-                if (db.isActiveSubscriber(line.userId, channelUserId)) flags.push('subscriber');
-                else if (db.isFollowing(line.userId, channelUserId)) flags.push('follower');
+                if (await db.isActiveSubscriber(line.userId, channelUserId)) flags.push('subscriber');
+                else if (await db.isFollowing(line.userId, channelUserId)) flags.push('follower');
             }
         }
         // stream_first_chats is Chat's; a registered identity is `user:<user_id>` (never the
         // username), a relay one `ext:<prefixed username>`. The welcome flag reads Chat's first-chat
         // read through a sync peek; a cold cache or a Chat outage answers "not first".
         const identity = line.userId ? `user:${line.userId}` : (line.anonId ? `anon:${line.anonId}` : `ext:${line.username}`);
-        if (line.userId !== channelUserId && settings.greet_first_timers && chatReads.firstChatPeek(channelUserId, identity)) flags.push('first time chatting here');
+        if (line.userId !== channelUserId && settings.greet_first_timers && await chatReads.firstChatPeek(channelUserId, identity)) flags.push('first time chatting here');
     } catch { /* */ }
     const insight = ins ? clip([ins.overview_24h || ins.overview_alltime, ins.memory].filter(Boolean).join(' — '), 220) : '';
     if (!insight && !flags.length) return '';
     return `- ${line.username}${flags.length ? ` [${flags.join(', ')}]` : ''}${insight ? `: ${insight}` : ''}`;
 }
 
-function threadsBlock(channelUserId, limit) {
+async function threadsBlock(channelUserId, limit) {
     let rows = [];
-    try { rows = db.getOpenAiViewerThreads(channelUserId, limit || 5) || []; } catch { rows = []; }
+    try { rows = await db.getOpenAiViewerThreads(channelUserId, limit || 5) || []; } catch { rows = []; }
     return {
         rows,
         text: rows.map(t => {
@@ -235,19 +235,19 @@ function viewerCountOf(stream) {
  * Assemble the volatile tail.
  * @returns {{ text, hash, changed, chatMaxId, delta, sources }}
  */
-function volatileTail({ userId, stream, settings, sinceChatId = 0, botNames = new Set(), intents = [], mode = 'normal', linesAllowed = 3, botShare = null }) {
-    const heard = heardBlock(stream, settings);
-    const seen = seenBlock(stream);
-    const chat = chatDelta(userId, sinceChatId, { botNames });
+async function volatileTail({ userId, stream, settings, sinceChatId = 0, botNames = new Set(), intents = [], mode = 'normal', linesAllowed = 3, botShare = null }) {
+    const heard = await heardBlock(stream, settings);
+    const seen = await seenBlock(stream);
+    const chat = await chatDelta(userId, sinceChatId, { botNames });
     const mood = moodBlock();
-    const threads = threadsBlock(userId, settings.max_open_threads || 3);
+    const threads = await threadsBlock(userId, settings.max_open_threads || 3);
     const people = [];
     const seenNames = new Set();
     for (const l of chat.lines) {
         if (l.isBot || seenNames.has(l.username)) continue;
         seenNames.add(l.username);
         if (people.length >= 6) break;
-        const p = personBlock(l, userId, settings);
+        const p = await personBlock(l, userId, settings);
         if (p) people.push(p);
     }
     const vc = viewerCountOf(stream);
@@ -280,7 +280,7 @@ function volatileTail({ userId, stream, settings, sinceChatId = 0, botNames = ne
  */
 async function wantFreshFrame(stream, { maxAgeSec = 180, allowFfmpeg = true } = {}) {
     if (!stream) return false;
-    const seen = seenBlock(stream);
+    const seen = await seenBlock(stream);
     if (seen.ageMs != null && seen.ageMs < maxAgeSec * 1000) return false;
     try {
         const job = require('../stream-memory-job');

@@ -9,126 +9,20 @@
  * recently-ended list carried a private legacy VOD's id and thumbnail (it now asks Media, public only). Every one of those now gives
  * the exact answer an unknown id gets.
  *
- * The real routers run on a temp database with Media stubbed in-process and sign-in stubbed by an
+ * The real routers run on the test database with Media stubbed in-process and sign-in stubbed by an
  * `x-test-user` header (as in authorization.test.js).
  *
  *   node test/media-privacy.test.js
  */
 'use strict';
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
 
-const tmp = path.join(os.tmpdir(), `ov-media-privacy-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 console.warn = () => {};
-
-const db = require('../server/db/database');
-db.initDb();
-const raw = db.getDb();
-
-// ── Sign-in stub (before any router captures the middleware) ──
-const auth = require('../server/auth/auth');
-const signIn = (req) => {
-    const id = Number(req.headers['x-test-user'] || 0);
-    const u = id ? db.getUserById(id) : null;
-    if (u) { req.user = u; req.authSource = 'network'; }
-    return u;
-};
-auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
-auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
-
-const addUser = (id, username, role) => raw.prepare(
-    `INSERT INTO users (id, username, display_name, email, password_hash, role, created_at)
-     VALUES (?, ?, ?, ?, 'x', ?, '2025-01-01 00:00:00')`).run(id, username, username, `${username}@x`, role);
-addUser(1, 'admin', 'admin');
-addUser(3, 'alice', 'streamer');      // owns the private VOD; her channel was clipped
-addUser(5, 'carol', 'user');          // clipped alice's stream (the private clip's creator)
-addUser(6, 'mod', 'global_mod');      // staff
-addUser(7, 'mallory', 'user');        // nobody special
-addUser(8, 'eve', 'user');            // nobody special, second account (clip cooldowns are per user)
-db.ensureChannel(3);
-const chanA = db.getChannelByUserId(3);
-const streamA = Number(db.createStream({ user_id: 3, channel_id: chanA.id, title: 'A', protocol: 'webrtc' }).lastInsertRowid);
-
-// ── Media stub ──
-const media = require('../server/media-client');
-const VODS = {
-    100: { id: 100, user_id: 3, title: 'Public VOD', visibility: 'public', is_public: 1, status: 'ready' },
-    101: { id: 101, user_id: 3, stream_id: streamA, title: 'Secret VOD', visibility: 'private', is_public: 0, status: 'ready', description: 'secret description' },
-    102: { id: 102, user_id: 3, title: 'Legacy hidden', is_public: 0, status: 'ready' },          // no visibility: legacy private
-    103: { id: 103, user_id: 3, title: 'Unlisted VOD', visibility: 'unlisted', is_public: 0, status: 'ready' },
-};
-const CLIPS = {
-    200: { id: 200, user_id: 5, vod_id: 100, title: 'Public clip', visibility: 'public', is_public: 1, status: 'ready' },
-    201: { id: 201, user_id: 5, channel_user_id: 3, stream_id: streamA, vod_id: 101, title: 'Secret clip', visibility: 'private', is_public: 0, status: 'ready' },
-    202: { id: 202, user_id: 5, vod_id: 555, title: 'Clip of a deleted VOD', visibility: 'public', is_public: 1, status: 'ready' },   // VOD 555 is gone
-};
-const missing = (what) => new media.MediaApiError(`${what} not found`, 404, { error: `${what} not found` });
-media.getVod = async (id) => { const v = VODS[Number(id)]; if (!v) throw missing('VOD'); return { ...v }; };
-media.getClip = async (id) => { const c = CLIPS[Number(id)]; if (!c) throw missing('Clip'); return { ...c }; };
-media.listClips = async () => ({ clips: [] });
-media.listVods = async () => ({ vods: [] });
-media.generateThumbnail = async () => ({ url: '/t/x.jpg' });
-media.createClip = async () => ({ id: 999, status: 'processing' });
-media.updateVod = async () => ({});
-media.updateClip = async () => ({});
-media.deleteClip = async () => ({});
-// Comments are OpenVibe.Community threads: a stub Community (started below) and a stub service token.
-const principal = require('../server/net/network-principal');
-principal.serviceHeaders = async () => ({ Authorization: 'Bearer test-service-token' });
-const { startCommunityStub } = require('./community-stub');
-for (const [id, n] of [[1, 'A'], [3, 'B'], [5, 'C'], [6, 'D'], [7, 'E'], [8, 'F']]) {
-    raw.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', ?, ?)").run(id, String(100 + id), `usr_01JAB2C3D4E5F6G7H8J9K0MNP${n}`);
-}
-const recorder = require('../server/streaming/recorder');
-recorder.getActiveRecording = (sid) => (Number(sid) === streamA ? { vodId: 101, startedAt: Date.now() - 60000 } : null);
-
-raw.prepare('INSERT INTO vod_ai_state (vod_id, ai_overview_short, ai_transcript_json) VALUES (?, ?, ?)')
-    .run(101, 'secret overview', JSON.stringify([{ start: 0, end: 1, text: 'secret words' }]));
-raw.prepare('INSERT INTO vod_ai_state (vod_id, ai_overview_short, ai_transcript_json) VALUES (?, ?, ?)')
-    .run(100, 'public overview', JSON.stringify([{ start: 0, end: 1, text: 'public words' }]));
-
-const express = require('express');
-const app = express();
-app.use(express.json());
-app.use('/api/vods', require('../server/media-proxy/vods'));
-app.use('/api/clips', require('../server/media-proxy/clips'));
-app.use('/api/comments', require('../server/media-proxy/comments'));
-app.use('/api/thumbnails', require('../server/media-proxy/thumbnails'));
-app.use('/api/chat-ai', require('../server/ai/chat-ai-routes'));
-const server = http.createServer(app).listen(0);
-
-let ipSeq = 0;
-function call(method, p, user, body) {
-    return new Promise((resolve, reject) => {
-        const data = body ? JSON.stringify(body) : null;
-        const headers = { 'content-type': 'application/json', 'cf-connecting-ip': `10.0.0.${++ipSeq}` };
-        if (user) headers['x-test-user'] = String(user);
-        const req = http.request({ port: server.address().port, path: p, method, headers }, (res) => {
-            let text = '';
-            res.on('data', (c) => { text += c; });
-            res.on('end', () => { let json = null; try { json = JSON.parse(text); } catch { /* */ } resolve({ status: res.statusCode, json, text, headers: res.headers }); });
-        });
-        req.on('error', reject);
-        if (data) req.write(data);
-        req.end();
-    });
-}
-/** The refused answer must be byte-for-byte the missing-id answer. */
-async function sameAsMissing(method, hidden, missingPath, user, body) {
-    const a = await call(method, hidden, user, body);
-    const b = await call(method, missingPath, user, body);
-    assert.deepStrictEqual([a.status, a.text], [b.status, b.text], `${method} ${hidden} (user ${user || 'anon'}) must look like ${missingPath}`);
-    assert.strictEqual(a.status, 404, `${method} ${hidden} → 404`);
-    assert.ok(!/Secret|secret/.test(a.text), 'nothing of the private item leaks');
-    return a;
-}
 
 let failures = 0;
 async function check(name, fn) {
@@ -137,7 +31,109 @@ async function check(name, fn) {
 }
 
 (async () => {
-    await new Promise((r) => server.once('listening', r));
+    const db = require('../server/db/database');
+    await db.initDb();
+    const raw = db.getDb();
+
+    // ── Sign-in stub (before any router captures the middleware) ──
+    const auth = require('../server/auth/auth');
+    const signIn = async (req) => {
+        const id = Number(req.headers['x-test-user'] || 0);
+        const u = id ? await db.getUserById(id) : null;
+        if (u) { req.user = u; req.authSource = 'network'; }
+        return u;
+    };
+    auth.requireAuth = async (req, res, next) => ((await signIn(req)) ? next() : res.status(401).json({ error: 'Authentication required' }));
+    auth.optionalAuth = async (req, res, next) => { await signIn(req); next(); };
+
+    const addUser = (id, username, role) => raw.prepare(
+        `INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
+         VALUES (?, ?, ?, ?, 'x', ?, '2025-01-01 00:00:00')`).run(id, username, username, `${username}@x`, role);
+    await addUser(1, 'admin', 'admin');
+    await addUser(3, 'alice', 'streamer');      // owns the private VOD; her channel was clipped
+    await addUser(5, 'carol', 'user');          // clipped alice's stream (the private clip's creator)
+    await addUser(6, 'mod', 'global_mod');      // staff
+    await addUser(7, 'mallory', 'user');        // nobody special
+    await addUser(8, 'eve', 'user');            // nobody special, second account (clip cooldowns are per user)
+    await db.ensureChannel(3);
+    const chanA = await db.getChannelByUserId(3);
+    const streamA = Number((await db.createStream({ user_id: 3, channel_id: chanA.id, title: 'A', protocol: 'webrtc' })).lastInsertRowid);
+
+    // ── Media stub ──
+    const media = require('../server/media-client');
+    const VODS = {
+        100: { id: 100, user_id: 3, title: 'Public VOD', visibility: 'public', is_public: 1, status: 'ready' },
+        101: { id: 101, user_id: 3, stream_id: streamA, title: 'Secret VOD', visibility: 'private', is_public: 0, status: 'ready', description: 'secret description' },
+        102: { id: 102, user_id: 3, title: 'Legacy hidden', is_public: 0, status: 'ready' },          // no visibility: legacy private
+        103: { id: 103, user_id: 3, title: 'Unlisted VOD', visibility: 'unlisted', is_public: 0, status: 'ready' },
+    };
+    const CLIPS = {
+        200: { id: 200, user_id: 5, vod_id: 100, title: 'Public clip', visibility: 'public', is_public: 1, status: 'ready' },
+        201: { id: 201, user_id: 5, channel_user_id: 3, stream_id: streamA, vod_id: 101, title: 'Secret clip', visibility: 'private', is_public: 0, status: 'ready' },
+        202: { id: 202, user_id: 5, vod_id: 555, title: 'Clip of a deleted VOD', visibility: 'public', is_public: 1, status: 'ready' },   // VOD 555 is gone
+    };
+    const missing = (what) => new media.MediaApiError(`${what} not found`, 404, { error: `${what} not found` });
+    media.getVod = async (id) => { const v = VODS[Number(id)]; if (!v) throw missing('VOD'); return { ...v }; };
+    media.getClip = async (id) => { const c = CLIPS[Number(id)]; if (!c) throw missing('Clip'); return { ...c }; };
+    media.listClips = async () => ({ clips: [] });
+    media.listVods = async () => ({ vods: [] });
+    media.generateThumbnail = async () => ({ url: '/t/x.jpg' });
+    media.createClip = async () => ({ id: 999, status: 'processing' });
+    media.updateVod = async () => ({});
+    media.updateClip = async () => ({});
+    media.deleteClip = async () => ({});
+    // Comments are OpenVibe.Community threads: a stub Community (started below) and a stub service token.
+    const principal = require('../server/net/network-principal');
+    principal.serviceHeaders = async () => ({ Authorization: 'Bearer test-service-token' });
+    const { startCommunityStub } = require('./community-stub');
+    for (const [id, n] of [[1, 'A'], [3, 'B'], [5, 'C'], [6, 'D'], [7, 'E'], [8, 'F']]) {
+        await raw.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', ?, ?)").run(id, String(100 + id), `usr_01JAB2C3D4E5F6G7H8J9K0MNP${n}`);
+    }
+    const recorder = require('../server/streaming/recorder');
+    recorder.getActiveRecording = (sid) => (Number(sid) === streamA ? { vodId: 101, startedAt: Date.now() - 60000 } : null);
+
+    await raw.prepare('INSERT INTO vod_ai_state (vod_id, ai_overview_short, ai_transcript_json) VALUES (?, ?, ?)')
+        .run(101, 'secret overview', JSON.stringify([{ start: 0, end: 1, text: 'secret words' }]));
+    await raw.prepare('INSERT INTO vod_ai_state (vod_id, ai_overview_short, ai_transcript_json) VALUES (?, ?, ?)')
+        .run(100, 'public overview', JSON.stringify([{ start: 0, end: 1, text: 'public words' }]));
+
+    const express = require('express');
+    const app = express();
+    app.use(express.json());
+    app.use('/api/vods', require('../server/media-proxy/vods'));
+    app.use('/api/clips', require('../server/media-proxy/clips'));
+    app.use('/api/comments', require('../server/media-proxy/comments'));
+    app.use('/api/thumbnails', require('../server/media-proxy/thumbnails'));
+    app.use('/api/chat-ai', require('../server/ai/chat-ai-routes'));
+    const server = http.createServer(app).listen(0);
+
+    let ipSeq = 0;
+    function call(method, p, user, body) {
+        return new Promise((resolve, reject) => {
+            const data = body ? JSON.stringify(body) : null;
+            const headers = { 'content-type': 'application/json', 'cf-connecting-ip': `10.0.0.${++ipSeq}` };
+            if (user) headers['x-test-user'] = String(user);
+            const req = http.request({ port: server.address().port, path: p, method, headers }, (res) => {
+                let text = '';
+                res.on('data', (c) => { text += c; });
+                res.on('end', () => { let json = null; try { json = JSON.parse(text); } catch { /* */ } resolve({ status: res.statusCode, json, text, headers: res.headers }); });
+            });
+            req.on('error', reject);
+            if (data) req.write(data);
+            req.end();
+        });
+    }
+    /** The refused answer must be byte-for-byte the missing-id answer. */
+    async function sameAsMissing(method, hidden, missingPath, user, body) {
+        const a = await call(method, hidden, user, body);
+        const b = await call(method, missingPath, user, body);
+        assert.deepStrictEqual([a.status, a.text], [b.status, b.text], `${method} ${hidden} (user ${user || 'anon'}) must look like ${missingPath}`);
+        assert.strictEqual(a.status, 404, `${method} ${hidden} → 404`);
+        assert.ok(!/Secret|secret/.test(a.text), 'nothing of the private item leaks');
+        return a;
+    }
+
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     const community = await startCommunityStub();
     process.env.OV_COMMUNITY_INTERNAL_URL = community.url;
 
@@ -257,7 +253,7 @@ async function check(name, fn) {
     });
 
     await check('recently-ended streams: only a public VOD from Media rides along', async () => {
-        db.endStream(streamA);
+        await db.endStream(streamA);
         const lookups = require('../server/media-proxy/lookups');
         const saved = media.listVods;
         const asked = [];
@@ -268,14 +264,14 @@ async function check(name, fn) {
         ];
         media.listVods = async (q) => { asked.push(q); return { vods: answer }; };
         try {
-            let row = (await lookups.attachPublicVods(db.getRecentStreams(10))).find((s) => s.id === streamA);
+            let row = (await lookups.attachPublicVods(await db.getRecentStreams(10))).find((s) => s.id === streamA);
             assert.ok(row, 'the stream is listed');
             assert.strictEqual(row.vod_id, null, 'no private or unlisted VOD id');
             assert.strictEqual(row.vod_thumbnail_url, null, 'no private or unlisted VOD thumbnail');
             assert.ok(asked.length && asked.every((q) => !q.include_private), 'never asks Media for hidden VODs');
             lookups._resetCaches();
             answer = [{ id: 100, stream_id: streamA, user_id: 3, visibility: 'public', is_public: 1, thumbnail_url: 'https://media.test/t/pub.jpg', duration_seconds: 42 }];
-            row = (await lookups.attachPublicVods(db.getRecentStreams(10))).find((s) => s.id === streamA);
+            row = (await lookups.attachPublicVods(await db.getRecentStreams(10))).find((s) => s.id === streamA);
             assert.strictEqual(row.vod_id, 100, 'a public VOD is attached');
             assert.strictEqual(row.vod_is_public, 1);
             assert.strictEqual(row.vod_thumbnail_url, 'https://media.test/t/pub.jpg');
@@ -285,8 +281,7 @@ async function check(name, fn) {
 
     server.close();
     await community.close();
-    for (const ext of ['', '-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
     if (failures) { quiet(`\n${failures} check(s) failed`); process.exit(1); }
     quiet('media privacy: all checks passed');
     process.exit(0);
-})().catch((err) => { quiet(err); server.close(); process.exit(1); });
+})().catch((err) => { quiet(err); process.exit(1); });

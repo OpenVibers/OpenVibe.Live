@@ -84,24 +84,24 @@ class StreamRecorder {
             const next = { mode: rec.mode, part: (rec.part || 1) + 1, baseTitle: rec.baseTitle };
             console.log(`[VOD] Broadcaster re-produced video for stream ${streamId} on a new transport — rolling recording to part ${next.part}`);
             this.stopRecording(streamId);
-            const timer = setTimeout(() => {
+            const timer = setTimeout(async () => {
                 try {
-                    const live = db.getStreamById(streamId);
+                    const live = await db.getStreamById(streamId);
                     if (!live || !live.is_live || this.isActivelyRecording(streamId)) return;
-                    this.startRecording(streamId, rec.protocol, {}, next);
+                    await this.startRecording(streamId, rec.protocol, {}, next);
                 } catch (e) { console.warn(`[VOD] roll restart failed for stream ${streamId}:`, e.message); }
             }, 1500);
             if (timer.unref) timer.unref();
         };
         webrtcSFU.on('producer-added', this._producerWatch);
     }
-    startRecording(streamId, protocol, endpoint = {}, opts = {}) {
+    async startRecording(streamId, protocol, endpoint = {}, opts = {}) {
         this._installProducerWatch();
         if (this.activeRecordings.has(streamId)) {
             console.log(`[VOD] Already recording stream ${streamId}`);
             return;
         }
-        const stream = db.getStreamById(streamId);
+        const stream = await db.getStreamById(streamId);
         if (!stream) {
             console.error(`[VOD] Cannot record — stream ${streamId} not found`);
             return;
@@ -160,12 +160,12 @@ class StreamRecorder {
             return;
         }
         this._clearDiskRetry(streamId);
-        const timer = setTimeout(() => {
+        const timer = setTimeout(async () => {
             this._diskRetryTimers.delete(streamId);
-            const live = db.getStreamById(streamId);
+            const live = await db.getStreamById(streamId);
             if (!live || !live.is_live) return;
             console.log(`[VOD] Retrying recording start for stream ${streamId} (disk-space retry ${attempt}/${StreamRecorder.DISK_RETRY_MAX})`);
-            this.startRecording(streamId, protocol, endpoint, { ...opts, _diskRetries: attempt });
+            this.startRecording(streamId, protocol, endpoint, { ...opts, _diskRetries: attempt }).catch((e) => console.warn(`[VOD] disk-retry start failed for stream ${streamId}:`, e.message));
         }, StreamRecorder.DISK_RETRY_DELAY_MS);
         if (timer.unref) timer.unref();
         this._diskRetryTimers.set(streamId, timer);
@@ -185,7 +185,7 @@ class StreamRecorder {
             managed_stream_id: stream.managed_stream_id || undefined,
             user_id: stream.user_id,
             clips_only: rec.clipsOnly || undefined,
-            visibility: db.resolveStreamVodVisibility(stream),
+            visibility: await db.resolveStreamVodVisibility(stream),
             meta: {
                 protocol: rec.protocol,
                 mode: rec.mode,
@@ -375,9 +375,9 @@ class StreamRecorder {
      * restart / Media restart). RTMP re-points Media at the still-connected publisher;
      * WebRTC re-creates PlainRTP consumers via a fresh rtp ingest.
      */
-    reconcileLiveRecordings() {
+    async reconcileLiveRecordings() {
         let streams;
-        try { streams = db.getLiveStreams(); } catch { return; }
+        try { streams = await db.getLiveStreams(); } catch { return; }
         const now = Date.now();
 
         for (const stream of streams) {
@@ -385,7 +385,7 @@ class StreamRecorder {
             if (this.isActivelyRecording(sid)) continue;
 
             let mode = 'none';
-            try { mode = db.resolveStreamRecordingMode(stream); } catch { /* */ }
+            try { mode = await db.resolveStreamRecordingMode(stream); } catch { /* */ }
             if (mode === 'none') continue;
             if (now - (this._healAttempts.get(sid) || 0) < 60000) continue;
 
@@ -393,7 +393,7 @@ class StreamRecorder {
             if (WEBRTC_PROTOCOLS.has(proto)) {
                 this._healAttempts.set(sid, now);
                 console.log(`[VOD] Auto-healing recording for live ${proto} stream ${sid} (mode: ${mode})`);
-                try { this.startRecording(sid, proto, {}, { mode }); }
+                try { await this.startRecording(sid, proto, {}, { mode }); }
                 catch (e) { console.warn(`[VOD] heal failed for stream ${sid}:`, e.message); }
             } else if (proto === 'rtmp') {
                 let streamKey = null;
@@ -406,7 +406,7 @@ class StreamRecorder {
                 if (!streamKey) continue; // publisher gone → leave for stale cleanup
                 this._healAttempts.set(sid, now);
                 console.log(`[VOD] Auto-healing RTMP recording for live stream ${sid} (mode: ${mode})`);
-                try { this.startRecording(sid, 'rtmp', { streamKey }, { mode }); }
+                try { await this.startRecording(sid, 'rtmp', { streamKey }, { mode }); }
                 catch (e) { console.warn(`[VOD] heal failed for stream ${sid}:`, e.message); }
             }
         }

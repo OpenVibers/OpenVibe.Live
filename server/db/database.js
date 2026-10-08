@@ -58,13 +58,13 @@ const CONTROL_PRESETS = [
     }
 ];
 
-function seedControlPresetsForUser(userId) {
-    const existing = all('SELECT * FROM control_configs WHERE user_id = ?', [userId]);
+async function seedControlPresetsForUser(userId) {
+    const existing = await all('SELECT * FROM control_configs WHERE user_id = ?', [userId]);
     if (existing.length > 0) return;
     for (const preset of CONTROL_PRESETS) {
-        const { lastInsertRowid } = run('INSERT INTO control_configs (user_id, name, description) VALUES (?, ?, ?)', [userId, preset.name, preset.description]);
+        const { lastInsertRowid } = await run('INSERT INTO control_configs (user_id, name, description) VALUES (?, ?, ?) RETURNING id', [userId, preset.name, preset.description]);
         for (const btn of preset.buttons) {
-            run(
+            await run(
                 `INSERT INTO control_config_buttons (config_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', '', '')`,
                 [lastInsertRowid, btn.label, btn.command, btn.icon, btn.control_type, btn.key_binding, btn.cooldown_ms, btn.sort_order]
@@ -74,2170 +74,108 @@ function seedControlPresetsForUser(userId) {
 }
 /**
  * OpenVibe.Live — Database Connection & Helpers
- * SQLite3 via better-sqlite3
+ * PostgreSQL through openvibe-sdk/db (ADR-035, plan T4). The schema is migrations/NNNN_*.sql, run with the owner role
+ * (DATABASE_DIRECT_URL) when the process boots; this module then opens the serving pool (DATABASE_URL, through
+ * PgBouncer). Every helper is async: statements keep better-sqlite3's shape (db.prepare(sql).get/all/run with ?
+ * parameters) and must be awaited. SQLite's 'YYYY-MM-DD HH:MM:SS' text timestamps stay as they were (datetime(),
+ * julianday() and ov_now() exist in the database: migrations/0002_live.sql).
  */
-const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { createDb } = require('openvibe-sdk/db');
 // BILLING_AUTHORITY tripwire: Live's money columns/tables are only written in `live` mode.
 const { assertLiveLedger } = require('../monetization/money-authority');
 
-// DB_PATH, else <data dir>/live.db (server/paths.js).
-const DB_PATH = require('../paths').dbPath();
-const dbDir = path.dirname(path.resolve(DB_PATH));
+const MIGRATIONS = path.join(__dirname, '..', '..', 'migrations');
 
-// Ensure data directory exists
-if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
+let db = null;
+
+/**
+ * Open the process-wide database once, at boot (server/index.js, scripts): migrations first, as the owner, then the
+ * serving pool. Tests adopt the database test/helpers/pg-preload.mjs migrated. Development without DATABASE_URL gets
+ * an embedded PGlite database under the data directory (one process only); production refuses to boot without it.
+ */
+async function initDb({ log = console } = {}) {
+    if (db) return db;
+    if (globalThis.__ovLiveTestDb) { db = globalThis.__ovLiveTestDb; return db; }
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+        if (process.env.NODE_ENV === 'production') throw new Error('DATABASE_URL is not set: Live serves from PostgreSQL (OpenVibe.Host roles/data add-service.sh live)');
+        const dir = require('../paths').data('pglite');
+        log.warn(`[DB] DATABASE_URL unset: embedded PGlite database in ${dir} (development only, one process)`);
+        fs.mkdirSync(dir, { recursive: true });
+        const dev = createDb({ pglite: dir, service: 'live', log });
+        await dev.migrate({ dir: MIGRATIONS, log });
+        db = dev;
+    } else {
+        const directUrl = process.env.DATABASE_DIRECT_URL;
+        if (!directUrl) throw new Error('DATABASE_DIRECT_URL is not set: migrations run with the owner role on a direct connection');
+        const owner = createDb({ url: directUrl, service: 'live-migrate', max: 1, log });
+        try { await owner.migrate({ dir: MIGRATIONS, log }); } finally { await owner.close(); }
+        db = createDb({ url, service: 'live', max: Number(process.env.DATABASE_POOL_MAX) || 10, log });
+    }
+    await bootRecovery();
+    // Speech rows are written with vod_id NULL while a stream is live, so there is a fresh backlog after most
+    // restarts; adopt it a few seconds after boot. A restore drill starts no timers.
+    if (!require('../drill').enabled) setTimeout(() => { adoptOrphanedTimelineRows().catch((e) => console.warn('[DB] timeline orphan adoption skipped:', e.message)); }, 4000).unref?.();
+    console.log('[DB] PostgreSQL ready');
+    return db;
 }
 
-let db;
-
+/** The process-wide database initDb() opened. */
 function getDb() {
-    if (!db) {
-        db = new Database(path.resolve(DB_PATH));
-        db.pragma('journal_mode = WAL');
-        db.pragma('foreign_keys = ON');
-        db.pragma('busy_timeout = 5000');
-        // Perf tuning: under WAL, synchronous=NORMAL is still crash-safe (only risks the
-        // last txn on a power/OS crash) and avoids an fsync on every one of the many small
-        // writes (chat inserts, viewer-count updates). Bigger page cache + in-memory temp
-        // tables + mmap cut disk I/O for the hot read paths.
-        try {
-            db.pragma('synchronous = NORMAL');
-            db.pragma('cache_size = -65536');   // ~64 MB page cache
-            db.pragma('temp_store = MEMORY');
-            db.pragma('mmap_size = 268435456'); // 256 MB
-        } catch (e) { console.warn('[DB] pragma tuning:', e.message); }
-    }
+    if (!db && globalThis.__ovLiveTestDb) db = globalThis.__ovLiveTestDb;
+    if (!db) throw new Error('the database is not open: await initDb() at boot');
     return db;
 }
 
 /**
- * Collapse duplicate rows in an AI-state table down to one row per id and put a UNIQUE
- * index on the key so `INSERT OR IGNORE` behaves as its callers assume.
- *
- * Values are merged per column rather than by keeping a single "best" row: duplicates
- * were created at different times, so the transcript may sit on one row and the overview
- * on another. Longest wins for text we accumulate; for transcript_status the most
- * settled state wins, so a stray 'pending' duplicate cannot resurrect finished work.
+ * Every boot: transcript jobs a restart interrupted go back to the queue (their progress is kept), exhausted ones get a
+ * fresh ladder unless the source itself can never work; and OWNER_USERNAME (default goosely) is the owner.
  */
-function _dedupeKeyedTable(database, table, key) {
-    try {
-        const idx = `idx_${table}_${key}_unique`;
-        const has = database.prepare(
-            "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?").get(idx);
-        if (has) return;                                  // already repaired
-        // Column-driven, never a hardcoded list: clip_ai_state carries clip_notified /
-        // clip_notify_at that vod_ai_state does not, and a fixed column list would drop
-        // them on the floor during the rebuild.
-        const cols = database.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
-        if (!cols.includes(key)) return;
-        const others = cols.filter(c => c !== key);
-        const dupes = database.prepare(
-            `SELECT COUNT(*) - COUNT(DISTINCT ${key}) AS extra FROM ${table}`).get();
-        if (dupes && dupes.extra > 0) {
-            // Merge per column, preferring the richest value: duplicates were written at
-            // different times, so a transcript can sit on one row and an overview on
-            // another — keeping a single "best" row wholesale would discard the other.
-            const pick = (c) => {
-                if (c === 'transcript_status') {
-                    // Most-settled state wins, so a stray 'pending' duplicate cannot
-                    // resurrect work that already finished.
-                    return `(SELECT x.${c} FROM ${table} x WHERE x.${key} = k.${key} AND x.${c} IS NOT NULL
-                             ORDER BY CASE x.${c} WHEN 'done' THEN 0 WHEN 'empty' THEN 1 WHEN 'failed' THEN 2
-                                                  WHEN 'processing' THEN 3 WHEN 'retry' THEN 4 ELSE 5 END LIMIT 1)`;
-                }
-                if (c === 'transcript_next_at') {
-                    return `(SELECT MIN(x.${c}) FROM ${table} x WHERE x.${key} = k.${key} AND x.${c} IS NOT NULL)`;
-                }
-                if (c === 'transcript_attempts') {
-                    return `(SELECT MAX(COALESCE(x.${c},0)) FROM ${table} x WHERE x.${key} = k.${key})`;
-                }
-                // Everything else: any non-null value, longest first. For accumulated text
-                // (transcripts, overviews) longest is the most complete; for flags and
-                // timestamps it just means "a real value beats NULL".
-                return `(SELECT x.${c} FROM ${table} x WHERE x.${key} = k.${key} AND x.${c} IS NOT NULL
-                         ORDER BY LENGTH(CAST(x.${c} AS TEXT)) DESC LIMIT 1)`;
-            };
-            const selects = [`k.${key} AS ${key}`, ...others.map(c => `${pick(c)} AS ${c}`)].join(',\n                      ');
-            database.exec('BEGIN');
-            try {
-                database.exec(`CREATE TEMP TABLE _merge_${table} AS
-                    SELECT ${selects}
-                    FROM (SELECT DISTINCT ${key} FROM ${table}) k`);
-                database.exec(`DELETE FROM ${table}`);
-                database.exec(`INSERT INTO ${table} (${cols.join(', ')})
-                               SELECT ${cols.join(', ')} FROM _merge_${table}`);
-                database.exec(`DROP TABLE _merge_${table}`);
-                database.exec('COMMIT');
-                console.log(`[DB] ${table}: merged ${dupes.extra} duplicate row(s) down to one per ${key}`);
-            } catch (e) {
-                try { database.exec('ROLLBACK'); } catch { /* */ }
-                console.warn(`[DB] ${table} dedupe failed, leaving as-is:`, e.message);
-                return;                                    // never index over dirty data
-            }
-        }
-        database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ${idx} ON ${table}(${key})`);
-    } catch (e) {
-        console.warn(`[DB] ${table} integrity repair skipped:`, e.message);
-    }
-}
-
-/**
- * One memory per (stream, offset). Re-analysing a stream used to append a second
- * description of the very same moment, so a viewer's memory list read as near-duplicate
- * pairs a minute apart. Keep the longest description (the richest capture, e.g. the one
- * that also carries the "heard:" transcript clause) and let the UNIQUE index make
- * addStreamMemory's INSERT OR IGNORE actually ignore.
- */
-function _dedupeStreamMemories(database) {
-    try {
-        const idx = 'idx_stream_memories_moment_unique';
-        if (database.prepare("SELECT 1 FROM sqlite_master WHERE type='index' AND name=?").get(idx)) return;
-        const extra = database.prepare(`SELECT COUNT(*) - COUNT(DISTINCT stream_id || ':' || offset_seconds) AS extra
-                                        FROM stream_memories`).get();
-        if (extra && extra.extra > 0) {
-            const res = database.prepare(`DELETE FROM stream_memories WHERE id NOT IN (
-                SELECT id FROM (
-                    SELECT id, ROW_NUMBER() OVER (
-                        PARTITION BY stream_id, offset_seconds
-                        ORDER BY LENGTH(COALESCE(description,'')) DESC,
-                                 (transcript_json IS NOT NULL) DESC, id DESC) AS rn
-                    FROM stream_memories) WHERE rn = 1)`).run();
-            console.log(`[DB] stream_memories: removed ${res.changes} duplicate moment(s)`);
-        }
-        database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ${idx} ON stream_memories(stream_id, offset_seconds)`);
-    } catch (e) {
-        console.warn('[DB] stream_memories dedupe skipped:', e.message);
-    }
-}
-
-/**
- * Adopt timeline rows left behind by the one-shot vod.ready link.
- *
- * linkTimelineToVod() is a single UPDATE fired when Media says the recording is ready,
- * but transcription of spooled audio keeps running for a while afterwards. Those later
- * rows were written with vod_id NULL and nothing ever came back for them, so the VOD's
- * transcript silently stopped at whatever had been transcribed by the webhook — stream
- * 2128 ended up with 11 orphaned speech rows against 2 linked ones.
- *
- * If any row for a stream already points at a VOD, the stream's remaining rows belong to
- * that same VOD by construction: one recording per stream. New writes stamp themselves
- * (see timeline-job), so this only has to clean up the existing backlog.
- */
-function _adoptOrphanedTimelineRows(database) {
-    try {
-        // Cheap probe first. The UPDATE below is a full scan of stream_timeline_events — SQLite
-        // will not use a partial index for it — and it ran unconditionally on every boot, before
-        // listen(). Measured against a production-scale table it was 10.6 seconds with a backlog
-        // and still 60-110ms with nothing at all to do, and it was the single largest component
-        // of an 18-second production start. Speech rows are written with vod_id NULL while a
-        // stream is live, so there is a fresh backlog after most restarts.
-        //
-        // The partial index makes "is there anything to adopt?" a 0.1ms question. When the answer
-        // is no — the overwhelmingly common case — boot skips the scan entirely.
-        try { database.exec('CREATE INDEX IF NOT EXISTS idx_timeline_null_vod ON stream_timeline_events(stream_id) WHERE vod_id IS NULL'); } catch { /* */ }
-        const pending = database.prepare('SELECT 1 AS x FROM stream_timeline_events WHERE vod_id IS NULL LIMIT 1').get();
-        if (!pending) return;
-
-        const res = database.prepare(`UPDATE stream_timeline_events AS t
-            SET vod_id = (SELECT s.vod_id FROM stream_timeline_events s
-                          WHERE s.stream_id = t.stream_id AND s.vod_id IS NOT NULL LIMIT 1)
-            WHERE t.vod_id IS NULL
-              AND EXISTS (SELECT 1 FROM stream_timeline_events s
-                          WHERE s.stream_id = t.stream_id AND s.vod_id IS NOT NULL)`).run();
-        if (res.changes) console.log(`[DB] stream_timeline_events: adopted ${res.changes} orphaned row(s) onto their VOD`);
-    } catch (e) {
-        console.warn('[DB] timeline orphan adoption skipped:', e.message);
-    }
-}
-
-function initDb() {
-    const database = getDb();
-    const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
-    database.exec(schema);
-
-    // ── Live-owned AI/transcript state for Media-hosted VODs/clips ─────────────
-    // The vods/clips content rows moved to OpenVibe.Media, but Media does not carry
-    // the AI columns — that state is Live's. Keyed by the MEDIA vod/clip id; the
-    // cutover migration pre-populates these exact tables/columns from the old DB.
-    database.exec(`CREATE TABLE IF NOT EXISTS vod_ai_state (
-        vod_id INTEGER PRIMARY KEY,
-        ai_overview_short TEXT,
-        ai_transcript_json TEXT,
-        transcript_status TEXT,
-        transcript_attempts INTEGER DEFAULT 0,
-        transcript_error TEXT,
-        transcript_next_at DATETIME
-    )`);
-    database.exec(`CREATE TABLE IF NOT EXISTS clip_ai_state (
-        clip_id INTEGER PRIMARY KEY,
-        ai_overview_short TEXT,
-        ai_transcript_json TEXT,
-        transcript_status TEXT,
-        transcript_attempts INTEGER DEFAULT 0,
-        transcript_error TEXT,
-        transcript_next_at DATETIME,
-        clip_notified INTEGER DEFAULT 0,
-        clip_notify_at DATETIME
-    )`);
-    // Full AI overview text. Originally only the ~150-char short was stored, which made
-    // the card expander a no-op on VODs/clips: expanding revealed the same truncated
-    // "…" string because the full version had been thrown away at write time. Shorts
-    // are a derivation, not the source of truth — keep both.
+async function bootRecovery() {
     try {
         for (const t of ['vod_ai_state', 'clip_ai_state']) {
-            const cols = database.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
-            if (!cols.includes('ai_overview')) database.exec(`ALTER TABLE ${t} ADD COLUMN ai_overview TEXT`);
-        }
-    } catch (e) { console.warn('[DB] ai-overview column migration:', e.message); }
-
-    // Transcript job-state recovery — on the tables that actually hold it. An older recovery
-    // loop targeted the legacy local `vods`/`clips` tables (which moved to OpenVibe.Media), so
-    // rows killed mid-flight by a deploy stayed 'processing' forever and 'failed' was
-    // permanent; that loop is gone. Also adds resumable-progress columns (finished windows
-    // survive restarts).
-    try {
-        for (const t of ['vod_ai_state', 'clip_ai_state']) {
-            const cols = database.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
-            if (!cols.includes('transcript_partial_json')) database.exec(`ALTER TABLE ${t} ADD COLUMN transcript_partial_json TEXT`);
-            if (!cols.includes('transcript_progress_sec')) database.exec(`ALTER TABLE ${t} ADD COLUMN transcript_progress_sec INTEGER DEFAULT 0`);
-            // Mid-flight at shutdown → back to the queue (progress is kept, attempts untouched).
-            const p = database.prepare(`UPDATE ${t} SET transcript_status='retry', transcript_next_at=NULL WHERE transcript_status='processing'`).run();
-            // Exhausted retries get a fresh ladder after a deploy — except sources that can
-            // never work (Media reported the recording itself failed / no audio stream).
-            const f = database.prepare(`UPDATE ${t} SET transcript_status='retry', transcript_attempts=0, transcript_next_at=NULL
-                WHERE transcript_status='failed'
-                  AND COALESCE(transcript_error,'') NOT LIKE 'media reported%'
-                  AND COALESCE(transcript_error,'') NOT LIKE 'no audio stream%'`).run();
+            const p = await run(`UPDATE ${t} SET transcript_status = 'retry', transcript_next_at = NULL WHERE transcript_status = 'processing'`);
+            const f = await run(`UPDATE ${t} SET transcript_status = 'retry', transcript_attempts = 0, transcript_next_at = NULL
+                WHERE transcript_status = 'failed'
+                  AND COALESCE(transcript_error, '') NOT ILIKE 'media reported%'
+                  AND COALESCE(transcript_error, '') NOT ILIKE 'no audio stream%'`);
             if (p.changes || f.changes) console.log(`[DB] ${t}: re-queued ${p.changes} interrupted + ${f.changes} previously-failed transcript job(s)`);
         }
     } catch (e) { console.warn('[DB] transcript recovery:', e.message); }
-
-    // ── Migrations ────────────────────────────────────────────
     try {
-        const cols = database.prepare("PRAGMA table_info('channels')").all().map(c => c.name);
-        if (!cols.includes('emote_sources')) {
-            database.exec(`ALTER TABLE channels ADD COLUMN emote_sources TEXT DEFAULT '{"defaults":true,"custom":true,"ffz":true,"bttv":true,"7tv":true}'`);
-            console.log('[DB] Added emote_sources column to channels');
-        }
-    } catch (e) { console.warn('[DB] Migration note:', e.message); }
-
-    // Migrate camp_funds_balance → openvibe_bucks_balance (REAL for dollar amounts)
-    try {
-        const userCols = database.prepare("PRAGMA table_info('users')").all().map(c => c.name);
-        if (userCols.includes('camp_funds_balance') && !userCols.includes('openvibe_bucks_balance')) {
-            database.exec(`ALTER TABLE users ADD COLUMN openvibe_bucks_balance REAL DEFAULT 0.00`);
-            // Convert old bits to dollars (100 bits → $1.00)
-            database.exec(`UPDATE users SET openvibe_bucks_balance = camp_funds_balance * 0.01`);
-            console.log('[DB] Migrated camp_funds_balance → openvibe_bucks_balance');
-        }
-        if (!userCols.includes('openvibe_coins_balance')) {
-            database.exec(`ALTER TABLE users ADD COLUMN openvibe_coins_balance INTEGER DEFAULT 0`);
-            console.log('[DB] Added openvibe_coins_balance column to users');
-        }
-        // Streamer cashout balance: only Vibes RECEIVED (donated to them) land here,
-        // and only this balance is cashout-able (bought bucks are not). Separate from the
-        // spendable openvibe_bucks_balance.
-        if (!userCols.includes('openvibe_bucks_cashout_balance')) {
-            database.exec(`ALTER TABLE users ADD COLUMN openvibe_bucks_cashout_balance REAL DEFAULT 0.00`);
-            console.log('[DB] Added openvibe_bucks_cashout_balance column to users');
-        }
-        if (!userCols.includes('token_valid_after')) {
-            database.exec(`ALTER TABLE users ADD COLUMN token_valid_after TEXT DEFAULT NULL`);
-            console.log('[DB] Added token_valid_after column to users');
-        }
-    } catch (e) { console.warn('[DB] Migration note:', e.message); }
-
-    // Migrate: create site_settings table if missing (old DB)
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS site_settings (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL DEFAULT '',
-            description TEXT DEFAULT '',
-            type TEXT DEFAULT 'string' CHECK(type IN ('string', 'number', 'boolean', 'json')),
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
-    } catch (e) { console.warn('[DB] site_settings migration:', e.message); }
-
-    // Migrate: create verification_keys table if missing (old DB)
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS verification_keys (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            key TEXT UNIQUE NOT NULL,
-            target_username TEXT NOT NULL,
-            note TEXT DEFAULT '',
-            created_by INTEGER NOT NULL,
-            used_by INTEGER,
-            status TEXT DEFAULT 'active' CHECK(status IN ('active', 'used', 'revoked')),
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            used_at DATETIME,
-            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY (used_by) REFERENCES users(id) ON DELETE SET NULL
-        )`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_vkeys_key ON verification_keys(key)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_vkeys_target ON verification_keys(target_username)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_vkeys_status ON verification_keys(status)`);
-    } catch (e) { console.warn('[DB] verification_keys migration:', e.message); }
-
-    // Migrate: create linked_accounts table for openvibe.network SSO
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS linked_accounts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            service TEXT NOT NULL,
-            service_user_id TEXT NOT NULL,
-            service_username TEXT,
-            linked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-            UNIQUE(service, service_user_id)
-        )`);
-    // Rename migration: the SSO provider was hobo.tools ('hobotools'); it is openvibe.network
-    // ('network') now. Rows keep the same service_user_id (the network user id), so the
-    // service label is the only thing that changed — but every lookup here filters on
-    // service='network', so un-renamed rows made those users look "never linked".
-    try {
-        const moved = database.prepare(`UPDATE linked_accounts SET service = 'network'
-            WHERE service = 'hobotools' AND user_id NOT IN (SELECT user_id FROM linked_accounts WHERE service = 'network')`).run().changes;
-        const dropped = database.prepare("DELETE FROM linked_accounts WHERE service = 'hobotools'").run().changes;
-        if (moved || dropped) console.log(`[DB] linked_accounts: ${moved} hobotools→network row(s) renamed, ${dropped} duplicate(s) dropped`);
-    } catch (e) { console.warn('[DB] linked_accounts rename:', e.message); }
-
-        // Canonical subject id (usr_<ULID>) from the Network token, next to the integer network id (Wave 1).
-        const laCols = database.prepare('PRAGMA table_info(linked_accounts)').all().map(c => c.name);
-        if (!laCols.includes('subject_id')) database.exec('ALTER TABLE linked_accounts ADD COLUMN subject_id TEXT');
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_linked_subject ON linked_accounts(subject_id)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_linked_service ON linked_accounts(service, service_user_id)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_linked_user ON linked_accounts(user_id)`);
-    } catch (e) { console.warn('[DB] linked_accounts migration:', e.message); }
-
-    // Migrate: add default_vod_visibility / default_clip_visibility to channels
-    try {
-        const chanCols = database.prepare("PRAGMA table_info('channels')").all().map(c => c.name);
-        if (!chanCols.includes('default_vod_visibility')) {
-            database.exec(`ALTER TABLE channels ADD COLUMN default_vod_visibility TEXT DEFAULT 'public'`);
-            console.log('[DB] Added default_vod_visibility column to channels');
-        }
-        if (!chanCols.includes('default_clip_visibility')) {
-            database.exec(`ALTER TABLE channels ADD COLUMN default_clip_visibility TEXT DEFAULT 'public'`);
-            console.log('[DB] Added default_clip_visibility column to channels');
-        }
-    } catch (e) { console.warn('[DB] Channel visibility migration:', e.message); }
-
-    // Channel language (chat translation direction + whisper language). 'auto' = detect from
-    // the streamer's bio/name (see server/i18n/translate.js). Speech rows gain the detected
-    // language + an English rendering so non-English streamers are readable site-wide.
-    try {
-        const chanCols = database.prepare("PRAGMA table_info('channels')").all().map(c => c.name);
-        if (!chanCols.includes('chat_language')) {
-            database.exec(`ALTER TABLE channels ADD COLUMN chat_language TEXT DEFAULT 'auto'`);
-            console.log('[DB] Added chat_language column to channels');
-        }
-        database.exec(`CREATE TABLE IF NOT EXISTS translations (
-            key TEXT PRIMARY KEY,
-            src TEXT, dst TEXT,
-            text TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
-    } catch (e) { console.warn('[DB] i18n migration:', e.message); }
-
-    // Migrate: add weather_zip / weather_detail to channels
-    try {
-        const wCols = database.prepare("PRAGMA table_info('channels')").all().map(c => c.name);
-        if (!wCols.includes('weather_zip')) {
-            database.exec(`ALTER TABLE channels ADD COLUMN weather_zip TEXT DEFAULT NULL`);
-            console.log('[DB] Added weather_zip column to channels');
-        }
-        if (!wCols.includes('weather_detail')) {
-            database.exec(`ALTER TABLE channels ADD COLUMN weather_detail TEXT DEFAULT 'basic'`);
-            console.log('[DB] Added weather_detail column to channels');
-        }
-        if (!wCols.includes('weather_show_location')) {
-            database.exec(`ALTER TABLE channels ADD COLUMN weather_show_location INTEGER DEFAULT 0`);
-            console.log('[DB] Added weather_show_location column to channels');
-        }
-    } catch (e) { console.warn('[DB] Channel weather migration:', e.message); }
-
-    // Per-streamer Channel Points customization.
-    try {
-        const cpCols = database.prepare("PRAGMA table_info('channels')").all().map(c => c.name);
-        const add = (name, ddl) => { if (!cpCols.includes(name)) { database.exec(`ALTER TABLE channels ADD COLUMN ${ddl}`); console.log(`[DB] Added ${name} to channels`); } };
-        add('cp_name', "cp_name TEXT DEFAULT 'Channel Points'");
-        add('cp_icon', "cp_icon TEXT DEFAULT 'fa-coins'");
-        add('cp_watch_interval_min', 'cp_watch_interval_min INTEGER DEFAULT 5');
-        add('cp_watch_amount', 'cp_watch_amount INTEGER DEFAULT 10');
-        add('cp_game_interval_min', 'cp_game_interval_min INTEGER DEFAULT 0');
-        // Clip settings: by default only the streamer/mods/staff can delete clips of the
-        // channel; the streamer can opt to let clip creators delete their own clips.
-        add('clips_allow_creator_delete', 'clips_allow_creator_delete INTEGER DEFAULT 0');
-        // Streamer can hide the AI-generated overview from the top of their About tab.
-        add('hide_ai_overview', 'hide_ai_overview INTEGER DEFAULT 0');
-        // Tri-state preference for the About-tab AI overview: 'auto' (show only when there's no
-        // bio/about yet), 'show' (always), 'hide' (never). Migrate old hide flag → 'hide'.
-        add('ai_overview_pref', "ai_overview_pref TEXT DEFAULT 'auto'");
-        // Whether OpenVibe's AI may make Moments from this channel's streams (auto-clips, AI moment
-        // pastes, AI-written recaps). On unless the streamer turns it off (roadmap 33.7).
-        add('ai_derivation_enabled', 'ai_derivation_enabled INTEGER DEFAULT 1');
-        try { database.exec("UPDATE channels SET ai_overview_pref = 'hide' WHERE hide_ai_overview = 1 AND (ai_overview_pref IS NULL OR ai_overview_pref = 'auto')"); } catch { /* */ }
-    } catch (e) { console.warn('[DB] Channel points config migration:', e.message); }
-
-    // Migrate: add VOD health and recording metadata columns
-    try {
-        const vodCols = database.prepare("PRAGMA table_info('vods')").all().map(c => c.name);
-        if (!vodCols.includes('thumbnail_url')) {
-            database.exec('ALTER TABLE vods ADD COLUMN thumbnail_url TEXT');
-            console.log('[DB] Added thumbnail_url column to vods');
-        }
-        if (!vodCols.includes('master_file_path')) {
-            database.exec('ALTER TABLE vods ADD COLUMN master_file_path TEXT');
-            console.log('[DB] Added master_file_path column to vods');
-        }
-        if (!vodCols.includes('probe_duration_seconds')) {
-            database.exec('ALTER TABLE vods ADD COLUMN probe_duration_seconds REAL DEFAULT 0');
-            console.log('[DB] Added probe_duration_seconds column to vods');
-        }
-        if (!vodCols.includes('probe_format_json')) {
-            database.exec("ALTER TABLE vods ADD COLUMN probe_format_json TEXT DEFAULT ''");
-            console.log('[DB] Added probe_format_json column to vods');
-        }
-        if (!vodCols.includes('health_status')) {
-            database.exec("ALTER TABLE vods ADD COLUMN health_status TEXT DEFAULT 'unknown'");
-            console.log('[DB] Added health_status column to vods');
-        }
-        if (!vodCols.includes('health_score')) {
-            database.exec('ALTER TABLE vods ADD COLUMN health_score INTEGER DEFAULT 0');
-            console.log('[DB] Added health_score column to vods');
-        }
-        if (!vodCols.includes('health_issues_json')) {
-            database.exec("ALTER TABLE vods ADD COLUMN health_issues_json TEXT DEFAULT '[]'");
-            console.log('[DB] Added health_issues_json column to vods');
-        }
-        if (!vodCols.includes('last_health_scan_at')) {
-            database.exec('ALTER TABLE vods ADD COLUMN last_health_scan_at DATETIME');
-            console.log('[DB] Added last_health_scan_at column to vods');
-        }
-        if (!vodCols.includes('quarantined_at')) {
-            database.exec('ALTER TABLE vods ADD COLUMN quarantined_at DATETIME');
-            console.log('[DB] Added quarantined_at column to vods');
-        }
-        if (!vodCols.includes('clips_only')) {
-            // Ephemeral recording made ONLY to serve the clip system on a slot that has VOD
-            // recording disabled but clipping enabled. Never published as a browsable VOD;
-            // deleted when the stream ends. Kept short/rolling to bound disk (see recorder).
-            database.exec('ALTER TABLE vods ADD COLUMN clips_only INTEGER DEFAULT 0');
-            console.log('[DB] Added clips_only column to vods');
-        }
-        if (!vodCols.includes('is_recording')) {
-            database.exec('ALTER TABLE vods ADD COLUMN is_recording INTEGER DEFAULT 0');
-            console.log('[DB] Added is_recording column to vods');
-        }
-    } catch (e) { console.warn('[DB] VOD metadata migration:', e.message); }
-
-    // Migrate: create RobotStreamer integration table if missing
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS robotstreamer_integrations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL UNIQUE,
-            enabled INTEGER DEFAULT 0,
-            mirror_chat INTEGER DEFAULT 1,
-            token TEXT,
-            robot_id TEXT,
-            owner_id TEXT,
-            chat_url TEXT,
-            control_url TEXT,
-            rtc_sfu_url TEXT,
-            stream_name TEXT,
-            owner_name TEXT,
-            last_validated_at DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )`);
-    } catch (e) { console.warn('[DB] RobotStreamer integration migration:', e.message); }
-
-    // Migrate: native object-storage columns for the VOD storage engine
-    // (storage_provider: local|b2|r2, storage_key: object key in the bucket)
-    try {
-        const vodCols = database.prepare('PRAGMA table_info(vods)').all().map(c => c.name);
-        if (!vodCols.includes('storage_provider')) {
-            database.exec("ALTER TABLE vods ADD COLUMN storage_provider TEXT DEFAULT 'local'");
-            console.log('[DB] Added storage_provider column to vods');
-        }
-        if (!vodCols.includes('storage_key')) {
-            database.exec('ALTER TABLE vods ADD COLUMN storage_key TEXT');
-            console.log('[DB] Added storage_key column to vods');
-        }
-        // Clips use the same local/B2/R2 tiering as VODs.
-        const clipCols = database.prepare('PRAGMA table_info(clips)').all().map(c => c.name);
-        if (!clipCols.includes('storage_provider')) {
-            database.exec("ALTER TABLE clips ADD COLUMN storage_provider TEXT DEFAULT 'local'");
-            console.log('[DB] Added storage_provider column to clips');
-        }
-        if (!clipCols.includes('storage_key')) {
-            database.exec('ALTER TABLE clips ADD COLUMN storage_key TEXT');
-            console.log('[DB] Added storage_key column to clips');
-        }
-    } catch (e) { console.warn('[DB] VOD storage engine migration:', e.message); }
-
-    // Migrate: per-slot RobotStreamer integrations — drop the UNIQUE(user_id)
-    // constraint (requires a table rebuild in SQLite) and add managed_stream_id
-    // so each stream slot can carry its own token + robot.
-    try {
-        const rsCols = database.prepare('PRAGMA table_info(robotstreamer_integrations)').all().map(c => c.name);
-        if (!rsCols.includes('managed_stream_id')) {
-            database.exec(`
-                CREATE TABLE robotstreamer_integrations_new (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    managed_stream_id INTEGER,
-                    enabled INTEGER DEFAULT 0,
-                    mirror_chat INTEGER DEFAULT 1,
-                    token TEXT,
-                    robot_id TEXT,
-                    owner_id TEXT,
-                    chat_url TEXT,
-                    control_url TEXT,
-                    rtc_sfu_url TEXT,
-                    stream_name TEXT,
-                    owner_name TEXT,
-                    last_validated_at DATETIME,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    FOREIGN KEY (managed_stream_id) REFERENCES managed_streams(id) ON DELETE CASCADE
-                );
-                INSERT INTO robotstreamer_integrations_new
-                    (id, user_id, enabled, mirror_chat, token, robot_id, owner_id, chat_url, control_url, rtc_sfu_url, stream_name, owner_name, last_validated_at, created_at, updated_at)
-                SELECT id, user_id, enabled, mirror_chat, token, robot_id, owner_id, chat_url, control_url, rtc_sfu_url, stream_name, owner_name, last_validated_at, created_at, updated_at
-                FROM robotstreamer_integrations;
-                DROP TABLE robotstreamer_integrations;
-                ALTER TABLE robotstreamer_integrations_new RENAME TO robotstreamer_integrations;
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_rs_integrations_user_slot
-                    ON robotstreamer_integrations(user_id, IFNULL(managed_stream_id, 0));
-            `);
-            console.log('[DB] Migrated robotstreamer_integrations to per-slot schema');
-        }
-    } catch (e) { console.warn('[DB] RobotStreamer per-slot migration:', e.message); }
-
-    // Migrate: create restream_destinations table if missing
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS restream_destinations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            platform TEXT NOT NULL CHECK(platform IN ('youtube', 'twitch', 'kick', 'custom')),
-            name TEXT,
-            server_url TEXT,
-            stream_key TEXT,
-            enabled INTEGER DEFAULT 1,
-            auto_start INTEGER DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )`);
-    } catch (e) { console.warn('[DB] Restream destinations migration:', e.message); }
-
-    // Per-user OAuth connections to external streaming platforms (Twitch/YouTube/Kick).
-    // Powers the "Connect" buttons that auto-fill ingest URL + stream key per slot.
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS platform_connections (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            platform TEXT NOT NULL CHECK(platform IN ('youtube', 'twitch', 'kick')),
-            platform_user_id TEXT,
-            platform_username TEXT,
-            channel_url TEXT,
-            access_token TEXT,
-            refresh_token TEXT,
-            token_expires_at INTEGER,
-            scope TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_id, platform),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )`);
-    } catch (e) { console.warn('[DB] platform_connections migration:', e.message); }
-
-    // PowerChat integration: per-streamer OAuth grant (one grant per streamer) + a
-    // dedupe log for at-least-once webhook deliveries. Tokens stored plaintext like
-    // platform_connections; refresh tokens ROTATE on every use (never reuse an old one).
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS powerchat_connections (
-            user_id INTEGER PRIMARY KEY,
-            powerchat_username TEXT,
-            powerchat_user_id TEXT,
-            access_token TEXT,
-            refresh_token TEXT,
-            token_expires_at INTEGER,          -- epoch ms
-            scope TEXT,
-            tip_page_url TEXT,
-            last_error TEXT,
-            connected_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_powerchat_conn_username ON powerchat_connections(powerchat_username)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_powerchat_conn_pcuid ON powerchat_connections(powerchat_user_id)`);
-        // Webhook delivery dedupe (X-PowerChat-Delivery-Id is at-least-once).
-        database.exec(`CREATE TABLE IF NOT EXISTS powerchat_webhook_deliveries (
-            delivery_id TEXT PRIMARY KEY,
-            event_type TEXT,
-            received_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
-    } catch (e) { console.warn('[DB] powerchat migration:', e.message); }
-
-    // Per-streamer channel points ("OpenCoins"). A viewer holds a separate
-    // OpenCoins balance for each streamer they watch (Twitch-channel-points style),
-    // spent only on that streamer's rewards. The global users.openvibe_coins_balance
-    // is now a decoupled "gold" wallet for OpenVibeGame / cosmetics / media requests.
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS channel_points (
-            user_id INTEGER NOT NULL,
-            streamer_id INTEGER NOT NULL,
-            balance INTEGER NOT NULL DEFAULT 0,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (user_id, streamer_id)
-        )`);
-        // Every channel-points debit and credit, keyed per event (ADR-012 rule 5): a retried award,
-        // spend or refund with the same key is applied once. Keys: live:cp:<event>:<id>, and
-        // live:media_req:<request id> / live:media_refund:<request id> for media requests.
-        database.exec(`CREATE TABLE IF NOT EXISTS channel_points_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            idempotency_key TEXT NOT NULL UNIQUE,
-            user_id INTEGER NOT NULL,
-            streamer_id INTEGER NOT NULL,
-            delta INTEGER NOT NULL,
-            reason TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
-        database.exec('CREATE INDEX IF NOT EXISTS idx_cp_log_user ON channel_points_log(user_id, streamer_id, id)');
-    } catch (e) { console.warn('[DB] channel_points migration:', e.message); }
-
-    // Kick chatroom-id cache. Kick's v2 API (which exposes the Pusher chatroom id)
-    // is Cloudflare-blocked from datacenter IPs, so resolution fails intermittently.
-    // Once we resolve a channel's ids we persist them here and reuse forever — the
-    // chatroom id is stable per channel, so the relay survives the API being blocked.
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS kick_channel_cache (
-            slug TEXT PRIMARY KEY,
-            chatroom_id INTEGER,
-            kick_channel_id INTEGER,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
-    } catch (e) { console.warn('[DB] kick_channel_cache migration:', e.message); }
-
-    // Migrate: link a restream destination to the OAuth connection that provisioned it
-    try {
-        const cols = database.pragma('table_info(restream_destinations)').map(c => c.name);
-        if (!cols.includes('connection_id')) {
-            database.exec(`ALTER TABLE restream_destinations ADD COLUMN connection_id INTEGER DEFAULT NULL REFERENCES platform_connections(id) ON DELETE SET NULL`);
-            console.log('[DB] Added connection_id column to restream_destinations');
-        }
-    } catch (e) { console.warn('[DB] Restream connection_id migration:', e.message); }
-
-    // Migrate: add quality_preset column to restream_destinations
-    try {
-        const cols = database.pragma('table_info(restream_destinations)').map(c => c.name);
-        if (!cols.includes('quality_preset')) {
-            database.exec(`ALTER TABLE restream_destinations ADD COLUMN quality_preset TEXT DEFAULT 'auto'`);
-            console.log('[DB] Added quality_preset column to restream_destinations');
-        }
-    } catch (e) { console.warn('[DB] Restream quality_preset migration:', e.message); }
-
-    // Migrate: add custom encoding override columns to restream_destinations
-    try {
-        const cols = database.pragma('table_info(restream_destinations)').map(c => c.name);
-        const newCols = [
-            { name: 'custom_video_bitrate', def: 'INTEGER DEFAULT NULL' },
-            { name: 'custom_audio_bitrate', def: 'INTEGER DEFAULT NULL' },
-            { name: 'custom_fps', def: 'INTEGER DEFAULT NULL' },
-            { name: 'custom_encoder_preset', def: 'TEXT DEFAULT NULL' },
-            // SRT destinations (srt:// server URL): receiver latency window and optional encryption.
-            { name: 'srt_latency_ms', def: 'INTEGER DEFAULT NULL' },
-            { name: 'srt_passphrase', def: 'TEXT DEFAULT NULL' },
-        ];
-        for (const col of newCols) {
-            if (!cols.includes(col.name)) {
-                database.exec(`ALTER TABLE restream_destinations ADD COLUMN ${col.name} ${col.def}`);
-                console.log(`[DB] Added ${col.name} column to restream_destinations`);
-            }
-        }
-    } catch (e) { console.warn('[DB] Restream custom overrides migration:', e.message); }
-
-    // Migrate: add channel_url and chat_relay columns to restream_destinations
-    try {
-        const cols = database.pragma('table_info(restream_destinations)').map(c => c.name);
-        const newCols = [
-            { name: 'channel_url', def: 'TEXT DEFAULT NULL' },
-            { name: 'chat_relay', def: 'INTEGER DEFAULT 0' },
-            // Per-destination: forward this platform's relayed chat to the streamer's
-            // PowerChat overlay (default on; only meaningful with chat_relay).
-            { name: 'powerchat_relay', def: 'INTEGER DEFAULT 1' },
-            // Per-destination: include this platform's viewers in the total viewer count
-            // pushed to PowerChat (default on).
-            { name: 'powerchat_count_views', def: 'INTEGER DEFAULT 1' },
-            // Circuit breaker: persist repeated go-live failures so a broken destination
-            // (e.g. a YouTube strike) isn't hammered every time the streamer goes live.
-            { name: 'consecutive_failures', def: 'INTEGER DEFAULT 0' },
-            { name: 'cooldown_until', def: 'DATETIME DEFAULT NULL' },
-            { name: 'last_error', def: 'TEXT DEFAULT NULL' },
-            { name: 'last_failed_at', def: 'DATETIME DEFAULT NULL' },
-        ];
-        for (const col of newCols) {
-            if (!cols.includes(col.name)) {
-                database.exec(`ALTER TABLE restream_destinations ADD COLUMN ${col.name} ${col.def}`);
-                console.log(`[DB] Added ${col.name} column to restream_destinations`);
-            }
-        }
-    } catch (e) { console.warn('[DB] Restream channel_url/chat_relay migration:', e.message); }
-
-    // Migrate: create comments table if missing
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS comments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content_type TEXT NOT NULL CHECK(content_type IN ('vod', 'clip')),
-            content_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            parent_id INTEGER,
-            message TEXT NOT NULL,
-            is_deleted INTEGER DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY (parent_id) REFERENCES comments(id) ON DELETE CASCADE
-        )`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_comments_content ON comments(content_type, content_id)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_comments_user ON comments(user_id)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_id)`);
-    } catch (e) { console.warn('[DB] Comments migration:', e.message); }
-
-    // Migrate: create media request tables if missing
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS media_request_settings (
-            user_id INTEGER PRIMARY KEY,
-            enabled INTEGER DEFAULT 1,
-            request_cost INTEGER DEFAULT 25,
-            max_per_user INTEGER DEFAULT 3,
-            max_duration_seconds INTEGER DEFAULT 600,
-            allow_youtube INTEGER DEFAULT 1,
-            allow_vimeo INTEGER DEFAULT 1,
-            allow_direct_media INTEGER DEFAULT 1,
-            auto_advance INTEGER DEFAULT 1,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )`);
-        database.exec(`CREATE TABLE IF NOT EXISTS media_requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            streamer_id INTEGER NOT NULL,
-            stream_id INTEGER,
-            user_id INTEGER NOT NULL,
-            username TEXT NOT NULL,
-            input TEXT NOT NULL,
-            canonical_url TEXT NOT NULL,
-            embed_url TEXT,
-            provider TEXT NOT NULL CHECK(provider IN ('youtube', 'vimeo', 'audio', 'video')),
-            title TEXT NOT NULL,
-            thumbnail_url TEXT,
-            duration_seconds INTEGER,
-            cost INTEGER NOT NULL DEFAULT 25,
-            queue_position INTEGER DEFAULT 0,
-            status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'playing', 'played', 'skipped', 'removed', 'failed')),
-            requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            started_at DATETIME,
-            ended_at DATETIME,
-            last_error TEXT,
-            FOREIGN KEY (streamer_id) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE SET NULL,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )`);
-        database.exec('CREATE INDEX IF NOT EXISTS idx_media_requests_streamer_status ON media_requests(streamer_id, status, queue_position, requested_at)');
-        database.exec('CREATE INDEX IF NOT EXISTS idx_media_requests_user_status ON media_requests(user_id, status, requested_at)');
-        database.exec('CREATE INDEX IF NOT EXISTS idx_media_requests_canonical ON media_requests(streamer_id, canonical_url, status)');
-    } catch (e) { console.warn('[DB] media requests migration:', e.message); }
-
-    // Migrate: add new media columns for server-side downloading + pricing + playback state
-    try {
-        const mrCols = database.pragma('table_info(media_requests)').map(c => c.name);
-        if (!mrCols.includes('stream_url'))             database.exec('ALTER TABLE media_requests ADD COLUMN stream_url TEXT');
-        if (!mrCols.includes('download_status'))        database.exec("ALTER TABLE media_requests ADD COLUMN download_status TEXT DEFAULT 'none' CHECK(download_status IN ('none','extracting','downloading','ready','failed'))");
-        if (!mrCols.includes('file_path'))              database.exec('ALTER TABLE media_requests ADD COLUMN file_path TEXT');
-        if (!mrCols.includes('playback_position'))      database.exec('ALTER TABLE media_requests ADD COLUMN playback_position REAL DEFAULT 0');
-        if (!mrCols.includes('refunded'))               database.exec('ALTER TABLE media_requests ADD COLUMN refunded INTEGER DEFAULT 0');
-        // The currency this request was actually charged in, captured at request time. A
-        // refund has to give back what was taken, so it cannot read the channel's current
-        // setting — a streamer switching from Vibes to points would otherwise refund the
-        // wrong currency to everyone still queued.
-        if (!mrCols.includes('currency'))               database.exec("ALTER TABLE media_requests ADD COLUMN currency TEXT DEFAULT 'opencoins'");
-        // A paid request is written before it is charged, so the charge can be keyed by its id
-        // (live:media_req:<id>, ADR-012 rule 5). Until the charge answers it is status 'failed'
-        // with charge_state 'charging' (out of the queue and the history); 'unknown' means the
-        // wallet never answered and mediaQueue.reconcileCharges() settles it. NULL = settled.
-        if (!mrCols.includes('charge_state'))           database.exec('ALTER TABLE media_requests ADD COLUMN charge_state TEXT');
-
-        const msCols = database.pragma('table_info(media_request_settings)').map(c => c.name);
-        if (!msCols.includes('cost_mode'))              database.exec("ALTER TABLE media_request_settings ADD COLUMN cost_mode TEXT DEFAULT 'flat' CHECK(cost_mode IN ('flat','per_minute'))");
-        if (!msCols.includes('cost_per_minute'))        database.exec('ALTER TABLE media_request_settings ADD COLUMN cost_per_minute INTEGER DEFAULT 5');
-        if (!msCols.includes('allow_live'))             database.exec('ALTER TABLE media_request_settings ADD COLUMN allow_live INTEGER DEFAULT 0');
-        if (!msCols.includes('download_mode'))          database.exec("ALTER TABLE media_request_settings ADD COLUMN download_mode TEXT DEFAULT 'stream' CHECK(download_mode IN ('stream','download'))");
-        if (!msCols.includes('currency'))               database.exec("ALTER TABLE media_request_settings ADD COLUMN currency TEXT DEFAULT 'opencoins' CHECK(currency IN ('free','vibes','opencoins','points'))");
-    } catch (e) { console.warn('[DB] media columns migration:', e.message); }
-
-    // Migrate: create anon IP mapping table for persistent anon numbering
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS anon_ip_mappings (
-            ip TEXT PRIMARY KEY,
-            anon_num INTEGER NOT NULL UNIQUE
-        )`);
-        // created_at = when this anon number was first assigned ("first seen"). SQLite
-        // can't ADD COLUMN with a CURRENT_TIMESTAMP default, so add it nullable and set it
-        // explicitly on insert; existing rows stay NULL and fall back to their first chat.
-        const aCols = database.prepare("PRAGMA table_info(anon_ip_mappings)").all().map(c => c.name);
-        if (!aCols.includes('created_at')) database.exec('ALTER TABLE anon_ip_mappings ADD COLUMN created_at DATETIME');
-    } catch (e) { console.warn('[DB] anon_ip_mappings migration:', e.message); }
-
-    // Seed default site settings if empty
-    try {
-        const settingsCount = database.prepare("SELECT COUNT(*) as c FROM site_settings").get().c;
-        if (settingsCount === 0) {
-            const defaults = [
-                ['max_video_bitrate', '6000', 'Maximum video bitrate for streamers (kbps)', 'number'],
-                ['max_audio_bitrate', '320', 'Maximum audio bitrate for streamers (kbps)', 'number'],
-                ['max_vod_size_mb', '5120', 'Maximum VOD file size in MB', 'number'],
-                ['max_clip_duration', '60', 'Maximum clip duration in seconds', 'number'],
-                ['registration_open', 'true', 'Whether new user registration is open', 'boolean'],
-                ['require_email', 'false', 'Require email for registration', 'boolean'],
-                ['site_name', 'OpenVibe.Live', 'Public site name', 'string'],
-                ['site_description', 'Live streaming for camp culture', 'Site description / tagline', 'string'],
-                ['motd', '', 'Message of the day shown on homepage', 'string'],
-                ['min_cashout_amount', '500', 'Minimum Vibes for cashout', 'number'],
-                ['coins_per_minute', '10', 'OpenCoins earned per minute watching', 'number'],
-                ['chat_slowmode_seconds', '0', 'Global chat slow mode (0=off)', 'number'],
-                ['max_emotes_per_user', '25', 'Max custom emotes per user', 'number'],
-                ['nsfw_enabled', 'true', 'Allow NSFW streams', 'boolean'],
-                // TTS settings
-                ['tts_enabled', 'true', 'Enable site-wide TTS system', 'boolean'],
-                ['tts_provider', 'espeak-ng', 'Default TTS provider (espeak-ng, google-cloud, amazon-polly)', 'string'],
-                ['tts_google_api_key', '', 'Google Cloud TTS API key', 'string'],
-                ['tts_google_service_account', '', 'Google Cloud service account JSON (paste full JSON or file path)', 'string'],
-                ['tts_aws_access_key_id', '', 'Amazon Polly AWS Access Key ID', 'string'],
-                ['tts_aws_secret_access_key', '', 'Amazon Polly AWS Secret Access Key', 'string'],
-                ['tts_aws_region', 'us-east-1', 'Amazon Polly AWS Region', 'string'],
-                ['tts_max_length', '200', 'Maximum TTS message length (characters)', 'number'],
-                ['tts_max_queue_per_user', '3', 'Maximum queued TTS messages per user', 'number'],
-                ['tts_max_queue_global', '20', 'Maximum global TTS queue size', 'number'],
-                ['tts_default_voice', 'gary', 'Default TTS voice ID', 'string'],
-                ['gif_tenor_api_key', '', 'Tenor API key for chat GIF picker', 'string'],
-                ['gif_giphy_api_key', '', 'Giphy API key for chat GIF picker', 'string'],
-                ['soundboard_101_api_key', '', '101soundboards API key for chat soundboard fetches', 'string'],
-            ];
-            const insert = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
-            for (const [k, v, d, t] of defaults) insert.run(k, v, d, t);
-            console.log('[DB] Default site settings seeded');
-        }
-        // Always seed any NEW TTS settings that may be missing (for existing databases)
-        const ttsSeeds = [
-            ['tts_enabled', 'true', 'Enable site-wide TTS system', 'boolean'],
-            ['tts_provider', 'espeak-ng', 'Default TTS provider (espeak-ng, google-cloud, amazon-polly)', 'string'],
-            ['tts_google_api_key', '', 'Google Cloud TTS API key', 'string'],
-            ['tts_google_service_account', '', 'Google Cloud service account JSON (paste full JSON or file path)', 'string'],
-            ['tts_aws_access_key_id', '', 'Amazon Polly AWS Access Key ID', 'string'],
-            ['tts_aws_secret_access_key', '', 'Amazon Polly AWS Secret Access Key', 'string'],
-            ['tts_aws_region', 'us-east-1', 'Amazon Polly AWS Region', 'string'],
-            ['tts_max_length', '200', 'Maximum TTS message length (characters)', 'number'],
-            ['tts_max_queue_per_user', '3', 'Maximum queued TTS messages per user', 'number'],
-            ['tts_max_queue_global', '20', 'Maximum global TTS queue size', 'number'],
-            ['tts_default_voice', 'gary', 'Default TTS voice ID', 'string'],
-            ['gif_tenor_api_key', '', 'Tenor API key for chat GIF picker', 'string'],
-            ['gif_giphy_api_key', '', 'Giphy API key for chat GIF picker', 'string'],
-            ['soundboard_101_api_key', '', '101soundboards API key for chat soundboard fetches', 'string'],
-        ];
-        const seedInsert = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
-        for (const [k, v, d, t] of ttsSeeds) seedInsert.run(k, v, d, t);
-
-        // Seed Twitch API settings (for Helix viewer count polling)
-        const twitchSeeds = [
-            ['twitch_client_id', '', 'Twitch API Client ID (from dev.twitch.tv, used for viewer counts)', 'string'],
-            ['twitch_client_secret', '', 'Twitch API Client Secret (from dev.twitch.tv)', 'string'],
-        ];
-        const seedTwitch = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
-        for (const [k, v, d, t] of twitchSeeds) seedTwitch.run(k, v, d, t);
-
-        // Seed Kick API settings (official Kick Developer API — https://docs.kick.com)
-        const kickSeeds = [
-            ['kick_client_id', '', 'Kick API Client ID (from kick.com/settings/developer, used for viewer counts)', 'string'],
-            ['kick_client_secret', '', 'Kick API Client Secret (from kick.com/settings/developer)', 'string'],
-        ];
-        const seedKick = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
-        for (const [k, v, d, t] of kickSeeds) seedKick.run(k, v, d, t);
-
-        // Seed Google/YouTube OAuth settings (Google Cloud OAuth client — used for
-        // the "Connect YouTube" flow that auto-fetches the RTMP ingest + stream key)
-        const googleSeeds = [
-            ['google_client_id', '', 'Google OAuth Client ID (Google Cloud Console, for YouTube Connect)', 'string'],
-            ['google_client_secret', '', 'Google OAuth Client Secret (Google Cloud Console)', 'string'],
-        ];
-        const seedGoogle = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
-        for (const [k, v, d, t] of googleSeeds) seedGoogle.run(k, v, d, t);
-
-        // Seed payment-provider + monetization settings (configured in openvibe.network/admin → Payments).
-        // Master switch is OFF by default so nothing goes live until an admin enables it.
-        const paymentSeeds = [
-            ['payments_enabled', 'false', 'Master switch: enable real-money purchases & subscriptions', 'boolean'],
-            ['money_writes_frozen', 'false', 'Freeze: refuse every Live money action (checkouts, donations, cashouts, recycling, subscriptions, Vibes media requests) in both billing modes; reads keep working. Owner only — use /api/admin/money/freeze', 'boolean'],
-            ['bucks_per_usd', '100', 'Vibes value per 1 USD (100 Bucks = $1.00 cashout). Purchase price adds a margin, see the buy tiers.', 'number'],
-            ['bucks_min_purchase_bucks', '100', 'Minimum Vibes purchase (bucks)', 'number'],
-            ['sub_price_usd', '4.99', 'Monthly channel subscription price in USD', 'number'],
-            ['sub_streamer_share_pct', '70', 'Percent of a subscription that goes to the streamer (as Vibes)', 'number'],
-            ['sub_site_route_fee_pct', '10', 'Platform fee (%) added when someone subscribes through OpenVibe\'s PowerChat account instead of the streamer\'s own', 'number'],
-            // PayPal (REST)
-            ['paypal_enabled', 'false', 'Enable PayPal', 'boolean'],
-            ['paypal_mode', 'sandbox', 'PayPal mode: sandbox | live', 'string'],
-            ['paypal_client_id', '', 'PayPal REST client ID', 'string'],
-            ['paypal_client_secret', '', 'PayPal REST client secret', 'string'],
-            ['paypal_webhook_id', '', 'PayPal webhook ID (for signature verification)', 'string'],
-            // Stripe
-            ['stripe_enabled', 'false', 'Enable Stripe', 'boolean'],
-            ['stripe_secret_key', '', 'Stripe secret key (sk_live_… / sk_test_…)', 'string'],
-            ['stripe_publishable_key', '', 'Stripe publishable key (pk_…)', 'string'],
-            ['stripe_webhook_secret', '', 'Stripe webhook signing secret (whsec_…)', 'string'],
-            // CCBill (FlexForms)
-            ['ccbill_enabled', 'false', 'Enable CCBill', 'boolean'],
-            ['ccbill_client_account', '', 'CCBill client account number', 'string'],
-            ['ccbill_subaccount', '', 'CCBill subaccount', 'string'],
-            ['ccbill_flexform_id', '', 'CCBill FlexForms form ID', 'string'],
-            ['ccbill_salt', '', 'CCBill FlexForms encryption/salt key', 'string'],
-            ['ccbill_webhook_secret', '', 'CCBill webhook shared secret (query token we require)', 'string'],
-            // Crypto (NOWPayments hosted)
-            ['crypto_enabled', 'false', 'Enable crypto payments', 'boolean'],
-            ['crypto_provider', 'nowpayments', 'Crypto provider (nowpayments)', 'string'],
-            ['crypto_api_key', '', 'Crypto provider API key', 'string'],
-            ['crypto_ipn_secret', '', 'Crypto provider IPN/webhook secret', 'string'],
-        ];
-        const seedPay = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
-        for (const [k, v, d, t] of paymentSeeds) seedPay.run(k, v, d, t);
-
-        // The decimal→bit Vibes conversion (×100) is migration 001 in server/db/migrations.js, run
-        // from the ledger at the end of initDb(). Its old guard was a site_settings row any admin
-        // could delete, which would have multiplied every balance by 100 again on the next boot.
-
-        // AI analysis subsystem (configured in openvibe.network/admin → AI). Master switch
-        // OFF by default so no AI runs (or cost) happen until an admin enables it. Every call is a
-        // run on OpenVibe.AI, which holds the provider key, the models and their prices.
-        const aiSeeds = [
-            ['ai_enabled', 'false', 'Master switch: enable AI analysis (pastes + stream memories)', 'boolean'],
-            ['ai_paste_analysis_enabled', 'true', 'Analyze image + text pastes (when AI is enabled)', 'boolean'],
-            ['ai_stream_memory_enabled', 'false', 'Periodically analyze live-stream thumbnails into timestamped memories', 'boolean'],
-            ['ai_stream_capture_interval_sec', '120', 'Seconds between live-stream AI memory captures', 'number'],
-            ['ai_transcription_enabled', 'true', 'Transcribe live-stream/clip/VOD audio into memories — FREE, runs locally via whisper.cpp (no API/cost). Requires whisper.cpp installed on the server', 'boolean'],
-            ['ai_timeline_enabled', 'false', 'CONTINUOUS audio timeline — transcribes the WHOLE live stream (not a 12s sample every 2min) and detects non-speech sounds, into a searchable timestamped timeline. FREE/local, but uses noticeably more CPU than sampling', 'boolean'],
-            ['ai_max_cost_usd_per_day', '0', 'Daily AI spend cap in USD (0 = no cap)', 'number'],
-            ['ai_viewers_enabled', 'true', 'Kill switch for the AI chat viewers feature (all channels)', 'boolean'],
-            ['ai_viewers_max_roster', '12', 'Max AI viewers per channel', 'number'],
-            ['ai_viewers_max_lines_per_min', '12', 'Hard ceiling on bot lines per minute per channel', 'number'],
-            ['ai_viewers_global_cap_usd_per_day', '0', 'Daily USD cap for ALL AI-viewer spend on the site’s AI, not streamers’ own keys (0 = none)', 'number'],
-            ['ai_viewers_default_settings_json', '{}', 'Admin defaults for per-channel AI viewer settings (overrides built-in defaults)', 'json'],
-        ];
-        const seedAi = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
-        for (const [k, v, d, t] of aiSeeds) seedAi.run(k, v, d, t);
-        try { database.exec("DELETE FROM site_settings WHERE key = 'ai_viewers_engine'"); } catch { /* */ }
-        // Live's own provider path is gone (roadmap WS-O task 2): drop the shared key and the settings only it read
-        // (provider, base URL, models per role, prices, the Arena's image provider). The admin page lists only rows
-        // that exist, so they leave it too.
-        try {
-            database.exec(`DELETE FROM site_settings WHERE key IN ('ai_api_key', 'ai_provider', 'ai_base_url', 'ai_model', 'ai_model_chat', 'ai_model_vision',
-                'ai_model_director', 'ai_model_summary', 'ai_pricing_json', 'ai_input_cost_per_mtok', 'ai_output_cost_per_mtok',
-                'ai_image_enabled', 'ai_image_model', 'ai_image_quality', 'ai_image_cost_usd')`);
-        } catch { /* */ }
-
-        // PowerChat monetization (donations/tips). App-level OAuth client + webhook secret
-        // are configured here by the owner; each streamer then connects their own PowerChat
-        // account from their dashboard. client_id/secret + webhook_secret are auto-treated as
-        // secrets (owner-only) by the sensitive-key rules. OFF by default.
-        const powerchatSeeds = [
-            ['powerchat_enabled', 'false', 'Master switch: enable PowerChat donation/tip integration', 'boolean'],
-            ['powerchat_base_url', 'https://powerchatlive.dev', 'PowerChat base URL', 'string'],
-            ['powerchat_client_id', '', 'PowerChat OAuth client_id (pca_…) from the PowerChat Developer dashboard', 'string'],
-            ['powerchat_client_secret', '', 'PowerChat OAuth client_secret (pcs_…) — shown once; owner-only', 'string'],
-            ['powerchat_webhook_secret', '', 'PowerChat webhook signing secret (pcw_…) — shown once; owner-only', 'string'],
-            // The scope list MUST include the platform scopes (chat:write, viewcount:write,
-            // subscriptions:write, follows:write, currency:write, tips:write) — PowerChat
-            // grants exactly what /oauth/authorize REQUESTS, so a narrow list here means
-            // every platform push (viewer count, chat, …) 403s even though the app
-            // registration has the scopes.
-            ['powerchat_scopes', 'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write tips:write chat:read', 'OAuth scopes requested from each streamer (space-delimited)', 'string'],
-            ['powerchat_sandbox_username', 'alex', 'Sandbox streamer username the app can act on until approved (the app owner’s PowerChat username)', 'string'],
-            // Site-wide tips account: the PowerChat USERNAME whose tip page hosts all
-            // Vibes purchases and the donation fallback for streamers without their own
-            // PowerChat. Just a typed username (the checkout link is a canonical URL) —
-            // the app credentials above handle attribution, and that PowerChat account
-            // must have the app connected on PowerChat's side so webhooks fire for it.
-            ['powerchat_site_tip_username', '', 'PowerChat username whose tip page receives site purchases + fallback donations (that account must have the app connected on PowerChat)', 'string'],
-            // isTest deliveries = NO money moved. OFF in production; ON only for
-            // dev/sandbox where PowerChat has no payout provider and every checkout
-            // delivers as a test — otherwise test tips would mint real Vibes/subs.
-            ['powerchat_allow_test_fulfillment', 'false', 'Fulfill PowerChat checkouts from isTest webhook deliveries (dev/sandbox only — test tips move no money)', 'boolean'],
-        ];
-        const seedPc = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
-        for (const [k, v, d, t] of powerchatSeeds) seedPc.run(k, v, d, t);
-        // Upgrade rows still sitting on an OLD seeded default (admin never customized them).
-        // The original seed lacked every platform scope, which is why platform pushes 403'd;
-        // a later interim default lacked tips:write. Custom values are left untouched.
-        const fullScopes = powerchatSeeds.find(r => r[0] === 'powerchat_scopes')[1];
-        database.prepare(`UPDATE site_settings SET value = ? WHERE key = 'powerchat_scopes' AND value IN (?, ?, ?)`)
-            .run(fullScopes,
-                'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger',
-                'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write',
-                'profile:read webhooks:events checkout:attribute paid_messages:read alerts:trigger chat:write viewcount:write subscriptions:write follows:write currency:write tips:write');
-        database.prepare(`UPDATE site_settings SET value = 'alex' WHERE key = 'powerchat_sandbox_username' AND value = 'n8admin'`).run();
-        // powerchat_site_user_id (pointed at an OpenVibe user's connection) is replaced
-        // by powerchat_site_tip_username (a directly-typed PowerChat username). Carry
-        // the old pointer's resolved PowerChat username over once, then drop it.
-        const oldSite = database.prepare(`SELECT value FROM site_settings WHERE key = 'powerchat_site_user_id'`).get();
-        if (oldSite) {
-            try {
-                const uid = parseInt(oldSite.value, 10);
-                const conn = uid ? database.prepare('SELECT powerchat_username FROM powerchat_connections WHERE user_id = ?').get(uid) : null;
-                if (conn && conn.powerchat_username) {
-                    database.prepare(`UPDATE site_settings SET value = ? WHERE key = 'powerchat_site_tip_username' AND (value IS NULL OR value = '')`)
-                        .run(conn.powerchat_username);
-                }
-            } catch { /* best-effort carry-over */ }
-            database.prepare(`DELETE FROM site_settings WHERE key = 'powerchat_site_user_id'`).run();
-        }
-    } catch (e) { console.warn('[DB] Settings seed:', e.message); }
-
-    // Internal job/cache state (JSON blobs the AI jobs persist across restarts).
-    // These used to be stashed in site_settings, which made every one of them show up
-    // as an editable "setting" in the admin panel — they're machine state, not config.
-    // app_state is the same KV shape but never surfaced to (or editable by) admins.
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS app_state (
-            key TEXT PRIMARY KEY,
-            value TEXT,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
-        // One-time move of the known state keys out of site_settings (idempotent).
-        const stateCond = `key IN ('auto_clip_backfill','auto_clip_log','daily_easter_egg','home_hero_moments','home_hero_slogans') OR key LIKE 'ai_whole_overview_%'`;
-        database.exec(`INSERT OR IGNORE INTO app_state (key, value, updated_at)
-            SELECT key, value, COALESCE(updated_at, CURRENT_TIMESTAMP) FROM site_settings WHERE ${stateCond}`);
-        database.exec(`DELETE FROM site_settings WHERE ${stateCond}`);
-    } catch (e) { console.warn('[DB] app_state migration:', e.message); }
-
-    // AI subsystem tables + columns.
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS stream_memories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            stream_id INTEGER NOT NULL,
-            user_id INTEGER,
-            offset_seconds INTEGER DEFAULT 0,      -- seconds into the stream when captured
-            captured_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            description TEXT,
-            tags TEXT,                              -- JSON array
-            thumbnail_url TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE CASCADE
-        )`);
-        database.exec('CREATE INDEX IF NOT EXISTS idx_stream_memories_stream ON stream_memories(stream_id, offset_seconds)');
-
-        // ── Integrity repair: one row per key ────────────────────────────────────
-        // These three tables are all written through "insert once, update in place"
-        // helpers whose no-op-on-duplicate behaviour depends on a uniqueness
-        // constraint. Production drifted: vod_ai_state was created as `vod_id INT`
-        // with NO primary key (database.js declares INTEGER PRIMARY KEY, but
-        // CREATE TABLE IF NOT EXISTS never repairs an existing table). With nothing to
-        // conflict against, `INSERT OR IGNORE INTO vod_ai_state (vod_id)` appended a
-        // fresh row on EVERY call — 2818 rows for 487 VODs, one VOD holding 341.
-        //
-        // That is not just untidy, it silently broke the AI backfill: the work queues
-        // are `SELECT ... WHERE ai_overview_short IS NULL ORDER BY vod_id DESC LIMIT 4`,
-        // so a VOD with four empty duplicate rows fills the entire batch with itself and
-        // no other VOD is ever processed. Every recent VOD had ai_overview null as a
-        // result. stream_memories had the same shape of problem for a different reason:
-        // no constraint at all, so re-analysing a stream stored the same moment again
-        // (the /live/:sel/transcript.json memories list was ~50% duplicates).
-        //
-        // Merge duplicates field-by-field, preferring the richest value rather than an
-        // arbitrary row — a transcript and an overview can live on different duplicates,
-        // and picking one row wholesale would throw the other away.
-        _dedupeKeyedTable(database, 'vod_ai_state', 'vod_id');
-        _dedupeKeyedTable(database, 'clip_ai_state', 'clip_id');
-        _dedupeStreamMemories(database);
-        // Deferred: this repairs a historical backlog and no request depends on it, so it must
-        // not sit between process start and the first served request. Runs shortly after boot.
-        // A restore drill (LIVE_DRILL) runs no timers and repairs nothing in its copy.
-        if (!require('../drill').enabled) setTimeout(() => { try { _adoptOrphanedTimelineRows(database); } catch { /* */ } }, 4000).unref?.();
-
-        // ── Unified audio timeline ───────────────────────────────────────────────
-        // One time-indexed row per thing heard on a stream: a phrase that was spoken
-        // ('speech') or a non-speech sound that was recognised ('sound'). Replaces the
-        // old arrangement where transcript segments were buried inside a per-memory JSON
-        // blob, which meant timestamps were unusable for anything but display — of ~10
-        // consumers only ai-moments-job actually read them, and getStreamTranscriptSegments
-        // discarded `end` entirely.
-        database.exec(`CREATE TABLE IF NOT EXISTS stream_timeline_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            stream_id INTEGER NOT NULL,
-            user_id INTEGER,
-            vod_id INTEGER,                         -- set once the session becomes a VOD
-            kind TEXT NOT NULL,                     -- 'speech' | 'sound'
-            start_sec REAL NOT NULL,                -- absolute seconds into the stream
-            end_sec REAL,
-            text TEXT,                              -- speech content
-            label TEXT,                             -- sound event label
-            confidence REAL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE CASCADE
-        )`);
-        database.exec('CREATE INDEX IF NOT EXISTS idx_timeline_stream ON stream_timeline_events(stream_id, start_sec)');
-        database.exec('CREATE INDEX IF NOT EXISTS idx_timeline_kind ON stream_timeline_events(stream_id, kind, start_sec)');
-        database.exec('CREATE INDEX IF NOT EXISTS idx_timeline_vod ON stream_timeline_events(vod_id, start_sec)');
-        // i18n: language of the speech + an English rendering for non-English streamers (see
-        // server/i18n/translate.js). Added here, right after the table exists, so fresh databases
-        // and old ones both end up with the columns.
-        try {
-            const tlCols = database.prepare("PRAGMA table_info('stream_timeline_events')").all().map(c => c.name);
-            if (!tlCols.includes('lang')) { database.exec('ALTER TABLE stream_timeline_events ADD COLUMN lang TEXT'); database.exec('ALTER TABLE stream_timeline_events ADD COLUMN text_en TEXT'); console.log('[DB] Added lang/text_en columns to stream_timeline_events'); }
-        } catch (e) { console.warn('[DB] timeline i18n columns:', e.message); }
-
-        database.exec(`CREATE TABLE IF NOT EXISTS ai_usage (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            kind TEXT,                              -- paste_image | paste_text | stream_memory | ai_viewers | ...
-            model TEXT,
-            input_tokens INTEGER DEFAULT 0,
-            output_tokens INTEGER DEFAULT 0,
-            cost_usd REAL DEFAULT 0,
-            owner_user_id INTEGER,                  -- streamer this spend is attributed to (NULL = platform/global)
-            source TEXT,                            -- feature bucket, e.g. 'ai_viewers' (NULL = legacy/global)
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
-        database.exec('CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage(created_at)');
-        try {
-            const usageCols = database.prepare('PRAGMA table_info(ai_usage)').all().map((c) => c.name);
-            if (!usageCols.includes('owner_user_id')) database.exec('ALTER TABLE ai_usage ADD COLUMN owner_user_id INTEGER');
-            if (!usageCols.includes('source')) database.exec('ALTER TABLE ai_usage ADD COLUMN source TEXT');
-            database.exec('CREATE INDEX IF NOT EXISTS idx_ai_usage_owner_day ON ai_usage(owner_user_id, created_at)');
-        } catch (e) { console.warn('[DB] ai_usage attribution migration:', e.message); }
-
-        // AI-generated per-streamer overview (aggregated across their streams/vods/pastes/memories).
-        database.exec(`CREATE TABLE IF NOT EXISTS streamer_overviews (
-            user_id INTEGER PRIMARY KEY,
-            overview TEXT,
-            model TEXT,
-            sources TEXT,
-            generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )`);
-    // Per-call metering detail for the llm.js layer: cached prompt tokens (prompt caching),
-    // role (chat/vision/director/summary), provider (shared|byo), latency.
-    try {
-        const cols = database.prepare('PRAGMA table_info(ai_usage)').all().map(c => c.name);
-        if (!cols.includes('cached_tokens')) database.exec('ALTER TABLE ai_usage ADD COLUMN cached_tokens INTEGER DEFAULT 0');
-        if (!cols.includes('role')) database.exec('ALTER TABLE ai_usage ADD COLUMN role TEXT');
-        if (!cols.includes('provider')) database.exec('ALTER TABLE ai_usage ADD COLUMN provider TEXT');
-        if (!cols.includes('latency_ms')) database.exec('ALTER TABLE ai_usage ADD COLUMN latency_ms INTEGER');
-        database.exec('CREATE INDEX IF NOT EXISTS idx_ai_usage_source_day ON ai_usage(source, created_at)');
-    } catch (e) { console.warn('[DB] ai_usage metering columns:', e.message); }
-
-        // Assembled AI Timeline payload per streamer (streamer overview + every session's
-        // AI overview + memory moments), cached JSON so the channel tab is cheap to serve and
-        // only re-assembled lazily when viewed + stale. No LLM cost — pure join of existing data.
-        database.exec(`CREATE TABLE IF NOT EXISTS ai_timeline_cache (
-            user_id INTEGER PRIMARY KEY,
-            payload TEXT,
-            generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )`);
-
-        // Daily easter-egg solves (one per solver per day).
-        database.exec(`CREATE TABLE IF NOT EXISTS easter_egg_solves (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            egg_date TEXT NOT NULL,
-            solver_key TEXT NOT NULL,
-            user_id INTEGER,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(egg_date, solver_key)
-        )`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_egg_solves_date ON easter_egg_solves(egg_date)`);
-
-        // `pastes` is created several hundred lines below this point, so on a brand-new database
-        // this PRAGMA throws — and because it shares a try block with the migrations that follow,
-        // it took them down with it: streams.ai_overview, vods.ai_overview, clips.ai_overview and
-        // channels.ai_category were never added, which in turn aborted the short-overview block
-        // and left streamer_overviews.overview_short missing. getRecentlyOnlineStreamers() selects
-        // that column, so a first boot served 500s on /api/streams/recently-online until the
-        // process was restarted a second time and the table finally existed.
-        //
-        // Isolated in its own try so a missing table on first boot costs nothing but a skip; the
-        // columns are added on the next start, and the paste AI columns are also declared at the
-        // CREATE TABLE below for fresh databases.
-        // (Now migration 002 in server/db/migrations.js, which runs after the pastes table exists.)
-
-        const scols = database.prepare('PRAGMA table_info(streams)').all().map(c => c.name);
-        if (!scols.includes('ai_overview')) database.exec('ALTER TABLE streams ADD COLUMN ai_overview TEXT');
-        // Short AI-generated session title for the AI Timeline (streamers reuse literal titles).
-        if (!scols.includes('ai_title')) database.exec('ALTER TABLE streams ADD COLUMN ai_title TEXT');
-        // Category/tags inferred by the AI from what the stream actually shows (the go-live selector
-        // used to default to 'irl', which made every AI think everyone is an IRL streamer).
-        if (!scols.includes('ai_category')) database.exec('ALTER TABLE streams ADD COLUMN ai_category TEXT');
-        if (!scols.includes('ai_tags')) database.exec('ALTER TABLE streams ADD COLUMN ai_tags TEXT');
-        const chcols = database.prepare('PRAGMA table_info(channels)').all().map(c => c.name);
-        if (!chcols.includes('ai_category')) database.exec('ALTER TABLE channels ADD COLUMN ai_category TEXT');
-
-        // AI overview + transcript on VODs and clips.
-        const vcols = database.prepare('PRAGMA table_info(vods)').all().map(c => c.name);
-        if (!vcols.includes('ai_overview')) database.exec('ALTER TABLE vods ADD COLUMN ai_overview TEXT');
-        if (!vcols.includes('ai_transcript')) database.exec('ALTER TABLE vods ADD COLUMN ai_transcript TEXT');
-        if (!vcols.includes('ai_analyzed_at')) database.exec('ALTER TABLE vods ADD COLUMN ai_analyzed_at DATETIME');
-        const ccols = database.prepare('PRAGMA table_info(clips)').all().map(c => c.name);
-        if (!ccols.includes('ai_overview')) database.exec('ALTER TABLE clips ADD COLUMN ai_overview TEXT');
-        if (!ccols.includes('ai_transcript')) database.exec('ALTER TABLE clips ADD COLUMN ai_transcript TEXT');
-        if (!ccols.includes('ai_analyzed_at')) database.exec('ALTER TABLE clips ADD COLUMN ai_analyzed_at DATETIME');
-        // Clip-published chat notification: a deferred "send at" time (grace period so the
-        // creator can title it first) + a sent flag so the sweeper fires each clip once.
-        if (!ccols.includes('clip_notified')) database.exec('ALTER TABLE clips ADD COLUMN clip_notified INTEGER DEFAULT 0');
-        if (!ccols.includes('clip_notify_at')) database.exec('ALTER TABLE clips ADD COLUMN clip_notify_at DATETIME');
-    } catch (e) { console.warn('[DB] AI subsystem migration:', e.message); }
-
-    // Visibility (public | unlisted | private) on VODs/clips. `is_public` is kept as
-    // a synced mirror (1 iff public) so all existing is_public=1 listing filters keep
-    // working; unlisted stays out of listings but reachable by direct link.
-    try {
-        const vcols = database.prepare('PRAGMA table_info(vods)').all().map(c => c.name);
-        if (!vcols.includes('visibility')) {
-            database.exec("ALTER TABLE vods ADD COLUMN visibility TEXT DEFAULT 'public'");
-            database.exec("UPDATE vods SET visibility = CASE WHEN is_public = 1 THEN 'public' ELSE 'private' END");
-        }
-        const ccols = database.prepare('PRAGMA table_info(clips)').all().map(c => c.name);
-        if (!ccols.includes('visibility')) {
-            database.exec("ALTER TABLE clips ADD COLUMN visibility TEXT DEFAULT 'public'");
-            database.exec("UPDATE clips SET visibility = CASE WHEN is_public = 1 THEN 'public' ELSE 'unlisted' END");
-        }
-        if (!ccols.includes('auto_generated')) database.exec('ALTER TABLE clips ADD COLUMN auto_generated INTEGER DEFAULT 0');
-        const msCols = database.prepare('PRAGMA table_info(managed_streams)').all().map(c => c.name);
-        if (!msCols.includes('slot_clip_recording_enabled')) {
-            database.exec('ALTER TABLE managed_streams ADD COLUMN slot_clip_recording_enabled INTEGER DEFAULT 1');
-        }
-        // Per-slot toggle: announce newly-created clips in the channel's chat (default on).
-        if (!msCols.includes('slot_clip_notify_enabled')) {
-            database.exec('ALTER TABLE managed_streams ADD COLUMN slot_clip_notify_enabled INTEGER DEFAULT 1');
-        }
-        // Per-slot master switch: relay this slot's chat (native, RobotStreamer mirror and
-        // restream-destination relays) to the streamer's PowerChat overlay (default on).
-        if (!msCols.includes('slot_powerchat_relay')) {
-            database.exec('ALTER TABLE managed_streams ADD COLUMN slot_powerchat_relay INTEGER DEFAULT 1');
-        }
-        // Per-slot: count RobotStreamer viewers toward the PowerChat viewer total (default on).
-        if (!msCols.includes('slot_powerchat_count_rs_views')) {
-            database.exec('ALTER TABLE managed_streams ADD COLUMN slot_powerchat_count_rs_views INTEGER DEFAULT 1');
-        }
-    } catch (e) { console.warn('[DB] visibility migration:', e.message); }
-
-    // AI-inferred category/tags. The go-live selector used to default to 'irl', which taught
-    // every downstream AI (viewers, overviews, arena) that everyone is an IRL streamer; the
-    // stream-memory rollup now classifies each stream from what it actually shows.
-    try {
-        const sc = database.prepare('PRAGMA table_info(streams)').all().map(c => c.name);
-        for (const col of ['ai_overview TEXT', 'ai_title TEXT', 'ai_category TEXT', 'ai_tags TEXT']) { if (!sc.includes(col.split(' ')[0])) database.exec(`ALTER TABLE streams ADD COLUMN ${col}`); }
-        const cc = database.prepare('PRAGMA table_info(channels)').all().map(c => c.name);
-        if (!cc.includes('ai_category')) database.exec('ALTER TABLE channels ADD COLUMN ai_category TEXT');
-    } catch (e) { console.warn('[DB] ai-category migration:', e.message); }
-
-    // Cached SHORT overview (a concise, locally-derived version of the long AI
-    // overview) shown on listing cards — computed once at write time, no extra API.
-    try {
-        for (const [t, col, scol] of [
-            ['streams', 'ai_overview', 'ai_overview_short'],
-            // (vods/clips are frozen: their overviews live in vod_ai_state/clip_ai_state.)
-            ['streamer_overviews', 'overview', 'overview_short'],
-        ]) {
-            const cols = database.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
-            if (!cols.includes(scol)) database.exec(`ALTER TABLE ${t} ADD COLUMN ${scol} TEXT`);
-            // Backfill shorts for existing overviews (one-time; cheap string op).
-            const rows = database.prepare(`SELECT rowid AS rid, ${col} AS ov FROM ${t} WHERE ${col} IS NOT NULL AND TRIM(${col}) != '' AND (${scol} IS NULL OR ${scol} = '')`).all();
-            const upd = database.prepare(`UPDATE ${t} SET ${scol} = ? WHERE rowid = ?`);
-            for (const r of rows) { const s = _shortOverview(r.ov); if (s) upd.run(s, r.rid); }
-        }
-    } catch (e) { console.warn('[DB] short-overview migration:', e.message); }
-
-    // Timestamped transcript segments (JSON) — contextual data for the AI system +
-    // clickable timestamps in the VOD/clip transcript UI.
-    try {
-        for (const [t, col] of [['stream_memories', 'transcript_json']]) {   // VOD/clip transcripts: vod_ai_state/clip_ai_state
-            const cols = database.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
-            if (!cols.includes(col)) database.exec(`ALTER TABLE ${t} ADD COLUMN ${col} TEXT`);
-        }
-    } catch (e) { console.warn('[DB] transcript-json migration:', e.message); }
-
-    // Transcription job-state (transcript_status/attempts/next_at) lives in vod_ai_state and
-    // clip_ai_state, whose recovery runs near the top of initDb(). This block used to add the same
-    // columns to the frozen legacy vods/clips tables and rewrite their rows on every boot; it is
-    // gone because nothing may write those tables (register C-73).
-
-    // Donation goals: optional media (image/video → optimized webm/webp), a 1-hour
-    // "reached" celebration window (reached_at), and explicit ordering.
-    try {
-        const cols = database.prepare('PRAGMA table_info(donation_goals)').all().map(c => c.name);
-        if (!cols.includes('image_url')) database.exec('ALTER TABLE donation_goals ADD COLUMN image_url TEXT');
-        if (!cols.includes('media_type')) database.exec('ALTER TABLE donation_goals ADD COLUMN media_type TEXT');
-        if (!cols.includes('reached_at')) database.exec('ALTER TABLE donation_goals ADD COLUMN reached_at DATETIME');
-        if (!cols.includes('sort_order')) database.exec('ALTER TABLE donation_goals ADD COLUMN sort_order INTEGER DEFAULT 0');
-    } catch (e) { console.warn('[DB] donation_goals media migration:', e.message); }
-
-    // Migrate: extend the subscriptions table for real recurring billing.
-    try {
-        const cols = database.pragma('table_info(subscriptions)').map(c => c.name);
-        const add = [
-            { name: 'provider', def: "TEXT DEFAULT NULL" },            // stripe|paypal|ccbill|crypto|bucks
-            { name: 'provider_ref', def: "TEXT DEFAULT NULL" },        // provider subscription/agreement id
-            { name: 'price_cents', def: "INTEGER DEFAULT 0" },
-            { name: 'currency', def: "TEXT DEFAULT 'usd'" },
-            { name: 'status', def: "TEXT DEFAULT 'active'" },          // active|canceled|past_due|expired
-            { name: 'cancel_at_period_end', def: "INTEGER DEFAULT 0" },
-            { name: 'auto_renew', def: "INTEGER DEFAULT 0" },          // renew from Vibes balance at period end (non-Stripe)
-            { name: 'current_period_end', def: "DATETIME DEFAULT NULL" },
-            { name: 'created_at', def: "DATETIME DEFAULT CURRENT_TIMESTAMP" },
-            { name: 'updated_at', def: "DATETIME DEFAULT CURRENT_TIMESTAMP" },
-        ];
-        for (const c of add) {
-            if (!cols.includes(c.name)) database.exec(`ALTER TABLE subscriptions ADD COLUMN ${c.name} ${c.def}`);
-        }
-        database.exec('CREATE INDEX IF NOT EXISTS idx_subs_streamer ON subscriptions(streamer_id, status)');
-        database.exec('CREATE INDEX IF NOT EXISTS idx_subs_subscriber ON subscriptions(subscriber_id, status)');
-        database.exec('CREATE INDEX IF NOT EXISTS idx_subs_provider_ref ON subscriptions(provider, provider_ref)');
-    } catch (e) { console.warn('[DB] subscriptions migration:', e.message); }
-
-    // Payment intents/orders — tracks pending purchases so webhooks can credit idempotently.
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS payment_orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            provider TEXT NOT NULL,
-            provider_ref TEXT,
-            kind TEXT NOT NULL DEFAULT 'bucks',        -- bucks | subscription
-            amount_cents INTEGER NOT NULL DEFAULT 0,
-            currency TEXT DEFAULT 'usd',
-            bucks INTEGER DEFAULT 0,
-            streamer_id INTEGER,
-            status TEXT DEFAULT 'pending',             -- pending | paid | failed | credited
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )`);
-        database.exec('CREATE INDEX IF NOT EXISTS idx_payment_orders_ref ON payment_orders(provider, provider_ref)');
-        database.exec('CREATE INDEX IF NOT EXISTS idx_payment_orders_user ON payment_orders(user_id)');
-    } catch (e) { console.warn('[DB] payment_orders migration:', e.message); }
-
-    // Migrate: expand role CHECK to include global_mod, migrate 'mod' → 'global_mod'
-    try {
-        // SQLite cannot ALTER CHECK constraints, but we can migrate data.
-        // The schema.sql already has the new CHECK for fresh DBs.
-        // For existing DBs, just migrate any 'mod' users to 'global_mod'.
-        const modCount = database.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'mod'").get().c;
-        if (modCount > 0) {
-            database.exec("UPDATE users SET role = 'global_mod' WHERE role = 'mod'");
-            console.log(`[DB] Migrated ${modCount} mod(s) → global_mod`);
-        }
-    } catch (e) { console.warn('[DB] Role migration:', e.message); }
-
-    // Migrate: AI chatbot ("fake viewers") config, one row per streamer (user)
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS ai_chatbot_configs (
-            user_id INTEGER PRIMARY KEY,
-            enabled INTEGER DEFAULT 0,
-            base_url TEXT DEFAULT 'https://api.openai.com/v1',
-            api_token TEXT DEFAULT '',
-            model TEXT DEFAULT 'gpt-4o-mini',
-            transcribe_enabled INTEGER DEFAULT 0,
-            transcribe_model TEXT DEFAULT 'whisper-1',
-            num_bots INTEGER DEFAULT 3,
-            post_interval_seconds INTEGER DEFAULT 45,
-            persona TEXT DEFAULT '',
-            vision_enabled INTEGER DEFAULT 0,
-            last_validated_at DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )`);
-        const aiCols = database.prepare('PRAGMA table_info(ai_chatbot_configs)').all().map((c) => c.name);
-        if (!aiCols.includes('vision_enabled')) database.exec('ALTER TABLE ai_chatbot_configs ADD COLUMN vision_enabled INTEGER DEFAULT 0');
-    } catch (e) { console.warn('[DB] ai_chatbot_configs migration:', e.message); }
-
-    // ── AI Chat Viewers 2.0 ──────────────────────────────────────
-    // Persistent per-channel bot roster ("brains"): one durable identity per row that
-    // survives across every stream on that channel.
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS channel_ai_bots (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_user_id INTEGER NOT NULL,       -- the streamer (owner)
-            username TEXT NOT NULL,
-            display_name TEXT,
-            avatar_color TEXT DEFAULT '#8a8aff',
-            source TEXT DEFAULT 'ambient',          -- 'ambient' | 'clone'
-            cloned_from_kind TEXT,                   -- 'user' | 'relay' | NULL
-            cloned_from_ref TEXT,                    -- user_id (string) or "platform:username"
-            persona_json TEXT DEFAULT '{}',          -- character + typing style + identity
-            brain_json TEXT DEFAULT '{}',            -- rolling condensed memory + short timeline
-            is_active INTEGER DEFAULT 1,
-            msg_count INTEGER DEFAULT 0,
-            last_active_at DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (channel_user_id) REFERENCES users(id) ON DELETE CASCADE
-        )`);
-        database.exec('CREATE INDEX IF NOT EXISTS idx_channel_ai_bots_channel ON channel_ai_bots(channel_user_id, is_active)');
-        database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_channel_ai_bots_uname ON channel_ai_bots(channel_user_id, username)');
-    } catch (e) { console.warn('[DB] channel_ai_bots migration:', e.message); }
-
-    // Per-streamer AI-viewer settings (supersedes ai_chatbot_configs; adds budget + BYO key).
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS channel_ai_config (
-            user_id INTEGER PRIMARY KEY,
-            enabled INTEGER DEFAULT 0,
-            num_ambient_bots INTEGER DEFAULT 3,
-            pacing_seconds INTEGER DEFAULT 45,
-            persona TEXT DEFAULT '',
-            transcribe_enabled INTEGER DEFAULT 0,
-            vision_enabled INTEGER DEFAULT 0,
-            use_shared_key INTEGER DEFAULT 1,        -- 1 = OpenVibe.Live shared key (capped), 0 = BYO
-            daily_budget_cents INTEGER DEFAULT 20,   -- shared-key daily cap
-            byo_key TEXT DEFAULT '',
-            byo_base_url TEXT DEFAULT '',
-            byo_model TEXT DEFAULT 'gpt-4o-mini',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )`);
-    // AI viewers v3: per-channel settings blob, persisted conversations, activity log.
-    try {
-        const cols = database.prepare('PRAGMA table_info(channel_ai_config)').all().map(c => c.name);
-        if (!cols.includes('settings_json')) database.exec("ALTER TABLE channel_ai_config ADD COLUMN settings_json TEXT DEFAULT '{}'");
-        // The streamer's own key lives in OpenVibe.AI (WS-O task 2, server/ai/byo-credentials.js); Live keeps only this flag.
-        if (!cols.includes('byo_in_ai')) database.exec('ALTER TABLE channel_ai_config ADD COLUMN byo_in_ai INTEGER DEFAULT 0');
-        database.exec(`CREATE TABLE IF NOT EXISTS ai_viewer_threads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_user_id INTEGER NOT NULL,
-            stream_id INTEGER,
-            kind TEXT NOT NULL,                 -- bot_bot | bot_viewer | bot_streamer
-            participants_json TEXT NOT NULL,    -- ["botname","viewer"...]
-            topic TEXT,
-            state TEXT DEFAULT 'open',          -- open | closed
-            awaiting TEXT,                      -- bot username expected to speak next (or null)
-            turns INTEGER DEFAULT 0,
-            last_line TEXT, last_line_by TEXT, last_line_at DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
-        database.exec('CREATE INDEX IF NOT EXISTS idx_aiv_threads_open ON ai_viewer_threads(channel_user_id, state, updated_at)');
-        database.exec(`CREATE TABLE IF NOT EXISTS ai_viewer_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_user_id INTEGER NOT NULL, stream_id INTEGER,
-            event TEXT NOT NULL,                -- tick | line | skip | mention | fold | vision | degrade | pause | error | info
-            bot_username TEXT, target TEXT, thread_id INTEGER, chat_message_id INTEGER,
-            text TEXT, reason TEXT,
-            tokens_in INTEGER, tokens_cached INTEGER, tokens_out INTEGER, cost_usd REAL, model TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
-        database.exec('CREATE INDEX IF NOT EXISTS idx_aiv_log_channel ON ai_viewer_log(channel_user_id, id)');
-    } catch (e) { console.warn('[DB] ai viewers v3 tables:', e.message); }
-        // One-time migration of existing ai_chatbot_configs rows into the new table.
-        const migrated = database.prepare('SELECT COUNT(*) AS c FROM channel_ai_config').get().c;
-        if (!migrated) {
-            const old = database.prepare('SELECT * FROM ai_chatbot_configs').all();
-            const ins = database.prepare(`INSERT OR IGNORE INTO channel_ai_config
-                (user_id, enabled, num_ambient_bots, pacing_seconds, persona, transcribe_enabled, vision_enabled,
-                 use_shared_key, daily_budget_cents, byo_key, byo_base_url, byo_model)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-            for (const r of old) {
-                const hasByo = !!(r.api_token && String(r.api_token).trim());
-                ins.run(
-                    r.user_id, r.enabled ? 1 : 0, r.num_bots || 3, r.post_interval_seconds || 45,
-                    r.persona || '', r.transcribe_enabled ? 1 : 0, r.vision_enabled ? 1 : 0,
-                    hasByo ? 0 : 1, 20, r.api_token || '', r.base_url || '', r.model || 'gpt-4o-mini'
-                );
-            }
-            if (old.length) console.log(`[DB] Migrated ${old.length} ai_chatbot_configs → channel_ai_config`);
-        }
-    } catch (e) { console.warn('[DB] channel_ai_config migration:', e.message); }
-
-    // Migrate: create pastes table if missing
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS pastes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            slug TEXT UNIQUE NOT NULL,
-            user_id INTEGER,
-            type TEXT DEFAULT 'paste' CHECK(type IN ('paste', 'screenshot')),
-            title TEXT NOT NULL DEFAULT 'Untitled',
-            content TEXT,
-            language TEXT DEFAULT 'text',
-            visibility TEXT DEFAULT 'public' CHECK(visibility IN ('public', 'unlisted')),
-            stream_id INTEGER,
-            screenshot_path TEXT,
-            metadata TEXT,
-            burn_after_read INTEGER DEFAULT 0,
-            forked_from INTEGER,
-            pinned INTEGER DEFAULT 0,
-            views INTEGER DEFAULT 0,
-            ip_address TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-            FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE SET NULL,
-            FOREIGN KEY (forked_from) REFERENCES pastes(id) ON DELETE SET NULL
-        )`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_pastes_slug ON pastes(slug)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_pastes_user ON pastes(user_id)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_pastes_visibility ON pastes(visibility)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_pastes_type ON pastes(type)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_pastes_created ON pastes(created_at)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_pastes_pinned ON pastes(pinned)`);
-    } catch (e) { console.warn('[DB] pastes migration:', e.message); }
-
-    // Migrate: add copies + likes columns to pastes, create paste_likes table
-    try {
-        const cols = database.prepare("PRAGMA table_info(pastes)").all().map(c => c.name);
-        if (!cols.includes('copies'))  database.exec("ALTER TABLE pastes ADD COLUMN copies INTEGER DEFAULT 0");
-        if (!cols.includes('likes'))   database.exec("ALTER TABLE pastes ADD COLUMN likes INTEGER DEFAULT 0");
-
-        database.exec(`CREATE TABLE IF NOT EXISTS paste_likes (
-            paste_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (paste_id, user_id),
-            FOREIGN KEY (paste_id) REFERENCES pastes(id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )`);
-    } catch (e) { console.warn('[DB] paste_likes migration:', e.message); }
-
-    // Migrate: add is_nsfw column to pastes
-    try {
-        const cols = database.prepare("PRAGMA table_info(pastes)").all().map(c => c.name);
-        if (!cols.includes('is_nsfw')) database.exec("ALTER TABLE pastes ADD COLUMN is_nsfw INTEGER DEFAULT 0");
-    } catch (e) { console.warn('[DB] pastes is_nsfw migration:', e.message); }
-
-    // Seed paste-related site settings
-    try {
-        const pasteSettings = [
-            ['paste_max_size_kb', '512', 'Maximum paste content size in KB', 'number'],
-            ['paste_screenshot_max_size_mb', '8', 'Maximum screenshot upload size in MB', 'number'],
-            ['paste_cooldown_seconds', '30', 'Cooldown between paste submissions in seconds', 'number'],
-            ['paste_max_per_user_per_day', '50', 'Maximum pastes per user per day (0 = unlimited)', 'number'],
-            ['paste_anon_allowed', 'true', 'Allow anonymous paste creation', 'boolean'],
-            ['paste_image_upload_enabled', 'true', 'Allow image uploads in pastes', 'boolean'],
-        ];
-        const seedPaste = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
-        for (const [k, v, d, t] of pasteSettings) seedPaste.run(k, v, d, t);
-    } catch (e) { console.warn('[DB] paste settings seed:', e.message); }
-
-    // Migrate: paste_comments table (separate from vod/clip comments — supports anon)
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS paste_comments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            paste_id INTEGER NOT NULL,
-            user_id INTEGER,
-            parent_id INTEGER,
-            anon_name TEXT,
-            message TEXT NOT NULL,
-            ip_address TEXT,
-            is_deleted INTEGER DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (paste_id) REFERENCES pastes(id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-            FOREIGN KEY (parent_id) REFERENCES paste_comments(id) ON DELETE CASCADE
-        )`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_paste_comments_paste ON paste_comments(paste_id)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_paste_comments_user ON paste_comments(user_id)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_paste_comments_parent ON paste_comments(parent_id)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_paste_comments_ip ON paste_comments(ip_address)`);
-
-        // Seed paste comment settings
-        const commentSettings = [
-            ['paste_comment_cooldown_seconds', '10', 'Cooldown between paste comments in seconds', 'number'],
-            ['paste_comment_max_length', '2000', 'Maximum paste comment length in characters', 'number'],
-            ['paste_comment_anon_allowed', 'true', 'Allow anonymous comments on pastes', 'boolean'],
-        ];
-        const seedComment = database.prepare("INSERT OR IGNORE INTO site_settings (key, value, description, type) VALUES (?, ?, ?, ?)");
-        for (const [k, v, d, t] of commentSettings) seedComment.run(k, v, d, t);
-    } catch (e) { console.warn('[DB] paste_comments migration:', e.message); }
-
-    // Migrate: ip_log — tracks IP addresses used by users and anons
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS ip_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            anon_id TEXT,
-            ip_address TEXT NOT NULL,
-            action TEXT NOT NULL DEFAULT 'chat',
-            geo_country TEXT,
-            geo_region TEXT,
-            geo_city TEXT,
-            geo_isp TEXT,
-            geo_org TEXT,
-            geo_ll TEXT,
-            user_agent TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
-        )`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_ip_log_user ON ip_log(user_id)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_ip_log_ip ON ip_log(ip_address)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_ip_log_created ON ip_log(created_at)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_ip_log_action ON ip_log(action)`);
-    } catch (e) { console.warn('[DB] ip_log migration:', e.message); }
-
-    // Migrate: approved_ips — per-channel IP whitelist for anti-VPN mode
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS approved_ips (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_id INTEGER NOT NULL,
-            ip_address TEXT NOT NULL,
-            approved_by INTEGER,
-            source TEXT DEFAULT 'auto',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(channel_id, ip_address),
-            FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
-            FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
-        )`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_approved_ips_channel ON approved_ips(channel_id)`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_approved_ips_ip ON approved_ips(ip_address)`);
-    } catch (e) { console.warn('[DB] approved_ips migration:', e.message); }
-
-    // Second pass of hot-path indexes, found by tracing what the home page and the always-on
-    // middleware actually execute. Each one replaces a recurring full table scan. They are created
-    // individually so a table that does not exist in some deployment cannot stop the rest.
-    for (const ix of [
-        // The IP-ban check runs in middleware on EVERY request, including static assets — this was
-        // a full scan of `bans` per request, the most-executed avoidable query in the system.
-        'CREATE INDEX IF NOT EXISTS idx_bans_ip ON bans(ip_address)',
-        // Looked up once per live stream on /api/streams, which every open home tab polls.
-        'CREATE INDEX IF NOT EXISTS idx_restream_dest_user ON restream_destinations(user_id)',
-        // Home digest, per signed-in load.
-        'CREATE INDEX IF NOT EXISTS idx_follows_follower ON follows(follower_id)',
-        'CREATE INDEX IF NOT EXISTS idx_stream_recaps_user ON stream_recaps(user_id, created_at)',
-        'CREATE INDEX IF NOT EXISTS idx_streams_started ON streams(started_at)',
-        'CREATE INDEX IF NOT EXISTS idx_streams_live_ended ON streams(is_live, ended_at)',
-        // Hero stat board aggregates.
-        'CREATE INDEX IF NOT EXISTS idx_tx_type_created ON transactions(type, created_at)',
-        'CREATE INDEX IF NOT EXISTS idx_coin_tx_created ON coin_transactions(created_at)',
-        'CREATE INDEX IF NOT EXISTS idx_users_created ON users(created_at)',
-        'CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)',
-        'CREATE INDEX IF NOT EXISTS idx_anon_ip_created ON anon_ip_mappings(created_at)',
-        'CREATE INDEX IF NOT EXISTS idx_goals_active ON donation_goals(is_active)',
-        // idx_arena_moments_said: migration 003 (its table is created later, by the arena job).
-        'CREATE INDEX IF NOT EXISTS idx_viewer_samples_at ON viewer_samples(sampled_at)',
-        // getRecentlyOnlineStreamers() correlates streams by managed_stream_id inside a
-        // json_group_array, and there was no index on that column at all — so the subquery scanned
-        // the whole streams table once per managed stream, per row. Measured on a production-scale
-        // database: 463ms -> 18ms at limit=20, and 1533ms -> 24ms at limit=100.
-        'CREATE INDEX IF NOT EXISTS idx_streams_managed_ended ON streams(managed_stream_id, ended_at)',
-        'CREATE INDEX IF NOT EXISTS idx_ai_viewer_log_created ON ai_viewer_log(created_at)',
-    ]) {
-        try { database.exec(ix); } catch { /* table not present in this deployment */ }
-    }
-
-    // Migrate: add force_nsfw column to channels (admin-set, overrides user toggle)
-    try {
-        const cols = database.pragma('table_info(channels)').map(c => c.name);
-        if (!cols.includes('force_nsfw')) {
-            database.exec('ALTER TABLE channels ADD COLUMN force_nsfw INTEGER DEFAULT 0');
-            console.log('[DB] Added force_nsfw column to channels');
-        }
-    } catch (e) { console.warn('[DB] channels force_nsfw migration:', e.message); }
-
-    // Migrate: add VOD recording policy columns to channels
-    try {
-        const cols = database.pragma('table_info(channels)').map(c => c.name);
-        if (!cols.includes('vod_recording_enabled')) {
-            database.exec('ALTER TABLE channels ADD COLUMN vod_recording_enabled INTEGER DEFAULT 1');
-            console.log('[DB] Added vod_recording_enabled column to channels');
-        }
-        if (!cols.includes('force_vod_recording_disabled')) {
-            database.exec('ALTER TABLE channels ADD COLUMN force_vod_recording_disabled INTEGER DEFAULT 0');
-            console.log('[DB] Added force_vod_recording_disabled column to channels');
-        }
-    } catch (e) { console.warn('[DB] channels VOD recording policy migration:', e.message); }
-
-    // Migrate: add control settings to channels
-    try {
-        const cols = database.pragma('table_info(channels)').map(c => c.name);
-        if (!cols.includes('control_mode')) {
-            database.exec("ALTER TABLE channels ADD COLUMN control_mode TEXT DEFAULT 'open'");
-            console.log('[DB] Added control_mode column to channels');
-        }
-        if (!cols.includes('anon_controls_enabled')) {
-            database.exec('ALTER TABLE channels ADD COLUMN anon_controls_enabled INTEGER DEFAULT 1');
-            console.log('[DB] Added anon_controls_enabled column to channels');
-        }
-        if (!cols.includes('control_rate_limit_ms')) {
-            database.exec('ALTER TABLE channels ADD COLUMN control_rate_limit_ms INTEGER DEFAULT 100');
-            console.log('[DB] Added control_rate_limit_ms column to channels');
-        }
-        // The OpenVibe.Bot robot whose panel the channel page embeds (server/bot/embed.js, LIVE_BOT_EMBED).
-        if (!cols.includes('bot_robot_id')) {
-            database.exec('ALTER TABLE channels ADD COLUMN bot_robot_id TEXT');
-            console.log('[DB] Added bot_robot_id column to channels');
-        }
-        if (!cols.includes('video_click_rate_limit_ms')) {
-            database.exec('ALTER TABLE channels ADD COLUMN video_click_rate_limit_ms INTEGER DEFAULT 0');
-            console.log('[DB] Added video_click_rate_limit_ms column to channels');
-        }
-    } catch (e) { console.warn('[DB] channel control settings migration:', e.message); }
-
-    // Migrate: create control_whitelist table
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS control_whitelist (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            added_by INTEGER,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(channel_id, user_id),
-            FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )`);
-        database.exec('CREATE INDEX IF NOT EXISTS idx_control_whitelist_channel ON control_whitelist(channel_id)');
-    } catch (e) { console.warn('[DB] control_whitelist migration:', e.message); }
-
-    // Migrate: create control_configs table (reusable per-channel control profiles)
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS control_configs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            description TEXT DEFAULT '',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )`);
-        database.exec('CREATE INDEX IF NOT EXISTS idx_control_configs_user ON control_configs(user_id)');
-    } catch (e) { console.warn('[DB] control_configs migration:', e.message); }
-
-    // Migrate: create control_config_buttons table
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS control_config_buttons (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            config_id INTEGER NOT NULL,
-            label TEXT NOT NULL,
-            command TEXT NOT NULL,
-            icon TEXT DEFAULT 'fa-gamepad',
-            control_type TEXT DEFAULT 'button' CHECK(control_type IN ('button','toggle','dpad','keyboard')),
-            key_binding TEXT,
-            cooldown_ms INTEGER DEFAULT 500,
-            sort_order INTEGER DEFAULT 0,
-            btn_color TEXT DEFAULT '',
-            btn_bg TEXT DEFAULT '',
-            btn_border_color TEXT DEFAULT '',
-            is_enabled INTEGER DEFAULT 1,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (config_id) REFERENCES control_configs(id) ON DELETE CASCADE
-        )`);
-        database.exec('CREATE INDEX IF NOT EXISTS idx_config_buttons_config ON control_config_buttons(config_id)');
-    } catch (e) { console.warn('[DB] control_config_buttons migration:', e.message); }
-
-    // Migrate: add active_control_config_id and video_click_enabled to channels
-    try {
-        const cols = database.pragma('table_info(channels)').map(c => c.name);
-        if (!cols.includes('active_control_config_id')) {
-            database.exec('ALTER TABLE channels ADD COLUMN active_control_config_id INTEGER');
-            console.log('[DB] Added active_control_config_id column to channels');
-        }
-        if (!cols.includes('video_click_enabled')) {
-            database.exec('ALTER TABLE channels ADD COLUMN video_click_enabled INTEGER DEFAULT 0');
-            console.log('[DB] Added video_click_enabled column to channels');
-        }
-    } catch (e) { console.warn('[DB] channel control config migration:', e.message); }
-
-    // Migrate: customizable offline screen (image / transcoded webm / custom HTML+CSS)
-    try {
-        const cols = database.pragma('table_info(channels)').map(c => c.name);
-        if (!cols.includes('offline_screen_type')) {
-            database.exec("ALTER TABLE channels ADD COLUMN offline_screen_type TEXT DEFAULT 'none'"); // none|image|video|html
-        }
-        if (!cols.includes('offline_screen_url')) {
-            database.exec('ALTER TABLE channels ADD COLUMN offline_screen_url TEXT');
-        }
-        if (!cols.includes('offline_html')) {
-            database.exec('ALTER TABLE channels ADD COLUMN offline_html TEXT');
-        }
-        if (!cols.includes('offline_css')) {
-            database.exec('ALTER TABLE channels ADD COLUMN offline_css TEXT');
-        }
-        // Social links shown on the offline screen and in About (server/social/links.js): { links, hidden_auto } JSON.
-        if (!cols.includes('social_links')) {
-            database.exec('ALTER TABLE channels ADD COLUMN social_links TEXT');
-        }
-    } catch (e) { console.warn('[DB] channel offline-screen migration:', e.message); }
-
-    // Migrate: add control_config_id to streams for stream-scoped control profiles
-    try {
-        const cols = database.pragma('table_info(streams)').map(c => c.name);
-        if (!cols.includes('control_config_id')) {
-            database.exec('ALTER TABLE streams ADD COLUMN control_config_id INTEGER');
-            console.log('[DB] Added control_config_id column to streams');
-        }
-    } catch (e) { console.warn('[DB] stream control_config_id migration:', e.message); }
-
-    // Migrate: add btn_color, btn_bg, btn_border_color to stream_controls for legacy compat
-    try {
-        const cols = database.pragma('table_info(stream_controls)').map(c => c.name);
-        if (!cols.includes('btn_color')) {
-            database.exec("ALTER TABLE stream_controls ADD COLUMN btn_color TEXT DEFAULT ''");
-        }
-        if (!cols.includes('btn_bg')) {
-            database.exec("ALTER TABLE stream_controls ADD COLUMN btn_bg TEXT DEFAULT ''");
-        }
-        if (!cols.includes('btn_border_color')) {
-            database.exec("ALTER TABLE stream_controls ADD COLUMN btn_border_color TEXT DEFAULT ''");
-        }
-    } catch (e) { console.warn('[DB] stream_controls style migration:', e.message); }
-
-    // Migrate: fix stream_controls CHECK constraint to include 'keyboard' type
-    try {
-        const tableInfo = database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='stream_controls'").get();
-        if (tableInfo && tableInfo.sql && !tableInfo.sql.includes("'keyboard'")) {
-            console.log('[DB] Migrating stream_controls to support keyboard control_type...');
-            database.exec(`
-                CREATE TABLE IF NOT EXISTS stream_controls_new (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    stream_id INTEGER NOT NULL,
-                    label TEXT NOT NULL,
-                    command TEXT NOT NULL,
-                    icon TEXT DEFAULT 'fa-gamepad',
-                    control_type TEXT DEFAULT 'button' CHECK(control_type IN ('button', 'toggle', 'slider', 'dpad', 'onvif', 'keyboard')),
-                    key_binding TEXT,
-                    cooldown_ms INTEGER DEFAULT 500,
-                    is_enabled INTEGER DEFAULT 1,
-                    sort_order INTEGER DEFAULT 0,
-                    camera_id INTEGER,
-                    onvif_movement TEXT,
-                    btn_color TEXT DEFAULT '',
-                    btn_bg TEXT DEFAULT '',
-                    btn_border_color TEXT DEFAULT '',
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE CASCADE,
-                    FOREIGN KEY (camera_id) REFERENCES camera_profiles(id) ON DELETE SET NULL
-                );
-                INSERT INTO stream_controls_new
-                    SELECT id, stream_id, label, command, icon, control_type, key_binding,
-                           cooldown_ms, is_enabled, sort_order, NULL, NULL,
-                           btn_color, btn_bg, btn_border_color, created_at
-                    FROM stream_controls;
-                DROP TABLE stream_controls;
-                ALTER TABLE stream_controls_new RENAME TO stream_controls;
-            `);
-            console.log('[DB] stream_controls migrated — keyboard type now supported');
-        }
-    } catch (e) { console.warn('[DB] stream_controls keyboard migration:', e.message); }
-
-    // ── Managed Streams Migration ────────────────────────────────
-    // Add the persistent managed_streams table and link sessions to it
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS managed_streams (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            channel_id INTEGER,
-            slug TEXT,
-            title TEXT DEFAULT 'Untitled Stream',
-            description TEXT DEFAULT '',
-            category TEXT DEFAULT 'irl',
-            tags TEXT DEFAULT '[]',
-            protocol TEXT DEFAULT 'webrtc' CHECK(protocol IN ('jsmpeg', 'webrtc', 'rtmp')),
-            stream_key TEXT UNIQUE NOT NULL,
-            is_nsfw INTEGER DEFAULT 0,
-            control_config_id INTEGER,
-            sort_order INTEGER DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE SET NULL,
-            FOREIGN KEY (control_config_id) REFERENCES control_configs(id) ON DELETE SET NULL
-        )`);
-        database.exec('CREATE INDEX IF NOT EXISTS idx_managed_streams_user ON managed_streams(user_id)');
-        database.exec('CREATE INDEX IF NOT EXISTS idx_managed_streams_slug ON managed_streams(slug)');
-        database.exec('CREATE INDEX IF NOT EXISTS idx_managed_streams_key ON managed_streams(stream_key)');
-    } catch (e) { console.warn('[DB] managed_streams table migration:', e.message); }
-
-    // Add managed_stream_id column to streams (session) table
-    try {
-        const streamCols = database.pragma('table_info(streams)').map(c => c.name);
-        if (!streamCols.includes('managed_stream_id')) {
-            database.exec('ALTER TABLE streams ADD COLUMN managed_stream_id INTEGER REFERENCES managed_streams(id) ON DELETE SET NULL');
-            database.exec('CREATE INDEX IF NOT EXISTS idx_streams_managed ON streams(managed_stream_id)');
-            console.log('[DB] Added managed_stream_id column to streams');
-        }
-    } catch (e) { console.warn('[DB] streams managed_stream_id migration:', e.message); }
-
-    // Add max_managed_streams column to users (admin override for stream limit)
-    try {
-        const userCols2 = database.pragma('table_info(users)').map(c => c.name);
-        if (!userCols2.includes('max_managed_streams')) {
-            database.exec('ALTER TABLE users ADD COLUMN max_managed_streams INTEGER DEFAULT 3');
-            console.log('[DB] Added max_managed_streams column to users');
-        }
-    } catch (e) { console.warn('[DB] users max_managed_streams migration:', e.message); }
-
-    // Track which paste (if any) a user's active avatar is sourced from, so that
-    // deleting that paste resets the avatar. Avatars are now backed by pastes.
-    try {
-        const userCols3 = database.pragma('table_info(users)').map(c => c.name);
-        if (!userCols3.includes('avatar_paste_id')) {
-            database.exec('ALTER TABLE users ADD COLUMN avatar_paste_id INTEGER DEFAULT NULL');
-            console.log('[DB] Added avatar_paste_id column to users');
-        }
-    } catch (e) { console.warn('[DB] users avatar_paste_id migration:', e.message); }
-
-    // Owner rank: an admin with is_owner=1 who alone may view/change API keys, money
-    // settings, and grant admin. Regular admins keep moderation powers but not these.
-    // Bootstrapped to the network owner (Goosely) via OWNER_USERNAME (default goosely).
-    try {
-        const userCols4 = database.pragma('table_info(users)').map(c => c.name);
-        if (!userCols4.includes('is_owner')) {
-            database.exec('ALTER TABLE users ADD COLUMN is_owner INTEGER DEFAULT 0');
-            console.log('[DB] Added is_owner column to users');
-        }
         const ownerName = (process.env.OWNER_USERNAME || 'goosely').toLowerCase();
-        database.prepare("UPDATE users SET is_owner = 1, role = 'admin' WHERE LOWER(username) = ? AND is_owner != 1").run(ownerName);
-    } catch (e) { console.warn('[DB] users is_owner migration:', e.message); }
+        await run("UPDATE users SET is_owner = 1, role = 'admin' WHERE lower(username) = ? AND is_owner != 1", [ownerName]);
+    } catch (e) { console.warn('[DB] owner bootstrap:', e.message); }
+}
 
-    // Backfill: Create a default managed stream for each streamer who has session history
-    // but no managed streams yet. This preserves all existing data.
-    try {
-        const streamersWithoutManaged = database.prepare(`
-            SELECT DISTINCT s.user_id, u.stream_key, u.username, u.display_name,
-                   c.id AS channel_id, c.title AS channel_title, c.protocol AS channel_protocol,
-                   c.category AS channel_category, c.is_nsfw AS channel_is_nsfw
-            FROM streams s
-            JOIN users u ON s.user_id = u.id
-            LEFT JOIN channels c ON c.user_id = s.user_id
-            WHERE s.user_id NOT IN (SELECT user_id FROM managed_streams)
-              AND u.stream_key IS NOT NULL
-        `).all();
-
-        if (streamersWithoutManaged.length > 0) {
-            const insertMs = database.prepare(`
-                INSERT INTO managed_streams (user_id, channel_id, title, category, protocol, stream_key, is_nsfw)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            `);
-            const updateSessions = database.prepare(`
-                UPDATE streams SET managed_stream_id = ? WHERE user_id = ? AND managed_stream_id IS NULL
-            `);
-
-            const backfill = database.transaction(() => {
-                for (const s of streamersWithoutManaged) {
-                    const title = s.channel_title || `${s.display_name || s.username}'s Stream`;
-                    const result = insertMs.run(
-                        s.user_id,
-                        s.channel_id || null,
-                        title,
-                        s.channel_category || 'irl',
-                        s.channel_protocol || 'webrtc',
-                        s.stream_key,
-                        s.channel_is_nsfw || 0
-                    );
-                    // Link all existing sessions to this managed stream
-                    updateSessions.run(result.lastInsertRowid, s.user_id);
-                }
-            });
-            backfill();
-            console.log(`[DB] Backfilled ${streamersWithoutManaged.length} managed stream(s) for existing streamers`);
-        }
-    } catch (e) { console.warn('[DB] managed_streams backfill:', e.message); }
-
-    // Add broadcast_settings JSON column to managed_streams (per-stream broadcast config)
-    try {
-        const msCols = database.pragma('table_info(managed_streams)').map(c => c.name);
-        if (!msCols.includes('broadcast_settings')) {
-            database.exec("ALTER TABLE managed_streams ADD COLUMN broadcast_settings TEXT DEFAULT '{}'");
-            console.log('[DB] Added broadcast_settings column to managed_streams');
-        }
-    } catch (e) { console.warn('[DB] managed_streams broadcast_settings migration:', e.message); }
-
-    // ── Slot-Level Settings Migration ────────────────────────────
-    // Move per-channel settings down to per-slot (managed_stream) level
-    try {
-        const msCols2 = database.pragma('table_info(managed_streams)').map(c => c.name);
-        if (!msCols2.includes('streaming_method')) {
-            database.exec("ALTER TABLE managed_streams ADD COLUMN streaming_method TEXT DEFAULT 'browser'");
-            // Backfill: derive streaming_method from protocol
-            database.exec("UPDATE managed_streams SET streaming_method = 'browser' WHERE protocol = 'webrtc'");
-            database.exec("UPDATE managed_streams SET streaming_method = 'cli' WHERE protocol = 'jsmpeg'");
-            database.exec("UPDATE managed_streams SET streaming_method = 'rtmp' WHERE protocol = 'rtmp'");
-            console.log('[DB] Added streaming_method column to managed_streams');
-        }
-        if (!msCols2.includes('browser_mode')) {
-            database.exec("ALTER TABLE managed_streams ADD COLUMN browser_mode TEXT DEFAULT 'camera'");
-            console.log('[DB] Added browser_mode column to managed_streams');
-        }
-        if (!msCols2.includes('pip_source_msid')) {
-            // The slot whose live stream should appear as a picture-in-picture overlay on
-            // THIS slot. Modelling the camera as an ordinary slot rather than a second
-            // track inside one stream is what lets it inherit everything the platform
-            // already does per stream — its own VOD, clips, transcript, restreams — and
-            // lets viewers move and resize it independently of the screen share. It is
-            // deliberately a plain slot reference, not "the owner's webcam", so a
-            // streamer can point at a co-host's or moderator's slot too.
-            database.exec('ALTER TABLE managed_streams ADD COLUMN pip_source_msid INTEGER');
-            console.log('[DB] Added pip_source_msid column to managed_streams');
-        }
-        if (!msCols2.includes('pip_defaults')) {
-            // Broadcaster-chosen STARTING geometry for the overlay, as JSON
-            // {x,y,w} in fractions of the player. Viewers can move/resize from there and
-            // their own choice is remembered locally; this is only the default they land on.
-            database.exec("ALTER TABLE managed_streams ADD COLUMN pip_defaults TEXT DEFAULT '{}'");
-            console.log('[DB] Added pip_defaults column to managed_streams');
-        }
-        if (!msCols2.includes('default_vod_visibility')) {
-            database.exec("ALTER TABLE managed_streams ADD COLUMN default_vod_visibility TEXT DEFAULT 'public'");
-            console.log('[DB] Added default_vod_visibility column to managed_streams');
-        }
-        if (!msCols2.includes('default_clip_visibility')) {
-            database.exec("ALTER TABLE managed_streams ADD COLUMN default_clip_visibility TEXT DEFAULT 'public'");
-            console.log('[DB] Added default_clip_visibility column to managed_streams');
-        }
-        if (!msCols2.includes('slot_vod_recording_enabled')) {
-            database.exec('ALTER TABLE managed_streams ADD COLUMN slot_vod_recording_enabled INTEGER DEFAULT 1');
-            console.log('[DB] Added slot_vod_recording_enabled column to managed_streams');
-        }
-        if (!msCols2.includes('weather_zip')) {
-            database.exec('ALTER TABLE managed_streams ADD COLUMN weather_zip TEXT DEFAULT NULL');
-            console.log('[DB] Added weather_zip column to managed_streams');
-        }
-        if (!msCols2.includes('weather_detail')) {
-            database.exec("ALTER TABLE managed_streams ADD COLUMN weather_detail TEXT DEFAULT 'basic'");
-            console.log('[DB] Added weather_detail column to managed_streams');
-        }
-        if (!msCols2.includes('weather_show_location')) {
-            database.exec('ALTER TABLE managed_streams ADD COLUMN weather_show_location INTEGER DEFAULT 0');
-            console.log('[DB] Added weather_show_location column to managed_streams');
-        }
-        if (!msCols2.includes('mic_only_image')) {
-            database.exec('ALTER TABLE managed_streams ADD COLUMN mic_only_image TEXT DEFAULT NULL');
-            console.log('[DB] Added mic_only_image column to managed_streams');
-        }
-    } catch (e) { console.warn('[DB] managed_streams slot-level settings migration:', e.message); }
-
-    // Migrate: add managed_stream_id to restream_destinations for slot-level restreaming
-    try {
-        const rdCols = database.pragma('table_info(restream_destinations)').map(c => c.name);
-        if (!rdCols.includes('managed_stream_id')) {
-            database.exec('ALTER TABLE restream_destinations ADD COLUMN managed_stream_id INTEGER REFERENCES managed_streams(id) ON DELETE SET NULL');
-            database.exec('CREATE INDEX IF NOT EXISTS idx_restream_dest_managed ON restream_destinations(managed_stream_id)');
-            console.log('[DB] Added managed_stream_id column to restream_destinations');
-        }
-    } catch (e) { console.warn('[DB] restream_destinations managed_stream_id migration:', e.message); }
-
-    // Backfill: assign managed_stream_id to restream_destinations that still have NULL.
-    // Rule: if a user has exactly ONE managed stream, auto-assign all their unbound destinations
-    // to it. If they have 0 or 2+ managed streams, leave unbound rows alone (ambiguous — owner
-    // must assign manually via the broadcast settings UI).
-    // This is safe and idempotent; existing installs won't lose data.
-    try {
-        const unbound = database.prepare(`
-            SELECT DISTINCT rd.user_id
-            FROM restream_destinations rd
-            WHERE rd.managed_stream_id IS NULL
-        `).all();
-        for (const { user_id } of unbound) {
-            const managedStreams = database.prepare(
-                'SELECT id FROM managed_streams WHERE user_id = ? ORDER BY created_at'
-            ).all(user_id);
-            if (managedStreams.length === 1) {
-                const result = database.prepare(
-                    'UPDATE restream_destinations SET managed_stream_id = ? WHERE user_id = ? AND managed_stream_id IS NULL'
-                ).run(managedStreams[0].id, user_id);
-                if (result.changes > 0) {
-                    console.log(`[DB] Backfilled ${result.changes} restream destination(s) for user ${user_id} → managed stream ${managedStreams[0].id}`);
-                }
-            }
-        }
-    } catch (e) { console.warn('[DB] Restream destinations backfill:', e.message); }
-
-    // Vibe-coding sessions and events
-    try {
-        database.exec(`CREATE TABLE IF NOT EXISTS vibe_coding_sessions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            managed_stream_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            session_key TEXT NOT NULL,
-            slot_slug TEXT,
-            workspace_name TEXT,
-            machine_name TEXT,
-            extension_version TEXT,
-            publisher_id TEXT,
-            publisher_label TEXT,
-            publisher_vendor TEXT,
-            publisher_client_type TEXT,
-            publisher_client_name TEXT,
-            publisher_client_version TEXT,
-            publisher_capabilities_json TEXT,
-            publisher_depth TEXT DEFAULT 'standard',
-            status TEXT DEFAULT 'active' CHECK(status IN ('active', 'ended')),
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            last_event_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            ended_at DATETIME,
-            FOREIGN KEY (managed_stream_id) REFERENCES managed_streams(id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-            UNIQUE (managed_stream_id, session_key)
-        )`);
-        database.exec('CREATE INDEX IF NOT EXISTS idx_vibe_sessions_managed ON vibe_coding_sessions(managed_stream_id)');
-        database.exec('CREATE INDEX IF NOT EXISTS idx_vibe_sessions_user ON vibe_coding_sessions(user_id)');
-        const vibeSessionCols = database.prepare("PRAGMA table_info('vibe_coding_sessions')").all().map((column) => column.name);
-        if (!vibeSessionCols.includes('publisher_id')) database.exec('ALTER TABLE vibe_coding_sessions ADD COLUMN publisher_id TEXT');
-        if (!vibeSessionCols.includes('publisher_label')) database.exec('ALTER TABLE vibe_coding_sessions ADD COLUMN publisher_label TEXT');
-        if (!vibeSessionCols.includes('publisher_vendor')) database.exec('ALTER TABLE vibe_coding_sessions ADD COLUMN publisher_vendor TEXT');
-        if (!vibeSessionCols.includes('publisher_client_type')) database.exec('ALTER TABLE vibe_coding_sessions ADD COLUMN publisher_client_type TEXT');
-        if (!vibeSessionCols.includes('publisher_client_name')) database.exec('ALTER TABLE vibe_coding_sessions ADD COLUMN publisher_client_name TEXT');
-        if (!vibeSessionCols.includes('publisher_client_version')) database.exec('ALTER TABLE vibe_coding_sessions ADD COLUMN publisher_client_version TEXT');
-        if (!vibeSessionCols.includes('publisher_capabilities_json')) database.exec('ALTER TABLE vibe_coding_sessions ADD COLUMN publisher_capabilities_json TEXT');
-        database.exec(`CREATE TABLE IF NOT EXISTS vibe_coding_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            managed_stream_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            stream_id INTEGER,
-            session_key TEXT,
-            event_id TEXT NOT NULL,
-            sequence_num INTEGER DEFAULT 0,
-            event_type TEXT NOT NULL,
-            visibility TEXT DEFAULT 'public' CHECK(visibility IN ('public', 'streamer')),
-            depth TEXT DEFAULT 'standard',
-            summary TEXT DEFAULT '',
-            payload_json TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (managed_stream_id) REFERENCES managed_streams(id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE SET NULL,
-            UNIQUE (managed_stream_id, event_id)
-        )`);
-        database.exec('CREATE INDEX IF NOT EXISTS idx_vibe_events_managed ON vibe_coding_events(managed_stream_id, id DESC)');
-        database.exec('CREATE INDEX IF NOT EXISTS idx_vibe_events_stream ON vibe_coding_events(stream_id)');
-    } catch (e) { console.warn('[DB] vibe_coding migration:', e.message); }
-
-    // OpenRe ingest switch (roadmap Wave 7): managed_streams.ingest_authority ('live' by default)
-    // and the openre_sessions mirror. Additive only; see server/openre/schema.js.
-    try { require('../openre/schema').ensure(database); } catch (e) { console.warn('[DB] openre schema:', e.message); }
-
-    // Versioned migrations run last, so none of them can run before the tables they touch exist.
-    // A critical (money) migration that fails throws here and stops the boot rather than serving
-    // half-converted balances.
-    require('./migrations').run(database);
-    // Deferred migrations wait for tables that feature jobs create after boot; try them again once
-    // those jobs have started. A restore drill starts no jobs and runs no timers.
-    if (!require('../drill').enabled) setTimeout(() => { try { require('./migrations').run(database); } catch (e) { console.error('[DB] deferred migrations:', e.message); } }, 120000).unref?.();
-
-    console.log('[DB] Schema initialized');
-    return database;
+/**
+ * Speech rows recorded while a stream is live carry vod_id NULL until the recording exists. If any row for a stream
+ * already points at a VOD, the stream's remaining rows belong to that same VOD by construction (one recording per
+ * stream). The partial index idx_timeline_null_vod makes "is there anything to adopt?" cheap, so the common case
+ * skips the update entirely.
+ */
+async function adoptOrphanedTimelineRows() {
+    const pending = await get('SELECT 1 AS x FROM stream_timeline_events WHERE vod_id IS NULL LIMIT 1');
+    if (!pending) return 0;
+    const res = await run(`UPDATE stream_timeline_events AS t
+        SET vod_id = (SELECT s.vod_id FROM stream_timeline_events s
+                      WHERE s.stream_id = t.stream_id AND s.vod_id IS NOT NULL LIMIT 1)
+        WHERE t.vod_id IS NULL
+          AND EXISTS (SELECT 1 FROM stream_timeline_events s
+                      WHERE s.stream_id = t.stream_id AND s.vod_id IS NOT NULL)`);
+    if (res.changes) console.log(`[DB] stream_timeline_events: adopted ${res.changes} orphaned row(s) onto their VOD`);
+    return res.changes;
 }
 
 // ── Generic helpers ──────────────────────────────────────────
 //
-// Every query in this file (and in every route module) funnels through run/get/all, and each one
-// used to call prepare() again — so SQLite re-parsed and re-planned the same statement on every
-// single call. A cold home page load alone compiled 200+ statements it had already compiled.
-//
-// better-sqlite3 statements are reusable, so we keep them in a Map keyed by SQL text. The only
-// shapes worth excluding are the ones built with a variable-length `IN (?,?,?)` list, which
-// produce a different SQL string every time and would fill the map with single-use entries; the
-// size cap below handles those without needing to detect them.
+// Every query in this file (and in every route module) funnels through run/get/all. A statement compiles its ? and
+// @name parameters to PostgreSQL's $n once, so the compiled statements are kept in a Map keyed by SQL text (bounded:
+// the variable-length IN-list shapes would otherwise fill it with single-use entries). They are bound to the
+// process-wide handle and join an ambient db.tx() like every other db call.
 const _stmtCache = new Map();
 const _STMT_CACHE_MAX = 600;
 
@@ -2245,8 +183,6 @@ function stmt(sql) {
     let st = _stmtCache.get(sql);
     if (st) return st;
     st = getDb().prepare(sql);
-    // Plain FIFO eviction. Hot statements are re-added on their next call, and the cap only
-    // matters for the dynamic IN-list shapes, which are cheap to lose.
     if (_stmtCache.size >= _STMT_CACHE_MAX) {
         const oldest = _stmtCache.keys().next().value;
         if (oldest !== undefined) _stmtCache.delete(oldest);
@@ -2255,75 +191,86 @@ function stmt(sql) {
     return st;
 }
 
-/** Statements belong to a connection, so a reopened database must start with an empty cache. */
+/** Statements belong to a handle, so a reopened database must start with an empty cache. */
 function clearStatementCache() { _stmtCache.clear(); }
 
-function run(sql, params = []) {
+/** → { changes, rows, lastInsertRowid } (lastInsertRowid is the first column of a RETURNING row). */
+async function run(sql, params = []) {
     return stmt(sql).run(...(Array.isArray(params) ? params : [params]));
 }
 
-function get(sql, params = []) {
-    return stmt(sql).get(...(Array.isArray(params) ? params : [params]));
+// SQLite compared a value of the wrong type and simply found nothing ('presets' or 'abc' for an integer id); PostgreSQL
+// refuses the cast (22P02). A read keeps SQLite's answer, nothing found, so a malformed id in a URL is an empty list or a
+// 404 instead of a 500. A write still throws.
+const badInput = (e) => !!e && (e.code === '22P02' || (e.cause && e.cause.code === '22P02'));
+
+async function get(sql, params = []) {
+    try { return await stmt(sql).get(...(Array.isArray(params) ? params : [params])); } catch (e) { if (badInput(e)) return undefined; throw e; }
 }
 
-function all(sql, params = []) {
-    return stmt(sql).all(...(Array.isArray(params) ? params : [params]));
+async function all(sql, params = []) {
+    try { return await stmt(sql).all(...(Array.isArray(params) ? params : [params])); } catch (e) { if (badInput(e)) return []; throw e; }
+}
+
+/** Run fn in one transaction: every db call inside joins it (openvibe-sdk/db ambient transactions). */
+async function tx(fn, opts) {
+    return await getDb().tx(fn, opts);
 }
 
 // ── User helpers ─────────────────────────────────────────────
 
-function getUserById(id) {
-    return get('SELECT * FROM users WHERE id = ?', [id]);
+async function getUserById(id) {
+    return await get('SELECT * FROM users WHERE id = ?', [id]);
 }
 
-function getUserByUsername(username) {
-    return get('SELECT * FROM users WHERE username = ? COLLATE NOCASE', [username]);
+async function getUserByUsername(username) {
+    return await get('SELECT * FROM users WHERE lower(username) = lower(?)', [username]);
 }
 
-function getUserByStreamKey(key) {
-    return get('SELECT * FROM users WHERE stream_key = ?', [key]);
+async function getUserByStreamKey(key) {
+    return await get('SELECT * FROM users WHERE stream_key = ?', [key]);
 }
 
-function createUser({ username, email, password_hash, display_name, stream_key }) {
+async function createUser({ username, email, password_hash, display_name, stream_key }) {
     // Identity is the OpenVibe account's (WS-B task 2): Live stores no password and no email. A real password
     // hash here is a bug, refused before it reaches the table; an email address is never stored.
     if (/^\$(2[abxy]?|argon2|scrypt|pbkdf2)/.test(String(password_hash || ''))) throw new Error('Live stores no passwords: accounts sign in through openvibe.network');
     email = null;
-    return run(
+    return await run(
         `INSERT INTO users (username, email, password_hash, display_name, stream_key)
-         VALUES (?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?) RETURNING id`,
         [username, email || null, password_hash, display_name || username, stream_key]
     );
 }
 
-function getOrCreateAnonGameUser(anonId) {
+async function getOrCreateAnonGameUser(anonId) {
     const normalizedAnonId = String(anonId || 'anon0').trim().toLowerCase();
     const safeAnonKey = normalizedAnonId.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 48) || 'anon0';
     const username = `__game_${safeAnonKey}`;
 
-    let user = getUserByUsername(username);
+    let user = await getUserByUsername(username);
     if (user) {
         if (user.display_name !== normalizedAnonId) {
-            run('UPDATE users SET display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [normalizedAnonId, user.id]);
-            user = getUserById(user.id);
+            await run('UPDATE users SET display_name = ?, updated_at = ov_now() WHERE id = ?', [normalizedAnonId, user.id]);
+            user = await getUserById(user.id);
         }
         return user;
     }
 
     const passwordHash = `!anon-game:${safeAnonKey}:${crypto.randomBytes(12).toString('hex')}`;
-    run(
-        `INSERT OR IGNORE INTO users (username, password_hash, display_name, role)
-         VALUES (?, ?, ?, 'user')`,
+    await run(
+        `INSERT INTO users (username, password_hash, display_name, role)
+         VALUES (?, ?, ?, 'user') ON CONFLICT DO NOTHING`,
         [username, passwordHash, normalizedAnonId]
     );
 
-    return getUserByUsername(username);
+    return await getUserByUsername(username);
 }
 
 // ── Stream helpers ───────────────────────────────────────────
 
-function getLiveStreams() {
-    return all(`
+async function getLiveStreams() {
+    return await all(`
         SELECT s.*, COALESCE(NULLIF(s.ai_category, ''), s.category) AS category, s.category AS chosen_category, u.username, u.display_name, u.avatar_url, u.profile_color,
                ms.slug AS managed_stream_slug, ms.id AS managed_stream_id,
                ms.stream_key AS managed_stream_key,
@@ -2338,8 +285,8 @@ function getLiveStreams() {
 
 // The latest ended session per streamer. The VOD fields (vod_id, vod_thumbnail_url, …) come from
 // OpenVibe.Media: media-proxy/lookups.js attachPublicVods.
-function getRecentStreams(limit = 20) {
-    return all(`
+async function getRecentStreams(limit = 20) {
+    return await all(`
         SELECT s.*, COALESCE(NULLIF(s.ai_category, ''), s.category) AS category, s.category AS chosen_category, u.username, u.display_name, u.avatar_url, u.profile_color
         FROM streams s
         JOIN (
@@ -2355,8 +302,8 @@ function getRecentStreams(limit = 20) {
     `, [limit]);
 }
 
-function getStreamById(id) {
-    return get(`
+async function getStreamById(id) {
+    return await get(`
         SELECT s.*, COALESCE(NULLIF(s.ai_category, ''), s.category) AS category, s.category AS chosen_category, u.username, u.display_name, u.avatar_url, u.profile_color,
                ms.slug AS managed_stream_slug, ms.stream_key AS managed_stream_key,
                ms.title AS managed_stream_title, ms.protocol AS managed_stream_protocol
@@ -2367,8 +314,8 @@ function getStreamById(id) {
     `, [id]);
 }
 
-function getStreamByUserId(userId) {
-    return get(`
+async function getStreamByUserId(userId) {
+    return await get(`
         SELECT * FROM streams WHERE user_id = ? AND is_live = 1
         ORDER BY started_at DESC LIMIT 1
     `, [userId]);
@@ -2391,8 +338,8 @@ function publicStream(row) {
     return require('../web/serializers').publicStream(row);
 }
 
-function getLiveStreamsByUserId(userId) {
-    return all(`
+async function getLiveStreamsByUserId(userId) {
+    return await all(`
         SELECT s.*, COALESCE(NULLIF(s.ai_category, ''), s.category) AS category, s.category AS chosen_category, u.username, u.display_name, u.avatar_url, u.profile_color,
                ms.slug AS managed_stream_slug, ms.stream_key AS managed_stream_key,
                ms.title AS managed_stream_title
@@ -2404,8 +351,8 @@ function getLiveStreamsByUserId(userId) {
     `, [userId]);
 }
 
-function getLiveStreamsByControlConfigId(controlConfigId) {
-    return all(`
+async function getLiveStreamsByControlConfigId(controlConfigId) {
+    return await all(`
         SELECT s.*, COALESCE(NULLIF(s.ai_category, ''), s.category) AS category, s.category AS chosen_category, u.username, u.display_name, u.avatar_url, u.profile_color,
                ms.slug AS managed_stream_slug, ms.stream_key AS managed_stream_key,
                ms.title AS managed_stream_title
@@ -2417,8 +364,8 @@ function getLiveStreamsByControlConfigId(controlConfigId) {
     `, [controlConfigId]);
 }
 
-function getStreamsByUserId(userId, limit = 50) {
-    return all(`
+async function getStreamsByUserId(userId, limit = 50) {
+    return await all(`
         SELECT s.*, COALESCE(NULLIF(s.ai_category, ''), s.category) AS category, s.category AS chosen_category, u.username, u.display_name, u.avatar_url, u.profile_color,
                ms.slug AS managed_stream_slug, ms.stream_key AS managed_stream_key,
                ms.title AS managed_stream_title, ms.id AS managed_stream_ref_id
@@ -2433,8 +380,8 @@ function getStreamsByUserId(userId, limit = 50) {
 
 // A slot's past sessions. Each one's VOD (vod_id, vod_file_path) comes from OpenVibe.Media:
 // media-proxy/lookups.js vodsForManagedStream.
-function getStreamHistoryByManagedStream(managedStreamId, userId, limit = 20) {
-    return all(`
+async function getStreamHistoryByManagedStream(managedStreamId, userId, limit = 20) {
+    return await all(`
         SELECT s.id, s.title, s.started_at, s.ended_at, s.is_live,
                s.peak_viewers, s.viewer_count, s.duration_seconds,
                s.protocol, s.category
@@ -2450,36 +397,38 @@ function getStreamHistoryByManagedStream(managedStreamId, userId, limit = 20) {
 // (roadmap Wave 3, ADR-004). A failing hook is logged and never blocks going live or ending.
 let streamLifecycleHook = null;
 function onStreamLifecycle(fn) { streamLifecycleHook = typeof fn === 'function' ? fn : null; }
-function fireStreamLifecycle(kind, streamId) {
+async function fireStreamLifecycle(kind, streamId) {
     if (!streamLifecycleHook) return;
-    try { streamLifecycleHook(kind, streamId); } catch (err) { console.warn(`[Events] stream ${kind} event for ${streamId} not queued:`, err.message); }
+    // Inside the caller's transaction, a nested tx is a savepoint: an outbox insert that fails rolls back alone and the
+    // stream change still commits (PostgreSQL would otherwise abort the whole transaction).
+    try { await getDb().tx(() => streamLifecycleHook(kind, streamId)); } catch (err) { console.warn(`[Events] stream ${kind} event for ${streamId} not queued:`, err.message); }
 }
 
-function createStream({ user_id, channel_id, managed_stream_id, control_config_id, title, description, category, protocol, is_nsfw, thumbnail_url }) {
-    return getDb().transaction(() => {
-        const result = run(
+async function createStream({ user_id, channel_id, managed_stream_id, control_config_id, title, description, category, protocol, is_nsfw, thumbnail_url }) {
+    return await getDb().tx(async () => {
+        const result = await run(
             `INSERT INTO streams (user_id, channel_id, managed_stream_id, control_config_id, title, description, category, protocol, is_nsfw, thumbnail_url, is_live, started_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ov_now()) RETURNING id`,
             [user_id, channel_id || null, managed_stream_id || null, control_config_id || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', is_nsfw ? 1 : 0, thumbnail_url || null]
         );
-        fireStreamLifecycle('started', result.lastInsertRowid);
+        await fireStreamLifecycle('started', result.lastInsertRowid);
         return result;
-    })();
+    });
 }
 
-function endStream(streamId) {
-    return getDb().transaction(() => {
-        const stream = get('SELECT started_at, is_live FROM streams WHERE id = ?', [streamId]);
+async function endStream(streamId) {
+    return await getDb().tx(async () => {
+        const stream = await get('SELECT started_at, is_live FROM streams WHERE id = ?', [streamId]);
         if (!stream) return null;
-        const result = run(
-            `UPDATE streams SET is_live = 0, ended_at = CURRENT_TIMESTAMP,
-             duration_seconds = CAST((julianday(CURRENT_TIMESTAMP) - julianday(started_at)) * 86400 AS INTEGER)
+        const result = await run(
+            `UPDATE streams SET is_live = 0, ended_at = ov_now(),
+             duration_seconds = CAST((julianday(ov_now()) - julianday(started_at)) * 86400 AS INTEGER)
              WHERE id = ?`,
             [streamId]
         );
-        if (stream.is_live) fireStreamLifecycle('ended', streamId);
+        if (stream.is_live) await fireStreamLifecycle('ended', streamId);
         return result;
-    })();
+    });
 }
 
 /**
@@ -2487,29 +436,29 @@ function endStream(streamId) {
  * Prevents "going live twice" from leaving a stale/broken duplicate tab.
  * Returns the list of ended stream ids.
  */
-function endOtherLiveStreamsForSlot(managedStreamId, keepStreamId) {
+async function endOtherLiveStreamsForSlot(managedStreamId, keepStreamId) {
     if (!managedStreamId) return [];
-    const rows = all('SELECT id FROM streams WHERE managed_stream_id = ? AND is_live = 1 AND id != ?',
+    const rows = await all('SELECT id FROM streams WHERE managed_stream_id = ? AND is_live = 1 AND id != ?',
         [managedStreamId, keepStreamId || 0]);
-    for (const r of rows) endStream(r.id);
+    for (const r of rows) await endStream(r.id);
     return rows.map(r => r.id);
 }
 
 // ── AI analysis helpers ──────────────────────────────────────
-function addStreamMemory({ stream_id, user_id = null, offset_seconds = 0, description, tags = null, thumbnail_url = null, transcript_json = null }) {
+async function addStreamMemory({ stream_id, user_id = null, offset_seconds = 0, description, tags = null, thumbnail_url = null, transcript_json = null }) {
     // OR IGNORE against idx_stream_memories_moment_unique: re-analysing a stream must not
     // store a second description of a moment already captured.
-    return run(`INSERT OR IGNORE INTO stream_memories (stream_id, user_id, offset_seconds, description, tags, thumbnail_url, transcript_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    return await run(`INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description, tags, thumbnail_url, transcript_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id`,
         [stream_id, user_id, Math.max(0, Math.round(offset_seconds || 0)), description || '',
          tags ? (typeof tags === 'string' ? tags : JSON.stringify(tags)) : null, thumbnail_url,
          (transcript_json && typeof transcript_json !== 'string') ? JSON.stringify(transcript_json) : (transcript_json || null)]);
 }
-function getStreamMemories(streamId) {
-    return all('SELECT * FROM stream_memories WHERE stream_id = ? ORDER BY offset_seconds ASC', [streamId]);
+async function getStreamMemories(streamId) {
+    return await all('SELECT * FROM stream_memories WHERE stream_id = ? ORDER BY offset_seconds ASC', [streamId]);
 }
-function getLatestStreamMemory(streamId) {
-    return get('SELECT * FROM stream_memories WHERE stream_id = ? ORDER BY offset_seconds DESC LIMIT 1', [streamId]);
+async function getLatestStreamMemory(streamId) {
+    return await get('SELECT * FROM stream_memories WHERE stream_id = ? ORDER BY offset_seconds DESC LIMIT 1', [streamId]);
 }
 // Derive a concise short overview from a long one — the lead sentence(s), capped
 // ~150 chars at a sentence/word boundary. Deterministic + free (no AI call), so it
@@ -2535,112 +484,112 @@ function _shortOverview(text) {
     const sp = cut.lastIndexOf(' ');
     return (sp > 40 ? cut.slice(0, sp) : cut).trim() + '…';
 }
-function updateStreamAiOverview(streamId, text) {
-    return run('UPDATE streams SET ai_overview = ?, ai_overview_short = ? WHERE id = ?', [text || null, _shortOverview(text), streamId]);
+async function updateStreamAiOverview(streamId, text) {
+    return await run('UPDATE streams SET ai_overview = ?, ai_overview_short = ? WHERE id = ?', [text || null, _shortOverview(text), streamId]);
 }
 /** AI-inferred category/tags for a stream; the channel inherits the latest inferred category. */
-function setStreamAiCategory(streamId, category, tags) {
+async function setStreamAiCategory(streamId, category, tags) {
     const cat = category ? String(category).toLowerCase().slice(0, 40) : null;
-    const r = run('UPDATE streams SET ai_category = ?, ai_tags = ? WHERE id = ?', [cat, Array.isArray(tags) && tags.length ? JSON.stringify(tags.slice(0, 8)) : null, streamId]);
-    if (cat) { const s = get('SELECT user_id FROM streams WHERE id = ?', [streamId]); if (s) run('UPDATE channels SET ai_category = ? WHERE user_id = ?', [cat, s.user_id]); }
+    const r = await run('UPDATE streams SET ai_category = ?, ai_tags = ? WHERE id = ?', [cat, Array.isArray(tags) && tags.length ? JSON.stringify(tags.slice(0, 8)) : null, streamId]);
+    if (cat) { const s = await get('SELECT user_id FROM streams WHERE id = ?', [streamId]); if (s) await run('UPDATE channels SET ai_category = ? WHERE user_id = ?', [cat, s.user_id]); }
     return r;
 }
 /** What to call a stream's category: the AI's read of the stream beats the self-selected default. */
 function effectiveCategory(row) { if (!row) return null; return row.ai_category || row.category || null; }
 // AI overview/transcript state lives in vod_ai_state / clip_ai_state (Live-owned,
 // keyed by the Media vod/clip id) — the moved vods/clips tables are never written.
-function _ensureVodAiState(vodId) {
-    run('INSERT OR IGNORE INTO vod_ai_state (vod_id) VALUES (?)', [vodId]);
+async function _ensureVodAiState(vodId) {
+    await run('INSERT INTO vod_ai_state (vod_id) VALUES (?) ON CONFLICT DO NOTHING', [vodId]);
 }
-function _ensureClipAiState(clipId) {
-    run('INSERT OR IGNORE INTO clip_ai_state (clip_id) VALUES (?)', [clipId]);
+async function _ensureClipAiState(clipId) {
+    await run('INSERT INTO clip_ai_state (clip_id) VALUES (?) ON CONFLICT DO NOTHING', [clipId]);
 }
 
 // ── Clip chat-announce scheduling (clip_ai_state) ────────────
-function scheduleClipNotifyState(clipId, graceSeconds = 60) {
-    _ensureClipAiState(clipId);
-    return run(`UPDATE clip_ai_state SET clip_notify_at = datetime('now', ?) WHERE clip_id = ? AND COALESCE(clip_notified,0) = 0`,
+async function scheduleClipNotifyState(clipId, graceSeconds = 60) {
+    await _ensureClipAiState(clipId);
+    return await run(`UPDATE clip_ai_state SET clip_notify_at = datetime('now', ?) WHERE clip_id = ? AND COALESCE(clip_notified,0) = 0`,
         [`+${Math.max(0, Math.round(graceSeconds))} seconds`, clipId]);
 }
-function bumpClipNotifyNowState(clipId) {
-    _ensureClipAiState(clipId);
-    return run('UPDATE clip_ai_state SET clip_notify_at = CURRENT_TIMESTAMP WHERE clip_id = ? AND COALESCE(clip_notified,0) = 0', [clipId]);
+async function bumpClipNotifyNowState(clipId) {
+    await _ensureClipAiState(clipId);
+    return await run('UPDATE clip_ai_state SET clip_notify_at = ov_now() WHERE clip_id = ? AND COALESCE(clip_notified,0) = 0', [clipId]);
 }
-function markClipNotifiedState(clipId) {
-    _ensureClipAiState(clipId);
-    return run('UPDATE clip_ai_state SET clip_notified = 1, clip_notify_at = NULL WHERE clip_id = ?', [clipId]);
+async function markClipNotifiedState(clipId) {
+    await _ensureClipAiState(clipId);
+    return await run('UPDATE clip_ai_state SET clip_notified = 1, clip_notify_at = NULL WHERE clip_id = ?', [clipId]);
 }
-function getDueClipNotifies(limit = 20) {
-    return all(`SELECT clip_id FROM clip_ai_state
-        WHERE COALESCE(clip_notified,0) = 0 AND clip_notify_at IS NOT NULL AND clip_notify_at <= CURRENT_TIMESTAMP
+async function getDueClipNotifies(limit = 20) {
+    return await all(`SELECT clip_id FROM clip_ai_state
+        WHERE COALESCE(clip_notified,0) = 0 AND clip_notify_at IS NOT NULL AND clip_notify_at <= ov_now()
         LIMIT ?`, [limit]);
 }
 
-function getVodAiState(vodId) {
-    return get('SELECT * FROM vod_ai_state WHERE vod_id = ?', [vodId]);
+async function getVodAiState(vodId) {
+    return await get('SELECT * FROM vod_ai_state WHERE vod_id = ?', [vodId]);
 }
-function getClipAiState(clipId) {
-    return get('SELECT * FROM clip_ai_state WHERE clip_id = ?', [clipId]);
+async function getClipAiState(clipId) {
+    return await get('SELECT * FROM clip_ai_state WHERE clip_id = ?', [clipId]);
 }
 /** A VOD or clip OpenVibe.Media deleted: Live's own rows about it go (server/media-proxy/purge.js). */
-function forgetMediaItem(kind, id) {
-    return getDb().transaction(() => {
+async function forgetMediaItem(kind, id) {
+    return await getDb().tx(async () => {
         const ai = kind === 'clip'
-            ? run('DELETE FROM clip_ai_state WHERE clip_id = ?', [id])
-            : run('DELETE FROM vod_ai_state WHERE vod_id = ?', [id]);
-        const views = run('DELETE FROM content_views WHERE content_type = ? AND content_id = ?', [kind === 'clip' ? 'clip' : 'vod', id]);
+            ? await run('DELETE FROM clip_ai_state WHERE clip_id = ?', [id])
+            : await run('DELETE FROM vod_ai_state WHERE vod_id = ?', [id]);
+        const views = await run('DELETE FROM content_views WHERE content_type = ? AND content_id = ?', [kind === 'clip' ? 'clip' : 'vod', id]);
         return { ai: ai.changes, views: views.changes };
-    })();
+    });
 }
-function setVodAiOverview(vodId, text) {
-    _ensureVodAiState(vodId);
+async function setVodAiOverview(vodId, text) {
+    await _ensureVodAiState(vodId);
     // Store the FULL overview alongside the derived short — the card expander swaps
     // the short teaser for this full text, so losing it makes expansion pointless.
     const full = (text || '').trim() || null;
-    return run('UPDATE vod_ai_state SET ai_overview = ?, ai_overview_short = ? WHERE vod_id = ?', [full, _shortOverview(text), vodId]);
+    return await run('UPDATE vod_ai_state SET ai_overview = ?, ai_overview_short = ? WHERE vod_id = ?', [full, _shortOverview(text), vodId]);
 }
-function setClipAiOverview(clipId, { overview = null, transcript = null, segments = null }) {
+async function setClipAiOverview(clipId, { overview = null, transcript = null, segments = null }) {
     void transcript; // full transcript text lives in the segments JSON now
-    _ensureClipAiState(clipId);
+    await _ensureClipAiState(clipId);
     const full = (overview || '').trim() || null;
-    return run('UPDATE clip_ai_state SET ai_overview = ?, ai_overview_short = ?, ai_transcript_json = COALESCE(?, ai_transcript_json) WHERE clip_id = ?',
+    return await run('UPDATE clip_ai_state SET ai_overview = ?, ai_overview_short = ?, ai_transcript_json = COALESCE(?, ai_transcript_json) WHERE clip_id = ?',
         [full, _shortOverview(overview), _segJson(segments), clipId]);
 }
 function _segJson(segments) {
     if (!Array.isArray(segments)) return null;   // null = never attempted
     try { return JSON.stringify(segments.slice(0, 2000)); } catch { return null; } // [] = attempted, none found
 }
-function setVodTranscript(vodId, transcript, segments) {
-    _ensureVodAiState(vodId);
-    return run('UPDATE vod_ai_state SET ai_transcript_json = ?, transcript_partial_json = NULL, transcript_progress_sec = 0 WHERE vod_id = ?', [_segJson(segments) ?? (transcript ? JSON.stringify([]) : null), vodId]);
+async function setVodTranscript(vodId, transcript, segments) {
+    await _ensureVodAiState(vodId);
+    return await run('UPDATE vod_ai_state SET ai_transcript_json = ?, transcript_partial_json = NULL, transcript_progress_sec = 0 WHERE vod_id = ?', [_segJson(segments) ?? (transcript ? JSON.stringify([]) : null), vodId]);
 }
 // Resumable VOD transcription: persist finished windows so a restart continues from here.
-function saveVodTranscriptProgress(vodId, progressSec, segments) {
-    _ensureVodAiState(vodId);
-    return run('UPDATE vod_ai_state SET transcript_partial_json = ?, transcript_progress_sec = ? WHERE vod_id = ?', [_segJson(segments), Math.max(0, Math.floor(progressSec || 0)), vodId]);
+async function saveVodTranscriptProgress(vodId, progressSec, segments) {
+    await _ensureVodAiState(vodId);
+    return await run('UPDATE vod_ai_state SET transcript_partial_json = ?, transcript_progress_sec = ? WHERE vod_id = ?', [_segJson(segments), Math.max(0, Math.floor(progressSec || 0)), vodId]);
 }
-function getVodTranscriptProgress(vodId) {
-    const row = get('SELECT transcript_partial_json, transcript_progress_sec FROM vod_ai_state WHERE vod_id = ?', [vodId]);
+async function getVodTranscriptProgress(vodId) {
+    const row = await get('SELECT transcript_partial_json, transcript_progress_sec FROM vod_ai_state WHERE vod_id = ?', [vodId]);
     if (!row) return { progressSec: 0, segments: [] };
     let segments = [];
     try { segments = row.transcript_partial_json ? JSON.parse(row.transcript_partial_json) : []; } catch { segments = []; }
     return { progressSec: row.transcript_progress_sec || 0, segments: Array.isArray(segments) ? segments : [] };
 }
-function setClipTranscript(clipId, transcript, segments) {
-    _ensureClipAiState(clipId);
-    return run('UPDATE clip_ai_state SET ai_transcript_json = ? WHERE clip_id = ?', [_segJson(segments) ?? (transcript ? JSON.stringify([]) : null), clipId]);
+async function setClipTranscript(clipId, transcript, segments) {
+    await _ensureClipAiState(clipId);
+    return await run('UPDATE clip_ai_state SET ai_transcript_json = ? WHERE clip_id = ?', [_segJson(segments) ?? (transcript ? JSON.stringify([]) : null), clipId]);
 }
-function getStreamMemoriesInRange(streamId, startSec, endSec) {
-    return all('SELECT * FROM stream_memories WHERE stream_id = ? AND offset_seconds BETWEEN ? AND ? ORDER BY offset_seconds ASC', [streamId, startSec, endSec]);
+async function getStreamMemoriesInRange(streamId, startSec, endSec) {
+    return await all('SELECT * FROM stream_memories WHERE stream_id = ? AND offset_seconds BETWEEN ? AND ? ORDER BY offset_seconds ASC', [streamId, startSec, endSec]);
 }
 // Backfill queues (items still lacking AI output).
-function getVodsNeedingOverview(limit = 4) {
+async function getVodsNeedingOverview(limit = 4) {
     // Also re-queue rows whose short was truncated ('…') but whose full text was never
     // stored (older builds threw it away) — once regenerated, ai_overview is set and the
     // row drops out of the queue.
-    return all(`SELECT vod_id AS id, s.* FROM vod_ai_state s
+    return await all(`SELECT vod_id AS id, s.* FROM vod_ai_state s
         WHERE (ai_overview IS NULL OR ai_overview = '')
-          AND (ai_overview_short IS NULL OR ai_overview_short = '' OR ai_overview_short LIKE '%…')
+          AND (ai_overview_short IS NULL OR ai_overview_short = '' OR ai_overview_short ILIKE '%…')
         ORDER BY vod_id DESC LIMIT ?`, [limit]);
 }
 // Finished VODs whose AI timeline has fewer than 2 points — used to backfill the
@@ -2653,10 +602,10 @@ function getVodsNeedingTimeline(limit = 1) {
     void limit;
     return [];
 }
-function getClipsNeedingOverview(limit = 4) {
-    return all(`SELECT clip_id AS id, s.* FROM clip_ai_state s
+async function getClipsNeedingOverview(limit = 4) {
+    return await all(`SELECT clip_id AS id, s.* FROM clip_ai_state s
         WHERE (ai_overview IS NULL OR ai_overview = '')
-          AND (ai_overview_short IS NULL OR ai_overview_short = '' OR ai_overview_short LIKE '%…')
+          AND (ai_overview_short IS NULL OR ai_overview_short = '' OR ai_overview_short ILIKE '%…')
         ORDER BY clip_id DESC LIMIT ?`, [limit]);
 }
 // Transcript backfill queues — driven by transcript_status (see the migration above).
@@ -2665,45 +614,45 @@ function getClipsNeedingOverview(limit = 4) {
 // Rows come from vod_ai_state/clip_ai_state (state rows are created by the Media
 // vod.ready/clip.ready webhook and by the cutover migration). `id` = the Media id;
 // callers resolve the vod/clip metadata from OpenVibe.Media.
-function getVodsNeedingTranscript(limit = 2) {
-    return all(`SELECT vod_id AS id, s.* FROM vod_ai_state s
+async function getVodsNeedingTranscript(limit = 2) {
+    return await all(`SELECT vod_id AS id, s.* FROM vod_ai_state s
         WHERE ai_transcript_json IS NULL
           AND (transcript_status IS NULL OR transcript_status IN ('pending','retry'))
-          AND (transcript_next_at IS NULL OR transcript_next_at <= CURRENT_TIMESTAMP)
+          AND (transcript_next_at IS NULL OR transcript_next_at <= ov_now())
         ORDER BY (transcript_status='retry'), vod_id DESC LIMIT ?`, [limit]);
 }
-function getClipsNeedingTranscript(limit = 2) {
-    return all(`SELECT clip_id AS id, s.* FROM clip_ai_state s
+async function getClipsNeedingTranscript(limit = 2) {
+    return await all(`SELECT clip_id AS id, s.* FROM clip_ai_state s
         WHERE ai_transcript_json IS NULL
           AND (transcript_status IS NULL OR transcript_status IN ('pending','retry'))
-          AND (transcript_next_at IS NULL OR transcript_next_at <= CURRENT_TIMESTAMP)
+          AND (transcript_next_at IS NULL OR transcript_next_at <= ov_now())
         ORDER BY (transcript_status='retry'), clip_id DESC LIMIT ?`, [limit]);
 }
 // status setter. On a 'retry', pass retryDelayMin to schedule the next eligible attempt
 // (exponential backoff); any other status clears the schedule.
-function setVodTranscriptStatus(id, status, error = null, retryDelayMin = 0) {
-    _ensureVodAiState(id);
+async function setVodTranscriptStatus(id, status, error = null, retryDelayMin = 0) {
+    await _ensureVodAiState(id);
     const nextExpr = (status === 'retry' && retryDelayMin > 0) ? `datetime('now','+${Math.round(retryDelayMin)} minutes')` : 'NULL';
-    return run(`UPDATE vod_ai_state SET transcript_status = ?, transcript_error = ?, transcript_next_at = ${nextExpr} WHERE vod_id = ?`,
+    return await run(`UPDATE vod_ai_state SET transcript_status = ?, transcript_error = ?, transcript_next_at = ${nextExpr} WHERE vod_id = ?`,
         [status, error ? String(error).slice(0, 300) : null, id]);
 }
-function setClipTranscriptStatus(id, status, error = null, retryDelayMin = 0) {
-    _ensureClipAiState(id);
+async function setClipTranscriptStatus(id, status, error = null, retryDelayMin = 0) {
+    await _ensureClipAiState(id);
     const nextExpr = (status === 'retry' && retryDelayMin > 0) ? `datetime('now','+${Math.round(retryDelayMin)} minutes')` : 'NULL';
-    return run(`UPDATE clip_ai_state SET transcript_status = ?, transcript_error = ?, transcript_next_at = ${nextExpr} WHERE clip_id = ?`,
+    return await run(`UPDATE clip_ai_state SET transcript_status = ?, transcript_error = ?, transcript_next_at = ${nextExpr} WHERE clip_id = ?`,
         [status, error ? String(error).slice(0, 300) : null, id]);
 }
 // Increment the attempt counter and return the new count (drives retry-vs-fail).
-function bumpVodTranscriptAttempt(id) {
-    _ensureVodAiState(id);
-    run('UPDATE vod_ai_state SET transcript_attempts = COALESCE(transcript_attempts,0)+1 WHERE vod_id = ?', [id]);
-    const r = get('SELECT transcript_attempts AS a FROM vod_ai_state WHERE vod_id = ?', [id]);
+async function bumpVodTranscriptAttempt(id) {
+    await _ensureVodAiState(id);
+    await run('UPDATE vod_ai_state SET transcript_attempts = COALESCE(transcript_attempts,0)+1 WHERE vod_id = ?', [id]);
+    const r = await get('SELECT transcript_attempts AS a FROM vod_ai_state WHERE vod_id = ?', [id]);
     return r ? r.a : 0;
 }
-function bumpClipTranscriptAttempt(id) {
-    _ensureClipAiState(id);
-    run('UPDATE clip_ai_state SET transcript_attempts = COALESCE(transcript_attempts,0)+1 WHERE clip_id = ?', [id]);
-    const r = get('SELECT transcript_attempts AS a FROM clip_ai_state WHERE clip_id = ?', [id]);
+async function bumpClipTranscriptAttempt(id) {
+    await _ensureClipAiState(id);
+    await run('UPDATE clip_ai_state SET transcript_attempts = COALESCE(transcript_attempts,0)+1 WHERE clip_id = ?', [id]);
+    const r = await get('SELECT transcript_attempts AS a FROM clip_ai_state WHERE clip_id = ?', [id]);
     return r ? r.a : 0;
 }
 // deleteAiMomentTextPastes() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
@@ -2718,7 +667,7 @@ function _extractDescFromMaybeJson(text) {
     if (dm) { try { return JSON.parse(`"${dm[1]}"`); } catch { return dm[1]; } }
     return text;
 }
-function cleanupMalformedAiText() {
+async function cleanupMalformedAiText() {
     // Only Live-owned tables — the moved vods/clips/pastes tables are frozen for
     // the OpenVibe.Media migration and must never be written.
     const jobs = [
@@ -2731,76 +680,76 @@ function cleanupMalformedAiText() {
     let fixed = 0;
     for (const [table, col, key] of jobs) {
         try {
-            const rows = all(`SELECT ${key} AS k, ${col} AS v FROM ${table} WHERE ${col} LIKE '{%"description"%'`);
+            const rows = await all(`SELECT ${key} AS k, ${col} AS v FROM ${table} WHERE ${col} ILIKE '{%"description"%'`);
             for (const r of rows) {
                 const clean = _extractDescFromMaybeJson(r.v);
-                if (clean && clean !== r.v) { run(`UPDATE ${table} SET ${col} = ? WHERE ${key} = ?`, [clean, r.k]); fixed++; }
+                if (clean && clean !== r.v) { await run(`UPDATE ${table} SET ${col} = ? WHERE ${key} = ?`, [clean, r.k]); fixed++; }
             }
         } catch { /* table/column may not exist on older DBs */ }
     }
     // streamer_overviews uses different column names.
     try {
-        const rows = all(`SELECT user_id AS k, overview AS v FROM streamer_overviews WHERE overview LIKE '{%"description"%'`);
+        const rows = await all(`SELECT user_id AS k, overview AS v FROM streamer_overviews WHERE overview ILIKE '{%"description"%'`);
         for (const r of rows) {
             const clean = _extractDescFromMaybeJson(r.v);
-            if (clean && clean !== r.v) { run('UPDATE streamer_overviews SET overview = ? WHERE user_id = ?', [clean, r.k]); fixed++; }
+            if (clean && clean !== r.v) { await run('UPDATE streamer_overviews SET overview = ? WHERE user_id = ?', [clean, r.k]); fixed++; }
         }
     } catch { /* */ }
     if (fixed) console.log(`[AI] Cleaned ${fixed} malformed JSON AI text value(s)`);
     return fixed;
 }
-function recordAiUsage({ kind, model, input_tokens = 0, output_tokens = 0, cached_tokens = 0, cost_usd = 0, owner_user_id = null, source = null, role = null, provider = null, latency_ms = null }) {
-    return run('INSERT INTO ai_usage (kind, model, input_tokens, output_tokens, cached_tokens, cost_usd, owner_user_id, source, role, provider, latency_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+async function recordAiUsage({ kind, model, input_tokens = 0, output_tokens = 0, cached_tokens = 0, cost_usd = 0, owner_user_id = null, source = null, role = null, provider = null, latency_ms = null }) {
+    return await run('INSERT INTO ai_usage (kind, model, input_tokens, output_tokens, cached_tokens, cost_usd, owner_user_id, source, role, provider, latency_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
         [kind || null, model || null, input_tokens || 0, output_tokens || 0, cached_tokens || 0, cost_usd || 0, owner_user_id || null, source || null, role || null, provider || null, latency_ms == null ? null : Math.round(latency_ms)]);
 }
-function getAiCostToday() {
-    const r = get("SELECT COALESCE(SUM(cost_usd),0) AS c FROM ai_usage WHERE created_at >= date('now')");
+async function getAiCostToday() {
+    const r = await get("SELECT COALESCE(SUM(cost_usd)::float8,0) AS c FROM ai_usage WHERE created_at >= substr(ov_now(), 1, 10)");
     return r ? r.c : 0;
 }
 // Today's spend attributed to one streamer (optionally within a single feature bucket).
-function getAiCostTodayForUser(userId, source = null) {
+async function getAiCostTodayForUser(userId, source = null) {
     if (!userId) return 0;
-    let sql = "SELECT COALESCE(SUM(cost_usd),0) AS c FROM ai_usage WHERE owner_user_id = ? AND created_at >= date('now')";
+    let sql = "SELECT COALESCE(SUM(cost_usd)::float8,0) AS c FROM ai_usage WHERE owner_user_id = ? AND created_at >= substr(ov_now(), 1, 10)";
     const params = [userId];
     if (source) { sql += ' AND source = ?'; params.push(source); }
-    const r = get(sql, params);
+    const r = await get(sql, params);
     return r ? r.c : 0;
 }
-function getAiUsageSummary(days = 30) {
-    const byDay = all(`SELECT date(created_at) AS day, COUNT(*) AS calls, SUM(input_tokens) AS input_tokens,
-                       SUM(output_tokens) AS output_tokens, SUM(cost_usd) AS cost_usd
-                       FROM ai_usage WHERE created_at >= date('now', ?) GROUP BY day ORDER BY day DESC`, [`-${days} days`]);
-    const byKind = all(`SELECT kind, COUNT(*) AS calls, SUM(cost_usd) AS cost_usd
-                        FROM ai_usage WHERE created_at >= date('now', ?) GROUP BY kind ORDER BY cost_usd DESC`, [`-${days} days`]);
-    const totals = get(`SELECT COUNT(*) AS calls, COALESCE(SUM(input_tokens),0) AS input_tokens,
-                        COALESCE(SUM(output_tokens),0) AS output_tokens, COALESCE(SUM(cached_tokens),0) AS cached_tokens,
-                        COALESCE(SUM(cost_usd),0) AS cost_usd
-                        FROM ai_usage WHERE created_at >= date('now', ?)`, [`-${days} days`]);
-    const byRole = all(`SELECT COALESCE(role,'legacy') AS role, COUNT(*) AS calls, SUM(input_tokens) AS input_tokens, SUM(cached_tokens) AS cached_tokens,
-                        SUM(output_tokens) AS output_tokens, SUM(cost_usd) AS cost_usd, AVG(latency_ms) AS avg_latency_ms
-                        FROM ai_usage WHERE created_at >= date('now', ?) GROUP BY role ORDER BY cost_usd DESC`, [`-${days} days`]);
-    const bySource = all(`SELECT COALESCE(source,'platform') AS source, COALESCE(provider,'shared') AS provider, COUNT(*) AS calls, SUM(cost_usd) AS cost_usd, SUM(input_tokens) AS input_tokens, SUM(cached_tokens) AS cached_tokens
-                          FROM ai_usage WHERE created_at >= date('now', ?) GROUP BY source, provider ORDER BY cost_usd DESC`, [`-${days} days`]);
-    const byOwner = all(`SELECT a.owner_user_id AS user_id, u.username, COUNT(*) AS calls, SUM(a.cost_usd) AS cost_usd,
-                         SUM(a.input_tokens) AS input_tokens, SUM(a.cached_tokens) AS cached_tokens, SUM(a.output_tokens) AS output_tokens,
-                         SUM(CASE WHEN a.created_at >= date('now') THEN a.cost_usd ELSE 0 END) AS cost_today,
-                         SUM(CASE WHEN a.provider = 'byo' THEN a.cost_usd ELSE 0 END) AS cost_byo
+async function getAiUsageSummary(days = 30) {
+    const byDay = await all(`SELECT substr(datetime(created_at), 1, 10) AS day, COUNT(*) AS calls, SUM(input_tokens)::float8 AS input_tokens,
+                       SUM(output_tokens)::float8 AS output_tokens, SUM(cost_usd)::float8 AS cost_usd
+                       FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10) GROUP BY day ORDER BY day DESC`, [`-${days} days`]);
+    const byKind = await all(`SELECT kind, COUNT(*) AS calls, SUM(cost_usd)::float8 AS cost_usd
+                        FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10) GROUP BY kind ORDER BY cost_usd DESC`, [`-${days} days`]);
+    const totals = await get(`SELECT COUNT(*) AS calls, COALESCE(SUM(input_tokens)::float8,0) AS input_tokens,
+                        COALESCE(SUM(output_tokens)::float8,0) AS output_tokens, COALESCE(SUM(cached_tokens)::float8,0) AS cached_tokens,
+                        COALESCE(SUM(cost_usd)::float8,0) AS cost_usd
+                        FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10)`, [`-${days} days`]);
+    const byRole = await all(`SELECT COALESCE(role,'legacy') AS role, COUNT(*) AS calls, SUM(input_tokens)::float8 AS input_tokens, SUM(cached_tokens)::float8 AS cached_tokens,
+                        SUM(output_tokens)::float8 AS output_tokens, SUM(cost_usd)::float8 AS cost_usd, AVG(latency_ms)::float8 AS avg_latency_ms
+                        FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10) GROUP BY role ORDER BY cost_usd DESC`, [`-${days} days`]);
+    const bySource = await all(`SELECT COALESCE(source,'platform') AS source, COALESCE(provider,'shared') AS provider, COUNT(*) AS calls, SUM(cost_usd)::float8 AS cost_usd, SUM(input_tokens)::float8 AS input_tokens, SUM(cached_tokens)::float8 AS cached_tokens
+                          FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10) GROUP BY source, provider ORDER BY cost_usd DESC`, [`-${days} days`]);
+    const byOwner = await all(`SELECT a.owner_user_id AS user_id, u.username, COUNT(*) AS calls, SUM(a.cost_usd)::float8 AS cost_usd,
+                         SUM(a.input_tokens)::float8 AS input_tokens, SUM(a.cached_tokens)::float8 AS cached_tokens, SUM(a.output_tokens)::float8 AS output_tokens,
+                         SUM(CASE WHEN a.created_at >= substr(ov_now(), 1, 10) THEN a.cost_usd ELSE 0 END)::float8 AS cost_today,
+                         SUM(CASE WHEN a.provider = 'byo' THEN a.cost_usd ELSE 0 END)::float8 AS cost_byo
                          FROM ai_usage a LEFT JOIN users u ON u.id = a.owner_user_id
-                         WHERE a.created_at >= date('now', ?) AND a.owner_user_id IS NOT NULL
-                         GROUP BY a.owner_user_id ORDER BY cost_usd DESC LIMIT 100`, [`-${days} days`]);
-    const byModel = all(`SELECT model, COUNT(*) AS calls, SUM(cost_usd) AS cost_usd, SUM(input_tokens) AS input_tokens, SUM(cached_tokens) AS cached_tokens, SUM(output_tokens) AS output_tokens
-                         FROM ai_usage WHERE created_at >= date('now', ?) GROUP BY model ORDER BY cost_usd DESC`, [`-${days} days`]);
+                         WHERE a.created_at >= substr(datetime('now', ?), 1, 10) AND a.owner_user_id IS NOT NULL
+                         GROUP BY a.owner_user_id, u.username ORDER BY cost_usd DESC LIMIT 100`, [`-${days} days`]);
+    const byModel = await all(`SELECT model, COUNT(*) AS calls, SUM(cost_usd)::float8 AS cost_usd, SUM(input_tokens)::float8 AS input_tokens, SUM(cached_tokens)::float8 AS cached_tokens, SUM(output_tokens)::float8 AS output_tokens
+                         FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10) GROUP BY model ORDER BY cost_usd DESC`, [`-${days} days`]);
     const cachedShare = totals.input_tokens ? totals.cached_tokens / totals.input_tokens : 0;
-    return { byDay, byKind, byRole, bySource, byOwner, byModel, totals, cachedShare, today: getAiCostToday() };
+    return { byDay, byKind, byRole, bySource, byOwner, byModel, totals, cachedShare, today: await getAiCostToday() };
 }
 
 // Memories across ALL of a streamer's streams (for the per-streamer AI overview + explorer).
-function getStreamMemoriesByUser(userId, limit = 60) {
-    return all('SELECT * FROM stream_memories WHERE user_id = ? ORDER BY created_at DESC LIMIT ?', [userId, limit]);
+async function getStreamMemoriesByUser(userId, limit = 60) {
+    return await all('SELECT * FROM stream_memories WHERE user_id = ? ORDER BY created_at DESC LIMIT ?', [userId, limit]);
 }
 // Total AI "events" (captured memory moments) for a user — powers the AI Timeline tab badge.
-function countStreamMemoriesByUser(userId) {
-    try { return get('SELECT COUNT(*) AS count FROM stream_memories WHERE user_id = ?', [userId])?.count || 0; }
+async function countStreamMemoriesByUser(userId) {
+    try { return (await get('SELECT COUNT(*) AS count FROM stream_memories WHERE user_id = ?', [userId]))?.count || 0; }
     catch { return 0; }
 }
 
@@ -2811,33 +760,33 @@ function countStreamMemoriesByUser(userId) {
  * Bulk-insert timeline rows.
  * @param {Array<{stream_id,user_id?,vod_id?,kind,start_sec,end_sec?,text?,label?,confidence?}>} rows
  */
-function addTimelineEvents(rows) {
+async function addTimelineEvents(rows) {
     if (!Array.isArray(rows) || !rows.length) return 0;
     const stmt = db.prepare(`INSERT INTO stream_timeline_events
         (stream_id, user_id, vod_id, kind, start_sec, end_sec, text, label, confidence, lang, text_en)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-    const tx = db.transaction((list) => {
+    const tx = async (list) => await db.tx(async () => {
         for (const r of list) {
             if (!r || !r.stream_id || !r.kind || r.start_sec == null) continue;
-            stmt.run(r.stream_id, r.user_id || null, r.vod_id || null, r.kind,
+            await stmt.run(r.stream_id, r.user_id || null, r.vod_id || null, r.kind,
                 Number(r.start_sec) || 0, r.end_sec == null ? null : Number(r.end_sec),
                 r.text || null, r.label || null, r.confidence == null ? null : Number(r.confidence),
                 r.lang || null, r.text_en || null);
         }
     });
-    try { tx(rows); return rows.length; } catch { return 0; }
+    try { await tx(rows); return rows.length; } catch { return 0; }
 }
 
 /** Newest speech rows for a live stream after a given row id (live captions feed). */
-function getTimelineSpeechSince(streamId, afterId = 0, limit = 40) {
-    return all(`SELECT id, start_sec, end_sec, text, lang, text_en, created_at
+async function getTimelineSpeechSince(streamId, afterId = 0, limit = 40) {
+    return (await all(`SELECT id, start_sec, end_sec, text, lang, text_en, created_at
                 FROM stream_timeline_events
                 WHERE stream_id = ? AND kind = 'speech' AND id > ?
-                ORDER BY id DESC LIMIT ?`, [streamId, afterId || 0, Math.min(200, Math.max(1, limit))]).reverse();
+                ORDER BY id DESC LIMIT ?`, [streamId, afterId || 0, Math.min(200, Math.max(1, limit))])).reverse();
 }
 
 /** Read a stream's timeline, optionally filtered by kind and time window. */
-function getTimeline(streamId, { kind = null, from = null, to = null, limit = 5000 } = {}) {
+async function getTimeline(streamId, { kind = null, from = null, to = null, limit = 5000 } = {}) {
     let sql = 'SELECT kind, start_sec, end_sec, text, label, confidence FROM stream_timeline_events WHERE stream_id = ?';
     const params = [streamId];
     if (kind) { sql += ' AND kind = ?'; params.push(kind); }
@@ -2845,20 +794,20 @@ function getTimeline(streamId, { kind = null, from = null, to = null, limit = 50
     if (to != null) { sql += ' AND start_sec <= ?'; params.push(Number(to)); }
     sql += ' ORDER BY start_sec ASC LIMIT ?';
     params.push(Math.max(1, Math.min(20000, limit)));
-    try { return all(sql, params); } catch { return []; }
+    try { return await all(sql, params); } catch { return []; }
 }
 
 /** Flat transcript text for a stream, speech rows only, in time order. */
-function getTimelineText(streamId) {
+async function getTimelineText(streamId) {
     try {
-        return getTimeline(streamId, { kind: 'speech' })
+        return (await getTimeline(streamId, { kind: 'speech' }))
             .map(r => String(r.text || '').trim()).filter(Boolean).join(' ');
     } catch { return ''; }
 }
 
 /** How many seconds of a stream the timeline actually covers (union of speech spans). */
-function getTimelineCoverage(streamId) {
-    const rows = getTimeline(streamId, { kind: 'speech' });
+async function getTimelineCoverage(streamId) {
+    const rows = await getTimeline(streamId, { kind: 'speech' });
     let covered = 0, lastEnd = -1;
     for (const r of rows) {
         const st = Number(r.start_sec) || 0;
@@ -2871,9 +820,9 @@ function getTimelineCoverage(streamId) {
 }
 
 /** Timeline rows for a finished VOD (set by linkTimelineToVod when the recording lands). */
-function getTimelineByVod(vodId) {
+async function getTimelineByVod(vodId) {
     try {
-        return all(`SELECT kind, start_sec, end_sec, text, label, confidence
+        return await all(`SELECT kind, start_sec, end_sec, text, label, confidence
                     FROM stream_timeline_events WHERE vod_id = ? ORDER BY start_sec ASC LIMIT 20000`, [vodId]);
     } catch { return []; }
 }
@@ -2887,24 +836,24 @@ function getTimelineByVod(vodId) {
  * rows orphaned against 2 linked; vod 2163 served 426 characters when the full
  * transcript was 3548.) Late writers call this to stamp themselves correctly.
  */
-function getTimelineVodId(streamId) {
+async function getTimelineVodId(streamId) {
     try {
-        const r = get('SELECT vod_id FROM stream_timeline_events WHERE stream_id = ? AND vod_id IS NOT NULL LIMIT 1', [streamId]);
+        const r = await get('SELECT vod_id FROM stream_timeline_events WHERE stream_id = ? AND vod_id IS NOT NULL LIMIT 1', [streamId]);
         return r ? r.vod_id : null;
     } catch { return null; }
 }
 
 /** Attach a vod_id to a finished stream's rows so VOD views can reuse the timeline. */
-function linkTimelineToVod(streamId, vodId) {
-    try { return run('UPDATE stream_timeline_events SET vod_id = ? WHERE stream_id = ? AND vod_id IS NULL', [vodId, streamId]); }
+async function linkTimelineToVod(streamId, vodId) {
+    try { return await run('UPDATE stream_timeline_events SET vod_id = ? WHERE stream_id = ? AND vod_id IS NULL', [vodId, streamId]); }
     catch { return null; }
 }
 
-function getStreamTranscriptSegments(streamId) {
+async function getStreamTranscriptSegments(streamId) {
     // Prefer the timeline when it has rows — it keeps `end` and covers the whole stream.
     // Fall back to the legacy per-memory blobs so old streams keep rendering; no migration.
     try {
-        const tl = getTimeline(streamId, { kind: 'speech' });
+        const tl = await getTimeline(streamId, { kind: 'speech' });
         if (tl.length) {
             return tl.map(r => ({
                 start: Math.floor(Number(r.start_sec) || 0),
@@ -2915,7 +864,7 @@ function getStreamTranscriptSegments(streamId) {
     } catch { /* fall through to legacy */ }
     const out = [];
     try {
-        const rows = all('SELECT offset_seconds, transcript_json FROM stream_memories WHERE stream_id = ? AND transcript_json IS NOT NULL ORDER BY offset_seconds ASC', [streamId]);
+        const rows = await all('SELECT offset_seconds, transcript_json FROM stream_memories WHERE stream_id = ? AND transcript_json IS NOT NULL ORDER BY offset_seconds ASC', [streamId]);
         for (const r of rows) {
             try {
                 const segs = JSON.parse(r.transcript_json);
@@ -2937,29 +886,29 @@ function getStreamTranscriptSegments(streamId) {
 
 // countAutoClipsSince() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
 
-function upsertStreamerOverview(userId, { overview, model = null, sources = null }) {
-    return run(`INSERT INTO streamer_overviews (user_id, overview, overview_short, model, sources, generated_at)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+async function upsertStreamerOverview(userId, { overview, model = null, sources = null }) {
+    return await run(`INSERT INTO streamer_overviews (user_id, overview, overview_short, model, sources, generated_at)
+                VALUES (?, ?, ?, ?, ?, ov_now())
                 ON CONFLICT(user_id) DO UPDATE SET
                     overview = excluded.overview, overview_short = excluded.overview_short, model = excluded.model,
-                    sources = excluded.sources, generated_at = CURRENT_TIMESTAMP`,
+                    sources = excluded.sources, generated_at = ov_now()`,
         [userId, overview || '', _shortOverview(overview), model, sources]);
 }
-function getStreamerOverview(userId) {
-    return get('SELECT * FROM streamer_overviews WHERE user_id = ?', [userId]);
+async function getStreamerOverview(userId) {
+    return await get('SELECT * FROM streamer_overviews WHERE user_id = ?', [userId]);
 }
 
 // Assemble the full AI timeline for a streamer from already-generated AI data (no LLM cost):
 // the whole-streamer overview + every session that has an AI overview or captured memories,
 // newest first, each with its VOD (for timestamped links) and its ordered memory moments.
 // vodIdByStream: Map(stream id → public VOD id) from OpenVibe.Media (lookups.publicVodIdsByStream).
-function assembleStreamerAiTimeline(userId, vodIdByStream = null) {
+async function assembleStreamerAiTimeline(userId, vodIdByStream = null) {
     let overview = null;
-    try { overview = get('SELECT overview, overview_short, generated_at FROM streamer_overviews WHERE user_id = ?', [userId]) || null; } catch { /* */ }
+    try { overview = await get('SELECT overview, overview_short, generated_at FROM streamer_overviews WHERE user_id = ?', [userId]) || null; } catch { /* */ }
 
     let sessions = [];
     try {
-        const streams = all(`
+        const streams = await all(`
             SELECT s.id, s.title, s.ai_title, s.started_at, s.ended_at, s.created_at, s.duration_seconds,
                    s.ai_overview, s.ai_overview_short, s.thumbnail_url, s.peak_viewers, s.category,
                    (SELECT COUNT(*) FROM stream_memories m WHERE m.stream_id = s.id) AS memory_count
@@ -2969,10 +918,10 @@ function assembleStreamerAiTimeline(userId, vodIdByStream = null) {
             ORDER BY COALESCE(s.started_at, s.created_at) DESC
             LIMIT 300
         `, [userId]);
-        sessions = streams.map(s => {
+        sessions = (await Promise.all(streams.map(async s => {
             let memories = [];
             try {
-                memories = all(`SELECT offset_seconds, description, tags, thumbnail_url, captured_at, transcript_json
+                memories = await all(`SELECT offset_seconds, description, tags, thumbnail_url, captured_at, transcript_json
                                 FROM stream_memories WHERE stream_id = ? ORDER BY offset_seconds ASC LIMIT 400`, [s.id]);
             } catch { /* */ }
             // Compute the session's total spoken-word count from the transcripts, then DROP the
@@ -2993,7 +942,7 @@ function assembleStreamerAiTimeline(userId, vodIdByStream = null) {
             }
             const vodId = vodIdByStream && vodIdByStream.get(Number(s.id));
             return { ...s, vod_id: vodId || null, memories, word_count: wordCount, has_transcript: hasTranscript };
-        });
+        })));
     } catch { /* */ }
 
     return {
@@ -3005,28 +954,28 @@ function assembleStreamerAiTimeline(userId, vodIdByStream = null) {
     };
 }
 
-function setStreamAiTitle(streamId, title) {
-    try { return run('UPDATE streams SET ai_title = ? WHERE id = ?', [String(title || '').slice(0, 80), streamId]); } catch { return null; }
+async function setStreamAiTitle(streamId, title) {
+    try { return await run('UPDATE streams SET ai_title = ? WHERE id = ?', [String(title || '').slice(0, 80), streamId]); } catch { return null; }
 }
 // Sessions that have an AI overview but no short AI title yet (for background titling).
-function getUntitledAiSessions(userId, limit = 20) {
+async function getUntitledAiSessions(userId, limit = 20) {
     try {
-        return all(`SELECT id, ai_overview_short, ai_overview, title FROM streams
+        return await all(`SELECT id, ai_overview_short, ai_overview, title FROM streams
                     WHERE user_id = ? AND (ai_title IS NULL OR ai_title = '')
                       AND (ai_overview_short IS NOT NULL OR ai_overview IS NOT NULL)
                     ORDER BY COALESCE(started_at, created_at) DESC LIMIT ?`, [userId, limit]) || [];
     } catch { return []; }
 }
-function clearAiTimelineCache(userId) {
-    try { return run('DELETE FROM ai_timeline_cache WHERE user_id = ?', [userId]); } catch { return null; }
+async function clearAiTimelineCache(userId) {
+    try { return await run('DELETE FROM ai_timeline_cache WHERE user_id = ?', [userId]); } catch { return null; }
 }
 
 // Lazy, TTL-cached timeline: re-assemble only when the tab is viewed AND the cache is stale.
 // The route (ai/chat-ai-routes.js) reads the cache first, asks Media for the VOD ids only on a
 // miss, then builds; `store: false` skips caching a timeline built while Media was unreachable.
-function readStreamerAiTimelineCache(userId, ttlMs = 15 * 60 * 1000) {
+async function readStreamerAiTimelineCache(userId, ttlMs = 15 * 60 * 1000) {
     try {
-        const row = get('SELECT payload, generated_at FROM ai_timeline_cache WHERE user_id = ?', [userId]);
+        const row = await get('SELECT payload, generated_at FROM ai_timeline_cache WHERE user_id = ?', [userId]);
         if (row && row.payload) {
             const age = Date.now() - Date.parse((row.generated_at || '').replace(' ', 'T') + 'Z');
             if (!(age > ttlMs) && !Number.isNaN(age)) {
@@ -3036,19 +985,19 @@ function readStreamerAiTimelineCache(userId, ttlMs = 15 * 60 * 1000) {
     } catch { /* rebuild */ }
     return null;
 }
-function buildStreamerAiTimeline(userId, vodIdByStream = null, { store = true } = {}) {
-    const fresh = assembleStreamerAiTimeline(userId, vodIdByStream);
+async function buildStreamerAiTimeline(userId, vodIdByStream = null, { store = true } = {}) {
+    const fresh = await assembleStreamerAiTimeline(userId, vodIdByStream);
     if (store) {
         try {
-            run(`INSERT INTO ai_timeline_cache (user_id, payload, generated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-                 ON CONFLICT(user_id) DO UPDATE SET payload = excluded.payload, generated_at = CURRENT_TIMESTAMP`,
+            await run(`INSERT INTO ai_timeline_cache (user_id, payload, generated_at) VALUES (?, ?, ov_now())
+                 ON CONFLICT(user_id) DO UPDATE SET payload = excluded.payload, generated_at = ov_now()`,
                 [userId, JSON.stringify(fresh)]);
         } catch { /* cache is best-effort */ }
     }
     return { ...fresh, cached: false };
 }
-function getAllStreamerOverviews(limit = 100) {
-    return all(`SELECT o.*, u.username, u.display_name
+async function getAllStreamerOverviews(limit = 100) {
+    return await all(`SELECT o.*, u.username, u.display_name
                 FROM streamer_overviews o JOIN users u ON u.id = o.user_id
                 ORDER BY o.generated_at DESC LIMIT ?`, [limit]);
 }
@@ -3057,8 +1006,8 @@ function getAllStreamerOverviews(limit = 100) {
 // retries hourly until it fills out. Only streamers with stream memories are considered,
 // so we never spend calls on users with nothing to summarize. (VODs used to count too,
 // through Live's frozen vods table, whose rows moved to OpenVibe.Media at the split.)
-function getStreamersNeedingOverview({ decentLen = 220, limit = 4 } = {}) {
-    return all(`
+async function getStreamersNeedingOverview({ decentLen = 220, limit = 4 } = {}) {
+    return await all(`
         SELECT u.id AS user_id
         FROM users u
         LEFT JOIN streamer_overviews o ON o.user_id = u.id
@@ -3073,23 +1022,23 @@ function getStreamersNeedingOverview({ decentLen = 220, limit = 4 } = {}) {
     `, [decentLen, decentLen, limit]);
 }
 
-function updateViewerCount(streamId, count) {
-    run(`UPDATE streams SET viewer_count = ?, peak_viewers = MAX(peak_viewers, ?) WHERE id = ?`,
+async function updateViewerCount(streamId, count) {
+    await run(`UPDATE streams SET viewer_count = ?, peak_viewers = GREATEST(peak_viewers, ?) WHERE id = ?`,
         [count, count, streamId]);
 }
 
 // ── Managed Stream helpers ───────────────────────────────────
 
-function createManagedStream({ user_id, channel_id, slug, title, description, category, protocol, streaming_method, stream_key, is_nsfw, control_config_id }) {
-    return run(
+async function createManagedStream({ user_id, channel_id, slug, title, description, category, protocol, streaming_method, stream_key, is_nsfw, control_config_id }) {
+    return await run(
         `INSERT INTO managed_streams (user_id, channel_id, slug, title, description, category, protocol, streaming_method, stream_key, is_nsfw, control_config_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [user_id, channel_id || null, slug || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', streaming_method || null, stream_key, is_nsfw ? 1 : 0, control_config_id || null]
     );
 }
 
-function getManagedStreamById(id) {
-    return get(`
+async function getManagedStreamById(id) {
+    return await get(`
         SELECT ms.*, u.username, u.display_name, u.avatar_url, u.profile_color
         FROM managed_streams ms
         JOIN users u ON ms.user_id = u.id
@@ -3097,8 +1046,8 @@ function getManagedStreamById(id) {
     `, [id]);
 }
 
-function getManagedStreamsByUserId(userId) {
-    return all(`
+async function getManagedStreamsByUserId(userId) {
+    return await all(`
         SELECT ms.*,
                (SELECT COUNT(*) FROM streams s WHERE s.managed_stream_id = ms.id) AS session_count,
                (SELECT MAX(s.ended_at) FROM streams s WHERE s.managed_stream_id = ms.id AND s.ended_at IS NOT NULL) AS last_live_at,
@@ -3110,17 +1059,17 @@ function getManagedStreamsByUserId(userId) {
     `, [userId]);
 }
 
-function getManagedStreamBySlug(userId, slug) {
-    return get(`
+async function getManagedStreamBySlug(userId, slug) {
+    return await get(`
         SELECT ms.*, u.username, u.display_name, u.avatar_url, u.profile_color
         FROM managed_streams ms
         JOIN users u ON ms.user_id = u.id
-        WHERE ms.user_id = ? AND ms.slug = ? COLLATE NOCASE
+        WHERE ms.user_id = ? AND lower(ms.slug) = lower(?)
     `, [userId, slug]);
 }
 
-function getManagedStreamByStreamKey(streamKey) {
-    return get(`
+async function getManagedStreamByStreamKey(streamKey) {
+    return await get(`
         SELECT ms.*, u.username, u.display_name, u.avatar_url, u.profile_color, u.stream_key AS user_stream_key
         FROM managed_streams ms
         JOIN users u ON ms.user_id = u.id
@@ -3128,11 +1077,11 @@ function getManagedStreamByStreamKey(streamKey) {
     `, [streamKey]);
 }
 
-function getManagedStreamByIdOrSlug(userId, idOrSlug) {
+async function getManagedStreamByIdOrSlug(userId, idOrSlug) {
     // Try numeric ID first
     const numId = parseInt(idOrSlug, 10);
     if (!isNaN(numId) && String(numId) === String(idOrSlug)) {
-        return get(`
+        return await get(`
             SELECT ms.*, u.username, u.display_name, u.avatar_url, u.profile_color
             FROM managed_streams ms
             JOIN users u ON ms.user_id = u.id
@@ -3140,10 +1089,10 @@ function getManagedStreamByIdOrSlug(userId, idOrSlug) {
         `, [numId, userId]);
     }
     // Try slug
-    return getManagedStreamBySlug(userId, idOrSlug);
+    return await getManagedStreamBySlug(userId, idOrSlug);
 }
 
-function updateManagedStream(managedStreamId, userId, fields) {
+async function updateManagedStream(managedStreamId, userId, fields) {
     const allowed = new Set([
         'slug', 'title', 'description', 'category', 'tags', 'protocol',
         'is_nsfw', 'control_config_id', 'sort_order',
@@ -3164,9 +1113,9 @@ function updateManagedStream(managedStreamId, userId, fields) {
         }
     }
     if (updates.length === 0) return;
-    updates.push('updated_at = CURRENT_TIMESTAMP');
+    updates.push('updated_at = ov_now()');
     params.push(managedStreamId, userId);
-    return run(`UPDATE managed_streams SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, params);
+    return await run(`UPDATE managed_streams SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, params);
 }
 
 /**
@@ -3180,11 +1129,11 @@ function updateManagedStream(managedStreamId, userId, fields) {
  * Self-reference is rejected: a slot pointing at itself would ask the player to render
  * a stream inside itself.
  */
-function getPipOverlayForManagedStream(managedStreamId) {
+async function getPipOverlayForManagedStream(managedStreamId) {
     try {
-        const ms = get('SELECT id, pip_source_msid, pip_defaults FROM managed_streams WHERE id = ?', [managedStreamId]);
+        const ms = await get('SELECT id, pip_source_msid, pip_defaults FROM managed_streams WHERE id = ?', [managedStreamId]);
         if (!ms || !ms.pip_source_msid || ms.pip_source_msid === ms.id) return null;
-        const src = get(`SELECT m.id AS msid, m.title, m.slug, m.user_id,
+        const src = await get(`SELECT m.id AS msid, m.title, m.slug, m.user_id,
                                 s.id AS stream_id, s.is_live
                          FROM managed_streams m
                          LEFT JOIN streams s ON s.managed_stream_id = m.id AND s.is_live = 1
@@ -3204,53 +1153,53 @@ function getPipOverlayForManagedStream(managedStreamId) {
 }
 
 /** Slots that could serve as a PiP source for this user (everything except `excludeId`). */
-function getPipCandidateSlots(userId, excludeId = null) {
+async function getPipCandidateSlots(userId, excludeId = null) {
     try {
-        return all(`SELECT id, title, slug FROM managed_streams
-                    WHERE user_id = ? AND (? IS NULL OR id != ?)
+        return await all(`SELECT id, title, slug FROM managed_streams
+                    WHERE user_id = ? AND (?::bigint IS NULL OR id != ?)
                     ORDER BY sort_order ASC, id ASC`, [userId, excludeId, excludeId]);
     } catch { return []; }
 }
 
-function deleteManagedStream(managedStreamId, userId) {
+async function deleteManagedStream(managedStreamId, userId) {
     // Unlink sessions first (don't delete them — they're historical)
-    run('UPDATE streams SET managed_stream_id = NULL WHERE managed_stream_id = ?', [managedStreamId]);
-    return run('DELETE FROM managed_streams WHERE id = ? AND user_id = ?', [managedStreamId, userId]);
+    await run('UPDATE streams SET managed_stream_id = NULL WHERE managed_stream_id = ?', [managedStreamId]);
+    return await run('DELETE FROM managed_streams WHERE id = ? AND user_id = ?', [managedStreamId, userId]);
 }
 
-function getManagedStreamBroadcastSettings(managedStreamId, userId) {
-    const row = get('SELECT broadcast_settings FROM managed_streams WHERE id = ? AND user_id = ?', [managedStreamId, userId]);
+async function getManagedStreamBroadcastSettings(managedStreamId, userId) {
+    const row = await get('SELECT broadcast_settings FROM managed_streams WHERE id = ? AND user_id = ?', [managedStreamId, userId]);
     if (!row || !row.broadcast_settings) return {};
     try { return JSON.parse(row.broadcast_settings); } catch { return {}; }
 }
 
-function updateManagedStreamBroadcastSettings(managedStreamId, userId, settings) {
+async function updateManagedStreamBroadcastSettings(managedStreamId, userId, settings) {
     const json = typeof settings === 'string' ? settings : JSON.stringify(settings || {});
-    return run(
-        'UPDATE managed_streams SET broadcast_settings = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+    return await run(
+        'UPDATE managed_streams SET broadcast_settings = ?, updated_at = ov_now() WHERE id = ? AND user_id = ?',
         [json, managedStreamId, userId]
     );
 }
 
-function countManagedStreamsByUser(userId) {
-    return get('SELECT COUNT(*) AS count FROM managed_streams WHERE user_id = ?', [userId])?.count || 0;
+async function countManagedStreamsByUser(userId) {
+    return (await get('SELECT COUNT(*) AS count FROM managed_streams WHERE user_id = ?', [userId]))?.count || 0;
 }
 
-function getManagedStreamLimit(user) {
+async function getManagedStreamLimit(user) {
     // Admin override takes priority
     if (user.max_managed_streams != null && user.max_managed_streams > 0) {
         return user.max_managed_streams;
     }
     // Level-based expansion: base 3, +1 per 10 levels, max 10
-    const level = getUserTotalGameLevel(user.id);
+    const level = await getUserTotalGameLevel(user.id);
     const bonus = Math.floor(level / 10);
     return Math.min(3 + bonus, 10);
 }
 
-function ensureStreamerRoleOnFeed(userId) {
-    const user = getUserById(userId);
+async function ensureStreamerRoleOnFeed(userId) {
+    const user = await getUserById(userId);
     if (user && user.role === 'user') {
-        run('UPDATE users SET role = ? WHERE id = ?', ['streamer', userId]);
+        await run('UPDATE users SET role = ? WHERE id = ?', ['streamer', userId]);
         console.log(`[DB] Promoted user ${userId} to streamer on first real feed`);
         return true;
     }
@@ -3270,25 +1219,25 @@ function isValidManagedStreamSlug(slug) {
     return true;
 }
 
-function isManagedStreamSlugTaken(userId, slug, excludeId = null) {
+async function isManagedStreamSlugTaken(userId, slug, excludeId = null) {
     const params = [userId, slug];
-    let sql = 'SELECT id FROM managed_streams WHERE user_id = ? AND slug = ? COLLATE NOCASE';
+    let sql = 'SELECT id FROM managed_streams WHERE user_id = ? AND lower(slug) = lower(?)';
     if (excludeId) {
         sql += ' AND id != ?';
         params.push(excludeId);
     }
-    return !!get(sql, params);
+    return !!await get(sql, params);
 }
 
-function getRecentlyOnlineStreamers(limit = 20, offset = 0) {
+async function getRecentlyOnlineStreamers(limit = 20, offset = 0) {
     // Use a correlated subquery to aggregate managed streams per user — avoids session-row
     // duplication that occurred when LEFT JOIN managed_streams was used in the outer query.
-    return all(`
+    return await all(`
         SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.profile_color,
                MAX(s.ended_at) AS last_online_at,
                o.overview AS ai_overview, o.overview_short AS ai_overview_short,
                (
-                   SELECT json_group_array(json_object(
+                   SELECT json_agg(json_build_object(
                        'managed_stream_id', ms2.id,
                        'slug', ms2.slug,
                        'title', ms2.title,
@@ -3296,7 +1245,7 @@ function getRecentlyOnlineStreamers(limit = 20, offset = 0) {
                        'last_live_at', (SELECT MAX(s2.ended_at) FROM streams s2 WHERE s2.managed_stream_id = ms2.id AND s2.ended_at IS NOT NULL),
                        -- filled by the route from OpenVibe.Media (GET /vods/latest-thumbs)
                        'vod_thumbnail', NULL
-                   ))
+                   ))::text
                    FROM managed_streams ms2
                    WHERE ms2.user_id = u.id
                      AND EXISTS (SELECT 1 FROM streams sx WHERE sx.managed_stream_id = ms2.id AND sx.ended_at IS NOT NULL)
@@ -3305,18 +1254,18 @@ function getRecentlyOnlineStreamers(limit = 20, offset = 0) {
         JOIN users u ON s.user_id = u.id
         LEFT JOIN streamer_overviews o ON o.user_id = u.id
         WHERE s.is_live = 0 AND s.ended_at IS NOT NULL
-        GROUP BY u.id
+        GROUP BY u.id, o.overview, o.overview_short
         ORDER BY last_online_at DESC
         LIMIT ? OFFSET ?
     `, [limit, offset]);
 }
 
-function countRecentlyOnlineStreamers() {
-    return get(`
+async function countRecentlyOnlineStreamers() {
+    return (await get(`
         SELECT COUNT(DISTINCT user_id) AS count
         FROM streams
         WHERE is_live = 0 AND ended_at IS NOT NULL
-    `)?.count || 0;
+    `))?.count || 0;
 }
 
 // Public-facing site totals for the home hero stats bar.
@@ -3326,23 +1275,12 @@ const _HOME_STATS_TTL = 30 * 1000; // 30s memo so the windowed COUNTs don't hamm
 
 // ── Viewer trend sampling (home hero sparkline) ──────────────
 // One row every ~5 minutes: total native viewers + live stream count.
-function _ensureViewerSamples() {
-    try {
-        getDb().exec(`CREATE TABLE IF NOT EXISTS viewer_samples (
-            sampled_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            viewers INTEGER NOT NULL DEFAULT 0,
-            live_streams INTEGER NOT NULL DEFAULT 0
-        )`);
-        getDb().exec('CREATE INDEX IF NOT EXISTS idx_viewer_samples_at ON viewer_samples(sampled_at)');
-    } catch { /* */ }
-}
-function recordViewerSample() {
-    _ensureViewerSamples();
-    const r = get(`SELECT COALESCE(SUM(viewer_count),0) AS v, COUNT(*) AS n FROM streams WHERE is_live = 1`) || { v: 0, n: 0 };
-    run('INSERT INTO viewer_samples (viewers, live_streams) VALUES (?, ?)', [r.v || 0, r.n || 0]);
+async function recordViewerSample() {
+    const r = await get(`SELECT COALESCE(SUM(viewer_count)::float8,0) AS v, COUNT(*) AS n FROM streams WHERE is_live = 1`) || { v: 0, n: 0 };
+    await run('INSERT INTO viewer_samples (viewers, live_streams) VALUES (?, ?)', [r.v || 0, r.n || 0]);
     // A year of five-minute samples is ~105k small rows; it is what the "over time" charts for the
     // two live readings are drawn from.
-    run(`DELETE FROM viewer_samples WHERE sampled_at < datetime('now', '-400 days')`);
+    await run(`DELETE FROM viewer_samples WHERE sampled_at < datetime('now', '-400 days')`);
     return r;
 }
 /**
@@ -3354,16 +1292,15 @@ function recordViewerSample() {
  * Averages are taken over samples where anything was happening, so a quiet night does not drag
  * the baseline to zero and make every daytime reading look like a record.
  */
-function getConcurrencyBaseline() {
-    _ensureViewerSamples();
-    const row = get(`
+async function getConcurrencyBaseline() {
+    const row = await get(`
         SELECT
-            AVG(CASE WHEN sampled_at >= datetime('now','-1 day') AND viewers > 0 THEN viewers END)      AS vAvg24,
-            MAX(CASE WHEN sampled_at >= datetime('now','-1 day') THEN viewers END)                      AS vPeak24,
-            AVG(CASE WHEN viewers > 0 THEN viewers END)                                                 AS vAvg7,
-            AVG(CASE WHEN sampled_at >= datetime('now','-1 day') AND live_streams > 0 THEN live_streams END) AS lAvg24,
-            MAX(CASE WHEN sampled_at >= datetime('now','-1 day') THEN live_streams END)                 AS lPeak24,
-            AVG(CASE WHEN live_streams > 0 THEN live_streams END)                                       AS lAvg7,
+            AVG(CASE WHEN sampled_at >= datetime('now','-1 day') AND viewers > 0 THEN viewers END)::float8      AS "vAvg24",
+            MAX(CASE WHEN sampled_at >= datetime('now','-1 day') THEN viewers END)                      AS "vPeak24",
+            AVG(CASE WHEN viewers > 0 THEN viewers END)::float8                                                 AS "vAvg7",
+            AVG(CASE WHEN sampled_at >= datetime('now','-1 day') AND live_streams > 0 THEN live_streams END)::float8 AS "lAvg24",
+            MAX(CASE WHEN sampled_at >= datetime('now','-1 day') THEN live_streams END)                 AS "lPeak24",
+            AVG(CASE WHEN live_streams > 0 THEN live_streams END)::float8                                       AS "lAvg7",
             COUNT(*)                                                                                    AS samples
         FROM viewer_samples WHERE sampled_at >= datetime('now','-7 days')`) || {};
     const num = (v) => (Number.isFinite(Number(v)) ? Math.round(Number(v) * 10) / 10 : null);
@@ -3374,9 +1311,8 @@ function getConcurrencyBaseline() {
     };
 }
 
-function getViewerTrend(hours = 24, maxPoints = 48) {
-    _ensureViewerSamples();
-    const rows = all(`SELECT strftime('%s', sampled_at) AS t, viewers, live_streams FROM viewer_samples
+async function getViewerTrend(hours = 24, maxPoints = 48) {
+    const rows = await all(`SELECT extract(epoch FROM ov_ts(sampled_at))::bigint::text AS t, viewers, live_streams FROM viewer_samples
         WHERE sampled_at >= datetime('now', ?) ORDER BY sampled_at ASC`, [`-${Math.max(1, hours)} hours`]) || [];
     if (rows.length <= maxPoints) return rows;
     const step = rows.length / maxPoints;
@@ -3386,23 +1322,23 @@ function getViewerTrend(hours = 24, maxPoints = 48) {
 }
 
 // ── Home "pulse": goals near completion, latest activity, weekly leaders ──────
-function getHomePulse() {
-    const safe = (fn, dflt) => { try { return fn() ?? dflt; } catch { return dflt; } };
+async function getHomePulse() {
+    const safe = async (fn, dflt) => { try { return await fn() ?? dflt; } catch { return dflt; } };
     return {
         // Active goals closest to completion, site-wide.
-        goals: safe(() => all(`SELECT g.id, g.title, g.current_amount, g.target_amount, g.image_url,
+        goals: await safe(async () => await all(`SELECT g.id, g.title, g.current_amount, g.target_amount, g.image_url,
                 u.username, u.display_name
             FROM donation_goals g JOIN users u ON u.id = g.user_id
             WHERE g.is_active = 1 AND g.target_amount > 0
             ORDER BY (CAST(g.current_amount AS REAL) / g.target_amount) DESC, g.current_amount DESC LIMIT 3`), []),
-        latestTip: safe(() => get(`SELECT t.amount, t.created_at,
+        latestTip: await safe(async () => await get(`SELECT t.amount, t.created_at,
                 fu.username AS from_username, fu.display_name AS from_display,
                 tu.username AS to_username, tu.display_name AS to_display
             FROM transactions t
             LEFT JOIN users fu ON fu.id = t.from_user_id
             JOIN users tu ON tu.id = t.to_user_id
             WHERE t.type = 'donation' ORDER BY t.id DESC LIMIT 1`), null),
-        newestFollow: safe(() => get(`SELECT f.created_at,
+        newestFollow: await safe(async () => await get(`SELECT f.created_at,
                 fu.username AS follower_username, fu.display_name AS follower_display,
                 su.username AS streamer_username, su.display_name AS streamer_display
             FROM follows f
@@ -3410,22 +1346,22 @@ function getHomePulse() {
             JOIN users su ON su.id = f.streamer_id
             ORDER BY f.id DESC LIMIT 1`), null),
         // This week's leaders.
-        topSupporters: safe(() => all(`SELECT u.username, u.display_name, u.avatar_url, SUM(t.amount) AS total
+        topSupporters: await safe(async () => await all(`SELECT u.username, u.display_name, u.avatar_url, SUM(t.amount)::float8 AS total
             FROM transactions t JOIN users u ON u.id = t.from_user_id
             WHERE t.type = 'donation' AND t.created_at >= datetime('now', '-7 days')
-            GROUP BY t.from_user_id ORDER BY total DESC LIMIT 3`), []),
-        topEarners: safe(() => all(`SELECT u.username, u.display_name, u.avatar_url, SUM(c.amount) AS total
+            GROUP BY u.id ORDER BY total DESC LIMIT 3`), []),
+        topEarners: await safe(async () => await all(`SELECT u.username, u.display_name, u.avatar_url, SUM(c.amount)::float8 AS total
             FROM coin_transactions c JOIN users u ON u.id = c.user_id
             WHERE c.amount > 0 AND c.created_at >= datetime('now', '-7 days')
-            GROUP BY c.user_id ORDER BY total DESC LIMIT 3`), []),
+            GROUP BY u.id ORDER BY total DESC LIMIT 3`), []),
     };
 }
 
 // Nearest active goal per streamer (for Recently Online cards) — one query.
-function getActiveGoalsForUsers(userIds) {
+async function getActiveGoalsForUsers(userIds) {
     if (!userIds || !userIds.length) return {};
     const ph = userIds.map(() => '?').join(',');
-    const rows = all(`SELECT user_id, title, current_amount, target_amount FROM donation_goals
+    const rows = await all(`SELECT user_id, title, current_amount, target_amount FROM donation_goals
         WHERE is_active = 1 AND target_amount > 0 AND user_id IN (${ph})
         ORDER BY (CAST(current_amount AS REAL) / target_amount) DESC`, userIds) || [];
     const out = {};
@@ -3434,9 +1370,9 @@ function getActiveGoalsForUsers(userIds) {
 }
 
 /** ISO cutoff for Vibes stats (setting `stats_vibes_reset_at`), or the epoch when unset. */
-function vibesStatsSince() {
+async function vibesStatsSince() {
     try {
-        const v = String(getSetting('stats_vibes_reset_at') || '').trim();
+        const v = String(await getSetting('stats_vibes_reset_at') || '').trim();
         if (v && !isNaN(Date.parse(v))) return new Date(v).toISOString().replace('T', ' ').slice(0, 19);
     } catch { /* */ }
     return '1970-01-01 00:00:00';
@@ -3444,7 +1380,7 @@ function vibesStatsSince() {
 
 // ── Home stat series (click a hero stat → "over time" chart) ────────────────
 // One registry entry per metric: the table, its timestamp column, what to aggregate and
-// an optional WHERE. `days` buckets are computed in SQL by date(); missing days are
+// an optional WHERE. `days` buckets are computed in SQL (the day of datetime(ts)); missing days are
 // filled with 0 so charts never skip a day.
 const HOME_SERIES = {
     users:       { table: 'users',             ts: 'created_at',  agg: 'COUNT(*)',              where: 'COALESCE(is_banned, 0) = 0' },
@@ -3457,14 +1393,14 @@ const HOME_SERIES = {
     sessions:    { table: 'streams',           ts: 'created_at',  agg: 'COUNT(*)' },
     streamers:   { table: 'streams',           ts: 'created_at',  agg: 'COUNT(DISTINCT user_id)' },
     // vods, clips, hours and pastes are OpenVibe.Media's series (home/routes.js MEDIA_SERIES).
-    hoursWatched:{ table: 'watch_time',        ts: 'created_at',  agg: 'COALESCE(SUM(minutes_watched), 0) / 60.0' },
+    hoursWatched:{ table: 'watch_time',        ts: 'created_at',  agg: 'COALESCE(SUM(minutes_watched)::float8, 0) / 60.0' },
     aiMoments:   { table: 'stream_memories',   ts: 'created_at',  agg: 'COUNT(*)' },
-    vibes:       { table: 'transactions',      ts: 'created_at',  agg: 'COALESCE(SUM(amount), 0)', where: "type = 'donation'", vibesReset: true },
+    vibes:       { table: 'transactions',      ts: 'created_at',  agg: 'COALESCE(SUM(amount)::float8, 0)', where: "type = 'donation'", vibesReset: true },
     supporters:  { table: 'transactions',      ts: 'created_at',  agg: 'COUNT(DISTINCT from_user_id)', where: "type = 'donation' AND from_user_id IS NOT NULL", vibesReset: true },
-    vibesBought: { table: 'payment_orders',    ts: 'updated_at',  agg: 'COALESCE(SUM(bucks), 0)', where: "kind = 'bucks' AND status = 'credited'" },
+    vibesBought: { table: 'payment_orders',    ts: 'updated_at',  agg: 'COALESCE(SUM(bucks)::float8, 0)', where: "kind = 'bucks' AND status = 'credited'" },
     subs:        { table: 'subscriptions',     ts: 'created_at',  agg: 'COUNT(*)' },
-    points:      { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(SUM(amount), 0)', where: 'amount > 0' },
-    pointsSpent: { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(-SUM(amount), 0)', where: 'amount < 0' },
+    points:      { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(SUM(amount)::float8, 0)', where: 'amount > 0' },
+    pointsSpent: { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(-SUM(amount)::float8, 0)', where: 'amount < 0' },
     redemptions: { table: 'coin_redemptions',  ts: 'created_at',  agg: 'COUNT(*)',              where: "status NOT IN ('rejected', 'refunded')" },
     // No `emotes` series: OpenVibe.Chat owns that table (roadmap T3) and Live's copy is dropped
     // since N+2 (unlike the table itself, which N-1 still prepares against — see schema.sql).
@@ -3476,16 +1412,16 @@ const HOME_SERIES_KEYS = [...Object.keys(HOME_SERIES), 'messages', 'active', 'li
  * `active`) have no entry here: OpenVibe.Chat owns chat_messages, so getHomeStatSeries answers
  * them from Chat, and with Chat unreachable they answer null rather than a Live-table number.
  */
-function homeSeriesLocal(metric, days = 30) {
+async function homeSeriesLocal(metric, days = 30) {
     const def = HOME_SERIES[metric];
     if (!def) return null;
     days = Math.max(1, Math.min(365, parseInt(days, 10) || 30));
     const where = [`${def.ts} >= datetime('now', ?)`];
     if (def.where) where.push(def.where);
-    if (def.vibesReset) where.push(`${def.ts} >= '${vibesStatsSince()}'`);
+    if (def.vibesReset) where.push(`${def.ts} >= '${await vibesStatsSince()}'`);
     let rows = [];
     try {
-        rows = all(`SELECT date(${def.ts}) AS day, ${def.agg} AS value FROM ${def.table} WHERE ${where.join(' AND ')} GROUP BY day ORDER BY day ASC`, [`-${days - 1} days`]);
+        rows = await all(`SELECT substr(datetime(${def.ts}), 1, 10) AS day, ${def.agg} AS value FROM ${def.table} WHERE ${where.join(' AND ')} GROUP BY day ORDER BY day ASC`, [`-${days - 1} days`]);
     } catch { rows = []; }
     const byDay = new Map(rows.map(r => [r.day, Number(r.value) || 0]));
     const points = [];
@@ -3496,12 +1432,12 @@ function homeSeriesLocal(metric, days = 30) {
     const total = Number(points.reduce((a, p) => a + p.value, 0).toFixed(2));
     // `before`: everything up to the window, so a running total starts at the real all-time figure.
     // `prev_total`: the same-length window just before this one, for "vs previous period".
-    const scalar = (extra, params) => {
-        const w = [...(def.where ? [def.where] : []), ...(def.vibesReset ? [`${def.ts} >= '${vibesStatsSince()}'`] : []), extra];
-        try { return Number(get(`SELECT ${def.agg} AS value FROM ${def.table} WHERE ${w.join(' AND ')}`, params)?.value) || 0; } catch { return 0; }
+    const scalar = async (extra, params) => {
+        const w = [...(def.where ? [def.where] : []), ...(def.vibesReset ? [`${def.ts} >= '${await vibesStatsSince()}'`] : []), extra];
+        try { return Number((await get(`SELECT ${def.agg} AS value FROM ${def.table} WHERE ${w.join(' AND ')}`, params))?.value) || 0; } catch { return 0; }
     };
-    const before = scalar(`${def.ts} < datetime('now', ?)`, [`-${days - 1} days`]);
-    const prevTotal = scalar(`${def.ts} >= datetime('now', ?) AND ${def.ts} < datetime('now', ?)`, [`-${2 * days - 1} days`, `-${days - 1} days`]);
+    const before = await scalar(`${def.ts} < datetime('now', ?)`, [`-${days - 1} days`]);
+    const prevTotal = await scalar(`${def.ts} >= datetime('now', ?) AND ${def.ts} < datetime('now', ?)`, [`-${2 * days - 1} days`, `-${days - 1} days`]);
     return { metric, kind: 'count', days, points, total, peak: Math.max(0, ...points.map(p => p.value)),
         before: Number(before.toFixed(2)), prev_total: Number(prevTotal.toFixed(2)) };
 }
@@ -3512,14 +1448,14 @@ function homeSeriesLocal(metric, days = 30) {
  * stale-while-revalidate peek that falls back to Live's own tables when Chat is unreachable);
  * every other metric is Live's own.
  */
-function getHomeStatSeries(metric, days = 30) {
+async function getHomeStatSeries(metric, days = 30) {
     if (metric === 'messages' || metric === 'active') {
         try {
-            const s = require('../chat/chat-reads').homeSeriesPeek(metric, days);
+            const s = await require('../chat/chat-reads').homeSeriesPeek(metric, days);
             if (s) return s;
         } catch { /* fall through to Live's own tables */ }
     }
-    return homeSeriesLocal(metric, days);
+    return await homeSeriesLocal(metric, days);
 }
 
 /**
@@ -3529,16 +1465,15 @@ function getHomeStatSeries(metric, days = 30) {
  * (before the sampler existed, or while the server was down) are null, not zero.
  */
 const READING_SERIES = { liveNow: 'live_streams', viewersNow: 'viewers' };
-function getReadingSeries(metric, days = 7) {
+async function getReadingSeries(metric, days = 7) {
     const col = READING_SERIES[metric];
     if (!col) return null;
-    _ensureViewerSamples();
     days = Math.max(1, Math.min(365, parseInt(days, 10) || 7));
     const hourly = days <= 7;
-    const fmt = hourly ? '%Y-%m-%dT%H:00:00Z' : '%Y-%m-%d';
+    const fmt = hourly ? 'YYYY-MM-DD"T"HH24:00:00"Z"' : 'YYYY-MM-DD';
     let rows = [];
     try {
-        rows = all(`SELECT strftime('${fmt}', sampled_at) AS b, AVG(${col}) AS avg, MAX(${col}) AS peak, COUNT(*) AS n
+        rows = await all(`SELECT to_char(ov_ts(sampled_at), '${fmt}') AS b, AVG(${col})::float8 AS avg, MAX(${col}) AS peak, COUNT(*) AS n
             FROM viewer_samples WHERE sampled_at >= datetime('now', ?) GROUP BY b`, [hourly ? `-${days * 24 - 1} hours` : `-${days - 1} days`]);
     } catch { rows = []; }
     const byB = new Map(rows.map(r => [r.b, r]));
@@ -3560,83 +1495,83 @@ function getReadingSeries(metric, days = 7) {
     };
 }
 
-function getHomeStats() {
+async function getHomeStats() {
     const now = Date.now();
     if (_homeStatsCache && (now - _homeStatsCacheAt) < _HOME_STATS_TTL) return _homeStatsCache;
-    _homeStatsCache = _computeHomeStats();
+    _homeStatsCache = await _computeHomeStats();
     _homeStatsCacheAt = now;
     return _homeStatsCache;
 }
 
-function _computeHomeStats() {
+async function _computeHomeStats() {
     // Each stat is isolated so a missing table / column can never blank the whole hero.
-    const c = (sql, p = []) => { try { return get(sql, p)?.count || 0; } catch { return 0; } };
+    const c = async (sql, p = []) => { try { return (await get(sql, p))?.count || 0; } catch { return 0; } };
     const nowMs = Date.now();   // the home-stats snapshot's windows are relative to this instant
     // Vibes tipped before this instant were test money (site setting `stats_vibes_reset_at`,
     // ISO timestamp). Everything Vibes-related on the hero starts counting from it.
-    const vibesSince = vibesStatsSince();
+    const vibesSince = await vibesStatsSince();
     // Rolling day/week/month counts for a table by its timestamp column.
     // Rolling day/week/month counts, plus `pw`: the same seven-day window shifted back a week.
     // Without a previous period, "+2 in 7d" is a number with nothing to compare it to — you can't
     // tell whether things are speeding up or slowing down, which is the only interesting part.
-    const winCount = (table, col, extra = '') => {
-        const q = (w) => c(`SELECT COUNT(*) AS count FROM ${table} WHERE ${col} >= datetime('now', ?)${extra ? ' AND ' + extra : ''}`, [w]);
-        const prev = c(`SELECT COUNT(*) AS count FROM ${table} WHERE ${col} >= datetime('now', '-14 days') AND ${col} < datetime('now', '-7 days')${extra ? ' AND ' + extra : ''}`);
-        return { d: q('-1 day'), w: q('-7 days'), m: q('-30 days'), pw: prev };
+    const winCount = async (table, col, extra = '') => {
+        const q = async (w) => await c(`SELECT COUNT(*) AS count FROM ${table} WHERE ${col} >= datetime('now', ?)${extra ? ' AND ' + extra : ''}`, [w]);
+        const prev = await c(`SELECT COUNT(*) AS count FROM ${table} WHERE ${col} >= datetime('now', '-14 days') AND ${col} < datetime('now', '-7 days')${extra ? ' AND ' + extra : ''}`);
+        return { d: await q('-1 day'), w: await q('-7 days'), m: await q('-30 days'), pw: prev };
     };
     // Rolling day/week/month SUMS (for value metrics like Vibes tipped).
-    const winSum = (table, col, tsCol, extra = '') => {
-        const q = (w) => c(`SELECT COALESCE(SUM(${col}), 0) AS count FROM ${table} WHERE ${tsCol} >= datetime('now', ?)${extra ? ' AND ' + extra : ''}`, [w]);
-        const prev = c(`SELECT COALESCE(SUM(${col}), 0) AS count FROM ${table} WHERE ${tsCol} >= datetime('now', '-14 days') AND ${tsCol} < datetime('now', '-7 days')${extra ? ' AND ' + extra : ''}`);
-        return { d: q('-1 day'), w: q('-7 days'), m: q('-30 days'), pw: prev };
+    const winSum = async (table, col, tsCol, extra = '') => {
+        const q = async (w) => await c(`SELECT COALESCE(SUM(${col})::float8, 0) AS count FROM ${table} WHERE ${tsCol} >= datetime('now', ?)${extra ? ' AND ' + extra : ''}`, [w]);
+        const prev = await c(`SELECT COALESCE(SUM(${col})::float8, 0) AS count FROM ${table} WHERE ${tsCol} >= datetime('now', '-14 days') AND ${tsCol} < datetime('now', '-7 days')${extra ? ' AND ' + extra : ''}`);
+        return { d: await q('-1 day'), w: await q('-7 days'), m: await q('-30 days'), pw: prev };
     };
     // Distinct people who went live in a window — "streamers" is a headcount, not a stream count.
-    const streamersWin = () => {
-        const q = (a, b) => c(`SELECT COUNT(DISTINCT user_id) AS count FROM streams WHERE user_id IS NOT NULL AND created_at >= datetime('now', ?)${b ? " AND created_at < datetime('now', ?)" : ''}`, b ? [a, b] : [a]);
-        return { d: q('-1 day'), w: q('-7 days'), m: q('-30 days'), pw: q('-14 days', '-7 days') };
+    const streamersWin = async () => {
+        const q = async (a, b) => await c(`SELECT COUNT(DISTINCT user_id) AS count FROM streams WHERE user_id IS NOT NULL AND created_at >= datetime('now', ?)${b ? " AND created_at < datetime('now', ?)" : ''}`, b ? [a, b] : [a]);
+        return { d: await q('-1 day'), w: await q('-7 days'), m: await q('-30 days'), pw: await q('-14 days', '-7 days') };
     };
     return {
         // ── Right-now + community-economy metrics ────────────────
         // Native viewers across everything currently live.
-        viewersNow: c(`SELECT COALESCE(SUM(viewer_count), 0) AS count FROM streams WHERE is_live = 1`),
+        viewersNow: await c(`SELECT COALESCE(SUM(viewer_count)::float8, 0) AS count FROM streams WHERE is_live = 1`),
         // Community time actually spent watching (watch-time heartbeats → hours).
-        hoursWatched: Math.round(c(`SELECT COALESCE(SUM(minutes_watched), 0) AS count FROM watch_time`) / 60),
+        hoursWatched: Math.round(await c(`SELECT COALESCE(SUM(minutes_watched)::float8, 0) AS count FROM watch_time`) / 60),
         // Vibes tipped between people (donation ledger; bit-style, 100 = $1).
-        vibesTipped: c(`SELECT COALESCE(SUM(amount), 0) AS count FROM transactions WHERE type = 'donation' AND created_at >= ?`, [vibesSince]),
+        vibesTipped: await c(`SELECT COALESCE(SUM(amount)::float8, 0) AS count FROM transactions WHERE type = 'donation' AND created_at >= ?`, [vibesSince]),
         // Live channel subscriptions.
-        activeSubs: c(`SELECT COUNT(*) AS count FROM subscriptions WHERE status = 'active' AND (current_period_end IS NULL OR datetime(current_period_end) > CURRENT_TIMESTAMP)`),
+        activeSubs: await c(`SELECT COUNT(*) AS count FROM subscriptions WHERE status = 'active' AND (current_period_end IS NULL OR datetime(current_period_end) > ov_now())`),
         // Channel points earned by viewers across every channel (watch/chat/follow bonuses).
-        pointsEarned: c(`SELECT COALESCE(SUM(amount), 0) AS count FROM coin_transactions WHERE amount > 0`),
+        pointsEarned: await c(`SELECT COALESCE(SUM(amount)::float8, 0) AS count FROM coin_transactions WHERE amount > 0`),
         // …and spent back on channel rewards.
-        pointsSpent: c(`SELECT COALESCE(-SUM(amount), 0) AS count FROM coin_transactions WHERE amount < 0`),
+        pointsSpent: await c(`SELECT COALESCE(-SUM(amount)::float8, 0) AS count FROM coin_transactions WHERE amount < 0`),
         // Reward redemptions that stuck (not rejected / refunded).
-        redemptions: c(`SELECT COUNT(*) AS count FROM coin_redemptions WHERE status NOT IN ('rejected', 'refunded')`),
+        redemptions: await c(`SELECT COUNT(*) AS count FROM coin_redemptions WHERE status NOT IN ('rejected', 'refunded')`),
         // Distinct people who have tipped Vibes to someone.
-        supporters: c(`SELECT COUNT(DISTINCT from_user_id) AS count FROM transactions WHERE type = 'donation' AND from_user_id IS NOT NULL AND created_at >= ?`, [vibesSince]),
+        supporters: await c(`SELECT COUNT(DISTINCT from_user_id) AS count FROM transactions WHERE type = 'donation' AND from_user_id IS NOT NULL AND created_at >= ?`, [vibesSince]),
         // Vibes bought with real money (credited purchase orders, any provider).
-        vibesBought: c(`SELECT COALESCE(SUM(bucks), 0) AS count FROM payment_orders WHERE kind = 'bucks' AND status = 'credited'`),
+        vibesBought: await c(`SELECT COALESCE(SUM(bucks)::float8, 0) AS count FROM payment_orders WHERE kind = 'bucks' AND status = 'credited'`),
         // Donation goals: currently running + ever reached.
-        goalsActive: c(`SELECT COUNT(*) AS count FROM donation_goals WHERE is_active = 1`),
-        goalsReached: c(`SELECT COUNT(*) AS count FROM donation_goals WHERE reached_at IS NOT NULL OR current_amount >= target_amount`),
+        goalsActive: await c(`SELECT COUNT(*) AS count FROM donation_goals WHERE is_active = 1`),
+        goalsReached: await c(`SELECT COUNT(*) AS count FROM donation_goals WHERE reached_at IS NOT NULL OR current_amount >= target_amount`),
         // VODs, clips, pastes and archived hours are counted by OpenVibe.Media and OpenVibe.Community
         // (media-proxy/lookups.js withArchiveStats fills these); null until one of them answers.
         vods: null,
         clips: null,
-        liveSessions: c(`SELECT COUNT(*) AS count FROM streams`),
-        streamers: c(`SELECT COUNT(DISTINCT user_id) AS count FROM streams WHERE user_id IS NOT NULL`),
+        liveSessions: await c(`SELECT COUNT(*) AS count FROM streams`),
+        streamers: await c(`SELECT COUNT(DISTINCT user_id) AS count FROM streams WHERE user_id IS NOT NULL`),
         // OpenVibe.Chat owns chat_messages (roadmap T3): the total comes from Chat's read API.
         // A Chat outage answers the cache, else null — never a 500 for the home page.
-        chatMessages: (() => { try { const s = require('../chat/chat-reads').siteStatsPeek(); return s && s.messages != null ? s.messages : null; } catch { return null; } })(),
-        users: c(`SELECT COUNT(*) AS count FROM users WHERE COALESCE(is_banned, 0) = 0`),
-        anons: c(`SELECT COUNT(*) AS count FROM anon_ip_mappings`),
-        follows: c(`SELECT COUNT(*) AS count FROM follows`),
+        chatMessages: await (async () => { try { const s = await require('../chat/chat-reads').siteStatsPeek(); return s && s.messages != null ? s.messages : null; } catch { return null; } })(),
+        users: await c(`SELECT COUNT(*) AS count FROM users WHERE COALESCE(is_banned, 0) = 0`),
+        anons: await c(`SELECT COUNT(*) AS count FROM anon_ip_mappings`),
+        follows: await c(`SELECT COUNT(*) AS count FROM follows`),
         // No platform-wide emote total: OpenVibe.Chat owns `emotes` (roadmap T3) and exposes counts
         // per channel only (server/chat/moderation-client.js getEmoteCount), so there is nothing but
         // the old table to answer a site-wide number. null (as the other external figures above); the
         // key stays for the mixed-version window (test/n-1.test.js: the old client reads stats.emotes).
         emotes: null,
         pastes: null,
-        aiMemories: c(`SELECT COUNT(*) AS count FROM stream_memories`),
+        aiMemories: await c(`SELECT COUNT(*) AS count FROM stream_memories`),
         pasteImages: null,
         pasteText: null,
         // Total hours of video the platform has archived (OpenVibe.Media's figure).
@@ -3645,86 +1580,86 @@ function _computeHomeStats() {
         // OpenVibe.Chat counts them (stats kind 'site' over the window); Live's own tables when Live
         // runs chat. The peek answers the last good count or null (never a mirror scan or a 500);
         // the hero treats null as unknown.
-        weeklyActive: (() => { try { const s = require('../chat/chat-reads').windowStatsPeek({ since: nowMs - 7 * 86400000 }); return s && s.chatters != null ? s.chatters : null; } catch { return null; } })(),
+        weeklyActive: await (async () => { try { const s = await require('../chat/chat-reads').windowStatsPeek({ since: nowMs - 7 * 86400000 }); return s && s.chatters != null ? s.chatters : null; } catch { return null; } })(),
         // New unique visitors this week (first-seen anon fingerprints) — a proxy for people who
         // showed up, not just those who chatted.
-        weeklyVisitors: c(`SELECT COUNT(*) AS count FROM anon_ip_mappings WHERE created_at >= datetime('now', '-7 days')`),
+        weeklyVisitors: await c(`SELECT COUNT(*) AS count FROM anon_ip_mappings WHERE created_at >= datetime('now', '-7 days')`),
         // The same two windows again, shifted back a week, so the hero can say whether this week
         // beat last week rather than just how big it was.
-        prevWeeklyVisitors: c(`SELECT COUNT(*) AS count FROM anon_ip_mappings WHERE created_at >= datetime('now', '-14 days') AND created_at < datetime('now', '-7 days')`),
-        prevWeeklyActive: (() => { try { const s = require('../chat/chat-reads').windowStatsPeek({ since: nowMs - 14 * 86400000, until: nowMs - 7 * 86400000 }); return s && s.chatters != null ? s.chatters : null; } catch { return null; } })(),
-        liveNow: c(`SELECT COUNT(*) AS count FROM streams WHERE is_live = 1`),
+        prevWeeklyVisitors: await c(`SELECT COUNT(*) AS count FROM anon_ip_mappings WHERE created_at >= datetime('now', '-14 days') AND created_at < datetime('now', '-7 days')`),
+        prevWeeklyActive: await (async () => { try { const s = await require('../chat/chat-reads').windowStatsPeek({ since: nowMs - 14 * 86400000, until: nowMs - 7 * 86400000 }); return s && s.chatters != null ? s.chatters : null; } catch { return null; } })(),
+        liveNow: await c(`SELECT COUNT(*) AS count FROM streams WHERE is_live = 1`),
         // Rolling last-day / week / month deltas ({ d, w, m }) for the hero stat tooltips + subs.
         recent: {
-            users: winCount('users', 'created_at', 'COALESCE(is_banned, 0) = 0'),
-            anons: winCount('anon_ip_mappings', 'created_at'),
-            sessions: winCount('streams', 'created_at'),
+            users: await winCount('users', 'created_at', 'COALESCE(is_banned, 0) = 0'),
+            anons: await winCount('anon_ip_mappings', 'created_at'),
+            sessions: await winCount('streams', 'created_at'),
             vods: null,     // OpenVibe.Media (withArchiveStats)
             clips: null,
-            aiMoments: winCount('stream_memories', 'created_at'),
+            aiMoments: await winCount('stream_memories', 'created_at'),
             // OpenVibe.Chat's message counts over each window (Live's own tables when Live runs chat).
-            messages: (() => {
-                const w = (o) => { try { const s = require('../chat/chat-reads').windowStatsPeek(o); return s && s.messages != null ? s.messages : null; } catch { return null; } };
+            messages: await (async () => {
+                const w = async (o) => { try { const s = await require('../chat/chat-reads').windowStatsPeek(o); return s && s.messages != null ? s.messages : null; } catch { return null; } };
                 return {
-                    d: w({ since: nowMs - 86400000 }),
-                    w: w({ since: nowMs - 7 * 86400000 }),
-                    m: w({ since: nowMs - 30 * 86400000 }),
-                    pw: w({ since: nowMs - 14 * 86400000, until: nowMs - 7 * 86400000 }),
+                    d: await w({ since: nowMs - 86400000 }),
+                    w: await w({ since: nowMs - 7 * 86400000 }),
+                    m: await w({ since: nowMs - 30 * 86400000 }),
+                    pw: await w({ since: nowMs - 14 * 86400000, until: nowMs - 7 * 86400000 }),
                 };
             })(),
             hours: null,    // OpenVibe.Media
-            streamers: streamersWin(),
+            streamers: await streamersWin(),
             // Live's `emotes` copy was unread since N+2 and is now dropped, so the
             // deltas are zero. The key stays for the N-1 client, which reads stats.recent.emotes.
             emotes: { d: 0, w: 0, m: 0, pw: 0 },
-            goals: winCount('donation_goals', 'created_at'),
+            goals: await winCount('donation_goals', 'created_at'),
             // Distinct people who tipped in each window — a headcount, like streamers.
-            supporters: (() => {
-                const q = (a, b) => c(`SELECT COUNT(DISTINCT from_user_id) AS count FROM transactions WHERE type = 'donation' AND from_user_id IS NOT NULL AND created_at >= datetime('now', ?)${b ? " AND created_at < datetime('now', ?)" : ''}`, b ? [a, b] : [a]);
-                return { d: q('-1 day'), w: q('-7 days'), m: q('-30 days'), pw: q('-14 days', '-7 days') };
+            supporters: await (async () => {
+                const q = async (a, b) => await c(`SELECT COUNT(DISTINCT from_user_id) AS count FROM transactions WHERE type = 'donation' AND from_user_id IS NOT NULL AND created_at >= datetime('now', ?)${b ? " AND created_at < datetime('now', ?)" : ''}`, b ? [a, b] : [a]);
+                return { d: await q('-1 day'), w: await q('-7 days'), m: await q('-30 days'), pw: await q('-14 days', '-7 days') };
             })(),
-            vibes: winSum('transactions', 'amount', 'created_at', `type = 'donation' AND created_at >= '${vibesSince}'`),
-            points: winSum('coin_transactions', 'amount', 'created_at', 'amount > 0'),
-            pointsSpent: winSum('coin_transactions', '-amount', 'created_at', 'amount < 0'),
-            redemptions: winCount('coin_redemptions', 'created_at', "status NOT IN ('rejected', 'refunded')"),
-            vibesBought: winSum('payment_orders', 'bucks', 'updated_at', "kind = 'bucks' AND status = 'credited'"),
-            subs: winCount('subscriptions', 'created_at'),
-            follows: winCount('follows', 'created_at'),
+            vibes: await winSum('transactions', 'amount', 'created_at', `type = 'donation' AND created_at >= '${vibesSince}'`),
+            points: await winSum('coin_transactions', 'amount', 'created_at', 'amount > 0'),
+            pointsSpent: await winSum('coin_transactions', '-amount', 'created_at', 'amount < 0'),
+            redemptions: await winCount('coin_redemptions', 'created_at', "status NOT IN ('rejected', 'refunded')"),
+            vibesBought: await winSum('payment_orders', 'bucks', 'updated_at', "kind = 'bucks' AND status = 'credited'"),
+            subs: await winCount('subscriptions', 'created_at'),
+            follows: await winCount('follows', 'created_at'),
         },
     };
 }
 
 // ── Channel helpers ──────────────────────────────────────────
 
-function getChannelByUserId(userId) {
-    return get('SELECT * FROM channels WHERE user_id = ?', [userId]);
+async function getChannelByUserId(userId) {
+    return await get('SELECT * FROM channels WHERE user_id = ?', [userId]);
 }
 /**
  * Whether OpenVibe's AI may derive Moments (auto-clips, AI moment pastes, AI-written recaps) from
  * this account's streams: the channel's ai_derivation_enabled, on by default and for an account
  * with no channel row. Read by every job that makes them (roadmap 33.7).
  */
-function isAiDerivationEnabled(userId) {
+async function isAiDerivationEnabled(userId) {
     if (userId == null || userId === '') return true;
     try {
-        const row = get('SELECT ai_derivation_enabled FROM channels WHERE user_id = ?', [userId]);
+        const row = await get('SELECT ai_derivation_enabled FROM channels WHERE user_id = ?', [userId]);
         return !row || row.ai_derivation_enabled == null || Number(row.ai_derivation_enabled) !== 0;
     } catch { return true; }
 }
 // Batched lookup → { userId: channelRow }. Avoids the N+1 in the live-streams list
 // (one query for all channels instead of one per stream).
-function getChannelsByUserIds(userIds) {
+async function getChannelsByUserIds(userIds) {
     const ids = [...new Set((userIds || []).filter(v => v != null))];
     if (!ids.length) return {};
-    const rows = all(`SELECT * FROM channels WHERE user_id IN (${ids.map(() => '?').join(',')})`, ids);
+    const rows = await all(`SELECT * FROM channels WHERE user_id IN (${ids.map(() => '?').join(',')})`, ids);
     const map = {};
     for (const r of rows) map[r.user_id] = r;
     return map;
 }
 
 // A streamer's Channel Points config (custom name/icon + earn/game intervals), with defaults.
-function getChannelPointsConfig(streamerId) {
-    const ch = getChannelByUserId(streamerId) || {};
+async function getChannelPointsConfig(streamerId) {
+    const ch = await getChannelByUserId(streamerId) || {};
     const n = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
     return {
         name: (ch.cp_name || 'Channel Points').toString().slice(0, 32),
@@ -3734,35 +1669,35 @@ function getChannelPointsConfig(streamerId) {
         game_interval_min: Math.max(0, n(ch.cp_game_interval_min, 0)),
     };
 }
-function setChannelPointsConfig(streamerId, fields) {
-    const ch = ensureChannel(streamerId);
+async function setChannelPointsConfig(streamerId, fields) {
+    const ch = await ensureChannel(streamerId);
     if (!ch) return;
     const map = { name: 'cp_name', icon: 'cp_icon', watch_interval_min: 'cp_watch_interval_min', watch_amount: 'cp_watch_amount', game_interval_min: 'cp_game_interval_min' };
     const cols = [], vals = [];
     for (const k in map) if (fields[k] !== undefined) { cols.push(`${map[k]} = ?`); vals.push(fields[k]); }
     if (!cols.length) return;
     vals.push(ch.id);
-    run(`UPDATE channels SET ${cols.join(', ')} WHERE id = ?`, vals);
+    await run(`UPDATE channels SET ${cols.join(', ')} WHERE id = ?`, vals);
 }
 
-function getChannelByUsername(username) {
-    return get(`
+async function getChannelByUsername(username) {
+    return await get(`
         SELECT c.*, u.username, u.display_name, u.avatar_url, u.profile_color, u.bio, u.stream_key, u.role, u.is_owner
         FROM channels c
         JOIN users u ON c.user_id = u.id
-        WHERE u.username = ? COLLATE NOCASE
+        WHERE lower(u.username) = lower(?)
     `, [username]);
 }
 
-function createChannel({ user_id, title, description, category, protocol }) {
-    return run(
-        `INSERT OR IGNORE INTO channels (user_id, title, description, category, protocol)
-         VALUES (?, ?, ?, ?, ?)`,
+async function createChannel({ user_id, title, description, category, protocol }) {
+    return await run(
+        `INSERT INTO channels (user_id, title, description, category, protocol)
+         VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id`,
         [user_id, title || 'Untitled Channel', description || '', category || null, protocol || 'webrtc']
     );
 }
 
-function updateChannel(userId, fields) {
+async function updateChannel(userId, fields) {
     const updates = [];
     const params = [];
     for (const [key, val] of Object.entries(fields)) {
@@ -3772,36 +1707,36 @@ function updateChannel(userId, fields) {
         }
     }
     if (updates.length === 0) return;
-    updates.push('updated_at = CURRENT_TIMESTAMP');
+    updates.push('updated_at = ov_now()');
     params.push(userId);
-    return run(`UPDATE channels SET ${updates.join(', ')} WHERE user_id = ?`, params);
+    return await run(`UPDATE channels SET ${updates.join(', ')} WHERE user_id = ?`, params);
 }
 
 // Set a user's bio (profile blurb). Used by the About-tab editor, including mods
 // editing a streamer's About when the streamer has allowed it.
-function setUserBio(userId, bio) {
-    return run('UPDATE users SET bio = ? WHERE id = ?', [String(bio == null ? '' : bio).slice(0, 500), userId]);
+async function setUserBio(userId, bio) {
+    return await run('UPDATE users SET bio = ? WHERE id = ?', [String(bio == null ? '' : bio).slice(0, 500), userId]);
 }
 
-function ensureChannel(userId) {
-    let ch = getChannelByUserId(userId);
+async function ensureChannel(userId) {
+    let ch = await getChannelByUserId(userId);
     if (!ch) {
-        const user = getUserById(userId);
-        createChannel({ user_id: userId, title: `${user?.display_name || user?.username}'s Channel` });
-        ch = getChannelByUserId(userId);
+        const user = await getUserById(userId);
+        await createChannel({ user_id: userId, title: `${user?.display_name || user?.username}'s Channel` });
+        ch = await getChannelByUserId(userId);
     }
     return ch;
 }
 
-function getChannelVodRecordingPolicyByUserId(userId, managedStreamId = null) {
-    const channel = getChannelByUserId(userId);
+async function getChannelVodRecordingPolicyByUserId(userId, managedStreamId = null) {
+    const channel = await getChannelByUserId(userId);
     let recordingEnabled = !channel
         ? true
         : !!channel.vod_recording_enabled && !channel.force_vod_recording_disabled;
     // Per-stream override: a slot can disable VOD recording for just that stream.
     if (recordingEnabled && managedStreamId) {
         try {
-            const ms = get('SELECT slot_vod_recording_enabled FROM managed_streams WHERE id = ?', [managedStreamId]);
+            const ms = await get('SELECT slot_vod_recording_enabled FROM managed_streams WHERE id = ?', [managedStreamId]);
             if (ms && ms.slot_vod_recording_enabled === 0) recordingEnabled = false;
         } catch { /* keep channel-level */ }
     }
@@ -3818,43 +1753,43 @@ function getChannelVodRecordingPolicyByUserId(userId, managedStreamId = null) {
 //             never published, deleted when the stream ends.
 //   'none'  → both off: don't record at all. (Live thumbnails, AI vision and audio memories
 //             still run — they tap the live feed directly, not the VOD recording.)
-function resolveStreamRecordingMode(stream) {
+async function resolveStreamRecordingMode(stream) {
     if (!stream) return 'none';
     let vodEnabled = false;
-    try { vodEnabled = getChannelVodRecordingPolicyByUserId(stream.user_id, stream.managed_stream_id).recordingEnabled; } catch { /* */ }
+    try { vodEnabled = (await getChannelVodRecordingPolicyByUserId(stream.user_id, stream.managed_stream_id)).recordingEnabled; } catch { /* */ }
     if (vodEnabled) return 'vod';
     let clipsEnabled = true;
-    try { clipsEnabled = isStreamClipRecordingEnabled(stream); } catch { /* */ }
+    try { clipsEnabled = await isStreamClipRecordingEnabled(stream); } catch { /* */ }
     return clipsEnabled ? 'clips' : 'none';
 }
 // Effective VOD/clip visibility for a stream: per-slot setting first, else channel, else public.
-function resolveStreamVodVisibility(stream) {
+async function resolveStreamVodVisibility(stream) {
     try {
         if (stream && stream.managed_stream_id) {
-            const ms = get('SELECT default_vod_visibility FROM managed_streams WHERE id = ?', [stream.managed_stream_id]);
+            const ms = await get('SELECT default_vod_visibility FROM managed_streams WHERE id = ?', [stream.managed_stream_id]);
             if (ms && ms.default_vod_visibility) return ms.default_vod_visibility;
         }
-        const ch = stream && getChannelByUserId(stream.user_id);
+        const ch = stream && await getChannelByUserId(stream.user_id);
         if (ch && ch.default_vod_visibility) return ch.default_vod_visibility;
     } catch { /* fall through */ }
     return 'public';
 }
-function resolveStreamClipVisibility(stream) {
+async function resolveStreamClipVisibility(stream) {
     try {
         if (stream && stream.managed_stream_id) {
-            const ms = get('SELECT default_clip_visibility, slot_clip_recording_enabled FROM managed_streams WHERE id = ?', [stream.managed_stream_id]);
+            const ms = await get('SELECT default_clip_visibility, slot_clip_recording_enabled FROM managed_streams WHERE id = ?', [stream.managed_stream_id]);
             if (ms && ms.default_clip_visibility) return ms.default_clip_visibility;
         }
-        const ch = stream && getChannelByUserId(stream.user_id);
+        const ch = stream && await getChannelByUserId(stream.user_id);
         if (ch && ch.default_clip_visibility) return ch.default_clip_visibility;
     } catch { /* fall through */ }
     return 'public';
 }
 // Whether clip creation is enabled for a stream's slot (per-stream toggle).
-function isStreamClipRecordingEnabled(stream) {
+async function isStreamClipRecordingEnabled(stream) {
     try {
         if (stream && stream.managed_stream_id) {
-            const ms = get('SELECT slot_clip_recording_enabled FROM managed_streams WHERE id = ?', [stream.managed_stream_id]);
+            const ms = await get('SELECT slot_clip_recording_enabled FROM managed_streams WHERE id = ?', [stream.managed_stream_id]);
             if (ms && ms.slot_clip_recording_enabled === 0) return false;
         }
     } catch { /* default enabled */ }
@@ -3863,15 +1798,15 @@ function isStreamClipRecordingEnabled(stream) {
 
 // ── RobotStreamer integration helpers ───────────────────────
 
-function getRobotStreamerIntegrationByUserId(userId) {
+async function getRobotStreamerIntegrationByUserId(userId) {
     // A legacy account-level row (no slot binding). It applies to no stream any more:
     // scripts/rs-integrations-to-slots.js moves these onto slots. Read only to report them.
-    return get('SELECT * FROM robotstreamer_integrations WHERE user_id = ? AND managed_stream_id IS NULL', [userId]);
+    return await get('SELECT * FROM robotstreamer_integrations WHERE user_id = ? AND managed_stream_id IS NULL', [userId]);
 }
 
-function getRobotStreamerIntegrationBySlot(userId, managedStreamId) {
+async function getRobotStreamerIntegrationBySlot(userId, managedStreamId) {
     if (!managedStreamId) return null;
-    return get('SELECT * FROM robotstreamer_integrations WHERE user_id = ? AND managed_stream_id = ?', [userId, managedStreamId]);
+    return await get('SELECT * FROM robotstreamer_integrations WHERE user_id = ? AND managed_stream_id = ?', [userId, managedStreamId]);
 }
 
 // Users already warned about an unmigrated account-level row (once per process each).
@@ -3883,12 +1818,12 @@ const _rsAccountRowWarned = new Set();
  * row that has not been moved onto a slot yet is logged and skipped, never used: that fallback
  * sent every slot without its own row to the same robot.
  */
-function getRobotStreamerIntegrationForStream(userId, managedStreamId) {
-    const row = managedStreamId ? getRobotStreamerIntegrationBySlot(userId, managedStreamId) : null;
+async function getRobotStreamerIntegrationForStream(userId, managedStreamId) {
+    const row = managedStreamId ? await getRobotStreamerIntegrationBySlot(userId, managedStreamId) : null;
     if (row) return row;
     try {
         if (!_rsAccountRowWarned.has(userId)) {
-            const legacy = getRobotStreamerIntegrationByUserId(userId);
+            const legacy = await getRobotStreamerIntegrationByUserId(userId);
             if (legacy) {
                 _rsAccountRowWarned.add(userId);
                 console.warn(`[RS] User ${userId} has an account-level RobotStreamer row (${legacy.id}) that applies to no stream; skipped. Bind it to a slot with scripts/rs-integrations-to-slots.js.`);
@@ -3898,12 +1833,12 @@ function getRobotStreamerIntegrationForStream(userId, managedStreamId) {
     return null;
 }
 
-function deleteRobotStreamerIntegrationForSlot(userId, managedStreamId) {
+async function deleteRobotStreamerIntegrationForSlot(userId, managedStreamId) {
     if (!managedStreamId) return;
-    run('DELETE FROM robotstreamer_integrations WHERE user_id = ? AND managed_stream_id = ?', [userId, managedStreamId]);
+    await run('DELETE FROM robotstreamer_integrations WHERE user_id = ? AND managed_stream_id = ?', [userId, managedStreamId]);
 }
 
-function upsertRobotStreamerIntegration(userId, fields, managedStreamId = null) {
+async function upsertRobotStreamerIntegration(userId, fields, managedStreamId = null) {
     const allowed = new Set([
         'enabled',
         'mirror_chat',
@@ -3920,7 +1855,7 @@ function upsertRobotStreamerIntegration(userId, fields, managedStreamId = null) 
     // RobotStreamer is configured per stream slot; account-level rows are no longer written.
     const slotId = managedStreamId || null;
     if (!slotId) throw new Error('RobotStreamer settings belong to a stream slot (managed_stream_id is required)');
-    const existing = getRobotStreamerIntegrationBySlot(userId, slotId);
+    const existing = await getRobotStreamerIntegrationBySlot(userId, slotId);
     const filtered = Object.entries(fields || {}).filter(([key, val]) => allowed.has(key) && val !== undefined);
 
     if (!filtered.length) return existing;
@@ -3932,43 +1867,43 @@ function upsertRobotStreamerIntegration(userId, fields, managedStreamId = null) 
             updates.push(`${key} = ?`);
             params.push(val);
         }
-        updates.push('updated_at = CURRENT_TIMESTAMP');
+        updates.push('updated_at = ov_now()');
         params.push(userId, slotId);
-        run(`UPDATE robotstreamer_integrations SET ${updates.join(', ')} WHERE user_id = ? AND managed_stream_id IS ?`, params);
+        await run(`UPDATE robotstreamer_integrations SET ${updates.join(', ')} WHERE user_id = ? AND managed_stream_id IS NOT DISTINCT FROM ?`, params);
     } else {
         const keys = ['user_id', 'managed_stream_id', ...filtered.map(([key]) => key), 'updated_at'];
         const placeholders = keys.map(() => '?').join(', ');
         const params = [userId, slotId, ...filtered.map(([, val]) => val), new Date().toISOString()];
-        run(
+        await run(
             `INSERT INTO robotstreamer_integrations (${keys.join(', ')}) VALUES (${placeholders})`,
             params,
         );
     }
 
-    return getRobotStreamerIntegrationBySlot(userId, slotId);
+    return await getRobotStreamerIntegrationBySlot(userId, slotId);
 }
 
 // ── Restream Destination helpers ─────────────────────────────
 
-function getRestreamDestinationsByUserId(userId) {
-    return all('SELECT * FROM restream_destinations WHERE user_id = ? ORDER BY created_at', [userId]);
+async function getRestreamDestinationsByUserId(userId) {
+    return await all('SELECT * FROM restream_destinations WHERE user_id = ? ORDER BY created_at', [userId]);
 }
 
 // Circuit breaker: escalating cooldown after repeated go-live failures for a destination.
 // 1st → 15m, 2nd → 1h, 3rd → 6h, 4th+ → 24h. Returns the new cooldown_until (ms epoch).
-function markRestreamDestinationFailure(id, error) {
+async function markRestreamDestinationFailure(id, error) {
     try {
-        const row = get('SELECT consecutive_failures FROM restream_destinations WHERE id = ?', [id]);
+        const row = await get('SELECT consecutive_failures FROM restream_destinations WHERE id = ?', [id]);
         const n = ((row && row.consecutive_failures) || 0) + 1;
         const mins = n <= 1 ? 15 : n === 2 ? 60 : n === 3 ? 360 : 1440;
-        run(`UPDATE restream_destinations SET consecutive_failures = ?, last_error = ?, last_failed_at = CURRENT_TIMESTAMP,
+        await run(`UPDATE restream_destinations SET consecutive_failures = ?, last_error = ?, last_failed_at = ov_now(),
              cooldown_until = datetime('now', ?) WHERE id = ?`,
             [n, String(error || 'restream failed to go live').slice(0, 300), `+${mins} minutes`, id]);
         return { failures: n, cooldownMinutes: mins };
     } catch { return null; }
 }
-function clearRestreamDestinationCooldown(id) {
-    try { run('UPDATE restream_destinations SET consecutive_failures = 0, cooldown_until = NULL, last_error = NULL WHERE id = ?', [id]); } catch { /* */ }
+async function clearRestreamDestinationCooldown(id) {
+    try { await run('UPDATE restream_destinations SET consecutive_failures = 0, cooldown_until = NULL, last_error = NULL WHERE id = ?', [id]); } catch { /* */ }
 }
 // Remaining cooldown in ms (0 if not cooling down).
 function restreamDestinationCooldownMs(dest) {
@@ -3979,15 +1914,15 @@ function restreamDestinationCooldownMs(dest) {
     } catch { return 0; }
 }
 
-function getRestreamDestinationById(id) {
-    return get('SELECT * FROM restream_destinations WHERE id = ?', [id]);
+async function getRestreamDestinationById(id) {
+    return await get('SELECT * FROM restream_destinations WHERE id = ?', [id]);
 }
 
-function createRestreamDestination(userId, fields) {
-    const result = run(
+async function createRestreamDestination(userId, fields) {
+    const result = await run(
         `INSERT INTO restream_destinations (user_id, managed_stream_id, platform, name, server_url, stream_key, enabled, auto_start, quality_preset,
          custom_video_bitrate, custom_audio_bitrate, custom_fps, custom_encoder_preset, srt_latency_ms, srt_passphrase, channel_url, chat_relay, powerchat_relay, powerchat_count_views)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [userId, fields.managed_stream_id || null, fields.platform, fields.name || null, fields.server_url || null,
          fields.stream_key || null, fields.enabled ?? 1, fields.auto_start ?? 0,
          fields.quality_preset || 'auto',
@@ -3996,30 +1931,30 @@ function createRestreamDestination(userId, fields) {
          fields.srt_latency_ms ?? null, fields.srt_passphrase || null,
          fields.channel_url || null, fields.chat_relay ? 1 : 0, fields.powerchat_relay === 0 ? 0 : 1, fields.powerchat_count_views === 0 ? 0 : 1]
     );
-    return get('SELECT * FROM restream_destinations WHERE id = ?', [result.lastInsertRowid]);
+    return await get('SELECT * FROM restream_destinations WHERE id = ?', [result.lastInsertRowid]);
 }
 
-function updateRestreamDestination(id, fields) {
+async function updateRestreamDestination(id, fields) {
     const allowed = new Set(['name', 'server_url', 'stream_key', 'enabled', 'auto_start', 'quality_preset',
         'custom_video_bitrate', 'custom_audio_bitrate', 'custom_fps', 'custom_encoder_preset', 'srt_latency_ms', 'srt_passphrase',
         'channel_url', 'chat_relay', 'powerchat_relay', 'powerchat_count_views', 'managed_stream_id', 'connection_id']);
     const filtered = Object.entries(fields || {}).filter(([key]) => allowed.has(key));
-    if (!filtered.length) return getRestreamDestinationById(id);
+    if (!filtered.length) return await getRestreamDestinationById(id);
 
     const updates = filtered.map(([key]) => `${key} = ?`);
-    updates.push('updated_at = CURRENT_TIMESTAMP');
+    updates.push('updated_at = ov_now()');
     const params = [...filtered.map(([, val]) => val), id];
 
-    run(`UPDATE restream_destinations SET ${updates.join(', ')} WHERE id = ?`, params);
-    return getRestreamDestinationById(id);
+    await run(`UPDATE restream_destinations SET ${updates.join(', ')} WHERE id = ?`, params);
+    return await getRestreamDestinationById(id);
 }
 
-function deleteRestreamDestination(id) {
-    return run('DELETE FROM restream_destinations WHERE id = ?', [id]);
+async function deleteRestreamDestination(id) {
+    return await run('DELETE FROM restream_destinations WHERE id = ?', [id]);
 }
 
-function getRestreamDestinationsByManagedStream(managedStreamId) {
-    return all('SELECT * FROM restream_destinations WHERE managed_stream_id = ? ORDER BY created_at', [managedStreamId]);
+async function getRestreamDestinationsByManagedStream(managedStreamId) {
+    return await all('SELECT * FROM restream_destinations WHERE managed_stream_id = ? ORDER BY created_at', [managedStreamId]);
 }
 
 /**
@@ -4028,19 +1963,19 @@ function getRestreamDestinationsByManagedStream(managedStreamId) {
  * There is no fallback to every destination the account owns: that fallback started one
  * slot's auto-start destinations when the streamer went live on another slot.
  */
-function getRestreamDestinationsForSlot(userId, managedStreamId) {
+async function getRestreamDestinationsForSlot(userId, managedStreamId) {
     if (managedStreamId) {
-        return all('SELECT * FROM restream_destinations WHERE user_id = ? AND managed_stream_id = ? ORDER BY created_at', [userId, managedStreamId]);
+        return await all('SELECT * FROM restream_destinations WHERE user_id = ? AND managed_stream_id = ? ORDER BY created_at', [userId, managedStreamId]);
     }
-    return all('SELECT * FROM restream_destinations WHERE user_id = ? AND managed_stream_id IS NULL ORDER BY created_at', [userId]);
+    return await all('SELECT * FROM restream_destinations WHERE user_id = ? AND managed_stream_id IS NULL ORDER BY created_at', [userId]);
 }
 
 // ── Platform OAuth connection helpers ────────────────────────
 
 // ── Per-streamer channel points ("OpenCoins") ──
-function getChannelPoints(userId, streamerId) {
+async function getChannelPoints(userId, streamerId) {
     if (!userId || !streamerId) return 0;
-    const r = get('SELECT balance FROM channel_points WHERE user_id = ? AND streamer_id = ?', [userId, streamerId]);
+    const r = await get('SELECT balance FROM channel_points WHERE user_id = ? AND streamer_id = ?', [userId, streamerId]);
     return r ? r.balance : 0;
 }
 /**
@@ -4049,198 +1984,198 @@ function getChannelPoints(userId, streamerId) {
  * amount is refused. A debit (delta < 0) only happens when the balance covers it; a refused debit
  * leaves no log row, so the same key can be tried again later.
  */
-function applyChannelPoints({ userId, streamerId, delta, key, reason = null }) {
+async function applyChannelPoints({ userId, streamerId, delta, key, reason = null }) {
     if (!key || typeof key !== 'string') throw new TypeError('channel points: an idempotency key is required for every debit and credit');
     if (!userId || !streamerId || !Number.isInteger(delta) || delta === 0) {
-        return { applied: false, replayed: false, balance: getChannelPoints(userId, streamerId) };
+        return { applied: false, replayed: false, balance: await getChannelPoints(userId, streamerId) };
     }
-    return getDb().transaction(() => {
-        const seen = get('SELECT user_id, streamer_id, delta FROM channel_points_log WHERE idempotency_key = ?', [key]);
+    return await getDb().tx(async () => {
+        const seen = await get('SELECT user_id, streamer_id, delta FROM channel_points_log WHERE idempotency_key = ?', [key]);
         if (seen) {
             if (seen.user_id !== userId || seen.streamer_id !== streamerId || seen.delta !== delta) {
                 throw new Error(`channel points: idempotency key ${key} was already used for a different event`);
             }
-            return { applied: false, replayed: true, balance: getChannelPoints(userId, streamerId) };
+            return { applied: false, replayed: true, balance: await getChannelPoints(userId, streamerId) };
         }
         if (delta < 0) {
-            const res = run(`UPDATE channel_points SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP
+            const res = await run(`UPDATE channel_points SET balance = balance + ?, updated_at = ov_now()
                              WHERE user_id = ? AND streamer_id = ? AND balance >= ?`, [delta, userId, streamerId, -delta]);
-            if (!res.changes) return { applied: false, replayed: false, balance: getChannelPoints(userId, streamerId) };
+            if (!res.changes) return { applied: false, replayed: false, balance: await getChannelPoints(userId, streamerId) };
         } else {
-            run(`INSERT INTO channel_points (user_id, streamer_id, balance, updated_at)
-                 VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            await run(`INSERT INTO channel_points (user_id, streamer_id, balance, updated_at)
+                 VALUES (?, ?, ?, ov_now())
                  ON CONFLICT(user_id, streamer_id) DO UPDATE SET
-                    balance = balance + excluded.balance, updated_at = CURRENT_TIMESTAMP`, [userId, streamerId, delta]);
+                    balance = channel_points.balance + excluded.balance, updated_at = ov_now()`, [userId, streamerId, delta]);
         }
-        run('INSERT INTO channel_points_log (idempotency_key, user_id, streamer_id, delta, reason) VALUES (?, ?, ?, ?, ?)',
+        await run('INSERT INTO channel_points_log (idempotency_key, user_id, streamer_id, delta, reason) VALUES (?, ?, ?, ?, ?)',
             [key, userId, streamerId, delta, reason ? String(reason).slice(0, 200) : null]);
-        return { applied: true, replayed: false, balance: getChannelPoints(userId, streamerId) };
-    })();
+        return { applied: true, replayed: false, balance: await getChannelPoints(userId, streamerId) };
+    });
 }
 /** Credit channel points for one event (key required). Returns the new balance. */
-function addChannelPoints(userId, streamerId, amount, key, reason) {
-    return applyChannelPoints({ userId, streamerId, delta: amount, key, reason }).balance;
+async function addChannelPoints(userId, streamerId, amount, key, reason) {
+    return (await applyChannelPoints({ userId, streamerId, delta: amount, key, reason })).balance;
 }
 /** Atomic spend for one event (key required): true if taken now or already taken under this key. */
-function deductChannelPoints(userId, streamerId, amount, key, reason) {
+async function deductChannelPoints(userId, streamerId, amount, key, reason) {
     if (!userId || !streamerId) return false;
-    const r = applyChannelPoints({ userId, streamerId, delta: -amount, key, reason });
+    const r = await applyChannelPoints({ userId, streamerId, delta: -amount, key, reason });
     return r.applied || r.replayed;
 }
 
 // ── Kick chatroom-id cache (survives the Cloudflare-blocked v2 API) ──
-function getKickChannelCache(slug) {
+async function getKickChannelCache(slug) {
     if (!slug) return null;
-    return get('SELECT * FROM kick_channel_cache WHERE slug = ?', [String(slug).toLowerCase()]);
+    return await get('SELECT * FROM kick_channel_cache WHERE slug = ?', [String(slug).toLowerCase()]);
 }
-function setKickChannelCache(slug, chatroomId, kickChannelId) {
+async function setKickChannelCache(slug, chatroomId, kickChannelId) {
     if (!slug || !chatroomId) return;
-    run(`INSERT INTO kick_channel_cache (slug, chatroom_id, kick_channel_id, updated_at)
-         VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    await run(`INSERT INTO kick_channel_cache (slug, chatroom_id, kick_channel_id, updated_at)
+         VALUES (?, ?, ?, ov_now())
          ON CONFLICT(slug) DO UPDATE SET
             chatroom_id = excluded.chatroom_id,
             kick_channel_id = COALESCE(excluded.kick_channel_id, kick_channel_cache.kick_channel_id),
-            updated_at = CURRENT_TIMESTAMP`,
+            updated_at = ov_now()`,
         [String(slug).toLowerCase(), chatroomId, kickChannelId || null]);
 }
 
-function getPlatformConnection(userId, platform) {
-    return get('SELECT * FROM platform_connections WHERE user_id = ? AND platform = ?', [userId, platform]);
+async function getPlatformConnection(userId, platform) {
+    return await get('SELECT * FROM platform_connections WHERE user_id = ? AND platform = ?', [userId, platform]);
 }
 
-function getPlatformConnectionById(id) {
-    return get('SELECT * FROM platform_connections WHERE id = ?', [id]);
+async function getPlatformConnectionById(id) {
+    return await get('SELECT * FROM platform_connections WHERE id = ?', [id]);
 }
 
-function getPlatformConnectionsByUserId(userId) {
-    return all('SELECT * FROM platform_connections WHERE user_id = ? ORDER BY platform', [userId]);
+async function getPlatformConnectionsByUserId(userId) {
+    return await all('SELECT * FROM platform_connections WHERE user_id = ? ORDER BY platform', [userId]);
 }
 
 /** Insert-or-update a user's connection for a platform (UNIQUE user_id+platform). */
-function upsertPlatformConnection(userId, platform, fields) {
-    const existing = getPlatformConnection(userId, platform);
+async function upsertPlatformConnection(userId, platform, fields) {
+    const existing = await getPlatformConnection(userId, platform);
     if (existing) {
-        run(`UPDATE platform_connections SET
+        await run(`UPDATE platform_connections SET
                 platform_user_id = ?, platform_username = ?, channel_url = ?,
                 access_token = ?, refresh_token = COALESCE(?, refresh_token),
-                token_expires_at = ?, scope = ?, updated_at = CURRENT_TIMESTAMP
+                token_expires_at = ?, scope = ?, updated_at = ov_now()
              WHERE id = ?`,
             [fields.platform_user_id || null, fields.platform_username || null, fields.channel_url || null,
              fields.access_token || null, fields.refresh_token || null,
              fields.token_expires_at || null, fields.scope || null, existing.id]);
-        return getPlatformConnectionById(existing.id);
+        return await getPlatformConnectionById(existing.id);
     }
-    const res = run(`INSERT INTO platform_connections
+    const res = await run(`INSERT INTO platform_connections
             (user_id, platform, platform_user_id, platform_username, channel_url, access_token, refresh_token, token_expires_at, scope)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [userId, platform, fields.platform_user_id || null, fields.platform_username || null, fields.channel_url || null,
          fields.access_token || null, fields.refresh_token || null, fields.token_expires_at || null, fields.scope || null]);
-    return getPlatformConnectionById(res.lastInsertRowid);
+    return await getPlatformConnectionById(res.lastInsertRowid);
 }
 
 /** Persist refreshed tokens for a connection. */
-function updatePlatformConnectionTokens(id, { access_token, refresh_token, token_expires_at, scope }) {
-    run(`UPDATE platform_connections SET
+async function updatePlatformConnectionTokens(id, { access_token, refresh_token, token_expires_at, scope }) {
+    await run(`UPDATE platform_connections SET
             access_token = ?, refresh_token = COALESCE(?, refresh_token),
-            token_expires_at = ?, scope = COALESCE(?, scope), updated_at = CURRENT_TIMESTAMP
+            token_expires_at = ?, scope = COALESCE(?, scope), updated_at = ov_now()
          WHERE id = ?`,
         [access_token || null, refresh_token || null, token_expires_at || null, scope || null, id]);
-    return getPlatformConnectionById(id);
+    return await getPlatformConnectionById(id);
 }
 
-function deletePlatformConnection(userId, platform) {
-    return run('DELETE FROM platform_connections WHERE user_id = ? AND platform = ?', [userId, platform]);
+async function deletePlatformConnection(userId, platform) {
+    return await run('DELETE FROM platform_connections WHERE user_id = ? AND platform = ?', [userId, platform]);
 }
 
 // ── PowerChat connections (per-streamer OAuth grant) ─────────
-function getPowerchatConnection(userId) {
-    return get('SELECT * FROM powerchat_connections WHERE user_id = ?', [userId]) || null;
+async function getPowerchatConnection(userId) {
+    return await get('SELECT * FROM powerchat_connections WHERE user_id = ?', [userId]) || null;
 }
-function getPowerchatConnectionByUsername(username) {
+async function getPowerchatConnectionByUsername(username) {
     if (!username) return null;
-    return get('SELECT * FROM powerchat_connections WHERE LOWER(powerchat_username) = LOWER(?)', [String(username)]) || null;
+    return await get('SELECT * FROM powerchat_connections WHERE LOWER(powerchat_username) = LOWER(?)', [String(username)]) || null;
 }
-function getPowerchatConnectionByPcUserId(pcUserId) {
+async function getPowerchatConnectionByPcUserId(pcUserId) {
     if (!pcUserId) return null;
-    return get('SELECT * FROM powerchat_connections WHERE powerchat_user_id = ?', [String(pcUserId)]) || null;
+    return await get('SELECT * FROM powerchat_connections WHERE powerchat_user_id = ?', [String(pcUserId)]) || null;
 }
-function upsertPowerchatConnection(userId, fields = {}) {
+async function upsertPowerchatConnection(userId, fields = {}) {
     const cols = ['powerchat_username', 'powerchat_user_id', 'access_token', 'refresh_token', 'token_expires_at', 'scope', 'tip_page_url', 'last_error'];
     const set = {};
     for (const c of cols) if (fields[c] !== undefined) set[c] = fields[c];
-    const existing = getPowerchatConnection(userId);
+    const existing = await getPowerchatConnection(userId);
     if (existing) {
         const keys = Object.keys(set);
         if (!keys.length) return existing;
-        run(`UPDATE powerchat_connections SET ${keys.map(k => `${k} = ?`).join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`,
+        await run(`UPDATE powerchat_connections SET ${keys.map(k => `${k} = ?`).join(', ')}, updated_at = ov_now() WHERE user_id = ?`,
             [...keys.map(k => set[k]), userId]);
     } else {
         const keys = Object.keys(set);
-        run(`INSERT INTO powerchat_connections (user_id${keys.length ? ', ' + keys.join(', ') : ''}) VALUES (?${keys.map(() => ', ?').join('')})`,
+        await run(`INSERT INTO powerchat_connections (user_id${keys.length ? ', ' + keys.join(', ') : ''}) VALUES (?${keys.map(() => ', ?').join('')})`,
             [userId, ...keys.map(k => set[k])]);
     }
-    return getPowerchatConnection(userId);
+    return await getPowerchatConnection(userId);
 }
 // Atomically persist a rotated token pair. Reuse of an old refresh token revokes the
 // whole family, so we always overwrite with the newest pair in one statement.
-function updatePowerchatTokens(userId, { access_token, refresh_token, token_expires_at, scope }) {
-    return run(
+async function updatePowerchatTokens(userId, { access_token, refresh_token, token_expires_at, scope }) {
+    return await run(
         `UPDATE powerchat_connections
          SET access_token = ?, refresh_token = COALESCE(?, refresh_token),
              token_expires_at = ?, scope = COALESCE(?, scope), last_error = NULL,
-             updated_at = CURRENT_TIMESTAMP
+             updated_at = ov_now()
          WHERE user_id = ?`,
         [access_token, refresh_token || null, token_expires_at || null, scope || null, userId]
     );
 }
-function setPowerchatConnectionError(userId, err) {
-    return run('UPDATE powerchat_connections SET last_error = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?',
+async function setPowerchatConnectionError(userId, err) {
+    return await run('UPDATE powerchat_connections SET last_error = ?, updated_at = ov_now() WHERE user_id = ?',
         [err ? String(err).slice(0, 300) : null, userId]);
 }
-function deletePowerchatConnection(userId) {
-    return run('DELETE FROM powerchat_connections WHERE user_id = ?', [userId]);
+async function deletePowerchatConnection(userId) {
+    return await run('DELETE FROM powerchat_connections WHERE user_id = ?', [userId]);
 }
 // Webhook dedupe: returns true the FIRST time a delivery id is seen, false on repeats.
-function powerchatDeliveryIsNew(deliveryId, eventType) {
+async function powerchatDeliveryIsNew(deliveryId, eventType) {
     if (!deliveryId) return true; // no id → can't dedupe; process (rare)
-    const r = run('INSERT OR IGNORE INTO powerchat_webhook_deliveries (delivery_id, event_type) VALUES (?, ?)', [String(deliveryId), eventType || null]);
+    const r = await run('INSERT INTO powerchat_webhook_deliveries (delivery_id, event_type) VALUES (?, ?) ON CONFLICT DO NOTHING', [String(deliveryId), eventType || null]);
     return r.changes > 0;
 }
-function cleanupPowerchatDeliveries(days = 3) {
-    try { return run(`DELETE FROM powerchat_webhook_deliveries WHERE received_at < datetime('now', ?)`, [`-${Math.max(1, days)} days`]); }
+async function cleanupPowerchatDeliveries(days = 3) {
+    try { return await run(`DELETE FROM powerchat_webhook_deliveries WHERE received_at < datetime('now', ?)`, [`-${Math.max(1, days)} days`]); }
     catch { return null; }
 }
 
 // ── Daily easter egg solves ──────────────────────────────────
-function recordEasterEggSolve(eggDate, solverKey, userId) {
+async function recordEasterEggSolve(eggDate, solverKey, userId) {
     try {
-        const res = run('INSERT OR IGNORE INTO easter_egg_solves (egg_date, solver_key, user_id) VALUES (?, ?, ?)',
+        const res = await run('INSERT INTO easter_egg_solves (egg_date, solver_key, user_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING',
             [eggDate, String(solverKey).slice(0, 80), userId || null]);
         return !!(res && res.changes); // true = newly solved (first time today)
     } catch { return false; }
 }
-function hasSolvedEasterEgg(eggDate, solverKey) {
-    try { return !!get('SELECT 1 FROM easter_egg_solves WHERE egg_date = ? AND solver_key = ?', [eggDate, String(solverKey).slice(0, 80)]); } catch { return false; }
+async function hasSolvedEasterEgg(eggDate, solverKey) {
+    try { return !!await get('SELECT 1 FROM easter_egg_solves WHERE egg_date = ? AND solver_key = ?', [eggDate, String(solverKey).slice(0, 80)]); } catch { return false; }
 }
-function countEasterEggSolves(eggDate) {
-    try { return get('SELECT COUNT(*) AS n FROM easter_egg_solves WHERE egg_date = ?', [eggDate])?.n || 0; } catch { return 0; }
+async function countEasterEggSolves(eggDate) {
+    try { return (await get('SELECT COUNT(*) AS n FROM easter_egg_solves WHERE egg_date = ?', [eggDate]))?.n || 0; } catch { return 0; }
 }
 
-function getUserProfile(userId) {
-    const user = get(`SELECT id, username, display_name, avatar_url, profile_color, role,
+async function getUserProfile(userId) {
+    const user = await get(`SELECT id, username, display_name, avatar_url, profile_color, role,
                       openvibe_bucks_balance, openvibe_coins_balance, created_at, last_seen
                       FROM users WHERE id = ?`, [userId]);
     if (!user) return null;
     // The user's chat total is OpenVibe.Chat's; a synchronous peek answers the last good count, else
     // null while Chat refreshes in the background. The profile card omits the count when it is null.
-    user.messageCount = (() => { try { return require('../chat/chat-reads').userMessageCountPeek(userId); } catch { return null; } })();
-    user.followerCount = get('SELECT COUNT(*) as c FROM follows WHERE streamer_id = ?', [userId])?.c || 0;
-    user.followingCount = get('SELECT COUNT(*) as c FROM follows WHERE follower_id = ?', [userId])?.c || 0;
+    user.messageCount = await (async () => { try { return await require('../chat/chat-reads').userMessageCountPeek(userId); } catch { return null; } })();
+    user.followerCount = (await get('SELECT COUNT(*) as c FROM follows WHERE streamer_id = ?', [userId]))?.c || 0;
+    user.followingCount = (await get('SELECT COUNT(*) as c FROM follows WHERE follower_id = ?', [userId]))?.c || 0;
     return user;
 }
 
-function updateUserAvatar(userId, avatarUrl, pasteId = null) {
-    return run('UPDATE users SET avatar_url = ?, avatar_paste_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [avatarUrl, pasteId, userId]);
+async function updateUserAvatar(userId, avatarUrl, pasteId = null) {
+    return await run('UPDATE users SET avatar_url = ?, avatar_paste_id = ?, updated_at = ov_now() WHERE id = ?', [avatarUrl, pasteId, userId]);
 }
 
 // resetAvatarsForPaste() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
@@ -4248,181 +2183,181 @@ function updateUserAvatar(userId, avatarUrl, pasteId = null) {
 // ── Follow helpers ───────────────────────────────────────────
 // Reads of the projection of Network's follow graph; only server/social/network-follows.js writes it.
 
-function getFollowerCount(streamerId) {
-    const row = get('SELECT COUNT(*) as count FROM follows WHERE streamer_id = ?', [streamerId]);
+async function getFollowerCount(streamerId) {
+    const row = await get('SELECT COUNT(*) as count FROM follows WHERE streamer_id = ?', [streamerId]);
     return row ? row.count : 0;
 }
 
-function isFollowing(followerId, streamerId) {
-    const row = get('SELECT id FROM follows WHERE follower_id = ? AND streamer_id = ?',
+async function isFollowing(followerId, streamerId) {
+    const row = await get('SELECT id FROM follows WHERE follower_id = ? AND streamer_id = ?',
         [followerId, streamerId]);
     return !!row;
 }
 
-function getFollowerIds(streamerId) {
-    return all('SELECT follower_id FROM follows WHERE streamer_id = ?', [streamerId])
+async function getFollowerIds(streamerId) {
+    return (await all('SELECT follower_id FROM follows WHERE streamer_id = ?', [streamerId]))
         .map(r => r.follower_id);
 }
 
 // ── Transaction helpers ──────────────────────────────────────
 
-function createTransaction({ from_user_id, to_user_id, stream_id, amount, type, status, message }) {
+async function createTransaction({ from_user_id, to_user_id, stream_id, amount, type, status, message }) {
     assertLiveLedger('transactions insert');
-    return run(
+    return await run(
         `INSERT INTO transactions (from_user_id, to_user_id, stream_id, amount, type, status, message)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [from_user_id || null, to_user_id || null, stream_id || null, amount, type, status || 'completed', message || null]
     );
 }
 
-function addVibes(userId, amount) {
+async function addVibes(userId, amount) {
     assertLiveLedger('openvibe_bucks_balance credit');
-    return run(`UPDATE users SET openvibe_bucks_balance = openvibe_bucks_balance + ? WHERE id = ?`,
+    return await run(`UPDATE users SET openvibe_bucks_balance = openvibe_bucks_balance + ? WHERE id = ?`,
         [amount, userId]);
 }
 
-function deductVibes(userId, amount) {
+async function deductVibes(userId, amount) {
     assertLiveLedger('openvibe_bucks_balance debit');
-    const user = getUserById(userId);
+    const user = await getUserById(userId);
     if (!user || user.openvibe_bucks_balance < amount) return false;
-    run(`UPDATE users SET openvibe_bucks_balance = openvibe_bucks_balance - ? WHERE id = ?`,
+    await run(`UPDATE users SET openvibe_bucks_balance = openvibe_bucks_balance - ? WHERE id = ?`,
         [amount, userId]);
     return true;
 }
 
 // Streamer cashout balance (received donations; the only cashout-able balance).
-function addVibesCashout(userId, amount) {
+async function addVibesCashout(userId, amount) {
     assertLiveLedger('openvibe_bucks_cashout_balance credit');
-    return run(`UPDATE users SET openvibe_bucks_cashout_balance = openvibe_bucks_cashout_balance + ? WHERE id = ?`,
+    return await run(`UPDATE users SET openvibe_bucks_cashout_balance = openvibe_bucks_cashout_balance + ? WHERE id = ?`,
         [amount, userId]);
 }
-function deductVibesCashout(userId, amount) {
+async function deductVibesCashout(userId, amount) {
     assertLiveLedger('openvibe_bucks_cashout_balance debit');
-    const user = getUserById(userId);
+    const user = await getUserById(userId);
     if (!user || (user.openvibe_bucks_cashout_balance || 0) < amount) return false;
-    run(`UPDATE users SET openvibe_bucks_cashout_balance = openvibe_bucks_cashout_balance - ? WHERE id = ?`,
+    await run(`UPDATE users SET openvibe_bucks_cashout_balance = openvibe_bucks_cashout_balance - ? WHERE id = ?`,
         [amount, userId]);
     return true;
 }
 
 // ── Payment orders (idempotent purchase tracking) ────────────
 
-function createPaymentOrder({ user_id, provider, provider_ref = null, kind = 'bucks', amount_cents = 0, currency = 'usd', bucks = 0, streamer_id = null, status = 'pending' }) {
+async function createPaymentOrder({ user_id, provider, provider_ref = null, kind = 'bucks', amount_cents = 0, currency = 'usd', bucks = 0, streamer_id = null, status = 'pending' }) {
     assertLiveLedger('payment_orders insert');
-    const res = run(
+    const res = await run(
         `INSERT INTO payment_orders (user_id, provider, provider_ref, kind, amount_cents, currency, bucks, streamer_id, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [user_id, provider, provider_ref, kind, amount_cents, currency, bucks, streamer_id, status]
     );
-    return get('SELECT * FROM payment_orders WHERE id = ?', [res.lastInsertRowid]);
+    return await get('SELECT * FROM payment_orders WHERE id = ?', [res.lastInsertRowid]);
 }
 
-function getPaymentOrderById(id) {
-    return get('SELECT * FROM payment_orders WHERE id = ?', [id]);
+async function getPaymentOrderById(id) {
+    return await get('SELECT * FROM payment_orders WHERE id = ?', [id]);
 }
 
-function getPaymentOrderByRef(provider, ref) {
+async function getPaymentOrderByRef(provider, ref) {
     if (!ref) return null;
-    return get('SELECT * FROM payment_orders WHERE provider = ? AND provider_ref = ? ORDER BY id DESC LIMIT 1', [provider, ref]);
+    return await get('SELECT * FROM payment_orders WHERE provider = ? AND provider_ref = ? ORDER BY id DESC LIMIT 1', [provider, ref]);
 }
 
 // PowerChat checkouts still waiting for their donation.completed webhook — the
 // reconciliation sweep's work list (recent only: an intent lives an hour, and an
 // order nobody paid within days is an abandoned cart, not a missed webhook).
-function getPendingPowerchatOrders(days = 3) {
-    return all(`SELECT * FROM payment_orders
+async function getPendingPowerchatOrders(days = 3) {
+    return await all(`SELECT * FROM payment_orders
                 WHERE provider = 'powerchat' AND status = 'pending'
                   AND created_at >= datetime('now', ?)
                 ORDER BY id ASC`, [`-${Math.max(1, Math.round(days))} days`]);
 }
 
-function updatePaymentOrder(id, fields) {
+async function updatePaymentOrder(id, fields) {
     assertLiveLedger('payment_orders update');
     const allowed = new Set(['provider_ref', 'status', 'amount_cents', 'bucks', 'currency', 'streamer_id']);
     const entries = Object.entries(fields || {}).filter(([k]) => allowed.has(k));
-    if (!entries.length) return getPaymentOrderById(id);
+    if (!entries.length) return await getPaymentOrderById(id);
     const sets = entries.map(([k]) => `${k} = ?`);
-    sets.push('updated_at = CURRENT_TIMESTAMP');
-    run(`UPDATE payment_orders SET ${sets.join(', ')} WHERE id = ?`, [...entries.map(([, v]) => v), id]);
-    return getPaymentOrderById(id);
+    sets.push('updated_at = ov_now()');
+    await run(`UPDATE payment_orders SET ${sets.join(', ')} WHERE id = ?`, [...entries.map(([, v]) => v), id]);
+    return await getPaymentOrderById(id);
 }
 
 // ── Subscription helpers ─────────────────────────────────────
 
-function upsertSubscription({ subscriber_id, streamer_id, tier = 1, provider = null, provider_ref = null, price_cents = 0, currency = 'usd', status = 'active', current_period_end = null, auto_renew = null }) {
+async function upsertSubscription({ subscriber_id, streamer_id, tier = 1, provider = null, provider_ref = null, price_cents = 0, currency = 'usd', status = 'active', current_period_end = null, auto_renew = null }) {
     assertLiveLedger('subscriptions upsert');
     // Reuse an existing (subscriber,streamer) row if present, else insert.
     // auto_renew: null = leave as-is on update (0 on insert); 0/1 = set explicitly.
-    const existing = get('SELECT * FROM subscriptions WHERE subscriber_id = ? AND streamer_id = ?', [subscriber_id, streamer_id]);
+    const existing = await get('SELECT * FROM subscriptions WHERE subscriber_id = ? AND streamer_id = ?', [subscriber_id, streamer_id]);
     if (existing) {
-        run(`UPDATE subscriptions SET tier=?, provider=?, provider_ref=COALESCE(?, provider_ref), price_cents=?, currency=?,
+        await run(`UPDATE subscriptions SET tier=?, provider=?, provider_ref=COALESCE(?, provider_ref), price_cents=?, currency=?,
                 status=?, is_active=?, current_period_end=?, auto_renew=COALESCE(?, auto_renew),
-                cancel_at_period_end=0, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+                cancel_at_period_end=0, updated_at=ov_now() WHERE id=?`,
             [tier, provider, provider_ref, price_cents, currency, status, status === 'active' ? 1 : 0, current_period_end,
                 auto_renew === null ? null : (auto_renew ? 1 : 0), existing.id]);
-        return get('SELECT * FROM subscriptions WHERE id = ?', [existing.id]);
+        return await get('SELECT * FROM subscriptions WHERE id = ?', [existing.id]);
     }
-    const res = run(`INSERT INTO subscriptions (subscriber_id, streamer_id, tier, provider, provider_ref, price_cents, currency, status, is_active, current_period_end, auto_renew)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    const res = await run(`INSERT INTO subscriptions (subscriber_id, streamer_id, tier, provider, provider_ref, price_cents, currency, status, is_active, current_period_end, auto_renew)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [subscriber_id, streamer_id, tier, provider, provider_ref, price_cents, currency, status, status === 'active' ? 1 : 0, current_period_end, auto_renew ? 1 : 0]);
-    return get('SELECT * FROM subscriptions WHERE id = ?', [res.lastInsertRowid]);
+    return await get('SELECT * FROM subscriptions WHERE id = ?', [res.lastInsertRowid]);
 }
 
 // Active subs whose paid period has lapsed — the renewal sweeper's work list.
-function getSubscriptionsDueRenewal(limit = 50) {
-    return all(`SELECT * FROM subscriptions
+async function getSubscriptionsDueRenewal(limit = 50) {
+    return await all(`SELECT * FROM subscriptions
         WHERE status = 'active' AND current_period_end IS NOT NULL
-          AND datetime(current_period_end) <= CURRENT_TIMESTAMP
+          AND datetime(current_period_end) <= ov_now()
         ORDER BY datetime(current_period_end) ASC LIMIT ?`, [limit]);
 }
 
-function getSubscriptionByProviderRef(provider, ref) {
+async function getSubscriptionByProviderRef(provider, ref) {
     if (!ref) return null;
-    return get('SELECT * FROM subscriptions WHERE provider = ? AND provider_ref = ? ORDER BY id DESC LIMIT 1', [provider, ref]);
+    return await get('SELECT * FROM subscriptions WHERE provider = ? AND provider_ref = ? ORDER BY id DESC LIMIT 1', [provider, ref]);
 }
 
-function getActiveSubscription(subscriberId, streamerId) {
-    return get(`SELECT * FROM subscriptions WHERE subscriber_id = ? AND streamer_id = ? AND status = 'active'
-                AND (current_period_end IS NULL OR datetime(current_period_end) > CURRENT_TIMESTAMP) LIMIT 1`,
+async function getActiveSubscription(subscriberId, streamerId) {
+    return await get(`SELECT * FROM subscriptions WHERE subscriber_id = ? AND streamer_id = ? AND status = 'active'
+                AND (current_period_end IS NULL OR datetime(current_period_end) > ov_now()) LIMIT 1`,
         [subscriberId, streamerId]);
 }
 
-function isActiveSubscriber(subscriberId, streamerId) {
+async function isActiveSubscriber(subscriberId, streamerId) {
     if (!subscriberId || !streamerId) return false;
     // BILLING_AUTHORITY=billing: subscriber perks follow Billing's entitlements (short-lived cache;
     // legacy subscriptions rows are not consulted).
     if (process.env.BILLING_AUTHORITY && require('../monetization/money-authority').onBilling()) {
         return require('../monetization/billing-actions').isSubscriberCached(subscriberId, streamerId);
     }
-    return !!getActiveSubscription(subscriberId, streamerId);
+    return !!await getActiveSubscription(subscriberId, streamerId);
 }
 
-function getSubscriptionsByStreamer(streamerId) {
-    return all(`SELECT s.*, u.username AS subscriber_username, u.display_name AS subscriber_display, u.avatar_url AS subscriber_avatar
+async function getSubscriptionsByStreamer(streamerId) {
+    return await all(`SELECT s.*, u.username AS subscriber_username, u.display_name AS subscriber_display, u.avatar_url AS subscriber_avatar
                 FROM subscriptions s LEFT JOIN users u ON s.subscriber_id = u.id
                 WHERE s.streamer_id = ? AND s.status = 'active' ORDER BY s.started_at DESC`, [streamerId]);
 }
 
-function getSubscriptionsBySubscriber(subscriberId) {
-    return all(`SELECT s.*, u.username AS streamer_username, u.display_name AS streamer_display, u.avatar_url AS streamer_avatar
+async function getSubscriptionsBySubscriber(subscriberId) {
+    return await all(`SELECT s.*, u.username AS streamer_username, u.display_name AS streamer_display, u.avatar_url AS streamer_avatar
                 FROM subscriptions s LEFT JOIN users u ON s.streamer_id = u.id
                 WHERE s.subscriber_id = ? ORDER BY s.started_at DESC`, [subscriberId]);
 }
 
-function getActiveSubscriberCount(streamerId) {
-    const r = get(`SELECT COUNT(*) AS n FROM subscriptions WHERE streamer_id = ? AND status = 'active'
-                   AND (current_period_end IS NULL OR datetime(current_period_end) > CURRENT_TIMESTAMP)`, [streamerId]);
+async function getActiveSubscriberCount(streamerId) {
+    const r = await get(`SELECT COUNT(*) AS n FROM subscriptions WHERE streamer_id = ? AND status = 'active'
+                   AND (current_period_end IS NULL OR datetime(current_period_end) > ov_now())`, [streamerId]);
     return r ? r.n : 0;
 }
 
-function setSubscriptionStatus(id, status, fields = {}) {
+async function setSubscriptionStatus(id, status, fields = {}) {
     assertLiveLedger('subscriptions status');
     const cpe = fields.current_period_end !== undefined ? fields.current_period_end : null;
     const cape = fields.cancel_at_period_end !== undefined ? (fields.cancel_at_period_end ? 1 : 0) : 0;
-    run(`UPDATE subscriptions SET status=?, is_active=?, cancel_at_period_end=?,
-            current_period_end=COALESCE(?, current_period_end), updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+    await run(`UPDATE subscriptions SET status=?, is_active=?, cancel_at_period_end=?,
+            current_period_end=COALESCE(?, current_period_end), updated_at=ov_now() WHERE id=?`,
         [status, status === 'active' ? 1 : 0, cape, cpe, id]);
-    return get('SELECT * FROM subscriptions WHERE id = ?', [id]);
+    return await get('SELECT * FROM subscriptions WHERE id = ?', [id]);
 }
 // ── VODs and clips ───────────────────────────────────────────
 // They live in OpenVibe.Media. Live asks for them through server/media-client.js and
@@ -4432,36 +2367,36 @@ function setSubscriptionStatus(id, status, fields = {}) {
 
 // ── Control helpers ──────────────────────────────────────────
 
-function getStreamControls(streamId) {
-    return all('SELECT * FROM stream_controls WHERE stream_id = ? ORDER BY sort_order', [streamId]);
+async function getStreamControls(streamId) {
+    return await all('SELECT * FROM stream_controls WHERE stream_id = ? ORDER BY sort_order', [streamId]);
 }
 
-function createControl({ stream_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color }) {
-    return run(
+async function createControl({ stream_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color }) {
+    return await run(
         `INSERT INTO stream_controls (stream_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [stream_id, label, command, icon || 'fa-gamepad', control_type || 'button', key_binding || null, cooldown_ms || 100, sort_order || 0, btn_color || '', btn_bg || '', btn_border_color || '']
     );
 }
 
 // ── Control Config helpers ──────────────────────────────────
 
-function getControlConfigs(userId) {
-    return all('SELECT * FROM control_configs WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+async function getControlConfigs(userId) {
+    return await all('SELECT * FROM control_configs WHERE user_id = ? ORDER BY created_at DESC', [userId]);
 }
 
-function getControlConfig(configId) {
-    return get('SELECT * FROM control_configs WHERE id = ?', [configId]);
+async function getControlConfig(configId) {
+    return await get('SELECT * FROM control_configs WHERE id = ?', [configId]);
 }
 
-function createControlConfig({ user_id, name, description }) {
-    return run(
-        'INSERT INTO control_configs (user_id, name, description) VALUES (?, ?, ?)',
+async function createControlConfig({ user_id, name, description }) {
+    return await run(
+        'INSERT INTO control_configs (user_id, name, description) VALUES (?, ?, ?) RETURNING id',
         [user_id, name, description || '']
     );
 }
 
-function updateControlConfig(configId, fields) {
+async function updateControlConfig(configId, fields) {
     const updates = [];
     const params = [];
     for (const [key, val] of Object.entries(fields)) {
@@ -4471,28 +2406,28 @@ function updateControlConfig(configId, fields) {
         }
     }
     if (updates.length === 0) return;
-    updates.push('updated_at = CURRENT_TIMESTAMP');
+    updates.push('updated_at = ov_now()');
     params.push(configId);
-    return run(`UPDATE control_configs SET ${updates.join(', ')} WHERE id = ?`, params);
+    return await run(`UPDATE control_configs SET ${updates.join(', ')} WHERE id = ?`, params);
 }
 
-function deleteControlConfig(configId) {
-    return run('DELETE FROM control_configs WHERE id = ?', [configId]);
+async function deleteControlConfig(configId) {
+    return await run('DELETE FROM control_configs WHERE id = ?', [configId]);
 }
 
-function getConfigButtons(configId) {
-    return all('SELECT * FROM control_config_buttons WHERE config_id = ? ORDER BY sort_order', [configId]);
+async function getConfigButtons(configId) {
+    return await all('SELECT * FROM control_config_buttons WHERE config_id = ? ORDER BY sort_order', [configId]);
 }
 
-function createConfigButton({ config_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color }) {
-    return run(
+async function createConfigButton({ config_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color }) {
+    return await run(
         `INSERT INTO control_config_buttons (config_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [config_id, label, command, icon || 'fa-gamepad', control_type || 'button', key_binding || null, cooldown_ms || 100, sort_order || 0, btn_color || '', btn_bg || '', btn_border_color || '']
     );
 }
 
-function updateConfigButton(buttonId, fields, configId) {
+async function updateConfigButton(buttonId, fields, configId) {
     const allowed = ['label', 'command', 'icon', 'control_type', 'key_binding', 'cooldown_ms', 'sort_order', 'btn_color', 'btn_bg', 'btn_border_color', 'is_enabled'];
     const updates = [];
     const params = [];
@@ -4505,31 +2440,31 @@ function updateConfigButton(buttonId, fields, configId) {
     if (updates.length === 0) return;
     params.push(buttonId);
     // Callers that authorised a config pass its id, so a button id from another config matches nothing.
-    if (configId != null) { params.push(configId); return run(`UPDATE control_config_buttons SET ${updates.join(', ')} WHERE id = ? AND config_id = ?`, params); }
-    return run(`UPDATE control_config_buttons SET ${updates.join(', ')} WHERE id = ?`, params);
+    if (configId != null) { params.push(configId); return await run(`UPDATE control_config_buttons SET ${updates.join(', ')} WHERE id = ? AND config_id = ?`, params); }
+    return await run(`UPDATE control_config_buttons SET ${updates.join(', ')} WHERE id = ?`, params);
 }
 
-function deleteConfigButton(buttonId, configId) {
-    if (configId != null) return run('DELETE FROM control_config_buttons WHERE id = ? AND config_id = ?', [buttonId, configId]);
-    return run('DELETE FROM control_config_buttons WHERE id = ?', [buttonId]);
+async function deleteConfigButton(buttonId, configId) {
+    if (configId != null) return await run('DELETE FROM control_config_buttons WHERE id = ? AND config_id = ?', [buttonId, configId]);
+    return await run('DELETE FROM control_config_buttons WHERE id = ?', [buttonId]);
 }
 
-function bindStreamToControlConfig(streamId, controlConfigId) {
+async function bindStreamToControlConfig(streamId, controlConfigId) {
     if (controlConfigId === null) {
-        return run('UPDATE streams SET control_config_id = NULL WHERE id = ?', [streamId]);
+        return await run('UPDATE streams SET control_config_id = NULL WHERE id = ?', [streamId]);
     }
-    return run('UPDATE streams SET control_config_id = ? WHERE id = ?', [controlConfigId, streamId]);
+    return await run('UPDATE streams SET control_config_id = ? WHERE id = ?', [controlConfigId, streamId]);
 }
 
-function applyConfigToStream(configId, streamId) {
+async function applyConfigToStream(configId, streamId) {
     // Delete existing non-ONVIF controls from stream
-    run('DELETE FROM stream_controls WHERE stream_id = ? AND (control_type != ? OR control_type IS NULL)', [streamId, 'onvif']);
+    await run('DELETE FROM stream_controls WHERE stream_id = ? AND (control_type != ? OR control_type IS NULL)', [streamId, 'onvif']);
     // Copy buttons from config into stream_controls
-    const buttons = getConfigButtons(configId);
+    const buttons = await getConfigButtons(configId);
     for (let i = 0; i < buttons.length; i++) {
         const b = buttons[i];
         if (!b.is_enabled) continue;
-        createControl({
+        await createControl({
             stream_id: streamId,
             label: b.label,
             command: b.command,
@@ -4543,91 +2478,91 @@ function applyConfigToStream(configId, streamId) {
             btn_border_color: b.btn_border_color,
         });
     }
-    bindStreamToControlConfig(streamId, configId);
+    await bindStreamToControlConfig(streamId, configId);
     return buttons.filter(b => b.is_enabled).length;
 }
 
 // ── API Key helpers ──────────────────────────────────────────
 
-function createApiKey({ user_id, key_hash, label, permissions }) {
-    return run(
+async function createApiKey({ user_id, key_hash, label, permissions }) {
+    return await run(
         `INSERT INTO api_keys (user_id, key_hash, label, permissions)
-         VALUES (?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?) RETURNING id`,
         [user_id, key_hash, label || 'Default', JSON.stringify(permissions || ['control', 'stream'])]
     );
 }
 
-function getApiKeyByHash(hash) {
-    return get('SELECT * FROM api_keys WHERE key_hash = ? AND is_active = 1', [hash]);
+async function getApiKeyByHash(hash) {
+    return await get('SELECT * FROM api_keys WHERE key_hash = ? AND is_active = 1', [hash]);
 }
 
 // ── ONVIF Camera helpers ─────────────────────────────────────
 
-function createCameraProfile({ user_id, stream_id, name, onvif_url, username, password_hash, pan_speed, tilt_speed, zoom_speed }) {
-    return run(
+async function createCameraProfile({ user_id, stream_id, name, onvif_url, username, password_hash, pan_speed, tilt_speed, zoom_speed }) {
+    return await run(
         `INSERT INTO camera_profiles (user_id, stream_id, name, onvif_url, username, password_hash, pan_speed, tilt_speed, zoom_speed)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [user_id, stream_id || null, name, onvif_url, username, password_hash, pan_speed || 0.5, tilt_speed || 0.5, zoom_speed || 0.5]
     );
 }
 
-function getCameraProfile(cameraId) {
-    return get('SELECT * FROM camera_profiles WHERE id = ?', [cameraId]);
+async function getCameraProfile(cameraId) {
+    return await get('SELECT * FROM camera_profiles WHERE id = ?', [cameraId]);
 }
 
-function getCameraProfilesByUser(userId) {
-    return all('SELECT * FROM camera_profiles WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+async function getCameraProfilesByUser(userId) {
+    return await all('SELECT * FROM camera_profiles WHERE user_id = ? ORDER BY created_at DESC', [userId]);
 }
 
-function getCameraProfilesByStream(streamId) {
-    return all('SELECT * FROM camera_profiles WHERE stream_id = ? AND is_active = 1 ORDER BY name', [streamId]);
+async function getCameraProfilesByStream(streamId) {
+    return await all('SELECT * FROM camera_profiles WHERE stream_id = ? AND is_active = 1 ORDER BY name', [streamId]);
 }
 
-function updateCameraProfile(cameraId, data) {
+async function updateCameraProfile(cameraId, data) {
     const { name, onvif_url, username, password_hash, pan_speed, tilt_speed, zoom_speed, is_active, last_connected } = data;
-    return run(
+    return await run(
         `UPDATE camera_profiles SET name = ?, onvif_url = ?, username = ?, password_hash = ?, 
-         pan_speed = ?, tilt_speed = ?, zoom_speed = ?, is_active = ?, last_connected = ?, updated_at = CURRENT_TIMESTAMP
+         pan_speed = ?, tilt_speed = ?, zoom_speed = ?, is_active = ?, last_connected = ?, updated_at = ov_now()
          WHERE id = ?`,
         [name, onvif_url, username, password_hash, pan_speed, tilt_speed, zoom_speed, is_active, last_connected, cameraId]
     );
 }
 
-function deleteCameraProfile(cameraId) {
+async function deleteCameraProfile(cameraId) {
     // Cascade delete presets and associated controls
-    run('DELETE FROM camera_presets WHERE camera_id = ?', [cameraId]);
-    run('UPDATE stream_controls SET camera_id = NULL WHERE camera_id = ?', [cameraId]);
-    return run('DELETE FROM camera_profiles WHERE id = ?', [cameraId]);
+    await run('DELETE FROM camera_presets WHERE camera_id = ?', [cameraId]);
+    await run('UPDATE stream_controls SET camera_id = NULL WHERE camera_id = ?', [cameraId]);
+    return await run('DELETE FROM camera_profiles WHERE id = ?', [cameraId]);
 }
 
-function createCameraPreset({ camera_id, name, pan, tilt, zoom, preset_token }) {
-    return run(
+async function createCameraPreset({ camera_id, name, pan, tilt, zoom, preset_token }) {
+    return await run(
         `INSERT INTO camera_presets (camera_id, name, pan, tilt, zoom, preset_token)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
         [camera_id, name, pan, tilt, zoom, preset_token || null]
     );
 }
 
-function getCameraPreset(presetId) {
-    return get('SELECT * FROM camera_presets WHERE id = ?', [presetId]);
+async function getCameraPreset(presetId) {
+    return await get('SELECT * FROM camera_presets WHERE id = ?', [presetId]);
 }
 
-function getCameraPresetsByCamera(cameraId) {
-    return all('SELECT * FROM camera_presets WHERE camera_id = ? ORDER BY name', [cameraId]);
+async function getCameraPresetsByCamera(cameraId) {
+    return await all('SELECT * FROM camera_presets WHERE camera_id = ? ORDER BY name', [cameraId]);
 }
 
-function deleteCameraPreset(presetId) {
-    return run('DELETE FROM camera_presets WHERE id = ?', [presetId]);
+async function deleteCameraPreset(presetId) {
+    return await run('DELETE FROM camera_presets WHERE id = ?', [presetId]);
 }
 
 // ── Ban helpers ──────────────────────────────────────────────
 
-function isUserBanned(userId, streamId) {
-    const ban = get(`
+async function isUserBanned(userId, streamId) {
+    const ban = await get(`
         SELECT * FROM bans
         WHERE user_id = ?
         AND (stream_id = ? OR stream_id IS NULL)
-        AND (expires_at IS NULL OR datetime(expires_at) > CURRENT_TIMESTAMP)
+        AND (expires_at IS NULL OR datetime(expires_at) > ov_now())
         LIMIT 1
     `, [userId, streamId]);
     return !!ban;
@@ -4645,9 +2580,9 @@ function _normalizeBanIp(ip) {
     if (s.startsWith('::ffff:') && _net.isIP(s.slice(7)) === 4) s = s.slice(7);
     return s;
 }
-function _cidrBanList() {
+async function _cidrBanList() {
     if (_cidrBans.list && Date.now() - _cidrBans.at < 15000) return _cidrBans.list;
-    const rows = all(`SELECT * FROM bans WHERE ip_address LIKE '%/%' AND (expires_at IS NULL OR datetime(expires_at) > CURRENT_TIMESTAMP)`);
+    const rows = await all(`SELECT * FROM bans WHERE ip_address ILIKE '%/%' AND (expires_at IS NULL OR datetime(expires_at) > ov_now())`);
     const list = [];
     for (const r of rows) {
         const [addr, bitsStr] = String(r.ip_address).split('/');
@@ -4663,20 +2598,20 @@ function _cidrBanList() {
 function invalidateIpBanCache() { _cidrBans = { at: 0, list: [] }; }
 
 /** The active site-wide (or this stream's) ban row for an IP, or null. */
-function getIpBan(ip, streamId) {
+async function getIpBan(ip, streamId) {
     const norm = _normalizeBanIp(ip);
     if (!norm) return null;
-    const ban = get(`
+    const ban = await get(`
         SELECT * FROM bans
         WHERE ip_address IN (?, ?)
         AND (stream_id = ? OR stream_id IS NULL)
-        AND (expires_at IS NULL OR datetime(expires_at) > CURRENT_TIMESTAMP)
+        AND (expires_at IS NULL OR datetime(expires_at) > ov_now())
         LIMIT 1
     `, [String(ip), norm, streamId]);
     if (ban) return ban;
     const fam = _net.isIP(norm);
     if (!fam) return null;
-    for (const e of _cidrBanList()) {
+    for (const e of await _cidrBanList()) {
         if (e.fam !== fam) continue;
         if (e.row.stream_id !== null && e.row.stream_id !== undefined && e.row.stream_id !== streamId) continue;
         if (e.bl.check(norm, fam === 6 ? 'ipv6' : 'ipv4')) return e.row;
@@ -4684,39 +2619,40 @@ function getIpBan(ip, streamId) {
     return null;
 }
 
-function isIpBanned(ip, streamId) {
-    return !!getIpBan(ip, streamId);
+async function isIpBanned(ip, streamId) {
+    return !!await getIpBan(ip, streamId);
 }
 
 /**
  * Lift everything that bans a user: the account flag and every bans row in their name
  * (account rows and any IP / network rows attached to them). Returns the removed rows.
  */
-function forgiveBan(userId) {
+async function forgiveBan(userId) {
     // Site-level bans only. Bans a streamer placed on their own stream are theirs to lift, not the
     // site ban page's.
-    const rows = all('SELECT id, ip_address, stream_id, reason FROM bans WHERE user_id = ? AND stream_id IS NULL', [userId]);
-    run('UPDATE users SET is_banned = 0, ban_reason = NULL WHERE id = ?', [userId]);
-    run('DELETE FROM bans WHERE user_id = ? AND stream_id IS NULL', [userId]);
+    const rows = await all('SELECT id, ip_address, stream_id, reason FROM bans WHERE user_id = ? AND stream_id IS NULL', [userId]);
+    await run('UPDATE users SET is_banned = 0, ban_reason = NULL WHERE id = ?', [userId]);
+    await run('DELETE FROM bans WHERE user_id = ? AND stream_id IS NULL', [userId]);
     invalidateIpBanCache();
     return rows;
 }
 
 // ── Cleanup ──────────────────────────────────────────────────
 
-function close() {
+async function close() {
     if (db) {
-        // Cached statements belong to this connection — they must not outlive it.
+        // Cached statements belong to this handle — they must not outlive it.
         clearStatementCache();
-        db.close();
+        const d = db;
         db = null;
+        if (d !== globalThis.__ovLiveTestDb) await d.close();
     }
 }
 
 // ── Site Settings helpers ────────────────────────────────────
 
-function getSetting(key) {
-    const row = get('SELECT * FROM site_settings WHERE key = ?', [key]);
+async function getSetting(key) {
+    const row = await get('SELECT * FROM site_settings WHERE key = ?', [key]);
     if (!row) return null;
     switch (row.type) {
         case 'number': return Number(row.value);
@@ -4726,63 +2662,63 @@ function getSetting(key) {
     }
 }
 
-function getSettingRow(key) {
-    return get('SELECT * FROM site_settings WHERE key = ?', [key]);
+async function getSettingRow(key) {
+    return await get('SELECT * FROM site_settings WHERE key = ?', [key]);
 }
 
-function getAllSettings() {
-    return all('SELECT * FROM site_settings ORDER BY key');
+async function getAllSettings() {
+    return await all('SELECT * FROM site_settings ORDER BY key');
 }
 
-function setSetting(key, value) {
+async function setSetting(key, value) {
     const strVal = typeof value === 'object' ? JSON.stringify(value) : String(value);
-    const existing = get('SELECT key FROM site_settings WHERE key = ?', [key]);
+    const existing = await get('SELECT key FROM site_settings WHERE key = ?', [key]);
     if (existing) {
-        return run('UPDATE site_settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ?', [strVal, key]);
+        return await run('UPDATE site_settings SET value = ?, updated_at = ov_now() WHERE key = ?', [strVal, key]);
     }
-    return run('INSERT INTO site_settings (key, value) VALUES (?, ?)', [key, strVal]);
+    return await run('INSERT INTO site_settings (key, value) VALUES (?, ?)', [key, strVal]);
 }
 
-function deleteSetting(key) {
-    return run('DELETE FROM site_settings WHERE key = ?', [key]);
+async function deleteSetting(key) {
+    return await run('DELETE FROM site_settings WHERE key = ?', [key]);
 }
 
 // ── Internal job/cache state (app_state) ─────────────────────
 // Same KV shape as site_settings but for machine state (JSON blobs the AI jobs
 // persist across restarts). Never listed in the admin panel — admin-editable
 // config belongs in site_settings, job state belongs here.
-function getState(key) {
-    const row = get('SELECT value FROM app_state WHERE key = ?', [key]);
+async function getState(key) {
+    const row = await get('SELECT value FROM app_state WHERE key = ?', [key]);
     return row ? row.value : null;
 }
-function setState(key, value) {
+async function setState(key, value) {
     const strVal = typeof value === 'object' ? JSON.stringify(value) : String(value);
-    return run(`INSERT INTO app_state (key, value) VALUES (?, ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, [key, strVal]);
+    return await run(`INSERT INTO app_state (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = ov_now()`, [key, strVal]);
 }
-function deleteState(key) {
-    return run('DELETE FROM app_state WHERE key = ?', [key]);
+async function deleteState(key) {
+    return await run('DELETE FROM app_state WHERE key = ?', [key]);
 }
 
 // ── Verification Key helpers ─────────────────────────────────
 
-function createVerificationKey({ key, target_username, note, created_by }) {
-    return run(
-        `INSERT INTO verification_keys (key, target_username, note, created_by) VALUES (?, ?, ?, ?)`,
+async function createVerificationKey({ key, target_username, note, created_by }) {
+    return await run(
+        `INSERT INTO verification_keys (key, target_username, note, created_by) VALUES (?, ?, ?, ?) RETURNING id`,
         [key, target_username, note || '', created_by]
     );
 }
 
-function getVerificationKeyByKey(key) {
-    return get('SELECT * FROM verification_keys WHERE key = ?', [key]);
+async function getVerificationKeyByKey(key) {
+    return await get('SELECT * FROM verification_keys WHERE key = ?', [key]);
 }
 
-function getVerificationKeyByUsername(username) {
-    return get("SELECT * FROM verification_keys WHERE target_username = ? COLLATE NOCASE AND status = 'active'", [username]);
+async function getVerificationKeyByUsername(username) {
+    return await get("SELECT * FROM verification_keys WHERE lower(target_username) = lower(?) AND status = 'active'", [username]);
 }
 
-function getAllVerificationKeys() {
-    return all(`
+async function getAllVerificationKeys() {
+    return await all(`
         SELECT vk.*, u1.username as created_by_name, u2.username as used_by_name
         FROM verification_keys vk
         LEFT JOIN users u1 ON vk.created_by = u1.id
@@ -4791,19 +2727,19 @@ function getAllVerificationKeys() {
     `);
 }
 
-function redeemVerificationKey(key, userId) {
-    return run(
-        "UPDATE verification_keys SET status = 'used', used_by = ?, used_at = CURRENT_TIMESTAMP WHERE key = ? AND status = 'active'",
+async function redeemVerificationKey(key, userId) {
+    return await run(
+        "UPDATE verification_keys SET status = 'used', used_by = ?, used_at = ov_now() WHERE key = ? AND status = 'active'",
         [userId, key]
     );
 }
 
-function revokeVerificationKey(id) {
-    return run("UPDATE verification_keys SET status = 'revoked' WHERE id = ? AND status = 'active'", [id]);
+async function revokeVerificationKey(id) {
+    return await run("UPDATE verification_keys SET status = 'revoked' WHERE id = ? AND status = 'active'", [id]);
 }
 
-function isUsernameReserved(username) {
-    const vk = get("SELECT id FROM verification_keys WHERE target_username = ? COLLATE NOCASE AND status = 'active'", [username]);
+async function isUsernameReserved(username) {
+    const vk = await get("SELECT id FROM verification_keys WHERE lower(target_username) = lower(?) AND status = 'active'", [username]);
     return !!vk;
 }
 
@@ -4821,12 +2757,12 @@ const AI_CHATBOT_DEFAULTS = {
     vision_enabled: 0,
 };
 
-function getAiChatbotConfig(userId) {
-    const row = get('SELECT * FROM ai_chatbot_configs WHERE user_id = ?', [userId]);
+async function getAiChatbotConfig(userId) {
+    const row = await get('SELECT * FROM ai_chatbot_configs WHERE user_id = ?', [userId]);
     return row || { user_id: userId, ...AI_CHATBOT_DEFAULTS, last_validated_at: null };
 }
 
-function upsertAiChatbotConfig(userId, fields) {
+async function upsertAiChatbotConfig(userId, fields) {
     const allowed = {
         enabled: (v) => (v ? 1 : 0),
         base_url: (v) => String(v || '').trim().slice(0, 500) || 'https://api.openai.com/v1',
@@ -4840,7 +2776,7 @@ function upsertAiChatbotConfig(userId, fields) {
         vision_enabled: (v) => (v ? 1 : 0),
         last_validated_at: (v) => v,
     };
-    const existing = get('SELECT 1 FROM ai_chatbot_configs WHERE user_id = ?', [userId]);
+    const existing = await get('SELECT 1 FROM ai_chatbot_configs WHERE user_id = ?', [userId]);
     if (existing) {
         const sets = [];
         const params = [];
@@ -4848,16 +2784,16 @@ function upsertAiChatbotConfig(userId, fields) {
             if (fields[col] !== undefined) { sets.push(`${col} = ?`); params.push(coerce(fields[col])); }
         }
         if (sets.length) {
-            sets.push('updated_at = CURRENT_TIMESTAMP');
+            sets.push('updated_at = ov_now()');
             params.push(userId);
-            run(`UPDATE ai_chatbot_configs SET ${sets.join(', ')} WHERE user_id = ?`, params);
+            await run(`UPDATE ai_chatbot_configs SET ${sets.join(', ')} WHERE user_id = ?`, params);
         }
     } else {
         const merged = { ...AI_CHATBOT_DEFAULTS };
         for (const [col, coerce] of Object.entries(allowed)) {
             if (fields[col] !== undefined) merged[col] = coerce(fields[col]);
         }
-        run(
+        await run(
             `INSERT INTO ai_chatbot_configs
                 (user_id, enabled, base_url, api_token, model, transcribe_enabled, transcribe_model, num_bots, post_interval_seconds, persona, vision_enabled)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -4866,7 +2802,7 @@ function upsertAiChatbotConfig(userId, fields) {
              merged.post_interval_seconds, merged.persona, merged.vision_enabled ? 1 : 0]
         );
     }
-    return getAiChatbotConfig(userId);
+    return await getAiChatbotConfig(userId);
 }
 
 // ── AI Chat Viewers 2.0: config + roster ─────────────────────
@@ -4877,12 +2813,12 @@ const CHANNEL_AI_CONFIG_DEFAULTS = {
     settings_json: '{}',
 };
 
-function getChannelAiConfig(userId) {
-    const row = get('SELECT * FROM channel_ai_config WHERE user_id = ?', [userId]);
+async function getChannelAiConfig(userId) {
+    const row = await get('SELECT * FROM channel_ai_config WHERE user_id = ?', [userId]);
     return row || { user_id: userId, ...CHANNEL_AI_CONFIG_DEFAULTS };
 }
 
-function upsertChannelAiConfig(userId, fields) {
+async function upsertChannelAiConfig(userId, fields) {
     const allowed = {
         enabled: (v) => (v ? 1 : 0),
         num_ambient_bots: (v) => Math.min(12, Math.max(0, parseInt(v, 10) || 0)),
@@ -4899,7 +2835,7 @@ function upsertChannelAiConfig(userId, fields) {
         // Validated/clamped by ai/viewers/settings.js before it gets here; just bound the size.
         settings_json: (v) => { const t = typeof v === 'string' ? v : JSON.stringify(v || {}); return t.length > 40000 ? '{}' : t; },
     };
-    const existing = get('SELECT 1 FROM channel_ai_config WHERE user_id = ?', [userId]);
+    const existing = await get('SELECT 1 FROM channel_ai_config WHERE user_id = ?', [userId]);
     if (existing) {
         const sets = [];
         const params = [];
@@ -4907,16 +2843,16 @@ function upsertChannelAiConfig(userId, fields) {
             if (fields[col] !== undefined) { sets.push(`${col} = ?`); params.push(coerce(fields[col])); }
         }
         if (sets.length) {
-            sets.push('updated_at = CURRENT_TIMESTAMP');
+            sets.push('updated_at = ov_now()');
             params.push(userId);
-            run(`UPDATE channel_ai_config SET ${sets.join(', ')} WHERE user_id = ?`, params);
+            await run(`UPDATE channel_ai_config SET ${sets.join(', ')} WHERE user_id = ?`, params);
         }
     } else {
         const merged = { ...CHANNEL_AI_CONFIG_DEFAULTS };
         for (const [col, coerce] of Object.entries(allowed)) {
             if (fields[col] !== undefined) merged[col] = coerce(fields[col]);
         }
-        run(
+        await run(
             `INSERT INTO channel_ai_config
                 (user_id, enabled, num_ambient_bots, pacing_seconds, persona, transcribe_enabled, vision_enabled,
                  use_shared_key, daily_budget_cents, byo_key, byo_base_url, byo_model)
@@ -4926,86 +2862,86 @@ function upsertChannelAiConfig(userId, fields) {
              merged.daily_budget_cents, merged.byo_key, merged.byo_base_url, merged.byo_model]
         );
     }
-    return getChannelAiConfig(userId);
+    return await getChannelAiConfig(userId);
 }
 
 // Persistent per-channel bot roster ("brains").
-function createChannelAiBot({ channel_user_id, username, display_name, avatar_color, source = 'ambient',
+async function createChannelAiBot({ channel_user_id, username, display_name, avatar_color, source = 'ambient',
                              cloned_from_kind = null, cloned_from_ref = null, persona_json = {}, brain_json = {} }) {
-    const info = run(
+    const info = await run(
         `INSERT INTO channel_ai_bots
             (channel_user_id, username, display_name, avatar_color, source, cloned_from_kind, cloned_from_ref, persona_json, brain_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [channel_user_id, username, display_name || username, avatar_color || '#8a8aff', source,
          cloned_from_kind, cloned_from_ref,
          typeof persona_json === 'string' ? persona_json : JSON.stringify(persona_json || {}),
          typeof brain_json === 'string' ? brain_json : JSON.stringify(brain_json || {})]
     );
-    return getChannelAiBot(info.lastInsertRowid);
+    return await getChannelAiBot(info.lastInsertRowid);
 }
 
-function getChannelAiBot(id) {
-    return get('SELECT * FROM channel_ai_bots WHERE id = ?', [id]);
+async function getChannelAiBot(id) {
+    return await get('SELECT * FROM channel_ai_bots WHERE id = ?', [id]);
 }
 
 // ── AI viewers v3: threads + activity log ───────────────────
-function createAiViewerThread({ channel_user_id, stream_id = null, kind, participants, topic = null, awaiting = null }) {
-    const r = run('INSERT INTO ai_viewer_threads (channel_user_id, stream_id, kind, participants_json, topic, awaiting) VALUES (?, ?, ?, ?, ?, ?)',
+async function createAiViewerThread({ channel_user_id, stream_id = null, kind, participants, topic = null, awaiting = null }) {
+    const r = await run('INSERT INTO ai_viewer_threads (channel_user_id, stream_id, kind, participants_json, topic, awaiting) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
         [channel_user_id, stream_id, kind, JSON.stringify(participants || []), topic, awaiting]);
-    return get('SELECT * FROM ai_viewer_threads WHERE id = ?', [r.lastInsertRowid]);
+    return await get('SELECT * FROM ai_viewer_threads WHERE id = ?', [r.lastInsertRowid]);
 }
-function getOpenAiViewerThreads(channelUserId, limit = 6) {
-    return all("SELECT * FROM ai_viewer_threads WHERE channel_user_id = ? AND state = 'open' ORDER BY updated_at DESC LIMIT ?", [channelUserId, limit]);
+async function getOpenAiViewerThreads(channelUserId, limit = 6) {
+    return await all("SELECT * FROM ai_viewer_threads WHERE channel_user_id = ? AND state = 'open' ORDER BY updated_at DESC LIMIT ?", [channelUserId, limit]);
 }
-function getRecentClosedAiViewerThreads(channelUserId, limit = 3) {
-    return all("SELECT * FROM ai_viewer_threads WHERE channel_user_id = ? AND state = 'closed' AND topic IS NOT NULL ORDER BY updated_at DESC LIMIT ?", [channelUserId, limit]);
+async function getRecentClosedAiViewerThreads(channelUserId, limit = 3) {
+    return await all("SELECT * FROM ai_viewer_threads WHERE channel_user_id = ? AND state = 'closed' AND topic IS NOT NULL ORDER BY updated_at DESC LIMIT ?", [channelUserId, limit]);
 }
-function touchAiViewerThread(id, { line, by, awaiting = null, topic = undefined }) {
-    const sets = ['turns = turns + 1', 'last_line = ?', 'last_line_by = ?', 'last_line_at = CURRENT_TIMESTAMP', 'awaiting = ?', 'updated_at = CURRENT_TIMESTAMP'];
+async function touchAiViewerThread(id, { line, by, awaiting = null, topic = undefined }) {
+    const sets = ['turns = turns + 1', 'last_line = ?', 'last_line_by = ?', 'last_line_at = ov_now()', 'awaiting = ?', 'updated_at = ov_now()'];
     const params = [String(line || '').slice(0, 300), by || null, awaiting];
     if (topic !== undefined) { sets.push('topic = ?'); params.push(topic); }
     params.push(id);
-    return run(`UPDATE ai_viewer_threads SET ${sets.join(', ')} WHERE id = ?`, params);
+    return await run(`UPDATE ai_viewer_threads SET ${sets.join(', ')} WHERE id = ?`, params);
 }
-function closeAiViewerThread(id) { return run("UPDATE ai_viewer_threads SET state = 'closed', awaiting = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [id]); }
-function closeStaleAiViewerThreads(channelUserId, idleSec, maxTurns) {
-    return run(`UPDATE ai_viewer_threads SET state = 'closed', awaiting = NULL, updated_at = CURRENT_TIMESTAMP
-        WHERE channel_user_id = ? AND state = 'open' AND (updated_at < datetime('now', ?) OR turns >= ?)`, [channelUserId, `-${Math.max(30, idleSec)} seconds`, maxTurns]).changes;
+async function closeAiViewerThread(id) { return await run("UPDATE ai_viewer_threads SET state = 'closed', awaiting = NULL, updated_at = ov_now() WHERE id = ?", [id]); }
+async function closeStaleAiViewerThreads(channelUserId, idleSec, maxTurns) {
+    return (await run(`UPDATE ai_viewer_threads SET state = 'closed', awaiting = NULL, updated_at = ov_now()
+        WHERE channel_user_id = ? AND state = 'open' AND (updated_at < datetime('now', ?) OR turns >= ?)`, [channelUserId, `-${Math.max(30, idleSec)} seconds`, maxTurns])).changes;
 }
-function closeAllAiViewerThreads(channelUserId) { return run("UPDATE ai_viewer_threads SET state = 'closed', awaiting = NULL, updated_at = CURRENT_TIMESTAMP WHERE channel_user_id = ? AND state = 'open'", [channelUserId]).changes; }
-function addAiViewerLog(row) {
-    return run(`INSERT INTO ai_viewer_log (channel_user_id, stream_id, event, bot_username, target, thread_id, chat_message_id, text, reason, tokens_in, tokens_cached, tokens_out, cost_usd, model)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+async function closeAllAiViewerThreads(channelUserId) { return (await run("UPDATE ai_viewer_threads SET state = 'closed', awaiting = NULL, updated_at = ov_now() WHERE channel_user_id = ? AND state = 'open'", [channelUserId])).changes; }
+async function addAiViewerLog(row) {
+    return await run(`INSERT INTO ai_viewer_log (channel_user_id, stream_id, event, bot_username, target, thread_id, chat_message_id, text, reason, tokens_in, tokens_cached, tokens_out, cost_usd, model)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [row.channel_user_id, row.stream_id || null, row.event, row.bot_username || null, row.target || null, row.thread_id || null, row.chat_message_id || null,
          row.text == null ? null : String(row.text).slice(0, 600), row.reason == null ? null : String(row.reason).slice(0, 300),
          row.tokens_in || null, row.tokens_cached || null, row.tokens_out || null, row.cost_usd || null, row.model || null]);
 }
-function getAiViewerLog(channelUserId, { afterId = 0, limit = 50, streamId = null } = {}) {
+async function getAiViewerLog(channelUserId, { afterId = 0, limit = 50, streamId = null } = {}) {
     let sql = 'SELECT * FROM ai_viewer_log WHERE channel_user_id = ?';
     const params = [channelUserId];
     if (afterId) { sql += ' AND id > ?'; params.push(afterId); }
     if (streamId) { sql += ' AND stream_id = ?'; params.push(streamId); }
     sql += ' ORDER BY id DESC LIMIT ?'; params.push(Math.max(1, Math.min(200, limit)));
-    return all(sql, params).reverse();
+    return (await all(sql, params)).reverse();
 }
-function pruneAiViewerLog(days = 7) { return run("DELETE FROM ai_viewer_log WHERE created_at < datetime('now', ?)", [`-${days} days`]).changes; }
-function getAiViewerLogStats(channelUserId, sinceMin = 60) {
-    return get(`SELECT SUM(CASE WHEN event = 'line' THEN 1 ELSE 0 END) AS lines, SUM(CASE WHEN event = 'tick' THEN 1 ELSE 0 END) AS ticks,
-        SUM(CASE WHEN event = 'skip' THEN 1 ELSE 0 END) AS skips, COALESCE(SUM(cost_usd),0) AS cost_usd, COALESCE(SUM(tokens_in),0) AS tokens_in, COALESCE(SUM(tokens_cached),0) AS tokens_cached
+async function pruneAiViewerLog(days = 7) { return (await run("DELETE FROM ai_viewer_log WHERE created_at < datetime('now', ?)", [`-${days} days`])).changes; }
+async function getAiViewerLogStats(channelUserId, sinceMin = 60) {
+    return await get(`SELECT SUM(CASE WHEN event = 'line' THEN 1 ELSE 0 END)::float8 AS lines, SUM(CASE WHEN event = 'tick' THEN 1 ELSE 0 END)::float8 AS ticks,
+        SUM(CASE WHEN event = 'skip' THEN 1 ELSE 0 END)::float8 AS skips, COALESCE(SUM(cost_usd)::float8,0) AS cost_usd, COALESCE(SUM(tokens_in)::float8,0) AS tokens_in, COALESCE(SUM(tokens_cached)::float8,0) AS tokens_cached
         FROM ai_viewer_log WHERE channel_user_id = ? AND created_at > datetime('now', ?)`, [channelUserId, `-${sinceMin} minutes`]);
 }
-function getChannelAiBots(channelUserId, { activeOnly = false } = {}) {
+async function getChannelAiBots(channelUserId, { activeOnly = false } = {}) {
     let sql = 'SELECT * FROM channel_ai_bots WHERE channel_user_id = ?';
     if (activeOnly) sql += ' AND is_active = 1';
     sql += ' ORDER BY last_active_at DESC, created_at ASC';
-    return all(sql, [channelUserId]);
+    return await all(sql, [channelUserId]);
 }
 
-function getChannelAiBotByUsername(channelUserId, username) {
-    return get('SELECT * FROM channel_ai_bots WHERE channel_user_id = ? AND username = ?', [channelUserId, username]);
+async function getChannelAiBotByUsername(channelUserId, username) {
+    return await get('SELECT * FROM channel_ai_bots WHERE channel_user_id = ? AND username = ?', [channelUserId, username]);
 }
 
-function updateChannelAiBot(id, fields) {
+async function updateChannelAiBot(id, fields) {
     const allowed = {
         display_name: (v) => String(v || '').slice(0, 60),
         avatar_color: (v) => String(v || '').slice(0, 20),
@@ -5020,70 +2956,70 @@ function updateChannelAiBot(id, fields) {
         if (fields[col] !== undefined) { sets.push(`${col} = ?`); params.push(coerce(fields[col])); }
     }
     if (sets.length) {
-        sets.push('updated_at = CURRENT_TIMESTAMP');
+        sets.push('updated_at = ov_now()');
         params.push(id);
-        run(`UPDATE channel_ai_bots SET ${sets.join(', ')} WHERE id = ?`, params);
+        await run(`UPDATE channel_ai_bots SET ${sets.join(', ')} WHERE id = ?`, params);
     }
-    return getChannelAiBot(id);
+    return await getChannelAiBot(id);
 }
 
-function touchChannelAiBot(id) {
-    return run('UPDATE channel_ai_bots SET msg_count = msg_count + 1, last_active_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
+async function touchChannelAiBot(id) {
+    return await run('UPDATE channel_ai_bots SET msg_count = msg_count + 1, last_active_at = ov_now() WHERE id = ?', [id]);
 }
 
-function deleteChannelAiBot(id) {
-    return run('DELETE FROM channel_ai_bots WHERE id = ?', [id]);
+async function deleteChannelAiBot(id) {
+    return await run('DELETE FROM channel_ai_bots WHERE id = ?', [id]);
 }
 
 // ── OpenCoins helpers ───────────────────────────────────────
 
-function addOpenCoins(userId, amount) {
-    return run(`UPDATE users SET openvibe_coins_balance = openvibe_coins_balance + ? WHERE id = ?`,
+async function addOpenCoins(userId, amount) {
+    return await run(`UPDATE users SET openvibe_coins_balance = openvibe_coins_balance + ? WHERE id = ?`,
         [amount, userId]);
 }
 
-function deductOpenCoins(userId, amount) {
-    const result = run(
+async function deductOpenCoins(userId, amount) {
+    const result = await run(
         `UPDATE users SET openvibe_coins_balance = openvibe_coins_balance - ? WHERE id = ? AND openvibe_coins_balance >= ?`,
         [amount, userId, amount]
     );
     return result.changes > 0;
 }
 
-function createCoinTransaction({ user_id, stream_id, amount, type, reward_id, message }) {
-    return run(
+async function createCoinTransaction({ user_id, stream_id, amount, type, reward_id, message }) {
+    return await run(
         `INSERT INTO coin_transactions (user_id, stream_id, amount, type, reward_id, message)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
         [user_id, stream_id || null, amount, type, reward_id || null, message || null]
     );
 }
 
-function getCoinTransactions(userId, limit = 50) {
-    return all(`SELECT * FROM coin_transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`,
+async function getCoinTransactions(userId, limit = 50) {
+    return await all(`SELECT * FROM coin_transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`,
         [userId, limit]);
 }
 
 // ── Coin Rewards helpers ─────────────────────────────────────
 
-function createCoinReward({ streamer_id, title, description, cost, icon, color, cooldown_seconds, max_per_stream, requires_input, is_global, sort_order }) {
-    return run(
+async function createCoinReward({ streamer_id, title, description, cost, icon, color, cooldown_seconds, max_per_stream, requires_input, is_global, sort_order }) {
+    return await run(
         `INSERT INTO coin_rewards (streamer_id, title, description, cost, icon, color, cooldown_seconds, max_per_stream, requires_input, is_global, sort_order)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [streamer_id, title, description || '', cost || 100, icon || 'fa-star', color || '#8b5cf6',
          cooldown_seconds || 0, max_per_stream || 0, requires_input ? 1 : 0, is_global ? 1 : 0, sort_order || 0]
     );
 }
 
-function getCoinRewardsByStreamer(streamerId) {
-    return all('SELECT * FROM coin_rewards WHERE streamer_id = ? AND is_enabled = 1 ORDER BY sort_order, cost',
+async function getCoinRewardsByStreamer(streamerId) {
+    return await all('SELECT * FROM coin_rewards WHERE streamer_id = ? AND is_enabled = 1 ORDER BY sort_order, cost',
         [streamerId]);
 }
 
-function getCoinRewardById(id) {
-    return get('SELECT * FROM coin_rewards WHERE id = ?', [id]);
+async function getCoinRewardById(id) {
+    return await get('SELECT * FROM coin_rewards WHERE id = ?', [id]);
 }
 
-function updateCoinReward(id, fields) {
+async function updateCoinReward(id, fields) {
     const sets = [];
     const vals = [];
     for (const [k, v] of Object.entries(fields)) {
@@ -5091,25 +3027,25 @@ function updateCoinReward(id, fields) {
         vals.push(v);
     }
     vals.push(id);
-    return run(`UPDATE coin_rewards SET ${sets.join(', ')} WHERE id = ?`, vals);
+    return await run(`UPDATE coin_rewards SET ${sets.join(', ')} WHERE id = ?`, vals);
 }
 
-function deleteCoinReward(id) {
-    return run('DELETE FROM coin_rewards WHERE id = ?', [id]);
+async function deleteCoinReward(id) {
+    return await run('DELETE FROM coin_rewards WHERE id = ?', [id]);
 }
 
 // ── Coin Redemptions helpers ─────────────────────────────────
 
-function createCoinRedemption({ reward_id, user_id, stream_id, user_input }) {
-    return run(
+async function createCoinRedemption({ reward_id, user_id, stream_id, user_input }) {
+    return await run(
         `INSERT INTO coin_redemptions (reward_id, user_id, stream_id, user_input)
-         VALUES (?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?) RETURNING id`,
         [reward_id, user_id, stream_id || null, user_input || null]
     );
 }
 
-function getPendingRedemptions(streamerId) {
-    return all(`
+async function getPendingRedemptions(streamerId) {
+    return await all(`
         SELECT r.*, cr.title as reward_title, cr.cost, cr.icon, cr.color,
                u.username, u.display_name, u.avatar_url
         FROM coin_redemptions r
@@ -5120,49 +3056,49 @@ function getPendingRedemptions(streamerId) {
     `, [streamerId]);
 }
 
-function resolveRedemption(id, status) {
-    return run(`UPDATE coin_redemptions SET status = ?, resolved_at = CURRENT_TIMESTAMP WHERE id = ?`,
+async function resolveRedemption(id, status) {
+    return await run(`UPDATE coin_redemptions SET status = ?, resolved_at = ov_now() WHERE id = ?`,
         [status, id]);
 }
 
 // ── Watch Time helpers ───────────────────────────────────────
 
-function upsertWatchTime(userId, streamId) {
+async function upsertWatchTime(userId, streamId) {
     // Create or update watch time record
-    const existing = get('SELECT * FROM watch_time WHERE user_id = ? AND stream_id = ?',
+    const existing = await get('SELECT * FROM watch_time WHERE user_id = ? AND stream_id = ?',
         [userId, streamId]);
     if (existing) {
-        return run(
-            `UPDATE watch_time SET minutes_watched = minutes_watched + 1, last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?`,
+        return await run(
+            `UPDATE watch_time SET minutes_watched = minutes_watched + 1, last_heartbeat = ov_now() WHERE id = ?`,
             [existing.id]
         );
     }
-    return run(
-        'INSERT INTO watch_time (user_id, stream_id, minutes_watched) VALUES (?, ?, 1)',
+    return await run(
+        'INSERT INTO watch_time (user_id, stream_id, minutes_watched) VALUES (?, ?, 1) RETURNING id',
         [userId, streamId]
     );
 }
 
-function getWatchTime(userId, streamId) {
-    return get('SELECT * FROM watch_time WHERE user_id = ? AND stream_id = ?',
+async function getWatchTime(userId, streamId) {
+    return await get('SELECT * FROM watch_time WHERE user_id = ? AND stream_id = ?',
         [userId, streamId]);
 }
 
-function getTotalWatchTime(userId) {
-    const row = get('SELECT SUM(minutes_watched) as total FROM watch_time WHERE user_id = ?', [userId]);
+async function getTotalWatchTime(userId) {
+    const row = await get('SELECT SUM(minutes_watched)::float8 as total FROM watch_time WHERE user_id = ?', [userId]);
     return row ? (row.total || 0) : 0;
 }
 
 // ── Media Request helpers ───────────────────────────────────
 
-function getMediaRequestSettingsByUserId(userId) {
-    return get('SELECT * FROM media_request_settings WHERE user_id = ?', [userId]);
+async function getMediaRequestSettingsByUserId(userId) {
+    return await get('SELECT * FROM media_request_settings WHERE user_id = ?', [userId]);
 }
 
-function upsertMediaRequestSettings(userId, fields = {}) {
-    const existing = getMediaRequestSettingsByUserId(userId);
+async function upsertMediaRequestSettings(userId, fields = {}) {
+    const existing = await getMediaRequestSettingsByUserId(userId);
     if (!existing) {
-        run(`INSERT INTO media_request_settings (
+        await run(`INSERT INTO media_request_settings (
             user_id, enabled, request_cost, max_per_user, max_duration_seconds,
             allow_youtube, allow_vimeo, allow_direct_media, auto_advance,
             cost_mode, cost_per_minute, allow_live, download_mode, currency
@@ -5189,19 +3125,19 @@ function upsertMediaRequestSettings(userId, fields = {}) {
             sets.push(`${k} = ?`);
             vals.push(v);
         }
-        sets.push('updated_at = CURRENT_TIMESTAMP');
+        sets.push('updated_at = ov_now()');
         vals.push(userId);
-        run(`UPDATE media_request_settings SET ${sets.join(', ')} WHERE user_id = ?`, vals);
+        await run(`UPDATE media_request_settings SET ${sets.join(', ')} WHERE user_id = ?`, vals);
     }
-    return getMediaRequestSettingsByUserId(userId);
+    return await getMediaRequestSettingsByUserId(userId);
 }
 
-function createMediaRequest({ streamer_id, stream_id, user_id, username, input, canonical_url, embed_url, provider, title, thumbnail_url, duration_seconds, cost, queue_position, currency, status, charge_state }) {
-    return run(
+async function createMediaRequest({ streamer_id, stream_id, user_id, username, input, canonical_url, embed_url, provider, title, thumbnail_url, duration_seconds, cost, queue_position, currency, status, charge_state }) {
+    return await run(
         `INSERT INTO media_requests (
             streamer_id, stream_id, user_id, username, input, canonical_url, embed_url,
             provider, title, thumbnail_url, duration_seconds, cost, queue_position, currency, status, charge_state
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [
             streamer_id,
             stream_id || null,
@@ -5224,49 +3160,49 @@ function createMediaRequest({ streamer_id, stream_id, user_id, username, input, 
 }
 
 /** Drop a paid request whose charge was refused (nothing was taken); only while it is still 'charging'. */
-function removeUnchargedMediaRequest(id) {
-    return run("DELETE FROM media_requests WHERE id = ? AND charge_state = 'charging'", [id]);
+async function removeUnchargedMediaRequest(id) {
+    return await run("DELETE FROM media_requests WHERE id = ? AND charge_state = 'charging'", [id]);
 }
 
-function getMediaRequestById(id) {
-    return get('SELECT * FROM media_requests WHERE id = ?', [id]);
+async function getMediaRequestById(id) {
+    return await get('SELECT * FROM media_requests WHERE id = ?', [id]);
 }
 
-function getMediaRequestByStreamerAndId(streamerId, id) {
-    return get('SELECT * FROM media_requests WHERE streamer_id = ? AND id = ?', [streamerId, id]);
+async function getMediaRequestByStreamerAndId(streamerId, id) {
+    return await get('SELECT * FROM media_requests WHERE streamer_id = ? AND id = ?', [streamerId, id]);
 }
 
-function getActiveMediaRequestByStreamer(streamerId) {
-    return get(`SELECT * FROM media_requests WHERE streamer_id = ? AND status = 'playing' ORDER BY started_at DESC, id DESC LIMIT 1`, [streamerId]);
+async function getActiveMediaRequestByStreamer(streamerId) {
+    return await get(`SELECT * FROM media_requests WHERE streamer_id = ? AND status = 'playing' ORDER BY started_at DESC, id DESC LIMIT 1`, [streamerId]);
 }
 
-function getNextPendingMediaRequest(streamerId) {
-    return get(`SELECT * FROM media_requests WHERE streamer_id = ? AND status = 'pending' ORDER BY queue_position ASC, requested_at ASC, id ASC LIMIT 1`, [streamerId]);
+async function getNextPendingMediaRequest(streamerId) {
+    return await get(`SELECT * FROM media_requests WHERE streamer_id = ? AND status = 'pending' ORDER BY queue_position ASC, requested_at ASC, id ASC LIMIT 1`, [streamerId]);
 }
 
-function getPendingMediaRequestsByStreamer(streamerId, limit = 50) {
-    return all(`SELECT * FROM media_requests WHERE streamer_id = ? AND status = 'pending' ORDER BY queue_position ASC, requested_at ASC, id ASC LIMIT ?`, [streamerId, limit]);
+async function getPendingMediaRequestsByStreamer(streamerId, limit = 50) {
+    return await all(`SELECT * FROM media_requests WHERE streamer_id = ? AND status = 'pending' ORDER BY queue_position ASC, requested_at ASC, id ASC LIMIT ?`, [streamerId, limit]);
 }
 
-function getRecentMediaRequestsByStreamer(streamerId, limit = 15) {
-    return all(`SELECT * FROM media_requests WHERE streamer_id = ? AND status IN ('played', 'skipped', 'removed', 'failed') AND charge_state IS NOT 'charging' ORDER BY COALESCE(ended_at, requested_at) DESC, id DESC LIMIT ?`, [streamerId, limit]);
+async function getRecentMediaRequestsByStreamer(streamerId, limit = 15) {
+    return await all(`SELECT * FROM media_requests WHERE streamer_id = ? AND status IN ('played', 'skipped', 'removed', 'failed') AND charge_state IS DISTINCT FROM 'charging' ORDER BY COALESCE(ended_at, requested_at) DESC, id DESC LIMIT ?`, [streamerId, limit]);
 }
 
-function countPendingMediaRequestsForUser(streamerId, userId) {
-    const row = get(`SELECT COUNT(*) AS c FROM media_requests WHERE streamer_id = ? AND user_id = ? AND status IN ('pending', 'playing')`, [streamerId, userId]);
+async function countPendingMediaRequestsForUser(streamerId, userId) {
+    const row = await get(`SELECT COUNT(*) AS c FROM media_requests WHERE streamer_id = ? AND user_id = ? AND status IN ('pending', 'playing')`, [streamerId, userId]);
     return row?.c || 0;
 }
 
-function getMediaRequestMaxQueuePosition(streamerId) {
-    const row = get(`SELECT MAX(queue_position) AS max_pos FROM media_requests WHERE streamer_id = ? AND status = 'pending'`, [streamerId]);
+async function getMediaRequestMaxQueuePosition(streamerId) {
+    const row = await get(`SELECT MAX(queue_position) AS max_pos FROM media_requests WHERE streamer_id = ? AND status = 'pending'`, [streamerId]);
     return row?.max_pos || 0;
 }
 
-function findActiveMediaRequestByCanonicalUrl(streamerId, canonicalUrl) {
-    return get(`SELECT * FROM media_requests WHERE streamer_id = ? AND canonical_url = ? AND status IN ('pending', 'playing') ORDER BY id DESC LIMIT 1`, [streamerId, canonicalUrl]);
+async function findActiveMediaRequestByCanonicalUrl(streamerId, canonicalUrl) {
+    return await get(`SELECT * FROM media_requests WHERE streamer_id = ? AND canonical_url = ? AND status IN ('pending', 'playing') ORDER BY id DESC LIMIT 1`, [streamerId, canonicalUrl]);
 }
 
-function updateMediaRequest(id, fields = {}) {
+async function updateMediaRequest(id, fields = {}) {
     const sets = [];
     const vals = [];
     for (const [k, v] of Object.entries(fields)) {
@@ -5275,17 +3211,14 @@ function updateMediaRequest(id, fields = {}) {
     }
     if (!sets.length) return null;
     vals.push(id);
-    return run(`UPDATE media_requests SET ${sets.join(', ')} WHERE id = ?`, vals);
+    return await run(`UPDATE media_requests SET ${sets.join(', ')} WHERE id = ?`, vals);
 }
 
-function renormalizePendingMediaRequestPositions(streamerId) {
-    const rows = all(`SELECT id FROM media_requests WHERE streamer_id = ? AND status = 'pending' ORDER BY queue_position ASC, requested_at ASC, id ASC`, [streamerId]);
-    const tx = getDb().transaction((list) => {
-        list.forEach((row, idx) => {
-            run('UPDATE media_requests SET queue_position = ? WHERE id = ?', [idx + 1, row.id]);
-        });
+async function renormalizePendingMediaRequestPositions(streamerId) {
+    const rows = await all(`SELECT id FROM media_requests WHERE streamer_id = ? AND status = 'pending' ORDER BY queue_position ASC, requested_at ASC, id ASC`, [streamerId]);
+    await getDb().tx(async () => {
+        for (const [idx, row] of rows.entries()) await run('UPDATE media_requests SET queue_position = ? WHERE id = ?', [idx + 1, row.id]);
     });
-    tx(rows);
 }
 
 // ── Comments ─────────────────────────────────────────────────
@@ -5295,8 +3228,8 @@ function renormalizePendingMediaRequestPositions(streamerId) {
 
 // ── Channel lookup by ID ─────────────────────────────────────
 
-function getChannelById(id) {
-    return get('SELECT * FROM channels WHERE id = ?', [id]);
+async function getChannelById(id) {
+    return await get('SELECT * FROM channels WHERE id = ?', [id]);
 }
 
 // ── Pastes ───────────────────────────────────────────────────
@@ -5308,10 +3241,10 @@ function getChannelById(id) {
  * Game has been migrated to openvibe.games — always returns 0 now.
  * Kept for paste upload limit compatibility.
  */
-function getUserTotalGameLevel(userId) {
+async function getUserTotalGameLevel(userId) {
     if (!userId) return 0;
     try {
-        const p = get('SELECT mining_xp, fishing_xp, woodcut_xp, farming_xp, combat_xp, crafting_xp, smithing_xp, agility_xp FROM game_players WHERE user_id = ?', [userId]);
+        const p = await get('SELECT mining_xp, fishing_xp, woodcut_xp, farming_xp, combat_xp, crafting_xp, smithing_xp, agility_xp FROM game_players WHERE user_id = ?', [userId]);
         if (!p) return 0;
         const xpToLevel = (xp) => Math.floor(Math.sqrt((xp || 0) / 25)) + 1;
         return xpToLevel(p.mining_xp) + xpToLevel(p.fishing_xp) + xpToLevel(p.woodcut_xp) +
@@ -5328,11 +3261,11 @@ function getUserTotalGameLevel(userId) {
  * creates a game_players row (the old game engine's getPlayer() inserted one for every profile
  * viewed). OpenVibe.Games owns the game now and imports these rows from here.
  */
-function getLegacyGameProfile(userId) {
+async function getLegacyGameProfile(userId) {
     if (!userId) return null;
     let p;
     try {
-        p = get('SELECT * FROM game_players WHERE user_id = ?', [userId]);
+        p = await get('SELECT * FROM game_players WHERE user_id = ?', [userId]);
     } catch {
         return null; // no game_players table (a fresh install)
     }
@@ -5357,20 +3290,20 @@ function getLegacyGameProfile(userId) {
  * the next sequential number. Survives server restarts.
  */
 /** When this address was first given an anon number (null for rows from before that was recorded). */
-function getAnonFirstSeen(ip) {
-    try { return get('SELECT created_at FROM anon_ip_mappings WHERE ip = ?', [ip])?.created_at || null; } catch { return null; }
+async function getAnonFirstSeen(ip) {
+    try { return (await get('SELECT created_at FROM anon_ip_mappings WHERE ip = ?', [ip]))?.created_at || null; } catch { return null; }
 }
 
-function getOrCreateAnonNum(ip) {
-    const existing = get('SELECT anon_num FROM anon_ip_mappings WHERE ip = ?', [ip]);
+async function getOrCreateAnonNum(ip) {
+    const existing = await get('SELECT anon_num FROM anon_ip_mappings WHERE ip = ?', [ip]);
     if (existing) return existing.anon_num;
-    const max = get('SELECT MAX(anon_num) as m FROM anon_ip_mappings');
+    const max = await get('SELECT MAX(anon_num) as m FROM anon_ip_mappings');
     const nextNum = (max?.m || 0) + 1;
     try {
-        run('INSERT INTO anon_ip_mappings (ip, anon_num, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)', [ip, nextNum]);
+        await run('INSERT INTO anon_ip_mappings (ip, anon_num, created_at) VALUES (?, ?, ov_now())', [ip, nextNum]);
     } catch (e) {
         // Race condition: another connection inserted first — re-read
-        const retry = get('SELECT anon_num FROM anon_ip_mappings WHERE ip = ?', [ip]);
+        const retry = await get('SELECT anon_num FROM anon_ip_mappings WHERE ip = ?', [ip]);
         if (retry) return retry.anon_num;
         throw e;
     }
@@ -5381,8 +3314,8 @@ function getOrCreateAnonNum(ip) {
  * Load all existing anon mappings (for in-memory cache warmup).
  * @returns {{ maxNum: number, mappings: Map<string, number> }}
  */
-function loadAnonMappings() {
-    const rows = all('SELECT ip, anon_num FROM anon_ip_mappings ORDER BY anon_num');
+async function loadAnonMappings() {
+    const rows = await all('SELECT ip, anon_num FROM anon_ip_mappings ORDER BY anon_num');
     const mappings = new Map();
     let maxNum = 0;
     for (const row of rows) {
@@ -5397,16 +3330,16 @@ function loadAnonMappings() {
 /**
  * Check if an IP is approved for a channel.
  */
-function isIpApproved(channelId, ip) {
-    return !!get('SELECT 1 FROM approved_ips WHERE channel_id = ? AND ip_address = ?', [channelId, ip]);
+async function isIpApproved(channelId, ip) {
+    return !!await get('SELECT 1 FROM approved_ips WHERE channel_id = ? AND ip_address = ?', [channelId, ip]);
 }
 
 /**
  * Auto-approve an IP for a channel (from existing chatter).
  */
-function approveIp(channelId, ip, approvedBy = null, source = 'auto') {
-    return run(
-        'INSERT OR IGNORE INTO approved_ips (channel_id, ip_address, approved_by, source) VALUES (?, ?, ?, ?)',
+async function approveIp(channelId, ip, approvedBy = null, source = 'auto') {
+    return await run(
+        'INSERT INTO approved_ips (channel_id, ip_address, approved_by, source) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id',
         [channelId, ip, approvedBy, source]
     );
 }
@@ -5414,15 +3347,15 @@ function approveIp(channelId, ip, approvedBy = null, source = 'auto') {
 /**
  * Remove an IP approval.
  */
-function revokeIpApproval(channelId, ip) {
-    return run('DELETE FROM approved_ips WHERE channel_id = ? AND ip_address = ?', [channelId, ip]);
+async function revokeIpApproval(channelId, ip) {
+    return await run('DELETE FROM approved_ips WHERE channel_id = ? AND ip_address = ?', [channelId, ip]);
 }
 
 /**
  * Get all approved IPs for a channel.
  */
-function getApprovedIps(channelId, { limit = 100, offset = 0 } = {}) {
-    return all(
+async function getApprovedIps(channelId, { limit = 100, offset = 0 } = {}) {
+    return await all(
         `SELECT ai.*, u.username as approved_by_username
          FROM approved_ips ai LEFT JOIN users u ON ai.approved_by = u.id
          WHERE ai.channel_id = ? ORDER BY ai.created_at DESC LIMIT ? OFFSET ?`,
@@ -5435,20 +3368,20 @@ function getApprovedIps(channelId, { limit = 100, offset = 0 } = {}) {
 /**
  * Log an IP association. Deduplicates within 10 minutes for the same user+ip+action.
  */
-function logIp({ userId, anonId, ip, action = 'chat', geo, userAgent }) {
+async function logIp({ userId, anonId, ip, action = 'chat', geo, userAgent }) {
     if (!ip || ip === 'unknown') return;
     // Deduplicate: skip if same user+ip+action within the last 10 minutes
     const dedupKey = userId
         ? `user_id = ? AND ip_address = ? AND action = ?`
         : `anon_id = ? AND ip_address = ? AND action = ?`;
     const dedupParams = userId ? [userId, ip, action] : [anonId, ip, action];
-    const recent = get(
+    const recent = await get(
         `SELECT id FROM ip_log WHERE ${dedupKey} AND created_at > datetime('now', '-10 minutes') LIMIT 1`,
         dedupParams
     );
     if (recent) return;
 
-    run(
+    await run(
         `INSERT INTO ip_log (user_id, anon_id, ip_address, action, geo_country, geo_region, geo_city, geo_isp, geo_org, geo_ll, user_agent)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
@@ -5470,13 +3403,15 @@ function logIp({ userId, anonId, ip, action = 'chat', geo, userAgent }) {
 /**
  * Get all IPs used by a user, with geo data and last-seen times.
  */
-function getIpsByUser(userId) {
-    return all(`
-        SELECT ip_address, geo_country, geo_region, geo_city, geo_isp, geo_org, geo_ll,
+async function getIpsByUser(userId) {
+    return await all(`
+        SELECT ip_address, (array_agg(geo_country ORDER BY created_at DESC))[1] AS geo_country, (array_agg(geo_region ORDER BY created_at DESC))[1] AS geo_region,
+               (array_agg(geo_city ORDER BY created_at DESC))[1] AS geo_city, (array_agg(geo_isp ORDER BY created_at DESC))[1] AS geo_isp, (array_agg(geo_org ORDER BY created_at DESC))[1] AS geo_org,
+               (array_agg(geo_ll ORDER BY created_at DESC))[1] AS geo_ll,
                COUNT(*) as hit_count,
                MIN(created_at) as first_seen,
                MAX(created_at) as last_seen,
-               GROUP_CONCAT(DISTINCT action) as actions
+               string_agg(DISTINCT action, ',') as actions
         FROM ip_log
         WHERE user_id = ?
         GROUP BY ip_address
@@ -5487,18 +3422,20 @@ function getIpsByUser(userId) {
 /**
  * Get all users (and anons) that have used a specific IP.
  */
-function getUsersByIp(ip) {
-    return all(`
-        SELECT il.user_id, il.anon_id,
-               u.username, u.display_name, u.avatar_url, u.role, u.is_banned, u.ban_reason, u.created_at as user_created_at,
+async function getUsersByIp(ip) {
+    return await all(`
+        SELECT MAX(il.user_id) AS user_id, (array_agg(il.anon_id ORDER BY il.created_at DESC))[1] AS anon_id,
+               MAX(u.username) AS username, MAX(u.display_name) AS display_name, MAX(u.avatar_url) AS avatar_url, MAX(u.role) AS role,
+               MAX(u.is_banned) AS is_banned, MAX(u.ban_reason) AS ban_reason, MAX(u.created_at) as user_created_at,
                COUNT(*) as hit_count,
                MIN(il.created_at) as first_seen,
                MAX(il.created_at) as last_seen,
-               GROUP_CONCAT(DISTINCT il.action) as actions
+               string_agg(DISTINCT il.action, ',') as actions
         FROM ip_log il
         LEFT JOIN users u ON il.user_id = u.id
         WHERE il.ip_address = ?
-        GROUP BY COALESCE(il.user_id, il.anon_id)
+        -- One row per person: a signed-in user's visits, else an anonymous visitor's (the user fields are one user's).
+        GROUP BY COALESCE(il.user_id::text, 'anon:' || il.anon_id)
         ORDER BY last_seen DESC
     `, [ip]);
 }
@@ -5507,18 +3444,18 @@ function getUsersByIp(ip) {
  * Get linked accounts for a user — finds all IPs the user has used, then finds all other
  * accounts sharing any of those IPs. Returns accounts sorted by number of shared IPs.
  */
-function getLinkedAccounts(userId) {
-    return all(`
+async function getLinkedAccounts(userId) {
+    return await all(`
         SELECT u.id, u.username, u.display_name, u.avatar_url, u.role, u.is_banned, u.ban_reason,
                u.created_at,
                COUNT(DISTINCT shared.ip_address) as shared_ip_count,
-               GROUP_CONCAT(DISTINCT shared.ip_address) as shared_ips,
+               string_agg(DISTINCT shared.ip_address, ',') as shared_ips,
                MAX(shared.created_at) as last_shared_activity
         FROM ip_log mine
         JOIN ip_log shared ON mine.ip_address = shared.ip_address AND shared.user_id != ?
         JOIN users u ON shared.user_id = u.id
         WHERE mine.user_id = ?
-        GROUP BY shared.user_id
+        GROUP BY u.id
         ORDER BY shared_ip_count DESC, last_shared_activity DESC
     `, [userId, userId]);
 }
@@ -5526,18 +3463,19 @@ function getLinkedAccounts(userId) {
 /**
  * Get linked accounts for an anon — same as above but using anon_id.
  */
-function getLinkedAccountsByAnon(anonId) {
-    return all(`
-        SELECT u.id, u.username, u.display_name, u.avatar_url, u.role, u.is_banned, u.ban_reason,
-               u.created_at,
+async function getLinkedAccountsByAnon(anonId) {
+    return await all(`
+        SELECT MAX(u.id) AS id, MAX(u.username) AS username, MAX(u.display_name) AS display_name, MAX(u.avatar_url) AS avatar_url,
+               MAX(u.role) AS role, MAX(u.is_banned) AS is_banned, MAX(u.ban_reason) AS ban_reason,
+               MAX(u.created_at) AS created_at,
                COUNT(DISTINCT shared.ip_address) as shared_ip_count,
-               GROUP_CONCAT(DISTINCT shared.ip_address) as shared_ips,
+               string_agg(DISTINCT shared.ip_address, ',') as shared_ips,
                MAX(shared.created_at) as last_shared_activity
         FROM ip_log mine
         JOIN ip_log shared ON mine.ip_address = shared.ip_address AND (shared.user_id IS NOT NULL OR shared.anon_id != ?)
         LEFT JOIN users u ON shared.user_id = u.id
         WHERE mine.anon_id = ?
-        GROUP BY COALESCE(shared.user_id, shared.anon_id)
+        GROUP BY COALESCE(shared.user_id::text, 'anon:' || shared.anon_id)
         ORDER BY shared_ip_count DESC, last_shared_activity DESC
     `, [anonId, anonId]);
 }
@@ -5545,23 +3483,23 @@ function getLinkedAccountsByAnon(anonId) {
 /**
  * Get the most recent IP for a user.
  */
-function getLatestIpForUser(userId) {
-    return get(`SELECT ip_address, geo_country, geo_region, geo_city, geo_isp, geo_org, geo_ll, created_at
+async function getLatestIpForUser(userId) {
+    return await get(`SELECT ip_address, geo_country, geo_region, geo_city, geo_isp, geo_org, geo_ll, created_at
                 FROM ip_log WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`, [userId]);
 }
 
 /**
  * Get the most recent IP for an anon.
  */
-function getLatestIpForAnon(anonId) {
-    return get(`SELECT ip_address, geo_country, geo_region, geo_city, geo_isp, geo_org, geo_ll, created_at
+async function getLatestIpForAnon(anonId) {
+    return await get(`SELECT ip_address, geo_country, geo_region, geo_city, geo_isp, geo_org, geo_ll, created_at
                 FROM ip_log WHERE anon_id = ? ORDER BY created_at DESC LIMIT 1`, [anonId]);
 }
 
 /**
  * Get full IP history log (admin search).
  */
-function getIpLog({ userId, anonId, ip, action, limit = 100, offset = 0 } = {}) {
+async function getIpLog({ userId, anonId, ip, action, limit = 100, offset = 0 } = {}) {
     const conditions = [];
     const params = [];
     if (userId) { conditions.push('il.user_id = ?'); params.push(userId); }
@@ -5570,7 +3508,7 @@ function getIpLog({ userId, anonId, ip, action, limit = 100, offset = 0 } = {}) 
     if (action) { conditions.push('il.action = ?'); params.push(action); }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     params.push(limit, offset);
-    return all(`
+    return await all(`
         SELECT il.*, u.username, u.display_name
         FROM ip_log il
         LEFT JOIN users u ON il.user_id = u.id
@@ -5583,13 +3521,13 @@ function getIpLog({ userId, anonId, ip, action, limit = 100, offset = 0 } = {}) 
 /**
  * Ban all accounts sharing an IP. Returns the list of user IDs banned.
  */
-function banAllAccountsOnIp(ip, { reason, bannedBy, expires }) {
+async function banAllAccountsOnIp(ip, { reason, bannedBy, expires }) {
     // Staff and the moderator issuing the ban are never swept up. Staff browse from the same shared
     // home and mobile networks as people who get banned, and the IP-ban exemption for admins only
     // covers sessions that are not themselves banned — so banning an admin account by IP would
     // lock them out of the site entirely. On production every admin shares some IP with another
     // account. Returns the banned user ids; `skippedStaff` on the array lists who was left alone.
-    const users = all(`
+    const users = await all(`
         SELECT DISTINCT il.user_id, u.role
         FROM ip_log il
         JOIN users u ON u.id = il.user_id
@@ -5602,14 +3540,14 @@ function banAllAccountsOnIp(ip, { reason, bannedBy, expires }) {
         if (!row.user_id) continue;
         if (row.user_id === bannedBy || row.role === 'admin' || row.role === 'global_mod') { skippedStaff.push(row.user_id); continue; }
         // Set is_banned flag
-        run('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ? AND is_banned = 0', [reason, row.user_id]);
+        await run('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ? AND is_banned = 0', [reason, row.user_id]);
         // Create global user ban
-        run(`INSERT INTO bans (user_id, ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?, ?)`,
+        await run(`INSERT INTO bans (user_id, ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?, ?)`,
             [row.user_id, ip, reason, bannedBy, expires || null]);
         bannedIds.push(row.user_id);
     }
     // Also create standalone IP ban
-    run(`INSERT INTO bans (ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?)`,
+    await run(`INSERT INTO bans (ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?)`,
         [ip, reason, bannedBy, expires || null]);
 
     bannedIds.skippedStaff = skippedStaff;
@@ -5618,29 +3556,29 @@ function banAllAccountsOnIp(ip, { reason, bannedBy, expires }) {
 
 // ── Stream Analytics helpers ─────────────────────────────────
 
-function insertViewerSnapshot(streamId, viewerCount, chatMessages5m) {
-    return run(
+async function insertViewerSnapshot(streamId, viewerCount, chatMessages5m) {
+    return await run(
         `INSERT INTO viewer_snapshots (stream_id, viewer_count, chat_messages_5m)
-         VALUES (?, ?, ?)`,
+         VALUES (?, ?, ?) RETURNING id`,
         [streamId, viewerCount, chatMessages5m || 0]
     );
 }
 
-function getViewerSnapshots(streamId) {
-    return all(
+async function getViewerSnapshots(streamId) {
+    return await all(
         `SELECT viewer_count, chat_messages_5m, recorded_at
          FROM viewer_snapshots WHERE stream_id = ? ORDER BY recorded_at ASC`,
         [streamId]
     );
 }
 
-function computeAndCacheStreamAnalytics(streamId) {
-    const stream = get('SELECT * FROM streams WHERE id = ?', [streamId]);
+async function computeAndCacheStreamAnalytics(streamId) {
+    const stream = await get('SELECT * FROM streams WHERE id = ?', [streamId]);
     if (!stream) return null;
 
     // Average viewers from snapshots
-    const avgRow = get(
-        'SELECT AVG(viewer_count) as avg_vc FROM viewer_snapshots WHERE stream_id = ?', [streamId]
+    const avgRow = await get(
+        'SELECT AVG(viewer_count)::float8 as avg_vc FROM viewer_snapshots WHERE stream_id = ?', [streamId]
     );
     const avgViewers = avgRow?.avg_vc || 0;
 
@@ -5650,39 +3588,31 @@ function computeAndCacheStreamAnalytics(streamId) {
     // when `st:<id>` is still cold, so a peek would answer the mirror (or 0 on a throw): it keeps the
     // totals already stored and asks Chat right after (setStreamAnalyticsChatTotals writes them back),
     // the same pattern as the clip count below.
-    const prior = get('SELECT unique_chatters, total_messages FROM stream_analytics WHERE stream_id = ?', [streamId]) || {};
+    const prior = await get('SELECT unique_chatters, total_messages FROM stream_analytics WHERE stream_id = ?', [streamId]) || {};
     const uniqueChatters = Number(prior.unique_chatters) || 0;
     const totalMessages = Number(prior.total_messages) || 0;
-    setImmediate(() => {
-        try {
-            require('../chat/chat-reads').streamStats(streamId)
-                .then((t) => { if (t) setStreamAnalyticsChatTotals(streamId, t.chatters, t.messages); })
-                .catch(() => {});
-        } catch { /* */ }
-    });
 
     // Total watch minutes
-    const watchRow = get(
-        'SELECT SUM(minutes_watched) as total FROM watch_time WHERE stream_id = ?', [streamId]
+    const watchRow = await get(
+        'SELECT SUM(minutes_watched)::float8 as total FROM watch_time WHERE stream_id = ?', [streamId]
     );
     const totalWatchMinutes = watchRow?.total || 0;
 
     // Clips created during this stream: they live in OpenVibe.Media. This runs synchronously when a
     // stream ends, so it keeps the last count it has and asks Media right after (lookups.js
     // refreshStreamClipCount writes the answer back with setStreamAnalyticsClipCount).
-    const clipsCreated = get('SELECT clips_created FROM stream_analytics WHERE stream_id = ?', [streamId])?.clips_created || 0;
-    setImmediate(() => { try { require('../media-proxy/lookups').refreshStreamClipCount(streamId).catch(() => {}); } catch { /* */ } });
+    const clipsCreated = (await get('SELECT clips_created FROM stream_analytics WHERE stream_id = ?', [streamId]))?.clips_created || 0;
 
     // Coins earned during this stream
-    const coinsRow = get(
-        'SELECT SUM(coins_earned) as total FROM watch_time WHERE stream_id = ?', [streamId]
+    const coinsRow = await get(
+        'SELECT SUM(coins_earned)::float8 as total FROM watch_time WHERE stream_id = ?', [streamId]
     );
     const coinsEarned = coinsRow?.total || 0;
 
     // New followers — approximate: follows where created_at is during stream
     let newFollowers = 0;
     if (stream.started_at && stream.ended_at) {
-        const fRow = get(
+        const fRow = await get(
             `SELECT COUNT(*) as cnt FROM follows
              WHERE streamer_id = ? AND created_at >= ? AND created_at <= ?`,
             [stream.user_id, stream.started_at, stream.ended_at]
@@ -5691,11 +3621,11 @@ function computeAndCacheStreamAnalytics(streamId) {
     }
 
     // Upsert into stream_analytics
-    run(
+    await run(
         `INSERT INTO stream_analytics
             (stream_id, avg_viewers, peak_viewers, unique_chatters, total_messages,
              total_watch_minutes, new_followers, clips_created, coins_earned, computed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ov_now())
          ON CONFLICT(stream_id) DO UPDATE SET
             avg_viewers = excluded.avg_viewers,
             peak_viewers = excluded.peak_viewers,
@@ -5705,10 +3635,21 @@ function computeAndCacheStreamAnalytics(streamId) {
             new_followers = excluded.new_followers,
             clips_created = excluded.clips_created,
             coins_earned = excluded.coins_earned,
-            computed_at = CURRENT_TIMESTAMP`,
+            computed_at = ov_now()`,
         [streamId, avgViewers, stream.peak_viewers || 0, uniqueChatters, totalMessages,
          totalWatchMinutes, newFollowers, clipsCreated, coinsEarned]
     );
+
+    // The write-backs (Chat's totals, Media's clip count) UPDATE the row just written, so they are registered after it:
+    // after the caller's transaction commits (at once outside one), never joining a finished transaction.
+    getDb().afterCommit(() => {
+        try {
+            require('../chat/chat-reads').streamStats(streamId)
+                .then(async (t) => { if (t) await setStreamAnalyticsChatTotals(streamId, t.chatters, t.messages); })
+                .catch(() => {});
+        } catch { /* */ }
+        try { require('../media-proxy/lookups').refreshStreamClipCount(streamId).catch(() => {}); } catch { /* */ }
+    });
 
     return {
         stream_id: streamId,
@@ -5723,27 +3664,27 @@ function computeAndCacheStreamAnalytics(streamId) {
     };
 }
 
-function getStreamAnalytics(streamId) {
-    return get('SELECT * FROM stream_analytics WHERE stream_id = ?', [streamId]);
+async function getStreamAnalytics(streamId) {
+    return await get('SELECT * FROM stream_analytics WHERE stream_id = ?', [streamId]);
 }
 
 // The clip count OpenVibe.Media reported for a stream (media-proxy/lookups.js refreshStreamClipCount).
-function setStreamAnalyticsClipCount(streamId, count) {
-    return run('UPDATE stream_analytics SET clips_created = ? WHERE stream_id = ?', [Math.max(0, Math.floor(Number(count) || 0)), streamId]);
+async function setStreamAnalyticsClipCount(streamId, count) {
+    return await run('UPDATE stream_analytics SET clips_created = ? WHERE stream_id = ?', [Math.max(0, Math.floor(Number(count) || 0)), streamId]);
 }
 
 // The chat totals OpenVibe.Chat reported for a stream (the setImmediate refresh in
 // computeAndCacheStreamAnalytics).
-function setStreamAnalyticsChatTotals(streamId, chatters, messages) {
-    return run('UPDATE stream_analytics SET unique_chatters = ?, total_messages = ? WHERE stream_id = ?',
+async function setStreamAnalyticsChatTotals(streamId, chatters, messages) {
+    return await run('UPDATE stream_analytics SET unique_chatters = ?, total_messages = ? WHERE stream_id = ?',
         [Math.max(0, Math.floor(Number(chatters) || 0)), Math.max(0, Math.floor(Number(messages) || 0)), streamId]);
 }
 
-function getChannelAnalyticsSummary(userId, days) {
+async function getChannelAnalyticsSummary(userId, days) {
     const cutoff = new Date(Date.now() - days * 86400000).toISOString();
 
     // Stream history with analytics
-    const streams = all(`
+    const streams = await all(`
         SELECT s.id, s.title, s.category, s.started_at, s.ended_at, s.duration_seconds,
                s.peak_viewers, s.viewer_count,
                sa.avg_viewers, sa.unique_chatters, sa.total_messages,
@@ -5755,32 +3696,32 @@ function getChannelAnalyticsSummary(userId, days) {
     `, [userId, cutoff]);
 
     // Aggregate stats
-    const agg = get(`
+    const agg = await get(`
         SELECT COUNT(*) as total_streams,
-               SUM(s.duration_seconds) as total_duration,
+               SUM(s.duration_seconds)::float8 as total_duration,
                MAX(s.peak_viewers) as all_time_peak,
-               AVG(sa.avg_viewers) as avg_viewers_per_stream,
-               SUM(sa.total_messages) as total_messages,
-               SUM(sa.unique_chatters) as total_unique_chatters,
-               SUM(sa.total_watch_minutes) as total_watch_minutes,
-               SUM(sa.new_followers) as total_new_followers,
-               SUM(sa.clips_created) as total_clips
+               AVG(sa.avg_viewers)::float8 as avg_viewers_per_stream,
+               SUM(sa.total_messages)::float8 as total_messages,
+               SUM(sa.unique_chatters)::float8 as total_unique_chatters,
+               SUM(sa.total_watch_minutes)::float8 as total_watch_minutes,
+               SUM(sa.new_followers)::float8 as total_new_followers,
+               SUM(sa.clips_created)::float8 as total_clips
         FROM streams s
         LEFT JOIN stream_analytics sa ON sa.stream_id = s.id
         WHERE s.user_id = ? AND s.started_at >= ? AND s.duration_seconds > 0
     `, [userId, cutoff]);
 
     // All-time totals
-    const allTime = get(`
+    const allTime = await get(`
         SELECT COUNT(*) as total_streams,
-               SUM(duration_seconds) as total_duration,
+               SUM(duration_seconds)::float8 as total_duration,
                MAX(peak_viewers) as peak_viewers
         FROM streams WHERE user_id = ? AND duration_seconds > 0
     `, [userId]);
 
-    const followerCount = get(
+    const followerCount = (await get(
         'SELECT COUNT(*) as cnt FROM follows WHERE streamer_id = ?', [userId]
-    )?.cnt || 0;
+    ))?.cnt || 0;
 
     return {
         period_days: days,
@@ -5807,18 +3748,18 @@ function getChannelAnalyticsSummary(userId, days) {
 
 /* ── User Preferences (server-side settings sync) ─────────── */
 
-function getUserPreferences(userId) {
-    const row = get('SELECT chat_settings FROM user_preferences WHERE user_id = ?', [userId]);
+async function getUserPreferences(userId) {
+    const row = await get('SELECT chat_settings FROM user_preferences WHERE user_id = ?', [userId]);
     if (!row) return {};
     try { return JSON.parse(row.chat_settings); } catch { return {}; }
 }
 
-function saveUserPreferences(userId, chatSettings) {
+async function saveUserPreferences(userId, chatSettings) {
     const json = JSON.stringify(chatSettings);
-    run(
+    await run(
         `INSERT INTO user_preferences (user_id, chat_settings, updated_at)
-         VALUES (?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(user_id) DO UPDATE SET chat_settings = excluded.chat_settings, updated_at = CURRENT_TIMESTAMP`,
+         VALUES (?, ?, ov_now())
+         ON CONFLICT(user_id) DO UPDATE SET chat_settings = excluded.chat_settings, updated_at = ov_now()`,
         [userId, json]
     );
 }
@@ -5829,33 +3770,33 @@ function _hashToken(rawToken) {
     return crypto.createHash('sha256').update(rawToken).digest('hex');
 }
 
-function createApiToken(userId, label, scopes, expiresAt) {
+async function createApiToken(userId, label, scopes, expiresAt) {
     const rawToken = 'hbt_' + crypto.randomBytes(32).toString('hex');
     const hash = _hashToken(rawToken);
-    run(
+    await run(
         `INSERT INTO api_tokens (user_id, token_hash, label, scopes, expires_at)
          VALUES (?, ?, ?, ?, ?)`,
         [userId, hash, label || 'Bot Token', JSON.stringify(scopes || ['chat', 'read']), expiresAt || null]
     );
-    const row = get('SELECT id, created_at FROM api_tokens WHERE token_hash = ?', [hash]);
+    const row = await get('SELECT id, created_at FROM api_tokens WHERE token_hash = ?', [hash]);
     return { id: row.id, token: rawToken, created_at: row.created_at };
 }
 
-function listApiTokens(userId) {
-    return all(
+async function listApiTokens(userId) {
+    return await all(
         `SELECT id, label, scopes, created_at, last_used_at, expires_at, is_active
          FROM api_tokens WHERE user_id = ? ORDER BY created_at DESC`,
         [userId]
     );
 }
 
-function revokeApiToken(tokenId, userId) {
-    return run('UPDATE api_tokens SET is_active = 0 WHERE id = ? AND user_id = ?', [tokenId, userId]);
+async function revokeApiToken(tokenId, userId) {
+    return await run('UPDATE api_tokens SET is_active = 0 WHERE id = ? AND user_id = ?', [tokenId, userId]);
 }
 
-function validateApiToken(rawToken) {
+async function validateApiToken(rawToken) {
     const hash = _hashToken(rawToken);
-    const row = get(
+    const row = await get(
         `SELECT t.*, u.id as uid, u.username, u.display_name, u.role, u.profile_color, u.avatar_url, u.is_banned, u.ban_reason
          FROM api_tokens t JOIN users u ON t.user_id = u.id
          WHERE t.token_hash = ? AND t.is_active = 1`,
@@ -5865,7 +3806,7 @@ function validateApiToken(rawToken) {
     // Check expiry
     if (row.expires_at && new Date(row.expires_at) < new Date()) return null;
     // Update last used
-    run('UPDATE api_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?', [row.id]);
+    await run('UPDATE api_tokens SET last_used_at = ov_now() WHERE id = ?', [row.id]);
     const scopes = (() => { try { return JSON.parse(row.scopes); } catch { return []; } })();
     return {
         id: row.uid, username: row.username, display_name: row.display_name,
@@ -5878,55 +3819,55 @@ function validateApiToken(rawToken) {
 // ── Donation goals ───────────────────────────────────────────
 // Widget set: active goals + goals reached within the celebration window (default 1h),
 // so a met goal celebrates then auto-clears from the viewer widget.
-function getDonationGoalsForWidget(userId, windowHours = 1) {
-    return all(`SELECT * FROM donation_goals
+async function getDonationGoalsForWidget(userId, windowHours = 1) {
+    return await all(`SELECT * FROM donation_goals
         WHERE user_id = ?
           AND (is_active = 1 OR (reached_at IS NOT NULL AND reached_at > datetime('now', ?)))
         ORDER BY sort_order ASC, created_at ASC`, [userId, `-${windowHours} hours`]);
 }
 // Management set: everything the streamer owns (active + completed) for the dashboard.
-function getAllDonationGoals(userId) {
-    return all('SELECT * FROM donation_goals WHERE user_id = ? ORDER BY is_active DESC, sort_order ASC, created_at ASC', [userId]);
+async function getAllDonationGoals(userId) {
+    return await all('SELECT * FROM donation_goals WHERE user_id = ? ORDER BY is_active DESC, sort_order ASC, created_at ASC', [userId]);
 }
-function getActiveDonationGoals(userId) {
-    return all('SELECT * FROM donation_goals WHERE user_id = ? AND is_active = 1 ORDER BY sort_order ASC, created_at ASC', [userId]);
+async function getActiveDonationGoals(userId) {
+    return await all('SELECT * FROM donation_goals WHERE user_id = ? AND is_active = 1 ORDER BY sort_order ASC, created_at ASC', [userId]);
 }
-function getDonationGoalById(id) { return get('SELECT * FROM donation_goals WHERE id = ?', [id]); }
-function createDonationGoal(userId, { title, target_amount, image_url = null, media_type = null }) {
-    const r = get('SELECT COALESCE(MAX(sort_order),-1)+1 AS n FROM donation_goals WHERE user_id = ?', [userId]);
-    return run('INSERT INTO donation_goals (user_id, title, target_amount, image_url, media_type, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
+async function getDonationGoalById(id) { return await get('SELECT * FROM donation_goals WHERE id = ?', [id]); }
+async function createDonationGoal(userId, { title, target_amount, image_url = null, media_type = null }) {
+    const r = await get('SELECT COALESCE(MAX(sort_order),-1)+1 AS n FROM donation_goals WHERE user_id = ?', [userId]);
+    return await run('INSERT INTO donation_goals (user_id, title, target_amount, image_url, media_type, sort_order) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
         [userId, title, target_amount, image_url, media_type, r ? r.n : 0]);
 }
-function updateDonationGoal(id, userId, fields) {
+async function updateDonationGoal(id, userId, fields) {
     const allow = ['title', 'target_amount', 'image_url', 'media_type', 'is_active', 'sort_order', 'current_amount', 'reached_at'];
     const sets = [], params = [];
     for (const k of allow) if (fields[k] !== undefined) { sets.push(`${k} = ?`); params.push(fields[k]); }
     if (!sets.length) return null;
     params.push(id, userId);
-    return run(`UPDATE donation_goals SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`, params);
+    return await run(`UPDATE donation_goals SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`, params);
 }
-function deleteDonationGoal(id, userId) { return run('DELETE FROM donation_goals WHERE id = ? AND user_id = ?', [id, userId]); }
+async function deleteDonationGoal(id, userId) { return await run('DELETE FROM donation_goals WHERE id = ? AND user_id = ?', [id, userId]); }
 // Apply an amount to a specific goal; flips it reached (with reached_at) when the
 // target is hit. Returns { goal, reached }.
-function addToDonationGoal(id, amount) {
-    const g = getDonationGoalById(id);
+async function addToDonationGoal(id, amount) {
+    const g = await getDonationGoalById(id);
     if (!g || !g.is_active) return { goal: g || null, reached: false };
     const newAmount = Math.min(Math.round((g.current_amount || 0) + amount), g.target_amount);
     const reached = newAmount >= g.target_amount;
-    if (reached) run("UPDATE donation_goals SET current_amount = ?, is_active = 0, reached_at = CURRENT_TIMESTAMP WHERE id = ?", [newAmount, id]);
-    else run('UPDATE donation_goals SET current_amount = ? WHERE id = ?', [newAmount, id]);
-    return { goal: getDonationGoalById(id), reached };
+    if (reached) await run("UPDATE donation_goals SET current_amount = ?, is_active = 0, reached_at = ov_now() WHERE id = ?", [newAmount, id]);
+    else await run('UPDATE donation_goals SET current_amount = ? WHERE id = ?', [newAmount, id]);
+    return { goal: await getDonationGoalById(id), reached };
 }
 
 module.exports = {
     // Startup repair that initDb() defers by a few seconds; exported so tests can run it directly.
-    adoptOrphanedTimelineRows: () => _adoptOrphanedTimelineRows(getDb()),
+    adoptOrphanedTimelineRows,
     publicStream,
     getConcurrencyBaseline,
     getHomeStatSeries, homeSeriesLocal, HOME_SERIES_KEYS, vibesStatsSince, _computeHomeStats,
     getVodAiState, getClipAiState, forgetMediaItem,
     scheduleClipNotifyState, bumpClipNotifyNowState, markClipNotifiedState, getDueClipNotifies,
-    getDb, initDb, run, get, all, close,
+    getDb, initDb, run, get, all, tx, close,
     getTimelineSpeechSince,
     getDonationGoalsForWidget, getAllDonationGoals, getActiveDonationGoals, getDonationGoalById,
     recordViewerSample, getViewerTrend, getReadingSeries, getHomePulse, getActiveGoalsForUsers,

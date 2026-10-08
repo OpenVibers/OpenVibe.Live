@@ -71,12 +71,12 @@ async function wrap(what, fn) {
 /** A raw call, for anything the SDK client does not name yet. */
 async function request(method, path, { body, subject, timeoutMs = TIMEOUT_MS } = {}) {
     openre();
-    return wrap(`${method} ${path}`, () => sdk.client.json({ service: 'openre', audience: 'openvibe.openre', method, path, json: body, timeoutMs,
+    return await wrap(`${method} ${path}`, () => sdk.client.json({ service: 'openre', audience: 'openvibe.openre', method, path, json: body, timeoutMs,
         headers: subject ? { 'X-OV-Subject': subject } : {} }));
 }
 
 /** The OpenRe stream definition serving a Live slot, or null. */
-const streamForSlot = (managedStreamId) => wrap('stream lookup', () => openre().streams.byExternalRef(`live:managed_stream:${managedStreamId}`));
+const streamForSlot = async (managedStreamId) => await wrap('stream lookup', () => openre().streams.byExternalRef(`live:managed_stream:${managedStreamId}`));
 
 /** Create the definition for a slot, owned by the streamer's canonical subject. The key it
  *  returns is dropped unseen: the streamer gets a usable key by rotating. */
@@ -95,12 +95,12 @@ async function createStreamForSlot(slot, { subject, protocols, recordingMode, re
     return r.stream;
 }
 
-const rotateKey = (streamId, { subject, graceSeconds = 0 } = {}) => wrap('key rotate', () => openre().streams.rotateKey(streamId, { subject, graceSeconds }));
-const updateStream = (streamId, patch, { subject } = {}) => wrap('stream update', () => openre().streams.update(streamId, patch, { subject }));
-const getStream = (streamId, { subject } = {}) => wrap('stream read', () => openre().streams.get(streamId, { subject }));
-const getSession = (sessionId) => wrap('session read', () => openre().sessions.get(sessionId));
+const rotateKey = async (streamId, { subject, graceSeconds = 0 } = {}) => await wrap('key rotate', () => openre().streams.rotateKey(streamId, { subject, graceSeconds }));
+const updateStream = async (streamId, patch, { subject } = {}) => await wrap('stream update', () => openre().streams.update(streamId, patch, { subject }));
+const getStream = async (streamId, { subject } = {}) => await wrap('stream read', () => openre().streams.get(streamId, { subject }));
+const getSession = async (sessionId) => await wrap('session read', () => openre().sessions.get(sessionId));
 /** Playback descriptor for a session (the SDK caches it 10 s: the FLV proxy asks on every viewer connect). */
-const playback = (sessionId) => wrap('playback', () => openre().sessions.playback(sessionId));
+const playback = async (sessionId) => await wrap('playback', () => openre().sessions.playback(sessionId));
 
 function manageUrl(streamId) {
     return `${settings().publicUrl}/streams/${encodeURIComponent(streamId || '')}`;

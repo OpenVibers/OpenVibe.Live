@@ -10,12 +10,9 @@
 
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-calls-authority-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
 delete process.env.CALLS_AUTHORITY;
@@ -71,10 +68,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         delete process.env.CALLS_AUTHORITY;
 
         // 2. Default: Live's call server, nothing sent.
-        const ch = calls.createStreamChannel(41, 'mic', 7);
+        const ch = await calls.createStreamChannel(41, 'mic', 7);
         assert.deepStrictEqual([ch.id, ch.mode, ch.name, ch.createdBy], ['stream-41', 'mic', 'Stream 41 title', 7]);
         assert.ok(callServer.channels.has('stream-41'));
-        calls.removeStreamChannel(41);
+        await calls.removeStreamChannel(41);
         assert.ok(!callServer.channels.has('stream-41'));
         await sleep(50);
         assert.deepStrictEqual(seen, [], 'CALLS_AUTHORITY unset sends nothing to Chat');
@@ -132,7 +129,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     }
     stub.close();
     try { callServer.close(); } catch { /* */ }
-    fs.rmSync(tmp, { recursive: true, force: true });
     console.log = quiet;
     console.log(exit ? 'calls authority: FAILED' : 'calls authority: all checks passed');
     process.exit(exit);

@@ -15,11 +15,11 @@
 const db = require('../db/database');
 const commentsClient = require('../comments-client');
 
-function afterDelete(kind, id) {
+async function afterDelete(kind, id) {
     const n = Number(id);
     if ((kind !== 'vod' && kind !== 'clip') || !Number.isInteger(n) || n <= 0) return;
     commentsClient.hideThreadOf(kind, n);
-    try { db.forgetMediaItem(kind, n); } catch (err) { console.warn(`[Media] could not drop Live's rows for deleted ${kind} ${n}:`, err.message); }
+    try { await db.forgetMediaItem(kind, n); } catch (err) { console.warn(`[Media] could not drop Live's rows for deleted ${kind} ${n}:`, err.message); }
     try { require('../events/search-media-documents').touchLater(kind, n); } catch { /* search is optional */ }
 }
 

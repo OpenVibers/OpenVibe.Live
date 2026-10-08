@@ -32,12 +32,12 @@ const { requireAuth } = require('../auth/auth');
 const router = express.Router();
 
 // Helper: re-apply this config to live streams that are explicitly bound to it
-function syncConfigToBoundLiveStreams(configId) {
+async function syncConfigToBoundLiveStreams(configId) {
     try {
-        const liveStreams = db.getLiveStreamsByControlConfigId(configId);
+        const liveStreams = await db.getLiveStreamsByControlConfigId(configId);
         for (const stream of liveStreams) {
             try {
-                db.applyConfigToStream(configId, stream.id);
+                await db.applyConfigToStream(configId, stream.id);
             } catch (e) {
                 console.warn(`[Controls] Failed to sync config ${configId} to stream ${stream.id}:`, e.message);
             }
@@ -977,14 +977,14 @@ if __name__ == "__main__":
 // ══════════════════════════════════════════════════════════════
 
 // ── List configs ─────────────────────────────────────────────
-router.get('/configs', requireAuth, (req, res) => {
+router.get('/configs', requireAuth, async (req, res) => {
     try {
-        const configs = db.getControlConfigs(req.user.id);
+        const configs = await db.getControlConfigs(req.user.id);
         // Attach button count to each config
-        const result = configs.map(c => ({
+        const result = (await Promise.all(configs.map(async c => ({
             ...c,
-            button_count: db.getConfigButtons(c.id).length,
-        }));
+            button_count: (await db.getConfigButtons(c.id)).length,
+        }))));
         res.json({ configs: result });
     } catch (err) {
         res.status(500).json({ error: 'Failed to list configs' });
@@ -992,7 +992,7 @@ router.get('/configs', requireAuth, (req, res) => {
 });
 
 // ── Create config ────────────────────────────────────────────
-router.post('/configs', requireAuth, (req, res) => {
+router.post('/configs', requireAuth, async (req, res) => {
     try {
         const { name, description } = req.body;
         if (!name || typeof name !== 'string' || !name.trim()) {
@@ -1002,13 +1002,13 @@ router.post('/configs', requireAuth, (req, res) => {
         const cleanDesc = description ? String(description).replace(/<[^>]*>/g, '').slice(0, 200) : '';
 
         // Limit to 20 configs per user
-        const existing = db.getControlConfigs(req.user.id);
+        const existing = await db.getControlConfigs(req.user.id);
         if (existing.length >= 20) {
             return res.status(400).json({ error: 'Maximum 20 control configs allowed' });
         }
 
-        const result = db.createControlConfig({ user_id: req.user.id, name: cleanName, description: cleanDesc });
-        const config = db.getControlConfig(result.lastInsertRowid);
+        const result = await db.createControlConfig({ user_id: req.user.id, name: cleanName, description: cleanDesc });
+        const config = await db.getControlConfig(result.lastInsertRowid);
         res.status(201).json({ config });
     } catch (err) {
         res.status(500).json({ error: 'Failed to create config' });
@@ -1016,14 +1016,14 @@ router.post('/configs', requireAuth, (req, res) => {
 });
 
 // ── Get config with buttons ──────────────────────────────────
-router.get('/configs/:id', requireAuth, (req, res) => {
+router.get('/configs/:id', requireAuth, async (req, res) => {
     try {
-        const config = db.getControlConfig(req.params.id);
+        const config = await db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
         if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
         }
-        const buttons = db.getConfigButtons(config.id);
+        const buttons = await db.getConfigButtons(config.id);
         res.json({ config, buttons });
     } catch (err) {
         res.status(500).json({ error: 'Failed to get config' });
@@ -1031,9 +1031,9 @@ router.get('/configs/:id', requireAuth, (req, res) => {
 });
 
 // ── Update config ────────────────────────────────────────────
-router.put('/configs/:id', requireAuth, (req, res) => {
+router.put('/configs/:id', requireAuth, async (req, res) => {
     try {
-        const config = db.getControlConfig(req.params.id);
+        const config = await db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
         if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
@@ -1042,8 +1042,8 @@ router.put('/configs/:id', requireAuth, (req, res) => {
         const updates = {};
         if (name !== undefined) updates.name = String(name).replace(/<[^>]*>/g, '').slice(0, 60);
         if (description !== undefined) updates.description = String(description).replace(/<[^>]*>/g, '').slice(0, 200);
-        db.updateControlConfig(config.id, updates);
-        const updated = db.getControlConfig(config.id);
+        await db.updateControlConfig(config.id, updates);
+        const updated = await db.getControlConfig(config.id);
         res.json({ config: updated });
     } catch (err) {
         res.status(500).json({ error: 'Failed to update config' });
@@ -1051,19 +1051,19 @@ router.put('/configs/:id', requireAuth, (req, res) => {
 });
 
 // ── Delete config ────────────────────────────────────────────
-router.delete('/configs/:id', requireAuth, (req, res) => {
+router.delete('/configs/:id', requireAuth, async (req, res) => {
     try {
-        const config = db.getControlConfig(req.params.id);
+        const config = await db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
         if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
         }
         // Clear active config reference if it was active
-        const channel = db.getChannelByUserId(req.user.id);
+        const channel = await db.getChannelByUserId(req.user.id);
         if (channel && channel.active_control_config_id === config.id) {
-            db.updateChannel(req.user.id, { active_control_config_id: null });
+            await db.updateChannel(req.user.id, { active_control_config_id: null });
         }
-        db.deleteControlConfig(config.id);
+        await db.deleteControlConfig(config.id);
         res.json({ message: 'Config deleted' });
     } catch (err) {
         res.status(500).json({ error: 'Failed to delete config' });
@@ -1071,9 +1071,9 @@ router.delete('/configs/:id', requireAuth, (req, res) => {
 });
 
 // ── Add button to config ─────────────────────────────────────
-router.post('/configs/:id/buttons', requireAuth, (req, res) => {
+router.post('/configs/:id/buttons', requireAuth, async (req, res) => {
     try {
-        const config = db.getControlConfig(req.params.id);
+        const config = await db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
         if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
@@ -1085,7 +1085,7 @@ router.post('/configs/:id/buttons', requireAuth, (req, res) => {
         }
 
         // Limit to 50 buttons per config
-        const existing = db.getConfigButtons(config.id);
+        const existing = await db.getConfigButtons(config.id);
         if (existing.length >= 50) {
             return res.status(400).json({ error: 'Maximum 50 buttons per config' });
         }
@@ -1098,7 +1098,7 @@ router.post('/configs/:id/buttons', requireAuth, (req, res) => {
         const validTypes = ['button', 'toggle', 'dpad', 'keyboard'];
         const cleanType = validTypes.includes(control_type) ? control_type : 'button';
 
-        db.createConfigButton({
+        await db.createConfigButton({
             config_id: config.id,
             label: String(label).replace(/<[^>]*>/g, '').slice(0, 50),
             command: String(command).replace(/[<>"'`\\]/g, '').slice(0, 100),
@@ -1112,8 +1112,8 @@ router.post('/configs/:id/buttons', requireAuth, (req, res) => {
             btn_border_color: sanitizeCssColor(btn_border_color),
         });
 
-        syncConfigToBoundLiveStreams(config.id);
-        const buttons = db.getConfigButtons(config.id);
+        await syncConfigToBoundLiveStreams(config.id);
+        const buttons = await db.getConfigButtons(config.id);
         res.status(201).json({ buttons });
     } catch (err) {
         res.status(500).json({ error: 'Failed to add button' });
@@ -1121,9 +1121,9 @@ router.post('/configs/:id/buttons', requireAuth, (req, res) => {
 });
 
 // ── Update button ────────────────────────────────────────────
-router.put('/configs/:id/buttons/:btnId', requireAuth, (req, res) => {
+router.put('/configs/:id/buttons/:btnId', requireAuth, async (req, res) => {
     try {
-        const config = db.getControlConfig(req.params.id);
+        const config = await db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
         if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
@@ -1152,10 +1152,10 @@ router.put('/configs/:id/buttons/:btnId', requireAuth, (req, res) => {
 
         // Scoped to this config: the ownership check above is on the config in the URL, so the
         // button id must belong to it or a user could rewrite anyone's button through their own config.
-        const changed = db.updateConfigButton(parseInt(req.params.btnId), updates, config.id);
+        const changed = await db.updateConfigButton(parseInt(req.params.btnId), updates, config.id);
         if (changed && changed.changes === 0) return res.status(404).json({ error: 'Button not found' });
-        syncConfigToBoundLiveStreams(config.id);
-        const buttons = db.getConfigButtons(config.id);
+        await syncConfigToBoundLiveStreams(config.id);
+        const buttons = await db.getConfigButtons(config.id);
         res.json({ buttons });
     } catch (err) {
         res.status(500).json({ error: 'Failed to update button' });
@@ -1163,17 +1163,17 @@ router.put('/configs/:id/buttons/:btnId', requireAuth, (req, res) => {
 });
 
 // ── Delete button ────────────────────────────────────────────
-router.delete('/configs/:id/buttons/:btnId', requireAuth, (req, res) => {
+router.delete('/configs/:id/buttons/:btnId', requireAuth, async (req, res) => {
     try {
-        const config = db.getControlConfig(req.params.id);
+        const config = await db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
         if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
         }
-        const removed = db.deleteConfigButton(parseInt(req.params.btnId), config.id);
+        const removed = await db.deleteConfigButton(parseInt(req.params.btnId), config.id);
         if (removed && removed.changes === 0) return res.status(404).json({ error: 'Button not found' });
-        syncConfigToBoundLiveStreams(config.id);
-        const buttons = db.getConfigButtons(config.id);
+        await syncConfigToBoundLiveStreams(config.id);
+        const buttons = await db.getConfigButtons(config.id);
         res.json({ buttons });
     } catch (err) {
         res.status(500).json({ error: 'Failed to delete button' });
@@ -1181,14 +1181,14 @@ router.delete('/configs/:id/buttons/:btnId', requireAuth, (req, res) => {
 });
 
 // ── Activate config on channel ───────────────────────────────
-router.post('/configs/:id/activate', requireAuth, (req, res) => {
+router.post('/configs/:id/activate', requireAuth, async (req, res) => {
     try {
-        const config = db.getControlConfig(req.params.id);
+        const config = await db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
         if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
         }
-        db.updateChannel(req.user.id, { active_control_config_id: config.id });
+        await db.updateChannel(req.user.id, { active_control_config_id: config.id });
         res.json({ message: 'Config activated', config_id: config.id });
     } catch (err) {
         res.status(500).json({ error: 'Failed to activate config' });
@@ -1196,9 +1196,9 @@ router.post('/configs/:id/activate', requireAuth, (req, res) => {
 });
 
 // ── Deactivate config (clear active) ─────────────────────────
-router.post('/configs/deactivate', requireAuth, (req, res) => {
+router.post('/configs/deactivate', requireAuth, async (req, res) => {
     try {
-        db.updateChannel(req.user.id, { active_control_config_id: null });
+        await db.updateChannel(req.user.id, { active_control_config_id: null });
         res.json({ message: 'Config deactivated' });
     } catch (err) {
         res.status(500).json({ error: 'Failed to deactivate config' });
@@ -1206,19 +1206,19 @@ router.post('/configs/deactivate', requireAuth, (req, res) => {
 });
 
 // ── Apply config to live stream ──────────────────────────────
-router.post('/configs/:id/apply/:streamId', requireAuth, (req, res) => {
+router.post('/configs/:id/apply/:streamId', requireAuth, async (req, res) => {
     try {
-        const config = db.getControlConfig(req.params.id);
+        const config = await db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
         if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
         }
-        const stream = db.getStreamById(req.params.streamId);
+        const stream = await db.getStreamById(req.params.streamId);
         if (!stream || (stream.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage'))) {
             return res.status(403).json({ error: 'Not authorized' });
         }
-        const applied = db.applyConfigToStream(config.id, stream.id);
-        const controls = db.getStreamControls(stream.id);
+        const applied = await db.applyConfigToStream(config.id, stream.id);
+        const controls = await db.getStreamControls(stream.id);
         res.json({ applied, controls });
     } catch (err) {
         res.status(500).json({ error: 'Failed to apply config' });
@@ -1226,7 +1226,7 @@ router.post('/configs/:id/apply/:streamId', requireAuth, (req, res) => {
 });
 
 // ── Generate API Key (must be before :streamId routes) ────────
-router.post('/api-key', requireAuth, (req, res) => {
+router.post('/api-key', requireAuth, async (req, res) => {
     try {
         const { label, permissions } = req.body;
 
@@ -1234,7 +1234,7 @@ router.post('/api-key', requireAuth, (req, res) => {
         const rawKey = crypto.randomBytes(32).toString('hex');
         const keyHash = bcrypt.hashSync(rawKey, 10);
 
-        db.createApiKey({
+        await db.createApiKey({
             user_id: req.user.id,
             key_hash: keyHash,
             label: label || 'Default',
@@ -1253,9 +1253,9 @@ router.post('/api-key', requireAuth, (req, res) => {
 });
 
 // ── List API Keys (must be before :streamId routes) ──────────
-router.get('/api-keys', requireAuth, (req, res) => {
+router.get('/api-keys', requireAuth, async (req, res) => {
     try {
-        const keys = db.all(
+        const keys = await db.all(
             'SELECT id, label, permissions, last_used, is_active, created_at FROM api_keys WHERE user_id = ?',
             [req.user.id]
         );
@@ -1268,9 +1268,9 @@ router.get('/api-keys', requireAuth, (req, res) => {
 // ── Control Settings (MUST be before /:streamId routes) ──────
 
 // Get control settings for the current user's channel
-router.get('/settings/channel', requireAuth, (req, res) => {
+router.get('/settings/channel', requireAuth, async (req, res) => {
     try {
-        const channel = db.getChannelByUserId(req.user.id);
+        const channel = await db.getChannelByUserId(req.user.id);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
         res.json({
             control_mode: channel.control_mode || 'open',
@@ -1285,7 +1285,7 @@ router.get('/settings/channel', requireAuth, (req, res) => {
     }
 });
 
-router.put('/settings/channel', requireAuth, (req, res) => {
+router.put('/settings/channel', requireAuth, async (req, res) => {
     try {
         const { control_mode, anon_controls_enabled, control_rate_limit_ms, video_click_enabled, video_click_rate_limit_ms } = req.body;
         const updates = {};
@@ -1305,9 +1305,9 @@ router.put('/settings/channel', requireAuth, (req, res) => {
         // rate limiting is now a fixed anti-flood burst cap plus per-button cooldown_ms.
         // The columns remain (harmless) but we no longer read or write them.
         if (Object.keys(updates).length > 0) {
-            db.updateChannel(req.user.id, updates);
+            await db.updateChannel(req.user.id, updates);
         }
-        const channel = db.getChannelByUserId(req.user.id);
+        const channel = await db.getChannelByUserId(req.user.id);
         res.json({
             control_mode: channel.control_mode || 'open',
             anon_controls_enabled: !!channel.anon_controls_enabled,
@@ -1323,11 +1323,11 @@ router.put('/settings/channel', requireAuth, (req, res) => {
 
 // ── Control Whitelist ────────────────────────────────────────
 
-router.get('/whitelist', requireAuth, (req, res) => {
+router.get('/whitelist', requireAuth, async (req, res) => {
     try {
-        const channel = db.getChannelByUserId(req.user.id);
+        const channel = await db.getChannelByUserId(req.user.id);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
-        const whitelist = db.all(
+        const whitelist = await db.all(
             `SELECT cw.id, cw.user_id, u.username, u.display_name, cw.created_at
              FROM control_whitelist cw JOIN users u ON cw.user_id = u.id
              WHERE cw.channel_id = ? ORDER BY cw.created_at DESC`,
@@ -1339,16 +1339,16 @@ router.get('/whitelist', requireAuth, (req, res) => {
     }
 });
 
-router.post('/whitelist', requireAuth, (req, res) => {
+router.post('/whitelist', requireAuth, async (req, res) => {
     try {
         const { username } = req.body;
         if (!username) return res.status(400).json({ error: 'Username required' });
-        const channel = db.getChannelByUserId(req.user.id);
+        const channel = await db.getChannelByUserId(req.user.id);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
-        const targetUser = db.getUserByUsername(username);
+        const targetUser = await db.getUserByUsername(username);
         if (!targetUser) return res.status(404).json({ error: 'User not found' });
-        db.run(
-            'INSERT OR IGNORE INTO control_whitelist (channel_id, user_id, added_by) VALUES (?, ?, ?)',
+        await db.run(
+            'INSERT INTO control_whitelist (channel_id, user_id, added_by) VALUES (?, ?, ?) ON CONFLICT DO NOTHING',
             [channel.id, targetUser.id, req.user.id]
         );
         res.json({ message: `${username} added to control whitelist` });
@@ -1357,11 +1357,11 @@ router.post('/whitelist', requireAuth, (req, res) => {
     }
 });
 
-router.delete('/whitelist/:id', requireAuth, (req, res) => {
+router.delete('/whitelist/:id', requireAuth, async (req, res) => {
     try {
-        const channel = db.getChannelByUserId(req.user.id);
+        const channel = await db.getChannelByUserId(req.user.id);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
-        db.run('DELETE FROM control_whitelist WHERE id = ? AND channel_id = ?',
+        await db.run('DELETE FROM control_whitelist WHERE id = ? AND channel_id = ?',
             [req.params.id, channel.id]);
         res.json({ message: 'Removed from whitelist' });
     } catch (err) {
@@ -1389,15 +1389,15 @@ router.get('/cozmo-script', requireAuth, (req, res) => {
 
 // ── Per-Profile Bridge Script Generator ──────────────────────
 
-router.get('/configs/:id/bridge-script', requireAuth, (req, res) => {
+router.get('/configs/:id/bridge-script', requireAuth, async (req, res) => {
     try {
-        const config = db.getControlConfig(req.params.id);
+        const config = await db.getControlConfig(req.params.id);
         if (!config) return res.status(404).json({ error: 'Config not found' });
         if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
         }
 
-        const buttons = db.getConfigButtons(config.id);
+        const buttons = await db.getConfigButtons(config.id);
         const user = req.user;
         const host = req.get('host') || 'openvibe.live';
         const protocol = req.secure || req.get('x-forwarded-proto') === 'https' ? 'wss' : 'ws';
@@ -1415,9 +1415,9 @@ router.get('/configs/:id/bridge-script', requireAuth, (req, res) => {
 });
 
 // ── Get bound control profile for a stream ───────────────────
-router.get('/:streamId/config', requireAuth, (req, res) => {
+router.get('/:streamId/config', requireAuth, async (req, res) => {
     try {
-        const stream = db.getStreamById(req.params.streamId);
+        const stream = await db.getStreamById(req.params.streamId);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
         if (stream.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
@@ -1429,9 +1429,9 @@ router.get('/:streamId/config', requireAuth, (req, res) => {
 });
 
 // ── Bind or rebind a stream to a control profile ──────────────
-router.put('/:streamId/config', requireAuth, (req, res) => {
+router.put('/:streamId/config', requireAuth, async (req, res) => {
     try {
-        const stream = db.getStreamById(req.params.streamId);
+        const stream = await db.getStreamById(req.params.streamId);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
         if (stream.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
             return res.status(403).json({ error: 'Not authorized' });
@@ -1439,18 +1439,18 @@ router.put('/:streamId/config', requireAuth, (req, res) => {
 
         const configId = req.body.control_config_id === null ? null : parseInt(req.body.control_config_id);
         if (configId) {
-            const config = db.getControlConfig(configId);
+            const config = await db.getControlConfig(configId);
             if (!config) return res.status(404).json({ error: 'Config not found' });
             if (config.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage')) {
                 return res.status(403).json({ error: 'Not authorized' });
             }
-            const applied = db.applyConfigToStream(config.id, stream.id);
-            const controls = db.getStreamControls(stream.id);
+            const applied = await db.applyConfigToStream(config.id, stream.id);
+            const controls = await db.getStreamControls(stream.id);
             return res.json({ message: 'Config applied to stream', control_config_id: config.id, applied, controls });
         }
 
-        db.bindStreamToControlConfig(stream.id, null);
-        const controls = db.getStreamControls(stream.id);
+        await db.bindStreamToControlConfig(stream.id, null);
+        const controls = await db.getStreamControls(stream.id);
         res.json({ message: 'Stream unbound from control profile', control_config_id: null, controls });
     } catch (err) {
         res.status(500).json({ error: 'Failed to update stream config' });
@@ -1458,14 +1458,14 @@ router.put('/:streamId/config', requireAuth, (req, res) => {
 });
 
 // ── Get Controls for a Stream ────────────────────────────────
-router.get('/:streamId', (req, res) => {
+router.get('/:streamId', async (req, res) => {
     try {
-        const controls = db.getStreamControls(req.params.streamId);
+        const controls = await db.getStreamControls(req.params.streamId);
         // Attach channel settings for the controls UI
-        const stream = db.getStreamById(req.params.streamId);
+        const stream = await db.getStreamById(req.params.streamId);
         let settings = {};
         if (stream) {
-            const channel = db.getChannelByUserId(stream.user_id);
+            const channel = await db.getChannelByUserId(stream.user_id);
             if (channel) {
                 settings = {
                     video_click_enabled: !!channel.video_click_enabled,
@@ -1491,28 +1491,28 @@ router.get('/:streamId', (req, res) => {
 // ── Cozmo Presets ────────────────────────────────────────────
 const { applyCozmoPresets, removeCozmoPresets } = require('../integrations/cozmo-presets');
 
-router.post('/:streamId/presets/cozmo', requireAuth, (req, res) => {
+router.post('/:streamId/presets/cozmo', requireAuth, async (req, res) => {
     try {
-        const stream = db.getStreamById(req.params.streamId);
+        const stream = await db.getStreamById(req.params.streamId);
         if (!stream || (stream.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage'))) {
             return res.status(403).json({ error: 'Not authorized' });
         }
-        const result = applyCozmoPresets(parseInt(req.params.streamId));
-        const controls = db.getStreamControls(req.params.streamId);
+        const result = await applyCozmoPresets(parseInt(req.params.streamId));
+        const controls = await db.getStreamControls(req.params.streamId);
         res.json({ ...result, controls });
     } catch (err) {
         res.status(500).json({ error: 'Failed to apply Cozmo presets' });
     }
 });
 
-router.delete('/:streamId/presets/cozmo', requireAuth, (req, res) => {
+router.delete('/:streamId/presets/cozmo', requireAuth, async (req, res) => {
     try {
-        const stream = db.getStreamById(req.params.streamId);
+        const stream = await db.getStreamById(req.params.streamId);
         if (!stream || (stream.user_id !== req.user.id && !can(req.user, 'staff.hardware.manage'))) {
             return res.status(403).json({ error: 'Not authorized' });
         }
-        const removed = removeCozmoPresets(parseInt(req.params.streamId));
-        const controls = db.getStreamControls(req.params.streamId);
+        const removed = await removeCozmoPresets(parseInt(req.params.streamId));
+        const controls = await db.getStreamControls(req.params.streamId);
         res.json({ removed, controls });
     } catch (err) {
         res.status(500).json({ error: 'Failed to remove Cozmo presets' });

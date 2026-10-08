@@ -28,10 +28,10 @@ class WalletError extends Error {
 }
 
 /** Resolve a Live-local user id to their Network (SSO) user id, or null if unlinked. */
-function networkUserId(localUserId) {
+async function networkUserId(localUserId) {
     if (!localUserId) return null;
     try {
-        const row = db.getDb().prepare(
+        const row = await db.getDb().prepare(
             "SELECT service_user_id FROM linked_accounts WHERE service = 'network' AND user_id = ?"
         ).get(localUserId);
         if (!row || row.service_user_id == null) return null;
@@ -62,7 +62,7 @@ async function _post(apiPath, body, retried = false) {
     // Idempotency keys make the retry safe: a credit that did land is not applied twice.
     if (res.status === 401 && auth.Authorization && !retried) {
         principal.tokenRejected(json && json.code);
-        return _post(apiPath, body, true);
+        return await _post(apiPath, body, true);
     }
     if (!res.ok) {
         throw new WalletError((json && json.error) || `wallet ${res.status}`, res.status, json);
@@ -76,9 +76,9 @@ async function _post(apiPath, body, retried = false) {
  * Returns { balance } or null when the user has no linked network account.
  */
 async function credit(localUserId, amount, reason, idempotencyKey, ref = null) {
-    const user_id = networkUserId(localUserId);
+    const user_id = await networkUserId(localUserId);
     if (!user_id) return null;
-    return _post('/internal/coins/credit', {
+    return await _post('/internal/coins/credit', {
         user_id, app_id: 'live', amount: Math.max(1, Math.round(amount)),
         reason, ref: ref || undefined, idempotency_key: idempotencyKey,
     });
@@ -89,9 +89,9 @@ async function credit(localUserId, amount, reason, idempotencyKey, ref = null) {
  * when the balance is too low. Returns { balance } or null when unlinked.
  */
 async function debit(localUserId, amount, reason, idempotencyKey, ref = null) {
-    const user_id = networkUserId(localUserId);
+    const user_id = await networkUserId(localUserId);
     if (!user_id) return null;
-    return _post('/internal/coins/debit', {
+    return await _post('/internal/coins/debit', {
         user_id, app_id: 'live', amount: Math.max(1, Math.round(amount)),
         reason, ref: ref || undefined, idempotency_key: idempotencyKey,
     });
@@ -99,10 +99,10 @@ async function debit(localUserId, amount, reason, idempotencyKey, ref = null) {
 
 /** Atomic transfer between two Live users. Returns { from_balance, to_balance } or null. */
 async function transfer(fromLocalId, toLocalId, amount, reason, idempotencyKey, ref = null) {
-    const from_user_id = networkUserId(fromLocalId);
-    const to_user_id = networkUserId(toLocalId);
+    const from_user_id = await networkUserId(fromLocalId);
+    const to_user_id = await networkUserId(toLocalId);
     if (!from_user_id || !to_user_id) return null;
-    return _post('/internal/coins/transfer', {
+    return await _post('/internal/coins/transfer', {
         from_user_id, to_user_id, app_id: 'live', amount: Math.max(1, Math.round(amount)),
         reason, ref: ref || undefined, idempotency_key: idempotencyKey,
     });

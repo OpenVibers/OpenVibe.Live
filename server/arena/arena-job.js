@@ -21,15 +21,15 @@ let _busy = false;
 // The periodic tick now judges past speech (backfill) so the feed reflects the record, and
 // catches up anything the live listener missed.
 async function tick() {
-    if (_busy || !arena.arenaEnabled() || !arena.aiOn()) return;
+    if (_busy || !await arena.arenaEnabled() || !await arena.aiOn()) return;
     _busy = true;
     try { await require('./backfill').run(); } catch (e) { console.warn('[Arena] backfill:', e.message); }
     finally { _busy = false; }
 }
 
-function start() {
+async function start() {
     if (_timer) return;
-    arena.ensureTables();
+    await arena.ensureTables();
     _timer = setInterval(() => tick().catch(e => console.warn('[Arena] job:', e.message)), INTERVAL_MS);
     if (_timer.unref) _timer.unref();
     setTimeout(() => tick().catch(() => {}), 90_000).unref?.();
@@ -43,10 +43,10 @@ function start() {
 }
 
 async function housekeeping() {
-    if (!arena.arenaEnabled()) return;
+    if (!await arena.arenaEnabled()) return;
     // Clocks only: forfeit beefs whose clock ran out, hard-end the ones past 24 h. There is no chat
     // scan, no discovery and no lore — the Arena is pure mic (listener.js).
-    try { require('./beef').tick(); } catch (e) { console.warn('[Arena] beef tick:', e.message); }
+    try { await require('./beef').tick(); } catch (e) { console.warn('[Arena] beef tick:', e.message); }
 }
 
 function stop() {

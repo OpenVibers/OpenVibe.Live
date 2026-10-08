@@ -54,15 +54,15 @@ router.use(requireAuth, permissions.requireAdmin);
 
 // ── Process diagnostics (event-loop delay, memory, sockets, jobs, queues, migrations) ──
 // Unresolved lineage references (D20: the operator view). ?reason=conflict|source_unavailable|not_found|display_name_only…
-router.get('/lineage/unresolved', (req, res) => {
+router.get('/lineage/unresolved', async (req, res) => {
     res.set('Cache-Control', 'no-store');
     const reason = typeof req.query.reason === 'string' && /^[a-z_]{1,60}$/.test(req.query.reason) ? req.query.reason : null;
-    res.json(require('../lineage/unresolved').list({ reason, limit: req.query.limit }));
+    res.json(await require('../lineage/unresolved').list({ reason, limit: req.query.limit }));
 });
 
-router.get('/diagnostics', (req, res) => {
+router.get('/diagnostics', async (req, res) => {
     res.set('Cache-Control', 'no-store');
-    res.json(require('../diagnostics').snapshot({
+    res.json(await require('../diagnostics').snapshot({
         db,
         chatDelivery: require('../chat/chat-delivery'),
         broadcastServer: require('../streaming/broadcast-server'),
@@ -80,24 +80,24 @@ router.get('/stats', async (req, res) => {
         const chatStats = await chatReads.siteStats();
         const stats = {
             users: {
-                total: db.get('SELECT COUNT(*) as c FROM users').c,
-                streamers: db.get("SELECT COUNT(*) as c FROM users WHERE role IN ('streamer', 'admin')").c,
-                banned: db.get('SELECT COUNT(*) as c FROM users WHERE is_banned = 1').c,
+                total: (await db.get('SELECT COUNT(*) as c FROM users')).c,
+                streamers: (await db.get("SELECT COUNT(*) as c FROM users WHERE role IN ('streamer', 'admin')")).c,
+                banned: (await db.get('SELECT COUNT(*) as c FROM users WHERE is_banned = 1')).c,
             },
             streams: {
-                live: db.get('SELECT COUNT(*) as c FROM streams WHERE is_live = 1').c,
-                total: db.get('SELECT COUNT(*) as c FROM streams').c,
-                totalViewers: db.get('SELECT COALESCE(SUM(viewer_count), 0) as c FROM streams WHERE is_live = 1').c,
+                live: (await db.get('SELECT COUNT(*) as c FROM streams WHERE is_live = 1')).c,
+                total: (await db.get('SELECT COUNT(*) as c FROM streams')).c,
+                totalViewers: (await db.get('SELECT COALESCE(SUM(viewer_count), 0)::bigint as c FROM streams WHERE is_live = 1')).c,
             },
             // Under BILLING_AUTHORITY=billing these tables are frozen legacy copies: the numbers live
             // in OpenVibe.Billing (reconciliation report), so none are shown as current here.
             openvibeBucks: money.onBilling() ? {
                 authority: 'billing', totalCirculating: null, totalTransactions: null, pendingCashouts: null, totalDonated: null,
             } : {
-                totalCirculating: db.get('SELECT COALESCE(SUM(openvibe_bucks_balance), 0) as c FROM users').c,
-                totalTransactions: db.get('SELECT COUNT(*) as c FROM transactions').c,
-                pendingCashouts: db.get("SELECT COUNT(*) as c FROM transactions WHERE type = 'cashout' AND status = 'escrow'").c,
-                totalDonated: db.get("SELECT COALESCE(SUM(amount), 0) as c FROM transactions WHERE type = 'donation'").c,
+                totalCirculating: (await db.get('SELECT COALESCE(SUM(openvibe_bucks_balance), 0) as c FROM users')).c,
+                totalTransactions: (await db.get('SELECT COUNT(*) as c FROM transactions')).c,
+                pendingCashouts: (await db.get("SELECT COUNT(*) as c FROM transactions WHERE type = 'cashout' AND status = 'escrow'")).c,
+                totalDonated: (await db.get("SELECT COALESCE(SUM(amount), 0)::bigint as c FROM transactions WHERE type = 'donation'")).c,
             },
             vods: {
                 total: vodCounts.total,
@@ -109,11 +109,11 @@ router.get('/stats', async (req, res) => {
         };
 
         // Recent activity
-        stats.recentUsers = db.all(
+        stats.recentUsers = await db.all(
             'SELECT id, username, display_name, role, created_at FROM users ORDER BY created_at DESC LIMIT 10'
         );
 
-        stats.recentStreams = db.all(`
+        stats.recentStreams = await db.all(`
             SELECT s.id, s.title, s.protocol, s.viewer_count, s.started_at, u.username
             FROM streams s JOIN users u ON s.user_id = u.id
             WHERE s.is_live = 1
@@ -128,7 +128,7 @@ router.get('/stats', async (req, res) => {
 });
 
 // ── List Users ───────────────────────────────────────────────
-router.get('/users', (req, res) => {
+router.get('/users', async (req, res) => {
     try {
         const limit = Math.min(parseInt(req.query.limit || '50'), 200);
         const offset = parseInt(req.query.offset || '0');
@@ -144,20 +144,20 @@ router.get('/users', (req, res) => {
         const params = [];
 
         if (search) {
-            sql += ' WHERE u.username LIKE ? OR u.display_name LIKE ?';
+            sql += ' WHERE u.username ILIKE ? OR u.display_name ILIKE ?';
             params.push(`%${search}%`, `%${search}%`);
         }
 
         const countSql = search
-            ? `SELECT COUNT(*) as c FROM users WHERE username LIKE ? OR display_name LIKE ?`
+            ? `SELECT COUNT(*) as c FROM users WHERE username ILIKE ? OR display_name ILIKE ?`
             : `SELECT COUNT(*) as c FROM users`;
         const countParams = search ? [`%${search}%`, `%${search}%`] : [];
 
         sql += ' ORDER BY u.created_at DESC LIMIT ? OFFSET ?';
         params.push(limit, offset);
 
-        const users = db.all(sql, params);
-        const total = db.get(countSql, countParams).c;
+        const users = await db.all(sql, params);
+        const total = (await db.get(countSql, countParams)).c;
         if (money.onBilling()) for (const u of users) u.openvibe_bucks_balance = null;   // legacy column; Billing holds Vibes
 
         res.json({ users, total });
@@ -167,7 +167,7 @@ router.get('/users', (req, res) => {
 });
 
 // ── Update User ──────────────────────────────────────────────
-router.put('/users/:id', (req, res) => {
+router.put('/users/:id', async (req, res) => {
     try {
         let { role, display_name, username, max_managed_streams } = req.body;
         const updates = [];
@@ -175,7 +175,7 @@ router.put('/users/:id', (req, res) => {
         // The owner is out of reach of other admins, and only the owner hands out or takes away the
         // admin role — the same boundary POST/DELETE /admins already enforce. This route used to
         // accept any role from any admin, so an admin could demote the owner or promote a sock account.
-        const target = db.getUserById(req.params.id);
+        const target = await db.getUserById(req.params.id);
         if (!target) return res.status(404).json({ error: 'User not found' });
         if (target.is_owner && !permissions.isOwner(req.user)) {
             return res.status(403).json({ error: 'Only the owner can change the owner account' });
@@ -211,7 +211,7 @@ router.put('/users/:id', (req, res) => {
                 return res.status(400).json({ error: 'That username is reserved for anonymous users' });
             }
             // Check uniqueness (case-insensitive)
-            const existing = db.getUserByUsername(username);
+            const existing = await db.getUserByUsername(username);
             if (existing && String(existing.id) !== String(req.params.id)) {
                 return res.status(409).json({ error: 'Username already taken' });
             }
@@ -228,13 +228,13 @@ router.put('/users/:id', (req, res) => {
 
         if (updates.length > 0) {
             params.push(req.params.id);
-            db.run(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
+            await db.run(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
         }
 
         // No chat-name update here: OpenVibe.Chat owns the chat rows and keeps stored message
         // names current via ctx_users; the delivery.invalidate() below tells it this user changed.
 
-        const user = db.getUserById(req.params.id);
+        const user = await db.getUserById(req.params.id);
         // Sanitize — never expose password_hash, email (legacy columns, WS-B task 2) or stream_key
         const { password_hash, email, stream_key, ...safeUser } = user;
 
@@ -242,7 +242,7 @@ router.put('/users/:id', (req, res) => {
         if (updates.length > 0) {
             const id = parseInt(req.params.id);
             // Chat ingress: a typed account hint; Chat updates the sockets and stored message names.
-            delivery.invalidate({
+            await delivery.invalidate({
                 user: id,
                 user_data: { id, username: safeUser.username, display_name: safeUser.display_name || null, role: safeUser.role || null, avatar_url: safeUser.avatar_url || null, profile_color: safeUser.profile_color || null },
             });
@@ -255,13 +255,13 @@ router.put('/users/:id', (req, res) => {
 });
 
 // ── Ban User ─────────────────────────────────────────────────
-router.post('/users/:id/ban', (req, res) => {
+router.post('/users/:id/ban', async (req, res) => {
     try {
         const { reason, duration_hours } = req.body;
         // An admin banning their own account locks them out; there is no one above them to undo it.
         if (Number(req.params.id) === req.user.id) return res.status(400).json({ error: 'You cannot ban yourself' });
         // Nor may an admin ban the owner, or another admin unless they are the owner.
-        const banTarget = db.getUserById(req.params.id);
+        const banTarget = await db.getUserById(req.params.id);
         if (!banTarget) return res.status(404).json({ error: 'User not found' });
         if ((banTarget.is_owner || banTarget.role === 'admin') && !permissions.isOwner(req.user)) {
             return res.status(403).json({ error: 'Only the owner can ban an admin' });
@@ -270,15 +270,15 @@ router.post('/users/:id/ban', (req, res) => {
             ? new Date(Date.now() + duration_hours * 3600000).toISOString()
             : null;
 
-        db.run('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ?',
+        await db.run('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ?',
             [reason || 'Banned by admin', req.params.id]);
 
-        db.run(
+        await db.run(
             `INSERT INTO bans (user_id, reason, banned_by, expires_at) VALUES (?, ?, ?, ?)`,
             [req.params.id, reason || 'Banned by admin', req.user.id, expires]
         );
 
-        delivery.logModeration({
+        await delivery.logModeration({
             scope_type: 'site',
             actor_user_id: req.user.id,
             target_user_id: Number(req.params.id),
@@ -293,12 +293,12 @@ router.post('/users/:id/ban', (req, res) => {
 });
 
 // ── Unban User ───────────────────────────────────────────────
-router.delete('/users/:id/ban', (req, res) => {
+router.delete('/users/:id/ban', async (req, res) => {
     try {
-        db.run('UPDATE users SET is_banned = 0, ban_reason = NULL WHERE id = ?', [req.params.id]);
-        db.run('DELETE FROM bans WHERE user_id = ?', [req.params.id]);
+        await db.run('UPDATE users SET is_banned = 0, ban_reason = NULL WHERE id = ?', [req.params.id]);
+        await db.run('DELETE FROM bans WHERE user_id = ?', [req.params.id]);
 
-        delivery.logModeration({
+        await delivery.logModeration({
             scope_type: 'site',
             actor_user_id: req.user.id,
             target_user_id: Number(req.params.id),
@@ -312,9 +312,9 @@ router.delete('/users/:id/ban', (req, res) => {
 });
 
 // ── List All Active Streams ──────────────────────────────────
-router.get('/streams', (req, res) => {
+router.get('/streams', async (req, res) => {
     try {
-        const streams = db.all(`
+        const streams = await db.all(`
             SELECT s.*, u.username, u.display_name,
                    c.id AS channel_id,
                    COALESCE(c.force_vod_recording_disabled, 0) AS force_vod_recording_disabled,
@@ -331,20 +331,20 @@ router.get('/streams', (req, res) => {
 });
 
 // ── Force End Stream ─────────────────────────────────────────
-router.delete('/streams/:id', (req, res) => {
+router.delete('/streams/:id', async (req, res) => {
     try {
-        const stream = db.getStreamById(parseInt(req.params.id, 10));
+        const stream = await db.getStreamById(parseInt(req.params.id, 10));
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
 
         // Protect the owner's stream: a regular admin/global-mod cannot force-end
         // the network owner's broadcast — only the owner (or the streamer themself)
         // may. Prevents a rogue admin from repeatedly knocking the owner offline.
-        const target = db.getUserById(stream.user_id);
+        const target = await db.getUserById(stream.user_id);
         if (target && target.is_owner && !permissions.isOwner(req.user) && req.user.id !== stream.user_id) {
             return res.status(403).json({ error: "You cannot end the owner's stream" });
         }
 
-        db.endStream(req.params.id);
+        await db.endStream(req.params.id);
         // A force-end must actually take the stream down everywhere, not just flip is_live:
         // outbound forwarders (RobotStreamer passthrough, ffmpeg restreams, chat relays), the
         // signaling room and its viewers, the SFU room and any voice channel.
@@ -354,12 +354,12 @@ router.delete('/streams/:id', (req, res) => {
         try { require('../integrations/ai-chatbot-service').stopForStream(stream.id); } catch { /* non-critical */ }
         try { require('../streaming/broadcast-server').endStream(stream.id); } catch { /* no room */ }
         try { require('../streaming/webrtc-sfu').closeRoom(`stream-${stream.id}`); } catch { /* no room */ }
-        try { require('../streaming/calls-authority').removeStreamChannel(stream.id); } catch { /* no channel */ }
+        try { await require('../streaming/calls-authority').removeStreamChannel(stream.id); } catch { /* no channel */ }
 
         // Accountability: force-ending someone's live stream is a moderation action
         // and MUST be logged (previously it left no trace at all).
         try {
-            delivery.logModeration({
+            await delivery.logModeration({
                 scope_type: 'stream',
                 scope_id: stream.id,
                 actor_user_id: req.user.id,
@@ -377,15 +377,15 @@ router.delete('/streams/:id', (req, res) => {
 });
 
 // ── Force NSFW on a Channel ──────────────────────────────────
-router.put('/channels/:id/force-nsfw', (req, res) => {
+router.put('/channels/:id/force-nsfw', async (req, res) => {
     try {
         const { force } = req.body; // true or false
         const forceVal = force ? 1 : 0;
-        db.run('UPDATE channels SET force_nsfw = ?, is_nsfw = CASE WHEN ? = 1 THEN 1 ELSE is_nsfw END, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        await db.run('UPDATE channels SET force_nsfw = ?, is_nsfw = CASE WHEN ? = 1 THEN 1 ELSE is_nsfw END, updated_at = ov_now() WHERE id = ?',
             [forceVal, forceVal, req.params.id]);
         // Also update any currently live streams for this channel
         if (forceVal) {
-            db.run('UPDATE streams SET is_nsfw = 1 WHERE channel_id = ? AND is_live = 1', [req.params.id]);
+            await db.run('UPDATE streams SET is_nsfw = 1 WHERE channel_id = ? AND is_live = 1', [req.params.id]);
         }
         res.json({ message: force ? 'Channel force-marked as NSFW' : 'Force-NSFW removed from channel' });
     } catch (err) {
@@ -394,20 +394,20 @@ router.put('/channels/:id/force-nsfw', (req, res) => {
 });
 
 // ── Force Disable VOD Recording on a User Channel ───────────
-router.put('/users/:id/force-vod-recording', (req, res) => {
+router.put('/users/:id/force-vod-recording', async (req, res) => {
     try {
         const targetUserId = parseInt(req.params.id, 10);
         if (!Number.isFinite(targetUserId) || targetUserId <= 0) {
             return res.status(400).json({ error: 'Invalid user id' });
         }
 
-        const user = db.getUserById(targetUserId);
+        const user = await db.getUserById(targetUserId);
         if (!user) return res.status(404).json({ error: 'User not found' });
 
-        const channel = db.ensureChannel(targetUserId);
+        const channel = await db.ensureChannel(targetUserId);
         const forceVal = req.body?.force ? 1 : 0;
-        db.run(
-            'UPDATE channels SET force_vod_recording_disabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        await db.run(
+            'UPDATE channels SET force_vod_recording_disabled = ?, updated_at = ov_now() WHERE id = ?',
             [forceVal, channel.id],
         );
 
@@ -425,10 +425,10 @@ router.put('/users/:id/force-vod-recording', (req, res) => {
 });
 
 // ── Force NSFW on a Stream ───────────────────────────────────
-router.put('/streams/:id/nsfw', (req, res) => {
+router.put('/streams/:id/nsfw', async (req, res) => {
     try {
         const { is_nsfw } = req.body;
-        db.run('UPDATE streams SET is_nsfw = ? WHERE id = ?', [is_nsfw ? 1 : 0, req.params.id]);
+        await db.run('UPDATE streams SET is_nsfw = ? WHERE id = ?', [is_nsfw ? 1 : 0, req.params.id]);
         res.json({ message: is_nsfw ? 'Stream marked as NSFW' : 'NSFW removed from stream' });
     } catch (err) {
         res.status(500).json({ error: 'Failed to update stream NSFW' });
@@ -436,9 +436,9 @@ router.put('/streams/:id/nsfw', (req, res) => {
 });
 
 // ── List Bans ────────────────────────────────────────────────
-router.get('/bans', (req, res) => {
+router.get('/bans', async (req, res) => {
     try {
-        const bans = db.all(`
+        const bans = await db.all(`
             SELECT b.*, u.username as banned_username, m.username as banned_by_username
             FROM bans b
             LEFT JOIN users u ON b.user_id = u.id
@@ -452,9 +452,9 @@ router.get('/bans', (req, res) => {
 });
 
 // ── VPN Approval Queue ───────────────────────────────────────
-router.get('/vpn-queue', (req, res) => {
+router.get('/vpn-queue', async (req, res) => {
     try {
-        const queue = db.all(`
+        const queue = await db.all(`
             SELECT v.*, u.username
             FROM vpn_approvals v
             LEFT JOIN users u ON v.user_id = u.id
@@ -468,14 +468,14 @@ router.get('/vpn-queue', (req, res) => {
 });
 
 // ── Approve/Deny VPN ─────────────────────────────────────────
-router.put('/vpn-queue/:id', (req, res) => {
+router.put('/vpn-queue/:id', async (req, res) => {
     try {
         const { status } = req.body; // 'approved' or 'denied'
         if (!['approved', 'denied'].includes(status)) {
             return res.status(400).json({ error: 'Status must be approved or denied' });
         }
 
-        db.run('UPDATE vpn_approvals SET status = ?, reviewed_by = ? WHERE id = ?',
+        await db.run('UPDATE vpn_approvals SET status = ?, reviewed_by = ? WHERE id = ?',
             [status, req.user.id, req.params.id]);
 
         res.json({ message: `VPN request ${status}` });
@@ -491,17 +491,17 @@ router.put('/vpn-queue/:id', (req, res) => {
 // ── Money: who holds it, the freeze, and Billing health (roadmap Wave 8) ──────
 // Every admin can see the state; only the owner can freeze/unfreeze or resolve an action.
 router.get('/money', async (req, res) => {
-    const out = { authority: money.authority(), billing_authority_env: process.env.BILLING_AUTHORITY || null, ...money.freezeState() };
+    const out = { authority: money.authority(), billing_authority_env: process.env.BILLING_AUTHORITY || null, ...await money.freezeState() };
     if (money.onBilling()) {
         try { out.billing = await require('../monetization/billing-actions').adminStatus(); }
         catch (err) { out.billing = { error: err.message }; }
     }
     res.json(out);
 });
-router.post('/money/freeze', permissions.requireOwner, (req, res) => {
+router.post('/money/freeze', permissions.requireOwner, async (req, res) => {
     const on = req.body && req.body.on;
     if (typeof on !== 'boolean') return res.status(400).json({ error: 'on must be true or false' });
-    const state = money.setFrozen(on, { reason: req.body.reason || null, by: req.user.username || `user:${req.user.id}` });
+    const state = await money.setFrozen(on, { reason: req.body.reason || null, by: req.user.username || `user:${req.user.id}` });
     res.json({ authority: money.authority(), ...state });
 });
 router.post('/money/actions/:id/resolve', permissions.requireOwner, async (req, res) => {
@@ -517,10 +517,10 @@ router.post('/money/actions/:id/resolve', permissions.requireOwner, async (req, 
 });
 
 // ── Get All Settings ─────────────────────────────────────────
-router.get('/settings', (req, res) => {
+router.get('/settings', async (req, res) => {
     try {
         // Non-owners get API keys / secrets / money settings redacted.
-        const settings = permissions.redactSettingsForUser(db.getAllSettings(), req.user);
+        const settings = permissions.redactSettingsForUser(await db.getAllSettings(), req.user);
         res.json({ settings });
     } catch (err) {
         console.error('[Admin] Settings error:', err.message);
@@ -529,46 +529,46 @@ router.get('/settings', (req, res) => {
 });
 
 // AI usage + estimated cost breakdown (for the openvibe.network admin AI tab).
-router.get('/ai/usage', (req, res) => {
+router.get('/ai/usage', async (req, res) => {
     try {
         const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30));
-        res.json({ days, usage: db.getAiUsageSummary(days) });
+        res.json({ days, usage: await db.getAiUsageSummary(days) });
     } catch (err) {
         res.status(500).json({ error: 'Failed to get AI usage' });
     }
 });
 
 // AI viewers fleet (admin): running workers + per-channel spend/status, kill controls.
-router.get('/ai/viewers/status', (req, res) => {
+router.get('/ai/viewers/status', async (req, res) => {
     try {
         const viewers = require('../ai/viewers');
         const running = [];
         for (const w of viewers.engine.workers.values()) {
-            const u = db.getUserById(w.userId);
+            const u = await db.getUserById(w.userId);
             running.push({ engine: 'v3', user_id: w.userId, username: u && u.username, stream_id: w.streamId, bots: w.bots.length, mode: w.mode, paused: w.paused, stats: w.stats, started_at: w.startedAt });
         }
-        const channels = db.all(`SELECT c.user_id, u.username, c.enabled, c.use_shared_key, c.daily_budget_cents, c.settings_json,
+        const channels = (await Promise.all((await db.all(`SELECT c.user_id, u.username, c.enabled, c.use_shared_key, c.daily_budget_cents, c.settings_json,
             (SELECT COUNT(*) FROM channel_ai_bots b WHERE b.channel_user_id = c.user_id AND b.is_active = 1) AS bots
-            FROM channel_ai_config c JOIN users u ON u.id = c.user_id ORDER BY c.enabled DESC, u.username`).map(r => {
+            FROM channel_ai_config c JOIN users u ON u.id = c.user_id ORDER BY c.enabled DESC, u.username`)).map(async r => {
             let sj = {}; try { sj = JSON.parse(r.settings_json || '{}') || {}; } catch { /* */ }
-            let spent = 0; try { spent = db.getAiCostTodayForUser(r.user_id, 'ai_viewers'); } catch { /* */ }
+            let spent = 0; try { spent = await db.getAiCostTodayForUser(r.user_id, 'ai_viewers'); } catch { /* */ }
             return { user_id: r.user_id, username: r.username, enabled: !!r.enabled, shared_key: !!r.use_shared_key, cap_usd: (r.daily_budget_cents || 0) / 100, spent_today_usd: spent, bots: r.bots, activity: sj.activity || null };
-        });
-        res.json({ kill_switch: db.getSetting('ai_viewers_enabled') === false, global_spend_today_usd: require('../ai/viewers/budget').globalViewerSpendToday(), running, channels });
+        })));
+        res.json({ kill_switch: await db.getSetting('ai_viewers_enabled') === false, global_spend_today_usd: await require('../ai/viewers/budget').globalViewerSpendToday(), running, channels });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
-router.post('/ai/viewers/:userId/:action', (req, res) => {
+router.post('/ai/viewers/:userId/:action', async (req, res) => {
     try {
         const viewers = require('../ai/viewers');
         const userId = parseInt(req.params.userId, 10);
         const action = String(req.params.action || '');
-        if (action === 'stop') { viewers.stopForUser(userId); db.upsertChannelAiConfig(userId, { enabled: 0 }); return res.json({ ok: true, message: 'Stopped and disabled' }); }
+        if (action === 'stop') { viewers.stopForUser(userId); await db.upsertChannelAiConfig(userId, { enabled: 0 }); return res.json({ ok: true, message: 'Stopped and disabled' }); }
         if (['pause', 'resume', 'nudge'].includes(action)) return res.json({ ok: true, message: viewers.onModCommand(userId, null, [action], { by: `admin:${req.user.username}` }) });
         res.status(400).json({ error: 'Unknown action' });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
-router.get('/ai/viewers/:userId/log', (req, res) => {
-    try { res.json({ rows: db.getAiViewerLog(parseInt(req.params.userId, 10), { afterId: parseInt(req.query.after, 10) || 0, limit: parseInt(req.query.limit, 10) || 80 }) }); }
+router.get('/ai/viewers/:userId/log', async (req, res) => {
+    try { res.json({ rows: await db.getAiViewerLog(parseInt(req.params.userId, 10), { afterId: parseInt(req.query.after, 10) || 0, limit: parseInt(req.query.limit, 10) || 80 }) }); }
     catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -590,9 +590,9 @@ router.get('/ai/status', async (req, res) => {
 router.get('/ai/explorer/:userId', async (req, res) => {
     try {
         const userId = parseInt(req.params.userId, 10);
-        const user = db.getUserById(userId);
+        const user = await db.getUserById(userId);
         if (!user) return res.status(404).json({ error: 'User not found' });
-        const memories = db.getStreamMemoriesByUser(userId, 80).map(m => ({
+        const memories = (await db.getStreamMemoriesByUser(userId, 80)).map(m => ({
             id: m.id, stream_id: m.stream_id, description: m.description,
             tags: m.tags, created_at: m.created_at, thumbnail_url: m.thumbnail_url,
         }));
@@ -614,7 +614,7 @@ router.get('/ai/explorer/:userId', async (req, res) => {
         }));
         res.json({
             user: { id: user.id, username: user.username, display_name: user.display_name, bio: user.bio },
-            overview: db.getStreamerOverview(userId) || null,
+            overview: await db.getStreamerOverview(userId) || null,
             counts: { memories: memories.length, pastes: pastes.length, vods: vods.length, clips: clips.length },
             memories, pastes, vods, clips,
         });
@@ -624,9 +624,9 @@ router.get('/ai/explorer/:userId', async (req, res) => {
 });
 
 // List all stored per-streamer overviews.
-router.get('/ai/overviews', (req, res) => {
+router.get('/ai/overviews', async (req, res) => {
     try {
-        res.json({ overviews: db.getAllStreamerOverviews(200) });
+        res.json({ overviews: await db.getAllStreamerOverviews(200) });
     } catch (err) {
         res.status(500).json({ error: 'Failed to list overviews' });
     }
@@ -636,12 +636,12 @@ router.get('/ai/overviews', (req, res) => {
 router.post('/ai/streamer/:userId/overview', async (req, res) => {
     try {
         const userId = parseInt(req.params.userId, 10);
-        const user = db.getUserById(userId);
+        const user = await db.getUserById(userId);
         if (!user) return res.status(404).json({ error: 'User not found' });
-        if (!aiAnalysis.isEnabled()) return res.status(400).json({ error: 'AI is disabled — enable it in AI Config first.' });
+        if (!await aiAnalysis.isEnabled()) return res.status(400).json({ error: 'AI is disabled — enable it in AI Config first.' });
         const overview = await aiAnalysis.generateStreamerOverview(userId);
         if (!overview) return res.status(422).json({ error: 'Could not generate an overview — no AI-analyzable data for this streamer yet, or the provider returned nothing.' });
-        res.json({ overview: db.getStreamerOverview(userId) });
+        res.json({ overview: await db.getStreamerOverview(userId) });
     } catch (err) {
         res.status(500).json({ error: err.message || 'Overview generation failed' });
     }
@@ -659,7 +659,7 @@ router.put('/settings', async (req, res) => {
             return res.status(400).json({ error: 'Invalid settings payload' });
         }
         const owner = permissions.isOwner(req.user);
-        const existing = new Map(db.getAllSettings().map(s => [s.key, s]));
+        const existing = new Map((await db.getAllSettings()).map(s => [s.key, s]));
         const looksJson = (v) => typeof v === 'string' && /^\s*[\[{]/.test(v);
         const parsesJson = (v) => { try { const o = JSON.parse(v); return o !== null && typeof o === 'object'; } catch { return false; } };
         // Validate EVERYTHING before touching the DB: a single bad field (e.g. a JSON blob that
@@ -697,7 +697,7 @@ router.put('/settings', async (req, res) => {
             const snap = await siteConfig.change({ set: Object.fromEntries(configWrites) }, { actor: siteConfig.actorOf(req.user), reason: String(req.body.reason || `admin settings: ${configWrites.map((w) => w[0]).join(', ')}`).slice(0, 300) });
             revision = snap.revision;
         }
-        if (otherWrites.length) db.getDb().transaction(() => { for (const [k, v] of otherWrites) db.setSetting(k, v); })();
+        if (otherWrites.length) await db.getDb().tx(async () => { for (const [k, v] of otherWrites) await db.setSetting(k, v); });
         if (writes.length) console.log(`[Admin] Settings updated by ${req.user?.username || req.user?.id}: ${writes.map(w => w[0]).join(', ')}${revision ? ` (revision ${revision})` : ''}`);
         const parts = [`${writes.length} updated`];
         if (unchanged) parts.push(`${unchanged} unchanged`);
@@ -707,7 +707,7 @@ router.put('/settings', async (req, res) => {
             saved: writes.map(w => w[0]),
             rejected,
             revision,
-            settings: permissions.redactSettingsForUser(db.getAllSettings(), req.user),
+            settings: permissions.redactSettingsForUser(await db.getAllSettings(), req.user),
         });
     } catch (err) {
         if (configError(res, err)) return;
@@ -728,8 +728,8 @@ router.put('/settings/:key', async (req, res) => {
         }
         if (siteConfig.isConfigKey(req.params.key)) {
             await siteConfig.change({ set: { [req.params.key]: value } }, { actor: siteConfig.actorOf(req.user), reason: String(req.body.reason || `admin setting ${req.params.key}`).slice(0, 300) });
-        } else db.setSetting(req.params.key, value);
-        res.json({ message: 'Setting updated', setting: db.getSettingRow(req.params.key) });
+        } else await db.setSetting(req.params.key, value);
+        res.json({ message: 'Setting updated', setting: await db.getSettingRow(req.params.key) });
     } catch (err) {
         if (configError(res, err)) return;
         res.status(500).json({ error: 'Failed to update setting' });
@@ -744,7 +744,7 @@ router.delete('/settings/:key', async (req, res) => {
         }
         if (siteConfig.isConfigKey(req.params.key)) {
             await siteConfig.change({ unset: [req.params.key] }, { actor: siteConfig.actorOf(req.user), reason: String((req.body && req.body.reason) || `admin deleted ${req.params.key}`).slice(0, 300) });
-        } else db.deleteSetting(req.params.key);
+        } else await db.deleteSetting(req.params.key);
         res.json({ message: 'Setting deleted' });
     } catch (err) {
         if (configError(res, err)) return;
@@ -757,12 +757,12 @@ router.delete('/settings/:key', async (req, res) => {
 // GET /config/:namespace/history, POST /config/:namespace/rollback { to?, reason } — the rollback first
 // records rows changed outside the journal, so it only undoes configuration changes.
 let configRoutes = null;
-const configHandlers = () => configRoutes || (configRoutes = require('openvibe-shared/config').adminRoutes([siteConfig.getStore()], {
+const configHandlers = async () => (configRoutes || (configRoutes = require('openvibe-shared/config').adminRoutes([await siteConfig.getStore()], {
     requireAdmin: (_q, _s, next) => next(), basePath: '/config', actor: (q) => siteConfig.actorOf(q.user),
-}));
-router.get('/config', (req, res, next) => configHandlers().list(req, res, next));
-router.get('/config/:namespace', (req, res, next) => configHandlers().get(req, res, next));
-router.get('/config/:namespace/history', (req, res, next) => configHandlers().history(req, res, next));
+})));
+router.get('/config', async (req, res, next) => (await configHandlers()).list(req, res, next));
+router.get('/config/:namespace', async (req, res, next) => (await configHandlers()).get(req, res, next));
+router.get('/config/:namespace/history', async (req, res, next) => (await configHandlers()).history(req, res, next));
 router.post('/config/:namespace/rollback', async (req, res) => {
     try {
         if (req.params.namespace !== 'live.site_settings') return res.status(404).json({ error: 'No such configuration namespace' });
@@ -781,9 +781,9 @@ router.post('/config/:namespace/rollback', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 
 // ── List Mods ────────────────────────────────────────────────
-router.get('/moderators', (req, res) => {
+router.get('/moderators', async (req, res) => {
     try {
-        const mods = db.all(
+        const mods = await db.all(
             "SELECT id, username, display_name, avatar_url, created_at, last_seen FROM users WHERE role IN ('mod', 'global_mod') ORDER BY username"
         );
         res.json({ moderators: mods });
@@ -793,19 +793,19 @@ router.get('/moderators', (req, res) => {
 });
 
 // ── Promote to Global Mod ────────────────────────────────────
-router.post('/moderators', (req, res) => {
+router.post('/moderators', async (req, res) => {
     try {
         const { username } = req.body;
         if (!username) return res.status(400).json({ error: 'Username is required' });
 
-        const user = db.getUserByUsername(username);
+        const user = await db.getUserByUsername(username);
         if (!user) return res.status(404).json({ error: 'User not found' });
         if (user.role === 'admin') return res.status(400).json({ error: 'Cannot change admin role' });
         if (user.role === 'global_mod') return res.status(400).json({ error: 'User is already a global moderator' });
 
-        db.run("UPDATE users SET role = 'global_mod' WHERE id = ?", [user.id]);
+        await db.run("UPDATE users SET role = 'global_mod' WHERE id = ?", [user.id]);
 
-        delivery.logModeration({
+        await delivery.logModeration({
             scope_type: 'site',
             actor_user_id: req.user.id,
             target_user_id: user.id,
@@ -820,15 +820,15 @@ router.post('/moderators', (req, res) => {
 });
 
 // ── Demote Global Mod ────────────────────────────────────────
-router.delete('/moderators/:id', (req, res) => {
+router.delete('/moderators/:id', async (req, res) => {
     try {
-        const user = db.getUserById(req.params.id);
+        const user = await db.getUserById(req.params.id);
         if (!user) return res.status(404).json({ error: 'User not found' });
         if (user.role !== 'global_mod') return res.status(400).json({ error: 'User is not a global moderator' });
 
-        db.run("UPDATE users SET role = 'user' WHERE id = ?", [user.id]);
+        await db.run("UPDATE users SET role = 'user' WHERE id = ?", [user.id]);
 
-        delivery.logModeration({
+        await delivery.logModeration({
             scope_type: 'site',
             actor_user_id: req.user.id,
             target_user_id: user.id,
@@ -846,9 +846,9 @@ router.delete('/moderators/:id', (req, res) => {
 // Admins (OWNER only — admins can add mods, but not other admins)
 // ═══════════════════════════════════════════════════════════════
 
-router.get('/admins', permissions.requireOwner, (req, res) => {
+router.get('/admins', permissions.requireOwner, async (req, res) => {
     try {
-        const admins = db.all("SELECT id, username, display_name, avatar_url, is_owner FROM users WHERE role = 'admin' ORDER BY is_owner DESC, username ASC");
+        const admins = await db.all("SELECT id, username, display_name, avatar_url, is_owner FROM users WHERE role = 'admin' ORDER BY is_owner DESC, username ASC");
         res.json({ admins });
     } catch (err) {
         res.status(500).json({ error: 'Failed to list admins' });
@@ -856,15 +856,15 @@ router.get('/admins', permissions.requireOwner, (req, res) => {
 });
 
 // ── Promote to Admin (owner only) ────────────────────────────
-router.post('/admins', permissions.requireOwner, (req, res) => {
+router.post('/admins', permissions.requireOwner, async (req, res) => {
     try {
         const { username } = req.body;
         if (!username) return res.status(400).json({ error: 'Username is required' });
-        const user = db.getUserByUsername(username);
+        const user = await db.getUserByUsername(username);
         if (!user) return res.status(404).json({ error: 'User not found' });
         if (user.role === 'admin') return res.status(400).json({ error: 'User is already an admin' });
-        db.run("UPDATE users SET role = 'admin' WHERE id = ?", [user.id]);
-        delivery.logModeration({
+        await db.run("UPDATE users SET role = 'admin' WHERE id = ?", [user.id]);
+        await delivery.logModeration({
             scope_type: 'site', actor_user_id: req.user.id, target_user_id: user.id,
             action_type: 'admin_promote', details: { username: user.username },
         });
@@ -875,14 +875,14 @@ router.post('/admins', permissions.requireOwner, (req, res) => {
 });
 
 // ── Revoke Admin (owner only; cannot demote an owner) ────────
-router.delete('/admins/:id', permissions.requireOwner, (req, res) => {
+router.delete('/admins/:id', permissions.requireOwner, async (req, res) => {
     try {
-        const user = db.getUserById(req.params.id);
+        const user = await db.getUserById(req.params.id);
         if (!user) return res.status(404).json({ error: 'User not found' });
         if (user.role !== 'admin') return res.status(400).json({ error: 'User is not an admin' });
         if (user.is_owner) return res.status(400).json({ error: 'Cannot demote an owner' });
-        db.run("UPDATE users SET role = 'user' WHERE id = ?", [user.id]);
-        delivery.logModeration({
+        await db.run("UPDATE users SET role = 'user' WHERE id = ?", [user.id]);
+        await delivery.logModeration({
             scope_type: 'site', actor_user_id: req.user.id, target_user_id: user.id,
             action_type: 'admin_demote', details: { username: user.username },
         });
@@ -897,9 +897,9 @@ router.delete('/admins/:id', permissions.requireOwner, (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 
 // ── List All Keys ────────────────────────────────────────────
-router.get('/verification-keys', (req, res) => {
+router.get('/verification-keys', async (req, res) => {
     try {
-        const keys = db.getAllVerificationKeys();
+        const keys = await db.getAllVerificationKeys();
         res.json({ keys });
     } catch (err) {
         res.status(500).json({ error: 'Failed to list verification keys' });
@@ -907,7 +907,7 @@ router.get('/verification-keys', (req, res) => {
 });
 
 // ── Generate Key ─────────────────────────────────────────────
-router.post('/verification-keys', (req, res) => {
+router.post('/verification-keys', async (req, res) => {
     try {
         const { target_username, note } = req.body;
         if (!target_username) {
@@ -918,13 +918,13 @@ router.post('/verification-keys', (req, res) => {
         }
 
         // Check if username already taken by a real user
-        const existingUser = db.getUserByUsername(target_username);
+        const existingUser = await db.getUserByUsername(target_username);
         if (existingUser) {
             return res.status(409).json({ error: `Username "${target_username}" is already registered` });
         }
 
         // Check for duplicate active key for same username
-        const existingKey = db.getVerificationKeyByUsername(target_username);
+        const existingKey = await db.getVerificationKeyByUsername(target_username);
         if (existingKey) {
             return res.status(409).json({ error: `Active key already exists for "${target_username}"` });
         }
@@ -934,14 +934,14 @@ router.post('/verification-keys', (req, res) => {
             crypto.randomBytes(2).toString('hex').toUpperCase()
         ).join('-');
 
-        db.createVerificationKey({
+        await db.createVerificationKey({
             key,
             target_username,
             note: note || '',
             created_by: req.user.id,
         });
 
-        const created = db.getVerificationKeyByKey(key);
+        const created = await db.getVerificationKeyByKey(key);
         res.status(201).json({ key: created });
     } catch (err) {
         console.error('[Admin] Verification key error:', err.message);
@@ -950,9 +950,9 @@ router.post('/verification-keys', (req, res) => {
 });
 
 // ── Revoke Key ───────────────────────────────────────────────
-router.delete('/verification-keys/:id', (req, res) => {
+router.delete('/verification-keys/:id', async (req, res) => {
     try {
-        const result = db.revokeVerificationKey(req.params.id);
+        const result = await db.revokeVerificationKey(req.params.id);
         if (result.changes === 0) {
             return res.status(404).json({ error: 'Key not found or already used/revoked' });
         }
@@ -1019,7 +1019,7 @@ function diskUsage(targetPath) {
 
 // ── GET /api/admin/storage ───────────────────────────────────
 // Full disk overview + per-directory breakdown
-router.get('/storage', (req, res) => {
+router.get('/storage', async (req, res) => {
     try {
         const paths = require('../paths');
         const dataRoot = paths.dataDir();
@@ -1039,9 +1039,9 @@ router.get('/storage', (req, res) => {
             return { name: d.name, icon: d.icon, bytes: stats.bytes, files: stats.files };
         });
 
-        // Database file size
+        // Database size (PostgreSQL)
         let dbBytes = 0;
-        try { dbBytes = fs.statSync(paths.dbPath()).size; } catch {}
+        try { dbBytes = Number(await db.getDb().value('SELECT pg_database_size(current_database())')) || 0; } catch { /* the size is informational */ }
 
         // Total data directory
         const dataTotal = dirStats(dataRoot);
@@ -1105,12 +1105,12 @@ router.delete('/storage/vods/bulk', async (req, res) => {
                 const vod = await mediaClient.getVod(id).catch(() => null);
                 if (!vod) { errors.push(`VOD ${id} not found`); continue; }
                 // Owner-rank users' content is protected from admins.
-                if (!permissions.canModerateContentOwner(req.user, vod.user_id ? db.getUserById(vod.user_id) : null)) {
+                if (!permissions.canModerateContentOwner(req.user, vod.user_id ? await db.getUserById(vod.user_id) : null)) {
                     errors.push(`VOD ${id}: protected (owner content)`); continue;
                 }
                 freed += vod.file_size || 0;
                 await mediaClient.deleteVod(id);
-                purge.afterDelete('vod', id);
+                await purge.afterDelete('vod', id);
                 deleted++;
             } catch (err) {
                 errors.push(`VOD ${id}: ${err.message}`);
@@ -1136,13 +1136,13 @@ router.delete('/storage/clips/bulk', async (req, res) => {
                 const clip = await mediaClient.getClip(id).catch(() => null);
                 if (!clip) { errors.push(`Clip ${id} not found`); continue; }
                 let clipStreamOwner = null;
-                if (clip.stream_id) { const s = db.getStreamById(clip.stream_id); if (s) clipStreamOwner = db.getUserById(s.user_id); }
-                if (!permissions.canModerateContentOwner(req.user, clip.user_id ? db.getUserById(clip.user_id) : null) ||
+                if (clip.stream_id) { const s = await db.getStreamById(clip.stream_id); if (s) clipStreamOwner = await db.getUserById(s.user_id); }
+                if (!permissions.canModerateContentOwner(req.user, clip.user_id ? await db.getUserById(clip.user_id) : null) ||
                     !permissions.canModerateContentOwner(req.user, clipStreamOwner)) {
                     errors.push(`Clip ${id}: protected (owner content)`); continue;
                 }
                 await mediaClient.deleteClip(id);
-                purge.afterDelete('clip', id);
+                await purge.afterDelete('clip', id);
                 deleted++;
             } catch (err) {
                 errors.push(`Clip ${id}: ${err.message}`);
@@ -1165,7 +1165,7 @@ for (const [method, route, upstream] of [
     ['post', '/storage/tiers/move',      '/admin/storage/tiers/move'],
     ['post', '/storage/tiers/bulk-move', '/admin/storage/tiers/bulk-move'],
 ]) {
-    router[method](route, (req, res) => mediaClient.proxy(req, res, upstream, { method: method.toUpperCase() }));
+    router[method](route, async (req, res) => await mediaClient.proxy(req, res, upstream, { method: method.toUpperCase() }));
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1314,7 +1314,7 @@ router.delete('/media-tools/cookies', (req, res) => {
 // PUT  /api/admin/media-tools/extra-args — Save extra yt-dlp CLI arguments
 // Owner only, and only flags from an allow-list: yt-dlp options such as --exec, --downloader and
 // --config-location run programs or read files, so free-form arguments were a shell for any admin.
-router.put('/media-tools/extra-args', permissions.requireOwner, (req, res) => {
+router.put('/media-tools/extra-args', permissions.requireOwner, async (req, res) => {
     try {
         const { extra_args } = req.body;
         if (typeof extra_args !== 'string') {
@@ -1324,7 +1324,7 @@ router.put('/media-tools/extra-args', permissions.requireOwner, (req, res) => {
         if (rejected.length) {
             return res.status(400).json({ error: `Not allowed: ${rejected.join(', ')}` });
         }
-        db.setSetting('ytdlp_extra_args', extra_args.trim());
+        await db.setSetting('ytdlp_extra_args', extra_args.trim());
         console.log(`[Admin] yt-dlp extra args updated by ${req.user.username}`);
         res.json({ message: 'Extra args saved' });
     } catch (err) {
@@ -1333,9 +1333,9 @@ router.put('/media-tools/extra-args', permissions.requireOwner, (req, res) => {
 });
 
 // DELETE /api/admin/media-tools/extra-args — Clear extra yt-dlp CLI arguments
-router.delete('/media-tools/extra-args', (req, res) => {
+router.delete('/media-tools/extra-args', async (req, res) => {
     try {
-        db.setSetting('ytdlp_extra_args', '');
+        await db.setSetting('ytdlp_extra_args', '');
         console.log(`[Admin] yt-dlp extra args cleared by ${req.user.username}`);
         res.json({ message: 'Extra args cleared' });
     } catch (err) {

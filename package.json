@@ -1,19 +1,17 @@
 {
   "name": "live",
   "version": "1.0.0",
-  "description": "OpenVibe.Live \u2014 free & open live streaming. Part of the OpenVibe network (media by OpenVibe.Media, identity by OpenVibe.Network).",
+  "description": "OpenVibe.Live — free & open live streaming. Part of the OpenVibe network (media by OpenVibe.Media, identity by OpenVibe.Network).",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
     "dev": "NODE_ENV=development node server/index.js",
-    "init-db": "node server/db/init.js",
-    "migrate:analytics-pg": "node scripts/analytics-pg-migrate.js",
     "seed": "node server/db/seed.js",
     "test": "node test/run.js",
     "test:unit": "node test/run.js",
+    "test:pg": "LIVE_TEST_STORE=pg node test/run.js",
     "test:powerchat": "for f in test/powerchat-*.test.js; do node \"$f\" || exit 1; done",
     "test:browser": "node test/browser/smoke.js",
-    "test:analytics-pg": "node test/analytics-pg.test.js",
     "perf:page": "node scripts/perf/measure-page.js",
     "perf:budget": "node scripts/perf/check-budgets.js",
     "n-1:record": "node scripts/n-1-record.js"
@@ -47,8 +45,8 @@
     "node-media-server": "^2.7.1",
     "onnxruntime-node": "^1.20.0",
     "openvibe-contracts": "https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.112.0",
-    "openvibe-sdk": "https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.35.0",
-    "openvibe-shared": "https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v2.13.0",
+    "openvibe-sdk": "https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.35.1",
+    "openvibe-shared": "https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v2.13.3",
     "pg": "^8.23.1",
     "sanitize-html": "^2.17.7",
     "sdp-transform": "^3.0.0",
@@ -59,5 +57,8 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
   }
 }

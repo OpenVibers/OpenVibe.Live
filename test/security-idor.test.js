@@ -17,7 +17,7 @@
  * return nothing of it (no key); each area also has a positive control, so a route that simply
  * broke in this harness cannot pass for a refusal.
  *
- * The real routers run on a temp database; sign-in is stubbed by an `x-test-user` header (as in
+ * The real routers run on the test database; sign-in is stubbed by an `x-test-user` header (as in
  * authorization.test.js) and Media by an in-process stub that records every call.
  *
  *   node test/security-idor.test.js
@@ -28,8 +28,6 @@ const os = require('os');
 const path = require('path');
 const http = require('http');
 
-const tmp = path.join(os.tmpdir(), `ov-idor-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-sec-data-'));   // nothing lands in the checkout's data/
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
@@ -38,42 +36,27 @@ console.warn = () => {};
 console.error = () => {};
 
 const db = require('../server/db/database');
-db.initDb();
-const raw = db.getDb();
 
 const auth = require('../server/auth/auth');
-const signIn = (req) => {
+const signIn = async (req) => {
     const id = Number(req.headers['x-test-user'] || 0);
-    const u = id ? db.getUserById(id) : null;
+    const u = id ? await db.getUserById(id) : null;
     if (u) { req.user = u; req.authSource = 'network'; }
     return u;
 };
-auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
-auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
+auth.requireAuth = async (req, res, next) => ((await signIn(req)) ? next() : res.status(401).json({ error: 'Authentication required' }));
+auth.optionalAuth = async (req, res, next) => { await signIn(req); next(); };
 
-const addUser = (id, username, role) => raw.prepare(
-    `INSERT INTO users (id, username, display_name, email, password_hash, role, stream_key, created_at)
+const addUser = (id, username, role) => db.getDb().prepare(
+    `INSERT INTO users (id, username, display_name, email, password_hash, role, stream_key, created_at) OVERRIDING SYSTEM VALUE
      VALUES (?, ?, ?, ?, 'x', ?, ?, '2025-01-01 00:00:00')`).run(id, username, username, `${username}@example.test`, role, `${String(id).repeat(32)}`);
 const ALICE = 3, BOB = 4;
-addUser(ALICE, 'alice', 'streamer');
-addUser(BOB, 'bob', 'streamer');
-db.ensureChannel(ALICE); db.ensureChannel(BOB);
-const chanA = db.getChannelByUserId(ALICE);
 const SLOT_KEY = 'ab'.repeat(20);
-const slotA = Number(db.createManagedStream({ user_id: ALICE, channel_id: chanA.id, slug: 'main', title: 'Alice main', protocol: 'rtmp', stream_key: SLOT_KEY }).lastInsertRowid);
-const streamA = Number(db.createStream({ user_id: ALICE, channel_id: chanA.id, managed_stream_id: slotA, title: 'Alice live', protocol: 'rtmp' }).lastInsertRowid);
 const DEST_KEY = 'restream-idor-key-cdcd';
-const destA = Number(db.createRestreamDestination(ALICE, { platform: 'custom', name: 'Alice mirror', server_url: 'rtmp://ingest.example.test/live', stream_key: DEST_KEY, managed_stream_id: slotA }).lastInsertRowid);
-const tokenA = db.createApiToken(ALICE, 'Alice bot', ['chat', 'read']).id;
-const camA = Number(raw.prepare("INSERT INTO camera_profiles (user_id, stream_id, name, onvif_url, username, password_hash) VALUES (?, ?, 'Alice cam', 'http://camera.example.test', 'admin', 'x')").run(ALICE, streamA).lastInsertRowid);
-const presetA = Number(raw.prepare("INSERT INTO camera_presets (camera_id, name, pan, tilt, zoom) VALUES (?, 'Desk', 0.5, 0.5, 0.5)").run(camA).lastInsertRowid);
-// Bob has his own slot and stream, so "my slot" routes have something of his to compare against.
-const chanB = db.getChannelByUserId(BOB);
-const slotB = Number(db.createManagedStream({ user_id: BOB, channel_id: chanB.id, slug: 'main', title: 'Bob main', protocol: 'rtmp', stream_key: 'ef'.repeat(20) }).lastInsertRowid);
 
 // ── Media stub: records every call; only reads answer from the table ──
 const media = require('../server/media-client');
-const VODS = { 100: { id: 100, user_id: ALICE, stream_id: streamA, title: 'Alice VOD', visibility: 'public', is_public: 1, status: 'ready', duration_seconds: 60 } };
+const VODS = { 100: { id: 100, user_id: ALICE, title: 'Alice VOD', visibility: 'public', is_public: 1, status: 'ready', duration_seconds: 60 } };
 const CLIPS = { 200: { id: 200, user_id: ALICE, channel_user_id: ALICE, vod_id: 100, title: 'Alice clip', visibility: 'public', is_public: 1, status: 'ready', start_time: 0, end_time: 5 } };
 const mediaCalls = [];
 const missing = (what) => new media.MediaApiError(`${what} not found`, 404, { error: `${what} not found` });
@@ -114,6 +97,7 @@ function call(method, p, user, body, { contentType = 'application/json', rawBody
     return new Promise((resolve, reject) => {
         const data = rawBody != null ? rawBody : (body ? JSON.stringify(body) : null);
         const headers = { 'content-type': contentType, 'cf-connecting-ip': `10.9.0.${++ipSeq % 250}` };
+        if (data) headers['content-length'] = Buffer.byteLength(data);
         if (user) headers['x-test-user'] = String(user);
         const req = http.request({ host: '127.0.0.1', port: server.address().port, path: p, method, headers, agent: false }, (res) => {
             let text = '';
@@ -129,7 +113,7 @@ const refused = (r, what) => {
     assert.ok([401, 403, 404].includes(r.status), `${what}: expected a refusal, got ${r.status} ${r.text.slice(0, 200)}`);
     for (const k of [SLOT_KEY, DEST_KEY, 'Alice VOD', 'Alice clip']) assert.ok(!r.text.includes(k), `${what}: the answer carries "${k}"`);
 };
-const row = (table, id) => raw.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id);
+const row = (table, id) => db.getDb().prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id);
 
 let failures = 0;
 async function check(name, fn) {
@@ -137,7 +121,25 @@ async function check(name, fn) {
 }
 
 (async () => {
-    await new Promise((r) => server.once('listening', r));
+    await db.initDb();
+    const raw = db.getDb();
+
+    await addUser(ALICE, 'alice', 'streamer');
+    await addUser(BOB, 'bob', 'streamer');
+    await db.ensureChannel(ALICE); await db.ensureChannel(BOB);
+    const chanA = await db.getChannelByUserId(ALICE);
+    const slotA = Number((await db.createManagedStream({ user_id: ALICE, channel_id: chanA.id, slug: 'main', title: 'Alice main', protocol: 'rtmp', stream_key: SLOT_KEY })).lastInsertRowid);
+    const streamA = Number((await db.createStream({ user_id: ALICE, channel_id: chanA.id, managed_stream_id: slotA, title: 'Alice live', protocol: 'rtmp' })).lastInsertRowid);
+    VODS[100].stream_id = streamA;
+    const destA = Number((await db.createRestreamDestination(ALICE, { platform: 'custom', name: 'Alice mirror', server_url: 'rtmp://ingest.example.test/live', stream_key: DEST_KEY, managed_stream_id: slotA })).id);
+    const tokenA = (await db.createApiToken(ALICE, 'Alice bot', ['chat', 'read'])).id;
+    const camA = Number((await raw.prepare("INSERT INTO camera_profiles (user_id, stream_id, name, onvif_url, username, password_hash) VALUES (?, ?, 'Alice cam', 'http://camera.example.test', 'admin', 'x') RETURNING id").run(ALICE, streamA)).lastInsertRowid);
+    const presetA = Number((await raw.prepare("INSERT INTO camera_presets (camera_id, name, pan, tilt, zoom) VALUES (?, 'Desk', 0.5, 0.5, 0.5) RETURNING id").run(camA)).lastInsertRowid);
+    // Bob has his own slot and stream, so "my slot" routes have something of his to compare against.
+    const chanB = await db.getChannelByUserId(BOB);
+    const slotB = Number((await db.createManagedStream({ user_id: BOB, channel_id: chanB.id, slug: 'main', title: 'Bob main', protocol: 'rtmp', stream_key: 'ef'.repeat(20) })).lastInsertRowid);
+
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     quiet('idor: Bob uses Alice\'s ids');
 
     await check('VODs: edit, delete, publish, bulk and old-VOD cleanup never reach Media for Alice\'s VOD', async () => {
@@ -184,20 +186,20 @@ async function check(name, fn) {
     });
 
     await check('streams: Bob cannot edit, end or delete Alice\'s stream', async () => {
-        const before = row('streams', streamA);
+        const before = await row('streams', streamA);
         refused(await call('PUT', `/api/streams/${streamA}`, BOB, { title: 'pwned', is_nsfw: 1 }), 'PUT stream');
         refused(await call('DELETE', `/api/streams/${streamA}`, BOB), 'DELETE stream');
         refused(await call('POST', `/api/streams/${streamA}/heartbeat`, BOB, {}), 'heartbeat');
         refused(await call('PUT', `/api/streams/${streamA}/call`, BOB, { mode: 'open' }), 'call settings');
-        assert.deepStrictEqual(row('streams', streamA), before);
+        assert.deepStrictEqual(await row('streams', streamA), before);
     });
     await check('slots: Bob cannot edit, delete or regenerate the key of Alice\'s slot, and never sees a key', async () => {
-        const before = row('managed_streams', slotA);
+        const before = await row('managed_streams', slotA);
         refused(await call('PUT', `/api/streams/managed/${slotA}`, BOB, { title: 'pwned', stream_key: 'x'.repeat(40), user_id: BOB }), 'PUT slot');
         refused(await call('POST', `/api/streams/managed/${slotA}/regenerate-key`, BOB), 'regenerate slot key');
         refused(await call('DELETE', `/api/streams/managed/${slotA}`, BOB), 'DELETE slot');
         refused(await call('GET', `/api/streams/managed/${slotA}/profile`, BOB), 'slot profile');
-        assert.deepStrictEqual(row('managed_streams', slotA), before);
+        assert.deepStrictEqual(await row('managed_streams', slotA), before);
         const mine = await call('GET', '/api/streams/managed', BOB);
         assert.strictEqual(mine.status, 200);
         assert.ok(!mine.text.includes(SLOT_KEY) && !mine.text.includes('Alice main'), 'Bob\'s slot list is his own');
@@ -205,8 +207,8 @@ async function check(name, fn) {
     await check('slots: Bob\'s account-key regeneration changes only his own key', async () => {
         const r = await call('POST', '/api/auth/stream-key/regenerate', BOB, { user_id: ALICE, managed_stream_id: slotA });
         assert.strictEqual(r.status, 200, r.text.slice(0, 200));
-        assert.strictEqual(db.getUserById(ALICE).stream_key, '3'.repeat(32));
-        assert.strictEqual(row('managed_streams', slotA).stream_key, SLOT_KEY);
+        assert.strictEqual((await db.getUserById(ALICE)).stream_key, '3'.repeat(32));
+        assert.strictEqual((await row('managed_streams', slotA)).stream_key, SLOT_KEY);
     });
     await check('vibe-coding: Bob cannot change Alice\'s slot settings', async () => {
         refused(await call('PUT', `/api/vibe-coding/managed/${slotA}/settings`, BOB, { enabled: true, repo: 'bob/pwn' }), 'PUT settings');
@@ -220,12 +222,12 @@ async function check(name, fn) {
     });
 
     await check('restream destinations: Bob cannot edit, delete, start or stop Alice\'s, and his list holds none of hers', async () => {
-        const before = row('restream_destinations', destA);
+        const before = await row('restream_destinations', destA);
         refused(await call('PUT', `/api/restream/destinations/${destA}`, BOB, { server_url: 'rtmp://bob.example.test/live', stream_key: 'bob' }), 'PUT destination');
         refused(await call('POST', `/api/restream/destinations/${destA}/start`, BOB), 'start destination');
         refused(await call('POST', `/api/restream/destinations/${destA}/stop`, BOB), 'stop destination');
         refused(await call('DELETE', `/api/restream/destinations/${destA}`, BOB), 'DELETE destination');
-        const after = row('restream_destinations', destA);
+        const after = await row('restream_destinations', destA);
         assert.deepStrictEqual({ ...after, updated_at: null }, { ...before, updated_at: null });
         const list = await call('GET', '/api/restream/destinations?all=1', BOB);
         assert.strictEqual(list.status, 200);
@@ -239,17 +241,17 @@ async function check(name, fn) {
 
     await check('API tokens: Bob cannot revoke Alice\'s token', async () => {
         refused(await call('DELETE', `/api/auth/tokens/${tokenA}`, BOB), 'DELETE token');
-        assert.strictEqual(row('api_tokens', tokenA).is_active, 1);
+        assert.strictEqual((await row('api_tokens', tokenA)).is_active, 1);
     });
     await check('ONVIF cameras: Bob cannot read, edit or delete Alice\'s camera or its presets', async () => {
-        const before = [row('camera_profiles', camA), row('camera_presets', presetA)];
+        const before = [await row('camera_profiles', camA), await row('camera_presets', presetA)];
         refused(await call('GET', `/api/onvif/cameras/${camA}`, BOB), 'GET camera');
         refused(await call('GET', `/api/onvif/cameras/${camA}/presets`, BOB), 'GET presets');
         refused(await call('PUT', `/api/onvif/cameras/${camA}`, BOB, { name: 'pwned', onvif_url: 'http://bob.example.test' }), 'PUT camera');
         refused(await call('POST', `/api/onvif/cameras/${camA}/presets`, BOB, { name: 'x', pan: 0, tilt: 0, zoom: 0 }), 'POST preset');
         refused(await call('DELETE', `/api/onvif/cameras/${camA}/presets/${presetA}`, BOB), 'DELETE preset');
         refused(await call('DELETE', `/api/onvif/cameras/${camA}`, BOB), 'DELETE camera');
-        assert.deepStrictEqual([row('camera_profiles', camA), row('camera_presets', presetA)], before);
+        assert.deepStrictEqual([await row('camera_profiles', camA), await row('camera_presets', presetA)], before);
     });
     await check('control: Alice can read her camera and revoke her token', async () => {
         assert.strictEqual((await call('GET', `/api/onvif/cameras/${camA}`, ALICE)).status, 200);
@@ -261,12 +263,11 @@ async function check(name, fn) {
             const r = await call(m, p, null, {}).catch((e) => ({ status: 0, text: e.message }));
             assert.strictEqual(r.status, 401, `${m} ${p}: ${r.status} ${r.text}`);
         }
-        assert.strictEqual(row('managed_streams', slotA).stream_key, SLOT_KEY);
-        assert.ok(row('managed_streams', slotB));
+        assert.strictEqual((await row('managed_streams', slotA)).stream_key, SLOT_KEY);
+        assert.ok(await row('managed_streams', slotB));
     });
 
     server.close();
-    for (const ext of ['', '-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
     try { fs.rmSync(process.env.DATA_DIR, { recursive: true, force: true }); } catch { /* */ }
     if (failures) { quiet(`\n${failures} failure(s)`); process.exit(1); }
     quiet('\nsecurity-idor: all checks passed');

@@ -16,7 +16,6 @@ const jwt = require('jsonwebtoken');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-limits-'));
 const keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
 fs.writeFileSync(path.join(tmp, 'network.pem'), keys.publicKey);
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.OV_NETWORK_PUBLIC_KEY = path.join(tmp, 'network.pem');
 process.env.OV_NETWORK_URL = 'https://openvibe.network';
 process.env.NODE_ENV = 'test';
@@ -25,7 +24,7 @@ const ISS = 'https://openvibe.network';
 const tokenFor = (id, subject) => jwt.sign({ sub: String(id), username: `u${id}`, subject_id: subject }, keys.privateKey, { algorithm: 'RS256', issuer: ISS, expiresIn: 600 });
 
 (async () => {
-    require('../server/db/database').initDb();
+    await require('../server/db/database').initDb();
     let t = Date.UTC(2026, 8, 28, 3, 0, 0);
     const counted = [];
     const registry = { counter: () => ({ inc: (l) => counted.push(l) }) };

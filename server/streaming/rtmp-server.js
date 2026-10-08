@@ -82,7 +82,7 @@ class RTMPServer extends EventEmitter {
         this.nms = new NodeMediaServer(nmsConfig);
 
         // ── Auth: Validate stream key on publish ─────────────
-        this.nms.on('prePublish', (id, streamPath, args) => {
+        this.nms.on('prePublish', async (id, streamPath, args) => {
             console.log(`[RTMP] PrePublish: ${redactUrl(streamPath)} from session ${id}`);
             // Stream path format: /live/STREAM_KEY
             const parts = streamPath.split('/');
@@ -103,10 +103,10 @@ class RTMPServer extends EventEmitter {
                 return;
             }
 
-            const user = db.getUserByStreamKey(streamKey);
+            const user = await db.getUserByStreamKey(streamKey);
             // Also check if key belongs to a managed stream
-            const managedStream = !user ? db.getManagedStreamByStreamKey(streamKey) : null;
-            const resolvedUser = user || (managedStream ? db.getUserById(managedStream.user_id) : null);
+            const managedStream = !user ? await db.getManagedStreamByStreamKey(streamKey) : null;
+            const resolvedUser = user || (managedStream ? await db.getUserById(managedStream.user_id) : null);
             if (!resolvedUser) {
                 console.log(`[RTMP] Rejected: invalid stream key ${maskKey(streamKey)}`);
                 const session = this.nms.getSession(id);
@@ -124,7 +124,7 @@ class RTMPServer extends EventEmitter {
             // OpenRe.Stream ingests this slot (managed_streams.ingest_authority = 'openre'): refuse
             // here so one stream can never be ingested twice. Slots on 'live' (the default) are
             // untouched. See server/openre/authority.js.
-            if (require('../openre/authority').refusesLiveIngest({ managedStream, user: managedStream ? null : resolvedUser, protocol: 'rtmp' })) {
+            if (await require('../openre/authority').refusesLiveIngest({ managedStream, user: managedStream ? null : resolvedUser, protocol: 'rtmp' })) {
                 console.log(`[RTMP] Rejected: ${managedStream ? `slot ${managedStream.id}` : `personal key of ${resolvedUser.username}`} is ingested by OpenRe`);
                 const session = this.nms.getSession(id);
                 if (session) session.reject();
@@ -136,19 +136,19 @@ class RTMPServer extends EventEmitter {
             // client: for a slot key, that slot's own; for the account key, one no other encoder feeds.
             // Any live RTMP stream of the user used to do, so a second slot's encoder took over the first
             // slot's stream: it got the second slot's controls (below) and ended when that encoder left.
-            const existingStreams = db.getLiveStreamsByUserId(resolvedUser.id);
+            const existingStreams = await db.getLiveStreamsByUserId(resolvedUser.id);
             const fed = new Set([...this.activeStreams.values()].map((info) => info.streamId));
             const rtmpStream = existingStreams.find(s => s.protocol === 'rtmp' && !fed.has(s.id)
                 && (!managedStream || s.managed_stream_id === managedStream.id));
             let streamId;
             if (rtmpStream) {
                 streamId = rtmpStream.id;
-                db.run('UPDATE streams SET is_live = 1, started_at = CURRENT_TIMESTAMP WHERE id = ?',
+                await db.run('UPDATE streams SET is_live = 1, started_at = ov_now() WHERE id = ?',
                     [streamId]);
             } else {
                 // No pre-created RTMP stream — auto-create one (direct OBS connect without Go Live page)
-                db.ensureChannel(resolvedUser.id);
-                const result = db.createStream({
+                await db.ensureChannel(resolvedUser.id);
+                const result = await db.createStream({
                     user_id: resolvedUser.id,
                     managed_stream_id: managedStream ? managedStream.id : null,
                     title: `${resolvedUser.display_name}'s Stream`,
@@ -162,13 +162,13 @@ class RTMPServer extends EventEmitter {
             // fixes viewers seeing the wrong (channel-default) controls when a
             // streamer set different controls per stream slot.
             try {
-                const streamRow = db.getStreamById(streamId);
+                const streamRow = await db.getStreamById(streamId);
                 const slot = managedStream
-                    || (streamRow && streamRow.managed_stream_id ? db.getManagedStreamById(streamRow.managed_stream_id) : null);
-                const channel = db.getChannelByUserId(resolvedUser.id);
+                    || (streamRow && streamRow.managed_stream_id ? await db.getManagedStreamById(streamRow.managed_stream_id) : null);
+                const channel = await db.getChannelByUserId(resolvedUser.id);
                 const configId = (slot && slot.control_config_id) || (channel && channel.active_control_config_id);
                 if (configId) {
-                    const applied = db.applyConfigToStream(configId, streamId);
+                    const applied = await db.applyConfigToStream(configId, streamId);
                     console.log(`[RTMP] Applied control config ${configId} to stream ${streamId} (${applied} buttons)${slot && slot.control_config_id ? ' [per-slot]' : ' [channel default]'}`);
                 }
             } catch (cfgErr) {
@@ -177,10 +177,10 @@ class RTMPServer extends EventEmitter {
 
             // Dedup: end any other stale live session on this slot (keep this one).
             try {
-                const streamRow2 = db.getStreamById(streamId);
+                const streamRow2 = await db.getStreamById(streamId);
                 const slotId2 = (managedStream && managedStream.id) || (streamRow2 && streamRow2.managed_stream_id) || null;
                 if (slotId2) {
-                    const ended = db.endOtherLiveStreamsForSlot(slotId2, streamId);
+                    const ended = await db.endOtherLiveStreamsForSlot(slotId2, streamId);
                     if (ended.length) {
                         console.log(`[RTMP] Ended ${ended.length} stale duplicate session(s) on slot ${slotId2}: ${ended.join(',')}`);
                         for (const sid of ended) { try { require('./broadcast-server').endStream(sid); } catch { /* */ } }
@@ -189,13 +189,13 @@ class RTMPServer extends EventEmitter {
             } catch { /* non-critical */ }
 
             // Ensure heartbeat is always set (for stale-stream cleanup)
-            db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [streamId]);
+            await db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ?', [streamId]);
 
             // A throw inside a timer is an uncaught exception, and the process exits on those — one
             // "database is locked" here would drop every live stream, not just this one.
-            const heartbeatTimer = setInterval(() => {
+            const heartbeatTimer = setInterval(async () => {
                 try {
-                    db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [streamId]);
+                    await db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ?', [streamId]);
                 } catch (e) { console.warn(`[RTMP] heartbeat for stream ${streamId} failed: ${e.message}`); }
             }, RTMP_HEARTBEAT_INTERVAL_MS);
 
@@ -212,24 +212,24 @@ class RTMPServer extends EventEmitter {
             this.emit('publish', { streamId, userId: resolvedUser.id, streamKey });
 
             // Discord webhook notification (fire-and-forget)
-            const stream = db.getStreamById ? db.getStreamById(streamId) : { id: streamId, title: `${resolvedUser.display_name}'s Stream` };
+            const stream = db.getStreamById ? await db.getStreamById(streamId) : { id: streamId, title: `${resolvedUser.display_name}'s Stream` };
             // Unified go-live event (inbox + push + email to followers, Discord via network;
             // falls back to the webhook). Deduped per slot/hour inside.
-            try { require('./golive-notify').notifyFollowersGoLive(resolvedUser, stream || { id: streamId }); }
-            catch (e) { console.warn('[RTMP] go-live notify failed:', e.message); notifyDiscordGoLive(resolvedUser, stream || { id: streamId }); }
+            try { await require('./golive-notify').notifyFollowersGoLive(resolvedUser, stream || { id: streamId }); }
+            catch (e) { console.warn('[RTMP] go-live notify failed:', e.message); await notifyDiscordGoLive(resolvedUser, stream || { id: streamId }); }
             try { require('./live-events').announceGoLive(stream || { id: streamId }, resolvedUser); } catch { /* */ }
 
             // Start server-side VOD recording via FFmpeg
             // Small delay to let NMS fully register the RTMP stream before FFmpeg pulls it
-            setTimeout(() => {
-                const mode = db.resolveStreamRecordingMode(db.getStreamById(streamId));
+            setTimeout(async () => {
+                const mode = await db.resolveStreamRecordingMode(await db.getStreamById(streamId));
                 if (mode !== 'none') {
                     recorder.startRecording(streamId, 'rtmp', { streamKey }, { mode });
                 }
             }, 2000);
         });
 
-        this.nms.on('donePublish', (id, streamPath, args) => {
+        this.nms.on('donePublish', async (id, streamPath, args) => {
             const parts = streamPath.split('/');
             const streamKey = parts[parts.length - 1];
             const info = this.activeStreams.get(streamKey);
@@ -246,8 +246,8 @@ class RTMPServer extends EventEmitter {
                     info.heartbeatTimer = null;
                 }
 
-                db.endStream(info.streamId);
-                try { db.computeAndCacheStreamAnalytics(info.streamId); } catch {}
+                await db.endStream(info.streamId);
+                try { await db.computeAndCacheStreamAnalytics(info.streamId); } catch {}
                 this.activeStreams.delete(streamKey);
                 console.log(`[RTMP] Stream ended: ${maskKey(streamKey)} (stream ${info.streamId})`);
             } else {

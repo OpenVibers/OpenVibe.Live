@@ -30,31 +30,37 @@ const isConfigKey = (key) => typeof key === 'string' && key.length > 0 && key.le
 const classify = (key) => (SECRET.test(key) ? 'secret' : PUBLIC_KEYS.has(key) ? 'public' : 'internal');
 
 /** The configuration rows as they are now: key → the stored string. */
-function rowsNow() {
+async function rowsNow() {
     const out = {};
-    for (const r of db.getAllSettings()) if (isConfigKey(r.key)) out[r.key] = r.value == null ? '' : String(r.value);
+    for (const r of await db.getAllSettings()) if (isConfigKey(r.key)) out[r.key] = r.value == null ? '' : String(r.value);
     return out;
 }
 
 /** Write the revision's values to the rows: set what differs, delete what the revision no longer has. */
-function writeRows(target) {
-    const now = rowsNow();
-    db.getDb().transaction(() => {
-        for (const [k, v] of Object.entries(target)) if (isConfigKey(k) && now[k] !== String(v)) db.setSetting(k, String(v));
-        for (const k of Object.keys(now)) if (!(k in target)) db.deleteSetting(k);
-    })();
+async function writeRows(target) {
+    const now = await rowsNow();
+    await db.getDb().tx(async () => {
+        for (const [k, v] of Object.entries(target)) if (isConfigKey(k) && now[k] !== String(v)) await db.setSetting(k, String(v));
+        for (const k of Object.keys(now)) if (!(k in target)) await db.deleteSetting(k);
+    });
 }
 
 let store = null;
 function getStore() {
     if (store) return store;
-    store = config.createConfigStore({
-        db: db.getDb(), service: 'live', namespace: 'live.site_settings',
-        classify,
-        legacy: () => rowsNow(),
-        onActivate: async (values) => writeRows(values),
-        log: { info: (m) => console.log(`[Config] ${m}`), warn: (m) => console.warn(`[Config] ${m}`), error: (m) => console.error(`[Config] ${m}`) },
-    });
+    // On PostgreSQL createConfigStore reads/seeds its active revision before it resolves, so it returns a
+    // promise of the store: getStore() hands that promise back (every caller awaits it). config-pg reads
+    // `legacy` synchronously (it does not await the callback), so gather the rows first.
+    store = (async () => {
+        const legacyRows = await rowsNow();
+        return await config.createConfigStore({
+            db: db.getDb(), service: 'live', namespace: 'live.site_settings',
+            classify,
+            legacy: () => legacyRows,
+            onActivate: async (values) => await writeRows(values),
+            log: { info: (m) => console.log(`[Config] ${m}`), warn: (m) => console.warn(`[Config] ${m}`), error: (m) => console.error(`[Config] ${m}`) },
+        });
+    })();
     return store;
 }
 
@@ -62,8 +68,8 @@ const canonical = (o) => JSON.stringify(Object.keys(o).sort().map((k) => [k, o[k
 
 /** Record rows written around the journal as a revision of their own. → the sync snapshot, or null */
 async function sync() {
-    const s = getStore();
-    const now = rowsNow();
+    const s = await getStore();
+    const now = await rowsNow();
     if (canonical({ ...s.get() }) === canonical(now)) return null;
     return s.apply(now, { actor: SYSTEM, reason: 'sync: site_settings changed outside the configuration journal' });
 }
@@ -78,13 +84,13 @@ async function change({ set = {}, unset = [] } = {}, { actor = SYSTEM, reason = 
     await sync();
     const values = {};
     for (const [k, v] of Object.entries(set)) values[k] = v !== null && typeof v === 'object' ? JSON.stringify(v) : String(v ?? '');
-    return getStore().apply(values, { merge: true, unset, actor, reason });
+    return (await getStore()).apply(values, { merge: true, unset, actor, reason });
 }
 
 /** Roll back to the previous good revision (or `to`) after recording any outside changes. */
 async function rollback({ actor = SYSTEM, reason = null, to } = {}) {
     await sync();
-    return getStore().rollback({ actor, reason, to });
+    return (await getStore()).rollback({ actor, reason, to });
 }
 
 /** A person as the journal records them. */

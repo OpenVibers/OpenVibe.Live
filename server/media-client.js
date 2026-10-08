@@ -169,135 +169,135 @@ function _formData(fields = {}, file = null, fileField = 'file') {
 // ── VODs ─────────────────────────────────────────────────────────────────────
 
 /** POST /vods → { id } */
-function createVod({ title, stream_id, stream_key, managed_stream_id, user_id, meta, visibility, clips_only } = {}, opts = {}) {
-    return request('POST', '/vods', { body: { title, stream_id, stream_key, managed_stream_id, user_id, meta, visibility, clips_only }, ...opts });
+async function createVod({ title, stream_id, stream_key, managed_stream_id, user_id, meta, visibility, clips_only } = {}, opts = {}) {
+    return await request('POST', '/vods', { body: { title, stream_id, stream_key, managed_stream_id, user_id, meta, visibility, clips_only }, ...opts });
 }
 
 /** POST /vods/:id/ingest/rtmp { rtmp_url } → 202 (Media pulls the RTMP URL with ffmpeg) */
-function ingestRtmp(vodId, rtmpUrl, opts = {}) {
-    return request('POST', `/vods/${vodId}/ingest/rtmp`, { body: { rtmp_url: rtmpUrl }, ...opts });
+async function ingestRtmp(vodId, rtmpUrl, opts = {}) {
+    return await request('POST', `/vods/${vodId}/ingest/rtmp`, { body: { rtmp_url: rtmpUrl }, ...opts });
 }
 
 /**
  * POST /vods/:id/ingest/rtp/start { video:{payloadType,codec,clockRate}, audio:{...} }
  * → { videoPort, audioPort } (UDP 12000-12199 on 127.0.0.1 — point PlainRtpTransports there)
  */
-function ingestRtpStart(vodId, { video, audio } = {}, opts = {}) {
-    return request('POST', `/vods/${vodId}/ingest/rtp/start`, { body: { video, audio }, ...opts });
+async function ingestRtpStart(vodId, { video, audio } = {}, opts = {}) {
+    return await request('POST', `/vods/${vodId}/ingest/rtp/start`, { body: { video, audio }, ...opts });
 }
 
 /** POST /vods/:id/ingest/rtp/stop → finalizes the recording */
-function ingestRtpStop(vodId, opts = {}) {
-    return request('POST', `/vods/${vodId}/ingest/rtp/stop`, opts);
+async function ingestRtpStop(vodId, opts = {}) {
+    return await request('POST', `/vods/${vodId}/ingest/rtp/stop`, opts);
 }
 
 /** POST /vods/:id/chunks (multipart) — browser MediaRecorder chunk upload path */
-function uploadVodChunk(vodId, chunk, fields = {}, opts = {}) {
+async function uploadVodChunk(vodId, chunk, fields = {}, opts = {}) {
     const fd = _formData(fields, chunk, 'chunk');
-    return request('POST', `/vods/${vodId}/chunks`, { body: fd, timeoutMs: 120000, ...opts });
+    return await request('POST', `/vods/${vodId}/chunks`, { body: fd, timeoutMs: 120000, ...opts });
 }
 
 /** POST /vods/:id/chunks/complete */
-function completeVodChunks(vodId, opts = {}) {
-    return request('POST', `/vods/${vodId}/chunks/complete`, opts);
+async function completeVodChunks(vodId, opts = {}) {
+    return await request('POST', `/vods/${vodId}/chunks/complete`, opts);
 }
 
 /** POST /vods/:id/finalize → close recording, kick off thumbnail + probe */
-function finalizeVod(vodId, opts = {}) {
-    return request('POST', `/vods/${vodId}/finalize`, opts);
+async function finalizeVod(vodId, opts = {}) {
+    return await request('POST', `/vods/${vodId}/finalize`, opts);
 }
 
 /** GET /vods/:id → { id, title, status, duration, playback_url, thumbnail_url, storage_provider, ... } */
-function getVod(vodId, opts = {}) {
-    return request('GET', `/vods/${vodId}`, opts);
+async function getVod(vodId, opts = {}) {
+    return await request('GET', `/vods/${vodId}`, opts);
 }
 
 /**
  * GET /vods/:id/signed-url or /clips/:id/signed-url → { url, expires_at }: a short-lived URL of the recording's bytes
  * that works whatever its visibility, for a reader with no key (OpenVibe.AI transcribing it). ttl in seconds (≤ 6 h).
  */
-function signedMediaUrl(kind, id, ttlS = 3600, opts = {}) {
-    return request('GET', `/${kind === 'clip' ? 'clips' : 'vods'}/${id}/signed-url`, { query: { ttl: ttlS }, ...opts });
+async function signedMediaUrl(kind, id, ttlS = 3600, opts = {}) {
+    return await request('GET', `/${kind === 'clip' ? 'clips' : 'vods'}/${id}/signed-url`, { query: { ttl: ttlS }, ...opts });
 }
 
 /** GET /vods?limit&offset (+ pass-through filters like username/user_id/stream_id) */
-function listVods(query = {}, opts = {}) {
-    return request('GET', '/vods', { query, ...opts });
+async function listVods(query = {}, opts = {}) {
+    return await request('GET', '/vods', { query, ...opts });
 }
 
 /** PUT /vods/:id { title?, is_public?, visibility?, ... } — metadata update (inherited shape). */
 // TODO(contract): the contract only spells out create/get/list/delete for VODs; the
 // metadata update verb is assumed to be PUT /vods/:id like the inherited routes.
-function updateVod(vodId, fields, opts = {}) {
-    return request('PUT', `/vods/${vodId}`, { body: fields, ...opts });
+async function updateVod(vodId, fields, opts = {}) {
+    return await request('PUT', `/vods/${vodId}`, { body: fields, ...opts });
 }
 
 /** DELETE /vods/:id */
-function deleteVod(vodId, opts = {}) {
-    return request('DELETE', `/vods/${vodId}`, opts);
+async function deleteVod(vodId, opts = {}) {
+    return await request('DELETE', `/vods/${vodId}`, opts);
 }
 
 // ── Clips ────────────────────────────────────────────────────────────────────
 
 /** POST /clips { vod_id, start_s, end_s, title?, user_id? } → { id, status } */
 /** A media job of this app (e.g. a clip's clip.cut, whose id createClip/recutClip answer) → { job } */
-function getJob(jobId, opts = {}) {
-    return request('GET', `/jobs/${encodeURIComponent(jobId)}`, { ...opts, base: API_V2_BASE });
+async function getJob(jobId, opts = {}) {
+    return await request('GET', `/jobs/${encodeURIComponent(jobId)}`, { ...opts, base: API_V2_BASE });
 }
 
-function createClip({ vod_id, start_s, end_s, title, user_id, ...extra } = {}, opts = {}) {
-    return request('POST', '/clips', { body: { vod_id, start_s, end_s, title, user_id, ...extra }, ...opts });
+async function createClip({ vod_id, start_s, end_s, title, user_id, ...extra } = {}, opts = {}) {
+    return await request('POST', '/clips', { body: { vod_id, start_s, end_s, title, user_id, ...extra }, ...opts });
 }
 
-function getClip(clipId, opts = {}) {
-    return request('GET', `/clips/${clipId}`, opts);
+async function getClip(clipId, opts = {}) {
+    return await request('GET', `/clips/${clipId}`, opts);
 }
 
-function listClips(query = {}, opts = {}) {
-    return request('GET', '/clips', { query, ...opts });
+async function listClips(query = {}, opts = {}) {
+    return await request('GET', '/clips', { query, ...opts });
 }
 
 // TODO(contract): clip metadata updates (title/visibility) assumed at PUT /clips/:id.
-function updateClip(clipId, fields, opts = {}) {
-    return request('PUT', `/clips/${clipId}`, { body: fields, ...opts });
+async function updateClip(clipId, fields, opts = {}) {
+    return await request('PUT', `/clips/${clipId}`, { body: fields, ...opts });
 }
 
-function deleteClip(clipId, opts = {}) {
-    return request('DELETE', `/clips/${clipId}`, opts);
+async function deleteClip(clipId, opts = {}) {
+    return await request('DELETE', `/clips/${clipId}`, opts);
 }
 
 /** Ask Media to re-cut a clip whose cut failed. */
-function recutClip(clipId, opts = {}) {
-    return request('POST', `/clips/${clipId}/recut`, opts);
+async function recutClip(clipId, opts = {}) {
+    return await request('POST', `/clips/${clipId}/recut`, opts);
 }
 
 // ── Files ────────────────────────────────────────────────────────────────────
 
 /** POST /files (multipart) → { key, url, size, mime } */
-function uploadFile(file, fields = {}, opts = {}) {
+async function uploadFile(file, fields = {}, opts = {}) {
     const fd = _formData(fields, file, 'file');
-    return request('POST', '/files', { body: fd, timeoutMs: 120000, ...opts });
+    return await request('POST', '/files', { body: fd, timeoutMs: 120000, ...opts });
 }
 
-function getFileMeta(key, opts = {}) {
-    return request('GET', `/files/${encodeURIComponent(key)}`, opts);
+async function getFileMeta(key, opts = {}) {
+    return await request('GET', `/files/${encodeURIComponent(key)}`, opts);
 }
 
-function deleteFile(key, opts = {}) {
-    return request('DELETE', `/files/${encodeURIComponent(key)}`, opts);
+async function deleteFile(key, opts = {}) {
+    return await request('DELETE', `/files/${encodeURIComponent(key)}`, opts);
 }
 
 // ── Thumbnails ───────────────────────────────────────────────────────────────
 
 /** POST /thumbnails/:kind/:id with an image buffer (upload) → { url } */
-function uploadThumbnail(kind, id, image, opts = {}) {
+async function uploadThumbnail(kind, id, image, opts = {}) {
     const fd = _formData({}, image, 'thumbnail');
-    return request('POST', `/thumbnails/${kind}/${id}`, { body: fd, timeoutMs: 60000, ...opts });
+    return await request('POST', `/thumbnails/${kind}/${id}`, { body: fd, timeoutMs: 60000, ...opts });
 }
 
 /** POST /thumbnails/:kind/:id with no body (generate server-side) → { url } */
-function generateThumbnail(kind, id, opts = {}) {
-    return request('POST', `/thumbnails/${kind}/${id}`, opts);
+async function generateThumbnail(kind, id, opts = {}) {
+    return await request('POST', `/thumbnails/${kind}/${id}`, opts);
 }
 
 // ── Public URL builders (MEDIA_PUBLIC_URL) ───────────────────────────────────

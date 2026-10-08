@@ -36,7 +36,7 @@ const platform = require('../server/integrations/powerchat-platform');
     assert.strictEqual(await platform.forwardChat(2, { chatterName: 'pat', message: 'hi', messageId: 'x1' }), 'accepted');
     assert.deepStrictEqual(api.calls.map(c => c.path), ['/chat', '/chat', '/chat']);
     assert.strictEqual(api.calls[0].body.messageId, 'm1');
-    let s = platform.chatRelayStats(1);
+    let s = await platform.chatRelayStats(1);
     assert.deepStrictEqual([s.accepted, s.displayed, s.dropped, s.pending, s.verifiable], [2, 0, 0, 2, true]);
 
     // Too early: nothing is read back yet.
@@ -52,9 +52,9 @@ const platform = require('../server/integrations/powerchat-platform');
     assert.strictEqual(reads.length, 1);
     assert.strictEqual(reads[0].userId, 1);
     assert.deepStrictEqual(reads[0].query, { limit: 100 });
-    s = platform.chatRelayStats(1);
+    s = await platform.chatRelayStats(1);
     assert.deepStrictEqual([s.displayed, s.dropped, s.pending], [1, 0, 1], 'm1 matched via the app:<id>: namespace; m2 still pending');
-    const s2 = platform.chatRelayStats(2);
+    const s2 = await platform.chatRelayStats(2);
     assert.deepStrictEqual([s2.accepted, s2.unverified, s2.pending, s2.verifiable], [1, 1, 0, false]);
 
     // Within the tick interval: no second read even though m2 is pending.
@@ -67,7 +67,7 @@ const platform = require('../server/integrations/powerchat-platform');
     await platform._test.verifyTick();
     assert.strictEqual(api.calls.filter(c => c.path === '/chat/history').length, 2);
     assert.strictEqual(api.calls.filter(c => c.path === '/chat').length, 3, 'a dropped message is not re-posted');
-    s = platform.chatRelayStats(1);
+    s = await platform.chatRelayStats(1);
     assert.deepStrictEqual([s.displayed, s.dropped, s.pending, s.lastDroppedId], [1, 1, 0, 'm2']);
     assert.ok(s.lastDroppedAt);
 
@@ -78,7 +78,7 @@ const platform = require('../server/integrations/powerchat-platform');
     t += 60000;
     api.history = { rows: [{ id: 'z1' }, { messageId: 'z2' }] };
     await platform._test.verifyTick();
-    s = platform.chatRelayStats(1);
+    s = await platform.chatRelayStats(1);
     assert.deepStrictEqual([s.displayed, s.dropped, s.pending], [2, 0, 0]);
 
     // A transient read failure keeps ids pending (no false "dropped").
@@ -89,7 +89,7 @@ const platform = require('../server/integrations/powerchat-platform');
     const orig = realApi.apiRequest;
     realApi.apiRequest = async (u, r) => { if (r.path === '/chat/history') throw Object.assign(new Error('boom'), { status: 503 }); return orig(u, r); };
     await platform._test.verifyTick();
-    s = platform.chatRelayStats(1);
+    s = await platform.chatRelayStats(1);
     assert.deepStrictEqual([s.displayed, s.dropped, s.pending], [0, 0, 1]);
     realApi.apiRequest = orig;
 

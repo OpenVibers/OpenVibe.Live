@@ -79,63 +79,46 @@ function isBannedText(text) {
 let _tablesReady = false;
 function ensureTables() {
     if (_tablesReady) return;
-    db.run(`CREATE TABLE IF NOT EXISTS arena_profiles (
-        user_id INTEGER PRIMARY KEY,
-        stats_json TEXT,
-        persona_json TEXT,
-        persona_model TEXT,
-        persona_generated_at DATETIME,
-        image_path TEXT,
-        image_prompt TEXT,
-        image_model TEXT,
-        image_generated_at DATETIME,
-        image_error TEXT,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
-    for (const col of ['quotes_json TEXT', 'quotes_generated_at DATETIME']) {
-        try { db.run(`ALTER TABLE arena_profiles ADD COLUMN ${col}`); } catch { /* exists */ }
-    }
     try { fs.mkdirSync(ARENA_DIR, { recursive: true }); } catch { /* */ }
-    try { require('./mic').ensureTables(); require('./beef').ensureTables(); } catch { /* */ }
     _tablesReady = true;
 }
 
 // ── Settings ─────────────────────────────────────────────────
 
-function setting(key, fallback = '') {
-    try { const v = db.getSetting(key); return v === undefined || v === null || v === '' ? fallback : v; } catch { return fallback; }
+async function setting(key, fallback = '') {
+    try { const v = await db.getSetting(key); return v === undefined || v === null || v === '' ? fallback : v; } catch { return fallback; }
 }
-function boolSetting(key, fallback = false) {
-    const v = setting(key, null);
+async function boolSetting(key, fallback = false) {
+    const v = await setting(key, null);
     if (v === null) return fallback;
     return v === true || v === 'true' || v === 1 || v === '1';
 }
-function arenaEnabled() { return boolSetting('arena_enabled', true); }
-function aiOn() { try { return llm.isEnabled() && llm.withinBudget(); } catch { return false; } }
+async function arenaEnabled() { return await boolSetting('arena_enabled', true); }
+async function aiOn() { try { return await llm.isEnabled() && await llm.withinBudget(); } catch { return false; } }
 function imageGenAvailable() { return false; }   // see "Image" below
 
 // ── Raw stats ────────────────────────────────────────────────
 
 /** The roster is whoever has been HEARD: transcribed speech in the last ACTIVE_DAYS days. */
-function activeStreamerIds() {
-    return db.all(`
+async function activeStreamerIds() {
+    return (await db.all(`
         SELECT DISTINCT e.user_id FROM stream_timeline_events e JOIN users u ON u.id = e.user_id
         WHERE e.kind = 'speech' AND e.user_id IS NOT NULL AND e.created_at >= datetime('now', ?) AND COALESCE(u.is_banned, 0) = 0
-    `, [`-${ACTIVE_DAYS} days`]).map(r => r.user_id);
+    `, [`-${ACTIVE_DAYS} days`])).map(r => r.user_id);
 }
 
-function voiceStatsFor(userId, win) {
-    const hypeSql = HYPE_PATTERNS.map(() => "(LOWER(text) LIKE ?)").join(' + ');
+async function voiceStatsFor(userId, win) {
+    const hypeSql = HYPE_PATTERNS.map(() => "CASE WHEN text ILIKE ? THEN 1 ELSE 0 END").join(' + ');
     const hypeParams = HYPE_PATTERNS.map(p => `%${p}%`);
     let speech = {};
     try {
-        speech = db.get(`
+        speech = await db.get(`
             SELECT COUNT(*) AS lines,
-                   COALESCE(SUM(COALESCE(end_sec, start_sec + 3) - start_sec), 0) AS speech_sec,
-                   COALESCE(SUM(LENGTH(text) - LENGTH(REPLACE(text, ' ', '')) + 1), 0) AS words,
-                   COALESCE(SUM(text LIKE '%!%'), 0) AS exclaims,
-                   COALESCE(SUM(text LIKE '%?%'), 0) AS questions,
-                   COALESCE(SUM(${hypeSql}), 0) AS hype_hits,
+                   COALESCE(SUM(COALESCE(end_sec, start_sec + 3) - start_sec), 0)::bigint AS speech_sec,
+                   COALESCE(SUM(LENGTH(text) - LENGTH(REPLACE(text, ' ', '')) + 1), 0)::bigint AS words,
+                   COUNT(*) FILTER (WHERE text ILIKE '%!%') AS exclaims,
+                   COUNT(*) FILTER (WHERE text ILIKE '%?%') AS questions,
+                   COALESCE(SUM(${hypeSql}), 0)::bigint AS hype_hits,
                    COUNT(DISTINCT stream_id) AS streams_heard
             FROM stream_timeline_events
             WHERE user_id = ? AND kind = 'speech' AND created_at >= datetime('now', ?)
@@ -143,9 +126,9 @@ function voiceStatsFor(userId, win) {
     } catch { speech = {}; }
     let covered = 0, laughs = 0, topSounds = [];
     try {
-        covered = db.get(`SELECT COALESCE(SUM(duration_seconds), 0) AS sec FROM streams WHERE user_id = ? AND duration_seconds > 0 AND id IN (SELECT DISTINCT stream_id FROM stream_timeline_events WHERE user_id = ? AND created_at >= datetime('now', ?))`, [userId, userId, win])?.sec || 0;
-        laughs = db.get(`SELECT COUNT(*) AS n FROM stream_timeline_events WHERE user_id = ? AND kind = 'sound' AND (LOWER(label) LIKE '%laugh%' OR LOWER(label) LIKE '%giggle%' OR LOWER(label) LIKE '%chuckle%') AND created_at >= datetime('now', ?)`, [userId, win])?.n || 0;
-        topSounds = db.all(`SELECT label, COUNT(*) AS n FROM stream_timeline_events WHERE user_id = ? AND kind = 'sound' AND label IS NOT NULL AND created_at >= datetime('now', ?) GROUP BY label ORDER BY n DESC LIMIT 5`, [userId, win]);
+        covered = (await db.get(`SELECT COALESCE(SUM(duration_seconds), 0)::bigint AS sec FROM streams WHERE user_id = ? AND duration_seconds > 0 AND id IN (SELECT DISTINCT stream_id FROM stream_timeline_events WHERE user_id = ? AND created_at >= datetime('now', ?))`, [userId, userId, win]))?.sec || 0;
+        laughs = (await db.get(`SELECT COUNT(*) AS n FROM stream_timeline_events WHERE user_id = ? AND kind = 'sound' AND (LOWER(label) ILIKE '%laugh%' OR LOWER(label) ILIKE '%giggle%' OR LOWER(label) ILIKE '%chuckle%') AND created_at >= datetime('now', ?)`, [userId, win]))?.n || 0;
+        topSounds = await db.all(`SELECT label, COUNT(*) AS n FROM stream_timeline_events WHERE user_id = ? AND kind = 'sound' AND label IS NOT NULL AND created_at >= datetime('now', ?) GROUP BY label ORDER BY n DESC LIMIT 5`, [userId, win]);
     } catch { /* */ }
     const speechSec = Number(speech.speech_sec) || 0;
     const coveredHours = Math.max(covered / 3600, 0.05);
@@ -166,15 +149,15 @@ function voiceStatsFor(userId, win) {
 }
 
 /** Everything the ratings are built from: the transcripts (voice) + the mic ledger (mic). No audience numbers. */
-function rawStatsFor(userId) {
+async function rawStatsFor(userId) {
     const win = `-${STATS_WINDOW_DAYS} days`;
-    const agg = db.get(`SELECT COUNT(*) AS streams, COALESCE(SUM(duration_seconds), 0) / 3600.0 AS hours, MAX(ended_at) AS last_live_at FROM streams WHERE user_id = ? AND duration_seconds > 0 AND started_at >= datetime('now', ?)`, [userId, win]) || {};
-    const category = db.get(`SELECT COALESCE(NULLIF(ai_category, ''), category) AS category, COUNT(*) AS n FROM streams WHERE user_id = ? AND duration_seconds > 0 AND COALESCE(NULLIF(ai_category, ''), category) IS NOT NULL AND COALESCE(NULLIF(ai_category, ''), category) != '' GROUP BY 1 ORDER BY n DESC LIMIT 1`, [userId])?.category || null;
+    const agg = await db.get(`SELECT COUNT(*) AS streams, (COALESCE(SUM(duration_seconds), 0) / 3600.0)::float8 AS hours, MAX(ended_at) AS last_live_at FROM streams WHERE user_id = ? AND duration_seconds > 0 AND started_at >= datetime('now', ?)`, [userId, win]) || {};
+    const category = (await db.get(`SELECT COALESCE(NULLIF(ai_category, ''), category) AS category, COUNT(*) AS n FROM streams WHERE user_id = ? AND duration_seconds > 0 AND COALESCE(NULLIF(ai_category, ''), category) IS NOT NULL AND COALESCE(NULLIF(ai_category, ''), category) != '' GROUP BY 1 ORDER BY n DESC LIMIT 1`, [userId]))?.category || null;
     let micStats = {};
-    try { micStats = require('./mic').micStats(userId, MIC_WINDOW_DAYS); } catch { micStats = {}; }
+    try { micStats = await require('./mic').micStats(userId, MIC_WINDOW_DAYS); } catch { micStats = {}; }
     return {
         window_days: STATS_WINDOW_DAYS, mic_window_days: MIC_WINDOW_DAYS, streams: agg.streams || 0, hours: Number((agg.hours || 0).toFixed(1)),
-        last_live_at: agg.last_live_at || null, category, voice: voiceStatsFor(userId, win), mic: micStats,
+        last_live_at: agg.last_live_at || null, category, voice: await voiceStatsFor(userId, win), mic: micStats,
     };
 }
 
@@ -209,10 +192,10 @@ function computeRatings(rosterRaw) {
 }
 
 /** Trash Talk bonus on POWER: recent XP (7 days) + beef wins, capped. */
-function talkBonus(userId) {
+async function talkBonus(userId) {
     try {
         const mic = require('./mic'), beef = require('./beef');
-        return Math.min(TALK_BONUS_MAX, Math.round(mic.recentXp(userId) / 25) + beef.recentWins(userId) * 3);
+        return Math.min(TALK_BONUS_MAX, Math.round(await mic.recentXp(userId) / 25) + await beef.recentWins(userId) * 3);
     } catch { return 0; }
 }
 
@@ -221,23 +204,23 @@ function talkBonus(userId) {
 let _roster = null;
 const ROSTER_TTL_MS = 3 * 60 * 1000;
 
-function loadRoster(force = false) {
+async function loadRoster(force = false) {
     if (!force && _roster && Date.now() - _roster.at < ROSTER_TTL_MS) return _roster;
-    ensureTables();
-    const ids = activeStreamerIds();
+    await ensureTables();
+    const ids = await activeStreamerIds();
     const rawById = {};
-    for (const id of ids) rawById[id] = rawStatsFor(id);
+    for (const id of ids) rawById[id] = await rawStatsFor(id);
     const ratings = computeRatings(rawById);
     const byId = {};
     for (const id of ids) {
-        const user = db.getUserById(id);
+        const user = await db.getUserById(id);
         if (!user) continue;
-        const bonus = talkBonus(id);
+        const bonus = await talkBonus(id);
         ratings[id].base_power = ratings[id].power;
         ratings[id].talk_bonus = bonus;
         ratings[id].power = Math.min(99 + TALK_BONUS_MAX, ratings[id].power + bonus);
         byId[id] = { user: publicUser(user), raw: rawById[id], ratings: ratings[id] };
-        try { db.run('INSERT INTO arena_profiles (user_id, stats_json, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET stats_json = excluded.stats_json, updated_at = CURRENT_TIMESTAMP', [id, JSON.stringify({ raw: rawById[id], ratings: ratings[id] })]); } catch { /* */ }
+        try { await db.run('INSERT INTO arena_profiles (user_id, stats_json, updated_at) VALUES (?, ?, ov_now()) ON CONFLICT(user_id) DO UPDATE SET stats_json = excluded.stats_json, updated_at = ov_now()', [id, JSON.stringify({ raw: rawById[id], ratings: ratings[id] })]); } catch { /* */ }
     }
     const order = Object.keys(byId).map(Number).sort((a, b) => byId[b].ratings.power - byId[a].ratings.power || a - b);
     _roster = { at: Date.now(), byId, order };
@@ -250,40 +233,40 @@ function publicUser(u) {
 
 // ── Persona (AI) ─────────────────────────────────────────────
 
-function profileRow(userId) { ensureTables(); return db.get('SELECT * FROM arena_profiles WHERE user_id = ?', [userId]) || null; }
+async function profileRow(userId) { await ensureTables(); return await db.get('SELECT * FROM arena_profiles WHERE user_id = ?', [userId]) || null; }
 function parseJson(text, fallback = null) { if (!text) return fallback; try { return JSON.parse(text); } catch { return fallback; } }
 function freshWithin(ts, ttl) { return !!ts && Date.now() - Date.parse(ts + 'Z') < ttl; }
 function personaIsFresh(row) { return !!(row && row.persona_json) && freshWithin(row.persona_generated_at, PERSONA_TTL_MS); }
 function quotesAreFresh(row) { return !!(row && row.quotes_json) && freshWithin(row.quotes_generated_at, QUOTES_TTL_MS); }
 
-function gatherContext(userId) {
+async function gatherContext(userId) {
     const ctx = {};
     // Pure mic: the voice comes from what they SAY. Their most recent lines, their spiciest judged
     // lines, who they have called out, their beef record and what the camera saw are the facts.
-    try { ctx.overview = db.getStreamerOverview(userId)?.overview || null; } catch { /* */ }
-    try { ctx.memories = db.all('SELECT description FROM stream_memories WHERE user_id = ? ORDER BY captured_at DESC LIMIT 4', [userId]).map(m => m.description).filter(Boolean); } catch { ctx.memories = []; }
-    try { ctx.titles = db.all('SELECT DISTINCT title FROM streams WHERE user_id = ? AND duration_seconds > 0 ORDER BY started_at DESC LIMIT 8', [userId]).map(r => r.title).filter(Boolean); } catch { ctx.titles = []; }
-    try { ctx.said = db.all(`SELECT text FROM stream_timeline_events WHERE user_id = ? AND kind = 'speech' AND LENGTH(text) BETWEEN 30 AND 160 ORDER BY created_at DESC LIMIT 60`, [userId]).map(r => r.text).filter(t => !isBannedText(t)).slice(0, 30); } catch { ctx.said = []; }
+    try { ctx.overview = (await db.getStreamerOverview(userId))?.overview || null; } catch { /* */ }
+    try { ctx.memories = (await db.all('SELECT description FROM stream_memories WHERE user_id = ? ORDER BY captured_at DESC LIMIT 4', [userId])).map(m => m.description).filter(Boolean); } catch { ctx.memories = []; }
+    try { ctx.titles = (await db.all('SELECT title FROM streams WHERE user_id = ? AND duration_seconds > 0 GROUP BY title ORDER BY MAX(started_at) DESC LIMIT 8', [userId])).map(r => r.title).filter(Boolean); } catch { ctx.titles = []; }
+    try { ctx.said = (await db.all(`SELECT text FROM stream_timeline_events WHERE user_id = ? AND kind = 'speech' AND LENGTH(text) BETWEEN 30 AND 160 ORDER BY created_at DESC LIMIT 60`, [userId])).map(r => r.text).filter(t => !isBannedText(t)).slice(0, 30); } catch { ctx.said = []; }
     try {
         const mic = require('./mic');
-        ctx.shit_talk = mic.bestLines(userId, 8).map(m => `${m.text}${m.aimed_at ? ` [at ${m.aimed_at}]` : ''} (${m.quality}/10)`);
-        ctx.called_out = db.all(`SELECT target_user_id, COUNT(*) AS n FROM arena_mic_moments WHERE user_id = ? AND target_user_id IS NOT NULL GROUP BY target_user_id ORDER BY n DESC LIMIT 5`, [userId]).map(r => `${mic.nameOf(r.target_user_id)} (${r.n}×)`);
-        ctx.called_out_by = db.all(`SELECT user_id, COUNT(*) AS n FROM arena_mic_moments WHERE target_user_id = ? GROUP BY user_id ORDER BY n DESC LIMIT 5`, [userId]).map(r => `${mic.nameOf(r.user_id)} (${r.n}×)`);
-        ctx.aimed_at = db.all(`SELECT aimed_at, COUNT(*) AS n FROM arena_mic_moments WHERE user_id = ? AND aimed_at IS NOT NULL AND target_user_id IS NULL GROUP BY aimed_at ORDER BY n DESC LIMIT 6`, [userId]).map(r => `${r.aimed_at} (${r.n}×)`);
+        ctx.shit_talk = (await mic.bestLines(userId, 8)).map(m => `${m.text}${m.aimed_at ? ` [at ${m.aimed_at}]` : ''} (${m.quality}/10)`);
+        ctx.called_out = (await Promise.all((await db.all(`SELECT target_user_id, COUNT(*) AS n FROM arena_mic_moments WHERE user_id = ? AND target_user_id IS NOT NULL GROUP BY target_user_id ORDER BY n DESC LIMIT 5`, [userId])).map(async r => `${await mic.nameOf(r.target_user_id)} (${r.n}×)`)));
+        ctx.called_out_by = (await Promise.all((await db.all(`SELECT user_id, COUNT(*) AS n FROM arena_mic_moments WHERE target_user_id = ? GROUP BY user_id ORDER BY n DESC LIMIT 5`, [userId])).map(async r => `${await mic.nameOf(r.user_id)} (${r.n}×)`)));
+        ctx.aimed_at = (await db.all(`SELECT aimed_at, COUNT(*) AS n FROM arena_mic_moments WHERE user_id = ? AND aimed_at IS NOT NULL AND target_user_id IS NULL GROUP BY aimed_at ORDER BY n DESC LIMIT 6`, [userId])).map(r => `${r.aimed_at} (${r.n}×)`);
     } catch { ctx.shit_talk = []; ctx.called_out = []; ctx.called_out_by = []; ctx.aimed_at = []; }
-    try { const q = parseJson(profileRow(userId)?.quotes_json); ctx.quotes = q && Array.isArray(q.picks) ? q.picks.map(p => p.text).slice(0, 6) : []; ctx.mic_style = q?.mic_style || null; } catch { ctx.quotes = []; }
+    try { const q = parseJson((await profileRow(userId))?.quotes_json); ctx.quotes = q && Array.isArray(q.picks) ? q.picks.map(p => p.text).slice(0, 6) : []; ctx.mic_style = q?.mic_style || null; } catch { ctx.quotes = []; }
     return ctx;
 }
 
 
 async function generatePersona(userId, { force = false } = {}) {
-    ensureTables();
-    const row = profileRow(userId);
+    await ensureTables();
+    const row = await profileRow(userId);
     if (!force && personaIsFresh(row)) return parseJson(row.persona_json);
-    if (!aiOn()) return row ? parseJson(row.persona_json) : null;
-    const roster = loadRoster();
-    const entry = roster.byId[userId] || { user: publicUser(db.getUserById(userId) || { id: userId, username: `user${userId}` }), raw: rawStatsFor(userId), ratings: null };
-    const ctx = gatherContext(userId);
+    if (!await aiOn()) return row ? parseJson(row.persona_json) : null;
+    const roster = await loadRoster();
+    const entry = roster.byId[userId] || { user: publicUser(await db.getUserById(userId) || { id: userId, username: `user${userId}` }), raw: await rawStatsFor(userId), ratings: null };
+    const ctx = await gatherContext(userId);
     const stats = entry.ratings || Object.fromEntries(STAT_KEYS.map(k => [k, 70]).concat([['power', 70]]));
     const m = entry.raw.mic || {};
     const facts = {
@@ -293,13 +276,13 @@ async function generatePersona(userId, { force = false } = {}) {
             shit_talk_30d: { judged_moments: m.moments || 0, average_quality: m.avg_quality || 0, bangers_7_plus: m.bangers || 0, beef_hits: m.beef_hits || 0, beefs_won: m.wins || 0, beefs_lost: m.losses || 0, times_called_out: m.targeted || 0, times_answered: m.answered || 0 } },
         ai_overview: ctx.overview, recent_stream_titles: ctx.titles, what_the_camera_saw_recently: ctx.memories, things_they_said_on_stream: ctx.said,
         their_best_shit_talk: ctx.shit_talk || [], who_they_call_out: ctx.called_out || [], who_calls_them_out: ctx.called_out_by || [], what_they_rant_at: ctx.aimed_at || [], quotes: ctx.quotes || [], mic_style: ctx.mic_style || null,
-        roster_rivals: (() => { try { return loadRoster().order.filter(id => id !== userId).slice(0, 8).map(id => { const p = parseJson(profileRow(id)?.persona_json); return `${loadRoster().byId[id].user.username}${p?.fighter_name ? ` (${p.fighter_name})` : ''}`; }); } catch { return []; } })(),
+        roster_rivals: await (async () => { try { return (await Promise.all((await loadRoster()).order.filter(id => id !== userId).slice(0, 8).map(async id => { const p = parseJson((await profileRow(id))?.persona_json); return `${(await loadRoster()).byId[id].user.username}${p?.fighter_name ? ` (${p.fighter_name})` : ''}`; }))); } catch { return []; } })(),
     };
     // The bio's rules and shape are OpenVibe.AI's versioned template live.arena.persona (WS-O task 2); Live sends the facts.
     const persona = await require('../ai/ai-service').structured('live.arena.persona', { facts }, { meter: { kind: 'arena_persona', role: 'summary', ownerUserId: userId, source: 'arena' } });
     if (!persona) { console.warn(`[Arena] persona generation failed for user ${userId}`); return row ? parseJson(row.persona_json) : null; }
-    db.run(`INSERT INTO arena_profiles (user_id, persona_json, persona_model, persona_generated_at, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            ON CONFLICT(user_id) DO UPDATE SET persona_json = excluded.persona_json, persona_model = excluded.persona_model, persona_generated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP`, [userId, JSON.stringify(persona), 'openvibe-ai:live.arena.persona']);
+    await db.run(`INSERT INTO arena_profiles (user_id, persona_json, persona_model, persona_generated_at, updated_at) VALUES (?, ?, ?, ov_now(), ov_now())
+            ON CONFLICT(user_id) DO UPDATE SET persona_json = excluded.persona_json, persona_model = excluded.persona_model, persona_generated_at = ov_now(), updated_at = ov_now()`, [userId, JSON.stringify(persona), 'openvibe-ai:live.arena.persona']);
     console.log(`[Arena] persona for ${entry.user.username}: "${persona.fighter_name}" (${persona.class})`);
     return persona;
 }
@@ -321,9 +304,9 @@ function fallbackPersona(entry) {
 
 // ── Quotes ───────────────────────────────────────────────────
 
-function quoteCandidates(userId, limit = 90) {
+async function quoteCandidates(userId, limit = 90) {
     let rows = [];
-    try { rows = db.all(`SELECT id, stream_id, vod_id, start_sec, text FROM stream_timeline_events WHERE user_id = ? AND kind = 'speech' AND created_at >= datetime('now', ?) AND LENGTH(text) BETWEEN 25 AND 220 ORDER BY created_at DESC LIMIT 1500`, [userId, `-${STATS_WINDOW_DAYS} days`]); } catch { rows = []; }
+    try { rows = await db.all(`SELECT id, stream_id, vod_id, start_sec, text FROM stream_timeline_events WHERE user_id = ? AND kind = 'speech' AND created_at >= datetime('now', ?) AND LENGTH(text) BETWEEN 25 AND 220 ORDER BY created_at DESC LIMIT 1500`, [userId, `-${STATS_WINDOW_DAYS} days`]); } catch { rows = []; }
     const score = (t) => { const s = t.toLowerCase(); let n = (t.match(/!/g) || []).length * 2 + (t.match(/\?/g) || []).length; for (const p of HYPE_PATTERNS) if (s.includes(p)) n += 3; if (/\b(i|we|you|chat)\b/.test(s)) n += 1; if (/\b(um+|uh+|like like)\b/.test(s)) n -= 1; return n; };
     const scored = rows.filter(r => !isBannedText(r.text)).map(r => ({ ...r, score: score(r.text) })).sort((x, y) => y.score - x.score);
     const picked = scored.slice(0, Math.ceil(limit / 2));
@@ -338,13 +321,13 @@ function materializeQuotes(candidates, sel) {
     return { picks, walkout: pick(sel.walkout, 'walkout line') || picks[0] || null, voice_verdict: sel.voice_verdict || null, mic_style: sel.mic_style || null };
 }
 async function generateQuotes(userId, { force = false } = {}) {
-    ensureTables();
-    const row = profileRow(userId);
+    await ensureTables();
+    const row = await profileRow(userId);
     if (!force && quotesAreFresh(row)) return parseJson(row.quotes_json);
-    const candidates = quoteCandidates(userId);
+    const candidates = await quoteCandidates(userId);
     if (candidates.length < MIN_QUOTE_LINES) return null;
     let result = null;
-    if (aiOn()) {
+    if (await aiOn()) {
         try {
             // The picking rules are OpenVibe.AI's versioned template live.arena.quotes (WS-O task 2); Live sends the lines.
             const sel = await require('../ai/ai-service').structured('live.arena.quotes', { lines: candidates.map(c => String(c.text).slice(0, 400)).slice(0, 120) }, { meter: { kind: 'arena_quotes', role: 'summary', ownerUserId: userId, source: 'arena' } });
@@ -352,8 +335,8 @@ async function generateQuotes(userId, { force = false } = {}) {
         } catch (e) { console.warn('[Arena] quotes:', e.message); }
     }
     if (!result || !result.picks.length) result = materializeQuotes(candidates, { picks: candidates.slice(0, 5).map((c, i) => ({ index: i, why: 'straight from the transcript' })), walkout: 0 });
-    if (!aiOn()) result._fallback = true;
-    db.run(`INSERT INTO arena_profiles (user_id, quotes_json, quotes_generated_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET quotes_json = excluded.quotes_json, quotes_generated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP`, [userId, JSON.stringify(result)]);
+    if (!await aiOn()) result._fallback = true;
+    await db.run(`INSERT INTO arena_profiles (user_id, quotes_json, quotes_generated_at, updated_at) VALUES (?, ?, ov_now(), ov_now()) ON CONFLICT(user_id) DO UPDATE SET quotes_json = excluded.quotes_json, quotes_generated_at = ov_now(), updated_at = ov_now()`, [userId, JSON.stringify(result)]);
     return result;
 }
 
@@ -368,22 +351,22 @@ function imageUrlFor(row) {
     return fs.existsSync(path.join(ARENA_DIR, base)) ? `/data/arena/${base}` : null;
 }
 async function generateImage(userId) {
-    ensureTables();
-    return imageUrlFor(profileRow(userId));
+    await ensureTables();
+    return imageUrlFor(await profileRow(userId));
 }
 
 // ── Fighter cards ────────────────────────────────────────────
 
-function resolveUser(usernameOrId) {
-    if (/^\d+$/.test(String(usernameOrId))) return db.getUserById(Number(usernameOrId));
-    return db.getUserByUsername(String(usernameOrId));
+async function resolveUser(usernameOrId) {
+    if (/^\d+$/.test(String(usernameOrId))) return await db.getUserById(Number(usernameOrId));
+    return await db.get('SELECT * FROM users WHERE lower(username) = lower(?)', [String(usernameOrId)]);
 }
-function isLive(userId) { return !!db.get('SELECT 1 FROM streams WHERE user_id = ? AND is_live = 1 LIMIT 1', [userId]); }
+async function isLive(userId) { return !!await db.get('SELECT 1 FROM streams WHERE user_id = ? AND is_live = 1 LIMIT 1', [userId]); }
 
-function cardFor(userId, roster, { includeRaw = true, includeQuotes = false } = {}) {
+async function cardFor(userId, roster, { includeRaw = true, includeQuotes = false } = {}) {
     const entry = roster.byId[userId];
     if (!entry) return null;
-    const row = profileRow(userId);
+    const row = await profileRow(userId);
     const persona = parseJson(row?.persona_json) || fallbackPersona(entry);
     const mic = require('./mic'), beef = require('./beef');
     const card = {
@@ -391,62 +374,62 @@ function cardFor(userId, roster, { includeRaw = true, includeQuotes = false } = 
         ratings: entry.ratings, stat_meta: STAT_META, raw: includeRaw ? entry.raw : undefined, voice: entry.raw.voice, mic: entry.raw.mic || null,
         persona, persona_is_fallback: !!persona._fallback, persona_generated_at: row?.persona_generated_at || null,
         image_url: imageUrlFor(row), image_prompt: row?.image_prompt || null, image_model: row?.image_model || null, image_pending: false,
-        record: beef.recordFor(userId), level: mic.levelView(userId), live: isLive(userId),
+        record: await beef.recordFor(userId), level: await mic.levelView(userId), live: await isLive(userId),
     };
     if (includeQuotes) card.quotes = parseJson(row?.quotes_json) || null;
     return card;
 }
 
 async function getFighter(usernameOrId, { generate = true } = {}) {
-    const user = resolveUser(usernameOrId);
+    const user = await resolveUser(usernameOrId);
     if (!user) return null;
-    const roster = loadRoster();
+    const roster = await loadRoster();
     if (!roster.byId[user.id]) return { user: publicUser(user), not_on_roster: true, reason: `nothing heard on mic in the last ${ACTIVE_DAYS} days — the Arena only knows what the transcription hears` };
     // Battle Cam: no persona / portrait / quote generation on view — the page shows only what
     // was said on mic (mic.js). `generate` is kept for the admin refresh route.
     if (generate === 'force') {
         try { await generatePersona(user.id); } catch (e) { console.warn('[Arena] persona:', e.message); }
     }
-    const card = cardFor(user.id, roster, { includeQuotes: true });
+    const card = await cardFor(user.id, roster, { includeQuotes: true });
     card.image_pending = false;
     card.image_generation = imageGenAvailable() ? 'ai' : 'off';
-    try { card.beefs = require('./beef').forUser(user.id, 8); } catch { card.beefs = []; }
+    try { card.beefs = await require('./beef').forUser(user.id, 8); } catch { card.beefs = []; }
     return card;
 }
 
-function listFighters() {
-    const roster = loadRoster();
-    return roster.order.map(id => {
-        const c = cardFor(id, roster, { includeRaw: false });
+async function listFighters() {
+    const roster = await loadRoster();
+    return (await Promise.all(roster.order.map(async id => {
+        const c = await cardFor(id, roster, { includeRaw: false });
         return {
             user: c.user, rank: c.rank, ratings: c.ratings, record: c.record, live: c.live, image_url: c.image_url, level: { level: c.level.level, xp: c.level.xp }, mic: c.mic,
             persona: { fighter_name: c.persona.fighter_name, title: c.persona.title, class: c.persona.class, element: c.persona.element, taunt: c.persona.taunt, taunts: c.persona.taunts || [], typing_style: c.persona.typing_style || null, lore: c.persona.lore, signature_move: c.persona.signature_move, stat_quips: c.persona.stat_quips, custom_stats: Array.isArray(c.persona.custom_stats) ? c.persona.custom_stats : [] },
             persona_is_fallback: c.persona_is_fallback, category: roster.byId[id].raw.category, last_live_at: roster.byId[id].raw.last_live_at,
             voice: { has_data: c.voice.has_data, talk_ratio_pct: c.voice.talk_ratio_pct, speech_minutes: c.voice.speech_minutes, wpm: c.voice.wpm },
-            last_line: (() => { try { const m = require('./mic').latestFor(id); return m ? { text: m.text, quality: m.quality, aimed_at: m.aimed_at, target: m.target, at: m.at, vod_id: m.vod_id, sec: m.sec } : null; } catch { return null; } })(),
+            last_line: await (async () => { try { const m = await require('./mic').latestFor(id); return m ? { text: m.text, quality: m.quality, aimed_at: m.aimed_at, target: m.target, at: m.at, vod_id: m.vod_id, sec: m.sec } : null; } catch { return null; } })(),
         };
-    });
+    })));
 }
 
-function getStatDetail(userId, stat) {
+async function getStatDetail(userId, stat) {
     if (!STAT_KEYS.includes(stat)) return null;
-    const roster = loadRoster();
+    const roster = await loadRoster();
     const entry = roster.byId[userId];
     if (!entry) return null;
     const win = `-${STATS_WINDOW_DAYS} days`;
     let series = [];
     try {
         // One point per stream in the window — every value comes from the transcript / mic ledger of that stream.
-        const rows = db.all(`
+        const rows = (await db.all(`
             SELECT s.id, s.title, s.started_at, s.duration_seconds,
-                   (SELECT COALESCE(SUM(COALESCE(e.end_sec, e.start_sec + 3) - e.start_sec), 0) FROM stream_timeline_events e WHERE e.stream_id = s.id AND e.kind = 'speech') AS speech_sec,
-                   (SELECT COALESCE(SUM(LENGTH(e.text) - LENGTH(REPLACE(e.text, ' ', '')) + 1), 0) FROM stream_timeline_events e WHERE e.stream_id = s.id AND e.kind = 'speech') AS words,
+                   (SELECT COALESCE(SUM(COALESCE(e.end_sec, e.start_sec + 3) - e.start_sec), 0)::bigint FROM stream_timeline_events e WHERE e.stream_id = s.id AND e.kind = 'speech') AS speech_sec,
+                   (SELECT COALESCE(SUM(LENGTH(e.text) - LENGTH(REPLACE(e.text, ' ', '')) + 1), 0)::bigint FROM stream_timeline_events e WHERE e.stream_id = s.id AND e.kind = 'speech') AS words,
                    (SELECT COUNT(*) FROM arena_mic_moments m WHERE m.stream_id = s.id) AS moments,
-                   (SELECT COALESCE(AVG(m.quality), 0) FROM arena_mic_moments m WHERE m.stream_id = s.id) AS avg_q,
+                   (SELECT COALESCE(AVG(m.quality), 0)::float8 FROM arena_mic_moments m WHERE m.stream_id = s.id) AS avg_q,
                    (SELECT COUNT(*) FROM arena_mic_moments m WHERE m.stream_id = s.id AND m.kind = 'beef_hit') AS hits,
                    (SELECT COUNT(*) FROM arena_beefs b WHERE b.winner_user_id = s.user_id AND b.resolved_at BETWEEN s.started_at AND COALESCE(s.ended_at, s.started_at)) AS wins
             FROM streams s
-            WHERE s.user_id = ? AND s.duration_seconds > 0 AND s.started_at >= datetime('now', ?) ORDER BY s.started_at DESC LIMIT 14`, [userId, win]).reverse();
+            WHERE s.user_id = ? AND s.duration_seconds > 0 AND s.started_at >= datetime('now', ?) ORDER BY s.started_at DESC LIMIT 14`, [userId, win])).reverse();
         const per = {
             heat: r => Number((r.avg_q || 0).toFixed(1)),
             aim: r => Number(((r.moments || 0) / Math.max((r.speech_sec || 0) / 3600, 0.05)).toFixed(2)),
@@ -462,55 +445,55 @@ function getStatDetail(userId, stat) {
     const shown = (raw) => (METRIC_FOR_STAT[stat](raw) || 0);
     const ranked = roster.order.map(id => ({ id, value: METRIC_FOR_STAT[stat](roster.byId[id].raw) || 0, shown: shown(roster.byId[id].raw), rating: roster.byId[id].ratings[stat] })).sort((x, y) => y.value - x.value);
     const position = ranked.findIndex(r => r.id === userId) + 1;
-    const top = ranked.slice(0, 3).map(r => ({ user: roster.byId[r.id].user, fighter_name: (parseJson(profileRow(r.id)?.persona_json) || fallbackPersona(roster.byId[r.id])).fighter_name, value: Number(Number(r.shown).toFixed(1)), rating: r.rating }));
+    const top = (await Promise.all(ranked.slice(0, 3).map(async r => ({ user: roster.byId[r.id].user, fighter_name: (parseJson((await profileRow(r.id))?.persona_json) || fallbackPersona(roster.byId[r.id])).fighter_name, value: Number(Number(r.shown).toFixed(1)), rating: r.rating }))));
     return { stat, label: STAT_META[stat].label, desc: STAT_META[stat].desc, unit, rating: entry.ratings[stat], value: Number(Number(shown(entry.raw)).toFixed(2)), position, roster_size: roster.order.length, weight: STAT_WEIGHTS[stat], series, top, voice: ['mouth', 'stamina', 'pace'].includes(stat) ? entry.raw.voice : undefined, mic: entry.raw.mic };
 }
 
 /** Live fighters with what the transcript last heard — the "on the mic now" strip. */
-function liveFighters() {
-    const roster = loadRoster();
+async function liveFighters() {
+    const roster = await loadRoster();
     let live = [];
-    try { live = db.getLiveStreams() || []; } catch { live = []; }
+    try { live = await db.getLiveStreams() || []; } catch { live = []; }
     const byUser = new Map();
     for (const s of live) { if (!roster.byId[s.user_id]) continue; const cur = byUser.get(s.user_id); if (!cur || (s.viewer_count || 0) > (cur.viewer_count || 0)) byUser.set(s.user_id, s); }
     let thumbs = null; try { thumbs = require('../media-proxy/live-thumbs'); } catch { /* */ }
     const mic = require('./mic'), beef = require('./beef');
     let listener = null; try { listener = require('./listener'); } catch { /* */ }
-    return [...byUser.values()].map(s => {
-        const c = cardFor(s.user_id, roster, { includeRaw: false });
+    return (await Promise.all([...byUser.values()].map(async s => {
+        const c = await cardFor(s.user_id, roster, { includeRaw: false });
         let hotMic = null;
-        try { const r = db.all(`SELECT text, start_sec, vod_id FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND LENGTH(text) > 15 ORDER BY start_sec DESC LIMIT 5`, [s.id]).find(row => !isBannedText(row.text)); if (r) hotMic = { text: r.text, start_sec: Math.floor(r.start_sec), vod_id: r.vod_id || null }; } catch { /* */ }
-        const transcribed = !!db.get(`SELECT 1 FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND created_at >= datetime('now', '-30 minutes') LIMIT 1`, [s.id]);
-        let ears = null; try { const cs = listener ? listener.consoleState(s.user_id) : null; if (cs && cs.listening) ears = { focus: cs.focus ? { target_id: cs.focus.target_id, target: cs.focus.target, hits: cs.focus.hits, lock_seconds_left: cs.focus.lock_seconds_left } : null, pending_words: cs.pending_mic_words + (cs.focus ? cs.focus.pending_words : 0) }; } catch { ears = null; }
-        let lastMoment = null; try { lastMoment = mic.latestFor(s.user_id); } catch { lastMoment = null; }
+        try { const r = (await db.all(`SELECT text, start_sec, vod_id FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND LENGTH(text) > 15 ORDER BY start_sec DESC LIMIT 5`, [s.id])).find(row => !isBannedText(row.text)); if (r) hotMic = { text: r.text, start_sec: Math.floor(r.start_sec), vod_id: r.vod_id || null }; } catch { /* */ }
+        const transcribed = !!await db.get(`SELECT 1 FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND created_at >= datetime('now', '-30 minutes') LIMIT 1`, [s.id]);
+        let ears = null; try { const cs = listener ? await listener.consoleState(s.user_id) : null; if (cs && cs.listening) ears = { focus: cs.focus ? { target_id: cs.focus.target_id, target: cs.focus.target, hits: cs.focus.hits, lock_seconds_left: cs.focus.lock_seconds_left } : null, pending_words: cs.pending_mic_words + (cs.focus ? cs.focus.pending_words : 0) }; } catch { ears = null; }
+        let lastMoment = null; try { lastMoment = await mic.latestFor(s.user_id); } catch { lastMoment = null; }
         return {
             user: c.user, rank: c.rank, ratings: c.ratings, record: c.record, image_url: c.image_url, level: c.level.level,
             persona: { fighter_name: c.persona.fighter_name, title: c.persona.title, class: c.persona.class, taunt: c.persona.taunt },
             stream: { id: s.id, title: s.title, category: s.category, viewer_count: s.viewer_count || 0, started_at: s.started_at, slug: s.managed_stream_slug || null, managed_stream_id: s.managed_stream_id || null },
             thumbnail_url: thumbs ? (thumbs.getCurrentLiveThumbnailUrl(s.id) || null) : null,
-            hot_mic: hotMic, transcribed, ears, last_moment: lastMoment, open_beefs: beef.openBeefsFor(s.user_id).length,
+            hot_mic: hotMic, transcribed, ears, last_moment: lastMoment, open_beefs: (await beef.openBeefsFor(s.user_id)).length,
         };
-    }).sort((x, y) => y.ratings.power - x.ratings.power);
+    }))).sort((x, y) => y.ratings.power - x.ratings.power);
 }
 
-function voterKeyFor(req) {
+async function voterKeyFor(req) {
     if (req.user && req.user.id) return `user:${req.user.id}`;
     const ip = String(req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '');
-    const salt = String(setting('arena_vote_salt', '') || process.env.JWT_SECRET || 'arena');
+    const salt = String(await setting('arena_vote_salt', '') || process.env.JWT_SECRET || 'arena');
     return `anon:${crypto.createHash('sha256').update(ip + '|' + salt).digest('hex').slice(0, 24)}`;
 }
 
-function status() {
-    ensureTables();
-    const roster = loadRoster();
-    const counts = db.get(`SELECT SUM(persona_json IS NOT NULL) AS personas, SUM(image_path IS NOT NULL) AS images, SUM(quotes_json IS NOT NULL) AS quotes FROM arena_profiles`) || {};
+async function status() {
+    await ensureTables();
+    const roster = await loadRoster();
+    const counts = await db.get(`SELECT COUNT(*) FILTER (WHERE persona_json IS NOT NULL) AS personas, COUNT(*) FILTER (WHERE image_path IS NOT NULL) AS images, COUNT(*) FILTER (WHERE quotes_json IS NOT NULL) AS quotes FROM arena_profiles`) || {};
     let beefs = {}, moments = 0;
-    try { beefs = db.get(`SELECT SUM(status = 'open') AS open, SUM(status = 'resolved') AS resolved FROM arena_beefs`) || {}; moments = db.get(`SELECT COUNT(*) AS n FROM arena_mic_moments WHERE created_at >= datetime('now', '-1 day')`)?.n || 0; } catch { /* */ }
+    try { beefs = await db.get(`SELECT COUNT(*) FILTER (WHERE status = 'open') AS open, COUNT(*) FILTER (WHERE status = 'resolved') AS resolved FROM arena_beefs`) || {}; moments = (await db.get(`SELECT COUNT(*) AS n FROM arena_mic_moments WHERE created_at >= datetime('now', '-1 day')`))?.n || 0; } catch { /* */ }
     return {
-        mode: 'battle-cam', enabled: arenaEnabled(), ai: aiOn(), image_generation: imageGenAvailable(), image_model: null,
+        mode: 'battle-cam', enabled: await arenaEnabled(), ai: await aiOn(), image_generation: imageGenAvailable(), image_model: null,
         roster: roster.order.length, with_voice_data: roster.order.filter(id => roster.byId[id].raw.voice.has_data).length,
         personas: counts.personas || 0, quotes: counts.quotes || 0, images: counts.images || 0,
-        beefs_open: beefs.open || 0, beefs_resolved: beefs.resolved || 0, mic_moments_24h: moments, live_fighters: liveFighters().length,
+        beefs_open: beefs.open || 0, beefs_resolved: beefs.resolved || 0, mic_moments_24h: moments, live_fighters: (await liveFighters()).length,
         listener: (() => { try { return require('./listener').TICK_MS; } catch { return null; } })(), active_days: ACTIVE_DAYS,
     };
 }
@@ -518,7 +501,7 @@ function status() {
 module.exports = {
     ensureTables, arenaEnabled, aiOn, imageGenAvailable, loadRoster, listFighters, getFighter, getStatDetail, liveFighters,
     generatePersona, generateQuotes, generateImage, voterKeyFor, status, publicUser,
-    getFighterImageUrl: (userId) => imageUrlFor(profileRow(userId)),
+    getFighterImageUrl: async (userId) => imageUrlFor(await profileRow(userId)),
     STAT_KEYS, STAT_META, STAT_WEIGHTS, ARENA_DIR, TALK_BONUS_MAX, ACTIVE_DAYS, MIC_WINDOW_DAYS,
     _computeRatings: computeRatings, _fallbackPersona: fallbackPersona, _voiceStatsFor: voiceStatsFor, _quoteCandidates: quoteCandidates, _isBannedText: isBannedText, _talkBonus: talkBonus,
 };

@@ -32,7 +32,7 @@ function shape(data) {
 }
 
 async function forUser(userId, { fetchImpl = globalThis.fetch, now = Date.now() } = {}) {
-    const subject = identity.subjectOf(userId);
+    const subject = await identity.subjectOf(userId);
     if (!SUBJECT_RE.test(subject || '')) return null;
     const hit = cache.get(subject);
     if (hit && now - hit.at < TTL_MS) return hit.value;

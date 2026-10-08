@@ -5,15 +5,10 @@
 // token, only a real candidate); no answer keeps the old fallback.
 //   node test/ai-templates-jobs.test.js
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
 const { serviceAuth } = require('openvibe-contracts');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-ai-jobs-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.NODE_ENV = 'test';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
@@ -52,8 +47,8 @@ const last = (wf) => runs.filter((r) => r.workflow === wf).pop();
     process.env.OV_NETWORK_INTERNAL_URL = `http://127.0.0.1:${network.address().port}`;
     process.env.OV_AI_INTERNAL_URL = `http://127.0.0.1:${ai.address().port}`;
     const db = require('../server/db/database');
-    db.initDb();
-    db.setSetting('ai_enabled', 'true');
+    await db.initDb();
+    await db.setSetting('ai_enabled', 'true');
     try {
         // The daily secret: AI's code, Live's clue check.
         answers['live.easter_egg'] = { title: 'Goose Run', code: ['up', 'g', 'left', 'down', 'v'], clues: ['toward the sky', "'goose' begins with it", 'the way rain falls', 'the way rain falls', "'vibe' begins with it"], effect: 'rainbow', reward: 'Honk!' };
@@ -83,14 +78,13 @@ const last = (wf) => runs.filter((r) => r.workflow === wf).pop();
         assert.deepStrictEqual(Object.keys(sl.input).sort(), ['count', 'global', 'streamers', 'usernames', 'users', 'vods']);
         assert.strictEqual(sl.input.count, 20);
         assert.ok(!JSON.stringify(sl.input).includes('TASK'), 'no prompt is sent');
-        const pool = JSON.parse(db.getState('home_hero_slogans'));
+        const pool = JSON.parse(await db.getState('home_hero_slogans'));
         assert.ok(pool.audiences.includes('crouton fans 0') && !pool.audiences.some((a) => /free/.test(a)), 'the no-free rule still applies');
         assert.ok(pool.audiences.includes('coders'), '"live streaming for" is stripped');
         // The chat-AI job and its live.chat.global / live.chat.profile data shaping moved to
         // OpenVibe.Chat with the six chat tables (roadmap T3).
     } finally {
         network.close(); ai.close();
-        fs.rmSync(tmp, { recursive: true, force: true });
     }
     console.log('AI template jobs: all checks passed');
     process.exit(0);

@@ -56,11 +56,11 @@ const MS_SQL = 'SELECT id, user_id, slug, title, sort_order, created_at FROM man
 const CHANNEL_SQL = 'SELECT id, user_id, title, emote_sources FROM channels';
 
 /** The chat projection of a user row (no secrets: no email, password, stream key, balances). */
-function userProjection(user, subjectId) {
+async function userProjection(user, subjectId) {
     if (!user) return null;
     let subject = subjectId || user.subject_id || null;
     if (!subject) {
-        try { subject = db.get("SELECT subject_id FROM linked_accounts WHERE user_id = ? AND service = 'network' AND subject_id IS NOT NULL ORDER BY id DESC LIMIT 1", [user.id])?.subject_id || null; } catch { subject = null; }
+        try { subject = (await db.get("SELECT subject_id FROM linked_accounts WHERE user_id = ? AND service = 'network' AND subject_id IS NOT NULL ORDER BY id DESC LIMIT 1", [user.id]))?.subject_id || null; } catch { subject = null; }
     }
     return {
         id: user.id, username: user.username, display_name: user.display_name, avatar_url: user.avatar_url || null,
@@ -72,48 +72,48 @@ function userProjection(user, subjectId) {
 contextRouter.use(guard('live.chat_context.read'));
 
 // Resolve a browser/bot token exactly as Live's requireAuth / authenticateWs do.
-contextRouter.post('/auth', (req, res) => {
+contextRouter.post('/auth', async (req, res) => {
     const token = String((req.body && req.body.token) || '');
     if (!token) return res.json({ user: null, reason: 'invalid' });
     const auth = require('../auth/auth');
-    const apiUser = auth.authenticateApiToken(token);
+    const apiUser = await auth.authenticateApiToken(token);
     if (apiUser) {
-        const user = { ...userProjection(apiUser), auth_source: 'api_token', scopes: apiUser.scopes || [] };
+        const user = { ...await userProjection(apiUser), auth_source: 'api_token', scopes: apiUser.scopes || [] };
         return res.json({ user, expires_at: null, reason: null });
     }
-    const r = auth.verifyTokenWithReason(token);
+    const r = await auth.verifyTokenWithReason(token);
     if (!r.ok) return res.json({ user: null, reason: 'invalid' });
-    const user = auth.resolveNetworkUser(r.decoded);
+    const user = await auth.resolveNetworkUser(r.decoded);
     if (!user) return res.json({ user: null, reason: 'unresolved' });
     res.json({
-        user: { ...userProjection(user, r.decoded.subject_id), auth_source: 'network' },
+        user: { ...await userProjection(user, r.decoded.subject_id), auth_source: 'network' },
         expires_at: typeof r.decoded.exp === 'number' ? new Date(r.decoded.exp * 1000).toISOString() : null,
         reason: null,
     });
 });
 
-contextRouter.get('/users', (req, res) => {
+contextRouter.get('/users', async (req, res) => {
     const { after, limit } = pageArgs(req);
-    res.json({ rows: db.all(`${USER_SQL} WHERE u.id > ? ORDER BY u.id LIMIT ?`, [after, limit]) });
+    res.json({ rows: await db.all(`${USER_SQL} WHERE u.id > ? ORDER BY u.id LIMIT ?`, [after, limit]) });
 });
 
-contextRouter.post('/users/lookup', (req, res) => {
+contextRouter.post('/users/lookup', async (req, res) => {
     const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter(Number.isInteger).slice(0, 500);
     const names = (Array.isArray(req.body?.usernames) ? req.body.usernames : []).map(String).slice(0, 100);
     const rows = [];
-    if (ids.length) rows.push(...db.all(`${USER_SQL} WHERE u.id IN (${ids.map(() => '?').join(',')})`, ids));
-    for (const n of names) { const r = db.get(`${USER_SQL} WHERE u.username = ? COLLATE NOCASE`, [n]); if (r) rows.push(r); }
+    if (ids.length) rows.push(...await db.all(`${USER_SQL} WHERE u.id = ANY(?)`, [ids]));
+    if (names.length) rows.push(...await db.all(`${USER_SQL} WHERE lower(u.username) = ANY(?)`, [names.map((n) => n.toLowerCase())]));
     res.json({ users: rows });
 });
 
-contextRouter.get('/users/profile', (req, res) => {
+contextRouter.get('/users/profile', async (req, res) => {
     // The same card /api/chat/user/:username/profile built in Live.
     try {
         const name = String(req.query.username || '');
-        let user = db.getUserByUsername(name);
-        if (!user) user = db.get('SELECT * FROM users WHERE display_name = ? COLLATE NOCASE', [name]);
+        let user = await db.getUserByUsername(name);
+        if (!user) user = await db.get('SELECT * FROM users WHERE lower(display_name) = lower(?)', [name]);
         if (!user) return fail(res, 404, 'User not found');
-        const profile = db.getUserProfile(user.id);
+        const profile = await db.getUserProfile(user.id);
         if (!profile) return fail(res, 404, 'Profile not found');
         // OpenCoins are part of the game; Vibes (real money) and presence stay with the user.
         const viewerId = int(req.query.viewer_id, 0);
@@ -122,7 +122,7 @@ contextRouter.get('/users/profile', (req, res) => {
             delete profile.last_seen;
         }
         // Legacy game skills, read-only (never creates a game_players row)
-        const game = db.getLegacyGameProfile(user.id);
+        const game = await db.getLegacyGameProfile(user.id);
         if (game) profile.game = game;
         res.json(profile);
     } catch (err) {
@@ -130,8 +130,8 @@ contextRouter.get('/users/profile', (req, res) => {
     }
 });
 
-contextRouter.get('/users/:id/follows', (req, res) => {
-    res.json({ streamer_ids: db.all('SELECT streamer_id FROM follows WHERE follower_id = ?', [int(req.params.id)]).map((r) => r.streamer_id) });
+contextRouter.get('/users/:id/follows', async (req, res) => {
+    res.json({ streamer_ids: (await db.all('SELECT streamer_id FROM follows WHERE follower_id = ?', [int(req.params.id)])).map((r) => r.streamer_id) });
 });
 
 // Sub-only chat (OpenVibe.Chat): does this person hold an ACTIVE subscription to this streamer's
@@ -143,7 +143,7 @@ contextRouter.get('/subscriber', async (req, res) => {
     const streamerId = int(req.query.streamer_id);
     let userId = int(req.query.user_id);
     if (!userId && req.query.subject) {
-        userId = db.get("SELECT user_id FROM linked_accounts WHERE service = 'network' AND subject_id = ? ORDER BY id DESC LIMIT 1", [String(req.query.subject)])?.user_id || 0;
+        userId = (await db.get("SELECT user_id FROM linked_accounts WHERE service = 'network' AND subject_id = ? ORDER BY id DESC LIMIT 1", [String(req.query.subject)]))?.user_id || 0;
         if (!userId) return res.json({ subscriber: false, user_id: null, streamer_id: streamerId || null });
     }
     if (!userId || !streamerId) return fail(res, 400, 'user_id (or subject) and streamer_id required');
@@ -151,69 +151,69 @@ contextRouter.get('/subscriber', async (req, res) => {
         if (process.env.BILLING_AUTHORITY && require('../monetization/money-authority').onBilling()) {
             await require('../monetization/billing-actions').refreshEntitlement(userId, streamerId).catch(() => {});
         }
-        res.json({ subscriber: !!db.isActiveSubscriber(userId, streamerId), user_id: userId, streamer_id: streamerId });
+        res.json({ subscriber: !!await db.isActiveSubscriber(userId, streamerId), user_id: userId, streamer_id: streamerId });
     } catch (err) {
         fail(res, 500, 'subscription lookup failed');
     }
 });
 
-contextRouter.get('/streams', (req, res) => {
+contextRouter.get('/streams', async (req, res) => {
     const { after, limit } = pageArgs(req);
-    res.json({ rows: db.all(`${STREAM_SQL} WHERE id > ? ORDER BY id LIMIT ?`, [after, limit]) });
+    res.json({ rows: await db.all(`${STREAM_SQL} WHERE id > ? ORDER BY id LIMIT ?`, [after, limit]) });
 });
 // Live now, plus anything that ended in the last quarter hour (so Chat sees it go offline).
-contextRouter.get('/streams/active', (req, res) => {
-    res.json({ rows: db.all(`${STREAM_SQL} WHERE is_live = 1 OR (ended_at IS NOT NULL AND ended_at >= datetime('now', '-15 minutes'))`) });
+contextRouter.get('/streams/active', async (req, res) => {
+    res.json({ rows: await db.all(`${STREAM_SQL} WHERE is_live = 1 OR (ended_at IS NOT NULL AND ended_at >= datetime('now', '-15 minutes'))`) });
 });
-contextRouter.get('/streams/:id', (req, res) => {
-    const stream = db.get(`${STREAM_SQL} WHERE id = ?`, [int(req.params.id)]);
+contextRouter.get('/streams/:id', async (req, res) => {
+    const stream = await db.get(`${STREAM_SQL} WHERE id = ?`, [int(req.params.id)]);
     if (!stream) return res.json({ stream: null });
     res.json({
         stream,
-        owner: db.get(`${USER_SQL} WHERE u.id = ?`, [stream.user_id]) || null,
-        managed_stream: stream.managed_stream_id ? (db.get(`${MS_SQL} WHERE id = ?`, [stream.managed_stream_id]) || null) : null,
-        channel: stream.channel_id ? (db.get(`${CHANNEL_SQL} WHERE id = ?`, [stream.channel_id]) || null) : (db.get(`${CHANNEL_SQL} WHERE user_id = ?`, [stream.user_id]) || null),
+        owner: await db.get(`${USER_SQL} WHERE u.id = ?`, [stream.user_id]) || null,
+        managed_stream: stream.managed_stream_id ? (await db.get(`${MS_SQL} WHERE id = ?`, [stream.managed_stream_id]) || null) : null,
+        channel: stream.channel_id ? (await db.get(`${CHANNEL_SQL} WHERE id = ?`, [stream.channel_id]) || null) : (await db.get(`${CHANNEL_SQL} WHERE user_id = ?`, [stream.user_id]) || null),
     });
 });
 
-contextRouter.get('/managed-streams', (req, res) => {
+contextRouter.get('/managed-streams', async (req, res) => {
     const { after, limit } = pageArgs(req);
-    res.json({ rows: db.all(`${MS_SQL} WHERE id > ? ORDER BY id LIMIT ?`, [after, limit]) });
+    res.json({ rows: await db.all(`${MS_SQL} WHERE id > ? ORDER BY id LIMIT ?`, [after, limit]) });
 });
 
-contextRouter.get('/channels', (req, res) => {
+contextRouter.get('/channels', async (req, res) => {
     const { after, limit } = pageArgs(req);
-    res.json({ rows: db.all(`${CHANNEL_SQL} WHERE id > ? ORDER BY id LIMIT ?`, [after, limit]) });
+    res.json({ rows: await db.all(`${CHANNEL_SQL} WHERE id > ? ORDER BY id LIMIT ?`, [after, limit]) });
 });
-contextRouter.get('/channels/by-user/:userId', (req, res) => {
-    res.json({ channel: db.get(`${CHANNEL_SQL} WHERE user_id = ?`, [int(req.params.userId)]) || null });
+contextRouter.get('/channels/by-user/:userId', async (req, res) => {
+    res.json({ channel: await db.get(`${CHANNEL_SQL} WHERE user_id = ?`, [int(req.params.userId)]) || null });
 });
-contextRouter.get('/channels/:id/policy', (req, res) => {
+contextRouter.get('/channels/:id/policy', async (req, res) => {
     // OpenVibe.Chat owns channel_moderation_settings and channel_moderators (roadmap T3) and reads
     // them locally; Live answers only the channel row and the language it owns.
     const channelId = int(req.params.id);
-    const channel = db.get(`${CHANNEL_SQL} WHERE id = ?`, [channelId]) || null;
+    const channel = await db.get(`${CHANNEL_SQL} WHERE id = ?`, [channelId]) || null;
     let language = 'en';
-    try { if (channel) language = require('../i18n/translate').channelLanguage(channel.user_id) || 'en'; } catch { language = 'en'; }
+    try { if (channel) language = await require('../i18n/translate').channelLanguage(channel.user_id) || 'en'; } catch { language = 'en'; }
     res.json({ channel, language });
 });
-contextRouter.get('/channels/:id/approved-ip', (req, res) => {
-    res.json({ approved: db.isIpApproved(int(req.params.id), String(req.query.ip || '')) });
+contextRouter.get('/channels/:id/approved-ip', async (req, res) => {
+    res.json({ approved: await db.isIpApproved(int(req.params.id), String(req.query.ip || '')) });
 });
 
 // Active bans (user, IP and CIDR rows). `version` changes whenever the table does, so an
 // unchanged table is one small answer.
-contextRouter.get('/bans', (req, res) => {
-    const v = db.get('SELECT COUNT(*) AS c, COALESCE(MAX(id), 0) AS m, COALESCE(SUM(id * 7 + COALESCE(stream_id, 0) + LENGTH(COALESCE(expires_at, \'\'))), 0) AS s FROM bans');
+contextRouter.get('/bans', async (req, res) => {
+    const v = await db.get('SELECT COUNT(*) AS c, COALESCE(MAX(id), 0) AS m, COALESCE(SUM(id * 7 + COALESCE(stream_id, 0) + LENGTH(COALESCE(expires_at, \'\'))), 0)::bigint AS s FROM bans');
     const version = `${v.c}:${v.m}:${v.s}`;
     if (req.query.version && String(req.query.version) === version) return res.json({ version, unchanged: true });
     res.json({
         version,
-        bans: db.all('SELECT id, stream_id, user_id, ip_address, anon_id, expires_at FROM bans WHERE expires_at IS NULL OR datetime(expires_at) > CURRENT_TIMESTAMP'),
+        bans: await db.all('SELECT id, stream_id, user_id, ip_address, anon_id, expires_at FROM bans WHERE expires_at IS NULL OR datetime(expires_at) > ov_now()'),
     });
 });
 
-contextRouter.post('/decor', (req, res) => {
+contextRouter.post('/decor', async (req, res) => {
     const ids = (Array.isArray(req.body?.user_ids) ? req.body.user_ids : []).map(Number).filter(Number.isInteger).slice(0, 500);
     let cosmetics = null, tags = null;
     try { cosmetics = require('../monetization/cosmetics'); } catch { /* */ }
@@ -221,8 +221,8 @@ contextRouter.post('/decor', (req, res) => {
     const decor = {};
     for (const id of ids) {
         let cosmetic = {}, tag = null;
-        try { if (cosmetics) cosmetic = cosmetics.getCosmeticProfile(id) || {}; } catch { cosmetic = {}; }
-        try { if (tags) tag = tags.getTagProfile(id) || null; } catch { tag = null; }
+        try { if (cosmetics) cosmetic = await cosmetics.getCosmeticProfile(id) || {}; } catch { cosmetic = {}; }
+        try { if (tags) tag = await tags.getTagProfile(id) || null; } catch { tag = null; }
         decor[id] = { cosmetic, tag };
     }
     res.json({ decor });
@@ -231,19 +231,19 @@ contextRouter.post('/decor', (req, res) => {
 // Site settings chat reads (TTS config, GIF provider keys, the 101soundboards key) — nothing else.
 const CHAT_SETTING_KEYS = new Set(['gif_tenor_api_key', 'gif_giphy_api_key', 'soundboard_101_api_key']);
 const isChatSetting = (k) => CHAT_SETTING_KEYS.has(k) || /^tts_[a-z0-9_]+$/.test(k);
-contextRouter.get('/settings', (req, res) => {
+contextRouter.get('/settings', async (req, res) => {
     const settings = {};
-    for (const r of db.all("SELECT key FROM site_settings WHERE key LIKE 'tts\\_%' ESCAPE '\\' OR key IN ('gif_tenor_api_key', 'gif_giphy_api_key', 'soundboard_101_api_key')")) {
-        if (isChatSetting(r.key)) settings[r.key] = db.getSetting(r.key);
+    for (const r of await db.all("SELECT key FROM site_settings WHERE key ILIKE 'tts\\_%' ESCAPE '\\' OR key IN ('gif_tenor_api_key', 'gif_giphy_api_key', 'soundboard_101_api_key')")) {
+        if (isChatSetting(r.key)) settings[r.key] = await db.getSetting(r.key);
     }
     res.json({ settings });
 });
 
-contextRouter.get('/anon/:num', (req, res) => {
-    res.json({ first_seen: db.get('SELECT created_at FROM anon_ip_mappings WHERE anon_num = ?', [int(req.params.num)])?.created_at || null });
+contextRouter.get('/anon/:num', async (req, res) => {
+    res.json({ first_seen: (await db.get('SELECT created_at FROM anon_ip_mappings WHERE anon_num = ?', [int(req.params.num)]))?.created_at || null });
 });
-contextRouter.get('/anon-first-seen', (req, res) => {
-    res.json({ first_seen: db.getAnonFirstSeen(String(req.query.ip || '')) });
+contextRouter.get('/anon-first-seen', async (req, res) => {
+    res.json({ first_seen: await db.getAnonFirstSeen(String(req.query.ip || '')) });
 });
 
 contextRouter.get('/tts-audio/:file', (req, res) => {
@@ -266,7 +266,7 @@ effectsRouter.use((req, res, next) => {
 });
 
 const chatDelivery = () => require('./chat-delivery');
-const actorOf = (id) => (id ? db.getUserById(id) : null);
+const actorOf = async (id) => (id ? await db.getUserById(id) : null);
 
 effectsRouter.post('/anon', async (req, res) => {
     const ip = String(req.body?.ip || '');
@@ -274,39 +274,39 @@ effectsRouter.post('/anon', async (req, res) => {
     try { res.json(await chatDelivery().resolveAnon(ip)); } catch (err) { fail(res, 500, err.message); }
 });
 
-effectsRouter.post('/ip-log', (req, res) => {
+effectsRouter.post('/ip-log', async (req, res) => {
     const entries = Array.isArray(req.body?.entries) ? req.body.entries.slice(0, 1000) : [];
     let ipUtils = null;
     try { ipUtils = require('../admin/ip-utils'); } catch { /* */ }
     for (const e of entries) {
         try {
             const geo = ipUtils ? ipUtils.enrichIp(e.ip) : null;
-            db.logIp({ userId: e.userId || null, anonId: e.anonId || null, ip: e.ip, action: e.action || 'chat', geo });
+            await db.logIp({ userId: e.userId || null, anonId: e.anonId || null, ip: e.ip, action: e.action || 'chat', geo });
         } catch { /* non-critical */ }
     }
     res.json({ ok: true, logged: entries.length });
 });
 
-effectsRouter.post('/viewer-counts', (req, res) => {
+effectsRouter.post('/viewer-counts', async (req, res) => {
     for (const [sid, count] of Object.entries(req.body?.counts || {})) {
-        try { db.updateViewerCount(int(sid), Math.max(0, int(count))); } catch { /* */ }
+        try { await db.updateViewerCount(int(sid), Math.max(0, int(count))); } catch { /* */ }
     }
     res.json({ ok: true });
 });
 
-effectsRouter.post('/viewer-snapshots', (req, res) => {
+effectsRouter.post('/viewer-snapshots', async (req, res) => {
     for (const s of (Array.isArray(req.body?.snapshots) ? req.body.snapshots : []).slice(0, 1000)) {
-        try { db.insertViewerSnapshot(int(s.stream_id), Math.max(0, int(s.viewer_count)), Math.max(0, int(s.chat_messages_5m))); } catch { /* */ }
+        try { await db.insertViewerSnapshot(int(s.stream_id), Math.max(0, int(s.viewer_count)), Math.max(0, int(s.chat_messages_5m))); } catch { /* */ }
     }
     res.json({ ok: true });
 });
 
 // /color: the user changes their own color.
-effectsRouter.post('/user-color', (req, res) => {
+effectsRouter.post('/user-color', async (req, res) => {
     const userId = int(req.body?.user_id);
     const color = String(req.body?.color || '');
     if (!userId || !/^#[0-9a-fA-F]{6}$/.test(color)) return fail(res, 400, 'user_id and a #rrggbb color required');
-    db.run('UPDATE users SET profile_color = ? WHERE id = ?', [color, userId]);
+    await db.run('UPDATE users SET profile_color = ? WHERE id = ?', [color, userId]);
     res.json({ ok: true });
 });
 
@@ -314,7 +314,7 @@ effectsRouter.post('/user-color', (req, res) => {
 // moderator of the stream chat decided on (for an offline channel room, its latest stream).
 effectsRouter.post('/ban', async (req, res) => {
     const b = req.body || {};
-    const actor = actorOf(int(b.actor_user_id));
+    const actor = await actorOf(int(b.actor_user_id));
     const modStream = int(b.moderation_stream_id) || null;
     const allowed = actor && !actor.is_banned && (permissions.isGlobalModOrAbove(actor) || (modStream && await permissions.canModerateStream(actor, modStream)));
     if (!allowed) return fail(res, 403, 'You do not have permission.');
@@ -326,20 +326,20 @@ effectsRouter.post('/ban', async (req, res) => {
     if (b.action === 'unban') {
         const userId = int(b.user_id);
         if (!userId) return fail(res, 400, 'user_id required');
-        if (streamId) db.run('DELETE FROM bans WHERE user_id = ? AND stream_id = ?', [userId, streamId]);
-        else db.run('DELETE FROM bans WHERE user_id = ? AND stream_id IS NULL', [userId]);
+        if (streamId) await db.run('DELETE FROM bans WHERE user_id = ? AND stream_id = ?', [userId, streamId]);
+        else await db.run('DELETE FROM bans WHERE user_id = ? AND stream_id IS NULL', [userId]);
         return res.json({ ok: true });
     }
     if (b.action !== 'ban') return fail(res, 400, 'action must be ban or unban');
     if (b.user_id) {
-        const target = db.getUserById(int(b.user_id));
+        const target = await db.getUserById(int(b.user_id));
         if (!target) return fail(res, 404, 'User not found');
         // Prevent non-admins from banning admins
         if (permissions.isGlobalModOrAbove(target) && target.role === 'admin' && !permissions.isAdmin(actor)) return fail(res, 403, 'You cannot ban an admin.');
-        db.run('INSERT INTO bans (stream_id, user_id, reason, banned_by, expires_at) VALUES (?, ?, ?, ?, ?)',
+        await db.run('INSERT INTO bans (stream_id, user_id, reason, banned_by, expires_at) VALUES (?, ?, ?, ?, ?)',
             [streamId, target.id, String(b.reason || 'Banned by moderator').slice(0, 200), actor.id, b.expires_at || null]);
     } else if (b.ip_address) {
-        db.run('INSERT INTO bans (stream_id, ip_address, anon_id, reason, banned_by) VALUES (?, ?, ?, ?, ?)',
+        await db.run('INSERT INTO bans (stream_id, ip_address, anon_id, reason, banned_by) VALUES (?, ?, ?, ?, ?)',
             [streamId, String(b.ip_address), b.anon_id ? String(b.anon_id) : null, String(b.reason || 'Banned by moderator').slice(0, 200), actor.id]);
     } else {
         return fail(res, 400, 'user_id or ip_address required');
@@ -348,11 +348,11 @@ effectsRouter.post('/ban', async (req, res) => {
 });
 
 // IP approval mode: an address that chatted here before is approved automatically ('auto_existing').
-effectsRouter.post('/approve-ip', (req, res) => {
+effectsRouter.post('/approve-ip', async (req, res) => {
     const channelId = int(req.body?.channel_id);
     const ip = String(req.body?.ip || '');
     if (!channelId || !ip) return fail(res, 400, 'channel_id and ip required');
-    db.approveIp(channelId, ip, req.body.approved_by ? int(req.body.approved_by) : null, String(req.body.source || 'auto').slice(0, 32));
+    await db.approveIp(channelId, ip, req.body.approved_by ? int(req.body.approved_by) : null, String(req.body.source || 'auto').slice(0, 32));
     res.json({ ok: true });
 });
 
@@ -360,25 +360,25 @@ effectsRouter.post('/approve-ip', (req, res) => {
 // persists nothing here itself, its PUT /api/emotes/sources asks Live to write the row.
 // (The /channel-settings and /alert-sound effects were retired with roadmap T3: Chat owns
 // channel_moderation_settings and writes it locally now.)
-effectsRouter.post('/channel-emote-sources', (req, res) => {
+effectsRouter.post('/channel-emote-sources', async (req, res) => {
     const userId = int(req.body?.user_id);
     const sources = req.body?.sources;
-    if (!userId || !db.getUserById(userId)) return fail(res, 404, 'User not found');
+    if (!userId || !await db.getUserById(userId)) return fail(res, 404, 'User not found');
     if (!sources || typeof sources !== 'object' || Array.isArray(sources)) return fail(res, 400, 'sources object required');
-    db.updateChannel(userId, { emote_sources: JSON.stringify(sources) });
+    await db.updateChannel(userId, { emote_sources: JSON.stringify(sources) });
     res.json({ ok: true });
 });
 
-effectsRouter.post('/ensure-channel', (req, res) => {
+effectsRouter.post('/ensure-channel', async (req, res) => {
     const userId = int(req.body?.user_id);
-    if (!userId || !db.getUserById(userId)) return fail(res, 404, 'User not found');
-    const ch = db.ensureChannel(userId);
+    if (!userId || !await db.getUserById(userId)) return fail(res, 404, 'User not found');
+    const ch = await db.ensureChannel(userId);
     res.json({ channel: ch ? { id: ch.id, user_id: ch.user_id, title: ch.title } : null });
 });
 
 // TTS admin settings: admins; credentials only the owner (Live's /api/tts/admin/settings rules).
-effectsRouter.post('/site-settings', (req, res) => {
-    const actor = actorOf(int(req.body?.actor_user_id));
+effectsRouter.post('/site-settings', async (req, res) => {
+    const actor = await actorOf(int(req.body?.actor_user_id));
     if (!permissions.can(actor, 'staff.site.configure')) return fail(res, 403, 'Admin access required');
     const allowed = ['tts_enabled', 'tts_provider', 'tts_google_api_key', 'tts_google_service_account', 'tts_aws_access_key_id', 'tts_aws_secret_access_key', 'tts_aws_region', 'tts_max_length', 'tts_max_queue_per_user', 'tts_max_queue_global', 'tts_default_voice'];
     const secret = new Set(['tts_google_api_key', 'tts_google_service_account', 'tts_aws_access_key_id', 'tts_aws_secret_access_key']);
@@ -388,7 +388,7 @@ effectsRouter.post('/site-settings', (req, res) => {
         if (!allowed.includes(key)) continue;
         if (secret.has(key) && !owner) continue;
         if (secret.has(key) && typeof value === 'string' && /^••••/.test(value)) continue;
-        db.setSetting(key, value);
+        await db.setSetting(key, value);
         count++;
     }
     try { require('./tts-engine').invalidateSettingsCache(); } catch { /* */ }
@@ -396,15 +396,15 @@ effectsRouter.post('/site-settings', (req, res) => {
 });
 
 // One real chat line: OpenCoins chat bonus, AI chat viewers, the PowerChat overlay relay.
-effectsRouter.post('/chat-message', (req, res) => {
+effectsRouter.post('/chat-message', async (req, res) => {
     const b = req.body || {};
     let coin = null;
     if (b.award && b.user_id && b.stream_id) {
-        try { coin = require('../monetization/opencoins').awardChat(int(b.user_id), int(b.stream_id)); } catch { coin = null; }
+        try { coin = await require('../monetization/opencoins').awardChat(int(b.user_id), int(b.stream_id)); } catch { coin = null; }
     }
     if (b.ai && b.stream_id) {
         try {
-            require('../integrations/ai-chatbot-service').onRealChatMessage(int(b.stream_id), {
+            await require('../integrations/ai-chatbot-service').onRealChatMessage(int(b.stream_id), {
                 username: b.username,
                 message: b.message,
                 userId: b.user_id || null,
@@ -420,11 +420,11 @@ effectsRouter.post('/chat-message', (req, res) => {
         try {
             const pc = require('../integrations/powerchat-platform');
             const channelUserId = int(b.channel_user_id);
-            if (pc.channelRelayEnabled(channelUserId, b.stream_id || null)) {
+            if (await pc.channelRelayEnabled(channelUserId, b.stream_id || null)) {
                 let isSub = false;
-                try { isSub = !!(b.user_id && db.isActiveSubscriber(int(b.user_id), channelUserId)); } catch { /* */ }
+                try { isSub = !!(b.user_id && await db.isActiveSubscriber(int(b.user_id), channelUserId)); } catch { /* */ }
                 const c = b.powerchat_chat;
-                pc.forwardChat(channelUserId, {
+                await pc.forwardChat(channelUserId, {
                     chatterName: c.chatterName,
                     externalChatterId: c.externalChatterId,
                     message: c.message,
@@ -438,11 +438,11 @@ effectsRouter.post('/chat-message', (req, res) => {
     res.json({ coin });
 });
 
-effectsRouter.post('/ai/mod-command', (req, res) => {
+effectsRouter.post('/ai/mod-command', async (req, res) => {
     try {
         const engine = require('../integrations/ai-chatbot-service');
         const reply = engine.onModCommand
-            ? engine.onModCommand(req.body.channel_user_id || null, req.body.stream_id || null, Array.isArray(req.body.args) ? req.body.args : [], { by: req.body.by })
+            ? await engine.onModCommand(req.body.channel_user_id || null, req.body.stream_id || null, Array.isArray(req.body.args) ? req.body.args : [], { by: req.body.by })
             : 'AI viewers: command not supported by this engine.';
         res.json({ reply: reply || null });
     } catch (err) { fail(res, 400, err.message); }
@@ -458,11 +458,11 @@ effectsRouter.post('/arena-command', async (req, res) => {
     let work = null;
     const shim = {
         sendTo: (_ws, payload) => { replies.push(payload); },
-        broadcastToStream: (streamId, payload) => delivery.event({ kind: 'stream', id: streamId }, payload),
+        broadcastToStream: async (streamId, payload) => await delivery.event({ kind: 'stream', id: streamId }, payload),
         track: (p) => { work = p; },
     };
     let handled = false;
-    try { handled = require('../arena/arena-chat').handle(shim, null, client, String(req.body.cmd || ''), Array.isArray(req.body.parts) ? req.body.parts : []); } catch (e) { console.warn('[Arena] chat command:', e.message); }
+    try { handled = await require('../arena/arena-chat').handle(shim, null, client, String(req.body.cmd || ''), Array.isArray(req.body.parts) ? req.body.parts : []); } catch (e) { console.warn('[Arena] chat command:', e.message); }
     if (work) { try { await work; } catch { /* the command answers its own errors */ } }
     res.json(replies.length ? { handled: !!handled, replies } : { handled: !!handled });
 });
@@ -478,14 +478,14 @@ effectsRouter.post('/media-queue', async (req, res) => {
             const request = await mediaQueue.addRequest({ streamerId, streamId: int(b.streamId) || null, userId: int(b.userId), username: String(b.username || ''), input: String(b.input || '') });
             return res.json({ request });
         }
-        if (b.op === 'state') return res.json({ state: mediaQueue.getState(streamerId) });
+        if (b.op === 'state') return res.json({ state: await mediaQueue.getState(streamerId) });
         if (b.op === 'skip') {
-            const actor = actorOf(int(b.actorUserId));
+            const actor = await actorOf(int(b.actorUserId));
             const streamId = int(b.streamId) || null;
             const allowed = actor && (actor.id === streamerId || permissions.isGlobalModOrAbove(actor) || (streamId && await permissions.canModerateStream(actor, streamId)));
             if (!allowed) return fail(res, 403, 'Only the streamer or a moderator can skip media.');
-            const ended = mediaQueue.finishCurrent(streamerId, 'skipped');
-            const next = mediaQueue.startNext(streamerId);
+            const ended = await mediaQueue.finishCurrent(streamerId, 'skipped');
+            const next = await mediaQueue.startNext(streamerId);
             return res.json({ ended: ended || null, next: next || null });
         }
         fail(res, 400, 'unknown op');
@@ -501,23 +501,23 @@ effectsRouter.post('/media-queue', async (req, res) => {
 const HARDWARE_COMMANDS = new Set(['forward', 'backward', 'turn_left', 'turn_right', 'lift_up', 'lift_down', 'head_up', 'head_down']);
 const HARDWARE_COOLDOWN_MS = 250;
 const hardwareLast = new Map();   // `${streamer}:${viewer}` → last command ms
-function hardwareRefusal(owner, actorId) {
-    const channel = db.getChannelByUserId(owner.id);
+async function hardwareRefusal(owner, actorId) {
+    const channel = await db.getChannelByUserId(owner.id);
     if (!channel) return null;
     const mode = channel.control_mode || 'open';
     if (mode === 'disabled') return 'controls_disabled';
     if (!actorId && (!channel.anon_controls_enabled || mode === 'whitelist')) return 'login_required';
     if (mode === 'whitelist' && actorId !== owner.id
-        && !db.get('SELECT 1 FROM control_whitelist WHERE channel_id = ? AND user_id = ?', [channel.id, actorId])) return 'not_whitelisted';
+        && !await db.get('SELECT 1 FROM control_whitelist WHERE channel_id = ? AND user_id = ?', [channel.id, actorId])) return 'not_whitelisted';
     return null;
 }
-effectsRouter.post('/hardware', (req, res) => {
+effectsRouter.post('/hardware', async (req, res) => {
     const command = String(req.body?.command || '');
     if (!HARDWARE_COMMANDS.has(command) && !/^say:[\s\S]{1,200}$/.test(command)) return fail(res, 400, 'unknown command');
-    const user = db.getUserById(int(req.body.streamer_user_id));
+    const user = await db.getUserById(int(req.body.streamer_user_id));
     if (!user) return res.json({ ok: false, reason: 'no_user' });
     const actorId = int(req.body.from_user_id) || null;
-    const refused = hardwareRefusal(user, actorId);
+    const refused = await hardwareRefusal(user, actorId);
     if (refused) return res.json({ ok: false, reason: refused });
     const who = actorId ? `u${actorId}` : `a:${String(req.body.from_anon || req.body.from_user || '').slice(0, 64)}`;
     const key = `${user.id}:${who}`;
@@ -563,10 +563,10 @@ effectsRouter.post('/translate', async (req, res) => {
     } catch { res.json({ translation: null }); }
 });
 
-effectsRouter.post('/notify/dm', (req, res) => {
+effectsRouter.post('/notify/dm', async (req, res) => {
     try {
         const { pushBulkNotification, actorInfo } = require('../utils/notify');
-        const sender = db.getUserById(int(req.body?.sender_id));
+        const sender = await db.getUserById(int(req.body?.sender_id));
         const otherIds = (Array.isArray(req.body?.recipient_ids) ? req.body.recipient_ids : []).map(Number).filter(Boolean).slice(0, 50);
         const convId = int(req.body?.conversation_id);
         if (otherIds.length && convId) {
@@ -586,12 +586,12 @@ effectsRouter.post('/notify/dm', (req, res) => {
 
 // A call-user ring from OpenVibe.Chat's call server (CALLS_AUTHORITY=chat): the cross-site
 // notification Live's POST /api/streams/voice-channels/call-user pushed itself.
-effectsRouter.post('/notify/call-invite', (req, res) => {
-    const caller = db.getUserById(int(req.body?.caller_id));
+effectsRouter.post('/notify/call-invite', async (req, res) => {
+    const caller = await db.getUserById(int(req.body?.caller_id));
     const targetId = int(req.body?.target_id);
     const channelId = String(req.body?.channel_id || '').slice(0, 100);
     const channelName = String(req.body?.channel_name || 'Voice Channel').slice(0, 100);
-    if (!caller || !targetId || !db.getUserById(targetId) || !channelId) return fail(res, 400, 'caller_id, target_id and channel_id required');
+    if (!caller || !targetId || !await db.getUserById(targetId) || !channelId) return fail(res, 400, 'caller_id, target_id and channel_id required');
     try {
         const { pushNotification, actorInfo } = require('../utils/notify');
         const callerName = caller.display_name || caller.username || 'Someone';

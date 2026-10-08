@@ -68,7 +68,7 @@ router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
 
         // Resolve streamer_id from the stream record if not provided
         if (!streamer_id && stream_id) {
-            const stream = db.getStreamById(stream_id);
+            const stream = await db.getStreamById(stream_id);
             if (stream) streamer_id = stream.user_id;
         }
         if (!streamer_id) {
@@ -78,18 +78,18 @@ router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
         // Donating to yourself turns bought (spendable) Vibes into received (cash-out-able) Vibes.
         if (streamer_id === req.user.id) return res.status(400).json({ error: 'You cannot donate to yourself' });
         if (stream_id) {
-            const s = db.getStreamById(stream_id);
+            const s = await db.getStreamById(stream_id);
             if (!s || s.user_id !== streamer_id) return res.status(400).json({ error: 'That stream does not belong to this streamer' });
         }
 
         const result = money.onBilling()
             ? await billingActions.donate(req, { toUserId: streamer_id, streamId: stream_id, amount, message, goalId: goal_id || null })
-            : openvibeBucks.donate(req.user.id, streamer_id, stream_id, amount, message, goal_id || null);
+            : await openvibeBucks.donate(req.user.id, streamer_id, stream_id, amount, message, goal_id || null);
         // A request the browser repeated with the same Idempotency-Key: already celebrated.
         if (result.replayed) return res.json({ success: true, amount: result.amount, balance: result.balance, goal_reached: false });
 
         const alerts = require('./alerts');
-        const donorUser = db.getUserById(req.user.id);
+        const donorUser = await db.getUserById(req.user.id);
         const donor = donorUser?.display_name || donorUser?.username || 'Someone';
 
         // 1) Donation chat message — Chat persists it to channel history so late-joiners see
@@ -105,14 +105,14 @@ router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
         delivery.message({ ...donationLine, mirror: true, key: result.transactionId ? `donation:${result.transactionId}` : undefined });
 
         // 2) Donation sound (streamer-configured).
-        alerts.playAlertSound(streamer_id, stream_id, 'donation');
+        await alerts.playAlertSound(streamer_id, stream_id, 'donation');
 
         // Mirror the donation onto the streamer's PowerChat overlay as a monetary tip
         // (tips:write). Vibes ARE the declared currency units (100 = $1); PowerChat
         // converts server-side. externalId is the ledger id, so a retry can't double-alert.
         // The webhook echo of this event (source=developer_app) is deliberately ignored.
         try {
-            require('../integrations/powerchat-platform').forwardTip(streamer_id, {
+            await require('../integrations/powerchat-platform').forwardTip(streamer_id, {
                 amount: result.amount,
                 tipperName: donor,
                 message: message || '',
@@ -122,7 +122,7 @@ router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
 
         // 3) Live goal progress → widget.
         if (result.goal) {
-            delivery.event({ kind: 'channel', id: streamer_id, stream: stream_id || null }, { type: 'goal-update', goal: publicGoal(result.goal) });
+            await delivery.event({ kind: 'channel', id: streamer_id, stream: stream_id || null }, { type: 'goal-update', goal: publicGoal(result.goal) });
         }
 
         // 4) Goal reached → flashy animated chat event (persisted) + goal sound.
@@ -136,10 +136,10 @@ router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
                 metadata: { kind: 'goal-reached', goal_id: g.id, title: g.title, target: g.target_amount, image: g.image_url || null, media_type: g.media_type || null, by: donor },
             };
             delivery.message({ ...goalLine, key: result.transactionId ? `goal:${result.transactionId}` : undefined });
-            alerts.playAlertSound(streamer_id, stream_id, 'goal');
+            await alerts.playAlertSound(streamer_id, stream_id, 'goal');
         }
 
-        const balance = money.onBilling() ? result.balance : db.getUserById(req.user.id).openvibe_bucks_balance;
+        const balance = money.onBilling() ? result.balance : (await db.getUserById(req.user.id)).openvibe_bucks_balance;
         res.json({ success: true, amount: result.amount, balance, goal_reached: !!result.goalReached });
     } catch (err) {
         if (billingActions.sendError(res, err, { insufficient: 'Insufficient Vibes', self: 'You cannot donate to yourself' })) return;
@@ -157,7 +157,7 @@ router.post('/cashout', requireAuth, money.guardWrite, async (req, res) => {
 
         const result = money.onBilling()
             ? await billingActions.requestCashout(req, { amount, paypalEmail: paypal_email })
-            : openvibeBucks.requestCashout(req.user.id, amount, paypal_email);
+            : await openvibeBucks.requestCashout(req.user.id, amount, paypal_email);
         res.json(result);
     } catch (err) {
         if (billingActions.sendError(res, err, { insufficient: 'Insufficient cashout balance — only Vibes sent to you can be cashed out' })) return;
@@ -176,7 +176,7 @@ router.get('/balance', requireAuth, async (req, res) => {
             return res.status(503).json({ error: 'Vibes balance unavailable right now', unavailable: true });
         }
     }
-    const user = db.getUserById(req.user.id);
+    const user = await db.getUserById(req.user.id);
     const bal = Math.round(user.openvibe_bucks_balance || 0);
     const cashout = Math.round(user.openvibe_bucks_cashout_balance || 0);
     res.json({
@@ -193,7 +193,7 @@ router.post('/recycle', requireAuth, money.guardWrite, async (req, res) => {
     try {
         const result = money.onBilling()
             ? await billingActions.recycle(req, req.body.amount)
-            : openvibeBucks.recycleCashout(req.user.id, req.body.amount);
+            : await openvibeBucks.recycleCashout(req.user.id, req.body.amount);
         res.json(result);
     } catch (err) {
         if (billingActions.sendError(res, err, { insufficient: 'Insufficient cashout balance' })) return;
@@ -211,56 +211,56 @@ router.get('/history', requireAuth, async (req, res) => {
             return res.status(503).json({ error: 'Vibes history unavailable right now', unavailable: true });
         }
     }
-    const history = openvibeBucks.getHistory(req.user.id, limit);
+    const history = await openvibeBucks.getHistory(req.user.id, limit);
     res.json({ transactions: history });
 });
 
 // ── Stream Donation Leaderboard ──────────────────────────────
-router.get('/leaderboard/:streamId', (req, res) => {
-    const leaderboard = openvibeBucks.getLeaderboard(req.params.streamId);
+router.get('/leaderboard/:streamId', async (req, res) => {
+    const leaderboard = await openvibeBucks.getLeaderboard(req.params.streamId);
     res.json({ leaderboard });
 });
 
 // ── Manage own goals (dashboard) — all goals incl. completed ──
-router.get('/goals/manage/mine', requireAuth, (req, res) => {
-    res.json({ goals: openvibeBucks.getManageGoals(req.user.id).map(publicGoal) });
+router.get('/goals/manage/mine', requireAuth, async (req, res) => {
+    res.json({ goals: (await openvibeBucks.getManageGoals(req.user.id)).map(publicGoal) });
 });
 
 // ── Create Donation Goal ─────────────────────────────────────
-router.post('/goals', requireAuth, (req, res) => {
+router.post('/goals', requireAuth, async (req, res) => {
     try {
         const { title, target_amount, image_url, media_type } = req.body;
         if (!title || !target_amount) {
             return res.status(400).json({ error: 'Title and target amount required' });
         }
-        openvibeBucks.createGoal(req.user.id, { title, target_amount, image_url, media_type });
-        res.status(201).json({ goals: openvibeBucks.getManageGoals(req.user.id).map(publicGoal) });
+        await openvibeBucks.createGoal(req.user.id, { title, target_amount, image_url, media_type });
+        res.status(201).json({ goals: (await openvibeBucks.getManageGoals(req.user.id)).map(publicGoal) });
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
 });
 
 // ── Update a Donation Goal ───────────────────────────────────
-router.put('/goals/:id', requireAuth, (req, res) => {
+router.put('/goals/:id', requireAuth, async (req, res) => {
     try {
-        const g = openvibeBucks.updateGoal(parseInt(req.params.id, 10), req.user.id, req.body);
+        const g = await openvibeBucks.updateGoal(parseInt(req.params.id, 10), req.user.id, req.body);
         // A manual progress correction should show up on open goal widgets right away,
         // same as a donation does (a plain goal-update — no celebration).
         if (req.body.current_amount !== undefined && g) {
             try {
-                delivery.event({ kind: 'channel', id: req.user.id }, { type: 'goal-update', goal: publicGoal(g) });
+                await delivery.event({ kind: 'channel', id: req.user.id }, { type: 'goal-update', goal: publicGoal(g) });
             } catch { /* live update is best-effort */ }
         }
-        res.json({ goals: openvibeBucks.getManageGoals(req.user.id).map(publicGoal) });
+        res.json({ goals: (await openvibeBucks.getManageGoals(req.user.id)).map(publicGoal) });
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
 });
 
 // ── Delete a Donation Goal (+ best-effort media cleanup) ─────
-router.delete('/goals/:id', requireAuth, (req, res) => {
+router.delete('/goals/:id', requireAuth, async (req, res) => {
     try {
-        const g = openvibeBucks.deleteGoal(parseInt(req.params.id, 10), req.user.id);
+        const g = await openvibeBucks.deleteGoal(parseInt(req.params.id, 10), req.user.id);
         if (g && g.image_url && /^\/data\/offline\//.test(g.image_url)) {
             try {
                 const fs = require('fs'); const path = require('path');
@@ -268,23 +268,23 @@ router.delete('/goals/:id', requireAuth, (req, res) => {
                 if (fs.existsSync(p)) fs.unlinkSync(p);
             } catch { /* orphan is harmless */ }
         }
-        res.json({ goals: openvibeBucks.getManageGoals(req.user.id).map(publicGoal) });
+        res.json({ goals: (await openvibeBucks.getManageGoals(req.user.id)).map(publicGoal) });
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
 });
 
 // ── Get User Goals (public widget set: active + recently reached) ──
-router.get('/goals/:userId', (req, res) => {
-    const goals = openvibeBucks.getGoals(req.params.userId).map(publicGoal);
+router.get('/goals/:userId', async (req, res) => {
+    const goals = (await openvibeBucks.getGoals(req.params.userId)).map(publicGoal);
     res.json({ goals });
 });
 
 // ── Admin: Approve Cashout ───────────────────────────────────
-router.post('/cashout/:id/approve', requireOwner, money.guardWrite, (req, res) => {
+router.post('/cashout/:id/approve', requireOwner, money.guardWrite, async (req, res) => {
     if (money.onBilling()) return cashoutsInBilling(res);
     try {
-        openvibeBucks.approveCashout(req.params.id);
+        await openvibeBucks.approveCashout(req.params.id);
         res.json({ message: 'Cashout approved' });
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -292,10 +292,10 @@ router.post('/cashout/:id/approve', requireOwner, money.guardWrite, (req, res) =
 });
 
 // ── Admin: Deny Cashout ──────────────────────────────────────
-router.post('/cashout/:id/deny', requireOwner, money.guardWrite, (req, res) => {
+router.post('/cashout/:id/deny', requireOwner, money.guardWrite, async (req, res) => {
     if (money.onBilling()) return cashoutsInBilling(res);
     try {
-        openvibeBucks.denyCashout(req.params.id, req.body.reason);
+        await openvibeBucks.denyCashout(req.params.id, req.body.reason);
         res.json({ message: 'Cashout denied, funds refunded' });
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -303,9 +303,9 @@ router.post('/cashout/:id/deny', requireOwner, money.guardWrite, (req, res) => {
 });
 
 // ── Admin: Get Pending Cashouts ──────────────────────────────
-router.get('/cashouts/pending', requireOwner, (req, res) => {
+router.get('/cashouts/pending', requireOwner, async (req, res) => {
     if (money.onBilling()) return cashoutsInBilling(res);
-    const pending = db.all(`
+    const pending = await db.all(`
         SELECT t.*, u.username, u.display_name
         FROM transactions t
         JOIN users u ON t.from_user_id = u.id

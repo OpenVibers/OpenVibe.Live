@@ -30,14 +30,14 @@ function authorityOf(slot) {
     return client.enabled() ? 'openre' : 'live';
 }
 
-function slotById(id) {
-    return id ? db.getManagedStreamById(id) : null;
+async function slotById(id) {
+    return id ? await db.getManagedStreamById(id) : null;
 }
 
 /** authorityOf(slotById(id)) === 'openre', without reading the slot when OpenRe is not configured. */
-function slotIsOpenre(id) {
+async function slotIsOpenre(id) {
     if (!id || !client.enabled()) return false;
-    return authorityOf(slotById(id)) === 'openre';
+    return authorityOf(await slotById(id)) === 'openre';
 }
 
 /**
@@ -46,12 +46,12 @@ function slotIsOpenre(id) {
  * refused when any of the user's slots is, because Live would attach it to the user's live rows and
  * push the user's destinations twice.
  */
-function refusesLiveIngest({ managedStream, user = null, protocol = 'rtmp' }) {
+async function refusesLiveIngest({ managedStream, user = null, protocol = 'rtmp' }) {
     try {
         if (!OPENRE_PROTOCOLS.has(protocol)) return false;
         if (!managedStream) {
             if (!user || !client.enabled()) return false;
-            return Boolean(db.get("SELECT 1 FROM managed_streams WHERE user_id = ? AND ingest_authority = 'openre' LIMIT 1", [user.id]));
+            return Boolean(await db.get("SELECT 1 FROM managed_streams WHERE user_id = ? AND ingest_authority = 'openre' LIMIT 1", [user.id]));
         }
         // Unsetting OPENRE_URL is an emergency rollback to Live for every switched slot at once:
         // the slot then behaves as a Live slot again, with the Live key rotated at the switch
@@ -108,9 +108,9 @@ async function rotateFor(slot, subject) {
     return { stream_key: r.key.key, stream_key_managed_by: 'openre', ...ingestUrls(r.ingest) };
 }
 
-function recordingModeFor(slot) {
+async function recordingModeFor(slot) {
     try {
-        return db.resolveStreamRecordingMode({ user_id: slot.user_id, managed_stream_id: slot.id });
+        return await db.resolveStreamRecordingMode({ user_id: slot.user_id, managed_stream_id: slot.id });
     } catch { return 'vod'; }
 }
 
@@ -124,16 +124,16 @@ function recordingModeFor(slot) {
  *             regenerates it on the Go Live page.
  */
 async function setAuthority(slotId, authority, { force = false } = {}) {
-    const slot = slotById(slotId);
+    const slot = await slotById(slotId);
     if (!slot) return { status: 404, error: 'Managed stream not found' };
     if (!['live', 'openre'].includes(authority)) return { status: 400, error: "authority must be 'live' or 'openre'" };
     if (authority === 'live') {
-        db.run("UPDATE managed_streams SET ingest_authority = 'live', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [slot.id]);
+        await db.run("UPDATE managed_streams SET ingest_authority = 'live', updated_at = ov_now() WHERE id = ?", [slot.id]);
         return { status: 200, body: { managed_stream_id: slot.id, ingest_authority: 'live', next: 'The broadcaster regenerates the stream key on the Go Live page (the Live key was rotated when the slot moved to OpenRe).' } };
     }
     if (!client.enabled()) return { status: 409, error: 'OpenRe is not configured on this Live (OPENRE_URL, OV_OAUTH_CLIENT_SECRET)' };
     if (slot.ingest_authority === 'openre') return { status: 200, body: { managed_stream_id: slot.id, ingest_authority: 'openre', openre_stream_id: slot.openre_stream_id, unchanged: true } };
-    const live = db.get('SELECT id FROM streams WHERE managed_stream_id = ? AND is_live = 1 LIMIT 1', [slot.id]);
+    const live = await db.get('SELECT id FROM streams WHERE managed_stream_id = ? AND is_live = 1 LIMIT 1', [slot.id]);
     if (live) return { status: 409, error: `Slot ${slot.id} is live on Live (stream ${live.id}); switch it in a maintenance window, while it is offline` };
     const protocol = openreProtocolOf(slot);
     const method = String(slot.streaming_method || '').toLowerCase();
@@ -142,24 +142,24 @@ async function setAuthority(slotId, authority, { force = false } = {}) {
     if (!force && protocol === 'webrtc' && !['whip', 'obs'].includes(method)) {
         return { status: 409, error: `Slot ${slot.id} is a ${slot.protocol}${method ? `/${method}` : ''} slot; the Go Live page cannot publish to OpenRe yet, only WHIP encoders can (pass force to switch anyway)` };
     }
-    const subject = require('../auth/identity-sync').subjectOf(slot.user_id);
+    const subject = await require('../auth/identity-sync').subjectOf(slot.user_id);
     if (!subject) return { status: 409, error: 'The owner has no canonical subject yet (they need to sign in to Live once)' };
     let stream = await client.streamForSlot(slot.id);
     if (!stream) {
         let visibility = 'public';
-        try { visibility = db.resolveStreamVodVisibility({ user_id: slot.user_id, managed_stream_id: slot.id }); } catch { /* public */ }
-        stream = await client.createStreamForSlot(slot, { subject, protocols: [protocol], recordingMode: recordingModeFor(slot), recordingVisibility: visibility });
+        try { visibility = await db.resolveStreamVodVisibility({ user_id: slot.user_id, managed_stream_id: slot.id }); } catch { /* public */ }
+        stream = await client.createStreamForSlot(slot, { subject, protocols: [protocol], recordingMode: await recordingModeFor(slot), recordingVisibility: visibility });
     } else if (!(stream.protocols || ['rtmp']).includes(protocol)) {
         // An existing definition (OpenRe's own default is RTMP only) would refuse the slot's encoder.
         stream = await client.updateStream(stream.id, { protocols: [...(stream.protocols || ['rtmp']), protocol] }, { subject });
     }
     const newLiveKey = crypto.randomBytes(20).toString('hex');
-    const flipped = db.getDb().transaction(() => {
+    const flipped = await db.getDb().tx(async () => {
         // Checked again here: a Live publish may have started while OpenRe was being asked.
-        if (db.get('SELECT id FROM streams WHERE managed_stream_id = ? AND is_live = 1 LIMIT 1', [slot.id])) return false;
-        db.run("UPDATE managed_streams SET ingest_authority = 'openre', openre_stream_id = ?, stream_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [stream.id, newLiveKey, slot.id]);
+        if (await db.get('SELECT id FROM streams WHERE managed_stream_id = ? AND is_live = 1 LIMIT 1', [slot.id])) return false;
+        await db.run("UPDATE managed_streams SET ingest_authority = 'openre', openre_stream_id = ?, stream_key = ?, updated_at = ov_now() WHERE id = ?", [stream.id, newLiveKey, slot.id]);
         return true;
-    })();
+    });
     if (!flipped) return { status: 409, error: `Slot ${slot.id} went live on Live meanwhile; switch it while it is offline` };
     return {
         status: 200,

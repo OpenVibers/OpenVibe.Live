@@ -336,14 +336,14 @@ class RsPassthroughRelay {
     _launch(session) {
         session.state = 'starting'; session.startedAt = Date.now(); session.liveAt = 0; session.nextRestartAt = 0;
         session.stats = null; session.rs = null;
-        this._run(session).catch(err => {
+        this._run(session).catch(async err => {
             // A stop that lands while _run is awaiting (RS handshake, ICE) must not leave the
             // half-built peer behind: that peer would keep the robot live on RS after we forgot it.
             if (session.stopped) { this._teardown(session); return; }
             log(session.streamId, 'run error:', err.message);
             this._teardown(session);
-            this._scheduleRestart(session, `${err.message}`);
-        });
+            await this._scheduleRestart(session, `${err.message}`);
+        }).catch(err => log(session.streamId, 'restart check error:', err.message));
     }
 
     stop(streamId) {
@@ -383,9 +383,9 @@ class RsPassthroughRelay {
      * that keeps its peer open (or keeps restarting) after the streamer stopped shows RS viewers
      * a live robot with a black picture. Injectable for tests.
      */
-    _sourceLive(streamId) {
+    async _sourceLive(streamId) {
         if (this._sourceLiveOverride) return this._sourceLiveOverride(streamId);
-        try { return !!require('../db/database').getStreamById(streamId)?.is_live; } catch { return true; }
+        try { return !!(await require('../db/database').getStreamById(streamId))?.is_live; } catch { return true; }
     }
 
     /**
@@ -428,11 +428,11 @@ class RsPassthroughRelay {
      * Bails out (stops the session) when the source stream is no longer live, backs off
      * exponentially, and gives up after MAX_RESTARTS consecutive attempts.
      */
-    _scheduleRestart(session, reason = 'unspecified') {
+    async _scheduleRestart(session, reason = 'unspecified') {
         if (session.stopped || session.restartTimer) return;
         session.lastRestartReason = reason;
         session.lastError = reason;
-        if (!this._sourceLive(session.streamId)) {
+        if (!await this._sourceLive(session.streamId)) {
             log(session.streamId, `source stream is no longer live — stopping passthrough instead of restarting (${reason})`);
             this.stop(session.streamId);
             return;
@@ -451,12 +451,14 @@ class RsPassthroughRelay {
         session.nextRestartAt = Date.now() + delay;
         log(session.streamId, `⚠️ passthrough restart #${session.restarts}/${MAX_RESTARTS} in ${delay}ms — reason: ${reason} ` +
             `(RS viewers see this as the video cutting out: new SSRC → new consumer → client blanks the MediaStream)`);
-        session.restartTimer = setTimeout(() => {
+        session.restartTimer = setTimeout(async () => {
             session.restartTimer = null;
             if (session.stopped) return;
-            if (!this._sourceLive(session.streamId)) { this.stop(session.streamId); return; }
-            log(session.streamId, 'restarting passthrough…');
-            this._launch(session);
+            try {
+                if (!await this._sourceLive(session.streamId)) { this.stop(session.streamId); return; }
+                log(session.streamId, 'restarting passthrough…');
+                this._launch(session);
+            } catch (err) { log(session.streamId, 'restart check error:', err.message); }
         }, delay);
     }
 
@@ -507,7 +509,7 @@ class RsPassthroughRelay {
                 sfu.removeListener?.('producer-added', onAudio);
                 log(sid, 'audio producer appeared after start — restarting passthrough to include it');
                 this._teardown(session);
-                this._scheduleRestart(session, 'audio producer added after a video-only start');
+                this._scheduleRestart(session, 'audio producer added after a video-only start').catch(err => log(sid, 'restart check error:', err.message));
             };
             sfu.on?.('producer-added', onAudio);
             session._audioWatch = () => sfu.removeListener?.('producer-added', onAudio);
@@ -526,7 +528,7 @@ class RsPassthroughRelay {
             session._producerWatch = null;
             log(sid, 'source video producer removed');
             this._teardown(session);
-            this._scheduleRestart(session, 'source video producer removed');
+            this._scheduleRestart(session, 'source video producer removed').catch(err => log(sid, 'restart check error:', err.message));
         };
         sfu.on?.('producer-removed', onProducerRemoved);
         session._producerWatch = () => sfu.removeListener?.('producer-removed', onProducerRemoved);
@@ -534,12 +536,14 @@ class RsPassthroughRelay {
         // Backstop for end paths that never touch the SFU room (a stale-heartbeat sweep, an
         // admin force-end, db.endStream from an ingest handler): stop as soon as the stream row
         // says the source is over.
-        session.sourceCheck = setInterval(() => {
+        session.sourceCheck = setInterval(async () => {
             if (session.stopped) return;
-            if (!this._sourceLive(sid)) {
-                log(sid, 'source stream ended — stopping passthrough');
-                this.stop(sid);
-            }
+            try {
+                if (!await this._sourceLive(sid)) {
+                    log(sid, 'source stream ended — stopping passthrough');
+                    this.stop(sid);
+                }
+            } catch (err) { log(sid, 'source check error:', err.message); }
         }, SOURCE_CHECK_MS);
         session.sourceCheck.unref?.();
 
@@ -558,7 +562,7 @@ class RsPassthroughRelay {
         const wsUrl = `wss://${page.rtc_sfu.host}:${page.rtc_sfu.port}/?roomId=${encodeURIComponent(session.robotId)}&peerId=${encodeURIComponent(peerId)}`;
         const peer = new ProtooPeer(wsUrl, session.robotId, (code) => {
             if (session.stopped) return;
-            this._teardown(session); this._scheduleRestart(session, `RS protoo websocket closed (code ${code})`);
+            this._teardown(session); this._scheduleRestart(session, `RS protoo websocket closed (code ${code})`).catch(err => log(sid, 'restart check error:', err.message));
         });
         session.peer = peer;
         await peer.connect();
@@ -603,7 +607,7 @@ class RsPassthroughRelay {
         pc.connectionStateChange.subscribe(() => {
             log(sid, 'werift conn', pc.connectionState);
             if ((pc.connectionState === 'failed' || pc.connectionState === 'disconnected') && !session.stopped) {
-                this._teardown(session); this._scheduleRestart(session, `werift connectionState=${pc.connectionState} (ICE/DTLS to RS lost)`);
+                this._teardown(session); this._scheduleRestart(session, `werift connectionState=${pc.connectionState} (ICE/DTLS to RS lost)`).catch(err => log(sid, 'restart check error:', err.message));
             }
         });
 

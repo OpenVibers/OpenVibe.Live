@@ -5,13 +5,6 @@
  * answers same-language and cached lines itself and sends the rest to the model in one call.
  */
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-lang-'));
-process.env.DATA_DIR = tmp;
-process.env.DB_PATH = path.join(tmp, 'live.db');
 
 const L = require('../public/js/lang-detect');
 
@@ -72,6 +65,5 @@ async function check(name, fn) { await fn(); passed++; console.log(`  ✓ ${name
     });
 
     console.log(`lang-detect: ${passed} checks passed`);
-    fs.rmSync(tmp, { recursive: true, force: true });
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

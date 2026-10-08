@@ -56,16 +56,16 @@ function _absoluteAvatarUrl(raw) {
 }
 
 // Only a real OAuth app connection (has tokens) with the needed scope may push.
-function _connFor(userId, scopeNeeded) {
+async function _connFor(userId, scopeNeeded) {
     try {
-        if (!oauth.getConfig().enabled) return null;
-        const conn = db.getPowerchatConnection(userId);
+        if (!(await oauth.getConfig()).enabled) return null;
+        const conn = await db.getPowerchatConnection(userId);
         if (!conn || !conn.access_token || !conn.refresh_token) return null;
         if (scopeNeeded && conn.scope && !String(conn.scope).split(/\s+/).includes(scopeNeeded)) {
             // The grant was minted without this scope (classic "registered but not
             // requested"). Surface it once so the dashboard can prompt a reconnect —
             // silently skipping here is exactly how "0 viewers on the overlay" happens.
-            _noteScopeGap(userId, scopeNeeded);
+            await _noteScopeGap(userId, scopeNeeded);
             return null;
         }
         return conn;
@@ -75,19 +75,19 @@ function _connFor(userId, scopeNeeded) {
 // Record a missing-scope condition on the connection at most once per hour per scope,
 // so /status can say "reconnect to grant X" instead of the relay failing invisibly.
 const _scopeGapNoted = new Map(); // `${userId}:${scope}` → notedAt
-function _noteScopeGap(userId, scope) {
+async function _noteScopeGap(userId, scope) {
     const key = `${userId}:${scope}`;
     const now = Date.now();
     if ((_scopeGapNoted.get(key) || 0) > now - 3600000) return;
     _scopeGapNoted.set(key, now);
     console.warn(`[PowerChat] user ${userId}'s grant is missing scope ${scope} — reconnect (re-consent) required for that feature`);
-    try { db.setPowerchatConnectionError(userId, `Reconnect needed: your PowerChat grant is missing the "${scope}" permission`); } catch { /* */ }
+    try { await db.setPowerchatConnectionError(userId, `Reconnect needed: your PowerChat grant is missing the "${scope}" permission`); } catch { /* */ }
 }
 
 // A 403 from PowerChat means the scope was granted but later disabled/shrunk by the
 // streamer (or sandbox restriction). Same remedy: surface it, rate-limited.
-function _noteApiError(userId, scope, err) {
-    if (err && err.status === 403) _noteScopeGap(userId, `${scope} (disabled on PowerChat)`);
+async function _noteApiError(userId, scope, err) {
+    if (err && err.status === 403) await _noteScopeGap(userId, `${scope} (disabled on PowerChat)`);
 }
 
 // Undeclared-currency warnings, once per 10 min per key — the earn flusher would
@@ -107,12 +107,12 @@ function _warnUndeclared(key, message) {
 // Slot switch: covers the slot's native chat, its RobotStreamer mirror and every
 // restream-destination relay attached to it. `streamId` may be null (offline channel
 // chat) → allowed.
-function slotRelayEnabled(streamId) {
+async function slotRelayEnabled(streamId) {
     if (!streamId) return true;
     try {
-        const stream = db.getStreamById(streamId);
+        const stream = await db.getStreamById(streamId);
         if (!stream || !stream.managed_stream_id) return true;
-        const ms = db.get('SELECT slot_powerchat_relay FROM managed_streams WHERE id = ?', [stream.managed_stream_id]);
+        const ms = await db.get('SELECT slot_powerchat_relay FROM managed_streams WHERE id = ?', [stream.managed_stream_id]);
         return !ms || ms.slot_powerchat_relay !== 0;
     } catch { return true; }
 }
@@ -121,24 +121,24 @@ function slotRelayEnabled(streamId) {
 // opened during an earlier session keeps chatting in the same channel). A stale id
 // must not decide the relay — when the referenced stream isn't the live one, fall
 // back to the channel's CURRENT live stream's slot setting (or allow when offline).
-function channelRelayEnabled(channelUserId, streamId) {
+async function channelRelayEnabled(channelUserId, streamId) {
     try {
-        let s = streamId ? db.getStreamById(streamId) : null;
+        let s = streamId ? await db.getStreamById(streamId) : null;
         if (!s || !s.is_live) {
-            const live = channelUserId ? (db.getLiveStreamsByUserId(channelUserId) || []) : [];
+            const live = channelUserId ? (await db.getLiveStreamsByUserId(channelUserId) || []) : [];
             s = live[0] || null;
         }
         if (!s || !s.managed_stream_id) return true;
-        const ms = db.get('SELECT slot_powerchat_relay FROM managed_streams WHERE id = ?', [s.managed_stream_id]);
+        const ms = await db.get('SELECT slot_powerchat_relay FROM managed_streams WHERE id = ?', [s.managed_stream_id]);
         return !ms || ms.slot_powerchat_relay !== 0;
     } catch { return true; }
 }
 
 // Destination switch: the Twitch/Kick/YouTube relay bridge for one restream destination.
-function destRelayEnabled(destId) {
+async function destRelayEnabled(destId) {
     if (!destId) return true;
     try {
-        const d = db.get('SELECT powerchat_relay FROM restream_destinations WHERE id = ?', [destId]);
+        const d = await db.get('SELECT powerchat_relay FROM restream_destinations WHERE id = ?', [destId]);
         return !d || d.powerchat_relay !== 0;
     } catch { return true; }
 }
@@ -147,7 +147,7 @@ function destRelayEnabled(destId) {
 const _chatBuckets = new Map(); // userId → { count, resetAt }  (~120/min limit; we cap at 100)
 async function forwardChat(streamerUserId, { chatterName, externalChatterId, message, messageId, avatarUrl, avatarFallback, isModerator, isSubscriber } = {}) {
     if (!message || !chatterName) return;
-    const conn = _connFor(streamerUserId, 'chat:write');
+    const conn = await _connFor(streamerUserId, 'chat:write');
     if (!conn) return;
     const now = Date.now();
     let b = _chatBuckets.get(streamerUserId);
@@ -182,7 +182,7 @@ async function forwardChat(streamerUserId, { chatterName, externalChatterId, mes
         _trackAccepted(streamerUserId, sentId);
         return 'accepted';
     } catch (e) {
-        _noteApiError(streamerUserId, 'chat:write', e);
+        await _noteApiError(streamerUserId, 'chat:write', e);
         // This used to be silently swallowed, which meant a broken overlay relay looked
         // exactly like a working one. Log the first failure and then at most one per
         // minute per streamer, so a persistent problem is visible without flooding a
@@ -225,10 +225,10 @@ function _trackAccepted(userId, messageId) {
 // Scope check WITHOUT noting a gap: chat:read is a diagnostic scope — a grant minted
 // before it was requested must not flash "Reconnect needed" on every relay; /status's
 // missing_scopes diff already prompts the reconnect once.
-function _quietConn(userId, scope) {
+async function _quietConn(userId, scope) {
     try {
-        if (!oauth.getConfig().enabled) return null;
-        const conn = db.getPowerchatConnection(userId);
+        if (!(await oauth.getConfig()).enabled) return null;
+        const conn = await db.getPowerchatConnection(userId);
         if (!conn || !conn.access_token || !conn.refresh_token) return null;
         if (conn.scope && !String(conn.scope).split(/\s+/).includes(scope)) return null;
         return conn;
@@ -260,7 +260,7 @@ async function _verifyTick() {
         let due = false;
         for (const sentAt of v.pending.values()) if (now - sentAt >= VERIFY_DELAY_MS) { due = true; break; }
         if (!due) continue;
-        const conn = _quietConn(userId, 'chat:read');
+        const conn = await _quietConn(userId, 'chat:read');
         if (!conn) {
             // Can't verify without chat:read — count as unverified, don't pretend.
             v.stats.unverified += v.pending.size; v.pending.clear();
@@ -273,7 +273,7 @@ async function _verifyTick() {
             ids = _historyIds(json);
             v.stats.lastCheckAt = new Date(now).toISOString();
         } catch (e) {
-            _noteApiError(userId, 'chat:read', e);
+            await _noteApiError(userId, 'chat:read', e);
             continue; // transient — entries stay pending until max age
         }
         for (const [id, sentAt] of v.pending) {
@@ -298,11 +298,11 @@ function startChatVerifier() {
     console.log('[PowerChat] chat display verifier started (reads /chat/history back for accepted relays)');
 }
 /** Relay health for /status: what was accepted vs actually shown on the overlay. */
-function chatRelayStats(userId) {
+async function chatRelayStats(userId) {
     const v = _verify.get(userId);
     const st = v ? { ...v.stats } : { accepted: 0, displayed: 0, dropped: 0, unverified: 0, lastDroppedAt: null, lastDroppedId: null, lastCheckAt: null };
     st.pending = v ? v.pending.size : 0;
-    st.verifiable = !!_quietConn(userId, 'chat:read');
+    st.verifiable = !!await _quietConn(userId, 'chat:read');
     return st;
 }
 
@@ -328,7 +328,7 @@ function _relayFail(userId, reason) {
 // ── follows:write ────────────────────────────────────────────
 async function forwardFollow(streamerUserId, { followerName, externalId } = {}) {
     if (!followerName) return;
-    const conn = _connFor(streamerUserId, 'follows:write');
+    const conn = await _connFor(streamerUserId, 'follows:write');
     if (!conn) return;
     try {
         await oauth.apiRequest(streamerUserId, {
@@ -341,14 +341,14 @@ async function forwardFollow(streamerUserId, { followerName, externalId } = {}) 
                 occurredAt: new Date().toISOString(),
             },
         });
-    } catch (e) { _noteApiError(streamerUserId, 'follows:write', e); }
+    } catch (e) { await _noteApiError(streamerUserId, 'follows:write', e); }
 }
 
 // ── subscriptions:write ──────────────────────────────────────
 // A paid OpenVibe channel subscription → PowerChat sub alert + goal/subathon credit.
 async function forwardSubscription(streamerUserId, { subscriberName, externalId, tier, isResub, isGift, giftCount } = {}) {
     if (!subscriberName) return;
-    const conn = _connFor(streamerUserId, 'subscriptions:write');
+    const conn = await _connFor(streamerUserId, 'subscriptions:write');
     if (!conn) return;
     try {
         await oauth.apiRequest(streamerUserId, {
@@ -364,7 +364,7 @@ async function forwardSubscription(streamerUserId, { subscriberName, externalId,
                 occurredAt: new Date().toISOString(),
             },
         });
-    } catch (e) { _noteApiError(streamerUserId, 'subscriptions:write', e); }
+    } catch (e) { await _noteApiError(streamerUserId, 'subscriptions:write', e); }
 }
 
 // ── viewcount:write ──────────────────────────────────────────
@@ -374,7 +374,7 @@ async function forwardSubscription(streamerUserId, { subscriberName, externalId,
 const VIEWCOUNT_HEARTBEAT_MS = 60000;
 const _lastViewCount = new Map(); // userId → { count, sentAt }
 async function sendViewCount(streamerUserId, count) {
-    const conn = _connFor(streamerUserId, 'viewcount:write');
+    const conn = await _connFor(streamerUserId, 'viewcount:write');
     if (!conn) return;
     // Schema: count is int ≥0, or null = stream ended (clears our chip).
     count = count == null ? null : Math.max(0, Math.round(Number(count) || 0));
@@ -387,7 +387,7 @@ async function sendViewCount(streamerUserId, count) {
         await oauth.apiRequest(streamerUserId, { method: 'POST', path: '/view-count', body: { count } });
     } catch (e) {
         _lastViewCount.delete(streamerUserId); // let the next tick retry
-        _noteApiError(streamerUserId, 'viewcount:write', e);
+        await _noteApiError(streamerUserId, 'viewcount:write', e);
     }
 }
 
@@ -397,21 +397,21 @@ async function sendViewCount(streamerUserId, count) {
 // destination (powerchat_count_views) or the slot's RS viewers
 // (slot_powerchat_count_rs_views) in the Broadcast page — those still show on
 // OpenVibe, they just don't count toward the PowerChat chip.
-function totalViewersForStream(s) {
+async function totalViewersForStream(s) {
     let total = s.viewer_count || 0;
     const slotId = s.managed_stream_id || null;
     try {
         const restreamManager = require('../streaming/restream-manager');
-        const ext = restreamManager.getExternalViewerCountsForUser(s.user_id, slotId);
+        const ext = await restreamManager.getExternalViewerCountsForUser(s.user_id, slotId);
         for (const b of ext.breakdown || []) {
             if (!b.count) continue;
-            const d = b.destId ? db.get('SELECT powerchat_count_views FROM restream_destinations WHERE id = ?', [b.destId]) : null;
+            const d = b.destId ? await db.get('SELECT powerchat_count_views FROM restream_destinations WHERE id = ?', [b.destId]) : null;
             if (d && d.powerchat_count_views === 0) continue;
             total += b.count;
         }
     } catch { /* restream manager unavailable — OpenVibe count only */ }
     try {
-        const ms = slotId ? db.get('SELECT slot_powerchat_count_rs_views FROM managed_streams WHERE id = ?', [slotId]) : null;
+        const ms = slotId ? await db.get('SELECT slot_powerchat_count_rs_views FROM managed_streams WHERE id = ?', [slotId]) : null;
         if (!ms || ms.slot_powerchat_count_rs_views !== 0) {
             const rs = require('./robotstreamer-service');
             const rsActive = rs.chatBridges?.has(s.id) || rs._activePublish?.has(s.id);
@@ -427,21 +427,21 @@ let _vcTimer = null;
 function startViewerCountSweeper() {
     if (_vcTimer) return;
     const seenLive = new Set();
-    _vcTimer = setInterval(() => {
+    _vcTimer = setInterval(async () => {
         try {
-            if (!oauth.getConfig().enabled) return;
-            const live = db.getLiveStreams() || [];
+            if (!(await oauth.getConfig()).enabled) return;
+            const live = await db.getLiveStreams() || [];
             const liveOwners = new Map(); // userId → summed viewer count
             for (const s of live) {
                 if (!s.user_id) continue;
-                liveOwners.set(s.user_id, (liveOwners.get(s.user_id) || 0) + totalViewersForStream(s));
+                liveOwners.set(s.user_id, (liveOwners.get(s.user_id) || 0) + await totalViewersForStream(s));
             }
-            for (const [userId, count] of liveOwners) { seenLive.add(userId); sendViewCount(userId, count); }   // floating-ok: sendViewCount catches and notes its own errors
+            for (const [userId, count] of liveOwners) { seenLive.add(userId); await sendViewCount(userId, count); }
             // Owners that were live last tick but aren't now → send null (stream ended).
             for (const userId of Array.from(seenLive)) {
                 if (!liveOwners.has(userId)) {
                     seenLive.delete(userId);
-                    if (_connFor(userId, 'viewcount:write')) {
+                    if (await _connFor(userId, 'viewcount:write')) {
                         _lastViewCount.delete(userId);
                         oauth.apiRequest(userId, { method: 'POST', path: '/view-count', body: { count: null } }).catch(() => {});
                     }
@@ -456,7 +456,7 @@ function startViewerCountSweeper() {
 // ── currency:write ───────────────────────────────────────────
 // Returns true when PowerChat accepted the event (the earn flusher re-buffers on false).
 async function sendCurrencyRedemption(streamerUserId, { amount, redeemerName, rewardName, message, externalId } = {}) {
-    const conn = _connFor(streamerUserId, 'currency:write');
+    const conn = await _connFor(streamerUserId, 'currency:write');
     if (!conn) return false;
     const amt = Math.round(Number(amount) || 0);
     if (amt < 1) return false; // schema requires amount 1-1000000000
@@ -478,7 +478,7 @@ async function sendCurrencyRedemption(streamerUserId, { amount, redeemerName, re
         });
         return true;
     } catch (e) {
-        _noteApiError(streamerUserId, 'currency:write', e);
+        await _noteApiError(streamerUserId, 'currency:write', e);
         // "Unknown currency" means the key isn't DECLARED on the app in the PowerChat
         // dashboard — that's app config, not auth; surface it distinctly.
         if (e && e.status === 400 && /unknown currency/i.test(e.message || '')) {
@@ -498,12 +498,12 @@ const EARN_FLUSH_MS = 5 * 60 * 1000;
 const EARN_MAX_PER_FLUSH = 40;      // stay well under the rate limit per flush pass
 const EARN_MAX_VIEWERS = 500;      // per-streamer buffer cap (drop past this, don't grow)
 const _earnBuf = new Map();         // streamerId → Map(viewerId → summed amount)
-function queueCurrencyEarn(streamerUserId, viewerUserId, amount) {
+async function queueCurrencyEarn(streamerUserId, viewerUserId, amount) {
     const amt = Math.round(Number(amount) || 0);
     if (amt < 1 || !streamerUserId || !viewerUserId) return;
     // Only buffer for streamers with a live currency:write connection — otherwise the
     // buffer would grow forever for channels that never flush.
-    if (!_connFor(streamerUserId, 'currency:write')) return;
+    if (!await _connFor(streamerUserId, 'currency:write')) return;
     let m = _earnBuf.get(streamerUserId);
     if (!m) { m = new Map(); _earnBuf.set(streamerUserId, m); }
     if (!m.has(viewerUserId) && m.size >= EARN_MAX_VIEWERS) return;
@@ -518,7 +518,7 @@ async function _flushCurrencyEarns() {
             m.delete(viewerId);
             sent++;
             let name = null;
-            try { const u = db.getUserById(viewerId); name = u ? (u.display_name || u.username) : null; } catch { /* */ }
+            try { const u = await db.getUserById(viewerId); name = u ? (u.display_name || u.username) : null; } catch { /* */ }
             const ok = await sendCurrencyRedemption(streamerId, {
                 amount,
                 redeemerName: name || `viewer ${viewerId}`,
@@ -526,7 +526,7 @@ async function _flushCurrencyEarns() {
                 externalId: `earn:${streamerId}:${viewerId}:${Date.now()}`,
             });
             // Transient failure → put the amount back so the points aren't lost.
-            if (!ok && _connFor(streamerId, 'currency:write')) {
+            if (!ok && await _connFor(streamerId, 'currency:write')) {
                 m.set(viewerId, (m.get(viewerId) || 0) + amount);
             }
         }
@@ -546,7 +546,7 @@ function startCurrencyEarnFlusher() {
 // tip then fires PowerChat tip alerts and credits tip goals/subathon/totals.
 // externalId MUST be the donation's stable id (retries dedupe; never double-alert).
 async function forwardTip(streamerUserId, { amount, tipperName, message, externalId } = {}) {
-    const conn = _connFor(streamerUserId, 'tips:write');
+    const conn = await _connFor(streamerUserId, 'tips:write');
     if (!conn) return;
     const amt = Math.round(Number(amount) || 0);
     if (amt < 1) return; // schema: int ≥1
@@ -563,7 +563,7 @@ async function forwardTip(streamerUserId, { amount, tipperName, message, externa
             },
         });
     } catch (e) {
-        _noteApiError(streamerUserId, 'tips:write', e);
+        await _noteApiError(streamerUserId, 'tips:write', e);
         if (e && e.status === 400 && /unknown currency|no usd rate/i.test(e.message || '')) {
             _warnUndeclared(TIP_CURRENCY_KEY, `tip currency "${TIP_CURRENCY_KEY}" must be declared on the app WITH unitsPerUsd=100 in the PowerChat Developer dashboard`);
         }
@@ -573,7 +573,7 @@ async function forwardTip(streamerUserId, { amount, tipperName, message, externa
 // Fire a display-only custom alert on PowerChat (used by "Send test tip" so the
 // streamer sees it render on their real PowerChat overlay). Needs alerts:trigger.
 async function sendCustomAlert(streamerUserId, { actorName, message, amountCents } = {}) {
-    const conn = _connFor(streamerUserId, 'alerts:trigger');
+    const conn = await _connFor(streamerUserId, 'alerts:trigger');
     if (!conn) return false;
     try {
         await oauth.apiRequest(streamerUserId, {

@@ -70,17 +70,17 @@ function _parseJson(v) {
     try { return JSON.parse(v) || {}; } catch { return {}; }
 }
 
-function adminDefaults() {
+async function adminDefaults() {
     try {
-        const raw = db.getSetting('ai_viewers_default_settings_json');
+        const raw = await db.getSetting('ai_viewers_default_settings_json');
         return _parseJson(raw);
     } catch { return {}; }
 }
-function adminLimits() {
-    const n = (k, d) => { const v = parseFloat(db.getSetting(k)); return Number.isFinite(v) ? v : d; };
+async function adminLimits() {
+    const n = async (k, d) => { const v = parseFloat(await db.getSetting(k)); return Number.isFinite(v) ? v : d; };
     return {
-        maxRoster: Math.max(0, Math.min(12, n('ai_viewers_max_roster', 12))),
-        maxLinesPerMin: Math.max(0.5, Math.min(12, n('ai_viewers_max_lines_per_min', 12))),
+        maxRoster: Math.max(0, Math.min(12, await n('ai_viewers_max_roster', 12))),
+        maxLinesPerMin: Math.max(0.5, Math.min(12, await n('ai_viewers_max_lines_per_min', 12))),
     };
 }
 
@@ -100,7 +100,7 @@ function coerce(key, v, limits) {
 }
 
 /** Validate + clamp a partial settings object (unknown keys dropped). */
-function sanitize(input, limits = adminLimits()) {
+function sanitize(input, limits = { maxRoster: 12, maxLinesPerMin: 12 }) {
     const out = {};
     for (const [k, v] of Object.entries(input || {})) {
         const c = coerce(k, v, limits);
@@ -121,12 +121,12 @@ function sanitize(input, limits = adminLimits()) {
 }
 
 /** Fully-resolved settings for a channel: built-in ← admin defaults ← row (+ legacy columns). */
-function getSettings(userId, cfgRow = null) {
-    const cfg = cfgRow || db.getChannelAiConfig(userId) || {};
-    const limits = adminLimits();
+async function getSettings(userId, cfgRow = null) {
+    const cfg = cfgRow || await db.getChannelAiConfig(userId) || {};
+    const limits = await adminLimits();
     const base = {};
     for (const [k, sp] of Object.entries(SCHEMA)) base[k] = typeof sp.def === 'object' ? { ...sp.def } : sp.def;
-    const admin = sanitize(adminDefaults(), limits);
+    const admin = sanitize(await adminDefaults(), limits);
     const row = sanitize(_parseJson(cfg.settings_json), limits);
     const s = { ...base, ...admin, ...row };
     // Legacy column fallbacks (rows that predate settings_json).
@@ -141,21 +141,21 @@ function getSettings(userId, cfgRow = null) {
 }
 
 /** Persist a partial update (merged into the stored JSON). Returns the resolved settings. */
-function updateSettings(userId, partial) {
-    const cfg = db.getChannelAiConfig(userId) || {};
+async function updateSettings(userId, partial) {
+    const cfg = await db.getChannelAiConfig(userId) || {};
     const current = _parseJson(cfg.settings_json);
-    const clean = sanitize(partial);
+    const clean = sanitize(partial, await adminLimits());
     const merged = { ...current, ...clean };
     if (partial && partial.byo && current.byo) merged.byo = { ...current.byo, ...clean.byo };
     if (partial && partial.slots && current.slots) merged.slots = { ...current.slots, ...clean.slots };
-    db.upsertChannelAiConfig(userId, { settings_json: JSON.stringify(merged) });
-    return getSettings(userId);
+    await db.upsertChannelAiConfig(userId, { settings_json: JSON.stringify(merged) });
+    return await getSettings(userId);
 }
 
 /** Schema description for the UI (defaults resolved with admin overrides). */
-function describe() {
-    const admin = sanitize(adminDefaults());
-    const limits = adminLimits();
+async function describe() {
+    const limits = await adminLimits();
+    const admin = sanitize(await adminDefaults(), limits);
     return Object.entries(SCHEMA).map(([key, sp]) => ({
         key, type: sp.type, help: sp.help,
         def: admin[key] !== undefined ? admin[key] : sp.def,

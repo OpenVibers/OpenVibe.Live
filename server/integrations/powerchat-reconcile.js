@@ -37,8 +37,8 @@ function _sqliteTs(s) {
     const t = Date.parse(String(s).includes('T') ? String(s) : String(s).replace(' ', 'T') + 'Z');
     return Number.isFinite(t) ? t : 0;
 }
-function _testAllowed() {
-    try { const v = db.getSetting('powerchat_allow_test_fulfillment'); return v === true || v === 'true' || v === 1 || v === '1'; }
+async function _testAllowed() {
+    try { const v = await db.getSetting('powerchat_allow_test_fulfillment'); return v === true || v === 'true' || v === 1 || v === '1'; }
     catch { return false; }
 }
 function _hasScope(conn, scope) {
@@ -48,15 +48,15 @@ function _hasScope(conn, scope) {
 // Which PowerChat account hosted this order's checkout (where the money landed), and
 // which local user "receives" it for the fulfillment pipeline.
 //   pcsub direct → the streamer's own PowerChat; site → the site tips account.
-function _hostFor(order) {
+async function _hostFor(order) {
     const mode = String(order.provider_ref || 'site').split(':')[0];
     if (order.kind === 'subscription' && mode === 'direct' && order.streamer_id) {
-        const conn = db.getPowerchatConnection(order.streamer_id);
+        const conn = await db.getPowerchatConnection(order.streamer_id);
         return conn && conn.powerchat_username ? { username: conn.powerchat_username, conn, receivingUserId: order.streamer_id, viaSiteAccount: false } : null;
     }
-    const site = checkout.getSiteAccount();
+    const site = await checkout.getSiteAccount();
     if (!site) return null;
-    const conn = db.getPowerchatConnectionByUsername(site.username);
+    const conn = await db.getPowerchatConnectionByUsername(site.username);
     return { username: site.username, conn: conn || null, receivingUserId: conn ? conn.user_id : null, viaSiteAccount: true };
 }
 function _refFor(order) {
@@ -85,14 +85,14 @@ async function reconcileOnce() {
     // BILLING_AUTHORITY=billing: PowerChat money settles in OpenVibe.Billing; Live credits nothing.
     if (require('../monetization/money-authority').authority() !== 'live') return { ...summary, skipped: 'billing_authority' };
     let pending;
-    try { pending = db.getPendingPowerchatOrders(LOOKBACK_DAYS) || []; } catch (e) { summary.errors++; return summary; }
+    try { pending = await db.getPendingPowerchatOrders(LOOKBACK_DAYS) || []; } catch (e) { summary.errors++; return summary; }
     summary.orders = pending.length;
     if (!pending.length) return summary;
 
     // Group the work list by host account: one paged read per host, not per order.
     const hosts = new Map(); // username → { host, orders: Map(ref → order), oldestAt }
     for (const order of pending) {
-        const host = _hostFor(order);
+        const host = await _hostFor(order);
         if (!host) continue;
         const key = host.username.toLowerCase();
         let h = hosts.get(key);
@@ -100,7 +100,7 @@ async function reconcileOnce() {
         h.orders.set(_refFor(order), order);
         h.oldestAt = Math.min(h.oldestAt, _sqliteTs(order.created_at) || Date.now());
     }
-    const allowTest = _testAllowed();
+    const allowTest = await _testAllowed();
 
     for (const [, h] of hosts) {
         const { host, orders } = h;
@@ -150,11 +150,11 @@ async function reconcileOnce() {
                     appExternalRef: ref, isTest, reconciled: true,
                 };
                 let consumed = false;
-                try { consumed = checkout.handleAttributedDonation(host.receivingUserId, data, { viaSiteAccount: host.viaSiteAccount }); }
+                try { consumed = await checkout.handleAttributedDonation(host.receivingUserId, data, { viaSiteAccount: host.viaSiteAccount }); }
                 catch (e) { summary.errors++; console.warn(`[PowerChat] reconcile: fulfillment for ${ref} failed: ${e.message}`); }
                 orders.delete(ref);
                 let after = null;
-                try { after = db.getPaymentOrderById(order.id); } catch { /* */ }
+                try { after = await db.getPaymentOrderById(order.id); } catch { /* */ }
                 if (after && after.status === 'credited') {
                     summary.credited.push({ ref, eventId: row.eventId, amountUsdCents: data.amountUsdCents, userId: order.user_id });
                     console.log(`[PowerChat] reconcile: credited ${ref} from paid-messages (event ${row.eventId || '?'}, $${(Number(data.amountUsdCents || 0) / 100).toFixed(2)}) — its webhook never arrived`);

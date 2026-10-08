@@ -28,77 +28,60 @@ const { guard } = require('../net/service-guard');
 const router = express.Router();
 const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
 
-// ── Idempotency store (SQLite, so a Live restart does not forget a delivery) ──────────────
+// ── Idempotency store (a Live restart does not forget a delivery) ──────────────
 const KEEP_DAYS = 7;            // Tips retries within minutes; a week is ample and stays small
 const CLAIM_STALE_MS = 120000;  // a claim this old was left by a crash: the next retry takes it over
 const PRUNE_EVERY_MS = 60 * 60 * 1000;
-let tablesReady = false;
 let lastPrune = 0;
 
-function ensureTables() {
-    if (tablesReady) return;
-    db.getDb().exec(`CREATE TABLE IF NOT EXISTS tips_deliveries (
-        idempotency_key TEXT PRIMARY KEY,
-        effect TEXT,
-        state TEXT NOT NULL DEFAULT 'pending',   -- pending (running) | done (response stored)
-        response_json TEXT,
-        claimed_at INTEGER NOT NULL,             -- ms epoch
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
-    db.getDb().exec('CREATE INDEX IF NOT EXISTS idx_tips_deliveries_created ON tips_deliveries(created_at)');
-    tablesReady = true;
-}
-
 /** Delete answers older than KEEP_DAYS. Returns how many rows went. */
-function prune({ force = false } = {}) {
-    ensureTables();
+async function prune({ force = false } = {}) {
     if (!force && Date.now() - lastPrune < PRUNE_EVERY_MS) return 0;
     lastPrune = Date.now();
-    return db.getDb().prepare(`DELETE FROM tips_deliveries WHERE created_at < datetime('now', ?)`).run(`-${KEEP_DAYS} days`).changes;
+    return (await db.getDb().prepare(`DELETE FROM tips_deliveries WHERE created_at < datetime('now', ?)`).run(`-${KEEP_DAYS} days`)).changes;
 }
 
 /**
  * Claim a key before running its effect: { done: response } for a key already answered,
  * { busy: true } while another request runs it, { claimed: true } when this request may run it.
  */
-function claim(key, effect) {
-    ensureTables();
+async function claim(key, effect) {
     const d = db.getDb();
     const now = Date.now();
-    if (d.prepare("INSERT OR IGNORE INTO tips_deliveries (idempotency_key, effect, state, claimed_at) VALUES (?, ?, 'pending', ?)").run(key, effect || null, now).changes) {
+    if ((await d.prepare("INSERT INTO tips_deliveries (idempotency_key, effect, state, claimed_at) VALUES (?, ?, 'pending', ?) ON CONFLICT DO NOTHING").run(key, effect || null, now)).changes) {
         return { claimed: true };
     }
-    const row = d.prepare('SELECT * FROM tips_deliveries WHERE idempotency_key = ?').get(key);
-    if (!row) return claim(key, effect);   // pruned or released in between
+    const row = await d.prepare('SELECT * FROM tips_deliveries WHERE idempotency_key = ?').get(key);
+    if (!row) return await claim(key, effect);   // pruned or released in between
     if (row.state === 'done') return { done: JSON.parse(row.response_json || '{}') };
     if (now - row.claimed_at < CLAIM_STALE_MS) return { busy: true };
-    const took = d.prepare("UPDATE tips_deliveries SET claimed_at = ? WHERE idempotency_key = ? AND state = 'pending' AND claimed_at = ?").run(now, key, row.claimed_at).changes;
+    const took = (await d.prepare("UPDATE tips_deliveries SET claimed_at = ? WHERE idempotency_key = ? AND state = 'pending' AND claimed_at = ?").run(now, key, row.claimed_at)).changes;
     return took ? { claimed: true } : { busy: true };
 }
 
 /** A failed attempt gives the key back, so Tips' retry runs it again. */
-function release(key) {
-    db.getDb().prepare("DELETE FROM tips_deliveries WHERE idempotency_key = ? AND state = 'pending'").run(key);
+async function release(key) {
+    await db.getDb().prepare("DELETE FROM tips_deliveries WHERE idempotency_key = ? AND state = 'pending'").run(key);
 }
 
-function channelUserId(subject) {
+async function channelUserId(subject) {
     if (!SUBJECT_RE.test(String(subject || ''))) return null;
-    const row = db.getDb().prepare("SELECT user_id FROM linked_accounts WHERE service = 'network' AND subject_id = ? ORDER BY id DESC LIMIT 1").get(subject);
+    const row = await db.getDb().prepare("SELECT user_id FROM linked_accounts WHERE service = 'network' AND subject_id = ? ORDER BY id DESC LIMIT 1").get(subject);
     return row ? row.user_id : null;
 }
 
-function streamIdFor(target, userId) {
+async function streamIdFor(target, userId) {
     if (target && target.service === 'live' && target.type === 'stream') {
-        const s = db.getStreamById(Number(target.id));
+        const s = await db.getStreamById(Number(target.id));
         if (s && s.user_id === userId && s.is_live) return s.id;
     }
-    const live = db.getStreamByUserId(userId);
+    const live = await db.getStreamByUserId(userId);
     return live ? live.id : null;
 }
 
-function remember(key, out) {
-    db.getDb().prepare("UPDATE tips_deliveries SET state = 'done', response_json = ? WHERE idempotency_key = ?").run(JSON.stringify(out), key);
-    try { prune(); } catch (e) { console.warn('[Tips delivery] prune:', e.message); }
+async function remember(key, out) {
+    await db.getDb().prepare("UPDATE tips_deliveries SET state = 'done', response_json = ? WHERE idempotency_key = ?").run(JSON.stringify(out), key);
+    try { await prune(); } catch (e) { console.warn('[Tips delivery] prune:', e.message); }
     return out;
 }
 
@@ -106,15 +89,15 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
     const key = String(req.get('idempotency-key') || '');
     if (!/^[A-Za-z0-9_:.-]{8,200}$/.test(key)) return res.status(400).json({ error: 'Idempotency-Key required' });
     const b = req.body || {};
-    const c = claim(key, b.effect);
+    const c = await claim(key, b.effect);
     if (c.done) return res.json(c.done);
     if (c.busy) return res.status(409).json({ error: 'this delivery is already running; retry shortly' });
     // Every answer but a stored 200 gives the claim back (Tips retries 409 and 5xx).
-    res.on('finish', () => { if (res.statusCode !== 200) { try { release(key); } catch { /* */ } } });
+    res.on('finish', () => { if (res.statusCode !== 200) release(key).catch((e) => console.warn('[Tips delivery] release:', e.message)); });
     const i = b.interaction || {};
-    const userId = channelUserId(b.creator && b.creator.id);
+    const userId = await channelUserId(b.creator && b.creator.id);
     if (!userId) return res.status(404).json({ error: 'this creator has no Live channel' });
-    const streamId = streamIdFor(b.target, userId);
+    const streamId = await streamIdFor(b.target, userId);
     const name = String((b.supporter && b.supporter.name) || 'Someone').slice(0, 80);
     // null = the supporter hid the amount (Tips privacy.hide_amount): it stays null all the way to the chat line.
     const amount = i.amount == null ? null : Math.max(0, Math.round(Number(i.amount) || 0));
@@ -133,8 +116,8 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
             };
             // Chat persists the line and shows it in the channel and global chat; Tips' key is the operation's key.
             const chatMessageId = await delivery.message({ ...line, mirror: true, key: `tips:${key}` });
-            require('../monetization/alerts').playAlertSound(userId, streamId, 'donation');
-            return res.json(remember(key, { ok: true, ref: { chat_message_id: chatMessageId } }));
+            await require('../monetization/alerts').playAlertSound(userId, streamId, 'donation');
+            return res.json(await remember(key, { ok: true, ref: { chat_message_id: chatMessageId } }));
         }
         if (b.effect === 'tts') {
             const text = String((b.tts && b.tts.text) || '').slice(0, 1200);
@@ -145,26 +128,29 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
                     stream_id: streamId, channel_user_id: userId, username: name, message: text, message_type: 'tts', source_platform: 'tips',
                     tts: { identity_key: `tips:${i.id}`, key: `tips-${i.id}` }, key: `tips:${key}`,
                 });
-                return res.json(remember(key, { ok: true, ref: { stream_id: streamId, chat_message_id: id } }));
+                return res.json(await remember(key, { ok: true, ref: { stream_id: streamId, chat_message_id: id } }));
             }
             await delivery.synthesizeAndBroadcastTTS(streamId, name, text, null, 'tips', `tips:${i.id}`, userId, `tips-${i.id}`);
-            return res.json(remember(key, { ok: true, ref: { stream_id: streamId } }));
+            return res.json(await remember(key, { ok: true, ref: { stream_id: streamId } }));
         }
         if (b.effect === 'media_request') {
             const mq = require('../media/media-queue');
-            const settings = mq.getSettings(userId);
+            const settings = await mq.getSettings(userId);
             const normalized = await mq.normalizeInput(String((b.media && b.media.url) || ''), settings);
             const max = Number(settings.max_duration_seconds) || 600;
             if (Number.isFinite(normalized.duration_seconds) && normalized.duration_seconds > max) return res.status(422).json({ error: `longer than ${max} seconds` });
-            const r = db.createMediaRequest({
-                streamer_id: userId, stream_id: streamId, user_id: null, username: name, input: String(b.media.url),
-                canonical_url: normalized.canonical_url, embed_url: normalized.embed_url, provider: normalized.provider, title: normalized.title,
-                thumbnail_url: normalized.thumbnail_url, duration_seconds: normalized.duration_seconds,
-                // Paid through OpenVibe.Billing and recorded by OpenVibe.Tips: Live charges nothing here.
-                cost: 0, currency: 'free', queue_position: db.getMediaRequestMaxQueuePosition(userId) + 1,
-            });
-            mq.broadcastQueueUpdate(userId);
-            return res.json(remember(key, { ok: true, ref: { media_request_id: Number(r.lastInsertRowid) } }));
+            // Paid through OpenVibe.Billing and recorded by OpenVibe.Tips: Live charges nothing here.
+            const r = await db.run(`INSERT INTO media_requests
+                (streamer_id, stream_id, user_id, username, input, canonical_url, embed_url, provider,
+                 title, thumbnail_url, duration_seconds, cost, queue_position, currency, status, charge_state)
+                VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'free', 'pending', NULL) RETURNING id`, [
+                userId, streamId || null, name, String(b.media.url), normalized.canonical_url,
+                normalized.embed_url || null, normalized.provider, normalized.title,
+                normalized.thumbnail_url || null, normalized.duration_seconds ?? null,
+                (await db.getMediaRequestMaxQueuePosition(userId)) + 1,
+            ]);
+            await mq.broadcastQueueUpdate(userId);
+            return res.json(await remember(key, { ok: true, ref: { media_request_id: Number(r.lastInsertRowid) } }));
         }
         return res.status(422).json({ error: `unknown effect ${b.effect}` });
     } catch (err) {

@@ -4,35 +4,16 @@
 // never act as its streamer: stream keys, the ingest endpoint and heartbeats stay with the streamer.
 
 const assert = require('assert');
-const os = require('os');
-const path = require('path');
 const http = require('http');
-const fs = require('fs');
 
-const tmp = path.join(os.tmpdir(), `ov-staff-scope-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
 console.log = () => {}; console.warn = () => {}; console.error = () => {};
 
 const db = require('../server/db/database');
-db.initDb();
-const raw = db.getDb();
 const auth = require('../server/auth/auth');
-const signIn = (req) => { const id = Number(req.headers['x-test-user'] || 0); const u = id ? db.getUserById(id) : null; if (u) req.user = u; return u; };
-auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
-auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
-
-const addUser = (id, name, role, isOwner = 0) => raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner, stream_key)
-    VALUES (?, ?, ?, ?, 'x', ?, ?, ?)`).run(id, name, name, `${name}@x`, role, isOwner, `key-${name}`);
-addUser(1, 'siteowner', 'admin', 1);
-addUser(2, 'anadmin', 'admin');
-addUser(3, 'streamer', 'streamer');
-const slotOf = (uid, slug) => Number(db.createManagedStream({ user_id: uid, slug, title: slug, protocol: 'webrtc', stream_key: `sk-${slug}` }).lastInsertRowid);
-const slotStreamer = slotOf(3, 's3');
-const slotOwner = slotOf(1, 's1');
-const liveOf = (uid, ms) => Number(db.createStream({ user_id: uid, managed_stream_id: ms, title: 't', protocol: 'webrtc' }).lastInsertRowid);
-const streamStreamer = liveOf(3, slotStreamer);
-const streamOwner = liveOf(1, slotOwner);
+const signIn = async (req) => { const id = Number(req.headers['x-test-user'] || 0); const u = id ? await db.getUserById(id) : null; if (u) req.user = u; return u; };
+auth.requireAuth = async (req, res, next) => ((await signIn(req)) ? next() : res.status(401).json({ error: 'Authentication required' }));
+auth.optionalAuth = async (req, res, next) => { await signIn(req); next(); };
 
 const express = require('express');
 const app = express();
@@ -50,7 +31,23 @@ function call(method, p, user, body) {
     });
 }
 
-server.listen(0, '127.0.0.1', async () => {
+(async () => {
+    await db.initDb();
+    const raw = db.getDb();
+    const addUser = (id, name, role, isOwner = 0) => raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner, stream_key) OVERRIDING SYSTEM VALUE
+        VALUES (?, ?, ?, ?, 'x', ?, ?, ?)`).run(id, name, name, `${name}@x`, role, isOwner, `key-${name}`);
+    await addUser(1, 'siteowner', 'admin', 1);
+    await addUser(2, 'anadmin', 'admin');
+    await addUser(3, 'streamer', 'streamer');
+    // createManagedStream returns the new id (RETURNING id).
+    const slotOf = async (uid, slug) => Number((await db.createManagedStream({ user_id: uid, slug, title: slug, protocol: 'webrtc', stream_key: `sk-${slug}` })).lastInsertRowid);
+    const slotStreamer = await slotOf(3, 's3');
+    const slotOwner = await slotOf(1, 's1');
+    const liveOf = async (uid, ms) => Number((await db.createStream({ user_id: uid, managed_stream_id: ms, title: 't', protocol: 'webrtc' })).lastInsertRowid);
+    const streamStreamer = await liveOf(3, slotStreamer);
+    const streamOwner = await liveOf(1, slotOwner);
+
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
     try {
         // Moderation of another streamer's slot: allowed for an admin.
         assert.notStrictEqual(await call('PUT', `/api/streams/managed/${slotStreamer}`, 2, { title: 'moderated' }), 403, 'an admin may edit another streamer\'s slot');
@@ -68,5 +65,7 @@ server.listen(0, '127.0.0.1', async () => {
         // Even the site owner does not act as another streamer.
         assert.strictEqual(await call('POST', `/api/streams/managed/${slotStreamer}/regenerate-key`, 1), 403);
         console.info('staff stream scope: all checks passed');
-    } finally { server.close(); try { fs.rmSync(tmp, { force: true }); } catch { /* */ } }
-});
+    } finally {
+        server.close();
+    }
+})().catch((e) => { process.exitCode = 1; });

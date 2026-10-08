@@ -136,27 +136,27 @@ function isChannelModSync(user, channelId) {
 /**
  * Is this user the owner of the given channel?
  */
-function isChannelOwner(user, channelId) {
+async function isChannelOwner(user, channelId) {
     if (!user?.id || !channelId) return false;
-    const channel = db.getChannelById(channelId);
+    const channel = await db.getChannelById(channelId);
     return channel?.user_id === user.id;
 }
 
 /**
  * Does a stream belong to this user?
  */
-function isStreamOwner(user, streamId) {
+async function isStreamOwner(user, streamId) {
     if (!user?.id || !streamId) return false;
-    const stream = db.getStreamById(streamId);
+    const stream = await db.getStreamById(streamId);
     return stream?.user_id === user.id;
 }
 
 /**
  * Get the channel_id for a given stream.
  */
-function getChannelIdForStream(streamId) {
+async function getChannelIdForStream(streamId) {
     if (!streamId) return null;
-    const stream = db.getStreamById(streamId);
+    const stream = await db.getStreamById(streamId);
     return stream?.channel_id || null;
 }
 
@@ -233,13 +233,13 @@ function canManageSiteBans(user) {
 async function canModerateChannel(user, channelId) {
     if (!user) return false;
     if (can(user, 'staff.moderation.chat')) return true;
-    if (isChannelOwner(user, channelId)) return true;
-    return isChannelMod(user, channelId);
+    if (await isChannelOwner(user, channelId)) return true;
+    return await isChannelMod(user, channelId);
 }
-function canModerateChannelSync(user, channelId) {
+async function canModerateChannelSync(user, channelId) {
     if (!user) return false;
     if (can(user, 'staff.moderation.chat')) return true;
-    if (isChannelOwner(user, channelId)) return true;
+    if (await isChannelOwner(user, channelId)) return true;
     return isChannelModSync(user, channelId);
 }
 
@@ -251,16 +251,16 @@ function canModerateChannelSync(user, channelId) {
 async function canModerateStream(user, streamId) {
     if (!user) return false;
     if (can(user, 'staff.moderation.chat')) return true;
-    if (isStreamOwner(user, streamId)) return true;
-    const channelId = getChannelIdForStream(streamId);
+    if (await isStreamOwner(user, streamId)) return true;
+    const channelId = await getChannelIdForStream(streamId);
     if (channelId && await isChannelMod(user, channelId)) return true;
     return false;
 }
-function canModerateStreamSync(user, streamId) {
+async function canModerateStreamSync(user, streamId) {
     if (!user) return false;
     if (can(user, 'staff.moderation.chat')) return true;
-    if (isStreamOwner(user, streamId)) return true;
-    const channelId = getChannelIdForStream(streamId);
+    if (await isStreamOwner(user, streamId)) return true;
+    const channelId = await getChannelIdForStream(streamId);
     if (channelId && isChannelModSync(user, channelId)) return true;
     return false;
 }
@@ -270,10 +270,10 @@ function canModerateStreamSync(user, streamId) {
  * Same rules as chat moderation.
  */
 async function canModerateCall(user, streamId) {
-    return canModerateStream(user, streamId);
+    return await canModerateStream(user, streamId);
 }
-function canModerateCallSync(user, streamId) {
-    return canModerateStreamSync(user, streamId);
+async function canModerateCallSync(user, streamId) {
+    return await canModerateStreamSync(user, streamId);
 }
 
 /**
@@ -301,10 +301,10 @@ function canViewOtherUserLogs(user) {
  *
  * Channel owner or admin.
  */
-function canAssignChannelMods(user, channelId) {
+async function canAssignChannelMods(user, channelId) {
     if (!user) return false;
     if (can(user, 'staff.roles.assign')) return true;
-    return isChannelOwner(user, channelId);
+    return await isChannelOwner(user, channelId);
 }
 
 /**
@@ -327,7 +327,7 @@ function canForceEndStreams(user) {
  * Build a capabilities object to send to the client.
  * The frontend gates UI based on this, never raw roles.
  */
-function getCapabilities(user) {
+async function getCapabilities(user) {
     if (!user) {
         return {
             admin_panel: false,
@@ -353,7 +353,7 @@ function getCapabilities(user) {
         };
     }
 
-    const ownedChannel = db.getChannelByUserId(user.id);
+    const ownedChannel = await db.getChannelByUserId(user.id);
     // Chat owns channel_moderators; the cached answer (or [], refreshed behind the load) decides the UI flag.
     const moderatedChannels = moderation.peekChannelsByModerator(user.id) || [];
     const isStaffUser = isGlobalModOrAbove(user);

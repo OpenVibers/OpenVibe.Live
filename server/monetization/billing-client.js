@@ -81,7 +81,7 @@ async function request(method, path, { body, idempotencyKey, trace, retried = fa
     try { json = text ? JSON.parse(text) : {}; } catch { /* not JSON */ }
     if (res.status === 401 && !retried) {           // token rotated/expired under us: once more with a fresh one
         principal.invalidate(AUDIENCE);
-        return request(method, path, { body, idempotencyKey, trace, retried: true });
+        return await request(method, path, { body, idempotencyKey, trace, retried: true });
     }
     if (res.ok) {
         const out = json || {};
@@ -131,7 +131,7 @@ async function subjectFor(liveUserId, { role = 'self' } = {}) {
     if (!Number.isInteger(id) || id <= 0) throw new BillingCallError('no_subject', { detail: 'no account' });
     if (_subjects.has(id)) return _subjects.get(id);
     let sid = null;
-    try { sid = require('../auth/identity-sync').subjectOf(id); } catch { /* */ }
+    try { sid = await require('../auth/identity-sync').subjectOf(id); } catch { /* */ }
     if (!sid) {
         try { sid = await resolveViaNetwork(id); }
         catch (err) { console.warn(`[Billing] subject lookup for live user ${id} failed: ${err.message}`); }
@@ -149,17 +149,17 @@ async function subjectFor(liveUserId, { role = 'self' } = {}) {
 }
 
 /** Live users for a list of subjects (for history/subscription displays). Map usr_ -> user row. */
-function liveUsersForSubjects(subjects) {
+async function liveUsersForSubjects(subjects) {
     const out = new Map();
     const want = [...new Set((subjects || []).filter((s) => SUBJECT_RE.test(String(s || ''))))];
     if (!want.length) return out;
     const db = require('../db/database');
-    const rows = db.getDb().prepare(`SELECT l.subject_id, u.id, u.username, u.display_name, u.avatar_url FROM linked_accounts l JOIN users u ON u.id = l.user_id
+    const rows = await db.getDb().prepare(`SELECT l.subject_id, u.id, u.username, u.display_name, u.avatar_url FROM linked_accounts l JOIN users u ON u.id = l.user_id
         WHERE l.service = 'network' AND l.subject_id IN (${want.map(() => '?').join(',')})`).all(...want);
     for (const r of rows) out.set(r.subject_id, r);
     for (const s of want) {
         if (out.has(s) || !_owners.has(s)) continue;
-        const u = db.getUserById(_owners.get(s));
+        const u = await db.getUserById(_owners.get(s));
         if (u) out.set(s, { subject_id: s, id: u.id, username: u.username, display_name: u.display_name, avatar_url: u.avatar_url });
     }
     return out;
@@ -174,26 +174,26 @@ const api = {
         const res = await fetch(`${baseUrl()}/api/ready`, { signal: AbortSignal.timeout(3000) });
         return { ok: res.ok, status: res.status };
     },
-    rates: (o) => request('GET', '/rates', o),
+    rates: async (o) => await request('GET', '/rates', o),
     /** billing.intent.create */
-    createIntent: (body, o) => request('POST', '/intents', { ...o, body }),
-    getIntent: (id, o) => request('GET', `/intents/${enc(id)}`, o),
-    captureIntent: (id, o) => request('POST', `/intents/${enc(id)}/capture`, { ...o, body: {} }),
+    createIntent: async (body, o) => await request('POST', '/intents', { ...o, body }),
+    getIntent: async (id, o) => await request('GET', `/intents/${enc(id)}`, o),
+    captureIntent: async (id, o) => await request('POST', `/intents/${enc(id)}/capture`, { ...o, body: {} }),
     /** billing.transfer.create */
-    transfer: (body, o) => request('POST', '/transfers', { ...o, body }),
-    refundTransfer: (txnId, body, o) => request('POST', `/transfers/${enc(txnId)}/refund`, { ...o, body }),
+    transfer: async (body, o) => await request('POST', '/transfers', { ...o, body }),
+    refundTransfer: async (txnId, body, o) => await request('POST', `/transfers/${enc(txnId)}/refund`, { ...o, body }),
     /** billing.cashout.request */
-    recycle: (body, o) => request('POST', '/recycle', { ...o, body }),
-    requestCashout: (body, o) => request('POST', '/cashouts', { ...o, body }),
+    recycle: async (body, o) => await request('POST', '/recycle', { ...o, body }),
+    requestCashout: async (body, o) => await request('POST', '/cashouts', { ...o, body }),
     /** billing.subscription.manage */
-    subscribe: (body, o) => request('POST', '/subscriptions', { ...o, body }),
-    cancelSubscription: (id, body, o) => request('POST', `/subscriptions/${enc(id)}/cancel`, { ...o, body }),
+    subscribe: async (body, o) => await request('POST', '/subscriptions', { ...o, body }),
+    cancelSubscription: async (id, body, o) => await request('POST', `/subscriptions/${enc(id)}/cancel`, { ...o, body }),
     /** billing.entitlement.check */
-    listSubscriptions: (q, o) => request('GET', `/subscriptions?${new URLSearchParams(Object.entries(q).filter(([, v]) => v != null))}`, o),
-    entitlement: (subject, streamer, o) => request('GET', `/entitlements/${enc(subject)}?streamer=${enc(streamer)}`, o),
+    listSubscriptions: async (q, o) => await request('GET', `/subscriptions?${new URLSearchParams(Object.entries(q).filter(([, v]) => v != null))}`, o),
+    entitlement: async (subject, streamer, o) => await request('GET', `/entitlements/${enc(subject)}?streamer=${enc(streamer)}`, o),
     /** billing.balance.read */
-    balance: (subject, o) => request('GET', `/balances/${enc(subject)}`, o),
-    transactions: (subject, { limit = 50, cursor } = {}, o) => request('GET', `/transactions?${new URLSearchParams({ subject, limit: String(limit), ...(cursor ? { cursor } : {}) })}`, o),
+    balance: async (subject, o) => await request('GET', `/balances/${enc(subject)}`, o),
+    transactions: async (subject, { limit = 50, cursor } = {}, o) => await request('GET', `/transactions?${new URLSearchParams({ subject, limit: String(limit), ...(cursor ? { cursor } : {}) })}`, o),
 };
 
 module.exports = {

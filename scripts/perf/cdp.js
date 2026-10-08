@@ -28,7 +28,7 @@ function findChrome() {
 
 async function launch(opts = {}, attempt = 0) {
     try { return await launchOnce(opts); }
-    catch (e) { if (attempt < 3) return launch(opts, attempt + 1); throw e; }
+    catch (e) { if (attempt < 3) return await launch(opts, attempt + 1); throw e; }
 }
 
 async function launchOnce({ width = 1366, height = 900, args = [] } = {}) {

@@ -39,7 +39,7 @@ function moderate(text) {
  * Post a line. Returns the chat message id (or null).
  * @param {object} worker  { streamId, userId, settings }
  */
-function post(worker, bot, message, { threadId = null, replyToId = null } = {}) {
+async function post(worker, bot, message, { threadId = null, replyToId = null } = {}) {
     const streamId = worker.streamId;
     const persona = botPersona(bot);
     const color = botColor(bot);
@@ -53,18 +53,18 @@ function post(worker, bot, message, { threadId = null, replyToId = null } = {}) 
         metadata: { bot: 1, bot_id: bot.id, source: bot.source, thread_id: threadId || undefined },
         mirror: true, frame: { role: 'user', profile_color: color, is_ai: true, filtered: false },
         tts: ttsOn ? { identity_key: `aibot:${bot.username.toLowerCase()}` } : undefined,
-    }), (id) => forwardToPowerChat(worker, bot, message, id));
-    try { db.touchChannelAiBot(bot.id); } catch { /* */ }
+    }), async (id) => await forwardToPowerChat(worker, bot, message, id));
+    try { await db.touchChannelAiBot(bot.id); } catch { /* */ }
     return null;
 }
 
-function forwardToPowerChat(worker, bot, message, id) {
+async function forwardToPowerChat(worker, bot, message, id) {
     const streamId = worker.streamId;
     if (worker.settings.powerchat_forward !== false) {
         try {
             const pc = require('../../integrations/powerchat-platform');
-            if (worker.userId && pc.channelRelayEnabled(worker.userId, streamId)) {
-                pc.forwardChat(worker.userId, {
+            if (worker.userId && await pc.channelRelayEnabled(worker.userId, streamId)) {
+                await pc.forwardChat(worker.userId, {
                     chatterName: bot.username,
                     externalChatterId: `ai:${bot.username.toLowerCase()}`,
                     message,
@@ -77,9 +77,9 @@ function forwardToPowerChat(worker, bot, message, id) {
 }
 
 /** Append a row to ai_viewer_log (best-effort). */
-function log(worker, row) {
+async function log(worker, row) {
     try {
-        db.addAiViewerLog({ channel_user_id: worker.userId, stream_id: worker.streamId || null, ...row });
+        await db.addAiViewerLog({ channel_user_id: worker.userId, stream_id: worker.streamId || null, ...row });
     } catch { /* */ }
 }
 

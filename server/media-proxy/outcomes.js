@@ -54,9 +54,9 @@ function accepts(via) {
 
 function ensureInbox() {
     if (inbox) return inbox;
-    const { createInbox } = require('openvibe-sdk/events');
-    inbox = createInbox(db.getDb());
-    inbox.ensureSchema();
+    // The PostgreSQL inbox: the receipt and the apply commit together (its table, idempotency_receipts, is migrated).
+    const { createPgInbox } = require('openvibe-sdk/events');
+    inbox = createPgInbox(db.getDb());
     return inbox;
 }
 
@@ -79,7 +79,7 @@ function dedupeKey(eventId, subject) {
  * setting (a Discord-compatible webhook: it receives `{ content }`). This is
  * deliberately separate from the public go-live Discord webhook.
  */
-function relayStorageEvent(event, data = {}) {
+async function relayStorageEvent(event, data = {}) {
     const recovered = event === 'storage.recovered';
     const line = `[MediaOutcome] ${recovered ? 'STORAGE RECOVERED' : 'STORAGE ALERT'} (${data.kind || 'unknown'}): `
         + `disk ${data.disk_pct ?? '?'}%, ${data.free_gb ?? '?'} GB free`
@@ -90,7 +90,7 @@ function relayStorageEvent(event, data = {}) {
     }
 
     let url = process.env.OPS_ALERT_WEBHOOK_URL || '';
-    if (!url) { try { url = db.getSetting('ops_alert_webhook_url') || ''; } catch { url = ''; } }
+    if (!url) { try { url = await db.getSetting('ops_alert_webhook_url') || ''; } catch { url = ''; } }
     if (!/^https:\/\/[^\s]+$/i.test(url)) return;
 
     const content = (recovered ? '✅ **OpenVibe.Media storage recovered**' : '🚨 **OpenVibe.Media storage alert**')
@@ -110,30 +110,30 @@ function relayStorageEvent(event, data = {}) {
  * Live's database writes for one outcome (synchronous: runs inside the inbox transaction) and the
  * side effects to run after the commit. Returns { outcome, after? }.
  */
-function apply(event, data) {
+async function apply(event, data) {
     data = data || {};
     switch (event) {
         case 'vod.ready': {
             const vodId = data.id;
             if (!vodId) return { outcome: 'ignored' };
             // Seed the Live-owned AI state row (queues transcript/overview work).
-            try { db.setVodTranscriptStatus(vodId, 'pending'); } catch { /* */ }
+            try { await db.setVodTranscriptStatus(vodId, 'pending'); } catch { /* */ }
             // Point the live timeline rows at the VOD so the recording inherits the transcript that
             // was already built while the stream was running — no second transcription.
             try {
                 const sid = data.stream_id || data.streamId;
-                if (sid) db.linkTimelineToVod(sid, vodId);
+                if (sid) await db.linkTimelineToVod(sid, vodId);
             } catch { /* */ }
             return {
                 outcome: 'vod_ready',
-                after: () => {
+                after: async () => {
                     try { require('../streaming/recorder').onVodSettled(vodId); } catch { /* */ }
                     // Kick the on-finalize AI pass right away (both budget-gated).
                     try {
                         const ai = require('../ai/ai-analysis');
                         const vodMeta = { id: vodId, ...data };
-                        if (ai.transcriptionEnabled && ai.transcriptionEnabled()) ai.generateVodTranscript(vodMeta).catch(() => {});
-                        if (ai.isEnabled && ai.isEnabled() && ai.withinBudget && ai.withinBudget()) ai.generateVodOverview(vodMeta).catch(() => {});
+                        if (ai.transcriptionEnabled && await ai.transcriptionEnabled()) ai.generateVodTranscript(vodMeta).catch(() => {});
+                        if (ai.isEnabled && await ai.isEnabled() && ai.withinBudget && await ai.withinBudget()) ai.generateVodOverview(vodMeta).catch(() => {});
                     } catch { /* backfill poller will pick it up */ }
                     console.log(`[MediaOutcome] VOD ${vodId} ready (${data.duration || data.duration_seconds || '?'}s)`);
                 },
@@ -141,7 +141,7 @@ function apply(event, data) {
         }
         case 'vod.failed': {
             const vodId = data.id;
-            if (vodId) { try { db.setVodTranscriptStatus(vodId, 'failed', data.error || 'media reported failure'); } catch { /* */ } }
+            if (vodId) { try { await db.setVodTranscriptStatus(vodId, 'failed', data.error || 'media reported failure'); } catch { /* */ } }
             return {
                 outcome: 'vod_failed',
                 after: () => {
@@ -154,14 +154,14 @@ function apply(event, data) {
             if (!data.id) return { outcome: 'ignored' };
             // Schedule the chat announce with a grace period (creator titles the clip first); the
             // clip-notify sweeper fires it (survives restarts).
-            try { require('./clip-notify').scheduleClipNotify(data.id); } catch { /* */ }
-            try { db.setClipTranscriptStatus(data.id, 'pending'); } catch { /* */ }
+            try { await require('./clip-notify').scheduleClipNotify(data.id); } catch { /* */ }
+            try { await db.setClipTranscriptStatus(data.id, 'pending'); } catch { /* */ }
             return {
                 outcome: 'clip_ready',
-                after: () => {
+                after: async () => {
                     try {
                         const ai = require('../ai/ai-analysis');
-                        if (ai.isEnabled && ai.isEnabled() && ai.withinBudget && ai.withinBudget()) {
+                        if (ai.isEnabled && await ai.isEnabled() && ai.withinBudget && await ai.withinBudget()) {
                             ai.generateClipOverview({ id: data.id, ...data }).catch(() => {});
                         }
                     } catch { /* */ }
@@ -169,14 +169,14 @@ function apply(event, data) {
             };
         }
         case 'clip.failed':
-            if (data.id) { try { db.setClipTranscriptStatus(data.id, 'failed', data.error || 'media reported failure'); } catch { /* */ } }
+            if (data.id) { try { await db.setClipTranscriptStatus(data.id, 'failed', data.error || 'media reported failure'); } catch { /* */ } }
             return { outcome: 'clip_failed', after: () => console.warn(`[MediaOutcome] Clip ${data.id} failed:`, data.error || '(no detail)') };
         case 'storage.alert':
         case 'storage.recovered':
             // Media's VOD volume needs a human (drain stalled / disk critical) or is fine again.
             // Recordings are silently refused while this is unresolved, which is why it is loud
             // here and forwarded to the ops channel.
-            return { outcome: 'storage', after: () => relayStorageEvent(event, data) };
+            return { outcome: 'storage', after: async () => await relayStorageEvent(event, data) };
         default:
             return { outcome: 'ignored' };
     }
@@ -187,25 +187,25 @@ function apply(event, data) {
  * (webhooks from a Media without an outbox have none: those apply without a receipt).
  * Returns { applied, duplicate, outcome }. Throws when Live's writes fail (nothing committed).
  */
-function handle({ via, event, data, eventId = null, subject = null }) {
+async function handle({ via, event, data, eventId = null, subject = null }) {
     let after = null;
-    const run = () => { const r = apply(event, data); after = r.after || null; return r.outcome; };
+    const run = async () => { const r = await apply(event, data); after = r.after || null; return r.outcome; };
     let out;
     if (eventId) {
-        out = ensureInbox().once(CONSUMER, dedupeKey(eventId, subject || subjectOf(event, data)), run);
+        out = await ensureInbox().once(CONSUMER, dedupeKey(eventId, subject || subjectOf(event, data)), run);
     } else {
         if (via === 'webhook' && !warnedNoEventId) {
             warnedNoEventId = true;
             console.warn('[MediaOutcome] a Media webhook carried no event_id (Media without its Events outbox?): applied without dedupe');
         }
-        out = { duplicate: false, result: db.getDb().transaction(run)() };
+        out = { duplicate: false, result: await db.getDb().tx(run) };
     }
     if (out.duplicate) {
         stats.duplicate[via]++;
         return { applied: false, duplicate: true };
     }
     stats.applied[via]++;
-    if (after) { try { after(); } catch (e) { console.warn('[MediaOutcome] post-commit step failed:', e.message); } }
+    if (after) { try { await after(); } catch (e) { console.warn('[MediaOutcome] post-commit step failed:', e.message); } }
     // A VOD or clip that became ready (or failed) changes what OpenVibe.Search should hold for its page.
     const kind = /^(vod|clip)\.(ready|failed)$/.exec(String(event));
     if (kind && data && data.id != null) { try { require('../events/search-media-documents').touchLater(kind[1], data.id); } catch { /* search is optional */ } }

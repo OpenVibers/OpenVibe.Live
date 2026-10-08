@@ -112,12 +112,12 @@ function decorate(l, extra = {}) {
  * restreaming (Twitch, YouTube, Kick) that are not already listed and not hidden. `restreamsTo` (owner view only)
  * lists restream platforms that have no public channel URL yet, so the editor can ask for it.
  */
-function channelSocialLinks(channel, db, { owner = false } = {}) {
+async function channelSocialLinks(channel, db, { owner = false } = {}) {
     const stored = parseStored(channel && channel.social_links);
     const out = stored.links.map((l) => decorate(l));
     const kinds = new Set(out.map((l) => l.kind));
     let conns = [];
-    try { conns = db.all('SELECT platform, platform_username, channel_url FROM platform_connections WHERE user_id = ?', [channel.user_id]) || []; } catch { conns = []; }
+    try { conns = (await db.all('SELECT platform, platform_username, channel_url FROM platform_connections WHERE user_id = ?', [channel.user_id])) || []; } catch { conns = []; }
     const auto = [];
     for (const c of conns) {
         if (!AUTO_KINDS.includes(c.platform) || kinds.has(c.platform)) continue;
@@ -130,7 +130,7 @@ function channelSocialLinks(channel, db, { owner = false } = {}) {
     const result = { links: out };
     if (owner) {
         let dests = [];
-        try { dests = db.all("SELECT DISTINCT platform FROM restream_destinations WHERE user_id = ? AND platform IN ('twitch', 'youtube', 'kick')", [channel.user_id]) || []; } catch { dests = []; }
+        try { dests = (await db.all("SELECT DISTINCT platform FROM restream_destinations WHERE user_id = ? AND platform IN ('twitch', 'youtube', 'kick')", [channel.user_id])) || []; } catch { dests = []; }
         result.connected = auto;
         result.restreams_without_link = dests.map((d) => d.platform).filter((p) => !kinds.has(p) && !auto.some((a) => a.kind === p));
         result.hidden_auto = stored.hidden_auto;

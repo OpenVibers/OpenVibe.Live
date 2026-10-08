@@ -75,7 +75,7 @@ function _pasteThumb(p) {
 async function heroMedia() {
     const items = [];
     try {
-        for (const s of (db.getLiveStreams() || []).slice(0, 8)) {
+        for (const s of (await db.getLiveStreams() || []).slice(0, 8)) {
             items.push({ kind: 'live', title: s.title || 'Live now', thumbnail: s.thumbnail_url || null, href: `/@${s.username}`, username: s.username });
         }
     } catch { /* */ }
@@ -98,7 +98,7 @@ async function heroMedia() {
     // AI "crazy moments" — daily-rotated standout frames from the AI memory data, deep-linking
     // to the exact VOD timestamp (populated by ai-moments-job).
     try {
-        const hm = JSON.parse(db.getState('home_hero_moments') || '{}');
+        const hm = JSON.parse(await db.getState('home_hero_moments') || '{}');
         for (const m of (hm.moments || [])) {
             if (!m || !m.vodId) continue;
             items.push({
@@ -113,9 +113,9 @@ async function heroMedia() {
 
 // The full set of AI "crazy moment" frames (not subject to the collage shuffle/slice) — used
 // for the full-bleed hero BACKGROUND that cross-fades through them.
-function heroMoments() {
+async function heroMoments() {
     try {
-        const hm = JSON.parse(db.getState('home_hero_moments') || '{}');
+        const hm = JSON.parse(await db.getState('home_hero_moments') || '{}');
         return (hm.moments || [])
             .filter(m => m && m.vodId && m.thumbnail)
             .map(m => ({ title: m.title || 'AI Moment', thumbnail: m.thumbnail, href: `/vod/${m.vodId}?t=${m.offset || 0}`, username: m.username }));
@@ -136,10 +136,10 @@ function _cleanAudience(raw) {
 
 const NO_FREE = /\b(free|no[- ]cost)\b|\$\s?0\b/i;
 
-function heroSlogans() {
+async function heroSlogans() {
     let s = null;
     try {
-        s = db.getState('home_hero_slogans');
+        s = await db.getState('home_hero_slogans');
         if (typeof s === 'string') s = JSON.parse(s);
     } catch { s = null; }
     // No "free"/"$0" copy (the owner's rule), even in a batch stored before the slogan job filtered it.
@@ -182,7 +182,7 @@ router.get('/stats/series/:metric', async (req, res) => {
         } catch (err) { console.warn('[Home] Media series unavailable:', err.message); }
         if (!series) return res.status(503).json({ error: 'Media stats are unavailable right now' });
     } else {
-        series = db.getReadingSeries(metric, days) || db.getHomeStatSeries(metric, days);
+        series = await db.getReadingSeries(metric, days) || await db.getHomeStatSeries(metric, days);
     }
     if (!series) return res.status(404).json({ error: 'Unknown metric', metrics: [...db.HOME_SERIES_KEYS, ...MEDIA_SERIES] });
     if (_seriesCache.size > 200) _seriesCache.clear();
@@ -193,7 +193,7 @@ router.get('/stats/series/:metric', async (req, res) => {
 async function heroStats(timing) {
     const mark = (k, a) => { if (timing) timing[k] = Date.now() - a; };
     let a = Date.now();
-    const stats = { ...db.getHomeStats() };
+    const stats = { ...await db.getHomeStats() };
     mark('db', a);
     // Media stats and the network coin ledger are independent upstream calls; they used to be awaited
     // one after the other, so a cold cache paid for both in sequence.
@@ -219,7 +219,7 @@ async function heroStats(timing) {
             }
         }
     } catch { /* the board is better off missing four chips than failing */ }
-    try { stats.concurrency = db.getConcurrencyBaseline(); } catch { /* */ }
+    try { stats.concurrency = await db.getConcurrencyBaseline(); } catch { /* */ }
     return stats;
 }
 
@@ -228,10 +228,10 @@ async function heroStats(timing) {
 // list every few minutes so a small stream gets its turn while the busy one is still one click
 // away. `?not=<id>` asks for the next one after that stream (the reader pressed Next).
 const FEATURED_ROTATE_MS = 4 * 60 * 1000;
-router.get('/featured', (req, res) => {
+router.get('/featured', async (req, res) => {
     res.set('Cache-Control', 'public, max-age=10');
     try {
-        const live = (db.getLiveStreams() || []).filter((s) => !s.is_nsfw);
+        const live = (await db.getLiveStreams() || []).filter((s) => !s.is_nsfw);
         if (!live.length) return res.json({ stream: null, count: 0 });
         let idx = Math.floor(Date.now() / FEATURED_ROTATE_MS) % live.length;
         const not = parseInt(req.query.not, 10);
@@ -246,14 +246,14 @@ router.get('/featured', (req, res) => {
         if (pick.protocol === 'rtmp') stream.endpoint = { flvUrl: `/api/streams/rtmp-proxy/${pick.id}.flv` };
         else if (pick.protocol === 'jsmpeg') {
             try {
-                const key = pick.managed_stream_key || db.getUserById(pick.user_id)?.stream_key;
+                const key = pick.managed_stream_key || (await db.getUserById(pick.user_id))?.stream_key;
                 const info = require('../streaming/jsmpeg-relay').getChannelInfo(key) || {};
                 stream.endpoint = { videoPort: info.videoPort || info.video_port || info.wsPort || null };
             } catch { stream.endpoint = null; }
         } else stream.endpoint = null;
         let moment = null;
         try {
-            const m = db.getLatestStreamMemory(pick.id);
+            const m = await db.getLatestStreamMemory(pick.id);
             if (m && m.description) moment = { description: m.description, captured_at: m.captured_at || m.created_at || null, thumbnail_url: m.thumbnail_url || null };
         } catch { /* */ }
         res.json({ stream, moment, count: live.length, index: idx, next_in_ms: FEATURED_ROTATE_MS - (Date.now() % FEATURED_ROTATE_MS) });
@@ -268,11 +268,11 @@ router.get('/featured', (req, res) => {
 // underlying stats are memoised for 30s already; this adds a short cache of its own so a
 // roomful of open tabs costs one computation, not one each.
 let _liveStats = { at: 0, data: null };
-router.get('/stats-live', (req, res) => {
+router.get('/stats-live', async (req, res) => {
     try {
         res.set('Cache-Control', 'public, max-age=5');
         if (_liveStats.data && Date.now() - _liveStats.at < 5000) return res.json(_liveStats.data);
-        const s = db.getHomeStats();
+        const s = await db.getHomeStats();
         const data = {
             liveNow: s.liveNow, viewersNow: s.viewersNow, weeklyActive: s.weeklyActive,
             users: s.users, weeklyVisitors: s.weeklyVisitors, anons: s.anons, chatMessages: s.chatMessages,
@@ -282,7 +282,7 @@ router.get('/stats-live', (req, res) => {
             prevWeeklyVisitors: s.prevWeeklyVisitors, prevWeeklyActive: s.prevWeeklyActive,
             // What counts as a normal number of live streams and viewers, so the two instantaneous
             // readings can say whether right now is busy or quiet.
-            concurrency: (() => { try { return db.getConcurrencyBaseline(); } catch { return null; } })(),
+            concurrency: await (async () => { try { return await db.getConcurrencyBaseline(); } catch { return null; } })(),
             recent: {
                 users: s.recent?.users, anons: s.recent?.anons,
                 messages: s.recent?.messages,
@@ -308,8 +308,8 @@ async function buildHero(timing) {
     ]);
     let a = Date.now();
     // 24h viewer trend for the hero sparkline (sampled every 5 min by the sampler).
-    try { stats.viewerTrend = db.getViewerTrend(24, 48); } catch { stats.viewerTrend = []; }
-    const payload = { stats, media: mediaItems, moments: heroMoments(), slogans: heroSlogans() };
+    try { stats.viewerTrend = await db.getViewerTrend(24, 48); } catch { stats.viewerTrend = []; }
+    const payload = { stats, media: mediaItems, moments: await heroMoments(), slogans: await heroSlogans() };
     if (timing) { timing.local = Date.now() - a; timing.total = Date.now() - t0; }
     return payload;
 }
@@ -338,26 +338,26 @@ router.get('/star', async (req, res) => {
         res.set('Cache-Control', 'public, max-age=20');
         const config = require('../config');
         let uname = '';
-        try { uname = String(db.getSetting('star_streamer') || '').trim(); } catch { uname = ''; }
+        try { uname = String(await db.getSetting('star_streamer') || '').trim(); } catch { uname = ''; }
         if (!uname) uname = String(config.starStreamer || '').trim();
         if (!uname) return res.json({ star: null });
         if (Date.now() - _starCache.at < 20_000 && _starCache.key === uname.toLowerCase() && _starCache.data) return res.json(_starCache.data);
 
-        const user = db.getUserByUsername(uname);
+        const user = await db.getUserByUsername(uname);
         if (!user) return res.json({ star: null });
         const i18n = require('../i18n/translate');
-        const channel = db.getChannelByUserId(user.id) || {};
-        const code = i18n.channelLanguage(user.id);
-        const live = (db.getLiveStreams() || []).find(s => s.user_id === user.id) || null;
+        const channel = await db.getChannelByUserId(user.id) || {};
+        const code = await i18n.channelLanguage(user.id);
+        const live = (await db.getLiveStreams() || []).find(s => s.user_id === user.id) || null;
         let liveSafe = null;
         if (live) { const { managed_stream_key, stream_key, ...safe } = live; liveSafe = safe; }
         const bio = String(user.bio || '').trim();
         let bio_en = null;
         if (bio && code !== 'en') { try { bio_en = await i18n.translate(bio, { from: code, to: 'en', context: 'bio' }); } catch { bio_en = null; } }
         let follower_count = null;
-        try { follower_count = typeof db.getFollowerCount === 'function' ? db.getFollowerCount(user.id) : null; } catch { follower_count = null; }
+        try { follower_count = typeof db.getFollowerCount === 'function' ? await db.getFollowerCount(user.id) : null; } catch { follower_count = null; }
         let last_stream = null;
-        try { last_stream = (db.getRecentStreams(60) || []).find(s => s.user_id === user.id) || null; } catch { last_stream = null; }
+        try { last_stream = (await db.getRecentStreams(60) || []).find(s => s.user_id === user.id) || null; } catch { last_stream = null; }
         const data = {
             star: {
                 username: user.username, display_name: user.display_name || user.username,
@@ -367,14 +367,14 @@ router.get('/star', async (req, res) => {
                 category_inferred: !!channel.ai_category,
                 follower_count, live: liveSafe,
                 last_live_at: live ? null : (last_stream && (last_stream.ended_at || last_stream.started_at)) || null,
-                pick: (() => {
+                pick: await (async () => {
                     try {
-                        const p = require('./star-job').loadPick();
+                        const p = await require('./star-job').loadPick();
                         if (p && String(p.username || '').toLowerCase() === user.username.toLowerCase()) return { headline: p.headline || null, reason: p.reason || null, picked_at: p.picked_at || null, next_at: p.next_at || null, by: p.by || null };
                     } catch { /* */ }
                     return null;
                 })(),
-                rotates: !String(db.getSetting('star_streamer_pinned') || '').trim(),
+                rotates: !String(await db.getSetting('star_streamer_pinned') || '').trim(),
             },
         };
         _starCache = { at: Date.now(), key: uname.toLowerCase(), data };
@@ -392,8 +392,8 @@ router.get('/pulse', async (req, res) => {
     try {
         res.set('Cache-Control', 'public, max-age=30');
         if (Date.now() - _pulseCache.at < 30_000 && _pulseCache.data) return res.json(_pulseCache.data);
-        const pulse = db.getHomePulse();
-        pulse.moments = heroMoments().slice(0, 10);
+        const pulse = await db.getHomePulse();
+        pulse.moments = (await heroMoments()).slice(0, 10);
         pulse.latestUpdate = _latestUpdate();
         _pulseCache = { at: Date.now(), data: pulse };
         res.json(pulse);
@@ -441,7 +441,7 @@ if (!require('../drill').enabled) setTimeout(_refreshLatestUpdate, 1500).unref?.
 // Site-wide activity since then: who's live, who streamed (followed channels first for signed-in
 // users), the numbers, and the hottest Arena mic lines.
 const { requireAuth, optionalAuth } = require('../auth/auth');
-router.get('/digest', optionalAuth, (req, res) => {
+router.get('/digest', optionalAuth, async (req, res) => {
     try {
         const now = Date.now();
         let sinceMs = req.query.since && !Number.isNaN(Date.parse(req.query.since)) ? Date.parse(req.query.since) : now - 48 * 3600 * 1000;
@@ -449,35 +449,42 @@ router.get('/digest', optionalAuth, (req, res) => {
         const since = new Date(sinceMs).toISOString();
         const sinceSql = since.replace('T', ' ').slice(0, 19);
         const uid = req.user ? req.user.id : null;
-        const followed = new Set(uid ? (db.all('SELECT streamer_id FROM follows WHERE follower_id = ?', [uid]) || []).map(r => r.streamer_id) : []);
-        const liveNow = (db.all(`SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.profile_color, s.title, s.viewer_count, s.started_at
+        const followed = new Set(uid ? (await db.all('SELECT streamer_id FROM follows WHERE follower_id = ?', [uid]) || []).map(r => r.streamer_id) : []);
+        const liveNow = (await db.all(`SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.profile_color, s.title, s.viewer_count, s.started_at
             FROM streams s JOIN users u ON u.id = s.user_id WHERE s.is_live = 1 AND COALESCE(u.is_banned, 0) = 0
             ORDER BY s.viewer_count DESC, s.started_at DESC LIMIT 10`) || []).map(r => ({ ...r, followed: followed.has(r.user_id) }));
         const liveIds = new Set(liveNow.map(r => r.user_id));
-        const streamed = (db.all(`SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.profile_color,
+        const streamedRows = (await db.all(`SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.profile_color,
                 COUNT(s.id) AS sessions, MAX(s.started_at) AS last_at, MAX(COALESCE(s.peak_viewers, 0)) AS peak_viewers,
-                ROUND(SUM(COALESCE(s.duration_seconds, CASE WHEN s.ended_at IS NOT NULL THEN (julianday(s.ended_at) - julianday(s.started_at)) * 86400 ELSE 0 END)) / 3600.0, 1) AS hours,
+                ROUND(SUM(COALESCE(s.duration_seconds, CASE WHEN s.ended_at IS NOT NULL THEN (julianday(s.ended_at) - julianday(s.started_at)) * 86400 ELSE 0 END)) / 3600.0, 1)::float8 AS hours,
                 (SELECT title FROM streams t WHERE t.user_id = u.id AND t.started_at >= ? ORDER BY t.started_at DESC LIMIT 1) AS last_title
             FROM streams s JOIN users u ON u.id = s.user_id
             WHERE s.started_at >= ? AND s.is_live = 0 AND COALESCE(u.is_banned, 0) = 0
             GROUP BY u.id ORDER BY hours DESC, last_at DESC LIMIT 14`, [sinceSql, sinceSql]) || [])
-            .filter(r => !liveIds.has(r.user_id)).map(r => ({ ...r, followed: followed.has(r.user_id), recap_stream_id: (() => { try { const x = db.get('SELECT r.stream_id FROM stream_recaps r JOIN streams s ON s.id = r.stream_id WHERE r.user_id = ? AND s.started_at >= ? ORDER BY r.created_at DESC LIMIT 1', [r.user_id, sinceSql]); return x ? x.stream_id : null; } catch { return null; } })() }))
-            .sort((a, b) => (b.followed - a.followed) || (b.hours - a.hours)).slice(0, 8);
-        const one = (sql, params) => { try { return get(sql, params); } catch { return null; } };
-        const get = (sql, params) => db.get(sql, params);
+            .filter(r => !liveIds.has(r.user_id));
+        const streamed = [];
+        for (const r of streamedRows) {
+            let recap_stream_id = null;
+            try { const x = await db.get('SELECT r.stream_id FROM stream_recaps r JOIN streams s ON s.id = r.stream_id WHERE r.user_id = ? AND s.started_at >= ? ORDER BY r.created_at DESC LIMIT 1', [r.user_id, sinceSql]); recap_stream_id = x ? x.stream_id : null; } catch { recap_stream_id = null; }
+            streamed.push({ ...r, followed: followed.has(r.user_id), recap_stream_id });
+        }
+        streamed.sort((a, b) => (b.followed - a.followed) || (b.hours - a.hours));
+        streamed.splice(8);
+        const one = async (sql, params) => { try { return await get(sql, params); } catch { return null; } };
+        const get = async (sql, params) => await db.get(sql, params);
         const stats = {
-            streams: Number((one('SELECT COUNT(*) AS n FROM streams WHERE started_at >= ?', [sinceSql]) || {}).n || 0),
-            hours: Number((one(`SELECT ROUND(SUM(COALESCE(duration_seconds, CASE WHEN ended_at IS NOT NULL THEN (julianday(ended_at) - julianday(started_at)) * 86400 ELSE (julianday('now') - julianday(started_at)) * 86400 END)) / 3600.0, 1) AS h FROM streams WHERE started_at >= ?`, [sinceSql]) || {}).h || 0),
+            streams: Number((await one('SELECT COUNT(*) AS n FROM streams WHERE started_at >= ?', [sinceSql]) || {}).n || 0),
+            hours: Number((await one(`SELECT ROUND(SUM(COALESCE(duration_seconds, CASE WHEN ended_at IS NOT NULL THEN (julianday(ended_at) - julianday(started_at)) * 86400 ELSE (julianday('now') - julianday(started_at)) * 86400 END)) / 3600.0, 1) AS h FROM streams WHERE started_at >= ?`, [sinceSql]) || {}).h || 0),
             // OpenVibe.Chat's message count since the window opened (Live's own tables in dev /
             // rollback); a synchronous peek answers the last good count while Chat refreshes.
-            chat_lines: (() => { try { const s = require('../chat/chat-reads').windowStatsPeek({ since: sinceMs }); return s ? s.messages : 0; } catch { return 0; } })(),
-            new_follows: Number((one('SELECT COUNT(*) AS n FROM follows WHERE created_at >= ?', [sinceSql]) || {}).n || 0),
-            new_members: Number((one('SELECT COUNT(*) AS n FROM users WHERE created_at >= ?', [sinceSql]) || {}).n || 0),
-            mic_moments: Number((one('SELECT COUNT(*) AS n FROM arena_mic_moments WHERE said_at >= ?', [sinceSql]) || {}).n || 0),
+            chat_lines: await (async () => { try { const s = await require('../chat/chat-reads').windowStatsPeek({ since: sinceMs }); return s ? s.messages : 0; } catch { return 0; } })(),
+            new_follows: Number((await one('SELECT COUNT(*) AS n FROM follows WHERE created_at >= ?', [sinceSql]) || {}).n || 0),
+            new_members: Number((await one('SELECT COUNT(*) AS n FROM users WHERE created_at >= ?', [sinceSql]) || {}).n || 0),
+            mic_moments: Number((await one('SELECT COUNT(*) AS n FROM arena_mic_moments WHERE said_at >= ?', [sinceSql]) || {}).n || 0),
         };
         let hot = [];
         try {
-            hot = (db.all(`SELECT m.text, m.quality, m.said_at, m.aimed_at, u.username, u.display_name FROM arena_mic_moments m JOIN users u ON u.id = m.user_id
+            hot = (await db.all(`SELECT m.text, m.quality, m.said_at, m.aimed_at, u.username, u.display_name FROM arena_mic_moments m JOIN users u ON u.id = m.user_id
                 WHERE m.said_at >= ? AND m.quality >= 7 ORDER BY m.quality DESC, m.said_at DESC LIMIT 3`, [sinceSql]) || []);
         } catch { hot = []; }
         res.set('Cache-Control', uid ? 'private, max-age=30' : 'public, max-age=60');
@@ -498,11 +505,11 @@ router.get('/discover', optionalAuth, async (req, res) => {
         const uname = String(req.query.channel || '').trim().toLowerCase();
         const hit = _discoverCache.get(uname);
         if (hit && Date.now() - hit.at < 60000) { res.set('Cache-Control', 'public, max-age=30'); return res.json(hit.data); }
-        const me = uname ? db.getUserByUsername(uname) : null;
+        const me = uname ? await db.getUserByUsername(uname) : null;
         const exclude = me ? me.id : null;
         const media = require('../media-client');
         const strip = (s) => { if (!s) return s; const { stream_key, managed_stream_key, ...rest } = s; return rest; };
-        const live = (db.getLiveStreams() || []).filter(s => s.user_id !== exclude).slice(0, 6).map(strip);
+        const live = (await db.getLiveStreams() || []).filter(s => s.user_id !== exclude).slice(0, 6).map(strip);
         let clips = [];
         try {
             const co = await media.listClips({ order: 'views', limit: 40 });
@@ -512,30 +519,32 @@ router.get('/discover', optionalAuth, async (req, res) => {
             clips = (fresh.length >= 4 ? fresh : all).slice(0, 8).map(c => ({ id: c.id, title: c.title, thumbnail_url: c.thumbnail_url ? media.publicUrl(c.thumbnail_url) : null, duration_seconds: c.duration_seconds || c.duration || 0, view_count: Number(c.view_count) || 0, username: c.streamer_username || c.channel_username || c.username || null, display_name: c.streamer_display_name || c.channel_display_name || c.display_name || null, created_at: c.created_at, fresh: fresh.length >= 4 }));
         } catch { clips = []; }
         let recaps = [];
-        try { recaps = require('../recap/recap').listRecentRecaps(6, exclude); } catch { recaps = []; }
+        try { recaps = await require('../recap/recap').listRecentRecaps(6, exclude); } catch { recaps = []; }
         let star = null;
         try {
-            const pick = require('./star-job').loadPick();
-            const su = pick && pick.username ? db.getUserByUsername(pick.username) : null;
+            const pick = await require('./star-job').loadPick();
+            const su = pick && pick.username ? await db.getUserByUsername(pick.username) : null;
             if (su && su.id !== exclude) star = { username: su.username, display_name: su.display_name || su.username, avatar_url: su.avatar_url || null, profile_color: su.profile_color || null, headline: pick.headline || null, reason: pick.reason || null, live: live.some(l => l.user_id === su.id) };
         } catch { star = null; }
         let similar = [];
         try {
-            const cat = me ? (db.getChannelByUserId(me.id) || {}) : {};
+            const cat = me ? (await db.getChannelByUserId(me.id) || {}) : {};
             const category = cat.ai_category || cat.category || null;
             // Who is actually active: ranked by hours + sessions in the window (followers only as a
             // nudge, category only as a tiebreak), live people first. 14 days; widen to 30 only if
             // that leaves fewer than 3 names — nobody wants "live 29d ago" as a recommendation.
-            const pick = (days) => (db.all(`SELECT u.id, u.username, u.display_name, u.avatar_url, u.profile_color, MAX(s.started_at) AS last_live_at, COUNT(s.id) AS sessions,
-                    ROUND(SUM(COALESCE(s.duration_seconds, CASE WHEN s.ended_at IS NOT NULL THEN (julianday(s.ended_at) - julianday(s.started_at)) * 86400 ELSE 0 END)) / 3600.0, 1) AS hours,
+            const pick = async (days) => (await db.all(`SELECT * FROM (
+                    SELECT u.id, u.username, u.display_name, u.avatar_url, u.profile_color, MAX(s.started_at) AS last_live_at, COUNT(s.id) AS sessions,
+                    ROUND(SUM(COALESCE(s.duration_seconds, CASE WHEN s.ended_at IS NOT NULL THEN (julianday(s.ended_at) - julianday(s.started_at)) * 86400 ELSE 0 END)) / 3600.0, 1)::float8 AS hours,
                     (SELECT COUNT(*) FROM follows f WHERE f.streamer_id = u.id) AS followers,
                     (SELECT COALESCE(ch.ai_category, ch.category) FROM channels ch WHERE ch.user_id = u.id) AS category
                 FROM streams s JOIN users u ON u.id = s.user_id
-                WHERE s.started_at >= datetime('now', ?) AND COALESCE(u.is_banned, 0) = 0 AND u.id != COALESCE(?, -1)
-                GROUP BY u.id HAVING hours >= 0.25 OR sessions >= 2
-                ORDER BY last_live_at DESC LIMIT 40`, [`-${days} days`, exclude]) || []);
-            let rows = pick(14);
-            if (rows.length < 3) rows = pick(30);
+                WHERE s.started_at >= datetime('now', ?) AND COALESCE(u.is_banned, 0) = 0 AND u.id != COALESCE(?::bigint, -1)
+                GROUP BY u.id
+                ) sub WHERE sub.hours >= 0.25 OR sub.sessions >= 2
+                ORDER BY sub.last_live_at DESC LIMIT 40`, [`-${days} days`, exclude]) || []);
+            let rows = await pick(14);
+            if (rows.length < 3) rows = await pick(30);
             const score = (r) => (live.some(l => l.user_id === r.id) ? 1000 : 0)
                 + Number(r.hours || 0) * 2 + Math.min(Number(r.sessions || 0), 10)
                 + Math.min(Number(r.followers || 0), 50) * 0.2
@@ -566,10 +575,10 @@ router.post('/star/rotate', requireAuth, async (req, res) => {
 
 // Sample the live viewer total every 5 minutes for the hero sparkline.
 let _samplerTimer = null;
-function startViewerSampler() {
+async function startViewerSampler() {
     if (_samplerTimer) return;
-    try { db.recordViewerSample(); } catch { /* */ }
-    _samplerTimer = setInterval(() => { try { db.recordViewerSample(); } catch { /* */ } }, 5 * 60 * 1000);
+    try { await db.recordViewerSample(); } catch { /* */ }
+    _samplerTimer = setInterval(async () => { try { await db.recordViewerSample(); } catch { /* */ } }, 5 * 60 * 1000);
     if (_samplerTimer.unref) _samplerTimer.unref();
     console.log('[Home] viewer sampler started (5m)');
 }

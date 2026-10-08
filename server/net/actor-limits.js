@@ -61,23 +61,26 @@ function createLiveActorLimits({ env = process.env, registry = null, now } = {})
     }
     const auth = require('../auth/auth');
     /** The person behind the request's token, without failing it (requireAuth still decides later). */
-    function actor(req) {
+    async function resolveActor(req) {
         const token = auth.extractToken(req);
         if (!token) return null;
         try {
             if (String(token).startsWith('hbt_')) {
-                const u = auth.authenticateApiToken(token);
+                const u = await auth.authenticateApiToken(token);
                 return u ? `user:${u.subject_id || u.id}` : null;
             }
-            const d = auth.verifyToken(token);
+            const d = await auth.verifyToken(token);
             if (!d) return null;
             const subject = d.subject_id || d.sub_subject || (typeof d.sub === 'string' && d.sub.startsWith('usr_') ? d.sub : null);
             return subject ? `user:${subject}` : (d.sub != null ? `user:${d.sub}` : null);
         } catch { return null; }
     }
+    // openvibe-sdk's createActorLimiter reads its `actor` synchronously (it does not await it), so the
+    // actor is resolved over the request's await in the middleware below and handed over through here.
+    const resolved = new WeakMap();
     const limits = createActorLimiter({
         limits: { minute: num(env.LIVE_LIMITS_MINUTE, 120), hour: num(env.LIVE_LIMITS_HOUR, 3000) },
-        actor,
+        actor: (req) => resolved.get(req) || null,
         ...(now ? { now } : {}),
         onLimited(e) {
             console.warn(`[Limits] ${e.name}: ${e.actor} refused, over ${e.limit} per ${e.window}`);
@@ -87,10 +90,11 @@ function createLiveActorLimits({ env = process.env, registry = null, now } = {})
     const write = limits('live.api.write');
     const named = ROUTES.map(([name, method, pathRe, own]) => ({ name, method, pathRe, mw: limits(name, own) }));
     const WRITE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-    function middleware(req, res, next) {
+    async function middleware(req, res, next) {
         if (!WRITE.has(req.method)) return next();
         const p = req.path;   // relative to the /api mount
         if (EXEMPT.some((re) => re.test(p))) return next();
+        try { const who = await resolveActor(req); if (who != null) resolved.set(req, who); } catch { /* signed out */ }
         const own = named.find((r) => r.method.test(req.method) && r.pathRe.test(p));
         // A named route counts against its own numbers AND the general write budget.
         return write(req, res, (err) => (err ? next(err) : own ? own.mw(req, res, next) : next()));

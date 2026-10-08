@@ -23,21 +23,21 @@ const STATE_KEY = 'star_pick';
 
 let _timer = null, _busy = false;
 
-function loadPick() {
-    try { const s = db.getState(STATE_KEY); const o = typeof s === 'string' ? JSON.parse(s) : s; if (o && typeof o === 'object') return o; } catch { /* */ }
+async function loadPick() {
+    try { const s = await db.getState(STATE_KEY); const o = typeof s === 'string' ? JSON.parse(s) : s; if (o && typeof o === 'object') return o; } catch { /* */ }
     return null;
 }
-function pinned() { try { return String(db.getSetting('star_streamer_pinned') || '').trim(); } catch { return ''; } }
+async function pinned() { try { return String(await db.getSetting('star_streamer_pinned') || '').trim(); } catch { return ''; } }
 
 /** Everyone who streamed recently, with the numbers the picker looks at. */
 async function candidates() {
     const sinceMs = Date.now() - CANDIDATE_DAYS * 86400000;
-    const rows = db.all(`
+    const rows = await db.all(`
         SELECT u.id, u.username, u.display_name, u.bio,
                COUNT(s.id) AS sessions,
-               ROUND(SUM(COALESCE(s.duration_seconds, CASE WHEN s.ended_at IS NOT NULL THEN (julianday(s.ended_at) - julianday(s.started_at)) * 86400 ELSE 0 END)) / 3600.0, 1) AS hours,
+               ROUND(SUM(COALESCE(s.duration_seconds, CASE WHEN s.ended_at IS NOT NULL THEN (julianday(s.ended_at) - julianday(s.started_at)) * 86400 ELSE 0 END)) / 3600.0, 1)::float8 AS hours,
                MAX(COALESCE(s.peak_viewers, 0)) AS peak_viewers,
-               ROUND(AVG(COALESCE(s.peak_viewers, 0)), 1) AS avg_peak,
+               ROUND(AVG(COALESCE(s.peak_viewers, 0)), 1)::float8 AS avg_peak,
                MAX(s.started_at) AS last_live_at,
                (SELECT COUNT(*) FROM follows f WHERE f.streamer_id = u.id AND f.created_at >= datetime('now', ?)) AS new_followers,
                (SELECT COUNT(*) FROM follows f WHERE f.streamer_id = u.id) AS followers,
@@ -92,8 +92,8 @@ async function aiPick(cands, exclude, previous) {
 /** Pick a new star now (force) or when the current one has had its day. */
 async function rotate({ force = false } = {}) {
     if (_busy) return { busy: true };
-    if (pinned()) return { pinned: pinned() };
-    const cur = loadPick();
+    if (await pinned()) return { pinned: await pinned() };
+    const cur = await loadPick();
     const now = Date.now();
     if (!force && cur && cur.next_at && now < Number(cur.next_at)) return { current: cur.username, next_at: cur.next_at };
     _busy = true;
@@ -102,7 +102,7 @@ async function rotate({ force = false } = {}) {
         if (!cands.length) return { none: true };
         // Recent stars (and whatever the setting / env currently holds) are ineligible.
         const history = Array.isArray(cur && cur.history) ? cur.history.slice() : [];
-        let currentName = ''; try { currentName = String(db.getSetting('star_streamer') || require('../config').starStreamer || '').trim(); } catch { /* */ }
+        let currentName = ''; try { currentName = String(await db.getSetting('star_streamer') || require('../config').starStreamer || '').trim(); } catch { /* */ }
         if (currentName && !history.includes(currentName)) history.push(currentName);
         const exclude = new Set(history.slice(-HISTORY_KEEP).map(s => String(s).toLowerCase()));
         let by = 'ai';
@@ -115,8 +115,8 @@ async function rotate({ force = false } = {}) {
         }
         const nextHistory = history.filter(h => h.toLowerCase() !== pick.cand.username.toLowerCase()).concat(pick.cand.username).slice(-12);
         const state = { username: pick.cand.username, headline: pick.headline, reason: pick.reason, picked_at: now, next_at: now + ROTATE_MS, by, history: nextHistory };
-        db.setState(STATE_KEY, JSON.stringify(state));
-        db.setSetting('star_streamer', pick.cand.username);
+        await db.setState(STATE_KEY, JSON.stringify(state));
+        await db.setSetting('star_streamer', pick.cand.username);
         console.log(`[Star] ${pick.cand.username} is the Star of OpenVibe for the next 24h (${by})${pick.headline ? ` — ${pick.headline}` : ''}`);
         return { picked: pick.cand.username, by };
     } catch (e) {

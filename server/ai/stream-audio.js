@@ -22,9 +22,9 @@ function tmpWav(streamId) {
     return path.join(os.tmpdir(), `openvibe-aihear-${streamId}-${Date.now()}.wav`);
 }
 
-function resolveStreamKey(stream) {
+async function resolveStreamKey(stream) {
     if (stream.managed_stream_key) return stream.managed_stream_key;
-    try { return db.getUserById(stream.user_id)?.stream_key || null; } catch { return null; }
+    try { return (await db.getUserById(stream.user_id))?.stream_key || null; } catch { return null; }
 }
 
 function runFfmpeg(args, killMs) {
@@ -39,7 +39,7 @@ function runFfmpeg(args, killMs) {
 }
 
 async function captureRtmp(stream, seconds) {
-    const streamKey = resolveStreamKey(stream);
+    const streamKey = await resolveStreamKey(stream);
     if (!streamKey) return null;
     const out = tmpWav(stream.id);
     const url = `http://127.0.0.1:${FLV_PORT}/live/${streamKey}.flv`;
@@ -269,7 +269,7 @@ async function startContinuousCapture(stream) {
         inputArgs = [...SDP_INPUT_ARGS, '-i', src.sdpPath];
         cleanup = src.cleanup;
     } else {
-        const streamKey = resolveStreamKey(stream);
+        const streamKey = await resolveStreamKey(stream);
         if (!streamKey) return false;
         inputArgs = ['-thread_queue_size', '2048', '-i', `http://127.0.0.1:${FLV_PORT}/live/${streamKey}.flv`];
     }

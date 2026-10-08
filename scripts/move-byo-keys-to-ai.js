@@ -13,7 +13,7 @@ const db = require('../server/db/database');
 const byo = require('../server/ai/byo-credentials');
 
 (async () => {
-    const rows = db.getDb().prepare("SELECT user_id FROM channel_ai_config WHERE byo_key IS NOT NULL AND TRIM(byo_key) != '' ORDER BY user_id").all();
+    const rows = await db.getDb().prepare("SELECT user_id FROM channel_ai_config WHERE byo_key IS NOT NULL AND TRIM(byo_key) != '' ORDER BY user_id").all();
     let moved = 0; let failed = 0;
     for (const { user_id: userId } of rows) {
         const out = await byo.moveLocal(userId);

@@ -7,6 +7,7 @@
  */
 const db = require('../db/database');
 const config = require('../config');
+const { assertLiveLedger } = require('./money-authority');
 
 class CommunityFunds {
     /**
@@ -15,23 +16,18 @@ class CommunityFunds {
      * @param {number} amount - Number of Vibes to purchase
      * @param {string} paypalTxId - PayPal transaction ID
      */
-    purchase(userId, amount, paypalTxId) {
-        const tx = db.createTransaction({
-            from_user_id: null,
-            to_user_id: userId,
-            amount,
-            type: 'purchase',
-            status: 'completed',
-            message: `Purchased ${amount} Vibes`,
-        });
+    async purchase(userId, amount, paypalTxId) {
+        assertLiveLedger('transactions insert');
+        const tx = await db.run(`INSERT INTO transactions (from_user_id, to_user_id, amount, type, status, message)
+            VALUES (NULL, ?, ?, 'purchase', 'completed', ?) RETURNING id`, [userId, amount, `Purchased ${amount} Vibes`]);
 
         // Update PayPal reference
         if (paypalTxId) {
-            db.run('UPDATE transactions SET paypal_transaction_id = ? WHERE id = ?',
+            await db.run('UPDATE transactions SET paypal_transaction_id = ? WHERE id = ?',
                 [paypalTxId, tx.lastInsertRowid]);
         }
 
-        db.addVibes(userId, amount);
+        await db.addVibes(userId, amount);
         return tx;
     }
 
@@ -43,19 +39,19 @@ class CommunityFunds {
      * @param {number} amount - Vibes to donate
      * @param {string} message - Donation message
      */
-    donate(fromUserId, toUserId, streamId, amount, message) {
+    async donate(fromUserId, toUserId, streamId, amount, message) {
         if (amount <= 0) throw new Error('Amount must be positive');
 
         // Deduct from donor
-        if (!db.deductVibes(fromUserId, amount)) {
+        if (!await db.deductVibes(fromUserId, amount)) {
             throw new Error('Insufficient Vibes');
         }
 
         // Credit streamer (held in their balance)
-        db.addVibes(toUserId, amount);
+        await db.addVibes(toUserId, amount);
 
         // Record transaction
-        db.createTransaction({
+        await db.createTransaction({
             from_user_id: fromUserId,
             to_user_id: toUserId,
             stream_id: streamId,
@@ -66,7 +62,7 @@ class CommunityFunds {
         });
 
         // Update donation goals
-        this.updateGoals(toUserId, amount);
+        await this.updateGoals(toUserId, amount);
 
         return { success: true, amount };
     }
@@ -74,19 +70,19 @@ class CommunityFunds {
     /**
      * Update active donation goals for a user
      */
-    updateGoals(userId, amount) {
-        const goals = db.all(
+    async updateGoals(userId, amount) {
+        const goals = await db.all(
             'SELECT * FROM donation_goals WHERE user_id = ? AND is_active = 1 ORDER BY created_at',
             [userId]
         );
 
         for (const goal of goals) {
             const newAmount = Math.min(goal.current_amount + amount, goal.target_amount);
-            db.run('UPDATE donation_goals SET current_amount = ? WHERE id = ?',
+            await db.run('UPDATE donation_goals SET current_amount = ? WHERE id = ?',
                 [newAmount, goal.id]);
 
             if (newAmount >= goal.target_amount) {
-                db.run('UPDATE donation_goals SET is_active = 0 WHERE id = ?', [goal.id]);
+                await db.run('UPDATE donation_goals SET is_active = 0 WHERE id = ?', [goal.id]);
             }
         }
     }
@@ -94,23 +90,18 @@ class CommunityFunds {
     /**
      * Request cashout (goes to escrow for admin review)
      */
-    requestCashout(userId, amount, paypalEmail) {
+    async requestCashout(userId, amount, paypalEmail) {
+        assertLiveLedger('transactions insert');
         if (amount < config.openvibeBucks.minCashoutBucks) {
             throw new Error(`Minimum cashout is ${config.openvibeBucks.minCashoutBucks.toLocaleString()} Vibes`);
         }
 
-        if (!db.deductVibes(userId, amount)) {
+        if (!await db.deductVibes(userId, amount)) {
             throw new Error('Insufficient Vibes');
         }
 
-        const tx = db.createTransaction({
-            from_user_id: userId,
-            to_user_id: null,
-            amount,
-            type: 'cashout',
-            status: 'escrow',
-            message: `Cashout to PayPal: ${paypalEmail}`,
-        });
+        const tx = await db.run(`INSERT INTO transactions (from_user_id, to_user_id, amount, type, status, message)
+            VALUES (?, NULL, ?, 'cashout', 'escrow', ?) RETURNING id`, [userId, amount, `Cashout to PayPal: ${paypalEmail}`]);
 
         return {
             transaction_id: tx.lastInsertRowid,
@@ -124,26 +115,26 @@ class CommunityFunds {
     /**
      * Admin: Approve a cashout (release from escrow)
      */
-    approveCashout(transactionId) {
-        const tx = db.get('SELECT * FROM transactions WHERE id = ? AND status = ?',
+    async approveCashout(transactionId) {
+        const tx = await db.get('SELECT * FROM transactions WHERE id = ? AND status = ?',
             [transactionId, 'escrow']);
         if (!tx) throw new Error('Transaction not found or not in escrow');
 
-        db.run('UPDATE transactions SET status = ? WHERE id = ?', ['completed', transactionId]);
+        await db.run('UPDATE transactions SET status = ? WHERE id = ?', ['completed', transactionId]);
         return tx;
     }
 
     /**
      * Admin: Deny a cashout (refund to user)
      */
-    denyCashout(transactionId, reason) {
-        const tx = db.get('SELECT * FROM transactions WHERE id = ? AND status = ?',
+    async denyCashout(transactionId, reason) {
+        const tx = await db.get('SELECT * FROM transactions WHERE id = ? AND status = ?',
             [transactionId, 'escrow']);
         if (!tx) throw new Error('Transaction not found or not in escrow');
 
         // Refund the amount
-        db.addVibes(tx.from_user_id, tx.amount);
-        db.run('UPDATE transactions SET status = ? WHERE id = ?', ['refunded', transactionId]);
+        await db.addVibes(tx.from_user_id, tx.amount);
+        await db.run('UPDATE transactions SET status = ? WHERE id = ?', ['refunded', transactionId]);
 
         return tx;
     }
@@ -151,8 +142,8 @@ class CommunityFunds {
     /**
      * Get user's transaction history
      */
-    getHistory(userId, limit = 50) {
-        return db.all(`
+    async getHistory(userId, limit = 50) {
+        return await db.all(`
             SELECT * FROM transactions
             WHERE from_user_id = ? OR to_user_id = ?
             ORDER BY created_at DESC LIMIT ?
@@ -162,14 +153,14 @@ class CommunityFunds {
     /**
      * Get donation leaderboard for a stream
      */
-    getLeaderboard(streamId, limit = 10) {
-        return db.all(`
+    async getLeaderboard(streamId, limit = 10) {
+        return await db.all(`
             SELECT from_user_id, u.username, u.display_name, u.avatar_url,
-                   SUM(amount) as total_donated
+                   SUM(amount)::bigint as total_donated
             FROM transactions t
             JOIN users u ON t.from_user_id = u.id
             WHERE t.stream_id = ? AND t.type = 'donation' AND t.status = 'completed'
-            GROUP BY from_user_id
+            GROUP BY from_user_id, u.id
             ORDER BY total_donated DESC
             LIMIT ?
         `, [streamId, limit]);
@@ -178,8 +169,8 @@ class CommunityFunds {
     /**
      * Get active donation goals for a user
      */
-    getGoals(userId) {
-        return db.all(
+    async getGoals(userId) {
+        return await db.all(
             'SELECT * FROM donation_goals WHERE user_id = ? AND is_active = 1 ORDER BY created_at',
             [userId]
         );
@@ -188,8 +179,8 @@ class CommunityFunds {
     /**
      * Create a donation goal
      */
-    createGoal(userId, title, targetAmount) {
-        return db.run(
+    async createGoal(userId, title, targetAmount) {
+        return await db.run(
             'INSERT INTO donation_goals (user_id, title, target_amount) VALUES (?, ?, ?)',
             [userId, title, targetAmount]
         );

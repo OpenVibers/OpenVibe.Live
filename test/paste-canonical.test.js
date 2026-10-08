@@ -16,12 +16,9 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
 
-const tmp = path.join(os.tmpdir(), `ov-paste-canonical-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
 process.env.OV_COMMUNITY_URL = 'https://openvibe.community';
 const quiet = console.log;
@@ -29,7 +26,6 @@ console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 console.warn = () => {};
 
 const db = require('../server/db/database');
-db.initDb();
 
 const media = require('../server/media-client');
 media.listVods = async () => ({ vods: [] });
@@ -67,7 +63,10 @@ async function check(name, fn) {
     catch (e) { failures++; quiet('  ✗', name, '\n     ', e.message); }
 }
 
-const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
+async function main() {
+    await db.initDb();
+    const server = http.createServer(app);
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
     base = `http://127.0.0.1:${server.address().port}`;
     quiet('Paste canonical split');
 
@@ -137,13 +136,13 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         const meta = '<meta name="ov-pastes-base" content="https://openvibe.community">';
         assert.ok(seo.render(await seo._pageMeta('/pastes'), '/pastes').includes(meta), 'SEO pages name the Community base');
         for (const [p, status] of [['/dashboard', 200], ['/no-such-page', 404]]) {
-            assert.ok(String(seo.shellHtml(p, status)).includes(meta), `${p} shell names the Community base`);
+            assert.ok((await seo.shellHtml(p, status)).includes(meta), `${p} shell names the Community base`);
         }
     });
 
     server.close();
-    try { fs.unlinkSync(tmp); } catch { /* */ }
-    for (const ext of ['-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
     quiet(failures ? `\n${failures} check(s) failed` : '\npaste canonical: all checks passed');
     process.exit(failures ? 1 : 0);
-});
+}
+
+main().catch((err) => { console.error(err); process.exitCode = 1; });

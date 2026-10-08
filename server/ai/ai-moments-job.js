@@ -31,8 +31,8 @@ const TARGET = 4;
 const SETTING = 'home_hero_moments';
 let _busy = false;
 
-function _load() { try { return JSON.parse(db.getState(SETTING) || '{}') || {}; } catch { return {}; } }
-function _due() { const p = _load(); return !p.updated_at || (Date.now() - p.updated_at) >= INTERVAL_MS; }
+async function _load() { try { return JSON.parse(await db.getState(SETTING) || '{}') || {}; } catch { return {}; } }
+async function _due() { const p = await _load(); return !p.updated_at || (Date.now() - p.updated_at) >= INTERVAL_MS; }
 
 const _ADJ = ['wild', 'epic', 'cursed', 'feral', 'unhinged', 'chaotic', 'legendary', 'peak', 'rogue', 'hazy', 'unreal', 'prime'];
 const _NOUN = ['moment', 'clip', 'frame', 'scene', 'vibe', 'snippet', 'flash', 'glimpse', 'beat', 'take'];
@@ -40,7 +40,7 @@ function _slug() {
     const r = a => a[Math.floor(Math.random() * a.length)];
     return `${r(_ADJ)}-${r(_NOUN)}-${Math.floor(1000 + Math.random() * 9000)}`;
 }
-function _aiOn() { return !!(ai.isEnabled && ai.isEnabled() && ai.withinBudget && ai.withinBudget()); }
+async function _aiOn() { return !!(ai.isEnabled && await ai.isEnabled() && ai.withinBudget && await ai.withinBudget()); }
 function _mmss(sec) { sec = Math.max(0, Math.floor(sec || 0)); const m = Math.floor(sec / 60), s = sec % 60; return `${m}:${String(s).padStart(2, '0')}`; }
 function _cleanText(t, max) { return String(t || '').replace(/\s+/g, ' ').trim().slice(0, max || 400); }
 function _cleanTitle(t) { return String(t || '').replace(/^["'\s]+|["'\s]+$/g, '').replace(/\s+/g, ' ').slice(0, 80); }
@@ -86,9 +86,9 @@ async function _scoreVodChunk(chunk, want) {
 const RANK_TTL_MS = 7 * 24 * 3600_000;
 let _rankCacheOut = {};
 async function _rankVods(vods, want) {
-    if (!_aiOn() || vods.length <= 1) return vods.map(v => ({ vod: v }));
+    if (!await _aiOn() || vods.length <= 1) return vods.map(v => ({ vod: v }));
     const CH = 25;
-    const cache = _load().rankCache || {};
+    const cache = (await _load()).rankCache || {};
     const now = Date.now();
     const fresh = [], stale = [];
     for (const v of vods) { const c = cache[v.vod_id]; if (c && now - (c.at || 0) < RANK_TTL_MS) fresh.push({ vod: v, score: c.score, why: c.why }); else stale.push(v); }
@@ -102,7 +102,7 @@ async function _rankVods(vods, want) {
     return vods.map(v => ({ vod: v }));
 }
 async function _rankVodsUncached(vods, want) {
-    if (!_aiOn() || vods.length <= 1) return vods.map(v => ({ vod: v }));
+    if (!await _aiOn() || vods.length <= 1) return vods.map(v => ({ vod: v }));
     const CH = 25;
     if (vods.length <= CH) {
         const r = await _scoreVodChunk(vods, want);
@@ -131,18 +131,18 @@ function _sample(arr, max) {
     return out;
 }
 async function _momentContext(streamId, vodId) {
-    const memories = _sample((db.getStreamMemories(streamId) || []).filter(m => m.description), 45);
-    const transcript = _sample(db.getStreamTranscriptSegments(streamId) || [], 60);
+    const memories = _sample((await db.getStreamMemories(streamId) || []).filter(m => m.description), 45);
+    const transcript = _sample(await db.getStreamTranscriptSegments(streamId) || [], 60);
     // Where viewers clipped: the clips live in OpenVibe.Media.
     const clipTimes = await require('../media-proxy/lookups').clipStartTimes(streamId, vodId);
     // Chat's own buckets since the stream began (offsets are relative to started_at, as before).
-    const started = (() => { try { const r = db.get('SELECT started_at FROM streams WHERE id = ?', [streamId]); return r && r.started_at ? Date.parse(String(r.started_at).replace(' ', 'T') + 'Z') : 0; } catch { return 0; } })();
+    const started = await (async () => { try { const r = await db.get('SELECT started_at FROM streams WHERE id = ?', [streamId]); return r && r.started_at ? Date.parse(String(r.started_at).replace(' ', 'T') + 'Z') : 0; } catch { return 0; } })();
     const spikes = started > 0 ? (await chatReads.spikeOffsets(streamId, 30, 8, started) || []) : [];
     // Non-speech sounds are strong moment candidates — an explosion or a burst of
     // laughter marks a highlight as reliably as anything said out loud.
     let sounds = [];
     try {
-        sounds = _sample((db.getTimeline(streamId, { kind: 'sound', limit: 400 }) || [])
+        sounds = _sample((await db.getTimeline(streamId, { kind: 'sound', limit: 400 }) || [])
             .filter(e => Number(e.confidence || 0) >= 0.45), 30);
     } catch { /* timeline optional */ }
     return { memories, transcript, clipTimes, spikes, sounds };
@@ -157,12 +157,12 @@ function _nearestMemory(memories, offset) {
 async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
     const dur = Math.floor(vod.duration || 0);
     const ctx = await _momentContext(vod.stream_id, vod.vod_id);
-    const avoidList = [...new Set([...(avoid || []), ...registry.usedOffsets(vod.vod_id, vod.stream_id)])].sort((a, b) => a - b);
+    const avoidList = [...new Set([...(avoid || []), ...await registry.usedOffsets(vod.vod_id, vod.stream_id)])].sort((a, b) => a - b);
     const farFromUsed = (t) => avoidList.every(a => Math.abs(a - t) >= registry.GAP_SEC);
     if (!ctx.memories.length && !ctx.transcript.length) return null;
     const clamp = (t) => Math.max(1, Math.min(Math.floor(t || 0), dur > 3 ? dur - 2 : (t || 0)));
 
-    if (_aiOn()) {
+    if (await _aiOn()) {
         // The prompt is OpenVibe.AI's versioned template live.moments.pick (WS-O task 2); Live sends what it knows.
         const secs = (v) => Math.max(0, Number(v) || 0);
         const input = {
@@ -245,14 +245,18 @@ async function _momentPool(limit) {
     try {
         const r = await media.listVods({ limit, order: 'views' });
         // A channel that turned AI Moments off (channels.ai_derivation_enabled) is never picked from.
-        const rows = (r?.vods || (Array.isArray(r) ? r : [])).filter((v) => { try { return db.isAiDerivationEnabled(v.user_id); } catch { return true; } });
+        const rows = [];
+        for (const v of r?.vods || (Array.isArray(r) ? r : [])) {
+            try { if (await db.isAiDerivationEnabled(v.user_id)) rows.push(v); }
+            catch { rows.push(v); }
+        }
         if (rows.length) {
-            return rows.map((v) => {
-                const state = (db.getVodAiState && db.getVodAiState(v.id)) || {};
+            return (await Promise.all(rows.map(async (v) => {
+                const state = (db.getVodAiState && await db.getVodAiState(v.id)) || {};
                 let memory_count = 0, peak_viewers = 0;
                 if (v.stream_id) {
-                    try { memory_count = db.get('SELECT COUNT(*) AS c FROM stream_memories WHERE stream_id = ?', [v.stream_id])?.c || 0; } catch { /* */ }
-                    try { peak_viewers = db.getStreamById(v.stream_id)?.peak_viewers || 0; } catch { /* */ }
+                    try { memory_count = (await db.get('SELECT COUNT(*) AS c FROM stream_memories WHERE stream_id = ?', [v.stream_id]))?.c || 0; } catch { /* */ }
+                    try { peak_viewers = (await db.getStreamById(v.stream_id))?.peak_viewers || 0; } catch { /* */ }
                 }
                 return {
                     vod_id: v.id, stream_id: v.stream_id || null, user_id: v.user_id || null,
@@ -265,7 +269,7 @@ async function _momentPool(limit) {
                     clip_count: Number(v.clip_count) || 0,
                     memory_count,
                 };
-            });
+            })));
         }
     } catch { /* Media down */ }
     return [];
@@ -274,14 +278,14 @@ async function _momentPool(limit) {
 async function tick(opts = {}) {
     // opts: { force } bypass the daily gate, { fresh } ignore the recently-used log,
     // { target } how many moments, { vodPool } how many VODs to consider, { perUser } cap.
-    if (_busy || (!opts.force && !_due())) return;
+    if (_busy || (!opts.force && !await _due())) return;
     const TARGET_N = Math.max(1, opts.target || TARGET);
     const VOD_POOL = Math.max(TARGET_N, opts.vodPool || 120);
     const perUser = Math.max(1, opts.perUser || 1);
     const ignoreUsed = !!opts.fresh;
     _busy = true;
     try {
-        const prev = _load();
+        const prev = await _load();
         const usedVods = new Set(ignoreUsed ? [] : (prev.usedVods || []));
         // Content-signature dedup: even different VODs from the same streamer (same setup) yield
         // near-identical scenes → we skip a moment whose description signature was used recently,
@@ -329,7 +333,7 @@ async function tick(opts = {}) {
             if (!moment) continue;
             // Skip near-duplicate scenes / spots — the registry is shared with the clip job.
             const sig = _sig(moment.desc || v.ai_overview_short || v.title);
-            const why0 = registry.usedReason({ vod_id: v.vod_id, stream_id: v.stream_id, offset: moment.offset, sig });
+            const why0 = await registry.usedReason({ vod_id: v.vod_id, stream_id: v.stream_id, offset: moment.offset, sig });
             if (why0 || (sig && thisSigs.has(sig))) {
                 console.log(`[AI-Moments] Skipped VOD ${v.vod_id} — ${why0 || `duplicate scene ("${sig}")`}`);
                 continue;
@@ -364,7 +368,7 @@ async function tick(opts = {}) {
                         screenshotPath = outPath;
                         // Vision-verify the ACTUAL extracted frame → most accurate description +
                         // tags, and it confirms we didn't grab a black/loading screen.
-                        if (_aiOn() && ai.analyzeImagePaste) {
+                        if (await _aiOn() && ai.analyzeImagePaste) {
                             try {
                                 const vis = await ai.analyzeImagePaste(outPath, title, 'moment_frame');
                                 if (vis && vis.description && vis.description.length > 25) {
@@ -396,7 +400,7 @@ async function tick(opts = {}) {
             // Re-check the signature against the FINAL (vision-verified) description — this is
             // what actually catches same-scene duplicates (e.g. a split-image close-up re-picked).
             const finalSig = _sig(desc);
-            if (finalSig && finalSig !== sig && (registry.isUsed({ sig: finalSig }) || thisSigs.has(finalSig))) {
+            if (finalSig && finalSig !== sig && (await registry.isUsed({ sig: finalSig }) || thisSigs.has(finalSig))) {
                 console.log(`[AI-Moments] Skipped VOD ${v.vod_id} — duplicate scene after vision ("${finalSig}")`);
                 continue;
             }
@@ -435,14 +439,14 @@ async function tick(opts = {}) {
             try { fs.unlinkSync(screenshotPath); } catch { /* tmp frame */ }
 
             moments.push({ vodId: v.vod_id, offset, title: title.slice(0, 80), thumbnail: img, username: v.username, pasteSlug });
-            registry.record({ kind: 'paste', vod_id: v.vod_id, stream_id: v.stream_id, offset, sig: finalSig || sig, title });
+            await registry.record({ kind: 'paste', vod_id: v.vod_id, stream_id: v.stream_id, offset, sig: finalSig || sig, title });
 
             // Also cut a VOD clip from the SAME VOD — but a DIFFERENT beat (clip flavor, ≥ 2 min away),
             // so the clip and the paste never show the identical second with the identical title.
             if (opts.clip !== false && momentSource) {
                 try {
                     const second = await _findBestMoment(v, { flavor: 'clip', avoid: [offset] });
-                    if (second && !registry.isUsed({ vod_id: v.vod_id, stream_id: v.stream_id, offset: second.offset, desc: second.desc, title: second.title })) {
+                    if (second && !await registry.isUsed({ vod_id: v.vod_id, stream_id: v.stream_id, offset: second.offset, desc: second.desc, title: second.title })) {
                         const clip = await require('./auto-clip-job').clipVodMoment({ vod: v, offset: second.offset, title: second.title, desc: second.desc, source: momentSource });
                         if (clip) console.log(`[AI-Moments] Auto-clip cut for VOD ${v.vod_id} at ${_mmss(second.offset)} ("${String(second.title || '').slice(0, 60)}") — paste was at ${_mmss(offset)}`);
                     } else console.log(`[AI-Moments] VOD ${v.vod_id}: no second, distinct beat for a clip — skipped`);
@@ -451,7 +455,7 @@ async function tick(opts = {}) {
         }
 
         const usedLog = [...newUsedVods, ...(prev.usedVods || [])].slice(0, 300);
-        db.setState(SETTING, JSON.stringify({ moments, usedVods: usedLog, rankCache: _rankCacheOut, updated_at: Date.now() }));
+        await db.setState(SETTING, JSON.stringify({ moments, usedVods: usedLog, rankCache: _rankCacheOut, updated_at: Date.now() }));
         console.log(`[AI-Moments] ${moments.length} moment(s) from ${chosen.length}/${totalEligible} ranked VODs + pastes created`);
     } catch (e) {
         console.warn('[AI-Moments] tick error:', e.message);
@@ -489,6 +493,6 @@ if (require.main === module) {
     };
     console.log('[AI-Moments] Manual run:', JSON.stringify(opts));
     tick(opts)
-        .then(() => { const p = _load(); console.log(`[AI-Moments] Done — ${(p.moments || []).length} moment(s) in the hero set.`); process.exit(0); })
+        .then(async () => { const p = await _load(); console.log(`[AI-Moments] Done — ${(p.moments || []).length} moment(s) in the hero set.`); process.exit(0); })
         .catch((e) => { console.error('[AI-Moments] Manual run failed:', e); process.exit(1); });
 }

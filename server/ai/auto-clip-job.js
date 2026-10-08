@@ -39,44 +39,44 @@ const CLIP_LOG_SETTING = 'auto_clip_log';   // rolling log of auto-clips (caps +
 let _timer = null;
 let _busy = false;
 
-function _aiOn() { return !!(ai.isEnabled && ai.isEnabled() && ai.withinBudget && ai.withinBudget()); }
+async function _aiOn() { return !!(ai.isEnabled && await ai.isEnabled() && ai.withinBudget && await ai.withinBudget()); }
 // A streamer can turn AI Moments off for their channel (channels.ai_derivation_enabled, dashboard
 // Home → AI Moments from my streams): nothing is cut from their streams, live or from VODs.
-function _derivationOn(userId) { try { return db.isAiDerivationEnabled(userId); } catch { return true; } }
+async function _derivationOn(userId) { try { return await db.isAiDerivationEnabled(userId); } catch { return true; } }
 function _clean(t, n) { return String(t || '').replace(/\s+/g, ' ').trim().slice(0, n || 300); }
 
 // ── Auto-clip log (replaces the old clips-table queries) ────
-function _clipLog() {
-    try { const l = JSON.parse(db.getState(CLIP_LOG_SETTING) || '[]'); return Array.isArray(l) ? l : []; }
+async function _clipLog() {
+    try { const l = JSON.parse(await db.getState(CLIP_LOG_SETTING) || '[]'); return Array.isArray(l) ? l : []; }
     catch { return []; }
 }
-function _logClip(entry) {
+async function _logClip(entry) {
     try {
-        const log = _clipLog();
+        const log = await _clipLog();
         log.unshift({ ...entry, ts: Date.now() });
-        db.setState(CLIP_LOG_SETTING, JSON.stringify(log.slice(0, 300)));
+        await db.setState(CLIP_LOG_SETTING, JSON.stringify(log.slice(0, 300)));
         // Shared with the paste job, so a paste never lands on a clipped second (and vice versa).
-        registry.record({ kind: 'clip', vod_id: entry.vod_id || null, stream_id: entry.stream_id || null, offset: (entry.start_time || 0) + CLIP_PRE, sig: entry.sig || null, title: entry.title || null });
+        await registry.record({ kind: 'clip', vod_id: entry.vod_id || null, stream_id: entry.stream_id || null, offset: (entry.start_time || 0) + CLIP_PRE, sig: entry.sig || null, title: entry.title || null });
     } catch { /* */ }
 }
-function _countClipsSince(streamId, minutes) {
+async function _countClipsSince(streamId, minutes) {
     const cutoff = Date.now() - minutes * 60_000;
-    return _clipLog().filter(e => e.stream_id === streamId && e.ts >= cutoff).length;
+    return (await _clipLog()).filter(e => e.stream_id === streamId && e.ts >= cutoff).length;
 }
 
 // AI confirmation for a live spike: given what was on screen / said / typed, is this a real
 // clip-worthy moment? Returns { clip, title, desc } (clip=false → skip).
 async function _confirmLiveMoment(stream) {
-    const memories = (db.getStreamMemories(stream.id) || []).filter(m => m.description).slice(-5);
-    const transcript = (db.getStreamTranscriptSegments(stream.id) || []).slice(-14);
+    const memories = (await db.getStreamMemories(stream.id) || []).filter(m => m.description).slice(-5);
+    const transcript = (await db.getStreamTranscriptSegments(stream.id) || []).slice(-14);
     const chat = await chatReads.recentChatText(stream.id, WINDOW_SEC, 40) || [];
-    if (!_aiOn()) return { clip: null }; // caller decides via the stricter no-AI threshold
+    if (!await _aiOn()) return { clip: null }; // caller decides via the stricter no-AI threshold
     // Sound events are a strong clip signal on their own — a burst of gunfire, an explosion or laughter is exactly
     // the kind of thing viewers clip, and it is often the reason chat spiked in the first place.
     let sounds = [];
     try {
         const since = Math.max(0, ((Date.now() - new Date(stream.started_at + 'Z').getTime()) / 1000) - WINDOW_SEC);
-        sounds = (db.getTimeline(stream.id, { kind: 'sound', from: since, limit: 40 }) || [])
+        sounds = (await db.getTimeline(stream.id, { kind: 'sound', from: since, limit: 40 }) || [])
             .filter(e => Number(e.confidence || 0) >= 0.4).slice(-12);
     } catch { /* timeline optional */ }
     // The decision rules are OpenVibe.AI's versioned template live.clips.confirm (WS-O task 2); Live sends what it saw,
@@ -96,11 +96,11 @@ async function _confirmLiveMoment(stream) {
 async function _checkLiveStream(stream) {
     const streamId = stream.id;
     try {
-        if (!_derivationOn(stream.user_id)) return;
-        if (db.isStreamClipRecordingEnabled && !db.isStreamClipRecordingEnabled(stream)) return;
+        if (!await _derivationOn(stream.user_id)) return;
+        if (db.isStreamClipRecordingEnabled && !await db.isStreamClipRecordingEnabled(stream)) return;
         // Hourly cap + min spacing.
-        if (_countClipsSince(streamId, 60) >= MAX_PER_HOUR) return;
-        if (_countClipsSince(streamId, MIN_SPACING_MIN) > 0) return;
+        if (await _countClipsSince(streamId, 60) >= MAX_PER_HOUR) return;
+        if (await _countClipsSince(streamId, MIN_SPACING_MIN) > 0) return;
 
         // The stream's active Media-side recording is the clip source.
         const rec = recorder.getActiveRecording(streamId);
@@ -142,7 +142,7 @@ async function _checkLiveStream(stream) {
         if (clip) {
             // deduplicated: Media handed back a clip someone already cut of this window. It stays in
             // the log for the caps, but it is theirs, not the AI's (syncAutoClipFlags skips it).
-            _logClip({ stream_id: streamId, vod_id: rec.vodId, start_time: start, title, clip_id: clip.id, dedup: !!clip.deduplicated || undefined, sig: _sceneSig(verdict.desc || title) });
+            await _logClip({ stream_id: streamId, vod_id: rec.vodId, start_time: start, title, clip_id: clip.id, dedup: !!clip.deduplicated || undefined, sig: _sceneSig(verdict.desc || title) });
             console.log(`[AutoClip] LIVE clip for stream ${streamId} @${Math.round(momentOffset)}s ("${title}") — spike ${peak.count} msgs`);
         }
     } catch (e) {
@@ -155,7 +155,7 @@ async function _tick() {
     _busy = true;
     try {
         let streams = [];
-        try { streams = db.getLiveStreams() || []; } catch { /* */ }
+        try { streams = await db.getLiveStreams() || []; } catch { /* */ }
         for (const s of streams) { await _checkLiveStream(s); } // serial → bounded Media load
     } finally { _busy = false; }
 }
@@ -167,8 +167,8 @@ const BACKFILL_SETTING = 'auto_clip_backfill';
 const BACKFILL_PER_RUN = 3;                       // a few historical clips…
 const BACKFILL_INTERVAL_MS = 6 * 60 * 60 * 1000;  // …every 6h (guarantees ≥1 clip / 6h)
 
-function _backfillDue() {
-    try { const p = JSON.parse(db.getState(BACKFILL_SETTING) || '{}'); return !p.updated_at || (Date.now() - p.updated_at) >= BACKFILL_INTERVAL_MS; }
+async function _backfillDue() {
+    try { const p = JSON.parse(await db.getState(BACKFILL_SETTING) || '{}'); return !p.updated_at || (Date.now() - p.updated_at) >= BACKFILL_INTERVAL_MS; }
     catch { return true; }
 }
 // Historical-backfill candidate pool: most-viewed public VODs from OpenVibe.Media
@@ -180,23 +180,24 @@ async function _backfillPool(limit) {
         const rows = r?.vods || (Array.isArray(r) ? r : []);
         if (rows.length) {
             const clipped = new Set();
-            for (const c of _clipLog()) { if (c.vod_id) clipped.add(c.vod_id); if (c.stream_id) clipped.add(`s${c.stream_id}`); }
-            return rows
-                .filter(v => v.stream_id && !clipped.has(v.id) && !clipped.has(`s${v.stream_id}`))
-                .filter(v => _derivationOn(v.user_id))
-                .filter(v => {
-                    try { return (db.get('SELECT COUNT(*) AS c FROM stream_memories WHERE stream_id = ?', [v.stream_id])?.c || 0) > 0; }
-                    catch { return false; }
-                })
-                .slice(0, limit)
-                .map(v => ({
+            for (const c of await _clipLog()) { if (c.vod_id) clipped.add(c.vod_id); if (c.stream_id) clipped.add(`s${c.stream_id}`); }
+            const candidates = [];
+            for (const v of rows) {
+                if (!v.stream_id || clipped.has(v.id) || clipped.has(`s${v.stream_id}`)) continue;
+                if (!await _derivationOn(v.user_id)) continue;
+                try {
+                    if ((await db.get('SELECT COUNT(*) AS c FROM stream_memories WHERE stream_id = ?', [v.stream_id]))?.c > 0) candidates.push(v);
+                } catch { /* skip an unreadable stream */ }
+                if (candidates.length >= limit) break;
+            }
+            return (await Promise.all(candidates.map(async v => ({
                     vod_id: v.id, stream_id: v.stream_id, user_id: v.user_id, username: v.username,
                     title: v.title || '',
-                    ai_overview: (db.getVodAiState && db.getVodAiState(v.id)?.ai_overview_short) || '',
-                    ai_overview_short: (db.getVodAiState && db.getVodAiState(v.id)?.ai_overview_short) || '',
+                    ai_overview: (db.getVodAiState && (await db.getVodAiState(v.id))?.ai_overview_short) || '',
+                    ai_overview_short: (db.getVodAiState && (await db.getVodAiState(v.id))?.ai_overview_short) || '',
                     duration: Number(v.duration_seconds ?? v.duration) || 0,
                     view_count: Number(v.view_count) || 0,
-                }));
+                }))));
         }
     } catch { /* Media down */ }
     return [];
@@ -216,9 +217,9 @@ async function _resolveVodSource(vodId) {
 // list of VODs we couldn't clip (media pruned / cut failed) so dead VODs don't block progress
 // or waste an AI call on every run.
 async function backfillVodClips({ limit = BACKFILL_PER_RUN, force = false } = {}) {
-    if (!force && !_backfillDue()) return 0;
+    if (!force && !await _backfillDue()) return 0;
     let prev = {};
-    try { prev = JSON.parse(db.getState(BACKFILL_SETTING) || '{}') || {}; } catch { /* */ }
+    try { prev = JSON.parse(await db.getState(BACKFILL_SETTING) || '{}') || {}; } catch { /* */ }
     const skip = new Set(prev.skip || []);
     const moments = require('./ai-moments-job');
     // Over-fetch so skipped/dead VODs don't starve a batch.
@@ -231,7 +232,7 @@ async function backfillVodClips({ limit = BACKFILL_PER_RUN, force = false } = {}
             const source = await _resolveVodSource(v.vod_id);
             if (!source) { newSkip.push(v.vod_id); continue; } // media gone / unreadable
             // Clip flavor (a beat, not a frame) and never within 2 min of a moment a paste already used.
-            const moment = await moments.findBestMoment(v, { flavor: 'clip', avoid: registry.usedOffsets(v.vod_id, v.stream_id) });
+            const moment = await moments.findBestMoment(v, { flavor: 'clip', avoid: await registry.usedOffsets(v.vod_id, v.stream_id) });
             if (!moment) { newSkip.push(v.vod_id); continue; }
             // Pixel backstop: don't clip a black/empty frame.
             try {
@@ -249,7 +250,7 @@ async function backfillVodClips({ limit = BACKFILL_PER_RUN, force = false } = {}
         } catch (e) { newSkip.push(v.vod_id); console.warn(`[AutoClip] backfill VOD ${v.vod_id} failed:`, e.message); }
     }
     const mergedSkip = [...new Set([...(prev.skip || []), ...newSkip])].slice(-2000);
-    try { db.setState(BACKFILL_SETTING, JSON.stringify({ updated_at: Date.now(), lastMade: made, skip: mergedSkip })); } catch { /* */ }
+    try { await db.setState(BACKFILL_SETTING, JSON.stringify({ updated_at: Date.now(), lastMade: made, skip: mergedSkip })); } catch { /* */ }
     if (made || newSkip.length) console.log(`[AutoClip] Historical backfill: ${made} clip(s) added, ${newSkip.length} VOD(s) skipped (unclippable)`);
     return made;
 }
@@ -263,10 +264,10 @@ function _sceneSig(text) {
 }
 // True if a recent auto-clip is basically the same as (vod, offset, scene) we're about to cut —
 // same VOD spot, or a near-identical scene signature (same streamer's repeated intro/setup).
-function _isDuplicateAutoClip(vod, offset, desc, title) {
+async function _isDuplicateAutoClip(vod, offset, desc, title) {
     try {
         const vId = vod.vod_id || vod.id;
-        const why = registry.usedReason({ vod_id: vId, stream_id: vod.stream_id, offset: Math.floor(offset), sig: _sceneSig(desc || title) });
+        const why = await registry.usedReason({ vod_id: vId, stream_id: vod.stream_id, offset: Math.floor(offset), sig: _sceneSig(desc || title) });
         if (why) { console.log(`[AutoClip] VOD ${vId}: ${why}`); return true; }
     } catch { /* */ }
     return false;
@@ -276,8 +277,8 @@ async function clipVodMoment(o) {
     try {
         const { vod, offset, title, desc } = o || {};
         if (!vod || !(offset >= 0)) return null;
-        if (!_derivationOn(vod.user_id)) return null;   // the channel turned AI Moments off
-        if (_isDuplicateAutoClip(vod, offset, desc, title)) {
+        if (!await _derivationOn(vod.user_id)) return null;   // the channel turned AI Moments off
+        if (await _isDuplicateAutoClip(vod, offset, desc, title)) {
             console.log(`[AutoClip] skip VOD ${vod.vod_id || vod.id} — duplicate/near-identical auto-clip already exists`);
             return null;
         }
@@ -288,7 +289,7 @@ async function clipVodMoment(o) {
             title: title || 'Standout Moment', user_id: vod.user_id,
             stream_id: vod.stream_id || undefined, auto_generated: true, description: desc || '',
         });
-        if (clip) _logClip({ stream_id: vod.stream_id || null, vod_id: vodId, start_time: start, title: title || 'Standout Moment', clip_id: clip.id, dedup: !!clip.deduplicated || undefined, sig: _sceneSig(desc || title) });
+        if (clip) await _logClip({ stream_id: vod.stream_id || null, vod_id: vodId, start_time: start, title: title || 'Standout Moment', clip_id: clip.id, dedup: !!clip.deduplicated || undefined, sig: _sceneSig(desc || title) });
         return clip || null;
     } catch { return null; }
 }
@@ -304,8 +305,8 @@ const FLAG_SYNC_SETTING = 'auto_clip_flags_synced';
 const FLAG_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
 async function syncAutoClipFlags({ max = 400 } = {}) {
     let done = new Set();
-    try { const d = JSON.parse(db.getState(FLAG_SYNC_SETTING) || '[]'); if (Array.isArray(d)) done = new Set(d.map(String)); } catch { /* */ }
-    const ids = [...new Set(_clipLog().filter((e) => e && !e.dedup).map((e) => e.clip_id).filter((id) => id != null && /^\d+$/.test(String(id))).map(String))]
+    try { const d = JSON.parse(await db.getState(FLAG_SYNC_SETTING) || '[]'); if (Array.isArray(d)) done = new Set(d.map(String)); } catch { /* */ }
+    const ids = [...new Set((await _clipLog()).filter((e) => e && !e.dedup).map((e) => e.clip_id).filter((id) => id != null && /^\d+$/.test(String(id))).map(String))]
         .filter((id) => !done.has(id)).slice(0, max);
     let marked = 0, gone = 0, pending = 0, skipped = 0;
     for (const id of ids) {
@@ -325,7 +326,7 @@ async function syncAutoClipFlags({ max = 400 } = {}) {
             break;   // Media down or refusing: the rest wait for the next run
         }
     }
-    try { db.setState(FLAG_SYNC_SETTING, JSON.stringify([...done].slice(-2000))); } catch { /* */ }
+    try { await db.setState(FLAG_SYNC_SETTING, JSON.stringify([...done].slice(-2000))); } catch { /* */ }
     if (marked || gone || skipped) console.log(`[AutoClip] Marked ${marked} auto-clip(s) as AI-made in Media${gone ? `, ${gone} no longer there` : ''}${skipped ? `, ${skipped} left as a person's clip` : ''}${pending ? `, ${pending} left for the next run` : ''}`);
     return { marked, gone, skipped, pending };
 }

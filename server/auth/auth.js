@@ -52,7 +52,7 @@ function isUserSessionClaims(decoded) {
     return !!decoded && typeof decoded === 'object' && decoded.typ === undefined && decoded.actor_type === undefined;
 }
 
-function verifyToken(token) {
+async function verifyToken(token) {
     if (!openvibeToolsPublicKey) return null;
     try {
         const decoded = jwt.verify(token, openvibeToolsPublicKey, {
@@ -61,7 +61,7 @@ function verifyToken(token) {
         });
         if (!isUserSessionClaims(decoded)) return null;
         // Signed out everywhere / password changed / banned since this token was issued (WS-B task 4).
-        return require('./revocations').isRevoked(decoded) ? null : decoded;
+        return await require('./revocations').isRevoked(decoded) ? null : decoded;
     } catch {
         return null;
     }
@@ -71,7 +71,7 @@ function verifyToken(token) {
  * Like verifyToken but returns the error name for diagnostics.
  * For WS auth logging only.
  */
-function verifyTokenWithReason(token) {
+async function verifyTokenWithReason(token) {
     if (!openvibeToolsPublicKey) return { ok: false, reason: 'no_public_key' };
     try {
         const decoded = jwt.verify(token, openvibeToolsPublicKey, {
@@ -79,7 +79,7 @@ function verifyTokenWithReason(token) {
             issuer: getNetworkIssuer(),
         });
         if (!isUserSessionClaims(decoded)) return { ok: false, reason: 'not_a_session_token' };
-        if (require('./revocations').isRevoked(decoded)) return { ok: false, reason: 'revoked' };
+        if (await require('./revocations').isRevoked(decoded)) return { ok: false, reason: 'revoked' };
         return { ok: true, decoded };
     } catch (err) {
         return { ok: false, reason: err.name, message: err.message };
@@ -97,12 +97,12 @@ function verifyTokenWithReason(token) {
 // `is_owner` flag is NOT in the token and is never touched here.
 const _ROLE_RANK = { user: 0, streamer: 1, global_mod: 2, admin: 3 };
 
-function _syncSsoUserFields(user, decoded) {
+async function _syncSsoUserFields(user, decoded) {
     if (!user || !decoded) return user;
     // Renamed on the Network (staff only; the old name stays theirs there): follow it here, and
     // /@old keeps working as a 301 (server/auth/usernames.js, WS-B task 6).
     if (typeof decoded.username === 'string' && user.username && decoded.username.toLowerCase() !== String(user.username).toLowerCase()) {
-        try { if (require('./usernames').syncUsername(user.id, decoded.username)) user = db.getUserById(user.id) || user; } catch { /* keep the old name */ }
+        try { if (await require('./usernames').syncUsername(user.id, decoded.username)) user = await db.getUserById(user.id) || user; } catch { /* keep the old name */ }
     }
     const updates = [];
     const params = [];
@@ -120,52 +120,52 @@ function _syncSsoUserFields(user, decoded) {
     if (!updates.length) return user;
     try {
         params.push(user.id);
-        db.getDb().prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-        return db.getUserById(user.id);
+        await db.getDb().prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+        return await db.getUserById(user.id);
     } catch { return user; }
 }
 
-function resolveNetworkUser(decoded) {
+async function resolveNetworkUser(decoded) {
     const openvibeToolsId = String(decoded.sub || decoded.id);
 
     // Check linked_accounts for existing link
-    const linked = db.getDb().prepare(
+    const linked = await db.getDb().prepare(
         "SELECT * FROM linked_accounts WHERE service = 'network' AND service_user_id = ?"
     ).get(openvibeToolsId);
 
     if (linked) {
-        const user = _syncSsoUserFields(db.getUserById(linked.user_id), decoded);
+        const user = await _syncSsoUserFields(await db.getUserById(linked.user_id), decoded);
         if (user && decoded.subject_id) {
             user.subject_id = decoded.subject_id;
-            require('./identity-sync').noteSubject(user.id, openvibeToolsId, decoded.subject_id);
+            await require('./identity-sync').noteSubject(user.id, openvibeToolsId, decoded.subject_id);
         }
         return user;
     }
 
     // Try matching by username (case-insensitive)
-    let user = db.getUserByUsername(decoded.username);
+    let user = await db.getUserByUsername(decoded.username);
     if (user) {
         // Auto-link this user to the openvibe.network account
         try {
-            db.getDb().prepare(
-                "INSERT OR IGNORE INTO linked_accounts (service, service_user_id, service_username, user_id) VALUES ('network', ?, ?, ?)"
+            await db.getDb().prepare(
+                "INSERT INTO linked_accounts (service, service_user_id, service_username, user_id) VALUES ('network', ?, ?, ?) ON CONFLICT DO NOTHING"
             ).run(openvibeToolsId, decoded.username, user.id);
             console.log(`[Auth] Auto-linked ${decoded.username} to openvibe.network id ${openvibeToolsId}`);
         } catch { /* already linked */ }
-        return _syncSsoUserFields(user, decoded);
+        return await _syncSsoUserFields(user, decoded);
     }
 
     // Auto-create a local user for this openvibe.network account
     try {
         const stream_key = uuidv4().replace(/-/g, '');
-        const result = db.createUser({
+        const result = await db.createUser({
             username: decoded.username,
             email: null,
             password_hash: '$sso$' + require('crypto').randomBytes(32).toString('hex'),
             display_name: decoded.display_name || decoded.username,
             stream_key,
         });
-        user = db.getUserById(result.lastInsertRowid);
+        user = await db.getUserById(result.lastInsertRowid);
 
         // Sync profile fields from token claims
         const updates = [];
@@ -177,13 +177,13 @@ function resolveNetworkUser(decoded) {
         }
         if (updates.length > 0) {
             params.push(user.id);
-            db.getDb().prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-            user = db.getUserById(user.id);
+            await db.getDb().prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+            user = await db.getUserById(user.id);
         }
 
         // Create linked_accounts entry
-        db.getDb().prepare(
-            "INSERT OR IGNORE INTO linked_accounts (user_id, service, service_user_id, service_username) VALUES (?, 'network', ?, ?)"
+        await db.getDb().prepare(
+            "INSERT INTO linked_accounts (user_id, service, service_user_id, service_username) VALUES (?, 'network', ?, ?) ON CONFLICT DO NOTHING"
         ).run(user.id, openvibeToolsId, decoded.username);
 
         console.log(`[Auth] Auto-created local account for openvibe.network user ${decoded.username} (local id: ${user.id})`);
@@ -198,9 +198,9 @@ function resolveNetworkUser(decoded) {
  * Try to authenticate via API token (hbt_xxx format)
  * Returns { user, scopes } or null
  */
-function authenticateApiToken(rawToken) {
+async function authenticateApiToken(rawToken) {
     if (!rawToken || !rawToken.startsWith('hbt_')) return null;
-    const user = db.validateApiToken(rawToken);
+    const user = await db.validateApiToken(rawToken);
     if (!user) return null;
     return user;
 }
@@ -237,14 +237,14 @@ function apiTokenAllows(req, scopes) {
  * Express middleware — requires valid openvibe.network JWT or API token
  * Resolves to local user via linked_accounts (auto-creates if needed).
  */
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
     const token = extractToken(req);
     if (!token) {
         return res.status(401).json({ error: 'Authentication required' });
     }
 
     // Try API token first (hbt_ prefix)
-    const apiUser = authenticateApiToken(token);
+    const apiUser = await authenticateApiToken(token);
     if (apiUser) {
         if (apiUser.is_banned) {
             return res.status(403).json({ error: 'Account is banned' });
@@ -259,12 +259,12 @@ function requireAuth(req, res, next) {
     }
 
     // Fall back to openvibe.network JWT
-    const decoded = verifyToken(token);
+    const decoded = await verifyToken(token);
     if (!decoded) {
         return res.status(401).json({ error: 'Invalid or expired token' });
     }
 
-    const user = resolveNetworkUser(decoded);
+    const user = await resolveNetworkUser(decoded);
     if (!user) {
         return res.status(401).json({ error: 'Unable to resolve account' });
     }
@@ -280,19 +280,19 @@ function requireAuth(req, res, next) {
 /**
  * Express middleware — optional auth (attaches user if token present)
  */
-function optionalAuth(req, res, next) {
+async function optionalAuth(req, res, next) {
     const token = extractToken(req);
     if (token) {
         // Try API token first
-        const apiUser = authenticateApiToken(token);
+        const apiUser = await authenticateApiToken(token);
         if (apiUser && !apiUser.is_banned && apiTokenAllows(req, apiUser.scopes)) {
             req.user = apiUser;
             req.authSource = 'api_token';
             req.tokenScopes = apiUser.scopes || [];
         } else {
-            const decoded = verifyToken(token);
+            const decoded = await verifyToken(token);
             if (decoded) {
-                const user = resolveNetworkUser(decoded);
+                const user = await resolveNetworkUser(decoded);
                 if (user && !user.is_banned) {
                     req.user = user;
                     req.authSource = 'network';
@@ -306,8 +306,8 @@ function optionalAuth(req, res, next) {
 /**
  * Express middleware — requires admin role
  */
-function requireAdmin(req, res, next) {
-    requireAuth(req, res, () => {
+async function requireAdmin(req, res, next) {
+    await requireAuth(req, res, () => {
         if (!require('./permissions').isAdmin(req.user)) {
             return res.status(403).json({ error: 'Admin access required' });
         }
@@ -318,8 +318,8 @@ function requireAdmin(req, res, next) {
 /**
  * Express middleware — requires staff (global_mod or admin)
  */
-function requireStaff(req, res, next) {
-    requireAuth(req, res, () => {
+async function requireStaff(req, res, next) {
+    await requireAuth(req, res, () => {
         if (!['global_mod', 'admin'].includes(req.user.role)) {
             return res.status(403).json({ error: 'Staff access required' });
         }
@@ -330,8 +330,8 @@ function requireStaff(req, res, next) {
 /**
  * Express middleware — requires streamer or above role
  */
-function requireStreamer(req, res, next) {
-    requireAuth(req, res, () => {
+async function requireStreamer(req, res, next) {
+    await requireAuth(req, res, () => {
         if (!['streamer', 'global_mod', 'admin'].includes(req.user.role)) {
             return res.status(403).json({ error: 'Streamer access required' });
         }
@@ -399,21 +399,21 @@ function extractWsToken(req) {
  * Authenticate a WebSocket connection (returns user or null)
  * Supports both openvibe.network JWT and API tokens (hbt_xxx)
  */
-function authenticateWs(token) {
+async function authenticateWs(token) {
     if (!token) return null;
     // Try API token first
-    const apiUser = authenticateApiToken(token);
+    const apiUser = await authenticateApiToken(token);
     if (apiUser) {
         // Attach scopes for chat server to check
         apiUser._authSource = 'api_token';
         return apiUser;
     }
-    const result = verifyTokenWithReason(token);
+    const result = await verifyTokenWithReason(token);
     if (!result.ok) {
         console.warn(`[Auth] WS JWT verify failed: ${result.reason} \u2014 ${result.message || ''}`);
         return null;
     }
-    const user = resolveNetworkUser(result.decoded);
+    const user = await resolveNetworkUser(result.decoded);
     if (!user) {
         console.warn(`[Auth] WS resolveNetworkUser failed for sub=${result.decoded.sub} username=${result.decoded.username}`);
     }

@@ -68,12 +68,12 @@ function fetchYouTubeOEmbed(videoId) {
 }
 
 class MediaQueue {
-    getSettings(streamerId) {
-        return { ...DEFAULTS, ...(db.upsertMediaRequestSettings(streamerId, {}) || {}) };
+    async getSettings(streamerId) {
+        return { ...DEFAULTS, ...(await db.upsertMediaRequestSettings(streamerId, {}) || {}) };
     }
 
-    updateSettings(streamerId, fields) {
-        return { ...DEFAULTS, ...(db.upsertMediaRequestSettings(streamerId, fields) || {}) };
+    async updateSettings(streamerId, fields) {
+        return { ...DEFAULTS, ...(await db.upsertMediaRequestSettings(streamerId, fields) || {}) };
     }
 
     /**
@@ -131,15 +131,15 @@ class MediaQueue {
     async charge({ currency, cost, userId, streamerId, streamId, label, requestId }) {
         if (!requestId) throw new Error('charge() needs the media request id (its idempotency key)');
         if (currency === 'points') {
-            if (!db.deductChannelPoints(userId, streamerId, cost, `live:media_req:${requestId}`, label)) {
-                const have = db.getChannelPoints(userId, streamerId);
+            if (!await db.deductChannelPoints(userId, streamerId, cost, `live:media_req:${requestId}`, label)) {
+                const have = await db.getChannelPoints(userId, streamerId);
                 throw new Error(`Not enough channel points — this costs ${cost}, you have ${have}.`);
             }
             return;
         }
         if (currency === 'vibes') {
             // Vibes are money (ADR-012): refused while money writes are frozen, in both modes.
-            require('../monetization/money-authority').assertWritable();
+            await require('../monetization/money-authority').assertWritable();
             if (require('../monetization/money-authority').onBilling()) {
                 // A paid interaction through OpenVibe.Billing (the requester's credit → the
                 // streamer's payable); the returned charge is linked to the request for refunds.
@@ -201,7 +201,7 @@ class MediaQueue {
      */
     async reconcileCharges({ olderThanMs = 60_000, limit = 50 } = {}) {
         const cutoff = new Date(Date.now() - olderThanMs).toISOString().replace('T', ' ').slice(0, 19);
-        const rows = db.all(`SELECT * FROM media_requests WHERE charge_state IN ('unknown', 'charging') AND currency = 'opencoins'
+        const rows = await db.all(`SELECT * FROM media_requests WHERE charge_state IN ('unknown', 'charging') AND currency = 'opencoins'
                              AND requested_at <= ? ORDER BY id LIMIT ?`, [cutoff, limit]);
         const wallet = require('../monetization/wallet-client');
         let settled = 0;
@@ -219,7 +219,7 @@ class MediaQueue {
                 if (charged) {
                     await wallet.credit(r.user_id, r.cost, `Refund: ${r.title || 'media request'}`, `live:media_refund:${r.id}`);
                 }
-                db.updateMediaRequest(r.id, { charge_state: null, refunded: charged ? 1 : 0, status: 'failed', last_error: r.last_error || 'The OpenCoins charge could not be confirmed' });
+                await db.updateMediaRequest(r.id, { charge_state: null, refunded: charged ? 1 : 0, status: 'failed', last_error: r.last_error || 'The OpenCoins charge could not be confirmed' });
                 settled++;
             } catch (e) {
                 console.warn(`[MediaQueue] charge of request ${r.id} still unsettled: ${e.message}`);
@@ -234,7 +234,7 @@ class MediaQueue {
      * Enforces duration limits and per-minute pricing.
      */
     async addRequest({ streamerId, streamId, userId, username, input }) {
-        const settings = this.getSettings(streamerId);
+        const settings = await this.getSettings(streamerId);
         if (!settings.enabled) throw new Error('Media requests are disabled for this channel');
 
         const trimmed = String(input || '').trim();
@@ -258,12 +258,12 @@ class MediaQueue {
             throw new Error('Live stream requests are disabled for this channel');
         }
 
-        const pendingCount = db.countPendingMediaRequestsForUser(streamerId, userId);
+        const pendingCount = await db.countPendingMediaRequestsForUser(streamerId, userId);
         if (pendingCount >= Number(settings.max_per_user || DEFAULTS.max_per_user)) {
             throw new Error(`You already have ${pendingCount} active request(s) in queue`);
         }
 
-        const duplicate = db.findActiveMediaRequestByCanonicalUrl(streamerId, normalized.canonical_url);
+        const duplicate = await db.findActiveMediaRequestByCanonicalUrl(streamerId, normalized.canonical_url);
         if (duplicate) throw new Error('That media is already in the queue');
 
         // Price it, then charge in whichever currency this channel is configured for.
@@ -276,7 +276,7 @@ class MediaQueue {
         // A paid request is written first, out of the queue (status 'failed', charge_state
         // 'charging'), so its charge is keyed by its id; it joins the queue once paid.
         const paid = cost > 0;
-        const result = db.createMediaRequest({
+        const result = await db.createMediaRequest({
             streamer_id: streamerId,
             stream_id: streamId,
             user_id: userId,
@@ -290,7 +290,7 @@ class MediaQueue {
             duration_seconds: normalized.duration_seconds,
             cost,
             currency,
-            queue_position: paid ? 0 : db.getMediaRequestMaxQueuePosition(streamerId) + 1,
+            queue_position: paid ? 0 : await db.getMediaRequestMaxQueuePosition(streamerId) + 1,
             status: paid ? 'failed' : 'pending',
             charge_state: paid ? 'charging' : null,
         });
@@ -306,24 +306,24 @@ class MediaQueue {
                 if (e && e.outcomeUnknown) {
                     // Kept, out of the queue: reconcileCharges() settles an OpenCoins one (refunding
                     // it if the debit did land); a Vibes-on-Billing one waits for the staff money page.
-                    db.updateMediaRequest(requestId, { charge_state: 'unknown', last_error: `The ${this.currencyLabel(currency)} charge could not be confirmed` });
+                    await db.updateMediaRequest(requestId, { charge_state: 'unknown', last_error: `The ${this.currencyLabel(currency)} charge could not be confirmed` });
                 } else {
                     // Refused (not enough, unlinked, Billing said no): nothing was taken.
-                    db.removeUnchargedMediaRequest(requestId);
+                    await db.removeUnchargedMediaRequest(requestId);
                 }
                 throw e;
             }
             // Paid: join the queue at the back (computed now, after the await).
-            db.updateMediaRequest(requestId, {
+            await db.updateMediaRequest(requestId, {
                 status: 'pending', charge_state: null,
-                queue_position: db.getMediaRequestMaxQueuePosition(streamerId) + 1,
+                queue_position: await db.getMediaRequestMaxQueuePosition(streamerId) + 1,
             });
         }
 
         // The coin ledger tracks OpenCoins only — booking a Vibes or channel-points charge
         // here would show up as a phantom coin spend in the viewer's history.
         if (cost > 0 && currency === 'opencoins') {
-            db.createCoinTransaction({
+            await db.createCoinTransaction({
                 user_id: userId,
                 stream_id: streamId,
                 amount: -cost,
@@ -332,8 +332,8 @@ class MediaQueue {
             });
         }
 
-        const request = db.getMediaRequestById(requestId);
-        if (billingCharge && billingCharge.actionId) require('../monetization/billing-actions').linkMediaCharge(billingCharge.actionId, request.id);
+        const request = await db.getMediaRequestById(requestId);
+        if (billingCharge && billingCharge.actionId) await require('../monetization/billing-actions').linkMediaCharge(billingCharge.actionId, request.id);
         this.broadcastQueueUpdate(streamerId);
 
         // Kick off background stream URL extraction for the new request
@@ -372,13 +372,13 @@ class MediaQueue {
      * Mark a request dead and refund it when the failure is permanent. Returns true if
      * the request was failed.
      */
-    _failIfTerminal(requestId, message) {
+    async _failIfTerminal(requestId, message) {
         if (!this._isTerminalExtractionError(message)) return false;
-        const request = db.getMediaRequestById(requestId);
+        const request = await db.getMediaRequestById(requestId);
         // Only refund something still queued — a played item keeps its charge.
         if (!request || (request.status !== 'pending' && request.status !== 'playing')) return false;
         console.warn(`[MediaQueue] Request ${requestId} cannot play, refunding: ${message}`);
-        this.failRequest(requestId, this._viewerFacingError(message));
+        await this.failRequest(requestId, this._viewerFacingError(message));
         return true;
     }
 
@@ -399,27 +399,27 @@ class MediaQueue {
      * Updates the DB row when done.
      */
     async extractStreamUrlForRequest(requestId) {
-        const request = db.getMediaRequestById(requestId);
+        const request = await db.getMediaRequestById(requestId);
         if (!request) return null;
         if (request.stream_url && request.download_status === 'ready') return request;
-        const settings = this.getSettings(request.streamer_id);
+        const settings = await this.getSettings(request.streamer_id);
         if (request.provider === 'audio' || request.provider === 'video') {
             // Direct media — the canonical_url IS the stream URL
-            db.updateMediaRequest(requestId, {
+            await db.updateMediaRequest(requestId, {
                 stream_url: request.canonical_url,
                 download_status: 'ready',
             });
-            return db.getMediaRequestById(requestId);
+            return await db.getMediaRequestById(requestId);
         }
 
         if (!downloader.isAvailable()) {
-            db.updateMediaRequest(requestId, {
+            await db.updateMediaRequest(requestId, {
                 stream_url: null,
                 download_status: 'failed',
                 last_error: 'yt-dlp is not available on the server',
             });
-            this._failIfTerminal(requestId, 'yt-dlp is not available on the server');
-            return db.getMediaRequestById(requestId);
+            await this._failIfTerminal(requestId, 'yt-dlp is not available on the server');
+            return await db.getMediaRequestById(requestId);
         }
 
         const forceServerDownload = settings.download_mode === 'download';
@@ -429,26 +429,26 @@ class MediaQueue {
         }
 
         try {
-            db.updateMediaRequest(requestId, { download_status: 'extracting' });
+            await db.updateMediaRequest(requestId, { download_status: 'extracting' });
             this.broadcastQueueUpdate(request.streamer_id);
 
             const extracted = await downloader.extractStreamUrl(request.canonical_url);
             const resolvedUrl = extracted?.streamUrl || null;
-            db.updateMediaRequest(requestId, {
+            await db.updateMediaRequest(requestId, {
                 stream_url: resolvedUrl,
                 embed_url: null,
                 download_status: resolvedUrl ? 'ready' : 'failed',
                 last_error: null,
             });
             this.broadcastQueueUpdate(request.streamer_id);
-            return db.getMediaRequestById(requestId);
+            return await db.getMediaRequestById(requestId);
         } catch (err) {
             console.warn(`[MediaQueue] Stream URL extraction failed for request ${requestId}:`, err.message);
             try {
                 return await this.downloadFileForRequest(requestId);
             } catch (downloadErr) {
                 const combined = `Extraction failed: ${err.message}. Download fallback failed: ${downloadErr.message}`;
-                db.updateMediaRequest(requestId, {
+                await db.updateMediaRequest(requestId, {
                     stream_url: null,
                     embed_url: null,
                     download_status: 'failed',
@@ -456,8 +456,8 @@ class MediaQueue {
                 });
                 // Refunds immediately when the video can never play, rather than leaving a
                 // paid-for item stuck at the top of the queue.
-                if (!this._failIfTerminal(requestId, combined)) this.broadcastQueueUpdate(request.streamer_id);
-                return db.getMediaRequestById(requestId);
+                if (!(await this._failIfTerminal(requestId, combined))) this.broadcastQueueUpdate(request.streamer_id);
+                return await db.getMediaRequestById(requestId);
             }
         }
     }
@@ -466,29 +466,29 @@ class MediaQueue {
      * Download media file to disk for a request (when stream mode won't work).
      */
     async downloadFileForRequest(requestId) {
-        const request = db.getMediaRequestById(requestId);
+        const request = await db.getMediaRequestById(requestId);
         if (!request) return null;
         if (request.file_path && request.download_status === 'ready') return request;
         if (!downloader.isAvailable()) throw new Error('Download not available');
 
         try {
-            db.updateMediaRequest(requestId, { download_status: 'downloading' });
+            await db.updateMediaRequest(requestId, { download_status: 'downloading' });
             this.broadcastQueueUpdate(request.streamer_id);
 
             const maxDuration = Number(request.duration_seconds) || 600;
             const { filePath } = await downloader.downloadToFile(request.canonical_url, maxDuration);
             const servePath = `/media/cache/${require('path').basename(filePath)}`;
 
-            db.updateMediaRequest(requestId, {
+            await db.updateMediaRequest(requestId, {
                 file_path: servePath,
                 stream_url: servePath,
                 download_status: 'ready',
             });
             this.broadcastQueueUpdate(request.streamer_id);
-            return db.getMediaRequestById(requestId);
+            return await db.getMediaRequestById(requestId);
         } catch (err) {
             console.warn(`[MediaQueue] Download failed for request ${requestId}:`, err.message);
-            db.updateMediaRequest(requestId, {
+            await db.updateMediaRequest(requestId, {
                 download_status: 'failed',
                 last_error: `Download failed: ${err.message}`,
             });
@@ -497,20 +497,20 @@ class MediaQueue {
         }
     }
 
-    startNext(streamerId) {
-        const active = db.getActiveMediaRequestByStreamer(streamerId);
+    async startNext(streamerId) {
+        const active = await db.getActiveMediaRequestByStreamer(streamerId);
         if (active) return active;
 
-        const next = db.getNextPendingMediaRequest(streamerId);
+        const next = await db.getNextPendingMediaRequest(streamerId);
         if (!next) return null;
 
-        db.updateMediaRequest(next.id, {
+        await db.updateMediaRequest(next.id, {
             status: 'playing',
             started_at: new Date().toISOString(),
         });
-        db.renormalizePendingMediaRequestPositions(streamerId);
+        await db.renormalizePendingMediaRequestPositions(streamerId);
 
-        const request = db.getMediaRequestById(next.id);
+        const request = await db.getMediaRequestById(next.id);
 
         // Ensure stream URL is extracted before playing
         if (!request.stream_url || request.download_status !== 'ready') {
@@ -518,7 +518,7 @@ class MediaQueue {
         }
 
         // Pre-extract next-in-queue for seamless advance
-        const nextUp = db.getNextPendingMediaRequest(streamerId);
+        const nextUp = await db.getNextPendingMediaRequest(streamerId);
         if (nextUp) this.extractStreamUrlForRequest(nextUp.id).catch(() => {});
 
         this.broadcastQueueUpdate(streamerId);
@@ -526,48 +526,48 @@ class MediaQueue {
         return request;
     }
 
-    finishCurrent(streamerId, status = 'played') {
-        const active = db.getActiveMediaRequestByStreamer(streamerId);
+    async finishCurrent(streamerId, status = 'played') {
+        const active = await db.getActiveMediaRequestByStreamer(streamerId);
         if (!active) return null;
 
-        db.updateMediaRequest(active.id, {
+        await db.updateMediaRequest(active.id, {
             status,
             ended_at: new Date().toISOString(),
             playback_position: 0,
         });
 
-        const ended = db.getMediaRequestById(active.id);
-        db.renormalizePendingMediaRequestPositions(streamerId);
+        const ended = await db.getMediaRequestById(active.id);
+        await db.renormalizePendingMediaRequestPositions(streamerId);
         this.broadcastQueueUpdate(streamerId);
         return ended;
     }
 
-    advance(streamerId) {
-        this.finishCurrent(streamerId, 'played');
-        return this.startNext(streamerId);
+    async advance(streamerId) {
+        await this.finishCurrent(streamerId, 'played');
+        return await this.startNext(streamerId);
     }
 
-    skip(streamerId, requestId) {
-        const request = db.getMediaRequestByStreamerAndId(streamerId, requestId);
+    async skip(streamerId, requestId) {
+        const request = await db.getMediaRequestByStreamerAndId(streamerId, requestId);
         if (!request) throw new Error('Request not found');
 
         const nextStatus = request.status === 'playing' ? 'skipped' : 'removed';
-        db.updateMediaRequest(request.id, {
+        await db.updateMediaRequest(request.id, {
             status: nextStatus,
             ended_at: new Date().toISOString(),
             playback_position: 0,
         });
-        db.renormalizePendingMediaRequestPositions(streamerId);
+        await db.renormalizePendingMediaRequestPositions(streamerId);
         this.broadcastQueueUpdate(streamerId);
-        return db.getMediaRequestById(request.id);
+        return await db.getMediaRequestById(request.id);
     }
 
     /**
      * Refund coins for a failed or skipped request.
      * Returns the refunded amount, or 0 if already refunded.
      */
-    refund(requestId) {
-        const request = db.getMediaRequestById(requestId);
+    async refund(requestId) {
+        const request = await db.getMediaRequestById(requestId);
         if (!request) throw new Error('Request not found');
         if (request.refunded) return 0;
 
@@ -580,29 +580,29 @@ class MediaQueue {
         const label = `Refund: ${request.title || 'media request'}`;
         try {
             if (currency === 'points') {
-                db.addChannelPoints(request.user_id, request.streamer_id, amount, `live:media_refund:${request.id}`, label);
+                await db.addChannelPoints(request.user_id, request.streamer_id, amount, `live:media_refund:${request.id}`, label);
             } else if (currency === 'vibes') {
                 const money = require('../monetization/money-authority');
-                if (money.writeRefusal()) {
+                if (await money.writeRefusal()) {
                     // Frozen (or misconfigured): not refunded now and NOT marked refunded, so the
                     // streamer's refund button works again once money writes are back.
                     console.warn(`[MediaQueue] refund of request ${request.id} deferred: money writes are frozen`);
                     return 0;
                 }
                 if (money.onBilling()) {
-                    return require('../monetization/billing-actions').refundMedia(request).then((n) => {
-                        if (n > 0) db.updateMediaRequest(requestId, { refunded: 1 });
+                    return require('../monetization/billing-actions').refundMedia(request).then(async (n) => {
+                        if (n > 0) await db.updateMediaRequest(requestId, { refunded: 1 });
                         return n;
                     });
                 }
                 // The charge was booked as a donation to the streamer, so unwind both sides — atomically,
                 // and only if the streamer still holds the money. Crediting the requester after a failed
                 // deduction minted Vibes: pay, move the balance out (recycle or cash out), then refund.
-                const unwound = db.getDb().transaction(() => {
-                    if (!db.deductVibesCashout(request.streamer_id, amount)) return false;
-                    db.addVibes(request.user_id, amount);
+                const unwound = await db.getDb().tx(async () => {
+                    if (!await db.deductVibesCashout(request.streamer_id, amount)) return false;
+                    await db.addVibes(request.user_id, amount);
                     return true;
-                })();
+                });
                 if (!unwound) {
                     console.warn(`[MediaQueue] refund of request ${request.id} refused: streamer ${request.streamer_id} no longer holds ${amount} Vibes`);
                     return 0;
@@ -617,7 +617,7 @@ class MediaQueue {
             console.warn('[MediaQueue] refund failed:', e.message);
             return 0;
         }
-        db.updateMediaRequest(requestId, { refunded: 1 });
+        await db.updateMediaRequest(requestId, { refunded: 1 });
 
         return amount;
     }
@@ -625,11 +625,11 @@ class MediaQueue {
     /**
      * Mark a request as failed and auto-refund the user.
      */
-    failRequest(requestId, errorMessage) {
-        const request = db.getMediaRequestById(requestId);
+    async failRequest(requestId, errorMessage) {
+        const request = await db.getMediaRequestById(requestId);
         if (!request) return null;
 
-        db.updateMediaRequest(requestId, {
+        await db.updateMediaRequest(requestId, {
             status: 'failed',
             ended_at: new Date().toISOString(),
             last_error: errorMessage || 'Playback failed',
@@ -638,31 +638,31 @@ class MediaQueue {
         // Auto-refund on failure (a Promise when OpenVibe.Billing refunds it)
         Promise.resolve(this.refund(requestId)).catch((e) => console.warn('[MediaQueue] refund failed:', e.message));
 
-        db.renormalizePendingMediaRequestPositions(request.streamer_id);
+        await db.renormalizePendingMediaRequestPositions(request.streamer_id);
         this.broadcastQueueUpdate(request.streamer_id);
-        return db.getMediaRequestById(requestId);
+        return await db.getMediaRequestById(requestId);
     }
 
     /**
      * Save playback position for the currently playing request.
      * Called periodically by the media player client.
      */
-    savePlaybackPosition(requestId, positionSeconds) {
+    async savePlaybackPosition(requestId, positionSeconds) {
         const pos = Number(positionSeconds);
         if (!Number.isFinite(pos) || pos < 0) return;
-        db.updateMediaRequest(requestId, { playback_position: pos });
+        await db.updateMediaRequest(requestId, { playback_position: pos });
     }
 
     /**
      * Get playback position for a request (for resume on reload/restart).
      */
-    getPlaybackPosition(requestId) {
-        const request = db.getMediaRequestById(requestId);
+    async getPlaybackPosition(requestId) {
+        const request = await db.getMediaRequestById(requestId);
         return request?.playback_position || 0;
     }
 
-    move(streamerId, requestId, direction) {
-        const pending = db.getPendingMediaRequestsByStreamer(streamerId, 100);
+    async move(streamerId, requestId, direction) {
+        const pending = await db.getPendingMediaRequestsByStreamer(streamerId, 100);
         const index = pending.findIndex(item => item.id === requestId);
         if (index === -1) throw new Error('Pending request not found');
 
@@ -671,22 +671,22 @@ class MediaQueue {
 
         const current = pending[index];
         const other = pending[swapIndex];
-        db.updateMediaRequest(current.id, { queue_position: other.queue_position });
-        db.updateMediaRequest(other.id, { queue_position: current.queue_position });
-        db.renormalizePendingMediaRequestPositions(streamerId);
+        await db.updateMediaRequest(current.id, { queue_position: other.queue_position });
+        await db.updateMediaRequest(other.id, { queue_position: current.queue_position });
+        await db.renormalizePendingMediaRequestPositions(streamerId);
         this.broadcastQueueUpdate(streamerId);
-        return db.getMediaRequestById(current.id);
+        return await db.getMediaRequestById(current.id);
     }
 
-    getState(streamerId) {
+    async getState(streamerId) {
         // This state is public (GET /api/media/channel/:username) and broadcast to every viewer in
         // chat. Server file paths and raw yt-dlp errors are not viewer information; nothing renders them.
         const publicRow = (r) => { if (!r) return r; const { file_path, last_error, ...rest } = r; void file_path; return { ...rest, failed: !!last_error }; };
         return {
-            settings: this.getSettings(streamerId),
-            now_playing: publicRow(db.getActiveMediaRequestByStreamer(streamerId)),
-            queue: (db.getPendingMediaRequestsByStreamer(streamerId, 50) || []).map(publicRow),
-            history: (db.getRecentMediaRequestsByStreamer(streamerId, 20) || []).map(publicRow),
+            settings: await this.getSettings(streamerId),
+            now_playing: publicRow(await db.getActiveMediaRequestByStreamer(streamerId)),
+            queue: (await db.getPendingMediaRequestsByStreamer(streamerId, 50) || []).map(publicRow),
+            history: (await db.getRecentMediaRequestsByStreamer(streamerId, 20) || []).map(publicRow),
         };
     }
 
@@ -875,30 +875,34 @@ class MediaQueue {
         return last.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').trim() || 'Media request';
     }
 
-    broadcastNowPlaying(streamerId, request) {
-        this.broadcast(streamerId, {
-            type: 'media_now_playing',
-            request,
-            timestamp: new Date().toISOString(),
-        });
+    async broadcastNowPlaying(streamerId, request) {
+        try {
+            await this.broadcast(streamerId, {
+                type: 'media_now_playing',
+                request,
+                timestamp: new Date().toISOString(),
+            });
+        } catch { /* optional */ }
     }
 
-    broadcastQueueUpdate(streamerId) {
-        this.broadcast(streamerId, {
-            type: 'media_queue_update',
-            state: this.getState(streamerId),
-            timestamp: new Date().toISOString(),
-        });
+    async broadcastQueueUpdate(streamerId) {
+        try {
+            await this.broadcast(streamerId, {
+                type: 'media_queue_update',
+                state: await this.getState(streamerId),
+                timestamp: new Date().toISOString(),
+            });
+        } catch { /* optional */ }
     }
 
-    broadcast(streamerId, payload) {
+    async broadcast(streamerId, payload) {
         try {
             const delivery = require('../chat/chat-delivery');
             // Chat's ingress fans a media frame out to the owner's live streams itself.
-            if (delivery.ingress()) { delivery.event({ kind: 'owner-streams', id: streamerId }, payload); return; }
-            const streams = db.getLiveStreamsByUserId(streamerId) || [];
+            if (delivery.ingress()) { await delivery.event({ kind: 'owner-streams', id: streamerId }, payload); return; }
+            const streams = await db.getLiveStreamsByUserId(streamerId) || [];
             for (const stream of streams) {
-                delivery.broadcastToStream(stream.id, payload);
+                await delivery.broadcastToStream(stream.id, payload);
             }
         } catch {
             // optional

@@ -22,8 +22,8 @@ const MAX_SKEW_MS = 15 * 60 * 1000;
 
 // ── Signature verification ───────────────────────────────────────────────────
 // Returns { ok, reason }. rawBody must be the exact bytes received (Buffer or string).
-function verifySignature(rawBody, headers) {
-    const secret = powerchatOAuth.getConfig().webhookSecret;
+async function verifySignature(rawBody, headers) {
+    const secret = (await powerchatOAuth.getConfig()).webhookSecret;
     if (!secret) return { ok: false, reason: 'webhook secret not configured' };
 
     const sigHeader = headers['x-powerchat-signature'] || '';
@@ -60,11 +60,11 @@ function publicGoal(g) {
 }
 
 // Resolve the OpenVibe.Live user who owns the PowerChat account this event is for.
-function _resolveStreamerUserId(streamer) {
+async function _resolveStreamerUserId(streamer) {
     if (!streamer) return null;
     let conn = null;
-    if (streamer.id) conn = db.getPowerchatConnectionByPcUserId(String(streamer.id));
-    if (!conn && streamer.username) conn = db.getPowerchatConnectionByUsername(streamer.username);
+    if (streamer.id) conn = await db.getPowerchatConnectionByPcUserId(String(streamer.id));
+    if (!conn && streamer.username) conn = await db.getPowerchatConnectionByUsername(streamer.username);
     return conn ? conn.user_id : null;
 }
 
@@ -85,19 +85,19 @@ function _goalIdFromDonation(data) {
 // tips that charged nothing — so they're dropped unless the owner explicitly flips
 // powerchat_allow_test_fulfillment on (for dev/sandbox, where a PowerChat with no
 // payout provider delivers EVERYTHING as isTest).
-function _testFulfillmentAllowed() {
-    try { const v = db.getSetting('powerchat_allow_test_fulfillment'); return v === true || v === 'true' || v === 1 || v === '1'; }
+async function _testFulfillmentAllowed() {
+    try { const v = await db.getSetting('powerchat_allow_test_fulfillment'); return v === true || v === 'true' || v === 1 || v === '1'; }
     catch { return false; }
 }
 
 // ── Donation handling — mirrors POST /api/funds/donate ───────────────────────
 // A persisted chat line: one Chat ingress call (Chat persists and shows it; `mirror` also puts it
 // in global chat). Live keeps no chat table.
-function _chatLine({ line, mirror = false, key }) {
-    delivery.message({ ...line, mirror, key });
+async function _chatLine({ line, mirror = false, key }) {
+    return await delivery.message({ ...line, mirror, key });
 }
 
-function _handleDonation(userId, data) {
+async function _handleDonation(userId, data) {
     const alerts = require('../monetization/alerts');
     const openvibeBucks = require('../monetization/vibes');
 
@@ -111,16 +111,16 @@ function _handleDonation(userId, data) {
 
     // If the streamer is live, attach to the live session so it lands in that slot too.
     let streamId = null;
-    try { const live = db.getLiveStreamsByUserId(userId) || []; if (live.length) streamId = live[0].id; } catch { /* */ }
+    try { const live = await db.getLiveStreamsByUserId(userId) || []; if (live.length) streamId = live[0].id; } catch { /* */ }
 
     // Credit a goal (donor's chosen one via app_ref, else the sole active goal).
     let goalResult = null;
-    try { goalResult = openvibeBucks.applyDonationToGoal(userId, amount, goalId); } catch { /* */ }
+    try { goalResult = await openvibeBucks.applyDonationToGoal(userId, amount, goalId); } catch { /* */ }
 
     // 1) Donation chat event — persisted to channel history (and mirrored to global chat).
     const eventKey = data.eventId ? `powerchat:${data.eventId}` : undefined;
     try {
-        _chatLine({
+        await _chatLine({
             mirror: true, key: eventKey,
             line: {
                 stream_id: streamId, channel_user_id: userId, user_id: null, username: donor,
@@ -132,16 +132,16 @@ function _handleDonation(userId, data) {
     } catch { /* */ }
 
     // 2) Donation sound.
-    try { alerts.playAlertSound(userId, streamId, 'donation'); } catch { /* */ }
+    try { await alerts.playAlertSound(userId, streamId, 'donation'); } catch { /* */ }
 
     // 3) Goal progress + 4) goal reached.
     if (goalResult && goalResult.goal) {
-        delivery.event({ kind: 'channel', id: userId, stream: streamId }, { type: 'goal-update', goal: publicGoal(goalResult.goal) });
+        await delivery.event({ kind: 'channel', id: userId, stream: streamId }, { type: 'goal-update', goal: publicGoal(goalResult.goal) });
     }
     if (goalResult && goalResult.reached) {
         const g = goalResult.goal;
         try {
-            _chatLine({
+            await _chatLine({
                 key: eventKey && `${eventKey}:goal`,
                 line: {
                     stream_id: streamId, channel_user_id: userId, user_id: null, username: 'Donation Goal',
@@ -151,17 +151,17 @@ function _handleDonation(userId, data) {
                 },
             });
         } catch { /* */ }
-        try { alerts.playAlertSound(userId, streamId, 'goal'); } catch { /* */ }
+        try { await alerts.playAlertSound(userId, streamId, 'goal'); } catch { /* */ }
     }
 
     console.log(`[PowerChat] Donation: ${amount} bucks to user ${userId} from ${donor}${goalResult && goalResult.reached ? ' (goal reached!)' : ''}`);
 }
 
 // A membership/sub — surface as a chat event (no OpenVibe.Live sub system to credit).
-function _handleSubscription(userId, data) {
+async function _handleSubscription(userId, data) {
     const name = String(data.subscriberName || data.donorName || 'Someone').slice(0, 80);
     try {
-        _chatLine({
+        await _chatLine({
             key: data.eventId ? `powerchat:${data.eventId}` : undefined,
             line: {
                 stream_id: null, channel_user_id: userId, user_id: null, username: name,
@@ -173,9 +173,9 @@ function _handleSubscription(userId, data) {
 }
 
 // A lightweight chat notice for non-money events (follow / host / points redeem).
-function _handleNotice(userId, message, kind) {
+async function _handleNotice(userId, message, kind) {
     try {
-        _chatLine({
+        await _chatLine({
             line: {
                 stream_id: null, channel_user_id: userId, user_id: null, username: 'PowerChat',
                 message, message_type: 'system', metadata: { kind: kind || 'powerchat', source: 'powerchat' },
@@ -185,22 +185,22 @@ function _handleNotice(userId, message, kind) {
 }
 
 // ── Entry point: process a verified, deduped envelope ────────────────────────
-function processEvent(envelope) {
+async function processEvent(envelope) {
     if (!envelope || !envelope.type) return;
-    const userId = _resolveStreamerUserId(envelope.streamer);
+    const userId = await _resolveStreamerUserId(envelope.streamer);
     const data = envelope.data || {};
     if (!userId) {
         // The site tips account is a bare PowerChat username (no OpenVibe connection
         // row) — its checkout-attributed donations must still be fulfilled. Anything
         // else arriving for it (e.g. someone tipping that account directly, outside a
         // checkout link) has no on-site home and is deliberately ignored.
-        const siteName = String(db.getSetting('powerchat_site_tip_username') || '').trim().toLowerCase();
+        const siteName = String(await db.getSetting('powerchat_site_tip_username') || '').trim().toLowerCase();
         const from = String((envelope.streamer && envelope.streamer.username) || '').toLowerCase();
         if (siteName && from === siteName) {
             if (envelope.type === 'donation.completed' && data.appExternalRef
-                && (!data.isTest || _testFulfillmentAllowed()) && data.source !== 'developer_app') {
+                && (!data.isTest || await _testFulfillmentAllowed()) && data.source !== 'developer_app') {
                 if (data.isTest) console.warn(`[PowerChat] fulfilling TEST checkout ${data.appExternalRef} (powerchat_allow_test_fulfillment is ON — no money moved)`);
-                try { require('./powerchat-checkout').handleAttributedDonation(null, data); } catch (e) { console.warn('[PowerChat] site-account fulfillment:', e.message); }
+                try { await require('./powerchat-checkout').handleAttributedDonation(null, data); } catch (e) { console.warn('[PowerChat] site-account fulfillment:', e.message); }
             }
             return;
         }
@@ -210,7 +210,7 @@ function processEvent(envelope) {
     // data.isTest = no money moved (dashboard test fires, free test method, no payout
     // provider). Never credit those — unless the owner explicitly enabled test
     // fulfillment for dev/sandbox, where every delivery is isTest.
-    if (data.isTest && !_testFulfillmentAllowed()) {
+    if (data.isTest && !await _testFulfillmentAllowed()) {
         // Make the skip self-explanatory when it's an attributed checkout — this is the
         // #1 "my tip went through but nothing credited" question: the PowerChat side
         // confirmed a TEST checkout (no payout provider / free test method).
@@ -236,24 +236,24 @@ function processEvent(envelope) {
                 // checkout module; when it consumes the event, the receiving account's
                 // normal donation pipeline must NOT also run.
                 if (data.appExternalRef && /^(pcorder|pcsub|pcdon):/.test(String(data.appExternalRef))) {
-                    const siteName = String(db.getSetting('powerchat_site_tip_username') || '').trim().toLowerCase();
+                    const siteName = String(await db.getSetting('powerchat_site_tip_username') || '').trim().toLowerCase();
                     const receiving = String((envelope.streamer && envelope.streamer.username) || '').toLowerCase();
                     const viaSiteAccount = !!siteName && receiving === siteName;
-                    if (require('./powerchat-checkout').handleAttributedDonation(userId, data, { viaSiteAccount })) break;
+                    if (await require('./powerchat-checkout').handleAttributedDonation(userId, data, { viaSiteAccount })) break;
                 }
-                _handleDonation(userId, data);
+                await _handleDonation(userId, data);
                 break;
             case 'subscription.created':
-                _handleSubscription(userId, data);
+                await _handleSubscription(userId, data);
                 break;
             case 'follow.created':
-                _handleNotice(userId, `${String(data.followerName || 'Someone').slice(0, 80)} followed on PowerChat`, 'follow');
+                await _handleNotice(userId, `${String(data.followerName || 'Someone').slice(0, 80)} followed on PowerChat`, 'follow');
                 break;
             case 'host.received':
-                _handleNotice(userId, `${String(data.hostChannel || 'Someone').slice(0, 80)} hosted with ${data.viewers || 0} viewers (PowerChat)`, 'host');
+                await _handleNotice(userId, `${String(data.hostChannel || 'Someone').slice(0, 80)} hosted with ${data.viewers || 0} viewers (PowerChat)`, 'host');
                 break;
             case 'channel_points.redeemed':
-                _handleNotice(userId, `${String(data.redeemerName || 'Someone').slice(0, 80)} redeemed ${String(data.rewardName || 'a reward').slice(0, 80)} (PowerChat)`, 'points');
+                await _handleNotice(userId, `${String(data.redeemerName || 'Someone').slice(0, 80)} redeemed ${String(data.rewardName || 'a reward').slice(0, 80)} (PowerChat)`, 'points');
                 break;
             // paid_message.created → display twin of donation.completed (ignored to avoid
             // double-counting). goal.updated/completed reflect PowerChat's own goals;
@@ -270,13 +270,13 @@ function processEvent(envelope) {
 // chat celebration render, WITHOUT touching PowerChat (no scope needed) and WITHOUT
 // permanently crediting a goal. Broadcasts the donation chat event + plays the alert sound;
 // if there's an active goal it also sends a transient goal-update preview (not persisted).
-function simulateDonation(userId, { amountUsd = 5, donor = 'Test Tipper', message = 'Test tip ✨' } = {}) {
+async function simulateDonation(userId, { amountUsd = 5, donor = 'Test Tipper', message = 'Test tip ✨' } = {}) {
     const alerts = require('../monetization/alerts');
     // Vibes are bit-style: $1 = 100 bucks, so the test dollar amount → bucks ×100.
     const amount = Math.max(1, Math.round(amountUsd * 100));
     const ts = new Date().toISOString();
     let streamId = null;
-    try { const live = db.getLiveStreamsByUserId(userId) || []; if (live.length) streamId = live[0].id; } catch { /* */ }
+    try { const live = await db.getLiveStreamsByUserId(userId) || []; if (live.length) streamId = live[0].id; } catch { /* */ }
 
     // Not to global chat: a test tip is the streamer's own preview, and any signed-in user could
     // otherwise announce a fake 99,900-Vibe donation site-wide.
@@ -284,7 +284,7 @@ function simulateDonation(userId, { amountUsd = 5, donor = 'Test Tipper', messag
     // actually test what the streamer is checking — that the alert lands in chat AND
     // survives a refresh.
     try {
-        _chatLine({
+        await _chatLine({
             line: {
                 stream_id: streamId, channel_user_id: userId, user_id: null, username: donor,
                 message: `${donor} donated ${amount.toLocaleString()} Vibes${message ? ': ' + message : ''}`,
@@ -293,15 +293,15 @@ function simulateDonation(userId, { amountUsd = 5, donor = 'Test Tipper', messag
             },
         });
     } catch (e) { console.warn('[PowerChat] test tip not saved to history:', e.message); }
-    try { alerts.playAlertSound(userId, streamId, 'donation'); } catch { /* */ }
+    try { await alerts.playAlertSound(userId, streamId, 'donation'); } catch { /* */ }
 
     // Transient goal-progress preview (does NOT persist — reload restores the real number).
     try {
-        const active = db.getActiveDonationGoals(userId) || [];
+        const active = await db.getActiveDonationGoals(userId) || [];
         if (active.length === 1) {
             const g = active[0];
             const preview = { ...g, current_amount: Math.min((g.current_amount || 0) + amount, g.target_amount) };
-            delivery.event({ kind: 'channel', id: userId, stream: streamId }, { type: 'goal-update', goal: publicGoal(preview), preview: true });
+            await delivery.event({ kind: 'channel', id: userId, stream: streamId }, { type: 'goal-update', goal: publicGoal(preview), preview: true });
         }
     } catch { /* */ }
     return { amount, live: !!streamId };

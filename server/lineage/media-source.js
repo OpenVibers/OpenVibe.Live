@@ -39,8 +39,8 @@ async function fetchObject(id, { timeoutMs = 10000 } = {}) {
 
 module.exports = {
     appId: media.MEDIA_APP_ID,
-    getVod: (id) => read(() => media.getVod(id)),
-    getClip: (id) => read(() => media.getClip(id)),
-    getObject: (id) => read(() => fetchObject(id)),
+    getVod: async (id) => await read(async () => await media.getVod(id)),
+    getClip: async (id) => await read(async () => await media.getClip(id)),
+    getObject: async (id) => await read(async () => await fetchObject(id)),
     _classify: classify,
 };

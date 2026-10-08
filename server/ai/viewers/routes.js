@@ -45,8 +45,8 @@ function sanitizeConfig(cfg) {
     };
 }
 
-function budgetSummary(userId) {
-    const st = budget.budgetStatus(userId);
+async function budgetSummary(userId) {
+    const st = await budget.budgetStatus(userId);
     return {
         active: st.active,
         reason: st.reason,
@@ -78,17 +78,17 @@ function botSummary(b) {
 }
 
 // ── Config ────────────────────────────────────────────────────
-function statusSafe(userId) { try { return engine.status(userId); } catch (e) { return { error: e.message }; } }
+async function statusSafe(userId) { try { return await engine.status(userId); } catch (e) { return { error: e.message }; } }
 
-router.get('/config', requireAuth, (req, res) => {
+router.get('/config', requireAuth, async (req, res) => {
     try {
-        const cfg = db.getChannelAiConfig(req.user.id);
+        const cfg = await db.getChannelAiConfig(req.user.id);
         res.json({
             config: sanitizeConfig(cfg),
-            settings: settingsMod.getSettings(req.user.id, cfg),
-            schema: settingsMod.describe(),
-            budget: budgetSummary(req.user.id),
-            status: statusSafe(req.user.id),
+            settings: await settingsMod.getSettings(req.user.id, cfg),
+            schema: await settingsMod.describe(),
+            budget: await budgetSummary(req.user.id),
+            status: await statusSafe(req.user.id),
             engine: engine.version,
         });
     } catch (e) {
@@ -97,46 +97,46 @@ router.get('/config', requireAuth, (req, res) => {
 });
 
 // ── v3 control surface ────────────────────────────────────────
-router.get('/status', requireAuth, (req, res) => {
+router.get('/status', requireAuth, async (req, res) => {
     try {
-        const st = statusSafe(req.user.id);
-        let stats = null; try { stats = db.getAiViewerLogStats(req.user.id, 60); } catch { /* */ }
-        res.json({ status: st, last_hour: stats, budget: budgetSummary(req.user.id) });
+        const st = await statusSafe(req.user.id);
+        let stats = null; try { stats = await db.getAiViewerLogStats(req.user.id, 60); } catch { /* */ }
+        res.json({ status: st, last_hour: stats, budget: await budgetSummary(req.user.id) });
     } catch (e) { res.status(500).json({ error: 'Failed to load status' }); }
 });
-router.get('/log', requireAuth, (req, res) => {
+router.get('/log', requireAuth, async (req, res) => {
     try {
-        const rows = db.getAiViewerLog(req.user.id, { afterId: parseInt(req.query.after, 10) || 0, limit: parseInt(req.query.limit, 10) || 50, streamId: parseInt(req.query.stream_id, 10) || null });
+        const rows = await db.getAiViewerLog(req.user.id, { afterId: parseInt(req.query.after, 10) || 0, limit: parseInt(req.query.limit, 10) || 50, streamId: parseInt(req.query.stream_id, 10) || null });
         res.json({ rows });
     } catch (e) { res.status(500).json({ error: 'Failed to load log' }); }
 });
-router.get('/threads', requireAuth, (req, res) => {
-    try { res.json({ open: db.getOpenAiViewerThreads(req.user.id, 10), recent: db.getRecentClosedAiViewerThreads(req.user.id, 10) }); }
+router.get('/threads', requireAuth, async (req, res) => {
+    try { res.json({ open: await db.getOpenAiViewerThreads(req.user.id, 10), recent: await db.getRecentClosedAiViewerThreads(req.user.id, 10) }); }
     catch (e) { res.status(500).json({ error: 'Failed to load threads' }); }
 });
 for (const cmd of ['pause', 'resume', 'nudge']) {
-    router.post(`/${cmd}`, requireAuth, (req, res) => {
-        try { res.json({ ok: true, message: engine.onModCommand(req.user.id, null, [cmd], { by: req.user.username }), status: statusSafe(req.user.id) }); }
+    router.post(`/${cmd}`, requireAuth, async (req, res) => {
+        try { res.json({ ok: true, message: await engine.onModCommand(req.user.id, null, [cmd], { by: req.user.username }), status: await statusSafe(req.user.id) }); }
         catch (e) { res.status(500).json({ error: e.message }); }
     });
 }
-router.post('/bots/:id/mute', requireAuth, (req, res) => { const bot = ownBotOr404(req, res); if (!bot) return; res.json({ ok: true, message: engine.onModCommand(req.user.id, null, ['mute', bot.username], { by: req.user.username }) }); });
-router.post('/bots/:id/unmute', requireAuth, (req, res) => { const bot = ownBotOr404(req, res); if (!bot) return; res.json({ ok: true, message: engine.onModCommand(req.user.id, null, ['unmute', bot.username], { by: req.user.username }) }); });
+router.post('/bots/:id/mute', requireAuth, async (req, res) => { const bot = await ownBotOr404(req, res); if (!bot) return; res.json({ ok: true, message: engine.onModCommand(req.user.id, null, ['mute', bot.username], { by: req.user.username }) }); });
+router.post('/bots/:id/unmute', requireAuth, async (req, res) => { const bot = await ownBotOr404(req, res); if (!bot) return; res.json({ ok: true, message: engine.onModCommand(req.user.id, null, ['unmute', bot.username], { by: req.user.username }) }); });
 router.post('/byo/test', requireAuth, async (req, res) => {
     try {
-        const cfg = db.getChannelAiConfig(req.user.id);
+        const cfg = await db.getChannelAiConfig(req.user.id);
         const body = req.body || {};
         // A stored key lives in OpenVibe.AI: test it there (a one-word run with credential { subject }).
         const typedKey = body.byo_key && body.byo_key !== KEY_SENTINEL;
         if (cfg.byo_in_ai && !typedKey) {
-            const provider = budget.byoProvider(cfg);
+            const provider = await budget.byoProvider(cfg);
             if (!provider) return res.json({ ok: false, error: 'Link a Network account to use your own key' });
             const started = Date.now();
             const r = await ai.llm.complete({ role: 'chat', user: 'Reply with the single word: ok', maxTokens: 5, temperature: 0, timeoutMs: 15000, kind: 'status_check', ownerUserId: req.user.id, provider });
             return res.json(r && r.text ? { ok: true, model: r.model, latencyMs: Date.now() - started, via: 'openvibe-ai' } : { ok: false, error: 'your provider did not answer through OpenVibe.AI' });
         }
         // A key typed but not saved yet (so not in OpenVibe.AI): llm.testProvider, the one direct provider call left.
-        const override = budget.byoProvider({ ...cfg, byo_in_ai: 0, byo_key: typedKey ? body.byo_key : cfg.byo_key, byo_base_url: body.byo_base_url ?? cfg.byo_base_url, byo_model: body.byo_model ?? cfg.byo_model });
+        const override = await budget.byoProvider({ ...cfg, byo_in_ai: 0, byo_key: typedKey ? body.byo_key : cfg.byo_key, byo_base_url: body.byo_base_url ?? cfg.byo_base_url, byo_model: body.byo_model ?? cfg.byo_model });
         const r = await ai.llm.testProvider(override);
         res.json(r);
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
@@ -157,9 +157,9 @@ router.put('/config', requireAuth, async (req, res) => {
         // The key goes to OpenVibe.AI, never into Live's database (WS-O task 2, byo-credentials.js). A real new key
         // (not blank, not the mask) is sent with the address and models; a change of model alone keeps AI's stored key;
         // byo_key: null removes it.
-        const refused = await require('../byo-credentials').applyConfig(req.user.id, db.getChannelAiConfig(req.user.id), body.byo_key === KEY_SENTINEL ? undefined : body.byo_key, fields);
+        const refused = await require('../byo-credentials').applyConfig(req.user.id, await db.getChannelAiConfig(req.user.id), body.byo_key === KEY_SENTINEL ? undefined : body.byo_key, fields);
         if (refused) return res.status(refused.status).json({ error: refused.error, code: refused.code });
-        db.upsertChannelAiConfig(req.user.id, fields);
+        await db.upsertChannelAiConfig(req.user.id, fields);
         // The daily budget on the site's AI is also a cap in OpenVibe.AI (viewer-quota.js): kept in step on every save
         // that touches it; a failure leaves Live's own pre-check in charge until the next save or the sync script.
         if (fields.use_shared_key !== undefined || fields.daily_budget_cents !== undefined) {
@@ -167,14 +167,14 @@ router.put('/config', requireAuth, async (req, res) => {
             if (!['set', 'removed', 'none'].includes(q)) console.warn(`[AI viewers] budget cap not synced to OpenVibe.AI for ${req.user.id}: ${q}`);
         }
         // v3 settings blob (partial merge, validated + clamped in settings.js).
-        if (body.settings && typeof body.settings === 'object') settingsMod.updateSettings(req.user.id, body.settings);
+        if (body.settings && typeof body.settings === 'object') await settingsMod.updateSettings(req.user.id, body.settings);
         try { engine.applyConfigForUser(req.user.id); } catch { /* */ }
-        const cfg = db.getChannelAiConfig(req.user.id);
+        const cfg = await db.getChannelAiConfig(req.user.id);
         res.json({
             config: sanitizeConfig(cfg),
-            settings: settingsMod.getSettings(req.user.id, cfg),
-            budget: budgetSummary(req.user.id),
-            status: statusSafe(req.user.id),
+            settings: await settingsMod.getSettings(req.user.id, cfg),
+            budget: await budgetSummary(req.user.id),
+            status: await statusSafe(req.user.id),
         });
     } catch (e) {
         res.status(500).json({ error: 'Failed to save AI viewer config' });
@@ -182,17 +182,17 @@ router.put('/config', requireAuth, async (req, res) => {
 });
 
 // ── Roster ────────────────────────────────────────────────────
-router.get('/roster', requireAuth, (req, res) => {
+router.get('/roster', requireAuth, async (req, res) => {
     try {
-        const bots = db.getChannelAiBots(req.user.id).map(botSummary);
+        const bots = (await db.getChannelAiBots(req.user.id)).map(botSummary);
         res.json({ bots });
     } catch (e) {
         res.status(500).json({ error: 'Failed to load roster' });
     }
 });
 
-function ownBotOr404(req, res) {
-    const bot = db.getChannelAiBot(parseInt(req.params.id, 10));
+async function ownBotOr404(req, res) {
+    const bot = await db.getChannelAiBot(parseInt(req.params.id, 10));
     if (!bot || bot.channel_user_id !== req.user.id) {
         res.status(404).json({ error: 'Bot not found' });
         return null;
@@ -200,9 +200,9 @@ function ownBotOr404(req, res) {
     return bot;
 }
 
-router.patch('/bots/:id', requireAuth, (req, res) => {
+router.patch('/bots/:id', requireAuth, async (req, res) => {
     try {
-        const bot = ownBotOr404(req, res);
+        const bot = await ownBotOr404(req, res);
         if (!bot) return;
         const body = req.body || {};
         const fields = {};
@@ -216,30 +216,30 @@ router.patch('/bots/:id', requireAuth, (req, res) => {
         if (body.tts !== undefined) { persona.tts = !!body.tts; touched = true; }
         if (body.color !== undefined && /^#[0-9a-f]{3,8}$/i.test(String(body.color))) { persona.color = String(body.color); fields.avatar_color = persona.color; touched = true; }
         if (touched) fields.persona_json = persona;
-        if (Object.keys(fields).length) db.updateChannelAiBot(bot.id, fields);
+        if (Object.keys(fields).length) await db.updateChannelAiBot(bot.id, fields);
         try { engine.applyConfigForUser(req.user.id); } catch { /* */ }
-        res.json({ bot: botSummary(db.getChannelAiBot(bot.id)) });
+        res.json({ bot: botSummary(await db.getChannelAiBot(bot.id)) });
     } catch (e) {
         res.status(500).json({ error: 'Failed to update bot' });
     }
 });
 
-router.post('/bots/:id/clear-memory', requireAuth, (req, res) => {
+router.post('/bots/:id/clear-memory', requireAuth, async (req, res) => {
     try {
-        const bot = ownBotOr404(req, res);
+        const bot = await ownBotOr404(req, res);
         if (!bot) return;
-        clearBrain(bot.id);
-        res.json({ ok: true, bot: botSummary(db.getChannelAiBot(bot.id)) });
+        await clearBrain(bot.id);
+        res.json({ ok: true, bot: botSummary(await db.getChannelAiBot(bot.id)) });
     } catch (e) {
         res.status(500).json({ error: 'Failed to clear memory' });
     }
 });
 
-router.delete('/bots/:id', requireAuth, (req, res) => {
+router.delete('/bots/:id', requireAuth, async (req, res) => {
     try {
-        const bot = ownBotOr404(req, res);
+        const bot = await ownBotOr404(req, res);
         if (!bot) return;
-        db.deleteChannelAiBot(bot.id);
+        await db.deleteChannelAiBot(bot.id);
         try { engine.applyConfigForUser(req.user.id); } catch { /* */ }
         res.json({ ok: true });
     } catch (e) {
@@ -254,7 +254,7 @@ router.post('/clone', requireAuth, async (req, res) => {
         let src;
         if (kind === 'user') {
             const userId = parseInt(ref, 10);
-            const u = userId ? db.getUserById(userId) : null;
+            const u = userId ? await db.getUserById(userId) : null;
             if (!u) return res.status(404).json({ error: 'User not found' });
             // Staff may clone anyone; a streamer only from what that person said in their own
             // channel (the site-wide history and the chatter's chat-AI insight, which OpenVibe.Chat

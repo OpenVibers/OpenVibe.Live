@@ -28,9 +28,9 @@ let timer = null;
 
 function ensureInbox() {
     if (inbox) return inbox;
-    const { createInbox } = require('openvibe-sdk/events');
-    inbox = createInbox(db.getDb());
-    inbox.ensureSchema();
+    // The PostgreSQL inbox: the receipt and the apply commit together (its table, idempotency_receipts, is migrated).
+    const { createPgInbox } = require('openvibe-sdk/events');
+    inbox = createPgInbox(db.getDb());
     return inbox;
 }
 
@@ -47,33 +47,33 @@ const toSqlTime = (iso) => { const d = iso ? new Date(iso) : new Date(); return 
  * Apply one event (inside the inbox transaction). Returns { outcome, after? } where after() runs
  * once the transaction committed (go-live notifications must not fire for a rolled-back row).
  */
-function apply(event) {
+async function apply(event) {
     const type = String(event && event.event_type || '');
     const p = event.payload || {};
     const sessionId = String(p.session_id || (event.subject && event.subject.id) || '');
     const revision = Number(event.subject && event.subject.revision) || 0;
     if (event.source !== 'openre') return { outcome: 'ignored' };
     if (!/^openre\.session\.(started|ended|failed)$/.test(type) || !/^ses_[0-9A-HJKMNP-TV-Z]{26}$/.test(sessionId)) return { outcome: 'ignored' };
-    const known = db.get('SELECT * FROM openre_sessions WHERE session_id = ?', [sessionId]);
+    const known = await db.get('SELECT * FROM openre_sessions WHERE session_id = ?', [sessionId]);
     if (known && known.revision >= revision) return { outcome: 'stale' };
 
     if (type === 'openre.session.started') {
         const slotId = slotRef(p);
-        const slot = slotId ? db.getManagedStreamById(slotId) : null;
+        const slot = slotId ? await db.getManagedStreamById(slotId) : null;
         if (!slot || authorityOf(slot) !== 'openre' || !p.mirror_to_live) return { outcome: 'not_mirrored' };
-        const user = db.getUserById(slot.user_id);
+        const user = await db.getUserById(slot.user_id);
         if (!user || user.is_banned) return { outcome: 'not_mirrored' };
         // A row made by the Go Live page waiting for RTMP is used, like Live's own RTMP ingest does.
-        const waiting = db.get(`SELECT s.id FROM streams s LEFT JOIN openre_sessions o ON o.stream_id = s.id
+        const waiting = await db.get(`SELECT s.id FROM streams s LEFT JOIN openre_sessions o ON o.stream_id = s.id
             WHERE s.managed_stream_id = ? AND s.is_live = 1 AND s.protocol = 'rtmp' AND o.session_id IS NULL ORDER BY s.id DESC LIMIT 1`, [slot.id]);
         let streamId;
         let created = false;
         if (waiting) {
             streamId = waiting.id;
-            db.run('UPDATE streams SET started_at = CURRENT_TIMESTAMP, last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [streamId]);
+            await db.run('UPDATE streams SET started_at = ov_now(), last_heartbeat = ov_now() WHERE id = ?', [streamId]);
         } else {
-            const channel = db.ensureChannel(user.id);
-            streamId = Number(db.createStream({
+            const channel = await db.ensureChannel(user.id);
+            streamId = Number((await db.createStream({
                 user_id: user.id,
                 channel_id: channel && channel.id,
                 managed_stream_id: slot.id,
@@ -83,26 +83,26 @@ function apply(event) {
                 category: slot.category || null,
                 protocol: 'rtmp',
                 is_nsfw: slot.is_nsfw ? 1 : 0,
-            }).lastInsertRowid);
-            db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [streamId]);
+            })).lastInsertRowid);
+            await db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ?', [streamId]);
             created = true;
         }
-        db.run(`INSERT INTO openre_sessions (session_id, managed_stream_id, stream_id, state, revision, started_at, confirmed_at, updated_at)
-            VALUES (?, ?, ?, 'live', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            ON CONFLICT(session_id) DO UPDATE SET stream_id = excluded.stream_id, state = 'live', revision = excluded.revision, confirmed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP`,
+        await db.run(`INSERT INTO openre_sessions (session_id, managed_stream_id, stream_id, state, revision, started_at, confirmed_at, updated_at)
+            VALUES (?, ?, ?, 'live', ?, ?, ov_now(), ov_now())
+            ON CONFLICT(session_id) DO UPDATE SET stream_id = excluded.stream_id, state = 'live', revision = excluded.revision, confirmed_at = ov_now(), updated_at = ov_now()`,
         [sessionId, slot.id, streamId, revision, toSqlTime(p.started_at)]);
-        const ended = db.endOtherLiveStreamsForSlot(slot.id, streamId);
+        const ended = await db.endOtherLiveStreamsForSlot(slot.id, streamId);
         return {
             outcome: created ? 'created' : 'attached',
-            after: () => {
+            after: async () => {
                 for (const sid of ended) { try { require('../streaming/broadcast-server').endStream(sid); } catch { /* */ } }
                 try {
-                    const channel = db.getChannelByUserId(user.id);
+                    const channel = await db.getChannelByUserId(user.id);
                     const configId = slot.control_config_id || (channel && channel.active_control_config_id);
-                    if (configId) db.applyConfigToStream(configId, streamId);
+                    if (configId) await db.applyConfigToStream(configId, streamId);
                 } catch (e) { console.warn('[OpenRe] control config for mirrored stream failed:', e.message); }
-                const stream = db.getStreamById(streamId) || { id: streamId };
-                try { require('../streaming/golive-notify').notifyFollowersGoLive(user, stream); } catch (e) { console.warn('[OpenRe] go-live notify failed:', e.message); }
+                const stream = await db.getStreamById(streamId) || { id: streamId };
+                try { await require('../streaming/golive-notify').notifyFollowersGoLive(user, stream); } catch (e) { console.warn('[OpenRe] go-live notify failed:', e.message); }
                 try { require('../streaming/live-events').announceGoLive(stream, user); } catch { /* */ }
                 console.log(`[OpenRe] session ${sessionId} mirrored into stream ${streamId} (${user.username}, slot ${slot.id})`);
             },
@@ -112,17 +112,17 @@ function apply(event) {
     // ended / failed
     const state = type === 'openre.session.ended' ? 'ended' : 'failed';
     const streamId = known ? known.stream_id : null;
-    db.run(`INSERT INTO openre_sessions (session_id, managed_stream_id, stream_id, state, revision, ended_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(session_id) DO UPDATE SET state = excluded.state, revision = excluded.revision, ended_at = excluded.ended_at, updated_at = CURRENT_TIMESTAMP`,
+    await db.run(`INSERT INTO openre_sessions (session_id, managed_stream_id, stream_id, state, revision, ended_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ov_now())
+        ON CONFLICT(session_id) DO UPDATE SET state = excluded.state, revision = excluded.revision, ended_at = excluded.ended_at, updated_at = ov_now()`,
     [sessionId, known ? known.managed_stream_id : slotRef(p), streamId, state, revision, toSqlTime(p.ended_at)]);
     if (!streamId) return { outcome: 'recorded' };
-    const row = db.getStreamById(streamId);
-    if (row && row.is_live) db.endStream(streamId);
+    const row = await db.getStreamById(streamId);
+    if (row && row.is_live) await db.endStream(streamId);
     return {
         outcome: 'ended',
-        after: () => {
-            try { db.computeAndCacheStreamAnalytics(streamId); } catch { /* */ }
+        after: async () => {
+            try { await db.computeAndCacheStreamAnalytics(streamId); } catch { /* */ }
             try { require('../streaming/broadcast-server').endStream(streamId); } catch { /* */ }
             // What Live's own RTMP unpublish stops (server/index.js): the RS bridge, chat relays, AI bots.
             try { require('../integrations/robotstreamer-service').stopForStream(streamId); } catch { /* */ }
@@ -134,7 +134,7 @@ function apply(event) {
 }
 
 /** Express handler for POST /internal/openre-events (needs req.rawBody from express.json verify). */
-function webhookHandler(req, res) {
+async function webhookHandler(req, res) {
     const secret = process.env.OPENRE_EVENTS_SECRET || '';
     if (!secret) return res.status(503).json({ error: 'OPENRE_EVENTS_SECRET is not set' });
     const { parseDelivery } = require('openvibe-sdk/events');
@@ -146,12 +146,12 @@ function webhookHandler(req, res) {
     let result;
     try {
         let after = null;
-        result = ensureInbox().once(CONSUMER, delivery.event.event_id, () => {
-            const r = apply(delivery.event);
+        result = await ensureInbox().once(CONSUMER, delivery.event.event_id, async () => {
+            const r = await apply(delivery.event);
             after = r.after || null;
             return r.outcome;
         });
-        if (!result.duplicate && after) { try { after(); } catch (e) { console.warn('[OpenRe] post-commit step failed:', e.message); } }
+        if (!result.duplicate && after) { try { await after(); } catch (e) { console.warn('[OpenRe] post-commit step failed:', e.message); } }
     } catch (err) {
         console.error('[OpenRe] event apply failed:', err.message);
         return res.status(500).json({ error: 'apply failed' }); // Events retries
@@ -160,33 +160,33 @@ function webhookHandler(req, res) {
 }
 
 /** Stream id → the mirrored OpenRe session (or null). */
-function sessionForStream(streamId) {
-    try { return db.get('SELECT * FROM openre_sessions WHERE stream_id = ? ORDER BY updated_at DESC LIMIT 1', [streamId]) || null; } catch { return null; }
+async function sessionForStream(streamId) {
+    try { return await db.get('SELECT * FROM openre_sessions WHERE stream_id = ? ORDER BY updated_at DESC LIMIT 1', [streamId]) || null; } catch { return null; }
 }
 
 /** Does OpenRe hold a live ingest for this stream (confirmed recently)? Used by Live's stale cleanup. */
-function hasLiveSession(streamId) {
+async function hasLiveSession(streamId) {
     try {
-        return Boolean(db.get(`SELECT 1 FROM openre_sessions WHERE stream_id = ? AND state = 'live'
+        return Boolean(await db.get(`SELECT 1 FROM openre_sessions WHERE stream_id = ? AND state = 'live'
             AND confirmed_at > datetime('now', '-${CONFIRM_WINDOW_MIN} minutes')`, [streamId]));
     } catch { return false; }
 }
 
 /** Does OpenRe own this stream at all (so Live must not start its own restream/recording for it)? */
-function ownsStream(streamId) {
-    return Boolean(sessionForStream(streamId));
+async function ownsStream(streamId) {
+    return Boolean(await sessionForStream(streamId));
 }
 
 async function reconcileOnce() {
     let rows = [];
-    try { rows = db.all("SELECT * FROM openre_sessions WHERE state = 'live'"); } catch { return 0; }
+    try { rows = await db.all("SELECT * FROM openre_sessions WHERE state = 'live'"); } catch { return 0; }
     if (!rows.length || !client.enabled()) return 0;
     let n = 0;
     for (const r of rows) {
         // Live ended the row itself (End Stream, or stale cleanup while OpenRe was unreachable):
         // stop tracking it rather than keeping a live mirror of an offline stream.
-        const row = r.stream_id ? db.getStreamById(r.stream_id) : null;
-        if (row && !row.is_live) { db.run("UPDATE openre_sessions SET state = 'detached', updated_at = CURRENT_TIMESTAMP WHERE session_id = ?", [r.session_id]); continue; }
+        const row = r.stream_id ? await db.getStreamById(r.stream_id) : null;
+        if (row && !row.is_live) { await db.run("UPDATE openre_sessions SET state = 'detached', updated_at = ov_now() WHERE session_id = ?", [r.session_id]); continue; }
         let s;
         try { s = await client.getSession(r.session_id); } catch (err) {
             if (err.status === 404) s = null;
@@ -196,11 +196,11 @@ async function reconcileOnce() {
         // the row stayed 'live', ownsStream() stayed true and Live never took its own restream/recording back.
         if (!s) s = { state: 'failed', revision: r.revision + 1, ended_at: null };
         if (s.state === 'live' || s.state === 'starting') {
-            db.run("UPDATE openre_sessions SET confirmed_at = CURRENT_TIMESTAMP WHERE session_id = ?", [r.session_id]);
-            if (r.stream_id) db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ? AND is_live = 1', [r.stream_id]);
+            await db.run("UPDATE openre_sessions SET confirmed_at = ov_now() WHERE session_id = ?", [r.session_id]);
+            if (r.stream_id) await db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ? AND is_live = 1', [r.stream_id]);
         } else if (['ending', 'ended', 'failed'].includes(s.state)) {
             const event = { source: 'openre', event_type: `openre.session.${s.state === 'failed' ? 'failed' : 'ended'}`, subject: { type: 'ingest_session', id: r.session_id, revision: Math.max(Number(s.revision) || 0, r.revision + 1) }, payload: { session_id: r.session_id, ended_at: s.ended_at } };
-            const out = db.getDb().transaction(() => apply(event))();
+            const out = await db.getDb().tx(async () => await apply(event));
             if (out.after) out.after();
             n++;
         }

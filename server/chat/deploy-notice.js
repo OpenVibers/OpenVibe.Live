@@ -32,7 +32,7 @@ const parseLog = (raw) => raw.trim().split('\n').filter(Boolean).map((line) => {
 async function newCommits(db) {
     const head = (await git(['rev-parse', 'HEAD'], 3000)).trim();
     if (!/^[0-9a-f]{40}$/.test(head)) return { head: '', previous: null, commits: [] };
-    const last = String(db.getSetting(SETTING) || '').trim();
+    const last = String(await db.getSetting(SETTING) || '').trim();
     const previous = /^[0-9a-f]{40}$/.test(last) ? last : null;
     if (last === head) return { head, previous, commits: [] };
     const fmt = '--pretty=format:%H%x1f%h%x1f%aI%x1f%s';
@@ -57,21 +57,21 @@ async function announce({ db, log = console }) {
     let eventId = null;
     // Recording the commits as announced and queueing live.release.deployed are one commit: the
     // event exists if and only if this deploy counts as announced.
-    const recordDeploy = () => {
-        db.setSetting(SETTING, head);
+    const recordDeploy = async () => {
+        await db.setSetting(SETTING, head);
         if (outbox) {
-            const env = require('../events/release-events').record({ head, previous, commits });
+            const env = await require('../events/release-events').record({ head, previous, commits });
             eventId = env ? env.event_id : null;
         }
     };
-    const inTransaction = (fn) => db.getDb().transaction(fn)();
+    const inTransaction = async (fn) => await db.getDb().tx(fn);
 
     // Live still decides what shipped; OpenVibe.Chat stores the rolling message and shows it (its
     // own copy of this module). It learns the commits from the live.release.deployed event only.
     // Chat's ingress has no deploy endpoint: with Events publishing off the commits are not
     // recorded as announced and the next boot tries again (OpenVibe.Chat docs/chat-ingress.md).
     if (!outbox) { log.warn('[Deploy notice] Events outbox unavailable; left unannounced for the next boot'); return { announced: 0, event_id: null }; }
-    try { inTransaction(recordDeploy); } catch (err) { log.warn('[Deploy notice] not recorded:', err.message); return { announced: 0, event_id: null }; }
+    try { await inTransaction(recordDeploy); } catch (err) { log.warn('[Deploy notice] not recorded:', err.message); return { announced: 0, event_id: null }; }
     outbox.kick();
     return { announced: commits.length, event_id: eventId };
 }

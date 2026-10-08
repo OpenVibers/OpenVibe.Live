@@ -17,9 +17,9 @@ const router = express.Router();
 
 const notFound = (res) => res.status(404).json({ error: 'Not found' });
 
-router.put('/channel/:username/bot', (req, res, next) => (embed.enabled() ? next() : notFound(res)), requireAuth, (req, res) => {
+router.put('/channel/:username/bot', (req, res, next) => (embed.enabled() ? next() : notFound(res)), requireAuth, async (req, res) => {
     try {
-        const channel = db.getChannelByUsername(req.params.username);
+        const channel = await db.getChannelByUsername(req.params.username);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
         // Owner only: channel moderators and staff do not choose which robot a channel shows.
         if (Number(req.user.id) !== Number(channel.user_id)) {
@@ -30,7 +30,7 @@ router.put('/channel/:username/bot', (req, res, next) => (embed.enabled() ? next
         if (raw === null || raw === '') robotId = null;
         else if (embed.validRobotId(raw)) robotId = raw;
         else return res.status(400).json({ error: 'robot_id must be a Bot robot id (rob_…) or null' });
-        db.updateChannel(channel.user_id, { bot_robot_id: robotId });
+        await db.updateChannel(channel.user_id, { bot_robot_id: robotId });
         res.json({ ok: true, bot_embed: embed.channelEmbed({ bot_robot_id: robotId }) });
     } catch (err) {
         console.error('[BotEmbed] Bind error:', err.message);

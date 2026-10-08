@@ -27,8 +27,8 @@ const activeLiveThumbnailJobs = new Set();
 
 if (!fs.existsSync(THUMB_DIR)) fs.mkdirSync(THUMB_DIR, { recursive: true });
 
-function getStreamThumbnailState(streamId) {
-    const row = db.get('SELECT thumbnail_url FROM streams WHERE id = ?', [streamId]);
+async function getStreamThumbnailState(streamId) {
+    const row = await db.get('SELECT thumbnail_url FROM streams WHERE id = ?', [streamId]);
     const thumbUrl = row?.thumbnail_url || null;
     if (!thumbUrl) return { thumbUrl: null, filePath: null, exists: false, ageMs: Infinity };
     const filePath = path.join(THUMB_DIR, path.basename(thumbUrl));
@@ -37,30 +37,30 @@ function getStreamThumbnailState(streamId) {
     return { thumbUrl, filePath, exists: true, ageMs: Date.now() - stat.mtimeMs };
 }
 
-function shouldRefreshLiveThumbnail(streamId, minAgeMs = LIVE_THUMB_MIN_INTERVAL_MS) {
-    const state = getStreamThumbnailState(streamId);
+async function shouldRefreshLiveThumbnail(streamId, minAgeMs = LIVE_THUMB_MIN_INTERVAL_MS) {
+    const state = await getStreamThumbnailState(streamId);
     return !state.exists || state.ageMs >= minAgeMs;
 }
 
-function getCurrentLiveThumbnailUrl(streamId) {
-    return getStreamThumbnailState(streamId).thumbUrl || null;
+async function getCurrentLiveThumbnailUrl(streamId) {
+    return (await getStreamThumbnailState(streamId)).thumbUrl || null;
 }
 
-function _replaceThumb(streamId, filename) {
-    const oldThumb = db.get('SELECT thumbnail_url FROM streams WHERE id = ?', [streamId]);
+async function _replaceThumb(streamId, filename) {
+    const oldThumb = await db.get('SELECT thumbnail_url FROM streams WHERE id = ?', [streamId]);
     if (oldThumb?.thumbnail_url) {
         const oldFile = path.join(THUMB_DIR, path.basename(oldThumb.thumbnail_url));
         if (fs.existsSync(oldFile)) { try { fs.unlinkSync(oldFile); } catch { /* */ } }
     }
     const thumbUrl = `/api/thumbnails/${filename}`;
-    db.run('UPDATE streams SET thumbnail_url = ? WHERE id = ?', [thumbUrl, streamId]);
+    await db.run('UPDATE streams SET thumbnail_url = ? WHERE id = ?', [thumbUrl, streamId]);
     return thumbUrl;
 }
 
 /** Save a broadcaster-posted live thumbnail (Buffer or base64 JPEG/PNG string). */
-function saveLiveThumbnail(streamId, imageData) {
+async function saveLiveThumbnail(streamId, imageData) {
     try {
-        const current = getStreamThumbnailState(streamId);
+        const current = await getStreamThumbnailState(streamId);
         if (current.exists && current.ageMs < CLIENT_THUMB_WRITE_MIN_INTERVAL_MS) {
             return current.thumbUrl;
         }
@@ -76,7 +76,7 @@ function saveLiveThumbnail(streamId, imageData) {
         }
         const filename = `stream-${streamId}-${Date.now()}.jpg`;
         fs.writeFileSync(path.join(THUMB_DIR, filename), buffer);
-        return _replaceThumb(streamId, filename);
+        return await _replaceThumb(streamId, filename);
     } catch (err) {
         console.error('[Thumbnails] Save live thumbnail error:', err.message);
         return null;
@@ -85,11 +85,11 @@ function saveLiveThumbnail(streamId, imageData) {
 
 /** Grab one frame from an RTMP stream's local HTTP-FLV endpoint. */
 function generateLiveStreamThumbnail(streamId, streamKey, opts = {}) {
-    return new Promise((resolve) => {
+    return new Promise(async (resolve) => {
         const minAgeMs = Number.isFinite(opts.minAgeMs) ? opts.minAgeMs : LIVE_THUMB_MIN_INTERVAL_MS;
-        if (!shouldRefreshLiveThumbnail(streamId, minAgeMs)) return resolve(getCurrentLiveThumbnailUrl(streamId));
+        if (!await shouldRefreshLiveThumbnail(streamId, minAgeMs)) return resolve(await getCurrentLiveThumbnailUrl(streamId));
         const jobKey = `rtmp:${streamId}`;
-        if (activeLiveThumbnailJobs.has(jobKey)) return resolve(getCurrentLiveThumbnailUrl(streamId));
+        if (activeLiveThumbnailJobs.has(jobKey)) return resolve(await getCurrentLiveThumbnailUrl(streamId));
         activeLiveThumbnailJobs.add(jobKey);
 
         const rtmpHttpPort = opts.rtmpHttpPort || ((config.rtmp?.port || 1935) + 8000);
@@ -101,10 +101,10 @@ function generateLiveStreamThumbnail(streamId, streamKey, opts = {}) {
             '-vf', `scale=${THUMB_WIDTH}:-1`, '-q:v', String(THUMB_QUALITY), outPath,
         ], { stdio: 'ignore' });
         const killTimer = setTimeout(() => { try { ff.kill('SIGKILL'); } catch { /* */ } }, 8000);
-        ff.on('close', (code) => {
+        ff.on('close', async (code) => {
             activeLiveThumbnailJobs.delete(jobKey);
             clearTimeout(killTimer);
-            if (code === 0 && fs.existsSync(outPath)) return resolve(_replaceThumb(streamId, filename));
+            if (code === 0 && fs.existsSync(outPath)) return resolve(await _replaceThumb(streamId, filename));
             if (fs.existsSync(outPath)) { try { fs.unlinkSync(outPath); } catch { /* */ } }
             resolve(null);
         });
@@ -123,9 +123,9 @@ function _nextRtpPort() { const p = _rtpPort; _rtpPort += 2; if (_rtpPort > 3190
 function generateWebrtcThumbnail(streamId, opts = {}) {
     return new Promise(async (resolve) => {
         const minAgeMs = Number.isFinite(opts.minAgeMs) ? opts.minAgeMs : LIVE_THUMB_MIN_INTERVAL_MS;
-        if (!shouldRefreshLiveThumbnail(streamId, minAgeMs)) return resolve(getCurrentLiveThumbnailUrl(streamId));
+        if (!await shouldRefreshLiveThumbnail(streamId, minAgeMs)) return resolve(await getCurrentLiveThumbnailUrl(streamId));
         const jobKey = `webrtc:${streamId}`;
-        if (activeLiveThumbnailJobs.has(jobKey)) return resolve(getCurrentLiveThumbnailUrl(streamId));
+        if (activeLiveThumbnailJobs.has(jobKey)) return resolve(await getCurrentLiveThumbnailUrl(streamId));
         let sfu; try { sfu = require('../streaming/webrtc-sfu'); } catch { return resolve(null); }
         const roomId = `stream-${streamId}`;
         const producer = (() => { try { return sfu.findProducerByKind(roomId, 'video'); } catch { return null; } })();
@@ -136,23 +136,23 @@ function generateWebrtcThumbnail(streamId, opts = {}) {
         const outPath = path.join(THUMB_DIR, filename);
         const sdpPath = path.join(require('os').tmpdir(), `openvibe-thumb-${streamId}-${port}.sdp`);
         let consumer = null;
-        const finish = (ok) => {
+        const finish = async (ok) => {
             activeLiveThumbnailJobs.delete(jobKey);
             try { if (consumer) sfu.closePlainConsumer(roomId, consumer.transportId); } catch { /* */ }
             try { fs.unlinkSync(sdpPath); } catch { /* */ }
-            if (ok && fs.existsSync(outPath) && fs.statSync(outPath).size > 2000) return resolve(_replaceThumb(streamId, filename));
+            if (ok && fs.existsSync(outPath) && fs.statSync(outPath).size > 2000) return resolve(await _replaceThumb(streamId, filename));
             try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch { /* */ }
             resolve(null);
         };
         try {
             consumer = await sfu.createPlainConsumer(roomId, producer.id, '127.0.0.1', port, port + 1);
-        } catch (e) { console.warn(`[Thumbnails] webrtc grab: consumer failed for stream ${streamId}:`, e.message); return finish(false); }
+        } catch (e) { console.warn(`[Thumbnails] webrtc grab: consumer failed for stream ${streamId}:`, e.message); return await finish(false); }
         const pt = consumer.payloadType, codec = (consumer.mimeType || 'video/VP8').split('/')[1];
         const fmtp = consumer.codecParameters ? Object.entries(consumer.codecParameters).map(([k, v]) => `${k}=${v}`).join(';') : '';
         const sdp = ['v=0', 'o=- 0 0 IN IP4 127.0.0.1', 's=OpenVibe.Live thumbnail', 'c=IN IP4 127.0.0.1', 't=0 0',
             `m=video ${port} RTP/AVP ${pt}`, `a=rtpmap:${pt} ${codec}/${consumer.clockRate}`,
             consumer.ssrc ? `a=ssrc:${consumer.ssrc} cname:thumb` : '', fmtp ? `a=fmtp:${pt} ${fmtp}` : '', 'a=recvonly', ''].filter(l => l !== '').join('\n') + '\n';
-        try { fs.writeFileSync(sdpPath, sdp, 'utf8'); } catch { return finish(false); }
+        try { fs.writeFileSync(sdpPath, sdp, 'utf8'); } catch { return await finish(false); }
         // Only a frame decoded from a KEYFRAME may become the thumbnail: the first packets a fresh
         // consumer sees are delta frames with no reference, and decoding those gives the smeared,
         // streaky garbage that showed up on live cards. `-skip_frame nokey` drops everything until
@@ -177,17 +177,17 @@ function generateWebrtcThumbnail(streamId, opts = {}) {
             try { fs.unlinkSync(first); } catch { /* */ } try { fs.unlinkSync(second); } catch { /* */ }
             return false;
         };
-        ff.on('close', () => { clearTimeout(killTimer); finish(pick()); });
-        ff.on('error', () => { clearTimeout(killTimer); finish(false); });
+        ff.on('close', async () => { clearTimeout(killTimer); await finish(pick()); });
+        ff.on('error', async () => { clearTimeout(killTimer); await finish(false); });
     });
 }
 
 /** Grab one frame from a JSMPEG stream by tapping the relay WebSocket. */
 function generateJSMPEGThumbnail(streamId, videoPort) {
-    return new Promise((resolve) => {
-        if (!shouldRefreshLiveThumbnail(streamId, LIVE_THUMB_MIN_INTERVAL_MS)) return resolve(getCurrentLiveThumbnailUrl(streamId));
+    return new Promise(async (resolve) => {
+        if (!await shouldRefreshLiveThumbnail(streamId, LIVE_THUMB_MIN_INTERVAL_MS)) return resolve(await getCurrentLiveThumbnailUrl(streamId));
         const jobKey = `jsmpeg:${streamId}`;
-        if (activeLiveThumbnailJobs.has(jobKey)) return resolve(getCurrentLiveThumbnailUrl(streamId));
+        if (activeLiveThumbnailJobs.has(jobKey)) return resolve(await getCurrentLiveThumbnailUrl(streamId));
         activeLiveThumbnailJobs.add(jobKey);
 
         const filename = `stream-${streamId}-${Date.now()}.jpg`;
@@ -216,10 +216,10 @@ function generateJSMPEGThumbnail(streamId, videoPort) {
             for (const chunk of chunks) { try { ff.stdin.write(chunk); } catch { /* */ } }
             try { ff.stdin.end(); } catch { /* */ }
             const ffKill = setTimeout(() => { try { ff.kill('SIGKILL'); } catch { /* */ } }, 5000);
-            ff.on('close', (code) => {
+            ff.on('close', async (code) => {
                 activeLiveThumbnailJobs.delete(jobKey);
                 clearTimeout(ffKill);
-                if (code === 0 && fs.existsSync(outPath)) return resolve(_replaceThumb(streamId, filename));
+                if (code === 0 && fs.existsSync(outPath)) return resolve(await _replaceThumb(streamId, filename));
                 if (fs.existsSync(outPath)) { try { fs.unlinkSync(outPath); } catch { /* */ } }
                 resolve(null);
             });

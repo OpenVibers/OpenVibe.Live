@@ -8,49 +8,35 @@
  */
 'use strict';
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const http = require('http');
 
-const tmp = path.join(os.tmpdir(), `ov-media-lookups-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 console.warn = () => {};
 
 const db = require('../server/db/database');
-db.initDb();
-const raw = db.getDb();
 
 // ── Sign-in stub (before any router captures the middleware) ──
 const auth = require('../server/auth/auth');
-const signIn = (req) => {
+const signIn = async (req) => {
     const id = Number(req.headers['x-test-user'] || 0);
-    const u = id ? db.getUserById(id) : null;
+    const u = id ? await db.getUserById(id) : null;
     if (u) { req.user = u; req.authSource = 'network'; }
     return u;
 };
-auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
-auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
+auth.requireAuth = async (req, res, next) => ((await signIn(req)) ? next() : res.status(401).json({ error: 'Authentication required' }));
+auth.optionalAuth = async (req, res, next) => { await signIn(req); next(); };
 
+let raw, chanA, msA, s1, s2;
 const addUser = (id, username, role) => raw.prepare(
-    `INSERT INTO users (id, username, display_name, email, password_hash, role, created_at)
+    `INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
      VALUES (?, ?, ?, ?, 'x', ?, '2025-01-01 00:00:00')`).run(id, username, username.toUpperCase(), `${username}@x`, role);
-addUser(1, 'admin', 'admin');
-addUser(3, 'alice', 'streamer');
-addUser(7, 'mallory', 'user');
-db.ensureChannel(3);
-const chanA = db.getChannelByUserId(3);
-raw.prepare("INSERT INTO managed_streams (user_id, channel_id, slug, title, protocol, stream_key) VALUES (3, ?, 'main', 'Main', 'rtmp', ?)").run(chanA.id, 'k'.repeat(40));
-const msA = raw.prepare('SELECT id FROM managed_streams WHERE user_id = 3').get().id;
-const mkStream = (title) => {
-    const id = Number(db.createStream({ user_id: 3, channel_id: chanA.id, managed_stream_id: msA, title, protocol: 'rtmp' }).lastInsertRowid);
-    db.endStream(id);
+const mkStream = async (title) => {
+    const id = Number((await db.createStream({ user_id: 3, channel_id: chanA.id, managed_stream_id: msA, title, protocol: 'rtmp' })).lastInsertRowid);
+    await db.endStream(id);
     return id;
 };
-const s1 = mkStream('first'), s2 = mkStream('second');
 
 // ── OpenVibe.Media stand-in (the media-client functions lookups.js calls) ──
 const media = require('../server/media-client');
@@ -126,7 +112,22 @@ async function check(name, fn) {
 }
 
 (async () => {
-    await new Promise((r) => server.once('listening', r));
+    await db.initDb();
+    raw = db.getDb();
+    await addUser(1, 'admin', 'admin');
+    await addUser(3, 'alice', 'streamer');
+    await addUser(7, 'mallory', 'user');
+    await db.ensureChannel(3);
+    chanA = await db.getChannelByUserId(3);
+    await raw.prepare("INSERT INTO managed_streams (user_id, channel_id, slug, title, protocol, stream_key) VALUES (3, ?, 'main', 'Main', 'rtmp', ?)").run(chanA.id, 'k'.repeat(40));
+    msA = (await raw.prepare('SELECT id FROM managed_streams WHERE user_id = 3').get()).id;
+    s1 = await mkStream('first'); s2 = await mkStream('second');
+    // endStream stamps ended_at at second resolution; give the two sessions distinct times so "the
+    // latest ended session" (s2) is unambiguous.
+    await raw.prepare('UPDATE streams SET started_at = ?, ended_at = ? WHERE id = ?').run(day(4), day(3), s1);
+    await raw.prepare('UPDATE streams SET started_at = ?, ended_at = ? WHERE id = ?').run(day(2), day(1), s2);
+
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
 
     VODS = [
         { id: 10, user_id: 3, stream_id: s1, managed_stream_id: msA, visibility: 'public', is_public: true, view_count: 5, created_at: day(2), thumbnail_url: 'https://media.test/t/10.jpg', duration_seconds: 60, file_path: 'a.webm' },
@@ -180,10 +181,11 @@ async function check(name, fn) {
     });
 
     await check('stream analytics: the clip count arrives from Media after the stream ends', async () => {
-        db.computeAndCacheStreamAnalytics(s1);
-        assert.strictEqual(db.getStreamAnalytics(s1).clips_created, 0, 'the synchronous pass keeps the last value');
-        await new Promise((r) => setTimeout(r, 30));
-        assert.strictEqual(db.getStreamAnalytics(s1).clips_created, 1, 'Media counted one clip of the stream');
+        await db.computeAndCacheStreamAnalytics(s1);
+        assert.strictEqual((await db.getStreamAnalytics(s1)).clips_created, 0, 'the synchronous pass keeps the last value');
+        // The write-back runs after the stream-end write, on its own: wait for it (up to 3 s), not a fixed time.
+        for (let i = 0; i < 100 && !(await db.getStreamAnalytics(s1)).clips_created; i++) await new Promise((r) => setTimeout(r, 30));
+        assert.strictEqual((await db.getStreamAnalytics(s1)).clips_created, 1, 'Media counted one clip of the stream');
     });
 
     await check('clips taken: counted like the tab lists them, private only when asked', async () => {
@@ -242,7 +244,7 @@ async function check(name, fn) {
     });
 
     await check('avatar history: the avatar-tagged screenshots, from Community', async () => {
-        raw.prepare("UPDATE users SET avatar_url = 'https://media.test/f/a.png' WHERE id = 3").run();
+        await raw.prepare("UPDATE users SET avatar_url = 'https://media.test/f/a.png' WHERE id = 3").run();
         const r = await call('GET', '/api/auth/avatar/history', 3);
         assert.strictEqual(r.status, 200, r.text);
         assert.deepStrictEqual(r.json.avatars.map((a) => [a.slug, a.url, a.active]), [['ava', 'https://media.test/f/a.png', true]]);
@@ -261,25 +263,25 @@ async function check(name, fn) {
     });
 
     await check('AI timeline: session VOD links from Media; not cached while Media is down', async () => {
-        db.addStreamMemory({ stream_id: s1, user_id: 3, offset_seconds: 5, description: 'a memory', tags: '[]' });
-        raw.prepare("UPDATE streams SET ai_overview = 'what happened' WHERE id IN (?, ?)").run(s1, s2);
+        await db.addStreamMemory({ stream_id: s1, user_id: 3, offset_seconds: 5, description: 'a memory', tags: '[]' });
+        await raw.prepare("UPDATE streams SET ai_overview = 'what happened' WHERE id IN (?, ?)").run(s1, s2);
         const saved = media.listVods;
         media.listVods = async () => { throw new media.MediaApiError('down', 0); };
         try {
             const r = await call('GET', '/api/chat-ai/timeline/alice');
             assert.strictEqual(r.status, 200, r.text.slice(0, 200));
             assert.ok(r.json.sessions.every((s) => s.vod_id === null));
-            assert.strictEqual(db.readStreamerAiTimelineCache(3), null, 'nothing cached');
+            assert.strictEqual(await db.readStreamerAiTimelineCache(3), null, 'nothing cached');
         } finally { media.listVods = saved; }
         const r = await call('GET', '/api/chat-ai/timeline/alice');
         const byId = Object.fromEntries(r.json.sessions.map((s) => [s.id, s]));
         assert.strictEqual(byId[s1].vod_id, 10, 'the public VOD, never the private 11');
         assert.strictEqual(byId[s2].vod_id, 13);
-        assert.ok(db.readStreamerAiTimelineCache(3), 'cached once Media answered');
+        assert.ok(await db.readStreamerAiTimelineCache(3), 'cached once Media answered');
     });
 
     await check('admin: VOD counts from Media; AI explorer pastes from Community and VODs/clips from Media', async () => {
-        raw.prepare('INSERT INTO vod_ai_state (vod_id, ai_overview, ai_transcript_json) VALUES (11, ?, ?)').run('private overview', JSON.stringify([{ start: 0, text: 'hello' }, { start: 2, text: 'there' }]));
+        await raw.prepare('INSERT INTO vod_ai_state (vod_id, ai_overview, ai_transcript_json) VALUES (11, ?, ?)').run('private overview', JSON.stringify([{ start: 0, text: 'hello' }, { start: 2, text: 'there' }]));
         const st = await call('GET', '/api/admin/stats', 1);
         assert.strictEqual(st.status, 200, st.text.slice(0, 200));
         assert.deepStrictEqual(st.json.vods, { total: 4, public: 2 });
@@ -294,9 +296,9 @@ async function check(name, fn) {
     });
 
     await check('home stats: Live counts none of the archive itself; Media and Community fill it in', async () => {
-        const local = db._computeHomeStats();
+        const local = await db._computeHomeStats();
         for (const k of ['vods', 'clips', 'pastes', 'pasteImages', 'pasteText', 'streamHours']) assert.strictEqual(local[k], null, k);
-        assert.strictEqual(db.getHomeStatSeries('vods'), null, 'the vods series is Media\'s');
+        assert.strictEqual(await db.getHomeStatSeries('vods'), null, 'the vods series is Media\'s');
         const s = await lookups.withArchiveStats({ ...local });
         assert.strictEqual(s.vods, 11);
         assert.strictEqual(s.streamHours, 2);
@@ -306,18 +308,17 @@ async function check(name, fn) {
     });
 
     await check('streamer overview job: memories are the signal', async () => {
-        const due = db.getStreamersNeedingOverview({ limit: 10 }).map((r) => r.user_id);
+        const due = (await db.getStreamersNeedingOverview({ limit: 10 })).map((r) => r.user_id);
         assert.deepStrictEqual(due, [3], 'alice has a memory; nobody else has any signal');
     });
 
     await check('recently online: the slot thumbnail comes from Media (null in SQL)', async () => {
-        const rows = db.getRecentlyOnlineStreamers(10, 0);
+        const rows = await db.getRecentlyOnlineStreamers(10, 0);
         const slots = JSON.parse(rows.find((r) => r.user_id === 3).managed_streams_json);
         assert.ok(slots.length && slots.every((s) => 'vod_thumbnail' in s && s.vod_thumbnail === null));
     });
 
     server.close();
-    for (const ext of ['', '-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
     if (failures) { quiet(`\n${failures} check(s) failed`); process.exit(1); }
     quiet('media lookups: all checks passed');
     process.exit(0);

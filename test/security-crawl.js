@@ -24,29 +24,24 @@ const { spawnSync } = require('child_process');
 const REPO = path.resolve(__dirname, '..');
 const ISSUER = 'https://network.crawl.test';
 
-/** A temp directory with the drill's DB_PATH and DATA_DIR (both must lie outside the checkout). */
+/** A temp directory with the drill's DATA_DIR (it must lie outside the checkout). */
 function tempEnv(name) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), `live-${name}-`));
-    const DB_PATH = path.join(dir, 'db', 'live.db');
     const DATA_DIR = path.join(dir, 'data');
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    return { dir, DB_PATH, DATA_DIR, cleanup: () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* */ } } };
+    return { dir, DATA_DIR, cleanup: () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* */ } } };
 }
 
 /**
- * Run `script` in a child Node process in normal mode (not a drill) against the temp database, the
- * way production would have written the rows a drill later reads. Its stdout's last line, if JSON,
- * is returned parsed.
+ * Write the rows a drill later reads, the way production would have: `script` is an async expression
+ * (`(async () => { … return { ids }; })()`) run in this process, in normal mode, with `env` set, on this
+ * process's migrated database (test/helpers/pg-preload.mjs), which boot() then serves. → what it returns.
  */
-function seed(tmp, script, env = {}) {
-    const r = spawnSync(process.execPath, ['-e', script], {
-        cwd: REPO, encoding: 'utf8',
-        env: { ...process.env, DB_PATH: tmp.DB_PATH, DATA_DIR: tmp.DATA_DIR, NODE_ENV: 'test', ...env },
-    });
-    assert.strictEqual(r.status, 0, `seeding failed:\n${r.stdout}\n${r.stderr}`);
-    const last = r.stdout.trim().split('\n').pop() || '';
-    try { return JSON.parse(last); } catch { return null; }
+async function seed(tmp, script, env = {}) {
+    Object.assign(process.env, { DATA_DIR: tmp.DATA_DIR, NODE_ENV: 'test', ...env });
+    const rootRequire = require('module').createRequire(path.join(REPO, 'package.json'));
+    try { return await new Function('require', 'process', `return ${script}`)(rootRequire, process); } catch (err) { assert.fail(`seeding failed: ${err.stack || err}`); }
+    return null;
 }
 
 /** The "Network" signing key: its public half is what Live verifies session tokens with. */
@@ -124,12 +119,16 @@ function expand(template, values) {
  */
 async function boot(tmp, env = {}) {
     const port = await freePort();
-    Object.assign(process.env, env, { LIVE_DRILL: '1', DB_PATH: tmp.DB_PATH, DATA_DIR: tmp.DATA_DIR, HOST: '127.0.0.1', PORT: String(port) });
+    Object.assign(process.env, env, { LIVE_DRILL: '1', DATA_DIR: tmp.DATA_DIR, HOST: '127.0.0.1', PORT: String(port) });
     delete process.env.LISTEN_FDS;
     let app = null;
     const realCreate = http.createServer;
     http.createServer = function (...a) { const h = a.find((x) => typeof x === 'function'); if (h && typeof h.handle === 'function' && typeof h.set === 'function') app = h; return realCreate.apply(this, a); };
-    delete require.cache[require.resolve('../server/drill')];
+    // seed() ran server modules in this process: start from fresh ones, so config.js reads this drill's environment
+    // (PORT, HOST, LIVE_DRILL) and no singleton carries state from the seeding. A new database.js adopts the same
+    // migrated database (test/helpers/pg-preload.mjs).
+    const serverDir = path.join(REPO, 'server') + path.sep;
+    for (const k of Object.keys(require.cache)) if (k.startsWith(serverDir)) delete require.cache[k];
     require('../server/index.js');
     http.createServer = realCreate;
     assert.ok(app, 'server/index.js created its HTTP server from the Express app');

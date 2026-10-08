@@ -25,9 +25,8 @@ class BaseNewsSource {
 
     start(onNews) {
         this._onNews = onNews;
-        this._timer = setInterval(() => this._doPoll(), this.pollIntervalMs);
-        // floating-ok: _doPoll catches and logs its own errors (never rejects)
-        this._doPoll(); // initial fetch
+        this._timer = setInterval(() => this._doPoll().catch((err) => console.error(`[News:${this.id}] Poll error:`, err.message)), this.pollIntervalMs);
+        this._doPoll().catch((err) => console.error(`[News:${this.id}] Poll error:`, err.message)); // initial fetch
     }
 
     stop() {
@@ -37,7 +36,7 @@ class BaseNewsSource {
     async _doPoll() {
         try {
             const items = await this.poll();
-            if (items.length && this._onNews) this._onNews(items);
+            if (items.length && this._onNews) await this._onNews(items);
         } catch (err) {
             console.error(`[News:${this.id}] Poll error:`, err.message);
         }

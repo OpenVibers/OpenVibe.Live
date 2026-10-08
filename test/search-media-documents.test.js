@@ -6,14 +6,9 @@
 // is a deletion; the daily refresh removes what Media stopped listing, but never after a partial listing;
 // a change through /api/vods is re-checked right after it succeeds.
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const http = require('http');
 const { EventEmitter } = require('events');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-searchmedia-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.LIVE_SEARCH_TOUCH_DELAY_MS = '10';
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
@@ -57,11 +52,11 @@ const vod = (id, extra = {}) => ({ id, app_id: 'live', user_id: 1, stream_id: 1,
     process.env.OV_NETWORK_INTERNAL_URL = base;
     const { validate } = require('openvibe-contracts');
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const d = db.getDb();
-    d.prepare("INSERT INTO users (id, username, display_name, password_hash) VALUES (1, 'alex', 'Alex', 'x'), (2, 'viewer', 'Viewer', 'x')").run();
-    const s1 = db.createStream({ user_id: 1, title: 'Building a forum', category: 'tech', protocol: 'webrtc', is_nsfw: 0 }).lastInsertRowid;
-    const s2 = db.createStream({ user_id: 1, title: 'Late night', category: 'irl', protocol: 'webrtc', is_nsfw: 1 }).lastInsertRowid;
+    await d.prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE VALUES (1, 'alex', 'Alex', 'x'), (2, 'viewer', 'Viewer', 'x')").run();
+    const s1 = (await db.createStream({ user_id: 1, title: 'Building a forum', category: 'tech', protocol: 'webrtc', is_nsfw: 0 })).lastInsertRowid;
+    const s2 = (await db.createStream({ user_id: 1, title: 'Late night', category: 'irl', protocol: 'webrtc', is_nsfw: 1 })).lastInsertRowid;
     const streamEvents = require('../server/events/stream-events');
     const outbox = streamEvents.init({ eventsUrl: base, clientSecret: 's3cret', intervalMs: 50 });
     const docs = require('../server/events/search-media-documents');
@@ -71,8 +66,8 @@ const vod = (id, extra = {}) => ({ id, app_id: 'live', user_id: 1, stream_id: 1,
 
     // A public, ready VOD with Live's AI overview and transcript.
     items.vod.set(912, vod(912, { stream_id: s1 }));
-    db.setVodAiOverview(912, 'Alex builds the rating menu of the forum and fixes it on phones.');
-    d.prepare('UPDATE vod_ai_state SET ai_transcript_json = ? WHERE vod_id = 912').run(JSON.stringify([{ text: 'okay so today' }, { text: 'we are building the forum' }]));
+    await db.setVodAiOverview(912, 'Alex builds the rating menu of the forum and fixes it on phones.');
+    await d.prepare('UPDATE vod_ai_state SET ai_transcript_json = ? WHERE vod_id = 912').run(JSON.stringify([{ text: 'okay so today' }, { text: 'we are building the forum' }]));
     items.vod.set(913, vod(913, { is_recording: true, status: 'recording' }));
     assert.strictEqual(await docs.scan(), 1);
     assert.strictEqual(await docs.touch('vod', 913), 'unchanged', 'a recording is never sent');
@@ -85,7 +80,7 @@ const vod = (id, extra = {}) => ({ id, app_id: 'live', user_id: 1, stream_id: 1,
     assert.ok(ev.payload.body.includes('we are building the forum'), 'the transcript is searchable');
     assert.deepStrictEqual(ev.payload.facets, { duration_seconds: 5400, channel: 'alex', category: 'tech' });
     assert.strictEqual(ev.payload.indexability.decision, 'index');
-    assert.strictEqual(docs.publish('vod', 912, items.vod.get(912)), 'unchanged', 'nothing changed: nothing sent');
+    assert.strictEqual(await docs.publish('vod', 912, items.vod.get(912)), 'unchanged', 'nothing changed: nothing sent');
 
     // An AI clip, and a person's clip of an NSFW stream.
     items.clip.set(3107, { id: 3107, app_id: 'live', vod_id: 912, stream_id: s1, channel_user_id: 1, user_id: null, title: 'Chat erupts', status: 'ready', visibility: 'public', is_public: true, auto_generated: true, duration_seconds: 30, created_at: '2026-09-24 21:00:00' });
@@ -122,10 +117,10 @@ const vod = (id, extra = {}) => ({ id, app_id: 'live', user_id: 1, stream_id: 1,
     items.clip.get(3107).visibility = 'unlisted';
     listFails = true;
     await docs.refresh();
-    assert.strictEqual(d.prepare("SELECT deleted FROM search_media_pushes WHERE kind = 'clip' AND media_id = 3107").get().deleted, 0);
+    assert.strictEqual((await d.prepare("SELECT deleted FROM search_media_pushes WHERE kind = 'clip' AND media_id = 3107").get()).deleted, 0);
     listFails = false;
     await docs.refresh();
-    assert.strictEqual(d.prepare("SELECT deleted FROM search_media_pushes WHERE kind = 'clip' AND media_id = 3107").get().deleted, 1, 'unlisted: removed');
+    assert.strictEqual((await d.prepare("SELECT deleted FROM search_media_pushes WHERE kind = 'clip' AND media_id = 3107").get()).deleted, 1, 'unlisted: removed');
 
     // A successful change through /api/vods is re-checked; a failed one is not.
     items.vod.set(912, vod(912, { stream_id: s1 }));
@@ -136,15 +131,14 @@ const vod = (id, extra = {}) => ({ id, app_id: 'live', user_id: 1, stream_id: 1,
     };
     call('PUT', '/912', 403);
     await new Promise((r) => setTimeout(r, 60));
-    assert.strictEqual(d.prepare("SELECT deleted FROM search_media_pushes WHERE kind = 'vod' AND media_id = 912").get().deleted, 1, 'a refused change is not followed');
+    assert.strictEqual((await d.prepare("SELECT deleted FROM search_media_pushes WHERE kind = 'vod' AND media_id = 912").get()).deleted, 1, 'a refused change is not followed');
     call('POST', '/bulk', 200, { ids: [912], action: 'public' });
     await new Promise((r) => setTimeout(r, 60));
-    const row = d.prepare("SELECT deleted, revision FROM search_media_pushes WHERE kind = 'vod' AND media_id = 912").get();
+    const row = await d.prepare("SELECT deleted, revision FROM search_media_pushes WHERE kind = 'vod' AND media_id = 912").get();
     assert.deepStrictEqual(row, { deleted: 0, revision: 3 }, 'made public again: sent at the next revision');
 
     outbox.stop && outbox.stop();
     stub.close();
-    fs.rmSync(tmp, { recursive: true, force: true });
     quiet('search media documents: all checks passed');
     process.exit(0);
 })().catch((err) => { console.error(err); process.exit(1); });

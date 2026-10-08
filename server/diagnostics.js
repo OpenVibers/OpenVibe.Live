@@ -32,9 +32,9 @@ const windowTimer = require('./drill').enabled ? null : setInterval(() => {
 }, WINDOW_MS);
 if (windowTimer && windowTimer.unref) windowTimer.unref();
 
-const safe = (fn, fallback = null) => { try { return fn(); } catch { return fallback; } };
+const safe = async (fn, fallback = null) => { try { return await fn(); } catch { return fallback; } };
 
-function snapshot(services = {}) {
+async function snapshot(services = {}) {
     const mem = process.memoryUsage();
     const mb = (b) => Math.round(b / 1048576);
     const db = services.db;
@@ -46,19 +46,19 @@ function snapshot(services = {}) {
         memoryMb: { rss: mb(mem.rss), heapUsed: mb(mem.heapUsed), heapTotal: mb(mem.heapTotal), external: mb(mem.external) },
         eventLoop: { lastMinute: lastWindow },
         connections: {
-            chat: safe(() => services.chatDelivery.getTotalConnections()),
-            broadcast: safe(() => services.broadcastServer.clients.size),
-            call: safe(() => services.callServer.clients.size),
-            liveEventStreams: safe(() => require('./streaming/live-events').clientCount()),
+            chat: await safe(() => services.chatDelivery.getTotalConnections()),
+            broadcast: await safe(() => services.broadcastServer.clients.size),
+            call: await safe(() => services.callServer.clients.size),
+            liveEventStreams: await safe(() => require('./streaming/live-events').clientCount()),
         },
         streams: {
-            live: safe(() => db.get('SELECT COUNT(*) AS n FROM streams WHERE is_live = 1').n),
-            restreamSessions: safe(() => services.restreamManager.sessions.size),
+            live: await safe(() => db.get('SELECT COUNT(*) AS n FROM streams WHERE is_live = 1').n),
+            restreamSessions: await safe(() => services.restreamManager.sessions.size),
         },
-        jobs: safe(() => require('./utils/jobs').snapshot(), []),
-        workQueues: safe(() => require('./utils/limit').snapshot(), []),
-        migrations: safe(() => require('./db/migrations').getStatus(db.getDb()), []),
-        sqlite: safe(() => {
+        jobs: await safe(() => require('./utils/jobs').snapshot(), []),
+        workQueues: await safe(() => require('./utils/limit').snapshot(), []),
+        migrations: await safe(async () => await require('./db/migrations').getStatus(db.getDb()), []),
+        sqlite: await safe(() => {
             const fs = require('fs');
             const file = db.getDb().name;
             const size = (p) => { try { return mb(fs.statSync(p).size); } catch { return 0; } };

@@ -5,12 +5,7 @@
 // outbox off, the direct call stays.
 
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-golive-mode-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
 process.env.OV_NETWORK_INTERNAL_URL = 'http://127.0.0.1:9';
 const { tokenBody } = require('./helpers/network-token-stub');
@@ -28,8 +23,8 @@ console.log = (...a) => { logs.push(a.join(' ')); };
 (async () => {
     try {
         const db = require('../server/db/database');
-        db.initDb();
-        db.getDb().prepare("INSERT INTO users (id, username, display_name, password_hash) VALUES (601, 'caster', 'Caster', 'x')").run();
+        await db.initDb();
+        await db.getDb().prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE VALUES (601, 'caster', 'Caster', 'x')").run();
         const streamEvents = require('../server/events/stream-events');
         const { notifyFollowersGoLive, leftToEvents } = require('../server/streaming/golive-notify');
         const settle = () => new Promise((r) => setTimeout(r, 50));
@@ -38,7 +33,7 @@ console.log = (...a) => { logs.push(a.join(' ')); };
         // Default: the direct call, as before.
         delete process.env.GOLIVE_NOTIFY;
         assert.strictEqual(leftToEvents(), false);
-        notifyFollowersGoLive({ id: 601, username: 'caster' }, { id: 1, title: 'one' });
+        await notifyFollowersGoLive({ id: 601, username: 'caster' }, { id: 1, title: 'one' });
         await settle();
         assert.ok(toNetwork() >= 1, 'unset: Live calls Network directly');
 
@@ -51,13 +46,13 @@ console.log = (...a) => { logs.push(a.join(' ')); };
         streamEvents.init({ eventsUrl: 'http://127.0.0.1:9', clientSecret: 's3cret', intervalMs: 60000 });
         assert.strictEqual(leftToEvents(), true);
         const before = calls.length;
-        notifyFollowersGoLive({ id: 601, username: 'caster' }, { id: 2, title: 'two' }, { force: true });
+        await notifyFollowersGoLive({ id: 601, username: 'caster' }, { id: 2, title: 'two' }, { force: true });
         await settle();
         assert.deepStrictEqual(calls.slice(before).filter((c) => /\/internal\//.test(c.url)), [], 'no direct call, no fallback push');
         assert.ok(logs.some((l) => l.includes("caster: left to Network's live.stream.started consumer (GOLIVE_NOTIFY=events)")));
         // The event path is intact: a new stream row still queues live.stream.started.
-        db.createStream({ user_id: 601, title: 'three', protocol: 'rtmp' });
-        assert.strictEqual(db.getDb().prepare("SELECT COUNT(*) AS c FROM event_outbox WHERE envelope LIKE '%live.stream.started%'").get().c, 1);
+        await db.createStream({ user_id: 601, title: 'three', protocol: 'rtmp' });
+        assert.strictEqual((await db.getDb().prepare("SELECT COUNT(*) AS c FROM event_outbox WHERE envelope::text ILIKE '%live.stream.started%'").get()).c, 1);
 
         // Any other value keeps both paths.
         process.env.GOLIVE_NOTIFY = 'both';
@@ -65,7 +60,6 @@ console.log = (...a) => { logs.push(a.join(' ')); };
         streamEvents._reset();
     } finally {
         console.log = log;
-        fs.rmSync(tmp, { recursive: true, force: true });
     }
     console.log('golive notify mode: all checks passed');
     process.exit(0);

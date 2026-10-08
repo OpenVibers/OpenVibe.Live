@@ -3,17 +3,14 @@
 // Live's legacy vods/clips/pastes tables (and paste_likes, paste_comments) are frozen: OpenVibe.Media
 // and OpenVibe.Community own that data now (AGENTS.md, register C-73). No server code may WRITE them
 // (step 1), and no server code may READ them either (step 2): every reader asks Media or Community,
-// mostly through server/media-proxy/lookups.js. The tables stay only until the drop procedure in
-// docs/vods-and-clips.md ("Dropping the frozen tables"), which starts once this test has held in
-// production for 30 days.
-//
-// The VOD/clip `comments` table is frozen for writes too: comments are OpenVibe.Community threads
-// (roadmap Wave 5), and the old rows are only read by Community's one-time import.
+// mostly through server/media-proxy/lookups.js. On PostgreSQL (plan T4) the tables do not exist:
+// migrations/0002_live.sql leaves them out, with the VOD/clip `comments` table (OpenVibe.Community
+// threads since roadmap Wave 5) and Chat's tables; their old rows stay in the archived SQLite file.
+// This test keeps any code, or a later migration, from bringing one back.
 //
 // What counts: SQL text in server/ and scripts/ (.js and .sql) that selects or joins one of the
 // frozen tables, or a table registry entry naming one (`table: 'vods'`, the HOME_SERIES shape).
-// Schema upkeep is not a read: CREATE/ALTER/PRAGMA table_info lines in database.js and migrations.js
-// go away with the tables in the drop procedure. A JS comment line never counts.
+// A JS comment line never counts.
 
 const assert = require('assert');
 const fs = require('fs');
@@ -21,18 +18,18 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const FROZEN = ['vods', 'clips', 'pastes', 'paste_likes', 'paste_comments'];
-assert.ok(!/\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?emotes\b/i.test(fs.readFileSync(path.join(ROOT, 'server', 'db', 'schema.sql'), 'utf8')),
-    'Chat-owned emotes must not return to Live schema');
+// On PostgreSQL the frozen tables (and Chat's) do not exist at all: no migration may create them again.
+const MIGRATION_SQL = fs.readdirSync(path.join(ROOT, 'migrations')).filter((f) => f.endsWith('.sql'))
+    .map((f) => fs.readFileSync(path.join(ROOT, 'migrations', f), 'utf8')).join('\n');
+for (const t of [...FROZEN, 'comments', 'emotes', 'channel_moderators', 'channel_moderation_settings', 'user_tags', 'chat_ai_summaries', 'chat_timeline_events', 'chat_messages']) {
+    assert.ok(!new RegExp(`\\bCREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?${t}\\s*\\(`, 'i').test(MIGRATION_SQL), `no migration creates ${t} (owned by Media, Community or Chat)`);
+}
 const T = FROZEN.join('|');
 
 // ── writes ──────────────────────────────────────────────────────────────────
 const WRITE = new RegExp(`\\b(INSERT(?:\\s+OR\\s+\\w+)?\\s+INTO|UPDATE|DELETE\\s+FROM|REPLACE\\s+INTO)\\s+(${T}|comments)\\b`, 'i');
-// The only writes allowed are the two guarded one-time visibility backfills that run when the column
-// is first added (database.js initDb).
-const ALLOWED_WRITES = [
-    "UPDATE vods SET visibility = CASE WHEN is_public = 1 THEN 'public' ELSE 'private' END",
-    "UPDATE clips SET visibility = CASE WHEN is_public = 1 THEN 'public' ELSE 'unlisted' END",
-];
+// No write is allowed (the SQLite visibility backfills went with the SQLite schema code).
+const ALLOWED_WRITES = [];
 
 // ── reads ───────────────────────────────────────────────────────────────────
 // `FROM vods`, `JOIN clips c`, `FROM "pastes"`, also split over lines inside a template literal.

@@ -115,7 +115,7 @@ function previewFromVars(vars) {
 /**
  * Seed all built-in themes into the database.
  */
-function seedBuiltinThemes() {
+async function seedBuiltinThemes() {
     const dbh = db.getDb();
     const find = dbh.prepare('SELECT id FROM themes WHERE slug = ?');
     // Update in place (keeps theme IDs stable so saved user selections still resolve)
@@ -128,22 +128,22 @@ function seedBuiltinThemes() {
         INSERT INTO themes (name, slug, mode, description, variables, preview_colors, is_builtin, is_public, tags)
         VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?)
     `);
-    const seed = dbh.transaction(() => {
+    const seed = async () => await dbh.tx(async () => {
         for (const t of BUILTIN_THEMES) {
             const vars = JSON.stringify(t.variables);
             const pv = previewFromVars(t.variables);
             const tags = JSON.stringify(t.tags || []);
-            if (find.get(t.slug)) upd.run(t.name, t.mode, t.description, vars, pv, tags, t.slug);
-            else ins.run(t.name, t.slug, t.mode, t.description, vars, pv, tags);
+            if (await find.get(t.slug)) await upd.run(t.name, t.mode, t.description, vars, pv, tags, t.slug);
+            else await ins.run(t.name, t.slug, t.mode, t.description, vars, pv, tags);
         }
     });
-    seed();
+    await seed();
 }
 
 /**
  * Get all public themes (built-in + community)  
  */
-function getAllThemes({ mode, search, sort = 'name', limit = 100, offset = 0 } = {}) {
+async function getAllThemes({ mode, search, sort = 'name', limit = 100, offset = 0 } = {}) {
     let sql = `SELECT t.*, u.username as author_name FROM themes t LEFT JOIN users u ON t.author_id = u.id WHERE t.is_public = 1`;
     const params = [];
 
@@ -152,7 +152,7 @@ function getAllThemes({ mode, search, sort = 'name', limit = 100, offset = 0 } =
         params.push(mode);
     }
     if (search) {
-        sql += ' AND (t.name LIKE ? OR t.description LIKE ? OR t.tags LIKE ?)';
+        sql += ' AND (t.name ILIKE ? OR t.description ILIKE ? OR t.tags ILIKE ?)';
         const s = `%${search}%`;
         params.push(s, s, s);
     }
@@ -168,15 +168,15 @@ function getAllThemes({ mode, search, sort = 'name', limit = 100, offset = 0 } =
     sql += ' LIMIT ? OFFSET ?';
     params.push(limit, offset);
 
-    return db.all(sql, params);
+    return await db.all(sql, params);
 }
 
-function getThemeById(id) {
-    return db.get(`SELECT t.*, u.username as author_name FROM themes t LEFT JOIN users u ON t.author_id = u.id WHERE t.id = ?`, [id]);
+async function getThemeById(id) {
+    return await db.get(`SELECT t.*, u.username as author_name FROM themes t LEFT JOIN users u ON t.author_id = u.id WHERE t.id = ?`, [id]);
 }
 
-function getThemeBySlug(slug) {
-    return db.get(`SELECT t.*, u.username as author_name FROM themes t LEFT JOIN users u ON t.author_id = u.id WHERE t.slug = ?`, [slug]);
+async function getThemeBySlug(slug) {
+    return await db.get(`SELECT t.*, u.username as author_name FROM themes t LEFT JOIN users u ON t.author_id = u.id WHERE t.slug = ?`, [slug]);
 }
 
 /**
@@ -203,19 +203,19 @@ function sanitizeCssVariables(vars) {
 /**
  * Create a community theme.
  */
-function createTheme({ name, author_id, description, mode, variables, tags }) {
+async function createTheme({ name, author_id, description, mode, variables, tags }) {
     const slug = slugify(name);
     // Check uniqueness
-    const existing = db.get('SELECT id FROM themes WHERE slug = ?', [slug]);
+    const existing = await db.get('SELECT id FROM themes WHERE slug = ?', [slug]);
     if (existing) throw new Error('Theme name already taken');
 
     const parsedVars = typeof variables === 'string' ? JSON.parse(variables) : variables;
     const sanitized = sanitizeCssVariables(parsedVars);
     const varsJson = JSON.stringify(sanitized);
 
-    return db.run(
+    return await db.run(
         `INSERT INTO themes (name, slug, author_id, description, mode, variables, preview_colors, is_builtin, is_public, tags)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, ?) RETURNING id`,
         [name, slug, author_id, description || '', mode || 'dark', varsJson, previewFromVars(sanitized), JSON.stringify(tags || [])]
     );
 }
@@ -223,8 +223,8 @@ function createTheme({ name, author_id, description, mode, variables, tags }) {
 /**
  * Update a community theme (only by author).
  */
-function updateTheme(id, authorId, { name, description, mode, variables, tags }) {
-    const theme = db.get('SELECT * FROM themes WHERE id = ?', [id]);
+async function updateTheme(id, authorId, { name, description, mode, variables, tags }) {
+    const theme = await db.get('SELECT * FROM themes WHERE id = ?', [id]);
     if (!theme) throw new Error('Theme not found');
     if (theme.is_builtin) throw new Error('Cannot edit built-in themes');
     if (theme.author_id !== authorId) throw new Error('Not your theme');
@@ -251,44 +251,44 @@ function updateTheme(id, authorId, { name, description, mode, variables, tags })
     updates.push("updated_at = datetime('now')");
     params.push(id);
 
-    return db.run(`UPDATE themes SET ${updates.join(', ')} WHERE id = ?`, params);
+    return await db.run(`UPDATE themes SET ${updates.join(', ')} WHERE id = ?`, params);
 }
 
 /**
  * Delete a community theme (only by author or admin).
  */
-function deleteTheme(id, userId, isAdmin = false) {
-    const theme = db.get('SELECT * FROM themes WHERE id = ?', [id]);
+async function deleteTheme(id, userId, isAdmin = false) {
+    const theme = await db.get('SELECT * FROM themes WHERE id = ?', [id]);
     if (!theme) throw new Error('Theme not found');
     if (theme.is_builtin) throw new Error('Cannot delete built-in themes');
     if (theme.author_id !== userId && !isAdmin) throw new Error('Not authorized');
-    return db.run('DELETE FROM themes WHERE id = ?', [id]);
+    return await db.run('DELETE FROM themes WHERE id = ?', [id]);
 }
 
 /**
  * Increment download count.
  */
-function downloadTheme(id) {
-    return db.run('UPDATE themes SET downloads = downloads + 1 WHERE id = ?', [id]);
+async function downloadTheme(id) {
+    return await db.run('UPDATE themes SET downloads = downloads + 1 WHERE id = ?', [id]);
 }
 
 /**
  * Get / set user's active theme preference.
  */
-function getUserTheme(userId) {
-    return db.get('SELECT * FROM user_themes WHERE user_id = ? ORDER BY id DESC LIMIT 1', [userId]);
+async function getUserTheme(userId) {
+    return await db.get('SELECT * FROM user_themes WHERE user_id = ? ORDER BY id DESC LIMIT 1', [userId]);
 }
 
-function setUserTheme(userId, { theme_id, custom_variables, is_custom }) {
+async function setUserTheme(userId, { theme_id, custom_variables, is_custom }) {
     // Upsert
-    const existing = db.get('SELECT id FROM user_themes WHERE user_id = ?', [userId]);
+    const existing = await db.get('SELECT id FROM user_themes WHERE user_id = ?', [userId]);
     if (existing) {
-        return db.run(
+        return await db.run(
             `UPDATE user_themes SET theme_id = ?, custom_variables = ?, is_custom = ? WHERE user_id = ?`,
             [theme_id || null, custom_variables ? JSON.stringify(custom_variables) : '{}', is_custom ? 1 : 0, userId]
         );
     }
-    return db.run(
+    return await db.run(
         `INSERT INTO user_themes (user_id, theme_id, custom_variables, is_custom) VALUES (?, ?, ?, ?)`,
         [userId, theme_id || null, custom_variables ? JSON.stringify(custom_variables) : '{}', is_custom ? 1 : 0]
     );

@@ -26,13 +26,13 @@ function matchesStreamPath(url, streamKey) {
  * Consult the per-protocol ingest authority for each publish: a slot (or personal key)
  * ingested by OpenRe publishes JSMPEG to OpenRe, never to Live's relay.
  */
-function refusedByOpenre(streamKey) {
+async function refusedByOpenre(streamKey) {
     try {
         const db = require('../db/database');
-        const user = db.getUserByStreamKey(streamKey);
-        const managedStream = user ? null : db.getManagedStreamByStreamKey(streamKey);
+        const user = await db.getUserByStreamKey(streamKey);
+        const managedStream = user ? null : await db.getManagedStreamByStreamKey(streamKey);
         if (!user && !managedStream) return false;
-        if (!require('../openre/authority').refusesLiveIngest({ managedStream, user, protocol: 'jsmpeg' })) return false;
+        if (!await require('../openre/authority').refusesLiveIngest({ managedStream, user, protocol: 'jsmpeg' })) return false;
         console.log(`[JSMPEG] Rejected: ${managedStream ? `slot ${managedStream.id}` : `personal key of ${user.username}`} is ingested by OpenRe`);
         return true;
     } catch {
@@ -69,10 +69,10 @@ class JSMPEGRelay {
 
         // ── Video relay ──────────────────────────────────────
         const videoWss = new WebSocket.Server({ noServer: true, perMessageDeflate: false, maxPayload: 64 * 1024 });
-        const videoServer = http.createServer((req, res) => {
+        const videoServer = http.createServer(async (req, res) => {
             // FFmpeg sends MPEG1 data via HTTP POST
             req.socket.setNoDelay(true);
-            if (req.method === 'POST' && matchesStreamPath(req.url, streamKey) && !refusedByOpenre(streamKey)) {
+            if (req.method === 'POST' && matchesStreamPath(req.url, streamKey) && !await refusedByOpenre(streamKey)) {
                 req.on('data', (chunk) => {
                     // Broadcast to WebSocket viewers
                     if (videoWss.clients.size > 0) {
@@ -115,9 +115,9 @@ class JSMPEGRelay {
 
         // ── Audio relay ──────────────────────────────────────
         const audioWss = new WebSocket.Server({ noServer: true, perMessageDeflate: false, maxPayload: 64 * 1024 });
-        const audioServer = http.createServer((req, res) => {
+        const audioServer = http.createServer(async (req, res) => {
             req.socket.setNoDelay(true);
-            if (req.method === 'POST' && matchesStreamPath(req.url, streamKey) && !refusedByOpenre(streamKey)) {
+            if (req.method === 'POST' && matchesStreamPath(req.url, streamKey) && !await refusedByOpenre(streamKey)) {
                 req.on('data', (chunk) => {
                     // Broadcast to WebSocket viewers
                     if (audioWss.clients.size > 0) {

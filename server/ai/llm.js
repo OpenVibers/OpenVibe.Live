@@ -23,16 +23,16 @@ const egress = require('../net/egress');
 
 const ROLES = ['chat', 'vision', 'director', 'summary', 'legacy'];
 
-function b(k) { const v = db.getSetting(k); return v === true || v === 'true' || v === 1 || v === '1'; }
-function num(k, d) { const v = parseFloat(db.getSetting(k)); return Number.isFinite(v) ? v : d; }
+async function b(k) { const v = await db.getSetting(k); return v === true || v === 'true' || v === 1 || v === '1'; }
+async function num(k, d) { const v = parseFloat(await db.getSetting(k)); return Number.isFinite(v) ? v : d; }
 
 // ── Gates ────────────────────────────────────────────────────
 // The provider key lives in OpenVibe.AI, so the admin master switch and AI_SERVICE (not off) decide.
-function isEnabled() { return b('ai_enabled') && aiService.enabled(); }
-function withinBudget() {
-    const cap = num('ai_max_cost_usd_per_day', 0);
+async function isEnabled() { return await b('ai_enabled') && aiService.enabled(); }
+async function withinBudget() {
+    const cap = await num('ai_max_cost_usd_per_day', 0);
     if (!cap || cap <= 0) return true;
-    try { return db.getAiCostToday() < cap; } catch { return true; }
+    try { return await db.getAiCostToday() < cap; } catch { return true; }
 }
 
 // ── Images ───────────────────────────────────────────────────
@@ -91,9 +91,9 @@ function parseJsonLoose(text) {
     } catch { return null; }
 }
 
-function _meter(o, role, r, provider) {
+async function _meter(o, role, r, provider) {
     try {
-        db.recordAiUsage({
+        await db.recordAiUsage({
             kind: o.kind || role, model: r.model, input_tokens: r.usage.input, output_tokens: r.usage.output, cached_tokens: r.usage.cached || 0,
             cost_usd: r.cost || 0, owner_user_id: o.ownerUserId || null, source: o.source || null, role, provider, latency_ms: r.latencyMs,
         });
@@ -121,7 +121,7 @@ async function complete(o = {}) {
             const r = await aiService.complete({ ...o, role, credentialSubject: o.provider.credentialSubject }, { toVisionJpeg });
             if (!r) return null;
             if (o.json && !r.json) r.json = parseJsonLoose(r.text);
-            _meter(o, role, r, 'byo');
+            await _meter(o, role, r, 'byo');
             return r;
         }
         // A raw key or base URL: Live no longer calls a provider with one, and never falls back to the shared AI.
@@ -131,11 +131,11 @@ async function complete(o = {}) {
         }
         return null;
     }
-    if (!isEnabled() || !withinBudget()) return null;
+    if (!await isEnabled() || !await withinBudget()) return null;
     const r = await aiService.complete({ ...o, role }, { toVisionJpeg });
     if (!r) { console.warn(`[AI] ${role}/${o.kind || role} via OpenVibe.AI returned no answer`); return null; }
     if (o.json && !r.json) r.json = parseJsonLoose(r.text);
-    _meter(o, role, r, 'openvibe-ai');
+    await _meter(o, role, r, 'openvibe-ai');
     return r;
 }
 
@@ -179,7 +179,7 @@ async function testProvider(override = null) {
 }
 
 // Remote structured workflows (translate, paste/frame analysis, overviews, recap) meter here too.
-aiService.setRecorder((r, m) => db.recordAiUsage({
+aiService.setRecorder(async (r, m) => await db.recordAiUsage({
     kind: m.kind || (r.workflow && r.workflow.key) || 'remote', model: (r.provenance && r.provenance.model) || null,
     input_tokens: (r.usage && r.usage.tokens_in) || 0, output_tokens: (r.usage && r.usage.tokens_out) || 0, cached_tokens: 0,
     cost_usd: (r.usage && r.usage.cost_usd) || 0, owner_user_id: m.ownerUserId || null, source: m.source || null, role: m.role || null, provider: m.provider || 'openvibe-ai', latency_ms: null,

@@ -5,13 +5,8 @@
 // relay publishes them with a service token (stub Network + stub Events).
 
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const http = require('http');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-stream-events-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 
 const published = [];
 const mode = { down: false };
@@ -44,24 +39,24 @@ const stub = http.createServer((req, res) => {
     process.env.OV_NETWORK_INTERNAL_URL = base;
 
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const d = db.getDb();
-    d.prepare("INSERT INTO users (id, username, display_name, password_hash) VALUES (501, 'streamer', 'Streamer', 'x')").run();
-    d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (501, 'network', '77', 'usr_01J0000000000000000000000Z')").run();
+    await d.prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE VALUES (501, 'streamer', 'Streamer', 'x')").run();
+    await d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (501, 'network', '77', 'usr_01J0000000000000000000000Z')").run();
 
     const streamEvents = require('../server/events/stream-events');
 
     // Disabled without a secret or URL: going live works and nothing is queued.
     assert.strictEqual(streamEvents.init({ eventsUrl: '', clientSecret: '' }), null);
-    const plain = db.createStream({ user_id: 501, title: 'no events', protocol: 'rtmp' });
+    const plain = await db.createStream({ user_id: 501, title: 'no events', protocol: 'rtmp' });
     assert.ok(plain.lastInsertRowid);
-    db.endStream(plain.lastInsertRowid);
+    await db.endStream(plain.lastInsertRowid);
 
     const outbox = streamEvents.init({ eventsUrl: base, clientSecret: 's3cret', intervalMs: 50 });
     assert.ok(outbox);
 
     // Started: queued in the same transaction and published.
-    const started = db.createStream({ user_id: 501, title: 'Hello', category: 'irl', protocol: 'webrtc', is_nsfw: 0 });
+    const started = await db.createStream({ user_id: 501, title: 'Hello', category: 'irl', protocol: 'webrtc', is_nsfw: 0 });
     const id = Number(started.lastInsertRowid);
     await outbox.flush();
     assert.strictEqual(published.length, 1);
@@ -79,8 +74,8 @@ const stub = http.createServer((req, res) => {
     require('openvibe-contracts').assertValid('live.stream.started@1', ev.payload);
 
     // Ending a stream that is already ended emits nothing; ending a live one emits ended.
-    db.endStream(id);
-    db.endStream(id);
+    await db.endStream(id);
+    await db.endStream(id);
     await outbox.flush();
     assert.strictEqual(published.length, 2);
     assert.strictEqual(published[1].event_type, 'live.stream.ended');
@@ -93,28 +88,27 @@ const stub = http.createServer((req, res) => {
     assert.deepStrictEqual(Object.keys(st).sort(), ['avg_viewers', 'messages', 'peak_viewers', 'unique_chatters', 'watch_minutes'], 'no people in it');
 
     // A rolled-back go-live leaves no event.
-    assert.throws(() => d.transaction(() => { db.createStream({ user_id: 501, title: 'rolled back' }); throw new Error('abort'); })());
-    assert.strictEqual(outbox.pending(), 0);
+    await assert.rejects(d.tx(async () => { await db.createStream({ user_id: 501, title: 'rolled back' }); throw new Error('abort'); }), /abort/);
+    assert.strictEqual(await outbox.pending(), 0);
 
     // Events down: the stream still goes live; the event waits and is published once Events is back.
     mode.down = true;
-    const later = db.createStream({ user_id: 501, title: 'while down' });
+    const later = await db.createStream({ user_id: 501, title: 'while down' });
     assert.ok(later.lastInsertRowid);
     await outbox.flush();
-    assert.strictEqual(outbox.pending(), 1);
+    assert.strictEqual(await outbox.pending(), 1);
     mode.down = false;
-    d.prepare('UPDATE event_outbox SET next_attempt_at = 0').run();
+    await d.prepare('UPDATE event_outbox SET next_attempt_at = 0').run();
     await outbox.flush();
-    assert.strictEqual(outbox.pending(), 0);
+    assert.strictEqual(await outbox.pending(), 0);
     assert.strictEqual(published[2].payload.title, 'while down');
 
     // A hook failure never blocks going live.
-    d.exec('ALTER TABLE event_outbox RENAME TO event_outbox_moved');
+    db.onStreamLifecycle(async () => { throw new Error('hook broken'); });
     const log = console.warn; console.warn = () => {};
-    const safe = db.createStream({ user_id: 501, title: 'hook broken' });
+    const safe = await db.createStream({ user_id: 501, title: 'hook broken' });
     console.warn = log;
     assert.ok(safe.lastInsertRowid);
-    d.exec('ALTER TABLE event_outbox_moved RENAME TO event_outbox');
 
     assert.strictEqual(streamEvents.status().enabled, true);
     streamEvents._reset();

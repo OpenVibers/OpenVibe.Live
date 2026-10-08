@@ -26,12 +26,12 @@ async function buildSitemap() {
     // Media rows carry Live user ids, not names: a channel is named from Live's accounts (banned
     // accounts are left out).
     const names = new Map();
-    const channelOf = (row, id) => {
+    const channelOf = async (row, id) => {
         if (row.username) return row.username;
         if (id == null) return null;
         if (!names.has(id)) {
             let u = null;
-            try { u = db.getUserById(Number(id)); } catch { u = null; }
+            try { u = await db.getUserById(Number(id)); } catch { u = null; }
             names.set(id, u && !(u.is_banned === 1 || u.is_banned === true) ? u.username : null);
         }
         return names.get(id);
@@ -50,23 +50,23 @@ async function buildSitemap() {
         while (off < cap) {
             let rows = [];
             try { rows = (await fetch(per, off)) || []; } catch { break; }
-            for (const r of rows) emit(r);
+            for (const r of rows) await emit(r);
             if (rows.length < per) break;
             off += per;
         }
     };
-    await page((l, o) => media.listVods({ limit: l, offset: o }).then(r => r?.vods || []), 200, SITEMAP_CAP, (v) => {
+    await page((l, o) => media.listVods({ limit: l, offset: o }).then(r => r?.vods || []), 200, SITEMAP_CAP, async (v) => {
         entry(`/vod/${v.id}`, isoDate(v.created_at), 'weekly', 0.6);
-        const ch = channelOf(v, v.user_id);
+        const ch = await channelOf(v, v.user_id);
         if (ch) seenChannels.add(ch);
     });
     // People's clips only: AI Moments are noindex and never listed (the /moments
     // collection above is their indexable form). The filter is checked again per row, so an
     // upstream that ignores it still cannot put an AI item here.
-    await page((l, o) => media.listClips({ limit: l, offset: o, auto_generated: 0 }).then(r => r?.clips || []), 200, SITEMAP_CAP, (c) => {
+    await page((l, o) => media.listClips({ limit: l, offset: o, auto_generated: 0 }).then(r => r?.clips || []), 200, SITEMAP_CAP, async (c) => {
         if (isAiClip(c)) return;
         entry(`/clip/${c.id}`, isoDate(c.created_at), 'weekly', 0.6);
-        const ch = channelOf({}, c.channel_user_id != null ? c.channel_user_id : c.user_id);
+        const ch = await channelOf({}, c.channel_user_id != null ? c.channel_user_id : c.user_id);
         if (ch) seenChannels.add(ch);
     });
     // No /p/ here: pastes are OpenVibe.Community's, and its sitemap lists them under their canonical URL.

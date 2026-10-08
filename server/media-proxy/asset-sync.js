@@ -51,9 +51,9 @@ async function syncAll() {
     _running = true;
     try {
         const nameCache = {};
-        const uname = (id) => {
+        const uname = async (id) => {
             if (!id) return '';
-            if (!(id in nameCache)) { const u = db.getUserById(id); nameCache[id] = (u && u.username) || ''; }
+            if (!(id in nameCache)) { const u = await db.getUserById(id); nameCache[id] = (u && u.username) || ''; }
             return nameCache[id];
         };
         let synced = 0, failed = 0;
@@ -71,8 +71,8 @@ async function syncAll() {
                 try {
                     const asset = await _upload({
                         kind: 'sound', name: s.command, filePath: f,
-                        user_id: s.created_by, username: s.created_by_name || uname(s.created_by),
-                        channel_username: uname(s.channel_owner_id),
+                        user_id: s.created_by, username: s.created_by_name || await uname(s.created_by),
+                        channel_username: await uname(s.channel_owner_id),
                         duration_seconds: s.duration_seconds || 0,
                     });
                     if (asset) {

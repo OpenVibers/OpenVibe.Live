@@ -98,17 +98,17 @@ const { publicManagedStream, publicChannel, publicStream } = require('../web/ser
  * owner's, and never act AS its streamer: reading or regenerating a stream key, the ingest endpoint,
  * going live on a slot, heartbeats, call settings and WHIP publishing stay with the streamer alone.
  */
-function staffMayModerate(actor, ownerUserId) {
+async function staffMayModerate(actor, ownerUserId) {
     if (!can(actor, 'staff.streams.manage')) return false;
-    const target = db.getUserById(ownerUserId);
+    const target = await db.getUserById(ownerUserId);
     return !(target && target.is_owner);
 }
 
 /** A control profile id a slot may point at: one of the caller's own (admins may use anyone's). */
-function ownControlConfigId(req, raw) {
+async function ownControlConfigId(req, raw) {
     if (raw === null || raw === undefined || raw === '') return null;
     const id = parseInt(raw);
-    const cfg = Number.isFinite(id) ? db.getControlConfig(id) : null;
+    const cfg = Number.isFinite(id) ? await db.getControlConfig(id) : null;
     if (!cfg || (cfg.user_id !== req.user.id && !can(req.user, 'staff.streams.manage'))) return undefined;
     return id;
 }
@@ -177,9 +177,9 @@ function cleanTags(tags) {
 }
 
 /** The social links an About editor sees after saving (server/social/links.js), for the response. */
-function aboutSocials(channel) {
+async function aboutSocials(channel) {
     if (!channel) return { social_links: [] };
-    const s = require('../social/links').channelSocialLinks(channel, db, { owner: true });
+    const s = await require('../social/links').channelSocialLinks(channel, db, { owner: true });
     return { social_links: s.links, social_links_editor: { connected: s.connected, restreams_without_link: s.restreams_without_link, hidden_auto: s.hidden_auto } };
 }
 
@@ -229,21 +229,21 @@ function resolveWhipUrlBase(config, req) {
 // ── Get Channel by Username ──────────────────────────────────
 router.get('/channel/:username', optionalAuth, async (req, res) => {
     try {
-        let channel = db.getChannelByUsername(req.params.username);
+        let channel = await db.getChannelByUsername(req.params.username);
         if (!channel) {
-            const user = db.getUserByUsername(req.params.username);
+            const user = await db.getUserByUsername(req.params.username);
             if (!user) return res.status(404).json({ error: 'Channel not found' });
-            db.ensureChannel(user.id);
-            channel = db.getChannelByUsername(req.params.username);
+            await db.ensureChannel(user.id);
+            channel = await db.getChannelByUsername(req.params.username);
             if (!channel) return res.status(404).json({ error: 'Channel not found' });
         }
 
         // Get live streams (may be multiple with different protocols)
-        const liveStreams = db.getLiveStreamsByUserId(channel.user_id) || [];
+        const liveStreams = await db.getLiveStreamsByUserId(channel.user_id) || [];
         for (const liveStream of liveStreams) {
             // Use managed stream key from the JOIN, else fall back to user key
             const lsKey = liveStream.managed_stream_key
-                || db.getUserById(liveStream.user_id)?.stream_key;
+                || (await db.getUserById(liveStream.user_id))?.stream_key;
             if (liveStream.protocol === 'jsmpeg') {
                 liveStream.endpoint = jsmpegRelay.getChannelInfo(lsKey);
             } else if (liveStream.protocol === 'webrtc') {
@@ -277,11 +277,11 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
                 vodManagedStreamId = numId;
             } else {
                 // Try slug resolution
-                const msRow = db.getManagedStreamBySlug(channel.user_id, rawMsId);
+                const msRow = await db.getManagedStreamBySlug(channel.user_id, rawMsId);
                 if (msRow) vodManagedStreamId = msRow.id;
             }
         } else if (req.query.vodManagedStreamSlug) {
-            const msRow = db.getManagedStreamBySlug(channel.user_id, req.query.vodManagedStreamSlug);
+            const msRow = await db.getManagedStreamBySlug(channel.user_id, req.query.vodManagedStreamSlug);
             if (msRow) vodManagedStreamId = msRow.id;
         }
         const clipLimit = Math.min(Math.max(parseInt(req.query.clipLimit || '12', 10), 1), 48);
@@ -316,40 +316,40 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             aiClips = _rows(air, 'clips').filter(isAi); aiClipsTotal = air?.total ?? aiClips.length;
             // Media only stores our numeric user ids — resolve clip creator names
             // locally so cards don't render "by Unknown".
-            const nameClip = (c) => {
+            const nameClip = async (c) => {
                 if (c && c.user_id != null) {
-                    const u = db.getUserById(c.user_id);
+                    const u = await db.getUserById(c.user_id);
                     if (u) { c.clip_creator_username = u.username; c.clip_creator_display_name = u.display_name; }
                 }
                 return c;
             };
-            clips.forEach(nameClip);
-            clipsOfStreams.forEach(nameClip);
+            for (const c of clips) await nameClip(c);
+            for (const c of clipsOfStreams) await nameClip(c);
             // An AI clip has no clipper: it is "from <streamer>'s stream".
             for (const c of aiClips) { c.ai_label = 'AI clip'; c.source_streamer_username = channel.username; c.source_streamer_display_name = channel.display_name || channel.username; }
             // AI overviews are Live-owned (vod_ai_state / clip_ai_state). Attach the
             // full text too — the card expander swaps the short teaser for it.
-            const aiShort = (rows, table, col) => {
+            const aiShort = async (rows, table, col) => {
                 for (const r of rows) {
                     if (!r || r.id == null || (r.ai_overview_short && r.ai_overview)) continue;
                     try {
-                        const s = db.get(`SELECT ai_overview_short, ai_overview FROM ${table} WHERE ${col} = ?`, [r.id]);
+                        const s = await db.get(`SELECT ai_overview_short, ai_overview FROM ${table} WHERE ${col} = ?`, [r.id]);
                         if (s && s.ai_overview_short && !r.ai_overview_short) r.ai_overview_short = s.ai_overview_short;
                         if (s && s.ai_overview && !r.ai_overview) r.ai_overview = s.ai_overview;
                     } catch { /* best-effort */ }
                 }
             };
-            aiShort(vods, 'vod_ai_state', 'vod_id');
-            aiShort(clips, 'clip_ai_state', 'clip_id');
-            aiShort(clipsOfStreams, 'clip_ai_state', 'clip_id');
-            aiShort(aiClips, 'clip_ai_state', 'clip_id');
+            await aiShort(vods, 'vod_ai_state', 'vod_id');
+            await aiShort(clips, 'clip_ai_state', 'clip_id');
+            await aiShort(clipsOfStreams, 'clip_ai_state', 'clip_id');
+            await aiShort(aiClips, 'clip_ai_state', 'clip_id');
         }
         // Follows are Network's (ADR-030): its count, and the viewer's follow as Network last answered it.
         const networkFollows = require('../social/network-follows');
         const followerCount = await networkFollows.followerCount(channel.user_id);
-        const isFollowing = req.user ? networkFollows.isFollowing(req.user.id, channel.user_id) : false;
+        const isFollowing = req.user ? await networkFollows.isFollowing(req.user.id, channel.user_id) : false;
         // Managed streams for this channel
-        const managedStreams = db.getManagedStreamsByUserId(channel.user_id) || [];
+        const managedStreams = await db.getManagedStreamsByUserId(channel.user_id) || [];
 
         // Include RS restream status + per-slot external viewer counts for each live stream.
         // Everything is keyed by the stream's own managed_stream_id (slot) so a channel
@@ -364,7 +364,7 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             try { hasPublish = hasPublish || require('../integrations/rs-passthrough-relay').status(ls.id)?.state === 'live'; } catch { /* ignore */ }
             const rsActive = hasBridge || hasPublish;
             if (rsActive) {
-                const integration = db.getRobotStreamerIntegrationForStream(ls.user_id, slotId);
+                const integration = await db.getRobotStreamerIntegrationForStream(ls.user_id, slotId);
                 rsInfo[ls.id] = {
                     active: true,
                     robot_id: integration?.robot_id || null,
@@ -376,7 +376,7 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
                 };
             }
             // Per-slot external (Twitch/Kick/YouTube) + RS totals attached to this stream.
-            const ext = restreamManager.getExternalViewerCountsForUser(ls.user_id, slotId);
+            const ext = await restreamManager.getExternalViewerCountsForUser(ls.user_id, slotId);
             ls.rs_viewers = rsActive ? rsVc : 0;
             ls.platform_viewers = ext.breakdown;
             ls.external_viewer_count = ext.total + ls.rs_viewers;
@@ -393,7 +393,7 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
         let restreamLinks = null;
         let externalViewers = null;
         if (liveStreams.length > 0) {
-            const allDests = db.getRestreamDestinationsByUserId(channel.user_id) || [];
+            const allDests = await db.getRestreamDestinationsByUserId(channel.user_id) || [];
 
             // Collect managed_stream_ids for all current live sessions
             const activeManagedIds = new Set(
@@ -497,14 +497,14 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
         // Social links (server/social/links.js): saved links plus connected restream platforms. Editors also get
         // what the editor needs (connected platforms, restreams with no public link yet, hidden ones).
         try {
-            const socials = require('../social/links').channelSocialLinks(channel, db, { owner: publicChannel.viewer_can_edit_about });
+            const socials = await require('../social/links').channelSocialLinks(channel, db, { owner: publicChannel.viewer_can_edit_about });
             publicChannel.social_links = socials.links;
             if (publicChannel.viewer_can_edit_about) publicChannel.social_links_editor = { connected: socials.connected, restreams_without_link: socials.restreams_without_link, hidden_auto: socials.hidden_auto };
         } catch { publicChannel.social_links = []; }
         // Streamer AI overview for the top of the About tab (unless the streamer hid it).
         // `hide_ai_overview` rides along on the channel row spread above.
         try {
-            const _ov = pollOnly ? null : db.getStreamerOverview(channel.user_id);
+            const _ov = pollOnly ? null : await db.getStreamerOverview(channel.user_id);
             publicChannel.ai_overview = (_ov && (_ov.overview || _ov.overview_short)) || null;
         } catch { publicChannel.ai_overview = null; }
         delete publicChannel.weather_zip;
@@ -520,13 +520,13 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
         let pasteTotal = 0, clipsTakenTotal = 0, aiEventTotal = 0;
         if (!pollOnly) {
             const lookups = require('../media-proxy/lookups');
-            const owner = db.getUserById(channel.user_id);
+            const owner = await db.getUserById(channel.user_id);
             [pasteTotal, clipsTakenTotal] = await Promise.all([
                 lookups.countUserPastes(owner, { hidden: canSeeHidden ? (isOwner ? 'owner' : 'staff') : false }),
                 lookups.countClipsTaken(channel.user_id, { includePrivate: canSeeHidden }),
             ]);
         }
-        try { aiEventTotal = pollOnly ? 0 : db.countStreamMemoriesByUser(channel.user_id); } catch { /* */ }
+        try { aiEventTotal = pollOnly ? 0 : await db.countStreamMemoriesByUser(channel.user_id); } catch { /* */ }
 
         // Tab-hide flags: when a streamer defaults ALL their slots' VODs (or clips) to private,
         // and there's no public content to show, hide that tab on the public channel page.
@@ -551,7 +551,7 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             channel: publicChannel,
             // The language this channel lives in (explicit setting or detected from the bio) —
             // drives the chat auto-translation notice, the live-captions panel and bio translation.
-            language: i18n.channelMeta(channel.user_id),
+            language: await i18n.channelMeta(channel.user_id),
             stream: liveStreams[0] || null,
             streams: liveStreams,
             // Slots are rows from `SELECT ms.*` — the owner's ingest key and home ZIP are on them.
@@ -595,7 +595,7 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
 // ── Most-popular recent VOD + clip (offline-screen "explore" cards) ──
 router.get('/channel/:username/popular', async (req, res) => {
     try {
-        const user = db.getUserByUsername(req.params.username);
+        const user = await db.getUserByUsername(req.params.username);
         if (!user) return res.status(404).json({ error: 'Not found' });
         let vods = [], clips = [];
         const media = require('../media-client');
@@ -621,7 +621,7 @@ router.get('/channel/:username/popular', async (req, res) => {
 // sortable, self-clips hidden by default. optionalAuth so owners can see their private.
 router.get('/channel/:username/clips-taken', optionalAuth, async (req, res) => {
     try {
-        const user = db.getUserByUsername(req.params.username);
+        const user = await db.getUserByUsername(req.params.username);
         if (!user) return res.status(404).json({ error: 'Not found' });
         const isOwner = req.user && req.user.id === user.id;
         const canSeeHidden = !!(isOwner || can(req.user, 'staff.content.view_private'));
@@ -642,16 +642,16 @@ router.get('/channel/:username/clips-taken', optionalAuth, async (req, res) => {
             auto_generated: 0,   // the auto-clip job cuts in the streamer's name; those clips are not ones they took
             limit, offset,
         }).catch(() => null);
-        const clips = (r?.clips || (Array.isArray(r) ? r : [])).map(c => {
+        const clips = (await Promise.all((r?.clips || (Array.isArray(r) ? r : [])).map(async c => {
             // Overlay Live-owned source-streamer fields (Media only stores our id).
-            const streamer = c.channel_user_id != null ? db.getUserById(c.channel_user_id) : null;
+            const streamer = c.channel_user_id != null ? await db.getUserById(c.channel_user_id) : null;
             if (streamer) {
                 c.source_streamer_id = c.channel_user_id;
                 c.source_streamer_username = streamer.username;
                 c.source_streamer_display_name = streamer.display_name;
             }
             return c;
-        });
+        })));
         const total = r?.total ?? clips.length;
         const facets = (r?.facets || []).map(f => ({ ...f, is_self: f.streamer_id === user.id }));
         res.json({ clips, total, facets, limit, offset, hasMore: offset + clips.length < total, sort: orderBy, of: sourceStreamerId, includeSelf });
@@ -663,17 +663,17 @@ router.get('/channel/:username/clips-taken', optionalAuth, async (req, res) => {
 
 // ── Lightweight live-only channel endpoint (fast player init) ──
 // Returns ONLY the data needed to start the player — no VODs, clips, or heavy queries
-router.get('/channel/:username/live', (req, res) => {
+router.get('/channel/:username/live', async (req, res) => {
     try {
         res.set('Cache-Control', 'public, max-age=3');
-        const channel = db.getChannelByUsername(req.params.username);
+        const channel = await db.getChannelByUsername(req.params.username);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
-        const liveStreams = db.getLiveStreamsByUserId(channel.user_id) || [];
+        const liveStreams = await db.getLiveStreamsByUserId(channel.user_id) || [];
         for (const liveStream of liveStreams) {
             // Use managed stream key from the JOIN, else fall back to user key
             const lsKey = liveStream.managed_stream_key
-                || db.getUserById(liveStream.user_id)?.stream_key;
+                || (await db.getUserById(liveStream.user_id))?.stream_key;
             if (liveStream.protocol === 'jsmpeg') {
                 liveStream.endpoint = jsmpegRelay.getChannelInfo(lsKey);
             } else if (liveStream.protocol === 'webrtc') {
@@ -701,10 +701,10 @@ router.get('/channel/:username/live', (req, res) => {
 });
 
 // ── Get Own Channel ──────────────────────────────────────────
-router.get('/channel', requireAuth, (req, res) => {
+router.get('/channel', requireAuth, async (req, res) => {
     try {
-        db.ensureChannel(req.user.id);
-        const channel = db.getChannelByUserId(req.user.id);
+        await db.ensureChannel(req.user.id);
+        const channel = await db.getChannelByUserId(req.user.id);
         res.json(channel || {});
     } catch (err) {
         console.error('[Channels] Get own error:', err.message);
@@ -713,9 +713,9 @@ router.get('/channel', requireAuth, (req, res) => {
 });
 
 // ── Update Own Channel ───────────────────────────────────────
-router.put('/channel', requireAuth, (req, res) => {
+router.put('/channel', requireAuth, async (req, res) => {
     try {
-        db.ensureChannel(req.user.id);
+        await db.ensureChannel(req.user.id);
         const { is_nsfw, auto_record, vod_recording_enabled } = req.body;
         const title = cleanText(req.body.title, { maxLength: MAX_TITLE_LENGTH });
         const description = cleanText(req.body.description, { maxLength: MAX_DESCRIPTION_LENGTH, allowEmpty: true });
@@ -798,10 +798,10 @@ router.put('/channel', requireAuth, (req, res) => {
         if (hasOwn(req.body, 'offline_css')) fields.offline_css = sanitizeOfflineCss(String(req.body.offline_css || '').slice(0, 20000));
 
         if (Object.keys(fields).length > 0) {
-            db.updateChannel(req.user.id, fields);
+            await db.updateChannel(req.user.id, fields);
         }
 
-        const channel = db.getChannelByUserId(req.user.id);
+        const channel = await db.getChannelByUserId(req.user.id);
         res.json({ channel });
     } catch (err) {
         // (falls through to the shared handler below)
@@ -815,7 +815,7 @@ router.put('/channel', requireAuth, (req, res) => {
 // or AI translation is unavailable.
 router.get('/channel/:username/bio-en', async (req, res) => {
     try {
-        const user = db.getUserByUsername(req.params.username);
+        const user = await db.getUserByUsername(req.params.username);
         if (!user) return res.status(404).json({ error: 'Channel not found' });
         const bio = String(user.bio || '').trim();
         const from = i18n.detectForeignInText(bio);   // any non-English line makes the bio worth translating
@@ -834,7 +834,7 @@ router.get('/channel/:username/bio-en', async (req, res) => {
 // to the STREAMER's channel, not their own.
 router.put('/channel/:username/about', requireAuth, async (req, res) => {
     try {
-        const channel = db.getChannelByUsername(req.params.username);
+        const channel = await db.getChannelByUsername(req.params.username);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
         const isOwner = req.user.id === channel.user_id;
@@ -852,37 +852,37 @@ router.put('/channel/:username/about', requireAuth, async (req, res) => {
         // Bio (stored on the streamer's user profile)
         if (hasOwn(req.body, 'bio')) {
             const bio = String(req.body.bio == null ? '' : req.body.bio).replace(/<[^>]*>/g, '').slice(0, 500);
-            db.setUserBio(channel.user_id, bio);
+            await db.setUserBio(channel.user_id, bio);
         }
         // Panels (stored on the channel)
         if (hasOwn(req.body, 'panels')) {
             const panels = cleanPanels(req.body.panels);
             if (panels === null) return res.status(400).json({ error: 'Invalid panels' });
-            if (panels !== undefined) db.updateChannel(channel.user_id, { panels });
+            if (panels !== undefined) await db.updateChannel(channel.user_id, { panels });
         }
         // Social links: { links: [{ kind, url | handle, label, preview }], hidden_auto: ['twitch', …] }.
         if (hasOwn(req.body, 'social_links')) {
             const socials = require('../social/links').cleanSocialLinks(req.body.social_links);
             if (socials === null) return res.status(400).json({ error: 'Invalid social links' });
-            db.updateChannel(channel.user_id, { social_links: socials });
+            await db.updateChannel(channel.user_id, { social_links: socials });
         }
         // Show/hide the AI overview at the top of the About tab.
         if (hasOwn(req.body, 'hide_ai_overview')) {
-            db.updateChannel(channel.user_id, { hide_ai_overview: req.body.hide_ai_overview ? 1 : 0 });
+            await db.updateChannel(channel.user_id, { hide_ai_overview: req.body.hide_ai_overview ? 1 : 0 });
         }
         // Tri-state AI-overview preference (auto/show/hide).
         if (hasOwn(req.body, 'ai_overview_pref')) {
             const p = String(req.body.ai_overview_pref || 'auto').trim();
-            if (['auto', 'show', 'hide'].includes(p)) db.updateChannel(channel.user_id, { ai_overview_pref: p });
+            if (['auto', 'show', 'hide'].includes(p)) await db.updateChannel(channel.user_id, { ai_overview_pref: p });
         }
 
-        const updated = db.getChannelByUsername(req.params.username);
+        const updated = await db.getChannelByUsername(req.params.username);
         // getChannelByUsername joins users and selects u.stream_key. This endpoint is reachable by
         // a channel's moderators (that is what edited_by_mod reports), so returning the row as-is
         // handed every mod the streamer's broadcast key — enough to publish to their channel. The
         // rest of this file already redacts it the same way before sending a channel or stream.
         if (updated) { delete updated.stream_key; delete updated.managed_stream_key; }
-        res.json({ channel: updated, ...aboutSocials(updated), edited_by_mod: !isOwner });
+        res.json({ channel: updated, ...(await aboutSocials(updated)), edited_by_mod: !isOwner });
     } catch (err) {
         console.error('[Channel] about update error:', err.message);
         res.status(500).json({ error: 'Failed to save About section' });
@@ -952,7 +952,7 @@ router.post('/channel/offline-screen', requireAuth, offlineUpload.single('file')
     const tmp = req.file?.path;
     try {
         if (!req.file) return res.status(400).json({ error: 'No file' });
-        db.ensureChannel(req.user.id);
+        await db.ensureChannel(req.user.id);
         const mime = (req.file.mimetype || '').toLowerCase();
         const isPlainImage = /^image\/(png|jpe?g|webp|avif)$/.test(mime);
         const isVideoish = /^video\//.test(mime) || mime === 'image/gif';
@@ -977,12 +977,12 @@ router.post('/channel/offline-screen', requireAuth, offlineUpload.single('file')
 
         // Remove the previous asset (best-effort) to avoid orphans.
         try {
-            const prev = db.getChannelByUserId(req.user.id)?.offline_screen_url;
+            const prev = (await db.getChannelByUserId(req.user.id))?.offline_screen_url;
             if (prev && prev.startsWith('/data/offline/')) fs.unlink(path.join(OFFLINE_DIR, path.basename(prev)), () => {});
         } catch { /* ignore */ }
 
         const url = `/data/offline/${outName}`;
-        db.updateChannel(req.user.id, { offline_screen_url: url, offline_screen_type: type });
+        await db.updateChannel(req.user.id, { offline_screen_url: url, offline_screen_type: type });
         res.json({ url, type });
     } catch (err) {
         if (tmp) fs.unlink(tmp, () => {});
@@ -1055,7 +1055,7 @@ async function fetchWeather(zip) {
 // ── Game summary (roadmap WS-M task 2, PF7) ──────────────────
 // The channel owner's public games.progress.summary (level, achievements, playtime) from Network; 204 when none.
 router.get('/channel/:username/game', async (req, res) => {
-    const channel = db.getChannelByUsername(req.params.username);
+    const channel = await db.getChannelByUsername(req.params.username);
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
     const summary = await require('../auth/game-summary').forUser(channel.user_id);
     res.set('Cache-Control', 'public, max-age=300');
@@ -1065,7 +1065,7 @@ router.get('/channel/:username/game', async (req, res) => {
 
 router.get('/channel/:username/weather', async (req, res) => {
     try {
-        const channel = db.getChannelByUsername(req.params.username);
+        const channel = await db.getChannelByUsername(req.params.username);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
         // Per-slot override: weather is configurable per managed stream slot, so a
@@ -1076,8 +1076,8 @@ router.get('/channel/:username/weather', async (req, res) => {
             let slot = null;
             const managedId = parseInt(req.query.managed, 10) || null;
             const streamId = parseInt(req.query.stream, 10) || null;
-            if (managedId) slot = db.getManagedStreamById(managedId);
-            else if (streamId) { const s = db.getStreamById(streamId); if (s && s.managed_stream_id) slot = db.getManagedStreamById(s.managed_stream_id); }
+            if (managedId) slot = await db.getManagedStreamById(managedId);
+            else if (streamId) { const s = await db.getStreamById(streamId); if (s && s.managed_stream_id) slot = await db.getManagedStreamById(s.managed_stream_id); }
             if (slot && slot.user_id === channel.user_id && slot.weather_zip) {
                 wZip = slot.weather_zip;
                 wDetail = slot.weather_detail || wDetail;
@@ -1174,20 +1174,20 @@ router.get('/channel/:username/weather', async (req, res) => {
 });
 
 // ── List Live Streams ────────────────────────────────────────
-router.get('/', optionalAuth, (req, res) => {
+router.get('/', optionalAuth, async (req, res) => {
     try {
         // Every open home tab polls this every 12 seconds and the response is the same for
         // everyone, so let the browser and the edge answer most of those hits. Kept well under
         // the poll period so a card can never look stale for a whole cycle.
         res.set('Cache-Control', 'public, max-age=5');
         const restreamManager = require('./restream-manager');
-        const streams = db.getLiveStreams();
-        const channelMap = db.getChannelsByUserIds(streams.map(s => s.user_id)); // one query, not N
-        const enriched = streams.map(s => {
+        const streams = await db.getLiveStreams();
+        const channelMap = await db.getChannelsByUserIds(streams.map(s => s.user_id)); // one query, not N
+        const enriched = await Promise.all(streams.map(async (s) => {
             const channel = channelMap[s.user_id] || null;
             // Per-slot external viewer counts (Kick/Twitch/YouTube + RS) for THIS stream slot
             const slotId = s.managed_stream_id || null;
-            const ext = restreamManager.getExternalViewerCountsForUser(s.user_id, slotId);
+            const ext = await restreamManager.getExternalViewerCountsForUser(s.user_id, slotId);
             const rsVc = robotStreamerService.getRsViewerCount(s.user_id, slotId);
             const externalTotal = ext.total + rsVc;
             // getLiveStreams() selects s.* plus ms.stream_key, and this endpoint is public
@@ -1201,7 +1201,7 @@ router.get('/', optionalAuth, (req, res) => {
                 external_viewer_count: externalTotal,
                 total_viewer_count: (s.viewer_count || 0) + externalTotal,
             });
-        });
+        }));
         res.json({ streams: enriched });
     } catch (err) {
         console.error('[Streams] List error:', err.message);
@@ -1210,10 +1210,10 @@ router.get('/', optionalAuth, (req, res) => {
 });
 
 // ── List My Streams (all streams for current user) ───────────
-router.get('/mine', requireAuth, (req, res) => {
+router.get('/mine', requireAuth, async (req, res) => {
     try {
         const limit = Math.min(parseInt(req.query.limit || '50'), 200);
-        const streams = db.getStreamsByUserId(req.user.id, limit);
+        const streams = await db.getStreamsByUserId(req.user.id, limit);
         res.json({ streams });
     } catch (err) {
         console.error('[Streams] My streams error:', err.message);
@@ -1226,11 +1226,11 @@ router.get('/recent', async (req, res) => {
     try {
         const limit = Math.min(parseInt(req.query.limit || '20'), 100);
         // Each stream's public VOD (id, thumbnail, duration) comes from OpenVibe.Media.
-        const streams = await require('../media-proxy/lookups').attachPublicVods(db.getRecentStreams(limit));
-        const enriched = streams.map(s => {
-            const channel = db.getChannelByUserId(s.user_id);
+        const streams = await require('../media-proxy/lookups').attachPublicVods(await db.getRecentStreams(limit));
+        const enriched = (await Promise.all(streams.map(async s => {
+            const channel = await db.getChannelByUserId(s.user_id);
             return publicStream({ ...s, channel: channel || null });
-        });
+        })));
         res.json({ streams: enriched });
     } catch (err) {
         console.error('[Streaming]', err.message);
@@ -1243,8 +1243,8 @@ router.get('/recently-online', async (req, res) => {
     try {
         const limit = Math.min(Math.max(parseInt(req.query.limit || '20', 10), 1), 100);
         const offset = Math.max(parseInt(req.query.offset || '0', 10), 0);
-        const streamers = db.getRecentlyOnlineStreamers(limit, offset);
-        const total = db.countRecentlyOnlineStreamers();
+        const streamers = await db.getRecentlyOnlineStreamers(limit, offset);
+        const total = await db.countRecentlyOnlineStreamers();
         // Parse the JSON aggregate column; sort managed streams by last_live_at desc
         for (const s of streamers) {
             try {
@@ -1279,7 +1279,7 @@ router.get('/recently-online', async (req, res) => {
         }
         // Each streamer's nearest active donation goal → progress bar on the card.
         try {
-            const goals = db.getActiveGoalsForUsers(streamers.map(s => s.user_id).filter(Boolean));
+            const goals = await db.getActiveGoalsForUsers(streamers.map(s => s.user_id).filter(Boolean));
             for (const s of streamers) {
                 const g = goals[s.user_id];
                 if (g) s.top_goal = { title: g.title, current: g.current_amount, target: g.target_amount };
@@ -1302,12 +1302,12 @@ router.get('/recent-vods', async (req, res) => {
         const vods = r?.vods || (Array.isArray(r) ? r : []);
         for (const v of vods) {
             if (v && v.user_id != null && !v.username) {
-                const u = db.getUserById(v.user_id);
+                const u = await db.getUserById(v.user_id);
                 if (u) { v.username = u.username; v.display_name = u.display_name; v.avatar_url = u.avatar_url; }
             }
             if (v && v.id != null && (!v.ai_overview_short || !v.ai_overview)) {
                 try {
-                    const s = db.get('SELECT ai_overview_short, ai_overview FROM vod_ai_state WHERE vod_id = ?', [v.id]);
+                    const s = await db.get('SELECT ai_overview_short, ai_overview FROM vod_ai_state WHERE vod_id = ?', [v.id]);
                     if (s && s.ai_overview_short && !v.ai_overview_short) v.ai_overview_short = s.ai_overview_short;
                     if (s && s.ai_overview && !v.ai_overview) v.ai_overview = s.ai_overview;
                 } catch { /* */ }
@@ -1323,19 +1323,19 @@ router.get('/recent-vods', async (req, res) => {
 
 /* ── Voice Channels (global, non-stream) ───────────────────── */
 
-router.get('/voice-channels', optionalAuth, (req, res) => {
+router.get('/voice-channels', optionalAuth, async (req, res) => {
     try {
         res.set('Cache-Control', 'no-store'); // private calls differ per viewer; the list is pushed anyway
-        res.json({ channels: callServer.listChannels(req.user || null) });
+        res.json({ channels: await callServer.listChannels(req.user || null) });
     } catch (err) {
         console.error('[Streaming]', err.message);
         res.status(500).json({ error: 'Failed to list voice channels' });
     }
 });
 
-router.get('/voice-channels/:channelId', optionalAuth, (req, res) => {
+router.get('/voice-channels/:channelId', optionalAuth, async (req, res) => {
     try {
-        const ch = callServer.getChannel(req.params.channelId, req.user || null);
+        const ch = await callServer.getChannel(req.params.channelId, req.user || null);
         if (!ch) return res.status(404).json({ error: 'Channel not found' });
         res.json({ channel: ch });
     } catch (err) {
@@ -1356,9 +1356,9 @@ router.post('/voice-channels', requireAuth, (req, res) => {
     }
 });
 
-router.delete('/voice-channels/:channelId', requireAuth, (req, res) => {
+router.delete('/voice-channels/:channelId', requireAuth, async (req, res) => {
     try {
-        const ok = callServer.deleteChannel(req.params.channelId, req.user.id);
+        const ok = await callServer.deleteChannel(req.params.channelId, req.user.id);
         if (!ok) return res.status(403).json({ error: 'Cannot delete this channel' });
         res.json({ deleted: true });
     } catch (err) {
@@ -1379,8 +1379,8 @@ router.post('/voice-channels/call-user', requireAuth, async (req, res) => {
         const targetUsername = String(req.body?.username || '').trim();
 
         let targetUser = null;
-        if (targetUserId > 0) targetUser = db.getUserById(targetUserId);
-        if (!targetUser && targetUsername) targetUser = db.getUserByUsername(targetUsername);
+        if (targetUserId > 0) targetUser = await db.getUserById(targetUserId);
+        if (!targetUser && targetUsername) targetUser = await db.getUserByUsername(targetUsername);
         if (!targetUser) return res.status(404).json({ error: 'User not found' });
         if (targetUser.id === req.user.id) return res.status(400).json({ error: 'You cannot call yourself' });
         // Blocks live in Chat (dm_blocks is Chat's table), so the check goes through chat-reads. On an
@@ -1395,7 +1395,7 @@ router.post('/voice-channels/call-user', requireAuth, async (req, res) => {
 
         // Reuse caller's existing temp channel if present; otherwise create a private one — a
         // 1:1 call is not something the whole site should see listed and be able to walk into.
-        const existing = (callServer.listChannels(req.user) || []).find(ch => !ch.permanent && !ch.streamId && ch.createdBy === req.user.id) || null;
+        const existing = (await callServer.listChannels(req.user) || []).find(ch => !ch.permanent && !ch.streamId && ch.createdBy === req.user.id) || null;
         const channel = existing || callServer.createChannel({
             name: `${req.user.display_name || req.user.username}'s call`,
             mode: 'mic+cam',
@@ -1418,7 +1418,7 @@ router.post('/voice-channels/call-user', requireAuth, async (req, res) => {
         };
 
         // Real-time invite for online users via existing chat WS connections.
-        require('../chat/chat-delivery').event({ kind: 'user', id: targetUser.id }, payload);
+        await require('../chat/chat-delivery').event({ kind: 'user', id: targetUser.id }, payload);
 
         // Persistent cross-site notification for offline users / later join.
         pushNotification({
@@ -1445,7 +1445,7 @@ router.post('/voice-channels/call-user', requireAuth, async (req, res) => {
     }
 });
 
-router.post('/voice-channels/call-user/respond', requireAuth, (req, res) => {
+router.post('/voice-channels/call-user/respond', requireAuth, async (req, res) => {
     try {
         const callerUserId = Number(req.body?.caller_user_id || 0);
         const channelId = String(req.body?.channel_id || '').trim();
@@ -1458,11 +1458,11 @@ router.post('/voice-channels/call-user/respond', requireAuth, (req, res) => {
         if (!allowed.has(status)) return res.status(400).json({ error: 'Invalid response status' });
         if (callerUserId === req.user.id) return res.status(400).json({ error: 'Invalid caller target' });
         // Only an invited user can answer, and only to the caller who owns that channel.
-        const ch = callServer.getChannel(channelId, req.user);
+        const ch = await callServer.getChannel(channelId, req.user);
         if (!ch || ch.createdBy !== callerUserId || !callServer.hasInvite(channelId, req.user.id)) return res.status(403).json({ error: 'No such invite' });
 
         const fromDisplayName = req.user.display_name || req.user.username || 'Someone';
-        require('../chat/chat-delivery').event({ kind: 'user', id: callerUserId }, {
+        await require('../chat/chat-delivery').event({ kind: 'user', id: callerUserId }, {
             type: 'vc-call-response',
             status,
             channelId,
@@ -1482,11 +1482,11 @@ router.post('/voice-channels/call-user/respond', requireAuth, (req, res) => {
 });
 
 // ── Broadcast Settings ──────────────────────────────────────
-router.get('/broadcast-settings', requireAuth, (req, res) => {
+router.get('/broadcast-settings', requireAuth, async (req, res) => {
     try {
         const managedStreamId = req.query.managed_stream_id ? parseInt(req.query.managed_stream_id) : null;
         if (managedStreamId) {
-            const settings = db.getManagedStreamBroadcastSettings(managedStreamId, req.user.id);
+            const settings = await db.getManagedStreamBroadcastSettings(managedStreamId, req.user.id);
             return res.json({ settings, managed_stream_id: managedStreamId });
         }
         // Fallback: return defaults when no managed stream specified
@@ -1499,18 +1499,18 @@ router.get('/broadcast-settings', requireAuth, (req, res) => {
     }
 });
 
-router.put('/broadcast-settings', requireAuth, (req, res) => {
+router.put('/broadcast-settings', requireAuth, async (req, res) => {
     try {
         const managedStreamId = req.body.managed_stream_id ? parseInt(req.body.managed_stream_id) : null;
         if (!managedStreamId) {
             return res.status(400).json({ error: 'managed_stream_id is required' });
         }
-        const managed = db.getManagedStreamById(managedStreamId);
+        const managed = await db.getManagedStreamById(managedStreamId);
         if (!managed || managed.user_id !== req.user.id) {
             return res.status(403).json({ error: 'Not your managed stream' });
         }
         const settings = req.body.settings || {};
-        db.updateManagedStreamBroadcastSettings(managedStreamId, req.user.id, settings);
+        await db.updateManagedStreamBroadcastSettings(managedStreamId, req.user.id, settings);
         res.json({ settings, managed_stream_id: managedStreamId });
     } catch (err) {
         console.error('[Streaming] broadcast-settings save error:', err.message);
@@ -1521,19 +1521,19 @@ router.put('/broadcast-settings', requireAuth, (req, res) => {
 // ── Channel Stream Resolution ────────────────────────────────
 // Resolve a managed stream ref (slug or ID) to the currently live session for a channel.
 // Used by the SPA to deep-link /@username/:managedStreamRef to the correct live stream.
-router.get('/channel/:username/resolve/:ref', optionalAuth, (req, res) => {
+router.get('/channel/:username/resolve/:ref', optionalAuth, async (req, res) => {
     try {
         const username = req.params.username.replace(/^@/, '');
         const ref = req.params.ref;
-        const channel = db.getChannelByUsername(username);
+        const channel = await db.getChannelByUsername(username);
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
         // Resolve the ref to a managed stream
-        const managed = db.getManagedStreamByIdOrSlug(channel.user_id, ref);
+        const managed = await db.getManagedStreamByIdOrSlug(channel.user_id, ref);
         if (!managed) return res.status(404).json({ error: 'Managed stream not found' });
 
         // Find a live session linked to this managed stream
-        const liveStreams = db.getLiveStreamsByUserId(channel.user_id);
+        const liveStreams = await db.getLiveStreamsByUserId(channel.user_id);
         const liveSession = liveStreams.find(s => s.managed_stream_id === managed.id);
 
         res.json({
@@ -1559,7 +1559,7 @@ router.get('/managed/:managedStreamId/history', requireAuth, async (req, res) =>
     const managedStreamId = parseInt(req.params.managedStreamId);
     if (!Number.isFinite(managedStreamId)) return res.status(400).json({ error: 'Invalid ID' });
     try {
-        const sessions = db.getStreamHistoryByManagedStream(managedStreamId, req.user.id);
+        const sessions = await db.getStreamHistoryByManagedStream(managedStreamId, req.user.id);
         // Each session's VOD comes from OpenVibe.Media; only asked when the slot has sessions of this user.
         const vods = sessions.length ? await require('../media-proxy/lookups').vodsForManagedStream(managedStreamId) : new Map();
         for (const s of sessions) {
@@ -1580,11 +1580,11 @@ router.get('/managed/:managedStreamId/profile', requireAuth, async (req, res) =>
     const managedStreamId = parseInt(req.params.managedStreamId);
     if (!Number.isFinite(managedStreamId)) return res.status(400).json({ error: 'Invalid ID' });
     try {
-        const ms = db.getManagedStreamById(managedStreamId);
+        const ms = await db.getManagedStreamById(managedStreamId);
         if (!ms) return res.status(404).json({ error: 'Managed stream not found' });
         if (ms.user_id !== req.user.id) return res.status(403).json({ error: 'Not your managed stream' });
 
-        const broadcastSettings = db.getManagedStreamBroadcastSettings(managedStreamId, req.user.id);
+        const broadcastSettings = await db.getManagedStreamBroadcastSettings(managedStreamId, req.user.id);
         const { whipUrlBase, whipUrlSource, whipUrlWarning } = resolveWhipUrlBase(config, req);
 
         // Do NOT expose stream_key to the broader response — return it in a dedicated key
@@ -1592,7 +1592,7 @@ router.get('/managed/:managedStreamId/profile', requireAuth, async (req, res) =>
         const { stream_key: streamKey, ...msPublic } = ms;
 
         // Slot-level restream destinations
-        const restreamDestinations = db.getRestreamDestinationsByManagedStream(managedStreamId);
+        const restreamDestinations = await db.getRestreamDestinationsByManagedStream(managedStreamId);
 
         const rtmpHost = config.rtmp.host || (() => {
             try { return new URL(config.baseUrl).hostname; } catch { return req.hostname; }
@@ -1613,7 +1613,7 @@ router.get('/managed/:managedStreamId/profile', requireAuth, async (req, res) =>
         // is only ever shown by Regenerate), and Live's WHIP base is withheld: Live refuses that
         // publish. Slots on Live's own ingest get exactly the response above.
         if (openreAuthority.authorityOf(ms) === 'openre') {
-            const subject = require('../auth/identity-sync').subjectOf(ms.user_id);
+            const subject = await require('../auth/identity-sync').subjectOf(ms.user_id);
             Object.assign(body, { stream_key: null, whip_url_base: null, whip_url_source: null, whip_url_warning: null }, await openreAuthority.ingestFor(ms, subject).catch((err) => ({
                 ingest_authority: 'openre', stream_key_managed_by: 'openre', rtmp_url: null, whip_url: null, jsmpeg_url: null, stream_key_hint: `OpenRe is unreachable (${err.message})`,
             })));
@@ -1631,17 +1631,20 @@ router.get('/managed/:managedStreamId/profile', requireAuth, async (req, res) =>
 // a missing table or column just reads as "not done" instead of breaking the hub.
 router.get('/setup-progress', requireAuth, async (req, res) => {
     const uid = req.user.id;
-    const safe = (fn, d) => { try { const v = fn(); return v == null ? d : v; } catch { return d; } };
-    const slots = safe(() => db.getManagedStreamsByUserId(uid), []);
-    const sessions = safe(() => db.get('SELECT COUNT(*) AS n FROM streams WHERE user_id = ?', [uid]).n, 0);
-    const restreams = safe(() => db.getRestreamDestinationsByUserId(uid).length, 0);
-    const rs = slots.some(sl => safe(() => { const r = db.getRobotStreamerIntegrationBySlot(uid, sl.id); return !!(r && (r.robot_id || r.stream_name)); }, false));
-    const user = safe(() => db.getUserById(uid), {}) || {};
-    const channel = safe(() => db.getChannelByUserId(uid), {}) || {};
+    const safe = async (fn, d) => { try { const v = await fn(); return v == null ? d : v; } catch { return d; } };
+    const slots = await safe(async () => await db.getManagedStreamsByUserId(uid), []);
+    const sessions = await safe(async () => (await db.get('SELECT COUNT(*) AS n FROM streams WHERE user_id = ?', [uid])).n, 0);
+    const restreams = await safe(async () => (await db.getRestreamDestinationsByUserId(uid)).length, 0);
+    let rs = false;
+    for (const sl of slots) {
+        if (await safe(async () => { const r = await db.getRobotStreamerIntegrationBySlot(uid, sl.id); return !!(r && (r.robot_id || r.stream_name)); }, false)) { rs = true; break; }
+    }
+    const user = await safe(async () => await db.getUserById(uid), {}) || {};
+    const channel = await safe(async () => await db.getChannelByUserId(uid), {}) || {};
     const emotes = await moderation.getEmoteCount(uid).catch(() => 0);
     const sounds = (await chatReads.soundCount(uid).catch(() => 0)) || 0;
-    const goals = safe(() => db.get('SELECT COUNT(*) AS n FROM donation_goals WHERE user_id = ? AND is_active = 1', [uid]).n, 0);
-    const powerchat = safe(() => !!db.get('SELECT 1 FROM powerchat_connections WHERE user_id = ? LIMIT 1', [uid]), false);
+    const goals = await safe(async () => (await db.get('SELECT COUNT(*) AS n FROM donation_goals WHERE user_id = ? AND is_active = 1', [uid])).n, 0);
+    const powerchat = await safe(async () => !!await db.get('SELECT 1 FROM powerchat_connections WHERE user_id = ? LIMIT 1', [uid]), false);
     const followers = await require('../social/network-follows').followerCount(uid).catch(() => 0);
     let panels = 0; try { const p = channel.panels ? JSON.parse(channel.panels) : []; panels = Array.isArray(p) ? p.length : 0; } catch { panels = 0; }
     const offline = !!(channel.offline_screen_type && channel.offline_screen_type !== 'none');
@@ -1652,11 +1655,11 @@ router.get('/setup-progress', requireAuth, async (req, res) => {
     // Chat owns channel_moderators and channel_moderation_settings (roadmap T3).
     const channelMod = channel.id ? await moderation.getChannelModeration(channel.id).catch(() => null) : null;
     const mods = channelMod ? channelMod.moderator_ids.length : 0;
-    const controls = safe(() => db.get('SELECT COUNT(*) AS n FROM control_configs WHERE user_id = ?', [uid]).n, 0);
-    const aibot = safe(() => db.get('SELECT COUNT(*) AS n FROM channel_ai_bots WHERE channel_user_id = ?', [uid]).n, 0);
+    const controls = await safe(async () => (await db.get('SELECT COUNT(*) AS n FROM control_configs WHERE user_id = ?', [uid])).n, 0);
+    const aibot = await safe(async () => (await db.get('SELECT COUNT(*) AS n FROM channel_ai_bots WHERE channel_user_id = ?', [uid])).n, 0);
     // Pastes live in OpenVibe.Community: the person's own count, unlisted and private included.
     const pastes = await require('../media-proxy/lookups').countUserPastes(user && user.id ? user : null, { hidden: 'owner' });
-    const requests = safe(() => !!db.get('SELECT 1 FROM media_request_settings WHERE user_id = ? LIMIT 1', [uid]), false);
+    const requests = await safe(async () => !!await db.get('SELECT 1 FROM media_request_settings WHERE user_id = ? LIMIT 1', [uid]), false);
     // A saved settings row carries updated_at; Chat's defaults (no row) do not.
     const modRules = !!(channelMod && channelMod.settings.updated_at);
     const tasks = [
@@ -1687,10 +1690,10 @@ router.get('/setup-progress', requireAuth, async (req, res) => {
     res.json({ tasks, done, total: tasks.length, next, username: user.username });
 });
 
-router.get('/managed', requireAuth, (req, res) => {
+router.get('/managed', requireAuth, async (req, res) => {
     try {
-        const managed = db.getManagedStreamsByUserId(req.user.id);
-        const limit = db.getManagedStreamLimit(req.user);
+        const managed = await db.getManagedStreamsByUserId(req.user.id);
+        const limit = await db.getManagedStreamLimit(req.user);
         res.json({ managed_streams: managed.map(openreAuthority.serializeSlot), limit });
     } catch (err) {
         console.error('[ManagedStreams] List error:', err.message);
@@ -1699,10 +1702,10 @@ router.get('/managed', requireAuth, (req, res) => {
 });
 
 // Create a managed stream
-router.post('/managed', requireAuth, (req, res) => {
+router.post('/managed', requireAuth, async (req, res) => {
     try {
-        const limit = db.getManagedStreamLimit(req.user);
-        const count = db.countManagedStreamsByUser(req.user.id);
+        const limit = await db.getManagedStreamLimit(req.user);
+        const count = await db.countManagedStreamsByUser(req.user.id);
         if (count >= limit) {
             return res.status(403).json({ error: `Managed stream limit reached (${limit})` });
         }
@@ -1718,18 +1721,18 @@ router.post('/managed', requireAuth, (req, res) => {
             if (!db.isValidManagedStreamSlug(slug)) {
                 return res.status(400).json({ error: 'Invalid slug. Must be 2-32 chars, start with a letter, alphanumeric/hyphens/underscores only, not purely numeric.' });
             }
-            if (db.isManagedStreamSlugTaken(req.user.id, slug)) {
+            if (await db.isManagedStreamSlugTaken(req.user.id, slug)) {
                 return res.status(409).json({ error: 'Slug already in use for your account' });
             }
         }
 
-        const channel = db.ensureChannel(req.user.id);
+        const channel = await db.ensureChannel(req.user.id);
 
         // Generate unique stream key for this managed stream
         const crypto = require('crypto');
         const stream_key = crypto.randomBytes(20).toString('hex');
 
-        const result = db.createManagedStream({
+        const result = await db.createManagedStream({
             user_id: req.user.id,
             channel_id: channel.id,
             slug,
@@ -1741,10 +1744,10 @@ router.post('/managed', requireAuth, (req, res) => {
             stream_key,
             is_nsfw,
             // Someone else's profile would copy their buttons onto this slot and keep it in sync.
-            control_config_id: ownControlConfigId(req, req.body.control_config_id) || null,
+            control_config_id: await ownControlConfigId(req, req.body.control_config_id) || null,
         });
 
-        const managedStream = db.getManagedStreamById(result.lastInsertRowid);
+        const managedStream = await db.getManagedStreamById(result.lastInsertRowid);
         res.status(201).json({ managed_stream: managedStream });
     } catch (err) {
         console.error('[ManagedStreams] Create error:', err.message);
@@ -1753,12 +1756,12 @@ router.post('/managed', requireAuth, (req, res) => {
 });
 
 // Update a managed stream
-router.put('/managed/:id', requireAuth, (req, res) => {
+router.put('/managed/:id', requireAuth, async (req, res) => {
     try {
         const msId = parseInt(req.params.id);
-        const ms = db.getManagedStreamById(msId);
+        const ms = await db.getManagedStreamById(msId);
         if (!ms) return res.status(404).json({ error: 'Managed stream not found' });
-        if (ms.user_id !== req.user.id && !staffMayModerate(req.user, ms.user_id)) {
+        if (ms.user_id !== req.user.id && !await staffMayModerate(req.user, ms.user_id)) {
             return res.status(403).json({ error: 'Not your managed stream' });
         }
 
@@ -1791,7 +1794,7 @@ router.put('/managed/:id', requireAuth, (req, res) => {
             if (fields.tags === null) return res.status(400).json({ error: 'Invalid tags' });
         }
         if (hasOwn(req.body, 'control_config_id')) {
-            const cfgId = ownControlConfigId(req, req.body.control_config_id);
+            const cfgId = await ownControlConfigId(req, req.body.control_config_id);
             if (cfgId === undefined) return res.status(403).json({ error: 'Not your control profile' });
             fields.control_config_id = cfgId;
         }
@@ -1806,7 +1809,7 @@ router.put('/managed/:id', requireAuth, (req, res) => {
                 const srcId = parseInt(raw, 10);
                 if (!Number.isFinite(srcId)) return res.status(400).json({ error: 'Invalid pip_source_msid' });
                 if (srcId === msId) return res.status(400).json({ error: 'A slot cannot be its own picture-in-picture camera' });
-                const src = db.getManagedStreamById(srcId);
+                const src = await db.getManagedStreamById(srcId);
                 if (!src) return res.status(404).json({ error: 'Picture-in-picture slot not found' });
                 if (src.user_id !== ms.user_id) return res.status(403).json({ error: 'That slot belongs to someone else' });
                 fields.pip_source_msid = srcId;
@@ -1833,7 +1836,7 @@ router.put('/managed/:id', requireAuth, (req, res) => {
                 if (!db.isValidManagedStreamSlug(slug)) {
                     return res.status(400).json({ error: 'Invalid slug format' });
                 }
-                if (db.isManagedStreamSlugTaken(req.user.id, slug, msId)) {
+                if (await db.isManagedStreamSlugTaken(req.user.id, slug, msId)) {
                     return res.status(409).json({ error: 'Slug already in use' });
                 }
             }
@@ -1894,14 +1897,14 @@ router.put('/managed/:id', requireAuth, (req, res) => {
             fields.mic_only_image = req.body.mic_only_image ? String(req.body.mic_only_image).trim().slice(0, 500) : null;
         }
 
-        db.updateManagedStream(msId, ms.user_id, fields);
-        const updated = db.getManagedStreamById(msId);
+        await db.updateManagedStream(msId, ms.user_id, fields);
+        const updated = await db.getManagedStreamById(msId);
 
         // If the title changed and this slot has a RobotStreamer integration, mirror the
         // new title to the RS robot name (best-effort, non-blocking).
         if (hasOwn(req.body, 'title') && fields.title) {
             try {
-                const rsIntegration = db.getRobotStreamerIntegrationForStream(ms.user_id, msId);
+                const rsIntegration = await db.getRobotStreamerIntegrationForStream(ms.user_id, msId);
                 if (rsIntegration?.token && rsIntegration?.robot_id) {
                     require('../integrations/robotstreamer-service').syncRobotName(rsIntegration, fields.title)
                         .catch(() => {});
@@ -1917,23 +1920,23 @@ router.put('/managed/:id', requireAuth, (req, res) => {
 });
 
 // Delete a managed stream
-router.delete('/managed/:id', requireAuth, (req, res) => {
+router.delete('/managed/:id', requireAuth, async (req, res) => {
     try {
         const msId = parseInt(req.params.id);
-        const ms = db.getManagedStreamById(msId);
+        const ms = await db.getManagedStreamById(msId);
         if (!ms) return res.status(404).json({ error: 'Managed stream not found' });
-        if (ms.user_id !== req.user.id && !staffMayModerate(req.user, ms.user_id)) {
+        if (ms.user_id !== req.user.id && !await staffMayModerate(req.user, ms.user_id)) {
             return res.status(403).json({ error: 'Not your managed stream' });
         }
 
         // Prevent deleting a managed stream that has an active live session
-        const liveSessions = db.getLiveStreamsByUserId(ms.user_id) || [];
+        const liveSessions = await db.getLiveStreamsByUserId(ms.user_id) || [];
         const isLive = liveSessions.some(s => s.managed_stream_id === msId);
         if (isLive) {
             return res.status(409).json({ error: 'Cannot delete a managed stream that is currently live. End the stream first.' });
         }
 
-        db.deleteManagedStream(msId, ms.user_id);
+        await db.deleteManagedStream(msId, ms.user_id);
         res.json({ message: 'Managed stream deleted' });
     } catch (err) {
         console.error('[ManagedStreams] Delete error:', err.message);
@@ -1945,7 +1948,7 @@ router.delete('/managed/:id', requireAuth, (req, res) => {
 router.post('/managed/:id/regenerate-key', requireAuth, async (req, res) => {
     try {
         const msId = parseInt(req.params.id);
-        const ms = db.getManagedStreamById(msId);
+        const ms = await db.getManagedStreamById(msId);
         if (!ms) return res.status(404).json({ error: 'Managed stream not found' });
         if (ms.user_id !== req.user.id) {
             return res.status(403).json({ error: 'Not your managed stream' });
@@ -1955,7 +1958,7 @@ router.post('/managed/:id/regenerate-key', requireAuth, async (req, res) => {
         // the new one is shown here, once.
         if (openreAuthority.authorityOf(ms) === 'openre') {
             try {
-                const subject = require('../auth/identity-sync').subjectOf(ms.user_id);
+                const subject = await require('../auth/identity-sync').subjectOf(ms.user_id);
                 return res.json(await openreAuthority.rotateFor(ms, subject));
             } catch (err) {
                 return res.status(502).json({ error: `Could not rotate the key on OpenRe: ${err.message}` });
@@ -1964,7 +1967,7 @@ router.post('/managed/:id/regenerate-key', requireAuth, async (req, res) => {
 
         const crypto = require('crypto');
         const newKey = crypto.randomBytes(20).toString('hex');
-        db.run('UPDATE managed_streams SET stream_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [newKey, msId]);
+        await db.run('UPDATE managed_streams SET stream_key = ?, updated_at = ov_now() WHERE id = ?', [newKey, msId]);
         res.json({ stream_key: newKey });
     } catch (err) {
         console.error('[ManagedStreams] Regenerate key error:', err.message);
@@ -1975,12 +1978,12 @@ router.post('/managed/:id/regenerate-key', requireAuth, async (req, res) => {
 // ── Get Stream Details ───────────────────────────────────────
 router.get('/:id', optionalAuth, async (req, res) => {
     try {
-        const stream = db.getStreamById(req.params.id);
+        const stream = await db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
 
         // Read the key before redacting it: the JSMPEG relay channel is addressed by the slot key,
         // and deleting it first sent slot-keyed JSMPEG streams to the account-key channel.
-        const jsmpegKey = stream.managed_stream_key || db.getUserById(stream.user_id)?.stream_key;
+        const jsmpegKey = stream.managed_stream_key || (await db.getUserById(stream.user_id))?.stream_key;
         delete stream.stream_key;
         delete stream.managed_stream_key;
 
@@ -1996,9 +1999,9 @@ router.get('/:id', optionalAuth, async (req, res) => {
             }
         }
 
-        stream.cameras = db.all('SELECT * FROM cameras WHERE stream_id = ?', [stream.id]);
-        stream.controls = db.getStreamControls(stream.id);
-        stream.channel = publicChannel(db.getChannelByUserId(stream.user_id)) || null;
+        stream.cameras = await db.all('SELECT * FROM cameras WHERE stream_id = ?', [stream.id]);
+        stream.controls = await db.getStreamControls(stream.id);
+        stream.channel = publicChannel(await db.getChannelByUserId(stream.user_id)) || null;
 
         // Picture-in-picture camera overlay: another SLOT of this owner's whose live
         // stream should be drawn on top of this one. It is a normal stream in its own
@@ -2007,11 +2010,11 @@ router.get('/:id', optionalAuth, async (req, res) => {
         // nothing is configured or the camera slot is not currently live, so the player
         // simply renders no overlay.
         stream.pip_overlay = stream.managed_stream_id
-            ? db.getPipOverlayForManagedStream(stream.managed_stream_id)
+            ? await db.getPipOverlayForManagedStream(stream.managed_stream_id)
             : null;
 
         const networkFollows = require('../social/network-follows');
-        if (req.user) stream.isFollowing = networkFollows.isFollowing(req.user.id, stream.user_id);
+        if (req.user) stream.isFollowing = await networkFollows.isFollowing(req.user.id, stream.user_id);
         stream.follower_count = await networkFollows.followerCount(stream.user_id);
 
         res.json({ stream });
@@ -2022,21 +2025,21 @@ router.get('/:id', optionalAuth, async (req, res) => {
 });
 
 // ── Start a New Stream (Go Live) ─────────────────────────────
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, async (req, res) => {
     try {
         const managedStreamId = req.body.managed_stream_id ? parseInt(req.body.managed_stream_id) : null;
 
         // Look up managed stream — no auto-creation
         let managedStream = null;
         if (managedStreamId) {
-            managedStream = db.getManagedStreamById(managedStreamId);
+            managedStream = await db.getManagedStreamById(managedStreamId);
             if (!managedStream) return res.status(404).json({ error: 'Managed stream not found' });
             if (managedStream.user_id !== req.user.id) {
                 return res.status(403).json({ error: 'Not your managed stream' });
             }
         } else {
             // Auto-select first managed stream (but never auto-create)
-            const existing = db.getManagedStreamsByUserId(req.user.id);
+            const existing = await db.getManagedStreamsByUserId(req.user.id);
             if (existing.length > 0) {
                 managedStream = existing[0];
             } else {
@@ -2060,7 +2063,7 @@ router.post('/', requireAuth, (req, res) => {
             return res.status(400).json({ error: 'Invalid stream settings' });
         }
 
-        const channel = db.ensureChannel(req.user.id);
+        const channel = await db.ensureChannel(req.user.id);
 
         // Streamer role promotion deferred — applied on first real feed ingest
         // (see whip-handler.js, webrtc-sfu producer, jsmpeg relay, rtmp handler)
@@ -2071,7 +2074,7 @@ router.post('/', requireAuth, (req, res) => {
         const requestedControlConfigId = req.body.control_config_id !== undefined ? (req.body.control_config_id === null ? null : parseInt(req.body.control_config_id)) : undefined;
 
         if (requestedControlConfigId !== undefined && requestedControlConfigId !== null) {
-            const config = db.getControlConfig(requestedControlConfigId);
+            const config = await db.getControlConfig(requestedControlConfigId);
             if (!config) {
                 return res.status(404).json({ error: 'Control config not found' });
             }
@@ -2087,7 +2090,7 @@ router.post('/', requireAuth, (req, res) => {
             ? requestedControlConfigId
             : (managedStream.control_config_id || null);
 
-        const result = db.createStream({
+        const result = await db.createStream({
             user_id: req.user.id,
             channel_id: channel.id,
             managed_stream_id: managedStream.id,
@@ -2102,16 +2105,16 @@ router.post('/', requireAuth, (req, res) => {
         const streamId = result.lastInsertRowid;
 
         // Initialize heartbeat
-        db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [streamId]);
+        await db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ?', [streamId]);
 
         if (tags && tags.length > 0) {
-            db.run('UPDATE streams SET tags = ? WHERE id = ?', [JSON.stringify(tags), streamId]);
+            await db.run('UPDATE streams SET tags = ? WHERE id = ?', [JSON.stringify(tags), streamId]);
         }
 
         // Set call mode if provided — create a stream voice channel
         if (callMode) {
-            db.run('UPDATE streams SET call_mode = ? WHERE id = ?', [callMode, streamId]);
-            callsAuthority.createStreamChannel(streamId, callMode, req.user.id);
+            await db.run('UPDATE streams SET call_mode = ? WHERE id = ?', [callMode, streamId]);
+            await callsAuthority.createStreamChannel(streamId, callMode, req.user.id);
         }
 
         let endpoint = {};
@@ -2121,7 +2124,7 @@ router.post('/', requireAuth, (req, res) => {
             endpoint = { roomId: `stream-${streamId}` };
         }
 
-        db.run(
+        await db.run(
             `INSERT INTO cameras (stream_id, camera_index, label, protocol) VALUES (?, 0, 'Main', ?)`,
             [streamId, streamProtocol]
         );
@@ -2129,7 +2132,7 @@ router.post('/', requireAuth, (req, res) => {
         // Apply the control config to populate stream_controls for viewers.
         if (effectiveConfigId !== null) {
             try {
-                const applied = db.applyConfigToStream(effectiveConfigId, streamId);
+                const applied = await db.applyConfigToStream(effectiveConfigId, streamId);
                 console.log(`[Streams] Applied control config ${effectiveConfigId} to stream ${streamId} (${applied} buttons)`);
             } catch (cfgErr) {
                 console.warn(`[Streams] Failed to apply control config:`, cfgErr.message);
@@ -2137,14 +2140,14 @@ router.post('/', requireAuth, (req, res) => {
         } else if (channel.active_control_config_id) {
             // No slot-level config at all: fall back to channel default
             try {
-                const applied = db.applyConfigToStream(channel.active_control_config_id, streamId);
+                const applied = await db.applyConfigToStream(channel.active_control_config_id, streamId);
                 console.log(`[Streams] Auto-applied channel default control config ${channel.active_control_config_id} to stream ${streamId} (${applied} buttons)`);
             } catch (cfgErr) {
                 console.warn(`[Streams] Failed to auto-apply channel default control config:`, cfgErr.message);
             }
         }
 
-        const stream = db.getStreamById(streamId);
+        const stream = await db.getStreamById(streamId);
         robotStreamerService.startForStream(stream).catch((rsErr) => {
             console.warn(`[RS] Failed to start integration for stream ${streamId}:`, rsErr.message);
         });
@@ -2154,7 +2157,7 @@ router.post('/', requireAuth, (req, res) => {
         try { require('../integrations/ai-chatbot-service').startForStream(stream); } catch (aiErr) { console.warn('[AI-Bots] start failed:', aiErr.message); }
 
         // Notify followers that this streamer went live (fire-and-forget)
-        notifyFollowersGoLive(req.user, stream);
+        await notifyFollowersGoLive(req.user, stream);
         // Cross-site on-screen "went live" notification (rate-limited per slot/hour).
         try { require('./live-events').announceGoLive(stream, req.user); } catch { /* */ }
 
@@ -2166,11 +2169,11 @@ router.post('/', requireAuth, (req, res) => {
 });
 
 // ── Update Stream Info ───────────────────────────────────────
-router.put('/:id', requireAuth, (req, res) => {
+router.put('/:id', requireAuth, async (req, res) => {
     try {
-        const stream = db.getStreamById(req.params.id);
+        const stream = await db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
-        if (stream.user_id !== req.user.id && !staffMayModerate(req.user, stream.user_id)) {
+        if (stream.user_id !== req.user.id && !await staffMayModerate(req.user, stream.user_id)) {
             return res.status(403).json({ error: 'Not your stream' });
         }
 
@@ -2194,7 +2197,7 @@ router.put('/:id', requireAuth, (req, res) => {
         if (category !== undefined) { updates.push('category = ?'); params.push(category); }
         if (hasOwn(req.body, 'is_nsfw')) {
             // Admin force_nsfw cannot be overridden by streamer
-            const channel = db.getChannelByUserId(req.user.id);
+            const channel = await db.getChannelByUserId(req.user.id);
             if (channel && channel.force_nsfw) {
                 updates.push('is_nsfw = 1');
             } else {
@@ -2205,10 +2208,10 @@ router.put('/:id', requireAuth, (req, res) => {
 
         if (updates.length > 0) {
             params.push(req.params.id);
-            db.run(`UPDATE streams SET ${updates.join(', ')} WHERE id = ?`, params);
+            await db.run(`UPDATE streams SET ${updates.join(', ')} WHERE id = ?`, params);
         }
 
-        const updated = db.getStreamById(req.params.id);
+        const updated = await db.getStreamById(req.params.id);
         res.json({ stream: updated });
     } catch (err) {
         console.error('[Streaming]', err.message);
@@ -2217,15 +2220,15 @@ router.put('/:id', requireAuth, (req, res) => {
 });
 
 // ── End a Stream ─────────────────────────────────────────────
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', requireAuth, async (req, res) => {
     try {
-        const stream = db.getStreamById(req.params.id);
+        const stream = await db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
-        if (stream.user_id !== req.user.id && !staffMayModerate(req.user, stream.user_id)) {
+        if (stream.user_id !== req.user.id && !await staffMayModerate(req.user, stream.user_id)) {
             return res.status(403).json({ error: 'Not your stream' });
         }
 
-        db.endStream(stream.id);
+        await db.endStream(stream.id);
 
         // Stop server-side recording (RTMP is handled in rtmp-server.js, but JSMPEG needs it here)
         if (stream.protocol === 'jsmpeg') {
@@ -2237,7 +2240,7 @@ router.delete('/:id', requireAuth, (req, res) => {
             console.warn(`[VOD] Auto-finalize on stream end failed for ${stream.id}:`, err.message);
         });
 
-        const user = db.getUserById(stream.user_id);
+        const user = await db.getUserById(stream.user_id);
         const endKey = stream.managed_stream_key || user.stream_key;
         if (stream.protocol === 'jsmpeg') {
             jsmpegRelay.destroyChannel(endKey);
@@ -2246,7 +2249,7 @@ router.delete('/:id', requireAuth, (req, res) => {
         }
 
         // End any active group call / remove stream voice channel
-        callsAuthority.removeStreamChannel(stream.id);
+        await callsAuthority.removeStreamChannel(stream.id);
 
         robotStreamerService.stopForStream(stream.id);
         chatRelayService.stopForStream(stream.id);
@@ -2266,24 +2269,24 @@ router.delete('/:id', requireAuth, (req, res) => {
 // ── Get Streaming Endpoint Info ──────────────────────────────
 router.get('/:id/endpoint', requireAuth, async (req, res) => {
     try {
-        const stream = db.getStreamById(req.params.id);
+        const stream = await db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
         if (stream.user_id !== req.user.id) {
             return res.status(403).json({ error: 'Not your stream' });
         }
 
-        const user = db.getUserById(stream.user_id);
+        const user = await db.getUserById(stream.user_id);
         // Use managed stream key from the JOIN, else fallback to user key
         const msKey = stream.managed_stream_key || user.stream_key;
         let endpoint = {};
 
         const hostname = config.host === '0.0.0.0' ? req.hostname : config.host;
 
-        if (openreAuthority.OPENRE_PROTOCOLS.has(stream.protocol) && openreAuthority.slotIsOpenre(stream.managed_stream_id)) {
+        if (openreAuthority.OPENRE_PROTOCOLS.has(stream.protocol) && await openreAuthority.slotIsOpenre(stream.managed_stream_id)) {
             // OpenRe ingests this slot: its server URL for the slot's protocol, the hint of its key
             // (never the key). No Live relay channel, room or recorder is set up for it.
-            const slot = openreAuthority.slotById(stream.managed_stream_id);
-            const ingest = await openreAuthority.ingestFor(slot, require('../auth/identity-sync').subjectOf(slot.user_id)).catch(() => ({}));
+            const slot = await openreAuthority.slotById(stream.managed_stream_id);
+            const ingest = await openreAuthority.ingestFor(slot, await require('../auth/identity-sync').subjectOf(slot.user_id)).catch(() => ({}));
             const serverUrl = stream.protocol === 'webrtc' ? { whipUrl: ingest.whip_url || null }
                 : stream.protocol === 'jsmpeg' ? { jsmpegUrl: ingest.jsmpeg_url || null }
                     : { rtmpUrl: ingest.rtmp_url || null };
@@ -2301,7 +2304,7 @@ router.get('/:id/endpoint', requireAuth, async (req, res) => {
             endpoint = jsmpegRelay.getChannelInfo(msKey) || jsmpegRelay.createChannel(msKey);
 
             // Start server-side VOD recording for JSMPEG (taps the relay WebSocket, zero delay to live)
-            const recMode = db.resolveStreamRecordingMode(stream);
+            const recMode = await db.resolveStreamRecordingMode(stream);
             if (stream.is_live && recMode !== 'none' && !recorder.isRecording(stream.id)) {
                 recorder.startRecording(stream.id, 'jsmpeg', {
                     streamKey: msKey,
@@ -2368,16 +2371,16 @@ router.post('/diag-log', optionalAuth, (req, res) => {
     res.json({ ok: true });
 });
 
-router.post('/:id/heartbeat', requireAuth, (req, res) => {
+router.post('/:id/heartbeat', requireAuth, async (req, res) => {
     try {
-        const stream = db.getStreamById(req.params.id);
+        const stream = await db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
         if (stream.user_id !== req.user.id) {
             return res.status(403).json({ error: 'Not your stream' });
         }
         if (!stream.is_live) return res.status(400).json({ error: 'Stream is not live' });
 
-        db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [stream.id]);
+        await db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ?', [stream.id]);
         res.json({ ok: true });
     } catch (err) {
         console.error('[Streaming]', err.message);
@@ -2386,21 +2389,21 @@ router.post('/:id/heartbeat', requireAuth, (req, res) => {
 });
 
 // ── RTMP Feed Status ─────────────────────────────────────────
-router.get('/:id/rtmp-status', requireAuth, (req, res) => {
+router.get('/:id/rtmp-status', requireAuth, async (req, res) => {
     try {
-        const stream = db.getStreamById(req.params.id);
+        const stream = await db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
-        if (stream.user_id !== req.user.id && !staffMayModerate(req.user, stream.user_id)) {
+        if (stream.user_id !== req.user.id && !await staffMayModerate(req.user, stream.user_id)) {
             return res.status(403).json({ error: 'Not your stream' });
         }
         if (stream.protocol !== 'rtmp') {
             return res.status(400).json({ error: 'Not an RTMP stream' });
         }
-        const mirrored = openreMirror.sessionForStream(stream.id);
+        const mirrored = await openreMirror.sessionForStream(stream.id);
         if (mirrored) {
             return res.json({ receiving: mirrored.state === 'live', connected_at: mirrored.started_at, managed_by: 'openre' });
         }
-        const rtmpKey = stream.managed_stream_key || db.getUserById(stream.user_id)?.stream_key;
+        const rtmpKey = stream.managed_stream_key || (await db.getUserById(stream.user_id))?.stream_key;
         const rtmpServer = require('./rtmp-server');
         const status = rtmpServer.getStatus(rtmpKey);
         res.json(status);
@@ -2416,7 +2419,7 @@ router.get('/:id/rtmp-status', requireAuth, (req, res) => {
 // alert for a follow Network says this click started (never for a repeat of a follow Network already had).
 async function toggleFollow(req, res, streamerId) {
     const follows = require('../social/network-follows');
-    const w = await follows.set(req.user.id, streamerId, !follows.isFollowing(req.user.id, streamerId));
+    const w = await follows.set(req.user.id, streamerId, !await follows.isFollowing(req.user.id, streamerId));
     if (!w.ok) {
         if (w.detail) console.warn('[Streaming] follow:', w.detail);
         return res.status(w.status).json({ error: w.error });
@@ -2429,8 +2432,8 @@ async function toggleFollow(req, res, streamerId) {
         } catch { /* non-critical */ }
         // Fire a PowerChat follow alert for the streamer (follows:write).
         try {
-            const follower = db.getUserById(req.user.id);
-            require('../integrations/powerchat-platform').forwardFollow(streamerId, {
+            const follower = await db.getUserById(req.user.id);
+            await require('../integrations/powerchat-platform').forwardFollow(streamerId, {
                 followerName: follower?.display_name || follower?.username || 'Someone',
                 externalId: 'u' + req.user.id,
             });
@@ -2441,7 +2444,7 @@ async function toggleFollow(req, res, streamerId) {
 
 router.post('/:id/follow', requireAuth, async (req, res) => {
     try {
-        const stream = db.getStreamById(req.params.id);
+        const stream = await db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
         await toggleFollow(req, res, stream.user_id);
     } catch (err) {
@@ -2453,7 +2456,7 @@ router.post('/:id/follow', requireAuth, async (req, res) => {
 // ── Follow/Unfollow by Username ──────────────────────────────
 router.post('/channel/:username/follow', requireAuth, async (req, res) => {
     try {
-        const user = db.getUserByUsername(req.params.username);
+        const user = await db.getUserByUsername(req.params.username);
         if (!user) return res.status(404).json({ error: 'User not found' });
         await toggleFollow(req, res, user.id);
     } catch (err) {
@@ -2465,9 +2468,9 @@ router.post('/channel/:username/follow', requireAuth, async (req, res) => {
 // ── Group Call: Enable / Disable / Get Status ────────────────
 const callServer = require('./call-server');
 
-router.put('/:id/call', requireAuth, (req, res) => {
+router.put('/:id/call', requireAuth, async (req, res) => {
     try {
-        const stream = db.getStreamById(req.params.id);
+        const stream = await db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
         if (stream.user_id !== req.user.id) {
             return res.status(403).json({ error: 'Not your stream' });
@@ -2482,12 +2485,12 @@ router.put('/:id/call', requireAuth, (req, res) => {
             return res.status(400).json({ error: 'Invalid call mode. Use: mic, mic+cam, cam+mic, or null to disable' });
         }
 
-        db.run('UPDATE streams SET call_mode = ? WHERE id = ?', [call_mode, stream.id]);
+        await db.run('UPDATE streams SET call_mode = ? WHERE id = ?', [call_mode, stream.id]);
 
         // Create or remove stream voice channel
         const channelId = `stream-${stream.id}`;
         if (call_mode) {
-            callServer.createStreamChannel(stream.id, call_mode, stream.user_id);
+            await callServer.createStreamChannel(stream.id, call_mode, stream.user_id);
         } else {
             callServer.removeStreamChannel(stream.id);
         }
@@ -2495,7 +2498,7 @@ router.put('/:id/call', requireAuth, (req, res) => {
         res.json({
             call_mode,
             channelId: call_mode ? channelId : null,
-            participants: callServer.getParticipants(channelId),
+            participants: await callServer.getParticipants(channelId),
             participant_count: callServer.getParticipantCount(channelId),
         });
     } catch (err) {
@@ -2504,16 +2507,16 @@ router.put('/:id/call', requireAuth, (req, res) => {
     }
 });
 
-router.get('/:id/call', optionalAuth, (req, res) => {
+router.get('/:id/call', optionalAuth, async (req, res) => {
     try {
-        const stream = db.getStreamById(req.params.id);
+        const stream = await db.getStreamById(req.params.id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
         const channelId = `stream-${stream.id}`;
 
         res.json({
             call_mode: stream.call_mode || null,
             channelId: stream.call_mode ? channelId : null,
-            participants: callServer.getParticipants(channelId),
+            participants: await callServer.getParticipants(channelId),
             participant_count: callServer.getParticipantCount(channelId),
         });
     } catch (err) {
@@ -2527,12 +2530,12 @@ router.get('/:id/call', optionalAuth, (req, res) => {
 // from the same HTTPS origin, avoiding CSP / mixed-content issues.
 router.get('/rtmp-proxy/:streamId.flv', async (req, res) => {
     try {
-        const stream = db.getStreamById(req.params.streamId);
+        const stream = await db.getStreamById(req.params.streamId);
         if (!stream || !stream.is_live || stream.protocol !== 'rtmp') {
             return res.status(404).end();
         }
         let url;
-        const mirrored = openreMirror.sessionForStream(stream.id);
+        const mirrored = await openreMirror.sessionForStream(stream.id);
         if (mirrored) {
             // An OpenRe session: pull HTTP-FLV from the OpenRe worker that holds it, as named by
             // OpenRe's playback descriptor (a loopback URL on this host; no key in it).
@@ -2541,7 +2544,7 @@ router.get('/rtmp-proxy/:streamId.flv', async (req, res) => {
             if (!pb || !pb.flv || !/^http:\/\/127\.0\.0\.1:\d+\/live\/ses_[0-9A-Z]+\.flv$/.test(pb.flv.internal_url)) return res.status(502).end();
             url = pb.flv.internal_url;
         } else {
-            const flvKey = stream.managed_stream_key || db.getUserById(stream.user_id)?.stream_key;
+            const flvKey = stream.managed_stream_key || (await db.getUserById(stream.user_id))?.stream_key;
             if (!flvKey) return res.status(404).end();
             const nmsPort = config.rtmp.port + 8000;
             url = `http://127.0.0.1:${nmsPort}/live/${flvKey}.flv`;

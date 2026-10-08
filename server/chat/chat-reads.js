@@ -197,8 +197,8 @@ async function remoteHomeSeries(metric, days) {
 function homeSeries(metric, days) {
     const d = clampSeriesDays(days);
     const key = `hs:${metric}:${d}:${utcDayStart(Date.now())}`;
-    const localFn = () => local().homeSeriesLocal(metric, d);
-    return load(key, () => remoteHomeSeries(metric, d), localFn).then((v) => v || safeLocal(localFn, null));
+    const localFn = async () => await local().homeSeriesLocal(metric, d);
+    return load(key, async () => await remoteHomeSeries(metric, d), localFn).then((v) => v || safeLocal(localFn, null));
 }
 /**
  * The same for the synchronous home-stats series route: the last good answer while Chat refreshes
@@ -208,11 +208,9 @@ function homeSeries(metric, days) {
 function homeSeriesPeek(metric, days) {
     const d = clampSeriesDays(days);
     const key = `hs:${metric}:${d}:${utcDayStart(Date.now())}`;
-    const localFn = () => local().homeSeriesLocal(metric, d);
-    const v = peek(key, () => remoteHomeSeries(metric, d), localFn);
-    if (v) return v;
-    if (!remote()) return null;          // outside chat mode Live keeps no chat series
-    return safeLocal(localFn, null);     // cold / Chat unreachable
+    // Live keeps no chat series: outside chat mode, cold, or Chat unreachable, the answer is null
+    // (homeSeriesLocal has no entry for the two chat metrics). Never a zero-filled stand-in.
+    return peek(key, () => remoteHomeSeries(metric, d), () => null) || null;
 }
 
 /** The busiest chatters of a room (or the site, when neither stream nor channel is given), newest window first. */
@@ -257,7 +255,7 @@ const windowKey = (o) => `win:${o.since || 0}:${o.until || 0}:${o.streamId || 0}
 /** Message/chatter counts over [since, until), site-wide or scoped to one stream/channel (async). */
 function windowStats(o = {}) {
     const b = bucketWindow(o);
-    return load(windowKey(b), () => remoteWindowStats(b), () => localWindowStats(b))
+    return load(windowKey(b), async () => await remoteWindowStats(b), () => localWindowStats(b))
         .then((v) => v || safeLocal(() => localWindowStats(b), { messages: 0, chatters: 0 }));
 }
 /**
@@ -280,7 +278,7 @@ async function remoteStreamStats(streamId) {
 function streamStats(streamId) {
     const id = Number(streamId) || 0;
     if (!id) return Promise.resolve({ messages: 0, chatters: 0, sounds: 0 });
-    return load(`st:${id}`, () => remoteStreamStats(id), () => localStreamStats(id))
+    return load(`st:${id}`, async () => await remoteStreamStats(id), () => localStreamStats(id))
         .then((v) => v || safeLocal(() => localStreamStats(id), { messages: 0, chatters: 0, sounds: 0 }));
 }
 /** The same, for a caller that cannot await. */
@@ -305,7 +303,7 @@ async function remoteChannelMaxId(channelUserId) {
 function channelMaxId(channelUserId) {
     const id = Number(channelUserId) || 0;
     if (!id) return Promise.resolve(0);
-    return load(`cmid:${id}`, () => remoteChannelMaxId(id), () => 0)
+    return load(`cmid:${id}`, async () => await remoteChannelMaxId(id), () => 0)
         .then((v) => (v != null ? Number(v) || 0 : 0));
 }
 function channelMaxIdPeek(channelUserId) {
@@ -652,7 +650,7 @@ function soundByCommand(ownerId, command) {
     const id = Number(ownerId) || 0;
     const cmd = normalizeCommand(command);
     if (!id || !cmd) return Promise.resolve(null);
-    return load(`sbc:${id}:${cmd}`, () => remoteSoundByCommand(id, cmd), () => null)
+    return load(`sbc:${id}:${cmd}`, async () => await remoteSoundByCommand(id, cmd), () => null)
         .then((v) => (v && v !== false ? v : null));   // false / null: Chat's none, or unreachable
 }
 /** The synchronous form (the RobotStreamer !sound lookup): the cached Chat answer, else null. */
@@ -712,7 +710,7 @@ function pendingSounds({ channelOwnerId, afterId, limit = 100 } = {}) {
 async function recordSoundAsset(id, mediaUrl, mediaAssetId) {
     if (!(Number(id) > 0) || !(Number(mediaAssetId) > 0) || !mediaUrl) return null;
     if (!remote()) return null;   // Live keeps no channel_sounds; nothing to record on
-    return client.soundAsset({ id: Number(id), media_url: String(mediaUrl), media_asset_id: Number(mediaAssetId) });
+    return await client.soundAsset({ id: Number(id), media_url: String(mediaUrl), media_asset_id: Number(mediaAssetId) });
 }
 
 /**

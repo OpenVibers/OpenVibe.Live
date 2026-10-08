@@ -15,10 +15,10 @@
  * plus the offline room). kind: 'donation' | 'goal'. Chat answers `played:false` (never an error) when
  * the channel has no sound; outside chat mode the event is dropped and logged by chat-delivery.js.
  */
-function playAlertSound(streamerId, streamId, kind) {
+async function playAlertSound(streamerId, streamId, kind) {
     try {
         // An `alert` event on Chat's typed ingress.
-        require('../chat/chat-delivery').event({ kind: 'channel', id: streamerId }, { type: 'alert', streamerId: Number(streamerId), streamId: streamId ? Number(streamId) : null, kind: kind === 'goal' ? 'goal' : 'donation' });
+        await require('../chat/chat-delivery').event({ kind: 'channel', id: streamerId }, { type: 'alert', streamerId: Number(streamerId), streamId: streamId ? Number(streamId) : null, kind: kind === 'goal' ? 'goal' : 'donation' });
     } catch { /* non-critical */ }
 }
 

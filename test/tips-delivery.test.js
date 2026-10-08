@@ -2,7 +2,7 @@
 
 // OpenVibe.Tips → Live (roadmap Wave 9): POST /internal/tips/deliveries announces a settled tip in the
 // creator's chat — service token with live.tips_delivery.write, idempotent per delivery id (kept in
-// SQLite, so a restart between deliveries does not repeat one), the creator found by Network
+// PostgreSQL, so a restart between deliveries does not repeat one), the creator found by Network
 // subject, no Live balance touched.
 
 const assert = require('assert');
@@ -18,7 +18,6 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-tips-delivery-'));
 const keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
 fs.writeFileSync(path.join(tmp, 'network.pem'), keys.publicKey);
 fs.mkdirSync(path.join(tmp, 'sounds'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.OV_NETWORK_PUBLIC_KEY = path.join(tmp, 'network.pem');
 process.env.OV_NETWORK_URL = 'https://openvibe.network';
 process.env.SOUNDS_PATH = path.join(tmp, 'sounds');
@@ -33,10 +32,10 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
 
 (async () => {
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const d = db.getDb();
-    d.prepare("INSERT INTO users (id, username, display_name, password_hash, openvibe_bucks_balance, openvibe_bucks_cashout_balance) VALUES (501, 'alex', 'Alex', 'x', 0, 0)").run();
-    d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (501, 'network', '77', ?)").run(SUBJECT);
+    await d.prepare("INSERT INTO users (id, username, display_name, password_hash, openvibe_bucks_balance, openvibe_bucks_cashout_balance) OVERRIDING SYSTEM VALUE VALUES (501, 'alex', 'Alex', 'x', 0, 0)").run();
+    await d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (501, 'network', '77', ?)").run(SUBJECT);
 
     // Chat persists and shows the line (Live keeps no chat table): stub the ingress call and record
     // what Live sends, and keep stubbing TTS synthesis (Chat speaks tts lines; the delivery seam is
@@ -79,7 +78,7 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     assert.deepStrictEqual(b.json, a.json);
     assert.strictEqual(sent.length, 1, 'the retry posts nothing to Chat');
 
-    // A Live restart between deliveries: the answered key is in SQLite, not in the old process.
+    // A Live restart between deliveries: the answered key is in PostgreSQL, not in the old process.
     delete require.cache[require.resolve('../server/tips/delivery-routes')];
     const app2 = express();
     app2.use('/internal/tips', require('../server/tips/delivery-routes'));
@@ -95,24 +94,24 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
 
     // A retry while the first attempt is still running is told to come back; a claim left by a
     // crash (older than two minutes) is taken over.
-    d.prepare("INSERT INTO tips_deliveries (idempotency_key, effect, state, claimed_at) VALUES ('tint_9:chat_line', 'chat_line', 'pending', ?)").run(Date.now());
+    await d.prepare("INSERT INTO tips_deliveries (idempotency_key, effect, state, claimed_at) VALUES ('tint_9:chat_line', 'chat_line', 'pending', ?)").run(Date.now());
     assert.strictEqual((await post2({ ...job, interaction: { ...job.interaction, id: 'tint_9' } }, 'tint_9:chat_line')).status, 409);
     assert.strictEqual(sent.length, 1);
-    d.prepare("UPDATE tips_deliveries SET claimed_at = ? WHERE idempotency_key = 'tint_9:chat_line'").run(Date.now() - 5 * 60 * 1000);
+    await d.prepare("UPDATE tips_deliveries SET claimed_at = ? WHERE idempotency_key = 'tint_9:chat_line'").run(Date.now() - 5 * 60 * 1000);
     assert.strictEqual((await post2({ ...job, interaction: { ...job.interaction, id: 'tint_9' } }, 'tint_9:chat_line')).status, 200);
     assert.strictEqual(sent.length, 2);
 
     // A refused delivery gives its key back, so Tips' retry runs it.
     const gone = { ...job, creator: { type: 'user', id: 'usr_01J0000000000000000000000X' } };
     assert.strictEqual((await post2(gone, 'tint_8:chat_line')).status, 404);
-    assert.strictEqual(d.prepare("SELECT COUNT(*) AS n FROM tips_deliveries WHERE idempotency_key = 'tint_8:chat_line'").get().n, 0);
+    assert.strictEqual((await d.prepare("SELECT COUNT(*) AS n FROM tips_deliveries WHERE idempotency_key = 'tint_8:chat_line'").get()).n, 0);
 
     // Pruning: answers older than 7 days go, recent ones stay.
-    d.prepare("INSERT INTO tips_deliveries (idempotency_key, effect, state, response_json, claimed_at, created_at) VALUES ('tint_old:chat_line', 'chat_line', 'done', '{}', 0, datetime('now', '-8 days'))").run();
+    await d.prepare("INSERT INTO tips_deliveries (idempotency_key, effect, state, response_json, claimed_at, created_at) VALUES ('tint_old:chat_line', 'chat_line', 'done', '{}', 0, datetime('now', '-8 days'))").run();
     const routes2 = require('../server/tips/delivery-routes');
-    assert.strictEqual(routes2.prune({ force: true }), 1);
-    assert.strictEqual(d.prepare("SELECT COUNT(*) AS n FROM tips_deliveries WHERE idempotency_key = 'tint_old:chat_line'").get().n, 0);
-    assert.strictEqual(d.prepare("SELECT state FROM tips_deliveries WHERE idempotency_key = 'tint_1:chat_line'").get().state, 'done');
+    assert.strictEqual(await routes2.prune({ force: true }), 1);
+    assert.strictEqual((await d.prepare("SELECT COUNT(*) AS n FROM tips_deliveries WHERE idempotency_key = 'tint_old:chat_line'").get()).n, 0);
+    assert.strictEqual((await d.prepare("SELECT state FROM tips_deliveries WHERE idempotency_key = 'tint_1:chat_line'").get()).state, 'done');
     server2.close();
 
     // TTS on the (offline) channel room.
@@ -132,9 +131,9 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     assert.strictEqual(u.status, 404);
 
     // No Live balance moved.
-    const user = d.prepare('SELECT openvibe_bucks_balance, openvibe_bucks_cashout_balance FROM users WHERE id = 501').get();
+    const user = await d.prepare('SELECT openvibe_bucks_balance, openvibe_bucks_cashout_balance FROM users WHERE id = 501').get();
     assert.deepStrictEqual(user, { openvibe_bucks_balance: 0, openvibe_bucks_cashout_balance: 0 });
-    assert.strictEqual(d.prepare("SELECT COUNT(*) AS n FROM transactions").get().n, 0);
+    assert.strictEqual((await d.prepare("SELECT COUNT(*) AS n FROM transactions").get()).n, 0);
 
     server.close();
     process.stdout.write('tips-delivery: all passed\n');

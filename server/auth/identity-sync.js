@@ -23,19 +23,19 @@ const BATCH = 500;
 const _known = new Map();   // live user id -> subject id already stored
 
 /** Store the token's subject id for this Live user (only writes when it changes). */
-function noteSubject(liveUserId, networkUserId, subjectId) {
+async function noteSubject(liveUserId, networkUserId, subjectId) {
     if (!liveUserId || !SUBJECT_RE.test(String(subjectId || ''))) return;
     if (_known.get(liveUserId) === subjectId) return;
     try {
-        db.getDb().prepare("UPDATE linked_accounts SET subject_id = ? WHERE service = 'network' AND user_id = ? AND service_user_id = ? AND (subject_id IS NULL OR subject_id != ?)")
+        await db.getDb().prepare("UPDATE linked_accounts SET subject_id = ? WHERE service = 'network' AND user_id = ? AND service_user_id = ? AND (subject_id IS NULL OR subject_id != ?)")
             .run(subjectId, liveUserId, String(networkUserId), subjectId);
         _known.set(liveUserId, subjectId);
     } catch (err) { console.warn('[Identity] subject note failed:', err.message); }
 }
 
 /** Subject id for a Live user id, if Network has told us (via a token) yet. */
-function subjectOf(liveUserId) {
-    const row = db.getDb().prepare("SELECT subject_id FROM linked_accounts WHERE service = 'network' AND user_id = ?").get(liveUserId);
+async function subjectOf(liveUserId) {
+    const row = await db.getDb().prepare("SELECT subject_id FROM linked_accounts WHERE service = 'network' AND user_id = ?").get(liveUserId);
     return row ? row.subject_id || null : null;
 }
 
@@ -57,7 +57,7 @@ async function networkPost(path, body) {
 
 async function syncLegacyMap() {
     const off = notConfigured(); if (off) return off;
-    const rows = db.getDb().prepare("SELECT user_id, service_user_id FROM linked_accounts WHERE service = 'network' AND service_user_id GLOB '[0-9]*' ORDER BY user_id").all();
+    const rows = await db.getDb().prepare("SELECT user_id, service_user_id FROM linked_accounts WHERE service = 'network' AND service_user_id ~ '^[0-9]' ORDER BY user_id").all();
     const total = { sent: rows.length, inserted: 0, unchanged: 0, conflicts: 0, rejected: 0 };
     for (let i = 0; i < rows.length; i += BATCH) {
         const entries = rows.slice(i, i + BATCH).map(r => ({
@@ -77,7 +77,7 @@ async function syncLegacyMap() {
 
 async function backfillSubjects() {
     const off = notConfigured(); if (off) return off;
-    const rows = db.getDb().prepare("SELECT user_id, service_user_id FROM linked_accounts WHERE service = 'network' AND subject_id IS NULL AND service_user_id GLOB '[0-9]*' ORDER BY user_id").all();
+    const rows = await db.getDb().prepare("SELECT user_id, service_user_id FROM linked_accounts WHERE service = 'network' AND subject_id IS NULL AND service_user_id ~ '^[0-9]' ORDER BY user_id").all();
     const total = { asked: rows.length, stored: 0, unknown: 0 };
     const store = db.getDb().prepare("UPDATE linked_accounts SET subject_id = ? WHERE service = 'network' AND user_id = ? AND service_user_id = ? AND subject_id IS NULL");
     for (let i = 0; i < rows.length; i += BATCH) {
@@ -90,7 +90,7 @@ async function backfillSubjects() {
             const p = results[String(r.service_user_id)];
             const sid = p && p.subject && p.subject.type === 'user' ? p.subject.id : null;
             if (!sid || !SUBJECT_RE.test(sid) || String(p.network_user_id) !== String(r.service_user_id)) { total.unknown++; continue; }
-            total.stored += store.run(sid, r.user_id, String(r.service_user_id)).changes;
+            total.stored += (await store.run(sid, r.user_id, String(r.service_user_id))).changes;
             _known.set(r.user_id, sid);
         }
     }

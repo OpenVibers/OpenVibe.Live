@@ -98,47 +98,24 @@ const CATEGORY_SLOT = {
     voice: 'voice',
 };
 
-// ── Ensure tables exist (called at startup) ──────────────────
-function ensureTables() {
-    const d = db.getDb();
-    d.exec(`
-        CREATE TABLE IF NOT EXISTS user_cosmetics (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            item_id TEXT NOT NULL,
-            category TEXT NOT NULL,
-            unlocked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_id, item_id),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        );
-        CREATE TABLE IF NOT EXISTS user_equipped (
-            user_id INTEGER NOT NULL,
-            slot TEXT NOT NULL,
-            item_id TEXT NOT NULL,
-            PRIMARY KEY (user_id, slot),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        );
-    `);
-}
-
 // ── Get all unlocked cosmetics for a user ────────────────────
-function getUnlocked(userId) {
+async function getUnlocked(userId) {
     const d = db.getDb();
-    return d.prepare('SELECT item_id, category, unlocked_at FROM user_cosmetics WHERE user_id = ?').all(userId);
+    return await d.prepare('SELECT item_id, category, unlocked_at FROM user_cosmetics WHERE user_id = ?').all(userId);
 }
 
 // ── Get equipped cosmetics for a user ────────────────────────
-function getEquipped(userId) {
+async function getEquipped(userId) {
     const d = db.getDb();
-    const rows = d.prepare('SELECT slot, item_id FROM user_equipped WHERE user_id = ?').all(userId);
+    const rows = await d.prepare('SELECT slot, item_id FROM user_equipped WHERE user_id = ?').all(userId);
     const equipped = {};
     for (const r of rows) equipped[r.slot] = r.item_id;
     return equipped;
 }
 
 // ── Get full cosmetic profile (for chat messages) ────────────
-function getCosmeticProfile(userId) {
-    const equipped = getEquipped(userId);
+async function getCosmeticProfile(userId) {
+    const equipped = await getEquipped(userId);
     const result = {};
     if (equipped.name_effect && COSMETICS[equipped.name_effect]) {
         const c = COSMETICS[equipped.name_effect];
@@ -160,64 +137,64 @@ function getCosmeticProfile(userId) {
 }
 
 // ── Check if user owns a cosmetic ────────────────────────────
-function ownsCosmetic(userId, itemId) {
+async function ownsCosmetic(userId, itemId) {
     const d = db.getDb();
-    return !!d.prepare('SELECT 1 FROM user_cosmetics WHERE user_id = ? AND item_id = ?').get(userId, itemId);
+    return !!await d.prepare('SELECT 1 FROM user_cosmetics WHERE user_id = ? AND item_id = ?').get(userId, itemId);
 }
 
 // ── Unlock a cosmetic (add to collection) ────────────────────
-function unlockCosmetic(userId, itemId) {
+async function unlockCosmetic(userId, itemId) {
     const cosmetic = COSMETICS[itemId];
     if (!cosmetic) return { error: 'Unknown cosmetic' };
-    if (ownsCosmetic(userId, itemId)) return { error: 'Already unlocked' };
+    if (await ownsCosmetic(userId, itemId)) return { error: 'Already unlocked' };
     const d = db.getDb();
-    d.prepare('INSERT OR IGNORE INTO user_cosmetics (user_id, item_id, category) VALUES (?, ?, ?)').run(userId, itemId, cosmetic.category);
+    await d.prepare('INSERT INTO user_cosmetics (user_id, item_id, category) VALUES (?, ?, ?) ON CONFLICT DO NOTHING').run(userId, itemId, cosmetic.category);
     return { success: true, item: cosmetic };
 }
 
 // ── Remove a cosmetic from collection ────────────────────────
-function revokeCosmetic(userId, itemId) {
+async function revokeCosmetic(userId, itemId) {
     const d = db.getDb();
     // Unequip first if equipped
     const cosmetic = COSMETICS[itemId];
     if (cosmetic) {
         const slot = CATEGORY_SLOT[cosmetic.category];
-        d.prepare('DELETE FROM user_equipped WHERE user_id = ? AND slot = ? AND item_id = ?').run(userId, slot, itemId);
+        await d.prepare('DELETE FROM user_equipped WHERE user_id = ? AND slot = ? AND item_id = ?').run(userId, slot, itemId);
     }
-    d.prepare('DELETE FROM user_cosmetics WHERE user_id = ? AND item_id = ?').run(userId, itemId);
+    await d.prepare('DELETE FROM user_cosmetics WHERE user_id = ? AND item_id = ?').run(userId, itemId);
     return { success: true };
 }
 
 // ── Equip a cosmetic ─────────────────────────────────────────
-function equipCosmetic(userId, itemId, { isAdmin = false } = {}) {
+async function equipCosmetic(userId, itemId, { isAdmin = false } = {}) {
     const cosmetic = COSMETICS[itemId];
     if (!cosmetic) return { error: 'Unknown cosmetic' };
-    if (!ownsCosmetic(userId, itemId)) {
+    if (!await ownsCosmetic(userId, itemId)) {
         if (isAdmin) {
             // Admin bypass: auto-unlock the cosmetic, then equip
-            unlockCosmetic(userId, itemId);
+            await unlockCosmetic(userId, itemId);
         } else {
             return { error: 'You don\'t own this cosmetic' };
         }
     }
     const slot = CATEGORY_SLOT[cosmetic.category];
     const d = db.getDb();
-    d.prepare('INSERT OR REPLACE INTO user_equipped (user_id, slot, item_id) VALUES (?, ?, ?)').run(userId, slot, itemId);
+    await d.prepare('INSERT INTO user_equipped (user_id, slot, item_id) VALUES (?, ?, ?) ON CONFLICT (user_id, slot) DO UPDATE SET item_id = excluded.item_id').run(userId, slot, itemId);
     return { success: true, slot, item: cosmetic };
 }
 
 // ── Unequip a slot ───────────────────────────────────────────
-function unequipSlot(userId, slot) {
+async function unequipSlot(userId, slot) {
     if (!['name_effect', 'particle', 'hat', 'voice'].includes(slot)) return { error: 'Invalid slot' };
     const d = db.getDb();
-    d.prepare('DELETE FROM user_equipped WHERE user_id = ? AND slot = ?').run(userId, slot);
+    await d.prepare('DELETE FROM user_equipped WHERE user_id = ? AND slot = ?').run(userId, slot);
     return { success: true, slot };
 }
 
 // ── Get full inventory + equipped for UI ─────────────────────
-function getFullInventory(userId) {
-    const unlocked = getUnlocked(userId);
-    const equipped = getEquipped(userId);
+async function getFullInventory(userId) {
+    const unlocked = await getUnlocked(userId);
+    const equipped = await getEquipped(userId);
 
     // Build categorized list
     const categories = { name_effect: [], particle: [], hat: [], voice: [] };
@@ -237,7 +214,6 @@ function getFullInventory(userId) {
 
 module.exports = {
     COSMETICS,
-    ensureTables,
     getUnlocked,
     getEquipped,
     getCosmeticProfile,

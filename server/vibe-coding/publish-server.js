@@ -25,7 +25,7 @@ class VibeCodingPublishServer {
     init(server) {
         this.wss = new WebSocket.Server({ noServer: true, maxPayload: 256 * 1024, perMessageDeflate: false });
         this.wss.on('connection', (ws, req) => {
-            this.handleConnection(ws, req);
+            this.handleConnection(ws, req).catch((e) => console.warn('[VibeCoding] connection failed:', e && e.message));
         });
         return this.wss;
     }
@@ -40,9 +40,9 @@ class VibeCodingPublishServer {
         return true;
     }
 
-    handleConnection(ws, req) {
+    async handleConnection(ws, req) {
         const token = extractWsToken(req);
-        const user = authenticateWs(token);
+        const user = await authenticateWs(token);
         if (!user) {
             ws.close(4401, 'Authentication required');
             return;
@@ -54,7 +54,7 @@ class VibeCodingPublishServer {
 
         const params = new URL(req.url, 'http://localhost').searchParams;
         const managedStreamId = parseInt(params.get('managedStreamId') || '', 10);
-        const managedStream = this.db.getManagedStreamById(managedStreamId);
+        const managedStream = await this.db.getManagedStreamById(managedStreamId);
         if (!Number.isFinite(managedStreamId) || !managedStream || managedStream.user_id !== user.id) {
             ws.close(4404, 'Managed stream not found');
             return;
@@ -68,8 +68,8 @@ class VibeCodingPublishServer {
         };
         this.clients.set(ws, client);
 
-        const feed = vibeService.getProjectedViewerFeed(managedStreamId, 1);
-        const liveStream = vibeService.getLiveStreamByManagedStreamId(managedStreamId);
+        const feed = await vibeService.getProjectedViewerFeed(managedStreamId, 1);
+        const liveStream = await vibeService.getLiveStreamByManagedStreamId(managedStreamId);
         this.sendTo(ws, {
             type: 'vibe-coding.ready',
             ok: true,
@@ -81,18 +81,18 @@ class VibeCodingPublishServer {
         });
 
         ws.on('message', (data) => {
-            this.handleMessage(ws, data);
+            this.handleMessage(ws, data).catch((e) => console.warn('[VibeCoding] message failed:', e && e.message));
         });
 
-        ws.on('close', () => {
+        ws.on('close', async () => {
             if (client.sessionKey) {
-                vibeService.markSessionEnded(client.managedStreamId, client.sessionKey);
+                await vibeService.markSessionEnded(client.managedStreamId, client.sessionKey);
             }
             this.clients.delete(ws);
         });
     }
 
-    handleMessage(ws, data) {
+    async handleMessage(ws, data) {
         const client = this.clients.get(ws);
         if (!client) return;
 
@@ -116,7 +116,7 @@ class VibeCodingPublishServer {
                     this.sendTo(ws, { type: 'vibe-coding.error', error: 'sessionKey is required' });
                     return;
                 }
-                vibeService.upsertVibeCodingSession({
+                await vibeService.upsertVibeCodingSession({
                     managedStreamId: client.managedStreamId,
                     userId: client.user.id,
                     slotSlug: client.slotSlug,
@@ -141,7 +141,7 @@ class VibeCodingPublishServer {
                     this.sendTo(ws, { type: 'vibe-coding.error', error: 'sessionKey must be established before events are accepted' });
                     return;
                 }
-                this.processEvent(ws, client, message.event);
+                await this.processEvent(ws, client, message.event);
                 return;
 
             case 'vibe-coding.ping':
@@ -153,24 +153,24 @@ class VibeCodingPublishServer {
         }
     }
 
-    processEvent(ws, client, event) {
+    async processEvent(ws, client, event) {
         if (!event.eventId || !event.eventType) {
             this.sendTo(ws, { type: 'vibe-coding.error', error: 'eventId and eventType are required' });
             return;
         }
 
-        const liveStream = vibeService.getLiveStreamByManagedStreamId(client.managedStreamId);
-        vibeService.storeVibeCodingEvent({
+        const liveStream = await vibeService.getLiveStreamByManagedStreamId(client.managedStreamId);
+        await vibeService.storeVibeCodingEvent({
             managedStreamId: client.managedStreamId,
             userId: client.user.id,
             streamId: liveStream?.id || null,
             event,
         });
 
-        const settings = vibeService.getManagedStreamVibeCodingSettings(client.managedStreamId);
+        const settings = await vibeService.getManagedStreamVibeCodingSettings(client.managedStreamId);
         const projected = vibeService.projectViewerEvent(event, settings);
         if (projected && liveStream?.id) {
-            require('../chat/chat-delivery').event({ kind: 'stream', id: liveStream.id }, {
+            await require('../chat/chat-delivery').event({ kind: 'stream', id: liveStream.id }, {
                 type: 'vibe-coding',
                 managed_stream_id: client.managedStreamId,
                 slot_slug: client.slotSlug,

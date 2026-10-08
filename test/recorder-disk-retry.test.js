@@ -6,11 +6,6 @@
 // Anything that is not a disk refusal must not be retried.
 
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-
-process.env.DB_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ov-rec-')), 'live.db');
 const db = require('../server/db/database');
 const media = require('../server/media-client');
 const recorder = require('../server/streaming/recorder');

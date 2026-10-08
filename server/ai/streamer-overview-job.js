@@ -21,10 +21,10 @@ let _timer = null;
 let _busy = false;
 
 async function tick() {
-    if (_busy || !ai.isEnabled()) return;
+    if (_busy || !await ai.isEnabled()) return;
     _busy = true;
     try {
-        const due = db.getStreamersNeedingOverview({ decentLen: DECENT_LEN, limit: BATCH }) || [];
+        const due = await db.getStreamersNeedingOverview({ decentLen: DECENT_LEN, limit: BATCH }) || [];
         for (const row of due) {
             try { await ai.generateStreamerOverview(row.user_id); }
             catch (e) { console.warn('[AI] streamer overview:', e.message); }

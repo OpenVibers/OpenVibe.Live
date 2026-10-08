@@ -37,9 +37,9 @@ const MAX_SEGMENTS_PER_TICK = 6;
 let _busy = false;
 const _known = new Set();   // stream ids we have started capture for
 
-function timelineEnabled() {
+async function timelineEnabled() {
     try {
-        const v = db.getSetting && db.getSetting('ai_timeline_enabled');
+        const v = db.getSetting && await db.getSetting('ai_timeline_enabled');
         if (v === undefined || v === null || v === '') return false;   // default OFF
         return String(v) === 'true' || String(v) === '1';
     } catch { return false; }
@@ -58,7 +58,7 @@ async function _processSegment(stream, seg) {
     // streamer's bio). Only "counts" when a multilingual whisper model is installed; otherwise
     // the English model runs as before and nothing is translated.
     let language = 'en';
-    try { language = require('../i18n/translate').channelLanguage(stream.user_id); } catch { language = 'en'; }
+    try { language = await require('../i18n/translate').channelLanguage(stream.user_id); } catch { language = 'en'; }
     const effLang = (language !== 'en' && transcribe.multilingualModel && transcribe.multilingualModel()) ? language : 'en';
     try {
         tx = await transcribe.transcribeWavDetailed(seg.path, {
@@ -123,10 +123,10 @@ async function _processSegment(stream, seg) {
     // too instead of being orphaned.
     let vodId = null;
     try { vodId = require('../streaming/recorder').getActiveRecording(stream.id)?.vodId || null; } catch { /* */ }
-    if (!vodId) { try { vodId = db.getTimelineVodId(stream.id); } catch { /* */ } }
+    if (!vodId) { try { vodId = await db.getTimelineVodId(stream.id); } catch { /* */ } }
     if (vodId) for (const e of events) e.vod_id = vodId;
 
-    if (events.length) db.addTimelineEvents(events);
+    if (events.length) await db.addTimelineEvents(events);
     audio.discardSegment(stream.id, seg.name);
 
     const spoken = events.filter(e => e.kind === 'speech').length;
@@ -144,13 +144,13 @@ async function _processSegment(stream, seg) {
 
 async function tick() {
     if (_busy) return;                       // never overlap; whisper is CPU-bound
-    if (!timelineEnabled()) return;
-    if (!ai.transcriptionEnabled || !ai.transcriptionEnabled()) return;
+    if (!await timelineEnabled()) return;
+    if (!ai.transcriptionEnabled || !await ai.transcriptionEnabled()) return;
 
     _busy = true;
     try {
         let live = [];
-        try { live = db.getLiveStreams() || []; } catch { return; }
+        try { live = await db.getLiveStreams() || []; } catch { return; }
         const liveIds = new Set(live.map(s => s.id));
 
         // Start capture for newly live streams.

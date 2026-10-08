@@ -38,7 +38,7 @@ async function call(method, userId, body) {
 async function sync(userId) {
     const id = parseInt(userId, 10);
     if (!(id > 0)) return 'none';
-    const cfg = db.getChannelAiConfig(id);
+    const cfg = await db.getChannelAiConfig(id);
     const cents = Number(cfg.daily_budget_cents) || 0;
     if (cfg.use_shared_key && cents > 0) {
         const r = await call('PUT', id, { window: 'day', max_cost_usd: Math.round(cents) / 100, workflow_prefix: PREFIX });

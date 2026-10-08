@@ -55,13 +55,13 @@ function _topUp(fresh, old, cap) {
     return out.slice(0, cap);
 }
 const SLOGAN_FORMAT = 3; // bump to force a one-time regen after a prompt/format change
-function _loadPool() {
-    try { const cur = db.getState('home_hero_slogans'); const o = typeof cur === 'string' ? JSON.parse(cur) : cur; if (o) return { audiences: o.audiences || [], quips: o.quips || [], updated_at: o.updated_at || 0, v: o.v || 1 }; } catch { /* */ }
+async function _loadPool() {
+    try { const cur = await db.getState('home_hero_slogans'); const o = typeof cur === 'string' ? JSON.parse(cur) : cur; if (o) return { audiences: o.audiences || [], quips: o.quips || [], updated_at: o.updated_at || 0, v: o.v || 1 }; } catch { /* */ }
     return { audiences: [], quips: [], updated_at: 0, v: 0 };
 }
 
 async function tick() {
-    if (_busy || !ai.isEnabled() || !ai.withinBudget()) return;
+    if (_busy || !await ai.isEnabled() || !await ai.withinBudget()) return;
     _busy = true;
     try {
         // ── Global chat AI: overview + running memory + timeline ──
@@ -82,12 +82,11 @@ async function tick() {
         let activeRows = [];
         try {
             const top = await chatReads.topChatters({ since: Date.now() - 14 * 86400e3, limit: 12 });
-            activeRows = (top || [])
-                .map((r) => ({ id: Number(r.user_id) || 0, username: r.username }))
-                .filter((r) => {
-                    if (!r.id) return false;
-                    try { const u = db.getUserById(r.id); return !!(u && !u.is_banned); } catch { return false; }
-                });
+            for (const r of top || []) {
+                const id = Number(r.user_id) || 0;
+                if (!id) continue;
+                try { const u = await db.getUserById(id); if (u && !u.is_banned) activeRows.push({ id, username: r.username }); } catch { /* */ }
+            }
         } catch { /* */ }
         const usernames = activeRows.map(r => r.username).filter(Boolean);
         // The prompt is OpenVibe.AI's versioned template live.hero.slogans (WS-O task 2); Live sends the
@@ -102,7 +101,7 @@ async function tick() {
         // ── Streamer AI overviews + recent VOD AI overviews ──
         let streamers = [];
         try {
-            const rows = db.all(`SELECT u.username, COALESCE(so.overview_short, so.overview) AS ov
+            const rows = await db.all(`SELECT u.username, COALESCE(so.overview_short, so.overview) AS ov
                 FROM streamer_overviews so JOIN users u ON so.user_id = u.id
                 WHERE COALESCE(u.is_banned,0)=0 AND so.overview IS NOT NULL
                 ORDER BY so.generated_at DESC LIMIT 8`) || [];
@@ -113,8 +112,8 @@ async function tick() {
             // VODs live in OpenVibe.Media; overviews live in Live's vod_ai_state.
             const media = require('../media-client');
             const out = await media.listVods({ limit: 10 }).catch(() => null);
-            vods = (out?.vods || (Array.isArray(out) ? out : []))
-                .map(v => ({ name: String(v.title || '').slice(0, 60), text: String((db.getVodAiState && db.getVodAiState(v.id)?.ai_overview_short) || v.ai_overview_short || '').replace(/\s+/g, ' ').slice(0, 140) }))
+            vods = (await Promise.all((out?.vods || (Array.isArray(out) ? out : []))
+                .map(async v => ({ name: String(v.title || '').slice(0, 60), text: String((db.getVodAiState && (await db.getVodAiState(v.id))?.ai_overview_short) || v.ai_overview_short || '').replace(/\s+/g, ' ').slice(0, 140) }))))
                 .filter(v => v.text.trim().length > 1);
         } catch { /* */ }
 
@@ -130,10 +129,10 @@ async function tick() {
         if (audiences.length < 6 && quips.length < 6) return; // bad batch — keep yesterday's
 
         // Fresh daily batch; top up from the previous batch only if the model returned few.
-        const old = _loadPool();
+        const old = await _loadPool();
         audiences = _topUp(audiences, old.audiences.map(_stripAudiencePrefix).filter(a => a && !_BAD_AUDIENCE.test(a)), TARGET);
         quips = _topUp(quips, old.quips.filter(q => !_NO_FREE.test(String(q))), TARGET);
-        db.setState('home_hero_slogans', JSON.stringify({ v: SLOGAN_FORMAT, audiences, quips, updated_at: Date.now() }));
+        await db.setState('home_hero_slogans', JSON.stringify({ v: SLOGAN_FORMAT, audiences, quips, updated_at: Date.now() }));
         console.log(`[Slogans] Fresh daily batch: ${audiences.length} words, ${quips.length} slogans (from full AI context)`);
     } catch (e) {
         console.warn('[Slogans] generation failed:', e.message);
@@ -144,8 +143,8 @@ async function tick() {
 
 // Is a fresh batch due? Based on the stored batch's age (NOT a from-boot timer) so the
 // countdown the hero shows (updated_at + 12h) always matches when we actually regenerate.
-function _dueForRegen() {
-    const pool = _loadPool();
+async function _dueForRegen() {
+    const pool = await _loadPool();
     if (pool.v !== SLOGAN_FORMAT) return true;                 // new prompt/format
     if (pool.audiences.length < 8) return true;                // empty / too small
     if (pool.audiences.some(a => _BAD_AUDIENCE.test(String(a)))) return true; // old buggy shapes ("… live streaming")
@@ -158,9 +157,9 @@ function start() {
     // Poll every 5 min and regenerate whenever a fresh batch is due — self-correcting across
     // restarts and keeps the hero countdown honest (regenerates within ~5 min of hitting 12h).
     const CHECK_MS = 5 * 60 * 1000;
-    _timer = setInterval(() => { if (_dueForRegen()) tick().catch(() => {}); }, CHECK_MS);
+    _timer = setInterval(() => _dueForRegen().then((due) => { if (due) return tick(); }).catch((e) => console.warn('[Slogans] check:', e.message)), CHECK_MS);
     if (_timer.unref) _timer.unref();
-    setTimeout(() => { if (_dueForRegen()) tick().catch(() => {}); }, 60 * 1000);
+    setTimeout(() => _dueForRegen().then((due) => { if (due) return tick(); }).catch((e) => console.warn('[Slogans] check:', e.message)), 60 * 1000);
     console.log('[Slogans] hero-slogan job started (12h batch from full AI context)');
 }
 

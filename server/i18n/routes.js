@@ -29,14 +29,14 @@ function allow(ip, signedIn, weight = 1) {
     return true;
 }
 
-router.get('/languages', (req, res) => {
+router.get('/languages', async (req, res) => {
     res.set('Cache-Control', 'public, max-age=3600');
-    res.json({ languages: Object.entries(i18n.LANG_NAMES).map(([code, name]) => ({ code, name, flag: i18n.langFlag(code) })), available: i18n.available() });
+    res.json({ languages: Object.entries(i18n.LANG_NAMES).map(([code, name]) => ({ code, name, flag: i18n.langFlag(code) })), available: await i18n.available() });
 });
 
 router.post('/translate', optionalAuth, async (req, res) => {
     try {
-        if (!i18n.available()) return res.status(503).json({ error: 'Translation is off right now' });
+        if (!await i18n.available()) return res.status(503).json({ error: 'Translation is off right now' });
         if (!allow(String(req.ip || ''), !!req.user)) return res.status(429).json({ error: 'Slow down — too many translations' });
         const text = String(req.body?.text || '').trim().slice(0, MAX_CHARS);
         const to = String(req.body?.to || 'en').trim().toLowerCase();
@@ -56,7 +56,7 @@ router.post('/translate', optionalAuth, async (req, res) => {
 // out-spend the one-at-a-time button.
 router.post('/translate-batch', optionalAuth, async (req, res) => {
     try {
-        if (!i18n.available()) return res.status(503).json({ error: 'Translation is off right now' });
+        if (!await i18n.available()) return res.status(503).json({ error: 'Translation is off right now' });
         const to = String(req.body?.to || 'en').trim().toLowerCase();
         if (!i18n.isAllowedLang(to) || to === 'auto') return res.status(400).json({ error: 'Unknown target language' });
         const texts = (Array.isArray(req.body?.texts) ? req.body.texts : []).slice(0, 20).map((t) => String(t || '').trim().slice(0, MAX_CHARS));

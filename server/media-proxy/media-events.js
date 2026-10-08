@@ -19,7 +19,7 @@
 const outcomes = require('./outcomes');
 
 /** Express handler (needs req.rawBody from the express.json verify hook). */
-function handler(req, res) {
+async function handler(req, res) {
     const secret = process.env.MEDIA_EVENTS_SECRET || '';
     if (!secret) return res.status(503).json({ error: 'MEDIA_EVENTS_SECRET is not set' });
     const { parseDelivery } = require('openvibe-sdk/events');
@@ -42,7 +42,7 @@ function handler(req, res) {
         ? { type: String(ev.subject.type), id: String(ev.subject.id) }
         : outcomes.subjectOf(name, data);
     try {
-        outcomes.handle({ via: 'events', event: name, data, eventId: ev.event_id, subject });
+        await outcomes.handle({ via: 'events', event: name, data, eventId: ev.event_id, subject });
     } catch (err) {
         console.error('[MediaEvents] apply failed:', err.message);
         return res.status(500).json({ error: 'apply failed' }); // Events retries

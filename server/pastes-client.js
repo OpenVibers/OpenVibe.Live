@@ -28,7 +28,7 @@ async function subjectForLiveUser(liveUserId) {
     const id = Number(liveUserId);
     if (_subjects.has(id)) return _subjects.get(id);
     let sid = null;
-    try { sid = require('./auth/identity-sync').subjectOf(id); } catch { /* */ }
+    try { sid = await require('./auth/identity-sync').subjectOf(id); } catch { /* */ }
     if (!sid) {
         try {
             const res = await fetch(`${process.env.OV_NETWORK_INTERNAL_URL || 'http://127.0.0.1:4000'}/internal/identity/resolve-batch`, {
@@ -72,7 +72,7 @@ async function request(method, path, { query, body, act = {}, ip, timeoutMs = 20
     const out = await res.json().catch(() => null);
     if (res.status === 401 && !retried) {             // token rotated/expired under us: fetch a fresh one once
         principal.invalidate(AUDIENCE);
-        return request(method, path, { query, body, act, ip, timeoutMs, retried: true });
+        return await request(method, path, { query, body, act, ip, timeoutMs, retried: true });
     }
     if (!res.ok) throw new CommunityApiError(res.status, out);
     return out;
@@ -88,9 +88,9 @@ async function createPaste({ screenshot, user_id, ...fields } = {}, opts = {}) {
         const fd = new FormData();
         for (const [k, v] of Object.entries(fields)) if (v != null) fd.append(k, String(v));
         fd.append('screenshot', new Blob([screenshot.buffer], { type: screenshot.contentType || 'image/png' }), screenshot.filename || 'screenshot.png');
-        return request('POST', '', { body: fd, act, timeoutMs: 60000 });
+        return await request('POST', '', { body: fd, act, timeoutMs: 60000 });
     }
-    return request('POST', '', { body: fields, act });
+    return await request('POST', '', { body: fields, act });
 }
 
 async function getPaste(slug) {
@@ -98,16 +98,16 @@ async function getPaste(slug) {
     return (out && out.paste) || out;
 }
 
-function listPastes(query = {}) {
-    return request('GET', '', { query });
+async function listPastes(query = {}) {
+    return await request('GET', '', { query });
 }
 
-function listPastesNeedingAi(limit = 5) {
-    return request('GET', '', { query: { needs_ai: 1, limit } });
+async function listPastesNeedingAi(limit = 5) {
+    return await request('GET', '', { query: { needs_ai: 1, limit } });
 }
 
-function setPasteAi(slug, { ai_summary, ai_tags } = {}) {
-    return request('POST', `/${encodeURIComponent(slug)}/ai`, { body: { ai_summary, ai_tags } });
+async function setPasteAi(slug, { ai_summary, ai_tags } = {}) {
+    return await request('POST', `/${encodeURIComponent(slug)}/ai`, { body: { ai_summary, ai_tags } });
 }
 
 module.exports = { request, createPaste, getPaste, listPastes, listPastesNeedingAi, setPasteAi, subjectForLiveUser, COMMUNITY_URL, CommunityApiError };

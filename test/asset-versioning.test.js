@@ -90,7 +90,7 @@ async function check(name, fn) {
     const app = express();
     app.use('/js', assets.versionedStatic('/js'), express.static(path.join(rel('new'), 'js'), { setHeaders: assets.staticHeaders }));
     const server = http.createServer(app).listen(0);
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     const get = (p) => new Promise((resolve, reject) => {
         http.get({ port: server.address().port, path: p }, (res) => {
             let body = '';

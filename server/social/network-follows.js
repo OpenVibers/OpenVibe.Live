@@ -40,18 +40,18 @@ const stats = { written: 0, no_subject: 0, refused: 0, failed: 0, applied: 0, st
 const answers = new Map();           // `${followerId}>${streamerId}` → { following, at }
 const counts = new Map();            // streamer subject → { n, at } | { down: until }
 
-function subjectOf(liveUserId) {
-    const r = db.getDb().prepare("SELECT subject_id FROM linked_accounts WHERE service = 'network' AND user_id = ?").get(liveUserId);
+async function subjectOf(liveUserId) {
+    const r = await db.getDb().prepare("SELECT subject_id FROM linked_accounts WHERE service = 'network' AND user_id = ?").get(liveUserId);
     return r && SUBJECT_RE.test(String(r.subject_id || '')) ? r.subject_id : null;
 }
-function userOf(subject) {
-    const r = db.getDb().prepare("SELECT user_id FROM linked_accounts WHERE service = 'network' AND subject_id = ? ORDER BY id LIMIT 1").get(subject);
+async function userOf(subject) {
+    const r = await db.getDb().prepare("SELECT user_id FROM linked_accounts WHERE service = 'network' AND subject_id = ? ORDER BY id LIMIT 1").get(subject);
     return r ? r.user_id : null;
 }
 
-function project(followerId, streamerId, following) {
-    if (following) db.getDb().prepare('INSERT OR IGNORE INTO follows (follower_id, streamer_id) VALUES (?, ?)').run(followerId, streamerId);
-    else db.getDb().prepare('DELETE FROM follows WHERE follower_id = ? AND streamer_id = ?').run(followerId, streamerId);
+async function project(followerId, streamerId, following) {
+    if (following) await db.getDb().prepare('INSERT INTO follows (follower_id, streamer_id) VALUES (?, ?) ON CONFLICT DO NOTHING').run(followerId, streamerId);
+    else await db.getDb().prepare('DELETE FROM follows WHERE follower_id = ? AND streamer_id = ?').run(followerId, streamerId);
 }
 
 /** A network.follow-status-result@1 for `target` with a valid count (and `following`, when `viewer`). */
@@ -65,8 +65,8 @@ function validStatus(body, target, viewer) {
  * → { ok: true, following, count, started }, or { ok: false, status, error } (the caller answers that status).
  */
 async function set(followerId, streamerId, following, { fetchImpl = globalThis.fetch } = {}) {
-    const follower = subjectOf(followerId);
-    const target = subjectOf(streamerId);
+    const follower = await subjectOf(followerId);
+    const target = await subjectOf(streamerId);
     if (!follower || !target) {
         stats.no_subject++;
         return { ok: false, status: 409, error: follower ? 'This channel cannot be followed yet' : 'Sign out and back in to follow channels' };
@@ -109,23 +109,23 @@ async function set(followerId, streamerId, following, { fetchImpl = globalThis.f
 }
 
 /** Whether followerId follows streamerId, as the button shows it (sync). */
-function isFollowing(followerId, streamerId) {
+async function isFollowing(followerId, streamerId) {
     if (followerId == null) return false;
     const key = `${followerId}>${streamerId}`;
     const a = answers.get(key);
     if (a && Date.now() - a.at < ANSWER_TTL_MS) return a.following;
     if (a) answers.delete(key);
-    return db.isFollowing(followerId, streamerId);
+    return await db.isFollowing(followerId, streamerId);
 }
 
 /** streamerId's follower count, from Network (cached), or the projection's while Network cannot answer. */
 async function followerCount(streamerId, { fetchImpl = globalThis.fetch } = {}) {
-    const target = subjectOf(streamerId);
-    const local = () => { stats.count_fallback++; return db.getFollowerCount(streamerId); };
-    if (!target) return local();
+    const target = await subjectOf(streamerId);
+    const local = async () => { stats.count_fallback++; return await db.getFollowerCount(streamerId); };
+    if (!target) return await local();
     const now = Date.now();
     const c = counts.get(target);
-    if (c && c.down > now) return local();
+    if (c && c.down > now) return await local();
     if (c && c.n != null && now - c.at < COUNT_TTL_MS) return c.n;
     try {
         const res = await fetchImpl(`${NETWORK_INTERNAL_URL}/api/v1/follows/channel/${target}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(1500) });
@@ -137,41 +137,31 @@ async function followerCount(streamerId, { fetchImpl = globalThis.fetch } = {}) 
     } catch (err) {
         console.warn('[Follows] follower count from the projection:', err.message);
         counts.set(target, { down: Date.now() + COUNT_DOWN_MS });
-        return local();
+        return await local();
     }
 }
 
-function ensureTable() {
-    db.getDb().exec(`CREATE TABLE IF NOT EXISTS follow_projection_revisions (
-        follower_subject TEXT NOT NULL,
-        target_subject   TEXT NOT NULL,
-        revision         INTEGER NOT NULL,
-        PRIMARY KEY (follower_subject, target_subject)
-    )`);
-}
-
 /** Apply network.follow.created / .deleted. → 'followed' | 'unfollowed' | 'stale' | 'ignored:<why>' */
-function apply(ev) {
+async function apply(ev) {
     const p = ev && ev.payload && typeof ev.payload === 'object' ? ev.payload : {};
     if (p.target_type !== 'channel' || !SUBJECT_RE.test(String(p.follower || '')) || !SUBJECT_RE.test(String(p.target_id || '')) || !Number.isInteger(p.revision)) { stats.ignored++; return 'ignored:payload'; }
-    ensureTable();
     const d = db.getDb();
-    return d.transaction(() => {
-        const prev = d.prepare('SELECT revision FROM follow_projection_revisions WHERE follower_subject = ? AND target_subject = ?').get(p.follower, p.target_id);
+    return await d.tx(async () => {
+        const prev = await d.prepare('SELECT revision FROM follow_projection_revisions WHERE follower_subject = ? AND target_subject = ?').get(p.follower, p.target_id);
         if (prev && prev.revision >= p.revision) { stats.stale++; return 'stale'; }
-        const followerId = userOf(p.follower);
-        const streamerId = userOf(p.target_id);
+        const followerId = await userOf(p.follower);
+        const streamerId = await userOf(p.target_id);
         if (followerId == null || streamerId == null) { stats.ignored++; return 'ignored:unmapped'; }
-        d.prepare('INSERT INTO follow_projection_revisions (follower_subject, target_subject, revision) VALUES (?, ?, ?) ON CONFLICT (follower_subject, target_subject) DO UPDATE SET revision = excluded.revision')
+        await d.prepare('INSERT INTO follow_projection_revisions (follower_subject, target_subject, revision) VALUES (?, ?, ?) ON CONFLICT (follower_subject, target_subject) DO UPDATE SET revision = excluded.revision')
             .run(p.follower, p.target_id, p.revision);
         stats.applied++;
         const following = ev.event_type === 'network.follow.created';
-        project(followerId, streamerId, following);
+        await project(followerId, streamerId, following);
         const key = `${followerId}>${streamerId}`;
         if (answers.has(key) && answers.get(key).following === following) answers.delete(key);
         counts.delete(p.target_id);
         return following ? 'followed' : 'unfollowed';
-    })();
+    });
 }
 
 module.exports = { set, apply, isFollowing, followerCount, stats, _reset: () => { answers.clear(); counts.clear(); } };

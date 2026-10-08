@@ -22,20 +22,20 @@ const SIG_TTL_MS = 14 * 24 * 3600_000;   // a scene signature blocks re-use for 
 const OFFSET_TTL_MS = 90 * 24 * 3600_000;
 
 let _cache = null;
-function _load() {
+async function _load() {
     if (_cache) return _cache;
     let list = [];
-    try { const l = JSON.parse(db.getState(KEY) || '[]'); if (Array.isArray(l)) list = l; } catch { /* */ }
-    if (!list.length) list = _importLegacy();
+    try { const l = JSON.parse(await db.getState(KEY) || '[]'); if (Array.isArray(l)) list = l; } catch { /* */ }
+    if (!list.length) list = await _importLegacy();
     _cache = list;
     return list;
 }
-function _save(list) { _cache = list.slice(0, MAX); try { db.setState(KEY, JSON.stringify(_cache)); } catch { /* */ } }
+async function _save(list) { _cache = list.slice(0, MAX); try { await db.setState(KEY, JSON.stringify(_cache)); } catch { /* */ } }
 
-function _importLegacy() {
+async function _importLegacy() {
     const out = [];
-    try { for (const c of JSON.parse(db.getState('auto_clip_log') || '[]') || []) out.push({ kind: 'clip', vod_id: c.vod_id || null, stream_id: c.stream_id || null, offset: (c.start_time || 0) + 16, sig: c.sig || null, title: c.title || null, ts: c.ts || Date.now() }); } catch { /* */ }
-    try { const h = JSON.parse(db.getState('home_hero_moments') || '{}') || {}; for (const m of h.moments || []) out.push({ kind: 'paste', vod_id: m.vodId || null, stream_id: null, offset: m.offset || 0, sig: sig(m.title), title: m.title || null, ts: h.updated_at || Date.now() }); for (const s of h.usedSigs || []) out.push({ kind: 'paste', vod_id: null, stream_id: null, offset: null, sig: s, title: null, ts: h.updated_at || Date.now() }); } catch { /* */ }
+    try { for (const c of JSON.parse(await db.getState('auto_clip_log') || '[]') || []) out.push({ kind: 'clip', vod_id: c.vod_id || null, stream_id: c.stream_id || null, offset: (c.start_time || 0) + 16, sig: c.sig || null, title: c.title || null, ts: c.ts || Date.now() }); } catch { /* */ }
+    try { const h = JSON.parse(await db.getState('home_hero_moments') || '{}') || {}; for (const m of h.moments || []) out.push({ kind: 'paste', vod_id: m.vodId || null, stream_id: null, offset: m.offset || 0, sig: sig(m.title), title: m.title || null, ts: h.updated_at || Date.now() }); for (const s of h.usedSigs || []) out.push({ kind: 'paste', vod_id: null, stream_id: null, offset: null, sig: s, title: null, ts: h.updated_at || Date.now() }); } catch { /* */ }
     return out.slice(0, MAX);
 }
 
@@ -44,17 +44,17 @@ function sig(text) {
     return String(text || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean).slice(0, 5).join(' ');
 }
 
-function record({ kind, vod_id = null, stream_id = null, offset = null, sig: s = null, title = null, desc = null }) {
-    const list = _load();
+async function record({ kind, vod_id = null, stream_id = null, offset = null, sig: s = null, title = null, desc = null }) {
+    const list = await _load();
     list.unshift({ kind: kind || 'moment', vod_id: vod_id || null, stream_id: stream_id || null, offset: offset == null ? null : Math.floor(offset), sig: s || sig(desc || title), title: title ? String(title).slice(0, 120) : null, ts: Date.now() });
-    _save(list);
+    await _save(list);
 }
 
 /** Why a moment is blocked, or null when it is free. */
-function usedReason({ vod_id = null, stream_id = null, offset = null, sig: s = null, desc = null, title = null } = {}, { gapSec = GAP_SEC } = {}) {
+async function usedReason({ vod_id = null, stream_id = null, offset = null, sig: s = null, desc = null, title = null } = {}, { gapSec = GAP_SEC } = {}) {
     const now = Date.now();
     const scene = s || sig(desc || title);
-    for (const e of _load()) {
+    for (const e of await _load()) {
         const age = now - (e.ts || 0);
         if (age > OFFSET_TTL_MS) continue;
         if (offset != null && e.offset != null && ((vod_id && e.vod_id === vod_id) || (stream_id && e.stream_id === stream_id)) && Math.abs(e.offset - offset) < gapSec) return `${e.kind} already made at ${Math.floor(e.offset)}s of this ${e.vod_id === vod_id ? 'VOD' : 'stream'}`;
@@ -62,18 +62,18 @@ function usedReason({ vod_id = null, stream_id = null, offset = null, sig: s = n
     }
     return null;
 }
-function isUsed(m, o) { return !!usedReason(m, o); }
+async function isUsed(m, o) { return !!await usedReason(m, o); }
 
 /** Offsets already used on this VOD/stream (for the picker's "avoid these" list). */
-function usedOffsets(vod_id = null, stream_id = null) {
+async function usedOffsets(vod_id = null, stream_id = null) {
     const now = Date.now();
-    return [...new Set(_load().filter(e => e.offset != null && now - (e.ts || 0) <= OFFSET_TTL_MS && ((vod_id && e.vod_id === vod_id) || (stream_id && e.stream_id === stream_id))).map(e => Math.floor(e.offset)))].sort((a, b) => a - b);
+    return [...new Set((await _load()).filter(e => e.offset != null && now - (e.ts || 0) <= OFFSET_TTL_MS && ((vod_id && e.vod_id === vod_id) || (stream_id && e.stream_id === stream_id))).map(e => Math.floor(e.offset)))].sort((a, b) => a - b);
 }
 
-function lastOfKind(kind, { stream_id = null, vod_id = null } = {}) {
-    return _load().find(e => e.kind === kind && (!stream_id || e.stream_id === stream_id) && (!vod_id || e.vod_id === vod_id)) || null;
+async function lastOfKind(kind, { stream_id = null, vod_id = null } = {}) {
+    return (await _load()).find(e => e.kind === kind && (!stream_id || e.stream_id === stream_id) && (!vod_id || e.vod_id === vod_id)) || null;
 }
 
-function recent(hours = 48) { const cut = Date.now() - hours * 3600_000; return _load().filter(e => (e.ts || 0) >= cut); }
+async function recent(hours = 48) { const cut = Date.now() - hours * 3600_000; return (await _load()).filter(e => (e.ts || 0) >= cut); }
 
 module.exports = { record, isUsed, usedReason, usedOffsets, lastOfKind, recent, sig, GAP_SEC, _reset: () => { _cache = null; } };

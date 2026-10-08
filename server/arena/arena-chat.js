@@ -37,29 +37,29 @@ function clock(b) {
 }
 function beefLine(b) { return `${b.a.fighter_name} ${b.share_a}% — ${100 - b.share_a}% ${b.b.fighter_name}${clock(b)} → ${base()}/arena/beef/${b.id}`; }
 
-function handle(chat, ws, client, cmd, parts) {
+async function handle(chat, ws, client, cmd, parts) {
     if (!COMMANDS.includes(cmd)) return false;
     const reply = (message) => chat.sendTo(ws, { type: 'system', message });
     const room = (message) => client.streamId && chat.broadcastToStream(client.streamId, { type: 'system', message });
     let arena, mic, beef;
     try { arena = require('./arena-service'); mic = require('./mic'); beef = require('./beef'); } catch { reply('The Arena is closed right now.'); return true; }
-    if (!arena.arenaEnabled()) { reply('The Arena is closed right now.'); return true; }
+    if (!await arena.arenaEnabled()) { reply('The Arena is closed right now.'); return true; }
     const key = voterKey(client);
     if (limited(_last, key, RATE_MS)) { reply('Easy — one Arena command every few seconds.'); return true; }
-    const stream = client.streamId ? db.getStreamById(client.streamId) : null;
-    const streamer = stream ? db.getUserById(stream.user_id) : null;
+    const stream = client.streamId ? await db.getStreamById(client.streamId) : null;
+    const streamer = stream ? await db.getUserById(stream.user_id) : null;
 
     // A caller that answers once (Chat's /internal/chat-effects/arena-command) waits for the replies via chat.track.
     const work = (async () => {
         try {
             if (cmd === '!hype') {
                 if (!streamer) return reply("!hype works inside a streamer's chat.");
-                const open = beef.openBeefsFor(streamer.id);
+                const open = await beef.openBeefsFor(streamer.id);
                 if (!open.length) return reply(`${streamer.display_name || streamer.username} has no beef open. Another fighter only has to get called out on mic… ${base()}/arena`);
                 const b = open[0];
                 const side = b.a_user_id === streamer.id ? 'a' : 'b';
-                const r = beef.hype(b.id, side, key);
-                const v = beef.get(b.id);
+                const r = await beef.hype(b.id, side, key);
+                const v = await beef.get(b.id);
                 if (!r.added) return reply(`You already hyped this beef. ${beefLine(v)}`);
                 reply(`🔥 Hyped ${streamer.display_name || streamer.username} in their beef. ${beefLine(v)}`);
                 const n = side === 'a' ? v.a.crowd : v.b.crowd;
@@ -68,15 +68,15 @@ function handle(chat, ws, client, cmd, parts) {
             }
             if (cmd === '!beef') {
                 if (!streamer) return reply(`Open beefs → ${base()}/arena`);
-                const open = beef.openBeefsFor(streamer.id).map(b => beef.get(b.id));
+                const open = await Promise.all((await beef.openBeefsFor(streamer.id)).map(b => beef.get(b.id)));
                 if (!open.length) {
-                    const lvl = mic.levelView(streamer.id);
+                    const lvl = await mic.levelView(streamer.id);
                     return reply(`${streamer.display_name || streamer.username} has no beef open right now (Trash Level ${lvl.level}). Another streamer only has to say their name on mic… ${base()}/arena`);
                 }
                 return reply(open.map(b => `🥊 ${b.headline || `${b.a.fighter_name} vs ${b.b.fighter_name}`}: ${beefLine(b)}`).join('  ·  '));
             }
             if (cmd === '!arena') {
-                const target = parts[1] ? db.getUserByUsername(String(parts[1]).replace(/^@/, '')) : streamer;
+                const target = parts[1] ? await db.get('SELECT * FROM users WHERE lower(username) = lower(?)', [String(parts[1]).replace(/^@/, '')]) : streamer;
                 if (!target) return reply('Usage: !arena <username>');
                 const card = await arena.getFighter(target.id, { generate: false });
                 if (!card || card.not_on_roster) return reply(`${target.display_name || target.username} isn't on the Arena roster yet — it takes mic time on a transcribed stream.`);

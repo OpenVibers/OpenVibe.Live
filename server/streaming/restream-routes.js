@@ -20,10 +20,10 @@ const router = express.Router();
  * destinations are managed there (openre.stream), so Live refuses to edit or run them here rather
  * than letting two systems push the same stream. Slots on Live's own ingest are unaffected.
  */
-function refuseIfOpenre(res, managedStreamId) {
+async function refuseIfOpenre(res, managedStreamId) {
     const openre = require('../openre/authority');
-    if (!openre.slotIsOpenre(managedStreamId)) return false;
-    const slot = openre.slotById(managedStreamId);
+    if (!await openre.slotIsOpenre(managedStreamId)) return false;
+    const slot = await openre.slotById(managedStreamId);
     res.status(409).json({
         error: 'Restreaming for this stream slot is managed on OpenRe.Stream',
         managed_by: 'openre',
@@ -101,8 +101,8 @@ function sanitizeDest(d) {
     };
 }
 
-function getLiveStreamForDestination(dest, userId, requestedStreamId) {
-    const liveStreams = db.getLiveStreamsByUserId(userId) || [];
+async function getLiveStreamForDestination(dest, userId, requestedStreamId) {
+    const liveStreams = await db.getLiveStreamsByUserId(userId) || [];
     if (dest.managed_stream_id) {
         return liveStreams.find(s => s.managed_stream_id === dest.managed_stream_id) || null;
     }
@@ -116,8 +116,8 @@ function getLiveStreamForDestination(dest, userId, requestedStreamId) {
     return null;
 }
 
-function getLiveStreamsForDestination(dest, userId) {
-    const liveStreams = db.getLiveStreamsByUserId(userId) || [];
+async function getLiveStreamsForDestination(dest, userId) {
+    const liveStreams = await db.getLiveStreamsByUserId(userId) || [];
     if (dest.managed_stream_id) {
         return liveStreams.filter(s => s.managed_stream_id === dest.managed_stream_id);
     }
@@ -175,21 +175,21 @@ router.get('/presets', requireAuth, (req, res) => {
 // ?managed_stream_id=N — that stream slot's destinations only.
 // No slot — only the unbound (legacy, slot-less) destinations: the same set a stream with no
 // slot would restream to. ?all=1 lists every destination the account owns, for management.
-router.get('/destinations', requireAuth, (req, res) => {
+router.get('/destinations', requireAuth, async (req, res) => {
     try {
         const managedStreamId = req.query.managed_stream_id ? parseInt(req.query.managed_stream_id) : null;
         let dests;
         if (managedStreamId) {
             // Verify ownership
-            const ms = db.getManagedStreamById(managedStreamId);
+            const ms = await db.getManagedStreamById(managedStreamId);
             if (!ms || ms.user_id !== req.user.id) {
                 return res.status(403).json({ error: 'Not your stream slot' });
             }
-            dests = db.getRestreamDestinationsForSlot(req.user.id, managedStreamId) || [];
+            dests = await db.getRestreamDestinationsForSlot(req.user.id, managedStreamId) || [];
         } else if (req.query.all === '1' || req.query.all === 'true') {
-            dests = db.getRestreamDestinationsByUserId(req.user.id) || [];
+            dests = await db.getRestreamDestinationsByUserId(req.user.id) || [];
         } else {
-            dests = db.getRestreamDestinationsForSlot(req.user.id, null) || [];
+            dests = await db.getRestreamDestinationsForSlot(req.user.id, null) || [];
         }
         res.json({ destinations: dests.map(sanitizeDest) });
     } catch (err) {
@@ -199,7 +199,7 @@ router.get('/destinations', requireAuth, (req, res) => {
 });
 
 // ── POST /destinations — create a new restream destination ───
-router.post('/destinations', requireAuth, (req, res) => {
+router.post('/destinations', requireAuth, async (req, res) => {
     try {
         const { platform, name, server_url, stream_key, enabled, auto_start, quality_preset, managed_stream_id } = req.body;
 
@@ -214,19 +214,19 @@ router.post('/destinations', requireAuth, (req, res) => {
         // Validate managed_stream_id ownership if provided
         let resolvedSlotId = null;
         if (managed_stream_id) {
-            const ms = db.getManagedStreamById(parseInt(managed_stream_id));
+            const ms = await db.getManagedStreamById(parseInt(managed_stream_id));
             if (!ms || ms.user_id !== req.user.id) {
                 return res.status(403).json({ error: 'Not your stream slot' });
             }
             resolvedSlotId = ms.id;
         }
 
-        if (resolvedSlotId && refuseIfOpenre(res, resolvedSlotId)) return;
+        if (resolvedSlotId && await refuseIfOpenre(res, resolvedSlotId)) return;
 
         // Enforce a reasonable limit per slot (or globally if no slot)
         const existing = resolvedSlotId
-            ? (db.getRestreamDestinationsByManagedStream(resolvedSlotId) || [])
-            : (db.getRestreamDestinationsByUserId(req.user.id) || []);
+            ? (await db.getRestreamDestinationsByManagedStream(resolvedSlotId) || [])
+            : (await db.getRestreamDestinationsByUserId(req.user.id) || []);
         if (existing.length >= MAX_DESTINATIONS) {
             return res.status(400).json({ error: `Maximum ${MAX_DESTINATIONS} restream destinations allowed` });
         }
@@ -244,7 +244,7 @@ router.post('/destinations', requireAuth, (req, res) => {
         if (!checked.ok) return res.status(400).json({ error: checked.error });
         finalUrl = checked.value;
 
-        const dest = db.createRestreamDestination(req.user.id, {
+        const dest = await db.createRestreamDestination(req.user.id, {
             platform,
             managed_stream_id: resolvedSlotId,
             name: name?.trim() || PLATFORM_PRESETS[platform]?.name || platform,
@@ -275,13 +275,13 @@ router.post('/destinations', requireAuth, (req, res) => {
 });
 
 // ── PUT /destinations/:id — update a destination ─────────────
-router.put('/destinations/:id', requireAuth, (req, res) => {
+router.put('/destinations/:id', requireAuth, async (req, res) => {
     try {
-        const dest = db.getRestreamDestinationById(parseInt(req.params.id));
+        const dest = await db.getRestreamDestinationById(parseInt(req.params.id));
         if (!dest || dest.user_id !== req.user.id) {
             return res.status(404).json({ error: 'Destination not found' });
         }
-        if (refuseIfOpenre(res, dest.managed_stream_id)) return;
+        if (await refuseIfOpenre(res, dest.managed_stream_id)) return;
 
         const updates = {};
         if (req.body.name !== undefined) updates.name = req.body.name?.trim() || dest.name;
@@ -318,30 +318,30 @@ router.put('/destinations/:id', requireAuth, (req, res) => {
         // Managed stream ID (slot assignment)
         if (req.body.managed_stream_id !== undefined) {
             if (req.body.managed_stream_id) {
-                const ms = db.getManagedStreamById(parseInt(req.body.managed_stream_id));
+                const ms = await db.getManagedStreamById(parseInt(req.body.managed_stream_id));
                 if (!ms || ms.user_id !== req.user.id) {
                     return res.status(403).json({ error: 'Not your stream slot' });
                 }
-                if (refuseIfOpenre(res, ms.id)) return;
+                if (await refuseIfOpenre(res, ms.id)) return;
                 updates.managed_stream_id = ms.id;
             } else {
                 updates.managed_stream_id = null;
             }
         }
 
-        const updated = db.updateRestreamDestination(dest.id, updates);
+        const updated = await db.updateRestreamDestination(dest.id, updates);
 
         // Fixing a broken destination (new stream key, or re-enabling it) is the streamer's signal
         // that it should work now — lift any failure cooldown so it retries on the next go-live.
         if (updates.stream_key !== undefined || updates.server_url !== undefined || updates.enabled === 1) {
-            try { db.clearRestreamDestinationCooldown(dest.id); } catch { /* */ }
+            try { await db.clearRestreamDestinationCooldown(dest.id); } catch { /* */ }
         }
 
         // If the destination was just DISABLED, stop any active video restream to it right now —
         // otherwise it keeps pushing to Twitch/Kick/etc. for a stream that's already live.
         if (updates.enabled === 0) {
             try {
-                const liveStreams = getLiveStreamsForDestination(dest, req.user.id) || [];
+                const liveStreams = await getLiveStreamsForDestination(dest, req.user.id) || [];
                 for (const s of liveStreams) {
                     try { restreamManager.stopRestream(s.id, dest.id); } catch { /* */ }
                     try { chatRelayService.stopBridge(s.id, dest.id); } catch { /* */ }
@@ -365,22 +365,22 @@ router.put('/destinations/:id', requireAuth, (req, res) => {
 });
 
 // ── DELETE /destinations/:id — delete a destination ──────────
-router.delete('/destinations/:id', requireAuth, (req, res) => {
+router.delete('/destinations/:id', requireAuth, async (req, res) => {
     try {
-        const dest = db.getRestreamDestinationById(parseInt(req.params.id));
+        const dest = await db.getRestreamDestinationById(parseInt(req.params.id));
         if (!dest || dest.user_id !== req.user.id) {
             return res.status(404).json({ error: 'Destination not found' });
         }
-        if (refuseIfOpenre(res, dest.managed_stream_id)) return;
+        if (await refuseIfOpenre(res, dest.managed_stream_id)) return;
 
         // Stop any active restream for this destination
-        const liveStreams = getLiveStreamsForDestination(dest, req.user.id);
+        const liveStreams = await getLiveStreamsForDestination(dest, req.user.id);
         for (const stream of liveStreams) {
             restreamManager.stopRestream(stream.id, dest.id);
             chatRelayService.stopBridge(stream.id, dest.id);
         }
 
-        db.deleteRestreamDestination(dest.id);
+        await db.deleteRestreamDestination(dest.id);
         res.json({ ok: true });
     } catch (err) {
         console.error('[Restream] Delete destination error:', err.message);
@@ -391,20 +391,20 @@ router.delete('/destinations/:id', requireAuth, (req, res) => {
 // ── POST /destinations/:id/start — start restream ────────────
 router.post('/destinations/:id/start', requireAuth, async (req, res) => {
     try {
-        const dest = db.getRestreamDestinationById(parseInt(req.params.id));
+        const dest = await db.getRestreamDestinationById(parseInt(req.params.id));
         if (!dest || dest.user_id !== req.user.id) {
             return res.status(404).json({ error: 'Destination not found' });
         }
-        if (refuseIfOpenre(res, dest.managed_stream_id)) return;
+        if (await refuseIfOpenre(res, dest.managed_stream_id)) return;
         if (!dest.server_url || !dest.stream_key) {
             return res.status(400).json({ error: 'Destination is not fully configured (missing server URL or stream key)' });
         }
 
         // Manual start = the streamer explicitly asking to retry. Lift any failure cooldown now,
         // regardless of whether they're live yet, so the next go-live isn't circuit-broken either.
-        try { db.clearRestreamDestinationCooldown(dest.id); } catch { /* */ }
+        try { await db.clearRestreamDestinationCooldown(dest.id); } catch { /* */ }
 
-        const stream = getLiveStreamForDestination(dest, req.user.id, req.body?.streamId);
+        const stream = await getLiveStreamForDestination(dest, req.user.id, req.body?.streamId);
         if (!stream) {
             const message = dest.managed_stream_id
                 ? 'No live stream found for this stream slot. Go live on that slot first.'
@@ -422,7 +422,7 @@ router.post('/destinations/:id/start', requireAuth, async (req, res) => {
             }
         }
 
-        const user = db.getUserById(req.user.id);
+        const user = await db.getUserById(req.user.id);
         if (!user) {
             return res.status(400).json({ error: 'User not found' });
         }
@@ -446,15 +446,15 @@ router.post('/destinations/:id/start', requireAuth, async (req, res) => {
 });
 
 // ── POST /destinations/:id/stop — stop restream ─────────────
-router.post('/destinations/:id/stop', requireAuth, (req, res) => {
+router.post('/destinations/:id/stop', requireAuth, async (req, res) => {
     try {
-        const dest = db.getRestreamDestinationById(parseInt(req.params.id));
+        const dest = await db.getRestreamDestinationById(parseInt(req.params.id));
         if (!dest || dest.user_id !== req.user.id) {
             return res.status(404).json({ error: 'Destination not found' });
         }
-        if (refuseIfOpenre(res, dest.managed_stream_id)) return;
+        if (await refuseIfOpenre(res, dest.managed_stream_id)) return;
 
-        const liveStreams = getLiveStreamsForDestination(dest, req.user.id);
+        const liveStreams = await getLiveStreamsForDestination(dest, req.user.id);
         for (const stream of liveStreams) {
             restreamManager.stopRestream(stream.id, dest.id);
         }
@@ -467,9 +467,9 @@ router.post('/destinations/:id/stop', requireAuth, (req, res) => {
 });
 
 // ── GET /status — combined restream status for all live streams
-router.get('/status', requireAuth, (req, res) => {
+router.get('/status', requireAuth, async (req, res) => {
     try {
-        const liveStreams = db.getLiveStreamsByUserId(req.user.id) || [];
+        const liveStreams = await db.getLiveStreamsByUserId(req.user.id) || [];
         const allStatuses = {};
         const robotstreamer = {};
         for (const stream of liveStreams) {
@@ -488,14 +488,14 @@ router.get('/status', requireAuth, (req, res) => {
 // ── POST /viewer-counts — broadcaster relays platform viewer counts
 // The broadcaster's browser can access Kick/Twitch APIs (not CF-blocked),
 // so it polls viewer counts client-side and pushes them to the server.
-router.post('/viewer-counts', requireAuth, (req, res) => {
+router.post('/viewer-counts', requireAuth, async (req, res) => {
     try {
         const { counts } = req.body;
         if (!Array.isArray(counts)) return res.status(400).json({ error: 'counts must be an array' });
         for (const { destId, count } of counts) {
             if (!Number.isFinite(destId) || (count != null && !Number.isFinite(count))) continue;
             // Only your own destinations: this feeds external viewer totals and PowerChat view counts.
-            const dest = db.getRestreamDestinationById(destId);
+            const dest = await db.getRestreamDestinationById(destId);
             if (!dest || (dest.user_id !== req.user.id && !can(req.user, 'staff.streams.manage'))) continue;
             restreamManager.setViewerCount(destId, count);
         }
@@ -509,20 +509,20 @@ router.post('/viewer-counts', requireAuth, (req, res) => {
 // ?managed_stream_id=N — that slot's destinations only. Without it: the slots the broadcaster
 // is live on right now (each live stream counts its own slot; a slot-less stream counts the
 // unbound destinations), never every destination the account owns.
-router.get('/viewer-counts', requireAuth, (req, res) => {
+router.get('/viewer-counts', requireAuth, async (req, res) => {
     try {
         const managedStreamId = req.query.managed_stream_id ? parseInt(req.query.managed_stream_id, 10) : null;
         let slots;
         if (managedStreamId) {
-            const ms = db.getManagedStreamById(managedStreamId);
+            const ms = await db.getManagedStreamById(managedStreamId);
             if (!ms || ms.user_id !== req.user.id) return res.status(403).json({ error: 'Not your stream slot' });
             slots = [managedStreamId];
         } else {
-            slots = [...new Set((db.getLiveStreamsByUserId(req.user.id) || []).map((s) => s.managed_stream_id || null))];
+            slots = [...new Set((await db.getLiveStreamsByUserId(req.user.id) || []).map((s) => s.managed_stream_id || null))];
         }
         const ext = { total: 0, breakdown: [] };
         for (const slotId of slots) {
-            const part = restreamManager.getExternalViewerCountsForUser(req.user.id, slotId);
+            const part = await restreamManager.getExternalViewerCountsForUser(req.user.id, slotId);
             ext.total += part.total;
             ext.breakdown.push(...part.breakdown);
         }
@@ -533,9 +533,9 @@ router.get('/viewer-counts', requireAuth, (req, res) => {
 });
 
 // ── GET /viewer-config — get safe viewer polling config for the broadcaster
-router.get('/viewer-config', requireAuth, (req, res) => {
+router.get('/viewer-config', requireAuth, async (req, res) => {
     try {
-        res.json({ config: restreamManager.getViewerPollingConfig() });
+        res.json({ config: await restreamManager.getViewerPollingConfig() });
     } catch (err) {
         res.status(500).json({ error: 'Failed to get viewer polling config' });
     }
@@ -607,11 +607,11 @@ function oauthResultPage(payload) {
 }
 
 // ── GET /oauth/status — per-platform configured + connection state for the user
-router.get('/oauth/status', requireAuth, (req, res) => {
+router.get('/oauth/status', requireAuth, async (req, res) => {
     try {
-        const platforms = OAUTH_PLATFORMS.map((platform) => {
-            const cfg = platformOAuth.getClientConfig(platform);
-            const conn = db.getPlatformConnection(req.user.id, platform);
+        const platforms = (await Promise.all(OAUTH_PLATFORMS.map(async (platform) => {
+            const cfg = await platformOAuth.getClientConfig(platform);
+            const conn = await db.getPlatformConnection(req.user.id, platform);
             return {
                 platform,
                 name: platformOAuth.PLATFORMS[platform].name,
@@ -621,7 +621,7 @@ router.get('/oauth/status', requireAuth, (req, res) => {
                 username: conn ? conn.platform_username : null,
                 channel_url: conn ? conn.channel_url : null,
             };
-        });
+        })));
         res.json({ platforms });
     } catch (err) {
         res.status(500).json({ error: 'Failed to load OAuth status' });
@@ -629,12 +629,12 @@ router.get('/oauth/status', requireAuth, (req, res) => {
 });
 
 // ── GET /oauth/:platform/start — begin authorization (opened in a popup)
-router.get('/oauth/:platform/start', requireAuth, (req, res) => {
+router.get('/oauth/:platform/start', requireAuth, async (req, res) => {
     const { platform } = req.params;
     if (!OAUTH_PLATFORMS.includes(platform)) return res.status(400).send('Unknown platform');
     try {
         const managedStreamId = req.query.managed_stream_id ? parseInt(req.query.managed_stream_id, 10) : null;
-        const { url, stateToken } = platformOAuth.buildAuthorize(platform, { userId: req.user.id, managedStreamId });
+        const { url, stateToken } = await platformOAuth.buildAuthorize(platform, { userId: req.user.id, managedStreamId });
         res.cookie(OAUTH_STATE_COOKIE, stateToken, oauthCookieOpts());
         res.redirect(url);
     } catch (err) {
@@ -668,7 +668,7 @@ router.get('/oauth/:platform/callback', async (req, res) => {
 
         const info = await platformOAuth.fetchConnection(platform, tokens.accessToken);
 
-        const conn = db.upsertPlatformConnection(userId, platform, {
+        const conn = await db.upsertPlatformConnection(userId, platform, {
             platform_user_id: info.platform_user_id,
             platform_username: info.platform_username,
             channel_url: info.channel_url,
@@ -685,7 +685,7 @@ router.get('/oauth/:platform/callback', async (req, res) => {
         // against someone else's slot id and have a destination provisioned onto their stream.
         let managedStreamId = stateData.managedStreamId || null;
         if (managedStreamId) {
-            const slot = db.getManagedStreamById(managedStreamId);
+            const slot = await db.getManagedStreamById(managedStreamId);
             if (!slot || slot.user_id !== userId) {
                 console.warn(`[Restream OAuth] ${platform}: user ${userId} tried to provision onto slot ${managedStreamId}`);
                 managedStreamId = null;       // link the account, but touch nobody else's slot
@@ -693,7 +693,7 @@ router.get('/oauth/:platform/callback', async (req, res) => {
         }
         let destProvisioned = false;
         if (managedStreamId) {
-            const existing = db.getRestreamDestinationsByManagedStream(managedStreamId)
+            const existing = (await db.getRestreamDestinationsByManagedStream(managedStreamId))
                 .find((d) => d.platform === platform);
             const destFields = {
                 name: info.platform_username || platformOAuth.PLATFORMS[platform].name,
@@ -709,9 +709,9 @@ router.get('/oauth/:platform/callback', async (req, res) => {
             if (info.stream_key) destFields.stream_key = info.stream_key;
 
             if (existing) {
-                db.updateRestreamDestination(existing.id, destFields);
+                await db.updateRestreamDestination(existing.id, destFields);
             } else {
-                db.createRestreamDestination(userId, {
+                await db.createRestreamDestination(userId, {
                     managed_stream_id: managedStreamId,
                     platform,
                     enabled: 1,
@@ -737,11 +737,11 @@ router.get('/oauth/:platform/callback', async (req, res) => {
 });
 
 // ── DELETE /oauth/:platform/connection — unlink a platform account
-router.delete('/oauth/:platform/connection', requireAuth, (req, res) => {
+router.delete('/oauth/:platform/connection', requireAuth, async (req, res) => {
     const { platform } = req.params;
     if (!OAUTH_PLATFORMS.includes(platform)) return res.status(400).json({ error: 'Unknown platform' });
     try {
-        db.deletePlatformConnection(req.user.id, platform);
+        await db.deletePlatformConnection(req.user.id, platform);
         res.json({ ok: true });
     } catch (err) {
         res.status(500).json({ error: 'Failed to disconnect' });

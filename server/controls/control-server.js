@@ -62,22 +62,22 @@ class ControlServer {
         const mode = urlParams.get('mode'); // 'hardware' or 'viewer'
 
         if (mode === 'hardware') {
-            this.handleHardwareConnection(ws, streamKey);
+            this.handleHardwareConnection(ws, streamKey).catch((e) => console.warn('[Control] hardware connection failed:', e && e.message));
         } else {
-            this.handleViewerConnection(ws, token, urlParams);
+            this.handleViewerConnection(ws, token, urlParams).catch((e) => console.warn('[Control] viewer connection failed:', e && e.message));
         }
     }
 
     /**
      * Handle hardware client connection (Raspberry Pi / controller)
      */
-    handleHardwareConnection(ws, streamKey) {
+    async handleHardwareConnection(ws, streamKey) {
         if (!streamKey) {
             ws.close(4001, 'Stream key required');
             return;
         }
 
-        const user = db.getUserByStreamKey(streamKey);
+        const user = await db.getUserByStreamKey(streamKey);
         if (!user) {
             ws.close(4002, 'Invalid stream key');
             return;
@@ -89,7 +89,7 @@ class ControlServer {
         ws.send(JSON.stringify({ type: 'connected', message: 'Hardware client registered' }));
 
         // Notify all viewers watching this stream that hardware is now online
-        this.broadcastToViewers(streamKey, {
+        await this.broadcastToViewers(streamKey, {
             type: 'hardware_status',
             connected: true,
         });
@@ -102,7 +102,7 @@ class ControlServer {
                     this.broadcastToViewers(streamKey, {
                         type: 'hardware_status',
                         ...msg,
-                    });
+                    }).catch(() => {});
                 }
             } catch { /* ignore */ }
         });
@@ -115,28 +115,28 @@ class ControlServer {
             this.broadcastToViewers(streamKey, {
                 type: 'hardware_status',
                 connected: false,
-            });
+            }).catch(() => {});
         });
     }
 
     /**
      * Handle viewer control connection
      */
-    handleViewerConnection(ws, token, params) {
+    async handleViewerConnection(ws, token, params) {
         const streamId = parseInt(params.get('stream')) || null;
-        const user = authenticateWs(token);
+        const user = await authenticateWs(token);
 
         this.viewerClients.set(ws, { user, streamId, heldKeys: new Set() });
 
         // Send available controls + channel control settings + hardware connection status
         if (streamId) {
-            const controls = db.getStreamControls(streamId);
-            const stream = db.getStreamById(streamId);
+            const controls = await db.getStreamControls(streamId);
+            const stream = await db.getStreamById(streamId);
             let controlSettings = {};
             let hardwareConnected = false;
             if (stream) {
-                const streamUser = db.getUserById(stream.user_id);
-                const channel = db.getChannelByUserId(stream.user_id);
+                const streamUser = await db.getUserById(stream.user_id);
+                const channel = await db.getChannelByUserId(stream.user_id);
                 if (channel) {
                     controlSettings = {
                         control_mode: channel.control_mode || 'open',
@@ -166,22 +166,22 @@ class ControlServer {
                     // a closed socket) escaped the try as an unhandled rejection nobody could see.
                     await this.handleCommand(ws, msg);
                 } else if (msg.type === 'key_down' || msg.type === 'key_up') {
-                    this.handleKeyEvent(ws, msg);
+                    await this.handleKeyEvent(ws, msg);
                 } else if (msg.type === 'video_click') {
-                    this.handleVideoClick(ws, msg);
+                    await this.handleVideoClick(ws, msg);
                 }
             } catch (err) {
                 console.warn('[Control] Message handling failed:', err && err.message);
             }
         });
 
-        ws.on('close', () => {
+        ws.on('close', async () => {
             // Force-release any keys this viewer was holding
             const closingClient = this.viewerClients.get(ws);
             if (closingClient && closingClient.heldKeys.size > 0 && closingClient.streamId) {
-                const stream = db.getStreamById(closingClient.streamId);
+                const stream = await db.getStreamById(closingClient.streamId);
                 if (stream) {
-                    const user = db.getUserById(stream.user_id);
+                    const user = await db.getUserById(stream.user_id);
                     if (user) {
                         const hardwareWs = this.hardwareClients.get(user.stream_key);
                         if (hardwareWs && hardwareWs.readyState === WebSocket.OPEN) {
@@ -209,7 +209,7 @@ class ControlServer {
                                     type: 'key_released',
                                     command,
                                     by: closingClient.user?.username || 'anonymous',
-                                });
+                                }).catch(() => {});
                             }
                         }
                     }
@@ -230,7 +230,7 @@ class ControlServer {
         const { command, control_id, isOnvif, cameraId, movement } = msg;
         if (!command && !isOnvif) return;
 
-        const ctx = this.validateControlPermission(ws, client);
+        const ctx = await this.validateControlPermission(ws, client);
         if (!ctx) return;
         const { stream, user, channel } = ctx;
 
@@ -258,8 +258,8 @@ class ControlServer {
         let control = null;
         if (!isOnvif) {
             control = control_id
-                ? db.get('SELECT * FROM stream_controls WHERE id = ? AND stream_id = ? AND is_enabled = 1', [control_id, client.streamId])
-                : db.get('SELECT * FROM stream_controls WHERE stream_id = ? AND command = ? AND is_enabled = 1 LIMIT 1', [client.streamId, String(command || '')]);
+                ? await db.get('SELECT * FROM stream_controls WHERE id = ? AND stream_id = ? AND is_enabled = 1', [control_id, client.streamId])
+                : await db.get('SELECT * FROM stream_controls WHERE stream_id = ? AND command = ? AND is_enabled = 1 LIMIT 1', [client.streamId, String(command || '')]);
             if (!control) {
                 ws.send(JSON.stringify({ type: 'error', message: 'That control is not available on this stream' }));
                 return;
@@ -282,7 +282,7 @@ class ControlServer {
         // Handle ONVIF camera movement
         if (isOnvif && cameraId && movement) {
             try {
-                const camera = db.getCameraProfile(cameraId);
+                const camera = await db.getCameraProfile(cameraId);
                 // The camera has to belong to the stream being controlled (or be a global profile of
                 // the same streamer). Any camera id used to work from any stream's control socket.
                 const cameraOnThisStream = camera && (camera.stream_id === client.streamId
@@ -326,7 +326,7 @@ class ControlServer {
                 onvifClient.disconnect();
 
                 // Broadcast activity to other viewers
-                this.broadcastToViewers(user.stream_key, {
+                await this.broadcastToViewers(user.stream_key, {
                     type: 'onvif_activity',
                     camera_name: camera.name,
                     movement,
@@ -365,7 +365,7 @@ class ControlServer {
         }));
 
         // Broadcast command activity to other viewers
-        this.broadcastToViewers(user.stream_key, {
+        await this.broadcastToViewers(user.stream_key, {
             type: 'command_executed',
             command: control.command,
             by: client.user?.username || 'anonymous',
@@ -375,14 +375,14 @@ class ControlServer {
     /**
      * Validate control permissions (shared by command, key event, and click handlers)
      */
-    validateControlPermission(ws, client) {
-        const stream = db.getStreamById(client.streamId);
+    async validateControlPermission(ws, client) {
+        const stream = await db.getStreamById(client.streamId);
         if (!stream) return null;
 
-        const user = db.getUserById(stream.user_id);
+        const user = await db.getUserById(stream.user_id);
         if (!user) return null;
 
-        const channel = db.getChannelByUserId(stream.user_id);
+        const channel = await db.getChannelByUserId(stream.user_id);
         if (channel) {
             const mode = channel.control_mode || 'open';
             if (mode === 'disabled') {
@@ -395,7 +395,7 @@ class ControlServer {
             }
             if (mode === 'whitelist' && client.user) {
                 const isOwner = client.user.id === stream.user_id;
-                const isWhitelisted = db.get(
+                const isWhitelisted = await db.get(
                     'SELECT 1 FROM control_whitelist WHERE channel_id = ? AND user_id = ?',
                     [channel.id, client.user.id]
                 );
@@ -415,19 +415,19 @@ class ControlServer {
     /**
      * Handle key_down / key_up events (hold detection)
      */
-    handleKeyEvent(ws, msg) {
+    async handleKeyEvent(ws, msg) {
         const client = this.viewerClients.get(ws);
         if (!client || !client.streamId) return;
 
         const { command, control_id } = msg;
         if (!command) return;
 
-        const ctx = this.validateControlPermission(ws, client);
+        const ctx = await this.validateControlPermission(ws, client);
         if (!ctx) return;
 
         // Validate control exists, is keyboard type, and is enabled
         if (control_id) {
-            const control = db.get('SELECT * FROM stream_controls WHERE id = ? AND stream_id = ?', [control_id, client.streamId]);
+            const control = await db.get('SELECT * FROM stream_controls WHERE id = ? AND stream_id = ?', [control_id, client.streamId]);
             if (!control) {
                 ws.send(JSON.stringify({ type: 'error', message: 'Control not found' }));
                 return;
@@ -481,7 +481,7 @@ class ControlServer {
         }
 
         // Broadcast to viewers
-        this.broadcastToViewers(ctx.user.stream_key, {
+        await this.broadcastToViewers(ctx.user.stream_key, {
             type: msg.type === 'key_down' ? 'key_held' : 'key_released',
             command,
             by: client.user?.username || 'anonymous',
@@ -491,7 +491,7 @@ class ControlServer {
     /**
      * Handle video click (x, y normalized 0-1)
      */
-    handleVideoClick(ws, msg) {
+    async handleVideoClick(ws, msg) {
         const client = this.viewerClients.get(ws);
         if (!client || !client.streamId) return;
 
@@ -499,7 +499,7 @@ class ControlServer {
         const y = parseFloat(msg.y);
         if (isNaN(x) || isNaN(y) || x < 0 || x > 1 || y < 0 || y > 1) return;
 
-        const ctx = this.validateControlPermission(ws, client);
+        const ctx = await this.validateControlPermission(ws, client);
         if (!ctx) return;
 
         // Check that video click is enabled
@@ -533,7 +533,7 @@ class ControlServer {
         }
 
         // Broadcast click activity
-        this.broadcastToViewers(ctx.user.stream_key, {
+        await this.broadcastToViewers(ctx.user.stream_key, {
             type: 'video_click_activity',
             x: Math.round(x * 100) / 100,
             y: Math.round(y * 100) / 100,
@@ -546,11 +546,11 @@ class ControlServer {
     /**
      * Broadcast to all viewers watching a specific stream
      */
-    broadcastToViewers(streamKey, data) {
-        const user = db.getUserByStreamKey(streamKey);
+    async broadcastToViewers(streamKey, data) {
+        const user = await db.getUserByStreamKey(streamKey);
         if (!user) return;
 
-        const stream = db.getStreamByUserId(user.id);
+        const stream = await db.getStreamByUserId(user.id);
         if (!stream) return;
 
         const msg = JSON.stringify(data);

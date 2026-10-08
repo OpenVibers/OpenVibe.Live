@@ -32,7 +32,7 @@ function leftToEvents() {
     try { return !!require('../events/stream-events').status().enabled; } catch { return false; }
 }
 
-function notifyFollowersGoLive(streamer, stream, { force = false } = {}) {
+async function notifyFollowersGoLive(streamer, stream, { force = false } = {}) {
     if (!streamer || !streamer.id) return;
     if (leftToEvents()) {
         console.log(`[GoLive] ${streamer.username}: left to Network's live.stream.started consumer (GOLIVE_NOTIFY=events)`);
@@ -52,14 +52,14 @@ function notifyFollowersGoLive(streamer, stream, { force = false } = {}) {
     for (const [k, t] of _recent) if (now - t > DEDUPE_MS * 2) _recent.delete(k);
 
     let followerLiveIds = [];
-    try { followerLiveIds = db.getFollowerIds(streamer.id) || []; } catch { /* */ }
-    const { ids: followerNetworkIds, unlinked } = toNetworkIds(followerLiveIds);
+    try { followerLiveIds = await db.getFollowerIds(streamer.id) || []; } catch { /* */ }
+    const { ids: followerNetworkIds, unlinked } = await toNetworkIds(followerLiveIds);
     console.log(`[GoLive] ${streamer.username} (slot ${slot}): ${followerLiveIds.length} follower(s), ${followerNetworkIds.length} reachable on openvibe.network${unlinked ? `, ${unlinked} never linked` : ''}`);
 
     const payload = {
         streamer: {
             id: streamer.id,
-            network_id: toNetworkId(streamer.id),
+            network_id: await toNetworkId(streamer.id),
             username: streamer.username,
             display_name: streamer.display_name || null,
             avatar_url: streamer.avatar_url || null,
@@ -76,7 +76,7 @@ function notifyFollowersGoLive(streamer, stream, { force = false } = {}) {
 
     // Live's service token (network.notifications.push).
     const principal = require('../net/network-principal');
-    if (!principal.configured()) { _fallback(streamer, stream, followerNetworkIds); return; }
+    if (!principal.configured()) { await _fallback(streamer, stream, followerNetworkIds); return; }
     principal.headersFor('/internal/events/stream-live').then((auth) => fetch(`${OV_NETWORK_INTERNAL_URL}/internal/events/stream-live`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...auth },
@@ -89,24 +89,24 @@ function notifyFollowersGoLive(streamer, stream, { force = false } = {}) {
             console.log(`[GoLive] Unified event sent for ${streamer.username}: notifications ${d?.notifications?.sent ?? '?'}/${d?.notifications?.total ?? '?'}, discord ${d?.discord?.sent ? 'sent' : 'no'}`);
         } else {
             console.warn(`[GoLive] Unified event failed (${r.status}), using fallback`);
-            _fallback(streamer, stream, followerNetworkIds);
+            await _fallback(streamer, stream, followerNetworkIds);
         }
-    }).catch(err => {
+    }).catch(async err => {
         console.warn('[GoLive] Unified event error, using fallback:', err.message);
-        _fallback(streamer, stream, followerNetworkIds);
+        await _fallback(streamer, stream, followerNetworkIds);
     });
 }
 
 /** Fallback: direct Discord webhook + bulk push (if openvibe.network is down/unauthorized). */
-function _fallback(streamer, stream, followerNetworkIds) {
-    try { notifyDiscordGoLive(streamer, stream); } catch { /* */ }
+async function _fallback(streamer, stream, followerNetworkIds) {
+    try { await notifyDiscordGoLive(streamer, stream); } catch { /* */ }
     if (!followerNetworkIds.length) return;
     pushBulkNotification(followerNetworkIds, {
         type: 'STREAM_LIVE',
         title: `${streamer.display_name || streamer.username} is live!`,
         message: stream?.title || 'Started streaming',
         icon: '🔴',
-        sender_id: toNetworkId(streamer.id),
+        sender_id: await toNetworkId(streamer.id),
         sender_name: streamer.display_name || streamer.username,
         sender_avatar: streamer.avatar_url || null,
         url: _channelUrl(streamer),

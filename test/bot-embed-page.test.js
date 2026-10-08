@@ -17,8 +17,6 @@ const os = require('os');
 const path = require('path');
 const http = require('http');
 
-const tmp = path.join(os.tmpdir(), `ov-bot-embed-page-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
 delete process.env.LIVE_BOT_EMBED;
 delete process.env.LIVE_BOT_URL;
@@ -132,20 +130,20 @@ async function check(name, fn) {
 
     // ── (b) end to end through the real channel routes ──
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const raw = db.getDb();
     const auth = require('../server/auth/auth');
-    const signIn = (req) => {
+    const signIn = async (req) => {
         const id = Number(req.headers['x-test-user'] || 0);
-        const u = id ? db.getUserById(id) : null;
+        const u = id ? await db.getUserById(id) : null;
         if (u) { req.user = u; req.authSource = 'network'; }
         return u;
     };
-    auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
-    auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
-    raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) VALUES (1, 'rover', 'rover', 'rover@x', 'x', 'streamer')`).run();
-    db.ensureChannel(1);
-    const chan = db.getChannelByUserId(1);
+    auth.requireAuth = async (req, res, next) => ((await signIn(req)) ? next() : res.status(401).json({ error: 'Authentication required' }));
+    auth.optionalAuth = async (req, res, next) => { await signIn(req); next(); };
+    await raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (1, 'rover', 'rover', 'rover@x', 'x', 'streamer')`).run();
+    await db.ensureChannel(1);
+    const chan = await db.getChannelByUserId(1);
     const moderation = require('../server/chat/moderation-client');
     moderation.getChannelModeration = async () => ({ settings: {}, moderator_ids: [] });
 
@@ -155,7 +153,7 @@ async function check(name, fn) {
     app.use('/api/streams', require('../server/bot/routes'));
     app.use('/api/streams', require('../server/streaming/routes'));
     const server = http.createServer(app).listen(0, '127.0.0.1');
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     const call = (method, p, body) => new Promise((resolve, reject) => {
         const data = body === undefined ? null : JSON.stringify(body);
         const headers = { 'x-test-user': '1' };
@@ -196,7 +194,7 @@ async function check(name, fn) {
 
     try {
         await check('flag off: no bot_embed key, and the page loads nothing and adds no frame', async () => {
-            raw.prepare('UPDATE channels SET bot_robot_id = ? WHERE id = ?').run('rob_sim123', chan.id);
+            await raw.prepare('UPDATE channels SET bot_robot_id = ? WHERE id = ?').run('rob_sim123', chan.id);
             const r = await channelGet();
             assert.strictEqual(r.status, 200, r.text.slice(0, 200));
             assert.ok(!('bot_embed' in r.body));
@@ -275,13 +273,13 @@ async function check(name, fn) {
             d.els['dash-bot-robot-id'].value = 'not-a-robot';
             await d.saveBotEmbedSetting();
             assert.strictEqual(d.els['dash-bot-robot-status'].textContent, 'robot_id must be a Bot robot id (rob_…) or null');
-            assert.strictEqual(db.getChannelByUserId(1).bot_robot_id, 'rob_sim123');
+            assert.strictEqual((await db.getChannelByUserId(1)).bot_robot_id, 'rob_sim123');
             d.els['dash-bot-robot-id'].value = '  ';
             await d.saveBotEmbedSetting();
-            assert.strictEqual(db.getChannelByUserId(1).bot_robot_id, null, 'an empty id unbinds');
+            assert.strictEqual((await db.getChannelByUserId(1)).bot_robot_id, null, 'an empty id unbinds');
             d.els['dash-bot-robot-id'].value = ' rob_sim123 ';
             await d.saveBotEmbedSetting();
-            assert.strictEqual(db.getChannelByUserId(1).bot_robot_id, 'rob_sim123');
+            assert.strictEqual((await db.getChannelByUserId(1)).bot_robot_id, 'rob_sim123');
             assert.strictEqual(d.els['dash-bot-robot-status'].textContent, 'Bound to rob_sim123');
         });
 
@@ -294,8 +292,6 @@ async function check(name, fn) {
     } finally {
         delete process.env.LIVE_BOT_EMBED;
         server.close();
-        db.getDb().close();
-        [tmp, `${tmp}-wal`, `${tmp}-shm`].forEach((f) => { try { fs.unlinkSync(f); } catch { /* */ } });
     }
 
     if (failures) { console.log(`bot-embed-page: ${failures} failed`); process.exit(1); }

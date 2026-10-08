@@ -15,13 +15,13 @@ const media = require('../media-client');
 const GRACE_SECONDS = 60;
 const SWEEP_INTERVAL_MS = 15000;
 
-function scheduleClipNotify(clipId) {
-    try { db.scheduleClipNotifyState(clipId, GRACE_SECONDS); }
+async function scheduleClipNotify(clipId) {
+    try { await db.scheduleClipNotifyState(clipId, GRACE_SECONDS); }
     catch (e) { console.warn('[ClipNotify] schedule failed:', e.message); }
 }
 
-function bumpClipNotifyNow(clipId) {
-    try { db.bumpClipNotifyNowState(clipId); } catch { /* best-effort */ }
+async function bumpClipNotifyNow(clipId) {
+    try { await db.bumpClipNotifyNowState(clipId); } catch { /* best-effort */ }
 }
 
 async function _sendOne(clipId) {
@@ -31,19 +31,19 @@ async function _sendOne(clipId) {
     if (clip.status && !['ready', 'done', 'ok'].includes(String(clip.status))) return; // still processing
 
     const streamId = clip.stream_id || null;
-    const srcStream = streamId ? db.getStreamById(streamId) : null;
+    const srcStream = streamId ? await db.getStreamById(streamId) : null;
     // Only announce clips of a CURRENTLY-LIVE stream — that's when there's an audience.
-    if (!srcStream || !srcStream.is_live) { db.markClipNotifiedState(clipId); return; }
-    if (clip.visibility === 'private') { db.markClipNotifiedState(clipId); return; }
+    if (!srcStream || !srcStream.is_live) { await db.markClipNotifiedState(clipId); return; }
+    if (clip.visibility === 'private') { await db.markClipNotifiedState(clipId); return; }
     if (srcStream.managed_stream_id) {
         try {
-            const ms = db.get('SELECT slot_clip_notify_enabled FROM managed_streams WHERE id = ?', [srcStream.managed_stream_id]);
-            if (ms && Number(ms.slot_clip_notify_enabled) === 0) { db.markClipNotifiedState(clipId); return; }
+            const ms = await db.get('SELECT slot_clip_notify_enabled FROM managed_streams WHERE id = ?', [srcStream.managed_stream_id]);
+            if (ms && Number(ms.slot_clip_notify_enabled) === 0) { await db.markClipNotifiedState(clipId); return; }
         } catch { /* fall through and notify */ }
     }
 
     const ownerId = srcStream.user_id;
-    const creator = clip.user_id ? db.getUserById(clip.user_id) : null;
+    const creator = clip.user_id ? await db.getUserById(clip.user_id) : null;
     const creatorName = (creator && (creator.display_name || creator.username)) || 'Someone';
     const title = clip.title || 'Untitled Clip';
     const meta = {
@@ -71,7 +71,7 @@ async function _sendOne(clipId) {
     } catch (e) {
         console.warn('[ClipNotify] send failed:', e.message);
     }
-    db.markClipNotifiedState(clipId);
+    await db.markClipNotifiedState(clipId);
 }
 
 let _sweepTimer = null;
@@ -81,9 +81,9 @@ let _sweepTimer = null;
 const _inFlight = new Set();
 function startClipNotifySweeper() {
     if (_sweepTimer) return;
-    _sweepTimer = setInterval(() => {
+    _sweepTimer = setInterval(async () => {
         try {
-            const due = db.getDueClipNotifies(20) || [];
+            const due = await db.getDueClipNotifies(20) || [];
             for (const row of due) {
                 if (_inFlight.has(row.clip_id)) continue;
                 _inFlight.add(row.clip_id);

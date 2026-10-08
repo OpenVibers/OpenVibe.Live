@@ -9,14 +9,9 @@
  * every money write too.
  */
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const http = require('http');
 const { startNetwork, startBilling } = require('./billing-stub');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-money-freeze-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.NODE_ENV = 'test';
 delete process.env.BILLING_AUTHORITY;
 process.env.OV_OAUTH_CLIENT_ID = 'live';
@@ -41,34 +36,34 @@ async function check(name, fn) {
     process.env.OV_BILLING_INTERNAL_URL = billing.url;
 
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const raw = db.getDb();
-    const addUser = (id, username, role, extra = {}) => raw.prepare(
-        `INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner, openvibe_bucks_balance, openvibe_bucks_cashout_balance)
+    const addUser = async (id, username, role, extra = {}) => await raw.prepare(
+        `INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner, openvibe_bucks_balance, openvibe_bucks_cashout_balance) OVERRIDING SYSTEM VALUE
          VALUES (?, ?, ?, ?, 'x', ?, ?, ?, ?)`).run(id, username, username, `${username}@x`, role, extra.is_owner ? 1 : 0, extra.bucks || 0, extra.cashout || 0);
-    addUser(1, 'owner', 'admin', { is_owner: 1 });
-    addUser(2, 'ann', 'user', { bucks: 2000 });
-    addUser(3, 'bob', 'streamer', { cashout: 1000 });
-    addUser(4, 'admin2', 'admin');
-    raw.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (2, 'network', '102', ?), (3, 'network', '103', ?)").run(SID_ANN, SID_BOB);
-    db.setSetting('powerchat_enabled', 'true');
-    db.setSetting('powerchat_client_id', 'pca_test');
-    db.setSetting('powerchat_site_tip_username', 'sitepc');
-    const snapshot = () => ({
-        users: raw.prepare('SELECT id, openvibe_bucks_balance AS b, openvibe_bucks_cashout_balance AS c FROM users ORDER BY id').all(),
-        tx: raw.prepare('SELECT COUNT(*) AS n FROM transactions').get().n,
-        orders: raw.prepare('SELECT COUNT(*) AS n FROM payment_orders').get().n,
-        subs: raw.prepare('SELECT COUNT(*) AS n, COALESCE(MAX(updated_at), \'\') AS u, COALESCE(GROUP_CONCAT(status), \'\') AS s FROM subscriptions').get(),
+    await addUser(1, 'owner', 'admin', { is_owner: 1 });
+    await addUser(2, 'ann', 'user', { bucks: 2000 });
+    await addUser(3, 'bob', 'streamer', { cashout: 1000 });
+    await addUser(4, 'admin2', 'admin');
+    await raw.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (2, 'network', '102', ?), (3, 'network', '103', ?)").run(SID_ANN, SID_BOB);
+    await db.setSetting('powerchat_enabled', 'true');
+    await db.setSetting('powerchat_client_id', 'pca_test');
+    await db.setSetting('powerchat_site_tip_username', 'sitepc');
+    const snapshot = async () => ({
+        users: await raw.prepare('SELECT id, openvibe_bucks_balance AS b, openvibe_bucks_cashout_balance AS c FROM users ORDER BY id').all(),
+        tx: (await raw.prepare('SELECT COUNT(*) AS n FROM transactions').get()).n,
+        orders: (await raw.prepare('SELECT COUNT(*) AS n FROM payment_orders').get()).n,
+        subs: await raw.prepare('SELECT COUNT(*) AS n, COALESCE(MAX(updated_at), \'\') AS u, COALESCE(string_agg(status::text, \',\'), \'\') AS s FROM subscriptions').get(),
     });
 
     const auth = require('../server/auth/auth');
-    const signIn = (req) => { const id = Number(req.headers['x-test-user'] || 0); const u = id ? db.getUserById(id) : null; if (u) req.user = u; return u; };
-    auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
-    auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
+    const signIn = async (req) => { const id = Number(req.headers['x-test-user'] || 0); const u = id ? await db.getUserById(id) : null; if (u) req.user = u; return u; };
+    auth.requireAuth = (req, res, next) => { signIn(req).then((u) => u ? next() : res.status(401).json({ error: 'Authentication required' })).catch(next); };
+    auth.optionalAuth = (req, res, next) => { signIn(req).then(() => next()).catch(next); };
     const express = require('express');
     const app = express();
     app.use(express.json());
-    app.use((req, res, next) => { signIn(req); next(); });
+    app.use((req, res, next) => { signIn(req).then(() => next()).catch(next); });
     app.use('/api/funds', require('../server/monetization/routes'));
     app.use('/api/payments', require('../server/monetization/payments-routes'));
     app.use('/api/admin', require('../server/admin/routes'));
@@ -107,7 +102,7 @@ async function check(name, fn) {
         assert.strictEqual((await call('POST', '/api/admin/money/freeze', 4, { on: true })).status, 403);
         assert.strictEqual((await call('POST', '/api/admin/money/freeze', 2, { on: true })).status, 403);
         assert.strictEqual((await call('PUT', '/api/admin/settings/money_writes_frozen', 4, { value: 'true' })).status, 403, 'not through the generic settings either');
-        assert.strictEqual(money.isFrozen(), false);
+        assert.strictEqual(await money.isFrozen(), false);
         const r = await call('POST', '/api/admin/money/freeze', 1, { on: true, reason: 'Billing cutover step 3' });
         assert.strictEqual(r.status, 200, r.text);
         assert.strictEqual(r.json.frozen, true);
@@ -118,20 +113,20 @@ async function check(name, fn) {
     });
 
     await check('live mode, frozen: every money write is refused and nothing moves', async () => {
-        const before = snapshot();
+        const before = await snapshot();
         // A due auto-renewing subscription: the sweep must not renew or expire it while frozen.
-        raw.prepare("INSERT INTO subscriptions (subscriber_id, streamer_id, tier, provider, price_cents, status, is_active, current_period_end, auto_renew) VALUES (2, 3, 1, 'bucks', 499, 'active', 1, datetime('now', '-1 hour'), 1)").run();
-        const withSub = snapshot();
+        await raw.prepare("INSERT INTO subscriptions (subscriber_id, streamer_id, tier, provider, price_cents, status, is_active, current_period_end, auto_renew) VALUES (2, 3, 1, 'bucks', 499, 'active', 1, datetime('now', '-1 hour'), 1)").run();
+        const withSub = await snapshot();
         await expectAllRefused('live');
-        require('../server/monetization/payments').startRenewalSweeper();   // sweeps once immediately
-        assert.deepStrictEqual(snapshot(), withSub, 'no column, ledger, order or subscription change');
+        await require('../server/monetization/payments').startRenewalSweeper();   // sweeps once immediately
+        assert.deepStrictEqual(await snapshot(), withSub, 'no column, ledger, order or subscription change');
         assert.notDeepStrictEqual(before, withSub);
     });
 
     await check('live mode, frozen: a Vibes media refund is deferred (not lost, not marked refunded)', async () => {
-        const id = Number(db.createMediaRequest({ streamer_id: 3, stream_id: null, user_id: 2, username: 'ann', input: 'x', canonical_url: 'https://x.test/1', embed_url: null, provider: 'youtube', title: 't', thumbnail_url: null, duration_seconds: 60, cost: 10, queue_position: 1, currency: 'vibes' }).lastInsertRowid);
+        const id = Number((await db.run("INSERT INTO media_requests (streamer_id, user_id, username, input, canonical_url, provider, title, duration_seconds, cost, queue_position, currency) VALUES (3, 2, 'ann', 'x', 'https://x.test/1', 'youtube', 't', 60, 10, 1, 'vibes') RETURNING id")).lastInsertRowid);
         assert.strictEqual(await mediaQueue.refund(id), 0);
-        assert.strictEqual(db.getMediaRequestById(id).refunded, 0);
+        assert.strictEqual((await db.getMediaRequestById(id)).refunded, 0);
     });
 
     await check('live mode, frozen: reads work', async () => {
@@ -142,13 +137,13 @@ async function check(name, fn) {
     });
 
     await check('live mode, frozen: a checkout started before the freeze still settles when the provider confirms it', async () => {
-        money.setFrozen(false);
-        const order = db.createPaymentOrder({ user_id: 2, provider: 'powerchat', kind: 'bucks', amount_cents: 500, bucks: 500 });
-        money.setFrozen(true, { reason: 'x', by: 'test' });
-        const consumed = require('../server/integrations/powerchat-checkout').handleAttributedDonation(null, { appExternalRef: `pcorder:${order.id}`, amountUsdCents: 500 });
+        await money.setFrozen(false);
+        const order = await db.createPaymentOrder({ user_id: 2, provider: 'powerchat', kind: 'bucks', amount_cents: 500, bucks: 500 });
+        await money.setFrozen(true, { reason: 'x', by: 'test' });
+        const consumed = await require('../server/integrations/powerchat-checkout').handleAttributedDonation(null, { appExternalRef: `pcorder:${order.id}`, amountUsdCents: 500 });
         assert.strictEqual(consumed, true);
-        assert.strictEqual(db.getPaymentOrderById(order.id).status, 'credited');
-        assert.strictEqual(db.getUserById(2).openvibe_bucks_balance, 2500);
+        assert.strictEqual((await db.getPaymentOrderById(order.id)).status, 'credited');
+        assert.strictEqual((await db.getUserById(2)).openvibe_bucks_balance, 2500);
     });
 
     await check('unfreeze: money moves again', async () => {
@@ -161,12 +156,12 @@ async function check(name, fn) {
     await check('billing mode, frozen: refused before Billing is ever called; unfrozen: Billing is called', async () => {
         process.env.BILLING_AUTHORITY = 'billing';
         billing.fund(SID_ANN, 1000);
-        money.setFrozen(true, { reason: 'cutover', by: 'test' });
+        await money.setFrozen(true, { reason: 'cutover', by: 'test' });
         const n = billing.calls.length;
         await expectAllRefused('billing');
         assert.strictEqual(billing.calls.length, n, 'zero Billing calls while frozen');
         assert.strictEqual((await call('GET', '/api/funds/balance', 2)).status, 200, 'reads still served (from Billing)');
-        money.setFrozen(false);
+        await money.setFrozen(false);
         const d = await call('POST', '/api/funds/donate', 2, { streamer_id: 3, amount: 10 });
         assert.strictEqual(d.status, 200, d.text);
         assert.strictEqual(billing.calls[billing.calls.length - 1].path, '/transfers');
@@ -177,7 +172,7 @@ async function check(name, fn) {
         assert.strictEqual(money.authority(), 'invalid');
         const r = await call('POST', '/api/funds/donate', 2, { streamer_id: 3, amount: 10 });
         assert.strictEqual(r.status, 503); assert.strictEqual(r.json.code, 'billing_misconfigured');
-        assert.throws(() => db.addVibes(2, 1), /not 'live' or 'billing'/);
+        await assert.rejects(db.addVibes(2, 1), /not 'live' or 'billing'/);
         delete process.env.BILLING_AUTHORITY;
     });
 

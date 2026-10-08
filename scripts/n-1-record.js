@@ -98,7 +98,20 @@ const OUT = path.join(ROOT, 'test', 'fixtures', 'n-1');
         await server.close();
         server = null;
 
-        // 3. The schema N-1 left, and the SQL it runs on it.
+        // 3. The schema N-1 left, and the SQL it runs on it. A release on PostgreSQL (ADR-035) records its migration files
+        // instead: N must keep every one of them unchanged and only add (the database's own ledger refuses an edit).
+        const head = { service: svc.service, release: wt.sha, recorded_at: new Date().toISOString(), note: 'N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js' };
+        const clients = svc.clientReleases ? svc.clientReleases() : null;
+        const migDir = path.join(wt.dir, 'migrations');
+        if (fs.existsSync(migDir)) {
+            const migrations = fs.readdirSync(migDir).filter((f) => f.endsWith('.sql')).sort()
+                .map((name) => ({ name, sha256: require('crypto').createHash('sha256').update(fs.readFileSync(path.join(migDir, name))).digest('hex') }));
+            fs.mkdirSync(OUT, { recursive: true });
+            fs.writeFileSync(path.join(OUT, 'client.json'), `${JSON.stringify({ ...head, ...(clients ? { clients } : {}), manifest, dynamic_calls: dynamic, calls: recorded, ...(ws ? { ws } : {}) }, null, 1)}\n`);
+            fs.writeFileSync(path.join(OUT, 'worker.json'), `${JSON.stringify({ ...head, engine: 'postgresql', migrations, statements: [] }, null, 1)}\n`);
+            console.log(`  postgresql: ${migrations.length} migration file(s); wrote ${path.relative(ROOT, OUT)}/client.json and worker.json`);
+            return;
+        }
         const db = new Database(dbPath);
         const schema = h.schemaDDL(db);
         const ledger = {};
@@ -117,8 +130,6 @@ const OUT = path.join(ROOT, 'test', 'fixtures', 'n-1');
         console.log(`  sql: ${statements.length} statements (${ran.length} ran, ${failing.size} candidates that do not prepare on N-1's own schema left out), ${schema.length} schema objects, ${lazy.length} created on first use`);
 
         fs.mkdirSync(OUT, { recursive: true });
-        const head = { service: svc.service, release: wt.sha, recorded_at: new Date().toISOString(), note: 'N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js' };
-        const clients = svc.clientReleases ? svc.clientReleases() : null;
         fs.writeFileSync(path.join(OUT, 'client.json'), `${JSON.stringify({ ...head, ...(clients ? { clients } : {}), manifest, dynamic_calls: dynamic, calls: recorded, ...(ws ? { ws } : {}) }, null, 1)}\n`);
         fs.writeFileSync(path.join(OUT, 'worker.json'), `${JSON.stringify({ ...head, user_version: userVersion, schema, ledger, lazy, statements }, null, 1)}\n`);
         console.log(`  wrote ${path.relative(ROOT, OUT)}/client.json and worker.json`);

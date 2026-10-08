@@ -25,7 +25,6 @@ const path = require('path');
 const http = require('http');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-thumbs-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.DATA_DIR = tmp;
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
@@ -34,19 +33,14 @@ console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 const root = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 const db = require('../server/db/database');
-db.initDb();
-db.getDb().prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at)
-    VALUES (3, 'alice', 'alice', 'alice@x', 'x', 'streamer', '2025-01-01 00:00:00')`).run();
-const ch = db.ensureChannel(3);
-const sid = Number(db.createStream({ user_id: 3, channel_id: ch.id, title: 'A', protocol: 'rtmp' }).lastInsertRowid);
-const other = Number(db.createStream({ user_id: 3, channel_id: ch.id, title: 'B', protocol: 'webrtc' }).lastInsertRowid);
+let sid, other;
 
 const liveThumbs = require('../server/media-proxy/live-thumbs');
 assert.ok(liveThumbs.THUMB_DIR.startsWith(tmp), 'live thumbnails live under DATA_DIR (server/paths.js)');
 // A tiny JPEG (SOI marker is all the validator needs).
 const jpeg = (tag) => Buffer.concat([Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]), Buffer.from(tag)]);
 const age = (file, ms) => { const t = (Date.now() - ms) / 1000; fs.utimesSync(file, t, t); };
-const current = () => liveThumbs.getStreamThumbnailState(sid);
+const current = async () => await liveThumbs.getStreamThumbnailState(sid);
 
 const express = require('express');
 const app = express();
@@ -61,23 +55,30 @@ const get = (p) => new Promise((resolve, reject) => {
 });
 
 (async () => {
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
+
+    await db.initDb();
+    await db.getDb().prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
+        VALUES (3, 'alice', 'alice', 'alice@x', 'x', 'streamer', '2025-01-01 00:00:00')`).run();
+    const ch = await db.ensureChannel(3);
+    sid = Number((await db.createStream({ user_id: 3, channel_id: ch.id, title: 'A', protocol: 'rtmp' })).lastInsertRowid);
+    other = Number((await db.createStream({ user_id: 3, channel_id: ch.id, title: 'B', protocol: 'webrtc' })).lastInsertRowid);
 
     // ── capture cadence (server side) ──
-    assert.ok(liveThumbs.shouldRefreshLiveThumbnail(sid), 'no thumbnail yet: capture one');
-    const first = liveThumbs.saveLiveThumbnail(sid, jpeg('one'));
+    assert.ok(await liveThumbs.shouldRefreshLiveThumbnail(sid), 'no thumbnail yet: capture one');
+    const first = await liveThumbs.saveLiveThumbnail(sid, jpeg('one'));
     assert.match(first, /^\/api\/thumbnails\/stream-\d+-\d+\.jpg$/);
-    assert.ok(!liveThumbs.shouldRefreshLiveThumbnail(sid), 'a fresh thumbnail is not replaced');
-    age(current().filePath, 119_000);
-    assert.ok(!liveThumbs.shouldRefreshLiveThumbnail(sid), 'still kept just under 2 minutes');
-    age(current().filePath, 121_000);
-    assert.ok(liveThumbs.shouldRefreshLiveThumbnail(sid), 'replaced once 2 minutes old');
-    age(current().filePath, 5_000);
-    assert.strictEqual(liveThumbs.saveLiveThumbnail(sid, jpeg('two')), first, 'writes closer than 15 s apart are dropped');
-    age(current().filePath, 16_000);
-    const oldFile = current().filePath;
+    assert.ok(!await liveThumbs.shouldRefreshLiveThumbnail(sid), 'a fresh thumbnail is not replaced');
+    age((await current()).filePath, 119_000);
+    assert.ok(!await liveThumbs.shouldRefreshLiveThumbnail(sid), 'still kept just under 2 minutes');
+    age((await current()).filePath, 121_000);
+    assert.ok(await liveThumbs.shouldRefreshLiveThumbnail(sid), 'replaced once 2 minutes old');
+    age((await current()).filePath, 5_000);
+    assert.strictEqual(await liveThumbs.saveLiveThumbnail(sid, jpeg('two')), first, 'writes closer than 15 s apart are dropped');
+    age((await current()).filePath, 16_000);
+    const oldFile = (await current()).filePath;
     await new Promise((r) => setTimeout(r, 5));
-    const second = liveThumbs.saveLiveThumbnail(sid, jpeg('two'));
+    const second = await liveThumbs.saveLiveThumbnail(sid, jpeg('two'));
     assert.notStrictEqual(second, first, 'a new capture gets a new file name (cards and caches see a new URL)');
     assert.ok(!fs.existsSync(oldFile), 'and the previous file is removed');
     console.log('OK capture: 2-minute refresh, 15 s write floor, new name per capture');
@@ -87,23 +88,23 @@ const get = (p) => new Promise((resolve, reject) => {
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.headers['cache-control'], 'no-cache');
     assert.strictEqual(r.body.toString('latin1').slice(4), 'two', 'it is the current thumbnail');
-    age(current().filePath, 20_000);
-    liveThumbs.saveLiveThumbnail(sid, jpeg('three'));
+    age((await current()).filePath, 20_000);
+    await liveThumbs.saveLiveThumbnail(sid, jpeg('three'));
     r = await get(`/api/thumbnails/stream-${sid}-live.jpg?t=2`);
     assert.strictEqual(r.body.toString('latin1').slice(4), 'three', 'and follows each new capture');
     assert.strictEqual((await get(`/api/thumbnails/stream-${other}-live.jpg`)).status, 404, 'none yet: 404, so the preview stays hidden');
-    db.run('UPDATE streams SET thumbnail_url = ? WHERE id = ?', ['https://openvibe.media/t/vod-9-1.jpg', other]);
+    await db.run('UPDATE streams SET thumbnail_url = ? WHERE id = ?', ['https://openvibe.media/t/vod-9-1.jpg', other]);
     r = await get(`/api/thumbnails/stream-${other}-live.jpg`);
     assert.deepStrictEqual([r.status, r.headers.location], [302, 'https://openvibe.media/t/vod-9-1.jpg'], 'a Media fallback frame is followed');
-    r = await get(`/api/thumbnails/${path.basename(current().thumbUrl)}`);
+    r = await get(`/api/thumbnails/${path.basename((await current()).thumbUrl)}`);
     assert.strictEqual(r.body.toString('latin1').slice(4), 'three', 'the real file names are still served');
     assert.strictEqual((await get('/api/thumbnails/stream-999-123.jpg')).headers['content-type'], 'image/jpeg', 'a missing card thumbnail is still the placeholder pixel');
     console.log('OK /api/thumbnails/stream-<id>-live.jpg serves the current live thumbnail, uncached');
 
     // ── clean ──
-    age(current().filePath, 3_700_000);
-    const stale = current().filePath;
-    liveThumbs.cleanupOldThumbnails();
+    age((await current()).filePath, 3_700_000);
+    const stale = (await current()).filePath;
+    await liveThumbs.cleanupOldThumbnails();
     assert.ok(!fs.existsSync(stale), 'files older than an hour are deleted');
     console.log('OK clean-up after an hour');
 

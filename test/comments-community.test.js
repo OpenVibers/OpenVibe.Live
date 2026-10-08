@@ -7,7 +7,7 @@
  * Community outage is a 503 "comments are unavailable", never an empty list; and Live's own
  * comments table is neither read nor written.
  *
- * The real routers run on a temp database with Media stubbed, Community replaced by
+ * The real routers run on the test database with Media stubbed, Community replaced by
  * test/community-stub.js and sign-in stubbed by an `x-test-user` header.
  *
  *   node test/comments-community.test.js
@@ -15,93 +15,16 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
 
-const tmp = path.join(os.tmpdir(), `ov-comments-community-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
 process.env.OV_COMMUNITY_URL = 'https://openvibe.community';
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 console.warn = () => {};
 
-const db = require('../server/db/database');
-db.initDb();
-const raw = db.getDb();
-
-const auth = require('../server/auth/auth');
-const signIn = (req) => {
-    const id = Number(req.headers['x-test-user'] || 0);
-    const u = id ? db.getUserById(id) : null;
-    if (u) { req.user = u; req.authSource = 'network'; }
-    return u;
-};
-auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
-auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
-
-const notify = require('../server/utils/notify');
-const pushed = [];
-notify.pushNotification = (p) => { pushed.push(p); };
-const principal = require('../server/net/network-principal');
-principal.serviceHeaders = async () => ({ Authorization: 'Bearer test-service-token' });
-
 const SUB = (c) => `usr_01JAB2C3D4E5F6G7H8J9K0MNP${c}`;
-const addUser = (id, username, role, subject) => {
-    raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, profile_color, created_at)
-                 VALUES (?, ?, ?, ?, 'x', ?, '#123456', '2025-01-01 00:00:00')`).run(id, username, username.toUpperCase(), `${username}@x`, role);
-    if (subject) raw.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', ?, ?)").run(id, String(100 + id), subject);
-};
-addUser(1, 'admin', 'admin', SUB('A'));
-addUser(3, 'alice', 'streamer', SUB('B'));     // owns VOD 100 and the stream clip 200 came from
-addUser(5, 'carol', 'user', SUB('C'));         // made clip 200
-addUser(7, 'mallory', 'user', SUB('E'));       // nobody special
-addUser(9, 'nolink', 'user', null);            // no Network subject on file
-db.ensureChannel(3);
-const streamA = Number(db.createStream({ user_id: 3, channel_id: db.getChannelByUserId(3).id, title: 'A', protocol: 'webrtc' }).lastInsertRowid);
-
-// A legacy row in Live's frozen comments table: never shown, never touched.
-raw.prepare("INSERT INTO comments (content_type, content_id, user_id, message) VALUES ('vod', 100, 5, 'legacy local row')").run();
-const legacyBefore = raw.prepare('SELECT * FROM comments').all();
-
-const media = require('../server/media-client');
-const VODS = {
-    100: { id: 100, user_id: 3, title: 'Public VOD', visibility: 'public', is_public: 1, status: 'ready' },
-    101: { id: 101, user_id: 3, title: 'Private VOD', visibility: 'private', is_public: 0, status: 'ready' },
-    102: { id: 102, user_id: 3, title: 'Unlisted VOD', visibility: 'unlisted', is_public: 0, status: 'ready' },
-};
-const CLIPS = { 200: { id: 200, user_id: 5, stream_id: streamA, title: 'Public clip', visibility: 'public', is_public: 1, status: 'ready' } };
-const missing = (what) => new media.MediaApiError(`${what} not found`, 404, { error: `${what} not found` });
-media.getVod = async (id) => { const v = VODS[Number(id)]; if (!v) throw missing('VOD'); return { ...v }; };
-media.getClip = async (id) => { const c = CLIPS[Number(id)]; if (!c) throw missing('Clip'); return { ...c }; };
-media.listClips = async () => ({ clips: [] });
-media.deleteVod = async (id) => { delete VODS[Number(id)]; return {}; };
-
-const express = require('express');
-const app = express();
-app.use(express.json());
-app.use('/api/vods', require('../server/media-proxy/vods'));
-app.use('/api/clips', require('../server/media-proxy/clips'));
-app.use('/api/comments', require('../server/media-proxy/comments'));
-const commentsClient = require('../server/comments-client');
-const server = http.createServer(app).listen(0);
-
-function call(method, p, user, body) {
-    return new Promise((resolve, reject) => {
-        const data = body ? JSON.stringify(body) : null;
-        const headers = { 'content-type': 'application/json' };
-        if (user) headers['x-test-user'] = String(user);
-        const req = http.request({ port: server.address().port, path: p, method, headers }, (res) => {
-            let text = '';
-            res.on('data', (c) => { text += c; });
-            res.on('end', () => { let json = null; try { json = JSON.parse(text); } catch { /* */ } resolve({ status: res.statusCode, json, text }); });
-        });
-        req.on('error', reject);
-        if (data) req.write(data);
-        req.end();
-    });
-}
 
 let failures = 0;
 async function check(name, fn) {
@@ -110,7 +33,82 @@ async function check(name, fn) {
 }
 
 (async () => {
-    await new Promise((r) => server.once('listening', r));
+    const db = require('../server/db/database');
+    await db.initDb();
+    const raw = db.getDb();
+
+    const auth = require('../server/auth/auth');
+    const signIn = async (req) => {
+        const id = Number(req.headers['x-test-user'] || 0);
+        const u = id ? await db.getUserById(id) : null;
+        if (u) { req.user = u; req.authSource = 'network'; }
+        return u;
+    };
+    auth.requireAuth = async (req, res, next) => ((await signIn(req)) ? next() : res.status(401).json({ error: 'Authentication required' }));
+    auth.optionalAuth = async (req, res, next) => { await signIn(req); next(); };
+
+    const notify = require('../server/utils/notify');
+    const pushed = [];
+    notify.pushNotification = (p) => { pushed.push(p); };
+    const principal = require('../server/net/network-principal');
+    principal.serviceHeaders = async () => ({ Authorization: 'Bearer test-service-token' });
+
+    const addUser = async (id, username, role, subject) => {
+        await raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, profile_color, created_at) OVERRIDING SYSTEM VALUE
+                     VALUES (?, ?, ?, ?, 'x', ?, '#123456', '2025-01-01 00:00:00')`).run(id, username, username.toUpperCase(), `${username}@x`, role);
+        if (subject) await raw.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', ?, ?)").run(id, String(100 + id), subject);
+    };
+    await addUser(1, 'admin', 'admin', SUB('A'));
+    await addUser(3, 'alice', 'streamer', SUB('B'));     // owns VOD 100 and the stream clip 200 came from
+    await addUser(5, 'carol', 'user', SUB('C'));         // made clip 200
+    await addUser(7, 'mallory', 'user', SUB('E'));       // nobody special
+    await addUser(9, 'nolink', 'user', null);            // no Network subject on file
+    await db.ensureChannel(3);
+    const streamA = Number((await db.createStream({ user_id: 3, channel_id: (await db.getChannelByUserId(3)).id, title: 'A', protocol: 'webrtc' })).lastInsertRowid);
+
+    // Live keeps no copy of the frozen `comments` table (OpenVibe.Community owns comments since roadmap
+    // Wave 5): the migration does not create it, so no route could read or write it.
+    const commentTable = await raw.prepare("SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_name = 'comments'").get();
+
+    const media = require('../server/media-client');
+    const VODS = {
+        100: { id: 100, user_id: 3, title: 'Public VOD', visibility: 'public', is_public: 1, status: 'ready' },
+        101: { id: 101, user_id: 3, title: 'Private VOD', visibility: 'private', is_public: 0, status: 'ready' },
+        102: { id: 102, user_id: 3, title: 'Unlisted VOD', visibility: 'unlisted', is_public: 0, status: 'ready' },
+    };
+    const CLIPS = { 200: { id: 200, user_id: 5, stream_id: streamA, title: 'Public clip', visibility: 'public', is_public: 1, status: 'ready' } };
+    const missing = (what) => new media.MediaApiError(`${what} not found`, 404, { error: `${what} not found` });
+    media.getVod = async (id) => { const v = VODS[Number(id)]; if (!v) throw missing('VOD'); return { ...v }; };
+    media.getClip = async (id) => { const c = CLIPS[Number(id)]; if (!c) throw missing('Clip'); return { ...c }; };
+    media.listClips = async () => ({ clips: [] });
+    media.deleteVod = async (id) => { delete VODS[Number(id)]; return {}; };
+
+    const express = require('express');
+    const app = express();
+    app.use(express.json());
+    app.use('/api/vods', require('../server/media-proxy/vods'));
+    app.use('/api/clips', require('../server/media-proxy/clips'));
+    app.use('/api/comments', require('../server/media-proxy/comments'));
+    const commentsClient = require('../server/comments-client');
+    const server = http.createServer(app).listen(0);
+
+    function call(method, p, user, body) {
+        return new Promise((resolve, reject) => {
+            const data = body ? JSON.stringify(body) : null;
+            const headers = { 'content-type': 'application/json' };
+            if (user) headers['x-test-user'] = String(user);
+            const req = http.request({ port: server.address().port, path: p, method, headers }, (res) => {
+                let text = '';
+                res.on('data', (c) => { text += c; });
+                res.on('end', () => { let json = null; try { json = JSON.parse(text); } catch { /* */ } resolve({ status: res.statusCode, json, text }); });
+            });
+            req.on('error', reject);
+            if (data) req.write(data);
+            req.end();
+        });
+    }
+
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     const stub = await (require('./community-stub').startCommunityStub({ people: { [SUB('Z')]: { username: 'zed', display_name: 'Zed from Community' } } }));
     process.env.OV_COMMUNITY_INTERNAL_URL = stub.url;
     const last = (method, re) => [...stub.calls].reverse().find((c) => c.method === method && re.test(c.path));
@@ -129,7 +127,7 @@ async function check(name, fn) {
         const n = stub.calls.filter((c) => c.path === '/threads/resolve').length;
         await call('GET', '/api/comments/vod/100', 5);
         assert.strictEqual(stub.calls.filter((c) => c.path === '/threads/resolve').length, n, 'remembered in comment_thread_refs');
-        assert.strictEqual(raw.prepare('SELECT COUNT(*) AS n FROM comment_thread_refs').get().n, 1);
+        assert.strictEqual((await raw.prepare('SELECT COUNT(*) AS n FROM comment_thread_refs').get()).n, 1);
         assert.ok((await call('GET', '/api/comments/vod/102')).json.thread, 'unlisted items are linked too');
         assert.strictEqual((await call('GET', '/api/comments/vod/101', 3)).json.thread, undefined, 'private items never are');
         assert.strictEqual((await call('GET', '/api/comments/vod/101')).status, 404);
@@ -268,13 +266,12 @@ async function check(name, fn) {
     });
 
     await check('Live\'s own comments table was neither read nor written', async () => {
-        assert.deepStrictEqual(raw.prepare('SELECT * FROM comments').all(), legacyBefore);
+        assert.strictEqual(commentTable.n, 0, 'Live keeps no copy of the frozen comments table');
     });
 
     server.close();
     await stub.close();
-    for (const ext of ['', '-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
     if (failures) { quiet(`\n${failures} check(s) failed`); process.exit(1); }
     quiet('comments on Community: all checks passed');
     process.exit(0);
-})().catch((err) => { quiet(err); server.close(); process.exit(1); });
+})().catch((err) => { quiet(err); process.exit(1); });
