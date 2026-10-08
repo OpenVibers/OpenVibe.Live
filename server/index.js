@@ -56,7 +56,7 @@ if (drill.enabled) {
         process.exit(1);
     }
     drill.installGuards();
-    console.log(`[Drill] LIVE_DRILL: restore-drill instance on ${process.env.HOST}:${process.env.PORT}, database ${path.resolve(process.env.DB_PATH)}, data ${path.resolve(process.env.DATA_DIR)}. Reads only; no background work, sockets or outbound connections.`);
+    console.log(`[Drill] LIVE_DRILL: restore-drill instance on ${process.env.HOST}:${process.env.PORT}, database ${process.env.DATABASE_URL ? 'the restored copy (DATABASE_URL)' : 'embedded PGlite under DATA_DIR'}, data ${path.resolve(process.env.DATA_DIR)}. Reads only; no background work, sockets or outbound connections.`);
 }
 const paths = require('./paths');
 
@@ -1047,7 +1047,7 @@ function verifyBannedUidCookie(value) {
 }
 app.post('/banned/continue', async (req, res) => {
     const user = await banRequestUser(req);
-    const ipBan = (async () => { try { return await db.getIpBan(req.ip, null); } catch { return null; } })();
+    const ipBan = await (async () => { try { return await db.getIpBan(req.ip, null); } catch { return null; } })();
     let subject = null;
     if (user && user.is_banned) subject = await db.getUserById(user.id);
     else if (ipBan && ipBan.user_id) subject = await db.getUserById(ipBan.user_id);
@@ -1077,7 +1077,7 @@ app.post('/banned/continue', async (req, res) => {
 
 app.get('/banned', async (req, res) => {
     const user = await banRequestUser(req);
-    const ipBan = (async () => { try { return await db.getIpBan(req.ip, null); } catch { return null; } })();
+    const ipBan = await (async () => { try { return await db.getIpBan(req.ip, null); } catch { return null; } })();
     if (user && !user.is_banned && (!ipBan || isBanExemptAdminUser(user))) { res.clearCookie('ov_banned'); res.clearCookie('ov_banned_name'); return res.redirect('/'); }
     // Make the ban stick to this browser: from now on every visit — signed in or not — lands here.
     const isSecure = String(config.baseUrl || '').startsWith('https');

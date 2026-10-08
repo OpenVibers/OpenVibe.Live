@@ -5,11 +5,12 @@
  * Everything Live writes lives under one data directory: DATA_DIR, or ./data relative to the
  * working directory (the checkout in production, where the unit's WorkingDirectory is
  * /opt/openvibe.live). That is what lets a second instance (a restore drill, a test) run next to
- * production without touching production's files: point DATA_DIR and DB_PATH somewhere else.
+ * production without touching production's files: point DATA_DIR somewhere else. The database is PostgreSQL
+ * (DATABASE_URL; server/db/database.js), or an embedded PGlite database under DATA_DIR in development.
  *
  * A few locations also have their own variable (EMOTES_PATH, LIVE_THUMBS_PATH, …). In a restore drill
  * (LIVE_DRILL, see ./drill.js) those are ignored: the drill loads the production env file, whose
- * values point at production's directories. Only DATA_DIR and DB_PATH count there.
+ * values point at production's directories. Only DATA_DIR counts there.
  */
 const path = require('path');
 const drill = require('./drill');
@@ -33,14 +34,6 @@ function dir(envName, ...parts) {
     return v ? path.resolve(v) : data(...parts);
 }
 
-/** The main SQLite database: DB_PATH, else <data dir>/live.db. */
-function dbPath() {
-    return process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : data('live.db');
-}
 
-/** Page-view analytics (openvibe-shared/analytics): ANALYTICS_DB_PATH, else <data dir>/analytics.db. */
-function analyticsDbPath() {
-    return dir('ANALYTICS_DB_PATH', 'analytics.db');
-}
 
-module.exports = { dataDir, data, dir, dbPath, analyticsDbPath };
+module.exports = { dataDir, data, dir };

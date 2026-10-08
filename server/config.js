@@ -223,9 +223,6 @@ function buildConfig(registryValues) {
             secret: process.env.JWT_SECRET || 'openvibelive-dev-secret-change-me',
             expiresIn: '7d',
         },
-        db: {
-            path: paths.dbPath(),
-        },
         jsmpeg: {
             publicUrl: jsmpegPublicUrl,
             videoPort: parseInt(process.env.JSMPEG_VIDEO_PORT || '9710', 10),

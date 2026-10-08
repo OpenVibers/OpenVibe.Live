@@ -34,6 +34,10 @@ BEGIN
 EXCEPTION WHEN others THEN RETURN NULL;
 END $$;
 CREATE FUNCTION julianday(t text) RETURNS double precision LANGUAGE sql STABLE AS $$ SELECT extract(epoch FROM ov_ts(t))::double precision / 86400.0 + 2440587.5 $$;
+-- SQLite's datetime() takes any number of modifiers ('now', '-2 days', '+1 hour'): two, as Live's code and tests use.
+CREATE FUNCTION datetime(t text, m1 text, m2 text) RETURNS text LANGUAGE sql STABLE AS $$ SELECT datetime(datetime(t, m1), m2) $$;
+-- SQLite's ROUND(x, n) of a float (julianday() differences, SUM of doubles): PostgreSQL only rounds numeric to n places.
+CREATE FUNCTION round(v double precision, n integer) RETURNS double precision LANGUAGE sql IMMUTABLE AS $$ SELECT round(v::numeric, n)::double precision $$;
 
 CREATE TABLE account_data_events (
     id text COLLATE "C" PRIMARY KEY,

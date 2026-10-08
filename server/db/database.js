@@ -62,7 +62,7 @@ async function seedControlPresetsForUser(userId) {
     const existing = await all('SELECT * FROM control_configs WHERE user_id = ?', [userId]);
     if (existing.length > 0) return;
     for (const preset of CONTROL_PRESETS) {
-        const { lastInsertRowid } = await run('INSERT INTO control_configs (user_id, name, description) VALUES (?, ?, ?)', [userId, preset.name, preset.description]);
+        const { lastInsertRowid } = await run('INSERT INTO control_configs (user_id, name, description) VALUES (?, ?, ?) RETURNING id', [userId, preset.name, preset.description]);
         for (const btn of preset.buttons) {
             await run(
                 `INSERT INTO control_config_buttons (config_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color)
@@ -219,7 +219,7 @@ async function getUserById(id) {
 }
 
 async function getUserByUsername(username) {
-    return await get('SELECT * FROM users WHERE username = ? COLLATE NOCASE', [username]);
+    return await get('SELECT * FROM users WHERE lower(username) = lower(?)', [username]);
 }
 
 async function getUserByStreamKey(key) {
@@ -233,7 +233,7 @@ async function createUser({ username, email, password_hash, display_name, stream
     email = null;
     return await run(
         `INSERT INTO users (username, email, password_hash, display_name, stream_key)
-         VALUES (?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?) RETURNING id`,
         [username, email || null, password_hash, display_name || username, stream_key]
     );
 }
@@ -392,19 +392,21 @@ async function getStreamHistoryByManagedStream(managedStreamId, userId, limit = 
 // (roadmap Wave 3, ADR-004). A failing hook is logged and never blocks going live or ending.
 let streamLifecycleHook = null;
 function onStreamLifecycle(fn) { streamLifecycleHook = typeof fn === 'function' ? fn : null; }
-function fireStreamLifecycle(kind, streamId) {
+async function fireStreamLifecycle(kind, streamId) {
     if (!streamLifecycleHook) return;
-    try { streamLifecycleHook(kind, streamId); } catch (err) { console.warn(`[Events] stream ${kind} event for ${streamId} not queued:`, err.message); }
+    // Inside the caller's transaction, a nested tx is a savepoint: an outbox insert that fails rolls back alone and the
+    // stream change still commits (PostgreSQL would otherwise abort the whole transaction).
+    try { await getDb().tx(() => streamLifecycleHook(kind, streamId)); } catch (err) { console.warn(`[Events] stream ${kind} event for ${streamId} not queued:`, err.message); }
 }
 
 async function createStream({ user_id, channel_id, managed_stream_id, control_config_id, title, description, category, protocol, is_nsfw, thumbnail_url }) {
     return await getDb().tx(async () => {
         const result = await run(
             `INSERT INTO streams (user_id, channel_id, managed_stream_id, control_config_id, title, description, category, protocol, is_nsfw, thumbnail_url, is_live, started_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ov_now())`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ov_now()) RETURNING id`,
             [user_id, channel_id || null, managed_stream_id || null, control_config_id || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', is_nsfw ? 1 : 0, thumbnail_url || null]
         );
-        fireStreamLifecycle('started', result.lastInsertRowid);
+        await fireStreamLifecycle('started', result.lastInsertRowid);
         return result;
     });
 }
@@ -419,7 +421,7 @@ async function endStream(streamId) {
              WHERE id = ?`,
             [streamId]
         );
-        if (stream.is_live) fireStreamLifecycle('ended', streamId);
+        if (stream.is_live) await fireStreamLifecycle('ended', streamId);
         return result;
     });
 }
@@ -442,7 +444,7 @@ async function addStreamMemory({ stream_id, user_id = null, offset_seconds = 0, 
     // OR IGNORE against idx_stream_memories_moment_unique: re-analysing a stream must not
     // store a second description of a moment already captured.
     return await run(`INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description, tags, thumbnail_url, transcript_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+                VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id`,
         [stream_id, user_id, Math.max(0, Math.round(offset_seconds || 0)), description || '',
          tags ? (typeof tags === 'string' ? tags : JSON.stringify(tags)) : null, thumbnail_url,
          (transcript_json && typeof transcript_json !== 'string') ? JSON.stringify(transcript_json) : (transcript_json || null)]);
@@ -692,45 +694,45 @@ async function cleanupMalformedAiText() {
     return fixed;
 }
 async function recordAiUsage({ kind, model, input_tokens = 0, output_tokens = 0, cached_tokens = 0, cost_usd = 0, owner_user_id = null, source = null, role = null, provider = null, latency_ms = null }) {
-    return await run('INSERT INTO ai_usage (kind, model, input_tokens, output_tokens, cached_tokens, cost_usd, owner_user_id, source, role, provider, latency_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    return await run('INSERT INTO ai_usage (kind, model, input_tokens, output_tokens, cached_tokens, cost_usd, owner_user_id, source, role, provider, latency_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
         [kind || null, model || null, input_tokens || 0, output_tokens || 0, cached_tokens || 0, cost_usd || 0, owner_user_id || null, source || null, role || null, provider || null, latency_ms == null ? null : Math.round(latency_ms)]);
 }
 async function getAiCostToday() {
-    const r = await get("SELECT COALESCE(SUM(cost_usd),0) AS c FROM ai_usage WHERE created_at >= date('now')");
+    const r = await get("SELECT COALESCE(SUM(cost_usd)::float8,0) AS c FROM ai_usage WHERE created_at >= substr(ov_now(), 1, 10)");
     return r ? r.c : 0;
 }
 // Today's spend attributed to one streamer (optionally within a single feature bucket).
 async function getAiCostTodayForUser(userId, source = null) {
     if (!userId) return 0;
-    let sql = "SELECT COALESCE(SUM(cost_usd),0) AS c FROM ai_usage WHERE owner_user_id = ? AND created_at >= date('now')";
+    let sql = "SELECT COALESCE(SUM(cost_usd)::float8,0) AS c FROM ai_usage WHERE owner_user_id = ? AND created_at >= substr(ov_now(), 1, 10)";
     const params = [userId];
     if (source) { sql += ' AND source = ?'; params.push(source); }
     const r = await get(sql, params);
     return r ? r.c : 0;
 }
 async function getAiUsageSummary(days = 30) {
-    const byDay = await all(`SELECT substr(datetime(created_at), 1, 10) AS day, COUNT(*) AS calls, SUM(input_tokens) AS input_tokens,
-                       SUM(output_tokens) AS output_tokens, SUM(cost_usd) AS cost_usd
+    const byDay = await all(`SELECT substr(datetime(created_at), 1, 10) AS day, COUNT(*) AS calls, SUM(input_tokens)::float8 AS input_tokens,
+                       SUM(output_tokens)::float8 AS output_tokens, SUM(cost_usd)::float8 AS cost_usd
                        FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10) GROUP BY day ORDER BY day DESC`, [`-${days} days`]);
-    const byKind = await all(`SELECT kind, COUNT(*) AS calls, SUM(cost_usd) AS cost_usd
+    const byKind = await all(`SELECT kind, COUNT(*) AS calls, SUM(cost_usd)::float8 AS cost_usd
                         FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10) GROUP BY kind ORDER BY cost_usd DESC`, [`-${days} days`]);
-    const totals = await get(`SELECT COUNT(*) AS calls, COALESCE(SUM(input_tokens),0) AS input_tokens,
-                        COALESCE(SUM(output_tokens),0) AS output_tokens, COALESCE(SUM(cached_tokens),0) AS cached_tokens,
-                        COALESCE(SUM(cost_usd),0) AS cost_usd
+    const totals = await get(`SELECT COUNT(*) AS calls, COALESCE(SUM(input_tokens)::float8,0) AS input_tokens,
+                        COALESCE(SUM(output_tokens)::float8,0) AS output_tokens, COALESCE(SUM(cached_tokens)::float8,0) AS cached_tokens,
+                        COALESCE(SUM(cost_usd)::float8,0) AS cost_usd
                         FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10)`, [`-${days} days`]);
-    const byRole = await all(`SELECT COALESCE(role,'legacy') AS role, COUNT(*) AS calls, SUM(input_tokens) AS input_tokens, SUM(cached_tokens) AS cached_tokens,
-                        SUM(output_tokens) AS output_tokens, SUM(cost_usd) AS cost_usd, AVG(latency_ms) AS avg_latency_ms
+    const byRole = await all(`SELECT COALESCE(role,'legacy') AS role, COUNT(*) AS calls, SUM(input_tokens)::float8 AS input_tokens, SUM(cached_tokens)::float8 AS cached_tokens,
+                        SUM(output_tokens)::float8 AS output_tokens, SUM(cost_usd)::float8 AS cost_usd, AVG(latency_ms)::float8 AS avg_latency_ms
                         FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10) GROUP BY role ORDER BY cost_usd DESC`, [`-${days} days`]);
-    const bySource = await all(`SELECT COALESCE(source,'platform') AS source, COALESCE(provider,'shared') AS provider, COUNT(*) AS calls, SUM(cost_usd) AS cost_usd, SUM(input_tokens) AS input_tokens, SUM(cached_tokens) AS cached_tokens
+    const bySource = await all(`SELECT COALESCE(source,'platform') AS source, COALESCE(provider,'shared') AS provider, COUNT(*) AS calls, SUM(cost_usd)::float8 AS cost_usd, SUM(input_tokens)::float8 AS input_tokens, SUM(cached_tokens)::float8 AS cached_tokens
                           FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10) GROUP BY source, provider ORDER BY cost_usd DESC`, [`-${days} days`]);
-    const byOwner = await all(`SELECT a.owner_user_id AS user_id, u.username, COUNT(*) AS calls, SUM(a.cost_usd) AS cost_usd,
-                         SUM(a.input_tokens) AS input_tokens, SUM(a.cached_tokens) AS cached_tokens, SUM(a.output_tokens) AS output_tokens,
-                         SUM(CASE WHEN a.created_at >= date('now') THEN a.cost_usd ELSE 0 END) AS cost_today,
-                         SUM(CASE WHEN a.provider = 'byo' THEN a.cost_usd ELSE 0 END) AS cost_byo
+    const byOwner = await all(`SELECT a.owner_user_id AS user_id, u.username, COUNT(*) AS calls, SUM(a.cost_usd)::float8 AS cost_usd,
+                         SUM(a.input_tokens)::float8 AS input_tokens, SUM(a.cached_tokens)::float8 AS cached_tokens, SUM(a.output_tokens)::float8 AS output_tokens,
+                         SUM(CASE WHEN a.created_at >= substr(ov_now(), 1, 10) THEN a.cost_usd ELSE 0 END)::float8 AS cost_today,
+                         SUM(CASE WHEN a.provider = 'byo' THEN a.cost_usd ELSE 0 END)::float8 AS cost_byo
                          FROM ai_usage a LEFT JOIN users u ON u.id = a.owner_user_id
                          WHERE a.created_at >= substr(datetime('now', ?), 1, 10) AND a.owner_user_id IS NOT NULL
-                         GROUP BY a.owner_user_id ORDER BY cost_usd DESC LIMIT 100`, [`-${days} days`]);
-    const byModel = await all(`SELECT model, COUNT(*) AS calls, SUM(cost_usd) AS cost_usd, SUM(input_tokens) AS input_tokens, SUM(cached_tokens) AS cached_tokens, SUM(output_tokens) AS output_tokens
+                         GROUP BY a.owner_user_id, u.username ORDER BY cost_usd DESC LIMIT 100`, [`-${days} days`]);
+    const byModel = await all(`SELECT model, COUNT(*) AS calls, SUM(cost_usd)::float8 AS cost_usd, SUM(input_tokens)::float8 AS input_tokens, SUM(cached_tokens)::float8 AS cached_tokens, SUM(output_tokens)::float8 AS output_tokens
                          FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10) GROUP BY model ORDER BY cost_usd DESC`, [`-${days} days`]);
     const cachedShare = totals.input_tokens ? totals.cached_tokens / totals.input_tokens : 0;
     return { byDay, byKind, byRole, bySource, byOwner, byModel, totals, cachedShare, today: await getAiCostToday() };
@@ -1016,7 +1018,7 @@ async function getStreamersNeedingOverview({ decentLen = 220, limit = 4 } = {}) 
 }
 
 async function updateViewerCount(streamId, count) {
-    await run(`UPDATE streams SET viewer_count = ?, peak_viewers = MAX(peak_viewers, ?) WHERE id = ?`,
+    await run(`UPDATE streams SET viewer_count = ?, peak_viewers = GREATEST(peak_viewers, ?) WHERE id = ?`,
         [count, count, streamId]);
 }
 
@@ -1025,7 +1027,7 @@ async function updateViewerCount(streamId, count) {
 async function createManagedStream({ user_id, channel_id, slug, title, description, category, protocol, streaming_method, stream_key, is_nsfw, control_config_id }) {
     return await run(
         `INSERT INTO managed_streams (user_id, channel_id, slug, title, description, category, protocol, streaming_method, stream_key, is_nsfw, control_config_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [user_id, channel_id || null, slug || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', streaming_method || null, stream_key, is_nsfw ? 1 : 0, control_config_id || null]
     );
 }
@@ -1057,7 +1059,7 @@ async function getManagedStreamBySlug(userId, slug) {
         SELECT ms.*, u.username, u.display_name, u.avatar_url, u.profile_color
         FROM managed_streams ms
         JOIN users u ON ms.user_id = u.id
-        WHERE ms.user_id = ? AND ms.slug = ? COLLATE NOCASE
+        WHERE ms.user_id = ? AND lower(ms.slug) = lower(?)
     `, [userId, slug]);
 }
 
@@ -1149,7 +1151,7 @@ async function getPipOverlayForManagedStream(managedStreamId) {
 async function getPipCandidateSlots(userId, excludeId = null) {
     try {
         return await all(`SELECT id, title, slug FROM managed_streams
-                    WHERE user_id = ? AND (? IS NULL OR id != ?)
+                    WHERE user_id = ? AND (?::bigint IS NULL OR id != ?)
                     ORDER BY sort_order ASC, id ASC`, [userId, excludeId, excludeId]);
     } catch { return []; }
 }
@@ -1214,7 +1216,7 @@ function isValidManagedStreamSlug(slug) {
 
 async function isManagedStreamSlugTaken(userId, slug, excludeId = null) {
     const params = [userId, slug];
-    let sql = 'SELECT id FROM managed_streams WHERE user_id = ? AND slug = ? COLLATE NOCASE';
+    let sql = 'SELECT id FROM managed_streams WHERE user_id = ? AND lower(slug) = lower(?)';
     if (excludeId) {
         sql += ' AND id != ?';
         params.push(excludeId);
@@ -1230,7 +1232,7 @@ async function getRecentlyOnlineStreamers(limit = 20, offset = 0) {
                MAX(s.ended_at) AS last_online_at,
                o.overview AS ai_overview, o.overview_short AS ai_overview_short,
                (
-                   SELECT json_group_array(json_object(
+                   SELECT json_agg(json_build_object(
                        'managed_stream_id', ms2.id,
                        'slug', ms2.slug,
                        'title', ms2.title,
@@ -1238,7 +1240,7 @@ async function getRecentlyOnlineStreamers(limit = 20, offset = 0) {
                        'last_live_at', (SELECT MAX(s2.ended_at) FROM streams s2 WHERE s2.managed_stream_id = ms2.id AND s2.ended_at IS NOT NULL),
                        -- filled by the route from OpenVibe.Media (GET /vods/latest-thumbs)
                        'vod_thumbnail', NULL
-                   ))
+                   ))::text
                    FROM managed_streams ms2
                    WHERE ms2.user_id = u.id
                      AND EXISTS (SELECT 1 FROM streams sx WHERE sx.managed_stream_id = ms2.id AND sx.ended_at IS NOT NULL)
@@ -1247,7 +1249,7 @@ async function getRecentlyOnlineStreamers(limit = 20, offset = 0) {
         JOIN users u ON s.user_id = u.id
         LEFT JOIN streamer_overviews o ON o.user_id = u.id
         WHERE s.is_live = 0 AND s.ended_at IS NOT NULL
-        GROUP BY u.id
+        GROUP BY u.id, o.overview, o.overview_short
         ORDER BY last_online_at DESC
         LIMIT ? OFFSET ?
     `, [limit, offset]);
@@ -1268,19 +1270,8 @@ const _HOME_STATS_TTL = 30 * 1000; // 30s memo so the windowed COUNTs don't hamm
 
 // ── Viewer trend sampling (home hero sparkline) ──────────────
 // One row every ~5 minutes: total native viewers + live stream count.
-function _ensureViewerSamples() {
-    try {
-        getDb().exec(`CREATE TABLE IF NOT EXISTS viewer_samples (
-            sampled_at DATETIME DEFAULT ov_now(),
-            viewers INTEGER NOT NULL DEFAULT 0,
-            live_streams INTEGER NOT NULL DEFAULT 0
-        )`);
-        getDb().exec('CREATE INDEX IF NOT EXISTS idx_viewer_samples_at ON viewer_samples(sampled_at)');
-    } catch { /* */ }
-}
 async function recordViewerSample() {
-    _ensureViewerSamples();
-    const r = await get(`SELECT COALESCE(SUM(viewer_count),0) AS v, COUNT(*) AS n FROM streams WHERE is_live = 1`) || { v: 0, n: 0 };
+    const r = await get(`SELECT COALESCE(SUM(viewer_count)::float8,0) AS v, COUNT(*) AS n FROM streams WHERE is_live = 1`) || { v: 0, n: 0 };
     await run('INSERT INTO viewer_samples (viewers, live_streams) VALUES (?, ?)', [r.v || 0, r.n || 0]);
     // A year of five-minute samples is ~105k small rows; it is what the "over time" charts for the
     // two live readings are drawn from.
@@ -1297,15 +1288,14 @@ async function recordViewerSample() {
  * the baseline to zero and make every daytime reading look like a record.
  */
 async function getConcurrencyBaseline() {
-    _ensureViewerSamples();
     const row = await get(`
         SELECT
-            AVG(CASE WHEN sampled_at >= datetime('now','-1 day') AND viewers > 0 THEN viewers END)      AS "vAvg24",
+            AVG(CASE WHEN sampled_at >= datetime('now','-1 day') AND viewers > 0 THEN viewers END)::float8      AS "vAvg24",
             MAX(CASE WHEN sampled_at >= datetime('now','-1 day') THEN viewers END)                      AS "vPeak24",
-            AVG(CASE WHEN viewers > 0 THEN viewers END)                                                 AS "vAvg7",
-            AVG(CASE WHEN sampled_at >= datetime('now','-1 day') AND live_streams > 0 THEN live_streams END) AS "lAvg24",
+            AVG(CASE WHEN viewers > 0 THEN viewers END)::float8                                                 AS "vAvg7",
+            AVG(CASE WHEN sampled_at >= datetime('now','-1 day') AND live_streams > 0 THEN live_streams END)::float8 AS "lAvg24",
             MAX(CASE WHEN sampled_at >= datetime('now','-1 day') THEN live_streams END)                 AS "lPeak24",
-            AVG(CASE WHEN live_streams > 0 THEN live_streams END)                                       AS "lAvg7",
+            AVG(CASE WHEN live_streams > 0 THEN live_streams END)::float8                                       AS "lAvg7",
             COUNT(*)                                                                                    AS samples
         FROM viewer_samples WHERE sampled_at >= datetime('now','-7 days')`) || {};
     const num = (v) => (Number.isFinite(Number(v)) ? Math.round(Number(v) * 10) / 10 : null);
@@ -1317,8 +1307,7 @@ async function getConcurrencyBaseline() {
 }
 
 async function getViewerTrend(hours = 24, maxPoints = 48) {
-    _ensureViewerSamples();
-    const rows = await all(`SELECT strftime('%s', sampled_at) AS t, viewers, live_streams FROM viewer_samples
+    const rows = await all(`SELECT extract(epoch FROM ov_ts(sampled_at))::bigint::text AS t, viewers, live_streams FROM viewer_samples
         WHERE sampled_at >= datetime('now', ?) ORDER BY sampled_at ASC`, [`-${Math.max(1, hours)} hours`]) || [];
     if (rows.length <= maxPoints) return rows;
     const step = rows.length / maxPoints;
@@ -1352,14 +1341,14 @@ async function getHomePulse() {
             JOIN users su ON su.id = f.streamer_id
             ORDER BY f.id DESC LIMIT 1`), null),
         // This week's leaders.
-        topSupporters: await safe(async () => await all(`SELECT u.username, u.display_name, u.avatar_url, SUM(t.amount) AS total
+        topSupporters: await safe(async () => await all(`SELECT u.username, u.display_name, u.avatar_url, SUM(t.amount)::float8 AS total
             FROM transactions t JOIN users u ON u.id = t.from_user_id
             WHERE t.type = 'donation' AND t.created_at >= datetime('now', '-7 days')
-            GROUP BY t.from_user_id ORDER BY total DESC LIMIT 3`), []),
-        topEarners: await safe(async () => await all(`SELECT u.username, u.display_name, u.avatar_url, SUM(c.amount) AS total
+            GROUP BY u.id ORDER BY total DESC LIMIT 3`), []),
+        topEarners: await safe(async () => await all(`SELECT u.username, u.display_name, u.avatar_url, SUM(c.amount)::float8 AS total
             FROM coin_transactions c JOIN users u ON u.id = c.user_id
             WHERE c.amount > 0 AND c.created_at >= datetime('now', '-7 days')
-            GROUP BY c.user_id ORDER BY total DESC LIMIT 3`), []),
+            GROUP BY u.id ORDER BY total DESC LIMIT 3`), []),
     };
 }
 
@@ -1386,7 +1375,7 @@ async function vibesStatsSince() {
 
 // ── Home stat series (click a hero stat → "over time" chart) ────────────────
 // One registry entry per metric: the table, its timestamp column, what to aggregate and
-// an optional WHERE. `days` buckets are computed in SQL by date(); missing days are
+// an optional WHERE. `days` buckets are computed in SQL (the day of datetime(ts)); missing days are
 // filled with 0 so charts never skip a day.
 const HOME_SERIES = {
     users:       { table: 'users',             ts: 'created_at',  agg: 'COUNT(*)',              where: 'COALESCE(is_banned, 0) = 0' },
@@ -1399,14 +1388,14 @@ const HOME_SERIES = {
     sessions:    { table: 'streams',           ts: 'created_at',  agg: 'COUNT(*)' },
     streamers:   { table: 'streams',           ts: 'created_at',  agg: 'COUNT(DISTINCT user_id)' },
     // vods, clips, hours and pastes are OpenVibe.Media's series (home/routes.js MEDIA_SERIES).
-    hoursWatched:{ table: 'watch_time',        ts: 'created_at',  agg: 'COALESCE(SUM(minutes_watched), 0) / 60.0' },
+    hoursWatched:{ table: 'watch_time',        ts: 'created_at',  agg: 'COALESCE(SUM(minutes_watched)::float8, 0) / 60.0' },
     aiMoments:   { table: 'stream_memories',   ts: 'created_at',  agg: 'COUNT(*)' },
-    vibes:       { table: 'transactions',      ts: 'created_at',  agg: 'COALESCE(SUM(amount), 0)', where: "type = 'donation'", vibesReset: true },
+    vibes:       { table: 'transactions',      ts: 'created_at',  agg: 'COALESCE(SUM(amount)::float8, 0)', where: "type = 'donation'", vibesReset: true },
     supporters:  { table: 'transactions',      ts: 'created_at',  agg: 'COUNT(DISTINCT from_user_id)', where: "type = 'donation' AND from_user_id IS NOT NULL", vibesReset: true },
-    vibesBought: { table: 'payment_orders',    ts: 'updated_at',  agg: 'COALESCE(SUM(bucks), 0)', where: "kind = 'bucks' AND status = 'credited'" },
+    vibesBought: { table: 'payment_orders',    ts: 'updated_at',  agg: 'COALESCE(SUM(bucks)::float8, 0)', where: "kind = 'bucks' AND status = 'credited'" },
     subs:        { table: 'subscriptions',     ts: 'created_at',  agg: 'COUNT(*)' },
-    points:      { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(SUM(amount), 0)', where: 'amount > 0' },
-    pointsSpent: { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(-SUM(amount), 0)', where: 'amount < 0' },
+    points:      { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(SUM(amount)::float8, 0)', where: 'amount > 0' },
+    pointsSpent: { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(-SUM(amount)::float8, 0)', where: 'amount < 0' },
     redemptions: { table: 'coin_redemptions',  ts: 'created_at',  agg: 'COUNT(*)',              where: "status NOT IN ('rejected', 'refunded')" },
     // No `emotes` series: OpenVibe.Chat owns that table (roadmap T3) and Live's copy is dropped
     // since N+2 (unlike the table itself, which N-1 still prepares against — see schema.sql).
@@ -1427,7 +1416,7 @@ async function homeSeriesLocal(metric, days = 30) {
     if (def.vibesReset) where.push(`${def.ts} >= '${await vibesStatsSince()}'`);
     let rows = [];
     try {
-        rows = await all(`SELECT date(${def.ts}) AS day, ${def.agg} AS value FROM ${def.table} WHERE ${where.join(' AND ')} GROUP BY day ORDER BY day ASC`, [`-${days - 1} days`]);
+        rows = await all(`SELECT substr(datetime(${def.ts}), 1, 10) AS day, ${def.agg} AS value FROM ${def.table} WHERE ${where.join(' AND ')} GROUP BY day ORDER BY day ASC`, [`-${days - 1} days`]);
     } catch { rows = []; }
     const byDay = new Map(rows.map(r => [r.day, Number(r.value) || 0]));
     const points = [];
@@ -1474,13 +1463,12 @@ const READING_SERIES = { liveNow: 'live_streams', viewersNow: 'viewers' };
 async function getReadingSeries(metric, days = 7) {
     const col = READING_SERIES[metric];
     if (!col) return null;
-    _ensureViewerSamples();
     days = Math.max(1, Math.min(365, parseInt(days, 10) || 7));
     const hourly = days <= 7;
-    const fmt = hourly ? '%Y-%m-%dT%H:00:00Z' : '%Y-%m-%d';
+    const fmt = hourly ? 'YYYY-MM-DD"T"HH24:00:00"Z"' : 'YYYY-MM-DD';
     let rows = [];
     try {
-        rows = await all(`SELECT strftime('${fmt}', sampled_at) AS b, AVG(${col}) AS avg, MAX(${col}) AS peak, COUNT(*) AS n
+        rows = await all(`SELECT to_char(ov_ts(sampled_at), '${fmt}') AS b, AVG(${col})::float8 AS avg, MAX(${col}) AS peak, COUNT(*) AS n
             FROM viewer_samples WHERE sampled_at >= datetime('now', ?) GROUP BY b`, [hourly ? `-${days * 24 - 1} hours` : `-${days - 1} days`]);
     } catch { rows = []; }
     const byB = new Map(rows.map(r => [r.b, r]));
@@ -1528,8 +1516,8 @@ async function _computeHomeStats() {
     };
     // Rolling day/week/month SUMS (for value metrics like Vibes tipped).
     const winSum = async (table, col, tsCol, extra = '') => {
-        const q = async (w) => await c(`SELECT COALESCE(SUM(${col}), 0) AS count FROM ${table} WHERE ${tsCol} >= datetime('now', ?)${extra ? ' AND ' + extra : ''}`, [w]);
-        const prev = await c(`SELECT COALESCE(SUM(${col}), 0) AS count FROM ${table} WHERE ${tsCol} >= datetime('now', '-14 days') AND ${tsCol} < datetime('now', '-7 days')${extra ? ' AND ' + extra : ''}`);
+        const q = async (w) => await c(`SELECT COALESCE(SUM(${col})::float8, 0) AS count FROM ${table} WHERE ${tsCol} >= datetime('now', ?)${extra ? ' AND ' + extra : ''}`, [w]);
+        const prev = await c(`SELECT COALESCE(SUM(${col})::float8, 0) AS count FROM ${table} WHERE ${tsCol} >= datetime('now', '-14 days') AND ${tsCol} < datetime('now', '-7 days')${extra ? ' AND ' + extra : ''}`);
         return { d: await q('-1 day'), w: await q('-7 days'), m: await q('-30 days'), pw: prev };
     };
     // Distinct people who went live in a window — "streamers" is a headcount, not a stream count.
@@ -1540,23 +1528,23 @@ async function _computeHomeStats() {
     return {
         // ── Right-now + community-economy metrics ────────────────
         // Native viewers across everything currently live.
-        viewersNow: await c(`SELECT COALESCE(SUM(viewer_count), 0) AS count FROM streams WHERE is_live = 1`),
+        viewersNow: await c(`SELECT COALESCE(SUM(viewer_count)::float8, 0) AS count FROM streams WHERE is_live = 1`),
         // Community time actually spent watching (watch-time heartbeats → hours).
-        hoursWatched: Math.round(await c(`SELECT COALESCE(SUM(minutes_watched), 0) AS count FROM watch_time`) / 60),
+        hoursWatched: Math.round(await c(`SELECT COALESCE(SUM(minutes_watched)::float8, 0) AS count FROM watch_time`) / 60),
         // Vibes tipped between people (donation ledger; bit-style, 100 = $1).
-        vibesTipped: await c(`SELECT COALESCE(SUM(amount), 0) AS count FROM transactions WHERE type = 'donation' AND created_at >= ?`, [vibesSince]),
+        vibesTipped: await c(`SELECT COALESCE(SUM(amount)::float8, 0) AS count FROM transactions WHERE type = 'donation' AND created_at >= ?`, [vibesSince]),
         // Live channel subscriptions.
         activeSubs: await c(`SELECT COUNT(*) AS count FROM subscriptions WHERE status = 'active' AND (current_period_end IS NULL OR datetime(current_period_end) > ov_now())`),
         // Channel points earned by viewers across every channel (watch/chat/follow bonuses).
-        pointsEarned: await c(`SELECT COALESCE(SUM(amount), 0) AS count FROM coin_transactions WHERE amount > 0`),
+        pointsEarned: await c(`SELECT COALESCE(SUM(amount)::float8, 0) AS count FROM coin_transactions WHERE amount > 0`),
         // …and spent back on channel rewards.
-        pointsSpent: await c(`SELECT COALESCE(-SUM(amount), 0) AS count FROM coin_transactions WHERE amount < 0`),
+        pointsSpent: await c(`SELECT COALESCE(-SUM(amount)::float8, 0) AS count FROM coin_transactions WHERE amount < 0`),
         // Reward redemptions that stuck (not rejected / refunded).
         redemptions: await c(`SELECT COUNT(*) AS count FROM coin_redemptions WHERE status NOT IN ('rejected', 'refunded')`),
         // Distinct people who have tipped Vibes to someone.
         supporters: await c(`SELECT COUNT(DISTINCT from_user_id) AS count FROM transactions WHERE type = 'donation' AND from_user_id IS NOT NULL AND created_at >= ?`, [vibesSince]),
         // Vibes bought with real money (credited purchase orders, any provider).
-        vibesBought: await c(`SELECT COALESCE(SUM(bucks), 0) AS count FROM payment_orders WHERE kind = 'bucks' AND status = 'credited'`),
+        vibesBought: await c(`SELECT COALESCE(SUM(bucks)::float8, 0) AS count FROM payment_orders WHERE kind = 'bucks' AND status = 'credited'`),
         // Donation goals: currently running + ever reached.
         goalsActive: await c(`SELECT COUNT(*) AS count FROM donation_goals WHERE is_active = 1`),
         goalsReached: await c(`SELECT COUNT(*) AS count FROM donation_goals WHERE reached_at IS NOT NULL OR current_amount >= target_amount`),
@@ -1568,7 +1556,7 @@ async function _computeHomeStats() {
         streamers: await c(`SELECT COUNT(DISTINCT user_id) AS count FROM streams WHERE user_id IS NOT NULL`),
         // OpenVibe.Chat owns chat_messages (roadmap T3): the total comes from Chat's read API.
         // A Chat outage answers the cache, else null — never a 500 for the home page.
-        chatMessages: (async () => { try { const s = await require('../chat/chat-reads').siteStatsPeek(); return s && s.messages != null ? s.messages : null; } catch { return null; } })(),
+        chatMessages: await (async () => { try { const s = await require('../chat/chat-reads').siteStatsPeek(); return s && s.messages != null ? s.messages : null; } catch { return null; } })(),
         users: await c(`SELECT COUNT(*) AS count FROM users WHERE COALESCE(is_banned, 0) = 0`),
         anons: await c(`SELECT COUNT(*) AS count FROM anon_ip_mappings`),
         follows: await c(`SELECT COUNT(*) AS count FROM follows`),
@@ -1587,14 +1575,14 @@ async function _computeHomeStats() {
         // OpenVibe.Chat counts them (stats kind 'site' over the window); Live's own tables when Live
         // runs chat. The peek answers the last good count or null (never a mirror scan or a 500);
         // the hero treats null as unknown.
-        weeklyActive: (async () => { try { const s = await require('../chat/chat-reads').windowStatsPeek({ since: nowMs - 7 * 86400000 }); return s && s.chatters != null ? s.chatters : null; } catch { return null; } })(),
+        weeklyActive: await (async () => { try { const s = await require('../chat/chat-reads').windowStatsPeek({ since: nowMs - 7 * 86400000 }); return s && s.chatters != null ? s.chatters : null; } catch { return null; } })(),
         // New unique visitors this week (first-seen anon fingerprints) — a proxy for people who
         // showed up, not just those who chatted.
         weeklyVisitors: await c(`SELECT COUNT(*) AS count FROM anon_ip_mappings WHERE created_at >= datetime('now', '-7 days')`),
         // The same two windows again, shifted back a week, so the hero can say whether this week
         // beat last week rather than just how big it was.
         prevWeeklyVisitors: await c(`SELECT COUNT(*) AS count FROM anon_ip_mappings WHERE created_at >= datetime('now', '-14 days') AND created_at < datetime('now', '-7 days')`),
-        prevWeeklyActive: (async () => { try { const s = await require('../chat/chat-reads').windowStatsPeek({ since: nowMs - 14 * 86400000, until: nowMs - 7 * 86400000 }); return s && s.chatters != null ? s.chatters : null; } catch { return null; } })(),
+        prevWeeklyActive: await (async () => { try { const s = await require('../chat/chat-reads').windowStatsPeek({ since: nowMs - 14 * 86400000, until: nowMs - 7 * 86400000 }); return s && s.chatters != null ? s.chatters : null; } catch { return null; } })(),
         liveNow: await c(`SELECT COUNT(*) AS count FROM streams WHERE is_live = 1`),
         // Rolling last-day / week / month deltas ({ d, w, m }) for the hero stat tooltips + subs.
         recent: {
@@ -1605,7 +1593,7 @@ async function _computeHomeStats() {
             clips: null,
             aiMoments: await winCount('stream_memories', 'created_at'),
             // OpenVibe.Chat's message counts over each window (Live's own tables when Live runs chat).
-            messages: (async () => {
+            messages: await (async () => {
                 const w = async (o) => { try { const s = await require('../chat/chat-reads').windowStatsPeek(o); return s && s.messages != null ? s.messages : null; } catch { return null; } };
                 return {
                     d: await w({ since: nowMs - 86400000 }),
@@ -1621,7 +1609,7 @@ async function _computeHomeStats() {
             emotes: { d: 0, w: 0, m: 0, pw: 0 },
             goals: await winCount('donation_goals', 'created_at'),
             // Distinct people who tipped in each window — a headcount, like streamers.
-            supporters: (async () => {
+            supporters: await (async () => {
                 const q = async (a, b) => await c(`SELECT COUNT(DISTINCT from_user_id) AS count FROM transactions WHERE type = 'donation' AND from_user_id IS NOT NULL AND created_at >= datetime('now', ?)${b ? " AND created_at < datetime('now', ?)" : ''}`, b ? [a, b] : [a]);
                 return { d: await q('-1 day'), w: await q('-7 days'), m: await q('-30 days'), pw: await q('-14 days', '-7 days') };
             })(),
@@ -1692,14 +1680,14 @@ async function getChannelByUsername(username) {
         SELECT c.*, u.username, u.display_name, u.avatar_url, u.profile_color, u.bio, u.stream_key, u.role, u.is_owner
         FROM channels c
         JOIN users u ON c.user_id = u.id
-        WHERE u.username = ? COLLATE NOCASE
+        WHERE lower(u.username) = lower(?)
     `, [username]);
 }
 
 async function createChannel({ user_id, title, description, category, protocol }) {
     return await run(
         `INSERT INTO channels (user_id, title, description, category, protocol)
-         VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+         VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id`,
         [user_id, title || 'Untitled Channel', description || '', category || null, protocol || 'webrtc']
     );
 }
@@ -1929,7 +1917,7 @@ async function createRestreamDestination(userId, fields) {
     const result = await run(
         `INSERT INTO restream_destinations (user_id, managed_stream_id, platform, name, server_url, stream_key, enabled, auto_start, quality_preset,
          custom_video_bitrate, custom_audio_bitrate, custom_fps, custom_encoder_preset, srt_latency_ms, srt_passphrase, channel_url, chat_relay, powerchat_relay, powerchat_count_views)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [userId, fields.managed_stream_id || null, fields.platform, fields.name || null, fields.server_url || null,
          fields.stream_key || null, fields.enabled ?? 1, fields.auto_start ?? 0,
          fields.quality_preset || 'auto',
@@ -2074,7 +2062,7 @@ async function upsertPlatformConnection(userId, platform, fields) {
     }
     const res = await run(`INSERT INTO platform_connections
             (user_id, platform, platform_user_id, platform_username, channel_url, access_token, refresh_token, token_expires_at, scope)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [userId, platform, fields.platform_user_id || null, fields.platform_username || null, fields.channel_url || null,
          fields.access_token || null, fields.refresh_token || null, fields.token_expires_at || null, fields.scope || null]);
     return await getPlatformConnectionById(res.lastInsertRowid);
@@ -2175,7 +2163,7 @@ async function getUserProfile(userId) {
     if (!user) return null;
     // The user's chat total is OpenVibe.Chat's; a synchronous peek answers the last good count, else
     // null while Chat refreshes in the background. The profile card omits the count when it is null.
-    user.messageCount = (async () => { try { return await require('../chat/chat-reads').userMessageCountPeek(userId); } catch { return null; } })();
+    user.messageCount = await (async () => { try { return await require('../chat/chat-reads').userMessageCountPeek(userId); } catch { return null; } })();
     user.followerCount = (await get('SELECT COUNT(*) as c FROM follows WHERE streamer_id = ?', [userId]))?.c || 0;
     user.followingCount = (await get('SELECT COUNT(*) as c FROM follows WHERE follower_id = ?', [userId]))?.c || 0;
     return user;
@@ -2212,7 +2200,7 @@ async function createTransaction({ from_user_id, to_user_id, stream_id, amount, 
     assertLiveLedger('transactions insert');
     return await run(
         `INSERT INTO transactions (from_user_id, to_user_id, stream_id, amount, type, status, message)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [from_user_id || null, to_user_id || null, stream_id || null, amount, type, status || 'completed', message || null]
     );
 }
@@ -2253,7 +2241,7 @@ async function createPaymentOrder({ user_id, provider, provider_ref = null, kind
     assertLiveLedger('payment_orders insert');
     const res = await run(
         `INSERT INTO payment_orders (user_id, provider, provider_ref, kind, amount_cents, currency, bucks, streamer_id, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [user_id, provider, provider_ref, kind, amount_cents, currency, bucks, streamer_id, status]
     );
     return await get('SELECT * FROM payment_orders WHERE id = ?', [res.lastInsertRowid]);
@@ -2305,7 +2293,7 @@ async function upsertSubscription({ subscriber_id, streamer_id, tier = 1, provid
         return await get('SELECT * FROM subscriptions WHERE id = ?', [existing.id]);
     }
     const res = await run(`INSERT INTO subscriptions (subscriber_id, streamer_id, tier, provider, provider_ref, price_cents, currency, status, is_active, current_period_end, auto_renew)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [subscriber_id, streamer_id, tier, provider, provider_ref, price_cents, currency, status, status === 'active' ? 1 : 0, current_period_end, auto_renew ? 1 : 0]);
     return await get('SELECT * FROM subscriptions WHERE id = ?', [res.lastInsertRowid]);
 }
@@ -2381,7 +2369,7 @@ async function getStreamControls(streamId) {
 async function createControl({ stream_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color }) {
     return await run(
         `INSERT INTO stream_controls (stream_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [stream_id, label, command, icon || 'fa-gamepad', control_type || 'button', key_binding || null, cooldown_ms || 100, sort_order || 0, btn_color || '', btn_bg || '', btn_border_color || '']
     );
 }
@@ -2398,7 +2386,7 @@ async function getControlConfig(configId) {
 
 async function createControlConfig({ user_id, name, description }) {
     return await run(
-        'INSERT INTO control_configs (user_id, name, description) VALUES (?, ?, ?)',
+        'INSERT INTO control_configs (user_id, name, description) VALUES (?, ?, ?) RETURNING id',
         [user_id, name, description || '']
     );
 }
@@ -2429,7 +2417,7 @@ async function getConfigButtons(configId) {
 async function createConfigButton({ config_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color }) {
     return await run(
         `INSERT INTO control_config_buttons (config_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [config_id, label, command, icon || 'fa-gamepad', control_type || 'button', key_binding || null, cooldown_ms || 100, sort_order || 0, btn_color || '', btn_bg || '', btn_border_color || '']
     );
 }
@@ -2494,7 +2482,7 @@ async function applyConfigToStream(configId, streamId) {
 async function createApiKey({ user_id, key_hash, label, permissions }) {
     return await run(
         `INSERT INTO api_keys (user_id, key_hash, label, permissions)
-         VALUES (?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?) RETURNING id`,
         [user_id, key_hash, label || 'Default', JSON.stringify(permissions || ['control', 'stream'])]
     );
 }
@@ -2508,7 +2496,7 @@ async function getApiKeyByHash(hash) {
 async function createCameraProfile({ user_id, stream_id, name, onvif_url, username, password_hash, pan_speed, tilt_speed, zoom_speed }) {
     return await run(
         `INSERT INTO camera_profiles (user_id, stream_id, name, onvif_url, username, password_hash, pan_speed, tilt_speed, zoom_speed)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [user_id, stream_id || null, name, onvif_url, username, password_hash, pan_speed || 0.5, tilt_speed || 0.5, zoom_speed || 0.5]
     );
 }
@@ -2545,7 +2533,7 @@ async function deleteCameraProfile(cameraId) {
 async function createCameraPreset({ camera_id, name, pan, tilt, zoom, preset_token }) {
     return await run(
         `INSERT INTO camera_presets (camera_id, name, pan, tilt, zoom, preset_token)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
         [camera_id, name, pan, tilt, zoom, preset_token || null]
     );
 }
@@ -2711,7 +2699,7 @@ async function deleteState(key) {
 
 async function createVerificationKey({ key, target_username, note, created_by }) {
     return await run(
-        `INSERT INTO verification_keys (key, target_username, note, created_by) VALUES (?, ?, ?, ?)`,
+        `INSERT INTO verification_keys (key, target_username, note, created_by) VALUES (?, ?, ?, ?) RETURNING id`,
         [key, target_username, note || '', created_by]
     );
 }
@@ -2721,7 +2709,7 @@ async function getVerificationKeyByKey(key) {
 }
 
 async function getVerificationKeyByUsername(username) {
-    return await get("SELECT * FROM verification_keys WHERE target_username = ? COLLATE NOCASE AND status = 'active'", [username]);
+    return await get("SELECT * FROM verification_keys WHERE lower(target_username) = lower(?) AND status = 'active'", [username]);
 }
 
 async function getAllVerificationKeys() {
@@ -2746,7 +2734,7 @@ async function revokeVerificationKey(id) {
 }
 
 async function isUsernameReserved(username) {
-    const vk = await get("SELECT id FROM verification_keys WHERE target_username = ? COLLATE NOCASE AND status = 'active'", [username]);
+    const vk = await get("SELECT id FROM verification_keys WHERE lower(target_username) = lower(?) AND status = 'active'", [username]);
     return !!vk;
 }
 
@@ -2878,7 +2866,7 @@ async function createChannelAiBot({ channel_user_id, username, display_name, ava
     const info = await run(
         `INSERT INTO channel_ai_bots
             (channel_user_id, username, display_name, avatar_color, source, cloned_from_kind, cloned_from_ref, persona_json, brain_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [channel_user_id, username, display_name || username, avatar_color || '#8a8aff', source,
          cloned_from_kind, cloned_from_ref,
          typeof persona_json === 'string' ? persona_json : JSON.stringify(persona_json || {}),
@@ -2893,7 +2881,7 @@ async function getChannelAiBot(id) {
 
 // ── AI viewers v3: threads + activity log ───────────────────
 async function createAiViewerThread({ channel_user_id, stream_id = null, kind, participants, topic = null, awaiting = null }) {
-    const r = await run('INSERT INTO ai_viewer_threads (channel_user_id, stream_id, kind, participants_json, topic, awaiting) VALUES (?, ?, ?, ?, ?, ?)',
+    const r = await run('INSERT INTO ai_viewer_threads (channel_user_id, stream_id, kind, participants_json, topic, awaiting) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
         [channel_user_id, stream_id, kind, JSON.stringify(participants || []), topic, awaiting]);
     return await get('SELECT * FROM ai_viewer_threads WHERE id = ?', [r.lastInsertRowid]);
 }
@@ -2918,7 +2906,7 @@ async function closeStaleAiViewerThreads(channelUserId, idleSec, maxTurns) {
 async function closeAllAiViewerThreads(channelUserId) { return (await run("UPDATE ai_viewer_threads SET state = 'closed', awaiting = NULL, updated_at = ov_now() WHERE channel_user_id = ? AND state = 'open'", [channelUserId])).changes; }
 async function addAiViewerLog(row) {
     return await run(`INSERT INTO ai_viewer_log (channel_user_id, stream_id, event, bot_username, target, thread_id, chat_message_id, text, reason, tokens_in, tokens_cached, tokens_out, cost_usd, model)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [row.channel_user_id, row.stream_id || null, row.event, row.bot_username || null, row.target || null, row.thread_id || null, row.chat_message_id || null,
          row.text == null ? null : String(row.text).slice(0, 600), row.reason == null ? null : String(row.reason).slice(0, 300),
          row.tokens_in || null, row.tokens_cached || null, row.tokens_out || null, row.cost_usd || null, row.model || null]);
@@ -2933,8 +2921,8 @@ async function getAiViewerLog(channelUserId, { afterId = 0, limit = 50, streamId
 }
 async function pruneAiViewerLog(days = 7) { return (await run("DELETE FROM ai_viewer_log WHERE created_at < datetime('now', ?)", [`-${days} days`])).changes; }
 async function getAiViewerLogStats(channelUserId, sinceMin = 60) {
-    return await get(`SELECT SUM(CASE WHEN event = 'line' THEN 1 ELSE 0 END) AS lines, SUM(CASE WHEN event = 'tick' THEN 1 ELSE 0 END) AS ticks,
-        SUM(CASE WHEN event = 'skip' THEN 1 ELSE 0 END) AS skips, COALESCE(SUM(cost_usd),0) AS cost_usd, COALESCE(SUM(tokens_in),0) AS tokens_in, COALESCE(SUM(tokens_cached),0) AS tokens_cached
+    return await get(`SELECT SUM(CASE WHEN event = 'line' THEN 1 ELSE 0 END)::float8 AS lines, SUM(CASE WHEN event = 'tick' THEN 1 ELSE 0 END)::float8 AS ticks,
+        SUM(CASE WHEN event = 'skip' THEN 1 ELSE 0 END)::float8 AS skips, COALESCE(SUM(cost_usd)::float8,0) AS cost_usd, COALESCE(SUM(tokens_in)::float8,0) AS tokens_in, COALESCE(SUM(tokens_cached)::float8,0) AS tokens_cached
         FROM ai_viewer_log WHERE channel_user_id = ? AND created_at > datetime('now', ?)`, [channelUserId, `-${sinceMin} minutes`]);
 }
 async function getChannelAiBots(channelUserId, { activeOnly = false } = {}) {
@@ -2996,7 +2984,7 @@ async function deductOpenCoins(userId, amount) {
 async function createCoinTransaction({ user_id, stream_id, amount, type, reward_id, message }) {
     return await run(
         `INSERT INTO coin_transactions (user_id, stream_id, amount, type, reward_id, message)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
         [user_id, stream_id || null, amount, type, reward_id || null, message || null]
     );
 }
@@ -3011,7 +2999,7 @@ async function getCoinTransactions(userId, limit = 50) {
 async function createCoinReward({ streamer_id, title, description, cost, icon, color, cooldown_seconds, max_per_stream, requires_input, is_global, sort_order }) {
     return await run(
         `INSERT INTO coin_rewards (streamer_id, title, description, cost, icon, color, cooldown_seconds, max_per_stream, requires_input, is_global, sort_order)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [streamer_id, title, description || '', cost || 100, icon || 'fa-star', color || '#8b5cf6',
          cooldown_seconds || 0, max_per_stream || 0, requires_input ? 1 : 0, is_global ? 1 : 0, sort_order || 0]
     );
@@ -3046,7 +3034,7 @@ async function deleteCoinReward(id) {
 async function createCoinRedemption({ reward_id, user_id, stream_id, user_input }) {
     return await run(
         `INSERT INTO coin_redemptions (reward_id, user_id, stream_id, user_input)
-         VALUES (?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?) RETURNING id`,
         [reward_id, user_id, stream_id || null, user_input || null]
     );
 }
@@ -3081,7 +3069,7 @@ async function upsertWatchTime(userId, streamId) {
         );
     }
     return await run(
-        'INSERT INTO watch_time (user_id, stream_id, minutes_watched) VALUES (?, ?, 1)',
+        'INSERT INTO watch_time (user_id, stream_id, minutes_watched) VALUES (?, ?, 1) RETURNING id',
         [userId, streamId]
     );
 }
@@ -3092,7 +3080,7 @@ async function getWatchTime(userId, streamId) {
 }
 
 async function getTotalWatchTime(userId) {
-    const row = await get('SELECT SUM(minutes_watched) as total FROM watch_time WHERE user_id = ?', [userId]);
+    const row = await get('SELECT SUM(minutes_watched)::float8 as total FROM watch_time WHERE user_id = ?', [userId]);
     return row ? (row.total || 0) : 0;
 }
 
@@ -3144,7 +3132,7 @@ async function createMediaRequest({ streamer_id, stream_id, user_id, username, i
         `INSERT INTO media_requests (
             streamer_id, stream_id, user_id, username, input, canonical_url, embed_url,
             provider, title, thumbnail_url, duration_seconds, cost, queue_position, currency, status, charge_state
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [
             streamer_id,
             stream_id || null,
@@ -3223,12 +3211,9 @@ async function updateMediaRequest(id, fields = {}) {
 
 async function renormalizePendingMediaRequestPositions(streamerId) {
     const rows = await all(`SELECT id FROM media_requests WHERE streamer_id = ? AND status = 'pending' ORDER BY queue_position ASC, requested_at ASC, id ASC`, [streamerId]);
-    const tx = getDb().transaction((list) => {
-        list.forEach((row, idx) => {
-            run('UPDATE media_requests SET queue_position = ? WHERE id = ?', [idx + 1, row.id]);
-        });
+    await getDb().tx(async () => {
+        for (const [idx, row] of rows.entries()) await run('UPDATE media_requests SET queue_position = ? WHERE id = ?', [idx + 1, row.id]);
     });
-    await tx(rows);
 }
 
 // ── Comments ─────────────────────────────────────────────────
@@ -3349,7 +3334,7 @@ async function isIpApproved(channelId, ip) {
  */
 async function approveIp(channelId, ip, approvedBy = null, source = 'auto') {
     return await run(
-        'INSERT INTO approved_ips (channel_id, ip_address, approved_by, source) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
+        'INSERT INTO approved_ips (channel_id, ip_address, approved_by, source) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id',
         [channelId, ip, approvedBy, source]
     );
 }
@@ -3415,11 +3400,13 @@ async function logIp({ userId, anonId, ip, action = 'chat', geo, userAgent }) {
  */
 async function getIpsByUser(userId) {
     return await all(`
-        SELECT ip_address, geo_country, geo_region, geo_city, geo_isp, geo_org, geo_ll,
+        SELECT ip_address, (array_agg(geo_country ORDER BY created_at DESC))[1] AS geo_country, (array_agg(geo_region ORDER BY created_at DESC))[1] AS geo_region,
+               (array_agg(geo_city ORDER BY created_at DESC))[1] AS geo_city, (array_agg(geo_isp ORDER BY created_at DESC))[1] AS geo_isp, (array_agg(geo_org ORDER BY created_at DESC))[1] AS geo_org,
+               (array_agg(geo_ll ORDER BY created_at DESC))[1] AS geo_ll,
                COUNT(*) as hit_count,
                MIN(created_at) as first_seen,
                MAX(created_at) as last_seen,
-               GROUP_CONCAT(DISTINCT action) as actions
+               string_agg(DISTINCT action, ',') as actions
         FROM ip_log
         WHERE user_id = ?
         GROUP BY ip_address
@@ -3432,16 +3419,18 @@ async function getIpsByUser(userId) {
  */
 async function getUsersByIp(ip) {
     return await all(`
-        SELECT il.user_id, il.anon_id,
-               u.username, u.display_name, u.avatar_url, u.role, u.is_banned, u.ban_reason, u.created_at as user_created_at,
+        SELECT MAX(il.user_id) AS user_id, (array_agg(il.anon_id ORDER BY il.created_at DESC))[1] AS anon_id,
+               MAX(u.username) AS username, MAX(u.display_name) AS display_name, MAX(u.avatar_url) AS avatar_url, MAX(u.role) AS role,
+               MAX(u.is_banned) AS is_banned, MAX(u.ban_reason) AS ban_reason, MAX(u.created_at) as user_created_at,
                COUNT(*) as hit_count,
                MIN(il.created_at) as first_seen,
                MAX(il.created_at) as last_seen,
-               GROUP_CONCAT(DISTINCT il.action) as actions
+               string_agg(DISTINCT il.action, ',') as actions
         FROM ip_log il
         LEFT JOIN users u ON il.user_id = u.id
         WHERE il.ip_address = ?
-        GROUP BY COALESCE(il.user_id, il.anon_id)
+        -- One row per person: a signed-in user's visits, else an anonymous visitor's (the user fields are one user's).
+        GROUP BY COALESCE(il.user_id::text, 'anon:' || il.anon_id)
         ORDER BY last_seen DESC
     `, [ip]);
 }
@@ -3455,13 +3444,13 @@ async function getLinkedAccounts(userId) {
         SELECT u.id, u.username, u.display_name, u.avatar_url, u.role, u.is_banned, u.ban_reason,
                u.created_at,
                COUNT(DISTINCT shared.ip_address) as shared_ip_count,
-               GROUP_CONCAT(DISTINCT shared.ip_address) as shared_ips,
+               string_agg(DISTINCT shared.ip_address, ',') as shared_ips,
                MAX(shared.created_at) as last_shared_activity
         FROM ip_log mine
         JOIN ip_log shared ON mine.ip_address = shared.ip_address AND shared.user_id != ?
         JOIN users u ON shared.user_id = u.id
         WHERE mine.user_id = ?
-        GROUP BY shared.user_id
+        GROUP BY u.id
         ORDER BY shared_ip_count DESC, last_shared_activity DESC
     `, [userId, userId]);
 }
@@ -3471,16 +3460,17 @@ async function getLinkedAccounts(userId) {
  */
 async function getLinkedAccountsByAnon(anonId) {
     return await all(`
-        SELECT u.id, u.username, u.display_name, u.avatar_url, u.role, u.is_banned, u.ban_reason,
-               u.created_at,
+        SELECT MAX(u.id) AS id, MAX(u.username) AS username, MAX(u.display_name) AS display_name, MAX(u.avatar_url) AS avatar_url,
+               MAX(u.role) AS role, MAX(u.is_banned) AS is_banned, MAX(u.ban_reason) AS ban_reason,
+               MAX(u.created_at) AS created_at,
                COUNT(DISTINCT shared.ip_address) as shared_ip_count,
-               GROUP_CONCAT(DISTINCT shared.ip_address) as shared_ips,
+               string_agg(DISTINCT shared.ip_address, ',') as shared_ips,
                MAX(shared.created_at) as last_shared_activity
         FROM ip_log mine
         JOIN ip_log shared ON mine.ip_address = shared.ip_address AND (shared.user_id IS NOT NULL OR shared.anon_id != ?)
         LEFT JOIN users u ON shared.user_id = u.id
         WHERE mine.anon_id = ?
-        GROUP BY COALESCE(shared.user_id, shared.anon_id)
+        GROUP BY COALESCE(shared.user_id::text, 'anon:' || shared.anon_id)
         ORDER BY shared_ip_count DESC, last_shared_activity DESC
     `, [anonId, anonId]);
 }
@@ -3564,7 +3554,7 @@ async function banAllAccountsOnIp(ip, { reason, bannedBy, expires }) {
 async function insertViewerSnapshot(streamId, viewerCount, chatMessages5m) {
     return await run(
         `INSERT INTO viewer_snapshots (stream_id, viewer_count, chat_messages_5m)
-         VALUES (?, ?, ?)`,
+         VALUES (?, ?, ?) RETURNING id`,
         [streamId, viewerCount, chatMessages5m || 0]
     );
 }
@@ -3583,7 +3573,7 @@ async function computeAndCacheStreamAnalytics(streamId) {
 
     // Average viewers from snapshots
     const avgRow = await get(
-        'SELECT AVG(viewer_count) as avg_vc FROM viewer_snapshots WHERE stream_id = ?', [streamId]
+        'SELECT AVG(viewer_count)::float8 as avg_vc FROM viewer_snapshots WHERE stream_id = ?', [streamId]
     );
     const avgViewers = avgRow?.avg_vc || 0;
 
@@ -3596,7 +3586,8 @@ async function computeAndCacheStreamAnalytics(streamId) {
     const prior = await get('SELECT unique_chatters, total_messages FROM stream_analytics WHERE stream_id = ?', [streamId]) || {};
     const uniqueChatters = Number(prior.unique_chatters) || 0;
     const totalMessages = Number(prior.total_messages) || 0;
-    setImmediate(() => {
+    // After the caller's transaction commits (at once outside one): the write-back must not join a finished transaction.
+    getDb().afterCommit(() => {
         try {
             require('../chat/chat-reads').streamStats(streamId)
                 .then(async (t) => { if (t) await setStreamAnalyticsChatTotals(streamId, t.chatters, t.messages); })
@@ -3606,7 +3597,7 @@ async function computeAndCacheStreamAnalytics(streamId) {
 
     // Total watch minutes
     const watchRow = await get(
-        'SELECT SUM(minutes_watched) as total FROM watch_time WHERE stream_id = ?', [streamId]
+        'SELECT SUM(minutes_watched)::float8 as total FROM watch_time WHERE stream_id = ?', [streamId]
     );
     const totalWatchMinutes = watchRow?.total || 0;
 
@@ -3614,11 +3605,11 @@ async function computeAndCacheStreamAnalytics(streamId) {
     // stream ends, so it keeps the last count it has and asks Media right after (lookups.js
     // refreshStreamClipCount writes the answer back with setStreamAnalyticsClipCount).
     const clipsCreated = (await get('SELECT clips_created FROM stream_analytics WHERE stream_id = ?', [streamId]))?.clips_created || 0;
-    setImmediate(() => { try { require('../media-proxy/lookups').refreshStreamClipCount(streamId).catch(() => {}); } catch { /* */ } });
+    getDb().afterCommit(() => { try { require('../media-proxy/lookups').refreshStreamClipCount(streamId).catch(() => {}); } catch { /* */ } });
 
     // Coins earned during this stream
     const coinsRow = await get(
-        'SELECT SUM(coins_earned) as total FROM watch_time WHERE stream_id = ?', [streamId]
+        'SELECT SUM(coins_earned)::float8 as total FROM watch_time WHERE stream_id = ?', [streamId]
     );
     const coinsEarned = coinsRow?.total || 0;
 
@@ -3700,14 +3691,14 @@ async function getChannelAnalyticsSummary(userId, days) {
     // Aggregate stats
     const agg = await get(`
         SELECT COUNT(*) as total_streams,
-               SUM(s.duration_seconds) as total_duration,
+               SUM(s.duration_seconds)::float8 as total_duration,
                MAX(s.peak_viewers) as all_time_peak,
-               AVG(sa.avg_viewers) as avg_viewers_per_stream,
-               SUM(sa.total_messages) as total_messages,
-               SUM(sa.unique_chatters) as total_unique_chatters,
-               SUM(sa.total_watch_minutes) as total_watch_minutes,
-               SUM(sa.new_followers) as total_new_followers,
-               SUM(sa.clips_created) as total_clips
+               AVG(sa.avg_viewers)::float8 as avg_viewers_per_stream,
+               SUM(sa.total_messages)::float8 as total_messages,
+               SUM(sa.unique_chatters)::float8 as total_unique_chatters,
+               SUM(sa.total_watch_minutes)::float8 as total_watch_minutes,
+               SUM(sa.new_followers)::float8 as total_new_followers,
+               SUM(sa.clips_created)::float8 as total_clips
         FROM streams s
         LEFT JOIN stream_analytics sa ON sa.stream_id = s.id
         WHERE s.user_id = ? AND s.started_at >= ? AND s.duration_seconds > 0
@@ -3716,7 +3707,7 @@ async function getChannelAnalyticsSummary(userId, days) {
     // All-time totals
     const allTime = await get(`
         SELECT COUNT(*) as total_streams,
-               SUM(duration_seconds) as total_duration,
+               SUM(duration_seconds)::float8 as total_duration,
                MAX(peak_viewers) as peak_viewers
         FROM streams WHERE user_id = ? AND duration_seconds > 0
     `, [userId]);
@@ -3837,7 +3828,7 @@ async function getActiveDonationGoals(userId) {
 async function getDonationGoalById(id) { return await get('SELECT * FROM donation_goals WHERE id = ?', [id]); }
 async function createDonationGoal(userId, { title, target_amount, image_url = null, media_type = null }) {
     const r = await get('SELECT COALESCE(MAX(sort_order),-1)+1 AS n FROM donation_goals WHERE user_id = ?', [userId]);
-    return await run('INSERT INTO donation_goals (user_id, title, target_amount, image_url, media_type, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
+    return await run('INSERT INTO donation_goals (user_id, title, target_amount, image_url, media_type, sort_order) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
         [userId, title, target_amount, image_url, media_type, r ? r.n : 0]);
 }
 async function updateDonationGoal(id, userId, fields) {

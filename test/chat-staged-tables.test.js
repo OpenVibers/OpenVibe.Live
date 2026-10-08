@@ -1,14 +1,12 @@
 'use strict';
 
-// The staged chat tables are OpenVibe.Chat's (roadmap T3). Migration 005 dropped seven Live copies
-// in N+2; migration 006 drops the unread emotes copy in N+3. No server/ or scripts/ code may read
-// or write any of them. The N-1 release fb3957f no longer reads Live's emotes table.
+// The staged chat tables are OpenVibe.Chat's (roadmap T3). On SQLite, migrations 005 and 006 dropped Live's copies; on
+// PostgreSQL (plan T4) they never exist (migrations/0002_live.sql leaves them out). No server/ or scripts/ code may
+// read or write any of them.
 
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
-const Database = require('better-sqlite3');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -66,27 +64,14 @@ for (const [src, regexes, n] of [
     ["db.all('SELECT * FROM stream_timeline_events WHERE stream_id = ?')", [READ_SQL, READ_REGISTRY], 0],
 ]) assert.strictEqual(findReads(src, regexes).length, n, `scanner on: ${src}`);
 
-// Start with the old table so boot must drop it. A separate in-memory schema check covers fresh DBs.
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-chat-staged-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
-const legacy = new Database(process.env.DB_PATH);
-legacy.exec('CREATE TABLE emotes (id INTEGER PRIMARY KEY, code TEXT)');
-legacy.close();
+(async () => {
 const db = require('../server/db/database');
-db.initDb();
+await db.initDb();
 const d = db.getDb();
 for (const t of DROPPED) {
-    assert.ok(!d.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(t),
-        `${t} still exists after boot`);
+    assert.ok(!await d.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(t),
+        `${t} exists in Live's migrated database`);
 }
-const rec = d.prepare('SELECT mode FROM schema_migrations WHERE id = ?').get('005_drop_chat_staged_tables');
-assert.ok(rec, 'the 005_drop_chat_staged_tables migration is not recorded');
-assert.strictEqual(d.prepare('SELECT mode FROM schema_migrations WHERE id = ?').get('006_drop_emotes').mode, 'applied');
-const fresh = new Database(':memory:');
-fresh.exec(fs.readFileSync(path.join(ROOT, 'server', 'db', 'schema.sql'), 'utf8'));
-assert.ok(!fresh.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'emotes'").get(),
-    'fresh schema must not create emotes');
-fresh.close();
 
 const writes = [];
 const reads = [];
@@ -103,5 +88,6 @@ for (const file of [...walk(path.join(ROOT, 'server')), ...walk(path.join(ROOT, 
 assert.deepStrictEqual(writes, [], `writes to Chat's dropped tables (OpenVibe.Chat owns them; write through Chat's API instead):\n${writes.join('\n')}`);
 assert.deepStrictEqual(reads, [], `reads of Chat's dropped tables (read them through server/chat/moderation-client.js, or Chat's own API):\n${reads.join('\n')}`);
 assert.deepStrictEqual(schemaAccess, [], `schema access to dropped emotes:\n${schemaAccess.join('\n')}`);
-console.log(`chat staged tables: 005 recorded (${rec.mode}), 006 applied — ${DROPPED.length} tables absent; no reads or writes`);
+console.log(`chat staged tables: ${DROPPED.length} tables absent from the migrated database; no reads or writes`);
 process.exit(0);
+})().catch((e) => { console.error(e); process.exit(1); });
