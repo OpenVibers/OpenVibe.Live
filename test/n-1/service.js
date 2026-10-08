@@ -50,6 +50,28 @@ const SEED = `
     db.close();
 `;
 
+// A release on PostgreSQL (plan T4: migrations/0002_live.sql): with no DATABASE_URL it opens an embedded PGlite database
+// under DATA_DIR, which the seed and then the drill-mode boot open one after the other (never both at once). On SQLite a
+// boot backfill gave each streamer a stream slot; this seed creates the slot itself.
+const isPg = (dir) => fs.existsSync(path.join(dir, 'migrations', '0002_live.sql'));
+const SEED_PG = `
+    console.log = () => {}; console.warn = () => {};
+    const db = require('./server/db/database');
+    (async () => {
+        await db.initDb();
+        const star = Number((await db.createUser({ username: 'n1star', display_name: 'N1 Star', password_hash: 'x', stream_key: 'n1starkey' })).lastInsertRowid);
+        const fan = Number((await db.createUser({ username: 'n1fan', display_name: 'N1 Fan', password_hash: 'x', stream_key: 'n1fankey' })).lastInsertRowid);
+        await db.run("UPDATE users SET role = 'streamer', bio = 'Seeded for the N-1 test' WHERE id = ?", [star]);
+        await db.ensureChannel(star); await db.ensureChannel(fan);
+        const slot = Number((await db.run("INSERT INTO managed_streams (user_id, title, category, protocol, stream_key) VALUES (?, 'N1 Star', 'tech', 'webrtc', 'n1starkey') RETURNING id", [star])).lastInsertRowid);
+        await db.run("INSERT INTO streams (user_id, managed_stream_id, title, category, protocol, is_live, viewer_count, started_at, last_heartbeat) VALUES (?, ?, 'N-1 live stream', 'tech', 'webrtc', 1, 2, datetime('now', '-10 minutes'), ov_now())", [star, slot]);
+        await db.run("INSERT INTO streams (user_id, managed_stream_id, title, category, protocol, is_live, started_at, ended_at) VALUES (?, ?, 'N-1 past stream', 'irl', 'webrtc', 0, datetime('now', '-2 days'), datetime('now', '-2 days', '+1 hour'))", [star, slot]);
+        await db.run('INSERT INTO follows (follower_id, streamer_id) VALUES (?, ?)', [fan, star]);
+        await db.close();
+        process.exit(0);
+    })().catch((err) => { process.stderr.write(String(err.stack || err)); process.exit(1); });
+`;
+
 module.exports = {
     service: 'live',
 
@@ -89,7 +111,7 @@ module.exports = {
 
     /** Seeds a database with the release in `dir` (its initDb migrates first). */
     seed({ dir, dbPath, dataDir }) {
-        const r = spawnSync(process.execPath, ['-e', SEED], { cwd: dir, encoding: 'utf8', timeout: 120000, env: baseEnv({ DB_PATH: dbPath, DATA_DIR: dataDir }) });
+        const r = spawnSync(process.execPath, ['-e', isPg(dir) ? SEED_PG : SEED], { cwd: dir, encoding: 'utf8', timeout: 120000, env: baseEnv({ DB_PATH: dbPath, DATA_DIR: dataDir }) });
         if (r.status !== 0) throw new Error(`seeding failed:\n${String(r.stderr || '').slice(-2000)}`);
     },
 
