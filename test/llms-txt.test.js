@@ -9,24 +9,18 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
 
-const tmp = path.join(os.tmpdir(), `ov-llms-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 console.warn = () => {};
 console.error = () => {};
 
-require('../server/db/database').initDb();
+const db = require('../server/db/database');
 const express = require('express');
 const seo = require('../server/seo');
-const app = express();
-seo.register(app);
-app.get('*', (req, res) => res.status(404).type('html').send('<html>shell</html>'));
 
 let failures = 0;
 async function check(name, fn) {
@@ -34,7 +28,14 @@ async function check(name, fn) {
     catch (e) { failures++; quiet('  ✗', name, '\n     ', e.message); }
 }
 
-const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
+async function main() {
+    await db.initDb();
+    const app = express();
+    seo.register(app);
+    app.get('*', (req, res) => res.status(404).type('html').send('<html>shell</html>'));
+
+    const server = http.createServer(app);
+    await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
     const base = `http://127.0.0.1:${server.address().port}`;
     const res = await fetch(`${base}/llms.txt`);
     const text = await res.text();
@@ -76,8 +77,8 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
     });
 
     server.close();
-    try { fs.unlinkSync(tmp); } catch { /* */ }
-    for (const ext of ['-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
     quiet(failures ? `\n${failures} check(s) failed` : '\nllms.txt: all checks passed');
     process.exit(failures ? 1 : 0);
-});
+}
+
+main().catch((e) => { quiet(e.stack || e); process.exit(1); });

@@ -252,12 +252,11 @@ const SOURCES = {
     },
     recaps: {
         async load(offset, n, { sort, since }) {
-            try { require('../recap/recap').ensureTable(); } catch { /* */ }
             const where = ['r.ai = 1', 'COALESCE(u.is_banned, 0) = 0'];
             const params = [];
             if (since) { where.push('datetime(r.created_at) >= datetime(?)'); params.push(since); }
             const order = sort === 'top'
-                ? "COALESCE(json_extract(r.json, '$.stream.peak_viewers'), 0) DESC, r.created_at DESC, r.stream_id DESC"
+                ? "COALESCE((r.json::jsonb #>> '{stream,peak_viewers}')::bigint, 0) DESC, r.created_at DESC, r.stream_id DESC"
                 : 'r.created_at DESC, r.stream_id DESC';
             const from = `FROM stream_recaps r JOIN users u ON u.id = r.user_id WHERE ${where.join(' AND ')}`;
             const rows = await db.all(`SELECT r.stream_id, r.user_id, r.json, r.created_at ${from} ORDER BY ${order} LIMIT ? OFFSET ?`, [...params, n, offset]) || [];
@@ -393,11 +392,11 @@ async function page(feed, query = {}) {
         const more = rows.length > 0 && (total != null ? offset + rows.length < total : rows.length >= n);
         heads.push({
             name: r.name, i: 0, more,
-            entries: rows.map((row) => {
+            entries: await Promise.all(rows.map(async (row) => {
                 let item = null;
-                try { item = src.item(row); } catch (err) { console.warn(`[Feed] ${r.name} row skipped:`, err.message); }
+                try { item = await src.item(row); } catch (err) { console.warn(`[Feed] ${r.name} row skipped:`, err.message); }
                 return item ? { item, score: src.score(item) } : null;
-            }),
+            })),
         });
     }
 

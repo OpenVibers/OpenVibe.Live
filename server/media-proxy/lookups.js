@@ -75,7 +75,7 @@ function withAiState(row, state) {
     }
     return out;
 }
-const aiState = (fn, id) => { try { return fn(id) || null; } catch { return null; } };
+const aiState = async (fn, id) => { try { return (await fn(id)) || null; } catch { return null; } };
 
 // ── VODs ─────────────────────────────────────────────────────────────────────
 
@@ -173,7 +173,8 @@ async function userVods(userId, { includePrivate = false, limit = 20 } = {}) {
     let rows;
     try { rows = rowsOf(await media.listVods({ user_id: userId, include_private: includePrivate ? 1 : undefined, limit }, { timeoutMs: TIMEOUT_MS }), 'vods'); }
     catch { return []; }
-    return rows.filter((v) => finished(v) && (includePrivate || isPublic(v))).map((v) => withAiState(v, aiState(db.getVodAiState, v.id)));
+    const keep = rows.filter((v) => finished(v) && (includePrivate || isPublic(v)));
+    return Promise.all(keep.map(async (v) => withAiState(v, await aiState(db.getVodAiState, v.id))));
 }
 
 /** Every finished VOD, and the public ones (the admin dashboard). null when Media did not answer. */
@@ -193,7 +194,8 @@ async function userClips(userId, { includePrivate = false, limit = 20 } = {}) {
     let rows;
     try { rows = rowsOf(await media.listClips({ user_id: userId, include_private: includePrivate ? 1 : undefined, limit }, { timeoutMs: TIMEOUT_MS }), 'clips'); }
     catch { return []; }
-    return rows.filter((c) => includePrivate || isPublic(c)).map((c) => withAiState(c, aiState(db.getClipAiState, c.id)));
+    const keep = rows.filter((c) => includePrivate || isPublic(c));
+    return Promise.all(keep.map(async (c) => withAiState(c, await aiState(db.getClipAiState, c.id))));
 }
 
 /** Clips this user took of other streamers: the Clips Taken tab badge, counted like the tab lists them. */
@@ -207,8 +209,8 @@ async function countClipsTaken(userId, { includePrivate = false } = {}) {
 /** Every clip of one stream (by the stream or by its VOD), any visibility. An internal signal, never listed. */
 async function streamClips(streamId, vodId) {
     const asks = [];
-    if (streamId) asks.push(await media.listClips({ stream_id: streamId, include_private: 1, limit: 500 }, { timeoutMs: TIMEOUT_MS }));
-    if (vodId) asks.push(await media.listClips({ vod_id: vodId, include_private: 1, limit: 500 }, { timeoutMs: TIMEOUT_MS }));
+    if (streamId) asks.push(media.listClips({ stream_id: streamId, include_private: 1, limit: 500 }, { timeoutMs: TIMEOUT_MS }));
+    if (vodId) asks.push(media.listClips({ vod_id: vodId, include_private: 1, limit: 500 }, { timeoutMs: TIMEOUT_MS }));
     const byId = new Map();
     for (const r of await Promise.all(asks.map((p) => p.catch(() => null)))) {
         for (const c of rowsOf(r, 'clips')) if (c && c.id != null) byId.set(c.id, c);

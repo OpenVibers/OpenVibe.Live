@@ -16,21 +16,7 @@ const config = require('../config');
 
 const NAME_RE = /^[A-Za-z0-9_]{3,24}$/;
 const LOOKUP_TTL_MS = 60_000;
-let ready = false;
 const _lookups = new Map(); // lowercased name → { at, value: record|null }
-
-async function ensureSchema() {
-    if (ready) return;
-    await db.run(`CREATE TABLE IF NOT EXISTS username_history (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id      INTEGER NOT NULL,
-        old_username TEXT NOT NULL,
-        new_username TEXT NOT NULL,
-        changed_at   DATETIME DEFAULT ov_now()
-    )`);
-    await db.run('CREATE INDEX IF NOT EXISTS idx_username_history_old ON username_history(lower(old_username))');
-    ready = true;
-}
 
 /**
  * Rename a Live user to the Network's name for them, unless only the case differs or another Live
@@ -40,9 +26,8 @@ async function syncUsername(userId, newName) {
     if (!userId || !NAME_RE.test(String(newName || ''))) return false;
     const user = await db.get('SELECT id, username FROM users WHERE id = ?', [userId]);
     if (!user || String(user.username || '').toLowerCase() === newName.toLowerCase()) return false;
-    const clash = await db.get('SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id != ?', [newName, userId]);
+    const clash = await db.get('SELECT id FROM users WHERE lower(username) = lower(?) AND id != ?', [newName, userId]);
     if (clash) { console.warn(`[Usernames] ${user.username} → ${newName}: another Live user holds that name; not renamed`); return false; }
-    await ensureSchema();
     await db.getDb().tx(async () => {
         await db.run('INSERT INTO username_history (user_id, old_username, new_username) VALUES (?, ?, ?)', [user.id, user.username, newName]);
         await db.run('UPDATE users SET username = ? WHERE id = ?', [newName, user.id]);
@@ -54,10 +39,9 @@ async function syncUsername(userId, newName) {
 /** The current Live username for an old one, from Live's own history (null when unknown or reused). */
 async function localRenamedTo(name) {
     if (!NAME_RE.test(String(name || ''))) return null;
-    await ensureSchema();
-    if (await db.get('SELECT 1 AS x FROM users WHERE username = ? COLLATE NOCASE', [name])) return null;
+    if (await db.get('SELECT 1 AS x FROM users WHERE lower(username) = lower(?)', [name])) return null;
     const row = await db.get(`SELECT u.username FROM username_history h JOIN users u ON u.id = h.user_id
-        WHERE h.old_username = ? COLLATE NOCASE ORDER BY h.id DESC LIMIT 1`, [name]);
+        WHERE lower(h.old_username) = lower(?) ORDER BY h.id DESC LIMIT 1`, [name]);
     return row ? row.username : null;
 }
 
@@ -98,6 +82,6 @@ async function resolveUnknownChannel(name, opts = {}) {
     return now ? now.username : null;
 }
 
-function _reset() { _lookups.clear(); ready = false; }
+function _reset() { _lookups.clear(); }
 
-module.exports = { syncUsername, localRenamedTo, resolveUnknownChannel, ensureSchema, _reset, NAME_RE };
+module.exports = { syncUsername, localRenamedTo, resolveUnknownChannel, _reset, NAME_RE };

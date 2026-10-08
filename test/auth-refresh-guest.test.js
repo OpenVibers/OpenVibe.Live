@@ -10,12 +10,9 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
 
-const tmp = path.join(os.tmpdir(), `ov-auth-refresh-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
@@ -23,7 +20,6 @@ console.warn = () => {};
 console.error = () => {};
 
 const db = require('../server/db/database');
-db.initDb();
 const config = require('../server/config');
 const express = require('express');
 const cookieParser = require('cookie-parser');
@@ -31,6 +27,7 @@ const cookieParser = require('cookie-parser');
 function listen(server) { return new Promise((ok) => server.listen(0, '127.0.0.1', () => ok(server.address().port))); }
 
 (async () => {
+    await db.initDb();
     // The Network's token endpoint: rejects every refresh token it is shown.
     let grants = 0;
     const network = http.createServer((req, res) => {
@@ -84,7 +81,5 @@ function listen(server) { return new Promise((ok) => server.listen(0, '127.0.0.1
         quiet('auth refresh: a guest gets 200 { access_token: null }, a rejected refresh cookie 401');
     } finally {
         server.close(); network.close();
-        try { db.getDb().close(); } catch { /* */ }
-        for (const f of [tmp, `${tmp}-wal`, `${tmp}-shm`]) { try { fs.unlinkSync(f); } catch { /* */ } }
     }
 })().catch((e) => { console.log = quiet; process.stderr.write(`${e.stack || e}\n`); process.exit(1); });

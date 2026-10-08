@@ -30,16 +30,6 @@ const DAY_MS = 86400000;
 let modulesClient = null;
 const stats = { written: 0, unchanged: 0, failed: 0, lastError: null, lastScanAt: null };
 
-function ensureSchema() {
-    db.getDb().exec(`CREATE TABLE IF NOT EXISTS module_summary_pushes (
-        user_id INTEGER NOT NULL,
-        namespace TEXT NOT NULL,
-        hash TEXT NOT NULL,
-        pushed_at DATETIME DEFAULT ov_now(),
-        PRIMARY KEY (user_id, namespace)
-    )`);
-}
-
 // SQLite ov_now() is UTC without a zone ('2026-09-23 01:30:00').
 function toIso(v) {
     if (!v) return null;
@@ -56,8 +46,8 @@ async function summarize(userId, { now = Date.now() } = {}) {
     const followers = (await d.prepare('SELECT COUNT(*) AS n FROM follows WHERE streamer_id = ?').get(userId)).n;
     const ever = await d.prepare('SELECT COUNT(*) AS n, MAX(started_at) AS last FROM streams WHERE user_id = ?').get(userId);
     if (!ever.n && !followers) return null;
-    const recent = await d.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(s.duration_seconds), 0) AS secs, COALESCE(MAX(s.peak_viewers), 0) AS peak,
-            AVG(a.avg_viewers) AS avg
+    const recent = await d.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(s.duration_seconds), 0)::bigint AS secs, COALESCE(MAX(s.peak_viewers), 0)::bigint AS peak,
+            AVG(a.avg_viewers)::float8 AS avg
         FROM streams s LEFT JOIN stream_analytics a ON a.stream_id = s.id
         WHERE s.user_id = ? AND s.started_at >= ? AND s.is_live = 0`).get(userId, since);
     const newFollowers = (await d.prepare('SELECT COUNT(*) AS n FROM follows WHERE streamer_id = ? AND created_at >= ?').get(userId, since)).n;
@@ -89,7 +79,7 @@ async function loyaltyOf(userId) {
     const channels = (await d.prepare(`SELECT u.username AS channel, cp.balance AS points FROM channel_points cp JOIN users u ON u.id = cp.streamer_id
         WHERE cp.user_id = ? AND cp.balance > 0 ORDER BY cp.balance DESC, u.username LIMIT 10`).all(userId))
         .map((r) => ({ channel: String(r.channel).slice(0, 64), points: r.points }));
-    const total = (await d.prepare('SELECT COALESCE(SUM(balance), 0) AS n FROM channel_points WHERE user_id = ? AND balance > 0').get(userId)).n;
+    const total = (await d.prepare('SELECT COALESCE(SUM(balance), 0)::bigint AS n FROM channel_points WHERE user_id = ? AND balance > 0').get(userId)).n;
     let arena = null;
     try { arena = await d.prepare('SELECT xp, level FROM arena_trash_levels WHERE user_id = ?').get(userId) || null; } catch { /* the arena tables do not exist yet */ }
     if (!total && !arena) {
@@ -129,7 +119,7 @@ async function push(userId, { modules = client(), now = Date.now(), force = fals
     const written = [];
     for (const [ns, data] of pushes) {
         const hash = hashOf(data);
-        const last = await db.getDb().prepare("SELECT hash, strftime('%s', pushed_at) * 1000 AS at FROM module_summary_pushes WHERE user_id = ? AND namespace = ?").get(userId, ns);
+        const last = await db.getDb().prepare("SELECT hash, extract(epoch FROM ov_ts(pushed_at)) * 1000 AS at FROM module_summary_pushes WHERE user_id = ? AND namespace = ?").get(userId, ns);
         if (last && last.hash === hash) { stats.unchanged++; continue; }
         if (ns === 'live.loyalty' && last && !force && now - Number(last.at) < LOYALTY_MIN_INTERVAL_MS) { stats.unchanged++; continue; }
         const body = ns === 'live.profile' ? data : { ...data, computed_at: new Date(now).toISOString() };
@@ -184,7 +174,6 @@ async function refresh({ modules = client(), now = Date.now() } = {}) {
 
 function init() {
     if (!process.env.OV_OAUTH_CLIENT_SECRET || process.env.LIVE_MODULE_SUMMARIES === 'off') return false;
-    ensureSchema();
     const jobs = require('../utils/jobs');
     jobs.every('module-summaries-scan', 5 * 60 * 1000, () => scan(), { initialDelayMs: 90 * 1000, jitterMs: 15 * 1000 });
     jobs.every('module-summaries-refresh', DAY_MS, () => refresh(), { initialDelayMs: 10 * 60 * 1000, jitterMs: 5 * 60 * 1000 });
@@ -194,4 +183,4 @@ function init() {
 function status() { return { ...stats }; }
 function _reset() { modulesClient = null; lastScan = null; Object.assign(stats, { written: 0, unchanged: 0, failed: 0, lastError: null, lastScanAt: null }); }
 
-module.exports = { init, ensureSchema, summarize, loyaltyOf, push, scan, refresh, status, _reset };
+module.exports = { init, summarize, loyaltyOf, push, scan, refresh, status, _reset };

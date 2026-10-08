@@ -204,7 +204,8 @@ function spaFallback(sendShell) {
         }
         try {
             res.status(status);
-            if (!sendShell(res, req.path)) res.status(503).type('text/plain').send('Site shell unavailable');
+            // seo.shellHtml is async, so sendShell may be too; awaiting a boolean is a no-op.
+            if (!(await sendShell(res, req.path))) res.status(503).type('text/plain').send('Site shell unavailable');
         } catch (err) { next(err); }   // an async handler's throw would otherwise never reach Express
     };
 }

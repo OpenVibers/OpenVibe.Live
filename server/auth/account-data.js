@@ -48,20 +48,26 @@ const PART_BUDGET = 18 * 1024 * 1024;
 // OpenVibe.Chat owns these and erases them itself (roadmap T3); Live must not touch them (dropped in N+2/N+3).
 const CHAT_TABLES = new Set(['channel_moderators', 'channel_moderation_settings', 'user_tags', 'chat_ai_summaries', 'chat_timeline_events']);
 
-async function ensureSchema(d) {
-    d.exec(`CREATE TABLE IF NOT EXISTS account_data_events (
-        id         TEXT PRIMARY KEY,
-        kind       TEXT NOT NULL,
-        subject    TEXT NOT NULL,
-        outcome    TEXT,
-        sent_at    DATETIME,
-        applied_at DATETIME DEFAULT ov_now()
-    )`);
-    const cols = (await d.prepare('PRAGMA table_info(users)').all()).map((c) => c.name);
-    if (!cols.includes('deleted_at')) d.exec('ALTER TABLE users ADD COLUMN deleted_at DATETIME');
-}
-
 const q = (name) => `"${String(name).replace(/"/g, '""')}"`;
+
+// The schema (migrations/0002_live.sql) owns every table and column now, so liveliness questions are
+// asked of information_schema instead of PRAGMA.
+const columnRows = (d, table) => d.prepare(
+    `SELECT column_name AS name, is_nullable FROM information_schema.columns
+      WHERE table_schema = current_schema() AND table_name = ? ORDER BY ordinal_position`).all(table);
+const columnNames = async (d, table) => (await columnRows(d, table)).map((c) => c.name);
+
+/** Foreign keys of one table → [{ from, table, on_delete }] (PRAGMA foreign_key_list's columns). */
+const foreignKeys = (d, table) => d.prepare(
+    `SELECT kcu.column_name AS "from", ccu.table_name AS "table", rc.delete_rule AS on_delete
+       FROM information_schema.table_constraints tc
+       JOIN information_schema.key_column_usage kcu
+         ON kcu.constraint_name = tc.constraint_name AND kcu.constraint_schema = tc.constraint_schema
+       JOIN information_schema.referential_constraints rc
+         ON rc.constraint_name = tc.constraint_name AND rc.constraint_schema = tc.constraint_schema
+       JOIN information_schema.constraint_column_usage ccu
+         ON ccu.constraint_name = tc.constraint_name AND ccu.constraint_schema = tc.constraint_schema
+      WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = current_schema() AND tc.table_name = ?`).all(table);
 
 /** table → [{ col, action: 'delete'|'null' }], every person column Live has, frozen tables left out. */
 async function personColumns(d) {
@@ -73,13 +79,13 @@ async function personColumns(d) {
     const tables = (await d.prepare("SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema() ORDER BY name").all()).map((r) => r.name);
     for (const t of tables) {
         if (t === 'users' || FROZEN.has(t)) continue;
-        for (const fk of await d.prepare(`PRAGMA foreign_key_list(${q(t)})`).all()) {
+        for (const fk of await foreignKeys(d, t)) {
             if (fk.table === 'users') add(t, fk.from, fk.on_delete === 'SET NULL' && !OVERRIDE_DELETE.has(`${t}.${fk.from}`) ? 'null' : 'delete');
         }
-        if ((await d.prepare(`PRAGMA table_info(${q(t)})`).all()).some((c) => c.name === 'user_id')) add(t, 'user_id', 'delete');
+        if ((await columnNames(d, t)).includes('user_id')) add(t, 'user_id', 'delete');
     }
     for (const [t, col] of EXTRA) {
-        if (tables.includes(t) && (await d.prepare(`PRAGMA table_info(${q(t)})`).all()).some((c) => c.name === col)) add(t, col, 'delete');
+        if (tables.includes(t) && (await columnNames(d, t)).includes(col)) add(t, col, 'delete');
     }
     return out;
 }
@@ -105,10 +111,10 @@ async function exportPart(d, userId) {
     const other = {};
     for (const [t, cols] of await personColumns(d)) {
         if (CHAT_TABLES.has(t)) continue;   // Chat's rows: Chat contributes them to the chat part of the export
-        const keep = (await d.prepare(`PRAGMA table_info(${q(t)})`).all()).map((c) => c.name).filter((c) => !SECRET_COL.test(c));
+        const keep = (await columnNames(d, t)).filter((c) => !SECRET_COL.test(c));
         if (!keep.length) continue;
         const where = cols.map((c) => `${q(c.col)} = ?`).join(' OR ');
-        const rows = await d.prepare(`SELECT ${keep.map(q).join(', ')} FROM ${q(t)} WHERE ${where} ORDER BY rowid DESC LIMIT ${ROW_LIMIT + 1}`).all(...cols.map(() => userId));
+        const rows = await d.prepare(`SELECT ${keep.map(q).join(', ')} FROM ${q(t)} WHERE ${where} ORDER BY ctid DESC LIMIT ${ROW_LIMIT + 1}`).all(...cols.map(() => userId));
         if (!rows.length) continue;
         const content = rows.slice(0, ROW_LIMIT);
         const size = JSON.stringify(content).length;
@@ -131,7 +137,7 @@ async function eraseUsers(d, userIds, { now = new Date().toISOString() } = {}) {
     const retained = {};
     const bump = (o, k, n) => { if (n) o[k] = (o[k] || 0) + n; };
     const cols = await personColumns(d);
-    const usersCols = (await d.prepare('PRAGMA table_info(users)').all()).map((c) => c.name);
+    const usersCols = await columnNames(d, 'users');
     const onBilling = (() => { try { return require('../monetization/money-authority').onBilling(); } catch { return false; } })();
     await d.tx(async () => {
         for (const uid of userIds) {
@@ -142,8 +148,8 @@ async function eraseUsers(d, userIds, { now = new Date().toISOString() } = {}) {
                 if (CHAT_TABLES.has(t)) { bump(retained, 'left_for_chat', (await d.prepare(`SELECT COUNT(*) AS n FROM ${q(t)} WHERE ${where}`).get(...list.map(() => uid))).n); continue; }
                 for (const c of list) {
                     if (c.action === 'null') {
-                        const info = (await d.prepare(`PRAGMA table_info(${q(t)})`).all()).filter((x) => NAME_COLS.includes(x.name));
-                        if (info.length) await d.prepare(`UPDATE ${q(t)} SET ${info.map((x) => `${q(x.name)} = ${x.notnull ? "'deleted'" : 'NULL'}`).join(', ')} WHERE ${q(c.col)} = ?`).run(uid);
+                        const info = (await columnRows(d, t)).filter((x) => NAME_COLS.includes(x.name));
+                        if (info.length) await d.prepare(`UPDATE ${q(t)} SET ${info.map((x) => `${q(x.name)} = ${x.is_nullable === 'NO' ? "'deleted'" : 'NULL'}`).join(', ')} WHERE ${q(c.col)} = ?`).run(uid);
                     }
                     const r = c.action === 'null'
                         ? await d.prepare(`UPDATE ${q(t)} SET ${q(c.col)} = NULL WHERE ${q(c.col)} = ?`).run(uid)
@@ -187,7 +193,6 @@ async function networkCall(path, body) {
 async function apply(ev, { send = networkCall } = {}) {
     const p = ev && ev.payload && typeof ev.payload === 'object' ? ev.payload : {};
     const d = db.getDb();
-    await ensureSchema(d);
     if (ev.event_type === 'network.account.export_requested') {
         if (!EXPORT_RE.test(String(p.export_id || '')) || !SUBJECT_RE.test(String(p.subject || ''))) return 'ignored:payload';
         const seen = await d.prepare('SELECT sent_at FROM account_data_events WHERE id = ?').get(p.export_id);
@@ -197,7 +202,8 @@ async function apply(ev, { send = networkCall } = {}) {
         if (!res) throw new Error('Network unreachable');
         const outcome = res.ok ? 'exported' : (res.status === 409 || res.status === 404 ? 'closed' : null);
         if (!outcome) throw new Error(`export part refused: ${res.status}`);
-        await d.prepare('INSERT OR REPLACE INTO account_data_events (id, kind, subject, outcome, sent_at) VALUES (?, ?, ?, ?, ov_now())')
+        await d.prepare(`INSERT INTO account_data_events (id, kind, subject, outcome, sent_at) VALUES (?, ?, ?, ?, ov_now())
+            ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, subject = excluded.subject, outcome = excluded.outcome, sent_at = excluded.sent_at`)
             .run(p.export_id, 'export', p.subject, JSON.stringify({ result: outcome, files: part.files.length }));
         console.log(`[AccountData] export ${p.export_id}: ${outcome} (${part.files.length} file(s))`);
         return outcome;
@@ -230,6 +236,6 @@ async function apply(ev, { send = networkCall } = {}) {
     return 'ignored:type';
 }
 
-async function hasColumn(d, table, col) { return (await d.prepare(`PRAGMA table_info(${q(table)})`).all()).some((c) => c.name === col); }
+async function hasColumn(d, table, col) { return (await columnNames(d, table)).includes(col); }
 
-module.exports = { apply, exportPart, eraseUsers, personColumns, ensureSchema, FROZEN, RETAIN };
+module.exports = { apply, exportPart, eraseUsers, personColumns, FROZEN, RETAIN };

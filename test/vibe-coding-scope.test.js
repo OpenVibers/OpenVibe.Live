@@ -11,28 +11,19 @@
  */
 'use strict';
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const http = require('http');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-vibe-scope-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
 console.log = () => {};
 console.warn = () => {};
 
 const db = require('../server/db/database');
-db.initDb();
-db.getDb().prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (7, 'coder', 'coder', 'c@x', 'x', 'streamer')`).run();
-const slot = Number(db.createManagedStream({ user_id: 7, slug: 'camp-code', title: 'code', stream_key: 'key-code' }).lastInsertRowid);
-const narrow = db.createApiToken(7, 'Copilot Companion', ['read', 'vibe_coding_publish']).token;
-const broad = db.createApiToken(7, 'Stream Controller', ['read', 'stream', 'control']).token;
-
 const auth = require('../server/auth/auth');
 const WebSocket = require('ws');
 const VibeCodingPublishServer = require('../server/vibe-coding/publish-server');
+
+let slot;
 
 /** Connect and return how the socket ended up: { code } when closed, or { ready } on vibe-coding.ready. */
 function connect(port, token) {
@@ -48,6 +39,13 @@ function connect(port, token) {
 }
 
 (async () => {
+    await db.initDb();
+    await db.getDb().prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (7, 'coder', 'coder', 'c@x', 'x', 'streamer')`).run();
+    await db.createManagedStream({ user_id: 7, slug: 'camp-code', title: 'code', stream_key: 'key-code' });
+    slot = Number((await db.get('SELECT id FROM managed_streams WHERE user_id = 7 AND slug = ?', ['camp-code'])).id);
+    const narrow = (await db.createApiToken(7, 'Copilot Companion', ['read', 'vibe_coding_publish'])).token;
+    const broad = (await db.createApiToken(7, 'Stream Controller', ['read', 'stream', 'control'])).token;
+
     // Scope check itself.
     const { hasVibeCodingPublishScope } = VibeCodingPublishServer;
     assert.strictEqual(hasVibeCodingPublishScope({ scopes: ['vibe_coding_publish'] }), true);
@@ -72,7 +70,6 @@ function connect(port, token) {
     assert.strictEqual(t('GET', `/api/vibe-coding/managed/${slot}/events`, ['read']), true, 'reads are unchanged');
     assert.strictEqual(t('POST', '/api/streams/managed', ['stream']), true, 'the stream scope still covers stream control');
 
-    fs.rmSync(tmp, { recursive: true, force: true });
     quiet('vibe-coding-scope: ok');
     process.exit(0);
 })().catch((err) => {

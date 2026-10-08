@@ -48,13 +48,19 @@ async function writeRows(target) {
 let store = null;
 function getStore() {
     if (store) return store;
-    store = config.createConfigStore({
-        db: db.getDb(), service: 'live', namespace: 'live.site_settings',
-        classify,
-        legacy: async () => await rowsNow(),
-        onActivate: async (values) => await writeRows(values),
-        log: { info: (m) => console.log(`[Config] ${m}`), warn: (m) => console.warn(`[Config] ${m}`), error: (m) => console.error(`[Config] ${m}`) },
-    });
+    // On PostgreSQL createConfigStore reads/seeds its active revision before it resolves, so it returns a
+    // promise of the store: getStore() hands that promise back (every caller awaits it). config-pg reads
+    // `legacy` synchronously (it does not await the callback), so gather the rows first.
+    store = (async () => {
+        const legacyRows = await rowsNow();
+        return await config.createConfigStore({
+            db: db.getDb(), service: 'live', namespace: 'live.site_settings',
+            classify,
+            legacy: () => legacyRows,
+            onActivate: async (values) => await writeRows(values),
+            log: { info: (m) => console.log(`[Config] ${m}`), warn: (m) => console.warn(`[Config] ${m}`), error: (m) => console.error(`[Config] ${m}`) },
+        });
+    })();
     return store;
 }
 
@@ -62,7 +68,7 @@ const canonical = (o) => JSON.stringify(Object.keys(o).sort().map((k) => [k, o[k
 
 /** Record rows written around the journal as a revision of their own. → the sync snapshot, or null */
 async function sync() {
-    const s = getStore();
+    const s = await getStore();
     const now = await rowsNow();
     if (canonical({ ...s.get() }) === canonical(now)) return null;
     return s.apply(now, { actor: SYSTEM, reason: 'sync: site_settings changed outside the configuration journal' });
@@ -78,13 +84,13 @@ async function change({ set = {}, unset = [] } = {}, { actor = SYSTEM, reason = 
     await sync();
     const values = {};
     for (const [k, v] of Object.entries(set)) values[k] = v !== null && typeof v === 'object' ? JSON.stringify(v) : String(v ?? '');
-    return getStore().apply(values, { merge: true, unset, actor, reason });
+    return (await getStore()).apply(values, { merge: true, unset, actor, reason });
 }
 
 /** Roll back to the previous good revision (or `to`) after recording any outside changes. */
 async function rollback({ actor = SYSTEM, reason = null, to } = {}) {
     await sync();
-    return getStore().rollback({ actor, reason, to });
+    return (await getStore()).rollback({ actor, reason, to });
 }
 
 /** A person as the journal records them. */

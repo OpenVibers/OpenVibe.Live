@@ -215,7 +215,7 @@ async function createTheme({ name, author_id, description, mode, variables, tags
 
     return await db.run(
         `INSERT INTO themes (name, slug, author_id, description, mode, variables, preview_colors, is_builtin, is_public, tags)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, ?) RETURNING id`,
         [name, slug, author_id, description || '', mode || 'dark', varsJson, previewFromVars(sanitized), JSON.stringify(tags || [])]
     );
 }

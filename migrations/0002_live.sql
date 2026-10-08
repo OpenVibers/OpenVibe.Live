@@ -61,7 +61,7 @@ CREATE TABLE users (
     openvibe_bucks_balance double precision DEFAULT 0.00,
     is_banned bigint DEFAULT 0,
     ban_reason text COLLATE "C",
-    profile_color text COLLATE "C" DEFAULT '#c0965c',
+    profile_color text COLLATE "C" DEFAULT '#8b5cf6',
     created_at text COLLATE "C" DEFAULT ov_now(),
     updated_at text COLLATE "C" DEFAULT ov_now(),
     last_seen text COLLATE "C" DEFAULT ov_now(),

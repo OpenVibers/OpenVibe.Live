@@ -1,14 +1,10 @@
 'use strict';
 /** /content and /moments render crawlable ?page=N pages (roadmap D44): self-canonical, prev/next links, items in the HTML. */
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 
-process.env.DB_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'live-feedpages-')), 'test.db');
 process.env.NODE_ENV = 'test';
 const log = console.log; console.log = () => {}; console.warn = () => {};
-require('../server/db/database').initDb();
+const db = require('../server/db/database');
 const feed = require('../server/content/feed');
 const calls = [];
 feed.page = async (name, q) => {
@@ -20,6 +16,7 @@ feed.page = async (name, q) => {
 const seo = require('../server/seo');
 
 (async () => {
+    await db.initDb();
     const p1 = await seo._pageMeta('/content', { page: 1 });
     assert.strictEqual(p1.canonicalPath, '/content');
     assert.ok(p1.snapshot.includes('rel="next"') && p1.snapshot.includes('/content?page=2'), 'page 1 links to page 2');

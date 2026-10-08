@@ -21,12 +21,9 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
 
-const tmp = path.join(os.tmpdir(), `ov-seo-ssr-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
@@ -34,18 +31,12 @@ console.warn = () => {};
 console.error = () => {};
 
 const db = require('../server/db/database');
-db.initDb();
-const raw = db.getDb();
 const auth = require('../server/auth/auth');
 auth.optionalAuth = (req, res, next) => next();
 
-const addUser = (id, username, display, extra = '') => raw.prepare(
+const addUser = async (id, username, display, extra = '') => await db.getDb().prepare(
     `INSERT INTO users (id, username, display_name, email, password_hash, role, bio, created_at) OVERRIDING SYSTEM VALUE
      VALUES (?, ?, ?, ?, 'x', 'streamer', ?, '2025-01-01 00:00:00')`).run(id, username, display, `${username}@x`, extra);
-addUser(3, 'alice', 'Alice', 'I stream woodworking.');
-addUser(4, 'bob', 'Bob');
-addUser(5, 'finditfixit', 'finditfixit', 'likes vintage video games');   // an account with no channel row
-db.ensureChannel(3);
 
 // ── OpenVibe.Media stand-in ──
 const media = require('../server/media-client');
@@ -90,8 +81,8 @@ const seo = require('../server/seo');
 const pageStatus = require('../server/web/page-status');
 const app = express();
 seo.register(app);
-app.get('*', pageStatus.spaFallback((res, urlPath) => {
-    const html = seo.shellHtml(urlPath, res.statusCode);
+app.get('*', pageStatus.spaFallback(async (res, urlPath) => {
+    const html = await seo.shellHtml(urlPath, res.statusCode);
     if (!html) return false;
     res.type('html').send(html);
     return true;
@@ -129,6 +120,11 @@ async function check(name, fn) {
 }
 
 const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
+    await db.initDb();
+    await addUser(3, 'alice', 'Alice', 'I stream woodworking.');
+    await addUser(4, 'bob', 'Bob');
+    await addUser(5, 'finditfixit', 'finditfixit', 'likes vintage video games');   // an account with no channel row
+    await db.ensureChannel(3);
     base = `http://127.0.0.1:${server.address().port}`;
     quiet('Server-rendered pages');
 
@@ -327,8 +323,6 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
     });
 
     server.close();
-    try { fs.unlinkSync(tmp); } catch { /* */ }
-    for (const ext of ['-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
     quiet(failures ? `\n${failures} check(s) failed` : '\nseo ssr: all checks passed');
     process.exit(failures ? 1 : 0);
 });

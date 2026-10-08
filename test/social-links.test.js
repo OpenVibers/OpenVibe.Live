@@ -37,11 +37,11 @@ async function check(name, fn) { await fn(); passed++; console.log(`  ✓ ${name
             },
         };
         const channel = { user_id: 1, social_links: cleanSocialLinks({ links: [{ kind: 'x', handle: 'goosely' }], hidden_auto: ['kick'] }) };
-        const viewer = channelSocialLinks(channel, db);
+        const viewer = await channelSocialLinks(channel, db);
         assert.deepStrictEqual(viewer.links.map((l) => [l.kind, !!l.auto]), [['x', false], ['twitch', true]]);
         assert.ok(viewer.links[0].icon && viewer.links[0].color);
         assert.strictEqual(viewer.connected, undefined, 'viewers get no editor data');
-        const owner = channelSocialLinks(channel, db, { owner: true });
+        const owner = await channelSocialLinks(channel, db, { owner: true });
         assert.deepStrictEqual(owner.restreams_without_link, ['youtube']);
         assert.deepStrictEqual(owner.connected.map((c) => [c.kind, c.hidden]), [['twitch', false], ['kick', true]]);
     });

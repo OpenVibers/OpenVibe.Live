@@ -10,12 +10,9 @@
 //   node test/account-data.test.js
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-account-data-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.NODE_ENV = 'test';
 process.env.LIVE_EVENTS_SECRET = 's'.repeat(40);
 const quiet = console.log;
@@ -26,22 +23,8 @@ const express = require('express');
 const { ids, validate } = require('openvibe-contracts');
 const { signDeliveryHeaders } = require('openvibe-sdk/events');
 const db = require('../server/db/database');
-db.initDb();
-const networkEvents = require('../server/auth/network-events');
-const accountData = require('../server/auth/account-data');
-const { NETWORK_TOPICS } = require('../scripts/subscribe-media-events');
 
 const DANA = ids.newId('user'), XENA = ids.newId('user'), NOBODY = ids.newId('user');
-const d = db.getDb();
-d.prepare(`INSERT INTO users (id, username, email, password_hash, bio) OVERRIDING SYSTEM VALUE VALUES (20, 'dana', 'dana@example.com', '$sso$', 'hi'), (21, 'xena', NULL, '$sso$', ''), (22, 'yuri', NULL, '$sso$', '')`).run();
-d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, service_username, subject_id) VALUES (20, 'network', '200', 'dana', ?), (21, 'network', '201', 'xena', ?)").run(DANA, XENA);
-d.prepare('INSERT INTO follows (follower_id, streamer_id) VALUES (20, 21), (22, 20), (22, 21)').run();
-d.prepare('INSERT INTO channel_points (user_id, streamer_id, balance) VALUES (20, 21, 30), (22, 20, 7), (22, 21, 5)').run();
-d.prepare("INSERT INTO streams (id, user_id, title) OVERRIDING SYSTEM VALUE VALUES (1, 20, 'dana live'), (2, 21, 'xena live')").run();
-d.prepare("INSERT INTO managed_streams (user_id, stream_key) VALUES (20, 'sk_live_secret_dana')").run();
-d.prepare("INSERT INTO api_tokens (user_id, token_hash) VALUES (20, 'hash-secret-dana')").run();
-d.prepare("INSERT INTO transactions (from_user_id, to_user_id, amount, type, message) VALUES (20, 21, 5, 'donation', 'love you xena'), (22, 20, 3, 'donation', 'for dana')").run();
-d.prepare("INSERT INTO payment_orders (user_id, provider, provider_ref, kind, amount_cents, currency, bucks, status) VALUES (20, 'paypal', 'PO-1', 'bucks', 500, 'USD', 5, 'completed')").run();
 
 const envelope = (type, payload) => {
     assert.ok(validate(`${type}@1`, payload).valid, JSON.stringify(validate(`${type}@1`, payload).errors));
@@ -51,6 +34,21 @@ const envelope = (type, payload) => {
 const ulid = () => ids.ulid();
 
 (async () => {
+    await db.initDb();
+    const networkEvents = require('../server/auth/network-events');
+    const accountData = require('../server/auth/account-data');
+    const { NETWORK_TOPICS } = require('../scripts/subscribe-media-events');
+    const d = db.getDb();
+    await d.prepare(`INSERT INTO users (id, username, email, password_hash, bio) OVERRIDING SYSTEM VALUE VALUES (20, 'dana', 'dana@example.com', '$sso$', 'hi'), (21, 'xena', NULL, '$sso$', ''), (22, 'yuri', NULL, '$sso$', '')`).run();
+    await d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, service_username, subject_id) VALUES (20, 'network', '200', 'dana', ?), (21, 'network', '201', 'xena', ?)").run(DANA, XENA);
+    await d.prepare('INSERT INTO follows (follower_id, streamer_id) VALUES (20, 21), (22, 20), (22, 21)').run();
+    await d.prepare('INSERT INTO channel_points (user_id, streamer_id, balance) VALUES (20, 21, 30), (22, 20, 7), (22, 21, 5)').run();
+    await d.prepare("INSERT INTO streams (id, user_id, title) OVERRIDING SYSTEM VALUE VALUES (1, 20, 'dana live'), (2, 21, 'xena live')").run();
+    await d.prepare("INSERT INTO managed_streams (user_id, stream_key) VALUES (20, 'sk_live_secret_dana')").run();
+    await d.prepare("INSERT INTO api_tokens (user_id, token_hash) VALUES (20, 'hash-secret-dana')").run();
+    await d.prepare("INSERT INTO transactions (from_user_id, to_user_id, amount, type, message) VALUES (20, 21, 5, 'donation', 'love you xena'), (22, 20, 3, 'donation', 'for dana')").run();
+    await d.prepare("INSERT INTO payment_orders (user_id, provider, provider_ref, kind, amount_cents, currency, bucks, status) VALUES (20, 'paypal', 'PO-1', 'bucks', 500, 'USD', 5, 'completed')").run();
+
     const app = express();
     app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
     app.post('/internal/network-events', networkEvents.handler);
@@ -61,11 +59,12 @@ const ulid = () => ids.ulid();
     const sent = [];
     let failNext = false;
     const send = async (p, body) => { if (failNext) { failNext = false; return { ok: false, status: 503 }; } sent.push({ path: p, body }); return { ok: true, status: 200 }; };
+    const n = async (sql, ...a) => (await d.prepare(sql).get(...a)).n;
     try {
         assert.ok(NETWORK_TOPICS.includes('network.account.export_requested') && NETWORK_TOPICS.includes('network.account.deleted'), 'the subscription asks for both');
-        const cols = accountData.personColumns(d);
+        const cols = await accountData.personColumns(d);
         for (const t of accountData.FROZEN) assert.ok(!cols.has(t), `${t} is never touched`);
-        const existing = new Set(d.prepare("SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema()").all().map((r) => r.name));
+        const existing = new Set((await d.prepare("SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema()").all()).map((r) => r.name));
         for (const t of cols.keys()) assert.ok(existing.has(t), `account export/deletion references missing table ${t}`);
         assert.ok(!existing.has('emotes'), 'Live has dropped its emotes table');
         assert.ok(!fs.readFileSync(path.join(__dirname, '..', 'server', 'auth', 'account-data.js'), 'utf8').match(/CHAT_TABLES\s*=\s*new Set\([^)]*['"]emotes['"]/s),
@@ -79,7 +78,7 @@ const ulid = () => ids.ulid();
         const part = sent[0].body;
         assert.ok(validate('network.account-export-part@1', part).valid, JSON.stringify(validate('network.account-export-part@1', part).errors));
         const byName = Object.fromEntries(part.files.map((f) => [f.name, f.content]));
-        const exportTables = new Set(d.prepare("SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema()").all().map((r) => r.name));
+        const exportTables = new Set((await d.prepare("SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema()").all()).map((r) => r.name));
         for (const name of Object.keys(byName)) if (name !== 'profile.json' && name !== 'other.json') {
             assert.ok(exportTables.has(name.replace(/\.json$/, '')), `account export references missing table ${name}`);
         }
@@ -98,17 +97,16 @@ const ulid = () => ids.ulid();
         const del = envelope('network.account.deleted', { deletion_id: `del_${ulid()}`, subject: DANA, requested_at: new Date(Date.now() - 30 * 86400000).toISOString(), deleted_at: new Date().toISOString() });
         failNext = true;
         await assert.rejects(accountData.apply(del, { send }), /confirmation refused: 503/, 'a failed confirmation is redelivered');
-        const n = (sql, ...a) => d.prepare(sql).get(...a).n;
-        assert.strictEqual(n('SELECT COUNT(*) AS n FROM follows WHERE follower_id = 20 OR streamer_id = 20'), 0, 'follows both ways');
-        assert.strictEqual(n('SELECT COUNT(*) AS n FROM channel_points WHERE user_id = 20 OR streamer_id = 20'), 0, 'channel points both ways');
-        assert.strictEqual(n('SELECT COUNT(*) AS n FROM follows'), 1, "others' follows stay");
-        assert.strictEqual(n('SELECT COUNT(*) AS n FROM streams WHERE user_id = 20'), 0);
-        assert.strictEqual(n('SELECT COUNT(*) AS n FROM managed_streams WHERE user_id = 20') + n('SELECT COUNT(*) AS n FROM api_tokens WHERE user_id = 20') + n("SELECT COUNT(*) AS n FROM linked_accounts WHERE user_id = 20"), 0);
-        assert.deepStrictEqual(d.prepare('SELECT from_user_id AS f, message FROM transactions ORDER BY id').all(), [{ f: 20, message: null }, { f: 22, message: 'for dana' }], 'money kept; her own message cleared');
-        assert.strictEqual(n("SELECT COUNT(*) AS n FROM payment_orders WHERE user_id = 20"), 1, 'payment orders kept');
-        const tomb = d.prepare('SELECT username, email, bio, deleted_at FROM users WHERE id = 20').get();
+        assert.strictEqual(await n('SELECT COUNT(*) AS n FROM follows WHERE follower_id = 20 OR streamer_id = 20'), 0, 'follows both ways');
+        assert.strictEqual(await n('SELECT COUNT(*) AS n FROM channel_points WHERE user_id = 20 OR streamer_id = 20'), 0, 'channel points both ways');
+        assert.strictEqual(await n('SELECT COUNT(*) AS n FROM follows'), 1, "others' follows stay");
+        assert.strictEqual(await n('SELECT COUNT(*) AS n FROM streams WHERE user_id = 20'), 0);
+        assert.strictEqual((await n('SELECT COUNT(*) AS n FROM managed_streams WHERE user_id = 20')) + (await n('SELECT COUNT(*) AS n FROM api_tokens WHERE user_id = 20')) + (await n("SELECT COUNT(*) AS n FROM linked_accounts WHERE user_id = 20")), 0);
+        assert.deepStrictEqual(await d.prepare('SELECT from_user_id AS f, message FROM transactions ORDER BY id').all(), [{ f: 20, message: null }, { f: 22, message: 'for dana' }], 'money kept; her own message cleared');
+        assert.strictEqual(await n("SELECT COUNT(*) AS n FROM payment_orders WHERE user_id = 20"), 1, 'payment orders kept');
+        const tomb = await d.prepare('SELECT username, email, bio, deleted_at FROM users WHERE id = 20').get();
         assert.deepStrictEqual([tomb.username, tomb.email, tomb.bio, !!tomb.deleted_at], ['deleted-20', null, null, true]);
-        d.prepare("INSERT INTO users (username, password_hash) VALUES ('dana', '$sso$')").run();
+        await d.prepare("INSERT INTO users (username, password_hash) VALUES ('dana', '$sso$')").run();
         assert.strictEqual(await accountData.apply(del, { send }), 'confirmed', 'the retry confirms without erasing again');
         const conf = sent[2];
         assert.strictEqual(conf.path, `/internal/account-deletions/${del.payload.deletion_id}/confirmations`);
@@ -120,11 +118,10 @@ const ulid = () => ids.ulid();
 
         // Through the signed endpoint: another source is ignored (204, nothing sent), and a bad payload too.
         assert.strictEqual(await deliver({ ...envelope('network.account.deleted', { deletion_id: `del_${ulid()}`, subject: XENA, requested_at: new Date().toISOString(), deleted_at: new Date().toISOString() }), source: 'media' }), 204);
-        assert.strictEqual(n('SELECT COUNT(*) AS n FROM users WHERE id = 21 AND deleted_at IS NULL'), 1, 'xena untouched');
+        assert.strictEqual(await n('SELECT COUNT(*) AS n FROM users WHERE id = 21 AND deleted_at IS NULL'), 1, 'xena untouched');
         assert.strictEqual(await networkEvents.apply({ event_id: ids.newId('event'), event_type: 'network.account.deleted', source: 'network', payload: { deletion_id: 'x', subject: XENA } }), 'ignored:payload');
     } finally {
         server.close();
-        fs.rmSync(tmp, { recursive: true, force: true });
     }
     console.log('account export and deletion: all checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });

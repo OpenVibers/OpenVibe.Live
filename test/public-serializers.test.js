@@ -10,13 +10,8 @@
  */
 'use strict';
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const http = require('http');
 
-const tmp = path.join(os.tmpdir(), `ov-serializers-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
 
 const { findSecrets, publicManagedStream, publicChannel, publicStream, publicUserProfile } = require('../server/web/serializers');
@@ -50,17 +45,17 @@ async function check(name, fn) {
     });
 
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const raw = db.getDb();
-    raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, stream_key) OVERRIDING SYSTEM VALUE
+    await raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, stream_key) OVERRIDING SYSTEM VALUE
                  VALUES (901, 'keyowner', 'Key Owner', 'owner@example.com', 'x', 'streamer', ?)`).run('u'.repeat(32));
-    db.ensureChannel(901);
-    const channel = db.getChannelByUserId(901);
-    raw.prepare('UPDATE channels SET weather_zip = ?, weather_detail = ? WHERE id = ?').run('90210', 'detailed', channel.id);
-    raw.prepare(`INSERT INTO managed_streams (user_id, channel_id, slug, title, protocol, stream_key, weather_zip)
+    await db.ensureChannel(901);
+    const channel = await db.getChannelByUserId(901);
+    await raw.prepare('UPDATE channels SET weather_zip = ?, weather_detail = ? WHERE id = ?').run('90210', 'detailed', channel.id);
+    await raw.prepare(`INSERT INTO managed_streams (user_id, channel_id, slug, title, protocol, stream_key, weather_zip)
                  VALUES (901, ?, 'main', 'Main slot', 'rtmp', ?, '90210')`).run(channel.id, 'S'.repeat(40));
-    const ms = raw.prepare('SELECT id FROM managed_streams WHERE user_id = 901').get();
-    raw.prepare(`INSERT INTO streams (user_id, channel_id, title, protocol, is_live, managed_stream_id, started_at)
+    const ms = await raw.prepare('SELECT id FROM managed_streams WHERE user_id = 901').get();
+    await raw.prepare(`INSERT INTO streams (user_id, channel_id, title, protocol, is_live, managed_stream_id, started_at)
                  VALUES (901, ?, 'Live now', 'rtmp', 1, ?, ov_now())`).run(channel.id, ms.id);
 
     const express = require('express');
@@ -95,7 +90,7 @@ async function check(name, fn) {
     });
 
     await check('stream detail keeps the channel but not its ZIP', async () => {
-        const live = raw.prepare('SELECT id FROM streams WHERE user_id = 901').get();
+        const live = await raw.prepare('SELECT id FROM streams WHERE user_id = 901').get();
         const r = await getJson(`/api/streams/${live.id}`);
         assert.strictEqual(r.status, 200);
         assert.ok(r.body.stream && r.body.stream.channel, 'channel attached: ' + r.text.slice(0, 300));
@@ -104,7 +99,6 @@ async function check(name, fn) {
     });
 
     server.close();
-    for (const ext of ['', '-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1); }
     console.log('\npublic serializers: all checks passed');
     process.exit(0);

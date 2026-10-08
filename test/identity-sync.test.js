@@ -5,13 +5,8 @@
 // identity_legacy_map in batches (against a stub Network).
 
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const http = require('http');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-identity-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
 const { tokenReply, sentToken } = require('./helpers/network-token-stub');
 
@@ -54,21 +49,21 @@ const network = http.createServer((req, res) => {
     process.env.OV_NETWORK_INTERNAL_URL = `http://127.0.0.1:${network.address().port}`;
 
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const sync = require('../server/auth/identity-sync');
     const d = db.getDb();
 
-    assert.ok(d.prepare('PRAGMA table_info(linked_accounts)').all().some((c) => c.name === 'subject_id'), 'linked_accounts.subject_id exists');
+    assert.ok(await d.prepare("SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'linked_accounts' AND column_name = 'subject_id'").get(), 'linked_accounts.subject_id exists');
 
     // 600 linked users (two batches) plus one legacy non-numeric row that must not be sent.
-    const insUser = d.prepare("INSERT INTO users (username, password_hash, stream_key) VALUES (?, 'x', ?)");
+    const insUser = d.prepare("INSERT INTO users (username, password_hash, stream_key) VALUES (?, 'x', ?) RETURNING id");
     const insLink = d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, service_username) VALUES (?, 'network', ?, ?)");
     for (let i = 1; i <= 600; i++) {
-        const id = insUser.run(`u${i}`, `key${i}`).lastInsertRowid;
-        insLink.run(id, String(1000 + i), `u${i}`);
+        const id = (await insUser.run(`u${i}`, `key${i}`)).lastInsertRowid;
+        await insLink.run(id, String(1000 + i), `u${i}`);
     }
-    const odd = insUser.run('odd', 'keyodd').lastInsertRowid;
-    insLink.run(odd, 'network:odd', 'odd');
+    const odd = (await insUser.run('odd', 'keyodd')).lastInsertRowid;
+    await insLink.run(odd, 'network:odd', 'odd');
 
     const out = await sync.syncLegacyMap();
     assert.strictEqual(received.length, 2, 'batched by 500');
@@ -80,13 +75,13 @@ const network = http.createServer((req, res) => {
     assert.strictEqual(typeof first.network_user_id, 'number');
 
     // A token's subject_id is stored once, only for a well-formed id and the matching link.
-    const uid = d.prepare("SELECT user_id FROM linked_accounts WHERE service_user_id = '1001'").get().user_id;
-    sync.noteSubject(uid, 1001, 'usr_01JAB2C3D4E5F6G7H8J9K0MNPQ');
-    assert.strictEqual(sync.subjectOf(uid), 'usr_01JAB2C3D4E5F6G7H8J9K0MNPQ');
-    sync.noteSubject(uid, 1001, '42');
-    assert.strictEqual(sync.subjectOf(uid), 'usr_01JAB2C3D4E5F6G7H8J9K0MNPQ', 'malformed subject ignored');
-    sync.noteSubject(uid, 9999, 'usr_01JAB2C3D4E5F6G7H8J9K0MNPR');
-    assert.strictEqual(sync.subjectOf(uid), 'usr_01JAB2C3D4E5F6G7H8J9K0MNPQ', 'a token for a different network id cannot rewrite the link');
+    const uid = (await d.prepare("SELECT user_id FROM linked_accounts WHERE service_user_id = '1001'").get()).user_id;
+    await sync.noteSubject(uid, 1001, 'usr_01JAB2C3D4E5F6G7H8J9K0MNPQ');
+    assert.strictEqual(await sync.subjectOf(uid), 'usr_01JAB2C3D4E5F6G7H8J9K0MNPQ');
+    await sync.noteSubject(uid, 1001, '42');
+    assert.strictEqual(await sync.subjectOf(uid), 'usr_01JAB2C3D4E5F6G7H8J9K0MNPQ', 'malformed subject ignored');
+    await sync.noteSubject(uid, 9999, 'usr_01JAB2C3D4E5F6G7H8J9K0MNPR');
+    assert.strictEqual(await sync.subjectOf(uid), 'usr_01JAB2C3D4E5F6G7H8J9K0MNPQ', 'a token for a different network id cannot rewrite the link');
 
     // Backfill: every link without a subject is asked by Network user id, in batches; only an answer
     // naming the same Network user id with a well-formed subject is stored, and a known one is kept.
@@ -97,12 +92,12 @@ const network = http.createServer((req, res) => {
     assert.ok(!resolveCalls.flatMap(q => q.ids).includes('1001'), 'a link with a subject is not asked');
     assert.ok(!resolveCalls.flatMap(q => q.ids).includes('network:odd'), 'non-numeric links are not asked');
     assert.deepStrictEqual(back, { asked: 599, stored: 596, unknown: 3 });
-    assert.strictEqual(sync.subjectOf(uid), 'usr_01JAB2C3D4E5F6G7H8J9K0MNPQ', 'the token subject stays');
-    const linkOf = (n) => d.prepare('SELECT user_id FROM linked_accounts WHERE service_user_id = ?').get(String(n)).user_id;
-    assert.strictEqual(sync.subjectOf(linkOf(1600)), subjectFor(1600));
-    assert.strictEqual(sync.subjectOf(linkOf(1002)), null, 'unknown to Network');
-    assert.strictEqual(sync.subjectOf(linkOf(1003)), null, 'an answer for another Network user is ignored');
-    assert.strictEqual(sync.subjectOf(linkOf(1004)), null, 'a malformed subject is ignored');
+    assert.strictEqual(await sync.subjectOf(uid), 'usr_01JAB2C3D4E5F6G7H8J9K0MNPQ', 'the token subject stays');
+    const linkOf = async (n) => (await d.prepare('SELECT user_id FROM linked_accounts WHERE service_user_id = ?').get(String(n))).user_id;
+    assert.strictEqual(await sync.subjectOf(await linkOf(1600)), subjectFor(1600));
+    assert.strictEqual(await sync.subjectOf(await linkOf(1002)), null, 'unknown to Network');
+    assert.strictEqual(await sync.subjectOf(await linkOf(1003)), null, 'an answer for another Network user is ignored');
+    assert.strictEqual(await sync.subjectOf(await linkOf(1004)), null, 'a malformed subject is ignored');
     resolveCalls.length = 0;
     assert.deepStrictEqual(await sync.backfillSubjects(), { asked: 3, stored: 0, unknown: 3 }, 'the next run asks only what is still missing');
 
@@ -112,7 +107,6 @@ const network = http.createServer((req, res) => {
     assert.deepStrictEqual(await sync.backfillSubjects(), { asked: 3, stored: 0, unknown: 0, skipped: 'network has no /internal/identity yet' });
     network.close();
 
-    fs.rmSync(tmp, { recursive: true, force: true });
     console.log('identity sync: all checks passed');
     process.exit(0);
 })().catch((err) => { console.error(err); process.exit(1); });

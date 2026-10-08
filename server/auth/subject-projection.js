@@ -26,8 +26,7 @@
  * rules above, plus Live's own `streamer` (and a grant from Live's admin panel, until Network next changes
  * that person's role). Live code reads users.role (through permissions.js) locally, which is reading the
  * projection; it stays a column. Identity itself stays on the OpenVibe account: Live neither stores nor
- * reads users.email or users.password_hash (test/identity-columns.test.js), and the operator script
- * scripts/identity-columns-contract.js clears the legacy values (WS-B task 2 step 4).
+ * reads users.email or users.password_hash (test/identity-columns.test.js).
  */
 const db = require('../db/database');
 
@@ -46,25 +45,6 @@ async function nextRole(user, p) {
 }
 const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
 
-let ready = false;
-function ensureSchema() {
-    if (ready) return;
-    db.getDb().exec(`CREATE TABLE IF NOT EXISTS subject_projection (
-        subject_id TEXT PRIMARY KEY,
-        network_user_id INTEGER,
-        revision INTEGER NOT NULL,
-        username TEXT NOT NULL,
-        display_name TEXT,
-        avatar_url TEXT,
-        profile_color TEXT,
-        role TEXT NOT NULL,
-        banned INTEGER NOT NULL DEFAULT 0,
-        updated_at DATETIME DEFAULT ov_now()
-    );
-    CREATE INDEX IF NOT EXISTS idx_subject_projection_network ON subject_projection(network_user_id);`);
-    ready = true;
-}
-
 /** The local account linked to this Network person, or null. */
 async function localUser(subject, networkUserId) {
     const d = db.getDb();
@@ -78,7 +58,6 @@ async function localUser(subject, networkUserId) {
  * `notify(userId)` is told when the linked account changed (Chat's cache).
  */
 async function apply(p, { notify = () => {} } = {}) {
-    ensureSchema();
     const subject = p && p.subject && p.subject.id;
     if (!SUBJECT_RE.test(String(subject || '')) || !Number.isInteger(p.revision) || p.revision < 1 || typeof p.username !== 'string' || !p.username
         || !ROLES.includes(p.role) || typeof p.banned !== 'boolean') return 'ignored:payload';
@@ -114,8 +93,7 @@ async function apply(p, { notify = () => {} } = {}) {
 
 /** The projected person for a subject, or null. */
 async function get(subject) {
-    ensureSchema();
     return await db.getDb().prepare('SELECT * FROM subject_projection WHERE subject_id = ?').get(subject) || null;
 }
 
-module.exports = { apply, get, ensureSchema, _reset: () => { ready = false; } };
+module.exports = { apply, get };

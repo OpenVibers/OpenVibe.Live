@@ -141,20 +141,10 @@ async function followerCount(streamerId, { fetchImpl = globalThis.fetch } = {}) 
     }
 }
 
-function ensureTable() {
-    db.getDb().exec(`CREATE TABLE IF NOT EXISTS follow_projection_revisions (
-        follower_subject TEXT NOT NULL,
-        target_subject   TEXT NOT NULL,
-        revision         INTEGER NOT NULL,
-        PRIMARY KEY (follower_subject, target_subject)
-    )`);
-}
-
 /** Apply network.follow.created / .deleted. → 'followed' | 'unfollowed' | 'stale' | 'ignored:<why>' */
 async function apply(ev) {
     const p = ev && ev.payload && typeof ev.payload === 'object' ? ev.payload : {};
     if (p.target_type !== 'channel' || !SUBJECT_RE.test(String(p.follower || '')) || !SUBJECT_RE.test(String(p.target_id || '')) || !Number.isInteger(p.revision)) { stats.ignored++; return 'ignored:payload'; }
-    ensureTable();
     const d = db.getDb();
     return await d.tx(async () => {
         const prev = await d.prepare('SELECT revision FROM follow_projection_revisions WHERE follower_subject = ? AND target_subject = ?').get(p.follower, p.target_id);

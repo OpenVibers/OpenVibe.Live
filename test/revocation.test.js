@@ -13,7 +13,6 @@ const http = require('http');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-revoke-'));
 const keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
 fs.writeFileSync(path.join(tmp, 'network.pem'), keys.publicKey);
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.NODE_ENV = 'test';
 process.env.OV_NETWORK_PUBLIC_KEY = path.join(tmp, 'network.pem');
 process.env.LIVE_EVENTS_SECRET = 's'.repeat(40);
@@ -26,7 +25,6 @@ const express = require('express');
 const { ids } = require('openvibe-contracts');
 const { signDeliveryHeaders } = require('openvibe-sdk/events');
 const db = require('../server/db/database');
-db.initDb();
 const auth = require('../server/auth/auth');
 auth.reloadNetworkKey();
 const networkEvents = require('../server/auth/network-events');
@@ -42,6 +40,7 @@ const envelope = (subject, validAfterMs, over = {}) => ({
 });
 
 (async () => {
+    await db.initDb();
     const app = express();
     app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
     app.post('/internal/network-events', networkEvents.handler);
@@ -55,24 +54,24 @@ const envelope = (subject, validAfterMs, over = {}) => ({
     };
     try {
         const oldA = token(ALICE, -60), oldB = token(BOB, -60);
-        assert.ok(auth.verifyToken(oldA) && auth.verifyToken(oldB), 'valid before any cutoff');
+        assert.ok(await auth.verifyToken(oldA) && await auth.verifyToken(oldB), 'valid before any cutoff');
 
         assert.strictEqual(await deliver(envelope(ALICE, Date.now() - 5000), null), 401, 'unsigned');
         assert.strictEqual(await deliver(envelope(ALICE, Date.now() - 5000), 'f'.repeat(40)), 401, 'wrong secret');
         assert.strictEqual(await deliver(envelope(ALICE, Date.now() - 5000, { source: 'live' })), 204);
-        assert.ok(auth.verifyToken(oldA), 'a foreign source changes nothing');
+        assert.ok(await auth.verifyToken(oldA), 'a foreign source changes nothing');
 
         assert.strictEqual(await deliver(envelope(ALICE, Date.now() - 5000)), 204);
         assert.strictEqual(networkEvents.stats.revoked, 1);
-        assert.strictEqual(auth.verifyToken(oldA), null, 'the old token is refused');
-        assert.deepStrictEqual(auth.verifyTokenWithReason(oldA), { ok: false, reason: 'revoked' });
-        assert.ok(auth.verifyToken(token(ALICE, 0)), 'a token issued after the cutoff works');
-        assert.ok(auth.verifyToken(oldB), 'someone else is untouched');
+        assert.strictEqual(await auth.verifyToken(oldA), null, 'the old token is refused');
+        assert.deepStrictEqual(await auth.verifyTokenWithReason(oldA), { ok: false, reason: 'revoked' });
+        assert.ok(await auth.verifyToken(token(ALICE, 0)), 'a token issued after the cutoff works');
+        assert.ok(await auth.verifyToken(oldB), 'someone else is untouched');
 
         assert.strictEqual(await deliver(envelope(ALICE, Date.now() - 600000)), 204);
         assert.strictEqual(networkEvents.stats.unchanged, 1, 'an older cutoff never moves it back');
-        assert.strictEqual(auth.verifyToken(oldA), null);
-        assert.strictEqual(db.get('SELECT COUNT(*) AS n FROM token_revocations').n, 1, 'kept in the database');
+        assert.strictEqual(await auth.verifyToken(oldA), null);
+        assert.strictEqual((await db.get('SELECT COUNT(*) AS n FROM token_revocations')).n, 1, 'kept in the database');
 
         const o = parseArgs(['--network', '--dry-run']);
         assert.deepStrictEqual([o.topics, o.endpoint, o.action], [NETWORK_TOPICS, NETWORK_ENDPOINT, 'list']);

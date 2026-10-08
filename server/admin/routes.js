@@ -87,7 +87,7 @@ router.get('/stats', async (req, res) => {
             streams: {
                 live: (await db.get('SELECT COUNT(*) as c FROM streams WHERE is_live = 1')).c,
                 total: (await db.get('SELECT COUNT(*) as c FROM streams')).c,
-                totalViewers: (await db.get('SELECT COALESCE(SUM(viewer_count), 0) as c FROM streams WHERE is_live = 1')).c,
+                totalViewers: (await db.get('SELECT COALESCE(SUM(viewer_count), 0)::bigint as c FROM streams WHERE is_live = 1')).c,
             },
             // Under BILLING_AUTHORITY=billing these tables are frozen legacy copies: the numbers live
             // in OpenVibe.Billing (reconciliation report), so none are shown as current here.
@@ -97,7 +97,7 @@ router.get('/stats', async (req, res) => {
                 totalCirculating: (await db.get('SELECT COALESCE(SUM(openvibe_bucks_balance), 0) as c FROM users')).c,
                 totalTransactions: (await db.get('SELECT COUNT(*) as c FROM transactions')).c,
                 pendingCashouts: (await db.get("SELECT COUNT(*) as c FROM transactions WHERE type = 'cashout' AND status = 'escrow'")).c,
-                totalDonated: (await db.get("SELECT COALESCE(SUM(amount), 0) as c FROM transactions WHERE type = 'donation'")).c,
+                totalDonated: (await db.get("SELECT COALESCE(SUM(amount), 0)::bigint as c FROM transactions WHERE type = 'donation'")).c,
             },
             vods: {
                 total: vodCounts.total,
@@ -757,12 +757,12 @@ router.delete('/settings/:key', async (req, res) => {
 // GET /config/:namespace/history, POST /config/:namespace/rollback { to?, reason } — the rollback first
 // records rows changed outside the journal, so it only undoes configuration changes.
 let configRoutes = null;
-const configHandlers = () => configRoutes || (configRoutes = require('openvibe-shared/config').adminRoutes([siteConfig.getStore()], {
+const configHandlers = async () => (configRoutes || (configRoutes = require('openvibe-shared/config').adminRoutes([await siteConfig.getStore()], {
     requireAdmin: (_q, _s, next) => next(), basePath: '/config', actor: (q) => siteConfig.actorOf(q.user),
-}));
-router.get('/config', (req, res, next) => configHandlers().list(req, res, next));
-router.get('/config/:namespace', (req, res, next) => configHandlers().get(req, res, next));
-router.get('/config/:namespace/history', (req, res, next) => configHandlers().history(req, res, next));
+})));
+router.get('/config', async (req, res, next) => (await configHandlers()).list(req, res, next));
+router.get('/config/:namespace', async (req, res, next) => (await configHandlers()).get(req, res, next));
+router.get('/config/:namespace/history', async (req, res, next) => (await configHandlers()).history(req, res, next));
 router.post('/config/:namespace/rollback', async (req, res) => {
     try {
         if (req.params.namespace !== 'live.site_settings') return res.status(404).json({ error: 'No such configuration namespace' });
@@ -1019,7 +1019,7 @@ function diskUsage(targetPath) {
 
 // ── GET /api/admin/storage ───────────────────────────────────
 // Full disk overview + per-directory breakdown
-router.get('/storage', (req, res) => {
+router.get('/storage', async (req, res) => {
     try {
         const paths = require('../paths');
         const dataRoot = paths.dataDir();
@@ -1039,9 +1039,9 @@ router.get('/storage', (req, res) => {
             return { name: d.name, icon: d.icon, bytes: stats.bytes, files: stats.files };
         });
 
-        // Database file size
+        // Database size (PostgreSQL)
         let dbBytes = 0;
-        try { dbBytes = fs.statSync(paths.dbPath()).size; } catch {}
+        try { dbBytes = Number(await db.getDb().value('SELECT pg_database_size(current_database())')) || 0; } catch { /* the size is informational */ }
 
         // Total data directory
         const dataTotal = dirStats(dataRoot);

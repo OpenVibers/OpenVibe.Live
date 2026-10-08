@@ -12,60 +12,54 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
 
 const ROOT = path.join(__dirname, '..');
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-legacy-game-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
 console.log = () => {};
 console.warn = () => {};
 
 const db = require('../server/db/database');
-db.initDb();
-const raw = db.getDb();
 const auth = require('../server/auth/auth');
 auth.optionalAuth = (req, res, next) => next();
 auth.requireAuth = (req, res) => res.status(401).json({ error: 'Authentication required' });
 
-for (const [id, name] of [[1, 'veteran'], [2, 'newcomer']]) {
-    raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (?, ?, ?, ?, 'x', 'user')`).run(id, name, name, `${name}@x`);
-}
-
 (async () => {
-    // A fresh install has no game_players table at all: nothing to show, nothing created.
-    assert.strictEqual(db.getLegacyGameProfile(2), null);
-    assert.ok(!raw.prepare("SELECT 1 FROM sqlite_master WHERE name = 'game_players'").get(), 'Live never creates the game tables');
+    await db.initDb();
+    const raw = db.getDb();
+    for (const [id, name] of [[1, 'veteran'], [2, 'newcomer']]) {
+        await raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (?, ?, ?, ?, 'x', 'user')`).run(id, name, name, `${name}@x`);
+    }
 
-    // Production has the legacy table (the shape the old schema created, without smithing_xp).
-    raw.exec(`CREATE TABLE game_players (user_id INTEGER PRIMARY KEY, x REAL, y REAL, mining_xp INTEGER DEFAULT 0, fishing_xp INTEGER DEFAULT 0,
-        woodcut_xp INTEGER DEFAULT 0, farming_xp INTEGER DEFAULT 0, combat_xp INTEGER DEFAULT 0, crafting_xp INTEGER DEFAULT 0,
-        agility_xp INTEGER DEFAULT 0, total_coins_earned INTEGER DEFAULT 0)`);
-    raw.prepare('INSERT INTO game_players (user_id, mining_xp, combat_xp, total_coins_earned) VALUES (1, 2500, 100, 42)').run();
-    const count = () => raw.prepare('SELECT COUNT(*) AS n FROM game_players').get().n;
+    // game_players ships with the schema as a frozen legacy table (OpenVibe.Games imports its rows);
+    // a fresh install has none, so there is nothing to show and Live itself creates nothing.
+    const count = async () => (await raw.prepare('SELECT COUNT(*) AS n FROM game_players').get()).n;
+    assert.strictEqual(await db.getLegacyGameProfile(2), null);
+    assert.strictEqual(await count(), 0, 'Live never creates the game tables');
 
-    const g = db.getLegacyGameProfile(1);
+    // A legacy player's row, in the shape the old game kept.
+    await raw.prepare('INSERT INTO game_players (user_id, mining_xp, combat_xp, total_coins_earned) VALUES (1, 2500, 100, 42)').run();
+
+    const g = await db.getLegacyGameProfile(1);
     assert.strictEqual(g.mining_level, 11, 'levels use the game\'s formula (sqrt(xp/25)+1)');
     assert.strictEqual(g.combat_level, 3);
-    assert.strictEqual(g.smithing_level, 1, 'a column the old table lacks counts as level 1');
+    assert.strictEqual(g.smithing_level, 1, 'a skill with no xp counts as level 1');
     assert.strictEqual(g.total_level, 11 + 3 + 6, 'eight skills summed, like the old getPlayer()');
     assert.strictEqual(g.total_coins_earned, 42);
 
     // The profile-card reader (what Live's removed route and OpenVibe.Chat both called) never adds a row.
-    assert.strictEqual(db.getLegacyGameProfile(2), null, 'no legacy game block for someone who never played');
+    assert.strictEqual(await db.getLegacyGameProfile(2), null, 'no legacy game block for someone who never played');
     assert.strictEqual(g.total_level, 20, 'a legacy player still shows their skills');
-    assert.strictEqual(count(), 1, 'reading a profile created no game_players row');
+    assert.strictEqual(await count(), 1, 'reading a profile created no game_players row');
 
     // Chat tags: read-only, and still shown.
     const tags = require('../server/chat/tags');
-    tags.ensureTagTables();
     // `user_tags` is OpenVibe.Chat's now (dropped in T3 N+2); only the equipped tag is Live's.
-    raw.prepare("INSERT INTO user_equipped_tag (user_id, tag_id) VALUES (1, 'legacy')").run();
-    assert.strictEqual(tags.getTagProfile(1).name, 'Legacy');
-    assert.strictEqual(tags.getTagProfile(2), null);
+    await raw.prepare("INSERT INTO user_equipped_tag (user_id, tag_id) VALUES (1, 'legacy')").run();
+    assert.strictEqual((await tags.getTagProfile(1)).name, 'Legacy');
+    assert.strictEqual(await tags.getTagProfile(2), null);
     for (const writer of ['grantTag', 'revokeTag', 'buyTag', 'equipTag', 'unequipTag', 'fightGuardian']) {
         assert.strictEqual(tags[writer], undefined, `tags.${writer} is gone (the game owns tag grants now)`);
     }
@@ -87,7 +81,6 @@ for (const [id, name] of [[1, 'veteran'], [2, 'newcomer']]) {
     collect(path.join(ROOT, 'server'));
     assert.ok(!serverSrc.some((s) => /INSERT[^;`'"]*INTO\s+game_players/i.test(s)), 'no server code inserts game_players rows');
 
-    fs.rmSync(tmp, { recursive: true, force: true });
     quiet('legacy-game-readonly: ok');
     process.exit(0);
 })().catch((err) => {

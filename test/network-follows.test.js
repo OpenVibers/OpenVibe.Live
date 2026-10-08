@@ -7,17 +7,13 @@
 // event cannot undo a click. Nothing else on Live writes follows, and GET /internal/followers is gone.
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-netfollows-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.NODE_ENV = 'test';
 process.env.OV_NETWORK_INTERNAL_URL = 'http://network.test';
 const log = console.log; console.log = () => {}; console.warn = () => {};
 const db = require('../server/db/database');
-db.initDb();
 const principal = require('../server/net/network-principal');
 principal.serviceHeaders = async () => ({ Authorization: 'Bearer svc-token' });
 let invalidated = 0;
@@ -25,8 +21,8 @@ principal.invalidate = () => { invalidated++; };
 const follows = require('../server/social/network-follows');
 const events = require('../server/auth/network-events');
 const auth = require('../server/auth/auth');
-auth.requireAuth = (req, res, next) => { const u = db.getUserById(Number(req.headers['x-test-user'] || 0)); if (!u) return res.status(401).json({ error: 'Authentication required' }); req.user = u; next(); };
-auth.optionalAuth = (req, res, next) => { const u = db.getUserById(Number(req.headers['x-test-user'] || 0)); if (u) req.user = u; next(); };
+auth.requireAuth = async (req, res, next) => { const u = await db.getUserById(Number(req.headers['x-test-user'] || 0)); if (!u) return res.status(401).json({ error: 'Authentication required' }); req.user = u; next(); };
+auth.optionalAuth = async (req, res, next) => { const u = await db.getUserById(Number(req.headers['x-test-user'] || 0)); if (u) req.user = u; next(); };
 const coins = require('../server/monetization/opencoins');
 const powerchat = require('../server/integrations/powerchat-platform');
 const side = [];
@@ -37,11 +33,6 @@ notify.pushNotification = (n) => side.push(['notify', n.type]);
 
 const sub = (tag) => `usr_${`01J${tag}`.padEnd(26, '0')}`;
 const ANN = sub('AA'), BOB = sub('BB'), CAT = sub('CC'), GHOST = sub('DD');
-const d = db.getDb();
-for (const [id, name] of [[1, 'ann'], [2, 'bob'], [3, 'cat'], [4, 'nolink']]) d.prepare("INSERT INTO users (id, username, password_hash) OVERRIDING SYSTEM VALUE VALUES (?, ?, 'x')").run(id, name);
-const link = d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', ?, ?)");
-link.run(1, '101', ANN); link.run(2, '102', BOB); link.run(3, '103', CAT);
-const streamId = Number(db.createStream({ user_id: 2, title: 't', protocol: 'webrtc' }).lastInsertRowid);
 
 // Network: /internal/follows answers network.follow-status-result@1 from its own graph (201 for a pair's first
 // follow; a follow that starts again starts its `since` again), and /api/v1/follows answers the public count.
@@ -89,17 +80,24 @@ const ev = (type, follower, target, revision) => ({ event_id: `evt_01JAB2C3D4E5F
 
 server.listen(0, '127.0.0.1', async () => {
     try {
+        await db.initDb();
+        const d = db.getDb();
+        for (const [id, name] of [[1, 'ann'], [2, 'bob'], [3, 'cat'], [4, 'nolink']]) await d.prepare("INSERT INTO users (id, username, password_hash) OVERRIDING SYSTEM VALUE VALUES (?, ?, 'x')").run(id, name);
+        const link = d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', ?, ?)");
+        await link.run(1, '101', ANN); await link.run(2, '102', BOB); await link.run(3, '103', CAT);
+        const streamId = Number((await db.createStream({ user_id: 2, title: 't', protocol: 'webrtc' })).lastInsertRowid);
+
         // set(): Network first; its answer is what the button shows, and the projection waits for the event.
         let r = await follows.set(1, 2, true);
         assert.deepStrictEqual(r, { ok: true, following: true, count: 41, started: true });
         assert.deepStrictEqual(calls.pop(), { url: `http://network.test/internal/follows/channel/${BOB}`, method: 'PUT', body: { follower: ANN }, auth: 'Bearer svc-token' });
-        assert.ok(!db.isFollowing(1, 2), 'a write answer never touches the projection');
-        assert.ok(follows.isFollowing(1, 2), 'the button shows Network\'s answer before the event');
+        assert.ok(!(await db.isFollowing(1, 2)), 'a write answer never touches the projection');
+        assert.ok(await follows.isFollowing(1, 2), 'the button shows Network\'s answer before the event');
         assert.strictEqual((await follows.set(1, 2, true)).started, false, 'the same follow again starts nothing');
         r = await follows.set(1, 2, false);
         assert.deepStrictEqual(calls.pop(), { url: `http://network.test/internal/follows/channel/${BOB}?follower=${ANN}`, method: 'DELETE', body: null, auth: 'Bearer svc-token' });
         assert.deepStrictEqual(r, { ok: true, following: false, count: 40, started: false });
-        assert.ok(!follows.isFollowing(1, 2));
+        assert.ok(!(await follows.isFollowing(1, 2)));
         assert.strictEqual((await follows.set(1, 2, true)).started, true, 'a follow that starts again (200, a new since) is started');
         await follows.set(1, 2, false);
 
@@ -120,7 +118,7 @@ server.listen(0, '127.0.0.1', async () => {
         }
         fail = { status: 200, body: { target_type: 'channel', target_id: CAT, following: true, followers: 41 } };
         assert.strictEqual((await follows.set(1, 2, true)).status, 503, 'an answer about another channel is no answer');
-        assert.ok(!follows.isFollowing(1, 2) && !db.isFollowing(1, 2), 'nothing remembered while Network did not take it');
+        assert.ok(!(await follows.isFollowing(1, 2)) && !(await db.isFollowing(1, 2)), 'nothing remembered while Network did not take it');
         // Network refuses the request itself: its status and reason.
         fail = { status: 400, body: { code: 'follows.self', detail: 'you cannot follow yourself' } };
         assert.deepStrictEqual(await follows.set(2, 2, true), { ok: false, status: 400, error: 'you cannot follow yourself' });
@@ -130,7 +128,7 @@ server.listen(0, '127.0.0.1', async () => {
         assert.strictEqual((await follows.set(4, 2, true)).status, 409, 'follower without a subject');
         assert.strictEqual((await follows.set(1, 4, true)).status, 409, 'channel without a subject');
         assert.strictEqual(calls.length, n);
-        assert.ok(!follows.isFollowing(4, 2) && !follows.isFollowing(1, 4));
+        assert.ok(!(await follows.isFollowing(4, 2)) && !(await follows.isFollowing(1, 4)));
 
         // The buttons: toggle on the state the viewer sees, answer Network's state and count.
         assert.strictEqual((await post(`/api/streams/${streamId}/follow`)).status, 401, 'signed in only');
@@ -151,7 +149,7 @@ server.listen(0, '127.0.0.1', async () => {
         fail = { status: 502 };
         r = await post('/api/streams/channel/bob/follow', 3);
         assert.strictEqual(r.status, 503);
-        assert.ok(follows.isFollowing(3, 2), 'Network down: the follow stays as it was');
+        assert.ok(await follows.isFollowing(3, 2), 'Network down: the follow stays as it was');
         fail = null;
         assert.strictEqual((await post('/api/streams/channel/bob/follow', 4)).status, 409);
         assert.strictEqual((await post('/api/streams/channel/nobody/follow', 3)).status, 404);
@@ -160,7 +158,7 @@ server.listen(0, '127.0.0.1', async () => {
 
         // Channel and stream responses while the projection lags: Network's count, the viewer's follow as Network
         // answered it (the projection still has no row for cat → bob).
-        assert.ok(!db.isFollowing(3, 2));
+        assert.ok(!(await db.isFollowing(3, 2)));
         follows._reset();
         await follows.set(3, 2, true);
         graph.set(`${ANN}>${BOB}`, { active: true, revision: 7, since: '2026-01-01T00:00:00.000Z' });   // a follow made elsewhere
@@ -199,33 +197,33 @@ server.listen(0, '127.0.0.1', async () => {
         assert.strictEqual(await follows.followerCount(4), 0, 'a channel without a subject: the projection');
 
         // The projection, through the Network events endpoint's apply().
-        d.prepare('DELETE FROM follows').run();
+        await d.prepare('DELETE FROM follows').run();
         follows._reset();
-        assert.strictEqual(events.apply(ev('network.follow.created', CAT, BOB, 1)), 'followed');
-        assert.ok(db.isFollowing(3, 2));
-        assert.strictEqual(events.apply(ev('network.follow.created', CAT, BOB, 1)), 'stale', 'a redelivery');
-        assert.strictEqual(events.apply(ev('network.follow.deleted', CAT, BOB, 3)), 'unfollowed');
-        assert.ok(!db.isFollowing(3, 2));
-        assert.strictEqual(events.apply(ev('network.follow.created', CAT, BOB, 2)), 'stale', 'an older follow after the unfollow changes nothing');
-        assert.ok(!db.isFollowing(3, 2));
-        assert.strictEqual(events.apply(ev('network.follow.created', GHOST, BOB, 1)), 'ignored:unmapped', 'no Live account');
-        assert.strictEqual(events.apply({ ...ev('network.follow.created', CAT, BOB, 9), source: 'live' }), 'ignored:source');
+        assert.strictEqual(await events.apply(ev('network.follow.created', CAT, BOB, 1)), 'followed');
+        assert.ok(await db.isFollowing(3, 2));
+        assert.strictEqual(await events.apply(ev('network.follow.created', CAT, BOB, 1)), 'stale', 'a redelivery');
+        assert.strictEqual(await events.apply(ev('network.follow.deleted', CAT, BOB, 3)), 'unfollowed');
+        assert.ok(!(await db.isFollowing(3, 2)));
+        assert.strictEqual(await events.apply(ev('network.follow.created', CAT, BOB, 2)), 'stale', 'an older follow after the unfollow changes nothing');
+        assert.ok(!(await db.isFollowing(3, 2)));
+        assert.strictEqual(await events.apply(ev('network.follow.created', GHOST, BOB, 1)), 'ignored:unmapped', 'no Live account');
+        assert.strictEqual(await events.apply({ ...ev('network.follow.created', CAT, BOB, 9), source: 'live' }), 'ignored:source');
 
         // A click, then its events delivered late and out of order: an older follow event arriving after the
         // unfollow click cannot show the follow again, and the unfollow's own event retires the remembered answer.
         graph.delete(`${ANN}>${CAT}`);
         assert.strictEqual((await follows.set(1, 3, true)).started, true);    // Network revision 1
         assert.strictEqual((await follows.set(1, 3, false)).following, false); // Network revision 2
-        assert.strictEqual(events.apply(ev('network.follow.created', ANN, CAT, 1)), 'followed', 'the late follow event');
-        assert.ok(db.isFollowing(1, 3), 'the projection is at revision 1');
-        assert.strictEqual(follows.isFollowing(1, 3), false, 'the button still shows the unfollow');
+        assert.strictEqual(await events.apply(ev('network.follow.created', ANN, CAT, 1)), 'followed', 'the late follow event');
+        assert.ok(await db.isFollowing(1, 3), 'the projection is at revision 1');
+        assert.strictEqual(await follows.isFollowing(1, 3), false, 'the button still shows the unfollow');
         r = await get('/api/streams/channel/cat', 1);
         assert.strictEqual(r.body.channel.is_following, false);
-        assert.strictEqual(events.apply(ev('network.follow.deleted', ANN, CAT, 2)), 'unfollowed');
-        assert.ok(!db.isFollowing(1, 3) && !follows.isFollowing(1, 3));
-        assert.strictEqual(events.apply(ev('network.follow.created', ANN, CAT, 1)), 'stale');
-        assert.strictEqual(events.apply(ev('network.follow.created', ANN, CAT, 3)), 'followed', 'a later follow made elsewhere');
-        assert.strictEqual(follows.isFollowing(1, 3), true, 'the agreeing event retired the answer: the projection shows it');
+        assert.strictEqual(await events.apply(ev('network.follow.deleted', ANN, CAT, 2)), 'unfollowed');
+        assert.ok(!(await db.isFollowing(1, 3)) && !(await follows.isFollowing(1, 3)));
+        assert.strictEqual(await events.apply(ev('network.follow.created', ANN, CAT, 1)), 'stale');
+        assert.strictEqual(await events.apply(ev('network.follow.created', ANN, CAT, 3)), 'followed', 'a later follow made elsewhere');
+        assert.strictEqual(await follows.isFollowing(1, 3), true, 'the agreeing event retired the answer: the projection shows it');
         // Live subscribes to the follow events.
         assert.match(fs.readFileSync(path.join(__dirname, '..', 'scripts', 'subscribe-media-events.js'), 'utf8'), /'network\.follow\.created', 'network\.follow\.deleted'/);
 
@@ -249,7 +247,6 @@ server.listen(0, '127.0.0.1', async () => {
         console.log('network follows: all checks passed');
     } finally {
         server.close();
-        fs.rmSync(tmp, { recursive: true, force: true });
     }
     process.exit(0);
 });

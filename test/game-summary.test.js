@@ -4,13 +4,11 @@
 // trouble is not; nothing without a usr_ subject.
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-game-summary-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.OV_NETWORK_INTERNAL_URL = 'http://network.test';
 const log = console.log; console.log = () => {};
+const db = require('../server/db/database');
 const identity = require('../server/auth/identity-sync');
 const game = require('../server/auth/game-summary');
 console.log = log;
@@ -19,6 +17,7 @@ const SUBJECTS = { 1: 'usr_01JAB2C3D4E5F6G7H8J9K0MNPQ', 2: 'usr_01JAB2C3D4E5F6G7
 identity.subjectOf = (id) => SUBJECTS[id] || null;
 
 (async () => {
+    await db.initDb();
     const calls = [];
     const answers = {};
     const fetchImpl = async (url) => {
@@ -63,7 +62,6 @@ identity.subjectOf = (id) => SUBJECTS[id] || null;
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app-channel.js'), 'utf8');
     assert.match(page, /\/streams\/channel\/\$\{encodeURIComponent\(username\)\}\/game/);
     assert.ok(!/_loadGameBadge[\s\S]{0,1200}innerHTML/.test(page.slice(page.indexOf('async function _loadGameBadge'))), 'the badge is built with DOM nodes');
-    fs.rmSync(tmp, { recursive: true, force: true });
     console.log('game summary: all checks passed');
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

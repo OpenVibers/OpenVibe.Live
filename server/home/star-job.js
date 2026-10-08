@@ -35,9 +35,9 @@ async function candidates() {
     const rows = await db.all(`
         SELECT u.id, u.username, u.display_name, u.bio,
                COUNT(s.id) AS sessions,
-               ROUND(SUM(COALESCE(s.duration_seconds, CASE WHEN s.ended_at IS NOT NULL THEN (julianday(s.ended_at) - julianday(s.started_at)) * 86400 ELSE 0 END)) / 3600.0, 1) AS hours,
+               ROUND(SUM(COALESCE(s.duration_seconds, CASE WHEN s.ended_at IS NOT NULL THEN (julianday(s.ended_at) - julianday(s.started_at)) * 86400 ELSE 0 END)) / 3600.0, 1)::float8 AS hours,
                MAX(COALESCE(s.peak_viewers, 0)) AS peak_viewers,
-               ROUND(AVG(COALESCE(s.peak_viewers, 0)), 1) AS avg_peak,
+               ROUND(AVG(COALESCE(s.peak_viewers, 0)), 1)::float8 AS avg_peak,
                MAX(s.started_at) AS last_live_at,
                (SELECT COUNT(*) FROM follows f WHERE f.streamer_id = u.id AND f.created_at >= datetime('now', ?)) AS new_followers,
                (SELECT COUNT(*) FROM follows f WHERE f.streamer_id = u.id) AS followers,

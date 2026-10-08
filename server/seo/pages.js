@@ -133,7 +133,7 @@ function _within(promise, ms) {
 }
 /** A cached list call, or null (and `partial` set on the tracker) when it did not answer in time. */
 async function _listWithin(key, fn, track) {
-    const r = await _within(await _cached(key, fn), LIST_WAIT_MS);
+    const r = await _within(_cached(key, fn), LIST_WAIT_MS);
     if (r === _TIMED_OUT || r == null) { if (track) track.partial = true; return null; }
     return r;
 }
@@ -277,8 +277,8 @@ async function _channelMeta(username, page = 1) {
     const offset = (page - 1) * CHANNEL_PAGE_SIZE;
     const [vr, cr, ar] = acct.banned ? [null, null, null] : await Promise.all([
         _listWithin(`chv:${acct.userId}:${offset}`, async () => await media.listVods({ user_id: acct.userId, order: 'newest', limit: CHANNEL_PAGE_SIZE, offset }, { timeoutMs: 5000 }), track),
-        page === 1 ? await _listWithin(`chc:${acct.userId}`, async () => await media.listClips({ channel_user_id: acct.userId, auto_generated: 0, limit: 8 }, { timeoutMs: 5000 }), track) : null,
-        page === 1 ? await _listWithin(`cha:${acct.userId}`, async () => await media.listClips({ channel_user_id: acct.userId, auto_generated: 1, limit: 6 }, { timeoutMs: 5000 }), track) : null,
+        page === 1 ? _listWithin(`chc:${acct.userId}`, async () => await media.listClips({ channel_user_id: acct.userId, auto_generated: 0, limit: 8 }, { timeoutMs: 5000 }), track) : null,
+        page === 1 ? _listWithin(`cha:${acct.userId}`, async () => await media.listClips({ channel_user_id: acct.userId, auto_generated: 1, limit: 6 }, { timeoutMs: 5000 }), track) : null,
     ]);
     const vods = ((vr && vr.vods) || []).filter((v) => _pub(v) && !v.is_recording && v.status !== 'failed');
     const vodTotal = vr && Number.isFinite(Number(vr.total)) ? Number(vr.total) : null;
@@ -457,8 +457,8 @@ async function _homeMeta() {
     const track = { partial: false };
     const settle = async (promise) => { const r = await _within(promise, LIST_WAIT_MS); if (r === _TIMED_OUT) { track.partial = true; return null; } return r; };
     let [vods, clips, pastes, stats] = await Promise.all([
-        settle(await _vodList(12)), settle(await _clipList(12)), settle(await _pasteList(12)),
-        homeStats ? await settle(await require('../media-proxy/lookups').withArchiveStats(homeStats)) : null,
+        settle(_vodList(12)), settle(_clipList(12)), settle(_pasteList(12)),
+        homeStats ? settle(require('../media-proxy/lookups').withArchiveStats(homeStats)) : null,
     ]);
     vods = vods || []; clips = clips || []; pastes = pastes || [];
     const ownerName = async (row, id) => row.display_name || row.username || _nameOf(await _channelOwner(id));
@@ -775,7 +775,7 @@ async function _aiPasteMeta(p, slug) {
     const streamId = p.stream_id || meta.stream_id || null;
     let stream = null;
     try { stream = streamId ? await db.getStreamById(Number(streamId)) : null; } catch { stream = null; }
-    const owner = stream ? await _channelOwner(stream.user_id) : (meta.username ? (async () => { try { return await db.getUserByUsername(String(meta.username)); } catch { return null; } })() : null);
+    const owner = stream ? await _channelOwner(stream.user_id) : (meta.username ? await db.getUserByUsername(String(meta.username)).catch(() => null) : null);
     const streamer = _nameOf(owner);
     const streamTitle = stream && stream.title ? clean(stream.title, 90) : null;
     const from = streamTitle ? `"${streamTitle}"` : (streamer ? `${streamer}'s stream` : 'a live stream');

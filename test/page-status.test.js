@@ -15,12 +15,9 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
 
-const tmp = path.join(os.tmpdir(), `ov-page-status-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
@@ -28,73 +25,21 @@ console.warn = () => {};
 
 const express = require('express');
 const db = require('../server/db/database');
-db.initDb();
-const raw = db.getDb();
 
 // ── Sign-in stub ──
 const auth = require('../server/auth/auth');
-auth.optionalAuth = (req, res, next) => {
+auth.optionalAuth = async (req, res, next) => {
     const id = Number(req.headers['x-test-user'] || 0);
-    const u = id ? db.getUserById(id) : null;
+    const u = id ? await db.getUserById(id) : null;
     if (u) req.user = u;
     next();
 };
 
-const addUser = (id, username, role) => raw.prepare(
-    `INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
-     VALUES (?, ?, ?, ?, 'x', ?, '2025-01-01 00:00:00')`).run(id, username, username, `${username}@x`, role);
-addUser(1, 'admin', 'admin');
-addUser(3, 'alice', 'streamer');       // owns the private VOD
-addUser(4, 'bob', 'user');             // exists, has no channel row yet
-addUser(5, 'carol', 'user');           // made the private clip
-addUser(7, 'mallory', 'user');         // nobody special
-db.ensureChannel(3);
-const chanA = db.getChannelByUserId(3);
-const streamA = Number(db.createStream({ user_id: 3, channel_id: chanA.id, title: 'A', protocol: 'webrtc' }).lastInsertRowid);
-
-// ── Media + Community stubs ──
 const media = require('../server/media-client');
-const VODS = {
-    100: { id: 100, user_id: 3, title: 'Public VOD', visibility: 'public', is_public: 1, status: 'ready' },
-    101: { id: 101, user_id: 3, stream_id: streamA, title: 'Secret VOD', visibility: 'private', is_public: 0, status: 'ready' },
-    102: { id: 102, user_id: 3, title: 'Legacy hidden', is_public: 0, status: 'ready' },
-    103: { id: 103, user_id: 3, title: 'Unlisted VOD', visibility: 'unlisted', is_public: 0, status: 'ready' },
-};
-const CLIPS = {
-    200: { id: 200, user_id: 5, vod_id: 100, title: 'Public clip', visibility: 'public', is_public: 1, status: 'ready' },
-    201: { id: 201, user_id: 5, channel_user_id: 3, vod_id: 101, title: 'Secret clip', visibility: 'private', is_public: 0, status: 'ready' },
-};
-const PASTES = { abc123: { slug: 'abc123', title: 'Hello', type: 'text', content: 'hi', visibility: 'public' } };
-const calls = { vod: 0, clip: 0, paste: 0 };
-let mediaMode = 'ok';   // 'ok' | 'down' | 'slow'
-const missing = (what) => new media.MediaApiError(`${what} not found`, 404, { error: `${what} not found` });
-const upstream = async () => {
-    if (mediaMode === 'down') throw new media.MediaApiError('Media unreachable', 0, null);
-    if (mediaMode === 'slow') await new Promise((r) => setTimeout(r, 4000));
-};
-media.getVod = async (id) => { calls.vod++; await upstream(); const v = VODS[Number(id)]; if (!v) throw missing('VOD'); return { ...v }; };
-media.getClip = async (id) => { calls.clip++; await upstream(); const c = CLIPS[Number(id)]; if (!c) throw missing('Clip'); return { ...c }; };
-media.listVods = async () => ({ vods: [] });
-media.listClips = async () => ({ clips: [] });
-media.request = async () => { throw new media.MediaApiError('stubbed', 0, null); };
 const pastesClient = require('../server/pastes-client');
-pastesClient.getPaste = async (slug) => { calls.paste++; const p = PASTES[slug]; if (!p) throw missing('Paste'); return { ...p }; };
-pastesClient.listPastes = async () => ({ pastes: [] });
-
-// ── The app: the SEO middleware, then the real SPA fallback (as server/index.js mounts them) ──
 const assets = require('../server/web/assets');
 const pageStatus = require('../server/web/page-status');
-const app = express();
 const seo = require('../server/seo');
-seo.register(app);
-// As server/index.js sendShell: the shell from seo.shellHtml (a 404 is noindex, no canonical).
-app.get('*', pageStatus.spaFallback((res, urlPath) => {
-    const html = seo.shellHtml(urlPath, res.statusCode);
-    if (!html) return false;
-    res.type('html').send(html);
-    return true;
-}));
-void assets;
 
 let base;
 function get(p, { user, html = false, method = 'GET' } = {}) {
@@ -130,8 +75,63 @@ async function expectAll(paths, want, opts) {
     assert.deepStrictEqual(wrong, [], `expected ${want}: ${wrong.join(', ')}`);
 }
 
-const server = http.createServer(app);
-server.listen(0, '127.0.0.1', async () => {
+async function main() {
+    await db.initDb();
+    const raw = db.getDb();
+
+    const addUser = (id, username, role) => raw.prepare(
+        `INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
+         VALUES (?, ?, ?, ?, 'x', ?, '2025-01-01 00:00:00')`).run(id, username, username, `${username}@x`, role);
+    await addUser(1, 'admin', 'admin');
+    await addUser(3, 'alice', 'streamer');       // owns the private VOD
+    await addUser(4, 'bob', 'user');             // exists, has no channel row yet
+    await addUser(5, 'carol', 'user');           // made the private clip
+    await addUser(7, 'mallory', 'user');         // nobody special
+    await db.ensureChannel(3);
+    const chanA = await db.getChannelByUserId(3);
+    const streamA = Number((await db.createStream({ user_id: 3, channel_id: chanA.id, title: 'A', protocol: 'webrtc' })).lastInsertRowid);
+
+    // ── Media + Community stubs ──
+    const VODS = {
+        100: { id: 100, user_id: 3, title: 'Public VOD', visibility: 'public', is_public: 1, status: 'ready' },
+        101: { id: 101, user_id: 3, stream_id: streamA, title: 'Secret VOD', visibility: 'private', is_public: 0, status: 'ready' },
+        102: { id: 102, user_id: 3, title: 'Legacy hidden', is_public: 0, status: 'ready' },
+        103: { id: 103, user_id: 3, title: 'Unlisted VOD', visibility: 'unlisted', is_public: 0, status: 'ready' },
+    };
+    const CLIPS = {
+        200: { id: 200, user_id: 5, vod_id: 100, title: 'Public clip', visibility: 'public', is_public: 1, status: 'ready' },
+        201: { id: 201, user_id: 5, channel_user_id: 3, vod_id: 101, title: 'Secret clip', visibility: 'private', is_public: 0, status: 'ready' },
+    };
+    const PASTES = { abc123: { slug: 'abc123', title: 'Hello', type: 'text', content: 'hi', visibility: 'public' } };
+    const calls = { vod: 0, clip: 0, paste: 0 };
+    let mediaMode = 'ok';   // 'ok' | 'down' | 'slow'
+    const missing = (what) => new media.MediaApiError(`${what} not found`, 404, { error: `${what} not found` });
+    const upstream = async () => {
+        if (mediaMode === 'down') throw new media.MediaApiError('Media unreachable', 0, null);
+        if (mediaMode === 'slow') await new Promise((r) => setTimeout(r, 4000));
+    };
+    media.getVod = async (id) => { calls.vod++; await upstream(); const v = VODS[Number(id)]; if (!v) throw missing('VOD'); return { ...v }; };
+    media.getClip = async (id) => { calls.clip++; await upstream(); const c = CLIPS[Number(id)]; if (!c) throw missing('Clip'); return { ...c }; };
+    media.listVods = async () => ({ vods: [] });
+    media.listClips = async () => ({ clips: [] });
+    media.request = async () => { throw new media.MediaApiError('stubbed', 0, null); };
+    pastesClient.getPaste = async (slug) => { calls.paste++; const p = PASTES[slug]; if (!p) throw missing('Paste'); return { ...p }; };
+    pastesClient.listPastes = async () => ({ pastes: [] });
+
+    // ── The app: the SEO middleware, then the real SPA fallback (as server/index.js mounts them) ──
+    const app = express();
+    seo.register(app);
+    // As server/index.js sendShell: the shell from seo.shellHtml (a 404 is noindex, no canonical).
+    app.get('*', pageStatus.spaFallback(async (res, urlPath) => {
+        const html = await seo.shellHtml(urlPath, res.statusCode);
+        if (!html) return false;
+        res.type('html').send(html);
+        return true;
+    }));
+    void assets;
+
+    const server = http.createServer(app);
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
     base = `http://127.0.0.1:${server.address().port}`;
     console.log('Page status (soft 404s)');
 
@@ -255,8 +255,8 @@ server.listen(0, '127.0.0.1', async () => {
     });
 
     server.close();
-    try { fs.unlinkSync(tmp); } catch { /* */ }
-    for (const ext of ['-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
     console.log(failures ? `\n${failures} check(s) failed` : '\npage status: all checks passed');
     process.exit(failures ? 1 : 0);
-});
+}
+
+main().catch((e) => { quiet(e.stack || e); process.exit(1); });

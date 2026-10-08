@@ -4,26 +4,24 @@
 // extras; unset, no subject, or Network down → Live's own tables (null here).
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-netanalytics-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.OV_NETWORK_INTERNAL_URL = 'http://network.test';
 const log = console.log; console.log = () => {}; console.warn = () => {};
 const db = require('../server/db/database');
-db.initDb();
 console.log = log;
 require('../server/net/network-principal').serviceHeaders = async () => ({ Authorization: 'Bearer svc' });
 const na = require('../server/analytics/network-analytics');
 const SUBJ = `usr_${'01JAA'.padEnd(26, '0')}`;
-const d = db.getDb();
-d.prepare("INSERT INTO users (id, username, password_hash) OVERRIDING SYSTEM VALUE VALUES (7, 'carol', 'x'), (8, 'nolink', 'x')").run();
-d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (7, 'network', '70', ?)").run(SUBJ);
-d.prepare('INSERT INTO streams (id, user_id, title) OVERRIDING SYSTEM VALUE VALUES (501, 7, \'A\')').run();
-d.prepare('INSERT INTO stream_analytics (stream_id, new_followers, clips_created, coins_earned) VALUES (501, 3, 2, 40)').run();
 
 (async () => {
+    await db.initDb();
+    const d = db.getDb();
+    await d.prepare("INSERT INTO users (id, username, password_hash) OVERRIDING SYSTEM VALUE VALUES (7, 'carol', 'x'), (8, 'nolink', 'x')").run();
+    await d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (7, 'network', '70', ?)").run(SUBJ);
+    await d.prepare('INSERT INTO streams (id, user_id, title) OVERRIDING SYSTEM VALUE VALUES (501, 7, \'A\')').run();
+    await d.prepare('INSERT INTO stream_analytics (stream_id, new_followers, clips_created, coins_earned) VALUES (501, 3, 2, 40)').run();
+
     const calls = [];
     let status = 200;
     const body = { creator: SUBJ, days: 30, full: true, totals: { streams: 2, stream_seconds: 5400, peak_viewers: 20, avg_viewers: 7.7, unique_chatters: 13, messages: 320, watch_minutes: 550 }, daily: [],
@@ -47,8 +45,7 @@ d.prepare('INSERT INTO stream_analytics (stream_id, new_followers, clips_created
     status = new Error('ECONNREFUSED');
     assert.strictEqual(await na.summaryFor(7, 30, { fetchImpl }), null);
     const routes = fs.readFileSync(path.join(__dirname, '..', 'server', 'streaming', 'analytics-routes.js'), 'utf8');
-    assert.strictEqual((routes.match(/network-analytics'\)\.summaryFor\(channel\.user_id, days\)\) \|\| db\.getChannelAnalyticsSummary/g) || []).length, 2, 'both channel analytics routes');
-    fs.rmSync(tmp, { recursive: true, force: true });
+    assert.strictEqual((routes.match(/network-analytics'\)\.summaryFor\(channel\.user_id, days\)\) \|\| await db\.getChannelAnalyticsSummary/g) || []).length, 2, 'both channel analytics routes');
     console.log('network analytics: all checks passed');
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

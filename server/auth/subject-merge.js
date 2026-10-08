@@ -21,20 +21,6 @@ const db = require('../db/database');
 const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
 const MERGE_RE = /^mrg_[0-9A-HJKMNP-TV-Z]{26}$/;
 
-async function ensureSchema(d) {
-    d.exec(`CREATE TABLE IF NOT EXISTS subject_merges (
-        merge_id     TEXT PRIMARY KEY,
-        from_subject TEXT NOT NULL,
-        into_subject TEXT NOT NULL,
-        from_user_id INTEGER,
-        into_user_id INTEGER,
-        outcome      TEXT NOT NULL,
-        applied_at   DATETIME DEFAULT ov_now()
-    )`);
-    const cols = (await d.prepare('PRAGMA table_info(users)').all()).map((c) => c.name);
-    if (!cols.includes('merged_into')) d.exec('ALTER TABLE users ADD COLUMN merged_into INTEGER');
-}
-
 const liveUserOf = async (d, subject) => {
     const r = await d.prepare("SELECT user_id FROM linked_accounts WHERE service = 'network' AND subject_id = ? ORDER BY id LIMIT 1").get(subject);
     return r ? r.user_id : null;
@@ -82,7 +68,6 @@ async function apply(ev, { resolveNetworkId = defaultResolve } = {}) {
     const p = ev && ev.payload && typeof ev.payload === 'object' ? ev.payload : {};
     if (!MERGE_RE.test(String(p.merge_id || '')) || !SUBJECT_RE.test(String(p.from || '')) || !SUBJECT_RE.test(String(p.into || '')) || p.from === p.into) return 'ignored:payload';
     const d = db.getDb();
-    await ensureSchema(d);
     if (await d.prepare('SELECT 1 FROM subject_merges WHERE merge_id = ?').get(p.merge_id)) return 'unchanged';
     const a = await liveUserOf(d, p.from);
     const b = await liveUserOf(d, p.into);
@@ -91,7 +76,7 @@ async function apply(ev, { resolveNetworkId = defaultResolve } = {}) {
     else if (!b) {
         const networkId = await resolveNetworkId(p.into);
         try {
-            await d.prepare("UPDATE linked_accounts SET subject_id = ?, service_user_id = COALESCE(?, service_user_id) WHERE service = 'network' AND user_id = ?")
+            await d.prepare("UPDATE linked_accounts SET subject_id = ?, service_user_id = COALESCE(?::text, service_user_id) WHERE service = 'network' AND user_id = ?")
                 .run(p.into, networkId == null ? null : String(networkId), a);
             result = 'relinked'; outcome = { user: a, network_user_id: networkId == null ? null : Number(networkId) };
         } catch (e) {
@@ -118,4 +103,4 @@ async function defaultResolve(subject) {
     } catch { return null; }
 }
 
-module.exports = { apply, ensureSchema, moveUser };
+module.exports = { apply, moveUser };

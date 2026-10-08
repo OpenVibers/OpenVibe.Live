@@ -57,7 +57,7 @@ async function networkPost(path, body) {
 
 async function syncLegacyMap() {
     const off = notConfigured(); if (off) return off;
-    const rows = await db.getDb().prepare("SELECT user_id, service_user_id FROM linked_accounts WHERE service = 'network' AND service_user_id GLOB '[0-9]*' ORDER BY user_id").all();
+    const rows = await db.getDb().prepare("SELECT user_id, service_user_id FROM linked_accounts WHERE service = 'network' AND service_user_id ~ '^[0-9]' ORDER BY user_id").all();
     const total = { sent: rows.length, inserted: 0, unchanged: 0, conflicts: 0, rejected: 0 };
     for (let i = 0; i < rows.length; i += BATCH) {
         const entries = rows.slice(i, i + BATCH).map(r => ({
@@ -77,7 +77,7 @@ async function syncLegacyMap() {
 
 async function backfillSubjects() {
     const off = notConfigured(); if (off) return off;
-    const rows = await db.getDb().prepare("SELECT user_id, service_user_id FROM linked_accounts WHERE service = 'network' AND subject_id IS NULL AND service_user_id GLOB '[0-9]*' ORDER BY user_id").all();
+    const rows = await db.getDb().prepare("SELECT user_id, service_user_id FROM linked_accounts WHERE service = 'network' AND subject_id IS NULL AND service_user_id ~ '^[0-9]' ORDER BY user_id").all();
     const total = { asked: rows.length, stored: 0, unknown: 0 };
     const store = db.getDb().prepare("UPDATE linked_accounts SET subject_id = ? WHERE service = 'network' AND user_id = ? AND service_user_id = ? AND subject_id IS NULL");
     for (let i = 0; i < rows.length; i += BATCH) {

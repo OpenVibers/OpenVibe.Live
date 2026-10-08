@@ -282,7 +282,7 @@ router.get('/stats-live', async (req, res) => {
             prevWeeklyVisitors: s.prevWeeklyVisitors, prevWeeklyActive: s.prevWeeklyActive,
             // What counts as a normal number of live streams and viewers, so the two instantaneous
             // readings can say whether right now is busy or quiet.
-            concurrency: (async () => { try { return await db.getConcurrencyBaseline(); } catch { return null; } })(),
+            concurrency: await (async () => { try { return await db.getConcurrencyBaseline(); } catch { return null; } })(),
             recent: {
                 users: s.recent?.users, anons: s.recent?.anons,
                 messages: s.recent?.messages,
@@ -367,7 +367,7 @@ router.get('/star', async (req, res) => {
                 category_inferred: !!channel.ai_category,
                 follower_count, live: liveSafe,
                 last_live_at: live ? null : (last_stream && (last_stream.ended_at || last_stream.started_at)) || null,
-                pick: (async () => {
+                pick: await (async () => {
                     try {
                         const p = await require('./star-job').loadPick();
                         if (p && String(p.username || '').toLowerCase() === user.username.toLowerCase()) return { headline: p.headline || null, reason: p.reason || null, picked_at: p.picked_at || null, next_at: p.next_at || null, by: p.by || null };
@@ -454,15 +454,22 @@ router.get('/digest', optionalAuth, async (req, res) => {
             FROM streams s JOIN users u ON u.id = s.user_id WHERE s.is_live = 1 AND COALESCE(u.is_banned, 0) = 0
             ORDER BY s.viewer_count DESC, s.started_at DESC LIMIT 10`) || []).map(r => ({ ...r, followed: followed.has(r.user_id) }));
         const liveIds = new Set(liveNow.map(r => r.user_id));
-        const streamed = (await db.all(`SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.profile_color,
+        const streamedRows = (await db.all(`SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.profile_color,
                 COUNT(s.id) AS sessions, MAX(s.started_at) AS last_at, MAX(COALESCE(s.peak_viewers, 0)) AS peak_viewers,
-                ROUND(SUM(COALESCE(s.duration_seconds, CASE WHEN s.ended_at IS NOT NULL THEN (julianday(s.ended_at) - julianday(s.started_at)) * 86400 ELSE 0 END)) / 3600.0, 1) AS hours,
+                ROUND(SUM(COALESCE(s.duration_seconds, CASE WHEN s.ended_at IS NOT NULL THEN (julianday(s.ended_at) - julianday(s.started_at)) * 86400 ELSE 0 END)) / 3600.0, 1)::float8 AS hours,
                 (SELECT title FROM streams t WHERE t.user_id = u.id AND t.started_at >= ? ORDER BY t.started_at DESC LIMIT 1) AS last_title
             FROM streams s JOIN users u ON u.id = s.user_id
             WHERE s.started_at >= ? AND s.is_live = 0 AND COALESCE(u.is_banned, 0) = 0
             GROUP BY u.id ORDER BY hours DESC, last_at DESC LIMIT 14`, [sinceSql, sinceSql]) || [])
-            .filter(r => !liveIds.has(r.user_id)).map(r => ({ ...r, followed: followed.has(r.user_id), recap_stream_id: (async () => { try { const x = await db.get('SELECT r.stream_id FROM stream_recaps r JOIN streams s ON s.id = r.stream_id WHERE r.user_id = ? AND s.started_at >= ? ORDER BY r.created_at DESC LIMIT 1', [r.user_id, sinceSql]); return x ? x.stream_id : null; } catch { return null; } })() }))
-            .sort((a, b) => (b.followed - a.followed) || (b.hours - a.hours)).slice(0, 8);
+            .filter(r => !liveIds.has(r.user_id));
+        const streamed = [];
+        for (const r of streamedRows) {
+            let recap_stream_id = null;
+            try { const x = await db.get('SELECT r.stream_id FROM stream_recaps r JOIN streams s ON s.id = r.stream_id WHERE r.user_id = ? AND s.started_at >= ? ORDER BY r.created_at DESC LIMIT 1', [r.user_id, sinceSql]); recap_stream_id = x ? x.stream_id : null; } catch { recap_stream_id = null; }
+            streamed.push({ ...r, followed: followed.has(r.user_id), recap_stream_id });
+        }
+        streamed.sort((a, b) => (b.followed - a.followed) || (b.hours - a.hours));
+        streamed.splice(8);
         const one = async (sql, params) => { try { return await get(sql, params); } catch { return null; } };
         const get = async (sql, params) => await db.get(sql, params);
         const stats = {
@@ -470,7 +477,7 @@ router.get('/digest', optionalAuth, async (req, res) => {
             hours: Number((await one(`SELECT ROUND(SUM(COALESCE(duration_seconds, CASE WHEN ended_at IS NOT NULL THEN (julianday(ended_at) - julianday(started_at)) * 86400 ELSE (julianday('now') - julianday(started_at)) * 86400 END)) / 3600.0, 1) AS h FROM streams WHERE started_at >= ?`, [sinceSql]) || {}).h || 0),
             // OpenVibe.Chat's message count since the window opened (Live's own tables in dev /
             // rollback); a synchronous peek answers the last good count while Chat refreshes.
-            chat_lines: (async () => { try { const s = await require('../chat/chat-reads').windowStatsPeek({ since: sinceMs }); return s ? s.messages : 0; } catch { return 0; } })(),
+            chat_lines: await (async () => { try { const s = await require('../chat/chat-reads').windowStatsPeek({ since: sinceMs }); return s ? s.messages : 0; } catch { return 0; } })(),
             new_follows: Number((await one('SELECT COUNT(*) AS n FROM follows WHERE created_at >= ?', [sinceSql]) || {}).n || 0),
             new_members: Number((await one('SELECT COUNT(*) AS n FROM users WHERE created_at >= ?', [sinceSql]) || {}).n || 0),
             mic_moments: Number((await one('SELECT COUNT(*) AS n FROM arena_mic_moments WHERE said_at >= ?', [sinceSql]) || {}).n || 0),
@@ -526,14 +533,16 @@ router.get('/discover', optionalAuth, async (req, res) => {
             // Who is actually active: ranked by hours + sessions in the window (followers only as a
             // nudge, category only as a tiebreak), live people first. 14 days; widen to 30 only if
             // that leaves fewer than 3 names — nobody wants "live 29d ago" as a recommendation.
-            const pick = async (days) => (await db.all(`SELECT u.id, u.username, u.display_name, u.avatar_url, u.profile_color, MAX(s.started_at) AS last_live_at, COUNT(s.id) AS sessions,
-                    ROUND(SUM(COALESCE(s.duration_seconds, CASE WHEN s.ended_at IS NOT NULL THEN (julianday(s.ended_at) - julianday(s.started_at)) * 86400 ELSE 0 END)) / 3600.0, 1) AS hours,
+            const pick = async (days) => (await db.all(`SELECT * FROM (
+                    SELECT u.id, u.username, u.display_name, u.avatar_url, u.profile_color, MAX(s.started_at) AS last_live_at, COUNT(s.id) AS sessions,
+                    ROUND(SUM(COALESCE(s.duration_seconds, CASE WHEN s.ended_at IS NOT NULL THEN (julianday(s.ended_at) - julianday(s.started_at)) * 86400 ELSE 0 END)) / 3600.0, 1)::float8 AS hours,
                     (SELECT COUNT(*) FROM follows f WHERE f.streamer_id = u.id) AS followers,
                     (SELECT COALESCE(ch.ai_category, ch.category) FROM channels ch WHERE ch.user_id = u.id) AS category
                 FROM streams s JOIN users u ON u.id = s.user_id
-                WHERE s.started_at >= datetime('now', ?) AND COALESCE(u.is_banned, 0) = 0 AND u.id != COALESCE(?, -1)
-                GROUP BY u.id HAVING hours >= 0.25 OR sessions >= 2
-                ORDER BY last_live_at DESC LIMIT 40`, [`-${days} days`, exclude]) || []);
+                WHERE s.started_at >= datetime('now', ?) AND COALESCE(u.is_banned, 0) = 0 AND u.id != COALESCE(?::bigint, -1)
+                GROUP BY u.id
+                ) sub WHERE sub.hours >= 0.25 OR sub.sessions >= 2
+                ORDER BY sub.last_live_at DESC LIMIT 40`, [`-${days} days`, exclude]) || []);
             let rows = await pick(14);
             if (rows.length < 3) rows = await pick(30);
             const score = (r) => (live.some(l => l.user_id === r.id) ? 1000 : 0)

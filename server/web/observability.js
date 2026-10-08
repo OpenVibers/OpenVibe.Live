@@ -82,7 +82,7 @@ function createLiveReadiness({ release, bootComplete, dbQuery, sfuReady, mediaUr
         release: release && release.release,
         checks: [
             { name: 'boot', required: true, description: 'boot finished', check: () => (bootComplete() ? true : 'boot not finished') },
-            { name: 'db', required: true, description: 'SQLite answers a query', check: () => { const row = dbQuery(); return row ? true : 'no row'; } },
+            { name: 'db', required: true, description: 'the database answers a query', check: async () => { const row = await dbQuery(); return row ? true : 'no row'; } },
             { name: 'sfu', required: false, description: 'WebRTC SFU (mediasoup worker)', check: () => (sfuReady() ? true : 'mediasoup worker not running') },
             {
                 name: 'media', required: false, cacheMs: 30000, timeoutMs: 2000, description: 'OpenVibe.Media (VODs, clips, thumbnails)',
