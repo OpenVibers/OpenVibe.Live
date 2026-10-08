@@ -15,7 +15,11 @@ const mk = async (u, key) => {
 };
 const a = await mk('alice', 'a'.repeat(32)), b = await mk('bob', 'b'.repeat(32));
 await db.run("UPDATE users SET created_at = datetime('now', '-3 days') WHERE id = ?", [a]);
-await db.run("UPDATE users SET created_at = datetime('now', '-1 days') WHERE id = ?", [b]);
+// Bob: yesterday, and inside a 2-day window (which starts 24 h ago and moves on while the test runs): halfway
+// between 24 h ago and the end of yesterday (UTC), never on the window's moving edge.
+const sql = (ms) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+const startOfToday = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+await db.run('UPDATE users SET created_at = ? WHERE id = ?', [sql(((Date.now() - 86400000) + (startOfToday - 1000)) / 2), b]);
 
 // ── series: registry, zero-filled days, totals ──
 assert.ok(db.HOME_SERIES_KEYS.includes('users') && db.HOME_SERIES_KEYS.includes('vibes'));
