@@ -64,7 +64,7 @@ async function seedControlPresetsForUser(userId) {
     for (const preset of CONTROL_PRESETS) {
         const { lastInsertRowid } = await run('INSERT INTO control_configs (user_id, name, description) VALUES (?, ?, ?)', [userId, preset.name, preset.description]);
         for (const btn of preset.buttons) {
-            run(
+            await run(
                 `INSERT INTO control_config_buttons (config_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', '', '')`,
                 [lastInsertRowid, btn.label, btn.command, btn.icon, btn.control_type, btn.key_binding, btn.cooldown_ms, btn.sort_order]
@@ -246,14 +246,14 @@ async function getOrCreateAnonGameUser(anonId) {
     let user = await getUserByUsername(username);
     if (user) {
         if (user.display_name !== normalizedAnonId) {
-            run('UPDATE users SET display_name = ?, updated_at = ov_now() WHERE id = ?', [normalizedAnonId, user.id]);
+            await run('UPDATE users SET display_name = ?, updated_at = ov_now() WHERE id = ?', [normalizedAnonId, user.id]);
             user = await getUserById(user.id);
         }
         return user;
     }
 
     const passwordHash = `!anon-game:${safeAnonKey}:${crypto.randomBytes(12).toString('hex')}`;
-    run(
+    await run(
         `INSERT INTO users (username, password_hash, display_name, role)
          VALUES (?, ?, ?, 'user') ON CONFLICT DO NOTHING`,
         [username, passwordHash, normalizedAnonId]
@@ -484,7 +484,7 @@ async function updateStreamAiOverview(streamId, text) {
 async function setStreamAiCategory(streamId, category, tags) {
     const cat = category ? String(category).toLowerCase().slice(0, 40) : null;
     const r = await run('UPDATE streams SET ai_category = ?, ai_tags = ? WHERE id = ?', [cat, Array.isArray(tags) && tags.length ? JSON.stringify(tags.slice(0, 8)) : null, streamId]);
-    if (cat) { const s = await get('SELECT user_id FROM streams WHERE id = ?', [streamId]); if (s) run('UPDATE channels SET ai_category = ? WHERE user_id = ?', [cat, s.user_id]); }
+    if (cat) { const s = await get('SELECT user_id FROM streams WHERE id = ?', [streamId]); if (s) await run('UPDATE channels SET ai_category = ? WHERE user_id = ?', [cat, s.user_id]); }
     return r;
 }
 /** What to call a stream's category: the AI's read of the stream beats the self-selected default. */
@@ -492,10 +492,10 @@ function effectiveCategory(row) { if (!row) return null; return row.ai_category 
 // AI overview/transcript state lives in vod_ai_state / clip_ai_state (Live-owned,
 // keyed by the Media vod/clip id) — the moved vods/clips tables are never written.
 async function _ensureVodAiState(vodId) {
-    run('INSERT INTO vod_ai_state (vod_id) VALUES (?) ON CONFLICT DO NOTHING', [vodId]);
+    await run('INSERT INTO vod_ai_state (vod_id) VALUES (?) ON CONFLICT DO NOTHING', [vodId]);
 }
 async function _ensureClipAiState(clipId) {
-    run('INSERT INTO clip_ai_state (clip_id) VALUES (?) ON CONFLICT DO NOTHING', [clipId]);
+    await run('INSERT INTO clip_ai_state (clip_id) VALUES (?) ON CONFLICT DO NOTHING', [clipId]);
 }
 
 // ── Clip chat-announce scheduling (clip_ai_state) ────────────
@@ -638,13 +638,13 @@ async function setClipTranscriptStatus(id, status, error = null, retryDelayMin =
 // Increment the attempt counter and return the new count (drives retry-vs-fail).
 async function bumpVodTranscriptAttempt(id) {
     await _ensureVodAiState(id);
-    run('UPDATE vod_ai_state SET transcript_attempts = COALESCE(transcript_attempts,0)+1 WHERE vod_id = ?', [id]);
+    await run('UPDATE vod_ai_state SET transcript_attempts = COALESCE(transcript_attempts,0)+1 WHERE vod_id = ?', [id]);
     const r = await get('SELECT transcript_attempts AS a FROM vod_ai_state WHERE vod_id = ?', [id]);
     return r ? r.a : 0;
 }
 async function bumpClipTranscriptAttempt(id) {
     await _ensureClipAiState(id);
-    run('UPDATE clip_ai_state SET transcript_attempts = COALESCE(transcript_attempts,0)+1 WHERE clip_id = ?', [id]);
+    await run('UPDATE clip_ai_state SET transcript_attempts = COALESCE(transcript_attempts,0)+1 WHERE clip_id = ?', [id]);
     const r = await get('SELECT transcript_attempts AS a FROM clip_ai_state WHERE clip_id = ?', [id]);
     return r ? r.a : 0;
 }
@@ -676,7 +676,7 @@ async function cleanupMalformedAiText() {
             const rows = await all(`SELECT ${key} AS k, ${col} AS v FROM ${table} WHERE ${col} ILIKE '{%"description"%'`);
             for (const r of rows) {
                 const clean = _extractDescFromMaybeJson(r.v);
-                if (clean && clean !== r.v) { run(`UPDATE ${table} SET ${col} = ? WHERE ${key} = ?`, [clean, r.k]); fixed++; }
+                if (clean && clean !== r.v) { await run(`UPDATE ${table} SET ${col} = ? WHERE ${key} = ?`, [clean, r.k]); fixed++; }
             }
         } catch { /* table/column may not exist on older DBs */ }
     }
@@ -685,7 +685,7 @@ async function cleanupMalformedAiText() {
         const rows = await all(`SELECT user_id AS k, overview AS v FROM streamer_overviews WHERE overview ILIKE '{%"description"%'`);
         for (const r of rows) {
             const clean = _extractDescFromMaybeJson(r.v);
-            if (clean && clean !== r.v) { run('UPDATE streamer_overviews SET overview = ? WHERE user_id = ?', [clean, r.k]); fixed++; }
+            if (clean && clean !== r.v) { await run('UPDATE streamer_overviews SET overview = ? WHERE user_id = ?', [clean, r.k]); fixed++; }
         }
     } catch { /* */ }
     if (fixed) console.log(`[AI] Cleaned ${fixed} malformed JSON AI text value(s)`);
@@ -767,7 +767,7 @@ async function addTimelineEvents(rows) {
                 r.lang || null, r.text_en || null);
         }
     });
-    try { tx(rows); return rows.length; } catch { return 0; }
+    try { await tx(rows); return rows.length; } catch { return 0; }
 }
 
 /** Newest speech rows for a live stream after a given row id (live captions feed). */
@@ -982,7 +982,7 @@ async function buildStreamerAiTimeline(userId, vodIdByStream = null, { store = t
     const fresh = await assembleStreamerAiTimeline(userId, vodIdByStream);
     if (store) {
         try {
-            run(`INSERT INTO ai_timeline_cache (user_id, payload, generated_at) VALUES (?, ?, ov_now())
+            await run(`INSERT INTO ai_timeline_cache (user_id, payload, generated_at) VALUES (?, ?, ov_now())
                  ON CONFLICT(user_id) DO UPDATE SET payload = excluded.payload, generated_at = ov_now()`,
                 [userId, JSON.stringify(fresh)]);
         } catch { /* cache is best-effort */ }
@@ -1016,7 +1016,7 @@ async function getStreamersNeedingOverview({ decentLen = 220, limit = 4 } = {}) 
 }
 
 async function updateViewerCount(streamId, count) {
-    run(`UPDATE streams SET viewer_count = ?, peak_viewers = MAX(peak_viewers, ?) WHERE id = ?`,
+    await run(`UPDATE streams SET viewer_count = ?, peak_viewers = MAX(peak_viewers, ?) WHERE id = ?`,
         [count, count, streamId]);
 }
 
@@ -1156,7 +1156,7 @@ async function getPipCandidateSlots(userId, excludeId = null) {
 
 async function deleteManagedStream(managedStreamId, userId) {
     // Unlink sessions first (don't delete them — they're historical)
-    run('UPDATE streams SET managed_stream_id = NULL WHERE managed_stream_id = ?', [managedStreamId]);
+    await run('UPDATE streams SET managed_stream_id = NULL WHERE managed_stream_id = ?', [managedStreamId]);
     return await run('DELETE FROM managed_streams WHERE id = ? AND user_id = ?', [managedStreamId, userId]);
 }
 
@@ -1192,7 +1192,7 @@ async function getManagedStreamLimit(user) {
 async function ensureStreamerRoleOnFeed(userId) {
     const user = await getUserById(userId);
     if (user && user.role === 'user') {
-        run('UPDATE users SET role = ? WHERE id = ?', ['streamer', userId]);
+        await run('UPDATE users SET role = ? WHERE id = ?', ['streamer', userId]);
         console.log(`[DB] Promoted user ${userId} to streamer on first real feed`);
         return true;
     }
@@ -1281,10 +1281,10 @@ function _ensureViewerSamples() {
 async function recordViewerSample() {
     _ensureViewerSamples();
     const r = await get(`SELECT COALESCE(SUM(viewer_count),0) AS v, COUNT(*) AS n FROM streams WHERE is_live = 1`) || { v: 0, n: 0 };
-    run('INSERT INTO viewer_samples (viewers, live_streams) VALUES (?, ?)', [r.v || 0, r.n || 0]);
+    await run('INSERT INTO viewer_samples (viewers, live_streams) VALUES (?, ?)', [r.v || 0, r.n || 0]);
     // A year of five-minute samples is ~105k small rows; it is what the "over time" charts for the
     // two live readings are drawn from.
-    run(`DELETE FROM viewer_samples WHERE sampled_at < datetime('now', '-400 days')`);
+    await run(`DELETE FROM viewer_samples WHERE sampled_at < datetime('now', '-400 days')`);
     return r;
 }
 /**
@@ -1684,7 +1684,7 @@ async function setChannelPointsConfig(streamerId, fields) {
     for (const k in map) if (fields[k] !== undefined) { cols.push(`${map[k]} = ?`); vals.push(fields[k]); }
     if (!cols.length) return;
     vals.push(ch.id);
-    run(`UPDATE channels SET ${cols.join(', ')} WHERE id = ?`, vals);
+    await run(`UPDATE channels SET ${cols.join(', ')} WHERE id = ?`, vals);
 }
 
 async function getChannelByUsername(username) {
@@ -1842,7 +1842,7 @@ async function getRobotStreamerIntegrationForStream(userId, managedStreamId) {
 
 async function deleteRobotStreamerIntegrationForSlot(userId, managedStreamId) {
     if (!managedStreamId) return;
-    run('DELETE FROM robotstreamer_integrations WHERE user_id = ? AND managed_stream_id = ?', [userId, managedStreamId]);
+    await run('DELETE FROM robotstreamer_integrations WHERE user_id = ? AND managed_stream_id = ?', [userId, managedStreamId]);
 }
 
 async function upsertRobotStreamerIntegration(userId, fields, managedStreamId = null) {
@@ -1876,12 +1876,12 @@ async function upsertRobotStreamerIntegration(userId, fields, managedStreamId = 
         }
         updates.push('updated_at = ov_now()');
         params.push(userId, slotId);
-        run(`UPDATE robotstreamer_integrations SET ${updates.join(', ')} WHERE user_id = ? AND managed_stream_id IS NOT DISTINCT FROM ?`, params);
+        await run(`UPDATE robotstreamer_integrations SET ${updates.join(', ')} WHERE user_id = ? AND managed_stream_id IS NOT DISTINCT FROM ?`, params);
     } else {
         const keys = ['user_id', 'managed_stream_id', ...filtered.map(([key]) => key), 'updated_at'];
         const placeholders = keys.map(() => '?').join(', ');
         const params = [userId, slotId, ...filtered.map(([, val]) => val), new Date().toISOString()];
-        run(
+        await run(
             `INSERT INTO robotstreamer_integrations (${keys.join(', ')}) VALUES (${placeholders})`,
             params,
         );
@@ -1903,14 +1903,14 @@ async function markRestreamDestinationFailure(id, error) {
         const row = await get('SELECT consecutive_failures FROM restream_destinations WHERE id = ?', [id]);
         const n = ((row && row.consecutive_failures) || 0) + 1;
         const mins = n <= 1 ? 15 : n === 2 ? 60 : n === 3 ? 360 : 1440;
-        run(`UPDATE restream_destinations SET consecutive_failures = ?, last_error = ?, last_failed_at = ov_now(),
+        await run(`UPDATE restream_destinations SET consecutive_failures = ?, last_error = ?, last_failed_at = ov_now(),
              cooldown_until = datetime('now', ?) WHERE id = ?`,
             [n, String(error || 'restream failed to go live').slice(0, 300), `+${mins} minutes`, id]);
         return { failures: n, cooldownMinutes: mins };
     } catch { return null; }
 }
 async function clearRestreamDestinationCooldown(id) {
-    try { run('UPDATE restream_destinations SET consecutive_failures = 0, cooldown_until = NULL, last_error = NULL WHERE id = ?', [id]); } catch { /* */ }
+    try { await run('UPDATE restream_destinations SET consecutive_failures = 0, cooldown_until = NULL, last_error = NULL WHERE id = ?', [id]); } catch { /* */ }
 }
 // Remaining cooldown in ms (0 if not cooling down).
 function restreamDestinationCooldownMs(dest) {
@@ -1952,7 +1952,7 @@ async function updateRestreamDestination(id, fields) {
     updates.push('updated_at = ov_now()');
     const params = [...filtered.map(([, val]) => val), id];
 
-    run(`UPDATE restream_destinations SET ${updates.join(', ')} WHERE id = ?`, params);
+    await run(`UPDATE restream_destinations SET ${updates.join(', ')} WHERE id = ?`, params);
     return await getRestreamDestinationById(id);
 }
 
@@ -2009,12 +2009,12 @@ async function applyChannelPoints({ userId, streamerId, delta, key, reason = nul
                              WHERE user_id = ? AND streamer_id = ? AND balance >= ?`, [delta, userId, streamerId, -delta]);
             if (!res.changes) return { applied: false, replayed: false, balance: await getChannelPoints(userId, streamerId) };
         } else {
-            run(`INSERT INTO channel_points (user_id, streamer_id, balance, updated_at)
+            await run(`INSERT INTO channel_points (user_id, streamer_id, balance, updated_at)
                  VALUES (?, ?, ?, ov_now())
                  ON CONFLICT(user_id, streamer_id) DO UPDATE SET
                     balance = channel_points.balance + excluded.balance, updated_at = ov_now()`, [userId, streamerId, delta]);
         }
-        run('INSERT INTO channel_points_log (idempotency_key, user_id, streamer_id, delta, reason) VALUES (?, ?, ?, ?, ?)',
+        await run('INSERT INTO channel_points_log (idempotency_key, user_id, streamer_id, delta, reason) VALUES (?, ?, ?, ?, ?)',
             [key, userId, streamerId, delta, reason ? String(reason).slice(0, 200) : null]);
         return { applied: true, replayed: false, balance: await getChannelPoints(userId, streamerId) };
     });
@@ -2037,7 +2037,7 @@ async function getKickChannelCache(slug) {
 }
 async function setKickChannelCache(slug, chatroomId, kickChannelId) {
     if (!slug || !chatroomId) return;
-    run(`INSERT INTO kick_channel_cache (slug, chatroom_id, kick_channel_id, updated_at)
+    await run(`INSERT INTO kick_channel_cache (slug, chatroom_id, kick_channel_id, updated_at)
          VALUES (?, ?, ?, ov_now())
          ON CONFLICT(slug) DO UPDATE SET
             chatroom_id = excluded.chatroom_id,
@@ -2062,7 +2062,7 @@ async function getPlatformConnectionsByUserId(userId) {
 async function upsertPlatformConnection(userId, platform, fields) {
     const existing = await getPlatformConnection(userId, platform);
     if (existing) {
-        run(`UPDATE platform_connections SET
+        await run(`UPDATE platform_connections SET
                 platform_user_id = ?, platform_username = ?, channel_url = ?,
                 access_token = ?, refresh_token = COALESCE(?, refresh_token),
                 token_expires_at = ?, scope = ?, updated_at = ov_now()
@@ -2082,7 +2082,7 @@ async function upsertPlatformConnection(userId, platform, fields) {
 
 /** Persist refreshed tokens for a connection. */
 async function updatePlatformConnectionTokens(id, { access_token, refresh_token, token_expires_at, scope }) {
-    run(`UPDATE platform_connections SET
+    await run(`UPDATE platform_connections SET
             access_token = ?, refresh_token = COALESCE(?, refresh_token),
             token_expires_at = ?, scope = COALESCE(?, scope), updated_at = ov_now()
          WHERE id = ?`,
@@ -2114,11 +2114,11 @@ async function upsertPowerchatConnection(userId, fields = {}) {
     if (existing) {
         const keys = Object.keys(set);
         if (!keys.length) return existing;
-        run(`UPDATE powerchat_connections SET ${keys.map(k => `${k} = ?`).join(', ')}, updated_at = ov_now() WHERE user_id = ?`,
+        await run(`UPDATE powerchat_connections SET ${keys.map(k => `${k} = ?`).join(', ')}, updated_at = ov_now() WHERE user_id = ?`,
             [...keys.map(k => set[k]), userId]);
     } else {
         const keys = Object.keys(set);
-        run(`INSERT INTO powerchat_connections (user_id${keys.length ? ', ' + keys.join(', ') : ''}) VALUES (?${keys.map(() => ', ?').join('')})`,
+        await run(`INSERT INTO powerchat_connections (user_id${keys.length ? ', ' + keys.join(', ') : ''}) VALUES (?${keys.map(() => ', ?').join('')})`,
             [userId, ...keys.map(k => set[k])]);
     }
     return await getPowerchatConnection(userId);
@@ -2227,7 +2227,7 @@ async function deductVibes(userId, amount) {
     assertLiveLedger('openvibe_bucks_balance debit');
     const user = await getUserById(userId);
     if (!user || user.openvibe_bucks_balance < amount) return false;
-    run(`UPDATE users SET openvibe_bucks_balance = openvibe_bucks_balance - ? WHERE id = ?`,
+    await run(`UPDATE users SET openvibe_bucks_balance = openvibe_bucks_balance - ? WHERE id = ?`,
         [amount, userId]);
     return true;
 }
@@ -2242,7 +2242,7 @@ async function deductVibesCashout(userId, amount) {
     assertLiveLedger('openvibe_bucks_cashout_balance debit');
     const user = await getUserById(userId);
     if (!user || (user.openvibe_bucks_cashout_balance || 0) < amount) return false;
-    run(`UPDATE users SET openvibe_bucks_cashout_balance = openvibe_bucks_cashout_balance - ? WHERE id = ?`,
+    await run(`UPDATE users SET openvibe_bucks_cashout_balance = openvibe_bucks_cashout_balance - ? WHERE id = ?`,
         [amount, userId]);
     return true;
 }
@@ -2285,7 +2285,7 @@ async function updatePaymentOrder(id, fields) {
     if (!entries.length) return await getPaymentOrderById(id);
     const sets = entries.map(([k]) => `${k} = ?`);
     sets.push('updated_at = ov_now()');
-    run(`UPDATE payment_orders SET ${sets.join(', ')} WHERE id = ?`, [...entries.map(([, v]) => v), id]);
+    await run(`UPDATE payment_orders SET ${sets.join(', ')} WHERE id = ?`, [...entries.map(([, v]) => v), id]);
     return await getPaymentOrderById(id);
 }
 
@@ -2297,7 +2297,7 @@ async function upsertSubscription({ subscriber_id, streamer_id, tier = 1, provid
     // auto_renew: null = leave as-is on update (0 on insert); 0/1 = set explicitly.
     const existing = await get('SELECT * FROM subscriptions WHERE subscriber_id = ? AND streamer_id = ?', [subscriber_id, streamer_id]);
     if (existing) {
-        run(`UPDATE subscriptions SET tier=?, provider=?, provider_ref=COALESCE(?, provider_ref), price_cents=?, currency=?,
+        await run(`UPDATE subscriptions SET tier=?, provider=?, provider_ref=COALESCE(?, provider_ref), price_cents=?, currency=?,
                 status=?, is_active=?, current_period_end=?, auto_renew=COALESCE(?, auto_renew),
                 cancel_at_period_end=0, updated_at=ov_now() WHERE id=?`,
             [tier, provider, provider_ref, price_cents, currency, status, status === 'active' ? 1 : 0, current_period_end,
@@ -2361,7 +2361,7 @@ async function setSubscriptionStatus(id, status, fields = {}) {
     assertLiveLedger('subscriptions status');
     const cpe = fields.current_period_end !== undefined ? fields.current_period_end : null;
     const cape = fields.cancel_at_period_end !== undefined ? (fields.cancel_at_period_end ? 1 : 0) : 0;
-    run(`UPDATE subscriptions SET status=?, is_active=?, cancel_at_period_end=?,
+    await run(`UPDATE subscriptions SET status=?, is_active=?, cancel_at_period_end=?,
             current_period_end=COALESCE(?, current_period_end), updated_at=ov_now() WHERE id=?`,
         [status, status === 'active' ? 1 : 0, cape, cpe, id]);
     return await get('SELECT * FROM subscriptions WHERE id = ?', [id]);
@@ -2465,7 +2465,7 @@ async function bindStreamToControlConfig(streamId, controlConfigId) {
 
 async function applyConfigToStream(configId, streamId) {
     // Delete existing non-ONVIF controls from stream
-    run('DELETE FROM stream_controls WHERE stream_id = ? AND (control_type != ? OR control_type IS NULL)', [streamId, 'onvif']);
+    await run('DELETE FROM stream_controls WHERE stream_id = ? AND (control_type != ? OR control_type IS NULL)', [streamId, 'onvif']);
     // Copy buttons from config into stream_controls
     const buttons = await getConfigButtons(configId);
     for (let i = 0; i < buttons.length; i++) {
@@ -2537,8 +2537,8 @@ async function updateCameraProfile(cameraId, data) {
 
 async function deleteCameraProfile(cameraId) {
     // Cascade delete presets and associated controls
-    run('DELETE FROM camera_presets WHERE camera_id = ?', [cameraId]);
-    run('UPDATE stream_controls SET camera_id = NULL WHERE camera_id = ?', [cameraId]);
+    await run('DELETE FROM camera_presets WHERE camera_id = ?', [cameraId]);
+    await run('UPDATE stream_controls SET camera_id = NULL WHERE camera_id = ?', [cameraId]);
     return await run('DELETE FROM camera_profiles WHERE id = ?', [cameraId]);
 }
 
@@ -2638,8 +2638,8 @@ async function forgiveBan(userId) {
     // Site-level bans only. Bans a streamer placed on their own stream are theirs to lift, not the
     // site ban page's.
     const rows = await all('SELECT id, ip_address, stream_id, reason FROM bans WHERE user_id = ? AND stream_id IS NULL', [userId]);
-    run('UPDATE users SET is_banned = 0, ban_reason = NULL WHERE id = ?', [userId]);
-    run('DELETE FROM bans WHERE user_id = ? AND stream_id IS NULL', [userId]);
+    await run('UPDATE users SET is_banned = 0, ban_reason = NULL WHERE id = ?', [userId]);
+    await run('DELETE FROM bans WHERE user_id = ? AND stream_id IS NULL', [userId]);
     invalidateIpBanCache();
     return rows;
 }
@@ -2793,14 +2793,14 @@ async function upsertAiChatbotConfig(userId, fields) {
         if (sets.length) {
             sets.push('updated_at = ov_now()');
             params.push(userId);
-            run(`UPDATE ai_chatbot_configs SET ${sets.join(', ')} WHERE user_id = ?`, params);
+            await run(`UPDATE ai_chatbot_configs SET ${sets.join(', ')} WHERE user_id = ?`, params);
         }
     } else {
         const merged = { ...AI_CHATBOT_DEFAULTS };
         for (const [col, coerce] of Object.entries(allowed)) {
             if (fields[col] !== undefined) merged[col] = coerce(fields[col]);
         }
-        run(
+        await run(
             `INSERT INTO ai_chatbot_configs
                 (user_id, enabled, base_url, api_token, model, transcribe_enabled, transcribe_model, num_bots, post_interval_seconds, persona, vision_enabled)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -2852,14 +2852,14 @@ async function upsertChannelAiConfig(userId, fields) {
         if (sets.length) {
             sets.push('updated_at = ov_now()');
             params.push(userId);
-            run(`UPDATE channel_ai_config SET ${sets.join(', ')} WHERE user_id = ?`, params);
+            await run(`UPDATE channel_ai_config SET ${sets.join(', ')} WHERE user_id = ?`, params);
         }
     } else {
         const merged = { ...CHANNEL_AI_CONFIG_DEFAULTS };
         for (const [col, coerce] of Object.entries(allowed)) {
             if (fields[col] !== undefined) merged[col] = coerce(fields[col]);
         }
-        run(
+        await run(
             `INSERT INTO channel_ai_config
                 (user_id, enabled, num_ambient_bots, pacing_seconds, persona, transcribe_enabled, vision_enabled,
                  use_shared_key, daily_budget_cents, byo_key, byo_base_url, byo_model)
@@ -2965,7 +2965,7 @@ async function updateChannelAiBot(id, fields) {
     if (sets.length) {
         sets.push('updated_at = ov_now()');
         params.push(id);
-        run(`UPDATE channel_ai_bots SET ${sets.join(', ')} WHERE id = ?`, params);
+        await run(`UPDATE channel_ai_bots SET ${sets.join(', ')} WHERE id = ?`, params);
     }
     return await getChannelAiBot(id);
 }
@@ -3105,7 +3105,7 @@ async function getMediaRequestSettingsByUserId(userId) {
 async function upsertMediaRequestSettings(userId, fields = {}) {
     const existing = await getMediaRequestSettingsByUserId(userId);
     if (!existing) {
-        run(`INSERT INTO media_request_settings (
+        await run(`INSERT INTO media_request_settings (
             user_id, enabled, request_cost, max_per_user, max_duration_seconds,
             allow_youtube, allow_vimeo, allow_direct_media, auto_advance,
             cost_mode, cost_per_minute, allow_live, download_mode, currency
@@ -3134,7 +3134,7 @@ async function upsertMediaRequestSettings(userId, fields = {}) {
         }
         sets.push('updated_at = ov_now()');
         vals.push(userId);
-        run(`UPDATE media_request_settings SET ${sets.join(', ')} WHERE user_id = ?`, vals);
+        await run(`UPDATE media_request_settings SET ${sets.join(', ')} WHERE user_id = ?`, vals);
     }
     return await getMediaRequestSettingsByUserId(userId);
 }
@@ -3228,7 +3228,7 @@ async function renormalizePendingMediaRequestPositions(streamerId) {
             run('UPDATE media_requests SET queue_position = ? WHERE id = ?', [idx + 1, row.id]);
         });
     });
-    tx(rows);
+    await tx(rows);
 }
 
 // ── Comments ─────────────────────────────────────────────────
@@ -3310,7 +3310,7 @@ async function getOrCreateAnonNum(ip) {
     const max = await get('SELECT MAX(anon_num) as m FROM anon_ip_mappings');
     const nextNum = (max?.m || 0) + 1;
     try {
-        run('INSERT INTO anon_ip_mappings (ip, anon_num, created_at) VALUES (?, ?, ov_now())', [ip, nextNum]);
+        await run('INSERT INTO anon_ip_mappings (ip, anon_num, created_at) VALUES (?, ?, ov_now())', [ip, nextNum]);
     } catch (e) {
         // Race condition: another connection inserted first — re-read
         const retry = await get('SELECT anon_num FROM anon_ip_mappings WHERE ip = ?', [ip]);
@@ -3391,7 +3391,7 @@ async function logIp({ userId, anonId, ip, action = 'chat', geo, userAgent }) {
     );
     if (recent) return;
 
-    run(
+    await run(
         `INSERT INTO ip_log (user_id, anon_id, ip_address, action, geo_country, geo_region, geo_city, geo_isp, geo_org, geo_ll, user_agent)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
@@ -3545,14 +3545,14 @@ async function banAllAccountsOnIp(ip, { reason, bannedBy, expires }) {
         if (!row.user_id) continue;
         if (row.user_id === bannedBy || row.role === 'admin' || row.role === 'global_mod') { skippedStaff.push(row.user_id); continue; }
         // Set is_banned flag
-        run('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ? AND is_banned = 0', [reason, row.user_id]);
+        await run('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ? AND is_banned = 0', [reason, row.user_id]);
         // Create global user ban
-        run(`INSERT INTO bans (user_id, ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?, ?)`,
+        await run(`INSERT INTO bans (user_id, ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?, ?)`,
             [row.user_id, ip, reason, bannedBy, expires || null]);
         bannedIds.push(row.user_id);
     }
     // Also create standalone IP ban
-    run(`INSERT INTO bans (ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?)`,
+    await run(`INSERT INTO bans (ip_address, reason, banned_by, expires_at) VALUES (?, ?, ?, ?)`,
         [ip, reason, bannedBy, expires || null]);
 
     bannedIds.skippedStaff = skippedStaff;
@@ -3634,7 +3634,7 @@ async function computeAndCacheStreamAnalytics(streamId) {
     }
 
     // Upsert into stream_analytics
-    run(
+    await run(
         `INSERT INTO stream_analytics
             (stream_id, avg_viewers, peak_viewers, unique_chatters, total_messages,
              total_watch_minutes, new_followers, clips_created, coins_earned, computed_at)
@@ -3758,7 +3758,7 @@ async function getUserPreferences(userId) {
 
 async function saveUserPreferences(userId, chatSettings) {
     const json = JSON.stringify(chatSettings);
-    run(
+    await run(
         `INSERT INTO user_preferences (user_id, chat_settings, updated_at)
          VALUES (?, ?, ov_now())
          ON CONFLICT(user_id) DO UPDATE SET chat_settings = excluded.chat_settings, updated_at = ov_now()`,
@@ -3775,7 +3775,7 @@ function _hashToken(rawToken) {
 async function createApiToken(userId, label, scopes, expiresAt) {
     const rawToken = 'hbt_' + crypto.randomBytes(32).toString('hex');
     const hash = _hashToken(rawToken);
-    run(
+    await run(
         `INSERT INTO api_tokens (user_id, token_hash, label, scopes, expires_at)
          VALUES (?, ?, ?, ?, ?)`,
         [userId, hash, label || 'Bot Token', JSON.stringify(scopes || ['chat', 'read']), expiresAt || null]
@@ -3808,7 +3808,7 @@ async function validateApiToken(rawToken) {
     // Check expiry
     if (row.expires_at && new Date(row.expires_at) < new Date()) return null;
     // Update last used
-    run('UPDATE api_tokens SET last_used_at = ov_now() WHERE id = ?', [row.id]);
+    await run('UPDATE api_tokens SET last_used_at = ov_now() WHERE id = ?', [row.id]);
     const scopes = (() => { try { return JSON.parse(row.scopes); } catch { return []; } })();
     return {
         id: row.uid, username: row.username, display_name: row.display_name,
@@ -3856,8 +3856,8 @@ async function addToDonationGoal(id, amount) {
     if (!g || !g.is_active) return { goal: g || null, reached: false };
     const newAmount = Math.min(Math.round((g.current_amount || 0) + amount), g.target_amount);
     const reached = newAmount >= g.target_amount;
-    if (reached) run("UPDATE donation_goals SET current_amount = ?, is_active = 0, reached_at = ov_now() WHERE id = ?", [newAmount, id]);
-    else run('UPDATE donation_goals SET current_amount = ? WHERE id = ?', [newAmount, id]);
+    if (reached) await run("UPDATE donation_goals SET current_amount = ?, is_active = 0, reached_at = ov_now() WHERE id = ?", [newAmount, id]);
+    else await run('UPDATE donation_goals SET current_amount = ? WHERE id = ?', [newAmount, id]);
     return { goal: await getDonationGoalById(id), reached };
 }
 
