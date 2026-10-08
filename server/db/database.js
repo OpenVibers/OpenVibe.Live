@@ -199,12 +199,17 @@ async function run(sql, params = []) {
     return stmt(sql).run(...(Array.isArray(params) ? params : [params]));
 }
 
+// SQLite compared a value of the wrong type and simply found nothing ('presets' or 'abc' for an integer id); PostgreSQL
+// refuses the cast (22P02). A read keeps SQLite's answer, nothing found, so a malformed id in a URL is an empty list or a
+// 404 instead of a 500. A write still throws.
+const badInput = (e) => !!e && (e.code === '22P02' || (e.cause && e.cause.code === '22P02'));
+
 async function get(sql, params = []) {
-    return stmt(sql).get(...(Array.isArray(params) ? params : [params]));
+    try { return await stmt(sql).get(...(Array.isArray(params) ? params : [params])); } catch (e) { if (badInput(e)) return undefined; throw e; }
 }
 
 async function all(sql, params = []) {
-    return stmt(sql).all(...(Array.isArray(params) ? params : [params]));
+    try { return await stmt(sql).all(...(Array.isArray(params) ? params : [params])); } catch (e) { if (badInput(e)) return []; throw e; }
 }
 
 /** Run fn in one transaction: every db call inside joins it (openvibe-sdk/db ambient transactions). */
@@ -3180,7 +3185,7 @@ async function getPendingMediaRequestsByStreamer(streamerId, limit = 50) {
 }
 
 async function getRecentMediaRequestsByStreamer(streamerId, limit = 15) {
-    return await all(`SELECT * FROM media_requests WHERE streamer_id = ? AND status IN ('played', 'skipped', 'removed', 'failed') AND charge_state IS NOT 'charging' ORDER BY COALESCE(ended_at, requested_at) DESC, id DESC LIMIT ?`, [streamerId, limit]);
+    return await all(`SELECT * FROM media_requests WHERE streamer_id = ? AND status IN ('played', 'skipped', 'removed', 'failed') AND charge_state IS DISTINCT FROM 'charging' ORDER BY COALESCE(ended_at, requested_at) DESC, id DESC LIMIT ?`, [streamerId, limit]);
 }
 
 async function countPendingMediaRequestsForUser(streamerId, userId) {

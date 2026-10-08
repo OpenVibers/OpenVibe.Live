@@ -78,7 +78,7 @@ function botSummary(b) {
 }
 
 // ── Config ────────────────────────────────────────────────────
-function statusSafe(userId) { try { return engine.status(userId); } catch (e) { return { error: e.message }; } }
+async function statusSafe(userId) { try { return await engine.status(userId); } catch (e) { return { error: e.message }; } }
 
 router.get('/config', requireAuth, async (req, res) => {
     try {
@@ -88,7 +88,7 @@ router.get('/config', requireAuth, async (req, res) => {
             settings: await settingsMod.getSettings(req.user.id, cfg),
             schema: await settingsMod.describe(),
             budget: await budgetSummary(req.user.id),
-            status: statusSafe(req.user.id),
+            status: await statusSafe(req.user.id),
             engine: engine.version,
         });
     } catch (e) {
@@ -99,7 +99,7 @@ router.get('/config', requireAuth, async (req, res) => {
 // ── v3 control surface ────────────────────────────────────────
 router.get('/status', requireAuth, async (req, res) => {
     try {
-        const st = statusSafe(req.user.id);
+        const st = await statusSafe(req.user.id);
         let stats = null; try { stats = await db.getAiViewerLogStats(req.user.id, 60); } catch { /* */ }
         res.json({ status: st, last_hour: stats, budget: await budgetSummary(req.user.id) });
     } catch (e) { res.status(500).json({ error: 'Failed to load status' }); }
@@ -115,8 +115,8 @@ router.get('/threads', requireAuth, async (req, res) => {
     catch (e) { res.status(500).json({ error: 'Failed to load threads' }); }
 });
 for (const cmd of ['pause', 'resume', 'nudge']) {
-    router.post(`/${cmd}`, requireAuth, (req, res) => {
-        try { res.json({ ok: true, message: engine.onModCommand(req.user.id, null, [cmd], { by: req.user.username }), status: statusSafe(req.user.id) }); }
+    router.post(`/${cmd}`, requireAuth, async (req, res) => {
+        try { res.json({ ok: true, message: await engine.onModCommand(req.user.id, null, [cmd], { by: req.user.username }), status: await statusSafe(req.user.id) }); }
         catch (e) { res.status(500).json({ error: e.message }); }
     });
 }
@@ -174,7 +174,7 @@ router.put('/config', requireAuth, async (req, res) => {
             config: sanitizeConfig(cfg),
             settings: await settingsMod.getSettings(req.user.id, cfg),
             budget: await budgetSummary(req.user.id),
-            status: statusSafe(req.user.id),
+            status: await statusSafe(req.user.id),
         });
     } catch (e) {
         res.status(500).json({ error: 'Failed to save AI viewer config' });

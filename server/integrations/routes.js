@@ -202,7 +202,7 @@ router.post('/restream/start', requireAuth, async (req, res) => {
         const stream = await ownLiveStream(req, res);
         if (!stream) return;
         if (!stream.is_live) return res.status(409).json({ error: 'Stream is not live' });
-        const integration = robotStreamerService.getIntegrationForStream(stream);
+        const integration = await robotStreamerService.getIntegrationForStream(stream);
         if (!integration?.enabled || !integration.token || !integration.robot_id) {
             return res.status(400).json({ error: 'RobotStreamer is not configured (or disabled) for this stream' });
         }

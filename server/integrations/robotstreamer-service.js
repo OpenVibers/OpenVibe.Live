@@ -551,7 +551,7 @@ class RobotStreamerService {
     async _startForStream(stream, opts = {}) {
         if (!stream?.id || !stream?.user_id) return;
 
-        let integration = this.getIntegrationForStream(stream);
+        let integration = await this.getIntegrationForStream(stream);
         if (!integration?.enabled || !integration.token || !integration.robot_id) {
             return null;
         }
@@ -771,7 +771,7 @@ class RobotStreamerService {
             return true;
         }
 
-        const integration = this.getIntegrationForStream(stream);
+        const integration = await this.getIntegrationForStream(stream);
         if (!integration?.enabled || !integration?.token || !integration?.robot_id) {
             socket.destroy();
             return true;

@@ -177,9 +177,9 @@ function cleanTags(tags) {
 }
 
 /** The social links an About editor sees after saving (server/social/links.js), for the response. */
-function aboutSocials(channel) {
+async function aboutSocials(channel) {
     if (!channel) return { social_links: [] };
-    const s = require('../social/links').channelSocialLinks(channel, db, { owner: true });
+    const s = await require('../social/links').channelSocialLinks(channel, db, { owner: true });
     return { social_links: s.links, social_links_editor: { connected: s.connected, restreams_without_link: s.restreams_without_link, hidden_auto: s.hidden_auto } };
 }
 
@@ -376,7 +376,7 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
                 };
             }
             // Per-slot external (Twitch/Kick/YouTube) + RS totals attached to this stream.
-            const ext = restreamManager.getExternalViewerCountsForUser(ls.user_id, slotId);
+            const ext = await restreamManager.getExternalViewerCountsForUser(ls.user_id, slotId);
             ls.rs_viewers = rsActive ? rsVc : 0;
             ls.platform_viewers = ext.breakdown;
             ls.external_viewer_count = ext.total + ls.rs_viewers;
@@ -497,7 +497,7 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
         // Social links (server/social/links.js): saved links plus connected restream platforms. Editors also get
         // what the editor needs (connected platforms, restreams with no public link yet, hidden ones).
         try {
-            const socials = require('../social/links').channelSocialLinks(channel, db, { owner: publicChannel.viewer_can_edit_about });
+            const socials = await require('../social/links').channelSocialLinks(channel, db, { owner: publicChannel.viewer_can_edit_about });
             publicChannel.social_links = socials.links;
             if (publicChannel.viewer_can_edit_about) publicChannel.social_links_editor = { connected: socials.connected, restreams_without_link: socials.restreams_without_link, hidden_auto: socials.hidden_auto };
         } catch { publicChannel.social_links = []; }
@@ -882,7 +882,7 @@ router.put('/channel/:username/about', requireAuth, async (req, res) => {
         // handed every mod the streamer's broadcast key — enough to publish to their channel. The
         // rest of this file already redacts it the same way before sending a channel or stream.
         if (updated) { delete updated.stream_key; delete updated.managed_stream_key; }
-        res.json({ channel: updated, ...aboutSocials(updated), edited_by_mod: !isOwner });
+        res.json({ channel: updated, ...(await aboutSocials(updated)), edited_by_mod: !isOwner });
     } catch (err) {
         console.error('[Channel] about update error:', err.message);
         res.status(500).json({ error: 'Failed to save About section' });
@@ -1183,11 +1183,11 @@ router.get('/', optionalAuth, async (req, res) => {
         const restreamManager = require('./restream-manager');
         const streams = await db.getLiveStreams();
         const channelMap = await db.getChannelsByUserIds(streams.map(s => s.user_id)); // one query, not N
-        const enriched = streams.map(s => {
+        const enriched = await Promise.all(streams.map(async (s) => {
             const channel = channelMap[s.user_id] || null;
             // Per-slot external viewer counts (Kick/Twitch/YouTube + RS) for THIS stream slot
             const slotId = s.managed_stream_id || null;
-            const ext = restreamManager.getExternalViewerCountsForUser(s.user_id, slotId);
+            const ext = await restreamManager.getExternalViewerCountsForUser(s.user_id, slotId);
             const rsVc = robotStreamerService.getRsViewerCount(s.user_id, slotId);
             const externalTotal = ext.total + rsVc;
             // getLiveStreams() selects s.* plus ms.stream_key, and this endpoint is public
@@ -1201,7 +1201,7 @@ router.get('/', optionalAuth, async (req, res) => {
                 external_viewer_count: externalTotal,
                 total_viewer_count: (s.viewer_count || 0) + externalTotal,
             });
-        });
+        }));
         res.json({ streams: enriched });
     } catch (err) {
         console.error('[Streams] List error:', err.message);
@@ -1356,9 +1356,9 @@ router.post('/voice-channels', requireAuth, (req, res) => {
     }
 });
 
-router.delete('/voice-channels/:channelId', requireAuth, (req, res) => {
+router.delete('/voice-channels/:channelId', requireAuth, async (req, res) => {
     try {
-        const ok = callServer.deleteChannel(req.params.channelId, req.user.id);
+        const ok = await callServer.deleteChannel(req.params.channelId, req.user.id);
         if (!ok) return res.status(403).json({ error: 'Cannot delete this channel' });
         res.json({ deleted: true });
     } catch (err) {

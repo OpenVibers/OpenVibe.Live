@@ -40,7 +40,7 @@ router.get('/sources', requireAuth, (req, res) => {
 });
 
 // ── Update a news source config (admin) ─────────────────────
-router.put('/sources/:id', requireAuth, (req, res) => {
+router.put('/sources/:id', requireAuth, async (req, res) => {
     if (!can(req.user, 'staff.site.configure')) return res.status(403).json({ error: 'Admin only' });
     try {
         const { enabled } = req.body;
@@ -59,8 +59,8 @@ router.put('/sources/:id', requireAuth, (req, res) => {
             }
             config = clean;
         }
-        newsService.updateSource(req.params.id, { enabled, config });
-        const updated = newsService.getSources().find(s => s.id === req.params.id);
+        await newsService.updateSource(req.params.id, { enabled, config });
+        const updated = (await newsService.getSources()).find(s => s.id === req.params.id);
         res.json({ success: true, source: isOwner(req.user) ? updated : redactSourceConfig(updated) });
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -68,16 +68,16 @@ router.put('/sources/:id', requireAuth, (req, res) => {
 });
 
 // ── Get streamer's news preference ──────────────────────────
-router.get('/my-settings', requireAuth, (req, res) => {
-    const enabled = newsService.getUserEnabled(req.user.id);
+router.get('/my-settings', requireAuth, async (req, res) => {
+    const enabled = await newsService.getUserEnabled(req.user.id);
     res.json({ enabled }); // null = inherit from global
 });
 
 // ── Set streamer's news preference ──────────────────────────
-router.put('/my-settings', requireAuth, (req, res) => {
+router.put('/my-settings', requireAuth, async (req, res) => {
     const { enabled } = req.body;
     if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be boolean' });
-    newsService.setUserEnabled(req.user.id, enabled);
+    await newsService.setUserEnabled(req.user.id, enabled);
     res.json({ success: true, enabled });
 });
 

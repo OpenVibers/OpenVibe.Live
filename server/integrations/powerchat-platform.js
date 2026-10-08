@@ -402,7 +402,7 @@ async function totalViewersForStream(s) {
     const slotId = s.managed_stream_id || null;
     try {
         const restreamManager = require('../streaming/restream-manager');
-        const ext = restreamManager.getExternalViewerCountsForUser(s.user_id, slotId);
+        const ext = await restreamManager.getExternalViewerCountsForUser(s.user_id, slotId);
         for (const b of ext.breakdown || []) {
             if (!b.count) continue;
             const d = b.destId ? await db.get('SELECT powerchat_count_views FROM restream_destinations WHERE id = ?', [b.destId]) : null;

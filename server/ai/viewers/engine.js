@@ -41,7 +41,7 @@ class AiViewersEngineV3 {
         try {
             if (!stream || !stream.id || !stream.user_id) return;
             if (this.workers.has(stream.id)) return;
-            if (this._killSwitch()) return;
+            if (await this._killSwitch()) return;
             const cfg = await db.getChannelAiConfig(stream.user_id);
             if (!cfg.enabled) return;
             const settings = await settingsMod.getSettings(stream.user_id, cfg);
@@ -106,14 +106,14 @@ class AiViewersEngineV3 {
         const live = await (async () => { try { return await db.getLiveStreamsByUserId(userId) || []; } catch { return []; } })();
         for (const [sid, w] of this.workers) {
             if (w.userId !== userId) continue;
-            if (!cfg.enabled || this._killSwitch() || (w.stream.managed_stream_id && settings.slots && settings.slots[String(w.stream.managed_stream_id)] === false)) { this.stopForStream(sid); continue; }
+            if (!cfg.enabled || (await this._killSwitch()) || (w.stream.managed_stream_id && settings.slots && settings.slots[String(w.stream.managed_stream_id)] === false)) { this.stopForStream(sid); continue; }
             w.cfg = cfg; w.settings = settings; w.paused = !!(settings.runtime && settings.runtime.paused);
             try { w.bots = await roster.ensureRoster(userId, settings.roster_size); } catch { /* */ }
             w.stable = null;  // prefix inputs may have changed
             if (w.foldTimer) { clearInterval(w.foldTimer); w.foldTimer = setInterval(() => this._fold(w).catch(() => {}), Math.max(3, settings.memory_fold_min) * 60000); }
             await poster.log(w, { event: 'info', reason: 'settings applied' });
         }
-        if (cfg.enabled && !this._killSwitch()) for (const s of live) if (!this.workers.has(s.id)) this.startForStream(s).catch(() => {});
+        if (cfg.enabled && !(await this._killSwitch())) for (const s of live) if (!this.workers.has(s.id)) this.startForStream(s).catch(() => {});
     }
     reloadForUser(userId) { return this.applyConfigForUser(userId); }
 
@@ -129,7 +129,7 @@ class AiViewersEngineV3 {
         const text = String(ev.message || '');
         // Streamer/mod shortcut: "!ai pause" etc. also works from relayed chat for the streamer.
         if (/^!ai\b/i.test(text) && (isStreamer || ev.isMod)) {
-            try { this.onModCommand(w.userId, streamId, text.split(/\s+/).slice(1), { by: uname }); } catch { /* */ }
+            this.onModCommand(w.userId, streamId, text.split(/\s+/).slice(1), { by: uname }).catch(() => { /* */ });
             return;
         }
         w.lastRealInputAt = Date.now();
@@ -204,7 +204,7 @@ class AiViewersEngineV3 {
         w.ticking = true;
         const s = w.settings;
         try {
-            if (this._killSwitch()) { this.stopForStream(w.streamId); return; }
+            if (await this._killSwitch()) { this.stopForStream(w.streamId); return; }
             try { w.stream = await db.getStreamById(w.streamId) || w.stream; } catch { /* */ }
             if (!w.stream || !w.stream.is_live) { this.stopForStream(w.streamId); return; }
             const hardIntents = w.intents.filter(i => !i.soft);
@@ -246,14 +246,14 @@ class AiViewersEngineV3 {
             const consumed = w.intents.splice(0, w.intents.length);
             const res = await director.plan({
                 stableText: stable.text, volatileText, maxLines: linesAllowed,
-                provider: this._providerFor(w), ownerUserId: w.userId, cacheKey: `aiv:${w.userId}`,
+                provider: await this._providerFor(w), ownerUserId: w.userId, cacheKey: `aiv:${w.userId}`,
             });
             w.lastTickAt = Date.now();
             w.lastChatId = Math.max(w.lastChatId, tail.chatMaxId || 0);
             w.stats.ticks++;
             if (!res) { await poster.log(w, { event: 'error', reason: 'director call failed or provider quiet' }); w.intents.unshift(...consumed.filter(i => !i.soft)); return; }
             w.stats.cost += res.cost || 0;
-            const accepted = this._acceptPlan(w, res.plan, bots, consumed);
+            const accepted = await this._acceptPlan(w, res.plan, bots, consumed);
             await poster.log(w, {
                 event: 'tick', reason: res.plan.notes || (res.plan.skip ? 'director: skip' : `planned ${accepted} line(s)`),
                 text: accepted ? res.plan.lines.slice(0, accepted).map(l => `${l.bot}→${l.target}${l.reply_to ? '@' + l.reply_to : ''}`).join(', ') : null,
@@ -353,7 +353,7 @@ class AiViewersEngineV3 {
             heard.text ? `Heard on stream recently:\n${heard.text.split('\n').slice(-6).join('\n')}` : '',
             seen.text ? `On screen (${context.ago(seen.ageMs)}): ${seen.text}` : '',
         ].filter(Boolean).join('\n\n');
-        const r = await director.quickReply({ stableText: stable.text, situationText: situation, bot, streamerLine: clip(line, 220), maxWords: s.max_words, provider: this._providerFor(w), ownerUserId: w.userId, cacheKey: `aiv:${w.userId}` });
+        const r = await director.quickReply({ stableText: stable.text, situationText: situation, bot, streamerLine: clip(line, 220), maxWords: s.max_words, provider: await this._providerFor(w), ownerUserId: w.userId, cacheKey: `aiv:${w.userId}` });
         if (!r || !r.text) return;
         const text = poster.clean(r.text, s.max_words);
         const mod = text ? poster.moderate(text) : { ok: false, reason: 'empty' };
@@ -386,7 +386,7 @@ class AiViewersEngineV3 {
     // ── Memory fold ──────────────────────────────────────────
     async _fold(w) {
         try {
-            const r = await fold.foldAll(w, { provider: this._providerFor(w) });
+            const r = await fold.foldAll(w, { provider: await this._providerFor(w) });
             if (r) { w.stats.cost += r.cost || 0; await poster.log(w, { event: 'fold', reason: `memory updated for ${r.updated} viewer(s)`, tokens_in: r.usage && r.usage.input, tokens_cached: r.usage && r.usage.cached, tokens_out: r.usage && r.usage.output, cost_usd: r.cost, model: r.model });
                 for (let i = 0; i < w.bots.length; i++) { const fresh = await db.getChannelAiBot(w.bots[i].id); if (fresh) w.bots[i] = fresh; }
                 w.stable = null;
@@ -399,7 +399,7 @@ class AiViewersEngineV3 {
         const w = this.workerForUser(userId);
         const st = await budget.status(userId);
         const timelineOn = await (async () => { try { return await require('../timeline-job').timelineEnabled(); } catch { return false; } })();
-        const base = { engine: 'v3', running: !!w, mode: st.mode, budget_active: st.active, budget_reason: st.reason, spent_today_usd: st.spentToday, cap_usd: st.capUsd, timeline_enabled: timelineOn, kill_switch: this._killSwitch() };
+        const base = { engine: 'v3', running: !!w, mode: st.mode, budget_active: st.active, budget_reason: st.reason, spent_today_usd: st.spentToday, cap_usd: st.capUsd, timeline_enabled: timelineOn, kill_switch: await this._killSwitch() };
         if (!w) return base;
         const seen = await context.seenBlock(w.stream);
         const heard = await context.heardBlock(w.stream, w.settings);
@@ -426,7 +426,7 @@ class AiViewersEngineV3 {
         const s = w.settings;
         const stable = await context.stablePrefix({ userId: w.userId, stream: w.stream, bots: w.bots, settings: s, cacheHolder: temp ? null : w });
         const tail = await context.volatileTail({ userId: w.userId, stream: w.stream, settings: s, sinceChatId: Math.max(0, (w.lastChatId || 0) - 25), botNames: new Set(w.bots.map(b => b.username.toLowerCase())), intents: w.intents, mode: 'normal', linesAllowed: s.lines_per_tick, botShare: w.scheduler.botShare() });
-        const res = await director.plan({ stableText: stable.text, volatileText: tail.text, maxLines: s.lines_per_tick, provider: this._providerFor(w), ownerUserId: w.userId, cacheKey: `aiv:${w.userId}`, temperature: 0.9 });
+        const res = await director.plan({ stableText: stable.text, volatileText: tail.text, maxLines: s.lines_per_tick, provider: await this._providerFor(w), ownerUserId: w.userId, cacheKey: `aiv:${w.userId}`, temperature: 0.9 });
         return { plan: res ? res.plan : null, usage: res ? res.usage : null, cost: res ? res.cost : null, model: res ? res.model : null, context: { stable_chars: stable.text.length, volatile_chars: tail.text.length, sources: tail.sources }, stable_preview: stable.text.slice(0, 1200), volatile_preview: tail.text.slice(0, 1500) };
     }
 
